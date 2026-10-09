@@ -28,6 +28,8 @@ export interface GameSource {
   introHand: number | null;
   dealing: boolean;
   k: 1;
+  /** a move is in flight (hand locked until the server acknowledges it) */
+  locked?: boolean;
 }
 
 const TRICK_HOLD_MS = 1150;
@@ -36,7 +38,8 @@ const dealMs = (st: GameState) => dealTimeline(1, st.rules.playerCount, st.hands
 
 /** Rotated server view → GameSource. Holds a just-finished trick on the table for a moment, like offline. */
 export function useOnlineSource(cs: ConnState, conn: TableConnection): (GameSource & { rot: Rotation }) | null {
-  const rotated = useMemo(() => (cs.view ? rotateView(cs.view) : null), [cs.view]);
+  // the game version travels with the view it belongs to, so a move is always tagged with the state it was chosen from
+  const rotated = useMemo(() => (cs.view ? { ...rotateView(cs.view), seq: cs.room?.seq ?? 0 } : null), [cs.view]); // eslint-disable-line react-hooks/exhaustive-deps
   const [pause, setPause] = useState(false);
   const [intro, setIntro] = useState<{ hand: number; until: number } | null>(null);
   const [, force] = useState(0);
@@ -75,20 +78,22 @@ export function useOnlineSource(cs: ConnState, conn: TableConnection): (GameSour
     return () => clearTimeout(t);
   }, [cs.error]);
 
+  const seq = shown?.seq ?? 0;
   const apply = useCallback((a: Action) => {
+    // conn.act() drops the move if another one is still in flight or this view is already outdated
     switch (a.type) {
-      case 'reveal': conn.send({ t: 'act', action: { type: 'reveal' } }); break;
-      case 'bid': conn.send({ t: 'act', action: { type: 'bid', bid: a.bid } }); break;
-      case 'play': conn.send({ t: 'act', action: { type: 'play', card: a.card } }); break;
-      case 'exchange': conn.send({ t: 'act', action: { type: 'exchange', cards: a.cards } }); break;
+      case 'reveal': conn.act({ type: 'reveal' }, seq); break;
+      case 'bid': conn.act({ type: 'bid', bid: a.bid }, seq); break;
+      case 'play': conn.act({ type: 'play', card: a.card }, seq); break;
+      case 'exchange': conn.act({ type: 'exchange', cards: a.cards }, seq); break;
       case 'nextHand': conn.send({ t: 'next' }); break;
     }
-  }, [conn]);
+  }, [conn, seq]);
 
   if (!shown) return null;
   return {
     st: shown.st, view: shown.view, rot: shown.rot, pause, error: err, apply, restart: () => {},
-    introHand: intro && intro.hand === shown.st.handNo ? intro.hand : null, dealing, k: 1,
+    introHand: intro && intro.hand === shown.st.handNo ? intro.hand : null, dealing, k: 1, locked: cs.pending,
   };
 }
 

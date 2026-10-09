@@ -16,7 +16,7 @@ const Scene = lazy(() => import('./three/Scene'));
 /** Online play: the table renders server state through the same UI (see online/OnlineTable.tsx). */
 export interface OnlineBinding {
   /** shape-compatible with useGame()'s result */
-  source: ReturnType<typeof useGame>;
+  source: ReturnType<typeof useGame> & { locked?: boolean };
   /** local-seat names (0 = you) */
   names: string[];
   chat: { msgs: ChatMsg[]; push: (user: string, text: string) => void };
@@ -206,7 +206,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onR
 
   const shownTrick = pause ? st.tricks[st.tricks.length - 1]! : st.trick;
   const piles = pause ? st.tricks.slice(0, -1) : st.tricks;
-  const myTurn = !pause && !dealing && st.turn === HUMAN;
+  // online: `locked` while our move is in flight (until the server acks it), so it can't be sent twice
+  const myTurn = !pause && !dealing && !(online?.source.locked) && st.turn === HUMAN;
   const hand = useMemo(() => (view.hand ? sortHand(view.hand, r) : null), [view.hand, r]);
   const legal = myTurn && st.phase === 'playing' ? view.legal : [];
   const exchangeStep = st.phase === 'exchange' ? st.exchange[0] : undefined;

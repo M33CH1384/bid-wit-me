@@ -39,7 +39,12 @@ export type ClientMsg =
   | { t: 'removeBot'; seat: number }
   | { t: 'config'; rules: TableRules; botLevel?: BotLevel }
   | { t: 'start' }
-  | { t: 'act'; action: GameAction }
+  /**
+   * A game move. `seq` = the game version (RoomInfo.seq) the move was chosen from: if the game has moved on since
+   * (e.g. the turn timer auto-played), the server drops it and answers `ack {stale}` + a fresh state instead of an
+   * error. `id` = client-chosen idempotency key: re-sending the same id (e.g. after a reconnect) never applies twice.
+   */
+  | { t: 'act'; action: GameAction; seq?: number; id?: string }
   | { t: 'next' }
   | { t: 'rematch' }
   | { t: 'chat'; text: string }
@@ -69,8 +74,10 @@ export interface RoomInfo {
   deadline: number | null;
   /** players (ids) who have pressed "next hand" */
   ready: string[];
-  /** monotonically increasing state version, handy for clients/tests */
+  /** monotonically increasing broadcast counter (any change: seats, media, timers, game) */
   rev: number;
+  /** game version: bumps only when the game itself changes (a move, auto-play, next hand, new game). Actions carry it. */
+  seq: number;
   /** games started at this table (1 = first game); changes on rematch */
   game: number;
   /** server clock (epoch ms) when this was sent, so clients can correct the deadline for clock skew */
@@ -85,6 +92,12 @@ export type ServerMsg =
   | { t: 'state'; room: RoomInfo; seat: number | null; view: PlayerView | null }
   | { t: 'chat'; line: ChatLine }
   | { t: 'rtc'; from: string; data: unknown }
+  /**
+   * Reply to an `act` that carried an `id`. ok = applied (dup = it had already been applied earlier).
+   * stale = dropped because the game moved on (a fresh `state` is sent right before) — benign, don't show an error.
+   * Otherwise code/message say why it was rejected.
+   */
+  | { t: 'ack'; id: string; ok: boolean; dup?: boolean; stale?: boolean; code?: string; message?: string }
   | { t: 'error'; code: string; message: string };
 
 /* ------------------------------------------------------------------ guards */
@@ -129,7 +142,11 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return { t: 'config', rules: m.rules as unknown as TableRules, botLevel: m.botLevel === 'easy' || m.botLevel === 'normal' ? m.botLevel : undefined };
     case 'act': {
       const action = parseAction(m.action);
-      return action ? { t: 'act', action } : null;
+      if (!action) return null;
+      const out: Extract<ClientMsg, { t: 'act' }> = { t: 'act', action };
+      if (isInt(m.seq) && m.seq >= 0) out.seq = m.seq;
+      if (isStr(m.id, 40) && m.id.length > 0) out.id = m.id;
+      return out;
     }
     case 'chat':
       return isStr(m.text, 1000) ? { t: 'chat', text: m.text } : null;

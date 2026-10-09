@@ -23,6 +23,16 @@ GET  /health
 - **WebRTC signaling relay** (`{t:'rtc'}`) between seated players only. Media is peer-to-peer.
 - **Nobody connected** → the table freezes (no bots, no timers, no writes). Untouched tables are deleted after 24 h.
 
+## Moves under real-network latency
+
+Every `act` carries `seq` (the game version from `RoomInfo.seq` the move was chosen from) and an idempotency `id`.
+The server checks, in order: already-applied `id` → `ack {ok, dup}` (never applied twice, e.g. a resend after a
+reconnect); `seq` ≠ current → dropped, fresh `state` + `ack {stale}` (e.g. the turn timer auto-played first, or a
+double click); otherwise the rules decide (`ack {ok}` or `ack {ok:false, code}`). The client keeps one move in flight
+(hand locked until the ack or a newer state), resends it with the same id/seq after a reconnect, and never shows
+stale/dup as errors. The DO is single-threaded, so a late human move and the timer auto-play can't interleave:
+whichever runs first bumps `seq` and the other is stale. Legacy `act` without seq/id still works (errors as `error`).
+
 ## Free-tier budget (Workers Free, Oct 2026)
 - **Row writes (100k/day) are the first limit.** The whole room is one KV row; saves are debounced (one write per
   ~2 s burst of activity, forced every 10 s) — e.g. 4 humans playing at a normal pace ≈ 1 write per human move

@@ -30,6 +30,8 @@ export interface Member {
   seat: number | null;
   media: MediaState;
   joinedAt: number;
+  /** ids of this player's most recently applied actions (idempotency for retries after a reconnect) */
+  acts?: string[];
 }
 
 /** Everything that survives hibernation / restarts. Plain JSON. */
@@ -53,6 +55,8 @@ export interface RoomData {
   chat: ChatLine[];
   chatSeq: number;
   rev: number;
+  /** game version (see RoomInfo.seq); optional only for rooms saved before it existed */
+  seq?: number;
   gamesPlayed: number;
 }
 
@@ -93,7 +97,7 @@ export function newRoomData(code: string, now: number, rules: TableRules = makeR
   return {
     v: ROOM_DATA_VERSION, code, createdAt: now, lastActive: now, hostId: null, phase: 'lobby',
     rules, botLevel: 'normal', seats: Array.from({ length: 4 }, () => ({ kind: 'empty' as const })), members: {},
-    game: null, turnKey: null, turnStartedAt: null, deadline: null, ready: [], chat: [], chatSeq: 1, rev: 0, gamesPlayed: 0,
+    game: null, turnKey: null, turnStartedAt: null, deadline: null, ready: [], chat: [], chatSeq: 1, rev: 0, seq: 0, gamesPlayed: 0,
   };
 }
 
@@ -110,7 +114,9 @@ export class Room {
   private botDueAt: number | null = null;
   private botKey: string | null = null;
 
-  constructor(public data: RoomData, private io: RoomIO, private timing: RoomTiming = DEFAULT_TIMING) {}
+  constructor(public data: RoomData, private io: RoomIO, private timing: RoomTiming = DEFAULT_TIMING) {
+    data.seq ??= 0;
+  }
 
   /* ------------------------------------------------------------ connections */
 
@@ -280,17 +286,8 @@ export class Room {
         this.startGame();
         break;
       }
-      case 'act': {
-        if (d.phase !== 'playing' || !d.game) throw new RoomError('WRONG_PHASE', 'No game in progress');
-        if (me.seat === null) throw new RoomError('NOT_SEATED', 'You are not seated');
-        const a = msg.action;
-        const action: Action = a.type === 'reveal' ? { type: 'reveal', seat: me.seat }
-          : a.type === 'bid' ? { type: 'bid', seat: me.seat, bid: a.bid }
-          : a.type === 'exchange' ? { type: 'exchange', seat: me.seat, cards: a.cards }
-          : { type: 'play', seat: me.seat, card: a.card };
-        this.apply(action);
-        break;
-      }
+      case 'act':
+        return this.act(connId, me, msg);
       case 'next': {
         if (d.phase !== 'playing' || d.game?.phase !== 'handOver') return;
         if (!d.ready.includes(pid)) d.ready.push(pid);
@@ -328,6 +325,47 @@ export class Room {
         return;
     }
     this.after();
+  }
+
+  /**
+   * A game move. Order of checks:
+   *  1. duplicate id (a retry of a move that was already applied) → ack ok+dup, nothing applied again
+   *  2. stale seq (the game moved on since the client chose this move: its turn timed out and auto-played, the hand
+   *     ended, …) → silently dropped: ack stale + a fresh state for that connection, never an error
+   *  3. rule checks → ack with the rule error code (or an `error` message for legacy clients that send no id)
+   * The DO is single-threaded, so a late human move and the turn-timer auto-play can't interleave: whichever runs
+   * first bumps `seq` and the other one becomes stale (auto-play re-checks the turn key before acting).
+   */
+  private act(connId: string, me: Member, msg: Extract<ClientMsg, { t: 'act' }>): void {
+    const d = this.data;
+    const id = msg.id;
+    if (id && me.acts?.includes(id)) {
+      this.sendState(connId);
+      this.io.send(connId, { t: 'ack', id, ok: true, dup: true });
+      return;
+    }
+    if (msg.seq !== undefined && msg.seq !== d.seq) {
+      this.sendState(connId);
+      if (id) this.io.send(connId, { t: 'ack', id, ok: false, stale: true });
+      return;
+    }
+    try {
+      if (d.phase !== 'playing' || !d.game) throw new RoomError('WRONG_PHASE', 'No game in progress');
+      if (me.seat === null) throw new RoomError('NOT_SEATED', 'You are not seated');
+      const a = msg.action;
+      const action: Action = a.type === 'reveal' ? { type: 'reveal', seat: me.seat }
+        : a.type === 'bid' ? { type: 'bid', seat: me.seat, bid: a.bid }
+        : a.type === 'exchange' ? { type: 'exchange', seat: me.seat, cards: a.cards }
+        : { type: 'play', seat: me.seat, card: a.card };
+      this.apply(action);
+    } catch (e) {
+      if (!id || !(e instanceof RuleError || e instanceof RoomError)) throw e;
+      this.io.send(connId, { t: 'ack', id, ok: false, code: e.code, message: e.message });
+      return;
+    }
+    if (id) me.acts = [...(me.acts ?? []).slice(-7), id];
+    this.after();
+    if (id) this.io.send(connId, { t: 'ack', id, ok: true });
   }
 
   private requireHost(isHost: boolean): void {
@@ -368,6 +406,7 @@ export class Room {
     if (!seats.some((s) => s.kind === 'human')) throw new RoomError('NO_PLAYERS', 'Sit down first');
     for (let s = 0; s < n; s++) if (d.seats[s]!.kind === 'empty') d.seats[s] = { kind: 'bot', name: this.botName(), level: d.botLevel };
     d.game = newGame(d.rules, secureSeed());
+    d.seq = (d.seq ?? 0) + 1;
     d.phase = 'playing';
     d.ready = [];
     d.turnKey = null;
@@ -382,6 +421,7 @@ export class Room {
     const d = this.data;
     const before = d.game!;
     d.game = applyAction(before, action);
+    d.seq = (d.seq ?? 0) + 1;
     d.lastActive = this.io.now();
     if (d.game.phase === 'gameOver') {
       d.phase = 'over';
@@ -527,6 +567,7 @@ export class Room {
   private nextHand(): void {
     const d = this.data;
     d.game = applyAction(d.game!, { type: 'nextHand' });
+    d.seq = (d.seq ?? 0) + 1;
     d.ready = [];
     d.deadline = null;
   }
@@ -562,7 +603,7 @@ export class Room {
     return {
       code: d.code, hostId: d.hostId ?? '', phase: d.phase, rules: d.rules, botLevel: d.botLevel, seats,
       members: Object.entries(d.members).map(([playerId, m]) => ({ playerId, name: m.name, connected: this.isConnected(playerId), seat: m.seat })),
-      deadline: d.deadline, ready: [...d.ready], rev: d.rev, game: d.gamesPlayed, now: this.io.now(),
+      deadline: d.deadline, ready: [...d.ready], rev: d.rev, seq: d.seq ?? 0, game: d.gamesPlayed, now: this.io.now(),
     };
   }
 
@@ -573,18 +614,23 @@ export class Room {
     const d = this.data;
     d.rev++;
     const room = this.roomInfo();
-    for (const [cid, pid] of this.conns) {
-      if (!pid) continue;
-      const seat = d.members[pid]?.seat ?? null;
-      let view: PlayerView | null = d.game && seat !== null && seat < d.rules.playerCount ? viewFor(d.game, seat) : null;
-      if (view) {
-        // the hand history only changes once per hand: send it then, and `history: null` ("unchanged") otherwise
-        const key = `${room.game}:${view.history.length}`;
-        if (this.sentHistory.get(cid) === key) view = { ...view, history: null as unknown as PlayerView['history'] };
-        else this.sentHistory.set(cid, key);
-      }
-      this.io.send(cid, { t: 'state', room, seat, view });
+    for (const cid of this.conns.keys()) this.sendState(cid, room);
+  }
+
+  /** The current state as one connection may see it (its own seat's view only). */
+  private sendState(cid: string, room: RoomInfo = this.roomInfo()): void {
+    const d = this.data;
+    const pid = this.conns.get(cid);
+    if (!pid) return;
+    const seat = d.members[pid]?.seat ?? null;
+    let view: PlayerView | null = d.game && seat !== null && seat < d.rules.playerCount ? viewFor(d.game, seat) : null;
+    if (view) {
+      // the hand history only changes once per hand: send it then, and `history: null` ("unchanged") otherwise
+      const key = `${room.game}:${view.history.length}`;
+      if (this.sentHistory.get(cid) === key) view = { ...view, history: null as unknown as PlayerView['history'] };
+      else this.sentHistory.set(cid, key);
     }
+    this.io.send(cid, { t: 'state', room, seat, view });
   }
 
   private system(text: string): void {

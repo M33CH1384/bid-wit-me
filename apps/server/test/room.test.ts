@@ -260,6 +260,128 @@ describe('game', () => {
   });
 });
 
+describe('action ordering (real-network latency)', () => {
+  const acks = (env: FakeEnv, cid: string) => env.msgs(cid).filter((m) => m.t === 'ack') as Extract<ReturnType<FakeEnv['msgs']>[number], { t: 'ack' }>[];
+  function onTurn(env: FakeEnv) {
+    const g = env.room.data.game!;
+    const cid = ['a', 'b', 'c', 'd'][g.turn!]!;
+    const st = env.last(cid, 'state')!;
+    const a = chooseBotAction(st.view!, 'normal')!;
+    const action: GameAction = a.type === 'reveal' ? { type: 'reveal' } : a.type === 'bid' ? { type: 'bid', bid: a.bid } : a.type === 'play' ? { type: 'play', card: a.card } : { type: 'exchange', cards: (a as { cards: Card[] }).cards };
+    return { cid, seq: st.room.seq, action };
+  }
+
+  it('state carries a game seq that bumps only when the game changes', () => {
+    const { env } = fourHumans();
+    env.send('a', { t: 'start' });
+    const s0 = env.last('a', 'state')!.room.seq;
+    env.send('b', { t: 'media', media: { cam: true, mic: false } });
+    expect(env.last('a', 'state')!.room.seq).toBe(s0);
+    const t = onTurn(env);
+    env.send(t.cid, { t: 'act', action: t.action, seq: t.seq, id: 'x1' });
+    expect(env.last('a', 'state')!.room.seq).toBe(s0 + 1);
+    expect(acks(env, t.cid).at(-1)).toEqual({ t: 'ack', id: 'x1', ok: true });
+  });
+
+  it('a duplicate (retried) action id is acknowledged but never applied twice', () => {
+    const { env } = fourHumans();
+    env.send('a', { t: 'start' });
+    const t = onTurn(env);
+    env.send(t.cid, { t: 'act', action: t.action, seq: t.seq, id: 'dup-1' });
+    const seq = env.room.data.seq;
+    const bids = env.room.data.game!.bids.filter((b) => b !== null).length;
+    // same message again (e.g. resent after a reconnect, without seq)
+    env.send(t.cid, { t: 'act', action: t.action, id: 'dup-1' });
+    expect(env.room.data.seq).toBe(seq);
+    expect(env.room.data.game!.bids.filter((b) => b !== null).length).toBe(bids);
+    expect(acks(env, t.cid).at(-1)).toEqual({ t: 'ack', id: 'dup-1', ok: true, dup: true });
+    expect(env.errors(t.cid)).toEqual([]);
+    // the id survives a restart (it's part of the saved row)
+    env.restart([['a', env.room.data.seats[0]!.kind === 'human' ? (env.room.data.seats[0] as { playerId: string }).playerId : null], [t.cid, (env.room.data.seats[['a', 'b', 'c', 'd'].indexOf(t.cid)] as { playerId: string }).playerId]]);
+    env.send(t.cid, { t: 'act', action: t.action, seq: t.seq, id: 'dup-1' });
+    expect(acks(env, t.cid).at(-1)).toMatchObject({ id: 'dup-1', ok: true, dup: true });
+  });
+
+  it('an action chosen from an old state is dropped as stale with a resync, not an error', () => {
+    const { env } = fourHumans();
+    env.send('a', { t: 'start' });
+    const t = onTurn(env);
+    env.send(t.cid, { t: 'act', action: t.action, seq: t.seq, id: 'p1' });
+    const n = env.msgs(t.cid).length;
+    // a double-click / second send of the same move under a new id, still from the old state
+    env.send(t.cid, { t: 'act', action: t.action, seq: t.seq, id: 'p2' });
+    expect(acks(env, t.cid).at(-1)).toEqual({ t: 'ack', id: 'p2', ok: false, stale: true });
+    expect(env.msgs(t.cid).slice(n).map((m) => m.t)).toEqual(['state', 'ack']);
+    expect(env.errors(t.cid)).toEqual([]);
+  });
+
+  it('a late human move after the turn timer auto-played is stale, not a second move', () => {
+    const env = new FakeEnv(undefined, FAST);
+    env.join('a', 'Slow');
+    env.send('a', { t: 'sit', seat: 0 });
+    env.send('a', { t: 'config', rules: makeRules('joker', { turnTimerSec: { bid: 5, play: 5 } }) });
+    env.send('a', { t: 'start' });
+    env.advance(500);
+    expect(env.room.data.game!.turn).toBe(0);
+    const st = env.last('a', 'state')!;
+    const a = chooseBotAction(st.view!, 'normal')!;
+    const action: GameAction = a.type === 'reveal' ? { type: 'reveal' } : { type: 'bid', bid: (a as { bid: number }).bid };
+    env.advance(4800); // the deadline passes on the server: auto-play happens first
+    const after = env.room.data.seq;
+    env.send('a', { t: 'act', action, seq: st.room.seq, id: 'late' });
+    expect(acks(env, 'a').at(-1)).toMatchObject({ id: 'late', ok: false, stale: true });
+    expect(env.room.data.seq).toBe(after);
+    expect(env.errors('a')).toEqual([]);
+  });
+
+  it('a move that arrives before the alarm fires wins, and the timer then has nothing to do', () => {
+    const env = new FakeEnv(undefined, FAST);
+    env.join('a', 'Quick');
+    env.send('a', { t: 'sit', seat: 0 });
+    env.send('a', { t: 'config', rules: makeRules('joker', { turnTimerSec: { bid: 5, play: 5 } }) });
+    env.send('a', { t: 'start' });
+    env.advance(500);
+    const st = env.last('a', 'state')!;
+    const a = chooseBotAction(st.view!, 'normal')!;
+    const action: GameAction = a.type === 'reveal' ? { type: 'reveal' } : { type: 'bid', bid: (a as { bid: number }).bid };
+    env.send('a', { t: 'act', action, seq: st.room.seq, id: 'ok' });
+    expect(acks(env, 'a').at(-1)).toEqual({ t: 'ack', id: 'ok', ok: true });
+    env.advance(6000);
+    expect(env.room.data.chat.some((l) => l.text.includes('ran out of time') && l.at <= env.t - 5000)).toBe(false);
+  });
+
+  it('real rule violations still come back as a failed ack with the reason', () => {
+    const { env } = fourHumans();
+    env.send('a', { t: 'start' });
+    const g = env.room.data.game!;
+    const notTurn = ['a', 'b', 'c', 'd'][(g.turn! + 1) % 4]!;
+    env.send(notTurn, { t: 'act', action: { type: 'bid', bid: 3 }, seq: env.room.data.seq, id: 'nt' });
+    expect(acks(env, notTurn).at(-1)).toMatchObject({ id: 'nt', ok: false, code: 'NOT_YOUR_TURN' });
+  });
+
+  it('a full 4-human game with duplicated and stale sends never errors or double-applies', () => {
+    const { env } = fourHumans();
+    env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: 200 }) });
+    env.send('a', { t: 'start' });
+    let n = 0;
+    for (let i = 0; i < 5000 && env.room.data.phase === 'playing'; i++) {
+      const g = env.room.data.game!;
+      if (g.phase === 'handOver') { ['a', 'b', 'c', 'd'].forEach((c) => env.send(c, { t: 'next' })); continue; }
+      if (g.turn === null) { env.advance(100); continue; }
+      const t = onTurn(env);
+      const id = `m${n++}`;
+      env.send(t.cid, { t: 'act', action: t.action, seq: t.seq, id });
+      env.send(t.cid, { t: 'act', action: t.action, seq: t.seq, id }); // retry
+      env.send(t.cid, { t: 'act', action: t.action, seq: t.seq, id: id + 'b' }); // double click
+    }
+    expect(env.room.data.phase).toBe('over');
+    for (const c of ['a', 'b', 'c', 'd']) {
+      expect(env.errors(c)).toEqual([]);
+      expect(acks(env, c).filter((x) => !x.ok && !x.stale)).toEqual([]);
+    }
+  });
+});
+
 describe('chat + signaling', () => {
   it('chat: length limit, links blocked, profanity masked, rate limited', () => {
     const env = new FakeEnv();

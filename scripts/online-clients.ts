@@ -2,7 +2,10 @@
  * Multi-client online test: 4 WebSocket clients (Node `ws`) create a table, sit, and play a FULL game through the
  * Worker (local `wrangler dev` or the deployed workers.dev URL). Each client decides its moves with the bot brain
  * from ITS OWN view only. Mid-game one client drops its socket and reconnects with its seat token.
- * Also checks: per-seat privacy (no foreign hands on the wire), chat round-trip, illegal-move rejection.
+ * Also checks: per-seat privacy (no foreign hands on the wire), chat round-trip, illegal-move rejection, and the
+ * latency safety net: every move carries the game `seq` it was chosen from + an idempotency `id`; one move in flight
+ * per client; deliberate duplicate sends / double clicks / a resend after reconnect must come back as dup/stale acks,
+ * never as errors or double-applied moves.
  *
  * Usage: npx tsx scripts/online-clients.ts [serverUrl=http://127.0.0.1:8787] [mode=joker]
  */
@@ -26,6 +29,12 @@ class Client {
   view: PlayerView | null = null;
   chats: string[] = [];
   errors: string[] = [];
+  /** acks that were rejections other than `stale` (= real problems) */
+  badAcks: string[] = [];
+  acks = { ok: 0, dup: 0, stale: 0 };
+  inflight: { id: string; seq: number; action: GameAction } | null = null;
+  nextId = 1;
+  nextSent = '';
   bytes = 0;
   foreignCards = 0;
   closedByUs = false;
@@ -35,7 +44,11 @@ class Client {
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       this.ws = new WebSocket(`${wsBase}/api/tables/${this.code}/ws`);
-      this.ws.on('open', () => { this.send({ t: 'hello', name: this.name, token: this.token }); });
+      this.ws.on('open', () => {
+        this.send({ t: 'hello', name: this.name, token: this.token });
+        // resend a move that was in flight when the socket died: same id + seq → applied at most once
+        if (this.inflight) this.send({ t: 'act', action: this.inflight.action, seq: this.inflight.seq, id: this.inflight.id });
+      });
       this.ws.on('error', reject);
       this.ws.on('message', (buf) => {
         const s = buf.toString();
@@ -44,16 +57,31 @@ class Client {
         if (m.t === 'welcome') { this.token = m.token; this.you = m.you; resolve(); }
         if (m.t === 'state') {
           this.room = m.room; this.seat = m.seat;
+          if (this.inflight && m.room.seq > this.inflight.seq) this.inflight = null;
           this.view = m.view && m.view.history === null ? { ...m.view, history: this.view?.history ?? [] } : m.view;
           if (s.includes('"hands"')) this.foreignCards++;
         }
         if (m.t === 'chat') this.chats.push(`${m.line.name}: ${m.line.text}`);
         if (m.t === 'error') this.errors.push(m.code);
+        if (m.t === 'ack') {
+          if (m.ok) this.acks[m.dup ? 'dup' : 'ok']++;
+          else if (m.stale) this.acks.stale++;
+          else this.badAcks.push(`${m.code}`);
+          if (this.inflight?.id === m.id) this.inflight = null;
+        }
         this.waiters.splice(0).forEach((f) => f());
       });
     });
   }
   send(m: ClientMsg) { this.ws.send(JSON.stringify(m)); }
+  /** like the web client: one move in flight, tagged with the game version it was chosen from */
+  act(action: GameAction): string | null {
+    if (this.inflight || !this.room) return null;
+    const id = `${this.name}-${this.nextId++}`;
+    this.inflight = { id, seq: this.room.seq, action };
+    this.send({ t: 'act', action, seq: this.room.seq, id });
+    return id;
+  }
   drop() { this.closedByUs = true; this.ws.terminate(); }
   next(): Promise<void> { return new Promise((r) => this.waiters.push(r)); }
 }
@@ -108,22 +136,29 @@ let lastHand = 0;
 const deadline = Date.now() + 10 * 60_000;
 while (host.room?.phase === 'playing') {
   if (Date.now() > deadline) throw new Error('game took too long');
-  // mid-game reconnect: after ~60 actions in hand 2+, drop seat 2's socket and come back with the token
-  if (!reconnected && actions > 60 && (host.view?.handNo ?? 0) >= 2) {
-    const k = cs[2]!;
+  // mid-game reconnect: after ~60 actions in hand 2+, when it's seat 2's turn, send its move and kill the socket
+  // right away (the move may or may not have reached the server), then reconnect with the token and resend it
+  const k = cs[2]!;
+  if (!reconnected && actions > 60 && (host.view?.handNo ?? 0) >= 2 && k.view?.turn === k.seat && k.view.phase !== 'handOver' && !k.inflight) {
     const seatBefore = k.seat;
     const handBefore = k.view!.hand?.slice().sort().join();
+    const a = chooseBotAction(k.view!, 'normal');
+    if (a) { k.act(toWire(a)); actions++; }
+    const pendingAct = k.inflight;
     k.drop();
     await until(() => host.room!.seats[2]!.kind === 'human' && !(host.room!.seats[2] as { connected: boolean }).connected, 5000, 'disconnect seen');
     log('seat 2 disconnected; others see connected=false');
     await new Promise((r) => setTimeout(r, 300));
     const k2 = new Client(k.name, code);
     k2.token = k.token;
+    k2.inflight = pendingAct;
+    k2.nextId = k.nextId;
     await k2.connect();
-    await until(() => k2.view !== null, 5000, 'state after reconnect');
+    await until(() => k2.view !== null && k2.inflight === null, 10000, 'state + resent move settled after reconnect');
+    log(`resent in-flight move after reconnect → acks ${JSON.stringify(k2.acks)}`);
     if (k2.seat !== seatBefore || k2.you !== k.you) throw new Error('reconnect landed on a different seat');
     const handNow = k2.view!.hand?.slice().sort().join();
-    log(`reconnected to seat ${k2.seat} (same player id: ${k2.you === k.you}; hand ${handNow === handBefore ? 'unchanged' : 'changed (auto-play happened)'})`);
+    log(`reconnected to seat ${k2.seat} (same player id: ${k2.you === k.you}; hand ${handNow === handBefore ? 'unchanged' : 'changed (the in-flight move was applied)'})`);
     cs[2] = k2;
     reconnected = true;
   }
@@ -132,17 +167,22 @@ while (host.room?.phase === 'playing') {
     const v = c.view;
     if (!v || c.room?.phase !== 'playing') continue;
     if (v.phase === 'handOver') {
-      if (!c.room.ready.includes(c.you)) { c.send({ t: 'next' }); acted = true; }
+      const key = `${c.room.game}:${v.handNo}`;
+      if (!c.room.ready.includes(c.you) && c.nextSent !== key) { c.nextSent = key; c.send({ t: 'next' }); acted = true; }
       continue;
     }
     if (v.turn !== v.seat) continue;
+    if (c.inflight) continue;
     const a = chooseBotAction(v, 'normal');
     if (!a) continue;
-    const rev = c.room!.rev;
-    c.send({ t: 'act', action: toWire(a) });
+    const seq = c.room!.seq;
+    const id = c.act(toWire(a))!;
     actions++;
     acted = true;
-    await until(() => (c.room?.rev ?? 0) > rev || c.errors.length > 0, 10000, 'ack');
+    // every so often, misbehave like a flaky network / impatient finger: resend the same id, or double-click
+    if (actions % 17 === 0) c.send({ t: 'act', action: toWire(a), seq, id });
+    if (actions % 23 === 0) c.send({ t: 'act', action: toWire(a), seq, id: `${id}-again` });
+    await until(() => c.inflight === null, 10000, 'ack');
     break;
   }
   if (host.view && host.view.handNo !== lastHand) {
@@ -158,7 +198,9 @@ const v = host.view!;
 log(`GAME OVER after ${v.history.length} hands, ${actions} client actions · final ${v.result!.finalScores.join(' / ')} · winners side ${v.result!.winners.join(',')} (${v.result!.endReason})`);
 const kb = cs.reduce((a, c) => a + c.bytes, 0) / 1024;
 log(`wire: ${kb.toFixed(0)} KB received across 4 clients; foreign-hand leaks: ${cs.reduce((a, c) => a + c.foreignCards, 0)}; reconnect tested: ${reconnected}`);
-const unexpected = cs.flatMap((c) => c.errors).filter((e) => e !== 'NOT_HOST' && e !== 'NOT_YOUR_TURN');
+const acks = cs.reduce((a, c) => ({ ok: a.ok + c.acks.ok, dup: a.dup + c.acks.dup, stale: a.stale + c.acks.stale }), { ok: 0, dup: 0, stale: 0 });
+log(`acks: ${acks.ok} applied, ${acks.dup} duplicate (ignored), ${acks.stale} stale (dropped + resynced)`);
+const unexpected = [...cs.flatMap((c) => c.errors).filter((e) => e !== 'NOT_HOST' && e !== 'NOT_YOUR_TURN'), ...cs.flatMap((c) => c.badAcks)];
 if (unexpected.length) throw new Error(`unexpected errors: ${unexpected.join(',')}`);
 if (!reconnected) throw new Error('reconnect did not run');
 cs.forEach((c) => c.ws.close());

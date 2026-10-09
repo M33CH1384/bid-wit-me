@@ -3,7 +3,7 @@
  * the tab becomes visible again — iOS Safari kills sockets in the background). The seat token makes every
  * reconnect land back in the same seat.
  */
-import type { ChatLine, ClientMsg, RoomInfo, ServerMsg } from '@spades/protocol';
+import type { ChatLine, ClientMsg, GameAction, RoomInfo, ServerMsg } from '@spades/protocol';
 import type { PlayerView } from '@spades/rules';
 import { wsUrl } from './config';
 import { saveToken, tokenFor } from './identity';
@@ -18,12 +18,21 @@ export interface ConnState {
   view: PlayerView | null;
   chat: ChatLine[];
   error: { code: string; message: string; at: number } | null;
+  /** a move is in flight (sent, not yet acknowledged): the hand is locked so it can't be sent twice */
+  pending: boolean;
 }
+
+interface PendingAct { id: string; seq: number; action: GameAction; sentAt: number }
+/** if an ack never comes (lost socket that we didn't notice), unlock after this long */
+const ACK_TIMEOUT_MS = 8000;
+const newId = () => (crypto.randomUUID?.() ?? `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`).slice(0, 36);
 
 type RtcHandler = (from: string, data: unknown) => void;
 
 export class TableConnection {
-  state: ConnState = { status: 'connecting', you: null, room: null, seat: null, view: null, chat: [], error: null };
+  state: ConnState = { status: 'connecting', you: null, room: null, seat: null, view: null, chat: [], error: null, pending: false };
+  private inflight: PendingAct | null = null;
+  private ackTimer: number | null = null;
   private ws: WebSocket | null = null;
   private listeners = new Set<() => void>();
   private rtcHandlers = new Set<RtcHandler>();
@@ -62,6 +71,9 @@ export class TableConnection {
     ws.onopen = () => {
       this.retry = 0;
       ws.send(JSON.stringify({ t: 'hello', name: this.name, token: tokenFor(this.code), v: 1 } satisfies ClientMsg));
+      // a move that was in flight when the socket dropped: resend it with the SAME id and seq. The server applies it
+      // at most once (dup → ack ok) and drops it if the game moved on meanwhile (stale → fresh state).
+      if (this.inflight) { ws.send(JSON.stringify(this.actMsg(this.inflight))); this.armAckTimer(); }
       if (this.pingTimer) clearInterval(this.pingTimer);
       // answered by the DO's auto-response without waking it (keeps mobile NATs/proxies from idling us out)
       this.pingTimer = window.setInterval(() => { if (ws.readyState === WebSocket.OPEN) ws.send('ping'); }, 25_000);
@@ -79,7 +91,18 @@ export class TableConnection {
           let view = m.view;
           // history is elided (null) when unchanged: reuse the copy we have
           if (view && view.history === null) view = { ...view, history: this.state.view?.history ?? [] };
-          this.set({ status: 'open', room: m.room, seat: m.seat, view });
+          // the game moved past the version our in-flight move was based on: it was applied (or superseded)
+          const settled = this.inflight !== null && m.room.seq > this.inflight.seq;
+          if (settled) this.settle();
+          this.set({ status: 'open', room: m.room, seat: m.seat, view, ...(settled ? { pending: false } : {}) });
+          break;
+        }
+        case 'ack': {
+          if (!this.inflight || m.id !== this.inflight.id) break; // an old ack (we already moved on)
+          this.settle();
+          // stale/dup are normal under latency (the timer auto-played, a retry after reconnect): no error shown
+          if (!m.ok && !m.stale && m.code) this.set({ pending: false, error: { code: m.code, message: m.message ?? m.code, at: Date.now() } });
+          else this.set({ pending: false });
           break;
         }
         case 'chat':
@@ -112,6 +135,40 @@ export class TableConnection {
     this.open();
   }
 
+  /**
+   * Send a game move chosen from game version `seq` (the RoomInfo.seq of the state it was chosen from).
+   * At most one move is in flight: while one is pending (or the move is based on an outdated version) this is a no-op.
+   * Returns whether it was sent.
+   */
+  act(action: GameAction, seq: number): boolean {
+    const room = this.state.room;
+    if (this.inflight || !room || seq !== room.seq) return false;
+    if (this.ws?.readyState !== WebSocket.OPEN) return false;
+    this.inflight = { id: newId(), seq, action, sentAt: Date.now() };
+    this.ws.send(JSON.stringify(this.actMsg(this.inflight)));
+    this.armAckTimer();
+    this.set({ pending: true });
+    return true;
+  }
+
+  private actMsg(p: PendingAct): ClientMsg {
+    return { t: 'act', action: p.action, seq: p.seq, id: p.id };
+  }
+
+  private armAckTimer(): void {
+    if (this.ackTimer) clearTimeout(this.ackTimer);
+    this.ackTimer = window.setTimeout(() => {
+      if (!this.inflight) return;
+      this.inflight = null;
+      this.set({ pending: false });
+    }, ACK_TIMEOUT_MS);
+  }
+
+  private settle(): void {
+    this.inflight = null;
+    if (this.ackTimer) { clearTimeout(this.ackTimer); this.ackTimer = null; }
+  }
+
   send(m: ClientMsg): void {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(m));
   }
@@ -125,6 +182,7 @@ export class TableConnection {
     this.stopped = true;
     if (this.retryTimer) clearTimeout(this.retryTimer);
     if (this.pingTimer) clearInterval(this.pingTimer);
+    this.settle();
     document.removeEventListener('visibilitychange', this.onVisible);
     window.removeEventListener('online', this.onVisible);
     this.ws?.close(1000, 'bye');
