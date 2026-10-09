@@ -40,7 +40,9 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel, spe
     if (pause) return;
     const turn = pendingTurn(st);
     if (!turn || turn.seat === HUMAN) return;
-    const delay = (turn.kind === 'bid' ? 650 : turn.kind === 'exchange' ? 500 : 600) * k;
+    // give the deal animation time to land before the first bid
+    const dealing = st.phase === 'bidding' && st.bids.every((b) => b === null);
+    const delay = ((turn.kind === 'bid' ? 650 : turn.kind === 'exchange' ? 500 : 600) + (dealing ? 1700 : 0)) * k;
     const t = setTimeout(() => {
       const action = chooseBotAction(viewFor(st, turn.seat), botLevel);
       if (action) apply(action);

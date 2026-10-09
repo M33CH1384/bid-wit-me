@@ -38,8 +38,8 @@ export function ScorePad({ st, names, onClose }: { st: GameState; names: string[
   const r = st.rules;
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>Score pad</h2>
+      <div className="modal glass slant" onClick={(e) => e.stopPropagation()}>
+        <div className="panel-title big">SCORE PAD</div>
         {st.history.length === 0 ? <p className="muted">No hands scored yet.</p> : (
           <div className="scroll">
             <table className="pad">

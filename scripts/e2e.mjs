@@ -1,6 +1,8 @@
 /**
  * Browser smoke test: drives the built app (vite preview) with headless Chrome, plays one full game per mode
  * through the UI as the human seat, and saves screenshots to ./screenshots.
+ * The table is a WebGL (three.js) scene, so Chrome runs with SwiftShader; cards are driven through the
+ * accessible hidden hand buttons (data-testid="card-XX", data-legal) that mirror the 3D hand.
  * Usage: node scripts/e2e.mjs [baseUrl=http://localhost:4173] [chromePath=/usr/bin/google-chrome]
  */
 import { chromium } from 'playwright-core';
@@ -10,12 +12,15 @@ const base = process.argv[2] ?? 'http://localhost:4173';
 const executablePath = process.argv[3] ?? '/usr/bin/google-chrome';
 mkdirSync('screenshots', { recursive: true });
 
-const browser = await chromium.launch({ executablePath, args: ['--no-sandbox'] });
+const browser = await chromium.launch({ executablePath, args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl'] });
 const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
 const page = await ctx.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(String(e)));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+const tap = async (loc) => { await loc.dispatchEvent('click'); };
+const legalCards = () => page.locator('[data-testid^="card-"][data-legal="true"]');
+const trickCount = async () => Number(await page.getByTestId('hand').getAttribute('data-trick-count').catch(() => 0));
 
 const shot = (name) => page.screenshot({ path: `screenshots/${name}.png` });
 
@@ -31,7 +36,7 @@ await shot('01b-setup-cutthroat-deck');
 await page.evaluate(() => localStorage.clear());
 
 async function playGame(mode, label, { shots = false, speed = 'turbo', extra = {} } = {}) {
-  await page.evaluate(([m, sp, ex]) => localStorage.setItem('spades.settings.v2', JSON.stringify({ mode: m, speed: sp, blindNil: 'always', ...ex })), [mode, speed, extra]);
+  await page.evaluate(([m, sp, ex]) => localStorage.setItem('spades.settings.v2', JSON.stringify({ mode: m, speed: sp, blindNil: 'always', quality: 'low', ...ex })), [mode, speed, extra]);
   await page.goto(`${base}/?autostart=1&seed=e2e-${mode}-${extra.cutthroatDeck ?? ''}`);
   let hands = 0, plays = 0, tookBidShot = false, tookTrickShot = false, tookSummary = false;
   const t0 = Date.now();
@@ -51,16 +56,16 @@ async function playGame(mode, label, { shots = false, speed = 'turbo', extra = {
       const n = await btns.count();
       await btns.nth(Math.min(2, n - 1)).click(); continue;
     }
-    const pass = page.getByRole('button', { name: 'Pass cards' });
+    const pass = page.getByRole('button', { name: /^Pass cards/ });
     if (await pass.count()) {
-      const cards = page.locator('.hand .card');
-      await cards.nth(0).click({ position: { x: 6, y: 20 } }); await cards.nth(1).click({ position: { x: 6, y: 20 } }); await pass.click(); continue;
+      const cards = page.locator('[data-testid^="card-"]');
+      await tap(cards.nth(0)); await tap(cards.nth(1)); await pass.click(); continue;
     }
-    const legal = page.locator('.hand .card.legal');
+    const legal = legalCards();
     if (await legal.count()) {
-      if (shots && !tookTrickShot && plays >= 6 && (await page.locator('.trick .played').count()) >= 2) { await shot('03-trick'); tookTrickShot = true; }
+      if (shots && !tookTrickShot && plays >= 6 && (await trickCount()) >= 2) { await shot('03-trick'); tookTrickShot = true; }
       const c = legal.last();
-      await c.click({ position: { x: 6, y: 20 } }); await c.click({ position: { x: 6, y: 20 }, timeout: 2000 }).catch(() => {}); plays++; continue;
+      await tap(c); await tap(c).catch(() => {}); plays++; continue;
     }
     await page.waitForTimeout(40);
   }
@@ -84,19 +89,19 @@ if (process.env.SKIP_SHOTS) { await browser.close(); process.exit(errors.length 
 
 // a calm mid-game screenshot at normal speed for each table layout
 for (const mode of ['joker', 'cutthroat3']) {
-  await page.evaluate((m) => localStorage.setItem('spades.settings.v2', JSON.stringify({ mode: m, speed: 'fast' })), mode);
+  await page.evaluate((m) => localStorage.setItem('spades.settings.v2', JSON.stringify({ mode: m, speed: 'fast', quality: 'high' })), mode);
   await page.goto(`${base}/?autostart=1&seed=shot-${mode}`);
   for (let i = 0; i < 400; i++) {
     const bid = page.locator('.bid-grid button');
     if (await bid.count()) { await bid.nth(2).click(); continue; }
     const see = page.getByRole('button', { name: 'See my cards' });
     if (await see.count()) { await see.click(); continue; }
-    if ((await page.locator('.hand .card.legal').count()) && (await page.locator('.trick .played').count()) >= (mode === 'joker' ? 2 : 1)) break;
-    if (await page.locator('.hand .card.legal').count()) { const c = page.locator('.hand .card.legal').first(); await c.click({ position: { x: 6, y: 20 } }); await c.click({ position: { x: 6, y: 20 }, timeout: 2000 }).catch(() => {}); }
+    if ((await legalCards().count()) && (await trickCount()) >= (mode === 'joker' ? 2 : 1)) break;
+    if (await legalCards().count()) { const c = legalCards().first(); await tap(c); await tap(c).catch(() => {}); }
     await page.waitForTimeout(100);
   }
-  await page.locator('.hand .card.legal').first().click({ position: { x: 6, y: 20 } }).catch(() => {});
-  await page.waitForTimeout(150);
+  await tap(legalCards().first()).catch(() => {});
+  await page.waitForTimeout(2500);
   await shot(`06-table-${mode}`);
 }
 

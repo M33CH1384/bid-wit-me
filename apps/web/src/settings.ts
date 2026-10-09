@@ -22,13 +22,21 @@ export interface Settings {
   tenForTwoHundred: boolean;
   botLevel: BotLevel;
   speed: 'relaxed' | 'normal' | 'fast' | 'turbo';
+  /** 3D quality: low disables shadows, HDRI and MSAA and uses smaller textures. */
+  quality: 'high' | 'low';
+}
+
+function defaultQuality(): 'high' | 'low' {
+  if (typeof navigator === 'undefined') return 'high';
+  const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
+  return (mem !== undefined && mem <= 3) || (navigator.hardwareConcurrency ?? 8) <= 3 ? 'low' : 'high';
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   mode: 'joker', targetScore: 'default', losingFloor: 'on', deuceOfSpadesHigh: false, jokerOrder: 'house',
   cutthroatDeck: 'joker54', spadesMustBeBroken: true, firstLead: 'leftOfDealer', minTeamBid: 0, nilAllowed: true,
   blindNil: 'behind100', blindNilExchange: 0, nilTricksCountForPartner: false, bags: '10/100', tenForTwoHundred: false,
-  botLevel: 'normal', speed: 'normal',
+  botLevel: 'normal', speed: 'normal', quality: defaultQuality(),
 };
 
 export const MODES: { key: ModeKey; title: string; blurb: string; players: string }[] = [

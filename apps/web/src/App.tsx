@@ -28,6 +28,7 @@ export default function App() {
       settings={game.settings}
       onExit={() => setGame(null)}
       onRematch={() => setGame({ seed: secureSeed(), settings: game.settings })}
+      onQuality={(quality) => { const s = { ...game.settings, quality }; setGame({ ...game, settings: s }); setSettings(s); saveSettings(s); }}
     />
   );
 }

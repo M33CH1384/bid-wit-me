@@ -35,8 +35,8 @@ export default function Setup({ settings: s, onChange, onStart }: Props) {
   return (
     <div className="setup">
       <header className="setup-hero">
-        <div className="logo">♠</div>
-        <h1>Bid Wit Me</h1>
+        <img className="logo" src="/assets/bwm-wordmark-white.svg" alt="" />
+        <h1 className="sr-only">Bid Wit Me</h1>
         <p className="tagline">Spades · Joker · Cutthroat · Ace Down</p>
         <p>Pick a mode and play against bots. Online tables come next.</p>
       </header>
@@ -73,6 +73,12 @@ export default function Setup({ settings: s, onChange, onStart }: Props) {
           <select value={s.botLevel} onChange={(e) => set('botLevel', e.target.value as Settings['botLevel'])}>
             <option value="easy">Easy</option>
             <option value="normal">Normal</option>
+          </select>
+        </Row>
+        <Row label="Graphics" hint="Low: no shadows/HDRI, smaller textures">
+          <select value={s.quality} onChange={(e) => set('quality', e.target.value as Settings['quality'])}>
+            <option value="high">High</option>
+            <option value="low">Low (battery saver)</option>
           </select>
         </Row>
         <Row label="Game speed">
