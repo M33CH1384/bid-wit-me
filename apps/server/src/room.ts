@@ -1,0 +1,609 @@
+/**
+ * The game room: everything a Table Durable Object does, minus the Cloudflare plumbing, so it can be
+ * unit-tested with mock sockets and a fake clock. The server is the referee (spec §4.2):
+ *  - it shuffles/deals (packages/rules), validates every bid/play, and only ever sends a seat its own view;
+ *  - bots (packages/bots) fill empty seats and play from that seat's view only;
+ *  - human turns have a deadline; when it passes (or a disconnected player's short grace runs out)
+ *    the bot logic plays for them;
+ *  - all durable state lives in one plain-JSON `RoomData` object that the DO saves as a single row.
+ */
+import {
+  type Action, type GameState, type TableRules, RuleError, applyAction, makeRules, newGame, pendingTurn, secureSeed, validateRules, viewFor,
+} from '@spades/rules';
+import { chooseBotAction } from '@spades/bots';
+import {
+  type BotLevel, type ChatLine, type ClientMsg, type MediaState, type RoomInfo, type RoomPhase, type SeatInfo, type ServerMsg,
+  LIMITS, PROTOCOL_VERSION, parseClientMsg,
+} from '@spades/protocol';
+import { blockLinks, cleanName, cleanText, maskProfanity } from './filter';
+
+export const ROOM_DATA_VERSION = 1;
+
+export type SeatSlot =
+  | { kind: 'empty' }
+  | { kind: 'bot'; name: string; level: BotLevel }
+  | { kind: 'human'; playerId: string };
+
+export interface Member {
+  name: string;
+  token: string;
+  seat: number | null;
+  media: MediaState;
+  joinedAt: number;
+}
+
+/** Everything that survives hibernation / restarts. Plain JSON. */
+export interface RoomData {
+  v: number;
+  code: string;
+  createdAt: number;
+  lastActive: number;
+  hostId: string | null;
+  phase: RoomPhase;
+  rules: TableRules;
+  botLevel: BotLevel;
+  seats: SeatSlot[];
+  members: Record<string, Member>;
+  game: GameState | null;
+  /** key of the turn the deadline belongs to */
+  turnKey: string | null;
+  turnStartedAt: number | null;
+  deadline: number | null;
+  ready: string[];
+  chat: ChatLine[];
+  chatSeq: number;
+  rev: number;
+  gamesPlayed: number;
+}
+
+export interface RoomTiming {
+  /** delay before a bot moves */
+  botMs: number;
+  /** extra pause after a trick completes (clients show the finished trick) */
+  trickPauseMs: number;
+  /** extra pause at the start of a hand (shuffle + deal animation) */
+  dealMs: number;
+  /** how long a disconnected player's turn waits before auto-play */
+  disconnectGraceMs: number;
+  /** hand-results screen: auto-continue after this long even if not everyone pressed Next */
+  handOverMs: number;
+}
+
+export const DEFAULT_TIMING: RoomTiming = { botMs: 750, trickPauseMs: 1300, dealMs: 3200, disconnectGraceMs: 10_000, handOverMs: 15_000 };
+
+/** What the host environment (Durable Object or test harness) provides. */
+export interface RoomIO {
+  now(): number;
+  send(connId: string, msg: ServerMsg): void;
+  /** close a connection (e.g. a duplicate socket for the same player) */
+  close?(connId: string, code: number, reason: string): void;
+  /** ask for `tick()` to be called after `ms` (in-memory timer; short delays only) */
+  wake(ms: number): void;
+  /** durable wake-up at an absolute time (DO alarm). null = nothing pending. */
+  setAlarm(at: number | null): void;
+  /** state changed: save it (the DO batches/debounces this) */
+  persist(): void;
+  /** random id/token/seed source (crypto in prod, seeded in tests) */
+  randomId(): string;
+}
+
+const BOT_NAMES = ['Marcus', 'Keisha', 'Dre', 'Tasha', 'Big Mike', 'Nia', 'Rell', 'Ty'];
+
+export function newRoomData(code: string, now: number, rules: TableRules = makeRules('joker')): RoomData {
+  return {
+    v: ROOM_DATA_VERSION, code, createdAt: now, lastActive: now, hostId: null, phase: 'lobby',
+    rules, botLevel: 'normal', seats: Array.from({ length: 4 }, () => ({ kind: 'empty' as const })), members: {},
+    game: null, turnKey: null, turnStartedAt: null, deadline: null, ready: [], chat: [], chatSeq: 1, rev: 0, gamesPlayed: 0,
+  };
+}
+
+function clampRules(r: TableRules): TableRules {
+  const t = r.turnTimerSec ?? { bid: 30, play: 20 };
+  const clamp = (x: unknown, d: number) => (typeof x === 'number' && Number.isFinite(x) ? Math.max(3, Math.min(120, Math.round(x))) : d);
+  return { ...r, turnTimerSec: { bid: clamp(t.bid, 30), play: clamp(t.play, 20) } };
+}
+
+export class Room {
+  /** connection id → player id (null until `hello`) */
+  private conns = new Map<string, string | null>();
+  private chatWindow = new Map<string, number[]>();
+  private botDueAt: number | null = null;
+  private botKey: string | null = null;
+
+  constructor(public data: RoomData, private io: RoomIO, private timing: RoomTiming = DEFAULT_TIMING) {}
+
+  /* ------------------------------------------------------------ connections */
+
+  /** Re-register a connection that survived hibernation (DO wake-up). */
+  restoreConnection(connId: string, playerId: string | null): void {
+    this.conns.set(connId, playerId && this.data.members[playerId] ? playerId : null);
+  }
+
+  open(connId: string): void {
+    this.conns.set(connId, null);
+  }
+
+  close(connId: string): void {
+    const pid = this.conns.get(connId);
+    this.conns.delete(connId);
+    if (pid && !this.isConnected(pid)) {
+      const m = this.data.members[pid];
+      if (m && this.data.phase !== 'playing' && m.seat === null) {
+        // a lobby lurker who left: forget them
+        delete this.data.members[pid];
+        if (this.data.hostId === pid) this.passHost();
+      }
+      this.after();
+    }
+  }
+
+  isConnected(playerId: string): boolean {
+    for (const p of this.conns.values()) if (p === playerId) return true;
+    return false;
+  }
+
+  connectionCount(): number {
+    return this.conns.size;
+  }
+
+  humansConnected(): number {
+    return this.data.seats.filter((s) => s.kind === 'human' && this.isConnected(s.playerId)).length;
+  }
+
+  /* --------------------------------------------------------------- messages */
+
+  message(connId: string, raw: unknown): void {
+    if (!this.conns.has(connId)) this.conns.set(connId, null);
+    const msg = parseClientMsg(raw);
+    if (!msg) return this.err(connId, 'BAD_MESSAGE', 'Malformed message');
+    const pid = this.conns.get(connId) ?? null;
+    if (msg.t === 'hello') return this.hello(connId, msg);
+    if (!pid || !this.data.members[pid]) return this.err(connId, 'NOT_JOINED', 'Say hello first');
+    this.data.lastActive = this.io.now();
+    try {
+      this.handle(connId, pid, msg);
+    } catch (e) {
+      if (e instanceof RuleError) return this.err(connId, e.code, e.message);
+      if (e instanceof RoomError) return this.err(connId, e.code, e.message);
+      throw e;
+    }
+  }
+
+  private hello(connId: string, msg: Extract<ClientMsg, { t: 'hello' }>): void {
+    const d = this.data;
+    const name = cleanName(msg.name, LIMITS.nameMax) || 'Player';
+    let pid = msg.token ? Object.keys(d.members).find((id) => d.members[id]!.token === msg.token) : undefined;
+    if (pid) {
+      // reconnect: same player, same seat; drop any older socket of theirs
+      for (const [cid, p] of this.conns) if (p === pid && cid !== connId) { this.conns.delete(cid); this.io.close?.(cid, 4000, 'replaced'); }
+      d.members[pid]!.name = name;
+    } else {
+      if (Object.keys(d.members).length >= LIMITS.members) {
+        this.err(connId, 'TABLE_FULL', 'This table is full');
+        this.io.close?.(connId, 4001, 'full');
+        return;
+      }
+      pid = this.io.randomId().slice(0, 12);
+      d.members[pid] = { name, token: this.io.randomId(), seat: null, media: { cam: false, mic: false }, joinedAt: this.io.now() };
+      if (!d.hostId || !d.members[d.hostId]) d.hostId = pid;
+      this.system(`${name} joined`);
+    }
+    this.conns.set(connId, pid);
+    const m = d.members[pid]!;
+    this.io.send(connId, { t: 'welcome', you: pid, token: m.token, code: d.code, chat: d.chat.slice(-LIMITS.chatHistory), v: PROTOCOL_VERSION });
+    d.lastActive = this.io.now();
+    this.after();
+  }
+
+  private handle(connId: string, pid: string, msg: ClientMsg): void {
+    const d = this.data;
+    const me = d.members[pid]!;
+    const isHost = d.hostId === pid;
+    const n = d.rules.playerCount;
+    switch (msg.t) {
+      case 'sit': {
+        if (msg.seat >= n) throw new RoomError('BAD_SEAT', 'No such seat');
+        const slot = d.seats[msg.seat]!;
+        if (me.seat === msg.seat) return;
+        if (d.phase === 'playing') {
+          // mid-game you may only take over a bot's seat (and only if you're not already playing)
+          if (me.seat !== null) throw new RoomError('IN_GAME', 'You are already playing');
+          if (slot.kind !== 'bot') throw new RoomError('SEAT_TAKEN', 'That seat is taken');
+        } else if (slot.kind === 'human') throw new RoomError('SEAT_TAKEN', 'That seat is taken');
+        if (me.seat !== null) d.seats[me.seat] = { kind: 'empty' };
+        d.seats[msg.seat] = { kind: 'human', playerId: pid };
+        me.seat = msg.seat;
+        if (d.phase === 'playing') this.system(`${me.name} took over seat ${msg.seat + 1}`);
+        break;
+      }
+      case 'stand': {
+        if (me.seat === null) return;
+        if (d.phase === 'playing') throw new RoomError('IN_GAME', 'Leave the table to give your seat to a bot');
+        d.seats[me.seat] = { kind: 'empty' };
+        me.seat = null;
+        break;
+      }
+      case 'addBot': {
+        this.requireHost(isHost);
+        if (d.phase === 'playing') throw new RoomError('IN_GAME', 'Game in progress');
+        if (msg.seat >= n) throw new RoomError('BAD_SEAT', 'No such seat');
+        const slot = d.seats[msg.seat]!;
+        // the host may replace a player who disconnected from the lobby
+        if (slot.kind === 'human' && !this.isConnected(slot.playerId)) d.members[slot.playerId]!.seat = null;
+        else if (slot.kind !== 'empty') throw new RoomError('SEAT_TAKEN', 'That seat is taken');
+        d.seats[msg.seat] = { kind: 'bot', name: this.botName(), level: d.botLevel };
+        break;
+      }
+      case 'removeBot': {
+        this.requireHost(isHost);
+        if (d.phase === 'playing') throw new RoomError('IN_GAME', 'Game in progress');
+        if (d.seats[msg.seat]?.kind !== 'bot') throw new RoomError('BAD_SEAT', 'No bot there');
+        d.seats[msg.seat] = { kind: 'empty' };
+        break;
+      }
+      case 'config': {
+        this.requireHost(isHost);
+        if (d.phase === 'playing') throw new RoomError('IN_GAME', 'Game in progress');
+        let rules: TableRules;
+        try {
+          rules = clampRules(msg.rules);
+          const problems = validateRules(rules);
+          if (problems.length) throw new RoomError('BAD_RULES', problems.join('; '));
+        } catch (e) {
+          if (e instanceof RoomError) throw e;
+          throw new RoomError('BAD_RULES', 'Invalid rules');
+        }
+        d.rules = rules;
+        if (msg.botLevel) {
+          d.botLevel = msg.botLevel;
+          d.seats.forEach((s) => { if (s.kind === 'bot') s.level = msg.botLevel!; });
+        }
+        // seats beyond the player count are vacated
+        for (let s = rules.playerCount; s < 4; s++) {
+          const slot = d.seats[s]!;
+          if (slot.kind === 'human') d.members[slot.playerId]!.seat = null;
+          d.seats[s] = { kind: 'empty' };
+        }
+        break;
+      }
+      case 'start': {
+        this.requireHost(isHost);
+        if (d.phase === 'playing') throw new RoomError('IN_GAME', 'Game in progress');
+        this.startGame();
+        break;
+      }
+      case 'rematch': {
+        this.requireHost(isHost);
+        if (d.phase !== 'over') throw new RoomError('WRONG_PHASE', 'The game is not over');
+        this.startGame();
+        break;
+      }
+      case 'act': {
+        if (d.phase !== 'playing' || !d.game) throw new RoomError('WRONG_PHASE', 'No game in progress');
+        if (me.seat === null) throw new RoomError('NOT_SEATED', 'You are not seated');
+        const a = msg.action;
+        const action: Action = a.type === 'reveal' ? { type: 'reveal', seat: me.seat }
+          : a.type === 'bid' ? { type: 'bid', seat: me.seat, bid: a.bid }
+          : a.type === 'exchange' ? { type: 'exchange', seat: me.seat, cards: a.cards }
+          : { type: 'play', seat: me.seat, card: a.card };
+        this.apply(action);
+        break;
+      }
+      case 'next': {
+        if (d.phase !== 'playing' || d.game?.phase !== 'handOver') return;
+        if (!d.ready.includes(pid)) d.ready.push(pid);
+        break;
+      }
+      case 'chat': {
+        const text = maskProfanity(blockLinks(cleanText(msg.text, LIMITS.chatMax)));
+        if (!text) return;
+        const now = this.io.now();
+        const w = (this.chatWindow.get(pid) ?? []).filter((t) => now - t < 10_000);
+        if (w.length >= LIMITS.chatBurst) throw new RoomError('RATE_LIMITED', 'Slow down a little');
+        w.push(now);
+        this.chatWindow.set(pid, w);
+        this.pushChat({ id: d.chatSeq++, from: pid, name: me.name, text, at: now });
+        this.io.persist();
+        return; // chat doesn't change the table state
+      }
+      case 'media': {
+        me.media = msg.media;
+        break;
+      }
+      case 'rtc': {
+        // WebRTC signaling relay: only between seated humans at this table
+        const to = d.members[msg.to];
+        if (!to || me.seat === null || to.seat === null) return;
+        for (const [cid, p] of this.conns) if (p === msg.to) this.io.send(cid, { t: 'rtc', from: pid, data: msg.data });
+        return;
+      }
+      case 'leave': {
+        this.leave(pid);
+        this.conns.set(connId, null);
+        break;
+      }
+      case 'hello':
+        return;
+    }
+    this.after();
+  }
+
+  private requireHost(isHost: boolean): void {
+    if (!isHost) throw new RoomError('NOT_HOST', 'Only the host can do that');
+  }
+
+  private botName(): string {
+    const used = new Set(this.data.seats.flatMap((s) => (s.kind === 'bot' ? [s.name] : [])));
+    for (const m of Object.values(this.data.members)) used.add(m.name);
+    return BOT_NAMES.find((x) => !used.has(x)) ?? `Bot ${used.size + 1}`;
+  }
+
+  private leave(pid: string): void {
+    const d = this.data;
+    const m = d.members[pid];
+    if (!m) return;
+    if (m.seat !== null) {
+      // mid-game the seat goes to a bot so the others can finish; in the lobby it just opens up
+      d.seats[m.seat] = d.phase === 'playing' ? { kind: 'bot', name: `${m.name} (bot)`, level: d.botLevel } : { kind: 'empty' };
+    }
+    delete d.members[pid];
+    d.ready = d.ready.filter((x) => x !== pid);
+    this.system(`${m.name} left`);
+    if (d.hostId === pid) this.passHost();
+  }
+
+  private passHost(): void {
+    const d = this.data;
+    const ids = Object.keys(d.members).sort((a, b) => d.members[a]!.joinedAt - d.members[b]!.joinedAt);
+    d.hostId = ids.find((id) => this.isConnected(id)) ?? ids[0] ?? null;
+    if (d.hostId) this.system(`${d.members[d.hostId]!.name} is now the host`);
+  }
+
+  private startGame(): void {
+    const d = this.data;
+    const n = d.rules.playerCount;
+    const seats = d.seats.slice(0, n);
+    if (!seats.some((s) => s.kind === 'human')) throw new RoomError('NO_PLAYERS', 'Sit down first');
+    for (let s = 0; s < n; s++) if (d.seats[s]!.kind === 'empty') d.seats[s] = { kind: 'bot', name: this.botName(), level: d.botLevel };
+    d.game = newGame(d.rules, secureSeed());
+    d.phase = 'playing';
+    d.ready = [];
+    d.turnKey = null;
+    d.deadline = null;
+    d.gamesPlayed++;
+    this.system(`Game ${d.gamesPlayed} started`);
+  }
+
+  /* ---------------------------------------------------------------- game */
+
+  private apply(action: Action): void {
+    const d = this.data;
+    const before = d.game!;
+    d.game = applyAction(before, action);
+    d.lastActive = this.io.now();
+    if (d.game.phase === 'gameOver') {
+      d.phase = 'over';
+      const res = d.game.result!;
+      this.system(`Game over: ${res.winners.map((w) => this.sideLabel(w)).join(' & ')} win${res.winners.length > 1 || d.rules.partnerships ? '' : 's'}`);
+    }
+  }
+
+  private sideLabel(side: number): string {
+    const d = this.data;
+    const seatName = (s: number) => this.seatName(s);
+    return d.rules.partnerships ? `${seatName(side)} + ${seatName(side + 2)}` : seatName(side);
+  }
+
+  seatName(seat: number): string {
+    const s = this.data.seats[seat];
+    if (!s || s.kind === 'empty') return `Seat ${seat + 1}`;
+    if (s.kind === 'bot') return s.name;
+    return this.data.members[s.playerId]?.name ?? 'Player';
+  }
+
+  private turnKeyOf(g: GameState): string | null {
+    const t = pendingTurn(g);
+    if (!t) return g.phase === 'handOver' ? `h${g.handNo}:over` : null;
+    return `h${g.handNo}:${g.phase}:${g.tricks.length}:${g.trick.plays.length}:${t.seat}:${g.bids.filter((b) => b !== null).length}:${g.exchange.length}`;
+  }
+
+  /** Extra pause owed before the current turn (trick just completed / fresh deal). */
+  private leadIn(g: GameState): number {
+    if (g.phase === 'bidding' && g.bids.every((b) => b === null)) return this.timing.dealMs;
+    if (g.phase === 'playing' && g.trick.plays.length === 0 && g.tricks.length > 0) return this.timing.trickPauseMs;
+    return 0;
+  }
+
+  /** Recompute timers after any change, run due bots/auto-plays, broadcast, persist. */
+  private after(): void {
+    this.drive();
+    this.broadcast();
+    this.io.persist();
+  }
+
+  /** Called by timers/alarms. */
+  tick(): void {
+    const changed = this.drive();
+    if (changed) {
+      this.broadcast();
+      this.io.persist();
+    }
+  }
+
+  /** Advances bots / timeouts that are due. Returns true if the state changed. */
+  private drive(): boolean {
+    const d = this.data;
+    let changed = false;
+    for (let guard = 0; guard < 400; guard++) {
+      const g = d.game;
+      if (d.phase !== 'playing' || !g) {
+        this.clearTimers();
+        return changed;
+      }
+      const now = this.io.now();
+      const key = this.turnKeyOf(g);
+      if (key !== d.turnKey) {
+        d.turnKey = key;
+        d.turnStartedAt = now;
+        d.deadline = null;
+        this.botDueAt = null;
+        this.botKey = null;
+        changed = true;
+      }
+      const paused = this.humansConnected() === 0; // nobody watching: don't burn writes autoplaying
+
+      if (g.phase === 'handOver') {
+        const humans = d.seats.filter((s): s is Extract<SeatSlot, { kind: 'human' }> => s.kind === 'human' && this.isConnected(s.playerId));
+        if (humans.length > 0 && humans.every((h) => d.ready.includes(h.playerId))) {
+          this.nextHand();
+          changed = true;
+          continue;
+        }
+        if (paused) { d.deadline = null; d.turnKey = null; this.io.setAlarm(null); return changed; }
+        d.deadline ??= now + this.timing.handOverMs;
+        if (now >= d.deadline) { this.nextHand(); changed = true; continue; }
+        this.io.setAlarm(d.deadline);
+        return changed;
+      }
+
+      const turn = pendingTurn(g);
+      if (!turn) return changed;
+      const slot = d.seats[turn.seat]!;
+      const leadIn = this.leadIn(g);
+
+      if (paused) {
+        // nobody is connected: freeze the table (no bot moves, no timers) until someone comes back
+        if (d.deadline !== null) { d.deadline = null; changed = true; }
+        d.turnKey = null; // the clock restarts when someone reconnects
+        this.botKey = null;
+        this.io.setAlarm(null);
+        return changed;
+      }
+
+      if (slot.kind === 'bot' || slot.kind === 'empty') {
+        d.deadline = null;
+        if (this.botKey !== key) {
+          this.botKey = key;
+          this.botDueAt = Math.max(now, (d.turnStartedAt ?? now) + leadIn + this.timing.botMs);
+        }
+        if (now >= this.botDueAt!) {
+          this.autoAct(turn.seat, slot.kind === 'bot' ? slot.level : d.botLevel);
+          changed = true;
+          continue;
+        }
+        this.io.wake(this.botDueAt! - now);
+        return changed;
+      }
+
+      // a human's turn
+      const timerMs = (turn.kind === 'bid' ? d.rules.turnTimerSec.bid : d.rules.turnTimerSec.play) * 1000;
+      const full = (d.turnStartedAt ?? now) + leadIn + timerMs;
+      const connected = this.isConnected(slot.playerId);
+      const want = connected ? full : Math.min(full, now + this.timing.disconnectGraceMs);
+      // the deadline only ever moves earlier for a turn (a disconnect shortens it; a reconnect doesn't extend it)
+      if (d.deadline === null || want < d.deadline) { d.deadline = want; changed = true; }
+      if (now >= d.deadline) {
+        this.autoAct(turn.seat, 'normal');
+        this.system(`${this.seatName(turn.seat)} ran out of time`);
+        changed = true;
+        continue;
+      }
+      this.io.setAlarm(d.deadline);
+      return changed;
+    }
+    return changed;
+  }
+
+  private clearTimers(): void {
+    this.data.deadline = null;
+    this.data.turnKey = null;
+    this.botDueAt = null;
+    this.botKey = null;
+    this.io.setAlarm(null);
+  }
+
+  private nextHand(): void {
+    const d = this.data;
+    d.game = applyAction(d.game!, { type: 'nextHand' });
+    d.ready = [];
+    d.deadline = null;
+  }
+
+  /** Bot logic plays for `seat` (a bot, or a human who ran out of time). */
+  private autoAct(seat: number, level: BotLevel): void {
+    const d = this.data;
+    const view = viewFor(d.game!, seat);
+    let action = chooseBotAction(view, level);
+    if (!action) return;
+    try {
+      this.apply(action);
+    } catch {
+      // never get stuck: fall back to the first legal card / minimum bid
+      const v = viewFor(d.game!, seat);
+      action = v.phase === 'playing' ? { type: 'play', seat, card: v.legal[0]! }
+        : v.phase === 'bidding' ? (v.hand === null ? { type: 'reveal', seat } : { type: 'bid', seat, bid: v.bidOptions?.min ?? 1 })
+        : { type: 'exchange', seat, cards: (v.hand ?? []).slice(0, v.exchange[0]?.count ?? 0) };
+      this.apply(action);
+    }
+  }
+
+  /* --------------------------------------------------------------- output */
+
+  roomInfo(): RoomInfo {
+    const d = this.data;
+    const seats: SeatInfo[] = d.seats.slice(0, d.rules.playerCount).map((s) => {
+      if (s.kind === 'empty') return { kind: 'empty' };
+      if (s.kind === 'bot') return { kind: 'bot', name: s.name, level: s.level };
+      const m = d.members[s.playerId];
+      return { kind: 'human', playerId: s.playerId, name: m?.name ?? 'Player', connected: this.isConnected(s.playerId), media: m?.media ?? { cam: false, mic: false } };
+    });
+    return {
+      code: d.code, hostId: d.hostId ?? '', phase: d.phase, rules: d.rules, botLevel: d.botLevel, seats,
+      members: Object.entries(d.members).map(([playerId, m]) => ({ playerId, name: m.name, connected: this.isConnected(playerId), seat: m.seat })),
+      deadline: d.deadline, ready: [...d.ready], rev: d.rev, game: d.gamesPlayed, now: this.io.now(),
+    };
+  }
+
+  private broadcast(): void {
+    const d = this.data;
+    d.rev++;
+    const room = this.roomInfo();
+    for (const [cid, pid] of this.conns) {
+      if (!pid) continue;
+      const seat = d.members[pid]?.seat ?? null;
+      const view = d.game && seat !== null && seat < d.rules.playerCount ? viewFor(d.game, seat) : null;
+      this.io.send(cid, { t: 'state', room, seat, view });
+    }
+  }
+
+  private system(text: string): void {
+    this.pushChat({ id: this.data.chatSeq++, from: null, name: 'System', text, at: this.io.now(), system: true });
+  }
+
+  private pushChat(line: ChatLine): void {
+    const d = this.data;
+    d.chat.push(line);
+    if (d.chat.length > LIMITS.chatHistory) d.chat.splice(0, d.chat.length - LIMITS.chatHistory);
+    for (const [cid, pid] of this.conns) if (pid) this.io.send(cid, { t: 'chat', line });
+  }
+
+  private err(connId: string, code: string, message: string): void {
+    this.io.send(connId, { t: 'error', code, message });
+  }
+
+  /** Public summary for the join screen (no secrets). */
+  summary() {
+    const d = this.data;
+    return {
+      code: d.code, phase: d.phase, mode: d.rules.mode, playerCount: d.rules.playerCount,
+      seats: this.roomInfo().seats.map((s) => (s.kind === 'human' ? { kind: s.kind, name: s.name } : s.kind === 'bot' ? { kind: s.kind, name: s.name } : { kind: s.kind })),
+      host: d.hostId ? d.members[d.hostId]?.name ?? null : null,
+    };
+  }
+}
+
+export class RoomError extends Error {
+  constructor(public readonly code: string, message: string) {
+    super(message);
+  }
+}

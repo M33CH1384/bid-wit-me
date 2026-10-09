@@ -1,0 +1,21 @@
+# Bid Wit Me game server: one Worker + one SQLite-backed Durable Object per table (Workers Free plan).
+name = "bid-wit-me-server"
+main = "src/index.ts"
+compatibility_date = "2025-07-18"
+workers_dev = true
+
+[vars]
+# Comma-separated origins allowed to open tables / websockets ("*" during local dev).
+ALLOWED_ORIGINS = "https://bid-wit-me.pages.dev,http://localhost:5173,http://localhost:4173,http://127.0.0.1:4173"
+# TURN (optional, later): set these as secrets to hand out Cloudflare Realtime TURN credentials via /api/ice
+#   npx wrangler secret put TURN_KEY_ID
+#   npx wrangler secret put TURN_KEY_API_TOKEN
+
+[[durable_objects.bindings]]
+name = "TABLES"
+class_name = "TableDO"
+
+# Free plan: Durable Objects must use the SQLite storage backend.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["TableDO"]

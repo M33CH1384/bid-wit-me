@@ -3,6 +3,7 @@ import { SoundFields } from './SoundControls';
 import { type ReactNode, useState } from 'react';
 import { cardLabel, trumpOrder } from '@spades/rules';
 import { type ModeKey, type Settings, MODES, settingsToRules } from './settings';
+import { navigate } from './online/nav';
 
 interface Props {
   settings: Settings;
@@ -41,7 +42,7 @@ export default function Setup({ settings: s, onChange, onStart }: Props) {
         <img className="logo" src="/assets/bwm-wordmark-white.svg" alt="" />
         <h1 className="sr-only">Bid Wit Me</h1>
         <p className="tagline">Spades · Joker · Cutthroat · Ace Down</p>
-        <p>Pick a mode and play against bots. Online tables come next.</p>
+        <p>Pick a mode, then play against bots or online with friends.</p>
       </header>
 
       <section className="modes">
@@ -150,7 +151,8 @@ export default function Setup({ settings: s, onChange, onStart }: Props) {
         )}
       </section>
 
-      <button type="button" className="primary big" onClick={onStart}>Deal me in</button>
+      <button type="button" className="primary big" onClick={onStart}>Play vs bots</button>
+      <button type="button" className="primary big online-cta" style={{ marginTop: 10 }} data-testid="play-online" onClick={() => navigate('/online')}>Play online</button>
       <button type="button" className="link credits-link" onClick={() => setCredits(true)}>Credits &amp; licenses</button>
       {credits && <Credits onClose={() => setCredits(false)} />}
     </div>

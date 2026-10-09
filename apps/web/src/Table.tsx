@@ -1,4 +1,4 @@
-import { type FormEvent, Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   type Card, type GameState, type TableRules, bidLabel, cardLabel, isJoker, isNilBid, isTrump, partnerOf, sideOf, sortHand, trumpOrder,
 } from '@spades/rules';
@@ -13,6 +13,19 @@ import { type SavedGame, clearGame, saveGame } from './save';
 
 const Scene = lazy(() => import('./three/Scene'));
 
+/** Online play: the table renders server state through the same UI (see online/OnlineTable.tsx). */
+export interface OnlineBinding {
+  /** shape-compatible with useGame()'s result */
+  source: ReturnType<typeof useGame>;
+  /** local-seat names (0 = you) */
+  names: string[];
+  chat: { msgs: ChatMsg[]; push: (user: string, text: string) => void };
+  /** video bubble / timer chip etc. inside a seat's name plate (local seat index) */
+  seatExtra: (seat: number) => ReactNode;
+  /** scorebug label for a (local) side */
+  sideLabel: (side: number) => string;
+}
+
 interface Props {
   rules: TableRules;
   seed: string;
@@ -22,6 +35,7 @@ interface Props {
   onQuality: (q: Settings['quality']) => void;
   /** A saved in-progress game to resume at exactly the same point. */
   resume?: SavedGame;
+  online?: OnlineBinding;
 }
 
 const NAMES4 = ['You', 'Marcus', 'Keisha', 'Dre'];
@@ -102,7 +116,7 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
   return { msgs, push };
 }
 
-function ChatPanel({ msgs, open, onToggle, onSend, unread }: { msgs: ChatMsg[]; open: boolean; onToggle: () => void; onSend: (t: string) => void; unread: number }) {
+function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only' }: { msgs: ChatMsg[]; open: boolean; onToggle: () => void; onSend: (t: string) => void; unread: number; scope?: string }) {
   const listRef = useRef<HTMLDivElement>(null);
   const [text, setText] = useState('');
   useEffect(() => { listRef.current?.scrollTo({ top: 1e6, behavior: 'smooth' }); }, [msgs, open]);
@@ -120,7 +134,7 @@ function ChatPanel({ msgs, open, onToggle, onSend, unread }: { msgs: ChatMsg[]; 
       </button>
       {!open && last && <div key={last.id} className="chat-ticker"><b style={{ color: last.color }}>{last.user}</b> {last.text}</div>}
       <aside className={`chat glass slant ${open ? 'open' : ''}`} aria-label="Table chat">
-        <header><span className="live-dot" /> LIVE CHAT <small>local only</small></header>
+        <header><span className="live-dot" /> LIVE CHAT <small>{scope}</small></header>
         <div className="chat-list" ref={listRef}>
           {msgs.map((m) => (
             <div key={m.id} className={`chat-line ${m.system ? 'system' : ''}`}>
@@ -172,11 +186,13 @@ export function landCueFor(st: GameState, card: Card): string {
   return 'play';
 }
 
-export default function Table({ rules: initialRules, seed, settings, onExit, onRematch, onQuality, resume }: Props) {
-  const { st, view, pause, error, apply, introHand, dealing, k } = useGame(initialRules, seed, settings.botLevel, settings.speed, resume?.state);
+export default function Table({ rules: initialRules, seed, settings, onExit, onRematch, onQuality, resume, online }: Props) {
+  // `online` never changes for a mounted Table, so this is always the same hook path per instance
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const { st, view, pause, error, apply, introHand, dealing, k } = online ? online.source : useGame(initialRules, seed, settings.botLevel, settings.speed, resume?.state);
   const r = st.rules;
   const n = r.playerCount;
-  const names = n === 4 ? NAMES4 : NAMES3;
+  const names = online?.names ?? (n === 4 ? NAMES4 : NAMES3);
   const pos = useMemo(() => positions(n), [n]);
   const [selected, setSelected] = useState<Card | null>(null);
   const [exchangePick, setExchangePick] = useState<Card[]>([]);
@@ -184,7 +200,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onR
   const [chatOpen, setChatOpen] = useState(() => window.innerWidth >= 900);
   const [seenMsgs, setSeenMsgs] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const { msgs, push } = useChat(st, names, resume?.chat);
+  const localChat = useChat(st, names, resume?.chat);
+  const { msgs, push } = online ? online.chat : localChat;
   const [confirmLeave, setConfirmLeave] = useState(false);
 
   const shownTrick = pause ? st.tricks[st.tricks.length - 1]! : st.trick;
@@ -201,9 +218,10 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onR
 
   // persist after every action (and chat line); a finished game clears the save
   useEffect(() => {
+    if (online) return; // online games live on the server (seat token in localStorage), not in the offline save
     if (st.phase === 'gameOver') clearGame();
     else saveGame({ seed, settings, state: st, chat: msgs });
-  }, [st, msgs, seed, settings]);
+  }, [st, msgs, seed, settings, online]);
 
   // "Resuming your game…" toast
   useEffect(() => {
@@ -212,7 +230,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onR
     const t = setTimeout(() => setToasts((ts) => ts.filter((x) => x.id !== -1)), 2600);
     return () => clearTimeout(t);
   }, [resume]);
-  const leave = () => { clearGame(); onExit(); };
+  const leave = () => { if (!online) clearGame(); onExit(); };
 
   useEffect(() => { setSelected(null); }, [st.turn, st.handNo]);
   useEffect(() => { setExchangePick([]); }, [st.phase, st.turn]);
@@ -262,6 +280,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onR
           </div>
         </div>
         {isTurn && <div className="plate-turn">{st.phase === 'bidding' ? 'BIDDING' : 'TO PLAY'}</div>}
+        {online?.seatExtra(seat)}
       </div>
     );
   };
@@ -297,13 +316,13 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onR
 
       {/* scorebug */}
       <header className="scorebug">
-        <button type="button" className="bug-btn" onClick={() => (st.phase === 'gameOver' ? leave() : setConfirmLeave(true))} aria-label="Menu" data-testid="menu">☰</button>
+        <button type="button" className="bug-btn" onClick={() => (online || st.phase === 'gameOver' ? leave() : setConfirmLeave(true))} aria-label="Menu" data-testid="menu">☰</button>
         <div className="bug glass">
           <img className="bug-logo" src="/assets/bwm-wordmark-white.svg" alt="Bid Wit Me" />
           <div className={`bug-teams n${st.scores.length}`}>
             {st.scores.map((s, i) => (
               <div key={i} className={`bug-team ${i === mySide ? 'mine' : ''} ${st.result?.winners.includes(i) ? 'won' : ''}`}>
-                <span className="bug-name">{r.partnerships ? (i === mySide ? 'YOU + KEISHA' : 'MARCUS + DRE') : names[i]!.toUpperCase()}</span>
+                <span className="bug-name">{online && r.partnerships ? online.sideLabel(i) : r.partnerships ? (i === mySide ? 'YOU + KEISHA' : 'MARCUS + DRE') : names[i]!.toUpperCase()}</span>
                 <TickNumber value={s} className="bug-score" />
                 <span className="bug-bags">{st.bags[i]}<small>B</small></span>
               </div>
@@ -356,7 +375,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onR
         ))}
       </div>
 
-      <ChatPanel msgs={msgs} open={chatOpen} onToggle={() => setChatOpen(!chatOpen)} onSend={(t) => push('You', t)} unread={unread} />
+      <ChatPanel msgs={msgs} open={chatOpen} onToggle={() => setChatOpen(!chatOpen)} onSend={(t) => push('You', t)} unread={unread} scope={online ? 'table' : undefined} />
 
       {/* the human's lower third + controls */}
       <section className="me">
@@ -407,6 +426,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onR
           </div>
           {myTurn && st.phase === 'playing' && <div className="plate-turn">{selected ? 'TAP AGAIN TO PLAY' : 'YOUR TURN'}</div>}
           {myTurn && st.phase === 'bidding' && <div className="plate-turn">YOUR BID</div>}
+          {online?.seatExtra(HUMAN)}
         </div>
         {error && <div className="err">{error}</div>}
       </section>

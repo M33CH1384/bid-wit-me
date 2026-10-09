@@ -74,7 +74,7 @@ export function cryptoRng(): Rng {
   let i = buf.length;
   return rngFromSource(() => {
     if (i >= buf.length) {
-      globalThis.crypto.getRandomValues(buf);
+      (globalThis as unknown as { crypto: Crypto }).crypto.getRandomValues(buf);
       i = 0;
     }
     return buf[i++]!;
@@ -84,7 +84,7 @@ export function cryptoRng(): Rng {
 /** Unpredictable seed string (128 bits, hex). */
 export function secureSeed(): string {
   const b = new Uint32Array(4);
-  globalThis.crypto.getRandomValues(b);
+  (globalThis as unknown as { crypto: Crypto }).crypto.getRandomValues(b);
   return Array.from(b, (x) => x.toString(16).padStart(8, '0')).join('');
 }
 
