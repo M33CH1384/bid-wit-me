@@ -57,6 +57,8 @@ const AC: typeof AudioContext | undefined = typeof window !== 'undefined'
   ? (window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)
   : undefined;
 
+interface Deck { el: HTMLAudioElement; gain: GainNode; track: number | null; ready: Promise<boolean> | null; url: string | null }
+
 class Engine {
   settings: SoundSettings = load();
   private listeners = new Set<() => void>();
@@ -94,7 +96,7 @@ class Engine {
   /* ---------- music: shuffled playlist with crossfade + gentle mid/side widening ---------- */
   musicStatus: MusicStatus = 'off';
   nowPlaying: { track: Track; at: number } | null = null;
-  private decks: { el: HTMLAudioElement; gain: GainNode; track: number | null }[] = [];
+  private decks: Deck[] = [];
   private active = 0;
   private bag: number[] = [];
   private lastTrack: number | null = null;
@@ -133,25 +135,50 @@ class Engine {
     const chain = this.buildMusicChain();
     for (let i = 0; i < 2; i++) {
       const el = new Audio();
-      el.preload = 'none'; el.crossOrigin = 'anonymous';
+      el.preload = 'auto';
       el.setAttribute('playsinline', '');
       const gain = this.ctx.createGain(); gain.gain.value = 0;
       this.ctx.createMediaElementSource(el).connect(gain).connect(chain);
-      const deck = { el, gain, track: null as number | null };
+      const deck: Deck = { el, gain, track: null, ready: null, url: null };
       el.addEventListener('timeupdate', () => this.onTime(deck));
-      el.addEventListener('ended', () => { if (this.decks[this.active] === deck) this.advance(); });
-      el.addEventListener('error', () => { if (this.decks[this.active] === deck && this.settings.music) { this.musicStatus = 'error'; this.emit(); window.setTimeout(() => this.advance(), 1500); } });
-      el.addEventListener('playing', () => { if (this.decks[this.active] === deck && this.musicStatus !== 'playing') { this.musicStatus = 'playing'; this.emit(); } });
+      el.addEventListener('ended', () => { if (deck.url && this.decks[this.active] === deck) { this.fading = true; this.advance(); } });
+      el.addEventListener('playing', () => { if (deck.url && this.decks[this.active] === deck && this.musicStatus !== 'playing') { this.musicStatus = 'playing'; this.emit(); } });
       this.decks.push(deck);
     }
   }
 
-  private loadDeck(deckIdx: number, track: number) {
+  /** iOS: an <audio> element must first be played inside a user gesture; prime both decks with a silent blip. */
+  private primeDecks() {
+    for (const d of this.decks) {
+      if (d.url) continue;
+      d.el.src = '/assets/sfx/tap.mp3';
+      void d.el.play().then(() => d.el.pause()).catch(() => undefined);
+    }
+  }
+
+  /**
+   * Fetch the whole track and play it from a blob: URL — seeking/looping never depends on the host's HTTP Range
+   * support (Safari needs ranges for streamed media), and the next track is fully buffered before its crossfade.
+   */
+  private loadDeck(deckIdx: number, track: number): Promise<boolean> {
     const d = this.decks[deckIdx]!;
     d.track = track;
-    d.el.src = `/audio/music/${TRACKS[track]!.file}.mp3`;
-    d.el.preload = 'auto';
-    d.el.load();
+    d.ready = (async () => {
+      try {
+        const res = await fetch(`/audio/music/${TRACKS[track]!.file}.mp3`);
+        if (!res.ok) throw new Error(String(res.status));
+        const blob = await res.blob();
+        if (d.track !== track) return false;
+        if (d.url) URL.revokeObjectURL(d.url);
+        d.url = URL.createObjectURL(blob);
+        d.el.src = d.url;
+        d.el.load();
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+    return d.ready;
   }
 
   private pickNext(): number {
@@ -160,32 +187,35 @@ class Engine {
     return pick;
   }
 
-  /** Start (or crossfade to) the pre-loaded deck and pre-load the following track on the other deck. */
-  private advance() {
-    if (!this.ctx || !this.settings.music) return;
+  /** Crossfade to the pre-loaded deck, then queue the following track on the deck that just faded out. */
+  private async advance() {
+    if (!this.ctx || !this.settings.music) { this.fading = false; return; }
     const c = this.ctx;
-    const from = this.decks[this.active]!;
-    const toIdx = 1 - this.active;
-    const to = this.decks[toIdx]!;
-    if (to.track === null) this.loadDeck(toIdx, this.pickNext());
-    to.gain.gain.cancelScheduledValues(c.currentTime);
-    to.gain.gain.setValueAtTime(0.0001, c.currentTime);
-    to.gain.gain.linearRampToValueAtTime(1, c.currentTime + XFADE);
-    from.gain.gain.cancelScheduledValues(c.currentTime);
-    from.gain.gain.setValueAtTime(from.gain.gain.value, c.currentTime);
-    from.gain.gain.linearRampToValueAtTime(0.0001, c.currentTime + XFADE);
+    const fromIdx = this.active, toIdx = 1 - this.active;
+    const from = this.decks[fromIdx]!, to = this.decks[toIdx]!;
+    if (to.track === null || !to.ready) this.loadDeck(toIdx, this.pickNext());
+    let ok = await to.ready!;
+    for (let tries = 0; !ok && tries < TRACKS.length; tries++) ok = await this.loadDeck(toIdx, this.pickNext());
+    if (!ok || !this.settings.music) { this.musicStatus = 'error'; this.fading = false; this.emit(); return; }
+    const now = c.currentTime;
+    to.gain.gain.cancelScheduledValues(now); to.gain.gain.setValueAtTime(0.0001, now); to.gain.gain.linearRampToValueAtTime(1, now + XFADE);
+    from.gain.gain.cancelScheduledValues(now); from.gain.gain.setValueAtTime(Math.max(0.0001, from.gain.gain.value), now); from.gain.gain.linearRampToValueAtTime(0.0001, now + XFADE);
+    to.el.currentTime = 0;
     void to.el.play().catch(() => undefined);
-    window.setTimeout(() => { from.el.pause(); from.track = null; this.fading = false; }, XFADE * 1000 + 100);
     this.active = toIdx;
     this.announce(to.track!);
-    // look-ahead: queue the next track on the deck we just faded out, once the fade is done
-    window.setTimeout(() => { if (this.settings.music && from.track === null) this.loadDeck(1 - this.active, this.pickNext()); }, XFADE * 1000 + 300);
+    window.setTimeout(() => {
+      from.el.pause();
+      from.track = null; from.ready = null;
+      this.fading = false;
+      if (this.settings.music) this.loadDeck(fromIdx, this.pickNext()); // look-ahead
+    }, XFADE * 1000 + 150);
   }
 
-  private onTime(deck: { el: HTMLAudioElement }) {
-    if (this.decks[this.active] !== deck || this.fading || !this.settings.music) return;
+  private onTime(deck: Deck) {
+    if (!deck.url || this.decks[this.active] !== deck || this.fading || !this.settings.music) return;
     const left = deck.el.duration - deck.el.currentTime;
-    if (Number.isFinite(left) && left <= XFADE + 0.25) { this.fading = true; this.advance(); }
+    if (Number.isFinite(left) && left <= XFADE + 0.25) { this.fading = true; void this.advance(); }
   }
 
   private announce(track: number) {
@@ -209,18 +239,22 @@ class Engine {
     this.musicBus!.gain.setTargetAtTime(this.settings.musicVolume ** 1.6 * 0.85, this.ctx.currentTime, 0.1);
     const cur = this.decks[this.active]!;
     if (cur.track === null) {
-      // first start (inside a user gesture): unlock the second deck for iOS too
-      const other = this.decks[1 - this.active]!;
-      void other.el.play().then(() => other.el.pause()).catch(() => undefined);
+      // first start happens inside the user's tap: prime both decks for iOS, then fetch + play
+      this.primeDecks();
       this.musicStatus = 'loading'; this.emit();
-      this.loadDeck(this.active, this.pickNext());
-      cur.gain.gain.cancelScheduledValues(this.ctx.currentTime);
-      cur.gain.gain.setValueAtTime(0.0001, this.ctx.currentTime);
-      cur.gain.gain.linearRampToValueAtTime(1, this.ctx.currentTime + 1.5);
-      void cur.el.play().catch(() => undefined);
-      this.announce(cur.track!);
-      // look-ahead: preload the next track shortly after this one starts
-      window.setTimeout(() => { const o = this.decks[1 - this.active]!; if (this.settings.music && o.track === null) this.loadDeck(1 - this.active, this.pickNext()); }, 8000);
+      const startIdx = this.active;
+      void (async () => {
+        let ok = await this.loadDeck(startIdx, this.pickNext());
+        for (let tries = 0; !ok && tries < TRACKS.length; tries++) ok = await this.loadDeck(startIdx, this.pickNext());
+        if (!this.ctx || !this.settings.music || this.active !== startIdx) return;
+        if (!ok) { this.musicStatus = 'error'; this.emit(); return; }
+        const t = this.ctx.currentTime;
+        cur.gain.gain.cancelScheduledValues(t); cur.gain.gain.setValueAtTime(0.0001, t); cur.gain.gain.linearRampToValueAtTime(1, t + 1.5);
+        void cur.el.play().catch(() => undefined);
+        this.announce(cur.track!);
+        // look-ahead: fetch the next track while this one plays
+        window.setTimeout(() => { if (this.settings.music && this.decks[1 - this.active]!.track === null) this.loadDeck(1 - this.active, this.pickNext()); }, 5000);
+      })();
     } else if (cur.el.paused) {
       cur.gain.gain.setTargetAtTime(1, this.ctx.currentTime, 0.3);
       void cur.el.play().catch(() => undefined);
