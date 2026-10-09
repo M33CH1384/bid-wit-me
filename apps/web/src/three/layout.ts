@@ -160,7 +160,7 @@ export function fanLayout(aspect: number, count: number, safeFrac = 0): FanLayou
   const viewW = viewH * aspect;
   const margin = viewW * Math.max(0.06, safeFrac + 0.025);
   const halfAvail = viewW / 2 - margin;
-  const persp = 1.04; // the -0.18 rad tilt brings the card bottoms slightly toward the camera
+  const persp = 1.0; // cards are parallel to the image plane → no perspective growth
   const halfN = Math.max(0, (count - 1) / 2);
   const maxRoll = count > 1 ? Math.min(0.32, 0.03 * count) : 0;
   let s = Math.min(viewH * 0.16, viewW * 0.25 * 1.4) / CH;
@@ -176,7 +176,12 @@ export function fanLayout(aspect: number, count: number, safeFrac = 0): FanLayou
   return { s, cw: CW * s, ch: CH * s, step: Math.max(0, step), maxRoll, curveK: 1 / (viewW * 1.6), viewW, viewH };
 }
 
-/** The human hand, fanned in camera space at the bottom of the view, converted to world transforms. */
+/**
+ * The human hand, laid out in *screen space*: every card sits on a plane parallel to the image plane (no tilt), so
+ * perspective projects it as an exact, undistorted copy. Cards are stacked a hair nearer the camera left→right for a
+ * stable z-order (each card on top of the one to its left), and both position and scale are multiplied by that depth
+ * so every card projects at exactly the same size and spacing — a perfectly symmetric fan. Only the lifted card moves.
+ */
 export function handFan(aspect: number, count: number, i: number, lift: number, safeFrac = 0): Xform {
   const cam = makeCamera(aspect);
   const L = fanLayout(aspect, count, safeFrac);
@@ -186,15 +191,27 @@ export function handFan(aspect: number, count: number, i: number, lift: number, 
   const roll = halfN > 0 ? -(off / halfN) * L.maxRoll : 0;
   const curve = x * x * L.curveK;
   const y = -L.viewH / 2 + L.ch * 0.62 + L.viewH * 0.02 - curve + lift * L.ch;
+  const depth = 1 - (i + 1) * 0.0015 - (lift > 0.2 ? 0.01 : 0); // z-order only; projection is depth-compensated
   const local = new Matrix4().compose(
-    new Vector3(x, y, -1 + i * 0.0025),
-    new Quaternion().setFromEuler(new Euler(-0.18, 0, roll, 'XYZ')),
-    new Vector3(L.s, L.s, L.s),
+    new Vector3(x * depth, y * depth, -depth),
+    new Quaternion().setFromEuler(new Euler(0, 0, roll, 'XYZ')),
+    new Vector3(L.s * depth, L.s * depth, L.s * depth),
   );
   const world = cam.matrixWorld.clone().multiply(local);
   const p = new Vector3(), q = new Quaternion(), sc = new Vector3();
   world.decompose(p, q, sc);
   return { p: [p.x, p.y, p.z], q: [q.x, q.y, q.z, q.w], s: sc.x };
+}
+
+/** Screen-space (NDC) corner positions of a card transform (for symmetry/fit tests). */
+export function ndcCorners(aspect: number, t: Xform): [number, number][] {
+  const cam = makeCamera(aspect);
+  cam.updateProjectionMatrix();
+  const m = new Matrix4().compose(new Vector3(...t.p), new Quaternion(...t.q), new Vector3(t.s, t.s, t.s));
+  return ([[-CW / 2, -CH / 2], [CW / 2, -CH / 2], [CW / 2, CH / 2], [-CW / 2, CH / 2]] as const).map(([cx, cy]) => {
+    const v = new Vector3(cx, cy, 0).applyMatrix4(m).project(cam);
+    return [v.x, v.y];
+  });
 }
 
 /** Screen-space (NDC) x-extent of a set of card transforms, for fit checks in tests. */

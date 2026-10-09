@@ -42,3 +42,31 @@ describe('3D hand fan fits the viewport', () => {
     }
   }
 });
+
+describe('hand fan is undistorted and mirror-symmetric on screen', () => {
+  for (const [w, h] of [[390, 844], [430, 932], [375, 667], [1280, 800]] as const) {
+    it(`${w}x${h}`, async () => {
+      const { ndcCorners } = await import('../src/three/layout');
+      const aspect = w / h;
+      const n = 13;
+      const px = (c: [number, number]) => [((c[0] + 1) / 2) * w, ((1 - c[1]) / 2) * h];
+      const shapes = Array.from({ length: n }, (_, i) => ndcCorners(aspect, handFan(aspect, n, i, 0)).map(px));
+      const len = (a: number[], b: number[]) => Math.hypot(a[0]! - b[0]!, a[1]! - b[1]!);
+      const w0 = len(shapes[0]![0]!, shapes[0]![1]!), h0 = len(shapes[0]![1]!, shapes[0]![2]!);
+      for (const sh of shapes) {
+        // same size for every card (< 0.3 px), opposite edges equal (no keystone/stretch)
+        expect(Math.abs(len(sh[0]!, sh[1]!) - w0)).toBeLessThan(0.3);
+        expect(Math.abs(len(sh[1]!, sh[2]!) - h0)).toBeLessThan(0.3);
+        expect(Math.abs(len(sh[0]!, sh[1]!) - len(sh[3]!, sh[2]!))).toBeLessThan(0.3);
+        expect(Math.abs(len(sh[1]!, sh[2]!) - len(sh[0]!, sh[3]!))).toBeLessThan(0.3);
+      }
+      // card i mirrors card n-1-i around the screen centre
+      const centre = (sh: number[][]) => [sh.reduce((a, c) => a + c[0]!, 0) / 4, sh.reduce((a, c) => a + c[1]!, 0) / 4];
+      for (let i = 0; i < n; i++) {
+        const a = centre(shapes[i]!), b = centre(shapes[n - 1 - i]!);
+        expect(Math.abs(a[0]! + b[0]! - w)).toBeLessThan(0.5);
+        expect(Math.abs(a[1]! - b[1]!)).toBeLessThan(0.5);
+      }
+    });
+  }
+});
