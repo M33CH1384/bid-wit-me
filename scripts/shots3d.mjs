@@ -28,7 +28,8 @@ const sizes = [
 
 for (const [label, viewport, dpr, mobile, sizeMode] of sizes) {
   if (only && !label.startsWith(only)) continue;
-  const ctx = await browser.newContext({ viewport, deviceScaleFactor: dpr, isMobile: mobile, hasTouch: mobile });
+  const IOS_SAFARI = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1';
+  const ctx = await browser.newContext({ viewport, deviceScaleFactor: dpr, isMobile: mobile, hasTouch: mobile, ...(mobile ? { userAgent: IOS_SAFARI } : {}) });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(`${label}: ${e}`));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(`${label}: ${m.text()}`); });
@@ -49,6 +50,7 @@ for (const [label, viewport, dpr, mobile, sizeMode] of sizes) {
   const mode = process.env.MODE ?? sizeMode;
   await page.evaluate(([m, q]) => localStorage.setItem('spades.settings.v2', JSON.stringify({ mode: m, speed: 'fast', quality: q })), [mode, process.env.Q ?? 'high']);
   await page.goto(`${base}/?autostart=1&seed=${process.env.SEED ?? 'shots-3d-7'}`);
+  if (label === 'iphone-390x844') { await page.waitForTimeout(Number(process.env.SHUFFLE_AT ?? 1200)); await shot('0-shuffle'); }
   // bidding: wait for our bid grid (or blind-nil prompt)
   await page.locator('.bid-grid button, .bid-panel button.primary').first().waitFor({ timeout: 60000 });
   if (await page.getByRole('button', { name: 'See my cards' }).count()) await page.getByRole('button', { name: 'See my cards' }).click();
@@ -64,6 +66,8 @@ for (const [label, viewport, dpr, mobile, sizeMode] of sizes) {
   // first turn with the full hand: lift the right-most playable card (worst case for right-edge clipping)
   for (let i = 0; i < 600 && !(await legal().count()); i++) await page.waitForTimeout(120);
   const full = await handSize();
+  await page.waitForTimeout(900);
+  await shot(`3a-hand-${full}-cards`);
   await legal().last().dispatchEvent('click');
   await page.waitForTimeout(1500);
   await shot(`3-first-turn-${full}-cards`);
