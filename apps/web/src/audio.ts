@@ -1,0 +1,468 @@
+/**
+ * Bid Wit Me sound engine (Web Audio).
+ * - Card/chip foley: Kenney "Casino Audio" + "UI Audio" (CC0), re-encoded to small mono MP3 (plays on Safari/iOS).
+ * - Musical cues (turn chime, stingers, jingles, spades-broken sting, whoosh, buzz) and the optional lounge ambience
+ *   are synthesized here with oscillators/noise — no extra files.
+ * - iOS/Safari only allow audio after a user gesture: the context is created/resumed on the first tap/key.
+ *   (The iPhone silent switch mutes Web Audio; there is no way around that from a web page.)
+ * - Settings (on/off, volume, ambience) persist in localStorage.
+ */
+import { useSyncExternalStore } from 'react';
+
+export type Sfx =
+  | 'shuffle' | 'deal' | 'play' | 'tap' | 'sweep' | 'broken' | 'turn' | 'bid' | 'bidSoft'
+  | 'cut' | 'made' | 'set' | 'nil' | 'bags' | 'pop' | 'win' | 'lose';
+
+export interface SoundSettings { on: boolean; volume: number; ambient: boolean; music: boolean; musicVolume: number }
+const KEY = 'bwm.sound.v1';
+const DEFAULTS: SoundSettings = { on: true, volume: 0.7, ambient: false, music: false, musicVolume: 0.5 };
+export type MusicStatus = 'off' | 'loading' | 'playing' | 'error';
+
+export interface Track { file: string; title: string; artist: string; license: string; source: string }
+/** Background playlist (lazy-loaded, 128 kbps MP3). Credits: see CREDITS.md and the in-game Credits screen. */
+export const TRACKS: Track[] = [
+  { file: 'windows-down', title: 'Windows Down', artist: 'Holizna', license: 'CC0', source: 'https://opengameart.org/content/lo-fi-and-chill-collection' },
+  { file: 'coins', title: 'Coins', artist: 'Holizna', license: 'CC0', source: 'https://opengameart.org/content/gamer-beats-collection' },
+  { file: 'final-level', title: 'Final Level', artist: 'Holizna', license: 'CC0', source: 'https://opengameart.org/content/gamer-beats-collection' },
+  { file: '2-hour-delay', title: '2 Hour Delay', artist: 'Holizna', license: 'CC0', source: 'https://opengameart.org/content/lo-fi-and-chill-collection' },
+  { file: 'chillin-hard', title: 'Chillin Hard', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1600028' },
+];
+export const CC_BY_LINE = '"Chillin Hard" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/';
+const XFADE = 4; // seconds of crossfade between tracks
+
+/** Shuffle order with no immediate repeat across bag boundaries. */
+export function nextShuffle(prev: number | null, bag: number[], count: number, rnd = Math.random): { pick: number; bag: number[] } {
+  let b = bag.slice();
+  if (!b.length) {
+    b = Array.from({ length: count }, (_, i) => i);
+    for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [b[i], b[j]] = [b[j]!, b[i]!]; }
+    if (count > 1 && b[0] === prev) b.push(b.shift()!);
+  }
+  const pick = b.shift()!;
+  return { pick, bag: b };
+}
+
+function load(): SoundSettings {
+  try { const raw = localStorage.getItem(KEY); if (raw) return { ...DEFAULTS, ...JSON.parse(raw) }; } catch { /* ignore */ }
+  return DEFAULTS;
+}
+
+const FILES: Record<string, string[]> = {
+  shuffle: ['shuffle'], deal: ['deal-1', 'deal-2', 'deal-3'], play: ['play-1', 'play-2', 'play-3'],
+  sweep: ['sweep-1', 'sweep-2'], bid: ['bid'], tap: ['tap'], pop: ['pop'],
+};
+
+type Ctx = AudioContext;
+const AC: typeof AudioContext | undefined = typeof window !== 'undefined'
+  ? (window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)
+  : undefined;
+
+class Engine {
+  settings: SoundSettings = load();
+  private listeners = new Set<() => void>();
+  private ctx: Ctx | null = null;
+  private master: GainNode | null = null;
+  private sfxBus: GainNode | null = null;
+  private ambBus: GainNode | null = null;
+  private buffers = new Map<string, AudioBuffer>();
+  private loading: Promise<void> | null = null;
+  private ambTimer: number | null = null;
+  private ambNodes: AudioNode[] = [];
+  private lastAt = new Map<Sfx, number>();
+  unlocked = false;
+  /** cue counter (exposed for automated checks) */
+  played: Record<string, number> = {};
+
+  /* ---------- settings store ---------- */
+  subscribe = (fn: () => void) => { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; };
+  get = () => this.settings;
+  get state(): string { return this.ctx?.state ?? 'none'; }
+  get loaded(): number { return this.buffers.size; }
+  set(patch: Partial<SoundSettings>) {
+    const clamp = (v: number) => Math.min(1, Math.max(0, v));
+    this.settings = { ...this.settings, ...patch, volume: clamp(patch.volume ?? this.settings.volume), musicVolume: clamp(patch.musicVolume ?? this.settings.musicVolume) };
+    try { localStorage.setItem(KEY, JSON.stringify(this.settings)); } catch { /* ignore */ }
+    this.applyGain();
+    this.syncAmbient();
+    this.syncMusic();
+    this.emit();
+  }
+  private emit() { this.snapshot = { ...this.settings, musicStatus: this.musicStatus, nowPlaying: this.nowPlaying }; this.listeners.forEach((f) => f()); }
+  snapshot: SoundSettings & { musicStatus: MusicStatus; nowPlaying: { track: Track; at: number } | null } = { ...this.settings, musicStatus: 'off', nowPlaying: null };
+  getSnapshot = () => this.snapshot;
+
+  /* ---------- music: shuffled playlist with crossfade + gentle mid/side widening ---------- */
+  musicStatus: MusicStatus = 'off';
+  nowPlaying: { track: Track; at: number } | null = null;
+  private decks: { el: HTMLAudioElement; gain: GainNode; track: number | null }[] = [];
+  private active = 0;
+  private bag: number[] = [];
+  private lastTrack: number | null = null;
+  private musicBus: GainNode | null = null;
+  private fading = false;
+
+  /** Mono-compatible widening: M/S with the side (above 150 Hz) boosted and slowly "breathing". L+R is unchanged. */
+  private buildMusicChain(): GainNode {
+    const c = this.ctx!;
+    const input = c.createGain();
+    const split = c.createChannelSplitter(2);
+    input.connect(split);
+    const mid = c.createGain(); const side = c.createGain();
+    const lM = c.createGain(); lM.gain.value = 0.5; const rM = c.createGain(); rM.gain.value = 0.5;
+    const lS = c.createGain(); lS.gain.value = 0.5; const rS = c.createGain(); rS.gain.value = -0.5;
+    split.connect(lM, 0); split.connect(rM, 1); split.connect(lS, 0); split.connect(rS, 1);
+    lM.connect(mid); rM.connect(mid); lS.connect(side); rS.connect(side);
+    const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 150; // keep the low end centred
+    const width = c.createGain(); width.gain.value = 1.35;
+    const lfo = c.createOscillator(); lfo.frequency.value = 0.045; const lfoAmt = c.createGain(); lfoAmt.gain.value = 0.15;
+    lfo.connect(lfoAmt).connect(width.gain); lfo.start();
+    side.connect(hp).connect(width);
+    const negSide = c.createGain(); negSide.gain.value = -1; width.connect(negSide);
+    const merge = c.createChannelMerger(2);
+    const outL = c.createGain(); const outR = c.createGain();
+    mid.connect(outL); width.connect(outL); mid.connect(outR); negSide.connect(outR);
+    outL.connect(merge, 0, 0); outR.connect(merge, 0, 1);
+    const bus = c.createGain();
+    merge.connect(bus).connect(c.destination);
+    this.musicBus = bus;
+    return input;
+  }
+
+  private ensureDecks() {
+    if (this.decks.length || !this.ctx) return;
+    const chain = this.buildMusicChain();
+    for (let i = 0; i < 2; i++) {
+      const el = new Audio();
+      el.preload = 'none'; el.crossOrigin = 'anonymous';
+      el.setAttribute('playsinline', '');
+      const gain = this.ctx.createGain(); gain.gain.value = 0;
+      this.ctx.createMediaElementSource(el).connect(gain).connect(chain);
+      const deck = { el, gain, track: null as number | null };
+      el.addEventListener('timeupdate', () => this.onTime(deck));
+      el.addEventListener('ended', () => { if (this.decks[this.active] === deck) this.advance(); });
+      el.addEventListener('error', () => { if (this.decks[this.active] === deck && this.settings.music) { this.musicStatus = 'error'; this.emit(); window.setTimeout(() => this.advance(), 1500); } });
+      el.addEventListener('playing', () => { if (this.decks[this.active] === deck && this.musicStatus !== 'playing') { this.musicStatus = 'playing'; this.emit(); } });
+      this.decks.push(deck);
+    }
+  }
+
+  private loadDeck(deckIdx: number, track: number) {
+    const d = this.decks[deckIdx]!;
+    d.track = track;
+    d.el.src = `/audio/music/${TRACKS[track]!.file}.mp3`;
+    d.el.preload = 'auto';
+    d.el.load();
+  }
+
+  private pickNext(): number {
+    const { pick, bag } = nextShuffle(this.lastTrack, this.bag, TRACKS.length);
+    this.bag = bag; this.lastTrack = pick;
+    return pick;
+  }
+
+  /** Start (or crossfade to) the pre-loaded deck and pre-load the following track on the other deck. */
+  private advance() {
+    if (!this.ctx || !this.settings.music) return;
+    const c = this.ctx;
+    const from = this.decks[this.active]!;
+    const toIdx = 1 - this.active;
+    const to = this.decks[toIdx]!;
+    if (to.track === null) this.loadDeck(toIdx, this.pickNext());
+    to.gain.gain.cancelScheduledValues(c.currentTime);
+    to.gain.gain.setValueAtTime(0.0001, c.currentTime);
+    to.gain.gain.linearRampToValueAtTime(1, c.currentTime + XFADE);
+    from.gain.gain.cancelScheduledValues(c.currentTime);
+    from.gain.gain.setValueAtTime(from.gain.gain.value, c.currentTime);
+    from.gain.gain.linearRampToValueAtTime(0.0001, c.currentTime + XFADE);
+    void to.el.play().catch(() => undefined);
+    window.setTimeout(() => { from.el.pause(); from.track = null; this.fading = false; }, XFADE * 1000 + 100);
+    this.active = toIdx;
+    this.announce(to.track!);
+    // look-ahead: queue the next track on the deck we just faded out, once the fade is done
+    window.setTimeout(() => { if (this.settings.music && from.track === null) this.loadDeck(1 - this.active, this.pickNext()); }, XFADE * 1000 + 300);
+  }
+
+  private onTime(deck: { el: HTMLAudioElement }) {
+    if (this.decks[this.active] !== deck || this.fading || !this.settings.music) return;
+    const left = deck.el.duration - deck.el.currentTime;
+    if (Number.isFinite(left) && left <= XFADE + 0.25) { this.fading = true; this.advance(); }
+  }
+
+  private announce(track: number) {
+    this.nowPlaying = { track: TRACKS[track]!, at: Date.now() };
+    this.emit();
+  }
+
+  private syncMusic() {
+    if (!this.unlocked) return;
+    this.ensure();
+    if (!this.ctx) return;
+    if (!this.settings.music) {
+      if (this.decks.length) {
+        for (const d of this.decks) { d.gain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.25); }
+        window.setTimeout(() => { if (!this.settings.music) this.decks.forEach((d) => d.el.pause()); }, 1200);
+      }
+      if (this.musicStatus !== 'off') { this.musicStatus = 'off'; this.emit(); }
+      return;
+    }
+    this.ensureDecks();
+    this.musicBus!.gain.setTargetAtTime(this.settings.musicVolume ** 1.6 * 0.85, this.ctx.currentTime, 0.1);
+    const cur = this.decks[this.active]!;
+    if (cur.track === null) {
+      // first start (inside a user gesture): unlock the second deck for iOS too
+      const other = this.decks[1 - this.active]!;
+      void other.el.play().then(() => other.el.pause()).catch(() => undefined);
+      this.musicStatus = 'loading'; this.emit();
+      this.loadDeck(this.active, this.pickNext());
+      cur.gain.gain.cancelScheduledValues(this.ctx.currentTime);
+      cur.gain.gain.setValueAtTime(0.0001, this.ctx.currentTime);
+      cur.gain.gain.linearRampToValueAtTime(1, this.ctx.currentTime + 1.5);
+      void cur.el.play().catch(() => undefined);
+      this.announce(cur.track!);
+      // look-ahead: preload the next track shortly after this one starts
+      window.setTimeout(() => { const o = this.decks[1 - this.active]!; if (this.settings.music && o.track === null) this.loadDeck(1 - this.active, this.pickNext()); }, 8000);
+    } else if (cur.el.paused) {
+      cur.gain.gain.setTargetAtTime(1, this.ctx.currentTime, 0.3);
+      void cur.el.play().catch(() => undefined);
+      this.musicStatus = 'playing'; this.emit();
+    } else {
+      cur.gain.gain.setTargetAtTime(1, this.ctx.currentTime, 0.3);
+    }
+  }
+
+  /* ---------- unlock on first gesture (iOS) ---------- */
+  installUnlock() {
+    if (typeof window === 'undefined') return;
+    const unlock = () => {
+      this.ensure();
+      const c = this.ctx;
+      if (!c) return;
+      if (c.state !== 'running') void c.resume();
+      // play one silent frame — required by older iOS to fully unlock
+      const b = c.createBuffer(1, 1, 22050); const s = c.createBufferSource(); s.buffer = b; s.connect(c.destination); s.start(0);
+      this.unlocked = true;
+      this.syncAmbient();
+      this.syncMusic();
+      if (c.state === 'running') ['pointerdown', 'touchend', 'keydown'].forEach((e) => window.removeEventListener(e, unlock, true));
+    };
+    ['pointerdown', 'touchend', 'keydown'].forEach((e) => window.addEventListener(e, unlock, true));
+    // iOS suspends the context when the app is backgrounded; resume on return
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && this.ctx && this.ctx.state !== 'running' && this.unlocked) void this.ctx.resume(); });
+  }
+
+  private ensure() {
+    if (this.ctx || !AC) return;
+    const c = new AC({ latencyHint: 'interactive' });
+    this.ctx = c;
+    this.master = c.createGain();
+    const comp = c.createDynamicsCompressor();
+    comp.threshold.value = -14; comp.ratio.value = 4;
+    this.master.connect(comp).connect(c.destination);
+    this.sfxBus = c.createGain(); this.sfxBus.connect(this.master);
+    this.ambBus = c.createGain(); this.ambBus.gain.value = 0; this.ambBus.connect(this.master);
+    this.applyGain();
+    this.load();
+  }
+
+  private applyGain() {
+    if (!this.master || !this.ctx) return;
+    const v = this.settings.on ? this.settings.volume ** 1.6 : 0; // perceptual curve
+    this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.03);
+  }
+
+  private load() {
+    if (this.loading || !this.ctx) return this.loading;
+    const c = this.ctx;
+    const names = Object.values(FILES).flat();
+    this.loading = Promise.all(names.map(async (n) => {
+      try {
+        const res = await fetch(`/assets/sfx/${n}.mp3`);
+        const data = await res.arrayBuffer();
+        const buf = await new Promise<AudioBuffer>((ok, bad) => c.decodeAudioData(data, ok, bad)); // callback form for older Safari
+        this.buffers.set(n, buf);
+      } catch { /* missing sound is not fatal */ }
+    })).then(() => undefined);
+    return this.loading;
+  }
+
+  /* ---------- playback ---------- */
+  play(name: Sfx, opts: { delay?: number; gain?: number } = {}) {
+    if (!this.settings.on || !this.unlocked) return;
+    this.ensure();
+    const c = this.ctx;
+    if (!c || c.state !== 'running') return;
+    const now = performance.now();
+    const minGap = name === 'deal' ? 45 : name === 'play' ? 60 : 90;
+    if (now - (this.lastAt.get(name) ?? -1e9) < minGap && !opts.delay) return;
+    this.lastAt.set(name, now);
+    this.played[name] = (this.played[name] ?? 0) + 1;
+    const t = c.currentTime + (opts.delay ?? 0);
+    const g = opts.gain ?? 1;
+    switch (name) {
+      case 'shuffle': return this.sample('shuffle', t, 0.75 * g, 1, 1.6);
+      case 'deal': return this.sample('deal', t, 0.32 * g, 1.15 + Math.random() * 0.2, 0.35);
+      case 'play': return this.sample('play', t, 0.9 * g, 0.95 + Math.random() * 0.12);
+      case 'tap': return this.sample('tap', t, 0.5 * g, 1.1);
+      case 'sweep': this.sample('sweep', t, 0.55 * g, 1.05); return this.whoosh(t, 0.18 * g);
+      case 'bid': return this.sample('bid', t, 0.9 * g, 1);
+      case 'bidSoft': return this.sample('bid', t, 0.35 * g, 1.15);
+      case 'pop': return this.sample('pop', t, 0.45 * g, 1.2);
+      case 'turn': return this.chime(t, g);
+      case 'cut': return this.cutHit(t, g);
+      case 'broken': this.cutHit(t, g * 0.8); return this.brokenSting(t + 0.06, g);
+      case 'made': return this.arp(t, [523.25, 659.25, 783.99, 1046.5], 0.075, 'triangle', 0.22 * g, 0.5);
+      case 'nil': return this.fanfare(t, g);
+      case 'set': return this.sadTrombone(t, g);
+      case 'bags': return this.buzz(t, g);
+      case 'win': return this.winJingle(t, g);
+      case 'lose': return this.loseJingle(t, g);
+    }
+  }
+
+  private sample(key: string, t: number, gain: number, rate = 1, maxDur?: number) {
+    const c = this.ctx!; const list = FILES[key]!;
+    const buf = this.buffers.get(list[Math.floor(Math.random() * list.length)]!);
+    if (!buf) return;
+    const src = c.createBufferSource(); src.buffer = buf; src.playbackRate.value = rate;
+    const g = c.createGain(); g.gain.value = gain;
+    src.connect(g).connect(this.sfxBus!);
+    src.start(t);
+    if (maxDur) { g.gain.setValueAtTime(gain, t + maxDur - 0.25); g.gain.linearRampToValueAtTime(0.0001, t + maxDur); src.stop(t + maxDur + 0.05); }
+  }
+
+  private tone(t: number, freq: number, dur: number, type: OscillatorType, gain: number, opts: { attack?: number; glideTo?: number; filter?: number; dest?: AudioNode } = {}) {
+    const c = this.ctx!;
+    const o = c.createOscillator(); o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (opts.glideTo) o.frequency.exponentialRampToValueAtTime(opts.glideTo, t + dur);
+    const g = c.createGain();
+    const a = opts.attack ?? 0.008;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    let node: AudioNode = o;
+    if (opts.filter) { const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = opts.filter; node.connect(f); node = f; }
+    node.connect(g).connect(opts.dest ?? this.sfxBus!);
+    o.start(t); o.stop(t + dur + 0.05);
+  }
+
+  private noise(dur: number): AudioBuffer {
+    const c = this.ctx!;
+    const b = c.createBuffer(1, Math.ceil(c.sampleRate * dur), c.sampleRate);
+    const d = b.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    return b;
+  }
+
+  private whoosh(t: number, gain: number) {
+    const c = this.ctx!;
+    const s = c.createBufferSource(); s.buffer = this.noise(0.5);
+    const f = c.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 1.2;
+    f.frequency.setValueAtTime(500, t); f.frequency.exponentialRampToValueAtTime(2600, t + 0.22); f.frequency.exponentialRampToValueAtTime(900, t + 0.45);
+    const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + 0.12); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.48);
+    s.connect(f).connect(g).connect(this.sfxBus!); s.start(t); s.stop(t + 0.5);
+  }
+
+  private chime(t: number, g: number) {
+    this.tone(t, 1318.5, 0.5, 'sine', 0.16 * g);
+    this.tone(t + 0.09, 1975.5, 0.65, 'sine', 0.12 * g);
+    this.tone(t, 2637, 0.25, 'sine', 0.03 * g);
+  }
+
+  private arp(t: number, notes: number[], step: number, type: OscillatorType, gain: number, tail: number) {
+    notes.forEach((f, i) => this.tone(t + i * step, f, tail, type, gain, { filter: 4000 }));
+  }
+
+  /** Trump-in "cut": a sharp snap + low punch + a quick metallic downward swipe. */
+  private cutHit(t: number, g: number) {
+    const c = this.ctx!;
+    const s = c.createBufferSource(); s.buffer = this.noise(0.12);
+    const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1800;
+    const ng = c.createGain(); ng.gain.setValueAtTime(0.5 * g, t); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+    s.connect(hp).connect(ng).connect(this.sfxBus!); s.start(t); s.stop(t + 0.12);
+    this.tone(t, 160, 0.18, 'sine', 0.55 * g, { glideTo: 55, attack: 0.002 });
+    this.tone(t + 0.01, 1760, 0.16, 'sawtooth', 0.06 * g, { glideTo: 600, filter: 5000, attack: 0.002 });
+    this.tone(t + 0.01, 2349, 0.22, 'square', 0.025 * g, { glideTo: 1175, filter: 6000, attack: 0.002 });
+  }
+
+  private brokenSting(t: number, g: number) {
+    // low "brass" stab: detuned saws through a closing low-pass + a felt thump
+    for (const f of [146.83, 220, 293.66, 349.23]) {
+      this.tone(t, f, 0.7, 'sawtooth', 0.07 * g, { filter: 1400, attack: 0.02 });
+      this.tone(t, f * 1.006, 0.7, 'sawtooth', 0.05 * g, { filter: 1100, attack: 0.02 });
+    }
+    this.tone(t, 90, 0.25, 'sine', 0.4 * g, { glideTo: 45 });
+    this.tone(t + 0.16, 587.33, 0.5, 'triangle', 0.08 * g);
+  }
+
+  private fanfare(t: number, g: number) {
+    const n = [523.25, 659.25, 783.99, 1046.5];
+    n.forEach((f, i) => { this.tone(t + i * 0.07, f, 0.22, 'square', 0.06 * g, { filter: 3000 }); this.tone(t + i * 0.07, f, 0.3, 'triangle', 0.12 * g); });
+    for (const f of [523.25, 659.25, 783.99, 1046.5]) this.tone(t + 0.32, f, 0.9, 'sawtooth', 0.045 * g, { filter: 2600, attack: 0.03 });
+    this.tone(t + 0.32, 2093, 0.9, 'sine', 0.05 * g);
+  }
+
+  private sadTrombone(t: number, g: number) {
+    const n = [392, 370, 349.23];
+    n.forEach((f, i) => this.tone(t + i * 0.2, f, 0.22, 'sawtooth', 0.11 * g, { filter: 900, attack: 0.03 }));
+    this.tone(t + 0.6, 329.63, 0.75, 'sawtooth', 0.12 * g, { filter: 800, attack: 0.03, glideTo: 311 });
+  }
+
+  private buzz(t: number, g: number) {
+    this.tone(t, 110, 0.38, 'square', 0.09 * g, { filter: 700 });
+    this.tone(t, 116.5, 0.38, 'square', 0.07 * g, { filter: 700 });
+  }
+
+  private winJingle(t: number, g: number) {
+    const mel = [523.25, 659.25, 783.99, 1046.5, 783.99, 1046.5];
+    mel.forEach((f, i) => this.tone(t + i * 0.11, f, 0.3, 'triangle', 0.18 * g));
+    for (const f of [261.63, 329.63, 392, 523.25]) this.tone(t + 0.66, f, 1.4, 'sawtooth', 0.04 * g, { filter: 2200, attack: 0.04 });
+    this.tone(t + 0.66, 1318.5, 1.2, 'sine', 0.08 * g);
+  }
+
+  private loseJingle(t: number, g: number) {
+    const mel = [493.88, 440, 392, 329.63];
+    mel.forEach((f, i) => this.tone(t + i * 0.22, f, 0.4, 'triangle', 0.16 * g));
+    for (const f of [164.81, 196, 246.94]) this.tone(t + 0.88, f, 1.4, 'sawtooth', 0.04 * g, { filter: 900, attack: 0.05 });
+  }
+
+  /* ---------- optional lounge ambience (synth pad + room tone), off by default ---------- */
+  private syncAmbient() {
+    const want = this.settings.on && this.settings.ambient && this.unlocked;
+    if (!this.ctx || !this.ambBus) return;
+    const c = this.ctx;
+    this.ambBus.gain.setTargetAtTime(want ? 0.5 : 0, c.currentTime, 0.6);
+    if (want && this.ambTimer === null) {
+      // room tone: brown-ish noise, heavily low-passed
+      const src = c.createBufferSource(); src.buffer = this.noise(4); src.loop = true;
+      const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 380;
+      const g = c.createGain(); g.gain.value = 0.05;
+      src.connect(f).connect(g).connect(this.ambBus); src.start();
+      this.ambNodes.push(src);
+      // slow jazz-lounge pad: Dm9 → G13 → Cmaj9 → A7(b9), 4 s each
+      const chords = [[146.83, 174.61, 220, 261.63, 329.63], [98, 174.61, 246.94, 329.63, 349.23], [130.81, 164.81, 246.94, 293.66, 392], [110, 196, 233.08, 277.18, 329.63]];
+      let i = 0;
+      const tick = () => {
+        const t = c.currentTime + 0.05;
+        for (const fr of chords[i % chords.length]!) {
+          this.tone(t, fr, 4.4, 'sine', 0.035, { attack: 0.9, dest: this.ambBus! });
+          this.tone(t, fr * 2.003, 4.0, 'triangle', 0.008, { attack: 1.2, filter: 1200, dest: this.ambBus! });
+        }
+        // a soft walking bass note
+        this.tone(t, chords[i % chords.length]![0]! / 2, 1.6, 'sine', 0.06, { attack: 0.03, dest: this.ambBus! });
+        i++;
+      };
+      tick();
+      this.ambTimer = window.setInterval(tick, 4000);
+    } else if (!want && this.ambTimer !== null) {
+      window.clearInterval(this.ambTimer); this.ambTimer = null;
+      const nodes = this.ambNodes; this.ambNodes = [];
+      window.setTimeout(() => nodes.forEach((nd) => { try { (nd as AudioBufferSourceNode).stop(); } catch { /* */ } }), 1500);
+    }
+  }
+}
+
+export const sound = new Engine();
+sound.installUnlock();
+if (typeof window !== 'undefined') (window as unknown as { __bwmSound?: Engine }).__bwmSound = sound;
+
+export function useSoundSettings(): Engine['snapshot'] {
+  return useSyncExternalStore(sound.subscribe, sound.getSnapshot, sound.getSnapshot);
+}

@@ -46,3 +46,14 @@ node scripts/shots3d.mjs  # screenshots/3d/{phone,desktop}-{1-start,2-bidding,3-
   Toggle in setup or with the HQ/LQ button in the scorebug.
 - Accessibility/automation: a visually hidden button list (`data-testid="card-XX"`, `data-legal`) mirrors the 3D hand.
 - Asset licenses: see `CREDITS.md` (Poly Haven CC0 textures + HDRI).
+
+## Sound & music
+
+- `apps/web/src/audio.ts`: Web Audio engine, unlocked on the first tap (iOS). Kenney CC0 card/chip samples
+  (`public/assets/sfx/*.mp3`) + synthesized cues: your-turn chime, cut/trump hit, spades-broken sting (bigger; wins
+  when both apply), trick-sweep whoosh, BID MADE / SET! / NIL! / BAG PENALTY stingers, win/lose jingles, optional lounge ambience.
+- Music: 5-track shuffled playlist (`public/audio/music/*.mp3`, 128 kbps), off by default, lazy-loaded with one-track
+  look-ahead, 4 s crossfades, gentle mono-compatible mid/side widening, "Now playing" ticker.
+- Controls: setup screen + speaker button in the scorebug (SFX on/off + volume, ambience, music on/off + volume), persisted
+  in localStorage (`bwm.sound.v1`). The iPhone silent switch mutes Web Audio.
+- Credits & licenses: `CREDITS.md` and the in-game Credits screen (includes the CC BY 4.0 line for "Chillin Hard").

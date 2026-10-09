@@ -103,25 +103,27 @@ function corner(ctx: CanvasRenderingContext2D, W: number, rank: string, suit: Su
   ctx.fillStyle = color;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
-  const fs = W * (label.length > 1 ? 0.17 : 0.19);
+  // big, high-contrast index so a card reads at a glance on a phone-sized table
+  const fs = W * (label.length > 1 ? 0.25 : 0.28);
   ctx.font = `800 ${fs}px "Barlow Condensed", "Arial Narrow", Arial, sans-serif`;
-  const cx = W * 0.115;
-  ctx.fillText(label, cx, W * 0.2);
-  drawSuit(ctx, suit, cx, W * 0.29, W * 0.12, color);
+  const cx = W * 0.135;
+  if (label.length > 1) { ctx.save(); ctx.translate(cx, 0); ctx.scale(0.86, 1); ctx.fillText(label, 0, W * 0.255); ctx.restore(); }
+  else ctx.fillText(label, cx, W * 0.255);
+  drawSuit(ctx, suit, cx, W * 0.37, W * 0.165, color);
   if (badge) {
     ctx.beginPath();
-    ctx.arc(cx, W * 0.43, W * 0.07, 0, Math.PI * 2);
+    ctx.arc(cx, W * 0.53, W * 0.07, 0, Math.PI * 2);
     ctx.fillStyle = BLACK;
     ctx.fill();
     ctx.lineWidth = W * 0.012;
     ctx.strokeStyle = '#e7b93f';
     ctx.stroke();
-    drawSuit(ctx, 'S', cx, W * 0.43, W * 0.085, '#ffffff');
+    drawSuit(ctx, 'S', cx, W * 0.53, W * 0.085, '#ffffff');
   }
 }
 
 function court(ctx: CanvasRenderingContext2D, W: number, H: number, rank: string, suit: Suit, color: string) {
-  const x = W * 0.22, y = H * 0.12, w = W * 0.56, h = H * 0.76;
+  const x = W * 0.27, y = H * 0.1, w = W * 0.46, h = H * 0.8;
   const g = ctx.createLinearGradient(0, y, 0, y + h);
   const tint = color === RED ? ['#fde9e6', '#f6cfc7'] : ['#e9edf7', '#cfd6ea'];
   g.addColorStop(0, tint[0]!);
@@ -165,12 +167,12 @@ function joker(ctx: CanvasRenderingContext2D, W: number, H: number, big: boolean
   ctx.fillStyle = ink;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = `800 ${W * 0.1}px "Barlow Condensed", "Arial Narrow", Arial, sans-serif`;
-  'JOKER'.split('').forEach((l, i) => ctx.fillText(l, W * 0.1, W * 0.11 + i * W * 0.1));
+  ctx.font = `800 ${W * 0.14}px "Barlow Condensed", "Arial Narrow", Arial, sans-serif`;
+  'JOKER'.split('').forEach((l, i) => ctx.fillText(l, W * 0.11, W * 0.13 + i * W * 0.13));
   ctx.save();
   ctx.translate(W, H);
   ctx.rotate(Math.PI);
-  'JOKER'.split('').forEach((l, i) => ctx.fillText(l, W * 0.1, W * 0.11 + i * W * 0.1));
+  'JOKER'.split('').forEach((l, i) => ctx.fillText(l, W * 0.11, W * 0.13 + i * W * 0.13));
   ctx.restore();
   // jester hat
   const cx = W / 2, cy = H * 0.46, s = W * 0.62;
@@ -220,12 +222,6 @@ export function drawFace(card: Card, W: number, H: number, badge: boolean): HTML
   const rank = card[0]!;
   const suit = card[1] as Suit;
   const color = suit === 'H' || suit === 'D' ? RED : BLACK;
-  corner(ctx, W, rank, suit, color, badge);
-  ctx.save();
-  ctx.translate(W, H);
-  ctx.rotate(Math.PI);
-  corner(ctx, W, rank, suit, color, badge);
-  ctx.restore();
   if (rank === 'A') {
     const big = suit === 'S' ? 0.5 : 0.34;
     if (suit === 'S') {
@@ -239,11 +235,17 @@ export function drawFace(card: Card, W: number, H: number, badge: boolean): HTML
   } else if (rank === 'J' || rank === 'Q' || rank === 'K') {
     court(ctx, W, H, rank, suit, color);
   } else {
-    const x0 = W * 0.2, x1 = W * 0.8, y0 = H * 0.1, y1 = H * 0.9;
+    const x0 = W * 0.27, x1 = W * 0.73, y0 = H * 0.1, y1 = H * 0.9;
     for (const [px, py] of PIPS[rank]!) {
-      drawSuit(ctx, suit, x0 + (x1 - x0) * px, y0 + (y1 - y0) * py, W * 0.17, color, py > 0.55 ? Math.PI : 0);
+      drawSuit(ctx, suit, x0 + (x1 - x0) * px, y0 + (y1 - y0) * py, W * 0.15, color, py > 0.55 ? Math.PI : 0);
     }
   }
+  corner(ctx, W, rank, suit, color, badge);
+  ctx.save();
+  ctx.translate(W, H);
+  ctx.rotate(Math.PI);
+  corner(ctx, W, rank, suit, color, badge);
+  ctx.restore();
   return cv;
 }
 

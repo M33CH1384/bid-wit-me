@@ -52,7 +52,8 @@ const yawOf = (d: Vector3) => Math.atan2(d.x, d.z);
 /** Opponent's held fan: upright cards near the rail, backs toward the table centre. */
 export function opponentFan(pos: SeatPos, n: number, i: number, count: number): Xform {
   const d = seatDir(pos, n);
-  const base = edgePoint(d, 0.05).add(new Vector3(0, 0.3, 0)).add(d.clone().multiplyScalar(0.12));
+  const side = pos === 'left' || pos === 'right';
+  const base = edgePoint(d, side ? 0.3 : 0.05).add(new Vector3(0, 0.3, 0)).add(d.clone().multiplyScalar(0.12));
   const yaw = yawOf(d);
   const off = i - (count - 1) / 2;
   const spread = 0.038;
@@ -62,11 +63,25 @@ export function opponentFan(pos: SeatPos, n: number, i: number, count: number): 
   return xf([p.x, p.y, p.z], [0.55, yaw, -off * 0.075], 1);
 }
 
-/** Card's spot in the middle of the table when played by this seat. */
+/** Trick-card scale: big enough that rank + suit read clearly on a phone. */
+export const TRICK_SCALE = 2.3;
+const TRICK_LEAN = 0.38; // tilt toward the camera so the faces aren't foreshortened
+
+/**
+ * Card's spot in the middle of the table when played by this seat: a non-overlapping "plus" layout
+ * (each card toward its player), face up, almost square to the table edge, leaned up toward the camera.
+ */
 export function trickSpot(pos: SeatPos, n: number, order: number, jitter: number): Xform {
   const d = seatDir(pos, n);
-  const p = d.clone().multiplyScalar(0.36);
-  return xf([p.x, 0.012 + order * 0.006, p.z * 1.05], [-Math.PI / 2, yawOf(d) * 0.25 + jitter * 0.35, 0], 1.3);
+  const w = CW * TRICK_SCALE, h = CH * TRICK_SCALE;
+  // non-overlapping plus: top/bottom stacked by card height, sides beside them by a full card width,
+  // so every card's corner index stays visible whatever the play order
+  const off = Math.abs(d.x) > 0.5
+    ? new Vector3(Math.sign(d.x) * (w + 0.05), 0, 0.02)
+    : new Vector3(0, 0, Math.sign(d.z) * (h / 2 + 0.03));
+  if (n === 3 && pos !== 'bottom') off.set(Math.sign(d.x) * (w / 2 + 0.04), 0, -(h / 2 + 0.01));
+  const lift = 0.02 + order * 0.004 + (h / 2) * Math.sin(TRICK_LEAN);
+  return xf([off.x, lift, off.z + 0.04], [-Math.PI / 2 + TRICK_LEAN, jitter * 0.05, 0], TRICK_SCALE, 'XYZ');
 }
 
 /** Won-trick pile in front of a seat: tricks laid in an overlapping row, face down. */
@@ -99,7 +114,8 @@ export function badgeSpot(pos: SeatPos, n: number): [number, number, number] {
   const d = seatDir(pos, n);
   const p = edgePoint(d, 0).add(d.clone().multiplyScalar(0.12));
   if (pos === 'left' || pos === 'right') return [p.x * 0.78, 0.62, p.z - 0.55];
-  return [p.x, 0.72, p.z];
+  // top seat: plate beside (right of) the fan so it never hides under the HUD strips
+  return [p.x + 0.42, 0.42, p.z];
 }
 
 /* ------------------------------------------------------------- camera */
@@ -110,13 +126,13 @@ export interface CamSpec { pos: [number, number, number]; look: [number, number,
 export function cameraFor(aspect: number): CamSpec {
   const t = Math.min(1, Math.max(0, (aspect - 0.5) / (1.6 - 0.5))); // 0 = tall phone, 1 = wide desktop
   const lerp = (a: number, b: number) => a + (b - a) * t;
-  const pos: [number, number, number] = [0, lerp(4.7, 3.55), lerp(3.9, 3.55)];
-  const look: [number, number, number] = [0, 0, lerp(0.38, 0.32)];
+  const pos: [number, number, number] = [0, lerp(4.5, 3.45), lerp(3.75, 3.4)];
+  const look: [number, number, number] = [0, 0, lerp(0.38, 0.08)];
   const dist = Math.hypot(pos[1] - look[1], pos[2] - look[2]);
   // fit the table width (with rail) horizontally, and keep at least a minimum vertical fov
-  const halfW = FELT.hx + RAIL + lerp(0.22, 0.25);
+  const halfW = FELT.hx + RAIL + lerp(-0.08, 0.1);
   const vFit = 2 * Math.atan(Math.tan(Math.atan(halfW / dist)) / aspect) * (180 / Math.PI);
-  const fov = Math.min(80, Math.max(lerp(62, 46), vFit));
+  const fov = Math.min(80, Math.max(lerp(56, 45.5), vFit));
   return { pos, look, fov };
 }
 
@@ -129,29 +145,71 @@ export function makeCamera(aspect: number): PerspectiveCamera {
   return cam;
 }
 
-/** The human hand, fanned in camera space at the bottom of the view, converted to world transforms. */
-export function handFan(aspect: number, count: number, i: number, lift: number): Xform {
+export interface FanLayout { s: number; cw: number; ch: number; step: number; maxRoll: number; curveK: number; viewW: number; viewH: number }
+
+/**
+ * Solve the human fan so it always fits the camera frustum width at the hand's depth (D = 1 in camera space):
+ * the outermost cards — including their roll, the perspective growth from the tilt and a lifted card — stay inside
+ * the view with `margin` on both sides (margin = max(6% of width, iOS safe-area inset)). Card scale shrinks only
+ * when even a tight overlap (rank index still visible) can't fit.
+ */
+export function fanLayout(aspect: number, count: number, safeFrac = 0): FanLayout {
   const cam = makeCamera(aspect);
   const D = 1;
   const viewH = 2 * Math.tan((cam.fov * Math.PI) / 360) * D;
   const viewW = viewH * aspect;
-  const ch = Math.min(viewH * 0.16, viewW * 0.25 * 1.4);
-  const s = ch / CH;
-  const cw = CW * s;
-  const step = count > 1 ? Math.min(cw * 0.62, (viewW * 0.88 - cw) / (count - 1)) : 0;
-  const off = i - (count - 1) / 2;
-  const x = off * step;
-  const curve = (x * x) / (viewW * 1.6);
-  const y = -viewH / 2 + ch * 0.62 + viewH * 0.02 - curve + lift * ch;
+  const margin = viewW * Math.max(0.06, safeFrac + 0.025);
+  const halfAvail = viewW / 2 - margin;
+  const persp = 1.04; // the -0.18 rad tilt brings the card bottoms slightly toward the camera
+  const halfN = Math.max(0, (count - 1) / 2);
+  const maxRoll = count > 1 ? Math.min(0.32, 0.03 * count) : 0;
+  let s = Math.min(viewH * 0.16, viewW * 0.25 * 1.4) / CH;
+  let step = 0;
+  for (let k = 0; k < 40; k++) {
+    const cw = CW * s, ch = CH * s;
+    const outer = (cw / 2) * Math.cos(maxRoll) + (ch / 2) * Math.sin(maxRoll); // half-extent of a rolled card
+    const room = halfAvail / persp - outer;
+    step = halfN > 0 ? Math.min(cw * 0.62, room / halfN) : 0;
+    if (halfN === 0 ? room >= 0 : step >= cw * 0.3) break; // ≥30% of a card exposed keeps the corner index readable
+    s *= 0.96;
+  }
+  return { s, cw: CW * s, ch: CH * s, step: Math.max(0, step), maxRoll, curveK: 1 / (viewW * 1.6), viewW, viewH };
+}
+
+/** The human hand, fanned in camera space at the bottom of the view, converted to world transforms. */
+export function handFan(aspect: number, count: number, i: number, lift: number, safeFrac = 0): Xform {
+  const cam = makeCamera(aspect);
+  const L = fanLayout(aspect, count, safeFrac);
+  const halfN = (count - 1) / 2;
+  const off = i - halfN;
+  const x = off * L.step;
+  const roll = halfN > 0 ? -(off / halfN) * L.maxRoll : 0;
+  const curve = x * x * L.curveK;
+  const y = -L.viewH / 2 + L.ch * 0.62 + L.viewH * 0.02 - curve + lift * L.ch;
   const local = new Matrix4().compose(
-    new Vector3(x, y, -D + i * 0.0025),
-    new Quaternion().setFromEuler(new Euler(-0.18, 0, -x * 0.55, 'XYZ')),
-    new Vector3(s, s, s),
+    new Vector3(x, y, -1 + i * 0.0025),
+    new Quaternion().setFromEuler(new Euler(-0.18, 0, roll, 'XYZ')),
+    new Vector3(L.s, L.s, L.s),
   );
   const world = cam.matrixWorld.clone().multiply(local);
   const p = new Vector3(), q = new Quaternion(), sc = new Vector3();
   world.decompose(p, q, sc);
   return { p: [p.x, p.y, p.z], q: [q.x, q.y, q.z, q.w], s: sc.x };
+}
+
+/** Screen-space (NDC) x-extent of a set of card transforms, for fit checks in tests. */
+export function ndcExtentX(aspect: number, xs: Xform[]): [number, number] {
+  const cam = makeCamera(aspect);
+  cam.updateProjectionMatrix();
+  let lo = Infinity, hi = -Infinity;
+  for (const t of xs) {
+    const m = new Matrix4().compose(new Vector3(...t.p), new Quaternion(...t.q), new Vector3(t.s, t.s, t.s));
+    for (const [cx, cy] of [[-CW / 2, -CH / 2], [CW / 2, -CH / 2], [-CW / 2, CH / 2], [CW / 2, CH / 2]] as const) {
+      const v = new Vector3(cx, cy, 0).applyMatrix4(m).project(cam);
+      lo = Math.min(lo, v.x); hi = Math.max(hi, v.x);
+    }
+  }
+  return [lo, hi];
 }
 
 /** Deterministic small jitter in [-1, 1] from a string. */

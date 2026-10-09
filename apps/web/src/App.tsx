@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { secureSeed } from '@spades/rules';
 import Setup from './Setup';
+import { NowPlaying } from './SoundControls';
 import Table from './Table';
 import { type Settings, loadSettings, saveSettings, settingsToRules } from './settings';
 
@@ -13,14 +14,19 @@ export default function App() {
 
   if (!game) {
     return (
+      <>
+      <NowPlaying />
       <Setup
         settings={settings}
         onChange={(s) => { setSettings(s); saveSettings(s); }}
         onStart={() => setGame({ seed: secureSeed(), settings })}
       />
+      </>
     );
   }
   return (
+    <>
+    <NowPlaying />
     <Table
       key={game.seed}
       rules={settingsToRules(game.settings)}
@@ -30,5 +36,6 @@ export default function App() {
       onRematch={() => setGame({ seed: secureSeed(), settings: game.settings })}
       onQuality={(quality) => { const s = { ...game.settings, quality }; setGame({ ...game, settings: s }); setSettings(s); saveSettings(s); }}
     />
+    </>
   );
 }

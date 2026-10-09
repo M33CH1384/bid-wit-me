@@ -39,6 +39,13 @@ async function playGame(mode, label, { shots = false, speed = 'turbo', extra = {
   await page.evaluate(([m, sp, ex]) => localStorage.setItem('spades.settings.v2', JSON.stringify({ mode: m, speed: sp, blindNil: 'always', quality: 'low', ...ex })), [mode, speed, extra]);
   await page.goto(`${base}/?autostart=1&seed=e2e-${mode}-${extra.cutthroatDeck ?? ''}`);
   let hands = 0, plays = 0, tookBidShot = false, tookTrickShot = false, tookSummary = false;
+  if (shots) { // a real (trusted) tap unlocks Web Audio, as on iOS; toggle the sound popover open/closed
+    const sb = page.getByTestId('sound-button');
+    await sb.waitFor({ timeout: 30000 }); await sb.click(); await page.getByRole('dialog', { name: 'Sound' }).waitFor();
+    await page.getByTestId('music-switch').click(); // music on (lazy-loads the playlist)
+    await page.getByTestId('now-playing').waitFor({ timeout: 10000 });
+    await sb.click();
+  }
   const t0 = Date.now();
   while (Date.now() - t0 < 420_000) {
     if (await page.locator('.gameover').count()) break;
@@ -73,6 +80,23 @@ async function playGame(mode, label, { shots = false, speed = 'turbo', extra = {
   if (!over) { await shot(`timeout-${mode}`); throw new Error(`${label}: game did not finish in time (${hands + 1} hands, ${plays} plays)`); }
   await shot(`05-gameover-${mode}${extra.cutthroatDeck === 'standard52' ? '-standard52' : ''}`);
   const title = await page.locator('.gameover h2').innerText();
+  if (shots) {
+    await page.waitForTimeout(800);
+    const snd = await page.evaluate(() => { const s = window.__bwmSound; return { state: s.state, loaded: s.loaded, played: s.played }; });
+    const need = ['shuffle', 'deal', 'play', 'sweep', 'turn', 'bid', 'tap'];
+    const missing = need.filter((k) => !snd.played[k]);
+    if (snd.state !== 'running' || snd.loaded < 12 || missing.length || !(snd.played.win || snd.played.lose) || !(snd.played.made || snd.played.set || snd.played.nil))
+      throw new Error(`sound check failed: ${JSON.stringify(snd)} missing=${missing}`);
+    console.log(`  ♪ sound: context ${snd.state}, ${snd.loaded} samples, cues ${JSON.stringify(snd.played)}`);
+    // music: playing, then force a crossfade by seeking near the end and check the next (different) track starts
+    const m1 = await page.evaluate(() => ({ status: window.__bwmSound.musicStatus, title: window.__bwmSound.nowPlaying?.track.title }));
+    if (m1.status !== 'playing') throw new Error(`music not playing: ${JSON.stringify(m1)}`);
+    await page.evaluate(() => { const s = window.__bwmSound; const d = s.decks[s.active]; d.el.currentTime = Math.max(0, d.el.duration - 6); });
+    await page.waitForTimeout(9000);
+    const m2 = await page.evaluate(() => ({ status: window.__bwmSound.musicStatus, title: window.__bwmSound.nowPlaying?.track.title, paused: window.__bwmSound.decks.map((d) => d.el.paused) }));
+    if (m2.status !== 'playing' || !m2.title || m2.title === m1.title) throw new Error(`music crossfade failed: ${JSON.stringify([m1, m2])}`);
+    console.log(`  ♫ music: "${m1.title}" → crossfade → "${m2.title}"`);
+  }
   console.log(`✓ ${label}: finished via UI — ${hands + 1} hands, ${plays} human plays — "${title}" (${((Date.now() - t0) / 1000).toFixed(0)}s)`);
 }
 

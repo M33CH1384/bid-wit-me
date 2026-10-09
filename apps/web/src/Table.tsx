@@ -3,6 +3,8 @@ import {
   type Card, type GameState, type TableRules, bidLabel, cardLabel, isJoker, isNilBid, isTrump, partnerOf, sideOf, sortHand, trumpOrder,
 } from '@spades/rules';
 import { HandSummary, ScorePad, sideName } from './Modals';
+import { type Sfx, sound } from './audio';
+import SoundButton from './SoundControls';
 import { type ChatMsg, LINES, type Toast, TickNumber, USER_COLORS, pick, toastsFor } from './overlay';
 import { type Settings, modeTitle } from './settings';
 import type { SeatPos } from './three/layout';
@@ -136,6 +138,41 @@ function ChatPanel({ msgs, open, onToggle, onSend, unread }: { msgs: ChatMsg[]; 
 }
 
 /* ------------------------------------------------------------------ table */
+/* -------------------------------------------------------------- sound cues */
+function useGameSounds(st: GameState, pause: boolean, piles: number, myTurn: boolean, mySide: number, msgs: ChatMsg[]) {
+  const prev = useRef<{ st: GameState; piles: number; myTurn: boolean; msgs: number } | null>(null);
+  useEffect(() => {
+    const p = prev.current;
+    prev.current = { st, piles, myTurn, msgs: msgs.length };
+    const n = st.rules.playerCount;
+    const newDeal = st.phase === 'bidding' && st.bids.every((b) => b === null) && (!p || p.st.handNo !== st.handNo || p.st.phase !== 'bidding');
+    if (newDeal) {
+      sound.play('shuffle');
+      const cards = Math.min(14, st.hands[HUMAN]?.length ?? 13);
+      for (let i = 0; i < cards; i++) sound.play('deal', { delay: 0.35 + i * n * 0.028 });
+    }
+    if (!p) return;
+    const played = (s: GameState) => s.tricks.length * n + s.trick.plays.length;
+    if (st.handNo === p.st.handNo && played(st) > played(p.st)) {
+      sound.play('play');
+      // the trick holding the newest card: the live one, or the one that just completed
+      const t = st.trick.plays.length ? st.trick : st.tricks[st.tricks.length - 1];
+      const last = t?.plays[t.plays.length - 1];
+      const led = t?.plays[0];
+      const cut = !!t && t.plays.length > 1 && isTrump(last!.card, st.rules) && !isTrump(led!.card, st.rules);
+      const broke = !p.st.spadesBroken && st.spadesBroken;
+      // both on the same card → the bigger "spades broken" sting (it layers the cut hit on top)
+      if (broke) sound.play('broken', { delay: 0.1 });
+      else if (cut) sound.play('cut', { delay: 0.08 });
+    }
+    if (piles > p.piles && st.handNo === p.st.handNo) sound.play('sweep');
+    st.bids.forEach((b, s) => { if (b !== null && p.st.bids[s] === null && p.st.handNo === st.handNo) sound.play(s === HUMAN ? 'bid' : 'bidSoft'); });
+    if (myTurn && !p.myTurn && (st.phase === 'playing' || st.phase === 'bidding')) sound.play('turn', { delay: 0.05 });
+    if (msgs.length > p.msgs) { const m = msgs[msgs.length - 1]!; if (!m.system && m.user !== 'You') sound.play('pop'); }
+    if (st.phase === 'gameOver' && p.st.phase !== 'gameOver' && st.result) sound.play(st.result.winners.includes(mySide) ? 'win' : 'lose', { delay: 0.3 });
+  }, [st, pause, piles, myTurn, mySide, msgs]);
+}
+
 export default function Table({ rules: initialRules, seed, settings, onExit, onRematch, onQuality }: Props) {
   const { st, view, pause, error, apply } = useGame(initialRules, seed, settings.botLevel, settings.speed);
   const r = st.rules;
@@ -159,6 +196,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onR
   const humanExchanging = myTurn && exchangeStep?.from === HUMAN;
   const mySide = sideOf(HUMAN, r);
   const winnerSeat = pause ? shownTrick.winner : null;
+  useGameSounds(st, pause, piles.length, myTurn, mySide, msgs);
 
   useEffect(() => { setSelected(null); }, [st.turn, st.handNo]);
   useEffect(() => { setExchangePick([]); }, [st.phase, st.turn]);
@@ -173,6 +211,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onR
     const base = Date.now();
     const list = toastsFor(rec, r, names, mySide).map((t, i) => ({ ...t, id: base + i }));
     setToasts(list);
+    const cue: Record<Toast['kind'], Sfx | null> = { made: 'made', set: 'set', nil: 'nil', bust: 'set', bags: 'bags', info: null };
+    list.forEach((t, i) => { const c = cue[t.kind]; if (c) sound.play(c, { delay: 0.1 + i * 0.45 }); });
     const tm = setTimeout(() => setToasts([]), 3200);
     return () => clearTimeout(tm);
   }, [st.history, r, names, mySide]);
@@ -182,12 +222,13 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onR
 
   const onCard = useCallback((c: Card) => {
     if (humanExchanging) {
+      sound.play('tap');
       setExchangePick((p) => (p.includes(c) ? p.filter((x) => x !== c) : p.length < exchangeStep!.count ? [...p, c] : p));
       return;
     }
     if (!legal.includes(c)) return;
     if (selected === c) { apply({ type: 'play', seat: HUMAN, card: c }); setSelected(null); }
-    else setSelected(c);
+    else { setSelected(c); sound.play('tap'); }
   }, [humanExchanging, exchangeStep, legal, selected, apply]);
 
   const renderSeat = (seat: number) => {
@@ -254,6 +295,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onR
             <span>HAND {st.handNo} · TO {r.targetScore}</span>
           </div>
         </div>
+        <SoundButton />
         <button type="button" className="bug-btn" onClick={() => setShowPad(true)} aria-label="Score pad">📋</button>
         <button type="button" className="bug-btn q" onClick={() => onQuality(settings.quality === 'high' ? 'low' : 'high')} aria-label="Toggle graphics quality">{settings.quality === 'high' ? 'HQ' : 'LQ'}</button>
       </header>
@@ -261,6 +303,22 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onR
       <div className="trump-strip glass slant">
         <span className="ts-label">TRUMPS</span> {trumps.join(' › ')}{st.spadesBroken && <span className="ts-broken">BROKEN</span>}
       </div>
+
+      {/* last-trick readout */}
+      {piles.length > 0 && (() => {
+        const t = piles[piles.length - 1]!;
+        const short = (c: Card) => (c === 'BJ' ? 'BJ' : c === 'LJ' ? 'LJ' : cardLabel(c));
+        return (
+          <div className="last-trick glass slant" data-testid="last-trick" aria-label="Last trick">
+            <span className="lt-label">LAST TRICK</span>
+            {t.plays.map((pl) => (
+              <span key={pl.card} className={`lt-card ${pl.seat === t.winner ? 'win' : ''} ${pl.card[1] === 'H' || pl.card[1] === 'D' || pl.card === 'BJ' ? 'red' : ''}`}>
+                <small>{pl.seat === HUMAN ? 'You' : names[pl.seat]!.slice(0, 3)}</small>{short(pl.card)}
+              </span>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* center notes */}
       <div className="center-note-wrap">

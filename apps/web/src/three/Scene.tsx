@@ -1,7 +1,7 @@
 import { Environment, Html, useTexture } from '@react-three/drei';
 import { Canvas, useThree } from '@react-three/fiber';
 import { type ReactNode, type RefObject, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { type Texture, ACESFilmicToneMapping, MeshPhysicalMaterial, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, Vector3 } from 'three';
+import { type Camera, type Object3D, type Texture, ACESFilmicToneMapping, MeshPhysicalMaterial, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, Vector3 } from 'three';
 import type { Card, Play, Trick } from '@spades/rules';
 import Card3D from './Card3D';
 import { backTexture, faceTexture, logoTexture } from './cardTextures';
@@ -106,8 +106,8 @@ function TurnRing({ pos, n, active }: { pos: SeatPos; n: number; active: boolean
   );
 }
 
-function Cards(props: SceneProps & { aspect: number; fontsReady: boolean }) {
-  const { quality, n, handNo, dealer, positions, human, myHand, handCounts, shownTrick, piles, legal, selected, promoted, onCardTap, aspect } = props;
+function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFrac: number }) {
+  const { safeFrac, quality, n, handNo, dealer, positions, human, myHand, handCounts, shownTrick, piles, legal, selected, promoted, onCardTap, aspect } = props;
   const gl = useThree((s) => s.gl);
   const aniso = Math.min(quality === 'high' ? 8 : 2, gl.capabilities.getMaxAnisotropy());
   const res = quality;
@@ -149,7 +149,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean }) {
     items.push({
       key: c ? `${handNo}-${c}` : `${handNo}-hb-${i}`,
       card: c,
-      target: handFan(aspect, mine.length, i, lift),
+      target: handFan(aspect, mine.length, i, lift, safeFrac),
       from: deck,
       delay: dealDelay(i, human),
       dim: !!c && legal.length > 0 && !isLegal,
@@ -211,14 +211,28 @@ function Lights({ quality }: { quality: 'high' | 'low' }) {
   );
 }
 
-function Badges({ positions, n, human, renderSeat, portal }: Pick<SceneProps, 'positions' | 'n' | 'human' | 'renderSeat'> & { portal: RefObject<HTMLDivElement> }) {
+function Badges({ positions, n, human, renderSeat, portal, safeFrac }: Pick<SceneProps, 'positions' | 'n' | 'human' | 'renderSeat'> & { portal: RefObject<HTMLDivElement>; safeFrac: number }) {
   return (
     <>
-      {positions.map((p, seat) => (seat === human ? null : (
-        <Html key={seat} position={badgeSpot(p, n)} center zIndexRange={[5, 0]} className="seat-anchor" portal={portal}>
-          {renderSeat(seat)}
-        </Html>
-      )))}
+      {positions.map((p, seat) => {
+        if (seat === human) return null;
+        const side = p === 'left' || p === 'right' ? p : p === 'top' ? 'top' : null;
+        // side plates are anchored by their outer edge and clamped inside the viewport (+ iOS safe area)
+        const calc = side
+          ? (el: Object3D, camera: Camera, size: { width: number; height: number }) => {
+            const v = new Vector3().setFromMatrixPosition(el.matrixWorld).project(camera);
+            const x = (v.x + 1) * size.width / 2, y = (1 - v.y) * size.height / 2;
+            const pad = 6 + safeFrac * size.width;
+            if (side === 'top') return [Math.min(x, size.width - pad - 190), Math.max(y, size.width >= 900 ? 134 : 150)]; // stay below the scorebug/trump strip // left-anchored, kept clear of the right edge
+            return side === 'left' ? [Math.max(pad, x - 72), y] : [Math.min(size.width - pad, x + 72), y];
+          }
+          : undefined;
+        return (
+          <Html key={seat} position={badgeSpot(p, n)} center={!side} calculatePosition={calc} zIndexRange={[5, 0]} className={`seat-anchor${side ? ` side-${side}` : ''}`} portal={portal}>
+            {renderSeat(seat)}
+          </Html>
+        );
+      })}
     </>
   );
 }
@@ -234,6 +248,7 @@ export default function Scene(props: SceneProps) {
     ]).then(() => alive && setFontsReady(true));
     return () => { alive = false; };
   }, []);
+  const safeFrac = useSafeFrac();
   const hi = props.quality === 'high';
   const badgeLayer = useRef<HTMLDivElement>(null!);
   const [layerReady, setLayerReady] = useState(false);
@@ -261,8 +276,8 @@ export default function Scene(props: SceneProps) {
         <TableModel quality={props.quality} />
       </Suspense>
       {props.positions.map((p, seat) => <TurnRing key={seat} pos={p} n={props.n} active={props.turnSeat === seat} />)}
-      <Cards {...props} aspect={aspect} fontsReady={fontsReady} />
-      {layerReady && <Badges positions={props.positions} n={props.n} human={props.human} renderSeat={props.renderSeat} portal={badgeLayer} />}
+      <Cards {...props} aspect={aspect} fontsReady={fontsReady} safeFrac={safeFrac} />
+      {layerReady && <Badges positions={props.positions} n={props.n} human={props.human} renderSeat={props.renderSeat} portal={badgeLayer} safeFrac={safeFrac} />}
     </Canvas>
     <div ref={badgeLayer} className="badge-layer" />
     </div>
@@ -273,4 +288,24 @@ function AspectWatcher({ onAspect }: { onAspect: (a: number) => void }) {
   const size = useThree((s) => s.size);
   useEffect(() => { onAspect(size.width / size.height); }, [size, onAspect]);
   return null;
+}
+
+/** Largest horizontal iOS safe-area inset (notch / home indicator in landscape) as a fraction of the viewport width. */
+function useSafeFrac(): number {
+  const [frac, setFrac] = useState(0);
+  useEffect(() => {
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)';
+    document.body.appendChild(probe);
+    const read = () => {
+      const cs = getComputedStyle(probe);
+      const inset = Math.max(parseFloat(cs.paddingLeft) || 0, parseFloat(cs.paddingRight) || 0);
+      setFrac(window.innerWidth > 0 ? inset / window.innerWidth : 0);
+    };
+    read();
+    window.addEventListener('resize', read);
+    window.addEventListener('orientationchange', read);
+    return () => { window.removeEventListener('resize', read); window.removeEventListener('orientationchange', read); probe.remove(); };
+  }, []);
+  return frac;
 }

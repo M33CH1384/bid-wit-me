@@ -1,3 +1,5 @@
+import Credits from './Credits';
+import { SoundFields } from './SoundControls';
 import { type ReactNode, useState } from 'react';
 import { cardLabel, trumpOrder } from '@spades/rules';
 import { type ModeKey, type Settings, MODES, settingsToRules } from './settings';
@@ -27,6 +29,7 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
 
 export default function Setup({ settings: s, onChange, onStart }: Props) {
   const [open, setOpen] = useState(false);
+  const [credits, setCredits] = useState(false);
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => onChange({ ...s, [k]: v });
   const rules = settingsToRules(s);
   const isJokerDeck = rules.deck === 'joker54';
@@ -88,6 +91,7 @@ export default function Setup({ settings: s, onChange, onStart }: Props) {
             <option value="fast">Fast</option>
           </select>
         </Row>
+        <SoundFields />
         <button type="button" className="link" onClick={() => setOpen(!open)}>{open ? '▾' : '▸'} House rules</button>
         {open && (
           <div className="house">
@@ -147,6 +151,8 @@ export default function Setup({ settings: s, onChange, onStart }: Props) {
       </section>
 
       <button type="button" className="primary big" onClick={onStart}>Deal me in</button>
+      <button type="button" className="link credits-link" onClick={() => setCredits(true)}>Credits &amp; licenses</button>
+      {credits && <Credits onClose={() => setCredits(false)} />}
     </div>
   );
 }
