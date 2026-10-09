@@ -1,0 +1,1 @@
+Spade replaces the bottom counter, optically centred with more breathing room; top counter resized to the spade's width and aligned on its axis.

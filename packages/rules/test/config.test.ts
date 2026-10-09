@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  RulesConfigError, buildDeck, cardPower, defaultRules, effectiveSuit, handSize, isTrump, makeRules, sortHand,
+  CLASSIC_JOKER, RulesConfigError, buildDeck, cardPower, defaultRules, effectiveSuit, handSize, isTrump, makeRules, sortHand,
   trumpOrder, validateRules,
 } from '../src';
 
@@ -9,7 +9,8 @@ describe('presets', () => {
     const r = makeRules('joker');
     expect(r.partnerships).toBe(true);
     expect(r.playerCount).toBe(4);
-    expect(r.removedCards).toEqual(['2H', '2D']);
+    expect(r.removedCards).toEqual(['2C', '2H']);
+    expect(r.trumpOrderTop).toEqual(['BJ', 'LJ', '2D', '2S']);
     expect(r.targetScore).toBe(500);
     expect(r.losingFloor).toBe(-200);
     expect(r.blindNil.onlyWhenBehindBy).toBe(100);
@@ -18,7 +19,8 @@ describe('presets', () => {
     expect(deck).toContain('BJ');
     expect(deck).toContain('LJ');
     expect(deck).not.toContain('2H');
-    expect(deck).not.toContain('2D');
+    expect(deck).not.toContain('2C');
+    expect(deck).toContain('2D');
   });
   it('Cutthroat defaults: joker deck, target 300, 4p and 3p', () => {
     const r4 = makeRules('cutthroat');
@@ -26,7 +28,8 @@ describe('presets', () => {
     expect(r4.targetScore).toBe(300);
     expect(buildDeck(r4)).toHaveLength(52);
     const r3 = makeRules('cutthroat', { playerCount: 3 });
-    expect(r3.removedCards).toEqual(['2C', '2H', '2D']);
+    expect(r3.removedCards).toEqual(['2C', '2H', '3C']);
+    expect(trumpOrder(r3).slice(0, 4)).toEqual(['BJ', 'LJ', '2D', '2S']);
     expect(buildDeck(r3)).toHaveLength(51);
     expect(handSize(r3)).toBe(17);
     const s3 = makeRules('cutthroat', { playerCount: 3, deck: 'standard52' });
@@ -34,6 +37,23 @@ describe('presets', () => {
     expect(s3.trumpOrderTop).toEqual([]);
     expect(buildDeck(s3)).toHaveLength(51);
     expect(buildDeck(s3)).not.toContain('BJ');
+  });
+  it('Cutthroat deck choice: standard 52 (4p) has no jokers and A♠ on top', () => {
+    const r = makeRules('cutthroat', { deck: 'standard52' });
+    expect(r.removedCards).toEqual([]);
+    expect(r.trumpOrderTop).toEqual([]);
+    expect(buildDeck(r)).toHaveLength(52);
+    expect(buildDeck(r)).not.toContain('BJ');
+    expect(trumpOrder(r)).toEqual(['AS', 'KS', 'QS', 'JS', 'TS', '9S', '8S', '7S', '6S', '5S', '4S', '3S', '2S']);
+    expect(effectiveSuit('2D', r)).toBe('D');
+  });
+  it('Cutthroat deck choice: Joker deck (default) uses the Joker house order', () => {
+    for (const playerCount of [3, 4] as const) {
+      const r = makeRules('cutthroat', { playerCount });
+      expect(r.deck).toBe('joker54');
+      expect(trumpOrder(r).slice(0, 5)).toEqual(['BJ', 'LJ', '2D', '2S', 'AS']);
+      expect(buildDeck(r)).toHaveLength(playerCount === 4 ? 52 : 51);
+    }
   });
   it('Ace Down: standard 52, no jokers, aces highest, deuce-high forced off', () => {
     const r = makeRules('aceDown', { deuceOfSpadesHigh: true });
@@ -81,7 +101,7 @@ describe('validation', () => {
   });
   it('rejects bad trump order configs', () => {
     expect(bad(() => makeRules('joker', { trumpOrderTop: ['BJ'] }))).toMatch(/BJ and LJ/);
-    expect(bad(() => makeRules('joker', { trumpOrderTop: ['BJ', 'LJ', '2D'] }))).toMatch(/cannot also be removed/);
+    expect(bad(() => makeRules('joker', { trumpOrderTop: ['BJ', 'LJ', '2C'] }))).toMatch(/cannot also be removed/);
     expect(bad(() => makeRules('joker', { trumpOrderTop: ['BJ', 'BJ', 'LJ'] }))).toMatch(/duplicate/);
     expect(bad(() => makeRules('joker', { trumpOrderTop: ['BJ', 'LJ', 'QQ' as never] }))).toMatch(/unknown/);
     expect(bad(() => makeRules('cutthroat', { deck: 'standard52', trumpOrderTop: ['BJ'] }))).toMatch(/joker54 deck/);
@@ -104,12 +124,29 @@ describe('validation', () => {
 });
 
 describe('trump ranking', () => {
-  it('default Joker order: BJ > LJ > A♠ … 2♠', () => {
+  it('default Joker order (Demetrius): BJ > LJ > 2♦ > 2♠ > A♠ … 3♠', () => {
     const r = makeRules('joker');
+    expect(trumpOrder(r)).toEqual(['BJ', 'LJ', '2D', '2S', 'AS', 'KS', 'QS', 'JS', 'TS', '9S', '8S', '7S', '6S', '5S', '4S', '3S']);
+    expect(effectiveSuit('2D', r)).toBe('S');
+    expect(isTrump('2D', r)).toBe(true);
+    expect(cardPower('2D', r)).toBeGreaterThan(cardPower('2S', r));
+    expect(cardPower('2S', r)).toBeGreaterThan(cardPower('AS', r));
+    expect(cardPower('LJ', r)).toBeGreaterThan(cardPower('2D', r));
+    // diamonds have no 2: lowest diamond is the 3
+    const diamonds = buildDeck(r).filter((c) => effectiveSuit(c, r) === 'D');
+    expect(diamonds).toHaveLength(12);
+    expect(diamonds).not.toContain('2D');
+  });
+  it('classic Joker variant: BJ > LJ > A♠ … 2♠ with 2♥ 2♦ removed', () => {
+    const r = makeRules('joker', CLASSIC_JOKER);
     expect(trumpOrder(r)).toEqual(['BJ', 'LJ', 'AS', 'KS', 'QS', 'JS', 'TS', '9S', '8S', '7S', '6S', '5S', '4S', '3S', '2S']);
+    expect(buildDeck(r)).toHaveLength(52);
+  });
+  it('removing the 2♦ drops it from the default trump order', () => {
+    expect(trumpOrder(makeRules('joker', { removedCards: ['2H', '2D'] })).slice(0, 4)).toEqual(['BJ', 'LJ', '2S', 'AS']);
   });
   it('deuceOfSpadesHigh puts 2♠ right under the jokers', () => {
-    const r = makeRules('joker', { deuceOfSpadesHigh: true });
+    const r = makeRules('joker', { ...CLASSIC_JOKER, deuceOfSpadesHigh: true });
     expect(trumpOrder(r).slice(0, 4)).toEqual(['BJ', 'LJ', '2S', 'AS']);
     expect(trumpOrder(r)).toHaveLength(15);
     expect(cardPower('2S', r)).toBeGreaterThan(cardPower('AS', r));

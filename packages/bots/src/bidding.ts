@@ -15,7 +15,9 @@ export function estimateTricks(hand: readonly Card[], v: PlayerView): number {
     if (lowerMine >= missingAbove) { est += 1; high++; }
     else if (lowerMine === missingAbove - 1) est += 0.4;
   }
-  est += Math.max(0, nT - 4) * 0.6; // length in trumps
+  // length in trumps (with more trumps in the deck, e.g. 16 in the Joker house order, long trumps are worth less)
+  const extraTrumps = Math.max(0, order.length - 13);
+  est += Math.max(0, nT - 4 - Math.floor(extraTrumps / 2)) * 0.6;
   let shortness = 0;
   for (const s of ['H', 'D', 'C']) {
     const cards = hand.filter((c) => !isTrump(c, r) && effectiveSuit(c, r) === s);
@@ -29,7 +31,7 @@ export function estimateTricks(hand: readonly Card[], v: PlayerView): number {
     else if (len === 2) shortness += 0.2;
   }
   const spare = Math.max(0, nT - high);
-  est += Math.min(shortness, spare * 0.75);
+  est += Math.min(shortness, spare * (extraTrumps >= 3 ? 0.55 : 0.75));
   // 3-player games have 17-card hands but only two opponents: high cards are worth slightly more.
   if (r.playerCount === 3) est *= 1.15;
   return est;
@@ -55,7 +57,9 @@ export function nilWorthy(hand: readonly Card[], v: PlayerView): boolean {
     // need some low cards to duck with
     if (len >= 2 && !cards.some((c) => '23456'.includes(c[0]!))) return false;
   }
-  return estimateTricks(hand, v) < 1.6;
+  // Without a partner to cover, a Nil has to be much safer.
+  if (!r.partnerships && (trumps.length > 2 || trumps.some((c) => order.indexOf(c) < order.length - 5))) return false;
+  return estimateTricks(hand, v) < (r.partnerships ? 1.6 : 1.1);
 }
 
 export type BotLevel = 'easy' | 'normal';
@@ -93,5 +97,5 @@ export function wantsBlindNil(v: PlayerView, level: BotLevel): boolean {
   // A desperation move: far behind, or the leaders are close to winning.
   const strongPartner = r.blindNil.exchangeCards > 0 ? 4 : 5;
   if (partner === null || typeof pBid !== 'number' || pBid < strongPartner) return false;
-  return best - mine >= 300 || (best - mine >= 150 && best >= r.targetScore - 100);
+  return best - mine >= 350 || (best - mine >= 150 && best >= r.targetScore - 100);
 }

@@ -1,15 +1,17 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import {
-  type Bid, type GameState, type TableRules, RuleError, applyAction, buildDeck, createRng, handSize, legalPlays, makeRules,
+  CLASSIC_JOKER, type Bid, type GameState, type TableRules, RuleError, applyAction, buildDeck, createRng, handSize, legalPlays, makeRules,
   newGame, scoreHand,
 } from '../src';
 
 const modes: [string, TableRules][] = [
   ['joker', makeRules('joker')],
-  ['joker deuce-high + 2C lead', makeRules('joker', { deuceOfSpadesHigh: true, firstLead: 'twoOfClubs', blindNil: { onlyWhenBehindBy: null, exchangeCards: 2 } })],
+  ['joker deuce-high + 2C lead', makeRules('joker', { ...CLASSIC_JOKER, deuceOfSpadesHigh: true, firstLead: 'twoOfClubs', blindNil: { onlyWhenBehindBy: null, exchangeCards: 2 } })],
   ['cutthroat 4', makeRules('cutthroat')],
   ['cutthroat 3', makeRules('cutthroat', { playerCount: 3 })],
+  ['cutthroat 4 standard deck', makeRules('cutthroat', { deck: 'standard52' })],
+  ['cutthroat 3 standard deck', makeRules('cutthroat', { playerCount: 3, deck: 'standard52' })],
   ['aceDown', makeRules('aceDown')],
 ];
 

@@ -1,0 +1,1 @@
+Spade replaces the top counter; ordinary bottom counter matched to its width.

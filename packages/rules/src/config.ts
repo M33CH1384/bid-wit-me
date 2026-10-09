@@ -49,10 +49,20 @@ export interface TableRules {
   turnTimerSec: { bid: number; play: number };
 }
 
+/**
+ * Default removals. Joker deck (confirmed by Demetrius): remove 2♣ and 2♥; the 2♦ stays and is promoted to trump.
+ * 3-player joker deck needs one more removal: 3♣ (our choice, the lowest remaining non-trump club).
+ */
 export function defaultRemovedCards(deck: DeckKind, playerCount: 3 | 4): Card[] {
-  if (deck === 'joker54') return playerCount === 4 ? ['2H', '2D'] : ['2C', '2H', '2D'];
+  if (deck === 'joker54') return playerCount === 4 ? ['2C', '2H'] : ['2C', '2H', '3C'];
   return playerCount === 4 ? [] : ['2C'];
 }
+
+/** Joker-deck trump order above A♠ (confirmed by Demetrius): Big Joker › Little Joker › 2♦ › 2♠ › A♠ … 3♠. */
+export const JOKER_TRUMP_TOP: Card[] = ['BJ', 'LJ', '2D', '2S'];
+
+/** Classic joker variant (2♥ + 2♦ removed, jokers then A♠ … 2♠) kept as a house-rule option. */
+export const CLASSIC_JOKER: { removedCards: Card[]; trumpOrderTop: Card[] } = { removedCards: ['2H', '2D'], trumpOrderTop: ['BJ', 'LJ'] };
 
 const BASE: Omit<TableRules, 'mode' | 'partnerships' | 'playerCount' | 'deck' | 'removedCards' | 'trumpOrderTop' | 'targetScore'> = {
   deuceOfSpadesHigh: false,
@@ -74,9 +84,9 @@ const BASE: Omit<TableRules, 'mode' | 'partnerships' | 'playerCount' | 'deck' | 
 export function defaultRules(mode: Mode, playerCount: 3 | 4 = 4): TableRules {
   switch (mode) {
     case 'joker':
-      return { ...BASE, mode, partnerships: true, playerCount: 4, deck: 'joker54', removedCards: defaultRemovedCards('joker54', 4), trumpOrderTop: ['BJ', 'LJ'], targetScore: 500 };
+      return { ...BASE, mode, partnerships: true, playerCount: 4, deck: 'joker54', removedCards: defaultRemovedCards('joker54', 4), trumpOrderTop: [...JOKER_TRUMP_TOP], targetScore: 500 };
     case 'cutthroat':
-      return { ...BASE, mode, partnerships: false, playerCount, deck: 'joker54', removedCards: defaultRemovedCards('joker54', playerCount), trumpOrderTop: ['BJ', 'LJ'], targetScore: 300 };
+      return { ...BASE, mode, partnerships: false, playerCount, deck: 'joker54', removedCards: defaultRemovedCards('joker54', playerCount), trumpOrderTop: [...JOKER_TRUMP_TOP], targetScore: 300 };
     case 'aceDown':
       return { ...BASE, mode, partnerships: true, playerCount: 4, deck: 'standard52', removedCards: [], trumpOrderTop: [], targetScore: 500 };
   }
@@ -113,7 +123,8 @@ export function makeRules(mode: Mode, overrides: RulesOverrides = {}): TableRule
     turnTimerSec: { ...base.turnTimerSec, ...overrides.turnTimerSec },
   } as TableRules;
   if (overrides.removedCards === undefined) r.removedCards = defaultRemovedCards(r.deck, r.playerCount);
-  if (overrides.trumpOrderTop === undefined) r.trumpOrderTop = r.deck === 'joker54' ? ['BJ', 'LJ'] : [];
+  if (overrides.trumpOrderTop === undefined)
+    r.trumpOrderTop = r.deck === 'joker54' ? JOKER_TRUMP_TOP.filter((c) => !r.removedCards.includes(c)) : [];
   if (mode === 'aceDown') r.deuceOfSpadesHigh = false; // forced off (spec §3.4)
   const problems = validateRules(r);
   if (problems.length) throw new RulesConfigError(problems);

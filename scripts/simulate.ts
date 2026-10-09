@@ -13,7 +13,8 @@ const modes: [string, TableRules][] = [
   ['Cutthroat 4p (joker deck)', makeRules('cutthroat', { playerCount: 4 })],
   ['Cutthroat 3p (joker deck)', makeRules('cutthroat', { playerCount: 3 })],
   ['Ace Down 2v2', makeRules('aceDown')],
-  ['Joker 2v2 + house rules', makeRules('joker', { deuceOfSpadesHigh: true, minTeamBid: 4, blindNil: { onlyWhenBehindBy: null, exchangeCards: 2 }, firstLead: 'twoOfClubs', removedCards: ['2H', '3D'] as Card[], bagsPerPenalty: 5, bagPenalty: 50, tenForTwoHundred: true })],
+  ['Joker 2v2 + house rules', makeRules('joker', { deuceOfSpadesHigh: true, minTeamBid: 4, blindNil: { onlyWhenBehindBy: null, exchangeCards: 2 }, firstLead: 'twoOfClubs', removedCards: ['2H', '3D'] as Card[], trumpOrderTop: ['BJ', 'LJ'] as Card[], bagsPerPenalty: 5, bagPenalty: 50, tenForTwoHundred: true })],
+  ['Cutthroat 4p standard deck', makeRules('cutthroat', { deck: 'standard52' })],
   ['Cutthroat 3p standard deck', makeRules('cutthroat', { playerCount: 3, deck: 'standard52' })],
 ];
 

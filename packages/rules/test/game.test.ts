@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  type Card, type GameState, RuleError, applyAction, bidOptions, buildDeck, deckForHand, legalPlays, legalPlaysFor,
+  CLASSIC_JOKER, type Card, type GameState, RuleError, applyAction, bidOptions, buildDeck, deckForHand, legalPlays, legalPlaysFor, effectiveSuit,
   makeRules, newGame, pendingTurn, trickWinner, viewFor, viewMustLeadTwoOfClubs, RulesConfigError,
 } from '../src';
 import { bidAll, fill, play, rigged } from './helpers';
@@ -202,7 +202,8 @@ describe('trick play legality', () => {
       ['KD', 'QD', 'JD', 'TD', '9D', '8D', '7D', '6D', '5D', '4D', '3D', 'AS', 'KS'],
       ['BJ', 'LJ', 'QS', 'JS', 'TS', '9S', '8S', '7S', '6S', '5S', '4S', '3S', '2S'],
     ];
-    let st = bidAll(rigged(joker, fixed, 3), [1, 2, 3, 7]);
+    const classic = makeRules('joker', CLASSIC_JOKER);
+    let st = bidAll(rigged(classic, fixed, 3), [1, 2, 3, 7]);
     st = play(st, 'AH', '2C', 'AS', '2S'); // seat 2 trumps with A♠; seat 3's 2♠ is lower
     expect(st.tricks[0]!.winner).toBe(2);
     expect(st.spadesBroken).toBe(true);
@@ -243,6 +244,31 @@ describe('trick play legality', () => {
   });
 });
 
+describe('Joker house order: 2♦ is a trump between Little Joker and 2♠', () => {
+  it('2♦ follows spades, cannot be led before spades are broken, and is not a diamond', () => {
+    expect(legalPlaysFor(joker, ['2D', '5D'], [{ seat: 0, card: '3S' }], true)).toEqual(['2D']);
+    expect(legalPlaysFor(joker, ['2D', '5D'], [{ seat: 0, card: '9D' }], true)).toEqual(['5D']);
+    expect(legalPlaysFor(joker, ['2D', '5D'], [], false)).toEqual(['5D']);
+    expect(legalPlaysFor(joker, ['2D'], [{ seat: 0, card: 'KD' }], true)).toEqual(['2D']);
+  });
+  it('ranks: BJ > LJ > 2♦ > 2♠ > A♠', () => {
+    const t = (cards: Card[]) => trickWinner(cards.map((card, seat) => ({ seat, card })), joker);
+    expect(t(['AS', '2S', '2D', '3S'])).toBe(2);
+    expect(t(['2D', 'LJ', '2S', 'AS'])).toBe(1);
+    expect(t(['LJ', '2D', 'BJ', '2S'])).toBe(2);
+    expect(t(['AS', '2S', 'KS', 'QS'])).toBe(1);
+    expect(t(['KD', '2D', 'AD', '3D'])).toBe(1); // trumping a diamond lead with the 2♦
+    expect(t(['3D', '4D', 'AH', 'KD'])).toBe(3);
+  });
+  it('playing the 2♦ breaks spades', () => {
+    const hands = fill(joker, [['3H'], ['2D'], [], []]);
+    let st = bidAll(rigged(joker, hands, 3), [3, 3, 3, 3]);
+    st = { ...st, hands: st.hands.map((h, i) => (i === 1 ? h.filter((c) => c === '2D' || effectiveSuit(c, joker) !== 'H') : h)) };
+    st = play(st, '3H', '2D');
+    expect(st.spadesBroken).toBe(true);
+  });
+});
+
 describe('trick resolution', () => {
   it('highest of the suit led wins without trumps', () => {
     expect(trickWinner([{ seat: 0, card: '9H' }, { seat: 1, card: 'KH' }, { seat: 2, card: 'AD' }, { seat: 3, card: 'QH' }], joker)).toBe(1);
@@ -272,7 +298,7 @@ describe('trick resolution', () => {
 
 describe('first lead: two of clubs house rule', () => {
   it('holder of the 2♣ leads it, then normal play', () => {
-    const r = makeRules('joker', { firstLead: 'twoOfClubs' });
+    const r = makeRules('joker', { ...CLASSIC_JOKER, firstLead: 'twoOfClubs' });
     const hands = fill(r, [[], [], ['2C'], []]);
     let st = bidAll(rigged(r, hands, 3), [3, 3, 3, 3]);
     expect(st.turn).toBe(2);
