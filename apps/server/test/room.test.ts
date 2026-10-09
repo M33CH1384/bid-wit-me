@@ -172,6 +172,16 @@ describe('game', () => {
     expect(env.persists).toBeGreaterThan(50);
   });
 
+  it('sends the hand history only when it changes (bandwidth)', () => {
+    const { env } = fourHumans();
+    env.send('a', { t: 'start' });
+    for (let i = 0; i < 5000 && (env.room.data.game?.history.length ?? 0) < 2; i++) if (!playTurn(env, ['a', 'b', 'c', 'd'])) env.advance(100);
+    const states = env.raw.filter((m) => m.t === 'state' && m.view) as Extract<import('@spades/protocol').ServerMsg, { t: 'state' }>[];
+    const full = states.filter((m) => m.view!.history !== null).length;
+    expect(full).toBeLessThan(states.length / 10);
+    expect(env.last('a', 'state')!.view!.history).toHaveLength(env.room.data.game!.history.length);
+  });
+
   it('reconnect with the seat token rejoins the same seat; a disconnected turn uses a short grace', () => {
     const { env, ps } = fourHumans();
     env.send('a', { t: 'start' });

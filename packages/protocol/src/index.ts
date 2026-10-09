@@ -81,6 +81,7 @@ export interface ChatLine { id: number; from: string | null; name: string; text:
 
 export type ServerMsg =
   | { t: 'welcome'; you: string; token: string; code: string; chat: ChatLine[]; v: number }
+  /** `view.history` is null when unchanged since the last state sent on this connection (keep the previous one) */
   | { t: 'state'; room: RoomInfo; seat: number | null; view: PlayerView | null }
   | { t: 'chat'; line: ChatLine }
   | { t: 'rtc'; from: string; data: unknown }

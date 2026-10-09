@@ -43,7 +43,8 @@ class Client {
         const m = JSON.parse(s) as ServerMsg;
         if (m.t === 'welcome') { this.token = m.token; this.you = m.you; resolve(); }
         if (m.t === 'state') {
-          this.room = m.room; this.seat = m.seat; this.view = m.view;
+          this.room = m.room; this.seat = m.seat;
+          this.view = m.view && m.view.history === null ? { ...m.view, history: this.view?.history ?? [] } : m.view;
           if (s.includes('"hands"')) this.foreignCards++;
         }
         if (m.t === 'chat') this.chats.push(`${m.line.name}: ${m.line.text}`);

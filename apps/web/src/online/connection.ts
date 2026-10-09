@@ -75,9 +75,13 @@ export class TableConnection {
           saveToken(this.code, m.token);
           this.set({ status: 'open', you: m.you, chat: m.chat });
           break;
-        case 'state':
-          this.set({ status: 'open', room: m.room, seat: m.seat, view: m.view });
+        case 'state': {
+          let view = m.view;
+          // history is elided (null) when unchanged: reuse the copy we have
+          if (view && view.history === null) view = { ...view, history: this.state.view?.history ?? [] };
+          this.set({ status: 'open', room: m.room, seat: m.seat, view });
           break;
+        }
         case 'chat':
           this.set({ chat: [...this.state.chat.slice(-99), m.line] });
           break;

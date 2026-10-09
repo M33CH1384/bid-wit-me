@@ -11,6 +11,7 @@ export class FakeEnv {
   alarm: number | null = null;
   alarmSets = 0;
   persists = 0;
+  raw: ServerMsg[] = [];
   rng = createRng('test-ids');
   room: Room;
 
@@ -21,7 +22,13 @@ export class FakeEnv {
   io(): RoomIO {
     return {
       now: () => this.t,
-      send: (cid, msg) => { (this.sent.get(cid) ?? this.sent.set(cid, []).get(cid)!).push(JSON.parse(JSON.stringify(msg))); },
+      send: (cid, msg) => {
+        const m = JSON.parse(JSON.stringify(msg)) as ServerMsg;
+        this.raw.push(JSON.parse(JSON.stringify(msg)));
+        // like the client: an elided (null) history means "unchanged"
+        if (m.t === 'state' && m.view && m.view.history === null) m.view.history = this.last(cid, 'state')?.view?.history ?? [];
+        (this.sent.get(cid) ?? this.sent.set(cid, []).get(cid)!).push(m);
+      },
       close: (cid) => { this.closed.push(cid); },
       wake: (ms) => { this.wakes.push(this.t + ms); },
       setAlarm: (at) => { if (at !== null && at !== this.alarm) { this.alarm = at; this.alarmSets++; } },

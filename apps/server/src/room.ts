@@ -8,7 +8,7 @@
  *  - all durable state lives in one plain-JSON `RoomData` object that the DO saves as a single row.
  */
 import {
-  type Action, type GameState, type TableRules, RuleError, applyAction, makeRules, newGame, pendingTurn, secureSeed, validateRules, viewFor,
+  type Action, type GameState, type PlayerView, type TableRules, RuleError, applyAction, makeRules, newGame, pendingTurn, secureSeed, validateRules, viewFor,
 } from '@spades/rules';
 import { chooseBotAction } from '@spades/bots';
 import {
@@ -125,6 +125,7 @@ export class Room {
 
   close(connId: string): void {
     const pid = this.conns.get(connId);
+    this.sentHistory.delete(connId);
     this.conns.delete(connId);
     if (pid && !this.isConnected(pid)) {
       const m = this.data.members[pid];
@@ -189,6 +190,7 @@ export class Room {
       this.system(`${name} joined`);
     }
     this.conns.set(connId, pid);
+    this.sentHistory.delete(connId);
     const m = d.members[pid]!;
     this.io.send(connId, { t: 'welcome', you: pid, token: m.token, code: d.code, chat: d.chat.slice(-LIMITS.chatHistory), v: PROTOCOL_VERSION });
     d.lastActive = this.io.now();
@@ -564,6 +566,9 @@ export class Room {
     };
   }
 
+  /** per connection: the hand-history length it already has (history is only re-sent when it grows) */
+  private sentHistory = new Map<string, string>();
+
   private broadcast(): void {
     const d = this.data;
     d.rev++;
@@ -571,7 +576,13 @@ export class Room {
     for (const [cid, pid] of this.conns) {
       if (!pid) continue;
       const seat = d.members[pid]?.seat ?? null;
-      const view = d.game && seat !== null && seat < d.rules.playerCount ? viewFor(d.game, seat) : null;
+      let view: PlayerView | null = d.game && seat !== null && seat < d.rules.playerCount ? viewFor(d.game, seat) : null;
+      if (view) {
+        // the hand history only changes once per hand: send it then, and `history: null` ("unchanged") otherwise
+        const key = `${room.game}:${view.history.length}`;
+        if (this.sentHistory.get(cid) === key) view = { ...view, history: null as unknown as PlayerView['history'] };
+        else this.sentHistory.set(cid, key);
+      }
       this.io.send(cid, { t: 'state', room, seat, view });
     }
   }
