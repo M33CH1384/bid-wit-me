@@ -1,0 +1,427 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`] = `
+{
+  "hands": 14,
+  "perHand": [
+    {
+      "bags": [
+        1,
+        0,
+      ],
+      "bids": [
+        3,
+        4,
+        2,
+        4,
+      ],
+      "totals": [
+        51,
+        -80,
+      ],
+      "tricks": [
+        4,
+        4,
+        2,
+        3,
+      ],
+    },
+    {
+      "bags": [
+        3,
+        1,
+      ],
+      "bids": [
+        3,
+        1,
+        1,
+        5,
+      ],
+      "totals": [
+        93,
+        -19,
+      ],
+      "tricks": [
+        4,
+        2,
+        2,
+        5,
+      ],
+    },
+    {
+      "bags": [
+        3,
+        3,
+      ],
+      "bids": [
+        1,
+        5,
+        4,
+        2,
+      ],
+      "totals": [
+        43,
+        53,
+      ],
+      "tricks": [
+        0,
+        5,
+        4,
+        4,
+      ],
+    },
+    {
+      "bags": [
+        3,
+        5,
+      ],
+      "bids": [
+        2,
+        4,
+        4,
+        2,
+      ],
+      "totals": [
+        -17,
+        115,
+      ],
+      "tricks": [
+        2,
+        6,
+        3,
+        2,
+      ],
+    },
+    {
+      "bags": [
+        3,
+        7,
+      ],
+      "bids": [
+        9,
+        2,
+        "nil",
+        3,
+      ],
+      "totals": [
+        -7,
+        167,
+      ],
+      "tricks": [
+        6,
+        3,
+        0,
+        4,
+      ],
+    },
+    {
+      "bags": [
+        3,
+        0,
+      ],
+      "bids": [
+        1,
+        3,
+        3,
+        3,
+      ],
+      "totals": [
+        33,
+        130,
+      ],
+      "tricks": [
+        0,
+        5,
+        4,
+        4,
+      ],
+    },
+    {
+      "bags": [
+        3,
+        1,
+      ],
+      "bids": [
+        2,
+        5,
+        2,
+        4,
+      ],
+      "totals": [
+        -7,
+        221,
+      ],
+      "tricks": [
+        0,
+        5,
+        3,
+        5,
+      ],
+    },
+    {
+      "bags": [
+        3,
+        2,
+      ],
+      "bids": [
+        2,
+        3,
+        3,
+        4,
+      ],
+      "totals": [
+        43,
+        292,
+      ],
+      "tricks": [
+        3,
+        4,
+        2,
+        4,
+      ],
+    },
+    {
+      "bags": [
+        6,
+        2,
+      ],
+      "bids": [
+        3,
+        2,
+        2,
+        5,
+      ],
+      "totals": [
+        96,
+        222,
+      ],
+      "tricks": [
+        4,
+        2,
+        4,
+        3,
+      ],
+    },
+    {
+      "bags": [
+        6,
+        3,
+      ],
+      "bids": [
+        1,
+        1,
+        6,
+        4,
+      ],
+      "totals": [
+        166,
+        273,
+      ],
+      "tricks": [
+        2,
+        2,
+        5,
+        4,
+      ],
+    },
+    {
+      "bags": [
+        7,
+        3,
+      ],
+      "bids": [
+        2,
+        4,
+        1,
+        5,
+      ],
+      "totals": [
+        197,
+        363,
+      ],
+      "tricks": [
+        4,
+        3,
+        0,
+        6,
+      ],
+    },
+    {
+      "bags": [
+        8,
+        3,
+      ],
+      "bids": [
+        3,
+        5,
+        2,
+        2,
+      ],
+      "totals": [
+        248,
+        433,
+      ],
+      "tricks": [
+        4,
+        5,
+        2,
+        2,
+      ],
+    },
+    {
+      "bags": [
+        0,
+        3,
+      ],
+      "bids": [
+        "blindNil",
+        2,
+        6,
+        3,
+      ],
+      "totals": [
+        10,
+        483,
+      ],
+      "tricks": [
+        2,
+        3,
+        6,
+        2,
+      ],
+    },
+    {
+      "bags": [
+        0,
+        7,
+      ],
+      "bids": [
+        "blindNil",
+        3,
+        6,
+        2,
+      ],
+      "totals": [
+        150,
+        537,
+      ],
+      "tricks": [
+        0,
+        5,
+        4,
+        4,
+      ],
+    },
+  ],
+  "result": {
+    "endReason": "target",
+    "finalScores": [
+      150,
+      537,
+    ],
+    "placements": [
+      2,
+      1,
+    ],
+    "winners": [
+      1,
+    ],
+  },
+}
+`;
+
+exports[`full bot games > golden: aceDown final result 1`] = `
+{
+  "bags": [
+    9,
+    3,
+  ],
+  "hands": 11,
+  "result": {
+    "endReason": "target",
+    "finalScores": [
+      539,
+      503,
+    ],
+    "placements": [
+      1,
+      2,
+    ],
+    "winners": [
+      0,
+    ],
+  },
+  "scores": [
+    539,
+    503,
+  ],
+}
+`;
+
+exports[`full bot games > golden: cutthroat 3 final result 1`] = `
+{
+  "bags": [
+    2,
+    4,
+    5,
+  ],
+  "hands": 7,
+  "result": {
+    "endReason": "target",
+    "finalScores": [
+      342,
+      184,
+      275,
+    ],
+    "placements": [
+      1,
+      3,
+      2,
+    ],
+    "winners": [
+      0,
+    ],
+  },
+  "scores": [
+    342,
+    184,
+    275,
+  ],
+}
+`;
+
+exports[`full bot games > golden: cutthroat 4 final result 1`] = `
+{
+  "bags": [
+    4,
+    6,
+    5,
+    1,
+  ],
+  "hands": 11,
+  "result": {
+    "endReason": "target",
+    "finalScores": [
+      204,
+      156,
+      175,
+      311,
+    ],
+    "placements": [
+      2,
+      4,
+      3,
+      1,
+    ],
+    "winners": [
+      3,
+    ],
+  },
+  "scores": [
+    204,
+    156,
+    175,
+    311,
+  ],
+}
+`;

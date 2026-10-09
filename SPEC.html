@@ -1,0 +1,963 @@
+<!doctype html><html><head><meta charset='utf-8'><title>Spades Online Spec</title><style>body{font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:10.5pt;line-height:1.45;color:#222;max-width:100%;}
+h1{font-size:20pt;border-bottom:2px solid #333;padding-bottom:4px}h2{font-size:15pt;border-bottom:1px solid #bbb;margin-top:22px;page-break-after:avoid}
+h3{font-size:12pt;page-break-after:avoid}table{border-collapse:collapse;width:100%;margin:8px 0;font-size:9pt;page-break-inside:auto}
+th,td{border:1px solid #bbb;padding:4px 6px;vertical-align:top;text-align:left}th{background:#f0f0f0}tr{page-break-inside:avoid}
+code{font-family:Menlo,Consolas,monospace;font-size:8.5pt;background:#f4f4f4;padding:0 2px}pre{background:#f6f6f6;border:1px solid #ddd;padding:8px;font-size:7.8pt;white-space:pre-wrap;word-break:break-word}
+pre code{background:none;padding:0}blockquote{border-left:4px solid #e0a800;background:#fff8e1;margin:8px 0;padding:6px 10px}a{color:#0645ad}td a{overflow-wrap:anywhere}</style></head><body><h1>Spades Online: Product + Technical Spec</h1>
+<p><strong>Owner:</strong> Demetrius Robinson (solo founder)
+<strong>Audience:</strong> Demetrius and any developer he hands this to
+<strong>Version:</strong> 0.1 draft, October 8, 2026
+<strong>Status:</strong> Ready to start Phase 1. Open questions are listed in Section 15.</p>
+<hr />
+<h2>0. TL;DR</h2>
+<ul>
+<li><strong>What:</strong> A real-time multiplayer Spades game. It runs in the browser first, and native iOS/Android apps come later. It has a photoreal 3D table, friends, chat, leaderboards, and later live video.</li>
+<li><strong>Modes:</strong> Joker Spades 2v2 (the default), Cutthroat (3 or 4 players, each for themselves), and Ace Down (52 cards, no jokers, aces high).</li>
+<li><strong>Budget:</strong> $0 at launch. Everything runs on free tiers:<ul>
+<li><strong>Cloudflare Pages:</strong> hosts the web app.</li>
+<li><strong>Cloudflare Workers + Durable Objects:</strong> run the game server, one Durable Object per table.</li>
+<li><strong>Supabase:</strong> accounts, friends, chat, stats, and leaderboards.</li>
+<li><strong>WebRTC peer-to-peer:</strong> video, with Cloudflare TURN as a relay fallback.</li>
+<li><strong>Capacitor:</strong> wraps the web app for the app stores later.</li>
+</ul>
+</li>
+<li><strong>The server is the referee.</strong> It shuffles, deals, checks every move, and never sends a player anyone else's cards.</li>
+<li><strong>Build order:</strong> rules engine and bots first, then 2D online play, then social features, then the 3D look, then video, then native apps. The 3D look is deliberately <em>not</em> first, because a correct, fun, stable game matters more than graphics.</li>
+</ul>
+<hr />
+<h2>1. Goals and non-goals</h2>
+<h3>Goals</h3>
+<ol>
+<li>People can play correct, fast Spades online with friends or strangers. The house rules are configurable, because every table plays a little differently.</li>
+<li>It feels like sitting at a real table: a 3D felt table, real-looking cards, chat, and later faces on camera.</li>
+<li>It costs nothing to run until it has real traction, and costs grow gradually and predictably after that.</li>
+<li>One codebase covers web, iOS, and Android.</li>
+</ol>
+<h3>Non-goals (for now)</h3>
+<ul>
+<li>Real-money play, wagering, or anything that could count as gambling. Coins or cosmetics with no cash value can be considered much later.</li>
+<li>Tournaments with prizes.</li>
+<li>Voice-only chat as a separate feature (video can carry audio; see Section 11).</li>
+<li>Spectator mode. It's a nice-to-have later and the protocol leaves room for it.</li>
+</ul>
+<hr />
+<h2>2. Users and core flows</h2>
+<p><strong>Personas</strong>
+- <em>Regular group:</em> four friends who play Joker Spades every week. They need private tables, invite links, their own house rules, and chat or video.
+- <em>Solo player:</em> wants a quick game now. Needs quick match, bots to fill empty seats, and a rating that means something.
+- <em>Competitor:</em> wants to climb the leaderboards in their area and globally.</p>
+<p><strong>Core flows</strong>
+1. <strong>Sign up / sign in:</strong> email magic link, Google, or (on iOS) Sign in with Apple. Pick a display name and avatar, confirm age (see Section 12), and optionally choose a region for local leaderboards.
+2. <strong>Play now (quick match):</strong> pick a mode, get matched within N seconds, and bots fill any seats still empty after the wait. Bot-filled games are unrated by default.
+3. <strong>Private table:</strong> create a table, choose a mode and house rules, share the invite link or code, friends join, and the host starts the game.
+4. <strong>In game:</strong> bid, play tricks, see the score pad, chat, use emotes, and (later) turn on video.
+5. <strong>After the game:</strong> final scores, rating change, stats update, a "Rematch" button, and "Add friend" for people you just played with.
+6. <strong>Social:</strong> friends list with online/in-game presence, direct messages, join a friend's table, invite to a table.
+7. <strong>Leaderboards:</strong> pick a mode and view global or local (by your chosen region) rankings, optionally per season.</p>
+<hr />
+<h2>3. Game rules</h2>
+<p>All rules live in one shared TypeScript package (<code>packages/rules</code>) that both the server and client use. <strong>The server copy is the one that counts.</strong> The client copy only highlights legal moves and animates instantly.</p>
+<h3>3.1 Rules common to all modes (unless a mode says otherwise)</h3>
+<p><strong>Seats and dealing</strong>
+- Seats are numbered 0 to 3 clockwise. In partner modes, seats 0 and 2 are Team A and seats 1 and 3 are Team B.
+- The first dealer is random. The deal passes to the left (clockwise) each hand.
+- Cards are dealt one at a time clockwise, starting left of the dealer. Online, the server simply shuffles and splits the deck.
+- <strong>Shuffle:</strong> Fisher-Yates using <code>crypto.getRandomValues</code> with rejection sampling to avoid modulo bias. Optional "provably fair" mode: at the start of each hand the server publishes <code>SHA-256(deck order + secret salt)</code>, and reveals the salt and order after the hand so anyone can verify the deck wasn't changed mid-hand.</p>
+<p><strong>Trick play</strong>
+- The player to the dealer's left leads the first trick. House-rule option: the holder of the 2♣ leads it, which some tables use.
+- You must follow the suit that was led if you can. If you can't, you may play any card, including a trump.
+- Spades are always trump. In Joker modes, both jokers count as spades (see 3.2).
+- A trick goes to the highest trump played. If no trump was played, it goes to the highest card of the suit led. The trick winner leads the next trick.
+- <strong>Breaking spades (on by default):</strong> you can't lead a spade (or a joker) until a spade has been played on an earlier trick, unless your hand is only spades.
+- The server rejects illegal plays, so reneging can't happen and there are no renege penalties.</p>
+<p><strong>Bidding</strong> (after the deal, before the first lead)
+- Bidding starts left of the dealer and goes clockwise, with one bid each.
+- A bid is 0 to 13 tricks, or 0 to 17 in 3-player Cutthroat. A bid of 0 is <strong>Nil</strong>.
+- In partner modes, the two partners' bids add up to the team contract. A Nil bidder's partner makes their own bid alone.
+- <strong>Nil:</strong> the bidder promises to take zero tricks. The Nil is scored on its own, apart from the partner's contract.
+- <strong>Blind Nil:</strong> declared <em>before</em> seeing your cards. The UI holds your cards face down until you choose Blind Nil or "See cards."
+- House-rule settings: minimum team bid (default none; common values are 2, 4, or 5), whether Blind Nil is allowed (default: only when your team is behind by ≥100 points), the Blind Nil card exchange (default off; when on, partners swap 2 cards), and whether the partner of a Nil bidder may also bid Nil (default yes).</p>
+<p><strong>Scoring (defaults; all configurable)</strong></p>
+<table>
+<thead>
+<tr>
+<th>Situation</th>
+<th>Points</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Contract made (tricks ≥ bid)</td>
+<td>+10 × bid, plus +1 per extra trick ("bag")</td>
+</tr>
+<tr>
+<td>Contract set (tricks &lt; bid)</td>
+<td>−10 × bid</td>
+</tr>
+<tr>
+<td>Nil made</td>
+<td>+100</td>
+</tr>
+<tr>
+<td>Nil failed</td>
+<td>−100</td>
+</tr>
+<tr>
+<td>Blind Nil made</td>
+<td>+200</td>
+</tr>
+<tr>
+<td>Blind Nil failed</td>
+<td>−200</td>
+</tr>
+<tr>
+<td>Every 10 accumulated bags</td>
+<td>−100, and the bag count drops by 10</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>Tricks taken by a failed Nil bidder:</strong> by default they do <em>not</em> count toward the partner's contract, but they <em>do</em> count as bags for the team. This is a house rule: "count toward partner" or "ignore."</li>
+<li><strong>Game end:</strong> first to reach the <strong>target score (default 500; options 250 / 300 / 500 / custom)</strong> at the end of a hand wins. If both sides pass the target in the same hand, the higher score wins. If they're exactly tied, play another hand.</li>
+<li><strong>Mercy / losing floor (default −200):</strong> a side that falls to or below the floor loses immediately. Can be turned off.</li>
+<li>Optional house rules, off by default: <strong>"10 for 200"</strong> (bid 10 or more and make it for a double bonus), <strong>bag penalty size</strong> (−100 default, or −50), <strong>bags per penalty</strong> (10 default, or 5), <strong>Moon / Boston</strong> (take all 13 tricks for a bonus or instant win).</li>
+</ul>
+<h3>3.2 Mode 1: Joker Spades, 2v2 partners (default mode)</h3>
+<ul>
+<li><strong>Players:</strong> 4, in two partnerships sitting across from each other.</li>
+<li><strong>Deck:</strong> 52 standard cards + Big Joker + Little Joker = 54, then <strong>remove two low cards to get back to 52</strong> (13 per player).<ul>
+<li>Default cards removed: <strong>2♥ and 2♦</strong>.</li>
+<li>House-rule setting: <code>removedCards</code>, any 2 non-spade cards (common: 2♥+2♦, 2♣+2♦, 2♣+2♥).</li>
+</ul>
+</li>
+<li><strong>Trump ranking, high to low (default):</strong>
+  <strong>Big Joker &gt; Little Joker &gt; A♠ &gt; K♠ &gt; Q♠ &gt; J♠ &gt; 10♠ … 3♠ &gt; 2♠</strong></li>
+<li><strong>House-rule setting <code>deuceOfSpadesHigh</code> (default off):</strong> when on, the 2♠ ranks just under the jokers: Big Joker &gt; Little Joker &gt; 2♠ &gt; A♠ &gt; K♠ …</li>
+<li><strong>Advanced setting <code>extraHighTrumps</code> (default empty):</strong> some tables also promote the 2♦ (for example Big Joker &gt; Little Joker &gt; 2♦ &gt; 2♠ &gt; A♠…). The engine models the trump order as an ordered list, so any local variant is a config change, not a code change. The 2♦ then counts as a spade for following suit, and it can't also be one of the removed cards.</li>
+<li><strong>Jokers count as spades</strong> for following suit, for trumping, and for the "spades broken" rule. Leading a joker counts as leading a spade.</li>
+<li><strong>Non-trump suits</strong> rank A high down to 2, minus any removed cards.</li>
+<li>Bidding and scoring follow 3.1.</li>
+<li><strong>Display:</strong> a "Big" and "Little" joker that are clearly different (color vs. black-and-white, as on real decks), plus a little legend at the table showing that table's trump order.</li>
+</ul>
+<h3>3.3 Mode 2: Cutthroat (individual, 3 or 4 players)</h3>
+<ul>
+<li><strong>No partners.</strong> Everyone bids and scores for themselves, and bags are tracked per player.</li>
+<li><strong>4 players:</strong> 13 cards each. The deck follows the table's deck setting: either the Joker deck from 3.2 (54 − 2 = 52) or a standard 52 with no jokers. <strong>Default: Joker deck</strong>, since Joker is the group's usual style. (Open question 15.3.)</li>
+<li><strong>3 players:</strong> 17 cards each, so the deck needs 51 cards.<ul>
+<li>Standard deck: remove <strong>2♣</strong> (52 − 1 = 51).</li>
+<li>Joker deck: remove <strong>three</strong> low non-spade cards (54 − 3 = 51). Default: 2♣, 2♥, 2♦.</li>
+<li>Both are configurable via <code>removedCards</code>.</li>
+</ul>
+</li>
+<li>Bids run 0 to 13 (4p) or 0 to 17 (3p). Nil and Blind Nil are allowed by default. With no partner, the Blind Nil exchange doesn't apply, and the default "behind by ≥100" condition compares you with the leader.</li>
+<li>Scoring follows 3.1, applied per player. <strong>Default target 300</strong> for Cutthroat, since games run long with individual scores; configurable.</li>
+<li><strong>Placement:</strong> when the game ends, players are ranked by final score, with ties sharing a place. This placement feeds the ratings (Section 9).</li>
+<li><strong>Seat-filling:</strong> a 3-player table can't take a 4th player mid-game. In quick match, bots fill only to the table's chosen size.</li>
+</ul>
+<h3>3.4 Mode 3: Ace Down</h3>
+<p><strong>Confirmed by Demetrius:</strong> standard 52-card deck, <strong>no jokers</strong>, and <strong>aces are the highest cards</strong> (A♠ is the top trump; A &gt; K &gt; Q &gt; … &gt; 2 in every suit).</p>
+<p>Nothing else was specified, so <strong>until confirmed, Ace Down uses the standard rules in 3.1:</strong>
+- 2v2 partners by default. A host could also run it as Cutthroat, since the deck and ranking settings are independent of the partnership setting.
+- Standard bidding with Nil and Blind Nil, standard scoring, bags at 10 = −100, target 500, floor −200.
+- <code>deuceOfSpadesHigh</code> is forced off, and there's no card removal.</p>
+<blockquote>
+<p>⚠️ Bidding and scoring for Ace Down need confirming with Demetrius. The name suggests there may be a regional twist (for example a special rule about aces, a required minimum bid, or a different way of handling Nil). See Open question 15.1. The engine treats Ace Down as a <strong>preset</strong> of settings, so any confirmed differences become config changes or one small rule hook.</p>
+</blockquote>
+<h3>3.5 House-rule settings (one config object)</h3>
+<pre><code class="language-ts">type TableRules = {
+  mode: 'joker' | 'cutthroat' | 'aceDown';
+  partnerships: boolean;              // joker/aceDown: true; cutthroat: false
+  playerCount: 3 | 4;                 // 3 only when partnerships=false
+  deck: 'joker54' | 'standard52';
+  removedCards: Card[];               // e.g. ['2H','2D']; length is checked against playerCount
+  trumpOrderTop: Card[];              // e.g. ['BJ','LJ'] or ['BJ','LJ','2S']; above A♠
+  deuceOfSpadesHigh: boolean;         // shortcut that inserts '2S' after the jokers
+  spadesMustBeBroken: boolean;        // default true
+  firstLead: 'leftOfDealer' | 'twoOfClubs';
+  minTeamBid: number;                 // default 0 (no minimum)
+  nil: { allowed: boolean; value: number };            // default true, 100
+  blindNil: { allowed: boolean; value: number; onlyWhenBehindBy: number | null; exchangeCards: 0 | 1 | 2 };
+  nilTricksCountForPartner: boolean;  // default false (count as bags)
+  bagsPerPenalty: number;             // default 10
+  bagPenalty: number;                 // default 100
+  tenForTwoHundred: boolean;          // default false
+  targetScore: number;                // default 500 (cutthroat 300)
+  losingFloor: number | null;         // default -200
+  turnTimerSec: { bid: number; play: number };  // default 30 / 20
+};
+</code></pre>
+<ul>
+<li><strong>Ranked games use a fixed preset per mode</strong>, so ratings compare like with like. Private tables can use any settings, and those games are unrated unless the settings match the ranked preset.</li>
+<li>The server checks every config. For example, with 4 players <code>removedCards</code> has to leave exactly 52 cards, and with 3 players exactly 51.</li>
+</ul>
+<h3>3.6 Bots</h3>
+<ul>
+<li>Bots are needed in Phase 1, both for testing and for filling seats.</li>
+<li><strong>v1, heuristic:</strong><ul>
+<li><em>Bidding:</em> count sure tricks (top trumps, guarded aces and kings, voids/singletons with trump to cut). Bid Nil when the hand is very low with no high spades.</li>
+<li><em>Play:</em> follow standard play conventions. Cover your partner's Nil. Duck to avoid bags when the contract is already made. Set the opponents when you can.</li>
+</ul>
+</li>
+<li><strong>v2, later:</strong> Monte Carlo "determinization." The bot samples possible hidden hands that fit what it has seen and picks the best average move. Keep compute small on the Workers Free plan; check current CPU limits (Section 13).</li>
+<li><strong>Bots only see what a human in that seat would see.</strong> They run inside the table's Durable Object and get exactly that seat's view. No peeking.</li>
+<li>Bot difficulty levels: Easy, Normal, Hard.</li>
+</ul>
+<hr />
+<h2>4. Architecture</h2>
+<pre><code>            ┌──────────────────────────── Cloudflare (free plan) ───────────────────────────┐
+ Browser /  │  Pages: static React + three.js app (free, unlimited static requests)         │
+ Capacitor ─┼─► Worker &quot;api&quot;: auth check, routing, matchmaking entry                        │
+   app      │      │                                                                        │
+            │      ├─► Durable Object &quot;Lobby&quot; (quick-match queues, one per mode)            │
+            │      └─► Durable Object &quot;Table&quot; (one per table): rules, timers, bots,        │
+            │            WebSocket hub (hibernation), table chat, WebRTC signaling          │
+            └───────────────────────────────┬───────────────────────────────────────────────┘
+                                            │ writes results (service key, server-side only)
+            ┌───────────────────────────────▼───────────────── Supabase (free plan) ─────────┐
+            │  Auth (JWT) · Postgres + RLS (profiles, friends, DMs, matches, ratings)         │
+            │  Realtime: DMs, friend presence (&quot;online&quot;, &quot;in game&quot;)                          │
+            └─────────────────────────────────────────────────────────────────────────────────┘
+ Video (Phase 5): browser ⇄ browser WebRTC mesh; STUN (public); TURN fallback = Cloudflare Realtime TURN
+</code></pre>
+<h3>4.1 Frontend</h3>
+<ul>
+<li><strong>Stack:</strong> TypeScript, React, Vite, three.js through <strong>react-three-fiber</strong> and <strong>drei</strong>, Zustand for state, and Zod (v4.5+; Cloudflare notes that older versions use much more memory) for message schemas shared with the server.</li>
+<li><strong>Hosting:</strong> Cloudflare Pages, deployed from GitHub.<ul>
+<li>Limits: 500 builds/month, 20,000 files, 25 MiB per file. Keep each 3D asset under 25 MiB, which is easy with compression.</li>
+</ul>
+</li>
+<li><strong>2D fallback renderer:</strong> a simple DOM/SVG table used in Phase 1, kept forever as the "Low / Classic" mode and for accessibility.</li>
+</ul>
+<h3>4.2 Game server: Cloudflare Workers + Durable Objects</h3>
+<ul>
+<li><strong>Worker <code>api</code>:</strong><ul>
+<li>Checks the Supabase JWT, using the project's JWKS / signing keys (or the legacy JWT secret, depending on project settings).</li>
+<li>Creates tables and routes <code>wss://…/table/:id</code> to that table's Durable Object.</li>
+</ul>
+</li>
+<li><strong>Durable Object <code>Table</code> (one per table):</strong> the single source of truth for that game.<ul>
+<li>Holds the game state and runs the rules engine on every action.</li>
+<li>Uses the <strong>WebSocket Hibernation API</strong> (<code>ctx.acceptWebSocket</code>), so an idle table is <em>not</em> billed for wall-clock time while players think. Uses <code>setWebSocketAutoResponse</code> for ping/pong, which Cloudflare says costs no extra duration.</li>
+<li>Saves state to its <strong>SQLite storage</strong> (the only Durable Object storage the free plan allows), so a hibernated or restarted object picks up exactly where it was.</li>
+<li>Runs <strong>turn timers with a Durable Object alarm</strong>. There's one alarm per object, set to the earliest deadline. When it fires, a bot makes the move for the absent player.</li>
+<li>Runs bots in-process.</li>
+<li>Relays table chat and WebRTC signaling.</li>
+<li>When the game ends, it writes the match result to Supabase and computes the rating update (Section 9).</li>
+</ul>
+</li>
+<li><strong>Durable Object <code>Lobby</code> (one per mode):</strong> quick-match queue.<ul>
+<li>Groups players by rating band and widens the band over time.</li>
+<li>After a timeout (default 20 s), creates a table and fills the rest with bots, marking the game unrated if bots are seated.</li>
+</ul>
+</li>
+<li><strong>Choosing location:</strong> create the Table object with a <code>locationHint</code> near the host or the first player in the queue.</li>
+<li><strong>Saving state economically:</strong> on the free plan, <em>rows written</em> (100k/day) is probably the first limit you'll hit (see Section 13).<ul>
+<li>Store the state as <strong>one row that gets overwritten</strong> (1 row write per action), not one row per event.</li>
+<li>Keep the event log for the current hand in memory, plus a compact snapshot. Don't keep a growing table.</li>
+</ul>
+</li>
+</ul>
+<h3>4.3 Accounts, social, and stats: Supabase</h3>
+<ul>
+<li><strong>Auth:</strong> email magic link and OAuth (Google; Apple, which iOS will require when other social logins are offered).</li>
+<li><strong>Postgres</strong> with <strong>row-level security on every table</strong> (Section 6).</li>
+<li><strong>Realtime:</strong><ul>
+<li>DMs: Postgres Changes on <code>messages</code>, or Broadcast with the message also saved to the table.</li>
+<li>Friend presence: one presence channel per user. Friends subscribe to it.</li>
+<li>Keep <strong>one Realtime connection per client</strong> and multiplex channels over it. The free plan allows 200 concurrent connections (Section 13).</li>
+</ul>
+</li>
+<li><strong>Table chat goes through the Table Durable Object, not Supabase,</strong> to save Supabase quota. The object keeps the last ~100 lines in memory so they can be attached to a report.</li>
+<li><strong>Free project pausing:</strong> Supabase's pricing page says free projects <strong>pause after 1 week of inactivity</strong>. Real players keep it active, but watch out for this during quiet development weeks. Unpausing is manual from the dashboard.</li>
+</ul>
+<h3>4.4 Video: WebRTC mesh</h3>
+<ul>
+<li>Covered in Section 11.</li>
+</ul>
+<h3>4.5 Native apps: Capacitor</h3>
+<ul>
+<li>Wrap the same web build. Add native plugins as needed: push notifications, haptics, camera permissions, in-app review.</li>
+<li>Check that WebGL2 performance is acceptable in iOS WKWebView and Android WebView, especially with the Low/Medium quality tiers.</li>
+</ul>
+<h3>4.6 Repo layout (monorepo, pnpm workspaces)</h3>
+<pre><code>packages/rules      # pure TS rules engine, seeded RNG, no I/O; 100% unit tested
+packages/bots       # bot strategies (use rules)
+packages/protocol   # Zod schemas + TS types for all WebSocket messages
+packages/rating     # Glicko-2 implementation + tests
+apps/web            # React app (2D + 3D renderers)
+apps/server         # Cloudflare Worker + Durable Objects (wrangler)
+supabase/           # SQL migrations, RLS policies, seed data
+assets-src/         # Blender files, raw textures (not deployed)
+</code></pre>
+<hr />
+<h2>5. Photoreal 3D table and cards (Phase 4)</h2>
+<p><strong>Look target:</strong> a warm room, a wood-rimmed felt table under soft overhead light, and cards with slight thickness, a satin sheen, and subtle wear.</p>
+<p><strong>Assets</strong>
+- <strong>Table:</strong> modeled in Blender with a wood rail and felt surface. Use <strong>CC0 PBR textures from Poly Haven</strong> (wood, felt/fabric; <a href="https://polyhaven.com/license">license: CC0</a>). Bake ambient occlusion (and optionally a lightmap) for the table in Blender, so it looks rich without real-time cost.
+- <strong>Cards:</strong> a single shared mesh, a thin rounded rectangle with a tiny bevel.
+    - Faces come from <strong>one texture atlas</strong> (52 faces + 2 jokers + back), plus a roughness map for a satin finish and slight edge wear.
+    - Card art has to be original or properly licensed (Open question 15.6). A four-color deck option is good for accessibility.
+- <strong>Environment:</strong> an <strong>HDRI from Poly Haven</strong> (CC0) for image-based lighting and reflections, plus one shadow-casting light. Use a 1k HDRI on low quality and 2k on high.
+- <strong>Rendering:</strong> PBR materials (<code>MeshStandardMaterial</code> / <code>MeshPhysicalMaterial</code> for the card sheen), ACES or AgX tone mapping, sRGB output, and drei <code>ContactShadows</code> or soft shadow maps. Optional post-processing on High (SSAO, subtle depth of field on the far side of the table).</p>
+<p><strong>Compression / delivery</strong>
+- Models: glTF/GLB, compressed with <strong>Draco</strong> (or meshopt) via <code>gltf-transform</code>.
+- Textures: <strong>KTX2 / Basis Universal</strong>. Use UASTC for card faces so the text stays sharp, and ETC1S for wood and felt. Load them with three.js <code>KTX2Loader</code>.
+- Budget: aim for <strong>≤ ~8–15 MB on first load at Low/Medium</strong>, and lazy-load High textures. Static files on Cloudflare Pages are free to serve, but every file must be ≤ 25 MiB.</p>
+<p><strong>Quality settings</strong> (chosen automatically, with a manual override)</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Low (old phones)</th>
+<th>Medium</th>
+<th>High</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Device pixel ratio cap</td>
+<td>1.0</td>
+<td>1.5</td>
+<td>2.0</td>
+</tr>
+<tr>
+<td>Texture size</td>
+<td>512–1k</td>
+<td>1k–2k</td>
+<td>2k (4k felt optional)</td>
+</tr>
+<tr>
+<td>Shadows</td>
+<td>baked only</td>
+<td>contact shadows</td>
+<td>soft shadow map</td>
+</tr>
+<tr>
+<td>Post-processing</td>
+<td>none</td>
+<td>none</td>
+<td>SSAO, light DoF</td>
+</tr>
+<tr>
+<td>HDRI</td>
+<td>1k, no background</td>
+<td>1k</td>
+<td>2k</td>
+</tr>
+<tr>
+<td>Antialiasing</td>
+<td>none / FXAA</td>
+<td>MSAA ×2</td>
+<td>MSAA ×4</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>Auto-detection uses drei <code>PerformanceMonitor</code>. If the frame rate stays under ~30 fps, it drops a tier. If it's still slow at Low, it offers the 2D Classic table.</li>
+<li><strong>Interaction:</strong> your hand is fanned at the bottom of the screen in screen space. Tap a card to raise it and tap again to play (or drag it to the center). Illegal cards are dimmed. Played cards animate to the center, and won tricks slide to the winner's pile. Pause rendering when nothing is moving (<code>frameloop="demand"</code>) to save battery.</li>
+</ul>
+<hr />
+<h2>6. Data model (Supabase Postgres)</h2>
+<p>RLS is <strong>on for every table</strong>. The Table Durable Object writes match results with the <strong>service role key</strong>, which is stored only as a Worker secret and never shipped to clients.</p>
+<pre><code class="language-sql">-- Users ---------------------------------------------------------------
+profiles (
+  id uuid pk references auth.users,        -- 1:1 with auth user
+  username citext unique not null,          -- display handle
+  display_name text, avatar_url text,
+  birth_year int,                           -- age gate (or store a flag, not a full DOB)
+  is_minor boolean not null default false,  -- 13–17
+  region_code text references regions,      -- user-chosen, for local boards (no GPS)
+  video_enabled boolean default false,      -- adult + opted in
+  status text default 'active',             -- active | muted | suspended | banned
+  created_at timestamptz default now()
+)
+regions (code text pk, name text, country_code text, parent_code text)  -- e.g. 'US-GA', 'US-GA-ATL'
+
+-- Social --------------------------------------------------------------
+friendships (
+  user_low uuid, user_high uuid,            -- ordered pair: one row per pair
+  requested_by uuid, status text,           -- pending | accepted
+  created_at timestamptz, accepted_at timestamptz,
+  primary key (user_low, user_high)
+)
+blocks (blocker uuid, blocked uuid, created_at timestamptz, primary key (blocker, blocked))
+conversations (id uuid pk, kind text /* dm */, created_at timestamptz)
+conversation_members (conversation_id uuid, user_id uuid, last_read_at timestamptz, pk(conversation_id,user_id))
+messages (
+  id bigint identity pk, conversation_id uuid, sender_id uuid,
+  body text check (char_length(body) &lt;= 500), created_at timestamptz,
+  deleted_at timestamptz                    -- soft delete for moderation
+)
+
+-- Games ---------------------------------------------------------------
+matches (
+  id uuid pk, mode text, rules jsonb, rated boolean,
+  started_at timestamptz, ended_at timestamptz,
+  end_reason text,                          -- target | floor | abandoned
+  hands_played int, season_id int
+)
+match_players (
+  match_id uuid, seat smallint, user_id uuid null,   -- null = bot
+  bot_level text null, team smallint null,
+  final_score int, placement smallint, bags int,
+  bids_made int, bids_set int, nils_made int, nils_failed int,
+  left_early boolean default false,
+  primary key (match_id, seat)
+)
+match_hands (match_id uuid, hand_no int, summary jsonb, primary key(match_id, hand_no)) -- optional, for replays; watch the 500 MB DB cap
+
+-- Ratings and stats ---------------------------------------------------
+seasons (id serial pk, name text, starts_at timestamptz, ends_at timestamptz)
+ratings (
+  user_id uuid, mode text, season_id int,   -- season_id 0 = all-time
+  rating float8 default 1500, rd float8 default 350, volatility float8 default 0.06,
+  games int default 0, wins int default 0, last_played_at timestamptz,
+  primary key (user_id, mode, season_id)
+)
+rating_history (user_id uuid, mode text, match_id uuid, before float8, after float8, rd_after float8, created_at timestamptz)
+user_stats (user_id uuid, mode text, games int, wins int, avg_bid numeric, bid_accuracy numeric,
+            nil_attempts int, nil_success int, total_bags int, primary key(user_id, mode))
+
+-- Safety --------------------------------------------------------------
+reports (
+  id bigint pk, reporter uuid, reported uuid, context text,  -- dm | table_chat | video | name
+  match_id uuid null, evidence jsonb,       -- last N chat lines, captured server-side
+  reason text, status text default 'open', created_at timestamptz, resolved_by uuid, notes text
+)
+</code></pre>
+<p><strong>RLS sketch</strong>
+- <code>profiles</code>: anyone signed in can read public columns, through a <code>public_profiles</code> view that hides <code>birth_year</code>. Users can update only their own row, and can't change <code>status</code>.
+- <code>friendships</code>: you can see and modify only rows you're part of. Inserting is allowed only if neither side has blocked the other.
+- <code>messages</code>: read and insert only when you're a member of that conversation and not blocked. Enforce this with a <code>security definer</code> function.
+- <code>matches</code>, <code>match_players</code>, <code>ratings</code>: readable by all signed-in users. <strong>Only the service role can write them.</strong>
+- <code>reports</code>: insert your own. Only admins can read.</p>
+<p><strong>Leaderboard queries</strong>
+- Global: <code>ratings</code> filtered by mode and season, <code>games &gt;= 10</code>, sorted by <strong>conservative rating = rating − 2·RD</strong>.
+- Local: the same query, joined to <code>profiles.region_code</code>.
+- To stay fast and cheap, a cron job refreshes a materialized view every few minutes. A Cloudflare Cron Trigger or Supabase <code>pg_cron</code> would work; check that <code>pg_cron</code> is available on the free plan.</p>
+<hr />
+<h2>7. Real-time protocol (client ⇄ Table Durable Object)</h2>
+<ul>
+<li><strong>Transport:</strong> one WebSocket per player per table: <code>wss://api.&lt;domain&gt;/table/&lt;tableId&gt;?token=&lt;supabase JWT&gt;</code>. The token can go in the first message instead of the URL so it doesn't show up in logs.</li>
+<li><strong>Format:</strong> JSON validated with Zod. Every server message has a monotonically increasing <code>seq</code>, so clients can spot gaps and resync.</li>
+</ul>
+<p><strong>Client → server</strong></p>
+<table>
+<thead>
+<tr>
+<th>type</th>
+<th>payload</th>
+<th>notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>hello</code></td>
+<td><code>{ token, lastSeq? }</code></td>
+<td>Authenticate. Reconnects send <code>lastSeq</code>.</td>
+</tr>
+<tr>
+<td><code>sit</code> / <code>stand</code></td>
+<td><code>{ seat }</code></td>
+<td>Lobby phase only.</td>
+</tr>
+<tr>
+<td><code>setRules</code></td>
+<td><code>{ rules }</code></td>
+<td>Host only, before start.</td>
+</tr>
+<tr>
+<td><code>start</code></td>
+<td><code>{}</code></td>
+<td>Host; empty seats get bots.</td>
+</tr>
+<tr>
+<td><code>bid</code></td>
+<td><code>{ handNo, bid: number \| 'nil' \| 'blindNil' }</code></td>
+<td>Validated for turn, range, and house rules.</td>
+</tr>
+<tr>
+<td><code>revealCards</code></td>
+<td><code>{ handNo }</code></td>
+<td>Opts out of the Blind Nil option.</td>
+</tr>
+<tr>
+<td><code>exchange</code></td>
+<td><code>{ handNo, cards }</code></td>
+<td>Blind Nil exchange, if enabled.</td>
+</tr>
+<tr>
+<td><code>play</code></td>
+<td><code>{ handNo, trickNo, card }</code></td>
+<td>Rejected if not your turn or not legal.</td>
+</tr>
+<tr>
+<td><code>chat</code></td>
+<td><code>{ text }</code></td>
+<td>≤ 200 characters, rate-limited.</td>
+</tr>
+<tr>
+<td><code>emote</code></td>
+<td><code>{ id }</code></td>
+<td>Pre-set reactions.</td>
+</tr>
+<tr>
+<td><code>rtc</code></td>
+<td><code>{ to: seat, kind: 'offer'\|'answer'\|'ice', data }</code></td>
+<td>Video signaling relay (Phase 5).</td>
+</tr>
+<tr>
+<td><code>rematch</code> / <code>leave</code></td>
+<td><code>{}</code></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Server → client</strong></p>
+<table>
+<thead>
+<tr>
+<th>type</th>
+<th>payload</th>
+<th>notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>welcome</code></td>
+<td><code>{ you: {seat,userId}, table: PublicState, hand?: Card[], seq }</code></td>
+<td>Full snapshot: on join, on reconnect, or when a gap is detected.</td>
+</tr>
+<tr>
+<td><code>seated</code> / <code>playerStatus</code></td>
+<td><code>{ seat, user?, bot?, connected }</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>handStart</code></td>
+<td><code>{ handNo, dealer, deckCommit? }</code></td>
+<td>Sent to all players.</td>
+</tr>
+<tr>
+<td><code>yourHand</code></td>
+<td><code>{ handNo, cards }</code></td>
+<td><strong>Sent only to that player.</strong></td>
+</tr>
+<tr>
+<td><code>turn</code></td>
+<td><code>{ seat, phase: 'bid'\|'play', deadline }</code></td>
+<td><code>deadline</code> is a server timestamp.</td>
+</tr>
+<tr>
+<td><code>bidMade</code></td>
+<td><code>{ seat, bid }</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>cardPlayed</code></td>
+<td><code>{ seat, card, trickNo }</code></td>
+<td>A card is revealed only when it's played.</td>
+</tr>
+<tr>
+<td><code>trickWon</code></td>
+<td><code>{ trickNo, winner }</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>handScored</code></td>
+<td><code>{ handNo, perSide: {bid, tricks, points, bags, nil?}[], totals }</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>gameOver</code></td>
+<td><code>{ winner/placements, finalScores, ratingDeltas?, matchId }</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>chat</code> / <code>emote</code></td>
+<td><code>{ seat, text/id, ts }</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>rtc</code></td>
+<td><code>{ from: seat, kind, data }</code> / <code>iceServers</code></td>
+<td>Short-lived TURN credentials.</td>
+</tr>
+<tr>
+<td><code>error</code></td>
+<td><code>{ code, message, ref? }</code></td>
+<td>Examples: <code>NOT_YOUR_TURN</code>, <code>ILLEGAL_CARD</code>, <code>MUST_FOLLOW_SUIT</code>, <code>SPADES_NOT_BROKEN</code>.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Connection rules</strong>
+- <strong>Heartbeats:</strong> the client pings every ~20–30 s and the server auto-responds, which keeps hibernation working. If a socket closes, the player is marked <code>connected:false</code> and the others see a "reconnecting…" badge.
+- <strong>Reconnection:</strong>
+    - The client retries with exponential backoff (0.5 s → 8 s) and sends <code>hello{lastSeq}</code>.
+    - The server replies with a fresh <code>welcome</code> snapshot, including your hand. Snapshots are small, so don't bother replaying events.
+    - Seats are held for the whole game. If you're disconnected <strong>on your turn</strong>, the timer keeps running and a bot plays for you when it expires.
+    - After <strong>3 consecutive auto-moves, or 3 minutes away</strong>, a bot takes the seat until you return.
+    - In rated games, leaving for good counts as a loss for rating purposes and sets <code>left_early</code>.
+- <strong>Turn timers:</strong> default 30 s to bid and 20 s to play. Optionally add a 60 s "time bank" per game. The UI shows a countdown ring using the server's <code>deadline</code>, adjusted for clock offset measured at <code>hello</code>.
+- <strong>Idempotency:</strong> <code>play</code> and <code>bid</code> include <code>handNo</code>/<code>trickNo</code>, so a duplicate resend after reconnecting is safely ignored.</p>
+<hr />
+<h2>8. Anti-cheat basics</h2>
+<ol>
+<li><strong>Server-authoritative.</strong> The client only sends <em>intentions</em> like "play Q♥." The server decides whether that's legal and what happens next.</li>
+<li><strong>The server never sends other players' hands.</strong> Each player gets only <code>yourHand</code>. Other cards are revealed one at a time through <code>cardPlayed</code>. No hidden data reaches the client, so there's nothing to dig out of memory or DevTools. Bots get the same restricted view.</li>
+<li><strong>Secure shuffle</strong> (crypto RNG). Optional deck commitment (hash before, reveal after) so fairness can be checked.</li>
+<li><strong>Validate everything:</strong> check every message against its Zod schema, check turn order and legality, and rate-limit each socket (for example ≤ 10 msgs/s, and chat ≤ 1 msg/s with bursts of 3).</li>
+<li><strong>Collusion:</strong> this is the real risk in Cutthroat and in rated games, for example friends on a call sharing their hands.<ul>
+<li>Rated quick match pairs strangers, and friends can't queue together into the same rated Cutthroat table.</li>
+<li>Games with video or private tables are unrated by default.</li>
+<li>Flag accounts that keep ending up at the same tables, or that play suspiciously (for example deliberately feeding tricks).</li>
+</ul>
+</li>
+<li><strong>Rating abuse:</strong> minimum games before appearing on leaderboards, unrated bot games, and abandonment counted as a loss. Watch for many new accounts from the same IP all playing each other; IP is a weak signal, so use it only as a flag.</li>
+<li><strong>Secrets:</strong> the Supabase service key and TURN API token live only in Worker secrets. Clients get only the Supabase anon key, which RLS protects, and short-lived TURN credentials.</li>
+</ol>
+<hr />
+<h2>9. Scoring, ratings, and leaderboards</h2>
+<ul>
+<li><strong>In-game scoring:</strong> Section 3.</li>
+<li><strong>Rating system: Glicko-2</strong> (<a href="http://www.glicko.net/glicko/glicko2.pdf">Glickman's paper</a>). Each player has a separate rating per mode: <code>joker_2v2</code>, <code>cutthroat_3</code>, <code>cutthroat_4</code>, <code>ace_down</code>.<ul>
+<li>Start values: rating 1500, RD 350, volatility 0.06, system constant τ ≈ 0.5.</li>
+<li>Update after every rated game. Glicko-2 is designed for rating periods, so treating each game as its own period is a simple, common approximation.</li>
+<li><strong>2v2:</strong> each player's opponent is a composite built from the opposing team's average rating, with RD combined as <code>sqrt((RD1²+RD2²)/2)</code>. Result is 1 or 0. Both partners get an update, so a strong player with a weak partner gains more for a win.</li>
+<li><strong>Cutthroat:</strong> split the final placement into pairwise results (each pair of players counts as one "game": win, loss, or 0.5 for a tie) and update each player against all the others in one period.</li>
+<li>RD grows with inactivity (the standard Glicko-2 step), so returning players move faster.</li>
+</ul>
+</li>
+<li><strong>Leaderboards</strong><ul>
+<li><strong>Global</strong> per mode, plus <strong>Local</strong> per user-chosen region (country → state/province → optional metro, picked from a list; no GPS or IP lookup needed).</li>
+<li>Users can change region at most once every 30 days, to stop people hopping regions.</li>
+<li>Sorted by <strong>conservative rating (rating − 2·RD)</strong> with a minimum of 10 rated games. Also show win %, bid accuracy, and Nil success rate.</li>
+<li>Friends leaderboard: an easy add, filtering the same query by friend IDs.</li>
+</ul>
+</li>
+<li><strong>Seasons (optional, Phase 3+):</strong> about 3 months each. At season start, keep the all-time rating and start a season row with rating pulled toward 1500 and RD reset higher (around 200). Give end-of-season badges.</li>
+<li><strong>Stats shown on profile:</strong> games, wins, win %, average bid, contracts made %, Nils tried/made, bags per game, current/best rating per mode, recent matches.</li>
+</ul>
+<hr />
+<h2>10. Friends and chat</h2>
+<ul>
+<li><strong>Friend requests:</strong> by username, by invite link, or from the post-game screen. Accept or decline. Removing a friend is silent.</li>
+<li><strong>Presence:</strong> offline, online, or in game (mode, plus a "join" button if the table has an open seat and the friend allows it).<ul>
+<li>Presence is published on a Supabase Realtime presence channel per user.</li>
+<li>The Supabase free plan limits presence to 20 messages/sec project-wide, so throttle presence updates; Section 13 links the exact limits. This is a reason to move presence to a Durable Object later if it becomes a bottleneck.</li>
+</ul>
+</li>
+<li><strong>DMs:</strong> one-to-one, text only at first, max 500 characters, kept for 90 days. Read receipts are optional.</li>
+<li><strong>Table chat:</strong> goes through the Table Durable Object, isn't stored after the game except as report evidence, and has quick emotes. A "mute player" control is on every seat.</li>
+<li><strong>Group chats:</strong> later. The schema already supports them through <code>conversations</code>.</li>
+</ul>
+<hr />
+<h2>11. Live video (stretch goal, Phase 5)</h2>
+<ul>
+<li><strong>Topology:</strong> full mesh with up to 4 players. Each browser sends its camera to the other 3 and receives 3.<ul>
+<li>Keep video small and light, for example 320×240 or 480×360 at 15–24 fps. Lower the resolution and bitrate automatically when more people are on camera, and offer "audio only" and "camera off."</li>
+<li>Mesh is fine at 4 people. Bigger rooms would need an SFU, which costs money.</li>
+</ul>
+</li>
+<li><strong>Signaling:</strong> goes through the <strong>Table Durable Object</strong> using the <code>rtc</code> messages. Signaling is a handful of messages per peer pair, so it barely touches quota.</li>
+<li><strong>NAT traversal:</strong><ul>
+<li><strong>STUN:</strong> a public STUN server such as <code>stun.cloudflare.com:3478</code>.</li>
+<li><strong>TURN fallback:</strong> <strong>Cloudflare Realtime TURN</strong>. The Worker mints <strong>short-lived TURN credentials</strong> through Cloudflare's API and sends them in <code>iceServers</code>, so the API token never reaches clients.</li>
+<li>Pricing: Cloudflare charges <strong>$0.05 per GB</strong> of egress for SFU and TURN, with <strong>the first 1,000 GB each month free</strong> (shared between SFU and TURN). TURN is free when used with Cloudflare's SFU. Only connections that can't go direct use TURN.</li>
+<li>Per-user limits are listed in the <a href="https://developers.cloudflare.com/realtime/turn/">TURN docs</a>.</li>
+</ul>
+</li>
+<li><strong>Defaults and safety:</strong><ul>
+<li>Video is <strong>off by default</strong> and opt-in per table.</li>
+<li><strong>Adults only (18+)</strong>, and only at private tables or tables where everyone has video turned on.</li>
+<li>Anyone can hide anyone else's video on their own screen.</li>
+<li>Video is peer-to-peer, so <strong>nothing is recorded or stored on our servers</strong>. The report flow records who, when, and which table, plus the reporter's description.</li>
+<li>Video tables are unrated by default (collusion risk).</li>
+</ul>
+</li>
+<li><strong>Mobile:</strong> camera and mic permissions in Capacitor. Pause video when the app goes to the background.</li>
+</ul>
+<hr />
+<h2>12. Moderation, safety, and privacy</h2>
+<ul>
+<li><strong>Minimum age:</strong><ul>
+<li><strong>13+ to make an account.</strong> Ask for age at signup and block users under 13. Collecting data from under-13s brings in <a href="https://www.ftc.gov/business-guidance/privacy-security/childrens-privacy">COPPA</a> parental-consent requirements, which are out of scope.</li>
+<li><strong>13–17:</strong> chat only with accepted friends, no DMs from strangers, no video, and profiles hidden from search.</li>
+<li><strong>18+:</strong> everything.</li>
+<li>Have a lawyer review the age policy and Terms before a public launch (Open question 15.8).</li>
+</ul>
+</li>
+<li><strong>Report and block</strong> are available everywhere a user can see another user: profile, table seat, DM, chat line, and video tile.<ul>
+<li><strong>Block:</strong> they can't DM you, friend you, or see your presence. Quick match tries not to seat you together, and you never share a private table.</li>
+<li><strong>Report:</strong> pick a reason (harassment, hate, sexual content, cheating, underage, other). The server attaches the last ~50 table-chat lines or DM messages as evidence.</li>
+</ul>
+</li>
+<li><strong>Filters:</strong><ul>
+<li>A profanity/slur filter on usernames, chat, and DMs (a word list on the server, with "mask" or "block" behavior). Users can choose a "family filter" on or off; for minors it's always on.</li>
+<li>Links are blocked in chat.</li>
+<li>Rate limits to stop spam.</li>
+</ul>
+</li>
+<li><strong>Enforcement:</strong> profile <code>status</code> can be <code>muted</code> (can't chat), <code>suspended</code> (until a date), or <code>banned</code>. To start, Demetrius reviews reports in the Supabase dashboard or a tiny admin page. Repeat offenders get video and chat removed first.</li>
+<li><strong>App store requirements (Phase 6):</strong><ul>
+<li>Apps with user-generated content must offer filtering, reporting, blocking, and published contact info. See <a href="https://developer.apple.com/app-store/review/guidelines/#user-generated-content">Apple App Review Guidelines 1.2</a>.</li>
+<li>Apps that let users create accounts must also let them delete their account in-app.</li>
+<li>Google Play has similar rules.</li>
+</ul>
+</li>
+<li><strong>Privacy:</strong> collect as little as possible. Region is user-chosen, there's no GPS, and storing birth year or an age band beats storing a full date of birth. Publish a privacy policy and terms, and offer data export and deletion.</li>
+</ul>
+<hr />
+<h2>13. Free-tier limits (verified October 8, 2026) and where costs start</h2>
+<p>Limits change. <strong>Re-check these pages before launch.</strong> All figures below come from the official pages linked.</p>
+<h3>13.1 Verified free-tier limits</h3>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>Free tier (as published)</th>
+<th>What happens at the limit</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Cloudflare Pages</strong> (static hosting)</td>
+<td>Static asset requests <strong>free and unlimited</strong>. 500 builds/month, 1 concurrent build, 20,000 files/site, 25 MiB max file.</td>
+<td>Builds queue or fail at the build limit.</td>
+<td><a href="https://developers.cloudflare.com/pages/platform/limits/">Pages limits</a>, <a href="https://developers.cloudflare.com/pages/functions/pricing/">Pages Functions pricing</a></td>
+</tr>
+<tr>
+<td><strong>Cloudflare Workers</strong></td>
+<td><strong>100,000 requests/day</strong> (all Workers + Pages Functions combined, reset 00:00 UTC), <strong>10 ms CPU per invocation</strong>, 128 MB memory. A WebSocket counts as one request (the upgrade). Messages routed through a Worker don't count.</td>
+<td>Error 1027 (or "fail open") until the reset.</td>
+<td><a href="https://developers.cloudflare.com/workers/platform/pricing/">Workers pricing</a>, <a href="https://developers.cloudflare.com/workers/platform/limits/">Workers limits</a></td>
+</tr>
+<tr>
+<td><strong>Durable Objects</strong> (free plan, SQLite only)</td>
+<td><strong>100,000 requests/day</strong>; incoming WebSocket messages count <strong>20:1</strong> (20 messages = 1 request), outgoing messages are free. <strong>13,000 GB-s/day</strong> duration. SQLite: <strong>5M rows read/day, 100,000 rows written/day, 5 GB total storage</strong>. Hibernating idle objects aren't billed for duration.</td>
+<td>"Further operations of that type will fail with an error" until 00:00 UTC.</td>
+<td><a href="https://developers.cloudflare.com/durable-objects/platform/pricing/">Durable Objects pricing</a>, <a href="https://developers.cloudflare.com/durable-objects/platform/limits/">Durable Objects limits</a></td>
+</tr>
+<tr>
+<td><strong>Supabase Free</strong></td>
+<td><strong>50,000 MAU</strong>, <strong>500 MB database</strong>, <strong>5 GB egress</strong> (+5 GB cached egress), 1 GB file storage, 500,000 Edge Function invocations, <strong>Realtime: 200 concurrent connections, 2M messages/month, 100 msgs/sec, 20 presence msgs/sec</strong>, 256 KB broadcast payload. <strong>2 active free projects.</strong> <strong>Paused after 1 week of inactivity.</strong> No automatic backups. 1-day log retention.</td>
+<td>Realtime refuses new connections over 200 (<code>too_many_connections</code>). Over-quota usage may get the project restricted.</td>
+<td><a href="https://supabase.com/pricing">Supabase pricing</a>, <a href="https://supabase.com/docs/guides/realtime/limits">Realtime limits</a></td>
+</tr>
+<tr>
+<td><strong>Cloudflare Realtime TURN</strong></td>
+<td><strong>First 1,000 GB/month of egress free</strong> (shared with the SFU), then <strong>$0.05/GB</strong>. TURN is free when used with Cloudflare's SFU. STUN at <code>stun.cloudflare.com</code>. Per-user rate limits apply.</td>
+<td>Charged per GB above 1,000 GB, so a payment method on file is likely needed. Check current billing.</td>
+<td><a href="https://developers.cloudflare.com/realtime/sfu/pricing/">Realtime pricing</a>, <a href="https://developers.cloudflare.com/realtime/turn/">TURN docs</a></td>
+</tr>
+<tr>
+<td><strong>Poly Haven</strong> assets</td>
+<td>CC0, free for any use.</td>
+<td>n/a</td>
+<td><a href="https://polyhaven.com/license">Poly Haven license</a></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Unverified items (check current limits):</strong>
+- The Supabase Auth email rate limits on the built-in email sender. These are low; production needs a custom SMTP provider. <a href="https://supabase.com/docs/guides/auth/rate-limits">Auth rate limits</a>.
+- Whether <code>pg_cron</code> is on the free plan.
+- Exact free-plan CPU behavior for Durable Object invocations. The Durable Objects limits page lists 30 s of CPU per request, while the Workers Free plan lists 10 ms. Test bot compute against the free plan early.</p>
+<h3>13.2 Rough capacity on free tiers</h3>
+<p><em>These are estimates, not measurements.</em> Assumptions:
+- A 2v2 game to 500 is about 8–12 hands.
+- Each hand is about 52 plays + 4 bids + a few chat/emote messages, so roughly <strong>600–800 player-sent messages per game</strong>.
+- Every action is saved as one overwritten state row. Turn alarms add about 1 row write each.</p>
+<table>
+<thead>
+<tr>
+<th>Resource</th>
+<th>Usage per full game (est.)</th>
+<th>Free daily limit</th>
+<th>≈ Games/day</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Durable Object rows written</td>
+<td>~1,200–1,600 (state + alarms)</td>
+<td>100,000</td>
+<td><strong>~60–80</strong> ← first bottleneck</td>
+</tr>
+<tr>
+<td>Durable Object requests</td>
+<td>~35 (messages ÷ 20) + 4 connects + alarm firings (~10–100)</td>
+<td>100,000</td>
+<td>~700–2,000</td>
+</tr>
+<tr>
+<td>Worker requests</td>
+<td>~4–10 (WebSocket upgrades, API calls)</td>
+<td>100,000</td>
+<td>thousands</td>
+</tr>
+<tr>
+<td>Durable Object duration</td>
+<td>small with hibernation</td>
+<td>13,000 GB-s ≈ 28 active object-hours</td>
+<td>hundreds+</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Takeaways</strong>
+- <strong>Rows written</strong> are the first limit, by a wide margin.
+- Ways to stretch it:
+    - Save state only when a trick ends or a bid is made (about 13 + 4 writes per hand instead of about 56). That costs a little replay logic: re-deal from the seeded hand and re-apply the current trick's plays.
+    - Don't call <code>setAlarm</code> on every turn. Keep one alarm "ticking" (re-arm it only when it fires and check the real deadline then). That's roughly 1 write per 20 s of play instead of 1 per move.
+- Together these should push the ceiling to roughly <strong>250–400 games/day</strong>. Measure it in Phase 2 with real logs.
+- <strong>Supabase Realtime's 200 concurrent connections</strong> caps how many players can be online at once with chat/presence. At launch that's fine. Past that, move presence and DMs onto Durable Objects, or upgrade.
+- <strong>Important timing gotcha:</strong> Cloudflare's free daily limits reset at <strong>00:00 UTC = 8:00 PM ET during daylight saving time (7:00 PM ET in winter)</strong>. That's US prime time. If you hit a daily cap, the game breaks for everyone during the busiest hours until the reset. <strong>Upgrade to Workers Paid before any marketing push.</strong></p>
+<h3>13.3 Where costs start</h3>
+<table>
+<thead>
+<tr>
+<th>Trigger</th>
+<th>First paid step</th>
+<th>Published price</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Daily Worker/Durable Object request or row-write caps hit, or you need more Durable Object CPU</td>
+<td><strong>Workers Paid</strong></td>
+<td><strong>$5/month minimum.</strong> Includes 10M Worker requests/month (+$0.30/M), 30M CPU-ms (+$0.02/M), Durable Objects 1M requests (+$0.15/M), 400,000 GB-s (+$12.50/M GB-s), and SQLite rows (25B read and 50M written included, then $0.001/M read and $1.00/M written). Storage is 5 GB-month included, then $0.20/GB-month. (<a href="https://developers.cloudflare.com/workers/platform/pricing/">source</a>)</td>
+</tr>
+<tr>
+<td>More than 200 concurrent Realtime users, DB over 500 MB, egress over 5 GB, need backups, or need to stop the 7-day pausing</td>
+<td><strong>Supabase Pro</strong></td>
+<td><strong>From $25/month</strong> per org, including $10 compute credit (covers one Micro project). Includes 100,000 MAU, 8 GB disk, 250 GB egress, Realtime 500 concurrent connections + 5M messages (then $10 per 1,000 connections and $2.50 per million messages). The spend cap is on by default. (<a href="https://supabase.com/pricing">source</a>)</td>
+</tr>
+<tr>
+<td>Video TURN relay above 1,000 GB/month</td>
+<td>Cloudflare Realtime</td>
+<td>$0.05/GB (<a href="https://developers.cloudflare.com/realtime/sfu/pricing/">source</a>). Example estimate: a relayed player receiving 3 streams at ~0.5 Mbps is about 0.7 GB/hour, so 1,000 GB is roughly 1,400 relayed player-hours a month.</td>
+</tr>
+<tr>
+<td>Video rooms bigger than 4 people, or recording</td>
+<td>SFU / media server</td>
+<td>Cloudflare Realtime SFU shares the same $0.05/GB and the same 1,000 GB free allowance.</td>
+</tr>
+<tr>
+<td>iOS App Store</td>
+<td>Apple Developer Program</td>
+<td><strong>$99/year</strong> (<a href="https://developer.apple.com/programs/enroll/">source</a>)</td>
+</tr>
+<tr>
+<td>Google Play</td>
+<td>Play Console registration</td>
+<td><strong>$25 one-time</strong> (<a href="https://support.google.com/googleplay/android-developer/answer/6112435">source</a>)</td>
+</tr>
+<tr>
+<td>Custom domain</td>
+<td>Domain registrar</td>
+<td>Typically ~$10–15/year (check current pricing). Optional at launch: <code>*.pages.dev</code> / <code>*.workers.dev</code> are free.</td>
+</tr>
+<tr>
+<td>Transactional email (magic links) at volume</td>
+<td>Custom SMTP provider</td>
+<td>Many providers have free tiers; check current limits.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Rough monthly cost at moderate scale</strong> (estimate): Workers Paid $5 + Supabase Pro $25 ≈ <strong>$30/month</strong> covers a small but real community. Durable Object duration is the cost to watch, which hibernation keeps low.</p>
+<hr />
+<h2>14. Phased roadmap</h2>
+<p>Time estimates assume one developer working part-time to full-time. They're rough and meant for planning only.</p>
+<h3>Phase 1: Rules engine, tests, 2D bot prototype (≈ 3–5 weeks)</h3>
+<ul>
+<li><code>packages/rules</code>:<ul>
+<li>All three modes, with the full <code>TableRules</code> config and validation.</li>
+<li>Seeded RNG so any game can be replayed.</li>
+<li>Legal-move generation, trick resolution, bidding, and scoring including Nil, Blind Nil, bags, floor, and target.</li>
+</ul>
+</li>
+<li>Tests:<ul>
+<li>Unit tests for every rule and house rule.</li>
+<li>Property-based tests (fast-check): every card is dealt exactly once; scores add up; a legal move always exists; no illegal move is accepted.</li>
+<li>Golden-file tests of complete scored games.</li>
+</ul>
+</li>
+<li><code>packages/bots</code>: heuristic bots at Easy and Normal.</li>
+<li><code>apps/web</code>: a 2D table playable offline against 3 bots, with a score pad and house-rule picker.</li>
+<li><strong>Done when:</strong> you can play full Joker, Cutthroat (3p and 4p), and Ace Down games against bots, and ≥95% of the rules code is covered by tests.</li>
+</ul>
+<h3>Phase 2: Online 2v2 with accounts (≈ 4–6 weeks)</h3>
+<ul>
+<li>Supabase project with auth (magic link + Google) and a <code>profiles</code> table with RLS.</li>
+<li>Worker + Table Durable Object: WebSocket hibernation, server-authoritative play, turn timers through alarms, reconnection, bots taking over seats, and state saved to SQLite.</li>
+<li>Private tables (invite link or code) and a simple quick match (Lobby Durable Object). Match results written to Supabase.</li>
+<li>Logging and usage dashboards. <strong>Measure real per-game Durable Object rows, requests, and duration</strong> against the Section 13.2 estimates.</li>
+<li><strong>Done when:</strong> four people on different networks can finish a 2v2 Joker game, and refreshing or switching networks mid-game rejoins cleanly.</li>
+</ul>
+<h3>Phase 3: Friends, chat, ratings, and leaderboards (≈ 4–6 weeks)</h3>
+<ul>
+<li>Friend requests, presence, DMs, table chat, emotes.</li>
+<li>Block/report, profanity filter, age gate and minor restrictions.</li>
+<li>Glicko-2 per mode (<code>packages/rating</code>), stats, global and local leaderboards, region picker. Seasons optional.</li>
+<li>Cutthroat and Ace Down available online, in quick match and private tables.</li>
+<li><strong>Done when:</strong> a new user can sign up, add a friend, chat, play rated games, and see themselves on the leaderboards.</li>
+</ul>
+<h3>Phase 4: Photoreal 3D (≈ 6–10 weeks, mostly art)</h3>
+<ul>
+<li>Blender table and card models, a card face atlas, Poly Haven HDRI and textures, KTX2/Draco pipeline.</li>
+<li>R3F scene, quality tiers, auto-detect, card animations, and the 2D Classic fallback.</li>
+<li>Test on real low-end Android phones and older iPhones.</li>
+<li><strong>Done when:</strong> steady 60 fps on mid-range phones at Medium, ≥30 fps on Low, first load at Low under ~10 MB.</li>
+</ul>
+<h3>Phase 5: Live video (≈ 3–5 weeks)</h3>
+<ul>
+<li>WebRTC mesh, signaling through the Table Durable Object, STUN plus Cloudflare TURN with short-lived credentials.</li>
+<li>Adaptive quality, camera/mic controls, 18+ gating, video report flow.</li>
+<li><strong>Done when:</strong> four players on mixed networks (including one on cellular or a strict corporate network through TURN) can see each other at a playable frame rate without hurting the game.</li>
+</ul>
+<h3>Phase 6: Native iOS/Android (≈ 3–6 weeks)</h3>
+<ul>
+<li>Capacitor wrapper, Sign in with Apple, push notifications (FCM/APNs) for friend invites and "your turn" when backgrounded, deep links for invites, camera permissions, in-app account deletion.</li>
+<li>Store listings, privacy labels, and age ratings. Budget $99/year (Apple) + $25 once (Google).</li>
+<li><strong>Done when:</strong> both apps are approved and in their stores, with playable performance in WebViews.</li>
+</ul>
+<hr />
+<h2>15. Open questions</h2>
+<ol>
+<li><strong>Ace Down rules:</strong> besides "52 cards, no jokers, aces high," does Ace Down differ in bidding (minimum bids, no Nil, "board" bids), scoring (bags, target score), or anything special about aces? Is it played as partners or individually? <em>Default for now: 2v2 partners, standard Spades bidding and scoring (Section 3.1).</em></li>
+<li><strong>Default Joker house rules for ranked play:</strong> which two cards get removed (default 2♥ and 2♦)? Should the 2♠ rank just under the jokers by default (default: no)? Do any of your tables also promote the 2♦?</li>
+<li><strong>Cutthroat deck:</strong> should Cutthroat use the Joker deck (default) or a standard 52? For 3 players, which cards come out?</li>
+<li><strong>Default target score and floor:</strong> 500 / −200 for partners and 300 for Cutthroat? Is Blind Nil allowed only when behind by 100?</li>
+<li><strong>Nil bidder's tricks:</strong> count as bags only (default), or toward the partner's bid?</li>
+<li><strong>Card art:</strong> commission original faces and backs, design them in-house, or license a deck? Is a four-color deck option wanted? This affects both branding and legal clearance.</li>
+<li><strong>Name and branding:</strong> game name, domain, and whether to buy a domain at launch (about $10–15/year) or launch on free <code>pages.dev</code> / <code>workers.dev</code> subdomains.</li>
+<li><strong>Age policy and legal:</strong> confirm 13+ accounts with minor restrictions and 18+ for video. Get Terms and a Privacy Policy written or reviewed by a lawyer before public launch.</li>
+<li><strong>Rated games with friends:</strong> should friends be allowed to play rated 2v2 together as partners against random opponents (common in Spades apps)? If so, Cutthroat stays strangers-only to limit collusion.</li>
+<li><strong>Monetization (later):</strong> cosmetics (card backs, tables), ads, or a supporter subscription? This decides when paid tiers make sense and what the app store review needs.</li>
+<li><strong>Bots in rated games:</strong> keep bot-filled games unrated (default), or rate the human players against a fixed bot rating?</li>
+<li><strong>Seasons:</strong> launch with seasons, or add them once there's an active player base?</li>
+<li><strong>Spectators and replays:</strong> wanted? This affects how much match history is stored, against the 500 MB Supabase cap.</li>
+</ol>
+<hr />
+<h2>Appendix A: Reference links</h2>
+<ul>
+<li>Cloudflare Workers pricing: https://developers.cloudflare.com/workers/platform/pricing/</li>
+<li>Cloudflare Workers limits: https://developers.cloudflare.com/workers/platform/limits/</li>
+<li>Durable Objects pricing: https://developers.cloudflare.com/durable-objects/platform/pricing/</li>
+<li>Durable Objects limits: https://developers.cloudflare.com/durable-objects/platform/limits/</li>
+<li>Durable Objects WebSocket hibernation: https://developers.cloudflare.com/durable-objects/best-practices/websockets/</li>
+<li>Cloudflare Pages limits: https://developers.cloudflare.com/pages/platform/limits/</li>
+<li>Pages Functions pricing (static requests free): https://developers.cloudflare.com/pages/functions/pricing/</li>
+<li>Cloudflare Realtime pricing (SFU/TURN): https://developers.cloudflare.com/realtime/sfu/pricing/</li>
+<li>Cloudflare TURN service: https://developers.cloudflare.com/realtime/turn/</li>
+<li>Supabase pricing: https://supabase.com/pricing</li>
+<li>Supabase Realtime limits: https://supabase.com/docs/guides/realtime/limits</li>
+<li>Supabase Auth rate limits: https://supabase.com/docs/guides/auth/rate-limits</li>
+<li>Poly Haven license (CC0): https://polyhaven.com/license</li>
+<li>Glicko-2 (Glickman): http://www.glicko.net/glicko/glicko2.pdf</li>
+<li>Capacitor: https://capacitorjs.com/</li>
+<li>Apple Developer Program fee: https://developer.apple.com/programs/enroll/</li>
+<li>Google Play registration fee: https://support.google.com/googleplay/android-developer/answer/6112435</li>
+<li>Apple App Review Guidelines (UGC 1.2): https://developer.apple.com/app-store/review/guidelines/#user-generated-content</li>
+<li>FTC COPPA guidance: https://www.ftc.gov/business-guidance/privacy-security/childrens-privacy</li>
+</ul></body></html>
