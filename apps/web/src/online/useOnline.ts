@@ -27,7 +27,7 @@ export interface GameSource {
   restart: () => void;
   introHand: number | null;
   dealing: boolean;
-  k: number;
+  k: 1;
 }
 
 const TRICK_HOLD_MS = 1150;
