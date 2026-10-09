@@ -267,7 +267,9 @@ class Engine {
   /* ---------- unlock on first gesture (iOS) ---------- */
   installUnlock() {
     if (typeof window === 'undefined') return;
+    // stays installed: iOS can 'interrupt' the context (calls, Siri, backgrounding) — any later tap resumes it
     const unlock = () => {
+      if (this.unlocked && this.ctx?.state === 'running') return;
       this.ensure();
       const c = this.ctx;
       if (!c) return;
@@ -277,7 +279,6 @@ class Engine {
       this.unlocked = true;
       this.syncAmbient();
       this.syncMusic();
-      if (c.state === 'running') ['pointerdown', 'touchend', 'keydown'].forEach((e) => window.removeEventListener(e, unlock, true));
     };
     ['pointerdown', 'touchend', 'keydown'].forEach((e) => window.addEventListener(e, unlock, true));
     // iOS suspends the context when the app is backgrounded; resume on return
@@ -320,21 +321,21 @@ class Engine {
   }
 
   /* ---------- playback ---------- */
-  play(name: Sfx, opts: { delay?: number; gain?: number } = {}) {
+  play(name: Sfx, opts: { delay?: number; gain?: number; dur?: number } = {}) {
     if (!this.settings.on || !this.unlocked) return;
     this.ensure();
     const c = this.ctx;
     if (!c || c.state !== 'running') return;
     const now = performance.now();
-    const minGap = name === 'deal' ? 45 : name === 'play' ? 60 : 90;
+    const minGap = name === 'deal' ? 22 : name === 'play' ? 50 : 90;
     if (now - (this.lastAt.get(name) ?? -1e9) < minGap && !opts.delay) return;
     this.lastAt.set(name, now);
     this.played[name] = (this.played[name] ?? 0) + 1;
     const t = c.currentTime + (opts.delay ?? 0);
     const g = opts.gain ?? 1;
     switch (name) {
-      case 'shuffle': return this.sample('shuffle', t, 0.75 * g, 1, 1.6);
-      case 'deal': return this.sample('deal', t, 0.32 * g, 1.15 + Math.random() * 0.2, 0.35);
+      case 'shuffle': return this.sample('shuffle', t, 0.75 * g, 1, Math.max(0.3, opts.dur ?? 1.6));
+      case 'deal': return this.sample('deal', t, 0.26 * g, 1.2 + Math.random() * 0.25, 0.3);
       case 'play': return this.sample('play', t, 0.9 * g, 0.95 + Math.random() * 0.12);
       case 'tap': return this.sample('tap', t, 0.5 * g, 1.1);
       case 'sweep': this.sample('sweep', t, 0.55 * g, 1.05); return this.whoosh(t, 0.18 * g);
@@ -361,7 +362,7 @@ class Engine {
     const g = c.createGain(); g.gain.value = gain;
     src.connect(g).connect(this.sfxBus!);
     src.start(t);
-    if (maxDur) { g.gain.setValueAtTime(gain, t + maxDur - 0.25); g.gain.linearRampToValueAtTime(0.0001, t + maxDur); src.stop(t + maxDur + 0.05); }
+    if (maxDur) { g.gain.setValueAtTime(gain, t + Math.max(0, maxDur - 0.18)); g.gain.linearRampToValueAtTime(0.0001, t + maxDur); src.stop(t + maxDur + 0.05); }
   }
 
   private tone(t: number, freq: number, dur: number, type: OscillatorType, gain: number, opts: { attack?: number; glideTo?: number; filter?: number; dest?: AudioNode } = {}) {

@@ -4,12 +4,19 @@ import Setup from './Setup';
 import { NowPlaying } from './SoundControls';
 import Table from './Table';
 import { type Settings, loadSettings, saveSettings, settingsToRules } from './settings';
+import { type SavedGame, loadGame } from './save';
 
 export default function App() {
   const [settings, setSettings] = useState<Settings>(loadSettings);
-  const [game, setGame] = useState<{ seed: string; settings: Settings } | null>(() => {
+  const [game, setGame] = useState<{ seed: string; settings: Settings; resume?: SavedGame } | null>(() => {
     const p = new URLSearchParams(location.search);
-    return p.get('autostart') ? { seed: p.get('seed') ?? secureSeed(), settings: loadSettings() } : null;
+    if (p.get('autostart')) {
+      history.replaceState(null, '', location.pathname); // a later refresh resumes instead of restarting
+      return { seed: p.get('seed') ?? secureSeed(), settings: loadSettings() };
+    }
+    // refresh / reopen: drop straight back into an in-progress game
+    const saved = loadGame();
+    return saved ? { seed: saved.seed, settings: saved.settings, resume: saved } : null;
   });
 
   if (!game) {
@@ -31,6 +38,7 @@ export default function App() {
       key={game.seed}
       rules={settingsToRules(game.settings)}
       seed={game.seed}
+      resume={game.resume}
       settings={game.settings}
       onExit={() => setGame(null)}
       onRematch={() => setGame({ seed: secureSeed(), settings: game.settings })}

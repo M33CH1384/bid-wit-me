@@ -3,6 +3,7 @@ import { memo, useLayoutEffect, useMemo, useRef } from 'react';
 import { type Group, MeshPhysicalMaterial, MeshStandardMaterial, Quaternion, type Texture, Vector3 } from 'three';
 import { cardGeometry } from './geometry';
 import type { Xform } from './layout';
+import { type Sfx, sound } from '../audio';
 
 interface Props {
   face: Texture | null; // null = we only ever see the back
@@ -18,12 +19,16 @@ interface Props {
   quality: 'high' | 'low';
   onTap?: () => void;
   name?: string;
+  /** Sound when this card starts moving toward its current target (e.g. dealt flick, sweep). Fires once per value. */
+  sfxStart?: Sfx;
+  /** Sounds when this card lands on its current target (e.g. play / cut). Fires once per value. */
+  sfxLand?: string; // comma-separated Sfx names, e.g. 'play,cut'
 }
 
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 const edgeMat = new MeshStandardMaterial({ color: '#efe9dc', roughness: 0.75 });
 
-function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.25, dim, glow, castShadow = true, quality, onTap, name }: Props) {
+function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.25, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand }: Props) {
   const ref = useRef<Group>(null);
   const invalidate = useThree((s) => s.invalidate);
   const geo = cardGeometry();
@@ -48,7 +53,10 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
     wait: delay,
     sp: new Vector3(), sq: new Quaternion(), ss: 1,
     tp: new Vector3(), tq: new Quaternion(), ts: 1,
+    started: false, firedStart: '' as string, firedLand: '' as string,
   });
+  const sfx = useRef({ sfxStart, sfxLand });
+  sfx.current = { sfxStart, sfxLand };
 
   useFrame((_, dt) => {
     const g = ref.current;
@@ -67,11 +75,23 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
       s.t = 0;
       s.sp.copy(g.position); s.sq.copy(g.quaternion); s.ss = g.scale.x;
       s.tp.set(...target.p); s.tq.set(...target.q); s.ts = target.s;
+      s.started = false;
     }
     if (s.t >= 1) return;
     invalidate();
     if (s.wait > 0) { s.wait -= dt; return; }
+    const moving = s.sp.distanceTo(s.tp) > 0.02;
+    if (!s.started) {
+      // the card leaves now — animation-driven sound, so it always matches what you see (any game speed)
+      s.started = true;
+      const st = sfx.current.sfxStart;
+      if (st && st !== s.firedStart) { s.firedStart = st; if (moving) sound.play(st); }
+    }
     s.t = Math.min(1, s.t + Math.min(dt, 0.05) / duration);
+    if (s.t >= 1) {
+      const land = sfx.current.sfxLand;
+      if (land && land !== s.firedLand) { s.firedLand = land; if (moving) land.split(',').forEach((c, i) => sound.play(c as Sfx, i ? { delay: 0.02 } : {})); }
+    }
     const e = easeInOut(s.t);
     g.position.lerpVectors(s.sp, s.tp, e);
     const dist = s.sp.distanceTo(s.tp);

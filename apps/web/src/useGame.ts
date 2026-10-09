@@ -1,19 +1,32 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type Action, type GameState, type TableRules, applyAction, newGame, pendingTurn, secureSeed, viewFor } from '@spades/rules';
 import { type BotLevel, chooseBotAction } from '@spades/bots';
+import { dealTimeline } from './three/dealTimeline';
 
 export const HUMAN = 0;
 
 // 'turbo' is for automated UI tests only (not shown in the menu)
-const SPEEDS = { relaxed: 1.5, normal: 1, fast: 0.5, turbo: 0.03 } as const;
+export const SPEEDS = { relaxed: 1.5, normal: 1, fast: 0.5, turbo: 0.03 } as const;
 
-export function useGame(rules: TableRules, seed: string, botLevel: BotLevel, speed: keyof typeof SPEEDS) {
-  const [st, setSt] = useState<GameState>(() => newGame(rules, seed));
+export function useGame(rules: TableRules, seed: string, botLevel: BotLevel, speed: keyof typeof SPEEDS, resume?: GameState) {
+  const [st, setSt] = useState<GameState>(() => resume ?? newGame(rules, seed));
+  // a resumed hand is placed instantly (no shuffle/deal replay); every later hand animates
+  const resumedHand = useRef(resume ? resume.handNo : null);
+  const introHand = resumedHand.current === st.handNo ? null : st.handNo;
   const [pause, setPause] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const stRef = useRef(st);
   stRef.current = st;
   const k = SPEEDS[speed];
+  // while a fresh hand's shuffle + deal animation runs, nobody bids (bots wait, the bid panel stays hidden)
+  const [dealtHand, setDealtHand] = useState<number | null>(null);
+  const dealing = introHand !== null && dealtHand !== introHand;
+  useEffect(() => {
+    if (introHand === null) return;
+    const cards = stRef.current.hands.reduce((a, h) => a + h.length, 0);
+    const t = setTimeout(() => setDealtHand(introHand), dealTimeline(k, stRef.current.rules.playerCount, cards).total * 1000 + 150);
+    return () => clearTimeout(t);
+  }, [introHand, k]);
 
   const apply = useCallback((action: Action) => {
     const prev = stRef.current;
@@ -37,18 +50,16 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel, spe
 
   // bots move on their turn
   useEffect(() => {
-    if (pause) return;
+    if (pause || dealing) return;
     const turn = pendingTurn(st);
     if (!turn || turn.seat === HUMAN) return;
-    // give the deal animation time to land before the first bid
-    const dealing = st.phase === 'bidding' && st.bids.every((b) => b === null);
-    const delay = ((turn.kind === 'bid' ? 650 : turn.kind === 'exchange' ? 500 : 600) + (dealing ? 1700 : 0)) * k;
+    const delay = (turn.kind === 'bid' ? 650 : turn.kind === 'exchange' ? 500 : 600) * k;
     const t = setTimeout(() => {
       const action = chooseBotAction(viewFor(st, turn.seat), botLevel);
       if (action) apply(action);
     }, delay);
     return () => clearTimeout(t);
-  }, [st, pause, botLevel, k, apply]);
+  }, [st, pause, dealing, botLevel, k, apply]);
 
   const restart = useCallback((r: TableRules = rules) => {
     const next = newGame(r, secureSeed());
@@ -58,5 +69,5 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel, spe
     setError(null);
   }, [rules]);
 
-  return { st, view: viewFor(st, HUMAN), pause, error, apply, restart };
+  return { st, view: viewFor(st, HUMAN), pause, error, apply, restart, introHand, dealing, k };
 }

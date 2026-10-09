@@ -9,6 +9,7 @@ import { type ChatMsg, LINES, type Toast, TickNumber, USER_COLORS, pick, toastsF
 import { type Settings, modeTitle } from './settings';
 import type { SeatPos } from './three/layout';
 import { HUMAN, useGame } from './useGame';
+import { type SavedGame, clearGame, saveGame } from './save';
 
 const Scene = lazy(() => import('./three/Scene'));
 
@@ -19,6 +20,8 @@ interface Props {
   onExit: () => void;
   onRematch: () => void;
   onQuality: (q: Settings['quality']) => void;
+  /** A saved in-progress game to resume at exactly the same point. */
+  resume?: SavedGame;
 }
 
 const NAMES4 = ['You', 'Marcus', 'Keisha', 'Dre'];
@@ -29,10 +32,10 @@ function positions(n: number): SeatPos[] {
 }
 
 /* -------------------------------------------------------------- chat feed */
-function useChat(st: GameState, names: string[]) {
-  const [msgs, setMsgs] = useState<ChatMsg[]>([]);
-  const prev = useRef<GameState | null>(null);
-  const idRef = useRef(1);
+function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
+  const [msgs, setMsgs] = useState<ChatMsg[]>(() => initial ?? []);
+  const prev = useRef<GameState | null>(initial ? st : null);
+  const idRef = useRef(initial && initial.length ? Math.max(...initial.map((m) => m.id)) + 1 : 1);
   const timers = useRef<number[]>([]);
   const push = useCallback((user: string, text: string, system = false, delay = 0) => {
     const add = () => setMsgs((m) => [...m.slice(-60), { id: idRef.current++, user, text, system, color: USER_COLORS[user] ?? '#ddd' }]);
@@ -139,42 +142,38 @@ function ChatPanel({ msgs, open, onToggle, onSend, unread }: { msgs: ChatMsg[]; 
 
 /* ------------------------------------------------------------------ table */
 /* -------------------------------------------------------------- sound cues */
-function useGameSounds(st: GameState, pause: boolean, piles: number, myTurn: boolean, mySide: number, msgs: ChatMsg[]) {
-  const prev = useRef<{ st: GameState; piles: number; myTurn: boolean; msgs: number } | null>(null);
+function useGameSounds(st: GameState, myTurn: boolean, mySide: number, msgs: ChatMsg[]) {
+  const prev = useRef<{ st: GameState; myTurn: boolean; msgs: number } | null>(null);
   useEffect(() => {
     const p = prev.current;
-    prev.current = { st, piles, myTurn, msgs: msgs.length };
-    const n = st.rules.playerCount;
-    const newDeal = st.phase === 'bidding' && st.bids.every((b) => b === null) && (!p || p.st.handNo !== st.handNo || p.st.phase !== 'bidding');
-    if (newDeal) {
-      sound.play('shuffle');
-      const cards = Math.min(14, st.hands[HUMAN]?.length ?? 13);
-      for (let i = 0; i < cards; i++) sound.play('deal', { delay: 0.35 + i * n * 0.028 });
-    }
+    prev.current = { st, myTurn, msgs: msgs.length };
+    // card sounds (shuffle, deal, play/cut/broken, sweep) are fired by the 3D animations themselves — see Scene/Card3D
     if (!p) return;
-    const played = (s: GameState) => s.tricks.length * n + s.trick.plays.length;
-    if (st.handNo === p.st.handNo && played(st) > played(p.st)) {
-      sound.play('play');
-      // the trick holding the newest card: the live one, or the one that just completed
-      const t = st.trick.plays.length ? st.trick : st.tricks[st.tricks.length - 1];
-      const last = t?.plays[t.plays.length - 1];
-      const led = t?.plays[0];
-      const cut = !!t && t.plays.length > 1 && isTrump(last!.card, st.rules) && !isTrump(led!.card, st.rules);
-      const broke = !p.st.spadesBroken && st.spadesBroken;
-      // both on the same card → the bigger "spades broken" sting (it layers the cut hit on top)
-      if (broke) sound.play('broken', { delay: 0.1 });
-      else if (cut) sound.play('cut', { delay: 0.08 });
-    }
-    if (piles > p.piles && st.handNo === p.st.handNo) sound.play('sweep');
     st.bids.forEach((b, s) => { if (b !== null && p.st.bids[s] === null && p.st.handNo === st.handNo) sound.play(s === HUMAN ? 'bid' : 'bidSoft'); });
     if (myTurn && !p.myTurn && (st.phase === 'playing' || st.phase === 'bidding')) sound.play('turn', { delay: 0.05 });
     if (msgs.length > p.msgs) { const m = msgs[msgs.length - 1]!; if (!m.system && m.user !== 'You') sound.play('pop'); }
     if (st.phase === 'gameOver' && p.st.phase !== 'gameOver' && st.result) sound.play(st.result.winners.includes(mySide) ? 'win' : 'lose', { delay: 0.3 });
-  }, [st, pause, piles, myTurn, mySide, msgs]);
+  }, [st, myTurn, mySide, msgs]);
 }
 
-export default function Table({ rules: initialRules, seed, settings, onExit, onRematch, onQuality }: Props) {
-  const { st, view, pause, error, apply } = useGame(initialRules, seed, settings.botLevel, settings.speed);
+/** Landing sound for a played card: always 'play'; + 'cut' when trumping a non-trump lead; + 'broken' (bigger, wins) for the first trump of the hand. */
+export function landCueFor(st: GameState, card: Card): string {
+  const r = st.rules;
+  const tricks = [...st.tricks, st.trick];
+  let firstTrump: Card | null = null;
+  for (const t of tricks) for (const pl of t.plays) if (!firstTrump && isTrump(pl.card, r)) firstTrump = pl.card;
+  for (const t of tricks) {
+    const i = t.plays.findIndex((pl) => pl.card === card);
+    if (i < 0) continue;
+    if (card === firstTrump) return 'play,broken';
+    if (i > 0 && isTrump(card, r) && !isTrump(t.plays[0]!.card, r)) return 'play,cut';
+    return 'play';
+  }
+  return 'play';
+}
+
+export default function Table({ rules: initialRules, seed, settings, onExit, onRematch, onQuality, resume }: Props) {
+  const { st, view, pause, error, apply, introHand, dealing, k } = useGame(initialRules, seed, settings.botLevel, settings.speed, resume?.state);
   const r = st.rules;
   const n = r.playerCount;
   const names = n === 4 ? NAMES4 : NAMES3;
@@ -185,18 +184,35 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onR
   const [chatOpen, setChatOpen] = useState(() => window.innerWidth >= 900);
   const [seenMsgs, setSeenMsgs] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const { msgs, push } = useChat(st, names);
+  const { msgs, push } = useChat(st, names, resume?.chat);
+  const [confirmLeave, setConfirmLeave] = useState(false);
 
   const shownTrick = pause ? st.tricks[st.tricks.length - 1]! : st.trick;
   const piles = pause ? st.tricks.slice(0, -1) : st.tricks;
-  const myTurn = !pause && st.turn === HUMAN;
+  const myTurn = !pause && !dealing && st.turn === HUMAN;
   const hand = useMemo(() => (view.hand ? sortHand(view.hand, r) : null), [view.hand, r]);
   const legal = myTurn && st.phase === 'playing' ? view.legal : [];
   const exchangeStep = st.phase === 'exchange' ? st.exchange[0] : undefined;
   const humanExchanging = myTurn && exchangeStep?.from === HUMAN;
   const mySide = sideOf(HUMAN, r);
   const winnerSeat = pause ? shownTrick.winner : null;
-  useGameSounds(st, pause, piles.length, myTurn, mySide, msgs);
+  useGameSounds(st, myTurn, mySide, msgs);
+  const landCue = useCallback((c: Card) => landCueFor(st, c), [st]);
+
+  // persist after every action (and chat line); a finished game clears the save
+  useEffect(() => {
+    if (st.phase === 'gameOver') clearGame();
+    else saveGame({ seed, settings, state: st, chat: msgs });
+  }, [st, msgs, seed, settings]);
+
+  // "Resuming your game…" toast
+  useEffect(() => {
+    if (!resume) return;
+    setToasts([{ id: -1, text: 'RESUMING YOUR GAME…', kind: 'info', sub: `Hand ${resume.state.handNo}` }]);
+    const t = setTimeout(() => setToasts((ts) => ts.filter((x) => x.id !== -1)), 2600);
+    return () => clearTimeout(t);
+  }, [resume]);
+  const leave = () => { clearGame(); onExit(); };
 
   useEffect(() => { setSelected(null); }, [st.turn, st.handNo]);
   useEffect(() => { setExchangePick([]); }, [st.phase, st.turn]);
@@ -273,12 +289,15 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onR
           promoted={promoted}
           onCardTap={onCard}
           renderSeat={renderSeat}
+          introHand={introHand}
+          animK={k}
+          landCue={landCue}
         />
       </Suspense>
 
       {/* scorebug */}
       <header className="scorebug">
-        <button type="button" className="bug-btn" onClick={onExit} aria-label="Menu">☰</button>
+        <button type="button" className="bug-btn" onClick={() => (st.phase === 'gameOver' ? leave() : setConfirmLeave(true))} aria-label="Menu" data-testid="menu">☰</button>
         <div className="bug glass">
           <img className="bug-logo" src="/assets/bwm-wordmark-white.svg" alt="Bid Wit Me" />
           <div className={`bug-teams n${st.scores.length}`}>
@@ -341,7 +360,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onR
 
       {/* the human's lower third + controls */}
       <section className="me">
-        {myTurn && st.phase === 'bidding' && view.bidOptions && (
+        {myTurn && !dealing && st.phase === 'bidding' && view.bidOptions && (
           view.hand === null ? (
             <div className="bid-panel glass slant">
               <div className="panel-title">BLIND NIL?</div>
@@ -363,7 +382,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onR
             </div>
           )
         )}
-        {st.phase === 'bidding' && view.hand === null && !myTurn && (
+        {st.phase === 'bidding' && !dealing && view.hand === null && !myTurn && (
           <div className="bid-panel glass slant compact">
             <span>Cards face down — Blind Nil is open on your turn.</span>
             <button type="button" onClick={() => apply({ type: 'reveal', seat: HUMAN })}>See cards</button>
@@ -418,6 +437,19 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onR
         </div>
       )}
 
+      {confirmLeave && (
+        <div className="modal-backdrop" onClick={() => setConfirmLeave(false)}>
+          <div className="modal glass slant confirm" role="dialog" aria-label="Leave this game?" onClick={(e) => e.stopPropagation()}>
+            <div className="panel-title big">LEAVE THIS GAME?</div>
+            <p className="muted">Your progress in this game will be lost.</p>
+            <div className="bid-row">
+              <button type="button" onClick={() => setConfirmLeave(false)}>Stay</button>
+              <button type="button" className="primary" onClick={leave}>Leave</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {st.phase === 'gameOver' && !pause && st.result && (
         <div className="modal-backdrop">
           <div className="modal glass slant gameover">
@@ -438,7 +470,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onR
             </ol>
             <div className="bid-row">
               <button type="button" onClick={() => setShowPad(true)}>Score pad</button>
-              <button type="button" onClick={onExit}>Change mode</button>
+              <button type="button" onClick={leave}>Change mode</button>
               <button type="button" className="primary" onClick={onRematch}>Rematch</button>
             </div>
           </div>
