@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CLASSIC_JOKER, type Card, type GameState, type TableRules, applyAction, buildDeck, createRng, makeRules, newGame, viewFor,
 } from '@spades/rules';
-import { chooseBotAction, chooseBid, chooseExchange, choosePlay, estimateTricks, nilWorthy, simulateGame, wantsBlindNil } from '../src';
+import { analyzeHand, bidAdvice, chooseBotAction, chooseBid, chooseExchange, choosePlay, estimateTricks, nilWorthy, simulateGame, wantsBlindNil } from '../src';
 
 const joker = makeRules('joker');
 const classic = makeRules('joker', CLASSIC_JOKER);
@@ -127,6 +127,52 @@ describe('play heuristics', () => {
     const st = newGame(classic, 'x');
     expect(chooseBotAction(viewFor(st, (st.turn! + 1) % 4))).toBeNull();
     expect(chooseBotAction(viewFor({ ...st, phase: 'handOver' }, st.turn!))).toBeNull();
+  });
+});
+
+describe('bid coach (bidAdvice / analyzeHand)', () => {
+  const strong: Card[] = ['BJ', 'LJ', 'AS', 'KS', 'QS', 'AH', 'KH', 'AD', 'KD', 'AC', 'KC', '3H', '3C'];
+  const weak: Card[] = ['3S', '4H', '5H', '6H', '7H', '3D', '4D', '5D', '6D', '4C', '5C', '6C', '7C'];
+  it('the breakdown adds up to the bots\' own estimate', () => {
+    for (let i = 0; i < 40; i++) {
+      const st = newGame({ ...joker, firstHandBidsItself: false }, `an${i}`);
+      const v = viewFor(st, st.turn!);
+      const a = analyzeHand(v.hand!, v);
+      const sum = [...a.sureTrumps, ...a.sideWinners, ...(a.length ? [a.length] : []), ...(a.cutting ? [a.cutting] : [])].reduce((x, b) => x + b.value, 0) * a.factor;
+      expect(sum).toBeCloseTo(a.total, 6);
+    }
+  });
+  it('explains a monster hand (top trumps, aces, guarded kings) and suggests a high range containing the bot bid', () => {
+    const st = rig(joker, [strong, weak, ...fill(joker, [strong, weak, [], []]).slice(2)]);
+    const adv = bidAdvice(viewFor(st, 0), createRng(1))!;
+    expect(adv.analysis.sureTrumps.map((x) => x.cards[0])).toEqual(expect.arrayContaining(['BJ', 'LJ']));
+    expect(adv.analysis.sideWinners.map((x) => x.cards[0])).toEqual(expect.arrayContaining(['AH', 'AD', 'AC', 'KH']));
+    expect(adv.low).toBeGreaterThanOrEqual(8);
+    expect(adv.botBid).toBeGreaterThanOrEqual(adv.low);
+    expect(adv.botBid).toBeLessThanOrEqual(adv.high);
+    expect(adv.nil!.ok).toBe(false);
+    expect(adv.partnerNote).toMatch(/Partner bids after you/);
+  });
+  it('a weak hand: Nil looks good; partner adjustment shows the team total', () => {
+    const hands = fill(joker, [[], weak, [], []]);
+    const st = rig(joker, hands, { turn: 1, bids: [5, null, null, 4] });
+    const adv = bidAdvice(viewFor(st, 1), createRng(1))!;
+    expect(adv.nil!.ok).toBe(true);
+    expect(adv.partnerNote).toMatch(/Partner bid 4 → team total/);
+    expect(adv.tableNote).toMatch(/9 of 13/);
+  });
+  it('every random hand: range is legal, low ≤ high, and contains the numeric bot bid', () => {
+    for (let i = 0; i < 60; i++) {
+      const r = i % 3 === 0 ? makeRules('cutthroat', { playerCount: 3, firstHandBidsItself: false }) : { ...joker, firstHandBidsItself: false };
+      const st = newGame(r, `adv${i}`);
+      const v = viewFor(st, st.turn!);
+      if (!v.hand) continue;
+      const adv = bidAdvice(v, createRng(i))!;
+      expect(adv.low).toBeLessThanOrEqual(adv.high);
+      expect(adv.low).toBeGreaterThanOrEqual(v.bidOptions!.min);
+      expect(adv.high).toBeLessThanOrEqual(v.bidOptions!.max);
+      if (typeof adv.botBid === 'number') { expect(adv.botBid).toBeGreaterThanOrEqual(adv.low); expect(adv.botBid).toBeLessThanOrEqual(adv.high); }
+    }
   });
 });
 

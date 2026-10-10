@@ -1,40 +1,87 @@
 import { type Card, type PlayerView, type Rng, effectiveSuit, isNilBid, isTrump, partnerOf, sideOf, trumpOrder } from '@spades/rules';
 
-/** Estimated tricks for a hand (sure-trick counting heuristic, spec §3.6). */
-export function estimateTricks(hand: readonly Card[], v: PlayerView): number {
+/** One line of a hand's book count (shared by the bots' bidding and the player-facing bid coach). */
+export interface BookItem { cards: Card[]; value: number; note: string }
+
+/** How a hand's estimated books break down, by counting strategy (spec §3.6). `total` is what the bots bid from. */
+export interface HandAnalysis {
+  /** Trumps that win (or nearly win) on rank, in the mode's trump order. */
+  sureTrumps: BookItem[];
+  /** Off-suit aces, kings with backup, protected queens. */
+  sideWinners: BookItem[];
+  /** Extra books from trump length beyond the usual share. */
+  length: BookItem | null;
+  /** Ruffing: voids / singletons / doubletons you can cut with spare trumps. */
+  cutting: BookItem | null;
+  trumpCount: number;
+  /** 3-player bonus multiplier applied to the total (1 in 4-player games). */
+  factor: number;
+  total: number;
+}
+
+const SUIT_NAME: Record<string, string> = { H: '♥', D: '♦', C: '♣' };
+
+/** Breaks a hand down into estimated books, strategy by strategy. */
+export function analyzeHand(hand: readonly Card[], v: Pick<PlayerView, 'rules'>): HandAnalysis {
   const r = v.rules;
   const order = trumpOrder(r);
   const trumps = hand.filter((c) => isTrump(c, r)).sort((a, b) => order.indexOf(a) - order.indexOf(b));
   const nT = trumps.length;
   let est = 0;
   let high = 0;
+  const sureTrumps: BookItem[] = [];
   for (const c of trumps) {
     const idx = order.indexOf(c);
     const missingAbove = order.slice(0, idx).filter((x) => !hand.includes(x)).length;
     const lowerMine = trumps.filter((x) => order.indexOf(x) > idx).length;
-    if (lowerMine >= missingAbove) { est += 1; high++; }
-    else if (lowerMine === missingAbove - 1) est += 0.4;
+    if (lowerMine >= missingAbove) {
+      est += 1; high++;
+      sureTrumps.push({ cards: [c], value: 1, note: missingAbove === 0 ? 'top trump' : `guarded by ${lowerMine} lower trump${lowerMine === 1 ? '' : 's'}` });
+    } else if (lowerMine === missingAbove - 1) {
+      est += 0.4;
+      sureTrumps.push({ cards: [c], value: 0.4, note: 'maybe' });
+    }
   }
   // length in trumps (with more trumps in the deck, e.g. 16 in the Joker house order, long trumps are worth less)
   const extraTrumps = Math.max(0, order.length - 13);
-  est += Math.max(0, nT - 4 - Math.floor(extraTrumps / 2)) * 0.6;
+  const lenBase = 4 + Math.floor(extraTrumps / 2);
+  const lenVal = Math.max(0, nT - lenBase) * 0.6;
+  est += lenVal;
+  const length: BookItem | null = lenVal > 0 ? { cards: [], value: lenVal, note: `${nT} trumps: ${nT - lenBase} beyond the usual ${lenBase}` } : null;
   let shortness = 0;
+  const sideWinners: BookItem[] = [];
+  const shortSuits: string[] = [];
   for (const s of ['H', 'D', 'C']) {
     const cards = hand.filter((c) => !isTrump(c, r) && effectiveSuit(c, r) === s);
     const len = cards.length;
-    const has = (rk: string) => cards.some((c) => c[0] === rk);
-    if (has('A')) est += len <= 6 ? 1 : 0.6;
-    if (has('K')) est += has('A') && len >= 2 ? 0.85 : len >= 2 && len <= 5 ? 0.55 : 0.1;
-    if (has('Q') && len >= 3 && len <= 4) est += has('A') || has('K') ? 0.35 : 0.2;
-    if (len === 0) shortness += 1;
-    else if (len === 1 && !has('A')) shortness += 0.6;
-    else if (len === 2) shortness += 0.2;
+    const card = (rk: string) => cards.find((c) => c[0] === rk);
+    const has = (rk: string) => !!card(rk);
+    if (has('A')) { const val = len <= 6 ? 1 : 0.6; est += val; sideWinners.push({ cards: [card('A')!], value: val, note: len <= 6 ? 'ace' : 'ace (long suit, may get cut)' }); }
+    if (has('K')) {
+      const val = has('A') && len >= 2 ? 0.85 : len >= 2 && len <= 5 ? 0.55 : 0.1;
+      est += val;
+      sideWinners.push({ cards: [card('K')!], value: val, note: has('A') && len >= 2 ? 'king behind your ace' : len >= 2 && len <= 5 ? 'guarded king' : len < 2 ? 'bare king (unguarded)' : 'king in a long suit' });
+    }
+    if (has('Q') && len >= 3 && len <= 4) { const val = has('A') || has('K') ? 0.35 : 0.2; est += val; sideWinners.push({ cards: [card('Q')!], value: val, note: 'queen with backup' }); }
+    if (len === 0) { shortness += 1; shortSuits.push(`void in ${SUIT_NAME[s]}`); }
+    else if (len === 1 && !has('A')) { shortness += 0.6; shortSuits.push(`singleton ${SUIT_NAME[s]}`); }
+    else if (len === 2) { shortness += 0.2; shortSuits.push(`doubleton ${SUIT_NAME[s]}`); }
   }
   const spare = Math.max(0, nT - high);
-  est += Math.min(shortness, spare * (extraTrumps >= 3 ? 0.55 : 0.75));
+  const cutVal = Math.min(shortness, spare * (extraTrumps >= 3 ? 0.55 : 0.75));
+  est += cutVal;
+  const cutting: BookItem | null = shortSuits.length
+    ? { cards: [], value: cutVal, note: cutVal > 0 ? `${shortSuits.join(', ')} + ${spare} spare trump${spare === 1 ? '' : 's'} to cut with` : `${shortSuits.join(', ')}, but no spare trumps to cut with` }
+    : null;
   // 3-player games have 17-card hands but only two opponents: high cards are worth slightly more.
+  const factor = r.playerCount === 3 ? 1.15 : 1;
   if (r.playerCount === 3) est *= 1.15;
-  return est;
+  return { sureTrumps, sideWinners, length, cutting, trumpCount: nT, factor, total: est };
+}
+
+/** Estimated tricks for a hand (sure-trick counting heuristic, spec §3.6). */
+export function estimateTricks(hand: readonly Card[], v: Pick<PlayerView, 'rules'>): number {
+  return analyzeHand(hand, v).total;
 }
 
 /** A conservative "can this hand go Nil?" test. */
@@ -98,4 +145,77 @@ export function wantsBlindNil(v: PlayerView, level: BotLevel): boolean {
   const strongPartner = r.blindNil.exchangeCards > 0 ? 4 : 5;
   if (partner === null || typeof pBid !== 'number' || pBid < strongPartner) return false;
   return best - mine >= 350 || (best - mine >= 150 && best >= r.targetScore - 100);
+}
+
+/** Why a hand isn't a Nil (null = it looks Nil-worthy). Mirrors `nilWorthy`, in words. */
+export function nilProblem(hand: readonly Card[], v: PlayerView): string | null {
+  const r = v.rules;
+  const order = trumpOrder(r);
+  const trumps = hand.filter((c) => isTrump(c, r));
+  const name = (c: Card) => (c === 'BJ' ? 'Big Joker' : c === 'LJ' ? 'Little Joker' : c);
+  if (trumps.length > 3) return `${trumps.length} trumps is too many to duck with`;
+  const high = trumps.filter((c) => order.indexOf(c) < order.length - 7);
+  if (high.length) return `${high.map(name).join(', ')} will win a trick`;
+  for (const s of ['H', 'D', 'C']) {
+    const cards = hand.filter((c) => !isTrump(c, r) && effectiveSuit(c, r) === s);
+    const len = cards.length;
+    const has = (rk: string) => cards.some((c) => c[0] === rk);
+    if (has('A')) return `the A${s === 'H' ? '♥' : s === 'D' ? '♦' : '♣'} is a sure book`;
+    if (has('K') && len < 4) return 'a short king can get stuck winning';
+    if (has('Q') && len < 3) return 'a short queen can get stuck winning';
+  }
+  if (!nilWorthy(hand, v)) return 'not enough low cards to duck under';
+  return null;
+}
+
+export interface BidAdvice {
+  analysis: HandAnalysis;
+  /** Books estimate after the partner adjustment. */
+  estimate: number;
+  /** Suggested numeric range (inclusive), within the legal bids. */
+  low: number;
+  high: number;
+  /** What a Normal bot would bid with this hand right now. */
+  botBid: number | 'nil';
+  partnerNote: string | null;
+  tableNote: string | null;
+  nil: { ok: boolean; note: string } | null;
+}
+
+/** Player-facing bid coach: the bots' own count, explained, with a suggested range (spec §3.6). */
+export function bidAdvice(v: PlayerView, rng: Rng): BidAdvice | null {
+  const hand = v.hand;
+  const opt = v.bidOptions;
+  if (!hand || !opt) return null;
+  const r = v.rules;
+  const analysis = analyzeHand(hand, v);
+  const partner = partnerOf(v.seat, r);
+  const pBid = partner === null ? null : v.bids[partner];
+  const partnerNil = isNilBid(pBid);
+  const estimate = analysis.total + (partnerNil ? 0.5 : 0) + (r.partnerships ? 0 : 0.15);
+  const botBid = chooseBid(v, 'normal', rng);
+  const clamp = (x: number) => Math.min(opt.max, Math.max(opt.min, 1, x));
+  let low = clamp(Math.floor(estimate)), high = clamp(Math.ceil(estimate));
+  const numericBot = typeof botBid === 'number' ? botBid : null;
+  if (numericBot !== null) { low = Math.min(low, numericBot); high = Math.max(high, numericBot); }
+  const room = r.playerCount === 4 ? 13 : 17;
+  const others = v.bids.reduce<number>((a, b, s) => a + (s !== v.seat && typeof b === 'number' ? b : 0), 0);
+  let partnerNote: string | null = null;
+  if (partner !== null) {
+    if (typeof pBid === 'number') {
+      const t0 = pBid + low, t1 = pBid + high;
+      partnerNote = `Partner bid ${pBid} → team total ${t0 === t1 ? t0 : `${t0}–${t1}`}.${t1 > room ? ` More than ${room} can't all be made — trim it.` : ''}${r.minTeamBid && t0 < r.minTeamBid ? ` Your team needs at least ${r.minTeamBid}.` : ''}`;
+    } else if (partnerNil) {
+      partnerNote = 'Partner is going Nil: plan to win high cards to cover them (+½ book).';
+    } else {
+      partnerNote = "Partner bids after you — bid what you'll take; they'll fill in the rest.";
+    }
+  }
+  const tableNote = others > 0 ? `${others} of ${room} books already bid at the table${others + high > room ? ' — books are scarce, bid low' : ''}.` : null;
+  let nil: BidAdvice['nil'] = null;
+  if (opt.nil) {
+    const problem = nilProblem(hand, v);
+    nil = problem ? { ok: false, note: `Nil? Not this hand: ${problem}.` } : { ok: true, note: `Nil looks good: low cards everywhere (±${r.nil.value}).${r.partnerships ? ' Your partner covers you.' : ''}` };
+  }
+  return { analysis, estimate, low, high, botBid, partnerNote, tableNote, nil };
 }
