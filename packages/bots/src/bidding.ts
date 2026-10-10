@@ -36,7 +36,7 @@ export function analyzeHand(hand: readonly Card[], v: Pick<PlayerView, 'rules'>)
     const lowerMine = trumps.filter((x) => order.indexOf(x) > idx).length;
     if (lowerMine >= missingAbove) {
       est += 1; high++;
-      sureTrumps.push({ cards: [c], value: 1, note: missingAbove === 0 ? 'top trump: nothing can beat it' : `safe: ${lowerMine} lower trump${lowerMine === 1 ? '' : 's'} to play first` });
+      sureTrumps.push({ cards: [c], value: 1, note: missingAbove === 0 ? 'the strongest card left: nothing can beat it' : `safe: you have ${lowerMine} smaller spade${lowerMine === 1 ? '' : 's'} (trump${lowerMine === 1 ? '' : 's'}) to play first` });
     } else if (lowerMine === missingAbove - 1) {
       est += 0.4;
       sureTrumps.push({ cards: [c], value: 0.4, note: 'maybe' });
@@ -47,7 +47,7 @@ export function analyzeHand(hand: readonly Card[], v: Pick<PlayerView, 'rules'>)
   const lenBase = 4 + Math.floor(extraTrumps / 2);
   const lenVal = Math.max(0, nT - lenBase) * 0.6;
   est += lenVal;
-  const length: BookItem | null = lenVal > 0 ? { cards: [], value: lenVal, note: `${nT} trumps: ${nT - lenBase} more than most players get, and extras win late in the hand` } : null;
+  const length: BookItem | null = lenVal > 0 ? { cards: [], value: lenVal, note: `${nT} spades (trumps): ${nT - lenBase} more than most players get, and the extras win near the end` } : null;
   let shortness = 0;
   const sideWinners: BookItem[] = [];
   const shortSuits: string[] = [];
@@ -56,11 +56,11 @@ export function analyzeHand(hand: readonly Card[], v: Pick<PlayerView, 'rules'>)
     const len = cards.length;
     const card = (rk: string) => cards.find((c) => c[0] === rk);
     const has = (rk: string) => !!card(rk);
-    if (has('A')) { const val = len <= 6 ? 1 : 0.6; est += val; sideWinners.push({ cards: [card('A')!], value: val, note: len <= 6 ? 'ace: top card of its suit' : 'ace, but its suit is long so someone may trump it' }); }
+    if (has('A')) { const val = len <= 6 ? 1 : 0.6; est += val; sideWinners.push({ cards: [card('A')!], value: val, note: len <= 6 ? 'ace: top card of its suit' : 'ace, but its suit is long, so someone may run out and beat it with a spade' }); }
     if (has('K')) {
       const val = has('A') && len >= 2 ? 0.85 : len >= 2 && len <= 5 ? 0.55 : 0.1;
       est += val;
-      sideWinners.push({ cards: [card('K')!], value: val, note: has('A') && len >= 2 ? 'king, with your ace above it' : len >= 2 && len <= 5 ? 'king with a smaller card to protect it' : len < 2 ? 'king alone: the ace can catch it' : 'king in a long suit: may get trumped' });
+      sideWinners.push({ cards: [card('K')!], value: val, note: has('A') && len >= 2 ? 'king, with your ace above it' : len >= 2 && len <= 5 ? 'king with a smaller card to protect it' : len < 2 ? 'king alone: the ace can catch it' : 'king in a long suit: someone may beat it with a spade' });
     }
     if (has('Q') && len >= 3 && len <= 4) { const val = has('A') || has('K') ? 0.35 : 0.2; est += val; sideWinners.push({ cards: [card('Q')!], value: val, note: 'queen with smaller cards to protect it' }); }
     if (len === 0) { shortness += 1; shortSuits.push(`no ${SUIT_NAME[s]}`); }
@@ -71,7 +71,7 @@ export function analyzeHand(hand: readonly Card[], v: Pick<PlayerView, 'rules'>)
   const cutVal = Math.min(shortness, spare * (extraTrumps >= 3 ? 0.55 : 0.75));
   est += cutVal;
   const cutting: BookItem | null = shortSuits.length
-    ? { cards: [], value: cutVal, note: cutVal > 0 ? `${shortSuits.join(', ')}: once you run out, ${spare} spare trump${spare === 1 ? '' : 's'} can cut (win) those books` : `${shortSuits.join(', ')}, but no spare trumps to cut with` }
+    ? { cards: [], value: cutVal, note: cutVal > 0 ? `${shortSuits.join(', ')}: once you run out, your ${spare} spare spade${spare === 1 ? '' : 's'} can win those books (cutting)` : `${shortSuits.join(', ')}, but no spare spades to win those books with` }
     : null;
   // 3-player games have 17-card hands but only two opponents: high cards are worth slightly more.
   const factor = r.playerCount === 3 ? 1.15 : 1;
@@ -153,7 +153,7 @@ export function nilProblem(hand: readonly Card[], v: PlayerView): string | null 
   const order = trumpOrder(r);
   const trumps = hand.filter((c) => isTrump(c, r));
   const name = (c: Card) => (c === 'BJ' ? 'Big Joker' : c === 'LJ' ? 'Little Joker' : c);
-  if (trumps.length > 3) return `${trumps.length} trumps is too many to duck with`;
+  if (trumps.length > 3) return `${trumps.length} spades (trumps) is too many to stay under everyone`;
   const high = trumps.filter((c) => order.indexOf(c) < order.length - 7);
   if (high.length) return `${high.map(name).join(', ')} will win a trick`;
   for (const s of ['H', 'D', 'C']) {

@@ -65,3 +65,14 @@ describe('tip auto-dismiss timing', () => {
     expect(tipDurationMs('word '.repeat(500))).toBe(TIP_AUTO.maxMs);
   });
 });
+
+import { trumpWords } from '../src/glossary';
+describe('plain words first, jargon in parentheses', () => {
+  it('names the actual trump cards per mode', () => {
+    for (const mode of ['joker', 'cutthroat', 'aceDown'] as const) {
+      const w = trumpWords(makeRules(mode));
+      if (mode !== 'aceDown') expect(w.one).toMatch(/^a spade, a Joker or the 2♦$/);
+      else expect(w.one).toBe('a spade');
+    }
+  });
+});

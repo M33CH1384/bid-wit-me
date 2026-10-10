@@ -11,7 +11,7 @@ export function halves(v: number): string {
   return whole === 0 && frac ? frac : `${whole}${frac}`;
 }
 
-const SHORT: Record<string, string> = { trumps: 'Top trumps', aces: 'Aces', kings: 'Kings', length: 'Many spades', cutting: 'Cuts' };
+const SHORT: Record<string, string> = { trumps: 'Top spades', aces: 'Aces', kings: 'Kings', length: 'Many spades', cutting: 'Cuts' };
 
 interface Row { key: string; label: string; detail: string; value: number }
 
@@ -19,13 +19,13 @@ function rowsFor(a: BidAdvice['analysis']): Row[] {
   const rows: Row[] = [];
   const list = (items: { cards: string[]; note: string }[]) => items.map((x) => `${x.cards.map((c) => cardLabel(c as never)).join(' ')}${x.note === 'maybe' ? '?' : ''}`).join(' · ');
   const sum = (items: { value: number }[]) => items.reduce((s, x) => s + x.value, 0);
-  if (a.sureTrumps.length) rows.push({ key: 'trumps', label: 'Top trumps', detail: list(a.sureTrumps), value: sum(a.sureTrumps) });
+  if (a.sureTrumps.length) rows.push({ key: 'trumps', label: 'Top spades (trumps)', detail: list(a.sureTrumps), value: sum(a.sureTrumps) });
   const aces = a.sideWinners.filter((x) => x.note.startsWith('ace'));
   const rest = a.sideWinners.filter((x) => !x.note.startsWith('ace'));
   if (aces.length) rows.push({ key: 'aces', label: 'Aces (not spades)', detail: list(aces), value: sum(aces) });
   if (rest.length) rows.push({ key: 'kings', label: 'Kings & queens with backup', detail: rest.map((x) => `${cardLabel(x.cards[0]!)} (${x.note})`).join(' · '), value: sum(rest) });
   if (a.length) rows.push({ key: 'length', label: 'Lots of spades', detail: a.length.note, value: a.length.value });
-  else rows.push({ key: 'length', label: 'Lots of spades', detail: `${a.trumpCount} trump${a.trumpCount === 1 ? '' : 's'} — no extra books from length`, value: 0 });
+  else rows.push({ key: 'length', label: 'Lots of spades', detail: `${a.trumpCount} spade${a.trumpCount === 1 ? '' : 's'} (trumps): not enough for extra books`, value: 0 });
   if (a.cutting) rows.push({ key: 'cutting', label: 'Short suits (cutting)', detail: a.cutting.note, value: a.cutting.value });
   return rows;
 }
@@ -80,7 +80,7 @@ export function BidCoach({ view, startOpen, onClose, title = 'BID COACH' }: { vi
           <button type="button" className="link bc-how" aria-expanded={how} onClick={() => setHow(!how)}>{how ? '▾' : '▸'} New to this? How to count books</button>
           {how && (
             <ol className="bc-how-list">
-              <li><b>Count sure winners.</b> A book is one round where everyone plays a card and the best card takes them all. Your strongest trumps ({topTrumps(view.rules, 4)}) almost always win one each. So do aces of hearts, diamonds and clubs.</li>
+              <li><b>Count sure winners.</b> A book is one round where everyone plays a card and the best card takes them all. Your strongest spades (the trumps: {topTrumps(view.rules, 4)}) almost always win one each. So do aces of hearts, diamonds and clubs.</li>
               <li><b>Kings with backup.</b> A king plus at least one smaller card of the same suit often wins too: you play the small one while the ace comes out.</li>
               <li><b>Lots of spades.</b> If you hold more than 3–4 spades, the extra ones usually win near the end, when others have run out.</li>
               <li><b>Short suits.</b> With no cards (or just one or two) in a suit, you can soon play a spade on it: that's cutting, and it wins the book.</li>

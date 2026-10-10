@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { type Card, type GameState, type PlayerView, SUIT_NAME, type Suit, booksHand, cardLabel, cardPower, effectiveSuit, handSize, isTrump, trumpOrder } from '@spades/rules';
-import { TERM_ORDER, type TermKey, glossary, parseTerms, topTrumps } from './glossary';
+import { TERM_ORDER, type TermKey, glossary, parseTerms, topTrumps, trumpWords } from './glossary';
 import { TIP_MAX_SHOWS, bumpTip, tipCount, tipDurationMs } from './tips';
 
 /**
@@ -42,6 +42,7 @@ export function tipsFor(c: CoachCtx): Tip[] {
   const g = glossary(r);
   const order = trumpOrder(r);
   const top = topTrumps(r);
+  const tw = trumpWords(r);
   const jokers = order.includes('BJ' as Card);
   const lead = c.st.trick.plays[0];
   const led = lead?.card;
@@ -63,7 +64,7 @@ export function tipsFor(c: CoachCtx): Tip[] {
   const handPoint = !hand.length ? '' : bestIsTop
     ? `Your ${label(best!)} is the strongest card in the game: it can't lose.`
     : best && isTrump(best, r)
-      ? `Your ${label(best)} is a {trump}: it beats every heart, diamond and club.`
+      ? `Your ${label(best)} ${effectiveSuit(best, r) === 'S' && best.endsWith('S') ? 'is a spade' : 'counts as a spade'} (a {trump}): it beats every heart, diamond and club.`
       : bestAce ? `Your ${label(bestAce)} is the {highest|high} ${SUIT_NAME[effectiveSuit(bestAce, r)].toLowerCase().replace(/s$/, '')}.` : '';
   const handMark = bestIsTop || (best && isTrump(best, r)) ? best : bestAce;
   const rankLine = jokers
@@ -77,7 +78,7 @@ export function tipsFor(c: CoachCtx): Tip[] {
   const lastLed = last?.plays[0] ? effectiveSuit(last.plays[0].card, r) : null;
   const whyWon = lastWinCard && lastLed
     ? isTrump(lastWinCard, r) && lastLed !== 'S'
-      ? `the ${label(lastWinCard)} is a {trump}, and a trump beats any ${SUIT_NAME[lastLed].toLowerCase().replace(/s$/, '')}`
+      ? `the ${label(lastWinCard)} ${lastWinCard.endsWith('S') ? 'is a spade' : 'counts as a spade'} (a {trump}), and any spade beats any ${SUIT_NAME[lastLed].toLowerCase().replace(/s$/, '')}`
       : `the ${label(lastWinCard)} was the {highest card|high} of the suit that was {led|lead}`
     : '';
   const partnerSeat = (c.me + 2) % 4;
@@ -103,8 +104,8 @@ export function tipsFor(c: CoachCtx): Tip[] {
       when: (x) => !!x.hand && x.hand.length > 0 && (x.st.phase === 'bidding' || x.st.phase === 'playing'),
     },
     {
-      id: 'trumps', title: 'Trumps', anchor: '.trump-strip, .bug-trumps', max: 2,
-      text: `Spades ♠ are {trumps|trump}: any spade beats any heart, diamond or club.${jokers ? ' The Jokers count as spades too.' : ''} Strongest first: ${top}…`,
+      id: 'trumps', title: 'Spades beat everything', anchor: '.trump-strip, .bug-trumps', max: 2,
+      text: `Any spade ♠ beats any heart, diamond or club (spades are the {trumps|trump}).${tw.extra ? ` ${tw.extra}` : ''} Strongest first: ${top}…`,
       marks: myTrumps.length ? { hand: myTrumps.slice(0, 4).map((x) => ({ card: x, tag: 'TRUMP', kind: 'trump' as const })) } : undefined,
       when: (x) => x.st.phase === 'bidding' || x.st.phase === 'playing',
     },
@@ -125,19 +126,19 @@ export function tipsFor(c: CoachCtx): Tip[] {
     },
     {
       id: 'follow', title: 'Follow suit', anchor: 'hand',
-      text: led ? `${name(lead!.seat)} {led|lead} ${ledWords} (marked LED). You have ${ledPlural}, so you must play one: they're lifted in your hand. The {highest|high} one wins unless someone plays a {trump}.` : '',
+      text: led ? `${name(lead!.seat)} {led|lead} ${ledWords} (marked LED). You have ${ledPlural}, so you must play one: they're lifted in your hand. The {highest|high} one wins unless someone plays a spade (a {trump}).` : '',
       marks: led ? { trick: ledMark, hand: hand.filter((x) => effectiveSuit(x, r) === ledSuit).map((x) => ({ card: x, tag: SUIT_SYM[ledSuit!], kind: 'match' as const })) } : undefined,
       when: () => playing && !!led && holdsLed && c.legal.length < (c.hand?.length ?? 0),
     },
     {
       id: 'cut', title: "Can't follow? Cut!", anchor: 'hand',
-      text: led ? `${ledWords} was {led|lead} and you have no ${ledPlural}. Play a {trump} (gold marks) to {cut} and win the book, or throw away a low card (grey marks).` : '',
+      text: led ? `${ledWords} was {led|lead} and you have no ${ledPlural}. Play ${tw.one} (gold marks) to win the book (that's {cutting|cut}), or throw away a low card (grey marks).` : '',
       marks: led ? { trick: ledMark, hand: [...myTrumps.filter((x) => c.legal.includes(x)).map((x) => ({ card: x, tag: 'TRUMP', kind: 'trump' as const })), ...throwaways.map((x) => ({ card: x, tag: 'THROW', kind: 'throw' as const }))] } : undefined,
       when: () => playing && !!led && !holdsLed && holdsTrump,
     },
     {
       id: 'broken', title: 'Spades not broken', anchor: 'hand',
-      text: 'You can\'t {lead} with a spade yet: spades are locked until someone {cuts|cut} with one ("{broken}"). Start with another suit: your allowed cards are lifted.',
+      text: `You can't {lead} with ${tw.one} until someone has played one on another suit (that's {'breaking' spades|broken}). Lead a different suit for now: your allowed cards are lifted.`,
       marks: { hand: c.legal.filter((x) => !isTrump(x, r)).slice(0, 4).map((x) => ({ card: x, tag: 'OK', kind: 'match' as const })) },
       when: () => playing && !led && r.spadesMustBeBroken && !c.st.spadesBroken && holdsTrump && c.legal.some((x) => !isTrump(x, r)) && c.legal.every((x) => !isTrump(x, r)),
     },

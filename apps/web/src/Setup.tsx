@@ -27,7 +27,7 @@ interface Props {
 }
 
 const ONE_LINERS: Record<ModeKey, string> = {
-  joker: 'Partners · jokers are the top trumps',
+  joker: 'Partners · Jokers beat every spade',
   cutthroat4: 'Every player for themselves',
   cutthroat3: '3 players · 17 cards each',
   aceDown: 'Partners · classic deck, aces high',
