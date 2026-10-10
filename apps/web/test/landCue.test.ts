@@ -54,3 +54,18 @@ describe('wheels (team bids 10+)', () => {
     expect(wheelsFor(team, ['books', 'books', 'books', 'books'])).toEqual([]);
   });
 });
+
+import { wheelsMade, wheelsTenth } from '../src/landCue';
+describe('wheels made / Cutthroat 10th book', () => {
+  const team = { partnerships: true, playerCount: 4 };
+  it('team: bid 10+ together AND took 10+', () => {
+    expect(wheelsMade(team, { bids: [6, 1, 4, 2], sides: [{ side: 0, tricks: 10 }, { side: 1, tricks: 3 }] })).toEqual([{ side: 0, bid: 10, books: 10 }]);
+    expect(wheelsMade(team, { bids: [6, 1, 4, 2], sides: [{ side: 0, tricks: 9 }, { side: 1, tricks: 4 }] })).toEqual([]);
+    expect(wheelsMade(team, { bids: [4, 1, 4, 2], sides: [{ side: 0, tricks: 11 }, { side: 1, tricks: 2 }] })).toEqual([]);
+  });
+  it('cutthroat: the moment a player reaches 10 books, once', () => {
+    expect(wheelsTenth({ partnerships: false }, [9, 1, 0], [10, 1, 0])).toEqual([0]);
+    expect(wheelsTenth({ partnerships: false }, [10, 1, 0], [11, 1, 0])).toEqual([]);
+    expect(wheelsTenth({ partnerships: true }, [9, 1, 0, 0], [10, 1, 0, 0])).toEqual([]);
+  });
+});

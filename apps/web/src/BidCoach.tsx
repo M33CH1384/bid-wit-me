@@ -87,7 +87,7 @@ export function BidCoach({ view, startOpen, onClose, title = 'BID COACH' }: { vi
               <li><b>Kings with backup.</b> A king plus at least one smaller card of the same suit often wins too: you play the small one while the ace comes out.</li>
               <li><b>Lots of spades.</b> If you hold more than 3–4 spades, the extra ones usually win near the end, when others have run out.</li>
               <li><b>Short suits.</b> With no cards (or just one or two) in a suit, you can soon play a spade on it: that's cutting, and it wins the book.</li>
-              {view.rules.partnerships && <li><b>Add your partner.</b> Your bid plus theirs is the team's goal, and there are only {handSize(view.rules)} books. Together 10 or more is called <b>wheels</b>: big points, big risk. Unsure? Bid a little low: falling short (getting set) costs 10 points per book bid.</li>}
+              {view.rules.partnerships && <li><b>Add your partner.</b> Your bid plus theirs is the team's goal, and there are only {handSize(view.rules)} books. Together 10 or more is called <b>wheels</b> (a 10+ bid): big points, big risk. Unsure? Bid a little low: falling short (getting set) costs 10 points per book bid.</li>}
               {view.rules.nil.allowed && <li><b>Nil (zero).</b> Only with no aces, no high spades, and lots of low cards to play under everyone.</li>}
             </ol>
           )}

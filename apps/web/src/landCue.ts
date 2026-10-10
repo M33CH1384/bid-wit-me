@@ -46,3 +46,16 @@ export function wheelsFor(rules: { partnerships: boolean; playerCount: number },
   }
   return out;
 }
+
+/** Team wheels MADE at hand end: a side that bid 10+ together (both partners numeric) and took 10+ books. */
+export function wheelsMade(rules: { partnerships: boolean; playerCount: number }, rec: { bids: readonly (number | string | null)[]; sides: { side: number; tricks: number }[] }): { side: number; bid: number; books: number }[] {
+  return wheelsFor(rules, rec.bids).flatMap((w) => {
+    const s = rec.sides.find((x) => x.side === w.side);
+    return s && s.tricks >= WHEELS_AT ? [{ side: w.side, bid: w.total, books: s.tricks }] : [];
+  });
+}
+/** Cutthroat wheels: the players whose book count just reached 10 this hand. */
+export function wheelsTenth(rules: { partnerships: boolean }, before: readonly number[], after: readonly number[]): number[] {
+  if (rules.partnerships) return [];
+  return after.flatMap((n, s) => (n >= WHEELS_AT && (before[s] ?? 0) < WHEELS_AT ? [s] : []));
+}

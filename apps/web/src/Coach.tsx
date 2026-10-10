@@ -189,7 +189,7 @@ function Basics({ rules }: { rules: GameState['rules'] }) {
   const g = glossary(rules);
   return (
     <dl className="basics" data-testid="card-basics" onClick={(e) => e.stopPropagation()}>
-      {TERM_ORDER.filter((k) => k !== 'wheels' || rules.partnerships).map((k) => <div key={k}><dt>{g[k].term}</dt><dd>{g[k].def}</dd></div>)}
+      {TERM_ORDER.map((k) => <div key={k}><dt>{g[k].term}</dt><dd>{g[k].def}</dd></div>)}
     </dl>
   );
 }

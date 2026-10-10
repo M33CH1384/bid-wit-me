@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { type FxEvent, fx } from './fx';
+import { WheelsCelebration } from './WheelsCar';
 
 /**
  * Full-screen hype overlay: streak / SHOT! pop-ups, joker vignette pulses and the Big-over-Little nuke
@@ -75,7 +76,8 @@ function runNuke(canvas: HTMLCanvasElement, cx: number, cy: number, onDone: () =
   return () => cancelAnimationFrame(raf);
 }
 
-export default function Hype({ reduced }: { reduced: boolean }) {
+export default function Hype({ reduced, low = false }: { reduced: boolean; low?: boolean }) {
+  const [car, setCar] = useState<{ id: number; who: string } | null>(null);
   const [pops, setPops] = useState<Pop[]>([]);
   const [nuke, setNuke] = useState<{ id: number; x: number; y: number } | null>(null);
   const [pulse, setPulse] = useState<{ id: number; big: boolean } | null>(null);
@@ -87,6 +89,7 @@ export default function Hype({ reduced }: { reduced: boolean }) {
     const add = (p: Pop, ms: number) => { setPops((ps) => [...ps.filter((x) => x.kind !== p.kind), p]); window.setTimeout(() => setPops((ps) => ps.filter((x) => x.id !== p.id)), ms); };
     if (e.kind === 'streak') add({ id: e.id, kind: e.kind, text: e.text ?? 'HEAT CHECK', sub: e.sub ?? `${e.level} hands in a row`, level: e.level }, 2300);
     else if (e.kind === 'shot') add({ id: e.id, kind: e.kind, text: 'SHOT!', sub: e.text }, 2000);
+    else if (e.kind === 'wheelsCar') setCar({ id: e.id, who: e.text ?? '' });
     else if (e.kind === 'wheels') add({ id: e.id, kind: e.kind, text: 'WHEELS!', sub: e.sub ?? e.text }, 1900);
     else if (e.kind === 'gotShot') add({ id: e.id, kind: e.kind, text: 'GOT SHOT', sub: e.text }, 1900);
     else if (e.kind === 'jokerLittle' || e.kind === 'jokerBig') { setPulse({ id: e.id, big: e.kind === 'jokerBig' }); window.setTimeout(() => setPulse((p) => (p?.id === e.id ? null : p)), e.kind === 'jokerBig' ? 1100 : 500); }
@@ -125,6 +128,7 @@ export default function Hype({ reduced }: { reduced: boolean }) {
         </>
       )}
       <canvas ref={canvas} className="nuke-canvas" data-testid={nuke ? 'nuke' : undefined} style={{ display: nuke ? 'block' : 'none' }} />
+      {car && <WheelsCelebration key={car.id} id={car.id} who={car.who} reduced={reduced} low={low} onDone={() => setCar((c) => (c?.id === car.id ? null : c))} />}
       {pops.map((p) => (
         <div key={p.id} className={`hype-pop ${p.kind} lvl${p.level ?? 0}`} data-testid={`pop-${p.kind}`} role="status">
           <span className="hype-text">{p.text}</span>

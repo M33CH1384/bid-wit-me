@@ -5,7 +5,7 @@ import {
 import { ScorePad, sideName } from './Modals';
 import { Intermission, calloutsFor } from './Intermission';
 import Hype from './Hype';
-import { landCueFor, wheelsFor } from './landCue';
+import { landCueFor, wheelsFor, wheelsMade, wheelsTenth } from './landCue';
 import Feedback from './Feedback';
 import { setFeedbackGame } from './feedbackContext';
 import { loadTipJar, openTip, saveTipJar, tipNudgeDue } from './support';
@@ -154,6 +154,11 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
         window.setTimeout(() => fx.emit('wheels', { sub: `${who} · ${w.total} books` }), 250);
       }
     }
+    // Cutthroat wheels: your 10th book of the hand (once per hand per player)
+    if (st.handNo === p.handNo) for (const s of wheelsTenth(r, p.tricksWon, st.tricksWon)) {
+      push('System', `🏎 Wheels! ${names[s]} took a 10th book`, true);
+      window.setTimeout(() => fx.emit('wheelsCar', { text: `${names[s]} · 10 books` }), 900);
+    }
     // tricks
     if (st.tricks.length > p.tricks.length && st.handNo === p.handNo) {
       const t = st.tricks[st.tricks.length - 1]!;
@@ -166,6 +171,7 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
     if (st.history.length > p.history.length) {
       const rec = st.history[st.history.length - 1]!;
       push('System', `Hand ${rec.handNo}: ${rec.sides.map((s) => `${sideName(r, s.side, names)} ${s.points >= 0 ? '+' : ''}${s.points}`).join(' · ')}`, true);
+      for (const w of wheelsMade(r, rec)) push('System', `🏎 Wheels made! ${sideName(r, w.side, names)} bid ${w.bid} and took ${w.books}`, true);
       const mySide = sideOf(HUMAN, r);
       for (const s of rec.sides) {
         for (const nl of s.nils) {
@@ -427,6 +433,12 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const shot = calls.find((c) => c.kind === 'shot') ?? calls.find((c) => c.kind === 'gotShot');
     if (shot) timers.push(window.setTimeout(() => fx.emit(shot.kind as 'shot' | 'gotShot', { text: shot.text }), 350));
     const streak = calls.find((c) => c.kind === 'streak');
+    // Wheels made: a team that bid 10+ together and took 10+ books → the supercar peel-out
+    const made = wheelsMade(r, rec);
+    if (made.length) {
+      const w = made[0]!;
+      timers.push(window.setTimeout(() => fx.emit('wheelsCar', { text: `${sideName(r, w.side, names)} made ${w.bid} · took ${w.books}` }), shot ? 3300 : streak ? 2600 : 600));
+    }
     if (streak) timers.push(window.setTimeout(() => fx.emit('streak', { level: streak.level, text: streak.text.split(' · ')[0], sub: streak.text.split(' · ')[1] }), shot ? 1750 : 400));
     return () => { clearTimeout(tm); timers.forEach(clearTimeout); };
   }, [st.history, r, names, mySide]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -759,7 +771,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       )}
 
       {coachOn && !modalOpen && st.phase === 'playing' && !pause && <LedSuitChip st={st} />}
-      <Hype reduced={reduceFx} />
+      <Hype reduced={reduceFx} low={settings.quality === 'low'} />
       {showPad && <ScorePad st={st} names={names} onClose={() => setShowPad(false)} />}
     </div>
   );

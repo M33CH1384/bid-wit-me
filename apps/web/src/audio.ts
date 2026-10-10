@@ -13,7 +13,7 @@ export type Sfx =
   | 'shuffle' | 'deal' | 'play' | 'tap' | 'sweep' | 'broken' | 'turn' | 'bid' | 'bidSoft'
   | 'cut' | 'made' | 'set' | 'nil' | 'bags' | 'pop' | 'win' | 'lose' | 'flip'
   // hype effects (all synthesized): joker rumbles, the Big-over-Little nuke, streaks, shots
-  | 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak1' | 'streak2' | 'streak3' | 'shot' | 'gotShot' | 'wheels';
+  | 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak1' | 'streak2' | 'streak3' | 'shot' | 'gotShot' | 'wheels' | 'wheelsCar';
 
 export interface SoundSettings { on: boolean; volume: number; ambient: boolean; music: boolean; musicVolume: number }
 const KEY = 'bwm.sound.v1';
@@ -377,6 +377,7 @@ class Engine {
       case 'shot': return this.slam(t, g);
       case 'gotShot': return this.sting(t, g);
       // wheels: a quick rising two-step + hit (short, not a fanfare)
+      case 'wheelsCar': return this.peelOut(t, g);
       case 'wheels': this.arp(t, [392, 523.25, 783.99], 0.06, 'square', 0.12 * g, 0.22); return this.streakHit(t + 0.16, 0.8 * g, 1);
     }
   }
@@ -550,6 +551,58 @@ class Engine {
     for (let i = 0; i < 70; i++) {
       const dt = 0.25 + Math.pow(Math.random(), 1.6) * 2.6;
       this.burst(t + dt, 0.018 + Math.random() * 0.03, (0.22 - dt * 0.06) * g * (0.5 + Math.random()), 'bandpass', 1800 + Math.random() * 4200, { q: 3 });
+    }
+  }
+
+  /**
+   * Wheels celebration: a deep sports-car engine revs (two blips + a bigger third), tyres squeal as it launches,
+   * then the engine pulls away into the distance (falling pitch + volume, closing low-pass). Synthesised:
+   * stacked saw / square oscillators on one RPM curve → overdrive → RPM-tracking low-pass, with a firing-rate
+   * growl (amplitude LFO). Loud and punchy on purpose (it's a celebration).
+   */
+  private peelOut(t: number, g: number) {
+    const c = this.ctx!;
+    const END = 3.3;
+    // RPM curve, as the engine's firing frequency (Hz): idle → rev → drop → rev → drop → big rev → launch → away
+    const rpm: [number, number][] = [[0, 38], [0.16, 120], [0.36, 50], [0.5, 135], [0.7, 52], [0.82, 160], [0.95, 92], [1.5, 185], [1.95, 205], [2.6, 150], [END, 120]];
+    const vol: [number, number][] = [[0, 0.35], [0.16, 1], [0.36, 0.5], [0.5, 1], [0.7, 0.5], [0.82, 1], [0.95, 0.85], [1.5, 1], [1.95, 0.75], [2.6, 0.3], [END, 0.0001]];
+    const curve = (p: AudioParam, pts: [number, number][], k = 1, floor = 0.0001) => {
+      p.setValueAtTime(Math.max(floor, pts[0]![1] * k), t);
+      for (let i = 1; i < pts.length; i++) p.exponentialRampToValueAtTime(Math.max(floor, pts[i]![1] * k), t + pts[i]![0]);
+    };
+    const drive = this.shaper(60);
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 4;
+    curve(lp.frequency, rpm.map(([x, f], i) => [x, f * (i >= 8 ? 7 - (i - 8) * 1.5 : 9)] as [number, number]), 1, 60);
+    const growl = c.createGain(); growl.gain.value = 0.65;
+    const amp = c.createGain(); curve(amp.gain, vol, 1.1 * g);
+    drive.connect(lp).connect(growl).connect(amp).connect(this.sfxBus!);
+    const oscs: OscillatorNode[] = [];
+    const add = (type: OscillatorType, mult: number, level: number, detune = 0) => {
+      const o = c.createOscillator(); o.type = type; o.detune.value = detune;
+      curve(o.frequency, rpm, mult, 10);
+      const og = c.createGain(); og.gain.value = level;
+      o.connect(og).connect(drive); oscs.push(o);
+    };
+    add('sawtooth', 1, 0.5); add('sawtooth', 1, 0.35, 14); add('square', 0.5, 0.45); add('sawtooth', 2, 0.18, -8); add('sine', 0.25, 0.6);
+    // firing-rate growl: amplitude wobble at ~ RPM / 2
+    const lfo = c.createOscillator(); lfo.type = 'square'; curve(lfo.frequency, rpm, 0.5, 5);
+    const lfoG = c.createGain(); lfoG.gain.value = 0.35; lfo.connect(lfoG).connect(growl.gain); oscs.push(lfo);
+    oscs.forEach((o) => { o.start(t); o.stop(t + END + 0.05); });
+    // exhaust pops / crackle on each lift-off
+    for (const at of [0.37, 0.71, 0.97]) for (let i = 0; i < 4; i++) this.burst(t + at + i * 0.045 + Math.random() * 0.02, 0.03, 0.28 * g, 'bandpass', 500 + Math.random() * 500, { q: 2 });
+    // launch thump
+    this.tone(t + 0.95, 70, 0.4, 'sine', 0.7 * g, { glideTo: 40, attack: 0.004 });
+    // tyre squeal: narrow band noise + a wobbling sine pair, 0.95 → 1.9 s
+    const sq = c.createBufferSource(); sq.buffer = this.noise(1.1);
+    const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 9; bp.frequency.value = 2700;
+    const wob = c.createOscillator(); wob.frequency.value = 9; const wobG = c.createGain(); wobG.gain.value = 220; wob.connect(wobG).connect(bp.frequency);
+    const sg = c.createGain(); sg.gain.setValueAtTime(0.0001, t + 0.95); sg.gain.exponentialRampToValueAtTime(0.75 * g, t + 1.02); sg.gain.setValueAtTime(0.75 * g, t + 1.55); sg.gain.exponentialRampToValueAtTime(0.0001, t + 2.0);
+    sq.connect(bp).connect(sg).connect(this.sfxBus!); sq.start(t + 0.95); sq.stop(t + 2.05); wob.start(t + 0.95); wob.stop(t + 2.05);
+    for (const [f, d] of [[2950, 0], [3420, 7]] as const) {
+      const o = c.createOscillator(); o.type = 'sine'; o.frequency.value = f; o.detune.value = d;
+      const w = c.createOscillator(); w.frequency.value = 11; const wg = c.createGain(); wg.gain.value = 90; w.connect(wg).connect(o.frequency);
+      const og = c.createGain(); og.gain.setValueAtTime(0.0001, t + 0.97); og.gain.exponentialRampToValueAtTime(0.09 * g, t + 1.05); og.gain.exponentialRampToValueAtTime(0.0001, t + 1.9);
+      o.connect(og).connect(this.sfxBus!); o.start(t + 0.97); o.stop(t + 2); w.start(t + 0.97); w.stop(t + 2);
     }
   }
 

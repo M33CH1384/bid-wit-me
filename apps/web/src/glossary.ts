@@ -61,7 +61,7 @@ export function glossary(r: TableRules): Record<TermKey, Term> {
     partner: t('partner', 'Partner', r.partnerships
       ? 'The player sitting across from you. You win or lose together, and your books count as one team.'
       : 'Cutthroat has no partners: everyone plays for themselves.'),
-    wheels: t('wheels', 'Wheels', r.partnerships ? 'When a team bids 10 or more books together. Big points if you make it, a big fall if you get set.' : 'When a team bids 10 or more books together (team games only, so not in Cutthroat).'),
+    wheels: t('wheels', 'Wheels', `A team bidding 10+ books together, or taking 10+ books yourself in Cutthroat.${r.partnerships ? ' Make it and the wheels come out.' : ''}`),
   };
 }
 
