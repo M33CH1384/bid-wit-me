@@ -122,6 +122,61 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
     ig.quaternion.setFromAxisAngle(st.axis, env * (blast === 'hand' ? 0.35 : 1.4));
   };
 
+  /**
+   * 'Run it!' tornado: pulled off its spot into the funnel over the table centre (hand cards first), spun up the
+   * funnel, then flung out and gone. Reduce effects: a plain slide into the centre that shrinks away.
+   * Returns true while it owns the inner offset (the nuke blast is skipped then).
+   */
+  const tn = useRef({ on: false, a0: 0, h0: 0, delay: 0, axis: new Vector3(), q: new Quaternion() });
+  const applyTornado = (g: Group): boolean => {
+    const ig = inner.current, T = fx.tornado, st = tn.current;
+    if (!ig) return false;
+    const u = T ? (fx.warp !== null ? fx.warp : (performance.now() - T.start) / 1000) : -1;
+    if (!T || u < 0) {
+      if (st.on) { st.on = false; ig.position.set(0, 0, 0); ig.quaternion.identity(); ig.scale.setScalar(1); ig.visible = true; invalidate(); }
+      return false;
+    }
+    invalidate();
+    if (!st.on) {
+      st.on = true;
+      // stable per-card randomness from the card's name
+      let h = 7; for (const ch of name ?? '') h = (h * 31 + ch.charCodeAt(0)) | 0;
+      const r = (k: number) => { const x = Math.sin(h * 12.9898 + k * 78.233) * 43758.5453; return x - Math.floor(x); };
+      st.a0 = Math.atan2(g.position.z, g.position.x) + (r(1) - 0.5) * 0.8;
+      st.h0 = r(2);
+      st.delay = (blast === 'hand' ? 0 : 0.1) + r(3) * 0.2;
+      st.axis.set(r(4) - 0.5, r(5) - 0.5, r(6) - 0.5).normalize();
+    }
+    const tt = Math.max(0, u - st.delay);
+    const pull = tt <= 0 ? 0 : 1 - (1 - Math.min(1, tt / 0.5)) ** 3;
+    const w = new Vector3();
+    let spin = 0, scale = 1;
+    if (T.reduced) {
+      w.set(0, 0.06, 0);
+      scale = Math.max(0.001, 1 - Math.max(0, (tt - 0.35) / 0.4));
+    } else {
+      const FLING = 1.25;
+      const height = 0.12 + 1.35 * Math.min(1, tt / 1.3) * (0.35 + 0.65 * st.h0);
+      let radius = 0.1 + 0.3 * (height / 1.5);
+      let y = height;
+      if (tt > FLING) { const f = tt - FLING; radius += 9 * f * f + 1.5 * f; y += 2.2 * f; }
+      const ang = st.a0 + tt * (6.5 + 4 * (1 - st.h0)) + tt * tt * 1.5;
+      w.set(Math.cos(ang) * radius, y, Math.sin(ang) * radius);
+      spin = tt * 9;
+      // everything the same size in the funnel (your hand cards are bigger, near the camera)
+      scale = 1 + ((0.85 / (g.scale.x || 1)) - 1) * pull;
+    }
+    ig.visible = scale > 0.002 && tt < 1.9;
+    // world funnel spot → this card's local space (offset from its resting spot)
+    const off = w.sub(g.position).multiplyScalar(pull);
+    st.q.copy(g.quaternion).invert();
+    off.applyQuaternion(st.q).divideScalar(g.scale.x || 1);
+    ig.position.copy(off);
+    ig.quaternion.setFromAxisAngle(st.axis, spin * pull);
+    ig.scale.setScalar(scale);
+    return true;
+  };
+
   useFrame((_, dt) => {
     const g = ref.current;
     if (!g) return;
@@ -144,7 +199,7 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
     } else if (radioWas.current) {
       radioWas.current = false; frontMat.emissive.set('#000000'); frontMat.emissiveIntensity = 1; glowMat.color.set('#f5c542'); glowMat.opacity = L.glow; invalidate();
     }
-    applyBlast(g);
+    if (!applyTornado(g)) applyBlast(g);
     const s = tw.current;
     if (!s.init) {
       const f = from ?? target;

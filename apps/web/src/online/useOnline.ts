@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import type { Action, GameState, PlayerView } from '@spades/rules';
 import { bidLabel, isFreshDeal } from '@spades/rules';
 import type { ChatLine, RoomInfo } from '@spades/protocol';
+import { RUN_FX_MS } from '@spades/protocol';
 import type { ChatMsg } from '../overlay';
 import type { ConnState, TableConnection } from './connection';
 import { type Rotation, rotateView } from './rotate';
@@ -61,7 +62,9 @@ export function useOnlineSource(cs: ConnState, conn: TableConnection): (GameSour
 
   useEffect(() => {
     if (!pause) return;
-    const t = setTimeout(() => setPause(false), TRICK_HOLD_MS);
+    // 'Run it!': hold through the slam + tornado (the table shows the hand's end afterwards)
+    const ran = shown?.st.tricks.at(-1)?.plays.some((p) => p.run) ? RUN_FX_MS : 0;
+    const t = setTimeout(() => setPause(false), TRICK_HOLD_MS + ran);
     return () => clearTimeout(t);
   }, [pause, shown?.st.tricks.length]);
 
@@ -88,6 +91,7 @@ export function useOnlineSource(cs: ConnState, conn: TableConnection): (GameSour
       case 'bid': if (a.bid !== 'books') conn.act({ type: 'bid', bid: a.bid }, seq); break;
       case 'play': conn.act({ type: 'play', card: a.card }, seq); break;
       case 'exchange': conn.act({ type: 'exchange', cards: a.cards }, seq); break;
+      case 'runIt': conn.act({ type: 'runIt' }, seq); break;
       case 'nextHand': conn.send({ t: 'next' }); break;
     }
   }, [conn, seq]);

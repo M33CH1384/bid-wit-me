@@ -5,6 +5,7 @@ import { BotTrashTalkRow, NukeIntensityRow, ReduceEffectsRow, SoundFields } from
 import { TeamNameField, myTeamName, useMyTeamName } from './TeamName';
 import { type Settings, settingsToRules } from './settings';
 import { type TipsPref, saveTips } from './tips';
+import { BADGES, useBadges } from './badges';
 
 export function Row({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
@@ -67,6 +68,7 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
           <NukeIntensityRow />
           <BotTrashTalkRow />
           <TeamNameRow />
+          <BadgesRow />
           <button type="button" className="link sheet-h" aria-expanded={house} onClick={() => setHouse(!house)}>{house ? '▾' : '▸'} House rules</button>
           {house && (
             <div className="house">
@@ -137,6 +139,22 @@ function TeamNameRow() {
     <div className="sf-row team-row">
       <span>Your team name<small className="sf-note"> · team modes, offline</small></span>
       <TeamNameField value={v} placeholder="You & your partner" onSave={(x) => myTeamName.set(x)} testId="offline-team-name" />
+    </div>
+  );
+}
+
+/** Earned badges (local for now). */
+export function BadgesRow() {
+  const list = useBadges();
+  return (
+    <div className="sf-row badges-row" data-testid="badges-row">
+      <span>Badges</span>
+      <span className="badge-list">
+        {list.length === 0 ? <small className="sf-note">None yet. Keep playing.</small> : list.map((b) => {
+          const d = BADGES[b.id];
+          return <span key={b.id} className="badge-chip" title={`${d?.desc ?? b.id} · ${new Date(b.earnedAt).toLocaleDateString()}`} data-testid={`badge-${b.id}`}>{d?.icon ?? '★'} {d?.name ?? b.id}</span>;
+        })}
+      </span>
     </div>
   );
 }

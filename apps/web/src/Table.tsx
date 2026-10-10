@@ -1,6 +1,6 @@
 import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
-  type Card, type GameState, type TableRules, radioactiveBigJoker, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, partnerOf, sideOf, sortHand, trumpOrder,
+  type Card, type GameState, type PlayerView, type Play, type TableRules, radioactiveBigJoker, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, partnerOf, sideOf, sortHand, trumpOrder,
 } from '@spades/rules';
 import { ScorePad, defaultSideName, setTeamNames, sideName } from './Modals';
 import { type Series, addSeriesGame, seriesSides, summarizeGame } from '@spades/rules';
@@ -28,6 +28,8 @@ import { useViewport } from './viewport';
 import { Coach, LedSuitChip } from './Coach';
 import { type TipsPref, bumpTip, loadTips, saveTips, tipCount } from './tips';
 import { BidCoach } from './BidCoach';
+import { RUN_FX_MS } from '@spades/protocol';
+import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
 import { personaTag, pickBotNames } from '@spades/bots';
 const Scene = lazy(() => import('./three/Scene'));
 
@@ -173,15 +175,16 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
       }
     }
     // Cutthroat wheels: your 10th book of the hand (once per hand per player)
+    const runWait = st.tricks.slice(p.tricks.length).some((t) => t.plays.some((q) => q.run)) ? RUN_FX_MS : 0;
     if (st.handNo === p.handNo) for (const s of wheelsTenth(r, p.tricksWon, st.tricksWon)) {
       push('System', `🏎 Wheels! ${names[s]} took a 10th book`, true);
-      window.setTimeout(() => fx.emit('wheelsCar', { text: `${names[s]} · 10 books` }), 900);
+      window.setTimeout(() => fx.emit('wheelsCar', { text: `${names[s]} · 10 books` }), 900 + runWait);
     }
     // first hand (books bid themselves, so no bids): a team's 10th book of the hand → the same celebration
     if (st.handNo === p.handNo) for (const side of wheelsTenthBooks(r, st.bids, p.tricksWon, st.tricksWon)) {
       const who = sideName(r, side, names);
       push('System', `🏎 Wheels! ${who} took 10 books`, true);
-      window.setTimeout(() => fx.emit('wheelsCar', { text: `${who} · 10 books` }), 900);
+      window.setTimeout(() => fx.emit('wheelsCar', { text: `${who} · 10 books` }), 900 + runWait);
     }
     // tricks
     if (st.tricks.length > p.tricks.length && st.handNo === p.handNo) {
@@ -189,7 +192,9 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
       const winCard = t.plays.find((x) => x.seat === t.winner)!.card;
       const led = t.plays[0]!.card;
       void winCard; void led; // bot reactions to plays come from the trash-talk engine (offlineTalk)
-      if (t.plays.some((x) => x.auto)) push('System', '☢ Nuked — remaining cards auto-played', true);
+      const ran = st.tricks.slice(p.tricks.length).filter((x) => x.plays.some((q) => q.run));
+      if (ran.length) push('System', `🌪 ${names[ran[0]!.plays[0]!.seat]} ran the board (+${ran.length} books)`, true);
+      else if (t.plays.some((x) => x.auto)) push('System', '☢ Nuked — remaining cards auto-played', true);
     }
     // hand scored
     if (st.history.length > p.history.length) {
@@ -277,6 +282,38 @@ function useGameSounds(st: GameState, myTurn: boolean, mySide: number, msgs: Cha
 }
 
 export { landCueFor } from './landCue';
+
+/** The plays of this hand recorded by 'Run it!' (empty if nobody ran it). */
+function runPlays(st: GameState): Play[] { return st.tricks.flatMap((t) => t.plays.filter((p) => p.run)); }
+
+/**
+ * 'Run it!': the glowing button above your hand (only ever shown when the engine has proven every remaining book is yours).
+ * The first few times it appears, a one-time spotlight tip points at it (shown even with tips off).
+ */
+function RunItButton({ onRun, tip, onDismissTip }: { onRun: () => void; tip: boolean; onDismissTip: () => void }) {
+  const [bottom, setBottom] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const place = () => {
+      const L = (window as unknown as { __bwmLayout?: { hand: { y: number }[] } }).__bwmLayout;
+      // above your hand, and never down among the plates / last-trick strip in the bottom corners (phones)
+      if (L?.hand?.length) setBottom(Math.round(Math.max(window.innerHeight - Math.min(...L.hand.map((q) => q.y)) + 10, window.innerHeight * (window.innerWidth < 700 ? 0.33 : 0.3))));
+    };
+    place();
+    const iv = window.setInterval(place, 400);
+    return () => clearInterval(iv);
+  }, []);
+  return (
+    <div className="run-it-wrap" style={{ bottom: bottom ?? undefined }}>
+      {tip && (
+        <div className="run-it-tip glass slant" role="dialog" aria-label="Run it tip" data-testid="run-it-tip">
+          <span>You've got the rest locked. Tap <b>Run it!</b> to take every remaining book.</span>
+          <button type="button" className="link" onClick={onDismissTip} aria-label="Dismiss tip">Got it</button>
+        </div>
+      )}
+      <button type="button" className={`run-it-btn${tip ? ' attention' : ''}`} data-testid="run-it" onClick={onRun}>Run it! 🌪</button>
+    </div>
+  );
+}
 
 export default function Table({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, resume, online, onMainMenu }: Props) {
   // `online` never changes for a mounted Table, so this is always the same hook path per instance
@@ -395,7 +432,75 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const exchangeStep = st.phase === 'exchange' ? st.exchange[0] : undefined;
   const humanExchanging = myTurn && exchangeStep?.from === HUMAN;
   const mySide = sideOf(HUMAN, r);
-  const winnerSeat = pause ? shownTrick.winner : null;
+  // ---- 'Run it!': on a run, the table keeps showing the moment before it while the claimer's cards slam down and
+  // the tornado rips every hand + the table into the funnel; then the (finished) hand shows with an empty table.
+  type RunFx = { id: number; before: { st: GameState; view: PlayerView }; claimer: number; cards: Card[]; books: number };
+  const [seen, setSeen] = useState<{ st: GameState; view: PlayerView }>(() => ({ st, view }));
+  const [runFx, setRunFx] = useState<RunFx | null>(null);
+  if (seen.st !== st) {
+    const b = seen.st;
+    if (b.handNo === st.handNo && st.tricks.length > b.tricks.length && st.tricks[b.tricks.length]!.plays.some((p) => p.run)) {
+      const fresh = st.tricks.slice(b.tricks.length);
+      const claimer = fresh[0]!.plays[0]!.seat;
+      setRunFx({ id: Date.now(), before: seen, claimer, cards: fresh.flatMap((t) => t.plays.filter((p) => p.seat === claimer).map((p) => p.card)), books: fresh.length });
+    }
+    setSeen({ st, view });
+  }
+  const [badgeToast, setBadgeToast] = useState<string | null>(null);
+  const endRun = useCallback(() => { fx.tornado = null; sound.stopTornado(); setRunFx(null); }, []);
+  useEffect(() => {
+    if (!runFx) return;
+    const slamS = 0.08 + 0.13 * (runFx.cards.length - 1) + 0.25;
+    fx.tornado = { start: performance.now() + slamS * 1000, reduced: fx.reduced };
+    const who = runFx.claimer === HUMAN ? 'You' : names[runFx.claimer]!;
+    fx.emit('ranIt', { text: 'RAN IT!', sub: `${who} · +${runFx.books} book${runFx.books === 1 ? '' : 's'}`, silent: true });
+    sound.play('tornado', { delay: Math.max(0, slamS - 0.3) });
+    // (capture scripts set __bwmHoldRun to step the tornado frame by frame via fx.warp)
+    const hold = !!(window as unknown as { __bwmHoldRun?: boolean }).__bwmHoldRun;
+    const timers = hold ? [] : [window.setTimeout(endRun, (slamS + 2.1) * 1000)];
+    (window as unknown as { __bwmEndRun?: () => void }).__bwmEndRun = endRun;
+    if (runFx.claimer === HUMAN) {
+      runItUsed();
+      if (award('storm-chaser', { mode: r.mode, online: !!online, hand: runFx.before.st.handNo, books: runFx.books })) pendingBadge.current = 'storm-chaser';
+    }
+    return () => { timers.forEach(clearTimeout); fx.tornado = null; };
+  }, [runFx]); // eslint-disable-line react-hooks/exhaustive-deps
+  // a badge earned by the run unlocks once the tornado is over (or skipped)
+  const pendingBadge = useRef<string | null>(null);
+  useEffect(() => {
+    if (runFx || !pendingBadge.current) return;
+    setBadgeToast(pendingBadge.current); pendingBadge.current = null; sound.play('made');
+    const t = window.setTimeout(() => setBadgeToast(null), 3800);
+    return () => clearTimeout(t);
+  }, [runFx]);
+  const ranHand = useMemo(() => runPlays(st).length > 0, [st]);
+  const winnerSeat = pause && !ranHand ? shownTrick.winner : null;
+  // the Run it! button + its one-time spotlight tip
+  const canRun = myTurn && !dealing && st.phase === 'playing' && !!view.canRunIt && !runFx;
+  const [runTip, setRunTip] = useState(false);
+  const runTipKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (!canRun) { setRunTip(false); return; }
+    const key = `${st.seed}:${st.handNo}`;
+    if (runTipKey.current === key) return;
+    runTipKey.current = key;
+    if (runItTipDue()) { runItTipShown(); setRunTip(true); }
+  }, [canRun]); // eslint-disable-line react-hooks/exhaustive-deps
+  const myBadges = useBadges();
+  // what the 3D table shows (see above)
+  const display = (() => {
+    if (runFx) {
+      const b = runFx.before;
+      const bh = b.view.hand ? sortHand(b.view.hand, r) : null;
+      return {
+        hand: runFx.claimer === HUMAN ? (bh?.filter((c) => !runFx.cards.includes(c)) ?? null) : bh,
+        counts: b.view.handCounts.map((c, i) => (i === runFx.claimer ? 0 : c)),
+        trick: b.st.trick.plays, piles: b.st.tricks, slam: { seat: runFx.claimer, cards: runFx.cards },
+      };
+    }
+    if (ranHand) return { hand, counts: view.handCounts, trick: shownTrick.plays.some((p) => p.run) ? [] : shownTrick.plays, piles: [] as typeof piles, slam: null };
+    return { hand, counts: view.handCounts, trick: shownTrick.plays, piles, slam: null };
+  })();
   useGameSounds(st, myTurn, mySide, msgs);
   const landCue = useCallback((c: Card) => landCueFor(st, c), [st]);
   // "Learn as you play": coach marks across hands until the player turns tips off (local to this player, online too)
@@ -486,9 +591,18 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
   // BID MADE / SET / NIL! toasts
   const lastHist = useRef(st.history.length);
+  const [histTick, setHistTick] = useState(0);
+  const ranWaited = useRef(-1);
   useEffect(() => {
     if (st.history.length <= lastHist.current) { lastHist.current = st.history.length; return; }
     lastHist.current = st.history.length;
+    // after 'Run it!' the scoring toasts wait for the tornado
+    const ranDelay = st.tricks.at(-1)?.plays.some((p) => p.run) ? RUN_FX_MS : 0;
+    if (ranDelay && ranWaited.current !== st.history.length) {
+      const len = st.history.length;
+      const t0 = window.setTimeout(() => { ranWaited.current = len; lastHist.current = len - 1; setHistTick((x) => x + 1); }, ranDelay);
+      return () => clearTimeout(t0);
+    }
     const rec = st.history[st.history.length - 1]!;
     const base = Date.now();
     const list = toastsFor(rec, r, names, mySide).map((t, i) => ({ ...t, id: base + i }));
@@ -510,15 +624,15 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     }
     if (streak) timers.push(window.setTimeout(() => fx.emit('streak', { level: streak.level, text: streak.text.split(' · ')[0], sub: streak.text.split(' · ')[1] }), shot ? 1750 : 400));
     return () => { clearTimeout(tm); timers.forEach(clearTimeout); };
-  }, [st.history, r, names, mySide]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [st.history, histTick, r, names, mySide]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Table Talk shows a beat after scoring, so the toasts / pop-ups land on the table first
   const [talkOpen, setTalkOpen] = useState(false);
   useEffect(() => {
-    if (st.phase !== 'handOver' || pause) { setTalkOpen(false); return; }
+    if (st.phase !== 'handOver' || pause || runFx) { setTalkOpen(false); return; }
     const t = window.setTimeout(() => setTalkOpen(true), resume || online ? 900 : 1500);
     return () => clearTimeout(t);
-  }, [st.phase, st.handNo, pause]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [st.phase, st.handNo, pause, !!runFx]); // eslint-disable-line react-hooks/exhaustive-deps
   const talkSend = (text: string) => {
     push('You', text);
     const replies = TALK_LINES.replies[text];
@@ -596,15 +710,16 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           dealer={st.dealer}
           positions={pos}
           human={HUMAN}
-          myHand={hand}
-          handCounts={view.handCounts}
-          shownTrick={shownTrick.plays}
+          myHand={display.hand}
+          handCounts={display.counts}
+          shownTrick={display.trick}
+          slam={display.slam}
           radioactive={radioactive}
           reduceFx={reduceFx}
-          piles={piles}
-          legal={humanExchanging && hand ? hand : legal}
-          selected={selected}
-          turnSeat={pause || st.phase === 'handOver' || st.phase === 'gameOver' ? null : st.turn}
+          piles={display.piles}
+          legal={runFx ? [] : humanExchanging && hand ? hand : legal}
+          selected={runFx ? null : selected}
+          turnSeat={runFx || pause || st.phase === 'handOver' || st.phase === 'gameOver' ? null : st.turn}
           winnerSeat={winnerSeat}
           promoted={promoted}
           onCardTap={onCard}
@@ -737,7 +852,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         <div className={`plate me-plate ${myTurn && st.phase !== 'handOver' ? 'turn' : ''}`} data-testid="seat-0">
           <div className="plate-avatar" style={{ ['--uc' as string]: USER_COLORS.You }}>Y</div>
           <div className="plate-body">
-            <div className="plate-name">YOU{st.dealer === HUMAN && <span className="chip dealer">D</span>}</div>
+            <div className="plate-name">YOU{st.dealer === HUMAN && <span className="chip dealer">D</span>}{myBadges.map((b) => BADGES[b.id] && <span key={b.id} className="chip badge" title={`${BADGES[b.id]!.name}: ${BADGES[b.id]!.desc}`} data-testid={`plate-badge-${b.id}`}>{BADGES[b.id]!.icon}</span>)}</div>
             <div className="plate-stats">
               <span className="chip">{st.bids[HUMAN] === 'books' ? 'BOOKS' : `BID ${st.bids[HUMAN] === null ? '—' : bidLabel(st.bids[HUMAN]).toUpperCase()}`}</span>
               <span className="chip">TOOK {st.tricksWon[HUMAN]}</span>
@@ -750,6 +865,14 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         </div>
         {error && <div className="err">{error}</div>}
       </section>
+      {canRun && <RunItButton tip={runTip} onDismissTip={() => setRunTip(false)} onRun={() => { setRunTip(false); setSelected(null); apply({ type: 'runIt', seat: HUMAN }); }} />}
+      {runFx && <button type="button" className="run-skip" data-testid="run-skip" aria-label="Skip" onClick={endRun}><span>Tap to skip</span></button>}
+      {badgeToast && BADGES[badgeToast] && (
+        <div className="badge-unlock glass slant" role="status" data-testid="badge-unlock" onClick={() => setBadgeToast(null)}>
+          <span className="bu-icon">{BADGES[badgeToast]!.icon}</span>
+          <span className="bu-text"><small>BADGE UNLOCKED</small><b>{BADGES[badgeToast]!.name}</b><i>{BADGES[badgeToast]!.desc}</i></span>
+        </div>
+      )}
 
       {/* accessible / automation controls for the 3D hand */}
       <div className="sr-only" role="group" aria-label="Your hand" data-testid="hand" data-trick-count={shownTrick.plays.length}>

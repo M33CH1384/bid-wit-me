@@ -45,6 +45,7 @@ export default function Hype({ reduced, low = false }: { reduced: boolean; low?:
     }
     else if (e.kind === 'wheelsCar') setCar({ id: e.id, who: e.text ?? '' });
     else if (e.kind === 'wheels') add({ id: e.id, kind: e.kind, text: 'WHEELS!', sub: e.sub ?? e.text }, 1900);
+    else if (e.kind === 'ranIt') add({ id: e.id, kind: e.kind, text: e.text ?? 'RAN IT!', sub: e.sub }, 2700);
     else if (e.kind === 'hustled') add({ id: e.id, kind: e.kind, text: 'HUSTLED!', sub: e.text }, 2000);
     else if (e.kind === 'gotShot') add({ id: e.id, kind: e.kind, text: 'GOT SHOT', sub: e.text }, 1900);
     else if (e.kind === 'jokerLittle' || e.kind === 'jokerBig') { setPulse({ id: e.id, big: e.kind === 'jokerBig' }); window.setTimeout(() => setPulse((p) => (p?.id === e.id ? null : p)), e.kind === 'jokerBig' ? 1100 : 500); }

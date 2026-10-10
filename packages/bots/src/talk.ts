@@ -31,7 +31,7 @@ const MIRROR: Partial<Record<TalkKind, TalkKind>> = { cut: 'gotCut', overcut: 'g
 /** moments where the Hustler drops the act (when it did it) */
 const REVEAL_ON: TalkKind[] = ['cut', 'overcut', 'setThem'];
 /** a human did something good: their bot partner may hype them */
-const HYPE_ON: TalkKind[] = ['cut', 'overcut', 'joker', 'nuke', 'setThem', 'nilMade', 'wheels', 'made'];
+const HYPE_ON: TalkKind[] = ['cut', 'overcut', 'joker', 'nuke', 'setThem', 'nilMade', 'wheels', 'made', 'runIt'];
 
 export interface TalkSeat { bot: boolean; name: string }
 export interface TalkTable {
@@ -145,7 +145,8 @@ export function botTalk(st: TalkState, t: TalkTable, ev: TalkEvent, now: number,
   if (kind === 'duck' || kind === 'roastBid') cands = bots.filter((b) => !onSide(b));
   else if (kind === 'slow' || kind === 'rematch' || kind === 'prePlay') cands = bots;
   else {
-    cands = actor !== undefined && t.seats[actor]?.bot ? [actor] : bots.filter(onSide);
+    // 'runIt' lines are first person ('the rest are mine'): only the bot that ran it says them; otherwise the other side answers
+    cands = actor !== undefined && t.seats[actor]?.bot ? [actor] : kind === 'runIt' ? [] : bots.filter(onSide);
     const mirror = MIRROR[kind];
     const others = bots.filter((b) => !onSide(b));
     if (mirror && others.length && (!cands.length || rnd() > 0.7)) { kind = mirror; cands = others; }

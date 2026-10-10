@@ -14,7 +14,7 @@ import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk,
 import {
   type BotLevel, type ChatLine, type ClientMsg, type HostMusic, type MediaState, type RoomInfo, type RoomPhase, type SeatInfo, type ServerMsg,
   DEFAULT_AFK_LIMIT, LIMITS, PROTOCOL_VERSION, parseClientMsg,
-  NUKE_ALLOWANCE_MS, type NukeIntensity, cleanTeamName, pickTeamName,
+  NUKE_ALLOWANCE_MS, RUN_FX_MS, type NukeIntensity, cleanTeamName, pickTeamName,
 } from '@spades/protocol';
 import { blockLinks, cleanName, cleanText, maskProfanity } from './filter';
 
@@ -37,6 +37,8 @@ export interface Member {
   timeouts?: number;
   /** ids of this player's most recently applied actions (idempotency for retries after a reconnect) */
   acts?: string[];
+  /** badges earned at this table (same shape as the client's local badges, for a future accounts system) */
+  badges?: { id: string; earnedAt: number; context?: Record<string, unknown> }[];
 }
 
 /** Everything that survives hibernation / restarts. Plain JSON. */
@@ -561,6 +563,16 @@ export class Room {
     d.seq = (d.seq ?? 0) + 1;
     for (const ev of momentsFor(before, action, d.game)) this.talk(ev);
     d.lastActive = this.io.now();
+    const fresh = d.game.handNo === before.handNo ? d.game.tricks.slice(before.tricks.length) : [];
+    if (action.type === 'runIt') {
+      const books = fresh.length;
+      this.system(`🌪 ${this.seatName(action.seat)} ran the board (+${books} books)`);
+      const slot = d.seats[action.seat];
+      const m = slot?.kind === 'human' ? d.members[slot.playerId] : undefined;
+      if (m && !(m.badges ?? []).some((b) => b.id === 'storm-chaser')) {
+        m.badges = [...(m.badges ?? []), { id: 'storm-chaser', earnedAt: this.io.now(), context: { room: d.code, hand: before.handNo, books } }];
+      }
+    } else if (fresh.some((t) => t.plays.some((p) => p.auto))) this.system('☢ Nuked — remaining cards auto-played');
     if (d.game.phase === 'gameOver') {
       d.phase = 'over';
       const res = d.game.result!;
@@ -716,7 +728,9 @@ export class Room {
           continue;
         }
         if (paused) { d.deadline = null; d.turnKey = null; this.io.setAlarm(null); return changed; }
-        d.deadline ??= now + (d.talkSec ? d.talkSec * 1000 : this.timing.handOverMs);
+        // after 'Run it!' the clients play the tornado first: Table Talk gets that much longer
+        const ran = g.tricks.at(-1)?.plays.some((p) => p.run) ? RUN_FX_MS : 0;
+        d.deadline ??= now + (d.talkSec ? d.talkSec * 1000 : this.timing.handOverMs) + ran;
         if (now >= d.deadline) { this.nextHand(); changed = true; continue; }
         this.io.setAlarm(d.deadline);
         return changed;

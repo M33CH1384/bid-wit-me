@@ -1,4 +1,5 @@
 import { Nuke3D } from './Nuke3D';
+import { Tornado3D } from './Tornado3D';
 import { Environment, Html, useTexture } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { type ReactNode, type RefObject, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -12,7 +13,7 @@ import { fx } from '../fx';
 import { backTexture, faceTexture, logoTexture } from './cardTextures';
 import { bodyGeometry, cardGeometry, feltGeometry, railGeometry } from './geometry';
 import {
-  CH, CW, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, deckSpot, fanLayout, handFan, makeCamera, jitterOf, opponentFan, pileSpot, ringSpot, trickSpot,
+  CH, CW, TRICK_SCALE, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, deckSpot, fanLayout, handFan, makeCamera, jitterOf, opponentFan, pileSpot, ringSpot, trickSpot,
 } from './layout';
 
 export interface SceneProps {
@@ -53,6 +54,8 @@ export interface SceneProps {
   radioactive?: boolean;
   /** Reduce effects: a steady glow instead of the pulse + shimmer */
   reduceFx?: boolean;
+  /** 'Run it!': the claimer's remaining cards slam down face up in a row at the table centre, one after another */
+  slam?: { seat: number; cards: Card[] } | null;
 }
 
 function CameraRig() {
@@ -86,22 +89,37 @@ function FxShake({ table }: { table: RefObject<Group | null> }) {
     camera.position.x -= a.x; camera.position.y -= a.y; camera.position.z -= a.z; camera.rotateZ(-a.roll);
     if (table.current) table.current.position.y -= a.ty;
     a.x = a.y = a.z = a.roll = a.ty = 0;
+    // 'Run it!': a slow camera sway while the funnel spins (none under Reduce effects)
+    const T = fx.tornado;
+    if (T && !T.reduced) {
+      const u = (fx.warp !== null ? fx.warp : (performance.now() - T.start) / 1000) + 0.4;
+      if (u > 0 && u < 2.6) {
+        const env = Math.sin(Math.PI * Math.min(1, u / 2.6));
+        a.x += 0.06 * env * Math.sin(u * 3.2);
+        a.y += 0.025 * env * Math.sin(u * 4.1 + 1);
+        a.roll += 0.03 * env * Math.sin(u * 2.4 + 0.5);
+        invalidate();
+      }
+    }
     const s = fx.shake;
-    if (!s) return;
-    const t = (performance.now() - s.start) / 1000;
-    if (t < 0) { invalidate(); return; }
-    if (t > s.dur) { if (last.current === s) fx.shake = null; invalidate(); return; }
-    last.current = s;
-    const k = s.amp * Math.pow(1 - t / s.dur, 2);
-    const w = 2 * Math.PI * t;
-    a.x = k * (Math.sin(w * 23) * 0.6 + Math.sin(w * 37 + 1) * 0.4);
-    a.y = k * (Math.sin(w * 29 + 2) * 0.6 + Math.sin(w * 41) * 0.4);
-    a.z = k * 0.5 * Math.sin(w * 31 + 0.5);
-    a.roll = k * 0.25 * Math.sin(w * 19 + 1.3);
-    a.ty = k * 0.18 * Math.sin(w * 53);
+    if (s) {
+      const t = (performance.now() - s.start) / 1000;
+      if (t < 0) invalidate();
+      else if (t > s.dur) { if (last.current === s) fx.shake = null; invalidate(); }
+      else {
+        last.current = s;
+        const k = s.amp * Math.pow(1 - t / s.dur, 2);
+        const w = 2 * Math.PI * t;
+        a.x += k * (Math.sin(w * 23) * 0.6 + Math.sin(w * 37 + 1) * 0.4);
+        a.y += k * (Math.sin(w * 29 + 2) * 0.6 + Math.sin(w * 41) * 0.4);
+        a.z += k * 0.5 * Math.sin(w * 31 + 0.5);
+        a.roll += k * 0.25 * Math.sin(w * 19 + 1.3);
+        a.ty += k * 0.18 * Math.sin(w * 53);
+        invalidate();
+      }
+    }
     camera.position.x += a.x; camera.position.y += a.y; camera.position.z += a.z; camera.rotateZ(a.roll);
     if (table.current) table.current.position.y += a.ty;
-    invalidate();
   });
   return null;
 }
@@ -229,6 +247,18 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
     const fanFrom = pl.seat === human ? undefined : opponentFan(positions[pl.seat]!, n, Math.max(0, handCounts[pl.seat]! - 1) / 2, handCounts[pl.seat]! + 1);
     items.push({ key: `${handNo}-${pl.card}`, card: pl.card, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale), from: fanFrom, ...(props.landCue(pl.card).includes(',overcut') ? { duration: 0.34, arc: 0.7 } : { duration: 0.5, arc: 0.35 }), sfxLand: props.landCue(pl.card), glow: !!props.marked?.includes(pl.card), radio: !!props.radioactive && pl.card === 'BJ', ...autoDelay });
   });
+  // 'Run it!': the claimer's cards slam down in sequence (then the tornado takes everything)
+  if (props.slam) {
+    const { seat, cards } = props.slam;
+    const k = cards.length;
+    cards.forEach((c, i) => {
+      const base = trickSpot('bottom', n, i, jitterOf(c), trickScale);
+      const w = CW * (trickScale ?? TRICK_SCALE) * 0.84; // slightly overlapped: 4 cards ≈ the trick's width
+      const target: Xform = { ...base, p: [(i - (k - 1) / 2) * w, base.p[1] + 0.01 * i, 0.02] };
+      const from = seat === human ? undefined : opponentFan(positions[seat]!, n, 0, 1);
+      items.push({ key: `${handNo}-${c}`, card: c, target, from, delay: 0.08 + i * 0.13, duration: 0.2, arc: 0.3, sfxLand: 'play' });
+    });
+  }
   // opponents' fans
   for (let seat = 0; seat < n; seat++) {
     if (seat === human) continue;
@@ -488,6 +518,7 @@ export default function Scene(props: SceneProps) {
       {props.positions.map((p, seat) => <TurnRing key={seat} pos={p} n={props.n} active={props.turnSeat === seat} />)}
       <Cards {...props} aspect={aspect} fontsReady={fontsReady} safeFrac={safeFrac} />
       <Nuke3D quality={props.quality} />
+      <Tornado3D quality={props.quality} />
       {layerReady && <Badges positions={props.positions} n={props.n} human={props.human} renderSeat={props.renderSeat} portal={badgeLayer} safeFrac={safeFrac} short={!!props.short} safe={props.safe ?? { l: 0, r: 0, t: 0, b: 0 }} />}
     </Canvas>
     <div ref={badgeLayer} className="badge-layer" />

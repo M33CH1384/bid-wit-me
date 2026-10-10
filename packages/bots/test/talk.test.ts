@@ -68,3 +68,22 @@ describe('bot trash talk', () => {
     expect(maskMild('newbie my ass, that was some shit, damn')).toBe('newbie my a**, that was some sh*t, d*mn');
   });
 });
+
+describe("'Run it!' talk", () => {
+  const names = ['Dee', ...Object.keys(BOT_NAMES_BY_PERSONA())];
+  function BOT_NAMES_BY_PERSONA() { return Object.fromEntries(BOT_NAMES.filter((n) => personaForName(n) !== 'silent' && personaForName(n) !== 'hustler').slice(0, 3).map((n) => [n, 1])); }
+  it('a human ran it: the bot partner never claims it in first person (hypes or stays quiet); the other side may answer', () => {
+    for (let i = 0; i < 40; i++) {
+      const rnd = ((k) => () => ((k = (k * 16807) % 2147483647) / 2147483647))(i + 1);
+      const l = botTalk(newTalkState(), table(names), { kind: 'runIt', seat: 0, side: 0 }, 100_000, rnd);
+      if (!l) continue;
+      const pool = [...(COMMON.runIt ?? []), ...(PERSONAS[l.persona].lines.runIt ?? [])];
+      const asRe = (tpl: string) => new RegExp(`^${tpl.replace(/[.*+?^$()|[\]\\]/g, '\\$&').replace(/\{\w+\}/g, '.+')}$`, 'i');
+      if (l.seat === 2) expect(pool.some((tpl) => asRe(tpl).test(l.text)), l.text).toBe(false);
+    }
+  });
+  it('a bot that ran it can say a runIt line', () => {
+    const l = botTalk(newTalkState(), table(names), { kind: 'runIt', seat: 1, side: 1 }, 100_000, () => 0);
+    expect(l?.seat).toBe(1);
+  });
+});

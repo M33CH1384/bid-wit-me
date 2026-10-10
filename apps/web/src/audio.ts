@@ -13,7 +13,7 @@ export type Sfx =
   | 'shuffle' | 'deal' | 'play' | 'tap' | 'sweep' | 'broken' | 'turn' | 'bid' | 'bidSoft'
   | 'cut' | 'made' | 'set' | 'nil' | 'bags' | 'pop' | 'win' | 'lose' | 'flip'
   // hype effects (all synthesized): joker rumbles, the Big-over-Little nuke, streaks, shots
-  | 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak1' | 'streak2' | 'streak3' | 'shot' | 'gotShot' | 'wheels' | 'wheelsCar' | 'overcut' | 'overcut3';
+  | 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak1' | 'streak2' | 'streak3' | 'shot' | 'gotShot' | 'wheels' | 'wheelsCar' | 'overcut' | 'overcut3' | 'tornado';
 
 export interface SoundSettings { on: boolean; volume: number; ambient: boolean; music: boolean; musicVolume: number }
 const KEY = 'bwm.sound.v1';
@@ -423,6 +423,7 @@ class Engine {
       case 'wheelsCar': return this.peelOut(t, g);
       case 'overcut': return this.overcutSlam(t, g, 2);
       case 'overcut3': return this.overcutSlam(t, g, 3);
+      case 'tornado': return this.tornado(t, g);
       case 'wheels': this.arp(t, [392, 523.25, 783.99], 0.06, 'square', 0.12 * g, 0.22); return this.streakHit(t + 0.16, 0.8 * g, 1);
     }
   }
@@ -721,6 +722,42 @@ class Engine {
       const og = c.createGain(); og.gain.setValueAtTime(0.0001, t + 0.97); og.gain.exponentialRampToValueAtTime(0.09 * g, t + 1.05); og.gain.exponentialRampToValueAtTime(0.0001, t + 1.9);
       o.connect(og).connect(this.sfxBus!); o.start(t + 0.97); o.stop(t + 2); w.start(t + 0.97); w.stop(t + 2);
     }
+  }
+
+  private tornadoOut: GainNode | null = null;
+  /**
+   * 'Run it!' tornado (~2.6 s): a howling wind (resonant band-passed noise whose pitch rises and wobbles as the
+   * funnel spins up, over a low rumble), whooshes as cards get pulled in, and a big gust when everything is flung away.
+   */
+  private tornado(t: number, g: number) {
+    const c = this.ctx!;
+    const END = 2.6;
+    const out = c.createGain();
+    out.gain.setValueAtTime(0.0001, t); out.gain.exponentialRampToValueAtTime(0.9 * g, t + 0.5);
+    out.gain.setValueAtTime(0.9 * g, t + 1.9); out.gain.exponentialRampToValueAtTime(0.0001, t + END);
+    out.connect(this.sfxBus!);
+    this.tornadoOut = out;
+    for (const [f0, f1, q, lvl] of [[320, 950, 7, 0.55], [520, 1500, 10, 0.3]] as const) {
+      const src = c.createBufferSource(); src.buffer = this.noise(END + 0.1);
+      const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = q;
+      bp.frequency.setValueAtTime(f0, t); bp.frequency.exponentialRampToValueAtTime(f1, t + 1.6); bp.frequency.exponentialRampToValueAtTime(f0 * 1.3, t + END);
+      const lfo = c.createOscillator(); lfo.frequency.value = 2.3 + q * 0.1; const lg = c.createGain(); lg.gain.value = f0 * 0.25; lfo.connect(lg).connect(bp.frequency);
+      const gg = c.createGain(); gg.gain.value = lvl;
+      src.connect(bp).connect(gg).connect(out); src.start(t); src.stop(t + END + 0.05); lfo.start(t); lfo.stop(t + END + 0.05);
+    }
+    const rum = c.createBufferSource(); rum.buffer = this.noise(END + 0.1);
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 160;
+    const rg = c.createGain(); rg.gain.value = 0.9;
+    rum.connect(lp).connect(rg).connect(out); rum.start(t); rum.stop(t + END + 0.05);
+    for (const at of [0.35, 0.7, 1.0, 1.3]) this.burst(t + at, 0.35, 0.16 * g, 'bandpass', 600, { q: 1.2, sweepTo: 2600, dest: out });
+    this.burst(t + 1.85, 0.7, 0.35 * g, 'bandpass', 2400, { q: 0.8, sweepTo: 300, dest: out }); // the fling
+  }
+  /** Skip: fade the wind out now. */
+  stopTornado() {
+    const o = this.tornadoOut, c = this.ctx;
+    if (!o || !c) return;
+    o.gain.cancelScheduledValues(c.currentTime); o.gain.setTargetAtTime(0.0001, c.currentTime, 0.08);
+    this.tornadoOut = null;
   }
 
   /** Streak stingers that escalate: 1 = HEAT CHECK, 2 = ON FIRE, 3 = UNSTOPPABLE. */

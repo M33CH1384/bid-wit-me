@@ -1,6 +1,6 @@
 import { fx } from './fx';
 import { offlineTalk } from './offlineTalk';
-import { NUKE_ALLOWANCE_MS } from '@spades/protocol';
+import { NUKE_ALLOWANCE_MS, RUN_FX_MS } from '@spades/protocol';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type Action, type GameState, type TableRules, applyAction, newGame, pendingTurn, secureSeed, viewFor } from '@spades/rules';
 import { type BotLevel, chooseBotAction } from '@spades/bots';
@@ -53,7 +53,8 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel, spe
     // a nuked trick (Big Joker over Little Joker) holds longer: the table's fixed nuke allowance
     const last = st.tricks[st.tricks.length - 1]?.plays ?? [];
     const li = last.findIndex((p) => p.card === 'LJ'), bi = last.findIndex((p) => p.card === 'BJ');
-    const extra = li >= 0 && bi > li ? NUKE_ALLOWANCE_MS[fx.tableNuke ?? fx.prefs.nuke] : 0;
+    // 'Run it!' holds for the slam + tornado instead (no nuke on a run: the tornado is the show)
+    const extra = last.some((p) => p.run) ? RUN_FX_MS : li >= 0 && bi > li ? NUKE_ALLOWANCE_MS[fx.tableNuke ?? fx.prefs.nuke] : 0;
     const t = setTimeout(() => setPause(false), 1150 * k + extra);
     return () => clearTimeout(t);
   }, [pause, k, hold]);

@@ -7,6 +7,7 @@
  */
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 
 const base = process.argv[2] ?? 'http://localhost:4173';
 const executablePath = process.argv[3] ?? '/usr/bin/google-chrome';
@@ -275,6 +276,43 @@ async function reloadTest() {
   console.log('✓ Leave confirm clears the save; corrupted save → start screen');
 }
 if (!process.env.ONLY || process.env.ONLY === 'reload') await reloadTest();
+
+// 2b. 'Run it!': a guaranteed lead (built by scripts/runit-state.ts) → button + one-time spotlight tip (tips are off) →
+//     tap → slam + tornado → every hand empty, all remaining books ours, chat line, Storm Chaser badge, tip retired.
+async function runItTest() {
+  const save = execFileSync('npx', ['tsx', 'scripts/runit-state.ts', 'joker', '3'], { encoding: 'utf8' });
+  const st = JSON.parse(save).state;
+  const took = st.tricksWon[0] + st.tricksWon[2];
+  await page.evaluate((save) => { localStorage.clear(); localStorage.setItem('bwm.tips', JSON.stringify({ on: false, asked: true })); localStorage.setItem('bwm.game', save); }, save);
+  await page.goto(base);
+  await page.getByTestId('run-it').waitFor({ timeout: 60000 });
+  await page.getByTestId('run-it-tip').waitFor({ timeout: 5000 });
+  if (!(await page.locator('.run-it-btn.attention').count())) throw new Error('Run it! button should pulse while the tip is up');
+  await shot('11a-run-it-tip');
+  await tap(page.getByTestId('run-it')); // (the attention pulse never 'settles' for Playwright's stability check)
+  await page.getByTestId('run-skip').waitFor({ timeout: 5000 });
+  await page.getByTestId('pop-ranIt').waitFor({ timeout: 5000 });
+  await page.waitForTimeout(900);
+  await shot('11b-run-it-tornado');
+  await page.getByTestId('run-skip').waitFor({ state: 'detached', timeout: 15000 });
+  const r = await page.evaluate(() => ({
+    hand: document.querySelectorAll('[data-testid="hand"] button').length,
+    chat: [...document.querySelectorAll('.chat-line')].some((e) => /You ran the board \(\+3 books\)/.test(e.textContent ?? '')),
+    badges: JSON.parse(localStorage.getItem('bwm.badges.v1') ?? 'null')?.badges?.map((b) => b.id) ?? [],
+    tip: JSON.parse(localStorage.getItem('bwm.runItTip.v1') ?? 'null'),
+    took: JSON.parse(localStorage.getItem('bwm.game') ?? 'null')?.state?.history?.at(-1)?.sides?.[0]?.tricks,
+  }));
+  if (r.hand !== 0) throw new Error(`hand should be empty after Run it!, got ${r.hand}`);
+  if (!r.chat) throw new Error('missing "ran the board" chat line');
+  if (!r.badges.includes('storm-chaser')) throw new Error('Storm Chaser badge not awarded');
+  if (!r.tip?.used) throw new Error('Run it! tip should be retired after first use');
+  if (r.took !== undefined && r.took !== took + 3) throw new Error(`expected ${took + 3} books for our side, got ${r.took}`);
+  await page.getByTestId('badge-unlock').waitFor({ timeout: 5000 }).catch(() => { throw new Error('no badge unlock toast'); });
+  await shot('11c-run-it-badge');
+  await page.evaluate(() => localStorage.removeItem('bwm.game'));
+  console.log(`✓ Run it!: tip + pulse, tornado + RAN IT!, hands empty, +3 books (${took} → ${r.took ?? '?'}), chat line, Storm Chaser badge`);
+}
+if (!process.env.ONLY || process.env.ONLY === 'runit') await runItTest();
 
 async function playGame(mode, label, { shots = false, speed = 'turbo', extra = {} } = {}) {
   await page.evaluate(([m, sp, ex]) => localStorage.setItem('spades.settings.v2', JSON.stringify({ mode: m, speed: sp, blindNil: 'always', quality: 'low', ...ex })), [mode, speed, extra]);
