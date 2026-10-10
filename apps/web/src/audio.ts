@@ -11,7 +11,7 @@ import { useSyncExternalStore } from 'react';
 
 export type Sfx =
   | 'shuffle' | 'deal' | 'play' | 'tap' | 'sweep' | 'broken' | 'turn' | 'bid' | 'bidSoft'
-  | 'cut' | 'made' | 'set' | 'nil' | 'bags' | 'pop' | 'win' | 'lose';
+  | 'cut' | 'made' | 'set' | 'nil' | 'bags' | 'pop' | 'win' | 'lose' | 'flip';
 
 export interface SoundSettings { on: boolean; volume: number; ambient: boolean; music: boolean; musicVolume: number }
 const KEY = 'bwm.sound.v1';
@@ -88,6 +88,20 @@ class Engine {
     this.syncAmbient();
     this.syncMusic();
     this.emit();
+  }
+  /** Everything off at once (long-press / double-tap on the speaker); calling again restores what was on. */
+  private beforeMute: Pick<SoundSettings, 'on' | 'music' | 'ambient'> | null = null;
+  get allMuted(): boolean { return !this.settings.on && !this.settings.music; }
+  toggleMuteAll(): boolean {
+    if (!this.allMuted) {
+      this.beforeMute = { on: this.settings.on, music: this.settings.music, ambient: this.settings.ambient };
+      this.set({ on: false, music: false, ambient: false });
+      return true;
+    }
+    const b = this.beforeMute ?? { on: true, music: false, ambient: this.settings.ambient };
+    this.beforeMute = null;
+    this.set({ on: b.on || !b.music, music: b.music, ambient: b.ambient });
+    return false;
   }
   private emit() { this.snapshot = { ...this.settings, musicStatus: this.musicStatus, nowPlaying: this.nowPlaying }; this.listeners.forEach((f) => f()); }
   snapshot: SoundSettings & { musicStatus: MusicStatus; nowPlaying: { track: Track; at: number } | null } = { ...this.settings, musicStatus: 'off', nowPlaying: null };
@@ -338,6 +352,7 @@ class Engine {
       case 'deal': return this.sample('deal', t, 0.26 * g, 1.2 + Math.random() * 0.25, 0.3);
       case 'play': return this.sample('play', t, 0.9 * g, 0.95 + Math.random() * 0.12);
       case 'tap': return this.sample('tap', t, 0.5 * g, 1.1);
+      case 'flip': this.sample('deal', t, 0.32 * g, 1.55); this.sample('deal', t + 0.07, 0.22 * g, 1.75); return this.whoosh(t, 0.06 * g);
       case 'sweep': this.sample('sweep', t, 0.55 * g, 1.05); return this.whoosh(t, 0.18 * g);
       case 'bid': return this.sample('bid', t, 0.9 * g, 1);
       case 'bidSoft': return this.sample('bid', t, 0.35 * g, 1.15);

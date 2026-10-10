@@ -1,7 +1,7 @@
 /** Minimal client-side routing for the online screens (/online, /t/CODE). */
-export function navigate(to: string, replace = false): void {
-  if (replace) history.replaceState(null, '', to);
-  else history.pushState(null, '', to);
+export function navigate(to: string, replace = false, state: unknown = null): void {
+  if (replace) history.replaceState(state, '', to);
+  else history.pushState(state, '', to);
   window.dispatchEvent(new PopStateEvent('popstate'));
 }
 

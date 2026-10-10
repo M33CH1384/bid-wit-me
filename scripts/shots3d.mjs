@@ -36,11 +36,12 @@ for (const [label, viewport, dpr, mobile, sizeMode] of sizes) {
   const shot = (name) => page.screenshot({ path: `${out}/${label}-${name}.png` });
 
   await page.goto(base);
-  await page.evaluate(() => localStorage.clear());
+  await page.evaluate(() => { localStorage.clear(); localStorage.setItem('bwm.tips', JSON.stringify({ on: false, asked: true })); });
   await page.reload();
   await page.waitForTimeout(500);
   if (sizeMode === 'joker') await shot('1-start');
   if (label === 'iphone-390x844') {
+    await page.getByTestId('more').click();
     await page.getByRole('button', { name: /Credits/ }).click();
     await page.getByRole('dialog', { name: 'Credits' }).waitFor();
     await shot('6-credits');

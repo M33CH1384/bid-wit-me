@@ -71,17 +71,17 @@ const TRICK_LEAN = 0.38; // tilt toward the camera so the faces aren't foreshort
  * Card's spot in the middle of the table when played by this seat: a non-overlapping "plus" layout
  * (each card toward its player), face up, almost square to the table edge, leaned up toward the camera.
  */
-export function trickSpot(pos: SeatPos, n: number, order: number, jitter: number): Xform {
+export function trickSpot(pos: SeatPos, n: number, order: number, jitter: number, scale = TRICK_SCALE): Xform {
   const d = seatDir(pos, n);
-  const w = CW * TRICK_SCALE, h = CH * TRICK_SCALE;
+  const w = CW * scale, h = CH * scale;
   // non-overlapping plus: top/bottom stacked by card height, sides beside them by a full card width,
   // so every card's corner index stays visible whatever the play order
   const off = Math.abs(d.x) > 0.5
-    ? new Vector3(Math.sign(d.x) * (w + 0.05), 0, 0.02)
-    : new Vector3(0, 0, Math.sign(d.z) * (h / 2 + 0.03));
+    ? new Vector3(Math.sign(d.x) * (w + 0.06), 0, 0.02)
+    : new Vector3(0, 0, Math.sign(d.z) * (h / 2 + 0.05 + h * Math.sin(TRICK_LEAN) * 0.42)); // the lean lifts the near card's top edge toward the far one
   if (n === 3 && pos !== 'bottom') off.set(Math.sign(d.x) * (w / 2 + 0.04), 0, -(h / 2 + 0.01));
   const lift = 0.02 + order * 0.004 + (h / 2) * Math.sin(TRICK_LEAN);
-  return xf([off.x, lift, off.z + 0.04], [-Math.PI / 2 + TRICK_LEAN, jitter * 0.05, 0], TRICK_SCALE, 'XYZ');
+  return xf([off.x, lift, off.z + 0.04], [-Math.PI / 2 + TRICK_LEAN, jitter * 0.05, 0], scale, 'XYZ');
 }
 
 /** Won-trick pile in front of a seat: tricks laid in an overlapping row, face down. */
@@ -123,7 +123,8 @@ export function badgeSpot(pos: SeatPos, n: number): [number, number, number] {
 export interface CamSpec { pos: [number, number, number]; look: [number, number, number]; fov: number }
 
 /** Camera from the human seat looking across the table; framing adapts to portrait/landscape. */
-export function cameraFor(aspect: number): CamSpec {
+export function cameraFor(aspect: number, short = false): CamSpec {
+  if (short) return shortLandscapeCamera(aspect);
   const t = Math.min(1, Math.max(0, (aspect - 0.5) / (1.6 - 0.5))); // 0 = tall phone, 1 = wide desktop
   const lerp = (a: number, b: number) => a + (b - a) * t;
   const pos: [number, number, number] = [0, lerp(4.5, 3.45), lerp(3.75, 3.4)];
@@ -136,8 +137,17 @@ export function cameraFor(aspect: number): CamSpec {
   return { pos, look, fov };
 }
 
-export function makeCamera(aspect: number): PerspectiveCamera {
-  const s = cameraFor(aspect);
+/**
+ * Phone landscape: little height, lots of width. A lower, more frontal camera (less foreshortening of the far half)
+ * framed so the felt fills the height between the one-line scorebug and the hand, leaving the sides for name plates.
+ */
+function shortLandscapeCamera(aspect: number): CamSpec {
+  void aspect;
+  return { pos: [0, 3.1, 3.5], look: [0, 0, 0.22], fov: 42 };
+}
+
+export function makeCamera(aspect: number, short = false): PerspectiveCamera {
+  const s = cameraFor(aspect, short);
   const cam = new PerspectiveCamera(s.fov, aspect, 0.05, 60);
   cam.position.set(...s.pos);
   cam.lookAt(new Vector3(...s.look));
@@ -153,17 +163,27 @@ export interface FanLayout { s: number; cw: number; ch: number; step: number; ma
  * the view with `margin` on both sides (margin = max(6% of width, iOS safe-area inset)). Card scale shrinks only
  * when even a tight overlap (rank index still visible) can't fit.
  */
-export function fanLayout(aspect: number, count: number, safeFrac = 0): FanLayout {
-  const cam = makeCamera(aspect);
+export interface FanOpts {
+  /** Fraction of the width kept clear on each side (e.g. for the HUD corners in landscape). */
+  reserveFrac?: number;
+  /** Fraction of the height kept clear at the bottom (iOS home indicator). */
+  bottomFrac?: number;
+  /** Target card height as a fraction of the view height. */
+  heightFrac?: number;
+  short?: boolean;
+}
+
+export function fanLayout(aspect: number, count: number, safeFrac = 0, o: FanOpts = {}): FanLayout {
+  const cam = makeCamera(aspect, o.short);
   const D = 1;
   const viewH = 2 * Math.tan((cam.fov * Math.PI) / 360) * D;
   const viewW = viewH * aspect;
-  const margin = viewW * Math.max(0.06, safeFrac + 0.025);
+  const margin = viewW * Math.max(0.06, safeFrac + 0.025, o.reserveFrac ?? 0);
   const halfAvail = viewW / 2 - margin;
   const persp = 1.0; // cards are parallel to the image plane → no perspective growth
   const halfN = Math.max(0, (count - 1) / 2);
   const maxRoll = count > 1 ? Math.min(0.32, 0.03 * count) : 0;
-  let s = Math.min(viewH * 0.16, viewW * 0.25 * 1.4) / CH;
+  let s = Math.min(viewH * (o.heightFrac ?? 0.16), viewW * 0.25 * 1.4) / CH;
   let step = 0;
   for (let k = 0; k < 40; k++) {
     const cw = CW * s, ch = CH * s;
@@ -182,15 +202,18 @@ export function fanLayout(aspect: number, count: number, safeFrac = 0): FanLayou
  * stable z-order (each card on top of the one to its left), and both position and scale are multiplied by that depth
  * so every card projects at exactly the same size and spacing — a perfectly symmetric fan. Only the lifted card moves.
  */
-export function handFan(aspect: number, count: number, i: number, lift: number, safeFrac = 0): Xform {
-  const cam = makeCamera(aspect);
-  const L = fanLayout(aspect, count, safeFrac);
+export function handFan(aspect: number, count: number, i: number, lift: number, safeFrac = 0, o: FanOpts = {}): Xform {
+  const cam = makeCamera(aspect, o.short);
+  const L = fanLayout(aspect, count, safeFrac, o);
   const halfN = (count - 1) / 2;
   const off = i - halfN;
   const x = off * L.step;
   const roll = halfN > 0 ? -(off / halfN) * L.maxRoll : 0;
   const curve = x * x * L.curveK;
-  const y = -L.viewH / 2 + L.ch * 0.62 + L.viewH * 0.02 - curve + lift * L.ch;
+  // the outermost (most rolled, most curved-down) card's lowest corner sits exactly on the bottom margin
+  const xo = halfN * L.step;
+  const lowest = xo * xo * L.curveK + (L.ch / 2) * Math.cos(L.maxRoll) + (L.cw / 2) * Math.sin(L.maxRoll);
+  const y = -L.viewH / 2 + L.viewH * (0.015 + (o.bottomFrac ?? 0)) + lowest - curve + lift * L.ch;
   const depth = 1 - (i + 1) * 0.0015 - (lift > 0.2 ? 0.01 : 0); // z-order only; projection is depth-compensated
   const local = new Matrix4().compose(
     new Vector3(x * depth, y * depth, -depth),

@@ -1,17 +1,56 @@
-import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   type Card, type GameState, type TableRules, bidLabel, cardLabel, isJoker, isNilBid, isTrump, partnerOf, sideOf, sortHand, trumpOrder,
 } from '@spades/rules';
 import { HandSummary, ScorePad, sideName } from './Modals';
 import { type Sfx, sound } from './audio';
-import SoundButton from './SoundControls';
 import { type ChatMsg, LINES, type Toast, TickNumber, USER_COLORS, pick, toastsFor } from './overlay';
 import { type Settings, modeTitle } from './settings';
 import type { SeatPos } from './three/layout';
 import { HUMAN, useGame } from './useGame';
 import { type SavedGame, clearGame, saveGame } from './save';
 
+import { useViewport } from './viewport';
+import { Coach } from './Coach';
+import { loadTips } from './tips';
 const Scene = lazy(() => import('./three/Scene'));
+
+/**
+ * "X TAKES IT": placed just above the trick (measured from the 3D layout), or below it when there's no room —
+ * never over the cards. Brief: fades out on its own.
+ */
+function TrickBanner({ text }: { text: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number } | null>(null);
+  useLayoutEffect(() => {
+    let raf = 0;
+    const place = () => {
+      const L = (window as unknown as { __bwmLayout?: { trick: { x: number; y: number; w: number; h: number }[]; hand: { x: number; y: number; w: number; h: number }[]; h: number } }).__bwmLayout;
+      const el = ref.current;
+      if (!L || !L.trick.length || !el) { setPos({ top: window.innerHeight * 0.44 }); return; }
+      const top = Math.min(...L.trick.map((t) => t.y)), bottom = Math.max(...L.trick.map((t) => t.y + t.h));
+      const bh = el.offsetHeight || 28, bw = el.offsetWidth || 160;
+      const x0 = (window.innerWidth - bw) / 2;
+      const obstacles = [...document.querySelectorAll('.scorebug > :not(.dock-slot), .trump-strip, .badge-layer .plate, .me-plate, .last-trick, .ctl-cluster, .bid-panel')]
+        .map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0 && r.height > 0)
+        .concat((L.hand ?? []).map((c) => ({ left: c.x, right: c.x + c.w, top: c.y, bottom: c.y + c.h }) as DOMRect));
+      const free = (y: number) => y >= 0 && y + bh <= window.innerHeight && obstacles.every((r) => r.right <= x0 || r.left >= x0 + bw || r.bottom <= y || r.top >= y + bh);
+      // nearest free slot just above the trick, else just below it, else the old centre spot
+      for (let d = 0; d < 160; d += 4) {
+        if (free(top - bh - 6 - d)) { setPos({ top: top - bh - 6 - d }); return; }
+        if (free(bottom + 6 + d)) { setPos({ top: bottom + 6 + d }); return; }
+      }
+      setPos({ top: top - bh - 6 });
+    };
+    raf = requestAnimationFrame(() => { raf = requestAnimationFrame(place); });
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return (
+    <div className="trick-banner-wrap" style={{ top: pos?.top ?? -999, visibility: pos ? 'visible' : 'hidden' }}>
+      <div ref={ref} className="center-note win">{text}</div>
+    </div>
+  );
+}
 
 /** Online play: the table renders server state through the same UI (see online/OnlineTable.tsx). */
 export interface OnlineBinding {
@@ -24,6 +63,8 @@ export interface OnlineBinding {
   seatExtra: (seat: number) => ReactNode;
   /** scorebug label for a (local) side */
   sideLabel: (side: number) => string;
+  /** Extra buttons for the bottom-right control cluster (camera / mic). */
+  controls?: ReactNode;
 }
 
 interface Props {
@@ -36,6 +77,8 @@ interface Props {
   /** A saved in-progress game to resume at exactly the same point. */
   resume?: SavedGame;
   online?: OnlineBinding;
+  /** Offline: back to the menu keeping the save (Resume on the start screen). */
+  onSuspend?: () => void;
 }
 
 const NAMES4 = ['You', 'Marcus', 'Keisha', 'Dre'];
@@ -116,7 +159,7 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
   return { msgs, push };
 }
 
-function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only' }: { msgs: ChatMsg[]; open: boolean; onToggle: () => void; onSend: (t: string) => void; unread: number; scope?: string }) {
+function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only', extra }: { msgs: ChatMsg[]; open: boolean; onToggle: () => void; onSend: (t: string) => void; unread: number; scope?: string; extra?: ReactNode }) {
   const listRef = useRef<HTMLDivElement>(null);
   const [text, setText] = useState('');
   useEffect(() => { listRef.current?.scrollTo({ top: 1e6, behavior: 'smooth' }); }, [msgs, open]);
@@ -129,9 +172,12 @@ function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only' 
   };
   return (
     <>
-      <button type="button" className={`chat-toggle ${open ? 'open' : ''}`} onClick={onToggle} aria-label="Toggle chat">
-        💬{!open && unread > 0 && <span className="unread">{unread}</span>}
-      </button>
+      <div className="ctl-cluster" role="group" aria-label="Table controls">
+        {extra}
+        <button type="button" className={`chat-toggle ${open ? 'open' : ''}`} onClick={onToggle} aria-label="Toggle chat">
+          💬{!open && unread > 0 && <span className="unread">{unread}</span>}
+        </button>
+      </div>
       {!open && last && <div key={last.id} className="chat-ticker"><b style={{ color: last.color }}>{last.user}</b> {last.text}</div>}
       <aside className={`chat glass slant ${open ? 'open' : ''}`} aria-label="Table chat">
         <header><span className="live-dot" /> LIVE CHAT <small>{scope}</small></header>
@@ -186,9 +232,10 @@ export function landCueFor(st: GameState, card: Card): string {
   return 'play';
 }
 
-export default function Table({ rules: initialRules, seed, settings, onExit, onRematch, onQuality, resume, online }: Props) {
+export default function Table({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, resume, online }: Props) {
   // `online` never changes for a mounted Table, so this is always the same hook path per instance
   // eslint-disable-next-line react-hooks/rules-of-hooks
+  const vp = useViewport();
   const { st, view, pause, error, apply, introHand, dealing, k } = online ? online.source : useGame(initialRules, seed, settings.botLevel, settings.speed, resume?.state);
   const r = st.rules;
   const n = r.playerCount;
@@ -197,7 +244,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onR
   const [selected, setSelected] = useState<Card | null>(null);
   const [exchangePick, setExchangePick] = useState<Card[]>([]);
   const [showPad, setShowPad] = useState(false);
-  const [chatOpen, setChatOpen] = useState(() => window.innerWidth >= 900);
+  const [chatOpen, setChatOpen] = useState(() => window.innerWidth >= 900 && window.innerHeight > 600);
   const [seenMsgs, setSeenMsgs] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const localChat = useChat(st, names, resume?.chat);
@@ -209,6 +256,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onR
   // online: `locked` while our move is in flight (until the server acks it), so it can't be sent twice
   const myTurn = !pause && !dealing && !(online?.source.locked) && st.turn === HUMAN;
   const hand = useMemo(() => (view.hand ? sortHand(view.hand, r) : null), [view.hand, r]);
+  // cards stay face-down only while Blind Nil is actually on offer; otherwise just turn them over (no button)
+  const autoReveal = myTurn && !dealing && st.phase === 'bidding' && view.hand === null && !!view.bidOptions && !view.bidOptions.blindNil;
+  useEffect(() => { if (autoReveal) apply({ type: 'reveal', seat: HUMAN }); }, [autoReveal]); // eslint-disable-line react-hooks/exhaustive-deps
   const legal = myTurn && st.phase === 'playing' ? view.legal : [];
   const exchangeStep = st.phase === 'exchange' ? st.exchange[0] : undefined;
   const humanExchanging = myTurn && exchangeStep?.from === HUMAN;
@@ -216,6 +266,12 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onR
   const winnerSeat = pause ? shownTrick.winner : null;
   useGameSounds(st, myTurn, mySide, msgs);
   const landCue = useCallback((c: Card) => landCueFor(st, c), [st]);
+  // "Learn as you play": coach marks during the first hand this table is open (local to this player, online too)
+  const [tipsOn] = useState(() => loadTips().on);
+  const [tipsSkipped, setTipsSkipped] = useState(false);
+  const tipsHand = useRef(st.handNo);
+  const coachOn = tipsOn && !tipsSkipped && st.handNo === tipsHand.current && st.phase !== 'gameOver';
+  const hintLegal = coachOn;
 
   // persist after every action (and chat line); a finished game clears the save
   useEffect(() => {
@@ -253,6 +309,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onR
   }, [st.history, r, names, mySide]);
 
   const trumps = useMemo(() => trumpOrder(r).slice(0, 5).map((c) => (c === 'BJ' ? 'BIG JKR' : c === 'LJ' ? 'LIL JKR' : cardLabel(c))), [r]);
+  const trumpsShort = useMemo(() => trumpOrder(r).slice(0, 4).map((c) => (c === 'BJ' ? 'BJ' : c === 'LJ' ? 'LJ' : cardLabel(c))), [r]);
   const promoted = useCallback((c: Card) => !isJoker(c) && c[1] !== 'S' && isTrump(c, r), [r]);
 
   const onCard = useCallback((c: Card) => {
@@ -289,7 +346,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onR
   const unread = Math.max(0, msgs.length - seenMsgs);
 
   return (
-    <div className={`table-screen q-${settings.quality}`}>
+    <div className={`table-screen q-${settings.quality}${vp.short ? ' short' : ''}`}>
       <Suspense fallback={<div className="loading3d"><div className="spinner" />Setting the table…</div>}>
         <Scene
           quality={settings.quality}
@@ -312,6 +369,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onR
           introHand={introHand}
           animK={k}
           landCue={landCue}
+          short={vp.short}
+          safe={vp.safe}
+          hintLegal={hintLegal}
         />
       </Suspense>
 
@@ -329,14 +389,18 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onR
               </div>
             ))}
           </div>
+          <div className="bug-trumps" aria-label="Trump order">
+            <span className="ts-label">TRUMPS</span>{trumpsShort.join('›')}{st.spadesBroken && <i className="bt-broken" title="Spades broken">BROKEN</i>}
+          </div>
           <div className="bug-meta">
             <span>{modeTitle(r).toUpperCase()}</span>
             <span>HAND {st.handNo} · TO {r.targetScore}</span>
           </div>
         </div>
-        <SoundButton />
         <button type="button" className="bug-btn" onClick={() => setShowPad(true)} aria-label="Score pad">📋</button>
         <button type="button" className="bug-btn q" onClick={() => onQuality(settings.quality === 'high' ? 'low' : 'high')} aria-label="Toggle graphics quality">{settings.quality === 'high' ? 'HQ' : 'LQ'}</button>
+        {/* the always-visible sound dock (main.tsx) sits on this slot */}
+        <span className="bug-btn dock-slot" aria-hidden />
       </header>
 
       <div className="trump-strip glass slant">
@@ -363,8 +427,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onR
       <div className="center-note-wrap">
         {st.phase === 'bidding' && !pause && st.turn !== HUMAN && <div className="center-note">{names[st.turn!]} is bidding…</div>}
         {st.phase === 'exchange' && !humanExchanging && <div className="center-note">{names[exchangeStep!.from]} passes {exchangeStep!.count} to {names[exchangeStep!.to]}…</div>}
-        {winnerSeat !== null && <div className="center-note win">{winnerSeat === HUMAN ? 'YOU TAKE IT' : `${names[winnerSeat]!.toUpperCase()} TAKES IT`}</div>}
       </div>
+      {winnerSeat !== null && <TrickBanner key={`${st.handNo}-${st.tricks.length}`} text={winnerSeat === HUMAN ? 'YOU TAKE IT' : `${names[winnerSeat]!.toUpperCase()} TAKES IT`} />}
 
       {/* toasts */}
       <div className="toasts">
@@ -376,11 +440,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onR
         ))}
       </div>
 
-      <ChatPanel msgs={msgs} open={chatOpen} onToggle={() => setChatOpen(!chatOpen)} onSend={(t) => push('You', t)} unread={unread} scope={online ? 'table' : undefined} />
+      <ChatPanel msgs={msgs} open={chatOpen} onToggle={() => setChatOpen(!chatOpen)} onSend={(t) => push('You', t)} unread={unread} scope={online ? 'table' : undefined} extra={online?.controls} />
 
       {/* the human's lower third + controls */}
       <section className="me">
-        {myTurn && !dealing && st.phase === 'bidding' && view.bidOptions && (
+        {myTurn && !dealing && st.phase === 'bidding' && view.bidOptions && !autoReveal && (
           view.hand === null ? (
             <div className="bid-panel glass slant">
               <div className="panel-title">BLIND NIL?</div>
@@ -462,9 +526,10 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onR
         <div className="modal-backdrop" onClick={() => setConfirmLeave(false)}>
           <div className="modal glass slant confirm" role="dialog" aria-label="Leave this game?" onClick={(e) => e.stopPropagation()}>
             <div className="panel-title big">LEAVE THIS GAME?</div>
-            <p className="muted">Your progress in this game will be lost.</p>
+            <p className="muted">{onSuspend ? 'Leave ends it for good. Save & quit lets you resume from the menu.' : 'Your progress in this game will be lost.'}</p>
             <div className="bid-row">
               <button type="button" onClick={() => setConfirmLeave(false)}>Stay</button>
+              {onSuspend && <button type="button" data-testid="save-quit" onClick={onSuspend}>Save &amp; quit</button>}
               <button type="button" className="primary" onClick={leave}>Leave</button>
             </div>
           </div>
@@ -496,6 +561,13 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onR
             </div>
           </div>
         </div>
+      )}
+
+      {coachOn && (
+        <Coach
+          ctx={{ st, view, hand, legal, myTurn, me: HUMAN, partnerName: r.partnerships ? names[partnerOf(HUMAN, r) ?? 2] ?? null : null, pause }}
+          onSkip={() => setTipsSkipped(true)}
+        />
       )}
 
       {showPad && <ScorePad st={st} names={names} onClose={() => setShowPad(false)} />}

@@ -51,9 +51,8 @@ export default function OnlineTable({ conn, cs, mesh, onLobby }: { conn: TableCo
         onExit={onLobby}
         onRematch={() => conn.send({ t: 'rematch' })}
         onQuality={(quality) => { const s = { ...settings, quality }; setSettings(s); saveSettings({ ...loadSettings(), quality }); }}
-        online={{ source, names, chat, seatExtra, sideLabel }}
+        online={{ source, names, chat, seatExtra, sideLabel, controls: <MediaBar mesh={mesh} vs={vs} seated /> }}
       />
-      <MediaBar mesh={mesh} vs={vs} seated />
       {cs.status !== 'open' && <div className="conn-banner" role="status">{cs.status === 'reconnecting' ? 'Reconnecting…' : 'Connecting…'}</div>}
       {source.st.phase === 'handOver' && cs.you && room.ready.includes(cs.you) && <div className="conn-banner subtle">Waiting for the others{secs !== null ? ` · next hand in ${secs}s` : ''}…</div>}
       {room.phase === 'over' && room.hostId !== cs.you && <div className="conn-banner subtle">Waiting for the host to start a rematch…</div>}

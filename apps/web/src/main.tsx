@@ -2,6 +2,7 @@ import { StrictMode, Suspense, lazy, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import { isOnlinePath } from './online/nav';
+import { SoundDock } from './SoundControls';
 import '@fontsource/barlow-condensed/600.css';
 import '@fontsource/barlow-condensed/700.css';
 import '@fontsource/barlow-condensed/800.css';
@@ -17,8 +18,12 @@ function Root() {
     window.addEventListener('popstate', on);
     return () => window.removeEventListener('popstate', on);
   }, []);
-  if (isOnlinePath(path)) return <Suspense fallback={null}><OnlineApp path={path} /></Suspense>;
-  return <App key={path} />;
+  return (
+    <>
+      {isOnlinePath(path) ? <Suspense fallback={null}><OnlineApp path={path} /></Suspense> : <App key={path} />}
+      <SoundDock />
+    </>
+  );
 }
 
 createRoot(document.getElementById('root')!).render(

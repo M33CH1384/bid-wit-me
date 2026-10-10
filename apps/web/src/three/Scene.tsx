@@ -1,15 +1,16 @@
 import { Environment, Html, useTexture } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { type ReactNode, type RefObject, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { type Camera, type Group, type Mesh, type Object3D, type Texture, ACESFilmicToneMapping, Quaternion, MeshPhysicalMaterial, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, Vector3 } from 'three';
+import { type Camera, type Group, type Mesh, type Object3D, type Texture, ACESFilmicToneMapping, Matrix4, Quaternion, MeshPhysicalMaterial, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, Vector3 } from 'three';
 import type { Card, Play, Trick } from '@spades/rules';
 import Card3D from './Card3D';
+import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline } from './dealTimeline';
 import { type Sfx, sound } from '../audio';
 import { backTexture, faceTexture, logoTexture } from './cardTextures';
 import { bodyGeometry, cardGeometry, feltGeometry, railGeometry } from './geometry';
 import {
-  type SeatPos, type Xform, badgeSpot, cameraFor, deckSpot, handFan, jitterOf, opponentFan, pileSpot, ringSpot, trickSpot,
+  CH, CW, type SeatPos, type Xform, badgeSpot, cameraFor, deckSpot, handFan, jitterOf, opponentFan, pileSpot, ringSpot, trickSpot,
 } from './layout';
 
 export interface SceneProps {
@@ -38,20 +39,28 @@ export interface SceneProps {
   animK: number;
   /** Landing sounds for a played card ('play' or 'play,cut' / 'play,broken'). */
   landCue: (card: Card) => string;
+  /** Phone landscape layout (see viewport.ts): own camera, smaller trick, hand between the HUD corners. */
+  short?: boolean;
+  /** Safe-area insets in CSS px. */
+  safe?: { l: number; r: number; t: number; b: number };
+  /** Highlight playable cards (tips mode). */
+  hintLegal?: boolean;
 }
 
 function CameraRig() {
-  const { camera, size } = useThree();
+  const { camera, size, invalidate } = useThree();
+  const short = isShortLandscape(size.width, size.height);
   useLayoutEffect(() => {
     const a = size.width / size.height;
-    const s = cameraFor(a);
+    const s = cameraFor(a, short);
     const cam = camera as import('three').PerspectiveCamera;
     cam.fov = s.fov;
     cam.aspect = a;
     cam.position.set(...s.pos);
     cam.lookAt(new Vector3(...s.look));
     cam.updateProjectionMatrix();
-  }, [camera, size]);
+    invalidate();
+  }, [camera, size, short, invalidate]);
   return null;
 }
 
@@ -114,8 +123,15 @@ function TurnRing({ pos, n, active }: { pos: SeatPos; n: number; active: boolean
   );
 }
 
+/** The same spot, turned face-down (180° about the card's own long axis) — the start pose of a flip-in-place. */
+const FLIP_Q = new Quaternion(0, 1, 0, 0);
+function flipped(t: Xform): Xform {
+  const q = new Quaternion(...t.q).multiply(FLIP_Q);
+  return { p: [t.p[0], t.p[1], t.p[2]], q: [q.x, q.y, q.z, q.w], s: t.s };
+}
+
 function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFrac: number }) {
-  const { safeFrac, quality, n, handNo, dealer, positions, human, myHand, handCounts, shownTrick, piles, legal, selected, promoted, onCardTap, aspect } = props;
+  const { safeFrac, quality, n, handNo, dealer, positions, human, myHand, handCounts, shownTrick, piles, legal, selected, promoted, onCardTap } = props;
   const gl = useThree((s) => s.gl);
   const aniso = Math.min(quality === 'high' ? 8 : 2, gl.capabilities.getMaxAnisotropy());
   const res = quality;
@@ -123,7 +139,29 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   const face = (c: Card) => faceTexture(c, res, promoted(c), aniso);
   const deck = deckSpot(positions[dealer]!, n);
   const intro = props.introHand === handNo;
+  // Blind Nil: cards that were dealt face-down flip over in place on reveal — never re-dealt from the deck
+  const hiddenHand = useRef<number | null>(null);
+  if (myHand === null) hiddenHand.current = handNo;
+  const flipIn = myHand !== null && hiddenHand.current === handNo;
+  const flippedHand = useRef<number | null>(null);
+  useEffect(() => {
+    if (!flipIn || flippedHand.current === handNo) return;
+    flippedHand.current = handNo;
+    sound.play('flip');
+    const w = window as unknown as { __bwmFlips?: Record<number, number> };
+    (w.__bwmFlips ??= {})[handNo] = (w.__bwmFlips[handNo] ?? 0) + 1;
+  }, [flipIn, handNo]);
   const tl = dealTimeline(props.animK, n, handCounts.reduce((a, b) => a + b, 0) + piles.length * n + shownTrick.length);
+  const size = useThree((s) => s.size);
+  const short = isShortLandscape(size.width, size.height); // from the canvas size, like the camera — never out of step with it
+  // same source as CameraRig, so the hand is always laid out for the camera that renders it (no stale aspect after a rotate)
+  const aspect = size.width / size.height;
+  const safe = props.safe ?? { l: 0, r: 0, t: 0, b: 0 };
+  // landscape: the bottom corners hold your plate (left) and last trick + controls (right); the hand fans between
+  const fanOpts = short
+    ? { short, reserveFrac: (Math.max(safe.l, safe.r) + 186) / size.width, bottomFrac: safe.b / size.height, heightFrac: 0.2 }
+    : {};
+  const trickScale = short ? 1.85 : undefined;
 
   type Item = { key: string; card: Card | null; target: Xform; from?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: () => void; shadow?: boolean; duration?: number; arc?: number; sfxStart?: Sfx; sfxLand?: string };
   const items: Item[] = [];
@@ -141,7 +179,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   // cards on the table this trick
   shownTrick.forEach((pl, order) => {
     const fanFrom = pl.seat === human ? undefined : opponentFan(positions[pl.seat]!, n, Math.max(0, handCounts[pl.seat]! - 1) / 2, handCounts[pl.seat]! + 1);
-    items.push({ key: `${handNo}-${pl.card}`, card: pl.card, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card)), from: fanFrom, duration: 0.5, arc: 0.35, sfxLand: props.landCue(pl.card) });
+    items.push({ key: `${handNo}-${pl.card}`, card: pl.card, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale), from: fanFrom, duration: 0.5, arc: 0.35, sfxLand: props.landCue(pl.card) });
   });
   // opponents' fans
   for (let seat = 0; seat < n; seat++) {
@@ -155,26 +193,38 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   const mine = myHand ?? Array.from({ length: handCounts[human]! }, () => null);
   mine.forEach((c, i) => {
     const isLegal = !!c && legal.includes(c);
-    const lift = c && selected === c ? 0.24 : isLegal ? 0.07 : 0;
+    const lift = c && selected === c ? 0.24 : isLegal ? (props.hintLegal ? 0.12 : 0.07) : 0;
+    const target = handFan(aspect, mine.length, i, lift, safeFrac, fanOpts);
+    const flip = flipIn && !!c;
     items.push({
       key: c ? `${handNo}-${c}` : `${handNo}-hb-${i}`,
       card: c,
-      target: handFan(aspect, mine.length, i, lift, safeFrac),
-      from: intro ? deck : undefined,
-      delay: intro ? dealDelay(i, human) : 0,
-      sfxStart: 'deal',
+      target,
+      from: flip ? flipped(target) : intro ? deck : undefined,
+      delay: flip ? i * 0.022 : intro ? dealDelay(i, human) : 0,
+      sfxStart: flip ? undefined : 'deal',
       dim: !!c && legal.length > 0 && !isLegal,
-      glow: !!c && selected === c,
+      glow: !!c && (selected === c || (!!props.hintLegal && isLegal && legal.length < mine.length)),
       tap: c && isLegal ? () => onCardTap(c) : undefined,
       shadow: false,
-      duration: intro ? tl.fly : 0.32,
-      arc: 0.05,
+      duration: flip ? 0.34 : intro ? tl.fly : 0.32,
+      arc: flip ? 0 : 0.05,
     });
+  });
+
+  // test probe: every key that was ever dealt from the deck, per hand (a re-deal would add new keys)
+  useEffect(() => {
+    const w = window as unknown as { __bwmDealt?: Record<number, string[]> };
+    const log = (w.__bwmDealt ??= {});
+    const set = new Set(log[handNo] ?? []);
+    for (const it of items) if (it.from === deck) set.add(it.key);
+    log[handNo] = [...set];
   });
 
   if (!props.fontsReady) return null;
   return (
     <group>
+      <LayoutProbe items={items} trickKeys={shownTrick.map((pl) => `${handNo}-${pl.card}`)} handKeys={mine.map((c, i) => (c ? `${handNo}-${c}` : `${handNo}-hb-${i}`))} />
       {items.map((it) => (
         <Card3D
           key={it.key}
@@ -198,6 +248,30 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       {intro && <ShuffleDeck key={`shuffle-${handNo}`} at={deck} back={back} tl={tl} quality={quality} />}
     </group>
   );
+}
+
+/**
+ * Publishes the *final* screen rects of the trick cards and the human hand (target transforms projected with the live
+ * camera) on window.__bwmLayout, so UI tests can check that HTML overlays never cover them.
+ */
+function LayoutProbe({ items, trickKeys, handKeys }: { items: { key: string; target: Xform }[]; trickKeys: string[]; handKeys: string[] }) {
+  const { camera, size } = useThree();
+  useEffect(() => {
+    const rect = (t: Xform) => {
+      const m = new Matrix4().compose(new Vector3(...t.p), new Quaternion(...t.q), new Vector3(t.s, t.s, t.s));
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const [cx, cy] of [[-CW / 2, -CH / 2], [CW / 2, -CH / 2], [CW / 2, CH / 2], [-CW / 2, CH / 2]] as const) {
+        const v = new Vector3(cx, cy, 0).applyMatrix4(m).project(camera);
+        const x = (v.x + 1) * size.width / 2, y = (1 - v.y) * size.height / 2;
+        x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+      }
+      return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    };
+    const by = new Map(items.map((it) => [it.key, it.target]));
+    const pick = (keys: string[]) => keys.map((k) => by.get(k)).filter((t): t is Xform => !!t).map(rect);
+    (window as unknown as { __bwmLayout: unknown }).__bwmLayout = { w: size.width, h: size.height, trick: pick(trickKeys), hand: pick(handKeys) };
+  });
+  return null;
 }
 
 function Lights({ quality }: { quality: 'high' | 'low' }) {
@@ -225,19 +299,47 @@ function Lights({ quality }: { quality: 'high' | 'low' }) {
   );
 }
 
-function Badges({ positions, n, human, renderSeat, portal, safeFrac }: Pick<SceneProps, 'positions' | 'n' | 'human' | 'renderSeat'> & { portal: RefObject<HTMLDivElement>; safeFrac: number }) {
+function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe }: Pick<SceneProps, 'positions' | 'n' | 'human' | 'renderSeat'> & { portal: RefObject<HTMLDivElement>; safeFrac: number; short: boolean; safe: { l: number; r: number; t: number; b: number } }) {
   return (
     <>
       {positions.map((p, seat) => {
         if (seat === human) return null;
         const side = p === 'left' || p === 'right' ? p : p === 'top' ? 'top' : null;
+        // phone landscape: plates pinned to the screen edges at mid-height, partner top-centre under the scorebug
+        if (short && side) {
+          const cls = side === 'top' ? 'side-topc' : `side-${side}`;
+          const calcShort = (_el: Object3D, _camera: Camera, size: { width: number; height: number }) =>
+            side === 'top' ? [size.width / 2, 50 + safe.t] : side === 'left' ? [8 + safe.l, size.height * (n === 3 ? 0.36 : 0.43)] : [size.width - 8 - safe.r, size.height * (n === 3 ? 0.36 : 0.43)];
+          return (
+            <Html key={seat} position={badgeSpot(p, n)} calculatePosition={calcShort} zIndexRange={[5, 0]} className={`seat-anchor ${cls}`} portal={portal}>
+              {renderSeat(seat)}
+            </Html>
+          );
+        }
         // side plates are anchored by their outer edge and clamped inside the viewport (+ iOS safe area)
         const calc = side
           ? (el: Object3D, camera: Camera, size: { width: number; height: number }) => {
             const v = new Vector3().setFromMatrixPosition(el.matrixWorld).project(camera);
             const x = (v.x + 1) * size.width / 2, y = (1 - v.y) * size.height / 2;
             const pad = 6 + safeFrac * size.width;
-            if (side === 'top') return [Math.min(x, size.width - pad - 190), Math.max(y, size.width >= 900 ? 134 : 150)]; // stay below the scorebug/trump strip // left-anchored, kept clear of the right edge
+            if (side === 'top') {
+              // left-anchored; measured (plate + video bubble) so it stays clear of the right edge and below the trump strip
+              const plate = portal.current?.querySelector<HTMLElement>('.seat-anchor.side-top > .plate');
+              const pr = plate?.getBoundingClientRect();
+              const br = plate?.querySelector('.vbubble')?.getBoundingClientRect();
+              const pw = pr ? Math.max(pr.right, br?.right ?? 0) - Math.min(pr.left, br?.left ?? Infinity) : 190;
+              const ph = pr ? Math.max(pr.height, br?.height ?? 0) : 56;
+              const sr = document.querySelector('.trump-strip')?.getBoundingClientRect();
+              const bug = document.querySelector('.scorebug .bug')?.getBoundingClientRect();
+              const bar = sr && sr.height > 0 ? sr.bottom : bug ? bug.bottom : size.width >= 900 ? 106 : 122; // the strip folds into the bug on cramped phones
+              const left = br && pr ? Math.max(0, pr.left - br.left) : 0;
+              const minY = bar + 8 + ph / 2;
+              let cy = Math.max(y, minY);
+              // and keep clear of the side plates below it (big video bubbles on small phones)
+              const sides = [...(portal.current?.querySelectorAll<HTMLElement>('.seat-anchor.side-left > .plate, .seat-anchor.side-right > .plate') ?? [])].map((e) => e.getBoundingClientRect().top).filter((t) => t > 0);
+              if (sides.length) cy = Math.max(minY, Math.min(cy, Math.min(...sides) - 6 - ph / 2));
+              return [Math.max(pad + left, Math.min(x, size.width - pad - pw + left)), cy];
+            }
             return side === 'left' ? [Math.max(pad, x - 72), y] : [Math.min(size.width - pad, x + 72), y];
           }
           : undefined;
@@ -291,7 +393,7 @@ export default function Scene(props: SceneProps) {
       </Suspense>
       {props.positions.map((p, seat) => <TurnRing key={seat} pos={p} n={props.n} active={props.turnSeat === seat} />)}
       <Cards {...props} aspect={aspect} fontsReady={fontsReady} safeFrac={safeFrac} />
-      {layerReady && <Badges positions={props.positions} n={props.n} human={props.human} renderSeat={props.renderSeat} portal={badgeLayer} safeFrac={safeFrac} />}
+      {layerReady && <Badges positions={props.positions} n={props.n} human={props.human} renderSeat={props.renderSeat} portal={badgeLayer} safeFrac={safeFrac} short={!!props.short} safe={props.safe ?? { l: 0, r: 0, t: 0, b: 0 }} />}
     </Canvas>
     <div ref={badgeLayer} className="badge-layer" />
     </div>

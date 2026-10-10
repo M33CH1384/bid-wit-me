@@ -65,24 +65,24 @@
 
 /* video bubble: sits over the plate avatar (seat plates) or inside the lobby seat card */
 .vbubble {
-  position: absolute; left: -14px; top: 50%; transform: translateY(-50%); width: 68px; height: 68px; border-radius: 50%; overflow: hidden; z-index: 3;
+  position: absolute; left: -18px; top: 50%; transform: translateY(-50%); width: 84px; height: 84px; border-radius: 50%; overflow: hidden; z-index: 3;
   background: radial-gradient(circle at 35% 30%, #3a2a55, #120a1c); box-shadow: 0 0 0 2px #120a1c, 0 0 0 4px var(--purple-hot), 0 0 16px rgba(185,128,255,.7);
   pointer-events: auto; display: grid; place-items: center;
 }
 .plate.turn .vbubble { box-shadow: 0 0 0 2px #120a1c, 0 0 0 4px var(--gold), 0 0 22px rgba(245,197,66,.9); }
 .vbubble video { width: 100%; height: 100%; object-fit: cover; display: block; }
 .vbubble video.mirror { transform: scaleX(-1); }
-.vbubble.self { width: 54px; height: 54px; left: -8px; }
+.vbubble.self { width: 66px; height: 66px; left: -10px; }
 .vbubble.audio-only video { opacity: 0; position: absolute; }
-.vb-icon { position: absolute; font-size: 22px; }
+.vb-icon { position: absolute; font-size: 26px; }
 .vb-icon.wait { color: var(--muted); }
 .vb-hit { position: absolute; inset: 0; background: none; border: 0; }
 .vb-badge { position: absolute; bottom: 2px; right: 6px; font-size: 13px; pointer-events: none; }
 .vb-menu { position: absolute; top: 100%; left: 0; display: flex; flex-direction: column; z-index: 10; min-width: 110px; }
 .vbubble:has(.vb-menu) { overflow: visible; }
 .vb-menu button { border: 0; background: none; padding: 8px 10px; text-align: left; font-family: var(--display); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; font-size: 14px; }
-.plate:has(> .vbubble) .plate-body { margin-left: 16px; }
-.plate.me-plate:has(> .vbubble.self) .plate-body { margin-left: 8px; }
+.plate:has(> .vbubble) .plate-body { margin-left: 26px; }
+.plate.me-plate:has(> .vbubble.self) .plate-body { margin-left: 16px; }
 .plate .seat-offline { position: absolute; top: -10px; right: 0; }
 .turn-clock {
   position: absolute; top: -12px; left: 30px; font-family: var(--display); font-weight: 800; font-size: 13px; padding: 1px 6px;

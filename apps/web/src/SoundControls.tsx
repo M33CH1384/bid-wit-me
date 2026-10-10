@@ -48,6 +48,61 @@ export function SoundFields({ compact = false }: { compact?: boolean }) {
   );
 }
 
+/**
+ * Always-visible speaker (every screen, top-right corner, safe-area aware). Tap: popover with music + SFX controls.
+ * Long-press or double-tap: mute everything instantly (again to restore). Shows a muted icon when all is off and
+ * animated bars while music is playing.
+ */
+export function SoundDock() {
+  const s = useSoundSettings();
+  const [open, setOpen] = useState(false);
+  const [flash, setFlash] = useState<string | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  const press = useRef<{ timer: number | null; long: boolean; lastTap: number }>({ timer: null, long: false, lastTap: -Infinity });
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: PointerEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    window.addEventListener('pointerdown', close);
+    return () => window.removeEventListener('pointerdown', close);
+  }, [open]);
+  useEffect(() => { if (!flash) return; const t = setTimeout(() => setFlash(null), 1300); return () => clearTimeout(t); }, [flash]);
+  const muteAll = () => { const muted = sound.toggleMuteAll(); setOpen(false); setFlash(muted ? 'MUTED' : 'SOUND ON'); };
+  const allOff = !s.on && !s.music;
+  const playing = s.music && s.musicStatus === 'playing';
+  return (
+    <div className={`sound-dock ${open ? 'open' : ''}`} ref={ref}>
+      <button
+        type="button" className={`dock-btn ${allOff ? 'muted' : ''} ${playing ? 'playing' : ''}`}
+        aria-label={allOff ? 'Sound (muted) — hold to unmute' : 'Sound settings — hold to mute all'} aria-expanded={open} data-testid="sound-button"
+        onPointerDown={() => {
+          press.current.long = false;
+          press.current.timer = window.setTimeout(() => { press.current.long = true; muteAll(); }, 500);
+        }}
+        onPointerUp={() => { if (press.current.timer) clearTimeout(press.current.timer); }}
+        onPointerLeave={() => { if (press.current.timer) clearTimeout(press.current.timer); }}
+        onContextMenu={(e) => e.preventDefault()}
+        onClick={() => {
+          if (press.current.long) { press.current.long = false; return; }
+          const now = performance.now();
+          if (now - press.current.lastTap < 320) { press.current.lastTap = -Infinity; muteAll(); return; }
+          press.current.lastTap = now;
+          setOpen((o) => !o);
+        }}
+      >
+        <span className="dock-icon">{allOff ? '🔇' : icon(s.on || s.music, s.on ? s.volume : s.musicVolume)}</span>
+        {playing && <span className="np-eq dock-eq" aria-hidden><i /><i /><i /></span>}
+      </button>
+      {flash && <div className="dock-flash" role="status">{flash}</div>}
+      {open && (
+        <div className="sound-pop glass slant" role="dialog" aria-label="Sound">
+          <div className="pop-head"><span className="panel-title">SOUND</span><button type="button" className="mute-all" data-testid="mute-all" onClick={muteAll}>{allOff ? 'Unmute' : 'Mute all'}</button></div>
+          <SoundFields compact />
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Speaker icon for the scorebug; opens a small glass popover with the sound controls. */
 export default function SoundButton() {
   const s = useSoundSettings();

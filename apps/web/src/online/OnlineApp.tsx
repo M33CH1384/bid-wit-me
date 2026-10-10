@@ -15,9 +15,12 @@ import './online.css';
 /** /online (create or join) and /t/CODE (a table). */
 export default function OnlineApp({ path }: { path: string }) {
   const code = codeFromPath(path);
+  // "/online" itself is the wizard's online step on the start screen
+  useEffect(() => { if (!code) navigate('/', true, { wiz: 'setup', path: 'online' }); }, [code]);
   const [name, setName] = useState(loadName);
   const [ready, setReady] = useState(() => !!code && !!loadName());
-  if (!code || !ready) {
+  if (!code) return null;
+  if (!ready) {
     return <Entry code={code} name={name} onName={setName} onGo={(c) => { saveName(name.trim()); setReady(true); if (c !== code) navigate(`/t/${c}`); }} />;
   }
   return <TableRoom key={code} code={code} name={name.trim() || 'Player'} />;
@@ -85,7 +88,7 @@ function Entry({ code, name, onName, onGo }: { code: string | null; name: string
         </>
       )}
       {err && <div className="err" role="alert">{err}</div>}
-      <button type="button" className="link" onClick={() => navigate('/')}>← Back to menu</button>
+      <button type="button" className="link" onClick={() => navigate('/')}>← Back to the start screen</button>
     </div>
   );
 }
