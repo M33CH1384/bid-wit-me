@@ -5,7 +5,10 @@ import {
 import { ScorePad, sideName } from './Modals';
 import { Intermission, calloutsFor } from './Intermission';
 import Hype from './Hype';
-import { landCueFor } from './landCue';
+import { landCueFor, wheelsFor } from './landCue';
+import Feedback from './Feedback';
+import { setFeedbackGame } from './feedbackContext';
+import { loadTipJar, openTip, saveTipJar, tipNudgeDue } from './support';
 import { OfflineMediaBar } from './online/Media';
 import { fx, useReduceEffects } from './fx';
 import { type Sfx, sound } from './audio';
@@ -141,6 +144,16 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
         if (isNilBid(b) && s !== HUMAN && Math.random() < 0.6) push(names[s]!, pick(['going nil 🤫', 'nil. cover me', 'trust me 😏']), false, 500);
       }
     });
+    // wheels: a team's combined bid hits 10+ (team games only, once both partners have bid)
+    if (p.handNo === st.handNo) {
+      const before = new Set(wheelsFor(r, p.bids).map((w) => w.side));
+      for (const w of wheelsFor(r, st.bids)) {
+        if (before.has(w.side)) continue;
+        const who = sideName(r, w.side, names);
+        push('System', `🛞 Wheels! ${who} bid ${w.total} books together`, true);
+        window.setTimeout(() => fx.emit('wheels', { sub: `${who} · ${w.total} books` }), 250);
+      }
+    }
     // tricks
     if (st.tricks.length > p.tricks.length && st.handNo === p.handNo) {
       const t = st.tricks[st.tricks.length - 1]!;
@@ -276,6 +289,24 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const localChat = useChat(st, names, resume?.chat);
   const { msgs, push } = online ? online.chat : localChat;
   const [confirmLeave, setConfirmLeave] = useState(false);
+  const [feedback, setFeedback] = useState(false);
+  // the Victory screen's tip-jar line: at most once every few finished games, never during play
+  const [tipNudge, setTipNudge] = useState(false);
+  const gameOverSeen = useRef(false);
+  useEffect(() => {
+    if (st.phase !== 'gameOver' || gameOverSeen.current) return;
+    gameOverSeen.current = true;
+    const s = loadTipJar(); const next = { ...s, games: s.games + 1 };
+    const due = tipNudgeDue(next);
+    saveTipJar(due ? { ...next, shownAt: next.games } : next);
+    setTipNudge(due);
+  }, [st.phase]);
+  useEffect(() => { if (st.phase !== 'gameOver') gameOverSeen.current = false; }, [st.phase]);
+  // feedback reports carry a short summary of this game
+  useEffect(() => {
+    setFeedbackGame({ mode: r.mode, players: r.playerCount, phase: st.phase, hand: st.handNo, scores: st.scores, bids: st.bids.map((b) => (b === null ? '-' : String(b))), books: st.tricksWon, online: !!online });
+  }, [r.mode, r.playerCount, st.phase, st.handNo, st.scores, st.bids, st.tricksWon, online]);
+  useEffect(() => () => setFeedbackGame(null), []);
 
   const shownTrick = pause ? st.tricks[st.tricks.length - 1]! : st.trick;
   const piles = pause ? st.tricks.slice(0, -1) : st.tricks;
@@ -301,6 +332,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // bid coach: inside the bid panel while tips are on (open the first couple of times), or on request ("?")
   const bidTurn = myTurn && !dealing && st.phase === 'bidding' && !!view.bidOptions && !!view.hand;
   const coachBid = bidTurn && (coachOn || help);
+  const wheelSides = new Set(st.phase === 'bidding' || st.phase === 'playing' ? wheelsFor(r, st.bids).map((w) => w.side) : []);
   // The bid panel (and the floating "count your books" coach) never grows past the top bar: its max height is the room
   // between its (bottom-anchored) bottom edge and the scorebug / trump strip; the coach body scrolls inside.
   useLayoutEffect(() => {
@@ -505,10 +537,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         <button type="button" className="bug-btn" onClick={() => (online || st.phase === 'gameOver' ? leave() : setConfirmLeave(true))} aria-label="Menu" data-testid="menu">☰</button>
         <div className="bug glass">
           <img className="bug-logo" src="/assets/bwm-wordmark-white.svg" alt="Bid Wit Me" />
+          <span className="beta-tag in-bug" aria-label="Beta">BETA</span>
           <div className={`bug-teams n${st.scores.length}`}>
             {st.scores.map((s, i) => (
               <div key={i} className={`bug-team ${i === mySide ? 'mine' : ''} ${st.result?.winners.includes(i) ? 'won' : ''}`}>
-                <span className="bug-name">{online && r.partnerships ? online.sideLabel(i) : r.partnerships ? sideName(r, i, names).replace(' & ', ' + ').toUpperCase() : names[i]!.toUpperCase()}</span>
+                <span className="bug-name">{wheelSides.has(i) && <span className="wheels-tag" data-testid={`wheels-${i}`} title="Wheels: this team bid 10+ books together">WHEELS</span>}{online && r.partnerships ? online.sideLabel(i) : r.partnerships ? sideName(r, i, names).replace(' & ', ' + ').toUpperCase() : names[i]!.toUpperCase()}</span>
                 <TickNumber value={s} className="bug-score" />
                 <span className="bug-bags">{st.bags[i]}<small>B</small></span>
               </div>
@@ -662,6 +695,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         />
       )}
 
+      {feedback && <Feedback onClose={() => setFeedback(false)} />}
       {confirmLeave && (
         <div className="modal-backdrop" onClick={() => setConfirmLeave(false)}>
           <div className="modal glass slant confirm" role="dialog" aria-label="Leave this game?" onClick={(e) => e.stopPropagation()}>
@@ -672,6 +706,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
               {onSuspend && <button type="button" data-testid="save-quit" onClick={onSuspend}>Save &amp; quit</button>}
               <button type="button" className="primary" onClick={leave}>Leave</button>
             </div>
+            <button type="button" className="link fb-open-ingame" data-testid="open-feedback" onClick={() => { setConfirmLeave(false); setFeedback(true); }}>✉ Send feedback (bug, idea…)</button>
           </div>
         </div>
       )}
@@ -695,6 +730,12 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
                   </li>
                 ))}
             </ol>
+            {tipNudge && (
+              <p className="tip-nudge" data-testid="tip-nudge">
+                Enjoying BWM? <button type="button" className="link" onClick={openTip}>Tip the devs ♥</button> <small>(a donation, not a prize)</small>
+                <button type="button" className="link muted" onClick={() => { const s = loadTipJar(); saveTipJar({ ...s, never: true }); setTipNudge(false); }}>Don't show again</button>
+              </p>
+            )}
             <div className="bid-row">
               <button type="button" onClick={() => setShowPad(true)}>Score pad</button>
               <button type="button" data-testid="main-menu" onClick={mainMenu}>Main menu</button>

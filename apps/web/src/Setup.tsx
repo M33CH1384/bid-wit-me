@@ -106,7 +106,7 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
     body = (
       <div className="wiz-home">
         <div className="splash">
-          <img className="logo splash-logo" src="/assets/bwm-wordmark-white.svg" alt="" />
+          <div className="splash-logo-wrap"><img className="logo splash-logo" src="/assets/bwm-wordmark-white.svg" alt="" /><span className="beta-tag" data-testid="beta-tag">BETA</span></div>
           <h1 className="sr-only">Bid Wit Me</h1>
           <p className="tagline">Spades with the crew</p>
         </div>

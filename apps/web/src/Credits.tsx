@@ -1,4 +1,5 @@
 import { CC_BY_LINE, TRACKS } from './audio';
+import { AboutRow } from './Feedback';
 
 /** In-game credits & licenses (mirrors CREDITS.md). */
 export default function Credits({ onClose }: { onClose: () => void }) {
@@ -23,6 +24,8 @@ export default function Credits({ onClose }: { onClose: () => void }) {
           <h3>Fonts &amp; code</h3>
           <p>Barlow Condensed (SIL OFL 1.1). three.js, React Three Fiber, drei, React, Vite (MIT).</p>
           <p className="muted">Bid Wit Me name and BWM logo © Bid Wit Me.</p>
+          <h3>Version</h3>
+          <AboutRow />
         </div>
         <button type="button" className="primary big" onClick={onClose}>Close</button>
       </div>

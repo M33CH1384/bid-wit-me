@@ -15,7 +15,17 @@ ALLOWED_ORIGINS = "https://bid-wit-me.pages.dev,http://localhost:5173,http://loc
 name = "TABLES"
 class_name = "TableDO"
 
+# Player feedback (one instance; messages + screenshot blobs in SQLite). Secrets:
+#   FEEDBACK_ADMIN_TOKEN (admin page), optional FEEDBACK_EMAIL_TO + RESEND_API_KEY (+ FEEDBACK_EMAIL_FROM) for email
+[[durable_objects.bindings]]
+name = "FEEDBACK"
+class_name = "FeedbackDO"
+
 # Free plan: Durable Objects must use the SQLite storage backend.
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["TableDO"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["FeedbackDO"]

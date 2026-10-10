@@ -189,7 +189,7 @@ function Basics({ rules }: { rules: GameState['rules'] }) {
   const g = glossary(rules);
   return (
     <dl className="basics" data-testid="card-basics" onClick={(e) => e.stopPropagation()}>
-      {TERM_ORDER.map((k) => <div key={k}><dt>{g[k].term}</dt><dd>{g[k].def}</dd></div>)}
+      {TERM_ORDER.filter((k) => k !== 'wheels' || rules.partnerships).map((k) => <div key={k}><dt>{g[k].term}</dt><dd>{g[k].def}</dd></div>)}
     </dl>
   );
 }
@@ -305,14 +305,23 @@ export function Coach({ ctx, help, onOff, onSkip, onCloseHelp, onOpen, onMarks }
   // while your bid panel is up, only bidding tips (shown inside the panel, so nothing covers the plates)
   const bidPanelUp = ctx.myTurn && ctx.st.phase === 'bidding' && !!ctx.view.bidOptions;
   const fits = (t: Tip) => !bidPanelUp || t.anchor === '.bid-panel';
-  const cur = current ? all.find((t) => t.id === current) : undefined;
-  const auto = (cur && fits(cur) && cur.when(ctx) ? cur : undefined) || all.find((t) => fits(t) && !seen.includes(t.id) && t.when(ctx) && tipCount(t.id) < (t.max ?? TIP_MAX_SHOWS));
+  // A tip belongs to the moment it opened in (whose turn, which book, how many cards are down). As soon as that
+  // moment passes (you played / bid, the turn moved on, the book was swept, the hand ended) it closes, counted as seen.
+  const st = ctx.st;
+  const moment = `${hand}|${ctx.hand ? 1 : 0}|${st.phase}|${st.tricks.length}|${st.trick.plays.length}|${st.turn}|${st.bids.filter((b) => b !== null).length}`;
+  const openedAt = useRef<string | null>(null);
+  const stale = !!current && openedAt.current !== null && openedAt.current !== moment;
+  const cur = current && !stale ? all.find((t) => t.id === current) : undefined;
+  const auto = (cur && fits(cur) && cur.when(ctx) ? cur : undefined) || all.find((t) => fits(t) && !seen.includes(t.id) && t.id !== (stale ? current : null) && t.when(ctx) && tipCount(t.id) < (t.max ?? TIP_MAX_SHOWS));
   const tip = help ? helpList[helpIdx % Math.max(1, helpList.length)] : auto;
   useLayoutEffect(() => {
-    if (help || !auto || auto.id === current) return;
+    if (stale) { const id = current!; setSeen((xs) => (xs.includes(id) ? xs : [...xs, id])); }
+    if (help || !auto) { if (stale) { setCurrent(null); openedAt.current = null; } return; }
+    if (auto.id === current && !stale) return;
     setCurrent(auto.id);
+    openedAt.current = moment;
     bumpTip(auto.id);
-  }, [auto, current, help]);
+  }, [auto, current, help, stale, moment]);
   const bubble = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number; arrowX: number; below: boolean; width?: number } | null>(null);
   const [slot, setSlot] = useState<Element | null>(null);

@@ -15,6 +15,7 @@
     "@spades/bots": "workspace:*",
     "@spades/protocol": "workspace:*",
     "@spades/rules": "workspace:*",
+    "html-to-image": "^1.11.13",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "three": "^0.180.0"

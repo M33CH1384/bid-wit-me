@@ -87,6 +87,7 @@ export default function Hype({ reduced }: { reduced: boolean }) {
     const add = (p: Pop, ms: number) => { setPops((ps) => [...ps.filter((x) => x.kind !== p.kind), p]); window.setTimeout(() => setPops((ps) => ps.filter((x) => x.id !== p.id)), ms); };
     if (e.kind === 'streak') add({ id: e.id, kind: e.kind, text: e.text ?? 'HEAT CHECK', sub: e.sub ?? `${e.level} hands in a row`, level: e.level }, 2300);
     else if (e.kind === 'shot') add({ id: e.id, kind: e.kind, text: 'SHOT!', sub: e.text }, 2000);
+    else if (e.kind === 'wheels') add({ id: e.id, kind: e.kind, text: 'WHEELS!', sub: e.sub ?? e.text }, 1900);
     else if (e.kind === 'gotShot') add({ id: e.id, kind: e.kind, text: 'GOT SHOT', sub: e.text }, 1900);
     else if (e.kind === 'jokerLittle' || e.kind === 'jokerBig') { setPulse({ id: e.id, big: e.kind === 'jokerBig' }); window.setTimeout(() => setPulse((p) => (p?.id === e.id ? null : p)), e.kind === 'jokerBig' ? 1100 : 500); }
     else if (e.kind === 'nuke') {

@@ -8,7 +8,7 @@
 import { useSyncExternalStore } from 'react';
 import { type Sfx, sound } from './audio';
 
-export type FxKind = 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak' | 'shot' | 'gotShot';
+export type FxKind = 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak' | 'shot' | 'gotShot' | 'wheels';
 export interface FxEvent { id: number; kind: FxKind; at: number; level?: number; text?: string; sub?: string }
 
 const KEY = 'bwm.fx';
@@ -51,6 +51,7 @@ class FxBus {
       else if (kind === 'jokerBig') this.shake = { start: e.at, dur: 0.95, amp: 0.07 };
       else if (kind === 'nuke') this.shake = { start: e.at + 120, dur: 1.6, amp: 0.13 };
       else if (kind === 'shot') this.shake = { start: e.at + 80, dur: 0.3, amp: 0.03 };
+      else if (kind === 'wheels') this.shake = { start: e.at + 60, dur: 0.25, amp: 0.02 };
     }
     this.listeners.forEach((f) => f(e));
   }

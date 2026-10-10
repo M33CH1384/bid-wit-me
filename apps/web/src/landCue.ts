@@ -29,3 +29,20 @@ function baseLandCue(st: GameState, card: Card): string {
   }
   return 'play';
 }
+
+/**
+ * Wheels: a TEAM's combined bid of 10+ books (both partners have bid). Team games only (never Cutthroat),
+ * never an individual bid; "books bid themselves" hands don't count. Returns { side, total } per wheeling team.
+ */
+export const WHEELS_AT = 10;
+export function wheelsFor(rules: { partnerships: boolean; playerCount: number }, bids: readonly (number | string | null)[]): { side: number; total: number }[] {
+  if (!rules.partnerships || rules.playerCount !== 4) return [];
+  const out: { side: number; total: number }[] = [];
+  for (const side of [0, 1]) {
+    const a = bids[side], b = bids[side + 2];
+    if (a === null || a === undefined || b === null || b === undefined || a === 'books' || b === 'books') continue;
+    const total = (typeof a === 'number' ? a : 0) + (typeof b === 'number' ? b : 0);
+    if (total >= WHEELS_AT) out.push({ side, total });
+  }
+  return out;
+}

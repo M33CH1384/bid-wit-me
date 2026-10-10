@@ -1,5 +1,6 @@
 import { type ReactNode, useState } from 'react';
 import Credits from './Credits';
+import Feedback, { AboutRow } from './Feedback';
 import { ReduceEffectsRow, SoundFields } from './SoundControls';
 import { type Settings, settingsToRules } from './settings';
 import { type TipsPref, saveTips } from './tips';
@@ -37,6 +38,7 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
 }) {
   const [house, setHouse] = useState(false);
   const [credits, setCredits] = useState(false);
+  const [feedback, setFeedback] = useState(false);
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => onChange({ ...s, [k]: v });
   const rules = settingsToRules(s);
   const isJokerDeck = rules.deck === 'joker54';
@@ -112,11 +114,14 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
               <Row label="10 for 200"><Toggle value={s.tenForTwoHundred} onChange={(v) => set('tenForTwoHundred', v)} /></Row>
             </div>
           )}
+          <h3 className="sheet-h">Beta feedback &amp; support</h3>
+          <AboutRow onFeedback={() => setFeedback(true)} />
           <button type="button" className="link sheet-h" onClick={() => setCredits(true)}>Credits &amp; licenses</button>
         </div>
       </div>
     </div>
     {credits && <Credits onClose={() => setCredits(false)} />}
+    {feedback && <Feedback onClose={() => setFeedback(false)} />}
     </>
   );
 }

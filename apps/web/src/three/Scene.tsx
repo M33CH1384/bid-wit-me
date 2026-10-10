@@ -464,6 +464,7 @@ export default function Scene(props: SceneProps) {
       resize={{ debounce: 50 }}
     >
       <AspectWatcher onAspect={setAspect} />
+      <SnapHook />
       <CameraRig />
       <FxShake table={tableGroup} />
       <color attach="background" args={['#0c0712']} />
@@ -560,4 +561,15 @@ function ShuffleDeck({ at, back, tl, quality }: { at: Xform; back: Texture; tl: 
       ))}
     </group>
   );
+}
+
+/** "Snap this screen" (feedback): render one frame right now and hand back the WebGL canvas while it still holds it. */
+function SnapHook() {
+  const { gl, scene, camera } = useThree();
+  useEffect(() => {
+    const w = window as unknown as { __bwmSnap?: () => string };
+    w.__bwmSnap = () => { gl.render(scene, camera); return gl.domElement.toDataURL('image/png'); };
+    return () => { delete w.__bwmSnap; };
+  }, [gl, scene, camera]);
+  return null;
 }

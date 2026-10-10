@@ -38,3 +38,19 @@ describe('streaks', () => {
     expect(streakLabel(1)).toBeNull();
   });
 });
+
+import { wheelsFor } from '../src/landCue';
+describe('wheels (team bids 10+)', () => {
+  const team = { partnerships: true, playerCount: 4 };
+  it('only when both partners have bid and the total is 10+', () => {
+    expect(wheelsFor(team, [7, null, null, null])).toEqual([]);
+    expect(wheelsFor(team, [10, null, null, null])).toEqual([]); // individual 10 alone: not yet
+    expect(wheelsFor(team, [6, 2, 4, 3])).toEqual([{ side: 0, total: 10 }]);
+    expect(wheelsFor(team, [6, 5, 'nil', 5])).toEqual([{ side: 1, total: 10 }]);
+    expect(wheelsFor(team, [5, 5, 4, 4])).toEqual([]);
+  });
+  it('never in Cutthroat, never on a books-bid-themselves hand', () => {
+    expect(wheelsFor({ partnerships: false, playerCount: 4 }, [8, 7, 6, 5])).toEqual([]);
+    expect(wheelsFor(team, ['books', 'books', 'books', 'books'])).toEqual([]);
+  });
+});

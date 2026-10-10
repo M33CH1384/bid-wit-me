@@ -7,3 +7,5 @@ coverage
 screenshots/layout
 screenshots/wizard
 screenshots/release-3
+.secrets
+.dev.vars

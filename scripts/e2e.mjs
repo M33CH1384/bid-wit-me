@@ -80,7 +80,8 @@ async function tipsTest() {
   await shot('08-tip-first');
   if (!(await page.getByTestId('learning-badge').count())) throw new Error('learning mode badge missing with tips on');
   // hand 1 is "books bid themselves" (no bidding), so the bid tip comes in hand 2 — tips carry across hands
-  for (let i = 0; i < 2500 && !(seen.includes('bid') && seen.length >= 4); i++) {
+  let actionChecked = '';
+  for (let i = 0; i < 2500 && !(seen.includes('bid') && seen.length >= 4 && actionChecked); i++) {
     const talk = page.locator('[data-testid="talk-ready"]:not([disabled])');
     if (await talk.count()) { await talk.click().catch(() => {}); continue; }
     if (await coach.count()) {
@@ -100,6 +101,18 @@ async function tipsTest() {
           await page.locator('[data-testid="tip-marks"] [data-mark$=":led"]').waitFor({ timeout: 3000 }).catch(() => { throw new Error(`${id} tip: led card not marked`); });
           markChecked.push(id);
         }
+        // a tip tied to an action closes the moment you take it: play a card with the play tip open → gone ≤ ~300 ms
+        if (['follow', 'cut', 'broken'].includes(id) && !actionChecked) {
+          const l = legalCards();
+          if (await l.count()) {
+            const c = l.first(); await tap(c); if (await coach.count()) await tap(c).catch(() => {});
+            const t0 = Date.now();
+            await page.waitForFunction((tid) => !document.querySelector(`[data-testid="coach"][data-tip="${tid}"]`), id, { timeout: 300, polling: 20 })
+              .catch(() => { throw new Error(`${id} tip still open ${Date.now() - t0} ms after playing a card`); });
+            actionChecked = `${id} (${Date.now() - t0} ms)`;
+            continue;
+          }
+        }
       }
       await page.getByTestId('coach-ok').click({ timeout: 2000 }).catch(() => {});
       continue;
@@ -111,6 +124,7 @@ async function tipsTest() {
     await page.waitForTimeout(60);
   }
   if (!seen.includes('goal') || !seen.includes('bid') || seen.length < 4) throw new Error(`expected tips (goal, trumps, bid, …), saw ${seen}`);
+  if (!actionChecked) throw new Error('never got a play tip open to check it closes on play');
   // wait for a play-phase tip, then skip the rest
   for (let i = 0; i < 400 && !(await coach.count()); i++) {
     const l = legalCards();
@@ -128,7 +142,7 @@ async function tipsTest() {
   if (nTerms < 10) throw new Error(`Card basics has only ${nTerms} terms`);
   await page.getByTestId('help').click();
   await page.waitForTimeout(400);
-  console.log(`✓ Tips: prompt → on; coach marks ${seen.join(', ')} shown + dismissed (term "${termChecked}" defined, cards marked for ${markChecked.join('/') || '—'}; Card basics ${nTerms} terms); "Skip tips" hides them`);
+  console.log(`✓ Tips: prompt → on; coach marks ${seen.join(', ')} shown + dismissed (term "${termChecked}" defined, cards marked for ${markChecked.join('/') || '—'}; Card basics ${nTerms} terms; play tip closed on play: ${actionChecked}); "Skip tips" hides them`);
   // a new game still has tips (skip is per game) → "Don't show again" turns them off for good
   await page.getByTestId('menu').click();
   await page.getByRole('button', { name: 'Leave', exact: true }).click();

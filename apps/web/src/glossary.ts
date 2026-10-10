@@ -5,10 +5,10 @@ import { type TableRules, cardLabel, trumpOrder } from '@spades/rules';
  * mode (Joker Spades, regular / Ace Down, Cutthroat, with or without jokers). Used by the "?" help ("Card basics")
  * and by the tappable terms inside tips (`{term}` or `{shown text|term}` in tip text).
  */
-export type TermKey = 'book' | 'suit' | 'high' | 'trump' | 'lead' | 'follow' | 'cut' | 'broken' | 'bid' | 'set' | 'bags' | 'nil' | 'partner';
+export type TermKey = 'book' | 'suit' | 'high' | 'trump' | 'lead' | 'follow' | 'cut' | 'broken' | 'bid' | 'set' | 'bags' | 'nil' | 'partner' | 'wheels';
 export interface Term { key: TermKey; term: string; def: string }
 
-export const TERM_ORDER: TermKey[] = ['book', 'suit', 'high', 'trump', 'lead', 'follow', 'cut', 'broken', 'bid', 'set', 'bags', 'nil', 'partner'];
+export const TERM_ORDER: TermKey[] = ['book', 'suit', 'high', 'trump', 'lead', 'follow', 'cut', 'broken', 'bid', 'set', 'bags', 'nil', 'partner', 'wheels'];
 
 export function topTrumps(r: TableRules, n = 4): string {
   return trumpOrder(r).slice(0, n).map((c) => cardLabel(c)).join(', ');
@@ -61,6 +61,7 @@ export function glossary(r: TableRules): Record<TermKey, Term> {
     partner: t('partner', 'Partner', r.partnerships
       ? 'The player sitting across from you. You win or lose together, and your books count as one team.'
       : 'Cutthroat has no partners: everyone plays for themselves.'),
+    wheels: t('wheels', 'Wheels', r.partnerships ? 'When a team bids 10 or more books together. Big points if you make it, a big fall if you get set.' : 'When a team bids 10 or more books together (team games only, so not in Cutthroat).'),
   };
 }
 

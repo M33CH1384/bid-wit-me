@@ -13,7 +13,7 @@ export type Sfx =
   | 'shuffle' | 'deal' | 'play' | 'tap' | 'sweep' | 'broken' | 'turn' | 'bid' | 'bidSoft'
   | 'cut' | 'made' | 'set' | 'nil' | 'bags' | 'pop' | 'win' | 'lose' | 'flip'
   // hype effects (all synthesized): joker rumbles, the Big-over-Little nuke, streaks, shots
-  | 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak1' | 'streak2' | 'streak3' | 'shot' | 'gotShot';
+  | 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak1' | 'streak2' | 'streak3' | 'shot' | 'gotShot' | 'wheels';
 
 export interface SoundSettings { on: boolean; volume: number; ambient: boolean; music: boolean; musicVolume: number }
 const KEY = 'bwm.sound.v1';
@@ -376,6 +376,8 @@ class Engine {
       case 'streak3': return this.streakHit(t, g, 3);
       case 'shot': return this.slam(t, g);
       case 'gotShot': return this.sting(t, g);
+      // wheels: a quick rising two-step + hit (short, not a fanfare)
+      case 'wheels': this.arp(t, [392, 523.25, 783.99], 0.06, 'square', 0.12 * g, 0.22); return this.streakHit(t + 0.16, 0.8 * g, 1);
     }
   }
 

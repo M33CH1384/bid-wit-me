@@ -6,6 +6,8 @@
  *   GET  /api/tables/:code        → public summary (exists? mode, seats) for the join screen
  *   GET  /api/tables/:code/ws     → WebSocket into that table's Durable Object
  *   GET  /api/ice                 → ICE servers for WebRTC (public STUN; TURN when configured)
+ *   POST /api/feedback            → player feedback (+ up to 3 screenshots), see feedback.ts
+ *   GET  /api/feedback/admin      → private listing (?token=FEEDBACK_ADMIN_TOKEN)
  *   GET  /health
  *
  * Free-plan notes (spec §13):
@@ -18,12 +20,18 @@
 import { DurableObject } from 'cloudflare:workers';
 import { CODE_ALPHABET, CODE_LENGTH, type ServerMsg, isRoomCode, normalizeRoomCode } from '@spades/protocol';
 import { Room, type RoomData, ROOM_DATA_VERSION, newRoomData } from './room';
+import { FEEDBACK_LIMITS, type FeedbackRow, adminHtml, hashIp, notifyOwner, parseFeedback, rateOk, tokenOk } from './feedback';
 
 export interface Env {
   TABLES: DurableObjectNamespace<TableDO>;
   ALLOWED_ORIGINS?: string;
   TURN_KEY_ID?: string;
   TURN_KEY_API_TOKEN?: string;
+  FEEDBACK: DurableObjectNamespace<FeedbackDO>;
+  FEEDBACK_ADMIN_TOKEN?: string;
+  FEEDBACK_EMAIL_TO?: string;
+  FEEDBACK_EMAIL_FROM?: string;
+  RESEND_API_KEY?: string;
 }
 
 const STUN = [{ urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
@@ -81,6 +89,36 @@ async function iceServers(env: Env): Promise<unknown> {
   return { iceServers: STUN, turn: false };
 }
 
+async function feedbackRoute(req: Request, env: Env, parts: string[], url: URL, origin: string | null): Promise<Response> {
+  const stub = env.FEEDBACK.get(env.FEEDBACK.idFromName('all'));
+  if (parts.length === 2 && req.method === 'POST') {
+    const len = Number(req.headers.get('content-length') ?? '0');
+    if (len > FEEDBACK_LIMITS.bodyBytesMax) return json({ error: 'too big' }, { status: 413 }, origin);
+    const text = await req.text();
+    if (text.length > FEEDBACK_LIMITS.bodyBytesMax) return json({ error: 'too big' }, { status: 413 }, origin);
+    let body: unknown;
+    try { body = JSON.parse(text); } catch { return json({ error: 'bad json' }, { status: 400 }, origin); }
+    const p = parseFeedback(body);
+    if (!p.ok) return json({ error: p.error }, { status: 400 }, origin);
+    if (p.spam) return json({ ok: true, id: 0 }, { status: 201 }, origin); // honeypot: pretend it worked
+    const ip = await hashIp(req.headers.get('CF-Connecting-IP') ?? 'unknown');
+    const r = await stub.fetch('https://feedback/add', { method: 'POST', headers: { 'x-ip': ip, 'x-base': url.origin }, body: text });
+    const out = (await r.json()) as { id?: number; error?: string };
+    return json(out.id ? { ok: true, id: out.id } : out, { status: r.status }, origin);
+  }
+  // admin: the token rides in ?token= (or Authorization: Bearer); without FEEDBACK_ADMIN_TOKEN set, it's all 404
+  const token = url.searchParams.get('token') ?? req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? null;
+  if (!tokenOk(token, env.FEEDBACK_ADMIN_TOKEN)) return new Response('not found', { status: 404 });
+  if (req.method !== 'GET') return new Response('not found', { status: 404 });
+  if (parts[2] === 'shot' && parts[3]) return stub.fetch(`https://feedback/shot/${encodeURIComponent(parts[3])}`);
+  if (parts[2] === 'list' || parts[2] === 'admin') {
+    const rows = (await (await stub.fetch('https://feedback/list')).json()) as FeedbackRow[];
+    if (parts[2] === 'list') return json(rows);
+    return new Response(adminHtml(rows, token!, url.origin), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-robots-tag': 'noindex', 'referrer-policy': 'no-referrer' } });
+  }
+  return new Response('not found', { status: 404 });
+}
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
@@ -99,6 +137,8 @@ export default {
     if (req.headers.get('Origin') && !origin) return json({ error: 'origin not allowed' }, { status: 403 });
 
     if (parts[1] === 'ice' && req.method === 'GET') return json(await iceServers(env), {}, origin);
+
+    if (parts[1] === 'feedback') return feedbackRoute(req, env, parts, url, origin);
 
     if (parts[1] === 'tables' && parts.length === 2 && req.method === 'POST') {
       for (let i = 0; i < 6; i++) {
@@ -279,5 +319,53 @@ export class TableDO extends DurableObject<Env> {
     }
     this.room.tick();
     if (this.sockets.size === 0) this.armAlarm(this.room.data.lastActive + IDLE_DELETE_MS);
+  }
+}
+
+/* ------------------------------------------------------- feedback store */
+
+/** One instance ("all") holds every feedback message + screenshot blobs + the per-IP rate window, in SQLite. */
+export class FeedbackDO extends DurableObject<Env> {
+  private sql: SqlStorage;
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    this.sql = ctx.storage.sql;
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS feedback (id INTEGER PRIMARY KEY AUTOINCREMENT, created INTEGER, type TEXT, message TEXT, name TEXT, email TEXT, context TEXT, ip TEXT);
+      CREATE TABLE IF NOT EXISTS shots (id INTEGER PRIMARY KEY AUTOINCREMENT, fb INTEGER, mime TEXT, data BLOB);
+      CREATE TABLE IF NOT EXISTS sends (ip TEXT, at INTEGER);
+      CREATE INDEX IF NOT EXISTS sends_ip ON sends (ip, at);`);
+  }
+
+  override async fetch(req: Request): Promise<Response> {
+    const url = new URL(req.url);
+    const now = Date.now();
+    if (url.pathname === '/add' && req.method === 'POST') {
+      const ip = req.headers.get('x-ip') ?? 'unknown';
+      this.sql.exec('DELETE FROM sends WHERE at < ?', now - 3600_000);
+      const times = this.sql.exec<{ at: number }>('SELECT at FROM sends WHERE ip = ?', ip).toArray().map((r) => r.at);
+      if (!rateOk(times, now)) return Response.json({ error: 'Too many messages from here: try again in an hour.' }, { status: 429 });
+      const p = parseFeedback(await req.json());
+      if (!p.ok) return Response.json({ error: p.error }, { status: 400 });
+      const f = p.value;
+      const id = this.sql.exec<{ id: number }>('INSERT INTO feedback (created, type, message, name, email, context, ip) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id',
+        now, f.type, f.message, f.name, f.email, JSON.stringify(f.context), ip).one().id;
+      for (const s of f.shots) this.sql.exec('INSERT INTO shots (fb, mime, data) VALUES (?, ?, ?)', id, s.mime, s.bytes.buffer.slice(s.bytes.byteOffset, s.bytes.byteOffset + s.bytes.byteLength) as ArrayBuffer);
+      this.sql.exec('INSERT INTO sends (ip, at) VALUES (?, ?)', ip, now);
+      this.ctx.waitUntil(notifyOwner(this.env, f, id, `${req.headers.get('x-base') ?? ''}/api/feedback/admin?token=…`).then(() => undefined));
+      return Response.json({ id }, { status: 201 });
+    }
+    if (url.pathname === '/list') {
+      const rows = this.sql.exec<{ id: number; created: number; type: string; message: string; name: string; email: string; context: string }>(
+        'SELECT id, created, type, message, name, email, context FROM feedback ORDER BY id DESC LIMIT 200').toArray();
+      const shots = this.sql.exec<{ id: number; fb: number }>('SELECT id, fb FROM shots WHERE fb >= ?', rows.length ? rows[rows.length - 1]!.id : 0).toArray();
+      return Response.json(rows.map((r) => ({ ...r, shots: shots.filter((s) => s.fb === r.id).map((s) => s.id) })));
+    }
+    const m = /^\/shot\/(\d+)$/.exec(url.pathname);
+    if (m) {
+      const row = this.sql.exec<{ mime: string; data: ArrayBuffer }>('SELECT mime, data FROM shots WHERE id = ?', Number(m[1])).toArray()[0];
+      if (!row) return new Response('not found', { status: 404 });
+      return new Response(row.data, { headers: { 'content-type': row.mime, 'cache-control': 'private, max-age=86400' } });
+    }
+    return new Response('not found', { status: 404 });
   }
 }
