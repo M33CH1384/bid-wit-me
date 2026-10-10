@@ -1,16 +1,40 @@
-/** "Learn as you play" preferences: { on, asked } in localStorage. Off by default for returning players. */
+/**
+ * "Learn as you play" preferences in localStorage: { on, asked, counts }.
+ * Off by default for returning players. Tips stay on across hands and games until the player turns them off
+ * ("I've got it" or the toggle). `counts` = how many times each tip type has popped up on its own: after
+ * TIP_MAX_SHOWS a tip only appears on request (the "?" button).
+ */
 const KEY = 'bwm.tips';
-export interface TipsPref { on: boolean; asked: boolean }
+export const TIP_MAX_SHOWS = 3;
+export interface TipsPref { on: boolean; asked: boolean; counts?: Record<string, number> }
 
 export function loadTips(): TipsPref {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) { const p = JSON.parse(raw); return { on: !!p.on, asked: !!p.asked }; }
+    if (raw) {
+      const p = JSON.parse(raw);
+      const counts: Record<string, number> = {};
+      if (p.counts && typeof p.counts === 'object') for (const [k, v] of Object.entries(p.counts)) if (typeof v === 'number') counts[k] = v;
+      return { on: !!p.on, asked: !!p.asked, counts };
+    }
   } catch { /* ignore */ }
-  return { on: false, asked: false };
+  return { on: false, asked: false, counts: {} };
 }
 export function saveTips(p: TipsPref): void {
-  try { localStorage.setItem(KEY, JSON.stringify(p)); } catch { /* ignore */ }
+  // turning tips back on starts the counts over, so a player who asks for help again gets the full set
+  const prev = loadTips();
+  const counts = p.counts ?? (p.on && !prev.on ? {} : prev.counts);
+  try { localStorage.setItem(KEY, JSON.stringify({ on: p.on, asked: p.asked, counts })); } catch { /* ignore */ }
+}
+/** How many times a tip has shown on its own. */
+export function tipCount(id: string): number {
+  return loadTips().counts?.[id] ?? 0;
+}
+/** Record that a tip popped up on its own. */
+export function bumpTip(id: string): void {
+  const p = loadTips();
+  const counts = { ...(p.counts ?? {}), [id]: (p.counts?.[id] ?? 0) + 1 };
+  try { localStorage.setItem(KEY, JSON.stringify({ ...p, counts })); } catch { /* ignore */ }
 }
 /** First visit = never asked, and no sign of earlier play (settings, a save, an online name). */
 export function isFirstVisit(): boolean {

@@ -1,0 +1,93 @@
+import { useMemo, useState } from 'react';
+import { type PlayerView, cardLabel, createRng, handSize } from '@spades/rules';
+import { type BidAdvice, bidAdvice } from '@spades/bots';
+
+/** ~1½ style: books rounded to the nearest half. */
+export function halves(v: number): string {
+  const h = Math.round(v * 2) / 2;
+  const whole = Math.floor(h);
+  const frac = h - whole ? '½' : '';
+  return whole === 0 && frac ? frac : `${whole}${frac}`;
+}
+
+const SHORT: Record<string, string> = { trumps: 'Top trumps', aces: 'Aces', kings: 'Kings', length: 'Length', cutting: 'Cuts' };
+
+interface Row { key: string; label: string; detail: string; value: number }
+
+function rowsFor(a: BidAdvice['analysis']): Row[] {
+  const rows: Row[] = [];
+  const list = (items: { cards: string[]; note: string }[]) => items.map((x) => `${x.cards.map((c) => cardLabel(c as never)).join(' ')}${x.note === 'maybe' ? '?' : ''}`).join(' · ');
+  const sum = (items: { value: number }[]) => items.reduce((s, x) => s + x.value, 0);
+  if (a.sureTrumps.length) rows.push({ key: 'trumps', label: 'Top trumps', detail: list(a.sureTrumps), value: sum(a.sureTrumps) });
+  const aces = a.sideWinners.filter((x) => x.note.startsWith('ace'));
+  const rest = a.sideWinners.filter((x) => !x.note.startsWith('ace'));
+  if (aces.length) rows.push({ key: 'aces', label: 'Off-suit aces', detail: list(aces), value: sum(aces) });
+  if (rest.length) rows.push({ key: 'kings', label: 'Guarded kings / queens', detail: rest.map((x) => `${cardLabel(x.cards[0]!)} (${x.note})`).join(' · '), value: sum(rest) });
+  if (a.length) rows.push({ key: 'length', label: 'Spade length', detail: a.length.note, value: a.length.value });
+  else rows.push({ key: 'length', label: 'Spade length', detail: `${a.trumpCount} trump${a.trumpCount === 1 ? '' : 's'} — no extra books from length`, value: 0 });
+  if (a.cutting) rows.push({ key: 'cutting', label: 'Cutting', detail: a.cutting.note, value: a.cutting.value });
+  return rows;
+}
+
+/**
+ * The bid coach: teaches book counting with the player's actual hand — sure winners, spade length, cutting,
+ * the partner adjustment and Nil — using the same count the bots bid from, then a suggested range.
+ * `compact` = one line (expand with "Why?"); it starts expanded the first few times.
+ */
+export function BidCoach({ view, startOpen, onClose, title = 'BID COACH' }: { view: PlayerView; startOpen: boolean; onClose?: () => void; title?: string }) {
+  const [open, setOpen] = useState(startOpen);
+  const [how, setHow] = useState(false);
+  const adv = useMemo(() => {
+    if (!view.hand) return null;
+    const v: PlayerView = view.bidOptions ? view : { ...view, bidOptions: { min: 1, max: handSize(view.rules), nil: view.rules.nil.allowed, blindNil: false } };
+    return bidAdvice(v, createRng(`${view.seat}:${view.handNo}:coach`));
+  }, [view]);
+  if (!adv) return null;
+  const range = adv.low === adv.high ? `${adv.low}` : `${adv.low}–${adv.high}`;
+  const rows = rowsFor(adv.analysis);
+  return (
+    <div className={`bid-coach ${open ? 'open' : ''}`} data-testid="bid-coach" data-suggest={range}>
+      <div className="bc-head">
+        <span className="coach-badge">{title}</span>
+        <b className="bc-suggest" data-testid="bid-suggest">Suggested: {range}</b>
+        <button type="button" className="link bc-why" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? 'Hide' : 'Why?'}</button>
+        {onClose && <button type="button" className="icon-btn bc-close" aria-label="Close bid coach" onClick={onClose}>✕</button>}
+      </div>
+      {!open && (
+        <div className="bc-chips">
+          {rows.filter((r) => r.value > 0).map((r) => <span key={r.key} className="bc-chip">{SHORT[r.key] ?? r.label} <b>+{halves(r.value)}</b></span>)}
+          <span className="bc-chip total">≈ {halves(adv.estimate)} books</span>
+          {adv.partnerNote && typeof view.bids[(view.seat + 2) % 4] === 'number' && view.rules.partnerships && <span className="bc-chip partner">{adv.partnerNote.split('.')[0]}</span>}
+        </div>
+      )}
+      {open && (
+        <div className="bc-body">
+          <p className="bc-count">Your count ≈ {halves(adv.estimate)} books:</p>
+          <ul className="bc-rows">
+            {rows.map((r) => (
+              <li key={r.key} className={r.value ? '' : 'zero'}>
+                <span className="bc-label">{r.label}</span>
+                <span className="bc-detail">{r.detail}</span>
+                <span className="bc-val">{r.value ? `+${halves(r.value)}` : '0'}</span>
+              </li>
+            ))}
+            {adv.analysis.factor !== 1 && <li><span className="bc-label">3 players</span><span className="bc-detail">big hands, only two opponents</span><span className="bc-val">×1.15</span></li>}
+          </ul>
+          {adv.partnerNote && <p className="bc-note"><b>Partner:</b> {adv.partnerNote}</p>}
+          {adv.tableNote && <p className="bc-note"><b>Table:</b> {adv.tableNote}</p>}
+          {adv.nil && <p className={`bc-note ${adv.nil.ok ? 'good' : ''}`}><b>Nil:</b> {adv.nil.note.replace(/^Nil\??:?\s*/, '')}</p>}
+          <button type="button" className="link bc-how" aria-expanded={how} onClick={() => setHow(!how)}>{how ? '▾' : '▸'} How to count books</button>
+          {how && (
+            <ol className="bc-how-list">
+              <li><b>Sure winners:</b> top trumps ({view.rules.mode === 'joker' ? 'Big Joker, Little Joker, 2♦, 2♠, A♠' : view.rules.mode === 'aceDown' ? 'A♠, K♠, Q♠' : 'jokers, then the top spades'}), off-suit aces, kings with a small card behind them.</li>
+              <li><b>Spade length:</b> past 3–4 trumps, the extra ones usually win late in the hand.</li>
+              <li><b>Cutting:</b> a void, singleton or doubleton lets a spare trump cut someone's winner.</li>
+              <li><b>Partner:</b> add your bids — the team total should fit in 13. Bid a little under if unsure: getting set costs 10× the bid.</li>
+              <li><b>Nil:</b> only with no aces, no high trumps, and low cards to duck with.</li>
+            </ol>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

@@ -12,7 +12,8 @@ import { type SavedGame, clearGame, saveGame } from './save';
 
 import { useViewport } from './viewport';
 import { Coach } from './Coach';
-import { loadTips } from './tips';
+import { type TipsPref, bumpTip, loadTips, saveTips, tipCount } from './tips';
+import { BidCoach } from './BidCoach';
 const Scene = lazy(() => import('./three/Scene'));
 
 /**
@@ -266,12 +267,23 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const winnerSeat = pause ? shownTrick.winner : null;
   useGameSounds(st, myTurn, mySide, msgs);
   const landCue = useCallback((c: Card) => landCueFor(st, c), [st]);
-  // "Learn as you play": coach marks during the first hand this table is open (local to this player, online too)
-  const [tipsOn] = useState(() => loadTips().on);
+  // "Learn as you play": coach marks across hands until the player turns tips off (local to this player, online too)
+  const [tips, setTips] = useState<TipsPref>(loadTips);
   const [tipsSkipped, setTipsSkipped] = useState(false);
-  const tipsHand = useRef(st.handNo);
-  const coachOn = tipsOn && !tipsSkipped && st.handNo === tipsHand.current && st.phase !== 'gameOver';
+  const [help, setHelp] = useState(false);
+  const coachOn = tips.on && !tipsSkipped && st.phase !== 'gameOver';
   const hintLegal = coachOn;
+  const tipsOff = () => { const t = { on: false, asked: true }; saveTips(t); setTips(loadTips()); };
+  // bid coach: inside the bid panel while tips are on (open the first couple of times), or on request ("?")
+  const bidTurn = myTurn && !dealing && st.phase === 'bidding' && !!view.bidOptions && !!view.hand;
+  const coachBid = bidTurn && (coachOn || help);
+  const bcKey = `${st.seed}:${st.handNo}`;
+  const bcOpen = false; void tipCount;
+  const bcCounted = useRef<string | null>(null);
+  useEffect(() => { if (coachBid && coachOn && bcCounted.current !== bcKey) { bcCounted.current = bcKey; bumpTip('bidcoach'); } }, [coachBid, coachOn, bcKey]);
+  const helpButton = (
+    <button type="button" className={`help-btn ${help ? 'on' : ''}`} data-testid="help" aria-label="Help: tips and book counting" aria-pressed={help} onClick={() => setHelp(!help)}>?</button>
+  );
 
   // persist after every action (and chat line); a finished game clears the save
   useEffect(() => {
@@ -356,8 +368,25 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
   const unread = Math.max(0, msgs.length - seenMsgs);
 
+  // landscape phones: keep the bid / pass panel just above the top of the (resting) hand
+  const screenRef = useRef<HTMLDivElement>(null);
+  const measureHand = st.phase === 'bidding' || st.phase === 'exchange';
+  useEffect(() => {
+    if (!measureHand) return;
+    const tick = () => {
+      const L = (window as unknown as { __bwmLayout?: { hand: { y: number }[] } }).__bwmLayout;
+      const el = screenRef.current;
+      if (!el || !L?.hand?.length) return;
+      const top = Math.min(...L.hand.map((q) => q.y));
+      el.style.setProperty('--hand-clear', `${Math.max(60, Math.round(window.innerHeight - top + 6))}px`);
+    };
+    tick();
+    const t = window.setInterval(tick, 400);
+    return () => clearInterval(t);
+  }, [measureHand, vp.short]);
+
   return (
-    <div className={`table-screen q-${settings.quality}${vp.short ? ' short' : ''}`}>
+    <div ref={screenRef} className={`table-screen q-${settings.quality}${vp.short ? ' short' : ''}`}>
       <Suspense fallback={<div className="loading3d"><div className="spinner" />Setting the table…</div>}>
         <Scene
           quality={settings.quality}
@@ -452,13 +481,17 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         ))}
       </div>
 
-      <ChatPanel msgs={msgs} open={chatOpen} onToggle={() => setChatOpen(!chatOpen)} onSend={(t) => push('You', t)} unread={unread} scope={online ? 'table' : undefined} extra={online?.controls} />
+      <ChatPanel msgs={msgs} open={chatOpen} onToggle={() => setChatOpen(!chatOpen)} onSend={(t) => push('You', t)} unread={unread} scope={online ? 'table' : undefined} extra={<>{helpButton}{online?.controls}</>} />
+      {help && !bidTurn && view.hand && view.hand.length > 0 && st.phase !== 'handOver' && st.phase !== 'gameOver' && (
+        <div className="bid-coach-float glass slant"><BidCoach view={view} startOpen title="COUNT YOUR BOOKS" onClose={() => setHelp(false)} /></div>
+      )}
 
       {/* the human's lower third + controls */}
       <section className="me">
         {myTurn && !dealing && st.phase === 'bidding' && view.bidOptions && !autoReveal && (
           view.hand === null ? (
             <div className="bid-panel glass slant">
+              <div className="bid-tip-slot" />
               <div className="panel-title">BLIND NIL?</div>
               <p>Bid before looking — worth ±{r.blindNil.value}.</p>
               <div className="bid-row">
@@ -467,7 +500,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
               </div>
             </div>
           ) : (
-            <div className="bid-panel glass slant">
+            <div className={`bid-panel glass slant ${coachBid ? 'with-coach' : ''}`}>
+              <div className="bid-tip-slot" />
+              {coachBid && <BidCoach key={bcKey} view={view} startOpen={help || bcOpen} />}
               <div className="panel-title">YOUR BID{r.partnerships && typeof st.bids[2] === 'number' ? <small> · partner bid {st.bids[2]}</small> : null}</div>
               <div className="bid-grid">
                 {Array.from({ length: view.bidOptions.max - view.bidOptions.min + 1 }, (_, i) => view.bidOptions!.min + i).map((b) => (
@@ -575,10 +610,13 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         </div>
       )}
 
-      {coachOn && (
+      {(coachOn || help) && (
         <Coach
           ctx={{ st, view, hand, legal, myTurn, me: HUMAN, partnerName: r.partnerships ? names[partnerOf(HUMAN, r) ?? 2] ?? null : null, pause }}
+          help={help}
           onSkip={() => setTipsSkipped(true)}
+          onOff={tipsOff}
+          onCloseHelp={() => setHelp(false)}
         />
       )}
 

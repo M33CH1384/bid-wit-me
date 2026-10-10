@@ -559,3 +559,80 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 }
 /* your own (larger) video bubble grows upward from the plate's bottom edge, never down into the hand */
 .table-screen:not(.short) .plate.me-plate > .vbubble.self { top: auto; bottom: 0; transform: none; }
+
+/* ---------- help button + bid coach (book counting) ---------- */
+.help-btn { position: relative; width: 42px; height: 38px; border: 0; font-family: var(--display); font-weight: 800; font-size: 19px; color: var(--gold); background: var(--glass-strong); box-shadow: inset 0 0 0 1px var(--edge); clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
+.help-btn.on { background: var(--gold); color: #1d1204; }
+.table-screen.short .help-btn { width: 40px; height: 38px; }
+.bid-coach { width: 100%; text-align: left; font-size: 13px; line-height: 1.3; border-bottom: 1px solid rgba(185,128,255,.25); padding-bottom: 6px; }
+.bc-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.bc-count { color: var(--muted); font-size: 12.5px; }
+.bc-suggest { font-family: var(--display); font-weight: 800; letter-spacing: .04em; color: var(--gold); font-size: 16px; }
+.bid-panel .bc-why, .bid-coach .bc-why, .bid-coach .bc-how { background: none !important; box-shadow: none !important; clip-path: none !important; padding: 2px 4px !important; font-size: 12.5px !important; color: #cdb8ff; text-decoration: underline; margin-left: auto; min-height: 0; }
+.bid-coach .bc-how { margin-left: 0; text-decoration: none; }
+.bid-coach .bc-close { margin-left: 4px; width: 30px; height: 30px; font-size: 13px; }
+.bc-body { margin-top: 4px; max-height: 38vh; overflow: auto; }
+.bc-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.bc-rows li { display: grid; grid-template-columns: 9.5em 1fr auto; gap: 8px; align-items: baseline; padding: 2px 0; }
+.bc-rows li.zero { opacity: .6; }
+.bc-label { font-family: var(--display); font-weight: 700; letter-spacing: .03em; color: #e9dcff; }
+.bc-detail { color: var(--muted); }
+.bc-val { font-family: var(--display); font-weight: 800; color: var(--gold); min-width: 2.2em; text-align: right; }
+.bc-note { margin: 4px 0 0 !important; color: #e6dcff !important; font-size: 12.5px; }
+.bc-note b { color: #cdb8ff; }
+.bc-note.good b { color: #7dff9b; }
+.bc-how-list { margin: 2px 0 0; padding-left: 18px; color: #e6dcff; font-size: 12.5px; display: grid; gap: 2px; }
+.bid-coach-float, .bid-coach-float.glass.slant { position: fixed; z-index: 34; left: 50%; transform: translateX(-50%); top: calc(122px + env(safe-area-inset-top)); width: min(400px, calc(100vw - 16px)); padding: 8px 12px; }
+.bid-coach-float .bid-coach { border-bottom: 0; padding-bottom: 0; }
+.table-screen.short .bid-coach-float { top: calc(48px + env(safe-area-inset-top)); width: min(440px, 62vw); }
+.table-screen.short .bc-body { max-height: 46vh; }
+.table-screen.short .bid-coach { font-size: 12px; }
+.table-screen.short .bc-rows li { grid-template-columns: 8.5em 1fr auto; }
+.coach-actions .link[data-testid="coach-never"] { color: #cdb8ff; }
+.books-note { background: linear-gradient(90deg, rgba(155,92,255,.92), rgba(106,42,214,.92)); }
+
+/* landscape phones: the bid panel is one slim row, sitting just above the hand (measured, see Table) */
+.table-screen.short .me { bottom: var(--hand-clear, calc(27vh + env(safe-area-inset-bottom))); }
+.table-screen.short .bid-panel:not(.with-coach) .bid-grid, .table-screen.short .bid-panel.with-coach .bid-grid { grid-template-columns: repeat(auto-fit, minmax(30px, 1fr)); }
+.table-screen.short .bid-grid .nil { grid-column: span 2; }
+.table-screen.short .bid-panel { width: min(620px, 74vw); }
+
+/* portrait: the sound button matches the gear / scorebug buttons */
+@media (orientation: portrait) {
+  .sound-dock { top: calc(10px + env(safe-area-inset-top)); }
+  .dock-btn { width: 46px; height: 46px; font-size: 19px; }
+  .dock-slot { width: 46px !important; }
+}
+.bc-chips { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 4px; }
+.bc-chip { font-size: 12px; padding: 1px 7px; background: rgba(155,92,255,.18); box-shadow: inset 0 0 0 1px rgba(185,128,255,.3); color: #e6dcff; white-space: nowrap; }
+.bc-chip b { color: var(--gold); }
+.bc-chip.total { background: rgba(245,197,66,.16); box-shadow: inset 0 0 0 1px rgba(245,197,66,.45); font-weight: 700; }
+.bc-chip.partner { white-space: normal; }
+.bc-count { margin: 0 0 2px !important; }
+.bid-tip-slot { width: 100%; display: contents; }
+.bid-tip-slot:empty { display: none; }
+.coach.inline { position: static; width: 100%; text-align: left; padding: 6px 10px 6px; background: linear-gradient(160deg, rgba(60,26,110,.85), rgba(30,14,54,.85)); box-shadow: inset 0 0 0 1px rgba(245,197,66,.4); cursor: pointer; animation: fade-up .25s ease both; }
+.coach.inline .coach-title { font-size: 14px; }
+.coach.inline p { font-size: 13px; margin: 3px 0 4px; }
+.coach.inline .coach-ok { font-size: 12px; padding: 3px 10px; }
+.table-screen.short .coach.inline p { font-size: 12px; }
+.table-screen.short .bid-panel { width: min(600px, 66vw); }
+.bid-panel .coach.inline { align-self: stretch; width: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; padding: 5px 10px; }
+.bid-panel .coach.inline::after { display: none; }
+.bid-panel .coach.inline .coach-title { font-size: 13px; }
+.bid-panel .coach.inline p { flex: 1 1 260px; margin: 0; color: #f3ecff; }
+.bid-panel .coach.inline .coach-actions { gap: 10px; }
+.bid-panel .coach.inline button { min-height: 0; box-shadow: none; }
+.bid-panel .coach.inline .coach-ok { background: var(--gold); color: #1d1204; font-size: 12px; padding: 3px 10px; }
+.bid-panel .coach.inline .link { background: none; clip-path: none; padding: 2px 0; font-size: 12px; font-family: inherit; letter-spacing: 0; text-transform: none; font-weight: 500; color: var(--muted); }
+.bid-panel .coach.inline .link[data-testid="coach-never"] { color: #cdb8ff; }
+/* the bid panel sits just above the resting hand (measured), so tips/coach grow up into the empty felt, not over plates */
+.table-screen:not(.short) .me:has(> .bid-panel) { bottom: var(--hand-clear, calc(23vh + env(safe-area-inset-bottom))); }
+.table-screen.short .bid-panel .coach.inline { flex-wrap: nowrap; padding: 3px 8px; gap: 8px; }
+.table-screen.short .bid-panel .coach.inline .coach-title { font-size: 0; gap: 0; flex: none; }
+.table-screen.short .bid-panel .coach.inline .coach-badge { font-size: 10px; }
+.table-screen.short .bid-panel .coach.inline p { flex: 1 1 auto; font-size: 12px; line-height: 1.25; }
+.table-screen.short .bid-panel .coach.inline [data-testid="coach-skip"] { display: none; }
+.table-screen.short .bid-panel .coach.inline .coach-actions { flex: none; }
+.table-screen.short .bid-panel { gap: 3px; padding: 5px 10px 6px; }
+.table-screen.short .bid-grid button { padding: 3px 0; font-size: 15px; }

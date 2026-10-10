@@ -49,7 +49,7 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
           <button type="button" className="icon-btn" aria-label="Close" onClick={onClose}>✕</button>
         </header>
         <div className="scroll sheet-body">
-          <Row label="Tips while you play" hint="Coach marks during your first hand">
+          <Row label="Tips while you play" hint="Coach marks + bid coach, until you turn them off">
             <Toggle label="Tips" value={tips.on} onChange={(on) => { const t = { on, asked: true }; saveTips(t); onTips(t); }} />
           </Row>
           <Row label="Game speed">

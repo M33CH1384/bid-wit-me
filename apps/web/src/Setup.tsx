@@ -136,8 +136,8 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
     );
     const tipsRow = (
       <div className="ess-row tips-row">
-        <span className="ess-label">Show me how to play<small>tips during the first hand</small></span>
-        <Toggle label="Show me how to play (tips during first hand)" value={tips.on} onChange={setTipsPref} />
+        <span className="ess-label">Show me how to play<small>tips + a bid coach as you play</small></span>
+        <Toggle label="Show me how to play (tips as you play)" value={tips.on} onChange={setTipsPref} />
       </div>
     );
     body = (
@@ -177,7 +177,7 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
         <div className="modal-backdrop">
           <div className="modal glass slant tips-ask" role="dialog" aria-label="New to Spades?">
             <div className="panel-title big">NEW TO SPADES?</div>
-            <p>Turn on tips? I'll coach you through your first hand. You can switch them off any time.</p>
+            <p>Turn on tips? I'll coach you as you play, and help you count your books at bid time. You can switch them off any time.</p>
             <div className="bid-row">
               <button type="button" onClick={() => { setTipsPref(false); setAsk(false); }}>No thanks</button>
               <button type="button" className="primary" data-testid="tips-yes" onClick={() => { setTipsPref(true); setAsk(false); }}>Yes, tips on</button>
