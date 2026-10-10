@@ -244,7 +244,8 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       delay: flip ? i * 0.022 : intro ? dealDelay(i, human) : 0,
       sfxStart: flip ? undefined : 'deal',
       dim: !!c && legal.length > 0 && !isLegal,
-      glow: !!c && (selected === c || !!props.marked?.includes(c) || ((!!props.hintLegal || wide) && isLegal && legal.length < mine.length)),
+      // playable cards (when some aren't) get the gold edge on every device; the rest are dimmed (dim above)
+      glow: !!c && (selected === c || !!props.marked?.includes(c) || (isLegal && legal.length < mine.length)),
       tap: c && isLegal ? () => onCardTap(c) : undefined,
       shadow: false,
       duration: flip ? 0.34 : intro ? tl.fly : 0.32,

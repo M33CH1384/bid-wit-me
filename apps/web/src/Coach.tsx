@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { type Card, type GameState, type PlayerView, SUIT_NAME, type Suit, booksHand, cardLabel, cardPower, effectiveSuit, handSize, isTrump, trumpOrder } from '@spades/rules';
 import { TERM_ORDER, type TermKey, glossary, parseTerms, topTrumps } from './glossary';
-import { TIP_MAX_SHOWS, bumpTip, tipCount } from './tips';
+import { TIP_MAX_SHOWS, bumpTip, tipCount, tipDurationMs } from './tips';
 
 /**
  * "Learn as you play": context-triggered coach marks (only for the player who turned tips on — online too, it's all
@@ -317,6 +317,8 @@ export function Coach({ ctx, help, onOff, onSkip, onCloseHelp, onOpen, onMarks }
   const [slot, setSlot] = useState<Element | null>(null);
   const tipId = tip?.id;
   const [term, setTerm] = useState<TermKey | null>(null);
+  const [hover, setHover] = useState(false);
+  useEffect(() => { setHover(false); }, [tipId]);
   useEffect(() => { setTerm(null); }, [tipId]);
   const markKey = tip?.marks ? JSON.stringify(tip.marks) : '';
   useEffect(() => { onMarks?.(tip?.marks ? [...(tip.marks.trick ?? []), ...(tip.marks.hand ?? [])].map((m) => m.card) : []); }, [markKey]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -373,6 +375,7 @@ export function Coach({ ctx, help, onOff, onSkip, onCloseHelp, onOpen, onMarks }
     setSeen((s) => [...s, tip.id]); setCurrent(null);
   };
   const inline = wantInline && slot;
+  const bar = !help && !tip.basics ? <AutoDismiss key={`${tip.id}-${hand}`} ms={tipDurationMs(tip.text)} paused={hover || !!term} onDone={dismiss} /> : null;
   const body = (
     <div
       ref={bubble}
@@ -380,6 +383,11 @@ export function Coach({ ctx, help, onOff, onSkip, onCloseHelp, onOpen, onMarks }
       role="dialog" aria-label={`Tip: ${tip.title}`} data-testid="coach" data-tip={tip.id} data-help={help ? 'true' : 'false'}
       style={inline ? undefined : { left: pos?.left ?? -999, top: pos?.top ?? -999, width: pos?.width, ['--ax' as string]: `${pos?.arrowX ?? 40}px` }}
       onClick={dismiss}
+      onPointerEnter={(e) => { if (e.pointerType === 'mouse') setHover(true); }}
+      onPointerLeave={(e) => { if (e.pointerType === 'mouse') setHover(false); }}
+      onTouchStart={() => setHover(true)}
+      onTouchEnd={() => setHover(false)}
+      onTouchCancel={() => setHover(false)}
     >
       <div className="coach-title"><span className="coach-badge">{help ? `TIP ${helpIdx + 1}/${helpList.length}` : 'TIP'}</span>{tip.title}</div>
       {tip.basics ? <Basics rules={ctx.st.rules} /> : <TipText text={tip.text} rules={ctx.st.rules} open={term} onOpen={setTerm} />}
@@ -389,8 +397,35 @@ export function Coach({ ctx, help, onOff, onSkip, onCloseHelp, onOpen, onMarks }
         {!help && <button type="button" className="link" data-testid="coach-never" onClick={onOff}>I've got it — tips off</button>}
         {help && <button type="button" className="link" onClick={onCloseHelp}>Close</button>}
       </div>
+      {bar}
     </div>
   );
   const marks = <TipMarkLayer marks={tip.marks} />;
   return <>{inline ? createPortal(body, slot) : body}{marks}</>;
+}
+
+/** Thin draining bar along the tip's bottom edge; calls onDone when it runs out (paused while `paused`). */
+function AutoDismiss({ ms, paused, onDone }: { ms: number; paused: boolean; onDone: () => void }) {
+  const [left, setLeft] = useState(ms);
+  const done = useRef(onDone);
+  done.current = onDone;
+  const pausedRef = useRef(paused);
+  pausedRef.current = paused;
+  useEffect(() => {
+    let last = performance.now();
+    let rem = ms;
+    const iv = window.setInterval(() => {
+      const now = performance.now();
+      if (!pausedRef.current && document.visibilityState === 'visible') rem -= now - last;
+      last = now;
+      setLeft(Math.max(0, rem));
+      if (rem <= 0) { clearInterval(iv); done.current(); }
+    }, 100);
+    return () => clearInterval(iv);
+  }, [ms]);
+  return (
+    <div className={`coach-timer ${paused ? 'paused' : ''}`} aria-hidden data-testid="coach-timer" data-ms={Math.round(left)}>
+      <i style={{ transform: `scaleX(${left / ms})` }} />
+    </div>
+  );
 }

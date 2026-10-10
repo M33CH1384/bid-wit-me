@@ -56,3 +56,12 @@ describe('tips for brand-new players', () => {
     expect(parseTerms('win {books|book} and {trumps|trump} or {bid}')).toEqual(['win ', { text: 'books', key: 'book' }, ' and ', { text: 'trumps', key: 'trump' }, ' or ', { text: 'bid', key: 'bid' }]);
   });
 });
+
+import { TIP_AUTO, tipDurationMs } from '../src/tips';
+describe('tip auto-dismiss timing', () => {
+  it('15 s floor + 250 ms/word, capped at 45 s; markup words count once', () => {
+    expect(tipDurationMs('one two three four')).toBe(TIP_AUTO.minMs + 4 * TIP_AUTO.msPerWord);
+    expect(tipDurationMs('win {books|book} now')).toBe(TIP_AUTO.minMs + 3 * TIP_AUTO.msPerWord);
+    expect(tipDurationMs('word '.repeat(500))).toBe(TIP_AUTO.maxMs);
+  });
+});

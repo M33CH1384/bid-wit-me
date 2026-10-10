@@ -945,3 +945,9 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tip-tag.hand.pip { width: 14px; height: 14px; padding: 0; border-radius: 50%; border: 2px solid #1d1204; box-shadow: 0 0 8px rgba(245,197,66,.9); }
 .tip-tag.hand.pip.throw { box-shadow: 0 0 6px rgba(154,147,168,.8); }
 .tip-tag.hand.pip.match { box-shadow: 0 0 8px rgba(185,128,255,.9); }
+/* tip auto-dismiss: a thin draining bar along the bottom edge (paused = brighter, not moving) */
+.coach { overflow: visible; }
+.coach-timer { position: absolute; left: 10px; right: 10px; bottom: 3px; height: 3px; background: rgba(245,197,66,.15); border-radius: 2px; overflow: hidden; pointer-events: none; }
+.coach-timer i { display: block; height: 100%; background: var(--gold); transform-origin: left center; transition: transform .1s linear; opacity: .75; }
+.coach-timer.paused i { opacity: 1; box-shadow: 0 0 6px rgba(245,197,66,.8); }
+.coach.inline .coach-timer { position: relative; left: 0; right: 0; bottom: 0; margin-top: 4px; }

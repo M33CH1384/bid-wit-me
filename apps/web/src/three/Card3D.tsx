@@ -1,7 +1,8 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { memo, useLayoutEffect, useMemo, useRef } from 'react';
-import { type Group, MeshPhysicalMaterial, MeshStandardMaterial, Quaternion, type Texture, Vector3 } from 'three';
+import { Color, type Group, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Quaternion, type Texture, Vector3 } from 'three';
 import { cardGeometry } from './geometry';
+import { CT } from './layout';
 import type { Xform } from './layout';
 import { type Sfx, sound } from '../audio';
 import { fireCue } from '../fx';
@@ -28,6 +29,9 @@ interface Props {
 
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 const edgeMat = new MeshStandardMaterial({ color: '#efe9dc', roughness: 0.75 });
+/** full colour vs. the not-playable look: ~72% brightness with a faint cool/purple tint (reads as desaturated) */
+const FULL = new Color(1, 1, 1);
+const DIM = new Color(0.68, 0.66, 0.78);
 
 function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.25, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand }: Props) {
   const ref = useRef<Group>(null);
@@ -40,12 +44,16 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
   const frontMat = useMemo(() => (face ? mk(face) : mk(back)), [face, back, quality]); // eslint-disable-line react-hooks/exhaustive-deps
   const backMat = useMemo(() => mk(back), [back, quality]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Your turn: cards you can't play get a soft cool/purple dim (still readable); playable cards stay at full colour
+  // (no emissive tint, which made them look washed-out) and get a gold edge glow behind them. Both ease in ~150 ms.
+  const glowMat = useMemo(() => new MeshBasicMaterial({ color: '#f5c542', transparent: true, opacity: 0, depthWrite: false, toneMapped: false }), []);
+  const look = useRef({ target: new Color(1, 1, 1), glow: 0 });
   useLayoutEffect(() => {
-    const c = dim ? 0.5 : 1;
-    frontMat.color.setRGB(c, c, c);
-    frontMat.emissive.set(glow ? '#5a3a00' : '#000000');
+    look.current.target.copy(dim ? DIM : FULL);
+    look.current.glow = glow ? (quality === 'high' ? 0.85 : 0.7) : 0;
+    frontMat.emissive.set('#000000');
     invalidate();
-  }, [dim, glow, frontMat, invalidate]);
+  }, [dim, glow, frontMat, quality, invalidate]);
 
   const tw = useRef({
     init: false,
@@ -62,6 +70,11 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
   useFrame((_, dt) => {
     const g = ref.current;
     if (!g) return;
+    // colour / glow easing (~150 ms)
+    const L = look.current, k = Math.min(1, dt / 0.05);
+    const c = frontMat.color;
+    if (Math.abs(c.r - L.target.r) + Math.abs(c.g - L.target.g) + Math.abs(c.b - L.target.b) > 0.004) { c.lerp(L.target, k); invalidate(); } else c.copy(L.target);
+    if (Math.abs(glowMat.opacity - L.glow) > 0.01) { glowMat.opacity += (L.glow - glowMat.opacity) * k; invalidate(); } else glowMat.opacity = L.glow;
     const s = tw.current;
     if (!s.init) {
       const f = from ?? target;
@@ -118,6 +131,7 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
       <mesh geometry={geo.body} material={edgeMat} castShadow={castShadow} />
       <mesh geometry={geo.front} material={frontMat} />
       <mesh geometry={geo.back} material={backMat} />
+      {face && <mesh geometry={geo.front} material={glowMat} position={[0, 0, -CT - 0.003]} scale={[1.075, 1.055, 1]} visible={glowMat.opacity > 0.01 || !!glow} renderOrder={-1} />}
     </group>
   );
 }

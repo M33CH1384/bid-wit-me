@@ -43,3 +43,20 @@ export function isFirstVisit(): boolean {
     return !localStorage.getItem('spades.settings.v2') && !localStorage.getItem('bwm.game') && !localStorage.getItem('bwm.online.name');
   } catch { return false; }
 }
+
+/**
+ * Auto-dismiss: a tip closes by itself (counts as "OK") after a reading time that scales with its length.
+ * Paused while hovered / touched or while a glossary definition is open. Tune here.
+ */
+export const TIP_AUTO = {
+  /** floor, before reading time is added */
+  minMs: 15_000,
+  /** reading time per word of tip text */
+  msPerWord: 250,
+  /** never longer than this */
+  maxMs: 45_000,
+} as const;
+export function tipDurationMs(text: string): number {
+  const words = text.replace(/\{([^}|]+)(?:\|[^}]+)?\}/g, '$1').split(/\s+/).filter(Boolean).length;
+  return Math.min(TIP_AUTO.maxMs, TIP_AUTO.minMs + words * TIP_AUTO.msPerWord);
+}
