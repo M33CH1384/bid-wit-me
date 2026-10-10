@@ -42,7 +42,7 @@ await page.getByTestId('mode-cutthroat4').click();
 await page.getByRole('radio', { name: 'Standard 52' }).click();
 await page.waitForTimeout(500);
 await shot('01b-essentials-cutthroat-deck');
-if (!(await page.getByRole('switch', { name: 'Show me how to play (tips during first hand)' }).count())) throw new Error('tips toggle missing on the essentials step');
+if (!(await page.getByRole('switch', { name: 'Show me how to play (tips as you play)' }).count())) throw new Error('tips toggle missing on the essentials step');
 await page.getByTestId('more').click();
 await page.getByRole('button', { name: /House rules/ }).click();
 await shot('01c-more-options');
@@ -66,10 +66,10 @@ async function tipsTest() {
   await page.reload();
   await page.getByRole('dialog', { name: 'New to Spades?' }).waitFor();
   await page.getByTestId('tips-yes').click();
-  await page.evaluate(() => localStorage.setItem('spades.settings.v2', JSON.stringify({ mode: 'joker', speed: 'fast', quality: 'low' })));
+  await page.evaluate(() => localStorage.setItem('spades.settings.v2', JSON.stringify({ mode: 'joker', speed: 'fast', quality: 'low', firstHandBidsItself: false })));
   await page.getByTestId('play-bots').click();
   await page.getByTestId('mode-joker').click();
-  const sw = page.getByRole('switch', { name: 'Show me how to play (tips during first hand)' });
+  const sw = page.getByRole('switch', { name: 'Show me how to play (tips as you play)' });
   if ((await sw.getAttribute('aria-checked')) !== 'true') throw new Error('tips toggle should be on after "Yes"');
   await page.getByTestId('start-bots').click();
   const coach = page.getByTestId('coach');
@@ -77,6 +77,7 @@ async function tipsTest() {
   const seen = [];
   await page.waitForTimeout(400);
   await shot('08-tip-first');
+  if (!(await page.getByTestId('learning-badge').count())) throw new Error('learning mode badge missing with tips on');
   for (let i = 0; i < 300 && seen.length < 5; i++) {
     if (await coach.count()) {
       const id = await coach.getAttribute('data-tip');
@@ -147,7 +148,7 @@ if (!process.env.ONLY || process.env.ONLY === 'tips') await soundDockTest();
 
 // 1d. Blind Nil reveal: cards are dealt once, face-down; "See my cards" flips them in place (no second deal)
 async function dealOnceTest() {
-  await page.evaluate(() => { localStorage.setItem('spades.settings.v2', JSON.stringify({ mode: 'joker', speed: 'normal', blindNil: 'always', quality: 'low' })); localStorage.setItem('bwm.tips', JSON.stringify({ on: false, asked: true })); localStorage.removeItem('bwm.game'); });
+  await page.evaluate(() => { localStorage.setItem('spades.settings.v2', JSON.stringify({ mode: 'joker', speed: 'normal', blindNil: 'always', quality: 'low', firstHandBidsItself: false })); localStorage.setItem('bwm.tips', JSON.stringify({ on: false, asked: true })); localStorage.removeItem('bwm.game'); });
   await page.goto(`${base}/?autostart=1&seed=e2e-blind-reveal`);
   const see = page.getByRole('button', { name: /^See (my )?cards$/ });
   await see.first().waitFor({ timeout: 60000 });
@@ -212,7 +213,7 @@ async function reloadTest() {
   await page.waitForFunction((n) => document.querySelectorAll('[data-testid^="card-"]').length === n - 1, handN, { timeout: 10000 });
   await page.reload();
   await page.getByText(/RESUMING YOUR GAME/).waitFor({ timeout: 15000 });
-  await page.waitForFunction(() => document.querySelectorAll('[data-testid^="card-"][data-legal="true"]').length > 0 || document.querySelector('.bid-grid') || [...document.querySelectorAll('button')].some((b) => /Next hand/.test(b.textContent)), null, { timeout: 30000 });
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid^="card-"][data-legal="true"]').length > 0 || document.querySelector('.bid-grid') || document.querySelector('[data-testid="talk-ready"]'), null, { timeout: 30000 });
   const n2 = await page.locator('[data-testid^="card-"]').count();
   console.log(`✓ Refresh resume (bots' turn): bots continued, back to me with ${n2} cards`);
   // leave → confirm → start screen, save cleared
@@ -245,9 +246,13 @@ async function playGame(mode, label, { shots = false, speed = 'turbo', extra = {
   const t0 = Date.now();
   while (Date.now() - t0 < 420_000) {
     if (await page.locator('.gameover').count()) break;
-    const next = page.getByRole('button', { name: 'Next hand' });
+    const next = page.locator('[data-testid="talk-ready"]:not([disabled])');
     if (await next.count()) {
-      if (shots && !tookSummary) { await shot('04-hand-summary'); tookSummary = true; }
+      if (!tookSummary) {
+        if (shots) await shot('04-table-talk');
+        for (const id of ['talk-recap', 'talk-grid', 'react-gg', 'react-run it back', 'react-too easy', 'react-🔥', 'react-😭']) if (!(await page.getByTestId(id).count())) throw new Error(`${label}: Table Talk is missing ${id}`);
+        tookSummary = true;
+      }
       await next.click(); hands++; continue;
     }
     const see = page.getByRole('button', { name: 'See my cards' });
@@ -293,6 +298,12 @@ async function playGame(mode, label, { shots = false, speed = 'turbo', extra = {
     const m2 = await page.evaluate(() => ({ status: window.__bwmSound.musicStatus, title: window.__bwmSound.nowPlaying?.track.title, paused: window.__bwmSound.decks.map((d) => d.el.paused) }));
     if (m2.status !== 'playing' || !m2.title || m2.title === m1.title) throw new Error(`music crossfade failed: ${JSON.stringify([m1, m2])}`);
     console.log(`  ♫ music: "${m1.title}" → crossfade → "${m2.title}"`);
+  }
+  if (shots) {
+    // game over → Main menu goes straight to the splash (no confirm), the finished game is gone
+    await page.getByTestId('main-menu').click();
+    await page.getByTestId('play-bots').waitFor({ timeout: 10000 });
+    console.log('  ✓ game over → Main menu → splash');
   }
   console.log(`✓ ${label}: finished via UI — ${hands + 1} hands, ${plays} human plays — "${title}" (${((Date.now() - t0) / 1000).toFixed(0)}s)`);
 }

@@ -30,7 +30,7 @@ await p.close();
 p = await mk(390, 844);
 await p.goto(base); await p.evaluate(() => { localStorage.clear(); localStorage.setItem('bwm.tips', JSON.stringify({ on: true, asked: true })); localStorage.setItem('spades.settings.v2', JSON.stringify({ mode: 'joker', speed: 'normal', quality: 'low', tips: true })); });
 await p.goto(base); await p.getByTestId('play-bots').click(); await p.getByTestId('mode-joker').click();
-const sw = p.getByRole('switch', { name: 'Show me how to play (tips during first hand)' });
+const sw = p.getByRole('switch', { name: 'Show me how to play (tips as you play)' });
 if ((await sw.getAttribute('aria-checked')) !== 'true') await sw.click();
 await p.getByTestId('start-bots').click();
 const coach = p.getByTestId('coach'); await coach.waitFor({ timeout: 30000 }); await p.waitForTimeout(800);

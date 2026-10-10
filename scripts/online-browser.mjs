@@ -104,7 +104,7 @@ log('game started');
 
 const legal = (p) => p.locator('[data-testid^="card-"][data-legal="true"]');
 async function step(p) {
-  const next = p.getByRole('button', { name: 'Next hand' });
+  const next = p.locator('[data-testid="talk-ready"]:not([disabled])');
   if (await next.count()) { await next.click({ timeout: 2000 }).catch(() => {}); return 'next'; }
   const see = p.getByRole('button', { name: 'See my cards' });
   if (await see.count()) { await see.click({ timeout: 2000 }).catch(() => {}); return 'see'; }
@@ -133,6 +133,11 @@ await playUntil(async () => (await piles(host)) > 0 && (await trickCount(host)) 
 await host.waitForTimeout(400);
 await host.screenshot({ path: `${out}/03-table-host-video.png` });
 await guest.screenshot({ path: `${out}/04-table-guest-video.png` });
+// voice anti-cheat: host + guest are partners → limited to each other during play
+const lim = await host.evaluate(() => window.__bwmVideo?.state.limited ?? []);
+if (lim.length !== 1) throw new Error(`partners should be mic-limited during play, got ${JSON.stringify(lim)}`);
+if (!(await host.getByTestId('mic-limited').count())) throw new Error('MIC LIMITED badge missing (host mic is on)');
+log('voice: partners limited during play, MIC LIMITED badge shown');
 const bubbles = await host.locator(process.env.NO_RTC ? '.badge-layer [data-testid^="video-"]' : '.badge-layer [data-testid^="video-"][data-live="true"]').count();
 const selfView = await host.getByTestId('self-video').count();
 log(`table: host sees ${bubbles} live remote bubble(s) on seat plates, self-view ${selfView ? 'on' : 'off'}`);
@@ -152,11 +157,21 @@ await toggle(guest, 'Turn camera on', 'Turn camera off');
 if (!process.env.NO_RTC) { await liveRemote(host); await liveRemote(guest); log('video re-established after refresh'); }
 
 // finish the hand
-await playUntil(async () => (await host.getByRole('button', { name: 'Next hand' }).count()) > 0);
-await host.waitForTimeout(500);
-await host.screenshot({ path: `${out}/05-hand-results-host.png` });
-await host.getByRole('button', { name: 'Next hand' }).click();
-await guest.getByRole('button', { name: 'Next hand' }).click({ timeout: 3000 }).catch(() => {});
+await playUntil(async () => (await host.getByTestId('talk-ready').count()) > 0);
+await host.waitForTimeout(1200);
+await host.screenshot({ path: `${out}/05-table-talk-host.png` });
+const talkLim = await host.evaluate(() => window.__bwmVideo?.state.limited ?? []);
+if (talkLim.length) throw new Error('mics should all be open during Table Talk');
+const tiles = await host.locator('[data-testid="talk-grid"] .tt-tile').count();
+const liveTiles = await host.locator('[data-testid="talk-grid"] .tt-tile video').count();
+log(`Table Talk: ${tiles} tiles (${liveTiles} with video), all mics open, countdown "${await host.getByTestId('talk-count').innerText().catch(() => '?')}"`);
+await host.getByTestId('react-gg').click();
+await guest.getByText('gg').first().waitFor({ timeout: 5000 });
+await host.getByTestId('talk-ready').click();
+await host.getByTestId('talk-ready-count').filter({ hasText: '1/2' }).waitFor({ timeout: 5000 });
+await guest.getByTestId('talk-ready').click({ timeout: 3000 }).catch(() => {});
+await host.getByTestId('talk-over').waitFor({ timeout: 15000 });
+log('"Table talk over — partners muted" toast after everyone was ready');
 await playUntil(async () => (await host.locator('.bid-grid button').count()) > 0 || (await legal(host).count()) > 0 || (await guest.locator('.bid-grid button').count()) > 0, 30000);
 log('hand 2 dealt');
 
