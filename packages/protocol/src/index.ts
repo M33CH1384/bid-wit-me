@@ -33,6 +33,9 @@ export interface MediaState { cam: boolean; mic: boolean }
 
 /** Between-hands "Table Talk" countdown choices (seconds). */
 export const TALK_SECS = [15, 20, 30, 45] as const;
+/** consecutive turn timeouts before a player is replaced by a bot (0 = never) */
+export const AFK_LIMITS = [0, 2, 3, 5] as const;
+export const DEFAULT_AFK_LIMIT = 3;
 export const DEFAULT_TALK_SEC = 20;
 
 /**
@@ -61,7 +64,7 @@ export type ClientMsg =
   | { t: 'stand' }
   | { t: 'addBot'; seat: number }
   | { t: 'removeBot'; seat: number }
-  | { t: 'config'; rules: TableRules; botLevel?: BotLevel; talkSec?: number }
+  | { t: 'config'; rules: TableRules; botLevel?: BotLevel; talkSec?: number; afkLimit?: number }
   /** host only: what plays for the whole table (the server stamps `startAt` for beats) */
   | { t: 'music'; music: HostMusic }
   | { t: 'start' }
@@ -77,6 +80,8 @@ export type ClientMsg =
   | { t: 'media'; media: MediaState }
   /** "Learning mode" (tips on): this player's own turn timers run 50% longer */
   | { t: 'learning'; on: boolean }
+  /** host: kick the player in `seat` now (a bot takes over, no rejoin this game). Anyone else: vote to kick (toggles). */
+  | { t: 'kick'; seat: number }
   | { t: 'rtc'; to: string; data: unknown }
   | { t: 'leave' };
 
@@ -114,6 +119,10 @@ export interface RoomInfo {
   talkSec: number;
   /** host music (absent = off) */
   music?: HostMusic;
+  /** consecutive timeouts before a bot replaces a player (0 = off) */
+  afkLimit?: number;
+  /** open vote-kicks: target player, who voted, votes needed */
+  votes?: { target: string; by: string[]; need: number }[];
 }
 
 export interface ChatLine { id: number; from: string | null; name: string; text: string; at: number; system?: boolean }
@@ -165,7 +174,7 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
     case 'hello':
       if (!isStr(m.name, 100)) return null;
       return { t: 'hello', name: m.name, token: isStr(m.token, 100) ? m.token : undefined, v: isInt(m.v) ? m.v : undefined };
-    case 'sit': case 'addBot': case 'removeBot':
+    case 'sit': case 'addBot': case 'removeBot': case 'kick':
       return isInt(m.seat) && m.seat >= 0 && m.seat < 4 ? { t: m.t, seat: m.seat } : null;
     case 'stand': case 'start': case 'next': case 'rematch': case 'leave':
       return { t: m.t };
@@ -173,6 +182,7 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       if (!isObj(m.rules)) return null;
       const out: Extract<ClientMsg, { t: 'config' }> = { t: 'config', rules: m.rules as unknown as TableRules, botLevel: m.botLevel === 'easy' || m.botLevel === 'normal' ? m.botLevel : undefined };
       if (isInt(m.talkSec) && (TALK_SECS as readonly number[]).includes(m.talkSec)) out.talkSec = m.talkSec;
+      if (isInt(m.afkLimit) && (AFK_LIMITS as readonly number[]).includes(m.afkLimit)) out.afkLimit = m.afkLimit;
       return out;
     }
     case 'music': {

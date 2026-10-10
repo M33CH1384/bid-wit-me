@@ -147,6 +147,15 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
   const game = cs.room?.game ?? 0;
   useEffect(() => { setLobbyOpen(false); }, [game]);
 
+  if (cs.status === 'closed' && cs.error?.code === 'KICKED') {
+    return (
+      <div className="setup online-entry" data-testid="kicked">
+        <h2>Removed from table {code}</h2>
+        <p className="muted">{cs.error.message}. You can join again when the next game starts.</p>
+        <button type="button" className="btn primary" onClick={() => navigate('/', true, { wiz: 'home', d: 0 })}>Main menu</button>
+      </div>
+    );
+  }
   if (!cs.room) {
     return (
       <div className="setup online-entry">

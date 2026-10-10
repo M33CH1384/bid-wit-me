@@ -13,7 +13,7 @@ import {
 import { chooseBotAction } from '@spades/bots';
 import {
   type BotLevel, type ChatLine, type ClientMsg, type HostMusic, type MediaState, type RoomInfo, type RoomPhase, type SeatInfo, type ServerMsg,
-  LIMITS, PROTOCOL_VERSION, parseClientMsg,
+  DEFAULT_AFK_LIMIT, LIMITS, PROTOCOL_VERSION, parseClientMsg,
 } from '@spades/protocol';
 import { blockLinks, cleanName, cleanText, maskProfanity } from './filter';
 
@@ -32,6 +32,8 @@ export interface Member {
   joinedAt: number;
   /** tips on: own turn timers ×1.5 */
   learning?: boolean;
+  /** consecutive turns this player ran out of time on (reset by any move of their own) */
+  timeouts?: number;
   /** ids of this player's most recently applied actions (idempotency for retries after a reconnect) */
   acts?: string[];
 }
@@ -62,6 +64,12 @@ export interface RoomData {
   /** host-set Table Talk countdown (s); unset = timing.handOverMs */
   talkSec?: number;
   music?: HostMusic;
+  /** consecutive timeouts before a bot replaces a player; 0 = off; unset = DEFAULT_AFK_LIMIT */
+  afkLimit?: number;
+  /** tokens of players kicked during the current game (can't rejoin until the next game starts) */
+  kicked?: string[];
+  /** open vote-kicks: target player id → voter ids */
+  votes?: Record<string, string[]>;
   gamesPlayed: number;
 }
 
@@ -186,6 +194,11 @@ export class Room {
   private hello(connId: string, msg: Extract<ClientMsg, { t: 'hello' }>): void {
     const d = this.data;
     const name = cleanName(msg.name, LIMITS.nameMax) || 'Player';
+    if (msg.token && d.kicked?.includes(msg.token)) {
+      this.err(connId, 'KICKED', 'You were removed from this table for this game');
+      this.io.close?.(connId, 4003, 'kicked');
+      return;
+    }
     let pid = msg.token ? Object.keys(d.members).find((id) => d.members[id]!.token === msg.token) : undefined;
     if (pid) {
       // reconnect: same player, same seat; drop any older socket of theirs
@@ -228,6 +241,7 @@ export class Room {
         if (me.seat !== null) d.seats[me.seat] = { kind: 'empty' };
         d.seats[msg.seat] = { kind: 'human', playerId: pid };
         me.seat = msg.seat;
+        me.timeouts = 0;
         if (d.phase === 'playing') this.system(`${me.name} took over seat ${msg.seat + 1}`);
         break;
       }
@@ -270,6 +284,7 @@ export class Room {
         }
         d.rules = rules;
         if (msg.talkSec) d.talkSec = msg.talkSec;
+        if (msg.afkLimit !== undefined) d.afkLimit = msg.afkLimit;
         if (msg.botLevel) {
           d.botLevel = msg.botLevel;
           d.seats.forEach((s) => { if (s.kind === 'bot') s.level = msg.botLevel!; });
@@ -326,6 +341,22 @@ export class Room {
         me.media = msg.media;
         break;
       }
+      case 'kick': {
+        const slot = d.seats[msg.seat];
+        if (!slot || slot.kind !== 'human') throw new RoomError('BAD_SEAT', 'No player there');
+        const target = slot.playerId;
+        if (target === pid) throw new RoomError('BAD_SEAT', "You can't kick yourself");
+        if (isHost) { this.kick(target, 'host'); break; }
+        if (me.seat === null) throw new RoomError('NOT_SEATED', 'Only players at the table can vote');
+        const votes = (d.votes ??= {});
+        const by = votes[target] ?? [];
+        // a second press takes the vote back
+        votes[target] = by.includes(pid) ? by.filter((x) => x !== pid) : [...by, pid];
+        if (!votes[target]!.length) delete votes[target];
+        else if (!by.includes(pid)) this.system(`${me.name} voted to kick ${d.members[target]!.name} (${votes[target]!.length}/${this.votesNeeded(target)})`);
+        this.checkVotes();
+        break;
+      }
       case 'learning': {
         if (me.learning === msg.on) return;
         me.learning = msg.on;
@@ -380,6 +411,7 @@ export class Room {
         : a.type === 'exchange' ? { type: 'exchange', seat: me.seat, cards: a.cards }
         : { type: 'play', seat: me.seat, card: a.card };
       this.apply(action);
+      me.timeouts = 0;
     } catch (e) {
       if (!id || !(e instanceof RuleError || e instanceof RoomError)) throw e;
       this.io.send(connId, { t: 'ack', id, ok: false, code: e.code, message: e.message });
@@ -415,6 +447,50 @@ export class Room {
     if (d.hostId === pid) this.passHost();
   }
 
+  /** Seated humans other than `target` who are online: a majority of them can vote `target` off. */
+  private voters(target: string): string[] {
+    return this.data.seats.flatMap((s) => (s.kind === 'human' && s.playerId !== target && this.isConnected(s.playerId) ? [s.playerId] : []));
+  }
+
+  private votesNeeded(target: string): number {
+    return Math.floor(this.voters(target).length / 2) + 1;
+  }
+
+  /** Drops stale votes (voter left / went offline, target gone) and carries out any vote that reached a majority. */
+  private checkVotes(): void {
+    const d = this.data;
+    if (!d.votes) return;
+    for (const [target, by] of Object.entries(d.votes)) {
+      const seated = d.seats.some((s) => s.kind === 'human' && s.playerId === target);
+      const eligible = new Set(this.voters(target));
+      const live = by.filter((x) => eligible.has(x));
+      if (!seated || !live.length) { delete d.votes[target]; continue; }
+      d.votes[target] = live;
+      if (live.length >= this.votesNeeded(target)) this.kick(target, 'vote');
+    }
+  }
+
+  /** Removes a player: a bot takes their seat mid-game, and their token can't rejoin until the next game. */
+  private kick(target: string, how: 'host' | 'vote'): void {
+    const d = this.data;
+    const m = d.members[target];
+    if (!m) return;
+    if (m.seat !== null) d.seats[m.seat] = d.phase === 'playing' ? { kind: 'bot', name: `${m.name} (bot)`, level: d.botLevel } : { kind: 'empty' };
+    delete d.members[target];
+    if (d.votes) delete d.votes[target];
+    d.ready = d.ready.filter((x) => x !== target);
+    d.kicked = [...(d.kicked ?? []), m.token];
+    if (d.music?.mode === 'stream' && d.music.by === target) d.music = { mode: 'off' };
+    this.system(how === 'host' ? `${m.name} was removed by the host${d.phase === 'playing' ? ' — a bot took their seat' : ''}` : `${m.name} was voted off the table${d.phase === 'playing' ? ' — a bot took their seat' : ''}`);
+    for (const [cid, p] of this.conns) {
+      if (p !== target) continue;
+      this.err(cid, 'KICKED', how === 'host' ? 'The host removed you from this table' : 'The table voted to remove you');
+      this.conns.delete(cid);
+      this.io.close?.(cid, 4003, 'kicked');
+    }
+    if (d.hostId === target) this.passHost();
+  }
+
   private passHost(): void {
     const d = this.data;
     const ids = Object.keys(d.members).sort((a, b) => d.members[a]!.joinedAt - d.members[b]!.joinedAt);
@@ -435,6 +511,9 @@ export class Room {
     d.turnKey = null;
     d.deadline = null;
     d.gamesPlayed++;
+    d.kicked = []; // a new game: kicked players may come back
+    d.votes = {};
+    for (const m of Object.values(d.members)) m.timeouts = 0;
     this.system(`Game ${d.gamesPlayed} started`);
   }
 
@@ -481,6 +560,7 @@ export class Room {
 
   /** Recompute timers after any change, run due bots/auto-plays, broadcast, persist. */
   private after(): void {
+    this.checkVotes();
     this.drive();
     this.broadcast();
     this.io.persist();
@@ -570,6 +650,7 @@ export class Room {
       if (now >= d.deadline) {
         this.autoAct(turn.seat, 'normal');
         this.system(`${this.seatName(turn.seat)} ran out of time`);
+        this.countTimeout(slot.playerId, turn.seat);
         changed = true;
         continue;
       }
@@ -577,6 +658,21 @@ export class Room {
       return changed;
     }
     return changed;
+  }
+
+  /** AFK: after `afkLimit` timeouts in a row a bot takes the seat; the player stays at the table and can sit again. */
+  private countTimeout(pid: string, seat: number): void {
+    const d = this.data;
+    const m = d.members[pid];
+    if (!m) return;
+    m.timeouts = (m.timeouts ?? 0) + 1;
+    const limit = d.afkLimit ?? DEFAULT_AFK_LIMIT;
+    if (!limit || m.timeouts < limit || d.seats[seat]?.kind !== 'human') return;
+    d.seats[seat] = { kind: 'bot', name: `${m.name} (bot)`, level: d.botLevel };
+    m.seat = null;
+    m.timeouts = 0;
+    if (d.votes) delete d.votes[pid];
+    this.system(`${m.name} was AFK and replaced by a bot`);
   }
 
   private clearTimers(): void {
@@ -627,7 +723,8 @@ export class Room {
       code: d.code, hostId: d.hostId ?? '', phase: d.phase, rules: d.rules, botLevel: d.botLevel, seats,
       members: Object.entries(d.members).map(([playerId, m]) => ({ playerId, name: m.name, connected: this.isConnected(playerId), seat: m.seat })),
       deadline: d.deadline, ready: [...d.ready], rev: d.rev, seq: d.seq ?? 0, game: d.gamesPlayed, now: this.io.now(),
-      talkSec: d.talkSec ?? Math.round(this.timing.handOverMs / 1000), ...(d.music && d.music.mode !== 'off' ? { music: d.music } : {}),
+      talkSec: d.talkSec ?? Math.round(this.timing.handOverMs / 1000), afkLimit: d.afkLimit ?? DEFAULT_AFK_LIMIT,
+      ...(d.votes && Object.keys(d.votes).length ? { votes: Object.entries(d.votes).map(([target, by]) => ({ target, by: [...by], need: this.votesNeeded(target) })) } : {}), ...(d.music && d.music.mode !== 'off' ? { music: d.music } : {}),
     };
   }
 

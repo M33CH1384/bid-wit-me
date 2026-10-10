@@ -139,3 +139,14 @@
   .lobby-settings { grid-area: settings; }
   .lobby-chat.wide { grid-area: chat; }
 }
+/* no cam/mic (or offline): a transparent hit area over the plate's own avatar initial opens the player menu */
+.vb-initial { position: absolute; left: -2px; top: 50%; transform: translateY(-50%); width: 44px; height: 44px; border-radius: 50%; border: 0; padding: 0; background: transparent; z-index: 3; pointer-events: auto; cursor: pointer; }
+.vb-initial > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.vb-initial.offline::after { content: ''; position: absolute; right: 0; bottom: 0; width: 12px; height: 12px; border-radius: 50%; background: #6b6478; box-shadow: 0 0 0 2px #120a1c; }
+.plate:has(.vb-initial.offline) .plate-avatar { filter: grayscale(1) brightness(.75); }
+.vb-menu .danger { color: #ff8a8a; }
+.vb-menu .voted { color: var(--gold); }
+.vb-menu small { opacity: .75; font-size: 11px; }
+.vb-confirm { padding: 6px 8px; max-width: 220px; white-space: normal; font-size: 12px; line-height: 1.3; }
+.vb-confirm-row { display: flex; gap: 6px; margin-top: 6px; }
+.vb-confirm-row button { flex: 1; }

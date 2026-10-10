@@ -513,3 +513,87 @@ describe('learning mode', () => {
     expect(slow).toBeGreaterThanOrEqual(bidMs * 1.5);
   });
 });
+
+describe('AFK + kicking', () => {
+  const soloGame = (afkLimit?: number) => {
+    const env = new FakeEnv(undefined, FAST);
+    const a = env.join('a', 'Slow');
+    env.send('a', { t: 'sit', seat: 0 });
+    env.send('a', { t: 'config', rules: makeRules('joker', { turnTimerSec: { bid: 5, play: 5 }, firstHandBidsItself: false }), ...(afkLimit !== undefined ? { afkLimit } : {}) });
+    env.send('a', { t: 'start' });
+    return { env, a };
+  };
+  const waitMyTurn = (env: FakeEnv) => { for (let i = 0; i < 200 && !(env.room.data.seats[0]!.kind === 'human' && env.room.data.game!.turn === 0 && env.room.data.game!.phase !== 'handOver'); i++) env.advance(50); };
+
+  it('counts consecutive timeouts; any own move resets the counter', () => {
+    const { env, a } = soloGame(5);
+    waitMyTurn(env);
+    env.advance(5200);
+    expect(env.room.data.members[a.pid]!.timeouts).toBe(1);
+    waitMyTurn(env);
+    env.advance(5200);
+    expect(env.room.data.members[a.pid]!.timeouts).toBe(2);
+    waitMyTurn(env);
+    expect(playTurn(env, ['a'])).toBe(true);
+    expect(env.room.data.members[a.pid]!.timeouts).toBe(0);
+  });
+
+  it('after N timeouts in a row (default 3) a bot replaces the player; they can sit back down', () => {
+    const { env, a } = soloGame();
+    expect(env.last('a', 'state')!.room.afkLimit).toBe(3);
+    for (let k = 0; k < 3; k++) { waitMyTurn(env); env.advance(5200); }
+    const d = env.room.data;
+    expect(d.seats[0]).toMatchObject({ kind: 'bot', name: 'Slow (bot)' });
+    expect(d.members[a.pid]!.seat).toBeNull();
+    expect(d.chat.some((l) => l.text === 'Slow was AFK and replaced by a bot')).toBe(true);
+    // still at the table: the seat (now a bot) can be taken back
+    env.send('a', { t: 'sit', seat: 0 });
+    expect(env.errors('a')).toHaveLength(0);
+    expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid });
+  });
+
+  it('the host can set the AFK limit (2) or turn it off', () => {
+    const two = soloGame(2);
+    for (let k = 0; k < 2; k++) { waitMyTurn(two.env); two.env.advance(5200); }
+    expect(two.env.room.data.seats[0]!.kind).toBe('bot');
+    const off = soloGame(0);
+    for (let k = 0; k < 6; k++) { waitMyTurn(off.env); off.env.advance(5200); }
+    expect(off.env.room.data.seats[0]!.kind).toBe('human');
+    expect(off.env.room.data.members[off.a.pid]!.timeouts).toBeGreaterThanOrEqual(6);
+  });
+
+  it('host kick: a bot takes the seat, the player is disconnected and cannot rejoin this game', () => {
+    const { env, ps } = fourHumans();
+    env.send('a', { t: 'start' });
+    env.send('a', { t: 'kick', seat: 1 });
+    const d = env.room.data;
+    expect(d.seats[1]).toMatchObject({ kind: 'bot', name: 'Ray (bot)' });
+    expect(d.members[ps[1]!.pid]).toBeUndefined();
+    expect(env.closed).toContain('b');
+    expect(env.errors('b').some((e) => e.code === 'KICKED')).toBe(true);
+    env.room.open('b2');
+    env.send('b2', { t: 'hello', name: 'Ray', token: ps[1]!.token });
+    expect(env.last('b2', 'welcome')).toBeUndefined();
+    expect(env.errors('b2')[0]!.code).toBe('KICKED');
+    // a non-host "kick" is only a vote; nobody can kick themselves
+    env.send('c', { t: 'kick', seat: 2 });
+    expect(env.errors('c').at(-1)!.code).toBe('BAD_SEAT');
+  });
+
+  it('vote kick needs a majority of the other humans; a second press takes the vote back', () => {
+    const { env, ps } = fourHumans();
+    env.send('a', { t: 'start' });
+    env.send('b', { t: 'kick', seat: 3 }); // 1 of 3 others → need 2
+    expect(env.last('b', 'state')!.room.votes).toEqual([{ target: ps[3]!.pid, by: [ps[1]!.pid], need: 2 }]);
+    env.send('b', { t: 'kick', seat: 3 }); // retract
+    expect(env.last('b', 'state')!.room.votes).toBeUndefined();
+    env.send('b', { t: 'kick', seat: 3 });
+    expect(env.room.data.seats[3]!.kind).toBe('human');
+    env.send('c', { t: 'kick', seat: 3 });
+    expect(env.room.data.seats[3]).toMatchObject({ kind: 'bot', name: 'Jo (bot)' });
+    expect(env.closed).toContain('d');
+    expect(env.room.data.chat.some((l) => l.text.startsWith('Jo was voted off the table'))).toBe(true);
+    // the next game lets them back
+    expect(env.room.data.kicked).toHaveLength(1);
+  });
+});

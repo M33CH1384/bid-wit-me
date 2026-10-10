@@ -23,8 +23,26 @@ function hasLive(stream: MediaStream | undefined, kind: 'video' | 'audio'): bool
  * Video bubble for a seat's name plate. Self: small mirrored preview. Others: their camera when it's on;
  * tap for mute / hide (local only).
  */
-export function SeatMedia({ seat, isMe, mesh, vs, limited = false }: { seat: SeatInfo | undefined; isMe: boolean; mesh: VideoMesh | null; vs: VideoState; limited?: boolean }) {
-  const [menu, setMenu] = useState(false);
+/** Kick controls for another player's bubble menu: the host kicks (after a confirm); anyone else votes. */
+export interface KickInfo { host: boolean; votes: number; need: number; voted: boolean; onKick: () => void }
+
+/** Only one bubble menu is open at a time: opening one closes the others. */
+const MENU_EVT = 'bwm-vbmenu';
+
+export function SeatMedia({ seat, isMe, mesh, vs, limited = false, kick }: { seat: SeatInfo | undefined; isMe: boolean; mesh: VideoMesh | null; vs: VideoState; limited?: boolean; kick?: KickInfo }) {
+  const [menu, setMenuState] = useState(false);
+  const [confirm, setConfirm] = useState(false);
+  const myId = seat?.kind === 'human' ? seat.playerId : '';
+  useEffect(() => {
+    const on = (e: Event) => { if ((e as CustomEvent<string>).detail !== myId) { setMenuState(false); setConfirm(false); } };
+    window.addEventListener(MENU_EVT, on);
+    return () => window.removeEventListener(MENU_EVT, on);
+  }, [myId]);
+  const setMenu = (v: boolean) => {
+    if (v) window.dispatchEvent(new CustomEvent(MENU_EVT, { detail: myId }));
+    setMenuState(v);
+    if (!v) setConfirm(false);
+  };
   if (!seat || seat.kind !== 'human' || !mesh) return null;
   if (isMe) {
     if (!vs.cam || !vs.local) return null;
@@ -35,28 +53,53 @@ export function SeatMedia({ seat, isMe, mesh, vs, limited = false }: { seat: Sea
     );
   }
   const id = seat.playerId;
-  // offline: no "…" bubble — the plate's avatar initial shows with the OFFLINE badge
-  if (!seat.connected) return null;
+  const offline = !seat.connected;
   const stream = vs.remote[id];
-  const camOn = seat.media.cam;
+  const camOn = seat.media.cam && !offline;
+  const micOn = seat.media.mic && !offline;
   const hidden = vs.hidden.includes(id);
   const muted = vs.muted.includes(id) || vs.needsTap || limited;
-  if (!camOn && !seat.media.mic) return null;
+  const hasMedia = camOn || micOn;
+  // no camera/mic (or offline): no "…" bubble — just their initial (with the OFFLINE badge on the plate), still
+  // clickable when there's a kick option
+  if (!hasMedia && !kick) return null;
   const live = hasLive(stream, 'video');
+  const kickItems = kick && (confirm ? (
+    <div className="vb-confirm" data-testid={`kick-confirm-${id}`}>
+      <span>Kick {seat.name}? A bot takes their seat and they can't rejoin this game.</span>
+      <div className="vb-confirm-row">
+        <button type="button" className="danger" data-testid={`kick-yes-${id}`} onClick={() => { kick.onKick(); setMenu(false); }}>Kick</button>
+        <button type="button" onClick={() => setConfirm(false)}>Cancel</button>
+      </div>
+    </div>
+  ) : kick.host ? (
+    <button type="button" className="danger" data-testid={`kick-${id}`} onClick={() => setConfirm(true)}>Kick…</button>
+  ) : (
+    <button type="button" className={kick.voted ? 'voted' : 'danger'} data-testid={`vote-kick-${id}`} onClick={() => { kick.onKick(); setMenu(false); }}>
+      {kick.voted ? 'Take back kick vote' : 'Vote to kick'}{kick.votes > 0 && <small> {kick.votes}/{kick.need}</small>}
+    </button>
+  ));
   return (
     <>
-    <div className={`vbubble ${camOn && !hidden ? '' : 'audio-only'}`} data-testid={`video-${id}`} data-live={live ? 'true' : 'false'}>
-      {/* the clip layer keeps video circular everywhere (Safari ignores overflow+radius on <video> without its own layer) */}
-      <div className="vb-clip">{stream && <StreamVideo stream={stream} muted={muted} />}</div>
-      {(!camOn || hidden) && <span className="vb-icon">{hidden ? '🙈' : '🎙'}</span>}
-      {camOn && !hidden && !live && <span className="vb-icon wait">…</span>}
-      <button type="button" className="vb-hit" aria-label={`Video options for ${seat.name}`} onClick={(e) => { e.stopPropagation(); setMenu(!menu); }} />
-      {seat.media.mic && limited ? <span className="vb-badge limited" title="Partners can't hear each other during bids and play">🤐</span>
-        : seat.media.mic && muted && <span className="vb-badge" title="Muted on your side">🔇</span>}
-    </div>
-    {menu && <VbMenu onClose={() => setMenu(false)} label={`Video options for ${seat.name}`}>
-      <button type="button" onClick={() => { mesh.toggleMuted(id); setMenu(false); }}>{vs.muted.includes(id) ? 'Unmute' : 'Mute'}</button>
+    {hasMedia ? (
+      <div className={`vbubble ${camOn && !hidden ? '' : 'audio-only'}`} data-testid={`video-${id}`} data-live={live ? 'true' : 'false'}>
+        {/* the clip layer keeps video circular everywhere (Safari ignores overflow+radius on <video> without its own layer) */}
+        <div className="vb-clip">{stream && <StreamVideo stream={stream} muted={muted} />}</div>
+        {(!camOn || hidden) && <span className="vb-icon">{hidden ? '🙈' : '🎙'}</span>}
+        {camOn && !hidden && !live && <span className="vb-icon wait">…</span>}
+        <button type="button" className="vb-hit" aria-label={`Options for ${seat.name}`} aria-expanded={menu} onClick={(e) => { e.stopPropagation(); setMenu(!menu); }} />
+        {micOn && limited ? <span className="vb-badge limited" title="Partners can't hear each other during bids and play">🤐</span>
+          : micOn && muted && <span className="vb-badge" title="Muted on your side">🔇</span>}
+      </div>
+    ) : (
+      <button type="button" className={`vb-initial ${offline ? 'offline' : ''}`} data-testid={`initial-${id}`} aria-label={`Options for ${seat.name}`} aria-expanded={menu} onClick={(e) => { e.stopPropagation(); setMenu(!menu); }}>
+        <span>{seat.name.trim().charAt(0).toUpperCase() || '?'}</span>
+      </button>
+    )}
+    {menu && <VbMenu onClose={() => setMenu(false)} label={`Options for ${seat.name}`}>
+      {hasMedia && <button type="button" onClick={() => { mesh.toggleMuted(id); setMenu(false); }}>{vs.muted.includes(id) ? 'Unmute' : 'Mute'}</button>}
       {camOn && <button type="button" onClick={() => { mesh.toggleHidden(id); setMenu(false); }}>{hidden ? 'Show video' : 'Hide video'}</button>}
+      {kickItems}
     </VbMenu>}
     </>
   );
@@ -108,7 +151,7 @@ export function TalkTile({ seat, isMe, mesh, vs }: { seat: SeatInfo | undefined;
 function VbMenu({ children, onClose, label }: { children: ReactNode; onClose: () => void; label: string }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const down = (e: PointerEvent) => { if (ref.current && !ref.current.contains(e.target as Node) && !(e.target as Element).closest?.('.vb-hit')) onClose(); };
+    const down = (e: PointerEvent) => { if (ref.current && !ref.current.contains(e.target as Node) && !(e.target as Element).closest?.('.vb-hit, .vb-initial')) onClose(); };
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('pointerdown', down, true);
     window.addEventListener('keydown', key);

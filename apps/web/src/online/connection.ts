@@ -119,7 +119,7 @@ export class TableConnection {
     ws.onclose = (ev) => {
       if (this.ws !== ws) return;
       if (this.pingTimer) { clearInterval(this.pingTimer); this.pingTimer = null; }
-      if (this.stopped || ev.code === 4000) { this.set({ status: 'closed' }); return; }
+      if (this.stopped || ev.code === 4000 || ev.code === 4003) { this.set({ status: 'closed' }); return; }
       this.set({ status: 'reconnecting' });
       const delay = Math.min(10_000, 400 * 2 ** this.retry++) * (0.75 + Math.random() * 0.5);
       this.retryTimer = window.setTimeout(() => this.open(), delay);

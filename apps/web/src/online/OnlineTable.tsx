@@ -3,7 +3,7 @@ import { sideOf } from '@spades/rules';
 import Table from '../Table';
 import { type Settings, loadSettings, saveSettings } from '../settings';
 import type { ConnState, TableConnection } from './connection';
-import { MediaBar, SeatMedia, TalkTile } from './Media';
+import { type KickInfo, MediaBar, SeatMedia, TalkTile } from './Media';
 import { MusicLinkCard } from './HostMusic';
 import { localNames, useCountdown, useOnlineChat, useOnlineSource, useVideo } from './useOnline';
 import type { VideoMesh } from './video';
@@ -49,13 +49,20 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
   const r = room.rules;
   const turnLocal = source.st.turn;
 
+  // host: Kick (with confirm); seated non-hosts: Vote to kick (majority of the other humans)
+  const kickFor = (real: number): KickInfo | undefined => {
+    const seat = room.seats[real];
+    if (!seat || seat.kind !== 'human' || real === cs.seat || cs.seat === null) return undefined;
+    const v = room.votes?.find((x) => x.target === seat.playerId);
+    return { host: room.hostId === cs.you, votes: v?.by.length ?? 0, need: v?.need ?? 0, voted: !!cs.you && !!v?.by.includes(cs.you), onKick: () => conn.send({ t: 'kick', seat: real }) };
+  };
   const seatExtra = (local: number) => {
     const real = rot.R(local);
     const seat = room.seats[real];
     const offline = seat?.kind === 'human' && !seat.connected;
     return (
       <>
-        <SeatMedia seat={seat} isMe={local === 0} mesh={mesh} vs={vs} limited={!!seat && seat.kind === 'human' && vs.limited.includes(seat.playerId)} />
+        <SeatMedia seat={seat} isMe={local === 0} mesh={mesh} vs={vs} limited={!!seat && seat.kind === 'human' && vs.limited.includes(seat.playerId)} kick={kickFor(real)} />
         {offline && <span className="chip bad seat-offline">OFFLINE</span>}
         {turnLocal === local && secs !== null && secs <= 15 && !source.pause && <span className={`turn-clock ${secs <= 5 ? 'hot' : ''}`} data-testid={`clock-${local}`}>{secs}s</span>}
       </>

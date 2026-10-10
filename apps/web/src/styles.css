@@ -864,3 +864,8 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 /* chat: player lines stay prominent, system lines are small + grey */
 .chat-line { font-size: 14.5px; }
 .chat-line.system, .tt-chat .chat-line.system { font-size: 11px; color: rgba(200,190,220,.6); font-style: normal; border-left-width: 1px; padding-left: 5px; line-height: 1.25; }
+/* the turn badge stays readable next to a video bubble, and the YOU plate's bubble never pokes off the left edge */
+.plate-turn { z-index: 5; }
+.plate:has(.vbubble) .plate-turn { left: 58px; }
+.plate.me-plate:has(> .vbubble.self) { margin-left: 22px; }
+@media (max-width: 340px) { .plate:has(.vbubble) .plate-turn { left: 36px; } .plate.me-plate:has(> .vbubble.self) { margin-left: 8px; } }

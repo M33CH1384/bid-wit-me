@@ -1,4 +1,5 @@
 import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { cardLabel, trumpOrder } from '@spades/rules';
 import type { RoomInfo, SeatInfo } from '@spades/protocol';
 import { type ModeKey, type Settings, MODES, modeTitle, settingsToRules } from '../settings';
@@ -37,10 +38,10 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
   const spots = n === 4 ? ['bottom', 'left', 'top', 'right'] : ['bottom', 'left', 'right'];
   const spotOf = (seat: number) => spots[(seat - me + n) % n]!;
 
-  const config = (s: Settings, timer: TimerKey = timerKey(room), botLevel = room.botLevel, talkSec = room.talkSec) => {
+  const config = (s: Settings, timer: TimerKey = timerKey(room), botLevel = room.botLevel, talkSec = room.talkSec, afkLimit = room.afkLimit ?? 3) => {
     onSettings(s);
     const rules = { ...settingsToRules(s), turnTimerSec: { ...TIMERS[timer] } };
-    conn.send({ t: 'config', rules, botLevel, talkSec });
+    conn.send({ t: 'config', rules, botLevel, talkSec, afkLimit });
   };
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => config({ ...settings, [k]: v });
 
@@ -143,6 +144,10 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
             <select data-testid="talk-sec" value={String(room.talkSec ?? 20)} onChange={(e) => config(settings, timerKey(room), room.botLevel, Number(e.target.value))}>
               {[15, 20, 30, 45].map((x) => <option key={x} value={x}>{x}s{x === 20 ? ' (default)' : ''}</option>)}
             </select></span></label>
+          <label className="row"><span className="row-label">AFK kick<small>timeouts in a row before a bot takes over</small></span><span className="row-control">
+            <select data-testid="afk-limit" value={String(room.afkLimit ?? 3)} onChange={(e) => config(settings, timerKey(room), room.botLevel, room.talkSec, Number(e.target.value))}>
+              {[2, 3, 5, 0].map((x) => <option key={x} value={x}>{x === 0 ? 'Off' : `${x} in a row${x === 3 ? ' (default)' : ''}`}</option>)}
+            </select></span></label>
           <label className="row"><span className="row-label">Blind Nil</span><span className="row-control">
             <select value={settings.blindNil} onChange={(e) => set('blindNil', e.target.value as Settings['blindNil'])}>
               <option value="behind100">When behind by 100+</option><option value="always">Always</option><option value="off">Off</option>
@@ -158,6 +163,7 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
           <span>Target {r.targetScore} · timer {r.turnTimerSec.bid}s/{r.turnTimerSec.play}s</span>
           {r.firstHandBidsItself && <span>First hand: books bid themselves</span>}
           <span>Table Talk {room.talkSec ?? 20}s between hands · partners muted during bids &amp; play</span>
+          <span>{room.afkLimit === 0 ? 'AFK kick off' : `A bot takes over after ${room.afkLimit ?? 3} timeouts in a row`}</span>
         </div>
       )}
 
@@ -243,7 +249,7 @@ function LobbyChat({ cs, onSend }: { cs: ConnState; onSend: (t: string) => void 
     onSend(text.trim().slice(0, 200));
     setText('');
   };
-  return (
+  const ui = (
     <>
     {!wide && (
       <button type="button" className={`lobby-chat-tab ${open ? 'open' : ''}`} data-testid="lobby-chat-tab" aria-expanded={open} onClick={() => setOpen(!open)}>
@@ -266,6 +272,9 @@ function LobbyChat({ cs, onSend }: { cs: ConnState; onSend: (t: string) => void 
     </section>
     </>
   );
+  // phones: the tab + drawer are fixed to the viewport — portal them out of the (animated, scrolling) lobby so no
+  // transformed ancestor can re-anchor or cover them
+  return wide ? ui : createPortal(<div className="lobby-chat-portal">{ui}</div>, document.body);
 }
 
 function useWide(): boolean {
