@@ -170,8 +170,9 @@ const tiles = await host.locator('[data-testid="talk-grid"] .tt-tile').count();
 const liveTiles = await host.locator('[data-testid="talk-grid"] .tt-tile video').count();
 log(`Table Talk: ${tiles} tiles (${liveTiles} with video), all mics open, countdown "${await host.getByTestId('talk-count').innerText().catch(() => '?')}"`);
 await host.getByTestId('react-gg').click();
-await guest.getByText('gg').first().waitFor({ timeout: 5000 });
-await host.getByTestId('talk-ready').click();
+await guest.locator('.tt-chat').getByText('gg').first().waitFor({ timeout: 8000 });
+// (step() may already have pressed Ready for the host while playing into Table Talk)
+if (await host.getByTestId('talk-ready').isEnabled()) await host.getByTestId('talk-ready').click();
 await host.getByTestId('talk-ready-count').filter({ hasText: '1/2' }).waitFor({ timeout: 5000 });
 await guest.getByTestId('talk-ready').click({ timeout: 3000 }).catch(() => {});
 await host.getByTestId('talk-over').waitFor({ timeout: 15000 });

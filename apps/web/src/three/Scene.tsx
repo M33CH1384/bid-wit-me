@@ -197,7 +197,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   const wide = !short && size.width >= 1024 && aspect >= 1.3;
   const fanOpts = short
     ? { short, reserveFrac: (Math.max(safe.l, safe.r) + 186) / size.width, bottomFrac: safe.b / size.height, heightFrac: 0.2 }
-    : wide ? { reserveFrac: 200 / size.width, bottomFrac: 0.012, heightFrac: 0.205 }
+    : wide ? { reserveFrac: (size.width < 1400 ? 250 : 205) / size.width, bottomFrac: 0.012, heightFrac: 0.205 }
     : {};
   const trickScale = short ? 1.85 : undefined;
 

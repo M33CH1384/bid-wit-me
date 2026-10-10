@@ -159,3 +159,4 @@
 .media-toast .mt-text { flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .media-toast .mt-text b { font-family: var(--display); letter-spacing: .04em; font-size: 15px; color: #fff; }
 .media-toast .mt-x { border: 0; background: rgba(255,255,255,.08); color: #fff; width: 28px; height: 28px; border-radius: 50%; flex: none; }
+.vbubble .vb-icon, .vbubble .vb-badge { pointer-events: none; }
