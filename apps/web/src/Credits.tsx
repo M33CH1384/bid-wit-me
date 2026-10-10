@@ -1,4 +1,11 @@
-import { CC_BY_LINE, TRACKS } from './audio';
+import { type ReactNode } from 'react';
+import { TRACKS } from './audio';
+
+/** Text with its URLs turned into links. */
+function Linked({ text }: { text: string }) {
+  const parts: ReactNode[] = text.split(/(https?:\/\/[^\s|,]+)/g).map((x, i) => (/^https?:\/\//.test(x) ? <a key={i} href={x} target="_blank" rel="noreferrer">{x}</a> : x));
+  return <>{parts}</>;
+}
 import { AboutRow } from './Feedback';
 
 /** In-game credits & licenses (mirrors CREDITS.md). */
@@ -9,14 +16,14 @@ export default function Credits({ onClose }: { onClose: () => void }) {
         <div className="panel-title big">CREDITS</div>
         <div className="scroll">
           <h3>Music</h3>
-          <ul>
+          <ul className="music-credits">
             {TRACKS.map((t) => (
               <li key={t.file}>
-                <b>“{t.title}”</b> — {t.artist} · {t.license === 'CC0' ? <>CC0 (public domain) via <a href={t.source} target="_blank" rel="noreferrer">OpenGameArt</a></> : <a href={t.source} target="_blank" rel="noreferrer">incompetech.com</a>}
+                <b>“{t.title}”</b> — {t.artist} · {t.license === 'CC0' ? <>CC0 (public domain) via <a href={t.source} target="_blank" rel="noreferrer">OpenGameArt</a> · Music by {t.artist}</> : <a href={t.source} target="_blank" rel="noreferrer">{t.license}</a>}
+                {t.credit && <p className="cc-by"><Linked text={t.credit} /></p>}
               </li>
             ))}
           </ul>
-          <p className="cc-by">{CC_BY_LINE.split('http://')[0]}<a href="http://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">http://creativecommons.org/licenses/by/4.0/</a></p>
           <h3>Sound effects</h3>
           <p>Card &amp; chip foley from Kenney “Casino Audio” and “UI Audio” (<a href="https://kenney.nl" target="_blank" rel="noreferrer">kenney.nl</a>) — CC0. Chimes, stingers, jingles and ambience synthesized in-game.</p>
           <h3>3D art</h3>

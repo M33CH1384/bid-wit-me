@@ -926,7 +926,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .coach .term:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .coach .term-def { margin: 0 0 8px; padding: 6px 9px; font-size: 13.5px; line-height: 1.35; background: rgba(245,197,66,.12); border-left: 3px solid var(--gold); color: #fff6dc; cursor: default; }
 .coach .suit-red, .led-chip.red { color: #ff6b81; }
-.coach .basics { margin: 6px 0 8px; max-height: min(52vh, 360px); overflow: auto; overscroll-behavior: contain; cursor: default; font-size: 13.5px; line-height: 1.35; }
+.coach .basics { margin: 6px 0 8px; max-height: min(52vh, 360px, calc(100dvh - 230px)); overflow: auto; overscroll-behavior: contain; cursor: default; font-size: 13.5px; line-height: 1.35; }
 .coach .basics > div { padding: 4px 0; border-bottom: 1px solid rgba(185,128,255,.15); }
 .coach .basics dt { font-family: var(--display); font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--gold); font-size: 12.5px; }
 .coach .basics dd { margin: 1px 0 0; color: #f3ecff; }
@@ -1066,3 +1066,4 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .overcut-spark.lvl3::before { left: -100px; top: -100px; width: 200px; height: 200px; animation-duration: .6s; }
 .overcut-spark.lvl3 i { height: 30px; width: 5px; animation-duration: .7s; }
 .hype-pop.overcut.lvl3 .hype-text { font-size: clamp(36px, 8vw, 76px); background: linear-gradient(90deg, #e0173c, #f5c542, #6a2ad6); }
+.hm-beats { max-height: min(40vh, 220px); overflow-y: auto; overscroll-behavior: contain; }

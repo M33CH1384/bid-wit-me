@@ -20,16 +20,30 @@ const KEY = 'bwm.sound.v1';
 const DEFAULTS: SoundSettings = { on: true, volume: 0.7, ambient: false, music: false, musicVolume: 0.5 };
 export type MusicStatus = 'off' | 'loading' | 'playing' | 'error';
 
-export interface Track { file: string; title: string; artist: string; license: string; source: string }
+export interface Track { file: string; title: string; artist: string; license: string; source: string; /** exact attribution line (CC BY) */ credit?: string }
 /** Background playlist (lazy-loaded, 128 kbps MP3). Credits: see CREDITS.md and the in-game Credits screen. */
 export const TRACKS: Track[] = [
   { file: 'windows-down', title: 'Windows Down', artist: 'Holizna', license: 'CC0', source: 'https://opengameart.org/content/lo-fi-and-chill-collection' },
   { file: 'coins', title: 'Coins', artist: 'Holizna', license: 'CC0', source: 'https://opengameart.org/content/gamer-beats-collection' },
   { file: 'final-level', title: 'Final Level', artist: 'Holizna', license: 'CC0', source: 'https://opengameart.org/content/gamer-beats-collection' },
   { file: '2-hour-delay', title: '2 Hour Delay', artist: 'Holizna', license: 'CC0', source: 'https://opengameart.org/content/lo-fi-and-chill-collection' },
-  { file: 'chillin-hard', title: 'Chillin Hard', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1600028' },
+  { file: 'chillin-hard', title: 'Chillin Hard', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1600028', credit: '"Chillin Hard" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
+  { file: 'snow-drift', title: 'Snow Drift', artist: 'Holizna', license: 'CC0', source: 'https://opengameart.org/content/lo-fi-and-chill-collection' },
+  { file: 'glad-to-be-stuck-inside', title: 'Glad To Be Stuck Inside', artist: 'Holizna', license: 'CC0', source: 'https://opengameart.org/content/lo-fi-and-chill-collection' },
+  { file: 'pretty-little-lies', title: 'Pretty Little Lies', artist: 'Holizna', license: 'CC0', source: 'https://opengameart.org/content/lo-fi-and-chill-collection' },
+  { file: 'sunset-drive', title: 'Sunset Drive', artist: 'Tokyo Music Walker', license: 'CC BY 3.0', source: 'https://www.chosic.com/download-audio/59619/', credit: 'Sunset Drive by Tokyo Music Walker | https://soundcloud.com/user-356546060 Music promoted by https://www.chosic.com/free-music/all/ Creative Commons CC BY 3.0 https://creativecommons.org/licenses/by/3.0/' },
+  { file: 'slowly', title: 'Slowly', artist: 'Tokyo Music Walker', license: 'CC BY 3.0', source: 'https://www.chosic.com/download-audio/59620/', credit: 'Slowly by Tokyo Music Walker | https://soundcloud.com/user-356546060 Music promoted by https://www.chosic.com/free-music/all/ Creative Commons CC BY 3.0 https://creativecommons.org/licenses/by/3.0/' },
+  { file: 'memories-of-spring', title: 'Memories of Spring', artist: 'Tokyo Music Walker', license: 'CC BY 3.0', source: 'https://www.chosic.com/download-audio/45504/', credit: 'Memories of Spring by Tokyo Music Walker | https://soundcloud.com/user-356546060 Music promoted by https://www.chosic.com/free-music/all/ Creative Commons CC BY 3.0 https://creativecommons.org/licenses/by/3.0/' },
+  { file: 'nighttime-stroll', title: 'Nighttime Stroll', artist: 'Artificial.Music', license: 'CC BY 3.0', source: 'https://www.chosic.com/download-audio/45334/', credit: 'Nighttime Stroll by Artificial.Music | https://soundcloud.com/artificial-music/ Music promoted by https://www.chosic.com/free-music/all/ Creative Commons CC BY 3.0 https://creativecommons.org/licenses/by/3.0/' },
+  { file: 'late-at-night', title: 'Late at Night', artist: 'Sakura Girl', license: 'CC BY 3.0', source: 'https://www.chosic.com/download-audio/53612/', credit: 'Late at Night by Sakura Girl | https://soundcloud.com/sakuragirl_official Music promoted by https://www.chosic.com/free-music/all/ Creative Commons CC BY 3.0 https://creativecommons.org/licenses/by/3.0/' },
+  { file: 'city', title: 'CITY (Lo-Fi Lounge Chill Hip Hop)', artist: 'Alex-Productions', license: 'CC BY 3.0', source: 'https://www.chosic.com/download-audio/30028/', credit: 'Lo-Fi Lounge Chill Hip Hop CITY by Alex-Productions | https://onsound.eu/ Music promoted by https://www.chosic.com/free-music/all/ Creative Commons CC BY 3.0 https://creativecommons.org/licenses/by/3.0/' },
+  { file: 'new-hip-hop-beat', title: 'New Hip Hop Beat', artist: 'Vandalorum (Primal Light)', license: 'CC BY 4.0', source: 'https://opengameart.org/content/hiphop-old-school-chill-themes', credit: '"New Hip Hop Beat" by Vandalorum (Primal Light), https://opengameart.org/content/hiphop-old-school-chill-themes, licensed under CC BY 4.0 https://creativecommons.org/licenses/by/4.0/' },
+  { file: 'pyro-flow', title: 'Pyro Flow', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1500039', credit: '"Pyro Flow" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
+  { file: 'slow-grind', title: 'Slow Grind', artist: 'Ron Gelinas Chillout Lounge', license: 'CC BY 3.0', source: 'https://www.chosic.com/download-audio/27292/', credit: 'Slow Grind by Ron Gelinas Chillout Lounge | https://soundcloud.com/atmospheric-music-portal Creative Commons Attribution 3.0 Unported License https://creativecommons.org/licenses/by/3.0/deed.en_US Music promoted by https://www.chosic.com/free-music/all/' },
 ];
-export const CC_BY_LINE = '"Chillin Hard" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/';
+/** Exact attribution lines for the CC BY tracks (CREDITS.md + in-game Credits). */
+export const CC_BY_LINES = TRACKS.filter((t) => t.credit).map((t) => t.credit!);
+export const CC_BY_LINE = CC_BY_LINES[0]!;
 const XFADE = 4; // seconds of crossfade between tracks
 
 /** Shuffle order with no immediate repeat across bag boundaries. */

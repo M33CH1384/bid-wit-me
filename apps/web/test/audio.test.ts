@@ -14,8 +14,9 @@ describe('music playlist', () => {
     for (let i = 1; i < seq.length; i++) expect(seq[i]).not.toBe(seq[i - 1]);
     for (let k = 0; k < 200; k++) expect(new Set(seq.slice(k * TRACKS.length, (k + 1) * TRACKS.length)).size).toBe(TRACKS.length);
   });
-  it('has the 5 approved tracks and the exact CC-BY attribution', () => {
-    expect(TRACKS.map((t) => t.title)).toEqual(['Windows Down', 'Coins', 'Final Level', '2 Hour Delay', 'Chillin Hard']);
+  it('has the 17 approved tracks (5 originals first) and the exact CC-BY attribution', () => {
+    expect(TRACKS.map((t) => t.title).slice(0, 5)).toEqual(['Windows Down', 'Coins', 'Final Level', '2 Hour Delay', 'Chillin Hard']);
+    expect(TRACKS.length).toBe(17);
     expect(CC_BY_LINE).toBe('"Chillin Hard" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/');
   });
 });

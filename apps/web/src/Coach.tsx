@@ -368,6 +368,9 @@ export function Coach({ ctx, help, onOff, onSkip, onCloseHelp, onOpen, onMarks }
         if (cost === 0) break;
       }
       const cx = a.x + a.w / 2;
+      // never cover the top bar (☰, ?, scorebug): the "?" must always be able to close the help
+      const bar = document.querySelector('.scorebug')?.getBoundingClientRect();
+      if (bar && bar.height > 0 && best!.p.top < bar.bottom + 4) best = { ...best!, p: { ...best!.p, top: bar.bottom + 4, below: true } };
       setPos({ ...best!.p, width: best!.w, arrowX: Math.min(best!.w - 18, Math.max(18, cx - best!.p.left)) });
     };
     raf = requestAnimationFrame(() => { raf = requestAnimationFrame(place); });

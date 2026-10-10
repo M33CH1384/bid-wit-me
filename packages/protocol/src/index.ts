@@ -5,6 +5,8 @@
  */
 import type { Card, PlayerView, TableRules } from '@spades/rules';
 
+/** Built-in host-music tracks the server accepts (the web playlist has 17; headroom for more). */
+export const MAX_BEAT_TRACKS = 64;
 export const PROTOCOL_VERSION = 1;
 
 /* ---------------------------------------------------------------- limits */
@@ -192,7 +194,7 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       const mu = m.music;
       if (!isObj(mu)) return null;
       if (mu.mode === 'off') return { t: 'music', music: { mode: 'off' } };
-      if (mu.mode === 'beat' && isInt(mu.track) && mu.track >= 0 && mu.track < 16) return { t: 'music', music: { mode: 'beat', track: mu.track, startAt: 0 } };
+      if (mu.mode === 'beat' && isInt(mu.track) && mu.track >= 0 && mu.track < MAX_BEAT_TRACKS) return { t: 'music', music: { mode: 'beat', track: mu.track, startAt: 0 } };
       if (mu.mode === 'link' && isStr(mu.url, 300) && isMusicLink(mu.url)) return { t: 'music', music: { mode: 'link', url: mu.url, title: isStr(mu.title, 200) ? mu.title : '' } };
       if (mu.mode === 'stream') return { t: 'music', music: { mode: 'stream', by: '', title: isStr(mu.title, 200) ? mu.title : '' } };
       return null;
