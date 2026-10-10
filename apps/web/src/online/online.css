@@ -96,3 +96,42 @@
 }
 .conn-banner.subtle { background: rgba(14,8,26,.85); color: var(--muted); top: auto; bottom: calc(10px + env(safe-area-inset-bottom)); }
 .online-cta { width: 100%; margin-top: 10px; }
+
+/* ---------- lobby v3: columns on wide screens, chat drawer on phones ---------- */
+.lobby-home { position: fixed; z-index: 30; top: calc(10px + env(safe-area-inset-top)); left: calc(10px + env(safe-area-inset-left)); width: auto; padding: 0 10px; display: flex; align-items: center; gap: 6px; font-size: 16px; }
+.lobby-home img { height: 12px; width: auto; }
+.settings-panel > summary { cursor: pointer; list-style: none; padding: 6px 0; }
+.settings-panel > summary::-webkit-details-marker { display: none; }
+.settings-panel > summary::before { content: '▸ '; color: var(--gold); }
+.settings-panel[open] > summary::before { content: '▾ '; }
+.lobby-chat .lc-head { font-family: var(--display); font-weight: 800; letter-spacing: .14em; font-size: 13px; padding: 6px 12px; display: flex; align-items: center; gap: 6px; border-bottom: 1px solid rgba(185,128,255,.25); }
+.lobby-start { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+.lobby-start > .primary.big { width: 100%; }
+.lobby-start .link { align-self: center; }
+
+/* phones / narrow: chat is a sticky bottom tab that opens a drawer */
+.lobby-v3 { padding-bottom: 80px; }
+.lobby-chat-tab { position: fixed; z-index: 40; left: 50%; transform: translateX(-50%); bottom: calc(10px + env(safe-area-inset-bottom)); display: flex; align-items: center; gap: 8px; padding: 10px 22px; border: 0; border-radius: 22px; font-family: var(--display); font-weight: 800; letter-spacing: .08em; font-size: 15px; background: var(--purple); box-shadow: 0 6px 18px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.25); color: #fff; }
+.lobby-chat-tab .unread { position: static; }
+.lobby-chat-tab.open { bottom: calc(min(60vh, 460px) + 16px + env(safe-area-inset-bottom)); }
+.lobby-chat.drawer { position: fixed; z-index: 39; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); height: min(60vh, 460px); margin: 0; display: none; flex-direction: column; background: var(--glass-strong, rgba(20,10,36,.96)); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); max-width: 560px; margin-inline: auto; }
+.lobby-chat.drawer.open { display: flex; animation: fade-up .2s ease both; }
+.lobby-chat.drawer .chat-list, .lobby-chat.wide .chat-list { flex: 1; max-height: none; min-height: 0; }
+
+/* wide: everything fits the viewport, no page scroll; columns scroll on their own */
+@media (min-width: 1024px) and (min-height: 600px) {
+  .lobby-v3 { max-width: none; height: 100dvh; min-height: 0; overflow: hidden; padding: calc(56px + env(safe-area-inset-top)) 20px 16px; box-sizing: border-box; }
+  .lobby-cols { height: 100%; display: grid; grid-template-columns: minmax(420px, 1.25fr) minmax(320px, 1fr) minmax(300px, 360px); gap: 16px; }
+  .lobby-main, .lobby-settings { min-height: 0; overflow-y: auto; scrollbar-width: thin; padding-right: 4px; }
+  .lobby-main .lobby-head { margin-bottom: 8px; }
+  .lobby-main .lobby-head .logo.small { height: 34px; width: auto; }
+  .lobby-settings .settings-panel, .lobby-settings .summary { margin: 0; }
+  .lobby-chat.wide { display: flex; flex-direction: column; min-height: 0; height: 100%; margin: 0; padding: 0; }
+  .lobby-chat.wide .chat-input { margin-top: auto; }
+}
+@media (min-width: 1024px) and (max-width: 1279px) and (min-height: 600px) {
+  .lobby-cols { grid-template-columns: minmax(0, 1fr) minmax(300px, 340px); grid-template-rows: minmax(0, 3fr) minmax(0, 1fr); grid-template-areas: "main chat" "settings chat"; }
+  .lobby-main { grid-area: main; }
+  .lobby-settings { grid-area: settings; }
+  .lobby-chat.wide { grid-area: chat; }
+}

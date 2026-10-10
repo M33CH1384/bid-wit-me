@@ -77,12 +77,28 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
     return () => window.removeEventListener('popstate', on);
   }, []);
 
+  // Wizard history: steps pushed by the wizard carry a depth `d`. The back arrow only uses history.back() when the
+  // entry before is one of ours (d > 0); otherwise (we arrived from a finished / left game, or a deep link) it steps
+  // to the previous wizard step in place — it can never land back on a table.
   const go = (next: Step, p: Path = path) => {
-    history.pushState({ wiz: next, path: p }, '');
+    const d = ((history.state as { d?: number } | null)?.d ?? 0) + 1;
+    history.pushState({ wiz: next, path: p, d }, '');
     setDir('fwd');
     setWiz({ step: next, path: p });
   };
-  const back = () => history.back();
+  const back = () => {
+    const d = (history.state as { d?: number } | null)?.d ?? 0;
+    if (d > 0) { history.back(); return; }
+    const prev = ORDER[Math.max(0, ORDER.indexOf(step) - 1)]!;
+    history.replaceState({ wiz: prev, path, d: 0 }, '', '/');
+    setDir('back');
+    setWiz({ step: prev, path });
+  };
+  const home = () => {
+    history.replaceState({ wiz: 'home', path, d: 0 }, '', '/');
+    setDir('back');
+    setWiz({ step: 'home', path });
+  };
   const setTipsPref = (on: boolean) => { const t = { on, asked: true }; saveTips(t); setTips(t); };
 
   let body: ReactNode;
@@ -167,7 +183,12 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
   return (
     <div className={`wizard step-${step}`} data-testid="wizard">
       <header className="wiz-bar">
-        {step !== 'home' ? <button type="button" className="icon-btn back" aria-label="Back" data-testid="wiz-back" onClick={back}>←</button> : <span />}
+        {step !== 'home' ? (
+          <span className="wiz-nav">
+            <button type="button" className="icon-btn back" aria-label="Back" data-testid="wiz-back" onClick={back}>←</button>
+            <button type="button" className="icon-btn home" aria-label="Home" title="Home" data-testid="wiz-home" onClick={home}><img src="/assets/bwm-wordmark-white.svg" alt="" /></button>
+          </span>
+        ) : <span />}
         <div className="wiz-dots" aria-hidden>{ORDER.map((x) => <i key={x} className={x === step ? 'on' : ''} />)}</div>
         <button type="button" className="icon-btn" aria-label="More options" data-testid="more" onClick={() => setMore(true)}>⚙</button>
       </header>

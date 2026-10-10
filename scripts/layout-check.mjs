@@ -116,6 +116,38 @@ async function modalCheck(page) {
   });
 }
 
+/** Online lobby: wide = columns that fit the viewport with chat always visible; phones = chat tab one tap away. */
+async function lobbyCheck(page) {
+  for (const [label, w, h] of SIZES.filter(([, w, h]) => (!only || only.includes(`${w}x${h}`)) && (w >= 1280 || w < 500))) {
+    await page.setViewportSize({ width: w, height: h });
+    await page.waitForTimeout(600);
+    const probs = await page.evaluate(() => {
+      const W = innerWidth, H = innerHeight, out = [];
+      const vis = (el) => { if (!el) return false; const r = el.getBoundingClientRect(); const cs = getComputedStyle(el); return cs.display !== 'none' && cs.visibility !== 'hidden' && r.width > 0 && r.top >= -1 && r.bottom <= H + 1 && r.left >= -1 && r.right <= W + 1; };
+      if (document.documentElement.scrollWidth > W + 1) out.push('lobby scrolls sideways');
+      if (!vis(document.querySelector('[data-testid="lobby-home"]'))) out.push('Home control not visible');
+      if (W >= 1024) {
+        if (document.scrollingElement.scrollHeight > H + 1) out.push(`lobby page scrolls (${document.scrollingElement.scrollHeight} > ${H})`);
+        if (!vis(document.querySelector('.lobby-chat input'))) out.push('chat input not visible without scrolling');
+        if (!vis(document.querySelector('[data-testid="room-code"]'))) out.push('table code not visible');
+      } else if (!vis(document.querySelector('[data-testid="lobby-chat-tab"]'))) out.push('chat tab not on screen');
+      return out;
+    });
+    if (w < 1024) {
+      await page.getByTestId('lobby-chat-tab').click();
+      await page.waitForTimeout(300);
+      const ok = await page.evaluate(() => { const r = document.querySelector('.lobby-chat input')?.getBoundingClientRect(); return !!r && r.width > 0 && r.bottom <= innerHeight + 1; });
+      if (!ok) probs.push('chat drawer input not on screen after one tap');
+      await page.screenshot({ path: `${out}/lobby-chat-${label}.png` });
+      await page.getByTestId('lobby-chat-tab').click();
+    }
+    await page.screenshot({ path: `${out}/lobby-${label}.png` });
+    console.log(`${probs.length ? '✗' : '✓'} lobby ${label}${probs.length ? ': ' + probs.join('; ') : ''}`);
+    probs.forEach((x) => problems.push(`lobby ${label}: ${x}`));
+  }
+  await page.setViewportSize({ width: 844, height: 390 });
+}
+
 /** Table Talk (between hands) at every size: no horizontal overflow, team totals fully visible, Ready reachable. */
 async function talkCheck(page, tag) {
   for (const [label, w, h] of SIZES.filter(([, w, h]) => !only || only.includes(`${w}x${h}`))) {
@@ -264,6 +296,7 @@ if (!process.env.ONLY || process.env.ONLY === 'online') {
     for (let i = 0; i < 4; i++) { await p.getByRole('button', { name: 'Turn camera on' }).click().catch(() => {}); try { await p.getByRole('button', { name: 'Turn camera off' }).waitFor({ timeout: 4000 }); break; } catch { /* retry */ } }
   }
   await host.getByRole('button', { name: 'Turn microphone on' }).click().catch(() => {});
+  await lobbyCheck(host);
   await host.getByTestId('start').click();
   await host.locator('.table-screen').waitFor({ timeout: 20000 });
   await host.waitForFunction(() => document.querySelector('.badge-layer [data-testid^="video-"][data-live="true"] video')?.videoWidth > 0, null, { timeout: 30000 }).catch(() => console.log('(remote video not live yet)'));

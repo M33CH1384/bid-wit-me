@@ -158,7 +158,8 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
   const leave = (to = '/online') => {
     conn.send({ t: 'leave' });
     forgetToken(code);
-    setTimeout(() => navigate(to, false, to === '/' ? { wiz: 'home' } : null), 50);
+    // replace (not push) the table's entry, so the back button never re-enters a table you left
+    setTimeout(() => navigate(to, true, to === '/' ? { wiz: 'home', d: 0 } : null), 50);
   };
   const inGame = cs.room.phase !== 'lobby' && cs.seat !== null && !!cs.view;
   return (

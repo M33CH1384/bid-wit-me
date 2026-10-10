@@ -43,8 +43,8 @@ export default function App() {
       seed={game.seed}
       resume={game.resume}
       settings={game.settings}
-      onExit={() => { history.replaceState({ wiz: 'home' }, ''); setGame(null); }}
-      onSuspend={() => { history.replaceState({ wiz: 'home' }, ''); setGame(null); }}
+      onExit={() => { history.replaceState({ wiz: 'home', d: 0 }, '', '/'); setGame(null); }}
+      onSuspend={() => { history.replaceState({ wiz: 'home', d: 0 }, '', '/'); setGame(null); }}
       onRematch={() => setGame({ seed: secureSeed(), settings: game.settings })}
       onQuality={(quality) => { const s = { ...game.settings, quality }; setGame({ ...game, settings: s }); setSettings(s); saveSettings(s); }}
     />

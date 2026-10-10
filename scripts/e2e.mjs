@@ -306,7 +306,24 @@ async function playGame(mode, label, { shots = false, speed = 'turbo', extra = {
     // game over → Main menu goes straight to the splash (no confirm), the finished game is gone
     await page.getByTestId('main-menu').click();
     await page.getByTestId('play-bots').waitFor({ timeout: 10000 });
-    console.log('  ✓ game over → Main menu → splash');
+    // back never re-enters the finished game: stays in the menu flow
+    await page.goBack().catch(() => {});
+    await page.waitForTimeout(1200);
+    if (await page.locator('.table-screen').count()) throw new Error('browser back re-entered the finished game');
+    if (!(await page.getByTestId('wizard').count())) throw new Error('browser back left the menu flow');
+    // wizard: Home jumps to the splash; the back arrow steps essentials → mode → splash
+    await page.goto(base);
+    await page.getByTestId('play-bots').click();
+    await page.getByTestId('mode-joker').click();
+    await page.getByTestId('wiz-home').click();
+    await page.getByTestId('play-bots').waitFor({ timeout: 5000 });
+    await page.getByTestId('play-online').click();
+    await page.getByTestId('mode-joker').click();
+    await page.getByTestId('wiz-back').click();
+    await page.getByTestId('mode-joker').waitFor({ timeout: 5000 });
+    await page.getByTestId('wiz-back').click();
+    await page.getByTestId('play-bots').waitFor({ timeout: 5000 });
+    console.log('  ✓ game over → Main menu → splash; back stays in the menu; wizard Home + back arrow');
   }
   console.log(`✓ ${label}: finished via UI — ${hands + 1} hands, ${plays} human plays — "${title}" (${((Date.now() - t0) / 1000).toFixed(0)}s)`);
 }

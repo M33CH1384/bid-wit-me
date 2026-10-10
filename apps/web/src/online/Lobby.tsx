@@ -4,6 +4,7 @@ import type { RoomInfo, SeatInfo } from '@spades/protocol';
 import { type ModeKey, type Settings, MODES, modeTitle, settingsToRules } from '../settings';
 import type { ConnState, TableConnection } from './connection';
 import { inviteLink } from './config';
+import { navigate } from './nav';
 import { MediaBar, SeatMedia } from './Media';
 import { colorFor, useVideo } from './useOnline';
 import type { VideoMesh } from './video';
@@ -27,6 +28,7 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
   const n = room.rules.playerCount;
   const playing = room.phase === 'playing';
   const [copied, setCopied] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(() => window.innerWidth >= 1024);
   const link = inviteLink(room.code);
   const r = room.rules;
 
@@ -53,9 +55,16 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
   const order = trumpOrder(r).slice(0, 5).map((c) => (c === 'BJ' ? 'Big 🃏' : c === 'LJ' ? 'Little 🃏' : cardLabel(c)));
   const team = (seat: number) => (r.partnerships ? (seat % 2 === 0 ? 'A' : 'B') : null);
   const seatedHumans = room.seats.filter((s) => s.kind === 'human').length;
+  const startBlock = <StartBlock room={room} cs={cs} conn={conn} isHost={isHost} playing={playing} seatedHumans={seatedHumans} n={n} onBackToGame={onBackToGame} onLeave={onLeave} />;
 
   return (
-    <div className="setup lobby" data-testid="lobby">
+    <div className="setup lobby lobby-v3" data-testid="lobby">
+      {/* Home keeps your seat (the splash offers "Rejoin table"); "Leave table" gives it up */}
+      <button type="button" className="icon-btn lobby-home" data-testid="lobby-home" aria-label="Home" title="Home (keeps your seat)" onClick={() => navigate('/', true, { wiz: 'home', d: 0 })}>
+        ← <img src="/assets/bwm-wordmark-white.svg" alt="" />
+      </button>
+      <div className="lobby-cols">
+      <div className="lobby-main">
       <header className="lobby-head">
         <img className="logo small" src="/assets/bwm-wordmark-white.svg" alt="Bid Wit Me" />
         <div className="room-code" data-testid="room-code" aria-label={`Table code ${room.code}`}>
@@ -91,9 +100,12 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
         {cs.seat !== null && !vs.cam && <p className="hint">Video is optional: tap 📷 to turn your camera on. It goes straight to the other players, never through our server.</p>}
       </section>
 
+      {startBlock}
+      </div>
+      <div className="lobby-settings">
       {isHost && !playing ? (
-        <section className="panel">
-          <div className="panel-title">TABLE SETTINGS <small>(host)</small></div>
+        <details className="panel settings-panel" open={settingsOpen} onToggle={(e) => setSettingsOpen((e.currentTarget as HTMLDetailsElement).open)}>
+          <summary className="panel-title">TABLE SETTINGS <small>(host)</small></summary>
           <div className="modes compact">
             {MODES.map((m) => (
               <button key={m.key} type="button" className={`mode ${settings.mode === m.key ? 'selected' : ''}`} onClick={() => set('mode', m.key as ModeKey)}>
@@ -139,7 +151,7 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
             <button type="button" data-testid="books-toggle" className={`toggle ${settings.firstHandBidsItself !== false ? 'on' : ''}`} role="switch" aria-checked={settings.firstHandBidsItself !== false} aria-label="First hand: books bid themselves" onClick={() => set('firstHandBidsItself', settings.firstHandBidsItself === false)}><span /></button>
           </span></label>
           <p className="hint">Other house rules (bags, minimum bid, 10 for 200…) come from the House rules on the main menu.</p>
-        </section>
+        </details>
       ) : (
         <div className="summary">
           <span>{modeTitle(r)} · Trumps: {order.join(' › ')} …</span>
@@ -149,8 +161,19 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
         </div>
       )}
 
+      </div>
       <LobbyChat cs={cs} onSend={(text) => conn.send({ t: 'chat', text })} />
+      </div>
+    </div>
+  );
+}
 
+function StartBlock({ room, cs, conn, isHost, playing, seatedHumans, n, onBackToGame, onLeave }: {
+  room: RoomInfo; cs: ConnState; conn: TableConnection; isHost: boolean; playing: boolean; seatedHumans: number; n: number;
+  onBackToGame: (() => void) | null; onLeave: () => void;
+}) {
+  return (
+    <div className="lobby-start">
       {onBackToGame && <button type="button" className="primary big" onClick={onBackToGame}>Back to the game</button>}
       {!playing && (isHost ? (
         <button type="button" className="primary big" data-testid="start" disabled={seatedHumans === 0} onClick={() => conn.send({ t: room.phase === 'over' ? 'rematch' : 'start' })}>
@@ -161,7 +184,7 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
       ))}
       {playing && cs.seat === null && <p className="waiting">Game in progress. Tap a bot's seat to take it over.</p>}
       {cs.error && Date.now() - cs.error.at < 4000 && <div className="err" role="alert">{cs.error.message}</div>}
-      <button type="button" className="link" onClick={onLeave}>Leave table</button>
+      <button type="button" className="link" data-testid="leave-table" onClick={onLeave}>Leave table</button>
     </div>
   );
 }
@@ -201,10 +224,19 @@ function SeatCard({ seat, info, spot, team, mine, isHost, playing, hostId, onSit
   );
 }
 
+/**
+ * Lobby chat. Wide screens: a full-height column, always visible, input pinned to the bottom.
+ * Phones: a sticky bottom tab (with unread badge) that opens a drawer — always one tap away.
+ */
 function LobbyChat({ cs, onSend }: { cs: ConnState; onSend: (t: string) => void }) {
   const [text, setText] = useState('');
+  const [open, setOpen] = useState(false);
+  const [seen, setSeen] = useState(cs.chat.length);
   const list = useRef<HTMLDivElement>(null);
-  useEffect(() => { list.current?.scrollTo({ top: 1e6 }); }, [cs.chat.length]);
+  useEffect(() => { list.current?.scrollTo({ top: 1e6 }); }, [cs.chat.length, open]);
+  const wide = useWide();
+  useEffect(() => { if (open || wide) setSeen(cs.chat.length); }, [open, wide, cs.chat.length]);
+  const unread = Math.max(0, cs.chat.filter((l) => !l.system).length - cs.chat.slice(0, seen).filter((l) => !l.system).length);
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!text.trim()) return;
@@ -212,9 +244,16 @@ function LobbyChat({ cs, onSend }: { cs: ConnState; onSend: (t: string) => void 
     setText('');
   };
   return (
-    <section className="panel lobby-chat" aria-label="Table chat">
+    <>
+    {!wide && (
+      <button type="button" className={`lobby-chat-tab ${open ? 'open' : ''}`} data-testid="lobby-chat-tab" aria-expanded={open} onClick={() => setOpen(!open)}>
+        💬 Chat{unread > 0 && !open && <span className="unread" data-testid="lobby-unread">{unread}</span>}<span className="tab-caret">{open ? '▾' : '▴'}</span>
+      </button>
+    )}
+    <section className={`panel lobby-chat ${wide ? 'wide' : open ? 'drawer open' : 'drawer'}`} aria-label="Table chat" data-testid="lobby-chat">
+      <header className="lc-head"><span className="live-dot" /> TABLE CHAT</header>
       <div className="chat-list" ref={list}>
-        {cs.chat.slice(-30).map((l) => (
+        {cs.chat.slice(-100).map((l) => (
           <div key={l.id} className={`chat-line ${l.system ? 'system' : ''}`}>
             {l.system ? <span>{l.text}</span> : <><b style={{ color: l.from === cs.you ? '#f5c542' : colorFor(l.from ?? '') }}>{l.from === cs.you ? 'You' : l.name}</b> <span>{l.text}</span></>}
           </div>
@@ -225,5 +264,13 @@ function LobbyChat({ cs, onSend }: { cs: ConnState; onSend: (t: string) => void 
         <button type="submit" aria-label="Send">➤</button>
       </form>
     </section>
+    </>
   );
+}
+
+function useWide(): boolean {
+  const q = '(min-width: 1024px) and (min-height: 600px)';
+  const [wide, setWide] = useState(() => window.matchMedia(q).matches);
+  useEffect(() => { const m = window.matchMedia(q); const on = () => setWide(m.matches); m.addEventListener('change', on); return () => m.removeEventListener('change', on); }, []);
+  return wide;
 }

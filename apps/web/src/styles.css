@@ -842,3 +842,6 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .chat.glass.slant { position: absolute; }
 .learn-badge { color: #1d1204; background: var(--gold); padding: 0 5px; border-radius: 3px; letter-spacing: .06em; flex: none; }
 @media (orientation: portrait) and (max-width: 440px) { .learn-badge { font-size: 9px; } }
+.wiz-nav { display: flex; gap: 6px; align-items: center; }
+.icon-btn.home { width: auto; padding: 0 10px; }
+.icon-btn.home img { height: 13px; width: auto; display: block; }
