@@ -1124,3 +1124,4 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .bug-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .series-chip.in-meta { padding: 0 6px; font-size: 10px; margin-left: 6px; }
 .series-chip.in-meta b { font-size: 11px; }
+.bug-meta > .series-chip { flex-shrink: 0; overflow: visible; }
