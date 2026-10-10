@@ -125,10 +125,13 @@ host.send({ t: 'start' });
 await until(() => cs.every((c) => c.room?.phase === 'playing' && c.view), 10000, 'game start');
 log('started', host.room!.rules.mode);
 
-// illegal move: someone who's not on turn tries to bid
-const off = cs.find((c) => c.view && c.view.turn !== c.seat)!;
-off.send({ act: 1, t: 'act', action: { type: 'bid', bid: 3 } } as ClientMsg);
-await until(() => off.errors.includes('NOT_YOUR_TURN'), 5000, 'out-of-turn rejected');
+// illegal move: someone who's not on turn tries to move (a bid, or a card when the first hand's books bid themselves)
+await until(() => cs.some((c) => c.view && c.view.turn !== null && c.view.turn !== c.seat), 10000, 'a turn after the deal');
+const off = cs.find((c) => c.view && c.view.turn !== null && c.view.turn !== c.seat)!;
+const offAction = off.view!.phase === 'bidding' ? { type: 'bid', bid: 3 } : { type: 'play', card: off.view!.hand![0] };
+log('out-of-turn try', off.view!.phase, JSON.stringify(offAction));
+off.send({ act: 1, t: 'act', action: offAction } as ClientMsg);
+await until(() => off.errors.includes('NOT_YOUR_TURN'), 5000, `out-of-turn rejected (got ${JSON.stringify(off.errors)})`);
 
 let actions = 0;
 let reconnected = false;
