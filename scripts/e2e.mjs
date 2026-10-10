@@ -75,6 +75,7 @@ async function tipsTest() {
   const coach = page.getByTestId('coach');
   await coach.waitFor({ timeout: 20000 });
   const seen = [];
+  let termChecked = null; const markChecked = [];
   await page.waitForTimeout(400);
   await shot('08-tip-first');
   if (!(await page.getByTestId('learning-badge').count())) throw new Error('learning mode badge missing with tips on');
@@ -84,7 +85,22 @@ async function tipsTest() {
     if (await talk.count()) { await talk.click().catch(() => {}); continue; }
     if (await coach.count()) {
       const id = await coach.getAttribute('data-tip');
-      if (id && !seen.includes(id)) { seen.push(id); if (id === 'bid') await shot('08b-tip-bid'); }
+      if (id && !seen.includes(id)) {
+        seen.push(id); if (id === 'bid') await shot('08b-tip-bid');
+        // plain-language tips: tappable terms open a quick definition (without dismissing the tip)
+        const term = coach.locator('button.term').first();
+        if (!termChecked && (await term.count())) {
+          await term.click();
+          await page.getByTestId('term-def').waitFor({ timeout: 3000 });
+          if ((await coach.getAttribute('data-tip')) !== id) throw new Error('tapping a term dismissed the tip');
+          termChecked = (await term.getAttribute('data-term')) ?? 'yes';
+        }
+        // tips that talk about cards mark them (LED ring on the table, tags in the hand)
+        if (['follow', 'cut'].includes(id)) {
+          await page.locator('[data-testid="tip-marks"] [data-mark$=":led"]').waitFor({ timeout: 3000 }).catch(() => { throw new Error(`${id} tip: led card not marked`); });
+          markChecked.push(id);
+        }
+      }
       await page.getByTestId('coach-ok').click({ timeout: 2000 }).catch(() => {});
       continue;
     }
@@ -104,7 +120,15 @@ async function tipsTest() {
   if (await coach.count()) { seen.push(await coach.getAttribute('data-tip')); await shot('08c-tip-play'); await page.getByTestId('coach-skip').click(); }
   await page.waitForTimeout(2500);
   if (await coach.count()) throw new Error('coach still visible after "Skip tips"');
-  console.log(`✓ Tips: prompt → on; coach marks ${seen.join(', ')} shown + dismissed; "Skip tips" hides them`);
+  if (!termChecked) throw new Error('no tappable glossary term in any tip');
+  // "?" help opens with Card basics
+  await page.getByTestId('help').click();
+  await page.getByTestId('card-basics').waitFor({ timeout: 5000 });
+  const nTerms = await page.locator('[data-testid="card-basics"] dt').count();
+  if (nTerms < 10) throw new Error(`Card basics has only ${nTerms} terms`);
+  await page.getByTestId('help').click();
+  await page.waitForTimeout(400);
+  console.log(`✓ Tips: prompt → on; coach marks ${seen.join(', ')} shown + dismissed (term "${termChecked}" defined, cards marked for ${markChecked.join('/') || '—'}; Card basics ${nTerms} terms); "Skip tips" hides them`);
   // a new game still has tips (skip is per game) → "Don't show again" turns them off for good
   await page.getByTestId('menu').click();
   await page.getByRole('button', { name: 'Leave', exact: true }).click();

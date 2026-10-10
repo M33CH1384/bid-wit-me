@@ -17,16 +17,19 @@ export function topTrumps(r: TableRules, n = 4): string {
 export function glossary(r: TableRules): Record<TermKey, Term> {
   const order = trumpOrder(r);
   const jokers = order.includes('BJ' as never);
-  const promoted = order.filter((c) => c !== 'BJ' && c !== 'LJ' && !c.endsWith('S')).map((c) => cardLabel(c));
+  // cards ranked above the Ace of spades besides the jokers (e.g. 2♦ and 2♠ in Joker Spades)
+  const aceAt = order.indexOf('AS' as never);
+  const promoted = order.slice(0, aceAt < 0 ? 0 : aceAt).filter((c) => c !== 'BJ' && c !== 'LJ').map((c) => cardLabel(c));
   const extras = [jokers ? 'the two Jokers' : '', ...promoted].filter(Boolean);
+  const list = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}` : xs[0] ?? '');
   const top = topTrumps(r);
   const n = r.playerCount;
   const t = (key: TermKey, term: string, def: string): Term => ({ key, term, def });
   return {
     book: t('book', 'Book', `One round of play: everyone puts down one card, and the best card takes all ${n}. That little pile is a book (also called a trick).`),
     suit: t('suit', 'Suit', `The four card families: ♥ hearts, ♦ diamonds, ♣ clubs and ♠ spades.${jokers ? ' Here the Jokers count as spades.' : ''}`),
-    high: t('high', 'High card', `Inside a suit, 2 is the lowest, then 3 to 10, Jack, Queen, King, and the Ace is the highest.${extras.length ? ` Exceptions here: ${extras.join(' and ')} are special trumps above the Ace of spades.` : ''}`),
-    trump: t('trump', 'Trump', `Spades${extras.length ? ` (plus ${extras.join(' and ')})` : ''} are trumps: any trump beats any card of another suit. From the top: ${top}… You can only play one on another suit's book when you have none of that suit.`),
+    high: t('high', 'High card', `Inside a suit, 2 is the lowest, then 3 to 10, Jack, Queen, King, and the Ace is the highest.${extras.length ? ` Exceptions here: ${list(extras)} are special trumps, even above the Ace of spades.` : ''}`),
+    trump: t('trump', 'Trump', `Spades${extras.length ? ` (plus ${list(extras)})` : ''} are trumps: any trump beats any card of another suit. From the top: ${top}… You can only play one on another suit's book when you have none of that suit.`),
     lead: t('lead', 'Lead', 'Playing the first card of a book. Everyone else has to answer with that same suit if they can.'),
     follow: t('follow', 'Follow suit', 'If you have a card of the suit that was led, you must play one. Your cards that are allowed right now are lifted and glowing.'),
     cut: t('cut', 'Cutting', "When you have none of the suit that was led, you may play a trump instead. That's cutting: your trump beats all their cards and steals the book."),

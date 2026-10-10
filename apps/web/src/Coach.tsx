@@ -67,7 +67,7 @@ export function tipsFor(c: CoachCtx): Tip[] {
       : bestAce ? `Your ${label(bestAce)} is the {highest|high} ${SUIT_NAME[effectiveSuit(bestAce, r)].toLowerCase().replace(/s$/, '')}.` : '';
   const handMark = bestIsTop || (best && isTrump(best, r)) ? best : bestAce;
   const rankLine = jokers
-    ? `{Bigger cards|high} win: 2 is lowest, Ace is highest, and the Jokers${order.some((x) => x === '2D') ? ', 2♦' : ''}${order.some((x) => x === '2S') ? ' and 2♠' : ''} beat them all.`
+    ? `{Bigger cards|high} win: 2 is lowest, Ace highest, and the Jokers${order.some((x) => x === '2D') ? ', 2♦' : ''}${order.some((x) => x === '2S') ? ' and 2♠' : ''} beat everything.`
     : '{Bigger cards|high} win: 2 is lowest, Ace is highest.';
   // the cut tip: trumps you could cut with vs. low cards you could throw away
   const throwaways = hand.filter((x) => !isTrump(x, r) && c.legal.includes(x)).sort((a, b) => cardPower(a, r) - cardPower(b, r)).slice(0, 2);
@@ -98,7 +98,7 @@ export function tipsFor(c: CoachCtx): Tip[] {
     },
     {
       id: 'hand', title: 'Your hand', anchor: 'hand', max: 1,
-      text: `These are your cards, sorted by {suit}: ♥ hearts, ♦ diamonds, ♣ clubs, ♠ spades. ${rankLine}${handPoint ? ` ${handPoint}` : ''}`,
+      text: `These are your cards, sorted by {suit} (♥ ♦ ♣ ♠). ${rankLine}${handPoint ? ` ${handPoint}` : ''}`,
       marks: handMark ? { hand: [{ card: handMark, tag: bestIsTop ? 'CAN\'T LOSE' : isTrump(handMark, r) ? 'TRUMP' : 'TOP', kind: 'strong' }] } : undefined,
       when: (x) => !!x.hand && x.hand.length > 0 && (x.st.phase === 'bidding' || x.st.phase === 'playing'),
     },
@@ -131,7 +131,7 @@ export function tipsFor(c: CoachCtx): Tip[] {
     },
     {
       id: 'cut', title: "Can't follow? Cut!", anchor: 'hand',
-      text: led ? `${ledWords} was {led|lead} and you have no ${ledPlural}. Play a {trump} (gold tags) to {cut} and win the book, or throw away a low card (grey tags).` : '',
+      text: led ? `${ledWords} was {led|lead} and you have no ${ledPlural}. Play a {trump} (gold marks) to {cut} and win the book, or throw away a low card (grey marks).` : '',
       marks: led ? { trick: ledMark, hand: [...myTrumps.filter((x) => c.legal.includes(x)).map((x) => ({ card: x, tag: 'TRUMP', kind: 'trump' as const })), ...throwaways.map((x) => ({ card: x, tag: 'THROW', kind: 'throw' as const }))] } : undefined,
       when: () => playing && !!led && !holdsLed && holdsTrump,
     },
@@ -211,9 +211,16 @@ export function TipMarkLayer({ marks }: { marks: TipMarks | undefined }) {
       {(marks.trick ?? []).map((m) => { const q = at(L.trickCards, m); return q ? (
         <div key={`t${m.card}`} className={`tip-ring ${m.kind}`} data-mark={`trick:${m.card}:${m.kind}`} style={{ left: q.x - 4, top: q.y - 4, width: q.w + 8, height: q.h + 8 }}><span className="tip-tag">{m.tag}</span></div>
       ) : null; })}
-      {(marks.hand ?? []).map((m) => { const q = at(L.handCards, m); return q ? (
-        <span key={`h${m.card}`} className={`tip-tag hand ${m.kind}`} data-mark={`hand:${m.card}:${m.kind}`} style={{ left: q.x + Math.min(10, q.w * 0.12), top: q.y - 12 }}>{m.tag}</span>
-      ) : null; })}
+      {(marks.hand ?? []).map((m) => {
+        const q = at(L.handCards, m);
+        if (!q) return null;
+        // fanned cards overlap: a word tag only where this card's visible strip is wide enough, else a coloured pip
+        const xs = (L.handCards ?? []).map((x) => x.x).sort((a, b) => a - b);
+        const next = xs.find((x) => x > q.x + 0.5);
+        const strip = next !== undefined ? next - q.x : q.w;
+        const tight = strip < 50;
+        return <span key={`h${m.card}`} className={`tip-tag hand ${m.kind} ${tight ? 'pip' : ''}`} data-mark={`hand:${m.card}:${m.kind}`} title={m.tag} style={{ left: q.x + (tight ? Math.max(4, strip / 2 - 7) : Math.min(10, q.w * 0.12)), top: q.y - (tight ? 9 : 12) }}>{tight ? '' : m.tag}</span>;
+      })}
     </div>
   );
 }
