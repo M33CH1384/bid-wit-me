@@ -302,7 +302,7 @@ describe('action ordering (real-network latency)', () => {
     const cid = ['a', 'b', 'c', 'd'][g.turn!]!;
     const st = env.last(cid, 'state')!;
     const a = chooseBotAction(st.view!, 'normal')!;
-    const action: GameAction = a.type === 'reveal' ? { type: 'reveal' } : a.type === 'bid' ? { type: 'bid', bid: a.bid } : a.type === 'play' ? { type: 'play', card: a.card } : { type: 'exchange', cards: (a as { cards: Card[] }).cards };
+    const action: GameAction = a.type === 'reveal' ? { type: 'reveal' } : a.type === 'bid' ? { type: 'bid', bid: a.bid } : a.type === 'play' ? { type: 'play', card: a.card } : a.type === 'runIt' ? { type: 'runIt' } : { type: 'exchange', cards: (a as { cards: Card[] }).cards };
     return { cid, seq: st.room.seq, action };
   }
 
