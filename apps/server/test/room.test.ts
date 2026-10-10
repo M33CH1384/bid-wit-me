@@ -451,3 +451,44 @@ describe('chat + signaling', () => {
     expect(env.errors('x').map((e) => e.code)).toEqual(['BAD_MESSAGE', 'NOT_JOINED']);
   });
 });
+
+describe('table talk + host music', () => {
+  it('host sets the Table Talk countdown; the hand-over deadline uses it', () => {
+    const env = new FakeEnv(undefined, { ...FAST, handOverMs: 3000 });
+    env.join('a', 'Host');
+    env.send('a', { t: 'sit', seat: 0 });
+    env.send('a', { t: 'config', rules: makeRules('joker'), talkSec: 45 });
+    expect(env.last('a', 'state')!.room.talkSec).toBe(45);
+    env.send('a', { t: 'config', rules: makeRules('joker'), talkSec: 7 } as never);
+    expect(env.last('a', 'state')!.room.talkSec).toBe(45); // only 15/20/30/45 accepted
+    env.send('a', { t: 'start' });
+    // play the first hand out with the bot brain for the human seat
+    for (let i = 0; i < 3000 && env.room.data.game!.phase !== 'handOver'; i++) if (!playTurn(env, ['a'])) env.advance(50);
+    expect(env.room.data.game!.phase).toBe('handOver');
+    env.advance(10);
+    const st = env.last('a', 'state')!;
+    expect(st.room.deadline! - st.room.now).toBeGreaterThan(40_000);
+    env.advance(46_000);
+    expect(env.room.data.game!.phase).not.toBe('handOver');
+  });
+  it('host music: beats are synced by server start time; links are validated; only the host can change it', () => {
+    const env = new FakeEnv();
+    env.join('a', 'Host'); env.join('b', 'Guest');
+    env.send('b', { t: 'music', music: { mode: 'beat', track: 1, startAt: 0 } });
+    expect(env.errors('b').at(-1)!.code).toBe('NOT_HOST');
+    env.send('a', { t: 'music', music: { mode: 'beat', track: 2, startAt: 0 } });
+    const m = env.last('b', 'state')!.room.music!;
+    expect(m).toMatchObject({ mode: 'beat', track: 2 });
+    expect((m as { startAt: number }).startAt).toBeGreaterThan(env.t);
+    env.send('a', { t: 'music', music: { mode: 'link', url: 'https://evil.example.com/x', title: 'x' } });
+    expect(env.errors('a').at(-1)!.code).toBe('BAD_MESSAGE');
+    env.send('a', { t: 'music', music: { mode: 'link', url: 'https://open.spotify.com/track/abc', title: 'Song' } });
+    expect(env.last('b', 'state')!.room.music).toEqual({ mode: 'link', url: 'https://open.spotify.com/track/abc', title: 'Song' });
+    env.send('a', { t: 'music', music: { mode: 'stream', by: 'someone-else', title: 'My mix' } });
+    expect(env.last('b', 'state')!.room.music).toMatchObject({ mode: 'stream', by: env.last('a', 'welcome')!.you });
+    env.send('a', { t: 'leave' });
+    expect(env.last('b', 'state')!.room.music).toBeUndefined();
+    env.send('b', { t: 'music', music: { mode: 'off' } }); // b is host now
+    expect(env.last('b', 'state')!.room.music).toBeUndefined();
+  });
+});

@@ -12,7 +12,7 @@ import {
 } from '@spades/rules';
 import { chooseBotAction } from '@spades/bots';
 import {
-  type BotLevel, type ChatLine, type ClientMsg, type MediaState, type RoomInfo, type RoomPhase, type SeatInfo, type ServerMsg,
+  type BotLevel, type ChatLine, type ClientMsg, type HostMusic, type MediaState, type RoomInfo, type RoomPhase, type SeatInfo, type ServerMsg,
   LIMITS, PROTOCOL_VERSION, parseClientMsg,
 } from '@spades/protocol';
 import { blockLinks, cleanName, cleanText, maskProfanity } from './filter';
@@ -57,6 +57,9 @@ export interface RoomData {
   rev: number;
   /** game version (see RoomInfo.seq); optional only for rooms saved before it existed */
   seq?: number;
+  /** host-set Table Talk countdown (s); unset = timing.handOverMs */
+  talkSec?: number;
+  music?: HostMusic;
   gamesPlayed: number;
 }
 
@@ -73,7 +76,7 @@ export interface RoomTiming {
   handOverMs: number;
 }
 
-export const DEFAULT_TIMING: RoomTiming = { botMs: 750, trickPauseMs: 1300, dealMs: 3200, disconnectGraceMs: 10_000, handOverMs: 15_000 };
+export const DEFAULT_TIMING: RoomTiming = { botMs: 750, trickPauseMs: 1300, dealMs: 3200, disconnectGraceMs: 10_000, handOverMs: 20_000 };
 
 /** What the host environment (Durable Object or test harness) provides. */
 export interface RoomIO {
@@ -262,6 +265,7 @@ export class Room {
           throw new RoomError('BAD_RULES', 'Invalid rules');
         }
         d.rules = rules;
+        if (msg.talkSec) d.talkSec = msg.talkSec;
         if (msg.botLevel) {
           d.botLevel = msg.botLevel;
           d.seats.forEach((s) => { if (s.kind === 'bot') s.level = msg.botLevel!; });
@@ -272,6 +276,15 @@ export class Room {
           if (slot.kind === 'human') d.members[slot.playerId]!.seat = null;
           d.seats[s] = { kind: 'empty' };
         }
+        break;
+      }
+      case 'music': {
+        this.requireHost(isHost);
+        const mu = msg.music;
+        d.music = mu.mode === 'beat' ? { ...mu, startAt: this.io.now() + 1500 } // a beat of lead time so every client starts together
+          : mu.mode === 'stream' ? { ...mu, by: pid }
+          : mu;
+        this.system(mu.mode === 'off' ? `${me.name} stopped the music` : mu.mode === 'link' ? `${me.name} shared what's playing` : mu.mode === 'stream' ? `${me.name} is streaming music` : `${me.name} picked the table music`);
         break;
       }
       case 'start': {
@@ -389,6 +402,7 @@ export class Room {
     delete d.members[pid];
     d.ready = d.ready.filter((x) => x !== pid);
     this.system(`${m.name} left`);
+    if (d.music?.mode === 'stream' && d.music.by === pid) d.music = { mode: 'off' };
     if (d.hostId === pid) this.passHost();
   }
 
@@ -502,7 +516,7 @@ export class Room {
           continue;
         }
         if (paused) { d.deadline = null; d.turnKey = null; this.io.setAlarm(null); return changed; }
-        d.deadline ??= now + this.timing.handOverMs;
+        d.deadline ??= now + (d.talkSec ? d.talkSec * 1000 : this.timing.handOverMs);
         if (now >= d.deadline) { this.nextHand(); changed = true; continue; }
         this.io.setAlarm(d.deadline);
         return changed;
@@ -604,6 +618,7 @@ export class Room {
       code: d.code, hostId: d.hostId ?? '', phase: d.phase, rules: d.rules, botLevel: d.botLevel, seats,
       members: Object.entries(d.members).map(([playerId, m]) => ({ playerId, name: m.name, connected: this.isConnected(playerId), seat: m.seat })),
       deadline: d.deadline, ready: [...d.ready], rev: d.rev, seq: d.seq ?? 0, game: d.gamesPlayed, now: this.io.now(),
+      talkSec: d.talkSec ?? Math.round(this.timing.handOverMs / 1000), ...(d.music && d.music.mode !== 'off' ? { music: d.music } : {}),
     };
   }
 

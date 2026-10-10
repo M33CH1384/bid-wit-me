@@ -31,13 +31,39 @@ export type GameAction =
 
 export interface MediaState { cam: boolean; mic: boolean }
 
+/** Between-hands "Table Talk" countdown choices (seconds). */
+export const TALK_SECS = [15, 20, 30, 45] as const;
+export const DEFAULT_TALK_SEC = 20;
+
+/**
+ * Host music for the whole table (spec: host music):
+ *  - beat: one of the built-in tracks, synced — everyone starts track `track` at server time `startAt` (epoch ms)
+ *  - link: a Spotify / Apple Music "now playing" link shown as a tappable card (each player listens in their own app)
+ *  - stream: the host streams their device audio over the WebRTC mesh (`by` = host player id)
+ */
+export type HostMusic =
+  | { mode: 'off' }
+  | { mode: 'beat'; track: number; startAt: number }
+  | { mode: 'link'; url: string; title: string }
+  | { mode: 'stream'; by: string; title: string };
+
+/** Only https links to the big music services are shown as a card (no arbitrary URLs in a shared table). */
+export function isMusicLink(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:' && /^(open\.spotify\.com|spotify\.link|music\.apple\.com|geo\.music\.apple\.com)$/.test(u.hostname);
+  } catch { return false; }
+}
+
 export type ClientMsg =
   | { t: 'hello'; name: string; token?: string; v?: number }
   | { t: 'sit'; seat: number }
   | { t: 'stand' }
   | { t: 'addBot'; seat: number }
   | { t: 'removeBot'; seat: number }
-  | { t: 'config'; rules: TableRules; botLevel?: BotLevel }
+  | { t: 'config'; rules: TableRules; botLevel?: BotLevel; talkSec?: number }
+  /** host only: what plays for the whole table (the server stamps `startAt` for beats) */
+  | { t: 'music'; music: HostMusic }
   | { t: 'start' }
   /**
    * A game move. `seq` = the game version (RoomInfo.seq) the move was chosen from: if the game has moved on since
@@ -82,6 +108,10 @@ export interface RoomInfo {
   game: number;
   /** server clock (epoch ms) when this was sent, so clients can correct the deadline for clock skew */
   now: number;
+  /** between-hands Table Talk countdown (s) */
+  talkSec: number;
+  /** host music (absent = off) */
+  music?: HostMusic;
 }
 
 export interface ChatLine { id: number; from: string | null; name: string; text: string; at: number; system?: boolean }
@@ -137,9 +167,21 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return isInt(m.seat) && m.seat >= 0 && m.seat < 4 ? { t: m.t, seat: m.seat } : null;
     case 'stand': case 'start': case 'next': case 'rematch': case 'leave':
       return { t: m.t };
-    case 'config':
+    case 'config': {
       if (!isObj(m.rules)) return null;
-      return { t: 'config', rules: m.rules as unknown as TableRules, botLevel: m.botLevel === 'easy' || m.botLevel === 'normal' ? m.botLevel : undefined };
+      const out: Extract<ClientMsg, { t: 'config' }> = { t: 'config', rules: m.rules as unknown as TableRules, botLevel: m.botLevel === 'easy' || m.botLevel === 'normal' ? m.botLevel : undefined };
+      if (isInt(m.talkSec) && (TALK_SECS as readonly number[]).includes(m.talkSec)) out.talkSec = m.talkSec;
+      return out;
+    }
+    case 'music': {
+      const mu = m.music;
+      if (!isObj(mu)) return null;
+      if (mu.mode === 'off') return { t: 'music', music: { mode: 'off' } };
+      if (mu.mode === 'beat' && isInt(mu.track) && mu.track >= 0 && mu.track < 16) return { t: 'music', music: { mode: 'beat', track: mu.track, startAt: 0 } };
+      if (mu.mode === 'link' && isStr(mu.url, 300) && isMusicLink(mu.url)) return { t: 'music', music: { mode: 'link', url: mu.url, title: isStr(mu.title, 200) ? mu.title : '' } };
+      if (mu.mode === 'stream') return { t: 'music', music: { mode: 'stream', by: '', title: isStr(mu.title, 200) ? mu.title : '' } };
+      return null;
+    }
     case 'act': {
       const action = parseAction(m.action);
       if (!action) return null;
