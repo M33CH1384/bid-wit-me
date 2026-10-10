@@ -343,8 +343,9 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
         // phone landscape: plates pinned to the screen edges at mid-height, partner top-centre under the scorebug
         if (short && side) {
           const cls = side === 'top' ? 'side-topc' : `side-${side}`;
-          const calcShort = (_el: Object3D, _camera: Camera, size: { width: number; height: number }) =>
-            side === 'top' ? [size.width / 2, 50 + safe.t] : side === 'left' ? [8 + safe.l, size.height * (n === 3 ? 0.36 : 0.43)] : [size.width - 8 - safe.r, size.height * (n === 3 ? 0.36 : 0.43)];
+          // top seat: left edge just right of the fan (badgeSpot sits beside it), so no card peeks out under the plate
+          const calcShort = (el: Object3D, camera: Camera, size: { width: number; height: number }) =>
+            side === 'top' ? [Math.min(size.width - 200, (new Vector3().setFromMatrixPosition(el.matrixWorld).project(camera).x + 1) * size.width / 2), 50 + safe.t] : side === 'left' ? [8 + safe.l, size.height * (n === 3 ? 0.36 : 0.43)] : [size.width - 8 - safe.r, size.height * (n === 3 ? 0.36 : 0.43)];
           return (
             <Html key={seat} position={badgeSpot(p, n)} calculatePosition={calcShort} zIndexRange={[5, 0]} className={`seat-anchor ${cls}`} portal={portal}>
               {renderSeat(seat)}

@@ -363,7 +363,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .table-screen.short .plate:has(> .vbubble) .plate-body { margin-left: 10px; }
 .table-screen.short .vb-icon { font-size: 20px; }
 .table-screen.short .turn-clock { top: -13px; left: auto; right: 0; font-size: 11px; }
-.seat-anchor.side-topc > .plate { transform: translate(-50%, 0); }
+.seat-anchor.side-topc > .plate { transform: translate(0, 0); }
 
 .table-screen.short .me { bottom: calc(27vh + env(safe-area-inset-bottom)); }
 .table-screen.short .me-plate { position: fixed; left: calc(8px + env(safe-area-inset-left)); bottom: calc(10px + env(safe-area-inset-bottom)); }

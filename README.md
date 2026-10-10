@@ -57,3 +57,31 @@ node scripts/shots3d.mjs  # screenshots/3d/{phone,desktop}-{1-start,2-bidding,3-
 - Controls: setup screen + speaker button in the scorebug (SFX on/off + volume, ambience, music on/off + volume), persisted
   in localStorage (`bwm.sound.v1`). The iPhone silent switch mutes Web Audio.
 - Credits & licenses: `CREDITS.md` and the in-game Credits screen (includes the CC BY 4.0 line for "Chillin Hard").
+
+## Release 3 features
+
+- **First hand: books bid themselves** (house rule, on by default, toggle in setup / online lobby): hand 1 has no
+  bidding; every book is worth 10, no bags, no penalties, no Nil. Engine: `packages/rules` (`'books'` bids), bots
+  take every trick they can that hand.
+- **Tips beyond hand 1 + bid coach**: tips stay on until "I've got it — tips off"; each tip shows up to 3 times,
+  then only on "?" (help). The bid coach (in the bid panel) counts sure winners, spade length, cuts, partner and Nil
+  suitability with the same estimate the bots use (`analyzeHand` / `bidAdvice` in `packages/bots`).
+- **Learning mode**: with tips on, offline games run at *Slow* and an open tip holds the bots and the trick sweep;
+  online, that player's own turn timers are ×1.5 (`learning` message). Tips off → back to the chosen speed.
+- **Hype effects** (`fx.ts`, `Hype.tsx`, synthesized SFX in `audio.ts`): streak pop-ups (HEAT CHECK / ON FIRE /
+  UNSTOPPABLE), SHOT! / GOT SHOT, joker rumbles with camera shake + table vibration, Big-over-Little nuke. Derived
+  from game state on every client, so online everyone sees them. "Reduce effects" (sound popover / gear sheet, also
+  `prefers-reduced-motion`) keeps sounds + text and drops shake / flash / shockwave.
+- **Table Talk** between hands (online + offline): recap per team (books/bid, made/set, Nil badges, bags), totals with
+  progress to the target, callouts, 2×2 cam grid (avatars when the camera is off), chat with quick reactions, a deal
+  mini-view, countdown (host: 15/20/30/45 s, default 20) and Ready / Continue. Offline: bot banter.
+- **Voice anti-cheat** (online): during bidding and trick play **partners only** can't hear each other — my mic
+  track isn't sent to my partner's peer connection (send-side `replaceTrack(null)`) and their voice isn't played here
+  (receive-side). Opponents still hear everyone (trash talk is part of the game). All mics are open in the lobby,
+  during Table Talk and after the game. A "MIC LIMITED" badge shows while it applies; a "Table talk over — partners
+  muted" toast marks the switch back.
+- **Host music** (online, sound popover): (a) one of the 5 built-in beats, synced by a server-stamped start time;
+  (b) a Spotify / Apple Music link shown as a tappable card for everyone (only those hosts are accepted);
+  (c) the host streams tab/device audio (`getDisplayMedia`, desktop) or a local audio file over the WebRTC mesh on a
+  separate audio transceiver (so partner muting never cuts the music), with a rights disclaimer. Every player has
+  their own "Host music volume"; personal music pauses while host music plays.
