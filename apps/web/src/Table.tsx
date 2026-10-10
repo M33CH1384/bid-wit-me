@@ -30,7 +30,8 @@ import { type TipsPref, bumpTip, loadTips, saveTips, tipCount } from './tips';
 import { BidCoach } from './BidCoach';
 import { RUN_FX_MS } from '@spades/protocol';
 import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
-import { personaTag, pickBotNames } from '@spades/bots';
+import { personaForName, personaTag, pickBotNames } from '@spades/bots';
+import { preloadPersona } from './voices/voices';
 const Scene = lazy(() => import('./three/Scene'));
 
 /**
@@ -362,7 +363,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (!resume) offlineTalk.newGame();
     offlineTalk.sink = (l) => {
       localChat.push(l.name, l.text, false, 0, true);
-      speakBot(l.name, l.text);
+      speakBot(l.name, l.text, l.persona, l.line);
       if (l.reveal) fx.emit('hustled', { text: `${l.name} was never new` });
       setRevealedTick((x) => x + 1);
     };
@@ -661,6 +662,12 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   }, [humanExchanging, exchangeStep, legal, selected, apply]);
 
   const isBotSeat = (seat: number) => (online ? !!online.botSeats?.includes(seat) : seat !== HUMAN);
+  // recorded bot voices: fetch a persona's clips when one of its bots sits down
+  const botKey = names.map((nm, i) => (isBotSeat(i) ? nm : '')).join('|');
+  useEffect(() => {
+    if (!talkPrefs.voices) return;
+    names.forEach((nm, i) => { if (isBotSeat(i)) preloadPersona(personaForName(nm), talkPrefs.cleanTalk); });
+  }, [botKey, talkPrefs.voices]); // eslint-disable-line react-hooks/exhaustive-deps
   const renderSeat = (seat: number) => {
     const isTurn = st.turn === seat && !pause && st.phase !== 'handOver' && st.phase !== 'gameOver';
     const partner = r.partnerships && seat === partnerOf(HUMAN, r);

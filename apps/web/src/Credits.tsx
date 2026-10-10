@@ -24,6 +24,8 @@ export default function Credits({ onClose }: { onClose: () => void }) {
               </li>
             ))}
           </ul>
+          <h3>Bot voices</h3>
+          <p data-testid="voice-credits">Bot voices: generated with Kokoro-82M by hexgrad (Apache-2.0), <a href="https://huggingface.co/hexgrad/Kokoro-82M" target="_blank" rel="noreferrer">https://huggingface.co/hexgrad/Kokoro-82M</a></p>
           <h3>Sound effects</h3>
           <p>Card &amp; chip foley from Kenney “Casino Audio” and “UI Audio” (<a href="https://kenney.nl" target="_blank" rel="noreferrer">kenney.nl</a>) — CC0. Chimes, stingers, jingles and ambience synthesized in-game.</p>
           <h3>3D art</h3>

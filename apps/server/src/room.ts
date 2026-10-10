@@ -602,7 +602,7 @@ export class Room {
 
   private pushBotLine(l: TalkLine): void {
     const d = this.data;
-    this.pushChat({ id: d.chatSeq++, from: `bot:${l.seat}`, name: l.name, text: l.text, at: this.io.now(), bot: { seat: l.seat, persona: l.persona, ...(l.reveal ? { reveal: true } : {}) } });
+    this.pushChat({ id: d.chatSeq++, from: `bot:${l.seat}`, name: l.name, text: l.text, at: this.io.now(), bot: { seat: l.seat, persona: l.persona, ...(l.reveal ? { reveal: true } : {}), ...(l.line ? { line: l.line } : {}) } });
   }
 
   /** per-seat member ids: humans by player id, bots by seat */

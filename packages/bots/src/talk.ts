@@ -53,7 +53,24 @@ export interface TalkEvent {
   bid?: number;
   gap?: number;
 }
-export interface TalkLine { seat: number; name: string; text: string; persona: PersonaId; reveal?: boolean }
+/** `line`: stable id of the raw line, `<pool>.<kind>.<index>` (pool = persona id or 'common'): clients map it to a recorded clip */
+export interface TalkLine { seat: number; name: string; text: string; persona: PersonaId; reveal?: boolean; line?: string }
+
+/** The id of a raw (unfilled) line as picked for this persona + kind. */
+export function lineIdOf(persona: PersonaId, kind: TalkKind, raw: string): string | undefined {
+  const own = PERSONAS[persona].lines[kind] ?? [];
+  if (own.includes(raw)) return `${persona}.${kind}.${own.indexOf(raw)}`;
+  const common = COMMON[kind] ?? [];
+  return common.includes(raw) ? `common.${kind}.${common.indexOf(raw)}` : undefined;
+}
+
+/** The raw line behind a line id (undefined if this build doesn't have it). */
+export function lineById(id: string): string | undefined {
+  const [pool, kind, idx] = id.split('.');
+  if (!pool || !kind || idx === undefined) return undefined;
+  const list = pool === 'common' ? COMMON[kind as TalkKind] : PERSONAS[pool as PersonaId]?.lines[kind as TalkKind];
+  return list?.[Number(idx)];
+}
 
 export function newTalkState(): TalkState { return { lastAt: -1e12, seatAt: [], revealed: [], recent: [] }; }
 
@@ -111,7 +128,8 @@ function say(st: TalkState, t: TalkTable, seat: number, kind: TalkKind, ev: Talk
   st.seatAt[seat] = now;
   let text = fill(raw, t, seat, ev, them);
   if (PERSONAS[persona].caps) text = text.toUpperCase();
-  return { seat, name: t.seats[seat]!.name, text, persona, ...(reveal ? { reveal: true } : {}) };
+  const line = lineIdOf(persona, kind, raw);
+  return { seat, name: t.seats[seat]!.name, text, persona, ...(reveal ? { reveal: true } : {}), ...(line ? { line } : {}) };
 }
 
 const ready = (st: TalkState, seat: number, now: number, big: boolean) => now - (st.seatAt[seat] ?? -1e12) >= (big ? TALK.bigGapMs : TALK.seatGapMs);

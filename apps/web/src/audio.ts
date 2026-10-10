@@ -15,6 +15,9 @@ export type Sfx =
   // hype effects (all synthesized): joker rumbles, the Big-over-Little nuke, streaks, shots
   | 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak1' | 'streak2' | 'streak3' | 'shot' | 'gotShot' | 'wheels' | 'wheelsCar' | 'overcut' | 'overcut3' | 'tornado';
 
+/** SFX that bot voices duck under, and for how long (ms). */
+const DUCK_MS: Partial<Record<Sfx, number>> = { nuke: 3600, tornado: 2600, wheelsCar: 3000, jokerBig: 1100, shot: 1200, streak2: 1400, streak3: 1800, overcut3: 1000, win: 2000, lose: 1600, set: 1200, nil: 1600 };
+
 export interface SoundSettings { on: boolean; volume: number; ambient: boolean; music: boolean; musicVolume: number }
 const KEY = 'bwm.sound.v1';
 const DEFAULTS: SoundSettings = { on: true, volume: 0.7, ambient: false, music: false, musicVolume: 0.5 };
@@ -320,6 +323,42 @@ class Engine {
     document.addEventListener('visibilitychange', () => { if (!document.hidden && this.ctx && this.ctx.state !== 'running' && this.unlocked) void this.ctx.resume(); });
   }
 
+  /* ---------- recorded bot voices (see voices/voices.ts) ---------- */
+  private voiceDuck: GainNode | null = null;
+  private voiceSrc: { src: AudioBufferSourceNode; gain: GainNode } | null = null;
+  /** The (possibly still locked) context, for decoding voice clips ahead of time. */
+  audioContext(): AudioContext | null { this.ensure(); return this.ctx; }
+  /** Play one bot line (cuts off the previous one, like one person talking). Silent when sound is off / not unlocked yet. */
+  playVoice(buf: AudioBuffer, gain: number): boolean {
+    if (!this.settings.on || !this.unlocked) return false;
+    this.ensure();
+    const c = this.ctx;
+    if (!c || c.state !== 'running' || !this.voiceDuck) return false;
+    this.stopVoice();
+    const src = c.createBufferSource(); src.buffer = buf;
+    const g = c.createGain(); g.gain.value = gain;
+    src.connect(g).connect(this.voiceDuck);
+    src.onended = () => { if (this.voiceSrc?.src === src) this.voiceSrc = null; };
+    src.start();
+    this.voiceSrc = { src, gain: g };
+    this.played.voice = (this.played.voice ?? 0) + 1;
+    return true;
+  }
+  stopVoice() {
+    const v = this.voiceSrc; this.voiceSrc = null;
+    if (!v || !this.ctx) return;
+    v.gain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.03);
+    try { v.src.stop(this.ctx.currentTime + 0.12); } catch { /* already stopped */ }
+  }
+  /** Big moments (nuke, Wheels, tornado, SHOT!…): voices dip under them, then come back. */
+  private duckVoice(ms: number, t: number) {
+    const d = this.voiceDuck, c = this.ctx;
+    if (!d || !c) return;
+    d.gain.cancelScheduledValues(c.currentTime);
+    d.gain.setTargetAtTime(0.28, t, 0.05);
+    d.gain.setTargetAtTime(1, t + ms / 1000, 0.25);
+  }
+
   private ensure() {
     if (this.ctx || !AC) return;
     const c = new AC({ latencyHint: 'interactive' });
@@ -331,6 +370,7 @@ class Engine {
     this.sfxBus = c.createGain(); this.sfxDuck = c.createGain(); this.sfxBus.connect(this.sfxDuck).connect(this.master);
     this.nukeBus = c.createGain(); this.nukeBus.connect(this.master);
     this.ambBus = c.createGain(); this.ambBus.gain.value = 0; this.ambBus.connect(this.master);
+    this.voiceDuck = c.createGain(); this.voiceDuck.connect(this.master);
     this.applyGain();
     this.load();
   }
@@ -392,6 +432,8 @@ class Engine {
     this.played[name] = (this.played[name] ?? 0) + 1;
     const t = c.currentTime + (opts.delay ?? 0);
     const g = opts.gain ?? 1;
+    const duck = DUCK_MS[name];
+    if (duck) this.duckVoice(duck, t);
     switch (name) {
       case 'shuffle': return this.sample('shuffle', t, 0.75 * g, 1, Math.max(0.3, opts.dur ?? 1.6));
       case 'deal': return this.sample('deal', t, 0.26 * g, 1.2 + Math.random() * 0.25, 0.3);

@@ -163,7 +163,7 @@ export function useOnlineChat(cs: ConnState, st: GameState | null, names: string
       add(lineToMsg(l, cs.you));
       // live bot lines (not the backlog on join): voice + the Hustler reveal pop
       if (l.bot && primed.current) {
-        speakBot(l.name, l.text);
+        speakBot(l.name, l.text, l.bot.persona, l.bot.line);
         if (l.bot.reveal) fx.emit('hustled', { text: `${l.name} was never new`, silent: false });
       }
     }

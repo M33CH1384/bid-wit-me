@@ -153,7 +153,7 @@ export interface RoomInfo {
 export interface ChatLine {
   id: number; from: string | null; name: string; text: string; at: number; system?: boolean;
   /** a bot's trash talk: its seat, persona, and whether this line is the Hustler's reveal (raw text; clients mask per Clean talk) */
-  bot?: { seat: number; persona: string; reveal?: boolean };
+  bot?: { seat: number; persona: string; reveal?: boolean; line?: string };
 }
 
 export type ServerMsg =

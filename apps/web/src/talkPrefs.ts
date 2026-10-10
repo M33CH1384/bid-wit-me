@@ -3,18 +3,25 @@
  * - botTalk: offline table setting "Bot trash talk" (online the host decides; default on)
  * - cleanTalk: mask mild cursing on screen and in speech (default on)
  * - hideBotTalk: hide bot lines from your chat (default off)
- * - voices / voiceVolume: speak bot lines (default off) at this volume (× master volume; silent when sound is off)
+ * - voices / voiceVolume: bot voices (default on: recorded clips, Web Speech for lines without one) at this volume
+ *   (× master volume; silent when sound is off)
  */
 import { useSyncExternalStore } from 'react';
 import { PERSONAS, maskMild, personaForName } from '@spades/bots';
 import { sound } from './audio';
+import { playClip, rawLine } from './voices/voices';
 
 export interface TalkPrefs { botTalk: boolean; cleanTalk: boolean; hideBotTalk: boolean; voices: boolean; voiceVolume: number }
 const KEY = 'bwm.talk.v1';
-const DEFAULTS: TalkPrefs = { botTalk: true, cleanTalk: true, hideBotTalk: false, voices: false, voiceVolume: 0.8 };
+const DEFAULTS: TalkPrefs = { botTalk: true, cleanTalk: true, hideBotTalk: false, voices: true, voiceVolume: 0.6 };
 
 function load(): TalkPrefs {
-  try { const j = JSON.parse(localStorage.getItem(KEY) ?? 'null'); if (j) return { ...DEFAULTS, ...j }; } catch { /* ignore */ }
+  try {
+    const j = JSON.parse(localStorage.getItem(KEY) ?? 'null');
+    // v2: bot voices are recorded now → on by default (saves from before stored the old robotic default, off)
+    if (j && !j.v) return { ...DEFAULTS, ...j, voices: true, voiceVolume: Math.min(j.voiceVolume ?? DEFAULTS.voiceVolume, DEFAULTS.voiceVolume) };
+    if (j) return { ...DEFAULTS, ...j };
+  } catch { /* ignore */ }
   return { ...DEFAULTS };
 }
 let prefs = load();
@@ -23,8 +30,8 @@ export const talkPrefs = {
   get: () => prefs,
   set(p: Partial<TalkPrefs>) {
     prefs = { ...prefs, ...p };
-    try { localStorage.setItem(KEY, JSON.stringify(prefs)); } catch { /* ignore */ }
-    if (!prefs.voices && typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
+    try { localStorage.setItem(KEY, JSON.stringify({ ...prefs, v: 2 })); } catch { /* ignore */ }
+    if (!prefs.voices) { sound.stopVoice(); if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel(); }
     subs.forEach((f) => f());
   },
   subscribe(f: () => void) { subs.add(f); return () => { subs.delete(f); }; },
@@ -39,11 +46,22 @@ let voices: SpeechSynthesisVoice[] = [];
 function loadVoices() { try { voices = speechSynthesis.getVoices().filter((v) => /^en/i.test(v.lang)); } catch { /* ignore */ } }
 if (typeof speechSynthesis !== 'undefined') { loadVoices(); speechSynthesis.addEventListener?.('voiceschanged', loadVoices); }
 
-/** Speak a bot line in its persona's voice (distinct pitch/rate/voice per bot). No-op unless Bot voices is on and sound is on. */
-export function speakBot(name: string, text: string): void {
-  if (!prefs.voices || typeof speechSynthesis === 'undefined') return;
+/**
+ * Speak a bot line: its recorded clip (persona + line id → manifest), else the browser's Web Speech voice with the
+ * persona's pitch/rate. No-op unless Bot voices is on and sound is on.
+ */
+export function speakBot(name: string, text: string, persona?: string, line?: string): void {
+  if (!prefs.voices) return;
   const snd = sound.settings;
   if (!snd.on || snd.volume <= 0) return;
+  const per = persona ?? personaForName(name);
+  // recorded clips go through the game's audio graph (master volume / mute already applied there)
+  void playClip(per, rawLine(line), prefs.cleanTalk, prefs.voiceVolume * 0.9).then((played) => { if (!played) webSpeech(name, text); });
+}
+
+function webSpeech(name: string, text: string): void {
+  if (typeof speechSynthesis === 'undefined') return;
+  const snd = sound.settings;
   const p = PERSONAS[personaForName(name)];
   const clean = maskMild(text).replace(/\*+/g, ''); // never read the asterisks out; masked words just drop
   const spoken = (prefs.cleanTalk ? clean : text).replace(/[^\p{L}\p{N}\s'?!.,…-]/gu, ' ').trim();

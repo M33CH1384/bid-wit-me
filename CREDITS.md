@@ -86,3 +86,11 @@ three.js (MIT), @react-three/fiber (MIT), @react-three/drei (MIT), React (MIT), 
 All hype effects are synthesized live with the Web Audio API in `apps/web/src/audio.ts`; no sample files:
 joker rumbles (`jokerLittle`, `jokerBig`), the Big-over-Little nuke (`nuke`: boom + sub-bass + debris crackle),
 streak hits (`streak1`–`streak3`), `shot` (impact slam) and `gotShot` (soft sting). Original work, same license as the app.
+
+## Bot voices
+
+Bot voices: generated with Kokoro-82M by hexgrad (Apache-2.0), https://huggingface.co/hexgrad/Kokoro-82M
+
+Clips in `apps/web/public/voices/` (Opus/WebM + AAC/M4A), made locally with kokoro-onnx (MIT) from Kokoro's built-in
+synthetic voices (no cloned or real-person voices). Line map: `apps/web/src/voices/manifest.json`. Lines without a clip
+use the browser's Web Speech voice.

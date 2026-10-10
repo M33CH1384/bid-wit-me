@@ -232,7 +232,8 @@ export function TableNukeInfo() {
 /** Per-player bot talk controls (local; work even when the host has trash talk on): voices, voice volume, hide text, clean talk. */
 export function BotTalkFields() {
   const t = useTalkPrefs();
-  const voiceOk = typeof window !== 'undefined' && 'speechSynthesis' in window;
+  // recorded clips need Web Audio; Web Speech covers lines without a clip
+  const voiceOk = typeof window !== 'undefined' && ('AudioContext' in window || 'webkitAudioContext' in window || 'speechSynthesis' in window);
   return (
     <div className="bot-talk-fields" data-testid="bot-talk-fields">
       <label className="sf-row">
