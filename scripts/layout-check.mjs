@@ -19,7 +19,7 @@ export const SIZES = [
   ['phone-land-667x375', 667, 375], ['phone-land-844x390', 844, 390], ['phone-land-932x430', 932, 430],
   ['ipad-1024x768', 1024, 768], ['ipad-1180x820', 1180, 820],
   ['phone-320x640', 320, 640], ['phone-375x667', 375, 667], ['phone-390x844', 390, 844], ['phone-414x896', 414, 896], ['phone-430x932', 430, 932], ['phone-440x956', 440, 956],
-  ['desktop-1280x800', 1280, 800],
+  ['desktop-1280x800', 1280, 800], ['desktop-1440x900', 1440, 900], ['desktop-1920x1080', 1920, 1080],
 ];
 const IOS = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1';
 const browser = await chromium.launch({
@@ -58,13 +58,14 @@ async function measure(page) {
     add('controls', document.querySelector('.ctl-cluster'));
     add('sound-dock', document.querySelector('.dock-btn'));
     add('banner', document.querySelector('.center-note'));
+    add('chat', document.querySelector('.chat.open'));
     const L = window.__bwmLayout ?? { trick: [], hand: [] };
     const ov = (a, b, pad = 0) => a.x + pad < b.x + b.w && b.x + pad < a.x + a.w && a.y + pad < b.y + b.h && b.y + pad < a.y + a.h;
     const probs = [];
     for (const b of boxes) if (b.r.x < -1 || b.r.y < -1 || b.r.x + b.r.w > W + 1 || b.r.y + b.r.h > H + 1) probs.push(`${b.name} off screen ${JSON.stringify(b.r)}`);
     for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
       const a = boxes[i], b = boxes[j];
-      if ((a.name === 'controls' && b.name.startsWith('av')) || (b.name === 'controls' && (a.name.startsWith('av') || a.name === 'chat-btn')) || (a.name === 'controls' && b.name === 'chat-btn')) continue;
+      if ((a.name === 'controls' && b.name.startsWith('av')) || (a.name.startsWith('av') && b.name.startsWith('av')) || (b.name === 'controls' && (a.name.startsWith('av') || a.name === 'chat-btn')) || (a.name === 'controls' && b.name === 'chat-btn')) continue;
       if (ov(a.r, b.r, 1)) probs.push(`${a.name} overlaps ${b.name}`);
     }
     L.trick.forEach((t, i) => {
@@ -154,6 +155,10 @@ async function step(p) {
 }
 const trickCount = (p) => p.getByTestId('hand').getAttribute('data-trick-count').then(Number).catch(() => 0);
 
+async function syncChat(page, w) {
+  const open = await page.locator('.chat.open').count();
+  if ((w >= 1200) !== !!open) { await page.locator('.chat-toggle').click().catch(() => {}); await page.waitForTimeout(300); }
+}
 const only = process.env.SIZES ? process.env.SIZES.split(',') : null; // e.g. SIZES=1280x800,390x844
 async function sweepSizes(page, tag) {
   for (const [label, w, h] of SIZES.filter(([, w, h]) => !only || only.includes(`${w}x${h}`))) {
@@ -163,6 +168,8 @@ async function sweepSizes(page, tag) {
     await page.waitForTimeout(1300);
     // slow software GL can lag the React/R3F resize by seconds: measure once the 3D layout matches this size and has settled
     await page.waitForFunction(([w, h]) => window.__bwmLayout?.w === w && window.__bwmLayout?.h === h, [w, h], { timeout: 15000 }).catch(() => {});
+    // desktop: the live chat panel is open (right column) and must clear plates, last trick, controls, cards
+    await syncChat(page, w);
     for (let k = 0, prev = ''; k < 20; k++) {
       const cur = await page.evaluate(() => JSON.stringify(window.__bwmLayout));
       if (cur === prev) break;
@@ -183,6 +190,7 @@ async function bannerCheck(pages, tag, sizes) {
   for (const [label, w, h] of sizes) {
     const page = pages[0];
     await page.setViewportSize({ width: w, height: h });
+    await syncChat(page, w);
     await page.waitForTimeout(1200);
     const end = Date.now() + 60000;
     let seen = false;

@@ -23,7 +23,7 @@ export interface Settings {
   /** House rule "First hand: books bid themselves" (on by default). */
   firstHandBidsItself: boolean;
   botLevel: BotLevel;
-  speed: 'relaxed' | 'normal' | 'fast' | 'turbo';
+  speed: 'slow' | 'relaxed' | 'normal' | 'fast' | 'turbo';
   /** 3D quality: low disables shadows, HDRI and MSAA and uses smaller textures. */
   quality: 'high' | 'low';
 }

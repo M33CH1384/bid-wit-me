@@ -53,7 +53,7 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
             <Toggle label="Tips" value={tips.on} onChange={(on) => { const t = { on, asked: true }; saveTips(t); onTips(t); }} />
           </Row>
           <Row label="Game speed">
-            <Seg label="Game speed" value={s.speed === 'turbo' ? 'fast' : s.speed} options={[['relaxed', 'Chill'], ['normal', 'Normal'], ['fast', 'Fast']]} onChange={(v) => set('speed', v)} />
+            <Seg label="Game speed" value={s.speed === 'turbo' ? 'fast' : s.speed} options={[['slow', 'Slow'], ['relaxed', 'Chill'], ['normal', 'Normal'], ['fast', 'Fast']]} onChange={(v) => set('speed', v)} />
           </Row>
           <Row label="Graphics" hint="Low saves battery">
             <Seg label="Graphics" value={s.quality} options={[['high', 'High'], ['low', 'Low']]} onChange={(v) => set('quality', v)} />

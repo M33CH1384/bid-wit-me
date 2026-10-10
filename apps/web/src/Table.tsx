@@ -71,6 +71,8 @@ export interface OnlineBinding {
   /** Extra buttons for the bottom-right control cluster (camera / mic). */
   controls?: ReactNode;
   /** Table Talk (between hands): countdown, who's ready, and the enlarged video / avatar tile per local seat */
+  /** tips on → ask the server for longer turn timers for this player */
+  setLearning?: (on: boolean) => void;
   talk?: { secs: number | null; ready: { mine: boolean; count: number; of: number }; tile: (seat: number) => ReactNode };
 }
 
@@ -271,7 +273,15 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // `online` never changes for a mounted Table, so this is always the same hook path per instance
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const vp = useViewport();
-  const { st, view, pause, error, apply, introHand, dealing, k } = online ? online.source : useGame(initialRules, seed, settings.botLevel, settings.speed, resume?.state);
+  // "Learning mode": while tips are on the game runs at Slow (unless the player already picked Slow / tests use turbo),
+  // and an open tip holds the bots + trick sweep until it's dismissed. Tips off → back to the chosen speed.
+  const [tips, setTips] = useState<TipsPref>(loadTips);
+  const [tipsSkipped, setTipsSkipped] = useState(false);
+  const learning = tips.on && !tipsSkipped;
+  const [tipOpen, setTipOpen] = useState(false);
+  const speed = learning && settings.speed !== 'turbo' ? 'slow' : settings.speed;
+  const { st, view, pause, error, apply, introHand, dealing, k } = online ? online.source : useGame(initialRules, seed, settings.botLevel, speed, resume?.state, learning && tipOpen);
+  useEffect(() => { online?.setLearning?.(learning); }, [learning]); // eslint-disable-line react-hooks/exhaustive-deps
   const r = st.rules;
   const n = r.playerCount;
   const names = online?.names ?? (n === 4 ? NAMES4 : NAMES3);
@@ -302,8 +312,6 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   useGameSounds(st, myTurn, mySide, msgs);
   const landCue = useCallback((c: Card) => landCueFor(st, c), [st]);
   // "Learn as you play": coach marks across hands until the player turns tips off (local to this player, online too)
-  const [tips, setTips] = useState<TipsPref>(loadTips);
-  const [tipsSkipped, setTipsSkipped] = useState(false);
   const [help, setHelp] = useState(false);
   const coachOn = tips.on && !tipsSkipped && st.phase !== 'gameOver';
   const hintLegal = coachOn;
@@ -415,7 +423,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         <div className="plate-body">
           <div className="plate-name">{names[seat]}{st.dealer === seat && <span className="chip dealer">D</span>}{partner && <span className="chip ally">PARTNER</span>}</div>
           <div className="plate-stats">
-            <span className="chip">BID {b === null ? (isTurn && st.phase === 'bidding' ? '…' : '—') : bidLabel(b).toUpperCase()}</span>
+            <span className="chip">{b === 'books' ? 'BOOKS' : `BID ${b === null ? (isTurn && st.phase === 'bidding' ? '…' : '—') : bidLabel(b).toUpperCase()}`}</span>
             <span className="chip">TOOK {st.tricksWon[seat]}</span>
           </div>
         </div>
@@ -493,6 +501,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           </div>
           <div className="bug-meta">
             <span className="bug-mode">{modeTitle(r).toUpperCase()}</span>
+            {learning && <span className="learn-badge" data-testid="learning-badge" title="Tips are on: the game slows down so you can read. Turn tips off to go back to your speed.">LEARNING MODE: SLOW</span>}
             <span>HAND {st.handNo}{isBooks ? ' · BOOKS BID THEMSELVES' : ''} · TO {r.targetScore}</span>
           </div>
         </div>
@@ -590,7 +599,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           <div className="plate-body">
             <div className="plate-name">YOU{st.dealer === HUMAN && <span className="chip dealer">D</span>}</div>
             <div className="plate-stats">
-              <span className="chip">BID {st.bids[HUMAN] === null ? '—' : bidLabel(st.bids[HUMAN]).toUpperCase()}</span>
+              <span className="chip">{st.bids[HUMAN] === 'books' ? 'BOOKS' : `BID ${st.bids[HUMAN] === null ? '—' : bidLabel(st.bids[HUMAN]).toUpperCase()}`}</span>
               <span className="chip">TOOK {st.tricksWon[HUMAN]}</span>
               {isNilBid(st.bids[HUMAN]) && st.tricksWon[HUMAN]! > 0 && <span className="chip bad">NIL BUSTED</span>}
             </div>
@@ -684,6 +693,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           onSkip={() => setTipsSkipped(true)}
           onOff={tipsOff}
           onCloseHelp={() => setHelp(false)}
+          onOpen={setTipOpen}
         />
       )}
 

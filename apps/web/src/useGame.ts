@@ -6,9 +6,11 @@ import { dealTimeline } from './three/dealTimeline';
 export const HUMAN = 0;
 
 // 'turbo' is for automated UI tests only (not shown in the menu)
-export const SPEEDS = { relaxed: 1.5, normal: 1, fast: 0.5, turbo: 0.03 } as const;
+// 'slow' is also forced while tips are on (learning mode): time to read between bot plays, tricks and the deal
+export const SPEEDS = { slow: 2.2, relaxed: 1.5, normal: 1, fast: 0.5, turbo: 0.03 } as const;
 
-export function useGame(rules: TableRules, seed: string, botLevel: BotLevel, speed: keyof typeof SPEEDS, resume?: GameState) {
+/** `hold`: a tip is open — bots wait and a finished trick stays on the table until it's dismissed. */
+export function useGame(rules: TableRules, seed: string, botLevel: BotLevel, speed: keyof typeof SPEEDS, resume?: GameState, hold = false) {
   const [st, setSt] = useState<GameState>(() => resume ?? newGame(rules, seed));
   // a resumed hand is placed instantly (no shuffle/deal replay); every later hand animates
   const resumedHand = useRef(resume ? resume.handNo : null);
@@ -43,14 +45,14 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel, spe
 
   // hold a finished trick on the table for a moment
   useEffect(() => {
-    if (!pause) return;
+    if (!pause || hold) return;
     const t = setTimeout(() => setPause(false), 1150 * k);
     return () => clearTimeout(t);
-  }, [pause, k]);
+  }, [pause, k, hold]);
 
   // bots move on their turn
   useEffect(() => {
-    if (pause || dealing) return;
+    if (pause || dealing || hold) return;
     const turn = pendingTurn(st);
     if (!turn || turn.seat === HUMAN) return;
     const delay = (turn.kind === 'bid' ? 650 : turn.kind === 'exchange' ? 500 : 600) * k;
@@ -59,7 +61,7 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel, spe
       if (action) apply(action);
     }, delay);
     return () => clearTimeout(t);
-  }, [st, pause, dealing, botLevel, k, apply]);
+  }, [st, pause, dealing, botLevel, k, apply, hold]);
 
   const restart = useCallback((r: TableRules = rules) => {
     const next = newGame(r, secureSeed());

@@ -79,6 +79,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
         onQuality={(quality) => { const s = { ...settings, quality }; setSettings(s); saveSettings({ ...loadSettings(), quality }); }}
         online={{
           source, names, chat, seatExtra, sideLabel,
+          setLearning: (on) => conn.send({ t: 'learning', on }),
           controls: <MediaBar mesh={mesh} vs={vs} seated limited={limitedNow} />,
           talk: {
             secs,

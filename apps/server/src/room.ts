@@ -30,6 +30,8 @@ export interface Member {
   seat: number | null;
   media: MediaState;
   joinedAt: number;
+  /** tips on: own turn timers ×1.5 */
+  learning?: boolean;
   /** ids of this player's most recently applied actions (idempotency for retries after a reconnect) */
   acts?: string[];
 }
@@ -76,6 +78,8 @@ export interface RoomTiming {
   handOverMs: number;
 }
 
+/** learning mode (a player with tips on): their own turn timer runs this much longer */
+export const LEARNING_TIMER = 1.5;
 export const DEFAULT_TIMING: RoomTiming = { botMs: 750, trickPauseMs: 1300, dealMs: 3200, disconnectGraceMs: 10_000, handOverMs: 20_000 };
 
 /** What the host environment (Durable Object or test harness) provides. */
@@ -322,6 +326,11 @@ export class Room {
         me.media = msg.media;
         break;
       }
+      case 'learning': {
+        if (me.learning === msg.on) return;
+        me.learning = msg.on;
+        break;
+      }
       case 'rtc': {
         // WebRTC signaling relay: only between seated humans at this table
         const to = d.members[msg.to];
@@ -552,7 +561,7 @@ export class Room {
       }
 
       // a human's turn
-      const timerMs = (turn.kind === 'bid' ? d.rules.turnTimerSec.bid : d.rules.turnTimerSec.play) * 1000;
+      const timerMs = (turn.kind === 'bid' ? d.rules.turnTimerSec.bid : d.rules.turnTimerSec.play) * 1000 * (d.members[slot.playerId]?.learning ? LEARNING_TIMER : 1);
       const full = (d.turnStartedAt ?? now) + leadIn + timerMs;
       const connected = this.isConnected(slot.playerId);
       const want = connected ? full : Math.min(full, now + this.timing.disconnectGraceMs);

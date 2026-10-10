@@ -492,3 +492,24 @@ describe('table talk + host music', () => {
     expect(env.last('b', 'state')!.room.music).toBeUndefined();
   });
 });
+
+describe('learning mode', () => {
+  it('a player with tips on gets a 50% longer turn timer (only for their own turns)', () => {
+    const run = (learning: boolean) => {
+      const env = new FakeEnv(undefined, FAST);
+      env.join('a', 'Solo');
+      env.send('a', { t: 'sit', seat: 0 });
+      env.send('a', { t: 'config', rules: { ...makeRules('joker'), firstHandBidsItself: false } });
+      if (learning) env.send('a', { t: 'learning', on: true });
+      env.send('a', { t: 'start' });
+      for (let i = 0; i < 40 && env.room.data.game!.turn !== 0; i++) env.advance(50);
+      env.advance(10);
+      const d = env.room.data;
+      return d.deadline! - d.turnStartedAt!;
+    };
+    const bidMs = makeRules('joker').turnTimerSec.bid * 1000;
+    const plain = run(false), slow = run(true);
+    expect(plain).toBeLessThan(bidMs * 1.5);
+    expect(slow).toBeGreaterThanOrEqual(bidMs * 1.5);
+  });
+});

@@ -139,7 +139,9 @@ export function placeBubble(anchor: Rect, bw: number, bh: number, W: number, H: 
 
 const OBSTACLES = '.badge-layer .plate, .me-plate, .bid-panel, .bid-coach, .scorebug .bug, .ctl-cluster, .sound-dock';
 
-export function Coach({ ctx, help, onOff, onSkip, onCloseHelp }: {
+export function Coach({ ctx, help, onOff, onSkip, onCloseHelp, onOpen }: {
+  /** a tip bubble is showing (learning mode holds the bots while it is) */
+  onOpen?: (open: boolean) => void;
   ctx: CoachCtx;
   /** "?" pressed: show every tip that fits this moment, ignoring the per-tip limits. */
   help: boolean;
@@ -215,6 +217,8 @@ export function Coach({ ctx, help, onOff, onSkip, onCloseHelp }: {
 
   // bidding tips sit inside the bid panel (its .bid-tip-slot) instead of floating over the table
   const wantInline = !!tip && tip.anchor === '.bid-panel' && bidPanelUp;
+  useEffect(() => { onOpen?.(!!tip); }, [!!tip]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => onOpen?.(false), []); // eslint-disable-line react-hooks/exhaustive-deps
   useLayoutEffect(() => { setSlot(wantInline ? document.querySelector('.bid-tip-slot') : null); }, [wantInline, tipId]);
   if (!tip) return null;
   const dismiss = () => {

@@ -75,6 +75,8 @@ export type ClientMsg =
   | { t: 'rematch' }
   | { t: 'chat'; text: string }
   | { t: 'media'; media: MediaState }
+  /** "Learning mode" (tips on): this player's own turn timers run 50% longer */
+  | { t: 'learning'; on: boolean }
   | { t: 'rtc'; to: string; data: unknown }
   | { t: 'leave' };
 
@@ -194,6 +196,8 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return isStr(m.text, 1000) ? { t: 'chat', text: m.text } : null;
     case 'media':
       return isObj(m.media) ? { t: 'media', media: { cam: m.media.cam === true, mic: m.media.mic === true } } : null;
+    case 'learning':
+      return { t: 'learning', on: m.on === true };
     case 'rtc':
       if (!isStr(m.to, 64) || m.data === undefined) return null;
       if (JSON.stringify(m.data).length > LIMITS.rtcMax) return null;
