@@ -59,7 +59,7 @@ class Client {
           this.room = m.room; this.seat = m.seat;
           if (this.inflight && m.room.seq > this.inflight.seq) this.inflight = null;
           this.view = m.view && m.view.history === null ? { ...m.view, history: this.view?.history ?? [] } : m.view;
-          if (s.includes('"hands"')) this.foreignCards++;
+          if (s.includes('"hands":[')) this.foreignCards++; // the full deal (array); the series record's "hands": <count> is fine
         }
         if (m.t === 'chat') this.chats.push(`${m.line.name}: ${m.line.text}`);
         if (m.t === 'error') this.errors.push(m.code);

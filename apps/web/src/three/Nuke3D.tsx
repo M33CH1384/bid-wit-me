@@ -340,5 +340,6 @@ function blowHud() {
   screen.classList.remove('nuke-blow');
   void (screen as HTMLElement).offsetWidth;
   screen.classList.add('nuke-blow');
-  window.setTimeout(() => screen.classList.remove('nuke-blow'), 2600);
+  // (frame-exact captures drive time through fx.warp: the run's cleanup removes the class instead of a wall-clock timer)
+  if (fx.warp === null) window.setTimeout(() => screen.classList.remove('nuke-blow'), 2600);
 }

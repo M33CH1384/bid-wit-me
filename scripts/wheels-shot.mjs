@@ -4,6 +4,8 @@
  */
 import { chromium } from 'playwright-core';
 const base = process.argv[2] ?? 'http://localhost:4173';
+const out = process.env.SHOTS_OUT ?? 'screenshots/release-3';
+await import('node:fs').then((fs) => fs.mkdirSync(out, { recursive: true }));
 const b = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl', '--autoplay-policy=no-user-gesture-required'] });
 const errors = [];
 for (const [w, h, tag] of [[1440, 900, 'desktop'], [390, 844, 'phone']]) {
@@ -17,12 +19,12 @@ for (const [w, h, tag] of [[1440, 900, 'desktop'], [390, 844, 'phone']]) {
   await p.mouse.click(5, h - 5).catch(() => {});
   await p.evaluate(() => window.__bwmFx.emit('wheelsCar', { text: 'You + Fatima made 10 · took 11' }));
   await p.waitForTimeout(500);
-  await p.screenshot({ path: `screenshots/release-3/15a-wheels-revving-${tag}.png` });
+  await p.screenshot({ path: `${out}/15a-wheels-revving-${tag}.png` });
   await p.waitForTimeout(600);
   // freeze the CSS animations mid peel-out (screenshots are slow under software GL)
   await p.evaluate(() => document.getAnimations().filter((a) => /wc-|wheels/.test(a.animationName ?? '')).forEach((a) => { a.pause(); a.currentTime = 1250; }));
   await p.waitForTimeout(100);
-  await p.screenshot({ path: `screenshots/release-3/15b-wheels-peel-out-${tag}.png` });
+  await p.screenshot({ path: `${out}/15b-wheels-peel-out-${tag}.png` });
   await p.evaluate(() => document.getAnimations().forEach((a) => a.play()));
   await p.waitForTimeout(2600);
   const left = await p.getByTestId('wheels-fx').count();
@@ -31,7 +33,7 @@ for (const [w, h, tag] of [[1440, 900, 'desktop'], [390, 844, 'phone']]) {
   await p.evaluate(() => window.__bwmFx.emit('overcut', { level: 3, text: 'TALK TO EM!' }));
   await p.waitForTimeout(120);
   await p.evaluate(() => document.getAnimations().forEach((a) => { a.pause(); a.currentTime = Math.min(250, a.currentTime ?? 0); }));
-  await p.screenshot({ path: `screenshots/release-3/16-double-overcut-${tag}.png` });
+  await p.screenshot({ path: `${out}/16-double-overcut-${tag}.png` });
   await p.evaluate(() => document.getAnimations().forEach((a) => a.play()));
   console.log(`✓ ${tag} shots; fired`, await p.evaluate(() => window.__bwmFx.fired.wheelsCar));
   await p.close();

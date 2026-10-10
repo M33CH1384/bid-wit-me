@@ -1113,7 +1113,10 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .sg-hands th:first-child, .sg-hands td:first-child { text-align: left; }
 .gameover .series-chip, .tt-head .series-chip { margin: 2px auto 6px; }
 .team-name-edit { display: flex; gap: 6px; align-items: center; }
-.team-name-edit input { flex: 1; min-width: 0; }
+.team-name-edit input { flex: 1; min-width: 0; background: rgba(255,255,255,.07); border: 1px solid rgba(185,128,255,.35); border-radius: 6px; color: var(--ink); padding: 7px 9px; font: inherit; font-size: 16px; }
+.team-name-edit input::placeholder { color: var(--muted); opacity: .8; }
+.team-name-edit button { border: 1px solid rgba(185,128,255,.45); background: rgba(155,92,255,.25); color: var(--ink); border-radius: 6px; padding: 7px 12px; font: inherit; font-size: 13px; font-weight: 700; letter-spacing: .04em; cursor: pointer; }
+.team-name-edit button:hover { background: rgba(155,92,255,.45); }
 .lobby-team-name, .tt-team-edit { display: grid; gap: 3px; margin: 6px 0; }
 .lobby-team-name small, .tt-team-edit small { font-size: 10px; letter-spacing: .12em; opacity: .75; }
 .team-row { flex-wrap: wrap; }

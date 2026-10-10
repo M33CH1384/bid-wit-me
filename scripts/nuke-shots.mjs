@@ -8,7 +8,8 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
 const base = process.argv[2] ?? 'http://localhost:4173';
 const fps = Number(process.argv[3] ?? 30);
-const out = 'screenshots/release-3';
+const out = process.env.SHOTS_OUT ?? 'screenshots/release-3';
+mkdirSync(out, { recursive: true });
 const tmp = '/tmp/nuke-frames';
 rmSync(tmp, { recursive: true, force: true }); mkdirSync(tmp, { recursive: true });
 const b = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl'] });
@@ -36,7 +37,7 @@ for (let i = 0; i < 40; i++) {
 }
 await p.evaluate(() => { window.__bwmSound?.setMuted?.(true); });
 const shot = async (path, t) => {
-  await p.evaluate((t) => { window.__bwmFx.warp = t; document.getAnimations().forEach((a) => { a.pause(); a.currentTime = t * 1000; }); }, t);
+  await p.evaluate((t) => { window.__bwmFx.warp = t; document.getAnimations().forEach((a) => { a.pause(); a.currentTime = (a.animationName === 'nuke-blow' ? Math.max(0, t - 0.3) : t) * 1000; }); }, t);
   await p.waitForFunction((t) => window.__bwmNukeT === t, t, { timeout: 15000 }).catch(() => console.log('frame wait timed out at', t));
   await p.waitForTimeout(250);
   await p.screenshot({ path });

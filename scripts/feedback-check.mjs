@@ -11,7 +11,7 @@ import { mkdirSync } from 'node:fs';
 const web = process.argv[2] ?? 'http://localhost:4173';
 const server = process.argv[3] ?? 'http://127.0.0.1:8787';
 const token = process.argv[4] ?? 'local-dev-token';
-const out = 'screenshots/release-3';
+const out = process.env.SHOTS_OUT ?? 'screenshots/release-3';
 mkdirSync(out, { recursive: true });
 const b = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl'] });
 const problems = [];
