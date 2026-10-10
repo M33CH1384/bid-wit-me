@@ -176,7 +176,8 @@ await host.getByTestId('talk-ready-count').filter({ hasText: '1/2' }).waitFor({ 
 await guest.getByTestId('talk-ready').click({ timeout: 3000 }).catch(() => {});
 await host.getByTestId('talk-over').waitFor({ timeout: 15000 });
 log('"Table talk over — partners muted" toast after everyone was ready');
-await playUntil(async () => (await host.locator('.bid-grid button').count()) > 0 || (await legal(host).count()) > 0 || (await guest.locator('.bid-grid button').count()) > 0, 30000);
+// (the hand counter, not "a bid button is showing": step() may answer a bid before the condition gets to see it)
+await playUntil(async () => /HAND 2\b/i.test(await host.locator('.scorebug').first().innerText().catch(() => '')), 30000);
 log('hand 2 dealt');
 
 // lobby view while in game (menu) shows the code and "Back to the game"

@@ -197,7 +197,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   const wide = !short && size.width >= 1024 && aspect >= 1.3;
   const fanOpts = short
     ? { short, reserveFrac: (Math.max(safe.l, safe.r) + 186) / size.width, bottomFrac: safe.b / size.height, heightFrac: 0.2 }
-    : wide ? { reserveFrac: 190 / size.width, bottomFrac: 0.012, heightFrac: 0.215 }
+    : wide ? { reserveFrac: 200 / size.width, bottomFrac: 0.012, heightFrac: 0.205 }
     : {};
   const trickScale = short ? 1.85 : undefined;
 
@@ -231,7 +231,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   const mine = myHand ?? Array.from({ length: handCounts[human]! }, () => null);
   mine.forEach((c, i) => {
     const isLegal = !!c && legal.includes(c);
-    const lift = c && selected === c ? 0.24 : isLegal ? (props.hintLegal ? 0.12 : wide && legal.length < mine.length ? 0.11 : 0.07) : 0;
+    const lift = c && selected === c ? 0.24 : isLegal ? (props.hintLegal ? 0.12 : wide && legal.length < mine.length ? 0.09 : 0.07) : 0;
     const target = handFan(aspect, mine.length, i, lift, safeFrac, fanOpts);
     const flip = flipIn && !!c;
     items.push({

@@ -76,6 +76,8 @@ async function measure(page) {
     if (hand) {
       if (hand.y + hand.h > H + 1 || hand.x < -1 || hand.x + hand.w > W + 1) probs.push(`hand off screen ${JSON.stringify(hand)} in ${W}x${H}`);
       for (const b of boxes) for (const c of L.hand) if (ov(b.r, c, 2)) { probs.push(`${b.name} covers the hand`); break; }
+      // the (bigger, desktop) hand must never reach into the trick area
+      L.trick.forEach((t, i) => { if (L.hand.some((c) => ov(c, t, 2))) probs.push(`hand covers trick card ${i}`); });
     }
     // scorebug numbers must fit in portrait (worst case: a negative 4-character score and two-digit bags)
     const setText = (el, t) => { const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); const n = w.nextNode(); if (n) n.nodeValue = t; };
