@@ -18,6 +18,13 @@ function trickCenter(): { x: number; y: number } {
   return { x: window.innerWidth / 2, y: window.innerHeight * 0.45 };
 }
 
+/** Screen centre of the most recently played trick card (the over-cut lands there). */
+function lastTrickCard(): { x: number; y: number } {
+  const L = (window as unknown as { __bwmLayout?: { trick: { x: number; y: number; w: number; h: number }[] } }).__bwmLayout;
+  const t = L?.trick?.[L.trick.length - 1];
+  return t ? { x: t.x + t.w / 2, y: t.y + t.h / 2 } : trickCenter();
+}
+
 /* ------------------------------------------------------------- mushroom cloud */
 interface P { x: number; y: number; vx: number; vy: number; r: number; vr: number; life: number; max: number; kind: 'stem' | 'cap' | 'dust' | 'spark' | 'fire' }
 
@@ -78,6 +85,7 @@ function runNuke(canvas: HTMLCanvasElement, cx: number, cy: number, onDone: () =
 
 export default function Hype({ reduced, low = false }: { reduced: boolean; low?: boolean }) {
   const [car, setCar] = useState<{ id: number; who: string } | null>(null);
+  const [spark, setSpark] = useState<{ id: number; x: number; y: number; level: number } | null>(null);
   const [pops, setPops] = useState<Pop[]>([]);
   const [nuke, setNuke] = useState<{ id: number; x: number; y: number } | null>(null);
   const [pulse, setPulse] = useState<{ id: number; big: boolean } | null>(null);
@@ -89,6 +97,11 @@ export default function Hype({ reduced, low = false }: { reduced: boolean; low?:
     const add = (p: Pop, ms: number) => { setPops((ps) => [...ps.filter((x) => x.kind !== p.kind), p]); window.setTimeout(() => setPops((ps) => ps.filter((x) => x.id !== p.id)), ms); };
     if (e.kind === 'streak') add({ id: e.id, kind: e.kind, text: e.text ?? 'HEAT CHECK', sub: e.sub ?? `${e.level} hands in a row`, level: e.level }, 2300);
     else if (e.kind === 'shot') add({ id: e.id, kind: e.kind, text: 'SHOT!', sub: e.text }, 2000);
+    else if (e.kind === 'overcut') {
+      const lvl = (e.level ?? 2) >= 3 ? 3 : 2;
+      add({ id: e.id, kind: e.kind, text: e.text ?? 'SAY LESS!', level: lvl }, lvl === 3 ? 1700 : 1300);
+      if (!reducedRef.current) { const c = lastTrickCard(); setSpark({ id: e.id, level: lvl, ...c }); window.setTimeout(() => setSpark((s) => (s?.id === e.id ? null : s)), lvl === 3 ? 800 : 600); }
+    }
     else if (e.kind === 'wheelsCar') setCar({ id: e.id, who: e.text ?? '' });
     else if (e.kind === 'wheels') add({ id: e.id, kind: e.kind, text: 'WHEELS!', sub: e.sub ?? e.text }, 1900);
     else if (e.kind === 'gotShot') add({ id: e.id, kind: e.kind, text: 'GOT SHOT', sub: e.text }, 1900);
@@ -128,6 +141,7 @@ export default function Hype({ reduced, low = false }: { reduced: boolean; low?:
         </>
       )}
       <canvas ref={canvas} className="nuke-canvas" data-testid={nuke ? 'nuke' : undefined} style={{ display: nuke ? 'block' : 'none' }} />
+      {spark && <div key={`s${spark.id}`} className={`overcut-spark lvl${spark.level}`} style={{ left: spark.x, top: spark.y }} data-testid="overcut-spark"><i /><i /><i /><i /><i /><i /><i /><i /></div>}
       {car && <WheelsCelebration key={car.id} id={car.id} who={car.who} reduced={reduced} low={low} onDone={() => setCar((c) => (c?.id === car.id ? null : c))} />}
       {pops.map((p) => (
         <div key={p.id} className={`hype-pop ${p.kind} lvl${p.level ?? 0}`} data-testid={`pop-${p.kind}`} role="status">

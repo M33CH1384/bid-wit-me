@@ -69,3 +69,49 @@ describe('wheels made / Cutthroat 10th book', () => {
     expect(wheelsTenth({ partnerships: true }, [9, 1, 0, 0], [10, 1, 0, 0])).toEqual([]);
   });
 });
+
+import { cutLevel } from '../src/landCue';
+import { makeRules } from '@spades/rules';
+describe('cut levels / over-cuts', () => {
+  const P = (...cs: string[]) => cs.map((card, seat) => ({ seat, card })) as never;
+  const joker = makeRules('joker');
+  const aceDown = makeRules('aceDown');
+  it('first cut = 1, over-cut = 2, double over-cut = 3 (Ace Down)', () => {
+    const t = P('KH', '3S', '9S', 'QS');
+    expect([1, 2, 3].map((i) => cutLevel(t, i, aceDown))).toEqual([1, 2, 3]);
+  });
+  it('a lower trump that does not take the lead is level 0; later over-cut still counts it right', () => {
+    const t = P('KH', '9S', '3S', 'QS');
+    expect([1, 2, 3].map((i) => cutLevel(t, i, aceDown))).toEqual([1, 0, 2]);
+  });
+  it('trump lead or no cut → 0', () => {
+    expect(cutLevel(P('2S', '9S', 'AS', 'KH'), 2, aceDown)).toBe(0);
+    expect(cutLevel(P('KH', 'AH', '2H', '3H'), 1, aceDown)).toBe(0);
+  });
+  it('Joker mode order: 2♦ and Jokers are trumps; Jokers count as levels', () => {
+    // hearts led; A♠ cuts (1), 2♦ over-cuts (2), Little Joker over-cuts (3)
+    const t = P('KH', 'AS', '2D', 'LJ');
+    expect([1, 2, 3].map((i) => cutLevel(t, i, joker))).toEqual([1, 2, 3]);
+    // Big Joker first, then a spade can't take the lead → 0
+    expect(cutLevel(P('KC', 'BJ', 'AS', '3C'), 2, joker)).toBe(0);
+  });
+});
+
+import { OVERCUT_CALLOUTS, landCueFor, overcutCallout } from '../src/landCue';
+describe('over-cut callouts', () => {
+  const r = makeRules('aceDown');
+  const T = (...cs: string[]) => ({ leader: 0, winner: null, plays: cs.map((card, seat) => ({ seat, card })) }) as never;
+  it('same text for every client, from the pool, never the same twice in a row', () => {
+    const st = { handNo: 3, rules: r, tricks: [T('KH', '3S', '9S', '2H'), T('KD', '4S', '8S', 'QS')], trick: T('KC', '5S', 'JS') } as never;
+    const a = overcutCallout(st, '9S' as never), b = overcutCallout(st, '8S' as never), c = overcutCallout(st, 'QS' as never), d = overcutCallout(st, 'JS' as never);
+    for (const x of [a, b, c, d]) expect(OVERCUT_CALLOUTS).toContain(x);
+    expect(b).not.toBe(a); expect(c).not.toBe(b); expect(d).not.toBe(c);
+    expect(overcutCallout(st, 'QS' as never)).toBe(c); // deterministic
+  });
+  it('cue carries level + callout', () => {
+    const st = { handNo: 1, rules: r, tricks: [], trick: T('KH', '3S', '9S', 'QS'), phase: 'playing' } as never;
+    expect(landCueFor(st, '3S' as never)).toMatch(/cut|broken/);
+    expect(landCueFor(st, '9S' as never)).toMatch(/^play,overcut\|/);
+    expect(landCueFor(st, 'QS' as never)).toMatch(/^play,overcut3\|/);
+  });
+});

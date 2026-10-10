@@ -27,6 +27,12 @@ for (const [w, h, tag] of [[1440, 900, 'desktop'], [390, 844, 'phone']]) {
   await p.waitForTimeout(2600);
   const left = await p.getByTestId('wheels-fx').count();
   if (left) errors.push(`${tag}: celebration still on screen after 3.4 s`);
+  // over-cut escalation (level 3 = DOUBLE OVERCUT!)
+  await p.evaluate(() => window.__bwmFx.emit('overcut', { level: 3, text: 'TALK TO EM!' }));
+  await p.waitForTimeout(120);
+  await p.evaluate(() => document.getAnimations().forEach((a) => { a.pause(); a.currentTime = Math.min(250, a.currentTime ?? 0); }));
+  await p.screenshot({ path: `screenshots/release-3/16-double-overcut-${tag}.png` });
+  await p.evaluate(() => document.getAnimations().forEach((a) => a.play()));
   console.log(`✓ ${tag} shots; fired`, await p.evaluate(() => window.__bwmFx.fired.wheelsCar));
   await p.close();
 }

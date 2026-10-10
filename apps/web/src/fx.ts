@@ -8,7 +8,7 @@
 import { useSyncExternalStore } from 'react';
 import { type Sfx, sound } from './audio';
 
-export type FxKind = 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak' | 'shot' | 'gotShot' | 'wheels' | 'wheelsCar';
+export type FxKind = 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak' | 'shot' | 'gotShot' | 'wheels' | 'wheelsCar' | 'overcut';
 export interface FxEvent { id: number; kind: FxKind; at: number; level?: number; text?: string; sub?: string }
 
 const KEY = 'bwm.fx';
@@ -51,6 +51,8 @@ class FxBus {
       else if (kind === 'jokerBig') this.shake = { start: e.at, dur: 0.95, amp: 0.07 };
       else if (kind === 'nuke') this.shake = { start: e.at + 120, dur: 1.6, amp: 0.13 };
       else if (kind === 'shot') this.shake = { start: e.at + 80, dur: 0.3, amp: 0.03 };
+      // over-cut: one short, sharp nudge (not the joker's rolling rumble)
+      else if (kind === 'overcut') this.shake = (e.level ?? 2) >= 3 ? { start: e.at, dur: 0.45, amp: 0.085 } : { start: e.at, dur: 0.24, amp: 0.045 };
       else if (kind === 'wheels') this.shake = { start: e.at + 60, dur: 0.25, amp: 0.02 };
       else if (kind === 'wheelsCar') this.shake = { start: e.at + 950, dur: 0.6, amp: 0.025 };
     }
@@ -60,20 +62,30 @@ class FxBus {
 
 export function sfxFor(e: Pick<FxEvent, 'kind' | 'level'>): Sfx {
   if (e.kind === 'streak') return (e.level ?? 2) >= 4 ? 'streak3' : (e.level ?? 2) === 3 ? 'streak2' : 'streak1';
+  if (e.kind === 'overcut') return (e.level ?? 2) >= 3 ? 'overcut3' : 'overcut';
   return e.kind as Sfx;
 }
 
 export const fx = new FxBus();
 if (typeof window !== 'undefined') (window as unknown as { __bwmFx?: FxBus }).__bwmFx = fx;
 
-const FX_CUES = new Set(['jokerLittle', 'jokerBig', 'nuke']);
+const FX_CUES = new Set(['jokerLittle', 'jokerBig', 'nuke', 'overcut', 'overcut3']);
 /** A landing cue from a card animation: plain sounds play; joker cues go through the effects bus (sound + visuals). */
 export function fireCue(c: string, delay = 0) {
-  if (FX_CUES.has(c)) {
-    if (delay) window.setTimeout(() => fx.emit(c as FxKind), delay * 1000);
-    else fx.emit(c as FxKind);
+  if (FX_CUES.has(c.split('|')[0]!)) {
+    const go = () => fx.emit(c as FxKind);
+    if (c.startsWith('overcut')) {
+      // "overcut|SAY LESS!" / "overcut3|…": level 2 / 3+ with the (seeded) callout text
+      const [k, text] = c.split('|');
+      const emit = () => fx.emit('overcut', { level: k === 'overcut3' ? 3 : 2, text });
+      if (delay) window.setTimeout(emit, delay * 1000); else emit();
+      return;
+    }
+    if (delay) window.setTimeout(go, delay * 1000); else go();
     return;
   }
+  // level-1 cut: the crisp cut sound + a light accent nudge
+  if (c === 'cut' && !fx.reduced) window.setTimeout(() => { fx.shake = { start: performance.now(), dur: 0.14, amp: 0.012 }; }, delay * 1000);
   sound.play(c as Sfx, delay ? { delay } : {});
 }
 

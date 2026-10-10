@@ -219,7 +219,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   // cards on the table this trick
   shownTrick.forEach((pl, order) => {
     const fanFrom = pl.seat === human ? undefined : opponentFan(positions[pl.seat]!, n, Math.max(0, handCounts[pl.seat]! - 1) / 2, handCounts[pl.seat]! + 1);
-    items.push({ key: `${handNo}-${pl.card}`, card: pl.card, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale), from: fanFrom, duration: 0.5, arc: 0.35, sfxLand: props.landCue(pl.card), glow: !!props.marked?.includes(pl.card) });
+    items.push({ key: `${handNo}-${pl.card}`, card: pl.card, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale), from: fanFrom, ...(props.landCue(pl.card).includes(',overcut') ? { duration: 0.34, arc: 0.7 } : { duration: 0.5, arc: 0.35 }), sfxLand: props.landCue(pl.card), glow: !!props.marked?.includes(pl.card) });
   });
   // opponents' fans
   for (let seat = 0; seat < n; seat++) {

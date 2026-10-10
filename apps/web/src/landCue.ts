@@ -1,4 +1,4 @@
-import { type Card, type GameState, isTrump } from '@spades/rules';
+import { type Card, type GameState, type Play, type TableRules, isTrump, trickWinner } from '@spades/rules';
 
 /**
  * Landing cues for a played card: always 'play'; + 'cut' when trumping a non-trump lead; + 'broken' (bigger, wins) for
@@ -7,13 +7,63 @@ import { type Card, type GameState, isTrump } from '@spades/rules';
  */
 export function landCueFor(st: GameState, card: Card): string {
   const base = baseLandCue(st, card);
-  if (card !== 'BJ' && card !== 'LJ') return base;
+  if (card !== 'BJ' && card !== 'LJ') {
+    // over-cut: a higher trump takes the lead from an earlier cut (Jokers keep their own effects instead)
+    const t = [...st.tricks, st.trick].find((x) => x.plays.some((pl) => pl.card === card));
+    if (!t) return base;
+    const lvl = cutLevel(t.plays, t.plays.findIndex((pl) => pl.card === card), st.rules);
+    if (lvl >= 2) return `play,${lvl >= 3 ? 'overcut3' : 'overcut'}|${overcutCallout(st, card)}`;
+    if (lvl === 0 && base.endsWith(',cut')) return 'play'; // a lower trump that doesn't take the lead: just a card
+    return base;
+  }
   const t = [...st.tricks, st.trick].find((x) => x.plays.some((pl) => pl.card === card));
   const i = t ? t.plays.findIndex((pl) => pl.card === card) : -1;
   const other = card === 'BJ' ? 'LJ' : 'BJ';
   const nuke = !!t && t.plays.slice(0, i).some((pl) => pl.card === other);
   return `${base},${nuke ? 'nuke' : card === 'BJ' ? 'jokerBig' : 'jokerLittle'}`;
 }
+
+/**
+ * Cut level of play `i` in a trick led with a non-trump: every trump that TAKES THE LEAD adds a level (the first cut
+ * = 1, an over-cut = 2, a double over-cut = 3). Jokers count too (they keep their own effects). A trump that doesn't
+ * take the lead, a non-trump, or any card on a trump lead is level 0.
+ */
+export function cutLevel(plays: readonly Play[], i: number, r: TableRules): number {
+  if (i < 1 || i >= plays.length || isTrump(plays[0]!.card, r)) return 0;
+  let level = 0;
+  for (let j = 1; j <= i; j++) {
+    const takes = isTrump(plays[j]!.card, r) && trickWinner(plays.slice(0, j + 1), r) === plays[j]!.seat;
+    if (takes) level++;
+    if (j === i) return takes ? level : 0;
+  }
+  return 0;
+}
+/** Over-cut callouts (random per over-cut; edit freely). */
+export const OVERCUT_CALLOUTS = ['SAY LESS!', 'TALK TO EM!', 'IKYFL', 'NOT TODAY!', 'SIT DOWN!', 'STEAL!'];
+
+const hash = (s: string) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
+/**
+ * The callout for the over-cut made by `card` this hand. Derived only from the hand's public plays (hand number +
+ * the cards), so every client (offline or online) shows the same text; walks the hand's over-cuts in order so the
+ * same callout is never shown twice in a row (in a trick or across tricks).
+ */
+export function overcutCallout(st: Pick<GameState, 'handNo' | 'tricks' | 'trick' | 'rules'>, card: Card, pool: readonly string[] = OVERCUT_CALLOUTS): string {
+  let last = '';
+  for (const t of [...st.tricks, st.trick]) {
+    for (let i = 0; i < t.plays.length; i++) {
+      if (cutLevel(t.plays, i, st.rules) < 2) continue;
+      const key = `${st.handNo}:${t.plays.slice(0, i + 1).map((p) => p.card).join('')}`;
+      const opts = pool.filter((x) => x !== last);
+      const pick = opts[hash(key) % opts.length] ?? pool[0]!;
+      if (t.plays[i]!.card === card) return pick;
+      last = pick;
+    }
+  }
+  return pool[hash(`${st.handNo}:${card}`) % pool.length]!;
+}
+
+/** An over-cut: a lead-taking trump on top of an earlier cut (level 2+). */
+export const isOvercut = (plays: readonly Play[], i: number, r: TableRules) => cutLevel(plays, i, r) >= 2;
 
 function baseLandCue(st: GameState, card: Card): string {
   const r = st.rules;

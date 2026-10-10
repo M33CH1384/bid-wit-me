@@ -13,7 +13,7 @@ export type Sfx =
   | 'shuffle' | 'deal' | 'play' | 'tap' | 'sweep' | 'broken' | 'turn' | 'bid' | 'bidSoft'
   | 'cut' | 'made' | 'set' | 'nil' | 'bags' | 'pop' | 'win' | 'lose' | 'flip'
   // hype effects (all synthesized): joker rumbles, the Big-over-Little nuke, streaks, shots
-  | 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak1' | 'streak2' | 'streak3' | 'shot' | 'gotShot' | 'wheels' | 'wheelsCar';
+  | 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak1' | 'streak2' | 'streak3' | 'shot' | 'gotShot' | 'wheels' | 'wheelsCar' | 'overcut' | 'overcut3';
 
 export interface SoundSettings { on: boolean; volume: number; ambient: boolean; music: boolean; musicVolume: number }
 const KEY = 'bwm.sound.v1';
@@ -378,6 +378,8 @@ class Engine {
       case 'gotShot': return this.sting(t, g);
       // wheels: a quick rising two-step + hit (short, not a fanfare)
       case 'wheelsCar': return this.peelOut(t, g);
+      case 'overcut': return this.overcutSlam(t, g, 2);
+      case 'overcut3': return this.overcutSlam(t, g, 3);
       case 'wheels': this.arp(t, [392, 523.25, 783.99], 0.06, 'square', 0.12 * g, 0.22); return this.streakHit(t + 0.16, 0.8 * g, 1);
     }
   }
@@ -434,15 +436,23 @@ class Engine {
   }
 
   /** Trump-in "cut": a sharp snap + low punch + a quick metallic downward swipe. */
+  /**
+   * Trump-in "cut" (picked from 3 rendered candidates, see scripts/sound-lab/cut-candidates.mjs): a card slap with a
+   * bright, short transient + a low punch, topped by a quick blade "shing" (inharmonic partials gliding down 3 %).
+   * ~120 ms, little energy above 6 kHz, so it's crisp without being harsh.
+   */
   private cutHit(t: number, g: number) {
-    const c = this.ctx!;
-    const s = c.createBufferSource(); s.buffer = this.noise(0.12);
-    const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1800;
-    const ng = c.createGain(); ng.gain.setValueAtTime(0.5 * g, t); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
-    s.connect(hp).connect(ng).connect(this.sfxBus!); s.start(t); s.stop(t + 0.12);
-    this.tone(t, 160, 0.18, 'sine', 0.55 * g, { glideTo: 55, attack: 0.002 });
-    this.tone(t + 0.01, 1760, 0.16, 'sawtooth', 0.06 * g, { glideTo: 600, filter: 5000, attack: 0.002 });
-    this.tone(t + 0.01, 2349, 0.22, 'square', 0.025 * g, { glideTo: 1175, filter: 6000, attack: 0.002 });
+    this.burst(t, 0.012, 0.8 * g, 'highpass', 1100);
+    this.burst(t, 0.04, 0.35 * g, 'lowpass', 1400);
+    this.tone(t, 170, 0.1, 'sine', 0.65 * g, { glideTo: 65, attack: 0.001 });
+    this.shing(t + 0.006, 0.75 * g, 1, 0.22);
+  }
+
+  /** Blade "shing": a rising band-passed swipe + metallic partials (k scales the pitch: lower = heavier). */
+  private shing(t: number, g: number, k = 1, len = 0.32) {
+    this.burst(t, 0.06, 0.35 * g, 'bandpass', 1500 * k, { q: 1.4, sweepTo: 6000 * k });
+    ([[2093, 0.16], [3136 * 1.01, 0.11], [4699, 0.07], [5587, 0.04]] as const).forEach(([f, a], i) =>
+      this.tone(t + 0.012, f * k, len * (1 - i * 0.15), 'sine', a * g, { glideTo: f * k * 0.97, attack: 0.002 }));
   }
 
   private brokenSting(t: number, g: number) {
@@ -552,6 +562,49 @@ class Engine {
       const dt = 0.25 + Math.pow(Math.random(), 1.6) * 2.6;
       this.burst(t + dt, 0.018 + Math.random() * 0.03, (0.22 - dt * 0.06) * g * (0.5 + Math.random()), 'bandpass', 1800 + Math.random() * 4200, { q: 3 });
     }
+  }
+
+  /** Over-cut: a heavier slam than a cut (deep punch + wood knock + gritty crack) and a short rising sting. */
+  private overcutSlam(t: number, g0: number, lvl = 2) {
+    const g = g0 * (lvl >= 3 ? 1.25 : 1);
+    const dist = this.shaper(lvl >= 3 ? 40 : 25); const out = this.ctx!.createGain(); out.gain.value = 0.8 * g; dist.connect(out).connect(this.sfxBus!);
+    this.tone(t, 120, 0.32, 'sine', 1, { glideTo: 38, attack: 0.002, dest: dist }); // deep punch
+    this.tone(t, 240, 0.09, 'triangle', 0.5, { glideTo: 110, attack: 0.001, dest: dist }); // knock
+    this.burst(t, 0.07, 0.6 * g, 'bandpass', 2600, { q: 0.9 }); // crack
+    this.burst(t, 0.18, 0.25 * g, 'lowpass', 500, { sweepTo: 120 }); // body
+    this.shing(t + 0.005, 0.55 * g, 0.82); // the blade, lower and darker than a cut
+    // sting: two quick rising minor stabs
+    [[311.13, 0.09], [369.99, 0.16]].forEach(([f, d]) => {
+      this.tone(t + d, f, 0.32, 'sawtooth', 0.09 * g, { filter: 2400, attack: 0.006 });
+      this.tone(t + d, f * 1.5, 0.32, 'sawtooth', 0.06 * g, { filter: 2400, attack: 0.006 });
+    });
+    if (lvl >= 3) {
+      // layered: a pitched-up second slam + a brighter third stab, then the crowd "ohhh"
+      this.tone(t + 0.05, 180, 0.25, 'sine', 0.6 * g, { glideTo: 60, attack: 0.002 });
+      this.shing(t + 0.05, 0.5 * g, 1.25, 0.3);
+      this.tone(t + 0.24, 466.16, 0.45, 'sawtooth', 0.09 * g, { filter: 3000, attack: 0.006 });
+      this.tone(t + 0.24, 699.24, 0.45, 'sawtooth', 0.07 * g, { filter: 3000, attack: 0.006 });
+      this.crowdOh(t + 0.18, 0.9 * g0);
+    }
+  }
+
+  /** Synthesised crowd "ohhh": a dozen detuned voices through "o" vowel formants, swelling then falling in pitch. */
+  private crowdOh(t: number, g: number) {
+    const c = this.ctx!;
+    const f1 = c.createBiquadFilter(); f1.type = 'bandpass'; f1.frequency.value = 480; f1.Q.value = 3;
+    const f2 = c.createBiquadFilter(); f2.type = 'bandpass'; f2.frequency.value = 820; f2.Q.value = 4;
+    const env = c.createGain(); env.gain.setValueAtTime(0.0001, t); env.gain.exponentialRampToValueAtTime(0.5 * g, t + 0.22); env.gain.setValueAtTime(0.5 * g, t + 0.55); env.gain.exponentialRampToValueAtTime(0.0001, t + 1.25);
+    const mix = c.createGain(); mix.gain.value = 1;
+    mix.connect(f1).connect(env); mix.connect(f2).connect(env); env.connect(this.sfxBus!);
+    for (let i = 0; i < 12; i++) {
+      const o = c.createOscillator(); o.type = 'sawtooth';
+      const f = 130 + Math.random() * 190; const s = t + Math.random() * 0.08;
+      o.frequency.setValueAtTime(f * 1.04, s); o.frequency.exponentialRampToValueAtTime(f * 0.86, t + 1.2);
+      const vib = c.createOscillator(); vib.frequency.value = 4 + Math.random() * 2; const vg = c.createGain(); vg.gain.value = f * 0.012; vib.connect(vg).connect(o.frequency);
+      const og = c.createGain(); og.gain.value = 0.12;
+      o.connect(og).connect(mix); o.start(s); o.stop(t + 1.3); vib.start(s); vib.stop(t + 1.3);
+    }
+    this.burst(t, 1.1, 0.06 * g, 'bandpass', 1200, { q: 0.5 }); // breath / room
   }
 
   /**

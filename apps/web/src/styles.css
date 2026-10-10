@@ -1053,3 +1053,16 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .hype-pop.wheels-banner .hype-sub { color: #e9dcff; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 @keyframes wc-banner { 0%, 30% { opacity: 0; transform: translate(-50%, -50%) scale(.6) skewX(-12deg); } 40% { opacity: 1; transform: translate(-50%, -50%) scale(1.08) skewX(-8deg); } 48%, 86% { opacity: 1; transform: translate(-50%, -50%) scale(1) skewX(-8deg); } 100% { opacity: 0; transform: translate(-30%, -50%) scale(1) skewX(-8deg); } }
 @media (prefers-reduced-motion: reduce) { .wheels-car { display: none; } }
+/* over-cut: a quick flash + spark burst at the impact */
+.overcut-spark { position: absolute; width: 0; height: 0; pointer-events: none; }
+.overcut-spark::before { content: ''; position: absolute; left: -60px; top: -60px; width: 120px; height: 120px; border-radius: 50%; background: radial-gradient(circle, rgba(255,250,220,.95), rgba(245,197,66,.55) 35%, rgba(155,92,255,0) 70%); animation: oc-flash .45s ease-out both; }
+.overcut-spark i { position: absolute; left: -2px; top: -2px; width: 4px; height: 18px; border-radius: 2px; background: linear-gradient(#fff, #f5c542); transform-origin: 2px 2px; animation: oc-spark .5s ease-out both; }
+.overcut-spark i:nth-child(1) { --a: 0deg; } .overcut-spark i:nth-child(2) { --a: 45deg; } .overcut-spark i:nth-child(3) { --a: 90deg; } .overcut-spark i:nth-child(4) { --a: 135deg; }
+.overcut-spark i:nth-child(5) { --a: 180deg; } .overcut-spark i:nth-child(6) { --a: 225deg; } .overcut-spark i:nth-child(7) { --a: 270deg; } .overcut-spark i:nth-child(8) { --a: 315deg; }
+@keyframes oc-flash { 0% { transform: scale(.2); opacity: 1; } 100% { transform: scale(1.6); opacity: 0; } }
+@keyframes oc-spark { 0% { transform: rotate(var(--a)) translateY(6px) scaleY(.4); opacity: 1; } 100% { transform: rotate(var(--a)) translateY(58px) scaleY(1); opacity: 0; } }
+.hype-pop.overcut { top: 38%; }
+.hype-pop.overcut .hype-text { color: #fff; font-style: italic; background: linear-gradient(90deg, #6a2ad6, #f5c542); clip-path: polygon(4% 0, 100% 0, 96% 100%, 0 100%); padding: .02em .45em; font-size: clamp(30px, 6vw, 56px); text-shadow: 0 3px 0 #2a0d5c; animation: slam .3s cubic-bezier(.5,0,.75,0) both, pop-out .25s ease-in 1.05s forwards; }
+.overcut-spark.lvl3::before { left: -100px; top: -100px; width: 200px; height: 200px; animation-duration: .6s; }
+.overcut-spark.lvl3 i { height: 30px; width: 5px; animation-duration: .7s; }
+.hype-pop.overcut.lvl3 .hype-text { font-size: clamp(36px, 8vw, 76px); background: linear-gradient(90deg, #e0173c, #f5c542, #6a2ad6); }
