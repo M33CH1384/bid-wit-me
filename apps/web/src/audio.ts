@@ -131,6 +131,10 @@ class Engine {
   private bag: number[] = [];
   private lastTrack: number | null = null;
   private musicBus: GainNode | null = null;
+  /** ducking stages (the nuke's tinnitus moment): music and regular SFX dip, the nuke itself rides on nukeBus */
+  private musicDuck: GainNode | null = null;
+  private sfxDuck: GainNode | null = null;
+  private nukeBus: GainNode | null = null;
   private fading = false;
 
   /** Mono-compatible widening: M/S with the side (above 150 Hz) boosted and slowly "breathing". L+R is unchanged. */
@@ -155,7 +159,8 @@ class Engine {
     mid.connect(outL); width.connect(outL); mid.connect(outR); negSide.connect(outR);
     outL.connect(merge, 0, 0); outR.connect(merge, 0, 1);
     const bus = c.createGain();
-    merge.connect(bus).connect(c.destination);
+    this.musicDuck = c.createGain();
+    merge.connect(bus).connect(this.musicDuck).connect(c.destination);
     this.musicBus = bus;
     return input;
   }
@@ -323,7 +328,8 @@ class Engine {
     const comp = c.createDynamicsCompressor();
     comp.threshold.value = -14; comp.ratio.value = 4;
     this.master.connect(comp).connect(c.destination);
-    this.sfxBus = c.createGain(); this.sfxBus.connect(this.master);
+    this.sfxBus = c.createGain(); this.sfxDuck = c.createGain(); this.sfxBus.connect(this.sfxDuck).connect(this.master);
+    this.nukeBus = c.createGain(); this.nukeBus.connect(this.master);
     this.ambBus = c.createGain(); this.ambBus.gain.value = 0; this.ambBus.connect(this.master);
     this.applyGain();
     this.load();
@@ -560,21 +566,42 @@ class Engine {
     this.burst(t, 0.08, 0.5 * g, 'highpass', 1800);
   }
 
-  /** Big Joker over Little Joker: crack, boom with sub-bass, long rumble and debris crackle. */
-  private nukeBoom(t: number, g: number) {
+  /**
+   * Big Joker over Little Joker (synced with the 3D nuke): a held-breath beat with a faint inward hiss, then at +0.3 s a
+   * layered sub-bass boom (sine sweep + noise through a soft clipper), a delayed crack, a long rolling rumble tail with
+   * debris crackle, and a short ringing "tinnitus" tone while the music and the other SFX duck for about a second.
+   */
+  private nukeBoom(t0: number, g: number) {
     const c = this.ctx!;
-    const dist = this.shaper(40); const out = c.createGain(); out.gain.value = 0.85 * g;
-    dist.connect(out).connect(this.sfxBus!);
-    this.burst(t, 0.12, 0.9 * g, 'highpass', 1200); // the crack
-    this.tone(t, 80, 2.6, 'sine', 1, { glideTo: 18, attack: 0.004, dest: dist }); // boom
-    this.tone(t + 0.02, 36, 3.2, 'sine', 0.8 * g, { attack: 0.05 }); // sub-bass
-    this.tone(t, 110, 0.6, 'sawtooth', 0.3, { glideTo: 30, filter: 600, dest: dist });
-    this.burst(t, 3.4, 0.85 * g, 'lowpass', 600, { sweepTo: 50 }); // rolling rumble
-    this.burst(t + 0.3, 2.6, 0.25 * g, 'bandpass', 900, { q: 0.7, sweepTo: 200 }); // wind
-    // debris crackle: dozens of tiny bright clicks, thinning out
-    for (let i = 0; i < 70; i++) {
-      const dt = 0.25 + Math.pow(Math.random(), 1.6) * 2.6;
-      this.burst(t + dt, 0.018 + Math.random() * 0.03, (0.22 - dt * 0.06) * g * (0.5 + Math.random()), 'bandpass', 1800 + Math.random() * 4200, { q: 3 });
+    const bus = this.nukeBus ?? this.sfxBus!;
+    const t = t0 + 0.3;
+    this.burst(t0, 0.32, 0.12 * g, 'bandpass', 400, { q: 0.8, sweepTo: 3200, dest: bus }); // inward hiss / suck-in
+    const dist = this.shaper(30); const out = c.createGain(); out.gain.value = 0.9 * g; dist.connect(out).connect(bus);
+    this.tone(t, 95, 2.8, 'sine', 1, { glideTo: 20, attack: 0.003, dest: dist }); // boom sweep
+    this.tone(t, 48, 3.4, 'sine', 0.9 * g, { glideTo: 28, attack: 0.02, dest: bus }); // sub-bass body
+    this.tone(t, 140, 0.5, 'sawtooth', 0.35, { glideTo: 32, filter: 500, dest: dist }); // chest punch
+    this.burst(t, 0.5, 0.9 * g, 'lowpass', 1400, { sweepTo: 120, dest: bus }); // blast noise
+    this.burst(t + 0.13, 0.16, 0.95 * g, 'highpass', 1500, { dest: bus }); // delayed crack
+    this.burst(t + 0.15, 0.3, 0.5 * g, 'bandpass', 3200, { q: 0.7, sweepTo: 900, dest: bus });
+    this.burst(t + 0.2, 4.2, 0.8 * g, 'lowpass', 420, { sweepTo: 38, dest: bus }); // rolling rumble tail
+    this.burst(t + 0.5, 3.0, 0.22 * g, 'bandpass', 700, { q: 0.6, sweepTo: 160, dest: bus }); // wind
+    for (let i = 0; i < 60; i++) { // debris crackle, thinning out
+      const dt = 0.35 + Math.pow(Math.random(), 1.6) * 2.8;
+      this.burst(t + dt, 0.018 + Math.random() * 0.03, Math.max(0.02, 0.2 - dt * 0.05) * g * (0.5 + Math.random()), 'bandpass', 1800 + Math.random() * 4200, { q: 3, dest: bus });
+    }
+    // tinnitus ring: a thin high sine with a slight beat, swelling in after the boom and fading out
+    [6100, 6113].forEach((f) => {
+      const o = c.createOscillator(); o.frequency.value = f;
+      const e = c.createGain(); e.gain.setValueAtTime(0.0001, t + 0.15); e.gain.exponentialRampToValueAtTime(0.035 * g, t + 0.35); e.gain.setValueAtTime(0.035 * g, t + 1.0); e.gain.exponentialRampToValueAtTime(0.0001, t + 2.1);
+      o.connect(e).connect(bus); o.start(t + 0.15); o.stop(t + 2.2);
+    });
+    // duck the music and the other SFX for ~1 s, then recover
+    for (const d of [this.musicDuck, this.sfxDuck]) {
+      if (!d) continue;
+      d.gain.cancelScheduledValues(t0);
+      d.gain.setValueAtTime(d.gain.value, t0);
+      d.gain.setTargetAtTime(0.12, t + 0.05, 0.05);
+      d.gain.setTargetAtTime(1, t + 1.2, 0.35);
     }
   }
 

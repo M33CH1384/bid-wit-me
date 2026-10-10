@@ -49,6 +49,8 @@ class FxBus {
   getNuke = () => this.prefs.nuke;
   /** 3D blast impulse (cards lifted / blown outward, then settle), read by every Card3D each frame */
   blast: { start: number; hand: boolean } | null = null;
+  /** capture scripts only: pin the nuke timeline to this many seconds (frame-exact screenshots / recordings) */
+  warp: number | null = null;
   setReduce(reduce: boolean) {
     this.prefs = { ...this.prefs, reduce };
     try { localStorage.setItem(KEY, JSON.stringify(this.prefs)); } catch { /* ignore */ }

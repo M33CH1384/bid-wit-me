@@ -5,7 +5,7 @@ import { cardGeometry } from './geometry';
 import { CT } from './layout';
 import type { Xform } from './layout';
 import { type Sfx, sound } from '../audio';
-import { fireCue } from '../fx';
+import { fireCue, fx } from '../fx';
 
 interface Props {
   face: Texture | null; // null = we only ever see the back
@@ -25,6 +25,8 @@ interface Props {
   sfxStart?: Sfx;
   /** Sounds when this card lands on its current target (e.g. play / cut). Fires once per value. */
   sfxLand?: string; // comma-separated Sfx names, e.g. 'play,cut'
+  /** how the nuke's blast treats this card: table cards are blown outward; hand cards only in Full Nuke */
+  blast?: 'table' | 'hand';
 }
 
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
@@ -33,8 +35,10 @@ const edgeMat = new MeshStandardMaterial({ color: '#efe9dc', roughness: 0.75 });
 const FULL = new Color(1, 1, 1);
 const DIM = new Color(0.3, 0.28, 0.4);
 
-function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.25, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand }: Props) {
+function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.25, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand, blast = 'table' }: Props) {
   const ref = useRef<Group>(null);
+  const inner = useRef<Group>(null);
+  const bl = useRef({ dir: new Vector3(), q: new Quaternion(), axis: new Vector3(), on: false });
   const invalidate = useThree((s) => s.invalidate);
   const geo = cardGeometry();
   const mk = (map: Texture) =>
@@ -69,6 +73,36 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
   const sfx = useRef({ sfxStart, sfxLand });
   sfx.current = { sfxStart, sfxLand };
 
+  /** Nuke blast: lift / blow the card outward from the trick (world space), tumble it, then spring back and settle. */
+  const applyBlast = (g: Group) => {
+    const ig = inner.current, B = fx.blast, st = bl.current;
+    if (!ig) return;
+    const u = B && (blast === 'table' || B.hand) ? (fx.warp !== null ? fx.warp - 0.3 : (performance.now() - B.start) / 1000) : -1;
+    if (u < 0 || u > 2.6) {
+      if (st.on) { ig.position.set(0, 0, 0); ig.quaternion.identity(); st.on = false; invalidate(); }
+      return;
+    }
+    invalidate();
+    if (!st.on) {
+      st.on = true;
+      st.dir.set(g.position.x, 0, g.position.z);
+      if (st.dir.lengthSq() < 1e-4) st.dir.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+      st.dir.normalize();
+      st.axis.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
+    }
+    // fast kick out, hang, then a damped spring home
+    const env = u < 0.22 ? 1 - (1 - u / 0.22) ** 3 : Math.max(0, Math.exp(-(u - 0.22) * 1.9) * Math.cos((u - 0.22) * 2.4));
+    const near = blast === 'hand' ? 0.35 : Math.max(0.35, 1.1 - g.position.length() * 0.4);
+    const A = (blast === 'hand' ? 0.32 : 0.75) * near;
+    const lift = (blast === 'hand' ? 0.12 : 0.55) * near * (u < 1.2 ? Math.sin(Math.PI * Math.min(1, u / 1.2)) : 0);
+    const w = new Vector3(st.dir.x * A * env, lift, st.dir.z * A * env + (blast === 'hand' ? 0.08 * env : 0));
+    // world offset → this card's local space
+    st.q.copy(g.quaternion).invert();
+    w.applyQuaternion(st.q).divideScalar(g.scale.x || 1);
+    ig.position.copy(w);
+    ig.quaternion.setFromAxisAngle(st.axis, env * (blast === 'hand' ? 0.35 : 1.4));
+  };
+
   useFrame((_, dt) => {
     const g = ref.current;
     if (!g) return;
@@ -77,6 +111,7 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
     const c = frontMat.color;
     if (Math.abs(c.r - L.target.r) + Math.abs(c.g - L.target.g) + Math.abs(c.b - L.target.b) > 0.004) { c.lerp(L.target, k); invalidate(); } else c.copy(L.target);
     if (Math.abs(glowMat.opacity - L.glow) > 0.01) { glowMat.opacity += (L.glow - glowMat.opacity) * k; invalidate(); } else glowMat.opacity = L.glow;
+    applyBlast(g);
     const s = tw.current;
     if (!s.init) {
       const f = from ?? target;
@@ -130,10 +165,12 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
       onPointerOver={onTap ? () => { document.body.style.cursor = 'pointer'; } : undefined}
       onPointerOut={onTap ? () => { document.body.style.cursor = ''; } : undefined}
     >
-      <mesh geometry={geo.body} material={edgeMat} castShadow={castShadow} />
-      <mesh geometry={geo.front} material={frontMat} />
-      <mesh geometry={geo.back} material={backMat} />
-      {face && <mesh geometry={geo.front} material={glowMat} position={[0, 0, -CT - 0.003]} scale={[1.075, 1.055, 1]} visible={glowMat.opacity > 0.01 || !!glow} renderOrder={-1} />}
+      <group ref={inner}>
+        <mesh geometry={geo.body} material={edgeMat} castShadow={castShadow} />
+        <mesh geometry={geo.front} material={frontMat} />
+        <mesh geometry={geo.back} material={backMat} />
+        {face && <mesh geometry={geo.front} material={glowMat} position={[0, 0, -CT - 0.003]} scale={[1.075, 1.055, 1]} visible={glowMat.opacity > 0.01 || !!glow} renderOrder={-1} />}
+      </group>
     </group>
   );
 }

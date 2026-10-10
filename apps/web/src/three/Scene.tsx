@@ -1,3 +1,4 @@
+import { Nuke3D } from './Nuke3D';
 import { Environment, Html, useTexture } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { type ReactNode, type RefObject, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -203,7 +204,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
     : {};
   const trickScale = short ? 1.85 : undefined;
 
-  type Item = { key: string; card: Card | null; target: Xform; from?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: () => void; shadow?: boolean; duration?: number; arc?: number; sfxStart?: Sfx; sfxLand?: string };
+  type Item = { key: string; card: Card | null; target: Xform; from?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: () => void; shadow?: boolean; duration?: number; arc?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean };
   const items: Item[] = [];
   const dealDelay = (slot: number, seat: number) => tl.shuffle + (slot * n + ((seat - dealer - 1 + n) % n)) * tl.step;
 
@@ -237,6 +238,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
     const target = handFan(aspect, mine.length, i, lift, safeFrac, fanOpts);
     const flip = flipIn && !!c;
     items.push({
+      hand: true,
       key: c ? `${handNo}-${c}` : `${handNo}-hb-${i}`,
       card: c,
       target,
@@ -284,6 +286,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
           onTap={it.tap}
           sfxStart={it.sfxStart}
           sfxLand={it.sfxLand}
+          blast={it.hand ? 'hand' : 'table'}
         />
       ))}
       {wide && mine.length > 0 && <HandGlow aspect={aspect} count={mine.length} safeFrac={safeFrac} opts={fanOpts} />}
@@ -476,6 +479,7 @@ export default function Scene(props: SceneProps) {
       </Suspense>
       {props.positions.map((p, seat) => <TurnRing key={seat} pos={p} n={props.n} active={props.turnSeat === seat} />)}
       <Cards {...props} aspect={aspect} fontsReady={fontsReady} safeFrac={safeFrac} />
+      <Nuke3D quality={props.quality} />
       {layerReady && <Badges positions={props.positions} n={props.n} human={props.human} renderSeat={props.renderSeat} portal={badgeLayer} safeFrac={safeFrac} short={!!props.short} safe={props.safe ?? { l: 0, r: 0, t: 0, b: 0 }} />}
     </Canvas>
     <div ref={badgeLayer} className="badge-layer" />
