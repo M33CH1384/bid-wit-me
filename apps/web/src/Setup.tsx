@@ -151,7 +151,7 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
             </div>
             <div className="ess-row">
               <span className="ess-label">Play to</span>
-              <Seg label="Target score" value={s.targetScore} options={[['default', String(cut ? 300 : 500)], ...([250, 300, 500].filter((x) => x !== (cut ? 300 : 500)).map((x) => [x, String(x)]) as [number, string][])]} onChange={(v) => set('targetScore', v)} />
+              <Seg label="Target score" value={s.targetScore} options={[250, 300, 500].map((x) => (x === (cut ? 300 : 500) ? ['default', String(x)] : [x, String(x)])) as [number | 'default', string][]} onChange={(v) => set('targetScore', v)} />
             </div>
             {deck}
             {tipsRow}

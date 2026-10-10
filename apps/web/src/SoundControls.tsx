@@ -58,7 +58,7 @@ export function SoundDock() {
   const [open, setOpen] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
-  const press = useRef<{ timer: number | null; long: boolean; lastTap: number }>({ timer: null, long: false, lastTap: -Infinity });
+  const press = useRef<{ timer: number | null; long: boolean; lastTap: number; down: number }>({ timer: null, long: false, lastTap: -Infinity, down: 0 });
   useEffect(() => {
     if (!open) return;
     const close = (e: PointerEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
@@ -74,11 +74,16 @@ export function SoundDock() {
       <button
         type="button" className={`dock-btn ${allOff ? 'muted' : ''} ${playing ? 'playing' : ''}`}
         aria-label={allOff ? 'Sound (muted) — hold to unmute' : 'Sound settings — hold to mute all'} aria-expanded={open} data-testid="sound-button"
-        onPointerDown={() => {
+        onPointerDown={(e) => {
           press.current.long = false;
+          press.current.down = e.timeStamp;
           press.current.timer = window.setTimeout(() => { press.current.long = true; muteAll(); }, 500);
         }}
-        onPointerUp={() => { if (press.current.timer) clearTimeout(press.current.timer); }}
+        onPointerUp={(e) => {
+          if (press.current.timer) clearTimeout(press.current.timer);
+          // a busy main thread can fire the hold timer before a quick tap's pointerup is handled: the event times say it was a tap
+          if (press.current.long && e.timeStamp - press.current.down < 420) { sound.toggleMuteAll(); setFlash(null); press.current.long = false; }
+        }}
         onPointerLeave={() => { if (press.current.timer) clearTimeout(press.current.timer); }}
         onContextMenu={(e) => e.preventDefault()}
         onClick={() => {

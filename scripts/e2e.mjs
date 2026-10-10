@@ -239,6 +239,7 @@ async function playGame(mode, label, { shots = false, speed = 'turbo', extra = {
     await sb.waitFor({ timeout: 30000 }); await sb.click(); await page.getByRole('dialog', { name: 'Sound' }).waitFor();
     await page.getByTestId('music-switch').click(); // music on (lazy-loads the playlist)
     await page.getByTestId('now-playing').waitFor({ timeout: 10000 });
+    await page.waitForTimeout(450); // two dock taps within 320 ms are the double-tap 'mute all' gesture
     await sb.click();
   }
   const t0 = Date.now();
@@ -278,7 +279,7 @@ async function playGame(mode, label, { shots = false, speed = 'turbo', extra = {
   if (await page.evaluate(() => localStorage.getItem('bwm.game'))) throw new Error(`${label}: save not cleared at game over`);
   if (shots) {
     await page.waitForTimeout(800);
-    const snd = await page.evaluate(() => { const s = window.__bwmSound; return { state: s.state, loaded: s.loaded, played: s.played }; });
+    const snd = await page.evaluate(() => { const s = window.__bwmSound; return { state: s.state, loaded: s.loaded, played: s.played, settings: s.settings }; });
     const need = ['shuffle', 'deal', 'sweep', 'turn', 'bid', 'tap']; // 'play' lands are checked at Fast speed (turbo sweeps tricks before cards land)
     const missing = need.filter((k) => !snd.played[k]);
     if (snd.state !== 'running' || snd.loaded < 12 || missing.length || !(snd.played.win || snd.played.lose) || !(snd.played.made || snd.played.set || snd.played.nil))
