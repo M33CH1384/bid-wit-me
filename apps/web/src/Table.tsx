@@ -83,6 +83,8 @@ interface Props {
   /** A saved in-progress game to resume at exactly the same point. */
   resume?: SavedGame;
   online?: OnlineBinding;
+  /** Game over → straight to the splash screen (offline: the finished save is cleared; online: leaves the table). */
+  onMainMenu?: () => void;
   /** Offline: back to the menu keeping the save (Resume on the start screen). */
   onSuspend?: () => void;
 }
@@ -264,7 +266,7 @@ function baseLandCue(st: GameState, card: Card): string {
   return 'play';
 }
 
-export default function Table({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, resume, online }: Props) {
+export default function Table({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, resume, online, onMainMenu }: Props) {
   // `online` never changes for a mounted Table, so this is always the same hook path per instance
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const vp = useViewport();
@@ -331,6 +333,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     return () => clearTimeout(t);
   }, [resume]);
   const leave = () => { if (!online) clearGame(); onExit(); };
+  // game over: no confirmation — the game is finished
+  const mainMenu = () => { if (!online) clearGame(); (onMainMenu ?? onExit)(); };
   const isBooks = booksHand(st);
   // "First hand: books bid themselves" — announce it once the deal lands
   const booksAnnounced = useRef<string | null>(null);
@@ -382,6 +386,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (!online && replies) { const bots = names.slice(1); push(pick(bots), pick(replies), false, 900 + Math.random() * 700); }
   };
   const reduceFx = useReduceEffects();
+  // any modal up: the table, plates, chat, video bubbles etc. dim + blur behind it and can't paint over it
+  const modalOpen = (st.phase === 'handOver' && !pause && talkOpen) || confirmLeave || showPad || (st.phase === 'gameOver' && !pause && !!st.result);
 
   const trumps = useMemo(() => trumpOrder(r).slice(0, 5).map((c) => (c === 'BJ' ? 'BIG JKR' : c === 'LJ' ? 'LIL JKR' : cardLabel(c))), [r]);
   const trumpsShort = useMemo(() => trumpOrder(r).slice(0, 4).map((c) => (c === 'BJ' ? 'BJ' : c === 'LJ' ? 'LJ' : cardLabel(c))), [r]);
@@ -438,7 +444,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   }, [measureHand, vp.short]);
 
   return (
-    <div ref={screenRef} className={`table-screen q-${settings.quality}${vp.short ? ' short' : ''}`}>
+    <div ref={screenRef} className={`table-screen q-${settings.quality}${vp.short ? ' short' : ''}${modalOpen ? ' modal-open' : ''}`}>
       <Suspense fallback={<div className="loading3d"><div className="spinner" />Setting the table…</div>}>
         <Scene
           quality={settings.quality}
@@ -643,7 +649,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
       {st.phase === 'gameOver' && !pause && st.result && (
         <div className="modal-backdrop">
-          <div className="modal glass slant gameover">
+          <div className="modal glass slant gameover" role="dialog" aria-label="Game over">
+            <button type="button" className="modal-x" aria-label="Close and go to the main menu" data-testid="gameover-x" onClick={mainMenu}>✕</button>
             <div className="trophy">{st.result.winners.includes(mySide) ? '🏆' : '♠'}</div>
             <h2>{st.result.winners.includes(mySide) ? (st.result.winners.length > 1 ? 'YOU TIED FOR FIRST!' : 'VICTORY!') : `${st.result.winners.map((w) => sideName(r, w, names)).join(' & ').toUpperCase()} WIN${r.partnerships || st.result.winners.length > 1 ? '' : 'S'}`}</h2>
             <p className="muted">{st.result.endReason === 'floor' ? 'Ended by the losing floor.' : `First to ${r.targetScore}.`} {st.history.length} hands played.</p>
@@ -661,6 +668,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             </ol>
             <div className="bid-row">
               <button type="button" onClick={() => setShowPad(true)}>Score pad</button>
+              <button type="button" data-testid="main-menu" onClick={mainMenu}>Main menu</button>
               <button type="button" onClick={leave}>Change mode</button>
               <button type="button" className="primary" onClick={onRematch}>Rematch</button>
             </div>
@@ -668,7 +676,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         </div>
       )}
 
-      {(coachOn || help) && (
+      {(coachOn || help) && !modalOpen && (
         <Coach
           ctx={{ st, view, hand, legal, myTurn, me: HUMAN, partnerName: r.partnerships ? names[partnerOf(HUMAN, r) ?? 2] ?? null : null, pause }}
           help={help}

@@ -18,7 +18,8 @@ mkdirSync(out, { recursive: true });
 export const SIZES = [
   ['phone-land-667x375', 667, 375], ['phone-land-844x390', 844, 390], ['phone-land-932x430', 932, 430],
   ['ipad-1024x768', 1024, 768], ['ipad-1180x820', 1180, 820],
-  ['phone-375x667', 375, 667], ['phone-390x844', 390, 844], ['phone-430x932', 430, 932], ['desktop-1280x800', 1280, 800],
+  ['phone-320x640', 320, 640], ['phone-375x667', 375, 667], ['phone-390x844', 390, 844], ['phone-414x896', 414, 896], ['phone-430x932', 430, 932], ['phone-440x956', 440, 956],
+  ['desktop-1280x800', 1280, 800],
 ];
 const IOS = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1';
 const browser = await chromium.launch({
@@ -75,13 +76,73 @@ async function measure(page) {
       if (hand.y + hand.h > H + 1 || hand.x < -1 || hand.x + hand.w > W + 1) probs.push(`hand off screen ${JSON.stringify(hand)} in ${W}x${H}`);
       for (const b of boxes) for (const c of L.hand) if (ov(b.r, c, 2)) { probs.push(`${b.name} covers the hand`); break; }
     }
+    // scorebug numbers must fit in portrait (worst case: a negative 4-character score and two-digit bags)
+    const setText = (el, t) => { const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); const n = w.nextNode(); if (n) n.nodeValue = t; };
+    const scores = [...document.querySelectorAll('.bug-score')], bagsEl = [...document.querySelectorAll('.bug-bags')];
+    const saved = [...scores, ...bagsEl].map((el) => { const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); return w.nextNode()?.nodeValue; });
+    scores.forEach((el, i) => setText(el, i % 2 ? '186' : '-155'));
+    bagsEl.forEach((el) => setText(el, '12'));
+    document.querySelectorAll('.bug-team').forEach((t, i) => {
+      if (!vis(t)) return;
+      const tr = t.getBoundingClientRect();
+      for (const el of t.querySelectorAll('.bug-score, .bug-bags')) {
+        const r = el.getBoundingClientRect();
+        if (r.right > tr.right + 1 || r.left < tr.left - 1 || r.right > W + 1) probs.push(`scorebug team ${i} ${el.className} clipped (${Math.round(r.left)}-${Math.round(r.right)} vs ${Math.round(tr.left)}-${Math.round(tr.right)})`);
+      }
+    });
+    [...scores, ...bagsEl].forEach((el, i) => { if (saved[i] != null) setText(el, saved[i]); });
+    if (bug) for (const k of bug.children) { if (!vis(k)) continue; const r = k.getBoundingClientRect(); if (r.right > W + 1) probs.push(`scorebug item ${k.className} off the right edge`); }
     return { probs, boxes: boxes.map((b) => b.name) };
   });
 }
 
+/**
+ * With a modal open, nothing on the table may paint over it: sample a grid of points inside the modal box and make
+ * sure the topmost element at each is the modal itself (the global sound button is the one allowed exception).
+ */
+async function modalCheck(page) {
+  return page.evaluate(() => {
+    const m = document.querySelector('.tt, .modal-backdrop .modal');
+    if (!m) return ['no modal open'];
+    const r = m.getBoundingClientRect(), probs = new Set();
+    for (let i = 0; i <= 12; i++) for (let j = 0; j <= 12; j++) {
+      const x = Math.min(innerWidth - 1, Math.max(0, r.left + 1 + (r.width - 2) * i / 12)), y = Math.min(innerHeight - 1, Math.max(0, r.top + 1 + (r.height - 2) * j / 12));
+      const el = document.elementFromPoint(x, y);
+      if (!el || m.contains(el) || el.closest('.sound-dock')) continue;
+      probs.add(`${(el.closest('.plate, .vbubble, .chat, .last-trick, .ctl-cluster, .chat-ticker, .scorebug, .coach') ?? el).className || el.tagName} paints over the modal`);
+    }
+    return [...probs];
+  });
+}
+
+/** Table Talk (between hands) at every size: no horizontal overflow, team totals fully visible, Ready reachable. */
+async function talkCheck(page, tag) {
+  for (const [label, w, h] of SIZES.filter(([, w, h]) => !only || only.includes(`${w}x${h}`))) {
+    await page.setViewportSize({ width: w, height: h });
+    await page.waitForTimeout(700);
+    const m = await page.evaluate(() => {
+      const W = innerWidth, H = innerHeight, probs = [];
+      const tt = document.querySelector('.tt');
+      if (!tt) return ['table talk not shown'];
+      if (document.documentElement.scrollWidth > W + 1) probs.push(`page scrolls sideways (${document.documentElement.scrollWidth} > ${W})`);
+      const body = tt.querySelector('.tt-body');
+      if (body && body.scrollWidth > body.clientWidth + 1) probs.push('recap scrolls sideways');
+      for (const el of tt.querySelectorAll('*')) { const r = el.getBoundingClientRect(); if (r.width && (r.right > W + 1 || r.left < -1)) { probs.push(`${el.className || el.tagName} past the edge`); break; } }
+      document.querySelectorAll('[data-testid^="recap-total-"], [data-testid^="recap-books-"]').forEach((el) => { const r = el.getBoundingClientRect(), t = el.closest('.tt-team').getBoundingClientRect(); if (r.right > t.right + 1 || r.left < t.left - 1) probs.push(`${el.dataset.testid} clipped`); });
+      const ready = document.querySelector('[data-testid="talk-ready"]')?.getBoundingClientRect();
+      if (!ready || ready.bottom > H + 1 || ready.right > W + 1) probs.push('Ready / Continue not on screen');
+      return probs;
+    });
+    m.push(...(await modalCheck(page)));
+    await page.screenshot({ path: `${out}/${tag}-talk-${label}.png` });
+    console.log(`${m.length ? '✗' : '✓'} ${tag} table talk ${label}${m.length ? ': ' + m.join('; ') : ''}`);
+    m.forEach((x) => problems.push(`${tag} talk ${label}: ${x}`));
+  }
+}
+
 const legal = (p) => p.locator('[data-testid^="card-"][data-legal="true"]');
 async function step(p) {
-  const next = p.getByRole('button', { name: 'Next hand' });
+  const next = p.locator('[data-testid="talk-ready"]:not([disabled])');
   if (await next.count()) { await next.click({ timeout: 2000 }).catch(() => {}); return 'next'; }
   const see = p.getByRole('button', { name: 'See my cards' });
   if (await see.count()) { await see.click({ timeout: 2000 }).catch(() => {}); return 'see'; }
@@ -154,7 +215,25 @@ if (!process.env.ONLY || process.env.ONLY === 'offline') {
   }
   await page.waitForTimeout(800);
   await sweepSizes(page, 'offline');
-  await bannerCheck([page], 'offline', [SIZES[1], SIZES[0], SIZES[3], SIZES[6]]);
+  await bannerCheck([page], 'offline', [SIZES[1], SIZES[0], SIZES[3], SIZES[7]]);
+  // modal stacking: the leave-confirm modal over the full table (plates, chat, last trick) at every size
+  await page.getByTestId('menu').click();
+  for (const [label, w, h] of SIZES.filter(([, w, h]) => !only || only.includes(`${w}x${h}`))) {
+    await page.setViewportSize({ width: w, height: h });
+    await page.waitForTimeout(900);
+    const m = await modalCheck(page);
+    await page.screenshot({ path: `${out}/offline-modal-${label}.png` });
+    console.log(`${m.length ? '✗' : '✓'} offline modal ${label}${m.length ? ': ' + m.join('; ') : ''}`);
+    m.forEach((x) => problems.push(`offline modal ${label}: ${x}`));
+  }
+  await page.getByRole('button', { name: 'Stay' }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  for (let i = 0; i < 3000 && !(await page.getByTestId('table-talk').count()); i++) {
+    const bid = page.locator('.bid-grid button'); if (await bid.count()) { await bid.nth(Math.min(2, (await bid.count()) - 1)).click({ timeout: 2000 }).catch(() => {}); continue; }
+    const l = legal(page); if (await l.count()) { const c = l.last(); await c.dispatchEvent('click'); await c.dispatchEvent('click').catch(() => {}); }
+    await page.waitForTimeout(40);
+  }
+  await talkCheck(page, 'offline');
   await page.context().close();
 }
 

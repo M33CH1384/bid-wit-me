@@ -12,7 +12,7 @@ export function useConn(conn: TableConnection): ConnState {
   return useSyncExternalStore(conn.subscribe, conn.getState);
 }
 
-const EMPTY_VIDEO: VideoState = { cam: false, mic: false, local: null, remote: {}, conn: {}, needsTap: true, muted: [], hidden: [], error: null, busy: false };
+const EMPTY_VIDEO: VideoState = { cam: false, mic: false, local: null, remote: {}, conn: {}, needsTap: true, muted: [], limited: [], music: {}, hidden: [], error: null, busy: false };
 export function useVideo(mesh: VideoMesh | null): VideoState {
   return useSyncExternalStore(mesh ? mesh.subscribe : () => () => {}, mesh ? mesh.getState : () => EMPTY_VIDEO);
 }

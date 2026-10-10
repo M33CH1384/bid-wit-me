@@ -38,6 +38,10 @@ export interface VideoState {
   needsTap: boolean;
   /** players whose audio I muted / whose video I hid (local only) */
   muted: string[];
+  /** voice anti-cheat: players my mic is not sent to and whose mic I don't play (partners during bidding / play) */
+  limited: string[];
+  /** playerId → host-music stream (the third transceiver), when that player streams music */
+  music: Record<string, MediaStream>;
   hidden: string[];
   error: string | null;
   busy: boolean;
@@ -47,7 +51,7 @@ const VIDEO: MediaTrackConstraints = { facingMode: 'user', width: { ideal: 320 }
 const AUDIO: MediaTrackConstraints = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
 
 export class VideoMesh {
-  state: VideoState = { cam: false, mic: false, local: null, remote: {}, conn: {}, needsTap: true, muted: [], hidden: [], error: null, busy: false };
+  state: VideoState = { cam: false, mic: false, local: null, remote: {}, conn: {}, needsTap: true, muted: [], limited: [], music: {}, hidden: [], error: null, busy: false };
   private peers = new Map<string, Peer>();
   private listeners = new Set<() => void>();
   private sid = Math.random().toString(36).slice(2, 10);
@@ -125,6 +129,13 @@ export class VideoMesh {
       }
     };
     pc.ontrack = (e) => {
+      // transceiver #3 (audio) carries host music, separate from the voice track so partner-muting never cuts it
+      if (pc.getTransceivers().indexOf(e.transceiver) === 2) {
+        const ms = new MediaStream([e.track]);
+        const upd = () => this.set({ music: { ...this.state.music, [id]: ms } });
+        e.track.onunmute = upd; e.track.onmute = upd; upd();
+        return;
+      }
       if (!p.stream.getTracks().includes(e.track)) p.stream.addTrack(e.track);
       const update = () => this.set({ remote: { ...this.state.remote, [id]: p.stream } });
       e.track.onunmute = update;
@@ -140,6 +151,7 @@ export class VideoMesh {
     if (!p.polite) {
       pc.addTransceiver('audio', { direction: 'sendrecv' });
       pc.addTransceiver('video', { direction: 'sendrecv' });
+      pc.addTransceiver('audio', { direction: 'sendrecv' }); // host music
       this.attachTracks(p);
     }
     this.signal(id, { hello: true });
@@ -155,7 +167,9 @@ export class VideoMesh {
     delete remote[id];
     const conn = { ...this.state.conn };
     delete conn[id];
-    this.set({ remote, conn });
+    const music = { ...this.state.music };
+    delete music[id];
+    this.set({ remote, conn, music });
   }
 
   private async onSignal(from: string, s: Signal): Promise<void> {
@@ -198,7 +212,10 @@ export class VideoMesh {
   private attachTracks(p: Peer): void {
     const a = this.transceiver(p, 'audio');
     const v = this.transceiver(p, 'video');
-    void a?.sender.replaceTrack(this.audioTrack).catch(() => {});
+    // partner-limited: don't even send my voice to them (send-side), so a modified client can't listen in
+    void a?.sender.replaceTrack(this.state.limited.includes(p.id) ? null : this.audioTrack).catch(() => {});
+    const m = p.pc.getTransceivers()[2];
+    if (m && m.direction !== 'stopped') void m.sender.replaceTrack(this.musicTrack).catch(() => {});
     if (v) {
       void v.sender.replaceTrack(this.videoTrack).catch(() => {});
       try {
@@ -256,6 +273,21 @@ export class VideoMesh {
     } finally {
       this.set({ busy: false });
     }
+  }
+
+  /** Voice anti-cheat (partners during bidding and trick play). Same list = no-op. */
+  setLimited(ids: string[]): void {
+    const cur = this.state.limited;
+    if (cur.length === ids.length && ids.every((x) => cur.includes(x))) return;
+    this.set({ limited: [...ids] });
+    for (const p of this.peers.values()) this.attachTracks(p);
+  }
+
+  /** Host music track (a file or device audio), sent to every peer on its own transceiver. */
+  musicTrack: MediaStreamTrack | null = null;
+  setMusicTrack(t: MediaStreamTrack | null): void {
+    this.musicTrack = t;
+    for (const p of this.peers.values()) this.attachTracks(p);
   }
 
   toggleMuted(id: string): void {

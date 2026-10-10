@@ -8,7 +8,7 @@ import { localNames, useCountdown, useOnlineChat, useOnlineSource, useVideo } fr
 import type { VideoMesh } from './video';
 
 /** The 3D table, driven by the server: rotated per-seat view, real chat, video bubbles, turn clock. */
-export default function OnlineTable({ conn, cs, mesh, onLobby }: { conn: TableConnection; cs: ConnState; mesh: VideoMesh | null; onLobby: () => void }) {
+export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { conn: TableConnection; cs: ConnState; mesh: VideoMesh | null; onLobby: () => void; onMainMenu?: () => void }) {
   const source = useOnlineSource(cs, conn);
   const vs = useVideo(mesh);
   const [settings, setSettings] = useState<Settings>(() => ({ ...loadSettings(), speed: 'normal' }));
@@ -49,6 +49,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby }: { conn: TableCo
         seed={`${room.code}:${room.game}`}
         settings={settings}
         onExit={onLobby}
+        onMainMenu={onMainMenu}
         onRematch={() => conn.send({ t: 'rematch' })}
         onQuality={(quality) => { const s = { ...settings, quality }; setSettings(s); saveSettings({ ...loadSettings(), quality }); }}
         online={{ source, names, chat, seatExtra, sideLabel, controls: <MediaBar mesh={mesh} vs={vs} seated /> }}

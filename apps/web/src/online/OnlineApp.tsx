@@ -154,23 +154,23 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
       </div>
     );
   }
-  const leave = () => {
+  const leave = (to = '/online') => {
     conn.send({ t: 'leave' });
     forgetToken(code);
-    setTimeout(() => navigate('/online'), 50);
+    setTimeout(() => navigate(to, false, to === '/' ? { wiz: 'home' } : null), 50);
   };
   const inGame = cs.room.phase !== 'lobby' && cs.seat !== null && !!cs.view;
   return (
     <>
       <NowPlaying />
       {inGame && !lobbyOpen ? (
-        <OnlineTable conn={conn} cs={cs} mesh={mesh} onLobby={() => setLobbyOpen(true)} />
+        <OnlineTable conn={conn} cs={cs} mesh={mesh} onLobby={() => setLobbyOpen(true)} onMainMenu={() => leave('/')} />
       ) : (
         <Lobby
           conn={conn} cs={cs} mesh={mesh} settings={settings}
           onSettings={(s) => { setSettings(s); saveSettings(s); }}
           onBackToGame={inGame ? () => setLobbyOpen(false) : null}
-          onLeave={leave}
+          onLeave={() => leave()}
         />
       )}
     </>

@@ -796,3 +796,20 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
   .tt-name { font-size: 10px; left: 3px; bottom: 3px; padding: 0 4px; }
   .tt-avatar { width: 64%; font-size: 22px; }
 }
+/* ------------------------------------------------------------- modal stacking
+ * Modals (Table Talk, game over, score pad, leave confirm) sit above everything on the table: name plates and video
+ * bubbles (drei <Html>, zIndexRange [5,0] inside .badge-layer), chat, last trick, controls. Behind an open modal the
+ * table dims + blurs and can't take taps. */
+.modal-backdrop, .tt-backdrop { z-index: 1000; }
+.tt-backdrop ~ .modal-backdrop { z-index: 1010; }
+.hype-layer { z-index: 1100; }
+.sound-dock { z-index: 1050; }
+.table-screen.modal-open > :not(.modal-backdrop):not(.tt-backdrop):not(.hype-layer):not(.toasts) {
+  filter: blur(3px) brightness(.55) saturate(.8); pointer-events: none; transition: filter .25s ease;
+}
+.table-screen.modal-open .modal-backdrop { background: rgba(6,3,12,.35); }
+@media (prefers-reduced-motion: reduce) { .table-screen.modal-open > * { transition: none; } }
+.modal-x { position: absolute; top: 8px; right: 10px; width: 34px; height: 34px; border: 0; border-radius: 50%; background: rgba(255,255,255,.08); box-shadow: inset 0 0 0 1px rgba(185,128,255,.45); font-size: 16px; line-height: 1; display: grid; place-items: center; z-index: 2; }
+.modal-x:hover { background: rgba(155,92,255,.35); }
+.modal.gameover { position: relative; }
+.modal.gameover .bid-row { flex-wrap: wrap; justify-content: center; }
