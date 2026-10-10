@@ -62,9 +62,13 @@ await host.getByTestId('lobby-seat-2').getByText('Keisha').waitFor();
 log('guest seated across (partner)');
 
 // chat round trip
+// phones: chat is a bottom tab → drawer (one tap)
+for (const p of [guest, host]) if (await p.getByTestId('lobby-chat-tab').count()) await p.getByTestId('lobby-chat-tab').click();
 await guest.getByLabel('Chat message').fill('yo what up');
 await guest.getByLabel('Chat message').press('Enter');
 await host.locator('.lobby-chat').getByText('yo what up').waitFor({ timeout: 5000 });
+for (const p of [guest, host]) if (await p.getByTestId('lobby-chat-tab').count()) await p.getByTestId('lobby-chat-tab').click();
+log('lobby chat round trip (phone chat drawer)');
 
 // --- cameras on (fake devices); each must see the other's live video
 // (clicks are retried: the lobby can shift by a line while chat/state updates arrive)

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import type { SeatInfo } from '@spades/protocol';
 import type { VideoMesh, VideoState } from './video';
 
@@ -35,6 +35,8 @@ export function SeatMedia({ seat, isMe, mesh, vs, limited = false }: { seat: Sea
     );
   }
   const id = seat.playerId;
+  // offline: no "…" bubble — the plate's avatar initial shows with the OFFLINE badge
+  if (!seat.connected) return null;
   const stream = vs.remote[id];
   const camOn = seat.media.cam;
   const hidden = vs.hidden.includes(id);
@@ -42,20 +44,21 @@ export function SeatMedia({ seat, isMe, mesh, vs, limited = false }: { seat: Sea
   if (!camOn && !seat.media.mic) return null;
   const live = hasLive(stream, 'video');
   return (
+    <>
     <div className={`vbubble ${camOn && !hidden ? '' : 'audio-only'}`} data-testid={`video-${id}`} data-live={live ? 'true' : 'false'}>
-      {stream && <StreamVideo stream={stream} muted={muted} />}
+      {/* the clip layer keeps video circular everywhere (Safari ignores overflow+radius on <video> without its own layer) */}
+      <div className="vb-clip">{stream && <StreamVideo stream={stream} muted={muted} />}</div>
       {(!camOn || hidden) && <span className="vb-icon">{hidden ? '🙈' : '🎙'}</span>}
       {camOn && !hidden && !live && <span className="vb-icon wait">…</span>}
       <button type="button" className="vb-hit" aria-label={`Video options for ${seat.name}`} onClick={(e) => { e.stopPropagation(); setMenu(!menu); }} />
       {seat.media.mic && limited ? <span className="vb-badge limited" title="Partners can't hear each other during bids and play">🤐</span>
         : seat.media.mic && muted && <span className="vb-badge" title="Muted on your side">🔇</span>}
-      {menu && (
-        <div className="vb-menu glass" onClick={(e) => e.stopPropagation()}>
-          <button type="button" onClick={() => { mesh.toggleMuted(id); setMenu(false); }}>{vs.muted.includes(id) ? 'Unmute' : 'Mute'}</button>
-          {camOn && <button type="button" onClick={() => { mesh.toggleHidden(id); setMenu(false); }}>{hidden ? 'Show video' : 'Hide video'}</button>}
-        </div>
-      )}
     </div>
+    {menu && <VbMenu onClose={() => setMenu(false)} label={`Video options for ${seat.name}`}>
+      <button type="button" onClick={() => { mesh.toggleMuted(id); setMenu(false); }}>{vs.muted.includes(id) ? 'Unmute' : 'Mute'}</button>
+      {camOn && <button type="button" onClick={() => { mesh.toggleHidden(id); setMenu(false); }}>{hidden ? 'Show video' : 'Hide video'}</button>}
+    </VbMenu>}
+    </>
   );
 }
 
@@ -99,4 +102,17 @@ export function TalkTile({ seat, isMe, mesh, vs }: { seat: SeatInfo | undefined;
   const live = seat.media.cam && !vs.hidden.includes(seat.playerId) && hasLive(stream, 'video');
   // video only here (muted): the seat's own bubble keeps playing the audio
   return <>{live && stream ? <StreamVideo stream={stream} muted /> : avatar}{seat.media.mic && <span className="tt-tag mic">🎙</span>}</>;
+}
+
+/** Small popover beside a video bubble (above the plates); closes on outside click / tap or Esc. */
+function VbMenu({ children, onClose, label }: { children: ReactNode; onClose: () => void; label: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const down = (e: PointerEvent) => { if (ref.current && !ref.current.contains(e.target as Node) && !(e.target as Element).closest?.('.vb-hit')) onClose(); };
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('pointerdown', down, true);
+    window.addEventListener('keydown', key);
+    return () => { window.removeEventListener('pointerdown', down, true); window.removeEventListener('keydown', key); };
+  }, [onClose]);
+  return <div ref={ref} className="vb-menu glass" role="menu" aria-label={label} onClick={(e) => e.stopPropagation()}>{children}</div>;
 }

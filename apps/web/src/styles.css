@@ -861,3 +861,6 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
   .plate.me-plate:has(> .vbubble.self) .plate-body { margin-left: 0 !important; }
   .last-trick, .last-trick.glass.slant { max-width: 52vw; padding: 3px 6px 4px; }
 }
+/* chat: player lines stay prominent, system lines are small + grey */
+.chat-line { font-size: 14.5px; }
+.chat-line.system, .tt-chat .chat-line.system { font-size: 11px; color: rgba(200,190,220,.6); font-style: normal; border-left-width: 1px; padding-left: 5px; line-height: 1.25; }

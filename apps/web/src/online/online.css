@@ -78,8 +78,12 @@
 .vb-icon.wait { color: var(--muted); }
 .vb-hit { position: absolute; inset: 0; background: none; border: 0; }
 .vb-badge { position: absolute; bottom: 2px; right: 6px; font-size: 13px; pointer-events: none; }
-.vb-menu { position: absolute; top: 100%; left: 0; display: flex; flex-direction: column; z-index: 10; min-width: 110px; }
-.vbubble:has(.vb-menu) { overflow: visible; }
+.vb-clip { position: absolute; inset: 0; border-radius: 50%; overflow: hidden; transform: translateZ(0); -webkit-mask-image: -webkit-radial-gradient(white, black); isolation: isolate; }
+.vb-clip video, .vbubble video { border-radius: 50%; object-fit: cover; }
+/* the menu is a sibling of the bubble: a popover beside it, above plates, never un-clipping the video */
+.vb-menu { position: absolute; left: 72px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; z-index: 30; min-width: 120px; padding: 2px; box-shadow: 0 8px 22px rgba(0,0,0,.55), inset 0 0 0 1px rgba(185,128,255,.45); background: rgba(20,10,36,.97); }
+.seat-anchor.side-right .vb-menu { left: auto; right: calc(100% + 8px); }
+.seat-anchor:has(.vb-menu) { z-index: 50 !important; }
 .vb-menu button { border: 0; background: none; padding: 8px 10px; text-align: left; font-family: var(--display); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; font-size: 14px; }
 .plate:has(> .vbubble) .plate-body { margin-left: 26px; }
 .plate.me-plate:has(> .vbubble.self) .plate-body { margin-left: 16px; }

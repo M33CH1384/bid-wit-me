@@ -99,6 +99,31 @@ export function useOnlineSource(cs: ConnState, conn: TableConnection): (GameSour
 
 /* ------------------------------------------------------------------- chat */
 
+/**
+ * Collapse back-to-back system lines so they don't flood the chat: identical lines become "… ×N", and runs of
+ * timeouts become one "⏱ Out of time: Niaaa ×2 · Dre" line. Returns null when the two lines don't merge.
+ */
+export function mergeSystem(prev: string, next: string): string | null {
+  const TO = /^(.+) ran out of time$/;
+  const tally = (t: string): Map<string, number> | null => {
+    const m = TO.exec(t);
+    if (m) return new Map([[m[1]!, 1]]);
+    if (!t.startsWith('⏱ Out of time: ')) return null;
+    const out = new Map<string, number>();
+    for (const part of t.slice('⏱ Out of time: '.length).split(' · ')) { const [, who, n] = /^(.+?)(?: ×(\d+))?$/.exec(part)!; out.set(who!, Number(n ?? 1)); }
+    return out;
+  };
+  const a = tally(prev), b = tally(next);
+  if (a && b) {
+    for (const [k, v] of b) a.set(k, (a.get(k) ?? 0) + v);
+    return '⏱ Out of time: ' + [...a].map(([k, v]) => (v > 1 ? `${k} ×${v}` : k)).join(' · ');
+  }
+  const base = (t: string) => { const m = /^(.*) ×(\d+)$/.exec(t); return m ? { t: m[1]!, n: Number(m[2]) } : { t, n: 1 }; };
+  const p = base(prev);
+  if (p.t === next) return `${p.t} ×${p.n + 1}`;
+  return null;
+}
+
 const PALETTE = ['#4fd1ff', '#ff6ad5', '#7dff9b', '#ff9f43', '#b892ff', '#5ef2d0', '#ff7a7a'];
 export function colorFor(id: string): string {
   let h = 0;
@@ -114,7 +139,14 @@ export function useOnlineChat(cs: ConnState, st: GameState | null, names: string
   const prevSt = useRef<GameState | null>(null);
 
   const add = useCallback((m: Omit<ChatMsg, 'id'> & { id?: number }) => {
-    setMsgs((xs) => [...xs.slice(-99), { id: m.id ?? localId.current++, ...m } as ChatMsg]);
+    setMsgs((xs) => {
+      const last = xs[xs.length - 1];
+      if (m.system && last?.system) {
+        const merged = mergeSystem(last.text, m.text);
+        if (merged) return [...xs.slice(0, -1), { ...last, text: merged }];
+      }
+      return [...xs.slice(-99), { id: m.id ?? localId.current++, ...m } as ChatMsg];
+    });
   }, []);
 
   useEffect(() => {
