@@ -301,6 +301,41 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // bid coach: inside the bid panel while tips are on (open the first couple of times), or on request ("?")
   const bidTurn = myTurn && !dealing && st.phase === 'bidding' && !!view.bidOptions && !!view.hand;
   const coachBid = bidTurn && (coachOn || help);
+  // The bid panel (and the floating "count your books" coach) never grows past the top bar: its max height is the room
+  // between its (bottom-anchored) bottom edge and the scorebug / trump strip; the coach body scrolls inside.
+  useLayoutEffect(() => {
+    const fit = () => {
+      const tops = [...document.querySelectorAll('.scorebug, .trump-strip')].map((e) => e.getBoundingClientRect()).filter((r) => r.height > 0 && r.top < window.innerHeight / 2);
+      const limit = Math.max(0, ...tops.map((r) => r.bottom)) + 6;
+      for (const el of document.querySelectorAll<HTMLElement>('.me > .bid-panel, .bid-coach-float')) {
+        const r = el.getBoundingClientRect();
+        const room = el.classList.contains('bid-coach-float') ? window.innerHeight - r.top - 8 : r.bottom - limit;
+        const v = `${Math.max(120, Math.floor(room))}px`;
+        if (el.style.maxHeight !== v) el.style.maxHeight = v;
+        el.classList.toggle('tight', room < 420);
+        if (el.classList.contains('bid-coach-float')) continue;
+        // keep clear of an open chat panel: narrow the (centred) panel if that leaves enough room, else sit above the chat
+        const chat = document.querySelector('.chat.open')?.getBoundingClientRect();
+        const hits = !!chat && chat.width > 0 && chat.left < innerWidth / 2 + 300 && chat.top < r.bottom && chat.bottom > r.top - 200;
+        const w = chat ? Math.floor(2 * (chat.left - 10 - innerWidth / 2)) : 0;
+        const mw = hits && w >= 340 ? `${w}px` : '';
+        if (el.style.maxWidth !== mw) el.style.maxWidth = mw;
+        el.parentElement?.classList.toggle('over-chat', hits && w < 340);
+      }
+    };
+    fitRef.current = fit;
+    fit();
+  });
+  // the lower third moves after resizes / hand re-measures (sometimes a beat later), so keep re-fitting while a panel is up
+  const fitRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    if (!bidTurn && !help && !humanExchanging) return;
+    const run = () => fitRef.current();
+    const iv = window.setInterval(run, 250);
+    window.addEventListener('resize', run);
+    window.visualViewport?.addEventListener('resize', run);
+    return () => { clearInterval(iv); window.removeEventListener('resize', run); window.visualViewport?.removeEventListener('resize', run); };
+  }, [bidTurn, help, humanExchanging]);
   const bcKey = `${st.seed}:${st.handNo}`;
   const bcOpen = false; void tipCount;
   const bcCounted = useRef<string | null>(null);

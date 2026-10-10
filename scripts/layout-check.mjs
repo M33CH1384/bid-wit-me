@@ -327,6 +327,52 @@ if (!process.env.ONLY || process.env.ONLY === 'offline') {
   await page.context().close();
 }
 
+// Bid panel with every coach section open (Why? + How to count books) + the attached bid tip: the tip's controls,
+// the coach's Hide link and every bid button stay in the viewport and clickable (the coach body scrolls inside).
+if (!process.env.ONLY || process.env.ONLY === 'bidcoach') {
+  const page = await newPage('bidcoach', 1024, 614);
+  await page.addInitScript(() => { try { localStorage.setItem('bwm.tips', JSON.stringify({ on: true, asked: true })); } catch { /* */ } });
+  await page.goto(`${web}/`);
+  await page.evaluate(() => { localStorage.removeItem('bwm.game'); localStorage.setItem('spades.settings.v2', JSON.stringify({ mode: 'joker', speed: 'fast', quality: 'low', firstHandBidsItself: false })); });
+  await page.goto(`${web}/?autostart=1&seed=layout-bidcoach`);
+  for (let i = 0; i < 1500 && !(await page.locator('.bid-grid button').count()); i++) {
+    const ok = page.locator('[data-testid="coach"]:not(.inline) [data-testid="coach-ok"]');
+    if (await ok.count()) await ok.click({ timeout: 1000 }).catch(() => {});
+    const see = page.getByRole('button', { name: 'See my cards' }); if (await see.count()) await see.click({ timeout: 1000 }).catch(() => {});
+    await page.waitForTimeout(60);
+  }
+  const why = page.locator('.bid-panel .bc-why');
+  if ((await why.getAttribute('aria-expanded').catch(() => null)) === 'false') await why.click();
+  await page.locator('.bid-panel .bc-how').click();
+  for (const [label, w, h] of [['desktop-1024x614', 1024, 614], ['desktop-1440x900', 1440, 900], ['phone-390x664', 390, 664], ['landscape-844x390', 844, 390]]) {
+    await page.setViewportSize({ width: w, height: h });
+    await page.waitForTimeout(700);
+    const res = await page.evaluate(() => {
+      const bad = [];
+      const check = (el, name) => {
+        if (!el) { bad.push(`${name} missing`); return; }
+        const r = el.getBoundingClientRect();
+        if (r.width === 0) { bad.push(`${name} hidden`); return; }
+        if (r.top < 0 || r.left < 0 || r.bottom > innerHeight + 0.5 || r.right > innerWidth + 0.5) { bad.push(`${name} off-screen (${r.left.toFixed(0)},${r.top.toFixed(0)} → ${r.right.toFixed(0)},${r.bottom.toFixed(0)})`); return; }
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        if (!hit || !(el === hit || el.contains(hit))) bad.push(`${name} covered by ${hit?.className || hit?.tagName}`);
+      };
+      const tip = document.querySelector('.bid-panel .coach.inline');
+      if (tip) { check(tip.querySelector('[data-testid="coach-ok"]'), 'tip OK'); check(tip.querySelector('[data-testid="coach-skip"]'), 'tip Not now'); check(tip.querySelector('[data-testid="coach-never"]'), 'tip tips-off'); }
+      check(document.querySelector('.bid-panel .bc-why'), 'coach Hide');
+      document.querySelectorAll('.bid-panel .bid-grid button').forEach((b) => check(b, `bid ${b.textContent}`));
+      const how = document.querySelector('.bid-panel .bc-how-list');
+      const pp = document.querySelector('.me > .bid-panel'); if (bad.length) bad.push([...document.querySelectorAll('.scorebug, .trump-strip')].map((e) => e.className + ':' + Math.round(e.getBoundingClientRect().top) + '-' + Math.round(e.getBoundingClientRect().bottom)).join(' | ')); if (bad.length) bad.push(`panel mh=${pp.style.maxHeight} h=${pp.getBoundingClientRect().height} top=${pp.getBoundingClientRect().top} st=${pp.scrollTop} sh=${pp.scrollHeight} kids=${[...pp.children].map((c) => c.className.split(' ')[0] + ':' + Math.round(c.getBoundingClientRect().height)).join(',')}`);
+      return { bad, tip: !!tip, how: !!how, open: document.querySelector('.bid-panel .bc-why')?.getAttribute('aria-expanded') };
+    });
+    await page.screenshot({ path: `${out}/bidcoach-${label}.png` });
+    const m = res.bad.concat(res.how ? [] : ['How to count books not open'], res.open === 'true' ? [] : ['Why? breakdown not open']);
+    console.log(`${m.length ? '✗' : '✓'} bid coach expanded ${label}${res.tip ? ' (with tip)' : ''}${m.length ? ': ' + m.join('; ') : ''}`);
+    m.forEach((x) => problems.push(`bid coach ${label}: ${x}`));
+  }
+  await page.context().close();
+}
+
 if (!process.env.ONLY || process.env.ONLY === 'online') {
   const q = `?server=${encodeURIComponent(server)}`;
   const host = await newPage('host');

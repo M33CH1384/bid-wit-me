@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { type PlayerView, cardLabel, createRng, handSize } from '@spades/rules';
 import { type BidAdvice, bidAdvice } from '@spades/bots';
 import { topTrumps } from './glossary';
@@ -38,6 +38,9 @@ function rowsFor(a: BidAdvice['analysis']): Row[] {
 export function BidCoach({ view, startOpen, onClose, title = 'BID COACH' }: { view: PlayerView; startOpen: boolean; onClose?: () => void; title?: string }) {
   const [open, setOpen] = useState(startOpen);
   const [how, setHow] = useState(false);
+  const howRef = useRef<HTMLButtonElement>(null);
+  // opening "How to count books" scrolls it into view inside the coach body
+  useEffect(() => { if (how) requestAnimationFrame(() => howRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })); }, [how]);
   const adv = useMemo(() => {
     if (!view.hand) return null;
     const v: PlayerView = view.bidOptions ? view : { ...view, bidOptions: { min: 1, max: handSize(view.rules), nil: view.rules.nil.allowed, blindNil: false } };
@@ -77,7 +80,7 @@ export function BidCoach({ view, startOpen, onClose, title = 'BID COACH' }: { vi
           {adv.partnerNote && <p className="bc-note"><b>Partner:</b> {adv.partnerNote}</p>}
           {adv.tableNote && <p className="bc-note"><b>Table:</b> {adv.tableNote}</p>}
           {adv.nil && <p className={`bc-note ${adv.nil.ok ? 'good' : ''}`}><b>Nil:</b> {adv.nil.note.replace(/^Nil\??:?\s*/, '')}</p>}
-          <button type="button" className="link bc-how" aria-expanded={how} onClick={() => setHow(!how)}>{how ? '▾' : '▸'} New to this? How to count books</button>
+          <button type="button" ref={howRef} className="link bc-how" aria-expanded={how} onClick={() => setHow(!how)}>{how ? '▾' : '▸'} New to this? How to count books</button>
           {how && (
             <ol className="bc-how-list">
               <li><b>Count sure winners.</b> A book is one round where everyone plays a card and the best card takes them all. Your strongest spades (the trumps: {topTrumps(view.rules, 4)}) almost always win one each. So do aces of hearts, diamonds and clubs.</li>

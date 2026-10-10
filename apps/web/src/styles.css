@@ -632,7 +632,6 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .table-screen.short .bid-panel .coach.inline .coach-title { font-size: 0; gap: 0; flex: none; }
 .table-screen.short .bid-panel .coach.inline .coach-badge { font-size: 10px; }
 .table-screen.short .bid-panel .coach.inline p { flex: 1 1 auto; font-size: 12px; line-height: 1.25; }
-.table-screen.short .bid-panel .coach.inline [data-testid="coach-skip"] { display: none; }
 .table-screen.short .bid-panel .coach.inline .coach-actions { flex: none; }
 .table-screen.short .bid-panel { gap: 3px; padding: 5px 10px 6px; }
 .table-screen.short .bid-grid button { padding: 3px 0; font-size: 15px; }
@@ -951,3 +950,26 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .coach-timer i { display: block; height: 100%; background: var(--gold); transform-origin: left center; transition: transform .1s linear; opacity: .75; }
 .coach-timer.paused i { opacity: 1; box-shadow: 0 0 6px rgba(245,197,66,.8); }
 .coach.inline .coach-timer { position: relative; left: 0; right: 0; bottom: 0; margin-top: 4px; }
+
+/* Bid panel fits the viewport (max-height set from JS: room up to the top bar). Pinned: the tip + coach header on top,
+   "YOUR BID" + bid buttons + Nil at the bottom; only the coach body scrolls. Fallback: the whole panel scrolls. */
+.me > .bid-panel { overflow-y: auto; overscroll-behavior: contain; min-height: 0; }
+.me > .bid-panel > * { flex-shrink: 0; }
+.me > .bid-panel > .bid-coach { flex: 0 1 auto; min-height: 60px; display: flex; flex-direction: column; overflow: hidden; }
+.me > .bid-panel > .bid-coach > .bc-head, .me > .bid-panel > .bid-coach > .bc-chips { flex-shrink: 0; }
+.me > .bid-panel > .bid-coach > .bc-body { flex: 1 1 auto; min-height: 0; max-height: none; overflow-y: auto; overscroll-behavior: contain; }
+.table-screen.short .me > .bid-panel > .bid-coach > .bc-body { max-height: none; }
+.bid-panel .coach.inline p { max-height: 6.8em; overflow-y: auto; }
+.bid-coach-float { overflow-y: auto; display: flex; flex-direction: column; }
+.bid-coach-float .bid-coach { display: flex; flex-direction: column; min-height: 0; }
+.bid-coach-float .bc-body { min-height: 0; overflow-y: auto; }
+.me.over-chat { z-index: 12; }
+/* 13 bids + Nil in two rows (8 across) instead of three */
+.table-screen:not(.short) .bid-panel.with-coach .bid-grid { grid-template-columns: repeat(8, 1fr); }
+/* little room (short desktop windows, phones): smaller buttons, tighter gaps, no "YOUR BID" line when the coach is open */
+.me > .bid-panel.tight { gap: 5px; padding-top: 6px; padding-bottom: 8px; }
+.me > .bid-panel.tight .bid-grid button { padding: 5px 0; font-size: 17px; }
+.me > .bid-panel.tight.with-coach > .panel-title { display: none; }
+.me > .bid-panel.tight > .bid-coach { min-height: 44px; }
+.me > .bid-panel.tight .coach.inline p { max-height: 4em; }
+.me > .bid-panel.tight .coach.inline { padding: 4px 8px; }
