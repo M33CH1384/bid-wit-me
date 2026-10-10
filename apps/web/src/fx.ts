@@ -39,7 +39,10 @@ class FxBus {
   }
   /** The nuke as this player sees it: Reduce effects forces the Off-style version. */
   /** set by the online table from the room's setting (null offline) */
-  tableNuke: NukeIntensity | null = null;
+  private _tableNuke: NukeIntensity | null = null;
+  get tableNuke(): NukeIntensity | null { return this._tableNuke; }
+  set tableNuke(v: NukeIntensity | null) { if (v === this._tableNuke) return; this._tableNuke = v; this.prefListeners.forEach((f) => f()); }
+  getTableNuke = () => this._tableNuke;
   get nukeMode(): NukeIntensity { return this.reduced ? 'off' : (this.tableNuke ?? this.prefs.nuke); }
   setNuke(nuke: NukeIntensity) {
     this.prefs = { ...this.prefs, nuke };
@@ -134,6 +137,11 @@ export function streakLabel(n: number): string | null {
   if (n === 3) return 'ON FIRE';
   if (n === 2) return 'HEAT CHECK';
   return null;
+}
+
+/** The online table's nuke level (null offline). */
+export function useTableNuke(): NukeIntensity | null {
+  return useSyncExternalStore(fx.subscribePrefs, fx.getTableNuke, fx.getTableNuke);
 }
 
 export function useNukeIntensity(): NukeIntensity {

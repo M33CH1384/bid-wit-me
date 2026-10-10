@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { sound, useSoundSettings } from './audio';
 import { HostMusicFields } from './online/HostMusic';
 import { talkPrefs, useTalkPrefs } from './talkPrefs';
-import { type NukeIntensity, fx, useNukeIntensity, useReduceEffects } from './fx';
+import { type NukeIntensity, fx, useNukeIntensity, useReduceEffects, useTableNuke } from './fx';
 
 const icon = (on: boolean, v: number) => (!on || v === 0 ? '🔇' : v < 0.4 ? '🔈' : v < 0.75 ? '🔉' : '🔊');
 
@@ -134,6 +134,7 @@ export function SoundDock() {
           <div className="pop-head"><span className="panel-title">SOUND</span><BotVoiceQuickMute /><button type="button" className="mute-all" data-testid="mute-all" onClick={muteAll}>{allOff ? 'Unmute' : 'Mute all'}</button></div>
           <SoundFields compact />
           <ReduceEffectsRow />
+          <TableNukeInfo />
           <HostMusicFields />
         </div>
       )}
@@ -210,6 +211,20 @@ export function NukeIntensityRow() {
       <div className="seg" role="radiogroup" aria-label="Nuke intensity" data-testid="nuke-intensity">
         {opts.map(([k, l]) => <button key={k} type="button" role="radio" aria-checked={v === k} className={v === k ? 'on' : ''} disabled={reduced} onClick={() => fx.setNuke(k)}>{l}</button>)}
       </div>
+    </div>
+  );
+}
+
+/** Online: the table's nuke level, read-only (the host sets it in the lobby). Hidden offline. */
+export function TableNukeInfo() {
+  const t = useTableNuke();
+  const reduced = useReduceEffects();
+  if (!t) return null;
+  const label = t === 'full' ? 'Full Nuke' : t === 'classic' ? 'Classic' : 'Off';
+  return (
+    <div className="sf-row nuke-row" data-testid="table-nuke-info">
+      <span>Nuke intensity<small className="sf-note"> · set by the host{reduced ? ' · Off for you (Reduce effects)' : ''}</small></span>
+      <b className="sf-val">{label}</b>
     </div>
   );
 }

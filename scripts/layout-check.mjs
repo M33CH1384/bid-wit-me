@@ -66,7 +66,7 @@ async function measure(page) {
     for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
       const a = boxes[i], b = boxes[j];
       if ((a.name === 'controls' && b.name.startsWith('av')) || (a.name.startsWith('av') && b.name.startsWith('av')) || (b.name === 'controls' && (a.name.startsWith('av') || a.name === 'chat-btn')) || (a.name === 'controls' && b.name === 'chat-btn')) continue;
-      if (ov(a.r, b.r, 1)) probs.push(`${a.name} overlaps ${b.name}`);
+      if (ov(a.r, b.r, 1)) probs.push(`${a.name} overlaps ${b.name}` + ` [${[a.r.x, a.r.y, a.r.w, a.r.h].map(Math.round)} vs ${[b.r.x, b.r.y, b.r.w, b.r.h].map(Math.round)}]`);
     }
     // top bar: ☰, ?, 📋, HQ and the sound button are one set: same top, height and width, aligned with the scorebug
     { const bugEl = document.querySelector('.scorebug > .bug');
@@ -347,6 +347,11 @@ if (!process.env.ONLY || process.env.ONLY === 'bidcoach') {
   for (const [label, w, h] of [['desktop-1024x614', 1024, 614], ['desktop-1440x900', 1440, 900], ['phone-390x664', 390, 664], ['landscape-844x390', 844, 390]]) {
     await page.setViewportSize({ width: w, height: h });
     await page.waitForTimeout(700);
+    // the lower third re-measures a beat after a resize (the panel re-fits every 250 ms): wait until it has settled
+    for (let k = 0, prev = ''; k < 20; k++) {
+      const cur = await page.evaluate(() => { const p = document.querySelector('.me > .bid-panel'); if (!p) return ''; const r = p.getBoundingClientRect(); return `${Math.round(r.top)},${Math.round(r.bottom)},${p.style.maxHeight},${p.scrollHeight}`; });
+      if (cur === prev) break; prev = cur; await page.waitForTimeout(300);
+    }
     const res = await page.evaluate(() => {
       const bad = [];
       const check = (el, name) => {

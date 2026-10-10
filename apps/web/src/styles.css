@@ -1125,3 +1125,5 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .series-chip.in-meta { padding: 0 6px; font-size: 10px; margin-left: 6px; }
 .series-chip.in-meta b { font-size: 11px; }
 .bug-meta > .series-chip { flex-shrink: 0; overflow: visible; }
+/* tiny phones (320px): keep the last-trick strip clear of your plate */
+@media (max-width: 340px) { .table-screen:not(.short) .last-trick, .table-screen:not(.short) .last-trick.glass.slant { gap: 2px; padding: 3px 5px 4px; max-width: 48vw; } }

@@ -37,7 +37,7 @@ export const TEAM_NAME_POOL = [
   'Book Bandits', 'Spade Kings', 'Cut Throats', 'Big Joker Energy', 'No Bags Gang', 'Set Squad', 'Card Sharks', 'Nil & Void',
   'Run It Back', 'Trump Tight', 'Ace Holders', 'The Closers', 'Bag Busters', 'Table Bosses', 'Heart Breakers', 'Club Kids',
   'Diamond Hands', 'Slam Dunkers', 'Book Worms', 'Spadeheads', 'Wheels Up', 'The Cutters', 'Sit Down Crew', 'Say Less',
-  'Lil Joker Club', 'Kitchen Table', 'Cookout Champs', 'Reneg Patrol', 'Overcut Society', 'Late Night Spades', 'Boss Moves', 'Shot Callers',
+  'Lil Joker Club', 'Kitchen Table', 'Cookout Champs', 'Reneg Patrol', 'Over The Top', 'Late Night Spades', 'Boss Moves', 'Shot Callers',
   'Bid Whisperers', 'House Rules', 'No Mercy', 'Smooth Operators', 'Deuce Squad', 'Takeover', 'The Bookies', 'Uncle Ray\'s Table',
 ] as const;
 

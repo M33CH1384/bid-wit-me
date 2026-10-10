@@ -25,6 +25,7 @@ const browser = await chromium.launch({
     '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '--autoplay-policy=no-user-gesture-required'],
 });
 const errors = [];
+process.on('exit', (code) => { if (code && errors.length) console.error('Browser errors so far:\n' + errors.slice(0, 20).join('\n')); });
 async function newPage(label) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, permissions: ['camera', 'microphone'] });
   const page = await ctx.newPage();
@@ -161,7 +162,11 @@ if (!bubbles || !selfView) throw new Error('video bubbles missing on the table')
 // --- guest refreshes mid-game → back in the same seat with the same cards
 const handBefore = (await guest.locator('[data-testid^="card-"]').evaluateAll((els) => els.map((e) => e.dataset.testid).sort())).join();
 await guest.reload();
-await guest.locator('.table-screen').waitFor({ timeout: 20000 });
+await guest.locator('.table-screen').waitFor({ timeout: 20000 }).catch(async (e) => {
+  await guest.screenshot({ path: `${out}/debug-refresh-guest.png` }).catch(() => {});
+  console.log('guest after refresh:', (await guest.locator('body').innerText().catch(() => '?')).slice(0, 400));
+  throw e;
+});
 await guest.waitForFunction(() => document.querySelectorAll('[data-testid^="card-"]').length > 0, null, { timeout: 15000 });
 const handAfter = (await guest.locator('[data-testid^="card-"]').evaluateAll((els) => els.map((e) => e.dataset.testid).sort())).join();
 log(`guest refreshed: back at the table, ${handAfter === handBefore ? 'same cards' : 'cards changed (a turn may have auto-played)'}; partner plate shows "${await guest.locator('[data-testid="seat-2"] .plate-name').innerText()}"`);
@@ -202,6 +207,17 @@ await host.locator('.table-screen').waitFor();
 // host kicks the guest from the guest's bubble menu: one menu at a time, confirm, bot takes over, guest sees "removed"
 const gid = await guest.evaluate(() => window.__bwmVideo?.me ?? null).catch(() => null);
 const bubble = host.locator('[data-testid="seat-2"]').locator('.vb-hit, .vb-initial').first();
+// (software GL here: the host can drop to ~1 fps around a new deal, so wait generously)
+await bubble.waitFor({ timeout: 45000 }).catch(async (e) => {
+  console.log('seat-2 debug:', await host.locator('[data-testid="seat-2"]').evaluate((el) => {
+    const q = (s) => el.querySelector(s); const info = (e) => e && (() => { const r = e.getBoundingClientRect(), c = getComputedStyle(e); return `${e.className}: ${Math.round(r.x)},${Math.round(r.y)} ${Math.round(r.width)}x${Math.round(r.height)} d=${c.display} v=${c.visibility} o=${c.opacity} t=${c.transform} anim=${c.animationName}`; })();
+    return [info(el), info(q('.vbubble')), info(q('.vb-hit')), document.querySelector('.table-screen')?.className, document.querySelector('.modal, .sheet, [role=dialog]')?.className].join(' | ');
+  }).catch((x) => String(x)));
+  console.log('raf/2s:', await host.evaluate(() => new Promise((res) => { let n = 0; const t0 = performance.now(); const f = () => { n++; if (performance.now() - t0 < 2000) requestAnimationFrame(f); else res(n); }; requestAnimationFrame(f); setTimeout(() => res(`timeout n=${n}`), 6000); })).catch((x) => String(x)));
+  console.log('nuke:', await host.evaluate(() => JSON.stringify({ n: window.__bwmNuke, t: window.__bwmNukeT, vis: document.visibilityState, canv: document.querySelectorAll('canvas').length })));
+  await host.screenshot({ path: `${out}/debug-kick.png`, timeout: 8000 }).catch((x) => console.log('shot failed', String(x).slice(0, 200)));
+  throw e;
+});
 await bubble.click();
 await host.locator('.vb-menu').getByRole('button', { name: /^Kick/ }).click();
 await host.locator('[data-testid^="kick-yes-"]').click();
