@@ -519,6 +519,64 @@ describe('nuke intensity (table setting)', () => {
   });
 });
 
+describe('team names, rematch series, bot trash talk', () => {
+  it('a seated player names their own team (validated); a system line announces it; Cutthroat has no teams', () => {
+    const { env } = fourHumans();
+    env.send('b', { t: 'teamName', name: '  Spade Gods 🔥  ' });
+    expect(env.last('a', 'state')!.room.teamNames).toEqual([null, 'Spade Gods 🔥']);
+    expect(env.room.data.chat.at(-1)!.text).toMatch(/named their team “Spade Gods 🔥”/);
+    env.send('a', { t: 'teamName', name: 'x'.repeat(40) });
+    expect(env.last('a', 'state')!.room.teamNames![0]).toHaveLength(20);
+    env.send('c', { t: 'teamName', name: 'fuck yall' });
+    expect(env.errors('c').at(-1)!.code).toBe('BAD_NAME');
+    env.send('a', { t: 'teamName', name: '' });
+    expect(env.last('a', 'state')!.room.teamNames![0]).toBeNull();
+    const env2 = new FakeEnv(undefined, FAST);
+    env2.join('a', 'Host'); env2.send('a', { t: 'sit', seat: 0 });
+    env2.send('a', { t: 'config', rules: makeRules('cutthroat') });
+    env2.send('a', { t: 'teamName', name: 'Solo' });
+    expect(env2.errors('a').at(-1)!.code).toBe('NO_TEAMS');
+  });
+
+  it('keeps a series across rematches, keyed by who is on each team (not the name); resets with a note when teams change', () => {
+    const { env } = fourHumans();
+    env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: 150 }) });
+    env.send('a', { t: 'start' });
+    for (let i = 0; i < 5000 && env.room.data.phase === 'playing'; i++) if (!playTurn(env, ['a', 'b', 'c', 'd'])) env.advance(100);
+    let s = env.last('a', 'state')!.room.series!;
+    expect(s.games).toHaveLength(1);
+    expect(s.wins.reduce((x, y) => x + y, 0)).toBe(1);
+    expect(s.games[0]!.totals.length).toBe(s.games[0]!.hands);
+    env.send('a', { t: 'teamName', name: 'Renamed' });
+    env.send('a', { t: 'rematch' });
+    for (let i = 0; i < 5000 && env.room.data.phase === 'playing'; i++) if (!playTurn(env, ['a', 'b', 'c', 'd'])) env.advance(100);
+    s = env.last('a', 'state')!.room.series!;
+    expect(s.games).toHaveLength(2);
+    expect(s.sides[0]!.name).toBe('Renamed');
+    // swap partners: b and c trade seats → a new series
+    env.send('b', { t: 'stand' }); env.send('c', { t: 'stand' });
+    env.send('b', { t: 'sit', seat: 2 }); env.send('c', { t: 'sit', seat: 1 });
+    env.send('a', { t: 'rematch' });
+    s = env.last('a', 'state')!.room.series!;
+    expect(s.games).toHaveLength(0);
+    expect(s.note).toMatch(/teams changed/);
+  });
+
+  it('bots talk trash from the server (on by default, host can turn it off)', () => {
+    const env = new FakeEnv(undefined, FAST);
+    env.join('a', 'Host'); env.send('a', { t: 'sit', seat: 0 });
+    expect(env.last('a', 'state')!.room.botTalk).toBe(true);
+    env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: 150 }) });
+    env.send('a', { t: 'start' });
+    for (let i = 0; i < 8000 && env.room.data.phase === 'playing'; i++) if (!playTurn(env, ['a'])) env.advance(200);
+    const lines = env.room.data.chat.filter((l) => l.bot);
+    expect(lines.length).toBeGreaterThan(0);
+    for (const l of lines) expect(l.from).toBe(`bot:${l.bot!.seat}`);
+    env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: 150 }), botTalk: false });
+    expect(env.last('a', 'state')!.room.botTalk).toBe(false);
+  });
+});
+
 describe('table talk + host music', () => {
   it('host sets the Table Talk countdown; the hand-over deadline uses it', () => {
     const env = new FakeEnv(undefined, { ...FAST, handOverMs: 3000 });

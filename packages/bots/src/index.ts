@@ -56,3 +56,4 @@ export function simulateGame(rules: TableRules, seed: string, opts: SimOptions =
 }
 export * from './names';
 export * from './talk';
+export * from './moments';

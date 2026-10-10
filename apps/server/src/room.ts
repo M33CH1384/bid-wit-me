@@ -10,7 +10,7 @@
 import {
   type Action, type GameState, type Series, addSeriesGame, emptySeries, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, applyAction, isFreshDeal, makeRules, newGame, pendingTurn, secureSeed, validateRules, viewFor,
 } from '@spades/rules';
-import { chooseBotAction, pickBotNames } from '@spades/bots';
+import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, chooseBotAction, leanBid, leanNil, momentsFor, newTalkState, pickBotNames, prePlayLine } from '@spades/bots';
 import {
   type BotLevel, type ChatLine, type ClientMsg, type HostMusic, type MediaState, type RoomInfo, type RoomPhase, type SeatInfo, type ServerMsg,
   DEFAULT_AFK_LIMIT, LIMITS, PROTOCOL_VERSION, parseClientMsg,
@@ -74,6 +74,8 @@ export interface RoomData {
   botTalk?: boolean;
   /** per side: custom team name (null/unset = partner names) */
   teamNames?: (string | null)[];
+  /** trash-talk cooldown state (bot reveals etc.) */
+  talk?: TalkState;
   /** rematch series (see @spades/rules series) */
   series?: Series | null;
   /** per-seat member ids at the start of the current game (series composition) */
@@ -343,6 +345,7 @@ export class Room {
         this.requireHost(isHost);
         if (d.phase !== 'over') throw new RoomError('WRONG_PHASE', 'The game is not over');
         this.startGame();
+        this.talk({ kind: 'rematch' });
         break;
       }
       case 'act':
@@ -541,6 +544,7 @@ export class Room {
     d.deadline = null;
     d.gamesPlayed++;
     this.startSeries();
+    d.talk = { ...newTalkState(), revealed: [] }; // a new game: every Hustler is back in character
     d.kicked = []; // a new game: kicked players may come back
     d.votes = {};
     for (const m of Object.values(d.members)) m.timeouts = 0;
@@ -554,6 +558,7 @@ export class Room {
     const before = d.game!;
     d.game = applyAction(before, action);
     d.seq = (d.seq ?? 0) + 1;
+    for (const ev of momentsFor(before, action, d.game)) this.talk(ev);
     d.lastActive = this.io.now();
     if (d.game.phase === 'gameOver') {
       d.phase = 'over';
@@ -561,6 +566,30 @@ export class Room {
       this.recordSeries();
       this.system(`Game over: ${res.winners.map((w) => this.sideLabel(w)).join(' & ')} win${res.winners.length > 1 || d.rules.partnerships ? '' : 's'}`);
     }
+  }
+
+  private slowKey: string | null = null;
+
+  private talkState(): TalkState { return (this.data.talk ??= newTalkState()); }
+
+  private talkTable(): TalkTable {
+    const d = this.data;
+    const n = d.rules.playerCount;
+    const seats = d.seats.slice(0, n).map((s, i) => ({ bot: s.kind === 'bot', name: s.kind === 'human' ? (d.members[s.playerId]?.name ?? 'Player') : s.kind === 'bot' ? s.name : `Seat ${i + 1}` }));
+    return { seats, partnerships: d.rules.partnerships, teamNames: this.sideNames() };
+  }
+
+  /** a game moment → maybe one bot line (cooldowns live in the talk state) */
+  private talk(ev: TalkEvent): void {
+    const d = this.data;
+    if (d.botTalk === false || d.phase === 'lobby') return;
+    const line = botTalk(this.talkState(), this.talkTable(), ev, this.io.now(), Math.random);
+    if (line) this.pushBotLine(line);
+  }
+
+  private pushBotLine(l: TalkLine): void {
+    const d = this.data;
+    this.pushChat({ id: d.chatSeq++, from: `bot:${l.seat}`, name: l.name, text: l.text, at: this.io.now(), bot: { seat: l.seat, persona: l.persona, ...(l.reveal ? { reveal: true } : {}) } });
   }
 
   /** per-seat member ids: humans by player id, bots by seat */
@@ -711,6 +740,11 @@ export class Room {
         if (this.botKey !== key) {
           this.botKey = key;
           this.botDueAt = Math.max(now, (d.turnStartedAt ?? now) + leadIn + this.timing.botMs);
+          // sometimes a bot talks before it plays (never a tell: the line doesn't see its cards), then a short beat
+          if (turn.kind === 'play' && slot.kind === 'bot' && d.botTalk !== false) {
+            const line = prePlayLine(this.talkState(), this.talkTable(), turn.seat, now, Math.random);
+            if (line) { this.pushBotLine(line); this.botDueAt += 900; changed = true; }
+          }
         }
         if (now >= this.botDueAt!) {
           this.autoAct(turn.seat, slot.kind === 'bot' ? slot.level : d.botLevel);
@@ -728,6 +762,10 @@ export class Room {
       const want = connected ? full : Math.min(full, now + this.timing.disconnectGraceMs);
       // the deadline only ever moves earlier for a turn (a disconnect shortens it; a reconnect doesn't extend it)
       if (d.deadline === null || want < d.deadline) { d.deadline = want; changed = true; }
+      // a slow human gets roasted once per turn (bots only)
+      const slowAt = (d.turnStartedAt ?? now) + leadIn + Math.max(12_000, timerMs * 0.6);
+      if (this.slowKey !== key && now >= slowAt && now < d.deadline) { this.slowKey = key; this.talk({ kind: 'slow', them: turn.seat }); changed = true; }
+      else if (this.slowKey !== key && slowAt < d.deadline) this.io.wake(Math.max(50, slowAt - now));
       if (now >= d.deadline) {
         this.autoAct(turn.seat, 'normal');
         this.system(`${this.seatName(turn.seat)} ran out of time`);
@@ -779,6 +817,14 @@ export class Room {
     const view = viewFor(d.game!, seat);
     let action = chooseBotAction(view, level);
     if (!action) return;
+    // persona lean (bots only): a slight bid nudge / Nil reluctance; illegal nudges fall through to the catch below
+    const slot = d.seats[seat];
+    if (slot?.kind === 'bot' && action.type === 'bid') {
+      const revealed = (d.talk?.revealed ?? []).includes(seat);
+      if (typeof action.bid === 'number') action = { ...action, bid: leanBid(action.bid, slot.name, revealed, Math.random) };
+      else if (action.bid === 'nil' && leanNil(slot.name, Math.random)) action = { ...action, bid: 1 };
+      try { applyAction(d.game!, action); } catch { action = chooseBotAction(view, level)!; }
+    }
     try {
       this.apply(action);
     } catch {
@@ -806,7 +852,7 @@ export class Room {
       members: Object.entries(d.members).map(([playerId, m]) => ({ playerId, name: m.name, connected: this.isConnected(playerId), seat: m.seat })),
       deadline: d.deadline, ready: [...d.ready], rev: d.rev, seq: d.seq ?? 0, game: d.gamesPlayed, now: this.io.now(),
       talkSec: d.talkSec ?? Math.round(this.timing.handOverMs / 1000), afkLimit: d.afkLimit ?? DEFAULT_AFK_LIMIT, partnerMicMute: d.partnerMicMute ?? false, nukeIntensity: d.nukeIntensity ?? 'full', botTalk: d.botTalk ?? true,
-      teamNames: d.rules.partnerships ? [...(d.teamNames ?? [null, null])] : undefined, series: d.series ?? null,
+      teamNames: d.rules.partnerships ? [...(d.teamNames ?? [null, null])] : undefined, series: d.series ?? null, revealed: [...(d.talk?.revealed ?? [])],
       ...(d.votes && Object.keys(d.votes).length ? { votes: Object.entries(d.votes).map(([target, by]) => ({ target, by: [...by], need: this.votesNeeded(target) })) } : {}), ...(d.music && d.music.mode !== 'off' ? { music: d.music } : {}),
     };
   }

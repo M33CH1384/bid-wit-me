@@ -139,13 +139,19 @@ export interface RoomInfo {
   botTalk?: boolean;
   /** per side: a custom team name, or null = default (partner names) */
   teamNames?: (string | null)[];
+  /** bot seats whose Hustler act is over (plate tag shows the real persona) */
+  revealed?: number[];
   /** rematch series at this table (survives reconnects; resets when the teams change) */
   series?: Series | null;
   /** open vote-kicks: target player, who voted, votes needed */
   votes?: { target: string; by: string[]; need: number }[];
 }
 
-export interface ChatLine { id: number; from: string | null; name: string; text: string; at: number; system?: boolean }
+export interface ChatLine {
+  id: number; from: string | null; name: string; text: string; at: number; system?: boolean;
+  /** a bot's trash talk: its seat, persona, and whether this line is the Hustler's reveal (raw text; clients mask per Clean talk) */
+  bot?: { seat: number; persona: string; reveal?: boolean };
+}
 
 export type ServerMsg =
   | { t: 'welcome'; you: string; token: string; code: string; chat: ChatLine[]; v: number }
