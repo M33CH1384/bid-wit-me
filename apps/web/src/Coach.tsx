@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { type Card, type GameState, type PlayerView, booksHand, cardLabel, effectiveSuit, isTrump, trumpOrder } from '@spades/rules';
+import { type Card, type GameState, type PlayerView, SUIT_NAME, type Suit, booksHand, cardLabel, cardPower, effectiveSuit, handSize, isTrump, trumpOrder } from '@spades/rules';
+import { TERM_ORDER, type TermKey, glossary, parseTerms, topTrumps } from './glossary';
 import { TIP_MAX_SHOWS, bumpTip, tipCount } from './tips';
 
 /**
@@ -18,95 +19,225 @@ export interface CoachCtx {
   me: number;
   partnerName: string | null;
   pause: boolean;
+  /** local-seat names (0 = you) */
+  names?: string[];
 }
-interface Tip { id: string; title: string; text: string; anchor: string | 'hand' | 'trick'; when: (c: CoachCtx) => boolean; max?: number }
+/** What a tip points at on screen: rings + tags over cards on the table / in your hand while the tip is open. */
+export type MarkKind = 'led' | 'trump' | 'throw' | 'match' | 'strong' | 'won';
+export interface Mark { card: Card; tag: string; kind: MarkKind }
+export interface TipMarks { trick?: Mark[]; hand?: Mark[] }
+interface Tip { id: string; title: string; text: string; anchor: string | 'hand' | 'trick'; when: (c: CoachCtx) => boolean; max?: number; marks?: TipMarks; basics?: boolean }
 
 const label = (c: Card) => cardLabel(c);
+export const SUIT_SYM: Record<Suit, string> = { S: '♠', H: '♥', D: '♦', C: '♣' };
+/** "Hearts ♥" */
+export const suitWords = (s: Suit) => `${SUIT_NAME[s]} ${SUIT_SYM[s]}`;
 
+/**
+ * Tips for someone who has never played a trick-taking game: short, concrete, pointing at what's on screen.
+ * `{term}` / `{shown|term}` become tappable definitions (see glossary.ts).
+ */
 export function tipsFor(c: CoachCtx): Tip[] {
   const r = c.st.rules;
-  const order = trumpOrder(r).slice(0, 5).map(label).join(' › ');
-  const led = c.st.trick.plays[0]?.card;
+  const g = glossary(r);
+  const order = trumpOrder(r);
+  const top = topTrumps(r);
+  const jokers = order.includes('BJ' as Card);
+  const lead = c.st.trick.plays[0];
+  const led = lead?.card;
   const ledSuit = led ? effectiveSuit(led, r) : null;
-  const holdsLed = !!c.hand && !!ledSuit && c.hand.some((x) => effectiveSuit(x, r) === ledSuit);
-  const holdsTrump = !!c.hand && c.hand.some((x) => isTrump(x, r));
+  const hand = c.hand ?? [];
+  const holdsLed = !!ledSuit && hand.some((x) => effectiveSuit(x, r) === ledSuit);
+  const myTrumps = hand.filter((x) => isTrump(x, r));
+  const holdsTrump = myTrumps.length > 0;
   const playing = c.myTurn && c.st.phase === 'playing' && !c.pause;
   const books = booksHand(c.st);
+  const name = (seat: number) => (seat === c.me ? 'You' : c.names?.[seat] ?? `Seat ${seat + 1}`);
+  const ledWords = ledSuit ? (ledSuit === 'S' && jokers ? 'Spades ♠ (trumps)' : suitWords(ledSuit)) : '';
+  const ledPlural = ledSuit ? SUIT_NAME[ledSuit].toLowerCase() : '';
+  const ledMark: Mark[] = led ? [{ card: led, tag: 'LED', kind: 'led' }] : [];
+  // strongest card you hold, for the "your hand" tip
+  const best = [...hand].sort((a, b) => cardPower(b, r) - cardPower(a, r))[0];
+  const bestIsTop = !!best && best === order[0];
+  const bestAce = hand.find((x) => !isTrump(x, r) && x[0] === 'A');
+  const handPoint = !hand.length ? '' : bestIsTop
+    ? `Your ${label(best!)} is the strongest card in the game: it can't lose.`
+    : best && isTrump(best, r)
+      ? `Your ${label(best)} is a {trump}: it beats every heart, diamond and club.`
+      : bestAce ? `Your ${label(bestAce)} is the {highest|high} ${SUIT_NAME[effectiveSuit(bestAce, r)].toLowerCase().replace(/s$/, '')}.` : '';
+  const handMark = bestIsTop || (best && isTrump(best, r)) ? best : bestAce;
+  const rankLine = jokers
+    ? `{Bigger cards|high} win: 2 is lowest, Ace is highest, and the Jokers${order.some((x) => x === '2D') ? ', 2♦' : ''}${order.some((x) => x === '2S') ? ' and 2♠' : ''} beat them all.`
+    : '{Bigger cards|high} win: 2 is lowest, Ace is highest.';
+  // the cut tip: trumps you could cut with vs. low cards you could throw away
+  const throwaways = hand.filter((x) => !isTrump(x, r) && c.legal.includes(x)).sort((a, b) => cardPower(a, r) - cardPower(b, r)).slice(0, 2);
+  const last = c.st.tricks[c.st.tricks.length - 1];
+  const lastWin = last?.winner ?? null;
+  const lastWinCard = last && lastWin !== null ? last.plays.find((p) => p.seat === lastWin)?.card : undefined;
+  const lastLed = last?.plays[0] ? effectiveSuit(last.plays[0].card, r) : null;
+  const whyWon = lastWinCard && lastLed
+    ? isTrump(lastWinCard, r) && lastLed !== 'S'
+      ? `the ${label(lastWinCard)} is a {trump}, and a trump beats any ${SUIT_NAME[lastLed].toLowerCase().replace(/s$/, '')}`
+      : `the ${label(lastWinCard)} was the {highest card|high} of the suit that was {led|lead}`
+    : '';
+  const partnerSeat = (c.me + 2) % 4;
+  const pBid = c.st.bids[partnerSeat];
+  const n = handSize(r);
   return [
     {
       id: 'goal', title: 'The goal', anchor: '.scorebug .bug', max: 2,
       text: r.partnerships
-        ? `You and ${c.partnerName ?? 'your partner'} (across from you) are a team. Each hand you bid how many books (tricks) you'll take together — then make it. First to ${r.targetScore} wins.`
-        : `Cutthroat: every player for themselves. Bid how many books (tricks) you'll take, then make it. First to ${r.targetScore} wins.`,
+        ? `You and ${c.partnerName ?? 'your partner'} (sitting across from you) are a team. Together you try to win {books|book}: one book = one round where everyone plays a card. First team to ${r.targetScore} points wins.`
+        : `Every player for themselves. Try to win {books|book}: one book = one round where everyone plays a card. First to ${r.targetScore} points wins.`,
       when: (x) => x.st.phase === 'bidding' || x.st.phase === 'playing',
     },
     {
       id: 'books', title: 'First hand: no bidding', anchor: '.scorebug .bug', max: 2,
-      text: 'The first hand bids itself: just take as many books as you can. Every book is worth 10 — no bags, no penalties. Watch which cards win; you\'ll bid from hand 2.',
+      text: 'This first hand skips the {bid}: just win as many {books|book} as you can. Each one is worth 10 points. From hand 2, you guess your books before playing.',
       when: (x) => booksHand(x.st) && x.st.phase === 'playing',
     },
     {
       id: 'hand', title: 'Your hand', anchor: 'hand', max: 1,
-      text: 'These are your cards, grouped by suit. High cards and trumps are what win books.',
+      text: `These are your cards, sorted by {suit}: ♥ hearts, ♦ diamonds, ♣ clubs, ♠ spades. ${rankLine}${handPoint ? ` ${handPoint}` : ''}`,
+      marks: handMark ? { hand: [{ card: handMark, tag: bestIsTop ? 'CAN\'T LOSE' : isTrump(handMark, r) ? 'TRUMP' : 'TOP', kind: 'strong' }] } : undefined,
       when: (x) => !!x.hand && x.hand.length > 0 && (x.st.phase === 'bidding' || x.st.phase === 'playing'),
     },
     {
       id: 'trumps', title: 'Trumps', anchor: '.trump-strip, .bug-trumps', max: 2,
-      text: r.mode === 'joker'
-        ? `Spades are trumps, led by the jokers: ${order}… A trump beats any other suit.`
-        : r.mode === 'aceDown'
-          ? `Standard deck, aces high. Spades are trumps: ${order}… A trump beats any other suit.`
-          : `Every player for themselves. Trumps: ${order}… A trump beats any other suit.`,
+      text: `Spades ♠ are {trumps|trump}: any spade beats any heart, diamond or club.${jokers ? ' The Jokers count as spades too.' : ''} Strongest first: ${top}…`,
+      marks: myTrumps.length ? { hand: myTrumps.slice(0, 4).map((x) => ({ card: x, tag: 'TRUMP', kind: 'trump' as const })) } : undefined,
       when: (x) => x.st.phase === 'bidding' || x.st.phase === 'playing',
     },
     {
       id: 'bid', title: 'Time to bid', anchor: '.bid-panel',
-      text: `Count your books — the coach below adds up your winners and suggests a range.${r.nil.allowed ? ` Nil = take zero (±${r.nil.value}).` : ''}`,
+      text: `Guess how many {books|book} you'll win this hand: that's your {bid}. The coach below counts your strong cards for you.${r.nil.allowed ? ` {Nil|nil} = you bet you'll win none (±${r.nil.value}).` : ''}`,
       when: (x) => x.myTurn && x.st.phase === 'bidding' && !!x.view.bidOptions && !!x.hand,
     },
     {
       id: 'blind', title: 'Blind Nil?', anchor: '.bid-panel', max: 2,
-      text: `Blind Nil = Nil without looking (±${r.blindNil.value}). Risky — usually just see your cards.`,
+      text: `Blind {Nil|nil} = bet you'll win zero {books|book} before you even look at your cards (±${r.blindNil.value}). Very risky: most players just tap "See my cards".`,
       when: (x) => x.myTurn && x.st.phase === 'bidding' && !!x.view.bidOptions?.blindNil && !x.hand,
     },
     {
-      id: 'partnerBid', title: 'Partner bid first', anchor: '.bid-panel', max: 2,
-      text: 'Your bid + your partner\'s = the team contract. Keep the total within 13.',
+      id: 'partnerBid', title: 'Your partner bid', anchor: '.bid-panel', max: 2,
+      text: `${c.partnerName ?? 'Your partner'} bid ${typeof pBid === 'number' ? pBid : '—'}. Your {bid} plus theirs is the team's goal, and a hand only has ${n} {books|book}.`,
       when: (x) => x.myTurn && x.st.phase === 'bidding' && !!x.hand && r.partnerships && typeof x.st.bids[(x.me + 2) % 4] === 'number',
     },
     {
       id: 'follow', title: 'Follow suit', anchor: 'hand',
-      text: 'You have to play the suit that was led if you can. Your playable cards are lifted and glowing.',
+      text: led ? `${name(lead!.seat)} {led|lead} ${ledWords} (marked LED). You have ${ledPlural}, so you must play one: they're lifted in your hand. The {highest|high} one wins unless someone plays a {trump}.` : '',
+      marks: led ? { trick: ledMark, hand: hand.filter((x) => effectiveSuit(x, r) === ledSuit).map((x) => ({ card: x, tag: SUIT_SYM[ledSuit!], kind: 'match' as const })) } : undefined,
       when: () => playing && !!led && holdsLed && c.legal.length < (c.hand?.length ?? 0),
     },
     {
       id: 'cut', title: "Can't follow? Cut!", anchor: 'hand',
-      text: "You're out of the suit that was led — play a trump to cut and steal the book, or throw away a low card.",
+      text: led ? `${ledWords} was {led|lead} and you have no ${ledPlural}. Play a {trump} (gold tags) to {cut} and win the book, or throw away a low card (grey tags).` : '',
+      marks: led ? { trick: ledMark, hand: [...myTrumps.filter((x) => c.legal.includes(x)).map((x) => ({ card: x, tag: 'TRUMP', kind: 'trump' as const })), ...throwaways.map((x) => ({ card: x, tag: 'THROW', kind: 'throw' as const }))] } : undefined,
       when: () => playing && !!led && !holdsLed && holdsTrump,
     },
     {
       id: 'broken', title: 'Spades not broken', anchor: 'hand',
-      text: "You can't lead a trump until someone has cut with one (spades are \"broken\"). Lead another suit for now.",
+      text: 'You can\'t {lead} with a spade yet: spades are locked until someone {cuts|cut} with one ("{broken}"). Start with another suit: your allowed cards are lifted.',
+      marks: { hand: c.legal.filter((x) => !isTrump(x, r)).slice(0, 4).map((x) => ({ card: x, tag: 'OK', kind: 'match' as const })) },
       when: () => playing && !led && r.spadesMustBeBroken && !c.st.spadesBroken && holdsTrump && c.legal.some((x) => !isTrump(x, r)) && c.legal.every((x) => !isTrump(x, r)),
     },
     {
-      id: 'win', title: 'Who wins a book', anchor: 'trick', max: 2,
-      text: 'Highest card of the suit led wins — unless someone trumped: then the highest trump takes it. The winner leads next.',
-      when: (x) => x.pause && x.st.tricks.length >= 1,
+      id: 'win', title: 'Who won that book', anchor: 'trick', max: 2,
+      text: lastWin !== null ? `${name(lastWin)} won that {book}: ${whyWon}. The winner plays first next time.` : '',
+      marks: lastWinCard ? { trick: [{ card: lastWinCard, tag: 'WON', kind: 'won' }] } : undefined,
+      when: (x) => x.pause && x.st.tricks.length >= 1 && lastWin !== null,
     },
     {
       id: 'bags', title: 'Bags', anchor: '.scorebug .bug',
-      text: `Every book over your bid is a bag: +1 point now, but ${r.bagsPerPenalty} bags cost you ${r.bagPenalty}. Made your bid already? Duck under!`,
+      text: `Every {book} you win over your bid is a {bag|bags}: +1 point now, but every ${r.bagsPerPenalty} bags cost ${Math.abs(r.bagPenalty)}. Already made your bid? Play low cards to stop winning.`,
       when: (x) => !books && x.st.phase === 'playing' && x.st.tricks.length >= 4 && !x.pause,
     },
     {
       id: 'score', title: 'Scoring', anchor: '.modal',
       text: books
-        ? 'First hand: 10 points per book, nothing else. From now on you bid — and the bid coach helps you count.'
-        : `Made your bid: 10 × bid, +1 per bag. Missed it: −10 × bid. ${r.nil.allowed ? `Nil made: +${r.nil.value}, busted: −${r.nil.value}.` : ''}`,
+        ? 'First hand: 10 points per {book}. From now on you {bid} first, and the bid coach helps you count.'
+        : `Made your {bid}: 10 points per book you bid, +1 per extra. Fell short ({set}): minus 10 per book you bid.${r.nil.allowed ? ` {Nil|nil} made: +${r.nil.value}, missed: −${r.nil.value}.` : ''}`,
       when: (x) => x.st.phase === 'handOver' && !x.pause,
     },
+    {
+      id: 'basics', title: 'Card basics', anchor: '.scorebug .bug', basics: true, max: 0,
+      text: TERM_ORDER.map((k) => `${g[k].term}: ${g[k].def}`).join(' '),
+      when: () => false,
+    },
   ];
+}
+
+/** Tip text with tappable terms (underlined; tap = quick definition) and red ♥ ♦ symbols. */
+export function TipText({ text, rules, open, onOpen }: { text: string; rules: GameState['rules']; open: TermKey | null; onOpen: (k: TermKey | null) => void }) {
+  const g = glossary(rules);
+  const colour = (s: string, k: string) => s.split(/([♥♦])/).map((x, i) => (x === '♥' || x === '♦' ? <span key={`${k}-${i}`} className="suit-red">{x}</span> : x));
+  return (
+    <>
+      <p>
+        {parseTerms(text).map((part, i) => typeof part === 'string'
+          ? colour(part, String(i))
+          : <button key={i} type="button" className={`term ${open === part.key ? 'on' : ''}`} data-term={part.key} onClick={(e) => { e.stopPropagation(); onOpen(open === part.key ? null : part.key); }}>{part.text}</button>)}
+      </p>
+      {open && <p className="term-def" data-testid="term-def" onClick={(e) => e.stopPropagation()}><b>{g[open].term}:</b> {colour(g[open].def, 'd')}</p>}
+    </>
+  );
+}
+
+/** The "?" help's Card basics: every definition, worded for this table. */
+function Basics({ rules }: { rules: GameState['rules'] }) {
+  const g = glossary(rules);
+  return (
+    <dl className="basics" data-testid="card-basics" onClick={(e) => e.stopPropagation()}>
+      {TERM_ORDER.map((k) => <div key={k}><dt>{g[k].term}</dt><dd>{g[k].def}</dd></div>)}
+    </dl>
+  );
+}
+
+type LRect = { card: string; x: number; y: number; w: number; h: number };
+/** Rings + tags over the cards a tip talks about (screen rects published by the 3D scene). */
+export function TipMarkLayer({ marks }: { marks: TipMarks | undefined }) {
+  const [L, setL] = useState<{ trickCards?: LRect[]; handCards?: LRect[] } | null>(null);
+  useEffect(() => {
+    if (!marks) return;
+    const read = () => setL({ ...((window as unknown as { __bwmLayout?: { trickCards?: LRect[]; handCards?: LRect[] } }).__bwmLayout ?? {}) });
+    read();
+    const iv = window.setInterval(read, 250);
+    return () => clearInterval(iv);
+  }, [marks]);
+  if (!marks || !L) return null;
+  const at = (list: LRect[] | undefined, m: Mark) => list?.find((x) => x.card === m.card);
+  return (
+    <div className="tip-marks" aria-hidden data-testid="tip-marks">
+      {(marks.trick ?? []).map((m) => { const q = at(L.trickCards, m); return q ? (
+        <div key={`t${m.card}`} className={`tip-ring ${m.kind}`} data-mark={`trick:${m.card}:${m.kind}`} style={{ left: q.x - 4, top: q.y - 4, width: q.w + 8, height: q.h + 8 }}><span className="tip-tag">{m.tag}</span></div>
+      ) : null; })}
+      {(marks.hand ?? []).map((m) => { const q = at(L.handCards, m); return q ? (
+        <span key={`h${m.card}`} className={`tip-tag hand ${m.kind}`} data-mark={`hand:${m.card}:${m.kind}`} style={{ left: q.x + Math.min(10, q.w * 0.12), top: q.y - 12 }}>{m.tag}</span>
+      ) : null; })}
+    </div>
+  );
+}
+
+/** While tips are on: a quiet "♥ HEARTS LED" chip next to the trick, so the suit to follow is always clear. */
+export function LedSuitChip({ st }: { st: GameState }) {
+  const led = st.trick.plays[0]?.card;
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (!led) return;
+    const read = () => {
+      const L = (window as unknown as { __bwmLayout?: { trickCards?: LRect[] } }).__bwmLayout;
+      const rs = L?.trickCards ?? [];
+      if (!rs.length) { setPos(null); return; }
+      const x0 = Math.min(...rs.map((q) => q.x)), x1 = Math.max(...rs.map((q) => q.x + q.w)), y0 = Math.min(...rs.map((q) => q.y));
+      setPos({ x: (x0 + x1) / 2, y: y0 });
+    };
+    read();
+    const iv = window.setInterval(read, 300);
+    return () => clearInterval(iv);
+  }, [led]);
+  if (!led || st.phase !== 'playing' || !pos) return null;
+  const s = effectiveSuit(led, st.rules);
+  return <div className={`led-chip ${s === 'H' || s === 'D' ? 'red' : ''}`} data-testid="led-chip" style={{ left: pos.x, top: Math.max(60, pos.y - 30) }}>{SUIT_SYM[s]} {SUIT_NAME[s].toUpperCase()} LED</div>;
 }
 
 type Rect = { x: number; y: number; w: number; h: number };
@@ -139,7 +270,9 @@ export function placeBubble(anchor: Rect, bw: number, bh: number, W: number, H: 
 
 const OBSTACLES = '.badge-layer .plate, .me-plate, .bid-panel, .bid-coach, .scorebug .bug, .ctl-cluster, .sound-dock';
 
-export function Coach({ ctx, help, onOff, onSkip, onCloseHelp, onOpen }: {
+export function Coach({ ctx, help, onOff, onSkip, onCloseHelp, onOpen, onMarks }: {
+  /** the cards the open tip points at (the table glows them too) */
+  onMarks?: (cards: Card[]) => void;
   /** a tip bubble is showing (learning mode holds the bots while it is) */
   onOpen?: (open: boolean) => void;
   ctx: CoachCtx;
@@ -158,12 +291,14 @@ export function Coach({ ctx, help, onOff, onSkip, onCloseHelp, onOpen }: {
   const seenHand = useRef(hand);
   useEffect(() => { if (seenHand.current !== hand) { seenHand.current = hand; setSeen([]); } }, [hand]);
   useEffect(() => { setHelpIdx(0); }, [help]);
-  const helpList = help ? (all.filter((t) => t.when(ctx)).length ? all.filter((t) => t.when(ctx)) : all.filter((t) => ['goal', 'trumps', 'win', 'bags', 'score'].includes(t.id))) : [];
+  // "?" help: Card basics first, then the tips that fit this moment (or the core ones)
+  const basics = all.find((t) => t.id === 'basics')!;
+  const helpList = help ? [basics, ...(all.filter((t) => t.when(ctx)).length ? all.filter((t) => t.when(ctx)) : all.filter((t) => ['goal', 'trumps', 'win', 'bags', 'score'].includes(t.id)))] : [];
   // while your bid panel is up, only bidding tips (shown inside the panel, so nothing covers the plates)
   const bidPanelUp = ctx.myTurn && ctx.st.phase === 'bidding' && !!ctx.view.bidOptions;
   const fits = (t: Tip) => !bidPanelUp || t.anchor === '.bid-panel';
   const cur = current ? all.find((t) => t.id === current) : undefined;
-  const auto = (cur && fits(cur) ? cur : undefined) || all.find((t) => fits(t) && !seen.includes(t.id) && t.when(ctx) && tipCount(t.id) < (t.max ?? TIP_MAX_SHOWS));
+  const auto = (cur && fits(cur) && cur.when(ctx) ? cur : undefined) || all.find((t) => fits(t) && !seen.includes(t.id) && t.when(ctx) && tipCount(t.id) < (t.max ?? TIP_MAX_SHOWS));
   const tip = help ? helpList[helpIdx % Math.max(1, helpList.length)] : auto;
   useLayoutEffect(() => {
     if (help || !auto || auto.id === current) return;
@@ -174,6 +309,11 @@ export function Coach({ ctx, help, onOff, onSkip, onCloseHelp, onOpen }: {
   const [pos, setPos] = useState<{ left: number; top: number; arrowX: number; below: boolean; width?: number } | null>(null);
   const [slot, setSlot] = useState<Element | null>(null);
   const tipId = tip?.id;
+  const [term, setTerm] = useState<TermKey | null>(null);
+  useEffect(() => { setTerm(null); }, [tipId]);
+  const markKey = tip?.marks ? JSON.stringify(tip.marks) : '';
+  useEffect(() => { onMarks?.(tip?.marks ? [...(tip.marks.trick ?? []), ...(tip.marks.hand ?? [])].map((m) => m.card) : []); }, [markKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => onMarks?.([]), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useLayoutEffect(() => {
     if (!tipId || !tip) { setPos(null); return; }
@@ -213,7 +353,7 @@ export function Coach({ ctx, help, onOff, onSkip, onCloseHelp, onOpen }: {
     };
     raf = requestAnimationFrame(() => { raf = requestAnimationFrame(place); });
     return () => cancelAnimationFrame(raf);
-  }, [tipId, help, helpIdx]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tipId, help, helpIdx, term]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // bidding tips sit inside the bid panel (its .bid-tip-slot) instead of floating over the table
   const wantInline = !!tip && tip.anchor === '.bid-panel' && bidPanelUp;
@@ -235,7 +375,7 @@ export function Coach({ ctx, help, onOff, onSkip, onCloseHelp, onOpen }: {
       onClick={dismiss}
     >
       <div className="coach-title"><span className="coach-badge">{help ? `TIP ${helpIdx + 1}/${helpList.length}` : 'TIP'}</span>{tip.title}</div>
-      <p>{tip.text}</p>
+      {tip.basics ? <Basics rules={ctx.st.rules} /> : <TipText text={tip.text} rules={ctx.st.rules} open={term} onOpen={setTerm} />}
       <div className="coach-actions" onClick={(e) => e.stopPropagation()}>
         <button type="button" className="coach-ok" data-testid="coach-ok" onClick={dismiss}>{help ? (helpIdx + 1 < helpList.length ? 'Next' : 'Done') : 'OK'}</button>
         {!help && <button type="button" className="link" data-testid="coach-skip" onClick={onSkip}>Not now</button>}
@@ -244,5 +384,6 @@ export function Coach({ ctx, help, onOff, onSkip, onCloseHelp, onOpen }: {
       </div>
     </div>
   );
-  return inline ? createPortal(body, slot) : body;
+  const marks = <TipMarkLayer marks={tip.marks} />;
+  return <>{inline ? createPortal(body, slot) : body}{marks}</>;
 }

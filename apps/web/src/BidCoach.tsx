@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { type PlayerView, cardLabel, createRng, handSize } from '@spades/rules';
 import { type BidAdvice, bidAdvice } from '@spades/bots';
+import { topTrumps } from './glossary';
 
 /** ~1½ style: books rounded to the nearest half. */
 export function halves(v: number): string {
@@ -10,7 +11,7 @@ export function halves(v: number): string {
   return whole === 0 && frac ? frac : `${whole}${frac}`;
 }
 
-const SHORT: Record<string, string> = { trumps: 'Top trumps', aces: 'Aces', kings: 'Kings', length: 'Length', cutting: 'Cuts' };
+const SHORT: Record<string, string> = { trumps: 'Top trumps', aces: 'Aces', kings: 'Kings', length: 'Many spades', cutting: 'Cuts' };
 
 interface Row { key: string; label: string; detail: string; value: number }
 
@@ -21,11 +22,11 @@ function rowsFor(a: BidAdvice['analysis']): Row[] {
   if (a.sureTrumps.length) rows.push({ key: 'trumps', label: 'Top trumps', detail: list(a.sureTrumps), value: sum(a.sureTrumps) });
   const aces = a.sideWinners.filter((x) => x.note.startsWith('ace'));
   const rest = a.sideWinners.filter((x) => !x.note.startsWith('ace'));
-  if (aces.length) rows.push({ key: 'aces', label: 'Off-suit aces', detail: list(aces), value: sum(aces) });
-  if (rest.length) rows.push({ key: 'kings', label: 'Guarded kings / queens', detail: rest.map((x) => `${cardLabel(x.cards[0]!)} (${x.note})`).join(' · '), value: sum(rest) });
-  if (a.length) rows.push({ key: 'length', label: 'Spade length', detail: a.length.note, value: a.length.value });
-  else rows.push({ key: 'length', label: 'Spade length', detail: `${a.trumpCount} trump${a.trumpCount === 1 ? '' : 's'} — no extra books from length`, value: 0 });
-  if (a.cutting) rows.push({ key: 'cutting', label: 'Cutting', detail: a.cutting.note, value: a.cutting.value });
+  if (aces.length) rows.push({ key: 'aces', label: 'Aces (not spades)', detail: list(aces), value: sum(aces) });
+  if (rest.length) rows.push({ key: 'kings', label: 'Kings & queens with backup', detail: rest.map((x) => `${cardLabel(x.cards[0]!)} (${x.note})`).join(' · '), value: sum(rest) });
+  if (a.length) rows.push({ key: 'length', label: 'Lots of spades', detail: a.length.note, value: a.length.value });
+  else rows.push({ key: 'length', label: 'Lots of spades', detail: `${a.trumpCount} trump${a.trumpCount === 1 ? '' : 's'} — no extra books from length`, value: 0 });
+  if (a.cutting) rows.push({ key: 'cutting', label: 'Short suits (cutting)', detail: a.cutting.note, value: a.cutting.value });
   return rows;
 }
 
@@ -62,7 +63,7 @@ export function BidCoach({ view, startOpen, onClose, title = 'BID COACH' }: { vi
       )}
       {open && (
         <div className="bc-body">
-          <p className="bc-count">Your count ≈ {halves(adv.estimate)} books:</p>
+          <p className="bc-count">Books you can probably win ≈ {halves(adv.estimate)}:</p>
           <ul className="bc-rows">
             {rows.map((r) => (
               <li key={r.key} className={r.value ? '' : 'zero'}>
@@ -76,14 +77,15 @@ export function BidCoach({ view, startOpen, onClose, title = 'BID COACH' }: { vi
           {adv.partnerNote && <p className="bc-note"><b>Partner:</b> {adv.partnerNote}</p>}
           {adv.tableNote && <p className="bc-note"><b>Table:</b> {adv.tableNote}</p>}
           {adv.nil && <p className={`bc-note ${adv.nil.ok ? 'good' : ''}`}><b>Nil:</b> {adv.nil.note.replace(/^Nil\??:?\s*/, '')}</p>}
-          <button type="button" className="link bc-how" aria-expanded={how} onClick={() => setHow(!how)}>{how ? '▾' : '▸'} How to count books</button>
+          <button type="button" className="link bc-how" aria-expanded={how} onClick={() => setHow(!how)}>{how ? '▾' : '▸'} New to this? How to count books</button>
           {how && (
             <ol className="bc-how-list">
-              <li><b>Sure winners:</b> top trumps ({view.rules.mode === 'joker' ? 'Big Joker, Little Joker, 2♦, 2♠, A♠' : view.rules.mode === 'aceDown' ? 'A♠, K♠, Q♠' : 'jokers, then the top spades'}), off-suit aces, kings with a small card behind them.</li>
-              <li><b>Spade length:</b> past 3–4 trumps, the extra ones usually win late in the hand.</li>
-              <li><b>Cutting:</b> a void, singleton or doubleton lets a spare trump cut someone's winner.</li>
-              <li><b>Partner:</b> add your bids — the team total should fit in 13. Bid a little under if unsure: getting set costs 10× the bid.</li>
-              <li><b>Nil:</b> only with no aces, no high trumps, and low cards to duck with.</li>
+              <li><b>Count sure winners.</b> A book is one round where everyone plays a card and the best card takes them all. Your strongest trumps ({topTrumps(view.rules, 4)}) almost always win one each. So do aces of hearts, diamonds and clubs.</li>
+              <li><b>Kings with backup.</b> A king plus at least one smaller card of the same suit often wins too: you play the small one while the ace comes out.</li>
+              <li><b>Lots of spades.</b> If you hold more than 3–4 spades, the extra ones usually win near the end, when others have run out.</li>
+              <li><b>Short suits.</b> With no cards (or just one or two) in a suit, you can soon play a spade on it: that's cutting, and it wins the book.</li>
+              {view.rules.partnerships && <li><b>Add your partner.</b> Your bid plus theirs is the team's goal, and there are only {handSize(view.rules)} books. Unsure? Bid a little low: falling short (getting set) costs 10 points per book bid.</li>}
+              {view.rules.nil.allowed && <li><b>Nil (zero).</b> Only with no aces, no high spades, and lots of low cards to play under everyone.</li>}
             </ol>
           )}
         </div>

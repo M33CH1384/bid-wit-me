@@ -16,7 +16,7 @@ import { HUMAN, useGame } from './useGame';
 import { type SavedGame, clearGame, saveGame } from './save';
 
 import { useViewport } from './viewport';
-import { Coach } from './Coach';
+import { Coach, LedSuitChip } from './Coach';
 import { type TipsPref, bumpTip, loadTips, saveTips, tipCount } from './tips';
 import { BidCoach } from './BidCoach';
 import { pickBotNames } from '@spades/bots';
@@ -294,6 +294,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const landCue = useCallback((c: Card) => landCueFor(st, c), [st]);
   // "Learn as you play": coach marks across hands until the player turns tips off (local to this player, online too)
   const [help, setHelp] = useState(false);
+  const [tipMarked, setTipMarked] = useState<Card[]>([]);
   const coachOn = tips.on && !tipsSkipped && st.phase !== 'gameOver';
   const hintLegal = coachOn;
   const tipsOff = () => { const t = { on: false, asked: true }; saveTips(t); setTips(loadTips()); };
@@ -460,6 +461,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           short={vp.short}
           safe={vp.safe}
           hintLegal={hintLegal}
+          marked={tipMarked}
         />
       </Suspense>
 
@@ -670,7 +672,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
       {(coachOn || help) && !modalOpen && (
         <Coach
-          ctx={{ st, view, hand, legal, myTurn, me: HUMAN, partnerName: r.partnerships ? names[partnerOf(HUMAN, r) ?? 2] ?? null : null, pause }}
+          ctx={{ st, view, hand, legal, myTurn, me: HUMAN, partnerName: r.partnerships ? names[partnerOf(HUMAN, r) ?? 2] ?? null : null, pause, names }}
+          onMarks={setTipMarked}
           help={help}
           onSkip={() => setTipsSkipped(true)}
           onOff={tipsOff}
@@ -679,6 +682,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         />
       )}
 
+      {coachOn && !modalOpen && st.phase === 'playing' && !pause && <LedSuitChip st={st} />}
       <Hype reduced={reduceFx} />
       {showPad && <ScorePad st={st} names={names} onClose={() => setShowPad(false)} />}
     </div>

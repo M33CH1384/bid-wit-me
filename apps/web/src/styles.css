@@ -920,3 +920,25 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .sound-dock.slotted.in-bug .dock-btn { background: var(--glass); box-shadow: inset 0 0 0 1px rgba(185,128,255,.35); clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
 .sound-dock.slotted.in-bug .dock-btn { font-size: 16px; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
 .table-screen.short .sound-dock.slotted.in-bug .dock-btn { font-size: 14px; }
+
+/* ---------- tips: tappable terms, Card basics, rings/tags over the cards a tip talks about ---------- */
+.coach .term { all: unset; cursor: pointer; color: #fff; text-decoration: underline dotted rgba(245,197,66,.9); text-decoration-thickness: 2px; text-underline-offset: 3px; font-weight: 700; }
+.coach .term.on { color: var(--gold); }
+.coach .term:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.coach .term-def { margin: 0 0 8px; padding: 6px 9px; font-size: 13.5px; line-height: 1.35; background: rgba(245,197,66,.12); border-left: 3px solid var(--gold); color: #fff6dc; cursor: default; }
+.coach .suit-red, .led-chip.red { color: #ff6b81; }
+.coach .basics { margin: 6px 0 8px; max-height: min(52vh, 360px); overflow: auto; overscroll-behavior: contain; cursor: default; font-size: 13.5px; line-height: 1.35; }
+.coach .basics > div { padding: 4px 0; border-bottom: 1px solid rgba(185,128,255,.15); }
+.coach .basics dt { font-family: var(--display); font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--gold); font-size: 12.5px; }
+.coach .basics dd { margin: 1px 0 0; color: #f3ecff; }
+.tip-marks { position: fixed; inset: 0; pointer-events: none; z-index: 34; }
+.tip-ring { position: absolute; border-radius: 10px; border: 3px solid var(--gold); box-shadow: 0 0 18px rgba(245,197,66,.75), inset 0 0 12px rgba(245,197,66,.35); animation: tip-pulse 1.4s ease-in-out infinite; }
+.tip-ring.won { border-color: #7dff9b; box-shadow: 0 0 18px rgba(125,255,155,.7); }
+@keyframes tip-pulse { 50% { box-shadow: 0 0 30px rgba(245,197,66,.95), inset 0 0 16px rgba(245,197,66,.45); } }
+.tip-tag { position: absolute; left: 50%; top: -12px; transform: translateX(-50%); font-family: var(--display); font-weight: 800; font-size: 11px; letter-spacing: .1em; padding: 1px 6px; background: var(--gold); color: #1d1204; white-space: nowrap; border-radius: 3px; box-shadow: 0 2px 6px rgba(0,0,0,.5); }
+.tip-ring.won .tip-tag { background: #7dff9b; }
+.tip-tag.hand { left: auto; top: auto; transform: none; position: fixed; animation: fade-up .25s ease both; }
+.tip-tag.hand.throw { background: #9a93a8; color: #15121b; }
+.tip-tag.hand.match { background: #b980ff; color: #fff; }
+.led-chip { position: fixed; transform: translateX(-50%); z-index: 12; pointer-events: none; font-family: var(--display); font-weight: 800; font-size: 12px; letter-spacing: .12em; padding: 2px 9px; color: #f3ecff; background: rgba(20,10,36,.78); box-shadow: inset 0 0 0 1px rgba(185,128,255,.45); border-radius: 3px; white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { .tip-ring { animation: none; } }

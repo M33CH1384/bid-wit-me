@@ -46,6 +46,8 @@ export interface SceneProps {
   safe?: { l: number; r: number; t: number; b: number };
   /** Highlight playable cards (tips mode). */
   hintLegal?: boolean;
+  /** cards an open tip points at: they glow (on the table and in your hand) */
+  marked?: Card[];
 }
 
 function CameraRig() {
@@ -217,7 +219,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   // cards on the table this trick
   shownTrick.forEach((pl, order) => {
     const fanFrom = pl.seat === human ? undefined : opponentFan(positions[pl.seat]!, n, Math.max(0, handCounts[pl.seat]! - 1) / 2, handCounts[pl.seat]! + 1);
-    items.push({ key: `${handNo}-${pl.card}`, card: pl.card, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale), from: fanFrom, duration: 0.5, arc: 0.35, sfxLand: props.landCue(pl.card) });
+    items.push({ key: `${handNo}-${pl.card}`, card: pl.card, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale), from: fanFrom, duration: 0.5, arc: 0.35, sfxLand: props.landCue(pl.card), glow: !!props.marked?.includes(pl.card) });
   });
   // opponents' fans
   for (let seat = 0; seat < n; seat++) {
@@ -242,7 +244,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       delay: flip ? i * 0.022 : intro ? dealDelay(i, human) : 0,
       sfxStart: flip ? undefined : 'deal',
       dim: !!c && legal.length > 0 && !isLegal,
-      glow: !!c && (selected === c || ((!!props.hintLegal || wide) && isLegal && legal.length < mine.length)),
+      glow: !!c && (selected === c || !!props.marked?.includes(c) || ((!!props.hintLegal || wide) && isLegal && legal.length < mine.length)),
       tap: c && isLegal ? () => onCardTap(c) : undefined,
       shadow: false,
       duration: flip ? 0.34 : intro ? tl.fly : 0.32,
@@ -343,7 +345,9 @@ function LayoutProbe({ items, trickKeys, handKeys }: { items: { key: string; tar
     };
     const by = new Map(items.map((it) => [it.key, it.target]));
     const pick = (keys: string[]) => keys.map((k) => by.get(k)).filter((t): t is Xform => !!t).map(rect);
-    (window as unknown as { __bwmLayout: unknown }).__bwmLayout = { w: size.width, h: size.height, trick: pick(trickKeys), hand: pick(handKeys) };
+    // keyed by card too (tips draw rings / tags over specific cards: the led card, your trumps, …)
+    const keyed = (keys: string[]) => keys.flatMap((k) => { const t = by.get(k); const card = k.slice(k.indexOf('-') + 1); return t && !card.startsWith('hb-') ? [{ card, ...rect(t) }] : []; });
+    (window as unknown as { __bwmLayout: unknown }).__bwmLayout = { w: size.width, h: size.height, trick: pick(trickKeys), hand: pick(handKeys), trickCards: keyed(trickKeys), handCards: keyed(handKeys) };
   });
   return null;
 }
