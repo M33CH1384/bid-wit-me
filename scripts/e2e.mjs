@@ -78,7 +78,10 @@ async function tipsTest() {
   await page.waitForTimeout(400);
   await shot('08-tip-first');
   if (!(await page.getByTestId('learning-badge').count())) throw new Error('learning mode badge missing with tips on');
-  for (let i = 0; i < 300 && seen.length < 5; i++) {
+  // hand 1 is "books bid themselves" (no bidding), so the bid tip comes in hand 2 — tips carry across hands
+  for (let i = 0; i < 2500 && !(seen.includes('bid') && seen.length >= 4); i++) {
+    const talk = page.locator('[data-testid="talk-ready"]:not([disabled])');
+    if (await talk.count()) { await talk.click().catch(() => {}); continue; }
     if (await coach.count()) {
       const id = await coach.getAttribute('data-tip');
       if (id && !seen.includes(id)) { seen.push(id); if (id === 'bid') await shot('08b-tip-bid'); }
