@@ -68,6 +68,10 @@ async function measure(page) {
       if ((a.name === 'controls' && b.name.startsWith('av')) || (a.name.startsWith('av') && b.name.startsWith('av')) || (b.name === 'controls' && (a.name.startsWith('av') || a.name === 'chat-btn')) || (a.name === 'controls' && b.name === 'chat-btn')) continue;
       if (ov(a.r, b.r, 1)) probs.push(`${a.name} overlaps ${b.name}`);
     }
+    // the sound button sits flush with its scorebug neighbour: same top and height
+    { const slot = document.querySelector('.scorebug .dock-slot'), btn = document.querySelector('.dock-btn'), nb = slot?.previousElementSibling;
+      if (slot && btn && nb) { const a = btn.getBoundingClientRect(), c = nb.getBoundingClientRect();
+        if (Math.abs(a.top - c.top) > 1.5 || Math.abs(a.height - c.height) > 1.5) probs.push(`sound button not flush with the scorebug buttons (top ${a.top.toFixed(1)}/${c.top.toFixed(1)}, h ${a.height.toFixed(1)}/${c.height.toFixed(1)})`); } }
     L.trick.forEach((t, i) => {
       for (const b of boxes) if (ov(b.r, t, 2)) probs.push(`${b.name} covers trick card ${i}`);
       L.trick.forEach((u, j) => { if (j > i && ov(t, u, 3)) probs.push(`trick cards ${i}/${j} overlap`); });
@@ -248,6 +252,40 @@ async function bannerCheck(pages, tag, sizes) {
     }
     // let the trick finish before the next size
     await page.waitForTimeout(1500);
+  }
+}
+
+/** Start screen: gear + sound share top/height/style; More options (also with House rules open) fits the viewport. */
+if (!process.env.ONLY || process.env.ONLY === 'menus') {
+  for (const [label, w, h, mobile] of [['iphone-safari-390x664', 390, 664, true], ['mac-1024x640', 1024, 640, false], ['desktop-1440x900', 1440, 900, false], ['phone-land-844x390', 844, 390, true]]) {
+    const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: mobile ? 2 : 1, isMobile: mobile, hasTouch: mobile, ...(mobile ? { userAgent: IOS } : {}) });
+    const page = await ctx.newPage();
+    await page.addInitScript(() => { try { localStorage.setItem('bwm.tips', JSON.stringify({ on: false, asked: true })); } catch { /* */ } });
+    await page.goto(`${web}/`); await page.getByTestId('more').waitFor(); await page.waitForTimeout(700);
+    const m = [];
+    const pair = await page.evaluate(() => {
+      const g = document.querySelector('[data-testid="more"]'), s = document.querySelector('[data-testid="sound-button"]');
+      const a = g.getBoundingClientRect(), b = s.getBoundingClientRect(), ga = getComputedStyle(g), sa = getComputedStyle(s);
+      return { gt: a.top, gh: a.height, gw: a.width, st: b.top, sh: b.height, sw: b.width, gap: b.left - a.right, gs: ga.boxShadow, ss: sa.boxShadow, gb: ga.backgroundColor, sb: sa.backgroundColor };
+    });
+    if (Math.abs(pair.gt - pair.st) > 1 || Math.abs(pair.gh - pair.sh) > 1 || Math.abs(pair.gw - pair.sw) > 1) m.push(`gear/sound not a matching pair ${JSON.stringify(pair)}`);
+    if (pair.gap < 4 || pair.gap > 14) m.push(`gear/sound gap ${pair.gap}`);
+    if (pair.gs !== pair.ss || pair.gb !== pair.sb) m.push('gear/sound styles differ');
+    const fits = async (what) => {
+      const r = await page.evaluate(() => { const e = document.querySelector('[data-testid="more-options"]').getBoundingClientRect(); return { top: e.top, bottom: e.bottom }; });
+      if (r.top < -0.5 || r.bottom > h + 0.5) m.push(`More options ${what} runs off screen (${Math.round(r.top)}–${Math.round(r.bottom)} in ${h})`);
+    };
+    await page.getByTestId('more').click(); await page.waitForTimeout(600);
+    await fits('sheet');
+    await page.getByRole('button', { name: /House rules/ }).click(); await page.waitForTimeout(400);
+    await fits('with House rules open');
+    const scroll = await page.evaluate(() => { const b = document.querySelector('[data-testid="more-options"] .sheet-body'); const before = b.scrollTop; b.scrollTop = b.scrollHeight; const ok = b.scrollHeight <= b.clientHeight + 1 || b.scrollTop > before; const last = [...b.querySelectorAll('.sheet-h')].pop().getBoundingClientRect(); return { ok, lastBottom: last.bottom }; });
+    if (!scroll.ok) m.push('House rules do not scroll inside the sheet');
+    if (scroll.lastBottom > h + 0.5) m.push('Credits & licenses unreachable (below the viewport)');
+    await page.screenshot({ path: `${out}/menus-more-options-${label}.png` });
+    console.log(`${m.length ? '✗' : '✓'} menus ${label}${m.length ? ': ' + m.join('; ') : ''}`);
+    m.forEach((x) => problems.push(`menus ${label}: ${x}`));
+    await ctx.close();
   }
 }
 

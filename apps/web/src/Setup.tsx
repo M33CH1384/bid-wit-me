@@ -190,7 +190,10 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
           </span>
         ) : <span />}
         <div className="wiz-dots" aria-hidden>{ORDER.map((x) => <i key={x} className={x === step ? 'on' : ''} />)}</div>
-        <button type="button" className="icon-btn" aria-label="More options" data-testid="more" onClick={() => setMore(true)}>⚙</button>
+        <span className="wiz-right">
+          <button type="button" className="icon-btn gear" aria-label="More options" data-testid="more" onClick={() => setMore(true)}>⚙</button>
+          <span className="dock-slot" aria-hidden />
+        </span>
       </header>
       <main key={step} className={`wiz-step slide-${dir}`}>{body}</main>
       {more && <MoreOptions settings={s} onChange={onChange} tips={tips} onTips={setTips} onClose={() => setMore(false)} />}

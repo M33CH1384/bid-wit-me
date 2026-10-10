@@ -1,6 +1,6 @@
 /**
  * Release-3 screenshots: bid coach + Table Talk recap (phone portrait), the Big-over-Little nuke mid-explosion,
- * the desktop table at 1440x900 (chat on the right, bigger hand) and the desktop online lobby.
+ * the desktop table at 1440x900 (chat on the right, bigger hand), the desktop online lobby and its Partner mic mute switch.
  * Usage: node scripts/release3-shots.mjs [outDir=screenshots/release-3] [web=http://localhost:4173] [server=http://127.0.0.1:8787]
  * The nuke shot fires the effect through the fx bus (window.__bwmFx.emit('nuke')) mid-trick; the game-state trigger
  * (Big Joker + Little Joker in one trick) is covered by apps/web/test/landCue.test.ts.
@@ -103,6 +103,13 @@ if (want('lobby')) {
   await host.locator('.lobby-chat input').press('Enter').catch(() => {});
   await host.waitForTimeout(2500);
   await host.screenshot({ path: `${out}/5-desktop-lobby-1440x900.png` });
+  // the host's Partner mic mute switch (off by default) in the settings panel
+  const mm = host.getByTestId('mic-mute-toggle');
+  await mm.scrollIntoViewIfNeeded();
+  await mm.evaluate((el) => el.closest('label')?.classList.add('shot-highlight'));
+  await host.addStyleTag({ content: '.shot-highlight { outline: 2px solid #f5c542; outline-offset: 3px; border-radius: 6px; }' });
+  await host.waitForTimeout(400);
+  await host.screenshot({ path: `${out}/6-lobby-mic-mute-toggle.png` });
   await host.context().close(); await guest.context().close();
 }
 await b.close();

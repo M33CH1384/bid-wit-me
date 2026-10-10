@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { sound, useSoundSettings } from './audio';
 import { HostMusicFields } from './online/HostMusic';
 import { fx, useReduceEffects } from './fx';
@@ -61,6 +61,29 @@ export function SoundDock() {
   const [flash, setFlash] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const press = useRef<{ timer: number | null; long: boolean; lastTap: number; down: number }>({ timer: null, long: false, lastTap: -Infinity, down: 0 });
+  // sit exactly on the screen's .dock-slot (next to the gear / scorebug buttons) so the pair lines up and matches
+  useLayoutEffect(() => {
+    let raf = 0;
+    const sync = () => {
+      raf = 0;
+      const el = ref.current;
+      if (!el) return;
+      const slot = [...document.querySelectorAll<HTMLElement>('.dock-slot')].find((x) => x.getBoundingClientRect().width > 0);
+      const r = slot?.getBoundingClientRect();
+      if (!slot || !r) { el.classList.remove('slotted', 'in-bug'); return; }
+      el.classList.add('slotted');
+      el.classList.toggle('in-bug', slot.classList.contains('bug-btn'));
+      const v = { '--dock-top': `${r.top}px`, '--dock-right': `${window.innerWidth - r.right}px`, '--dock-w': `${r.width}px`, '--dock-h': `${r.height}px` };
+      for (const [k, x] of Object.entries(v)) if (el.style.getPropertyValue(k) !== x) el.style.setProperty(k, x);
+    };
+    const kick = () => { if (!raf) raf = requestAnimationFrame(sync); };
+    sync();
+    const mo = new MutationObserver(kick);
+    mo.observe(document.body, { childList: true, subtree: true });
+    window.addEventListener('resize', kick);
+    const iv = window.setInterval(kick, 1000); // late layout shifts (fonts, safe areas)
+    return () => { mo.disconnect(); window.removeEventListener('resize', kick); clearInterval(iv); if (raf) cancelAnimationFrame(raf); };
+  }, []);
   useEffect(() => {
     if (!open) return;
     const close = (e: PointerEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
