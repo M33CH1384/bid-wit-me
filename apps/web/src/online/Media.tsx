@@ -23,7 +23,7 @@ function hasLive(stream: MediaStream | undefined, kind: 'video' | 'audio'): bool
  * Video bubble for a seat's name plate. Self: small mirrored preview. Others: their camera when it's on;
  * tap for mute / hide (local only).
  */
-export function SeatMedia({ seat, isMe, mesh, vs }: { seat: SeatInfo | undefined; isMe: boolean; mesh: VideoMesh | null; vs: VideoState }) {
+export function SeatMedia({ seat, isMe, mesh, vs, limited = false }: { seat: SeatInfo | undefined; isMe: boolean; mesh: VideoMesh | null; vs: VideoState; limited?: boolean }) {
   const [menu, setMenu] = useState(false);
   if (!seat || seat.kind !== 'human' || !mesh) return null;
   if (isMe) {
@@ -38,7 +38,7 @@ export function SeatMedia({ seat, isMe, mesh, vs }: { seat: SeatInfo | undefined
   const stream = vs.remote[id];
   const camOn = seat.media.cam;
   const hidden = vs.hidden.includes(id);
-  const muted = vs.muted.includes(id) || vs.needsTap;
+  const muted = vs.muted.includes(id) || vs.needsTap || limited;
   if (!camOn && !seat.media.mic) return null;
   const live = hasLive(stream, 'video');
   return (
@@ -47,7 +47,8 @@ export function SeatMedia({ seat, isMe, mesh, vs }: { seat: SeatInfo | undefined
       {(!camOn || hidden) && <span className="vb-icon">{hidden ? '🙈' : '🎙'}</span>}
       {camOn && !hidden && !live && <span className="vb-icon wait">…</span>}
       <button type="button" className="vb-hit" aria-label={`Video options for ${seat.name}`} onClick={(e) => { e.stopPropagation(); setMenu(!menu); }} />
-      {seat.media.mic && muted && <span className="vb-badge" title="Muted on your side">🔇</span>}
+      {seat.media.mic && limited ? <span className="vb-badge limited" title="Partners can't hear each other during bids and play">🤐</span>
+        : seat.media.mic && muted && <span className="vb-badge" title="Muted on your side">🔇</span>}
       {menu && (
         <div className="vb-menu glass" onClick={(e) => e.stopPropagation()}>
           <button type="button" onClick={() => { mesh.toggleMuted(id); setMenu(false); }}>{vs.muted.includes(id) ? 'Unmute' : 'Mute'}</button>
@@ -59,7 +60,7 @@ export function SeatMedia({ seat, isMe, mesh, vs }: { seat: SeatInfo | undefined
 }
 
 /** Camera + mic toggles (off by default; permission is only requested when turned on). */
-export function MediaBar({ mesh, vs, seated }: { mesh: VideoMesh | null; vs: VideoState; seated: boolean }) {
+export function MediaBar({ mesh, vs, seated, limited = false }: { mesh: VideoMesh | null; vs: VideoState; seated: boolean; limited?: boolean }) {
   if (!mesh || !seated) return null;
   const supported = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
   return (
@@ -70,8 +71,32 @@ export function MediaBar({ mesh, vs, seated }: { mesh: VideoMesh | null; vs: Vid
       <button type="button" className={`av-btn ${vs.mic ? 'on' : ''}`} disabled={!supported || vs.busy} aria-pressed={vs.mic} aria-label={vs.mic ? 'Mute microphone' : 'Turn microphone on'} onClick={() => void mesh.setMic(!vs.mic)}>
         {vs.mic ? '🎙' : '🔇'}<small>{vs.mic ? 'ON' : 'MIC'}</small>
       </button>
+      {limited && vs.mic && <span className="mic-limited" data-testid="mic-limited" title="Your partner can't hear you during bids and play (opponents can). Mics open between hands.">MIC LIMITED</span>}
       {vs.needsTap && Object.keys(vs.remote).length > 0 && <span className="av-hint">Tap anywhere for sound</span>}
       {vs.error && <span className="av-err" role="alert">{vs.error}</span>}
     </div>
   );
+}
+
+/** Offline tables: the same CAM / MIC buttons, disabled, so it's clear where they live. */
+export function OfflineMediaBar() {
+  const tip = 'Camera & mic are for online tables. Play Online to use them';
+  return (
+    <div className="av-bar offline" role="group" aria-label="Camera and microphone (online tables only)" title={tip} data-testid="av-offline">
+      <button type="button" className="av-btn" disabled aria-disabled="true" aria-label={`Camera — ${tip}`} title={tip}>📷<small>CAM</small></button>
+      <button type="button" className="av-btn" disabled aria-disabled="true" aria-label={`Microphone — ${tip}`} title={tip}>🔇<small>MIC</small></button>
+    </div>
+  );
+}
+
+/** Table Talk: the enlarged "everyone on cam" tile — live video when the camera's on, otherwise an avatar. */
+export function TalkTile({ seat, isMe, mesh, vs }: { seat: SeatInfo | undefined; isMe: boolean; mesh: VideoMesh | null; vs: VideoState }) {
+  const name = seat && seat.kind !== 'empty' ? seat.name : '?';
+  const avatar = <div className="tt-avatar"><span>{name.slice(0, 1).toUpperCase()}</span></div>;
+  if (!seat || seat.kind !== 'human' || !mesh) return <>{avatar}{seat?.kind === 'bot' && <span className="tt-tag">BOT</span>}</>;
+  if (isMe) return vs.cam && vs.local ? <StreamVideo stream={vs.local} muted mirror /> : avatar;
+  const stream = vs.remote[seat.playerId];
+  const live = seat.media.cam && !vs.hidden.includes(seat.playerId) && hasLive(stream, 'video');
+  // video only here (muted): the seat's own bubble keeps playing the audio
+  return <>{live && stream ? <StreamVideo stream={stream} muted /> : avatar}{seat.media.mic && <span className="tt-tag mic">🎙</span>}</>;
 }

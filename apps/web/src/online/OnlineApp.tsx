@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useState } from 'react';
 import { CODE_LENGTH, isRoomCode, normalizeRoomCode } from '@spades/protocol';
 import { NowPlaying } from '../SoundControls';
+import { HostMusicBridge } from './HostMusic';
 import { type Settings, loadSettings, saveSettings, settingsToRules } from '../settings';
 import { serverUrl } from './config';
 import { TableConnection, createTable, tableInfo } from './connection';
@@ -163,6 +164,7 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
   return (
     <>
       <NowPlaying />
+      <HostMusicBridge conn={conn} cs={cs} mesh={mesh} />
       {inGame && !lobbyOpen ? (
         <OnlineTable conn={conn} cs={cs} mesh={mesh} onLobby={() => setLobbyOpen(true)} onMainMenu={() => leave('/')} />
       ) : (

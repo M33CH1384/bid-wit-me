@@ -1,6 +1,6 @@
 import { type ReactNode, useState } from 'react';
 import Credits from './Credits';
-import { SoundFields } from './SoundControls';
+import { ReduceEffectsRow, SoundFields } from './SoundControls';
 import { type Settings, settingsToRules } from './settings';
 import { type TipsPref, saveTips } from './tips';
 
@@ -60,6 +60,7 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
           </Row>
           <h3 className="sheet-h">Sound &amp; music</h3>
           <SoundFields />
+          <ReduceEffectsRow />
           <button type="button" className="link sheet-h" aria-expanded={house} onClick={() => setHouse(!house)}>{house ? '▾' : '▸'} House rules</button>
           {house && (
             <div className="house">

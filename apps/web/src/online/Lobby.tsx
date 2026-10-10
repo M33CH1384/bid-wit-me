@@ -35,10 +35,10 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
   const spots = n === 4 ? ['bottom', 'left', 'top', 'right'] : ['bottom', 'left', 'right'];
   const spotOf = (seat: number) => spots[(seat - me + n) % n]!;
 
-  const config = (s: Settings, timer: TimerKey = timerKey(room), botLevel = room.botLevel) => {
+  const config = (s: Settings, timer: TimerKey = timerKey(room), botLevel = room.botLevel, talkSec = room.talkSec) => {
     onSettings(s);
     const rules = { ...settingsToRules(s), turnTimerSec: { ...TIMERS[timer] } };
-    conn.send({ t: 'config', rules, botLevel });
+    conn.send({ t: 'config', rules, botLevel, talkSec });
   };
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => config({ ...settings, [k]: v });
 
@@ -127,6 +127,10 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
             <select value={room.botLevel} onChange={(e) => config(settings, timerKey(room), e.target.value as 'easy' | 'normal')}>
               <option value="easy">Easy</option><option value="normal">Normal</option>
             </select></span></label>
+          <label className="row"><span className="row-label">Table Talk<small>between hands · all mics open</small></span><span className="row-control">
+            <select data-testid="talk-sec" value={String(room.talkSec ?? 20)} onChange={(e) => config(settings, timerKey(room), room.botLevel, Number(e.target.value))}>
+              {[15, 20, 30, 45].map((x) => <option key={x} value={x}>{x}s{x === 20 ? ' (default)' : ''}</option>)}
+            </select></span></label>
           <label className="row"><span className="row-label">Blind Nil</span><span className="row-control">
             <select value={settings.blindNil} onChange={(e) => set('blindNil', e.target.value as Settings['blindNil'])}>
               <option value="behind100">When behind by 100+</option><option value="always">Always</option><option value="off">Off</option>
@@ -141,6 +145,7 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
           <span>{modeTitle(r)} · Trumps: {order.join(' › ')} …</span>
           <span>Target {r.targetScore} · timer {r.turnTimerSec.bid}s/{r.turnTimerSec.play}s</span>
           {r.firstHandBidsItself && <span>First hand: books bid themselves</span>}
+          <span>Table Talk {room.talkSec ?? 20}s between hands · partners muted during bids &amp; play</span>
         </div>
       )}
 

@@ -312,7 +312,15 @@ export class VideoMesh {
 
 function permissionMessage(e: unknown, what: string): string {
   const name = (e as { name?: string })?.name;
-  if (name === 'NotAllowedError') return `${what[0]!.toUpperCase()}${what.slice(1)} blocked. Allow it in your browser settings (Safari: aA › Website Settings).`;
+  if (name === 'NotAllowedError') {
+    const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+    const Cap = `${what[0]!.toUpperCase()}${what.slice(1)}`;
+    const safari = /Safari/.test(ua) && !/Chrome|Chromium|CriOS|Edg|Firefox|FxiOS/.test(ua);
+    if (safari && /iPhone|iPad/.test(ua)) return `${Cap} blocked. Tap aA in the address bar › Website Settings › ${Cap} › Allow, then try again.`;
+    if (safari) return `${Cap} blocked. In Safari choose Safari › Settings… › Websites › ${Cap}, set this site to Allow, then tap the button again. (Also check System Settings › Privacy & Security › ${Cap}.)`;
+    return `${Cap} blocked. Click the camera icon / lock in the address bar to allow it, then try again.`;
+  }
+  if (name === 'NotReadableError') return `Your ${what} is busy in another app (Zoom, FaceTime…). Close it and try again.`;
   if (name === 'NotFoundError' || name === 'OverconstrainedError') return `No ${what} found on this device.`;
   if (typeof navigator !== 'undefined' && !navigator.mediaDevices) return 'Video needs a secure (https) page.';
   return `Couldn't start the ${what}.`;

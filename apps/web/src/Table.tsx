@@ -5,6 +5,7 @@ import {
 import { ScorePad, sideName } from './Modals';
 import { Intermission, calloutsFor } from './Intermission';
 import Hype from './Hype';
+import { OfflineMediaBar } from './online/Media';
 import { fx, useReduceEffects } from './fx';
 import { type Sfx, sound } from './audio';
 import { type ChatMsg, LINES, TALK_LINES, type Toast, TickNumber, USER_COLORS, pick, toastsFor } from './overlay';
@@ -539,7 +540,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         ))}
       </div>
 
-      <ChatPanel msgs={msgs} open={chatOpen} onToggle={() => setChatOpen(!chatOpen)} onSend={(t) => push('You', t)} unread={unread} scope={online ? 'table' : undefined} extra={<>{helpButton}{online?.controls}</>} />
+      <ChatPanel msgs={msgs} open={chatOpen} onToggle={() => setChatOpen(!chatOpen)} onSend={(t) => push('You', t)} unread={unread} scope={online ? 'table' : undefined} extra={<>{helpButton}{online ? online.controls : <OfflineMediaBar />}</>} />
       {help && !bidTurn && view.hand && view.hand.length > 0 && st.phase !== 'handOver' && st.phase !== 'gameOver' && (
         <div className="bid-coach-float glass slant"><BidCoach view={view} startOpen title="COUNT YOUR BOOKS" onClose={() => setHelp(false)} /></div>
       )}

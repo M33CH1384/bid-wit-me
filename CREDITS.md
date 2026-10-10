@@ -47,3 +47,9 @@ mid/side stereo widening (side boosted above 150 Hz with a slow width LFO; mono 
 
 ## Libraries
 three.js (MIT), @react-three/fiber (MIT), @react-three/drei (MIT), React (MIT), Vite (MIT).
+
+## Hype sound effects
+
+All hype effects are synthesized live with the Web Audio API in `apps/web/src/audio.ts`; no sample files:
+joker rumbles (`jokerLittle`, `jokerBig`), the Big-over-Little nuke (`nuke`: boom + sub-bass + debris crackle),
+streak hits (`streak1`–`streak3`), `shot` (impact slam) and `gotShot` (soft sting). Original work, same license as the app.

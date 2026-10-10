@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { sound, useSoundSettings } from './audio';
+import { HostMusicFields } from './online/HostMusic';
+import { fx, useReduceEffects } from './fx';
 
 const icon = (on: boolean, v: number) => (!on || v === 0 ? '🔇' : v < 0.4 ? '🔈' : v < 0.75 ? '🔉' : '🔊');
 
@@ -102,6 +104,8 @@ export function SoundDock() {
         <div className="sound-pop glass slant" role="dialog" aria-label="Sound">
           <div className="pop-head"><span className="panel-title">SOUND</span><button type="button" className="mute-all" data-testid="mute-all" onClick={muteAll}>{allOff ? 'Unmute' : 'Mute all'}</button></div>
           <SoundFields compact />
+          <ReduceEffectsRow />
+          <HostMusicFields />
         </div>
       )}
     </div>
@@ -152,5 +156,16 @@ export function NowPlaying() {
       <span className="np-title">{show.title}</span>
       <span className="np-by">by {show.artist}</span>
     </div>
+  );
+}
+
+/** "Reduce effects": keeps the hype sounds + pop-ups, drops camera shake, flashes and the shockwave. */
+export function ReduceEffectsRow() {
+  const on = useReduceEffects();
+  return (
+    <label className="sf-row">
+      <span>Reduce effects<small className="sf-note"> · no shake / flash</small></span>
+      <button type="button" role="switch" aria-checked={on} aria-label="Reduce effects" data-testid="reduce-fx" className={`switch ${on ? 'on' : ''}`} onClick={() => fx.setReduce(!on)}><i /></button>
+    </label>
   );
 }
