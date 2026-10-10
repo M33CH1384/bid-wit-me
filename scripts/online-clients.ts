@@ -98,6 +98,7 @@ function toWire(a: NonNullable<ReturnType<typeof chooseBotAction>>): GameAction 
   if (a.type === 'reveal') return { type: 'reveal' };
   if (a.type === 'bid') return { type: 'bid', bid: a.bid };
   if (a.type === 'play') return { type: 'play', card: a.card };
+  if (a.type === 'runIt') return { type: 'runIt' };
   return { type: 'exchange', cards: (a as { cards: Card[] }).cards };
 }
 

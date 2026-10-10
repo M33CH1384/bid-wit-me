@@ -572,6 +572,8 @@ describe('team names, rematch series, bot trash talk', () => {
     const lines = env.room.data.chat.filter((l) => l.bot);
     expect(lines.length).toBeGreaterThan(0);
     for (const l of lines) expect(l.from).toBe(`bot:${l.bot!.seat}`);
+    // every bot line carries its line id (clients play the recorded clip for it)
+    for (const l of lines) if (l.text !== "…") expect(l.bot!.line, l.text).toMatch(/^[a-z]+\.[a-zA-Z]+\.\d+$/);
     env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: 150 }), botTalk: false });
     expect(env.last('a', 'state')!.room.botTalk).toBe(false);
   });
