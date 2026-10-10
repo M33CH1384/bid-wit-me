@@ -53,7 +53,7 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
     wait: delay,
     sp: new Vector3(), sq: new Quaternion(), ss: 1,
     tp: new Vector3(), tq: new Quaternion(), ts: 1,
-    started: false, firedStart: '' as string, firedLand: '' as string,
+    started: false, firedStart: '' as string, firedLand: '' as string, land: undefined as string | undefined,
   });
   const sfx = useRef({ sfxStart, sfxLand });
   sfx.current = { sfxStart, sfxLand };
@@ -71,7 +71,13 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
     }
     const key = target.p.map((v) => v.toFixed(4)).join() + target.q.map((v) => v.toFixed(4)).join() + target.s.toFixed(4);
     if (key !== s.key) {
+      // retargeted before it landed (slow frames: the trick was swept while the card was still in flight) — still make its landing sound
+      if (s.key && s.started && s.t < 1) {
+        const land = s.land;
+        if (land && land !== s.firedLand && s.sp.distanceTo(s.tp) > 0.02) { s.firedLand = land; land.split(',').forEach((c, i) => sound.play(c as Sfx, i ? { delay: 0.02 } : {})); }
+      }
       s.key = key;
+      s.land = sfx.current.sfxLand; // this tween's landing cue
       s.t = 0;
       s.sp.copy(g.position); s.sq.copy(g.quaternion); s.ss = g.scale.x;
       s.tp.set(...target.p); s.tq.set(...target.q); s.ts = target.s;
@@ -89,7 +95,7 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
     }
     s.t = Math.min(1, s.t + Math.min(dt, 0.05) / duration);
     if (s.t >= 1) {
-      const land = sfx.current.sfxLand;
+      const land = s.land;
       if (land && land !== s.firedLand) { s.firedLand = land; if (moving) land.split(',').forEach((c, i) => sound.play(c as Sfx, i ? { delay: 0.02 } : {})); }
     }
     const e = easeInOut(s.t);
