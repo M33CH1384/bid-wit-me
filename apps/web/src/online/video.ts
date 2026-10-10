@@ -294,6 +294,8 @@ export class VideoMesh {
     const m = this.state.muted;
     this.set({ muted: m.includes(id) ? m.filter((x) => x !== id) : [...m, id], needsTap: false });
   }
+  clearError(): void { if (this.state.error) this.set({ error: null }); }
+
   toggleHidden(id: string): void {
     const h = this.state.hidden;
     this.set({ hidden: h.includes(id) ? h.filter((x) => x !== id) : [...h, id] });
@@ -321,7 +323,7 @@ function permissionMessage(e: unknown, what: string): string {
     return `${Cap} blocked. Click the camera icon / lock in the address bar to allow it, then try again.`;
   }
   if (name === 'NotReadableError') return `Your ${what} is busy in another app (Zoom, FaceTime…). Close it and try again.`;
-  if (name === 'NotFoundError' || name === 'OverconstrainedError') return `No ${what} found on this device.`;
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') return `No ${what} found on this device. Plug one in (or reconnect your phone/Continuity Camera), make sure no other app is using it, then tap the button again. You can keep playing without it.`;
   if (typeof navigator !== 'undefined' && !navigator.mediaDevices) return 'Video needs a secure (https) page.';
   return `Couldn't start the ${what}.`;
 }

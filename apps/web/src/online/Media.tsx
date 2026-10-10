@@ -1,10 +1,30 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { SeatInfo } from '@spades/protocol';
 import type { VideoMesh, VideoState } from './video';
 
 /** A <video> bound to a MediaStream (iOS: playsInline + muted autoplay; unmuted after the first tap). */
-function StreamVideo({ stream, muted, mirror }: { stream: MediaStream; muted: boolean; mirror?: boolean }) {
+function StreamVideo({ stream, muted, mirror, onFrames }: { stream: MediaStream; muted: boolean; mirror?: boolean; onFrames?: (on: boolean) => void }) {
   const ref = useRef<HTMLVideoElement>(null);
+  // report whether real frames are showing (a connected-but-silent track renders black), so the bubble can show the
+  // player's initial until video actually arrives
+  useEffect(() => {
+    const v = ref.current;
+    if (!v || !onFrames) return;
+    const check = () => onFrames(v.videoWidth > 0 && v.readyState >= 2 && stream.getVideoTracks().some((t) => t.readyState === 'live' && !t.muted));
+    const evs = ['loadeddata', 'playing', 'resize', 'emptied', 'pause'] as const;
+    evs.forEach((e) => v.addEventListener(e, check));
+    const tracks = stream.getVideoTracks();
+    tracks.forEach((t) => { t.addEventListener('mute', check); t.addEventListener('unmute', check); t.addEventListener('ended', check); });
+    const iv = window.setInterval(check, 1000);
+    check();
+    return () => {
+      evs.forEach((e) => v.removeEventListener(e, check));
+      tracks.forEach((t) => { t.removeEventListener('mute', check); t.removeEventListener('unmute', check); t.removeEventListener('ended', check); });
+      clearInterval(iv);
+      onFrames(false);
+    };
+  }, [stream, onFrames]);
   useEffect(() => {
     const v = ref.current;
     if (!v) return;
@@ -32,6 +52,7 @@ const MENU_EVT = 'bwm-vbmenu';
 export function SeatMedia({ seat, isMe, mesh, vs, limited = false, kick }: { seat: SeatInfo | undefined; isMe: boolean; mesh: VideoMesh | null; vs: VideoState; limited?: boolean; kick?: KickInfo }) {
   const [menu, setMenuState] = useState(false);
   const [confirm, setConfirm] = useState(false);
+  const [frames, setFrames] = useState(false);
   const myId = seat?.kind === 'human' ? seat.playerId : '';
   useEffect(() => {
     const on = (e: Event) => { if ((e as CustomEvent<string>).detail !== myId) { setMenuState(false); setConfirm(false); } };
@@ -84,9 +105,10 @@ export function SeatMedia({ seat, isMe, mesh, vs, limited = false, kick }: { sea
     {hasMedia ? (
       <div className={`vbubble ${camOn && !hidden ? '' : 'audio-only'}`} data-testid={`video-${id}`} data-live={live ? 'true' : 'false'}>
         {/* the clip layer keeps video circular everywhere (Safari ignores overflow+radius on <video> without its own layer) */}
-        <div className="vb-clip">{stream && <StreamVideo stream={stream} muted={muted} />}</div>
+        <div className={`vb-clip ${frames ? '' : 'no-frames'}`}>{stream && <StreamVideo stream={stream} muted={muted} onFrames={setFrames} />}</div>
         {(!camOn || hidden) && <span className="vb-icon">{hidden ? '🙈' : '🎙'}</span>}
-        {camOn && !hidden && !live && <span className="vb-icon wait">…</span>}
+        {/* camera on but no frames yet (connecting / stalled): their initial, never a black circle */}
+        {camOn && !hidden && !frames && <span className="vb-icon initial" data-testid={`vb-initial-${id}`}>{seat.name.trim().charAt(0).toUpperCase() || '?'}</span>}
         <button type="button" className="vb-hit" aria-label={`Options for ${seat.name}`} aria-expanded={menu} onClick={(e) => { e.stopPropagation(); setMenu(!menu); }} />
         {micOn && limited ? <span className="vb-badge limited" title="Partners can't hear each other during bids and play">🤐</span>
           : micOn && muted && <span className="vb-badge" title="Muted on your side">🔇</span>}
@@ -119,7 +141,7 @@ export function MediaBar({ mesh, vs, seated, limited = false }: { mesh: VideoMes
       </button>
       {limited && vs.mic && <span className="mic-limited" data-testid="mic-limited" title="Your partner can't hear you during bids and play (opponents can). Mics open between hands.">MIC LIMITED</span>}
       {vs.needsTap && Object.keys(vs.remote).length > 0 && <span className="av-hint">Tap anywhere for sound</span>}
-      {vs.error && <span className="av-err" role="alert">{vs.error}</span>}
+      {vs.error && <MediaErrorToast message={vs.error} onClose={() => mesh.clearError()} />}
     </div>
   );
 }
@@ -158,4 +180,23 @@ function VbMenu({ children, onClose, label }: { children: ReactNode; onClose: ()
     return () => { window.removeEventListener('pointerdown', down, true); window.removeEventListener('keydown', key); };
   }, [onClose]);
   return <div ref={ref} className="vb-menu glass" role="menu" aria-label={label} onClick={(e) => e.stopPropagation()}>{children}</div>;
+}
+
+/** Camera / mic problem: a proper toast (title, guidance, dismiss) instead of a scrap of text by the button. */
+function MediaErrorToast({ message, onClose }: { message: string; onClose: () => void }) {
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', key);
+    const t = window.setTimeout(onClose, 15000);
+    return () => { window.removeEventListener('keydown', key); clearTimeout(t); };
+  }, [message, onClose]);
+  const [first, ...rest] = message.split(/(?<=\.)\s/);
+  return createPortal(
+    <div className="media-toast glass" role="alert" data-testid="media-error">
+      <span className="mt-icon" aria-hidden>📷</span>
+      <div className="mt-text"><b>{first}</b>{rest.length > 0 && <span>{rest.join(' ')}</span>}</div>
+      <button type="button" className="mt-x" aria-label="Dismiss" onClick={onClose}>✕</button>
+    </div>,
+    document.body,
+  );
 }

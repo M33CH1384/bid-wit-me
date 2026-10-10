@@ -186,6 +186,20 @@ await host.screenshot({ path: `${out}/06-lobby-during-game.png` });
 await host.getByRole('button', { name: 'Back to the game' }).click();
 await host.locator('.table-screen').waitFor();
 
+// host kicks the guest from the guest's bubble menu: one menu at a time, confirm, bot takes over, guest sees "removed"
+const gid = await guest.evaluate(() => window.__bwmVideo?.me ?? null).catch(() => null);
+const bubble = host.locator('[data-testid="seat-2"]').locator('.vb-hit, .vb-initial').first();
+await bubble.click();
+await host.locator('.vb-menu').getByRole('button', { name: /^Kick/ }).click();
+await host.locator('[data-testid^="kick-yes-"]').click();
+await guest.getByTestId('kicked').waitFor({ timeout: 10000 });
+await host.locator('[data-testid="seat-2"] .plate-name').filter({ hasText: /bot/i }).waitFor({ timeout: 10000 }).catch(() => {});
+if (await host.locator('.vb-menu').count()) throw new Error('bubble menu should close after kicking');
+log(`host kicked the guest${gid ? ` (${gid})` : ''}: guest sees the "removed" screen, partner plate "${await host.locator('[data-testid="seat-2"] .plate-name').innerText()}"`);
+await guest.reload();
+await guest.getByTestId('kicked').waitFor({ timeout: 15000 });
+log('kicked guest cannot rejoin this game (refresh lands on the removed screen)');
+
 await browser.close();
 if (errors.length) { console.error('Browser errors:\n' + errors.join('\n')); process.exit(1); }
 log('PASS');

@@ -107,8 +107,12 @@ function corner(ctx: CanvasRenderingContext2D, W: number, rank: string, suit: Su
   const fs = W * (label.length > 1 ? 0.25 : 0.28);
   ctx.font = `800 ${fs}px "Barlow Condensed", "Arial Narrow", Arial, sans-serif`;
   const cx = W * 0.135;
-  if (label.length > 1) { ctx.save(); ctx.translate(cx, 0); ctx.scale(0.86, 1); ctx.fillText(label, 0, W * 0.255); ctx.restore(); }
-  else ctx.fillText(label, cx, W * 0.255);
+  // a same-colour stroke thickens the index: bold, high-contrast corners that read at a glance
+  ctx.strokeStyle = color;
+  ctx.lineWidth = W * 0.011;
+  ctx.lineJoin = 'round';
+  if (label.length > 1) { ctx.save(); ctx.translate(cx, 0); ctx.scale(0.86, 1); ctx.fillText(label, 0, W * 0.255); ctx.strokeText(label, 0, W * 0.255); ctx.restore(); }
+  else { ctx.fillText(label, cx, W * 0.255); ctx.strokeText(label, cx, W * 0.255); }
   drawSuit(ctx, suit, cx, W * 0.37, W * 0.165, color);
   if (badge) {
     ctx.beginPath();

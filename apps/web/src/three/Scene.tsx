@@ -1,7 +1,7 @@
 import { Environment, Html, useTexture } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { type ReactNode, type RefObject, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { type Camera, type Group, type Mesh, type Object3D, type Texture, ACESFilmicToneMapping, Matrix4, Quaternion, MeshPhysicalMaterial, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, Vector3 } from 'three';
+import { type Camera, type Group, type Mesh, type Object3D, type Texture, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, Matrix4, Quaternion, MeshPhysicalMaterial, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, Vector3 } from 'three';
 import type { Card, Play, Trick } from '@spades/rules';
 import Card3D from './Card3D';
 import { isShortLandscape } from '../viewport';
@@ -11,7 +11,7 @@ import { fx } from '../fx';
 import { backTexture, faceTexture, logoTexture } from './cardTextures';
 import { bodyGeometry, cardGeometry, feltGeometry, railGeometry } from './geometry';
 import {
-  CH, CW, type SeatPos, type Xform, badgeSpot, cameraFor, deckSpot, handFan, jitterOf, opponentFan, pileSpot, ringSpot, trickSpot,
+  CH, CW, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, deckSpot, fanLayout, handFan, makeCamera, jitterOf, opponentFan, pileSpot, ringSpot, trickSpot,
 } from './layout';
 
 export interface SceneProps {
@@ -193,8 +193,11 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   const aspect = size.width / size.height;
   const safe = props.safe ?? { l: 0, r: 0, t: 0, b: 0 };
   // landscape: the bottom corners hold your plate (left) and last trick + controls (right); the hand fans between
+  // desktop / wide: a bigger hand (≈35% over the 0.16 default), kept between your plate (left) and last trick (right)
+  const wide = !short && size.width >= 1024 && aspect >= 1.3;
   const fanOpts = short
     ? { short, reserveFrac: (Math.max(safe.l, safe.r) + 186) / size.width, bottomFrac: safe.b / size.height, heightFrac: 0.2 }
+    : wide ? { reserveFrac: 190 / size.width, bottomFrac: 0.012, heightFrac: 0.215 }
     : {};
   const trickScale = short ? 1.85 : undefined;
 
@@ -228,7 +231,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   const mine = myHand ?? Array.from({ length: handCounts[human]! }, () => null);
   mine.forEach((c, i) => {
     const isLegal = !!c && legal.includes(c);
-    const lift = c && selected === c ? 0.24 : isLegal ? (props.hintLegal ? 0.12 : 0.07) : 0;
+    const lift = c && selected === c ? 0.24 : isLegal ? (props.hintLegal ? 0.12 : wide && legal.length < mine.length ? 0.11 : 0.07) : 0;
     const target = handFan(aspect, mine.length, i, lift, safeFrac, fanOpts);
     const flip = flipIn && !!c;
     items.push({
@@ -239,7 +242,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       delay: flip ? i * 0.022 : intro ? dealDelay(i, human) : 0,
       sfxStart: flip ? undefined : 'deal',
       dim: !!c && legal.length > 0 && !isLegal,
-      glow: !!c && (selected === c || (!!props.hintLegal && isLegal && legal.length < mine.length)),
+      glow: !!c && (selected === c || ((!!props.hintLegal || wide) && isLegal && legal.length < mine.length)),
       tap: c && isLegal ? () => onCardTap(c) : undefined,
       shadow: false,
       duration: flip ? 0.34 : intro ? tl.fly : 0.32,
@@ -280,8 +283,44 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
           sfxLand={it.sfxLand}
         />
       ))}
+      {wide && mine.length > 0 && <HandGlow aspect={aspect} count={mine.length} safeFrac={safeFrac} opts={fanOpts} />}
       {intro && <ShuffleDeck key={`shuffle-${handNo}`} at={deck} back={back} tl={tl} quality={quality} />}
     </group>
+  );
+}
+
+/** A soft purple glow on a camera-space plane just behind the hand (desktop): makes your cards the focus. */
+function HandGlow({ aspect, count, safeFrac, opts }: { aspect: number; count: number; safeFrac: number; opts: FanOpts }) {
+  const tex = useMemo(() => {
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 128;
+    const g = c.getContext('2d')!;
+    const grd = g.createRadialGradient(128, 128, 4, 128, 128, 128);
+    grd.addColorStop(0, 'rgba(185,128,255,0.55)');
+    grd.addColorStop(0.45, 'rgba(140,80,230,0.22)');
+    grd.addColorStop(1, 'rgba(140,80,230,0)');
+    g.fillStyle = grd;
+    g.fillRect(0, 0, 256, 128);
+    const t = new CanvasTexture(c);
+    t.colorSpace = SRGBColorSpace;
+    return t;
+  }, []);
+  const xf = useMemo(() => {
+    const cam = makeCamera(aspect, opts.short);
+    const L = fanLayout(aspect, count, safeFrac, opts);
+    const w = (count - 1) * L.step + L.cw * 2.2, h = L.ch * 1.25;
+    const D = 1.02;
+    const local = new Matrix4().compose(new Vector3(0, (-L.viewH / 2 + h / 2) * D, -D), new Quaternion(), new Vector3(w * D, h * D, 1));
+    const m = cam.matrixWorld.clone().multiply(local);
+    const p = new Vector3(), q = new Quaternion(), sc = new Vector3();
+    m.decompose(p, q, sc);
+    return { p, q, sc };
+  }, [aspect, count, safeFrac, opts]);
+  return (
+    <mesh position={xf.p} quaternion={xf.q} scale={xf.sc} renderOrder={-1}>
+      <planeGeometry args={[1, 1]} />
+      <meshBasicMaterial map={tex} transparent depthWrite={false} blending={AdditiveBlending} toneMapped={false} />
+    </mesh>
   );
 }
 
