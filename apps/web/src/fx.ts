@@ -9,7 +9,7 @@ import { useSyncExternalStore } from 'react';
 import { type Sfx, sound } from './audio';
 
 export type FxKind = 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak' | 'shot' | 'gotShot';
-export interface FxEvent { id: number; kind: FxKind; at: number; level?: number; text?: string }
+export interface FxEvent { id: number; kind: FxKind; at: number; level?: number; text?: string; sub?: string }
 
 const KEY = 'bwm.fx';
 interface FxPrefs { reduce: boolean }
@@ -42,8 +42,8 @@ class FxBus {
 
   on(fn: (e: FxEvent) => void) { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; }
 
-  emit(kind: FxKind, opts: { level?: number; text?: string; silent?: boolean } = {}) {
-    const e: FxEvent = { id: this.seq++, kind, at: performance.now(), level: opts.level, text: opts.text };
+  emit(kind: FxKind, opts: { level?: number; text?: string; sub?: string; silent?: boolean } = {}) {
+    const e: FxEvent = { id: this.seq++, kind, at: performance.now(), level: opts.level, text: opts.text, sub: opts.sub };
     this.fired[kind] = (this.fired[kind] ?? 0) + 1;
     if (!opts.silent) sound.play(sfxFor(e), { gain: 1 });
     if (!this.reduced) {

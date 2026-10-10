@@ -2,9 +2,12 @@ import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect,
 import {
   type Card, type GameState, type TableRules, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, partnerOf, sideOf, sortHand, trumpOrder,
 } from '@spades/rules';
-import { HandSummary, ScorePad, sideName } from './Modals';
+import { ScorePad, sideName } from './Modals';
+import { Intermission, calloutsFor } from './Intermission';
+import Hype from './Hype';
+import { fx, useReduceEffects } from './fx';
 import { type Sfx, sound } from './audio';
-import { type ChatMsg, LINES, type Toast, TickNumber, USER_COLORS, pick, toastsFor } from './overlay';
+import { type ChatMsg, LINES, TALK_LINES, type Toast, TickNumber, USER_COLORS, pick, toastsFor } from './overlay';
 import { type Settings, modeTitle } from './settings';
 import type { SeatPos } from './three/layout';
 import { HUMAN, useGame } from './useGame';
@@ -66,6 +69,8 @@ export interface OnlineBinding {
   sideLabel: (side: number) => string;
   /** Extra buttons for the bottom-right control cluster (camera / mic). */
   controls?: ReactNode;
+  /** Table Talk (between hands): countdown, who's ready, and the enlarged video / avatar tile per local seat */
+  talk?: { secs: number | null; ready: { mine: boolean; count: number; of: number }; tile: (seat: number) => ReactNode };
 }
 
 interface Props {
@@ -148,6 +153,18 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
             push(others.length ? pick(others) : pick(bots), pick(LINES.set), false, 1200);
           }
         }
+      }
+    }
+    if (st.history.length > p.history.length && st.phase === 'handOver') {
+      // Table Talk banter between hands
+      const rec = st.history[st.history.length - 1]!;
+      const top = Math.max(...rec.sides.map((s) => s.points));
+      for (const [i, b] of bots.entries()) {
+        if (Math.random() < 0.45 && i < 2) continue;
+        const side = sideOf(names.indexOf(b), r);
+        const pts = rec.sides[side]!.points;
+        const pool = rec.sides.every((s) => s.points === top) ? TALK_LINES.even : pts === top ? TALK_LINES.won : TALK_LINES.lost;
+        push(b, pick(pool), false, 2200 + i * 1400);
       }
     }
     if (st.phase === 'gameOver' && p.phase !== 'gameOver') {
@@ -342,8 +359,29 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const cue: Record<Toast['kind'], Sfx | null> = { made: 'made', set: 'set', nil: 'nil', bust: 'set', bags: 'bags', info: null };
     list.forEach((t, i) => { const c = cue[t.kind]; if (c) sound.play(c, { delay: 0.1 + i * 0.45 }); });
     const tm = setTimeout(() => setToasts([]), 3200);
-    return () => clearTimeout(tm);
-  }, [st.history, r, names, mySide]);
+    // hype: SHOT! / GOT SHOT and streak pop-ups (every client derives them from the same state)
+    const timers: number[] = [];
+    const calls = calloutsFor(st, mySide, names);
+    const shot = calls.find((c) => c.kind === 'shot') ?? calls.find((c) => c.kind === 'gotShot');
+    if (shot) timers.push(window.setTimeout(() => fx.emit(shot.kind as 'shot' | 'gotShot', { text: shot.text }), 350));
+    const streak = calls.find((c) => c.kind === 'streak');
+    if (streak) timers.push(window.setTimeout(() => fx.emit('streak', { level: streak.level, text: streak.text.split(' · ')[0], sub: streak.text.split(' · ')[1] }), shot ? 1750 : 400));
+    return () => { clearTimeout(tm); timers.forEach(clearTimeout); };
+  }, [st.history, r, names, mySide]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Table Talk shows a beat after scoring, so the toasts / pop-ups land on the table first
+  const [talkOpen, setTalkOpen] = useState(false);
+  useEffect(() => {
+    if (st.phase !== 'handOver' || pause) { setTalkOpen(false); return; }
+    const t = window.setTimeout(() => setTalkOpen(true), resume || online ? 900 : 1500);
+    return () => clearTimeout(t);
+  }, [st.phase, st.handNo, pause]); // eslint-disable-line react-hooks/exhaustive-deps
+  const talkSend = (text: string) => {
+    push('You', text);
+    const replies = TALK_LINES.replies[text];
+    if (!online && replies) { const bots = names.slice(1); push(pick(bots), pick(replies), false, 900 + Math.random() * 700); }
+  };
+  const reduceFx = useReduceEffects();
 
   const trumps = useMemo(() => trumpOrder(r).slice(0, 5).map((c) => (c === 'BJ' ? 'BIG JKR' : c === 'LJ' ? 'LIL JKR' : cardLabel(c))), [r]);
   const trumpsShort = useMemo(() => trumpOrder(r).slice(0, 4).map((c) => (c === 'BJ' ? 'BJ' : c === 'LJ' ? 'LJ' : cardLabel(c))), [r]);
@@ -447,7 +485,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             <span className="ts-label">TRUMPS</span>{trumpsShort.join('›')}{st.spadesBroken && <i className="bt-broken" title="Spades broken">BROKEN</i>}
           </div>
           <div className="bug-meta">
-            <span>{modeTitle(r).toUpperCase()}</span>
+            <span className="bug-mode">{modeTitle(r).toUpperCase()}</span>
             <span>HAND {st.handNo}{isBooks ? ' · BOOKS BID THEMSELVES' : ''} · TO {r.targetScore}</span>
           </div>
         </div>
@@ -573,14 +611,20 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         ))}
       </div>
 
-      {st.phase === 'handOver' && !pause && (
-        <div className="modal-backdrop">
-          <div className="modal glass slant">
-            <div className="panel-title big">HAND {st.handNo} RESULTS</div>
-            <div className="scroll"><HandSummary rec={st.history[st.history.length - 1]!} rules={r} names={names} /></div>
-            <button type="button" className="primary big" onClick={() => apply({ type: 'nextHand' })}>Next hand</button>
-          </div>
-        </div>
+      {st.phase === 'handOver' && !pause && talkOpen && (
+        <Intermission
+          st={st}
+          names={names}
+          mySide={mySide}
+          msgs={msgs}
+          onSend={talkSend}
+          secs={online?.talk?.secs ?? null}
+          ready={online?.talk?.ready}
+          tile={online?.talk?.tile}
+          online={!!online}
+          onReady={() => apply({ type: 'nextHand' })}
+          onScorePad={() => setShowPad(true)}
+        />
       )}
 
       {confirmLeave && (
@@ -634,6 +678,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         />
       )}
 
+      <Hype reduced={reduceFx} />
       {showPad && <ScorePad st={st} names={names} onClose={() => setShowPad(false)} />}
     </div>
   );

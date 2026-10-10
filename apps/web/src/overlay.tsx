@@ -78,3 +78,17 @@ export function bidLine(name: string, bid: Parameters<typeof bidLabel>[0]): stri
 export function stateSummary(st: GameState): string {
   return `${st.phase}:${st.handNo}:${st.tricks.length}:${st.trick.plays.length}`;
 }
+
+/** Between-hands banter (offline Table Talk). */
+export const TALK_LINES = {
+  won: ['too easy 😮‍💨', 'run it back', "that's how we do it", 'keep that same energy 🔥', 'cards love me today'],
+  lost: ['we coming back 😤', 'lucky deal', 'nah this next one ours', 'okay okay…', 'shuffle better 😭'],
+  even: ['tight game', 'anybody\'s game', 'locked in 🔒'],
+  replies: {
+    gg: ['gg', 'gg 🤝', 'not over yet 😏'],
+    'run it back': ['say less', 'deal em 🃏', 'bet'],
+    'too easy': ['talk is cheap 😤', 'we\'ll see', 'lol relax'],
+    '🔥': ['🔥🔥', 'heating up 🌶️', 'cooking'],
+    '😭': ['😂😂', 'it\'s ok bro', 'pain'],
+  } as Record<string, string[]>,
+};

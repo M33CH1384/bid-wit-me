@@ -10,30 +10,6 @@ function signed(n: number): string {
   return n > 0 ? `+${n}` : String(n);
 }
 
-export function HandSummary({ rec, rules, names }: { rec: HandRecord; rules: TableRules; names: string[] }) {
-  return (
-    <table className="summary-table">
-      <thead>
-        <tr><th /><th>Bid</th><th>Took</th><th>Contract</th><th>Nil</th><th>Bags</th><th>Hand</th><th>Total</th></tr>
-      </thead>
-      <tbody>
-        {rec.sides.map((s) => (
-          <tr key={s.side} className={s.seats.includes(HUMAN) ? 'mine' : ''}>
-            <td className="who">{sideName(rules, s.side, names)}</td>
-            <td>{s.seats.map((x) => bidLabel(rec.bids[x])).join(' + ')}</td>
-            <td>{s.seats.map((x) => rec.tricksWon[x]).join(' + ')}</td>
-            <td className={s.contractMade === false ? 'neg' : ''}>{s.bookPoints ? <span className="pos" title="First hand: books bid themselves">{s.tricks} books {signed(s.bookPoints)}</span> : s.contract ? signed(s.contractPoints) : '—'}</td>
-            <td>{s.nils.length ? s.nils.map((n) => <span key={n.seat} className={n.made ? 'pos' : 'neg'}>{signed(n.points)} </span>) : '—'}</td>
-            <td>{s.bookPoints ? '—' : s.bagsAdded ? `+${s.bagsAdded}` : 0}{s.bagPenaltyCount ? <span className="neg"> ({s.bagPenaltyPoints})</span> : null}</td>
-            <td className={s.points < 0 ? 'neg' : 'pos'}>{signed(s.points)}</td>
-            <td><b>{s.totalScore}</b> <small>({s.totalBags} bags)</small></td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
 export function ScorePad({ st, names, onClose }: { st: GameState; names: string[]; onClose: () => void }) {
   const r = st.rules;
   return (
