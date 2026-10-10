@@ -4,6 +4,7 @@ import { type Group, MeshPhysicalMaterial, MeshStandardMaterial, Quaternion, typ
 import { cardGeometry } from './geometry';
 import type { Xform } from './layout';
 import { type Sfx, sound } from '../audio';
+import { fireCue } from '../fx';
 
 interface Props {
   face: Texture | null; // null = we only ever see the back
@@ -74,7 +75,7 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
       // retargeted before it landed (slow frames: the trick was swept while the card was still in flight) — still make its landing sound
       if (s.key && s.started && s.t < 1) {
         const land = s.land;
-        if (land && land !== s.firedLand && s.sp.distanceTo(s.tp) > 0.02) { s.firedLand = land; land.split(',').forEach((c, i) => sound.play(c as Sfx, i ? { delay: 0.02 } : {})); }
+        if (land && land !== s.firedLand && s.sp.distanceTo(s.tp) > 0.02) { s.firedLand = land; land.split(',').forEach((c, i) => fireCue(c, i ? 0.02 : 0)); }
       }
       s.key = key;
       s.land = sfx.current.sfxLand; // this tween's landing cue
@@ -96,7 +97,7 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
     s.t = Math.min(1, s.t + Math.min(dt, 0.05) / duration);
     if (s.t >= 1) {
       const land = s.land;
-      if (land && land !== s.firedLand) { s.firedLand = land; if (moving) land.split(',').forEach((c, i) => sound.play(c as Sfx, i ? { delay: 0.02 } : {})); }
+      if (land && land !== s.firedLand) { s.firedLand = land; if (moving) land.split(',').forEach((c, i) => fireCue(c, i ? 0.02 : 0)); }
     }
     const e = easeInOut(s.t);
     g.position.lerpVectors(s.sp, s.tp, e);

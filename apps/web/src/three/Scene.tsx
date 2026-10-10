@@ -7,6 +7,7 @@ import Card3D from './Card3D';
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline } from './dealTimeline';
 import { type Sfx, sound } from '../audio';
+import { fx } from '../fx';
 import { backTexture, faceTexture, logoTexture } from './cardTextures';
 import { bodyGeometry, cardGeometry, feltGeometry, railGeometry } from './geometry';
 import {
@@ -61,6 +62,40 @@ function CameraRig() {
     cam.updateProjectionMatrix();
     invalidate();
   }, [camera, size, short, invalidate]);
+  return null;
+}
+
+/**
+ * Hype-effect camera shake + table vibration (fx.shake, set by joker rumbles / the nuke). The offsets are added on top
+ * of whatever CameraRig set and removed again every frame, so the layout camera never drifts.
+ */
+function FxShake({ table }: { table: RefObject<Group | null> }) {
+  const { camera, invalidate } = useThree();
+  const applied = useRef({ x: 0, y: 0, z: 0, roll: 0, ty: 0 });
+  const last = useRef<object | null>(null);
+  useEffect(() => fx.on(() => invalidate()), [invalidate]);
+  useFrame(() => {
+    const a = applied.current;
+    camera.position.x -= a.x; camera.position.y -= a.y; camera.position.z -= a.z; camera.rotateZ(-a.roll);
+    if (table.current) table.current.position.y -= a.ty;
+    a.x = a.y = a.z = a.roll = a.ty = 0;
+    const s = fx.shake;
+    if (!s) return;
+    const t = (performance.now() - s.start) / 1000;
+    if (t < 0) { invalidate(); return; }
+    if (t > s.dur) { if (last.current === s) fx.shake = null; invalidate(); return; }
+    last.current = s;
+    const k = s.amp * Math.pow(1 - t / s.dur, 2);
+    const w = 2 * Math.PI * t;
+    a.x = k * (Math.sin(w * 23) * 0.6 + Math.sin(w * 37 + 1) * 0.4);
+    a.y = k * (Math.sin(w * 29 + 2) * 0.6 + Math.sin(w * 41) * 0.4);
+    a.z = k * 0.5 * Math.sin(w * 31 + 0.5);
+    a.roll = k * 0.25 * Math.sin(w * 19 + 1.3);
+    a.ty = k * 0.18 * Math.sin(w * 53);
+    camera.position.x += a.x; camera.position.y += a.y; camera.position.z += a.z; camera.rotateZ(a.roll);
+    if (table.current) table.current.position.y += a.ty;
+    invalidate();
+  });
   return null;
 }
 
@@ -367,6 +402,7 @@ export default function Scene(props: SceneProps) {
   const safeFrac = useSafeFrac();
   const hi = props.quality === 'high';
   const badgeLayer = useRef<HTMLDivElement>(null!);
+  const tableGroup = useRef<Group>(null);
   const [layerReady, setLayerReady] = useState(false);
   useEffect(() => { setLayerReady(true); }, []);
   return (
@@ -384,12 +420,13 @@ export default function Scene(props: SceneProps) {
     >
       <AspectWatcher onAspect={setAspect} />
       <CameraRig />
+      <FxShake table={tableGroup} />
       <color attach="background" args={['#0c0712']} />
       <fog attach="fog" args={['#0c0712', 7, 16]} />
       <Lights quality={props.quality} />
       <Suspense fallback={null}>
         {hi && <Environment files="/assets/hdri/billiard_hall_1k.hdr" environmentIntensity={0.55} background backgroundBlurriness={0.55} backgroundIntensity={0.22} />}
-        <TableModel quality={props.quality} />
+        <group ref={tableGroup}><TableModel quality={props.quality} /></group>
       </Suspense>
       {props.positions.map((p, seat) => <TurnRing key={seat} pos={p} n={props.n} active={props.turnSeat === seat} />)}
       <Cards {...props} aspect={aspect} fontsReady={fontsReady} safeFrac={safeFrac} />

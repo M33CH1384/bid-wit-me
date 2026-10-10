@@ -217,8 +217,22 @@ function useGameSounds(st: GameState, myTurn: boolean, mySide: number, msgs: Cha
   }, [st, myTurn, mySide, msgs]);
 }
 
-/** Landing sound for a played card: always 'play'; + 'cut' when trumping a non-trump lead; + 'broken' (bigger, wins) for the first trump of the hand. */
+/**
+ * Landing cues for a played card: always 'play'; + 'cut' when trumping a non-trump lead; + 'broken' (bigger, wins) for
+ * the first trump of the hand; + a joker rumble ('jokerLittle' / 'jokerBig'), or 'nuke' when the second joker of a
+ * Big + Little Joker trick lands (the Big Joker beats the Little one).
+ */
 export function landCueFor(st: GameState, card: Card): string {
+  const base = baseLandCue(st, card);
+  if (card !== 'BJ' && card !== 'LJ') return base;
+  const t = [...st.tricks, st.trick].find((x) => x.plays.some((pl) => pl.card === card));
+  const i = t ? t.plays.findIndex((pl) => pl.card === card) : -1;
+  const other = card === 'BJ' ? 'LJ' : 'BJ';
+  const nuke = !!t && t.plays.slice(0, i).some((pl) => pl.card === other);
+  return `${base},${nuke ? 'nuke' : card === 'BJ' ? 'jokerBig' : 'jokerLittle'}`;
+}
+
+function baseLandCue(st: GameState, card: Card): string {
   const r = st.rules;
   const tricks = [...st.tricks, st.trick];
   let firstTrump: Card | null = null;

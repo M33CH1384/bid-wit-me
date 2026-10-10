@@ -11,7 +11,9 @@ import { useSyncExternalStore } from 'react';
 
 export type Sfx =
   | 'shuffle' | 'deal' | 'play' | 'tap' | 'sweep' | 'broken' | 'turn' | 'bid' | 'bidSoft'
-  | 'cut' | 'made' | 'set' | 'nil' | 'bags' | 'pop' | 'win' | 'lose' | 'flip';
+  | 'cut' | 'made' | 'set' | 'nil' | 'bags' | 'pop' | 'win' | 'lose' | 'flip'
+  // hype effects (all synthesized): joker rumbles, the Big-over-Little nuke, streaks, shots
+  | 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak1' | 'streak2' | 'streak3' | 'shot' | 'gotShot';
 
 export interface SoundSettings { on: boolean; volume: number; ambient: boolean; music: boolean; musicVolume: number }
 const KEY = 'bwm.sound.v1';
@@ -366,6 +368,14 @@ class Engine {
       case 'bags': return this.buzz(t, g);
       case 'win': return this.winJingle(t, g);
       case 'lose': return this.loseJingle(t, g);
+      case 'jokerLittle': return this.thud(t, g);
+      case 'jokerBig': return this.quake(t, g);
+      case 'nuke': return this.nukeBoom(t, g);
+      case 'streak1': return this.streakHit(t, g, 1);
+      case 'streak2': return this.streakHit(t, g, 2);
+      case 'streak3': return this.streakHit(t, g, 3);
+      case 'shot': return this.slam(t, g);
+      case 'gotShot': return this.sting(t, g);
     }
   }
 
@@ -471,6 +481,110 @@ class Engine {
     const mel = [493.88, 440, 392, 329.63];
     mel.forEach((f, i) => this.tone(t + i * 0.22, f, 0.4, 'triangle', 0.16 * g));
     for (const f of [164.81, 196, 246.94]) this.tone(t + 0.88, f, 1.4, 'sawtooth', 0.04 * g, { filter: 900, attack: 0.05 });
+  }
+
+  /* ---------- hype effects (synthesized) ---------- */
+  private shaper(amount: number): WaveShaperNode {
+    const c = this.ctx!;
+    const ws = c.createWaveShaper();
+    const n = 1024; const curve = new Float32Array(n);
+    for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1; curve[i] = ((1 + amount) * x) / (1 + amount * Math.abs(x)); }
+    ws.curve = curve; ws.oversample = '2x';
+    return ws;
+  }
+
+  /** a noise burst through a filter, with an exponential decay */
+  private burst(t: number, dur: number, gain: number, type: BiquadFilterType, freq: number, opts: { q?: number; sweepTo?: number; dest?: AudioNode } = {}) {
+    const c = this.ctx!;
+    const s = c.createBufferSource(); s.buffer = this.noise(dur + 0.05);
+    const f = c.createBiquadFilter(); f.type = type; f.frequency.setValueAtTime(freq, t); if (opts.q) f.Q.value = opts.q;
+    if (opts.sweepTo) f.frequency.exponentialRampToValueAtTime(opts.sweepTo, t + dur);
+    const g = c.createGain(); g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    s.connect(f).connect(g).connect(opts.dest ?? this.sfxBus!); s.start(t); s.stop(t + dur + 0.05);
+  }
+
+  /** Little Joker: a hard, jarring thud (distorted low punch + knock). */
+  private thud(t: number, g: number) {
+    const c = this.ctx!;
+    const dist = this.shaper(18); const out = c.createGain(); out.gain.value = 0.55 * g;
+    dist.connect(out).connect(this.sfxBus!);
+    this.tone(t, 95, 0.38, 'sine', 0.9, { glideTo: 38, attack: 0.002, dest: dist });
+    this.tone(t, 190, 0.12, 'triangle', 0.4, { glideTo: 70, attack: 0.002, dest: dist });
+    this.burst(t, 0.16, 0.55 * g, 'lowpass', 900, { sweepTo: 120 });
+    this.burst(t, 0.05, 0.35 * g, 'highpass', 2500);
+  }
+
+  /** Big Joker: deeper, longer, louder quake (sub drop + rattling rumble + dissonant low stab). */
+  private quake(t: number, g: number) {
+    const c = this.ctx!;
+    const dist = this.shaper(30); const out = c.createGain(); out.gain.value = 0.75 * g;
+    dist.connect(out).connect(this.sfxBus!);
+    this.tone(t, 70, 1.25, 'sine', 1, { glideTo: 26, attack: 0.003, dest: dist });
+    this.tone(t, 55, 0.9, 'sawtooth', 0.35, { glideTo: 30, filter: 400, attack: 0.005, dest: dist });
+    this.tone(t, 58.3, 0.9, 'sawtooth', 0.3, { glideTo: 31, filter: 400, attack: 0.005, dest: dist });
+    // the rattle: low noise, amplitude-modulated ~11 Hz
+    const s = c.createBufferSource(); s.buffer = this.noise(1.6);
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.setValueAtTime(260, t); lp.frequency.exponentialRampToValueAtTime(70, t + 1.5);
+    const am = c.createGain(); am.gain.value = 0.5;
+    const lfo = c.createOscillator(); lfo.frequency.value = 11; const lfoG = c.createGain(); lfoG.gain.value = 0.5;
+    lfo.connect(lfoG).connect(am.gain);
+    const env = c.createGain(); env.gain.setValueAtTime(0.0001, t); env.gain.exponentialRampToValueAtTime(0.9 * g, t + 0.04); env.gain.exponentialRampToValueAtTime(0.0001, t + 1.55);
+    s.connect(lp).connect(am).connect(env).connect(this.sfxBus!); s.start(t); s.stop(t + 1.6); lfo.start(t); lfo.stop(t + 1.6);
+    this.burst(t, 0.08, 0.5 * g, 'highpass', 1800);
+  }
+
+  /** Big Joker over Little Joker: crack, boom with sub-bass, long rumble and debris crackle. */
+  private nukeBoom(t: number, g: number) {
+    const c = this.ctx!;
+    const dist = this.shaper(40); const out = c.createGain(); out.gain.value = 0.85 * g;
+    dist.connect(out).connect(this.sfxBus!);
+    this.burst(t, 0.12, 0.9 * g, 'highpass', 1200); // the crack
+    this.tone(t, 80, 2.6, 'sine', 1, { glideTo: 18, attack: 0.004, dest: dist }); // boom
+    this.tone(t + 0.02, 36, 3.2, 'sine', 0.8 * g, { attack: 0.05 }); // sub-bass
+    this.tone(t, 110, 0.6, 'sawtooth', 0.3, { glideTo: 30, filter: 600, dest: dist });
+    this.burst(t, 3.4, 0.85 * g, 'lowpass', 600, { sweepTo: 50 }); // rolling rumble
+    this.burst(t + 0.3, 2.6, 0.25 * g, 'bandpass', 900, { q: 0.7, sweepTo: 200 }); // wind
+    // debris crackle: dozens of tiny bright clicks, thinning out
+    for (let i = 0; i < 70; i++) {
+      const dt = 0.25 + Math.pow(Math.random(), 1.6) * 2.6;
+      this.burst(t + dt, 0.018 + Math.random() * 0.03, (0.22 - dt * 0.06) * g * (0.5 + Math.random()), 'bandpass', 1800 + Math.random() * 4200, { q: 3 });
+    }
+  }
+
+  /** Streak stingers that escalate: 1 = HEAT CHECK, 2 = ON FIRE, 3 = UNSTOPPABLE. */
+  private streakHit(t: number, g: number, lvl: number) {
+    // riser
+    this.burst(t, 0.35 + lvl * 0.15, 0.16 * g, 'bandpass', 400, { q: 1.5, sweepTo: 3500 + lvl * 1500 });
+    const at = t + 0.3 + lvl * 0.12;
+    const root = [392, 440, 523.25][lvl - 1]!;
+    const chord = [1, 1.25, 1.5, 2].map((k) => root * k);
+    chord.forEach((f, i) => { this.tone(at + i * 0.045, f, 0.5 + lvl * 0.2, 'sawtooth', (0.05 + lvl * 0.015) * g, { filter: 2500 + lvl * 800, attack: 0.01 }); });
+    this.tone(at, root / 2, 0.6, 'square', 0.08 * g, { filter: 800 });
+    this.tone(at, 90, 0.3, 'sine', (0.3 + lvl * 0.15) * g, { glideTo: 45, attack: 0.002 });
+    if (lvl >= 2) this.burst(at, 0.9, 0.12 * g, 'bandpass', 900, { q: 0.6, sweepTo: 5000 }); // flame whoosh
+    if (lvl >= 3) {
+      this.burst(at, 1.6, 0.18 * g, 'highpass', 6000); // crash cymbal
+      [root * 2, root * 2.5, root * 3, root * 4].forEach((f, i) => this.tone(at + 0.18 + i * 0.07, f, 0.5, 'triangle', 0.08 * g));
+    }
+  }
+
+  /** "SHOT!": slam impact — punch, crack, metallic ring, brass stab. */
+  private slam(t: number, g: number) {
+    const c = this.ctx!;
+    const dist = this.shaper(12); const out = c.createGain(); out.gain.value = 0.6 * g;
+    dist.connect(out).connect(this.sfxBus!);
+    this.tone(t, 140, 0.4, 'sine', 1, { glideTo: 40, attack: 0.002, dest: dist });
+    this.burst(t, 0.2, 0.7 * g, 'highpass', 1500);
+    this.tone(t + 0.01, 1180, 0.8, 'square', 0.04 * g, { filter: 5000 });
+    this.tone(t + 0.01, 1590, 0.7, 'square', 0.03 * g, { filter: 5000 });
+    for (const f of [146.83, 207.65, 293.66]) this.tone(t + 0.04, f, 0.6, 'sawtooth', 0.08 * g, { filter: 1600, attack: 0.01 });
+  }
+
+  /** "GOT SHOT": a soft descending sting. */
+  private sting(t: number, g: number) {
+    this.tone(t, 523.25, 0.35, 'triangle', 0.12 * g, { filter: 1800 });
+    this.tone(t + 0.18, 415.3, 0.5, 'triangle', 0.12 * g, { filter: 1500 });
+    this.tone(t + 0.18, 207.65, 0.6, 'sine', 0.1 * g);
   }
 
   /* ---------- optional lounge ambience (synth pad + room tone), off by default ---------- */
