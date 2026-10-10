@@ -95,7 +95,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
     {
       "bags": [
         5,
-        5,
+        4,
       ],
       "bids": [
         6,
@@ -104,20 +104,20 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
         4,
       ],
       "totals": [
-        155,
-        275,
+        295,
+        274,
       ],
       "tricks": [
-        6,
+        7,
         1,
         0,
-        6,
+        5,
       ],
     },
     {
       "bags": [
         5,
-        8,
+        7,
       ],
       "bids": [
         1,
@@ -126,8 +126,8 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
         2,
       ],
       "totals": [
-        205,
-        328,
+        345,
+        327,
       ],
       "tricks": [
         0,
@@ -139,7 +139,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
     {
       "bags": [
         6,
-        8,
+        7,
       ],
       "bids": [
         1,
@@ -148,52 +148,52 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
         3,
       ],
       "totals": [
-        236,
-        228,
-      ],
-      "tricks": [
-        2,
-        5,
-        2,
-        4,
-      ],
-    },
-    {
-      "bags": [
-        6,
-        1,
-      ],
-      "bids": [
-        4,
-        1,
-        3,
-        5,
-      ],
-      "totals": [
-        166,
-        191,
-      ],
-      "tricks": [
-        2,
-        4,
-        2,
-        5,
-      ],
-    },
-    {
-      "bags": [
-        7,
-        1,
-      ],
-      "bids": [
-        3,
-        3,
-        3,
-        3,
-      ],
-      "totals": [
+        376,
         227,
-        251,
+      ],
+      "tricks": [
+        2,
+        5,
+        2,
+        4,
+      ],
+    },
+    {
+      "bags": [
+        6,
+        0,
+      ],
+      "bids": [
+        4,
+        1,
+        3,
+        5,
+      ],
+      "totals": [
+        306,
+        190,
+      ],
+      "tricks": [
+        2,
+        4,
+        2,
+        5,
+      ],
+    },
+    {
+      "bags": [
+        7,
+        0,
+      ],
+      "bids": [
+        3,
+        3,
+        3,
+        3,
+      ],
+      "totals": [
+        367,
+        250,
       ],
       "tricks": [
         3,
@@ -205,7 +205,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
     {
       "bags": [
         7,
-        1,
+        0,
       ],
       "bids": [
         1,
@@ -214,8 +214,8 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
         4,
       ],
       "totals": [
-        287,
-        321,
+        427,
+        320,
       ],
       "tricks": [
         1,
@@ -227,7 +227,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
     {
       "bags": [
         8,
-        2,
+        1,
       ],
       "bids": [
         3,
@@ -236,8 +236,8 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
         4,
       ],
       "totals": [
-        338,
-        382,
+        478,
+        381,
       ],
       "tricks": [
         3,
@@ -249,7 +249,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
     {
       "bags": [
         1,
-        2,
+        1,
       ],
       "bids": [
         2,
@@ -258,8 +258,8 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
         1,
       ],
       "totals": [
-        281,
-        312,
+        421,
+        311,
       ],
       "tricks": [
         4,
@@ -271,7 +271,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
     {
       "bags": [
         1,
-        2,
+        1,
       ],
       "bids": [
         2,
@@ -280,8 +280,8 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
         3,
       ],
       "totals": [
-        191,
-        362,
+        331,
+        361,
       ],
       "tricks": [
         2,
@@ -293,7 +293,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
     {
       "bags": [
         1,
-        3,
+        2,
       ],
       "bids": [
         2,
@@ -302,8 +302,8 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
         4,
       ],
       "totals": [
-        261,
-        413,
+        401,
+        412,
       ],
       "tricks": [
         0,
@@ -315,7 +315,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
     {
       "bags": [
         2,
-        5,
+        4,
       ],
       "bids": [
         1,
@@ -324,8 +324,8 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
         1,
       ],
       "totals": [
-        292,
-        485,
+        432,
+        484,
       ],
       "tricks": [
         1,
@@ -337,7 +337,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
     {
       "bags": [
         3,
-        6,
+        5,
       ],
       "bids": [
         1,
@@ -346,8 +346,8 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
         2,
       ],
       "totals": [
-        333,
-        556,
+        473,
+        555,
       ],
       "tricks": [
         1,
@@ -360,8 +360,8 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
   "result": {
     "endReason": "target",
     "finalScores": [
-      333,
-      556,
+      473,
+      555,
     ],
     "placements": [
       2,

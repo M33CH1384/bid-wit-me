@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { type SeatPos, type Xform, handFan, ndcExtentX, opponentFan, pileSpot, trickSpot } from '../src/three/layout';
+import { Vector3 } from 'three';
+import { type SeatPos, type Xform, handFan, makeCamera, ndcExtentX, opponentFan, pileSpot, trickSpot } from '../src/three/layout';
 
 // CSS-pixel viewports: iPhone SE, 12/13/14, 14 Pro Max, small Android, desktop, and iPhone landscape
 const VIEWPORTS: [number, number][] = [[320, 568], [375, 667], [390, 844], [393, 852], [430, 932], [360, 740], [1280, 800], [1920, 1080], [844, 390]];
@@ -69,4 +70,21 @@ describe('hand fan is undistorted and mirror-symmetric on screen', () => {
       }
     });
   }
+});
+
+describe('hand fan z-order', () => {
+  it('raised (playable / selected) cards sit in front of every resting card, keeping fan order among themselves', () => {
+    for (const aspect of [16 / 9, 390 / 844, 844 / 390]) {
+      const cam = makeCamera(aspect); cam.updateMatrixWorld();
+      // view-space depth (what the depth buffer and the raycast order go by)
+      const dist = (t: { p: number[] }) => -new Vector3(t.p[0], t.p[1], t.p[2]).applyMatrix4(cam.matrixWorldInverse).z;
+      const n = 13, lifted = new Set([7, 8]);
+      const fan = Array.from({ length: n }, (_, i) => handFan(aspect, n, i, lifted.has(i) ? 0.09 : 0));
+      const farthestRaised = Math.max(...[...lifted].map((i) => dist(fan[i]!)));
+      const nearestResting = Math.min(...fan.filter((_, i) => !lifted.has(i)).map(dist));
+      expect(farthestRaised).toBeLessThan(nearestResting);
+      expect(dist(fan[8]!)).toBeLessThan(dist(fan[7]!)); // fan order kept among raised cards
+      expect(dist(handFan(aspect, n, 0, 0.24))).toBeLessThan(dist(fan[8]!)); // the selected card tops them all
+    }
+  });
 });

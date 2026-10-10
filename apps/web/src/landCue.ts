@@ -1,4 +1,4 @@
-import { type Card, type GameState, type Play, type TableRules, isTrump, trickWinner } from '@spades/rules';
+import { type Card, type GameState, type Play, type TableRules, isBooksHand, isTrump, trickWinner } from '@spades/rules';
 
 /**
  * Landing cues for a played card: always 'play'; + 'cut' when trumping a non-trump lead; + 'broken' (bigger, wins) for
@@ -98,11 +98,20 @@ export function wheelsFor(rules: { partnerships: boolean; playerCount: number },
 }
 
 /** Team wheels MADE at hand end: a side that bid 10+ together (both partners numeric) and took 10+ books. */
-export function wheelsMade(rules: { partnerships: boolean; playerCount: number }, rec: { bids: readonly (number | string | null)[]; sides: { side: number; tricks: number }[] }): { side: number; bid: number; books: number }[] {
+export function wheelsMade(rules: { partnerships: boolean; playerCount: number }, rec: { bids: readonly (number | string | null)[]; sides: { side: number; tricks: number; contractMade?: boolean | null }[] }): { side: number; bid: number; books: number }[] {
+  // made = took at least the whole 10+ bid (a team that bid 12 and took 10 got set: no celebration);
+  // the scored record's contractMade wins when present (it also accounts for a nil partner's books)
   return wheelsFor(rules, rec.bids).flatMap((w) => {
     const s = rec.sides.find((x) => x.side === w.side);
-    return s && s.tricks >= WHEELS_AT ? [{ side: w.side, bid: w.total, books: s.tricks }] : [];
+    if (!s || s.tricks < Math.max(WHEELS_AT, w.total) || s.contractMade === false) return [];
+    return [{ side: w.side, bid: w.total, books: s.tricks }];
   });
+}
+/** First hand where books bid themselves (team games): the sides whose combined books just reached 10 this hand. */
+export function wheelsTenthBooks(rules: { partnerships: boolean; playerCount: number }, bids: readonly (number | string | null)[], before: readonly number[], after: readonly number[]): number[] {
+  if (!rules.partnerships || rules.playerCount !== 4 || !isBooksHand(bids as Parameters<typeof isBooksHand>[0])) return [];
+  const side = (t: readonly number[], s: number) => (t[s] ?? 0) + (t[s + 2] ?? 0);
+  return [0, 1].filter((s) => side(after, s) >= WHEELS_AT && side(before, s) < WHEELS_AT);
 }
 /** Cutthroat wheels: the players whose book count just reached 10 this hand. */
 export function wheelsTenth(rules: { partnerships: boolean }, before: readonly number[], after: readonly number[]): number[] {

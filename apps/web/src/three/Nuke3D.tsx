@@ -4,7 +4,7 @@ import { BlendFunction, type ChromaticAberrationEffect } from 'postprocessing';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AdditiveBlending, BufferAttribute, BufferGeometry, Color, CylinderGeometry, DoubleSide, type Group, type Mesh, type PerspectiveCamera,
-  type PointLight, RingGeometry, ShaderMaterial, SphereGeometry, TorusGeometry, Vector2,
+  PlaneGeometry, type PointLight, RingGeometry, ShaderMaterial, SphereGeometry, TorusGeometry, Vector2, Vector3,
 } from 'three';
 import { fx } from '../fx';
 
@@ -81,6 +81,52 @@ function fireMaterial(seed: number, flow = 1.4) {
   });
 }
 
+/**
+ * Screen-space fire + smoke (a full-viewport quad drawn over the 3D scene) so the blast reaches every edge on any
+ * aspect ratio: a fire front races out from the blast to past the farthest corner, churns as rolling orange/red
+ * billows (thinner in the middle so the 3D mushroom cloud reads through), cools to dark smoke, then clears.
+ */
+function screenFireMaterial() {
+  return new ShaderMaterial({
+    transparent: true, depthWrite: false, depthTest: false, toneMapped: false,
+    uniforms: { uTime: { value: 0 }, uAspect: { value: 1 }, uCenter: { value: new Vector2(0.5, 0.45) }, uOct: { value: 1 } },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+    fragmentShader: NOISE + /* glsl */ `
+      uniform float uTime, uAspect, uOct; uniform vec2 uCenter; varying vec2 vUv;
+      vec3 ramp(float h){
+        vec3 smoke = vec3(0.09, 0.075, 0.08), red = vec3(0.6, 0.06, 0.01), orange = vec3(1.2, 0.42, 0.05), yellow = vec3(1.6, 1.15, 0.45), white = vec3(2.2, 2.1, 1.9);
+        if (h < 0.25) return mix(smoke, red, h / 0.25);
+        if (h < 0.5) return mix(red, orange, (h - 0.25) / 0.25);
+        if (h < 0.75) return mix(orange, yellow, (h - 0.5) / 0.25);
+        return mix(yellow, white, (h - 0.75) / 0.25);
+      }
+      void main(){
+        float t = uTime - ${FLASH.toFixed(2)};
+        if (t <= 0.0) discard;
+        vec2 q = (vUv - uCenter) * vec2(uAspect, 1.0);
+        // distance to the farthest corner, so the front always clears every edge
+        vec2 far = max(abs(vec2(0.0, 0.0) - uCenter), abs(vec2(1.0, 1.0) - uCenter)) * vec2(uAspect, 1.0);
+        float d = length(q) / length(far);
+        float ang = atan(q.y, q.x);
+        float n = fbm(vec3(q * 2.2, t * 0.9));
+        float n2 = uOct > 0.5 ? fbm(vec3(q * 5.0 + 3.1, t * 1.6)) : n;
+        // fire front: reaches past the corners by ~0.5 s after the flash
+        float front = 1.25 * (1.0 - pow(1.0 - clamp(t / 0.5, 0.0, 1.0), 3.0)) + 0.12 * snoise(vec3(cos(ang) * 2.0, sin(ang) * 2.0, t));
+        float inside = smoothstep(front + 0.06, front - 0.08, d + n * 0.08);
+        // heat: white-hot early, cooling to orange/red billows, then sooty smoke
+        float heat = clamp(1.05 - t * 0.55 + n * 0.35 + n2 * 0.15 - d * 0.25, 0.0, 1.0);
+        float cool = smoothstep(1.4, 2.6, t);
+        heat *= 1.0 - 0.85 * cool;
+        // thinner over the middle (where the 3D mushroom is), thick at the edges; clears out by ~3.4 s
+        float edge = mix(0.38, 1.0, smoothstep(0.15, 0.75, d));
+        float billow = 0.62 + 0.38 * smoothstep(-0.4, 0.5, n + n2 * 0.5);
+        float life = 1.0 - smoothstep(2.4, 3.3, t + n * 0.25);
+        float a = inside * edge * billow * life * (0.85 + 0.15 * smoothstep(0.0, 0.3, heat));
+        if (a < 0.003) discard;
+        gl_FragColor = vec4(ramp(heat), clamp(a, 0.0, 1.0));
+      }`,
+  });
+}
 interface PSys { geo: BufferGeometry; mat: ShaderMaterial }
 /** Soft-particle system (points): kind 0 smoke, 1 dust, 2 ember, 3 ash. Positions are analytic in the shader. */
 function particles(kind: number, count: number, spawn: (i: number) => { p: [number, number, number]; v: [number, number, number]; birth: number; life: number; size: number }): PSys {
@@ -176,6 +222,7 @@ function NukeRun({ start, full, low }: { start: number; full: boolean; low: bool
     fire[1]!.uniforms.uDisp!.value = 0.28;
     const capMat = fireMaterial(5.7, 0.9); capMat.uniforms.uDisp!.value = 0.22;
     const stemMat = fireMaterial(8.2, 2.2); stemMat.uniforms.uDisp!.value = 0.12;
+    const screenMat = screenFireMaterial(); screenMat.uniforms.uOct!.value = low ? 0 : 1;
     const ringMat = new ShaderMaterial({
       transparent: true, depthWrite: false, toneMapped: false, blending: AdditiveBlending, side: DoubleSide,
       uniforms: { uA: { value: 1 } },
@@ -204,12 +251,13 @@ function NukeRun({ start, full, low }: { start: number; full: boolean; low: bool
       torus: new TorusGeometry(0.42, 0.25, low ? 16 : 28, low ? 32 : 64),
       cyl: new CylinderGeometry(0.11, 0.22, 1, low ? 16 : 28, low ? 8 : 16, true),
       ringGeo: new RingGeometry(0.01, 1, 96, 1),
+      screenMat, quad: new PlaneGeometry(2, 2),
     };
   }, [k, low]);
   useEffect(() => () => {
     const p = parts;
-    [...p.fire, p.capMat, p.stemMat, p.ringMat, p.smoke.mat, p.dust.mat, p.embers.mat, p.ash.mat].forEach((m) => m.dispose());
-    [p.sphere, p.torus, p.cyl, p.ringGeo, p.smoke.geo, p.dust.geo, p.embers.geo, p.ash.geo].forEach((g) => g.dispose());
+    [...p.fire, p.capMat, p.stemMat, p.ringMat, p.screenMat, p.smoke.mat, p.dust.mat, p.embers.mat, p.ash.mat].forEach((m) => m.dispose());
+    [p.sphere, p.torus, p.cyl, p.ringGeo, p.quad, p.smoke.geo, p.dust.geo, p.embers.geo, p.ash.geo].forEach((g) => g.dispose());
   }, [parts]);
 
   // blast impulse for the cards + Full Nuke HUD blow-away
@@ -223,6 +271,7 @@ function NukeRun({ start, full, low }: { start: number; full: boolean; low: bool
   }, [full, cam, invalidate]);
 
   const orange = useMemo(() => new Color(), []);
+  const scratch = useMemo(() => new Vector3(), []);
   useFrame(() => {
     const T = fx.warp ?? (performance.now() - start) / 1000;
     (window as unknown as { __bwmNukeT?: number }).__bwmNukeT = T;
@@ -237,7 +286,7 @@ function NukeRun({ start, full, low }: { start: number; full: boolean; low: bool
     if (ball.current) {
       ball.current.visible = tb > 0;
       // fireball blooms at the felt, then rises and flattens into the cap's dome
-      const s = 0.12 + 0.42 * ease(tb / 0.45) - 0.06 * ease((tb - 0.6) / 1.2);
+      const s = 0.12 + 0.62 * ease(tb / 0.45) - 0.08 * ease((tb - 0.6) / 1.2);
       const flat = 1 - 0.38 * ease((tb - 0.6) / 1.0);
       ball.current.scale.set(s * (1 + 0.25 * (1 - flat)), Math.max(0.01, s * flat), s * (1 + 0.25 * (1 - flat)));
       ball.current.position.y = 0.14 + 0.9 * ease((tb - 0.25) / 1.8);
@@ -248,7 +297,7 @@ function NukeRun({ start, full, low }: { start: number; full: boolean; low: bool
     const capY = ball.current?.position.y ?? 1;
     if (capG.current) {
       capG.current.visible = tc > 0;
-      const cs = 0.3 + 1.5 * ease(tc / 1.4);
+      const cs = 0.3 + 2.3 * ease(tc / 1.4);
       capG.current.scale.set(cs, cs * 0.6, cs);
       capG.current.position.y = capY - 0.1;
       capG.current.rotation.y = T * 0.35;
@@ -268,6 +317,10 @@ function NukeRun({ start, full, low }: { start: number; full: boolean; low: bool
       ring.current.scale.setScalar(0.1 + 3.4 * ease(tr));
       parts.ringMat.uniforms.uA!.value = 1 - tr;
     }
+    // screen-space fire / smoke: centred on the blast's on-screen position
+    parts.screenMat.uniforms.uTime!.value = T;
+    parts.screenMat.uniforms.uAspect!.value = size.width / Math.max(1, size.height);
+    if (root.current) { const v = root.current.getWorldPosition(scratch).project(cam); parts.screenMat.uniforms.uCenter!.value.set(Math.min(0.9, Math.max(0.1, (v.x + 1) / 2)), Math.min(0.9, Math.max(0.1, (v.y + 1) / 2))); }
     // particles
     const scale = size.height * 0.55;
     for (const p of [parts.smoke, parts.dust, parts.embers, parts.ash]) { p.mat.uniforms.uTime!.value = T; p.mat.uniforms.uScale!.value = scale; p.mat.uniforms.uFade!.value = Math.min(1, (NUKE_LEN - T) / 0.5); }
@@ -309,6 +362,7 @@ function NukeRun({ start, full, low }: { start: number; full: boolean; low: bool
         <points geometry={parts.embers.geo} material={parts.embers.mat} frustumCulled={false} />
         <points geometry={parts.ash.geo} material={parts.ash.mat} frustumCulled={false} />
       </group>
+      <mesh geometry={parts.quad} material={parts.screenMat} frustumCulled={false} renderOrder={1000} />
       {!low && (
         <EffectComposer multisampling={0}>
           <Bloom intensity={bloom} luminanceThreshold={0.85} luminanceSmoothing={0.2} mipmapBlur />

@@ -1,6 +1,6 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { memo, useLayoutEffect, useMemo, useRef } from 'react';
-import { Color, type Group, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Quaternion, type Texture, Vector3 } from 'three';
+import { AdditiveBlending, BufferAttribute, BufferGeometry, Color, type Group, MeshBasicMaterial, ShaderMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Quaternion, type Texture, Vector3 } from 'three';
 import { cardGeometry } from './geometry';
 import { CT } from './layout';
 import type { Xform } from './layout';
@@ -27,15 +27,32 @@ interface Props {
   sfxLand?: string; // comma-separated Sfx names, e.g. 'play,cut'
   /** how the nuke's blast treats this card: table cards are blown outward; hand cards only in Full Nuke */
   blast?: 'table' | 'hand';
+  /** last-trick Big Joker waiting on the Little Joker: green radioactive pulse + shimmer ('steady' = Reduce effects) */
+  radioactive?: 'pulse' | 'steady';
 }
 
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 const edgeMat = new MeshStandardMaterial({ color: '#efe9dc', roughness: 0.75 });
-/** full colour vs. the not-playable look: ~72% brightness with a faint cool/purple tint (reads as desaturated) */
+/** full colour vs. the not-playable look: darker (~60% brightness on screen) with a faint cool tint, and desaturated */
 const FULL = new Color(1, 1, 1);
-const DIM = new Color(0.3, 0.28, 0.4);
+const DIM = new Color(0.2, 0.195, 0.25);
+/** saturation of a not-playable card's face (1 = full colour, 0 = grey) */
+const DIM_SAT = 0.3;
+/** Adds a saturation control to a card face material (uSat: 1 = untouched); one shader variant shared by every card. */
+function withSaturation<M extends MeshStandardMaterial>(m: M): M & { userData: { sat: { value: number } } } {
+  const sat = { value: 1 };
+  m.userData.sat = sat;
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uSat = sat;
+    sh.fragmentShader = sh.fragmentShader
+      .replace('void main() {', 'uniform float uSat;\nvoid main() {')
+      .replace('#include <map_fragment>', '#include <map_fragment>\n  diffuseColor.rgb = mix(vec3(dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114))), diffuseColor.rgb, uSat);');
+  };
+  m.customProgramCacheKey = () => 'card-sat';
+  return m as M & { userData: { sat: { value: number } } };
+}
 
-function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.25, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand, blast = 'table' }: Props) {
+function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.25, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand, blast = 'table', radioactive }: Props) {
   const ref = useRef<Group>(null);
   const inner = useRef<Group>(null);
   const bl = useRef({ dir: new Vector3(), q: new Quaternion(), axis: new Vector3(), on: false });
@@ -45,16 +62,18 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
     quality === 'high'
       ? new MeshPhysicalMaterial({ map, roughness: 0.42, clearcoat: 0.35, clearcoatRoughness: 0.35, sheen: 0.2, sheenRoughness: 0.6 })
       : new MeshStandardMaterial({ map, roughness: 0.5 });
-  const frontMat = useMemo(() => (face ? mk(face) : mk(back)), [face, back, quality]); // eslint-disable-line react-hooks/exhaustive-deps
+  const frontMat = useMemo(() => withSaturation(face ? mk(face) : mk(back)), [face, back, quality]); // eslint-disable-line react-hooks/exhaustive-deps
   const backMat = useMemo(() => mk(back), [back, quality]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Your turn: cards you can't play get a soft cool/purple dim (still readable); playable cards stay at full colour
   // (no emissive tint, which made them look washed-out) and get a gold edge glow behind them. Both ease in ~150 ms.
   const glowMat = useMemo(() => new MeshBasicMaterial({ color: '#f5c542', transparent: true, opacity: 0, depthWrite: false, toneMapped: false }), []);
-  const look = useRef({ target: new Color(1, 1, 1), glow: 0 });
+  const look = useRef({ target: new Color(1, 1, 1), glow: 0, sat: 1 });
+  const radioWas = useRef(false);
   useLayoutEffect(() => {
     look.current.target.copy(dim ? DIM : FULL);
-    look.current.glow = glow ? (quality === 'high' ? 0.85 : 0.7) : 0;
+    look.current.glow = glow ? (quality === 'high' ? 1 : 0.9) : 0;
+    look.current.sat = dim ? DIM_SAT : 1;
     frontMat.emissive.set('#000000');
     // the clear coat / sheen add white on top of the colour (and ACES squashes the rest), so ease them off too when dimmed
     if (frontMat instanceof MeshPhysicalMaterial) { frontMat.clearcoat = dim ? 0.05 : 0.35; frontMat.sheen = dim ? 0 : 0.2; }
@@ -110,7 +129,21 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
     const L = look.current, k = Math.min(1, dt / 0.05);
     const c = frontMat.color;
     if (Math.abs(c.r - L.target.r) + Math.abs(c.g - L.target.g) + Math.abs(c.b - L.target.b) > 0.004) { c.lerp(L.target, k); invalidate(); } else c.copy(L.target);
-    if (Math.abs(glowMat.opacity - L.glow) > 0.01) { glowMat.opacity += (L.glow - glowMat.opacity) * k; invalidate(); } else glowMat.opacity = L.glow;
+    const sat = frontMat.userData.sat;
+    if (Math.abs(sat.value - L.sat) > 0.01) { sat.value += (L.sat - sat.value) * k; invalidate(); } else sat.value = L.sat;
+    if (radioactive) { /* glow driven below */ } else if (Math.abs(glowMat.opacity - L.glow) > 0.01) { glowMat.opacity += (L.glow - glowMat.opacity) * k; invalidate(); } else glowMat.opacity = L.glow;
+    // radioactive Big Joker: green emissive breathing + green edge glow (steady under Reduce effects)
+    if (radioactive) {
+      const ph = radioactive === 'pulse' ? 0.5 + 0.5 * Math.sin(performance.now() / 1000 * 5.5) : 0.5;
+      frontMat.emissive.setRGB(0.08 + 0.22 * ph, 0.45 + 0.55 * ph, 0.06 + 0.12 * ph);
+      frontMat.emissiveIntensity = 0.35 + 0.45 * ph;
+      glowMat.color.setRGB(0.35, 1.6, 0.3);
+      glowMat.opacity = 0.55 + 0.45 * ph;
+      radioWas.current = true;
+      if (radioactive === 'pulse') invalidate();
+    } else if (radioWas.current) {
+      radioWas.current = false; frontMat.emissive.set('#000000'); frontMat.emissiveIntensity = 1; glowMat.color.set('#f5c542'); glowMat.opacity = L.glow; invalidate();
+    }
     applyBlast(g);
     const s = tw.current;
     if (!s.init) {
@@ -169,10 +202,40 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
         <mesh geometry={geo.body} material={edgeMat} castShadow={castShadow} />
         <mesh geometry={geo.front} material={frontMat} />
         <mesh geometry={geo.back} material={backMat} />
-        {face && <mesh geometry={geo.front} material={glowMat} position={[0, 0, -CT - 0.003]} scale={[1.075, 1.055, 1]} visible={glowMat.opacity > 0.01 || !!glow} renderOrder={-1} />}
+        {face && <mesh geometry={geo.front} material={glowMat} position={[0, 0, -CT - 0.003]} scale={[1.09, 1.065, 1]} visible={glowMat.opacity > 0.01 || !!glow || !!radioactive} renderOrder={-1} />}
+        {face && radioactive === 'pulse' && <RadioShimmer />}
       </group>
     </group>
   );
+}
+
+/** Soft green motes drifting up around a radioactive card (card-local space, additive, shader-animated). */
+function RadioShimmer() {
+  const { geo, mat } = useMemo(() => {
+    const N = 36;
+    const P = new Float32Array(N * 3), R = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      const side = i % 4;
+      const u = Math.random() - 0.5;
+      P.set(side < 2 ? [(side ? 1 : -1) * 0.14, u * 0.36, 0.01] : [u * 0.26, (side === 2 ? 1 : -1) * 0.19, 0.01], i * 3);
+      R[i] = Math.random();
+    }
+    const g = new BufferGeometry();
+    g.setAttribute('position', new BufferAttribute(P, 3));
+    g.setAttribute('aRnd', new BufferAttribute(R, 1));
+    const m = new ShaderMaterial({
+      transparent: true, depthWrite: false, blending: AdditiveBlending, toneMapped: false,
+      uniforms: { uTime: { value: 0 }, uScale: { value: 260 } },
+      vertexShader: `uniform float uTime, uScale; attribute float aRnd; varying float vA;
+        void main(){ float k = fract(uTime * (0.35 + aRnd * 0.4) + aRnd); vec3 p = position; p.y += k * 0.08; p.x += sin(uTime * 3.0 + aRnd * 20.0) * 0.012;
+          vA = sin(k * 3.14159) * (0.5 + 0.5 * aRnd); vec4 mv = modelViewMatrix * vec4(p, 1.0); gl_PointSize = (0.012 + 0.012 * aRnd) * uScale / max(0.2, -mv.z); gl_Position = projectionMatrix * mv; }`,
+      fragmentShader: `varying float vA; void main(){ float r = length(gl_PointCoord - 0.5); if (r > 0.5) discard; gl_FragColor = vec4(vec3(0.45, 1.8, 0.4), smoothstep(0.5, 0.0, r) * vA); }`,
+    });
+    return { geo: g, mat: m };
+  }, []);
+  const size = useThree((st) => st.size);
+  useFrame(({ invalidate }) => { mat.uniforms.uTime!.value = performance.now() / 1000; mat.uniforms.uScale!.value = size.height * 0.9; invalidate(); });
+  return <points geometry={geo} material={mat} frustumCulled={false} />;
 }
 
 export default memo(Card3D);

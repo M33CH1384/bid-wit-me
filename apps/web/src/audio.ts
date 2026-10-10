@@ -356,6 +356,29 @@ class Engine {
     return this.loading;
   }
 
+  /* ---------- Geiger counter (last-trick Big Joker waiting for the Little Joker) ---------- */
+  private geigerTimer = 0;
+  /** Quiet, irregular Geiger-counter clicks on the SFX bus (so SFX volume / mute apply) until geiger(false). */
+  geiger(on: boolean) {
+    if (!on) { if (this.geigerTimer) clearTimeout(this.geigerTimer); this.geigerTimer = 0; return; }
+    if (this.geigerTimer) return;
+    const tick = () => {
+      if (this.settings.on && this.unlocked) {
+        this.ensure();
+        const c = this.ctx;
+        if (c && c.state === 'running') {
+          const t = c.currentTime;
+          // one or a quick double/triple click: tiny high-passed noise ticks
+          const n = Math.random() < 0.25 ? 2 + Math.floor(Math.random() * 2) : 1;
+          for (let i = 0; i < n; i++) this.burst(t + i * (0.012 + Math.random() * 0.02), 0.012, 0.16 + Math.random() * 0.1, 'highpass', 2400 + Math.random() * 1800);
+          this.played.geiger = (this.played.geiger ?? 0) + 1;
+        }
+      }
+      this.geigerTimer = window.setTimeout(tick, 40 + Math.random() * 220);
+    };
+    tick();
+  }
+
   /* ---------- playback ---------- */
   play(name: Sfx, opts: { delay?: number; gain?: number; dur?: number } = {}) {
     if (!this.settings.on || !this.unlocked) return;

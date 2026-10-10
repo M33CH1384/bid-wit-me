@@ -49,6 +49,10 @@ export interface SceneProps {
   hintLegal?: boolean;
   /** cards an open tip points at: they glow (on the table and in your hand) */
   marked?: Card[];
+  /** last-trick Big Joker waiting on the Little Joker: it pulses radioactive green */
+  radioactive?: boolean;
+  /** Reduce effects: a steady glow instead of the pulse + shimmer */
+  reduceFx?: boolean;
 }
 
 function CameraRig() {
@@ -204,7 +208,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
     : {};
   const trickScale = short ? 1.85 : undefined;
 
-  type Item = { key: string; card: Card | null; target: Xform; from?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: () => void; shadow?: boolean; duration?: number; arc?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean };
+  type Item = { radio?: boolean; key: string; card: Card | null; target: Xform; from?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: () => void; shadow?: boolean; duration?: number; arc?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean };
   const items: Item[] = [];
   const dealDelay = (slot: number, seat: number) => tl.shuffle + (slot * n + ((seat - dealer - 1 + n) % n)) * tl.step;
 
@@ -218,9 +222,12 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
     });
   }
   // cards on the table this trick
+  // last-trick nuke: the auto-played final cards fly in one after another, right into the blast
+  const firstAuto = shownTrick.findIndex((pl) => pl.auto);
   shownTrick.forEach((pl, order) => {
+    const autoDelay = pl.auto ? { delay: 0.35 + 0.12 * (order - firstAuto) } : {};
     const fanFrom = pl.seat === human ? undefined : opponentFan(positions[pl.seat]!, n, Math.max(0, handCounts[pl.seat]! - 1) / 2, handCounts[pl.seat]! + 1);
-    items.push({ key: `${handNo}-${pl.card}`, card: pl.card, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale), from: fanFrom, ...(props.landCue(pl.card).includes(',overcut') ? { duration: 0.34, arc: 0.7 } : { duration: 0.5, arc: 0.35 }), sfxLand: props.landCue(pl.card), glow: !!props.marked?.includes(pl.card) });
+    items.push({ key: `${handNo}-${pl.card}`, card: pl.card, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale), from: fanFrom, ...(props.landCue(pl.card).includes(',overcut') ? { duration: 0.34, arc: 0.7 } : { duration: 0.5, arc: 0.35 }), sfxLand: props.landCue(pl.card), glow: !!props.marked?.includes(pl.card), radio: !!props.radioactive && pl.card === 'BJ', ...autoDelay });
   });
   // opponents' fans
   for (let seat = 0; seat < n; seat++) {
@@ -287,6 +294,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
           sfxStart={it.sfxStart}
           sfxLand={it.sfxLand}
           blast={it.hand ? 'hand' : 'table'}
+          radioactive={it.radio ? (props.reduceFx ? 'steady' : 'pulse') : undefined}
         />
       ))}
       {wide && mine.length > 0 && <HandGlow aspect={aspect} count={mine.length} safeFrac={safeFrac} opts={fanOpts} />}

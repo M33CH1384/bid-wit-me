@@ -34,6 +34,14 @@ describe('rematch series', () => {
     expect(s.sides[0]!.name).toBe('Renamed'); // renaming keeps the series
     expect(s.note).toBeUndefined();
   });
+  it('counts 10+ books on the books-bid-themselves first hand as a made wheels (and a set 10+ bid as none)', () => {
+    const base = fakeOver(st, [520, 300], [0]);
+    const side = (side: number, tricks: number, contract: number, contractMade: boolean | null) => ({ side, seats: [side, side + 2], contract, contractTricks: tricks, tricks, contractMade, contractPoints: 0, nils: [], bagsAdded: 0, bagPenaltyCount: 0, bagPenaltyPoints: 0, bookPoints: 0, points: 0, totalScore: 0, totalBags: 0 });
+    const books = { ...base, history: [{ handNo: 1, dealer: 0, bids: ['books', 'books', 'books', 'books'], tricksWon: [6, 1, 4, 2], sides: [side(0, 10, 0, null), side(1, 3, 0, null)] }] } as unknown as GameState;
+    expect(summarizeGame(books, ['Us', 'Them'], 1, 1).wheels).toEqual([1, 0]);
+    const setTen = { ...base, history: [{ handNo: 2, dealer: 0, bids: [6, 1, 6, 2], tricksWon: [6, 1, 4, 2], sides: [side(0, 10, 12, false), side(1, 3, 3, true)] }] } as unknown as GameState;
+    expect(summarizeGame(setTen, ['Us', 'Them'], 1, 1).wheels).toEqual([0, 0]);
+  });
   it('resets when the team composition changes, with a note', () => {
     const g = summarizeGame(fakeOver(st, [520, 300], [0]), ['Us', 'Them'], 1, 1);
     const s1 = addSeriesGame(null, 'joker', sides, g);

@@ -7,7 +7,7 @@
  * a team keeps the series while a partner swap resets it.
  */
 import type { GameState } from './game';
-import { sideCount, sideOf } from './scoring';
+import { isBooksHand, sideCount, sideOf } from './scoring';
 
 export const SERIES_VERSION = 1;
 
@@ -83,7 +83,8 @@ export function summarizeGame(st: GameState, names: readonly string[], no: numbe
   for (const h of st.history) {
     for (const s of h.sides) {
       if (s.contractMade === false) sets[s.side]!++;
-      if (st.rules.partnerships ? s.contract >= 10 && s.contractMade === true : s.tricks >= 10) wheels[s.side]!++;
+      // team wheels: a made 10+ bid, or 10+ books on the first hand where books bid themselves (no bids that hand)
+      if (st.rules.partnerships ? (s.contract >= 10 && s.contractMade === true) || (isBooksHand(h.bids) && s.tricks >= 10) : s.tricks >= 10) wheels[s.side]!++;
       for (const nil of s.nils) { if (nil.made) nilsMade[s.side]!++; else nilsBusted[s.side]!++; }
     }
   }

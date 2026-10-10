@@ -35,7 +35,8 @@ export type GameAction =
   | { type: 'reveal' }
   | { type: 'bid'; bid: number | 'nil' | 'blindNil' }
   | { type: 'exchange'; cards: Card[] }
-  | { type: 'play'; card: Card };
+  | { type: 'play'; card: Card }
+  | { type: 'runIt' };
 
 export interface MediaState { cam: boolean; mic: boolean }
 
@@ -184,6 +185,7 @@ function parseAction(a: unknown): GameAction | null {
       return Array.isArray(a.cards) && a.cards.length <= 2 && a.cards.every((c) => isStr(c, 2)) ? { type: 'exchange', cards: a.cards as Card[] } : null;
     case 'play':
       return isStr(a.card, 2) ? { type: 'play', card: a.card as Card } : null;
+    case 'runIt': return { type: 'runIt' };
     default: return null;
   }
 }

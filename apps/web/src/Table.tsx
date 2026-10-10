@@ -1,6 +1,6 @@
 import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
-  type Card, type GameState, type TableRules, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, partnerOf, sideOf, sortHand, trumpOrder,
+  type Card, type GameState, type TableRules, radioactiveBigJoker, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, partnerOf, sideOf, sortHand, trumpOrder,
 } from '@spades/rules';
 import { ScorePad, defaultSideName, setTeamNames, sideName } from './Modals';
 import { type Series, addSeriesGame, seriesSides, summarizeGame } from '@spades/rules';
@@ -11,7 +11,7 @@ import { showLine, speakBot, useTalkPrefs } from './talkPrefs';
 import { pickTeamName } from '@spades/protocol';
 import { Intermission, calloutsFor } from './Intermission';
 import Hype from './Hype';
-import { landCueFor, wheelsFor, wheelsMade, wheelsTenth } from './landCue';
+import { landCueFor, wheelsFor, wheelsMade, wheelsTenth, wheelsTenthBooks } from './landCue';
 import Feedback from './Feedback';
 import { setFeedbackGame } from './feedbackContext';
 import { loadTipJar, openTip, saveTipJar, tipNudgeDue } from './support';
@@ -177,12 +177,19 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
       push('System', `🏎 Wheels! ${names[s]} took a 10th book`, true);
       window.setTimeout(() => fx.emit('wheelsCar', { text: `${names[s]} · 10 books` }), 900);
     }
+    // first hand (books bid themselves, so no bids): a team's 10th book of the hand → the same celebration
+    if (st.handNo === p.handNo) for (const side of wheelsTenthBooks(r, st.bids, p.tricksWon, st.tricksWon)) {
+      const who = sideName(r, side, names);
+      push('System', `🏎 Wheels! ${who} took 10 books`, true);
+      window.setTimeout(() => fx.emit('wheelsCar', { text: `${who} · 10 books` }), 900);
+    }
     // tricks
     if (st.tricks.length > p.tricks.length && st.handNo === p.handNo) {
       const t = st.tricks[st.tricks.length - 1]!;
       const winCard = t.plays.find((x) => x.seat === t.winner)!.card;
       const led = t.plays[0]!.card;
       void winCard; void led; // bot reactions to plays come from the trash-talk engine (offlineTalk)
+      if (t.plays.some((x) => x.auto)) push('System', '☢ Nuked — remaining cards auto-played', true);
     }
     // hand scored
     if (st.history.length > p.history.length) {
@@ -518,6 +525,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (!online && replies) { const bots = names.slice(1); push(pick(bots), pick(replies), false, 900 + Math.random() * 700); }
   };
   const reduceFx = useReduceEffects();
+  // last trick: Big Joker down, Little Joker still out → radioactive pulse + Geiger crackle until the trick resolves
+  const radioactive = radioactiveBigJoker(st);
+  useEffect(() => { sound.geiger(radioactive); return () => sound.geiger(false); }, [radioactive]);
   // any modal up: the table, plates, chat, video bubbles etc. dim + blur behind it and can't paint over it
   const modalOpen = (st.phase === 'handOver' && !pause && talkOpen) || confirmLeave || showPad || (st.phase === 'gameOver' && !pause && !!st.result);
 
@@ -589,6 +599,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           myHand={hand}
           handCounts={view.handCounts}
           shownTrick={shownTrick.plays}
+          radioactive={radioactive}
+          reduceFx={reduceFx}
           piles={piles}
           legal={humanExchanging && hand ? hand : legal}
           selected={selected}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CLASSIC_JOKER, type Card, type GameState, type TableRules, scoreHand, isFreshDeal, RuleError, applyAction, bidOptions, buildDeck, deckForHand, legalPlays, legalPlaysFor, effectiveSuit,
-  makeRules, newGame as realNewGame, pendingTurn, trickWinner, viewFor, viewMustLeadTwoOfClubs, RulesConfigError,
+  makeRules, newGame as realNewGame, pendingTurn, trickWinner, viewFor, viewMustLeadTwoOfClubs, RulesConfigError, lowestLegal, radioactiveBigJoker, canRunIt, type Play, type Trick,
 } from '../src';
 import { bidAll, fill, play, rigged } from './helpers';
 
@@ -416,5 +416,106 @@ describe('first hand: books bid themselves', () => {
   it('the host can switch it off', () => {
     const st = realNewGame(makeRules('aceDown', { firstHandBidsItself: false }), 'off');
     expect(st.phase).toBe('bidding');
+  });
+});
+
+describe('last-trick nuke auto-finish (Joker Spades)', () => {
+  // a hand on its final trick: every seat holds one card; seat 0 leads
+  const lastTrick = (cards: Card[]): GameState => {
+    const st = rigged(joker, cards.map((c) => [c]));
+    const filler: Trick = { leader: 0, plays: [], winner: 0 };
+    return { ...st, phase: 'playing', bids: [3, 3, 3, 3], tricks: Array(12).fill(filler), tricksWon: [3, 3, 3, 3], turn: 0, trick: { leader: 0, plays: [], winner: null }, spadesBroken: true };
+  };
+  it('Big Joker leads, Little Joker lands: the rest auto-play their last card and the Big Joker wins', () => {
+    const after = play(lastTrick(['BJ', 'LJ', '4H', '5C']), 'BJ', 'LJ');
+    const t = after.tricks[after.tricks.length - 1]!;
+    expect(t.plays).toEqual([{ seat: 0, card: 'BJ' }, { seat: 1, card: 'LJ' }, { seat: 2, card: '4H', auto: true }, { seat: 3, card: '5C', auto: true }]);
+    expect(t.winner).toBe(0);
+    expect(after.hands.every((h) => h.length === 0)).toBe(true);
+    expect(after.phase === 'handOver' || after.phase === 'gameOver').toBe(true);
+    expect(after.history[after.history.length - 1]!.tricksWon).toEqual([4, 3, 3, 3]);
+  });
+  it('Little Joker first, Big Joker over it: same auto-finish, the Big Joker wins (and counts the nuke)', () => {
+    const after = play(lastTrick(['LJ', 'BJ', '7S', '9D']), 'LJ', 'BJ');
+    const t = after.tricks[after.tricks.length - 1]!;
+    expect(t.plays.slice(2)).toEqual([{ seat: 2, card: '7S', auto: true }, { seat: 3, card: '9D', auto: true }]);
+    expect(t.winner).toBe(1);
+    expect(after.nukes).toEqual([0, 1]);
+  });
+  it('Jokers meeting as the last two cards: nothing left to auto-play', () => {
+    let st = play(lastTrick(['4H', '5H', 'BJ', 'LJ']), '4H', '5H', 'BJ', 'LJ');
+    const t = st.tricks[st.tricks.length - 1]!;
+    expect(t.plays.some((p) => p.auto)).toBe(false);
+    expect(t.winner).toBe(2);
+  });
+  it('radioactive Big Joker: only on the last trick, Big Joker down, Little Joker not seen yet this hand', () => {
+    const st = lastTrick(['BJ', '3H', '4H', 'LJ']);
+    expect(radioactiveBigJoker(st)).toBe(false);                 // nothing played yet
+    const bj = play(st, 'BJ');
+    expect(radioactiveBigJoker(bj)).toBe(true);
+    expect(radioactiveBigJoker(play(bj, '3H', '4H'))).toBe(true); // still waiting on the last seat
+    const early = { ...bj, tricks: bj.tricks.slice(1) };           // not the last trick
+    expect(radioactiveBigJoker(early)).toBe(false);
+    const seen = { ...bj, tricks: [...bj.tricks.slice(1), { leader: 0, plays: [{ seat: 3, card: 'LJ' as Card }], winner: 3 }] };
+    expect(radioactiveBigJoker(seen)).toBe(false);               // Little Joker already played earlier this hand
+  });
+  it('earlier tricks play out normally: no auto-play when both Jokers meet before the last trick', () => {
+    const hands = fill(joker, [['BJ', '3H'], ['LJ', '4H'], ['5H'], ['6H']]);
+    let st = bidAll(rigged(joker, hands, 3), [3, 3, 3, 3]);
+    st = { ...st, spadesBroken: true };
+    st = play(st, 'BJ', 'LJ');
+    expect(st.trick.plays).toHaveLength(2);
+    expect(st.turn).toBe(2);
+  });
+  it('lowestLegal: follows suit with its lowest card, else lowest non-trump, else lowest trump (never a renege)', () => {
+    const led: Play[] = [{ seat: 0, card: 'BJ' }]; // a Joker lead counts as spades
+    expect(lowestLegal(joker, ['9S', '4S', '3H'], led, true)).toBe('4S');
+    expect(lowestLegal(joker, ['KD', '5C', 'QH'], led, true)).toBe('5C');
+    expect(lowestLegal(joker, ['QH', '9H'], [{ seat: 0, card: 'AH' }], true)).toBe('9H');
+    expect(lowestLegal(joker, ['AS', 'LJ', '2D'], [{ seat: 0, card: 'AH' }], true)).toBe('AS');
+    for (const hand of [['9S', '4S', '3H'], ['KD', '5C'], ['3S']] as Card[][]) expect(legalPlaysFor(joker, hand, led, true)).toContain(lowestLegal(joker, hand, led, true));
+  });
+});
+
+describe("'Run it!' guarantee solver", () => {
+  // seat 0 on lead with `cards[0]`, the others holding cards[1..3]; earlier tricks are filler
+  const late = (cards: Card[][], broken = true): GameState => {
+    const st = rigged(joker, cards);
+    const filler: Trick = { leader: 0, plays: [], winner: 1 };
+    const left = cards[0]!.length;
+    return { ...st, phase: 'playing', bids: [3, 3, 3, 3], tricks: Array(13 - left).fill(filler), tricksWon: [3, 3, 3, 13 - left - 9], turn: 0, trick: { leader: 0, plays: [], winner: null }, spadesBroken: broken };
+  };
+  it('both Jokers: guaranteed, and running it credits every book (marked as a run)', () => {
+    const st = late([['BJ', 'LJ'], ['3H', '4H'], ['5C', '6C'], ['3S', '7D']]);
+    expect(canRunIt(st, 0)).toBe(true);
+    const after = applyAction(st, { type: 'runIt', seat: 0 });
+    expect(after.phase === 'handOver' || after.phase === 'gameOver').toBe(true);
+    expect(after.history[after.history.length - 1]!.tricksWon[0]).toBe(5);
+    expect(after.tricks.slice(-2).every((t) => t.winner === 0 && t.plays.every((p) => p.run))).toBe(true);
+    expect(viewFor(st, 0).canRunIt).toBe(true);
+    expect(viewFor(st, 1).canRunIt).toBe(false);
+  });
+  it('a seemingly strong hand (A♥ K♥ A♦) loses to a cut: not guaranteed, and the claim is refused', () => {
+    const st = late([['AH', 'KH', 'AD'], ['3H', '4H', '5H'], ['6H', '7D', '8D'], ['4S', '7C', '8C']]);
+    expect(canRunIt(st, 0)).toBe(false);
+    expectRuleError(() => applyAction(st, { type: 'runIt', seat: 0 }), 'CANNOT_RUN_IT');
+  });
+  it('even the partner can spoil it (the claimer must take every trick itself)', () => {
+    expect(canRunIt(late([['AH', 'KH'], ['3H', '4H'], ['5S', '6C'], ['5H', '6H']]), 0)).toBe(false);
+  });
+  it('breaking spades decides it: A♠ A♥ runs only once spades are broken', () => {
+    const cards: Card[][] = [['AS', 'AH'], ['5S', '9C'], ['3H', '4C'], ['4H', '5C']];
+    expect(canRunIt(late(cards, true), 0)).toBe(true);   // A♠ first draws the 5♠, then A♥ is safe
+    expect(canRunIt(late(cards, false), 0)).toBe(false); // must lead A♥ first → cut by the 5♠
+  });
+  it('Joker trump order: a lone K♠ is not safe while the 2♦ is still out', () => {
+    expect(canRunIt(late([['KS', 'QS'], ['2D', '3H'], ['4H', '5H'], ['6H', '7H']]), 0)).toBe(false);
+    expect(canRunIt(late([['2D', 'KS'], ['QS', '3H'], ['4H', '5H'], ['6H', '7H']]), 0)).toBe(true);
+  });
+  it('only on lead, with 2..4 cards left', () => {
+    expect(canRunIt(late([['BJ'], ['3H'], ['4H'], ['5H']]), 0)).toBe(false); // 1 card: just play it
+    const five = late([['BJ', 'LJ', '2D', '2S', 'AS'], ['3H', '4H', '5H', '6H', '7H'], ['3C', '4C', '5C', '6C', '7C'], ['3D', '4D', '5D', '6D', '7D']]);
+    expect(canRunIt(five, 0)).toBe(false);
+    expect(canRunIt(late([['BJ', 'LJ'], ['3H', '4H'], ['5C', '6C'], ['3S', '7D']]), 1)).toBe(false);
   });
 });

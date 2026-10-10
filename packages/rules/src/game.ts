@@ -9,7 +9,8 @@ import {
 export type Seat = number;
 export type Phase = 'bidding' | 'exchange' | 'playing' | 'handOver' | 'gameOver';
 
-export interface Play { seat: Seat; card: Card }
+/** `auto`: played automatically when both Jokers landed in the trick (the nuke auto-finish); counts as that seat's play. */
+export interface Play { seat: Seat; card: Card; auto?: true; /** played out by a 'Run it!' claim */ run?: true }
 export interface Trick { leader: Seat; plays: Play[]; winner: Seat | null }
 export interface ExchangeStep { from: Seat; to: Seat; count: number }
 
@@ -52,12 +53,14 @@ export type Action =
   | { type: 'bid'; seat: Seat; bid: Bid }
   | { type: 'exchange'; seat: Seat; cards: Card[] }
   | { type: 'play'; seat: Seat; card: Card }
+  /** 'Run it!': the seat on lead claims every remaining trick (only legal when runItLine() proves it's guaranteed) */
+  | { type: 'runIt'; seat: Seat }
   | { type: 'nextHand' };
 
 export type RuleErrorCode =
   | 'WRONG_PHASE' | 'NOT_YOUR_TURN' | 'BAD_SEAT' | 'BAD_BID' | 'BID_TOO_LOW' | 'NIL_NOT_ALLOWED'
   | 'BLIND_NIL_NOT_ALLOWED' | 'CARD_NOT_IN_HAND' | 'MUST_FOLLOW_SUIT' | 'SPADES_NOT_BROKEN'
-  | 'MUST_LEAD_TWO_OF_CLUBS' | 'BAD_EXCHANGE' | 'ALREADY_REVEALED';
+  | 'MUST_LEAD_TWO_OF_CLUBS' | 'BAD_EXCHANGE' | 'ALREADY_REVEALED' | 'CANNOT_RUN_IT';
 
 export class RuleError extends Error {
   constructor(public readonly code: RuleErrorCode, message: string) {
@@ -195,6 +198,98 @@ export function legalPlaysFor(
   return follow.length ? follow : [...hand];
 }
 
+/**
+ * Nuke auto-finish (last trick only): the card a seat plays automatically once both Jokers are in the trick — its LOWEST LEGAL card
+ * (follow the led suit if it can; otherwise its lowest non-trump; otherwise its lowest trump). Renege rules hold
+ * because the pick always comes from legalPlaysFor.
+ */
+export function lowestLegal(r: TableRules, hand: readonly Card[], trickPlays: readonly Play[], spadesBroken: boolean): Card {
+  const legal = legalPlaysFor(r, hand, trickPlays, spadesBroken);
+  const non = legal.filter((c) => !isTrump(c, r));
+  const pool = non.length ? non : legal;
+  // lowest by rank first (cardPower is comparable within a suit and roughly by rank across suits), ties by suit order
+  return [...pool].sort((a, b) => cardPower(a, r) - cardPower(b, r) || (a < b ? -1 : 1))[0]!;
+}
+
+/**
+ * Last trick of the hand, the Big Joker is on the table and the Little Joker hasn't shown up anywhere this hand: by
+ * elimination someone still to play holds it, so the Big Joker "goes radioactive". Public information only.
+ */
+export function radioactiveBigJoker(st: Pick<GameState, 'rules' | 'phase' | 'tricks' | 'trick'>): boolean {
+  if (st.rules.deck !== 'joker54' || st.phase !== 'playing' || st.tricks.length !== handSize(st.rules) - 1) return false;
+  if (!st.trick.plays.some((p) => p.card === 'BJ')) return false;
+  return !st.trick.plays.some((p) => p.card === 'LJ') && !st.tricks.some((t) => t.plays.some((p) => p.card === 'LJ'));
+}
+
+/* ------------------------------------------------------------- Run it! */
+
+/** 'Run it!' is a late-hand claim: on lead with 2..RUN_IT_MAX cards left. */
+export const RUN_IT_MAX = 4;
+
+/**
+ * Exact minimax with full information: can `seat` (on lead, trick empty) win EVERY remaining trick itself, choosing its
+ * own leads, whatever the other players (partner included) legally play? Runs on the real engine (applyAction), so the
+ * trump order, Ace Down, breaking spades and the last-trick nuke all apply. Returns a winning first lead, or null.
+ */
+function guaranteedLead(st: GameState, seat: Seat): Card | null {
+  const memo = new Map<string, boolean>();
+  const lead = (s: GameState): Card | null | 'done' => {
+    if (s.phase !== 'playing' || s.hands[seat]!.length === 0) return 'done';
+    if (s.turn !== seat || s.trick.plays.length) return null;
+    for (const c of legalPlays(s, seat)) if (wins(applyAction(s, { type: 'play', seat, card: c }), s.tricks.length)) return c;
+    return null;
+  };
+  // after the claimer's lead: every legal response sequence must leave the claimer winning this trick and still able to win out
+  const wins = (s: GameState, done: number): boolean => {
+    if (s.tricks.length > done) {
+      if (s.tricks[done]!.winner !== seat) return false;
+      const key = s.hands.map((h) => [...h].sort().join('.')).join('|') + (s.spadesBroken ? '!' : '');
+      let ok = memo.get(key);
+      if (ok === undefined) { ok = lead(s) !== null; memo.set(key, ok); }
+      return ok;
+    }
+    const who = s.turn!;
+    for (const c of legalPlays(s, who)) if (!wins(applyAction(s, { type: 'play', seat: who, card: c }), done)) return false;
+    return true;
+  };
+  const c = lead(st);
+  return c === 'done' ? null : c;
+}
+
+/** True when `seat` may claim 'Run it!': on lead, 2..RUN_IT_MAX cards left, and every remaining book is guaranteed. */
+export function canRunIt(st: GameState, seat: Seat): boolean {
+  if (st.phase !== 'playing' || st.turn !== seat || st.trick.plays.length !== 0) return false;
+  const left = st.hands[seat]!.length;
+  return left >= 2 && left <= RUN_IT_MAX && guaranteedLead(st, seat) !== null;
+}
+
+/**
+ * Plays a guaranteed 'Run it!' out as if it were played: each trick the claimer leads a proven winning card, everyone
+ * else plays their lowest legal card; every play is marked `run`. Equivalent to playing it out, so scoring, history,
+ * stats and the nuke trigger all stay exact.
+ */
+function playOutRun(st: GameState, seat: Seat): GameState {
+  if (!canRunIt(st, seat)) throw new RuleError('CANNOT_RUN_IT', 'Running the rest is only allowed when every remaining book is guaranteed');
+  const fromTricks = st.tricks.length;
+  let s = st;
+  while (s.phase === 'playing') {
+    const card = guaranteedLead(s, seat);
+    if (!card) throw new Error('run it: lost the guaranteed line'); // can't happen: the first lead was proven for every response
+    const done = s.tricks.length;
+    s = applyAction(s, { type: 'play', seat, card });
+    while (s.phase === 'playing' && s.tricks.length === done) {
+      const who = s.turn!;
+      s = applyAction(s, { type: 'play', seat: who, card: lowestLegal(s.rules, s.hands[who]!, s.trick.plays, s.spadesBroken) });
+    }
+  }
+  return { ...s, tricks: s.tricks.map((t, i) => (i >= fromTricks ? { ...t, plays: t.plays.map((p) => ({ ...p, run: true as const })) } : t)) };
+}
+
+/** Both Jokers are in this (partial) trick: the nuke. */
+export function jokersMet(plays: readonly Play[]): boolean {
+  return plays.some((p) => p.card === 'BJ') && plays.some((p) => p.card === 'LJ');
+}
+
 function mustLead2C(st: GameState): boolean {
   return st.rules.firstLead === 'twoOfClubs' && st.tricks.length === 0;
 }
@@ -306,6 +401,11 @@ export function applyAction(st: GameState, action: Action): GameState {
       const next: GameState = { ...st, hands, exchange: rest };
       return rest.length ? { ...next, turn: rest[0]!.from } : startPlay(next);
     }
+    case 'runIt': {
+      if (st.phase !== 'playing') throw new RuleError('WRONG_PHASE', 'Not in trick play');
+      if (st.turn !== seat) throw new RuleError('NOT_YOUR_TURN', 'Not your turn');
+      return playOutRun(st, seat);
+    }
     case 'play': {
       if (st.phase !== 'playing') throw new RuleError('WRONG_PHASE', 'Not in trick play');
       if (st.turn !== seat) throw new RuleError('NOT_YOUR_TURN', 'Not your turn to play');
@@ -313,8 +413,18 @@ export function applyAction(st: GameState, action: Action): GameState {
       if (!legal.includes(action.card)) throw explainIllegal(st, seat, action.card);
       const hands = [...st.hands];
       hands[seat] = hands[seat]!.filter((c) => c !== action.card);
-      const plays = [...st.trick.plays, { seat, card: action.card }];
-      const spadesBroken = st.spadesBroken || isTrump(action.card, r);
+      const plays: Play[] = [...st.trick.plays, { seat, card: action.card }];
+      let spadesBroken = st.spadesBroken || isTrump(action.card, r);
+      // ☢ last-trick nuke: once both Jokers are in the hand's final trick, everyone still to play auto-plays their last
+      // card at once (one card each, so no choice is made for them); other tricks play out normally
+      if (st.tricks.length === handSize(r) - 1 && jokersMet(plays)) {
+        for (let k = plays.length, s2 = (seat + 1) % n; k < n; k++, s2 = (s2 + 1) % n) {
+          const card = lowestLegal(r, hands[s2]!, plays, spadesBroken);
+          hands[s2] = hands[s2]!.filter((c) => c !== card);
+          plays.push({ seat: s2, card, auto: true });
+          spadesBroken = spadesBroken || isTrump(card, r);
+        }
+      }
       if (plays.length < n) {
         return { ...st, hands, spadesBroken, trick: { ...st.trick, plays }, turn: (seat + 1) % n };
       }
@@ -384,6 +494,8 @@ export interface PlayerView {
   result: GameResult | null;
   bidOptions: BidOptions | null;
   legal: Card[];
+  /** this seat is on lead and provably wins every remaining trick: 'Run it!' is available (computed with full info) */
+  canRunIt?: boolean;
 }
 
 export function viewFor(st: GameState, seat: Seat): PlayerView {
@@ -397,6 +509,7 @@ export function viewFor(st: GameState, seat: Seat): PlayerView {
     scores: [...st.scores], bags: [...st.bags], history: st.history, result: st.result,
     bidOptions: st.phase === 'bidding' && st.turn === seat ? bidOptions(st, seat) : null,
     legal: legalPlays(st, seat),
+    canRunIt: canRunIt(st, seat),
   };
 }
 

@@ -439,6 +439,7 @@ export class Room {
       const action: Action = a.type === 'reveal' ? { type: 'reveal', seat: me.seat }
         : a.type === 'bid' ? { type: 'bid', seat: me.seat, bid: a.bid }
         : a.type === 'exchange' ? { type: 'exchange', seat: me.seat, cards: a.cards }
+        : a.type === 'runIt' ? { type: 'runIt', seat: me.seat }
         : { type: 'play', seat: me.seat, card: a.card };
       this.apply(action);
       me.timeouts = 0;

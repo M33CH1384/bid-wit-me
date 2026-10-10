@@ -21,13 +21,13 @@ export const TALK = {
   chance: {
     prePlay: 0.12, cut: 0.55, gotCut: 0.3, overcut: 0.7, joker: 0.45, nuke: 1, gotNuked: 0.8, setThem: 0.85, gotSet: 0.4,
     made: 0.3, bigBid: 0.5, roastBid: 0.35, wheels: 0.95, nilMade: 0.7, nilBust: 0.8, bags: 0.6, duck: 0.18, slow: 0.6,
-    streak: 0.5, win: 1, lose: 0.9, rematch: 0.8, hypePartner: 0.55, newbie: 0.3, reveal: 1,
+    streak: 0.5, runIt: 1, gotRan: 0.6, win: 1, lose: 0.9, rematch: 0.8, hypePartner: 0.55, newbie: 0.3, reveal: 1,
   } as Record<TalkKind, number>,
   recentMax: 14,
 };
-const BIG: TalkKind[] = ['nuke', 'gotNuked', 'wheels', 'win', 'lose', 'reveal', 'rematch'];
+const BIG: TalkKind[] = ['nuke', 'gotNuked', 'wheels', 'runIt', 'win', 'lose', 'reveal', 'rematch'];
 /** the losing side's take on a moment */
-const MIRROR: Partial<Record<TalkKind, TalkKind>> = { cut: 'gotCut', overcut: 'gotCut', nuke: 'gotNuked', setThem: 'gotSet', win: 'lose' };
+const MIRROR: Partial<Record<TalkKind, TalkKind>> = { cut: 'gotCut', overcut: 'gotCut', nuke: 'gotNuked', setThem: 'gotSet', win: 'lose', runIt: 'gotRan' };
 /** moments where the Hustler drops the act (when it did it) */
 const REVEAL_ON: TalkKind[] = ['cut', 'overcut', 'setThem'];
 /** a human did something good: their bot partner may hype them */

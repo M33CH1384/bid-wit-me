@@ -22,6 +22,8 @@ export type TalkKind =
   | 'bigBid'       // speaker's side bid big
   | 'roastBid'     // roast the other side's bid (too big or scared-small)
   | 'wheels'
+  | 'runIt'        // speaker (or its side) ran the board ('Run it!')
+  | 'gotRan'       // the other side ran the board on us
   | 'nilMade' | 'nilBust'   // speaker's side Nil made / opponents' Nil busted
   | 'bags'         // other side ate a bag penalty
   | 'duck'         // an opponent ducked low off-suit (reneg-looking)
@@ -65,6 +67,8 @@ export const COMMON: Partial<Record<TalkKind, string[]>> = {
   made: ['bid made. easy work.', 'we said {bid}, we got {bid}. accountants.', 'just like we drew it up.'],
   bigBid: ['{bid}. you heard me.', 'we going for {bid}. hold on.', "big bid energy. {bid}."],
   roastBid: ["{bid}? y'all scared money.", '{bid} is brave. wrong, but brave.', "bidding {bid} with that hand? bold."],
+  runIt: ['run it. 🌪 the rest are mine.', 'y\'all can put your cards down. I got these.', 'no need to play it out, {opp}. it\'s over.', 'tornado warning 🌪 take cover {opp}.', 'I been counting. y\'all done.'],
+  gotRan: ['ran the board on us? rude.', 'ok ok, show-off.', 'we\'ll remember that one.'],
   wheels: ['WHEELS! 🏎️ we outta here.', 'ten books, top down, wind in my hair.', 'WHEELS UP, {opp} WHEELS DOWN.'],
   nilMade: ['nil made. nothing to see here 😌', 'zero books, all the points.'],
   nilBust: ['nil BUSTED 💥 nice try {them}.', 'nil? more like nil-not.'],

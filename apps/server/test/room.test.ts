@@ -34,7 +34,7 @@ function playTurn(env: FakeEnv, cids: string[]): boolean {
     if (v.turn !== v.seat) continue;
     const a = chooseBotAction(v, 'normal');
     if (!a) continue;
-    const action: GameAction = a.type === 'reveal' ? { type: 'reveal' } : a.type === 'bid' ? { type: 'bid', bid: a.bid } : a.type === 'play' ? { type: 'play', card: a.card } : { type: 'exchange', cards: (a as { cards: Card[] }).cards };
+    const action: GameAction = a.type === 'reveal' ? { type: 'reveal' } : a.type === 'bid' ? { type: 'bid', bid: a.bid } : a.type === 'play' ? { type: 'play', card: a.card } : a.type === 'runIt' ? { type: 'runIt' } : { type: 'exchange', cards: (a as { cards: Card[] }).cards };
     env.send(cid, { t: 'act', action });
     return true;
   }
@@ -724,5 +724,36 @@ describe('AFK + kicking', () => {
     expect(env.room.data.chat.some((l) => l.text.startsWith('Jo was voted off the table'))).toBe(true);
     // the next game lets them back
     expect(env.room.data.kicked).toHaveLength(1);
+  });
+});
+
+describe("'Run it!' over the protocol", () => {
+  it('a guaranteed claim is applied server-side, credits every remaining book, and a repeat is refused (idempotent)', () => {
+    const { env } = fourHumans();
+    env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: 250 }) });
+    env.send('a', { t: 'start' });
+    const cids = ['a', 'b', 'c', 'd'];
+    let ran: { cid: string; handNo: number } | null = null;
+    const runSeat = () => env.room.data.game?.tricks.find((t) => t.plays.some((p) => p.run))?.plays[0]!.seat;
+    // bots' logic (65% when guaranteed) or this loop claims as soon as a seat may run it
+    for (let i = 0; i < 20000 && env.room.data.phase === 'playing' && runSeat() === undefined; i++) {
+      for (const cid of cids) {
+        const v = env.last(cid, 'state')?.view;
+        if (v?.canRunIt && v.turn === v.seat) { env.send(cid, { t: 'act', action: { type: 'runIt' } }); break; }
+      }
+      if (runSeat() === undefined && !playTurn(env, cids)) env.advance(100);
+    }
+    if (runSeat() !== undefined) ran = { cid: cids[runSeat()!]!, handNo: env.room.data.game!.handNo };
+    expect(ran).not.toBeNull();
+    const g = env.room.data.game!;
+    const runTricks = g.tricks.filter((t) => t.plays.some((p) => p.run));
+    expect(runTricks.length).toBeGreaterThanOrEqual(2);
+    const claimer = runTricks[0]!.plays[0]!.seat;
+    expect(runTricks.every((t) => t.winner === claimer)).toBe(true);
+    expect(g.hands.every((h) => h.length === 0)).toBe(true);
+    const errs = env.errors(ran!.cid).length;
+    env.send(ran!.cid, { t: 'act', action: { type: 'runIt' } });
+    expect(env.errors(ran!.cid).length).toBe(errs + 1);
+    expect(env.room.data.game!.tricks.length).toBe(g.tricks.length);
   });
 });

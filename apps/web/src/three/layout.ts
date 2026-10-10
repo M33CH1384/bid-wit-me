@@ -214,7 +214,10 @@ export function handFan(aspect: number, count: number, i: number, lift: number, 
   const xo = halfN * L.step;
   const lowest = xo * xo * L.curveK + (L.ch / 2) * Math.cos(L.maxRoll) + (L.cw / 2) * Math.sin(L.maxRoll);
   const y = -L.viewH / 2 + L.viewH * (0.015 + (o.bottomFrac ?? 0)) + lowest - curve + lift * L.ch;
-  const depth = 1 - (i + 1) * 0.0015 - (lift > 0.2 ? 0.01 : 0); // z-order only; projection is depth-compensated
+  // z-order only (projection is depth-compensated): later cards sit on earlier ones, but every raised card (playable /
+  // selected) comes forward past the whole fan (13 × 0.0015 < 0.03), so it and its glow draw over the cards on both
+  // sides while raised cards keep their fan order among themselves; the raycast picks that same topmost card
+  const depth = 1 - (i + 1) * 0.0015 - (lift > 0 ? 0.03 : 0) - (lift > 0.2 ? 0.025 : 0); // the selected card tops the raised ones too
   const local = new Matrix4().compose(
     new Vector3(x * depth, y * depth, -depth),
     new Quaternion().setFromEuler(new Euler(0, 0, roll, 'XYZ')),

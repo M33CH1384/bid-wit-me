@@ -14,6 +14,8 @@ export function momentsFor(before: GameState, action: Action, after: GameState):
     const s = after.scores; const others = s.filter((_, i) => i !== side);
     return (s[side] ?? 0) - Math.max(...others, -Infinity);
   };
+  // 'Run it!': the claimer speaks first (its own line), the other side may grumble
+  if (action.type === 'runIt') out.push({ kind: 'runIt', side: sideOf(action.seat, r), seat: action.seat, gap: gapFor(sideOf(action.seat, r)) });
   if (action.type === 'play') {
     const plays = before.trick.plays;
     const card = action.card as Card;
@@ -44,7 +46,7 @@ export function momentsFor(before: GameState, action: Action, after: GameState):
     const h = after.history[after.history.length - 1]!;
     for (const s of h.sides) {
       const other = r.partnerships ? 1 - s.side : undefined;
-      if (r.partnerships ? s.contract >= 10 && s.contractMade : s.tricks >= 10) out.push({ kind: 'wheels', side: s.side, seat: s.seats[0], bid: s.contract, gap: gapFor(s.side) });
+      if (r.partnerships ? (s.contract >= 10 && s.contractMade) || (h.bids.every((b) => b === 'books') && s.tricks >= 10) : s.tricks >= 10) out.push({ kind: 'wheels', side: s.side, seat: s.seats[0], bid: s.contract, gap: gapFor(s.side) });
       for (const n of s.nils) {
         if (n.made) out.push({ kind: 'nilMade', side: s.side, seat: n.seat });
         else if (other !== undefined) out.push({ kind: 'nilBust', side: other, them: n.seat });

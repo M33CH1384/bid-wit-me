@@ -14,7 +14,10 @@ const tmp = '/tmp/nuke-frames';
 rmSync(tmp, { recursive: true, force: true }); mkdirSync(tmp, { recursive: true });
 const b = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl'] });
 const errors = [];
-const p = await (await b.newContext({ viewport: { width: 1280, height: 720 } })).newPage();
+// NUKE_SIZE=390x844 (phone portrait) etc.: stills at another aspect ratio, saved as nuke-v2-<size>-*.png (fps 0 = no video)
+const [vw, vh] = (process.env.NUKE_SIZE ?? '1280x720').split('x').map(Number);
+const tag = process.env.NUKE_SIZE ? `-${process.env.NUKE_SIZE}` : '';
+const p = await (await b.newContext({ viewport: { width: vw, height: vh } })).newPage();
 p.on('pageerror', (e) => errors.push(String(e)));
 p.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 await p.goto(base);
@@ -45,13 +48,13 @@ const shot = async (path, t) => {
 await p.evaluate(() => { window.__bwmFx.warp = 0; window.__bwmFx.emit('nuke', { silent: true }); });
 await p.waitForTimeout(500); // blast impulse + effect mounted
 const strip = [['flash', 0.36], ['fireball', 0.75], ['mushroom', 1.9], ['ash', 3.0]];
-for (const [name, t] of strip) await shot(`${out}/nuke-v2-${name}.png`, t);
+for (const [name, t] of strip) await shot(`${out}/nuke-v2${tag}-${name}.png`, t);
 const total = Math.round(4.0 * fps);
 for (let f = 0; f < total; f++) await shot(`${tmp}/f${String(f).padStart(4, '0')}.png`, f / fps);
 await p.evaluate(() => { window.__bwmFx.warp = null; document.getAnimations().forEach((a) => a.play()); });
 await b.close();
-execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', `${out}/nuke-v2-flash.png`, '-i', `${out}/nuke-v2-fireball.png`, '-i', `${out}/nuke-v2-mushroom.png`, '-i', `${out}/nuke-v2-ash.png`,
-  '-filter_complex', '[0]scale=640:-1[a];[1]scale=640:-1[b];[2]scale=640:-1[c];[3]scale=640:-1[d];[a][b][c][d]xstack=inputs=4:layout=0_0|w0_0|0_h0|w0_h0', `${out}/nuke-v2-strip.png`]);
+execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', `${out}/nuke-v2${tag}-flash.png`, '-i', `${out}/nuke-v2${tag}-fireball.png`, '-i', `${out}/nuke-v2${tag}-mushroom.png`, '-i', `${out}/nuke-v2${tag}-ash.png`,
+  '-filter_complex', '[0]scale=640:-1[a];[1]scale=640:-1[b];[2]scale=640:-1[c];[3]scale=640:-1[d];[a][b][c][d]xstack=inputs=4:layout=0_0|w0_0|0_h0|w0_h0', `${out}/nuke-v2${tag}-strip.png`]);
 if (total) execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', String(fps), '-i', `${tmp}/f%04d.png`, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '20', '-movflags', '+faststart', `${out}/nuke-v2.mp4`]);
 if (total) execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', String(fps), '-i', `${tmp}/f%04d.png`, '-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', '34', `${out}/nuke-v2.webm`]);
 console.log(errors.length ? `errors: ${errors.join(' | ')}` : 'NUKE SHOTS OK');

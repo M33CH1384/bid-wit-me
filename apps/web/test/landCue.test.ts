@@ -55,13 +55,27 @@ describe('wheels (team bids 10+)', () => {
   });
 });
 
-import { wheelsMade, wheelsTenth } from '../src/landCue';
+import { wheelsMade, wheelsTenth, wheelsTenthBooks } from '../src/landCue';
 describe('wheels made / Cutthroat 10th book', () => {
   const team = { partnerships: true, playerCount: 4 };
   it('team: bid 10+ together AND took 10+', () => {
     expect(wheelsMade(team, { bids: [6, 1, 4, 2], sides: [{ side: 0, tricks: 10 }, { side: 1, tricks: 3 }] })).toEqual([{ side: 0, bid: 10, books: 10 }]);
     expect(wheelsMade(team, { bids: [6, 1, 4, 2], sides: [{ side: 0, tricks: 9 }, { side: 1, tricks: 4 }] })).toEqual([]);
     expect(wheelsMade(team, { bids: [4, 1, 4, 2], sides: [{ side: 0, tricks: 11 }, { side: 1, tricks: 2 }] })).toEqual([]);
+    // set teams never get the car: bid 12, took 10 / took 11 · or the scored record says the contract failed
+    expect(wheelsMade(team, { bids: [6, 1, 6, 2], sides: [{ side: 0, tricks: 10 }, { side: 1, tricks: 3 }] })).toEqual([]);
+    expect(wheelsMade(team, { bids: [6, 1, 6, 0], sides: [{ side: 0, tricks: 11 }, { side: 1, tricks: 2 }] })).toEqual([]);
+    expect(wheelsMade(team, { bids: [6, 1, 4, 2], sides: [{ side: 0, tricks: 10, contractMade: false }, { side: 1, tricks: 3 }] })).toEqual([]);
+    expect(wheelsMade(team, { bids: [6, 1, 6, 2], sides: [{ side: 0, tricks: 12, contractMade: true }, { side: 1, tricks: 1 }] })).toEqual([{ side: 0, bid: 12, books: 12 }]);
+  });
+  it('first hand (books bid themselves): a team’s 10th book fires once; never on bid hands', () => {
+    const books = ['books', 'books', 'books', 'books'];
+    expect(wheelsTenthBooks(team, books, [5, 1, 4, 0], [6, 1, 4, 0])).toEqual([0]);   // 6 + 4 = 10 now
+    expect(wheelsTenthBooks(team, books, [6, 1, 4, 0], [7, 1, 4, 0])).toEqual([]);    // already had 10
+    expect(wheelsTenthBooks(team, books, [0, 5, 0, 4], [0, 5, 0, 5])).toEqual([1]);
+    expect(wheelsTenthBooks(team, books, [5, 0, 3, 0], [6, 0, 3, 0])).toEqual([]);    // 9
+    expect(wheelsTenthBooks(team, [6, 1, 4, 2], [5, 1, 4, 0], [6, 1, 4, 0])).toEqual([]); // a bid hand: wheelsMade at the end instead
+    expect(wheelsTenthBooks({ partnerships: false, playerCount: 4 }, books, [9, 0, 0, 0], [10, 0, 0, 0])).toEqual([]);
   });
   it('cutthroat: the moment a player reaches 10 books, once', () => {
     expect(wheelsTenth({ partnerships: false }, [9, 1, 0], [10, 1, 0])).toEqual([0]);
