@@ -1,3 +1,4 @@
+import { fx } from '../fx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { sideOf } from '@spades/rules';
 import Table from '../Table';
@@ -31,6 +32,8 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
     return s?.kind === 'human' ? s.playerId : null;
   })();
   // host option (off by default): with it off there's no limiting, no MIC LIMITED badge and no 'partners muted' toast
+  // the table's nuke level (host setting) drives everyone's nuke; Reduce effects still forces the calm one locally
+  useEffect(() => { fx.tableNuke = room.nukeIntensity ?? 'full'; return () => { fx.tableNuke = null; }; }, [room.nukeIntensity]);
   const limitedNow = !!room.partnerMicMute && room.phase === 'playing' && (gp === 'bidding' || gp === 'exchange' || gp === 'playing') && !!partnerId;
   useEffect(() => { mesh?.setLimited(limitedNow && partnerId ? [partnerId] : []); }, [mesh, limitedNow, partnerId]);
   useEffect(() => () => mesh?.setLimited([]), [mesh]);

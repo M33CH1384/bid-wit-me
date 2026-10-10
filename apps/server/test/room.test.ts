@@ -504,6 +504,21 @@ describe('partner mic mute (host option)', () => {
   });
 });
 
+describe('nuke intensity (table setting)', () => {
+  it('defaults to full; host-only; validated; synced to everyone', () => {
+    const env = new FakeEnv();
+    env.join('a', 'Host'); env.join('b', 'Guest');
+    env.send('a', { t: 'sit', seat: 0 }); env.send('b', { t: 'sit', seat: 2 });
+    expect(env.last('b', 'state')!.room.nukeIntensity).toBe('full');
+    env.send('b', { t: 'config', rules: makeRules('joker'), nukeIntensity: 'off' });
+    expect(env.errors('b').at(-1)!.code).toBe('NOT_HOST');
+    env.send('a', { t: 'config', rules: makeRules('joker'), nukeIntensity: 'classic' });
+    expect(env.last('b', 'state')!.room.nukeIntensity).toBe('classic');
+    env.send('a', { t: 'config', rules: makeRules('joker'), nukeIntensity: 'mega' } as never);
+    expect(env.last('b', 'state')!.room.nukeIntensity).toBe('classic');
+  });
+});
+
 describe('table talk + host music', () => {
   it('host sets the Table Talk countdown; the hand-over deadline uses it', () => {
     const env = new FakeEnv(undefined, { ...FAST, handOverMs: 3000 });

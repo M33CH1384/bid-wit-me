@@ -1,3 +1,5 @@
+import { fx } from './fx';
+import { NUKE_ALLOWANCE_MS } from '@spades/protocol';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type Action, type GameState, type TableRules, applyAction, newGame, pendingTurn, secureSeed, viewFor } from '@spades/rules';
 import { type BotLevel, chooseBotAction } from '@spades/bots';
@@ -46,7 +48,11 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel, spe
   // hold a finished trick on the table for a moment
   useEffect(() => {
     if (!pause || hold) return;
-    const t = setTimeout(() => setPause(false), 1150 * k);
+    // a nuked trick (Big Joker over Little Joker) holds longer: the table's fixed nuke allowance
+    const last = st.tricks[st.tricks.length - 1]?.plays ?? [];
+    const li = last.findIndex((p) => p.card === 'LJ'), bi = last.findIndex((p) => p.card === 'BJ');
+    const extra = li >= 0 && bi > li ? NUKE_ALLOWANCE_MS[fx.tableNuke ?? fx.prefs.nuke] : 0;
+    const t = setTimeout(() => setPause(false), 1150 * k + extra);
     return () => clearTimeout(t);
   }, [pause, k, hold]);
 

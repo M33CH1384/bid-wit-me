@@ -14,6 +14,7 @@ import { chooseBotAction, pickBotNames } from '@spades/bots';
 import {
   type BotLevel, type ChatLine, type ClientMsg, type HostMusic, type MediaState, type RoomInfo, type RoomPhase, type SeatInfo, type ServerMsg,
   DEFAULT_AFK_LIMIT, LIMITS, PROTOCOL_VERSION, parseClientMsg,
+  NUKE_ALLOWANCE_MS, type NukeIntensity,
 } from '@spades/protocol';
 import { blockLinks, cleanName, cleanText, maskProfanity } from './filter';
 
@@ -68,6 +69,7 @@ export interface RoomData {
   afkLimit?: number;
   /** host option: partner voice limiting during bidding/play; unset = off */
   partnerMicMute?: boolean;
+  nukeIntensity?: NukeIntensity;
   /** tokens of players kicked during the current game (can't rejoin until the next game starts) */
   kicked?: string[];
   /** open vote-kicks: target player id → voter ids */
@@ -287,6 +289,7 @@ export class Room {
         if (msg.talkSec) d.talkSec = msg.talkSec;
         if (msg.afkLimit !== undefined) d.afkLimit = msg.afkLimit;
         if (msg.partnerMicMute !== undefined) d.partnerMicMute = msg.partnerMicMute;
+        if (msg.nukeIntensity !== undefined) d.nukeIntensity = msg.nukeIntensity;
         if (msg.botLevel) {
           d.botLevel = msg.botLevel;
           d.seats.forEach((s) => { if (s.kind === 'bot') s.level = msg.botLevel!; });
@@ -558,7 +561,13 @@ export class Room {
   /** Extra pause owed before the current turn (trick just completed / fresh deal). */
   private leadIn(g: GameState): number {
     if (isFreshDeal(g)) return this.timing.dealMs; // also the books first hand, which starts straight in play
-    if (g.phase === 'playing' && g.trick.plays.length === 0 && g.tricks.length > 0) return this.timing.trickPauseMs;
+    if (g.phase === 'playing' && g.trick.plays.length === 0 && g.tricks.length > 0) {
+      // a nuked trick (Big Joker over Little Joker) gets the table's fixed nuke allowance on top
+      const last = g.tricks[g.tricks.length - 1]!.plays;
+      const li = last.findIndex((p) => p.card === 'LJ'), bi = last.findIndex((p) => p.card === 'BJ');
+      const nuked = li >= 0 && bi > li;
+      return this.timing.trickPauseMs + (nuked ? NUKE_ALLOWANCE_MS[this.data.nukeIntensity ?? 'full'] : 0);
+    }
     return 0;
   }
 
@@ -728,7 +737,7 @@ export class Room {
       code: d.code, hostId: d.hostId ?? '', phase: d.phase, rules: d.rules, botLevel: d.botLevel, seats,
       members: Object.entries(d.members).map(([playerId, m]) => ({ playerId, name: m.name, connected: this.isConnected(playerId), seat: m.seat })),
       deadline: d.deadline, ready: [...d.ready], rev: d.rev, seq: d.seq ?? 0, game: d.gamesPlayed, now: this.io.now(),
-      talkSec: d.talkSec ?? Math.round(this.timing.handOverMs / 1000), afkLimit: d.afkLimit ?? DEFAULT_AFK_LIMIT, partnerMicMute: d.partnerMicMute ?? false,
+      talkSec: d.talkSec ?? Math.round(this.timing.handOverMs / 1000), afkLimit: d.afkLimit ?? DEFAULT_AFK_LIMIT, partnerMicMute: d.partnerMicMute ?? false, nukeIntensity: d.nukeIntensity ?? 'full',
       ...(d.votes && Object.keys(d.votes).length ? { votes: Object.entries(d.votes).map(([target, by]) => ({ target, by: [...by], need: this.votesNeeded(target) })) } : {}), ...(d.music && d.music.mode !== 'off' ? { music: d.music } : {}),
     };
   }

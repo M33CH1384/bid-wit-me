@@ -7,6 +7,11 @@ import type { Card, PlayerView, TableRules } from '@spades/rules';
 
 /** Built-in host-music tracks the server accepts (the web playlist has 17; headroom for more). */
 export const MAX_BEAT_TRACKS = 64;
+/** Nuke intensity (table setting): Full Nuke (default) / Classic / Off. */
+export const NUKE_INTENSITIES = ['full', 'classic', 'off'] as const;
+export type NukeIntensity = (typeof NUKE_INTENSITIES)[number];
+/** Extra lead-in after a nuked trick, per table level (ms). */
+export const NUKE_ALLOWANCE_MS: Record<NukeIntensity, number> = { full: 4000, classic: 3500, off: 1200 };
 export const PROTOCOL_VERSION = 1;
 
 /* ---------------------------------------------------------------- limits */
@@ -66,7 +71,7 @@ export type ClientMsg =
   | { t: 'stand' }
   | { t: 'addBot'; seat: number }
   | { t: 'removeBot'; seat: number }
-  | { t: 'config'; rules: TableRules; botLevel?: BotLevel; talkSec?: number; afkLimit?: number; partnerMicMute?: boolean }
+  | { t: 'config'; rules: TableRules; botLevel?: BotLevel; talkSec?: number; afkLimit?: number; partnerMicMute?: boolean; nukeIntensity?: NukeIntensity }
   /** host only: what plays for the whole table (the server stamps `startAt` for beats) */
   | { t: 'music'; music: HostMusic }
   | { t: 'start' }
@@ -125,6 +130,8 @@ export interface RoomInfo {
   afkLimit?: number;
   /** host option: partners can't hear each other during bidding and play (Table Talk / lobby stay open); default off */
   partnerMicMute?: boolean;
+  /** table setting: how big the Big-over-Little-Joker nuke plays for everyone (default full) */
+  nukeIntensity?: NukeIntensity;
   /** open vote-kicks: target player, who voted, votes needed */
   votes?: { target: string; by: string[]; need: number }[];
 }
@@ -188,6 +195,7 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       if (isInt(m.talkSec) && (TALK_SECS as readonly number[]).includes(m.talkSec)) out.talkSec = m.talkSec;
       if (isInt(m.afkLimit) && (AFK_LIMITS as readonly number[]).includes(m.afkLimit)) out.afkLimit = m.afkLimit;
       if (typeof m.partnerMicMute === 'boolean') out.partnerMicMute = m.partnerMicMute;
+      if (typeof m.nukeIntensity === 'string' && (NUKE_INTENSITIES as readonly string[]).includes(m.nukeIntensity)) out.nukeIntensity = m.nukeIntensity as NukeIntensity;
       return out;
     }
     case 'music': {

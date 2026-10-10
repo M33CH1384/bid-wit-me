@@ -1,3 +1,4 @@
+import type { NukeIntensity } from '@spades/protocol';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { cardLabel, trumpOrder } from '@spades/rules';
@@ -18,6 +19,7 @@ function timerKey(room: RoomInfo): TimerKey {
   return (Object.keys(TIMERS) as TimerKey[]).find((k) => TIMERS[k].bid === t.bid && TIMERS[k].play === t.play) ?? 'normal';
 }
 
+const NUKE_LABEL: Record<NukeIntensity, string> = { full: 'Full Nuke', classic: 'Classic', off: 'Off' };
 const MIC_MUTE_NOTE = 'Mutes partners to each other during bidding and play; everyone can talk between hands';
 
 /** Room lobby: invite link, seat picking (partners across), host settings, bots, chat, camera check. */
@@ -41,10 +43,10 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
   const spots = n === 4 ? ['bottom', 'left', 'top', 'right'] : ['bottom', 'left', 'right'];
   const spotOf = (seat: number) => spots[(seat - me + n) % n]!;
 
-  const config = (s: Settings, timer: TimerKey = timerKey(room), botLevel = room.botLevel, talkSec = room.talkSec, afkLimit = room.afkLimit ?? 3, partnerMicMute = room.partnerMicMute ?? false) => {
+  const config = (s: Settings, timer: TimerKey = timerKey(room), botLevel = room.botLevel, talkSec = room.talkSec, afkLimit = room.afkLimit ?? 3, partnerMicMute = room.partnerMicMute ?? false, nukeIntensity: NukeIntensity = room.nukeIntensity ?? 'full') => {
     onSettings(s);
     const rules = { ...settingsToRules(s), turnTimerSec: { ...TIMERS[timer] } };
-    conn.send({ t: 'config', rules, botLevel, talkSec, afkLimit, partnerMicMute });
+    conn.send({ t: 'config', rules, botLevel, talkSec, afkLimit, partnerMicMute, nukeIntensity });
   };
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => config({ ...settings, [k]: v });
 
@@ -156,6 +158,12 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
               <button type="button" data-testid="mic-mute-toggle" className={`toggle ${room.partnerMicMute ? 'on' : ''}`} role="switch" aria-checked={!!room.partnerMicMute} aria-label="Partner mic mute" onClick={() => config(settings, timerKey(room), room.botLevel, room.talkSec, room.afkLimit ?? 3, !room.partnerMicMute)}><span /></button>
             </span></label>
           )}
+          {r.deck === 'joker54' && (
+            <label className="row"><span className="row-label">Nuke intensity<small>Big Joker over Little Joker, for everyone at the table</small></span><span className="row-control">
+              <select data-testid="nuke-intensity" value={room.nukeIntensity ?? 'full'} onChange={(e) => config(settings, timerKey(room), room.botLevel, room.talkSec, room.afkLimit ?? 3, room.partnerMicMute ?? false, e.target.value as NukeIntensity)}>
+                <option value="full">Full Nuke (default)</option><option value="classic">Classic</option><option value="off">Off (banner + boom)</option>
+              </select></span></label>
+          )}
           <label className="row"><span className="row-label">Blind Nil</span><span className="row-control">
             <select value={settings.blindNil} onChange={(e) => set('blindNil', e.target.value as Settings['blindNil'])}>
               <option value="behind100">When behind by 100+</option><option value="always">Always</option><option value="off">Off</option>
@@ -177,6 +185,7 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
               <span className="row-control"><button type="button" className={`toggle ${room.partnerMicMute ? 'on' : ''}`} role="switch" aria-checked={!!room.partnerMicMute} aria-label="Partner mic mute (set by the host)" disabled><span /></button></span>
             </span>
           )}
+          {r.deck === 'joker54' && <span data-testid="nuke-summary">Nuke: {NUKE_LABEL[room.nukeIntensity ?? 'full']}</span>}
           <span>{room.afkLimit === 0 ? 'AFK kick off' : `A bot takes over after ${room.afkLimit ?? 3} timeouts in a row`}</span>
         </div>
       )}

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { sound, useSoundSettings } from './audio';
 import { HostMusicFields } from './online/HostMusic';
-import { fx, useReduceEffects } from './fx';
+import { type NukeIntensity, fx, useNukeIntensity, useReduceEffects } from './fx';
 
 const icon = (on: boolean, v: number) => (!on || v === 0 ? '🔇' : v < 0.4 ? '🔈' : v < 0.75 ? '🔉' : '🔊');
 
@@ -194,5 +194,20 @@ export function ReduceEffectsRow() {
       <span>Reduce effects<small className="sf-note"> · no shake / flash</small></span>
       <button type="button" role="switch" aria-checked={on} aria-label="Reduce effects" data-testid="reduce-fx" className={`switch ${on ? 'on' : ''}`} onClick={() => fx.setReduce(!on)}><i /></button>
     </label>
+  );
+}
+
+/** Offline table setting "Nuke intensity" (saved locally): Full Nuke / Classic / Off. Online the host sets it in the lobby. Reduce effects forces Off for you. */
+export function NukeIntensityRow() {
+  const v = useNukeIntensity();
+  const reduced = useReduceEffects();
+  const opts: [NukeIntensity, string][] = [['full', 'Full Nuke'], ['classic', 'Classic'], ['off', 'Off']];
+  return (
+    <div className="sf-row nuke-row">
+      <span>Nuke intensity<small className="sf-note"> · {reduced ? 'Off while Reduce effects is on' : v === 'full' ? 'blast + everything blown away' : v === 'classic' ? 'cinematic blast only' : 'banner + boom'}</small></span>
+      <div className="seg" role="radiogroup" aria-label="Nuke intensity" data-testid="nuke-intensity">
+        {opts.map(([k, l]) => <button key={k} type="button" role="radio" aria-checked={v === k} className={v === k ? 'on' : ''} disabled={reduced} onClick={() => fx.setNuke(k)}>{l}</button>)}
+      </div>
+    </div>
   );
 }
