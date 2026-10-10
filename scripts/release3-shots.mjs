@@ -1,110 +1,108 @@
 /**
- * Release 3 screenshots → screenshots/release-3/: bid coach, streak pop-up, nuke mid-explosion, Table Talk,
- * host music controls (online lobby, sound popover).
- * Usage: node scripts/release3-shots.mjs [web=http://localhost:4173] [server=http://127.0.0.1:8787]
+ * Release-3 screenshots: bid coach + Table Talk recap (phone portrait), the Big-over-Little nuke mid-explosion,
+ * the desktop table at 1440x900 (chat on the right, bigger hand) and the desktop online lobby.
+ * Usage: node scripts/release3-shots.mjs [outDir=screenshots/release-3] [web=http://localhost:4173] [server=http://127.0.0.1:8787]
+ * The nuke shot fires the effect through the fx bus (window.__bwmFx.emit('nuke')) mid-trick; the game-state trigger
+ * (Big Joker + Little Joker in one trick) is covered by apps/web/test/landCue.test.ts.
  */
-import { mkdirSync, readFileSync, existsSync } from 'node:fs';
 import { chromium } from 'playwright-core';
-const web = process.argv[2] ?? 'http://localhost:4173';
-const server = process.argv[3] ?? 'http://127.0.0.1:8787';
-const out = 'screenshots/release-3';
+import { mkdirSync } from 'node:fs';
+const out = process.argv[2] ?? 'screenshots/release-3';
+const base = process.argv[3] ?? 'http://localhost:4173';
+const server = process.argv[4] ?? 'http://127.0.0.1:8787';
+const only = process.env.ONLY ? process.env.ONLY.split(',') : null;
+const want = (k) => !only || only.includes(k);
 mkdirSync(out, { recursive: true });
 const b = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '--autoplay-policy=no-user-gesture-required'] });
-const IOS = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1';
-const errors = [];
-async function page(w, h, mobile = true) {
-  const ctx = await b.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 2, isMobile: mobile, hasTouch: mobile, userAgent: mobile ? IOS : undefined, permissions: ['camera', 'microphone'] });
-  const p = await ctx.newPage();
-  p.on('pageerror', (e) => errors.push(String(e)));
-  return p;
-}
+const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
+const phone = async (w, h) => (await b.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, userAgent: UA })).newPage();
+const desk = async (w, h) => { const c = await b.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1, permissions: ['camera', 'microphone'] }); return c.newPage(); };
 const legal = (p) => p.locator('[data-testid^="card-"][data-legal="true"]');
-async function toBid(p, tips) {
-  await p.goto(web);
-  await p.evaluate((t) => { localStorage.clear(); localStorage.setItem('bwm.tips', JSON.stringify({ on: t, asked: true })); localStorage.setItem('spades.settings.v2', JSON.stringify({ mode: 'joker', speed: 'fast', quality: 'high', firstHandBidsItself: false })); }, tips);
-  await p.goto(`${web}/?autostart=1&seed=release3-coach`);
-  await p.locator('.bid-grid button').first().waitFor({ timeout: 90000 });
-  await p.waitForTimeout(1500);
+const trickCount = (p) => p.getByTestId('hand').getAttribute('data-trick-count').then(Number).catch(() => 0);
+const setup = (p, settings, tips) => p.evaluate(([s, t]) => { localStorage.clear(); localStorage.setItem('bwm.tips', JSON.stringify({ on: t, asked: true })); localStorage.setItem('spades.settings.v2', JSON.stringify(s)); }, [settings, tips]);
+async function playStep(p) {
+  const see = p.getByRole('button', { name: 'See my cards' });
+  if (await see.count()) { await see.click({ timeout: 2000 }).catch(() => {}); return; }
+  const bid = p.locator('.bid-grid button');
+  if (await bid.count()) { await bid.nth(Math.min(3, (await bid.count()) - 1)).click({ timeout: 2000 }).catch(() => {}); return; }
+  const l = legal(p);
+  if (await l.count()) { const c = l.last(); await c.dispatchEvent('click'); await c.dispatchEvent('click').catch(() => {}); }
 }
-async function toPlay(p) {
-  for (let i = 0; i < 800; i++) {
-    if ((await legal(p).count()) && (await p.locator('[data-testid="last-trick"]').count())) break;
-    const bid = p.locator('.bid-grid button'); if (await bid.count()) { await bid.nth(2).click().catch(() => {}); continue; }
-    const ok = p.getByTestId('coach-ok'); if (await ok.count()) { await ok.click().catch(() => {}); continue; }
-    const l = legal(p); if (await l.count()) { await l.last().dispatchEvent('click'); await l.last().dispatchEvent('click').catch(() => {}); }
-    await p.waitForTimeout(60);
+
+// 1) bid coach, phone portrait (tips on, so the coach opens in the bid panel)
+if (want('coach')) {
+  const p = await phone(390, 844);
+  await p.goto(base); await setup(p, { mode: 'joker', speed: 'normal', blindNil: 'never', quality: 'low', firstHandBidsItself: false }, true);
+  await p.goto(`${base}/?autostart=1&seed=release3-coach`);
+  for (let i = 0; i < 600; i++) {
+    if (await p.getByTestId('bid-coach').count()) break;
+    const see = p.getByRole('button', { name: 'See my cards' }); if (await see.count()) await see.click({ timeout: 2000 }).catch(() => {});
+    await p.getByTestId('coach-ok').click({ timeout: 300 }).catch(() => {});
+    await p.waitForTimeout(100);
   }
   await p.waitForTimeout(1200);
-}
-
-// 1. bid coach (portrait phone, tips on) + expanded "Why?" (desktop)
-{
-  const p = await page(390, 844);
-  await toBid(p, true);
-  await p.getByTestId('bid-coach').waitFor({ timeout: 10000 });
-  await p.screenshot({ path: `${out}/01-bid-coach-phone.png` });
-  const d = await page(1280, 800, false);
-  await toBid(d, true);
-  await d.getByTestId('bid-coach').getByRole('button', { name: /Why/ }).click().catch(() => {});
-  await d.waitForTimeout(500);
-  await d.screenshot({ path: `${out}/02-bid-coach-why-desktop.png` });
-  // 2. streak pop-up + 3. nuke mid-explosion, on a live table
-  await toPlay(d);
-  await d.evaluate(() => window.__bwmFx.emit('streak', { level: 3, text: 'ON FIRE', sub: 'You & Keisha · 3 in a row' }));
-  await d.waitForTimeout(450);
-  await d.screenshot({ path: `${out}/03-streak-on-fire.png` });
-  await d.waitForTimeout(2600);
-  await d.evaluate(() => window.__bwmFx.emit('nuke'));
-  await d.waitForTimeout(650);
-  await d.screenshot({ path: `${out}/04-nuke-mid-explosion.png` });
-  await d.waitForTimeout(500);
-  await d.screenshot({ path: `${out}/04b-nuke-cloud.png` });
-  await d.waitForTimeout(3500);
-  await d.evaluate(() => window.__bwmFx.emit('shot', { text: 'Marcus & Dre SET (−60)' }));
-  await d.waitForTimeout(400);
-  await d.screenshot({ path: `${out}/05-shot.png` });
-  await d.context().close(); await p.context().close();
-}
-
-// 4. Table Talk (offline recap) from a saved hand-over, phone + desktop
-if (existsSync('/tmp/save.json')) {
-  const save = readFileSync('/tmp/save.json', 'utf8');
-  for (const [w, h, m, name] of [[390, 844, true, '06-table-talk-phone'], [1280, 800, false, '07-table-talk-desktop']]) {
-    const p = await page(w, h, m);
-    await p.goto(web);
-    await p.evaluate((s) => { localStorage.clear(); localStorage.setItem('bwm.tips', '{"on":false,"asked":true}'); localStorage.setItem('bwm.game', s); }, save);
-    await p.goto(web);
-    await p.getByTestId('table-talk').waitFor({ timeout: 60000 });
-    await p.waitForTimeout(3500);
-    await p.screenshot({ path: `${out}/${name}.png` });
-    await p.context().close();
-  }
-}
-
-// 5. host music controls (online lobby → sound popover), with a beat picked for the table
-{
-  const p = await page(430, 932);
-  await p.goto(`${web}/online?server=${encodeURIComponent(server)}`);
-  await p.getByLabel('Your name').fill('Demetrius');
-  await p.getByTestId('create-table').click();
-  await p.getByTestId('lobby').waitFor({ timeout: 20000 });
-  await p.getByTestId('sound-button').click();
-  await p.getByTestId('host-music').waitFor({ timeout: 5000 });
-  await p.getByTestId('hm-beat-2').click();
-  await p.waitForTimeout(2500);
-  await p.screenshot({ path: `${out}/08-host-music-beats.png` });
-  await p.getByRole('tab', { name: 'Spotify / Apple' }).click();
-  await p.getByLabel('Spotify or Apple Music link').fill('https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC');
-  await p.getByLabel('Song title').fill('Never Gonna Give You Up — Rick Astley');
-  await p.getByRole('button', { name: 'Share with the table' }).click();
-  await p.getByTestId('music-card').first().waitFor({ timeout: 5000 });
-  await p.waitForTimeout(500);
-  await p.screenshot({ path: `${out}/09-host-music-link.png` });
-  await p.getByRole('tab', { name: 'Stream' }).click();
-  await p.waitForTimeout(300);
-  await p.screenshot({ path: `${out}/10-host-music-stream.png` });
+  await p.screenshot({ path: `${out}/1-bid-coach-390x844.png` });
   await p.context().close();
 }
+
+// 2) Table Talk recap, phone portrait (end of a bid hand)
+if (want('talk')) {
+  const p = await phone(390, 844);
+  await p.goto(base); await setup(p, { mode: 'joker', speed: 'fast', blindNil: 'never', quality: 'low', firstHandBidsItself: false }, false);
+  await p.goto(`${base}/?autostart=1&seed=release3-talk`);
+  for (let i = 0; i < 4000 && !(await p.getByTestId('table-talk').count()); i++) { await playStep(p); await p.waitForTimeout(40); }
+  await p.getByTestId('talk-recap').waitFor({ timeout: 10000 }); await p.waitForTimeout(1500);
+  await p.screenshot({ path: `${out}/2-table-talk-recap-390x844.png` });
+  await p.context().close();
+}
+
+// 3) nuke mid-explosion (desktop) + 4) desktop table 1440x900, chat on the right, bigger hand
+if (want('desk') || want('nuke')) {
+  const p = await desk(1440, 900);
+  await p.goto(base); await setup(p, { mode: 'joker', speed: 'normal', blindNil: 'never', quality: 'low', firstHandBidsItself: false }, false);
+  await p.goto(`${base}/?autostart=1&seed=release3-desk`);
+  for (let i = 0; i < 3000; i++) {
+    if ((await legal(p).count()) && (await trickCount(p)) >= 2 && (await p.locator('[data-testid="last-trick"]').count())) break;
+    await playStep(p); await p.waitForTimeout(40);
+  }
+  if (!(await p.locator('.chat.open').count())) await p.locator('.chat-toggle').click().catch(() => {});
+  await p.waitForTimeout(2500);
+  if (want('desk')) await p.screenshot({ path: `${out}/4-desktop-table-1440x900.png` });
+  if (want('nuke')) {
+    // a card on the felt first, so the blast sits over a live trick
+    const c = legal(p).last(); await c.dispatchEvent('click'); await c.dispatchEvent('click').catch(() => {});
+    await p.waitForTimeout(700);
+    await p.evaluate(() => window.__bwmFx.emit('nuke', { silent: true }));
+    await p.waitForTimeout(140); await p.screenshot({ path: `${out}/3a-nuke-flash-1440x900.png` });
+    await p.waitForTimeout(700); await p.screenshot({ path: `${out}/3b-nuke-mushroom-1440x900.png` });
+    await p.waitForTimeout(900); await p.screenshot({ path: `${out}/3c-nuke-smoke-1440x900.png` });
+  }
+  await p.context().close();
+}
+
+// 5) desktop lobby (host + one guest seated, cameras on)
+if (want('lobby')) {
+  const q = `?server=${encodeURIComponent(server)}`;
+  const host = await desk(1440, 900);
+  const guest = await phone(390, 844);
+  await host.goto(`${base}/online${q}`);
+  await host.getByLabel('Your name').fill('Demetrius');
+  await host.getByTestId('create-table').click();
+  await host.getByTestId('lobby').waitFor({ timeout: 20000 });
+  const code = (await host.getByTestId('room-code').locator('b').innerText()).trim();
+  await guest.goto(`${base}/t/${code}${q}`);
+  await guest.getByLabel('Your name').fill('Keisha');
+  await guest.getByRole('button', { name: `Join table ${code}` }).click();
+  await guest.getByTestId('lobby').waitFor({ timeout: 20000 });
+  await guest.getByTestId('lobby-seat-2').getByRole('button', { name: 'Sit here' }).click();
+  await host.getByTestId('lobby-seat-2').getByText('Keisha').waitFor();
+  await host.getByRole('button', { name: 'Turn camera on' }).click().catch(() => {});
+  await guest.locator('.lobby-chat input, [data-testid="lobby-chat-tab"]').first().waitFor().catch(() => {});
+  await host.locator('.lobby-chat input').fill('who ready to get set? 😤').catch(() => {});
+  await host.locator('.lobby-chat input').press('Enter').catch(() => {});
+  await host.waitForTimeout(2500);
+  await host.screenshot({ path: `${out}/5-desktop-lobby-1440x900.png` });
+  await host.context().close(); await guest.context().close();
+}
 await b.close();
-if (errors.length) console.log('page errors:\n' + errors.join('\n'));
-console.log('release-3 shots done');
+console.log('shots in', out);
