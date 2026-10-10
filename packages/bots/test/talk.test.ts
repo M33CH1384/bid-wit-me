@@ -1,0 +1,70 @@
+import { describe, expect, it } from 'vitest';
+import { BOT_NAMES, COMMON, PERSONAS, TALK, botTalk, leanBid, maskMild, newTalkState, personaForName, personaTag, prePlayLine, type TalkTable } from '../src';
+
+const rng = (seed = 1) => { let x = seed; return () => { x = (x * 1103515245 + 12345) % 2 ** 31; return x / 2 ** 31; }; };
+const nameFor = (p: string) => BOT_NAMES.find((n) => personaForName(n) === p)!;
+const table = (names: string[], bots = [false, true, true, true]): TalkTable => ({ seats: names.map((name, i) => ({ name, bot: bots[i]! })), partnerships: true, teamNames: ['Us', 'Them'] });
+
+describe('bot trash talk', () => {
+  it('has a big line pool and every persona is reachable from the name pool', () => {
+    const count = Object.values(COMMON).flat().length + Object.values(PERSONAS).flatMap((p) => Object.values(p.lines).flat()).length;
+    expect(count).toBeGreaterThanOrEqual(150);
+    for (const id of Object.keys(PERSONAS)) expect(nameFor(id), id).toBeTruthy();
+    const hustlers = BOT_NAMES.filter((n) => personaForName(n) === 'hustler').length / BOT_NAMES.length;
+    expect(hustlers).toBeGreaterThan(0.12); expect(hustlers).toBeLessThan(0.4);
+  });
+  it('persona is fixed per name; the Hustler wears a fake tag until revealed', () => {
+    const h = nameFor('hustler');
+    expect(personaForName(h)).toBe(personaForName(h));
+    expect(personaTag(h, false)).toBe('Newbie');
+    expect(personaTag(h, true)).toBe('The Hustler');
+  });
+  it('cooldowns: never two lines inside the global gap; a bot rests between lines', () => {
+    const t = table(['You', nameFor('hype'), nameFor('mama'), nameFor('og')]);
+    const st = newTalkState();
+    const always = () => 0; // always passes the chance roll
+    const a = botTalk(st, t, { kind: 'cut', seat: 1 }, 10_000, always);
+    expect(a).not.toBeNull();
+    expect(botTalk(st, t, { kind: 'cut', seat: 3 }, 10_000 + TALK.globalGapMs - 1, always)).toBeNull();
+    expect(botTalk(st, t, { kind: 'cut', seat: 1 }, 10_000 + TALK.globalGapMs + 1, always)).toBeNull(); // seat 1 resting
+    expect(botTalk(st, t, { kind: 'cut', seat: 3 }, 10_000 + TALK.globalGapMs + 1, always)).not.toBeNull();
+  });
+  it('pre-play lines cannot depend on the card (the API never sees it) and are generic', () => {
+    const t = table(['You', nameFor('professor'), nameFor('mama'), nameFor('og')]);
+    const a = prePlayLine(newTalkState(), t, 1, 50_000, rng(7));
+    const b = prePlayLine(newTalkState(), t, 1, 50_000, rng(7));
+    expect(prePlayLine.length).toBe(5); // (state, table, seat, now, rnd): no card, no hand
+    expect(a).toEqual(b);
+    const pool = [...(COMMON.prePlay ?? []), ...(PERSONAS.professor.lines.prePlay ?? [])];
+    let st = newTalkState(); let got = 0;
+    for (let i = 0; i < 400; i++) { const l = prePlayLine(st, t, 1, i * 20_000, rng(i + 3)); if (l) { got++; expect(pool).toContain(l.text); } st = { ...st, lastAt: -1e12, seatAt: [] }; }
+    expect(got).toBeGreaterThan(5);
+  });
+  it('the Hustler plays newbie, then reveals exactly once on its own cut', () => {
+    const h = nameFor('hustler');
+    const t = table(['You', h, nameFor('mama'), nameFor('og')]);
+    const st = newTalkState();
+    const pre = prePlayLine(st, t, 1, 0, () => 0)!;
+    expect(PERSONAS.hustler.lines.newbie).toContain(pre.text);
+    const r1 = botTalk(st, t, { kind: 'cut', seat: 1 }, 100_000, () => 0)!;
+    expect(r1.reveal).toBe(true);
+    const r2 = botTalk(st, t, { kind: 'cut', seat: 1 }, 200_000, () => 0);
+    expect(r2?.reveal).toBeUndefined();
+    expect(st.revealed).toEqual([1]);
+    expect(personaTag(h, st.revealed.includes(1))).toBe('The Hustler');
+  });
+  it('partner bot hypes the human; templates fill names and team names', () => {
+    const t = table(['Dee', nameFor('og'), nameFor('hype'), nameFor('mama')]);
+    const l = botTalk(newTalkState(), t, { kind: 'setThem', seat: 0, side: 0, bid: 5 }, 0, () => 0)!;
+    expect(l.seat).toBe(2);
+    expect(l.text).toContain('DEE');
+    expect(l.text).not.toMatch(/\{\w+\}/);
+  });
+  it('Hustler bids conservatively while acting, never below 1; clean talk masks mild cursing', () => {
+    const h = nameFor('hustler');
+    expect(leanBid(4, h, false, () => 0)).toBe(3);
+    expect(leanBid(2, h, false, () => 0)).toBe(2);
+    expect(leanBid(4, h, true, () => 0)).toBe(4);
+    expect(maskMild('newbie my ass, that was some shit, damn')).toBe('newbie my a**, that was some sh*t, d*mn');
+  });
+});

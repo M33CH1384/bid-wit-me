@@ -3,7 +3,8 @@
  * Plain TS types + small hand-written guards (no runtime schema lib, to keep the Worker bundle and CPU tiny).
  * Every client message is validated on the server with `parseClientMsg`; anything malformed is dropped.
  */
-import type { Card, PlayerView, TableRules } from '@spades/rules';
+import type { Card, PlayerView, Series, TableRules } from '@spades/rules';
+export * from './filter';
 
 /** Built-in host-music tracks the server accepts (the web playlist has 17; headroom for more). */
 export const MAX_BEAT_TRACKS = 64;
@@ -71,7 +72,9 @@ export type ClientMsg =
   | { t: 'stand' }
   | { t: 'addBot'; seat: number }
   | { t: 'removeBot'; seat: number }
-  | { t: 'config'; rules: TableRules; botLevel?: BotLevel; talkSec?: number; afkLimit?: number; partnerMicMute?: boolean; nukeIntensity?: NukeIntensity }
+  | { t: 'config'; rules: TableRules; botLevel?: BotLevel; talkSec?: number; afkLimit?: number; partnerMicMute?: boolean; nukeIntensity?: NukeIntensity; botTalk?: boolean }
+  /** rename your own team (team modes); '' resets to the partner names */
+  | { t: 'teamName'; name: string }
   /** host only: what plays for the whole table (the server stamps `startAt` for beats) */
   | { t: 'music'; music: HostMusic }
   | { t: 'start' }
@@ -132,6 +135,12 @@ export interface RoomInfo {
   partnerMicMute?: boolean;
   /** table setting: how big the Big-over-Little-Joker nuke plays for everyone (default full) */
   nukeIntensity?: NukeIntensity;
+  /** host option: bots chat (trash talk) at the table; default on */
+  botTalk?: boolean;
+  /** per side: a custom team name, or null = default (partner names) */
+  teamNames?: (string | null)[];
+  /** rematch series at this table (survives reconnects; resets when the teams change) */
+  series?: Series | null;
   /** open vote-kicks: target player, who voted, votes needed */
   votes?: { target: string; by: string[]; need: number }[];
 }
@@ -189,12 +198,17 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return isInt(m.seat) && m.seat >= 0 && m.seat < 4 ? { t: m.t, seat: m.seat } : null;
     case 'stand': case 'start': case 'next': case 'rematch': case 'leave':
       return { t: m.t };
+    case 'teamName': {
+      if (typeof m.name !== 'string' || m.name.length > 200) return null;
+      return { t: 'teamName', name: m.name }; // the room validates it (cleanTeamName) so it can say why
+    }
     case 'config': {
       if (!isObj(m.rules)) return null;
       const out: Extract<ClientMsg, { t: 'config' }> = { t: 'config', rules: m.rules as unknown as TableRules, botLevel: m.botLevel === 'easy' || m.botLevel === 'normal' ? m.botLevel : undefined };
       if (isInt(m.talkSec) && (TALK_SECS as readonly number[]).includes(m.talkSec)) out.talkSec = m.talkSec;
       if (isInt(m.afkLimit) && (AFK_LIMITS as readonly number[]).includes(m.afkLimit)) out.afkLimit = m.afkLimit;
       if (typeof m.partnerMicMute === 'boolean') out.partnerMicMute = m.partnerMicMute;
+      if (typeof m.botTalk === 'boolean') out.botTalk = m.botTalk;
       if (typeof m.nukeIntensity === 'string' && (NUKE_INTENSITIES as readonly string[]).includes(m.nukeIntensity)) out.nukeIntensity = m.nukeIntensity as NukeIntensity;
       return out;
     }

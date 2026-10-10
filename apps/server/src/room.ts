@@ -8,13 +8,13 @@
  *  - all durable state lives in one plain-JSON `RoomData` object that the DO saves as a single row.
  */
 import {
-  type Action, type GameState, type PlayerView, type TableRules, RuleError, applyAction, isFreshDeal, makeRules, newGame, pendingTurn, secureSeed, validateRules, viewFor,
+  type Action, type GameState, type Series, addSeriesGame, emptySeries, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, applyAction, isFreshDeal, makeRules, newGame, pendingTurn, secureSeed, validateRules, viewFor,
 } from '@spades/rules';
 import { chooseBotAction, pickBotNames } from '@spades/bots';
 import {
   type BotLevel, type ChatLine, type ClientMsg, type HostMusic, type MediaState, type RoomInfo, type RoomPhase, type SeatInfo, type ServerMsg,
   DEFAULT_AFK_LIMIT, LIMITS, PROTOCOL_VERSION, parseClientMsg,
-  NUKE_ALLOWANCE_MS, type NukeIntensity,
+  NUKE_ALLOWANCE_MS, type NukeIntensity, cleanTeamName, pickTeamName,
 } from '@spades/protocol';
 import { blockLinks, cleanName, cleanText, maskProfanity } from './filter';
 
@@ -70,6 +70,14 @@ export interface RoomData {
   /** host option: partner voice limiting during bidding/play; unset = off */
   partnerMicMute?: boolean;
   nukeIntensity?: NukeIntensity;
+  /** host option: bot trash talk (default on) */
+  botTalk?: boolean;
+  /** per side: custom team name (null/unset = partner names) */
+  teamNames?: (string | null)[];
+  /** rematch series (see @spades/rules series) */
+  series?: Series | null;
+  /** per-seat member ids at the start of the current game (series composition) */
+  seriesSeats?: string[];
   /** tokens of players kicked during the current game (can't rejoin until the next game starts) */
   kicked?: string[];
   /** open vote-kicks: target player id → voter ids */
@@ -290,6 +298,7 @@ export class Room {
         if (msg.afkLimit !== undefined) d.afkLimit = msg.afkLimit;
         if (msg.partnerMicMute !== undefined) d.partnerMicMute = msg.partnerMicMute;
         if (msg.nukeIntensity !== undefined) d.nukeIntensity = msg.nukeIntensity;
+        if (msg.botTalk !== undefined) d.botTalk = msg.botTalk;
         if (msg.botLevel) {
           d.botLevel = msg.botLevel;
           d.seats.forEach((s) => { if (s.kind === 'bot') s.level = msg.botLevel!; });
@@ -309,6 +318,19 @@ export class Room {
           : mu.mode === 'stream' ? { ...mu, by: pid }
           : mu;
         this.system(mu.mode === 'off' ? `${me.name} stopped the music` : mu.mode === 'link' ? `${me.name} shared what's playing` : mu.mode === 'stream' ? `${me.name} is streaming music` : `${me.name} picked the table music`);
+        break;
+      }
+      case 'teamName': {
+        if (!d.rules.partnerships) throw new RoomError('NO_TEAMS', 'No teams in Cutthroat');
+        if (me.seat === null || me.seat >= d.rules.playerCount) throw new RoomError('NOT_SEATED', 'Sit down to name your team');
+        const name = cleanTeamName(msg.name);
+        if (name === null) throw new RoomError('BAD_NAME', "That team name isn't allowed");
+        const side = me.seat % 2;
+        const names = [...(d.teamNames ?? [null, null])];
+        if ((names[side] ?? '') === name) return;
+        names[side] = name || null;
+        d.teamNames = names;
+        this.system(name ? `${me.name} named their team “${name}”` : `${me.name} reset their team name`);
         break;
       }
       case 'start': {
@@ -518,6 +540,7 @@ export class Room {
     d.turnKey = null;
     d.deadline = null;
     d.gamesPlayed++;
+    this.startSeries();
     d.kicked = []; // a new game: kicked players may come back
     d.votes = {};
     for (const m of Object.values(d.members)) m.timeouts = 0;
@@ -535,14 +558,59 @@ export class Room {
     if (d.game.phase === 'gameOver') {
       d.phase = 'over';
       const res = d.game.result!;
+      this.recordSeries();
       this.system(`Game over: ${res.winners.map((w) => this.sideLabel(w)).join(' & ')} win${res.winners.length > 1 || d.rules.partnerships ? '' : 's'}`);
     }
+  }
+
+  /** per-seat member ids: humans by player id, bots by seat */
+  private seatIds(): string[] {
+    const d = this.data;
+    return d.seats.slice(0, d.rules.playerCount).map((s, i) => (s.kind === 'human' ? `p:${s.playerId}` : `bot:${i}`));
+  }
+
+  /** Game start: all-bot teams get a fun name; a series whose teams changed resets (with a note). */
+  private startSeries(): void {
+    const d = this.data;
+    const ids = this.seatIds();
+    d.seriesSeats = ids;
+    if (d.rules.partnerships) {
+      const names = [...(d.teamNames ?? [null, null])];
+      for (let side = 0; side < 2; side++) {
+        const allBots = d.seats.slice(0, d.rules.playerCount).every((s, i) => i % 2 !== side || s.kind === 'bot');
+        if (allBots && !names[side]) names[side] = pickTeamName(d.gamesPlayed * 7 + side * 13 + d.code.charCodeAt(0), names.filter((n): n is string => !!n));
+      }
+      d.teamNames = names;
+    }
+    const sides = seriesSides({ rules: d.rules }, ids, this.sideNames());
+    const mode = d.rules.mode ?? 'mode';
+    if (d.series && !seriesMatches(d.series, mode, sides)) {
+      if (d.series.games.length) this.system('New series: the teams changed');
+      d.series = emptySeries(mode, sides, d.series.games.length ? 'New series: the teams changed' : undefined);
+    } else if (!d.series) d.series = emptySeries(mode, sides);
+  }
+
+  private sideNames(): string[] {
+    const d = this.data;
+    const n = d.rules.partnerships ? 2 : d.rules.playerCount;
+    return Array.from({ length: n }, (_, i) => this.sideLabel(i));
+  }
+
+  private recordSeries(): void {
+    const d = this.data;
+    const g = d.game!;
+    const ids = d.seriesSeats ?? this.seatIds();
+    const names = this.sideNames();
+    const sides = seriesSides({ rules: d.rules }, ids, names);
+    const mode = d.rules.mode ?? 'mode';
+    const no = (d.series?.games.length ?? 0) + 1;
+    d.series = addSeriesGame(d.series, mode, sides, summarizeGame(g, names, no, this.io.now()));
   }
 
   private sideLabel(side: number): string {
     const d = this.data;
     const seatName = (s: number) => this.seatName(s);
-    return d.rules.partnerships ? `${seatName(side)} + ${seatName(side + 2)}` : seatName(side);
+    return d.rules.partnerships ? (d.teamNames?.[side] || `${seatName(side)} + ${seatName(side + 2)}`) : seatName(side);
   }
 
   seatName(seat: number): string {
@@ -737,7 +805,8 @@ export class Room {
       code: d.code, hostId: d.hostId ?? '', phase: d.phase, rules: d.rules, botLevel: d.botLevel, seats,
       members: Object.entries(d.members).map(([playerId, m]) => ({ playerId, name: m.name, connected: this.isConnected(playerId), seat: m.seat })),
       deadline: d.deadline, ready: [...d.ready], rev: d.rev, seq: d.seq ?? 0, game: d.gamesPlayed, now: this.io.now(),
-      talkSec: d.talkSec ?? Math.round(this.timing.handOverMs / 1000), afkLimit: d.afkLimit ?? DEFAULT_AFK_LIMIT, partnerMicMute: d.partnerMicMute ?? false, nukeIntensity: d.nukeIntensity ?? 'full',
+      talkSec: d.talkSec ?? Math.round(this.timing.handOverMs / 1000), afkLimit: d.afkLimit ?? DEFAULT_AFK_LIMIT, partnerMicMute: d.partnerMicMute ?? false, nukeIntensity: d.nukeIntensity ?? 'full', botTalk: d.botTalk ?? true,
+      teamNames: d.rules.partnerships ? [...(d.teamNames ?? [null, null])] : undefined, series: d.series ?? null,
       ...(d.votes && Object.keys(d.votes).length ? { votes: Object.entries(d.votes).map(([target, by]) => ({ target, by: [...by], need: this.votesNeeded(target) })) } : {}), ...(d.music && d.music.mode !== 'off' ? { music: d.music } : {}),
     };
   }

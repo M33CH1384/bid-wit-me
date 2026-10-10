@@ -37,7 +37,8 @@ for (let i = 0; i < 40; i++) {
 await p.evaluate(() => { window.__bwmSound?.setMuted?.(true); });
 const shot = async (path, t) => {
   await p.evaluate((t) => { window.__bwmFx.warp = t; document.getAnimations().forEach((a) => { a.pause(); a.currentTime = t * 1000; }); }, t);
-  await p.waitForTimeout(140);
+  await p.waitForFunction((t) => window.__bwmNukeT === t, t, { timeout: 15000 }).catch(() => console.log('frame wait timed out at', t));
+  await p.waitForTimeout(250);
   await p.screenshot({ path });
 };
 await p.evaluate(() => { window.__bwmFx.warp = 0; window.__bwmFx.emit('nuke', { silent: true }); });
@@ -50,6 +51,6 @@ await p.evaluate(() => { window.__bwmFx.warp = null; document.getAnimations().fo
 await b.close();
 execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', `${out}/nuke-v2-flash.png`, '-i', `${out}/nuke-v2-fireball.png`, '-i', `${out}/nuke-v2-mushroom.png`, '-i', `${out}/nuke-v2-ash.png`,
   '-filter_complex', '[0]scale=640:-1[a];[1]scale=640:-1[b];[2]scale=640:-1[c];[3]scale=640:-1[d];[a][b][c][d]xstack=inputs=4:layout=0_0|w0_0|0_h0|w0_h0', `${out}/nuke-v2-strip.png`]);
-execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', String(fps), '-i', `${tmp}/f%04d.png`, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '20', '-movflags', '+faststart', `${out}/nuke-v2.mp4`]);
-execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', String(fps), '-i', `${tmp}/f%04d.png`, '-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', '34', `${out}/nuke-v2.webm`]);
+if (total) execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', String(fps), '-i', `${tmp}/f%04d.png`, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '20', '-movflags', '+faststart', `${out}/nuke-v2.mp4`]);
+if (total) execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', String(fps), '-i', `${tmp}/f%04d.png`, '-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', '34', `${out}/nuke-v2.webm`]);
 console.log(errors.length ? `errors: ${errors.join(' | ')}` : 'NUKE SHOTS OK');

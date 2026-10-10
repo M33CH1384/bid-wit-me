@@ -72,7 +72,8 @@ function fireMaterial(seed: number, flow = 1.4) {
       }
       void main(){
         float facing = abs(dot(normalize(vNormalV), normalize(vViewDir)));
-        float h = clamp(uHeat + vN * 0.45 + (facing - 0.5) * 0.35, 0.0, 1.0);
+        // hot core facing you, cooler sooty rims; noise breaks it into churning billows
+        float h = clamp(uHeat + vN * 0.5 + (facing - 0.55) * 0.5, 0.0, 1.0);
         vec3 c = ramp(h) * mix(1.0, uGlow, h * h);
         float a = uAlpha * smoothstep(0.0, 0.45, facing) * (0.65 + 0.35 * h);
         gl_FragColor = vec4(c, a);
@@ -224,19 +225,22 @@ function NukeRun({ start, full, low }: { start: number; full: boolean; low: bool
   const orange = useMemo(() => new Color(), []);
   useFrame(() => {
     const T = fx.warp ?? (performance.now() - start) / 1000;
+    (window as unknown as { __bwmNukeT?: number }).__bwmNukeT = T;
     invalidate();
     const ease = (x: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
-    const fade = 1 - Math.min(1, Math.max(0, (T - 2.9) / 0.7));
+    const fade = 1 - Math.min(1, Math.max(0, (T - 2.55) / 0.95));
     // pin-point of light
     if (pin.current) { pin.current.visible = T < FLASH + 0.08; pin.current.scale.setScalar(0.02 + 0.05 * Math.min(1, T / FLASH)); }
     // fireball → rising dome
     const tb = T - FLASH;
-    const heat = Math.max(0.12, 1 - Math.max(0, tb) / 2.4);
+    const heat = Math.max(0.04, 1 - Math.max(0, tb) / 1.4);
     if (ball.current) {
       ball.current.visible = tb > 0;
-      const s = 0.12 + 0.45 * ease(tb / 0.5) - 0.12 * ease((tb - 0.8) / 1.2);
-      ball.current.scale.setScalar(Math.max(0.01, s));
-      ball.current.position.y = 0.12 + 1.15 * ease((tb - 0.35) / 1.9);
+      // fireball blooms at the felt, then rises and flattens into the cap's dome
+      const s = 0.12 + 0.42 * ease(tb / 0.45) - 0.06 * ease((tb - 0.6) / 1.2);
+      const flat = 1 - 0.38 * ease((tb - 0.6) / 1.0);
+      ball.current.scale.set(s * (1 + 0.25 * (1 - flat)), Math.max(0.01, s * flat), s * (1 + 0.25 * (1 - flat)));
+      ball.current.position.y = 0.14 + 0.9 * ease((tb - 0.25) / 1.8);
     }
     parts.fire.forEach((m, i) => { m.uniforms.uTime!.value = T; m.uniforms.uHeat!.value = Math.min(1, heat + (i === 0 ? 0.15 : -0.05)); m.uniforms.uAlpha!.value = (i === 0 ? 1 : 0.75) * fade; });
     // mushroom cap + stem
@@ -244,19 +248,19 @@ function NukeRun({ start, full, low }: { start: number; full: boolean; low: bool
     const capY = ball.current?.position.y ?? 1;
     if (capG.current) {
       capG.current.visible = tc > 0;
-      const cs = 0.25 + 0.95 * ease(tc / 1.3);
-      capG.current.scale.set(cs, cs * 0.8, cs);
-      capG.current.position.y = capY - 0.12;
+      const cs = 0.3 + 1.5 * ease(tc / 1.4);
+      capG.current.scale.set(cs, cs * 0.6, cs);
+      capG.current.position.y = capY - 0.1;
       capG.current.rotation.y = T * 0.35;
     }
-    parts.capMat.uniforms.uTime!.value = T * 1.3; parts.capMat.uniforms.uHeat!.value = heat * 0.85; parts.capMat.uniforms.uAlpha!.value = 0.9 * fade * Math.min(1, Math.max(0, tc) * 3);
+    parts.capMat.uniforms.uTime!.value = T * 1.3; parts.capMat.uniforms.uHeat!.value = 0.08 + heat * 0.8; parts.capMat.uniforms.uAlpha!.value = 0.9 * fade * Math.min(1, Math.max(0, tc) * 3);
     if (stem.current) {
       stem.current.visible = tc > 0;
       const h = Math.max(0.01, capY - 0.15);
-      stem.current.scale.set(0.8 + 0.4 * ease(tc), h, 0.8 + 0.4 * ease(tc));
+      stem.current.scale.set(0.9 + 0.5 * ease(tc), h, 0.9 + 0.5 * ease(tc));
       stem.current.position.y = h / 2;
     }
-    parts.stemMat.uniforms.uTime!.value = T; parts.stemMat.uniforms.uHeat!.value = heat * 0.7; parts.stemMat.uniforms.uAlpha!.value = 0.85 * fade * Math.min(1, Math.max(0, tc) * 2.5);
+    parts.stemMat.uniforms.uTime!.value = T; parts.stemMat.uniforms.uHeat!.value = 0.12 + heat * 0.55; parts.stemMat.uniforms.uAlpha!.value = 0.85 * fade * Math.min(1, Math.max(0, tc) * 2.5);
     // shockwave ring across the felt
     if (ring.current) {
       const tr = (T - FLASH) / 1.0;
@@ -283,7 +287,7 @@ function NukeRun({ start, full, low }: { start: number; full: boolean; low: bool
     const flashEnv = T < FLASH ? 0 : Math.exp(-(T - FLASH) * 4);
     const b = 1.1 + 6 * flashEnv;
     if (Math.abs(b - bloom) > 0.15) setBloom(b);
-    if (ca.current) ca.current.offset.set(0.0015 + 0.012 * flashEnv, 0.001 + 0.008 * flashEnv);
+    if (ca.current) ca.current.offset.set(0.0004 + 0.01 * flashEnv, 0.0003 + 0.007 * flashEnv);
   });
 
   return (

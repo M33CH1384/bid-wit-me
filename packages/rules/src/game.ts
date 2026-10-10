@@ -43,6 +43,8 @@ export interface GameState {
   bags: number[];
   history: HandRecord[];
   result: GameResult | null;
+  /** Per side: Big-over-Little-Joker nukes dropped this game (set only once one happens). */
+  nukes?: number[];
 }
 
 export type Action =
@@ -321,8 +323,11 @@ export function applyAction(st: GameState, action: Action): GameState {
       const tricksWon = [...st.tricksWon];
       tricksWon[winner]!++;
       const tricks = [...st.tricks, done];
+      const li = plays.findIndex((p) => p.card === 'LJ'), bi = plays.findIndex((p) => p.card === 'BJ');
+      let nukes = st.nukes;
+      if (li >= 0 && bi > li) { nukes = [...(st.nukes ?? Array(sideCount(r)).fill(0))]; nukes[sideOf(plays[bi]!.seat, r)]!++; }
       let next: GameState = {
-        ...st, hands, spadesBroken, tricks, tricksWon,
+        ...st, hands, spadesBroken, tricks, tricksWon, ...(nukes ? { nukes } : {}),
         trick: { leader: winner, plays: [], winner: null }, turn: winner,
       };
       if (tricks.length === handSize(r)) next = finishHand(next);
