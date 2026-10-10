@@ -557,3 +557,5 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
   }
   .table-screen:not(.short):has(.side-top .vbubble) .bug-trumps .ts-label { color: var(--gold); font-size: 10px; letter-spacing: .1em; margin-right: 2px; }
 }
+/* your own (larger) video bubble grows upward from the plate's bottom edge, never down into the hand */
+.table-screen:not(.short) .plate.me-plate > .vbubble.self { top: auto; bottom: 0; transform: none; }
