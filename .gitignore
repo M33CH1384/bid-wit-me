@@ -4,3 +4,5 @@ coverage
 *.log
 .vite
 .wrangler
+screenshots/layout
+screenshots/wizard

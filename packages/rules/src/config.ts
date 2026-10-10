@@ -47,6 +47,11 @@ export interface TableRules {
   /** A side at or below this score loses immediately (null = off). */
   losingFloor: number | null;
   turnTimerSec: { bid: number; play: number };
+  /**
+   * "First hand: books bid themselves". Hand 1 skips bidding: every seat's bid is 'books' and each side scores
+   * 10 per book (trick) it takes — no contract, no bags, no penalties, no Nil. Optional only for saves made before it existed.
+   */
+  firstHandBidsItself?: boolean;
 }
 
 /**
@@ -78,6 +83,7 @@ const BASE: Omit<TableRules, 'mode' | 'partnerships' | 'playerCount' | 'deck' | 
   tenForTwoHundred: false,
   losingFloor: -200,
   turnTimerSec: { bid: 30, play: 20 },
+  firstHandBidsItself: true,
 };
 
 /** Default preset for a mode (spec §3.2–3.4 and §15 defaults). */

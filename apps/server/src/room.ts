@@ -8,7 +8,7 @@
  *  - all durable state lives in one plain-JSON `RoomData` object that the DO saves as a single row.
  */
 import {
-  type Action, type GameState, type PlayerView, type TableRules, RuleError, applyAction, makeRules, newGame, pendingTurn, secureSeed, validateRules, viewFor,
+  type Action, type GameState, type PlayerView, type TableRules, RuleError, applyAction, isFreshDeal, makeRules, newGame, pendingTurn, secureSeed, validateRules, viewFor,
 } from '@spades/rules';
 import { chooseBotAction } from '@spades/bots';
 import {
@@ -451,7 +451,7 @@ export class Room {
 
   /** Extra pause owed before the current turn (trick just completed / fresh deal). */
   private leadIn(g: GameState): number {
-    if (g.phase === 'bidding' && g.bids.every((b) => b === null)) return this.timing.dealMs;
+    if (isFreshDeal(g)) return this.timing.dealMs; // also the books first hand, which starts straight in play
     if (g.phase === 'playing' && g.trick.plays.length === 0 && g.tricks.length > 0) return this.timing.trickPauseMs;
     return 0;
   }

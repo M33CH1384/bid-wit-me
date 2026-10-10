@@ -1,6 +1,6 @@
 import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
-  type Card, type GameState, type TableRules, bidLabel, cardLabel, isJoker, isNilBid, isTrump, partnerOf, sideOf, sortHand, trumpOrder,
+  type Card, type GameState, type TableRules, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, partnerOf, sideOf, sortHand, trumpOrder,
 } from '@spades/rules';
 import { HandSummary, ScorePad, sideName } from './Modals';
 import { type Sfx, sound } from './audio';
@@ -288,6 +288,17 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     return () => clearTimeout(t);
   }, [resume]);
   const leave = () => { if (!online) clearGame(); onExit(); };
+  const isBooks = booksHand(st);
+  // "First hand: books bid themselves" — announce it once the deal lands
+  const booksAnnounced = useRef<string | null>(null);
+  useEffect(() => {
+    const key = `${st.seed}:${st.handNo}`;
+    if (!isBooks || dealing || resume || booksAnnounced.current === key || st.tricks.length > 0) return;
+    booksAnnounced.current = key;
+    setToasts([{ id: -2, text: 'FIRST HAND: BOOKS BID THEMSELVES', kind: 'info', sub: 'No bidding · every book you take = 10 points' }]);
+    const t = setTimeout(() => setToasts((ts) => ts.filter((x) => x.id !== -2)), 3400);
+    return () => clearTimeout(t);
+  }, [isBooks, dealing, st.seed, st.handNo, st.tricks.length, resume]);
 
   useEffect(() => { setSelected(null); }, [st.turn, st.handNo]);
   useEffect(() => { setExchangePick([]); }, [st.phase, st.turn]);
@@ -394,7 +405,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           </div>
           <div className="bug-meta">
             <span>{modeTitle(r).toUpperCase()}</span>
-            <span>HAND {st.handNo} · TO {r.targetScore}</span>
+            <span>HAND {st.handNo}{isBooks ? ' · BOOKS BID THEMSELVES' : ''} · TO {r.targetScore}</span>
           </div>
         </div>
         <button type="button" className="bug-btn" onClick={() => setShowPad(true)} aria-label="Score pad">📋</button>
@@ -426,6 +437,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       {/* center notes */}
       <div className="center-note-wrap">
         {st.phase === 'bidding' && !pause && st.turn !== HUMAN && <div className="center-note">{names[st.turn!]} is bidding…</div>}
+        {isBooks && st.phase === 'playing' && !pause && !dealing && st.tricks.length === 0 && st.trick.plays.length === 0 && <div className="center-note books-note" data-testid="books-note">First hand: books bid themselves · 10 per book</div>}
         {st.phase === 'exchange' && !humanExchanging && <div className="center-note">{names[exchangeStep!.from]} passes {exchangeStep!.count} to {names[exchangeStep!.to]}…</div>}
       </div>
       {winnerSeat !== null && <TrickBanner key={`${st.handNo}-${st.tricks.length}`} text={winnerSeat === HUMAN ? 'YOU TAKE IT' : `${names[winnerSeat]!.toUpperCase()} TAKES IT`} />}

@@ -22,9 +22,9 @@ export function HandSummary({ rec, rules, names }: { rec: HandRecord; rules: Tab
             <td className="who">{sideName(rules, s.side, names)}</td>
             <td>{s.seats.map((x) => bidLabel(rec.bids[x])).join(' + ')}</td>
             <td>{s.seats.map((x) => rec.tricksWon[x]).join(' + ')}</td>
-            <td className={s.contractMade === false ? 'neg' : ''}>{s.contract ? signed(s.contractPoints) : '—'}</td>
+            <td className={s.contractMade === false ? 'neg' : ''}>{s.bookPoints ? <span className="pos" title="First hand: books bid themselves">{s.tricks} books {signed(s.bookPoints)}</span> : s.contract ? signed(s.contractPoints) : '—'}</td>
             <td>{s.nils.length ? s.nils.map((n) => <span key={n.seat} className={n.made ? 'pos' : 'neg'}>{signed(n.points)} </span>) : '—'}</td>
-            <td>{s.bagsAdded ? `+${s.bagsAdded}` : 0}{s.bagPenaltyCount ? <span className="neg"> ({s.bagPenaltyPoints})</span> : null}</td>
+            <td>{s.bookPoints ? '—' : s.bagsAdded ? `+${s.bagsAdded}` : 0}{s.bagPenaltyCount ? <span className="neg"> ({s.bagPenaltyPoints})</span> : null}</td>
             <td className={s.points < 0 ? 'neg' : 'pos'}>{signed(s.points)}</td>
             <td><b>{s.totalScore}</b> <small>({s.totalBags} bags)</small></td>
           </tr>

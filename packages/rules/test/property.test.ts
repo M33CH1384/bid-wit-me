@@ -5,7 +5,7 @@ import {
   newGame, scoreHand,
 } from '../src';
 
-const modes: [string, TableRules][] = [
+const presets: [string, TableRules][] = [
   ['joker', makeRules('joker')],
   ['joker deuce-high + 2C lead', makeRules('joker', { ...CLASSIC_JOKER, deuceOfSpadesHigh: true, firstLead: 'twoOfClubs', blindNil: { onlyWhenBehindBy: null, exchangeCards: 2 } })],
   ['cutthroat 4', makeRules('cutthroat')],
@@ -14,6 +14,8 @@ const modes: [string, TableRules][] = [
   ['cutthroat 3 standard deck', makeRules('cutthroat', { playerCount: 3, deck: 'standard52' })],
   ['aceDown', makeRules('aceDown')],
 ];
+/** Classic play (every hand bid) for the bidding properties; the books first hand gets its own properties below. */
+const modes: [string, TableRules][] = presets.map(([n, r]) => [n, { ...r, firstHandBidsItself: false }]);
 
 /** Random-but-legal driver: picks uniformly among legal moves with a seeded RNG. */
 function playRandomHand(rules: TableRules, seed: string, check: (st: GameState) => void): GameState {
@@ -69,11 +71,30 @@ describe.each(modes)('properties: %s', (_name, rules) => {
       const rec = st.history[0]!;
       rec.sides.forEach((side, i) => {
         const nilPts = side.nils.reduce((a, n) => a + n.points, 0);
-        expect(side.points).toBe(side.contractPoints + side.bagsAdded + nilPts + side.bagPenaltyPoints);
+        expect(side.points).toBe(side.contractPoints + side.bagsAdded + nilPts + side.bagPenaltyPoints + side.bookPoints);
         expect(st.scores[i]).toBe(side.points);
         expect(side.tricks).toBe(side.seats.reduce((a, s) => a + st.tricksWon[s]!, 0));
       });
     }), { numRuns: 40 });
+  });
+});
+
+describe.each(presets)('first hand bids itself: %s', (_name, rules) => {
+  it('hand 1 skips bidding; each side scores exactly 10 per book, no bags; hand 2 bids normally', () => {
+    fc.assert(fc.property(fc.string({ minLength: 1, maxLength: 12 }), (seed) => {
+      const fresh = newGame(rules, seed);
+      expect(fresh.phase).toBe('playing');
+      expect(fresh.bids.every((b) => b === 'books')).toBe(true);
+      const st = playRandomHand(rules, seed, () => {});
+      const rec = st.history[0]!;
+      rec.sides.forEach((side, i) => {
+        expect(side.points).toBe(10 * side.tricks);
+        expect(side.bagsAdded).toBe(0);
+        expect(side.nils).toEqual([]);
+        expect(st.bags[i]).toBe(0);
+      });
+      if (st.phase === 'handOver') expect(applyAction(st, { type: 'nextHand' }).phase).toBe('bidding');
+    }), { numRuns: 25 });
   });
 });
 

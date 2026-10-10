@@ -3,7 +3,7 @@ import { type TableRules, buildDeck, cardPower, effectiveSuit, handSize, isTrump
 import { createRng, shuffle } from './rng';
 import {
   type Bid, type GameResult, type SideHandResult,
-  checkGameEnd, isNilBid, partnerOf, scoreHand, sideCount, sideOf,
+  checkGameEnd, isBooksHand, isNilBid, partnerOf, scoreHand, sideCount, sideOf,
 } from './scoring';
 
 export type Seat = number;
@@ -100,8 +100,26 @@ function dealHand(prev: GameState, handNo: number, dealer: Seat): GameState {
     trick: { leader: (dealer + 1) % n, plays: [], winner: null }, tricks: [],
     tricksWon: Array(n).fill(0), spadesBroken: false,
   };
+  if (handNo === 1 && r.firstHandBidsItself) {
+    // "First hand: books bid themselves": no bidding, straight to play; every book scores 10
+    return startPlay({ ...st, bids: Array(n).fill('books') });
+  }
   st.revealed = st.revealed.map((_, seat) => !blindNilScoreEligible(st, seat));
   return st;
+}
+
+/** True when this hand skipped bidding (first hand: books bid themselves). */
+export function booksHand(st: Pick<GameState, 'bids'>): boolean {
+  return isBooksHand(st.bids);
+}
+
+/**
+ * A hand that was just dealt and nobody has acted yet (clients run the shuffle + deal animation; the server waits).
+ * Works for normal hands (bidding, no bids yet) and for the books hand (play, no cards played yet).
+ */
+export function isFreshDeal(st: Pick<GameState, 'phase' | 'bids' | 'tricks' | 'trick'>): boolean {
+  if (st.phase === 'bidding') return st.bids.every((b) => b === null);
+  return st.phase === 'playing' && isBooksHand(st.bids) && st.tricks.length === 0 && st.trick.plays.length === 0;
 }
 
 /* ----------------------------------------------------------------- bidding */
@@ -250,6 +268,7 @@ export function applyAction(st: GameState, action: Action): GameState {
       if (st.phase !== 'bidding') throw new RuleError('WRONG_PHASE', 'Not bidding');
       if (st.turn !== seat) throw new RuleError('NOT_YOUR_TURN', 'Not your turn to bid');
       const bid: Bid = action.bid === 0 ? 'nil' : action.bid;
+      if (bid === 'books') throw new RuleError('BAD_BID', 'Books is not a bid you can choose');
       const opt = bidOptions(st, seat);
       if (bid === 'nil') {
         if (!opt.nil) throw new RuleError('NIL_NOT_ALLOWED', 'Nil is not allowed');

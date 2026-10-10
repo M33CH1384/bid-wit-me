@@ -124,6 +124,7 @@ describe('game', () => {
 
   it('rejects out-of-turn and illegal plays', () => {
     const { env } = fourHumans();
+    env.send('a', { t: 'config', rules: makeRules('joker', { firstHandBidsItself: false }) });
     env.send('a', { t: 'start' });
     const g = env.room.data.game!;
     const notTurn = ['a', 'b', 'c', 'd'][(g.turn! + 1) % 4]!;
@@ -151,7 +152,7 @@ describe('game', () => {
     const env = new FakeEnv(undefined, FAST);
     env.join('a', 'Slow');
     env.send('a', { t: 'sit', seat: 0 });
-    env.send('a', { t: 'config', rules: makeRules('joker', { turnTimerSec: { bid: 5, play: 5 } }) });
+    env.send('a', { t: 'config', rules: makeRules('joker', { turnTimerSec: { bid: 5, play: 5 }, firstHandBidsItself: false }) });
     env.send('a', { t: 'start' });
     env.advance(500);
     expect(env.room.data.game!.turn).toBe(0);
@@ -159,6 +160,30 @@ describe('game', () => {
     env.advance(5200);
     expect(env.room.data.game!.bids.filter((b) => b !== null).length).toBeGreaterThan(before);
     expect(env.room.data.chat.some((l) => l.text.includes('ran out of time'))).toBe(true);
+  });
+
+  it('first hand: books bid themselves (default) — play starts after the deal pause, no bidding; host can switch it off', () => {
+    const env = new FakeEnv(undefined, { ...FAST, dealMs: 2000 });
+    env.join('a', 'Host');
+    env.send('a', { t: 'sit', seat: 0 });
+    expect(env.last('a', 'state')!.room.rules.firstHandBidsItself).toBe(true);
+    env.send('a', { t: 'start' });
+    const v = env.last('a', 'state')!.view!;
+    expect(v.phase).toBe('playing');
+    expect(v.bids).toEqual(['books', 'books', 'books', 'books']);
+    // nobody moves during the deal animation, even though it's already trick play
+    const turn = env.room.data.game!.turn;
+    env.advance(1500);
+    if (turn !== 0) expect(env.room.data.game!.trick.plays.length).toBe(0);
+    // a 'books' bid can't be smuggled in over the protocol
+    env.send('a', { t: 'act', action: { type: 'bid', bid: 'books' } as unknown as GameAction });
+    expect(env.errors('a').at(-1)!.code).toBe('BAD_MESSAGE');
+    const env2 = new FakeEnv(undefined, FAST);
+    env2.join('a', 'Host');
+    env2.send('a', { t: 'sit', seat: 0 });
+    env2.send('a', { t: 'config', rules: makeRules('cutthroat', { firstHandBidsItself: false }) });
+    env2.send('a', { t: 'start' });
+    expect(env2.last('a', 'state')!.view!.phase).toBe('bidding');
   });
 
   it('plays a complete 4-human game over the protocol', () => {
@@ -319,7 +344,7 @@ describe('action ordering (real-network latency)', () => {
     const env = new FakeEnv(undefined, FAST);
     env.join('a', 'Slow');
     env.send('a', { t: 'sit', seat: 0 });
-    env.send('a', { t: 'config', rules: makeRules('joker', { turnTimerSec: { bid: 5, play: 5 } }) });
+    env.send('a', { t: 'config', rules: makeRules('joker', { turnTimerSec: { bid: 5, play: 5 }, firstHandBidsItself: false }) });
     env.send('a', { t: 'start' });
     env.advance(500);
     expect(env.room.data.game!.turn).toBe(0);
@@ -338,7 +363,7 @@ describe('action ordering (real-network latency)', () => {
     const env = new FakeEnv(undefined, FAST);
     env.join('a', 'Quick');
     env.send('a', { t: 'sit', seat: 0 });
-    env.send('a', { t: 'config', rules: makeRules('joker', { turnTimerSec: { bid: 5, play: 5 } }) });
+    env.send('a', { t: 'config', rules: makeRules('joker', { turnTimerSec: { bid: 5, play: 5 }, firstHandBidsItself: false }) });
     env.send('a', { t: 'start' });
     env.advance(500);
     const st = env.last('a', 'state')!;
@@ -352,6 +377,7 @@ describe('action ordering (real-network latency)', () => {
 
   it('real rule violations still come back as a failed ack with the reason', () => {
     const { env } = fourHumans();
+    env.send('a', { t: 'config', rules: makeRules('joker', { firstHandBidsItself: false }) });
     env.send('a', { t: 'start' });
     const g = env.room.data.game!;
     const notTurn = ['a', 'b', 'c', 'd'][(g.turn! + 1) % 4]!;

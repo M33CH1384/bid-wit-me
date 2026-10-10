@@ -6,17 +6,17 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
   "perHand": [
     {
       "bags": [
-        2,
+        0,
         0,
       ],
       "bids": [
-        4,
-        4,
-        1,
-        2,
+        "books",
+        "books",
+        "books",
+        "books",
       ],
       "totals": [
-        52,
+        70,
         60,
       ],
       "tricks": [
@@ -28,7 +28,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
     },
     {
       "bags": [
-        4,
+        2,
         1,
       ],
       "bids": [
@@ -38,7 +38,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
         3,
       ],
       "totals": [
-        104,
+        122,
         111,
       ],
       "tricks": [
@@ -50,7 +50,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
     },
     {
       "bags": [
-        6,
+        4,
         2,
       ],
       "bids": [
@@ -60,7 +60,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
         3,
       ],
       "totals": [
-        146,
+        164,
         172,
       ],
       "tricks": [
@@ -72,7 +72,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
     },
     {
       "bags": [
-        7,
+        5,
         4,
       ],
       "bids": [
@@ -82,7 +82,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
         2,
       ],
       "totals": [
-        207,
+        225,
         214,
       ],
       "tricks": [
@@ -94,7 +94,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
     },
     {
       "bags": [
-        7,
+        5,
         5,
       ],
       "bids": [
@@ -104,7 +104,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
         4,
       ],
       "totals": [
-        137,
+        155,
         275,
       ],
       "tricks": [
@@ -116,7 +116,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
     },
     {
       "bags": [
-        7,
+        5,
         8,
       ],
       "bids": [
@@ -126,7 +126,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
         2,
       ],
       "totals": [
-        187,
+        205,
         328,
       ],
       "tricks": [
@@ -138,7 +138,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
     },
     {
       "bags": [
-        8,
+        6,
         8,
       ],
       "bids": [
@@ -148,7 +148,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
         3,
       ],
       "totals": [
-        218,
+        236,
         228,
       ],
       "tricks": [
@@ -160,7 +160,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
     },
     {
       "bags": [
-        8,
+        6,
         1,
       ],
       "bids": [
@@ -170,7 +170,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
         5,
       ],
       "totals": [
-        148,
+        166,
         191,
       ],
       "tricks": [
@@ -182,7 +182,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
     },
     {
       "bags": [
-        9,
+        7,
         1,
       ],
       "bids": [
@@ -192,7 +192,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
         3,
       ],
       "totals": [
-        209,
+        227,
         251,
       ],
       "tricks": [
@@ -204,7 +204,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
     },
     {
       "bags": [
-        9,
+        7,
         1,
       ],
       "bids": [
@@ -214,7 +214,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
         4,
       ],
       "totals": [
-        269,
+        287,
         321,
       ],
       "tricks": [
@@ -226,7 +226,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
     },
     {
       "bags": [
-        0,
+        8,
         2,
       ],
       "bids": [
@@ -236,7 +236,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
         4,
       ],
       "totals": [
-        220,
+        338,
         382,
       ],
       "tricks": [
@@ -248,7 +248,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
     },
     {
       "bags": [
-        3,
+        1,
         2,
       ],
       "bids": [
@@ -258,7 +258,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
         1,
       ],
       "totals": [
-        263,
+        281,
         312,
       ],
       "tricks": [
@@ -270,7 +270,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
     },
     {
       "bags": [
-        3,
+        1,
         2,
       ],
       "bids": [
@@ -280,7 +280,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
         3,
       ],
       "totals": [
-        173,
+        191,
         362,
       ],
       "tricks": [
@@ -292,7 +292,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
     },
     {
       "bags": [
-        3,
+        1,
         3,
       ],
       "bids": [
@@ -302,7 +302,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
         4,
       ],
       "totals": [
-        243,
+        261,
         413,
       ],
       "tricks": [
@@ -314,7 +314,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
     },
     {
       "bags": [
-        4,
+        2,
         5,
       ],
       "bids": [
@@ -324,7 +324,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
         1,
       ],
       "totals": [
-        274,
+        292,
         485,
       ],
       "tricks": [
@@ -336,7 +336,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
     },
     {
       "bags": [
-        5,
+        3,
         6,
       ],
       "bids": [
@@ -346,7 +346,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
         2,
       ],
       "totals": [
-        315,
+        333,
         556,
       ],
       "tricks": [
@@ -360,7 +360,7 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
   "result": {
     "endReason": "target",
     "finalScores": [
-      315,
+      333,
       556,
     ],
     "placements": [
@@ -377,27 +377,27 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
 exports[`full bot games > golden: aceDown final result 1`] = `
 {
   "bags": [
-    9,
+    6,
     3,
   ],
   "hands": 11,
   "result": {
     "endReason": "target",
     "finalScores": [
-      539,
-      503,
+      536,
+      573,
     ],
     "placements": [
-      1,
       2,
+      1,
     ],
     "winners": [
-      0,
+      1,
     ],
   },
   "scores": [
-    539,
-    503,
+    536,
+    573,
   ],
 }
 `;
@@ -405,17 +405,17 @@ exports[`full bot games > golden: aceDown final result 1`] = `
 exports[`full bot games > golden: cutthroat 3 final result 1`] = `
 {
   "bags": [
+    2,
     3,
-    3,
-    8,
+    6,
   ],
   "hands": 6,
   "result": {
     "endReason": "target",
     "finalScores": [
-      253,
-      73,
-      308,
+      252,
+      93,
+      316,
     ],
     "placements": [
       2,
@@ -427,9 +427,9 @@ exports[`full bot games > golden: cutthroat 3 final result 1`] = `
     ],
   },
   "scores": [
-    253,
-    73,
-    308,
+    252,
+    93,
+    316,
   ],
 }
 `;
@@ -437,19 +437,19 @@ exports[`full bot games > golden: cutthroat 3 final result 1`] = `
 exports[`full bot games > golden: cutthroat 4 final result 1`] = `
 {
   "bags": [
-    6,
+    4,
     2,
     2,
-    5,
+    4,
   ],
-  "hands": 10,
+  "hands": 9,
   "result": {
     "endReason": "target",
     "finalScores": [
-      186,
-      202,
-      232,
-      315,
+      134,
+      172,
+      222,
+      304,
     ],
     "placements": [
       4,
@@ -462,10 +462,10 @@ exports[`full bot games > golden: cutthroat 4 final result 1`] = `
     ],
   },
   "scores": [
-    186,
-    202,
-    232,
-    315,
+    134,
+    172,
+    222,
+    304,
   ],
 }
 `;

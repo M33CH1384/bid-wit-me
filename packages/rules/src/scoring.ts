@@ -1,7 +1,18 @@
 import type { TableRules } from './config';
 
-/** A bid: a number of tricks (≥1), Nil, or Blind Nil. A numeric 0 is normalised to 'nil'. */
-export type Bid = number | 'nil' | 'blindNil';
+/**
+ * A bid: a number of tricks (≥1), Nil, or Blind Nil. A numeric 0 is normalised to 'nil'.
+ * 'books' is never chosen by a player: it is the automatic bid of the "first hand: books bid themselves" hand.
+ */
+export type Bid = number | 'nil' | 'blindNil' | 'books';
+
+/** Points per book in a books-bid-themselves hand. */
+export const BOOK_VALUE = 10;
+
+/** True for the automatic first hand where nobody bids and every book is worth 10. */
+export function isBooksHand(bids: readonly (Bid | null)[]): boolean {
+  return bids.length > 0 && bids.every((b) => b === 'books');
+}
 
 export function isNilBid(b: Bid | null | undefined): b is 'nil' | 'blindNil' {
   return b === 'nil' || b === 'blindNil';
@@ -11,6 +22,7 @@ export function bidLabel(b: Bid | null | undefined): string {
   if (b === null || b === undefined) return '—';
   if (b === 'nil') return 'Nil';
   if (b === 'blindNil') return 'Blind Nil';
+  if (b === 'books') return 'Books';
   return String(b);
 }
 
@@ -54,6 +66,8 @@ export interface SideHandResult {
   bagsAdded: number;
   bagPenaltyCount: number;
   bagPenaltyPoints: number;
+  /** First hand (books bid themselves): 10 per book taken. 0 otherwise. */
+  bookPoints: number;
   /** Net points for this hand. */
   points: number;
   totalScore: number;
@@ -67,6 +81,7 @@ export interface SideHandResult {
  * - Nil: ±nil.value; Blind Nil: ±blindNil.value, scored separately from the partner's contract.
  * - Tricks by a Nil bidder: bags (+1 each) by default, or count toward the partner's contract.
  * - Every `bagsPerPenalty` accumulated bags: −bagPenalty and the bag count drops accordingly.
+ * - 'books' (first hand bids itself): +10 per trick taken, no bags added (so no penalty can trigger that hand).
  */
 export function scoreHand(
   r: TableRules,
@@ -78,13 +93,15 @@ export function scoreHand(
   const out: SideHandResult[] = [];
   for (let side = 0; side < sideCount(r); side++) {
     const seats = sideSeats(side, r);
-    let contract = 0, contractTricks = 0, nilTricks = 0, tricks = 0, nilPoints = 0;
+    let contract = 0, contractTricks = 0, nilTricks = 0, tricks = 0, nilPoints = 0, bookPoints = 0;
     const nils: NilResult[] = [];
     for (const s of seats) {
       const b = bids[s]!;
       const t = tricksWon[s]!;
       tricks += t;
-      if (isNilBid(b)) {
+      if (b === 'books') {
+        bookPoints += BOOK_VALUE * t; // first hand: every book counts, no bags
+      } else if (isNilBid(b)) {
         const value = b === 'nil' ? r.nil.value : r.blindNil.value;
         const made = t === 0;
         const points = made ? value : -value;
@@ -117,11 +134,11 @@ export function scoreHand(
     let totalBags = bags[side]! + bagsAdded;
     const bagPenaltyCount = Math.floor(totalBags / r.bagsPerPenalty);
     totalBags -= bagPenaltyCount * r.bagsPerPenalty;
-    const bagPenaltyPoints = -bagPenaltyCount * r.bagPenalty;
-    const points = contractPoints + bagsAdded + nilPoints + bagPenaltyPoints;
+    const bagPenaltyPoints = bagPenaltyCount ? -bagPenaltyCount * r.bagPenalty : 0;
+    const points = contractPoints + bagsAdded + nilPoints + bagPenaltyPoints + bookPoints;
     out.push({
       side, seats, contract, contractTricks, tricks, contractMade, contractPoints, nils,
-      bagsAdded, bagPenaltyCount, bagPenaltyPoints, points,
+      bagsAdded, bagPenaltyCount, bagPenaltyPoints, bookPoints, points,
       totalScore: scores[side]! + points, totalBags,
     });
   }

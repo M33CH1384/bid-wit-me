@@ -131,12 +131,16 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
             <select value={settings.blindNil} onChange={(e) => set('blindNil', e.target.value as Settings['blindNil'])}>
               <option value="behind100">When behind by 100+</option><option value="always">Always</option><option value="off">Off</option>
             </select></span></label>
+          <label className="row"><span className="row-label">First hand: books bid themselves<small>No bidding in hand 1 · 10 points per book</small></span><span className="row-control">
+            <button type="button" data-testid="books-toggle" className={`toggle ${settings.firstHandBidsItself !== false ? 'on' : ''}`} role="switch" aria-checked={settings.firstHandBidsItself !== false} aria-label="First hand: books bid themselves" onClick={() => set('firstHandBidsItself', settings.firstHandBidsItself === false)}><span /></button>
+          </span></label>
           <p className="hint">Other house rules (bags, minimum bid, 10 for 200…) come from the House rules on the main menu.</p>
         </section>
       ) : (
         <div className="summary">
           <span>{modeTitle(r)} · Trumps: {order.join(' › ')} …</span>
           <span>Target {r.targetScore} · timer {r.turnTimerSec.bid}s/{r.turnTimerSec.play}s</span>
+          {r.firstHandBidsItself && <span>First hand: books bid themselves</span>}
         </div>
       )}
 

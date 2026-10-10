@@ -20,6 +20,8 @@ export interface Settings {
   nilTricksCountForPartner: boolean;
   bags: '10/100' | '10/50' | '5/50';
   tenForTwoHundred: boolean;
+  /** House rule "First hand: books bid themselves" (on by default). */
+  firstHandBidsItself: boolean;
   botLevel: BotLevel;
   speed: 'relaxed' | 'normal' | 'fast' | 'turbo';
   /** 3D quality: low disables shadows, HDRI and MSAA and uses smaller textures. */
@@ -36,7 +38,7 @@ export const DEFAULT_SETTINGS: Settings = {
   mode: 'joker', targetScore: 'default', losingFloor: 'on', deuceOfSpadesHigh: false, jokerOrder: 'house',
   cutthroatDeck: 'joker54', spadesMustBeBroken: true, firstLead: 'leftOfDealer', minTeamBid: 0, nilAllowed: true,
   blindNil: 'behind100', blindNilExchange: 0, nilTricksCountForPartner: false, bags: '10/100', tenForTwoHundred: false,
-  botLevel: 'normal', speed: 'normal', quality: defaultQuality(),
+  firstHandBidsItself: true, botLevel: 'normal', speed: 'normal', quality: defaultQuality(),
 };
 
 export const MODES: { key: ModeKey; title: string; blurb: string; players: string }[] = [
@@ -58,6 +60,7 @@ export function settingsToRules(s: Settings): TableRules {
     bagsPerPenalty: s.bags === '5/50' ? 5 : 10,
     bagPenalty: s.bags === '10/100' ? 100 : 50,
     tenForTwoHundred: s.tenForTwoHundred,
+    firstHandBidsItself: s.firstHandBidsItself !== false,
     losingFloor: s.losingFloor === 'on' ? -200 : null,
   };
   if (s.targetScore !== 'default') o.targetScore = s.targetScore;

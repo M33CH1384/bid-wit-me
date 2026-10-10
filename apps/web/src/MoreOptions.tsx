@@ -63,6 +63,9 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
           <button type="button" className="link sheet-h" aria-expanded={house} onClick={() => setHouse(!house)}>{house ? '▾' : '▸'} House rules</button>
           {house && (
             <div className="house">
+              <Row label="First hand: books bid themselves" hint="No bidding in hand 1 · 10 points per book">
+                <Toggle label="First hand: books bid themselves" value={s.firstHandBidsItself !== false} onChange={(v) => set('firstHandBidsItself', v)} />
+              </Row>
               <Row label="Losing floor −200"><Toggle value={s.losingFloor === 'on'} onChange={(v) => set('losingFloor', v ? 'on' : 'off')} /></Row>
               {isJokerDeck && (
                 <Row label="Joker trump order" hint={s.jokerOrder === 'house' ? '2♣ 2♥ removed · 2♦ is a spade' : '2♥ 2♦ removed'}>

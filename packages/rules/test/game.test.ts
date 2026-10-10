@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CLASSIC_JOKER, type Card, type GameState, RuleError, applyAction, bidOptions, buildDeck, deckForHand, legalPlays, legalPlaysFor, effectiveSuit,
-  makeRules, newGame, pendingTurn, trickWinner, viewFor, viewMustLeadTwoOfClubs, RulesConfigError,
+  CLASSIC_JOKER, type Card, type GameState, type TableRules, scoreHand, isFreshDeal, RuleError, applyAction, bidOptions, buildDeck, deckForHand, legalPlays, legalPlaysFor, effectiveSuit,
+  makeRules, newGame as realNewGame, pendingTurn, trickWinner, viewFor, viewMustLeadTwoOfClubs, RulesConfigError,
 } from '../src';
 import { bidAll, fill, play, rigged } from './helpers';
 
 const joker = makeRules('joker');
+
+/** Most tests here exercise bidding, so they start with a normal (bid) first hand; the books first hand is tested below. */
+const newGame = (r: TableRules, seed: string) => realNewGame({ ...r, firstHandBidsItself: false }, seed);
 
 function expectRuleError(fn: () => unknown, code: string) {
   try { fn(); } catch (e) { expect(e).toBeInstanceOf(RuleError); expect((e as RuleError).code).toBe(code); return; }
@@ -369,5 +372,49 @@ describe('views (no peeking)', () => {
     expect(v.legal).toEqual([]);
     expect(pendingTurn({ ...st, turn: null })).toBeNull();
     expect(pendingTurn({ ...st, phase: 'handOver' })).toBeNull();
+  });
+});
+
+describe('first hand: books bid themselves', () => {
+  it('is on by default for every mode', () => {
+    for (const m of ['joker', 'cutthroat', 'aceDown'] as const) expect(makeRules(m).firstHandBidsItself).toBe(true);
+  });
+  it('hand 1 starts straight in play with everyone on "books"; nobody may bid', () => {
+    const st = realNewGame(joker, 'books');
+    expect(st.phase).toBe('playing');
+    expect(st.bids).toEqual(['books', 'books', 'books', 'books']);
+    expect(st.turn).toBe((st.dealer + 1) % 4);
+    expect(st.revealed.every(Boolean)).toBe(true);
+    expect(isFreshDeal(st)).toBe(true);
+    expect(viewFor(st, 0).bidOptions).toBeNull();
+    expectRuleError(() => applyAction(st, { type: 'bid', seat: st.turn!, bid: 3 }), 'WRONG_PHASE');
+  });
+  it('a player can never choose the books bid', () => {
+    const st = newGame(joker, 'b2');
+    expectRuleError(() => applyAction(st, { type: 'bid', seat: st.turn!, bid: 'books' }), 'BAD_BID');
+  });
+  it('scores 10 per book, no bags, no penalties, even with bags already at the edge', () => {
+    const sides = scoreHand(joker, ['books', 'books', 'books', 'books'], [4, 2, 5, 2], [0, 0], [9, 9]);
+    expect(sides.map((x) => x.points)).toEqual([90, 40]);
+    expect(sides.map((x) => x.bookPoints)).toEqual([90, 40]);
+    expect(sides.map((x) => x.bagsAdded)).toEqual([0, 0]);
+    expect(sides.map((x) => x.bagPenaltyPoints)).toEqual([0, 0]);
+    expect(sides.map((x) => x.totalBags)).toEqual([9, 9]);
+    expect(sides.map((x) => x.contractMade)).toEqual([null, null]);
+  });
+  it('cutthroat 3: each player scores their own books', () => {
+    const r = makeRules('cutthroat', { playerCount: 3 });
+    const sides = scoreHand(r, ['books', 'books', 'books'], [7, 6, 4], [0, 0, 0], [0, 0, 0]);
+    expect(sides.map((x) => x.points)).toEqual([70, 60, 40]);
+  });
+  it('only hand 1: hand 2 is bid as usual', () => {
+    let st: GameState = { ...realNewGame(joker, 'h2'), phase: 'handOver', turn: null };
+    st = applyAction(st, { type: 'nextHand' });
+    expect(st.phase).toBe('bidding');
+    expect(st.bids.every((b) => b === null)).toBe(true);
+  });
+  it('the host can switch it off', () => {
+    const st = realNewGame(makeRules('aceDown', { firstHandBidsItself: false }), 'off');
+    expect(st.phase).toBe('bidding');
   });
 });

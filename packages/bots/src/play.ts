@@ -44,6 +44,7 @@ function coverPartnerNil(k: Knowledge, legal: Card[]): Card {
 }
 
 function wantTricks(k: Knowledge): boolean {
+  if (k.booksHand) return true; // no contract and no bags: every book is +10
   if (k.need > 0) return true;
   // try to set the opponents when it's realistic (partner modes)
   return k.r.partnerships && k.oppNeed > 0 && k.remainingTricks - k.oppNeed <= 2;

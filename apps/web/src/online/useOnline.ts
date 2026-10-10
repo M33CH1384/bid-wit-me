@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { Action, GameState, PlayerView } from '@spades/rules';
-import { bidLabel } from '@spades/rules';
+import { bidLabel, isFreshDeal } from '@spades/rules';
 import type { ChatLine, RoomInfo } from '@spades/protocol';
 import type { ChatMsg } from '../overlay';
 import type { ConnState, TableConnection } from './connection';
@@ -52,7 +52,7 @@ export function useOnlineSource(cs: ConnState, conn: TableConnection): (GameSour
     prev.current = rotated.st;
     const st = rotated.st;
     if (p && p.handNo === st.handNo && st.tricks.length > p.tricks.length) setPause(true);
-    const fresh = st.phase === 'bidding' && st.bids.every((b) => b === null) && st.tricks.length === 0;
+    const fresh = isFreshDeal(st) && st.tricks.length === 0;
     if ((p && st.handNo !== p.handNo) || (!p && fresh)) { setPause(false); setIntro({ hand: st.handNo, until: Date.now() + dealMs(st) }); }
     setShown(rotated);
   }, [rotated]);
@@ -83,7 +83,7 @@ export function useOnlineSource(cs: ConnState, conn: TableConnection): (GameSour
     // conn.act() drops the move if another one is still in flight or this view is already outdated
     switch (a.type) {
       case 'reveal': conn.act({ type: 'reveal' }, seq); break;
-      case 'bid': conn.act({ type: 'bid', bid: a.bid }, seq); break;
+      case 'bid': if (a.bid !== 'books') conn.act({ type: 'bid', bid: a.bid }, seq); break;
       case 'play': conn.act({ type: 'play', card: a.card }, seq); break;
       case 'exchange': conn.act({ type: 'exchange', cards: a.cards }, seq); break;
       case 'nextHand': conn.send({ t: 'next' }); break;

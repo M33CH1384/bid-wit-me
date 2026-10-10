@@ -38,6 +38,7 @@ export function toastsFor(rec: HandRecord, rules: TableRules, names: string[], m
       const who = nl.seat === 0 ? 'YOU' : names[nl.seat]!.toUpperCase();
       out.push(nl.made ? { text: nl.kind === 'blindNil' ? 'BLIND NIL!' : 'NIL!', kind: 'nil', sub: `${who} +${nl.points}` } : { text: 'NIL BUSTED', kind: 'bust', sub: `${who} ${nl.points}` });
     }
+    if (s.bookPoints) out.push({ text: s.side === mySide ? 'BOOKS BANKED' : 'BOOKS', kind: s.side === mySide ? 'made' : 'info', sub: `${sideLabel(s.side)} ${s.tricks} books · +${s.bookPoints}` });
     if (s.contractMade === true) out.push({ text: 'BID MADE', kind: 'made', sub: `${sideLabel(s.side)} ${s.contract}/${s.contractTricks} · +${s.contractPoints}` });
     if (s.contractMade === false) out.push({ text: 'SET!', kind: 'set', sub: `${sideLabel(s.side)} ${s.contractTricks}/${s.contract} · ${s.contractPoints}` });
     if (s.bagPenaltyCount) out.push({ text: 'BAG PENALTY', kind: 'bags', sub: `${sideLabel(s.side)} ${s.bagPenaltyPoints}` });

@@ -5,7 +5,7 @@ export function rigged(rules: TableRules, hands: Card[][], dealer = 3, seed = 't
   const st = newGame(rules, seed);
   const n = rules.playerCount;
   return {
-    ...st, dealer, hands: hands.map((h) => [...h]), turn: (dealer + 1) % n,
+    ...st, phase: 'bidding', bids: Array(n).fill(null), dealer, hands: hands.map((h) => [...h]), turn: (dealer + 1) % n,
     trick: { leader: (dealer + 1) % n, plays: [], winner: null },
     revealed: Array(n).fill(true),
   };

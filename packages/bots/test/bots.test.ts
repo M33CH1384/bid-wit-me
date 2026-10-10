@@ -16,7 +16,7 @@ function fill(rules: TableRules, partial: Card[][]): Card[][] {
 
 function rig(rules: TableRules, hands: Card[][], patch: Partial<GameState> = {}): GameState {
   const st = newGame(rules, 'bot-test');
-  return { ...st, dealer: 3, turn: 0, hands, revealed: Array(rules.playerCount).fill(true), trick: { leader: 0, plays: [], winner: null }, ...patch };
+  return { ...st, phase: 'bidding', bids: Array(rules.playerCount).fill(null), dealer: 3, turn: 0, hands, revealed: Array(rules.playerCount).fill(true), trick: { leader: 0, plays: [], winner: null }, ...patch };
 }
 
 describe('bidding heuristics', () => {
@@ -42,7 +42,7 @@ describe('bidding heuristics', () => {
   });
   it('easy bots never nil; all bids are within options', () => {
     for (let i = 0; i < 30; i++) {
-      const st = newGame(joker, `easy${i}`);
+      const st = newGame({ ...joker, firstHandBidsItself: false }, `easy${i}`);
       const v = viewFor(st, st.turn!);
       const b = chooseBid(v, 'easy', createRng(i));
       expect(typeof b).toBe('number');
@@ -127,6 +127,33 @@ describe('play heuristics', () => {
     const st = newGame(classic, 'x');
     expect(chooseBotAction(viewFor(st, (st.turn! + 1) % 4))).toBeNull();
     expect(chooseBotAction(viewFor({ ...st, phase: 'handOver' }, st.turn!))).toBeNull();
+  });
+});
+
+describe('first hand: books bid themselves', () => {
+  it('bots go straight to playing and always try to win books (no ducking)', () => {
+    const st = newGame(joker, 'books-bot');
+    expect(st.phase).toBe('playing');
+    const a = chooseBotAction(viewFor(st, st.turn!));
+    expect(a?.type).toBe('play');
+    // seat 3 holds the boss A♥: with a made contract it would duck (3♥) to dodge bags; in the books hand it takes the book
+    const hands = fill(joker, [[], ['5H'], ['6H'], ['AH', '3H']]);
+    const trick = { leader: 1, plays: [{ seat: 1, card: '5H' as Card }, { seat: 2, card: '6H' as Card }], winner: null };
+    hands[1] = hands[1]!.filter((c) => c !== '5H');
+    hands[2] = hands[2]!.filter((c) => c !== '6H');
+    const books = rig(joker, hands, { phase: 'playing', bids: ['books', 'books', 'books', 'books'], turn: 3, trick, tricksWon: [0, 0, 0, 0] });
+    expect(choosePlay(viewFor(books, 3), 'normal')).toBe('AH');
+    const made = rig(joker, hands, { phase: 'playing', bids: [1, 1, 1, 1], turn: 3, trick, tricksWon: [0, 1, 0, 1] });
+    expect(choosePlay(viewFor(made, 3), 'normal')).toBe('3H');
+  });
+  it('full bot games with the books first hand finish and the first hand scores 10 per book', () => {
+    for (let g = 0; g < 6; g++) {
+      const st = simulateGame(joker, `books:${g}`);
+      const h1 = st.history[0]!;
+      expect(h1.bids.every((b) => b === 'books')).toBe(true);
+      h1.sides.forEach((s) => expect(s.points).toBe(10 * s.tricks));
+      expect(st.history[1]!.bids.every((b) => typeof b === 'number' || b === 'nil' || b === 'blindNil')).toBe(true);
+    }
   });
 });
 

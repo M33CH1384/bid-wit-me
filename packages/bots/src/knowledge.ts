@@ -1,6 +1,6 @@
 import {
   type Card, type PlayerView, type Play, type TableRules,
-  buildDeck, cardPower, effectiveSuit, handSize, isNilBid, isTrump, partnerOf, sideOf, trickWinner,
+  buildDeck, cardPower, effectiveSuit, handSize, isBooksHand, isNilBid, isTrump, partnerOf, sideOf, trickWinner,
 } from '@spades/rules';
 
 /** Derived facts a bot uses for decisions; computed only from the seat's view (no peeking). */
@@ -21,6 +21,8 @@ export interface Knowledge {
   myNil: boolean;
   partnerCleanNil: boolean;
   oppCleanNils: number[];
+  /** First hand (books bid themselves): every book is worth 10, so always try to win tricks. */
+  booksHand: boolean;
 }
 
 export function cleanNil(v: PlayerView, s: number): boolean {
@@ -58,6 +60,7 @@ export function know(v: PlayerView): Knowledge {
     myNil: isNilBid(v.bids[v.seat]),
     partnerCleanNil: partner !== null && cleanNil(v, partner),
     oppCleanNils: opps.filter((s) => cleanNil(v, s)),
+    booksHand: isBooksHand(v.bids),
   };
 }
 
