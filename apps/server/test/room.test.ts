@@ -731,21 +731,25 @@ describe('AFK + kicking', () => {
 
 describe("'Run it!' over the protocol", () => {
   it('a guaranteed claim is applied server-side, credits every remaining book, and a repeat is refused (idempotent)', () => {
-    const { env } = fourHumans();
-    env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: 250 }) });
-    env.send('a', { t: 'start' });
     const cids = ['a', 'b', 'c', 'd'];
     let ran: { cid: string; handNo: number } | null = null;
-    const runSeat = () => env.room.data.game?.tricks.find((t) => t.plays.some((p) => p.run))?.plays[0]!.seat;
-    // bots' logic (65% when guaranteed) or this loop claims as soon as a seat may run it
-    for (let i = 0; i < 20000 && env.room.data.phase === 'playing' && runSeat() === undefined; i++) {
-      for (const cid of cids) {
-        const v = env.last(cid, 'state')?.view;
-        if (v?.canRunIt && v.turn === v.seat) { env.send(cid, { t: 'act', action: { type: 'runIt' } }); break; }
+    let env!: FakeEnv;
+    // (deals vary run to run, and a whole game can pass without anyone being guaranteed the rest: try a few games)
+    for (let game = 0; game < 6 && !ran; game++) {
+      env = fourHumans().env;
+      env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: 1000 }) });
+      env.send('a', { t: 'start' });
+      const runSeat = () => env.room.data.game?.tricks.find((t) => t.plays.some((p) => p.run))?.plays[0]!.seat;
+      // bots' logic (65% when guaranteed) or this loop claims as soon as a seat may run it
+      for (let i = 0; i < 20000 && env.room.data.phase === 'playing' && runSeat() === undefined; i++) {
+        for (const cid of cids) {
+          const v = env.last(cid, 'state')?.view;
+          if (v?.canRunIt && v.turn === v.seat) { env.send(cid, { t: 'act', action: { type: 'runIt' } }); break; }
+        }
+        if (runSeat() === undefined && !playTurn(env, cids)) env.advance(100);
       }
-      if (runSeat() === undefined && !playTurn(env, cids)) env.advance(100);
+      if (runSeat() !== undefined) ran = { cid: cids[runSeat()!]!, handNo: env.room.data.game!.handNo };
     }
-    if (runSeat() !== undefined) ran = { cid: cids[runSeat()!]!, handNo: env.room.data.game!.handNo };
     expect(ran).not.toBeNull();
     const g = env.room.data.game!;
     const runTricks = g.tricks.filter((t) => t.plays.some((p) => p.run));

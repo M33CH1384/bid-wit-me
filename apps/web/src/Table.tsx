@@ -278,7 +278,7 @@ function useGameSounds(st: GameState, myTurn: boolean, mySide: number, msgs: Cha
     st.bids.forEach((b, s) => { if (b !== null && p.st.bids[s] === null && p.st.handNo === st.handNo) sound.play(s === HUMAN ? 'bid' : 'bidSoft'); });
     if (myTurn && !p.myTurn && (st.phase === 'playing' || st.phase === 'bidding')) sound.play('turn', { delay: 0.05 });
     if (msgs.length > p.msgs) { const m = msgs[msgs.length - 1]!; if (!m.system && m.user !== 'You') sound.play('pop'); }
-    if (st.phase === 'gameOver' && p.st.phase !== 'gameOver' && st.result) sound.play(st.result.winners.includes(mySide) ? 'win' : 'lose', { delay: 0.3 });
+    if (st.phase === 'gameOver' && p.st.phase !== 'gameOver' && st.result) sound.play(st.result.winners.includes(mySide) ? 'win' : 'lose', { delay: 0.3 + (runPlays(st).length && runPlays(p.st).length === 0 ? RUN_FX_MS / 1000 : 0) });
   }, [st, myTurn, mySide, msgs]);
 }
 
@@ -475,6 +475,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     return () => clearTimeout(t);
   }, [runFx]);
   const ranHand = useMemo(() => runPlays(st).length > 0, [st]);
+  // the scoreboard (scores, bags, books taken, result) holds the pre-run numbers until the tornado is over
+  const sb = runFx ? runFx.before.st : st;
   const winnerSeat = pause && !ranHand ? shownTrick.winner : null;
   // the Run it! button + its one-time spotlight tip
   const canRun = myTurn && !dealing && st.phase === 'playing' && !!view.canRunIt && !runFx;
@@ -644,7 +646,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const radioactive = radioactiveBigJoker(st);
   useEffect(() => { sound.geiger(radioactive); return () => sound.geiger(false); }, [radioactive]);
   // any modal up: the table, plates, chat, video bubbles etc. dim + blur behind it and can't paint over it
-  const modalOpen = (st.phase === 'handOver' && !pause && talkOpen) || confirmLeave || showPad || (st.phase === 'gameOver' && !pause && !!st.result);
+  const modalOpen = (st.phase === 'handOver' && !pause && talkOpen) || confirmLeave || showPad || (st.phase === 'gameOver' && !pause && !runFx && !!st.result);
 
   const trumps = useMemo(() => trumpOrder(r).slice(0, 5).map((c) => (c === 'BJ' ? 'BIG JKR' : c === 'LJ' ? 'LIL JKR' : cardLabel(c))), [r]);
   const trumpsShort = useMemo(() => trumpOrder(r).slice(0, 4).map((c) => (c === 'BJ' ? 'BJ' : c === 'LJ' ? 'LJ' : cardLabel(c))), [r]);
@@ -679,7 +681,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           <div className="plate-name">{names[seat]}{st.dealer === seat && <span className="chip dealer">D</span>}{partner && <span className="chip ally">PARTNER</span>}</div>
           <div className="plate-stats">
             <span className="chip">{b === 'books' ? 'BOOKS' : `BID ${b === null ? (isTurn && st.phase === 'bidding' ? '…' : '—') : bidLabel(b).toUpperCase()}`}</span>
-            <span className="chip">TOOK {st.tricksWon[seat]}</span>
+            <span className="chip">TOOK {sb.tricksWon[seat]}</span>
           </div>
         </div>
         {isTurn && <div className="plate-turn">{st.phase === 'bidding' ? 'BIDDING' : 'TO PLAY'}</div>}
@@ -747,12 +749,12 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         <div className="bug glass">
           <img className="bug-logo" src="/assets/bwm-wordmark-white.svg" alt="Bid Wit Me" />
           <span className="beta-tag in-bug" aria-label="Beta">BETA</span>
-          <div className={`bug-teams n${st.scores.length}`}>
-            {st.scores.map((s, i) => (
-              <div key={i} className={`bug-team ${i === mySide ? 'mine' : ''} ${st.result?.winners.includes(i) ? 'won' : ''}`}>
+          <div className={`bug-teams n${sb.scores.length}`} data-testid="bug-teams">
+            {sb.scores.map((s, i) => (
+              <div key={i} className={`bug-team ${i === mySide ? 'mine' : ''} ${sb.result?.winners.includes(i) ? 'won' : ''}`}>
                 <span className="bug-name">{wheelSides.has(i) && <span className="wheels-tag" data-testid={`wheels-${i}`} title="Wheels: this team bid 10+ books together">WHEELS</span>}{r.partnerships ? (teamNames?.[i] ? sideName(r, i, names) : (online ? online.sideLabel(i) : sideName(r, i, names).replace(' & ', ' + '))).toUpperCase() : names[i]!.toUpperCase()}</span>
                 <TickNumber value={s} className="bug-score" />
-                <span className="bug-bags">{st.bags[i]}<small>B</small></span>
+                <span className="bug-bags">{sb.bags[i]}<small>B</small></span>
               </div>
             ))}
           </div>
@@ -862,8 +864,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             <div className="plate-name">YOU{st.dealer === HUMAN && <span className="chip dealer">D</span>}{myBadges.map((b) => BADGES[b.id] && <span key={b.id} className="chip badge" title={`${BADGES[b.id]!.name}: ${BADGES[b.id]!.desc}`} data-testid={`plate-badge-${b.id}`}>{BADGES[b.id]!.icon}</span>)}</div>
             <div className="plate-stats">
               <span className="chip">{st.bids[HUMAN] === 'books' ? 'BOOKS' : `BID ${st.bids[HUMAN] === null ? '—' : bidLabel(st.bids[HUMAN]).toUpperCase()}`}</span>
-              <span className="chip">TOOK {st.tricksWon[HUMAN]}</span>
-              {isNilBid(st.bids[HUMAN]) && st.tricksWon[HUMAN]! > 0 && <span className="chip bad">NIL BUSTED</span>}
+              <span className="chip">TOOK {sb.tricksWon[HUMAN]}</span>
+              {isNilBid(st.bids[HUMAN]) && sb.tricksWon[HUMAN]! > 0 && <span className="chip bad">NIL BUSTED</span>}
             </div>
           </div>
           {myTurn && st.phase === 'playing' && <div className="plate-turn">{selected ? 'TAP AGAIN TO PLAY' : 'YOUR TURN'}</div>}
@@ -932,7 +934,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         </div>
       )}
 
-      {st.phase === 'gameOver' && !pause && st.result && (
+      {st.phase === 'gameOver' && !pause && !runFx && st.result && (
         <div className="modal-backdrop">
           <div className="modal glass slant gameover" role="dialog" aria-label="Game over">
             <button type="button" className="modal-x" aria-label="Close and go to the main menu" data-testid="gameover-x" onClick={mainMenu}>✕</button>

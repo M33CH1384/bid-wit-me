@@ -289,12 +289,18 @@ async function runItTest() {
   await page.getByTestId('run-it-tip').waitFor({ timeout: 5000 });
   if (!(await page.locator('.run-it-btn.attention').count())) throw new Error('Run it! button should pulse while the tip is up');
   await shot('11a-run-it-tip');
+  const board = () => page.evaluate(() => document.querySelector('[data-testid="bug-teams"]')?.textContent + ' | ' + [...document.querySelectorAll('.plate-stats')].map((e) => e.textContent).join(' '));
+  const boardBefore = await board();
   await tap(page.getByTestId('run-it')); // (the attention pulse never 'settles' for Playwright's stability check)
   await page.getByTestId('run-skip').waitFor({ timeout: 5000 });
+  const boardDuring = await board();
   await page.getByTestId('pop-ranIt').waitFor({ timeout: 5000 });
   await page.waitForTimeout(900);
   await shot('11b-run-it-tornado');
   await page.getByTestId('run-skip').waitFor({ state: 'detached', timeout: 15000 });
+  if (boardDuring !== boardBefore) throw new Error(`scoreboard moved during the tornado: ${boardBefore} → ${boardDuring}`);
+  await page.waitForTimeout(300);
+  if ((await board()) === boardBefore) throw new Error('scoreboard should update once the tornado is over');
   const r = await page.evaluate(() => ({
     hand: document.querySelectorAll('[data-testid="hand"] button').length,
     chat: [...document.querySelectorAll('.chat-line')].some((e) => /You ran the board \(\+3 books\)/.test(e.textContent ?? '')),
@@ -310,7 +316,7 @@ async function runItTest() {
   await page.getByTestId('badge-unlock').waitFor({ timeout: 5000 }).catch(() => { throw new Error('no badge unlock toast'); });
   await shot('11c-run-it-badge');
   await page.evaluate(() => localStorage.removeItem('bwm.game'));
-  console.log(`✓ Run it!: tip + pulse, tornado + RAN IT!, hands empty, +3 books (${took} → ${r.took ?? '?'}), chat line, Storm Chaser badge`);
+  console.log(`✓ Run it!: tip + pulse, tornado + RAN IT!, hands empty, +3 books (${took} → ${r.took ?? '?'}), chat line, Storm Chaser badge, scoreboard held until the tornado ended`);
 }
 if (!process.env.ONLY || process.env.ONLY === 'runit') await runItTest();
 

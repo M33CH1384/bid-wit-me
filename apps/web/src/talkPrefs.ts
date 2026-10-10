@@ -18,9 +18,11 @@ const DEFAULTS: TalkPrefs = { botTalk: true, cleanTalk: true, hideBotTalk: false
 function load(): TalkPrefs {
   try {
     const j = JSON.parse(localStorage.getItem(KEY) ?? 'null');
-    // v2: bot voices are recorded now → on by default (saves from before stored the old robotic default, off)
-    if (j && !j.v) return { ...DEFAULTS, ...j, voices: true, voiceVolume: Math.min(j.voiceVolume ?? DEFAULTS.voiceVolume, DEFAULTS.voiceVolume) };
-    if (j) return { ...DEFAULTS, ...j };
+    // Bot voices default on only for players who never touched the setting: no save at all, or a save without a
+    // voices value. A stored value is a choice and is kept (old saves wrote the whole object, so a stored "off" can't
+    // be told apart from the old default; respecting it is the safe side). Old saves just get the gentler volume cap.
+    if (j && !j.v) return { ...DEFAULTS, ...j, voiceVolume: Math.min(j.voiceVolume ?? DEFAULTS.voiceVolume, DEFAULTS.voiceVolume) };
+    if (j) { const { v: _v, ...rest } = j; return { ...DEFAULTS, ...rest }; }
   } catch { /* ignore */ }
   return { ...DEFAULTS };
 }
@@ -30,7 +32,13 @@ export const talkPrefs = {
   get: () => prefs,
   set(p: Partial<TalkPrefs>) {
     prefs = { ...prefs, ...p };
-    try { localStorage.setItem(KEY, JSON.stringify({ ...prefs, v: 2 })); } catch { /* ignore */ }
+    // only settings the player actually chose are stored, so a later default change still reaches untouched ones
+    const chosen = { ...p };
+    try {
+      // (a legacy whole-object save stays whole: its values were all loaded as stored)
+      const old = JSON.parse(localStorage.getItem(KEY) ?? 'null');
+      localStorage.setItem(KEY, JSON.stringify({ ...(!old ? {} : old.v === 3 ? old : prefs), ...chosen, v: 3 }));
+    } catch { /* ignore */ }
     if (!prefs.voices) { sound.stopVoice(); if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel(); }
     subs.forEach((f) => f());
   },

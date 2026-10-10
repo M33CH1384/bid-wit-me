@@ -29,10 +29,9 @@ describe('recorded bot voices', () => {
       }
     }
     for (const [kind, list] of Object.entries(COMMON)) for (const raw of list as string[]) expect(lineById(lineIdOf('og', kind as never, raw)!)).toBe(raw);
-    // lines added since the clips were made fall back to Web Speech: today only the 8 shared Run it! lines
-    // (runIt / gotRan) × the 6 personas that use the shared pool = 48. Regenerate the clips if this grows.
+    // every line has a clip (new lines fall back to Web Speech until recorded: bwm-voices scripts/generate_missing.py)
     expect(total).toBeGreaterThan(100);
-    expect(unmatchedLines()).toBeLessThanOrEqual(48);
+    expect(unmatchedLines()).toBe(0);
   });
 
   it('a spoken line carries its id and resolves to that persona\'s clip; Clean talk picks the clean take', () => {

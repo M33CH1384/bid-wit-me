@@ -10,7 +10,7 @@
  },
  "source": {
   "file": "packages/bots/src/personas.ts",
-  "sha256": "d855ab622cfa62586a5d476c2a6e531cb2058294438b31ceae7792c4d42d436f"
+  "sha256": "9775354df0b71b443d37d7bf8fa088fb6c438597eb895e4b8255591e287188ba"
  },
  "voices": {
   "professor": {
@@ -382,6 +382,30 @@
    },
    "{them} with the big brain play.": {
     "clip": "professor.common.hypePartner.5"
+   },
+   "run it. 🌪 the rest are mine.": {
+    "clip": "professor.common.runIt.0"
+   },
+   "y'all can put your cards down. I got these.": {
+    "clip": "professor.common.runIt.1"
+   },
+   "no need to play it out, {opp}. it's over.": {
+    "clip": "professor.common.runIt.2"
+   },
+   "tornado warning 🌪 take cover {opp}.": {
+    "clip": "professor.common.runIt.3"
+   },
+   "I been counting. y'all done.": {
+    "clip": "professor.common.runIt.4"
+   },
+   "ran the board on us? rude.": {
+    "clip": "professor.common.gotRan.0"
+   },
+   "ok ok, show-off.": {
+    "clip": "professor.common.gotRan.1"
+   },
+   "we'll remember that one.": {
+    "clip": "professor.common.gotRan.2"
    }
   },
   "mama": {
@@ -696,6 +720,30 @@
    },
    "{them} with the big brain play.": {
     "clip": "mama.common.hypePartner.5"
+   },
+   "run it. 🌪 the rest are mine.": {
+    "clip": "mama.common.runIt.0"
+   },
+   "y'all can put your cards down. I got these.": {
+    "clip": "mama.common.runIt.1"
+   },
+   "no need to play it out, {opp}. it's over.": {
+    "clip": "mama.common.runIt.2"
+   },
+   "tornado warning 🌪 take cover {opp}.": {
+    "clip": "mama.common.runIt.3"
+   },
+   "I been counting. y'all done.": {
+    "clip": "mama.common.runIt.4"
+   },
+   "ran the board on us? rude.": {
+    "clip": "mama.common.gotRan.0"
+   },
+   "ok ok, show-off.": {
+    "clip": "mama.common.gotRan.1"
+   },
+   "we'll remember that one.": {
+    "clip": "mama.common.gotRan.2"
    }
   },
   "hype": {
@@ -1004,6 +1052,30 @@
    },
    "{them} with the big brain play.": {
     "clip": "hype.common.hypePartner.5"
+   },
+   "run it. 🌪 the rest are mine.": {
+    "clip": "hype.common.runIt.0"
+   },
+   "y'all can put your cards down. I got these.": {
+    "clip": "hype.common.runIt.1"
+   },
+   "no need to play it out, {opp}. it's over.": {
+    "clip": "hype.common.runIt.2"
+   },
+   "tornado warning 🌪 take cover {opp}.": {
+    "clip": "hype.common.runIt.3"
+   },
+   "I been counting. y'all done.": {
+    "clip": "hype.common.runIt.4"
+   },
+   "ran the board on us? rude.": {
+    "clip": "hype.common.gotRan.0"
+   },
+   "ok ok, show-off.": {
+    "clip": "hype.common.gotRan.1"
+   },
+   "we'll remember that one.": {
+    "clip": "hype.common.gotRan.2"
    }
   },
   "petty": {
@@ -1309,6 +1381,30 @@
    },
    "{them} with the big brain play.": {
     "clip": "petty.common.hypePartner.5"
+   },
+   "run it. 🌪 the rest are mine.": {
+    "clip": "petty.common.runIt.0"
+   },
+   "y'all can put your cards down. I got these.": {
+    "clip": "petty.common.runIt.1"
+   },
+   "no need to play it out, {opp}. it's over.": {
+    "clip": "petty.common.runIt.2"
+   },
+   "tornado warning 🌪 take cover {opp}.": {
+    "clip": "petty.common.runIt.3"
+   },
+   "I been counting. y'all done.": {
+    "clip": "petty.common.runIt.4"
+   },
+   "ran the board on us? rude.": {
+    "clip": "petty.common.gotRan.0"
+   },
+   "ok ok, show-off.": {
+    "clip": "petty.common.gotRan.1"
+   },
+   "we'll remember that one.": {
+    "clip": "petty.common.gotRan.2"
    }
   },
   "og": {
@@ -1617,6 +1713,30 @@
    },
    "{them} with the big brain play.": {
     "clip": "og.common.hypePartner.5"
+   },
+   "run it. 🌪 the rest are mine.": {
+    "clip": "og.common.runIt.0"
+   },
+   "y'all can put your cards down. I got these.": {
+    "clip": "og.common.runIt.1"
+   },
+   "no need to play it out, {opp}. it's over.": {
+    "clip": "og.common.runIt.2"
+   },
+   "tornado warning 🌪 take cover {opp}.": {
+    "clip": "og.common.runIt.3"
+   },
+   "I been counting. y'all done.": {
+    "clip": "og.common.runIt.4"
+   },
+   "ran the board on us? rude.": {
+    "clip": "og.common.gotRan.0"
+   },
+   "ok ok, show-off.": {
+    "clip": "og.common.gotRan.1"
+   },
+   "we'll remember that one.": {
+    "clip": "og.common.gotRan.2"
    }
   },
   "hustler": {
@@ -1953,6 +2073,30 @@
    },
    "{them} with the big brain play.": {
     "clip": "hustler.common.hypePartner.5"
+   },
+   "run it. 🌪 the rest are mine.": {
+    "clip": "hustler.common.runIt.0"
+   },
+   "y'all can put your cards down. I got these.": {
+    "clip": "hustler.common.runIt.1"
+   },
+   "no need to play it out, {opp}. it's over.": {
+    "clip": "hustler.common.runIt.2"
+   },
+   "tornado warning 🌪 take cover {opp}.": {
+    "clip": "hustler.common.runIt.3"
+   },
+   "I been counting. y'all done.": {
+    "clip": "hustler.common.runIt.4"
+   },
+   "ran the board on us? rude.": {
+    "clip": "hustler.common.gotRan.0"
+   },
+   "ok ok, show-off.": {
+    "clip": "hustler.common.gotRan.1"
+   },
+   "we'll remember that one.": {
+    "clip": "hustler.common.gotRan.2"
    }
   },
   "silent": {
@@ -14699,6 +14843,966 @@
    "bytes": {
     "webm": 4265,
     "m4a": 6230
+   }
+  },
+  {
+   "id": "professor.common.runIt.0",
+   "persona": "professor",
+   "lineId": "common.runIt.0",
+   "kind": "runIt",
+   "template": "run it. 🌪 the rest are mine.",
+   "text": "Run it. The rest are mine.",
+   "generic": false,
+   "voice": "bm_george",
+   "speed": 0.95,
+   "durationMs": 1965,
+   "files": {
+    "webm": "clips/professor/common.runIt.0.webm",
+    "m4a": "clips/professor/common.runIt.0.m4a"
+   },
+   "bytes": {
+    "webm": 8181,
+    "m4a": 11275
+   }
+  },
+  {
+   "id": "professor.common.runIt.1",
+   "persona": "professor",
+   "lineId": "common.runIt.1",
+   "kind": "runIt",
+   "template": "y'all can put your cards down. I got these.",
+   "text": "Y'all can put your cards down. I got these.",
+   "generic": false,
+   "voice": "bm_george",
+   "speed": 0.95,
+   "durationMs": 3090,
+   "files": {
+    "webm": "clips/professor/common.runIt.1.webm",
+    "m4a": "clips/professor/common.runIt.1.m4a"
+   },
+   "bytes": {
+    "webm": 12748,
+    "m4a": 17186
+   }
+  },
+  {
+   "id": "professor.common.runIt.2",
+   "persona": "professor",
+   "lineId": "common.runIt.2",
+   "kind": "runIt",
+   "template": "no need to play it out, {opp}. it's over.",
+   "text": "No need to play it out. It's over.",
+   "generic": true,
+   "voice": "bm_george",
+   "speed": 0.95,
+   "durationMs": 2475,
+   "files": {
+    "webm": "clips/professor/common.runIt.2.webm",
+    "m4a": "clips/professor/common.runIt.2.m4a"
+   },
+   "bytes": {
+    "webm": 10532,
+    "m4a": 13843
+   }
+  },
+  {
+   "id": "professor.common.runIt.3",
+   "persona": "professor",
+   "lineId": "common.runIt.3",
+   "kind": "runIt",
+   "template": "tornado warning 🌪 take cover {opp}.",
+   "text": "Tornado warning! Take cover.",
+   "generic": true,
+   "voice": "bm_george",
+   "speed": 0.95,
+   "durationMs": 2320,
+   "files": {
+    "webm": "clips/professor/common.runIt.3.webm",
+    "m4a": "clips/professor/common.runIt.3.m4a"
+   },
+   "bytes": {
+    "webm": 9366,
+    "m4a": 13107
+   }
+  },
+  {
+   "id": "professor.common.runIt.4",
+   "persona": "professor",
+   "lineId": "common.runIt.4",
+   "kind": "runIt",
+   "template": "I been counting. y'all done.",
+   "text": "I been counting. Y'all done.",
+   "generic": false,
+   "voice": "bm_george",
+   "speed": 0.95,
+   "durationMs": 2180,
+   "files": {
+    "webm": "clips/professor/common.runIt.4.webm",
+    "m4a": "clips/professor/common.runIt.4.m4a"
+   },
+   "bytes": {
+    "webm": 9530,
+    "m4a": 12300
+   }
+  },
+  {
+   "id": "professor.common.gotRan.0",
+   "persona": "professor",
+   "lineId": "common.gotRan.0",
+   "kind": "gotRan",
+   "template": "ran the board on us? rude.",
+   "text": "Ran the board on us? Rude.",
+   "generic": false,
+   "voice": "bm_george",
+   "speed": 0.95,
+   "durationMs": 2125,
+   "files": {
+    "webm": "clips/professor/common.gotRan.0.webm",
+    "m4a": "clips/professor/common.gotRan.0.m4a"
+   },
+   "bytes": {
+    "webm": 8951,
+    "m4a": 12135
+   }
+  },
+  {
+   "id": "professor.common.gotRan.1",
+   "persona": "professor",
+   "lineId": "common.gotRan.1",
+   "kind": "gotRan",
+   "template": "ok ok, show-off.",
+   "text": "Ok ok, show-off.",
+   "generic": false,
+   "voice": "bm_george",
+   "speed": 0.95,
+   "durationMs": 2070,
+   "files": {
+    "webm": "clips/professor/common.gotRan.1.webm",
+    "m4a": "clips/professor/common.gotRan.1.m4a"
+   },
+   "bytes": {
+    "webm": 8687,
+    "m4a": 11906
+   }
+  },
+  {
+   "id": "professor.common.gotRan.2",
+   "persona": "professor",
+   "lineId": "common.gotRan.2",
+   "kind": "gotRan",
+   "template": "we'll remember that one.",
+   "text": "We'll remember that one.",
+   "generic": false,
+   "voice": "bm_george",
+   "speed": 0.95,
+   "durationMs": 1705,
+   "files": {
+    "webm": "clips/professor/common.gotRan.2.webm",
+    "m4a": "clips/professor/common.gotRan.2.m4a"
+   },
+   "bytes": {
+    "webm": 7479,
+    "m4a": 9812
+   }
+  },
+  {
+   "id": "mama.common.runIt.0",
+   "persona": "mama",
+   "lineId": "common.runIt.0",
+   "kind": "runIt",
+   "template": "run it. 🌪 the rest are mine.",
+   "text": "Run it. The rest are mine.",
+   "generic": false,
+   "voice": "af_heart",
+   "speed": 0.92,
+   "durationMs": 1510,
+   "files": {
+    "webm": "clips/mama/common.runIt.0.webm",
+    "m4a": "clips/mama/common.runIt.0.m4a"
+   },
+   "bytes": {
+    "webm": 6404,
+    "m4a": 9017
+   }
+  },
+  {
+   "id": "mama.common.runIt.1",
+   "persona": "mama",
+   "lineId": "common.runIt.1",
+   "kind": "runIt",
+   "template": "y'all can put your cards down. I got these.",
+   "text": "Y'all can put your cards down. I got these.",
+   "generic": false,
+   "voice": "af_heart",
+   "speed": 0.92,
+   "durationMs": 2560,
+   "files": {
+    "webm": "clips/mama/common.runIt.1.webm",
+    "m4a": "clips/mama/common.runIt.1.m4a"
+   },
+   "bytes": {
+    "webm": 10381,
+    "m4a": 14129
+   }
+  },
+  {
+   "id": "mama.common.runIt.2",
+   "persona": "mama",
+   "lineId": "common.runIt.2",
+   "kind": "runIt",
+   "template": "no need to play it out, {opp}. it's over.",
+   "text": "No need to play it out. It's over.",
+   "generic": true,
+   "voice": "af_heart",
+   "speed": 0.92,
+   "durationMs": 2080,
+   "files": {
+    "webm": "clips/mama/common.runIt.2.webm",
+    "m4a": "clips/mama/common.runIt.2.m4a"
+   },
+   "bytes": {
+    "webm": 8452,
+    "m4a": 11804
+   }
+  },
+  {
+   "id": "mama.common.runIt.3",
+   "persona": "mama",
+   "lineId": "common.runIt.3",
+   "kind": "runIt",
+   "template": "tornado warning 🌪 take cover {opp}.",
+   "text": "Tornado warning! Take cover.",
+   "generic": true,
+   "voice": "af_heart",
+   "speed": 0.92,
+   "durationMs": 1860,
+   "files": {
+    "webm": "clips/mama/common.runIt.3.webm",
+    "m4a": "clips/mama/common.runIt.3.m4a"
+   },
+   "bytes": {
+    "webm": 7644,
+    "m4a": 10794
+   }
+  },
+  {
+   "id": "mama.common.runIt.4",
+   "persona": "mama",
+   "lineId": "common.runIt.4",
+   "kind": "runIt",
+   "template": "I been counting. y'all done.",
+   "text": "I been counting. Y'all done.",
+   "generic": false,
+   "voice": "af_heart",
+   "speed": 0.92,
+   "durationMs": 1740,
+   "files": {
+    "webm": "clips/mama/common.runIt.4.webm",
+    "m4a": "clips/mama/common.runIt.4.m4a"
+   },
+   "bytes": {
+    "webm": 7273,
+    "m4a": 10037
+   }
+  },
+  {
+   "id": "mama.common.gotRan.0",
+   "persona": "mama",
+   "lineId": "common.gotRan.0",
+   "kind": "gotRan",
+   "template": "ran the board on us? rude.",
+   "text": "Ran the board on us? Rude.",
+   "generic": false,
+   "voice": "af_heart",
+   "speed": 0.92,
+   "durationMs": 1690,
+   "files": {
+    "webm": "clips/mama/common.gotRan.0.webm",
+    "m4a": "clips/mama/common.gotRan.0.m4a"
+   },
+   "bytes": {
+    "webm": 7039,
+    "m4a": 10082
+   }
+  },
+  {
+   "id": "mama.common.gotRan.1",
+   "persona": "mama",
+   "lineId": "common.gotRan.1",
+   "kind": "gotRan",
+   "template": "ok ok, show-off.",
+   "text": "Ok ok, show-off.",
+   "generic": false,
+   "voice": "af_heart",
+   "speed": 0.92,
+   "durationMs": 1450,
+   "files": {
+    "webm": "clips/mama/common.gotRan.1.webm",
+    "m4a": "clips/mama/common.gotRan.1.m4a"
+   },
+   "bytes": {
+    "webm": 6086,
+    "m4a": 8508
+   }
+  },
+  {
+   "id": "mama.common.gotRan.2",
+   "persona": "mama",
+   "lineId": "common.gotRan.2",
+   "kind": "gotRan",
+   "template": "we'll remember that one.",
+   "text": "We'll remember that one.",
+   "generic": false,
+   "voice": "af_heart",
+   "speed": 0.92,
+   "durationMs": 1270,
+   "files": {
+    "webm": "clips/mama/common.gotRan.2.webm",
+    "m4a": "clips/mama/common.gotRan.2.m4a"
+   },
+   "bytes": {
+    "webm": 5533,
+    "m4a": 7871
+   }
+  },
+  {
+   "id": "hype.common.runIt.0",
+   "persona": "hype",
+   "lineId": "common.runIt.0",
+   "kind": "runIt",
+   "template": "run it. 🌪 the rest are mine.",
+   "text": "Run it. The rest are mine.",
+   "generic": false,
+   "voice": "am_puck",
+   "speed": 1.12,
+   "durationMs": 1250,
+   "files": {
+    "webm": "clips/hype/common.runIt.0.webm",
+    "m4a": "clips/hype/common.runIt.0.m4a"
+   },
+   "bytes": {
+    "webm": 5355,
+    "m4a": 7617
+   }
+  },
+  {
+   "id": "hype.common.runIt.1",
+   "persona": "hype",
+   "lineId": "common.runIt.1",
+   "kind": "runIt",
+   "template": "y'all can put your cards down. I got these.",
+   "text": "Y'all can put your cards down. I got these.",
+   "generic": false,
+   "voice": "am_puck",
+   "speed": 1.12,
+   "durationMs": 2060,
+   "files": {
+    "webm": "clips/hype/common.runIt.1.webm",
+    "m4a": "clips/hype/common.runIt.1.m4a"
+   },
+   "bytes": {
+    "webm": 8636,
+    "m4a": 11898
+   }
+  },
+  {
+   "id": "hype.common.runIt.2",
+   "persona": "hype",
+   "lineId": "common.runIt.2",
+   "kind": "runIt",
+   "template": "no need to play it out, {opp}. it's over.",
+   "text": "No need to play it out. It's over.",
+   "generic": true,
+   "voice": "am_puck",
+   "speed": 1.12,
+   "durationMs": 1620,
+   "files": {
+    "webm": "clips/hype/common.runIt.2.webm",
+    "m4a": "clips/hype/common.runIt.2.m4a"
+   },
+   "bytes": {
+    "webm": 6733,
+    "m4a": 9472
+   }
+  },
+  {
+   "id": "hype.common.runIt.3",
+   "persona": "hype",
+   "lineId": "common.runIt.3",
+   "kind": "runIt",
+   "template": "tornado warning 🌪 take cover {opp}.",
+   "text": "Tornado warning! Take cover.",
+   "generic": true,
+   "voice": "am_puck",
+   "speed": 1.12,
+   "durationMs": 1435,
+   "files": {
+    "webm": "clips/hype/common.runIt.3.webm",
+    "m4a": "clips/hype/common.runIt.3.m4a"
+   },
+   "bytes": {
+    "webm": 6143,
+    "m4a": 8568
+   }
+  },
+  {
+   "id": "hype.common.runIt.4",
+   "persona": "hype",
+   "lineId": "common.runIt.4",
+   "kind": "runIt",
+   "template": "I been counting. y'all done.",
+   "text": "I been counting. Y'all done.",
+   "generic": false,
+   "voice": "am_puck",
+   "speed": 1.12,
+   "durationMs": 1350,
+   "files": {
+    "webm": "clips/hype/common.runIt.4.webm",
+    "m4a": "clips/hype/common.runIt.4.m4a"
+   },
+   "bytes": {
+    "webm": 5773,
+    "m4a": 8226
+   }
+  },
+  {
+   "id": "hype.common.gotRan.0",
+   "persona": "hype",
+   "lineId": "common.gotRan.0",
+   "kind": "gotRan",
+   "template": "ran the board on us? rude.",
+   "text": "Ran the board on us? Rude.",
+   "generic": false,
+   "voice": "am_puck",
+   "speed": 1.12,
+   "durationMs": 1260,
+   "files": {
+    "webm": "clips/hype/common.gotRan.0.webm",
+    "m4a": "clips/hype/common.gotRan.0.m4a"
+   },
+   "bytes": {
+    "webm": 5402,
+    "m4a": 7772
+   }
+  },
+  {
+   "id": "hype.common.gotRan.1",
+   "persona": "hype",
+   "lineId": "common.gotRan.1",
+   "kind": "gotRan",
+   "template": "ok ok, show-off.",
+   "text": "Ok ok, show-off.",
+   "generic": false,
+   "voice": "am_puck",
+   "speed": 1.12,
+   "durationMs": 1170,
+   "files": {
+    "webm": "clips/hype/common.gotRan.1.webm",
+    "m4a": "clips/hype/common.gotRan.1.m4a"
+   },
+   "bytes": {
+    "webm": 4988,
+    "m4a": 7299
+   }
+  },
+  {
+   "id": "hype.common.gotRan.2",
+   "persona": "hype",
+   "lineId": "common.gotRan.2",
+   "kind": "gotRan",
+   "template": "we'll remember that one.",
+   "text": "We'll remember that one.",
+   "generic": false,
+   "voice": "am_puck",
+   "speed": 1.12,
+   "durationMs": 950,
+   "files": {
+    "webm": "clips/hype/common.gotRan.2.webm",
+    "m4a": "clips/hype/common.gotRan.2.m4a"
+   },
+   "bytes": {
+    "webm": 4205,
+    "m4a": 6111
+   }
+  },
+  {
+   "id": "petty.common.runIt.0",
+   "persona": "petty",
+   "lineId": "common.runIt.0",
+   "kind": "runIt",
+   "template": "run it. 🌪 the rest are mine.",
+   "text": "Run it. The rest are mine.",
+   "generic": false,
+   "voice": "bf_emma",
+   "speed": 1.05,
+   "durationMs": 1420,
+   "files": {
+    "webm": "clips/petty/common.runIt.0.webm",
+    "m4a": "clips/petty/common.runIt.0.m4a"
+   },
+   "bytes": {
+    "webm": 6071,
+    "m4a": 8634
+   }
+  },
+  {
+   "id": "petty.common.runIt.1",
+   "persona": "petty",
+   "lineId": "common.runIt.1",
+   "kind": "runIt",
+   "template": "y'all can put your cards down. I got these.",
+   "text": "Y'all can put your cards down. I got these.",
+   "generic": false,
+   "voice": "bf_emma",
+   "speed": 1.05,
+   "durationMs": 2250,
+   "files": {
+    "webm": "clips/petty/common.runIt.1.webm",
+    "m4a": "clips/petty/common.runIt.1.m4a"
+   },
+   "bytes": {
+    "webm": 9289,
+    "m4a": 12801
+   }
+  },
+  {
+   "id": "petty.common.runIt.2",
+   "persona": "petty",
+   "lineId": "common.runIt.2",
+   "kind": "runIt",
+   "template": "no need to play it out, {opp}. it's over.",
+   "text": "No need to play it out. It's over.",
+   "generic": true,
+   "voice": "bf_emma",
+   "speed": 1.05,
+   "durationMs": 1905,
+   "files": {
+    "webm": "clips/petty/common.runIt.2.webm",
+    "m4a": "clips/petty/common.runIt.2.m4a"
+   },
+   "bytes": {
+    "webm": 7945,
+    "m4a": 10916
+   }
+  },
+  {
+   "id": "petty.common.runIt.3",
+   "persona": "petty",
+   "lineId": "common.runIt.3",
+   "kind": "runIt",
+   "template": "tornado warning 🌪 take cover {opp}.",
+   "text": "Tornado warning! Take cover.",
+   "generic": true,
+   "voice": "bf_emma",
+   "speed": 1.05,
+   "durationMs": 1730,
+   "files": {
+    "webm": "clips/petty/common.runIt.3.webm",
+    "m4a": "clips/petty/common.runIt.3.m4a"
+   },
+   "bytes": {
+    "webm": 7232,
+    "m4a": 10022
+   }
+  },
+  {
+   "id": "petty.common.runIt.4",
+   "persona": "petty",
+   "lineId": "common.runIt.4",
+   "kind": "runIt",
+   "template": "I been counting. y'all done.",
+   "text": "I been counting. Y'all done.",
+   "generic": false,
+   "voice": "bf_emma",
+   "speed": 1.05,
+   "durationMs": 1570,
+   "files": {
+    "webm": "clips/petty/common.runIt.4.webm",
+    "m4a": "clips/petty/common.runIt.4.m4a"
+   },
+   "bytes": {
+    "webm": 6657,
+    "m4a": 9228
+   }
+  },
+  {
+   "id": "petty.common.gotRan.0",
+   "persona": "petty",
+   "lineId": "common.gotRan.0",
+   "kind": "gotRan",
+   "template": "ran the board on us? rude.",
+   "text": "Ran the board on us? Rude.",
+   "generic": false,
+   "voice": "bf_emma",
+   "speed": 1.05,
+   "durationMs": 1550,
+   "files": {
+    "webm": "clips/petty/common.gotRan.0.webm",
+    "m4a": "clips/petty/common.gotRan.0.m4a"
+   },
+   "bytes": {
+    "webm": 6507,
+    "m4a": 9209
+   }
+  },
+  {
+   "id": "petty.common.gotRan.1",
+   "persona": "petty",
+   "lineId": "common.gotRan.1",
+   "kind": "gotRan",
+   "template": "ok ok, show-off.",
+   "text": "Ok ok, show-off.",
+   "generic": false,
+   "voice": "bf_emma",
+   "speed": 1.05,
+   "durationMs": 1580,
+   "files": {
+    "webm": "clips/petty/common.gotRan.1.webm",
+    "m4a": "clips/petty/common.gotRan.1.m4a"
+   },
+   "bytes": {
+    "webm": 6643,
+    "m4a": 9242
+   }
+  },
+  {
+   "id": "petty.common.gotRan.2",
+   "persona": "petty",
+   "lineId": "common.gotRan.2",
+   "kind": "gotRan",
+   "template": "we'll remember that one.",
+   "text": "We'll remember that one.",
+   "generic": false,
+   "voice": "bf_emma",
+   "speed": 1.05,
+   "durationMs": 1300,
+   "files": {
+    "webm": "clips/petty/common.gotRan.2.webm",
+    "m4a": "clips/petty/common.gotRan.2.m4a"
+   },
+   "bytes": {
+    "webm": 5646,
+    "m4a": 8056
+   }
+  },
+  {
+   "id": "og.common.runIt.0",
+   "persona": "og",
+   "lineId": "common.runIt.0",
+   "kind": "runIt",
+   "template": "run it. 🌪 the rest are mine.",
+   "text": "Run it. The rest are mine.",
+   "generic": false,
+   "voice": "am_fenrir",
+   "speed": 0.88,
+   "durationMs": 1400,
+   "files": {
+    "webm": "clips/og/common.runIt.0.webm",
+    "m4a": "clips/og/common.runIt.0.m4a"
+   },
+   "bytes": {
+    "webm": 6007,
+    "m4a": 8398
+   }
+  },
+  {
+   "id": "og.common.runIt.1",
+   "persona": "og",
+   "lineId": "common.runIt.1",
+   "kind": "runIt",
+   "template": "y'all can put your cards down. I got these.",
+   "text": "Y'all can put your cards down. I got these.",
+   "generic": false,
+   "voice": "am_fenrir",
+   "speed": 0.88,
+   "durationMs": 2490,
+   "files": {
+    "webm": "clips/og/common.runIt.1.webm",
+    "m4a": "clips/og/common.runIt.1.m4a"
+   },
+   "bytes": {
+    "webm": 10186,
+    "m4a": 14122
+   }
+  },
+  {
+   "id": "og.common.runIt.2",
+   "persona": "og",
+   "lineId": "common.runIt.2",
+   "kind": "runIt",
+   "template": "no need to play it out, {opp}. it's over.",
+   "text": "No need to play it out. It's over.",
+   "generic": true,
+   "voice": "am_fenrir",
+   "speed": 0.88,
+   "durationMs": 1920,
+   "files": {
+    "webm": "clips/og/common.runIt.2.webm",
+    "m4a": "clips/og/common.runIt.2.m4a"
+   },
+   "bytes": {
+    "webm": 7959,
+    "m4a": 10937
+   }
+  },
+  {
+   "id": "og.common.runIt.3",
+   "persona": "og",
+   "lineId": "common.runIt.3",
+   "kind": "runIt",
+   "template": "tornado warning 🌪 take cover {opp}.",
+   "text": "Tornado warning! Take cover.",
+   "generic": true,
+   "voice": "am_fenrir",
+   "speed": 0.88,
+   "durationMs": 1790,
+   "files": {
+    "webm": "clips/og/common.runIt.3.webm",
+    "m4a": "clips/og/common.runIt.3.m4a"
+   },
+   "bytes": {
+    "webm": 7423,
+    "m4a": 10405
+   }
+  },
+  {
+   "id": "og.common.runIt.4",
+   "persona": "og",
+   "lineId": "common.runIt.4",
+   "kind": "runIt",
+   "template": "I been counting. y'all done.",
+   "text": "I been counting. Y'all done.",
+   "generic": false,
+   "voice": "am_fenrir",
+   "speed": 0.88,
+   "durationMs": 1720,
+   "files": {
+    "webm": "clips/og/common.runIt.4.webm",
+    "m4a": "clips/og/common.runIt.4.m4a"
+   },
+   "bytes": {
+    "webm": 8553,
+    "m4a": 10250
+   }
+  },
+  {
+   "id": "og.common.gotRan.0",
+   "persona": "og",
+   "lineId": "common.gotRan.0",
+   "kind": "gotRan",
+   "template": "ran the board on us? rude.",
+   "text": "Ran the board on us? Rude.",
+   "generic": false,
+   "voice": "am_fenrir",
+   "speed": 0.88,
+   "durationMs": 1570,
+   "files": {
+    "webm": "clips/og/common.gotRan.0.webm",
+    "m4a": "clips/og/common.gotRan.0.m4a"
+   },
+   "bytes": {
+    "webm": 6642,
+    "m4a": 9397
+   }
+  },
+  {
+   "id": "og.common.gotRan.1",
+   "persona": "og",
+   "lineId": "common.gotRan.1",
+   "kind": "gotRan",
+   "template": "ok ok, show-off.",
+   "text": "Ok ok, show-off.",
+   "generic": false,
+   "voice": "am_fenrir",
+   "speed": 0.88,
+   "durationMs": 1355,
+   "files": {
+    "webm": "clips/og/common.gotRan.1.webm",
+    "m4a": "clips/og/common.gotRan.1.m4a"
+   },
+   "bytes": {
+    "webm": 6473,
+    "m4a": 8161
+   }
+  },
+  {
+   "id": "og.common.gotRan.2",
+   "persona": "og",
+   "lineId": "common.gotRan.2",
+   "kind": "gotRan",
+   "template": "we'll remember that one.",
+   "text": "We'll remember that one.",
+   "generic": false,
+   "voice": "am_fenrir",
+   "speed": 0.88,
+   "durationMs": 1180,
+   "files": {
+    "webm": "clips/og/common.gotRan.2.webm",
+    "m4a": "clips/og/common.gotRan.2.m4a"
+   },
+   "bytes": {
+    "webm": 5188,
+    "m4a": 7249
+   }
+  },
+  {
+   "id": "hustler.common.runIt.0",
+   "persona": "hustler",
+   "lineId": "common.runIt.0",
+   "kind": "runIt",
+   "template": "run it. 🌪 the rest are mine.",
+   "text": "Run it. The rest are mine.",
+   "generic": false,
+   "voice": "am_michael",
+   "speed": 0.95,
+   "durationMs": 1620,
+   "files": {
+    "webm": "clips/hustler/common.runIt.0.webm",
+    "m4a": "clips/hustler/common.runIt.0.m4a"
+   },
+   "bytes": {
+    "webm": 6968,
+    "m4a": 9455
+   }
+  },
+  {
+   "id": "hustler.common.runIt.1",
+   "persona": "hustler",
+   "lineId": "common.runIt.1",
+   "kind": "runIt",
+   "template": "y'all can put your cards down. I got these.",
+   "text": "Y'all can put your cards down. I got these.",
+   "generic": false,
+   "voice": "am_michael",
+   "speed": 0.95,
+   "durationMs": 2890,
+   "files": {
+    "webm": "clips/hustler/common.runIt.1.webm",
+    "m4a": "clips/hustler/common.runIt.1.m4a"
+   },
+   "bytes": {
+    "webm": 11762,
+    "m4a": 16039
+   }
+  },
+  {
+   "id": "hustler.common.runIt.2",
+   "persona": "hustler",
+   "lineId": "common.runIt.2",
+   "kind": "runIt",
+   "template": "no need to play it out, {opp}. it's over.",
+   "text": "No need to play it out. It's over.",
+   "generic": true,
+   "voice": "am_michael",
+   "speed": 0.95,
+   "durationMs": 2140,
+   "files": {
+    "webm": "clips/hustler/common.runIt.2.webm",
+    "m4a": "clips/hustler/common.runIt.2.m4a"
+   },
+   "bytes": {
+    "webm": 8921,
+    "m4a": 12295
+   }
+  },
+  {
+   "id": "hustler.common.runIt.3",
+   "persona": "hustler",
+   "lineId": "common.runIt.3",
+   "kind": "runIt",
+   "template": "tornado warning 🌪 take cover {opp}.",
+   "text": "Tornado warning! Take cover.",
+   "generic": true,
+   "voice": "am_michael",
+   "speed": 0.95,
+   "durationMs": 1920,
+   "files": {
+    "webm": "clips/hustler/common.runIt.3.webm",
+    "m4a": "clips/hustler/common.runIt.3.m4a"
+   },
+   "bytes": {
+    "webm": 8032,
+    "m4a": 10826
+   }
+  },
+  {
+   "id": "hustler.common.runIt.4",
+   "persona": "hustler",
+   "lineId": "common.runIt.4",
+   "kind": "runIt",
+   "template": "I been counting. y'all done.",
+   "text": "I been counting. Y'all done.",
+   "generic": false,
+   "voice": "am_michael",
+   "speed": 0.95,
+   "durationMs": 1860,
+   "files": {
+    "webm": "clips/hustler/common.runIt.4.webm",
+    "m4a": "clips/hustler/common.runIt.4.m4a"
+   },
+   "bytes": {
+    "webm": 8193,
+    "m4a": 10746
+   }
+  },
+  {
+   "id": "hustler.common.gotRan.0",
+   "persona": "hustler",
+   "lineId": "common.gotRan.0",
+   "kind": "gotRan",
+   "template": "ran the board on us? rude.",
+   "text": "Ran the board on us? Rude.",
+   "generic": false,
+   "voice": "am_michael",
+   "speed": 0.95,
+   "durationMs": 1790,
+   "files": {
+    "webm": "clips/hustler/common.gotRan.0.webm",
+    "m4a": "clips/hustler/common.gotRan.0.m4a"
+   },
+   "bytes": {
+    "webm": 7528,
+    "m4a": 10364
+   }
+  },
+  {
+   "id": "hustler.common.gotRan.1",
+   "persona": "hustler",
+   "lineId": "common.gotRan.1",
+   "kind": "gotRan",
+   "template": "ok ok, show-off.",
+   "text": "Ok ok, show-off.",
+   "generic": false,
+   "voice": "am_michael",
+   "speed": 0.95,
+   "durationMs": 1510,
+   "files": {
+    "webm": "clips/hustler/common.gotRan.1.webm",
+    "m4a": "clips/hustler/common.gotRan.1.m4a"
+   },
+   "bytes": {
+    "webm": 7401,
+    "m4a": 9014
+   }
+  },
+  {
+   "id": "hustler.common.gotRan.2",
+   "persona": "hustler",
+   "lineId": "common.gotRan.2",
+   "kind": "gotRan",
+   "template": "we'll remember that one.",
+   "text": "We'll remember that one.",
+   "generic": false,
+   "voice": "am_michael",
+   "speed": 0.95,
+   "durationMs": 1350,
+   "files": {
+    "webm": "clips/hustler/common.gotRan.2.webm",
+    "m4a": "clips/hustler/common.gotRan.2.m4a"
+   },
+   "bytes": {
+    "webm": 5922,
+    "m4a": 8203
    }
   }
  ],
