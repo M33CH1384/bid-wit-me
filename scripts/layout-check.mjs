@@ -305,6 +305,10 @@ if (!process.env.ONLY || process.env.ONLY === 'online') {
   }
   await host.getByRole('button', { name: 'Turn microphone on' }).click().catch(() => {});
   await lobbyCheck(host);
+  // AFK kick off: the host sits idle through the size sweep and would otherwise be replaced by a bot after 3 timeouts
+  await host.locator('details.settings-panel > summary').click();
+  await host.getByTestId('afk-limit').selectOption('0');
+  await host.getByText('AFK kick off').first().waitFor({ timeout: 5000 }).catch(() => {});
   await host.getByTestId('start').click();
   await host.locator('.table-screen').waitFor({ timeout: 20000 });
   await host.waitForFunction(() => document.querySelector('.badge-layer [data-testid^="video-"][data-live="true"] video')?.videoWidth > 0, null, { timeout: 30000 }).catch(() => console.log('(remote video not live yet)'));

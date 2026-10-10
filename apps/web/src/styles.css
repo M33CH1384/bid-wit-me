@@ -869,3 +869,8 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .plate:has(.vbubble) .plate-turn { left: 58px; }
 .plate.me-plate:has(> .vbubble.self) { margin-left: 22px; }
 @media (max-width: 340px) { .plate:has(.vbubble) .plate-turn { left: 36px; } .plate.me-plate:has(> .vbubble.self) { margin-left: 8px; } }
+/* phone portrait with your own video bubble: keep the YOU plate clear of the last-trick readout */
+@media (min-width: 341px) and (max-width: 440px) {
+  .table-screen:not(.short) .plate.me-plate:has(> .vbubble.self) { margin-left: 10px; }
+  .table-screen:not(.short) .last-trick, .table-screen:not(.short) .last-trick.glass.slant { padding: 3px 6px 4px; max-width: 44vw; }
+}
