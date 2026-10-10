@@ -85,6 +85,7 @@ if (want('lobby')) {
   const q = `?server=${encodeURIComponent(server)}`;
   const host = await desk(1440, 900);
   const guest = await phone(390, 844);
+  for (const pg of [host, guest]) { await pg.goto(base); await pg.evaluate(() => localStorage.setItem('bwm.tips', JSON.stringify({ on: false, asked: true }))); }
   await host.goto(`${base}/online${q}`);
   await host.getByLabel('Your name').fill('Demetrius');
   await host.getByTestId('create-table').click();
