@@ -69,6 +69,10 @@ export function SoundDock() {
       const el = ref.current;
       if (!el) return;
       const slot = [...document.querySelectorAll<HTMLElement>('.dock-slot')].find((x) => x.getBoundingClientRect().width > 0);
+      // in the scorebug, the slot takes its neighbour's width so the whole cluster is one size
+      let nb = slot?.classList.contains('bug-btn') ? (slot.previousElementSibling as HTMLElement | null) : null;
+      while (nb && nb.getBoundingClientRect().width === 0) nb = nb.previousElementSibling as HTMLElement | null;
+      if (slot && nb) { const nw = `${nb.getBoundingClientRect().width}px`; if (nb.getBoundingClientRect().width > 0 && slot.style.getPropertyValue('width') !== nw) slot.style.setProperty('width', nw, 'important'); }
       const r = slot?.getBoundingClientRect();
       if (!slot || !r) { el.classList.remove('slotted', 'in-bug'); return; }
       el.classList.add('slotted');

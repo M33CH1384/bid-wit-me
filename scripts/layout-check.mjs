@@ -68,10 +68,14 @@ async function measure(page) {
       if ((a.name === 'controls' && b.name.startsWith('av')) || (a.name.startsWith('av') && b.name.startsWith('av')) || (b.name === 'controls' && (a.name.startsWith('av') || a.name === 'chat-btn')) || (a.name === 'controls' && b.name === 'chat-btn')) continue;
       if (ov(a.r, b.r, 1)) probs.push(`${a.name} overlaps ${b.name}`);
     }
-    // the sound button sits flush with its scorebug neighbour: same top and height
-    { const slot = document.querySelector('.scorebug .dock-slot'), btn = document.querySelector('.dock-btn'), nb = slot?.previousElementSibling;
-      if (slot && btn && nb) { const a = btn.getBoundingClientRect(), c = nb.getBoundingClientRect();
-        if (Math.abs(a.top - c.top) > 1.5 || Math.abs(a.height - c.height) > 1.5) probs.push(`sound button not flush with the scorebug buttons (top ${a.top.toFixed(1)}/${c.top.toFixed(1)}, h ${a.height.toFixed(1)}/${c.height.toFixed(1)})`); } }
+    // top bar: ☰, ?, 📋, HQ and the sound button are one set: same top, height and width, aligned with the scorebug
+    { const bugEl = document.querySelector('.scorebug > .bug');
+      const btns = [...document.querySelectorAll('.scorebug .bug-btn:not(.dock-slot), .dock-btn')].filter(vis).map((e) => ({ n: e.getAttribute('aria-label')?.split(/[ :]/)[0] ?? e.className, r: e.getBoundingClientRect() }));
+      if (bugEl && btns.length) { const ref = bugEl.getBoundingClientRect();
+        for (const b of btns) {
+          if (Math.abs(b.r.top - ref.top) > 1.5 || Math.abs(b.r.height - ref.height) > 1.5) probs.push(`top-bar ${b.n} not aligned with the scorebug (top ${b.r.top.toFixed(1)}/${ref.top.toFixed(1)}, h ${b.r.height.toFixed(1)}/${ref.height.toFixed(1)})`);
+          if (Math.abs(b.r.width - btns[0].r.width) > 1.5) probs.push(`top-bar ${b.n} width ${b.r.width.toFixed(1)} ≠ ${btns[0].r.width.toFixed(1)}`);
+        } } }
     L.trick.forEach((t, i) => {
       for (const b of boxes) if (ov(b.r, t, 2)) probs.push(`${b.name} covers trick card ${i}`);
       L.trick.forEach((u, j) => { if (j > i && ov(t, u, 3)) probs.push(`trick cards ${i}/${j} overlap`); });
