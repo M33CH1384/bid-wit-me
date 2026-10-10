@@ -10,7 +10,7 @@
 import {
   type Action, type GameState, type PlayerView, type TableRules, RuleError, applyAction, isFreshDeal, makeRules, newGame, pendingTurn, secureSeed, validateRules, viewFor,
 } from '@spades/rules';
-import { chooseBotAction } from '@spades/bots';
+import { chooseBotAction, pickBotNames } from '@spades/bots';
 import {
   type BotLevel, type ChatLine, type ClientMsg, type HostMusic, type MediaState, type RoomInfo, type RoomPhase, type SeatInfo, type ServerMsg,
   DEFAULT_AFK_LIMIT, LIMITS, PROTOCOL_VERSION, parseClientMsg,
@@ -108,7 +108,6 @@ export interface RoomIO {
   randomId(): string;
 }
 
-const BOT_NAMES = ['Marcus', 'Keisha', 'Dre', 'Tasha', 'Big Mike', 'Nia', 'Rell', 'Ty'];
 
 export function newRoomData(code: string, now: number, rules: TableRules = makeRules('joker')): RoomData {
   return {
@@ -432,7 +431,9 @@ export class Room {
   private botName(): string {
     const used = new Set(this.data.seats.flatMap((s) => (s.kind === 'bot' ? [s.name] : [])));
     for (const m of Object.values(this.data.members)) used.add(m.name);
-    return BOT_NAMES.find((x) => !used.has(x)) ?? `Bot ${used.size + 1}`;
+    // random per table from the shared pool (packages/bots/src/names.ts); stored in the seat, so every client sees
+    // the same name and it survives reconnects / refreshes for the whole game
+    return pickBotNames(1, used)[0]!;
   }
 
   private leave(pid: string): void {
@@ -441,7 +442,7 @@ export class Room {
     if (!m) return;
     if (m.seat !== null) {
       // mid-game the seat goes to a bot so the others can finish; in the lobby it just opens up
-      d.seats[m.seat] = d.phase === 'playing' ? { kind: 'bot', name: `${m.name} (bot)`, level: d.botLevel } : { kind: 'empty' };
+      d.seats[m.seat] = d.phase === 'playing' ? { kind: 'bot', name: this.botName(), level: d.botLevel } : { kind: 'empty' };
     }
     delete d.members[pid];
     d.ready = d.ready.filter((x) => x !== pid);
@@ -478,7 +479,7 @@ export class Room {
     const d = this.data;
     const m = d.members[target];
     if (!m) return;
-    if (m.seat !== null) d.seats[m.seat] = d.phase === 'playing' ? { kind: 'bot', name: `${m.name} (bot)`, level: d.botLevel } : { kind: 'empty' };
+    if (m.seat !== null) d.seats[m.seat] = d.phase === 'playing' ? { kind: 'bot', name: this.botName(), level: d.botLevel } : { kind: 'empty' };
     delete d.members[target];
     if (d.votes) delete d.votes[target];
     d.ready = d.ready.filter((x) => x !== target);
@@ -671,11 +672,12 @@ export class Room {
     m.timeouts = (m.timeouts ?? 0) + 1;
     const limit = d.afkLimit ?? DEFAULT_AFK_LIMIT;
     if (!limit || m.timeouts < limit || d.seats[seat]?.kind !== 'human') return;
-    d.seats[seat] = { kind: 'bot', name: `${m.name} (bot)`, level: d.botLevel };
+    const bot = this.botName();
+    d.seats[seat] = { kind: 'bot', name: bot, level: d.botLevel };
     m.seat = null;
     m.timeouts = 0;
     if (d.votes) delete d.votes[pid];
-    this.system(`${m.name} was AFK and replaced by a bot`);
+    this.system(`${m.name} was AFK and replaced by a bot (${bot})`);
   }
 
   private clearTimers(): void {

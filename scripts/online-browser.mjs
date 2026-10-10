@@ -69,7 +69,7 @@ const mmToggle = host.getByTestId('mic-mute-toggle');
 if ((await mmToggle.getAttribute('aria-checked')) !== 'false') throw new Error('partner mic mute should default to off');
 await mmToggle.click();
 await mmGuest.getByText('Partner mic mute: On').waitFor({ timeout: 5000 });
-if ((await mmToggle.getAttribute('aria-checked')) !== 'true') throw new Error('partner mic mute toggle did not turn on');
+await host.locator('[data-testid="mic-mute-toggle"][aria-checked="true"]').waitFor({ timeout: 5000 }).catch(() => { throw new Error('partner mic mute toggle did not turn on'); });
 log('partner mic mute: off by default, host turned it on, guest sees "On"');
 
 // chat round trip

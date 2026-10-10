@@ -183,6 +183,7 @@ async function reloadTest() {
     score: document.querySelector('.scorebug')?.innerText.replace(/\s+/g, ' ').trim(),
     turn: [...document.querySelectorAll('.plate.turn')].map((p) => p.dataset.testid).join(' '),
     trick: document.querySelector('[data-testid="hand"]')?.dataset.trickCount,
+    names: [1, 2, 3].map((k) => document.querySelector(`[data-testid="seat-${k}"] .plate-name`)?.firstChild?.textContent ?? '').join(','),
   }));
   let plays = 0;
   for (let i = 0; i < 1500 && plays < 4; i++) {
@@ -209,6 +210,9 @@ async function reloadTest() {
   const after = await snap();
   if (JSON.stringify(before) !== JSON.stringify(after)) throw new Error(`resume mismatch:\n${JSON.stringify(before)}\n${JSON.stringify(after)}`);
   await shot('07-resumed');
+  const savedNames = await page.evaluate(() => JSON.parse(localStorage.getItem('bwm.game') ?? '{}').names?.slice(1).join(','));
+  if (!before.names || savedNames !== before.names) throw new Error(`bot names not kept in the save: plates "${before.names}", save "${savedNames}"`);
+  console.log(`✓ Random bot names kept across refresh: ${before.names}`);
   console.log(`✓ Refresh resume (my turn): same hand (${before.hand.split(' ').length} cards), score "${before.score}", turn ${before.turn}`);
   // reload mid-bot-turn: play a card, reload immediately, the bots must carry on until it's my turn again
   const handN = before.hand.split(' ').length;

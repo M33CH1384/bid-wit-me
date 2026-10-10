@@ -54,3 +54,4 @@ export function simulateGame(rules: TableRules, seed: string, opts: SimOptions =
   }
   return st;
 }
+export * from './names';

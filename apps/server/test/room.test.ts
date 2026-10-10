@@ -2,7 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { type Card, makeRules } from '@spades/rules';
 import { chooseBotAction } from '@spades/bots';
 import type { GameAction } from '@spades/protocol';
+import { BOT_NAMES } from '@spades/bots';
 import { FakeEnv } from './harness';
+
+/** a bot seat got a name from the shared pool, unique at the table and not a human's name */
+function expectPoolBot(seats: readonly unknown[], i: number) {
+  const ss = seats as { kind: string; name?: string; playerId?: string }[];
+  const name = ss[i]!.name!;
+  expect(BOT_NAMES).toContain(name);
+  expect(ss.filter((x, k) => k !== i && x.kind === 'bot').map((x) => x.name)).not.toContain(name);
+}
 
 const FAST = { botMs: 10, trickPauseMs: 0, dealMs: 0, disconnectGraceMs: 5000, handOverMs: 3000 };
 
@@ -255,7 +264,8 @@ describe('game', () => {
     env.send('a', { t: 'start' });
     env.send('a', { t: 'leave' });
     const st = env.last('b', 'state')!;
-    expect(st.room.seats[0]).toMatchObject({ kind: 'bot', name: 'Dee (bot)' });
+    expect(st.room.seats[0]).toMatchObject({ kind: 'bot' });
+    expectPoolBot(st.room.seats, 0);
     expect(st.room.hostId).toBe(ps[1]!.pid);
   });
 
@@ -452,6 +462,26 @@ describe('chat + signaling', () => {
   });
 });
 
+describe('random bot names', () => {
+  it('bots filling seats get distinct pool names that never match a human; names stay put for the game', () => {
+    const seen = new Set<string>();
+    for (let k = 0; k < 12; k++) {
+      const env = new FakeEnv();
+      env.join('a', 'Keisha');
+      env.send('a', { t: 'sit', seat: 0 });
+      env.send('a', { t: 'start' });
+      const seats = env.last('a', 'state')!.room.seats;
+      const bots = seats.filter((x) => x.kind === 'bot').map((x) => (x as { name: string }).name);
+      expect(bots).toHaveLength(3);
+      expect(new Set(bots).size).toBe(3);
+      bots.forEach((b) => { expect(BOT_NAMES).toContain(b); expect(b.toLowerCase()).not.toBe('keisha'); seen.add(b); });
+      env.advance(5000);
+      expect(env.last('a', 'state')!.room.seats.map((x) => (x as { name?: string }).name)).toEqual(seats.map((x) => (x as { name?: string }).name));
+    }
+    expect(seen.size).toBeGreaterThan(10); // random per game, not a fixed trio
+  });
+});
+
 describe('partner mic mute (host option)', () => {
   it('is off by default; only the host can turn it on, in the lobby; non-booleans are ignored', () => {
     const env = new FakeEnv();
@@ -565,9 +595,11 @@ describe('AFK + kicking', () => {
     expect(env.last('a', 'state')!.room.afkLimit).toBe(3);
     for (let k = 0; k < 3; k++) { waitMyTurn(env); env.advance(5200); }
     const d = env.room.data;
-    expect(d.seats[0]).toMatchObject({ kind: 'bot', name: 'Slow (bot)' });
+    expect(d.seats[0]).toMatchObject({ kind: 'bot' });
+    const botName = (d.seats[0] as { name: string }).name;
+    expectPoolBot(d.seats, 0);
     expect(d.members[a.pid]!.seat).toBeNull();
-    expect(d.chat.some((l) => l.text === 'Slow was AFK and replaced by a bot')).toBe(true);
+    expect(d.chat.some((l) => l.text === `Slow was AFK and replaced by a bot (${botName})`)).toBe(true);
     // still at the table: the seat (now a bot) can be taken back
     env.send('a', { t: 'sit', seat: 0 });
     expect(env.errors('a')).toHaveLength(0);
@@ -589,7 +621,8 @@ describe('AFK + kicking', () => {
     env.send('a', { t: 'start' });
     env.send('a', { t: 'kick', seat: 1 });
     const d = env.room.data;
-    expect(d.seats[1]).toMatchObject({ kind: 'bot', name: 'Ray (bot)' });
+    expect(d.seats[1]).toMatchObject({ kind: 'bot' });
+    expectPoolBot(d.seats, 1);
     expect(d.members[ps[1]!.pid]).toBeUndefined();
     expect(env.closed).toContain('b');
     expect(env.errors('b').some((e) => e.code === 'KICKED')).toBe(true);
@@ -612,7 +645,8 @@ describe('AFK + kicking', () => {
     env.send('b', { t: 'kick', seat: 3 });
     expect(env.room.data.seats[3]!.kind).toBe('human');
     env.send('c', { t: 'kick', seat: 3 });
-    expect(env.room.data.seats[3]).toMatchObject({ kind: 'bot', name: 'Jo (bot)' });
+    expect(env.room.data.seats[3]).toMatchObject({ kind: 'bot' });
+    expectPoolBot(env.room.data.seats, 3);
     expect(env.closed).toContain('d');
     expect(env.room.data.chat.some((l) => l.text.startsWith('Jo was voted off the table'))).toBe(true);
     // the next game lets them back

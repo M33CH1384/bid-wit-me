@@ -23,6 +23,13 @@ const SETUPS: [string, Partial<Settings>][] = [
 ];
 
 describe('save / restore', () => {
+  it('keeps the random bot names (only when they match the seat count)', () => {
+    const settings = { ...DEFAULT_SETTINGS, mode: 'joker' as const };
+    const st = advance(newGame(settingsToRules(settings), 'names'), 10);
+    expect(parseSave(blob(settings, st, { names: ['You', 'Zuri', 'Kenji', 'Peaches'] }))!.names).toEqual(['You', 'Zuri', 'Kenji', 'Peaches']);
+    expect(parseSave(blob(settings, st, { names: ['You', 'Zuri'] }))!.names).toBeUndefined();
+    expect(parseSave(blob(settings, st))!.names).toBeUndefined(); // older saves: names are re-derived from the seed
+  });
   for (const [label, patch] of SETUPS) {
     it(`${label}: round-trips mid-hand state exactly and play continues identically`, () => {
       const settings = { ...DEFAULT_SETTINGS, ...patch };

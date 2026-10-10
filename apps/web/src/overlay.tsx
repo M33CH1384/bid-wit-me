@@ -50,9 +50,9 @@ export function toastsFor(rec: HandRecord, rules: TableRules, names: string[], m
 
 export interface ChatMsg { id: number; user: string; color: string; text: string; system?: boolean; badge?: string }
 
-export const USER_COLORS: Record<string, string> = {
-  You: '#f5c542', Marcus: '#4fd1ff', Keisha: '#ff6ad5', Dre: '#7dff9b', System: '#b892ff',
-};
+export const USER_COLORS: Record<string, string> = { You: '#f5c542', System: '#b892ff' };
+/** plate / chat colour by local seat (0 = you); bot names are random, so colours follow the seat */
+export const SEAT_COLORS = ['#f5c542', '#4fd1ff', '#ff6ad5', '#7dff9b'];
 
 const LINES = {
   set: ['nice set 😤', 'SET THEM 🔥', 'they got greedy lol', 'books don\'t lie 📚', 'ouch 💀'],

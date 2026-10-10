@@ -83,6 +83,10 @@ node scripts/shots3d.mjs  # screenshots/3d/{phone,desktop}-{1-start,2-bidding,3-
   during Table Talk and after the game. A "MIC LIMITED" badge shows while it applies; a "Table talk over — partners
   muted" toast marks the switch back. When it's off (the default) nobody is limited, and there's no badge or
   partner-muting toast.
+- **Random bot names**: bots get names at random per game from a pool of 80 (`packages/bots/src/names.ts`): never two
+  alike at a table, never a human player's name. Offline they're derived from the game seed and kept in the save
+  (stable across refresh / resume); online the server picks them for bot seats, leavers, kicks and AFK replacements, so
+  every client sees the same names. Plate / chat colours follow the seat, not the name.
 - **Host music** (online, sound popover): (a) one of the 5 built-in beats, synced by a server-stamped start time;
   (b) a Spotify / Apple Music link shown as a tappable card for everyone (only those hosts are accepted);
   (c) the host streams tab/device audio (`getDisplayMedia`, desktop) or a local audio file over the WebRTC mesh on a

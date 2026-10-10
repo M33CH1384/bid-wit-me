@@ -9,7 +9,7 @@ import { landCueFor } from './landCue';
 import { OfflineMediaBar } from './online/Media';
 import { fx, useReduceEffects } from './fx';
 import { type Sfx, sound } from './audio';
-import { type ChatMsg, LINES, TALK_LINES, type Toast, TickNumber, USER_COLORS, pick, toastsFor } from './overlay';
+import { type ChatMsg, LINES, SEAT_COLORS, TALK_LINES, type Toast, TickNumber, USER_COLORS, pick, toastsFor } from './overlay';
 import { type Settings, modeTitle } from './settings';
 import type { SeatPos } from './three/layout';
 import { HUMAN, useGame } from './useGame';
@@ -19,6 +19,7 @@ import { useViewport } from './viewport';
 import { Coach } from './Coach';
 import { type TipsPref, bumpTip, loadTips, saveTips, tipCount } from './tips';
 import { BidCoach } from './BidCoach';
+import { pickBotNames } from '@spades/bots';
 const Scene = lazy(() => import('./three/Scene'));
 
 /**
@@ -93,8 +94,12 @@ interface Props {
   onSuspend?: () => void;
 }
 
-const NAMES4 = ['You', 'Marcus', 'Keisha', 'Dre'];
-const NAMES3 = ['You', 'Marcus', 'Keisha'];
+/** Offline bot names: random per game (derived from the game seed), never your own online name; kept in the save. */
+function offlineNames(n: number, seed: string): string[] {
+  let mine = '';
+  try { mine = (localStorage.getItem('bwm.online.name') ?? '').replace(/^"|"$/g, ''); } catch { /* ignore */ }
+  return ['You', ...pickBotNames(n - 1, mine ? [mine, 'You'] : ['You'], seed)];
+}
 
 function positions(n: number): SeatPos[] {
   return n === 4 ? ['bottom', 'left', 'top', 'right'] : ['bottom', 'left', 'right'];
@@ -106,8 +111,10 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
   const prev = useRef<GameState | null>(initial ? st : null);
   const idRef = useRef(initial && initial.length ? Math.max(...initial.map((m) => m.id)) + 1 : 1);
   const timers = useRef<number[]>([]);
+  const namesRef = useRef(names);
+  namesRef.current = names;
   const push = useCallback((user: string, text: string, system = false, delay = 0) => {
-    const add = () => setMsgs((m) => [...m.slice(-60), { id: idRef.current++, user, text, system, color: USER_COLORS[user] ?? '#ddd' }]);
+    const add = () => setMsgs((m) => [...m.slice(-60), { id: idRef.current++, user, text, system, color: USER_COLORS[user] ?? SEAT_COLORS[namesRef.current.indexOf(user)] ?? '#ddd' }]);
     if (delay) timers.current.push(window.setTimeout(add, delay));
     else add();
   }, []);
@@ -257,7 +264,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   useEffect(() => { online?.setLearning?.(learning); }, [learning]); // eslint-disable-line react-hooks/exhaustive-deps
   const r = st.rules;
   const n = r.playerCount;
-  const names = online?.names ?? (n === 4 ? NAMES4 : NAMES3);
+  const [botNames] = useState(() => (resume?.names?.length === n ? resume.names : offlineNames(n, seed)));
+  const names = online?.names ?? botNames;
   const pos = useMemo(() => positions(n), [n]);
   const [selected, setSelected] = useState<Card | null>(null);
   const [exchangePick, setExchangePick] = useState<Card[]>([]);
@@ -304,7 +312,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   useEffect(() => {
     if (online) return; // online games live on the server (seat token in localStorage), not in the offline save
     if (st.phase === 'gameOver') clearGame();
-    else saveGame({ seed, settings, state: st, chat: msgs });
+    else saveGame({ seed, settings, state: st, chat: msgs, names });
   }, [st, msgs, seed, settings, online]);
 
   // "Resuming your game…" toast
@@ -392,7 +400,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const b = st.bids[seat];
     return (
       <div className={`plate ${isTurn ? 'turn' : ''} ${partner ? 'ally' : 'foe'}`} data-testid={`seat-${seat}`}>
-        <div className="plate-avatar" style={{ ['--uc' as string]: USER_COLORS[names[seat]!] }}>{names[seat]![0]}</div>
+        <div className="plate-avatar" style={{ ['--uc' as string]: SEAT_COLORS[seat] }}>{names[seat]![0]}</div>
         <div className="plate-body">
           <div className="plate-name">{names[seat]}{st.dealer === seat && <span className="chip dealer">D</span>}{partner && <span className="chip ally">PARTNER</span>}</div>
           <div className="plate-stats">
@@ -463,7 +471,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           <div className={`bug-teams n${st.scores.length}`}>
             {st.scores.map((s, i) => (
               <div key={i} className={`bug-team ${i === mySide ? 'mine' : ''} ${st.result?.winners.includes(i) ? 'won' : ''}`}>
-                <span className="bug-name">{online && r.partnerships ? online.sideLabel(i) : r.partnerships ? (i === mySide ? 'YOU + KEISHA' : 'MARCUS + DRE') : names[i]!.toUpperCase()}</span>
+                <span className="bug-name">{online && r.partnerships ? online.sideLabel(i) : r.partnerships ? sideName(r, i, names).replace(' & ', ' + ').toUpperCase() : names[i]!.toUpperCase()}</span>
                 <TickNumber value={s} className="bug-score" />
                 <span className="bug-bags">{st.bags[i]}<small>B</small></span>
               </div>
