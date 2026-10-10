@@ -133,6 +133,7 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
     if (!ig) return false;
     const u = T ? (fx.warp !== null ? fx.warp : (performance.now() - T.start) / 1000) : -1;
     if (!T || u < 0) {
+      if (T) invalidate(); // waiting for the funnel to start: keep frames coming (frameloop is on demand)
       if (st.on) { st.on = false; ig.position.set(0, 0, 0); ig.quaternion.identity(); ig.scale.setScalar(1); ig.visible = true; invalidate(); }
       return false;
     }
