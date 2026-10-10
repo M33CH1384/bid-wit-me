@@ -64,7 +64,7 @@ export type ClientMsg =
   | { t: 'stand' }
   | { t: 'addBot'; seat: number }
   | { t: 'removeBot'; seat: number }
-  | { t: 'config'; rules: TableRules; botLevel?: BotLevel; talkSec?: number; afkLimit?: number }
+  | { t: 'config'; rules: TableRules; botLevel?: BotLevel; talkSec?: number; afkLimit?: number; partnerMicMute?: boolean }
   /** host only: what plays for the whole table (the server stamps `startAt` for beats) */
   | { t: 'music'; music: HostMusic }
   | { t: 'start' }
@@ -121,6 +121,8 @@ export interface RoomInfo {
   music?: HostMusic;
   /** consecutive timeouts before a bot replaces a player (0 = off) */
   afkLimit?: number;
+  /** host option: partners can't hear each other during bidding and play (Table Talk / lobby stay open); default off */
+  partnerMicMute?: boolean;
   /** open vote-kicks: target player, who voted, votes needed */
   votes?: { target: string; by: string[]; need: number }[];
 }
@@ -183,6 +185,7 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       const out: Extract<ClientMsg, { t: 'config' }> = { t: 'config', rules: m.rules as unknown as TableRules, botLevel: m.botLevel === 'easy' || m.botLevel === 'normal' ? m.botLevel : undefined };
       if (isInt(m.talkSec) && (TALK_SECS as readonly number[]).includes(m.talkSec)) out.talkSec = m.talkSec;
       if (isInt(m.afkLimit) && (AFK_LIMITS as readonly number[]).includes(m.afkLimit)) out.afkLimit = m.afkLimit;
+      if (typeof m.partnerMicMute === 'boolean') out.partnerMicMute = m.partnerMicMute;
       return out;
     }
     case 'music': {

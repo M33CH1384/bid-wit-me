@@ -452,6 +452,28 @@ describe('chat + signaling', () => {
   });
 });
 
+describe('partner mic mute (host option)', () => {
+  it('is off by default; only the host can turn it on, in the lobby; non-booleans are ignored', () => {
+    const env = new FakeEnv();
+    env.join('a', 'Host'); env.join('b', 'Guest');
+    env.send('a', { t: 'sit', seat: 0 }); env.send('b', { t: 'sit', seat: 2 });
+    expect(env.last('b', 'state')!.room.partnerMicMute).toBe(false);
+    env.send('b', { t: 'config', rules: makeRules('joker'), partnerMicMute: true });
+    expect(env.errors('b').at(-1)!.code).toBe('NOT_HOST');
+    expect(env.last('b', 'state')!.room.partnerMicMute).toBe(false);
+    env.send('a', { t: 'config', rules: makeRules('joker'), partnerMicMute: true });
+    expect(env.last('b', 'state')!.room.partnerMicMute).toBe(true);
+    env.send('a', { t: 'config', rules: makeRules('joker'), partnerMicMute: 'yes' } as never);
+    expect(env.last('b', 'state')!.room.partnerMicMute).toBe(true); // ignored, unchanged
+    env.send('a', { t: 'config', rules: makeRules('joker') });
+    expect(env.last('b', 'state')!.room.partnerMicMute).toBe(true); // omitted = unchanged
+    env.send('a', { t: 'start' });
+    env.send('a', { t: 'config', rules: makeRules('joker'), partnerMicMute: false });
+    expect(env.errors('a').at(-1)!.code).toBe('IN_GAME');
+    expect(env.last('b', 'state')!.room.partnerMicMute).toBe(true);
+  });
+});
+
 describe('table talk + host music', () => {
   it('host sets the Table Talk countdown; the hand-over deadline uses it', () => {
     const env = new FakeEnv(undefined, { ...FAST, handOverMs: 3000 });

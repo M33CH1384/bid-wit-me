@@ -30,7 +30,8 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
     const s = room.seats[(cs.seat + 2) % room.rules.playerCount];
     return s?.kind === 'human' ? s.playerId : null;
   })();
-  const limitedNow = room.phase === 'playing' && (gp === 'bidding' || gp === 'exchange' || gp === 'playing') && !!partnerId;
+  // host option (off by default): with it off there's no limiting, no MIC LIMITED badge and no 'partners muted' toast
+  const limitedNow = !!room.partnerMicMute && room.phase === 'playing' && (gp === 'bidding' || gp === 'exchange' || gp === 'playing') && !!partnerId;
   useEffect(() => { mesh?.setLimited(limitedNow && partnerId ? [partnerId] : []); }, [mesh, limitedNow, partnerId]);
   useEffect(() => () => mesh?.setLimited([]), [mesh]);
   const prevPhase = useRef(gp);
@@ -38,12 +39,12 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
   useEffect(() => {
     const was = prevPhase.current;
     prevPhase.current = gp;
-    if (was === 'handOver' && gp && gp !== 'handOver' && gp !== 'gameOver' && partnerId) {
+    if (was === 'handOver' && gp && gp !== 'handOver' && gp !== 'gameOver' && partnerId && room.partnerMicMute) {
       setTalkOver(true);
       const t = setTimeout(() => setTalkOver(false), 3000);
       return () => clearTimeout(t);
     }
-  }, [gp, partnerId]);
+  }, [gp, partnerId, room.partnerMicMute]);
 
   if (!source || !rot) return <div className="online-wait">Joining the table…</div>;
   const r = room.rules;

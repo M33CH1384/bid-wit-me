@@ -61,6 +61,17 @@ await guest.getByTestId('lobby-seat-2').getByText('You').waitFor();
 await host.getByTestId('lobby-seat-2').getByText('Keisha').waitFor();
 log('guest seated across (partner)');
 
+// partner mic mute: a host option, off by default; the guest sees the host's choice (read-only)
+const mmGuest = guest.getByTestId('mic-mute-summary');
+await mmGuest.getByText('Partner mic mute: Off').waitFor({ timeout: 5000 });
+if ((await host.locator('details.settings-panel').getAttribute('open')) === null) await host.locator('details.settings-panel > summary').click();
+const mmToggle = host.getByTestId('mic-mute-toggle');
+if ((await mmToggle.getAttribute('aria-checked')) !== 'false') throw new Error('partner mic mute should default to off');
+await mmToggle.click();
+await mmGuest.getByText('Partner mic mute: On').waitFor({ timeout: 5000 });
+if ((await mmToggle.getAttribute('aria-checked')) !== 'true') throw new Error('partner mic mute toggle did not turn on');
+log('partner mic mute: off by default, host turned it on, guest sees "On"');
+
 // chat round trip
 // phones: chat is a bottom tab → drawer (one tap)
 for (const p of [guest, host]) if (await p.getByTestId('lobby-chat-tab').count()) await p.getByTestId('lobby-chat-tab').click();
@@ -137,7 +148,7 @@ await playUntil(async () => (await piles(host)) > 0 && (await trickCount(host)) 
 await host.waitForTimeout(400);
 await host.screenshot({ path: `${out}/03-table-host-video.png` });
 await guest.screenshot({ path: `${out}/04-table-guest-video.png` });
-// voice anti-cheat: host + guest are partners → limited to each other during play
+// voice anti-cheat (host turned partner mic mute on): host + guest are partners → limited to each other during play
 const lim = await host.evaluate(() => window.__bwmVideo?.state.limited ?? []);
 if (lim.length !== 1) throw new Error(`partners should be mic-limited during play, got ${JSON.stringify(lim)}`);
 if (!(await host.getByTestId('mic-limited').count())) throw new Error('MIC LIMITED badge missing (host mic is on)');

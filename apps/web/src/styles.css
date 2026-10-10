@@ -874,3 +874,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
   .table-screen:not(.short) .plate.me-plate:has(> .vbubble.self) { margin-left: 10px; }
   .table-screen:not(.short) .last-trick, .table-screen:not(.short) .last-trick.glass.slant { padding: 3px 6px 4px; max-width: 44vw; }
 }
+/* lobby summary (non-hosts): the host's partner mic mute choice as a read-only switch */
+.summary .mic-mute-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 4px 0 0; padding: 0; border: 0; }
+.summary .mic-mute-row .row-label { color: var(--text, #eee); font-size: 13px; }
+.summary .mic-mute-row .toggle[disabled] { opacity: .75; cursor: default; }

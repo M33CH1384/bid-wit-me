@@ -18,7 +18,10 @@ function timerKey(room: RoomInfo): TimerKey {
   return (Object.keys(TIMERS) as TimerKey[]).find((k) => TIMERS[k].bid === t.bid && TIMERS[k].play === t.play) ?? 'normal';
 }
 
+const MIC_MUTE_NOTE = 'Mutes partners to each other during bidding and play; everyone can talk between hands';
+
 /** Room lobby: invite link, seat picking (partners across), host settings, bots, chat, camera check. */
+
 export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGame, onLeave }: {
   conn: TableConnection; cs: ConnState; mesh: VideoMesh | null; settings: Settings; onSettings: (s: Settings) => void;
   onBackToGame: (() => void) | null; onLeave: () => void;
@@ -38,10 +41,10 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
   const spots = n === 4 ? ['bottom', 'left', 'top', 'right'] : ['bottom', 'left', 'right'];
   const spotOf = (seat: number) => spots[(seat - me + n) % n]!;
 
-  const config = (s: Settings, timer: TimerKey = timerKey(room), botLevel = room.botLevel, talkSec = room.talkSec, afkLimit = room.afkLimit ?? 3) => {
+  const config = (s: Settings, timer: TimerKey = timerKey(room), botLevel = room.botLevel, talkSec = room.talkSec, afkLimit = room.afkLimit ?? 3, partnerMicMute = room.partnerMicMute ?? false) => {
     onSettings(s);
     const rules = { ...settingsToRules(s), turnTimerSec: { ...TIMERS[timer] } };
-    conn.send({ t: 'config', rules, botLevel, talkSec, afkLimit });
+    conn.send({ t: 'config', rules, botLevel, talkSec, afkLimit, partnerMicMute });
   };
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => config({ ...settings, [k]: v });
 
@@ -148,6 +151,11 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
             <select data-testid="afk-limit" value={String(room.afkLimit ?? 3)} onChange={(e) => config(settings, timerKey(room), room.botLevel, room.talkSec, Number(e.target.value))}>
               {[2, 3, 5, 0].map((x) => <option key={x} value={x}>{x === 0 ? 'Off' : `${x} in a row${x === 3 ? ' (default)' : ''}`}</option>)}
             </select></span></label>
+          {!settings.mode.startsWith('cutthroat') && (
+            <label className="row"><span className="row-label">Partner mic mute<small>{MIC_MUTE_NOTE}</small></span><span className="row-control">
+              <button type="button" data-testid="mic-mute-toggle" className={`toggle ${room.partnerMicMute ? 'on' : ''}`} role="switch" aria-checked={!!room.partnerMicMute} aria-label="Partner mic mute" onClick={() => config(settings, timerKey(room), room.botLevel, room.talkSec, room.afkLimit ?? 3, !room.partnerMicMute)}><span /></button>
+            </span></label>
+          )}
           <label className="row"><span className="row-label">Blind Nil</span><span className="row-control">
             <select value={settings.blindNil} onChange={(e) => set('blindNil', e.target.value as Settings['blindNil'])}>
               <option value="behind100">When behind by 100+</option><option value="always">Always</option><option value="off">Off</option>
@@ -162,7 +170,13 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
           <span>{modeTitle(r)} · Trumps: {order.join(' › ')} …</span>
           <span>Target {r.targetScore} · timer {r.turnTimerSec.bid}s/{r.turnTimerSec.play}s</span>
           {r.firstHandBidsItself && <span>First hand: books bid themselves</span>}
-          <span>Table Talk {room.talkSec ?? 20}s between hands · partners muted during bids &amp; play</span>
+          <span>Table Talk {room.talkSec ?? 20}s between hands · all mics open</span>
+          {r.partnerships && (
+            <span className="row mic-mute-row" data-testid="mic-mute-summary">
+              <span className="row-label">Partner mic mute: {room.partnerMicMute ? 'On' : 'Off'}<small>{MIC_MUTE_NOTE}</small></span>
+              <span className="row-control"><button type="button" className={`toggle ${room.partnerMicMute ? 'on' : ''}`} role="switch" aria-checked={!!room.partnerMicMute} aria-label="Partner mic mute (set by the host)" disabled><span /></button></span>
+            </span>
+          )}
           <span>{room.afkLimit === 0 ? 'AFK kick off' : `A bot takes over after ${room.afkLimit ?? 3} timeouts in a row`}</span>
         </div>
       )}

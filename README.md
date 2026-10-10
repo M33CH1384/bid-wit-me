@@ -75,11 +75,14 @@ node scripts/shots3d.mjs  # screenshots/3d/{phone,desktop}-{1-start,2-bidding,3-
 - **Table Talk** between hands (online + offline): recap per team (books/bid, made/set, Nil badges, bags), totals with
   progress to the target, callouts, 2×2 cam grid (avatars when the camera is off), chat with quick reactions, a deal
   mini-view, countdown (host: 15/20/30/45 s, default 20) and Ready / Continue. Offline: bot banter.
-- **Voice anti-cheat** (online): during bidding and trick play **partners only** can't hear each other — my mic
+- **Voice anti-cheat** (online, **host option, off by default**): the host turns on "Partner mic mute" in the lobby's
+  table settings (`config.partnerMicMute`, validated as a boolean, host-only, lobby-only; everyone sees the choice in
+  the lobby). When it's on, during bidding and trick play **partners only** can't hear each other — my mic
   track isn't sent to my partner's peer connection (send-side `replaceTrack(null)`) and their voice isn't played here
   (receive-side). Opponents still hear everyone (trash talk is part of the game). All mics are open in the lobby,
   during Table Talk and after the game. A "MIC LIMITED" badge shows while it applies; a "Table talk over — partners
-  muted" toast marks the switch back.
+  muted" toast marks the switch back. When it's off (the default) nobody is limited, and there's no badge or
+  partner-muting toast.
 - **Host music** (online, sound popover): (a) one of the 5 built-in beats, synced by a server-stamped start time;
   (b) a Spotify / Apple Music link shown as a tappable card for everyone (only those hosts are accepted);
   (c) the host streams tab/device audio (`getDisplayMedia`, desktop) or a local audio file over the WebRTC mesh on a

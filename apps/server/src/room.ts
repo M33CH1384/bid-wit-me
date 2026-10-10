@@ -66,6 +66,8 @@ export interface RoomData {
   music?: HostMusic;
   /** consecutive timeouts before a bot replaces a player; 0 = off; unset = DEFAULT_AFK_LIMIT */
   afkLimit?: number;
+  /** host option: partner voice limiting during bidding/play; unset = off */
+  partnerMicMute?: boolean;
   /** tokens of players kicked during the current game (can't rejoin until the next game starts) */
   kicked?: string[];
   /** open vote-kicks: target player id → voter ids */
@@ -285,6 +287,7 @@ export class Room {
         d.rules = rules;
         if (msg.talkSec) d.talkSec = msg.talkSec;
         if (msg.afkLimit !== undefined) d.afkLimit = msg.afkLimit;
+        if (msg.partnerMicMute !== undefined) d.partnerMicMute = msg.partnerMicMute;
         if (msg.botLevel) {
           d.botLevel = msg.botLevel;
           d.seats.forEach((s) => { if (s.kind === 'bot') s.level = msg.botLevel!; });
@@ -723,7 +726,7 @@ export class Room {
       code: d.code, hostId: d.hostId ?? '', phase: d.phase, rules: d.rules, botLevel: d.botLevel, seats,
       members: Object.entries(d.members).map(([playerId, m]) => ({ playerId, name: m.name, connected: this.isConnected(playerId), seat: m.seat })),
       deadline: d.deadline, ready: [...d.ready], rev: d.rev, seq: d.seq ?? 0, game: d.gamesPlayed, now: this.io.now(),
-      talkSec: d.talkSec ?? Math.round(this.timing.handOverMs / 1000), afkLimit: d.afkLimit ?? DEFAULT_AFK_LIMIT,
+      talkSec: d.talkSec ?? Math.round(this.timing.handOverMs / 1000), afkLimit: d.afkLimit ?? DEFAULT_AFK_LIMIT, partnerMicMute: d.partnerMicMute ?? false,
       ...(d.votes && Object.keys(d.votes).length ? { votes: Object.entries(d.votes).map(([target, by]) => ({ target, by: [...by], need: this.votesNeeded(target) })) } : {}), ...(d.music && d.music.mode !== 'off' ? { music: d.music } : {}),
     };
   }

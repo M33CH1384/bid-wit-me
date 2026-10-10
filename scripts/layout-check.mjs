@@ -318,6 +318,13 @@ if (!process.env.ONLY || process.env.ONLY === 'online') {
     await host.waitForTimeout(40);
   }
   await host.waitForTimeout(800);
+  // partner mic mute is a host option, off by default (not changed here): no limiting, no MIC LIMITED badge
+  {
+    const lim = await host.evaluate(() => window.__bwmVideo?.state.limited ?? []);
+    const badge = await host.getByTestId('mic-limited').count();
+    if (lim.length || badge) problems.push(`partner mic mute is off but limited=${JSON.stringify(lim)} badge=${badge}`);
+    else console.log('✓ partner mic mute off by default: no limiting, no MIC LIMITED badge');
+  }
   await sweepSizes(host, 'online');
   if (!only) await bannerCheck([host, guest], 'online', [SIZES[1], SIZES[2]]);
 }
