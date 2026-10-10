@@ -31,7 +31,7 @@ const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 
 const edgeMat = new MeshStandardMaterial({ color: '#efe9dc', roughness: 0.75 });
 /** full colour vs. the not-playable look: ~72% brightness with a faint cool/purple tint (reads as desaturated) */
 const FULL = new Color(1, 1, 1);
-const DIM = new Color(0.68, 0.66, 0.78);
+const DIM = new Color(0.3, 0.28, 0.4);
 
 function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.25, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand }: Props) {
   const ref = useRef<Group>(null);
@@ -52,6 +52,8 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
     look.current.target.copy(dim ? DIM : FULL);
     look.current.glow = glow ? (quality === 'high' ? 0.85 : 0.7) : 0;
     frontMat.emissive.set('#000000');
+    // the clear coat / sheen add white on top of the colour (and ACES squashes the rest), so ease them off too when dimmed
+    if (frontMat instanceof MeshPhysicalMaterial) { frontMat.clearcoat = dim ? 0.05 : 0.35; frontMat.sheen = dim ? 0 : 0.2; }
     invalidate();
   }, [dim, glow, frontMat, quality, invalidate]);
 
