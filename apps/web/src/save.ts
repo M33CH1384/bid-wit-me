@@ -19,6 +19,8 @@ export interface SavedGame {
   chat: ChatMsg[];
   /** local-seat names (0 = 'You'); bots' random names stay the same across refresh / resume */
   names?: string[];
+  /** team modes: the bots' random team name ([1]); yours comes from More options */
+  teamNames?: (string | null)[];
 }
 
 export function saveGame(g: Omit<SavedGame, 'v' | 'savedAt'>): void {
@@ -49,7 +51,7 @@ export function parseSave(raw: string | null): SavedGame | null {
     // must be a state the engine accepts
     viewFor(st, 0);
     pendingTurn(st);
-    return { v: SAVE_VERSION, savedAt: d.savedAt ?? 0, seed: d.seed, settings: { ...DEFAULT_SETTINGS, ...d.settings }, state: st, chat: isArr(d.chat) ? (d.chat as ChatMsg[]) : [], ...(isArr(d.names) && d.names.length === n && d.names.every((x) => typeof x === 'string') ? { names: d.names as string[] } : {}) };
+    return { v: SAVE_VERSION, savedAt: d.savedAt ?? 0, seed: d.seed, settings: { ...DEFAULT_SETTINGS, ...d.settings }, state: st, chat: isArr(d.chat) ? (d.chat as ChatMsg[]) : [], ...(isArr(d.names) && d.names.length === n && d.names.every((x) => typeof x === 'string') ? { names: d.names as string[] } : {}), ...(isArr(d.teamNames) ? { teamNames: d.teamNames.map((x) => (typeof x === 'string' ? x.slice(0, 40) : null)) } : {}) };
   } catch {
     return null;
   }

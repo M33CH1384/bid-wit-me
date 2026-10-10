@@ -2,7 +2,13 @@ import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect,
 import {
   type Card, type GameState, type TableRules, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, partnerOf, sideOf, sortHand, trumpOrder,
 } from '@spades/rules';
-import { ScorePad, sideName } from './Modals';
+import { ScorePad, defaultSideName, setTeamNames, sideName } from './Modals';
+import { type Series, addSeriesGame, seriesSides, summarizeGame } from '@spades/rules';
+import { SeriesChip, SeriesSheet, loadSeries, saveSeries } from './Series';
+import { TeamNameField, myTeamName, useMyTeamName } from './TeamName';
+import { offlineTalk } from './offlineTalk';
+import { showLine, speakBot, useTalkPrefs } from './talkPrefs';
+import { pickTeamName } from '@spades/protocol';
 import { Intermission, calloutsFor } from './Intermission';
 import Hype from './Hype';
 import { landCueFor, wheelsFor, wheelsMade, wheelsTenth } from './landCue';
@@ -22,7 +28,7 @@ import { useViewport } from './viewport';
 import { Coach, LedSuitChip } from './Coach';
 import { type TipsPref, bumpTip, loadTips, saveTips, tipCount } from './tips';
 import { BidCoach } from './BidCoach';
-import { pickBotNames } from '@spades/bots';
+import { personaTag, pickBotNames } from '@spades/bots';
 const Scene = lazy(() => import('./three/Scene'));
 
 /**
@@ -79,6 +85,16 @@ export interface OnlineBinding {
   /** tips on → ask the server for longer turn timers for this player */
   setLearning?: (on: boolean) => void;
   talk?: { secs: number | null; ready: { mine: boolean; count: number; of: number }; tile: (seat: number) => ReactNode };
+  /** per local side: custom team name (null = partner names) */
+  teamNames?: (string | null)[];
+  /** rename my team (server-validated) */
+  setTeamName?: (name: string) => void;
+  /** the table's rematch series + which of its sides is mine */
+  series?: { series: Series | null; mine: number };
+  /** local seats whose Hustler act is over */
+  revealed?: number[];
+  /** local seats held by bots */
+  botSeats?: number[];
 }
 
 interface Props {
@@ -109,6 +125,7 @@ function positions(n: number): SeatPos[] {
 }
 
 /* -------------------------------------------------------------- chat feed */
+const talkOn = () => { try { return JSON.parse(localStorage.getItem('bwm.talk.v1') ?? '{}').botTalk !== false; } catch { return true; } };
 function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
   const [msgs, setMsgs] = useState<ChatMsg[]>(() => initial ?? []);
   const prev = useRef<GameState | null>(initial ? st : null);
@@ -116,8 +133,8 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
   const timers = useRef<number[]>([]);
   const namesRef = useRef(names);
   namesRef.current = names;
-  const push = useCallback((user: string, text: string, system = false, delay = 0) => {
-    const add = () => setMsgs((m) => [...m.slice(-60), { id: idRef.current++, user, text, system, color: USER_COLORS[user] ?? SEAT_COLORS[namesRef.current.indexOf(user)] ?? '#ddd' }]);
+  const push = useCallback((user: string, text: string, system = false, delay = 0, bot = false) => {
+    const add = () => setMsgs((m) => [...m.slice(-60), { id: idRef.current++, user, text, system, color: USER_COLORS[user] ?? SEAT_COLORS[namesRef.current.indexOf(user)] ?? '#ddd', ...(bot ? { bot: true } : {}) }]);
     if (delay) timers.current.push(window.setTimeout(add, delay));
     else add();
   }, []);
@@ -131,8 +148,10 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
     const r = st.rules;
     if (!p) {
       push('System', `Table open · ${modeTitle(r)} · first to ${r.targetScore}`, true);
-      push(pick(bots), pick(LINES.start), false, 900);
-      push(pick(bots), pick(['yo', 'what up', '👋', 'ready']), false, 1700);
+      if (talkOn()) {
+        push(pick(bots), pick(LINES.start), false, 900);
+        push(pick(bots), pick(['yo', 'what up', '👋', 'ready']), false, 1700);
+      }
       return;
     }
     if (st.handNo !== p.handNo) push('System', `Hand ${st.handNo} · ${names[st.dealer]} deals`, true);
@@ -140,8 +159,7 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
     st.bids.forEach((b, s) => {
       if (b !== null && p.bids[s] === null && p.handNo === st.handNo) {
         push('System', `${names[s]} bid ${bidLabel(b)}`, true);
-        if (typeof b === 'number' && b >= 6 && Math.random() < 0.5) push(pick(bots.filter((x) => x !== names[s])), pick(LINES.bidBig), false, 700);
-        if (isNilBid(b) && s !== HUMAN && Math.random() < 0.6) push(names[s]!, pick(['going nil 🤫', 'nil. cover me', 'trust me 😏']), false, 500);
+        if (isNilBid(b) && s !== HUMAN && talkOn() && Math.random() < 0.6) push(names[s]!, pick(['going nil 🤫', 'nil. cover me', 'trust me 😏']), false, 500);
       }
     });
     // wheels: a team's combined bid hits 10+ (team games only, once both partners have bid)
@@ -164,8 +182,7 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
       const t = st.tricks[st.tricks.length - 1]!;
       const winCard = t.plays.find((x) => x.seat === t.winner)!.card;
       const led = t.plays[0]!.card;
-      if (winCard === 'BJ' && t.winner !== HUMAN && Math.random() < 0.55) push(names[t.winner!]!, pick(LINES.bigJoker), false, 300);
-      else if (!p.spadesBroken && st.spadesBroken && !isTrump(led, r) && Math.random() < 0.45) push(pick(bots), pick(LINES.cut), false, 400);
+      void winCard; void led; // bot reactions to plays come from the trash-talk engine (offlineTalk)
     }
     // hand scored
     if (st.history.length > p.history.length) {
@@ -173,21 +190,9 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
       push('System', `Hand ${rec.handNo}: ${rec.sides.map((s) => `${sideName(r, s.side, names)} ${s.points >= 0 ? '+' : ''}${s.points}`).join(' · ')}`, true);
       for (const w of wheelsMade(r, rec)) push('System', `🏎 Wheels made! ${sideName(r, w.side, names)} bid ${w.bid} and took ${w.books}`, true);
       const mySide = sideOf(HUMAN, r);
-      for (const s of rec.sides) {
-        for (const nl of s.nils) {
-          const speaker = pick(bots.filter((x) => x !== names[nl.seat]));
-          if (Math.random() < 0.7) push(speaker, pick(nl.made ? LINES.nil : LINES.bust), false, 900);
-        }
-        if (s.contractMade === false && Math.random() < 0.65) {
-          if (s.side === mySide && r.partnerships) push(names[partnerOf(HUMAN, r)!]!, pick(LINES.setOnUs), false, 1200);
-          else {
-            const others = bots.filter((_, i) => sideOf(i + 1, r) !== s.side);
-            push(others.length ? pick(others) : pick(bots), pick(LINES.set), false, 1200);
-          }
-        }
-      }
+      void mySide;
     }
-    if (st.history.length > p.history.length && st.phase === 'handOver') {
+    if (st.history.length > p.history.length && st.phase === 'handOver' && talkOn()) {
       // Table Talk banter between hands
       const rec = st.history[st.history.length - 1]!;
       const top = Math.max(...rec.sides.map((s) => s.points));
@@ -201,8 +206,6 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
     }
     if (st.phase === 'gameOver' && p.phase !== 'gameOver') {
       push('System', 'Game over', true);
-      push(pick(bots), pick(LINES.gg), false, 800);
-      push(pick(bots), pick(LINES.gg), false, 1600);
     }
   }, [st, names, bots, n, push]);
 
@@ -293,7 +296,66 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [seenMsgs, setSeenMsgs] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const localChat = useChat(st, names, resume?.chat);
-  const { msgs, push } = online ? online.chat : localChat;
+  const { msgs: rawMsgs, push } = online ? online.chat : localChat;
+  const talkPrefs = useTalkPrefs();
+  // bot trash talk: masked per Clean talk, hidden entirely with 'Hide bot trash talk' (local preferences)
+  const msgs = useMemo(() => (talkPrefs.hideBotTalk ? rawMsgs.filter((m) => !m.bot) : rawMsgs.map((m) => (m.bot ? { ...m, text: showLine(m.text) } : m))), [rawMsgs, talkPrefs.hideBotTalk, talkPrefs.cleanTalk]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // team names (team modes): yours from More options offline, the bots' a random fun one (kept in the save)
+  const myName = useMyTeamName();
+  const [botTeam] = useState(() => resume?.teamNames?.[1] ?? pickTeamName(Math.abs([...seed].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7))));
+  const teamNames: (string | null)[] | null = !r.partnerships ? null : online ? (online.teamNames ?? [null, null]) : [myName || null, botTeam];
+  setTeamNames(teamNames); // sideName() everywhere (scorebug, results, Table Talk, Victory, score pad) uses these
+  useEffect(() => () => setTeamNames(null), []);
+
+  // offline trash talk: same engine as the server
+  useEffect(() => {
+    if (online) return;
+    offlineTalk.table = { seats: names.map((nm, i) => ({ name: nm, bot: i !== HUMAN })), partnerships: r.partnerships, teamNames: Array.from({ length: st.scores.length }, (_, i) => sideName(r, i, names)) };
+  });
+  useEffect(() => {
+    if (online) return;
+    if (!resume) offlineTalk.newGame();
+    offlineTalk.sink = (l) => {
+      localChat.push(l.name, l.text, false, 0, true);
+      speakBot(l.name, l.text);
+      if (l.reveal) fx.emit('hustled', { text: `${l.name} was never new` });
+      setRevealedTick((x) => x + 1);
+    };
+    return () => { offlineTalk.sink = null; offlineTalk.table = null; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const [, setRevealedTick] = useState(0);
+  const revealed = online ? (online.revealed ?? []) : offlineTalk.state.revealed;
+
+  // rematch series: online from the server; offline kept in localStorage (reset when a new game starts from the menu)
+  const [offSeries, setOffSeries] = useState<Series | null>(() => (online ? null : loadSeries()));
+  const series = online ? online.series?.series ?? null : offSeries;
+  const seriesMine = online ? online.series?.mine ?? 0 : sideOf(HUMAN, r);
+  const [seriesOpen, setSeriesOpen] = useState(false);
+  const seriesRecorded = useRef(false);
+  useEffect(() => {
+    if (online || st.phase !== 'gameOver' || !st.result || seriesRecorded.current) return;
+    seriesRecorded.current = true;
+    const ids = names.map((_, i) => (i === HUMAN ? 'you' : `bot:${i}`));
+    const sideNames = Array.from({ length: st.scores.length }, (_, i) => sideName(r, i, names));
+    const prevS = loadSeries();
+    const next = addSeriesGame(prevS, r.mode, seriesSides(st, ids, sideNames), summarizeGame(st, sideNames, (prevS?.games.length ?? 0) + 1, Date.now()));
+    saveSeries(next);
+    setOffSeries(next);
+  }, [st.phase]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    // a rematch (Play again keeps the series): the bots talk about it
+    if (!online && !resume && (loadSeries()?.games.length ?? 0) > 0) window.setTimeout(() => offlineTalk.moment({ kind: 'rematch' }), 2500);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const seriesChip = (cls = '') => <SeriesChip series={series} onOpen={() => setSeriesOpen(true)} className={cls} />;
+  const teamEdit = r.partnerships && (online ? online.setTeamName : true) ? (
+    <TeamNameField
+      value={(teamNames?.[sideOf(HUMAN, r)] ?? '') || ''}
+      placeholder={defaultSideName(r, sideOf(HUMAN, r), names)}
+      onSave={(v) => (online ? online.setTeamName?.(v) : myTeamName.set(v))}
+      testId="tt-team-name"
+    />
+  ) : null;
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [feedback, setFeedback] = useState(false);
   // the Victory screen's tip-jar line: at most once every few finished games, never during play
@@ -386,8 +448,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   useEffect(() => {
     if (online) return; // online games live on the server (seat token in localStorage), not in the offline save
     if (st.phase === 'gameOver') clearGame();
-    else saveGame({ seed, settings, state: st, chat: msgs, names });
-  }, [st, msgs, seed, settings, online]);
+    else saveGame({ seed, settings, state: st, chat: rawMsgs, names, teamNames: [null, botTeam] });
+  }, [st, rawMsgs, seed, settings, online]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // "Resuming your game…" toast
   useEffect(() => {
@@ -474,12 +536,13 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     else { setSelected(c); sound.play('tap'); }
   }, [humanExchanging, exchangeStep, legal, selected, apply]);
 
+  const isBotSeat = (seat: number) => (online ? !!online.botSeats?.includes(seat) : seat !== HUMAN);
   const renderSeat = (seat: number) => {
     const isTurn = st.turn === seat && !pause && st.phase !== 'handOver' && st.phase !== 'gameOver';
     const partner = r.partnerships && seat === partnerOf(HUMAN, r);
     const b = st.bids[seat];
     return (
-      <div className={`plate ${isTurn ? 'turn' : ''} ${partner ? 'ally' : 'foe'}`} data-testid={`seat-${seat}`}>
+      <div className={`plate ${isTurn ? 'turn' : ''} ${partner ? 'ally' : 'foe'}`} data-testid={`seat-${seat}`} title={isBotSeat(seat) ? `${names[seat]} · ${personaTag(names[seat]!, revealed.includes(seat))}` : undefined} data-persona={isBotSeat(seat) ? personaTag(names[seat]!, revealed.includes(seat)) : undefined}>
         <div className="plate-avatar" style={{ ['--uc' as string]: SEAT_COLORS[seat] }}>{names[seat]![0]}</div>
         <div className="plate-body">
           <div className="plate-name">{names[seat]}{st.dealer === seat && <span className="chip dealer">D</span>}{partner && <span className="chip ally">PARTNER</span>}</div>
@@ -553,7 +616,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           <div className={`bug-teams n${st.scores.length}`}>
             {st.scores.map((s, i) => (
               <div key={i} className={`bug-team ${i === mySide ? 'mine' : ''} ${st.result?.winners.includes(i) ? 'won' : ''}`}>
-                <span className="bug-name">{wheelSides.has(i) && <span className="wheels-tag" data-testid={`wheels-${i}`} title="Wheels: this team bid 10+ books together">WHEELS</span>}{online && r.partnerships ? online.sideLabel(i) : r.partnerships ? sideName(r, i, names).replace(' & ', ' + ').toUpperCase() : names[i]!.toUpperCase()}</span>
+                <span className="bug-name">{wheelSides.has(i) && <span className="wheels-tag" data-testid={`wheels-${i}`} title="Wheels: this team bid 10+ books together">WHEELS</span>}{r.partnerships ? (teamNames?.[i] ? sideName(r, i, names) : (online ? online.sideLabel(i) : sideName(r, i, names).replace(' & ', ' + '))).toUpperCase() : names[i]!.toUpperCase()}</span>
                 <TickNumber value={s} className="bug-score" />
                 <span className="bug-bags">{st.bags[i]}<small>B</small></span>
               </div>
@@ -564,6 +627,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           </div>
           <div className="bug-meta">
             <span className="bug-mode">{modeTitle(r).toUpperCase()}</span>
+            {seriesChip('in-meta')}
             {learning && <span className="learn-badge" data-testid="learning-badge" title="Tips are on: the game slows down so you can read. Turn tips off to go back to your speed.">LEARNING MODE: SLOW</span>}
             <span>HAND {st.handNo}{isBooks ? ' · BOOKS BID THEMSELVES' : ''} · TO {r.targetScore}</span>
           </div>
@@ -704,8 +768,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           online={!!online}
           onReady={() => apply({ type: 'nextHand' })}
           onScorePad={() => setShowPad(true)}
+          series={seriesChip()}
+          teamEdit={teamEdit}
         />
       )}
+      {seriesOpen && series && <SeriesSheet series={series} mine={seriesMine} onClose={() => setSeriesOpen(false)} />}
 
       {feedback && <Feedback onClose={() => setFeedback(false)} />}
       {confirmLeave && (
@@ -729,6 +796,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             <button type="button" className="modal-x" aria-label="Close and go to the main menu" data-testid="gameover-x" onClick={mainMenu}>✕</button>
             <div className="trophy">{st.result.winners.includes(mySide) ? '🏆' : '♠'}</div>
             <h2>{st.result.winners.includes(mySide) ? (st.result.winners.length > 1 ? 'YOU TIED FOR FIRST!' : 'VICTORY!') : `${st.result.winners.map((w) => sideName(r, w, names)).join(' & ').toUpperCase()} WIN${r.partnerships || st.result.winners.length > 1 ? '' : 'S'}`}</h2>
+            {seriesChip()}
             <p className="muted">{st.result.endReason === 'floor' ? 'Ended by the losing floor.' : `First to ${r.targetScore}.`} {st.history.length} hands played.</p>
             <ol className="placements">
               {st.result.finalScores

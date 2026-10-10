@@ -1083,3 +1083,44 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
   85% { transform: translate(calc(var(--bx, 0) * -.06), calc(var(--by, 0) * -.06)); opacity: 1; }
   100% { transform: none; }
 }
+/* Hustler reveal */
+.hype-pop.hustled { top: 30%; }
+.hype-pop.hustled .hype-text { color: #1a0b2e; background: linear-gradient(90deg, #f5c542, #ffe9a3, #f5c542); clip-path: polygon(3% 0, 100% 0, 97% 100%, 0 100%); padding: .05em .45em; box-shadow: 0 0 34px rgba(245,197,66,.8); animation: slam .38s cubic-bezier(.5,0,.75,0) both, pop-out .3s ease-in 1.7s forwards; }
+/* rematch series */
+.series-chip { display: inline-flex; align-items: baseline; gap: .3em; padding: 2px 8px; border-radius: 6px; border: 1px solid rgba(245,197,66,.7); background: rgba(20,8,36,.75); color: #f5c542; font: 800 11px/1.2 system-ui, sans-serif; letter-spacing: .08em; cursor: pointer; white-space: nowrap; }
+.series-chip small { font-size: 9px; opacity: .85; }
+.series-chip b { font-size: 12px; color: #fff; }
+.series-chip.in-bug { position: absolute; right: 8px; bottom: 3px; }
+.series-sheet { width: min(560px, 94vw); }
+.series-sheet h2 { margin: 0 0 6px; letter-spacing: .08em; }
+.series-big { color: #f5c542; margin-left: .3em; }
+.series-sides { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-bottom: 8px; }
+.series-side b { color: #f5c542; font-size: 18px; margin-right: 4px; }
+.series-side.mine { color: #fff3c4; }
+.series-note { color: #ffcf6e; font-size: 13px; margin: 4px 0 8px; }
+.series-games { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.series-game { border: 1px solid rgba(184,146,255,.25); border-radius: 8px; padding: 6px 8px; background: rgba(255,255,255,.03); }
+.sg-head { all: unset; cursor: pointer; display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; width: 100%; }
+.sg-no { color: #b892ff; font-weight: 800; }
+.sg-scores { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; }
+.sg-scores .won { color: #f5c542; }
+.sg-scores .mine { text-decoration: underline; text-decoration-color: rgba(245,197,66,.5); }
+.sg-meta { font-size: 12px; opacity: .8; white-space: nowrap; }
+.sg-hl { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12px; opacity: .85; margin-top: 3px; }
+.sg-hl em { font-style: normal; opacity: .75; }
+.sg-hands { width: 100%; margin-top: 6px; border-collapse: collapse; font-size: 12px; }
+.sg-hands th, .sg-hands td { padding: 2px 6px; text-align: right; border-bottom: 1px solid rgba(255,255,255,.08); }
+.sg-hands th:first-child, .sg-hands td:first-child { text-align: left; }
+.gameover .series-chip, .tt-head .series-chip { margin: 2px auto 6px; }
+.team-name-edit { display: flex; gap: 6px; align-items: center; }
+.team-name-edit input { flex: 1; min-width: 0; }
+.lobby-team-name, .tt-team-edit { display: grid; gap: 3px; margin: 6px 0; }
+.lobby-team-name small, .tt-team-edit small { font-size: 10px; letter-spacing: .12em; opacity: .75; }
+.team-row { flex-wrap: wrap; }
+.team-row .team-name-edit { flex: 1 1 200px; }
+.team-name-edit .err { color: #ff8a8a; flex-basis: 100%; }
+.bot-mute { margin-right: 6px; }
+.bot-mute.off { opacity: .7; }
+.bug-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.series-chip.in-meta { padding: 0 6px; font-size: 10px; margin-left: 6px; }
+.series-chip.in-meta b { font-size: 11px; }

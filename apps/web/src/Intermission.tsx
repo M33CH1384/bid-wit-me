@@ -39,8 +39,12 @@ function Avatar({ name }: { name: string }) {
 }
 
 export function Intermission({
-  st, names, mySide, msgs, onSend, secs, ready, onReady, tile, online, onScorePad,
+  st, names, mySide, msgs, onSend, secs, ready, onReady, tile, online, onScorePad, series, teamEdit,
 }: {
+  /** rematch series chip */
+  series?: ReactNode;
+  /** rename your team (team modes) */
+  teamEdit?: ReactNode;
   st: GameState;
   names: string[];
   mySide: number;
@@ -74,11 +78,13 @@ export function Intermission({
         <header className="tt-head">
           <span className="tt-live"><span className="live-dot" /> TABLE TALK</span>
           <span className="tt-title">HAND {rec.handNo} RECAP</span>
+          {series}
           {secs !== null && <span className={`tt-count ${secs <= 5 ? 'hot' : ''}`} data-testid="talk-count">Next deal {secs}s</span>}
         </header>
 
         <div className="tt-body">
           <section className="tt-left">
+            {teamEdit && <div className="tt-team-edit"><small>YOUR TEAM NAME</small>{teamEdit}</div>}
             <div className="tt-recap" data-testid="talk-recap">
               {sides.map((s) => {
                 const books = s.bookPoints > 0 || s.seats.every((x) => rec.bids[x] === 'books');

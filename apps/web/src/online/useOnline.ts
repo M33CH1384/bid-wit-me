@@ -1,3 +1,5 @@
+import { speakBot } from '../talkPrefs';
+import { fx } from '../fx';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { Action, GameState, PlayerView } from '@spades/rules';
 import { bidLabel, isFreshDeal } from '@spades/rules';
@@ -149,12 +151,19 @@ export function useOnlineChat(cs: ConnState, st: GameState | null, names: string
     });
   }, []);
 
+  const primed = useRef(false);
   useEffect(() => {
     for (const l of cs.chat) {
       if (seen.current.has(l.id)) continue;
       seen.current.add(l.id);
       add(lineToMsg(l, cs.you));
+      // live bot lines (not the backlog on join): voice + the Hustler reveal pop
+      if (l.bot && primed.current) {
+        speakBot(l.name, l.text);
+        if (l.bot.reveal) fx.emit('hustled', { text: `${l.name} was never new`, silent: false });
+      }
     }
+    if (cs.you) primed.current = true;
   }, [cs.chat, cs.you, add]);
 
   useEffect(() => {
@@ -178,7 +187,7 @@ export function useOnlineChat(cs: ConnState, st: GameState | null, names: string
 function lineToMsg(l: ChatLine, you: string | null): ChatMsg {
   if (l.system || !l.from) return { id: l.id, user: 'System', text: l.text, system: true, color: '#b892ff' };
   const mine = l.from === you;
-  return { id: l.id, user: mine ? 'You' : l.name, text: l.text, color: mine ? '#f5c542' : colorFor(l.from) };
+  return { id: l.id, user: mine ? 'You' : l.name, text: l.text, color: mine ? '#f5c542' : colorFor(l.from), ...(l.bot ? { bot: true } : {}) };
 }
 
 /** Local-seat names: "You" at 0, then real names rotated. */

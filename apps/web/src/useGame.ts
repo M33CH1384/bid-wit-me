@@ -1,4 +1,5 @@
 import { fx } from './fx';
+import { offlineTalk } from './offlineTalk';
 import { NUKE_ALLOWANCE_MS } from '@spades/protocol';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type Action, type GameState, type TableRules, applyAction, newGame, pendingTurn, secureSeed, viewFor } from '@spades/rules';
@@ -37,6 +38,7 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel, spe
     try {
       const next = applyAction(prev, action);
       setError(null);
+      try { offlineTalk.step(prev, action, next); } catch { /* talk never breaks the game */ }
       if (next.tricks.length > prev.tricks.length) setPause(true);
       stRef.current = next;
       setSt(next);
@@ -62,11 +64,18 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel, spe
     const turn = pendingTurn(st);
     if (!turn || turn.seat === HUMAN) return;
     const delay = (turn.kind === 'bid' ? 650 : turn.kind === 'exchange' ? 500 : 600) * k;
+    let t2 = 0;
     const t = setTimeout(() => {
-      const action = chooseBotAction(viewFor(st, turn.seat), botLevel);
-      if (action) apply(action);
+      let action = chooseBotAction(viewFor(st, turn.seat), botLevel);
+      if (!action) return;
+      // persona lean (kept only if legal)
+      const leaned = offlineTalk.lean(action);
+      if (leaned !== action) { try { applyAction(st, leaned); action = leaned; } catch { /* keep the original */ } }
+      // sometimes a bot talks before it plays, then a short beat before the card lands
+      if (action.type === 'play' && offlineTalk.prePlay(turn.seat)) { const a = action; t2 = window.setTimeout(() => apply(a), 900 * Math.max(0.6, k)); }
+      else apply(action);
     }, delay);
-    return () => clearTimeout(t);
+    return () => { clearTimeout(t); clearTimeout(t2); };
   }, [st, pause, dealing, botLevel, k, apply, hold]);
 
   const restart = useCallback((r: TableRules = rules) => {

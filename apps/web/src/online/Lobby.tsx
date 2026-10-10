@@ -1,3 +1,4 @@
+import { TeamNameField } from '../TeamName';
 import type { NukeIntensity } from '@spades/protocol';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -101,7 +102,14 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
             />
           ))}
         </div>
-        {r.partnerships && <p className="hint">Team A: seats 1 &amp; 3 · Team B: seats 2 &amp; 4. Tap a seat to sit.</p>}
+        {r.partnerships && <p className="hint">{room.teamNames?.[0] || 'Team A'}: seats 1 &amp; 3 · {room.teamNames?.[1] || 'Team B'}: seats 2 &amp; 4. Tap a seat to sit.</p>}
+        {r.partnerships && cs.seat !== null && (
+          <div className="lobby-team-name">
+            <small>YOUR TEAM NAME ({cs.seat % 2 === 0 ? 'A' : 'B'})</small>
+            <TeamNameField value={room.teamNames?.[cs.seat % 2] ?? ''} placeholder="You & your partner" onSave={(name) => conn.send({ t: 'teamName', name })} testId="lobby-team-name" />
+          </div>
+        )}
+        {room.series && room.series.games.length > 0 && <p className="hint" data-testid="lobby-series">Series {room.series.wins.join('–')} · {room.series.sides.map((s) => s.name).join(' vs ')}</p>}
         <MediaBar mesh={mesh} vs={vs} seated={cs.seat !== null} />
         {cs.seat !== null && !vs.cam && <p className="hint">Video is optional: tap 📷 to turn your camera on. It goes straight to the other players, never through our server.</p>}
       </section>
@@ -158,6 +166,9 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
               <button type="button" data-testid="mic-mute-toggle" className={`toggle ${room.partnerMicMute ? 'on' : ''}`} role="switch" aria-checked={!!room.partnerMicMute} aria-label="Partner mic mute" onClick={() => config(settings, timerKey(room), room.botLevel, room.talkSec, room.afkLimit ?? 3, !room.partnerMicMute)}><span /></button>
             </span></label>
           )}
+          <label className="row"><span className="row-label">Bot trash talk<small>bots talk smack in chat (players can hide or mute it)</small></span><span className="row-control">
+            <button type="button" data-testid="bot-talk-toggle" className={`toggle ${room.botTalk !== false ? 'on' : ''}`} role="switch" aria-checked={room.botTalk !== false} aria-label="Bot trash talk" onClick={() => conn.send({ t: 'config', rules: room.rules, botLevel: room.botLevel, talkSec: room.talkSec, afkLimit: room.afkLimit ?? 3, partnerMicMute: room.partnerMicMute ?? false, nukeIntensity: room.nukeIntensity ?? 'full', botTalk: room.botTalk === false })}><span /></button>
+          </span></label>
           {r.deck === 'joker54' && (
             <label className="row"><span className="row-label">Nuke intensity<small>Big Joker over Little Joker, for everyone at the table</small></span><span className="row-control">
               <select data-testid="nuke-intensity" value={room.nukeIntensity ?? 'full'} onChange={(e) => config(settings, timerKey(room), room.botLevel, room.talkSec, room.afkLimit ?? 3, room.partnerMicMute ?? false, e.target.value as NukeIntensity)}>
@@ -185,6 +196,7 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
               <span className="row-control"><button type="button" className={`toggle ${room.partnerMicMute ? 'on' : ''}`} role="switch" aria-checked={!!room.partnerMicMute} aria-label="Partner mic mute (set by the host)" disabled><span /></button></span>
             </span>
           )}
+          <span data-testid="bot-talk-summary">Bot trash talk: {room.botTalk !== false ? 'On' : 'Off'}</span>
           {r.deck === 'joker54' && <span data-testid="nuke-summary">Nuke: {NUKE_LABEL[room.nukeIntensity ?? 'full']}</span>}
           <span>{room.afkLimit === 0 ? 'AFK kick off' : `A bot takes over after ${room.afkLimit ?? 3} timeouts in a row`}</span>
         </div>

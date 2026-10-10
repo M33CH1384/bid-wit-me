@@ -1,7 +1,8 @@
 import { type ReactNode, useState } from 'react';
 import Credits from './Credits';
 import Feedback, { AboutRow } from './Feedback';
-import { NukeIntensityRow, ReduceEffectsRow, SoundFields } from './SoundControls';
+import { BotTrashTalkRow, NukeIntensityRow, ReduceEffectsRow, SoundFields } from './SoundControls';
+import { TeamNameField, myTeamName, useMyTeamName } from './TeamName';
 import { type Settings, settingsToRules } from './settings';
 import { type TipsPref, saveTips } from './tips';
 
@@ -64,6 +65,8 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
           <SoundFields />
           <ReduceEffectsRow />
           <NukeIntensityRow />
+          <BotTrashTalkRow />
+          <TeamNameRow />
           <button type="button" className="link sheet-h" aria-expanded={house} onClick={() => setHouse(!house)}>{house ? '▾' : '▸'} House rules</button>
           {house && (
             <div className="house">
@@ -124,5 +127,16 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
     {credits && <Credits onClose={() => setCredits(false)} />}
     {feedback && <Feedback onClose={() => setFeedback(false)} />}
     </>
+  );
+}
+
+/** Offline: name your team (team modes). Empty = "You & <partner>". */
+function TeamNameRow() {
+  const v = useMyTeamName();
+  return (
+    <div className="sf-row team-row">
+      <span>Your team name<small className="sf-note"> · team modes, offline</small></span>
+      <TeamNameField value={v} placeholder="You & your partner" onSave={(x) => myTeamName.set(x)} testId="offline-team-name" />
+    </div>
   );
 }

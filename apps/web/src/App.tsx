@@ -1,3 +1,4 @@
+import { saveSeries } from './Series';
 import { useState } from 'react';
 import { secureSeed } from '@spades/rules';
 import Setup from './Setup';
@@ -27,7 +28,7 @@ export default function App() {
       <Setup
         settings={settings}
         onChange={(s) => { setSettings(s); saveSettings(s); }}
-        onStart={() => { saveSettings(settings); setGame({ seed: secureSeed(), settings }); }}
+        onStart={() => { saveSettings(settings); saveSeries(null); setGame({ seed: secureSeed(), settings }); }}
         onResume={saved ? () => setGame({ seed: saved.seed, settings: saved.settings, resume: saved }) : null}
         resumeLabel={saved ? `${MODES.find((m) => m.key === saved.settings.mode)?.title ?? 'game'} · hand ${saved.state.handNo}` : undefined}
       />

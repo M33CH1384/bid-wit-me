@@ -8,7 +8,7 @@
 import { useSyncExternalStore } from 'react';
 import { type Sfx, sound } from './audio';
 
-export type FxKind = 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak' | 'shot' | 'gotShot' | 'wheels' | 'wheelsCar' | 'overcut';
+export type FxKind = 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak' | 'shot' | 'gotShot' | 'wheels' | 'wheelsCar' | 'overcut' | 'hustled';
 export interface FxEvent { id: number; kind: FxKind; at: number; level?: number; text?: string; sub?: string }
 
 const KEY = 'bwm.fx';
@@ -82,6 +82,7 @@ class FxBus {
 export function sfxFor(e: Pick<FxEvent, 'kind' | 'level'>): Sfx {
   if (e.kind === 'streak') return (e.level ?? 2) >= 4 ? 'streak3' : (e.level ?? 2) === 3 ? 'streak2' : 'streak1';
   if (e.kind === 'overcut') return (e.level ?? 2) >= 3 ? 'overcut3' : 'overcut';
+  if (e.kind === 'hustled') return 'shot';
   return e.kind as Sfx;
 }
 

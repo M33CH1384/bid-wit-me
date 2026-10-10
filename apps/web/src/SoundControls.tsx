@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { sound, useSoundSettings } from './audio';
 import { HostMusicFields } from './online/HostMusic';
+import { talkPrefs, useTalkPrefs } from './talkPrefs';
 import { type NukeIntensity, fx, useNukeIntensity, useReduceEffects } from './fx';
 
 const icon = (on: boolean, v: number) => (!on || v === 0 ? '🔇' : v < 0.4 ? '🔈' : v < 0.75 ? '🔉' : '🔊');
@@ -45,6 +46,7 @@ export function SoundFields({ compact = false }: { compact?: boolean }) {
         </label>
       )}
       {s.music && s.nowPlaying && <p className="hint np-inline">♫ {s.nowPlaying.track.title} — {s.nowPlaying.track.artist}</p>}
+      <BotTalkFields />
       {!compact && <p className="hint">On iPhone, the silent switch also mutes game sound.</p>}
     </div>
   );
@@ -129,7 +131,7 @@ export function SoundDock() {
       {flash && <div className="dock-flash" role="status">{flash}</div>}
       {open && (
         <div className="sound-pop glass slant" role="dialog" aria-label="Sound">
-          <div className="pop-head"><span className="panel-title">SOUND</span><button type="button" className="mute-all" data-testid="mute-all" onClick={muteAll}>{allOff ? 'Unmute' : 'Mute all'}</button></div>
+          <div className="pop-head"><span className="panel-title">SOUND</span><BotVoiceQuickMute /><button type="button" className="mute-all" data-testid="mute-all" onClick={muteAll}>{allOff ? 'Unmute' : 'Mute all'}</button></div>
           <SoundFields compact />
           <ReduceEffectsRow />
           <HostMusicFields />
@@ -209,5 +211,55 @@ export function NukeIntensityRow() {
         {opts.map(([k, l]) => <button key={k} type="button" role="radio" aria-checked={v === k} className={v === k ? 'on' : ''} disabled={reduced} onClick={() => fx.setNuke(k)}>{l}</button>)}
       </div>
     </div>
+  );
+}
+
+/** Per-player bot talk controls (local; work even when the host has trash talk on): voices, voice volume, hide text, clean talk. */
+export function BotTalkFields() {
+  const t = useTalkPrefs();
+  const voiceOk = typeof window !== 'undefined' && 'speechSynthesis' in window;
+  return (
+    <div className="bot-talk-fields" data-testid="bot-talk-fields">
+      <label className="sf-row">
+        <span>Bot voices{!voiceOk && <small className="sf-note"> · not supported here</small>}</span>
+        <button type="button" role="switch" aria-checked={t.voices} aria-label="Bot voices" data-testid="bot-voices" className={`switch ${t.voices ? 'on' : ''}`} disabled={!voiceOk} onClick={() => talkPrefs.set({ voices: !t.voices })}><i /></button>
+      </label>
+      {t.voices && (
+        <label className="sf-row">
+          <span>Bot voice volume</span>
+          <input type="range" min={0} max={100} step={5} value={Math.round(t.voiceVolume * 100)} aria-label="Bot voice volume" data-testid="bot-voice-volume" onChange={(e) => talkPrefs.set({ voiceVolume: Number(e.target.value) / 100 })} />
+          <b className="sf-val">{Math.round(t.voiceVolume * 100)}</b>
+        </label>
+      )}
+      <label className="sf-row">
+        <span>Hide bot trash talk<small className="sf-note"> · in your chat</small></span>
+        <button type="button" role="switch" aria-checked={t.hideBotTalk} aria-label="Hide bot trash talk" data-testid="hide-bot-talk" className={`switch ${t.hideBotTalk ? 'on' : ''}`} onClick={() => talkPrefs.set({ hideBotTalk: !t.hideBotTalk })}><i /></button>
+      </label>
+      <label className="sf-row">
+        <span>Clean talk<small className="sf-note"> · masks mild cursing</small></span>
+        <button type="button" role="switch" aria-checked={t.cleanTalk} aria-label="Clean talk" data-testid="clean-talk" className={`switch ${t.cleanTalk ? 'on' : ''}`} onClick={() => talkPrefs.set({ cleanTalk: !t.cleanTalk })}><i /></button>
+      </label>
+    </div>
+  );
+}
+
+/** Quick mute for bot voices in the sound dock popover. */
+export function BotVoiceQuickMute() {
+  const t = useTalkPrefs();
+  return (
+    <button type="button" className={`mute-all bot-mute ${t.voices ? '' : 'off'}`} data-testid="bot-voice-quick" aria-pressed={!t.voices} title={t.voices ? 'Mute bot voices' : 'Bot voices are off (tap to turn on)'} onClick={() => talkPrefs.set({ voices: !t.voices })}>
+      🤖 {t.voices ? 'Mute bots' : 'Bots muted'}
+    </button>
+  );
+}
+
+/** Offline table setting: bots talk trash (online the host decides in the lobby). */
+export function BotTrashTalkRow() {
+  const t = useTalkPrefs();
+  return (
+    <label className="sf-row">
+      <span>Bot trash talk<small className="sf-note"> · offline games; online the host decides</small></span>
+      <button type="button" role="switch" aria-checked={t.botTalk} aria-label="Bot trash talk" data-testid="bot-trash-talk" className={`switch ${t.botTalk ? 'on' : ''}`} onClick={() => talkPrefs.set({ botTalk: !t.botTalk })}><i /></button>
+    </label>
   );
 }
