@@ -106,10 +106,12 @@ async function modalCheck(page) {
     const m = document.querySelector('.tt, .modal-backdrop .modal');
     if (!m) return ['no modal open'];
     const r = m.getBoundingClientRect(), probs = new Set();
+    const own = m.closest('.modal-backdrop, .tt-backdrop'); // the modal's own backdrop shows through its slanted corners
+    const pad = 16;
     for (let i = 0; i <= 12; i++) for (let j = 0; j <= 12; j++) {
-      const x = Math.min(innerWidth - 1, Math.max(0, r.left + 1 + (r.width - 2) * i / 12)), y = Math.min(innerHeight - 1, Math.max(0, r.top + 1 + (r.height - 2) * j / 12));
+      const x = Math.min(innerWidth - 1, Math.max(0, r.left + pad + (r.width - 2 * pad) * i / 12)), y = Math.min(innerHeight - 1, Math.max(0, r.top + pad + (r.height - 2 * pad) * j / 12));
       const el = document.elementFromPoint(x, y);
-      if (!el || m.contains(el) || el.closest('.sound-dock')) continue;
+      if (!el || m.contains(el) || el === own || el.closest('.sound-dock')) continue;
       probs.add(`${(el.closest('.plate, .vbubble, .chat, .last-trick, .ctl-cluster, .chat-ticker, .scorebug, .coach') ?? el).className || el.tagName} paints over the modal`);
     }
     return [...probs];
@@ -130,16 +132,20 @@ async function lobbyCheck(page) {
         if (document.scrollingElement.scrollHeight > H + 1) out.push(`lobby page scrolls (${document.scrollingElement.scrollHeight} > ${H})`);
         if (!vis(document.querySelector('.lobby-chat input'))) out.push('chat input not visible without scrolling');
         if (!vis(document.querySelector('[data-testid="room-code"]'))) out.push('table code not visible');
-      } else if (!vis(document.querySelector('[data-testid="lobby-chat-tab"]'))) out.push('chat tab not on screen');
+      } else {
+        const t = document.querySelector('[data-testid="lobby-chat-tab"]');
+        if (!vis(t)) out.push('chat tab not on screen');
+        else { const r = t.getBoundingClientRect(); const e = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2); if (!t.contains(e)) out.push(`chat tab covered by ${e?.className || e?.tagName}`); }
+      }
       return out;
     });
     if (w < 1024) {
-      await page.getByTestId('lobby-chat-tab').click();
+      await page.getByTestId('lobby-chat-tab').dispatchEvent('click');
       await page.waitForTimeout(300);
       const ok = await page.evaluate(() => { const r = document.querySelector('.lobby-chat input')?.getBoundingClientRect(); return !!r && r.width > 0 && r.bottom <= innerHeight + 1; });
       if (!ok) probs.push('chat drawer input not on screen after one tap');
       await page.screenshot({ path: `${out}/lobby-chat-${label}.png` });
-      await page.getByTestId('lobby-chat-tab').click();
+      await page.getByTestId('lobby-chat-tab').dispatchEvent('click');
     }
     await page.screenshot({ path: `${out}/lobby-${label}.png` });
     console.log(`${probs.length ? '✗' : '✓'} lobby ${label}${probs.length ? ': ' + probs.join('; ') : ''}`);

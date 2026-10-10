@@ -845,3 +845,19 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .wiz-nav { display: flex; gap: 6px; align-items: center; }
 .icon-btn.home { width: auto; padding: 0 10px; }
 .icon-btn.home img { height: 13px; width: auto; display: block; }
+/* "?" help lives in the scorebug (keeps the bottom-right control cluster clear of the hand) */
+.scorebug .help-btn { width: 38px; height: auto; font-size: 17px; }
+@media (max-width: 400px) { .scorebug .help-btn { width: 32px; } }
+.table-screen.short .scorebug .help-btn { width: 36px; height: auto; }
+/* MIC LIMITED rides on the mic button instead of widening the cluster */
+.av-bar { position: relative; }
+.av-bar .mic-limited { position: absolute; right: 0; top: -13px; font-size: 8px; padding: 1px 4px; pointer-events: none; z-index: 1; }
+/* very narrow phones (≤ 340 px, e.g. iPhone SE 1st gen / small Androids): compact plates + video bubbles */
+@media (max-width: 340px) {
+  .plate .chip { font-size: 9px; padding: 0 4px; letter-spacing: .04em; }
+  .plate-name { font-size: 12.5px !important; }
+  .plate-avatar { width: 26px !important; height: 26px !important; font-size: 13px !important; }
+  .plate .vbubble, .plate.me-plate > .vbubble.self { width: 44px !important; height: 44px !important; left: -6px; }
+  .plate.me-plate:has(> .vbubble.self) .plate-body { margin-left: 0 !important; }
+  .last-trick, .last-trick.glass.slant { max-width: 52vw; padding: 3px 6px 4px; }
+}

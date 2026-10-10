@@ -324,7 +324,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const bcCounted = useRef<string | null>(null);
   useEffect(() => { if (coachBid && coachOn && bcCounted.current !== bcKey) { bcCounted.current = bcKey; bumpTip('bidcoach'); } }, [coachBid, coachOn, bcKey]);
   const helpButton = (
-    <button type="button" className={`help-btn ${help ? 'on' : ''}`} data-testid="help" aria-label="Help: tips and book counting" aria-pressed={help} onClick={() => setHelp(!help)}>?</button>
+    <button type="button" className={`bug-btn help-btn ${help ? 'on' : ''}`} data-testid="help" aria-label="Help: tips and book counting" aria-pressed={help} onClick={() => setHelp(!help)}>?</button>
   );
 
   // persist after every action (and chat line); a finished game clears the save
@@ -505,6 +505,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             <span>HAND {st.handNo}{isBooks ? ' · BOOKS BID THEMSELVES' : ''} · TO {r.targetScore}</span>
           </div>
         </div>
+        {helpButton}
         <button type="button" className="bug-btn" onClick={() => setShowPad(true)} aria-label="Score pad">📋</button>
         <button type="button" className="bug-btn q" onClick={() => onQuality(settings.quality === 'high' ? 'low' : 'high')} aria-label="Toggle graphics quality">{settings.quality === 'high' ? 'HQ' : 'LQ'}</button>
         {/* the always-visible sound dock (main.tsx) sits on this slot */}
@@ -549,7 +550,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         ))}
       </div>
 
-      <ChatPanel msgs={msgs} open={chatOpen} onToggle={() => setChatOpen(!chatOpen)} onSend={(t) => push('You', t)} unread={unread} scope={online ? 'table' : undefined} extra={<>{helpButton}{online ? online.controls : <OfflineMediaBar />}</>} />
+      <ChatPanel msgs={msgs} open={chatOpen} onToggle={() => setChatOpen(!chatOpen)} onSend={(t) => push('You', t)} unread={unread} scope={online ? 'table' : undefined} extra={online ? online.controls : <OfflineMediaBar />} />
       {help && !bidTurn && view.hand && view.hand.length > 0 && st.phase !== 'handOver' && st.phase !== 'gameOver' && (
         <div className="bid-coach-float glass slant"><BidCoach view={view} startOpen title="COUNT YOUR BOOKS" onClose={() => setHelp(false)} /></div>
       )}
