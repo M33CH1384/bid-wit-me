@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
 import { type GameState, sideOf } from '@spades/rules';
 import type { TalkIntensity, TalkKind } from '@spades/bots';
 import { QUICK_CONTEXTS, QUICK_COOLDOWN_MS, generalLines, quickLines } from './quickTrash';
@@ -53,12 +53,13 @@ export function TrashTalkButton({ st, me, intensity, onSend }: { st: GameState; 
   }, [open]);
   useEffect(() => { if (cool <= Date.now()) return; const t = window.setTimeout(() => setCool(0), cool - Date.now()); return () => clearTimeout(t); }, [cool]);
   const lines = tab === 'general' ? generalLines(intensity) : quickLines(tab, intensity);
+  const [place, setPlace] = useState<CSSProperties>({});
   const cooling = cool > Date.now();
   const label = (k: TalkKind) => QUICK_CONTEXTS.find((c) => c.kind === k)?.label ?? k;
   return (
     <div className="trash-wrap" ref={ref}>
       {open && (
-        <div className="trash-pop glass slant" role="dialog" aria-label="Talk trash" data-testid="trash-pop">
+        <div className="trash-pop glass slant" role="dialog" aria-label="Talk trash" data-testid="trash-pop" style={place}>
           <div className="trash-tabs" role="tablist">
             {ctx.slice(0, 3).map((k) => <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{label(k)}</button>)}
             <button type="button" role="tab" aria-selected={tab === 'general'} className={tab === 'general' ? 'on' : ''} data-testid="trash-tab-general" onClick={() => setTab('general')}>General</button>
@@ -70,7 +71,13 @@ export function TrashTalkButton({ st, me, intensity, onSend }: { st: GameState; 
           </div>
         </div>
       )}
-      <button type="button" className={`trash-btn ${cooling ? 'cooling' : ''}`} data-testid="talk-trash" aria-expanded={open} onClick={() => setOpen((o) => !o)} title={cooling ? 'Catch your breath…' : 'Talk trash'}>
+      <button type="button" className={`trash-btn ${cooling ? 'cooling' : ''}`} data-testid="talk-trash" aria-expanded={open} onClick={(e) => {
+        // open toward the roomier side of the screen (the controls sit top-right on wide screens, mid-right on phones)
+        const r = e.currentTarget.getBoundingClientRect(), vh = window.innerHeight;
+        const down = r.top < vh / 2;
+        setPlace(down ? { top: 'calc(100% + 8px)', maxHeight: Math.min(420, Math.max(160, vh - r.bottom - 16)) } : { bottom: 'calc(100% + 8px)', maxHeight: Math.min(420, Math.max(160, r.top - 16)) });
+        setOpen((o) => !o);
+      }} title={cooling ? 'Catch your breath…' : 'Talk trash'}>
         🗣<span>Talk trash</span>
       </button>
     </div>

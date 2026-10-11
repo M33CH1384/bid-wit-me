@@ -1197,7 +1197,8 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .trash-btn span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); font-family: var(--display); font-weight: 800; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
 .trash-btn.cooling { opacity: .55; }
 .table-screen.short .trash-btn span { display: none; }
-.trash-pop { position: absolute; right: calc(100% + 8px); bottom: 0; width: min(340px, calc(100vw - 80px)); max-height: min(52vh, 420px); display: flex; flex-direction: column; padding: 8px; gap: 6px; }
+.trash-pop { right: 0; width: min(340px, calc(100vw - 80px)); max-height: 420px; display: flex; flex-direction: column; padding: 8px; gap: 6px; }
+.trash-wrap > .trash-pop { position: absolute; z-index: 30; }
 .trash-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
 .trash-tabs button { font-size: 12px; font-weight: 700; padding: 4px 9px; border-radius: 999px; border: 1px solid rgba(255,255,255,.3); background: transparent; color: #fff; cursor: pointer; }
 .trash-tabs button.on { background: #f5c542; color: #1a0830; border-color: #f5c542; }
