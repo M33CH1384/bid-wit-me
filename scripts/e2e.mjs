@@ -323,7 +323,7 @@ if (!process.env.ONLY || process.env.ONLY === 'runit') await runItTest();
 async function playGame(mode, label, { shots = false, speed = 'turbo', extra = {} } = {}) {
   await page.evaluate(([m, sp, ex]) => localStorage.setItem('spades.settings.v2', JSON.stringify({ mode: m, speed: sp, blindNil: 'always', quality: 'low', ...ex })), [mode, speed, extra]);
   await page.goto(`${base}/?autostart=1&seed=e2e-${mode}-${extra.cutthroatDeck ?? ''}`);
-  let hands = 0, plays = 0, tookBidShot = false, tookTrickShot = false, tookSummary = false;
+  let hands = 0, plays = 0, tookBidShot = false, tookTrickShot = false, tookSummary = false, myBids = 0;
   if (shots) { // a real (trusted) tap unlocks Web Audio, as on iOS; toggle the sound popover open/closed
     const sb = page.getByTestId('sound-button');
     await sb.waitFor({ timeout: 30000 }); await sb.click(); await page.getByRole('dialog', { name: 'Sound' }).waitFor();
@@ -351,7 +351,7 @@ async function playGame(mode, label, { shots = false, speed = 'turbo', extra = {
       if (shots && !tookBidShot) { await shot('02-bidding'); tookBidShot = true; }
       const btns = page.locator('.bid-grid button');
       const n = await btns.count();
-      await btns.nth(Math.min(2, n - 1)).click(); continue;
+      await btns.nth(Math.min(2, n - 1)).click(); myBids++; continue;
     }
     const pass = page.getByRole('button', { name: /^Pass cards/ });
     if (await pass.count()) {
@@ -374,7 +374,8 @@ async function playGame(mode, label, { shots = false, speed = 'turbo', extra = {
   if (shots) {
     await page.waitForTimeout(800);
     const snd = await page.evaluate(() => { const s = window.__bwmSound; return { state: s.state, loaded: s.loaded, played: s.played, settings: s.settings }; });
-    const need = ['shuffle', 'deal', 'sweep', 'turn', 'bid', 'tap']; // 'play' lands are checked at Fast speed (turbo sweeps tricks before cards land)
+    // (hand 1 bids itself, so a game that ends on hand 1 under Shot = out never has a human bid)
+    const need = ['shuffle', 'deal', 'sweep', 'turn', 'tap', ...(myBids ? ['bid'] : [])]; // 'play' lands are checked at Fast speed (turbo sweeps tricks before cards land)
     const missing = need.filter((k) => !snd.played[k]);
     if (snd.state !== 'running' || snd.loaded < 12 || missing.length || !(snd.played.win || snd.played.lose) || !(snd.played.made || snd.played.set || snd.played.nil))
       throw new Error(`sound check failed: ${JSON.stringify(snd)} missing=${missing}`);
