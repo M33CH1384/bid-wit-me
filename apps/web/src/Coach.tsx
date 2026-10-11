@@ -114,13 +114,18 @@ export function tipsFor(c: CoachCtx): Tip[] {
     },
     {
       id: 'bid', title: 'Time to bid', anchor: '.bid-panel',
-      text: `Guess how many {books|book} you'll win this hand: that's your {bid}. The coach below counts your strong cards for you.${r.nil.allowed ? ` {Nil|nil} = you bet you'll win none (±${r.nil.value}).` : ''}${r.partnerships ? ' The team without the deal bids first, then the dealer\'s team (dealer last). You can talk books with your {partner} now (🤝 Partner talk, vague is fine: "3-ish"), but not once play starts.' : ''}`,
+      text: `Guess how many {books|book} you'll win this hand: that's your {bid}. The coach below counts your strong cards for you.${r.nil.allowed ? ` {Nil|nil} = you bet you'll win none (±${r.nil.value}).` : ''}`,
       when: (x) => x.myTurn && x.st.phase === 'bidding' && !!x.view.bidOptions && !!x.hand,
     },
     {
       id: 'blind', title: 'Blind Nil?', anchor: '.bid-panel', max: 2,
       text: `Blind {Nil|nil} = bet you'll win zero {books|book} before you even look at your cards (±${r.blindNil.value}). Very risky: most players just tap "See my cards".`,
       when: (x) => x.myTurn && x.st.phase === 'bidding' && !!x.view.bidOptions?.blindNil && !x.hand,
+    },
+    {
+      id: 'partnerTalk', title: 'Talk books with your partner', anchor: '.partner-talk', max: 2,
+      text: 'The team without the deal bids first, then the dealer\'s team, dealer last. While bidding you can tell your {partner} roughly what you\'ve got ("3-ish", "I\'m weak"): only they see it. No partner talk once the first card is led.',
+      when: (x) => r.partnerships && x.st.phase === 'bidding' && !!x.hand && (x.st.bids[x.me] === null || x.st.bids[(x.me + 2) % 4] === null),
     },
     {
       id: 'partnerBid', title: 'Your partner bid', anchor: '.bid-panel', max: 2,
