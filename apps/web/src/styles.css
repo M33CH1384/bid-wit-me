@@ -1284,3 +1284,30 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
   .pad-cell .lbl { display: block; font-size: 9.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
   .pad-rules { font-size: 12px; }
 }
+
+/* release 6: nothing in the wizard / More options overflows on narrow phones (scripts/wizard-check.mjs asserts it) */
+.ess-row { flex-wrap: wrap; row-gap: 8px; min-width: 0; }
+.seg { max-width: 100%; flex-wrap: wrap; }
+.ess-row > .ess-label { min-width: 0; }
+.row { flex-wrap: wrap; row-gap: 6px; }
+.row-label { min-width: 0; flex: 1 1 150px; }
+.row-control { max-width: 100%; min-width: 0; margin-left: auto; }
+.row-control select, .row select { max-width: 100%; }
+.sheet, .sheet-body { min-width: 0; max-width: 100%; }
+.sheet-body { overflow-x: hidden; }
+.sf-row { flex-wrap: wrap; min-width: 0; }
+.sf-row > span { min-width: 0; }
+/* the Bots skill row: label above a full-width control on phones */
+@media (max-width: 480px) {
+  .ess-row.stack { flex-direction: column; align-items: stretch; gap: 8px; }
+  .ess-row.stack > .seg { display: flex; flex-wrap: nowrap; width: 100%; }
+  .ess-row.stack > .seg button { flex: 1 1 0; min-width: 0; padding: 8px 2px; font-size: 15px; letter-spacing: .01em; }
+}
+@media (max-width: 360px) {
+  .ess-row.stack > .seg button { font-size: 13.5px; }
+  .ess .seg button { padding: 8px 10px; font-size: 15px; }
+}
+.sf-val { width: auto; min-width: 28px; white-space: nowrap; }
+.team-row .team-name-edit { min-width: 0; max-width: 100%; flex-basis: 100%; }
+.team-name-edit input { min-width: 0; }
+.sf-row > span { flex: 1 1 160px; }

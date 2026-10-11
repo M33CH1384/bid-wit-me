@@ -161,7 +161,7 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
         <h2 className="wiz-title">{mode.title}<small>{path === 'online' ? 'online with friends' : 'vs bots'}</small></h2>
         {path === 'bots' ? (
           <div className="ess">
-            <div className="ess-row">
+            <div className="ess-row stack" data-testid="bots-row">
               <span className="ess-label">Bots</span>
               <Seg label="Bot skill" value={s.botLevel} options={[['mixed', 'Mixed'], ['novice', 'Novice'], ['regular', 'Regular'], ['pro', 'Pro'], ['shark', 'Shark']]} onChange={(v) => set('botLevel', v)} />
             </div>

@@ -5,10 +5,13 @@
  * chat / cam / mic controls, "X takes it" banner) don't overlap each other, stay on screen, and never cover the trick
  * cards or the hand (3D rects come from window.__bwmLayout), that trick cards don't overlap and the hand is fully visible.
  * Usage: node scripts/layout-check.mjs [web=http://localhost:4173] [server=http://127.0.0.1:8787] [out=screenshots/layout]
- * ONLY=offline|online, STRICT=0 to report without failing.
+ * ONLY=offline|online|wizard, STRICT=0 to report without failing.
+ * The wizard pass (scripts/wizard-check.mjs) asserts that no segmented control / setup row in the wizard and More options
+ * overflows its container horizontally at 320, 375, 390 and 414 px.
  */
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
+import { wizardAudit } from './wizard-check.mjs';
 
 const web = process.argv[2] ?? 'http://localhost:4173';
 const server = process.argv[3] ?? 'http://127.0.0.1:8787';
@@ -28,6 +31,10 @@ const browser = await chromium.launch({
     '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '--autoplay-policy=no-user-gesture-required'],
 });
 const problems = [];
+if (!process.env.ONLY || process.env.ONLY === 'wizard') {
+  const wp = await wizardAudit(browser, web, `${out}/wizard`);
+  problems.push(...wp.map((x) => `wizard ${x}`));
+}
 const errors = [];
 async function newPage(label, w = 844, h = 390) {
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, userAgent: IOS, permissions: ['camera', 'microphone'] });
