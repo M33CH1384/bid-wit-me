@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type Card, makeRules } from '@spades/rules';
+import { type Card, bidOrder, makeRules } from '@spades/rules';
 import { chooseBotAction } from '@spades/bots';
 import type { GameAction } from '@spades/protocol';
 import { BOT_NAMES } from '@spades/bots';
@@ -879,7 +879,9 @@ describe('partner talk during bidding', () => {
     }
     // the human at seat 0 bids before the bot partner at seat 2 whenever seat 0 is the first of its team to bid
     const line = chats(env, 'a').find((l) => !!l.partner);
-    expect(line, 'dealer ' + env.last('a', 'state')!.view!.dealer).toBeDefined();
+    const dealer = env.last('a', 'state')!.view!.dealer;
+    const order = bidOrder(makeRules('joker'), dealer);
+    if (order.indexOf(0) < order.indexOf(2)) expect(line, `dealer ${dealer}`).toBeDefined();
     if (line) {
       expect(line.text).toMatch(/about \d|weak|Nil|or more|Strong in spades/);
       expect(chats(env, 'b').some((l) => !!l.partner)).toBe(false);
