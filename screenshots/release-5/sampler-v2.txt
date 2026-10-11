@@ -1,0 +1,76 @@
+professor-f	runIt	the remaining tricks are a formality. observe.
+professor-f	cut	statistically speaking, that was inevitable.
+professor-m	runIt	the remaining tricks are a formality. observe.
+professor-m	cut	statistically speaking, that was inevitable.
+mama-f	runIt	put your cards down, baby. mama's taking all of these.
+mama-f	cut	baby that was cute. now give me my book.
+mama-m	runIt	put your cards down, baby. mama's taking all of these.
+mama-m	cut	baby that was cute. now give me my book.
+hype-f	runIt	RUN IT!!! ALL OF EM!!!
+hype-f	cut	CUT!!! LET'S GOOOO!
+hype-m	runIt	RUN IT!!! ALL OF EM!!!
+hype-m	cut	CUT!!! LET'S GOOOO!
+petty-f	runIt	I'll take those. and I'll remember this.
+petty-f	cut	petty? yes. effective? also yes.
+petty-m	runIt	I'll take those. and I'll remember this.
+petty-m	cut	petty? yes. effective? also yes.
+og-f	runIt	lay em down, youngblood. I seen this movie.
+og-f	cut	youngblood, I was cutting before you could count.
+og-m	runIt	lay em down, youngblood. I seen this movie.
+og-m	cut	youngblood, I was cutting before you could count.
+hustler-f	runIt	newbie luck? nah. all of these are mine.
+hustler-f	cut	hustled again 😈
+hustler-m	runIt	newbie luck? nah. all of these are mine.
+hustler-m	cut	hustled again 😈
+silent-f	runIt	mine.
+silent-f	cut	quiet.
+silent-m	runIt	mine.
+silent-m	cut	quiet.
+deacon-f	runIt	lay them down, children. the sermon is over.
+deacon-f	cut	the Lord giveth, and I taketh that book.
+deacon-m	runIt	lay them down, children. the sermon is over.
+deacon-m	cut	the Lord giveth, and I taketh that book.
+conspiracy-f	runIt	I know where every card is. I always did.
+conspiracy-f	cut	they said I couldn't cut. they lied.
+conspiracy-m	runIt	I know where every card is. I always did.
+conspiracy-m	cut	they said I couldn't cut. they lied.
+barber-f	runIt	all of y'all in the chair at once. lay it down.
+barber-f	cut	lined you up clean.
+barber-m	runIt	all of y'all in the chair at once. lay it down.
+barber-m	cut	lined you up clean.
+gambler-f	runIt	I'm calling the whole table. show your cards.
+gambler-f	cut	cashed out on that one.
+gambler-m	runIt	I'm calling the whole table. show your cards.
+gambler-m	cut	cashed out on that one.
+hothead-f	runIt	PUT YOUR CARDS DOWN! IT'S OVER!
+hothead-f	cut	YEAH! TAKE THAT!
+hothead-m	runIt	PUT YOUR CARDS DOWN! IT'S OVER!
+hothead-m	cut	YEAH! TAKE THAT!
+comedian-f	runIt	and for my final bit… all of it.
+comedian-f	cut	ba dum tss. that's a cut.
+comedian-m	runIt	and for my final bit… all of it.
+comedian-m	cut	ba dum tss. that's a cut.
+lilcuz-f	runIt	it's giving run it. lay em down.
+lilcuz-f	cut	no cap, that's a cut.
+lilcuz-m	runIt	it's giving run it. lay em down.
+lilcuz-m	cut	no cap, that's a cut.
+coach-f	runIt	victory formation. take a knee.
+coach-f	cut	that's how you run the play!
+coach-m	runIt	victory formation. take a knee.
+coach-m	cut	that's how you run the play!
+smooth-f	runIt	relax. lay them down. it's handled.
+smooth-f	cut	smooth.
+smooth-m	runIt	relax. lay them down. it's handled.
+smooth-m	cut	smooth.
+storyteller-f	runIt	let me tell y'all how this ends. I take the rest.
+storyteller-f	cut	that cut reminds me of your cousin's wedding. ugly.
+storyteller-m	runIt	let me tell y'all how this ends. I take the rest.
+storyteller-m	cut	that cut reminds me of your cousin's wedding. ugly.
+influencer-f	runIt	chat, watch this. all of em.
+influencer-f	cut	chat, that's a cut. smash that like.
+influencer-m	runIt	chat, watch this. all of em.
+influencer-m	cut	chat, that's a cut. smash that like.
+sorelose-f	runIt	for once, the cards love me. lay em down.
+sorelose-f	cut	finally something goes my way.
+sorelose-m	runIt	for once, the cards love me. lay em down.
+sorelose-m	cut	finally something goes my way.
