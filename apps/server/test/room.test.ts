@@ -931,3 +931,34 @@ describe('partner talk during bidding (all chat is public)', () => {
     }
   });
 });
+
+describe('venues (Release 7)', () => {
+  const room = (env: FakeEnv, cid: string) => env.last(cid, 'state')!.room;
+  it('the host picks the venue in the lobby; everyone sees the same one; locked during a game', () => {
+    const { env } = fourHumans();
+    expect(room(env, 'b').venue).toBe('classic');
+    env.send('b', { t: 'venue', venue: 'beach' });
+    expect(env.errors('b').at(-1)!.code).toBe('NOT_HOST');
+    env.send('a', { t: 'venue', venue: 'speakeasy' });
+    for (const cid of ['a', 'b', 'c', 'd']) { expect(room(env, cid).venue).toBe('speakeasy'); expect(room(env, cid).venueNow).toBe('speakeasy'); }
+    // garbage is dropped by the parser
+    env.send('a', { t: 'venue', venue: 'moon' } as never);
+    expect(room(env, 'a').venue).toBe('speakeasy');
+    env.send('a', { t: 'start' });
+    expect(room(env, 'c').venueNow).toBe('speakeasy');
+    env.send('a', { t: 'venue', venue: 'yacht' });
+    expect(env.errors('a').at(-1)!.code).toBe('IN_GAME');
+    expect(room(env, 'd').venue).toBe('speakeasy');
+  });
+  it('Random is rolled once per game on the server, the same for every player, never classic', () => {
+    const { env } = fourHumans();
+    env.send('a', { t: 'venue', venue: 'random' });
+    expect(room(env, 'a').venue).toBe('random');
+    expect(room(env, 'a').venueNow).toBeUndefined();
+    env.send('a', { t: 'start' });
+    const v = room(env, 'a').venueNow;
+    expect(v).toBeDefined();
+    expect(v).not.toBe('classic');
+    for (const cid of ['b', 'c', 'd']) expect(room(env, cid).venueNow).toBe(v);
+  });
+});

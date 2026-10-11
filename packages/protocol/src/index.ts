@@ -89,6 +89,8 @@ export type ClientMsg =
   | { t: 'stand' }
   | { t: 'addBot'; seat: number }
   | { t: 'removeBot'; seat: number }
+  /** host: the table's venue (lobby / between games); everyone sees the same one */
+  | { t: 'venue'; venue: VenueChoice }
   | { t: 'config'; rules: TableRules; botLevel?: BotLevel; talkSec?: number; afkLimit?: number; partnerMicMute?: boolean; nukeIntensity?: NukeIntensity; botTalk?: boolean; talkIntensity?: TalkIntensity }
   /** rename your own team (team modes); '' resets to the partner names */
   | { t: 'teamName'; name: string }
@@ -156,6 +158,10 @@ export interface RoomInfo {
   talkIntensity?: TalkIntensity;
   /** host option: bots chat (trash talk) at the table; default on */
   botTalk?: boolean;
+  /** the host's venue pick (default classic) */
+  venue?: VenueChoice;
+  /** the venue this game is played in ('random' resolved at the start; absent before the first game = venue) */
+  venueNow?: VenueId;
   /** per side: a custom team name, or null = default (partner names) */
   teamNames?: (string | null)[];
   /** bot seats whose Hustler act is over (plate tag shows the real persona) */
@@ -172,6 +178,19 @@ export interface ChatLine {
   bot?: { seat: number; persona: string; reveal?: boolean; line?: string; bid?: number };
   /** a bot partner's bidding hint ("I got about 3"): public like every line; clients may voice it */
   hint?: true;
+}
+
+/** Venues (3D arenas). 'classic' = the original studio table; 'random' is a pick resolved when a game starts. */
+export const VENUES = ['classic', 'backyard', 'mansion', 'barbershop', 'church', 'rooftop', 'speakeasy', 'vegas', 'beach', 'grandma', 'yacht'] as const;
+export type VenueId = (typeof VENUES)[number];
+export type VenueChoice = VenueId | 'random';
+export function isVenueChoice(v: unknown): v is VenueChoice {
+  return v === 'random' || (typeof v === 'string' && (VENUES as readonly string[]).includes(v));
+}
+/** a concrete venue for 'random' (never 'classic', and not the one just played when possible) */
+export function rollVenue(r: number, not?: VenueId): VenueId {
+  const pool = VENUES.filter((v) => v !== 'classic' && v !== not);
+  return pool[Math.min(pool.length - 1, Math.floor(r * pool.length))]!;
 }
 
 export type ServerMsg =
@@ -226,6 +245,8 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return isInt(m.seat) && m.seat >= 0 && m.seat < 4 ? { t: m.t, seat: m.seat } : null;
     case 'stand': case 'start': case 'next': case 'rematch': case 'leave':
       return { t: m.t };
+    case 'venue':
+      return isVenueChoice(m.venue) ? { t: 'venue', venue: m.venue } : null;
     case 'teamName': {
       if (typeof m.name !== 'string' || m.name.length > 200) return null;
       return { t: 'teamName', name: m.name }; // the room validates it (cleanTeamName) so it can say why

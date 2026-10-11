@@ -102,6 +102,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
           setTeamName: cs.seat !== null && r.partnerships ? (name) => conn.send({ t: 'teamName', name }) : undefined,
           series: { series: room.series ?? null, mine: seriesMine },
           setLearning: (on) => conn.send({ t: 'learning', on }),
+          venue: room.venueNow ?? (room.venue && room.venue !== 'random' ? room.venue : 'classic'),
           victory: (winners, losers, title, sub) => {
             const sp = (L: number) => ({ key: String(rot.R(L)), name: names[L] ?? '?', seat: room.seats[rot.R(L)], isMe: L === 0 });
             return <VictorySpotlight winners={winners.map(sp)} losers={losers.map(sp)} title={title} sub={sub} mesh={mesh} vs={vs} />;

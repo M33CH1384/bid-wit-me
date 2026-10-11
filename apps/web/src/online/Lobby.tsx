@@ -1,4 +1,5 @@
 import { HostMusicFields } from './HostMusic';
+import { VENUE_DEFS, VENUE_LIST, type VenueChoice, type VenueId, venueLabel } from '../venues';
 import { TeamNameField } from '../TeamName';
 import type { NukeIntensity } from '@spades/protocol';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
@@ -159,6 +160,11 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
             <select data-testid="lobby-bot-skill" value={skillSettingOf(room.botLevel)} onChange={(e) => config(settings, timerKey(room), e.target.value as BotLevel)}>
               {BOT_SKILL_SETTINGS.map((k) => <option key={k} value={k}>{SKILL_SETTING_LABEL[k]}</option>)}
             </select></span></label>
+          <label className="row"><span className="row-label">Venue<small>{room.venue === 'random' ? 'Rolled when the game starts · everyone sees the same spot' : `${VENUE_DEFS[(room.venue ?? 'classic') as VenueId].blurb} Everyone sees it.`}</small></span><span className="row-control">
+            <select data-testid="lobby-venue" aria-label="Venue" value={room.venue ?? 'classic'} onChange={(e) => conn.send({ t: 'venue', venue: e.target.value as VenueChoice })}>
+              {VENUE_LIST.map((v) => <option key={v.id} value={v.id}>{v.emoji} {v.name}{v.id === 'classic' ? ' (default)' : ''}</option>)}
+              <option value="random">🎲 Random</option>
+            </select></span></label>
           <label className="row"><span className="row-label">Trash talk<small>{TALK_HINT[room.talkIntensity ?? 'cookout']}</small></span><span className="row-control">
             <select data-testid="lobby-talk-intensity" value={room.talkIntensity ?? 'cookout'} onChange={(e) => config(settings, timerKey(room), room.botLevel, room.talkSec, room.afkLimit ?? 3, room.partnerMicMute ?? false, room.nukeIntensity ?? 'full', e.target.value as TalkIntensity)}>
               {TALK_INTENSITIES.map((k) => <option key={k} value={k}>{TALK_INTENSITY_LABEL[k]}{k === 'cookout' ? ' (default)' : ''}</option>)}
@@ -258,6 +264,7 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
               <span className="row-control"><button type="button" className={`toggle ${room.partnerMicMute ? 'on' : ''}`} role="switch" aria-checked={!!room.partnerMicMute} aria-label="Partner mic mute (set by the host)" disabled><span /></button></span>
             </span>
           )}
+          <span data-testid="venue-summary">Venue: {venueLabel(room.venueNow ?? room.venue ?? 'classic')}</span>
           <span data-testid="bot-talk-summary">Bot trash talk: {room.botTalk !== false ? 'On' : 'Off'}</span>
           {r.deck === 'joker54' && <span data-testid="nuke-summary">Nuke: {NUKE_LABEL[room.nukeIntensity ?? 'full']}</span>}
           <span>{room.afkLimit === 0 ? 'AFK kick off' : `A bot takes over after ${room.afkLimit ?? 3} timeouts in a row`}</span>

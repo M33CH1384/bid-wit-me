@@ -1,3 +1,4 @@
+import { type VenueChoice, isVenueChoice } from '@spades/protocol';
 import { CLASSIC_JOKER, cardLabel, type Mode, type RulesOverrides, type TableRules, makeRules } from '@spades/rules';
 import { type BotSkillSetting, skillSettingOf } from '@spades/bots';
 
@@ -39,6 +40,8 @@ export interface Settings {
   speed: 'slow' | 'relaxed' | 'normal' | 'fast' | 'turbo';
   /** 3D quality: low disables shadows, HDRI and MSAA and uses smaller textures. */
   quality: 'high' | 'low';
+  /** Venue (3D arena) for offline games: classic (default), one of the venues, or random (rolled per game) */
+  venue: VenueChoice;
 }
 
 function defaultQuality(): 'high' | 'low' {
@@ -51,7 +54,7 @@ export const DEFAULT_SETTINGS: Settings = {
   mode: 'joker', targetScore: 'default', losingFloor: 'on', deuceOfSpadesHigh: false, jokerOrder: 'house',
   cutthroatDeck: 'joker54', spadesMustBeBroken: true, firstLead: 'leftOfDealer', minTeamBid: 0, nilAllowed: true,
   blindNil: 'behind100', blindNilExchange: 0, nilTricksCountForPartner: false, bags: '10/100', tenForTwoHundred: false,
-  firstHandBidsItself: true, botLevel: 'mixed', shotOut: true, firstHandMin: 'default', cutMinBid: 1, cutBlindNil: false, bagsOn: true, talkIntensity: 'cookout', speed: 'normal', quality: defaultQuality(),
+  firstHandBidsItself: true, botLevel: 'mixed', shotOut: true, firstHandMin: 'default', cutMinBid: 1, cutBlindNil: false, bagsOn: true, talkIntensity: 'cookout', speed: 'normal', quality: defaultQuality(), venue: 'classic',
 };
 
 export const MODES: { key: ModeKey; title: string; blurb: string; players: string }[] = [
@@ -116,6 +119,7 @@ export function normalizeSettings(j: Omit<Partial<Settings>, 'botLevel'> & { bot
   const s = { ...DEFAULT_SETTINGS, ...j } as Settings;
   s.botLevel = j.botLevel === 'normal' || j.botLevel === undefined ? 'mixed' : skillSettingOf(j.botLevel);
   if (!['family', 'cookout', 'nomercy'].includes(s.talkIntensity)) s.talkIntensity = 'cookout';
+  if (!isVenueChoice(s.venue)) s.venue = 'classic';
   return s;
 }
 export function saveSettings(s: Settings): void {

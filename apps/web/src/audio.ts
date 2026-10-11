@@ -20,9 +20,11 @@ export type Sfx =
 /** SFX that bot voices duck under, and for how long (ms). */
 const DUCK_MS: Partial<Record<Sfx, number>> = { runSlam: 700, nuke: 3600, tornado: 2600, wheelsCar: 3000, jokerBig: 1100, shot: 1200, streak2: 1400, streak3: 1800, overcut3: 1000, win: 2000, lose: 1600, set: 1200, nil: 1600 };
 
-export interface SoundSettings { on: boolean; volume: number; ambient: boolean; music: boolean; musicVolume: number }
+export interface SoundSettings { on: boolean; volume: number; ambient: boolean; music: boolean; musicVolume: number; /** the venue's quiet ambient sound bed (Release 7), default on */ venueSound: boolean }
 const KEY = 'bwm.sound.v1';
-const DEFAULTS: SoundSettings = { on: true, volume: 0.7, ambient: false, music: false, musicVolume: 0.5 };
+const DEFAULTS: SoundSettings = { on: true, volume: 0.7, ambient: false, music: false, musicVolume: 0.5, venueSound: true };
+/** venue ambience beds (see venues.ts → bed) */
+export type VenueBed = 'none' | 'cookout' | 'mansion' | 'barbershop' | 'basement' | 'rooftop' | 'jazz' | 'casino' | 'beach' | 'kitchen' | 'yacht';
 export type MusicStatus = 'off' | 'loading' | 'playing' | 'error';
 
 export interface Track { file: string; title: string; artist: string; license: string; source: string; /** exact attribution line (CC BY) */ credit?: string }
@@ -107,6 +109,7 @@ class Engine {
     try { localStorage.setItem(KEY, JSON.stringify(this.settings)); } catch { /* ignore */ }
     this.applyGain();
     this.syncAmbient();
+    this.syncVenue();
     this.syncMusic();
     this.emit();
   }
@@ -318,6 +321,7 @@ class Engine {
       const b = c.createBuffer(1, 1, 22050); const s = c.createBufferSource(); s.buffer = b; s.connect(c.destination); s.start(0);
       this.unlocked = true;
       this.syncAmbient();
+      this.syncVenue();
       this.syncMusic();
     };
     ['pointerdown', 'touchend', 'keydown'].forEach((e) => window.addEventListener(e, unlock, true));
@@ -373,6 +377,7 @@ class Engine {
     this.sfxBus = c.createGain(); this.sfxDuck = c.createGain(); this.sfxBus.connect(this.sfxDuck).connect(this.master);
     this.nukeBus = c.createGain(); this.nukeBus.connect(this.master);
     this.ambBus = c.createGain(); this.ambBus.gain.value = 0; this.ambBus.connect(this.master);
+    this.venueBus = c.createGain(); this.venueBus.gain.value = 0; this.venueBus.connect(this.master);
     this.voiceDuck = c.createGain(); this.voiceDuck.connect(this.master);
     this.applyGain();
     this.load();
@@ -875,6 +880,135 @@ class Engine {
       window.clearInterval(this.ambTimer); this.ambTimer = null;
       const nodes = this.ambNodes; this.ambNodes = [];
       window.setTimeout(() => nodes.forEach((nd) => { try { (nd as AudioBufferSourceNode).stop(); } catch { /* */ } }), 1500);
+    }
+  }
+
+  /* ---------- venue ambience (Release 7): quiet procedural beds, one per venue (all generated here: no recordings) ---------- */
+  private venueBus: GainNode | null = null;
+  private venueBedId: VenueBed = 'none';
+  private venuePlaying: VenueBed = 'none';
+  private venueNodes: { stop: () => void }[] = [];
+  private venueTimers: number[] = [];
+  /** which bed is running (exposed for checks) */
+  get venueBedNow(): VenueBed { return this.venuePlaying; }
+  setVenueBed(id: VenueBed) { this.venueBedId = id; this.syncVenue(); }
+  private syncVenue() {
+    const want = this.settings.on && this.settings.venueSound !== false && this.unlocked && this.venueBedId !== 'none' ? this.venueBedId : 'none';
+    if (want === this.venuePlaying) return;
+    // stop what's playing (fade), then build the new bed
+    if (this.venuePlaying !== 'none') {
+      this.venueTimers.forEach((t) => window.clearInterval(t)); this.venueTimers = [];
+      const nodes = this.venueNodes; this.venueNodes = [];
+      if (this.ctx && this.venueBus) this.venueBus.gain.setTargetAtTime(0, this.ctx.currentTime, 0.4);
+      window.setTimeout(() => nodes.forEach((n) => n.stop()), 1600);
+    }
+    this.venuePlaying = want;
+    if (want === 'none' || !this.ctx || !this.venueBus) return;
+    const c = this.ctx; const bus = this.venueBus;
+    window.setTimeout(() => { if (this.venuePlaying === want) { bus.gain.cancelScheduledValues(c.currentTime); bus.gain.setTargetAtTime(0.38, c.currentTime, 1.2); } }, this.venueNodes.length ? 0 : 50);
+    this.buildBed(want);
+  }
+  /** filtered noise with a slow swell (crowd murmur, wind, waves, room tone) */
+  private vNoise(type: BiquadFilterType, freq: number, q: number, gain: number, lfoRate = 0, lfoDepth = 0) {
+    const c = this.ctx!;
+    const src = c.createBufferSource(); src.buffer = this.noise(4); src.loop = true;
+    const f = c.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
+    const g = c.createGain(); g.gain.value = gain;
+    src.connect(f).connect(g).connect(this.venueBus!); src.start();
+    const stops = [() => { try { src.stop(); } catch { /* */ } }];
+    if (lfoRate > 0) {
+      const lfo = c.createOscillator(); lfo.frequency.value = lfoRate;
+      const d = c.createGain(); d.gain.value = gain * lfoDepth;
+      lfo.connect(d).connect(g.gain); lfo.start();
+      stops.push(() => { try { lfo.stop(); } catch { /* */ } });
+    }
+    this.venueNodes.push({ stop: () => stops.forEach((x) => x()) });
+  }
+  /** electrical hum (neon, fluorescent tubes, fridge) */
+  private vHum(freq: number, gain: number) {
+    const c = this.ctx!;
+    for (const [m, k] of [[1, 1], [2, 0.5], [3, 0.2]] as const) {
+      const o = c.createOscillator(); o.type = 'sine'; o.frequency.value = freq * m;
+      const g = c.createGain(); g.gain.value = gain * k;
+      o.connect(g).connect(this.venueBus!); o.start();
+      this.venueNodes.push({ stop: () => { try { o.stop(); } catch { /* */ } } });
+    }
+  }
+  /** a sound every few seconds (random gap in [min, max] s) */
+  private vEvery(min: number, max: number, fn: (t: number) => void) {
+    const bed = this.venuePlaying;
+    const loop = () => {
+      if (this.venuePlaying !== bed) return;
+      if (this.ctx && this.ctx.state === 'running') fn(this.ctx.currentTime + 0.05);
+      const id = window.setTimeout(loop, (min + Math.random() * (max - min)) * 1000);
+      this.venueTimers.push(id);
+    };
+    const id = window.setTimeout(loop, (min * 0.5 + Math.random() * max * 0.5) * 1000);
+    this.venueTimers.push(id);
+  }
+  private vBurst(t: number, dur: number, type: BiquadFilterType, freq: number, gain: number) {
+    const c = this.ctx!;
+    const src = c.createBufferSource(); src.buffer = this.noise(Math.max(0.05, dur));
+    const f = c.createBiquadFilter(); f.type = type; f.frequency.value = freq;
+    const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + Math.min(0.01, dur / 3)); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f).connect(g).connect(this.venueBus!); src.start(t); src.stop(t + dur + 0.05);
+  }
+  private buildBed(bed: VenueBed) {
+    const B = this.venueBus!;
+    const murmur = (k: number) => { this.vNoise('bandpass', 520, 0.7, 0.05 * k, 0.21, 0.5); this.vNoise('bandpass', 900, 1.2, 0.02 * k, 0.13, 0.6); };
+    const room = (k: number) => this.vNoise('lowpass', 260, 0.5, 0.05 * k);
+    const crackle = (min: number, max: number, k = 1) => this.vEvery(min, max, (t) => { for (let i = 0; i < 3; i++) this.vBurst(t + Math.random() * 0.25, 0.012, 'highpass', 2500, 0.05 * k); });
+    switch (bed) {
+      case 'cookout':
+        murmur(0.8); this.vNoise('highpass', 3500, 0.5, 0.008, 0.4, 0.6); // grill sizzle
+        this.vEvery(1.5, 4, (t) => { for (let i = 0; i < 3; i++) this.tone(t + i * 0.07, 4600, 0.04, 'sine', 0.012, { dest: B }); }); // crickets
+        crackle(0.6, 1.8, 0.7);
+        break;
+      case 'mansion':
+        room(0.8);
+        this.vEvery(6, 9, (t) => { const ch = [[392, 493.88, 587.33], [349.23, 440, 523.25], [329.63, 415.3, 493.88]][Math.floor(Math.random() * 3)]!; ch.forEach((f, i) => this.tone(t + i * 0.35, f, 3.2, 'sine', 0.012, { attack: 0.6, dest: B })); }); // distant piano-ish
+        break;
+      case 'barbershop':
+        murmur(0.7); this.vHum(120, 0.004);
+        this.vEvery(9, 18, (t) => this.tone(t, 118, 1.4, 'sawtooth', 0.01, { attack: 0.08, filter: 900, dest: B })); // clippers
+        break;
+      case 'basement':
+        this.vHum(120, 0.006); murmur(0.6); room(0.6);
+        this.vEvery(7, 14, (t) => { for (let i = 0; i < 5; i++) this.tone(t + i * 0.09, 220 + Math.random() * 120, 0.06, 'sine', 0.012, { dest: B }); }); // coffee percolator
+        break;
+      case 'rooftop':
+        this.vNoise('lowpass', 520, 0.6, 0.06, 0.07, 0.7); // wind
+        this.vNoise('lowpass', 140, 0.5, 0.06, 0.05, 0.3); // traffic rumble
+        this.vEvery(14, 32, (t) => { this.tone(t, 392, 0.35, 'sawtooth', 0.008, { filter: 600, dest: B }); this.tone(t + 0.45, 349.23, 0.5, 'sawtooth', 0.008, { filter: 600, dest: B }); }); // distant horn
+        break;
+      case 'jazz': {
+        room(0.7); crackle(0.4, 1.3, 0.5);
+        const chords = [[146.83, 174.61, 220, 261.63], [98, 174.61, 246.94, 329.63], [130.81, 164.81, 246.94, 293.66], [110, 196, 233.08, 277.18]];
+        let i = 0;
+        this.vEvery(4, 4, (t) => { const ch = chords[i++ % 4]!; ch.forEach((f) => this.tone(t, f, 4.2, 'sine', 0.014, { attack: 0.8, dest: B })); this.tone(t, ch[0]! / 2, 1.4, 'sine', 0.03, { dest: B }); this.tone(t + 2, ch[0]! / 2 * 1.5, 1.2, 'sine', 0.022, { dest: B }); });
+        break;
+      }
+      case 'casino':
+        murmur(1);
+        this.vEvery(2, 6, (t) => { const base = [1046.5, 1174.66, 1318.5, 1567.98]; for (let i = 0; i < 4; i++) this.tone(t + i * 0.09, base[Math.floor(Math.random() * 4)]!, 0.25, 'triangle', 0.008, { dest: B }); }); // slots
+        break;
+      case 'beach':
+        this.vNoise('lowpass', 700, 0.4, 0.07, 0.085, 0.85); // waves
+        this.vNoise('lowpass', 400, 0.5, 0.03, 0.05, 0.5); // breeze
+        this.vEvery(12, 26, (t) => this.tone(t, 1700, 0.45, 'sine', 0.007, { glideTo: 1150, dest: B })); // gull
+        crackle(0.8, 2.2, 0.5); // torches
+        break;
+      case 'kitchen':
+        room(0.6); this.vHum(60, 0.006);
+        this.vEvery(1, 1, (t) => this.vBurst(t, 0.015, 'bandpass', 2600, 0.04)); // the clock
+        break;
+      case 'yacht':
+        this.vNoise('bandpass', 420, 0.8, 0.06, 0.3, 0.7); // water lapping on the hull
+        this.vNoise('lowpass', 500, 0.6, 0.035, 0.06, 0.6); // sea breeze
+        this.vEvery(10, 22, (t) => this.tone(t, 90, 0.9, 'triangle', 0.01, { glideTo: 70, filter: 300, dest: B })); // a creak
+        this.vEvery(16, 30, (t) => this.tone(t, 1800, 0.4, 'sine', 0.006, { glideTo: 1200, dest: B })); // gull
+        break;
+      default:
     }
   }
 }

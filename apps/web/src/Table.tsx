@@ -1,3 +1,4 @@
+import { type VenueId, VENUE_DEFS, resolveVenue } from './venues';
 import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   type Card, type GameState, type PlayerView, type Play, type TableRules, radioactiveBigJoker, viewFor, isNukeTrick, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, partnerOf, sideOf, sortHand, trumpOrder,
@@ -111,6 +112,8 @@ export interface OnlineBinding {
   talkIntensity?: TalkIntensity;
   /** victory spotlight (game over): winners' / losers' local seats + the winning side's name */
   victory?: (winners: number[], losers: number[], title: string, sub?: string) => ReactNode;
+  /** the venue this online game is played in (everyone sees the same) */
+  venue?: VenueId;
 }
 
 interface Props {
@@ -333,6 +336,13 @@ function RunItButton({ onRun, tip, onDismissTip }: { onRun: () => void; tip: boo
       <button type="button" className={`run-it-btn${tip ? ' attention' : ''}`} data-testid="run-it" onClick={onRun}>Run it! 🌪</button>
     </div>
   );
+}
+
+/** a stable 0–1 number from a game seed (Random venue: same pick for the same game) */
+function seedFloat(seed: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) h = Math.imul(h ^ seed.charCodeAt(i), 16777619);
+  return ((h >>> 0) % 100000) / 100000;
 }
 
 export default function Table({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, resume, online, onMainMenu, startDealer }: Props) {
@@ -748,6 +758,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (!online && replies) { const bots = names.slice(1); push(pick(bots), pick(replies), false, 900 + Math.random() * 700); }
   };
   const reduceFx = useReduceEffects();
+  // venue: online = the room's; offline = the setting, with Random rolled from the game seed (same spot after a refresh)
+  const venue: VenueId = online ? (online.venue ?? 'classic') : resolveVenue(settings.venue, seedFloat(seed));
+  useEffect(() => { sound.setVenueBed(VENUE_DEFS[venue].bed); return () => sound.setVenueBed('none'); }, [venue]);
   // last trick: Big Joker down, Little Joker still out → radioactive pulse + Geiger crackle until the trick resolves
   const radioactive = radioactiveBigJoker(st);
   // nuke watchdog: the blast is normally cued by the second Joker's 3D landing; on a stalled renderer (Safari compiling
@@ -849,6 +862,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           slam={display.slam}
           radioactive={radioactive}
           reduceFx={reduceFx}
+          venue={venue}
           piles={display.piles}
           legal={runFx ? [] : humanExchanging && hand ? hand : legal}
           selected={runFx ? null : selected}

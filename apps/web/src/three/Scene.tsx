@@ -3,7 +3,7 @@ import { Tornado3D } from './Tornado3D';
 import { Environment, Html, Preload, useEnvironment, useTexture } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { type ReactNode, type RefObject, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { type Camera, type Group, type Mesh, type Object3D, type Texture, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, Matrix4, Quaternion, MeshPhysicalMaterial, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, Vector3 } from 'three';
+import { type Camera, type Group, type Mesh, type Object3D, type Texture, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, Matrix4, Quaternion, MeshPhysicalMaterial, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, Vector2, Vector3 } from 'three';
 import type { Card, Play, Trick } from '@spades/rules';
 import Card3D from './Card3D';
 import { isShortLandscape } from '../viewport';
@@ -11,6 +11,8 @@ import { type DealTimeline, dealTimeline } from './dealTimeline';
 import { type Sfx, sound } from '../audio';
 import { fx } from '../fx';
 import { backTexture, faceTexture, logoTexture } from './cardTextures';
+import Venue3D, { feltPatternTexture, preloadVenueAssets } from './Venue3D';
+import { type VenueDef, type VenueId, VENUE_DEFS, venueAssetUrls } from '../venues';
 import { bodyGeometry, cardGeometry, feltGeometry, railGeometry } from './geometry';
 import {
   CH, CW, TRICK_SCALE, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, deckSpot, fanLayout, handFan, makeCamera, jitterOf, opponentFan, pileSpot, ringSpot, trickSpot,
@@ -59,6 +61,8 @@ export interface SceneProps {
   /** 'Run it!': the claimer's remaining cards slam down face up in a row at the table centre ALL AT ONCE, then
    *  everyone else's remaining cards hit the table together in a quick cascade (then the tornado takes everything) */
   slam?: { seat: number; cards: Card[]; others?: { seat: number; card: Card }[] } | null;
+  /** the venue (3D arena) around the table; default classic */
+  venue?: VenueId;
 }
 
 function CameraRig() {
@@ -143,26 +147,69 @@ function tableTextureUrls(quality: 'high' | 'low'): string[] {
 }
 const HDRI_URL = '/assets/hdri/billiard_hall_512.hdr';
 /** Warm the loader caches (called from the splash / wizard via three/preload.ts). */
-export function preloadTableAssets(quality: 'high' | 'low'): void {
+export function preloadTableAssets(quality: 'high' | 'low', venue: VenueId = 'classic'): void {
   useTexture.preload(tableTextureUrls(quality));
-  if (quality === 'high') useEnvironment.preload({ files: HDRI_URL });
+  if (venue === 'classic') { if (quality === 'high') useEnvironment.preload({ files: HDRI_URL }); }
+  else preloadVenueAssets(venue, quality);
 }
 
-function TableModel({ quality, onReady }: { quality: 'high' | 'low'; onReady?: () => void }) {
-  const [feltN, feltR, woodC, woodN, woodR] = useTexture(tableTextureUrls(quality)) as Texture[];
+/** a venue's rail texture (marble / teak / bamboo / leather) rides with the table textures (20–35 KB) */
+function railTextureUrl(def: VenueDef, quality: 'high' | 'low'): string | null {
+  return venueAssetUrls(def.id, quality).rail;
+}
+
+function TableModel({ quality, onReady, def }: { quality: 'high' | 'low'; onReady?: () => void; def: VenueDef }) {
+  const railUrl = railTextureUrl(def, quality);
+  const loaded = useTexture(railUrl ? [...tableTextureUrls(quality), railUrl] : tableTextureUrls(quality)) as Texture[];
+  const [feltN, feltR, woodC, woodN, woodR] = loaded;
+  const railMap = railUrl ? loaded[5]! : null;
   const invalidate = useThree((s) => s.invalidate);
   const mats = useMemo(() => {
     for (const t of [feltN!, feltR!]) { t.wrapS = t.wrapT = RepeatWrapping; t.repeat.set(2.2, 2.2); }
     for (const t of [woodC!, woodN!, woodR!]) { t.wrapS = t.wrapT = RepeatWrapping; t.repeat.set(0.9, 0.9); }
     woodC!.colorSpace = SRGBColorSpace;
-    const felt = new MeshStandardMaterial({ color: '#0d6a45', roughness: 1, roughnessMap: feltR!, normalMap: feltN!, envMapIntensity: 0.35 });
-    felt.normalScale.set(0.9, 0.9);
-    const wood = quality === 'high'
-      ? new MeshPhysicalMaterial({ map: woodC!, normalMap: woodN!, roughnessMap: woodR!, roughness: 0.8, clearcoat: 0.8, clearcoatRoughness: 0.18, color: '#c98a5a' })
-      : new MeshStandardMaterial({ map: woodC!, normalMap: woodN!, roughness: 0.45, color: '#c98a5a' });
-    const apron = new MeshStandardMaterial({ map: woodC!, roughness: 0.6, color: '#7a4a2a' });
+    const hi = quality === 'high';
+    let felt: MeshStandardMaterial;
+    if (def.feltPattern) {
+      // printed cloth / laminate top instead of felt
+      felt = new MeshStandardMaterial({ map: feltPatternTexture(def.feltPattern, def.felt), roughness: def.feltPattern === 'gingham' ? 0.45 : 0.6, envMapIntensity: 0.25 });
+      if (def.feltPattern === 'gingham') { felt.normalMap = feltN!; felt.normalScale.set(0.15, 0.15); }
+    } else {
+      felt = new MeshStandardMaterial({ color: def.felt, roughness: 1, roughnessMap: feltR!, normalMap: feltN!, envMapIntensity: 0.35 });
+      felt.normalScale.set(0.9, 0.9);
+    }
+    if (railMap) { railMap.wrapS = railMap.wrapT = RepeatWrapping; railMap.repeat.set(1.4, 1.4); railMap.colorSpace = SRGBColorSpace; }
+    let wood: MeshStandardMaterial;
+    switch (def.rail) {
+      case 'crystal':
+        wood = new MeshPhysicalMaterial({ color: def.railTint, roughness: 0.04, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.02, transparent: true, opacity: 0.55, iridescence: hi ? 0.35 : 0, envMapIntensity: 2.2 });
+        break;
+      case 'chrome':
+        wood = new MeshStandardMaterial({ color: def.railTint, metalness: 1, roughness: 0.14, envMapIntensity: 1.6 });
+        break;
+      case 'metal':
+        wood = new MeshStandardMaterial({ color: def.railTint, metalness: 0.65, roughness: 0.38 });
+        break;
+      case 'leather':
+        wood = new MeshStandardMaterial({ map: railMap, color: def.railTint, roughness: 0.5, normalMap: feltN!, normalScale: new Vector2(0.3, 0.3) });
+        break;
+      case 'wood':
+        wood = hi
+          ? new MeshPhysicalMaterial({ map: woodC!, normalMap: woodN!, roughnessMap: woodR!, roughness: 0.8, clearcoat: 0.8, clearcoatRoughness: 0.18, color: def.railTint })
+          : new MeshStandardMaterial({ map: woodC!, normalMap: woodN!, roughness: 0.45, color: def.railTint });
+        break;
+      default: // teak, bamboo, marble: their own texture, varnished
+        wood = hi
+          ? new MeshPhysicalMaterial({ map: railMap, roughness: 0.55, clearcoat: 0.7, clearcoatRoughness: 0.2, color: def.railTint })
+          : new MeshStandardMaterial({ map: railMap, roughness: 0.45, color: def.railTint });
+    }
+    const apron = def.rail === 'crystal'
+      ? new MeshPhysicalMaterial({ color: def.apron, roughness: 0.05, clearcoat: 1, transparent: true, opacity: 0.4 })
+      : def.rail === 'chrome' || def.rail === 'metal'
+        ? new MeshStandardMaterial({ color: def.apron, metalness: 0.7, roughness: 0.3 })
+        : new MeshStandardMaterial({ map: def.rail === 'wood' ? woodC! : railMap, roughness: 0.6, color: def.apron });
     return { felt, wood, apron };
-  }, [feltN, feltR, woodC, woodN, woodR, quality]);
+  }, [feltN, feltR, woodC, woodN, woodR, railMap, quality, def]);
   const geos = useMemo(() => ({ felt: feltGeometry(), rail: railGeometry(), body: bodyGeometry() }), []);
   const logo = useMemo(() => logoTexture(invalidate), [invalidate]);
   // time-to-table marker (load checks): the first frame after the textured table mounted
@@ -185,11 +232,13 @@ function TableModel({ quality, onReady }: { quality: 'high' | 'low'; onReady?: (
         <ringGeometry args={[0.95, 0.965, 96]} />
         <meshStandardMaterial color="#d9b04a" transparent opacity={0.35} depthWrite={false} roughness={0.5} metalness={0.6} />
       </mesh>
-      {/* floor */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.9, 0]} receiveShadow>
-        <planeGeometry args={[30, 30]} />
-        <meshStandardMaterial color="#120b18" roughness={0.95} />
-      </mesh>
+      {/* floor (venues bring their own, see Venue3D) */}
+      {def.id === 'classic' && (
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.9, 0]} receiveShadow>
+          <planeGeometry args={[30, 30]} />
+          <meshStandardMaterial color="#120b18" roughness={0.95} />
+        </mesh>
+      )}
     </group>
   );
 }
@@ -433,19 +482,19 @@ function LayoutProbe({ items, trickKeys, handKeys, positions, n, short }: { item
   return null;
 }
 
-function Lights({ quality }: { quality: 'high' | 'low' }) {
+function Lights({ quality, def }: { quality: 'high' | 'low'; def: VenueDef }) {
   const hi = quality === 'high';
   return (
     <>
       <ambientLight intensity={hi ? 0.15 : 0.55} />
-      <hemisphereLight args={['#fff3e0', '#1a0f24', hi ? 0.35 : 0.8]} />
+      <hemisphereLight args={[def.sky, def.ground, hi ? 0.35 : 0.8]} />
       <spotLight
         position={[0.4, 5.2, 1.2]}
         angle={0.62}
         penumbra={0.85}
-        intensity={hi ? 70 : 55}
+        intensity={(hi ? 70 : 55) * def.keyK}
         decay={2}
-        color="#fff1dc"
+        color={def.key}
         castShadow={hi}
         shadow-mapSize={[2048, 2048]}
         shadow-bias={-0.00012}
@@ -453,7 +502,7 @@ function Lights({ quality }: { quality: 'high' | 'low' }) {
         shadow-radius={6}
       />
       {/* purple rim from behind the table, for the stream-studio vibe */}
-      <pointLight position={[0, 1.6, -4.2]} intensity={hi ? 9 : 6} color="#9b5cff" distance={9} />
+      <pointLight position={[0, 1.6, -4.2]} intensity={(hi ? 9 : 6) * (def.id === 'classic' ? 1 : 0.6)} color={def.rim} distance={9} />
     </>
   );
 }
@@ -606,6 +655,12 @@ export default function Scene(props: SceneProps) {
   const badgeLayer = useRef<HTMLDivElement>(null!);
   const tableGroup = useRef<Group>(null);
   const [layerReady, setLayerReady] = useState(false);
+  const def = VENUE_DEFS[props.venue ?? 'classic'];
+  const classic = def.id === 'classic';
+  // the venue waits for the table's first frame: its files + shader compiles never delay time-to-table
+  const [tableUp, setTableUp] = useState(false);
+  const onTableReady = props.onTableReady;
+  const tableReady = useMemo(() => () => { setTableUp(true); onTableReady?.(); }, [onTableReady]);
   useEffect(() => { setLayerReady(true); }, []);
   return (
     <div className="table-canvas-wrap">
@@ -624,15 +679,16 @@ export default function Scene(props: SceneProps) {
       <SnapHook />
       <CameraRig />
       <FxShake table={tableGroup} />
-      <color attach="background" args={['#0c0712']} />
-      <fog attach="fog" args={['#0c0712', 7, 16]} />
-      <Lights quality={props.quality} />
-      {/* the table never waits for the HDRI: separate boundaries, the environment fades in when it lands */}
+      <color attach="background" args={[def.clear]} />
+      {classic && <fog attach="fog" args={['#0c0712', 7, 16]} />}
+      <Lights quality={props.quality} def={def} />
+      {/* the table never waits for the HDRI / venue: separate boundaries, the surroundings fade in when they land */}
       <Suspense fallback={null}>
-        {hi && <Environment files={HDRI_URL} environmentIntensity={0.55} background backgroundBlurriness={0.55} backgroundIntensity={0.22} />}
+        {hi && classic && <Environment files={HDRI_URL} environmentIntensity={0.55} background backgroundBlurriness={0.55} backgroundIntensity={0.22} />}
       </Suspense>
+      {!classic && tableUp && <Venue3D key={def.id} def={def} quality={props.quality} reduceFx={!!props.reduceFx} />}
       <Suspense fallback={null}>
-        <group ref={tableGroup}><TableModel quality={props.quality} onReady={props.onTableReady} /></group>
+        <group ref={tableGroup}><TableModel quality={props.quality} onReady={tableReady} def={def} /></group>
         {/* warm-up: compile every material + upload textures before the first real frame (no hitch on the deal) */}
         <Preload all />
       </Suspense>

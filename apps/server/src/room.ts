@@ -14,7 +14,7 @@ import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk,
 import {
   type BotLevel, type ChatLine, type ClientMsg, type HostMusic, type MediaState, type RoomInfo, type RoomPhase, type SeatInfo, type ServerMsg,
   DEFAULT_AFK_LIMIT, LIMITS, PROTOCOL_VERSION, parseClientMsg,
-  HAND_END_HOLD_MS, NUKE_ALLOWANCE_MS, RUN_FX_MS, type NukeIntensity, type TalkIntensity, cleanTeamName, pickTeamName,
+  HAND_END_HOLD_MS, NUKE_ALLOWANCE_MS, RUN_FX_MS, type NukeIntensity, type TalkIntensity, cleanTeamName, pickTeamName, type VenueChoice, type VenueId, rollVenue,
 } from '@spades/protocol';
 import { blockLinks, cleanName, cleanText, maskProfanity } from './filter';
 
@@ -75,6 +75,8 @@ export interface RoomData {
   partnerMicMute?: boolean;
   nukeIntensity?: NukeIntensity;
   talkIntensity?: TalkIntensity;
+  venue?: VenueChoice;
+  venueNow?: VenueId;
   /** host option: bot trash talk (default on) */
   botTalk?: boolean;
   /** per side: custom team name (null/unset = partner names) */
@@ -341,6 +343,14 @@ export class Room {
         this.system(mu.mode === 'off' ? `${me.name} stopped the music` : mu.mode === 'link' ? `${me.name} shared what's playing` : mu.mode === 'stream' ? `${me.name} is streaming music` : `${me.name} picked the table music`);
         break;
       }
+      case 'venue': {
+        this.requireHost(isHost);
+        if (d.phase === 'playing') throw new RoomError('IN_GAME', 'Pick the venue before the game starts');
+        if ((d.venue ?? 'classic') === msg.venue) return;
+        d.venue = msg.venue;
+        d.venueNow = msg.venue === 'random' ? undefined : msg.venue;
+        break;
+      }
       case 'teamName': {
         if (!d.rules.partnerships) throw new RoomError('NO_TEAMS', 'No teams in Cutthroat');
         if (me.seat === null || me.seat >= d.rules.playerCount) throw new RoomError('NOT_SEATED', 'Sit down to name your team');
@@ -583,6 +593,8 @@ export class Room {
     // a rematch continues the deal rotation (one seat clockwise from the last dealer); a new game deals from a random seat
     const dealer = rematch && prevGame && prevGame.rules.playerCount === n ? nextDealer(prevGame) : undefined;
     d.game = newGame(d.rules, secureSeed(), { dealer });
+    // venue: a 'random' pick is rolled per game (so a rematch can land somewhere new); everyone gets the same one
+    d.venueNow = (d.venue ?? 'classic') === 'random' ? rollVenue(parseInt(secureSeed().slice(0, 8), 16) / 4294967296, d.venueNow) : (d.venue ?? 'classic') as VenueId;
     d.seq = (d.seq ?? 0) + 1;
     d.phase = 'playing';
     d.ready = [];
@@ -938,6 +950,7 @@ export class Room {
       members: Object.entries(d.members).map(([playerId, m]) => ({ playerId, name: m.name, connected: this.isConnected(playerId), seat: m.seat })),
       deadline: d.deadline, ready: [...d.ready], rev: d.rev, seq: d.seq ?? 0, game: d.gamesPlayed, now: this.io.now(),
       talkSec: d.talkSec ?? Math.round(this.timing.handOverMs / 1000), afkLimit: d.afkLimit ?? DEFAULT_AFK_LIMIT, partnerMicMute: d.partnerMicMute ?? false, nukeIntensity: d.nukeIntensity ?? 'full', talkIntensity: d.talkIntensity ?? 'cookout', botTalk: d.botTalk ?? true,
+      venue: d.venue ?? 'classic', ...(d.venueNow ? { venueNow: d.venueNow } : {}),
       teamNames: d.rules.partnerships ? [...(d.teamNames ?? [null, null])] : undefined, series: d.series ?? null, revealed: [...(d.talk?.revealed ?? [])],
       ...(d.votes && Object.keys(d.votes).length ? { votes: Object.entries(d.votes).map(([target, by]) => ({ target, by: [...by], need: this.votesNeeded(target) })) } : {}), ...(d.music && d.music.mode !== 'off' ? { music: d.music } : {}),
     };

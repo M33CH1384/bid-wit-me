@@ -126,6 +126,12 @@ export function SoundFields({ compact = false }: { compact?: boolean }) {
         </button>
       </label>
       <label className="sf-row">
+        <span>Venue sounds</span>
+        <button type="button" role="switch" aria-checked={s.venueSound !== false} aria-label="Venue sounds" data-testid="venue-sound-switch" className={`switch ${s.venueSound !== false ? 'on' : ''}`} disabled={!s.on} onClick={() => sound.set({ venueSound: s.venueSound === false })}>
+          <i />
+        </button>
+      </label>
+      <label className="sf-row">
         <span>Music{s.music && s.musicStatus === 'loading' ? <small className="sf-note"> · loading…</small> : s.music && s.musicStatus === 'error' ? <small className="sf-note"> · can't load track</small> : null}</span>
         <button type="button" role="switch" aria-checked={s.music} aria-label="Music" className={`switch ${s.music ? 'on' : ''}`} data-testid="music-switch" onClick={() => sound.set({ music: !s.music })}>
           <i />

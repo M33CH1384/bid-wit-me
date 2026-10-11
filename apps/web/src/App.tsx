@@ -22,7 +22,7 @@ export default function App() {
   });
 
   // splash / wizard: fetch the 3D table (Scene chunk, textures, HDRI) in the background so "Deal me in" lands on it
-  useEffect(() => { preloadTable(settings.quality); }, [settings.quality]);
+  useEffect(() => { preloadTable(settings.quality, settings.venue); }, [settings.quality, settings.venue]);
 
   if (!game) {
     const saved = loadGame();

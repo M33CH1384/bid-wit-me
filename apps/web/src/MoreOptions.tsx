@@ -6,6 +6,7 @@ import { TeamNameField, myTeamName, useMyTeamName } from './TeamName';
 import { type Settings, settingsToRules } from './settings';
 import { type TipsPref, saveTips } from './tips';
 import { BADGES, useBadges } from './badges';
+import { VENUE_DEFS, VENUE_LIST, type VenueChoice } from './venues';
 
 export function Row({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
@@ -72,6 +73,12 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
           </Row>
           <Row label="Trash talk" hint={TALK_HINT[s.talkIntensity ?? 'cookout']}>
             <Seg label="Trash talk intensity" value={s.talkIntensity ?? 'cookout'} options={[['family', 'Family'], ['cookout', 'Cookout'], ['nomercy', 'No Mercy']]} onChange={(v) => set('talkIntensity', v)} />
+          </Row>
+          <Row label="Venue" hint={s.venue === 'random' ? 'A different spot every game' : VENUE_DEFS[s.venue ?? 'classic'].blurb}>
+            <select data-testid="venue-select" aria-label="Venue" value={s.venue ?? 'classic'} onChange={(e) => set('venue', e.target.value as VenueChoice)}>
+              {VENUE_LIST.map((v) => <option key={v.id} value={v.id}>{v.emoji} {v.name}{v.id === 'classic' ? ' (default)' : ''}</option>)}
+              <option value="random">🎲 Random</option>
+            </select>
           </Row>
           <Row label="Graphics" hint="Low saves battery">
             <Seg label="Graphics" value={s.quality} options={[['high', 'High'], ['low', 'Low']]} onChange={(v) => set('quality', v)} />

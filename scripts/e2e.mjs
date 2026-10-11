@@ -366,6 +366,40 @@ async function handEndTest() {
 }
 if (!process.env.ONLY || process.env.ONLY === 'handend') await handEndTest();
 
+// 11) Venues (Release 7): pick one in More options → the table loads first, then the venue dresses around it, its
+//     sound bed runs; Reduce effects stops the ambient motion. Random is rolled per game.
+async function venueTest() {
+  await page.evaluate(() => { localStorage.clear(); localStorage.setItem('bwm.tips', JSON.stringify({ on: false, asked: true })); localStorage.setItem('spades.settings.v2', JSON.stringify({ mode: 'joker', speed: 'fast', quality: 'high' })); localStorage.setItem('bwm.fx', JSON.stringify({ reduce: false, nuke: 'full' })); });
+  await page.goto(base);
+  await page.getByTestId('play-bots').click();
+  await page.getByTestId('mode-joker').click();
+  await page.getByTestId('more').click();
+  if ((await page.getByTestId('venue-select').inputValue()) !== 'classic') throw new Error('venue should default to the classic table');
+  await page.getByTestId('venue-select').selectOption('beach');
+  await page.getByRole('button', { name: 'Close' }).first().click();
+  await page.getByTestId('start-bots').click();
+  await page.waitForFunction(() => window.__bwmTableAt !== undefined, null, { timeout: 60000 });
+  await page.waitForFunction(() => window.__bwmVenue?.id === 'beach' && window.__bwmVenueAt !== undefined, null, { timeout: 60000 });
+  const order = await page.evaluate(() => ({ table: window.__bwmTableAt, venue: window.__bwmVenueAt, fx: window.__bwmVenue.fx }));
+  if (!(order.venue >= order.table)) throw new Error(`venue dressed before the table was up: ${JSON.stringify(order)}`);
+  if (!order.fx) throw new Error('ambient motion should run with effects on (High quality)');
+  await page.mouse.click(5, 300); // a gesture unlocks audio
+  await page.waitForFunction(() => window.__bwmSound?.venueBedNow === 'beach', null, { timeout: 5000 }).catch(async () => { throw new Error(`venue sound bed not running: ${await page.evaluate(() => window.__bwmSound?.venueBedNow)}`); });
+  await shot('13-venue-beach');
+  // Reduce effects: no ambient particles / motion
+  await page.evaluate(() => { localStorage.setItem('bwm.fx', JSON.stringify({ reduce: true, nuke: 'full' })); });
+  await page.reload();
+  await page.waitForFunction(() => window.__bwmVenue?.id === 'beach', null, { timeout: 60000 });
+  if (await page.evaluate(() => window.__bwmVenue.fx)) throw new Error('Reduce effects should stop the venue ambient motion');
+  // the venue sound bed switch turns it off
+  await page.evaluate(() => window.__bwmSound.set({ venueSound: false }));
+  if ((await page.evaluate(() => window.__bwmSound.venueBedNow)) !== 'none') throw new Error('Venue sounds off should stop the bed');
+  await page.evaluate(() => { window.__bwmSound.set({ venueSound: true }); localStorage.setItem('bwm.fx', JSON.stringify({ reduce: false, nuke: 'full' })); localStorage.removeItem('bwm.game'); });
+  console.log(`✓ Venue: Beach Cabana from More options, table first (${Math.round(order.table)} ms) then the venue (${Math.round(order.venue)} ms), sound bed on, Reduce effects = no ambient motion, Venue sounds switch works`);
+}
+if (!process.env.ONLY || process.env.ONLY === 'venue') await venueTest();
+
+
 async function playGame(mode, label, { shots = false, speed = 'turbo', extra = {} } = {}) {
   await page.evaluate(([m, sp, ex]) => localStorage.setItem('spades.settings.v2', JSON.stringify({ mode: m, speed: sp, blindNil: 'always', quality: 'low', ...ex })), [mode, speed, extra]);
   await page.goto(`${base}/?autostart=1&seed=e2e-${mode}-${extra.cutthroatDeck ?? ''}`);

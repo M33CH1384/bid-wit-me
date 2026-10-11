@@ -122,9 +122,14 @@ cs[1]!.send({ t: 'chat', text: 'glhf from the test' });
 await until(() => cs[3]!.chats.some((l) => l.includes('glhf')), 5000, 'chat');
 cs[1]!.send({ t: 'start' });
 await until(() => cs[1]!.errors.includes('NOT_HOST'), 5000, 'non-host start rejected');
+// venue (Release 7): the host picks Random; the server rolls one at the start and everyone gets the same
+host.send({ t: 'venue', venue: 'random' });
+await until(() => cs.every((c) => c.room?.venue === 'random'), 5000, 'venue pick reaches everyone');
 host.send({ t: 'start' });
 await until(() => cs.every((c) => c.room?.phase === 'playing' && c.view), 10000, 'game start');
-log('started', host.room!.rules.mode);
+const venues = new Set(cs.map((c) => c.room!.venueNow));
+if (venues.size !== 1 || !host.room!.venueNow || host.room!.venueNow === 'classic') throw new Error(`venue mismatch / not rolled: ${[...venues].join(',')}`);
+log('started', host.room!.rules.mode, '· venue', host.room!.venueNow, '(Random, same for all 4)');
 
 // illegal move: someone who's not on turn tries to move (a bid, or a card when the first hand's books bid themselves)
 await until(() => cs.some((c) => c.view && c.view.turn !== null && c.view.turn !== c.seat), 10000, 'a turn after the deal');
