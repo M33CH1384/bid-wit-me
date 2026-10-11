@@ -23,6 +23,8 @@ export interface Knowledge {
   oppCleanNils: number[];
   /** First hand (books bid themselves): every book is worth 10, so always try to win tricks. */
   booksHand: boolean;
+  /** Card counting: voids[seat] = effective suits that seat has shown out of (didn't follow). Public info only. */
+  voids: Set<string>[];
 }
 
 export function cleanNil(v: PlayerView, s: number): boolean {
@@ -61,7 +63,20 @@ export function know(v: PlayerView): Knowledge {
     partnerCleanNil: partner !== null && cleanNil(v, partner),
     oppCleanNils: opps.filter((s) => cleanNil(v, s)),
     booksHand: isBooksHand(v.bids),
+    voids: voidsOf(v),
   };
+}
+
+/** Which suits each seat is known to be out of (from tricks played so far this hand, incl. the trick in progress). */
+export function voidsOf(v: PlayerView): Set<string>[] {
+  const r = v.rules;
+  const out = Array.from({ length: r.playerCount }, () => new Set<string>());
+  for (const t of [...v.tricks, v.trick]) {
+    if (!t.plays.length) continue;
+    const led = effectiveSuit(t.plays[0]!.card, r);
+    for (const p of t.plays.slice(1)) if (effectiveSuit(p.card, r) !== led) out[p.seat]!.add(led);
+  }
+  return out;
 }
 
 export const power = (k: Knowledge, c: Card): number => cardPower(c, k.r);

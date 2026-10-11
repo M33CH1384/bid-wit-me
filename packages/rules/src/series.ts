@@ -42,6 +42,12 @@ export interface SeriesGame {
   /** per side: Nils made / busted */
   nilsMade: number[];
   nilsBusted: number[];
+  /** per side: hands shot (house rule Shot = out; optional in older records) */
+  shots?: number[];
+  /** how the game ended ('shotOut' = a side was shot out) */
+  endReason?: 'target' | 'floor' | 'shotOut';
+  /** sides shot out (endReason 'shotOut') */
+  shotOut?: number[];
 }
 
 export interface Series {
@@ -79,9 +85,10 @@ export function seriesKey(mode: string, sides: readonly SeriesSide[]): string {
 export function summarizeGame(st: GameState, names: readonly string[], no: number, at: number): SeriesGame {
   const n = sideCount(st.rules);
   const zero = () => Array<number>(n).fill(0);
-  const sets = zero(), wheels = zero(), nilsMade = zero(), nilsBusted = zero();
+  const sets = zero(), wheels = zero(), nilsMade = zero(), nilsBusted = zero(), shots = zero();
   for (const h of st.history) {
     for (const s of h.sides) {
+      if (s.shot) shots[s.side]!++;
       if (s.contractMade === false) sets[s.side]!++;
       // team wheels: a made 10+ bid, or 10+ books on the first hand where books bid themselves (no bids that hand)
       if (st.rules.partnerships ? (s.contract >= 10 && s.contractMade === true) || (isBooksHand(h.bids) && s.tricks >= 10) : s.tricks >= 10) wheels[s.side]!++;
@@ -92,7 +99,8 @@ export function summarizeGame(st: GameState, names: readonly string[], no: numbe
   return {
     no, at, hands: st.history.length, final: [...final], winners: st.result ? [...st.result.winners] : [],
     names: [...names], totals: st.history.map((h) => h.sides.map((s) => s.totalScore)),
-    sets, wheels, nukes: st.nukes ? [...st.nukes] : zero(), nilsMade, nilsBusted,
+    sets, wheels, nukes: st.nukes ? [...st.nukes] : zero(), nilsMade, nilsBusted, shots,
+    ...(st.result ? { endReason: st.result.endReason } : {}), ...(st.result?.shotOut ? { shotOut: [...st.result.shotOut] } : {}),
   };
 }
 

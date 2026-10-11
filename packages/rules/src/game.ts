@@ -1,9 +1,9 @@
 import type { Card } from './cards';
-import { type TableRules, buildDeck, cardPower, effectiveSuit, handSize, isTrump, validateRules, RulesConfigError } from './config';
+import { type TableRules, buildDeck, cardPower, effectiveSuit, handSize, isTrump, shotOutOn, validateRules, RulesConfigError } from './config';
 import { createRng, shuffle } from './rng';
 import {
   type Bid, type GameResult, type SideHandResult,
-  checkGameEnd, isBooksHand, isNilBid, partnerOf, scoreHand, sideCount, sideOf,
+  checkGameEnd, isBooksHand, isNilBid, isShot, partnerOf, scoreHand, shotOutResult, shotOutSides, sideCount, sideOf,
 } from './scoring';
 
 export type Seat = number;
@@ -443,9 +443,9 @@ export function applyAction(st: GameState, action: Action): GameState {
       const tricksWon = [...st.tricksWon];
       tricksWon[winner]!++;
       const tricks = [...st.tricks, done];
-      const li = plays.findIndex((p) => p.card === 'LJ'), bi = plays.findIndex((p) => p.card === 'BJ');
+      const bi = plays.findIndex((p) => p.card === 'BJ');
       let nukes = st.nukes;
-      if (li >= 0 && bi > li) { nukes = [...(st.nukes ?? Array(sideCount(r)).fill(0))]; nukes[sideOf(plays[bi]!.seat, r)]!++; }
+      if (isNukeTrick(plays)) { nukes = [...(st.nukes ?? Array(sideCount(r)).fill(0))]; nukes[sideOf(plays[bi]!.seat, r)]!++; }
       let next: GameState = {
         ...st, hands, spadesBroken, tricks, tricksWon, ...(nukes ? { nukes } : {}),
         trick: { leader: winner, plays: [], winner: null }, turn: winner,
@@ -458,11 +458,17 @@ export function applyAction(st: GameState, action: Action): GameState {
 
 function finishHand(st: GameState): GameState {
   const bids = st.bids as Bid[];
-  const sides = scoreHand(st.rules, bids, st.tricksWon, st.scores, st.bags);
+  const r = st.rules;
+  const sides = scoreHand(r, bids, st.tricksWon, st.scores, st.bags);
   const scores = sides.map((s) => s.totalScore);
   const bags = sides.map((s) => s.totalBags);
+  // Shot = out: mark who was shot this hand; out on hand 1, or twice in a row
+  const shot = sides.map((s) => isShot(r, bids, s));
+  if (shotOutOn(r)) sides.forEach((s, i) => { s.shot = shot[i]; });
+  const prev = st.history[st.history.length - 1];
+  const prevShot = sides.map((_, i) => !!prev?.sides[i]?.shot);
   const record: HandRecord = { handNo: st.handNo, dealer: st.dealer, bids: [...bids], tricksWon: [...st.tricksWon], sides };
-  const result = checkGameEnd(st.rules, scores);
+  const result = shotOutResult(scores, shotOutSides(r, st.handNo, shot, prevShot)) ?? checkGameEnd(r, scores);
   return {
     ...st, scores, bags, history: [...st.history, record], result, turn: null,
     phase: result ? 'gameOver' : 'handOver',

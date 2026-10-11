@@ -8,7 +8,7 @@ import { bidAll, fill, play, rigged } from './helpers';
 const joker = makeRules('joker');
 
 /** Most tests here exercise bidding, so they start with a normal (bid) first hand; the books first hand is tested below. */
-const newGame = (r: TableRules, seed: string) => realNewGame({ ...r, firstHandBidsItself: false }, seed);
+const newGame = (r: TableRules, seed: string) => realNewGame({ ...r, firstHandBidsItself: false, shotOut: false }, seed);
 
 function expectRuleError(fn: () => unknown, code: string) {
   try { fn(); } catch (e) { expect(e).toBeInstanceOf(RuleError); expect((e as RuleError).code).toBe(code); return; }
@@ -205,7 +205,7 @@ describe('trick play legality', () => {
       ['KD', 'QD', 'JD', 'TD', '9D', '8D', '7D', '6D', '5D', '4D', '3D', 'AS', 'KS'],
       ['BJ', 'LJ', 'QS', 'JS', 'TS', '9S', '8S', '7S', '6S', '5S', '4S', '3S', '2S'],
     ];
-    const classic = makeRules('joker', CLASSIC_JOKER);
+    const classic = makeRules('joker', { ...CLASSIC_JOKER, shotOut: false });
     let st = bidAll(rigged(classic, fixed, 3), [1, 2, 3, 7]);
     st = play(st, 'AH', '2C', 'AS', '2S'); // seat 2 trumps with A♠; seat 3's 2♠ is lower
     expect(st.tricks[0]!.winner).toBe(2);

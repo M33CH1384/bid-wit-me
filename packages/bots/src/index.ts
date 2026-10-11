@@ -3,13 +3,14 @@ import { type BotLevel, chooseBid, wantsBlindNil } from './bidding';
 import { chooseExchange, choosePlay } from './play';
 
 export * from './bidding';
-export { choosePlay, chooseExchange } from './play';
+export { choosePlay, chooseExchange, isPremium, NOVICE_BLUNDER_RATE } from './play';
+export { voidsOf } from './knowledge';
 
 /**
  * Picks the next action for a bot seat from that seat's view only.
  * Returns null if it isn't this seat's turn.
  */
-export function chooseBotAction(v: PlayerView, level: BotLevel = 'normal', rng: Rng = createRng(`${v.seat}:${v.handNo}:${v.tricks.length}`)): Action | null {
+export function chooseBotAction(v: PlayerView, level: BotLevel = 'pro', rng: Rng = createRng(`${v.seat}:${v.handNo}:${v.tricks.length}`)): Action | null {
   if (v.turn !== v.seat) return null;
   switch (v.phase) {
     case 'bidding':
@@ -23,7 +24,7 @@ export function chooseBotAction(v: PlayerView, level: BotLevel = 'normal', rng: 
     case 'playing':
       // guaranteed the rest (the view proves it with full info): run it most of the time, for the show
       if (v.canRunIt && rng.int(100) < 65) return { type: 'runIt', seat: v.seat };
-      return { type: 'play', seat: v.seat, card: choosePlay(v, level) };
+      return { type: 'play', seat: v.seat, card: choosePlay(v, level, rng) };
     default:
       return null;
   }
@@ -37,7 +38,7 @@ export interface SimOptions {
 
 /** Runs a full bot-vs-bot game. Throws if the engine rejects any bot move or the game doesn't finish. */
 export function simulateGame(rules: TableRules, seed: string, opts: SimOptions = {}): GameState {
-  const levels = opts.levels ?? Array(rules.playerCount).fill('normal');
+  const levels = opts.levels ?? Array(rules.playerCount).fill('pro');
   const maxHands = opts.maxHands ?? 200;
   const rng = createRng(`${seed}:bots`);
   let st = newGame(rules, seed);

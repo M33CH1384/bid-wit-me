@@ -109,7 +109,43 @@ export function nilWorthy(hand: readonly Card[], v: PlayerView): boolean {
   return estimateTricks(hand, v) < (r.partnerships ? 1.6 : 1.1);
 }
 
-export type BotLevel = 'easy' | 'normal';
+/**
+ * Bot skill: novice (sloppy at a set rate, never illegal), regular (sound basics, no counting), pro (counts cards and
+ * voids, cheapest winners, saves Jokers/2s), shark (pro + sampled endgame search). 'easy' / 'normal' are the old names
+ * (saved settings, older clients) and map to novice / pro.
+ */
+export type BotSkill = 'novice' | 'regular' | 'pro' | 'shark';
+export type BotLevel = BotSkill | 'easy' | 'normal';
+export const BOT_SKILLS: readonly BotSkill[] = ['novice', 'regular', 'pro', 'shark'];
+export function skillOf(level: BotLevel | string | undefined | null): BotSkill {
+  if (level === 'easy') return 'novice';
+  if (level === 'normal' || level === undefined || level === null) return 'pro';
+  return (BOT_SKILLS as readonly string[]).includes(level) ? (level as BotSkill) : 'pro';
+}
+/** The table setting: one fixed skill for every bot, or 'mixed' (each seat rolls its own, seeded per game). Default mixed. */
+export type BotSkillSetting = BotSkill | 'mixed';
+export const BOT_SKILL_SETTINGS: readonly BotSkillSetting[] = ['mixed', 'novice', 'regular', 'pro', 'shark'];
+export const MIXED_WEIGHTS: Record<BotSkill, number> = { novice: 20, regular: 35, pro: 30, shark: 15 };
+export function skillSettingOf(v: unknown): BotSkillSetting {
+  if (v === 'mixed' || v === undefined || v === null) return 'mixed';
+  return skillOf(v as BotLevel);
+}
+const fnv = (s: string) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
+/**
+ * The skill a bot seat actually plays at. Mixed: a weighted roll seeded by the game seed + seat, so it's stable across
+ * refreshes / reconnects and hidden from players. `floor` lets a persona bias it (the Hustler is never below Pro).
+ */
+export function seatSkill(setting: BotLevel | BotSkillSetting | undefined, gameSeed: string, seat: number, floor?: BotSkill): BotSkill {
+  let sk: BotSkill;
+  if (setting === 'mixed' || setting === undefined) {
+    const roll = fnv(`${gameSeed}:skill:${seat}`) % 100;
+    let acc = 0; sk = 'pro';
+    for (const k of BOT_SKILLS) { acc += MIXED_WEIGHTS[k]; if (roll < acc) { sk = k; break; } }
+  } else sk = skillOf(setting);
+  if (floor && BOT_SKILLS.indexOf(sk) < BOT_SKILLS.indexOf(floor)) sk = floor;
+  return sk;
+}
+export const BOT_SKILL_LABEL: Record<BotSkill, string> = { novice: 'Novice', regular: 'Regular', pro: 'Pro', shark: 'Shark' };
 
 /** Choose a bid for a revealed hand. */
 export function chooseBid(v: PlayerView, level: BotLevel, rng: Rng): number | 'nil' {
@@ -118,23 +154,25 @@ export function chooseBid(v: PlayerView, level: BotLevel, rng: Rng): number | 'n
   const r = v.rules;
   const partner = partnerOf(v.seat, r);
   const pBid = partner === null ? null : v.bids[partner];
+  const skill = skillOf(level);
   let est = estimateTricks(hand, v);
-  if (level === 'easy') est += rng.float() * 2 - 1;
+  if (skill === 'novice') est += rng.float() * 2.4 - 0.9; // sloppy, leans greedy
+  else if (skill === 'regular') est += rng.float() * 0.8 - 0.4;
   const partnerNil = isNilBid(pBid);
-  if (level === 'normal' && opt.nil && !partnerNil && nilWorthy(hand, v)) return 'nil';
+  if ((skill === 'pro' || skill === 'shark') && opt.nil && !partnerNil && nilWorthy(hand, v)) return 'nil';
   if (partnerNil) est += 0.5; // covering a nil partner: we'll be winning extra tricks anyway
   let bid = Math.round(est + (r.partnerships ? 0 : 0.15));
   // Don't overbid the table: total bids above the hand size are a guaranteed set for someone.
   const others = v.bids.reduce<number>((a, b) => a + (typeof b === 'number' ? b : 0), 0);
   const room = r.playerCount === 4 ? 13 : 17;
-  if (level === 'normal' && others + bid > room + 1) bid = Math.max(1, room + 1 - others);
+  if (skill !== 'novice' && others + bid > room + 1) bid = Math.max(1, room + 1 - others);
   return Math.min(opt.max, Math.max(opt.min, bid, 1));
 }
 
 /** Bots decide on Blind Nil before looking (only from scores and the partner's bid). */
 export function wantsBlindNil(v: PlayerView, level: BotLevel): boolean {
   const opt = v.bidOptions;
-  if (level === 'easy' || !opt?.blindNil) return false;
+  if (skillOf(level) === 'novice' || skillOf(level) === 'regular' || !opt?.blindNil) return false;
   const r = v.rules;
   const mine = v.scores[sideOf(v.seat, r)]!;
   const best = Math.max(...v.scores.filter((_, i) => i !== sideOf(v.seat, r)));

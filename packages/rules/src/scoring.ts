@@ -1,4 +1,4 @@
-import type { TableRules } from './config';
+import { type TableRules, firstHandMinOf, shotOutOn } from './config';
 
 /**
  * A bid: a number of tricks (≥1), Nil, or Blind Nil. A numeric 0 is normalised to 'nil'.
@@ -72,6 +72,8 @@ export interface SideHandResult {
   points: number;
   totalScore: number;
   totalBags: number;
+  /** "Shot" this hand (set, or short of the first-hand minimum). Set by the game (finishHand) when Shot = out is on. */
+  shot?: boolean;
 }
 
 /**
@@ -146,7 +148,10 @@ export function scoreHand(
 }
 
 export interface GameResult {
-  endReason: 'target' | 'floor';
+  /** shotOut: a side was shot on hand 1 or two hands in a row (house rule "Shot = out") */
+  endReason: 'target' | 'floor' | 'shotOut';
+  /** sides knocked out by Shot = out (endReason 'shotOut') */
+  shotOut?: number[];
   finalScores: number[];
   /** 1-based placement per side; ties share a place (1,1,3). */
   placements: number[];
@@ -176,4 +181,46 @@ export function checkGameEnd(r: TableRules, scores: readonly number[]): GameResu
   if (floorHit && (topCount === 1 || !r.partnerships)) return finish('floor');
   if (top >= r.targetScore && topCount === 1) return finish('target');
   return null;
+}
+
+/**
+ * Was `side` shot this hand? Shot = set: the side had a contract and missed it (a busted Nil alone never makes a side
+ * shot — same as the set logic). First hand where books bid themselves: shot when it took fewer books than the
+ * first-hand minimum (off = nobody is shot that hand).
+ */
+export function isShot(r: TableRules, bids: readonly Bid[], side: SideHandResult): boolean {
+  if (isBooksHand(bids)) {
+    const min = firstHandMinOf(r);
+    return min !== null && side.tricks < min;
+  }
+  return side.contractMade === false;
+}
+
+/**
+ * Shot = out after a hand: the sides that are out — shot on hand 1, or shot this hand AND the previous hand.
+ * `prevShot[side]` = shot on the previous hand. Empty when the rule is off.
+ */
+export function shotOutSides(r: TableRules, handNo: number, shot: readonly boolean[], prevShot: readonly boolean[]): number[] {
+  if (!shotOutOn(r)) return [];
+  return shot.flatMap((s, side) => (s && (handNo === 1 || (handNo > 2 && prevShot[side])) ? [side] : []));
+}
+
+/**
+ * The game result when sides are shot out: the sides still in finish ahead of the shot-out ones (each group ranked
+ * by score). If every side is out on the same hand, the higher score wins; an exact tie for first plays on (null).
+ */
+export function shotOutResult(scores: readonly number[], out: readonly number[]): GameResult | null {
+  if (!out.length) return null;
+  const alive = scores.map((_, i) => i).filter((i) => !out.includes(i));
+  if (!alive.length) {
+    const top = Math.max(...scores);
+    if (scores.filter((s) => s === top).length > 1) return null;
+    const placements = placementsFor(scores);
+    return { endReason: 'shotOut', shotOut: [...out], finalScores: [...scores], placements, winners: placements.flatMap((p, i) => (p === 1 ? [i] : [])) };
+  }
+  // rank: alive sides by score first, then the shot-out sides by score
+  const key = (i: number) => (out.includes(i) ? -1e9 : 0) + scores[i]!;
+  const keys = scores.map((_, i) => key(i));
+  const placements = keys.map((k) => 1 + keys.filter((o) => o > k).length);
+  return { endReason: 'shotOut', shotOut: [...out], finalScores: [...scores], placements, winners: placements.flatMap((p, i) => (p === 1 ? [i] : [])) };
 }

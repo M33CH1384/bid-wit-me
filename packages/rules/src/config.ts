@@ -52,7 +52,24 @@ export interface TableRules {
    * 10 per book (trick) it takes — no contract, no bags, no penalties, no Nil. Optional only for saves made before it existed.
    */
   firstHandBidsItself?: boolean;
+  /**
+   * House rule "Shot = out" (on by default; optional for older saves = on). Shot = set (fewer books than bid). Shot on
+   * hand 1 loses the game; shot two hands in a row (after hand 1) loses the game. Cutthroat: per player.
+   */
+  shotOut?: boolean;
+  /**
+   * First hand (books bid themselves): a side taking fewer books than this is shot. 3, 4 or 5; null = off.
+   * Default 4 in team modes, off in Cutthroat. Optional for older saves (undefined = the mode default).
+   */
+  firstHandMin?: 3 | 4 | 5 | null;
 }
+
+/** The first-hand minimum in effect (resolves the mode default for older rules objects). */
+export function firstHandMinOf(r: Pick<TableRules, 'firstHandMin' | 'partnerships'>): number | null {
+  if (r.firstHandMin === undefined) return r.partnerships ? 4 : null;
+  return r.firstHandMin;
+}
+export const shotOutOn = (r: Pick<TableRules, 'shotOut'>) => r.shotOut !== false;
 
 /**
  * Default removals. Joker deck (confirmed by Demetrius): remove 2♣ and 2♥; the 2♦ stays and is promoted to trump.
@@ -84,17 +101,18 @@ const BASE: Omit<TableRules, 'mode' | 'partnerships' | 'playerCount' | 'deck' | 
   losingFloor: -200,
   turnTimerSec: { bid: 30, play: 20 },
   firstHandBidsItself: true,
+  shotOut: true,
 };
 
 /** Default preset for a mode (spec §3.2–3.4 and §15 defaults). */
 export function defaultRules(mode: Mode, playerCount: 3 | 4 = 4): TableRules {
   switch (mode) {
     case 'joker':
-      return { ...BASE, mode, partnerships: true, playerCount: 4, deck: 'joker54', removedCards: defaultRemovedCards('joker54', 4), trumpOrderTop: [...JOKER_TRUMP_TOP], targetScore: 500 };
+      return { ...BASE, mode, partnerships: true, playerCount: 4, deck: 'joker54', removedCards: defaultRemovedCards('joker54', 4), trumpOrderTop: [...JOKER_TRUMP_TOP], targetScore: 500, firstHandMin: 4 };
     case 'cutthroat':
-      return { ...BASE, mode, partnerships: false, playerCount, deck: 'joker54', removedCards: defaultRemovedCards('joker54', playerCount), trumpOrderTop: [...JOKER_TRUMP_TOP], targetScore: 300 };
+      return { ...BASE, mode, partnerships: false, playerCount, deck: 'joker54', removedCards: defaultRemovedCards('joker54', playerCount), trumpOrderTop: [...JOKER_TRUMP_TOP], targetScore: 300, firstHandMin: null };
     case 'aceDown':
-      return { ...BASE, mode, partnerships: true, playerCount: 4, deck: 'standard52', removedCards: [], trumpOrderTop: [], targetScore: 500 };
+      return { ...BASE, mode, partnerships: true, playerCount: 4, deck: 'standard52', removedCards: [], trumpOrderTop: [], targetScore: 500, firstHandMin: 4 };
   }
 }
 
@@ -175,6 +193,7 @@ export function validateRules(r: TableRules): string[] {
   if (!(r.bagsPerPenalty >= 1)) p.push('bagsPerPenalty must be ≥ 1');
   if (!(r.targetScore > 0)) p.push('targetScore must be positive');
   if (r.losingFloor !== null && !(r.losingFloor < 0)) p.push('losingFloor must be negative or null');
+  if (r.firstHandMin !== undefined && r.firstHandMin !== null && ![3, 4, 5].includes(r.firstHandMin)) p.push('firstHandMin must be 3, 4, 5 or off');
   if (![0, 1, 2].includes(r.blindNil.exchangeCards)) p.push('blindNil.exchangeCards must be 0, 1 or 2');
   return p;
 }

@@ -198,6 +198,7 @@ describe('first hand: books bid themselves', () => {
       const h1 = st.history[0]!;
       expect(h1.bids.every((b) => b === 'books')).toBe(true);
       h1.sides.forEach((s) => expect(s.points).toBe(10 * s.tricks));
+      if (st.history.length === 1) { expect(st.result!.endReason).toBe('shotOut'); continue; } // short of the first-hand minimum
       expect(st.history[1]!.bids.every((b) => typeof b === 'number' || b === 'nil' || b === 'blindNil')).toBe(true);
     }
   });
