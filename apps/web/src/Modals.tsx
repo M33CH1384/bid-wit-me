@@ -20,39 +20,7 @@ function signed(n: number): string {
   return n > 0 ? `+${n}` : String(n);
 }
 
+import { ScorePad as ScorePadView } from './ScorePad';
 export function ScorePad({ st, names, onClose, locked }: { st: GameState; names: string[]; onClose: () => void; locked?: ReactNode }) {
-  const r = st.rules;
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal glass slant" onClick={(e) => e.stopPropagation()}>
-        <div className="panel-title big">SCORE PAD</div>
-        {st.history.length === 0 ? <p className="muted">No hands scored yet.</p> : (
-          <div className="scroll">
-            <table className="pad">
-              <thead>
-                <tr><th>#</th>{Array.from({ length: st.scores.length }, (_, i) => <th key={i}>{sideName(r, i, names)}</th>)}</tr>
-              </thead>
-              <tbody>
-                {st.history.map((h) => (
-                  <tr key={h.handNo}>
-                    <td>{h.handNo}</td>
-                    {h.sides.map((s) => (
-                      <td key={s.side}>
-                        <span className="pad-bid">{s.seats.map((x) => bidLabel(h.bids[x])).join('+')} / {s.tricks}</span>
-                        <span className={s.points < 0 ? 'neg' : 'pos'}>{signed(s.points)}</span>
-                        <b>{s.totalScore}</b>
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <p className="muted small">Target {r.targetScore}{r.losingFloor !== null ? `, losing floor ${r.losingFloor}` : ''}. Every {r.bagsPerPenalty} bags costs {r.bagPenalty}.</p>
-        {locked && st.phase !== 'gameOver' && <details className="locked-details" data-testid="locked-rules-details"><summary>🔒 House rules for this game</summary>{locked}</details>}
-        <button type="button" className="primary" onClick={onClose}>Close</button>
-      </div>
-    </div>
-  );
+  return <ScorePadView st={st} names={names} onClose={onClose} locked={locked} sideName={(i) => sideName(st.rules, i, names)} />;
 }
