@@ -124,7 +124,7 @@ export function tipsFor(c: CoachCtx): Tip[] {
     },
     {
       id: 'partnerTalk', title: 'Talk books with your partner', anchor: '.partner-talk', max: 2,
-      text: 'The team without the deal bids first, then the dealer\'s team, dealer last. While bidding you can tell your {partner} roughly what you\'ve got ("3-ish", "I\'m weak"): only they see it. No partner talk once the first card is led.',
+      text: 'The team without the deal bids first, then the dealer\'s team, dealer last. While bidding, partners can talk out loud about books ("3-ish", "I\'m weak"); all chat is public, so the other team sees it too.',
       when: (x) => r.partnerships && x.st.phase === 'bidding' && !!x.hand && (x.st.bids[x.me] === null || x.st.bids[(x.me + 2) % 4] === null),
     },
     {

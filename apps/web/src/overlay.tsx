@@ -48,7 +48,7 @@ export function toastsFor(rec: HandRecord, rules: TableRules, names: string[], m
 
 /* ------------------------------------------------------------------ chat */
 
-export interface ChatMsg { id: number; user: string; color: string; text: string; system?: boolean; badge?: string; /** a bot's trash talk (raw text; masked per Clean talk when shown, hidden with 'Hide bot trash talk') */ bot?: boolean; /** partner talk (bidding): only the two partners see it */ partner?: boolean }
+export interface ChatMsg { id: number; user: string; color: string; text: string; system?: boolean; badge?: string; /** a bot's trash talk (raw text; masked per Clean talk when shown, hidden with 'Hide bot trash talk') */ bot?: boolean; /** a bot partner's bidding hint (public table talk) */ hint?: boolean }
 
 export const USER_COLORS: Record<string, string> = { You: '#f5c542', System: '#b892ff' };
 /** plate / chat colour by local seat (0 = you); bot names are random, so colours follow the seat */

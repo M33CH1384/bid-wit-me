@@ -223,7 +223,7 @@ export function VictorySpotlight({ winners, losers, title, mesh, vs }: { winners
         {winners.map((p) => (
           <figure key={p.key} className="vs-tile win" data-testid={`vs-win-${p.key}`}>
             <div className="vs-frame"><SpotMedia p={p} mesh={mesh} vs={vs} /></div>
-            <figcaption>{p.name}{p.isMe ? ' (you)' : ''}</figcaption>
+            <figcaption>{p.isMe && p.name !== 'You' ? `${p.name} (you)` : p.name}</figcaption>
           </figure>
         ))}
       </div>

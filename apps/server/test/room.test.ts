@@ -877,29 +877,34 @@ describe('dealer rotation + Shot = out online', () => {
   });
 });
 
-describe('partner talk during bidding', () => {
-  const chats = (env: FakeEnv, cid: string) => env.msgs(cid).filter((m) => m.t === 'chat').map((m) => (m as { line: { text: string; partner?: unknown } }).line);
-  it('goes only to the partner, never the opponents (live and in the history), and only while bidding', () => {
+describe('partner talk during bidding (all chat is public)', () => {
+  const chats = (env: FakeEnv, cid: string) => env.msgs(cid).filter((m) => m.t === 'chat').map((m) => (m as { line: { text: string; hint?: true; from: string | null } }).line);
+  it('there is no partner-only channel: a bidding hint goes to the whole table, history included, and is remembered for a bot partner', () => {
     const { env } = fourHumans();
     env.send('a', { t: 'config', rules: makeRules('joker', { firstHandBidsItself: false }) });
     env.send('a', { t: 'start' });
     expect(env.last('a', 'state')!.view!.phase).toBe('bidding');
-    env.send('a', { t: 'chat', text: '3-ish', to: 'partner' }); // seat 0 → partner seat 2 ('c')
-    expect(chats(env, 'c').map((l) => l.text)).toContain('3-ish');
-    expect(chats(env, 'c').find((l) => l.text === '3-ish')!.partner).toEqual({ seats: [0, 2] });
-    expect(chats(env, 'a').map((l) => l.text)).toContain('3-ish');
-    for (const opp of ['b', 'd']) expect(chats(env, opp).map((l) => l.text)).not.toContain('3-ish');
-    // a reconnecting opponent doesn't get it from the history either
-    env.join('b2', 'Ray', env.msgs('b').find((m) => m.t === 'welcome') ? (env.msgs('b').find((m) => m.t === 'welcome') as { token: string }).token : undefined);
-    const w = env.msgs('b2').find((m) => m.t === 'welcome') as { chat: { text: string }[] } | undefined;
-    expect(w!.chat.map((l) => l.text)).not.toContain('3-ish');
-    // once trick play starts it's refused
+    // an old client asking for partner-only delivery is just public chat now (the parser drops `to`)
+    env.send('a', { t: 'chat', text: '3-ish', to: 'partner' } as never);
+    for (const cid of ['a', 'b', 'c', 'd']) expect(chats(env, cid).map((l) => l.text), cid).toContain('3-ish');
+    const line = chats(env, 'b').find((l) => l.text === '3-ish')! as Record<string, unknown>;
+    expect(line.partner).toBeUndefined();
+    // a reconnecting opponent sees it in the history too
+    const tok = (env.msgs('b').find((m) => m.t === 'welcome') as { token: string }).token;
+    env.join('b2', 'Ray', tok);
+    const w = env.msgs('b2').find((m) => m.t === 'welcome') as { chat: { text: string }[] };
+    expect(w.chat.map((l) => l.text)).toContain('3-ish');
+    // the hint is stored for seat 0 (so a bot partner bidding later can use it)
+    expect(env.room.data.hints?.[0]?.text).toBe('3-ish');
+    // during play it's still ordinary public chat (no error)
     for (let i = 0; i < 40 && env.last('a', 'state')!.view!.phase === 'bidding'; i++) playTurn(env, ['a', 'b2', 'c', 'd']);
     expect(env.last('a', 'state')!.view!.phase).toBe('playing');
-    env.send('a', { t: 'chat', text: 'I got about 2', to: 'partner' });
-    expect(env.errors('a').at(-1)!.code).toBe('NOT_NOW');
+    const errs = env.errors('a').length;
+    env.send('a', { t: 'chat', text: 'I got about 2' });
+    expect(env.errors('a').length).toBe(errs);
+    expect(chats(env, 'd').map((l) => l.text)).toContain('I got about 2');
   });
-  it('a bot partner hints (vaguely, partner-only) on the human\'s bidding turn; opponents never see it', () => {
+  it('a bot partner hints in PUBLIC chat on the human\'s bidding turn (opponents see it too)', () => {
     const env = new FakeEnv(undefined, FAST);
     env.join('a', 'Dee'); env.join('b', 'Ray');
     env.send('a', { t: 'sit', seat: 0 }); env.send('b', { t: 'sit', seat: 1 });
@@ -909,20 +914,19 @@ describe('partner talk during bidding', () => {
     let hinted = false;
     for (let i = 0; i < 200 && !hinted; i++) {
       const v = env.last('a', 'state')!.view!;
-      hinted = chats(env, 'a').some((l) => !!l.partner);
+      hinted = chats(env, 'a').some((l) => !!l.hint && l.from === 'bot:2');
       if (hinted || v.phase !== 'bidding') break;
       if (!playTurn(env, ['b'])) env.advance(50);
     }
-    // the human at seat 0 bids before the bot partner at seat 2 whenever seat 0 is the first of its team to bid
-    const line = chats(env, 'a').find((l) => !!l.partner);
+    const line = chats(env, 'a').find((l) => !!l.hint && l.from === 'bot:2'); // (seat 3 may hint to Ray at seat 1 too)
     const dealer = env.last('a', 'state')!.view!.dealer;
     const order = bidOrder(makeRules('joker'), dealer);
     if (order.indexOf(0) < order.indexOf(2)) expect(line, `dealer ${dealer}`).toBeDefined();
     if (line) {
       expect(line.text).toMatch(/about \d|weak|Nil|or more|Strong in spades/);
-      expect(chats(env, 'b').some((l) => !!l.partner)).toBe(false);
+      expect(line.from).toBe('bot:2');
+      expect(chats(env, 'b').some((l) => !!l.hint && l.text === line.text)).toBe(true);
     } else {
-      // seat 2 bid first: its bid is on the table instead
       expect(env.last('a', 'state')!.view!.bids[2]).not.toBeNull();
     }
   });

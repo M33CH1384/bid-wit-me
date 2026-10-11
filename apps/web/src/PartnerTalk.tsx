@@ -1,8 +1,9 @@
 /**
  * Bidding helpers for team games:
  * - <BidOrder>: who bids when (non-dealing team first, back to back; then the dealer's partner; dealer last).
- * - <PartnerTalk>: one-tap partner-only hints ("3-ish", "I'm weak"…). Table rule: partners may talk books (vaguely)
- *   during bidding to agree on a total, each still bids their own number; no partner talk once the first card is led.
+ * - <PartnerTalk>: one-tap hints ("3-ish", "I'm weak"…) posted to the PUBLIC table chat (everyone sees them, opponents
+ *   too). Table rule: partners may talk books out loud during bidding; each still bids their own number.
+ *   All typed chat is public; there is no private partner channel.
  */
 import { useEffect, useState } from 'react';
 import { type GameState, bidLabel, bidOrder } from '@spades/rules';
@@ -38,8 +39,8 @@ export function PartnerTalk({ onSend, partnerName }: { onSend: (text: string) =>
   const [cool, setCool] = useState(0);
   useEffect(() => { if (!cool) return; const t = window.setTimeout(() => setCool(0), Math.max(0, cool - Date.now())); return () => clearTimeout(t); }, [cool]);
   return (
-    <div className="partner-talk glass slant" data-testid="partner-talk" role="group" aria-label={`Partner talk: only ${partnerName} sees these`}>
-      <div className="pt-head"><span className="pt-title">🤝 PARTNER TALK</span><small>only {partnerName} sees this · bidding only</small></div>
+    <div className="partner-talk glass slant" data-testid="partner-talk" role="group" aria-label={`Partner talk: posts to the table chat, everyone sees it (for ${partnerName})`}>
+      <div className="pt-head"><span className="pt-title">🤝 PARTNER TALK</span><small>to {partnerName} · table chat, everyone sees it</small></div>
       <div className="pt-row">
         {PARTNER_TALK_PRESETS.map((t) => (
           <button key={t} type="button" disabled={!!cool} data-testid={`pt-${t}`} onClick={() => { onSend(t); setCool(Date.now() + PARTNER_TALK_COOLDOWN_MS); }}>{t}</button>

@@ -814,7 +814,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-backdrop ~ .modal-backdrop { z-index: 1010; }
 .hype-layer { z-index: 1100; }
 .sound-dock { z-index: 1050; }
-.table-screen.modal-open > :not(.modal-backdrop):not(.tt-backdrop):not(.hype-layer):not(.toasts):not(.badge-unlock) {
+.table-screen.modal-open > :not(.modal-backdrop):not(.tt-backdrop):not(.hype-layer):not(.toasts):not(.badge-unlock):not(.victory-screen) {
   filter: blur(3px) brightness(.55) saturate(.8); pointer-events: none; transition: filter .25s ease;
 }
 .table-screen.modal-open .modal-backdrop { background: rgba(6,3,12,.35); }
@@ -1238,8 +1238,6 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .pt-row::-webkit-scrollbar { display: none; }
 .pt-row button { flex: 0 0 auto; font-size: 12px; font-weight: 700; padding: 5px 10px; border-radius: 999px; border: 1px solid rgba(127,227,160,.55); background: rgba(127,227,160,.12); color: #e8fff0; cursor: pointer; white-space: nowrap; }
 .pt-row button:disabled { opacity: .45; }
-.chat-line.partner { background: rgba(127,227,160,.1); box-shadow: inset 2px 0 0 #7fe3a0; padding-left: 6px; border-radius: 3px; }
-.partner-tag { font-style: normal; font-size: 9px; font-weight: 800; letter-spacing: .06em; color: #7fe3a0; margin-right: 4px; }
 
 /* score pad (release 6): labeled columns on wide screens, stacked cards per hand on phones */
 .modal.score-pad { width: min(860px, calc(100vw - 16px)); max-width: none; }
@@ -1337,7 +1335,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 @keyframes tp-pulse { 50% { opacity: .45; } }
 
 /* Online victory spotlight: winners' video front and center, losers small along the edge, score + buttons secondary */
-.victory-screen { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; align-items: center; gap: clamp(8px, 1.6vh, 16px);
+.victory-screen { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; align-items: center; gap: clamp(8px, 1.6vh, 16px);
   padding: calc(58px + env(safe-area-inset-top)) 14px calc(14px + env(safe-area-inset-bottom)); overflow-y: auto;
   background: radial-gradient(90% 60% at 50% 35%, rgba(90,50,10,.55), rgba(12,7,18,.94) 70%); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
 .victory-screen .modal-x { position: absolute; top: calc(12px + env(safe-area-inset-top)); left: 12px; right: auto; }

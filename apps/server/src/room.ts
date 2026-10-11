@@ -238,7 +238,7 @@ export class Room {
     this.conns.set(connId, pid);
     this.sentHistory.delete(connId);
     const m = d.members[pid]!;
-    this.io.send(connId, { t: 'welcome', you: pid, token: m.token, code: d.code, chat: d.chat.filter((l) => this.canSee(pid, l)).slice(-LIMITS.chatHistory), v: PROTOCOL_VERSION });
+    this.io.send(connId, { t: 'welcome', you: pid, token: m.token, code: d.code, chat: d.chat.slice(-LIMITS.chatHistory), v: PROTOCOL_VERSION });
     d.lastActive = this.io.now();
     this.after();
   }
@@ -382,17 +382,11 @@ export class Room {
         if (w.length >= LIMITS.chatBurst) throw new RoomError('RATE_LIMITED', 'Slow down a little');
         w.push(now);
         this.chatWindow.set(pid, w);
-        if (msg.to === 'partner') {
-          // partner talk: team games, while bidding only; just the two partners see it (never the opponents)
-          const g = d.game;
-          if (!g || d.phase !== 'playing' || !d.rules.partnerships || me.seat === null || (g.phase !== 'bidding' && g.phase !== 'exchange'))
-            throw new RoomError('NOT_NOW', 'Partner talk is for bidding only');
-          const mate = (me.seat + 2) % d.rules.playerCount;
+        // all chat is public. During bidding (team games) a line that reads like a count ("3-ish", "I'm weak") is
+        // remembered as that player's hint, so a bot partner bidding after it can take it into account
+        const g = d.game;
+        if (g && d.phase === 'playing' && d.rules.partnerships && me.seat !== null && g.phase === 'bidding' && parseHint(text))
           (d.hints ??= {})[me.seat] = { hand: g.handNo, text };
-          this.pushChat({ id: d.chatSeq++, from: pid, name: me.name, text, at: now, partner: { seats: [me.seat, mate] } });
-          this.io.persist();
-          return;
-        }
         this.pushChat({ id: d.chatSeq++, from: pid, name: me.name, text, at: now });
         // a trailing player running their mouth (3+ lines in 10 s): the bots answer
         const ev = loudLoser(d.game, me.seat, w);
@@ -820,7 +814,7 @@ export class Room {
         return changed;
       }
 
-      // a human's turn. Partner talk: a bot partner who hasn't bid yet tells them (vaguely) what it's got
+      // a human's turn. Partner talk: a bot partner who hasn't bid yet says (vaguely, in public chat) what it's got
       if (turn.kind === 'bid' && d.rules.partnerships && this.hintKey !== `${g.handNo}:${turn.seat}`) {
         this.hintKey = `${g.handNo}:${turn.seat}`;
         const mate = (turn.seat + 2) % d.rules.playerCount;
@@ -828,7 +822,7 @@ export class Room {
         if (ms?.kind === 'bot' && g.bids[mate] === null && g.hands[mate]!.length) {
           const text = botHint(g.hands[mate]!, viewFor(g, mate));
           (d.hints ??= {})[mate] = { hand: g.handNo, text };
-          this.pushChat({ id: d.chatSeq++, from: `bot:${mate}`, name: ms.name, text, at: now, partner: { seats: [mate, turn.seat] } });
+          this.pushChat({ id: d.chatSeq++, from: `bot:${mate}`, name: ms.name, text, at: now, hint: true });
           changed = true;
         }
       }
@@ -973,14 +967,7 @@ export class Room {
     const d = this.data;
     d.chat.push(line);
     if (d.chat.length > LIMITS.chatHistory) d.chat.splice(0, d.chat.length - LIMITS.chatHistory);
-    for (const [cid, pid] of this.conns) if (pid && this.canSee(pid, line)) this.io.send(cid, { t: 'chat', line });
-  }
-
-  /** partner talk goes only to the two partners (by their seats when it was said) */
-  private canSee(pid: string, line: ChatLine): boolean {
-    if (!line.partner) return true;
-    const seat = this.data.members[pid]?.seat;
-    return seat !== null && seat !== undefined && line.partner.seats.includes(seat);
+    for (const [cid, pid] of this.conns) if (pid) this.io.send(cid, { t: 'chat', line });
   }
 
   private err(connId: string, code: string, message: string): void {

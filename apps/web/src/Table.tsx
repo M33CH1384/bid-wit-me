@@ -109,8 +109,6 @@ export interface OnlineBinding {
   botSeats?: number[];
   /** the host's trash-talk intensity */
   talkIntensity?: TalkIntensity;
-  /** partner talk during bidding (partner-only chat line) */
-  sendPartner?: (text: string) => void;
   /** victory spotlight (game over): winners' / losers' local seats + the winning side's name */
   victory?: (winners: number[], losers: number[], title: string) => ReactNode;
 }
@@ -154,8 +152,8 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
   const timers = useRef<number[]>([]);
   const namesRef = useRef(names);
   namesRef.current = names;
-  const push = useCallback((user: string, text: string, system = false, delay = 0, bot = false, partner = false) => {
-    const add = () => setMsgs((m) => [...m.slice(-60), { id: idRef.current++, user, text, system, color: USER_COLORS[user] ?? SEAT_COLORS[namesRef.current.indexOf(user)] ?? '#ddd', ...(bot ? { bot: true } : {}), ...(partner ? { partner: true } : {}) }]);
+  const push = useCallback((user: string, text: string, system = false, delay = 0, bot = false, hint = false) => {
+    const add = () => setMsgs((m) => [...m.slice(-60), { id: idRef.current++, user, text, system, color: USER_COLORS[user] ?? SEAT_COLORS[namesRef.current.indexOf(user)] ?? '#ddd', ...(bot ? { bot: true } : {}), ...(hint ? { hint: true } : {}) }]);
     if (delay) timers.current.push(window.setTimeout(add, delay));
     else add();
   }, []);
@@ -270,8 +268,8 @@ function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only',
         <header><span className="live-dot" /> LIVE CHAT <small>{scope}</small></header>
         <div className="chat-list" ref={listRef}>
           {msgs.map((m) => (
-            <div key={m.id} className={`chat-line ${m.system ? 'system' : ''} ${m.partner ? 'partner' : ''}`}>
-              {m.system ? <span>{m.text}</span> : <>{m.partner && <em className="partner-tag" title="Partner talk: only your partner sees this">🤝 PARTNER</em>}<b style={{ color: m.color }}>{m.user}</b><span>{m.text}</span></>}
+            <div key={m.id} className={`chat-line ${m.system ? 'system' : ''}`}>
+              {m.system ? <span>{m.text}</span> : <><b style={{ color: m.color }}>{m.user}</b><span>{m.text}</span></>}
             </div>
           ))}
         </div>
@@ -367,20 +365,25 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [toasts, setToasts] = useState<Toast[]>([]);
   const localChat = useChat(st, names, resume?.chat);
   const { msgs: rawMsgs, push } = online ? online.chat : localChat;
-  // partner talk (team games, bidding only): online via the server's partner-only channel; offline my bot partner hears it
+  // partner talk presets (team games, bidding): plain PUBLIC table chat — everyone sees it, opponents included.
+  // Offline my bot partner also takes it as a hint when it bids after me (online the server does that).
   const partnerSeat = r.partnerships ? (HUMAN + 2) % n : -1;
   const sendPartner = (text: string) => {
-    if (online) { online.sendPartner?.(text); return; }
+    if (online) { push('You', text); return; } // online push sends it to the table
     partnerHint.current = { hand: st.handNo, text };
-    localChat.push('You', text, false, 0, false, true);
+    localChat.push('You', text);
   };
-  // offline: on my bidding turn, a bot partner that hasn't bid yet says (vaguely) what it's got, partner-only
+  // offline: on my bidding turn, a bot partner that hasn't bid yet says (vaguely, in public chat) what it's got
   const hintedHand = useRef<number | null>(null);
   useEffect(() => {
     if (online || !r.partnerships || st.phase !== 'bidding' || st.turn !== HUMAN || dealing || st.bids[partnerSeat] !== null) return;
     if (hintedHand.current === st.handNo) return;
     hintedHand.current = st.handNo;
-    const t = window.setTimeout(() => localChat.push(names[partnerSeat]!, botHint(st.hands[partnerSeat]!, viewFor(st, partnerSeat)), false, 0, false, true), 500);
+    const t = window.setTimeout(() => {
+      const text = botHint(st.hands[partnerSeat]!, viewFor(st, partnerSeat));
+      localChat.push(names[partnerSeat]!, text, false, 0, false, true);
+      speakBot(names[partnerSeat]!, text);
+    }, 500);
     return () => clearTimeout(t);
   }, [st, dealing]); // eslint-disable-line react-hooks/exhaustive-deps
   const showPartnerTalk = r.partnerships && st.phase === 'bidding' && !dealing && !pause && (st.bids[HUMAN] === null || st.bids[partnerSeat] === null);

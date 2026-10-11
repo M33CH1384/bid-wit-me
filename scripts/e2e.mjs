@@ -82,7 +82,8 @@ async function tipsTest() {
   if (!(await page.getByTestId('learning-badge').count())) throw new Error('learning mode badge missing with tips on');
   // hand 1 is "books bid themselves" (no bidding), so the bid tip comes in hand 2 — tips carry across hands
   let actionChecked = '';
-  for (let i = 0; i < 2500 && !(seen.includes('bid') && seen.length >= 4 && actionChecked); i++) {
+  const tipsDeadline = Date.now() + 360_000; // time budget, not a loop count: hand 1 now waits for its hype + beat before hand 2's bidding
+  while (Date.now() < tipsDeadline && !(seen.includes('bid') && seen.length >= 4 && actionChecked)) {
     const talk = page.locator('[data-testid="talk-ready"]:not([disabled])');
     if (await talk.count()) { await talk.click().catch(() => {}); continue; }
     if (await coach.count()) {
@@ -119,11 +120,16 @@ async function tipsTest() {
       continue;
     }
     const bid = page.locator('.bid-grid button');
-    if (await bid.count()) { await bid.nth(2).click().catch(() => {}); continue; }
+    if (await bid.count()) {
+      // the bid tip pops a beat after the bid panel: give it a chance before bidding (don't race past it)
+      if (!seen.includes('bid') && await coach.waitFor({ timeout: 3000 }).then(() => true, () => false)) continue;
+      await bid.nth(2).click().catch(() => {}); continue;
+    }
     const l = legalCards();
     if (await l.count()) { const c = l.last(); await tap(c); await tap(c).catch(() => {}); continue; }
     await page.waitForTimeout(60);
   }
+  if (!seen.includes('bid')) await shot('08z-tips-stuck');
   if (!seen.includes('goal') || !seen.includes('bid') || seen.length < 4) throw new Error(`expected tips (goal, trumps, bid, …), saw ${seen}`);
   if (!actionChecked) throw new Error('never got a play tip open to check it closes on play');
   // wait for a play-phase tip, then skip the rest

@@ -51,7 +51,7 @@ export function glossary(r: TableRules): Record<TermKey, Term> {
     cut: t('cut', 'Cutting', `When you have none of the suit that was led, you may play ${tw.one} (a trump) instead. That's cutting: it beats all their cards and steals the book.`),
     broken: t('broken', 'Spades broken', `Nobody may start a book with ${tw.one} until someone has played one on another suit. After that, spades are "broken" and anyone can lead them.${r.spadesMustBeBroken ? '' : ' (This table lets you lead spades any time.)'}`),
     bid: t('bid', 'Bid', r.partnerships
-      ? 'Before playing, you guess how many books you will win. Your bid plus your partner\'s is the team\'s goal for the hand. Bid order: the team without the deal bids first (both partners back to back), then the dealer\'s partner, and the dealer bids last. Play still starts left of the dealer. While bidding, partners may talk books, vaguely ("I got about 3", "I\'m weak"), to agree on a total, but each bids their own number. No partner talk once the first card is led.'
+      ? 'Before playing, you guess how many books you will win. Your bid plus your partner\'s is the team\'s goal for the hand. Bid order: the team without the deal bids first (both partners back to back), then the dealer\'s partner, and the dealer bids last. Play still starts left of the dealer. While bidding, partners can talk out loud about books ("I got about 3", "I\'m weak") to agree on a total, but each bids their own number. All chat is public: the other team sees and hears it too.'
       : `Before playing, you guess how many books you will win this hand. Hit it to score. Bids go clockwise from the dealer's left. The lowest number you can bid is ${Math.max(1, r.minTeamBid)}; a bid of 0 is Nil${r.nil.allowed ? '' : ' (off at this table)'}.${n === 3 ? ` With 3 players the ${list(r.removedCards.map((c) => cardLabel(c)))} ${r.removedCards.length > 1 ? 'are' : 'is'} removed (the lowest non-trump cards), so everyone gets 17 cards and there are 17 books.` : ''}`),
     set: t('set', 'Set', `Winning fewer books than you bid. You lose 10 points for every book you bid. Getting the other ${r.partnerships ? 'team' : 'players'} set is the best feeling in the game.`),
     bags: t('bags', 'Bags', r.bagsOn === false
@@ -61,7 +61,7 @@ export function glossary(r: TableRules): Record<TermKey, Term> {
       ? `Bidding zero: you promise to win no books at all. Make it for +${r.nil.value}; win even one and it's −${r.nil.value}.`
       : 'Bidding zero (promising to win no books). It is turned off at this table.'),
     partner: t('partner', 'Partner', r.partnerships
-      ? 'The player sitting across from you. You win or lose together, and your books count as one team. You can talk books with your partner during bidding (🤝 Partner talk: only they see it), not during play.'
+      ? 'The player sitting across from you. You win or lose together, and your books count as one team. Partners can talk out loud about books during bidding; all chat is public (the other team sees it too).'
       : 'Cutthroat has no partners: everyone plays for themselves.'),
     shot: t('shot', 'Shot (Shot = out)', (() => {
       const who = r.partnerships ? 'team' : 'player';

@@ -103,8 +103,8 @@ export type ClientMsg =
   | { t: 'act'; action: GameAction; seq?: number; id?: string }
   | { t: 'next' }
   | { t: 'rematch' }
-  /** to 'partner': partner talk during bidding (team games): only you and your partner see it */
-  | { t: 'chat'; text: string; to?: 'partner' }
+  /** all typed chat is public to the whole table (partners talk books out loud on their mics during bidding) */
+  | { t: 'chat'; text: string }
   | { t: 'media'; media: MediaState }
   /** "Learning mode" (tips on): this player's own turn timers run 50% longer */
   | { t: 'learning'; on: boolean }
@@ -170,8 +170,8 @@ export interface ChatLine {
   id: number; from: string | null; name: string; text: string; at: number; system?: boolean;
   /** a bot's trash talk: its seat, persona, and whether this line is the Hustler's reveal (raw text; clients mask per Clean talk) */
   bot?: { seat: number; persona: string; reveal?: boolean; line?: string; bid?: number };
-  /** partner talk (bidding only): the two seats that can see it; the server only sends it to them */
-  partner?: { seats: number[] };
+  /** a bot partner's bidding hint ("I got about 3"): public like every line; clients may voice it */
+  hint?: true;
 }
 
 export type ServerMsg =
@@ -259,7 +259,7 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return out;
     }
     case 'chat':
-      return isStr(m.text, 1000) ? { t: 'chat', text: m.text, ...(m.to === 'partner' ? { to: 'partner' as const } : {}) } : null;
+      return isStr(m.text, 1000) ? { t: 'chat', text: m.text } : null;
     case 'media':
       return isObj(m.media) ? { t: 'media', media: { cam: m.media.cam === true, mic: m.media.mic === true } } : null;
     case 'learning':

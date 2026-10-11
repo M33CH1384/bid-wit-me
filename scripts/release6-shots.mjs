@@ -46,7 +46,7 @@ for (const [label, size] of [['phone', PHONE], ['desktop', DESK]]) {
     const chat = p.locator('.chat.open');
     if (!(await chat.count())) await p.getByRole('button', { name: 'Toggle chat' }).click();
   }
-  await p.locator('.chat-line.partner').first().waitFor({ timeout: 5000 });
+  await p.locator('.chat-line', { hasText: '3-ish' }).first().waitFor({ timeout: 5000 });
   await p.waitForTimeout(600);
   await shot(p, `partner-talk-chat-${label}`);
   await ctx.close();
