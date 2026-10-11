@@ -1,3 +1,4 @@
+import { winHeadline } from './headline';
 import { type VenueId, VENUE_DEFS, resolveVenue } from './venues';
 import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -1085,7 +1086,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         const seats = Array.from({ length: n }, (_, i) => i);
         const winSeats = seats.filter((i) => res.winners.includes(sideOf(i, r)));
         const loseSeats = seats.filter((i) => !res.winners.includes(sideOf(i, r)));
-        const title = `${res.winners.map((w) => sideName(r, w, names)).join(' & ')} win${r.partnerships || res.winners.length > 1 ? '' : 's'}`;
+        const title = winHeadline(res.winners.map((w) => sideName(r, w, names)), r.partnerships);
         const iWon = res.winners.includes(mySide);
         return (
           <div className="victory-screen" role="dialog" aria-label="Game over" data-testid="victory">
@@ -1123,7 +1124,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           <div className="modal glass slant gameover" role="dialog" aria-label="Game over">
             <button type="button" className="modal-x" aria-label="Close and go to the main menu" data-testid="gameover-x" onClick={mainMenu}>✕</button>
             <div className="trophy">{st.result.winners.includes(mySide) ? '🏆' : '♠'}</div>
-            <h2>{st.result.winners.includes(mySide) ? (st.result.winners.length > 1 ? 'YOU TIED FOR FIRST!' : 'VICTORY!') : `${st.result.winners.map((w) => sideName(r, w, names)).join(' & ').toUpperCase()} WIN${r.partnerships || st.result.winners.length > 1 ? '' : 'S'}`}</h2>
+            <h2>{st.result.winners.includes(mySide) ? (st.result.winners.length > 1 ? 'YOU TIED FOR FIRST!' : 'VICTORY!') : winHeadline(st.result.winners.map((w) => sideName(r, w, names)), r.partnerships).toUpperCase()}</h2>
             {seriesChip()}
             {st.result.endReason === 'shotOut' && <div className="shot-out-banner" data-testid="shot-out">SHOT OUT</div>}
             <p className="muted" data-testid="end-reason">{endReasonText(r, st, (side) => sideName(r, side, names))} {st.history.length} hand{st.history.length === 1 ? '' : 's'} played.</p>
