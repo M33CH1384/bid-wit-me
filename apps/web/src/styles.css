@@ -695,7 +695,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 14px; padding: 12px 16px; }
 .tt-left, .tt-right { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .tt-recap { display: flex; flex-direction: column; gap: 8px; }
-.tt-team { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; grid-template-areas: "name books hand total" "bar bar bar bar"; align-items: center; gap: 4px 14px; padding: 10px 12px; background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px rgba(185,128,255,.2); clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%); }
+.tt-team { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name total" "line total" "players total" "bar bar"; align-items: center; gap: 4px 14px; padding: 10px 12px; background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px rgba(185,128,255,.2); clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%); }
 .tt-team.mine { background: rgba(245,197,66,.08); box-shadow: inset 3px 0 0 var(--gold), inset 0 0 0 1px rgba(245,197,66,.25); }
 .tt-team-name { grid-area: name; display: flex; flex-direction: column; gap: 4px; }
 .tt-team-name b { font-family: var(--display); font-size: 17px; letter-spacing: .04em; overflow-wrap: anywhere; }
@@ -708,8 +708,16 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-stat { display: flex; flex-direction: column; align-items: center; line-height: 1.05; text-align: center; }
 .tt-stat small { font-family: var(--display); font-weight: 700; font-size: 10px; letter-spacing: .12em; color: var(--muted); }
 .tt-stat b { font-family: var(--display); font-size: 24px; font-weight: 800; }
-.tt-stat.books { grid-area: books; }
-.tt-stat.hand { grid-area: hand; }
+/* "Bid 8 · Took 6 · SET · −80": the score pad's words, one readable line */
+.tt-line { grid-area: line; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; font-family: var(--display); font-weight: 700; font-size: 17px; letter-spacing: .02em; }
+.tt-line i { font-style: normal; color: var(--muted); }
+.tt-line .rchip { font-size: 12px; }
+.tt-line b { font-weight: 800; font-size: 19px; }
+.tt-line b.pos { color: #8dffab; } .tt-line b.neg { color: #ff9db0; }
+.tt-team ul.tt-players { grid-area: players; list-style: none; margin: 0; padding: 0; justify-content: flex-start; gap: 0 12px; font-size: 13px; }
+.tt-players b { color: #fff; font-weight: 700; }
+.tt-bags { font-size: 11px; color: var(--muted); }
+.rchip.bags { background: rgba(245,197,66,.14); color: var(--gold); }
 .tt-stat.total { grid-area: total; min-width: 64px; }
 .tt-stat.total b { font-size: 34px; color: #fff; text-shadow: 0 0 14px rgba(185,128,255,.8); }
 .tt-team.mine .tt-stat.total b { color: var(--gold); text-shadow: 0 0 14px rgba(245,197,66,.7); }
@@ -768,7 +776,8 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 }
 /* narrow phones: each team stacks as a card — name on top, stats in a row, nothing overflows */
 @media (max-width: 480px) {
-  .tt-team { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-areas: "name name name" "books hand total" "bar bar bar"; gap: 6px 8px; }
+  .tt-team { gap: 4px 10px; }
+  .tt-line { font-size: 16px; }
   .tt-stat b { font-size: 22px; }
   .tt-stat.total { min-width: 0; }
   .tt-stat.total b { font-size: 30px; }

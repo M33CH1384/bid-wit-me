@@ -127,7 +127,9 @@ function corner(ctx: CanvasRenderingContext2D, W: number, rank: string, suit: Su
 }
 
 function court(ctx: CanvasRenderingContext2D, W: number, H: number, rank: string, suit: Suit, color: string) {
-  const x = W * 0.27, y = H * 0.1, w = W * 0.46, h = H * 0.8;
+  // the frame stays right of the corner-index strip: in a phone fan only the left ~31% of a card shows, and a frame
+  // edge there read as a thin gold line cutting through the card (Release 6 hotfix, iPhone)
+  const x = W * 0.34, y = H * 0.1, w = W * 0.32, h = H * 0.8;
   const g = ctx.createLinearGradient(0, y, 0, y + h);
   const tint = color === RED ? ['#fde9e6', '#f6cfc7'] : ['#e9edf7', '#cfd6ea'];
   g.addColorStop(0, tint[0]!);
@@ -160,9 +162,9 @@ function court(ctx: CanvasRenderingContext2D, W: number, H: number, rank: string
   ctx.fillStyle = color;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = `700 ${W * 0.42}px Georgia, "Times New Roman", serif`;
+  ctx.font = `700 ${W * 0.3}px Georgia, "Times New Roman", serif`;
   ctx.fillText(rank, W / 2, y + h * 0.53);
-  drawSuit(ctx, suit, W / 2, y + h * 0.84, W * 0.13, color);
+  drawSuit(ctx, suit, W / 2, y + h * 0.84, W * 0.1, color);
 }
 
 function joker(ctx: CanvasRenderingContext2D, W: number, H: number, big: boolean) {
@@ -227,10 +229,11 @@ export function drawFace(card: Card, W: number, H: number, badge: boolean): HTML
   const suit = card[1] as Suit;
   const color = suit === 'H' || suit === 'D' ? RED : BLACK;
   if (rank === 'A') {
-    const big = suit === 'S' ? 0.5 : 0.34;
+    // the ace of spades' ring + big pip stay out of the exposed left strip too (no stray arc peeking out in a fan)
+    const big = suit === 'S' ? 0.3 : 0.3;
     if (suit === 'S') {
       ctx.beginPath();
-      ctx.arc(W / 2, H / 2, W * 0.32, 0, Math.PI * 2);
+      ctx.arc(W / 2, H / 2, W * 0.17, 0, Math.PI * 2);
       ctx.strokeStyle = '#c9a03c';
       ctx.lineWidth = W * 0.012;
       ctx.stroke();

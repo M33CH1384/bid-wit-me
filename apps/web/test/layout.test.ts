@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Vector3 } from 'three';
-import { type SeatPos, type Xform, handFan, makeCamera, ndcExtentX, opponentFan, pileSpot, trickSpot } from '../src/three/layout';
+import { type SeatPos, type Xform, fanLayout, handFan, makeCamera, ndcExtentX, opponentFan, pileSpot, trickSpot } from '../src/three/layout';
 
 // CSS-pixel viewports: iPhone SE, 12/13/14, 14 Pro Max, small Android, desktop, and iPhone landscape
 const VIEWPORTS: [number, number][] = [[320, 568], [375, 667], [390, 844], [393, 852], [430, 932], [360, 740], [1280, 800], [1920, 1080], [844, 390]];
@@ -85,6 +85,32 @@ describe('hand fan z-order', () => {
       expect(farthestRaised).toBeLessThan(nearestResting);
       expect(dist(fan[8]!)).toBeLessThan(dist(fan[7]!)); // fan order kept among raised cards
       expect(dist(handFan(aspect, n, 0, 0.24))).toBeLessThan(dist(fan[8]!)); // the selected card tops them all
+    }
+  });
+
+  it('neighbouring cards are far enough apart in depth for a 16-bit depth buffer (iPhone Safari: no edges bleeding through)', () => {
+    for (const aspect of [390 / 844, 16 / 9]) {
+      const cam = makeCamera(aspect); cam.updateMatrixWorld();
+      const dist = (t: { p: number[] }) => -new Vector3(t.p[0], t.p[1], t.p[2]).applyMatrix4(cam.matrixWorldInverse).z;
+      for (const n of [5, 13, 18]) {
+        const fan = Array.from({ length: n }, (_, i) => handFan(aspect, n, i, 0));
+        for (let i = 1; i < n; i++) expect(dist(fan[i - 1]!) - dist(fan[i]!)).toBeGreaterThan(0.005);
+        expect(dist(handFan(aspect, n, n - 1, 0.24))).toBeLessThan(Math.min(...fan.map(dist)));
+      }
+    }
+  });
+});
+
+describe('hand fan shape', () => {
+  it('each card is rolled to match the arc it sits on (no kinked end cards)', () => {
+    for (const aspect of [390 / 844, 16 / 9]) for (const n of [3, 5, 11, 13]) {
+      const L = fanLayout(aspect, n, 0, {});
+      const halfN = (n - 1) / 2;
+      for (let i = 0; i < n; i++) {
+        const x = (i - halfN) * L.step;
+        const roll = -((i - halfN) / halfN) * L.maxRoll;
+        expect(Math.abs(Math.atan(2 * L.curveK * x) + roll)).toBeLessThan(0.03); // arc slope ≈ card tilt
+      }
     }
   });
 });

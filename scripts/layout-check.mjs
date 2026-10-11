@@ -186,7 +186,7 @@ async function talkCheck(page, tag) {
       const body = tt.querySelector('.tt-body');
       if (body && body.scrollWidth > body.clientWidth + 1) probs.push('recap scrolls sideways');
       for (const el of tt.querySelectorAll('*')) { const r = el.getBoundingClientRect(); if (r.width && (r.right > W + 1 || r.left < -1)) { probs.push(`${el.className || el.tagName} past the edge`); break; } }
-      document.querySelectorAll('[data-testid^="recap-total-"], [data-testid^="recap-books-"]').forEach((el) => { const r = el.getBoundingClientRect(), t = el.closest('.tt-team').getBoundingClientRect(); if (r.right > t.right + 1 || r.left < t.left - 1) probs.push(`${el.dataset.testid} clipped`); });
+      document.querySelectorAll('[data-testid^="recap-total-"], [data-testid^="recap-line-"], [data-testid^="recap-players-"]').forEach((el) => { const r = el.getBoundingClientRect(), t = el.closest('.tt-team').getBoundingClientRect(); if (r.right > t.right + 1 || r.left < t.left - 1) probs.push(`${el.dataset.testid} clipped`); });
       const ready = document.querySelector('[data-testid="talk-ready"]')?.getBoundingClientRect();
       if (!ready || ready.bottom > H + 1 || ready.right > W + 1) probs.push('Ready / Continue not on screen');
       return probs;

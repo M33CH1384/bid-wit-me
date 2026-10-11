@@ -7,7 +7,7 @@ const outFile = process.argv[2] ?? 'screenshots/release-3/hand.png';
 const base = process.argv[3] ?? 'http://localhost:4173';
 const w = Number(process.argv[4] ?? 1440), h = Number(process.argv[5] ?? 900);
 const b = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl'] });
-const p = await (await b.newContext({ viewport: { width: w, height: h } })).newPage();
+const p = await (await b.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: Number(process.env.DPR ?? 1), isMobile: w < 600, hasTouch: w < 600 })).newPage();
 await p.goto(base);
 await p.evaluate(() => { localStorage.clear(); localStorage.setItem('bwm.tips', JSON.stringify({ on: false, asked: true })); localStorage.setItem('spades.settings.v2', JSON.stringify({ mode: 'joker', speed: 'fast', blindNil: 'never', quality: 'high', firstHandBidsItself: true })); });
 await p.goto(`${base}/?autostart=1&seed=hand-contrast`);

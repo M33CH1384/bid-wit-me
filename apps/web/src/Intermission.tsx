@@ -1,5 +1,6 @@
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
-import { type GameState, isNilBid } from '@spades/rules';
+import { type GameState, bidLabel, isNilBid } from '@spades/rules';
+import { resultChips, signed } from './ScorePad';
 import type { ChatMsg } from './overlay';
 import { sideName } from './Modals';
 import { handWinner, streakLabel, streakOf } from './fx';
@@ -87,38 +88,38 @@ export function Intermission({
             {teamEdit && <div className="tt-team-edit"><small>YOUR TEAM NAME</small>{teamEdit}</div>}
             <div className="tt-recap" data-testid="talk-recap">
               {sides.map((s) => {
-                const books = s.bookPoints > 0 || s.seats.every((x) => rec.bids[x] === 'books');
+                // same words as the score pad: "Bid 8 · Took 6 · SET · −80", then "You: bid 5, took 4" per player
+                const books = s.seats.every((x) => rec.bids[x] === 'books');
                 const pct = Math.max(0, Math.min(1, s.totalScore / target));
-                const verdict = books ? { t: 'BOOKS', ok: true } : s.contractMade === null ? null : { t: s.contractMade ? 'MADE' : 'SET', ok: s.contractMade };
+                const chips = resultChips(r, rec, s, st);
+                const main = chips.find((c) => c.kind === 'made' || c.kind === 'set' || c.kind === 'books');
+                const bidPart = books ? 'Books (hand 1)' : s.contract ? `Bid ${s.contract}` : `Bid ${s.seats.map((x) => bidLabel(rec.bids[x]!)).join(' + ')}`;
                 return (
                   <div key={s.side} className={`tt-team ${s.side === mySide ? 'mine' : ''}`} data-testid={`recap-side-${s.side}`}>
                     <div className="tt-team-name">
                       <b>{sideName(r, s.side, names)}</b>
-                      <span className="tt-badges">
-                        {verdict && <span className={`tt-verdict ${verdict.ok ? 'ok' : 'bad'}`}>{verdict.t}</span>}
-                        {s.nils.map((nl) => <span key={nl.seat} className={`tt-verdict nilb ${nl.made ? 'ok' : 'bad'}`}>{rec.bids[nl.seat] === 'blindNil' ? 'BLIND NIL' : 'NIL'} {nl.made ? '✓' : '✗'} {nl.points > 0 ? '+' : ''}{nl.points}</span>)}
-                        {!books && s.bagsAdded > 0 && <span className="tt-verdict bags">+{s.bagsAdded} bag{s.bagsAdded === 1 ? '' : 's'}</span>}
-                        {s.bagPenaltyCount > 0 && <span className="tt-verdict bad">BAG PENALTY {s.bagPenaltyPoints}</span>}
+                      <span className="tt-badges chips">
+                        {chips.map((c) => <em key={c.text} className={`rchip ${c.kind}`}>{c.text}</em>)}
+                        {!books && s.bagsAdded > 0 && <em className="rchip bags">+{s.bagsAdded} bag{s.bagsAdded === 1 ? '' : 's'}</em>}
+                        {s.bagPenaltyCount > 0 && <em className="rchip set">Bag penalty {signed(s.bagPenaltyPoints)}</em>}
                       </span>
                     </div>
-                    <div className="tt-stat books" title="books / bid">
-                      <small>BOOKS/BID</small>
-                      <b data-testid={`recap-books-${s.side}`}>{books ? `${s.tricks}` : s.contract ? `${s.contractTricks}/${s.contract}` : `${s.tricks}/—`}</b>
-                      <span className="tt-players">
-                        {s.seats.map((x) => {
-                          const bd = rec.bids[x]!;
-                          return <span key={x}>{names[x]} {rec.tricksWon[x]}/{bd === 'books' ? '—' : isNilBid(bd) ? <em className="nil-tag">{bd === 'blindNil' ? 'BN' : 'NIL'}</em> : bd}</span>;
-                        })}
-                      </span>
+                    <div className="tt-line" data-testid={`recap-line-${s.side}`}>
+                      <span>{bidPart}</span><i>·</i><span>Took {s.tricks}</span>
+                      {main && main.kind !== 'books' && <><i>·</i><em className={`rchip ${main.kind}`}>{main.text}</em></>}
+                      <i>·</i><b className={s.points < 0 ? 'neg' : 'pos'} data-testid={`recap-points-${s.side}`}>{signed(s.points)}</b>
                     </div>
-                    <div className="tt-stat hand">
-                      <small>HAND</small>
-                      <b className={s.points < 0 ? 'neg' : 'pos'}>{s.points > 0 ? '+' : ''}{s.points}</b>
-                    </div>
+                    <ul className="tt-players" data-testid={`recap-players-${s.side}`}>
+                      {s.seats.map((x) => {
+                        const bd = rec.bids[x]!;
+                        const bid = bd === 'books' ? null : isNilBid(bd) ? bidLabel(bd) : `bid ${bd}`;
+                        return <li key={x}><b>{names[x]}:</b> {bid ? `${bid}, took ${rec.tricksWon[x]}` : `took ${rec.tricksWon[x]}`}</li>;
+                      })}
+                    </ul>
                     <div className="tt-stat total">
                       <small>TOTAL</small>
                       <b data-testid={`recap-total-${s.side}`}>{s.totalScore}</b>
-                      <span className="tt-players">{s.totalBags} bag{s.totalBags === 1 ? '' : 's'}</span>
+                      <span className="tt-bags">{s.totalBags} bag{s.totalBags === 1 ? '' : 's'}</span>
                     </div>
                     <div className="tt-bar" aria-label={`${s.totalScore} of ${target}`}><i style={{ width: `${pct * 100}%` }} /><small>to {target}</small></div>
                   </div>

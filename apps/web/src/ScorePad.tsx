@@ -9,7 +9,7 @@ import { type ReactNode, useEffect, useRef } from 'react';
 import { type GameState, type HandRecord, type SideHandResult, type TableRules, bidLabel, firstHandMinOf, shotOutOn } from '@spades/rules';
 import { SEAT_COLORS } from './overlay';
 
-const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
+export const signed = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0');
 
 export function sideColor(r: TableRules, side: number): string {
   if (!r.partnerships) return SEAT_COLORS[side] ?? '#ddd';
@@ -25,7 +25,7 @@ export function rulesLine(r: TableRules): string {
   return parts.join(' · ');
 }
 
-function bidText(h: HandRecord, s: SideHandResult): string {
+export function bidText(h: HandRecord, s: SideHandResult): string {
   const bids = s.seats.map((x) => h.bids[x]!);
   if (bids.every((b) => b === 'books')) return 'Books (hand 1)';
   const labels = bids.map((b) => bidLabel(b));
@@ -34,8 +34,8 @@ function bidText(h: HandRecord, s: SideHandResult): string {
   return nums.length ? `${labels.join(' + ')} = ${s.contract}` : labels.join(' + ');
 }
 
-interface Chip { text: string; kind: 'made' | 'set' | 'nil-ok' | 'nil-bust' | 'shot' | 'books' | 'out' }
-function resultChips(r: TableRules, h: HandRecord, s: SideHandResult, st: Pick<GameState, 'result' | 'history'>): Chip[] {
+export interface Chip { text: string; kind: 'made' | 'set' | 'nil-ok' | 'nil-bust' | 'shot' | 'books' | 'out' }
+export function resultChips(r: TableRules, h: HandRecord, s: SideHandResult, st: Pick<GameState, 'result' | 'history'>): Chip[] {
   const out: Chip[] = [];
   const books = s.seats.every((x) => h.bids[x] === 'books');
   if (books) out.push({ text: `${s.tricks} books`, kind: 'books' });
