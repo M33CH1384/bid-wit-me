@@ -59,7 +59,6 @@ async function measure(page) {
     add('sound-dock', document.querySelector('.dock-btn'));
     add('banner', document.querySelector('.center-note'));
     add('chat', document.querySelector('.chat.open'));
-    add('trash-btn', document.querySelector('.trash-btn'));
     const L = window.__bwmLayout ?? { trick: [], hand: [] };
     const ov = (a, b, pad = 0) => a.x + pad < b.x + b.w && b.x + pad < a.x + a.w && a.y + pad < b.y + b.h && b.y + pad < a.y + a.h;
     const probs = [];

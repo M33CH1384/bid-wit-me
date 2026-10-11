@@ -239,7 +239,7 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
   return { msgs, push };
 }
 
-function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only', extra }: { msgs: ChatMsg[]; open: boolean; onToggle: () => void; onSend: (t: string) => void; unread: number; scope?: string; extra?: ReactNode }) {
+function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only', extra, trash }: { msgs: ChatMsg[]; open: boolean; onToggle: () => void; onSend: (t: string) => void; unread: number; scope?: string; extra?: ReactNode; trash?: ReactNode }) {
   const listRef = useRef<HTMLDivElement>(null);
   const [text, setText] = useState('');
   useEffect(() => { listRef.current?.scrollTo({ top: 1e6, behavior: 'smooth' }); }, [msgs, open]);
@@ -254,6 +254,7 @@ function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only',
     <>
       <div className="ctl-cluster" role="group" aria-label="Table controls">
         {extra}
+        {trash}
         <button type="button" className={`chat-toggle ${open ? 'open' : ''}`} onClick={onToggle} aria-label="Toggle chat">
           💬{!open && unread > 0 && <span className="unread">{unread}</span>}
         </button>
@@ -894,7 +895,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         ))}
       </div>
 
-      <ChatPanel msgs={msgs} open={chatOpen} onToggle={() => setChatOpen(!chatOpen)} onSend={(t) => push('You', t)} unread={unread} scope={online ? 'table' : undefined} extra={online ? online.controls : <OfflineMediaBar />} />
+      <ChatPanel msgs={msgs} open={chatOpen} onToggle={() => setChatOpen(!chatOpen)} onSend={(t) => push('You', t)} unread={unread} scope={online ? 'table' : undefined} extra={online ? online.controls : <OfflineMediaBar />}
+        trash={!runFx && !modalOpen ? <TrashTalkButton st={st} me={HUMAN} intensity={intensity} onSend={(t) => push('You', t)} /> : null} />
       {help && !bidTurn && view.hand && view.hand.length > 0 && st.phase !== 'handOver' && st.phase !== 'gameOver' && (
         <div className="bid-coach-float glass slant"><BidCoach view={view} startOpen title="COUNT YOUR BOOKS" onClose={() => setHelp(false)} /></div>
       )}
@@ -958,7 +960,6 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       {canRun && <RunItButton tip={runTip} onDismissTip={() => setRunTip(false)} onRun={() => { setRunTip(false); setSelected(null); apply({ type: 'runIt', seat: HUMAN }); }} />}
       {runFx?.phase === 'zoom' && <RunZoom cards={runFx.cards} who={runFx.claimer === HUMAN ? 'You' : names[runFx.claimer]!} line={runLine} r={r} />}
       {callout && !runFx && <div className={`trash-callout seat-${pos[callout.seat]}`} key={callout.id} data-testid="trash-callout"><b>{callout.seat === HUMAN ? 'You' : names[callout.seat]}</b>{showLine(callout.text)}</div>}
-      {!runFx && !modalOpen && <TrashTalkButton st={st} me={HUMAN} intensity={intensity} onSend={(t) => push('You', t)} />}
       {runFx && <button type="button" className="run-skip" data-testid="run-skip" aria-label="Skip" onClick={endRun}><span>Tap to skip</span></button>}
       {badgeToast && BADGES[badgeToast] && (
         <div className="badge-unlock glass slant" role="status" data-testid="badge-unlock" onClick={() => setBadgeToast(null)}>
