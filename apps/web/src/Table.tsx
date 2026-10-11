@@ -849,7 +849,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           </div>
         </div>
         {helpButton}
-        <button type="button" className="bug-btn" onClick={() => setShowPad(true)} aria-label="Score pad">📋</button>
+        <button type="button" className="bug-btn" onClick={() => setShowPad(true)} aria-label="Score pad and house rules" data-testid="scorepad-button">📋</button>
         <button type="button" className="bug-btn q" onClick={() => onQuality(settings.quality === 'high' ? 'low' : 'high')} aria-label="Toggle graphics quality">{settings.quality === 'high' ? 'HQ' : 'LQ'}</button>
         {/* the always-visible sound dock (main.tsx) sits on this slot */}
         <span className="bug-btn dock-slot" aria-hidden />
