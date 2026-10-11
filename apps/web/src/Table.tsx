@@ -1,6 +1,6 @@
 import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
-  type Card, type GameState, type PlayerView, type Play, type TableRules, radioactiveBigJoker, isNukeTrick, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, partnerOf, sideOf, sortHand, trumpOrder,
+  type Card, type GameState, type PlayerView, type Play, type TableRules, radioactiveBigJoker, viewFor, isNukeTrick, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, partnerOf, sideOf, sortHand, trumpOrder,
 } from '@spades/rules';
 import { ScorePad, defaultSideName, setTeamNames, sideName } from './Modals';
 import { LockedRulesPanel } from './LockedRules';
@@ -8,6 +8,7 @@ import { type Series, addSeriesGame, seriesSides, summarizeGame } from '@spades/
 import { SeriesChip, SeriesSheet, loadSeries, saveSeries } from './Series';
 import { TeamNameField, myTeamName, useMyTeamName } from './TeamName';
 import { offlineTalk } from './offlineTalk';
+import { BidOrder, PartnerTalk } from './PartnerTalk';
 import { setTableIntensity, showLine, speakBot, useTalkPrefs } from './talkPrefs';
 import { pickTeamName } from '@spades/protocol';
 import { Intermission, calloutsFor } from './Intermission';
@@ -37,7 +38,7 @@ import { TrashTalkButton } from './TrashTalk';
 import { isPromoted } from './cardFaces';
 import { QUICK_TRASH_SET } from './quickTrash';
 import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
-import { type TalkIntensity, botSkillFor, personaForName, personaTag, pickBotNames } from '@spades/bots';
+import { type TalkIntensity, botHint, botSkillFor, personaForName, personaTag, pickBotNames } from '@spades/bots';
 import { preloadVoice } from './voices/voices';
 const Scene = lazy(() => import('./three/Scene'));
 
@@ -107,6 +108,8 @@ export interface OnlineBinding {
   botSeats?: number[];
   /** the host's trash-talk intensity */
   talkIntensity?: TalkIntensity;
+  /** partner talk during bidding (partner-only chat line) */
+  sendPartner?: (text: string) => void;
 }
 
 interface Props {
@@ -148,8 +151,8 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
   const timers = useRef<number[]>([]);
   const namesRef = useRef(names);
   namesRef.current = names;
-  const push = useCallback((user: string, text: string, system = false, delay = 0, bot = false) => {
-    const add = () => setMsgs((m) => [...m.slice(-60), { id: idRef.current++, user, text, system, color: USER_COLORS[user] ?? SEAT_COLORS[namesRef.current.indexOf(user)] ?? '#ddd', ...(bot ? { bot: true } : {}) }]);
+  const push = useCallback((user: string, text: string, system = false, delay = 0, bot = false, partner = false) => {
+    const add = () => setMsgs((m) => [...m.slice(-60), { id: idRef.current++, user, text, system, color: USER_COLORS[user] ?? SEAT_COLORS[namesRef.current.indexOf(user)] ?? '#ddd', ...(bot ? { bot: true } : {}), ...(partner ? { partner: true } : {}) }]);
     if (delay) timers.current.push(window.setTimeout(add, delay));
     else add();
   }, []);
@@ -264,8 +267,8 @@ function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only',
         <header><span className="live-dot" /> LIVE CHAT <small>{scope}</small></header>
         <div className="chat-list" ref={listRef}>
           {msgs.map((m) => (
-            <div key={m.id} className={`chat-line ${m.system ? 'system' : ''}`}>
-              {m.system ? <span>{m.text}</span> : <><b style={{ color: m.color }}>{m.user}</b><span>{m.text}</span></>}
+            <div key={m.id} className={`chat-line ${m.system ? 'system' : ''} ${m.partner ? 'partner' : ''}`}>
+              {m.system ? <span>{m.text}</span> : <>{m.partner && <em className="partner-tag" title="Partner talk: only your partner sees this">🤝 PARTNER</em>}<b style={{ color: m.color }}>{m.user}</b><span>{m.text}</span></>}
             </div>
           ))}
         </div>
@@ -346,7 +349,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [botNames] = useState(() => (resume?.names?.length === n0 ? resume.names : offlineNames(n0, seed)));
   // bot skill per seat: the table setting (Mixed = a hidden, seeded roll per seat) + persona floors (the Hustler is Pro+)
   const levelFor = useCallback((seat: number) => botSkillFor(settings.botLevel, seed, seat, botNames[seat] ?? ''), [settings.botLevel, seed, botNames]);
-  const { st, view, pause, error, apply, introHand, dealing, k } = online ? online.source : useGame(initialRules, seed, levelFor, speed, resume?.state, learning && tipOpen, startDealer);
+  const partnerHint = useRef<{ hand: number; text: string } | null>(null);
+  const { st, view, pause, error, apply, introHand, dealing, k } = online ? online.source : useGame(initialRules, seed, levelFor, speed, resume?.state, learning && tipOpen, startDealer, partnerHint);
   useEffect(() => { online?.setLearning?.(learning); }, [learning]); // eslint-disable-line react-hooks/exhaustive-deps
   const r = st.rules;
   const n = r.playerCount;
@@ -360,6 +364,23 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [toasts, setToasts] = useState<Toast[]>([]);
   const localChat = useChat(st, names, resume?.chat);
   const { msgs: rawMsgs, push } = online ? online.chat : localChat;
+  // partner talk (team games, bidding only): online via the server's partner-only channel; offline my bot partner hears it
+  const partnerSeat = r.partnerships ? (HUMAN + 2) % n : -1;
+  const sendPartner = (text: string) => {
+    if (online) { online.sendPartner?.(text); return; }
+    partnerHint.current = { hand: st.handNo, text };
+    localChat.push('You', text, false, 0, false, true);
+  };
+  // offline: on my bidding turn, a bot partner that hasn't bid yet says (vaguely) what it's got, partner-only
+  const hintedHand = useRef<number | null>(null);
+  useEffect(() => {
+    if (online || !r.partnerships || st.phase !== 'bidding' || st.turn !== HUMAN || dealing || st.bids[partnerSeat] !== null) return;
+    if (hintedHand.current === st.handNo) return;
+    hintedHand.current = st.handNo;
+    const t = window.setTimeout(() => localChat.push(names[partnerSeat]!, botHint(st.hands[partnerSeat]!, viewFor(st, partnerSeat)), false, 0, false, true), 500);
+    return () => clearTimeout(t);
+  }, [st, dealing]); // eslint-disable-line react-hooks/exhaustive-deps
+  const showPartnerTalk = r.partnerships && st.phase === 'bidding' && !dealing && !pause && (st.bids[HUMAN] === null || st.bids[partnerSeat] === null);
   const talkPrefs = useTalkPrefs();
   // trash-talk intensity is a table setting (offline: More options; online: the host); Family Friendly masks cursing
   const intensity = online ? (online.talkIntensity ?? 'cookout') : settings.talkIntensity;
@@ -879,7 +900,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
       {/* center notes */}
       <div className="center-note-wrap">
-        {st.phase === 'bidding' && !pause && st.turn !== HUMAN && <div className="center-note">{names[st.turn!]} is bidding…</div>}
+        {st.phase === 'bidding' && !pause && st.turn !== HUMAN && <div className="center-note" data-testid="bidding-note">{r.partnerships && st.turn === partnerSeat ? `Your partner ${names[st.turn!]} is bidding…` : `${names[st.turn!]} is bidding…`}</div>}
+        {st.phase === 'bidding' && !pause && !dealing && st.turn !== HUMAN && <BidOrder st={st} names={names} me={HUMAN} />}
         {isBooks && st.phase === 'playing' && !pause && !dealing && st.tricks.length === 0 && st.trick.plays.length === 0 && <div className="center-note books-note" data-testid="books-note">First hand: books bid themselves · 10 per book</div>}
         {st.phase === 'exchange' && !humanExchanging && <div className="center-note">{names[exchangeStep!.from]} passes {exchangeStep!.count} to {names[exchangeStep!.to]}…</div>}
       </div>
@@ -903,6 +925,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
       {/* the human's lower third + controls */}
       <section className="me">
+        {showPartnerTalk && <PartnerTalk partnerName={names[partnerSeat]!} onSend={sendPartner} />}
         {myTurn && !dealing && st.phase === 'bidding' && view.bidOptions && !autoReveal && (
           view.hand === null ? (
             <div className="bid-panel glass slant">
@@ -918,7 +941,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             <div className={`bid-panel glass slant ${coachBid ? 'with-coach' : ''}`}>
               <div className="bid-tip-slot" />
               {coachBid && <BidCoach key={bcKey} view={view} startOpen={help || bcOpen} />}
-              <div className="panel-title">YOUR BID{r.partnerships && typeof st.bids[2] === 'number' ? <small> · partner bid {st.bids[2]}</small> : null}</div>
+              <div className="panel-title">YOUR BID{r.partnerships && st.bids[2] !== null ? <small> · partner bid {bidLabel(st.bids[2]!)}</small> : r.partnerships ? <small> · partner bids right after you</small> : null}</div>
+              <BidOrder st={st} names={names} me={HUMAN} />
               <div className="bid-grid">
                 {Array.from({ length: view.bidOptions.max - view.bidOptions.min + 1 }, (_, i) => view.bidOptions!.min + i).map((b) => (
                   <button type="button" key={b} onClick={() => apply({ type: 'bid', seat: HUMAN, bid: b })}>{b}</button>

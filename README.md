@@ -58,6 +58,19 @@ node scripts/shots3d.mjs  # screenshots/3d/{phone,desktop}-{1-start,2-bidding,3-
   in localStorage (`bwm.sound.v1`). The iPhone silent switch mutes Web Audio.
 - Credits & licenses: `CREDITS.md` and the in-game Credits screen (includes the CC BY 4.0 line for "Chillin Hard").
 
+## Release 6: bidding order, partner talk, score pad
+
+- **Bidding order (team games):** the team WITHOUT the deal bids first, both partners back to back, then the dealer's
+  team: the dealer's partner, and the dealer last. Seats clockwise D, L, P, R → bids L, R, P, D. Play order is
+  unchanged (dealer's left leads the first trick, clockwise). Cutthroat bids clockwise from the dealer's left. Engine:
+  `bidOrder` / `nextBidder` in `packages/rules` (server-authoritative); the table shows a BID ORDER strip.
+- **Partner talk during bidding:** partners may talk books, vaguely, to agree on a total ("3-ish", "I'm weak", "I can
+  go Nil"); each still bids their own number. 🤝 Partner talk presets (team games, bidding only) go on a partner-only
+  channel (`chat` with `to: 'partner'`; the server only delivers it to the two partners, history included, and refuses
+  it once the first card is led). Bot partners hint their count (a range, from their real estimate) on your bidding
+  turn, and bots bidding after your hint take it into account (`packages/bots/src/partnerTalk.ts`). Partner mic mute
+  (host option) now applies only during trick play.
+
 ## Release 3 features
 
 - **First hand: books bid themselves** (house rule, on by default, toggle in setup / online lobby): hand 1 has no

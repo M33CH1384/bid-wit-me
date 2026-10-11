@@ -198,7 +198,7 @@ export function useOnlineChat(cs: ConnState, st: GameState | null, names: string
 function lineToMsg(l: ChatLine, you: string | null): ChatMsg {
   if (l.system || !l.from) return { id: l.id, user: 'System', text: l.text, system: true, color: '#b892ff' };
   const mine = l.from === you;
-  return { id: l.id, user: mine ? 'You' : l.name, text: l.text, color: mine ? '#f5c542' : colorFor(l.from), ...(l.bot ? { bot: true } : {}) };
+  return { id: l.id, user: mine ? 'You' : l.name, text: l.text, color: mine ? '#f5c542' : colorFor(l.from), ...(l.bot ? { bot: true } : {}), ...(l.partner ? { partner: true } : {}) };
 }
 
 /** Local-seat names: "You" at 0, then real names rotated. */

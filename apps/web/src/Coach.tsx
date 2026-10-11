@@ -114,7 +114,7 @@ export function tipsFor(c: CoachCtx): Tip[] {
     },
     {
       id: 'bid', title: 'Time to bid', anchor: '.bid-panel',
-      text: `Guess how many {books|book} you'll win this hand: that's your {bid}. The coach below counts your strong cards for you.${r.nil.allowed ? ` {Nil|nil} = you bet you'll win none (±${r.nil.value}).` : ''}`,
+      text: `Guess how many {books|book} you'll win this hand: that's your {bid}. The coach below counts your strong cards for you.${r.nil.allowed ? ` {Nil|nil} = you bet you'll win none (±${r.nil.value}).` : ''}${r.partnerships ? ' The team without the deal bids first, then the dealer\'s team (dealer last). You can talk books with your {partner} now (🤝 Partner talk, vague is fine: "3-ish"), but not once play starts.' : ''}`,
       when: (x) => x.myTurn && x.st.phase === 'bidding' && !!x.view.bidOptions && !!x.hand,
     },
     {

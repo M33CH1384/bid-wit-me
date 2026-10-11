@@ -18,6 +18,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
   const rot = source?.rot ?? null;
   const names = useMemo(() => (rot ? localNames(room, rot) : []), [room, rot]);
   const send = useCallback((text: string) => conn.send({ t: 'chat', text }), [conn]);
+  const sendPartner = useCallback((text: string) => conn.send({ t: 'chat', text, to: 'partner' }), [conn]);
   const chat = useOnlineChat(cs, source?.st ?? null, names, send);
   const skew = room.now - Date.now();
   const secs = useCountdown(room.deadline ? room.deadline - skew : null);
@@ -98,7 +99,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
         onRematch={() => conn.send({ t: 'rematch' })}
         onQuality={(quality) => { const s = { ...settings, quality }; setSettings(s); saveSettings({ ...loadSettings(), quality }); }}
         online={{
-          source, names, chat, seatExtra, sideLabel, teamNames, botSeats, revealed, talkIntensity: room.talkIntensity,
+          source, names, chat, seatExtra, sideLabel, teamNames, botSeats, revealed, talkIntensity: room.talkIntensity, sendPartner,
           setTeamName: cs.seat !== null && r.partnerships ? (name) => conn.send({ t: 'teamName', name }) : undefined,
           series: { series: room.series ?? null, mine: seriesMine },
           setLearning: (on) => conn.send({ t: 'learning', on }),

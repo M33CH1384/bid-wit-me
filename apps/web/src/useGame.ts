@@ -3,7 +3,7 @@ import { offlineTalk } from './offlineTalk';
 import { NUKE_ALLOWANCE_MS, RUN_FX_MS } from '@spades/protocol';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type Action, type GameState, type TableRules, applyAction, isNukeTrick, newGame, pendingTurn, secureSeed, viewFor } from '@spades/rules';
-import { type BotLevel, chooseBotAction } from '@spades/bots';
+import { type BotLevel, type PartnerHint, chooseBotAction, parseHint } from '@spades/bots';
 import { dealTimeline } from './three/dealTimeline';
 
 export const HUMAN = 0;
@@ -14,7 +14,7 @@ export const SPEEDS = { slow: 2.2, relaxed: 1.5, normal: 1, fast: 0.5, turbo: 0.
 
 /** `hold`: a tip is open — bots wait and a finished trick stays on the table until it's dismissed. */
 /** `botLevel`: one level for every bot, or a per-seat resolver (Mixed skill / persona floors). `dealer`: a rematch continues the deal rotation. */
-export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((seat: number) => BotLevel), speed: keyof typeof SPEEDS, resume?: GameState, hold = false, dealer?: number) {
+export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((seat: number) => BotLevel), speed: keyof typeof SPEEDS, resume?: GameState, hold = false, dealer?: number, partnerHint?: { current: { hand: number; text: string } | null }) {
   const [st, setSt] = useState<GameState>(() => resume ?? newGame(rules, seed, { dealer }));
   const levelRef = useRef(botLevel);
   levelRef.current = botLevel;
@@ -71,7 +71,10 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
     let t2 = 0;
     const t = setTimeout(() => {
       const lv = levelRef.current;
-      let action = chooseBotAction(viewFor(st, turn.seat), typeof lv === 'function' ? lv(turn.seat) : lv);
+      // my bot partner (seat 2) listens to what I said during bidding (partner talk)
+      const h = turn.kind === 'bid' && st.rules.partnerships && turn.seat === (HUMAN + 2) % st.rules.playerCount ? partnerHint?.current : null;
+      const hint: PartnerHint | null = h && h.hand === st.handNo ? parseHint(h.text) : null;
+      let action = chooseBotAction(viewFor(st, turn.seat), typeof lv === 'function' ? lv(turn.seat) : lv, undefined, hint);
       if (!action) return;
       // persona lean (kept only if legal)
       const leaned = offlineTalk.lean(action);
