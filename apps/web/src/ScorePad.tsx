@@ -5,7 +5,7 @@
  * labels inside every cell, team names in the team colour. The last scored hand is highlighted; the hand being
  * played shows as "in progress" with the bids so far.
  */
-import type { ReactNode } from 'react';
+import { type ReactNode, useEffect, useRef } from 'react';
 import { type GameState, type HandRecord, type SideHandResult, type TableRules, bidLabel, firstHandMinOf, shotOutOn } from '@spades/rules';
 import { SEAT_COLORS } from './overlay';
 
@@ -68,6 +68,9 @@ export function ScorePad({ st, names, onClose, locked, sideName }: { st: GameSta
   const lastNo = st.history[st.history.length - 1]?.handNo;
   const inProgress = st.phase !== 'gameOver' && st.phase !== 'handOver' && !st.history.some((h) => h.handNo === st.handNo);
   const seatName = (s: number) => names[s] ?? `Seat ${s + 1}`;
+  // open on the latest hand (the last scored one, or the one being played)
+  const lastRef = useRef<HTMLElement>(null);
+  useEffect(() => { lastRef.current?.scrollIntoView({ block: 'end' }); }, []);
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal glass slant score-pad" onClick={(e) => e.stopPropagation()} data-testid="score-pad">
@@ -79,7 +82,7 @@ export function ScorePad({ st, names, onClose, locked, sideName }: { st: GameSta
           </div>
           {st.history.length === 0 && !inProgress && <p className="muted">No hands scored yet.</p>}
           {st.history.map((h) => (
-            <section key={h.handNo} className={`pad-hand ${h.handNo === lastNo ? 'last' : ''}`} data-testid={`pad-hand-${h.handNo}`}>
+            <section key={h.handNo} ref={h.handNo === lastNo && !inProgress ? lastRef : undefined} className={`pad-hand ${h.handNo === lastNo ? 'last' : ''}`} data-testid={`pad-hand-${h.handNo}`}>
               <header className="pad-hand-head"><b>Hand {h.handNo}</b><span>{seatName(h.dealer)} dealt</span>{h.handNo === 1 && firstHandMinOf(r) && shotOutOn(r) ? <span className="pad-min">needs {firstHandMinOf(r)}+ books</span> : null}{h.handNo === lastNo && <span className="pad-last">{st.phase === 'gameOver' ? 'FINAL' : 'LAST HAND'}</span>}</header>
               {h.sides.map((s) => (
                 <div key={s.side} className="pad-row" style={{ ['--side' as string]: sideColor(r, s.side) }}>
@@ -99,7 +102,7 @@ export function ScorePad({ st, names, onClose, locked, sideName }: { st: GameSta
             </section>
           ))}
           {inProgress && (
-            <section className="pad-hand current" data-testid="pad-hand-current">
+            <section ref={lastRef} className="pad-hand current" data-testid="pad-hand-current">
               <header className="pad-hand-head"><b>Hand {st.handNo}</b><span>{seatName(st.dealer)} deals</span><span className="pad-last">IN PROGRESS</span></header>
               {sides.map((side) => {
                 const seats = r.partnerships ? [side, side + 2] : [side];

@@ -1311,3 +1311,9 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .team-row .team-name-edit { min-width: 0; max-width: 100%; flex-basis: 100%; }
 .team-name-edit input { min-width: 0; }
 .sf-row > span { flex: 1 1 160px; }
+/* partner talk stays clear of the right-hand controls (chat / cam / mic / talk trash) on phones */
+@media (max-width: 700px) { .me > .partner-talk { align-self: flex-start; width: min(520px, calc(100% - 58px)); } }
+.pts { position: relative; }
+.pts ul { position: absolute; z-index: 3; left: 0; top: calc(100% + 2px); white-space: nowrap; box-shadow: 0 6px 18px rgba(0,0,0,.5); background: rgba(14,8,26,.97); }
+/* modals clear the always-on sound dock (top-right) on phones */
+@media (max-width: 600px) { .modal-backdrop:not(.sheet-backdrop) { padding-top: calc(58px + env(safe-area-inset-top)); place-items: start center; } .modal-backdrop:not(.sheet-backdrop) > .modal { max-height: calc(100dvh - 74px - env(safe-area-inset-top)); } }
