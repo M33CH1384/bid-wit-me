@@ -62,6 +62,11 @@ export interface TableRules {
    * Default 4 in team modes, off in Cutthroat. Optional for older saves (undefined = the mode default).
    */
   firstHandMin?: 3 | 4 | 5 | null;
+  /**
+   * "Bags and penalties" (on by default; optional for older saves = on). Off: books over your bid are worth nothing
+   * (no +1, no bag count, no bag penalty).
+   */
+  bagsOn?: boolean;
 }
 
 /** The first-hand minimum in effect (resolves the mode default for older rules objects). */
@@ -69,11 +74,14 @@ export function firstHandMinOf(r: Pick<TableRules, 'firstHandMin' | 'partnership
   if (r.firstHandMin === undefined) return r.partnerships ? 4 : null;
   return r.firstHandMin;
 }
+export const bagsOnOf = (r: Pick<TableRules, 'bagsOn'>) => r.bagsOn !== false;
 export const shotOutOn = (r: Pick<TableRules, 'shotOut'>) => r.shotOut !== false;
 
 /**
- * Default removals. Joker deck (confirmed by Demetrius): remove 2♣ and 2♥; the 2♦ stays and is promoted to trump.
- * 3-player joker deck needs one more removal: 3♣ (our choice, the lowest remaining non-trump club).
+ * Default removals: always the lowest NON-TRUMP cards (never a spade, joker or promoted trump), fixed and known to
+ * everyone (shown in the setup summary and glossary). Joker deck (confirmed by Demetrius): remove 2♣ and 2♥; the 2♦ stays
+ * and is promoted to trump. 3-player (Cutthroat 3, 17 cards each, 17 books): standard 52 removes the 2♣ (51 cards);
+ * the joker deck (54) removes 2♣, 2♥, 3♣ in that order (51 cards).
  */
 export function defaultRemovedCards(deck: DeckKind, playerCount: 3 | 4): Card[] {
   if (deck === 'joker54') return playerCount === 4 ? ['2C', '2H'] : ['2C', '2H', '3C'];
@@ -110,7 +118,12 @@ export function defaultRules(mode: Mode, playerCount: 3 | 4 = 4): TableRules {
     case 'joker':
       return { ...BASE, mode, partnerships: true, playerCount: 4, deck: 'joker54', removedCards: defaultRemovedCards('joker54', 4), trumpOrderTop: [...JOKER_TRUMP_TOP], targetScore: 500, firstHandMin: 4 };
     case 'cutthroat':
-      return { ...BASE, mode, partnerships: false, playerCount, deck: 'joker54', removedCards: defaultRemovedCards('joker54', playerCount), trumpOrderTop: [...JOKER_TRUMP_TOP], targetScore: 300, firstHandMin: null };
+      // Cutthroat defaults (Demetrius): min bid 1, Nil on, Blind Nil off, bags on, first-hand minimum off, to 300
+      return {
+        ...BASE, mode, partnerships: false, playerCount, deck: 'joker54', removedCards: defaultRemovedCards('joker54', playerCount),
+        trumpOrderTop: [...JOKER_TRUMP_TOP], targetScore: 300, firstHandMin: null, minTeamBid: 1,
+        blindNil: { ...BASE.blindNil, allowed: false, onlyWhenBehindBy: null },
+      };
     case 'aceDown':
       return { ...BASE, mode, partnerships: true, playerCount: 4, deck: 'standard52', removedCards: [], trumpOrderTop: [], targetScore: 500, firstHandMin: 4 };
   }

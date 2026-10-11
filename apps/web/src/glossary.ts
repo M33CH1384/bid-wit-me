@@ -52,9 +52,11 @@ export function glossary(r: TableRules): Record<TermKey, Term> {
     broken: t('broken', 'Spades broken', `Nobody may start a book with ${tw.one} until someone has played one on another suit. After that, spades are "broken" and anyone can lead them.${r.spadesMustBeBroken ? '' : ' (This table lets you lead spades any time.)'}`),
     bid: t('bid', 'Bid', r.partnerships
       ? 'Before playing, you guess how many books you will win. Your bid plus your partner\'s is the team\'s goal for the hand. Bid order: the team without the deal bids first (both partners back to back), then the dealer\'s partner, and the dealer bids last. Play still starts left of the dealer. While bidding, partners may talk books, vaguely ("I got about 3", "I\'m weak"), to agree on a total, but each bids their own number. No partner talk once the first card is led.'
-      : 'Before playing, you guess how many books you will win this hand. Hit it to score.'),
+      : `Before playing, you guess how many books you will win this hand. Hit it to score. Bids go clockwise from the dealer's left. The lowest number you can bid is ${Math.max(1, r.minTeamBid)}; a bid of 0 is Nil${r.nil.allowed ? '' : ' (off at this table)'}.${n === 3 ? ` With 3 players the ${list(r.removedCards.map((c) => cardLabel(c)))} ${r.removedCards.length > 1 ? 'are' : 'is'} removed (the lowest non-trump cards), so everyone gets 17 cards and there are 17 books.` : ''}`),
     set: t('set', 'Set', `Winning fewer books than you bid. You lose 10 points for every book you bid. Getting the other ${r.partnerships ? 'team' : 'players'} set is the best feeling in the game.`),
-    bags: t('bags', 'Bags', `Extra books beyond your bid. Each is +1 point, but every ${r.bagsPerPenalty} bags cost ${Math.abs(r.bagPenalty)} points.`),
+    bags: t('bags', 'Bags', r.bagsOn === false
+      ? 'Extra books beyond your bid. Bags and penalties are off at this table: extra books score nothing.'
+      : `Extra books beyond your bid. Each is +1 point, but every ${r.bagsPerPenalty} bags cost ${Math.abs(r.bagPenalty)} points.`),
     nil: t('nil', 'Nil', r.nil.allowed
       ? `Bidding zero: you promise to win no books at all. Make it for +${r.nil.value}; win even one and it's −${r.nil.value}.`
       : 'Bidding zero (promising to win no books). It is turned off at this table.'),

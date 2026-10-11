@@ -14,7 +14,7 @@ import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk,
 import {
   type BotLevel, type ChatLine, type ClientMsg, type HostMusic, type MediaState, type RoomInfo, type RoomPhase, type SeatInfo, type ServerMsg,
   DEFAULT_AFK_LIMIT, LIMITS, PROTOCOL_VERSION, parseClientMsg,
-  NUKE_ALLOWANCE_MS, RUN_FX_MS, type NukeIntensity, type TalkIntensity, cleanTeamName, pickTeamName,
+  HAND_END_HOLD_MS, NUKE_ALLOWANCE_MS, RUN_FX_MS, type NukeIntensity, type TalkIntensity, cleanTeamName, pickTeamName,
 } from '@spades/protocol';
 import { blockLinks, cleanName, cleanText, maskProfanity } from './filter';
 
@@ -103,6 +103,8 @@ export interface RoomTiming {
   disconnectGraceMs: number;
   /** hand-results screen: auto-continue after this long even if not everyone pressed Next */
   handOverMs: number;
+  /** extra Table Talk lead-in while clients finish the hand's hype effects (default HAND_END_HOLD_MS; tests use 0) */
+  handEndHoldMs?: number;
 }
 
 /** learning mode (a player with tips on): their own turn timer runs this much longer */
@@ -777,7 +779,8 @@ export class Room {
         if (paused) { d.deadline = null; d.turnKey = null; this.io.setAlarm(null); return changed; }
         // after 'Run it!' the clients play the tornado first: Table Talk gets that much longer
         const ran = g.tricks.at(-1)?.plays.some((p) => p.run) ? RUN_FX_MS : 0;
-        d.deadline ??= now + (d.talkSec ? d.talkSec * 1000 : this.timing.handOverMs) + ran;
+        // clients hold Table Talk until the hand's hype effects finish (≤ HAND_END_HOLD_MS): the countdown starts after that
+        d.deadline ??= now + (d.talkSec ? d.talkSec * 1000 : this.timing.handOverMs) + ran + (this.timing.handEndHoldMs ?? HAND_END_HOLD_MS);
         if (now >= d.deadline) { this.nextHand(); changed = true; continue; }
         this.io.setAlarm(d.deadline);
         return changed;

@@ -115,32 +115,45 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
               <Row label="2♣ leads first trick" hint={rules.firstLead !== s.firstLead ? 'not available: 2♣ removed' : undefined}>
                 <Toggle value={s.firstLead === 'twoOfClubs'} onChange={(v) => set('firstLead', v ? 'twoOfClubs' : 'leftOfDealer')} />
               </Row>
-              <Row label={rules.partnerships ? 'Minimum team bid' : 'Minimum bid'}>
-                <select value={s.minTeamBid} onChange={(e) => set('minTeamBid', Number(e.target.value))}>
-                  {[0, 2, 4, 5].map((n) => <option key={n} value={n}>{n === 0 ? 'None' : n}</option>)}
-                </select>
-              </Row>
+              {rules.partnerships ? (
+                <Row label="Minimum team bid">
+                  <select value={s.minTeamBid} onChange={(e) => set('minTeamBid', Number(e.target.value))}>
+                    {[0, 2, 4, 5].map((n) => <option key={n} value={n}>{n === 0 ? 'None' : n}</option>)}
+                  </select>
+                </Row>
+              ) : (
+                <Row label="Minimum bid" hint="0 is always Nil">
+                  <select data-testid="cut-min-bid" value={s.cutMinBid ?? 1} onChange={(e) => set('cutMinBid', Number(e.target.value) as Settings['cutMinBid'])}>
+                    {[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n}{n === 1 ? ' (default)' : ''}</option>)}
+                  </select>
+                </Row>
+              )}
               <Row label="Nil allowed"><Toggle value={s.nilAllowed} onChange={(v) => set('nilAllowed', v)} /></Row>
-              <Row label="Blind Nil">
-                <select value={s.blindNil} onChange={(e) => set('blindNil', e.target.value as Settings['blindNil'])}>
-                  <option value="behind100">When behind by 100+</option>
-                  <option value="always">Always</option>
-                  <option value="off">Off</option>
-                </select>
-              </Row>
+              {rules.partnerships ? (
+                <Row label="Blind Nil">
+                  <select value={s.blindNil} onChange={(e) => set('blindNil', e.target.value as Settings['blindNil'])}>
+                    <option value="behind100">When behind by 100+</option>
+                    <option value="always">Always</option>
+                    <option value="off">Off</option>
+                  </select>
+                </Row>
+              ) : (
+                <Row label="Blind Nil allowed"><Toggle label="Allow Blind Nil" value={!!s.cutBlindNil} onChange={(v) => set('cutBlindNil', v)} /></Row>
+              )}
               {rules.partnerships && (
                 <>
                   <Row label="Blind Nil card exchange"><Toggle value={s.blindNilExchange === 2} onChange={(v) => set('blindNilExchange', v ? 2 : 0)} /></Row>
                   <Row label="Failed-nil tricks help partner" hint="Off: they count as bags"><Toggle value={s.nilTricksCountForPartner} onChange={(v) => set('nilTricksCountForPartner', v)} /></Row>
                 </>
               )}
-              <Row label="Bag penalty">
+              <Row label="Bags and penalties" hint={s.bagsOn === false ? 'Off: books over your bid score nothing' : undefined}><Toggle label="Bags and penalties" value={s.bagsOn !== false} onChange={(v) => set('bagsOn', v)} /></Row>
+              {s.bagsOn !== false && <Row label="Bag penalty">
                 <select value={s.bags} onChange={(e) => set('bags', e.target.value as Settings['bags'])}>
                   <option value="10/100">10 bags = −100</option>
                   <option value="10/50">10 bags = −50</option>
                   <option value="5/50">5 bags = −50</option>
                 </select>
-              </Row>
+              </Row>}
               <Row label="10 for 200"><Toggle value={s.tenForTwoHundred} onChange={(v) => set('tenForTwoHundred', v)} /></Row>
             </div>
           )}

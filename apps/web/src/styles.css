@@ -1317,3 +1317,21 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .pts ul { position: absolute; z-index: 3; left: 0; top: calc(100% + 2px); white-space: nowrap; box-shadow: 0 6px 18px rgba(0,0,0,.5); background: rgba(14,8,26,.97); }
 /* modals clear the always-on sound dock (top-right) on phones */
 @media (max-width: 600px) { .modal-backdrop:not(.sheet-backdrop) { padding-top: calc(58px + env(safe-area-inset-top)); place-items: start center; } .modal-backdrop:not(.sheet-backdrop) > .modal { max-height: calc(100dvh - 74px - env(safe-area-inset-top)); } }
+
+/* Cutthroat bid options (setup) + the one-line table summary */
+.ess-row.cut-toggles { display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: flex-start; }
+.ess-row.cut-toggles label { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; min-width: 0; }
+.rules-summary { margin: 2px 0 0; font-size: 12.5px; line-height: 1.45; opacity: .82; text-align: center; overflow-wrap: anywhere; letter-spacing: .01em; }
+.lobby .rules-summary { text-align: left; padding: 6px 2px 0; }
+
+/* Stand-in table: painted on the first frame, until the 3D table has rendered (then it fades out) */
+.table-placeholder { position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; display: grid; place-items: center;
+  background: radial-gradient(120% 80% at 50% 38%, #24123a 0%, #120a1c 55%, #0c0712 100%); transition: opacity .45s ease; }
+.table-placeholder.gone { opacity: 0; visibility: hidden; transition: opacity .45s ease, visibility 0s .45s; }
+.tp-table { position: absolute; left: 50%; top: 52%; width: min(128vw, 88vh); aspect-ratio: 1.5; border-radius: 46%; padding: clamp(12px, 3vw, 26px); transform: translate(-50%, -50%) perspective(900px) rotateX(36deg);
+  background: radial-gradient(60% 60% at 50% 30%, #b0703f, #6e3f22 70%, #3b2112); box-shadow: 0 30px 60px rgba(0,0,0,.6), inset 0 2px 0 rgba(255,220,180,.25); }
+.tp-felt { width: 100%; height: 100%; border-radius: 50%; display: grid; place-items: center;
+  background: radial-gradient(70% 70% at 50% 45%, #13804f 0%, #0d6a45 55%, #084a30 100%); box-shadow: inset 0 0 0 2px rgba(217,176,74,.35), inset 0 8px 24px rgba(0,0,0,.45); }
+.tp-felt img { width: 34%; opacity: .14; }
+.tp-note { position: absolute; bottom: 30%; font-family: var(--display); letter-spacing: .12em; font-size: 13px; color: var(--muted); animation: tp-pulse 1.4s ease-in-out infinite; }
+@keyframes tp-pulse { 50% { opacity: .45; } }

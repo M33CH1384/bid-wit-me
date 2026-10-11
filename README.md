@@ -31,7 +31,13 @@ node scripts/shots3d.mjs  # screenshots/3d/{phone,desktop}-{1-start,2-bidding,3-
 - **Joker Spades 2v2:** 2♣ and 2♥ removed. Trumps from highest: Big Joker › Little Joker › 2♦ › 2♠ › A♠ … 3♠.
   The 2♦ counts as a spade (diamonds have no 2). The classic order (2♥ 2♦ removed, BJ › LJ › A♠ … 2♠) is a house-rule option.
 - **Cutthroat:** each player for themselves, target 300. The host picks the **Joker deck (default, same trump order)** or a **standard 52**.
-  3-player games deal 17 each: Joker deck removes 2♣ 2♥ 3♣, standard deck removes 2♣.
+  4-player: all cards (52 after the Joker deck's 2♣ 2♥), 13 each, 13 books. 3-player: 17 each, 17 books, by removing
+  the lowest NON-TRUMP cards, fixed and shown in the setup summary + glossary (never a spade, joker or promoted 2♦):
+  standard deck removes the 2♣; Joker deck (54) removes 2♣, 2♥, 3♣.
+  No teams: bids, scoring, bags and Shot = out are per player (first-hand minimum off). Bids go clockwise from the
+  dealer's left. Host / offline settings, locked once the game starts: target 300 (default) / 500 / 250, minimum bid
+  1–4 (default 1), Allow Nil (on), Allow Blind Nil (off), Bags and penalties (on; off = books over your bid score
+  nothing). A bid of 0 is always Nil (Nil scoring); with Nil off, 0 can't be picked. Bots follow the same options.
 - **Ace Down:** standard 52, no jokers, aces highest, regular Spades bidding and scoring, 2v2.
 - Everyone: spades must be broken, Nil ±100, Blind Nil ±200 (only when behind by 100+), bags 10 = −100, target 500, losing floor −200.
   All are configurable via `makeRules(mode, overrides)` and the House rules panel.

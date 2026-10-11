@@ -320,6 +320,46 @@ async function runItTest() {
 }
 if (!process.env.ONLY || process.env.ONLY === 'runit') await runItTest();
 
+// 2c. Hand end waits for the hype: last trick, my Big Joker over the Little Joker (nuke) makes our 10th book (Wheels).
+//     The nuke banner and the Wheels car must both finish BEFORE the scorecard (Table Talk) appears, with a beat after.
+async function handEndTest() {
+  const save = execFileSync('npx', ['tsx', 'scripts/handend-state.ts'], { encoding: 'utf8' });
+  await page.evaluate((save) => { localStorage.clear(); localStorage.setItem('bwm.tips', JSON.stringify({ on: false, asked: true })); localStorage.setItem('bwm.game', save); }, save);
+  await page.goto(base);
+  await page.locator('[data-testid="card-BJ"][data-legal="true"]').waitFor({ timeout: 60000 });
+  // record when each effect is on screen (every 40 ms)
+  await page.evaluate(() => {
+    const log = { nuke: [], car: [], talk: null, t0: performance.now() };
+    window.__handEnd = log;
+    const on = { nuke: false, car: false };
+    const tick = () => {
+      const t = Math.round(performance.now() - log.t0);
+      const now = { nuke: !!document.querySelector('[data-testid="nuke"]'), car: !!document.querySelector('[data-testid="wheels-fx"]') };
+      for (const k of ['nuke', 'car']) {
+        if (now[k] && !on[k]) log[k].push([t, null]);
+        if (!now[k] && on[k]) log[k].at(-1)[1] = t;
+        on[k] = now[k];
+      }
+      if (log.talk === null && document.querySelector('[data-testid="table-talk"]')) log.talk = t;
+      if (log.talk === null) setTimeout(tick, 40);
+    };
+    tick();
+  });
+  await tap(page.getByTestId('card-BJ')); await tap(page.getByTestId('card-BJ')).catch(() => {}); // select, then play
+  await page.getByTestId('table-talk').waitFor({ timeout: 30000 });
+  const log = await page.evaluate(() => ({ ...window.__handEnd, fired: window.__bwmFx.fired, held: window.__bwmFx.held }));
+  if (!log.nuke.length) throw new Error(`no nuke banner before the scorecard: ${JSON.stringify(log)}`);
+  if (!log.car.length) throw new Error(`no Wheels car before the scorecard: ${JSON.stringify(log)}`);
+  const ends = [...log.nuke, ...log.car].map(([, e]) => e);
+  if (ends.some((e) => e === null || e > log.talk)) throw new Error(`scorecard opened while an effect was still running: ${JSON.stringify(log)}`);
+  const lastEnd = Math.max(...ends);
+  if (log.talk - lastEnd < 900) throw new Error(`no beat between the last effect (${lastEnd} ms) and the scorecard (${log.talk} ms)`);
+  await shot('12-hand-end-after-hype');
+  await page.evaluate(() => localStorage.removeItem('bwm.game'));
+  console.log(`✓ Hand end waits for the hype: nuke ${log.nuke.map((x) => x.join('–')).join(',')} ms, Wheels car ${log.car.map((x) => x.join('–')).join(',')} ms, then a beat, scorecard at ${log.talk} ms`);
+}
+if (!process.env.ONLY || process.env.ONLY === 'handend') await handEndTest();
+
 async function playGame(mode, label, { shots = false, speed = 'turbo', extra = {} } = {}) {
   await page.evaluate(([m, sp, ex]) => localStorage.setItem('spades.settings.v2', JSON.stringify({ mode: m, speed: sp, blindNil: 'always', quality: 'low', ...ex })), [mode, speed, extra]);
   await page.goto(`${base}/?autostart=1&seed=e2e-${mode}-${extra.cutthroatDeck ?? ''}`);

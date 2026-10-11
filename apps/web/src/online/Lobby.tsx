@@ -8,7 +8,7 @@ import { TALK_INTENSITIES, type BotLevel } from '@spades/protocol';
 import { TALK_HINT } from '../MoreOptions';
 import { LockedRulesPanel } from '../LockedRules';
 import type { RoomInfo, SeatInfo } from '@spades/protocol';
-import { type ModeKey, type Settings, MODES, modeTitle, settingsToRules } from '../settings';
+import { type ModeKey, type Settings, MODES, modeTitle, rulesSummary, settingsToRules } from '../settings';
 import type { ConnState, TableConnection } from './connection';
 import { inviteLink } from './config';
 import { navigate } from './nav';
@@ -193,10 +193,29 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
                 <option value="full">Full Nuke (default)</option><option value="classic">Classic</option><option value="off">Off (banner + boom)</option>
               </select></span></label>
           )}
+          {settings.mode.startsWith('cutthroat') ? (
+            <>
+              <label className="row"><span className="row-label">Minimum bid<small>0 is always Nil</small></span><span className="row-control">
+                <select data-testid="lobby-min-bid" value={String(settings.cutMinBid ?? 1)} onChange={(e) => set('cutMinBid', Number(e.target.value) as Settings['cutMinBid'])}>
+                  {[1, 2, 3, 4].map((x) => <option key={x} value={x}>{x}{x === 1 ? ' (default)' : ''}</option>)}
+                </select></span></label>
+              <label className="row"><span className="row-label">Allow Nil</span><span className="row-control">
+                <button type="button" data-testid="lobby-nil" className={`toggle ${settings.nilAllowed ? 'on' : ''}`} role="switch" aria-checked={settings.nilAllowed} aria-label="Allow Nil" onClick={() => set('nilAllowed', !settings.nilAllowed)}><span /></button>
+              </span></label>
+              <label className="row"><span className="row-label">Allow Blind Nil</span><span className="row-control">
+                <button type="button" data-testid="lobby-blind-nil" className={`toggle ${!!settings.cutBlindNil ? 'on' : ''}`} role="switch" aria-checked={!!settings.cutBlindNil} aria-label="Allow Blind Nil" onClick={() => set('cutBlindNil', !settings.cutBlindNil)}><span /></button>
+              </span></label>
+            </>
+          ) : (
           <label className="row"><span className="row-label">Blind Nil</span><span className="row-control">
             <select value={settings.blindNil} onChange={(e) => set('blindNil', e.target.value as Settings['blindNil'])}>
               <option value="behind100">When behind by 100+</option><option value="always">Always</option><option value="off">Off</option>
             </select></span></label>
+          )}
+          <label className="row"><span className="row-label">Bags and penalties<small>off: books over your bid score nothing</small></span><span className="row-control">
+            <button type="button" data-testid="lobby-bags" className={`toggle ${settings.bagsOn !== false ? 'on' : ''}`} role="switch" aria-checked={settings.bagsOn !== false} aria-label="Bags and penalties" onClick={() => set('bagsOn', settings.bagsOn === false)}><span /></button>
+          </span></label>
+          <p className="rules-summary" data-testid="lobby-rules-summary">{rulesSummary(settingsToRules(settings))}</p>
           <label className="row"><span className="row-label">First hand: books bid themselves<small>No bidding in hand 1 · 10 points per book</small></span><span className="row-control">
             <button type="button" data-testid="books-toggle" className={`toggle ${settings.firstHandBidsItself !== false ? 'on' : ''}`} role="switch" aria-checked={settings.firstHandBidsItself !== false} aria-label="First hand: books bid themselves" onClick={() => set('firstHandBidsItself', settings.firstHandBidsItself === false)}><span /></button>
           </span></label>

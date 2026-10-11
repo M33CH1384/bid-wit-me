@@ -1,6 +1,6 @@
 import { Nuke3D, NukeGuard } from './Nuke3D';
 import { Tornado3D } from './Tornado3D';
-import { Environment, Html, useTexture } from '@react-three/drei';
+import { Environment, Html, Preload, useEnvironment, useTexture } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { type ReactNode, type RefObject, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { type Camera, type Group, type Mesh, type Object3D, type Texture, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, Matrix4, Quaternion, MeshPhysicalMaterial, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, Vector3 } from 'three';
@@ -18,6 +18,8 @@ import {
 
 export interface SceneProps {
   quality: 'high' | 'low';
+  /** the textured table has rendered its first frame (the placeholder fades out) */
+  onTableReady?: () => void;
   n: number;
   handNo: number;
   dealer: number;
@@ -125,15 +127,29 @@ function FxShake({ table }: { table: RefObject<Group | null> }) {
   return null;
 }
 
-function TableModel({ quality }: { quality: 'high' | 'low' }) {
+/**
+ * Table textures. High quality keeps 1k colour / normal maps; roughness maps are 512 at both levels (their detail
+ * doesn't show at table distance, and they were the heaviest files). HDRI: 512×256 (it's blurred + dimmed anyway).
+ */
+function tableTextureUrls(quality: 'high' | 'low'): string[] {
   const res = quality === 'high' ? '1k' : '512';
-  const [feltN, feltR, woodC, woodN, woodR] = useTexture([
+  return [
     `/assets/textures/scuba_suede_nor_gl_${res}.jpg`,
-    `/assets/textures/scuba_suede_rough_${res}.jpg`,
+    '/assets/textures/scuba_suede_rough_512.jpg',
     `/assets/textures/dark_wood_diff_${res}.jpg`,
     `/assets/textures/dark_wood_nor_gl_${res}.jpg`,
-    `/assets/textures/dark_wood_rough_${res}.jpg`,
-  ]) as Texture[];
+    '/assets/textures/dark_wood_rough_512.jpg',
+  ];
+}
+const HDRI_URL = '/assets/hdri/billiard_hall_512.hdr';
+/** Warm the loader caches (called from the splash / wizard via three/preload.ts). */
+export function preloadTableAssets(quality: 'high' | 'low'): void {
+  useTexture.preload(tableTextureUrls(quality));
+  if (quality === 'high') useEnvironment.preload({ files: HDRI_URL });
+}
+
+function TableModel({ quality, onReady }: { quality: 'high' | 'low'; onReady?: () => void }) {
+  const [feltN, feltR, woodC, woodN, woodR] = useTexture(tableTextureUrls(quality)) as Texture[];
   const invalidate = useThree((s) => s.invalidate);
   const mats = useMemo(() => {
     for (const t of [feltN!, feltR!]) { t.wrapS = t.wrapT = RepeatWrapping; t.repeat.set(2.2, 2.2); }
@@ -149,6 +165,11 @@ function TableModel({ quality }: { quality: 'high' | 'low' }) {
   }, [feltN, feltR, woodC, woodN, woodR, quality]);
   const geos = useMemo(() => ({ felt: feltGeometry(), rail: railGeometry(), body: bodyGeometry() }), []);
   const logo = useMemo(() => logoTexture(invalidate), [invalidate]);
+  // time-to-table marker (load checks): the first frame after the textured table mounted
+  useEffect(() => {
+    const w = window as unknown as { __bwmTableAt?: number };
+    requestAnimationFrame(() => requestAnimationFrame(() => { w.__bwmTableAt ??= performance.now(); onReady?.(); }));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <group>
       <mesh geometry={geos.felt} material={mats.felt} receiveShadow />
@@ -527,9 +548,14 @@ export default function Scene(props: SceneProps) {
       <color attach="background" args={['#0c0712']} />
       <fog attach="fog" args={['#0c0712', 7, 16]} />
       <Lights quality={props.quality} />
+      {/* the table never waits for the HDRI: separate boundaries, the environment fades in when it lands */}
       <Suspense fallback={null}>
-        {hi && <Environment files="/assets/hdri/billiard_hall_1k.hdr" environmentIntensity={0.55} background backgroundBlurriness={0.55} backgroundIntensity={0.22} />}
-        <group ref={tableGroup}><TableModel quality={props.quality} /></group>
+        {hi && <Environment files={HDRI_URL} environmentIntensity={0.55} background backgroundBlurriness={0.55} backgroundIntensity={0.22} />}
+      </Suspense>
+      <Suspense fallback={null}>
+        <group ref={tableGroup}><TableModel quality={props.quality} onReady={props.onTableReady} /></group>
+        {/* warm-up: compile every material + upload textures before the first real frame (no hitch on the deal) */}
+        <Preload all />
       </Suspense>
       {props.positions.map((p, seat) => <TurnRing key={seat} pos={p} n={props.n} active={props.turnSeat === seat} />)}
       <Cards {...props} aspect={aspect} fontsReady={fontsReady} safeFrac={safeFrac} />

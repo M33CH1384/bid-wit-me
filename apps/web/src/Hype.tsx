@@ -81,7 +81,7 @@ export default function Hype({ reduced, low = false }: { reduced: boolean; low?:
         </>
       )}
       {spark && <div key={`s${spark.id}`} className={`overcut-spark lvl${spark.level}`} style={{ left: spark.x, top: spark.y }} data-testid="overcut-spark"><i /><i /><i /><i /><i /><i /><i /><i /></div>}
-      {car && <WheelsCelebration key={car.id} id={car.id} who={car.who} reduced={reduced} low={low} onDone={() => setCar((c) => (c?.id === car.id ? null : c))} />}
+      {car && <WheelsCelebration key={car.id} id={car.id} who={car.who} reduced={reduced} low={low} onDone={() => { fx.carRelease?.(); fx.carRelease = null; setCar((c) => (c?.id === car.id ? null : c)); }} />}
       {pops.map((p) => (
         <div key={p.id} className={`hype-pop ${p.kind} lvl${p.level ?? 0}`} data-testid={`pop-${p.kind}`} role="status">
           <span className="hype-text">{p.text}</span>

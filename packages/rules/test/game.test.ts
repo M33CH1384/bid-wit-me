@@ -160,8 +160,8 @@ describe('bidding', () => {
     const off = makeRules('joker', { blindNil: { allowed: false, onlyWhenBehindBy: null } });
     expect(newGame(off, 'x').revealed.every(Boolean)).toBe(true);
   });
-  it('cutthroat blind nil compares you with the leader', () => {
-    const r = makeRules('cutthroat');
+  it('cutthroat blind nil (when turned on with "behind by 100") compares you with the leader', () => {
+    const r = makeRules('cutthroat', { blindNil: { allowed: true, onlyWhenBehindBy: 100 } });
     let st: GameState = { ...newGame(r, 'ct'), scores: [120, 10, 30, 0], phase: 'handOver', turn: null };
     st = applyAction(st, { type: 'nextHand' });
     expect(st.revealed).toEqual([true, false, true, false]);
@@ -350,7 +350,7 @@ describe('blind nil exchange', () => {
     expect(new Set(st.hands.flat()).size).toBe(52);
   });
   it('no exchange in cutthroat even if configured', () => {
-    const r = makeRules('cutthroat', { blindNil: { onlyWhenBehindBy: null, exchangeCards: 2 } });
+    const r = makeRules('cutthroat', { blindNil: { allowed: true, onlyWhenBehindBy: null, exchangeCards: 2 } });
     let st = newGame(r, 'ct');
     for (let i = 0; i < 4; i++) st = applyAction(st, { type: 'bid', seat: st.turn!, bid: i === 0 ? 'blindNil' : 3 });
     expect(st.phase).toBe('playing');

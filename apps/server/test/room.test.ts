@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { type Card, bidOrder, makeRules } from '@spades/rules';
 import { chooseBotAction } from '@spades/bots';
 import type { GameAction } from '@spades/protocol';
+import { HAND_END_HOLD_MS } from '@spades/protocol';
 import { BOT_NAMES } from '@spades/bots';
 import { FakeEnv } from './harness';
 
@@ -292,6 +293,40 @@ describe('game', () => {
     env.send('a', { t: 'rematch' });
     expect(env.room.data.phase).toBe('playing');
     expect(env.room.data.gamesPlayed).toBe(2);
+  });
+});
+
+describe('cutthroat 3 online', () => {
+  it('the removed 2♣ never reaches any client hand; options (min bid, Nil off, bags off) are enforced', () => {
+    const env = new FakeEnv(undefined, FAST);
+    const ps = ['a', 'b', 'c'].map((cid, i) => { const p = env.join(cid, ['Dee', 'Ray', 'Kim'][i]!); return { cid, ...p }; });
+    env.send('a', { t: 'config', rules: makeRules('cutthroat', { playerCount: 3, deck: 'standard52', minTeamBid: 2, nil: { allowed: false }, bagsOn: false, targetScore: 100, firstHandBidsItself: false }) });
+    ps.forEach((p, i) => env.send(p.cid, { t: 'sit', seat: i }));
+    env.send('a', { t: 'start' });
+    const cids = ps.map((p) => p.cid);
+    let checked = 0, nilTried = false;
+    for (let i = 0; i < 20000 && env.room.data.phase === 'playing'; i++) {
+      for (const cid of cids) {
+        const v = env.last(cid, 'state')?.view;
+        if (!v) continue;
+        expect(v.hand ?? []).not.toContain('2C');
+        if (v.hand) { expect(v.hand.length).toBeLessThanOrEqual(17); checked++; }
+        if (v.bidOptions) expect(v.bidOptions).toMatchObject({ min: 2, nil: false });
+        if (!nilTried && v.phase === 'bidding' && v.turn === v.seat) {
+          nilTried = true;
+          env.send(cid, { t: 'act', action: { type: 'bid', bid: 0 } });
+          expect(env.errors(cid).at(-1)!.code).toBe('NIL_NOT_ALLOWED');
+        }
+      }
+      if (!playTurn(env, cids)) env.advance(100);
+    }
+    expect(checked).toBeGreaterThan(0);
+    expect(nilTried).toBe(true);
+    const g = env.room.data.game!;
+    for (const h of g.history) {
+      for (const b of h.bids) expect(typeof b === 'number' && b >= 2).toBe(true);
+      for (const sd of h.sides) expect(sd.bagsAdded).toBe(0);
+    }
   });
 });
 
@@ -595,7 +630,8 @@ describe('table talk + host music', () => {
     env.advance(10);
     const st = env.last('a', 'state')!;
     expect(st.room.deadline! - st.room.now).toBeGreaterThan(40_000);
-    env.advance(46_000 + 6_000); // (+ the Run it! show when the hand ended on one)
+    expect(st.room.deadline! - st.room.now).toBeGreaterThan(45_000 + HAND_END_HOLD_MS - 100); // + the hand-end hype hold
+    env.advance(46_000 + HAND_END_HOLD_MS + 6_000); // (+ the Run it! show when the hand ended on one)
     expect(env.room.data.game!.phase).not.toBe('handOver');
   });
   it('host music: beats are synced by server start time; links are validated; only the host can change it', () => {

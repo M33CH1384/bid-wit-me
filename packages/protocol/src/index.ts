@@ -19,6 +19,14 @@ export const NUKE_ALLOWANCE_MS: Record<NukeIntensity, number> = { full: 4000, cl
 /** 'Run it!': how long clients play the slam + tornado before the hand's end shows (Table Talk waits this much longer). */
 /** zoom (1.5 s) + slam + cascade + tornado */
 export const RUN_FX_MS = 4800;
+/**
+ * End of a hand: clients hold the scorecard / Table Talk until every hype effect, banner and toast has finished
+ * (Wheels car, nuke, SHOT / streak pop-ups, scoring toasts), capped at HYPE_SETTLE_MAX_MS, then a HAND_END_BEAT_MS beat.
+ * The server adds the same worst case to the Table Talk deadline so the countdown players see is never cut short.
+ */
+export const HYPE_SETTLE_MAX_MS = 8000;
+export const HAND_END_BEAT_MS = 1200;
+export const HAND_END_HOLD_MS = HYPE_SETTLE_MAX_MS + HAND_END_BEAT_MS;
 export const PROTOCOL_VERSION = 1;
 
 /* ---------------------------------------------------------------- limits */

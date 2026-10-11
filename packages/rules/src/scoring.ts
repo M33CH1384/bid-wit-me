@@ -1,4 +1,4 @@
-import { type TableRules, firstHandMinOf, shotOutOn } from './config';
+import { type TableRules, bagsOnOf, firstHandMinOf, shotOutOn } from './config';
 
 /**
  * A bid: a number of tricks (≥1), Nil, or Blind Nil. A numeric 0 is normalised to 'nil'.
@@ -133,6 +133,7 @@ export function scoreHand(
       bagsAdded += contractTricks; // no contract: every trick is a bag
     }
 
+    if (!bagsOnOf(r)) bagsAdded = 0; // "Bags and penalties" off: overtricks score nothing and never add up to a penalty
     let totalBags = bags[side]! + bagsAdded;
     const bagPenaltyCount = Math.floor(totalBags / r.bagsPerPenalty);
     totalBags -= bagPenaltyCount * r.bagsPerPenalty;

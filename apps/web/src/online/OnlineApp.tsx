@@ -9,6 +9,7 @@ import { forgetToken, loadName, saveName } from './identity';
 import Lobby from './Lobby';
 import { codeFromPath, navigate } from './nav';
 import OnlineTable from './OnlineTable';
+import { preloadTable } from '../three/preload';
 import { useConn } from './useOnline';
 import { VideoMesh } from './video';
 import './online.css';
@@ -108,6 +109,7 @@ function TableRoom({ code, name }: { code: string; name: string }) {
 function TableRoomInner({ conn, code }: { conn: TableConnection; code: string }) {
   const cs = useConn(conn);
   const [settings, setSettings] = useState<Settings>(loadSettings);
+  useEffect(() => { preloadTable(settings.quality); }, [settings.quality]); // lobby: the 3D table loads while you wait
   const [lobbyOpen, setLobbyOpen] = useState(false);
   const [mesh, setMesh] = useState<VideoMesh | null>(null);
 

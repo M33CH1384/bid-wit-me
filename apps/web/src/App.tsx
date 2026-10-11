@@ -1,5 +1,6 @@
 import { saveSeries } from './Series';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { preloadTable } from './three/preload';
 import { secureSeed } from '@spades/rules';
 import Setup from './Setup';
 import { NowPlaying } from './SoundControls';
@@ -19,6 +20,9 @@ export default function App() {
     const saved = loadGame();
     return saved ? { seed: saved.seed, settings: saved.settings, resume: saved } : null;
   });
+
+  // splash / wizard: fetch the 3D table (Scene chunk, textures, HDRI) in the background so "Deal me in" lands on it
+  useEffect(() => { preloadTable(settings.quality); }, [settings.quality]);
 
   if (!game) {
     const saved = loadGame();

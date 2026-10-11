@@ -8,7 +8,14 @@
  * (see `osReducedMotion`) — the 3D explosion still plays. (Before v0.3.2 it silently switched the nuke to Off.)
  */
 import { useSyncExternalStore } from 'react';
+import { HYPE_SETTLE_MAX_MS } from '@spades/protocol';
 import { type Sfx, sound } from './audio';
+
+/** How long each effect stays on screen (ms): the hand-end hold waits these out. wheelsCar is released by the car itself. */
+const FX_HOLD_MS: Partial<Record<FxKind, number>> = {
+  streak: 2300, shot: 2000, gotShot: 1900, wheels: 1900, ranIt: 2700, hustled: 2000, overcut: 1700,
+  jokerBig: 1100, jokerLittle: 500, nuke: 3700, wheelsCar: 3000,
+};
 
 export type FxKind = 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak' | 'shot' | 'gotShot' | 'wheels' | 'wheelsCar' | 'overcut' | 'hustled' | 'ranIt';
 export interface FxEvent { id: number; kind: FxKind; at: number; level?: number; text?: string; sub?: string }
@@ -73,12 +80,58 @@ class FxBus {
 
   on(fn: (e: FxEvent) => void) { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; }
 
+  /* ----- pending-effects queue: the end of a hand waits for these before the scorecard / Table Talk opens ----- */
+  private holds = new Map<number, number>(); // hold id → expiry (performance.now ms)
+  private holdSeq = 1;
+  /** Marks an effect as running for up to `ms` (capped by HYPE_SETTLE_MAX_MS so nothing can hang). Returns a release. */
+  hold(ms: number, tag = 'fx'): () => void {
+    const id = this.holdSeq++;
+    this.holds.set(id, performance.now() + Math.min(Math.max(0, ms), HYPE_SETTLE_MAX_MS));
+    this.held[tag] = (this.held[tag] ?? 0) + 1;
+    return () => { this.holds.delete(id); };
+  }
+  /** counters of holds by tag (automated checks) */
+  held: Record<string, number> = {};
+  /** ms until every running effect has finished (0 = idle). */
+  pendingMs(): number {
+    const now = performance.now();
+    let end = now;
+    for (const [id, t] of this.holds) { if (t <= now) this.holds.delete(id); else end = Math.max(end, t); }
+    return end - now;
+  }
+  /** Emits later, holding the hand-end queue from now until the effect itself is done. */
+  later(kind: FxKind, delayMs: number, opts: Parameters<FxBus['emit']>[1] = {}): () => void {
+    const release = this.hold(delayMs + 100, `later:${kind}`);
+    const t = window.setTimeout(() => { this.emit(kind, opts); release(); }, delayMs);
+    return () => { clearTimeout(t); release(); };
+  }
+  /**
+   * Calls `cb` once every running effect has finished, then `beatMs` more. Never waits longer than `maxMs` (+ the beat)
+   * in total, so a stuck effect can't hang the game. Returns a cancel.
+   */
+  whenIdle(cb: () => void, beatMs = 0, maxMs = HYPE_SETTLE_MAX_MS): () => void {
+    const start = performance.now();
+    let t = 0, done = false;
+    const check = () => {
+      const left = this.pendingMs();
+      const waited = performance.now() - start;
+      if (left <= 0 || waited >= maxMs) { t = window.setTimeout(() => { done = true; cb(); }, beatMs); return; }
+      t = window.setTimeout(check, Math.min(left, maxMs - waited) + 20);
+    };
+    t = window.setTimeout(check, 30); // effects scheduled in the same render register first
+    return () => { if (!done) clearTimeout(t); };
+  }
+
   private lastNukeAt = -1e9;
+  /** the running Wheels car releases its hold when it drives off (WheelsCelebration onDone) */
+  carRelease: (() => void) | null = null;
   emit(kind: FxKind, opts: { level?: number; text?: string; sub?: string; silent?: boolean } = {}) {
     // one blast per nuked trick: the card's landing cue and the Table's watchdog may both ask for it
     if (kind === 'nuke') { const now = performance.now(); if (now - this.lastNukeAt < 4500) return; this.lastNukeAt = now; }
     const e: FxEvent = { id: this.seq++, kind, at: performance.now(), level: opts.level, text: opts.text, sub: opts.sub };
     this.fired[kind] = (this.fired[kind] ?? 0) + 1;
+    const holdMs = FX_HOLD_MS[kind];
+    if (holdMs) { const release = this.hold(holdMs, kind); if (kind === 'wheelsCar') this.carRelease = release; }
     if (!opts.silent) sound.play(sfxFor(e), { gain: 1 });
     if (!this.reduced && !this.osReducedMotion) {
       if (kind === 'jokerLittle') this.shake = { start: e.at, dur: 0.35, amp: 0.035 };

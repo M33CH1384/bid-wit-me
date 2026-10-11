@@ -1,7 +1,7 @@
 import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
 import { CODE_LENGTH, isRoomCode, normalizeRoomCode } from '@spades/protocol';
 import MoreOptions, { Seg, Toggle } from './MoreOptions';
-import { type ModeKey, type Settings, MODES } from './settings';
+import { type ModeKey, type Settings, MODES, rulesSummary, settingsToRules } from './settings';
 import { type TipsPref, isFirstVisit, loadTips, saveTips } from './tips';
 import { serverUrl } from './online/config';
 import { createTable, tableInfo } from './online/connection';
@@ -150,6 +150,21 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
         <Seg label="Deck" value={s.cutthroatDeck} options={[['joker54', 'Jokers'], ['standard52', 'Standard 52']]} onChange={(v) => set('cutthroatDeck', v)} />
       </div>
     );
+    // Cutthroat bid rules (locked once the game starts) + the one-line table summary for every mode
+    const cutRules = cut && (
+      <>
+        <div className="ess-row">
+          <span className="ess-label">Min bid<small>0 is always Nil</small></span>
+          <Seg label="Minimum bid" value={s.cutMinBid ?? 1} options={[[1, '1'], [2, '2'], [3, '3'], [4, '4']]} onChange={(v) => set('cutMinBid', v)} />
+        </div>
+        <div className="ess-row cut-toggles" data-testid="cut-toggles">
+          <label><span>Nil</span><Toggle label="Allow Nil" value={s.nilAllowed} onChange={(v) => set('nilAllowed', v)} /></label>
+          <label><span>Blind Nil</span><Toggle label="Allow Blind Nil" value={!!s.cutBlindNil} onChange={(v) => set('cutBlindNil', v)} /></label>
+          <label><span>Bags</span><Toggle label="Bags and penalties" value={s.bagsOn !== false} onChange={(v) => set('bagsOn', v)} /></label>
+        </div>
+      </>
+    );
+    const summary = <p className="rules-summary" data-testid="rules-summary">{rulesSummary(settingsToRules(s))}</p>;
     const tipsRow = (
       <div className="ess-row tips-row">
         <span className="ess-label">Show me how to play<small>tips + a bid coach as you play</small></span>
@@ -170,11 +185,13 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
               <Seg label="Target score" value={s.targetScore} options={[250, 300, 500].map((x) => (x === (cut ? 300 : 500) ? ['default', String(x)] : [x, String(x)])) as [number | 'default', string][]} onChange={(v) => set('targetScore', v)} />
             </div>
             {deck}
+            {cutRules}
+            {summary}
             {tipsRow}
             <button type="button" className="primary big go" data-testid="start-bots" onClick={onStart}>Deal me in</button>
           </div>
         ) : (
-          <OnlineEssentials settings={s} deck={deck} tipsRow={tipsRow} />
+          <OnlineEssentials settings={s} deck={deck} tipsRow={<>{summary}{tipsRow}</>} />
         )}
       </>
     );

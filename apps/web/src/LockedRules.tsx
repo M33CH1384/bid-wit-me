@@ -1,6 +1,6 @@
 import { type TableRules, firstHandMinOf, shotOutOn } from '@spades/rules';
 import { SKILL_SETTING_LABEL, TALK_INTENSITY_LABEL, type TalkIntensity, skillSettingOf } from '@spades/bots';
-import { modeTitle } from './settings';
+import { modeTitle, rulesSummary } from './settings';
 
 const NUKE_LABEL = { full: 'Full Nuke', classic: 'Classic', off: 'Off' } as const;
 
@@ -9,11 +9,12 @@ export function lockedRows(r: TableRules, o: { nuke?: keyof typeof NUKE_LABEL; s
   const min = firstHandMinOf(r);
   return [
     ['Mode', `${modeTitle(r)}${r.partnerships ? '' : r.deck === 'joker54' ? ' · Joker deck' : ' · Standard 52'}`],
+    ['Table', rulesSummary(r)],
     ['Target', String(r.targetScore)],
     ['Shot = out', shotOutOn(r) ? `On · first hand ${min === null ? 'no minimum' : `needs ${min}+ books`}` : 'Off'],
     ['First hand bids itself', r.firstHandBidsItself ? 'On' : 'Off'],
     ['Nil / Blind Nil', `${r.nil.allowed ? `Nil ${r.nil.value}` : 'No Nil'} · ${r.blindNil.allowed ? `Blind Nil ${r.blindNil.value}` : 'no Blind Nil'}`],
-    ['Bags', r.bagsPerPenalty > 0 ? `${r.bagsPerPenalty} bags = −${r.bagPenalty}` : 'Off'],
+    ['Bags', r.bagsOn !== false && r.bagsPerPenalty > 0 ? `${r.bagsPerPenalty} bags = −${r.bagPenalty}` : 'Off'],
     ...(r.deck === 'joker54' && o.nuke ? [['Nuke', NUKE_LABEL[o.nuke]] as [string, string]] : []),
     ...(o.skill !== undefined ? [['Bot skill', SKILL_SETTING_LABEL[skillSettingOf(o.skill)]] as [string, string]] : []),
     ...(o.intensity ? [['Trash talk', TALK_INTENSITY_LABEL[o.intensity]] as [string, string]] : []),

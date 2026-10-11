@@ -1,4 +1,4 @@
-import { CLASSIC_JOKER, type Mode, type RulesOverrides, type TableRules, makeRules } from '@spades/rules';
+import { CLASSIC_JOKER, cardLabel, type Mode, type RulesOverrides, type TableRules, makeRules } from '@spades/rules';
 import { type BotSkillSetting, skillSettingOf } from '@spades/bots';
 
 export type ModeKey = 'joker' | 'cutthroat4' | 'cutthroat3' | 'aceDown';
@@ -28,6 +28,12 @@ export interface Settings {
   shotOut: boolean;
   /** First hand (books bid themselves): fewer books than this is a shot. default = 4 in team modes, off in Cutthroat. */
   firstHandMin: 'default' | 3 | 4 | 5 | 'off';
+  /** Cutthroat: minimum positive bid (1–4, default 1). A bid of 0 is always Nil. */
+  cutMinBid: 1 | 2 | 3 | 4;
+  /** Cutthroat: Blind Nil allowed (default off). */
+  cutBlindNil: boolean;
+  /** "Bags and penalties" (default on). Off: overtricks are worth nothing and there is no bag penalty. */
+  bagsOn: boolean;
   /** Bot trash-talk intensity (table setting): family / cookout (default) / nomercy. */
   talkIntensity: 'family' | 'cookout' | 'nomercy';
   speed: 'slow' | 'relaxed' | 'normal' | 'fast' | 'turbo';
@@ -45,7 +51,7 @@ export const DEFAULT_SETTINGS: Settings = {
   mode: 'joker', targetScore: 'default', losingFloor: 'on', deuceOfSpadesHigh: false, jokerOrder: 'house',
   cutthroatDeck: 'joker54', spadesMustBeBroken: true, firstLead: 'leftOfDealer', minTeamBid: 0, nilAllowed: true,
   blindNil: 'behind100', blindNilExchange: 0, nilTricksCountForPartner: false, bags: '10/100', tenForTwoHundred: false,
-  firstHandBidsItself: true, botLevel: 'mixed', shotOut: true, firstHandMin: 'default', talkIntensity: 'cookout', speed: 'normal', quality: defaultQuality(),
+  firstHandBidsItself: true, botLevel: 'mixed', shotOut: true, firstHandMin: 'default', cutMinBid: 1, cutBlindNil: false, bagsOn: true, talkIntensity: 'cookout', speed: 'normal', quality: defaultQuality(),
 };
 
 export const MODES: { key: ModeKey; title: string; blurb: string; players: string }[] = [
@@ -70,6 +76,7 @@ export function settingsToRules(s: Settings): TableRules {
     firstHandBidsItself: s.firstHandBidsItself !== false,
     losingFloor: s.losingFloor === 'on' ? -200 : null,
     shotOut: s.shotOut !== false,
+    bagsOn: s.bagsOn !== false,
   };
   if (s.firstHandMin !== undefined && s.firstHandMin !== 'default') o.firstHandMin = s.firstHandMin === 'off' ? null : s.firstHandMin;
   if (s.targetScore !== 'default') o.targetScore = s.targetScore;
@@ -78,6 +85,9 @@ export function settingsToRules(s: Settings): TableRules {
   if (s.mode === 'cutthroat4' || s.mode === 'cutthroat3') {
     o.playerCount = s.mode === 'cutthroat3' ? 3 : 4;
     o.deck = s.cutthroatDeck;
+    // Cutthroat has its own bid settings: min positive bid 1–4, Blind Nil on/off (always available when on)
+    o.minTeamBid = [1, 2, 3, 4].includes(s.cutMinBid) ? s.cutMinBid : 1;
+    o.blindNil = { allowed: !!s.cutBlindNil, onlyWhenBehindBy: null, exchangeCards: 0 };
     if (s.cutthroatDeck === 'joker54' && classic) {
       o.trumpOrderTop = CLASSIC_JOKER.trumpOrderTop;
       o.removedCards = s.mode === 'cutthroat3' ? ['2C', '2H', '2D'] : CLASSIC_JOKER.removedCards;
@@ -110,6 +120,21 @@ export function normalizeSettings(j: Omit<Partial<Settings>, 'botLevel'> & { bot
 }
 export function saveSettings(s: Settings): void {
   try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* ignore */ }
+}
+
+/**
+ * One-line table summary for the setup screen, e.g.
+ * "4 players • 13 cards each • 13 books • Min bid 1 • Nil on • Blind Nil off • Bags on" (Cutthroat 3 adds "2♣ removed").
+ */
+export function rulesSummary(r: TableRules): string {
+  const hs = r.playerCount === 4 ? 13 : 17;
+  const removed = r.removedCards.length ? `${r.removedCards.map((c) => cardLabel(c)).join(' ')} removed` : null;
+  const parts = [`${r.playerCount} players`, `${hs} cards each`, `${hs} books`];
+  if (r.playerCount === 3 && removed) parts.push(removed);
+  if (r.partnerships) parts.push(r.minTeamBid ? `Team min ${r.minTeamBid}` : 'No team min');
+  else parts.push(`Min bid ${Math.max(1, r.minTeamBid)}`);
+  parts.push(`Nil ${r.nil.allowed ? 'on' : 'off'}`, `Blind Nil ${r.blindNil.allowed ? 'on' : 'off'}`, `Bags ${r.bagsOn !== false ? 'on' : 'off'}`);
+  return parts.join(' • ');
 }
 
 export function modeTitle(r: TableRules): string {

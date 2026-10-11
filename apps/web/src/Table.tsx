@@ -19,6 +19,7 @@ import { setFeedbackGame } from './feedbackContext';
 import { loadTipJar, openTip, saveTipJar, tipNudgeDue } from './support';
 import { OfflineMediaBar } from './online/Media';
 import { fireCue, fx, useReduceEffects } from './fx';
+import { loadScene } from './three/preload';
 import { endReasonText, onNoticeSides, shotChatLines } from './shotOut';
 import { type Sfx, sound } from './audio';
 import { type ChatMsg, LINES, SEAT_COLORS, TALK_LINES, type Toast, TickNumber, USER_COLORS, pick, toastsFor } from './overlay';
@@ -31,7 +32,7 @@ import { useViewport } from './viewport';
 import { Coach, LedSuitChip } from './Coach';
 import { type TipsPref, bumpTip, loadTips, saveTips, tipCount } from './tips';
 import { BidCoach } from './BidCoach';
-import { RUN_FX_MS } from '@spades/protocol';
+import { HAND_END_BEAT_MS, RUN_FX_MS } from '@spades/protocol';
 import { RUN_CASCADE_MS, RUN_IT_CALLOUTS, RUN_TORNADO_AFTER_MS, RUN_TORNADO_MS, RUN_ZOOM_MS } from './runIt';
 import { RunZoom } from './RunZoom';
 import { TrashTalkButton } from './TrashTalk';
@@ -40,7 +41,7 @@ import { QUICK_TRASH_SET } from './quickTrash';
 import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
 import { type TalkIntensity, botHint, botSkillFor, personaForName, personaTag, pickBotNames } from '@spades/bots';
 import { preloadVoice } from './voices/voices';
-const Scene = lazy(() => import('./three/Scene'));
+const Scene = lazy(loadScene);
 
 /**
  * "X TAKES IT": placed just above the trick (measured from the 3D layout), or below it when there's no room —
@@ -487,6 +488,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   type RunFx = { id: number; before: { st: GameState; view: PlayerView }; claimer: number; cards: Card[]; others: { seat: number; card: Card }[]; books: number; phase: 'zoom' | 'slam'; at: number };
   const [seen, setSeen] = useState<{ st: GameState; view: PlayerView }>(() => ({ st, view }));
   const [runFx, setRunFx] = useState<RunFx | null>(null);
+  const [tableReady, setTableReady] = useState(false);
+  const onTableReady = useCallback(() => setTableReady(true), []);
   if (seen.st !== st) {
     const b = seen.st;
     if (b.handNo === st.handNo && st.tricks.length > b.tricks.length && st.tricks[b.tricks.length]!.plays.some((p) => p.run)) {
@@ -689,14 +692,18 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [histTick, setHistTick] = useState(0);
   const ranWaited = useRef(-1);
   useEffect(() => {
+    // the hand's scoring toasts + hype wait until the last trick has been shown (incl. the nuke allowance), so the Wheels
+    // car / SHOT pop-ups don't pile on top of the nuke
+    if (pause && st.history.length > lastHist.current) return;
     if (st.history.length <= lastHist.current) { lastHist.current = st.history.length; return; }
     lastHist.current = st.history.length;
     // after 'Run it!' the scoring toasts wait for the tornado
     const ranDelay = st.tricks.at(-1)?.plays.some((p) => p.run) ? RUN_FX_MS : 0;
     if (ranDelay && ranWaited.current !== st.history.length) {
       const len = st.history.length;
-      const t0 = window.setTimeout(() => { ranWaited.current = len; lastHist.current = len - 1; setHistTick((x) => x + 1); }, ranDelay);
-      return () => clearTimeout(t0);
+      const release = fx.hold(ranDelay + 300, 'runIt'); // the hand end waits for the tornado + the toasts after it
+      const t0 = window.setTimeout(() => { ranWaited.current = len; lastHist.current = len - 1; setHistTick((x) => x + 1); release(); }, ranDelay);
+      return () => { clearTimeout(t0); release(); };
     }
     const rec = st.history[st.history.length - 1]!;
     const base = Date.now();
@@ -705,28 +712,30 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const cue: Record<Toast['kind'], Sfx | null> = { made: 'made', set: 'set', nil: 'nil', bust: 'set', bags: 'bags', info: null };
     list.forEach((t, i) => { const c = cue[t.kind]; if (c) sound.play(c, { delay: 0.1 + i * 0.45 }); });
     const tm = setTimeout(() => setToasts([]), 3200);
+    const toastHold = list.length ? fx.hold(3200, 'toasts') : () => {};
     // hype: SHOT! / GOT SHOT and streak pop-ups (every client derives them from the same state)
-    const timers: number[] = [];
+    // each one is queued with fx.later, so the hand-end transition (scorecard / Table Talk) waits until it has played
+    const timers: (() => void)[] = [];
     const calls = calloutsFor(st, mySide, names);
     const shot = calls.find((c) => c.kind === 'shot') ?? calls.find((c) => c.kind === 'gotShot');
-    if (shot) timers.push(window.setTimeout(() => fx.emit(shot.kind as 'shot' | 'gotShot', { text: shot.text }), 350));
+    if (shot) timers.push(fx.later(shot.kind as 'shot' | 'gotShot', 350, { text: shot.text }));
     const streak = calls.find((c) => c.kind === 'streak');
     // Wheels made: a team that bid 10+ together and took 10+ books → the supercar peel-out
     const made = wheelsMade(r, rec);
     if (made.length) {
       const w = made[0]!;
-      timers.push(window.setTimeout(() => fx.emit('wheelsCar', { text: `${sideName(r, w.side, names)} made ${w.bid} · took ${w.books}` }), shot ? 3300 : streak ? 2600 : 600));
+      timers.push(fx.later('wheelsCar', shot ? 3300 : streak ? 2600 : 600, { text: `${sideName(r, w.side, names)} made ${w.bid} · took ${w.books}` }));
     }
-    if (streak) timers.push(window.setTimeout(() => fx.emit('streak', { level: streak.level, text: streak.text.split(' · ')[0], sub: streak.text.split(' · ')[1] }), shot ? 1750 : 400));
-    return () => { clearTimeout(tm); timers.forEach(clearTimeout); };
-  }, [st.history, histTick, r, names, mySide]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (streak) timers.push(fx.later('streak', shot ? 1750 : 400, { level: streak.level, text: streak.text.split(' · ')[0], sub: streak.text.split(' · ')[1] }));
+    return () => { clearTimeout(tm); toastHold(); timers.forEach((c) => c()); };
+  }, [st.history, histTick, r, names, mySide, !!pause]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Table Talk shows a beat after scoring, so the toasts / pop-ups land on the table first
+  // Hand end: Table Talk / the scorecard (and the game-over screen) wait until every hype effect, banner and toast has
+  // finished (fx queue, capped at HYPE_SETTLE_MAX_MS), then a short beat. The rest of the game keeps its pace.
   const [talkOpen, setTalkOpen] = useState(false);
   useEffect(() => {
-    if (st.phase !== 'handOver' || pause || runFx) { setTalkOpen(false); return; }
-    const t = window.setTimeout(() => setTalkOpen(true), resume || online ? 900 : 1500);
-    return () => clearTimeout(t);
+    if ((st.phase !== 'handOver' && st.phase !== 'gameOver') || pause || runFx) { setTalkOpen(false); return; }
+    return fx.whenIdle(() => setTalkOpen(true), HAND_END_BEAT_MS);
   }, [st.phase, st.handNo, pause, !!runFx]); // eslint-disable-line react-hooks/exhaustive-deps
   const talkSend = (text: string) => {
     push('You', text);
@@ -743,12 +752,13 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const nukeAtMount = useRef(nukeKey); // a resumed save already showing a nuked trick doesn't re-fire
   useEffect(() => {
     if (!nukeKey || nukeKey === nukeAtMount.current) return;
-    const t = window.setTimeout(() => fireCue('nuke'), 1100);
-    return () => clearTimeout(t);
+    const release = fx.hold(1300, 'nukeWatch'); // the hand end waits for the blast (the blast holds itself once it fires)
+    const t = window.setTimeout(() => { fireCue('nuke'); release(); }, 1100);
+    return () => { clearTimeout(t); release(); };
   }, [nukeKey]);
   useEffect(() => { sound.geiger(radioactive); return () => sound.geiger(false); }, [radioactive]);
   // any modal up: the table, plates, chat, video bubbles etc. dim + blur behind it and can't paint over it
-  const modalOpen = (st.phase === 'handOver' && !pause && talkOpen) || confirmLeave || showPad || (st.phase === 'gameOver' && !pause && !runFx && !!st.result);
+  const modalOpen = (st.phase === 'handOver' && !pause && talkOpen) || confirmLeave || showPad || (st.phase === 'gameOver' && !pause && !runFx && talkOpen && !!st.result);
 
   const trumps = useMemo(() => trumpOrder(r).slice(0, 5).map((c) => (c === 'BJ' ? 'BIG JKR' : c === 'LJ' ? 'LIL JKR' : cardLabel(c))), [r]);
   const trumpsShort = useMemo(() => trumpOrder(r).slice(0, 4).map((c) => (c === 'BJ' ? 'BJ' : c === 'LJ' ? 'LJ' : cardLabel(c))), [r]);
@@ -814,8 +824,14 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
   return (
     <div ref={screenRef} className={`table-screen q-${settings.quality}${vp.short ? ' short' : ''}${modalOpen ? ' modal-open' : ''}`}>
-      <Suspense fallback={<div className="loading3d"><div className="spinner" />Setting the table…</div>}>
+      {/* styled stand-in table, on screen from the first paint until the 3D table has rendered (then it fades) */}
+      <div className={`table-placeholder ${tableReady ? 'gone' : ''}`} data-testid="table-placeholder" aria-hidden>
+        <div className="tp-table"><div className="tp-felt"><img src="/assets/bwm-wordmark-white.svg" alt="" /></div></div>
+        {!tableReady && <div className="tp-note">Setting the table…</div>}
+      </div>
+      <Suspense fallback={null}>
         <Scene
+          onTableReady={onTableReady}
           quality={settings.quality}
           n={n}
           handNo={st.handNo}
@@ -1043,7 +1059,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         </div>
       )}
 
-      {st.phase === 'gameOver' && !pause && !runFx && st.result && (
+      {st.phase === 'gameOver' && !pause && !runFx && talkOpen && st.result && (
         <div className="modal-backdrop">
           <div className="modal glass slant gameover" role="dialog" aria-label="Game over">
             <button type="button" className="modal-x" aria-label="Close and go to the main menu" data-testid="gameover-x" onClick={mainMenu}>✕</button>

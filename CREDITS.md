@@ -5,9 +5,9 @@ from the original sources and re-encoded/resized (1k + 512px JPEG) for the web; 
 
 | File(s) | Asset | Author / source | License |
 |---|---|---|---|
-| `textures/scuba_suede_nor_gl_{1k,512}.jpg`, `textures/scuba_suede_rough_{1k,512}.jpg` | "Scuba Suede" fabric (felt normal + roughness) | Poly Haven — https://polyhaven.com/a/scuba_suede | CC0 1.0 |
-| `textures/dark_wood_{diff,nor_gl,rough}_{1k,512}.jpg` | "Dark Wood" (table rail) | Poly Haven — https://polyhaven.com/a/dark_wood | CC0 1.0 |
-| `hdri/billiard_hall_1k.hdr` | "Billiard Hall" HDRI (environment lighting) | Poly Haven — https://polyhaven.com/a/billiard_hall | CC0 1.0 |
+| `textures/scuba_suede_nor_gl_{1k,512}.jpg`, `textures/scuba_suede_rough_512.jpg` | "Scuba Suede" fabric (felt normal + roughness) | Poly Haven — https://polyhaven.com/a/scuba_suede | CC0 1.0 |
+| `textures/dark_wood_{diff,nor_gl}_{1k,512}.jpg`, `textures/dark_wood_rough_512.jpg` | "Dark Wood" (table rail) | Poly Haven — https://polyhaven.com/a/dark_wood | CC0 1.0 |
+| `hdri/billiard_hall_512.hdr` | "Billiard Hall" HDRI (environment lighting; downsized from the 1k file) | Poly Haven — https://polyhaven.com/a/billiard_hall | CC0 1.0 |
 
 CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/ (no attribution required; credited anyway).
 
