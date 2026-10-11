@@ -1,3 +1,4 @@
+import { HostMusicFields } from './HostMusic';
 import { TeamNameField } from '../TeamName';
 import type { NukeIntensity } from '@spades/protocol';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
@@ -263,6 +264,11 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
         </div>
       )}
 
+      {/* table music, before the game too: the host picks Beats / a link / a stream; everyone sets their own volume */}
+      <section className="panel lobby-music" data-testid="lobby-music">
+        <div className="panel-title">TABLE MUSIC{isHost ? <small> (host)</small> : null}</div>
+        <HostMusicFields />
+      </section>
       </div>
       <LobbyChat cs={cs} onSend={(text) => conn.send({ t: 'chat', text })} />
       </div>

@@ -341,7 +341,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   if (!props.fontsReady) return null;
   return (
     <group>
-      <LayoutProbe items={items} trickKeys={shownTrick.map((pl) => `${handNo}-${pl.card}`)} handKeys={mine.map((c, i) => (c ? `${handNo}-${c}` : `${handNo}-hb-${i}`))} />
+      <LayoutProbe positions={positions} n={n} short={short} items={items} trickKeys={shownTrick.map((pl) => `${handNo}-${pl.card}`)} handKeys={mine.map((c, i) => (c ? `${handNo}-${c}` : `${handNo}-hb-${i}`))} />
       {items.map((it) => (
         <Card3D
           key={it.key}
@@ -409,7 +409,7 @@ function HandGlow({ aspect, count, safeFrac, opts }: { aspect: number; count: nu
  * Publishes the *final* screen rects of the trick cards and the human hand (target transforms projected with the live
  * camera) on window.__bwmLayout, so UI tests can check that HTML overlays never cover them.
  */
-function LayoutProbe({ items, trickKeys, handKeys }: { items: { key: string; target: Xform }[]; trickKeys: string[]; handKeys: string[] }) {
+function LayoutProbe({ items, trickKeys, handKeys, positions, n, short }: { items: { key: string; target: Xform }[]; trickKeys: string[]; handKeys: string[]; positions: SeatPos[]; n: number; short: boolean }) {
   const { camera, size } = useThree();
   useEffect(() => {
     const rect = (t: Xform) => {
@@ -426,7 +426,9 @@ function LayoutProbe({ items, trickKeys, handKeys }: { items: { key: string; tar
     const pick = (keys: string[]) => keys.map((k) => by.get(k)).filter((t): t is Xform => !!t).map(rect);
     // keyed by card too (tips draw rings / tags over specific cards: the led card, your trumps, …)
     const keyed = (keys: string[]) => keys.flatMap((k) => { const t = by.get(k); const card = k.slice(k.indexOf('-') + 1); return t && !card.startsWith('hb-') ? [{ card, ...rect(t) }] : []; });
-    (window as unknown as { __bwmLayout: unknown }).__bwmLayout = { w: size.width, h: size.height, trick: pick(trickKeys), hand: pick(handKeys), trickCards: keyed(trickKeys), handCards: keyed(handKeys) };
+    (window as unknown as { __bwmLayout: unknown }).__bwmLayout = { w: size.width, h: size.height, trick: pick(trickKeys), hand: pick(handKeys), trickCards: keyed(trickKeys), handCards: keyed(handKeys),
+      // every seat's trick slot, played yet or not (the layout check keeps name plates off all of them)
+      slots: short ? [] : trickRects(camera, size, positions, n).map((r) => ({ x: r.left + 4, y: r.top + 4, w: r.right - r.left - 8, h: r.bottom - r.top - 8 })) };
   });
   return null;
 }
@@ -454,6 +456,23 @@ function Lights({ quality }: { quality: 'high' | 'low' }) {
       <pointLight position={[0, 1.6, -4.2]} intensity={hi ? 9 : 6} color="#9b5cff" distance={9} />
     </>
   );
+}
+
+/** screen rects (CSS px) of every seat's trick-card slot, as the camera sees them now */
+const _tm = new Matrix4(), _tv = new Vector3();
+function trickRects(camera: Camera, size: { width: number; height: number }, positions: SeatPos[], n: number) {
+  return positions.map((pos) => {
+    const t = trickSpot(pos, n, 0, 0);
+    _tm.compose(new Vector3(...t.p), new Quaternion(...t.q), new Vector3(t.s, t.s, t.s));
+    let left = Infinity, right = -Infinity, top = Infinity, bottom = -Infinity;
+    for (const [cx, cy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const) {
+      _tv.set((cx * CW) / 2, (cy * CH) / 2, 0).applyMatrix4(_tm).project(camera);
+      const x = (_tv.x + 1) * size.width / 2, y = (1 - _tv.y) * size.height / 2;
+      left = Math.min(left, x); right = Math.max(right, x); top = Math.min(top, y); bottom = Math.max(bottom, y);
+    }
+    // a little slack for the per-card jitter (a few degrees of yaw)
+    return { left: left - 4, right: right + 4, top: top - 4, bottom: bottom + 4 };
+  });
 }
 
 function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe }: Pick<SceneProps, 'positions' | 'n' | 'human' | 'renderSeat'> & { portal: RefObject<HTMLDivElement>; safeFrac: number; short: boolean; safe: { l: number; r: number; t: number; b: number } }) {
@@ -498,7 +517,56 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
               if (sides.length) cy = Math.max(minY, Math.min(cy, Math.min(...sides) - 6 - ph / 2));
               return [Math.max(pad + left, Math.min(x, size.width - pad - pw + left)), cy];
             }
-            return side === 'left' ? [Math.max(pad, x - 72), y] : [Math.min(size.width - pad, x + 72), y];
+            const ax = side === 'left' ? Math.max(pad, x - 72) : Math.min(size.width - pad, x + 72);
+            // never cover a trick slot (phones in portrait: the side plates sit right beside the trick cards).
+            // 1) if the plate would reach into a slot beside it, it goes narrow (chips wrap under the name);
+            // 2) if it still touches one, it moves up, clear of the trick zone (never above the top bar).
+            const plate = portal.current?.querySelector<HTMLElement>(`.seat-anchor.side-${side} > .plate`);
+            const pr = plate?.getBoundingClientRect();
+            if (!plate || !pr || !pr.width) return [ax, y];
+            const slots = trickRects(camera, size, positions, n);
+            const narrow = plate.classList.contains('narrow');
+            if (!narrow) plate.dataset.wideW = String(pr.width);
+            const wideW = Number(plate.dataset.wideW) || pr.width;
+            const hits = (w: number, h: number, cy: number) => {
+              const l = side === 'left' ? ax : ax - w, r = l + w;
+              return slots.filter((t) => r + 6 > t.left && l - 6 < t.right && cy + h / 2 + 6 > t.top && cy - h / 2 - 6 < t.bottom);
+            };
+            const wantNarrow = hits(wideW, pr.height, y).length > 0;
+            if (wantNarrow !== narrow) plate.classList.toggle('narrow', wantNarrow); // re-measured next frame
+            const pw = pr.width, ph = pr.height;
+            if (!hits(pw, ph, y).length) return [ax, y];
+            const sr = document.querySelector('.trump-strip')?.getBoundingClientRect();
+            const bar = sr && sr.height > 0 ? sr.bottom : document.querySelector('.scorebug .bug')?.getBoundingClientRect().bottom ?? 0;
+            // everything else the plate must not cover: the other plates, the controls, the last trick, chat, your plate
+            const hud = [...document.querySelectorAll<HTMLElement>(`.seat-anchor:not(.side-${side}) > .plate, .ctl-cluster, .last-trick, .chat-toggle, .me-plate, .me-plate .plate-turn, .me-plate .vbubble, .center-note`)]
+              .map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0);
+            const area = (a: { left: number; right: number; top: number; bottom: number }, b: { left: number; right: number; top: number; bottom: number }) =>
+              Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+            const cost = (px: number, cy: number) => {
+              const l = side === 'left' ? px : px - pw;
+              const box = { left: l - 6, right: l + pw + 6, top: cy - ph / 2 - 6, bottom: cy + ph / 2 + 6 };
+              const off = cy - ph / 2 < bar + 4 || cy + ph / 2 > size.height - 4 ? 1e9 : 0;
+              return off + slots.reduce((a, t) => a + area(box, t) * 10, 0) + hud.reduce((a, r) => a + area(box, r), 0);
+            };
+            // candidates: just above the trick zone, just below it, and below it but slid in from the edge (clear of the controls)
+            const hit = hits(pw, ph, y);
+            const up = Math.min(...hit.map((t) => t.top)) - 6 - ph / 2;
+            let down = Math.max(...hit.map((t) => t.bottom)) + 6 + ph / 2;
+            for (let k = 0; k < 4; k++) { const more = hits(pw, ph, down); if (!more.length) break; down = Math.max(...more.map((t) => t.bottom)) + 6 + ph / 2; }
+            const inward = (cy: number) => {
+              let px = ax;
+              for (const r of hud) if (r.top < cy + ph / 2 + 6 && r.bottom > cy - ph / 2 - 6) px = side === 'left' ? Math.max(px, r.right < size.width / 2 ? r.right + 6 : px) : Math.min(px, r.left > size.width / 2 ? r.left - 6 : px);
+              // never past the middle: a seat's plate stays on that seat's side of the table
+              return side === 'left' ? Math.min(px, size.width / 2 - pw) : Math.max(px, size.width / 2 + pw);
+            };
+            const cands: [number, number][] = [[ax, up], [ax, down], [inward(down), down], [inward(up), up], [ax, y]];
+            // small phones: right under the partner's plate (top band), when that's the only gap above the trick zone
+            const tp = portal.current?.querySelector<HTMLElement>('.seat-anchor.side-top > .plate')?.getBoundingClientRect();
+            if (tp && tp.width > 0) cands.push([ax, tp.bottom + 6 + ph / 2]);
+            let best = cands[0]!, bc = Infinity;
+            for (const c of cands) { const k = cost(c[0], c[1]); if (k < bc) { bc = k; best = c; } }
+            return best;
           }
           : undefined;
         return (

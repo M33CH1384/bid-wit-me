@@ -5,6 +5,8 @@ import { type ModeKey, type Settings, MODES, rulesSummary, settingsToRules } fro
 import { type TipsPref, isFirstVisit, loadTips, saveTips } from './tips';
 import { serverUrl } from './online/config';
 import { createTable, tableInfo } from './online/connection';
+import { type PendingMusic, SetupMusicPicker, savePendingMusic } from './online/HostMusic';
+import { isMusicLink } from '@spades/protocol';
 import { loadName, saveName } from './online/identity';
 import { navigate } from './online/nav';
 
@@ -235,13 +237,16 @@ function OnlineEssentials({ settings, deck, tipsRow }: { settings: Settings; dec
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [music, setMusic] = useState<PendingMusic | null>(null);
   const nameOk = name.trim().length > 0;
   void settings;
   const create = async () => {
     if (!nameOk) { setErr('Enter your name first'); return; }
+    if (music?.mode === 'link' && !isMusicLink(music.url.trim())) { setErr('Paste an open.spotify.com or music.apple.com link (or set Table music to Off)'); return; }
     setBusy(true); setErr(null);
     try {
       const c = await createTable(serverUrl());
+      savePendingMusic(c, music?.mode === 'link' ? { ...music, url: music.url.trim() } : music);
       saveName(name.trim());
       sessionStorage.setItem(`bwm.created.${c}`, '1');
       navigate(`/t/${c}`);
@@ -268,6 +273,7 @@ function OnlineEssentials({ settings, deck, tipsRow }: { settings: Settings; dec
       </label>
       {deck}
       {tipsRow}
+      <SetupMusicPicker value={music} onChange={setMusic} />
       <button type="button" className="primary big go" disabled={busy} onClick={create} data-testid="create-table">Create table</button>
       <form className="join-row" onSubmit={join}>
         <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="TABLE CODE" maxLength={8} aria-label="Table code" autoCapitalize="characters" />

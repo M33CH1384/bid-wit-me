@@ -889,7 +889,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             <span className="bug-mode">{modeTitle(r).toUpperCase()}</span>
             {seriesChip('in-meta')}
             {learning && <span className="learn-badge" data-testid="learning-badge" title="Tips are on: the game slows down so you can read. Turn tips off to go back to your speed.">LEARNING MODE: SLOW</span>}
-            <span>HAND {st.handNo}{isBooks ? ' · BOOKS BID THEMSELVES' : ''} · TO {r.targetScore}</span>
+            <span className="bug-hand" data-testid="bug-hand">HAND {st.handNo}{isBooks ? <span className="bug-books"> · BOOKS BID THEMSELVES</span> : ''} · TO {r.targetScore}</span>
           </div>
         </div>
         {helpButton}

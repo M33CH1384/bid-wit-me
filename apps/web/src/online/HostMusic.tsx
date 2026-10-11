@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { type HostMusic as HostMusicState, isMusicLink } from '@spades/protocol';
 import { TRACKS } from '../audio';
+import { VolumeRow } from '../SoundControls';
 import { hostMusic, useHostMusic } from '../hostMusic';
 import type { ConnState, TableConnection } from './connection';
 import { useVideo } from './useOnline';
@@ -16,6 +17,32 @@ export function MusicLinkCard({ music, compact = false }: { music: HostMusicStat
       <span className="mc-text"><small>HOST IS PLAYING</small><b>{music.title || 'Tap to listen'}</b></span>
       <span className="mc-open">Open in {svc} ↗</span>
     </a>
+  );
+}
+
+export type PendingMusic = { mode: 'beat'; track: number } | { mode: 'link'; url: string; title?: string };
+/** Setup flow: remember the table music the host chose before the table exists (applied by HostMusicBridge). */
+export function savePendingMusic(code: string, m: PendingMusic | null) { if (m) sessionStorage.setItem(`bwm.pendingMusic.${code}`, JSON.stringify(m)); }
+
+/** Setup flow (online, Create table): optional table music, set up before the table exists. Stream starts from the lobby. */
+export function SetupMusicPicker({ value, onChange }: { value: PendingMusic | null; onChange: (m: PendingMusic | null) => void }) {
+  const kind = !value ? 'off' : value.mode === 'link' ? 'link' : String(value.track);
+  return (
+    <div className="ess-row setup-music" data-testid="setup-music">
+      <span className="ess-label">Table music<small> · optional, change it any time</small></span>
+      <select aria-label="Table music" value={kind} data-testid="setup-music-select" onChange={(e) => { const v = e.target.value; onChange(v === 'off' ? null : v === 'link' ? { mode: 'link', url: '', title: '' } : { mode: 'beat', track: Number(v) }); }}>
+        <option value="off">Off</option>
+        {TRACKS.map((t, i) => <option key={t.file} value={i}>Beat: {t.title}</option>)}
+        <option value="link">Share a Spotify / Apple Music link</option>
+      </select>
+      {value?.mode === 'link' && (
+        <>
+          <input value={value.url} onChange={(e) => onChange({ ...value, url: e.target.value })} placeholder="https://open.spotify.com/…" aria-label="Spotify or Apple Music link" inputMode="url" />
+          <input value={value.title ?? ''} onChange={(e) => onChange({ ...value, title: e.target.value })} placeholder="Song — Artist (optional)" aria-label="Song title" maxLength={120} />
+        </>
+      )}
+      <small className="hint">Streaming your own audio starts from the lobby.</small>
+    </div>
   );
 }
 
@@ -35,7 +62,7 @@ export function HostStreamAudio({ stream, blocked }: { stream: MediaStream | und
 }
 
 /** Host music controls (sound popover): everyone gets the volume; the host picks a beat, shares a link or streams. */
-export function HostMusicFields() {
+export function HostMusicFields({ noVolume = false }: { noVolume?: boolean }) {
   const hm = useHostMusic();
   const room = hm.room;
   const [tab, setTab] = useState<'beat' | 'link' | 'stream'>(() => (room?.music?.mode === 'link' ? 'link' : room?.music?.mode === 'stream' ? 'stream' : 'beat'));
@@ -50,11 +77,7 @@ export function HostMusicFields() {
   return (
     <div className="host-music" data-testid="host-music">
       <div className="sf-row hm-head"><span>Host music</span><small className="sf-note">{label}{hm.status === 'blocked' ? ' · tap ▶' : ''}</small></div>
-      <label className="sf-row">
-        <span>Host music volume</span>
-        <input type="range" min={0} max={100} step={5} value={Math.round(hm.volume * 100)} aria-label="Host music volume" data-testid="host-music-volume" onChange={(e) => hostMusic.setVolume(Number(e.target.value) / 100)} />
-        <b className="sf-val">{Math.round(hm.volume * 100)}</b>
-      </label>
+      {!noVolume && <VolumeRow label="Host music volume" value={hm.volume} testId="host-music-volume" onChange={(v) => hostMusic.setVolume(v)} />}
       {hm.status === 'blocked' && <button type="button" className="hm-btn" onClick={() => hostMusic.resume()}>▶ Play host music</button>}
       {m?.mode === 'link' && <MusicLinkCard music={m} compact />}
       {room.isHost && (
@@ -109,6 +132,19 @@ export function HostMusicBridge({ conn, cs, mesh }: { conn: TableConnection; cs:
     hostMusic.setRoom({ isHost, music, send: (m) => conn.send({ t: 'music', music: m }), setTrack: (t) => mesh?.setMusicTrack(t) }, skew);
   }, [key, isHost, conn, mesh, !!room]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => hostMusic.setRoom(null), []);
+  // music picked in the setup flow ("Create table"): the host's client applies it once, as soon as it's the host
+  useEffect(() => {
+    if (!room || !isHost) return;
+    const k = `bwm.pendingMusic.${conn.code}`;
+    const raw = sessionStorage.getItem(k);
+    if (!raw) return;
+    sessionStorage.removeItem(k);
+    try {
+      const m = JSON.parse(raw) as PendingMusic;
+      if (m.mode === 'beat' && Number.isInteger(m.track)) conn.send({ t: 'music', music: { mode: 'beat', track: m.track, startAt: 0 } });
+      else if (m.mode === 'link' && isMusicLink(m.url)) conn.send({ t: 'music', music: { mode: 'link', url: m.url, title: m.title ?? '' } });
+    } catch { /* ignore a bad entry */ }
+  }, [!!room, isHost, conn]); // eslint-disable-line react-hooks/exhaustive-deps
   const streamer = music?.mode === 'stream' && music.by !== cs.you ? music.by : null;
   return streamer ? <HostStreamAudio stream={vs.music[streamer]} blocked={vs.needsTap} /> : null;
 }

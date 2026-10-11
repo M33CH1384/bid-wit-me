@@ -89,6 +89,10 @@ async function measure(page) {
       for (const b of boxes) if (ov(b.r, t, 2)) probs.push(`${b.name} covers trick card ${i}`);
       L.trick.forEach((u, j) => { if (j > i && ov(t, u, 3)) probs.push(`trick cards ${i}/${j} overlap`); });
     });
+    // phones in portrait (320–440 px): no name plate may touch ANY seat's trick slot, played yet or not
+    if (W >= 320 && W <= 440 && H > W) (L.slots ?? []).forEach((t, i) => {
+      for (const b of boxes) if (b.name.startsWith('plate:') && ov(b.r, t, 0)) probs.push(`${b.name} overlaps trick slot ${i} [${[b.r.x, b.r.y, b.r.w, b.r.h].map(Math.round)} vs ${[t.x, t.y, t.w, t.h].map(Math.round)}]`);
+    });
     const hand = L.hand.length ? union(L.hand) : null;
     if (hand) {
       if (hand.y + hand.h > H + 1 || hand.x < -1 || hand.x + hand.w > W + 1) probs.push(`hand off screen ${JSON.stringify(hand)} in ${W}x${H}`);
@@ -96,6 +100,17 @@ async function measure(page) {
       // the (bigger, desktop) hand must never reach into the trick area
       L.trick.forEach((t, i) => { if (L.hand.some((c) => ov(c, t, 2))) probs.push(`hand covers trick card ${i}`); });
     }
+    // scorebug meta row: the series chip and "HAND n · TO t" fully readable (no clipping / ellipsis), inside the bug,
+    // clear of the team scores
+    { const bugEl = document.querySelector('.scorebug > .bug'), teams = document.querySelector('.bug-teams');
+      for (const el of document.querySelectorAll('.bug-meta > .series-chip, .bug-meta > .bug-hand')) {
+        if (!vis(el)) continue;
+        const r = el.getBoundingClientRect(), br = bugEl.getBoundingClientRect(), tr = teams?.getBoundingClientRect();
+        const name = el.classList.contains('bug-hand') ? 'scorebug hand/target' : 'series chip';
+        if (el.scrollWidth > el.clientWidth + 1) probs.push(`${name} truncated (${el.scrollWidth} > ${el.clientWidth})`);
+        if (r.left < br.left - 1 || r.right > br.right + 1 || r.bottom > br.bottom + 1) probs.push(`${name} outside the scorebug`);
+        if (tr && r.top < tr.bottom - 1) probs.push(`${name} overlaps the team scores`);
+      } }
     // scorebug numbers must fit in portrait (worst case: a negative 4-character score and two-digit bags)
     const setText = (el, t) => { const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); const n = w.nextNode(); if (n) n.nodeValue = t; };
     const scores = [...document.querySelectorAll('.bug-score')], bagsEl = [...document.querySelectorAll('.bug-bags')];
@@ -220,6 +235,20 @@ const only = process.env.SIZES ? process.env.SIZES.split(',') : null; // e.g. SI
 async function sweepSizes(page, tag) {
   for (const [label, w, h] of SIZES.filter(([, w, h]) => !only || only.includes(`${w}x${h}`))) {
     await page.bringToFront(); // a background tab throttles rAF/ResizeObserver, so the canvas would keep its old size
+    // worst-case plate width on portrait phones: every opponent plate carries DEALER + ON NOTICE (Release 6 hotfix:
+    // Ravi's plate with ON NOTICE covered a trick card on a 430 px iPhone)
+    await page.evaluate((wide) => {
+      document.querySelectorAll('.lc-fake').forEach((e) => e.remove());
+      // and a rematch-series chip in the scorebug (an offline first game has none)
+      if (!document.querySelector('.bug-meta > .series-chip')) { const meta = document.querySelector('.bug-meta'), hand = meta?.querySelector('.bug-hand'); if (meta) { const c = document.createElement('button'); c.className = 'series-chip in-meta lc-fake'; c.innerHTML = '<small>SERIES</small> <b>1–0</b>'; meta.insertBefore(c, hand ?? null); } }
+      const chip = (n, cls, t) => { if (n && !n.querySelector(`.chip.${cls}`)) { const c = document.createElement('span'); c.className = `chip ${cls} lc-fake`; c.textContent = t; n.appendChild(c); } };
+      if (wide) {
+        // both opponents ON NOTICE, and the left one is the dealer (the widest real plate: DEALER + ON NOTICE)
+        const L = document.querySelector('.seat-anchor.side-left .plate-name'), R = document.querySelector('.seat-anchor.side-right .plate-name');
+        if (L && !document.querySelector('.badge-layer .chip.dealer')) chip(L, 'dealer', 'DEALER');
+        chip(L, 'notice', 'ON NOTICE'); chip(R, 'notice', 'ON NOTICE');
+      }
+    }, w >= 320 && w <= 440 && h > w);
     await page.setViewportSize({ width: w, height: h });
     // SwiftShader with two pages + fake video renders slowly: wait until the canvas has repainted at the new size
     await page.waitForTimeout(1300);

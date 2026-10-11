@@ -1,11 +1,111 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { sound, useSoundSettings } from './audio';
 import { HostMusicFields } from './online/HostMusic';
+import { hostMusic, useHostMusic } from './hostMusic';
 import { tableIntensity, talkPrefs, useTalkPrefs } from './talkPrefs';
 import { TALK_INTENSITY_LABEL } from '@spades/bots';
 import { type NukeIntensity, fx, useNukeIntensity, useReduceEffects, useTableNuke } from './fx';
 
 const icon = (on: boolean, v: number) => (!on || v === 0 ? '🔇' : v < 0.4 ? '🔈' : v < 0.75 ? '🔉' : '🔊');
+
+/** One volume control: name (+ optional on/off switch) and value on a line, a full-width 44px slider under it. */
+export function VolumeRow({ label, value, onChange, onRelease, disabled, testId, toggle }: {
+  label: string; value: number; onChange: (v: number) => void; onRelease?: () => void; disabled?: boolean; testId?: string;
+  toggle?: { on: boolean; set: (on: boolean) => void; label: string; testId?: string };
+}) {
+  const pct = Math.round(value * 100);
+  return (
+    <div className={`vol-row ${disabled ? 'off' : ''}`}>
+      <div className="vol-head">
+        <span className="vol-label">{label}</span>
+        <b className="vol-val">{disabled ? 'Off' : pct}</b>
+        {toggle && <button type="button" role="switch" aria-checked={toggle.on} aria-label={toggle.label} data-testid={toggle.testId} className={`switch ${toggle.on ? 'on' : ''}`} onClick={() => toggle.set(!toggle.on)}><i /></button>}
+      </div>
+      <input
+        className="vol-slider" type="range" min={0} max={100} step={5} value={pct} aria-label={label} data-testid={testId} disabled={disabled}
+        style={{ ['--pct' as string]: `${pct}%` }}
+        onChange={(e) => onChange(Number(e.target.value) / 100)} onPointerUp={onRelease}
+      />
+    </div>
+  );
+}
+
+/** A short note with an (i) that reveals the longer explanation on tap. */
+function InfoNote({ short, long }: { short: string; long: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="info-note">
+      <small className="sf-note">{short}</small>
+      <button type="button" className="info-i" aria-label="More info" aria-expanded={open} onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen((o) => !o); }}>i</button>
+      {open && <small className="info-more" role="note">{long}</small>}
+    </span>
+  );
+}
+
+/**
+ * The sound panel behind the speaker button. Phones (<600 px): a full-width sheet under the top bar (safe-area aware,
+ * scrolls within the viewport); desktop: the popover. Sections: Volume (every slider full width), Bots, Effects,
+ * Host music (online), then the table's locked settings as read-only info.
+ */
+export function SoundSheet({ allOff, onMuteAll, onClose }: { allOff: boolean; onMuteAll: () => void; onClose: () => void }) {
+  const s = useSoundSettings();
+  const t = useTalkPrefs();
+  const hm = useHostMusic();
+  const reduced = useReduceEffects();
+  const voiceOk = typeof window !== 'undefined' && ('AudioContext' in window || 'webkitAudioContext' in window || 'speechSynthesis' in window);
+  return (
+    <div className="sound-pop sound-sheet glass" role="dialog" aria-label="Sound" data-testid="sound-sheet">
+      <div className="sheet-head">
+        <span className="panel-title">SOUND</span>
+        <button type="button" className="sheet-x" aria-label="Close sound settings" onClick={onClose}>✕</button>
+      </div>
+      <div className="sheet-actions">
+        <button type="button" className={`mute-all bot-mute big ${t.voices ? '' : 'off'}`} data-testid="bot-voice-quick" aria-pressed={!t.voices} onClick={() => talkPrefs.set({ voices: !t.voices })}>🤖 {t.voices ? 'Mute bots' : 'Bots muted'}</button>
+        <button type="button" className="mute-all big" data-testid="mute-all" onClick={onMuteAll}>{allOff ? '🔊 Unmute' : '🔇 Mute all'}</button>
+      </div>
+
+      <section className="sheet-sec" aria-label="Volume">
+        <h4>Volume</h4>
+        <VolumeRow label="Master / effects" value={s.volume} disabled={!s.on} onChange={(v) => sound.set({ volume: v })} onRelease={() => sound.play('bid')}
+          toggle={{ on: s.on, label: 'Sound effects', set: (on) => { sound.set({ on }); if (on) setTimeout(() => sound.play('tap'), 30); } }} />
+        <VolumeRow label="Music" value={s.musicVolume} disabled={!s.music} onChange={(v) => sound.set({ musicVolume: v })}
+          toggle={{ on: s.music, label: 'Music', testId: 'music-switch', set: (on) => sound.set({ music: on }) }} />
+        {s.music && s.musicStatus === 'error' && <small className="sf-note">Can't load the track</small>}
+        <VolumeRow label="Bot voices" value={t.voiceVolume} disabled={!t.voices || !voiceOk} testId="bot-voice-volume" onChange={(v) => talkPrefs.set({ voiceVolume: v })} />
+        {hm.room && <VolumeRow label="Host music" value={hm.volume} testId="host-music-volume" onChange={(v) => hostMusic.setVolume(v)} />}
+      </section>
+
+      <section className="sheet-sec" aria-label="Bots">
+        <h4>Bots</h4>
+        <label className="sf-row"><span>Bot voices{!voiceOk && <small className="sf-note"> · not supported here</small>}</span>
+          <button type="button" role="switch" aria-checked={t.voices} aria-label="Bot voices" data-testid="bot-voices" className={`switch ${t.voices ? 'on' : ''}`} disabled={!voiceOk} onClick={() => talkPrefs.set({ voices: !t.voices })}><i /></button></label>
+        <label className="sf-row"><span>Hide bot trash talk<small className="sf-note"> · in your chat</small></span>
+          <button type="button" role="switch" aria-checked={t.hideBotTalk} aria-label="Hide bot trash talk" data-testid="hide-bot-talk" className={`switch ${t.hideBotTalk ? 'on' : ''}`} onClick={() => talkPrefs.set({ hideBotTalk: !t.hideBotTalk })}><i /></button></label>
+      </section>
+
+      <section className="sheet-sec" aria-label="Effects">
+        <h4>Effects</h4>
+        <label className="sf-row"><span>Reduce effects <InfoNote short="no shake / flash" long="Keeps the hype sounds and pop-ups; drops camera shake, flashes and the shockwave, and the nuke stays calm. Your device's Reduce motion setting only drops the shake." /></span>
+          <button type="button" role="switch" aria-checked={reduced} aria-label="Reduce effects" data-testid="reduce-fx" className={`switch ${reduced ? 'on' : ''}`} onClick={() => fx.setReduce(!reduced)}><i /></button></label>
+        <label className="sf-row"><span>Lounge ambience</span>
+          <button type="button" role="switch" aria-checked={s.ambient} aria-label="Lounge ambience" className={`switch ${s.ambient ? 'on' : ''}`} disabled={!s.on} onClick={() => sound.set({ ambient: !s.ambient })}><i /></button></label>
+      </section>
+
+      {hm.room && (
+        <section className="sheet-sec" aria-label="Host music">
+          <h4>Host music</h4>
+          <HostMusicFields noVolume />
+        </section>
+      )}
+
+      <section className="sheet-sec locked" aria-label="Table settings">
+        <h4>Table settings <small>🔒 read-only</small></h4>
+        <div className="sf-row" data-testid="talk-intensity-info"><span>Trash talk</span><b className="sf-val">{TALK_INTENSITY_LABEL[tableIntensity()]}</b></div>
+        <TableNukeInfo short />
+      </section>
+    </div>
+  );
+}
 
 /** Volume / on-off / ambience controls (shared by the setup screen and the scorebug popover). */
 export function SoundFields({ compact = false }: { compact?: boolean }) {
@@ -18,15 +118,7 @@ export function SoundFields({ compact = false }: { compact?: boolean }) {
           <i />
         </button>
       </label>
-      <label className="sf-row">
-        <span>Volume</span>
-        <input
-          type="range" min={0} max={100} step={5} value={Math.round(s.volume * 100)} aria-label="Volume" disabled={!s.on}
-          onChange={(e) => sound.set({ volume: Number(e.target.value) / 100 })}
-          onPointerUp={() => sound.play('bid')}
-        />
-        <b className="sf-val">{Math.round(s.volume * 100)}</b>
-      </label>
+      <VolumeRow label="Volume" value={s.volume} disabled={!s.on} onChange={(v) => sound.set({ volume: v })} onRelease={() => sound.play('bid')} />
       <label className="sf-row">
         <span>Lounge ambience</span>
         <button type="button" role="switch" aria-checked={s.ambient} aria-label="Lounge ambience" className={`switch ${s.ambient ? 'on' : ''}`} disabled={!s.on} onClick={() => sound.set({ ambient: !s.ambient })}>
@@ -40,11 +132,7 @@ export function SoundFields({ compact = false }: { compact?: boolean }) {
         </button>
       </label>
       {s.music && (
-        <label className="sf-row">
-          <span>Music volume</span>
-          <input type="range" min={0} max={100} step={5} value={Math.round(s.musicVolume * 100)} aria-label="Music volume" onChange={(e) => sound.set({ musicVolume: Number(e.target.value) / 100 })} />
-          <b className="sf-val">{Math.round(s.musicVolume * 100)}</b>
-        </label>
+        <VolumeRow label="Music volume" value={s.musicVolume} onChange={(v) => sound.set({ musicVolume: v })} />
       )}
       {s.music && s.nowPlaying && <p className="hint np-inline">♫ {s.nowPlaying.track.title} — {s.nowPlaying.track.artist}</p>}
       <BotTalkFields />
@@ -131,13 +219,7 @@ export function SoundDock() {
       </button>
       {flash && <div className="dock-flash" role="status">{flash}</div>}
       {open && (
-        <div className="sound-pop glass slant" role="dialog" aria-label="Sound">
-          <div className="pop-head"><span className="panel-title">SOUND</span><BotVoiceQuickMute /><button type="button" className="mute-all" data-testid="mute-all" onClick={muteAll}>{allOff ? 'Unmute' : 'Mute all'}</button></div>
-          <SoundFields compact />
-          <ReduceEffectsRow />
-          <TableNukeInfo />
-          <HostMusicFields />
-        </div>
+        <SoundSheet allOff={allOff} onMuteAll={muteAll} onClose={() => setOpen(false)} />
       )}
     </div>
   );
@@ -217,14 +299,14 @@ export function NukeIntensityRow() {
 }
 
 /** In a game: the table's nuke level, read-only (online the host sets it; offline it's fixed when the game starts). */
-export function TableNukeInfo() {
+export function TableNukeInfo({ short = false }: { short?: boolean }) {
   const t = useTableNuke();
   const reduced = useReduceEffects();
   if (!t) return null;
   const label = t === 'full' ? 'Full Nuke' : t === 'classic' ? 'Classic' : 'Off';
   return (
     <div className="sf-row nuke-row" data-testid="table-nuke-info">
-      <span>Nuke intensity<small className="sf-note"> · 🔒 Locked for this game{reduced ? ' · Off for you (Reduce effects)' : ''}</small></span>
+      <span>Nuke intensity{short ? (reduced ? <small className="sf-note"> · off for you</small> : null) : <small className="sf-note"> · 🔒 Locked for this game{reduced ? ' · Off for you (Reduce effects)' : ''}</small>}</span>
       <b className="sf-val">{label}</b>
     </div>
   );
@@ -242,11 +324,7 @@ export function BotTalkFields() {
         <button type="button" role="switch" aria-checked={t.voices} aria-label="Bot voices" data-testid="bot-voices" className={`switch ${t.voices ? 'on' : ''}`} disabled={!voiceOk} onClick={() => talkPrefs.set({ voices: !t.voices })}><i /></button>
       </label>
       {t.voices && (
-        <label className="sf-row">
-          <span>Bot voice volume</span>
-          <input type="range" min={0} max={100} step={5} value={Math.round(t.voiceVolume * 100)} aria-label="Bot voice volume" data-testid="bot-voice-volume" onChange={(e) => talkPrefs.set({ voiceVolume: Number(e.target.value) / 100 })} />
-          <b className="sf-val">{Math.round(t.voiceVolume * 100)}</b>
-        </label>
+        <VolumeRow label="Bot voice volume" value={t.voiceVolume} testId="bot-voice-volume" onChange={(v) => talkPrefs.set({ voiceVolume: v })} />
       )}
       <label className="sf-row">
         <span>Hide bot trash talk<small className="sf-note"> · in your chat</small></span>

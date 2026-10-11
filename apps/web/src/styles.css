@@ -157,6 +157,9 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .chip.dealer { background: #fff; color: #120a1c; font-weight: 800; letter-spacing: .04em; box-shadow: 0 0 0 1px rgba(0,0,0,.25), 0 0 10px rgba(255,255,255,.35); }
 .chip.notice { background: #ff3b3b; color: #fff; font-weight: 800; letter-spacing: .04em; animation: notice-pulse 1.6s ease-in-out infinite; }
 .plate .plate-name:has(.chip + .chip) .chip { font-size: 10px; padding: 1px 4px; letter-spacing: .03em; }
+/* a side plate next to the trick cards on a narrow phone goes narrow: its chips wrap under the name (Scene.tsx Badges) */
+.plate.narrow .plate-name { flex-wrap: wrap; row-gap: 2px; max-width: 128px; white-space: normal; }
+.plate.narrow .plate-name .chip { white-space: nowrap; }
 @keyframes notice-pulse { 50% { box-shadow: 0 0 0 3px rgba(255,59,59,.35); } }
 .shot-out-banner { font: 900 clamp(28px, 7vw, 54px)/1 var(--display, Impact, sans-serif); color: #ff3b3b; letter-spacing: .06em; text-shadow: 0 3px 0 #3a0000, 0 0 24px rgba(255,59,59,.6); margin: 4px 0 6px; transform: rotate(-3deg); }
 .chip.bad { background: rgba(255,77,109,.3); color: #ffd1da; }
@@ -803,6 +806,16 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
   .bug-teams, .bug-meta { grid-column: 1; }
 }
 @media (orientation: portrait) and (max-width: 440px) { .bug-meta .bug-mode { display: none; } .bug-meta { justify-content: flex-end; } }
+/* portrait phones: series chip and "HAND 5 · TO 300" side by side under the team scores, both at full size, never
+   squeezed (the chip was clipped by the row's overflow and "HAND 5 · TO…" cut off) */
+@media (orientation: portrait) and (max-width: 600px) {
+  .bug-meta { align-items: center; justify-content: space-between; letter-spacing: .04em; gap: 6px; padding-top: 3px; }
+  .bug-meta > .bug-hand { margin-left: auto; flex-shrink: 0; overflow: visible; }
+  .bug-meta > .series-chip.in-meta { flex-shrink: 0; margin-left: 0; padding: 1px 6px; line-height: 13px; font-size: 9.5px; letter-spacing: .05em; }
+  .bug-meta > .series-chip.in-meta b { font-size: 11px; }
+  .bug-meta > .learn-badge { min-width: 0; }
+  .bug-books { display: none; } /* the hand-1 rule is in the center banner and the score pad */
+}
 .tt-head { padding-right: 64px; }
 .tt-backdrop ~ .modal-backdrop { z-index: 50; }
 .tt-foot.bid-row { margin: 0; flex-wrap: nowrap; }
@@ -1362,7 +1375,8 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .vs-frame video.mirror { transform: scaleX(-1); }
 .vs-avatar { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; background: radial-gradient(circle at 50% 40%, #5b2d8f, #241236 70%); }
 .vs-avatar span { font-family: var(--display); font-weight: 800; font-size: clamp(56px, 12vw, 120px); color: #fff; text-shadow: 0 4px 20px rgba(0,0,0,.5); }
-.vs-avatar small { font-family: var(--display); letter-spacing: .14em; color: v/* the headline: the winning team (or Cutthroat player) name, big and gold; the winners' full names under it */
+.vs-avatar small { font-family: var(--display); letter-spacing: .14em; color: var(--muted); }
+/* the headline: the winning team (or Cutthroat player) name, big and gold; the winners' full names under it */
 .vs-headline { display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; max-width: 100%; }
 .vs-title { margin: 0; font-family: var(--display); font-weight: 900; letter-spacing: .04em; text-transform: uppercase; line-height: 1;
   font-size: clamp(34px, 9vw, 68px); color: var(--gold); text-shadow: 0 0 28px rgba(255,200,60,.6), 0 3px 0 rgba(90,50,0,.7); overflow-wrap: anywhere; }
@@ -1377,7 +1391,6 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .vs-name { font-family: var(--display); font-weight: 800; letter-spacing: .03em; font-size: clamp(20px, 4.6vw, 26px); color: var(--gold); line-height: 1.05;
   text-align: center; max-width: 100%; overflow-wrap: anywhere; }
 .vs-card small { font-family: var(--display); letter-spacing: .14em; font-size: 11px; color: var(--muted); }
-ar(--muted); }
 .vs-tile figcaption { font-family: var(--display); font-weight: 800; letter-spacing: .06em; font-size: clamp(15px, 2.2vw, 22px); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vs-tile.win figcaption { color: var(--gold); }
 .vs-losers { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; opacity: .85; }
@@ -1401,3 +1414,55 @@ ar(--muted); }
   .vs-tile.win.card { flex: 1 1 0; max-width: 46vw; }
   .vs-frame { aspect-ratio: 16 / 10; }
 }
+
+/* ---- Sound sheet (Release 6 hotfix): sections, full-width big-target sliders; phones get an edge-to-edge sheet ---- */
+.vol-row { display: flex; flex-direction: column; gap: 2px; }
+.vol-head { display: flex; align-items: center; gap: 10px; min-height: 28px; }
+.vol-label { flex: 1; font-size: 15px; }
+.vol-val { font-family: var(--display); color: var(--gold); min-width: 30px; text-align: right; }
+.vol-row.off .vol-val { color: var(--muted); }
+/* the slider: a 44 px tall touch target, thick track filled to the value, a 28 px thumb */
+.vol-slider { -webkit-appearance: none; appearance: none; width: 100%; height: 44px; margin: 0; background: transparent; touch-action: pan-y; cursor: pointer; }
+.vol-slider:disabled { opacity: .4; cursor: default; }
+.vol-slider::-webkit-slider-runnable-track { height: 10px; border-radius: 5px; background: linear-gradient(90deg, var(--purple-hot) var(--pct, 50%), rgba(255,255,255,.14) var(--pct, 50%)); }
+.vol-slider::-moz-range-track { height: 10px; border-radius: 5px; background: rgba(255,255,255,.14); }
+.vol-slider::-moz-range-progress { height: 10px; border-radius: 5px; background: var(--purple-hot); }
+.vol-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 28px; height: 28px; margin-top: -9px; border-radius: 50%; background: #fff; border: 3px solid var(--purple); box-shadow: 0 2px 8px rgba(0,0,0,.5); }
+.vol-slider::-moz-range-thumb { width: 22px; height: 22px; border-radius: 50%; background: #fff; border: 3px solid var(--purple); box-shadow: 0 2px 8px rgba(0,0,0,.5); }
+.sound-fields .vol-row { margin: -2px 0; }
+
+.sound-dock .sound-pop.sound-sheet { width: 340px; max-height: calc(100dvh - var(--dock-top, 10px) - var(--dock-h, 40px) - 24px); overflow-y: auto; overscroll-behavior: contain; padding: 12px 16px 14px; border-radius: 14px; display: flex; flex-direction: column; gap: 10px; }
+.sheet-head { display: flex; align-items: center; justify-content: space-between; }
+.sheet-x { border: 0; background: rgba(255,255,255,.08); color: #fff; width: 36px; height: 36px; border-radius: 50%; font-size: 16px; }
+.sheet-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.mute-all.big { min-height: 44px; font-size: 14px; padding: 8px 10px; }
+.sheet-sec { display: flex; flex-direction: column; gap: 8px; padding-top: 10px; border-top: 1px solid rgba(185,128,255,.18); }
+.sheet-sec h4 { margin: 0; font-family: var(--display); font-weight: 800; font-size: 12px; letter-spacing: .16em; text-transform: uppercase; color: var(--purple-hot); }
+.sheet-sec h4 small { letter-spacing: .04em; text-transform: none; color: var(--muted); font-weight: 600; margin-left: 6px; }
+.sheet-sec .sf-row { min-height: 40px; }
+.sheet-sec.locked { opacity: .85; }
+.sheet-sec.locked .sf-row { min-height: 30px; font-size: 14px; }
+.sheet-sec .host-music .hm-head { display: none; }
+.sheet-sec .hm-tabs button, .sheet-sec .hm-beats button, .sheet-sec .hm-btn { min-height: 40px; font-size: 13px; }
+.sheet-sec .hm-link input { min-height: 40px; font-size: 15px; }
+.info-note { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-left: 4px; }
+.info-i { border: 1px solid rgba(185,128,255,.6); background: transparent; color: var(--purple-hot); width: 22px; height: 22px; border-radius: 50%; font: italic 700 12px/1 Georgia, serif; padding: 0; }
+.info-more { flex-basis: 100%; color: var(--muted); font-size: 12px; line-height: 1.35; }
+/* phones: an edge-to-edge sheet under the top bar, safe-area aware, scrolling inside the viewport */
+@media (max-width: 599px) {
+  .sound-dock .sound-pop.sound-sheet, .sound-dock .sound-pop.sound-sheet.glass {
+    position: fixed; left: 0; right: 0; width: auto; top: calc(var(--dock-top, 10px) + var(--dock-h, 40px) + 6px);
+    max-height: calc(100dvh - var(--dock-top, 10px) - var(--dock-h, 40px) - 6px); border-radius: 16px 16px 0 0;
+    padding: 12px calc(16px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
+    background: rgba(18,9,32,.97); clip-path: none;
+  }
+}
+/* the lobby: table music panel */
+.lobby-music { display: flex; flex-direction: column; gap: 8px; }
+.lobby-music .panel-title small { color: var(--muted); font-weight: 600; letter-spacing: .04em; }
+.lobby-music .hm-tabs button, .lobby-music .hm-beats button, .lobby-music .hm-btn { min-height: 40px; font-size: 13px; }
+.setup-music select, .setup-music input { width: 100%; min-height: 40px; }
+.setup-music { flex-direction: column; align-items: stretch; gap: 6px; }
+.setup-music .ess-label small { color: var(--muted); font-weight: 600; }
+/* narrow portrait phones: no logo column, so the tiny BETA tag would sit on the series chip */
+@media (orientation: portrait) and (max-width: 380px) { .beta-tag.in-bug { display: none; } }
