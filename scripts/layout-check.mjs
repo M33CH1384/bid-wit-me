@@ -53,7 +53,8 @@ async function measure(page) {
     const R = (el) => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; };
     const union = (rs) => { const x0 = Math.min(...rs.map((r) => r.x)), y0 = Math.min(...rs.map((r) => r.y)); return { x: x0, y: y0, w: Math.max(...rs.map((r) => r.x + r.w)) - x0, h: Math.max(...rs.map((r) => r.y + r.h)) - y0 }; };
     const boxes = [];
-    const add = (name, el, extra = []) => { if (el && vis(el)) boxes.push({ name, r: union([R(el), ...extra.filter(vis).map(R)]) }); };
+    // parts: a plate + its round video bubble are checked piece by piece (the empty corner beside the bubble is free space)
+    const add = (name, el, extra = []) => { if (el && vis(el)) { const parts = [R(el), ...extra.filter(vis).map(R)]; boxes.push({ name, r: union(parts), parts }); } };
     const bug = document.querySelector('.scorebug');
     if (bug) { const kids = [...bug.children].filter(vis).map(R); if (kids.length) boxes.push({ name: 'scorebug', r: union(kids) }); }
     add('trumps', document.querySelector('.trump-strip'));
@@ -75,7 +76,7 @@ async function measure(page) {
     for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
       const a = boxes[i], b = boxes[j];
       if ((a.name === 'controls' && b.name.startsWith('av')) || (a.name.startsWith('av') && b.name.startsWith('av')) || (b.name === 'controls' && (a.name.startsWith('av') || a.name === 'chat-btn')) || (a.name === 'controls' && b.name === 'chat-btn')) continue;
-      if (ov(a.r, b.r, 1)) probs.push(`${a.name} overlaps ${b.name}` + ` [${[a.r.x, a.r.y, a.r.w, a.r.h].map(Math.round)} vs ${[b.r.x, b.r.y, b.r.w, b.r.h].map(Math.round)}]`);
+      if ((a.parts ?? [a.r]).some((x) => (b.parts ?? [b.r]).some((y) => ov(x, y, 1)))) probs.push(`${a.name} overlaps ${b.name}` + ` [${[a.r.x, a.r.y, a.r.w, a.r.h].map(Math.round)} vs ${[b.r.x, b.r.y, b.r.w, b.r.h].map(Math.round)}]`);
     }
     // top bar: ☰, ?, 📋, HQ and the sound button are one set: same top, height and width, aligned with the scorebug
     { const bugEl = document.querySelector('.scorebug > .bug');

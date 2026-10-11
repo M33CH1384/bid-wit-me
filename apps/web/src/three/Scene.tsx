@@ -536,6 +536,7 @@ function trickRects(camera: Camera, size: { width: number; height: number }, pos
 }
 
 function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe }: Pick<SceneProps, 'positions' | 'n' | 'human' | 'renderSeat'> & { portal: RefObject<HTMLDivElement>; safeFrac: number; short: boolean; safe: { l: number; r: number; t: number; b: number } }) {
+  const invalidate = useThree((st) => st.invalidate);
   return (
     <>
       {positions.map((p, seat) => {
@@ -597,7 +598,7 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
               return slots.filter((t) => r + 6 > t.left && l - 6 < t.right && cy + h / 2 + 6 > t.top && cy - h / 2 - 6 < t.bottom);
             };
             const wantNarrow = hits(wideW, pr.height, y).length > 0;
-            if (wantNarrow !== narrow) plate.classList.toggle('narrow', wantNarrow); // re-measured next frame
+            if (wantNarrow !== narrow) { plate.classList.toggle('narrow', wantNarrow); invalidate(); } // re-measured next frame
             const pw = pr.width, ph = pr.height;
             if (!hits(pw, ph, y).length) { delete plate.dataset.moved; return [ax, y]; }
             plate.dataset.moved = '1';
@@ -611,8 +612,10 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
             const cost = (px: number, cy: number) => {
               const l = side === 'left' ? px : px - pw;
               const box = { left: l - 6, right: l + pw + 6, top: cy - ph / 2 - 6, bottom: cy + ph / 2 + 6 };
+              const real = { left: l, right: l + pw, top: cy - ph / 2, bottom: cy + ph / 2 };
               const off = cy - ph / 2 < bar + 4 || cy + ph / 2 > size.height - 4 ? 1e9 : 0;
-              return off + slots.reduce((a, t) => a + area(box, t) * 10, 0) + hud.reduce((a, r) => a + area(box, r), 0);
+              // a real overlap costs far more than only crowding the 6 px breathing room
+              return off + slots.reduce((a, t) => a + area(real, t) * 400 + area(box, t) * 10, 0) + hud.reduce((a, r) => a + area(real, r) * 40 + area(box, r), 0);
             };
             // candidates: just above the trick zone, just below it, and below it but slid in from the edge (clear of the controls)
             const hit = hits(pw, ph, y);
@@ -630,8 +633,14 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
             const tpEl = portal.current?.querySelector<HTMLElement>('.seat-anchor.side-top > .plate');
             const tpr = tpEl?.getBoundingClientRect();
             // the partner's plate and its video bubble (the big circle hangs below the plate)
-            const tp = tpr && tpr.width > 0 ? { top: tpr.top, bottom: Math.max(tpr.bottom, tpEl!.querySelector('.vbubble')?.getBoundingClientRect().bottom ?? 0) } : undefined;
-            if (tp) cands.push([ax, tp.bottom + 6 + ph / 2]);
+            const tbr = tpEl?.querySelector('.vbubble')?.getBoundingClientRect();
+            const tp = tpr && tpr.width > 0 ? { top: tpr.top, bottom: Math.max(tpr.bottom, tbr?.bottom ?? 0) } : undefined;
+            if (tp) {
+              cands.push([ax, tp.bottom + 6 + ph / 2]);
+              // tucked under the plate body when this plate is clear of the (round) bubble sideways
+              const l = side === 'left' ? ax : ax - pw, r = l + pw;
+              if (tpr && tbr && (r + 6 <= tbr.left || l - 6 >= tbr.right)) cands.push([ax, tpr.bottom + 6 + ph / 2]);
+            }
             let best = cands[0]!, bc = Infinity;
             for (const c of cands) { const k = cost(c[0], c[1]); if (k < bc) { bc = k; best = c; } }
             const w = window as unknown as { __bwmPlateDbg?: Record<string, unknown>; __bwmLayout?: unknown };
