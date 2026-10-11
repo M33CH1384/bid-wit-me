@@ -50,6 +50,8 @@ export interface Persona {
   voice: { pitch: number; rate: number; prefer: string[] };
   /** play-style lean: bid nudge (±1 at most, applied sometimes, kept legal and sane) and Nil willingness (-1..1) */
   lean: { bid: -1 | 0 | 1; nil: number };
+  /** play-skill bias: never below this level (the Hustler is always Pro+ while acting Novice in chat) */
+  skillFloor?: 'regular' | 'pro' | 'shark';
   lines: Partial<Record<TalkKind, string[]>>;
 }
 
@@ -163,7 +165,7 @@ export const PERSONAS: Record<PersonaId, Persona> = {
     },
   },
   hustler: {
-    id: 'hustler', tag: 'The Hustler', fakeTag: 'Newbie', weight: 25, freq: 1,
+    id: 'hustler', tag: 'The Hustler', fakeTag: 'Newbie', weight: 25, freq: 1, skillFloor: 'pro',
     voice: { pitch: 1.0, rate: 1.0, prefer: ['Google US English', 'Alex', 'Samantha'] },
     lean: { bid: -1, nil: 0 },
     lines: {
@@ -198,4 +200,9 @@ export function personaForName(name: string): PersonaId {
   let x = (h >>> 0) % total;
   for (const id of ids) { x -= PERSONAS[id].weight; if (x < 0) return id; }
   return ids[0]!;
+}
+
+/** The persona's skill floor for a bot name (undefined = no bias). */
+export function personaSkillFloor(name: string): Persona['skillFloor'] {
+  return PERSONAS[personaForName(name)].skillFloor;
 }

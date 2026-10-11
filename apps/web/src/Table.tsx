@@ -1,6 +1,6 @@
 import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
-  type Card, type GameState, type PlayerView, type Play, type TableRules, radioactiveBigJoker, isNukeTrick, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, partnerOf, sideOf, sortHand, trumpOrder,
+  type Card, type GameState, type PlayerView, type Play, type TableRules, radioactiveBigJoker, isNukeTrick, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, partnerOf, sideOf, sortHand, trumpOrder,
 } from '@spades/rules';
 import { ScorePad, defaultSideName, setTeamNames, sideName } from './Modals';
 import { type Series, addSeriesGame, seriesSides, summarizeGame } from '@spades/rules';
@@ -30,7 +30,7 @@ import { type TipsPref, bumpTip, loadTips, saveTips, tipCount } from './tips';
 import { BidCoach } from './BidCoach';
 import { RUN_FX_MS } from '@spades/protocol';
 import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
-import { personaForName, personaTag, pickBotNames } from '@spades/bots';
+import { personaForName, personaSkillFloor, personaTag, pickBotNames, seatSkill } from '@spades/bots';
 import { preloadPersona } from './voices/voices';
 const Scene = lazy(() => import('./three/Scene'));
 
@@ -105,7 +105,10 @@ interface Props {
   seed: string;
   settings: Settings;
   onExit: () => void;
-  onRematch: () => void;
+  /** Rematch: the next game continues the deal rotation from `dealer`. */
+  onRematch: (dealer: number) => void;
+  /** offline rematch: first dealer of this game (undefined = random) */
+  startDealer?: number;
   onQuality: (q: Settings['quality']) => void;
   /** A saved in-progress game to resume at exactly the same point. */
   resume?: SavedGame;
@@ -316,7 +319,7 @@ function RunItButton({ onRun, tip, onDismissTip }: { onRun: () => void; tip: boo
   );
 }
 
-export default function Table({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, resume, online, onMainMenu }: Props) {
+export default function Table({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, resume, online, onMainMenu, startDealer }: Props) {
   // `online` never changes for a mounted Table, so this is always the same hook path per instance
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const vp = useViewport();
@@ -327,11 +330,14 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const learning = tips.on && !tipsSkipped;
   const [tipOpen, setTipOpen] = useState(false);
   const speed = learning && settings.speed !== 'turbo' ? 'slow' : settings.speed;
-  const { st, view, pause, error, apply, introHand, dealing, k } = online ? online.source : useGame(initialRules, seed, settings.botLevel, speed, resume?.state, learning && tipOpen);
+  const n0 = (resume?.state.rules ?? initialRules).playerCount;
+  const [botNames] = useState(() => (resume?.names?.length === n0 ? resume.names : offlineNames(n0, seed)));
+  // bot skill per seat: the table setting (Mixed = a hidden, seeded roll per seat) + persona floors (the Hustler is Pro+)
+  const levelFor = useCallback((seat: number) => seatSkill(settings.botLevel, seed, seat, personaSkillFloor(botNames[seat] ?? '')), [settings.botLevel, seed, botNames]);
+  const { st, view, pause, error, apply, introHand, dealing, k } = online ? online.source : useGame(initialRules, seed, levelFor, speed, resume?.state, learning && tipOpen, startDealer);
   useEffect(() => { online?.setLearning?.(learning); }, [learning]); // eslint-disable-line react-hooks/exhaustive-deps
   const r = st.rules;
   const n = r.playerCount;
-  const [botNames] = useState(() => (resume?.names?.length === n ? resume.names : offlineNames(n, seed)));
   const names = online?.names ?? botNames;
   const pos = useMemo(() => positions(n), [n]);
   const [selected, setSelected] = useState<Card | null>(null);
@@ -974,7 +980,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
               <button type="button" onClick={() => setShowPad(true)}>Score pad</button>
               <button type="button" data-testid="main-menu" onClick={mainMenu}>Main menu</button>
               <button type="button" onClick={leave}>Change mode</button>
-              <button type="button" className="primary" onClick={onRematch}>Rematch</button>
+              <button type="button" className="primary" onClick={() => onRematch(nextDealer(st))}>Rematch</button>
             </div>
           </div>
         </div>

@@ -5,9 +5,9 @@
  * - Pre-play lines never see the card about to be played (no tells): prePlayLine() takes no card/hand at all.
  * - Hustler persona plays dumb ('newbie' pool) until it pulls off a cut / lead-taking spade / set, then reveals once.
  */
-import { COMMON, PERSONAS, type PersonaId, type TalkKind, personaForName } from './personas';
+import { COMMON, PERSONAS, type PersonaId, type TalkKind, personaForName, personaSkillFloor } from './personas';
 
-export { COMMON, PERSONAS, personaForName };
+export { COMMON, PERSONAS, personaForName, personaSkillFloor };
 export type { PersonaId, TalkKind };
 
 export const TALK = {

@@ -71,12 +71,17 @@ export class RuleError extends Error {
 
 /* -------------------------------------------------------------- setup/deal */
 
-export function newGame(rules: TableRules, seed: string | number): GameState {
+/**
+ * A new game. The first dealer is random (seeded) unless `opts.dealer` is given — a rematch continues the rotation
+ * (`nextDealer(previous game)`). The deal then moves clockwise one seat per hand (seat + 1 = the next seat clockwise
+ * on screen: you at the bottom, then left, top, right), and the player to the dealer's left bids and leads first.
+ */
+export function newGame(rules: TableRules, seed: string | number, opts: { dealer?: number } = {}): GameState {
   const problems = validateRules(rules);
   if (problems.length) throw new RulesConfigError(problems);
   const n = rules.playerCount;
   const s = String(seed);
-  const dealer = createRng(`${s}:dealer`).int(n);
+  const dealer = opts.dealer !== undefined && opts.dealer >= 0 && opts.dealer < n ? opts.dealer : createRng(`${s}:dealer`).int(n);
   const base: GameState = {
     rules, seed: s, phase: 'bidding', handNo: 0, dealer, turn: null,
     hands: [], bids: [], revealed: [], exchange: [],
@@ -85,6 +90,11 @@ export function newGame(rules: TableRules, seed: string | number): GameState {
     history: [], result: null,
   };
   return dealHand(base, 1, dealer);
+}
+
+/** The dealer for a rematch: one seat clockwise from whoever dealt the last hand of `prev`. */
+export function nextDealer(prev: Pick<GameState, 'dealer' | 'rules'>, rules: TableRules = prev.rules): number {
+  return (prev.dealer + 1) % rules.playerCount;
 }
 
 /** Shuffled deck for a given hand; deterministic from the game seed. */

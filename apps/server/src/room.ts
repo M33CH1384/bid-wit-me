@@ -8,13 +8,13 @@
  *  - all durable state lives in one plain-JSON `RoomData` object that the DO saves as a single row.
  */
 import {
-  type Action, type GameState, type Series, addSeriesGame, emptySeries, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, applyAction, isFreshDeal, isNukeTrick, makeRules, newGame, pendingTurn, secureSeed, validateRules, viewFor,
+  type Action, type GameState, type Series, addSeriesGame, emptySeries, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, applyAction, isFreshDeal, isNukeTrick, nextDealer, makeRules, newGame, pendingTurn, secureSeed, validateRules, viewFor,
 } from '@spades/rules';
-import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, chooseBotAction, leanBid, leanNil, momentsFor, newTalkState, pickBotNames, prePlayLine } from '@spades/bots';
+import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, chooseBotAction, leanBid, personaSkillFloor, seatSkill, leanNil, momentsFor, newTalkState, pickBotNames, prePlayLine } from '@spades/bots';
 import {
   type BotLevel, type ChatLine, type ClientMsg, type HostMusic, type MediaState, type RoomInfo, type RoomPhase, type SeatInfo, type ServerMsg,
   DEFAULT_AFK_LIMIT, LIMITS, PROTOCOL_VERSION, parseClientMsg,
-  NUKE_ALLOWANCE_MS, RUN_FX_MS, type NukeIntensity, cleanTeamName, pickTeamName,
+  NUKE_ALLOWANCE_MS, RUN_FX_MS, type NukeIntensity, type TalkIntensity, cleanTeamName, pickTeamName,
 } from '@spades/protocol';
 import { blockLinks, cleanName, cleanText, maskProfanity } from './filter';
 
@@ -72,6 +72,7 @@ export interface RoomData {
   /** host option: partner voice limiting during bidding/play; unset = off */
   partnerMicMute?: boolean;
   nukeIntensity?: NukeIntensity;
+  talkIntensity?: TalkIntensity;
   /** host option: bot trash talk (default on) */
   botTalk?: boolean;
   /** per side: custom team name (null/unset = partner names) */
@@ -126,7 +127,7 @@ export interface RoomIO {
 export function newRoomData(code: string, now: number, rules: TableRules = makeRules('joker')): RoomData {
   return {
     v: ROOM_DATA_VERSION, code, createdAt: now, lastActive: now, hostId: null, phase: 'lobby',
-    rules, botLevel: 'normal', seats: Array.from({ length: 4 }, () => ({ kind: 'empty' as const })), members: {},
+    rules, botLevel: 'mixed', seats: Array.from({ length: 4 }, () => ({ kind: 'empty' as const })), members: {},
     game: null, turnKey: null, turnStartedAt: null, deadline: null, ready: [], chat: [], chatSeq: 1, rev: 0, seq: 0, gamesPlayed: 0,
   };
 }
@@ -287,7 +288,18 @@ export class Room {
       }
       case 'config': {
         this.requireHost(isHost);
-        if (d.phase === 'playing') throw new RoomError('IN_GAME', 'Game in progress');
+        if (d.phase === 'playing') {
+          // Rule lock: anything that affects scoring / the outcome is locked until the game ends (rematch / new game
+          // unlocks it). Social + pace settings (Table Talk timer, AFK kick, bot chat on/off) stay adjustable.
+          if (this.changesLockedRules(msg)) throw new RoomError('RULES_LOCKED', 'House rules are locked for this game');
+          if (msg.talkSec) d.talkSec = msg.talkSec;
+          if (msg.afkLimit !== undefined) d.afkLimit = msg.afkLimit;
+          if (msg.botTalk !== undefined) d.botTalk = msg.botTalk;
+          const tt = clampRules(msg.rules).turnTimerSec;
+          d.rules = { ...d.rules, turnTimerSec: { ...tt } };
+          if (d.game) d.game = { ...d.game, rules: { ...d.game.rules, turnTimerSec: { ...tt } } };
+          break;
+        }
         let rules: TableRules;
         try {
           rules = clampRules(msg.rules);
@@ -302,6 +314,7 @@ export class Room {
         if (msg.afkLimit !== undefined) d.afkLimit = msg.afkLimit;
         if (msg.partnerMicMute !== undefined) d.partnerMicMute = msg.partnerMicMute;
         if (msg.nukeIntensity !== undefined) d.nukeIntensity = msg.nukeIntensity;
+        if (msg.talkIntensity !== undefined) d.talkIntensity = msg.talkIntensity;
         if (msg.botTalk !== undefined) d.botTalk = msg.botTalk;
         if (msg.botLevel) {
           d.botLevel = msg.botLevel;
@@ -346,7 +359,7 @@ export class Room {
       case 'rematch': {
         this.requireHost(isHost);
         if (d.phase !== 'over') throw new RoomError('WRONG_PHASE', 'The game is not over');
-        this.startGame();
+        this.startGame(true);
         this.talk({ kind: 'rematch' });
         break;
       }
@@ -533,13 +546,31 @@ export class Room {
     if (d.hostId) this.system(`${d.members[d.hostId]!.name} is now the host`);
   }
 
-  private startGame(): void {
+
+  private changesLockedRules(msg: Extract<ClientMsg, { t: 'config' }>): boolean {
     const d = this.data;
+    let rules: TableRules;
+    try { rules = clampRules(msg.rules); } catch { return true; }
+    // the turn timer is pace, not outcome: it may change mid-game (applied below)
+    const norm = (r: TableRules) => JSON.stringify(sortKeys({ ...r, turnTimerSec: null }));
+    if (norm(rules) !== norm(d.rules)) return true;
+    if (msg.botLevel && msg.botLevel !== d.botLevel) return true;
+    if (msg.nukeIntensity !== undefined && msg.nukeIntensity !== (d.nukeIntensity ?? 'full')) return true;
+    if (msg.partnerMicMute !== undefined && msg.partnerMicMute !== (d.partnerMicMute ?? false)) return true;
+    if (msg.talkIntensity !== undefined && msg.talkIntensity !== (d.talkIntensity ?? 'cookout')) return true;
+    return false;
+  }
+
+  private startGame(rematch = false): void {
+    const d = this.data;
+    const prevGame = d.game;
     const n = d.rules.playerCount;
     const seats = d.seats.slice(0, n);
     if (!seats.some((s) => s.kind === 'human')) throw new RoomError('NO_PLAYERS', 'Sit down first');
     for (let s = 0; s < n; s++) if (d.seats[s]!.kind === 'empty') d.seats[s] = { kind: 'bot', name: this.botName(), level: d.botLevel };
-    d.game = newGame(d.rules, secureSeed());
+    // a rematch continues the deal rotation (one seat clockwise from the last dealer); a new game deals from a random seat
+    const dealer = rematch && prevGame && prevGame.rules.playerCount === n ? nextDealer(prevGame) : undefined;
+    d.game = newGame(d.rules, secureSeed(), { dealer });
     d.seq = (d.seq ?? 0) + 1;
     d.phase = 'playing';
     d.ready = [];
@@ -829,7 +860,10 @@ export class Room {
   private autoAct(seat: number, level: BotLevel): void {
     const d = this.data;
     const view = viewFor(d.game!, seat);
-    let action = chooseBotAction(view, level);
+    // Mixed skill rolls per seat from the game seed (stable across reconnects); persona floors (the Hustler is Pro+)
+    const slot0 = d.seats[seat];
+    const skill = seatSkill(level, d.game!.seed, seat, slot0?.kind === 'bot' ? personaSkillFloor(slot0.name) : undefined);
+    let action = chooseBotAction(view, skill);
     if (!action) return;
     // persona lean (bots only): a slight bid nudge / Nil reluctance; illegal nudges fall through to the catch below
     const slot = d.seats[seat];
@@ -837,7 +871,7 @@ export class Room {
       const revealed = (d.talk?.revealed ?? []).includes(seat);
       if (typeof action.bid === 'number') action = { ...action, bid: leanBid(action.bid, slot.name, revealed, Math.random) };
       else if (action.bid === 'nil' && leanNil(slot.name, Math.random)) action = { ...action, bid: 1 };
-      try { applyAction(d.game!, action); } catch { action = chooseBotAction(view, level)!; }
+      try { applyAction(d.game!, action); } catch { action = chooseBotAction(view, skill)!; }
     }
     try {
       this.apply(action);
@@ -865,7 +899,7 @@ export class Room {
       code: d.code, hostId: d.hostId ?? '', phase: d.phase, rules: d.rules, botLevel: d.botLevel, seats,
       members: Object.entries(d.members).map(([playerId, m]) => ({ playerId, name: m.name, connected: this.isConnected(playerId), seat: m.seat })),
       deadline: d.deadline, ready: [...d.ready], rev: d.rev, seq: d.seq ?? 0, game: d.gamesPlayed, now: this.io.now(),
-      talkSec: d.talkSec ?? Math.round(this.timing.handOverMs / 1000), afkLimit: d.afkLimit ?? DEFAULT_AFK_LIMIT, partnerMicMute: d.partnerMicMute ?? false, nukeIntensity: d.nukeIntensity ?? 'full', botTalk: d.botTalk ?? true,
+      talkSec: d.talkSec ?? Math.round(this.timing.handOverMs / 1000), afkLimit: d.afkLimit ?? DEFAULT_AFK_LIMIT, partnerMicMute: d.partnerMicMute ?? false, nukeIntensity: d.nukeIntensity ?? 'full', talkIntensity: d.talkIntensity ?? 'cookout', botTalk: d.botTalk ?? true,
       teamNames: d.rules.partnerships ? [...(d.teamNames ?? [null, null])] : undefined, series: d.series ?? null, revealed: [...(d.talk?.revealed ?? [])],
       ...(d.votes && Object.keys(d.votes).length ? { votes: Object.entries(d.votes).map(([target, by]) => ({ target, by: [...by], need: this.votesNeeded(target) })) } : {}), ...(d.music && d.music.mode !== 'off' ? { music: d.music } : {}),
     };
@@ -927,4 +961,10 @@ export class RoomError extends Error {
   constructor(public readonly code: string, message: string) {
     super(message);
   }
+}
+
+function sortKeys(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(sortKeys);
+  if (v && typeof v === 'object') return Object.fromEntries(Object.keys(v as object).sort().filter((k) => (v as Record<string, unknown>)[k] !== undefined).map((k) => [k, sortKeys((v as Record<string, unknown>)[k])]));
+  return v;
 }

@@ -9,7 +9,7 @@ import { type SavedGame, loadGame } from './save';
 
 export default function App() {
   const [settings, setSettings] = useState<Settings>(loadSettings);
-  const [game, setGame] = useState<{ seed: string; settings: Settings; resume?: SavedGame } | null>(() => {
+  const [game, setGame] = useState<{ seed: string; settings: Settings; resume?: SavedGame; dealer?: number } | null>(() => {
     const p = new URLSearchParams(location.search);
     if (p.get('autostart')) {
       history.replaceState(null, '', location.pathname); // a later refresh resumes instead of restarting
@@ -46,7 +46,8 @@ export default function App() {
       settings={game.settings}
       onExit={() => { history.replaceState({ wiz: 'home', d: 0 }, '', '/'); setGame(null); }}
       onSuspend={() => { history.replaceState({ wiz: 'home', d: 0 }, '', '/'); setGame(null); }}
-      onRematch={() => setGame({ seed: secureSeed(), settings: game.settings })}
+      onRematch={(dealer) => setGame({ seed: secureSeed(), settings: game.settings, dealer })}
+      startDealer={game.dealer}
       onQuality={(quality) => { const s = { ...game.settings, quality }; setGame({ ...game, settings: s }); setSettings(s); saveSettings(s); }}
     />
     </>

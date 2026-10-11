@@ -1,5 +1,5 @@
 import { CLASSIC_JOKER, type Mode, type RulesOverrides, type TableRules, makeRules } from '@spades/rules';
-import type { BotLevel } from '@spades/bots';
+import { type BotSkillSetting, skillSettingOf } from '@spades/bots';
 
 export type ModeKey = 'joker' | 'cutthroat4' | 'cutthroat3' | 'aceDown';
 
@@ -22,7 +22,14 @@ export interface Settings {
   tenForTwoHundred: boolean;
   /** House rule "First hand: books bid themselves" (on by default). */
   firstHandBidsItself: boolean;
-  botLevel: BotLevel;
+  /** Bot skill: Mixed (default: each bot seat rolls its own, hidden) or one fixed level for every bot. */
+  botLevel: BotSkillSetting;
+  /** House rule "Shot = out": shot on hand 1, or twice in a row, loses the game. */
+  shotOut: boolean;
+  /** First hand (books bid themselves): fewer books than this is a shot. default = 4 in team modes, off in Cutthroat. */
+  firstHandMin: 'default' | 3 | 4 | 5 | 'off';
+  /** Bot trash-talk intensity (table setting): family / cookout (default) / nomercy. */
+  talkIntensity: 'family' | 'cookout' | 'nomercy';
   speed: 'slow' | 'relaxed' | 'normal' | 'fast' | 'turbo';
   /** 3D quality: low disables shadows, HDRI and MSAA and uses smaller textures. */
   quality: 'high' | 'low';
@@ -38,7 +45,7 @@ export const DEFAULT_SETTINGS: Settings = {
   mode: 'joker', targetScore: 'default', losingFloor: 'on', deuceOfSpadesHigh: false, jokerOrder: 'house',
   cutthroatDeck: 'joker54', spadesMustBeBroken: true, firstLead: 'leftOfDealer', minTeamBid: 0, nilAllowed: true,
   blindNil: 'behind100', blindNilExchange: 0, nilTricksCountForPartner: false, bags: '10/100', tenForTwoHundred: false,
-  firstHandBidsItself: true, botLevel: 'normal', speed: 'normal', quality: defaultQuality(),
+  firstHandBidsItself: true, botLevel: 'mixed', shotOut: true, firstHandMin: 'default', talkIntensity: 'cookout', speed: 'normal', quality: defaultQuality(),
 };
 
 export const MODES: { key: ModeKey; title: string; blurb: string; players: string }[] = [
@@ -62,7 +69,9 @@ export function settingsToRules(s: Settings): TableRules {
     tenForTwoHundred: s.tenForTwoHundred,
     firstHandBidsItself: s.firstHandBidsItself !== false,
     losingFloor: s.losingFloor === 'on' ? -200 : null,
+    shotOut: s.shotOut !== false,
   };
+  if (s.firstHandMin !== undefined && s.firstHandMin !== 'default') o.firstHandMin = s.firstHandMin === 'off' ? null : s.firstHandMin;
   if (s.targetScore !== 'default') o.targetScore = s.targetScore;
   const classic = s.jokerOrder === 'classic';
   if (s.mode === 'joker' && classic) Object.assign(o, CLASSIC_JOKER, { deuceOfSpadesHigh: s.deuceOfSpadesHigh });
@@ -88,9 +97,16 @@ const KEY = 'spades.settings.v2';
 export function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    if (raw) return normalizeSettings(JSON.parse(raw));
   } catch { /* ignore */ }
   return DEFAULT_SETTINGS;
+}
+/** Older saves: 'easy' / 'normal' bot levels ('normal' was the default → Mixed now; 'easy' → Novice). */
+export function normalizeSettings(j: Omit<Partial<Settings>, 'botLevel'> & { botLevel?: string }): Settings {
+  const s = { ...DEFAULT_SETTINGS, ...j } as Settings;
+  s.botLevel = j.botLevel === 'normal' || j.botLevel === undefined ? 'mixed' : skillSettingOf(j.botLevel);
+  if (!['family', 'cookout', 'nomercy'].includes(s.talkIntensity)) s.talkIntensity = 'cookout';
+  return s;
 }
 export function saveSettings(s: Settings): void {
   try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* ignore */ }

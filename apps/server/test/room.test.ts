@@ -499,7 +499,7 @@ describe('partner mic mute (host option)', () => {
     expect(env.last('b', 'state')!.room.partnerMicMute).toBe(true); // omitted = unchanged
     env.send('a', { t: 'start' });
     env.send('a', { t: 'config', rules: makeRules('joker'), partnerMicMute: false });
-    expect(env.errors('a').at(-1)!.code).toBe('IN_GAME');
+    expect(env.errors('a').at(-1)!.code).toBe('RULES_LOCKED');
     expect(env.last('b', 'state')!.room.partnerMicMute).toBe(true);
   });
 });
@@ -584,9 +584,9 @@ describe('table talk + host music', () => {
     const env = new FakeEnv(undefined, { ...FAST, handOverMs: 3000 });
     env.join('a', 'Host');
     env.send('a', { t: 'sit', seat: 0 });
-    env.send('a', { t: 'config', rules: makeRules('joker'), talkSec: 45 });
+    env.send('a', { t: 'config', rules: makeRules('joker', { shotOut: false }), talkSec: 45 });
     expect(env.last('a', 'state')!.room.talkSec).toBe(45);
-    env.send('a', { t: 'config', rules: makeRules('joker'), talkSec: 7 } as never);
+    env.send('a', { t: 'config', rules: makeRules('joker', { shotOut: false }), talkSec: 7 } as never);
     expect(env.last('a', 'state')!.room.talkSec).toBe(45); // only 15/20/30/45 accepted
     env.send('a', { t: 'start' });
     // play the first hand out with the bot brain for the human seat
@@ -761,5 +761,82 @@ describe("'Run it!' over the protocol", () => {
     env.send(ran!.cid, { t: 'act', action: { type: 'runIt' } });
     expect(env.errors(ran!.cid).length).toBe(errs + 1);
     expect(env.room.data.game!.tricks.length).toBe(g.tricks.length);
+  });
+});
+
+describe('rule lock (house rules locked for the game)', () => {
+  it('rejects outcome rules mid-game; social / pace settings stay adjustable; game over unlocks', () => {
+    const env = new FakeEnv(undefined, FAST);
+    env.join('a', 'Host'); env.send('a', { t: 'sit', seat: 0 });
+    const base = makeRules('joker', { targetScore: 250 });
+    env.send('a', { t: 'config', rules: base });
+    env.send('a', { t: 'start' });
+    const locked: Record<string, unknown>[] = [
+      { rules: { ...base, targetScore: 500 } },
+      { rules: { ...base, shotOut: false } },
+      { rules: { ...base, firstHandMin: 5 } },
+      { rules: { ...base, firstHandBidsItself: false } },
+      { rules: { ...base, bagPenalty: 50 } },
+      { rules: { ...base, nil: { ...base.nil, allowed: false } } },
+      { rules: base, nukeIntensity: 'off' },
+      { rules: base, botLevel: 'shark' },
+      { rules: base, talkIntensity: 'nomercy' },
+      { rules: makeRules('cutthroat') },
+    ];
+    for (const m of locked) {
+      const before = env.errors('a').length;
+      env.send('a', { t: 'config', ...m } as never);
+      expect(env.errors('a').length).toBe(before + 1);
+      expect(env.errors('a').at(-1)!.code).toBe('RULES_LOCKED');
+    }
+    expect(env.room.data.rules.targetScore).toBe(250);
+    expect(env.room.data.game!.rules.shotOut).toBe(true);
+    // pace + social: allowed
+    const before = env.errors('a').length;
+    env.send('a', { t: 'config', rules: { ...base, turnTimerSec: { bid: 45, play: 30 } }, talkSec: 45, afkLimit: 5, botTalk: false });
+    expect(env.errors('a').length).toBe(before);
+    const room = env.last('a', 'state')!.room;
+    expect(room.talkSec).toBe(45); expect(room.afkLimit).toBe(5); expect(room.botTalk).toBe(false);
+    expect(env.room.data.rules.turnTimerSec).toEqual({ bid: 45, play: 30 });
+    // finish the game → unlocked
+    for (let i = 0; i < 20000 && env.room.data.phase === 'playing'; i++) if (!playTurn(env, ['a'])) env.advance(100);
+    expect(env.room.data.phase).toBe('over');
+    env.send('a', { t: 'config', rules: { ...base, targetScore: 500 } });
+    expect(env.room.data.rules.targetScore).toBe(500);
+  });
+});
+
+describe('dealer rotation + Shot = out online', () => {
+  it('the deal moves one seat clockwise per hand; a rematch continues it', () => {
+    const env = new FakeEnv(undefined, FAST);
+    env.join('a', 'Host'); env.send('a', { t: 'sit', seat: 0 });
+    env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: 150, shotOut: false }) });
+    env.send('a', { t: 'start' });
+    const dealers: number[] = [];
+    for (let i = 0; i < 20000 && env.room.data.phase === 'playing'; i++) {
+      const g = env.room.data.game!;
+      if (dealers[g.handNo - 1] === undefined) dealers[g.handNo - 1] = g.dealer;
+      if (!playTurn(env, ['a'])) env.advance(100);
+    }
+    for (let h = 1; h < dealers.length; h++) expect(dealers[h]).toBe((dealers[h - 1]! + 1) % 4);
+    const last = env.room.data.game!.dealer;
+    env.send('a', { t: 'rematch' });
+    expect(env.room.data.game!.dealer).toBe((last + 1) % 4);
+  });
+  it('the server ends the game on a shot-out and records it in the series', () => {
+    for (let k = 0; k < 40; k++) {
+      const env = new FakeEnv(undefined, FAST);
+      env.join('a', 'Host'); env.send('a', { t: 'sit', seat: 0 });
+      env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: 500 }) });
+      env.send('a', { t: 'start' });
+      for (let i = 0; i < 20000 && env.room.data.phase === 'playing'; i++) if (!playTurn(env, ['a'])) env.advance(100);
+      const g = env.room.data.game!;
+      if (g.result?.endReason !== 'shotOut') continue;
+      expect(g.result.shotOut!.length).toBeGreaterThan(0);
+      const s = env.last('a', 'state')!.room.series!;
+      expect(s.games.at(-1)!.endReason).toBe('shotOut');
+      return;
+    }
+    throw new Error('no shot-out game in 40 tries');
   });
 });

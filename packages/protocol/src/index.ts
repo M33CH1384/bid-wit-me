@@ -10,6 +10,9 @@ export * from './filter';
 export const MAX_BEAT_TRACKS = 64;
 /** Nuke intensity (table setting): Full Nuke (default) / Classic / Off. */
 export const NUKE_INTENSITIES = ['full', 'classic', 'off'] as const;
+/** Bot trash-talk intensity (host table setting, locked during a game): Family Friendly / Cookout (default) / No Mercy. */
+export const TALK_INTENSITIES = ['family', 'cookout', 'nomercy'] as const;
+export type TalkIntensity = (typeof TALK_INTENSITIES)[number];
 export type NukeIntensity = (typeof NUKE_INTENSITIES)[number];
 /** Extra lead-in after a nuked trick, per table level (ms). */
 export const NUKE_ALLOWANCE_MS: Record<NukeIntensity, number> = { full: 4000, classic: 3500, off: 1200 };
@@ -30,7 +33,9 @@ export const LIMITS = {
   rtcMax: 16_000,
 } as const;
 
-export type BotLevel = 'easy' | 'normal';
+/** Bot skill table setting: mixed (default) or one fixed level; 'easy' / 'normal' are older names (novice / pro). */
+export type BotLevel = 'mixed' | 'novice' | 'regular' | 'pro' | 'shark' | 'easy' | 'normal';
+export const BOT_LEVELS: readonly BotLevel[] = ['mixed', 'novice', 'regular', 'pro', 'shark', 'easy', 'normal'];
 
 /* ------------------------------------------------------------ client → server */
 export type GameAction =
@@ -75,7 +80,7 @@ export type ClientMsg =
   | { t: 'stand' }
   | { t: 'addBot'; seat: number }
   | { t: 'removeBot'; seat: number }
-  | { t: 'config'; rules: TableRules; botLevel?: BotLevel; talkSec?: number; afkLimit?: number; partnerMicMute?: boolean; nukeIntensity?: NukeIntensity; botTalk?: boolean }
+  | { t: 'config'; rules: TableRules; botLevel?: BotLevel; talkSec?: number; afkLimit?: number; partnerMicMute?: boolean; nukeIntensity?: NukeIntensity; botTalk?: boolean; talkIntensity?: TalkIntensity }
   /** rename your own team (team modes); '' resets to the partner names */
   | { t: 'teamName'; name: string }
   /** host only: what plays for the whole table (the server stamps `startAt` for beats) */
@@ -138,6 +143,7 @@ export interface RoomInfo {
   partnerMicMute?: boolean;
   /** table setting: how big the Big-over-Little-Joker nuke plays for everyone (default full) */
   nukeIntensity?: NukeIntensity;
+  talkIntensity?: TalkIntensity;
   /** host option: bots chat (trash talk) at the table; default on */
   botTalk?: boolean;
   /** per side: a custom team name, or null = default (partner names) */
@@ -214,11 +220,12 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
     }
     case 'config': {
       if (!isObj(m.rules)) return null;
-      const out: Extract<ClientMsg, { t: 'config' }> = { t: 'config', rules: m.rules as unknown as TableRules, botLevel: m.botLevel === 'easy' || m.botLevel === 'normal' ? m.botLevel : undefined };
+      const out: Extract<ClientMsg, { t: 'config' }> = { t: 'config', rules: m.rules as unknown as TableRules, botLevel: typeof m.botLevel === 'string' && (BOT_LEVELS as readonly string[]).includes(m.botLevel) ? (m.botLevel as BotLevel) : undefined };
       if (isInt(m.talkSec) && (TALK_SECS as readonly number[]).includes(m.talkSec)) out.talkSec = m.talkSec;
       if (isInt(m.afkLimit) && (AFK_LIMITS as readonly number[]).includes(m.afkLimit)) out.afkLimit = m.afkLimit;
       if (typeof m.partnerMicMute === 'boolean') out.partnerMicMute = m.partnerMicMute;
       if (typeof m.botTalk === 'boolean') out.botTalk = m.botTalk;
+      if (typeof m.talkIntensity === 'string' && (TALK_INTENSITIES as readonly string[]).includes(m.talkIntensity)) out.talkIntensity = m.talkIntensity as TalkIntensity;
       if (typeof m.nukeIntensity === 'string' && (NUKE_INTENSITIES as readonly string[]).includes(m.nukeIntensity)) out.nukeIntensity = m.nukeIntensity as NukeIntensity;
       return out;
     }

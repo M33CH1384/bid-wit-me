@@ -163,7 +163,7 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
           <div className="ess">
             <div className="ess-row">
               <span className="ess-label">Bots</span>
-              <Seg label="Bot level" value={s.botLevel} options={[['easy', 'Easy'], ['normal', 'Normal']]} onChange={(v) => set('botLevel', v)} />
+              <Seg label="Bot skill" value={s.botLevel} options={[['mixed', 'Mixed'], ['novice', 'Novice'], ['regular', 'Regular'], ['pro', 'Pro'], ['shark', 'Shark']]} onChange={(v) => set('botLevel', v)} />
             </div>
             <div className="ess-row">
               <span className="ess-label">Play to</span>
