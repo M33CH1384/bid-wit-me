@@ -13,6 +13,12 @@ for (const sec of PACK) for (const raw of sec.lines) {
   if (l.includes('{') || LINE_META[l]?.cond) continue;
   (BY_KIND[sec.kind] ??= []).push(l);
 }
+/** Demetrius's own line sits at the top of every tab it fits (big bid, partner, and the general tab via loud talk) */
+export const PINNED_TRASH = 'Slow your roll, cowboy!';
+for (const arr of Object.values(BY_KIND)) {
+  const i = arr!.indexOf(PINNED_TRASH);
+  if (i > 0) { arr!.splice(i, 1); arr!.unshift(PINNED_TRASH); }
+}
 export const QUICK_CONTEXTS: { kind: TalkKind; label: string }[] = [
   { kind: 'cut', label: 'Cut' }, { kind: 'slam', label: 'Big book' }, { kind: 'setThem', label: 'They got set' },
   { kind: 'bidTooHigh', label: 'Big bid' }, { kind: 'bags', label: 'Bags' }, { kind: 'nilBid', label: 'Nil bid' },
@@ -25,7 +31,7 @@ export function quickLines(kind: TalkKind, intensity: TalkIntensity): string[] {
   return (BY_KIND[kind] ?? []).filter((l) => lineAllowed(l, intensity));
 }
 export function generalLines(intensity: TalkIntensity): string[] {
-  return GENERAL_KINDS.flatMap((k) => quickLines(k, intensity));
+  return [...new Set([PINNED_TRASH, ...GENERAL_KINDS.flatMap((k) => quickLines(k, intensity))])].filter((l) => lineAllowed(l, intensity));
 }
 /** every preset (to recognise a callout in the chat) */
 export const QUICK_TRASH_SET = new Set(Object.values(BY_KIND).flat() as string[]);

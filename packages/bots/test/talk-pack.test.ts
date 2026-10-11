@@ -54,7 +54,7 @@ describe('trash-talk pack', () => {
       const raw = raw0.replace(/^\[[a-z,]+\]\s*/, '').replace(/^!+/, '').replace(/ @\w+$/, '');
       const owners = PACK_OWNERS[raw]!;
       expect(owners?.length, raw).toBeGreaterThanOrEqual(1);
-      expect(owners.length, raw).toBeLessThanOrEqual(3);
+      expect(owners.length, raw).toBeLessThanOrEqual(raw === 'Slow your roll, cowboy!' ? 5 : 3); // Demetrius's own line goes to 5 personas
       for (const o of owners) expect(PERSONAS[o].lines[sec.kind], `${o} ${raw}`).toContain(raw);
     }
     expect(n).toBeGreaterThan(270);
@@ -126,5 +126,16 @@ describe('trash-talk pack', () => {
   });
   it('every speakable line has a stable id', () => {
     for (const p of IDS) for (const l of speakableLines(p)) expect(l.id).toMatch(/^[a-z]+\.[a-zA-Z]+\.\d+$/);
+  });
+});
+
+describe("Demetrius's 'Slow your roll, cowboy!'", () => {
+  it('is Family Friendly, owned by OG / Big Mama / Smooth / Coach / Deacon, for bid too high, partner over-eager play and loud talk', async () => {
+    const { PERSONAS, PACK_OWNERS, lineAllowed } = await import('../src/personas');
+    const raw = 'Slow your roll, cowboy!';
+    expect(lineAllowed(raw, 'family')).toBe(true);
+    expect(PACK_OWNERS[raw]).toEqual(['og', 'mama', 'smooth', 'coach', 'deacon']);
+    for (const id of ['og', 'mama', 'smooth', 'coach', 'deacon'] as const)
+      for (const k of ['bidTooHigh', 'partnerBlunder', 'loudLoser'] as const) expect(PERSONAS[id].lines[k], `${id} ${k}`).toContain(raw);
   });
 });

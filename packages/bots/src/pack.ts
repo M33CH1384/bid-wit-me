@@ -54,6 +54,8 @@ export const PACK: PackSection[] = [
     'You playing with your eyes closed?', "!I don't know what's worse, your hand or your judgment!",
     // classic
     'Come on, partner!', "Don't cut your partner!", 'Read the table!', "Don't save 'em!",
+    // Demetrius: over-eager play / bid too high / talking too much or celebrating early
+    "[og,mama,smooth,coach,deacon] Slow your roll, cowboy!",
   ] },
   { kind: 'setThem', group: ['loud', 'petty', 'all'], lines: [
     "BOARD 'EM UP!", "Put 'em on the BOARD!", 'NEGATIVE! NEGATIVE! @neg', "That's a whole lotta NOTHING!", "Y'all bid WHAT?!",
@@ -71,6 +73,8 @@ export const PACK: PackSection[] = [
     "That's a mortgage-sized bid!", '!!You better have Jesus in that hand!', "!That's a bold statement for somebody holding garbage!",
     'You got the Joker, both deuces, and a prayer? @jk', "Don't let your mouth write checks your hand can't cash!",
     "You ain't bidding. You manifesting!", "This ain't the lottery!", 'I hope you got receipts for that bid!', 'Count your books!',
+    // Demetrius: over-eager play / bid too high / talking too much or celebrating early
+    "[og,mama,smooth,coach,deacon] Slow your roll, cowboy!",
   ] },
   { kind: 'bags', group: ['petty', 'loud', 'all'], lines: [
     "You collecting bags like it's Black Friday!", 'You running a luggage department?', 'You need help carrying all them bags?',
@@ -120,6 +124,8 @@ export const PACK: PackSection[] = [
     'Your trash talk got more points than your team!', 'You talk like you holding both Jokers! @jk', 'Your mouth bidding six. Your hand bidding two!',
     '!You need to put your mouth on mute!', '!You running for president of the losing team?', 'Save that speech for the ride home!',
     "Your cards ain't backing up your attitude!", 'You got all them opinions and no books!', 'No table talk!',
+    // Demetrius: over-eager play / bid too high / talking too much or celebrating early
+    "[og,mama,smooth,coach,deacon] Slow your roll, cowboy!",
   ] },
   { kind: 'badHand', group: ['loud', 'petty', 'rookie', 'all'], lines: [
     'Who shuffled this mess?!', 'I got a handful of grocery receipts!', "These cards ain't worth the paper they're printed on!",
