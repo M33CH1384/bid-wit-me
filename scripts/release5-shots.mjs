@@ -34,7 +34,7 @@ const shot = (p, name) => p.screenshot({ path: `${out}/${name}${sfx}.png` }).the
   await shot(p, 'on-notice-dealer');
   const d = p.locator('[data-testid^="dealer-"]').first();
   await d.scrollIntoViewIfNeeded();
-  const box = await d.locator('xpath=ancestor::div[contains(@class,"plate")]').boundingBox();
+  const box = await d.locator('xpath=ancestor::div[starts-with(@data-testid,"seat-")]').boundingBox();
   if (box) await p.screenshot({ path: `${out}/dealer-chip${sfx}.png`, clip: { x: Math.max(0, box.x - 40), y: Math.max(0, box.y - 30), width: Math.min(vw, box.width + 80), height: Math.min(vh, box.height + 60) } });
   // locked house rules (offline): score pad
   await p.locator('[data-testid="scorepad-button"], button[aria-label*="Score"]').first().click({ timeout: 5000 }).catch(() => {});
@@ -67,18 +67,20 @@ const shot = (p, name) => p.screenshot({ path: `${out}/${name}${sfx}.png` }).the
 }
 // 3) Run it! zoom with the slick line
 {
-  const { p, ctx } = await open(state('scripts/runit-state.ts', 'joker', process.env.RUN_CARDS ?? '5'));
+  const { p, ctx } = await open(state('scripts/runit-state.ts', 'joker', process.env.RUN_CARDS ?? '4'));
   await p.getByTestId('run-it').waitFor({ timeout: 60000 });
   await p.waitForTimeout(1200);
+  // software-GL screenshots take ~1-2 s each, so stretch the app's long timers ×8 for the capture only (CSS anims untouched)
+  const SLOW = 8;
+  await p.evaluate((k) => { const st = window.setTimeout; window.setTimeout = ((f, ms, ...a) => st(f, (ms ?? 0) >= 300 ? ms * k : ms, ...a)); }, SLOW);
   await p.getByTestId('run-it').dispatchEvent('click');
   await p.getByTestId('run-zoom').waitFor({ timeout: 5000 });
   await p.getByTestId('run-line').waitFor({ timeout: 2000 }).catch(() => {});
-  await p.waitForTimeout(550);
-  await shot(p, 'run-it-zoom');
-  await p.waitForTimeout(1250);
-  await shot(p, 'run-it-slam');
   await p.waitForTimeout(900);
-  await shot(p, 'run-it-tornado');
+  await shot(p, 'run-it-zoom');
+  await p.getByTestId('run-zoom').waitFor({ state: 'detached', timeout: 30000 });
+  await p.waitForTimeout(150);
+  await shot(p, 'run-it-slam-tornado'); // (software GL: the capture lands ~1 s late, i.e. on the RAN IT! tornado)
   await ctx.close();
 }
 await b.close();

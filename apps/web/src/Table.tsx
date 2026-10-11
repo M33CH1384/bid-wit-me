@@ -512,7 +512,6 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     } else setRunLine(null);
     const zoom = RUN_ZOOM_MS / 1000;
     const tornadoAt = zoom + RUN_TORNADO_AFTER_MS / 1000;
-    fx.tornado = { start: performance.now() + tornadoAt * 1000, reduced: fx.reduced };
     const who = runFx.claimer === HUMAN ? 'You' : names[runFx.claimer]!;
     // 2) the claimer's cards slam at once (one big impact)  3) everyone else's hit together (cascading thud)  4) tornado
     sound.play('runSlam', { delay: zoom + 0.2 });
@@ -520,6 +519,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     sound.play('tornado', { delay: Math.max(0, tornadoAt - 0.3) });
     const toSlam = window.setTimeout(() => {
       setRunFx((f) => (f && f.id === runFx.id ? { ...f, phase: 'slam' } : f));
+      // the tornado is timed from the slam (not the claim), so a late zoom timer can't let it sweep the table early
+      fx.tornado = { start: performance.now() + RUN_TORNADO_AFTER_MS, reduced: fx.reduced };
       fx.emit('ranIt', { text: 'RAN IT!', sub: `${who} · +${runFx.books} book${runFx.books === 1 ? '' : 's'}`, silent: true });
     }, RUN_ZOOM_MS);
     // (capture scripts set __bwmHoldRun to step the tornado frame by frame via fx.warp)
