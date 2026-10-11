@@ -22,9 +22,9 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
   const skew = room.now - Date.now();
   const secs = useCountdown(room.deadline ? room.deadline - skew : null);
 
-  // Voice anti-cheat: during bidding and trick play my mic isn't sent to my partner and theirs isn't played here.
-  // Opponents can still hear each other (trash talk is part of the game); everyone's open in the lobby,
-  // between hands (Table Talk) and after the game.
+  // Voice anti-cheat (host option): during TRICK PLAY my mic isn't sent to my partner and theirs isn't played here.
+  // Partners may talk books during bidding (vaguely: "I got about 3"), so mics stay open while bidding, between hands
+  // (Table Talk), in the lobby and after the game. Opponents always hear each other (trash talk is part of the game).
   const gp = source?.st.phase;
   const partnerId = (() => {
     if (!rot || !room.rules.partnerships || cs.seat === null) return null;
@@ -34,20 +34,23 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
   // host option (off by default): with it off there's no limiting, no MIC LIMITED badge and no 'partners muted' toast
   // the table's nuke level (host setting) drives everyone's nuke; Reduce effects still forces the calm one locally
   useEffect(() => { fx.tableNuke = room.nukeIntensity ?? 'full'; return () => { fx.tableNuke = null; }; }, [room.nukeIntensity]);
-  const limitedNow = !!room.partnerMicMute && room.phase === 'playing' && (gp === 'bidding' || gp === 'exchange' || gp === 'playing') && !!partnerId;
+  // muted from the moment the first card is led until the hand is over
+  const led = gp === 'playing' && !!source && (source.st.tricks.length > 0 || source.st.trick.plays.length > 0);
+  const limitedNow = !!room.partnerMicMute && room.phase === 'playing' && led && !!partnerId;
   useEffect(() => { mesh?.setLimited(limitedNow && partnerId ? [partnerId] : []); }, [mesh, limitedNow, partnerId]);
   useEffect(() => () => mesh?.setLimited([]), [mesh]);
-  const prevPhase = useRef(gp);
+  const wasLimited = useRef(limitedNow);
   const [talkOver, setTalkOver] = useState(false);
   useEffect(() => {
-    const was = prevPhase.current;
-    prevPhase.current = gp;
-    if (was === 'handOver' && gp && gp !== 'handOver' && gp !== 'gameOver' && partnerId && room.partnerMicMute) {
+    const was = wasLimited.current;
+    wasLimited.current = limitedNow;
+    // 'partners muted' fires when the first card is led (not when bidding starts)
+    if (!was && limitedNow) {
       setTalkOver(true);
       const t = setTimeout(() => setTalkOver(false), 3000);
       return () => clearTimeout(t);
     }
-  }, [gp, partnerId, room.partnerMicMute]);
+  }, [limitedNow]);
 
   if (!source || !rot) return <div className="online-wait">Joining the table…</div>;
   const r = room.rules;
@@ -108,7 +111,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
         }}
       />
       {cs.status !== 'open' && <div className="conn-banner" role="status">{cs.status === 'reconnecting' ? 'Reconnecting…' : 'Connecting…'}</div>}
-      {talkOver && <div className="talk-over-toast" role="status" data-testid="talk-over">Table talk over — partners muted 🤐</div>}
+      {talkOver && <div className="talk-over-toast" role="status" data-testid="talk-over">First card's down — partner mics muted 🤐</div>}
       {room.music?.mode === 'link' && source.st.phase !== 'handOver' && <div className="music-card-dock"><MusicLinkCard music={room.music} compact /></div>}
       {room.phase === 'over' && room.hostId !== cs.you && <div className="conn-banner subtle">Waiting for the host to start a rematch…</div>}
     </>

@@ -275,7 +275,7 @@ export class VideoMesh {
     }
   }
 
-  /** Voice anti-cheat (partners during bidding and trick play). Same list = no-op. */
+  /** Voice anti-cheat (partners during trick play). Same list = no-op. */
   setLimited(ids: string[]): void {
     const cur = this.state.limited;
     if (cur.length === ids.length && ids.every((x) => cur.includes(x))) return;

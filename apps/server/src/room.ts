@@ -10,7 +10,7 @@
 import {
   type Action, type GameState, type Series, addSeriesGame, emptySeries, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, applyAction, isFreshDeal, isNukeTrick, nextDealer, makeRules, newGame, pendingTurn, secureSeed, validateRules, viewFor,
 } from '@spades/rules';
-import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, chooseBotAction, loudLoser, leanBid, botSkillFor, personaSkillFloor, seatSkill, leanNil, momentsFor, newTalkState, pickBotNames, prePlayLine } from '@spades/bots';
+import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, botHint, chooseBotAction, loudLoser, parseHint, leanBid, botSkillFor, personaSkillFloor, seatSkill, leanNil, momentsFor, newTalkState, pickBotNames, prePlayLine } from '@spades/bots';
 import {
   type BotLevel, type ChatLine, type ClientMsg, type HostMusic, type MediaState, type RoomInfo, type RoomPhase, type SeatInfo, type ServerMsg,
   DEFAULT_AFK_LIMIT, LIMITS, PROTOCOL_VERSION, parseClientMsg,
@@ -61,6 +61,8 @@ export interface RoomData {
   ready: string[];
   chat: ChatLine[];
   chatSeq: number;
+  /** partner talk this hand (bidding only): the latest hint per seat, for bot partners bidding after it */
+  hints?: Record<number, { hand: number; text: string }>;
   rev: number;
   /** game version (see RoomInfo.seq); optional only for rooms saved before it existed */
   seq?: number;
@@ -69,7 +71,7 @@ export interface RoomData {
   music?: HostMusic;
   /** consecutive timeouts before a bot replaces a player; 0 = off; unset = DEFAULT_AFK_LIMIT */
   afkLimit?: number;
-  /** host option: partner voice limiting during bidding/play; unset = off */
+  /** host option: partner voice limiting during trick play (from the first card led); unset = off */
   partnerMicMute?: boolean;
   nukeIntensity?: NukeIntensity;
   talkIntensity?: TalkIntensity;
@@ -234,7 +236,7 @@ export class Room {
     this.conns.set(connId, pid);
     this.sentHistory.delete(connId);
     const m = d.members[pid]!;
-    this.io.send(connId, { t: 'welcome', you: pid, token: m.token, code: d.code, chat: d.chat.slice(-LIMITS.chatHistory), v: PROTOCOL_VERSION });
+    this.io.send(connId, { t: 'welcome', you: pid, token: m.token, code: d.code, chat: d.chat.filter((l) => this.canSee(pid, l)).slice(-LIMITS.chatHistory), v: PROTOCOL_VERSION });
     d.lastActive = this.io.now();
     this.after();
   }
@@ -378,6 +380,17 @@ export class Room {
         if (w.length >= LIMITS.chatBurst) throw new RoomError('RATE_LIMITED', 'Slow down a little');
         w.push(now);
         this.chatWindow.set(pid, w);
+        if (msg.to === 'partner') {
+          // partner talk: team games, while bidding only; just the two partners see it (never the opponents)
+          const g = d.game;
+          if (!g || d.phase !== 'playing' || !d.rules.partnerships || me.seat === null || (g.phase !== 'bidding' && g.phase !== 'exchange'))
+            throw new RoomError('NOT_NOW', 'Partner talk is for bidding only');
+          const mate = (me.seat + 2) % d.rules.playerCount;
+          (d.hints ??= {})[me.seat] = { hand: g.handNo, text };
+          this.pushChat({ id: d.chatSeq++, from: pid, name: me.name, text, at: now, partner: { seats: [me.seat, mate] } });
+          this.io.persist();
+          return;
+        }
         this.pushChat({ id: d.chatSeq++, from: pid, name: me.name, text, at: now });
         // a trailing player running their mouth (3+ lines in 10 s): the bots answer
         const ev = loudLoser(d.game, me.seat, w);
@@ -616,6 +629,7 @@ export class Room {
   }
 
   private slowKey: string | null = null;
+  private hintKey: string | null = null;
 
   private talkState(): TalkState { return (this.data.talk ??= newTalkState()); }
 
@@ -803,7 +817,18 @@ export class Room {
         return changed;
       }
 
-      // a human's turn
+      // a human's turn. Partner talk: a bot partner who hasn't bid yet tells them (vaguely) what it's got
+      if (turn.kind === 'bid' && d.rules.partnerships && this.hintKey !== `${g.handNo}:${turn.seat}`) {
+        this.hintKey = `${g.handNo}:${turn.seat}`;
+        const mate = (turn.seat + 2) % d.rules.playerCount;
+        const ms = d.seats[mate];
+        if (ms?.kind === 'bot' && g.bids[mate] === null && g.hands[mate]!.length) {
+          const text = botHint(g.hands[mate]!, viewFor(g, mate));
+          (d.hints ??= {})[mate] = { hand: g.handNo, text };
+          this.pushChat({ id: d.chatSeq++, from: `bot:${mate}`, name: ms.name, text, at: now, partner: { seats: [mate, turn.seat] } });
+          changed = true;
+        }
+      }
       const timerMs = (turn.kind === 'bid' ? d.rules.turnTimerSec.bid : d.rules.turnTimerSec.play) * 1000 * (d.members[slot.playerId]?.learning ? LEARNING_TIMER : 1);
       const full = (d.turnStartedAt ?? now) + leadIn + timerMs;
       const connected = this.isConnected(slot.playerId);
@@ -866,7 +891,10 @@ export class Room {
     // Mixed skill rolls per seat from the game seed (stable across reconnects); persona floors (the Hustler is Pro+)
     const slot0 = d.seats[seat];
     const skill = slot0?.kind === 'bot' ? botSkillFor(level, d.game!.seed, seat, slot0.name) : seatSkill(level, d.game!.seed, seat);
-    let action = chooseBotAction(view, skill);
+    const mate = d.rules.partnerships ? (seat + 2) % d.rules.playerCount : -1;
+    const h = mate >= 0 ? d.hints?.[mate] : undefined;
+    const hint = h && h.hand === d.game!.handNo && d.seats[mate]?.kind === 'human' ? parseHint(h.text) : null;
+    let action = chooseBotAction(view, skill, undefined, hint);
     if (!action) return;
     // persona lean (bots only): a slight bid nudge / Nil reluctance; illegal nudges fall through to the catch below
     const slot = d.seats[seat];
@@ -874,7 +902,7 @@ export class Room {
       const revealed = (d.talk?.revealed ?? []).includes(seat);
       if (typeof action.bid === 'number') action = { ...action, bid: leanBid(action.bid, slot.name, revealed, Math.random) };
       else if (action.bid === 'nil' && leanNil(slot.name, Math.random)) action = { ...action, bid: 1 };
-      try { applyAction(d.game!, action); } catch { action = chooseBotAction(view, skill)!; }
+      try { applyAction(d.game!, action); } catch { action = chooseBotAction(view, skill, undefined, hint)!; }
     }
     try {
       this.apply(action);
@@ -942,7 +970,14 @@ export class Room {
     const d = this.data;
     d.chat.push(line);
     if (d.chat.length > LIMITS.chatHistory) d.chat.splice(0, d.chat.length - LIMITS.chatHistory);
-    for (const [cid, pid] of this.conns) if (pid) this.io.send(cid, { t: 'chat', line });
+    for (const [cid, pid] of this.conns) if (pid && this.canSee(pid, line)) this.io.send(cid, { t: 'chat', line });
+  }
+
+  /** partner talk goes only to the two partners (by their seats when it was said) */
+  private canSee(pid: string, line: ChatLine): boolean {
+    if (!line.partner) return true;
+    const seat = this.data.members[pid]?.seat;
+    return seat !== null && seat !== undefined && line.partner.seats.includes(seat);
   }
 
   private err(connId: string, code: string, message: string): void {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CLASSIC_JOKER, type Card, type GameState, type TableRules, scoreHand, isFreshDeal, RuleError, applyAction, bidOptions, buildDeck, deckForHand, legalPlays, legalPlaysFor, effectiveSuit,
+  CLASSIC_JOKER, type Card, type GameState, type TableRules, scoreHand, bidOrder, isFreshDeal, RuleError, applyAction, bidOptions, buildDeck, deckForHand, legalPlays, legalPlaysFor, effectiveSuit,
   makeRules, newGame as realNewGame, pendingTurn, trickWinner, viewFor, viewMustLeadTwoOfClubs, RulesConfigError, lowestLegal, radioactiveBigJoker, canRunIt, type Play, type Trick,
 } from '../src';
 import { bidAll, fill, play, rigged } from './helpers';
@@ -89,12 +89,12 @@ describe('bidding', () => {
     expectRuleError(() => applyAction(st, { type: 'bid', seat: 0, bid: 'nil' }), 'NIL_NOT_ALLOWED');
   });
   it('partner of a nil bidder may also bid nil by default, but not when disabled', () => {
-    let st = applyAction(base(), { type: 'bid', seat: 0, bid: 'nil' });
-    st = applyAction(st, { type: 'bid', seat: 1, bid: 3 });
+    // dealer 3: bidding order 0, 2 (partners back to back), 1, 3 (dealer last)
+    const st = applyAction(base(), { type: 'bid', seat: 0, bid: 'nil' });
+    expect(st.turn).toBe(2);
     expect(bidOptions(st, 2).nil).toBe(true);
     const r = makeRules('joker', { partnerMayAlsoNil: false });
-    let s2 = rigged(r, fill(r, [[], [], [], []]));
-    s2 = bidAll(s2, ['nil', 3] as never);
+    const s2 = applyAction(rigged(r, fill(r, [[], [], [], []])), { type: 'bid', seat: 0, bid: 'nil' });
     expect(bidOptions(s2, 2).nil).toBe(false);
     expectRuleError(() => applyAction(s2, { type: 'bid', seat: 2, bid: 'nil' }), 'NIL_NOT_ALLOWED');
   });
@@ -102,16 +102,20 @@ describe('bidding', () => {
     const r = makeRules('joker', { minTeamBid: 4 });
     let st = rigged(r, fill(r, [[], [], [], []]));
     expect(bidOptions(st, 0).min).toBe(1); // partner still to bid
-    st = bidAll(st, [1, 2] as never);
+    st = applyAction(st, { type: 'bid', seat: 0, bid: 1 });
     expect(bidOptions(st, 2).min).toBe(3);
     expectRuleError(() => applyAction(st, { type: 'bid', seat: 2, bid: 2 }), 'BID_TOO_LOW');
     expect(applyAction(st, { type: 'bid', seat: 2, bid: 'nil' }).bids[2]).toBe('nil'); // nil is exempt
     st = applyAction(st, { type: 'bid', seat: 2, bid: 3 });
+    expect(st.turn).toBe(1);
+    expect(bidOptions(st, 1).min).toBe(1); // the dealer still to bid
+    st = applyAction(st, { type: 'bid', seat: 1, bid: 2 });
+    expect(st.turn).toBe(3);
     expect(bidOptions(st, 3).min).toBe(2);
   });
   it('minimum bid applies alone when the partner bid nil, and individually in cutthroat', () => {
     const r = makeRules('joker', { minTeamBid: 4 });
-    const st = bidAll(rigged(r, fill(r, [[], [], [], []])), ['nil', 2] as never);
+    const st = applyAction(rigged(r, fill(r, [[], [], [], []])), { type: 'bid', seat: 0, bid: 'nil' });
     expect(bidOptions(st, 2).min).toBe(4);
     const c = makeRules('cutthroat', { minTeamBid: 2 });
     expect(bidOptions(rigged(c, fill(c, [[], [], [], []])), 0).min).toBe(2);
@@ -131,12 +135,12 @@ describe('bidding', () => {
   });
   it('blind nil bid and reveal flow', () => {
     let st: GameState = { ...newGame(joker, 'bn'), scores: [0, 150], phase: 'handOver', turn: null, dealer: 2 };
-    st = applyAction(st, { type: 'nextHand' }); // dealer 3, seat 0 bids first
+    st = applyAction(st, { type: 'nextHand' }); // dealer 3: order 0, 2, 1, 3
     expect(st.turn).toBe(0);
     st = applyAction(st, { type: 'bid', seat: 0, bid: 'blindNil' });
     expect(st.bids[0]).toBe('blindNil');
     expect(st.revealed[0]).toBe(true);
-    st = applyAction(st, { type: 'bid', seat: 1, bid: 3 });
+    expect(st.turn).toBe(2);
     // seat 2 looks at cards first, then can no longer blind nil
     st = applyAction(st, { type: 'reveal', seat: 2 });
     expect(bidOptions(st, 2).blindNil).toBe(false);
@@ -144,8 +148,10 @@ describe('bidding', () => {
     expectRuleError(() => applyAction(st, { type: 'reveal', seat: 2 }), 'ALREADY_REVEALED');
     expectRuleError(() => applyAction(st, { type: 'reveal', seat: 0 }), 'WRONG_PHASE');
     st = applyAction(st, { type: 'bid', seat: 2, bid: 4 });
+    st = applyAction(st, { type: 'bid', seat: 1, bid: 3 });
     st = applyAction(st, { type: 'bid', seat: 3, bid: 4 });
     expect(st.phase).toBe('playing');
+    expect(st.trick.leader).toBe(0); // play still starts left of the dealer
     expectRuleError(() => applyAction(st, { type: 'reveal', seat: 1 }), 'WRONG_PHASE');
   });
   it('blind nil always allowed when onlyWhenBehindBy is null; disabled when not allowed', () => {
@@ -517,5 +523,40 @@ describe("'Run it!' guarantee solver", () => {
     const five = late([['BJ', 'LJ', '2D', '2S', 'AS'], ['3H', '4H', '5H', '6H', '7H'], ['3C', '4C', '5C', '6C', '7C'], ['3D', '4D', '5D', '6D', '7D']]);
     expect(canRunIt(five, 0)).toBe(false);
     expect(canRunIt(late([['BJ', 'LJ'], ['3H', '4H'], ['5C', '6C'], ['3S', '7D']]), 1)).toBe(false);
+  });
+});
+
+describe('bidding order', () => {
+  it('team games: the non-dealing team bids first (back to back), then the dealer\'s partner, dealer last; play still starts left of the dealer', () => {
+    for (const mode of ['joker', 'aceDown'] as const) {
+      const r = makeRules(mode);
+      for (let d = 0; d < 4; d++) {
+        const L = (d + 1) % 4, P = (d + 2) % 4, R = (d + 3) % 4;
+        expect(bidOrder(r, d)).toEqual([L, R, P, d]);
+        let st = rigged(r, fill(r, [[], [], [], []]), d);
+        const seen: number[] = [];
+        while (st.phase === 'bidding') { seen.push(st.turn!); expectRuleError(() => applyAction(st, { type: 'bid', seat: (st.turn! + 1) % 4, bid: 3 }), 'NOT_YOUR_TURN'); st = applyAction(st, { type: 'bid', seat: st.turn!, bid: 3 }); }
+        expect(seen).toEqual([L, R, P, d]);
+        expect(st.turn).toBe(L);
+        expect(st.trick.leader).toBe(L);
+      }
+    }
+  });
+  it('the dealer rotates clockwise and every new hand starts bidding left of the new dealer', () => {
+    let st = newGame(makeRules('joker', { firstHandBidsItself: false }), 'order');
+    for (let h = 0; h < 4; h++) {
+      const d = st.dealer;
+      expect(st.turn).toBe((d + 1) % 4);
+      expect(bidOrder(st.rules, d)).toEqual([(d + 1) % 4, (d + 3) % 4, (d + 2) % 4, d]);
+      st = { ...st, phase: 'handOver', turn: null };
+      st = applyAction(st, { type: 'nextHand' });
+      expect(st.dealer).toBe((d + 1) % 4);
+    }
+  });
+  it('cutthroat stays clockwise from the dealer\'s left', () => {
+    for (const n of [3, 4] as const) {
+      const r = makeRules('cutthroat', { playerCount: n });
+      for (let d = 0; d < n; d++) expect(bidOrder(r, d)).toEqual(Array.from({ length: n }, (_, k) => (d + 1 + k) % n));
+    }
   });
 });

@@ -25,7 +25,7 @@ function timerKey(room: RoomInfo): TimerKey {
 }
 
 const NUKE_LABEL: Record<NukeIntensity, string> = { full: 'Full Nuke', classic: 'Classic', off: 'Off' };
-const MIC_MUTE_NOTE = 'Mutes partners to each other during bidding and play; everyone can talk between hands';
+const MIC_MUTE_NOTE = 'Mutes partners to each other during trick play only (from the first card led). Partners can talk books while bidding and between hands';
 
 /** Room lobby: invite link, seat picking (partners across), host settings, bots, chat, camera check. */
 

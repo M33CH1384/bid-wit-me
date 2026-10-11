@@ -102,6 +102,25 @@ export function deckForHand(rules: TableRules, seed: string, handNo: number): Ca
   return shuffle(buildDeck(rules), createRng(`${seed}:hand:${handNo}`));
 }
 
+/**
+ * Bidding order for a hand. Team games: the team WITHOUT the deal bids first, both partners back to back (dealer's left,
+ * then dealer's right), then the dealer's team: the dealer's partner, and the dealer last. With seats clockwise
+ * D, L, P, R that is L, R, P, D. Cutthroat: clockwise from the dealer's left. (Play order is always clockwise from the
+ * dealer's left.)
+ */
+export function bidOrder(r: Pick<TableRules, 'partnerships' | 'playerCount'>, dealer: Seat): Seat[] {
+  const n = r.playerCount;
+  if (r.partnerships && n === 4) return [1, 3, 2, 0].map((k) => (dealer + k) % 4);
+  return Array.from({ length: n }, (_, k) => (dealer + 1 + k) % n);
+}
+/** Who bids after `seat` this hand (null when `seat` is the last bidder). */
+export function nextBidder(st: Pick<GameState, 'rules' | 'dealer' | 'bids'>, seat: Seat): Seat | null {
+  const order = bidOrder(st.rules, st.dealer);
+  const i = order.indexOf(seat);
+  for (let k = i + 1; k < order.length; k++) if (st.bids[order[k]!] === null) return order[k]!;
+  return null;
+}
+
 function dealHand(prev: GameState, handNo: number, dealer: Seat): GameState {
   const r = prev.rules;
   const n = r.playerCount;
@@ -110,7 +129,7 @@ function dealHand(prev: GameState, handNo: number, dealer: Seat): GameState {
   // one at a time clockwise, starting left of the dealer
   deck.forEach((c, i) => hands[(dealer + 1 + i) % n]!.push(c));
   const st: GameState = {
-    ...prev, phase: 'bidding', handNo, dealer, turn: (dealer + 1) % n,
+    ...prev, phase: 'bidding', handNo, dealer, turn: bidOrder(r, dealer)[0]!,
     hands, bids: Array(n).fill(null), revealed: Array(n).fill(true), exchange: [],
     trick: { leader: (dealer + 1) % n, plays: [], winner: null }, tricks: [],
     tricksWon: Array(n).fill(0), spadesBroken: false,
@@ -399,7 +418,7 @@ export function applyAction(st: GameState, action: Action): GameState {
       bids[seat] = bid;
       const revealed = [...st.revealed];
       revealed[seat] = true;
-      let next: GameState = { ...st, bids, revealed, turn: (seat + 1) % n };
+      let next: GameState = { ...st, bids, revealed, turn: nextBidder({ ...st, bids }, seat) ?? (seat + 1) % n };
       if (bids.every((b) => b !== null)) {
         const steps = exchangeSteps(next);
         next = steps.length ? { ...next, phase: 'exchange', exchange: steps, turn: steps[0]!.from } : startPlay(next);

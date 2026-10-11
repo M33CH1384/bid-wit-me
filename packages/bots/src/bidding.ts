@@ -1,3 +1,4 @@
+import { type PartnerHint, applyHint } from './partnerTalk';
 import { type Card, type PlayerView, type Rng, effectiveSuit, isNilBid, isTrump, partnerOf, sideOf, trumpOrder } from '@spades/rules';
 
 /** One line of a hand's book count (shared by the bots' bidding and the player-facing bid coach). */
@@ -149,7 +150,8 @@ export function seatSkill(setting: BotLevel | BotSkillSetting | undefined, gameS
 export const BOT_SKILL_LABEL: Record<BotSkill, string> = { novice: 'Novice', regular: 'Regular', pro: 'Pro', shark: 'Shark' };
 
 /** Choose a bid for a revealed hand. */
-export function chooseBid(v: PlayerView, level: BotLevel, rng: Rng): number | 'nil' {
+/** Choose a bid. `hint`: what the partner said during bidding (partner talk), used while the partner hasn't bid yet. */
+export function chooseBid(v: PlayerView, level: BotLevel, rng: Rng, hint?: PartnerHint | null): number | 'nil' {
   const opt = v.bidOptions!;
   const hand = v.hand!;
   const r = v.rules;
@@ -160,13 +162,15 @@ export function chooseBid(v: PlayerView, level: BotLevel, rng: Rng): number | 'n
   if (skill === 'novice') est += rng.float() * 2.4 - 0.9; // sloppy, leans greedy
   else if (skill === 'regular') est += rng.float() * 0.8 - 0.4;
   const partnerNil = isNilBid(pBid);
-  if ((skill === 'pro' || skill === 'shark') && opt.nil && !partnerNil && nilWorthy(hand, v)) return 'nil';
+  const liveHint = pBid === null ? hint : null;
+  if ((skill === 'pro' || skill === 'shark') && opt.nil && !partnerNil && !liveHint?.nil && nilWorthy(hand, v)) return 'nil';
   if (partnerNil) est += 0.5; // covering a nil partner: we'll be winning extra tricks anyway
   let bid = Math.round(est + (r.partnerships ? 0 : 0.15));
   // Don't overbid the table: total bids above the hand size are a guaranteed set for someone.
   const others = v.bids.reduce<number>((a, b) => a + (typeof b === 'number' ? b : 0), 0);
   const room = r.playerCount === 4 ? 13 : 17;
   if (skill !== 'novice' && others + bid > room + 1) bid = Math.max(1, room + 1 - others);
+  if (skill !== 'novice') bid = applyHint(bid, liveHint, v);
   return Math.min(opt.max, Math.max(opt.min, bid, 1));
 }
 

@@ -1,5 +1,6 @@
 import { type Action, type GameState, type PlayerView, type Rng, type TableRules, applyAction, createRng, newGame, pendingTurn, viewFor } from '@spades/rules';
 import { type BotLevel, chooseBid, wantsBlindNil } from './bidding';
+import type { PartnerHint } from './partnerTalk';
 import { chooseExchange, choosePlay } from './play';
 
 export * from './bidding';
@@ -10,7 +11,7 @@ export { voidsOf } from './knowledge';
  * Picks the next action for a bot seat from that seat's view only.
  * Returns null if it isn't this seat's turn.
  */
-export function chooseBotAction(v: PlayerView, level: BotLevel = 'pro', rng: Rng = createRng(`${v.seat}:${v.handNo}:${v.tricks.length}`)): Action | null {
+export function chooseBotAction(v: PlayerView, level: BotLevel = 'pro', rng: Rng = createRng(`${v.seat}:${v.handNo}:${v.tricks.length}`), hint?: PartnerHint | null): Action | null {
   if (v.turn !== v.seat) return null;
   switch (v.phase) {
     case 'bidding':
@@ -18,7 +19,7 @@ export function chooseBotAction(v: PlayerView, level: BotLevel = 'pro', rng: Rng
         if (wantsBlindNil(v, level)) return { type: 'bid', seat: v.seat, bid: 'blindNil' };
         return { type: 'reveal', seat: v.seat };
       }
-      return { type: 'bid', seat: v.seat, bid: chooseBid(v, level, rng) };
+      return { type: 'bid', seat: v.seat, bid: chooseBid(v, level, rng, hint) };
     case 'exchange':
       return { type: 'exchange', seat: v.seat, cards: chooseExchange(v) };
     case 'playing':
@@ -62,3 +63,4 @@ export * from './talk';
 export * from './moments';
 export * from './voices';
 export { PACK, STYLE } from './pack';
+export * from './partnerTalk';

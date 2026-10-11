@@ -77,11 +77,12 @@ node scripts/shots3d.mjs  # screenshots/3d/{phone,desktop}-{1-start,2-bidding,3-
   mini-view, countdown (host: 15/20/30/45 s, default 20) and Ready / Continue. Offline: bot banter.
 - **Voice anti-cheat** (online, **host option, off by default**): the host turns on "Partner mic mute" in the lobby's
   table settings (`config.partnerMicMute`, validated as a boolean, host-only, lobby-only; everyone sees the choice in
-  the lobby). When it's on, during bidding and trick play **partners only** can't hear each other — my mic
+  the lobby). When it's on, during **trick play only** (from the first card led to the end of the hand) **partners only** can't hear each other — my mic
   track isn't sent to my partner's peer connection (send-side `replaceTrack(null)`) and their voice isn't played here
   (receive-side). Opponents still hear everyone (trash talk is part of the game). All mics are open in the lobby,
-  during Table Talk and after the game. A "MIC LIMITED" badge shows while it applies; a "Table talk over — partners
-  muted" toast marks the switch back. When it's off (the default) nobody is limited, and there's no badge or
+  **during bidding** (partners may talk books, vaguely, to agree on a total; each still bids their own number), during
+  Table Talk and after the game. A "MIC LIMITED" badge shows while it applies; a "First card's down — partner mics
+  muted" toast fires when the first card is led. When it's off (the default) nobody is limited, and there's no badge or
   partner-muting toast.
 - **Random bot names**: bots get names at random per game from a pool of 80 (`packages/bots/src/names.ts`): never two
   alike at a table, never a human player's name. Offline they're derived from the game seed and kept in the save

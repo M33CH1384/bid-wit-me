@@ -191,8 +191,11 @@ await guest.locator('.tt-chat').getByText('gg').first().waitFor({ timeout: 8000 
 if (await host.getByTestId('talk-ready').isEnabled()) await host.getByTestId('talk-ready').click();
 await host.getByTestId('talk-ready-count').filter({ hasText: '1/2' }).waitFor({ timeout: 5000 });
 await guest.getByTestId('talk-ready').click({ timeout: 3000 }).catch(() => {});
-await host.getByTestId('talk-over').waitFor({ timeout: 15000 });
-log('"Table talk over — partners muted" toast after everyone was ready');
+// partners may talk books while bidding: mics stay open until the first card is led, then the 'partners muted' toast
+await host.waitForFunction(() => /HAND 2\b/i.test(document.querySelector('.scorebug')?.textContent ?? ''), null, { timeout: 15000 }).catch(() => {});
+if ((await host.evaluate(() => window.__bwmVideo?.state.limited ?? [])).length && !(await host.locator('[data-testid^="card-"]').count())) throw new Error('partner mics should be open during bidding');
+await playUntil(async () => (await host.getByTestId('talk-over').count()) > 0, 30000);
+log('"First card\'s down — partner mics muted" toast once the first card was led (open during bidding)');
 // (the hand counter, not "a bid button is showing": step() may answer a bid before the condition gets to see it)
 await playUntil(async () => /HAND 2\b/i.test(await host.locator('.scorebug').first().innerText().catch(() => '')), 30000);
 log('hand 2 dealt');

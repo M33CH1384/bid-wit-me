@@ -1,19 +1,19 @@
-import { type Card, type GameState, type TableRules, applyAction, buildDeck, newGame } from '../src';
+import { type Card, type GameState, type TableRules, applyAction, bidOrder, buildDeck, newGame } from '../src';
 
-/** A game whose current hand is replaced by the given hands; bidding starts left of `dealer`. */
+/** A game whose current hand is replaced by the given hands; bidding starts with the first bidder for `dealer` (team games: dealer's left, then dealer's right, dealer's partner, dealer). */
 export function rigged(rules: TableRules, hands: Card[][], dealer = 3, seed = 'test'): GameState {
   const st = newGame(rules, seed);
   const n = rules.playerCount;
   return {
-    ...st, phase: 'bidding', bids: Array(n).fill(null), dealer, hands: hands.map((h) => [...h]), turn: (dealer + 1) % n,
+    ...st, phase: 'bidding', bids: Array(n).fill(null), dealer, hands: hands.map((h) => [...h]), turn: bidOrder(rules, dealer)[0]!,
     trick: { leader: (dealer + 1) % n, plays: [], winner: null },
     revealed: Array(n).fill(true),
   };
 }
 
-/** Applies bids in turn order starting from the current turn. */
-export function bidAll(st: GameState, bids: (number | 'nil' | 'blindNil')[]): GameState {
-  for (let i = 0; i < bids.length; i++) st = applyAction(st, { type: 'bid', seat: st.turn!, bid: bids[st.turn!]! });
+/** Applies bids (indexed by SEAT) in bidding order from the current turn, stopping at the first seat with no bid given. */
+export function bidAll(st: GameState, bids: (number | 'nil' | 'blindNil' | undefined)[]): GameState {
+  while (st.phase === 'bidding' && st.turn !== null && bids[st.turn] !== undefined) st = applyAction(st, { type: 'bid', seat: st.turn, bid: bids[st.turn]! });
   return st;
 }
 

@@ -840,3 +840,52 @@ describe('dealer rotation + Shot = out online', () => {
     throw new Error('no shot-out game in 40 tries');
   });
 });
+
+describe('partner talk during bidding', () => {
+  const chats = (env: FakeEnv, cid: string) => env.msgs(cid).filter((m) => m.t === 'chat').map((m) => (m as { line: { text: string; partner?: unknown } }).line);
+  it('goes only to the partner, never the opponents (live and in the history), and only while bidding', () => {
+    const { env } = fourHumans();
+    env.send('a', { t: 'config', rules: makeRules('joker', { firstHandBidsItself: false }) });
+    env.send('a', { t: 'start' });
+    expect(env.last('a', 'state')!.view!.phase).toBe('bidding');
+    env.send('a', { t: 'chat', text: '3-ish', to: 'partner' }); // seat 0 → partner seat 2 ('c')
+    expect(chats(env, 'c').map((l) => l.text)).toContain('3-ish');
+    expect(chats(env, 'c').find((l) => l.text === '3-ish')!.partner).toEqual({ seats: [0, 2] });
+    expect(chats(env, 'a').map((l) => l.text)).toContain('3-ish');
+    for (const opp of ['b', 'd']) expect(chats(env, opp).map((l) => l.text)).not.toContain('3-ish');
+    // a reconnecting opponent doesn't get it from the history either
+    env.join('b2', 'Ray', env.msgs('b').find((m) => m.t === 'welcome') ? (env.msgs('b').find((m) => m.t === 'welcome') as { token: string }).token : undefined);
+    const w = env.msgs('b2').find((m) => m.t === 'welcome') as { chat: { text: string }[] } | undefined;
+    expect(w!.chat.map((l) => l.text)).not.toContain('3-ish');
+    // once trick play starts it's refused
+    for (let i = 0; i < 40 && env.last('a', 'state')!.view!.phase === 'bidding'; i++) playTurn(env, ['a', 'b2', 'c', 'd']);
+    expect(env.last('a', 'state')!.view!.phase).toBe('playing');
+    env.send('a', { t: 'chat', text: 'I got about 2', to: 'partner' });
+    expect(env.errors('a').at(-1)!.code).toBe('NOT_NOW');
+  });
+  it('a bot partner hints (vaguely, partner-only) on the human\'s bidding turn; opponents never see it', () => {
+    const env = new FakeEnv(undefined, FAST);
+    env.join('a', 'Dee'); env.join('b', 'Ray');
+    env.send('a', { t: 'sit', seat: 0 }); env.send('b', { t: 'sit', seat: 1 });
+    env.send('a', { t: 'addBot', seat: 2 }); env.send('a', { t: 'addBot', seat: 3 });
+    env.send('a', { t: 'config', rules: makeRules('joker', { firstHandBidsItself: false }) });
+    env.send('a', { t: 'start' });
+    let hinted = false;
+    for (let i = 0; i < 200 && !hinted; i++) {
+      const v = env.last('a', 'state')!.view!;
+      hinted = chats(env, 'a').some((l) => !!l.partner);
+      if (hinted || v.phase !== 'bidding') break;
+      if (!playTurn(env, ['b'])) env.advance(50);
+    }
+    // the human at seat 0 bids before the bot partner at seat 2 whenever seat 0 is the first of its team to bid
+    const line = chats(env, 'a').find((l) => !!l.partner);
+    expect(line, 'dealer ' + env.last('a', 'state')!.view!.dealer).toBeDefined();
+    if (line) {
+      expect(line.text).toMatch(/about \d|weak|Nil|or more|Strong in spades/);
+      expect(chats(env, 'b').some((l) => !!l.partner)).toBe(false);
+    } else {
+      // seat 2 bid first: its bid is on the table instead
+      expect(env.last('a', 'state')!.view!.bids[2]).not.toBeNull();
+    }
+  });
+});
