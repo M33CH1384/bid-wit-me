@@ -1,0 +1,48 @@
+# Accounts & auth: audit + plan (Release 7, Oct 2026)
+
+## Audit: how it works today
+- **No accounts.** Online play uses a display name plus one secret seat token per table. Both live in localStorage (`bwm.online.name`, `bwm.online.tokens`, the 20 most recent tables).
+  - The token is a 128-bit `crypto.randomUUID`. It goes only to its owner (`welcome`), and other players only ever see a separate 12-character player id.
+  - Rejoin = same token. The host is the first member, and host rights pass on when the host leaves. Kicked tokens can't rejoin until the next game.
+- **Origins:** the Worker only accepts table creation and websockets from `ALLOWED_ORIGINS` (the Pages site + localhost).
+- **Feedback admin:** `FEEDBACK_ADMIN_TOKEN` is compared in constant time, and the admin page answers 404 without it. The page sets `no-store`, `noindex` and `no-referrer`.
+  - Weak spot: the token rides in `?token=`, so it can land in browser history and logs.
+- **Secrets on the Worker:** `RESEND_API_KEY`, `FEEDBACK_EMAIL_*` and `FEEDBACK_ADMIN_TOKEN` (TURN is optional). They're set as secrets, not in `wrangler.toml`, and are untouched by this release.
+- **Local-only progress:** badges, series, settings, stats and Run it! onboarding stay on one device and are lost if storage is cleared. Badges are already stored as `{v:1, badges:[…]}` so a server can import them as-is.
+
+### Risks (ranked)
+1. **XSS = seat takeover:** any script on the page can read the seat tokens. React escapes chat and names, but there is no CSP yet. Fix: add a strict Content-Security-Policy via Pages `_headers` (cheap, do first).
+2. **Feedback admin token in the URL:** move it to an `Authorization` header or a short-lived admin cookie.
+3. **No abuse limits on table creation or joins** beyond the origin check. Fix: a per-IP rate limit in the Worker, plus Turnstile (free) on Create table if spam shows up.
+4. **Progress lost across devices.** This is the real reason for accounts.
+
+## Plan (all free tier, guest play stays the default)
+- **Phase 0 (hardening, ~½ day):**
+  - CSP + `X-Frame-Options` / `frame-ancestors` in `apps/web/public/_headers`.
+  - Admin token as a header.
+  - Per-IP create/join rate limit in the Worker.
+- **Phase 1: optional sign-in.**
+  - **Sign-in:** passkeys (WebAuthn, no third party, works on iPhone and Android) plus "Sign in with Google" (OAuth, PKCE).
+  - **Data:** users, sessions, badges and stats in **Cloudflare D1** (free: 5 GB).
+  - **Sessions:** an HttpOnly, Secure, SameSite=Lax cookie on **bid-wit-me.pages.dev**. A Pages Function proxies `/api/*` to the Worker over a service binding, so the cookie is first-party. Today the site (pages.dev) and the server (workers.dev) are on different sites, so a cookie set by the Worker would be third-party and blocked by Safari.
+  - Seat tokens stay as they are; signed-in players also get the seat bound to their user id.
+- **Phase 2 (progress):** "Save my progress" imports the local badges, series and stats into the account once, then they sync. Add a display name tied to the account and an "Account" sheet: sign out, delete account (a hard delete in D1).
+- **Later / optional:** email magic links via Resend. This needs a domain verified in Resend; without one, Resend only delivers to the account owner's own address, so it's not usable for players on the free setup.
+
+## Free accounts Demetrius must create
+**Required for Phase 1: one.**
+1. **Google Cloud project with an OAuth client** (free; use your existing Google account).
+   - Steps: console.cloud.google.com → new project "Bid Wit Me" → *APIs & Services → OAuth consent screen* (External; app name, support email, `bid-wit-me.pages.dev` as an authorized domain) → *Credentials → Create OAuth client ID* (Web; redirect URI `https://bid-wit-me.pages.dev/api/auth/google/callback`).
+   - Send me the client ID; the client secret gets set as a Worker secret, never pasted in chat.
+
+**No new account needed:**
+- Cloudflare: D1, Pages Functions and Turnstile are in the account you already have.
+- Passkeys: built into browsers.
+- GitHub and Resend: you already have them.
+
+**Optional:**
+- **Discord Developer application** (free, discord.com/developers), if you want "Sign in with Discord" for the gaming crowd.
+
+**Skipped on purpose:**
+- Apple Sign in: needs the $99/yr Apple Developer Program. Passkeys already cover iPhone.
+- Auth0 / Clerk / Supabase: another vendor and data processor for something D1 + passkeys + Google already cover for free.

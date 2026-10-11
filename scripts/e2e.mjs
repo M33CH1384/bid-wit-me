@@ -479,7 +479,8 @@ async function playGame(mode, label, { shots = false, speed = 'turbo', extra = {
     if (await page.locator('.table-screen').count()) throw new Error('browser back re-entered the finished game');
     if (!(await page.getByTestId('wizard').count())) throw new Error('browser back left the menu flow');
     // wizard: Home jumps to the splash; the back arrow steps essentials → mode → splash
-    await page.goto(base);
+    // a fresh entry (same-URL goto acts as a reload, which keeps the wizard step in history.state)
+    await page.goto(`${base}/?fresh=${Date.now()}`);
     await page.getByTestId('play-bots').click();
     await page.getByTestId('mode-joker').click();
     await page.getByTestId('wiz-home').click();

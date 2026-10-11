@@ -8,6 +8,28 @@ from the original sources and re-encoded/resized (1k + 512px JPEG) for the web; 
 | `textures/scuba_suede_nor_gl_{1k,512}.jpg`, `textures/scuba_suede_rough_512.jpg` | "Scuba Suede" fabric (felt normal + roughness) | Poly Haven — https://polyhaven.com/a/scuba_suede | CC0 1.0 |
 | `textures/dark_wood_{diff,nor_gl}_{1k,512}.jpg`, `textures/dark_wood_rough_512.jpg` | "Dark Wood" (table rail) | Poly Haven — https://polyhaven.com/a/dark_wood | CC0 1.0 |
 | `hdri/billiard_hall_512.hdr` | "Billiard Hall" HDRI (environment lighting; downsized from the 1k file) | Poly Haven — https://polyhaven.com/a/billiard_hall | CC0 1.0 |
+| `venues/backyard/bg.jpg`, `venues/backyard/env.hdr` | "Qwantani Dusk 2" HDRI (backyard venue backdrop + lighting; baked down to a 1024×512 jpg and a 256×128 .hdr) | Poly Haven — https://polyhaven.com/a/qwantani_dusk_2 | CC0 1.0 |
+| `venues/barbershop/bg.jpg`, `venues/barbershop/env.hdr` | "Phone Shop" HDRI (barbershop venue backdrop + lighting; baked down to a 1024×512 jpg and a 256×128 .hdr) | Poly Haven — https://polyhaven.com/a/phone_shop | CC0 1.0 |
+| `venues/beach/bg.jpg`, `venues/beach/env.hdr` | "Umhlanga Sunrise" HDRI (beach venue backdrop + lighting; baked down to a 1024×512 jpg and a 256×128 .hdr) | Poly Haven — https://polyhaven.com/a/umhlanga_sunrise | CC0 1.0 |
+| `venues/church/bg.jpg`, `venues/church/env.hdr` | "Abandoned Factory Canteen 01" HDRI (church venue backdrop + lighting; baked down to a 1024×512 jpg and a 256×128 .hdr) | Poly Haven — https://polyhaven.com/a/abandoned_factory_canteen_01 | CC0 1.0 |
+| `venues/grandma/bg.jpg`, `venues/grandma/env.hdr` | "Brown Photostudio 02" HDRI (grandma venue backdrop + lighting; baked down to a 1024×512 jpg and a 256×128 .hdr) | Poly Haven — https://polyhaven.com/a/brown_photostudio_02 | CC0 1.0 |
+| `venues/mansion/bg.jpg`, `venues/mansion/env.hdr` | "Royal Esplanade" HDRI (mansion venue backdrop + lighting; baked down to a 1024×512 jpg and a 256×128 .hdr) | Poly Haven — https://polyhaven.com/a/royal_esplanade | CC0 1.0 |
+| `venues/rooftop/bg.jpg`, `venues/rooftop/env.hdr` | "Shanghai Bund" HDRI (rooftop venue backdrop + lighting; baked down to a 1024×512 jpg and a 256×128 .hdr) | Poly Haven — https://polyhaven.com/a/shanghai_bund | CC0 1.0 |
+| `venues/speakeasy/bg.jpg`, `venues/speakeasy/env.hdr` | "Fireplace" HDRI (speakeasy venue backdrop + lighting; baked down to a 1024×512 jpg and a 256×128 .hdr) | Poly Haven — https://polyhaven.com/a/fireplace | CC0 1.0 |
+| `venues/vegas/bg.jpg`, `venues/vegas/env.hdr` | "Colorful Studio" HDRI (vegas venue backdrop + lighting; baked down to a 1024×512 jpg and a 256×128 .hdr) | Poly Haven — https://polyhaven.com/a/colorful_studio | CC0 1.0 |
+| `venues/yacht/bg.jpg`, `venues/yacht/env.hdr` | "Venice Sunset" HDRI (yacht venue backdrop + lighting; baked down to a 1024×512 jpg and a 256×128 .hdr) | Poly Haven — https://polyhaven.com/a/venice_sunset | CC0 1.0 |
+| `venues/tex/bamboo_veneer_512.jpg` | "Bamboo Veneer" (venue floor / rail colour map, 512px) | Poly Haven — https://polyhaven.com/a/bamboo_veneer | CC0 1.0 |
+| `venues/tex/brown_leather_512.jpg` | "Brown Leather" (venue floor / rail colour map, 512px) | Poly Haven — https://polyhaven.com/a/brown_leather | CC0 1.0 |
+| `venues/tex/checkered_pavement_tiles_512.jpg` | "Checkered Pavement Tiles" (venue floor / rail colour map, 512px) | Poly Haven — https://polyhaven.com/a/checkered_pavement_tiles | CC0 1.0 |
+| `venues/tex/coast_sand_01_512.jpg` | "Coast Sand 01" (venue floor / rail colour map, 512px) | Poly Haven — https://polyhaven.com/a/coast_sand_01 | CC0 1.0 |
+| `venues/tex/concrete_floor_02_512.jpg` | "Concrete Floor 02" (venue floor / rail colour map, 512px) | Poly Haven — https://polyhaven.com/a/concrete_floor_02 | CC0 1.0 |
+| `venues/tex/herringbone_parquet_512.jpg` | "Herringbone Parquet" (venue floor / rail colour map, 512px) | Poly Haven — https://polyhaven.com/a/herringbone_parquet | CC0 1.0 |
+| `venues/tex/leafy_grass_512.jpg` | "Leafy Grass" (venue floor / rail colour map, 512px) | Poly Haven — https://polyhaven.com/a/leafy_grass | CC0 1.0 |
+| `venues/tex/linoleum_brown_512.jpg` | "Linoleum Brown" (venue floor / rail colour map, 512px) | Poly Haven — https://polyhaven.com/a/linoleum_brown | CC0 1.0 |
+| `venues/tex/marble_01_512.jpg` | "Marble 01" (venue floor / rail colour map, 512px) | Poly Haven — https://polyhaven.com/a/marble_01 | CC0 1.0 |
+| `venues/tex/old_linoleum_flooring_01_512.jpg` | "Old Linoleum Flooring 01" (venue floor / rail colour map, 512px) | Poly Haven — https://polyhaven.com/a/old_linoleum_flooring_01 | CC0 1.0 |
+| `venues/tex/teak_veneer_512.jpg` | "Teak Veneer" (venue floor / rail colour map, 512px) | Poly Haven — https://polyhaven.com/a/teak_veneer | CC0 1.0 |
+| `venues/tex/wood_floor_deck_512.jpg` | "Wood Floor Deck" (venue floor / rail colour map, 512px) | Poly Haven — https://polyhaven.com/a/wood_floor_deck | CC0 1.0 |
 
 CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/ (no attribution required; credited anyway).
 

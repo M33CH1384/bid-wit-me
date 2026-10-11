@@ -482,6 +482,16 @@ function LayoutProbe({ items, trickKeys, handKeys, positions, n, short }: { item
   return null;
 }
 
+/** venues: a soft neutral light riding with the camera, so your hand reads the same in every venue (the venue's own
+ * light and HDRI can be dim or coloured: amber speakeasy, night rooftop). Short range: it never reaches the table. */
+function HandFill() {
+  const ref = useRef<import('three').PointLight>(null);
+  const camera = useThree((st) => st.camera);
+  useFrame(() => { ref.current?.position.copy(camera.position).add(_up); });
+  return <pointLight ref={ref} color="#fff8f0" intensity={2.4} distance={2.6} decay={2} />;
+}
+const _up = new Vector3(0, 0.25, 0);
+
 function Lights({ quality, def }: { quality: 'high' | 'low'; def: VenueDef }) {
   const hi = quality === 'high';
   return (
@@ -501,6 +511,7 @@ function Lights({ quality, def }: { quality: 'high' | 'low'; def: VenueDef }) {
         shadow-normalBias={0.012}
         shadow-radius={6}
       />
+      {def.id !== 'classic' && <HandFill />}
       {/* purple rim from behind the table, for the stream-studio vibe */}
       <pointLight position={[0, 1.6, -4.2]} intensity={(hi ? 9 : 6) * (def.id === 'classic' ? 1 : 0.6)} color={def.rim} distance={9} />
     </>

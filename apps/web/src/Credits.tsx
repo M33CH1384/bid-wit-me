@@ -29,7 +29,7 @@ export default function Credits({ onClose }: { onClose: () => void }) {
           <h3>Sound effects</h3>
           <p>Card &amp; chip foley from Kenney “Casino Audio” and “UI Audio” (<a href="https://kenney.nl" target="_blank" rel="noreferrer">kenney.nl</a>) — CC0. Chimes, stingers, jingles and ambience synthesized in-game.</p>
           <h3>3D art</h3>
-          <p>Felt (“Scuba Suede”), rail wood (“Dark Wood”) and “Billiard Hall” HDRI from <a href="https://polyhaven.com" target="_blank" rel="noreferrer">Poly Haven</a> — CC0. Cards and table drawn procedurally.</p>
+          <p>Felt (“Scuba Suede”), rail wood (“Dark Wood”) and “Billiard Hall” HDRI from <a href="https://polyhaven.com" target="_blank" rel="noreferrer">Poly Haven</a> — CC0. Venue backdrops and lighting (HDRIs “Qwantani Dusk 2”, “Royal Esplanade”, “Phone Shop”, “Abandoned Factory Canteen 01”, “Shanghai Bund”, “Fireplace”, “Colorful Studio”, “Umhlanga Sunrise”, “Brown Photostudio 02”, “Venice Sunset”) and floor / rail textures also from Poly Haven — CC0. Cards, table and venue props drawn procedurally.</p>
           <h3>Fonts &amp; code</h3>
           <p>Barlow Condensed (SIL OFL 1.1). three.js, React Three Fiber, drei, React, Vite (MIT).</p>
           <p className="muted">Bid Wit Me name and BWM logo © Bid Wit Me.</p>

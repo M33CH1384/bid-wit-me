@@ -104,7 +104,12 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
           setLearning: (on) => conn.send({ t: 'learning', on }),
           venue: room.venueNow ?? (room.venue && room.venue !== 'random' ? room.venue : 'classic'),
           victory: (winners, losers, title, sub) => {
-            const sp = (L: number) => ({ key: String(rot.R(L)), name: names[L] ?? '?', seat: room.seats[rot.R(L)], isMe: L === 0 });
+            const sp = (L: number) => {
+              const seat = room.seats[rot.R(L)];
+              // your own card shows your display name ("Demetrius (you)"), not just "You"
+              const own = L === 0 && seat && 'name' in seat && typeof seat.name === 'string' && seat.name.trim() ? seat.name.trim() : undefined;
+              return { key: String(rot.R(L)), name: own ?? names[L] ?? '?', seat, isMe: L === 0 };
+            };
             return <VictorySpotlight winners={winners.map(sp)} losers={losers.map(sp)} title={title} sub={sub} mesh={mesh} vs={vs} />;
           },
           controls: <MediaBar mesh={mesh} vs={vs} seated limited={limitedNow} />,

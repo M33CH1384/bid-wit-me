@@ -89,13 +89,14 @@ if (!r.ok) throw new Error(`test-state ${r.status}: start the local Worker with 
 await host.getByTestId('run-it').waitFor({ timeout: 60000 });
 await host.waitForTimeout(800);
 await host.getByTestId('run-it').tap({ force: true });
-await host.getByTestId('victory-spot').waitFor({ timeout: 60000 });
+await host.getByTestId('victory-spot').waitFor({ timeout: 60000 }).catch(async (e) => { await host.screenshot({ path: '/tmp/hs-fail.png' }); throw e; });
 await host.waitForTimeout(2500);
 const v = await host.evaluate(() => {
   const sc = document.querySelector('.victory-screen');
   const btn = document.querySelector('[data-testid="rematch"]').getBoundingClientRect();
   return { scroll: sc.scrollHeight - sc.clientHeight, btnBottom: btn.bottom, h: innerHeight, title: document.querySelector('[data-testid="vs-title"]')?.textContent, sub: document.querySelector('[data-testid="vs-sub"]')?.textContent, names: [...document.querySelectorAll('.vs-name')].map((e) => e.textContent), cards: document.querySelectorAll('.vs-tile.win.card').length };
 });
+ok((v.names ?? []).includes('Demetrius (you)'), `your own winner card should show your name: ${JSON.stringify(v.names)}`);
 ok(/shot callers win/i.test(v.title ?? ''), `victory headline is not the team name: ${v.title}`);
 ok(!!v.sub && v.sub.includes('&'), `no player names under the team name: ${v.sub}`);
 ok(v.scroll <= 1 && v.btnBottom <= v.h, `victory scrolls (${v.scroll}px, buttons at ${v.btnBottom}/${v.h})`);

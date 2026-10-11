@@ -124,6 +124,21 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
       {startBlock}
       </div>
       <div className="lobby-settings">
+      {/* the venue: its own panel so it's easy to find (the host picks, everyone sees the same spot) */}
+      <section className="panel lobby-venue-panel" data-testid="lobby-venue-panel">
+        <div className="panel-title">VENUE{isHost && !playing ? <small> (host)</small> : null}</div>
+        {isHost && !playing ? (
+          <div className="venue-pick">
+            <select data-testid="lobby-venue" aria-label="Venue" value={room.venue ?? 'classic'} onChange={(e) => conn.send({ t: 'venue', venue: e.target.value as VenueChoice })}>
+              {VENUE_LIST.map((v) => <option key={v.id} value={v.id}>{v.emoji} {v.name}{v.id === 'classic' ? ' (default)' : ''}</option>)}
+              <option value="random">🎲 Random</option>
+            </select>
+            <small>{room.venue === 'random' ? 'Rolled when the game starts · everyone sees the same spot' : `${VENUE_DEFS[(room.venue ?? 'classic') as VenueId].blurb} Everyone sees it.`}</small>
+          </div>
+        ) : (
+          <p className="venue-pick" data-testid="venue-guest">{venueLabel(room.venueNow ?? room.venue ?? 'classic')}<small>{room.venue === 'random' && !room.venueNow ? 'Rolled when the game starts' : VENUE_DEFS[(room.venueNow ?? room.venue ?? 'classic') as VenueId].blurb}</small></p>
+        )}
+      </section>
       {isHost && !playing ? (
         <details className="panel settings-panel" open={settingsOpen} onToggle={(e) => setSettingsOpen((e.currentTarget as HTMLDetailsElement).open)}>
           <summary className="panel-title">TABLE SETTINGS <small>(host)</small></summary>
@@ -159,11 +174,6 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
           <label className="row"><span className="row-label">Bot skill<small>Mixed: every bot rolls its own (hidden)</small></span><span className="row-control">
             <select data-testid="lobby-bot-skill" value={skillSettingOf(room.botLevel)} onChange={(e) => config(settings, timerKey(room), e.target.value as BotLevel)}>
               {BOT_SKILL_SETTINGS.map((k) => <option key={k} value={k}>{SKILL_SETTING_LABEL[k]}</option>)}
-            </select></span></label>
-          <label className="row"><span className="row-label">Venue<small>{room.venue === 'random' ? 'Rolled when the game starts · everyone sees the same spot' : `${VENUE_DEFS[(room.venue ?? 'classic') as VenueId].blurb} Everyone sees it.`}</small></span><span className="row-control">
-            <select data-testid="lobby-venue" aria-label="Venue" value={room.venue ?? 'classic'} onChange={(e) => conn.send({ t: 'venue', venue: e.target.value as VenueChoice })}>
-              {VENUE_LIST.map((v) => <option key={v.id} value={v.id}>{v.emoji} {v.name}{v.id === 'classic' ? ' (default)' : ''}</option>)}
-              <option value="random">🎲 Random</option>
             </select></span></label>
           <label className="row"><span className="row-label">Trash talk<small>{TALK_HINT[room.talkIntensity ?? 'cookout']}</small></span><span className="row-control">
             <select data-testid="lobby-talk-intensity" value={room.talkIntensity ?? 'cookout'} onChange={(e) => config(settings, timerKey(room), room.botLevel, room.talkSec, room.afkLimit ?? 3, room.partnerMicMute ?? false, room.nukeIntensity ?? 'full', e.target.value as TalkIntensity)}>
