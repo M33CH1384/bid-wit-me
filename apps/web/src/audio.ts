@@ -329,7 +329,8 @@ class Engine {
   /** The (possibly still locked) context, for decoding voice clips ahead of time. */
   audioContext(): AudioContext | null { this.ensure(); return this.ctx; }
   /** Play one bot line (cuts off the previous one, like one person talking). Silent when sound is off / not unlocked yet. */
-  playVoice(buf: AudioBuffer, gain: number): boolean {
+  /** play a voice clip (optionally a [offsetSec, durationSec] slice of a sprite) */
+  playVoice(buf: AudioBuffer, gain: number, slice?: [number, number]): boolean {
     if (!this.settings.on || !this.unlocked) return false;
     this.ensure();
     const c = this.ctx;
@@ -339,7 +340,7 @@ class Engine {
     const g = c.createGain(); g.gain.value = gain;
     src.connect(g).connect(this.voiceDuck);
     src.onended = () => { if (this.voiceSrc?.src === src) this.voiceSrc = null; };
-    src.start();
+    if (slice) src.start(0, slice[0], slice[1]); else src.start();
     this.voiceSrc = { src, gain: g };
     this.played.voice = (this.played.voice ?? 0) + 1;
     return true;

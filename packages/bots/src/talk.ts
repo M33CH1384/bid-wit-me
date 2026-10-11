@@ -5,10 +5,13 @@
  * - Pre-play lines never see the card about to be played (no tells): prePlayLine() takes no card/hand at all.
  * - Hustler persona plays dumb ('newbie' pool) until it pulls off a cut / lead-taking spade / set, then reveals once.
  */
-import { COMMON, PERSONAS, type PersonaId, type TalkKind, personaForName, personaSkillFloor } from './personas';
+import { COMMON, LINE_META, PACK_OWNERS, PERSONAS, type LineMeta, type PersonaId, type TalkIntensity, type TalkKind, lineAllowed, personaForName, personaSkillFloor } from './personas';
+import { possessive, voiceGender } from './names';
+import { BOT_SKILLS, type BotSkill, seatSkill } from './bidding';
 
-export { COMMON, PERSONAS, personaForName, personaSkillFloor };
-export type { PersonaId, TalkKind };
+export { COMMON, LINE_META, PACK_OWNERS, PERSONAS, lineAllowed, personaForName, personaSkillFloor };
+export type { LineMeta, PersonaId, TalkIntensity, TalkKind };
+export const TALK_INTENSITY_LABEL: Record<TalkIntensity, string> = { family: 'Family Friendly', cookout: 'Cookout', nomercy: 'No Mercy' };
 
 export const TALK = {
   /** min gap between any two bot lines */
@@ -22,12 +25,16 @@ export const TALK = {
     prePlay: 0.12, cut: 0.55, gotCut: 0.3, overcut: 0.7, joker: 0.45, nuke: 1, gotNuked: 0.8, setThem: 0.85, gotSet: 0.4,
     made: 0.3, bigBid: 0.5, roastBid: 0.35, wheels: 0.95, nilMade: 0.7, nilBust: 0.8, bags: 0.6, duck: 0.18, slow: 0.6,
     streak: 0.5, runIt: 1, gotRan: 0.6, win: 1, lose: 0.9, rematch: 0.8, hypePartner: 0.55, newbie: 0.3, reveal: 1,
+    slam: 0.3, partnerBlunder: 0.7, bidTooHigh: 0.5, nilBid: 0.6, blindNil: 0.9, boston: 1, loudLoser: 0.8, badHand: 0.35, roast: 0.5,
+    onNotice: 0.8, shotOut: 1,
   } as Record<TalkKind, number>,
   recentMax: 14,
 };
-const BIG: TalkKind[] = ['nuke', 'gotNuked', 'wheels', 'runIt', 'win', 'lose', 'reveal', 'rematch'];
+const BIG: TalkKind[] = ['nuke', 'gotNuked', 'wheels', 'runIt', 'win', 'lose', 'reveal', 'rematch', 'boston', 'shotOut', 'blindNil'];
+/** the Silent Assassin only speaks for these */
+const SILENT_KINDS: TalkKind[] = ['cut', 'setThem', 'overcut', 'runIt', 'win', 'slam'];
 /** the losing side's take on a moment */
-const MIRROR: Partial<Record<TalkKind, TalkKind>> = { cut: 'gotCut', overcut: 'gotCut', nuke: 'gotNuked', setThem: 'gotSet', win: 'lose', runIt: 'gotRan' };
+const MIRROR: Partial<Record<TalkKind, TalkKind>> = { cut: 'gotCut', overcut: 'gotCut', nuke: 'gotNuked', setThem: 'gotSet', win: 'lose', runIt: 'gotRan', partnerBlunder: 'roast' };
 /** moments where the Hustler drops the act (when it did it) */
 const REVEAL_ON: TalkKind[] = ['cut', 'overcut', 'setThem'];
 /** a human did something good: their bot partner may hype them */
@@ -39,8 +46,18 @@ export interface TalkTable {
   partnerships: boolean;
   /** per side display name */
   teamNames: string[];
+  /** host's trash-talk intensity (default Cookout) */
+  intensity?: TalkIntensity;
+  /** Joker deck (gates '@jk' lines) */
+  jokers?: boolean;
 }
-export interface TalkState { lastAt: number; seatAt: number[]; revealed: number[]; recent: string[] }
+export interface TalkState {
+  lastAt: number; seatAt: number[]; revealed: number[]; recent: string[];
+  /** anti-repeat memory for the whole game: lines already said per `persona:kind` pool (a pool resets once mostly used) */
+  used?: Record<string, string[]>;
+  /** the last raw line said at this table (never twice in a row) */
+  last?: string;
+}
 export interface TalkEvent {
   kind: TalkKind;
   /** the side that did it / benefited (for MIRROR kinds the other side may answer) */
@@ -52,9 +69,13 @@ export interface TalkEvent {
   card?: string;
   bid?: number;
   gap?: number;
+  /** an Ace got cut (gates '@ace' lines; they're preferred when true) */
+  ace?: boolean;
+  /** the target side is below zero (gates '@neg' lines) */
+  neg?: boolean;
 }
 /** `line`: stable id of the raw line, `<pool>.<kind>.<index>` (pool = persona id or 'common'): clients map it to a recorded clip */
-export interface TalkLine { seat: number; name: string; text: string; persona: PersonaId; reveal?: boolean; line?: string }
+export interface TalkLine { seat: number; name: string; text: string; persona: PersonaId; reveal?: boolean; line?: string; /** the bid number in a '{bid}' line (picks the numbered clip) */ bid?: number }
 
 /** The id of a raw (unfilled) line as picked for this persona + kind. */
 export function lineIdOf(persona: PersonaId, kind: TalkKind, raw: string): string | undefined {
@@ -72,7 +93,7 @@ export function lineById(id: string): string | undefined {
   return list?.[Number(idx)];
 }
 
-export function newTalkState(): TalkState { return { lastAt: -1e12, seatAt: [], revealed: [], recent: [] }; }
+export function newTalkState(): TalkState { return { lastAt: -1e12, seatAt: [], revealed: [], recent: [], used: {} }; }
 
 export const sideOfSeat = (t: TalkTable, seat: number) => (t.partnerships ? seat % 2 : seat);
 const sideCount = (t: TalkTable) => (t.partnerships ? 2 : t.seats.length);
@@ -82,7 +103,8 @@ export function personaOf(t: TalkTable, seat: number): PersonaId { return person
 /** Tag for the bot's plate tooltip (the Hustler wears a fake one until revealed). */
 export function personaTag(name: string, revealed: boolean): string {
   const p = PERSONAS[personaForName(name)];
-  return !revealed && p.fakeTag ? p.fakeTag : p.tag;
+  if (!revealed && p.fakeTag) return p.fakeTag;
+  return (voiceGender(name) === 'f' ? p.tagF : p.tagM) ?? p.tag;
 }
 
 export function cardWords(c: string | undefined): string {
@@ -105,31 +127,82 @@ function fill(text: string, t: TalkTable, speaker: number, ev: TalkEvent, them: 
     .replace(/\{team\}/g, t.teamNames[side] ?? 'us')
     .replace(/\{opp\}/g, t.teamNames[opp] ?? 'y\'all')
     .replace(/\{card\}/g, cardWords(ev.card))
+    .replace(/\{their\}/g, them !== undefined ? possessive(t.seats[them]?.bot ? t.seats[them]?.name : undefined) : 'their')
     .replace(/\{bid\}/g, String(ev.bid ?? 'that many'))
     .replace(/\{gap\}/g, String(Math.abs(ev.gap ?? 0)));
 }
 
-function pick(st: TalkState, persona: PersonaId, kind: TalkKind, rnd: () => number): string | null {
+/** does a line's condition hold for this event? */
+function condOk(meta: LineMeta | undefined, ev: TalkEvent, t: TalkTable): boolean {
+  switch (meta?.cond) {
+    case undefined: return true;
+    case 'ace': return !!ev.ace;
+    case 'neg': return !!ev.neg;
+    case 'big': return ev.card === 'BJ';
+    case 'little': return ev.card === 'LJ';
+    case 'jk': return t.jokers !== false;
+  }
+}
+
+/** Raw lines a persona draws on for a kind: its own pool, plus COMMON when its own pool is thin (< 3 at this intensity). */
+export function poolFor(persona: PersonaId, kind: TalkKind, intensity: TalkIntensity = 'cookout'): string[] {
+  const own = (PERSONAS[persona].lines[kind] ?? []).filter((l) => lineAllowed(l, intensity));
+  const noCommon = persona === 'silent' || (persona === 'hustler' && (kind === 'newbie' || kind === 'reveal'));
+  if (noCommon || own.length >= 3) return own;
+  return [...own, ...(COMMON[kind] ?? []).filter((l) => lineAllowed(l, intensity))];
+}
+
+/** Every raw line a persona can ever say (any intensity, any condition): what gets a recorded clip. */
+export function speakableLines(persona: PersonaId): { kind: TalkKind; raw: string; id: string }[] {
+  const out: { kind: TalkKind; raw: string; id: string }[] = [];
+  const seen = new Set<string>();
+  const kinds = new Set<TalkKind>([...Object.keys(PERSONAS[persona].lines), ...Object.keys(COMMON)] as TalkKind[]);
+  for (const kind of kinds) {
+    for (const raw of [...new Set([...poolFor(persona, kind, 'family'), ...poolFor(persona, kind, 'cookout'), ...poolFor(persona, kind, 'nomercy')])]) {
+      const id = lineIdOf(persona, kind, raw)!;
+      if (seen.has(id)) continue;
+      seen.add(id); out.push({ kind, raw, id });
+    }
+  }
+  return out;
+}
+
+function pick(st: TalkState, t: TalkTable, persona: PersonaId, kind: TalkKind, ev: TalkEvent, rnd: () => number): string | null {
+  const all = poolFor(persona, kind, t.intensity ?? 'cookout').filter((l) => condOk(LINE_META[l], ev, t));
+  if (!all.length) return null;
+  // an Ace got cut: the Ace lines are the point
+  const ace = ev.ace ? all.filter((l) => LINE_META[l]?.cond === 'ace') : [];
+  const base = ace.length && rnd() < 0.7 ? ace : all;
+  const key = `${persona}:${kind}`;
+  const used = ((st.used ??= {})[key] ??= []);
+  let fresh = base.filter((l) => !used.includes(l) && l !== st.last && !st.recent.includes(l));
+  if (!fresh.length) {
+    // the pool is spent: forget it (keep the last line out so it never repeats back to back)
+    st.used[key] = [];
+    fresh = base.filter((l) => l !== st.last);
+    if (!fresh.length) fresh = base.length > 1 ? base.filter((l) => l !== st.last) : [];
+    if (!fresh.length) return null;
+  }
+  // own (non-COMMON) lines weigh double
   const own = PERSONAS[persona].lines[kind] ?? [];
-  const common = persona === 'silent' || persona === 'hustler' && (kind === 'newbie' || kind === 'reveal') ? [] : (COMMON[kind] ?? []);
-  // persona lines weigh double; skip anything said recently
-  const pool = [...own, ...own, ...common].filter((l) => !st.recent.includes(l));
-  const list = pool.length ? pool : [...own, ...common];
-  if (!list.length) return null;
-  return list[Math.floor(rnd() * list.length)]!;
+  const weighted = fresh.flatMap((l) => (own.includes(l) ? [l, l] : [l]));
+  const raw = weighted[Math.floor(rnd() * weighted.length)]!;
+  st.used[key] = [...(st.used[key] ?? []), raw];
+  return raw;
 }
 
 function say(st: TalkState, t: TalkTable, seat: number, kind: TalkKind, ev: TalkEvent, them: number | undefined, now: number, rnd: () => number, reveal = false): TalkLine | null {
   const persona = personaOf(t, seat);
-  const raw = pick(st, persona, kind, rnd);
+  const raw = pick(st, t, persona, kind, ev, rnd);
   if (!raw) return null;
   st.recent = [...st.recent, raw].slice(-TALK.recentMax);
+  st.last = raw;
   st.lastAt = now;
   st.seatAt[seat] = now;
   let text = fill(raw, t, seat, ev, them);
   if (PERSONAS[persona].caps) text = text.toUpperCase();
   const line = lineIdOf(persona, kind, raw);
-  return { seat, name: t.seats[seat]!.name, text, persona, ...(reveal ? { reveal: true } : {}), ...(line ? { line } : {}) };
+  return { seat, name: t.seats[seat]!.name, text, persona, ...(reveal ? { reveal: true } : {}), ...(line ? { line } : {}), ...(raw.includes('{bid}') && typeof ev.bid === 'number' ? { bid: ev.bid } : {}) };
 }
 
 const ready = (st: TalkState, seat: number, now: number, big: boolean) => now - (st.seatAt[seat] ?? -1e12) >= (big ? TALK.bigGapMs : TALK.seatGapMs);
@@ -160,20 +233,30 @@ export function botTalk(st: TalkState, t: TalkTable, ev: TalkEvent, now: number,
   // who talks: the actor (if a bot), else a bot on the benefiting side; for MIRROR kinds sometimes the other side answers
   let kind = ev.kind;
   let cands: number[];
-  if (kind === 'duck' || kind === 'roastBid') cands = bots.filter((b) => !onSide(b));
-  else if (kind === 'slow' || kind === 'rematch' || kind === 'prePlay') cands = bots;
+  if (kind === 'duck' || kind === 'roastBid' || kind === 'bidTooHigh' || kind === 'nilBid' || kind === 'blindNil' || kind === 'loudLoser') cands = bots.filter((b) => !onSide(b) && b !== ev.them);
+  else if (kind === 'slow' || kind === 'rematch' || kind === 'prePlay') cands = bots.filter((b) => b !== ev.them);
+  else if (kind === 'badHand') cands = actor !== undefined && t.seats[actor]?.bot ? [actor] : [];
+  else if (kind === 'partnerBlunder') {
+    // the blunderer's partner (a bot) groans at them; sometimes the other side laughs instead
+    const p = t.partnerships && actor !== undefined ? (actor + 2) % t.seats.length : -1;
+    cands = p >= 0 && t.seats[p]?.bot ? [p] : [];
+    const others = bots.filter((b) => !onSide(b));
+    if (others.length && (!cands.length || rnd() > 0.75)) { kind = 'roast'; cands = others; }
+  }
   else {
     // 'runIt' lines are first person ('the rest are mine'): only the bot that ran it says them; otherwise the other side answers
-    cands = actor !== undefined && t.seats[actor]?.bot ? [actor] : kind === 'runIt' ? [] : bots.filter(onSide);
+    cands = actor !== undefined && t.seats[actor]?.bot && onSide(actor) ? [actor] : kind === 'runIt' ? [] : bots.filter(onSide);
     const mirror = MIRROR[kind];
     const others = bots.filter((b) => !onSide(b));
     if (mirror && others.length && (!cands.length || rnd() > 0.7)) { kind = mirror; cands = others; }
   }
-  cands = cands.filter((c) => ready(st, c, now, big) && (personaOf(t, c) !== 'silent' || kind === 'cut' || kind === 'setThem' || kind === 'overcut'));
+  cands = cands.filter((c) => ready(st, c, now, big) && (personaOf(t, c) !== 'silent' || SILENT_KINDS.includes(kind)));
   if (!cands.length) return null;
   const seat = cands[Math.floor(rnd() * cands.length)]!;
   if (rnd() >= (TALK.chance[kind] ?? 0.3) * freqOf(st, t, seat)) return null;
-  const them = kind === 'slow' ? ev.them : otherThem(seat);
+  const them = kind === 'slow' || kind === 'partnerBlunder' ? ev.them ?? actor : otherThem(seat);
+  // a set can come back as a petty one-liner
+  if (kind === 'setThem' && rnd() < 0.15) kind = 'roast';
   return speak(st, t, seat, kind, ev, them === -1 ? undefined : them, now, rnd);
 }
 
@@ -218,4 +301,20 @@ export function maskMild(s: string): string {
     .replace(/\b(ass)\b/gi, (w) => `${w[0]}**`)
     .replace(/\b(damn)/gi, (w) => `${w[0]}*${w.slice(2)}`)
     .replace(/\b(hell)\b/gi, (w) => `${w[0]}*${w.slice(2)}`);
+}
+
+/**
+ * A bot seat's play skill for this game: the table setting (Mixed rolls per seat, seeded by the game), then the
+ * persona's bias (Hustler never below Pro; Lil Cuz wobbles a level up or down per game). Stable across refresh.
+ */
+export function botSkillFor(setting: Parameters<typeof seatSkill>[0], gameSeed: string, seat: number, name: string): BotSkill {
+  const p = PERSONAS[personaForName(name)];
+  let sk = seatSkill(setting, gameSeed, seat, p.skillFloor);
+  if (p.skillJitter) {
+    let h = 2166136261;
+    for (const ch of `${gameSeed}:cuz:${seat}`) { h ^= ch.codePointAt(0)!; h = Math.imul(h, 16777619); }
+    const d = ((h >>> 0) % 3) - 1;
+    sk = BOT_SKILLS[Math.max(0, Math.min(BOT_SKILLS.length - 1, BOT_SKILLS.indexOf(sk) + d))]!;
+  }
+  return sk;
 }

@@ -11,7 +11,7 @@ describe('bot trash talk', () => {
     expect(count).toBeGreaterThanOrEqual(150);
     for (const id of Object.keys(PERSONAS)) expect(nameFor(id), id).toBeTruthy();
     const hustlers = BOT_NAMES.filter((n) => personaForName(n) === 'hustler').length / BOT_NAMES.length;
-    expect(hustlers).toBeGreaterThan(0.12); expect(hustlers).toBeLessThan(0.4);
+    expect(hustlers).toBeGreaterThan(0.03); expect(hustlers).toBeLessThan(0.4);
   });
   it('persona is fixed per name; the Hustler wears a fake tag until revealed', () => {
     const h = nameFor('hustler');

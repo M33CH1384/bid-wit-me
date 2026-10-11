@@ -95,7 +95,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
         onRematch={() => conn.send({ t: 'rematch' })}
         onQuality={(quality) => { const s = { ...settings, quality }; setSettings(s); saveSettings({ ...loadSettings(), quality }); }}
         online={{
-          source, names, chat, seatExtra, sideLabel, teamNames, botSeats, revealed,
+          source, names, chat, seatExtra, sideLabel, teamNames, botSeats, revealed, talkIntensity: room.talkIntensity,
           setTeamName: cs.seat !== null && r.partnerships ? (name) => conn.send({ t: 'teamName', name }) : undefined,
           series: { series: room.series ?? null, mine: seriesMine },
           setLearning: (on) => conn.send({ t: 'learning', on }),

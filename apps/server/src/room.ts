@@ -10,7 +10,7 @@
 import {
   type Action, type GameState, type Series, addSeriesGame, emptySeries, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, applyAction, isFreshDeal, isNukeTrick, nextDealer, makeRules, newGame, pendingTurn, secureSeed, validateRules, viewFor,
 } from '@spades/rules';
-import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, chooseBotAction, leanBid, personaSkillFloor, seatSkill, leanNil, momentsFor, newTalkState, pickBotNames, prePlayLine } from '@spades/bots';
+import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, chooseBotAction, loudLoser, leanBid, botSkillFor, personaSkillFloor, seatSkill, leanNil, momentsFor, newTalkState, pickBotNames, prePlayLine } from '@spades/bots';
 import {
   type BotLevel, type ChatLine, type ClientMsg, type HostMusic, type MediaState, type RoomInfo, type RoomPhase, type SeatInfo, type ServerMsg,
   DEFAULT_AFK_LIMIT, LIMITS, PROTOCOL_VERSION, parseClientMsg,
@@ -379,6 +379,9 @@ export class Room {
         w.push(now);
         this.chatWindow.set(pid, w);
         this.pushChat({ id: d.chatSeq++, from: pid, name: me.name, text, at: now });
+        // a trailing player running their mouth (3+ lines in 10 s): the bots answer
+        const ev = loudLoser(d.game, me.seat, w);
+        if (ev && d.phase === 'playing') this.talk(ev);
         this.io.persist();
         return; // chat doesn't change the table state
       }
@@ -620,7 +623,7 @@ export class Room {
     const d = this.data;
     const n = d.rules.playerCount;
     const seats = d.seats.slice(0, n).map((s, i) => ({ bot: s.kind === 'bot', name: s.kind === 'human' ? (d.members[s.playerId]?.name ?? 'Player') : s.kind === 'bot' ? s.name : `Seat ${i + 1}` }));
-    return { seats, partnerships: d.rules.partnerships, teamNames: this.sideNames() };
+    return { seats, partnerships: d.rules.partnerships, teamNames: this.sideNames(), intensity: d.talkIntensity ?? 'cookout', jokers: d.rules.deck === 'joker54' };
   }
 
   /** a game moment → maybe one bot line (cooldowns live in the talk state) */
@@ -633,7 +636,7 @@ export class Room {
 
   private pushBotLine(l: TalkLine): void {
     const d = this.data;
-    this.pushChat({ id: d.chatSeq++, from: `bot:${l.seat}`, name: l.name, text: l.text, at: this.io.now(), bot: { seat: l.seat, persona: l.persona, ...(l.reveal ? { reveal: true } : {}), ...(l.line ? { line: l.line } : {}) } });
+    this.pushChat({ id: d.chatSeq++, from: `bot:${l.seat}`, name: l.name, text: l.text, at: this.io.now(), bot: { seat: l.seat, persona: l.persona, ...(l.reveal ? { reveal: true } : {}), ...(l.line ? { line: l.line } : {}), ...(l.bid !== undefined ? { bid: l.bid } : {}) } });
   }
 
   /** per-seat member ids: humans by player id, bots by seat */
@@ -862,7 +865,7 @@ export class Room {
     const view = viewFor(d.game!, seat);
     // Mixed skill rolls per seat from the game seed (stable across reconnects); persona floors (the Hustler is Pro+)
     const slot0 = d.seats[seat];
-    const skill = seatSkill(level, d.game!.seed, seat, slot0?.kind === 'bot' ? personaSkillFloor(slot0.name) : undefined);
+    const skill = slot0?.kind === 'bot' ? botSkillFor(level, d.game!.seed, seat, slot0.name) : seatSkill(level, d.game!.seed, seat);
     let action = chooseBotAction(view, skill);
     if (!action) return;
     // persona lean (bots only): a slight bid nudge / Nil reluctance; illegal nudges fall through to the catch below

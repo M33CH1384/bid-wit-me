@@ -7,7 +7,7 @@ import { type Series, addSeriesGame, seriesSides, summarizeGame } from '@spades/
 import { SeriesChip, SeriesSheet, loadSeries, saveSeries } from './Series';
 import { TeamNameField, myTeamName, useMyTeamName } from './TeamName';
 import { offlineTalk } from './offlineTalk';
-import { showLine, speakBot, useTalkPrefs } from './talkPrefs';
+import { setTableIntensity, showLine, speakBot, useTalkPrefs } from './talkPrefs';
 import { pickTeamName } from '@spades/protocol';
 import { Intermission, calloutsFor } from './Intermission';
 import Hype from './Hype';
@@ -31,8 +31,8 @@ import { type TipsPref, bumpTip, loadTips, saveTips, tipCount } from './tips';
 import { BidCoach } from './BidCoach';
 import { RUN_FX_MS } from '@spades/protocol';
 import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
-import { personaForName, personaSkillFloor, personaTag, pickBotNames, seatSkill } from '@spades/bots';
-import { preloadPersona } from './voices/voices';
+import { type TalkIntensity, botSkillFor, personaForName, personaTag, pickBotNames } from '@spades/bots';
+import { preloadVoice } from './voices/voices';
 const Scene = lazy(() => import('./three/Scene'));
 
 /**
@@ -99,6 +99,8 @@ export interface OnlineBinding {
   revealed?: number[];
   /** local seats held by bots */
   botSeats?: number[];
+  /** the host's trash-talk intensity */
+  talkIntensity?: TalkIntensity;
 }
 
 interface Props {
@@ -336,7 +338,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const n0 = (resume?.state.rules ?? initialRules).playerCount;
   const [botNames] = useState(() => (resume?.names?.length === n0 ? resume.names : offlineNames(n0, seed)));
   // bot skill per seat: the table setting (Mixed = a hidden, seeded roll per seat) + persona floors (the Hustler is Pro+)
-  const levelFor = useCallback((seat: number) => seatSkill(settings.botLevel, seed, seat, personaSkillFloor(botNames[seat] ?? '')), [settings.botLevel, seed, botNames]);
+  const levelFor = useCallback((seat: number) => botSkillFor(settings.botLevel, seed, seat, botNames[seat] ?? ''), [settings.botLevel, seed, botNames]);
   const { st, view, pause, error, apply, introHand, dealing, k } = online ? online.source : useGame(initialRules, seed, levelFor, speed, resume?.state, learning && tipOpen, startDealer);
   useEffect(() => { online?.setLearning?.(learning); }, [learning]); // eslint-disable-line react-hooks/exhaustive-deps
   const r = st.rules;
@@ -352,8 +354,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const localChat = useChat(st, names, resume?.chat);
   const { msgs: rawMsgs, push } = online ? online.chat : localChat;
   const talkPrefs = useTalkPrefs();
-  // bot trash talk: masked per Clean talk, hidden entirely with 'Hide bot trash talk' (local preferences)
-  const msgs = useMemo(() => (talkPrefs.hideBotTalk ? rawMsgs.filter((m) => !m.bot) : rawMsgs.map((m) => (m.bot ? { ...m, text: showLine(m.text) } : m))), [rawMsgs, talkPrefs.hideBotTalk, talkPrefs.cleanTalk]); // eslint-disable-line react-hooks/exhaustive-deps
+  // trash-talk intensity is a table setting (offline: More options; online: the host); Family Friendly masks cursing
+  const intensity = online ? (online.talkIntensity ?? 'cookout') : settings.talkIntensity;
+  setTableIntensity(intensity);
+  // bot trash talk: hidden entirely with 'Hide bot trash talk' (local preference)
+  const msgs = useMemo(() => (talkPrefs.hideBotTalk ? rawMsgs.filter((m) => !m.bot) : rawMsgs.map((m) => (m.bot ? { ...m, text: showLine(m.text) } : m))), [rawMsgs, talkPrefs.hideBotTalk, intensity]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // team names (team modes): yours from More options offline, the bots' a random fun one (kept in the save)
   const myName = useMyTeamName();
@@ -365,14 +370,14 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // offline trash talk: same engine as the server
   useEffect(() => {
     if (online) return;
-    offlineTalk.table = { seats: names.map((nm, i) => ({ name: nm, bot: i !== HUMAN })), partnerships: r.partnerships, teamNames: Array.from({ length: st.scores.length }, (_, i) => sideName(r, i, names)) };
+    offlineTalk.table = { seats: names.map((nm, i) => ({ name: nm, bot: i !== HUMAN })), partnerships: r.partnerships, teamNames: Array.from({ length: st.scores.length }, (_, i) => sideName(r, i, names)), intensity, jokers: r.deck === 'joker54' };
   });
   useEffect(() => {
     if (online) return;
     if (!resume) offlineTalk.newGame();
     offlineTalk.sink = (l) => {
       localChat.push(l.name, l.text, false, 0, true);
-      speakBot(l.name, l.text, l.persona, l.line);
+      speakBot(l.name, l.text, l.persona, l.line, l.bid);
       if (l.reveal) fx.emit('hustled', { text: `${l.name} was never new` });
       setRevealedTick((x) => x + 1);
     };
@@ -687,7 +692,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const botKey = names.map((nm, i) => (isBotSeat(i) ? nm : '')).join('|');
   useEffect(() => {
     if (!talkPrefs.voices) return;
-    names.forEach((nm, i) => { if (isBotSeat(i)) preloadPersona(personaForName(nm), talkPrefs.cleanTalk); });
+    names.forEach((nm, i) => { if (isBotSeat(i)) preloadVoice(personaForName(nm), nm); });
   }, [botKey, talkPrefs.voices]); // eslint-disable-line react-hooks/exhaustive-deps
   const notice = onNoticeSides(sb);
   const renderSeat = (seat: number) => {

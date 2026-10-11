@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { sound, useSoundSettings } from './audio';
 import { HostMusicFields } from './online/HostMusic';
-import { talkPrefs, useTalkPrefs } from './talkPrefs';
+import { tableIntensity, talkPrefs, useTalkPrefs } from './talkPrefs';
+import { TALK_INTENSITY_LABEL } from '@spades/bots';
 import { type NukeIntensity, fx, useNukeIntensity, useReduceEffects, useTableNuke } from './fx';
 
 const icon = (on: boolean, v: number) => (!on || v === 0 ? '🔇' : v < 0.4 ? '🔈' : v < 0.75 ? '🔉' : '🔊');
@@ -229,7 +230,7 @@ export function TableNukeInfo() {
   );
 }
 
-/** Per-player bot talk controls (local; work even when the host has trash talk on): voices, voice volume, hide text, clean talk. */
+/** Per-player bot talk controls (local; work even when the host has trash talk on): voices, voice volume, hide text; the table's intensity (read-only). */
 export function BotTalkFields() {
   const t = useTalkPrefs();
   // recorded clips need Web Audio; Web Speech covers lines without a clip
@@ -251,10 +252,10 @@ export function BotTalkFields() {
         <span>Hide bot trash talk<small className="sf-note"> · in your chat</small></span>
         <button type="button" role="switch" aria-checked={t.hideBotTalk} aria-label="Hide bot trash talk" data-testid="hide-bot-talk" className={`switch ${t.hideBotTalk ? 'on' : ''}`} onClick={() => talkPrefs.set({ hideBotTalk: !t.hideBotTalk })}><i /></button>
       </label>
-      <label className="sf-row">
-        <span>Clean talk<small className="sf-note"> · masks mild cursing</small></span>
-        <button type="button" role="switch" aria-checked={t.cleanTalk} aria-label="Clean talk" data-testid="clean-talk" className={`switch ${t.cleanTalk ? 'on' : ''}`} onClick={() => talkPrefs.set({ cleanTalk: !t.cleanTalk })}><i /></button>
-      </label>
+      <div className="sf-row" data-testid="talk-intensity-info">
+        <span>Trash talk<small className="sf-note"> · set for the table{tableIntensity() === 'family' ? ' · mild cursing masked' : ''}</small></span>
+        <b className="sf-val">{TALK_INTENSITY_LABEL[tableIntensity()]}</b>
+      </div>
     </div>
   );
 }
