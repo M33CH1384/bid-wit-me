@@ -25,7 +25,7 @@ describe('recorded bot voices (v2 sprites)', () => {
       const clips = sprite(`${id}-${g}`).clips;
       for (const l of speakableLines(id)) {
         if (l.raw === '…') continue; // the Silent Assassin's silence is text-only
-        if (/^You bid \{bid\}/.test(l.raw)) { for (let b = 1; b <= 13; b++) expect(clips[`${l.raw}#${b}`], `${id}-${g} ${l.raw}#${b}`).toBeDefined(); }
+        if (/^(You bid \{bid\} (for THAT|with WHAT)\?!|\{bid\}\? that.s a lot of books\.)$/.test(l.raw)) { for (let b = 1; b <= 13; b++) expect(clips[`${l.raw}#${b}`], `${id}-${g} ${l.raw}#${b}`).toBeDefined(); }
         else expect(clips[l.raw], `${id}-${g}: ${l.raw}`).toBeDefined();
         n++;
       }

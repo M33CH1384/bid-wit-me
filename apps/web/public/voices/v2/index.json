@@ -1,0 +1,394 @@
+{
+ "sprites": {
+  "professor-f": {
+   "voice": "bf_isabella",
+   "speed": 0.95,
+   "count": 149,
+   "durationSec": 299.3,
+   "bytes": {
+    "webm": 795972,
+    "m4a": 1413610
+   }
+  },
+  "professor-m": {
+   "voice": "bm_george",
+   "speed": 0.95,
+   "count": 149,
+   "durationSec": 349.2,
+   "bytes": {
+    "webm": 935985,
+    "m4a": 1670852
+   }
+  },
+  "mama-f": {
+   "voice": "af_heart",
+   "speed": 0.92,
+   "count": 162,
+   "durationSec": 312.1,
+   "bytes": {
+    "webm": 830587,
+    "m4a": 1419916
+   }
+  },
+  "mama-m": {
+   "voice": "am_onyx",
+   "speed": 0.9,
+   "count": 162,
+   "durationSec": 402.7,
+   "bytes": {
+    "webm": 1066431,
+    "m4a": 1760284
+   }
+  },
+  "hype-f": {
+   "voice": "af_bella",
+   "speed": 1.12,
+   "count": 167,
+   "durationSec": 270.9,
+   "bytes": {
+    "webm": 716490,
+    "m4a": 1371427
+   }
+  },
+  "hype-m": {
+   "voice": "am_puck",
+   "speed": 1.12,
+   "count": 167,
+   "durationSec": 247.8,
+   "bytes": {
+    "webm": 651719,
+    "m4a": 1201483
+   }
+  },
+  "petty-f": {
+   "voice": "bf_emma",
+   "speed": 1.05,
+   "count": 145,
+   "durationSec": 272.4,
+   "bytes": {
+    "webm": 722336,
+    "m4a": 1328452
+   }
+  },
+  "petty-m": {
+   "voice": "bm_fable",
+   "speed": 1.05,
+   "count": 145,
+   "durationSec": 354.9,
+   "bytes": {
+    "webm": 919920,
+    "m4a": 1574416
+   }
+  },
+  "og-f": {
+   "voice": "af_kore",
+   "speed": 0.88,
+   "count": 158,
+   "durationSec": 299.6,
+   "bytes": {
+    "webm": 794123,
+    "m4a": 1354562
+   }
+  },
+  "og-m": {
+   "voice": "am_fenrir",
+   "speed": 0.88,
+   "count": 158,
+   "durationSec": 294.4,
+   "bytes": {
+    "webm": 785232,
+    "m4a": 1347703
+   }
+  },
+  "hustler-f": {
+   "voice": "af_jessica",
+   "speed": 0.95,
+   "count": 167,
+   "durationSec": 322.3,
+   "bytes": {
+    "webm": 861813,
+    "m4a": 1636300
+   }
+  },
+  "hustler-m": {
+   "voice": "am_michael",
+   "speed": 0.95,
+   "count": 167,
+   "durationSec": 323.3,
+   "bytes": {
+    "webm": 879001,
+    "m4a": 1507788
+   }
+  },
+  "silent-f": {
+   "voice": "bf_alice",
+   "speed": 0.85,
+   "count": 11,
+   "durationSec": 17.9,
+   "bytes": {
+    "webm": 46737,
+    "m4a": 88076
+   }
+  },
+  "silent-m": {
+   "voice": "bm_lewis",
+   "speed": 0.85,
+   "count": 11,
+   "durationSec": 15.1,
+   "bytes": {
+    "webm": 39490,
+    "m4a": 77533
+   }
+  },
+  "deacon-f": {
+   "voice": "af_sarah",
+   "speed": 0.9,
+   "count": 154,
+   "durationSec": 315.5,
+   "bytes": {
+    "webm": 832474,
+    "m4a": 1485542
+   }
+  },
+  "deacon-m": {
+   "voice": "am_eric",
+   "speed": 0.9,
+   "count": 154,
+   "durationSec": 318.0,
+   "bytes": {
+    "webm": 856846,
+    "m4a": 1436043
+   }
+  },
+  "conspiracy-f": {
+   "voice": "af_river",
+   "speed": 1.08,
+   "count": 156,
+   "durationSec": 298.7,
+   "bytes": {
+    "webm": 799564,
+    "m4a": 1506367
+   }
+  },
+  "conspiracy-m": {
+   "voice": "am_echo",
+   "speed": 1.08,
+   "count": 156,
+   "durationSec": 330.1,
+   "bytes": {
+    "webm": 895464,
+    "m4a": 1509566
+   }
+  },
+  "barber-f": {
+   "voice": "af_alloy",
+   "speed": 1.02,
+   "count": 166,
+   "durationSec": 346.9,
+   "bytes": {
+    "webm": 926117,
+    "m4a": 1560815
+   }
+  },
+  "barber-m": {
+   "voice": "am_liam",
+   "speed": 1.05,
+   "count": 166,
+   "durationSec": 318.0,
+   "bytes": {
+    "webm": 857973,
+    "m4a": 1615679
+   }
+  },
+  "gambler-f": {
+   "voice": "af_aoede",
+   "speed": 1,
+   "count": 179,
+   "durationSec": 311.2,
+   "bytes": {
+    "webm": 820301,
+    "m4a": 1379736
+   }
+  },
+  "gambler-m": {
+   "voice": "am_adam",
+   "speed": 1,
+   "count": 179,
+   "durationSec": 330.0,
+   "bytes": {
+    "webm": 895400,
+    "m4a": 1595117
+   }
+  },
+  "hothead-f": {
+   "voice": "af_kore",
+   "speed": 1.15,
+   "count": 169,
+   "durationSec": 267.1,
+   "bytes": {
+    "webm": 699686,
+    "m4a": 1211550
+   }
+  },
+  "hothead-m": {
+   "voice": "am_onyx",
+   "speed": 1.15,
+   "count": 169,
+   "durationSec": 345.9,
+   "bytes": {
+    "webm": 912980,
+    "m4a": 1536500
+   }
+  },
+  "comedian-f": {
+   "voice": "af_sky",
+   "speed": 1.05,
+   "count": 152,
+   "durationSec": 312.3,
+   "bytes": {
+    "webm": 838225,
+    "m4a": 1442101
+   }
+  },
+  "comedian-m": {
+   "voice": "am_santa",
+   "speed": 1.05,
+   "count": 152,
+   "durationSec": 346.8,
+   "bytes": {
+    "webm": 933276,
+    "m4a": 1681953
+   }
+  },
+  "lilcuz-f": {
+   "voice": "af_nova",
+   "speed": 1.15,
+   "count": 145,
+   "durationSec": 261.3,
+   "bytes": {
+    "webm": 692191,
+    "m4a": 1184951
+   }
+  },
+  "lilcuz-m": {
+   "voice": "am_michael",
+   "speed": 1.18,
+   "count": 145,
+   "durationSec": 244.4,
+   "bytes": {
+    "webm": 660418,
+    "m4a": 1184158
+   }
+  },
+  "coach-f": {
+   "voice": "af_alloy",
+   "speed": 1.12,
+   "count": 152,
+   "durationSec": 290.9,
+   "bytes": {
+    "webm": 773890,
+    "m4a": 1319300
+   }
+  },
+  "coach-m": {
+   "voice": "am_eric",
+   "speed": 1.1,
+   "count": 152,
+   "durationSec": 262.2,
+   "bytes": {
+    "webm": 700153,
+    "m4a": 1207865
+   }
+  },
+  "smooth-f": {
+   "voice": "af_nicole",
+   "speed": 0.92,
+   "count": 153,
+   "durationSec": 393.5,
+   "bytes": {
+    "webm": 1031207,
+    "m4a": 1754389
+   }
+  },
+  "smooth-m": {
+   "voice": "bm_daniel",
+   "speed": 0.92,
+   "count": 153,
+   "durationSec": 332.3,
+   "bytes": {
+    "webm": 899690,
+    "m4a": 1611378
+   }
+  },
+  "storyteller-f": {
+   "voice": "af_sarah",
+   "speed": 1.02,
+   "count": 158,
+   "durationSec": 312.3,
+   "bytes": {
+    "webm": 826803,
+    "m4a": 1508554
+   }
+  },
+  "storyteller-m": {
+   "voice": "am_fenrir",
+   "speed": 0.98,
+   "count": 158,
+   "durationSec": 298.7,
+   "bytes": {
+    "webm": 799430,
+    "m4a": 1372040
+   }
+  },
+  "influencer-f": {
+   "voice": "af_bella",
+   "speed": 1.06,
+   "count": 151,
+   "durationSec": 272.0,
+   "bytes": {
+    "webm": 724020,
+    "m4a": 1378541
+   }
+  },
+  "influencer-m": {
+   "voice": "am_adam",
+   "speed": 1.12,
+   "count": 151,
+   "durationSec": 257.1,
+   "bytes": {
+    "webm": 695088,
+    "m4a": 1274332
+   }
+  },
+  "sorelose-f": {
+   "voice": "af_jessica",
+   "speed": 1.06,
+   "count": 138,
+   "durationSec": 256.1,
+   "bytes": {
+    "webm": 683652,
+    "m4a": 1304403
+   }
+  },
+  "sorelose-m": {
+   "voice": "am_echo",
+   "speed": 0.98,
+   "count": 138,
+   "durationSec": 296.0,
+   "bytes": {
+    "webm": 803043,
+    "m4a": 1333772
+   }
+  }
+ },
+ "version": 2,
+ "model": "Kokoro-82M v1.0 (hexgrad/Kokoro-82M, ONNX via kokoro-onnx), Apache-2.0",
+ "sampleRate": 24000,
+ "loudnessLUFS": -16,
+ "gapMs": 250.0,
+ "formats": {
+  "webm": "Opus 20 kbps in WebM",
+  "m4a": "AAC-LC 32 kbps (Safari fallback)"
+ },
+ "notes": "One sprite per persona-gender. clips[raw template] = [startMs, durationMs]; '{bid}' lines listed in NUMBERED are keyed '<raw>#<n>'."
+}
