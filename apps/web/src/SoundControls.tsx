@@ -194,7 +194,7 @@ export function ReduceEffectsRow() {
   const on = useReduceEffects();
   return (
     <label className="sf-row">
-      <span>Reduce effects<small className="sf-note"> · no shake / flash</small></span>
+      <span>Reduce effects<small className="sf-note"> · no shake / flash, calm nuke (your device's Reduce motion only drops the shake)</small></span>
       <button type="button" role="switch" aria-checked={on} aria-label="Reduce effects" data-testid="reduce-fx" className={`switch ${on ? 'on' : ''}`} onClick={() => fx.setReduce(!on)}><i /></button>
     </label>
   );

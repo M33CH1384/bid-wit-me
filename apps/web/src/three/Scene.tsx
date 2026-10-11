@@ -1,4 +1,4 @@
-import { Nuke3D } from './Nuke3D';
+import { Nuke3D, NukeGuard } from './Nuke3D';
 import { Tornado3D } from './Tornado3D';
 import { Environment, Html, useTexture } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
@@ -517,7 +517,7 @@ export default function Scene(props: SceneProps) {
       </Suspense>
       {props.positions.map((p, seat) => <TurnRing key={seat} pos={p} n={props.n} active={props.turnSeat === seat} />)}
       <Cards {...props} aspect={aspect} fontsReady={fontsReady} safeFrac={safeFrac} />
-      <Nuke3D quality={props.quality} />
+      <NukeGuard><Nuke3D quality={props.quality} /></NukeGuard>
       <Tornado3D quality={props.quality} />
       {layerReady && <Badges positions={props.positions} n={props.n} human={props.human} renderSeat={props.renderSeat} portal={badgeLayer} safeFrac={safeFrac} short={!!props.short} safe={props.safe ?? { l: 0, r: 0, t: 0, b: 0 }} />}
     </Canvas>

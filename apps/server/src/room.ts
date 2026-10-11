@@ -8,7 +8,7 @@
  *  - all durable state lives in one plain-JSON `RoomData` object that the DO saves as a single row.
  */
 import {
-  type Action, type GameState, type Series, addSeriesGame, emptySeries, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, applyAction, isFreshDeal, makeRules, newGame, pendingTurn, secureSeed, validateRules, viewFor,
+  type Action, type GameState, type Series, addSeriesGame, emptySeries, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, applyAction, isFreshDeal, isNukeTrick, makeRules, newGame, pendingTurn, secureSeed, validateRules, viewFor,
 } from '@spades/rules';
 import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, chooseBotAction, leanBid, leanNil, momentsFor, newTalkState, pickBotNames, prePlayLine } from '@spades/bots';
 import {
@@ -674,8 +674,7 @@ export class Room {
     if (g.phase === 'playing' && g.trick.plays.length === 0 && g.tricks.length > 0) {
       // a nuked trick (Big Joker over Little Joker) gets the table's fixed nuke allowance on top
       const last = g.tricks[g.tricks.length - 1]!.plays;
-      const li = last.findIndex((p) => p.card === 'LJ'), bi = last.findIndex((p) => p.card === 'BJ');
-      const nuked = li >= 0 && bi > li;
+      const nuked = isNukeTrick(last); // either Joker order
       return this.timing.trickPauseMs + (nuked ? NUKE_ALLOWANCE_MS[this.data.nukeIntensity ?? 'full'] : 0);
     }
     return 0;

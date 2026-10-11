@@ -1,6 +1,6 @@
 import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
-  type Card, type GameState, type PlayerView, type Play, type TableRules, radioactiveBigJoker, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, partnerOf, sideOf, sortHand, trumpOrder,
+  type Card, type GameState, type PlayerView, type Play, type TableRules, radioactiveBigJoker, isNukeTrick, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, partnerOf, sideOf, sortHand, trumpOrder,
 } from '@spades/rules';
 import { ScorePad, defaultSideName, setTeamNames, sideName } from './Modals';
 import { type Series, addSeriesGame, seriesSides, summarizeGame } from '@spades/rules';
@@ -16,7 +16,7 @@ import Feedback from './Feedback';
 import { setFeedbackGame } from './feedbackContext';
 import { loadTipJar, openTip, saveTipJar, tipNudgeDue } from './support';
 import { OfflineMediaBar } from './online/Media';
-import { fx, useReduceEffects } from './fx';
+import { fireCue, fx, useReduceEffects } from './fx';
 import { type Sfx, sound } from './audio';
 import { type ChatMsg, LINES, SEAT_COLORS, TALK_LINES, type Toast, TickNumber, USER_COLORS, pick, toastsFor } from './overlay';
 import { type Settings, modeTitle } from './settings';
@@ -644,6 +644,16 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const reduceFx = useReduceEffects();
   // last trick: Big Joker down, Little Joker still out → radioactive pulse + Geiger crackle until the trick resolves
   const radioactive = radioactiveBigJoker(st);
+  // nuke watchdog: the blast is normally cued by the second Joker's 3D landing; on a stalled renderer (Safari compiling
+  // shaders, a backgrounded tab, very slow frames) that landing can come late or never — so once a nuked trick is on
+  // the table, make sure the nuke fires anyway (fx dedupes, so it never plays twice).
+  const nukeKey = isNukeTrick(shownTrick.plays) && !display.slam ? `${st.seed}:${st.handNo}:${shownTrick.plays.map((p) => p.card).join('')}` : null;
+  const nukeAtMount = useRef(nukeKey); // a resumed save already showing a nuked trick doesn't re-fire
+  useEffect(() => {
+    if (!nukeKey || nukeKey === nukeAtMount.current) return;
+    const t = window.setTimeout(() => fireCue('nuke'), 1100);
+    return () => clearTimeout(t);
+  }, [nukeKey]);
   useEffect(() => { sound.geiger(radioactive); return () => sound.geiger(false); }, [radioactive]);
   // any modal up: the table, plates, chat, video bubbles etc. dim + blur behind it and can't paint over it
   const modalOpen = (st.phase === 'handOver' && !pause && talkOpen) || confirmLeave || showPad || (st.phase === 'gameOver' && !pause && !runFx && !!st.result);

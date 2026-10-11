@@ -1,7 +1,7 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { Bloom, ChromaticAberration, EffectComposer, Vignette } from '@react-three/postprocessing';
 import { BlendFunction, type ChromaticAberrationEffect } from 'postprocessing';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Component, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AdditiveBlending, BufferAttribute, BufferGeometry, Color, CylinderGeometry, DoubleSide, type Group, type Mesh, type PerspectiveCamera,
   PlaneGeometry, type PointLight, RingGeometry, ShaderMaterial, SphereGeometry, TorusGeometry, Vector2, Vector3,
@@ -363,15 +363,38 @@ function NukeRun({ start, full, low }: { start: number; full: boolean; low: bool
         <points geometry={parts.ash.geo} material={parts.ash.mat} frustumCulled={false} />
       </group>
       <mesh geometry={parts.quad} material={parts.screenMat} frustumCulled={false} renderOrder={1000} />
-      {!low && (
+      {!low && !postBroken && (
+        <PostGuard>
         <EffectComposer multisampling={0}>
           <Bloom intensity={bloom} luminanceThreshold={0.85} luminanceSmoothing={0.2} mipmapBlur />
           <ChromaticAberration ref={ca} offset={new Vector2(0.002, 0.001)} radialModulation={false} modulationOffset={0} blendFunction={BlendFunction.NORMAL} />
           <Vignette eskil={false} offset={0.25} darkness={0.75} />
         </EffectComposer>
+        </PostGuard>
       )}
     </>
   );
+}
+
+/**
+ * Post-processing is the most fragile part on Safari / older iPhones (half-float render targets, shader limits). If it
+ * throws, drop just the bloom / aberration for the rest of the session — the fireball, cloud, shockwave and screen fire
+ * keep playing (it used to take the whole blast down with it).
+ */
+let postBroken = false;
+class PostGuard extends Component<{ children: ReactNode }, { failed: boolean }> {
+  override state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  override componentDidCatch(e: unknown) { postBroken = true; (window as unknown as { __bwmNukePostError?: string }).__bwmNukePostError = String(e); }
+  override render() { return this.state.failed ? null : this.props.children; }
+}
+
+/** The whole blast is guarded too: a shader/GPU failure must never unmount the table scene. */
+export class NukeGuard extends Component<{ children: ReactNode }, { failed: boolean }> {
+  override state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  override componentDidCatch(e: unknown) { (window as unknown as { __bwmNukeError?: string }).__bwmNukeError = String(e); }
+  override render() { return this.state.failed ? null : this.props.children; }
 }
 
 /** Full Nuke: the HUD (scorebug, plates, chat, last trick, controls) is blown outward from the blast, then springs back. */

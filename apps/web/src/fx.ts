@@ -3,7 +3,9 @@
  * Effects are derived from game state on every client (offline, and online from the server state each player
  * receives), so everyone at a table sees and hears the same moments. Card landings fire the joker cues
  * (see Card3D → fireCue) so the rumble hits exactly when the card hits the felt.
- * "Reduce effects" (or the OS reduced-motion setting) keeps the sounds and pop-ups but drops shake / flash.
+ * "Reduce effects" (an explicit opt-in in Settings) keeps the sounds and pop-ups but drops shake / flash and calms the nuke.
+ * The OS "Reduce motion" setting is NOT treated as Reduce effects: it only drops camera shake / the white flash
+ * (see `osReducedMotion`) — the 3D explosion still plays. (Before v0.3.2 it silently switched the nuke to Off.)
  */
 import { useSyncExternalStore } from 'react';
 import { type Sfx, sound } from './audio';
@@ -33,9 +35,11 @@ class FxBus {
   /** counters (exposed for automated checks) */
   fired: Record<string, number> = {};
 
-  get reduced(): boolean {
-    if (this.prefs.reduce) return true;
-    try { return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
+  /** Reduce effects: only the player's explicit choice in Settings (never inferred from the OS). */
+  get reduced(): boolean { return this.prefs.reduce; }
+  /** OS-level "Reduce motion": no camera shake / white flash, but every effect (incl. the nuke blast) still plays. */
+  get osReducedMotion(): boolean {
+    try { return typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
   }
   /** The nuke as this player sees it: Reduce effects forces the Off-style version. */
   /** set by the online table from the room's setting (null offline) */
@@ -69,11 +73,14 @@ class FxBus {
 
   on(fn: (e: FxEvent) => void) { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; }
 
+  private lastNukeAt = -1e9;
   emit(kind: FxKind, opts: { level?: number; text?: string; sub?: string; silent?: boolean } = {}) {
+    // one blast per nuked trick: the card's landing cue and the Table's watchdog may both ask for it
+    if (kind === 'nuke') { const now = performance.now(); if (now - this.lastNukeAt < 4500) return; this.lastNukeAt = now; }
     const e: FxEvent = { id: this.seq++, kind, at: performance.now(), level: opts.level, text: opts.text, sub: opts.sub };
     this.fired[kind] = (this.fired[kind] ?? 0) + 1;
     if (!opts.silent) sound.play(sfxFor(e), { gain: 1 });
-    if (!this.reduced) {
+    if (!this.reduced && !this.osReducedMotion) {
       if (kind === 'jokerLittle') this.shake = { start: e.at, dur: 0.35, amp: 0.035 };
       else if (kind === 'jokerBig') this.shake = { start: e.at, dur: 0.95, amp: 0.07 };
       else if (kind === 'nuke' && this.nukeMode !== 'off') this.shake = { start: e.at + 260, dur: 2.2, amp: 0.15 };
@@ -114,7 +121,7 @@ export function fireCue(c: string, delay = 0) {
     return;
   }
   // level-1 cut: the crisp cut sound + a light accent nudge
-  if (c === 'cut' && !fx.reduced) window.setTimeout(() => { fx.shake = { start: performance.now(), dur: 0.14, amp: 0.012 }; }, delay * 1000);
+  if (c === 'cut' && !fx.reduced && !fx.osReducedMotion) window.setTimeout(() => { fx.shake = { start: performance.now(), dur: 0.14, amp: 0.012 }; }, delay * 1000);
   sound.play(c as Sfx, delay ? { delay } : {});
 }
 

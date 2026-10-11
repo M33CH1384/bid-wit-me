@@ -221,6 +221,16 @@ export function radioactiveBigJoker(st: Pick<GameState, 'rules' | 'phase' | 'tri
   return !st.trick.plays.some((p) => p.card === 'LJ') && !st.tricks.some((t) => t.plays.some((p) => p.card === 'LJ'));
 }
 
+/**
+ * A nuked trick: both Jokers fell in it, in EITHER order (Little then Big, or Big then Little — the Big Joker wins
+ * either way). Every client/server hold ("nuke allowance") keys off this, so the trick stays on the table for the blast.
+ * A Run it! trick never counts (the tornado is the show).
+ */
+export function isNukeTrick(plays: readonly { card: Card; run?: boolean }[]): boolean {
+  if (plays.some((p) => p.run)) return false;
+  return plays.some((p) => p.card === 'BJ') && plays.some((p) => p.card === 'LJ');
+}
+
 /* ------------------------------------------------------------- Run it! */
 
 /** 'Run it!' is a late-hand claim: on lead with 2..RUN_IT_MAX cards left. */

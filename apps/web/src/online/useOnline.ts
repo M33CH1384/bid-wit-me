@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import type { Action, GameState, PlayerView } from '@spades/rules';
 import { bidLabel, isFreshDeal } from '@spades/rules';
 import type { ChatLine, RoomInfo } from '@spades/protocol';
-import { RUN_FX_MS } from '@spades/protocol';
+import { NUKE_ALLOWANCE_MS, RUN_FX_MS } from '@spades/protocol';
+import { isNukeTrick } from '@spades/rules';
 import type { ChatMsg } from '../overlay';
 import type { ConnState, TableConnection } from './connection';
 import { type Rotation, rotateView } from './rotate';
@@ -63,8 +64,11 @@ export function useOnlineSource(cs: ConnState, conn: TableConnection): (GameSour
   useEffect(() => {
     if (!pause) return;
     // 'Run it!': hold through the slam + tornado (the table shows the hand's end afterwards)
-    const ran = shown?.st.tricks.at(-1)?.plays.some((p) => p.run) ? RUN_FX_MS : 0;
-    const t = setTimeout(() => setPause(false), TRICK_HOLD_MS + ran);
+    const last = shown?.st.tricks.at(-1)?.plays ?? [];
+    const ran = last.some((p) => p.run) ? RUN_FX_MS : 0;
+    // a nuked trick stays on the table for the blast (the server waits the same allowance before the next lead)
+    const nuke = isNukeTrick(last) ? NUKE_ALLOWANCE_MS[fx.tableNuke ?? 'full'] : 0;
+    const t = setTimeout(() => setPause(false), TRICK_HOLD_MS + ran + nuke);
     return () => clearTimeout(t);
   }, [pause, shown?.st.tricks.length]);
 
