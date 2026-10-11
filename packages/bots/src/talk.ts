@@ -5,7 +5,7 @@
  * - Pre-play lines never see the card about to be played (no tells): prePlayLine() takes no card/hand at all.
  * - Hustler persona plays dumb ('newbie' pool) until it pulls off a cut / lead-taking spade / set, then reveals once.
  */
-import { COMMON, LINE_META, PACK_OWNERS, PERSONAS, type LineMeta, type PersonaId, type TalkIntensity, type TalkKind, lineAllowed, personaForName, personaSkillFloor } from './personas';
+import { COMMON, LINE_META, PACK_OWNERS, PERSONAS, type LineMeta, type PersonaId, type TalkIntensity, type TalkKind, lineAllowed, lineFitsGender, personaForName, personaSkillFloor } from './personas';
 import { possessive, voiceGender } from './names';
 import { BOT_SKILLS, type BotSkill, seatSkill } from './bidding';
 
@@ -144,31 +144,45 @@ function condOk(meta: LineMeta | undefined, ev: TalkEvent, t: TalkTable): boolea
   }
 }
 
-/** Raw lines a persona draws on for a kind: its own pool, plus COMMON when its own pool is thin (< 3 at this intensity). */
-export function poolFor(persona: PersonaId, kind: TalkKind, intensity: TalkIntensity = 'cookout'): string[] {
-  const own = (PERSONAS[persona].lines[kind] ?? []).filter((l) => lineAllowed(l, intensity));
+/** Raw lines a persona draws on for a kind: its own pool, plus COMMON when its own pool is thin (< 3 at this intensity).
+ * `self` is the speaking bot's gender (its name's voice gender): gendered self-references ("mama's thinking") only go to
+ * bots of that gender. `target` is the gender of the bot the line is about (undefined for a human: never gendered). */
+export function poolFor(persona: PersonaId, kind: TalkKind, intensity: TalkIntensity = 'cookout', self?: 'f' | 'm', target?: 'f' | 'm'): string[] {
+  const ok = (l: string) => lineAllowed(l, intensity) && lineFitsGender(l, self, target);
+  const own = (PERSONAS[persona].lines[kind] ?? []).filter(ok);
   const noCommon = persona === 'silent' || (persona === 'hustler' && (kind === 'newbie' || kind === 'reveal'));
   if (noCommon || own.length >= 3) return own;
-  return [...own, ...(COMMON[kind] ?? []).filter((l) => lineAllowed(l, intensity))];
+  return [...own, ...(COMMON[kind] ?? []).filter(ok)];
 }
 
-/** Every raw line a persona can ever say (any intensity, any condition): what gets a recorded clip. */
-export function speakableLines(persona: PersonaId): { kind: TalkKind; raw: string; id: string }[] {
-  const out: { kind: TalkKind; raw: string; id: string }[] = [];
+/** Every raw line a persona's `gender` voice can ever say (any intensity, condition or target): what gets a recorded clip. */
+export function speakableLines(persona: PersonaId, gender?: 'f' | 'm'): { kind: TalkKind; raw: string; id: string; self?: 'f' | 'm' }[] {
+  const out: { kind: TalkKind; raw: string; id: string; self?: 'f' | 'm' }[] = [];
   const seen = new Set<string>();
   const kinds = new Set<TalkKind>([...Object.keys(PERSONAS[persona].lines), ...Object.keys(COMMON)] as TalkKind[]);
+  const genders = gender ? [gender] : (['f', 'm'] as const);
   for (const kind of kinds) {
-    for (const raw of [...new Set([...poolFor(persona, kind, 'family'), ...poolFor(persona, kind, 'cookout'), ...poolFor(persona, kind, 'nomercy')])]) {
+    const lines = genders.flatMap((g) => (['family', 'cookout', 'nomercy'] as const).flatMap((i) =>
+      [...poolFor(persona, kind, i, g, undefined), ...poolFor(persona, kind, i, g, 'f'), ...poolFor(persona, kind, i, g, 'm')]));
+    for (const raw of [...new Set(lines)]) {
       const id = lineIdOf(persona, kind, raw)!;
       if (seen.has(id)) continue;
-      seen.add(id); out.push({ kind, raw, id });
+      seen.add(id);
+      const self = LINE_META[raw]?.self;
+      out.push({ kind, raw, id, ...(self ? { self } : {}) });
     }
   }
   return out;
 }
 
-function pick(st: TalkState, t: TalkTable, persona: PersonaId, kind: TalkKind, ev: TalkEvent, rnd: () => number): string | null {
-  const all = poolFor(persona, kind, t.intensity ?? 'cookout').filter((l) => condOk(LINE_META[l], ev, t));
+/** gender of the bot sitting in a seat (its name's voice gender), undefined for a human */
+function botGender(t: TalkTable, seat: number | undefined): 'f' | 'm' | undefined {
+  const s = seat === undefined ? undefined : t.seats[seat];
+  return s && s.bot ? voiceGender(s.name) : undefined;
+}
+
+function pick(st: TalkState, t: TalkTable, persona: PersonaId, kind: TalkKind, ev: TalkEvent, rnd: () => number, self?: 'f' | 'm', target?: 'f' | 'm'): string | null {
+  const all = poolFor(persona, kind, t.intensity ?? 'cookout', self, target).filter((l) => condOk(LINE_META[l], ev, t));
   if (!all.length) return null;
   // an Ace got cut: the Ace lines are the point
   const ace = ev.ace ? all.filter((l) => LINE_META[l]?.cond === 'ace') : [];
@@ -193,7 +207,8 @@ function pick(st: TalkState, t: TalkTable, persona: PersonaId, kind: TalkKind, e
 
 function say(st: TalkState, t: TalkTable, seat: number, kind: TalkKind, ev: TalkEvent, them: number | undefined, now: number, rnd: () => number, reveal = false): TalkLine | null {
   const persona = personaOf(t, seat);
-  const raw = pick(st, t, persona, kind, ev, rnd);
+  const name = t.seats[seat]?.name ?? '';
+  const raw = pick(st, t, persona, kind, ev, rnd, voiceGender(name), botGender(t, them));
   if (!raw) return null;
   st.recent = [...st.recent, raw].slice(-TALK.recentMax);
   st.last = raw;

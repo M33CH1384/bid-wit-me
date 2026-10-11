@@ -19,11 +19,11 @@ describe('recorded bot voices (v2 sprites)', () => {
       expect(kokoroGender(sp.voice)).toBe(g);
     }
   });
-  it('every line every persona can say has a clip in both genders (bid lines: one per number)', () => {
+  it('every line every persona can say has a clip in each gender that can say it (bid lines: one per number)', () => {
     let n = 0;
     for (const id of IDS) for (const g of ['f', 'm'] as const) {
       const clips = sprite(`${id}-${g}`).clips;
-      for (const l of speakableLines(id)) {
+      for (const l of speakableLines(id, g)) {
         if (l.raw === '…') continue; // the Silent Assassin's silence is text-only
         if (/^(You bid \{bid\} (for THAT|with WHAT)\?!|\{bid\}\? that.s a lot of books\.)$/.test(l.raw)) { for (let b = 1; b <= 13; b++) expect(clips[`${l.raw}#${b}`], `${id}-${g} ${l.raw}#${b}`).toBeDefined(); }
         else expect(clips[l.raw], `${id}-${g}: ${l.raw}`).toBeDefined();
@@ -31,6 +31,14 @@ describe('recorded bot voices (v2 sprites)', () => {
       }
     }
     expect(n).toBeGreaterThan(2000);
+  });
+  it("gendered self-references are only recorded in the matching voice (a male Big Papa has no 'mama' clip)", () => {
+    for (const id of IDS) for (const g of ['f', 'm'] as const) {
+      const clips = Object.keys(sprite(`${id}-${g}`).clips);
+      for (const l of speakableLines(id)) if (l.self && l.self !== g) expect(clips, `${id}-${g}: ${l.raw}`).not.toContain(l.raw);
+    }
+    expect(Object.keys(sprite('mama-m').clips)).toContain("mm-hm. papa's thinking.");
+    expect(Object.keys(sprite('mama-m').clips)).not.toContain("mm-hm. mama's thinking.");
   });
   it('line ids round-trip to the raw line', () => {
     for (const id of IDS) for (const l of speakableLines(id)) { expect(lineIdOf(id, l.kind, l.raw)).toBe(l.id); expect(lineById(l.id)).toBe(l.raw); }

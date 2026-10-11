@@ -32,6 +32,8 @@ export const PACK: PackSection[] = [
     'Thank you for your donation!', "That's what happens when you play with professionals!", 'BOOM! NEXT!',
     // classic table energy
     'Walk that dog!', 'Get up off me!', "That's mine!", "That's a book!",
+    // gender variant of the grown-man line (same owners; see SELF_F/SELF_M in personas.ts)
+    "[hustler,lilcuz] That's a grown-woman card right there!",
   ] },
   { kind: 'cut', group: ['loud', 'petty', 'all'], lines: [
     'CUT! Now what?!', 'You thought that Ace was safe? @ace', 'Not today, sweetheart!', "You should've saved that!",
@@ -82,6 +84,8 @@ export const PACK: PackSection[] = [
     'Keep collecting! We love that for you!', "Somebody get 'em a shopping cart!", 'You playing conservative or just scared?',
     "You ain't slick. We see them extra books!", "!Bag lady, you gon' hurt your back!", "Y'all about to get a baggage fee!",
     'Every trick you take is another suitcase!', 'Your bid got commitment issues!', 'Congratulations! You just won a trip to bag penalty!',
+    // gender variant of "Bag lady" (same owners; see TARGET_F/TARGET_M in personas.ts)
+    "[og,storyteller] !Bag man, you gon' hurt your back!",
   ] },
   { kind: 'nilBid', group: ['loud', 'rookie', 'all'], lines: [
     'NIL?! Oh, you brave brave!', "Everybody get one! We breaking that!", 'Somebody escort this NIL to the exit!', 'Oh, you thought you was safe?',

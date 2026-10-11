@@ -513,8 +513,12 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
               const minY = bar + 8 + ph / 2;
               let cy = Math.max(y, minY);
               // and keep clear of the side plates below it (big video bubbles on small phones)
-              const sides = [...(portal.current?.querySelectorAll<HTMLElement>('.seat-anchor.side-left > .plate, .seat-anchor.side-right > .plate') ?? [])].map((e) => e.getBoundingClientRect().top).filter((t) => t > 0);
+              const sideEls = [...(portal.current?.querySelectorAll<HTMLElement>('.seat-anchor.side-left > .plate, .seat-anchor.side-right > .plate') ?? [])];
+              const sides = sideEls.map((e) => e.getBoundingClientRect().top).filter((t) => t > 0);
               if (sides.length) cy = Math.max(minY, Math.min(cy, Math.min(...sides) - 6 - ph / 2));
+              // a side plate had to move out of the trick zone (small phones): the top plate stays as high as it can, so the two
+              // don't chase each other (the side plate may be tucked right under this one)
+              if (sideEls.some((e) => e.dataset.moved === '1')) cy = minY;
               return [Math.max(pad + left, Math.min(x, size.width - pad - pw + left)), cy];
             }
             const ax = side === 'left' ? Math.max(pad, x - 72) : Math.min(size.width - pad, x + 72);
@@ -535,11 +539,12 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
             const wantNarrow = hits(wideW, pr.height, y).length > 0;
             if (wantNarrow !== narrow) plate.classList.toggle('narrow', wantNarrow); // re-measured next frame
             const pw = pr.width, ph = pr.height;
-            if (!hits(pw, ph, y).length) return [ax, y];
+            if (!hits(pw, ph, y).length) { delete plate.dataset.moved; return [ax, y]; }
+            plate.dataset.moved = '1';
             const sr = document.querySelector('.trump-strip')?.getBoundingClientRect();
             const bar = sr && sr.height > 0 ? sr.bottom : document.querySelector('.scorebug .bug')?.getBoundingClientRect().bottom ?? 0;
             // everything else the plate must not cover: the other plates, the controls, the last trick, chat, your plate
-            const hud = [...document.querySelectorAll<HTMLElement>(`.seat-anchor:not(.side-${side}) > .plate, .ctl-cluster, .last-trick, .chat-toggle, .me-plate, .me-plate .plate-turn, .me-plate .vbubble, .center-note`)]
+            const hud = [...document.querySelectorAll<HTMLElement>(`.seat-anchor:not(.side-${side}) > .plate, .seat-anchor:not(.side-${side}) > .plate .vbubble, .ctl-cluster, .last-trick, .chat-toggle, .me-plate, .me-plate .plate-turn, .me-plate .vbubble, .center-note`)]
               .map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0);
             const area = (a: { left: number; right: number; top: number; bottom: number }, b: { left: number; right: number; top: number; bottom: number }) =>
               Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
@@ -562,10 +567,16 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
             };
             const cands: [number, number][] = [[ax, up], [ax, down], [inward(down), down], [inward(up), up], [ax, y]];
             // small phones: right under the partner's plate (top band), when that's the only gap above the trick zone
-            const tp = portal.current?.querySelector<HTMLElement>('.seat-anchor.side-top > .plate')?.getBoundingClientRect();
-            if (tp && tp.width > 0) cands.push([ax, tp.bottom + 6 + ph / 2]);
+            const tpEl = portal.current?.querySelector<HTMLElement>('.seat-anchor.side-top > .plate');
+            const tpr = tpEl?.getBoundingClientRect();
+            // the partner's plate and its video bubble (the big circle hangs below the plate)
+            const tp = tpr && tpr.width > 0 ? { top: tpr.top, bottom: Math.max(tpr.bottom, tpEl!.querySelector('.vbubble')?.getBoundingClientRect().bottom ?? 0) } : undefined;
+            if (tp) cands.push([ax, tp.bottom + 6 + ph / 2]);
             let best = cands[0]!, bc = Infinity;
             for (const c of cands) { const k = cost(c[0], c[1]); if (k < bc) { bc = k; best = c; } }
+            const w = window as unknown as { __bwmPlateDbg?: Record<string, unknown>; __bwmLayout?: unknown };
+            const dbg = w.__bwmLayout ? (w.__bwmPlateDbg ??= {}) : undefined;
+            if (dbg) dbg[side] = { y, pw, ph, tp: tp && [tp.top, tp.bottom], cands: cands.map((c) => [...c.map(Math.round), Math.round(cost(c[0], c[1]))]), slots: slots.map((t) => [t.left, t.top, t.right, t.bottom].map(Math.round)) };
             return best;
           }
           : undefined;

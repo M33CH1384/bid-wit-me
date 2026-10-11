@@ -52,7 +52,13 @@ export type PersonaId = 'professor' | 'mama' | 'hype' | 'petty' | 'og' | 'hustle
 export type TalkIntensity = 'family' | 'cookout' | 'nomercy';
 export type LineCond = 'ace' | 'neg' | 'big' | 'little' | 'jk';
 /** per raw line: minimum intensity and an event condition (lines without an entry are Family Friendly, unconditional) */
-export interface LineMeta { min?: 'cookout' | 'nomercy'; cond?: LineCond }
+export interface LineMeta {
+  min?: 'cookout' | 'nomercy'; cond?: LineCond;
+  /** the speaker refers to themself as a woman / man ("mama's thinking", "grown-man card"): only bots of that gender say it */
+  self?: 'f' | 'm';
+  /** the line genders its target ({them} "IS HIM", "baby boy"): only said about a bot of that gender (never a human) */
+  target?: 'f' | 'm';
+}
 
 export interface Persona {
   id: PersonaId;
@@ -142,16 +148,16 @@ export const PERSONAS: Record<PersonaId, Persona> = {
     voice: { pitch: 1.05, rate: 0.9, prefer: ['Samantha', 'Google US English', 'Victoria', 'Karen'] },
     lean: { bid: 0, nil: 0 },
     lines: {
-      runIt: ['put your cards down, baby. mama\'s taking all of these.', 'go fix you a plate, y\'all done.', 'sit down, sugar. every last one is mine.'],
-      prePlay: ['mm-hm. mama\'s thinking.', 'hold on baby.', 'let me see here…'],
+      runIt: ['put your cards down, baby. mama\'s taking all of these.', 'go fix you a plate, y\'all done.', 'sit down, sugar. every last one is mine.', 'put your cards down, baby. papa\'s taking all of these.'],
+      prePlay: ['mm-hm. mama\'s thinking.', 'hold on baby.', 'let me see here…', 'mm-hm. papa\'s thinking.'],
       cut: ['baby that was cute. now give me my book.', 'aww {them}, you thought. bless your heart.', 'sweetie, that\'s MY book.'],
       gotCut: ['oh no you didn\'t, {them}.', 'see, now you got me mad.'],
-      setThem: ['baby, you bid {bid}? that was cute. sit down.', 'awww {opp}, y\'all set. go get a plate and think about it.', 'mama sets the table AND the bid.'],
+      setThem: ['baby, you bid {bid}? that was cute. sit down.', 'awww {opp}, y\'all set. go get a plate and think about it.', 'mama sets the table AND the bid.', 'papa sets the table AND the bid.'],
       bags: ['bags, honey. heavy ones.'],
-      win: ['now everybody go wash up. GG.', 'mama always wins at the cookout.'],
+      win: ['now everybody go wash up. GG.', 'mama always wins at the cookout.', 'papa always wins at the cookout.'],
       lose: ['y\'all got lucky and you know it.'],
       slow: ['take your time baby… but not THAT much time.', '{them}, the food getting cold.'],
-      hypePartner: ['that\'s my baby! {them}!', 'see, {them} listens to mama.'],
+      hypePartner: ['that\'s my baby! {them}!', 'see, {them} listens to mama.', 'see, {them} listens to papa.'],
     },
   },
   hype: {
@@ -163,7 +169,7 @@ export const PERSONAS: Record<PersonaId, Persona> = {
       prePlay: ['HERE WE GO!', 'WATCH THIS ONE Y\'ALL!', 'LET\'S GOOOO!'],
       cut: ['CUT!!! LET\'S GOOOO!', 'SIT DOWN {them}!!', 'WE EATIN!!!'],
       overcut: ['OVER THE TOP!!! SAY LESS!', 'TALK TO EM!!!'],
-      hypePartner: ['THAT\'S MY PARTNER!!! {them}!!!', '{them} IS HIM!!!', 'BIG PLAY {them}!!! BIG PLAY!!!', 'ARE Y\'ALL SEEING {them}?!'],
+      hypePartner: ['THAT\'S MY PARTNER!!! {them}!!!', '{them} IS HIM!!!', 'BIG PLAY {them}!!! BIG PLAY!!!', 'ARE Y\'ALL SEEING {them}?!', '{them} IS HER!!!'],
       setThem: ['SET!!! {opp} IN THE MUD!!!', 'BYE BYE {gap} POINTS!!!'],
       wheels: ['WHEELS!!! VROOOOM!!!'],
       win: ['GAME!!! {team} ON TOP!!!'],
@@ -195,7 +201,7 @@ export const PERSONAS: Record<PersonaId, Persona> = {
       prePlay: ['been playing since before you were born.', 'old school, watch.', 'slow down, youngblood.'],
       cut: ['youngblood, I was cutting before you could count.', 'that\'s grown folks spades, {them}.', 'school\'s in session.'],
       setThem: ['back in my day we called that a reneg-level bid, {opp}.', 'y\'all bid like it\'s a video game.', 'set. go sit at the kids table.'],
-      roastBid: ['{bid}? baby boy, you don\'t got {bid}.'],
+      roastBid: ['{bid}? baby boy, you don\'t got {bid}.', '{bid}? baby girl, you don\'t got {bid}.'],
       bags: ['bags. that\'s what greed gets you.'],
       win: ['the OG still got it. GG.', 'learn something today, {opp}?'],
       lose: ['the cards was dealt crooked.', 'I let y\'all have that one.'],
@@ -389,7 +395,7 @@ export const PERSONAS: Record<PersonaId, Persona> = {
       bigBid: ['{bid}, no cap.'],
       badHand: ['these cards are not giving.'],
       rematch: ['run it back, run it back!'],
-      hypePartner: ['{them} went crazy!', '{them} is HIM fr.'],
+      hypePartner: ['{them} went crazy!', '{them} is HIM fr.', '{them} is HER fr.'],
     },
   },
   coach: {
@@ -560,6 +566,30 @@ for (const sec of PACK) {
 // mild cursing in the base pools needs Cookout (Family Friendly never says it, even masked)
 for (const list of [COMMON, ...Object.values(PERSONAS).map((p) => p.lines)]) {
   for (const arr of Object.values(list)) for (const l of arr ?? []) if (MILD.test(l) && !LINE_META[l]?.min) LINE_META[l] = { ...LINE_META[l], min: 'cookout' };
+}
+
+// gendered lines: the speaker's own gender ("mama's thinking" vs "papa's thinking"), or the target's ("{them} IS HIM")
+export const SELF_F = [
+  "put your cards down, baby. mama's taking all of these.", "mm-hm. mama's thinking.", 'mama sets the table AND the bid.',
+  'mama always wins at the cookout.', 'see, {them} listens to mama.', "That's a grown-woman card right there!",
+];
+export const SELF_M = [
+  "put your cards down, baby. papa's taking all of these.", "mm-hm. papa's thinking.", 'papa sets the table AND the bid.',
+  'papa always wins at the cookout.', 'see, {them} listens to papa.', "That's a grown-man card right there!",
+];
+export const TARGET_F = ["Bag lady, you gon' hurt your back!", '{them} IS HER!!!', '{them} is HER fr.', "{bid}? baby girl, you don't got {bid}."];
+export const TARGET_M = ["Bag man, you gon' hurt your back!", '{them} IS HIM!!!', '{them} is HIM fr.', "{bid}? baby boy, you don't got {bid}."];
+for (const [list, key, g] of [[SELF_F, 'self', 'f'], [SELF_M, 'self', 'm'], [TARGET_F, 'target', 'f'], [TARGET_M, 'target', 'm']] as const) {
+  for (const l of list) LINE_META[l] = { ...LINE_META[l], [key]: g };
+}
+/** may a bot of this gender say this line (about a target of that gender; undefined = a human / unknown)? */
+export function lineFitsGender(raw: string, self?: 'f' | 'm', target?: 'f' | 'm'): boolean {
+  const m = LINE_META[raw];
+  if (!m) return true;
+  if (m.self && self && m.self !== self) return false;
+  if (m.self && !self) return false;
+  if (m.target && m.target !== target) return false;
+  return true;
 }
 
 /** intensity order */

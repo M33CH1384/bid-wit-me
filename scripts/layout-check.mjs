@@ -127,6 +127,7 @@ async function measure(page) {
     });
     [...scores, ...bagsEl].forEach((el, i) => { if (saved[i] != null) setText(el, saved[i]); });
     if (bug) for (const k of bug.children) { if (!vis(k)) continue; const r = k.getBoundingClientRect(); if (r.right > W + 1) probs.push(`scorebug item ${k.className} off the right edge`); }
+    if (probs.length && window.__bwmPlateDbg) probs.push(`plate debug ${JSON.stringify(window.__bwmPlateDbg)}`);
     return { probs, boxes: boxes.map((b) => b.name) };
   });
 }
