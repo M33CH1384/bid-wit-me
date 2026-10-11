@@ -45,6 +45,8 @@ export interface VideoState {
   hidden: string[];
   error: string | null;
   busy: boolean;
+  /** victory screen: the winners' voices come first — these players (the losers) play at a lower volume */
+  ducked?: string[];
 }
 
 const VIDEO: MediaTrackConstraints = { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 320 }, frameRate: { ideal: 15, max: 20 } };
@@ -288,6 +290,13 @@ export class VideoMesh {
   setMusicTrack(t: MediaStreamTrack | null): void {
     this.musicTrack = t;
     for (const p of this.peers.values()) this.attachTracks(p);
+  }
+
+  /** Victory spotlight: lower these players' audio (winners' voices on top). [] = everyone at full volume. */
+  setDucked(ids: string[]): void {
+    const cur = this.state.ducked ?? [];
+    if (cur.length === ids.length && ids.every((x) => cur.includes(x))) return;
+    this.set({ ducked: [...ids] });
   }
 
   toggleMuted(id: string): void {

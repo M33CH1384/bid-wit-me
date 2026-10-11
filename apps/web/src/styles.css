@@ -1335,3 +1335,47 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tp-felt img { width: 34%; opacity: .14; }
 .tp-note { position: absolute; bottom: 30%; font-family: var(--display); letter-spacing: .12em; font-size: 13px; color: var(--muted); animation: tp-pulse 1.4s ease-in-out infinite; }
 @keyframes tp-pulse { 50% { opacity: .45; } }
+
+/* Online victory spotlight: winners' video front and center, losers small along the edge, score + buttons secondary */
+.victory-screen { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; align-items: center; gap: clamp(8px, 1.6vh, 16px);
+  padding: calc(58px + env(safe-area-inset-top)) 14px calc(14px + env(safe-area-inset-bottom)); overflow-y: auto;
+  background: radial-gradient(90% 60% at 50% 35%, rgba(90,50,10,.55), rgba(12,7,18,.94) 70%); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.victory-screen .modal-x { position: absolute; top: calc(12px + env(safe-area-inset-top)); left: 12px; right: auto; }
+.vic-head { margin: 0; font-family: var(--display); font-weight: 800; letter-spacing: .08em; font-size: clamp(26px, 5vw, 44px); color: var(--gold); text-shadow: 0 0 24px rgba(255,200,60,.55); display: flex; gap: 10px; align-items: center; }
+.vic-head small { font-size: .8em; }
+.victory-spot { position: relative; z-index: 2; width: 100%; max-width: 1100px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.vs-winners { display: flex; gap: clamp(10px, 2vw, 24px); justify-content: center; width: 100%; }
+.vs-tile { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
+.vs-tile.win { flex: 0 1 min(44vw, 440px); }
+.victory-spot.n1 .vs-tile.win { flex-basis: min(80vw, 520px); }
+.vs-frame { position: relative; width: 100%; aspect-ratio: 4 / 3; border-radius: 18px; overflow: hidden; background: #1a1024; isolation: isolate; }
+.vs-tile.win .vs-frame { border: 3px solid #f2c84b; box-shadow: 0 0 0 2px rgba(255,236,170,.4), 0 0 38px rgba(255,196,48,.6), 0 0 90px rgba(255,170,30,.3); animation: vs-glow 2.4s ease-in-out infinite; }
+@keyframes vs-glow { 50% { box-shadow: 0 0 0 2px rgba(255,236,170,.6), 0 0 52px rgba(255,196,48,.85), 0 0 120px rgba(255,170,30,.4); } }
+.vs-frame video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.vs-frame video.mirror { transform: scaleX(-1); }
+.vs-avatar { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; background: radial-gradient(circle at 50% 40%, #5b2d8f, #241236 70%); }
+.vs-avatar span { font-family: var(--display); font-weight: 800; font-size: clamp(56px, 12vw, 120px); color: #fff; text-shadow: 0 4px 20px rgba(0,0,0,.5); }
+.vs-avatar small { font-family: var(--display); letter-spacing: .14em; color: var(--muted); }
+.vs-tile figcaption { font-family: var(--display); font-weight: 800; letter-spacing: .06em; font-size: clamp(15px, 2.2vw, 22px); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vs-tile.win figcaption { color: var(--gold); }
+.vs-title { font-family: var(--display); font-weight: 800; letter-spacing: .1em; text-transform: uppercase; font-size: clamp(18px, 3vw, 28px); color: #fff; text-align: center; }
+.vs-losers { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; opacity: .85; }
+.vs-tile.lose { width: clamp(72px, 12vw, 120px); }
+.vs-tile.lose .vs-frame { border-radius: 10px; border: 1px solid rgba(185,128,255,.35); }
+.vs-tile.lose .vs-avatar span { font-size: 28px; }
+.vs-tile.lose figcaption { font-size: 12px; font-weight: 700; color: var(--muted); }
+.vic-foot { position: relative; z-index: 2; width: min(100%, 560px); padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; align-items: center; font-size: 14px; }
+.vic-foot .placements.compact { margin: 0; padding: 0; width: 100%; }
+.vic-foot .placements.compact li { padding: 3px 8px; font-size: 14px; }
+.vic-foot .bid-row { margin-top: 2px; }
+.vic-foot .muted.small { font-size: 12px; margin: 0; text-align: center; }
+/* confetti stays in the margins (left / right strips, behind the tiles): it never covers a face */
+.vic-confetti { position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; }
+.vic-confetti i { position: absolute; top: -20px; width: 8px; height: 14px; border-radius: 2px; animation: vic-fall 3.5s linear infinite; opacity: .9; }
+@keyframes vic-fall { to { transform: translateY(110vh) rotate(720deg); } }
+/* narrow phones: a team's two winners stack */
+@media (max-width: 520px) {
+  .vs-winners { flex-direction: column; align-items: center; }
+  .vs-tile.win, .victory-spot.n1 .vs-tile.win { flex: none; width: min(78vw, 340px); }
+  .vs-frame { aspect-ratio: 16 / 10; }
+}

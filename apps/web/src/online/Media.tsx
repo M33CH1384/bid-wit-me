@@ -4,7 +4,7 @@ import type { SeatInfo } from '@spades/protocol';
 import type { VideoMesh, VideoState } from './video';
 
 /** A <video> bound to a MediaStream (iOS: playsInline + muted autoplay; unmuted after the first tap). */
-function StreamVideo({ stream, muted, mirror, onFrames }: { stream: MediaStream; muted: boolean; mirror?: boolean; onFrames?: (on: boolean) => void }) {
+function StreamVideo({ stream, muted, mirror, onFrames, volume = 1 }: { stream: MediaStream; muted: boolean; mirror?: boolean; onFrames?: (on: boolean) => void; volume?: number }) {
   const ref = useRef<HTMLVideoElement>(null);
   // report whether real frames are showing (a connected-but-silent track renders black), so the bubble can show the
   // player's initial until video actually arrives
@@ -32,6 +32,7 @@ function StreamVideo({ stream, muted, mirror, onFrames }: { stream: MediaStream;
     v.muted = muted;
     v.play().catch(() => { /* autoplay blocked until a tap; muted retry */ v.muted = true; v.play().catch(() => {}); });
   }, [stream, muted]);
+  useEffect(() => { if (ref.current) ref.current.volume = volume; }, [volume]);
   return <video ref={ref} className={mirror ? 'mirror' : ''} autoPlay playsInline muted={muted} />;
 }
 
@@ -105,7 +106,7 @@ export function SeatMedia({ seat, isMe, mesh, vs, limited = false, kick }: { sea
     {hasMedia ? (
       <div className={`vbubble ${camOn && !hidden ? '' : 'audio-only'}`} data-testid={`video-${id}`} data-live={live ? 'true' : 'false'}>
         {/* the clip layer keeps video circular everywhere (Safari ignores overflow+radius on <video> without its own layer) */}
-        <div className={`vb-clip ${frames ? '' : 'no-frames'}`}>{stream && <StreamVideo stream={stream} muted={muted} onFrames={setFrames} />}</div>
+        <div className={`vb-clip ${frames ? '' : 'no-frames'}`}>{stream && <StreamVideo stream={stream} muted={muted} onFrames={setFrames} volume={vs.ducked?.includes(id) ? 0.4 : 1} />}</div>
         {(!camOn || hidden) && <span className="vb-icon">{hidden ? '🙈' : '🎙'}</span>}
         {/* camera on but no frames yet (connecting / stalled): their initial, never a black circle */}
         {camOn && !hidden && !frames && <span className="vb-icon initial" data-testid={`vb-initial-${id}`}>{seat.name.trim().charAt(0).toUpperCase() || '?'}</span>}
@@ -199,4 +200,54 @@ function MediaErrorToast({ message, onClose }: { message: string; onClose: () =>
     </div>,
     document.body,
   );
+}
+
+/**
+ * Online victory screen: the winners front and center — big live video (or a big avatar when their camera is off) in a
+ * gold frame with the team / player name; the losers as small tiles along the edge. Video here is muted: every
+ * player's voice keeps coming from their seat bubble (losers ducked while this is up, so the winners' audio leads).
+ */
+export interface SpotPlayer { key: string; name: string; seat: SeatInfo | undefined; isMe: boolean }
+export function VictorySpotlight({ winners, losers, title, mesh, vs }: { winners: SpotPlayer[]; losers: SpotPlayer[]; title: string; mesh: VideoMesh | null; vs: VideoState }) {
+  const loserIds = losers.flatMap((p) => (p.seat?.kind === 'human' && !p.isMe ? [p.seat.playerId] : []));
+  const key = loserIds.join(',');
+  useEffect(() => {
+    if (!mesh) return;
+    mesh.setLimited([]); // all mics open after the game, partner mute or not
+    mesh.setDucked(loserIds);
+    return () => mesh.setDucked([]);
+  }, [mesh, key]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div className={`victory-spot n${winners.length}`} data-testid="victory-spot">
+      <div className="vs-winners">
+        {winners.map((p) => (
+          <figure key={p.key} className="vs-tile win" data-testid={`vs-win-${p.key}`}>
+            <div className="vs-frame"><SpotMedia p={p} mesh={mesh} vs={vs} /></div>
+            <figcaption>{p.name}{p.isMe ? ' (you)' : ''}</figcaption>
+          </figure>
+        ))}
+      </div>
+      <div className="vs-title" data-testid="vs-title">{title}</div>
+      {losers.length > 0 && (
+        <div className="vs-losers" aria-label="Other players">
+          {losers.map((p) => (
+            <figure key={p.key} className="vs-tile lose" data-testid={`vs-lose-${p.key}`}>
+              <div className="vs-frame"><SpotMedia p={p} mesh={mesh} vs={vs} /></div>
+              <figcaption>{p.name}</figcaption>
+            </figure>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SpotMedia({ p, mesh, vs }: { p: SpotPlayer; mesh: VideoMesh | null; vs: VideoState }) {
+  const avatar = <div className="vs-avatar" data-testid={`vs-avatar-${p.key}`}><span>{p.name.trim().charAt(0).toUpperCase() || '?'}</span>{p.seat?.kind === 'bot' && <small>BOT</small>}</div>;
+  const seat = p.seat;
+  if (!seat || seat.kind !== 'human' || !mesh) return avatar;
+  if (p.isMe) return vs.cam && vs.local ? <StreamVideo stream={vs.local} muted mirror /> : avatar;
+  const stream = vs.remote[seat.playerId];
+  const live = seat.media.cam && seat.connected && !vs.hidden.includes(seat.playerId) && hasLive(stream, 'video');
+  return live && stream ? <StreamVideo stream={stream} muted /> : avatar;
 }

@@ -111,6 +111,8 @@ export interface OnlineBinding {
   talkIntensity?: TalkIntensity;
   /** partner talk during bidding (partner-only chat line) */
   sendPartner?: (text: string) => void;
+  /** victory spotlight (game over): winners' / losers' local seats + the winning side's name */
+  victory?: (winners: number[], losers: number[], title: string) => ReactNode;
 }
 
 interface Props {
@@ -1059,7 +1061,43 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         </div>
       )}
 
-      {st.phase === 'gameOver' && !pause && !runFx && talkOpen && st.result && (
+      {st.phase === 'gameOver' && !pause && !runFx && talkOpen && st.result && online?.victory && (() => {
+        // online: the winners are the centerpiece (video spotlight); score, series and buttons sit underneath, secondary.
+        // No auto-advance: it stays until someone leaves or the host starts the rematch.
+        const res = st.result!;
+        const seats = Array.from({ length: n }, (_, i) => i);
+        const winSeats = seats.filter((i) => res.winners.includes(sideOf(i, r)));
+        const loseSeats = seats.filter((i) => !res.winners.includes(sideOf(i, r)));
+        const title = `${res.winners.map((w) => sideName(r, w, names)).join(' & ')} win${r.partnerships || res.winners.length > 1 ? '' : 's'}`;
+        const iWon = res.winners.includes(mySide);
+        return (
+          <div className="victory-screen" role="dialog" aria-label="Game over" data-testid="victory">
+            <div className="vic-confetti" aria-hidden>{Array.from({ length: 18 }, (_, i) => <i key={i} style={{ left: `${(i % 2 ? 91 : 1) + ((i * 13) % 7)}%`, background: `hsl(${i * 47} 90% 60%)`, animationDuration: `${3.2 + (i % 5) * 0.5}s`, animationDelay: `${-i * 0.37}s` }} />)}</div>
+            <button type="button" className="modal-x" aria-label="Close and go to the main menu" data-testid="gameover-x" onClick={mainMenu}>✕</button>
+            <h2 className="vic-head">{iWon ? (res.winners.length > 1 ? 'YOU TIED FOR FIRST!' : 'VICTORY!') : 'GAME OVER'}<small>{iWon ? '🏆' : '♠'}</small></h2>
+            {online.victory!(winSeats, loseSeats, title)}
+            <div className="vic-foot glass">
+              {res.endReason === 'shotOut' && <div className="shot-out-banner" data-testid="shot-out">SHOT OUT</div>}
+              <ol className="placements compact">
+                {res.finalScores
+                  .map((score, side) => ({ side, score, place: res.placements[side]! }))
+                  .sort((a, b) => a.place - b.place)
+                  .map((x) => (
+                    <li key={x.side} className={x.side === mySide ? 'mine' : ''}><span className="place">#{x.place}</span><span>{sideName(r, x.side, names)}</span><b>{x.score}</b></li>
+                  ))}
+              </ol>
+              {seriesChip()}
+              <p className="muted small" data-testid="end-reason">{endReasonText(r, st, (side) => sideName(r, side, names))} {st.history.length} hand{st.history.length === 1 ? '' : 's'} played.</p>
+              <div className="bid-row">
+                <button type="button" onClick={() => setShowPad(true)}>Score pad</button>
+                <button type="button" data-testid="main-menu" onClick={mainMenu}>Main menu</button>
+                <button type="button" className="primary" data-testid="rematch" onClick={() => onRematch(nextDealer(st))}>Rematch</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+      {st.phase === 'gameOver' && !pause && !runFx && talkOpen && st.result && !online?.victory && (
         <div className="modal-backdrop">
           <div className="modal glass slant gameover" role="dialog" aria-label="Game over">
             <button type="button" className="modal-x" aria-label="Close and go to the main menu" data-testid="gameover-x" onClick={mainMenu}>✕</button>
