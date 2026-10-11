@@ -32,6 +32,8 @@ export interface Env {
   FEEDBACK_EMAIL_TO?: string;
   FEEDBACK_EMAIL_FROM?: string;
   RESEND_API_KEY?: string;
+  /** local test runs only (`wrangler dev --var TEST_HOOKS:1`): lets e2e scripts load a game position. Never set in production. */
+  TEST_HOOKS?: string;
 }
 
 const STUN = [{ urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
@@ -158,6 +160,11 @@ export default {
         if (req.headers.get('Upgrade') !== 'websocket') return json({ error: 'expected websocket' }, { status: 426 }, origin);
         return stub.fetch(new Request(`https://table/ws?code=${code}`, req));
       }
+      if (parts[3] === 'test-state' && req.method === 'POST') {
+        if (env.TEST_HOOKS !== '1') return json({ error: 'not found' }, { status: 404 }, origin);
+        const r = await stub.fetch(new Request(`https://table/test-state?code=${code}`, { method: 'POST', body: await req.text() }));
+        return json({ ok: r.ok }, { status: r.status }, origin);
+      }
       if (parts.length === 3 && req.method === 'GET') {
         const r = await stub.fetch(`https://table/info?code=${code}`);
         return json(await r.json(), { status: r.status }, origin);
@@ -260,6 +267,12 @@ export class TableDO extends DurableObject<Env> {
       // garbage-collect the table if it's never used
       this.armAlarm(Date.now() + IDLE_DELETE_MS);
       return new Response('created', { status: 201 });
+    }
+    if (url.pathname === '/test-state' && req.method === 'POST') {
+      // only reachable through the TEST_HOOKS-gated route above
+      if (this.env.TEST_HOOKS !== '1' || !this.room) return new Response('not found', { status: 404 });
+      this.room.testLoadGame(await req.json());
+      return new Response('ok');
     }
     if (url.pathname === '/info') {
       if (!this.room) return Response.json({ exists: false }, { status: 404 });

@@ -71,6 +71,8 @@ export function Tornado3D({ quality }: { quality: 'high' | 'low' }) {
     const show = !!T && !T.reduced;
     if (dust.current) dust.current.visible = show;
     if (debris.current) debris.current.visible = show;
+    // checks (e2e): the funnel is actually being drawn this frame
+    (window as unknown as { __bwmTornadoDrawn?: boolean }).__bwmTornadoDrawn = show;
     if (!show) return;
     // starts winding up ~0.4 s before the pull, flings at 1.25 s, gone by ~1.9 s
     const u = (fx.warp !== null ? fx.warp : (performance.now() - T.start) / 1000) + 0.4;

@@ -110,7 +110,7 @@ export interface OnlineBinding {
   /** the host's trash-talk intensity */
   talkIntensity?: TalkIntensity;
   /** victory spotlight (game over): winners' / losers' local seats + the winning side's name */
-  victory?: (winners: number[], losers: number[], title: string) => ReactNode;
+  victory?: (winners: number[], losers: number[], title: string, sub?: string) => ReactNode;
 }
 
 interface Props {
@@ -1078,7 +1078,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             <div className="vic-confetti" aria-hidden>{Array.from({ length: 18 }, (_, i) => <i key={i} style={{ left: `${(i % 2 ? 91 : 1) + ((i * 13) % 7)}%`, background: `hsl(${i * 47} 90% 60%)`, animationDuration: `${3.2 + (i % 5) * 0.5}s`, animationDelay: `${-i * 0.37}s` }} />)}</div>
             <button type="button" className="modal-x" aria-label="Close and go to the main menu" data-testid="gameover-x" onClick={mainMenu}>✕</button>
             <h2 className="vic-head">{iWon ? (res.winners.length > 1 ? 'YOU TIED FOR FIRST!' : 'VICTORY!') : 'GAME OVER'}<small>{iWon ? '🏆' : '♠'}</small></h2>
-            {online.victory!(winSeats, loseSeats, title)}
+            {online.victory!(winSeats, loseSeats, title, r.partnerships ? winSeats.map((i) => names[i] ?? '?').join(' & ') : undefined)}
             <div className="vic-foot glass">
               {res.endReason === 'shotOut' && <div className="shot-out-banner" data-testid="shot-out">SHOT OUT</div>}
               <ol className="placements compact">

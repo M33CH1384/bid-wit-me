@@ -203,12 +203,15 @@ function MediaErrorToast({ message, onClose }: { message: string; onClose: () =>
 }
 
 /**
- * Online victory screen: the winners front and center — big live video (or a big avatar when their camera is off) in a
- * gold frame with the team / player name; the losers as small tiles along the edge. Video here is muted: every
- * player's voice keeps coming from their seat bubble (losers ducked while this is up, so the winners' audio leads).
+ * Online victory screen. The headline is the winning TEAM's name ("SHOT CALLERS WIN", team gold), with the winning
+ * players' full names under it; in Cutthroat the winning player's full name is the headline. A winner with live video
+ * gets the big gold-framed video spotlight; a bot or a winner with the camera off gets a modest gold-framed name card
+ * (avatar + FULL NAME), so on a ~390x844 phone the score and buttons fit without scrolling. Losers are small tiles.
+ * Video here is muted: every player's voice keeps coming from their seat bubble (losers ducked while this is up, so
+ * the winners' audio leads).
  */
 export interface SpotPlayer { key: string; name: string; seat: SeatInfo | undefined; isMe: boolean }
-export function VictorySpotlight({ winners, losers, title, mesh, vs }: { winners: SpotPlayer[]; losers: SpotPlayer[]; title: string; mesh: VideoMesh | null; vs: VideoState }) {
+export function VictorySpotlight({ winners, losers, title, sub, mesh, vs }: { winners: SpotPlayer[]; losers: SpotPlayer[]; title: string; sub?: string; mesh: VideoMesh | null; vs: VideoState }) {
   const loserIds = losers.flatMap((p) => (p.seat?.kind === 'human' && !p.isMe ? [p.seat.playerId] : []));
   const key = loserIds.join(',');
   useEffect(() => {
@@ -217,22 +220,37 @@ export function VictorySpotlight({ winners, losers, title, mesh, vs }: { winners
     mesh.setDucked(loserIds);
     return () => mesh.setDucked([]);
   }, [mesh, key]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shown = winners.map((p) => ({ p, stream: liveStream(p, mesh, vs) }));
+  const anyVideo = shown.some((x) => x.stream);
+  const label = (p: SpotPlayer) => (p.isMe && p.name !== 'You' ? `${p.name} (you)` : p.name);
   return (
-    <div className={`victory-spot n${winners.length}`} data-testid="victory-spot">
+    <div className={`victory-spot n${winners.length}${anyVideo ? ' has-video' : ' no-video'}`} data-testid="victory-spot">
+      <div className="vs-headline">
+        <h3 className="vs-title" data-testid="vs-title">{title}</h3>
+        {sub && <div className="vs-sub" data-testid="vs-sub">{sub}</div>}
+      </div>
       <div className="vs-winners">
-        {winners.map((p) => (
-          <figure key={p.key} className="vs-tile win" data-testid={`vs-win-${p.key}`}>
-            <div className="vs-frame"><SpotMedia p={p} mesh={mesh} vs={vs} /></div>
-            <figcaption>{p.isMe && p.name !== 'You' ? `${p.name} (you)` : p.name}</figcaption>
+        {shown.map(({ p, stream }) => stream ? (
+          <figure key={p.key} className="vs-tile win video" data-testid={`vs-win-${p.key}`}>
+            <div className="vs-frame">{stream}</div>
+            <figcaption>{label(p)}</figcaption>
+          </figure>
+        ) : (
+          // no live video: a compact name card, the full name the star (not a giant empty tile with an initial)
+          <figure key={p.key} className="vs-tile win card" data-testid={`vs-win-${p.key}`}>
+            <div className="vs-card" data-testid={`vs-avatar-${p.key}`}>
+              <span className="vs-initial" aria-hidden>{p.name.trim().charAt(0).toUpperCase() || '?'}</span>
+              <b className="vs-name" data-testid={`vs-name-${p.key}`}>{label(p)}</b>
+              {p.seat?.kind === 'bot' && <small>BOT</small>}
+            </div>
           </figure>
         ))}
       </div>
-      <div className="vs-title" data-testid="vs-title">{title}</div>
       {losers.length > 0 && (
         <div className="vs-losers" aria-label="Other players">
           {losers.map((p) => (
             <figure key={p.key} className="vs-tile lose" data-testid={`vs-lose-${p.key}`}>
-              <div className="vs-frame"><SpotMedia p={p} mesh={mesh} vs={vs} /></div>
+              <div className="vs-frame">{liveStream(p, mesh, vs) ?? <Avatar p={p} />}</div>
               <figcaption>{p.name}</figcaption>
             </figure>
           ))}
@@ -242,12 +260,16 @@ export function VictorySpotlight({ winners, losers, title, mesh, vs }: { winners
   );
 }
 
-function SpotMedia({ p, mesh, vs }: { p: SpotPlayer; mesh: VideoMesh | null; vs: VideoState }) {
-  const avatar = <div className="vs-avatar" data-testid={`vs-avatar-${p.key}`}><span>{p.name.trim().charAt(0).toUpperCase() || '?'}</span>{p.seat?.kind === 'bot' && <small>BOT</small>}</div>;
+function Avatar({ p }: { p: SpotPlayer }) {
+  return <div className="vs-avatar" data-testid={`vs-avatar-${p.key}`}><span>{p.name.trim().charAt(0).toUpperCase() || '?'}</span>{p.seat?.kind === 'bot' && <small>BOT</small>}</div>;
+}
+
+/** the player's live camera as a muted video element, or null (bot, camera off, not connected, hidden) */
+function liveStream(p: SpotPlayer, mesh: VideoMesh | null, vs: VideoState): ReactNode | null {
   const seat = p.seat;
-  if (!seat || seat.kind !== 'human' || !mesh) return avatar;
-  if (p.isMe) return vs.cam && vs.local ? <StreamVideo stream={vs.local} muted mirror /> : avatar;
+  if (!seat || seat.kind !== 'human' || !mesh) return null;
+  if (p.isMe) return vs.cam && vs.local ? <StreamVideo stream={vs.local} muted mirror /> : null;
   const stream = vs.remote[seat.playerId];
   const live = seat.media.cam && seat.connected && !vs.hidden.includes(seat.playerId) && hasLive(stream, 'video');
-  return live && stream ? <StreamVideo stream={stream} muted /> : avatar;
+  return live && stream ? <StreamVideo stream={stream} muted /> : null;
 }

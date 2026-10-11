@@ -62,4 +62,16 @@ describe('online seat rotation', () => {
       expect(L.result!.finalScores[0]).toBe(st.result!.finalScores[sideOf(me, st.rules)]);
     }
   });
+
+  it("keeps the 'Run it!' and nuke auto-play flags on played cards (Release 6 hotfix: the online table lost them, so no zoom/tornado)", () => {
+    const rules = makeRules('joker');
+    const st = newGame(rules, 'rot-run');
+    const seed: GameState = { ...st, tricks: [{ leader: 2, winner: 2, plays: [{ seat: 2, card: st.hands[2]![0]!, run: true }, { seat: 3, card: st.hands[3]![0]!, auto: true }, { seat: 0, card: st.hands[0]![0]! }, { seat: 1, card: st.hands[1]![0]! }] }] } as GameState;
+    for (let me = 0; me < 4; me++) {
+      const { st: L } = rotateView(viewFor(seed, me));
+      const plays = L.tricks[0]!.plays;
+      expect(plays.find((p) => p.card === st.hands[2]![0])!.run).toBe(true);
+      expect(plays.find((p) => p.card === st.hands[3]![0])!.auto).toBe(true);
+    }
+  });
 });

@@ -213,13 +213,17 @@ export function handFan(aspect: number, count: number, i: number, lift: number, 
   // the outermost (most rolled, most curved-down) card's lowest corner sits exactly on the bottom margin
   const xo = halfN * L.step;
   const lowest = xo * xo * L.curveK + (L.ch / 2) * Math.cos(L.maxRoll) + (L.cw / 2) * Math.sin(L.maxRoll);
-  const y = -L.viewH / 2 + L.viewH * (0.015 + (o.bottomFrac ?? 0)) + lowest - curve + lift * L.ch;
-  // z-order only (projection is depth-compensated): later cards sit on earlier ones, but every raised card (playable /
-  // selected) comes forward past the whole fan (13 × 0.0015 < 0.03), so it and its glow draw over the cards on both
-  // sides while raised cards keep their fan order among themselves; the raycast picks that same topmost card
-  const depth = 1 - (i + 1) * 0.0015 - (lift > 0 ? 0.03 : 0) - (lift > 0.2 ? 0.025 : 0); // the selected card tops the raised ones too
+  // a raised card (playable / selected) slides out along its OWN axis, like pulling it from a real fan: straight up
+  // would shear it against the arc at the rolled ends of the fan
+  const lx = -Math.sin(roll) * lift * L.ch, ly = Math.cos(roll) * lift * L.ch;
+  const y = -L.viewH / 2 + L.viewH * (0.015 + (o.bottomFrac ?? 0)) + lowest - curve + ly;
+  // z-order only (projection is depth-compensated, so this never changes what you see): later cards sit on earlier
+  // ones, and every raised card comes forward past the whole fan (13 × 0.006 < 0.09). The gaps are wide on purpose:
+  // phones with a 16-bit depth buffer (iPhone Safari) z-fight at ~0.0003 here, which let the edges of the cards
+  // underneath bleed through as thin gold lines when the gap was 0.0015.
+  const depth = 1 - (i + 1) * 0.006 - (lift > 0 ? 0.09 : 0) - (lift > 0.2 ? 0.03 : 0); // the selected card tops the raised ones too
   const local = new Matrix4().compose(
-    new Vector3(x * depth, y * depth, -depth),
+    new Vector3((x + lx) * depth, y * depth, -depth),
     new Quaternion().setFromEuler(new Euler(0, 0, roll, 'XYZ')),
     new Vector3(L.s * depth, L.s * depth, L.s * depth),
   );

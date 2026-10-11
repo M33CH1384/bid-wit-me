@@ -35,7 +35,8 @@ export function permute<T>(arr: readonly T[], rot: Rotation, bySide = false): T[
 }
 
 function rotTrick(t: Trick, rot: Rotation): Trick {
-  return { leader: rot.L(t.leader), plays: t.plays.map((p) => ({ seat: rot.L(p.seat), card: p.card })), winner: t.winner === null ? null : rot.L(t.winner) };
+  // keep every play flag (run = 'Run it!', auto = nuke auto-play): the table's effects key off them
+  return { leader: rot.L(t.leader), plays: t.plays.map((p) => ({ ...p, seat: rot.L(p.seat) })), winner: t.winner === null ? null : rot.L(t.winner) };
 }
 
 function rotSide(s: SideHandResult, rot: Rotation): SideHandResult {

@@ -724,6 +724,16 @@ export class Room {
     return 0;
   }
 
+  /** e2e only (TEST_HOOKS): jump the running table to a given game position (same seats), then carry on as normal */
+  testLoadGame(game: GameState): void {
+    const d = this.data;
+    d.game = game;
+    d.phase = 'playing';
+    d.seq = (d.seq ?? 0) + 1;
+    d.turnKey = null; d.deadline = null; d.ready = [];
+    this.after();
+  }
+
   /** Recompute timers after any change, run due bots/auto-plays, broadcast, persist. */
   private after(): void {
     this.checkVotes();
