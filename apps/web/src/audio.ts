@@ -13,10 +13,12 @@ export type Sfx =
   | 'shuffle' | 'deal' | 'play' | 'tap' | 'sweep' | 'broken' | 'turn' | 'bid' | 'bidSoft'
   | 'cut' | 'made' | 'set' | 'nil' | 'bags' | 'pop' | 'win' | 'lose' | 'flip'
   // hype effects (all synthesized): joker rumbles, the Big-over-Little nuke, streaks, shots
-  | 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak1' | 'streak2' | 'streak3' | 'shot' | 'gotShot' | 'wheels' | 'wheelsCar' | 'overcut' | 'overcut3' | 'tornado';
+  | 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak1' | 'streak2' | 'streak3' | 'shot' | 'gotShot' | 'wheels' | 'wheelsCar' | 'overcut' | 'overcut3' | 'tornado'
+  // 'Run it!': the claimer's cards all slam at once / everyone else's cards hit in a quick cascade
+  | 'runSlam' | 'runThud';
 
 /** SFX that bot voices duck under, and for how long (ms). */
-const DUCK_MS: Partial<Record<Sfx, number>> = { nuke: 3600, tornado: 2600, wheelsCar: 3000, jokerBig: 1100, shot: 1200, streak2: 1400, streak3: 1800, overcut3: 1000, win: 2000, lose: 1600, set: 1200, nil: 1600 };
+const DUCK_MS: Partial<Record<Sfx, number>> = { runSlam: 700, nuke: 3600, tornado: 2600, wheelsCar: 3000, jokerBig: 1100, shot: 1200, streak2: 1400, streak3: 1800, overcut3: 1000, win: 2000, lose: 1600, set: 1200, nil: 1600 };
 
 export interface SoundSettings { on: boolean; volume: number; ambient: boolean; music: boolean; musicVolume: number }
 const KEY = 'bwm.sound.v1';
@@ -467,6 +469,8 @@ class Engine {
       case 'overcut': return this.overcutSlam(t, g, 2);
       case 'overcut3': return this.overcutSlam(t, g, 3);
       case 'tornado': return this.tornado(t, g);
+      case 'runSlam': this.overcutSlam(t, g * 1.05, 3); return this.thud(t, g * 0.7);
+      case 'runThud': for (let i = 0; i < 4; i++) this.thud(t + i * 0.055, g * (0.42 - i * 0.07)); return;
       case 'wheels': this.arp(t, [392, 523.25, 783.99], 0.06, 'square', 0.12 * g, 0.22); return this.streakHit(t + 0.16, 0.8 * g, 1);
     }
   }

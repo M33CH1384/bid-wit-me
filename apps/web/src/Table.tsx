@@ -31,6 +31,11 @@ import { Coach, LedSuitChip } from './Coach';
 import { type TipsPref, bumpTip, loadTips, saveTips, tipCount } from './tips';
 import { BidCoach } from './BidCoach';
 import { RUN_FX_MS } from '@spades/protocol';
+import { RUN_CASCADE_MS, RUN_IT_CALLOUTS, RUN_TORNADO_AFTER_MS, RUN_TORNADO_MS, RUN_ZOOM_MS } from './runIt';
+import { RunZoom } from './RunZoom';
+import { TrashTalkButton } from './TrashTalk';
+import { isPromoted } from './cardFaces';
+import { QUICK_TRASH_SET } from './quickTrash';
 import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
 import { type TalkIntensity, botSkillFor, personaForName, personaTag, pickBotNames } from '@spades/bots';
 import { preloadVoice } from './voices/voices';
@@ -457,37 +462,76 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const mySide = sideOf(HUMAN, r);
   // ---- 'Run it!': on a run, the table keeps showing the moment before it while the claimer's cards slam down and
   // the tornado rips every hand + the table into the funnel; then the (finished) hand shows with an empty table.
-  type RunFx = { id: number; before: { st: GameState; view: PlayerView }; claimer: number; cards: Card[]; books: number };
+  type RunFx = { id: number; before: { st: GameState; view: PlayerView }; claimer: number; cards: Card[]; others: { seat: number; card: Card }[]; books: number; phase: 'zoom' | 'slam'; at: number };
   const [seen, setSeen] = useState<{ st: GameState; view: PlayerView }>(() => ({ st, view }));
   const [runFx, setRunFx] = useState<RunFx | null>(null);
   if (seen.st !== st) {
     const b = seen.st;
     if (b.handNo === st.handNo && st.tricks.length > b.tricks.length && st.tricks[b.tricks.length]!.plays.some((p) => p.run)) {
       const fresh = st.tricks.slice(b.tricks.length);
-      const claimer = fresh[0]!.plays[0]!.seat;
-      setRunFx({ id: Date.now(), before: seen, claimer, cards: fresh.flatMap((t) => t.plays.filter((p) => p.seat === claimer).map((p) => p.card)), books: fresh.length });
+      const claimer = fresh.find((t) => t.plays.some((p) => p.run))!.plays.find((p) => p.run)!.seat;
+      const onTable = new Set(b.trick.plays.map((p) => p.card));
+      const plays = fresh.flatMap((t) => t.plays).filter((p) => !onTable.has(p.card));
+      setRunFx({
+        id: Date.now(), before: seen, claimer, books: fresh.length, phase: 'zoom', at: performance.now(),
+        cards: plays.filter((p) => p.seat === claimer).map((p) => p.card),
+        others: plays.filter((p) => p.seat !== claimer).map((p) => ({ seat: p.seat, card: p.card })),
+      });
     }
     setSeen({ st, view });
   }
   const [badgeToast, setBadgeToast] = useState<string | null>(null);
   const endRun = useCallback(() => { fx.tornado = null; sound.stopTornado(); setRunFx(null); }, []);
+  // the claimer's line for the zoom's speech bubble: their latest chat line (bot persona line / a human's callout)
+  const lastLine = useRef<Record<number, { text: string; at: number }>>({});
+  const [runLine, setRunLine] = useState<string | null>(null);
+  const seenMsgCount = useRef(rawMsgs.length);
   useEffect(() => {
-    if (!runFx) return;
-    const slamS = 0.08 + 0.13 * (runFx.cards.length - 1) + 0.25;
-    fx.tornado = { start: performance.now() + slamS * 1000, reduced: fx.reduced };
+    const fresh = rawMsgs.slice(seenMsgCount.current);
+    seenMsgCount.current = rawMsgs.length;
+    for (const m of fresh) {
+      if (m.system) continue;
+      const seat = m.user === 'You' ? HUMAN : names.indexOf(m.user);
+      if (seat < 0) continue;
+      lastLine.current[seat] = { text: m.text, at: performance.now() };
+      if (runFx && runFx.phase === 'zoom' && seat === runFx.claimer) setRunLine(showLine(m.text));
+      if (QUICK_TRASH_SET.has(m.text)) setCallout({ seat, text: m.text, id: m.id });
+    }
+  }, [rawMsgs]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [callout, setCallout] = useState<{ seat: number; text: string; id: number } | null>(null);
+  useEffect(() => { if (!callout) return; const t = window.setTimeout(() => setCallout(null), 3200); return () => clearTimeout(t); }, [callout]);
+  const runId = runFx?.id;
+  useEffect(() => {
+    if (!runFx) { setRunLine(null); return; }
+    // 1) zoom: the claimer's cards big + face up at the centre while they talk their talk
+    const recent = lastLine.current[runFx.claimer];
+    if (recent && performance.now() - recent.at < 1800) setRunLine(showLine(recent.text));
+    else if (runFx.claimer === HUMAN) {
+      const line = pick(RUN_IT_CALLOUTS as string[]);
+      push('You', line);
+    } else setRunLine(null);
+    const zoom = RUN_ZOOM_MS / 1000;
+    const tornadoAt = zoom + RUN_TORNADO_AFTER_MS / 1000;
+    fx.tornado = { start: performance.now() + tornadoAt * 1000, reduced: fx.reduced };
     const who = runFx.claimer === HUMAN ? 'You' : names[runFx.claimer]!;
-    fx.emit('ranIt', { text: 'RAN IT!', sub: `${who} · +${runFx.books} book${runFx.books === 1 ? '' : 's'}`, silent: true });
-    sound.play('tornado', { delay: Math.max(0, slamS - 0.3) });
+    // 2) the claimer's cards slam at once (one big impact)  3) everyone else's hit together (cascading thud)  4) tornado
+    sound.play('runSlam', { delay: zoom + 0.2 });
+    if (runFx.others.length) sound.play('runThud', { delay: zoom + RUN_CASCADE_MS / 1000 + 0.17 });
+    sound.play('tornado', { delay: Math.max(0, tornadoAt - 0.3) });
+    const toSlam = window.setTimeout(() => {
+      setRunFx((f) => (f && f.id === runFx.id ? { ...f, phase: 'slam' } : f));
+      fx.emit('ranIt', { text: 'RAN IT!', sub: `${who} · +${runFx.books} book${runFx.books === 1 ? '' : 's'}`, silent: true });
+    }, RUN_ZOOM_MS);
     // (capture scripts set __bwmHoldRun to step the tornado frame by frame via fx.warp)
     const hold = !!(window as unknown as { __bwmHoldRun?: boolean }).__bwmHoldRun;
-    const timers = hold ? [] : [window.setTimeout(endRun, (slamS + 2.1) * 1000)];
+    const timers = hold ? [] : [window.setTimeout(endRun, (tornadoAt + RUN_TORNADO_MS / 1000) * 1000)];
     (window as unknown as { __bwmEndRun?: () => void }).__bwmEndRun = endRun;
     if (runFx.claimer === HUMAN) {
       runItUsed();
       if (award('storm-chaser', { mode: r.mode, online: !!online, hand: runFx.before.st.handNo, books: runFx.books })) pendingBadge.current = 'storm-chaser';
     }
-    return () => { timers.forEach(clearTimeout); fx.tornado = null; };
-  }, [runFx]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => { clearTimeout(toSlam); timers.forEach(clearTimeout); fx.tornado = null; };
+  }, [runId]); // eslint-disable-line react-hooks/exhaustive-deps
   // a badge earned by the run unlocks once the tornado is over (or skipped)
   const pendingBadge = useRef<string | null>(null);
   useEffect(() => {
@@ -517,10 +561,13 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (runFx) {
       const b = runFx.before;
       const bh = b.view.hand ? sortHand(b.view.hand, r) : null;
+      // zoom: the table as it was (the claimer's cards are shown big in the overlay)
+      if (runFx.phase === 'zoom') return { hand: bh, counts: b.view.handCounts, trick: b.st.trick.plays, piles: b.st.tricks, slam: null };
+      const gone = new Set([...runFx.cards, ...runFx.others.map((o) => o.card)]);
       return {
-        hand: runFx.claimer === HUMAN ? (bh?.filter((c) => !runFx.cards.includes(c)) ?? null) : bh,
-        counts: b.view.handCounts.map((c, i) => (i === runFx.claimer ? 0 : c)),
-        trick: b.st.trick.plays, piles: b.st.tricks, slam: { seat: runFx.claimer, cards: runFx.cards },
+        hand: bh?.filter((c) => !gone.has(c)) ?? null,
+        counts: b.view.handCounts.map(() => 0),
+        trick: b.st.trick.plays, piles: b.st.tricks, slam: { seat: runFx.claimer, cards: runFx.cards, others: runFx.others },
       };
     }
     if (ranHand) return { hand, counts: view.handCounts, trick: shownTrick.plays.some((p) => p.run) ? [] : shownTrick.plays, piles: [] as typeof piles, slam: null };
@@ -682,7 +729,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
   const trumps = useMemo(() => trumpOrder(r).slice(0, 5).map((c) => (c === 'BJ' ? 'BIG JKR' : c === 'LJ' ? 'LIL JKR' : cardLabel(c))), [r]);
   const trumpsShort = useMemo(() => trumpOrder(r).slice(0, 4).map((c) => (c === 'BJ' ? 'BJ' : c === 'LJ' ? 'LJ' : cardLabel(c))), [r]);
-  const promoted = useCallback((c: Card) => !isJoker(c) && c[1] !== 'S' && isTrump(c, r), [r]);
+  const promoted = useCallback((c: Card) => isPromoted(c, r), [r]);
 
   const onCard = useCallback((c: Card) => {
     if (humanExchanging) {
@@ -908,6 +955,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         {error && <div className="err">{error}</div>}
       </section>
       {canRun && <RunItButton tip={runTip} onDismissTip={() => setRunTip(false)} onRun={() => { setRunTip(false); setSelected(null); apply({ type: 'runIt', seat: HUMAN }); }} />}
+      {runFx?.phase === 'zoom' && <RunZoom cards={runFx.cards} who={runFx.claimer === HUMAN ? 'You' : names[runFx.claimer]!} line={runLine} r={r} />}
+      {callout && !runFx && <div className={`trash-callout seat-${pos[callout.seat]}`} key={callout.id} data-testid="trash-callout"><b>{callout.seat === HUMAN ? 'You' : names[callout.seat]}</b>{showLine(callout.text)}</div>}
+      {!runFx && !modalOpen && <TrashTalkButton st={st} me={HUMAN} intensity={intensity} onSend={(t) => push('You', t)} />}
       {runFx && <button type="button" className="run-skip" data-testid="run-skip" aria-label="Skip" onClick={endRun}><span>Tap to skip</span></button>}
       {badgeToast && BADGES[badgeToast] && (
         <div className="badge-unlock glass slant" role="status" data-testid="badge-unlock" onClick={() => setBadgeToast(null)}>

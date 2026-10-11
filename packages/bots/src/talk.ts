@@ -212,11 +212,17 @@ export function botTalk(st: TalkState, t: TalkTable, ev: TalkEvent, now: number,
   const bots = t.seats.map((s, i) => (s.bot ? i : -1)).filter((i) => i >= 0);
   if (!bots.length) return null;
   const big = BIG.includes(ev.kind);
-  if (now - st.lastAt < (big ? TALK.bigGapMs : TALK.globalGapMs)) return null;
   const actor = ev.seat;
   const side = ev.side ?? (actor !== undefined ? sideOfSeat(t, actor) : undefined);
   const onSide = (s: number) => side !== undefined && sideOfSeat(t, s) === side;
   const otherThem = (speaker: number) => ev.them ?? (actor !== undefined && sideOfSeat(t, actor) !== sideOfSeat(t, speaker) ? actor : t.seats.findIndex((_, i) => side !== undefined && !onSide(i) && i !== speaker));
+  // a bot that runs the board always gets its line in (it's the centrepiece of the Run it! zoom)
+  const claim = ev.kind === 'runIt' && ev.seat !== undefined && !!t.seats[ev.seat]?.bot && personaOf(t, ev.seat) !== 'hustler';
+  if (claim) {
+    const line = say(st, t, ev.seat!, 'runIt', ev, otherThem(ev.seat!), now, rnd);
+    if (line) return line;
+  }
+  if (now - st.lastAt < (big ? TALK.bigGapMs : TALK.globalGapMs)) return null;
 
   // the Hustler drops the act when it pulls one off itself (once)
   if (actor !== undefined && t.seats[actor]?.bot && personaOf(t, actor) === 'hustler' && !st.revealed.includes(actor) && REVEAL_ON.includes(ev.kind)) {

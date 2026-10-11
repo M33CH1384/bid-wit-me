@@ -54,8 +54,9 @@ export interface SceneProps {
   radioactive?: boolean;
   /** Reduce effects: a steady glow instead of the pulse + shimmer */
   reduceFx?: boolean;
-  /** 'Run it!': the claimer's remaining cards slam down face up in a row at the table centre, one after another */
-  slam?: { seat: number; cards: Card[] } | null;
+  /** 'Run it!': the claimer's remaining cards slam down face up in a row at the table centre ALL AT ONCE, then
+   *  everyone else's remaining cards hit the table together in a quick cascade (then the tornado takes everything) */
+  slam?: { seat: number; cards: Card[]; others?: { seat: number; card: Card }[] } | null;
 }
 
 function CameraRig() {
@@ -255,8 +256,23 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       const base = trickSpot('bottom', n, i, jitterOf(c), trickScale);
       const w = CW * (trickScale ?? TRICK_SCALE) * 0.84; // slightly overlapped: 4 cards ≈ the trick's width
       const target: Xform = { ...base, p: [(i - (k - 1) / 2) * w, base.p[1] + 0.01 * i, 0.02] };
-      const from = seat === human ? undefined : opponentFan(positions[seat]!, n, 0, 1);
-      items.push({ key: `${handNo}-${c}`, card: c, target, from, delay: 0.08 + i * 0.13, duration: 0.2, arc: 0.3, sfxLand: 'play' });
+      const from = seat === human ? undefined : opponentFan(positions[seat]!, n, Math.min(i, k - 1), k);
+      items.push({ key: `${handNo}-${c}`, card: c, target, from, delay: 0.02, duration: 0.2, arc: 0.45 });
+    });
+    // the rest of the table's cards: one quick cascade, a smaller row under the claimer's (from each player's spot)
+    const others = props.slam.others ?? [];
+    const m = others.length;
+    others.forEach(({ seat: s2, card: c }, i) => {
+      const base = trickSpot('bottom', n, i, jitterOf(c), trickScale);
+      const sc = (trickScale ?? TRICK_SCALE) * 0.62;
+      const w = CW * sc * 0.8;
+      const perRow = Math.max(1, Math.ceil(m / 2));
+      const row = Math.floor(i / perRow), col = i % perRow;
+      const hc = CH * (trickScale ?? TRICK_SCALE), ho = CH * sc;
+      // a row (two when many) just beyond the claimer's row, so the claimer's cards stay on top and readable
+      const target: Xform = { ...base, s: sc, p: [(col - (Math.min(perRow, m - row * perRow) - 1) / 2) * w, base.p[1] * 0.8 + 0.002 * i, 0.02 - (hc * 0.55 + ho * 0.5) - row * ho * 0.92] };
+      const from = s2 === human ? undefined : opponentFan(positions[s2]!, n, 0, 1);
+      items.push({ key: `${handNo}-${c}`, card: c, target, from, delay: 0.38 + i * 0.03, duration: 0.18, arc: 0.25 });
     });
   }
   // opponents' fans

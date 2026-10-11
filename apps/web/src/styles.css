@@ -1174,3 +1174,42 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .locked-rules dd { margin: 0; font-weight: 600; text-align: right; }
 .locked-details { margin: 0.5rem 0; text-align: left; }
 .locked-details summary { cursor: pointer; font-weight: 600; color: #ffd778; }
+
+/* ---- Run it! zoom: the claimer's cards big + face up, with their line ---- */
+.run-zoom { position: fixed; inset: 0; z-index: 29; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: clamp(8px, 2vh, 18px); pointer-events: none;
+  background: radial-gradient(ellipse at center, rgba(10, 4, 24, .55) 0%, rgba(10, 4, 24, .25) 55%, transparent 80%); animation: rz-in .22s ease-out both; }
+.run-zoom-who { font-family: var(--display); font-weight: 800; font-size: clamp(15px, 2.6vw, 22px); color: #fff; text-shadow: 0 2px 8px rgba(0,0,0,.7); letter-spacing: .03em; }
+.run-zoom-tag { display: inline-block; font-style: italic; font-weight: 900; padding: 2px 10px; border-radius: 999px; background: linear-gradient(90deg, #ff4fd8, #f5c542); color: #1a0830; margin-right: 6px; }
+.run-zoom-cards { display: grid; grid-template-columns: repeat(var(--per-row), auto); gap: clamp(4px, 1vw, 10px); justify-content: center; max-width: 96vw; }
+.run-zoom-card { width: min(calc(92vw / var(--per-row) - 8px), 128px, 15vh); aspect-ratio: 240 / 336; border-radius: 9px; box-shadow: 0 10px 28px rgba(0,0,0,.6), 0 0 0 2px rgba(255,255,255,.85), 0 0 22px rgba(245,197,66,.55);
+  animation: rz-card .42s cubic-bezier(.2,1.5,.4,1) both; animation-delay: calc(var(--i) * 45ms); }
+.run-bubble { position: relative; max-width: min(560px, 90vw); padding: 12px 18px; border-radius: 18px; background: #fff; color: #1a0830; font-family: var(--display); font-weight: 900; font-size: clamp(18px, 3.6vw, 30px); line-height: 1.15; text-align: center;
+  box-shadow: 0 8px 30px rgba(0,0,0,.55), 0 0 0 3px #f5c542; animation: rz-bubble .38s cubic-bezier(.2,1.6,.4,1) .12s both; }
+.run-bubble::after { content: ''; position: absolute; left: 50%; bottom: -12px; width: 22px; height: 22px; background: #fff; transform: translateX(-50%) rotate(45deg); box-shadow: 3px 3px 0 0 #f5c542; }
+@keyframes rz-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes rz-card { from { opacity: 0; transform: translateY(40px) scale(.6) rotate(-6deg); } to { opacity: 1; transform: none; } }
+@keyframes rz-bubble { from { opacity: 0; transform: scale(.5); } to { opacity: 1; transform: none; } }
+
+/* ---- Talk trash quick chat ---- */
+.trash-wrap { position: fixed; left: calc(10px + env(safe-area-inset-left)); bottom: calc(27vh + env(safe-area-inset-bottom)); z-index: 13; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.trash-btn { display: flex; align-items: center; gap: 6px; font-size: 18px; padding: 6px 12px 6px 10px; border-radius: 999px; border: 1.5px solid rgba(255,255,255,.55); background: linear-gradient(135deg, rgba(255,79,216,.85), rgba(120,60,255,.85)); color: #fff; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+.trash-btn span { font-family: var(--display); font-weight: 800; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+.trash-btn.cooling { opacity: .55; }
+.table-screen.short .trash-btn span { display: none; }
+.trash-pop { width: min(340px, 88vw); max-height: min(52vh, 420px); display: flex; flex-direction: column; padding: 8px; gap: 6px; }
+.trash-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.trash-tabs button { font-size: 12px; font-weight: 700; padding: 4px 9px; border-radius: 999px; border: 1px solid rgba(255,255,255,.3); background: transparent; color: #fff; cursor: pointer; }
+.trash-tabs button.on { background: #f5c542; color: #1a0830; border-color: #f5c542; }
+.trash-lines { overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
+.trash-line { text-align: left; font-size: 14px; padding: 7px 9px; border-radius: 8px; border: 0; background: rgba(255,255,255,.06); color: #fff; cursor: pointer; }
+.trash-line:hover:not(:disabled) { background: rgba(245,197,66,.22); }
+.trash-line:disabled { opacity: .45; cursor: default; }
+/* the callout bubble by the sender's plate */
+.trash-callout { position: fixed; z-index: 28; max-width: min(360px, 80vw); padding: 10px 14px; border-radius: 16px; background: #fff; color: #1a0830; font-family: var(--display); font-weight: 900; font-size: clamp(15px, 2.4vw, 20px); line-height: 1.2;
+  box-shadow: 0 6px 22px rgba(0,0,0,.5), 0 0 0 3px #ff4fd8; animation: rz-bubble .32s cubic-bezier(.2,1.6,.4,1) both, callout-out .4s ease-in 2.8s forwards; pointer-events: none; }
+.trash-callout b { display: block; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #8a3bd1; margin-bottom: 2px; }
+.trash-callout.seat-bottom { left: 0; right: 0; margin-inline: auto; width: fit-content; bottom: calc(30vh + env(safe-area-inset-bottom)); }
+.trash-callout.seat-top { left: 0; right: 0; margin-inline: auto; width: fit-content; top: 18vh; }
+.trash-callout.seat-left { left: 12px; top: 38vh; }
+.trash-callout.seat-right { right: 12px; top: 38vh; }
+@keyframes callout-out { to { opacity: 0; } }

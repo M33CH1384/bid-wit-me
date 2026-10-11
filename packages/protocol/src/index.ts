@@ -17,7 +17,8 @@ export type NukeIntensity = (typeof NUKE_INTENSITIES)[number];
 /** Extra lead-in after a nuked trick, per table level (ms). */
 export const NUKE_ALLOWANCE_MS: Record<NukeIntensity, number> = { full: 4000, classic: 3500, off: 1200 };
 /** 'Run it!': how long clients play the slam + tornado before the hand's end shows (Table Talk waits this much longer). */
-export const RUN_FX_MS = 3000;
+/** zoom (1.5 s) + slam + cascade + tornado */
+export const RUN_FX_MS = 4800;
 export const PROTOCOL_VERSION = 1;
 
 /* ---------------------------------------------------------------- limits */
