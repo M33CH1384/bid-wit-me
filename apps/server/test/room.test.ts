@@ -595,7 +595,7 @@ describe('table talk + host music', () => {
     env.advance(10);
     const st = env.last('a', 'state')!;
     expect(st.room.deadline! - st.room.now).toBeGreaterThan(40_000);
-    env.advance(46_000);
+    env.advance(46_000 + 6_000); // (+ the Run it! show when the hand ended on one)
     expect(env.room.data.game!.phase).not.toBe('handOver');
   });
   it('host music: beats are synced by server start time; links are validated; only the host can change it', () => {
