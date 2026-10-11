@@ -1,5 +1,6 @@
 import { speakBot } from '../talkPrefs';
 import { fx } from '../fx';
+import { shotChatLines } from '../shotOut';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { Action, GameState, PlayerView } from '@spades/rules';
 import { bidLabel, isFreshDeal } from '@spades/rules';
@@ -177,7 +178,8 @@ export function useOnlineChat(cs: ConnState, st: GameState | null, names: string
   useEffect(() => {
     const p = prevSt.current;
     prevSt.current = st;
-    if (!st || !p) return;
+    if (!st) return;
+    if (!p) { if (st.tricks.length === 0 && st.trick.plays.length === 0) add({ user: 'System', text: `Hand ${st.handNo} · ${names[st.dealer]} deals`, system: true, color: '#b892ff' }); return; }
     if (st.handNo !== p.handNo) add({ user: 'System', text: `Hand ${st.handNo} · ${names[st.dealer]} deals`, system: true, color: '#b892ff' });
     st.bids.forEach((b, s) => {
       if (b !== null && p.bids[s] === null && p.handNo === st.handNo) add({ user: 'System', text: `${names[s]} bid ${bidLabel(b)}`, system: true, color: '#b892ff' });
@@ -185,6 +187,7 @@ export function useOnlineChat(cs: ConnState, st: GameState | null, names: string
     if (st.history.length > p.history.length) {
       const rec = st.history[st.history.length - 1]!;
       add({ user: 'System', text: `Hand ${rec.handNo}: ${rec.sides.map((x) => `${x.seats.map((s) => names[s]).join('+')} ${x.points >= 0 ? '+' : ''}${x.points}`).join(' · ')}`, system: true, color: '#b892ff' });
+      for (const t of shotChatLines(st.rules, rec, st, (side) => (rec.sides[side]?.seats ?? []).map((s) => names[s]).join(' & '))) add({ user: 'System', text: t, system: true, color: '#ff6b6b' });
     }
   }, [st, names, add]);
 

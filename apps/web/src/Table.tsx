@@ -17,6 +17,7 @@ import { setFeedbackGame } from './feedbackContext';
 import { loadTipJar, openTip, saveTipJar, tipNudgeDue } from './support';
 import { OfflineMediaBar } from './online/Media';
 import { fireCue, fx, useReduceEffects } from './fx';
+import { endReasonText, onNoticeSides, shotChatLines } from './shotOut';
 import { type Sfx, sound } from './audio';
 import { type ChatMsg, LINES, SEAT_COLORS, TALK_LINES, type Toast, TickNumber, USER_COLORS, pick, toastsFor } from './overlay';
 import { type Settings, modeTitle } from './settings';
@@ -154,13 +155,14 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
     const r = st.rules;
     if (!p) {
       push('System', `Table open · ${modeTitle(r)} · first to ${r.targetScore}`, true);
+      if (st.tricks.length === 0 && st.trick.plays.length === 0) push('System', `Hand ${st.handNo} · ${names[st.dealer] === 'You' ? 'You' : names[st.dealer]} deal${st.dealer === HUMAN ? '' : 's'}`, true);
       if (talkOn()) {
         push(pick(bots), pick(LINES.start), false, 900);
         push(pick(bots), pick(['yo', 'what up', '👋', 'ready']), false, 1700);
       }
       return;
     }
-    if (st.handNo !== p.handNo) push('System', `Hand ${st.handNo} · ${names[st.dealer]} deals`, true);
+    if (st.handNo !== p.handNo) push('System', `Hand ${st.handNo} · ${st.dealer === HUMAN ? 'You deal' : `${names[st.dealer]} deals`}`, true);
     // bids
     st.bids.forEach((b, s) => {
       if (b !== null && p.bids[s] === null && p.handNo === st.handNo) {
@@ -205,6 +207,7 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
       const rec = st.history[st.history.length - 1]!;
       push('System', `Hand ${rec.handNo}: ${rec.sides.map((s) => `${sideName(r, s.side, names)} ${s.points >= 0 ? '+' : ''}${s.points}`).join(' · ')}`, true);
       for (const w of wheelsMade(r, rec)) push('System', `🏎 Wheels made! ${sideName(r, w.side, names)} bid ${w.bid} and took ${w.books}`, true);
+      for (const t of shotChatLines(r, rec, st, (side) => sideName(r, side, names))) push('System', t, true);
       const mySide = sideOf(HUMAN, r);
       void mySide;
     }
@@ -686,6 +689,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (!talkPrefs.voices) return;
     names.forEach((nm, i) => { if (isBotSeat(i)) preloadPersona(personaForName(nm), talkPrefs.cleanTalk); });
   }, [botKey, talkPrefs.voices]); // eslint-disable-line react-hooks/exhaustive-deps
+  const notice = onNoticeSides(sb);
   const renderSeat = (seat: number) => {
     const isTurn = st.turn === seat && !pause && st.phase !== 'handOver' && st.phase !== 'gameOver';
     const partner = r.partnerships && seat === partnerOf(HUMAN, r);
@@ -694,7 +698,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       <div className={`plate ${isTurn ? 'turn' : ''} ${partner ? 'ally' : 'foe'}`} data-testid={`seat-${seat}`} title={isBotSeat(seat) ? `${names[seat]} · ${personaTag(names[seat]!, revealed.includes(seat))}` : undefined} data-persona={isBotSeat(seat) ? personaTag(names[seat]!, revealed.includes(seat)) : undefined}>
         <div className="plate-avatar" style={{ ['--uc' as string]: SEAT_COLORS[seat] }}>{names[seat]![0]}</div>
         <div className="plate-body">
-          <div className="plate-name">{names[seat]}{st.dealer === seat && <span className="chip dealer">D</span>}{partner && <span className="chip ally">PARTNER</span>}</div>
+          <div className="plate-name">{names[seat]}{st.dealer === seat && <span className="chip dealer" data-testid={`dealer-${seat}`}>DEALER</span>}{partner && <span className="chip ally">PARTNER</span>}{notice.includes(sideOf(seat, r)) && <span className="chip notice" data-testid={`notice-${seat}`} title="Got shot last hand: one more shot and they're out">ON NOTICE</span>}</div>
           <div className="plate-stats">
             <span className="chip">{b === 'books' ? 'BOOKS' : `BID ${b === null ? (isTurn && st.phase === 'bidding' ? '…' : '—') : bidLabel(b).toUpperCase()}`}</span>
             <span className="chip">TOOK {sb.tricksWon[seat]}</span>
@@ -877,7 +881,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         <div className={`plate me-plate ${myTurn && st.phase !== 'handOver' ? 'turn' : ''}`} data-testid="seat-0">
           <div className="plate-avatar" style={{ ['--uc' as string]: USER_COLORS.You }}>Y</div>
           <div className="plate-body">
-            <div className="plate-name">YOU{st.dealer === HUMAN && <span className="chip dealer">D</span>}{myBadges.map((b) => BADGES[b.id] && <span key={b.id} className="chip badge" title={`${BADGES[b.id]!.name}: ${BADGES[b.id]!.desc}`} data-testid={`plate-badge-${b.id}`}>{BADGES[b.id]!.icon}</span>)}</div>
+            <div className="plate-name">YOU{st.dealer === HUMAN && <span className="chip dealer" data-testid="dealer-0">DEALER</span>}{notice.includes(sideOf(HUMAN, r)) && <span className="chip notice" data-testid="notice-0" title="Got shot last hand: one more shot and you're out">ON NOTICE</span>}{myBadges.map((b) => BADGES[b.id] && <span key={b.id} className="chip badge" title={`${BADGES[b.id]!.name}: ${BADGES[b.id]!.desc}`} data-testid={`plate-badge-${b.id}`}>{BADGES[b.id]!.icon}</span>)}</div>
             <div className="plate-stats">
               <span className="chip">{st.bids[HUMAN] === 'books' ? 'BOOKS' : `BID ${st.bids[HUMAN] === null ? '—' : bidLabel(st.bids[HUMAN]).toUpperCase()}`}</span>
               <span className="chip">TOOK {sb.tricksWon[HUMAN]}</span>
@@ -957,7 +961,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             <div className="trophy">{st.result.winners.includes(mySide) ? '🏆' : '♠'}</div>
             <h2>{st.result.winners.includes(mySide) ? (st.result.winners.length > 1 ? 'YOU TIED FOR FIRST!' : 'VICTORY!') : `${st.result.winners.map((w) => sideName(r, w, names)).join(' & ').toUpperCase()} WIN${r.partnerships || st.result.winners.length > 1 ? '' : 'S'}`}</h2>
             {seriesChip()}
-            <p className="muted">{st.result.endReason === 'floor' ? 'Ended by the losing floor.' : `First to ${r.targetScore}.`} {st.history.length} hands played.</p>
+            {st.result.endReason === 'shotOut' && <div className="shot-out-banner" data-testid="shot-out">SHOT OUT</div>}
+            <p className="muted" data-testid="end-reason">{endReasonText(r, st, (side) => sideName(r, side, names))} {st.history.length} hand{st.history.length === 1 ? '' : 's'} played.</p>
             <ol className="placements">
               {st.result.finalScores
                 .map((score, side) => ({ side, score, place: st.result!.placements[side]! }))

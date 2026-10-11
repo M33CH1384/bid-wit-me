@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { type Card, type GameState, type PlayerView, SUIT_NAME, type Suit, booksHand, cardLabel, cardPower, effectiveSuit, handSize, isTrump, trumpOrder } from '@spades/rules';
+import { type Card, type GameState, type PlayerView, SUIT_NAME, type Suit, booksHand, cardLabel, cardPower, effectiveSuit, firstHandMinOf, handSize, isTrump, shotOutOn, sideOf, trumpOrder } from '@spades/rules';
 import { TERM_ORDER, type TermKey, glossary, parseTerms, topTrumps, trumpWords } from './glossary';
 import { TIP_MAX_SHOWS, bumpTip, tipCount, tipDurationMs } from './tips';
 
@@ -82,6 +82,9 @@ export function tipsFor(c: CoachCtx): Tip[] {
       : `the ${label(lastWinCard)} was the {highest card|high} of the suit that was {led|lead}`
     : '';
   const partnerSeat = (c.me + 2) % 4;
+  const lastRec = c.st.history[c.st.history.length - 1];
+  const onNoticeMine = !!lastRec?.sides[sideOf(c.me, r)]?.shot;
+  const firstMin = firstHandMinOf(r);
   const pBid = c.st.bids[partnerSeat];
   const n = handSize(r);
   return [
@@ -159,6 +162,13 @@ export function tipsFor(c: CoachCtx): Tip[] {
         ? 'First hand: 10 points per {book}. From now on you {bid} first, and the bid coach helps you count.'
         : `Made your {bid}: 10 points per book you bid, +1 per extra. Fell short ({set}): minus 10 per book you bid.${r.nil.allowed ? ` {Nil|nil} made: +${r.nil.value}, missed: −${r.nil.value}.` : ''}`,
       when: (x) => x.st.phase === 'handOver' && !x.pause,
+    },
+    {
+      id: 'shot', title: 'On notice', anchor: '.scorebug .bug', max: 2,
+      text: shotOutOn(r)
+        ? `${onNoticeMine ? 'Your side got {shot} last hand, so you\'re ON NOTICE: get shot again this hand and you lose the game. Bid what you can make.' : 'A side that gets {shot} (takes fewer books than it bid) is ON NOTICE: shot again next hand and it\'s out.'}${firstMin !== null ? ` On the first hand, fewer than ${firstMin} books is a shot too, and a shot on hand 1 ends the game.` : ''}`
+        : '',
+      when: (x) => shotOutOn(r) && x.st.phase === 'bidding' && x.st.history.length > 0 && !!x.st.history[x.st.history.length - 1]!.sides.some((sd) => sd.shot),
     },
     {
       id: 'basics', title: 'Card basics', anchor: '.scorebug .bug', basics: true, max: 0,

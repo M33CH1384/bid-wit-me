@@ -1,14 +1,14 @@
-import { type TableRules, cardLabel, trumpOrder } from '@spades/rules';
+import { type TableRules, cardLabel, firstHandMinOf, shotOutOn, trumpOrder } from '@spades/rules';
 
 /**
  * Card basics for people who have never played a trick-taking game: plain definitions, worded for the table's
  * mode (Joker Spades, regular / Ace Down, Cutthroat, with or without jokers). Used by the "?" help ("Card basics")
  * and by the tappable terms inside tips (`{term}` or `{shown text|term}` in tip text).
  */
-export type TermKey = 'book' | 'suit' | 'high' | 'trump' | 'lead' | 'follow' | 'cut' | 'broken' | 'bid' | 'set' | 'bags' | 'nil' | 'partner' | 'wheels';
+export type TermKey = 'book' | 'suit' | 'high' | 'trump' | 'lead' | 'follow' | 'cut' | 'broken' | 'bid' | 'set' | 'bags' | 'nil' | 'partner' | 'wheels' | 'shot';
 export interface Term { key: TermKey; term: string; def: string }
 
-export const TERM_ORDER: TermKey[] = ['book', 'suit', 'high', 'trump', 'lead', 'follow', 'cut', 'broken', 'bid', 'set', 'bags', 'nil', 'partner', 'wheels'];
+export const TERM_ORDER: TermKey[] = ['book', 'suit', 'high', 'trump', 'lead', 'follow', 'cut', 'broken', 'bid', 'set', 'bags', 'nil', 'partner', 'wheels', 'shot'];
 
 export function topTrumps(r: TableRules, n = 4): string {
   return trumpOrder(r).slice(0, n).map((c) => cardLabel(c)).join(', ');
@@ -61,6 +61,12 @@ export function glossary(r: TableRules): Record<TermKey, Term> {
     partner: t('partner', 'Partner', r.partnerships
       ? 'The player sitting across from you. You win or lose together, and your books count as one team.'
       : 'Cutthroat has no partners: everyone plays for themselves.'),
+    shot: t('shot', 'Shot (Shot = out)', (() => {
+      const who = r.partnerships ? 'team' : 'player';
+      const min = firstHandMinOf(r);
+      if (!shotOutOn(r)) return `Getting shot means getting set: taking fewer books than you bid. (Shot = out is off at this table.)`;
+      return `Getting shot means getting set: taking fewer books than you bid. A ${who} shot two hands in a row loses the game (SHOT OUT). After one shot the ${who} is ON NOTICE.${r.firstHandBidsItself !== false ? (min !== null ? ` On the first hand, taking fewer than ${min} books is a shot, and a shot on hand 1 loses right away.` : '') : ' Getting shot on hand 1 loses right away.'} If both sides go out on the same hand, the higher score wins.`;
+    })()),
     wheels: t('wheels', 'Wheels', `A team bidding 10+ books together, or taking 10+ books yourself in Cutthroat.${r.partnerships ? ' Make it and the wheels come out.' : ''}`),
   };
 }

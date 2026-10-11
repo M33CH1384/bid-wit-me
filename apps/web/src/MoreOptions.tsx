@@ -34,6 +34,12 @@ export function Seg<T extends string | number>({ value, options, onChange, label
   );
 }
 
+export const TALK_HINT: Record<Settings['talkIntensity'], string> = {
+  family: 'Family Friendly: clean, light jokes only',
+  cookout: 'Cookout: real table talk, nothing too personal (default)',
+  nomercy: 'No Mercy: the full roast',
+};
+
 /** Every less-common option lives here (one gear sheet): game speed, graphics, tips, sound + music, house rules, credits. */
 export default function MoreOptions({ settings: s, onChange, tips, onTips, onClose }: {
   settings: Settings; onChange: (s: Settings) => void; tips: TipsPref; onTips: (t: TipsPref) => void; onClose: () => void;
@@ -59,6 +65,14 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
           <Row label="Game speed">
             <Seg label="Game speed" value={s.speed === 'turbo' ? 'fast' : s.speed} options={[['slow', 'Slow'], ['relaxed', 'Chill'], ['normal', 'Normal'], ['fast', 'Fast']]} onChange={(v) => set('speed', v)} />
           </Row>
+          <Row label="Bot skill" hint={s.botLevel === 'mixed' ? 'Each bot rolls its own level (hidden): find out by playing' : 'Every bot plays at this level'}>
+            <select data-testid="bot-skill" value={s.botLevel} onChange={(e) => set('botLevel', e.target.value as Settings['botLevel'])}>
+              <option value="mixed">Mixed (default)</option><option value="novice">Novice</option><option value="regular">Regular</option><option value="pro">Pro</option><option value="shark">Shark</option>
+            </select>
+          </Row>
+          <Row label="Trash talk" hint={TALK_HINT[s.talkIntensity ?? 'cookout']}>
+            <Seg label="Trash talk intensity" value={s.talkIntensity ?? 'cookout'} options={[['family', 'Family'], ['cookout', 'Cookout'], ['nomercy', 'No Mercy']]} onChange={(v) => set('talkIntensity', v)} />
+          </Row>
           <Row label="Graphics" hint="Low saves battery">
             <Seg label="Graphics" value={s.quality} options={[['high', 'High'], ['low', 'Low']]} onChange={(v) => set('quality', v)} />
           </Row>
@@ -75,6 +89,16 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
               <Row label="First hand: books bid themselves" hint="No bidding in hand 1 · 10 points per book">
                 <Toggle label="First hand: books bid themselves" value={s.firstHandBidsItself !== false} onChange={(v) => set('firstHandBidsItself', v)} />
               </Row>
+              <Row label="Shot = out" hint={rules.partnerships ? 'Shot (set) on hand 1, or two hands in a row, loses the game' : 'A player shot (set) on hand 1, or twice in a row, loses the game'}>
+                <Toggle label="Shot = out" value={s.shotOut !== false} onChange={(v) => set('shotOut', v)} />
+              </Row>
+              {s.shotOut !== false && s.firstHandBidsItself !== false && (
+                <Row label="First-hand minimum" hint="Fewer books than this on hand 1 is a shot">
+                  <select data-testid="first-hand-min" value={String(s.firstHandMin ?? 'default')} onChange={(e) => { const v = e.target.value; set('firstHandMin', v === 'default' || v === 'off' ? v : (Number(v) as 3 | 4 | 5)); }}>
+                    <option value="default">Default ({rules.partnerships ? '4 books' : 'off'})</option><option value="3">3 books</option><option value="4">4 books</option><option value="5">5 books</option><option value="off">Off</option>
+                  </select>
+                </Row>
+              )}
               <Row label="Losing floor −200"><Toggle value={s.losingFloor === 'on'} onChange={(v) => set('losingFloor', v ? 'on' : 'off')} /></Row>
               {isJokerDeck && (
                 <Row label="Joker trump order" hint={s.jokerOrder === 'house' ? '2♣ 2♥ removed · 2♦ is a spade' : '2♥ 2♦ removed'}>
