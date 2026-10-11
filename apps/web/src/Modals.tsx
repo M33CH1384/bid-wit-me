@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { type GameState, type HandRecord, type TableRules, bidLabel } from '@spades/rules';
 import { HUMAN } from './useGame';
 
@@ -19,7 +20,7 @@ function signed(n: number): string {
   return n > 0 ? `+${n}` : String(n);
 }
 
-export function ScorePad({ st, names, onClose }: { st: GameState; names: string[]; onClose: () => void }) {
+export function ScorePad({ st, names, onClose, locked }: { st: GameState; names: string[]; onClose: () => void; locked?: ReactNode }) {
   const r = st.rules;
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -49,6 +50,7 @@ export function ScorePad({ st, names, onClose }: { st: GameState; names: string[
           </div>
         )}
         <p className="muted small">Target {r.targetScore}{r.losingFloor !== null ? `, losing floor ${r.losingFloor}` : ''}. Every {r.bagsPerPenalty} bags costs {r.bagPenalty}.</p>
+        {locked && st.phase !== 'gameOver' && <details className="locked-details" data-testid="locked-rules-details"><summary>🔒 House rules for this game</summary>{locked}</details>}
         <button type="button" className="primary" onClick={onClose}>Close</button>
       </div>
     </div>

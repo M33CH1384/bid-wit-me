@@ -216,7 +216,7 @@ export function NukeIntensityRow() {
   );
 }
 
-/** Online: the table's nuke level, read-only (the host sets it in the lobby). Hidden offline. */
+/** In a game: the table's nuke level, read-only (online the host sets it; offline it's fixed when the game starts). */
 export function TableNukeInfo() {
   const t = useTableNuke();
   const reduced = useReduceEffects();
@@ -224,7 +224,7 @@ export function TableNukeInfo() {
   const label = t === 'full' ? 'Full Nuke' : t === 'classic' ? 'Classic' : 'Off';
   return (
     <div className="sf-row nuke-row" data-testid="table-nuke-info">
-      <span>Nuke intensity<small className="sf-note"> · set by the host{reduced ? ' · Off for you (Reduce effects)' : ''}</small></span>
+      <span>Nuke intensity<small className="sf-note"> · 🔒 Locked for this game{reduced ? ' · Off for you (Reduce effects)' : ''}</small></span>
       <b className="sf-val">{label}</b>
     </div>
   );

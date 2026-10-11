@@ -3,6 +3,7 @@ import {
   type Card, type GameState, type PlayerView, type Play, type TableRules, radioactiveBigJoker, isNukeTrick, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, partnerOf, sideOf, sortHand, trumpOrder,
 } from '@spades/rules';
 import { ScorePad, defaultSideName, setTeamNames, sideName } from './Modals';
+import { LockedRulesPanel } from './LockedRules';
 import { type Series, addSeriesGame, seriesSides, summarizeGame } from '@spades/rules';
 import { SeriesChip, SeriesSheet, loadSeries, saveSeries } from './Series';
 import { TeamNameField, myTeamName, useMyTeamName } from './TeamName';
@@ -367,6 +368,13 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   setTeamNames(teamNames); // sideName() everywhere (scorebug, results, Table Talk, Victory, score pad) uses these
   useEffect(() => () => setTeamNames(null), []);
 
+  // offline: the nuke level is locked for the game at its start (a resumed game keeps the one it started with)
+  useEffect(() => {
+    if (online) return;
+    fx.tableNuke = resume?.nuke ?? fx.prefs.nuke;
+    return () => { fx.tableNuke = null; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // offline trash talk: same engine as the server
   useEffect(() => {
     if (online) return;
@@ -577,7 +585,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   useEffect(() => {
     if (online) return; // online games live on the server (seat token in localStorage), not in the offline save
     if (st.phase === 'gameOver') clearGame();
-    else saveGame({ seed, settings, state: st, chat: rawMsgs, names, teamNames: [null, botTeam] });
+    else saveGame({ seed, settings, state: st, chat: rawMsgs, names, teamNames: [null, botTeam], nuke: fx.tableNuke ?? fx.prefs.nuke });
   }, [st, rawMsgs, seed, settings, online]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // "Resuming your game…" toast
@@ -1010,7 +1018,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
       {coachOn && !modalOpen && st.phase === 'playing' && !pause && <LedSuitChip st={st} />}
       <Hype reduced={reduceFx} low={settings.quality === 'low'} />
-      {showPad && <ScorePad st={st} names={names} onClose={() => setShowPad(false)} />}
+      {showPad && <ScorePad st={st} names={names} onClose={() => setShowPad(false)} locked={online ? undefined : <LockedRulesPanel rules={r} nuke={fx.tableNuke ?? fx.prefs.nuke} skill={settings.botLevel} intensity={settings.talkIntensity} />} />}
     </div>
   );
 }

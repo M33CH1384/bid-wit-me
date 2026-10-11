@@ -3,6 +3,10 @@ import type { NukeIntensity } from '@spades/protocol';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { cardLabel, trumpOrder } from '@spades/rules';
+import { BOT_SKILL_SETTINGS, SKILL_SETTING_LABEL, TALK_INTENSITY_LABEL, type TalkIntensity, skillSettingOf } from '@spades/bots';
+import { TALK_INTENSITIES, type BotLevel } from '@spades/protocol';
+import { TALK_HINT } from '../MoreOptions';
+import { LockedRulesPanel } from '../LockedRules';
 import type { RoomInfo, SeatInfo } from '@spades/protocol';
 import { type ModeKey, type Settings, MODES, modeTitle, settingsToRules } from '../settings';
 import type { ConnState, TableConnection } from './connection';
@@ -44,10 +48,11 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
   const spots = n === 4 ? ['bottom', 'left', 'top', 'right'] : ['bottom', 'left', 'right'];
   const spotOf = (seat: number) => spots[(seat - me + n) % n]!;
 
-  const config = (s: Settings, timer: TimerKey = timerKey(room), botLevel = room.botLevel, talkSec = room.talkSec, afkLimit = room.afkLimit ?? 3, partnerMicMute = room.partnerMicMute ?? false, nukeIntensity: NukeIntensity = room.nukeIntensity ?? 'full') => {
+  const config = (s: Settings, timer: TimerKey = timerKey(room), botLevel = room.botLevel, talkSec = room.talkSec, afkLimit = room.afkLimit ?? 3, partnerMicMute = room.partnerMicMute ?? false, nukeIntensity: NukeIntensity = room.nukeIntensity ?? 'full', talkIntensity: TalkIntensity = room.talkIntensity ?? 'cookout') => {
     onSettings(s);
-    const rules = { ...settingsToRules(s), turnTimerSec: { ...TIMERS[timer] } };
-    conn.send({ t: 'config', rules, botLevel, talkSec, afkLimit, partnerMicMute, nukeIntensity });
+    // mid-game only the pace / social settings may change: the game rules go back exactly as they are
+    const rules = playing ? { ...room.rules, turnTimerSec: { ...TIMERS[timer] } } : { ...settingsToRules(s), turnTimerSec: { ...TIMERS[timer] } };
+    conn.send({ t: 'config', rules, botLevel, talkSec, afkLimit, partnerMicMute, nukeIntensity, talkIntensity });
   };
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => config({ ...settings, [k]: v });
 
@@ -149,10 +154,23 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
             <select value={timerKey(room)} onChange={(e) => config(settings, e.target.value as TimerKey)}>
               <option value="relaxed">Relaxed (45s / 30s)</option><option value="normal">Normal (30s / 20s)</option><option value="fast">Fast (15s / 10s)</option>
             </select></span></label>
-          <label className="row"><span className="row-label">Bots</span><span className="row-control">
-            <select value={room.botLevel} onChange={(e) => config(settings, timerKey(room), e.target.value as 'easy' | 'normal')}>
-              <option value="easy">Easy</option><option value="normal">Normal</option>
+          <label className="row"><span className="row-label">Bot skill<small>Mixed: every bot rolls its own (hidden)</small></span><span className="row-control">
+            <select data-testid="lobby-bot-skill" value={skillSettingOf(room.botLevel)} onChange={(e) => config(settings, timerKey(room), e.target.value as BotLevel)}>
+              {BOT_SKILL_SETTINGS.map((k) => <option key={k} value={k}>{SKILL_SETTING_LABEL[k]}</option>)}
             </select></span></label>
+          <label className="row"><span className="row-label">Trash talk<small>{TALK_HINT[room.talkIntensity ?? 'cookout']}</small></span><span className="row-control">
+            <select data-testid="lobby-talk-intensity" value={room.talkIntensity ?? 'cookout'} onChange={(e) => config(settings, timerKey(room), room.botLevel, room.talkSec, room.afkLimit ?? 3, room.partnerMicMute ?? false, room.nukeIntensity ?? 'full', e.target.value as TalkIntensity)}>
+              {TALK_INTENSITIES.map((k) => <option key={k} value={k}>{TALK_INTENSITY_LABEL[k]}{k === 'cookout' ? ' (default)' : ''}</option>)}
+            </select></span></label>
+          <label className="row"><span className="row-label">Shot = out<small>shot on hand 1, or twice in a row, loses</small></span><span className="row-control">
+            <button type="button" data-testid="lobby-shot-out" className={`toggle ${settings.shotOut !== false ? 'on' : ''}`} role="switch" aria-checked={settings.shotOut !== false} aria-label="Shot = out" onClick={() => set('shotOut', settings.shotOut === false)}><span /></button>
+          </span></label>
+          {settings.shotOut !== false && (
+            <label className="row"><span className="row-label">First-hand minimum<small>fewer books on hand 1 = shot</small></span><span className="row-control">
+              <select data-testid="lobby-first-hand-min" value={String(settings.firstHandMin)} onChange={(e) => set('firstHandMin', (e.target.value === 'default' || e.target.value === 'off' ? e.target.value : Number(e.target.value)) as Settings['firstHandMin'])}>
+                <option value="default">Default ({settings.mode.startsWith('cutthroat') ? 'off' : 4})</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="off">Off</option>
+              </select></span></label>
+          )}
           <label className="row"><span className="row-label">Table Talk<small>between hands · all mics open</small></span><span className="row-control">
             <select data-testid="talk-sec" value={String(room.talkSec ?? 20)} onChange={(e) => config(settings, timerKey(room), room.botLevel, Number(e.target.value))}>
               {[15, 20, 30, 45].map((x) => <option key={x} value={x}>{x}s{x === 20 ? ' (default)' : ''}</option>)}
@@ -167,7 +185,7 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
             </span></label>
           )}
           <label className="row"><span className="row-label">Bot trash talk<small>bots talk smack in chat (players can hide or mute it)</small></span><span className="row-control">
-            <button type="button" data-testid="bot-talk-toggle" className={`toggle ${room.botTalk !== false ? 'on' : ''}`} role="switch" aria-checked={room.botTalk !== false} aria-label="Bot trash talk" onClick={() => conn.send({ t: 'config', rules: room.rules, botLevel: room.botLevel, talkSec: room.talkSec, afkLimit: room.afkLimit ?? 3, partnerMicMute: room.partnerMicMute ?? false, nukeIntensity: room.nukeIntensity ?? 'full', botTalk: room.botTalk === false })}><span /></button>
+            <button type="button" data-testid="bot-talk-toggle" className={`toggle ${room.botTalk !== false ? 'on' : ''}`} role="switch" aria-checked={room.botTalk !== false} aria-label="Bot trash talk" onClick={() => conn.send({ t: 'config', rules: room.rules, botLevel: room.botLevel, talkSec: room.talkSec, afkLimit: room.afkLimit ?? 3, partnerMicMute: room.partnerMicMute ?? false, nukeIntensity: room.nukeIntensity ?? 'full', talkIntensity: room.talkIntensity ?? 'cookout', botTalk: room.botTalk === false })}><span /></button>
           </span></label>
           {r.deck === 'joker54' && (
             <label className="row"><span className="row-label">Nuke intensity<small>Big Joker over Little Joker, for everyone at the table</small></span><span className="row-control">
@@ -184,6 +202,30 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
           </span></label>
           <p className="hint">Other house rules (bags, minimum bid, 10 for 200…) come from the House rules on the main menu.</p>
         </details>
+      ) : playing ? (
+        <>
+          <LockedRules room={room} />
+          {isHost && (
+            <details className="panel settings-panel" open={settingsOpen} onToggle={(e) => setSettingsOpen((e.currentTarget as HTMLDetailsElement).open)} data-testid="pace-settings">
+              <summary className="panel-title">PACE &amp; TABLE <small>(host · still changeable)</small></summary>
+              <label className="row"><span className="row-label">Turn timer<small>then the bot plays for you</small></span><span className="row-control">
+                <select value={timerKey(room)} onChange={(e) => config(settings, e.target.value as TimerKey)}>
+                  <option value="relaxed">Relaxed (45s / 30s)</option><option value="normal">Normal (30s / 20s)</option><option value="fast">Fast (15s / 10s)</option>
+                </select></span></label>
+              <label className="row"><span className="row-label">Table Talk<small>between hands · all mics open</small></span><span className="row-control">
+                <select data-testid="talk-sec" value={String(room.talkSec ?? 20)} onChange={(e) => config(settings, timerKey(room), room.botLevel, Number(e.target.value))}>
+                  {[15, 20, 30, 45].map((x) => <option key={x} value={x}>{x}s{x === 20 ? ' (default)' : ''}</option>)}
+                </select></span></label>
+              <label className="row"><span className="row-label">AFK kick<small>timeouts in a row before a bot takes over</small></span><span className="row-control">
+                <select data-testid="afk-limit" value={String(room.afkLimit ?? 3)} onChange={(e) => config(settings, timerKey(room), room.botLevel, room.talkSec, Number(e.target.value))}>
+                  {[2, 3, 5, 0].map((x) => <option key={x} value={x}>{x === 0 ? 'Off' : `${x} in a row${x === 3 ? ' (default)' : ''}`}</option>)}
+                </select></span></label>
+              <label className="row"><span className="row-label">Bot trash talk<small>bots talk smack in chat (players can hide or mute it)</small></span><span className="row-control">
+                <button type="button" data-testid="bot-talk-toggle" className={`toggle ${room.botTalk !== false ? 'on' : ''}`} role="switch" aria-checked={room.botTalk !== false} aria-label="Bot trash talk" onClick={() => conn.send({ t: 'config', rules: room.rules, botLevel: room.botLevel, talkSec: room.talkSec, afkLimit: room.afkLimit ?? 3, partnerMicMute: room.partnerMicMute ?? false, nukeIntensity: room.nukeIntensity ?? 'full', talkIntensity: room.talkIntensity ?? 'cookout', botTalk: room.botTalk === false })}><span /></button>
+              </span></label>
+            </details>
+          )}
+        </>
       ) : (
         <div className="summary">
           <span>{modeTitle(r)} · Trumps: {order.join(' › ')} …</span>
@@ -207,6 +249,11 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
       </div>
     </div>
   );
+}
+
+/** Mid-game: the game's rules, read-only (the server rejects changes until a rematch / new game). */
+function LockedRules({ room }: { room: RoomInfo }) {
+  return <LockedRulesPanel rules={room.rules} nuke={room.nukeIntensity ?? 'full'} skill={room.botLevel} intensity={room.talkIntensity ?? 'cookout'} micMute={room.partnerMicMute ?? false} online />;
 }
 
 function StartBlock({ room, cs, conn, isHost, playing, seatedHumans, n, onBackToGame, onLeave }: {

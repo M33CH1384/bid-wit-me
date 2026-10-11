@@ -1164,3 +1164,13 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .badge-chip { border: 1px solid rgba(245,197,66,.55); background: rgba(245,197,66,.12); border-radius: 999px; padding: 3px 10px; font-size: 13px; font-weight: 700; }
 .chip.badge { background: rgba(179,107,255,.25); border-color: rgba(179,107,255,.6); }
 @media (prefers-reduced-motion: reduce) { .run-it-btn, .run-it-btn.attention, .badge-unlock, .badge-unlock .bu-icon, .hype-pop.ranIt .hype-text { animation: none; } }
+
+/* ---- rule lock ---- */
+.locked-rules { border: 1px solid rgba(255, 215, 120, 0.35); }
+.locked-rules .panel-title { display: flex; align-items: center; gap: 0.4em; color: #ffd778; }
+.locked-rules dl { margin: 0.4rem 0; display: grid; gap: 0.15rem; }
+.locked-rules .locked-row { display: flex; justify-content: space-between; gap: 1rem; font-size: 0.86rem; padding: 0.18rem 0; border-bottom: 1px dashed rgba(255, 255, 255, 0.08); }
+.locked-rules dt { opacity: 0.75; }
+.locked-rules dd { margin: 0; font-weight: 600; text-align: right; }
+.locked-details { margin: 0.5rem 0; text-align: left; }
+.locked-details summary { cursor: pointer; font-weight: 600; color: #ffd778; }

@@ -21,6 +21,8 @@ export interface SavedGame {
   names?: string[];
   /** team modes: the bots' random team name ([1]); yours comes from More options */
   teamNames?: (string | null)[];
+  /** the nuke level this game started with (locked for the game) */
+  nuke?: 'full' | 'classic' | 'off';
 }
 
 export function saveGame(g: Omit<SavedGame, 'v' | 'savedAt'>): void {

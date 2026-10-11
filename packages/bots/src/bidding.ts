@@ -125,6 +125,7 @@ export function skillOf(level: BotLevel | string | undefined | null): BotSkill {
 /** The table setting: one fixed skill for every bot, or 'mixed' (each seat rolls its own, seeded per game). Default mixed. */
 export type BotSkillSetting = BotSkill | 'mixed';
 export const BOT_SKILL_SETTINGS: readonly BotSkillSetting[] = ['mixed', 'novice', 'regular', 'pro', 'shark'];
+export const SKILL_SETTING_LABEL: Record<BotSkillSetting, string> = { mixed: 'Mixed (default)', novice: 'Novice', regular: 'Regular', pro: 'Pro', shark: 'Shark' };
 export const MIXED_WEIGHTS: Record<BotSkill, number> = { novice: 20, regular: 35, pro: 30, shark: 15 };
 export function skillSettingOf(v: unknown): BotSkillSetting {
   if (v === 'mixed' || v === undefined || v === null) return 'mixed';
