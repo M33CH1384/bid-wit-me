@@ -48,7 +48,7 @@ function rotRecord(h: HandRecord, rot: Rotation): HandRecord {
 
 function rotResult(r: GameResult | null, rot: Rotation): GameResult | null {
   if (!r) return null;
-  return { ...r, finalScores: permute(r.finalScores, rot, true), placements: permute(r.placements, rot, true), winners: r.winners.map(rot.Ls).sort((a, b) => a - b) };
+  return { ...r, finalScores: permute(r.finalScores, rot, true), placements: permute(r.placements, rot, true), winners: r.winners.map(rot.Ls).sort((a, b) => a - b), ...(r.shotOut ? { shotOut: r.shotOut.map(rot.Ls).sort((a, b) => a - b) } : {}) };
 }
 
 /** Placeholder for a hidden card (never rendered face-up). */
