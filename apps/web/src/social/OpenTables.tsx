@@ -28,18 +28,18 @@ export function OpenTables({ selected, onCreate }: { selected: string; onCreate:
     <section className="open-tables" data-testid="open-tables" aria-label="Open tables">
       <div className="ot-head">
         <h3>Open tables <span className="ot-live" aria-hidden />{all.length > 0 && <small>{all.length}</small>}</h3>
-        <div className="ot-filters" role="tablist" aria-label="Filter by game">
+        <div className="ot-filters-wrap"><div className="ot-filters" role="tablist" aria-label="Filter by game">
           {FILTERS.map(([k, label]) => (
             <button key={k} type="button" role="tab" aria-selected={filter === k} className={filter === k ? 'on' : ''} data-testid={`ot-filter-${k}`} onClick={() => setFilter(k)}>{label}</button>
           ))}
-        </div>
+        </div></div>
       </div>
       {s.status !== 'open' && !all.length ? (
         <p className="ot-empty muted">Looking for tables…</p>
       ) : !list.length ? (
         <div className="ot-empty" data-testid="ot-empty">
           <p>No open {filter === 'all' ? '' : `${MODE_NAME[filter]} `}tables right now.</p>
-          <button type="button" className="primary" data-testid="ot-create" onClick={onCreate}>Create a table</button>
+          <button type="button" className="primary big ot-create" data-testid="ot-create" onClick={onCreate}>Create a Table</button>
         </div>
       ) : (
         <ul className="ot-list">
