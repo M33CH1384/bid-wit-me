@@ -3,7 +3,7 @@ import { fx } from './fx';
 import { HAPTIC, cancelHaptics, haptic } from './haptics';
 import {
   BURST_MS, type JokerKind, JOKER_PALETTE,
-  advanceBurst, clearBurst, cloudPose, flashOpacity, getBurst, mushroomSprites, shakeOffset, shockwave, startBurst, subscribeBurst,
+  advanceBurst, bannerPose, clearBurst, cloudPose, flashOpacity, getBurst, mushroomSprites, shakeOffset, shockwave, startBurst, subscribeBurst,
 } from './jokerFx';
 
 /**
@@ -74,8 +74,8 @@ export default function JokerBurst() {
 
   return (
     <div className="joker-burst" aria-hidden>
-      <canvas ref={canvas} className="joker-burst-canvas" />
       <div ref={flash} className="joker-flash" data-testid="joker-flash" />
+      <canvas ref={canvas} className="joker-burst-canvas" />
     </div>
   );
 }
@@ -89,6 +89,15 @@ function paint(
   reduced: boolean,
 ) {
   if (flashEl) flashEl.style.opacity = String(flashOpacity(t, kind, reduced));
+  // The stamp follows the burst clock (including a capture warp), not a CSS delay.
+  // A wall-clock animation finishes before a stalled frame ever reaches 800ms.
+  const banner = document.querySelector<HTMLElement>('[data-testid="nuke"]');
+  if (banner && !banner.classList.contains('calm')) {
+    const pose = bannerPose(t);
+    banner.style.animation = 'none';
+    banner.style.opacity = pose ? String(pose.opacity) : '0';
+    banner.style.transform = `translateX(-50%) scale(${pose ? pose.scale : 1.4})`;
+  }
   if (tableEl) {
     const s = shakeOffset(t, kind, reduced);
     tableEl.style.transform = s.x === 0 && s.y === 0 ? '' : `translate(${s.x.toFixed(2)}px, ${s.y.toFixed(2)}px)`;

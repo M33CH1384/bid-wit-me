@@ -785,7 +785,14 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   useEffect(() => {
     if (!nukeKey || nukeKey === nukeAtMount.current) return;
     const release = fx.hold(1300, 'nukeWatch'); // the hand end waits for the blast (the blast holds itself once it fires)
-    const t = window.setTimeout(() => { fireCue('nuke'); release(); }, 1100);
+    const seen = fx.fired.nuke ?? 0;
+    // A stalled main thread can deliver this timer long after the landing cue already fired.
+    // The 4.5s emit dedupe does not cover that gap, so skip when a nuke has already counted.
+    const t = window.setTimeout(() => {
+      if ((fx.fired.nuke ?? 0) !== seen) { release(); return; }
+      fireCue('nuke');
+      release();
+    }, 1100);
     return () => { clearTimeout(t); release(); };
   }, [nukeKey]);
   const winBuzzed = useRef(false);

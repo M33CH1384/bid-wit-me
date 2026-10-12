@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { type FxEvent, type NukeIntensity, fx } from './fx';
 import JokerBurst from './JokerBurst';
+import { BURST_MS, getBurst } from './jokerFx';
 import { WheelsCelebration } from './WheelsCar';
 
 /**
@@ -34,8 +35,10 @@ export default function Hype({ reduced, low = false }: { reduced: boolean; low?:
   const [pulse, setPulse] = useState<{ id: number; big: boolean } | null>(null);
   const reducedRef = useRef(reduced);
   reducedRef.current = reduced;
+  const nukeWatch = useRef(0);
 
-  useEffect(() => fx.on((e) => {
+  useEffect(() => {
+    const off = fx.on((e) => {
     const add = (p: Pop, ms: number) => { setPops((ps) => [...ps.filter((x) => x.kind !== p.kind), p]); window.setTimeout(() => setPops((ps) => ps.filter((x) => x.id !== p.id)), ms); };
     if (e.kind === 'streak') add({ id: e.id, kind: e.kind, text: e.text ?? 'HEAT CHECK', sub: e.sub ?? `${e.level} hands in a row`, level: e.level }, 2300);
     else if (e.kind === 'shot') add({ id: e.id, kind: e.kind, text: e.sub ? (e.text ?? 'SHOT!') : 'SHOT!', sub: e.sub ?? e.text }, 2000);
@@ -54,9 +57,27 @@ export default function Hype({ reduced, low = false }: { reduced: boolean; low?:
       const c = trickCenter();
       setNuke({ id: e.id, ...c, mode: fx.nukeMode });
       const calm = fx.nukeMode === 'off' || reducedRef.current;
-      window.setTimeout(() => setNuke((n) => (n?.id === e.id ? null : n)), calm ? 700 : 1400);
+      const id = e.id;
+      if (calm) {
+        window.setTimeout(() => setNuke((n) => (n?.id === id ? null : n)), 700);
+        return;
+      }
+      // Stay mounted for the burst clock. A 1400ms wall-clock timeout drops the stamp
+      // before a stalled or warp-stepped frame reaches the 800ms hit.
+      cancelAnimationFrame(nukeWatch.current);
+      const watch = () => {
+        const b = getBurst();
+        if (!b || (fx.warp === null && b.elapsed >= BURST_MS[b.kind])) {
+          setNuke((n) => (n?.id === id ? null : n));
+          return;
+        }
+        nukeWatch.current = requestAnimationFrame(watch);
+      };
+      nukeWatch.current = requestAnimationFrame(watch);
     }
-  }), []);
+    });
+    return () => { off(); cancelAnimationFrame(nukeWatch.current); };
+  }, []);
 
 
   // HUD jolt (the 3D camera shakes separately)

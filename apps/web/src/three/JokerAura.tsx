@@ -175,6 +175,8 @@ export default function JokerAura({ kind, cardsAfter, reduceMotion, children }: 
     const cycle = cycleMs(cardsAfter);
     const phase = ((now - phase0.current) % cycle) / cycle;
     const pose = heartbeat(phase, kind);
+    const w = window as unknown as { __bwmBeat?: { kind: string; cardsAfter: number; cycle: number; scale: number; glow: number } };
+    w.__bwmBeat = { kind, cardsAfter, cycle, scale: pose.scale, glow: pose.glow };
     const j = jitterPx(now, cardsAfter, false);
     // During this joker's detonation the pop owns the scale (Card3D). Don't overwrite it.
     if (getBurst()?.kind !== kind) {

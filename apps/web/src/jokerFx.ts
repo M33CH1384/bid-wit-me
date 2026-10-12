@@ -123,6 +123,8 @@ export const SHOCK_MS = 450;
 export const BANNER_AT_MS = SHOCK_MS + 350;
 /** Cards leave the trick for the winner's pile. The stamp fades out with them. */
 export const SWEEP_MS = 900;
+/** How long the NUKED stamp is on screen. It starts at BANNER_AT_MS and ends with the flight. */
+export const BANNER_MS = 500;
 
 /** Mushroom window. Big enough to read on a phone, gone as the cards fly. */
 const CLOUD_START = 120;
@@ -230,6 +232,28 @@ export function mushroomSprites(
   }
   sprites.push({ x: 0, y: -stem - capH * 0.35, rx: capH * 0.5, ry: capH * 0.38, hot: 0 });
   return sprites;
+}
+
+/**
+ * NUKED stamp. Hidden until 350ms after the shockwave, then a short hit that fades with the cards.
+ * Keyframes match `nuke-stamp` (0.5s): 0% scale 1.4, 16% .96, 28–62% 1, 100% 1.04 and gone.
+ */
+export function bannerPose(tMs: number): { opacity: number; scale: number } | null {
+  if (tMs < BANNER_AT_MS || tMs > BANNER_AT_MS + BANNER_MS) return null;
+  const u = (tMs - BANNER_AT_MS) / BANNER_MS;
+  const keys = [
+    { t: 0, o: 0, s: 1.4 },
+    { t: 0.16, o: 1, s: 0.96 },
+    { t: 0.28, o: 1, s: 1 },
+    { t: 0.62, o: 1, s: 1 },
+    { t: 1, o: 0, s: 1.04 },
+  ];
+  let i = 1;
+  while (i < keys.length - 1 && keys[i]!.t < u) i++;
+  const a = keys[i - 1]!;
+  const b = keys[i]!;
+  const k = Math.min(1, Math.max(0, (u - a.t) / (b.t - a.t || 1)));
+  return { opacity: a.o + (b.o - a.o) * k, scale: a.s + (b.s - a.s) * k };
 }
 
 /**

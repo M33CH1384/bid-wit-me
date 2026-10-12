@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  BANNER_AT_MS, BEAT_MARKS, BURST_MS, JOKER_PALETTE, SHOCK_MS, SWEEP_MS,
-  cardPush, clearBurst, cloudPose, cycleMs, flashOpacity, getBurst, heartbeat, jitterPx, jokerPop, mushroomSprites,
+  BANNER_AT_MS, BANNER_MS, BEAT_MARKS, BURST_MS, JOKER_PALETTE, SHOCK_MS, SWEEP_MS,
+  bannerPose, cardPush, clearBurst, cloudPose, cycleMs, flashOpacity, getBurst, heartbeat, jitterPx, jokerPop, mushroomSprites,
   ripplePose, shakeOffset, shockwave, startBurst, subscribeBurst,
 } from '../src/jokerFx';
 
@@ -144,7 +144,16 @@ describe('detonation keyframes', () => {
     expect(BURST_MS.BJ).toBeLessThanOrEqual(1300);
     expect(SHOCK_MS).toBe(450);
     expect(BANNER_AT_MS).toBe(SHOCK_MS + 350);
+    expect(BANNER_MS).toBe(500);
     expect(SWEEP_MS).toBe(900);
+    expect(bannerPose(BANNER_AT_MS - 1)).toBeNull();
+    expect(bannerPose(BANNER_AT_MS)).toEqual({ opacity: 0, scale: 1.4 });
+    const hit = bannerPose(BANNER_AT_MS + 140)!;
+    expect(hit.opacity).toBeCloseTo(1, 5);
+    expect(hit.scale).toBeCloseTo(1, 5);
+    expect(bannerPose(1100)!.opacity).toBe(1);
+    expect(bannerPose(BANNER_AT_MS + BANNER_MS)!.opacity).toBeCloseTo(0, 5);
+    expect(bannerPose(BANNER_AT_MS + BANNER_MS + 1)).toBeNull();
   });
 });
 

@@ -195,7 +195,8 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
   const projB = useRef(new Vector3());
   /** Push the other trick cards and pop the winning joker. Opacity only — the face colour is untouched. */
   const applyJokerBurst = (g: Group) => {
-    const B = inTrick ? getBurst() : null;
+    const live = getBurst();
+    const B = inTrick ? live : null;
     const st = burstFx.current;
     const setOp = (op: number) => {
       const fading = op < 0.999;
@@ -214,7 +215,10 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
       invalidate();
     };
     // Reduced motion is a static rim and one soft flash: no push, no pop.
+    // The sweep clears inTrick while the cloud is still up. Leave the shove and the
+    // 0.35 fade in place so the pile flight starts from the push instead of snapping home.
     if (!B || B.reduced) {
+      if (st.on && live && !live.reduced) return;
       if (st.on) restore();
       return;
     }
@@ -262,6 +266,18 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
         if (ig && bl.current.on) { ig.position.set(0, 0, 0); ig.quaternion.identity(); bl.current.on = false; }
       } else applyBlast(g);
     }
+    const notePos = () => {
+      if (!name || (fx.warp === null && !getBurst())) return;
+      const bag = ((window as unknown as { __bwmCardPos?: Record<string, { x: number; z: number; op: number; pop: number | null }> }).__bwmCardPos ??= {});
+      const beat = inner.current?.getObjectByName('joker-beat');
+      const popNode = beat ?? inner.current;
+      bag[name] = {
+        x: Math.round(g.position.x * 1000) / 1000,
+        z: Math.round(g.position.z * 1000) / 1000,
+        op: Math.round(frontMat.opacity * 100) / 100,
+        pop: popNode ? Math.round(popNode.scale.x * 1000) / 1000 : null,
+      };
+    };
     const s = tw.current;
     if (!s.init) {
       const f = from ?? target;
@@ -289,7 +305,7 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
       s.tp.set(...target.p); s.tq.set(...target.q); s.ts = target.s;
       s.started = false;
     }
-    if (s.t >= 1) return;
+    if (s.t >= 1) { notePos(); return; }
     invalidate();
     if (s.wait > 0) {
       if (!(fx.warp !== null && !inTrick && getBurst())) { s.wait -= dt; return; }
@@ -317,6 +333,7 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
     g.position.y += Math.sin(Math.PI * s.t) * arc * Math.min(1, dist);
     g.quaternion.slerpQuaternions(s.sq, s.tq, e);
     g.scale.setScalar(s.ss + (s.ts - s.ss) * e);
+    notePos();
   });
 
   return (
