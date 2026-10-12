@@ -296,18 +296,50 @@ export function globalUnread(s: SocialState): number {
 
 /* ---- account ticket for table websockets (links your seat to your account for stats + ratings) */
 let ticketCache: { t: string; until: number; uid: string } | null = null;
-export async function accountTicket(): Promise<string | null> {
+/** Don't block joining the table longer than this. A miss retries; it is not a permanent guest. */
+export const TICKET_RACE_MS = 1500;
+/** Keep asking while a signed-in player still has no ticket. */
+export const TICKET_RETRY_MS = 4000;
+export const STATS_OFF_LABEL = 'Stats off, tap to reconnect';
+
+export function clearAccountTicket(): void { ticketCache = null; }
+
+/**
+ * A slow /api/auth/me is a retry, not a guest. A signed-in user with no ticket is "stats off"
+ * until a later try links the seat. A real guest does not retry.
+ */
+export function ticketPlan(o: { ready: boolean; userId: string | null; username: string | null; ticket: string | null }): { ticket: string | null; retry: boolean; statsOff: boolean } {
+  if (!o.ready) return { ticket: null, retry: true, statsOff: false };
+  const signedIn = !!o.userId && !!o.username;
+  if (!signedIn) return { ticket: null, retry: false, statsOff: false };
+  if (!o.ticket) return { ticket: null, retry: true, statsOff: true };
+  return { ticket: o.ticket, retry: false, statsOff: false };
+}
+
+export async function accountTicketState(): Promise<{ ticket: string | null; retry: boolean; statsOff: boolean }> {
   try {
-    await Promise.race([loadAccount(), new Promise((r) => setTimeout(r, 1500))]);
-    const uid = account.get().user?.id;
-    if (!uid || !account.get().user?.username) return null;
-    if (ticketCache && ticketCache.uid === uid && ticketCache.until > Date.now()) return ticketCache.t;
+    if (!account.get().ready) {
+      await Promise.race([loadAccount().then(() => undefined), new Promise((r) => setTimeout(r, TICKET_RACE_MS))]);
+    }
+    const user = account.get().user;
+    if (!account.get().ready) return ticketPlan({ ready: false, userId: null, username: null, ticket: null });
+    if (!user?.id || !user.username) return ticketPlan({ ready: true, userId: user?.id ?? null, username: user?.username ?? null, ticket: null });
+    if (ticketCache && ticketCache.uid === user.id && ticketCache.until > Date.now()) {
+      return ticketPlan({ ready: true, userId: user.id, username: user.username, ticket: ticketCache.t });
+    }
     const r = await fetch('/api/social/ticket', { credentials: 'same-origin' });
     const j = (await r.json()) as { ticket?: string };
-    if (!j.ticket) return null;
-    ticketCache = { t: j.ticket, until: Date.now() + 3 * 60_000, uid };
-    return j.ticket;
-  } catch { return null; }
+    if (!j.ticket) return ticketPlan({ ready: true, userId: user.id, username: user.username, ticket: null });
+    ticketCache = { t: j.ticket, until: Date.now() + 3 * 60_000, uid: user.id };
+    return ticketPlan({ ready: true, userId: user.id, username: user.username, ticket: j.ticket });
+  } catch {
+    const user = account.get().user;
+    return { ticket: null, retry: true, statsOff: !!user?.id && !!user.username };
+  }
+}
+
+export async function accountTicket(): Promise<string | null> {
+  return (await accountTicketState()).ticket;
 }
 
 // e2e / debugging: read-only peek at the social state

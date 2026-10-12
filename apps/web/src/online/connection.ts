@@ -3,7 +3,7 @@
  * the tab becomes visible again — iOS Safari kills sockets in the background). The seat token makes every
  * reconnect land back in the same seat.
  */
-import { accountTicket } from '../social/store';
+import { TICKET_RETRY_MS, accountTicketState, clearAccountTicket } from '../social/store';
 import type { ChatLine, ClientMsg, GameAction, RoomInfo, ServerMsg } from '@spades/protocol';
 import type { PlayerView } from '@spades/rules';
 import { wsUrl } from './config';
@@ -23,6 +23,8 @@ export interface ConnState {
   pending: boolean;
   /** Release 10: watching (unseated while a game is on; the view is the redacted spectator view) */
   spectator?: boolean;
+  /** Signed in, but this socket's hello had no account ticket, so the seat is not linked. */
+  statsOff: boolean;
 }
 
 interface PendingAct { id: string; seq: number; action: GameAction; sentAt: number }
@@ -33,7 +35,7 @@ const newId = () => (crypto.randomUUID?.() ?? `${Date.now().toString(36)}${Math.
 type RtcHandler = (from: string, data: unknown) => void;
 
 export class TableConnection {
-  state: ConnState = { status: 'connecting', you: null, room: null, seat: null, view: null, chat: [], error: null, pending: false };
+  state: ConnState = { status: 'connecting', you: null, room: null, seat: null, view: null, chat: [], error: null, pending: false, statsOff: false };
   private inflight: PendingAct | null = null;
   private ackTimer: number | null = null;
   private ws: WebSocket | null = null;
@@ -42,7 +44,12 @@ export class TableConnection {
   private retry = 0;
   private retryTimer: number | null = null;
   private pingTimer: number | null = null;
+  private statsTimer: number | null = null;
   private stopped = false;
+  /** hello on the open socket carried a ticket */
+  private linked = false;
+  /** close the socket so onclose opens a fresh one (ticket arrived, or the player tapped the chip) */
+  private relink = false;
 
   constructor(public readonly code: string, private name: string) {
     this.onVisible = this.onVisible.bind(this);
@@ -69,12 +76,63 @@ export class TableConnection {
 
   private open(): void {
     if (this.stopped) return;
-    // Release 9: signed in → a short-lived account ticket rides on hello (stats/ratings); never blocks a guest
+    // Signed in → a short-lived account ticket rides on hello. A slow account load must not
+    // stick the seat as a guest: open now, then retry until the ticket links the seat.
     if (this.opening) return;
     this.opening = true;
-    void accountTicket().then((ticket) => { this.opening = false; this.openWith(ticket); });
+    void accountTicketState().then((r) => {
+      this.opening = false;
+      if (this.stopped) return;
+      this.linked = !!r.ticket;
+      this.set({ statsOff: r.statsOff });
+      this.openWith(r.ticket);
+      if (r.retry) this.armStatsRetry();
+      else this.clearStatsRetry();
+    });
   }
   private opening = false;
+
+  private armStatsRetry(): void {
+    if (this.statsTimer || this.stopped) return;
+    this.statsTimer = window.setTimeout(() => {
+      this.statsTimer = null;
+      if (this.stopped || this.linked) return;
+      if (this.opening) { this.armStatsRetry(); return; }
+      void accountTicketState().then((r) => {
+        if (this.stopped) return;
+        this.set({ statsOff: r.statsOff });
+        if (r.ticket && !this.linked) {
+          this.linked = true;
+          this.clearStatsRetry();
+          this.relinkSocket();
+          return;
+        }
+        if (r.retry) this.armStatsRetry();
+      });
+    }, TICKET_RETRY_MS);
+  }
+
+  private clearStatsRetry(): void {
+    if (this.statsTimer) { clearTimeout(this.statsTimer); this.statsTimer = null; }
+  }
+
+  /** The player tapped the chip: drop the cached miss and hello again with a ticket. */
+  relinkStats(): void {
+    clearAccountTicket();
+    this.linked = false;
+    this.clearStatsRetry();
+    this.relinkSocket();
+  }
+
+  private relinkSocket(): void {
+    const ws = this.ws;
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+      this.relink = true;
+      try { ws.close(); } catch { this.relink = false; this.open(); }
+      return;
+    }
+    this.open();
+  }
 
   private openWith(ticket: string | null): void {
     if (this.stopped) return;
@@ -131,6 +189,7 @@ export class TableConnection {
     ws.onclose = (ev) => {
       if (this.ws !== ws) return;
       if (this.pingTimer) { clearInterval(this.pingTimer); this.pingTimer = null; }
+      if (this.relink) { this.relink = false; this.open(); return; }
       if (this.stopped || ev.code === 4000 || ev.code === 4003) { this.set({ status: 'closed' }); return; }
       this.set({ status: 'reconnecting' });
       const delay = Math.min(10_000, 400 * 2 ** this.retry++) * (0.75 + Math.random() * 0.5);
@@ -195,6 +254,7 @@ export class TableConnection {
     this.stopped = true;
     if (this.retryTimer) clearTimeout(this.retryTimer);
     if (this.pingTimer) clearInterval(this.pingTimer);
+    this.clearStatsRetry();
     this.settle();
     document.removeEventListener('visibilitychange', this.onVisible);
     window.removeEventListener('online', this.onVisible);
