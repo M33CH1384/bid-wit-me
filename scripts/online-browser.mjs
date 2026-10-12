@@ -182,11 +182,12 @@ await host.waitForTimeout(1200);
 await host.screenshot({ path: `${out}/05-table-talk-host.png` });
 const talkLim = await host.evaluate(() => window.__bwmVideo?.state.limited ?? []);
 if (talkLim.length) throw new Error('mics should all be open during Table Talk');
-const tiles = await host.locator('[data-testid="talk-grid"] .tt-tile').count();
-const liveTiles = await host.locator('[data-testid="talk-grid"] .tt-tile video').count();
-log(`Table Talk: ${tiles} tiles (${liveTiles} with video), all mics open, countdown "${await host.getByTestId('talk-count').innerText().catch(() => '?')}"`);
-await host.getByTestId('react-gg').click();
-await guest.locator('.tt-chat').getByText('gg').first().waitFor({ timeout: 8000 });
+if (await host.getByTestId('talk-grid').count()) throw new Error('recap should not show the avatar grid');
+log(`Table Talk: chat behind the corner icon, all mics open, countdown "${await host.getByTestId('talk-count').innerText().catch(() => '?')}"`);
+await host.getByTestId('recap-chat').click();
+await host.locator('.chat.recap-chat input[aria-label="Chat message"]').fill('gg');
+await host.locator('.chat.recap-chat button[aria-label="Send"]').click();
+await guest.locator('.chat .chat-line', { hasText: 'gg' }).waitFor({ state: 'attached', timeout: 8000 });
 // (step() may already have pressed Ready for the host while playing into Table Talk)
 if (await host.getByTestId('talk-ready').isEnabled()) await host.getByTestId('talk-ready').click();
 await host.getByTestId('talk-ready-count').filter({ hasText: '1/2' }).waitFor({ timeout: 5000 });
