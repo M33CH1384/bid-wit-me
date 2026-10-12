@@ -13,6 +13,8 @@ export const RUN_IT_CALLOUTS: readonly string[] = [
 ];
 /** timeline (ms from the claim): big face-up zoom with the line, then the slam, the cascade, the tornado */
 export const RUN_ZOOM_MS = 1500;
+/** the claimer's cards drop to the table in slow motion: this long until the impact */
+export const RUN_SLAM_MS = 1100;
 export const RUN_CASCADE_MS = 380;
-export const RUN_TORNADO_AFTER_MS = 800;
+export const RUN_TORNADO_AFTER_MS = 1100 + 650; // slow-mo slam, a beat of pain, then the tornado
 export const RUN_TORNADO_MS = 2100;

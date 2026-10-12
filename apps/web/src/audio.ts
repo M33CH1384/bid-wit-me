@@ -474,7 +474,7 @@ class Engine {
       case 'overcut': return this.overcutSlam(t, g, 2);
       case 'overcut3': return this.overcutSlam(t, g, 3);
       case 'tornado': return this.tornado(t, g);
-      case 'runSlam': this.overcutSlam(t, g * 1.05, 3); return this.thud(t, g * 0.7);
+      case 'runSlam': this.overcutSlam(t, g * 1.05, 3); this.thud(t, g * 0.9); return this.quake(t + 0.03, g * 0.8); // heavy slow-mo impact + bass hit
       case 'runThud': for (let i = 0; i < 4; i++) this.thud(t + i * 0.055, g * (0.42 - i * 0.07)); return;
       case 'wheels': this.arp(t, [392, 523.25, 783.99], 0.06, 'square', 0.12 * g, 0.22); return this.streakHit(t + 0.16, 0.8 * g, 1);
     }

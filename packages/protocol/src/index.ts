@@ -18,8 +18,8 @@ export type NukeIntensity = (typeof NUKE_INTENSITIES)[number];
 /** Extra lead-in after a nuked trick, per table level (ms). */
 export const NUKE_ALLOWANCE_MS: Record<NukeIntensity, number> = { full: 4000, classic: 3500, off: 1200 };
 /** 'Run it!': how long clients play the slam + tornado before the hand's end shows (Table Talk waits this much longer). */
-/** zoom (1.5 s) + slam + cascade + tornado */
-export const RUN_FX_MS = 4800;
+/** zoom (1.5 s) + slow-motion slam (1.1 s) + a beat + tornado (2.1 s) */
+export const RUN_FX_MS = 5800;
 /**
  * End of a hand: clients hold the scorecard / Table Talk until every hype effect, banner and toast has finished
  * (Wheels car, nuke, SHOT / streak pop-ups, scoring toasts), capped at HYPE_SETTLE_MAX_MS, then a HAND_END_BEAT_MS beat.

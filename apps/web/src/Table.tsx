@@ -37,7 +37,7 @@ import { Coach, LedSuitChip } from './Coach';
 import { type TipsPref, bumpTip, loadTips, saveTips, tipCount } from './tips';
 import { BidCoach } from './BidCoach';
 import { HAND_END_BEAT_MS, RUN_FX_MS } from '@spades/protocol';
-import { RUN_CASCADE_MS, RUN_IT_CALLOUTS, RUN_TORNADO_AFTER_MS, RUN_TORNADO_MS, RUN_ZOOM_MS } from './runIt';
+import { RUN_SLAM_MS, RUN_IT_CALLOUTS, RUN_TORNADO_AFTER_MS, RUN_TORNADO_MS, RUN_ZOOM_MS } from './runIt';
 import { RunZoom } from './RunZoom';
 import { TrashTalkButton } from './TrashTalk';
 import { isPromoted } from './cardFaces';
@@ -554,9 +554,10 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const zoom = RUN_ZOOM_MS / 1000;
     const tornadoAt = zoom + RUN_TORNADO_AFTER_MS / 1000;
     const who = runFx.claimer === HUMAN ? 'You' : names[runFx.claimer]!;
-    // 2) the claimer's cards slam at once (one big impact)  3) everyone else's hit together (cascading thud)  4) tornado
-    sound.play('runSlam', { delay: zoom + 0.2 });
-    if (runFx.others.length) sound.play('runThud', { delay: zoom + RUN_CASCADE_MS / 1000 + 0.17 });
+    // 2) the claimer's cards slam down together in SLOW MOTION (heavy impact: shake + bass hit)
+    // 3) the tornado snatches everything else at once — every hand + whatever is on the table. No trick-by-trick play.
+    sound.play('runSlam', { delay: zoom + RUN_SLAM_MS / 1000 });
+    const impact = window.setTimeout(() => { if (!fx.reduced && !fx.osReducedMotion) fx.shake = { start: performance.now(), dur: 1.0, amp: 0.13 }; }, RUN_ZOOM_MS + RUN_SLAM_MS);
     sound.play('tornado', { delay: Math.max(0, tornadoAt - 0.3) });
     const toSlam = window.setTimeout(() => {
       setRunFx((f) => (f && f.id === runFx.id ? { ...f, phase: 'slam' } : f));
@@ -566,7 +567,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     }, RUN_ZOOM_MS);
     // (capture scripts set __bwmHoldRun to step the tornado frame by frame via fx.warp)
     const hold = !!(window as unknown as { __bwmHoldRun?: boolean }).__bwmHoldRun;
-    const timers = hold ? [] : [window.setTimeout(endRun, (tornadoAt + RUN_TORNADO_MS / 1000) * 1000)];
+    const timers = hold ? [impact] : [impact, window.setTimeout(endRun, (tornadoAt + RUN_TORNADO_MS / 1000) * 1000)];
     (window as unknown as { __bwmEndRun?: () => void }).__bwmEndRun = endRun;
     if (runFx.claimer === HUMAN && !spectating) {
       runItUsed();
@@ -605,11 +606,12 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       const bh = b.view.hand ? sortHand(b.view.hand, r) : null;
       // zoom: the table as it was (the claimer's cards are shown big in the overlay)
       if (runFx.phase === 'zoom') return { hand: bh, counts: b.view.handCounts, trick: b.st.trick.plays, piles: b.st.tricks, slam: null };
-      const gone = new Set([...runFx.cards, ...runFx.others.map((o) => o.card)]);
+      // only the claimer's cards leave their hand (slow-mo slam); everyone else's stay in hand for the tornado to snatch
+      const gone = new Set(runFx.cards);
       return {
         hand: bh?.filter((c) => !gone.has(c)) ?? null,
-        counts: b.view.handCounts.map(() => 0),
-        trick: b.st.trick.plays, piles: b.st.tricks, slam: { seat: runFx.claimer, cards: runFx.cards, others: runFx.others },
+        counts: b.view.handCounts.map((c, i) => (i === runFx.claimer ? 0 : c)),
+        trick: b.st.trick.plays, piles: b.st.tricks, slam: { seat: runFx.claimer, cards: runFx.cards, others: [] },
       };
     }
     if (ranHand) return { hand, counts: view.handCounts, trick: shownTrick.plays.some((p) => p.run) ? [] : shownTrick.plays, piles: [] as typeof piles, slam: null };

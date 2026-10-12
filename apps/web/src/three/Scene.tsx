@@ -1,3 +1,4 @@
+import { RUN_SLAM_MS } from '../runIt';
 import { Nuke3D, NukeGuard } from './Nuke3D';
 import { Tornado3D } from './Tornado3D';
 import { Environment, Html, Preload, useEnvironment, useTexture } from '@react-three/drei';
@@ -327,7 +328,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       const w = CW * (trickScale ?? TRICK_SCALE) * 0.84; // slightly overlapped: 4 cards ≈ the trick's width
       const target: Xform = { ...base, p: [(i - (k - 1) / 2) * w, base.p[1] + 0.01 * i, 0.02] };
       const from = seat === human ? undefined : opponentFan(positions[seat]!, n, Math.min(i, k - 1), k);
-      items.push({ key: `${handNo}-${c}`, card: c, target, from, delay: 0.02, duration: 0.2, arc: 0.45 });
+      items.push({ key: `${handNo}-${c}`, card: c, target, from, delay: 0.02, duration: RUN_SLAM_MS / 1000, arc: 0.9 }); // slow motion
     });
     // the rest of the table's cards: one quick cascade, a smaller row under the claimer's (from each player's spot)
     const others = props.slam.others ?? [];
