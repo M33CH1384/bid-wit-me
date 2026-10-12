@@ -178,6 +178,11 @@ export interface FanOpts {
    * The pixel lifts are small fractions of a card, so the hand passes this explicitly.
    */
   layer?: 'rest' | 'play' | 'selected';
+  /**
+   * Extra camera-near bias for a playable card (see LEGAL_NEAR). Subtracted from depth only.
+   * Screen x/y stay put, so the outline, which is built from those plane coordinates, does not slide.
+   */
+  near?: number;
 }
 
 export function fanLayout(aspect: number, count: number, safeFrac = 0, o: FanOpts = {}): FanLayout {
@@ -243,7 +248,9 @@ export function handCardPlane(aspect: number, count: number, i: number, lift: nu
   // at ~0.0003 here, which let the edges of the cards underneath bleed through as thin gold lines when the gap was 0.0015.
   const layer = o.layer ?? (lift > 0.2 ? 'selected' : lift > 0 ? 'play' : 'rest');
   const boost = layer === 'selected' ? 0.24 : layer === 'play' ? 0.12 : 0;
-  const depth = 1 - (i + 1) * 0.006 - boost; // the selected card tops all the raised ones too
+  // Playable cards come forward just enough to win the depth test against the neighbour that overlaps them.
+  const near = Number.isFinite(o.near) && o.near! > 0 ? o.near! : 0;
+  const depth = 1 - (i + 1) * 0.006 - boost - near; // the selected card tops all the raised ones too
   return { x, y, roll, depth, s: L.s };
 }
 

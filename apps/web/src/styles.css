@@ -656,6 +656,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 /* Banner for the 3.6s 3D blast: in after a short beat, gone with the explosion. */
 .nuke-banner { position: absolute; left: 50%; top: 18%; z-index: 3; transform: translateX(-50%); text-align: center; pointer-events: auto; cursor: pointer; animation: nb-in 3.3s cubic-bezier(.2,.8,.2,1) .45s both; }
 .nuke-banner.calm { animation-delay: .05s; }
+.nuke-banner.driven, .nuke-banner.driven * { pointer-events: none; }
 .nuke-banner.driven { animation: none; opacity: 0; }
 .nuke-banner.driven .nb-sub { letter-spacing: .04em; text-transform: none; font-size: clamp(10px, 2.7vw, 15px); }
 .nuke-banner .nb-title { position: relative; font: 900 clamp(40px, 9vw, 104px)/1 var(--display, 'Bebas Neue', Impact, sans-serif); letter-spacing: .14em; white-space: nowrap;
@@ -833,6 +834,8 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
   .bug-meta > .learn-badge { min-width: 0; }
   .bug-books { display: none; } /* the hand-1 rule is in the center banner and the score pad */
 }
+.tt-run { margin: 2px 0 4px; align-self: center; width: min(520px, 100%); }
+.tt-run-show { align-self: center; font-weight: 800; }
 .tt-backdrop ~ .modal-backdrop { z-index: 50; }
 .tt-foot.bid-row { margin: 0; flex-wrap: nowrap; }
 .chat.glass.slant.recap-chat {
@@ -967,7 +970,9 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .wiz-right .icon-btn.gear { width: 46px; height: 46px; font-size: 21px; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
 .sound-dock.slotted { top: var(--dock-top) !important; right: var(--dock-right) !important; }
 .sound-dock.slotted .dock-btn { width: var(--dock-w) !important; height: var(--dock-h) !important; }
-.sound-dock.slotted.in-bug .dock-btn { background: var(--glass); box-shadow: inset 0 0 0 1px rgba(185,128,255,.35); clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
+/* square, top of the scorebug slot: the slot's full height covered the recap's Save button */
+.sound-dock.slotted.in-bug { width: 40px; height: 40px; }
+.sound-dock.slotted.in-bug .dock-btn { width: 40px !important; height: 40px !important; background: var(--glass); box-shadow: inset 0 0 0 1px rgba(185,128,255,.35); clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
 .sound-dock.slotted.in-bug .dock-btn { font-size: 16px; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
 .table-screen.short .sound-dock.slotted.in-bug .dock-btn { font-size: 14px; }
 

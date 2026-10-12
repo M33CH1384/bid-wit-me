@@ -43,10 +43,12 @@ export function calloutsFor(st: GameState, mySide: number, names: string[]): Cal
 }
 
 export function Intermission({
-  st, names, mySide, secs, ready, onReady, online, onScorePad, series, chatOpen, unread, onChat,
+  st, names, mySide, secs, ready, onReady, online, onScorePad, series, chatOpen, unread, onChat, runReview,
 }: {
   /** rematch series chip */
   series?: ReactNode;
+  /** cleared hands from a Run it!, in the scroll — never a full-screen scrim over the recap */
+  runReview?: ReactNode;
   st: GameState;
   names: string[];
   mySide: number;
@@ -134,6 +136,7 @@ export function Intermission({
               );
             })}
           </div>
+          {runReview}
         </div>
 
         <footer className="tt-foot bid-row">
