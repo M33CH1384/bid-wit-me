@@ -3,7 +3,7 @@ import { fx } from './fx';
 import { HAPTIC, cancelHaptics, haptic } from './haptics';
 import {
   BURST_MS, type JokerKind, JOKER_PALETTE,
-  clearBurst, cloudPose, flashOpacity, getBurst, shakeOffset, shockwave, startBurst, subscribeBurst,
+  advanceBurst, clearBurst, cloudPose, flashOpacity, getBurst, shakeOffset, shockwave, startBurst, subscribeBurst,
 } from './jokerFx';
 
 /**
@@ -45,7 +45,7 @@ export default function JokerBurst() {
       const b = getBurst();
       if (!b) { sawActive = false; stop(); return; }
       if (b.start !== clock) { clock = b.start; sawActive = false; }
-      const t = performance.now() - b.start;
+      const t = advanceBurst()?.elapsed ?? 0;
       const screen = document.querySelector<HTMLElement>('.table-screen');
       const nuke = (window as unknown as { __bwmNuke?: { active?: boolean } }).__bwmNuke;
       if (nuke?.active) sawActive = true;

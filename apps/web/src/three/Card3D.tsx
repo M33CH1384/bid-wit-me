@@ -219,7 +219,7 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
     }
     invalidate();
     st.on = true;
-    const t = performance.now() - B.start;
+    const t = B.elapsed;
     if (played === B.kind) {
       setOp(1);
       const node = popNode();

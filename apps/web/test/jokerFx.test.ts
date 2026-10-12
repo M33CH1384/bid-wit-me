@@ -131,7 +131,7 @@ describe('burst clock', () => {
     const seen: string[] = [];
     const off = subscribeBurst(() => seen.push(getBurst()?.kind ?? 'off'));
     startBurst('BJ', false, 1000);
-    expect(getBurst()).toEqual({ start: 1000, kind: 'BJ', reduced: false });
+    expect(getBurst()).toMatchObject({ start: 1000, kind: 'BJ', reduced: false, elapsed: 0 });
     clearBurst();
     expect(getBurst()).toBeNull();
     expect(seen).toEqual(['BJ', 'off']);

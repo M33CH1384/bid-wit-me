@@ -211,7 +211,7 @@ export function jitterPx(nowMs: number, cardsAfter: number, reduced: boolean): {
   return { x: (a * 2 - 1), y: (b * 2 - 1) };
 }
 
-export interface BurstClock { start: number; kind: JokerKind; reduced: boolean }
+export interface BurstClock { start: number; kind: JokerKind; reduced: boolean; elapsed: number; last: number }
 
 let burst: BurstClock | null = null;
 const listeners = new Set<() => void>();
@@ -222,8 +222,18 @@ export function subscribeBurst(fn: () => void): () => void {
   return () => { listeners.delete(fn); };
 }
 export function startBurst(kind: JokerKind, reduced: boolean, now = performance.now()): BurstClock {
-  burst = { start: now, kind, reduced };
+  burst = { start: now, kind, reduced, elapsed: 0, last: 0 };
   listeners.forEach((f) => f());
+  return burst;
+}
+/**
+ * Advance the detonation on painted frames. A long hitch (shader compile, a stalled GPU) counts as one
+ * frame, so the flash and shockwave still play when the browser can paint instead of being skipped.
+ */
+export function advanceBurst(now = performance.now()): BurstClock | null {
+  if (!burst) return null;
+  if (burst.last) burst.elapsed += Math.min(50, Math.max(0, now - burst.last));
+  burst.last = now;
   return burst;
 }
 export function clearBurst(): void {
