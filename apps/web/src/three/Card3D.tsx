@@ -2,7 +2,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { memo, useLayoutEffect, useMemo, useRef } from 'react';
 import { Color, type Group, type Material, type Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Quaternion, type Texture, Vector3 } from 'three';
 import { cardGeometry } from './geometry';
-import { ILLEGAL_COLOR, RAISE_S, cardPartOrder, liftEase, screenRaise } from './handLift';
+import { ILLEGAL_COLOR, RAISE_S, cardMeshPaint, liftEase, screenRaise } from './handLift';
 import JokerAura from './JokerAura';
 import { CT } from './layout';
 import type { Xform } from './layout';
@@ -33,8 +33,6 @@ interface Props {
   roll?: number;
   /** Painter's order. Legal cards use a higher band than illegal cards; index order is kept inside each band. */
   order?: number;
-  /** Draw this card over the cards beside it. Depth stays where it is; only the test changes. */
-  cover?: boolean;
   dim?: boolean;
   glow?: boolean;
   castShadow?: boolean;
@@ -79,7 +77,7 @@ function withSaturation<M extends MeshStandardMaterial>(m: M): M & { userData: {
   return m as M & { userData: { sat: { value: number } } };
 }
 
-function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, raise = 0, roll = 0, order = 0, cover = false, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand, blast = 'table', jokerAura, inTrick, played, reduceMotion }: Props) {
+function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, raise = 0, roll = 0, order = 0, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand, blast = 'table', jokerAura, inTrick, played, reduceMotion }: Props) {
   const ref = useRef<Group>(null);
   const lift = useRef<Group>(null);
   const inner = useRef<Group>(null);
@@ -100,27 +98,29 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   // The joker pulse is JokerAura, behind the face.
   const glowMat = useMemo(() => new MeshBasicMaterial({ color: '#f5c542', transparent: true, opacity: 0, depthWrite: false, toneMapped: false }), []);
   const edge = useMemo(() => edgeMat.clone(), []);
-  // Stacking is render order, not a new depth or a new key. Child groups would otherwise reset it to 0.
-  // depthTest is off for a legal card so it paints over the closer illegal card beside it. That also
-  // lets the untextured edge (drawn later, by material id) cover the face. The face mesh stays a step
-  // above the edge so the pips remain on top of the slab.
+  // The root group keeps `order` for taps. Child groups reset Three.js groupOrder, so each mesh
+  // carries its own: body at `order`, face and back half a step later, tip glow just behind.
+  // Depth testing stays on. The face plane is 0.0002 in front of the extruded cap, so the cap
+  // cannot paint a blank cream slab over the pips. Neighbours lose because a playable card is
+  // nudged toward the camera (LEGAL_NEAR), not because the depth test was turned off.
   useLayoutEffect(() => {
     const root = ref.current;
     if (!root) return;
+    root.renderOrder = order;
     root.traverse((obj) => {
-      if ((obj as Group).isGroup) obj.renderOrder = order;
       const mesh = obj as Mesh;
-      if (mesh.isMesh) {
-        const mat = mesh.material as Material | Material[] | undefined;
-        const list = mat ? (Array.isArray(mat) ? mat : [mat]) : [];
-        const onFace = list.includes(frontMat);
-        const onBack = list.includes(backMat);
-        mesh.renderOrder = cardPartOrder(onFace ? 'face' : onBack ? 'back' : 'edge');
-        for (const m of list) m.depthTest = !cover;
-      }
+      if (!mesh.isMesh) return;
+      const mat = mesh.material as Material | Material[] | undefined;
+      const list = mat ? (Array.isArray(mat) ? mat : [mat]) : [];
+      const onFace = list.includes(frontMat);
+      const onBack = list.includes(backMat);
+      const onGlow = list.includes(glowMat);
+      const paint = cardMeshPaint(order, onGlow ? 'glow' : onFace ? 'face' : onBack ? 'back' : 'edge');
+      mesh.renderOrder = paint.renderOrder;
+      for (const m of list) m.depthTest = paint.depthTest;
     });
     invalidate();
-  }, [order, cover, face, jokerAura, glow, frontMat, backMat, invalidate]);
+  }, [order, face, jokerAura, glow, frontMat, backMat, glowMat, invalidate]);
   const look = useRef({ target: new Color(1, 1, 1), glow: 0, sat: 1 });
   const burstFx = useRef({ on: false, baseOp: 1 });
   useLayoutEffect(() => {
