@@ -8,7 +8,7 @@ import {
 
 /**
  * Detonation overlay: one canvas for the shockwave and a lightweight mushroom (a few billboard
- * sprites, no particles and no post-processing), plus a #FFFFF0 flash and a transform-only shake.
+ * sprites, no particles and no post-processing), plus a #FFFFF0 flash and a whole-screen shake.
  * The 3D blast, including the iOS cheap path, stays in Nuke3D. This cloud is what a phone actually
  * sees: the cheap path's torus is a small dark shell, and the full path's screen-fire wash hides
  * the stem. A 3D stall cancels haptics but does not tear the cloud down.
@@ -36,8 +36,8 @@ export default function JokerBurst() {
     let clock = 0;
     let hapticCut = false;
     const stop = () => {
-      const table = document.querySelector<HTMLElement>('.table-canvas-wrap');
-      if (table) table.style.transform = '';
+      const screen = document.querySelector<HTMLElement>('.table-screen');
+      if (screen) screen.style.transform = '';
       if (flash.current) flash.current.style.opacity = '0';
       const c = canvas.current;
       const ctx = c?.getContext('2d');
@@ -59,8 +59,8 @@ export default function JokerBurst() {
         hapticCut = true;
         cancelHaptics('nuke-skipped');
       }
-      const table = document.querySelector<HTMLElement>('.table-canvas-wrap');
-      paint(canvas.current, flash.current, table, t, b.kind, b.reduced);
+      const screen = document.querySelector<HTMLElement>('.table-screen');
+      paint(canvas.current, flash.current, screen, t, b.kind, b.reduced);
       if (warped === null && t >= BURST_MS[b.kind]) { clearBurst(); stop(); return; }
       raf = requestAnimationFrame(tick);
     };
@@ -83,7 +83,7 @@ export default function JokerBurst() {
 function paint(
   canvas: HTMLCanvasElement | null,
   flashEl: HTMLDivElement | null,
-  tableEl: HTMLElement | null,
+  screenEl: HTMLElement | null,
   t: number,
   kind: JokerKind,
   reduced: boolean,
@@ -98,9 +98,10 @@ function paint(
     banner.style.opacity = pose ? String(pose.opacity) : '0';
     banner.style.transform = `translateX(-50%) scale(${pose ? pose.scale : 1.4})`;
   }
-  if (tableEl) {
+  // Whole screen, including the score HUD. The hype layer rides along because it lives inside .table-screen.
+  if (screenEl) {
     const s = shakeOffset(t, kind, reduced);
-    tableEl.style.transform = s.x === 0 && s.y === 0 ? '' : `translate(${s.x.toFixed(2)}px, ${s.y.toFixed(2)}px)`;
+    screenEl.style.transform = s.x === 0 && s.y === 0 ? '' : `translate(${s.x.toFixed(2)}px, ${s.y.toFixed(2)}px)`;
   }
   if (!canvas) return;
   const dpr = Math.min(2, window.devicePixelRatio || 1);

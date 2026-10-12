@@ -339,7 +339,7 @@ function NukeRun({ start, full, detail, post, octaves, screen, onBail }: { start
     [p.sphere, p.torus, p.cyl, p.ringGeo, p.quad, p.smoke.geo, p.dust.geo, p.embers.geo, p.ash.geo].forEach((g) => g.dispose());
   }, [parts]);
 
-  // blast impulse for the cards. The HUD stays put; the detonation shake is the table canvas.
+  // blast impulse for the cards. The detonation shake is the whole screen (JokerBurst), HUD included.
   useEffect(() => {
     const t = window.setTimeout(() => {
       fx.blast = { start: performance.now(), hand: full };
