@@ -44,9 +44,10 @@ describe('rate limit + token', () => {
     expect(tokenOk('abc', undefined)).toBe(false);
   });
   it('admin page escapes user text', () => {
-    const html = adminHtml([{ id: 1, created: 0, type: 'bug', message: '<script>x</script>', name: '', email: '', context: '{}', shots: [7] }], 'tok', 'https://w');
+    const html = adminHtml([{ id: 1, created: 0, type: 'bug', message: '<script>x</script>', name: '', email: '', context: '{}', shots: [7] }], 'https://w');
     expect(html).not.toContain('<script>x');
-    expect(html).toContain('/api/feedback/shot/7?token=tok');
+    expect(html).toContain('/api/feedback/shot/7');
+    expect(html).not.toContain('token');
   });
 });
 

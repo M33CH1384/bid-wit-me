@@ -29,3 +29,12 @@ new_sqlite_classes = ["TableDO"]
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["FeedbackDO"]
+
+# Per-IP create / join / sign-in limits (in-memory sliding windows, one object per hashed IP)
+[[durable_objects.bindings]]
+name = "LIMITER"
+class_name = "RateLimitDO"
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["RateLimitDO"]

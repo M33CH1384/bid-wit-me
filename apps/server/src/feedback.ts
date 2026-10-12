@@ -2,9 +2,9 @@
  * Player feedback: validation, rate limiting, storage schema (DO SQLite), admin listing and an optional email notifier.
  *
  *   POST /api/feedback                    → { ok: true, id } (JSON body, see FeedbackIn)
- *   GET  /api/feedback/admin?token=…      → private HTML listing with thumbnails (FEEDBACK_ADMIN_TOKEN secret)
- *   GET  /api/feedback/list?token=…       → the same as JSON
- *   GET  /api/feedback/shot/:id?token=…   → one screenshot
+ *   GET  /api/feedback/admin              → private HTML listing with thumbnails (sign-in form → short-lived admin cookie, see admin.ts)
+ *   GET  /api/feedback/list               → the same as JSON (admin cookie or Authorization: Bearer FEEDBACK_ADMIN_TOKEN)
+ *   GET  /api/feedback/shot/:id           → one screenshot (same auth)
  *
  * Screenshots live as compressed blobs in the feedback Durable Object's SQLite (R2 isn't enabled on this account);
  * the client already downscales them (≤1600 px, JPEG/WebP ~0.8), the server caps each at 1.5 MB, 3 per message.
@@ -97,12 +97,11 @@ export interface FeedbackRow { id: number; created: number; type: string; messag
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
-export function adminHtml(rows: FeedbackRow[], token: string, base: string): string {
-  const t = encodeURIComponent(token);
+export function adminHtml(rows: FeedbackRow[], base: string): string {
   const items = rows.map((r) => {
     let ctx = r.context;
     try { ctx = JSON.stringify(JSON.parse(r.context), null, 1); } catch { /* raw */ }
-    const shots = r.shots.map((s) => `<a href="${base}/api/feedback/shot/${s}?token=${t}" target="_blank"><img src="${base}/api/feedback/shot/${s}?token=${t}" loading="lazy" alt="screenshot ${s}"></a>`).join('');
+    const shots = r.shots.map((s) => `<a href="${base}/api/feedback/shot/${s}" target="_blank"><img src="${base}/api/feedback/shot/${s}" loading="lazy" alt="screenshot ${s}"></a>`).join('');
     return `<article><header><b class="t-${esc(r.type)}">${esc(r.type.toUpperCase())}</b> #${r.id} · ${new Date(r.created).toISOString().replace('T', ' ').slice(0, 16)} UTC${r.name ? ` · ${esc(r.name)}` : ''}${r.email ? ` · <a href="mailto:${esc(r.email)}">${esc(r.email)}</a>` : ''}</header><p>${esc(r.message).replace(/\n/g, '<br>')}</p>${shots ? `<div class="shots">${shots}</div>` : ''}<details><summary>context</summary><pre>${esc(ctx)}</pre></details></article>`;
   }).join('\n');
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>BWM feedback (${rows.length})</title><style>

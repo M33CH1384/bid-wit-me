@@ -9,6 +9,7 @@
     "typecheck": "tsc -p . --noEmit"
   },
   "dependencies": {
+    "@simplewebauthn/server": "^13.3.3",
     "@spades/bots": "workspace:*",
     "@spades/protocol": "workspace:*",
     "@spades/rules": "workspace:*"

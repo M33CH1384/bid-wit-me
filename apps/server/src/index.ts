@@ -7,7 +7,7 @@
  *   GET  /api/tables/:code/ws     → WebSocket into that table's Durable Object
  *   GET  /api/ice                 → ICE servers for WebRTC (public STUN; TURN when configured)
  *   POST /api/feedback            → player feedback (+ up to 3 screenshots), see feedback.ts
- *   GET  /api/feedback/admin      → private listing (?token=FEEDBACK_ADMIN_TOKEN)
+ *   GET  /api/feedback/admin      → private listing (sign-in form → HttpOnly admin cookie; never a token in the URL)
  *   GET  /health
  *
  * Free-plan notes (spec §13):
@@ -21,8 +21,10 @@ import { DurableObject } from 'cloudflare:workers';
 import { CODE_ALPHABET, CODE_LENGTH, type ServerMsg, isRoomCode, normalizeRoomCode } from '@spades/protocol';
 import { Room, type RoomData, ROOM_DATA_VERSION, newRoomData } from './room';
 import { FEEDBACK_LIMITS, type FeedbackRow, adminHtml, hashIp, notifyOwner, parseFeedback, rateOk, tokenOk } from './feedback';
+import { ADMIN_COOKIE, ADMIN_TTL_MS, adminCookieOk, adminLoginHtml, makeAdminCookie, readCookie } from './admin';
+import { type Bucket, LIMITS, type LimitEnv, hit, limited } from './limits';
 
-export interface Env {
+export interface Env extends LimitEnv {
   TABLES: DurableObjectNamespace<TableDO>;
   ALLOWED_ORIGINS?: string;
   TURN_KEY_ID?: string;
@@ -46,6 +48,8 @@ const IDLE_DELETE_MS = 24 * 3600_000;
 function allowedOrigin(req: Request, env: Env): string | null {
   const origin = req.headers.get('Origin');
   if (!origin) return null;
+  // the Worker's own pages (feedback admin sign-in form)
+  if (origin === new URL(req.url).origin) return origin;
   const list = (env.ALLOWED_ORIGINS ?? '*').split(',').map((s) => s.trim());
   if (list.includes('*') || list.includes(origin)) return origin;
   // preview deployments of the Pages project: <hash>.bid-wit-me.pages.dev
@@ -108,15 +112,28 @@ async function feedbackRoute(req: Request, env: Env, parts: string[], url: URL, 
     const out = (await r.json()) as { id?: number; error?: string };
     return json(out.id ? { ok: true, id: out.id } : out, { status: r.status }, origin);
   }
-  // admin: the token rides in ?token= (or Authorization: Bearer); without FEEDBACK_ADMIN_TOKEN set, it's all 404
-  const token = url.searchParams.get('token') ?? req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? null;
-  if (!tokenOk(token, env.FEEDBACK_ADMIN_TOKEN)) return new Response('not found', { status: 404 });
+  // admin: a sign-in form sets a short-lived HttpOnly cookie; scripts may send Authorization: Bearer. No token in URLs.
+  const page = { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-robots-tag': 'noindex', 'referrer-policy': 'no-referrer', 'x-frame-options': 'DENY' };
+  if (!env.FEEDBACK_ADMIN_TOKEN) return new Response('not found', { status: 404 });
+  if (parts[2] === 'admin' && req.method === 'POST') {
+    const form = await req.formData().catch(() => null);
+    const given = form?.get('token');
+    if (!tokenOk(typeof given === 'string' ? given : null, env.FEEDBACK_ADMIN_TOKEN)) return new Response(adminLoginHtml('Wrong token.'), { status: 401, headers: page });
+    const cookie = `${ADMIN_COOKIE}=${await makeAdminCookie(env.FEEDBACK_ADMIN_TOKEN, Date.now())}; Path=/api/feedback; Max-Age=${ADMIN_TTL_MS / 1000}; HttpOnly; Secure; SameSite=Strict`;
+    return new Response(null, { status: 303, headers: { location: '/api/feedback/admin', 'set-cookie': cookie, 'cache-control': 'no-store' } });
+  }
   if (req.method !== 'GET') return new Response('not found', { status: 404 });
+  const bearer = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? null;
+  const authed = tokenOk(bearer, env.FEEDBACK_ADMIN_TOKEN) || await adminCookieOk(readCookie(req, ADMIN_COOKIE), env.FEEDBACK_ADMIN_TOKEN, Date.now());
+  if (!authed) {
+    if (parts[2] === 'admin') return new Response(adminLoginHtml(url.searchParams.has('token') ? 'Tokens in links are no longer accepted: paste it here instead.' : ''), { status: 401, headers: page });
+    return new Response('not found', { status: 404 });
+  }
   if (parts[2] === 'shot' && parts[3]) return stub.fetch(`https://feedback/shot/${encodeURIComponent(parts[3])}`);
   if (parts[2] === 'list' || parts[2] === 'admin') {
     const rows = (await (await stub.fetch('https://feedback/list')).json()) as FeedbackRow[];
     if (parts[2] === 'list') return json(rows);
-    return new Response(adminHtml(rows, token!, url.origin), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-robots-tag': 'noindex', 'referrer-policy': 'no-referrer' } });
+    return new Response(adminHtml(rows, url.origin), { headers: page });
   }
   return new Response('not found', { status: 404 });
 }
@@ -143,6 +160,8 @@ export default {
     if (parts[1] === 'feedback') return feedbackRoute(req, env, parts, url, origin);
 
     if (parts[1] === 'tables' && parts.length === 2 && req.method === 'POST') {
+      const slow = await limited(req, env, 'create', origin);
+      if (slow) return slow;
       for (let i = 0; i < 6; i++) {
         const code = randomCode();
         const stub = env.TABLES.get(env.TABLES.idFromName(code));
@@ -158,6 +177,8 @@ export default {
       const stub = env.TABLES.get(env.TABLES.idFromName(code));
       if (parts[3] === 'ws') {
         if (req.headers.get('Upgrade') !== 'websocket') return json({ error: 'expected websocket' }, { status: 426 }, origin);
+        const slow = await limited(req, env, 'join', origin);
+        if (slow) return slow;
         return stub.fetch(new Request(`https://table/ws?code=${code}`, req));
       }
       if (parts[3] === 'test-state' && req.method === 'POST') {
@@ -166,6 +187,8 @@ export default {
         return json({ ok: r.ok }, { status: r.status }, origin);
       }
       if (parts.length === 3 && req.method === 'GET') {
+        const slow = await limited(req, env, 'info', origin);
+        if (slow) return slow;
         const r = await stub.fetch(`https://table/info?code=${code}`);
         return json(await r.json(), { status: r.status }, origin);
       }
@@ -364,7 +387,7 @@ export class FeedbackDO extends DurableObject<Env> {
         now, f.type, f.message, f.name, f.email, JSON.stringify(f.context), ip).one().id;
       for (const s of f.shots) this.sql.exec('INSERT INTO shots (fb, mime, data) VALUES (?, ?, ?)', id, s.mime, s.bytes.buffer.slice(s.bytes.byteOffset, s.bytes.byteOffset + s.bytes.byteLength) as ArrayBuffer);
       this.sql.exec('INSERT INTO sends (ip, at) VALUES (?, ?)', ip, now);
-      this.ctx.waitUntil(notifyOwner(this.env, f, id, `${req.headers.get('x-base') ?? ''}/api/feedback/admin?token=…`).then(() => undefined));
+      this.ctx.waitUntil(notifyOwner(this.env, f, id, `${req.headers.get('x-base') ?? ''}/api/feedback/admin`).then(() => undefined));
       return Response.json({ id }, { status: 201 });
     }
     if (url.pathname === '/list') {
@@ -382,3 +405,19 @@ export class FeedbackDO extends DurableObject<Env> {
     return new Response('not found', { status: 404 });
   }
 }
+
+/* ------------------------------------------------------- rate limiter */
+
+/** One per hashed IP (see limits.ts): in-memory sliding windows only, no storage writes. */
+export class RateLimitDO extends DurableObject<Env> {
+  private windows = new Map<string, number[]>();
+  override async fetch(req: Request): Promise<Response> {
+    const b = new URL(req.url).searchParams.get('b') as Bucket | null;
+    const l = b && LIMITS[b];
+    if (!l) return new Response('bad bucket', { status: 400 });
+    const r = hit(this.windows.get(b) ?? [], Date.now(), l);
+    this.windows.set(b, r.times);
+    return r.ok ? new Response('ok') : new Response(String(Math.ceil(r.retryAfterMs / 1000)), { status: 429 });
+  }
+}
+
