@@ -22,7 +22,9 @@ describe('recap touch', () => {
   });
 
   it('leaves the idle nuke banner out of hit testing', () => {
-    const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
-    expect(css).toMatch(/\.nuke-banner\.driven,\s*\.nuke-banner\.driven \*\s*\{\s*pointer-events:\s*none;/);
+    const hype = readFileSync(new URL('../src/Hype.tsx', import.meta.url), 'utf8');
+    // The banner mounts only while a nuke is on screen, so an idle table has nothing to hit.
+    expect(hype).toMatch(/\{nuke && \([\s\S]*className=\{`nuke-banner/);
+    expect(hype).not.toMatch(/nuke-banner driven/);
   });
 });

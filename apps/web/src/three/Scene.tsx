@@ -5,7 +5,7 @@ import { Environment, Html, Preload, useEnvironment, useTexture } from '@react-t
 import { Canvas, events as r3fEvents, useFrame, useThree } from '@react-three/fiber';
 import { type ReactNode, type RefObject, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { type Camera, type Group, type Mesh, type MeshBasicMaterial, type Object3D, type Texture, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, Matrix4, Quaternion, MeshPhysicalMaterial, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, Vector2, Vector3 } from 'three';
-import { isNukeTrick, type Card, type Play, type Trick } from '@spades/rules';
+import { type Card, type Play, type Trick } from '@spades/rules';
 import Card3D from './Card3D';
 import PlayableGlow, { type GlowAnchor } from './PlayableGlow';
 import { departureSlot, handCardKey, handReactKey } from '../handOrder';
@@ -15,8 +15,6 @@ import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline } from './dealTimeline';
 import { type Sfx, sound } from '../audio';
 import { fx } from '../fx';
-import { getBurst, subscribeBurst } from '../jokerFx';
-import { canvasOwnsBlast } from '../nukeBlast';
 import { backTexture, faceTexture, logoTexture } from './cardTextures';
 import Venue3D, { feltPatternTexture, preloadVenueAssets } from './Venue3D';
 import { type VenueDef, type VenueId, VENUE_DEFS, venueAssetUrls } from '../venues';
@@ -315,7 +313,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   if (held.current.handNo !== handNo) held.current = { handNo, cards: new Set(), slots: new Map(), count: 0, seen: new Set() };
   const pendingHold = useRef<Held>(held.current);
 
-  type Item = { key: string; card: Card | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: (() => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide'; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; inTrick?: boolean; played?: string | null };
+  type Item = { key: string; card: Card | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: (() => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide'; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean };
   const items: Item[] = [];
   const dealDelay = (slot: number, seat: number) => tl.shuffle + (slot * n + ((seat - dealer - 1 + n) % n)) * tl.step;
 
@@ -325,7 +323,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
     const w = t.winner!;
     const k = pileCount[w]!++;
     t.plays.forEach((pl, j) => {
-      items.push({ key: `${handNo}-${pl.card}`, card: pl.card, target: pileSpot(positions[w]!, n, k, j, jitterOf(pl.card)), duration: isNukeTrick(t.plays) && canvasOwnsBlast() ? 0.4 : 0.55, arc: 0.15, sfxStart: 'sweep' });
+      items.push({ key: `${handNo}-${pl.card}`, card: pl.card, target: pileSpot(positions[w]!, n, k, j, jitterOf(pl.card)), duration: 0.55, arc: 0.15, sfxStart: 'sweep' });
     });
   }
   // cards on the table this trick
@@ -335,7 +333,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
     const autoDelay = pl.auto ? { delay: 0.35 + 0.12 * (order - firstAuto) } : {};
     const leftHand = pl.seat === human ? departureSlot(held.current.slots, held.current.cards, pl.card) : undefined;
     const fanFrom = leftHand ?? (pl.seat === human ? undefined : opponentFan(positions[pl.seat]!, n, Math.max(0, handCounts[pl.seat]! - 1) / 2, handCounts[pl.seat]! + 1));
-    items.push({ key: `${handNo}-${pl.card}`, card: pl.card, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale), from: fanFrom, origin: leftHand, ...(props.landCue(pl.card).includes(',overcut') ? { duration: 0.34, arc: 0.7 } : { duration: 0.5, arc: 0.35 }), sfxLand: props.landCue(pl.card), glow: !!props.marked?.includes(pl.card), inTrick: true, played: pl.card, ...autoDelay });
+    items.push({ key: `${handNo}-${pl.card}`, card: pl.card, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale), from: fanFrom, origin: leftHand, ...(props.landCue(pl.card).includes(',overcut') ? { duration: 0.34, arc: 0.7 } : { duration: 0.5, arc: 0.35 }), sfxLand: props.landCue(pl.card), glow: !!props.marked?.includes(pl.card), ...autoDelay });
   });
   // 'Run it!': the claimer's cards slam down in sequence (then the tornado takes everything)
   if (props.slam) {
@@ -481,8 +479,6 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
           sfxStart={it.sfxStart}
           sfxLand={it.sfxLand}
           blast={it.hand ? 'hand' : 'table'}
-          inTrick={it.inTrick}
-          played={it.played}
         />
       ))}
       {wide && mine.length > 0 && <HandGlow aspect={aspect} count={mine.length} safeFrac={safeFrac} opts={fanOpts} />}
@@ -792,7 +788,6 @@ export default function Scene(props: SceneProps) {
       {props.positions.map((p, seat) => <TurnRing key={seat} pos={p} n={props.n} active={props.turnSeat === seat} />)}
       <Cards {...props} aspect={aspect} fontsReady={fontsReady} safeFrac={safeFrac} />
       <NukeGlRecovery />
-      <BurstPump />
       <NukeGuard><Nuke3D quality={props.quality} /></NukeGuard>
       <Tornado3D quality={props.quality} />
       {layerReady && <Badges positions={props.positions} n={props.n} human={props.human} renderSeat={props.renderSeat} portal={badgeLayer} safeFrac={safeFrac} short={!!props.short} safe={props.safe ?? { l: 0, r: 0, t: 0, b: 0 }} />}
@@ -800,14 +795,6 @@ export default function Scene(props: SceneProps) {
     <div ref={badgeLayer} className="badge-layer" />
     </div>
   );
-}
-
-/** Demand frameloop: keep painting while a detonation clock is running (the Little Joker has no Nuke3D pump). */
-function BurstPump() {
-  const { invalidate } = useThree();
-  useEffect(() => subscribeBurst(() => invalidate()), [invalidate]);
-  useFrame(() => { if (getBurst()) invalidate(); });
-  return null;
 }
 
 function AspectWatcher({ onAspect }: { onAspect: (a: number) => void }) {

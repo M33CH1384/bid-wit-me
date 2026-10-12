@@ -1,13 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { type FxEvent, type NukeIntensity, fx } from './fx';
-import JokerBurst from './JokerBurst';
-import { getBurst } from './jokerFx';
-import { BLAST_MS, canvasOwnsBlast } from './nukeBlast';
 import { WheelsCelebration } from './WheelsCar';
 
 /**
- * Full-screen hype overlay: streak / SHOT! pop-ups, the joker landing vignette, and the nuke banner.
- * The detonation is the canvas blast when a 2D context exists, otherwise the 3D blast.
+ * Full-screen hype overlay: streak / SHOT! pop-ups, joker vignette pulses and the Big-over-Little nuke
+ * (white flash → mushroom cloud particles over the trick → shockwave ring → smoke clears).
+ * Listens to the fx bus; with "Reduce effects" the flash, shockwave and screen jolt are skipped (sound + text stay).
  */
 interface Pop { id: number; kind: FxEvent['kind']; text: string; sub?: string; level?: number }
 
@@ -35,10 +33,8 @@ export default function Hype({ reduced, low = false }: { reduced: boolean; low?:
   const [pulse, setPulse] = useState<{ id: number; big: boolean } | null>(null);
   const reducedRef = useRef(reduced);
   reducedRef.current = reduced;
-  const nukeWatch = useRef(0);
 
-  useEffect(() => {
-    const off = fx.on((e) => {
+  useEffect(() => fx.on((e) => {
     const add = (p: Pop, ms: number) => { setPops((ps) => [...ps.filter((x) => x.kind !== p.kind), p]); window.setTimeout(() => setPops((ps) => ps.filter((x) => x.id !== p.id)), ms); };
     if (e.kind === 'streak') add({ id: e.id, kind: e.kind, text: e.text ?? 'HEAT CHECK', sub: e.sub ?? `${e.level} hands in a row`, level: e.level }, 2300);
     else if (e.kind === 'shot') add({ id: e.id, kind: e.kind, text: e.sub ? (e.text ?? 'SHOT!') : 'SHOT!', sub: e.sub ?? e.text }, 2000);
@@ -56,48 +52,33 @@ export default function Hype({ reduced, low = false }: { reduced: boolean; low?:
     else if (e.kind === 'nuke') {
       const c = trickCenter();
       setNuke({ id: e.id, ...c, mode: fx.nukeMode });
-      const id = e.id;
-      if (!canvasOwnsBlast()) {
-        window.setTimeout(() => setNuke((n) => (n?.id === id ? null : n)), 3700);
-        return;
-      }
-      cancelAnimationFrame(nukeWatch.current);
-      const watch = () => {
-        const b = getBurst();
-        if (!b || (fx.warp === null && b.elapsed >= BLAST_MS)) {
-          setNuke((n) => (n?.id === id ? null : n));
-          return;
-        }
-        nukeWatch.current = requestAnimationFrame(watch);
-      };
-      nukeWatch.current = requestAnimationFrame(watch);
+      window.setTimeout(() => setNuke((n) => (n?.id === e.id ? null : n)), 3700);
     }
-    });
-    return () => { off(); cancelAnimationFrame(nukeWatch.current); };
-  }, []);
+  }), []);
 
 
   // HUD jolt (the 3D camera shakes separately)
   useEffect(() => {
     if (reduced) return;
-    // The detonation overlay owns the nuke shake. A CSS jolt on top of it double-shakes the table.
-    const big = nuke ? null : pulse?.big ? 'jolt-big' : pulse ? 'jolt-small' : null;
+    const big = nuke && nuke.mode !== 'off' ? 'jolt-nuke' : pulse?.big ? 'jolt-big' : pulse ? 'jolt-small' : null;
     if (!big) return;
     const el = document.querySelector('.table-screen');
     el?.classList.add(big);
-    const t = window.setTimeout(() => el?.classList.remove(big), big === 'jolt-big' ? 900 : 350);
+    const t = window.setTimeout(() => el?.classList.remove(big), big === 'jolt-nuke' ? 1500 : big === 'jolt-big' ? 900 : 350);
     return () => { clearTimeout(t); el?.classList.remove(big); };
   }, [nuke, pulse, reduced]);
 
   return (
     <div className="hype-layer" aria-live="polite" data-testid="hype">
-      <JokerBurst />
       {pulse && <div key={pulse.id} className={`joker-pulse ${pulse.big ? 'big' : ''}`} data-testid="joker-pulse" />}
-      {nuke && !canvasOwnsBlast() && (
-        <div key={`b${nuke.id}`} className={`nuke-banner ${nuke.mode === 'off' || reduced ? 'calm' : ''}`} data-testid="nuke" onClick={() => setNuke(null)}>
-          <div className="nb-title" data-text="☢ NUKED ☢">☢ NUKED ☢</div>
-          <div className="nb-sub">Big Joker over Little Joker</div>
-        </div>
+      {nuke && (
+        <>
+          {!reduced && nuke.mode !== 'off' && <div key={`f${nuke.id}`} className="nuke-flash" data-testid="nuke-flash" />}
+          <div key={`b${nuke.id}`} className={`nuke-banner ${nuke.mode === 'off' || reduced ? 'calm' : ''}`} data-testid="nuke" onClick={() => setNuke(null)}>
+            <div className="nb-title" data-text="☢ NUKED ☢">☢ NUKED ☢</div>
+            <div className="nb-sub">Big Joker over Little Joker</div>
+          </div>
+        </>
       )}
       {spark && <div key={`s${spark.id}`} className={`overcut-spark lvl${spark.level}`} style={{ left: spark.x, top: spark.y }} data-testid="overcut-spark"><i /><i /><i /><i /><i /><i /><i /><i /></div>}
       {car && <WheelsCelebration key={car.id} id={car.id} who={car.who} reduced={reduced} low={low} onDone={() => { fx.carRelease?.(); fx.carRelease = null; setCar((c) => (c?.id === car.id ? null : c)); }} />}
