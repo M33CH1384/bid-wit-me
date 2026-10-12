@@ -775,12 +775,12 @@ describe("'Run it!' over the protocol", () => {
       env = fourHumans().env;
       env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: 1000 }) });
       env.send('a', { t: 'start' });
-      const runSeat = () => env.room.data.game?.tricks.find((t) => t.plays.some((p) => p.run))?.plays[0]!.seat;
+      const runSeat = () => env.room.data.game?.tricks.filter((t) => t.plays.some((p) => p.run)).at(-1)?.winner ?? undefined; // the claimer wins every run trick
       // bots' logic (65% when guaranteed) or this loop claims as soon as a seat may run it
       for (let i = 0; i < 20000 && env.room.data.phase === 'playing' && runSeat() === undefined; i++) {
         for (const cid of cids) {
           const v = env.last(cid, 'state')?.view;
-          if (v?.canRunIt && v.turn === v.seat) { env.send(cid, { t: 'act', action: { type: 'runIt' } }); break; }
+          if (v?.canRunIt) { env.send(cid, { t: 'act', action: { type: 'runIt' } }); break; }
         }
         if (runSeat() === undefined && !playTurn(env, cids)) env.advance(100);
       }
@@ -790,13 +790,69 @@ describe("'Run it!' over the protocol", () => {
     const g = env.room.data.game!;
     const runTricks = g.tricks.filter((t) => t.plays.some((p) => p.run));
     expect(runTricks.length).toBeGreaterThanOrEqual(2);
-    const claimer = runTricks[0]!.plays[0]!.seat;
+    const claimer = runTricks.at(-1)!.winner;
     expect(runTricks.every((t) => t.winner === claimer)).toBe(true);
     expect(g.hands.every((h) => h.length === 0)).toBe(true);
     const errs = env.errors(ran!.cid).length;
     env.send(ran!.cid, { t: 'act', action: { type: 'runIt' } });
     expect(env.errors(ran!.cid).length).toBe(errs + 1);
     expect(env.room.data.game!.tricks.length).toBe(g.tricks.length);
+  });
+});
+
+describe("'Run it!' any time (Release 10)", () => {
+  /** a started 4-seat Joker game rewritten to a late spot: 2 cards each, seat `turn` to lead, every card out but these */
+  const late = (env: FakeEnv, hands: string[][], turn: number) => {
+    const d = env.room.data;
+    const g = d.game!;
+    const filler = Array.from({ length: 11 }, () => ({ leader: 0, plays: [], winner: 1 }));
+    d.game = { ...g, phase: 'playing', hands: hands as never, bids: [2, 2, 2, 2], tricks: filler, tricksWon: [0, 0, 0, 0], turn, trick: { leader: turn, plays: [], winner: null }, spadesBroken: true } as never;
+    d.seq = (d.seq ?? 0) + 1;
+  };
+  const start = (humans: number) => {
+    const env = new FakeEnv(undefined, FAST);
+    const cids = ['a', 'b', 'c', 'd'].slice(0, humans);
+    cids.forEach((cid, i) => { env.join(cid, ['Dee', 'Ray', 'Kim', 'Jo'][i]!); env.send(cid, { t: 'sit', seat: i }); });
+    env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: 1000 }) });
+    env.send('a', { t: 'start' });
+    return env;
+  };
+
+  it('a human claims off-turn; others auto-play; books go to the claimer\'s team; a second (simultaneous) claim is refused', () => {
+    const env = fourHumans().env;
+    env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: 1000 }) });
+    env.send('a', { t: 'start' });
+    late(env, [['3H', '4H'], ['5C', '6C'], ['BJ', 'LJ'], ['3D', '7D']], 0);
+    const g0 = env.room.data.game!;
+    // the claimer (seat 2) is not on turn; another player (seat 1) races a stale claim
+    env.send('c', { t: 'act', id: 'r1', action: { type: 'runIt' } });
+    const g = env.room.data.game!;
+    const fresh = g.tricks.slice(g0.tricks.length);
+    expect(fresh.map((t) => t.winner)).toEqual([2, 2]);
+    expect(g.hands.every((h) => h.length === 0)).toBe(true);
+    env.send('b', { t: 'act', id: 'r2', action: { type: 'runIt' } });
+    expect(env.msgs('b').some((m) => m.t === 'ack' && m.id === 'r2' && !m.ok)).toBe(true);
+    expect(env.room.data.game!.tricks.length).toBe(g.tricks.length);
+  });
+
+  it('an invalid off-turn claim is rejected and changes nothing', () => {
+    const env = fourHumans().env;
+    env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: 1000 }) });
+    env.send('a', { t: 'start' });
+    late(env, [['BJ', '4H'], ['5C', '6C'], ['LJ', '2D'], ['3D', '7D']], 0);
+    const before = env.room.data.game!;
+    expect(env.last('c', 'state')?.view.canRunIt ?? false).toBe(false);
+    env.send('c', { t: 'act', action: { type: 'runIt' } });
+    expect(env.room.data.game).toBe(before);
+  });
+
+  it('a bot claims as soon as it is guaranteed, even when it is a human\'s turn', () => {
+    const env = start(1); // seat 0 human, seats 1..3 bots
+    late(env, [['3H', '4H'], ['5C', '6C'], ['BJ', 'LJ'], ['3D', '7D']], 0);
+    env.advance(50);
+    const g = env.room.data.game!;
+    expect(g.tricks.slice(11).map((t) => t.winner)).toEqual([2, 2]);
+    expect(env.room.data.chat.some((c) => /ran the board/.test(c.text))).toBe(true);
   });
 });
 

@@ -2,7 +2,7 @@ import { fx } from './fx';
 import { offlineTalk } from './offlineTalk';
 import { NUKE_ALLOWANCE_MS, RUN_FX_MS } from '@spades/protocol';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { type Action, type GameState, type TableRules, applyAction, isNukeTrick, newGame, pendingTurn, secureSeed, viewFor } from '@spades/rules';
+import { type Action, type GameState, type TableRules, applyAction, canRunIt, isNukeTrick, newGame, pendingTurn, secureSeed, viewFor } from '@spades/rules';
 import { type BotLevel, type PartnerHint, chooseBotAction, parseHint } from '@spades/bots';
 import { dealTimeline } from './three/dealTimeline';
 
@@ -65,6 +65,14 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
   // bots move on their turn
   useEffect(() => {
     if (pause || dealing || hold) return;
+    // Release 10: a bot claims 'Run it!' the moment it's guaranteed, even off-turn (mirrors the server)
+    if (st.phase === 'playing') {
+      const claimer = Array.from({ length: st.rules.playerCount }, (_, i) => i).find((i) => i !== HUMAN && i !== st.turn && canRunIt(st, i));
+      if (claimer !== undefined) {
+        const tc = setTimeout(() => apply({ type: 'runIt', seat: claimer }), 600 * k);
+        return () => clearTimeout(tc);
+      }
+    }
     const turn = pendingTurn(st);
     if (!turn || turn.seat === HUMAN) return;
     const delay = (turn.kind === 'bid' ? 650 : turn.kind === 'exchange' ? 500 : 600) * k;

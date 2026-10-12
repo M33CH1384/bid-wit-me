@@ -8,7 +8,7 @@
  *  - all durable state lives in one plain-JSON `RoomData` object that the DO saves as a single row.
  */
 import {
-  type Action, type GameState, type Series, addSeriesGame, emptySeries, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, applyAction, spectatorView, isFreshDeal, isNukeTrick, nextDealer, makeRules, newGame, pendingTurn, secureSeed, validateRules, viewFor,
+  type Action, type GameState, type Series, addSeriesGame, emptySeries, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, applyAction, canRunIt, type Seat, spectatorView, isFreshDeal, isNukeTrick, nextDealer, makeRules, newGame, pendingTurn, secureSeed, validateRules, viewFor,
 } from '@spades/rules';
 import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, chooseBotAction, loudLoser, parseHint, leanBid, botSkillFor, personaSkillFloor, seatSkill, leanNil, momentsFor, newTalkState, pickBotNames, prePlayLine } from '@spades/bots';
 import {
@@ -975,6 +975,11 @@ export class Room {
         this.botDueAt = null;
         this.botKey = null;
         changed = true;
+      }
+      // Release 10: a bot claims 'Run it!' as soon as it's guaranteed, even off-turn (the server takes the first valid claim)
+      if (g.phase === 'playing') {
+        const claimer = d.seats.slice(0, g.rules.playerCount).findIndex((sl, i) => sl.kind === 'bot' && i !== g.turn && canRunIt(g, i as Seat));
+        if (claimer >= 0) { this.apply({ type: 'runIt', seat: claimer as Seat }); changed = true; continue; }
       }
       let paused = this.humansConnected() === 0; // nobody watching: don't burn writes autoplaying
       const tour = d.tournament;

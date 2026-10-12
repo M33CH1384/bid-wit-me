@@ -53,7 +53,7 @@ export type Action =
   | { type: 'bid'; seat: Seat; bid: Bid }
   | { type: 'exchange'; seat: Seat; cards: Card[] }
   | { type: 'play'; seat: Seat; card: Card }
-  /** 'Run it!': the seat on lead claims every remaining trick (only legal when runItLine() proves it's guaranteed) */
+  /** 'Run it!': `seat` claims every remaining trick, any time in trick play (only legal when canRunIt proves it) */
   | { type: 'runIt'; seat: Seat }
   | { type: 'nextHand' };
 
@@ -262,50 +262,49 @@ export function isNukeTrick(plays: readonly { card: Card; run?: boolean }[]): bo
 
 /* ------------------------------------------------------------- Run it! */
 
-/** 'Run it!' is a late-hand claim: on lead with 2..RUN_IT_MAX cards left. */
+/** 'Run it!' is a late-hand claim: 2..RUN_IT_MAX cards left (any turn, see canRunIt). */
 export const RUN_IT_MAX = 4;
 
 /**
- * Exact minimax with full information: can `seat` (on lead, trick empty) win EVERY remaining trick itself, choosing its
- * own leads, whatever the other players (partner included) legally play? Runs on the real engine (applyAction), so the
- * trump order, Ace Down, breaking spades and the last-trick nuke all apply. Returns a winning first lead, or null.
+ * Exact minimax with full information (Release 10 rule): from the CURRENT state — any turn, mid-trick or not — does
+ * `seat` win EVERY trick from here on (the one in progress included) whatever everyone else (partner included) legally
+ * plays, choosing its own cards? A card already on the table that beats everything the claimer could play = no.
+ * Runs on the real engine (applyAction), so trump order, Ace Down, following suit, breaking spades and the
+ * last-trick nuke all apply.
  */
-function guaranteedLead(st: GameState, seat: Seat): Card | null {
+function runSolver(seat: Seat) {
   const memo = new Map<string, boolean>();
-  const lead = (s: GameState): Card | null | 'done' => {
-    if (s.phase !== 'playing' || s.hands[seat]!.length === 0) return 'done';
-    // Release 10: also mid-trick (following): the card must win the CURRENT trick against every remaining response
-    if (s.turn !== seat) return null;
-    for (const c of legalPlays(s, seat)) if (wins(applyAction(s, { type: 'play', seat, card: c }), s.tricks.length)) return c;
-    return null;
-  };
-  // after the claimer's lead: every legal response sequence must leave the claimer winning this trick and still able to win out
-  const wins = (s: GameState, done: number): boolean => {
-    if (s.tricks.length > done) {
-      if (s.tricks[done]!.winner !== seat) return false;
-      const key = s.hands.map((h) => [...h].sort().join('.')).join('|') + (s.spadesBroken ? '!' : '');
-      let ok = memo.get(key);
-      if (ok === undefined) { ok = lead(s) !== null; memo.set(key, ok); }
-      return ok;
-    }
+  const key = (s: GameState) => s.hands.map((h) => [...h].sort().join('.')).join('|') + '/' + s.trick.plays.map((p) => `${p.seat}${p.card}`).join(',') + (s.spadesBroken ? '!' : '') + s.turn;
+  const won = (s: GameState, from: number) => { for (let i = from; i < s.tricks.length; i++) if (s.tricks[i]!.winner !== seat) return false; return true; };
+  /** true when every trick completed from here (index ≥ done) goes to `seat` */
+  const ok = (s: GameState, done: number): boolean => {
+    if (!won(s, done)) return false;
+    if (s.phase !== 'playing' || (s.hands[seat]!.length === 0 && s.trick.plays.length === 0)) return true;
+    const k = key(s);
+    const m = memo.get(k);
+    if (m !== undefined) return m;
     const who = s.turn!;
-    for (const c of legalPlays(s, who)) if (!wins(applyAction(s, { type: 'play', seat: who, card: c }), done)) return false;
-    return true;
+    const legal = legalPlays(s, who);
+    const next = (c: Card) => ok(applyAction(s, { type: 'play', seat: who, card: c }), s.tricks.length);
+    const r = who === seat ? legal.some(next) : legal.every(next);
+    memo.set(k, r);
+    return r;
   };
-  const c = lead(st);
-  return c === 'done' ? null : c;
+  /** the claimer's card now (its turn) that keeps the guarantee, or null */
+  const pick = (s: GameState): Card | null => legalPlays(s, seat).find((c) => ok(applyAction(s, { type: 'play', seat, card: c }), s.tricks.length)) ?? null;
+  return { ok, pick };
 }
 
 /**
- * True when `seat` may claim 'Run it!': its turn, 2..RUN_IT_MAX cards left, and every remaining book is guaranteed.
- * Release 10: also when following (not on lead), if the card it plays now is sure to win the CURRENT trick too and
- * then every lead after it wins (full information: cards already played count, so a Little Joker is boss once the
- * Big Joker is gone). With 1 card left there's nothing to claim: it just plays. Every mode (2v2, Cutthroat 3/4).
+ * True when `seat` may claim 'Run it!' (Release 10): 2..RUN_IT_MAX cards left and every remaining trick — the one on
+ * the table included — is guaranteed to be theirs. Any time during trick play: on lead, following, or even when it's
+ * not their turn. With 1 card left there's nothing to claim: it just plays. Every mode (2v2, Cutthroat 3/4, Ace Down).
  */
 export function canRunIt(st: GameState, seat: Seat): boolean {
-  if (st.phase !== 'playing' || st.turn !== seat) return false;
+  if (st.phase !== 'playing') return false;
   const left = st.hands[seat]!.length;
-  return left >= 2 && left <= RUN_IT_MAX && guaranteedLead(st, seat) !== null;
+  if (left < 2 || left > RUN_IT_MAX) return false;
+  return runSolver(seat).ok(st, st.tricks.length);
 }
 
 /**
@@ -316,18 +315,18 @@ export function canRunIt(st: GameState, seat: Seat): boolean {
 function playOutRun(st: GameState, seat: Seat): GameState {
   if (!canRunIt(st, seat)) throw new RuleError('CANNOT_RUN_IT', 'Running the rest is only allowed when every remaining book is guaranteed');
   const fromTricks = st.tricks.length;
+  const onTable = st.trick.plays.length;
+  const solver = runSolver(seat);
   let s = st;
+  // the rest of the hand as if played: the claimer plays a proven card, everyone else their lowest legal card
   while (s.phase === 'playing') {
-    const card = guaranteedLead(s, seat);
-    if (!card) throw new Error('run it: lost the guaranteed line'); // can't happen: the first lead was proven for every response
-    const done = s.tricks.length;
-    s = applyAction(s, { type: 'play', seat, card });
-    while (s.phase === 'playing' && s.tricks.length === done) {
-      const who = s.turn!;
-      s = applyAction(s, { type: 'play', seat: who, card: lowestLegal(s.rules, s.hands[who]!, s.trick.plays, s.spadesBroken) });
-    }
+    const who = s.turn!;
+    const card = who === seat ? solver.pick(s) : lowestLegal(s.rules, s.hands[who]!, s.trick.plays, s.spadesBroken);
+    if (!card) throw new Error('run it: lost the guaranteed line'); // can't happen: proven for every response
+    s = applyAction(s, { type: 'play', seat: who, card });
   }
-  return { ...s, tricks: s.tricks.map((t, i) => (i >= fromTricks ? { ...t, plays: t.plays.map((p) => ({ ...p, run: true as const })) } : t)) };
+  // every play from the claim on is marked `run` (cards already on the table when it was claimed are not)
+  return { ...s, tricks: s.tricks.map((t, i) => (i < fromTricks ? t : { ...t, plays: t.plays.map((p, k) => (i === fromTricks && k < onTable ? p : { ...p, run: true as const })) })) };
 }
 
 /** Both Jokers are in this (partial) trick: the nuke. */
@@ -447,8 +446,8 @@ export function applyAction(st: GameState, action: Action): GameState {
       return rest.length ? { ...next, turn: rest[0]!.from } : startPlay(next);
     }
     case 'runIt': {
+      // Release 10: any time during trick play, not only on your turn (the claim is proven before it's applied)
       if (st.phase !== 'playing') throw new RuleError('WRONG_PHASE', 'Not in trick play');
-      if (st.turn !== seat) throw new RuleError('NOT_YOUR_TURN', 'Not your turn');
       return playOutRun(st, seat);
     }
     case 'play': {

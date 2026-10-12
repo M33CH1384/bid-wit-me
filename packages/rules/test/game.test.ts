@@ -603,6 +603,51 @@ describe("'Run it!' in Cutthroat + mid-trick (Release 10)", () => {
     const st = spot(cut4, [['LJ', '2D'], ['BJ', '5C'], ['6C'], ['7C']], 2, ['TS', 'JD']);
     expect(canRunIt(st, 0)).toBe(false);
   });
+  // Release 10 (steering 2): any time the claimer's cards can't be beaten — even off-turn
+  it('off-turn (4p Cutthroat): claimable before the claimer has to play; others play first, every book is the claimer\'s', () => {
+    const st = spot(cut4, [['BJ', 'LJ'], ['3H', '4H'], ['5C', '6C'], ['3S', '7D']], 1, []);
+    expect(st.turn).toBe(1);
+    expect(canRunIt(st, 0)).toBe(true);
+    const after = applyAction(st, { type: 'runIt', seat: 0 });
+    expect(after.tricks.slice(-2).map((t) => t.winner)).toEqual([0, 0]);
+    expect(after.tricksWon[0]).toBe(2);
+  });
+  it('off-turn mid-trick (3p): the claimer already played the boss card, the trick is still open', () => {
+    const st = spot(cut3, [['LJ', '2S'], ['3H', '4H', '5H'], ['5C', '6C', '7C']], 0, ['BJ']);
+    expect(st.turn).toBe(1);
+    expect(canRunIt(st, 0)).toBe(true);
+    const after = applyAction(st, { type: 'runIt', seat: 0 });
+    expect(after.tricks.slice(-3).map((t) => t.winner)).toEqual([0, 0, 0]);
+    // the card already on the table isn't part of the run; everything after the claim is
+    expect(after.tricks.at(-3)!.plays[0]!.run).toBeUndefined();
+    expect(after.tricks.at(-3)!.plays.slice(1).every((p) => p.run)).toBe(true);
+  });
+  it('a card already on the table that beats the claimer: no claim, and the server-side apply rejects it', () => {
+    const st = spot(cut4, [['LJ', '2S'], ['BJ', '4H'], ['5C', '6C'], ['3S', '7D']], 1, []);
+    const onTable = spot(cut4, [['LJ', '2S'], ['4H'], ['5C', '6C'], ['3S', '7D']], 1, ['BJ']);
+    expect(canRunIt(st, 0)).toBe(false);
+    expect(canRunIt(onTable, 0)).toBe(false);
+    expect(() => applyAction(onTable, { type: 'runIt', seat: 0 })).toThrow(/guaranteed/);
+  });
+  it('2v2 Joker, off-turn: the books go to the claimer\'s team', () => {
+    const j = makeRules('joker');
+    const st = spot(j, [['BJ', 'LJ'], ['3H', '4H'], ['5C', '6C'], ['3D', '7D']], 3, []);
+    expect(canRunIt(st, 0)).toBe(true);
+    const after = applyAction(st, { type: 'runIt', seat: 0 });
+    expect(after.tricks.slice(-2).map((t) => t.winner)).toEqual([0, 0]);
+    expect(after.tricksWon[0]! + after.tricksWon[2]!).toBe(2);
+  });
+  it('Ace Down, off-turn: offered with the top spades', () => {
+    const a = makeRules('aceDown');
+    const st = spot(a, [['AS', 'KS'], ['3H', '4H'], ['5C', '6C'], ['3D', '7D']], 2, []);
+    expect(canRunIt(st, 0)).toBe(true);
+    expect(applyAction(st, { type: 'runIt', seat: 0 }).tricks.slice(-2).every((t) => t.winner === 0)).toBe(true);
+  });
+  it('off-turn, a still-outstanding higher trump: not offered, and a forced claim is rejected', () => {
+    const st = spot(cut4, [['LJ', '2D'], ['3H', '4H'], ['BJ', '6C'], ['3S', '7D']], 1, []);
+    expect(canRunIt(st, 0)).toBe(false);
+    expect(() => applyAction(st, { type: 'runIt', seat: 0 })).toThrow(RuleError);
+  });
   it('1 card left: no claim (it just plays)', () => {
     const st = spot(cut4, [['BJ'], ['3H'], ['5C'], ['3S']], 0, []);
     expect(canRunIt(st, 0)).toBe(false);

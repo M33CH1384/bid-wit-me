@@ -510,7 +510,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const b = seen.st;
     if (b.handNo === st.handNo && st.tricks.length > b.tricks.length && st.tricks[b.tricks.length]!.plays.some((p) => p.run)) {
       const fresh = st.tricks.slice(b.tricks.length);
-      const claimer = fresh.find((t) => t.plays.some((p) => p.run))!.plays.find((p) => p.run)!.seat;
+      const claimer = fresh.at(-1)!.winner!; // a run is won trick by trick by its claimer (off-turn claims auto-play others first)
       const onTable = new Set(b.trick.plays.map((p) => p.card));
       const plays = fresh.flatMap((t) => t.plays).filter((p) => !onTable.has(p.card));
       setRunFx({
@@ -587,7 +587,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const sb = runFx ? runFx.before.st : st;
   const winnerSeat = pause && !ranHand ? shownTrick.winner : null;
   // the Run it! button + its one-time spotlight tip
-  const canRun = myTurn && !dealing && st.phase === 'playing' && !!view.canRunIt && !runFx;
+  const canRun = !spectating && !dealing && st.phase === 'playing' && !!view.canRunIt && !runFx;
   const [runTip, setRunTip] = useState(false);
   const runTipKey = useRef<string | null>(null);
   useEffect(() => {
