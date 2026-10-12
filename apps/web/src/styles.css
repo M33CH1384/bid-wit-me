@@ -1560,8 +1560,18 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .modal-backdrop.pad-backdrop { z-index: 1200; background: rgba(6,3,12,.72); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
 .pad-open .tt-team-edit, .pad-open .tt-head, .pad-open .tt-foot > button:not(.primary) { visibility: hidden; }
 .score-pad.v2 { position: relative; }
+.pad-sticky { position: sticky; top: 0; z-index: 4; background: #1E1424; padding: 0 40px 12px 0; box-shadow: 0 10px 0 #1E1424; }
+.pad-sticky .pad-x { top: 0; right: 0; }
+.pad-playing { margin: 2px 0 10px; text-align: center; font-size: 14px; font-weight: 600; line-height: 1.3; color: #CBB9D6; }
+.pad-board { display: grid; grid-template-columns: repeat(var(--sides, 2), minmax(0, 1fr)); gap: 8px 12px; text-align: left; }
+.pad-board-side { display: grid; grid-template-columns: 6px minmax(0, 1fr); column-gap: 8px; align-items: center; min-width: 0; }
+.pad-board-side .pad-bar { grid-row: 1 / span 3; align-self: stretch; width: 6px; border-radius: 3px; background: var(--side); }
+.pad-board-name { font-size: 13px; font-weight: 800; line-height: 1.15; color: var(--side); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pad-board-total { font-size: 30px; font-weight: 800; font-family: var(--display); font-variant-numeric: tabular-nums; line-height: 1; color: var(--gold); }
+.pad-board-bags { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .pad-x { position: absolute; top: 8px; right: 10px; width: 36px; height: 36px; border: 0; border-radius: 50%; background: rgba(255,255,255,.08); color: var(--ink); font-size: 16px; z-index: 2; }
-.pad-rules.chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 6px 0 10px; }
+.pad-rules.chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-start; margin: 8px 0 4px; }
+.pad-cols.v2 { position: static; background: transparent; }
 .rule-chip { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 12px; background: rgba(185,128,255,.16); box-shadow: inset 0 0 0 1px rgba(185,128,255,.4); color: var(--ink); white-space: nowrap; }
 .pad-cols.v2, .pad-row.v2 { grid-template-columns: 6px minmax(0, 1.6fr) repeat(2, minmax(0, .7fr)) minmax(0, .9fr) minmax(0, 1fr); }
 .pad-cols.v2 > span:first-child { grid-column: 1 / 3; }
