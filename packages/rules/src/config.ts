@@ -168,46 +168,233 @@ export function makeRules(mode: Mode, overrides: RulesOverrides = {}): TableRule
   return r;
 }
 
-/** Returns a list of problems (empty if valid). */
+function isRec(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null && !Array.isArray(x);
+}
+
+function has(obj: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(obj, key) && obj[key] !== undefined;
+}
+
+function pickBool(src: Record<string, unknown>, key: string, problems: string[]): boolean | undefined {
+  if (!has(src, key)) return undefined;
+  if (typeof src[key] !== 'boolean') { problems.push(`${key} must be a boolean`); return undefined; }
+  return src[key];
+}
+
+function pickFinite(src: Record<string, unknown>, key: string, problems: string[]): number | undefined {
+  if (!has(src, key)) return undefined;
+  const v = src[key];
+  if (typeof v !== 'number' || !Number.isFinite(v)) { problems.push(`${key} must be a number`); return undefined; }
+  return v;
+}
+
+function pickNil(src: Record<string, unknown>, problems: string[]): Partial<NilRules> | undefined {
+  if (!has(src, 'nil')) return undefined;
+  const n = src.nil;
+  if (!isRec(n)) { problems.push('nil must be an object'); return undefined; }
+  const out: Partial<NilRules> = {};
+  if (has(n, 'allowed')) {
+    if (typeof n.allowed !== 'boolean') problems.push('nil.allowed must be a boolean');
+    else out.allowed = n.allowed;
+  }
+  if (has(n, 'value')) {
+    if (typeof n.value !== 'number' || !Number.isFinite(n.value)) problems.push('nil.value must be a number');
+    else out.value = n.value;
+  }
+  return out;
+}
+
+function pickBlind(src: Record<string, unknown>, problems: string[]): Partial<BlindNilRules> | undefined {
+  if (!has(src, 'blindNil')) return undefined;
+  const n = src.blindNil;
+  if (!isRec(n)) { problems.push('blindNil must be an object'); return undefined; }
+  const out: Partial<BlindNilRules> = {};
+  if (has(n, 'allowed')) {
+    if (typeof n.allowed !== 'boolean') problems.push('blindNil.allowed must be a boolean');
+    else out.allowed = n.allowed;
+  }
+  if (has(n, 'value')) {
+    if (typeof n.value !== 'number' || !Number.isFinite(n.value)) problems.push('blindNil.value must be a number');
+    else out.value = n.value;
+  }
+  if (has(n, 'onlyWhenBehindBy')) {
+    const b = n.onlyWhenBehindBy;
+    if (b !== null && (typeof b !== 'number' || !Number.isFinite(b))) problems.push('blindNil.onlyWhenBehindBy must be a number or null');
+    else out.onlyWhenBehindBy = b;
+  }
+  if (has(n, 'exchangeCards')) {
+    const e = n.exchangeCards;
+    if (e !== 0 && e !== 1 && e !== 2) problems.push('blindNil.exchangeCards must be 0, 1 or 2');
+    else out.exchangeCards = e;
+  }
+  return out;
+}
+
+/**
+ * Turns untrusted host input into table rules. Starts from the mode preset and applies only allowlisted,
+ * type-checked overrides; anything else is dropped. A present field of the wrong type is an error (it is not
+ * coerced). Omitted fields keep the preset, so a missing `nil` cannot reach bidding. Timers are clamped to
+ * 3–120s. Throws RulesConfigError when the result is not a valid rules object.
+ */
+export function acceptRules(input: unknown): TableRules {
+  if (!isRec(input)) throw new RulesConfigError(['rules must be an object']);
+  const mode = input.mode;
+  if (mode !== 'joker' && mode !== 'cutthroat' && mode !== 'aceDown') {
+    throw new RulesConfigError(['mode must be joker, cutthroat or aceDown']);
+  }
+  const problems: string[] = [];
+  const o: RulesOverrides = {};
+  const partnerships = pickBool(input, 'partnerships', problems);
+  if (partnerships !== undefined) o.partnerships = partnerships;
+  if (has(input, 'playerCount')) {
+    if (input.playerCount !== 3 && input.playerCount !== 4) problems.push('playerCount must be 3 or 4');
+    else o.playerCount = input.playerCount;
+  }
+  if (has(input, 'deck')) {
+    if (input.deck !== 'joker54' && input.deck !== 'standard52') problems.push('deck must be joker54 or standard52');
+    else o.deck = input.deck;
+  }
+  if (has(input, 'removedCards')) {
+    if (!Array.isArray(input.removedCards)) problems.push('removedCards must be an array');
+    else o.removedCards = input.removedCards.slice() as Card[];
+  }
+  if (has(input, 'trumpOrderTop')) {
+    if (!Array.isArray(input.trumpOrderTop)) problems.push('trumpOrderTop must be an array');
+    else o.trumpOrderTop = input.trumpOrderTop.slice() as Card[];
+  }
+  const deuce = pickBool(input, 'deuceOfSpadesHigh', problems);
+  if (deuce !== undefined) o.deuceOfSpadesHigh = deuce;
+  const broken = pickBool(input, 'spadesMustBeBroken', problems);
+  if (broken !== undefined) o.spadesMustBeBroken = broken;
+  if (has(input, 'firstLead')) {
+    if (input.firstLead !== 'leftOfDealer' && input.firstLead !== 'twoOfClubs') problems.push('firstLead must be leftOfDealer or twoOfClubs');
+    else o.firstLead = input.firstLead;
+  }
+  if (has(input, 'minTeamBid')) {
+    if (typeof input.minTeamBid !== 'number' || !Number.isInteger(input.minTeamBid)) problems.push('minTeamBid must be an integer');
+    else o.minTeamBid = input.minTeamBid;
+  }
+  const nil = pickNil(input, problems);
+  if (nil) o.nil = nil;
+  const blind = pickBlind(input, problems);
+  if (blind) o.blindNil = blind;
+  const partnerNil = pickBool(input, 'partnerMayAlsoNil', problems);
+  if (partnerNil !== undefined) o.partnerMayAlsoNil = partnerNil;
+  const nilForPartner = pickBool(input, 'nilTricksCountForPartner', problems);
+  if (nilForPartner !== undefined) o.nilTricksCountForPartner = nilForPartner;
+  const bagsPer = pickFinite(input, 'bagsPerPenalty', problems);
+  if (bagsPer !== undefined) o.bagsPerPenalty = bagsPer;
+  const bagPen = pickFinite(input, 'bagPenalty', problems);
+  if (bagPen !== undefined) o.bagPenalty = bagPen;
+  const ten = pickBool(input, 'tenForTwoHundred', problems);
+  if (ten !== undefined) o.tenForTwoHundred = ten;
+  const target = pickFinite(input, 'targetScore', problems);
+  if (target !== undefined) o.targetScore = target;
+  if (has(input, 'losingFloor')) {
+    const f = input.losingFloor;
+    if (f !== null && (typeof f !== 'number' || !Number.isFinite(f))) problems.push('losingFloor must be a number or null');
+    else o.losingFloor = f;
+  }
+  const books = pickBool(input, 'firstHandBidsItself', problems);
+  if (books !== undefined) o.firstHandBidsItself = books;
+  const shot = pickBool(input, 'shotOut', problems);
+  if (shot !== undefined) o.shotOut = shot;
+  const bagsOn = pickBool(input, 'bagsOn', problems);
+  if (bagsOn !== undefined) o.bagsOn = bagsOn;
+  if (has(input, 'firstHandMin')) {
+    const n = input.firstHandMin;
+    if (n === null || n === 3 || n === 4 || n === 5) o.firstHandMin = n;
+    else problems.push('firstHandMin must be 3, 4, 5 or off');
+  }
+  // Pace, not scoring: a non-number falls back to the preset instead of rejecting the rest of the rules.
+  const timer = isRec(input.turnTimerSec) ? input.turnTimerSec : {};
+  const clamp = (x: unknown, d: number) => (typeof x === 'number' && Number.isFinite(x) ? Math.max(3, Math.min(120, Math.round(x))) : d);
+  o.turnTimerSec = { bid: clamp(timer.bid, 30), play: clamp(timer.play, 20) };
+  if (problems.length) throw new RulesConfigError(problems);
+  return makeRules(mode, o);
+}
+
+/** Returns a list of problems (empty if valid). Malformed input is reported; this does not throw. */
 export function validateRules(r: TableRules): string[] {
   const p: string[] = [];
+  if (!isRec(r)) return ['rules must be an object'];
+  if (r.mode !== 'joker' && r.mode !== 'cutthroat' && r.mode !== 'aceDown') p.push('mode must be joker, cutthroat or aceDown');
   if (r.playerCount !== 3 && r.playerCount !== 4) p.push('playerCount must be 3 or 4');
-  if (r.partnerships && r.playerCount !== 4) p.push('partnerships require 4 players');
-  if (r.mode === 'cutthroat' && r.partnerships) p.push('cutthroat has no partnerships');
+  if (typeof r.partnerships !== 'boolean') p.push('partnerships must be a boolean');
+  else if (r.partnerships && r.playerCount !== 4) p.push('partnerships require 4 players');
+  if (r.mode === 'cutthroat' && r.partnerships === true) p.push('cutthroat has no partnerships');
+  if (r.deck !== 'joker54' && r.deck !== 'standard52') p.push('deck must be joker54 or standard52');
   if (r.mode === 'joker' && r.deck !== 'joker54') p.push('joker mode uses the joker54 deck');
+  if (typeof r.deuceOfSpadesHigh !== 'boolean') p.push('deuceOfSpadesHigh must be a boolean');
+  if (typeof r.spadesMustBeBroken !== 'boolean') p.push('spadesMustBeBroken must be a boolean');
+  if (r.firstLead !== 'leftOfDealer' && r.firstLead !== 'twoOfClubs') p.push('firstLead must be leftOfDealer or twoOfClubs');
   if (r.mode === 'aceDown') {
     if (r.deck !== 'standard52') p.push('aceDown uses a standard 52-card deck (no jokers)');
-    if (r.trumpOrderTop.length) p.push('aceDown has no extra trumps above A♠');
-    if (r.deuceOfSpadesHigh) p.push('aceDown forces deuceOfSpadesHigh off');
+    if (Array.isArray(r.trumpOrderTop) && r.trumpOrderTop.length) p.push('aceDown has no extra trumps above A♠');
+    if (r.deuceOfSpadesHigh === true) p.push('aceDown forces deuceOfSpadesHigh off');
   }
-  const seen = new Set<string>();
-  for (const c of r.removedCards) {
-    if (!isCard(c)) { p.push(`removedCards: unknown card ${String(c)}`); continue; }
-    if (isJoker(c)) p.push('removedCards cannot include jokers');
-    else if (naturalSuit(c) === 'S') p.push('removedCards cannot include spades');
-    if (seen.has(c)) p.push(`removedCards: duplicate ${c}`);
-    seen.add(c);
+  const removed = Array.isArray(r.removedCards) ? r.removedCards : null;
+  if (!removed) p.push('removedCards must be an array');
+  else {
+    const seen = new Set<string>();
+    for (const c of removed) {
+      if (!isCard(c)) { p.push(`removedCards: unknown card ${String(c)}`); continue; }
+      if (isJoker(c)) p.push('removedCards cannot include jokers');
+      else if (naturalSuit(c) === 'S') p.push('removedCards cannot include spades');
+      if (seen.has(c)) p.push(`removedCards: duplicate ${c}`);
+      seen.add(c);
+    }
   }
-  const deckSize = (r.deck === 'joker54' ? 54 : 52) - r.removedCards.length;
-  const want = r.playerCount === 4 ? 52 : 51;
-  if (deckSize !== want) p.push(`deck must have ${want} cards for ${r.playerCount} players after removals (has ${deckSize})`);
+  const top = Array.isArray(r.trumpOrderTop) ? r.trumpOrderTop : null;
   const topSeen = new Set<string>();
-  for (const c of r.trumpOrderTop) {
-    if (!isCard(c)) { p.push(`trumpOrderTop: unknown card ${String(c)}`); continue; }
-    if (topSeen.has(c)) p.push(`trumpOrderTop: duplicate ${c}`);
-    topSeen.add(c);
-    if (r.removedCards.includes(c)) p.push(`trumpOrderTop card ${c} cannot also be removed`);
-    if (isJoker(c) && r.deck !== 'joker54') p.push('jokers in trumpOrderTop need the joker54 deck');
+  if (!top) p.push('trumpOrderTop must be an array');
+  else {
+    for (const c of top) {
+      if (!isCard(c)) { p.push(`trumpOrderTop: unknown card ${String(c)}`); continue; }
+      if (topSeen.has(c)) p.push(`trumpOrderTop: duplicate ${c}`);
+      topSeen.add(c);
+      if (removed?.includes(c)) p.push(`trumpOrderTop card ${c} cannot also be removed`);
+      if (isJoker(c) && r.deck !== 'joker54') p.push('jokers in trumpOrderTop need the joker54 deck');
+    }
   }
-  if (r.deck === 'joker54' && !(topSeen.has('BJ') && topSeen.has('LJ'))) p.push('joker54 deck needs BJ and LJ in trumpOrderTop');
-  if (r.firstLead === 'twoOfClubs' && r.removedCards.includes('2C')) p.push('firstLead twoOfClubs needs the 2♣ in the deck');
+  if (removed && (r.playerCount === 3 || r.playerCount === 4) && (r.deck === 'joker54' || r.deck === 'standard52')) {
+    const deckSize = (r.deck === 'joker54' ? 54 : 52) - removed.length;
+    const want = r.playerCount === 4 ? 52 : 51;
+    if (deckSize !== want) p.push(`deck must have ${want} cards for ${r.playerCount} players after removals (has ${deckSize})`);
+  }
+  if (r.deck === 'joker54' && top && !(topSeen.has('BJ') && topSeen.has('LJ'))) p.push('joker54 deck needs BJ and LJ in trumpOrderTop');
+  if (r.firstLead === 'twoOfClubs' && removed?.includes('2C')) p.push('firstLead twoOfClubs needs the 2♣ in the deck');
   const handSize = r.playerCount === 4 ? 13 : 17;
-  if (!Number.isInteger(r.minTeamBid) || r.minTeamBid < 0 || r.minTeamBid > handSize) p.push('minTeamBid out of range');
-  if (!(r.bagsPerPenalty >= 1)) p.push('bagsPerPenalty must be ≥ 1');
-  if (!(r.targetScore > 0)) p.push('targetScore must be positive');
-  if (r.losingFloor !== null && !(r.losingFloor < 0)) p.push('losingFloor must be negative or null');
+  if (typeof r.minTeamBid !== 'number' || !Number.isInteger(r.minTeamBid) || r.minTeamBid < 0 || r.minTeamBid > handSize) p.push('minTeamBid out of range');
+  if (typeof r.bagsPerPenalty !== 'number' || !Number.isFinite(r.bagsPerPenalty) || r.bagsPerPenalty < 1) p.push('bagsPerPenalty must be ≥ 1');
+  if (typeof r.bagPenalty !== 'number' || !Number.isFinite(r.bagPenalty)) p.push('bagPenalty must be a number');
+  if (typeof r.targetScore !== 'number' || !(r.targetScore > 0)) p.push('targetScore must be positive');
+  if (r.losingFloor !== null && (typeof r.losingFloor !== 'number' || !Number.isFinite(r.losingFloor) || !(r.losingFloor < 0))) p.push('losingFloor must be negative or null');
+  if (typeof r.partnerMayAlsoNil !== 'boolean') p.push('partnerMayAlsoNil must be a boolean');
+  if (typeof r.nilTricksCountForPartner !== 'boolean') p.push('nilTricksCountForPartner must be a boolean');
+  if (typeof r.tenForTwoHundred !== 'boolean') p.push('tenForTwoHundred must be a boolean');
+  if (r.firstHandBidsItself !== undefined && typeof r.firstHandBidsItself !== 'boolean') p.push('firstHandBidsItself must be a boolean');
+  if (r.shotOut !== undefined && typeof r.shotOut !== 'boolean') p.push('shotOut must be a boolean');
+  if (r.bagsOn !== undefined && typeof r.bagsOn !== 'boolean') p.push('bagsOn must be a boolean');
   if (r.firstHandMin !== undefined && r.firstHandMin !== null && ![3, 4, 5].includes(r.firstHandMin)) p.push('firstHandMin must be 3, 4, 5 or off');
-  if (![0, 1, 2].includes(r.blindNil.exchangeCards)) p.push('blindNil.exchangeCards must be 0, 1 or 2');
+  if (!isRec(r.turnTimerSec) || typeof r.turnTimerSec.bid !== 'number' || !Number.isFinite(r.turnTimerSec.bid) || typeof r.turnTimerSec.play !== 'number' || !Number.isFinite(r.turnTimerSec.play)) {
+    p.push('turnTimerSec.bid and turnTimerSec.play must be numbers');
+  }
+  if (!isRec(r.nil)) p.push('nil must be an object');
+  else {
+    if (typeof r.nil.allowed !== 'boolean') p.push('nil.allowed must be a boolean');
+    if (typeof r.nil.value !== 'number' || !Number.isFinite(r.nil.value)) p.push('nil.value must be a number');
+  }
+  if (!isRec(r.blindNil)) p.push('blindNil must be an object');
+  else {
+    if (typeof r.blindNil.allowed !== 'boolean') p.push('blindNil.allowed must be a boolean');
+    if (typeof r.blindNil.value !== 'number' || !Number.isFinite(r.blindNil.value)) p.push('blindNil.value must be a number');
+    if (r.blindNil.onlyWhenBehindBy !== null && (typeof r.blindNil.onlyWhenBehindBy !== 'number' || !Number.isFinite(r.blindNil.onlyWhenBehindBy))) {
+      p.push('blindNil.onlyWhenBehindBy must be a number or null');
+    }
+    if (![0, 1, 2].includes(r.blindNil.exchangeCards)) p.push('blindNil.exchangeCards must be 0, 1 or 2');
+  }
   return p;
 }
 
