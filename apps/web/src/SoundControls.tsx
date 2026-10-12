@@ -9,6 +9,27 @@ import { setVibration, useVibration } from './haptics';
 
 const icon = (on: boolean, v: number) => (!on || v === 0 ? '🔇' : v < 0.4 ? '🔈' : v < 0.75 ? '🔉' : '🔊');
 
+export interface Box { left: number; top: number; width: number; height: number }
+
+/**
+ * The in-game speaker sits on the scorebug slot. The slot stretches to the full bug height; copying that
+ * height made the button a tall hit target over the recap, on top of the team-name Save control.
+ * Keep a square no larger than the slot, anchored to the slot's top-right.
+ */
+export function speakerSlotBox(
+  slot: { top: number; right: number; width: number; height: number },
+  viewportWidth: number,
+  inBug: boolean,
+): { top: number; right: number; width: number; height: number } {
+  const cap = inBug ? 40 : 46;
+  const side = Math.min(cap, slot.width || cap, slot.height || cap);
+  return { top: slot.top, right: Math.max(0, viewportWidth - slot.right), width: side, height: side };
+}
+
+export function rectsOverlap(a: Box, b: Box): boolean {
+  return a.left < b.left + b.width && a.left + a.width > b.left && a.top < b.top + b.height && a.top + a.height > b.top;
+}
+
 function VibrationSwitch() {
   const on = useVibration();
   return (
@@ -189,8 +210,10 @@ export function SoundDock() {
       const r = slot?.getBoundingClientRect();
       if (!slot || !r) { el.classList.remove('slotted', 'in-bug'); return; }
       el.classList.add('slotted');
-      el.classList.toggle('in-bug', slot.classList.contains('bug-btn'));
-      const v = { '--dock-top': `${r.top}px`, '--dock-right': `${window.innerWidth - r.right}px`, '--dock-w': `${r.width}px`, '--dock-h': `${r.height}px` };
+      const inBug = slot.classList.contains('bug-btn');
+      el.classList.toggle('in-bug', inBug);
+      const box = speakerSlotBox({ top: r.top, right: r.right, width: r.width, height: r.height }, window.innerWidth, inBug);
+      const v = { '--dock-top': `${box.top}px`, '--dock-right': `${box.right}px`, '--dock-w': `${box.width}px`, '--dock-h': `${box.height}px` };
       for (const [k, x] of Object.entries(v)) if (el.style.getPropertyValue(k) !== x) el.style.setProperty(k, x);
     };
     const kick = () => { if (!raf) raf = requestAnimationFrame(sync); };

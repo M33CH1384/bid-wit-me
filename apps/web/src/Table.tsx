@@ -41,7 +41,7 @@ import { type TipsPref, bumpTip, loadTips, saveTips, tipCount } from './tips';
 import { BidCoach } from './BidCoach';
 import { RUN_FX_MS } from '@spades/protocol';
 import { RUN_SHOW_MS, RUN_SLAM_MS, RUN_IT_CALLOUTS, RUN_TORNADO_AFTER_MS, RUN_ZOOM_MS } from './runIt';
-import { RunItReview, RunZoom } from './RunZoom';
+import { RunItReview, RunZoom, runReviewOverTable } from './RunZoom';
 import { TrashTalkButton } from './TrashTalk';
 import { isPromoted } from './cardFaces';
 import { QUICK_TRASH_SET } from './quickTrash';
@@ -408,6 +408,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [showPad, setShowPad] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [ltOpen, setLtOpen] = useState(false);
+  const [clearedOpen, setClearedOpen] = useState(true);
+  useEffect(() => { setClearedOpen(true); }, [st.handNo]);
   const [chatOpen, setChatOpen] = useState(() => window.innerWidth >= 900 && window.innerHeight > 600);
   const [seenMsgs, setSeenMsgs] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -621,11 +623,15 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       if (!view.runHands && runOpenKey.current) { runOpenKey.current = null; setLtOpen(false); }
       return;
     }
+    // Table Talk / game over are full-screen. The cleared-hands portal is another full-screen
+    // scrim on document.body (z-index above both), so auto-opening it here swallows every
+    // tap and slide on the recap. The hands render inside Table Talk instead.
+    if (!runReviewOverTable(st.phase)) { setLtOpen(false); return; }
     const key = `${st.handNo}:${st.tricks.length}`;
     if (runOpenKey.current === key) return;
     runOpenKey.current = key;
     setLtOpen(true);
-  }, [runFx, view.runHands, st.handNo, st.tricks.length]);
+  }, [runFx, view.runHands, st.handNo, st.tricks.length, st.phase]);
   // the scoreboard (scores, bags, books taken, result) holds the pre-run numbers until the tornado is over
   const sb = runFx ? runFx.before.st : st;
   const winnerSeat = pause && !ranHand ? shownTrick.winner : null;
@@ -994,7 +1000,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       {/* last-trick readout. After a resolved 'Run it!' the same chip opens every hand the tornado cleared. */}
       {(piles.length > 0 || !!runHands) && (() => {
         const seatLabel = (seat: number) => (spectating ? names[seat] : seat === HUMAN ? 'You' : names[seat]) ?? `Seat ${seat + 1}`;
-        if (runHands && runClaimer !== null && ltOpen) {
+        if (runHands && runClaimer !== null && ltOpen && runReviewOverTable(st.phase)) {
           return createPortal(
             <>
               <div className="run-review-scrim" onClick={() => setLtOpen(false)} />
@@ -1152,6 +1158,21 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           onScorePad={() => setShowPad(true)}
           series={seriesChip()}
           teamEdit={teamEdit}
+          runReview={runHands && runClaimer !== null ? (
+            clearedOpen ? (
+              <div className="tt-run" data-testid="talk-run">
+                <RunItReview
+                  hands={runHands}
+                  claimer={runClaimer}
+                  labels={runHands.map((_, seat) => (spectating ? names[seat] : seat === HUMAN ? 'You' : names[seat]) ?? `Seat ${seat + 1}`)}
+                  r={r}
+                  onClose={() => setClearedOpen(false)}
+                />
+              </div>
+            ) : (
+              <button type="button" className="tt-run-show" data-testid="talk-run-show" onClick={() => setClearedOpen(true)}>Run it — cleared hands</button>
+            )
+          ) : null}
         />
       )}
       {seriesOpen && series && <SeriesSheet series={series} mine={seriesMine} onClose={() => setSeriesOpen(false)} />}

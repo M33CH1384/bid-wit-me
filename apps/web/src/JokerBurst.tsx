@@ -44,6 +44,7 @@ export default function JokerBurst() {
       host.querySelectorAll('canvas').forEach((c) => c.remove());
       const fresh = document.createElement('canvas');
       fresh.className = 'joker-burst-canvas';
+      fresh.style.pointerEvents = 'none';
       host.appendChild(fresh);
       canvasRef.current = fresh;
       modeRef.current = 'main';
@@ -59,6 +60,7 @@ export default function JokerBurst() {
     try {
       const canvas = document.createElement('canvas');
       canvas.className = 'joker-burst-canvas';
+      canvas.style.pointerEvents = 'none';
       host.appendChild(canvas);
       canvasRef.current = canvas;
       if (typeof Worker === 'undefined' || typeof canvas.transferControlToOffscreen !== 'function') throw new Error('no worker');
