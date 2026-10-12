@@ -102,10 +102,24 @@ export function handRenderOrder(index: number, above: boolean): number {
 export const LEGAL_NEAR = 0.02;
 
 /**
+ * Window-space depth bias for the face and the back.
+ * A card facing the camera has almost no slope, so the units term is what separates
+ * the pips from the cream cap when both quantize to the same 16-bit depth.
+ */
+export const FACE_POLYGON_OFFSET = { factor: -1, units: -8 } as const;
+
+/** Pull the face and the back toward the camera in window depth. The body stays unbiased. */
+export function applyFaceDepthBias(material: { polygonOffset: boolean; polygonOffsetFactor: number; polygonOffsetUnits: number }): void {
+  material.polygonOffset = true;
+  material.polygonOffsetFactor = FACE_POLYGON_OFFSET.factor;
+  material.polygonOffsetUnits = FACE_POLYGON_OFFSET.units;
+}
+
+/**
  * Paint state for one mesh of a card.
  * A child group resets Three.js groupOrder, so the group's renderOrder never decides the draw.
- * The body is an extruded cap 0.0002 behind the face. Depth testing stays on, and the face is
- * half a step later than the body, so the cap cannot cover the pips.
+ * Depth testing stays on. The face is FACE_CAP_GAP in front of the cap and polygon-offset
+ * toward the camera, and half a step later in render order, so the cap cannot cover the pips.
  */
 export function cardMeshPaint(order: number, part: 'edge' | 'back' | 'face' | 'glow'): { renderOrder: number; depthTest: true } {
   const renderOrder = part === 'glow' ? order - 1 : part === 'edge' ? order : order + 0.5;

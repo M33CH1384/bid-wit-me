@@ -48,7 +48,7 @@ export function haloLocal(sx: number, sy: number, segs = 4): Pt[] {
   return roundedRect((CW / 2) * sx, (CH / 2) * sy, CR * sx, CR * sy, segs);
 }
 
-/** Major-axis angle of a point cloud, so a fanned run is boxed with the cards instead of the screen. */
+/** Major-axis angle of one card. A card is taller than it is wide, so this is the card's up direction. */
 function clusterAngle(pts: readonly Pt[]): number {
   let n = 0, mx = 0, my = 0;
   for (const p of pts) { n++; mx += p.x; my += p.y; }
@@ -60,6 +60,36 @@ function clusterAngle(pts: readonly Pt[]): number {
     xx += dx * dx; xy += dx * dy; yy += dy * dy;
   }
   return 0.5 * Math.atan2(2 * xy, xx - yy);
+}
+
+function polyCenter(poly: readonly Pt[]): Pt | null {
+  let n = 0, x = 0, y = 0;
+  for (const p of poly) {
+    if (!planePointOk(p.x, p.y)) continue;
+    n++; x += p.x; y += p.y;
+  }
+  return n ? { x: x / n, y: y / n } : null;
+}
+
+/**
+ * Angle of the box's long side.
+ * A run of cards is a tall stack: the major axis of every corner is the card height, nearly
+ * screen-vertical, so a box on that axis stands up and leaves a slab of empty gold above the
+ * lower cards. The line through the first and last card is the fan. One card uses its own up axis.
+ */
+function runAngle(polys: readonly (readonly Pt[])[]): number {
+  const centers: Pt[] = [];
+  for (const poly of polys) {
+    const c = polyCenter(poly);
+    if (c) centers.push(c);
+  }
+  if (centers.length >= 2) {
+    const a = centers[0]!, b = centers[centers.length - 1]!;
+    const dx = b.x - a.x, dy = b.y - a.y;
+    if (dx * dx + dy * dy > 1e-10) return Math.atan2(dy, dx);
+  }
+  const only = polys[0];
+  return only ? clusterAngle(only.filter((p) => planePointOk(p.x, p.y))) : 0;
 }
 
 /**
@@ -82,7 +112,7 @@ export function groupOutline(polys: readonly (readonly Pt[])[], pad: number, rad
   let cx = 0, cy = 0;
   for (const p of pts) { cx += p.x; cy += p.y; }
   cx /= pts.length; cy /= pts.length;
-  const ang = clusterAngle(pts);
+  const ang = runAngle(polys);
   const co = Math.cos(ang), si = Math.sin(ang);
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const p of pts) {

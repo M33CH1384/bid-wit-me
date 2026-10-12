@@ -5,6 +5,14 @@ export const CW = 0.25;
 export const CH = 0.35;
 export const CT = 0.004;
 export const CR = 0.022;
+/**
+ * How far the face plane sits in front of the extruded front cap, in card-local units.
+ * iPhone Safari's 16-bit depth fights at about 0.0003 world units once the card is a metre
+ * from the camera. 0.0002 local is about 0.00008 world on a phone fan, so the cap and the
+ * pips quantize to the same depth and the cream cap wins. 0.0025 local clears a few of
+ * those steps at the smallest fan scale, and stays under a pixel on screen.
+ */
+export const FACE_CAP_GAP = 0.0025;
 
 /** Felt half-extents and rail width. */
 export const FELT = { hx: 1.5, hz: 1.78, r: 0.95 };

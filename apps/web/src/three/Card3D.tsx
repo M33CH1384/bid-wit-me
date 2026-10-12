@@ -2,7 +2,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { memo, useLayoutEffect, useMemo, useRef } from 'react';
 import { Color, type Group, type Material, type Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Quaternion, type Texture, Vector3 } from 'three';
 import { cardGeometry } from './geometry';
-import { ILLEGAL_COLOR, RAISE_S, cardMeshPaint, liftEase, screenRaise } from './handLift';
+import { ILLEGAL_COLOR, RAISE_S, applyFaceDepthBias, cardMeshPaint, liftEase, screenRaise } from './handLift';
 import JokerAura from './JokerAura';
 import { CT } from './layout';
 import type { Xform } from './layout';
@@ -89,8 +89,18 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     quality === 'high'
       ? new MeshPhysicalMaterial({ map, roughness: 0.42, clearcoat: 0.35, clearcoatRoughness: 0.35, sheen: 0.2, sheenRoughness: 0.6 })
       : new MeshStandardMaterial({ map, roughness: 0.5 });
-  const frontMat = useMemo(() => withSaturation(face ? mk(face) : mk(back)), [face, back, quality]); // eslint-disable-line react-hooks/exhaustive-deps
-  const backMat = useMemo(() => mk(back), [back, quality]); // eslint-disable-line react-hooks/exhaustive-deps
+  const frontMat = useMemo(() => {
+    const m = withSaturation(face ? mk(face) : mk(back));
+    // Face and cap are both opaque, so they share one list. renderOrder can sort them,
+    // but a 16-bit depth test still drops the face when the two planes quantize together.
+    applyFaceDepthBias(m);
+    return m;
+  }, [face, back, quality]); // eslint-disable-line react-hooks/exhaustive-deps
+  const backMat = useMemo(() => {
+    const m = mk(back);
+    applyFaceDepthBias(m);
+    return m;
+  }, [back, quality]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Your turn: cards you can't play sit at 55% brightness (still readable); playable cards stay at full colour.
   // Their shared gold outline is PlayableGlow, not a per-card edge. This backing is a tip mark.
@@ -99,9 +109,9 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   const edge = useMemo(() => edgeMat.clone(), []);
   // The root group keeps `order` for taps. Child groups reset Three.js groupOrder, so each mesh
   // carries its own: body at `order`, face and back half a step later, tip glow just behind.
-  // Depth testing stays on. The face plane is 0.0002 in front of the extruded cap, so the cap
-  // cannot paint a blank cream slab over the pips. Neighbours lose because a playable card is
-  // nudged toward the camera (LEGAL_NEAR), not because the depth test was turned off.
+  // Depth testing stays on. The face is FACE_CAP_GAP ahead of the cap and biased in window
+  // depth, so a 16-bit buffer cannot paint the cream cap over the pips. Neighbours lose
+  // because a playable card is nudged toward the camera (LEGAL_NEAR).
   useLayoutEffect(() => {
     const root = ref.current;
     if (!root) return;
