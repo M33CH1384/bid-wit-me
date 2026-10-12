@@ -94,13 +94,27 @@ export function handRenderOrder(index: number, above: boolean): number {
 }
 
 /**
- * Draw order inside one card. Legal cards turn depthTest off so they paint over a closer neighbour;
- * without this, the untextured edge is sorted after the face and the pips disappear under a blank slab.
+ * How far a playable card moves toward the camera, in the fan's depth units.
+ * The fan steps 0.006 per card, and iPhone Safari's 16-bit depth fights around 0.0003.
+ * 0.02 clears the three neighbours that actually overlap a card, and stays well clear of that fight.
+ * It does not change the picture: position and scale are both multiplied by depth.
  */
-export function cardPartOrder(part: 'edge' | 'back' | 'face'): number {
-  if (part === 'face') return 2;
-  if (part === 'back') return 1;
-  return 0;
+export const LEGAL_NEAR = 0.02;
+
+/**
+ * Paint state for one mesh of a card.
+ * A child group resets Three.js groupOrder, so the group's renderOrder never decides the draw.
+ * The body is an extruded cap 0.0002 behind the face. Depth testing stays on, and the face is
+ * half a step later than the body, so the cap cannot cover the pips.
+ */
+export function cardMeshPaint(order: number, part: 'edge' | 'back' | 'face' | 'glow'): { renderOrder: number; depthTest: true } {
+  const renderOrder = part === 'glow' ? order - 1 : part === 'edge' ? order : order + 0.5;
+  return { renderOrder, depthTest: true };
+}
+
+/** @deprecated use cardMeshPaint. Kept so older comparisons of face vs edge still read. */
+export function cardPartOrder(part: 'edge' | 'back' | 'face' | 'glow', order = 0): number {
+  return cardMeshPaint(order, part).renderOrder;
 }
 
 /**
@@ -111,7 +125,7 @@ export const GLOW_RENDER_ORDER = LEGAL_STACK + 40;
 
 interface PaintNode { renderOrder: number; parent?: PaintNode | null }
 
-/** Highest renderOrder on this object or an ancestor. Meshes keep 0; the card group carries the stack. */
+/** Highest renderOrder on this object or an ancestor. The card root carries the stack for taps. */
 export function paintOrder(obj: PaintNode | null | undefined): number {
   let best = 0;
   let o = obj;
@@ -124,9 +138,8 @@ export function paintOrder(obj: PaintNode | null | undefined): number {
 
 /**
  * Deliver pointer hits in paint order, then by distance.
- * Legal cards are drawn over the illegal cards beside them (higher renderOrder, depth test off),
- * but those neighbours are still closer in z. A distance sort would give the tap to the card you
- * cannot see and the illegal handler would swallow it. The card on screen gets the tap.
+ * Legal cards are drawn over the illegal cards beside them. A distance sort would give the tap
+ * to the closer illegal neighbour, and its handler would swallow it. The card on screen gets the tap.
  */
 export function hitsInPaintOrder<T extends { distance: number; eventObject?: PaintNode | null; object: PaintNode }>(hits: readonly T[]): T[] {
   return hits.slice().sort((a, b) => {
