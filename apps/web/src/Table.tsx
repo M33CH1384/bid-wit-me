@@ -256,6 +256,7 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
 function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only', extra, trash }: { msgs: ChatMsg[]; open: boolean; onToggle: () => void; onSend: (t: string) => void; unread: number; scope?: string; extra?: ReactNode; trash?: ReactNode }) {
   const listRef = useRef<HTMLDivElement>(null);
   const [text, setText] = useState('');
+  const [tray, setTray] = useState(false);
   useEffect(() => { listRef.current?.scrollTo({ top: 1e6, behavior: 'smooth' }); }, [msgs, open]);
   const last = msgs.filter((m) => !m.system).slice(-1)[0];
   const submit = (e: FormEvent) => {
@@ -266,11 +267,16 @@ function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only',
   };
   return (
     <>
-      <div className="ctl-cluster" role="group" aria-label="Table controls">
-        {extra}
-        {trash}
-        <button type="button" className={`chat-toggle ${open ? 'open' : ''}`} onClick={onToggle} aria-label="Toggle chat">
-          💬{!open && unread > 0 && <span className="unread">{unread}</span>}
+      <div className={`ctl-cluster ctl-tray ${tray ? 'expanded' : 'collapsed'}`} role="group" aria-label="Table controls" data-testid="ctl-tray">
+        {tray && <>
+          {extra}
+          {trash}
+          <button type="button" className={`chat-toggle ${open ? 'open' : ''}`} onClick={onToggle} aria-label="Toggle chat">
+            💬{!open && unread > 0 && <span className="unread">{unread}</span>}
+          </button>
+        </>}
+        <button type="button" className={`tray-toggle ${tray ? 'on' : ''}`} data-testid="tray-toggle" aria-expanded={tray} aria-label={tray ? 'Close controls' : 'Open controls: camera, mic, voice, chat'} onClick={() => setTray(!tray)}>
+          {tray ? '✕' : <>💬<small>⋯</small></>}{!tray && unread > 0 && <span className="unread" data-testid="tray-unread">{unread}</span>}
         </button>
       </div>
       {!open && last && <div key={last.id} className="chat-ticker"><b style={{ color: last.color }}>{last.user}</b> {last.text}</div>}
@@ -388,6 +394,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [selected, setSelected] = useState<Card | null>(null);
   const [exchangePick, setExchangePick] = useState<Card[]>([]);
   const [showPad, setShowPad] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [ltOpen, setLtOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(() => window.innerWidth >= 900 && window.innerHeight > 600);
   const [seenMsgs, setSeenMsgs] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -668,9 +676,6 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const bcOpen = false; void tipCount;
   const bcCounted = useRef<string | null>(null);
   useEffect(() => { if (coachBid && coachOn && bcCounted.current !== bcKey) { bcCounted.current = bcKey; bumpTip('bidcoach'); } }, [coachBid, coachOn, bcKey]);
-  const helpButton = (
-    <button type="button" className={`bug-btn help-btn ${help ? 'on' : ''}`} data-testid="help" aria-label="Help: tips and book counting" aria-pressed={help} onClick={() => setHelp(!help)}>?</button>
-  );
 
   // persist after every action (and chat line); a finished game clears the save
   useEffect(() => {
@@ -844,7 +849,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   }, [measureHand, vp.short]);
 
   return (
-    <div ref={screenRef} className={`table-screen q-${settings.quality}${vp.short ? ' short' : ''}${modalOpen ? ' modal-open' : ''}`}>
+    <div ref={screenRef} className={`table-screen q-${settings.quality}${vp.short ? ' short' : ''}${modalOpen ? ' modal-open' : ''}${showPad ? ' pad-open' : ''}`}>
       {/* styled stand-in table, on screen from the first paint until the 3D table has rendered (then it fades) */}
       <div className={`table-placeholder ${tableReady ? 'gone' : ''}`} data-testid="table-placeholder" data-venue={venue} style={placeholderStyle(venue)} aria-hidden>
         <div className="tp-floor" />
@@ -870,7 +875,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           piles={display.piles}
           legal={runFx ? [] : humanExchanging && hand ? hand : legal}
           selected={runFx ? null : selected}
-          turnSeat={runFx || pause || st.phase === 'handOver' || st.phase === 'gameOver' ? null : st.turn}
+          turnSeat={runFx || pause || st.phase === 'handOver' || st.phase === 'gameOver' || st.turn !== HUMAN ? null : st.turn}
           winnerSeat={winnerSeat}
           promoted={promoted}
           onCardTap={onCard}
@@ -887,8 +892,21 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
       {/* scorebug */}
       <header className="scorebug">
-        <button type="button" className="bug-btn" onClick={() => (online || st.phase === 'gameOver' ? leave() : setConfirmLeave(true))} aria-label="Menu" data-testid="menu">☰</button>
-        <SocialButton className="compact in-bug" label={false} />
+        <div className="menu-wrap">
+          <button type="button" className={`bug-btn ${menuOpen ? 'on' : ''}`} onClick={() => setMenuOpen(!menuOpen)} aria-label="Menu" aria-expanded={menuOpen} data-testid="menu">☰</button>
+          {menuOpen && (
+            <>
+              <div className="menu-scrim" onClick={() => setMenuOpen(false)} />
+              <div className="game-menu glass" role="menu" data-testid="game-menu">
+                <button type="button" role="menuitem" className={help ? 'on' : ''} data-testid="help" aria-pressed={help} onClick={() => { setHelp(!help); setMenuOpen(false); }}>❓ Help: tips &amp; book counting</button>
+                <button type="button" role="menuitem" data-testid="scorepad-button" onClick={() => { setShowPad(true); setMenuOpen(false); }}>📋 Score pad &amp; house rules</button>
+                <button type="button" role="menuitem" onClick={() => onQuality(settings.quality === 'high' ? 'low' : 'high')}>🎨 Graphics: {settings.quality === 'high' ? 'High' : 'Low'}</button>
+                <div className="menu-social"><SocialButton className="compact" /></div>
+                <button type="button" role="menuitem" className="danger" data-testid="menu-leave" onClick={() => { setMenuOpen(false); if (online || st.phase === 'gameOver') leave(); else setConfirmLeave(true); }}>🚪 Leave table</button>
+              </div>
+            </>
+          )}
+        </div>
         <div className="bug glass">
           <img className="bug-logo" src="/assets/bwm-wordmark-white.svg" alt="Bid Wit Me" />
           <span className="beta-tag in-bug" aria-label="Beta">BETA</span>
@@ -911,9 +929,6 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             <span className="bug-hand" data-testid="bug-hand">HAND {st.handNo}{isBooks ? <span className="bug-books"> · BOOKS BID THEMSELVES</span> : ''} · TO {r.targetScore}</span>
           </div>
         </div>
-        {helpButton}
-        <button type="button" className="bug-btn" onClick={() => setShowPad(true)} aria-label="Score pad and house rules" data-testid="scorepad-button">📋</button>
-        <button type="button" className="bug-btn q" onClick={() => onQuality(settings.quality === 'high' ? 'low' : 'high')} aria-label="Toggle graphics quality">{settings.quality === 'high' ? 'HQ' : 'LQ'}</button>
         {/* the always-visible sound dock (main.tsx) sits on this slot */}
         <span className="bug-btn dock-slot" aria-hidden />
       </header>
@@ -927,9 +942,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         const t = piles[piles.length - 1]!;
         const short = (c: Card) => (c === 'BJ' ? 'BJ' : c === 'LJ' ? 'LJ' : cardLabel(c));
         return (
-          <div className="last-trick glass slant" data-testid="last-trick" aria-label="Last trick">
-            <span className="lt-label">LAST TRICK</span>
-            {t.plays.map((pl) => (
+          <div className={`last-trick glass slant ${ltOpen ? 'open' : 'chip'}`} data-testid="last-trick" aria-label="Last trick" role="button" tabIndex={0} aria-expanded={ltOpen} onClick={() => setLtOpen(!ltOpen)}>
+            <span className="lt-label">LAST TRICK{!ltOpen && t.winner !== null && <> · {t.winner === HUMAN ? 'You' : names[t.winner]!.slice(0, 8)}</>}</span>
+            {ltOpen && t.plays.map((pl) => (
               <span key={pl.card} className={`lt-card ${pl.seat === t.winner ? 'win' : ''} ${pl.card[1] === 'H' || pl.card[1] === 'D' || pl.card === 'BJ' ? 'red' : ''}`}>
                 <small>{pl.seat === HUMAN ? 'You' : names[pl.seat]!.slice(0, 3)}</small>{short(pl.card)}
               </span>
@@ -1174,7 +1189,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
       {coachOn && !modalOpen && st.phase === 'playing' && !pause && <LedSuitChip st={st} />}
       <Hype reduced={reduceFx} low={settings.quality === 'low'} />
-      {showPad && <ScorePad st={st} names={names} onClose={() => setShowPad(false)} locked={online ? undefined : <LockedRulesPanel rules={r} nuke={fx.tableNuke ?? fx.prefs.nuke} skill={settings.botLevel} intensity={settings.talkIntensity} />} />}
+      {showPad && <ScorePad st={st} names={names} onClose={() => setShowPad(false)} onContinue={st.phase === 'handOver' && talkOpen && !online?.talk?.ready?.mine ? () => { setShowPad(false); apply({ type: 'nextHand' }); } : undefined} locked={online ? undefined : <LockedRulesPanel rules={r} nuke={fx.tableNuke ?? fx.prefs.nuke} skill={settings.botLevel} intensity={settings.talkIntensity} />} />}
     </div>
   );
 }
