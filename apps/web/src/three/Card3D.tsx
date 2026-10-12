@@ -6,6 +6,7 @@ import { CT } from './layout';
 import type { Xform } from './layout';
 import { type Sfx, sound } from '../audio';
 import { fireCue, fx } from '../fx';
+import { restingFlightWait } from '../trickTiming';
 
 interface Props {
   face: Texture | null; // null = we only ever see the back
@@ -217,9 +218,14 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
         const land = s.land;
         if (land && land !== s.firedLand && s.sp.distanceTo(s.tp) > 0.02) { s.firedLand = land; land.split(',').forEach((c, i) => fireCue(c, i ? 0.02 : 0)); }
       }
+      const wasResting = !s.key || s.t >= 1;
       s.key = key;
       s.land = sfx.current.sfxLand; // this tween's landing cue
       s.t = 0;
+      // last-trick auto-play retargets a card that is already on screen (your last card keeps its hand key).
+      // The stagger is a prop; apply it when the card leaves a resting pose, or it never waits.
+      const hold = restingFlightWait(delay, wasResting);
+      if (hold !== null) s.wait = hold;
       s.sp.copy(g.position); s.sq.copy(g.quaternion); s.ss = g.scale.x;
       s.tp.set(...target.p); s.tq.set(...target.q); s.ts = target.s;
       s.started = false;
