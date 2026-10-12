@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type Card, bidOrder, makeRules } from '@spades/rules';
+import { type Card, bidOrder, checkGameEnd, makeRules, scoreHand } from '@spades/rules';
 import { chooseBotAction } from '@spades/bots';
 import type { GameAction } from '@spades/protocol';
 import { HAND_END_HOLD_MS } from '@spades/protocol';
@@ -89,6 +89,48 @@ describe('lobby', () => {
     expect(env.last('a', 'state')!.room.seats[1]).toMatchObject({ kind: 'bot' });
     env.send('a', { t: 'removeBot', seat: 1 });
     expect(env.last('a', 'state')!.room.seats[1]).toEqual({ kind: 'empty' });
+  });
+
+  it('rejects a string nil value so a made nil stays a number and can end the game', () => {
+    const env = new FakeEnv();
+    env.join('a', 'Host');
+    env.send('a', { t: 'config', rules: { ...makeRules('joker'), nil: { allowed: true, value: '100' } } as never });
+    expect(env.errors('a').at(-1)!.code).toBe('BAD_RULES');
+    expect(env.errors('a').at(-1)!.message).toMatch(/nil\.value/);
+    const rules = env.room.data.rules;
+    expect(rules.nil.value).toBe(100);
+    // seat 0 nil (+100) and partner bid 4 made (+40) from 400 → 540, over the 500 target.
+    // a string "100" concatenates instead (400 + "…100…") and the end check never sees a numeric leader
+    const hand = scoreHand(rules, ['nil', 4, 4, 4], [0, 5, 4, 4], [400, 0], [0, 0]);
+    expect(hand[0]!.totalScore).toBe(540);
+    expect(typeof hand[0]!.totalScore).toBe('number');
+    expect(checkGameEnd(rules, hand.map((s) => s.totalScore))?.endReason).toBe('target');
+  });
+
+  it('a missing nil does not freeze the table, and one bad bid cannot wedge the room', () => {
+    const env = new FakeEnv();
+    env.join('a', 'Host');
+    env.send('a', { t: 'sit', seat: 0 });
+    const hole = { ...makeRules('joker', { firstHandBidsItself: false }) } as { nil?: unknown };
+    delete hole.nil;
+    expect(() => env.send('a', { t: 'config', rules: hole as never })).not.toThrow();
+    expect(env.room.data.rules.nil).toEqual({ allowed: true, value: 100 });
+    expect(env.room.data.rules.firstHandBidsItself).toBe(false);
+    env.send('a', { t: 'start' });
+    expect(env.room.data.phase).toBe('playing');
+    expect(env.room.data.game!.phase).toBe('bidding');
+    env.room.data.game!.turn = 0;
+    env.send('a', { t: 'act', action: { type: 'bid', bid: 3 }, seq: env.room.data.seq });
+    expect(env.room.data.game!.bids[0]).toBe(3);
+    // rules already in a live game (an older table, or a bug) must not take the handler down
+    delete (env.room.data.game!.rules as { nil?: unknown }).nil;
+    env.room.data.game!.turn = 0;
+    expect(() => env.room.message('a', JSON.stringify({ t: 'act', seq: env.room.data.seq, id: 'b1', action: { type: 'bid', bid: 4 } }))).not.toThrow();
+    expect(env.msgs('a').some((m) => m.t === 'ack' && m.id === 'b1' && m.ok === false)).toBe(true);
+    expect(env.room.data.game!.bids[0]).toBe(3);
+    expect(() => env.send('a', { t: 'chat', text: 'still here' })).not.toThrow();
+    expect(env.msgs('a').some((m) => m.t === 'chat' && m.line.text === 'still here')).toBe(true);
+    expect(() => env.room.tick()).not.toThrow();
   });
 
   it('validates house rules; cutthroat-3 vacates seat 4; cutthroat deck choice sticks', () => {
@@ -850,7 +892,7 @@ describe("'Run it!' any time (Release 10)", () => {
   it('a bot claims as soon as it is guaranteed, even when it is a human\'s turn', () => {
     const env = start(1); // seat 0 human, seats 1..3 bots
     late(env, [['3H', '4H'], ['5C', '6C'], ['BJ', 'LJ'], ['3D', '7D']], 0);
-    // the rewrite skips the normal after(); the next drive (a tick) must notice, whatever timer the deal left pending
+    // the rewrite skips after() and does not reschedule; a human already on the clock may have no wake within 50ms
     env.room.tick();
     const g = env.room.data.game!;
     expect(g.tricks.slice(11).map((t) => t.winner)).toEqual([2, 2]);

@@ -7,7 +7,7 @@ import { type InviteMsg, type PresenceEntry, type PresenceStatus, SOCIAL_LIMITS,
 import { useAccount } from '../account/api';
 import { BADGES } from '../badges';
 import { createTable } from '../online/connection';
-import { serverUrl } from '../online/config';
+import { inviteLink, serverUrl } from '../online/config';
 import { navigate } from '../online/nav';
 import { loadSettings } from '../settings';
 import { type MyTable, type SocialTab, badgeCount, globalUnread, social, useSocial } from './store';
@@ -97,7 +97,12 @@ function InviteToast({ inv }: { inv: InviteMsg }) {
 
 /* ------------------------------------------------------------------ panel */
 
-const TABS: [SocialTab, string][] = [['players', 'Players'], ['chat', 'Chat'], ['messages', 'Messages'], ['friends', 'Friends'], ['leaders', 'Ranks'], ['tournaments', 'Events'], ['settings', 'Settings']];
+const TABS: [SocialTab, string][] = [['players', 'Players'], ['chat', 'Chat'], ['friends', 'Friends'], ['leaders', 'Ranks']];
+/** share a link: native share sheet when there is one, else copy */
+async function shareLink(url: string, text: string) {
+  if (navigator.share) { try { await navigator.share({ title: 'Bid Wit Me', text, url }); return; } catch { return; } }
+  try { await navigator.clipboard.writeText(url); social.toast('Link copied', 'info'); } catch { social.toast(url, 'info'); }
+}
 
 function SocialPanel() {
   const s = useSocial();
@@ -109,22 +114,49 @@ function SocialPanel() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
   const unreadDm = Object.values(s.unread).reduce((a, b) => a + b, 0);
-  const counts: Partial<Record<SocialTab, number>> = { messages: unreadDm, friends: s.friends?.incoming.length ?? 0, chat: globalUnread(s) };
+  const counts: Partial<Record<SocialTab, number>> = { chat: globalUnread(s) + unreadDm, friends: s.friends?.incoming.length ?? 0 };
+  const [gear, setGear] = useState(false);
+  const [drag, setDrag] = useState(0);
+  const start = useRef<number | null>(null);
+  const tabOn = (k: SocialTab) => !s.profile && (s.tab === k || (k === 'chat' && s.tab === 'messages'));
+  const grab = {
+    onPointerDown: (e: React.PointerEvent) => { if ((e.target as HTMLElement).closest('button')) return; start.current = e.clientY; (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId); },
+    onPointerMove: (e: React.PointerEvent) => { if (start.current !== null) setDrag(Math.max(0, e.clientY - start.current)); },
+    onPointerUp: () => { if (start.current !== null && drag > 90) social.close(); start.current = null; setDrag(0); },
+    onPointerCancel: () => { start.current = null; setDrag(0); },
+  };
   return (
-    <div className="modal-backdrop soc-backdrop" onClick={() => social.close()}>
-      <aside className="soc-panel" role="dialog" aria-label="Social" data-testid="social-panel" onClick={(e) => e.stopPropagation()}>
-        <header className="soc-head">
+    <div className="modal-backdrop soc-backdrop" onClick={() => social.close()} data-testid="social-backdrop">
+      <aside className="soc-panel" role="dialog" aria-label="Social" data-testid="social-panel" onClick={(e) => e.stopPropagation()}
+        style={drag ? { transform: `translateY(${drag}px)`, transition: 'none' } : undefined}>
+        <div className="soc-grab" {...grab}><span className="soc-handle" aria-hidden /></div>
+        <header className="soc-head" {...grab}>
           <span className="panel-title">SOCIAL</span>
           <span className={`soc-conn ${s.status}`} title={s.status}>{s.status === 'open' ? `${Object.keys(s.users).length} online` : s.status === 'off' ? '' : 'connecting…'}</span>
+          <span className="soc-gear-wrap">
+            <button type="button" className={`icon-btn ${s.tab === 'tournaments' || s.tab === 'settings' ? 'on' : ''}`} aria-label="Events and settings" aria-expanded={gear} data-testid="social-gear" onClick={() => setGear(!gear)}>⚙</button>
+            {gear && (
+              <span className="soc-gear-menu" role="menu">
+                <button type="button" role="menuitem" data-testid="soc-tab-tournaments" onClick={() => { social.tab('tournaments'); setGear(false); }}>🏆 Events &amp; tournaments</button>
+                <button type="button" role="menuitem" data-testid="soc-tab-settings" onClick={() => { social.tab('settings'); setGear(false); }}>⚙ Social settings</button>
+              </span>
+            )}
+          </span>
           <button type="button" className="icon-btn" aria-label="Close" data-testid="social-close" onClick={() => social.close()}>✕</button>
         </header>
         <nav className="soc-tabs" role="tablist">
           {TABS.map(([k, label]) => (
-            <button key={k} type="button" role="tab" aria-selected={s.tab === k && !s.profile} className={s.tab === k && !s.profile ? 'on' : ''} data-testid={`soc-tab-${k}`} onClick={() => social.tab(k)}>
+            <button key={k} type="button" role="tab" aria-selected={tabOn(k)} className={tabOn(k) ? 'on' : ''} data-testid={`soc-tab-${k}`} onClick={() => social.tab(k)}>
               {label}{!!counts[k] && <i className="soc-count">{counts[k]}</i>}
             </button>
           ))}
         </nav>
+        {(s.tab === 'chat' || s.tab === 'messages') && !s.profile && (
+          <div className="soc-seg" role="tablist" aria-label="Chat">
+            <button type="button" role="tab" aria-selected={s.tab === 'chat'} className={s.tab === 'chat' ? 'on' : ''} data-testid="chat-seg-global" onClick={() => social.tab('chat')}>🌍 Global{globalUnread(s) > 0 && <i className="soc-count">{globalUnread(s)}</i>}</button>
+            <button type="button" role="tab" aria-selected={s.tab === 'messages'} className={s.tab === 'messages' ? 'on' : ''} data-testid="soc-tab-messages" onClick={() => social.tab('messages')}>✉ Messages{unreadDm > 0 && <i className="soc-count">{unreadDm}</i>}</button>
+          </div>
+        )}
         <div className="soc-body">
           {s.profile ? <Profile name={s.profile} /> :
             s.tab === 'players' ? <Players signedIn={signedIn} /> :
@@ -136,6 +168,22 @@ function SocialPanel() {
             <SettingsTab signedIn={signedIn} />}
         </div>
       </aside>
+    </div>
+  );
+}
+
+function AloneEmpty() {
+  const s = useSocial();
+  const shareCode = async () => {
+    if (s.myTable) await shareLink(inviteLink(s.myTable.code), `Pull up to my Spades table on Bid Wit Me 🃏 Code ${s.myTable.code}`);
+  };
+  return (
+    <div className="soc-alone" data-testid="soc-alone">
+      <span className="soc-alone-ic" aria-hidden>🃏</span>
+      <p><b>It's just you right now.</b><br />Bring your people to the table.</p>
+      {s.myTable
+        ? <button type="button" className="primary" data-testid="alone-share-code" onClick={() => void shareCode()}>Share table code {s.myTable.code}</button>
+        : <button type="button" className="primary" data-testid="alone-invite" onClick={() => void shareLink(location.origin, 'Come play Spades with me on Bid Wit Me 🃏')}>Invite friends</button>}
     </div>
   );
 }
@@ -173,8 +221,9 @@ function Players({ signedIn }: { signedIn: boolean }) {
       {s.myTable && <p className="soc-mytable">Your table <b>{s.myTable.code}</b> · {s.myTable.open} seat{s.myTable.open === 1 ? '' : 's'} open</p>}
       <ul className="soc-list" data-testid="players-list">
         {list.map((u) => <PlayerRow key={u.id} u={u} me={u.id === s.you?.id} friend={friendIds.has(u.id)} pending={outgoing.has(u.id)} signedIn={signedIn} myTable={s.myTable} />)}
-        {!list.length && <li className="soc-empty">{q ? 'Nobody by that name is online.' : 'Nobody else is online right now.'}</li>}
+        {!list.length && q && <li className="soc-empty">Nobody by that name is online.</li>}
       </ul>
+      {!q && s.status === 'open' && list.filter((u) => u.id !== s.you?.id).length === 0 && <AloneEmpty />}
     </div>
   );
 }
