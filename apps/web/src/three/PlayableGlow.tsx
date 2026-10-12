@@ -2,7 +2,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import { BufferAttribute, BufferGeometry, CanvasTexture, ClampToEdgeWrapping, DoubleSide, LinearFilter, Matrix4, MeshBasicMaterial, NormalBlending, Quaternion, ShaderMaterial, SRGBColorSpace, Vector3, type Mesh, type Object3D } from 'three';
 import {
-  BREATHE_SCALE, GROUP_PAD_PX, GROUP_RADIUS_PX, LIFT_S, OUTLINE_COLOR, SELECT_GLOW_OP, SHINE_PEAK, SHINE_S, SHINE_WIDTH,
+  BREATHE_SCALE, GLOW_RENDER_ORDER, GROUP_PAD_PX, GROUP_RADIUS_PX, LIFT_S, OUTLINE_COLOR, SELECT_GLOW_OP, SHINE_PEAK, SHINE_S, SHINE_WIDTH,
   breatheOpacity, easeOut, glowFalloff, glowRadiusPx, liftEase, outlineRadiusPx, shineAxis,
 } from './handLift';
 import { contoursToTriangles, groupOutline, haloLocal, strokeContour, strokeOutward, unionContours, type Pt } from './playableOutline';
@@ -347,9 +347,10 @@ export default function PlayableGlow({ runs, handNames, quality }: Props) {
 
   return (
     <>
-      <mesh ref={bloomRef} geometry={bloomGeo} material={bloomMat} renderOrder={1} frustumCulled={false} visible={false} />
-      <mesh ref={shineRef} geometry={shineGeo} material={shineMat} renderOrder={3} frustumCulled={false} visible={false} />
-      <mesh ref={crispRef} geometry={crispGeo} material={crispMat} renderOrder={4} frustumCulled={false} visible={false} />
+      {/* The ribbon and the shine sit in front of the faces. They must not take the tap. */}
+      <mesh ref={bloomRef} geometry={bloomGeo} material={bloomMat} renderOrder={GLOW_RENDER_ORDER} frustumCulled={false} visible={false} raycast={() => null} />
+      <mesh ref={shineRef} geometry={shineGeo} material={shineMat} renderOrder={GLOW_RENDER_ORDER + 1} frustumCulled={false} visible={false} raycast={() => null} />
+      <mesh ref={crispRef} geometry={crispGeo} material={crispMat} renderOrder={GLOW_RENDER_ORDER + 2} frustumCulled={false} visible={false} raycast={() => null} />
     </>
   );
 }

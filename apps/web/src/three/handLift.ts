@@ -94,6 +94,48 @@ export function handRenderOrder(index: number, above: boolean): number {
 }
 
 /**
+ * Draw order inside one card. Legal cards turn depthTest off so they paint over a closer neighbour;
+ * without this, the untextured edge is sorted after the face and the pips disappear under a blank slab.
+ */
+export function cardPartOrder(part: 'edge' | 'back' | 'face'): number {
+  if (part === 'face') return 2;
+  if (part === 'back') return 1;
+  return 0;
+}
+
+/**
+ * The group outline draws after every hand card. A 13-card fan tops out at LEGAL_STACK + 12.
+ * The stroke stays above the neighbour that overlaps the run.
+ */
+export const GLOW_RENDER_ORDER = LEGAL_STACK + 40;
+
+interface PaintNode { renderOrder: number; parent?: PaintNode | null }
+
+/** Highest renderOrder on this object or an ancestor. Meshes keep 0; the card group carries the stack. */
+export function paintOrder(obj: PaintNode | null | undefined): number {
+  let best = 0;
+  let o = obj;
+  while (o) {
+    if (o.renderOrder > best) best = o.renderOrder;
+    o = o.parent;
+  }
+  return best;
+}
+
+/**
+ * Deliver pointer hits in paint order, then by distance.
+ * Legal cards are drawn over the illegal cards beside them (higher renderOrder, depth test off),
+ * but those neighbours are still closer in z. A distance sort would give the tap to the card you
+ * cannot see and the illegal handler would swallow it. The card on screen gets the tap.
+ */
+export function hitsInPaintOrder<T extends { distance: number; eventObject?: PaintNode | null; object: PaintNode }>(hits: readonly T[]): T[] {
+  return hits.slice().sort((a, b) => {
+    const d = paintOrder(b.eventObject ?? b.object) - paintOrder(a.eventObject ?? a.object);
+    return d !== 0 ? d : a.distance - b.distance;
+  });
+}
+
+/**
  * Horizontal shift, in CSS pixels, that opens `GROUP_GAP_PX` at every edge of a legal run.
  * The shifts are centered so the fan does not drift. Off turn, or when the whole hand is playable, every shift is 0.
  */

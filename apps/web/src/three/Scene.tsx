@@ -2,14 +2,14 @@ import { RUN_SLAM_MS } from '../runIt';
 import { Nuke3D, NukeGlRecovery, NukeGuard } from './Nuke3D';
 import { Tornado3D } from './Tornado3D';
 import { Environment, Html, Preload, useEnvironment, useTexture } from '@react-three/drei';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Canvas, events as r3fEvents, useFrame, useThree } from '@react-three/fiber';
 import { type ReactNode, type RefObject, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { type Camera, type Group, type Mesh, type MeshBasicMaterial, type Object3D, type Texture, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, Matrix4, Quaternion, MeshPhysicalMaterial, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, Vector2, Vector3 } from 'three';
 import { type Card, type Play, type Trick } from '@spades/rules';
 import Card3D from './Card3D';
 import PlayableGlow, { type GlowAnchor } from './PlayableGlow';
 import { departureSlot, handCardKey, handReactKey } from '../handOrder';
-import { GAP_S, LIFT_S, canTapCard, fanGapPx, fanMotion, handRenderOrder, playablePose, raiseLocalY } from './handLift';
+import { GAP_S, LIFT_S, canTapCard, fanGapPx, fanMotion, handRenderOrder, hitsInPaintOrder, playablePose, raiseLocalY } from './handLift';
 import { contiguousRuns } from './playableOutline';
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline } from './dealTimeline';
@@ -768,6 +768,7 @@ export default function Scene(props: SceneProps) {
       camera={{ fov: 50, near: 0.05, far: 60, position: [0, 4, 3.5] }}
       onCreated={({ size }) => setAspect(size.width / size.height)}
       onPointerMissed={() => undefined}
+      events={(store) => ({ ...r3fEvents(store), filter: (hits) => hitsInPaintOrder(hits) })}
       resize={{ debounce: 50 }}
     >
       <AspectWatcher onAspect={setAspect} />
