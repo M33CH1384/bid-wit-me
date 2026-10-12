@@ -6,6 +6,7 @@ import { sound } from '../audio';
 import { fx } from '../fx';
 import { HAPTIC, haptic } from '../haptics';
 import { BEAT_MARKS, type JokerKind, JOKER_PALETTE, cycleMs, getBurst, heartbeat, jitterPx, ripplePose } from '../jokerFx';
+import { pulseVideoLive } from '../PulsePlate';
 
 /**
  * Radioactive joker, drawn behind and around the card. The children (the card meshes) sit in the
@@ -175,8 +176,25 @@ export default function JokerAura({ kind, cardsAfter, reduceMotion, children }: 
     const cycle = cycleMs(cardsAfter);
     const phase = ((now - phase0.current) % cycle) / cycle;
     const pose = heartbeat(phase, kind);
-    const w = window as unknown as { __bwmBeat?: { kind: string; cardsAfter: number; cycle: number; scale: number; glow: number } };
+    const w = window as unknown as { __bwmBeat?: { kind: string; cardsAfter: number; cycle: number; scale: number; glow: number }; __bwmJokerBox?: { x: number; y: number; cardW: number; cardsAfter: number; flicker: boolean; kind: string; at: number } };
     w.__bwmBeat = { kind, cardsAfter, cycle, scale: pose.scale, glow: pose.glow };
+    if (kind === 'BJ') {
+      const sx = (a.x * 0.5 + 0.5) * size.width;
+      const sy = (-a.y * 0.5 + 0.5) * size.height;
+      const cardW = (px / 0.02) * CW;
+      const into = cycle - ((now - phase0.current) % cycle);
+      w.__bwmJokerBox = { x: sx, y: sy, cardW, cardsAfter, flicker: cardsAfter >= 2 && into < 400, kind, at: now };
+    }
+    if (kind === 'BJ' && pulseVideoLive() && !calm) {
+      g.scale.setScalar(1);
+      g.position.set(0, 0, 0);
+      rimMat.uniforms.uGlow!.value = 0;
+      haloMat.uniforms.uAlpha!.value = 0;
+      if (ripA.current) ripA.current.visible = false;
+      if (ripB.current) ripB.current.visible = false;
+      particles.mat.uniforms.uAlpha!.value = 0;
+      return;
+    }
     const j = jitterPx(now, cardsAfter, false);
     // During this joker's detonation the pop owns the scale (Card3D). Don't overwrite it.
     if (getBurst()?.kind !== kind) {

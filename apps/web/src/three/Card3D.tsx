@@ -8,7 +8,8 @@ import { CT } from './layout';
 import type { Xform } from './layout';
 import { type Sfx, sound } from '../audio';
 import { fireCue, fx } from '../fx';
-import type { JokerKind } from '../jokerFx';
+import { getBurst, type JokerKind } from '../jokerFx';
+import { SWEEP_MS, canvasOwnsBlast, cardBlow, jokerCrush, jokerPop } from '../nukeBlast';
 import { restingFlightWait } from '../trickTiming';
 
 interface Props {
@@ -74,12 +75,14 @@ function withSaturation<M extends MeshStandardMaterial>(m: M): M & { userData: {
   return m as M & { userData: { sat: { value: number } } };
 }
 
-function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, raise = 0, order = 0, cover = false, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand, blast = 'table', jokerAura, reduceMotion }: Props) {
+function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, raise = 0, order = 0, cover = false, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand, blast = 'table', jokerAura, inTrick, played, reduceMotion }: Props) {
   const ref = useRef<Group>(null);
   const lift = useRef<Group>(null);
   const inner = useRef<Group>(null);
   const bl = useRef({ dir: new Vector3(), q: new Quaternion(), axis: new Vector3(), on: false });
   const invalidate = useThree((s) => s.invalidate);
+  const camera = useThree((s) => s.camera);
+  const view = useThree((s) => s.size);
   const geo = cardGeometry();
   const mk = (map: Texture) =>
     quality === 'high'
@@ -115,6 +118,10 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     invalidate();
   }, [order, cover, face, jokerAura, glow, frontMat, backMat, invalidate]);
   const look = useRef({ target: new Color(1, 1, 1), glow: 0, sat: 1 });
+  const burstFx = useRef({ on: false });
+  const burstScratch = useRef(new Vector3());
+  const projA = useRef(new Vector3());
+  const projB = useRef(new Vector3());
   useLayoutEffect(() => {
     look.current.target.copy(dim ? DIM : FULL);
     look.current.glow = glow ? (quality === 'high' ? 1 : 0.9) : 0;
@@ -227,6 +234,68 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     return true;
   };
 
+  /** Canvas blast: crush the Little Joker, blow the other cards, pop the Big Joker. */
+  const applyCanvasBurst = (g: Group) => {
+    if (!canvasOwnsBlast()) return;
+    const live = getBurst();
+    const B = inTrick && live?.kind === 'BJ' ? live : null;
+    const st = burstFx.current;
+    const setOp = (op: number) => {
+      const fading = op < 0.999;
+      for (const m of [frontMat, backMat]) {
+        if (m.transparent !== fading) { m.transparent = fading; m.needsUpdate = true; }
+        m.opacity = op;
+      }
+    };
+    const popNode = () => (inner.current?.getObjectByName('joker-beat') as Group | undefined) ?? inner.current;
+    const restore = () => {
+      setOp(1);
+      st.on = false;
+      const node = popNode();
+      if (node) node.scale.setScalar(1);
+      if (tw.current.t >= 1) g.position.copy(tw.current.tp);
+      invalidate();
+    };
+    if (!B || B.reduced) {
+      if (st.on && live && !live.reduced && live.kind === 'BJ') return;
+      if (st.on) restore();
+      return;
+    }
+    invalidate();
+    st.on = true;
+    const t = fx.warp !== null ? fx.warp * 1000 : B.elapsed;
+    if (played === 'BJ') {
+      setOp(1);
+      const node = popNode();
+      if (node) node.scale.setScalar(jokerPop(t));
+      return;
+    }
+    if (played === 'LJ') {
+      const c = jokerCrush(t);
+      setOp(c.opacity);
+      const node = inner.current;
+      if (node) node.scale.setScalar(Math.max(0.08, c.scale));
+      if (tw.current.t < 1) return;
+      const origin = tw.current.tp;
+      g.position.set(origin.x * (1 - c.pull), origin.y, origin.z * (1 - c.pull));
+      return;
+    }
+    const push = cardBlow(t);
+    setOp(push.opacity);
+    if (tw.current.t < 1) return;
+    const dir = burstScratch.current.set(tw.current.tp.x, 0, tw.current.tp.z);
+    if (dir.lengthSq() < 1e-6) dir.set(0, 0, 1);
+    dir.normalize();
+    const origin = tw.current.tp;
+    const a = projA.current.copy(origin).project(camera);
+    const b = projB.current.copy(origin).addScaledVector(dir, 0.05).project(camera);
+    const px = Math.max(0.5, Math.hypot((b.x - a.x) * view.width / 2, (b.y - a.y) * view.height / 2));
+    let world = (push.px * 0.05) / px;
+    const floor = push.px * 0.0035;
+    if (world < floor) world = floor;
+    g.position.set(origin.x + dir.x * world, origin.y, origin.z + dir.z * world);
+  };
+
   useFrame((_, dt) => {
     const g = ref.current;
     if (!g) return;
@@ -237,7 +306,24 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     const sat = frontMat.userData.sat;
     if (Math.abs(sat.value - L.sat) > 0.01) { sat.value += (L.sat - sat.value) * k; invalidate(); } else sat.value = L.sat;
     if (Math.abs(glowMat.opacity - L.glow) > 0.01) { glowMat.opacity += (L.glow - glowMat.opacity) * k; invalidate(); } else glowMat.opacity = L.glow;
-    if (!applyTornado(g)) applyBlast(g);
+    applyCanvasBurst(g);
+    if (!applyTornado(g)) {
+      if (canvasOwnsBlast() && getBurst()?.kind === 'BJ') {
+        const ig = inner.current;
+        if (ig && bl.current.on) { ig.position.set(0, 0, 0); ig.quaternion.identity(); bl.current.on = false; }
+      } else applyBlast(g);
+    }
+    const notePos = () => {
+      if (!name || (fx.warp === null && !getBurst())) return;
+      const bag = ((window as unknown as { __bwmCardPos?: Record<string, { x: number; z: number; op: number; pop: number | null }> }).__bwmCardPos ??= {});
+      const beat = inner.current?.getObjectByName('joker-beat') ?? inner.current;
+      bag[name] = {
+        x: Math.round(g.position.x * 1000) / 1000,
+        z: Math.round(g.position.z * 1000) / 1000,
+        op: Math.round(frontMat.opacity * 100) / 100,
+        pop: beat ? Math.round(beat.scale.x * 1000) / 1000 : null,
+      };
+    };
     const s = tw.current;
     if (!s.init) {
       const f = origin ?? from ?? target;
@@ -297,9 +383,12 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
         liftG.scale.set(1, 1, 1);
       }
     }
-    if (s.t >= 1) return;
+    if (s.t >= 1) { notePos(); return; }
     invalidate();
-    if (s.wait > 0) { s.wait -= dt; return; }
+    if (s.wait > 0) {
+      if (!(fx.warp !== null && !inTrick && getBurst())) { s.wait -= dt; return; }
+      s.wait = 0;
+    }
     const moving = s.sp.distanceTo(s.tp) > 0.02;
     if (!s.started) {
       // the card leaves now — animation-driven sound, so it always matches what you see (any game speed)
@@ -307,7 +396,11 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       const st = sfx.current.sfxStart;
       if (st && st !== s.firedStart) { s.firedStart = st; if (moving) sound.play(st); }
     }
-    s.t = Math.min(1, s.t + Math.min(dt, 0.05) / duration);
+    if (fx.warp !== null && !inTrick && getBurst()) {
+      s.t = Math.min(1, Math.max(0, (fx.warp * 1000 - SWEEP_MS) / Math.max(1, duration * 1000)));
+    } else {
+      s.t = Math.min(1, s.t + Math.min(dt, 0.05) / duration);
+    }
     if (s.t >= 1) {
       const land = s.land;
       if (land && land !== s.firedLand) { s.firedLand = land; if (moving) land.split(',').forEach((c, i) => fireCue(c, i ? 0.02 : 0)); }
@@ -319,6 +412,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     g.position.y += Math.sin(Math.PI * s.t) * hop * Math.min(1, dist);
     g.quaternion.slerpQuaternions(s.sq, s.tq, e);
     g.scale.setScalar(motion === 'slide' ? s.ts : s.ss + (s.ts - s.ss) * e);
+    notePos();
   });
 
   return (

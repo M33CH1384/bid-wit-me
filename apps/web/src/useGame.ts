@@ -1,6 +1,7 @@
 import { fx } from './fx';
 import { HAPTIC, haptic } from './haptics';
 import { startLittleBurst } from './JokerBurst';
+import { SWEEP_MS, canvasOwnsBlast } from './nukeBlast';
 import { offlineTalk } from './offlineTalk';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type Action, type GameState, type TableRules, applyAction, canRunIt, isNukeTrick, newGame, pendingTurn, secureSeed, viewFor } from '@spades/rules';
@@ -67,9 +68,22 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
       const winCard = trick.winner == null ? null : last.find((p) => p.seat === trick.winner)?.card;
       if (winCard === 'LJ') { littleBurstFor.current = st.tricks.length; startLittleBurst(); }
     }
+    if (nuke && canvasOwnsBlast()) {
+      // The canvas blast is about 1.8s. Cards fly to the pile at the end of it.
+      // No trick-win haptic: the detonation pattern already fired.
+      const t0 = performance.now();
+      let id = 0;
+      const tick = () => {
+        const elapsed = fx.warp !== null ? fx.warp * 1000 : performance.now() - t0;
+        if (elapsed >= SWEEP_MS) { setPause(false); return; }
+        id = requestAnimationFrame(tick);
+      };
+      id = requestAnimationFrame(tick);
+      return () => cancelAnimationFrame(id);
+    }
     const ending = st.phase === 'handOver' || st.phase === 'gameOver';
     // Hand end: this hold is the whole wait (700 ms after the card lands at normal speed).
-    // Run it! holds for that show. A nuke holds for the 3D blast (NUKE_ALLOWANCE_MS), same as the server.
+    // Run it! holds for that show. Without a canvas, a nuke holds for the 3D blast.
     // No trick-win haptic on a nuke: the detonation pattern already fired.
     const ms = finishedTrickHoldMs({
       speed: k,

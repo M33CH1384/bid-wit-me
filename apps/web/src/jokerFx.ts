@@ -113,21 +113,10 @@ export function ripplePose(ageMs: number, kind: JokerKind): { scale: number; opa
 }
 
 /**
- * How long the detonation clock stays up. The Big Joker matches Nuke3D's 3.6s blast so a stall
- * can still cancel haptics. The Little Joker win is haptic only, long enough for that pattern.
+ * How long the detonation clock stays up. The Big Joker matches the canvas blast.
+ * The Little Joker win is haptic only, long enough for that pattern.
  */
-export const BURST_MS: Record<JokerKind, number> = { BJ: 3600, LJ: 500 };
-
-/** Whole-screen shake, transform only. 8px → 0 over 350ms, about 6 oscillations. None under reduced motion. */
-export function shakeOffset(tMs: number, kind: JokerKind, reduced: boolean): { x: number; y: number } {
-  if (reduced || tMs < 0 || tMs >= 350) return { x: 0, y: 0 };
-  const amp0 = kind === 'BJ' ? 8 : 4;
-  const osc = kind === 'BJ' ? 6 : 4;
-  const u = tMs / 350;
-  const amp = amp0 * (1 - u);
-  const phase = u * osc * Math.PI * 2;
-  return { x: amp * Math.sin(phase), y: amp * 0.65 * Math.cos(phase) };
-}
+export const BURST_MS: Record<JokerKind, number> = { BJ: 1800, LJ: 500 };
 
 /** Final-cycle jitter: 1px, sampled at 30fps, only while two cards have already followed the joker. */
 export function jitterPx(nowMs: number, cardsAfter: number, reduced: boolean): { x: number; y: number } {
