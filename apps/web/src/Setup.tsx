@@ -9,6 +9,7 @@ import { type PendingMusic, SetupMusicPicker, savePendingMusic } from './online/
 import { isMusicLink } from '@spades/protocol';
 import { loadName, saveName } from './online/identity';
 import { navigate } from './online/nav';
+import { AccountEntry } from './account/AccountUI';
 
 /**
  * Start flow as a wizard: splash (logo + Play Online / Play vs Bots + Resume) → mode → essentials → go.
@@ -207,7 +208,7 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
             <button type="button" className="icon-btn back" aria-label="Back" data-testid="wiz-back" onClick={back}>←</button>
             <button type="button" className="icon-btn home" aria-label="Home" title="Home" data-testid="wiz-home" onClick={home}><img src="/assets/bwm-wordmark-white.svg" alt="" /></button>
           </span>
-        ) : <span />}
+        ) : <AccountEntry showChip />}
         <div className="wiz-dots" aria-hidden>{ORDER.map((x) => <i key={x} className={x === step ? 'on' : ''} />)}</div>
         <span className="wiz-right">
           <button type="button" className="icon-btn gear" aria-label="More options" data-testid="more" onClick={() => setMore(true)}>⚙</button>

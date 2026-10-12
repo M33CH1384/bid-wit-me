@@ -35,6 +35,16 @@ export function award(id: string, context?: Record<string, unknown>): boolean {
   return true;
 }
 
+/** Badges earned on another device (from the account): add the ones this device doesn't have. */
+export function mergeBadges(list: Badge[]): number {
+  const add = list.filter((b) => b && typeof b.id === 'string' && !hasBadge(b.id));
+  if (!add.length) return 0;
+  cache = [...read(), ...add];
+  try { localStorage.setItem(KEY, JSON.stringify({ v: 1, badges: cache })); } catch { /* ignore */ }
+  listeners.forEach((f) => f());
+  return add.length;
+}
+
 export function useBadges(): Badge[] {
   return useSyncExternalStore((f) => { listeners.add(f); return () => { listeners.delete(f); }; }, read, read);
 }
