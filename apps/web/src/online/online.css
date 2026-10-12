@@ -186,13 +186,13 @@
   height: auto; display: grid; gap: 10px 8px; align-items: center; justify-items: center;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
   grid-template-areas: ". top ." "left center right" ". bottom .";
-  padding: 26px 18px; border-radius: 50% / 42%; max-width: 460px;
+  padding: 26px 26px; border-radius: 50% / 42%; max-width: 460px;
 }
-.mini-felt.n3 { grid-template-areas: "left center right" ". bottom ."; padding-top: 34px; }
+.mini-felt.n3 { grid-template-areas: "center center center" "left . right" ". bottom ."; }
 .felt-center { position: static; grid-area: center; padding: 10px 4px; min-width: 0; }
 .felt-center span { font-size: 14px; letter-spacing: .08em; line-height: 1.15; display: block; }
 .felt-center small { font-size: 10.5px; display: block; margin-top: 4px; line-height: 1.25; }
-.seat-card { position: static; transform: none; width: 100%; max-width: 116px; min-height: 84px; justify-content: center; padding: 8px 5px; box-sizing: border-box; }
+.seat-card { position: static; transform: none; width: 100%; max-width: 108px; min-height: 84px; justify-content: center; padding: 8px 5px; box-sizing: border-box; }
 .seat-card.spot-bottom { grid-area: bottom; } .seat-card.spot-top { grid-area: top; }
 .seat-card.spot-left { grid-area: left; } .seat-card.spot-right { grid-area: right; }
 .seat-top { font-size: 10px; letter-spacing: .1em; gap: 4px; }
