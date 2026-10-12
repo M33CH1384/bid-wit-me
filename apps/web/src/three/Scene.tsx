@@ -568,10 +568,15 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
               const pw = pr ? Math.max(pr.right, br?.right ?? 0) - Math.min(pr.left, br?.left ?? Infinity) : 190;
               const ph = pr ? Math.max(pr.height, br?.height ?? 0) : 56;
               const sr = document.querySelector('.trump-strip')?.getBoundingClientRect();
-              const bug = document.querySelector('.scorebug .bug')?.getBoundingClientRect();
+              // the whole scorebug block (the bug plus anything hanging under it on phones)
+              const bugKids = [...(document.querySelector('.scorebug')?.children ?? [])].map((e) => e.getBoundingClientRect()).filter((r) => r.height > 0);
+              const bug = bugKids.length ? { bottom: Math.max(...bugKids.map((r) => r.bottom)) } : document.querySelector('.scorebug .bug')?.getBoundingClientRect();
               const bar = sr && sr.height > 0 ? sr.bottom : bug ? bug.bottom : size.width >= 900 ? 106 : 122; // the strip folds into the bug on cramped phones
               const left = br && pr ? Math.max(0, pr.left - br.left) : 0;
-              const minY = bar + 8 + ph / 2;
+              // the "TO PLAY" tag / bubble can reach above the plate: keep all of it under the bar
+              const tr = plate?.querySelector('.plate-turn')?.getBoundingClientRect();
+              const up = pr ? Math.max(ph / 2, (pr.top + pr.bottom) / 2 - Math.min(pr.top, br && br.height ? br.top : Infinity, tr && tr.height ? tr.top : Infinity)) : ph / 2;
+              const minY = bar + 8 + up;
               let cy = Math.max(y, minY);
               // and keep clear of the side plates below it (big video bubbles on small phones)
               const sideEls = [...(portal.current?.querySelectorAll<HTMLElement>('.seat-anchor.side-left > .plate, .seat-anchor.side-right > .plate') ?? [])];
