@@ -17,10 +17,14 @@ interface Props {
   back: Texture;
   target: Xform;
   from?: Xform;
+  /** Where this mesh was last sitting in the hand. Applied once, so a play launches from that slot
+   *  even if the mesh remounts, and a later sweep does not restart from the hand. */
+  origin?: Xform;
   delay?: number;
   duration?: number;
-  /** 'lift' is the 200ms group rise (cubic-bezier .2,.8,.2,1). Everything else keeps the flight ease. */
-  motion?: 'lift' | 'flight';
+  /** 'lift' is the 200ms group rise. 'slide' closes a gap over 240ms (translate + rotate only, same curve).
+   *  'flight' is the deal / table arc. */
+  motion?: 'lift' | 'flight' | 'slide';
   arc?: number;
   dim?: boolean;
   glow?: boolean;
@@ -45,6 +49,7 @@ interface Props {
 }
 
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
+const xKey = (x: Xform) => x.p.map((v) => v.toFixed(4)).join() + x.q.map((v) => v.toFixed(4)).join() + x.s.toFixed(4);
 const edgeMat = new MeshStandardMaterial({ color: '#efe9dc', roughness: 0.75 });
 /** full colour vs. a card you can't play: 55% brightness on screen, faint cool tint, desaturated */
 const FULL = new Color(1, 1, 1);
@@ -65,7 +70,7 @@ function withSaturation<M extends MeshStandardMaterial>(m: M): M & { userData: {
   return m as M & { userData: { sat: { value: number } } };
 }
 
-function Card3D({ face, back, target, from, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand, blast = 'table', jokerAura, inTrick, played, reduceMotion }: Props) {
+function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand, blast = 'table', jokerAura, inTrick, played, reduceMotion }: Props) {
   const ref = useRef<Group>(null);
   const inner = useRef<Group>(null);
   const bl = useRef({ dir: new Vector3(), q: new Quaternion(), axis: new Vector3(), on: false });
@@ -99,6 +104,7 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, motion =
   const tw = useRef({
     init: false,
     key: '',
+    originKey: '',
     t: 1,
     wait: delay,
     sp: new Vector3(), sq: new Quaternion(), ss: 1,
@@ -260,13 +266,15 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, motion =
     if (!applyTornado(g)) applyBlast(g);
     const s = tw.current;
     if (!s.init) {
-      const f = from ?? target;
+      const f = origin ?? from ?? target;
       g.position.set(...f.p);
       g.quaternion.set(...f.q);
       g.scale.setScalar(f.s);
       s.init = true;
+      // consumed on init so this same frame's retarget does not snap a second time
+      if (origin) s.originKey = xKey(origin);
     }
-    const key = target.p.map((v) => v.toFixed(4)).join() + target.q.map((v) => v.toFixed(4)).join() + target.s.toFixed(4);
+    const key = xKey(target);
     if (key !== s.key) {
       // retargeted before it landed (slow frames: the trick was swept while the card was still in flight) — still make its landing sound
       if (s.key && s.started && s.t < 1) {
@@ -281,8 +289,20 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, motion =
       // The stagger is a prop; apply it when the card leaves a resting pose, or it never waits.
       const hold = restingFlightWait(delay, wasResting);
       if (hold !== null) s.wait = hold;
-      s.sp.copy(g.position); s.sq.copy(g.quaternion); s.ss = g.scale.x;
+      const stamp = origin ? xKey(origin) : '';
+      // A play starts at the card's own fan slot (not wherever the mesh was, and not the fan centre).
+      // The stamp is consumed once, so the sweep to the pile keeps going from where the card is.
+      if (origin && s.originKey !== stamp) {
+        g.position.set(...origin.p);
+        g.quaternion.set(...origin.q);
+        g.scale.setScalar(origin.s);
+        s.sp.set(...origin.p); s.sq.set(...origin.q); s.ss = origin.s;
+        s.originKey = stamp;
+      } else {
+        s.sp.copy(g.position); s.sq.copy(g.quaternion); s.ss = g.scale.x;
+      }
       s.tp.set(...target.p); s.tq.set(...target.q); s.ts = target.s;
+      if (motion === 'slide') s.ss = s.ts; // translate + rotate only
       s.started = false;
     }
     if (s.t >= 1) return;
@@ -300,12 +320,13 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, motion =
       const land = s.land;
       if (land && land !== s.firedLand) { s.firedLand = land; if (moving) land.split(',').forEach((c, i) => fireCue(c, i ? 0.02 : 0)); }
     }
-    const e = (motion === 'lift' ? liftEase : easeInOut)(s.t);
+    const e = (motion === 'flight' ? easeInOut : liftEase)(s.t);
     g.position.lerpVectors(s.sp, s.tp, e);
     const dist = s.sp.distanceTo(s.tp);
-    g.position.y += Math.sin(Math.PI * s.t) * arc * Math.min(1, dist);
+    const hop = motion === 'slide' ? 0 : arc;
+    g.position.y += Math.sin(Math.PI * s.t) * hop * Math.min(1, dist);
     g.quaternion.slerpQuaternions(s.sq, s.tq, e);
-    g.scale.setScalar(s.ss + (s.ts - s.ss) * e);
+    g.scale.setScalar(motion === 'slide' ? s.ts : s.ss + (s.ts - s.ss) * e);
   });
 
   return (
