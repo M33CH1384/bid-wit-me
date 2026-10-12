@@ -35,5 +35,20 @@ describe('score pad', () => {
     expect(html).toContain('pad-hand last');
     expect(html).toMatch(/for the bid of \d+|set \(bid \d+\)|for \d+ books/);
     expect(html).not.toMatch(/Books\+Books/);
+    expect(html).toContain('Playing to 250');
+    expect(html).toContain('data-testid="pad-board"');
+    const handsAt = html.indexOf('pad-hand');
+    expect(html.slice(0, handsAt)).not.toContain('rule-chip');
+    expect(html.indexOf('data-testid="pad-rules"')).toBeGreaterThan(html.indexOf('locked-rules-details'));
+    for (const chip of ['Lose at -200', '10 bags = −100', 'Shot = out', 'Hand 1: 4+ books']) expect(html).toContain(chip);
+  });
+  it('scoreboard lists every cutthroat player, not two teams', () => {
+    const st = newGame(makeRules('cutthroat', { playerCount: 3, targetScore: 300 }), 'cut-pad');
+    const names = ['You', 'Ace', 'Bea'];
+    const html = renderToStaticMarkup(createElement(ScorePad, { st, names, onClose: () => {}, sideName: (i: number) => names[i]! }));
+    expect(html).toContain('Playing to 300');
+    expect(html.match(/data-testid="pad-board-side"/g)).toHaveLength(3);
+    for (const name of names) expect(html).toContain(name);
+    expect(html.slice(0, html.indexOf('locked-rules-details'))).not.toContain('rule-chip');
   });
 });

@@ -95,13 +95,26 @@ export function ScorePad({ st, names, onClose, onContinue, locked, sideName }: {
   const seatName = (s: number) => names[s] ?? `Seat ${s + 1}`;
   const lastRef = useRef<HTMLElement>(null);
   useEffect(() => { lastRef.current?.scrollIntoView({ block: 'end' }); }, []);
+  const showLocked = locked && st.phase !== 'gameOver';
   return (
     <div className="modal-backdrop pad-backdrop" onClick={onClose}>
       <div className="modal glass slant score-pad v2" onClick={(e) => e.stopPropagation()} data-testid="score-pad" role="dialog" aria-label="Score pad">
-        <button type="button" className="pad-x" aria-label="Close score pad" data-testid="pad-close" onClick={onClose}>✕</button>
-        <div className="panel-title big">SCORE PAD</div>
-        <div className="pad-rules chips" data-testid="pad-rules">{rulesChips(r).map((c) => <span key={c} className="rule-chip">{c}</span>)}</div>
         <div className="scroll pad2">
+          <header className="pad-sticky">
+            <button type="button" className="pad-x" aria-label="Close score pad" data-testid="pad-close" onClick={onClose}>✕</button>
+            <div className="panel-title big">SCORE PAD</div>
+            <p className="pad-playing" data-testid="pad-target">Playing to {r.targetScore}</p>
+            <div className="pad-board" style={{ ['--sides' as string]: sides.length }} data-testid="pad-board">
+              {sides.map((side) => (
+                <div key={side} className="pad-board-side" style={{ ['--side' as string]: sideColor(r, side) }} data-testid="pad-board-side">
+                  <i className="pad-bar" aria-hidden />
+                  <span className="pad-board-name">{sideName(side)}</span>
+                  <b className="pad-board-total">{st.scores[side]}</b>
+                  <small className="pad-board-bags">{st.bags[side]} bag{st.bags[side] === 1 ? '' : 's'}</small>
+                </div>
+              ))}
+            </div>
+          </header>
           <div className="pad-cols v2" aria-hidden>
             <span>{r.partnerships ? 'Team' : 'Player'}</span><span>Bid</span><span>Took</span><span>Points</span><span>Total</span>
           </div>
@@ -129,7 +142,11 @@ export function ScorePad({ st, names, onClose, onContinue, locked, sideName }: {
             </section>
           )}
         </div>
-        {locked && st.phase !== 'gameOver' && <details className="locked-details" data-testid="locked-rules-details"><summary>🔒 House rules for this game</summary>{locked}</details>}
+        <details className="locked-details" data-testid="locked-rules-details">
+          <summary>🔒 House rules for this game</summary>
+          <div className="pad-rules chips" data-testid="pad-rules">{rulesChips(r).map((c) => <span key={c} className="rule-chip">{c}</span>)}</div>
+          {showLocked ? locked : null}
+        </details>
         <button type="button" className="primary big" data-testid="pad-continue" onClick={onContinue ?? onClose}>Continue</button>
       </div>
     </div>
