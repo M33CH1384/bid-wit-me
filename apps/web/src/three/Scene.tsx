@@ -9,7 +9,7 @@ import type { Card, Play, Trick } from '@spades/rules';
 import Card3D from './Card3D';
 import PlayableGlow, { type GlowAnchor } from './PlayableGlow';
 import { departureSlot, handCardKey, handReactKey } from '../handOrder';
-import { GAP_S, LIFT_S, canTapCard, fanMotion, playablePose, raiseLocalY } from './handLift';
+import { GAP_S, LIFT_S, canTapCard, fanGapPx, fanMotion, handRenderOrder, playablePose, raiseLocalY } from './handLift';
 import { contiguousRuns } from './playableOutline';
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline } from './dealTimeline';
@@ -310,7 +310,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   if (held.current.handNo !== handNo) held.current = { handNo, cards: new Set(), slots: new Map(), count: 0, seen: new Set() };
   const pendingHold = useRef<Held>(held.current);
 
-  type Item = { key: string; card: Card | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: (() => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide'; raise?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; inTrick?: boolean; played?: string | null; jokerAura?: { kind: 'BJ' | 'LJ'; cardsAfter: number } };
+  type Item = { key: string; card: Card | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: (() => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide'; raise?: number; order?: number; cover?: boolean; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; inTrick?: boolean; played?: string | null; jokerAura?: { kind: 'BJ' | 'LJ'; cardsAfter: number } };
   const items: Item[] = [];
   const dealDelay = (slot: number, seat: number) => tl.shuffle + (slot * n + ((seat - dealer - 1 + n) % n)) * tl.step;
 
@@ -386,12 +386,14 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   const nextCards = new Set<string>();
   const nextSlots = new Map<string, Xform>();
   const nextSeen = new Set<string>();
+  // 8px of air on each side of a legal run. The order of the cards does not change.
+  const gaps = fanGapPx(mine.map((c) => !!c && legal.includes(c)));
   mine.forEach((c, i) => {
     const isLegal = !!c && legal.includes(c);
     const pose = c ? playablePose(yourTurn, isLegal, selected === c) : 'flat';
-    // The fan pose is the flat stack. A raise, a selection, or a legal-state change is translateY on an
-    // inner wrapper, so the mesh is not retargeted and the left-to-right order never changes.
-    const target = handFan(aspect, mine.length, i, 0, safeFrac, fanOpts);
+    const above = pose === 'legal' || pose === 'selected';
+    // The raise stays a translateY. The gap is a sideways slide of the same fan, and stacking is render order.
+    const target = handFan(aspect, mine.length, i, 0, safeFrac, fanOpts, gaps[i] ?? 0, size.height);
     const flip = flipIn && !!c;
     const id = c ? handCardKey(c) : '';
     // intro stays on for the whole hand; only cards we have not shown yet come from the deck.
@@ -401,7 +403,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       nextCards.add(c);
       nextSlots.set(id, target);
       nextSeen.add(id);
-      const plane = handCardPlane(aspect, mine.length, i, 0, safeFrac, fanOpts);
+      const plane = handCardPlane(aspect, mine.length, i, 0, safeFrac, fanOpts, gaps[i] ?? 0, size.height);
       glowAnchors.push({
         name: handReactKey(handNo, c, i), x: plane.x, y: plane.y,
         playable: pose === 'legal' || pose === 'selected', selected: pose === 'selected',
@@ -425,6 +427,8 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       motion: move.motion,
       arc: move.arc,
       raise: c ? raiseLocalY(pose, fan.viewH, size.height, fan.ch) : 0,
+      order: handRenderOrder(i, above),
+      cover: above,
     });
   });
   pendingHold.current = { handNo, cards: nextCards, slots: nextSlots, count: faceCount, seen: nextSeen };
@@ -464,6 +468,8 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
           motion={it.motion}
           arc={it.arc}
           raise={it.raise}
+          order={it.order}
+          cover={it.cover}
           dim={it.dim}
           glow={it.glow}
           castShadow={it.shadow !== false && quality === 'high'}

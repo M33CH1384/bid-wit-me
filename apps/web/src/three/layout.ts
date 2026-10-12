@@ -219,11 +219,12 @@ export interface HandCardPlane {
  * Camera-plane pose of one card in the human fan. `x` / `y` / `roll` are what you see; `depth` only stacks the cards.
  * Shared by the card mesh and the playable-group outline so the highlight can't drift from the fan.
  */
-export function handCardPlane(aspect: number, count: number, i: number, lift: number, safeFrac = 0, o: FanOpts = {}): HandCardPlane {
+export function handCardPlane(aspect: number, count: number, i: number, lift: number, safeFrac = 0, o: FanOpts = {}, gapPx = 0, screenH = 844): HandCardPlane {
   const L = fanLayout(aspect, count, safeFrac, o);
   const halfN = (count - 1) / 2;
   const off = i - halfN;
-  const x = off * L.step;
+  // `gapPx` opens the fan beside a legal run. Depth and roll stay on the index, so this is only a sideways slide.
+  const x = off * L.step + (gapPx / Math.max(1, screenH)) * L.viewH;
   const roll = halfN > 0 ? -(off / halfN) * L.maxRoll : 0;
   const curve = x * x * L.curveK;
   // the outermost (most rolled, most curved-down) card's lowest corner sits exactly on the bottom margin
@@ -245,9 +246,9 @@ export function handCardPlane(aspect: number, count: number, i: number, lift: nu
  * stable z-order (each card on top of the one to its left), and both position and scale are multiplied by that depth
  * so every card projects at exactly the same size and spacing — a perfectly symmetric fan. Only the lifted card moves.
  */
-export function handFan(aspect: number, count: number, i: number, lift: number, safeFrac = 0, o: FanOpts = {}): Xform {
+export function handFan(aspect: number, count: number, i: number, lift: number, safeFrac = 0, o: FanOpts = {}, gapPx = 0, screenH = 844): Xform {
   const cam = makeCamera(aspect, o.short);
-  const c = handCardPlane(aspect, count, i, lift, safeFrac, o);
+  const c = handCardPlane(aspect, count, i, lift, safeFrac, o, gapPx, screenH);
   const { depth } = c;
   const local = new Matrix4().compose(
     new Vector3(c.x * depth, c.y * depth, -depth),

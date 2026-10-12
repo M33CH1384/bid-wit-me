@@ -184,11 +184,15 @@ export function smoothContour(c: Contour, passes = 2): Contour {
 }
 
 /**
- * A closed stroke around a contour, in the same plane units, plus a UV across the ribbon (u = 0 inside, 1 outside).
- * Drawn in front of the fan (see PlayableGlow): a fill tucked behind the cards disappears wherever the next card
- * overlaps, so the bottom and the end caps never showed. The stroke is only the rim.
+ * Same rim as `strokeRibbon`, but only the outside half (u = 0 on the path, u = 1 outside).
+ * The glow can then draw above the neighbouring cards without tinting the faces.
  */
-export function strokeRibbon(c: Contour, radius: number): { pos: Float32Array; uv: Float32Array } {
+export function strokeOutward(c: Contour, radius: number): { pos: Float32Array; uv: Float32Array } {
+  return strokeRibbon(c, radius, true);
+}
+
+/** A closed stroke around a contour. u = 0 is the inside edge and u = 1 the outside, unless `outwardOnly`. */
+export function strokeRibbon(c: Contour, radius: number, outwardOnly = false): { pos: Float32Array; uv: Float32Array } {
   const line: Pt[] = [];
   const push = (p: Pt) => {
     const prev = line[line.length - 1];
@@ -216,8 +220,14 @@ export function strokeRibbon(c: Contour, radius: number): { pos: Float32Array; u
   const vert = (p: Pt, s: number) => { pos[o++] = p.x; pos[o++] = p.y; pos[o++] = 0; uv[u++] = s; uv[u++] = 0.5; };
   for (let i = 0; i < n; i++) {
     const j = (i + 1) % n;
-    vert(inner[i]!, 0); vert(outer[i]!, 1); vert(inner[j]!, 0);
-    vert(inner[j]!, 0); vert(outer[i]!, 1); vert(outer[j]!, 1);
+    if (outwardOnly) {
+      // u = 0 sits on the outline (the blur's peak) and u = 1 is the outer edge.
+      vert(line[i]!, 0); vert(outer[i]!, 1); vert(line[j]!, 0);
+      vert(line[j]!, 0); vert(outer[i]!, 1); vert(outer[j]!, 1);
+    } else {
+      vert(inner[i]!, 0); vert(outer[i]!, 1); vert(inner[j]!, 0);
+      vert(inner[j]!, 0); vert(outer[i]!, 1); vert(outer[j]!, 1);
+    }
   }
   return { pos, uv };
 }

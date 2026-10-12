@@ -1,6 +1,6 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { memo, useLayoutEffect, useMemo, useRef } from 'react';
-import { Color, type Group, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Quaternion, type Texture, Vector3 } from 'three';
+import { Color, type Group, type Material, type Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Quaternion, type Texture, Vector3 } from 'three';
 import { cardGeometry } from './geometry';
 import { ILLEGAL_COLOR, RAISE_S, liftEase } from './handLift';
 import JokerAura from './JokerAura';
@@ -28,6 +28,10 @@ interface Props {
   arc?: number;
   /** Card-local translateY for a hand raise. Never folded into `target`, so a select does not retarget the fan. */
   raise?: number;
+  /** Painter's order. Legal cards use a higher band than illegal cards; index order is kept inside each band. */
+  order?: number;
+  /** Draw this card over the cards beside it. Depth stays where it is; only the test changes. */
+  cover?: boolean;
   dim?: boolean;
   glow?: boolean;
   castShadow?: boolean;
@@ -72,7 +76,7 @@ function withSaturation<M extends MeshStandardMaterial>(m: M): M & { userData: {
   return m as M & { userData: { sat: { value: number } } };
 }
 
-function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, raise = 0, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand, blast = 'table', jokerAura, inTrick, played, reduceMotion }: Props) {
+function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, raise = 0, order = 0, cover = false, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand, blast = 'table', jokerAura, inTrick, played, reduceMotion }: Props) {
   const ref = useRef<Group>(null);
   const lift = useRef<Group>(null);
   const inner = useRef<Group>(null);
@@ -92,6 +96,19 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   // Their shared gold outline is PlayableGlow, not a per-card edge. This backing is a tip mark.
   // The joker pulse is JokerAura, behind the face.
   const glowMat = useMemo(() => new MeshBasicMaterial({ color: '#f5c542', transparent: true, opacity: 0, depthWrite: false, toneMapped: false }), []);
+  const edge = useMemo(() => edgeMat.clone(), []);
+  // Stacking is render order, not a new depth or a new key. Child groups would otherwise reset it to 0.
+  useLayoutEffect(() => {
+    const root = ref.current;
+    if (!root) return;
+    root.traverse((obj) => {
+      if ((obj as Group).isGroup) obj.renderOrder = order;
+      const mat = (obj as Mesh).material as Material | Material[] | undefined;
+      if (!mat) return;
+      for (const m of Array.isArray(mat) ? mat : [mat]) m.depthTest = !cover;
+    });
+    invalidate();
+  }, [order, cover, face, jokerAura, glow, invalidate]);
   const look = useRef({ target: new Color(1, 1, 1), glow: 0, sat: 1 });
   const burstFx = useRef({ on: false, baseOp: 1 });
   useLayoutEffect(() => {
@@ -364,14 +381,14 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       <group ref={inner}>
         {jokerAura ? (
           <JokerAura kind={jokerAura.kind} cardsAfter={jokerAura.cardsAfter} reduceMotion={reduceMotion}>
-            <mesh geometry={geo.body} material={edgeMat} castShadow={castShadow} />
+            <mesh geometry={geo.body} material={edge} castShadow={castShadow} />
             <mesh geometry={geo.front} material={frontMat} />
             <mesh geometry={geo.back} material={backMat} />
             {face && <mesh geometry={geo.front} material={glowMat} position={[0, 0, -CT - 0.003]} scale={[1.09, 1.065, 1]} visible={glowMat.opacity > 0.01 || !!glow} renderOrder={-1} />}
           </JokerAura>
         ) : (
           <>
-            <mesh geometry={geo.body} material={edgeMat} castShadow={castShadow} />
+            <mesh geometry={geo.body} material={edge} castShadow={castShadow} />
             <mesh geometry={geo.front} material={frontMat} />
             <mesh geometry={geo.back} material={backMat} />
             {face && <mesh geometry={geo.front} material={glowMat} position={[0, 0, -CT - 0.003]} scale={[1.09, 1.065, 1]} visible={glowMat.opacity > 0.01 || !!glow} renderOrder={-1} />}

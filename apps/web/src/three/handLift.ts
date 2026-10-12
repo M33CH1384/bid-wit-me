@@ -50,6 +50,13 @@ export const BREATHE_HI = 0.5;
 export const BREATHE_SCALE = 1;
 /** Selected card: the same outline, brighter than the breath. */
 export const SELECT_GLOW_OP = 0.8;
+/**
+ * Extra fan spacing on each side of a legal run, in CSS pixels.
+ * The cards still overlap; this only opens the edge enough for the outline to read.
+ */
+export const GROUP_GAP_PX = 8;
+/** Render order of a legal card sits above every illegal card. Index is added so left-to-right stays put. */
+export const LEGAL_STACK = 100;
 
 /**
  * Not-playable cards read at 55% brightness. The albedo below was tuned on the lit, tone-mapped card so that
@@ -76,6 +83,31 @@ export function playablePose(yourTurn: boolean, isLegal: boolean, selected: bool
 
 export function canTapCard(pose: HandPose): boolean {
   return pose === 'legal' || pose === 'selected';
+}
+
+/**
+ * Painter's order for one hand card. Every legal card draws after every illegal card.
+ * Within each group the index still increases left to right, and a tap does not jump the queue.
+ */
+export function handRenderOrder(index: number, above: boolean): number {
+  return (above ? LEGAL_STACK : 0) + index;
+}
+
+/**
+ * Horizontal shift, in CSS pixels, that opens `GROUP_GAP_PX` at every edge of a legal run.
+ * The shifts are centered so the fan does not drift. Off turn, or when the whole hand is playable, every shift is 0.
+ */
+export function fanGapPx(playable: readonly boolean[]): number[] {
+  const n = playable.length;
+  const shift = new Array<number>(n).fill(0);
+  let extra = 0;
+  for (let i = 1; i < n; i++) {
+    if (!!playable[i] !== !!playable[i - 1]) extra += GROUP_GAP_PX;
+    shift[i] = extra;
+  }
+  const center = extra / 2;
+  for (let i = 0; i < n; i++) shift[i] = shift[i]! - center;
+  return shift;
 }
 
 export function posePx(pose: HandPose): number {
