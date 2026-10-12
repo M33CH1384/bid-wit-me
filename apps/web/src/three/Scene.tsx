@@ -568,9 +568,7 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
               const pw = pr ? Math.max(pr.right, br?.right ?? 0) - Math.min(pr.left, br?.left ?? Infinity) : 190;
               const ph = pr ? Math.max(pr.height, br?.height ?? 0) : 56;
               const sr = document.querySelector('.trump-strip')?.getBoundingClientRect();
-              // the whole scorebug block (the bug plus anything hanging under it on phones)
-              const bugKids = [...(document.querySelector('.scorebug')?.children ?? [])].map((e) => e.getBoundingClientRect()).filter((r) => r.height > 0);
-              const bug = bugKids.length ? { bottom: Math.max(...bugKids.map((r) => r.bottom)) } : document.querySelector('.scorebug .bug')?.getBoundingClientRect();
+              const bug = document.querySelector('.scorebug .bug')?.getBoundingClientRect();
               const bar = sr && sr.height > 0 ? sr.bottom : bug ? bug.bottom : size.width >= 900 ? 106 : 122; // the strip folds into the bug on cramped phones
               const left = br && pr ? Math.max(0, pr.left - br.left) : 0;
               // the "TO PLAY" tag / bubble can reach above the plate: keep all of it under the bar
