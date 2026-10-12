@@ -11,7 +11,7 @@ import { mkdirSync } from 'node:fs';
 
 const web = process.argv[2] ?? 'http://localhost:4173';
 const server = process.argv[3] ?? 'http://127.0.0.1:8787';
-const out = 'screenshots/release-6';
+const out = process.env.SHOTS_OUT ?? 'screenshots/release-6';
 mkdirSync(out, { recursive: true });
 const t0 = Date.now();
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a);
