@@ -2,6 +2,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { memo, useLayoutEffect, useMemo, useRef } from 'react';
 import { Color, type Group, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Quaternion, type Texture, Vector3 } from 'three';
 import { cardGeometry } from './geometry';
+import { ILLEGAL_COLOR, RAISE_S, liftEase } from './handLift';
 import JokerAura from './JokerAura';
 import { CT } from './layout';
 import type { Xform } from './layout';
@@ -16,14 +17,23 @@ interface Props {
   back: Texture;
   target: Xform;
   from?: Xform;
+  /** Where this mesh was last sitting in the hand. Applied once, so a play launches from that slot
+   *  even if the mesh remounts, and a later sweep does not restart from the hand. */
+  origin?: Xform;
   delay?: number;
   duration?: number;
+  /** 'lift' is the 200ms group rise. 'slide' closes a gap over 240ms (translate + rotate only, same curve).
+   *  'flight' is the deal / table arc. */
+  motion?: 'lift' | 'flight' | 'slide';
   arc?: number;
+  /** Card-local translateY for a hand raise. Never folded into `target`, so a select does not retarget the fan. */
+  raise?: number;
   dim?: boolean;
   glow?: boolean;
   castShadow?: boolean;
   quality: 'high' | 'low';
-  onTap?: () => void;
+  /** undefined = not a button (trick cards). null = a hand card you can't play: the tap is swallowed. */
+  onTap?: (() => void) | null;
   name?: string;
   /** Sound when this card starts moving toward its current target (e.g. dealt flick, sweep). Fires once per value. */
   sfxStart?: Sfx;
@@ -41,10 +51,11 @@ interface Props {
 }
 
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
+const xKey = (x: Xform) => x.p.map((v) => v.toFixed(4)).join() + x.q.map((v) => v.toFixed(4)).join() + x.s.toFixed(4);
 const edgeMat = new MeshStandardMaterial({ color: '#efe9dc', roughness: 0.75 });
-/** full colour vs. the not-playable look: darker (~60% brightness on screen) with a faint cool tint, and desaturated */
+/** full colour vs. a card you can't play: 55% brightness on screen, faint cool tint, desaturated */
 const FULL = new Color(1, 1, 1);
-const DIM = new Color(0.2, 0.195, 0.25);
+const DIM = new Color(...ILLEGAL_COLOR);
 /** saturation of a not-playable card's face (1 = full colour, 0 = grey) */
 const DIM_SAT = 0.3;
 /** Adds a saturation control to a card face material (uSat: 1 = untouched); one shader variant shared by every card. */
@@ -61,8 +72,9 @@ function withSaturation<M extends MeshStandardMaterial>(m: M): M & { userData: {
   return m as M & { userData: { sat: { value: number } } };
 }
 
-function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.25, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand, blast = 'table', jokerAura, inTrick, played, reduceMotion }: Props) {
+function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, raise = 0, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand, blast = 'table', jokerAura, inTrick, played, reduceMotion }: Props) {
   const ref = useRef<Group>(null);
+  const lift = useRef<Group>(null);
   const inner = useRef<Group>(null);
   const bl = useRef({ dir: new Vector3(), q: new Quaternion(), axis: new Vector3(), on: false });
   const invalidate = useThree((s) => s.invalidate);
@@ -76,9 +88,9 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
   const frontMat = useMemo(() => withSaturation(face ? mk(face) : mk(back)), [face, back, quality]); // eslint-disable-line react-hooks/exhaustive-deps
   const backMat = useMemo(() => mk(back), [back, quality]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Your turn: cards you can't play get a soft cool/purple dim (still readable); playable cards stay at full colour
-  // (no emissive tint, which made them look washed-out). Their shared gold rail is PlayableGlow, not a per-card edge.
-  // This per-card backing is only a selected card or a tip mark. The joker pulse is JokerAura, behind the face.
+  // Your turn: cards you can't play sit at 55% brightness (still readable); playable cards stay at full colour.
+  // Their shared gold outline is PlayableGlow, not a per-card edge. This backing is a tip mark.
+  // The joker pulse is JokerAura, behind the face.
   const glowMat = useMemo(() => new MeshBasicMaterial({ color: '#f5c542', transparent: true, opacity: 0, depthWrite: false, toneMapped: false }), []);
   const look = useRef({ target: new Color(1, 1, 1), glow: 0, sat: 1 });
   const burstFx = useRef({ on: false, baseOp: 1 });
@@ -95,6 +107,7 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
   const tw = useRef({
     init: false,
     key: '',
+    originKey: '',
     t: 1,
     wait: delay,
     sp: new Vector3(), sq: new Quaternion(), ss: 1,
@@ -103,6 +116,9 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
   });
   const sfx = useRef({ sfxStart, sfxLand });
   sfx.current = { sfxStart, sfxLand };
+  const raiseNow = useRef(raise);
+  raiseNow.current = raise;
+  const raiseTw = useRef({ y: 0, from: 0, to: 0, t: 1 });
 
   /** Nuke blast: lift / blow the card outward from the trick (world space), tumble it, then spring back and settle. */
   const applyBlast = (g: Group) => {
@@ -280,13 +296,15 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
     };
     const s = tw.current;
     if (!s.init) {
-      const f = from ?? target;
+      const f = origin ?? from ?? target;
       g.position.set(...f.p);
       g.quaternion.set(...f.q);
       g.scale.setScalar(f.s);
       s.init = true;
+      // consumed on init so this same frame's retarget does not snap a second time
+      if (origin) s.originKey = xKey(origin);
     }
-    const key = target.p.map((v) => v.toFixed(4)).join() + target.q.map((v) => v.toFixed(4)).join() + target.s.toFixed(4);
+    const key = xKey(target);
     if (key !== s.key) {
       // retargeted before it landed (slow frames: the trick was swept while the card was still in flight) — still make its landing sound
       if (s.key && s.started && s.t < 1) {
@@ -301,9 +319,39 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
       // The stagger is a prop; apply it when the card leaves a resting pose, or it never waits.
       const hold = restingFlightWait(delay, wasResting);
       if (hold !== null) s.wait = hold;
-      s.sp.copy(g.position); s.sq.copy(g.quaternion); s.ss = g.scale.x;
+      const stamp = origin ? xKey(origin) : '';
+      // A play starts at the card's own fan slot (not wherever the mesh was, and not the fan centre).
+      // The stamp is consumed once, so the sweep to the pile keeps going from where the card is.
+      if (origin && s.originKey !== stamp) {
+        g.position.set(...origin.p);
+        g.quaternion.set(...origin.q);
+        g.scale.setScalar(origin.s);
+        s.sp.set(...origin.p); s.sq.set(...origin.q); s.ss = origin.s;
+        s.originKey = stamp;
+      } else {
+        s.sp.copy(g.position); s.sq.copy(g.quaternion); s.ss = g.scale.x;
+      }
       s.tp.set(...target.p); s.tq.set(...target.q); s.ts = target.s;
+      if (motion === 'slide') s.ss = s.ts; // translate + rotate only
       s.started = false;
+    }
+    // Raise is translateY on its own wrapper (the CSS `will-change: transform` idea). The outer fan
+    // quaternion and position stay put, including when the card is only selected or the legal set changes.
+    const liftG = lift.current;
+    if (liftG) {
+      const rt = raiseTw.current;
+      const dest = raiseNow.current;
+      if (Math.abs(dest - rt.to) > 1e-5) { rt.from = rt.y; rt.to = dest; rt.t = 0; }
+      if (rt.t < 1) {
+        rt.t = Math.min(1, rt.t + Math.min(dt, 0.05) / RAISE_S);
+        rt.y = rt.from + (rt.to - rt.from) * liftEase(rt.t);
+        invalidate();
+      } else rt.y = rt.to;
+      if (rt.t < 1 || liftG.position.y !== rt.y) {
+        liftG.position.set(0, rt.y, 0);
+        liftG.quaternion.identity();
+        liftG.scale.set(1, 1, 1);
+      }
     }
     if (s.t >= 1) { notePos(); return; }
     invalidate();
@@ -327,23 +375,24 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
       const land = s.land;
       if (land && land !== s.firedLand) { s.firedLand = land; if (moving) land.split(',').forEach((c, i) => fireCue(c, i ? 0.02 : 0)); }
     }
-    const e = easeInOut(s.t);
+    const e = (motion === 'flight' ? easeInOut : liftEase)(s.t);
     g.position.lerpVectors(s.sp, s.tp, e);
     const dist = s.sp.distanceTo(s.tp);
-    g.position.y += Math.sin(Math.PI * s.t) * arc * Math.min(1, dist);
+    const hop = motion === 'slide' ? 0 : arc;
+    g.position.y += Math.sin(Math.PI * s.t) * hop * Math.min(1, dist);
     g.quaternion.slerpQuaternions(s.sq, s.tq, e);
-    g.scale.setScalar(s.ss + (s.ts - s.ss) * e);
+    g.scale.setScalar(motion === 'slide' ? s.ts : s.ss + (s.ts - s.ss) * e);
     notePos();
   });
 
   return (
     <group
       ref={ref}
-      name={name}
-      onClick={onTap ? (e) => { e.stopPropagation(); onTap(); } : undefined}
+      onClick={onTap ? (e) => { e.stopPropagation(); onTap(); } : onTap === null ? (e) => { e.stopPropagation(); } : undefined}
       onPointerOver={onTap ? () => { document.body.style.cursor = 'pointer'; } : undefined}
       onPointerOut={onTap ? () => { document.body.style.cursor = ''; } : undefined}
     >
+      <group ref={lift} name={name}>
       <group ref={inner}>
         {jokerAura ? (
           <JokerAura kind={jokerAura.kind} cardsAfter={jokerAura.cardsAfter} reduceMotion={reduceMotion}>
@@ -360,6 +409,7 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
             {face && <mesh geometry={geo.front} material={glowMat} position={[0, 0, -CT - 0.003]} scale={[1.09, 1.065, 1]} visible={glowMat.opacity > 0.01 || !!glow} renderOrder={-1} />}
           </>
         )}
+      </group>
       </group>
     </group>
   );

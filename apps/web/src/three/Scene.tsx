@@ -8,6 +8,8 @@ import { type Camera, type Group, type Mesh, type MeshBasicMaterial, type Object
 import { isNukeTrick, type Card, type Play, type Trick } from '@spades/rules';
 import Card3D from './Card3D';
 import PlayableGlow, { type GlowAnchor } from './PlayableGlow';
+import { departureSlot, handCardKey, handReactKey } from '../handOrder';
+import { GAP_S, LIFT_S, canTapCard, fanMotion, playablePose, raiseLocalY } from './handLift';
 import { contiguousRuns } from './playableOutline';
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline } from './dealTimeline';
@@ -54,7 +56,7 @@ export interface SceneProps {
   short?: boolean;
   /** Safe-area insets in CSS px. */
   safe?: { l: number; r: number; t: number; b: number };
-  /** Highlight playable cards (tips mode). */
+  /** Tips mode. The turn lift is the same 14px either way; tip marks still use `marked`. */
   hintLegal?: boolean;
   /** cards an open tip points at: they glow (on the table and in your hand) */
   marked?: Card[];
@@ -301,8 +303,14 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
     : wide ? { reserveFrac: (size.width < 1400 ? 250 : 205) / size.width, bottomFrac: 0.012, heightFrac: 0.205 }
     : {};
   const trickScale = short ? 1.85 : undefined;
+  // Last committed hand, so a play can launch from that card's own slot. Updated in an effect (not during render)
+  // so a highlight change and the server ack share one set of keys and don't restart the fan.
+  type Held = { handNo: number; cards: Set<string>; slots: Map<string, Xform>; count: number; seen: Set<string> };
+  const held = useRef<Held>({ handNo: -1, cards: new Set(), slots: new Map(), count: 0, seen: new Set() });
+  if (held.current.handNo !== handNo) held.current = { handNo, cards: new Set(), slots: new Map(), count: 0, seen: new Set() };
+  const pendingHold = useRef<Held>(held.current);
 
-  type Item = { key: string; card: Card | null; target: Xform; from?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: () => void; shadow?: boolean; duration?: number; arc?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; inTrick?: boolean; played?: string | null; jokerAura?: { kind: 'BJ' | 'LJ'; cardsAfter: number } };
+  type Item = { key: string; card: Card | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: (() => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide'; raise?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; inTrick?: boolean; played?: string | null; jokerAura?: { kind: 'BJ' | 'LJ'; cardsAfter: number } };
   const items: Item[] = [];
   const dealDelay = (slot: number, seat: number) => tl.shuffle + (slot * n + ((seat - dealer - 1 + n) % n)) * tl.step;
 
@@ -321,11 +329,12 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   const trickOpen = shownTrick.length < n;
   shownTrick.forEach((pl, order) => {
     const autoDelay = pl.auto ? { delay: 0.35 + 0.12 * (order - firstAuto) } : {};
-    const fanFrom = pl.seat === human ? undefined : opponentFan(positions[pl.seat]!, n, Math.max(0, handCounts[pl.seat]! - 1) / 2, handCounts[pl.seat]! + 1);
+    const leftHand = pl.seat === human ? departureSlot(held.current.slots, held.current.cards, pl.card) : undefined;
+    const fanFrom = leftHand ?? (pl.seat === human ? undefined : opponentFan(positions[pl.seat]!, n, Math.max(0, handCounts[pl.seat]! - 1) / 2, handCounts[pl.seat]! + 1));
     const jokerAura = trickOpen && (pl.card === 'BJ' || pl.card === 'LJ')
       ? { kind: pl.card, cardsAfter: Math.max(0, shownTrick.length - 1 - order) }
       : undefined;
-    items.push({ key: `${handNo}-${pl.card}`, card: pl.card, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale), from: fanFrom, ...(props.landCue(pl.card).includes(',overcut') ? { duration: 0.34, arc: 0.7 } : { duration: 0.5, arc: 0.35 }), sfxLand: props.landCue(pl.card), glow: !!props.marked?.includes(pl.card), inTrick: true, played: pl.card, jokerAura, ...autoDelay });
+    items.push({ key: `${handNo}-${pl.card}`, card: pl.card, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale), from: fanFrom, origin: leftHand, ...(props.landCue(pl.card).includes(',overcut') ? { duration: 0.34, arc: 0.7 } : { duration: 0.5, arc: 0.35 }), sfxLand: props.landCue(pl.card), glow: !!props.marked?.includes(pl.card), inTrick: true, played: pl.card, jokerAura, ...autoDelay });
   });
   // 'Run it!': the claimer's cards slam down in sequence (then the tornado takes everything)
   if (props.slam) {
@@ -335,8 +344,9 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       const base = trickSpot('bottom', n, i, jitterOf(c), trickScale);
       const w = CW * (trickScale ?? TRICK_SCALE) * 0.84; // slightly overlapped: 4 cards ≈ the trick's width
       const target: Xform = { ...base, p: [(i - (k - 1) / 2) * w, base.p[1] + 0.01 * i, 0.02] };
-      const from = seat === human ? undefined : opponentFan(positions[seat]!, n, Math.min(i, k - 1), k);
-      items.push({ key: `${handNo}-${c}`, card: c, target, from, delay: 0.02, duration: RUN_SLAM_MS / 1000, arc: 0.9 }); // slow motion
+      const leftHand = seat === human ? departureSlot(held.current.slots, held.current.cards, c) : undefined;
+      const from = leftHand ?? (seat === human ? undefined : opponentFan(positions[seat]!, n, Math.min(i, k - 1), k));
+      items.push({ key: `${handNo}-${c}`, card: c, target, from, origin: leftHand, delay: 0.02, duration: RUN_SLAM_MS / 1000, arc: 0.9 }); // slow motion
     });
     // the rest of the table's cards: one quick cascade, a smaller row under the claimer's (from each player's spot)
     const others = props.slam.others ?? [];
@@ -350,8 +360,9 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       const hc = CH * (trickScale ?? TRICK_SCALE), ho = CH * sc;
       // a row (two when many) just beyond the claimer's row, so the claimer's cards stay on top and readable
       const target: Xform = { ...base, s: sc, p: [(col - (Math.min(perRow, m - row * perRow) - 1) / 2) * w, base.p[1] * 0.8 + 0.002 * i, 0.02 - (hc * 0.55 + ho * 0.5) - row * ho * 0.92] };
-      const from = s2 === human ? undefined : opponentFan(positions[s2]!, n, 0, 1);
-      items.push({ key: `${handNo}-${c}`, card: c, target, from, delay: 0.38 + i * 0.03, duration: 0.18, arc: 0.25 });
+      const leftHand = s2 === human ? departureSlot(held.current.slots, held.current.cards, c) : undefined;
+      const from = leftHand ?? (s2 === human ? undefined : opponentFan(positions[s2]!, n, 0, 1));
+      items.push({ key: `${handNo}-${c}`, card: c, target, from, origin: leftHand, delay: 0.38 + i * 0.03, duration: 0.18, arc: 0.25 });
     });
   }
   // opponents' fans
@@ -364,39 +375,67 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   }
   // the human hand
   const mine = myHand ?? Array.from({ length: handCounts[human]! }, () => null);
-  // One outline per contiguous run of playable cards (see playableOutline). Not when every card is playable:
-  // there's nothing to distinguish, same as before.
-  const groupLegal = legal.length > 0 && legal.length < mine.length;
+  const faceCount = mine.reduce((nCards, c) => nCards + (c ? 1 : 0), 0);
+  // A card left since the last committed hand: slide the gap shut. A highlight alone does not.
+  const closing = held.current.count > 0 && faceCount < held.current.count;
+  // One outline per contiguous run of legal cards (see playableOutline), including when the whole hand is playable.
+  // Off turn, legal is empty: every card stays flat, full brightness, and the outline fades.
+  const yourTurn = legal.length > 0;
+  const fan = fanLayout(aspect, Math.max(1, mine.length), safeFrac, fanOpts);
   const glowAnchors: (GlowAnchor & { playable: boolean })[] = [];
+  const nextCards = new Set<string>();
+  const nextSlots = new Map<string, Xform>();
+  const nextSeen = new Set<string>();
   mine.forEach((c, i) => {
     const isLegal = !!c && legal.includes(c);
-    const lift = c && selected === c ? 0.24 : isLegal ? (props.hintLegal ? 0.12 : wide && legal.length < mine.length ? 0.09 : 0.07) : 0;
-    const target = handFan(aspect, mine.length, i, lift, safeFrac, fanOpts);
+    const pose = c ? playablePose(yourTurn, isLegal, selected === c) : 'flat';
+    // The fan pose is the flat stack. A raise, a selection, or a legal-state change is translateY on an
+    // inner wrapper, so the mesh is not retargeted and the left-to-right order never changes.
+    const target = handFan(aspect, mine.length, i, 0, safeFrac, fanOpts);
     const flip = flipIn && !!c;
-    const grouped = groupLegal && isLegal;
+    const id = c ? handCardKey(c) : '';
+    // intro stays on for the whole hand; only cards we have not shown yet come from the deck.
+    const fresh = !!id && intro && !held.current.seen.has(id);
+    const move = fanMotion({ flip, fresh, closing });
     if (c) {
-      const plane = handCardPlane(aspect, mine.length, i, lift, safeFrac, fanOpts);
-      glowAnchors.push({ name: `${handNo}-${c}`, x: plane.x, y: plane.y, playable: grouped });
+      nextCards.add(c);
+      nextSlots.set(id, target);
+      nextSeen.add(id);
+      const plane = handCardPlane(aspect, mine.length, i, 0, safeFrac, fanOpts);
+      glowAnchors.push({
+        name: handReactKey(handNo, c, i), x: plane.x, y: plane.y,
+        playable: pose === 'legal' || pose === 'selected', selected: pose === 'selected',
+      });
     }
     items.push({
       hand: true,
-      key: c ? `${handNo}-${c}` : `${handNo}-hb-${i}`,
+      key: handReactKey(handNo, c, i),
       card: c,
       target,
-      from: flip ? flipped(target) : intro ? deck : undefined,
-      delay: flip ? i * 0.022 : intro ? dealDelay(i, human) : 0,
-      sfxStart: flip ? undefined : 'deal',
-      dim: !!c && legal.length > 0 && !isLegal,
-      // the group rail (PlayableGlow) marks playable cards. A selected card keeps its own edge only when it isn't
-      // already inside that rail (every card playable). Tip marks still point at one card.
-      glow: !!c && ((selected === c && !grouped) || !!props.marked?.includes(c)),
-      tap: c && isLegal ? () => onCardTap(c) : undefined,
+      from: move.kind === 'flip' ? flipped(target) : move.kind === 'deal' ? deck : undefined,
+      delay: move.kind === 'flip' ? i * 0.022 : move.kind === 'deal' ? dealDelay(i, human) : 0,
+      sfxStart: move.kind === 'deal' ? 'deal' : undefined,
+      dim: pose === 'illegal',
+      // the group outline marks playable cards. A tap lifts that card another 10px; it does not get its own border.
+      // Tip marks still point at one card.
+      glow: !!c && !!props.marked?.includes(c),
+      tap: c && canTapCard(pose) ? () => onCardTap(c) : pose === 'illegal' ? null : undefined,
       shadow: false,
-      duration: flip ? 0.34 : intro ? tl.fly : 0.32,
-      arc: flip ? 0 : 0.05,
+      duration: move.kind === 'flip' ? 0.34 : move.kind === 'deal' ? tl.fly : move.kind === 'slide' ? GAP_S : LIFT_S,
+      motion: move.motion,
+      arc: move.arc,
+      raise: c ? raiseLocalY(pose, fan.viewH, size.height, fan.ch) : 0,
     });
   });
+  pendingHold.current = { handNo, cards: nextCards, slots: nextSlots, count: faceCount, seen: nextSeen };
   const glowRuns = contiguousRuns(glowAnchors.map((a) => a.playable)).map(([a, b]) => glowAnchors.slice(a, b + 1));
+
+  // Commit after paint. A highlight render and the server ack both read the previous hand, so they share keys
+  // and the played card still knows the slot it left. Strict Mode's extra render sees the same snapshot.
+  useEffect(() => {
+    if (!props.fontsReady) return;
+    held.current = pendingHold.current;
+  });
 
   // test probe: every key that was ever dealt from the deck, per hand (a re-deal would add new keys)
   useEffect(() => {
@@ -410,7 +449,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   if (!props.fontsReady) return null;
   return (
     <group>
-      <LayoutProbe positions={positions} n={n} short={short} items={items} trickKeys={shownTrick.map((pl) => `${handNo}-${pl.card}`)} handKeys={mine.map((c, i) => (c ? `${handNo}-${c}` : `${handNo}-hb-${i}`))} />
+      <LayoutProbe positions={positions} n={n} short={short} items={items} trickKeys={shownTrick.map((pl) => `${handNo}-${pl.card}`)} handKeys={mine.map((c, i) => handReactKey(handNo, c, i))} />
       {items.map((it) => (
         <Card3D
           key={it.key}
@@ -419,9 +458,12 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
           back={back}
           target={it.target}
           from={it.from}
+          origin={it.origin}
           delay={it.delay}
           duration={it.duration}
+          motion={it.motion}
           arc={it.arc}
+          raise={it.raise}
           dim={it.dim}
           glow={it.glow}
           castShadow={it.shadow !== false && quality === 'high'}

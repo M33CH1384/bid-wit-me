@@ -3,16 +3,14 @@ import { fx } from '../fx';
 import { shotChatLines } from '../shotOut';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { Action, GameState, PlayerView } from '@spades/rules';
-import { bidLabel, isFreshDeal } from '@spades/rules';
+import { bidLabel, isFreshDeal, isNukeTrick } from '@spades/rules';
 import type { ChatLine, RoomInfo } from '@spades/protocol';
-import { NUKE_ALLOWANCE_MS, RUN_FX_MS } from '@spades/protocol';
-import { isNukeTrick } from '@spades/rules';
 import type { ChatMsg } from '../overlay';
 import type { ConnState, TableConnection } from './connection';
 import { type Rotation, rotateView } from './rotate';
 import type { VideoMesh, VideoState } from './video';
 import { dealTimeline } from '../three/dealTimeline';
-import { nextTrickPause } from '../trickTiming';
+import { finishedTrickHoldMs, nextTrickPause } from '../trickTiming';
 
 export function useConn(conn: TableConnection): ConnState {
   return useSyncExternalStore(conn.subscribe, conn.getState);
@@ -38,7 +36,6 @@ export interface GameSource {
   locked?: boolean;
 }
 
-const TRICK_HOLD_MS = 1150;
 /** same shuffle + deal animation length as offline at normal speed (server waits ~3.2 s before bots bid) */
 const dealMs = (st: GameState) => dealTimeline(1, st.rules.playerCount, st.hands.reduce((a, h) => a + h.length, 0)).total * 1000 + 150;
 
@@ -77,15 +74,19 @@ export function useOnlineSource(cs: ConnState, conn: TableConnection): (GameSour
   }, [rotated]);
 
   useEffect(() => {
-    if (!pause) return;
-    // 'Run it!': hold through the slam + tornado (the table shows the hand's end afterwards)
-    const last = shown?.st.tricks.at(-1)?.plays ?? [];
-    const ran = last.some((p) => p.run) ? RUN_FX_MS : 0;
-    // a nuked trick stays on the table for the blast (the server waits the same allowance before the next lead)
-    const nuke = isNukeTrick(last) ? NUKE_ALLOWANCE_MS[fx.tableNuke ?? 'full'] : 0;
-    const t = setTimeout(() => setPause(false), TRICK_HOLD_MS + ran + nuke);
+    if (!pause || !shown) return;
+    // Same clock as offline: a normal hand ends ~700 ms after the last card lands; a nuke or
+    // Run it! holds for that show and the score opens when the hold (and the show) ends.
+    const last = shown.st.tricks.at(-1)?.plays ?? [];
+    const ending = shown.st.phase === 'handOver' || shown.st.phase === 'gameOver';
+    const t = setTimeout(() => setPause(false), finishedTrickHoldMs({
+      speed: 1,
+      handEnding: ending,
+      run: last.some((p) => p.run),
+      nuke: isNukeTrick(last) ? (fx.tableNuke ?? 'full') : null,
+    }));
     return () => clearTimeout(t);
-  }, [pause, shown?.st.tricks.length]);
+  }, [pause, shown?.st.tricks.length, shown?.st.phase]);
 
   const dealing = !!intro && intro.hand === shown?.st.handNo && Date.now() < intro.until;
   useEffect(() => {

@@ -85,9 +85,13 @@ export function buildRecord(o: { id: string; room: string; game: GameState; seat
   };
 }
 
-/** rated = signed-in players faced at least one other human (bots-only games still count for stats, not Elo) */
+/**
+ * Rated for Elo only when signed-in players sit on at least two sides.
+ * A guest does not count, and neither do bots. Those games still record stats.
+ * Games already stored as rated keep the Elo written at the time; this does not recompute them.
+ */
 export function isRated(rec: GameRecord, rules: { playerCount: number; partnerships: boolean }): boolean {
-  const sides = new Set(rec.seats.filter((s) => s.kind !== 'bot').map((s) => s.side));
+  const sides = new Set(rec.seats.filter((s) => s.kind === 'user').map((s) => s.side));
   return rec.players.length > 0 && sides.size >= 2 && rules.playerCount === rec.seats.length;
 }
 

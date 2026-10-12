@@ -3,11 +3,11 @@ import { HAPTIC, haptic } from './haptics';
 import { startLittleBurst } from './JokerBurst';
 import { SWEEP_MS } from './jokerFx';
 import { offlineTalk } from './offlineTalk';
-import { RUN_FX_MS } from '@spades/protocol';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type Action, type GameState, type TableRules, applyAction, canRunIt, isNukeTrick, newGame, pendingTurn, secureSeed, viewFor } from '@spades/rules';
 import { type BotLevel, type PartnerHint, chooseBotAction, parseHint } from '@spades/bots';
 import { dealTimeline } from './three/dealTimeline';
+import { finishedTrickHoldMs } from './trickTiming';
 
 export const HUMAN = 0;
 
@@ -68,14 +68,11 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
       const winCard = trick.winner == null ? null : last.find((p) => p.seat === trick.winner)?.card;
       if (winCard === 'LJ') { littleBurstFor.current = st.tricks.length; startLittleBurst(); }
     }
-    if (run) {
-      const t = setTimeout(() => setPause(false), 1150 * k + RUN_FX_MS);
-      return () => clearTimeout(t);
-    }
     if (nuke) {
       // Overlay sequence is about 1.2s. Release into the pile flight on that clock.
       // A capture pins time with fx.warp; live play uses the wall clock from this pause.
       // The server still waits NUKE_ALLOWANCE_MS — only this offline table sweeps early.
+      // No trick-win haptic: the detonation pattern already fired.
       const t0 = performance.now();
       let id = 0;
       const tick = () => {
@@ -86,10 +83,14 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
       id = requestAnimationFrame(tick);
       return () => cancelAnimationFrame(id);
     }
+    const ending = st.phase === 'handOver' || st.phase === 'gameOver';
+    // Hand end: this hold is the whole wait (700 ms after the card lands at normal speed).
+    // Run it! holds for that show. Mid-hand tricks keep their pace. A nuke took the branch above.
+    const ms = finishedTrickHoldMs({ speed: k, handEnding: ending, run, nuke: null });
     const t = setTimeout(() => {
-      haptic(HAPTIC.trickWin, 'trick-win');
+      if (!run) haptic(HAPTIC.trickWin, 'trick-win');
       setPause(false);
-    }, 1150 * k);
+    }, ms);
     return () => clearTimeout(t);
   }, [pause, k, hold]);
 

@@ -1,0 +1,259 @@
+import { describe, expect, it } from 'vitest';
+import {
+  BREATHE_HI, BREATHE_LO, BREATHE_S, BREATHE_SCALE, GAP_S, GLOW_ALPHA, GLOW_BLUR_PX, GLOW_REACH_PX, GLOW_SPREAD_PX,
+  GROUP_PAD_PX, GROUP_RADIUS_PX, ILLEGAL_BRIGHTNESS, ILLEGAL_COLOR, LIFT_S, OUTLINE_COLOR, OUTLINE_PX, RAISE_S,
+  SELECT_GLOW_OP, SHINE_DEG, SHINE_PEAK, SHINE_S, SHINE_WIDTH,
+  breatheOpacity, canTapCard, easeOut, fanMotion, glowFalloff, glowRadiusPx, handLift, liftEase, outlineRadiusPx,
+  playablePose, posePx, raiseLocalY, shineAxis, shineBand, stackFor,
+} from '../src/three/handLift';
+import { fanLayout, handCardPlane, handFan } from '../src/three/layout';
+import { contourContains, contiguousRuns, haloLocal, HALO_SX, HALO_SY, placeOnPlane, strokeContour, strokeRibbon, unionContours } from '../src/three/playableOutline';
+
+describe('your-turn hand poses', () => {
+  it('lifts the legal group 14px, drops illegal cards 4px, and adds 10px on the tapped card', () => {
+    expect(posePx('flat')).toBe(0);
+    expect(posePx('illegal')).toBe(-4);
+    expect(posePx('legal')).toBe(14);
+    expect(posePx('selected')).toBe(24);
+    expect(LIFT_S).toBe(0.2);
+    expect(GAP_S).toBe(0.24);
+    expect(RAISE_S).toBe(0.16);
+  });
+
+  it('raises with translateY only, and a select does not move or restack the fan', () => {
+    const aspect = 390 / 844;
+    const screenH = 844;
+    const n = 13;
+    const i = 4;
+    const L = fanLayout(aspect, n);
+    const fan = handFan(aspect, n, i, 0);
+    const plane = handCardPlane(aspect, n, i, 0);
+    for (const pose of ['flat', 'illegal', 'legal', 'selected'] as const) {
+      const again = handFan(aspect, n, i, 0);
+      expect(again.p).toEqual(fan.p);
+      expect(again.q).toEqual(fan.q);
+      expect(again.s).toBe(fan.s);
+      const stayed = handCardPlane(aspect, n, i, 0);
+      expect(stayed.x).toBe(plane.x);
+      expect(stayed.roll).toBe(plane.roll);
+      expect(stayed.depth).toBe(plane.depth);
+      const localY = raiseLocalY(pose, L.viewH, screenH, L.ch);
+      const px = ((localY * L.s) / L.viewH) * screenH;
+      expect(px).toBeCloseTo(posePx(pose), 4);
+    }
+    // Baking the raise into the fan transform is what shoved an off-center card sideways for a frame.
+    const baked = handFan(aspect, n, i, handLift('selected', L.viewH, screenH, L.ch), 0, { layer: 'selected' });
+    expect(baked.p[0]).not.toBeCloseTo(fan.p[0], 3);
+  });
+
+  it('closes a gap by sliding, and a highlight only lifts', () => {
+    expect(fanMotion({ flip: false, fresh: false, closing: true })).toEqual({ kind: 'slide', motion: 'slide', arc: 0 });
+    expect(fanMotion({ flip: false, fresh: false, closing: false })).toEqual({ kind: 'lift', motion: 'lift', arc: 0 });
+    expect(fanMotion({ flip: false, fresh: true, closing: true })).toEqual({ kind: 'deal', motion: 'flight', arc: 0.05 });
+    expect(fanMotion({ flip: true, fresh: true, closing: true })).toEqual({ kind: 'flip', motion: 'flight', arc: 0 });
+    // the slide uses the same curve as the lift, over the longer gap
+    expect(liftEase(0)).toBe(0);
+    expect(liftEase(1)).toBe(1);
+    expect(liftEase(0.5)).toBeGreaterThan(0.5);
+  });
+
+  it('is flat off turn, and a card you cannot play is not tappable', () => {
+    expect(playablePose(false, true, true)).toBe('flat');
+    expect(playablePose(true, false, true)).toBe('illegal');
+    expect(playablePose(true, true, false)).toBe('legal');
+    expect(playablePose(true, true, true)).toBe('selected');
+    expect(canTapCard('flat')).toBe(false);
+    expect(canTapCard('illegal')).toBe(false);
+    expect(canTapCard('legal')).toBe(true);
+    expect(canTapCard('selected')).toBe(true);
+    expect(stackFor('flat')).toBe('rest');
+    expect(stackFor('illegal')).toBe('rest');
+    expect(stackFor('legal')).toBe('play');
+    expect(stackFor('selected')).toBe('selected');
+  });
+
+  it('those pixel offsets are CSS pixels on a phone, and the tapped card still stacks in front', () => {
+    const aspect = 390 / 844;
+    const screenH = 844;
+    const n = 13;
+    const i = 6;
+    const L = fanLayout(aspect, n);
+    const at = (pose: 'flat' | 'illegal' | 'legal' | 'selected') =>
+      handCardPlane(aspect, n, i, handLift(pose, L.viewH, screenH, L.ch), 0, { layer: stackFor(pose) });
+    const flat = at('flat');
+    const illegal = at('illegal');
+    const legal = at('legal');
+    const selected = at('selected');
+    const px = (a: number, b: number) => ((a - b) / L.viewH) * screenH;
+    expect(px(legal.y, flat.y)).toBeCloseTo(14, 4);
+    expect(px(flat.y, illegal.y)).toBeCloseTo(4, 4);
+    expect(px(selected.y, legal.y)).toBeCloseTo(10, 4);
+    expect(selected.depth).toBeLessThan(legal.depth);
+    expect(legal.depth).toBeLessThan(illegal.depth);
+    expect(illegal.depth).toBeCloseTo(flat.depth, 6);
+    // z-order is the pose, not the old `lift > 0.2` shortcut (24px can be under or over that, depending on the card size)
+    const flagged = handCardPlane(aspect, n, i, 0.01, 0, { layer: 'selected' });
+    const resting = handCardPlane(aspect, n, i, 0.5, 0, { layer: 'rest' });
+    expect(flagged.depth).toBeLessThan(resting.depth);
+  });
+
+  it('illegal cards are 55% of the brightness the old dim was tuned to', () => {
+    expect(ILLEGAL_BRIGHTNESS).toBe(0.55);
+    const lum = (c: readonly number[]) => 0.299 * c[0]! + 0.587 * c[1]! + 0.114 * c[2]!;
+    expect(lum(ILLEGAL_COLOR) / lum([0.2, 0.195, 0.25])).toBeCloseTo(0.55 / 0.6, 6);
+  });
+});
+
+describe('group outline stroke', () => {
+  it('is a 2px #F2C14E line, 10px corners, 4px out, with an 18px/4px glow that ends 16px from the cards', () => {
+    expect(OUTLINE_COLOR).toBe('#F2C14E');
+    expect(OUTLINE_PX).toBe(2);
+    expect(outlineRadiusPx()).toBe(1);
+    expect(GROUP_RADIUS_PX).toBe(10);
+    expect(GROUP_PAD_PX).toBe(4);
+    expect(GLOW_BLUR_PX).toBe(18);
+    expect(GLOW_SPREAD_PX).toBe(4);
+    expect(GLOW_ALPHA).toBeCloseTo(0.4, 6);
+    expect(GLOW_REACH_PX).toBe(16);
+    expect(glowRadiusPx()).toBe(GLOW_REACH_PX - GROUP_PAD_PX);
+    expect(GROUP_PAD_PX + glowRadiusPx()).toBe(16);
+    expect(glowFalloff(0)).toBe(1);
+    // one sigma of the 18px blur (sigma = 9px) is the start of the outer fade, not yet pulled to 0
+    const sigmaEdge = (GLOW_BLUR_PX / 2) / glowRadiusPx();
+    expect(sigmaEdge).toBeCloseTo(0.75, 5);
+    expect(glowFalloff(sigmaEdge)).toBeCloseTo(Math.exp(-0.5), 5);
+    expect(glowFalloff(1)).toBe(0);
+  });
+
+  it('the crisp stroke is one CSS pixel to either side of the contour', () => {
+    const aspect = 390 / 844;
+    const screenH = 844;
+    const L = fanLayout(aspect, 13);
+    const radius = outlineRadiusPx() * (L.viewH / screenH);
+    const [c] = unionContours([[
+      { x: -1, y: -0.5 }, { x: 1, y: -0.5 }, { x: 1, y: 0.5 }, { x: -1, y: 0.5 },
+    ]]);
+    const tris = strokeContour(c!, radius);
+    let maxY = -Infinity;
+    for (let i = 0; i < tris.length; i += 3) {
+      if (Math.abs(tris[i]!) < 0.05) maxY = Math.max(maxY, tris[i + 1]!);
+    }
+    const widthPx = ((maxY - 0.5) / L.viewH) * screenH;
+    expect(widthPx).toBeCloseTo(outlineRadiusPx(), 2);
+  });
+
+  it('the glow ribbon carries a UV from the inside edge to the outside edge', () => {
+    const [c] = unionContours([[
+      { x: -1, y: -0.5 }, { x: 1, y: -0.5 }, { x: 1, y: 0.5 }, { x: -1, y: 0.5 },
+    ]]);
+    const { pos, uv } = strokeRibbon(c!, 0.08);
+    expect(uv.length).toBe((pos.length / 3) * 2);
+    expect(uv[0]).toBe(0);
+    expect(uv[2]).toBe(1);
+    for (let i = 0; i < uv.length; i += 2) expect(uv[i] === 0 || uv[i] === 1).toBe(true);
+  });
+});
+
+describe('shine and idle breath', () => {
+  it('breathes the glow between 0.3 and 0.5 on a 2.2s cycle and does not scale', () => {
+    expect(BREATHE_S).toBe(2.2);
+    expect(BREATHE_LO).toBe(0.3);
+    expect(BREATHE_HI).toBe(0.5);
+    expect(BREATHE_SCALE).toBe(1);
+    expect(breatheOpacity(0)).toBeCloseTo(0.3, 5);
+    expect(breatheOpacity(BREATHE_S / 2)).toBeCloseTo(0.5, 5);
+    expect(breatheOpacity(BREATHE_S)).toBeCloseTo(0.3, 5);
+    expect(breatheOpacity(BREATHE_S * 1.5)).toBeCloseTo(0.5, 5);
+    expect(breatheOpacity(BREATHE_S / 4)).toBeCloseTo(0.4, 2);
+    expect(breatheOpacity(BREATHE_S / 4)).toBeGreaterThan(0.3);
+    expect(breatheOpacity(BREATHE_S / 4)).toBeLessThan(0.5);
+  });
+
+  it('sweeps a 35% band once at 105° and is dark outside the 650ms', () => {
+    expect(SHINE_S).toBe(0.65);
+    expect(SHINE_WIDTH).toBeCloseTo(0.35, 6);
+    expect(SHINE_PEAK).toBeCloseTo(0.35, 6);
+    expect(SHINE_DEG).toBe(105);
+    const axis = shineAxis();
+    expect(axis.x).toBeCloseTo(Math.sin((105 * Math.PI) / 180), 6);
+    expect(axis.y).toBeCloseTo(Math.cos((105 * Math.PI) / 180), 6);
+    const span = 100;
+    expect(shineBand(span * 0.5, span, -0.01)).toBe(0);
+    expect(shineBand(span * 0.5, span, 1.01)).toBe(0);
+    expect(shineBand(0, span, 0)).toBe(0);
+    expect(shineBand(span, span, 1)).toBe(0);
+    // ease-out hits 0.5 when the band is centred on the middle of the group
+    let lo = 0, hi = 1;
+    for (let i = 0; i < 40; i++) {
+      const mid = (lo + hi) / 2;
+      if (easeOut(mid) < 0.5) lo = mid; else hi = mid;
+    }
+    const t = (lo + hi) / 2;
+    expect(shineBand(span * 0.5, span, t)).toBeCloseTo(SHINE_PEAK, 2);
+    expect(shineBand(span * 0.5 + SHINE_WIDTH * span, span, t)).toBe(0);
+    expect(shineBand(span * 0.5 + span * 0.1, span, t)).toBeGreaterThan(0.1);
+    let crossings = 0;
+    let prev = 0;
+    for (let i = 0; i <= 40; i++) {
+      const a = shineBand(span * 0.5, span, i / 40);
+      if (a > 0.2 && prev <= 0.2) crossings++;
+      prev = a;
+    }
+    expect(crossings).toBe(1);
+  });
+
+  it('a selected card is another 10px up and the outline goes to 0.8, brighter than the breath', () => {
+    expect(posePx('selected') - posePx('legal')).toBe(10);
+    expect(SELECT_GLOW_OP).toBeCloseTo(0.8, 6);
+    expect(SELECT_GLOW_OP).toBeGreaterThan(BREATHE_HI);
+    expect(ILLEGAL_BRIGHTNESS).toBe(0.55);
+  });
+});
+
+describe('lift easing', () => {
+  it('is cubic-bezier(.2, .8, .2, 1): endpoints, monotone, and a fast start', () => {
+    expect(liftEase(0)).toBe(0);
+    expect(liftEase(1)).toBe(1);
+    expect(liftEase(-0.2)).toBe(0);
+    expect(liftEase(1.4)).toBe(1);
+    let prev = -1;
+    for (let i = 0; i <= 20; i++) {
+      const y = liftEase(i / 20);
+      expect(y).toBeGreaterThanOrEqual(prev - 1e-9);
+      prev = y;
+    }
+    // control point (0.2, 0.8) leaves the origin steep, so a quarter of the time is most of the rise
+    expect(liftEase(0.25)).toBeGreaterThan(0.7);
+    expect(liftEase(0.25)).toBeLessThan(1);
+  });
+});
+
+describe('non-adjacent legal cards stay separate runs', () => {
+  const aspect = 390 / 844;
+  const screenH = 844;
+
+  it('a gap card is outside both outlines and sits 18px below the legal group', () => {
+    const n = 13;
+    const L = fanLayout(aspect, n);
+    const flags = Array.from({ length: n }, (_, i) => i === 2 || i === 3 || i === 8 || i === 9 || i === 10);
+    expect(contiguousRuns(flags)).toEqual([[2, 3], [8, 10]]);
+    const halo = haloLocal(HALO_SX, HALO_SY, 3);
+    const poseAt = (i: number) => (flags[i] ? 'legal' : 'illegal') as const;
+    const plane = (i: number) => handCardPlane(aspect, n, i, handLift(poseAt(i), L.viewH, screenH, L.ch), 0, { layer: stackFor(poseAt(i)) });
+    const contours = contiguousRuns(flags).map(([a, b]) => unionContours(
+      Array.from({ length: b - a + 1 }, (_, k) => placeOnPlane(halo, plane(a + k))),
+    ));
+    expect(contours.every((cs) => cs.length === 1)).toBe(true);
+    const between = plane(5);
+    expect(contourContains(contours[0]![0]!, between)).toBe(false);
+    expect(contourContains(contours[1]![0]!, between)).toBe(false);
+    expect(contours[0]![0]!.bot[contours[0]![0]!.bot.length - 1]!.x).toBeLessThan(contours[1]![0]!.bot[0]!.x);
+    const legal = plane(8);
+    const drop = ((legal.y - between.y) / L.viewH) * screenH;
+    // the fan arc already separates their resting heights; the turn adds 18px on top of that
+    const restLegal = handCardPlane(aspect, n, 8, 0);
+    const restGap = handCardPlane(aspect, n, 5, 0);
+    const restPx = ((restLegal.y - restGap.y) / L.viewH) * screenH;
+    expect(drop - restPx).toBeCloseTo(18, 3);
+  });
+});

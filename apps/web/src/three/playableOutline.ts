@@ -48,6 +48,56 @@ export function haloLocal(sx: number, sy: number, segs = 4): Pt[] {
   return roundedRect((CW / 2) * sx, (CH / 2) * sy, CR * sx, CR * sy, segs);
 }
 
+/** Major-axis angle of a point cloud, so a fanned run is boxed with the cards instead of the screen. */
+function clusterAngle(pts: readonly Pt[]): number {
+  let n = 0, mx = 0, my = 0;
+  for (const p of pts) { n++; mx += p.x; my += p.y; }
+  if (n < 2) return 0;
+  mx /= n; my /= n;
+  let xx = 0, xy = 0, yy = 0;
+  for (const p of pts) {
+    const dx = p.x - mx, dy = p.y - my;
+    xx += dx * dx; xy += dx * dy; yy += dy * dy;
+  }
+  return 0.5 * Math.atan2(2 * xy, xx - yy);
+}
+
+/**
+ * One rounded rectangle around a run: `pad` outside the faces, corner radius `radius`.
+ * The box follows the run (a tight fan is not square to the screen), so it stays off the cards
+ * you can't play. One convex outline — no per-card scallop, so the stroke has nothing to flare into rays.
+ * Returns null when there is nothing to wrap.
+ */
+export function groupOutline(polys: readonly (readonly Pt[])[], pad: number, radius: number, segs = 5): Pt[] | null {
+  const pts: Pt[] = [];
+  for (const poly of polys) for (const p of poly) pts.push(p);
+  if (!pts.length) return null;
+  let cx = 0, cy = 0;
+  for (const p of pts) { cx += p.x; cy += p.y; }
+  cx /= pts.length; cy /= pts.length;
+  const ang = clusterAngle(pts);
+  const co = Math.cos(ang), si = Math.sin(ang);
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of pts) {
+    const dx = p.x - cx, dy = p.y - cy;
+    const x = dx * co + dy * si;
+    const y = -dx * si + dy * co;
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+  }
+  if (!(maxX >= minX) || !(maxY >= minY)) return null;
+  const hw = (maxX - minX) / 2 + pad;
+  const hh = (maxY - minY) / 2 + pad;
+  const ox = (minX + maxX) / 2;
+  const oy = (minY + maxY) / 2;
+  return roundedRect(hw, hh, radius, radius, segs).map((p) => {
+    const x = p.x + ox, y = p.y + oy;
+    return { x: cx + x * co - y * si, y: cy + x * si + y * co };
+  });
+}
+
 /** Place a card-local polygon on the depth-1 camera plane (same pose the fan projects). */
 export function placeOnPlane(local: readonly Pt[], pose: { x: number; y: number; roll: number; s: number }): Pt[] {
   const c = Math.cos(pose.roll), s = Math.sin(pose.roll), k = pose.s;
@@ -134,11 +184,11 @@ export function smoothContour(c: Contour, passes = 2): Contour {
 }
 
 /**
- * A closed gold stroke around a contour, in the same plane units. Drawn in front of the fan (see PlayableGlow):
- * a fill tucked behind the cards disappears wherever the next card overlaps, so the bottom and the end caps never
- * showed. The stroke is only the rim, so the faces stay clear and the whole run reads as one outline.
+ * A closed stroke around a contour, in the same plane units, plus a UV across the ribbon (u = 0 inside, 1 outside).
+ * Drawn in front of the fan (see PlayableGlow): a fill tucked behind the cards disappears wherever the next card
+ * overlaps, so the bottom and the end caps never showed. The stroke is only the rim.
  */
-export function strokeContour(c: Contour, radius: number): Float32Array {
+export function strokeRibbon(c: Contour, radius: number): { pos: Float32Array; uv: Float32Array } {
   const line: Pt[] = [];
   const push = (p: Pt) => {
     const prev = line[line.length - 1];
@@ -148,7 +198,7 @@ export function strokeContour(c: Contour, radius: number): Float32Array {
   for (let i = c.top.length - 1; i >= 0; i--) push(c.top[i]!);
   if (line.length > 2 && Math.hypot(line[0]!.x - line[line.length - 1]!.x, line[0]!.y - line[line.length - 1]!.y) < 1e-5) line.pop();
   const n = line.length;
-  if (n < 3 || radius <= 0) return new Float32Array();
+  if (n < 3 || radius <= 0) return { pos: new Float32Array(), uv: new Float32Array() };
   const outer: Pt[] = [];
   const inner: Pt[] = [];
   for (let i = 0; i < n; i++) {
@@ -160,15 +210,20 @@ export function strokeContour(c: Contour, radius: number): Float32Array {
     outer.push({ x: p.x + dy * radius, y: p.y - dx * radius });
     inner.push({ x: p.x - dy * radius, y: p.y + dx * radius });
   }
-  const arr = new Float32Array(n * 6 * 3);
-  let o = 0;
-  const vert = (p: Pt) => { arr[o++] = p.x; arr[o++] = p.y; arr[o++] = 0; };
+  const pos = new Float32Array(n * 6 * 3);
+  const uv = new Float32Array(n * 6 * 2);
+  let o = 0, u = 0;
+  const vert = (p: Pt, s: number) => { pos[o++] = p.x; pos[o++] = p.y; pos[o++] = 0; uv[u++] = s; uv[u++] = 0.5; };
   for (let i = 0; i < n; i++) {
     const j = (i + 1) % n;
-    vert(inner[i]!); vert(outer[i]!); vert(inner[j]!);
-    vert(inner[j]!); vert(outer[i]!); vert(outer[j]!);
+    vert(inner[i]!, 0); vert(outer[i]!, 1); vert(inner[j]!, 0);
+    vert(inner[j]!, 0); vert(outer[i]!, 1); vert(outer[j]!, 1);
   }
-  return arr;
+  return { pos, uv };
+}
+
+export function strokeContour(c: Contour, radius: number): Float32Array {
+  return strokeRibbon(c, radius).pos;
 }
 
 /** Triangle list (x,y,0) for one or more filled ribbons. Winding is not guaranteed; the mesh is double-sided. */

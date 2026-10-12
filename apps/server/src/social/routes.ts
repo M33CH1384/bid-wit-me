@@ -2,12 +2,13 @@
  * Release 9 HTTP routes under /api/social (served same-origin through the Pages proxy, so the session cookie works):
  *   GET /api/social/ticket            → { ticket, uid, name } for signed-in users (5-minute account ticket), else { guest: true }
  *   GET /api/social/profile/:username → public profile (member since, badges, team names, ratings, head-to-head)
+ *   GET /api/social/me/stats          → signed-in personal stats, split by 2v2 and Cutthroat
  *   GET /api/social/recent            → players you recently played with (signed in)
  *   GET /api/social/reports           → admin only: latest reports
  * The websocket (/api/social/ws) is routed in index.ts to the Social Durable Object.
  */
 import { type AuthEnv, currentUser } from '../auth/routes';
-import { leaderboard, personalStats, serverStats, type PersonalStats } from '../stats/boards';
+import { leaderboard, myStats, personalStats, serverStats, type PersonalStats } from '../stats/boards';
 import { usernameKey } from '../auth/username';
 import { TICKET_TTL_MS, signTicket } from './ticket';
 import { SocialStore } from './store';
@@ -113,6 +114,10 @@ export async function handleSocialHttp(req: Request & { cf?: unknown }, env: Soc
       if (!region) return json({ rows: [], region: null, note: 'Your region is unknown, so there is no local board.' });
     }
     return json({ rows: await leaderboard(db, { board, kind, period, region, now }), region });
+  }
+  if (a === 'me' && parts[3] === 'stats' && req.method === 'GET') {
+    if (!me) return json({ error: 'Sign in to see your stats.' }, 401);
+    return json(await myStats(db, me.id));
   }
   if (a === 'stats' && req.method === 'GET') return json(await serverStats(db, now));
   if (a === 'recent' && req.method === 'GET') {
