@@ -394,19 +394,17 @@ export class Room {
     this.seatReserved(keepId);
   }
 
-  /** signed-in player facing a human on another side: this seating would count for Elo */
+  /** signed-in players on at least two sides: this seating would count for Elo (a guest does not) */
   private ratedTable(): boolean {
     const d = this.data;
     const n = d.rules.playerCount;
-    let account = false;
     const sides = new Set<number>();
     for (let i = 0; i < n; i++) {
       const s = d.seats[i];
-      if (s?.kind !== 'human') continue;
+      if (s?.kind !== 'human' || !d.members[s.playerId]?.uid) continue;
       sides.add(d.rules.partnerships ? i % 2 : i);
-      if (d.members[s.playerId]?.uid) account = true;
     }
-    return account && sides.size >= 2;
+    return sides.size >= 2;
   }
 
   /** rated for seat-takeover policy: latched at the deal so a player leaving doesn't open the seat to a guest */

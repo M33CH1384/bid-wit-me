@@ -134,7 +134,25 @@ button.ghost { background: transparent !important; }
 .soc-lb-table td { padding: 6px 4px; border-bottom: 1px solid rgba(255,255,255,.07); }
 .soc-lb-table td.rk { width: 2.2em; text-align: center; font-weight: 700; }
 .soc-lb-table td.v { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
-.soc-lb-table tr.me td { background: rgba(245,194,66,.12); }
+.soc-lb-table tr.soc-me td { background: rgba(245,194,66,.12); }
+.soc-lb-table th { font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--gold); text-align: right; padding: 2px 4px 4px; }
+.soc-lb-table th:first-child, .soc-lb-table th:nth-child(2) { text-align: left; }
+.soc-wins td.v { width: 4.8em; color: var(--gold); }
+.soc-own-acc td.soc-muted { color: var(--gold); font-size: 12px; white-space: nowrap; }
+.soc-lb-empty { text-align: center; padding: 16px 12px; border-radius: 12px; border: 1px dashed rgba(185,128,255,.45); line-height: 1.45; background: rgba(185,128,255,.06); }
+.soc-lb > .soc-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 0; margin: 0 0 6px; }
+.soc-lb > .soc-seg > button { min-width: 0; }
+.soc-mystats { margin: 0 0 10px; padding: 10px 10px 8px; border-radius: 14px; background: radial-gradient(ellipse at 0% 0%, rgba(155,92,255,.32), transparent 58%), linear-gradient(180deg, #24143a, #140b22); border: 1px solid rgba(245,197,66,.5); box-shadow: inset 0 0 0 1px rgba(185,128,255,.22); }
+.soc-mystats-title { margin: 0; font-family: var(--display); font-weight: 800; letter-spacing: .1em; font-size: 15px; color: var(--gold); text-transform: uppercase; }
+.soc-mystats-mode { margin: 1px 0 6px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.soc-my-elo { margin: 0 0 8px; font-family: var(--display); font-weight: 800; font-size: 28px; letter-spacing: .03em; color: var(--gold); line-height: 1; }
+.soc-my-elo span { display: block; margin-top: 2px; font-family: system-ui, sans-serif; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.soc-my-unrated { margin: 0 0 8px; font-size: 13px; line-height: 1.35; color: var(--gold); background: rgba(245,197,66,.1); border: 1px solid rgba(245,197,66,.4); border-radius: 8px; padding: 7px 8px; }
+.soc-my-other { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
+.soc-mystats .soc-stats { grid-template-columns: repeat(3, 1fr); }
+.soc-mystats .soc-stats b { font-size: 18px; }
+.soc-mystats .soc-stats div { background: rgba(255,255,255,.04); border: 1px solid rgba(185,128,255,.18); }
+.soc-mystats .soc-stats small { line-height: 1.25; }
 .soc-tour-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
 .soc-tour-list { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 6px; }
 .soc-tour-item { width: 100%; text-align: left; display: grid; gap: 2px; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.04); color: inherit; font: inherit; cursor: pointer; }

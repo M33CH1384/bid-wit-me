@@ -1,5 +1,5 @@
 /** Release 9b: Leaderboards and Tournaments tabs of the Social panel. */
-import { type FormEvent, useCallback, useEffect, useState } from 'react';
+import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { useAccount } from '../account/api';
 import { navigate } from '../online/nav';
 import { social, useSocial } from './store';
@@ -19,52 +19,167 @@ function when(at: number, now = Date.now()): string {
 /* ------------------------------------------------------------ leaderboards */
 
 type Board = 'rating' | 'wins' | 'accuracy' | 'duos';
-interface Row { rank: number; id: string; name: string; value: number; games: number; extra?: string }
+type Kind = 'team' | 'cutthroat';
+interface Row { rank: number; id: string; name: string; value: number; games: number; extra?: string; vsPlayers?: number; vsBots?: number }
 interface Stats { accounts: number; games: number; gamesToday: number; hands: number; tournamentsDone: number; tournamentsOpen: number }
+interface ModeStats {
+  games: number; wins: number; winPct: number | null;
+  winsVsPlayers: number; winsVsBots: number; gamesVsPlayers: number; gamesVsBots: number;
+  winPctPlayers: number | null; winPctBots: number | null;
+  accuracy: number | null; bags: number; booksPerHand: number | null; nil: string;
+  shotsGiven: number; shotsTaken: number; bjWins: number; bids: number;
+  elo: number | null; unrated: string | null;
+}
+interface MyStats { team: ModeStats; cutthroat: ModeStats }
+
+const pct = (n: number | null) => (n === null ? '—' : `${Number.isInteger(n) ? n : n}%`);
+const num = (n: number | null) => (n === null ? '—' : String(n));
+
+function emptyCopy(board: Board, period: 'all' | 'month' | 'week', scope: 'global' | 'local'): string {
+  const local = scope === 'local' ? ' in your region' : '';
+  if (board === 'rating' && period === 'all') return `No rated games yet${local}. Your games vs bots count toward Wins and your stats. Elo needs signed-in players on at least two sides.`;
+  if (board === 'rating') return `No Elo change this ${period}${local}. Elo needs signed-in players on at least two sides. Your games vs bots still count toward Wins and your stats.`;
+  if (board === 'wins') return `No wins${local} yet. Vs players is a win against a signed-in opponent. Vs bots is a win when every opponent is a bot. Wins against guests count toward neither.`;
+  if (board === 'accuracy') return `No one${local} has enough bids for this board yet. Every finished signed-in game counts, including vs bots.`;
+  return `No duos${local} yet. Best duos needs two signed-in partners and at least two games against signed-in opponents.`;
+}
+
+function YourStats({ mine, kind }: { mine: MyStats; kind: Kind }) {
+  const primary = mine[kind];
+  const otherKey: Kind = kind === 'cutthroat' ? 'team' : 'cutthroat';
+  const other = mine[otherKey];
+  const label = kind === 'cutthroat' ? 'Cutthroat' : '2v2';
+  const otherLabel = otherKey === 'cutthroat' ? 'Cutthroat' : '2v2';
+  const winLabel = (games: number, rate: number | null, name: string) => `${name}${games ? ` · ${pct(rate)}` : ''}`;
+  return (
+    <section className="soc-mystats" data-testid="your-stats">
+      <h3 className="soc-mystats-title">Your stats</h3>
+      <p className="soc-mystats-mode">{label}</p>
+      {primary.games === 0 ? <p className="soc-my-unrated">No {label} games yet.</p>
+        : primary.elo == null ? <p className="soc-my-unrated" data-testid="your-stats-unrated">{primary.unrated}</p>
+        : <p className="soc-my-elo" data-testid="your-stats-elo">{primary.elo}<span>Elo</span></p>}
+      {primary.games > 0 && (
+        <div className="soc-stats" data-testid="your-stats-grid">
+          <div><b>{primary.games}</b><small>games</small></div>
+          <div data-testid="your-stats-vs-players"><b>{primary.winsVsPlayers}</b><small>{winLabel(primary.gamesVsPlayers, primary.winPctPlayers, 'vs players')}</small></div>
+          <div data-testid="your-stats-vs-bots"><b>{primary.winsVsBots}</b><small>{winLabel(primary.gamesVsBots, primary.winPctBots, 'vs bots')}</small></div>
+          <div><b>{pct(primary.accuracy)}</b><small>bid accuracy</small></div>
+          <div><b>{primary.bags}</b><small>bags</small></div>
+          <div><b>{num(primary.booksPerHand)}</b><small>books / hand</small></div>
+          <div><b>{primary.nil}</b><small>nils</small></div>
+          <div><b>{primary.shotsGiven}/{primary.shotsTaken}</b><small>shots</small></div>
+          <div><b>{primary.bjWins}</b><small>Big Joker wins</small></div>
+        </div>
+      )}
+      <p className="soc-my-other" data-testid="your-stats-other">
+        {other.games === 0 ? `${otherLabel}: no games yet`
+          : `${otherLabel}: ${other.winsVsPlayers} vs players · ${other.winsVsBots} vs bots${other.elo == null ? ' · unrated' : ` · Elo ${other.elo}`}`}
+      </p>
+    </section>
+  );
+}
 
 export function Leaderboards() {
   const s = useSocial();
+  const acct = useAccount();
+  const signedIn = !!acct.user?.username;
   const [board, setBoard] = useState<Board>('rating');
-  const [kind, setKind] = useState<'team' | 'cutthroat'>('team');
+  const [kind, setKind] = useState<Kind>('team');
   const [scope, setScope] = useState<'global' | 'local'>('global');
   const [period, setPeriod] = useState<'all' | 'month' | 'week'>('all');
   const [rows, setRows] = useState<Row[] | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [mine, setMine] = useState<MyStats | null>(null);
+  const [ready, setReady] = useState(false);
+  const touched = useRef(false);
   useEffect(() => { get('/api/social/stats').then(setStats).catch(() => undefined); }, []);
   useEffect(() => {
+    if (!acct.ready) return;
+    if (!signedIn) { setMine(null); setReady(true); return; }
+    let stop = false;
+    get('/api/social/me/stats').then((j: MyStats) => {
+      if (stop) return;
+      setMine(j);
+      if (!touched.current && j.cutthroat.games > j.team.games) setKind('cutthroat');
+      setReady(true);
+    }).catch(() => { if (!stop) setReady(true); });
+    return () => { stop = true; };
+  }, [acct.ready, signedIn]);
+  useEffect(() => {
+    if (!ready) return;
     setRows(null); setNote(null);
     get(`/api/social/leaderboard?board=${board}&kind=${board === 'duos' ? 'team' : kind}&scope=${scope}&period=${period}`)
       .then((j) => { setRows(j.rows); setNote(j.note ?? (scope === 'local' && j.region ? `Region: ${j.region}` : null)); })
       .catch((e) => { setRows([]); setNote(String(e.message)); });
-  }, [board, kind, scope, period]);
+  }, [board, kind, scope, period, ready]);
   const seg = <T extends string>(v: T, set: (x: T) => void, opts: [T, string][], id: string) => (
     <div className="soc-seg" role="group" data-testid={`lb-${id}`}>{opts.map(([k, l]) => <button key={k} type="button" className={v === k ? 'on' : ''} onClick={() => set(k)} data-testid={`lb-${id}-${k}`}>{l}</button>)}</div>
   );
-  const unit = board === 'rating' ? (period === 'all' ? '' : ' Elo') : board === 'accuracy' ? '%' : ' W';
+  const pickKind = (k: Kind) => { touched.current = true; setKind(k); };
+  const unit = board === 'rating' ? (period === 'all' ? '' : ' Elo') : board === 'accuracy' ? '%' : '';
+  const accMin = period === 'all' ? 20 : 8;
+  const modeKey: Kind = board === 'duos' ? 'team' : kind;
+  const mode = mine?.[modeKey];
+  const myName = acct.user?.username;
+  const onBoard = !!rows?.some((r) => (s.you && r.id === s.you.id) || (!!myName && r.name === myName));
+  const ownAcc = board === 'accuracy' && mode && mode.accuracy !== null && mode.bids < accMin && !onBoard ? mode : null;
+  const unknownRegion = !!note && /no local board/i.test(note);
+  const mineRow = (r: Row) => ((s.you && r.id === s.you.id) || (myName && r.name === myName) ? 'soc-me' : '');
   return (
     <div className="soc-lb" data-testid="leaderboard">
       {stats && <p className="soc-serverstats" data-testid="server-stats">{Object.keys(s.users).length} online · {stats.accounts} players · {stats.games} games ({stats.gamesToday} today) · {stats.tournamentsOpen} open tournament{stats.tournamentsOpen === 1 ? '' : 's'}</p>}
+      {signedIn && mine && <YourStats mine={mine} kind={kind} />}
+      {signedIn && !ready && <p className="soc-empty">Loading your stats…</p>}
       {seg(board, setBoard, [['rating', 'Rating'], ['wins', 'Wins'], ['accuracy', 'Bid accuracy'], ['duos', 'Best duos']], 'board')}
       <div className="soc-lb-filters">
-        {board !== 'duos' && seg(kind, setKind, [['team', '2v2'], ['cutthroat', 'Cutthroat']], 'kind')}
+        {board !== 'duos' && seg(kind, pickKind, [['team', '2v2'], ['cutthroat', 'Cutthroat']], 'kind')}
         {seg(scope, setScope, [['global', 'Global'], ['local', 'Local']], 'scope')}
         {seg(period, setPeriod, [['all', 'All-time'], ['month', 'Month'], ['week', 'Week']], 'period')}
       </div>
-      {note && <p className="soc-muted">{note}</p>}
-      {rows === null ? <p className="soc-empty">Loading…</p> : !rows.length ? <p className="soc-empty">Nobody here yet: play signed-in online games to get on the board.</p> : (
-        <table className="soc-lb-table"><tbody>
-          {rows.map((r) => (
-            <tr key={r.id} className={s.you && r.id === s.you.id ? 'me' : ''}>
-              <td className="rk">{r.rank <= 3 ? ['🥇', '🥈', '🥉'][r.rank - 1] : r.rank}</td>
-              <td>{board === 'duos' ? r.name : <button type="button" className="link" onClick={() => social.showProfile(r.name)}>{r.name}</button>}</td>
-              <td className="v">{board === 'rating' && period !== 'all' && r.value > 0 ? '+' : ''}{r.value}{unit}</td>
-              <td className="soc-muted">{r.extra ?? `${r.games} g`}</td>
-            </tr>
-          ))}
-        </tbody></table>
+      {note && <p className="soc-muted" data-testid="lb-note">{note}</p>}
+      {rows === null ? <p className="soc-empty">Loading…</p> : (
+        <>
+          {ownAcc && (
+            <table className="soc-lb-table soc-own-acc" data-testid="lb-own-accuracy"><tbody>
+              <tr className="soc-me">
+                <td className="rk">you</td>
+                <td>{myName ?? 'You'}</td>
+                <td className="v">{ownAcc.accuracy}%</td>
+                <td className="soc-muted">needs {accMin} bids</td>
+              </tr>
+            </tbody></table>
+          )}
+          {!rows.length ? (
+            unknownRegion ? null : <p className="soc-empty soc-lb-empty" data-testid="lb-empty">{ownAcc ? `The board lists players with at least ${accMin} bids. Yours counts now, including games vs bots.` : emptyCopy(board, period, scope)}</p>
+          ) : board === 'wins' ? (
+            <table className="soc-lb-table soc-wins" data-testid="lb-wins"><thead>
+              <tr><th /><th /><th>vs players</th><th>vs bots</th></tr>
+            </thead><tbody>
+              {rows.map((r) => (
+                <tr key={r.id} className={mineRow(r)}>
+                  <td className="rk">{r.rank <= 3 ? ['🥇', '🥈', '🥉'][r.rank - 1] : r.rank}</td>
+                  <td><button type="button" className="link" onClick={() => social.showProfile(r.name)}>{r.name}</button></td>
+                  <td className="v" data-testid={`lb-vs-players-${r.name}`}>{r.vsPlayers ?? r.value}</td>
+                  <td className="v" data-testid={`lb-vs-bots-${r.name}`}>{r.vsBots ?? 0}</td>
+                </tr>
+              ))}
+            </tbody></table>
+          ) : (
+            <table className="soc-lb-table"><tbody>
+              {rows.map((r) => (
+                <tr key={r.id} className={mineRow(r)}>
+                  <td className="rk">{r.rank <= 3 ? ['🥇', '🥈', '🥉'][r.rank - 1] : r.rank}</td>
+                  <td>{board === 'duos' ? r.name : <button type="button" className="link" onClick={() => social.showProfile(r.name)}>{r.name}</button>}</td>
+                  <td className="v">{board === 'rating' && period !== 'all' && r.value > 0 ? '+' : ''}{r.value}{unit}</td>
+                  <td className="soc-muted">{r.extra ?? `${r.games} g`}</td>
+                </tr>
+              ))}
+            </tbody></table>
+          )}
+        </>
       )}
-      <p className="soc-note">Ratings: Elo from 1200, separate for 2v2 and Cutthroat; a game counts when at least two sides have a signed-in player. Hide yourself from Local boards in Settings.</p>
+      <p className="soc-note">Stats and bid accuracy count every finished signed-in game, including vs bots. Elo needs signed-in players on at least two sides. Wins split into vs players and vs bots; wins against guests count toward neither. Best duos only counts games against signed-in opponents.</p>
     </div>
   );
 }

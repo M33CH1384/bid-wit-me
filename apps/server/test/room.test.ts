@@ -1281,6 +1281,18 @@ describe('room lifecycle', () => {
     expect(Object.values(env.room.data.members).some((m) => m.uid === 'user-ray')).toBe(false);
   });
 
+  it('a guest on the other side does not make the table rated', () => {
+    const env = new FakeEnv(undefined, FAST);
+    env.join('a', 'Dee', undefined, 'ua');
+    env.join('b', 'Ray');
+    env.send('a', { t: 'sit', seat: 0 });
+    env.send('b', { t: 'sit', seat: 1 });
+    env.send('a', { t: 'addBot', seat: 2 });
+    env.send('a', { t: 'addBot', seat: 3 });
+    env.send('a', { t: 'start' });
+    expect(env.room.data.rated).toBe(false);
+  });
+
   it('rated tables default to locked bots and require an account to take a seat mid-game', () => {
     const env = new FakeEnv(undefined, FAST);
     const a = env.join('a', 'Dee', undefined, 'ua');
