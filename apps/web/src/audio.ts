@@ -427,6 +427,17 @@ class Engine {
     tick();
   }
 
+  /** One Geiger click, fired when a radioactive heartbeat crosses a beat mark. */
+  geigerTick() {
+    if (!this.settings.on || !this.unlocked) return;
+    this.ensure();
+    const c = this.ctx;
+    if (!c || c.state !== 'running') return;
+    const t = c.currentTime;
+    this.burst(t, 0.012, 0.16 + Math.random() * 0.1, 'highpass', 2400 + Math.random() * 1800);
+    this.played.geiger = (this.played.geiger ?? 0) + 1;
+  }
+
   /* ---------- playback ---------- */
   play(name: Sfx, opts: { delay?: number; gain?: number; dur?: number } = {}) {
     if (!this.settings.on || !this.unlocked) return;

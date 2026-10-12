@@ -5,8 +5,18 @@ import { useHostMusic } from './hostMusic';
 import { tableIntensity, talkPrefs, useTalkPrefs } from './talkPrefs';
 import { TALK_INTENSITY_LABEL } from '@spades/bots';
 import { type NukeIntensity, fx, useNukeIntensity, useReduceEffects, useTableNuke } from './fx';
+import { setVibration, useVibration } from './haptics';
 
 const icon = (on: boolean, v: number) => (!on || v === 0 ? '🔇' : v < 0.4 ? '🔈' : v < 0.75 ? '🔉' : '🔊');
+
+function VibrationSwitch() {
+  const on = useVibration();
+  return (
+    <label className="sf-row"><span>Vibration</span>
+      <button type="button" role="switch" aria-checked={on} aria-label="Vibration" data-testid="vibration-switch" className={`switch ${on ? 'on' : ''}`} onClick={() => setVibration(!on)}><i /></button>
+    </label>
+  );
+}
 
 /** One volume control: name (+ optional on/off switch) and value on a line, a full-width 44px slider under it. */
 export function VolumeRow({ label, value, onChange, onRelease, disabled, testId, toggle }: {
@@ -87,6 +97,7 @@ export function SoundSheet({ allOff, onMuteAll, onClose }: { allOff: boolean; on
         <h4>Effects</h4>
         <label className="sf-row"><span>Reduce effects <InfoNote short="no shake / flash" long="Keeps the hype sounds and pop-ups; drops camera shake, flashes and the shockwave, and the nuke stays calm. Your device's Reduce motion setting only drops the shake." /></span>
           <button type="button" role="switch" aria-checked={reduced} aria-label="Reduce effects" data-testid="reduce-fx" className={`switch ${reduced ? 'on' : ''}`} onClick={() => fx.setReduce(!reduced)}><i /></button></label>
+        <VibrationSwitch />
         <label className="sf-row"><span>Lounge ambience</span>
           <button type="button" role="switch" aria-checked={s.ambient} aria-label="Lounge ambience" className={`switch ${s.ambient ? 'on' : ''}`} disabled={!s.on} onClick={() => sound.set({ ambient: !s.ambient })}><i /></button></label>
       </section>
@@ -119,6 +130,7 @@ export function SoundFields({ compact = false }: { compact?: boolean }) {
         </button>
       </label>
       <VolumeRow label="Volume" value={s.volume} disabled={!s.on} onChange={(v) => sound.set({ volume: v })} onRelease={() => sound.play('bid')} />
+      <VibrationSwitch />
       <label className="sf-row">
         <span>Lounge ambience</span>
         <button type="button" role="switch" aria-checked={s.ambient} aria-label="Lounge ambience" className={`switch ${s.ambient ? 'on' : ''}`} disabled={!s.on} onClick={() => sound.set({ ambient: !s.ambient })}>

@@ -2,6 +2,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { useMemo, useRef } from 'react';
 import { AdditiveBlending, BufferAttribute, BufferGeometry, NormalBlending, type Points, ShaderMaterial } from 'three';
 import { fx } from '../fx';
+import { HAPTIC, cancelHaptics, haptic } from '../haptics';
 
 /**
  * 'Run it!' funnel over the table centre: swirling dust / wind streaks (grey-violet, normal blend) plus brighter
@@ -65,6 +66,9 @@ export function Tornado3D({ quality }: { quality: 'high' | 'low' }) {
     debrisMat: mat({ size: 0.06, alpha: 1.0, a: [0.95, 0.85, 1.0], b: [0.6, 0.95, 0.7], additive: true }),
   }), [hi]);
   const dust = useRef<Points>(null), debris = useRef<Points>(null);
+  const spun = useRef(false);
+  const hit = useRef(false);
+  const skipped = useRef(false);
   const size = useThree((s) => s.size);
   useFrame(({ invalidate }) => {
     const T = fx.tornado;
@@ -73,9 +77,16 @@ export function Tornado3D({ quality }: { quality: 'high' | 'low' }) {
     if (debris.current) debris.current.visible = show;
     // checks (e2e): the funnel is actually being drawn this frame
     (window as unknown as { __bwmTornadoDrawn?: boolean }).__bwmTornadoDrawn = show;
-    if (!show) return;
+    if (!T) { spun.current = false; hit.current = false; skipped.current = false; return; }
+    if (T.reduced) {
+      if (!skipped.current) { skipped.current = true; cancelHaptics('tornado-skipped'); }
+      return;
+    }
     // starts winding up ~0.4 s before the pull, flings at 1.25 s, gone by ~1.9 s
+    // u = 0 is the spin-up; u = 1.65 is the fling (t = 1.25s). Patterns fire as those marks are crossed.
     const u = (fx.warp !== null ? fx.warp : (performance.now() - T.start) / 1000) + 0.4;
+    if (!spun.current && u >= 0) { spun.current = true; haptic(HAPTIC.tornadoSpin, 'tornado-spin'); }
+    if (!hit.current && u >= 1.65) { hit.current = true; haptic(HAPTIC.tornadoImpact, 'tornado-impact'); }
     for (const m of [parts.dustMat, parts.debrisMat]) {
       m.uniforms.uTime!.value = u;
       m.uniforms.uScale!.value = size.height * 0.9;
