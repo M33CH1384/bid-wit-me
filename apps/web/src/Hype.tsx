@@ -1,13 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { type FxEvent, type NukeIntensity, fx } from './fx';
 import JokerBurst from './JokerBurst';
-import { BURST_MS, getBurst } from './jokerFx';
 import { WheelsCelebration } from './WheelsCar';
 
 /**
- * Full-screen hype overlay: streak / SHOT! pop-ups, joker vignette pulses and the Big-over-Little nuke
- * (white flash → mushroom cloud particles over the trick → shockwave ring → smoke clears).
- * Listens to the fx bus; with "Reduce effects" the flash, shockwave and screen jolt are skipped (sound + text stay).
+ * Full-screen hype overlay: streak / SHOT! pop-ups, joker vignette pulses and the Big-over-Little nuke banner.
+ * The explosion is the 3D blast. With "Reduce effects" the screen shake is skipped (sound + text stay).
  */
 interface Pop { id: number; kind: FxEvent['kind']; text: string; sub?: string; level?: number }
 
@@ -35,7 +33,6 @@ export default function Hype({ reduced, low = false }: { reduced: boolean; low?:
   const [pulse, setPulse] = useState<{ id: number; big: boolean } | null>(null);
   const reducedRef = useRef(reduced);
   reducedRef.current = reduced;
-  const nukeWatch = useRef(0);
 
   useEffect(() => {
     const off = fx.on((e) => {
@@ -56,27 +53,10 @@ export default function Hype({ reduced, low = false }: { reduced: boolean; low?:
     else if (e.kind === 'nuke') {
       const c = trickCenter();
       setNuke({ id: e.id, ...c, mode: fx.nukeMode });
-      const calm = fx.nukeMode === 'off' || reducedRef.current;
-      const id = e.id;
-      if (calm) {
-        window.setTimeout(() => setNuke((n) => (n?.id === id ? null : n)), 700);
-        return;
-      }
-      // Stay mounted for the burst clock. A 1400ms wall-clock timeout drops the stamp
-      // before a stalled or warp-stepped frame reaches the 800ms hit.
-      cancelAnimationFrame(nukeWatch.current);
-      const watch = () => {
-        const b = getBurst();
-        if (!b || (fx.warp === null && b.elapsed >= BURST_MS[b.kind])) {
-          setNuke((n) => (n?.id === id ? null : n));
-          return;
-        }
-        nukeWatch.current = requestAnimationFrame(watch);
-      };
-      nukeWatch.current = requestAnimationFrame(watch);
+      window.setTimeout(() => setNuke((n) => (n?.id === e.id ? null : n)), 3700);
     }
     });
-    return () => { off(); cancelAnimationFrame(nukeWatch.current); };
+    return () => { off(); };
   }, []);
 
 
@@ -99,8 +79,8 @@ export default function Hype({ reduced, low = false }: { reduced: boolean; low?:
       {nuke && (
         <>
           <div key={`b${nuke.id}`} className={`nuke-banner ${nuke.mode === 'off' || reduced ? 'calm' : ''}`} data-testid="nuke" onClick={() => setNuke(null)}>
-            <div className="nb-title" data-text="NUKED">NUKED</div>
-            <div className="nb-sub">(Big Joker Over Little Joker)</div>
+            <div className="nb-title" data-text="☢ NUKED ☢">☢ NUKED ☢</div>
+            <div className="nb-sub">Big Joker over Little Joker</div>
           </div>
         </>
       )}

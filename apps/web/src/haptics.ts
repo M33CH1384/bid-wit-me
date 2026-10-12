@@ -13,7 +13,7 @@ import { isIosWebKit, currentNukeDevice } from './three/nukeVisual';
 export const HAPTIC = {
   /** Heartbeat lub, fired when a beat mark is crossed. */
   beat: [12],
-  /** Detonation, fired at burst t = 0 (flash + shockwave start). Slots sum to 430ms. */
+  /** Detonation, fired at burst t = 0 (the 3D blast starts). Slots sum to 430ms. */
   detonation: [40, 30, 120, 40, 200],
   /** Tornado spin-up, fired when the funnel clock crosses u = 0. Slots sum to 400ms of the ~700ms wind-up. */
   tornadoSpin: [20, 40, 20, 40, 30, 30, 40, 20, 60, 20, 80],

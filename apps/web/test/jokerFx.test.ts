@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  BANNER_AT_MS, BANNER_MS, BEAT_MARKS, BURST_MS, JOKER_PALETTE, SHOCK_MS, SWEEP_MS,
-  bannerPose, cardPush, clearBurst, cloudPose, cycleMs, flashOpacity, getBurst, heartbeat, jitterPx, jokerPop, mushroomSprites,
-  ripplePose, shakeOffset, shockwave, startBurst, subscribeBurst,
+  BEAT_MARKS, BURST_MS, JOKER_PALETTE,
+  clearBurst, cycleMs, getBurst, heartbeat, jitterPx,
+  ripplePose, shakeOffset, startBurst, subscribeBurst,
 } from '../src/jokerFx';
 
 describe('radioactive heartbeat', () => {
@@ -58,30 +58,8 @@ describe('radioactive heartbeat', () => {
   });
 });
 
-describe('detonation keyframes', () => {
-  it('flashes #FFFFF0 to .85 in 60ms and clears by 280ms; Little Joker has none', () => {
-    expect(flashOpacity(0, 'BJ', false)).toBe(0);
-    expect(flashOpacity(60, 'BJ', false)).toBeCloseTo(0.85, 5);
-    expect(flashOpacity(280, 'BJ', false)).toBe(0);
-    expect(flashOpacity(60, 'BJ', true)).toBeCloseTo(0.28, 5);
-    expect(flashOpacity(60, 'LJ', false)).toBe(0);
-  });
-
-  it('shockwave grows to 4x the table over 450ms and fades out', () => {
-    const start = shockwave(0, 'BJ')!;
-    expect(start.mul).toBe(0);
-    expect(start.opacity).toBe(1);
-    const end = shockwave(450, 'BJ')!;
-    expect(end.mul).toBeCloseTo(4, 5);
-    expect(end.opacity).toBeCloseTo(0, 5);
-    expect(shockwave(451, 'BJ')).toBeNull();
-    const midSw = shockwave(200, 'BJ')!;
-    expect(midSw.mul).toBeGreaterThan(1);
-    expect(midSw.opacity).toBeGreaterThan(0.4);
-    expect(shockwave(320, 'LJ')!.mul).toBeCloseTo(2.2, 5);
-  });
-
-  it('shakes 8px over 350ms, transform only, and skips it under reduced motion', () => {
+describe('detonation shake', () => {
+  it('shakes the whole screen 8px over 350ms and skips it under reduced motion', () => {
     expect(shakeOffset(0, 'BJ', true)).toEqual({ x: 0, y: 0 });
     expect(shakeOffset(-1, 'BJ', false)).toEqual({ x: 0, y: 0 });
     expect(shakeOffset(350, 'BJ', false)).toEqual({ x: 0, y: 0 });
@@ -90,70 +68,9 @@ describe('detonation keyframes', () => {
     expect(Math.hypot(shakeOffset(0, 'LJ', false).x, shakeOffset(0, 'LJ', false).y)).toBeCloseTo(4 * 0.65, 5);
   });
 
-  it('holds a readable mushroom through the detonation and fades as the cards fly', () => {
-    expect(cloudPose(100, 'BJ', false)).toBeNull();
-    expect(cloudPose(500, 'BJ', true)).toBeNull();
-    const mid = cloudPose(600, 'BJ', false)!;
-    expect(mid.opacity).toBeGreaterThan(0.85);
-    expect(mid.rise).toBeGreaterThan(0.9);
-    const sprites = mushroomSprites(mid, 'BJ', 390);
-    expect(sprites.length).toBeLessThanOrEqual(16);
-    const xs = sprites.flatMap((s) => [s.x - s.rx, s.x + s.rx]);
-    const width = Math.max(...xs) - Math.min(...xs);
-    const top = Math.min(...sprites.map((s) => s.y - s.ry));
-    expect(width).toBeGreaterThan(200);
-    expect(top).toBeLessThan(-140);
-    const little = mushroomSprites(cloudPose(500, 'LJ', false)!, 'LJ', 390);
-    const littleW = Math.max(...little.flatMap((s) => [s.x - s.rx, s.x + s.rx])) - Math.min(...little.flatMap((s) => [s.x - s.rx, s.x + s.rx]));
-    expect(littleW).toBeLessThan(width);
-    expect(cloudPose(1150, 'BJ', false)!.opacity).toBeCloseTo(0, 5);
-    expect(cloudPose(1151, 'BJ', false)).toBeNull();
-    expect(cloudPose(881, 'LJ', false)).toBeNull();
-    let visible = 0;
-    for (let t = 0; t <= 1600; t += 10) if ((cloudPose(t, 'BJ', false)?.opacity ?? 0) > 0.55) visible += 10;
-    expect(visible).toBeGreaterThanOrEqual(700);
-    expect(visible).toBeLessThanOrEqual(1100);
-  });
-
-  it('pops the winning joker from 200ms and settles by 700ms', () => {
-    expect(jokerPop(199, 'BJ')).toBe(1);
-    expect(jokerPop(410, 'BJ')).toBeCloseTo(1.25, 2);
-    expect(jokerPop(700, 'BJ')).toBeCloseTo(1, 5);
-    expect(jokerPop(410, 'LJ')).toBeLessThan(1.25);
-    expect(jokerPop(410, 'LJ')).toBeGreaterThan(1);
-  });
-
-  it('pushes other cards out without fading them away, so the iOS blast still has cards', () => {
-    expect(cardPush(0, 'BJ')).toEqual({ px: 0, opacity: 1 });
-    const mid = cardPush(300, 'BJ');
-    expect(mid.px).toBe(20);
-    expect(mid.opacity).toBeCloseTo(0.35, 5);
-    expect(cardPush(150, 'BJ').opacity).toBeGreaterThan(0.35);
-    expect(cardPush(900, 'LJ').px).toBe(12);
-    expect(cardPush(1300, 'BJ').px).toBe(20);
-    expect(cardPush(1300, 'BJ').opacity).toBeCloseTo(0.35, 5);
-    for (const t of [0, 100, 300, 600, 900, 1200]) {
-      expect(cardPush(t, 'BJ').opacity).toBeGreaterThan(0);
-      expect(cardPush(t, 'LJ').opacity).toBeGreaterThan(0);
-    }
-  });
-
-  it('finishes the overlay with the card flight, and stamps the banner after the shockwave', () => {
-    expect(BURST_MS.BJ).toBe(1300);
-    expect(BURST_MS.LJ).toBe(1000);
-    expect(BURST_MS.BJ).toBeLessThanOrEqual(1300);
-    expect(SHOCK_MS).toBe(450);
-    expect(BANNER_AT_MS).toBe(SHOCK_MS + 350);
-    expect(BANNER_MS).toBe(500);
-    expect(SWEEP_MS).toBe(900);
-    expect(bannerPose(BANNER_AT_MS - 1)).toBeNull();
-    expect(bannerPose(BANNER_AT_MS)).toEqual({ opacity: 0, scale: 1.4 });
-    const hit = bannerPose(BANNER_AT_MS + 140)!;
-    expect(hit.opacity).toBeCloseTo(1, 5);
-    expect(hit.scale).toBeCloseTo(1, 5);
-    expect(bannerPose(1100)!.opacity).toBe(1);
-    expect(bannerPose(BANNER_AT_MS + BANNER_MS)!.opacity).toBeCloseTo(0, 5);
-    expect(bannerPose(BANNER_AT_MS + BANNER_MS + 1)).toBeNull();
+  it('keeps the burst clock as long as the 3D blast so a stall can still cancel haptics', () => {
+    expect(BURST_MS.BJ).toBe(3600);
+    expect(BURST_MS.LJ).toBe(500);
   });
 });
 

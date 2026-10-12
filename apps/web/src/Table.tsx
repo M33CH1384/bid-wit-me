@@ -29,7 +29,6 @@ import { loadScene } from './three/preload';
 import { endReasonText, onNoticeSides, shotChatLines } from './shotOut';
 import { type Sfx, sound } from './audio';
 import { HAPTIC, haptic } from './haptics';
-import { BURST_MS, getBurst } from './jokerFx';
 import { type ChatMsg, LINES, SEAT_COLORS, TALK_LINES, type Toast, TickNumber, USER_COLORS, pick, toastsFor } from './overlay';
 import { type Settings, modeTitle } from './settings';
 import type { SeatPos } from './three/layout';
@@ -797,19 +796,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
   // Hand end: the score screen opens as soon as the trick hold ends. That hold is the beat after the last
   // card lands (~700 ms at normal speed). Run it! keeps the screen closed until that show ends (`runFx`).
-  // A nuke lets the cards fly at 900ms, and the score waits until the 1.3s stamp has faded.
+  // A nuke's hold is the 3D blast, so the score stays covered until that allowance ends.
   // Scoring toasts and hype no longer add another wait on top.
   const [talkOpen, setTalkOpen] = useState(false);
   useEffect(() => {
     if ((st.phase !== 'handOver' && st.phase !== 'gameOver') || pause || runFx) { setTalkOpen(false); return; }
-    const b = getBurst();
-    if (b && fx.warp === null) {
-      const left = BURST_MS[b.kind] - b.elapsed;
-      if (left > 40) {
-        const t = window.setTimeout(() => setTalkOpen(true), left);
-        return () => clearTimeout(t);
-      }
-    }
     setTalkOpen(true);
   }, [st.phase, st.handNo, pause, !!runFx]); // eslint-disable-line react-hooks/exhaustive-deps
   const talkSend = (text: string) => {
