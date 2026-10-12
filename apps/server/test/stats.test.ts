@@ -5,7 +5,8 @@ import { chooseBotAction } from '@spades/bots';
 import type { GameAction } from '@spades/protocol';
 import { FakeEnv } from './harness';
 import { makeD1 } from './d1';
-import { type GameRecord, eloUpdate, expected, placementsOf, saveRecord } from '../src/stats/record';
+import { type GameRecord, eloUpdate, expected, isRated, placementsOf, saveRecord } from '../src/stats/record';
+import { personalStats } from '../src/stats/boards';
 
 const FAST = { botMs: 10, trickPauseMs: 0, dealMs: 0, disconnectGraceMs: 5000, handOverMs: 3000, handEndHoldMs: 0 };
 
@@ -42,7 +43,7 @@ describe('online game records', () => {
     playOut(env, ['a', 'b']);
     expect(env.records).toHaveLength(1);
     const { rec, rated } = env.records[0]!;
-    expect(rated).toBe(true); // a guest human on the other side
+    expect(rated).toBe(false); // a guest on the other side does not make the game rated
     expect(rec.kind).toBe('team');
     expect(rec.seats.map((s) => s.kind)).toEqual(['user', 'guest', 'bot', 'bot']);
     expect(rec.players).toHaveLength(1);
@@ -59,12 +60,14 @@ describe('online game records', () => {
     await saveRecord(db, rec, rated);
     await saveRecord(db, rec, rated); // idempotent
     expect((await db.prepare('SELECT COUNT(*) AS n FROM game_players').first<{ n: number }>())!.n).toBe(1);
-    const r = await db.prepare("SELECT elo, games FROM ratings WHERE user_id = 'user-dee' AND kind = 'team'").first<{ elo: number; games: number }>();
-    expect(r!.games).toBe(1);
-    expect(r!.elo === 1200).toBe(false);
+    const row = await db.prepare("SELECT elo_before, elo_after, stats FROM game_players WHERE user_id = 'user-dee'").first<{ elo_before: number | null; elo_after: number | null; stats: string }>();
+    expect(row!.elo_before).toBeNull();
+    expect(row!.elo_after).toBeNull();
+    expect(JSON.parse(row!.stats).hands).toBeGreaterThan(0);
+    expect(await db.prepare("SELECT elo FROM ratings WHERE user_id = 'user-dee'").first()).toBeNull();
   });
 
-  it('no record without an account; bots-only opponents are unrated', () => {
+  it('no record without an account; a bots-only game records stats and a null Elo', async () => {
     const env = new FakeEnv(undefined, FAST);
     env.join('a', 'Dee');
     env.send('a', { t: 'sit', seat: 0 });
@@ -81,6 +84,55 @@ describe('online game records', () => {
     playOut(env2, ['a']);
     expect(env2.records[0]!.rated).toBe(false);
     expect(env2.records[0]!.rec.kind).toBe('cutthroat');
+    const db = await makeD1();
+    await db.prepare("INSERT INTO users (id, username, username_key, created_at) VALUES ('u1', 'M33CH', 'm33ch', 1)").run();
+    await db.prepare("INSERT INTO ratings (user_id, kind, elo, games, peak, updated_at) VALUES ('u1', 'cutthroat', 1310, 4, 1310, 1)").run();
+    const { rec, rated } = env2.records[0]!;
+    await saveRecord(db, rec, rated);
+    const row = await db.prepare("SELECT stats, elo_before, elo_after FROM game_players WHERE user_id = 'u1'").first<{ stats: string; elo_before: number | null; elo_after: number | null }>();
+    expect(row!.elo_before).toBeNull();
+    expect(row!.elo_after).toBeNull();
+    const stats = JSON.parse(row!.stats) as { hands: number; bags: number };
+    expect(stats.hands).toBeGreaterThan(0);
+    expect(typeof stats.bags).toBe('number');
+    expect(await db.prepare("SELECT elo, games FROM ratings WHERE user_id = 'u1' AND kind = 'cutthroat'").first()).toEqual({ elo: 1310, games: 4 });
+    const cut = await personalStats(db, 'u1', 'cutthroat');
+    expect(cut.games).toBe(1);
+    expect(cut.gamesVsBots).toBe(1);
+    expect(cut.winsVsBots).toBe(cut.wins);
+    expect(cut.winsVsPlayers).toBe(0);
+    expect(cut.bags).toBe(stats.bags);
+    expect((await personalStats(db, 'u1', 'team')).games).toBe(0);
+  });
+});
+
+describe('who counts for Elo', () => {
+  const rules = { playerCount: 4, partnerships: true };
+  const st = {} as GameRecord['players'][number]['stats'];
+  const rec = (seats: GameRecord['seats']): GameRecord => ({
+    id: 'x', room: 'R', mode: 'joker', kind: 'team', endedAt: 0, hands: 1, final: [1, 0], winners: [0], names: [], seats,
+    players: seats.filter((s) => s.kind === 'user' && s.uid).map((s, i) => ({ seat: i, uid: s.uid!, side: s.side, won: true, partner: null, teamName: null, stats: st })),
+  });
+  it('requires signed-in players on two sides; guests and same-side partners do not rate', () => {
+    const user = (side: number, uid: string, seatKind: GameRecord['seats'][number]['kind'] = 'user'): GameRecord['seats'][number] => ({ name: uid, side, kind: seatKind, ...(seatKind === 'user' ? { uid } : {}) });
+    expect(isRated(rec([user(0, 'a'), user(1, 'b'), { name: 'c', side: 0, kind: 'bot' }, { name: 'd', side: 1, kind: 'bot' }]), rules)).toBe(true);
+    expect(isRated(rec([user(0, 'a'), { name: 'g', side: 1, kind: 'guest' }, { name: 'c', side: 0, kind: 'bot' }, { name: 'd', side: 1, kind: 'bot' }]), rules)).toBe(false);
+    expect(isRated(rec([user(0, 'a'), user(0, 'b'), { name: 'c', side: 1, kind: 'bot' }, { name: 'd', side: 1, kind: 'bot' }]), rules)).toBe(false);
+    expect(isRated(rec([{ name: 'a', side: 0, kind: 'bot' }, { name: 'b', side: 1, kind: 'bot' }, { name: 'c', side: 0, kind: 'bot' }, { name: 'd', side: 1, kind: 'bot' }]), rules)).toBe(false);
+  });
+  it('a rated game writes Elo, and saving it again leaves that Elo alone', async () => {
+    const db = await makeD1();
+    for (const id of ['a', 'b']) await db.prepare('INSERT INTO users (id, username, username_key, created_at) VALUES (?, ?, ?, 1)').bind(id, id.toUpperCase(), id).run();
+    const seats: GameRecord['seats'] = [{ name: 'A', side: 0, kind: 'user', uid: 'a' }, { name: 'B', side: 1, kind: 'user', uid: 'b' }];
+    const players = seats.map((s, i) => ({ seat: i, uid: s.uid!, side: s.side, won: s.side === 0, partner: null, teamName: null, stats: st }));
+    const game: GameRecord = { id: 'rated-1', room: 'R', mode: 'joker', kind: 'team', endedAt: 5, hands: 1, final: [500, 200], winners: [0], names: [], seats, players };
+    expect(isRated(game, { playerCount: 2, partnerships: true })).toBe(true);
+    await saveRecord(db, game, true);
+    const first = await db.prepare("SELECT elo, games FROM ratings WHERE user_id = 'a' AND kind = 'team'").first<{ elo: number; games: number }>();
+    expect(first!.games).toBe(1);
+    expect(first!.elo).not.toBe(1200);
+    await saveRecord(db, game, true);
+    expect(await db.prepare("SELECT elo, games FROM ratings WHERE user_id = 'a' AND kind = 'team'").first()).toEqual(first);
   });
 });
 

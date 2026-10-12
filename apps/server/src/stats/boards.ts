@@ -1,7 +1,19 @@
 /** Release 9b: leaderboards, server stats, personal stat lines (D1 aggregates over game_players). */
 export type Board = 'rating' | 'wins' | 'accuracy' | 'duos';
 export type Period = 'all' | 'month' | 'week';
-export interface BoardRow { rank: number; id: string; name: string; value: number; games: number; extra?: string }
+export interface BoardRow { rank: number; id: string; name: string; value: number; games: number; extra?: string; vsPlayers?: number; vsBots?: number }
+
+/** Who the opponents were, from the seats stored on the game. Guest opponents are 'other' (neither bucket). */
+export type OpponentBucket = 'players' | 'bots' | 'other';
+export function opponentBucket(seats: { side: number; kind: string }[], side: number): OpponentBucket {
+  const opp = seats.filter((s) => Number(s.side) !== side);
+  if (opp.some((s) => s.kind === 'user')) return 'players';
+  if (opp.length > 0 && opp.every((s) => s.kind === 'bot')) return 'bots';
+  return 'other';
+}
+
+const VS_PLAYERS = `EXISTS (SELECT 1 FROM json_each(g.seats) je WHERE json_extract(je.value, '$.kind') = 'user' AND json_extract(je.value, '$.side') != x.side)`;
+const VS_BOTS = `EXISTS (SELECT 1 FROM json_each(g.seats) je WHERE json_extract(je.value, '$.side') != x.side) AND NOT EXISTS (SELECT 1 FROM json_each(g.seats) je WHERE json_extract(je.value, '$.side') != x.side AND json_extract(je.value, '$.kind') != 'bot')`;
 
 const DAY = 86400_000;
 export const since = (p: Period, now: number) => (p === 'week' ? now - 7 * DAY : p === 'month' ? now - 30 * DAY : 0);
@@ -20,8 +32,13 @@ export async function leaderboard(db: D1Database, o: { board: Board; kind: 'team
     rows = (await db.prepare(`SELECT x.user_id AS id, u.username AS name, ROUND(SUM(x.elo_after - x.elo_before)) AS value, COUNT(*) AS games FROM game_players x JOIN users u ON u.id = x.user_id
       WHERE x.kind = ? AND x.ended_at >= ? AND x.elo_after IS NOT NULL ${loc} GROUP BY x.user_id ORDER BY value DESC LIMIT 50`).bind(o.kind, from, ...locArgs).all<typeof rows[number]>()).results;
   } else if (o.board === 'wins') {
-    rows = (await db.prepare(`SELECT x.user_id AS id, u.username AS name, SUM(x.won) AS value, COUNT(*) AS games FROM game_players x JOIN users u ON u.id = x.user_id
-      WHERE x.kind = ? AND x.ended_at >= ? ${loc} GROUP BY x.user_id HAVING value > 0 ORDER BY value DESC, games ASC LIMIT 50`).bind(o.kind, from, ...locArgs).all<typeof rows[number]>()).results;
+    // vs players: at least one opponent was signed in. vs bots: every opponent was a bot. Guest wins are neither.
+    rows = (await db.prepare(`SELECT x.user_id AS id, u.username AS name,
+        SUM(CASE WHEN x.won = 1 AND ${VS_PLAYERS} THEN 1 ELSE 0 END) AS value,
+        SUM(CASE WHEN x.won = 1 AND ${VS_BOTS} THEN 1 ELSE 0 END) AS vs_bots,
+        COUNT(*) AS games
+      FROM game_players x JOIN users u ON u.id = x.user_id JOIN games g ON g.id = x.game_id
+      WHERE x.kind = ? AND x.ended_at >= ? ${loc} GROUP BY x.user_id HAVING value > 0 OR vs_bots > 0 ORDER BY value DESC, vs_bots DESC, games ASC LIMIT 50`).bind(o.kind, from, ...locArgs).all<typeof rows[number] & { vs_bots?: number }>()).results;
   } else if (o.board === 'accuracy') {
     const min = o.period === 'all' ? 20 : 8;
     rows = (await db.prepare(`SELECT x.user_id AS id, u.username AS name,
@@ -36,9 +53,18 @@ export async function leaderboard(db: D1Database, o: { board: Board; kind: 'team
         ROUND(100.0 * SUM(x.won) / COUNT(*)) || '%' AS extra
       FROM game_players x JOIN users u ON u.id = x.user_id JOIN users p ON p.id = x.partner_id
       WHERE x.kind = 'team' AND x.partner_id IS NOT NULL AND x.user_id < x.partner_id AND x.ended_at >= ? ${locD}
+        AND EXISTS (SELECT 1 FROM games g, json_each(g.seats) je WHERE g.id = x.game_id AND json_extract(je.value, '$.kind') = 'user' AND json_extract(je.value, '$.side') != x.side)
       GROUP BY x.user_id, x.partner_id HAVING games >= 2 ORDER BY value DESC, games ASC LIMIT 50`).bind(from, ...locArgs, ...locArgs).all<typeof rows[number]>()).results;
   }
-  return rows.map((r, i) => ({ rank: i + 1, id: o.board === 'duos' ? r.id : `u:${r.id}`, name: r.name ?? 'Player', value: Number(r.value) || 0, games: r.games, ...(r.extra ? { extra: String(r.extra) } : {}) }));
+  return rows.map((r, i) => {
+    const row: BoardRow = { rank: i + 1, id: o.board === 'duos' ? r.id : `u:${r.id}`, name: r.name ?? 'Player', value: Number(r.value) || 0, games: r.games, ...(r.extra ? { extra: String(r.extra) } : {}) };
+    if (o.board === 'wins') {
+      const vsBots = Number((r as { vs_bots?: number }).vs_bots) || 0;
+      row.vsPlayers = row.value;
+      row.vsBots = vsBots;
+    }
+    return row;
+  });
 }
 
 export async function serverStats(db: D1Database, now: number) {
@@ -53,27 +79,77 @@ export async function serverStats(db: D1Database, now: number) {
 
 export interface PersonalStats {
   games: number; wins: number; streak: number; bestStreak: number;
-  accuracy: number | null; booksPerHand: number | null; nil: string; shotsGiven: number; shotsTaken: number; wheels: number; bjWins: number;
+  accuracy: number | null; bags: number; booksPerHand: number | null; nil: string; shotsGiven: number; shotsTaken: number; wheels: number; bjWins: number;
   bidSec: number | null; playSec: number | null;
+  bids: number;
+  /** wins (and games) split by who the opponents were; a win against only guests is in neither */
+  winsVsPlayers: number; winsVsBots: number; gamesVsPlayers: number; gamesVsBots: number;
 }
 
-export async function personalStats(db: D1Database, uid: string): Promise<PersonalStats> {
-  const rows = (await db.prepare('SELECT won, stats FROM game_players WHERE user_id = ? ORDER BY ended_at ASC').bind(uid).all<{ won: number; stats: string }>()).results;
-  const s = { games: 0, wins: 0, streak: 0, bestStreak: 0, bids: 0, made: 0, books: 0, hands: 0, nilBids: 0, nilMade: 0, shotsGiven: 0, shotsTaken: 0, wheels: 0, bjWins: 0, bidMs: 0, bidN: 0, playMs: 0, playN: 0 };
+export async function personalStats(db: D1Database, uid: string, kind?: 'team' | 'cutthroat'): Promise<PersonalStats> {
+  const rows = (await db.prepare(`SELECT gp.won AS won, gp.stats AS stats, gp.side AS side, g.seats AS seats FROM game_players gp JOIN games g ON g.id = gp.game_id
+    WHERE gp.user_id = ? ${kind ? 'AND gp.kind = ?' : ''} ORDER BY gp.ended_at ASC`).bind(...(kind ? [uid, kind] : [uid])).all<{ won: number; stats: string; side: number; seats: string }>()).results;
+  const s = { games: 0, wins: 0, streak: 0, bestStreak: 0, bids: 0, made: 0, books: 0, hands: 0, bags: 0, nilBids: 0, nilMade: 0, shotsGiven: 0, shotsTaken: 0, wheels: 0, bjWins: 0, bidMs: 0, bidN: 0, playMs: 0, playN: 0, winsVsPlayers: 0, winsVsBots: 0, gamesVsPlayers: 0, gamesVsBots: 0 };
   let run = 0;
   for (const r of rows) {
     let st: Record<string, number> = {};
     try { st = JSON.parse(r.stats); } catch { /* skip */ }
+    let seats: { side: number; kind: string }[] = [];
+    try { seats = JSON.parse(r.seats); } catch { /* skip */ }
+    const bucket = opponentBucket(seats, r.side);
     s.games++;
-    if (r.won) { s.wins++; run++; s.bestStreak = Math.max(s.bestStreak, run); } else run = 0;
-    for (const k of ['bids', 'made', 'books', 'hands', 'nilBids', 'nilMade', 'shotsGiven', 'shotsTaken', 'wheels', 'bjWins', 'bidMs', 'bidN', 'playMs', 'playN'] as const) s[k] += Number(st[k]) || 0;
+    if (bucket === 'players') s.gamesVsPlayers++;
+    else if (bucket === 'bots') s.gamesVsBots++;
+    if (r.won) {
+      s.wins++; run++; s.bestStreak = Math.max(s.bestStreak, run);
+      if (bucket === 'players') s.winsVsPlayers++;
+      else if (bucket === 'bots') s.winsVsBots++;
+    } else run = 0;
+    for (const k of ['bids', 'made', 'books', 'hands', 'bags', 'nilBids', 'nilMade', 'shotsGiven', 'shotsTaken', 'wheels', 'bjWins', 'bidMs', 'bidN', 'playMs', 'playN'] as const) s[k] += Number(st[k]) || 0;
   }
   s.streak = run;
   return {
     games: s.games, wins: s.wins, streak: s.streak, bestStreak: s.bestStreak,
     accuracy: s.bids ? Math.round((1000 * s.made) / s.bids) / 10 : null,
+    bags: s.bags,
     booksPerHand: s.hands ? Math.round((100 * s.books) / s.hands) / 100 : null,
     nil: `${s.nilMade}/${s.nilBids}`, shotsGiven: s.shotsGiven, shotsTaken: s.shotsTaken, wheels: s.wheels, bjWins: s.bjWins,
     bidSec: s.bidN ? Math.round(s.bidMs / s.bidN / 100) / 10 : null, playSec: s.playN ? Math.round(s.playMs / s.playN / 100) / 10 : null,
+    bids: s.bids, winsVsPlayers: s.winsVsPlayers, winsVsBots: s.winsVsBots, gamesVsPlayers: s.gamesVsPlayers, gamesVsBots: s.gamesVsBots,
   };
+}
+
+export const UNRATED_NOTE = 'Unrated: play another signed-in player to get a rating.';
+
+export interface MyModeStats extends PersonalStats {
+  winPct: number | null;
+  winPctPlayers: number | null;
+  winPctBots: number | null;
+  elo: number | null;
+  unrated: string | null;
+}
+
+const pctOf = (wins: number, games: number) => (games ? Math.round((1000 * wins) / games) / 10 : null);
+
+function withRating(s: PersonalStats, elo: number | undefined): MyModeStats {
+  return {
+    ...s,
+    winPct: pctOf(s.wins, s.games),
+    winPctPlayers: pctOf(s.winsVsPlayers, s.gamesVsPlayers),
+    winPctBots: pctOf(s.winsVsBots, s.gamesVsBots),
+    elo: elo ?? null,
+    unrated: elo == null ? UNRATED_NOTE : null,
+  };
+}
+
+/** Signed-in stats for both pools. Elo is null until a game had signed-in players on two sides. */
+export async function myStats(db: D1Database, uid: string): Promise<{ team: MyModeStats; cutthroat: MyModeStats }> {
+  const [team, cutthroat, ratings] = await Promise.all([
+    personalStats(db, uid, 'team'),
+    personalStats(db, uid, 'cutthroat'),
+    db.prepare('SELECT kind, elo FROM ratings WHERE user_id = ?').bind(uid).all<{ kind: string; elo: number }>(),
+  ]);
+  const elo: Record<string, number> = {};
+  for (const r of ratings.results) elo[r.kind] = Math.round(r.elo);
+  return { team: withRating(team, elo.team), cutthroat: withRating(cutthroat, elo.cutthroat) };
 }
