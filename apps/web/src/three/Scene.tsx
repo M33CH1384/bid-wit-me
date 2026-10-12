@@ -8,6 +8,7 @@ import { type Camera, type Group, type Mesh, type MeshBasicMaterial, type Object
 import type { Card, Play, Trick } from '@spades/rules';
 import Card3D from './Card3D';
 import PlayableGlow, { type GlowAnchor } from './PlayableGlow';
+import { LIFT_S, canTapCard, handLift, playablePose, stackFor } from './handLift';
 import { contiguousRuns } from './playableOutline';
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline } from './dealTimeline';
@@ -53,7 +54,7 @@ export interface SceneProps {
   short?: boolean;
   /** Safe-area insets in CSS px. */
   safe?: { l: number; r: number; t: number; b: number };
-  /** Highlight playable cards (tips mode). */
+  /** Tips mode. The turn lift is the same 14px either way; tip marks still use `marked`. */
   hintLegal?: boolean;
   /** cards an open tip points at: they glow (on the table and in your hand) */
   marked?: Card[];
@@ -303,7 +304,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
     : {};
   const trickScale = short ? 1.85 : undefined;
 
-  type Item = { radio?: boolean; key: string; card: Card | null; target: Xform; from?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: () => void; shadow?: boolean; duration?: number; arc?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean };
+  type Item = { radio?: boolean; key: string; card: Card | null; target: Xform; from?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: (() => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight'; sfxStart?: Sfx; sfxLand?: string; hand?: boolean };
   const items: Item[] = [];
   const dealDelay = (slot: number, seat: number) => tl.shuffle + (slot * n + ((seat - dealer - 1 + n) % n)) * tl.step;
 
@@ -361,19 +362,21 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   }
   // the human hand
   const mine = myHand ?? Array.from({ length: handCounts[human]! }, () => null);
-  // One outline per contiguous run of playable cards (see playableOutline). Not when every card is playable:
-  // there's nothing to distinguish, same as before.
-  const groupLegal = legal.length > 0 && legal.length < mine.length;
+  // One outline per contiguous run of legal cards (see playableOutline), including when the whole hand is playable.
+  // Off turn, legal is empty: every card stays flat, full brightness, and the outline fades.
+  const yourTurn = legal.length > 0;
+  const fan = fanLayout(aspect, Math.max(1, mine.length), safeFrac, fanOpts);
   const glowAnchors: (GlowAnchor & { playable: boolean })[] = [];
   mine.forEach((c, i) => {
     const isLegal = !!c && legal.includes(c);
-    const lift = c && selected === c ? 0.24 : isLegal ? (props.hintLegal ? 0.12 : wide && legal.length < mine.length ? 0.09 : 0.07) : 0;
-    const target = handFan(aspect, mine.length, i, lift, safeFrac, fanOpts);
+    const pose = c ? playablePose(yourTurn, isLegal, selected === c) : 'flat';
+    const lift = handLift(pose, fan.viewH, size.height, fan.ch);
+    const cardOpts = { ...fanOpts, layer: stackFor(pose) };
+    const target = handFan(aspect, mine.length, i, lift, safeFrac, cardOpts);
     const flip = flipIn && !!c;
-    const grouped = groupLegal && isLegal;
     if (c) {
-      const plane = handCardPlane(aspect, mine.length, i, lift, safeFrac, fanOpts);
-      glowAnchors.push({ name: `${handNo}-${c}`, x: plane.x, y: plane.y, playable: grouped });
+      const plane = handCardPlane(aspect, mine.length, i, lift, safeFrac, cardOpts);
+      glowAnchors.push({ name: `${handNo}-${c}`, x: plane.x, y: plane.y, playable: pose === 'legal' || pose === 'selected' });
     }
     items.push({
       hand: true,
@@ -383,14 +386,15 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       from: flip ? flipped(target) : intro ? deck : undefined,
       delay: flip ? i * 0.022 : intro ? dealDelay(i, human) : 0,
       sfxStart: flip ? undefined : 'deal',
-      dim: !!c && legal.length > 0 && !isLegal,
-      // the group rail (PlayableGlow) marks playable cards. A selected card keeps its own edge only when it isn't
-      // already inside that rail (every card playable). Tip marks still point at one card.
-      glow: !!c && ((selected === c && !grouped) || !!props.marked?.includes(c)),
-      tap: c && isLegal ? () => onCardTap(c) : undefined,
+      dim: pose === 'illegal',
+      // the group outline marks playable cards. A tap lifts that card another 10px; it does not get its own border.
+      // Tip marks still point at one card.
+      glow: !!c && !!props.marked?.includes(c),
+      tap: c && canTapCard(pose) ? () => onCardTap(c) : pose === 'illegal' ? null : undefined,
       shadow: false,
-      duration: flip ? 0.34 : intro ? tl.fly : 0.32,
-      arc: flip ? 0 : 0.05,
+      duration: flip ? 0.34 : intro ? tl.fly : LIFT_S,
+      motion: flip || intro ? 'flight' : 'lift',
+      arc: flip ? 0 : intro ? 0.05 : 0,
     });
   });
   const glowRuns = contiguousRuns(glowAnchors.map((a) => a.playable)).map(([a, b]) => glowAnchors.slice(a, b + 1));
@@ -418,6 +422,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
           from={it.from}
           delay={it.delay}
           duration={it.duration}
+          motion={it.motion}
           arc={it.arc}
           dim={it.dim}
           glow={it.glow}
