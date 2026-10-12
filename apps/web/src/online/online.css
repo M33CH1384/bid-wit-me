@@ -180,3 +180,43 @@
 .spec-pop ul { list-style: none; margin: 4px 0 8px; padding: 0; max-height: 30vh; overflow: auto; }
 .spec-pop li { padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,.06); }
 .chat-tag { font-style: normal; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: #cfb8ff; border: 1px solid rgba(185,128,255,.5); border-radius: 6px; padding: 0 5px; margin: 0 4px; }
+
+/* ---------- lobby v4 (Oct 2026 redesign): seats on a fixed grid inside the oval, no overlaps ---------- */
+.mini-felt {
+  height: auto; display: grid; gap: 10px 8px; align-items: center; justify-items: center;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-areas: ". top ." "left center right" ". bottom .";
+  padding: 26px 18px; border-radius: 50% / 42%; max-width: 460px;
+}
+.mini-felt.n3 { grid-template-areas: "left center right" ". bottom ."; padding-top: 34px; }
+.felt-center { position: static; grid-area: center; padding: 10px 4px; min-width: 0; }
+.felt-center span { font-size: 14px; letter-spacing: .08em; line-height: 1.15; display: block; }
+.felt-center small { font-size: 10.5px; display: block; margin-top: 4px; line-height: 1.25; }
+.seat-card { position: static; transform: none; width: 100%; max-width: 116px; min-height: 84px; justify-content: center; padding: 8px 5px; box-sizing: border-box; }
+.seat-card.spot-bottom { grid-area: bottom; } .seat-card.spot-top { grid-area: top; }
+.seat-card.spot-left { grid-area: left; } .seat-card.spot-right { grid-area: right; }
+.seat-top { font-size: 10px; letter-spacing: .1em; gap: 4px; }
+.seat-top .chip { font-size: 9px; padding: 1px 4px; }
+.seat-name { font-size: 14px; max-width: 100%; }
+.seat-card .sit { font-size: 13px; padding: 6px 10px; width: 100%; max-width: 96px; }
+.seat-card .link { font-size: 12px; opacity: .75; text-decoration: none; }
+.seat-card .vbubble { width: 46px; height: 46px; }
+.lobby-teams { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; margin: 12px 0 4px; }
+.team-pill { font-size: 12.5px; padding: 5px 10px; border-radius: 14px; color: var(--muted); white-space: nowrap; }
+.team-pill b { font-family: var(--display); letter-spacing: .05em; margin-right: 4px; text-transform: uppercase; }
+.team-pill.team-A { background: rgba(245,197,66,.14); box-shadow: inset 0 0 0 1px rgba(245,197,66,.45); } .team-pill.team-A b { color: var(--gold); }
+.team-pill.team-B { background: rgba(79,209,255,.12); box-shadow: inset 0 0 0 1px rgba(79,209,255,.4); } .team-pill.team-B b { color: #9fe6ff; }
+.lobby-you { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: center; gap: 10px 14px; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(185,128,255,.2); }
+.lobby-you .lobby-team-name { flex: 1 1 180px; margin: 0; }
+.lobby-you .av-bar { margin: 0; }
+.invite input { text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
+@media (max-width: 1023px), (max-height: 599px) {
+  .lobby-v3 .lobby-head { margin-bottom: 10px; }
+  .lobby-v3 .logo.small { width: 110px; }
+  .lobby-v3 .room-code { margin: 2px 0 8px; }
+  .lobby-v3 .room-code b { font-size: 34px; }
+  /* START pinned to the bottom while the table is on screen; the chat pill sits above it, right-aligned */
+  .lobby-start { position: sticky; bottom: 0; z-index: 20; margin: 10px -12px 0; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); background: linear-gradient(180deg, rgba(14,8,26,0), rgba(14,8,26,.92) 22%); }
+  .lobby-chat-tab { left: auto; right: calc(12px + env(safe-area-inset-right)); margin: 0; bottom: calc(118px + env(safe-area-inset-bottom)); padding: 8px 14px; font-size: 13px; }
+}
+@media (max-width: 360px) { .mini-felt { padding: 22px 10px; gap: 8px 4px; } .seat-card { max-width: 100px; } }

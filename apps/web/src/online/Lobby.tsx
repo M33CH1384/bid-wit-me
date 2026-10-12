@@ -96,7 +96,7 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
       </header>
 
       <section className="panel lobby-table">
-        <div className="mini-felt">
+        <div className={`mini-felt n${n}`}>
           <div className="felt-center">
             <span>{modeTitle(r)}</span>
             <small>{r.partnerships ? 'Partners sit across' : 'Every player for themselves'}</small>
@@ -112,15 +112,25 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
             />
           ))}
         </div>
-        {r.partnerships && <p className="hint">{room.teamNames?.[0] || 'Team A'}: seats 1 &amp; 3 · {room.teamNames?.[1] || 'Team B'}: seats 2 &amp; 4. Tap a seat to sit.</p>}
-        {r.partnerships && cs.seat !== null && (
-          <div className="lobby-team-name">
-            <small>YOUR TEAM NAME ({cs.seat % 2 === 0 ? 'A' : 'B'})</small>
-            <TeamNameField value={room.teamNames?.[cs.seat % 2] ?? ''} placeholder="You & your partner" onSave={(name) => conn.send({ t: 'teamName', name })} testId="lobby-team-name" />
+        {r.partnerships ? (
+          <div className="lobby-teams" data-testid="lobby-teams">
+            <span className="team-pill team-A"><b>{room.teamNames?.[0] || 'Team A'}</b> seats 1 &amp; 3</span>
+            <span className="team-pill team-B"><b>{room.teamNames?.[1] || 'Team B'}</b> seats 2 &amp; 4</span>
+          </div>
+        ) : <p className="hint lobby-teams-note">No teams · every player for themselves</p>}
+        {cs.seat === null && <p className="hint">Tap a seat to sit.</p>}
+        {cs.seat !== null && (
+          <div className="lobby-you">
+            {r.partnerships && (
+              <div className="lobby-team-name">
+                <small>YOUR TEAM NAME ({cs.seat % 2 === 0 ? 'A' : 'B'})</small>
+                <TeamNameField value={room.teamNames?.[cs.seat % 2] ?? ''} placeholder="You & your partner" onSave={(name) => conn.send({ t: 'teamName', name })} testId="lobby-team-name" />
+              </div>
+            )}
+            <MediaBar mesh={mesh} vs={vs} seated />
           </div>
         )}
         {room.series && room.series.games.length > 0 && <p className="hint" data-testid="lobby-series">Series {room.series.wins.join('–')} · {room.series.sides.map((s) => s.name).join(' vs ')}</p>}
-        <MediaBar mesh={mesh} vs={vs} seated={cs.seat !== null} />
         {cs.seat !== null && !vs.cam && <p className="hint">Video is optional: tap 📷 to turn your camera on. It goes straight to the other players, never through our server.</p>}
       </section>
 
@@ -312,7 +322,7 @@ function StartBlock({ room, cs, conn, isHost, playing, seatedHumans, n, onBackTo
   onBackToGame: (() => void) | null; onLeave: () => void;
 }) {
   return (
-    <div className="lobby-start">
+    <div className="lobby-start" data-testid="lobby-start">
       {onBackToGame && <button type="button" className="primary big" onClick={onBackToGame}>Back to the game</button>}
       {!playing && (isHost ? (
         <button type="button" className="primary big" data-testid="start" disabled={seatedHumans === 0} onClick={() => conn.send({ t: room.phase === 'over' ? 'rematch' : 'start' })}>
