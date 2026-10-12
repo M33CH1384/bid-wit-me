@@ -892,7 +892,9 @@ describe("'Run it!' any time (Release 10)", () => {
   it('a bot claims as soon as it is guaranteed, even when it is a human\'s turn', () => {
     const env = start(1); // seat 0 human, seats 1..3 bots
     late(env, [['3H', '4H'], ['5C', '6C'], ['BJ', 'LJ'], ['3D', '7D']], 0);
-    // the rewrite skips after() and does not reschedule; a human already on the clock may have no wake within 50ms
+    // late() rewrites the hand without going through Room.after(), so the clock is not rescheduled.
+    // A human already on the clock may have no wake within 50ms (their play timer is seconds away),
+    // so advance(50) sometimes never enters drive(). A tick is what that alarm does.
     env.room.tick();
     const g = env.room.data.game!;
     expect(g.tricks.slice(11).map((t) => t.winner)).toEqual([2, 2]);

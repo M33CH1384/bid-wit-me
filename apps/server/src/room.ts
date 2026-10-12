@@ -1142,7 +1142,8 @@ export class Room {
         this.botKey = null;
         changed = true;
       }
-      // Release 10: a bot claims 'Run it!' as soon as it's guaranteed, even off-turn (the server takes the first valid claim)
+      // Release 10: a bot claims 'Run it!' as soon as it's guaranteed from its own cards, even off-turn.
+      // canRunIt is proved at most once per seat per state (and never for a spectator), so this loop stays cheap.
       if (g.phase === 'playing') {
         const claimer = d.seats.slice(0, g.rules.playerCount).findIndex((sl, i) => sl.kind === 'bot' && i !== g.turn && canRunIt(g, i as Seat));
         if (claimer >= 0) { this.apply({ type: 'runIt', seat: claimer as Seat }); changed = true; continue; }
