@@ -70,6 +70,11 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
   const order = trumpOrder(r).slice(0, 5).map((c) => (c === 'BJ' ? 'Big 🃏' : c === 'LJ' ? 'Little 🃏' : cardLabel(c)));
   const team = (seat: number) => (r.partnerships ? (seat % 2 === 0 ? 'A' : 'B') : null);
   const seatedHumans = room.seats.filter((s) => s.kind === 'human').length;
+  const wide = useWide();
+  const [chatOpen, setChatOpen] = useState(false);
+  const [seen, setSeen] = useState(cs.chat.length);
+  useEffect(() => { if (chatOpen || wide) setSeen(cs.chat.length); }, [chatOpen, wide, cs.chat.length]);
+  const unread = Math.max(0, cs.chat.filter((l) => !l.system).length - cs.chat.slice(0, seen).filter((l) => !l.system).length);
   const startBlock = <StartBlock room={room} cs={cs} conn={conn} isHost={isHost} playing={playing} seatedHumans={seatedHumans} n={n} onBackToGame={onBackToGame} onLeave={onLeave} />;
 
   return (
@@ -82,13 +87,11 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
       <div className="lobby-main">
       <header className="lobby-head">
         <img className="logo small" src="/assets/bwm-wordmark-white.svg" alt="Bid Wit Me" />
-        <div className="room-code" data-testid="room-code" aria-label={`Table code ${room.code}`}>
-          <small>TABLE CODE</small>
-          <b>{room.code}</b>
-        </div>
-        <div className="invite">
-          <input readOnly value={link} aria-label="Invite link" onFocus={(e) => e.currentTarget.select()} />
-          <button type="button" className="primary" onClick={share}>{copied ? 'Copied!' : 'Invite'}</button>
+        <div className="lobby-share">
+          <button type="button" className="room-code share-code" data-testid="room-code" aria-label={`Table code ${room.code}. Tap to share the invite link`} onClick={share}>
+            <small>{copied ? 'LINK COPIED ✓' : 'TABLE CODE · TAP TO SHARE'}</small>
+            <b>{room.code}</b>
+          </button>
           <SocialButton className="lobby-social" />
         </div>
         {room.tournament && <TourBanner t={room.tournament} />}
@@ -114,27 +117,17 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
         </div>
         {r.partnerships ? (
           <div className="lobby-teams" data-testid="lobby-teams">
-            <span className="team-pill team-A"><b>{room.teamNames?.[0] || 'Team A'}</b> seats 1 &amp; 3</span>
-            <span className="team-pill team-B"><b>{room.teamNames?.[1] || 'Team B'}</b> seats 2 &amp; 4</span>
+            {[0, 1].map((t) => (
+              <TeamChip key={t} t={t} name={room.teamNames?.[t] ?? ''} editable={cs.seat !== null && cs.seat % 2 === t}
+                onSave={(name) => conn.send({ t: 'teamName', name })} />
+            ))}
           </div>
         ) : <p className="hint lobby-teams-note">No teams · every player for themselves</p>}
-        {cs.seat === null && <p className="hint">Tap a seat to sit.</p>}
-        {cs.seat !== null && (
-          <div className="lobby-you">
-            {r.partnerships && (
-              <div className="lobby-team-name">
-                <small>YOUR TEAM NAME ({cs.seat % 2 === 0 ? 'A' : 'B'})</small>
-                <TeamNameField value={room.teamNames?.[cs.seat % 2] ?? ''} placeholder="You & your partner" onSave={(name) => conn.send({ t: 'teamName', name })} testId="lobby-team-name" />
-              </div>
-            )}
-            <MediaBar mesh={mesh} vs={vs} seated />
-          </div>
-        )}
+        {wide && <MediaBar mesh={mesh} vs={vs} seated={cs.seat !== null} />}
         {room.series && room.series.games.length > 0 && <p className="hint" data-testid="lobby-series">Series {room.series.wins.join('–')} · {room.series.sides.map((s) => s.name).join(' vs ')}</p>}
-        {cs.seat !== null && !vs.cam && <p className="hint">Video is optional: tap 📷 to turn your camera on. It goes straight to the other players, never through our server.</p>}
       </section>
 
-      {startBlock}
+      {wide && startBlock}
       </div>
       <div className="lobby-settings">
       {/* the venue: its own panel so it's easy to find (the host picks, everyone sees the same spot) */}
@@ -306,7 +299,17 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
         <HostMusicFields />
       </section>
       </div>
-      <LobbyChat cs={cs} onSend={(text) => conn.send({ t: 'chat', text })} />
+      <LobbyChat cs={cs} onSend={(text) => conn.send({ t: 'chat', text })} open={chatOpen} setOpen={setChatOpen} wide={wide} />
+      {!wide && createPortal(
+        <div className={`lobby-dock ${chatOpen ? 'chat-open' : ''}`} data-testid="lobby-dock">
+          {startBlock}
+          <div className="dock-bar">
+            {cs.seat !== null ? <MediaBar mesh={mesh} vs={vs} seated /> : <span className="dock-spacer" />}
+            <button type="button" className={`av-btn dock-chat ${chatOpen ? 'on' : ''}`} data-testid="lobby-chat-tab" aria-expanded={chatOpen} aria-label="Table chat" onClick={() => setChatOpen(!chatOpen)}>
+              💬<small>CHAT</small>{unread > 0 && !chatOpen && <span className="unread" data-testid="lobby-unread">{unread}</span>}
+            </button>
+          </div>
+        </div>, document.body)}
       </div>
     </div>
   );
@@ -321,20 +324,45 @@ function StartBlock({ room, cs, conn, isHost, playing, seatedHumans, n, onBackTo
   room: RoomInfo; cs: ConnState; conn: TableConnection; isHost: boolean; playing: boolean; seatedHumans: number; n: number;
   onBackToGame: (() => void) | null; onLeave: () => void;
 }) {
+  const filled = room.seats.filter((s) => s.kind !== 'empty').length;
+  const open = n - filled;
+  const hostName = room.members.find((m) => m.playerId === room.hostId)?.name ?? 'host';
+  const status = playing ? 'Game in progress'
+    : `${filled} of ${n} seated${open > 0 ? ` · waiting on ${open}` : ' · ready'}${open > 0 ? (isHost ? ` · Start fills with bot${open > 1 ? 's' : ''}` : '') : ''}`;
   return (
     <div className="lobby-start" data-testid="lobby-start">
+      {!playing && <p className="lobby-status" data-testid="lobby-status" aria-live="polite"><span className="live-dot" /><span key={status} className="status-text">{status}</span></p>}
       {onBackToGame && <button type="button" className="primary big" onClick={onBackToGame}>Back to the game</button>}
       {!playing && (isHost ? (
         <button type="button" className="primary big" data-testid="start" disabled={seatedHumans === 0} onClick={() => conn.send({ t: room.phase === 'over' ? 'rematch' : 'start' })}>
-          {room.phase === 'over' ? 'Rematch' : n - seatedHumans > 0 ? `Start · ${n - seatedHumans} bot${n - seatedHumans > 1 ? 's' : ''} fill in` : 'Start game'}
+          {room.phase === 'over' ? 'Rematch' : open > 0 ? `Start · ${open} bot${open > 1 ? 's' : ''} fill in` : 'Start game'}
         </button>
       ) : (
-        <p className="waiting">Waiting for {room.members.find((m) => m.playerId === room.hostId)?.name ?? 'the host'} to start…</p>
+        <p className="waiting">Waiting for host{hostName !== 'host' ? ` (${hostName})` : ''}…</p>
       ))}
       {playing && cs.seat === null && <p className="waiting">Game in progress. Tap a bot's seat to take it over.</p>}
       {cs.error && Date.now() - cs.error.at < 4000 && <div className="err" role="alert">{cs.error.message}</div>}
-      <button type="button" className="link" data-testid="leave-table" onClick={onLeave}>Leave table</button>
+      <button type="button" className="link quiet" data-testid="leave-table" onClick={onLeave}>Leave table</button>
     </div>
+  );
+}
+
+function TeamChip({ t, name, editable, onSave }: { t: number; name: string; editable: boolean; onSave: (n: string) => void }) {
+  const [edit, setEdit] = useState(false);
+  const label = name || (t === 0 ? 'Team A' : 'Team B');
+  return (
+    <span className={`team-pill team-${t === 0 ? 'A' : 'B'} ${edit ? 'editing' : ''}`} data-testid={`team-chip-${t}`}>
+      {edit ? (
+        <span onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setEdit(false); }}>
+          <TeamNameField value={name} placeholder="Team name" onSave={(v) => { onSave(v); setEdit(false); }} testId="lobby-team-name" />
+        </span>
+      ) : (
+        <>
+          <b>{label}</b> seats {t === 0 ? '1 & 3' : '2 & 4'}
+          {editable && <button type="button" className="pencil" aria-label="Edit your team name" data-testid="team-name-edit" onClick={() => setEdit(true)}>✎</button>}
+        </>
+      )}
+    </span>
   );
 }
 
@@ -343,32 +371,36 @@ function SeatCard({ seat, info, spot, team, mine, isHost, playing, hostId, onSit
   onSit: () => void; onBot: () => void; onRemoveBot: () => void; media: React.ReactNode;
 }) {
   const label = `Seat ${seat + 1}`;
+  const cls = `seat-card spot-${spot} ${mine ? 'mine' : ''} ${team ? `team-${team}` : 'no-team'} ${info.kind === 'empty' ? 'open' : 'taken'}`;
+  const top = <div className="seat-top">{mine ? <span className="you-tag">YOU</span> : label}{team && <span className="chip">{team}</span>}</div>;
+  if (info.kind === 'empty') {
+    return (
+      <div className={cls} data-testid={`lobby-seat-${seat}`}>
+        <button type="button" className="sit seat-hit" aria-label="Sit here" onClick={onSit}>
+          {top}<span className="seat-plus" aria-hidden>+</span><span className="seat-cta">Sit here</span>
+        </button>
+        {isHost && !playing && <button type="button" className="seat-bot" aria-label={`Add a bot to ${label}`} onClick={onBot}>+Bot</button>}
+      </div>
+    );
+  }
+  const name = info.kind === 'bot' ? info.name : info.name;
+  const initial = info.kind === 'bot' ? '🤖' : name.trim().charAt(0).toUpperCase() || '?';
+  const ready = info.kind === 'bot' || info.connected;
   return (
-    <div className={`seat-card spot-${spot} ${mine ? 'mine' : ''} ${team ? `team-${team}` : ''}`} data-testid={`lobby-seat-${seat}`}>
-      <div className="seat-top">{label}{team && <span className="chip">TEAM {team}</span>}</div>
-      {info.kind === 'empty' && (
-        <>
-          <button type="button" className="sit" onClick={onSit}>Sit here</button>
-          {isHost && !playing && <button type="button" className="link" onClick={onBot}>+ Bot</button>}
-        </>
-      )}
-      {info.kind === 'bot' && (
-        <>
-          <div className="seat-name">🤖 {info.name}</div>
-          {isHost && !playing && <button type="button" className="link" onClick={onRemoveBot}>Remove</button>}
-          {playing && <button type="button" className="sit" onClick={onSit}>Take over</button>}
-        </>
-      )}
-      {info.kind === 'human' && (
-        <>
-          <div className="seat-name" style={{ color: mine ? '#f5c542' : colorFor(info.playerId) }}>
-            {mine ? 'You' : info.name}{info.playerId === hostId && <span title="Host" aria-label="host">👑</span>}
-          </div>
-          {!info.connected && <span className="chip bad">OFFLINE</span>}
-          {isHost && !playing && !info.connected && !mine && <button type="button" className="link" onClick={onBot}>Replace with bot</button>}
-          {media}
-        </>
-      )}
+    <div className={cls} data-testid={`lobby-seat-${seat}`}>
+      {top}
+      <div className="seat-avatar" style={info.kind === 'human' && !mine ? { ['--av' as string]: colorFor(info.playerId) } : undefined}>
+        <span className="av-initial">{initial}</span>
+        {info.kind === 'human' && media}
+        {ready && <span className="ready-check" title="Ready" aria-label="ready">✓</span>}
+      </div>
+      <div className="seat-name">
+        {info.kind === 'human' && mine ? 'You' : name}{info.kind === 'human' && info.playerId === hostId && <span title="Host" aria-label="host">👑</span>}
+      </div>
+      {info.kind === 'human' && !info.connected && <span className="chip bad">OFFLINE</span>}
+      {info.kind === 'bot' && isHost && !playing && <button type="button" className="link seat-sub" onClick={onRemoveBot}>Remove</button>}
+      {info.kind === 'bot' && playing && <button type="button" className="sit seat-sub" onClick={onSit}>Take over</button>}
+      {info.kind === 'human' && isHost && !playing && !info.connected && !mine && <button type="button" className="link seat-sub" onClick={onBot}>Replace with bot</button>}
     </div>
   );
 }
@@ -377,15 +409,10 @@ function SeatCard({ seat, info, spot, team, mine, isHost, playing, hostId, onSit
  * Lobby chat. Wide screens: a full-height column, always visible, input pinned to the bottom.
  * Phones: a sticky bottom tab (with unread badge) that opens a drawer — always one tap away.
  */
-function LobbyChat({ cs, onSend }: { cs: ConnState; onSend: (t: string) => void }) {
+function LobbyChat({ cs, onSend, open, setOpen, wide }: { cs: ConnState; onSend: (t: string) => void; open: boolean; setOpen: (v: boolean) => void; wide: boolean }) {
   const [text, setText] = useState('');
-  const [open, setOpen] = useState(false);
-  const [seen, setSeen] = useState(cs.chat.length);
   const list = useRef<HTMLDivElement>(null);
   useEffect(() => { list.current?.scrollTo({ top: 1e6 }); }, [cs.chat.length, open]);
-  const wide = useWide();
-  useEffect(() => { if (open || wide) setSeen(cs.chat.length); }, [open, wide, cs.chat.length]);
-  const unread = Math.max(0, cs.chat.filter((l) => !l.system).length - cs.chat.slice(0, seen).filter((l) => !l.system).length);
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!text.trim()) return;
@@ -394,13 +421,8 @@ function LobbyChat({ cs, onSend }: { cs: ConnState; onSend: (t: string) => void 
   };
   const ui = (
     <>
-    {!wide && (
-      <button type="button" className={`lobby-chat-tab ${open ? 'open' : ''}`} data-testid="lobby-chat-tab" aria-expanded={open} onClick={() => setOpen(!open)}>
-        💬 Chat{unread > 0 && !open && <span className="unread" data-testid="lobby-unread">{unread}</span>}<span className="tab-caret">{open ? '▾' : '▴'}</span>
-      </button>
-    )}
     <section className={`panel lobby-chat ${wide ? 'wide' : open ? 'drawer open' : 'drawer'}`} aria-label="Table chat" data-testid="lobby-chat">
-      <header className="lc-head"><span className="live-dot" /> TABLE CHAT</header>
+      <header className="lc-head"><span className="live-dot" /> TABLE CHAT{!wide && <button type="button" className="lc-close" aria-label="Close chat" onClick={() => setOpen(false)}>✕</button>}</header>
       <div className="chat-list" ref={list}>
         {cs.chat.slice(-100).map((l) => (
           <div key={l.id} className={`chat-line ${l.system ? 'system' : ''}`}>

@@ -220,3 +220,69 @@
   .lobby-chat-tab { left: auto; right: calc(12px + env(safe-area-inset-right)); margin: 0; bottom: calc(118px + env(safe-area-inset-bottom)); padding: 8px 14px; font-size: 13px; }
 }
 @media (max-width: 360px) { .mini-felt { padding: 22px 10px; gap: 8px 4px; } .seat-card { max-width: 100px; } }
+
+/* ---------- lobby v5: seat states, share code, bottom dock ---------- */
+.lobby-share { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.share-code { background: rgba(255,255,255,.04); border: 1px dashed rgba(245,197,66,.45); border-radius: 14px; padding: 6px 18px 4px; cursor: pointer; color: inherit; font: inherit; }
+.share-code:active { transform: scale(.97); }
+.share-code small { font-size: 10px !important; }
+.lobby-head .invite { display: none; }
+
+.seat-card { --tc: rgba(185,128,255,.55); width: 100%; max-width: 104px; height: 120px; min-height: 0; padding: 7px 4px; gap: 3px; justify-content: flex-start; overflow: hidden; position: relative; clip-path: none; border-radius: 12px;
+  background: rgba(16,9,30,.88); box-shadow: inset 0 0 0 2px var(--tc), 0 6px 14px rgba(0,0,0,.45); }
+.seat-card.team-A { --tc: var(--gold); } .seat-card.team-B { --tc: #4fd1ff; }
+.seat-card.taken.team-A { background: linear-gradient(180deg, rgba(245,197,66,.18), rgba(16,9,30,.9)); }
+.seat-card.taken.team-B { background: linear-gradient(180deg, rgba(79,209,255,.16), rgba(16,9,30,.9)); }
+.seat-card.taken { animation: seat-pop .35s cubic-bezier(.3,1.6,.5,1) both; }
+.seat-card.mine { box-shadow: inset 0 0 0 3px var(--gold), 0 0 18px rgba(245,197,66,.45); }
+.seat-card .seat-top .chip { font-size: 9px; padding: 1px 5px; border-radius: 6px; }
+.you-tag { color: var(--gold); font-weight: 800; }
+.seat-card.open { background: rgba(10,30,20,.35); box-shadow: none; outline: 2px dashed var(--tc); outline-offset: -3px; animation: seat-pulse 2.6s ease-in-out infinite; padding: 0; }
+.seat-hit { all: unset; box-sizing: border-box; cursor: pointer; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 7px 4px 24px; }
+.seat-hit .seat-top { position: absolute; top: 7px; }
+.seat-plus { font-size: 30px; line-height: 1; font-weight: 300; color: var(--tc); margin-top: 8px; }
+.seat-cta { font-family: var(--display); font-weight: 800; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #fff; }
+.seat-bot { position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); border: 0; background: rgba(255,255,255,.08); color: var(--muted); font-size: 11px; padding: 2px 8px; border-radius: 10px; }
+.seat-avatar { --av: #b980ff; position: relative; width: 48px; height: 48px; flex: none; border-radius: 50%; display: grid; place-items: center; background: radial-gradient(circle at 35% 30%, #3a2a55, #120a1c); box-shadow: 0 0 0 2px var(--av); }
+.seat-card.mine .seat-avatar { box-shadow: 0 0 0 3px var(--gold), 0 0 12px rgba(245,197,66,.6); }
+.av-initial { font-family: var(--display); font-weight: 800; font-size: 20px; color: #fff; }
+.seat-avatar .vbubble, .seat-avatar .vb-initial { position: absolute !important; inset: 0; left: 0 !important; top: 0 !important; width: 100% !important; height: 100% !important; margin: 0 !important; transform: none !important; box-shadow: none; }
+.ready-check { position: absolute; right: -4px; bottom: -3px; width: 17px; height: 17px; border-radius: 50%; background: #2ecc71; color: #06200f; font-size: 11px; font-weight: 900; display: grid; place-items: center; box-shadow: 0 0 0 2px #120a1c; z-index: 4; }
+.seat-card .seat-name { font-size: 13px; }
+.seat-sub { font-size: 11px !important; padding: 0 !important; }
+.seat-card .sit.seat-sub { padding: 2px 8px !important; width: auto; }
+
+.team-pill { display: inline-flex; align-items: center; gap: 4px; }
+.team-pill .pencil { border: 0; background: none; color: inherit; font-size: 14px; padding: 0 0 0 4px; cursor: pointer; }
+.team-pill.editing { padding: 3px 6px; }
+.team-pill .team-name-edit { display: flex; gap: 4px; }
+.team-pill .team-name-edit input { width: 130px; font-size: 16px; padding: 3px 6px; background: rgba(0,0,0,.35); border: 1px solid rgba(245,197,66,.5); color: var(--ink); }
+.team-pill .team-name-edit button { padding: 2px 8px; }
+
+.lobby-status { display: flex; align-items: center; justify-content: center; gap: 7px; margin: 0 0 6px; font-size: 13px; color: var(--muted); }
+.status-text { animation: fade-up .3s ease both; }
+.lobby-start .waiting { font-size: 15px; margin: 6px 0; }
+.link.quiet { opacity: .7; font-size: 13px; }
+
+@keyframes seat-pop { from { transform: scale(.7); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes seat-pulse { 0%,100% { outline-color: color-mix(in srgb, var(--tc) 55%, transparent); } 50% { outline-color: var(--tc); background: rgba(185,128,255,.12); } }
+@media (prefers-reduced-motion: reduce) { .seat-card.taken, .seat-card.open, .status-text { animation: none !important; } }
+
+/* phones: fixed dock = Start + status above an equal-width bar of cam / mic / chat */
+.lobby-chat-tab { display: none !important; }
+@media (max-width: 1023px), (max-height: 599px) {
+  .lobby-v3 { padding-bottom: calc(210px + env(safe-area-inset-bottom)); }
+  .lobby-dock { position: fixed; z-index: 41; left: 0; right: 0; bottom: 0; padding: 14px 14px calc(8px + env(safe-area-inset-bottom)); background: linear-gradient(180deg, rgba(14,8,26,0), rgba(14,8,26,.95) 18%); }
+  .lobby-dock .lobby-start { position: static; margin: 0; padding: 0; background: none; max-width: 560px; margin-inline: auto; gap: 4px; }
+  .lobby-dock .lobby-start .link { order: 9; }
+  .dock-bar { display: flex; gap: 10px; max-width: 560px; margin: 6px auto 0; }
+  .dock-bar .av-bar { display: contents; }
+  .dock-bar .av-btn, .dock-spacer { flex: 1 1 0; height: 50px; width: auto; border-radius: 14px; flex-direction: column; gap: 2px; position: relative; display: flex; align-items: center; justify-content: center; }
+  .dock-bar .av-btn small { margin-top: 0; }
+  .dock-spacer { visibility: hidden; flex: 2 1 0; }
+  .dock-chat .unread { position: absolute; top: 4px; right: 10px; }
+  .dock-bar .av-hint, .dock-bar .mic-limited { display: none; }
+  .lobby-dock.chat-open .lobby-start { display: none; }
+  .lobby-chat.drawer { bottom: calc(76px + env(safe-area-inset-bottom)); height: min(55vh, 440px); z-index: 42; }
+  .lc-close { margin-left: auto; border: 0; background: none; color: var(--muted); font-size: 16px; }
+}
