@@ -7,8 +7,8 @@
 .social-dot { position: absolute; top: 5px; right: 5px; width: 8px; height: 8px; border-radius: 50%; background: var(--gold); }
 .scorebug .social-btn { height: 36px; min-width: 36px; padding: 0 7px; flex: none; }
 
-.modal-backdrop.soc-backdrop { z-index: 1150; justify-content: flex-end; align-items: stretch; padding: 0; display: flex; }
-.soc-panel { width: min(460px, 100vw); height: 100%; height: 100dvh; display: flex; flex-direction: column; background: #140b22; -webkit-backdrop-filter: none; backdrop-filter: none; border-left: 1px solid var(--edge); box-shadow: -20px 0 50px rgba(0,0,0,.5); padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); animation: soc-in .22s ease-out; }
+.modal-backdrop.soc-backdrop { position: fixed; inset: 0; margin: 0; z-index: 1150; justify-content: flex-end; align-items: stretch; padding: 0; display: flex; }
+.soc-panel { width: min(460px, 100vw); height: auto; max-height: 100dvh; display: flex; flex-direction: column; background: #140b22; -webkit-backdrop-filter: none; backdrop-filter: none; border-left: 1px solid var(--edge); box-shadow: -20px 0 50px rgba(0,0,0,.5); padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); animation: soc-in .22s ease-out; }
 @keyframes soc-in { from { transform: translateX(40px); opacity: 0; } }
 .soc-head { display: flex; align-items: center; gap: 10px; padding: 10px 12px 6px; }
 .soc-head .panel-title { flex: none; }
