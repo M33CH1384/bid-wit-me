@@ -18,7 +18,7 @@ import {
 } from '@spades/protocol';
 import type { OpenTable } from '@spades/protocol';
 import { blockLinks, cleanName, cleanText, maskProfanity } from './filter';
-import { type GameRecord, type LiveStats, type SeatRef, buildRecord, isRated, newLiveStats, placementsOf } from './stats/record';
+import { type GameRecord, type LiveStats, type SaveMeta, type SeatRef, abandonedRecord, buildRecord, isRated, newLiveStats, placementsOf } from './stats/record';
 
 export const ROOM_DATA_VERSION = 1;
 
@@ -113,6 +113,8 @@ export interface RoomData {
   hostAwaySince?: number;
   /** latched when a game starts: this deal counts for Elo, so a leaver doesn't open their seat to a guest */
   rated?: boolean;
+  /** this deal was already written as abandoned (leave, replacement, or expiry) */
+  abandonReported?: boolean;
 }
 
 /** Release 9b: this table plays one tournament match (rules locked, seats reserved for the entrants, autostart). */
@@ -169,8 +171,8 @@ export interface RoomIO {
   persist(): void;
   /** random id/token/seed source (crypto in prod, seeded in tests) */
   randomId(): string;
-  /** Release 9: a finished game with at least one signed-in player (DO: write stats/Elo to D1) */
-  gameOver?(rec: GameRecord, rated: boolean): void;
+  /** Release 9: a finished game with at least one signed-in player (DO: write stats/Elo to D1). meta marks an abandon. */
+  gameOver?(rec: GameRecord, rated: boolean, meta?: SaveMeta): void;
   /** Release 9b: a tournament match finished (per side: final score and placement, 1 = won) */
   tournamentResult?(t: TournamentSeat, scores: number[], places: number[]): void;
   /** Release 10: this table's Open tables entry (null = unlisted); called after every broadcast, the DO dedups */
@@ -789,6 +791,7 @@ export class Room {
     const d = this.data;
     const m = d.members[pid];
     if (!m) return;
+    if (m.seat !== null && d.phase === 'playing') this.reportAbandoned(pid);
     if (m.seat !== null) {
       // mid-game the seat goes to a bot so the others can finish; in the lobby it just opens up
       d.seats[m.seat] = d.phase === 'playing' ? { kind: 'bot', name: this.botName(), level: d.botLevel, vacated: true } : { kind: 'empty' };
@@ -900,6 +903,7 @@ export class Room {
 
   private startGame(rematch = false): void {
     const d = this.data;
+    if (d.phase === 'playing' && d.game && d.game.phase !== 'gameOver') this.reportAbandoned(d.hostId);
     const prevGame = d.game;
     const n = d.rules.playerCount;
     const seats = d.seats.slice(0, n);
@@ -922,6 +926,7 @@ export class Room {
     d.turnKey = null;
     d.deadline = null;
     d.gamesPlayed++;
+    d.abandonReported = false;
     d.live = newLiveStats(n);
     this.startSeries();
     d.talk = { ...newTalkState(), revealed: [] }; // a new game: every Hustler is back in character
@@ -1032,12 +1037,15 @@ export class Room {
     d.series = addSeriesGame(d.series, mode, sides, summarizeGame(g, names, no, this.io.now()));
   }
 
-  /** Release 9: hand the finished game to the host (stats + Elo) when an account played */
-  private reportGame(): void {
+  private familyId(): string {
     const d = this.data;
-    if (!this.io.gameOver || !d.game) return;
+    return `${d.code}-${d.createdAt.toString(36)}-${d.gamesPlayed}`;
+  }
+
+  private seatRefs(): SeatRef[] {
+    const d = this.data;
     const n = d.rules.playerCount;
-    const seats: SeatRef[] = d.seats.slice(0, n).map((s, i) => {
+    return d.seats.slice(0, n).map((s, i) => {
       const side = d.rules.partnerships ? i % 2 : i;
       if (s.kind === 'human') {
         const m = d.members[s.playerId];
@@ -1045,9 +1053,39 @@ export class Room {
       }
       return { name: s.kind === 'bot' ? s.name : `Seat ${i + 1}`, side, kind: 'bot' };
     });
+  }
+
+  /**
+   * The deal will not finish with these seats. Called before a leaver's seat becomes a bot.
+   * The live game keeps going. A later finish is a separate row with the same family.
+   */
+  private reportAbandoned(leaverPid: string | null): void {
+    const d = this.data;
+    if (d.abandonReported || d.phase !== 'playing' || !d.game || d.game.phase === 'gameOver') return;
+    d.abandonReported = true;
+    if (!this.io.gameOver) return;
+    const seats = this.seatRefs();
     if (!seats.some((x) => x.kind === 'user')) return;
-    const rec = buildRecord({ id: `${d.code}-${d.createdAt.toString(36)}-${d.gamesPlayed}`, room: d.code, game: d.game, seats, names: this.sideNames(), teamNames: d.teamNames, live: d.live, endedAt: this.io.now(), tournamentId: d.tournament?.id });
-    this.io.gameOver(rec, isRated(rec, d.rules));
+    const family = this.familyId();
+    const rec = abandonedRecord({ id: `${family}-abandoned`, room: d.code, game: d.game, seats, names: this.sideNames(), teamNames: d.teamNames, endedAt: this.io.now(), tournamentId: d.tournament?.id });
+    const leaverId = leaverPid ? (d.members[leaverPid]?.uid ?? null) : null;
+    this.io.gameOver(rec, d.rated ?? this.ratedTable(), { endReason: 'abandoned', leaverId, family });
+  }
+
+  /** Idle room is about to be deleted. No leaver: everyone gets a game started, nobody gets a loss. */
+  expire(): void {
+    this.reportAbandoned(null);
+  }
+
+  /** Release 9: hand the finished game to the host (stats + Elo) when an account played */
+  private reportGame(): void {
+    const d = this.data;
+    if (!this.io.gameOver || !d.game) return;
+    const seats = this.seatRefs();
+    if (!seats.some((x) => x.kind === 'user')) return;
+    const family = this.familyId();
+    const rec = buildRecord({ id: family, room: d.code, game: d.game, seats, names: this.sideNames(), teamNames: d.teamNames, live: d.live, endedAt: this.io.now(), tournamentId: d.tournament?.id });
+    this.io.gameOver(rec, isRated(rec, d.rules), { endReason: 'finished', family });
   }
 
   private sideLabel(side: number): string {

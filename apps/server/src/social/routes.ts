@@ -59,21 +59,22 @@ export async function profileFor(db: D1Database, username: string, viewer: strin
   const champ = await db.prepare("SELECT COUNT(*) AS n FROM awards WHERE user_id = ? AND kind = 'champion'").bind(u.id).first<{ n: number }>();
   const teams = (await db.prepare('SELECT team_name, COUNT(*) AS n FROM game_players WHERE user_id = ? AND team_name IS NOT NULL GROUP BY team_name ORDER BY n DESC LIMIT 6').bind(u.id).all<{ team_name: string }>()).results.map((r) => r.team_name);
   if (teamFromProgress && !teams.includes(teamFromProgress)) teams.unshift(teamFromProgress);
-  const totals = await db.prepare('SELECT COUNT(*) AS games, COALESCE(SUM(won), 0) AS wins FROM game_players WHERE user_id = ?').bind(u.id).first<{ games: number; wins: number }>();
+  const stats = await personalStats(db, u.id);
   const h2h = (await db.prepare(`SELECT o.user_id AS id, ou.username AS name, COUNT(*) AS games, SUM(me.won) AS wins, SUM(o.won) AS losses
     FROM game_players me JOIN game_players o ON o.game_id = me.game_id AND o.side != me.side JOIN users ou ON ou.id = o.user_id
+    JOIN games g ON g.id = me.game_id AND COALESCE(g.end_reason, 'finished') != 'abandoned'
     WHERE me.user_id = ? GROUP BY o.user_id ORDER BY games DESC LIMIT 8`).bind(u.id).all<{ id: string; name: string | null; games: number; wins: number; losses: number }>()).results;
   const store = new SocialStore(db);
   const out: ProfileOut = {
     username: u.username, memberSince: u.created_at, badges, teamNames: teams.slice(0, 6), ratings: await store.ratings(u.id),
-    totals: { games: totals?.games ?? 0, wins: totals?.wins ?? 0 },
+    totals: { games: stats.games, wins: stats.wins },
     h2h: h2h.map((r) => ({ id: `u:${r.id}`, name: r.name ?? 'Player', games: r.games, wins: r.wins, losses: r.losses })),
     champion: champ?.n ?? 0,
-    stats: await personalStats(db, u.id),
+    stats,
     awards: (await db.prepare("SELECT label, ref, at FROM awards WHERE user_id = ? AND kind = 'champion' ORDER BY at DESC LIMIT 10").bind(u.id).all<{ label: string; ref: string; at: number }>()).results,
   };
   if (viewer && viewer !== u.id) {
-    const v = h2h.find((r) => r.id === viewer) ?? await db.prepare(`SELECT COUNT(*) AS games, COALESCE(SUM(me.won), 0) AS wins, COALESCE(SUM(o.won), 0) AS losses FROM game_players me JOIN game_players o ON o.game_id = me.game_id AND o.side != me.side WHERE me.user_id = ? AND o.user_id = ?`).bind(u.id, viewer).first<{ games: number; wins: number; losses: number }>();
+    const v = h2h.find((r) => r.id === viewer) ?? await db.prepare(`SELECT COUNT(*) AS games, COALESCE(SUM(me.won), 0) AS wins, COALESCE(SUM(o.won), 0) AS losses FROM game_players me JOIN game_players o ON o.game_id = me.game_id AND o.side != me.side JOIN games g ON g.id = me.game_id AND COALESCE(g.end_reason, 'finished') != 'abandoned' WHERE me.user_id = ? AND o.user_id = ?`).bind(u.id, viewer).first<{ games: number; wins: number; losses: number }>();
     // from the viewer's side: their wins are the profile owner's losses
     if (v && v.games) out.vsYou = { games: v.games, wins: v.losses, losses: v.wins };
   }
@@ -83,6 +84,7 @@ export async function profileFor(db: D1Database, username: string, viewer: strin
 export async function recentPlayers(db: D1Database, uid: string): Promise<{ id: string; name: string; games: number; last: number; partner: boolean }[]> {
   const rows = (await db.prepare(`SELECT o.user_id AS id, u.username AS name, COUNT(*) AS games, MAX(o.ended_at) AS last, MAX(CASE WHEN o.side = me.side THEN 1 ELSE 0 END) AS partner
     FROM game_players me JOIN game_players o ON o.game_id = me.game_id AND o.user_id != me.user_id JOIN users u ON u.id = o.user_id
+    JOIN games g ON g.id = me.game_id AND COALESCE(g.end_reason, 'finished') != 'abandoned'
     WHERE me.user_id = ? AND me.ended_at > ? GROUP BY o.user_id ORDER BY last DESC LIMIT 20`).bind(uid, 0).all<{ id: string; name: string | null; games: number; last: number; partner: number }>()).results;
   return rows.map((r) => ({ id: `u:${r.id}`, name: r.name ?? 'Player', games: r.games, last: r.last, partner: !!r.partner }));
 }
