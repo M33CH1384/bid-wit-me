@@ -26,6 +26,7 @@ export default function JokerAura({ kind, cardsAfter, reduceMotion, children }: 
   const born = useRef<number[]>([]);
   const phase0 = useRef(performance.now());
   const prevPhase = useRef(0);
+  const seenAfter = useRef(cardsAfter);
   const { invalidate } = useThree();
   const reduced = () => !!reduceMotion || fx.osReducedMotion;
 
@@ -164,9 +165,18 @@ export default function JokerAura({ kind, cardsAfter, reduceMotion, children }: 
       return;
     }
     const now = performance.now();
+    // A card landing steps the period immediately. Continuing the old phase into the
+    // shorter cycle makes the speed-up look like it never happened.
+    if (seenAfter.current !== cardsAfter) {
+      seenAfter.current = cardsAfter;
+      phase0.current = now;
+      prevPhase.current = 0;
+    }
     const cycle = cycleMs(cardsAfter);
     const phase = ((now - phase0.current) % cycle) / cycle;
     const pose = heartbeat(phase, kind);
+    const w = window as unknown as { __bwmBeat?: { kind: string; cardsAfter: number; cycle: number; scale: number; glow: number } };
+    w.__bwmBeat = { kind, cardsAfter, cycle, scale: pose.scale, glow: pose.glow };
     const j = jitterPx(now, cardsAfter, false);
     // During this joker's detonation the pop owns the scale (Card3D). Don't overwrite it.
     if (getBurst()?.kind !== kind) {

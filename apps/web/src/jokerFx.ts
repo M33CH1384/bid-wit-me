@@ -113,12 +113,22 @@ export function ripplePose(ageMs: number, kind: JokerKind): { scale: number; opa
   return { scale: 1 + (to - 1) * e, opacity: 0.5 * (1 - e) };
 }
 
-/** Overlay lifetime. Longer than the mushroom so the last fade frame still paints. */
-export const BURST_MS: Record<JokerKind, number> = { BJ: 2300, LJ: 1600 };
+/**
+ * The whole detonation (flash, ring, push, cloud, pop, stamp, flight) is about 1.1–1.3s.
+ * The 3D blast keeps its own longer clock; these times are the overlay and the card flight.
+ */
+export const BURST_MS: Record<JokerKind, number> = { BJ: 1300, LJ: 1000 };
+/** Shockwave ends, then the NUKED stamp hits 350ms later. */
+export const SHOCK_MS = 450;
+export const BANNER_AT_MS = SHOCK_MS + 350;
+/** Cards leave the trick for the winner's pile. The stamp fades out with them. */
+export const SWEEP_MS = 900;
+/** How long the NUKED stamp is on screen. It starts at BANNER_AT_MS and ends with the flight. */
+export const BANNER_MS = 500;
 
-/** Mushroom window. Big Joker stays readable for ~1.8s; the Little Joker is shorter. */
-const CLOUD_START = 180;
-const CLOUD_END: Record<JokerKind, number> = { BJ: 2200, LJ: 1500 };
+/** Mushroom window. Big enough to read on a phone, gone as the cards fly. */
+const CLOUD_START = 120;
+const CLOUD_END: Record<JokerKind, number> = { BJ: 1150, LJ: 880 };
 
 /**
  * White flash. Big Joker only: 0→.85 over 60ms, then back to 0 over 220ms ease-out.
@@ -133,13 +143,20 @@ export function flashOpacity(tMs: number, kind: JokerKind, reduced: boolean): nu
   return peak * (1 - easeOut(u));
 }
 
-/** Shockwave diameter as a multiple of the table width, and its opacity. 0..450ms (shorter for LJ). */
+/**
+ * Shockwave diameter as a multiple of the table width, and its opacity.
+ * 0..450ms for the Big Joker (shorter for LJ). The ease reaches full size early;
+ * opacity follows the clock so the ring is still readable once it is large.
+ */
 export function shockwave(tMs: number, kind: JokerKind): { mul: number; opacity: number } | null {
-  const dur = kind === 'BJ' ? 450 : 320;
+  const dur = kind === 'BJ' ? SHOCK_MS : 320;
   const maxMul = kind === 'BJ' ? 4 : 2.2;
   if (tMs < 0 || tMs > dur) return null;
-  const e = cubicBezier(0.1, 0.7, 0.2, 1, tMs / dur);
-  return { mul: maxMul * e, opacity: Math.max(0, 1 - e) };
+  const u = tMs / dur;
+  const e = cubicBezier(0.1, 0.7, 0.2, 1, u);
+  // The ease is front-loaded, so fading with it hides the ring once it is large.
+  // Fade on the clock instead: still full early, gone at the end of the shockwave.
+  return { mul: maxMul * e, opacity: Math.max(0, 1 - u * u) };
 }
 
 /** Screen shake, transform only. 8px → 0 over 350ms, about 6 oscillations. None under reduced motion. */
@@ -155,7 +172,7 @@ export function shakeOffset(tMs: number, kind: JokerKind, reduced: boolean): { x
 
 /**
  * Mushroom pose. `rise` and `scale` are 0..1 fractions (pixel size comes from the viewport).
- * The Big Joker cloud is already large on its first frame and stays bright for about 1.8s.
+ * Already large on the first frame, bright through the shockwave, fading as the cards fly.
  * Reduced motion draws no cloud.
  */
 export function cloudPose(tMs: number, kind: JokerKind, reduced: boolean): { rise: number; scale: number; opacity: number } | null {
@@ -163,10 +180,10 @@ export function cloudPose(tMs: number, kind: JokerKind, reduced: boolean): { ris
   const end = CLOUD_END[kind];
   if (tMs < CLOUD_START || tMs > end) return null;
   const u = (tMs - CLOUD_START) / (end - CLOUD_START);
-  const grow = Math.min(1, u / 0.18);
-  const fadeIn = Math.min(1, 0.7 + u / 0.06);
-  const fadeOut = u < 0.84 ? 1 : Math.max(0, 1 - (u - 0.84) / 0.16);
-  return { rise: 0.35 + 0.65 * grow, scale: 0.78 + 0.22 * grow, opacity: fadeIn * fadeOut };
+  const grow = Math.min(1, u / 0.22);
+  const fadeIn = Math.min(1, 0.75 + u / 0.05);
+  const fadeOut = u < 0.62 ? 1 : Math.max(0, 1 - (u - 0.62) / 0.38);
+  return { rise: 0.45 + 0.55 * grow, scale: 0.82 + 0.18 * grow, opacity: fadeIn * fadeOut };
 }
 
 export interface MushroomSprite {
@@ -218,6 +235,28 @@ export function mushroomSprites(
 }
 
 /**
+ * NUKED stamp. Hidden until 350ms after the shockwave, then a short hit that fades with the cards.
+ * Keyframes match `nuke-stamp` (0.5s): 0% scale 1.4, 16% .96, 28–62% 1, 100% 1.04 and gone.
+ */
+export function bannerPose(tMs: number): { opacity: number; scale: number } | null {
+  if (tMs < BANNER_AT_MS || tMs > BANNER_AT_MS + BANNER_MS) return null;
+  const u = (tMs - BANNER_AT_MS) / BANNER_MS;
+  const keys = [
+    { t: 0, o: 0, s: 1.4 },
+    { t: 0.16, o: 1, s: 0.96 },
+    { t: 0.28, o: 1, s: 1 },
+    { t: 0.62, o: 1, s: 1 },
+    { t: 1, o: 0, s: 1.04 },
+  ];
+  let i = 1;
+  while (i < keys.length - 1 && keys[i]!.t < u) i++;
+  const a = keys[i - 1]!;
+  const b = keys[i]!;
+  const k = Math.min(1, Math.max(0, (u - a.t) / (b.t - a.t || 1)));
+  return { opacity: a.o + (b.o - a.o) * k, scale: a.s + (b.s - a.s) * k };
+}
+
+/**
  * Winning joker pop: at 200ms, scale 1 → peak → 1 over 500ms, cubic-bezier(.2, 1.4, .3, 1).
  * Peak is 1.25 for the Big Joker and 1.12 for the Little one. Then the existing sweep flies it to the books.
  */
@@ -238,9 +277,9 @@ export function jokerPop(tMs: number, kind: JokerKind): number {
 }
 
 /**
- * Other trick cards: pushed out and faded over 300ms.
- * Opacity comes back after 900ms so the iOS blast (which needs the cards on the table) can finish
- * and the trick is readable again before the sweep. The push itself is the spec's 20px (12px for LJ).
+ * Other trick cards: pushed out and faded over 300ms, then held until the sweep.
+ * Opacity floors at 0.35 so the iOS blast still has cards, and they fade out with the flight
+ * instead of popping back to full and then vanishing.
  */
 export function cardPush(tMs: number, kind: JokerKind): { px: number; opacity: number } {
   const dist = kind === 'BJ' ? 20 : 12;
@@ -249,9 +288,7 @@ export function cardPush(tMs: number, kind: JokerKind): { px: number; opacity: n
     const e = cubicBezier(0.1, 0.7, 0.2, 1, tMs / 300);
     return { px: dist * e, opacity: 1 - 0.65 * e };
   }
-  if (tMs < 900) return { px: dist, opacity: 0.35 };
-  const back = Math.min(1, (tMs - 900) / 400);
-  return { px: dist * (1 - back), opacity: 0.35 + 0.65 * back };
+  return { px: dist, opacity: 0.35 };
 }
 
 /** Final-cycle jitter: 1px, sampled at 30fps, only while two cards have already followed the joker. */

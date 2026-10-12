@@ -5,7 +5,7 @@ import { Environment, Html, Preload, useEnvironment, useTexture } from '@react-t
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { type ReactNode, type RefObject, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { type Camera, type Group, type Mesh, type MeshBasicMaterial, type Object3D, type Texture, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, Matrix4, Quaternion, MeshPhysicalMaterial, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, Vector2, Vector3 } from 'three';
-import type { Card, Play, Trick } from '@spades/rules';
+import { isNukeTrick, type Card, type Play, type Trick } from '@spades/rules';
 import Card3D from './Card3D';
 import PlayableGlow, { type GlowAnchor } from './PlayableGlow';
 import { departureSlot, handCardKey, handReactKey } from '../handOrder';
@@ -320,7 +320,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
     const w = t.winner!;
     const k = pileCount[w]!++;
     t.plays.forEach((pl, j) => {
-      items.push({ key: `${handNo}-${pl.card}`, card: pl.card, target: pileSpot(positions[w]!, n, k, j, jitterOf(pl.card)), duration: 0.55, arc: 0.15, sfxStart: 'sweep' });
+      items.push({ key: `${handNo}-${pl.card}`, card: pl.card, target: pileSpot(positions[w]!, n, k, j, jitterOf(pl.card)), duration: isNukeTrick(t.plays) ? 0.4 : 0.55, arc: 0.15, sfxStart: 'sweep' });
     });
   }
   // cards on the table this trick

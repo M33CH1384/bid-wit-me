@@ -29,6 +29,7 @@ import { loadScene } from './three/preload';
 import { endReasonText, onNoticeSides, shotChatLines } from './shotOut';
 import { type Sfx, sound } from './audio';
 import { HAPTIC, haptic } from './haptics';
+import { BURST_MS, getBurst } from './jokerFx';
 import { type ChatMsg, LINES, SEAT_COLORS, TALK_LINES, type Toast, TickNumber, USER_COLORS, pick, toastsFor } from './overlay';
 import { type Settings, modeTitle } from './settings';
 import type { SeatPos } from './three/layout';
@@ -795,11 +796,20 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   }, [st.history, histTick, r, names, mySide, !!pause]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Hand end: the score screen opens as soon as the trick hold ends. That hold is the beat after the last
-  // card lands (~700 ms at normal speed). A nuke or Run it! keeps the screen closed until that show ends
-  // (`pause` / `runFx`); scoring toasts and hype no longer add another wait on top.
+  // card lands (~700 ms at normal speed). Run it! keeps the screen closed until that show ends (`runFx`).
+  // A nuke lets the cards fly at 900ms, and the score waits until the 1.3s stamp has faded.
+  // Scoring toasts and hype no longer add another wait on top.
   const [talkOpen, setTalkOpen] = useState(false);
   useEffect(() => {
     if ((st.phase !== 'handOver' && st.phase !== 'gameOver') || pause || runFx) { setTalkOpen(false); return; }
+    const b = getBurst();
+    if (b && fx.warp === null) {
+      const left = BURST_MS[b.kind] - b.elapsed;
+      if (left > 40) {
+        const t = window.setTimeout(() => setTalkOpen(true), left);
+        return () => clearTimeout(t);
+      }
+    }
     setTalkOpen(true);
   }, [st.phase, st.handNo, pause, !!runFx]); // eslint-disable-line react-hooks/exhaustive-deps
   const talkSend = (text: string) => {
@@ -819,7 +829,14 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   useEffect(() => {
     if (!nukeKey || nukeKey === nukeAtMount.current) return;
     const release = fx.hold(1300, 'nukeWatch'); // the hand end waits for the blast (the blast holds itself once it fires)
-    const t = window.setTimeout(() => { fireCue('nuke'); release(); }, 1100);
+    const seen = fx.fired.nuke ?? 0;
+    // A stalled main thread can deliver this timer long after the landing cue already fired.
+    // The 4.5s emit dedupe does not cover that gap, so skip when a nuke has already counted.
+    const t = window.setTimeout(() => {
+      if ((fx.fired.nuke ?? 0) !== seen) { release(); return; }
+      fireCue('nuke');
+      release();
+    }, 1100);
     return () => { clearTimeout(t); release(); };
   }, [nukeKey]);
   const winBuzzed = useRef(false);

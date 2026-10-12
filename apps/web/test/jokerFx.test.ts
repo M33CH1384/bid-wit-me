@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  BEAT_MARKS, BURST_MS, JOKER_PALETTE,
-  cardPush, clearBurst, cloudPose, cycleMs, flashOpacity, getBurst, heartbeat, jitterPx, jokerPop, mushroomSprites,
+  BANNER_AT_MS, BANNER_MS, BEAT_MARKS, BURST_MS, JOKER_PALETTE, SHOCK_MS, SWEEP_MS,
+  bannerPose, cardPush, clearBurst, cloudPose, cycleMs, flashOpacity, getBurst, heartbeat, jitterPx, jokerPop, mushroomSprites,
   ripplePose, shakeOffset, shockwave, startBurst, subscribeBurst,
 } from '../src/jokerFx';
 
@@ -75,6 +75,9 @@ describe('detonation keyframes', () => {
     expect(end.mul).toBeCloseTo(4, 5);
     expect(end.opacity).toBeCloseTo(0, 5);
     expect(shockwave(451, 'BJ')).toBeNull();
+    const midSw = shockwave(200, 'BJ')!;
+    expect(midSw.mul).toBeGreaterThan(1);
+    expect(midSw.opacity).toBeGreaterThan(0.4);
     expect(shockwave(320, 'LJ')!.mul).toBeCloseTo(2.2, 5);
   });
 
@@ -87,10 +90,10 @@ describe('detonation keyframes', () => {
     expect(Math.hypot(shakeOffset(0, 'LJ', false).x, shakeOffset(0, 'LJ', false).y)).toBeCloseTo(4 * 0.65, 5);
   });
 
-  it('holds a large mushroom for about 1.8s and skips it under reduced motion', () => {
+  it('holds a readable mushroom through the detonation and fades as the cards fly', () => {
     expect(cloudPose(100, 'BJ', false)).toBeNull();
     expect(cloudPose(500, 'BJ', true)).toBeNull();
-    const mid = cloudPose(1000, 'BJ', false)!;
+    const mid = cloudPose(600, 'BJ', false)!;
     expect(mid.opacity).toBeGreaterThan(0.85);
     expect(mid.rise).toBeGreaterThan(0.9);
     const sprites = mushroomSprites(mid, 'BJ', 390);
@@ -100,17 +103,16 @@ describe('detonation keyframes', () => {
     const top = Math.min(...sprites.map((s) => s.y - s.ry));
     expect(width).toBeGreaterThan(200);
     expect(top).toBeLessThan(-140);
-    const little = mushroomSprites(cloudPose(1000, 'LJ', false)!, 'LJ', 390);
+    const little = mushroomSprites(cloudPose(500, 'LJ', false)!, 'LJ', 390);
     const littleW = Math.max(...little.flatMap((s) => [s.x - s.rx, s.x + s.rx])) - Math.min(...little.flatMap((s) => [s.x - s.rx, s.x + s.rx]));
     expect(littleW).toBeLessThan(width);
-    expect(cloudPose(1700, 'BJ', false)!.opacity).toBeGreaterThan(0.8);
-    expect(cloudPose(2000, 'BJ', false)!.opacity).toBeGreaterThan(0.5);
-    expect(cloudPose(2201, 'BJ', false)).toBeNull();
-    expect(cloudPose(1501, 'LJ', false)).toBeNull();
+    expect(cloudPose(1150, 'BJ', false)!.opacity).toBeCloseTo(0, 5);
+    expect(cloudPose(1151, 'BJ', false)).toBeNull();
+    expect(cloudPose(881, 'LJ', false)).toBeNull();
     let visible = 0;
-    for (let t = 0; t <= 2500; t += 10) if ((cloudPose(t, 'BJ', false)?.opacity ?? 0) > 0.55) visible += 10;
-    expect(visible).toBeGreaterThanOrEqual(1500);
-    expect(visible).toBeLessThanOrEqual(2000);
+    for (let t = 0; t <= 1600; t += 10) if ((cloudPose(t, 'BJ', false)?.opacity ?? 0) > 0.55) visible += 10;
+    expect(visible).toBeGreaterThanOrEqual(700);
+    expect(visible).toBeLessThanOrEqual(1100);
   });
 
   it('pops the winning joker from 200ms and settles by 700ms', () => {
@@ -128,18 +130,30 @@ describe('detonation keyframes', () => {
     expect(mid.opacity).toBeCloseTo(0.35, 5);
     expect(cardPush(150, 'BJ').opacity).toBeGreaterThan(0.35);
     expect(cardPush(900, 'LJ').px).toBe(12);
-    expect(cardPush(1300, 'BJ').opacity).toBeCloseTo(1, 5);
+    expect(cardPush(1300, 'BJ').px).toBe(20);
+    expect(cardPush(1300, 'BJ').opacity).toBeCloseTo(0.35, 5);
     for (const t of [0, 100, 300, 600, 900, 1200]) {
       expect(cardPush(t, 'BJ').opacity).toBeGreaterThan(0);
       expect(cardPush(t, 'LJ').opacity).toBeGreaterThan(0);
     }
   });
 
-  it('keeps the overlay up through the mushroom fade', () => {
-    expect(BURST_MS.BJ).toBeGreaterThanOrEqual(2200);
-    expect(BURST_MS.LJ).toBeGreaterThanOrEqual(1500);
-    expect(BURST_MS.BJ).toBe(2300);
-    expect(BURST_MS.LJ).toBe(1600);
+  it('finishes the overlay with the card flight, and stamps the banner after the shockwave', () => {
+    expect(BURST_MS.BJ).toBe(1300);
+    expect(BURST_MS.LJ).toBe(1000);
+    expect(BURST_MS.BJ).toBeLessThanOrEqual(1300);
+    expect(SHOCK_MS).toBe(450);
+    expect(BANNER_AT_MS).toBe(SHOCK_MS + 350);
+    expect(BANNER_MS).toBe(500);
+    expect(SWEEP_MS).toBe(900);
+    expect(bannerPose(BANNER_AT_MS - 1)).toBeNull();
+    expect(bannerPose(BANNER_AT_MS)).toEqual({ opacity: 0, scale: 1.4 });
+    const hit = bannerPose(BANNER_AT_MS + 140)!;
+    expect(hit.opacity).toBeCloseTo(1, 5);
+    expect(hit.scale).toBeCloseTo(1, 5);
+    expect(bannerPose(1100)!.opacity).toBe(1);
+    expect(bannerPose(BANNER_AT_MS + BANNER_MS)!.opacity).toBeCloseTo(0, 5);
+    expect(bannerPose(BANNER_AT_MS + BANNER_MS + 1)).toBeNull();
   });
 });
 

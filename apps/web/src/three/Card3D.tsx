@@ -8,7 +8,7 @@ import { CT } from './layout';
 import type { Xform } from './layout';
 import { type Sfx, sound } from '../audio';
 import { fireCue, fx } from '../fx';
-import { cardPush, getBurst, jokerPop } from '../jokerFx';
+import { cardPush, getBurst, jokerPop, SWEEP_MS } from '../jokerFx';
 import type { JokerKind } from '../jokerFx';
 import { restingFlightWait } from '../trickTiming';
 
@@ -211,7 +211,8 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   const projB = useRef(new Vector3());
   /** Push the other trick cards and pop the winning joker. Opacity only — the face colour is untouched. */
   const applyJokerBurst = (g: Group) => {
-    const B = inTrick ? getBurst() : null;
+    const live = getBurst();
+    const B = inTrick ? live : null;
     const st = burstFx.current;
     const setOp = (op: number) => {
       const fading = op < 0.999;
@@ -230,13 +231,16 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       invalidate();
     };
     // Reduced motion is a static rim and one soft flash: no push, no pop.
+    // The sweep clears inTrick while the cloud is still up. Leave the shove and the
+    // 0.35 fade in place so the pile flight starts from the push instead of snapping home.
     if (!B || B.reduced) {
+      if (st.on && live && !live.reduced) return;
       if (st.on) restore();
       return;
     }
     invalidate();
     st.on = true;
-    const t = B.elapsed;
+    const t = fx.warp !== null ? fx.warp * 1000 : B.elapsed;
     if (played === B.kind) {
       setOp(1);
       const node = popNode();
@@ -252,8 +256,10 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     const origin = tw.current.tp;
     const a = projA.current.copy(origin).project(camera);
     const b = projB.current.copy(origin).addScaledVector(dir, 0.05).project(camera);
-    const px = Math.max(1, Math.hypot((b.x - a.x) * view.width / 2, (b.y - a.y) * view.height / 2));
-    const world = (push.px * 0.05) / px;
+    const px = Math.max(0.5, Math.hypot((b.x - a.x) * view.width / 2, (b.y - a.y) * view.height / 2));
+    let world = (push.px * 0.05) / px;
+    const floor = push.px * 0.0035;
+    if (world < floor) world = floor;
     g.position.set(origin.x + dir.x * world, origin.y, origin.z + dir.z * world);
   };
 
@@ -269,7 +275,25 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     if (Math.abs(glowMat.opacity - L.glow) > 0.01) { glowMat.opacity += (L.glow - glowMat.opacity) * k; invalidate(); } else glowMat.opacity = L.glow;
     // Face stays untinted. A detonation only moves the other trick cards and pops the winning joker.
     applyJokerBurst(g);
-    if (!applyTornado(g)) applyBlast(g);
+    if (!applyTornado(g)) {
+      // The short detonation owns trick-card motion (20px push, joker pop, then the pile flight).
+      const ig = inner.current;
+      if (getBurst()) {
+        if (ig && bl.current.on) { ig.position.set(0, 0, 0); ig.quaternion.identity(); bl.current.on = false; }
+      } else applyBlast(g);
+    }
+    const notePos = () => {
+      if (!name || (fx.warp === null && !getBurst())) return;
+      const bag = ((window as unknown as { __bwmCardPos?: Record<string, { x: number; z: number; op: number; pop: number | null }> }).__bwmCardPos ??= {});
+      const beat = inner.current?.getObjectByName('joker-beat');
+      const popNode = beat ?? inner.current;
+      bag[name] = {
+        x: Math.round(g.position.x * 1000) / 1000,
+        z: Math.round(g.position.z * 1000) / 1000,
+        op: Math.round(frontMat.opacity * 100) / 100,
+        pop: popNode ? Math.round(popNode.scale.x * 1000) / 1000 : null,
+      };
+    };
     const s = tw.current;
     if (!s.init) {
       const f = origin ?? from ?? target;
@@ -329,9 +353,12 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
         liftG.scale.set(1, 1, 1);
       }
     }
-    if (s.t >= 1) return;
+    if (s.t >= 1) { notePos(); return; }
     invalidate();
-    if (s.wait > 0) { s.wait -= dt; return; }
+    if (s.wait > 0) {
+      if (!(fx.warp !== null && !inTrick && getBurst())) { s.wait -= dt; return; }
+      s.wait = 0;
+    }
     const moving = s.sp.distanceTo(s.tp) > 0.02;
     if (!s.started) {
       // the card leaves now — animation-driven sound, so it always matches what you see (any game speed)
@@ -339,7 +366,11 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       const st = sfx.current.sfxStart;
       if (st && st !== s.firedStart) { s.firedStart = st; if (moving) sound.play(st); }
     }
-    s.t = Math.min(1, s.t + Math.min(dt, 0.05) / duration);
+    if (fx.warp !== null && !inTrick && getBurst()) {
+      s.t = Math.min(1, Math.max(0, (fx.warp * 1000 - SWEEP_MS) / Math.max(1, duration * 1000)));
+    } else {
+      s.t = Math.min(1, s.t + Math.min(dt, 0.05) / duration);
+    }
     if (s.t >= 1) {
       const land = s.land;
       if (land && land !== s.firedLand) { s.firedLand = land; if (moving) land.split(',').forEach((c, i) => fireCue(c, i ? 0.02 : 0)); }
@@ -351,6 +382,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     g.position.y += Math.sin(Math.PI * s.t) * hop * Math.min(1, dist);
     g.quaternion.slerpQuaternions(s.sq, s.tq, e);
     g.scale.setScalar(motion === 'slide' ? s.ts : s.ss + (s.ts - s.ss) * e);
+    notePos();
   });
 
   return (

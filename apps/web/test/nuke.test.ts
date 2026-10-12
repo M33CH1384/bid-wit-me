@@ -50,6 +50,24 @@ describe('nuke is never downgraded by the OS', () => {
     expect(fx.fired.nuke).toBe(1);
     vi.unstubAllGlobals();
   });
+  it('a stall cannot deliver a second nuke while the burst is still up', async () => {
+    stubWindow(false);
+    vi.resetModules();
+    let now = 5000;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const { fx } = await import('../src/fx');
+    const { startBurst: arm, clearBurst: disarm } = await import('../src/jokerFx');
+    fx.emit('nuke', { silent: true });
+    arm('BJ', false, now);
+    now += 20000;
+    fx.emit('nuke', { silent: true });
+    expect(fx.fired.nuke).toBe(1);
+    disarm();
+    fx.emit('nuke', { silent: true });
+    expect(fx.fired.nuke).toBe(2);
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
 });
 
 describe('nuked trick detection (hold allowance)', () => {
