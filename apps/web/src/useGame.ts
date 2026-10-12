@@ -1,4 +1,6 @@
 import { fx } from './fx';
+import { HAPTIC, haptic } from './haptics';
+import { startLittleBurst } from './JokerBurst';
 import { offlineTalk } from './offlineTalk';
 import { NUKE_ALLOWANCE_MS, RUN_FX_MS } from '@spades/protocol';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -51,14 +53,26 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
   }, []);
 
   // hold a finished trick on the table for a moment
+  const littleBurstFor = useRef(-1);
   useEffect(() => {
     if (!pause || hold) return;
     // a nuked trick (Big Joker over Little Joker) holds longer: the table's fixed nuke allowance
-    const last = st.tricks[st.tricks.length - 1]?.plays ?? [];
+    const trick = st.tricks[st.tricks.length - 1];
+    const last = trick?.plays ?? [];
     // 'Run it!' holds for the slam + tornado instead (no nuke on a run: the tornado is the show).
     // Either Joker order counts (Big-then-Little used to get no allowance, so the trick was swept mid-blast).
-    const extra = last.some((p) => p.run) ? RUN_FX_MS : isNukeTrick(last) ? NUKE_ALLOWANCE_MS[fx.tableNuke ?? fx.prefs.nuke] : 0;
-    const t = setTimeout(() => setPause(false), 1150 * k + extra);
+    const run = last.some((p) => p.run);
+    const nuke = isNukeTrick(last);
+    if (!run && !nuke && trick && littleBurstFor.current !== st.tricks.length) {
+      const winCard = trick.winner == null ? null : last.find((p) => p.seat === trick.winner)?.card;
+      if (winCard === 'LJ') { littleBurstFor.current = st.tricks.length; startLittleBurst(); }
+    }
+    const extra = run ? RUN_FX_MS : nuke ? NUKE_ALLOWANCE_MS[fx.tableNuke ?? fx.prefs.nuke] : 0;
+    // The hold releasing is the moment the cards start sweeping to the books.
+    const t = setTimeout(() => {
+      if (!run && !nuke) haptic(HAPTIC.trickWin, 'trick-win');
+      setPause(false);
+    }, 1150 * k + extra);
     return () => clearTimeout(t);
   }, [pause, k, hold]);
 
