@@ -51,12 +51,14 @@ function Avatar({ name }: { name: string }) {
 }
 
 export function Intermission({
-  st, names, mySide, msgs, onSend, secs, ready, onReady, tile, online, onScorePad, series, teamEdit,
+  st, names, mySide, msgs, onSend, secs, ready, onReady, tile, online, onScorePad, series, teamEdit, runReview,
 }: {
   /** rematch series chip */
   series?: ReactNode;
   /** rename your team (team modes) */
   teamEdit?: ReactNode;
+  /** cleared hands from a Run it!, in the scroll — never a full-screen scrim over the recap */
+  runReview?: ReactNode;
   st: GameState;
   names: string[];
   mySide: number;
@@ -137,6 +139,8 @@ export function Intermission({
                 );
               })}
             </div>
+
+            {runReview}
 
             {callouts.length > 0 && (
               <div className="tt-callouts">
