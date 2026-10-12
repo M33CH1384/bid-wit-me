@@ -35,6 +35,11 @@ interface MyStats { team: ModeStats; cutthroat: ModeStats }
 const pct = (n: number | null) => (n === null ? '—' : `${Number.isInteger(n) ? n : n}%`);
 const num = (n: number | null) => (n === null ? '—' : String(n));
 
+/** Server-wide count. Personal stats live on the Your stats card, not in this line. */
+export function siteGamesToday(n: number): string {
+  return `Site: ${n} ${n === 1 ? 'game' : 'games'} today`;
+}
+
 function emptyCopy(board: Board, period: 'all' | 'month' | 'week', scope: 'global' | 'local'): string {
   const local = scope === 'local' ? ' in your region' : '';
   if (board === 'rating' && period === 'all') return `No rated games yet${local}. Your games vs bots count toward Wins and your stats. Elo needs signed-in players on at least two sides.`;
@@ -128,7 +133,7 @@ export function Leaderboards() {
   const mineRow = (r: Row) => ((s.you && r.id === s.you.id) || (myName && r.name === myName) ? 'soc-me' : '');
   return (
     <div className="soc-lb" data-testid="leaderboard">
-      {stats && <p className="soc-serverstats" data-testid="server-stats">{Object.keys(s.users).length} online · {stats.accounts} players · {stats.games} games ({stats.gamesToday} today) · {stats.tournamentsOpen} open tournament{stats.tournamentsOpen === 1 ? '' : 's'}</p>}
+      {stats && <p className="soc-serverstats" data-testid="server-stats">{Object.keys(s.users).length} online · {stats.accounts} players · {siteGamesToday(stats.gamesToday)} · {stats.tournamentsOpen} open tournament{stats.tournamentsOpen === 1 ? '' : 's'}</p>}
       {signedIn && mine && <YourStats mine={mine} kind={kind} />}
       {signedIn && !ready && <p className="soc-empty">Loading your stats…</p>}
       {seg(board, setBoard, [['rating', 'Rating'], ['wins', 'Wins'], ['accuracy', 'Bid accuracy'], ['duos', 'Best duos']], 'board')}
