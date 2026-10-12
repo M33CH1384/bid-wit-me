@@ -95,22 +95,11 @@ export default function Hype({ reduced, low = false }: { reduced: boolean; low?:
       <PulsePlate reduced={reduced} />
       <JokerBurst />
       {pulse && <div key={pulse.id} className={`joker-pulse ${pulse.big ? 'big' : ''}`} data-testid="joker-pulse" />}
-      {nuke && (
-        <>
-          <div key={`b${nuke.id}`} className={`nuke-banner ${canvasOwnsBlast() ? 'driven' : ''} ${nuke.mode === 'off' || reduced ? 'calm' : ''}`} data-testid="nuke" onClick={() => setNuke(null)}>
-            {canvasOwnsBlast() ? (
-              <>
-                <div className="nb-title" data-text="NUKED">NUKED</div>
-                <div className="nb-sub">(Big Joker Over Little Joker)</div>
-              </>
-            ) : (
-              <>
-                <div className="nb-title" data-text="☢ NUKED ☢">☢ NUKED ☢</div>
-                <div className="nb-sub">Big Joker over Little Joker</div>
-              </>
-            )}
-          </div>
-        </>
+      {nuke && !canvasOwnsBlast() && (
+        <div key={`b${nuke.id}`} className={`nuke-banner ${nuke.mode === 'off' || reduced ? 'calm' : ''}`} data-testid="nuke" onClick={() => setNuke(null)}>
+          <div className="nb-title" data-text="☢ NUKED ☢">☢ NUKED ☢</div>
+          <div className="nb-sub">Big Joker over Little Joker</div>
+        </div>
       )}
       {spark && <div key={`s${spark.id}`} className={`overcut-spark lvl${spark.level}`} style={{ left: spark.x, top: spark.y }} data-testid="overcut-spark"><i /><i /><i /><i /><i /><i /><i /><i /></div>}
       {car && <WheelsCelebration key={car.id} id={car.id} who={car.who} reduced={reduced} low={low} onDone={() => { fx.carRelease?.(); fx.carRelease = null; setCar((c) => (c?.id === car.id ? null : c)); }} />}

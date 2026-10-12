@@ -16,35 +16,76 @@ const NUKE3D_MS = 3600;
  * The shake is the whole screen, HUD included. t = 0 is the haptic.
  */
 export default function JokerBurst() {
+  const hostRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const bannerRef = useRef<HTMLDivElement>(null);
   const blastRef = useRef<Blast | null>(null);
   const workerRef = useRef<Worker | null>(null);
   const modeRef = useRef<'worker' | 'main' | 'off'>('off');
+  const startRef = useRef<{ cx: number; cy: number; w: number; h: number; dpr: number; reduced: boolean } | null>(null);
 
   useEffect(() => {
     warmBlast();
-    const canvas = canvasRef.current;
-    if (!canvas || !canvasOwnsBlast()) { modeRef.current = 'off'; return; }
+    const host = hostRef.current;
+    if (!host || !canvasOwnsBlast()) { modeRef.current = 'off'; return; }
     const frames = ((window as unknown as { __bwmBlastFrames?: number[] }).__bwmBlastFrames ??= []);
-    if (typeof Worker !== 'undefined' && typeof canvas.transferControlToOffscreen === 'function') {
-      try {
-        const off = canvas.transferControlToOffscreen();
-        const worker = new Worker(new URL('./nukeBlast.worker.ts', import.meta.url), { type: 'module' });
-        workerRef.current = worker;
-        modeRef.current = 'worker';
-        worker.postMessage({ type: 'init', canvas: off }, [off]);
-        worker.onmessage = (ev: MessageEvent<{ type: string; tMs: number; ms: number; budget: number; slowed: boolean }>) => {
-          if (ev.data.type !== 'frame') return;
-          frames.push(ev.data.ms);
-          (window as unknown as { __bwmBlastBudget?: number }).__bwmBlastBudget = ev.data.budget;
-        };
-        return () => { worker.terminate(); workerRef.current = null; };
-      } catch {
-        modeRef.current = 'main';
+    const note = (ms: number, budget: number) => {
+      frames.push(ms);
+      (window as unknown as { __bwmBlastBudget?: number }).__bwmBlastBudget = budget;
+    };
+    let dead = false;
+    let worker: Worker | null = null;
+    const paintMain = (reason: string) => {
+      if (dead) return;
+      (window as unknown as { __bwmBlastError?: string }).__bwmBlastError = reason;
+      worker?.terminate();
+      worker = null;
+      workerRef.current = null;
+      host.querySelectorAll('canvas').forEach((c) => c.remove());
+      const fresh = document.createElement('canvas');
+      fresh.className = 'joker-burst-canvas';
+      host.appendChild(fresh);
+      canvasRef.current = fresh;
+      modeRef.current = 'main';
+      (window as unknown as { __bwmBlastMode?: string }).__bwmBlastMode = 'main';
+      if (!blastRef.current) blastRef.current = createBlast();
+      const opts = startRef.current;
+      if (opts) {
+        fresh.width = Math.max(1, Math.floor(opts.w * opts.dpr));
+        fresh.height = Math.max(1, Math.floor(opts.h * opts.dpr));
+        resetBlast(blastRef.current, opts);
       }
-    } else modeRef.current = 'main';
-    if (modeRef.current === 'main') blastRef.current = createBlast();
-    return undefined;
+    };
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.className = 'joker-burst-canvas';
+      host.appendChild(canvas);
+      canvasRef.current = canvas;
+      if (typeof Worker === 'undefined' || typeof canvas.transferControlToOffscreen !== 'function') throw new Error('no worker');
+      const off = canvas.transferControlToOffscreen();
+      worker = new Worker(new URL('./nukeBlast.worker.ts', import.meta.url), { type: 'module' });
+      workerRef.current = worker;
+      modeRef.current = 'worker';
+      (window as unknown as { __bwmBlastMode?: string }).__bwmBlastMode = 'worker';
+      worker.postMessage({ type: 'init', canvas: off }, [off]);
+      worker.onmessage = (ev: MessageEvent<{ type: string; ms: number; budget: number }>) => {
+        if (dead || ev.data.type !== 'frame') return;
+        note(ev.data.ms, ev.data.budget);
+      };
+      worker.onerror = (err) => {
+        paintMain(String(err.message || err));
+      };
+    } catch (err) {
+      paintMain(String(err));
+    }
+    return () => {
+      dead = true;
+      worker?.terminate();
+      workerRef.current = null;
+      modeRef.current = 'off';
+      canvasRef.current = null;
+      host.querySelectorAll('canvas').forEach((c) => c.remove());
+    };
   }, []);
 
   useEffect(() => fx.on((e) => {
@@ -56,16 +97,18 @@ export default function JokerBurst() {
     if (!canvasOwnsBlast()) return;
     const box = trickCenter();
     const canvas = canvasRef.current;
-    const w = canvas?.clientWidth || window.innerWidth;
-    const h = canvas?.clientHeight || window.innerHeight;
+    const host = hostRef.current;
+    const w = canvas?.clientWidth || host?.clientWidth || window.innerWidth;
+    const h = canvas?.clientHeight || host?.clientHeight || window.innerHeight;
     const dpr = dprCap();
     const opts = { cx: box.x, cy: box.y, w, h, dpr, reduced };
+    startRef.current = opts;
     if (modeRef.current === 'worker') workerRef.current?.postMessage({ type: 'start', ...opts });
     if (modeRef.current === 'main' && blastRef.current) {
       const c = canvas;
       if (c) {
-        c.width = Math.floor(w * dpr);
-        c.height = Math.floor(h * dpr);
+        c.width = Math.max(1, Math.floor(w * dpr));
+        c.height = Math.max(1, Math.floor(h * dpr));
       }
       resetBlast(blastRef.current, opts);
     }
@@ -89,20 +132,24 @@ export default function JokerBurst() {
       if (b.start !== clock) { clock = b.start; sawActive = false; hapticCut = false; }
       const warped = fx.warp;
       const t = warped !== null ? warped * 1000 : (advanceBurst()?.elapsed ?? b.elapsed);
-      if (modeRef.current === 'worker' && b.kind === 'BJ' && canvasOwnsBlast()) {
-        workerRef.current?.postMessage({ type: 'frame', tMs: t });
-      }
-      if (modeRef.current === 'main' && blastRef.current && b.kind === 'BJ' && canvasOwnsBlast()) {
-        const blast = blastRef.current;
-        const t0 = performance.now();
-        let guard = 0;
-        while (blast.t < t / 1000 - 0.001 && guard++ < 8) stepBlast(blast, Math.min(0.033, t / 1000 - blast.t));
-        const ctx = canvasRef.current?.getContext('2d');
-        if (ctx) drawBlast(ctx, blast);
-        const ms = performance.now() - t0;
-        noteFrame(blast, ms);
-        frames().push(ms);
-        (window as unknown as { __bwmBlastBudget?: number }).__bwmBlastBudget = blast.budget;
+      try {
+        if (modeRef.current === 'worker' && b.kind === 'BJ' && canvasOwnsBlast()) {
+          workerRef.current?.postMessage({ type: 'frame', tMs: t });
+        }
+        if (modeRef.current === 'main' && blastRef.current && b.kind === 'BJ' && canvasOwnsBlast()) {
+          const blast = blastRef.current;
+          const t0 = performance.now();
+          let guard = 0;
+          while (blast.t < t / 1000 - 0.001 && guard++ < 8) stepBlast(blast, Math.min(0.033, t / 1000 - blast.t));
+          const ctx = canvasRef.current?.getContext('2d');
+          if (ctx) drawBlast(ctx, blast);
+          const ms = performance.now() - t0;
+          noteFrame(blast, ms);
+          frames().push(ms);
+          (window as unknown as { __bwmBlastBudget?: number }).__bwmBlastBudget = blast.budget;
+        }
+      } catch (err) {
+        (window as unknown as { __bwmBlastError?: string }).__bwmBlastError = String(err);
       }
       const nuke = (window as unknown as { __bwmNuke?: { active?: boolean } }).__bwmNuke;
       if (nuke?.active) sawActive = true;
@@ -117,10 +164,10 @@ export default function JokerBurst() {
         const s = shakeOffset(t, b.kind, b.reduced);
         screen.style.transform = s.x === 0 && s.y === 0 ? '' : `translate(${s.x.toFixed(2)}px, ${s.y.toFixed(2)}px)`;
       }
-      if (canvasOwnsBlast() && b.kind === 'BJ' && !b.reduced) {
-        const banner = document.querySelector<HTMLElement>('[data-testid="nuke"]');
-        if (banner && banner.classList.contains('driven')) {
-          const pose = bannerPose(t);
+      if (canvasOwnsBlast() && b.kind === 'BJ') {
+        const banner = bannerRef.current;
+        if (banner) {
+          const pose = b.reduced ? null : bannerPose(t);
           banner.style.opacity = pose ? String(pose.opacity) : '0';
           banner.style.transform = `translateX(-50%) scale(${pose ? pose.scale : 1.4})`;
         }
@@ -137,7 +184,15 @@ export default function JokerBurst() {
     return () => { alive = false; cancelAnimationFrame(raf); unsub(); stop(); };
   }, []);
 
-  return canvasOwnsBlast() ? <canvas ref={canvasRef} className="joker-burst-canvas" /> : null;
+  if (!canvasOwnsBlast()) return null;
+  return (
+    <div className="joker-burst" ref={hostRef}>
+      <div ref={bannerRef} className="nuke-banner driven" data-testid="nuke" style={{ opacity: 0 }}>
+        <div className="nb-title" data-text="NUKED">NUKED</div>
+        <div className="nb-sub">(Big Joker Over Little Joker)</div>
+      </div>
+    </div>
+  );
 }
 
 function trickCenter(): { x: number; y: number } {
