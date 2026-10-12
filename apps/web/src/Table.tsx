@@ -221,7 +221,7 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
       const led = t.plays[0]!.card;
       void winCard; void led; // bot reactions to plays come from the trash-talk engine (offlineTalk)
       const ran = st.tricks.slice(p.tricks.length).filter((x) => x.plays.some((q) => q.run));
-      if (ran.length) push('System', `🌪 ${names[ran[0]!.plays[0]!.seat]} ran the board (+${ran.length} books)`, true);
+      if (ran.length) push('System', `🌪 ${names[ran.at(-1)!.winner!]} ran the board (+${ran.length} books)`, true);
       else if (t.plays.some((x) => x.auto)) push('System', '☢ Nuked — remaining cards auto-played', true);
     }
     // hand scored
