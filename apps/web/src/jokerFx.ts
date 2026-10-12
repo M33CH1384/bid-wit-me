@@ -159,7 +159,7 @@ export function shockwave(tMs: number, kind: JokerKind): { mul: number; opacity:
   return { mul: maxMul * e, opacity: Math.max(0, 1 - u * u) };
 }
 
-/** Screen shake, transform only. 8px → 0 over 350ms, about 6 oscillations. None under reduced motion. */
+/** Whole-screen shake, transform only. 8px → 0 over 350ms, about 6 oscillations. None under reduced motion. */
 export function shakeOffset(tMs: number, kind: JokerKind, reduced: boolean): { x: number; y: number } {
   if (reduced || tMs < 0 || tMs >= 350) return { x: 0, y: 0 };
   const amp0 = kind === 'BJ' ? 8 : 4;
