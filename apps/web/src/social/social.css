@@ -117,3 +117,6 @@ button.ghost { background: transparent !important; }
   .soc-head { padding-top: 6px; }
   .soc-tabs button { padding: 6px 9px; }
 }
+
+/* the scorebug has no room for it on phones (invites still arrive as toasts; open Social from the lobby / start screen) */
+@media (max-width: 760px), (max-height: 500px) { .social-btn.in-bug { display: none; } }

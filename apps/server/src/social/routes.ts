@@ -7,6 +7,7 @@
  * The websocket (/api/social/ws) is routed in index.ts to the Social Durable Object.
  */
 import { type AuthEnv, currentUser } from '../auth/routes';
+import { leaderboard, personalStats, serverStats, type PersonalStats } from '../stats/boards';
 import { usernameKey } from '../auth/username';
 import { TICKET_TTL_MS, signTicket } from './ticket';
 import { SocialStore } from './store';
@@ -43,6 +44,8 @@ export interface ProfileOut {
   h2h: { id: string; name: string; games: number; wins: number; losses: number }[];
   vsYou?: { games: number; wins: number; losses: number };
   champion: number;
+  stats: PersonalStats;
+  awards: { label: string; ref: string; at: number }[];
 }
 
 export async function profileFor(db: D1Database, username: string, viewer: string | null): Promise<ProfileOut | null> {
@@ -65,6 +68,8 @@ export async function profileFor(db: D1Database, username: string, viewer: strin
     totals: { games: totals?.games ?? 0, wins: totals?.wins ?? 0 },
     h2h: h2h.map((r) => ({ id: `u:${r.id}`, name: r.name ?? 'Player', games: r.games, wins: r.wins, losses: r.losses })),
     champion: champ?.n ?? 0,
+    stats: await personalStats(db, u.id),
+    awards: (await db.prepare("SELECT label, ref, at FROM awards WHERE user_id = ? AND kind = 'champion' ORDER BY at DESC LIMIT 10").bind(u.id).all<{ label: string; ref: string; at: number }>()).results,
   };
   if (viewer && viewer !== u.id) {
     const v = h2h.find((r) => r.id === viewer) ?? await db.prepare(`SELECT COUNT(*) AS games, COALESCE(SUM(me.won), 0) AS wins, COALESCE(SUM(o.won), 0) AS losses FROM game_players me JOIN game_players o ON o.game_id = me.game_id AND o.side != me.side WHERE me.user_id = ? AND o.user_id = ?`).bind(u.id, viewer).first<{ games: number; wins: number; losses: number }>();
@@ -96,6 +101,20 @@ export async function handleSocialHttp(req: Request & { cf?: unknown }, env: Soc
     const p = await profileFor(db, decodeURIComponent(parts[3]).slice(0, 40), me?.id ?? null);
     return p ? json(p) : json({ error: 'not found' }, 404);
   }
+  if (a === 'leaderboard' && req.method === 'GET') {
+    const q = url.searchParams;
+    const board = (['rating', 'wins', 'accuracy', 'duos'] as const).find((b) => b === q.get('board')) ?? 'rating';
+    const kind = q.get('kind') === 'cutthroat' ? 'cutthroat' : 'team';
+    const period = (['all', 'month', 'week'] as const).find((p) => p === q.get('period')) ?? 'all';
+    let region: string | null = null;
+    if (q.get('scope') === 'local') {
+      const mine = me ? await db.prepare('SELECT region FROM social_settings WHERE user_id = ?').bind(me.id).first<{ region: string | null }>() : null;
+      region = mine?.region ?? coarseRegion(req.cf);
+      if (!region) return json({ rows: [], region: null, note: 'Your region is unknown, so there is no local board.' });
+    }
+    return json({ rows: await leaderboard(db, { board, kind, period, region, now }), region });
+  }
+  if (a === 'stats' && req.method === 'GET') return json(await serverStats(db, now));
   if (a === 'recent' && req.method === 'GET') {
     if (!me) return json({ players: [] });
     return json({ players: await recentPlayers(db, me.id) });
