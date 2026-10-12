@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  GAP_S, GLOW_ALPHA, GLOW_BLUR_PX, ILLEGAL_BRIGHTNESS, ILLEGAL_COLOR, LIFT_S, OUTLINE_COLOR, OUTLINE_PX,
-  canTapCard, fanMotion, glowFalloff, glowRadiusPx, handLift, liftEase, outlineRadiusPx, playablePose, posePx, stackFor,
+  GAP_S, GLOW_ALPHA, GLOW_BLUR_PX, ILLEGAL_BRIGHTNESS, ILLEGAL_COLOR, LIFT_S, OUTLINE_COLOR, OUTLINE_PX, RAISE_S,
+  canTapCard, fanMotion, glowFalloff, glowRadiusPx, handLift, liftEase, outlineRadiusPx, playablePose, posePx, raiseLocalY, stackFor,
 } from '../src/three/handLift';
-import { fanLayout, handCardPlane } from '../src/three/layout';
+import { fanLayout, handCardPlane, handFan } from '../src/three/layout';
 import { contourContains, contiguousRuns, haloLocal, HALO_SX, HALO_SY, placeOnPlane, strokeContour, strokeRibbon, unionContours } from '../src/three/playableOutline';
 
 describe('your-turn hand poses', () => {
@@ -14,6 +14,33 @@ describe('your-turn hand poses', () => {
     expect(posePx('selected')).toBe(24);
     expect(LIFT_S).toBe(0.2);
     expect(GAP_S).toBe(0.24);
+    expect(RAISE_S).toBe(0.16);
+  });
+
+  it('raises with translateY only, and a select does not move or restack the fan', () => {
+    const aspect = 390 / 844;
+    const screenH = 844;
+    const n = 13;
+    const i = 4;
+    const L = fanLayout(aspect, n);
+    const fan = handFan(aspect, n, i, 0);
+    const plane = handCardPlane(aspect, n, i, 0);
+    for (const pose of ['flat', 'illegal', 'legal', 'selected'] as const) {
+      const again = handFan(aspect, n, i, 0);
+      expect(again.p).toEqual(fan.p);
+      expect(again.q).toEqual(fan.q);
+      expect(again.s).toBe(fan.s);
+      const stayed = handCardPlane(aspect, n, i, 0);
+      expect(stayed.x).toBe(plane.x);
+      expect(stayed.roll).toBe(plane.roll);
+      expect(stayed.depth).toBe(plane.depth);
+      const localY = raiseLocalY(pose, L.viewH, screenH, L.ch);
+      const px = ((localY * L.s) / L.viewH) * screenH;
+      expect(px).toBeCloseTo(posePx(pose), 4);
+    }
+    // Baking the raise into the fan transform is what shoved an off-center card sideways for a frame.
+    const baked = handFan(aspect, n, i, handLift('selected', L.viewH, screenH, L.ch), 0, { layer: 'selected' });
+    expect(baked.p[0]).not.toBeCloseTo(fan.p[0], 3);
   });
 
   it('closes a gap by sliding, and a highlight only lifts', () => {

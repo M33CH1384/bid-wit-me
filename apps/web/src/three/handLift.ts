@@ -1,14 +1,19 @@
+import { CH } from './layout';
+
 /**
  * Your-turn hand: legal cards rise together, cards you can't play sink and dim, a tap lifts one card further.
  * Distances are CSS pixels on the canvas. The fan lives on the depth-1 camera plane, so a pixel is
- * `viewH / screenH` plane units (see handCardPlane).
+ * `viewH / screenH` plane units (see handCardPlane). The raise is a translateY on an inner wrapper;
+ * it is not baked into the fan's rotate or position, and it does not change stacking order.
  */
 
 export const LEGAL_LIFT_PX = 14;
 export const ILLEGAL_DROP_PX = 4;
 export const SELECT_LIFT_PX = 10;
-/** Group lift (and the return to flat) in seconds. */
+/** Group outline fade, in seconds. The cards themselves rise on RAISE_S. */
 export const LIFT_S = 0.2;
+/** Inner-wrapper raise. translateY only, so the fan's rotate and position never rewrite. */
+export const RAISE_S = 0.16;
 /** After a card leaves, the others slide into the gap. Same curve as the lift, a little longer. */
 export const GAP_S = 0.24;
 
@@ -72,6 +77,14 @@ export function cssPxToPlane(px: number, viewH: number, screenH: number): number
 /** `handFan` / `handCardPlane` lift, as a fraction of card height. Positive raises the card. */
 export function handLift(pose: HandPose, viewH: number, screenH: number, cardH: number): number {
   return cssPxToPlane(posePx(pose), viewH, screenH) / Math.max(1e-6, cardH);
+}
+
+/**
+ * translateY of the inner wrapper, in card-local units (the parent fan scale turns it into screen pixels).
+ * X, Z, rotation, and depth stay on the outer fan pose and do not change with legal or selected state.
+ */
+export function raiseLocalY(pose: HandPose, viewH: number, screenH: number, cardH: number): number {
+  return handLift(pose, viewH, screenH, cardH) * CH;
 }
 
 /** Half-width of the 2px outline, in CSS pixels (the stroke is centered on the halo). */
