@@ -11,6 +11,8 @@ import { serverUrl } from '../online/config';
 import { navigate } from '../online/nav';
 import { loadSettings } from '../settings';
 import { type MyTable, type SocialTab, badgeCount, globalUnread, social, useSocial } from './store';
+import { Leaderboards, Tournaments } from './Compete';
+import { offlineStats } from '../offlineStats';
 import './social.css';
 
 export const MODE_NAME: Record<string, string> = { joker: 'Joker Spades', aceDown: 'Ace Down', cutthroat: 'Cutthroat' };
@@ -48,6 +50,16 @@ export function SocialRoot() {
       {s.open && <SocialPanel />}
       <div className={`soc-toasts${s.open ? ' over-panel' : ''}`} aria-live="polite">
         {s.invites.map((inv) => <InviteToast key={inv.id} inv={inv} />)}
+        {s.notices.map((n) => (
+          <div key={n.id} className="soc-invite soc-notice" data-testid="soc-notice">
+            <div className="soc-invite-txt">🏆 {n.text}</div>
+            <div className="soc-invite-acts">
+              {n.code ? <button type="button" className="primary" data-testid="notice-go" onClick={() => { social.dismissNotice(n.id); social.close(); navigate(`/t/${n.code}${n.seat !== undefined ? `?seat=${n.seat}` : ''}`); }}>Go</button>
+                : n.tid ? <button type="button" className="primary" onClick={() => { social.dismissNotice(n.id); social.showTour(n.tid!); }}>View</button> : null}
+              <button type="button" onClick={() => social.dismissNotice(n.id)} aria-label="Dismiss">✕</button>
+            </div>
+          </div>
+        ))}
         {s.toasts.map((t) => (
           <div key={t.id} className={`soc-toast ${t.kind}`} data-testid="soc-toast" onClick={() => social.dismissToast(t.id)}>{t.text}</div>
         ))}
@@ -85,7 +97,7 @@ function InviteToast({ inv }: { inv: InviteMsg }) {
 
 /* ------------------------------------------------------------------ panel */
 
-const TABS: [SocialTab, string][] = [['players', 'Players'], ['chat', 'Chat'], ['messages', 'Messages'], ['friends', 'Friends'], ['settings', 'Settings']];
+const TABS: [SocialTab, string][] = [['players', 'Players'], ['chat', 'Chat'], ['messages', 'Messages'], ['friends', 'Friends'], ['leaders', 'Ranks'], ['tournaments', 'Events'], ['settings', 'Settings']];
 
 function SocialPanel() {
   const s = useSocial();
@@ -119,6 +131,8 @@ function SocialPanel() {
             s.tab === 'chat' ? <GlobalChat signedIn={signedIn} /> :
             s.tab === 'messages' ? <Messages signedIn={signedIn} /> :
             s.tab === 'friends' ? <Friends signedIn={signedIn} /> :
+            s.tab === 'leaders' ? <Leaderboards /> :
+            s.tab === 'tournaments' ? <Tournaments signedIn={signedIn} /> :
             <SettingsTab signedIn={signedIn} />}
         </div>
       </aside>
@@ -372,6 +386,8 @@ interface ProfileData {
   username: string; memberSince: number; badges: { id: string; earnedAt: number }[]; teamNames: string[];
   ratings: { team?: number; cutthroat?: number }; totals: { games: number; wins: number };
   h2h: { id: string; name: string; games: number; wins: number; losses: number }[]; vsYou?: { games: number; wins: number; losses: number }; champion: number;
+  stats?: { games: number; wins: number; streak: number; bestStreak: number; accuracy: number | null; booksPerHand: number | null; nil: string; shotsGiven: number; shotsTaken: number; wheels: number; bjWins: number; bidSec: number | null; playSec: number | null };
+  awards?: { label: string; ref: string; at: number }[];
 }
 
 function Profile({ name }: { name: string }) {
@@ -414,6 +430,25 @@ function Profile({ name }: { name: string }) {
               <button type="button" className="ghost" onClick={() => social.report('user', { user: pid })}>Report</button>
             </div>
           )}
+          {p.awards && p.awards.length > 0 && <><h4>Champion</h4><div className="soc-badges" data-testid="profile-awards">{p.awards.map((a) => <button type="button" key={a.ref} className="soc-badge-chip champ" onClick={() => social.showTour(a.ref)}>🏆 {a.label}</button>)}</div></>}
+          {p.stats && p.stats.games > 0 && (
+            <>
+              <h4>Stats</h4>
+              <div className="soc-stats small" data-testid="profile-stats">
+                <div><b>{p.stats.streak}</b><small>win streak (best {p.stats.bestStreak})</small></div>
+                <div><b>{p.stats.accuracy ?? '—'}{p.stats.accuracy !== null ? '%' : ''}</b><small>bid accuracy</small></div>
+                <div><b>{p.stats.booksPerHand ?? '—'}</b><small>books / hand</small></div>
+                <div><b>{p.stats.nil}</b><small>nils made</small></div>
+                <div><b>{p.stats.shotsGiven}</b><small>shots given</small></div>
+                <div><b>{p.stats.shotsTaken}</b><small>shot</small></div>
+                <div><b>{p.stats.wheels}</b><small>Wheels</small></div>
+                <div><b>{p.stats.bjWins}</b><small>Big Joker wins</small></div>
+                <div><b>{p.stats.bidSec ?? '—'}s</b><small>avg bid</small></div>
+                <div><b>{p.stats.playSec ?? '—'}s</b><small>avg play</small></div>
+              </div>
+            </>
+          )}
+          {me && (() => { const o = offlineStats(); return o.games > 0 ? <p className="soc-muted" data-testid="profile-offline">On this device vs bots: {o.wins}/{o.games} wins · streak {o.streak} (best {o.bestStreak})</p> : null; })()}
           <h4>Badges</h4>
           <div className="soc-badges">{p.badges.length ? p.badges.map((b) => <span key={b.id} className="soc-badge-chip" title={BADGES[b.id]?.desc}>{BADGES[b.id]?.icon ?? '🏅'} {BADGES[b.id]?.name ?? b.id}</span>) : <span className="soc-muted">None yet</span>}</div>
           <h4>Team names</h4>

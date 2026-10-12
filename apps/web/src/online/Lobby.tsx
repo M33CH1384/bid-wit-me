@@ -91,6 +91,7 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
           <button type="button" className="primary" onClick={share}>{copied ? 'Copied!' : 'Invite'}</button>
           <SocialButton className="lobby-social" />
         </div>
+        {room.tournament && <TourBanner t={room.tournament} />}
         {cs.status !== 'open' && <p className="muted">{cs.status === 'reconnecting' ? 'Reconnecting…' : 'Connecting…'}</p>}
       </header>
 
@@ -408,4 +409,17 @@ function useWide(): boolean {
   const [wide, setWide] = useState(() => window.matchMedia(q).matches);
   useEffect(() => { const m = window.matchMedia(q); const on = () => setWide(m.matches); m.addEventListener('change', on); return () => m.removeEventListener('change', on); }, []);
   return wide;
+}
+
+/** Release 9b: a tournament match table: seats are reserved, the match starts on its own */
+function TourBanner({ t }: { t: NonNullable<import('@spades/protocol').RoomInfo['tournament']> }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { const i = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(i); }, []);
+  const left = t.autostartAt ? Math.max(0, Math.ceil((t.autostartAt - now) / 1000)) : null;
+  return (
+    <p className="tour-banner" data-testid="tour-banner">
+      🏆 <b>{t.name ?? 'Tournament'}</b> match · seats reserved for {t.reserved.filter(Boolean).join(', ') || 'the entrants'}
+      {left !== null ? ` · starts in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} (or when everyone is in)` : ''}
+    </p>
+  );
 }

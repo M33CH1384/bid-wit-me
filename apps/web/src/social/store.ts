@@ -11,6 +11,7 @@ import { loadName } from '../online/identity';
 
 export type SocialTab = 'players' | 'chat' | 'messages' | 'friends' | 'leaders' | 'tournaments' | 'settings';
 export interface Toast { id: string; kind: 'info' | 'error' | 'ok'; text: string; at: number }
+export interface Notice { id: string; text: string; code?: string; seat?: number; tid?: string; at: number }
 export interface MyTable { code: string; mode?: string; seat?: number; open: number }
 
 export interface SocialState {
@@ -35,6 +36,10 @@ export interface SocialState {
   profile: string | null;
   globalSeen: number;
   myTable: MyTable | null;
+  /** Release 9b: tournament notices (check-in open, match ready, champion) */
+  notices: Notice[];
+  /** open tournament detail (id) */
+  tour: string | null;
 }
 
 const GLOBAL_SEEN_KEY = 'bwm.social.globalSeen';
@@ -42,7 +47,7 @@ const seen0 = (() => { try { return Number(localStorage.getItem(GLOBAL_SEEN_KEY)
 
 let state: SocialState = {
   status: 'off', you: null, admin: false, users: {}, global: [], friends: null, settings: null, unread: {}, dms: {}, names: {}, invites: [], sent: {}, toasts: [],
-  open: false, tab: 'players', dmWith: null, profile: null, globalSeen: seen0, myTable: null,
+  open: false, tab: 'players', dmWith: null, profile: null, globalSeen: seen0, myTable: null, notices: [], tour: null,
 };
 const subs = new Set<() => void>();
 function set(p: Partial<SocialState> | ((s: SocialState) => Partial<SocialState>)) {
@@ -64,6 +69,9 @@ function idKey(): string | null {
   const u = account.get().user;
   return u?.username ? `${u.id}:${u.username}` : null;
 }
+
+const noticeHooks = new Set<(n: Notice) => void>();
+export function onNotice(f: (n: Notice) => void): () => void { noticeHooks.add(f); return () => noticeHooks.delete(f); }
 
 function toast(text: string, kind: Toast['kind'] = 'info') {
   const t: Toast = { id: Math.random().toString(36).slice(2), kind, text, at: Date.now() };
@@ -197,6 +205,14 @@ function onMessage(m: SocialServerMsg) {
     case 'error':
       toast(m.message, 'error');
       break;
+    case 'notice': {
+      const n: Notice = { id: Math.random().toString(36).slice(2), text: m.text, code: m.code, seat: m.seat, tid: m.tid, at: Date.now() };
+      set((st) => ({ notices: [...st.notices.slice(-2), n] }));
+      // a match-ready notice stays up longer (you need to get there)
+      setTimeout(() => set((st) => ({ notices: st.notices.filter((x) => x.id !== n.id) })), m.code ? 120_000 : 15_000);
+      noticeHooks.forEach((f) => f(n));
+      break;
+    }
   }
 }
 
@@ -232,7 +248,9 @@ export const social = {
     if (extra.dmWith) social.openDm(extra.dmWith);
   },
   close() { set({ open: false, profile: null }); },
-  tab(tab: SocialTab) { set({ tab, profile: null }); if (tab === 'chat') social.markGlobalSeen(); },
+  showTour(id: string | null) { set({ open: true, tab: 'tournaments', profile: null, tour: id }); },
+  dismissNotice(id: string) { set((s) => ({ notices: s.notices.filter((n) => n.id !== id) })); },
+  tab(tab: SocialTab) { set({ tab, profile: null, ...(tab === 'tournaments' ? { tour: null } : {}) }); if (tab === 'chat') social.markGlobalSeen(); },
   markGlobalSeen() { const last = state.global[state.global.length - 1]?.id ?? state.globalSeen; saveSeen(last); set({ globalSeen: last }); },
   openDm(pid: string) {
     set((s) => ({ tab: 'messages', dmWith: pid, profile: null, unread: { ...s.unread, [pid]: 0 } }));

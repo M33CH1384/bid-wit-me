@@ -120,3 +120,50 @@ button.ghost { background: transparent !important; }
 
 /* the scorebug has no room for it on phones (invites still arrive as toasts; open Social from the lobby / start screen) */
 @media (max-width: 760px), (max-height: 500px) { .social-btn.in-bug { display: none; } }
+
+/* ---- Release 9b: leaderboards + tournaments ---- */
+.soc-tabs { overflow-x: auto; scrollbar-width: none; }
+.soc-tabs::-webkit-scrollbar { display: none; }
+.soc-tabs > button { flex: 0 0 auto; }
+.soc-seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 10px; background: rgba(255,255,255,.06); margin: 4px 6px 4px 0; flex-wrap: wrap; }
+.soc-seg > button { border: 0; background: transparent; color: inherit; padding: 6px 10px; border-radius: 8px; font: inherit; font-size: 13px; cursor: pointer; min-height: 32px; }
+.soc-seg > button.on { background: #f5c242; color: #1b1030; font-weight: 700; }
+.soc-lb-filters { display: flex; flex-wrap: wrap; }
+.soc-serverstats { font-size: 12px; opacity: .8; margin: 0 0 6px; }
+.soc-lb-table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 14px; }
+.soc-lb-table td { padding: 6px 4px; border-bottom: 1px solid rgba(255,255,255,.07); }
+.soc-lb-table td.rk { width: 2.2em; text-align: center; font-weight: 700; }
+.soc-lb-table td.v { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.soc-lb-table tr.me td { background: rgba(245,194,66,.12); }
+.soc-tour-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.soc-tour-list { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 6px; }
+.soc-tour-item { width: 100%; text-align: left; display: grid; gap: 2px; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.04); color: inherit; font: inherit; cursor: pointer; }
+.soc-tour-item small { font-size: 12px; }
+.soc-tag { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 6px; font-size: 11px; background: rgba(245,194,66,.2); color: #f5c242; vertical-align: middle; }
+.soc-tag.ok { background: rgba(80,200,120,.2); color: #7be39b; margin: 0; padding: 6px 10px; font-size: 13px; }
+.soc-tour-form { display: grid; gap: 8px; }
+.soc-tour-form label { display: grid; gap: 4px; font-size: 13px; }
+.soc-tour-form label.soc-check { display: flex; align-items: center; gap: 8px; }
+.soc-tour-form input:not([type=checkbox]), .soc-tour-form select, .soc-tour-reg input { padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,.2); background: #0e0718; color: inherit; font: inherit; min-height: 38px; }
+.soc-err { color: #ff8a8a; font-size: 13px; }
+.soc-tour-status { font-weight: 700; color: #f5c242; margin: 4px 0; }
+.soc-champion { font-size: 20px; font-weight: 800; text-align: center; padding: 10px; border-radius: 12px; background: linear-gradient(90deg, rgba(245,194,66,.25), rgba(245,194,66,.05)); }
+.soc-tour-acts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+.soc-tour-reg { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
+.soc-tour-reg input { flex: 1 1 140px; }
+.soc-tour-detail .primary.big { width: 100%; padding: 12px; font-size: 15px; margin: 6px 0; }
+.soc-bracket { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; }
+.soc-round { display: flex; flex-direction: column; justify-content: space-around; gap: 8px; min-width: 150px; }
+.soc-round-h { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; opacity: .7; }
+.soc-match { border: 1px solid rgba(255,255,255,.12); border-radius: 10px; overflow: hidden; background: rgba(255,255,255,.03); }
+.soc-match.live { border-color: #f5c242; }
+.soc-mrow { display: flex; justify-content: space-between; gap: 6px; padding: 5px 8px; font-size: 13px; }
+.soc-mrow + .soc-mrow { border-top: 1px solid rgba(255,255,255,.07); }
+.soc-mrow.won { font-weight: 800; color: #7be39b; }
+.soc-mrow.me span { text-decoration: underline; text-decoration-color: #f5c242; }
+.soc-watch { display: block; padding: 4px 8px; font-size: 12px; }
+.soc-entrants { list-style: none; padding: 0; margin: 4px 0; display: grid; gap: 4px; font-size: 13px; }
+.soc-entrants li.dropped { opacity: .5; text-decoration: line-through; }
+.soc-stats.small b { font-size: 16px; }
+.soc-badge-chip.champ { border: 1px solid #f5c242; color: #f5c242; background: transparent; cursor: pointer; font: inherit; }
+.soc-notice { border-color: #f5c242; }

@@ -12,6 +12,7 @@ import { TeamNameField, myTeamName, useMyTeamName } from './TeamName';
 import { offlineTalk } from './offlineTalk';
 import { BidOrder } from './PartnerTalk';
 import { SocialButton } from './social/Social';
+import { recordOfflineGame } from './offlineStats';
 import { setTableIntensity, showLine, speakBot, useTalkPrefs } from './talkPrefs';
 import { pickTeamName } from '@spades/protocol';
 import { Intermission, calloutsFor } from './Intermission';
@@ -440,6 +441,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   useEffect(() => {
     if (online || st.phase !== 'gameOver' || !st.result || seriesRecorded.current) return;
     seriesRecorded.current = true;
+    recordOfflineGame(r.mode, st.result.winners.includes(sideOf(HUMAN, r)));
     const ids = names.map((_, i) => (i === HUMAN ? 'you' : `bot:${i}`));
     const sideNames = Array.from({ length: st.scores.length }, (_, i) => sideName(r, i, names));
     const prevS = loadSeries();
