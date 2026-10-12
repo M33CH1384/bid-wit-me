@@ -200,14 +200,21 @@ export function fanLayout(aspect: number, count: number, safeFrac = 0, o: FanOpt
   return { s, cw: CW * s, ch: CH * s, step: Math.max(0, step), maxRoll, curveK, viewW, viewH };
 }
 
+/** Where a hand card sits on the depth-1 camera plane (the shape that actually projects to the screen). */
+export interface HandCardPlane {
+  x: number;
+  y: number;
+  roll: number;
+  /** Camera-space distance used only for z-order. Projection is depth-compensated, so this never changes the picture. */
+  depth: number;
+  s: number;
+}
+
 /**
- * The human hand, laid out in *screen space*: every card sits on a plane parallel to the image plane (no tilt), so
- * perspective projects it as an exact, undistorted copy. Cards are stacked a hair nearer the camera left→right for a
- * stable z-order (each card on top of the one to its left), and both position and scale are multiplied by that depth
- * so every card projects at exactly the same size and spacing — a perfectly symmetric fan. Only the lifted card moves.
+ * Camera-plane pose of one card in the human fan. `x` / `y` / `roll` are what you see; `depth` only stacks the cards.
+ * Shared by the card mesh and the playable-group outline so the highlight can't drift from the fan.
  */
-export function handFan(aspect: number, count: number, i: number, lift: number, safeFrac = 0, o: FanOpts = {}): Xform {
-  const cam = makeCamera(aspect, o.short);
+export function handCardPlane(aspect: number, count: number, i: number, lift: number, safeFrac = 0, o: FanOpts = {}): HandCardPlane {
   const L = fanLayout(aspect, count, safeFrac, o);
   const halfN = (count - 1) / 2;
   const off = i - halfN;
@@ -218,15 +225,27 @@ export function handFan(aspect: number, count: number, i: number, lift: number, 
   const xo = halfN * L.step;
   const lowest = xo * xo * L.curveK + (L.ch / 2) * Math.cos(L.maxRoll) + (L.cw / 2) * Math.sin(L.maxRoll);
   const y = -L.viewH / 2 + L.viewH * (0.015 + (o.bottomFrac ?? 0)) + lowest - curve + lift * L.ch;
-  // z-order only (projection is depth-compensated, so this never changes what you see): later cards sit on earlier
-  // ones, and every raised card comes forward past the whole fan (18 × 0.006 < 0.12). The gaps are wide on purpose:
-  // phones with a 16-bit depth buffer (iPhone Safari) z-fight at ~0.0003 here, which let the edges of the cards
-  // underneath bleed through as thin gold lines when the gap was 0.0015.
+  // z-order only: later cards sit on earlier ones, and every raised card comes forward past the whole fan
+  // (18 × 0.006 < 0.12). The gaps are wide on purpose: phones with a 16-bit depth buffer (iPhone Safari) z-fight
+  // at ~0.0003 here, which let the edges of the cards underneath bleed through as thin gold lines when the gap was 0.0015.
   const depth = 1 - (i + 1) * 0.006 - (lift > 0 ? 0.12 : 0) - (lift > 0.2 ? 0.12 : 0); // the selected card tops all the raised ones too
+  return { x, y, roll, depth, s: L.s };
+}
+
+/**
+ * The human hand, laid out in *screen space*: every card sits on a plane parallel to the image plane (no tilt), so
+ * perspective projects it as an exact, undistorted copy. Cards are stacked a hair nearer the camera left→right for a
+ * stable z-order (each card on top of the one to its left), and both position and scale are multiplied by that depth
+ * so every card projects at exactly the same size and spacing — a perfectly symmetric fan. Only the lifted card moves.
+ */
+export function handFan(aspect: number, count: number, i: number, lift: number, safeFrac = 0, o: FanOpts = {}): Xform {
+  const cam = makeCamera(aspect, o.short);
+  const c = handCardPlane(aspect, count, i, lift, safeFrac, o);
+  const { depth } = c;
   const local = new Matrix4().compose(
-    new Vector3(x * depth, y * depth, -depth),
-    new Quaternion().setFromEuler(new Euler(0, 0, roll, 'XYZ')),
-    new Vector3(L.s * depth, L.s * depth, L.s * depth),
+    new Vector3(c.x * depth, c.y * depth, -depth),
+    new Quaternion().setFromEuler(new Euler(0, 0, c.roll, 'XYZ')),
+    new Vector3(c.s * depth, c.s * depth, c.s * depth),
   );
   const world = cam.matrixWorld.clone().multiply(local);
   const p = new Vector3(), q = new Quaternion(), sc = new Vector3();
