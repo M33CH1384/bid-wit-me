@@ -7,10 +7,8 @@ import { type ReactNode, type RefObject, Suspense, useEffect, useLayoutEffect, u
 import { type Camera, type Group, type Mesh, type MeshBasicMaterial, type Object3D, type Texture, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, Matrix4, Quaternion, MeshPhysicalMaterial, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, Vector2, Vector3 } from 'three';
 import { type Card, type Play, type Trick } from '@spades/rules';
 import Card3D from './Card3D';
-import PlayableGlow, { type GlowAnchor } from './PlayableGlow';
 import { departureSlot, handCardKey, handReactKey } from '../handOrder';
 import { GAP_S, LEGAL_NEAR, LIFT_S, canTapCard, fanGapPx, fanMotion, handRenderOrder, hitsInPaintOrder, playablePose, raiseLocalY } from './handLift';
-import { contiguousRuns } from './playableOutline';
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline } from './dealTimeline';
 import { type Sfx, sound } from '../audio';
@@ -377,11 +375,9 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   const faceCount = mine.reduce((nCards, c) => nCards + (c ? 1 : 0), 0);
   // A card left since the last committed hand: slide the gap shut. A highlight alone does not.
   const closing = held.current.count > 0 && faceCount < held.current.count;
-  // One outline per contiguous run of legal cards (see playableOutline), including when the whole hand is playable.
-  // Off turn, legal is empty: every card stays flat, full brightness, and the outline fades.
+  // Off turn, legal is empty: every card stays flat and at full brightness.
   const yourTurn = legal.length > 0;
   const fan = fanLayout(aspect, Math.max(1, mine.length), safeFrac, fanOpts);
-  const glowAnchors: (GlowAnchor & { playable: boolean })[] = [];
   const nextCards = new Set<string>();
   const nextSlots = new Map<string, Xform>();
   const nextSeen = new Set<string>();
@@ -405,10 +401,6 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       nextCards.add(c);
       nextSlots.set(id, target);
       nextSeen.add(id);
-      glowAnchors.push({
-        name: handReactKey(handNo, c, i), x: plane.x, y: plane.y,
-        playable: pose === 'legal' || pose === 'selected', selected: pose === 'selected',
-      });
     }
     items.push({
       hand: true,
@@ -419,9 +411,8 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       delay: move.kind === 'flip' ? i * 0.022 : move.kind === 'deal' ? dealDelay(i, human) : 0,
       sfxStart: move.kind === 'deal' ? 'deal' : undefined,
       dim: pose === 'illegal',
-      // the group outline marks playable cards. A tap lifts that card another 10px; it does not get its own border.
-      // Tip marks still point at one card.
-      glow: !!c && !!props.marked?.includes(c),
+      // playable cards (when some aren't) get the gold edge on every device; the rest are dimmed (dim above)
+      glow: !!c && (selected === c || !!props.marked?.includes(c) || (isLegal && legal.length < mine.length)),
       tap: c && canTapCard(pose) ? () => onCardTap(c) : pose === 'illegal' ? null : undefined,
       shadow: false,
       duration: move.kind === 'flip' ? 0.34 : move.kind === 'deal' ? tl.fly : move.kind === 'slide' ? GAP_S : LIFT_S,
@@ -433,7 +424,6 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
     });
   });
   pendingHold.current = { handNo, cards: nextCards, slots: nextSlots, count: faceCount, seen: nextSeen };
-  const glowRuns = contiguousRuns(glowAnchors.map((a) => a.playable)).map(([a, b]) => glowAnchors.slice(a, b + 1));
 
   // Commit after paint. A highlight render and the server ack both read the previous hand, so they share keys
   // and the played card still knows the slot it left. Strict Mode's extra render sees the same snapshot.
@@ -482,7 +472,6 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
         />
       ))}
       {wide && mine.length > 0 && <HandGlow aspect={aspect} count={mine.length} safeFrac={safeFrac} opts={fanOpts} />}
-      <PlayableGlow runs={glowRuns} handNames={glowAnchors.map((a) => a.name)} quality={quality} />
       {intro && <ShuffleDeck key={`shuffle-${handNo}`} at={deck} back={back} tl={tl} quality={quality} />}
     </group>
   );

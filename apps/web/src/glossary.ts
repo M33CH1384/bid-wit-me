@@ -47,7 +47,7 @@ export function glossary(r: TableRules): Record<TermKey, Term> {
     high: t('high', 'High card', `Inside a suit, 2 is the lowest, then 3 to 10, Jack, Queen, King, and the Ace is the highest.${extras.length ? ` Exceptions here: ${list(extras)} count as spades (trumps) and rank even above the Ace of spades.` : ''}`),
     trump: t('trump', 'Trump', `Spades are the boss suit (the trumps)${extras.length ? `, and ${list(extras)} count as spades` : ''}: any spade beats any heart, diamond or club. From the top: ${top}… You can only play one on another suit when you have none of that suit.`),
     lead: t('lead', 'Lead', 'Playing the first card of a book. Everyone else has to answer with that same suit if they can.'),
-    follow: t('follow', 'Follow suit', 'If you have a card of the suit that was led, you must play one. The cards you can play are lifted and highlighted together.'),
+    follow: t('follow', 'Follow suit', 'If you have a card of the suit that was led, you must play one. Your cards that are allowed right now are lifted and glowing.'),
     cut: t('cut', 'Cutting', `When you have none of the suit that was led, you may play ${tw.one} (a trump) instead. That's cutting: it beats all their cards and steals the book.`),
     broken: t('broken', 'Spades broken', `Nobody may start a book with ${tw.one} until someone has played one on another suit. After that, spades are "broken" and anyone can lead them.${r.spadesMustBeBroken ? '' : ' (This table lets you lead spades any time.)'}`),
     bid: t('bid', 'Bid', r.partnerships
