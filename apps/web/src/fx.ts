@@ -10,7 +10,6 @@
 import { useSyncExternalStore } from 'react';
 import { HYPE_SETTLE_MAX_MS } from '@spades/protocol';
 import { type Sfx, sound } from './audio';
-import { getBurst } from './jokerFx';
 
 /** How long each effect stays on screen (ms): the hand-end hold waits these out. wheelsCar is released by the car itself. */
 const FX_HOLD_MS: Partial<Record<FxKind, number>> = {
@@ -127,13 +126,8 @@ class FxBus {
   /** the running Wheels car releases its hold when it drives off (WheelsCelebration onDone) */
   carRelease: (() => void) | null = null;
   emit(kind: FxKind, opts: { level?: number; text?: string; sub?: string; silent?: boolean } = {}) {
-    // One blast per nuked trick. The landing cue and the watchdog can arrive far apart when the
-    // main thread stalls, and a warp-stepped capture keeps the burst alive the whole time.
-    if (kind === 'nuke') {
-      const now = performance.now();
-      if (getBurst() || now - this.lastNukeAt < 12000) return;
-      this.lastNukeAt = now;
-    }
+    // one blast per nuked trick: the card's landing cue and the Table's watchdog may both ask for it
+    if (kind === 'nuke') { const now = performance.now(); if (now - this.lastNukeAt < 4500) return; this.lastNukeAt = now; }
     const e: FxEvent = { id: this.seq++, kind, at: performance.now(), level: opts.level, text: opts.text, sub: opts.sub };
     this.fired[kind] = (this.fired[kind] ?? 0) + 1;
     const holdMs = FX_HOLD_MS[kind];

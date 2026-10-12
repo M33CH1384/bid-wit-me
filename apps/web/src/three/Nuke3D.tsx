@@ -7,7 +7,6 @@ import {
   PlaneGeometry, type PointLight, RingGeometry, ShaderMaterial, SphereGeometry, TorusGeometry, Vector2, Vector3,
 } from 'three';
 import { fx } from '../fx';
-import { canvasOwnsBlast } from '../nukeBlast';
 import { currentNukeDevice, nukeClockStalled, nukeProfile } from './nukeVisual';
 
 /**
@@ -192,16 +191,11 @@ export function Nuke3D({ quality }: { quality: 'high' | 'low' }) {
   const [run, setRun] = useState<{ id: number; start: number; full: boolean } | null>(null);
   const profile = useMemo(() => nukeProfile(quality, currentNukeDevice()), [quality]);
   useEffect(() => {
-    (window as unknown as { __bwmNukeProfile?: typeof profile }).__bwmNukeProfile = profile;
-  }, [profile]);
-  useEffect(() => {
     bailNuke = () => setRun(null);
     return () => { bailNuke = null; };
   }, []);
   useEffect(() => fx.on((e) => {
     if (e.kind !== 'nuke') return;
-    // The canvas blast is the detonation. Nuke3D stays the fallback when a 2D context is missing.
-    if (canvasOwnsBlast()) return;
     const mode = fx.nukeMode;
     if (mode === 'off') return;
     setRun({ id: e.id, start: performance.now(), full: mode === 'full' });
@@ -342,10 +336,11 @@ function NukeRun({ start, full, detail, post, octaves, screen, onBail }: { start
     [p.sphere, p.torus, p.cyl, p.ringGeo, p.quad, p.smoke.geo, p.dust.geo, p.embers.geo, p.ash.geo].forEach((g) => g.dispose());
   }, [parts]);
 
-  // blast impulse for the cards. The detonation shake is the whole screen (JokerBurst), HUD included.
+  // blast impulse for the cards + Full Nuke HUD blow-away
   useEffect(() => {
     const t = window.setTimeout(() => {
       fx.blast = { start: performance.now(), hand: full };
+      if (full) blowHud();
     }, FLASH * 1000);
     const fov0 = baseFov.current;
     return () => { clearTimeout(t); cam.fov = fov0; cam.updateProjectionMatrix(); fx.blast = null; document.querySelector('.table-screen')?.classList.remove('nuke-blow'); invalidate(); };
@@ -502,3 +497,26 @@ export class NukeGuard extends Component<{ children: ReactNode }, { failed: bool
   override render() { return this.state.failed ? null : this.props.children; }
 }
 
+/** Full Nuke: the HUD (scorebug, plates, chat, last trick, controls) is blown outward from the blast, then springs back. */
+function blowHud() {
+  const screen = document.querySelector('.table-screen');
+  if (!screen) return;
+  const L = (window as unknown as { __bwmLayout?: { trick: { x: number; y: number; w: number; h: number }[] } }).__bwmLayout;
+  const tr = L?.trick ?? [];
+  const cx = tr.length ? tr.reduce((s, t) => s + t.x + t.w / 2, 0) / tr.length : innerWidth / 2;
+  const cy = tr.length ? tr.reduce((s, t) => s + t.y + t.h / 2, 0) / tr.length : innerHeight * 0.45;
+  for (const el of screen.querySelectorAll<HTMLElement>('.scorebug, .trump-strip, .badge-layer .plate, .me-plate, .last-trick, .chat, .chat-toggle, .ctl-cluster, .dock-btn')) {
+    const r = el.getBoundingClientRect();
+    if (!r.width) continue;
+    const dx = r.left + r.width / 2 - cx, dy = r.top + r.height / 2 - cy, d = Math.max(60, Math.hypot(dx, dy));
+    const push = 90 + 140 * Math.min(1, 300 / d);
+    el.style.setProperty('--bx', `${(dx / d) * push}px`);
+    el.style.setProperty('--by', `${(dy / d) * push}px`);
+    el.style.setProperty('--br', `${(Math.random() - 0.5) * 30}deg`);
+  }
+  screen.classList.remove('nuke-blow');
+  void (screen as HTMLElement).offsetWidth;
+  screen.classList.add('nuke-blow');
+  // (frame-exact captures drive time through fx.warp: the run's cleanup removes the class instead of a wall-clock timer)
+  if (fx.warp === null) window.setTimeout(() => screen.classList.remove('nuke-blow'), 2600);
+}
