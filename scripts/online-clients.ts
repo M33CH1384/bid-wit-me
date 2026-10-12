@@ -136,7 +136,7 @@ await until(() => cs.some((c) => c.view && c.view.turn !== null && c.view.turn !
 const off = cs.find((c) => c.view && c.view.turn !== null && c.view.turn !== c.seat)!;
 const offAction = off.view!.phase === 'bidding' ? { type: 'bid', bid: 3 } : { type: 'play', card: off.view!.hand![0] };
 log('out-of-turn try', off.view!.phase, JSON.stringify(offAction));
-off.send({ act: 1, t: 'act', action: offAction } as ClientMsg);
+off.send({ t: 'act', action: offAction as GameAction, seq: off.room!.seq, id: 'off-turn' });
 await until(() => off.errors.includes('NOT_YOUR_TURN'), 5000, `out-of-turn rejected (got ${JSON.stringify(off.errors)})`);
 
 let actions = 0;

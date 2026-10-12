@@ -92,7 +92,7 @@ export interface RoomData {
   series?: Series | null;
   /** per-seat member ids at the start of the current game (series composition) */
   seriesSeats?: string[];
-  /** tokens of players kicked during the current game (can't rejoin until the next game starts) */
+  /** seat tokens and account ids kicked during the current game (can't rejoin until the next game starts) */
   kicked?: string[];
   /** open vote-kicks: target player id → voter ids */
   votes?: Record<string, string[]>;
@@ -103,8 +103,16 @@ export interface RoomData {
   tournament?: TournamentSeat;
   /** Release 10: hidden from Open tables (invite / code only) */
   private?: boolean;
-  /** Release 10: spectators may take bot seats mid-game (unset = on) */
+  /**
+   * Spectators may take bot seats mid-game.
+   * unset = on, except at a rated table (a signed-in player facing a human on another side), where the default is off.
+   * A seat a player left is always open. true/false are explicit host choices.
+   */
   replaceBots?: boolean;
+  /** epoch ms when the host's last socket dropped; another connected member becomes host after HOST_DISCONNECT_GRACE_MS */
+  hostAwaySince?: number;
+  /** latched when a game starts: this deal counts for Elo, so a leaver doesn't open their seat to a guest */
+  rated?: boolean;
 }
 
 /** Release 9b: this table plays one tournament match (rules locked, seats reserved for the entrants, autostart). */
@@ -143,6 +151,8 @@ export interface RoomTiming {
 export const LEARNING_TIMER = 1.5;
 /** tournament table with nobody connected: play the match out after this long */
 export const TOURNAMENT_EMPTY_GRACE_MS = 90_000;
+/** seated host dropped without leaving: pass host after this long so the table can still start or rematch */
+export const HOST_DISCONNECT_GRACE_MS = 30_000;
 export const DEFAULT_TIMING: RoomTiming = { botMs: 750, trickPauseMs: 1300, dealMs: 3200, disconnectGraceMs: 10_000, handOverMs: 20_000 };
 
 /** What the host environment (Durable Object or test harness) provides. */
@@ -207,15 +217,15 @@ export class Room {
     const pid = this.conns.get(connId);
     this.sentHistory.delete(connId);
     this.conns.delete(connId);
-    if (pid && !this.isConnected(pid)) {
-      const m = this.data.members[pid];
-      if (m && this.data.phase !== 'playing' && m.seat === null) {
-        // a lobby lurker who left: forget them
-        delete this.data.members[pid];
-        if (this.data.hostId === pid) this.passHost();
-      }
-      this.after();
+    if (!pid || this.isConnected(pid)) return;
+    const m = this.data.members[pid];
+    if (m && m.seat === null) {
+      // an unseated member who dropped, in any phase: forget them so they don't fill the table
+      this.dropGhosts();
+    } else if (m && this.data.hostId === pid) {
+      this.data.hostAwaySince ??= this.io.now();
     }
+    this.after();
   }
 
   isConnected(playerId: string): boolean {
@@ -231,15 +241,19 @@ export class Room {
     return this.data.seats.filter((s) => s.kind === 'human' && this.isConnected(s.playerId)).length;
   }
 
-  /** Release 9: the connection proved an account (verified ticket): link its member for stats. */
+  /** Release 9: the connection proved an account (verified ticket): link its member for stats. One account, one seat. */
   linkUser(connId: string, uid: string): void {
     const pid = this.conns.get(connId);
     const m = pid ? this.data.members[pid] : undefined;
-    if (!m || m.uid === uid) return;
-    // one seat per account per table: an older member of the same account loses the link
-    for (const o of Object.values(this.data.members)) if (o !== m && o.uid === uid) delete o.uid;
-    m.uid = uid;
-    this.seatReserved(pid!);
+    if (!m || !pid) return;
+    if (this.kickedOut(undefined, uid)) { this.rejectKick(connId); return; }
+    if (m.uid === uid) return;
+    this.claimAccount(pid, uid);
+    const now = this.conns.get(connId) ?? pid;
+    if (now !== pid) {
+      const kept = this.data.members[now];
+      if (kept) this.io.send(connId, { t: 'welcome', you: now, token: kept.token, code: this.data.code, chat: this.data.chat.slice(-LIMITS.chatHistory), v: PROTOCOL_VERSION });
+    }
     this.after();
     this.io.persist();
   }
@@ -315,16 +329,109 @@ export class Room {
   /** member ids → account ids (for tournament / stats bookkeeping) */
   accountOf(pid: string): string | undefined { return this.data.members[pid]?.uid; }
 
+  /** a client-minted seat token: long enough that it isn't guessable, and safe to store */
+  private tokenOk(token: string): boolean {
+    return /^[A-Za-z0-9_-]{16,100}$/.test(token);
+  }
+
+  private kickedOut(token?: string, uid?: string): boolean {
+    const k = this.data.kicked ?? [];
+    return (!!token && k.includes(token)) || (!!uid && k.includes(uid));
+  }
+
+  private rejectKick(connId: string): void {
+    this.err(connId, 'KICKED', 'You were removed from this table for this game');
+    this.conns.delete(connId);
+    this.io.close?.(connId, 4003, 'kicked');
+  }
+
+  /** members who still occupy a slot: seated, or unseated and actually connected */
+  private liveCounts(): { members: number; watching: number } {
+    let members = 0, watching = 0;
+    for (const [id, m] of Object.entries(this.data.members)) {
+      if (m.seat === null && !this.isConnected(id)) continue;
+      members++;
+      if (m.seat === null) watching++;
+    }
+    return { members, watching };
+  }
+
+  /** forget disconnected unseated members (they must not hold a member or spectator slot) */
+  private dropGhosts(): void {
+    const d = this.data;
+    for (const [id, m] of Object.entries(d.members)) {
+      if (m.seat !== null || this.isConnected(id)) continue;
+      delete d.members[id];
+      if (d.hostId === id) this.passHost();
+    }
+  }
+
+  /**
+   * One account, one member. A second connection of the same account joins the member already here
+   * (and a second seat, if one was taken, is given back).
+   */
+  private claimAccount(pid: string, uid: string): void {
+    const d = this.data;
+    const m = d.members[pid];
+    if (!m) return;
+    const otherId = Object.keys(d.members).find((id) => id !== pid && d.members[id]?.uid === uid);
+    if (!otherId) { m.uid = uid; this.seatReserved(pid); return; }
+    const other = d.members[otherId]!;
+    // keep the seated body when the account's older member is only watching; otherwise keep the one that already had the account
+    const keepId = m.seat !== null && other.seat === null ? pid : otherId;
+    const dropId = keepId === pid ? otherId : pid;
+    const drop = d.members[dropId]!;
+    const keep = d.members[keepId]!;
+    if (drop.seat !== null && drop.seat !== keep.seat) {
+      d.seats[drop.seat] = d.phase === 'playing' ? { kind: 'bot', name: this.botName(), level: d.botLevel, vacated: true } : { kind: 'empty' };
+    }
+    for (const [cid, p] of this.conns) if (p === dropId) this.conns.set(cid, keepId);
+    if (d.hostId === dropId) d.hostId = keepId;
+    if (d.hostId && this.isConnected(d.hostId)) delete d.hostAwaySince;
+    delete d.members[dropId];
+    keep.uid = uid;
+    keep.name = m.name;
+    this.seatReserved(keepId);
+  }
+
+  /** signed-in player facing a human on another side: this seating would count for Elo */
+  private ratedTable(): boolean {
+    const d = this.data;
+    const n = d.rules.playerCount;
+    let account = false;
+    const sides = new Set<number>();
+    for (let i = 0; i < n; i++) {
+      const s = d.seats[i];
+      if (s?.kind !== 'human') continue;
+      sides.add(d.rules.partnerships ? i % 2 : i);
+      if (d.members[s.playerId]?.uid) account = true;
+    }
+    return account && sides.size >= 2;
+  }
+
+  /** rated for seat-takeover policy: latched at the deal so a player leaving doesn't open the seat to a guest */
+  private ratedSeats(): boolean {
+    if ((this.data.phase === 'playing' || this.data.phase === 'over') && this.data.rated) return true;
+    return this.ratedTable();
+  }
+
+  /** explicit host choice wins; otherwise on, except at a rated table */
+  private replaceBotsOn(): boolean {
+    if (this.data.replaceBots === false) return false;
+    if (this.data.replaceBots === true) return true;
+    return !this.ratedSeats();
+  }
+
   /* --------------------------------------------------------------- messages */
 
-  message(connId: string, raw: unknown): void {
+  message(connId: string, raw: unknown, uid?: string | null): void {
     let msg: ClientMsg | null = null;
     try {
       if (!this.conns.has(connId)) this.conns.set(connId, null);
       msg = parseClientMsg(raw);
       if (!msg) return this.err(connId, 'BAD_MESSAGE', 'Malformed message');
       const pid = this.conns.get(connId) ?? null;
-      if (msg.t === 'hello') return this.hello(connId, msg);
+      if (msg.t === 'hello') return this.hello(connId, msg, uid || undefined);
       if (!pid || !this.data.members[pid]) return this.err(connId, 'NOT_JOINED', 'Say hello first');
       this.data.lastActive = this.io.now();
       this.handle(connId, pid, msg);
@@ -334,35 +441,47 @@ export class Room {
     }
   }
 
-  private hello(connId: string, msg: Extract<ClientMsg, { t: 'hello' }>): void {
+  private hello(connId: string, msg: Extract<ClientMsg, { t: 'hello' }>, uid?: string): void {
     const d = this.data;
+    this.dropGhosts();
     const name = cleanName(msg.name, LIMITS.nameMax) || 'Player';
-    if (msg.token && d.kicked?.includes(msg.token)) {
-      this.err(connId, 'KICKED', 'You were removed from this table for this game');
-      this.io.close?.(connId, 4003, 'kicked');
-      return;
-    }
+    if (this.kickedOut(msg.token, uid)) { this.rejectKick(connId); return; }
+    // same seat token, or the same account (a second tab / cleared storage still presenting the ticket)
     let pid = msg.token ? Object.keys(d.members).find((id) => d.members[id]!.token === msg.token) : undefined;
+    if (pid && uid && d.members[pid]!.uid && d.members[pid]!.uid !== uid) pid = undefined;
+    if (!pid && uid) pid = Object.keys(d.members).find((id) => d.members[id]!.uid === uid);
     if (pid) {
       // reconnect: same player, same seat; drop any older socket of theirs
       for (const [cid, p] of this.conns) if (p === pid && cid !== connId) { this.conns.delete(cid); this.io.close?.(cid, 4000, 'replaced'); }
-      d.members[pid]!.name = name;
+      const m = d.members[pid]!;
+      m.name = name;
+      if (uid) m.uid = uid;
+      if (d.hostId === pid) delete d.hostAwaySince;
     } else {
-      const watching = Object.values(d.members).filter((x) => x.seat === null).length;
-      if (Object.keys(d.members).length >= LIMITS.members || (d.phase !== 'lobby' && watching >= LIMITS.spectators)) {
+      const { members, watching } = this.liveCounts();
+      if (members >= LIMITS.members || (d.phase !== 'lobby' && watching >= LIMITS.spectators)) {
         this.err(connId, 'TABLE_FULL', 'This table is full');
         this.io.close?.(connId, 4001, 'full');
         return;
       }
       pid = this.io.randomId().slice(0, 12);
-      d.members[pid] = { name, token: this.io.randomId(), seat: null, media: { cam: false, mic: false }, joinedAt: this.io.now() };
+      // honor a client-minted token so a second tab that stored it first lands in this same member
+      const tokenTaken = !!msg.token && Object.values(d.members).some((m) => m.token === msg.token);
+      const token = msg.token && this.tokenOk(msg.token) && !tokenTaken ? msg.token : this.io.randomId();
+      d.members[pid] = { name, token, seat: null, media: { cam: false, mic: false }, joinedAt: this.io.now(), ...(uid ? { uid } : {}) };
       if (!d.hostId || !d.members[d.hostId]) d.hostId = pid;
       this.system(`${name} joined`);
     }
     this.conns.set(connId, pid);
+    // token matched a different body than the account already seated here: fold them into one member
+    if (uid && Object.keys(d.members).some((id) => id !== pid && d.members[id]!.uid === uid)) {
+      this.claimAccount(pid, uid);
+      pid = this.conns.get(connId) ?? pid;
+    }
     this.sentHistory.delete(connId);
     const m = d.members[pid]!;
     this.io.send(connId, { t: 'welcome', you: pid, token: m.token, code: d.code, chat: d.chat.slice(-LIMITS.chatHistory), v: PROTOCOL_VERSION });
+    if (uid) this.seatReserved(pid);
     d.lastActive = this.io.now();
     this.after();
   }
@@ -383,11 +502,15 @@ export class Room {
         }
         const slot = d.seats[msg.seat]!;
         if (me.seat === msg.seat) return;
+        if (me.uid && Object.entries(d.members).some(([id, o]) => id !== pid && o.uid === me.uid && o.seat !== null)) {
+          throw new RoomError('ALREADY_SEATED', 'This account is already seated at this table');
+        }
         if (d.phase === 'playing') {
           // mid-game you may only take over a bot's seat (and only if you're not already playing)
           if (me.seat !== null) throw new RoomError('IN_GAME', 'You are already playing');
           if (slot.kind !== 'bot') throw new RoomError('SEAT_TAKEN', 'That seat is taken');
           if (!this.takeable().includes(msg.seat)) throw new RoomError('SEAT_LOCKED', "The host doesn't let spectators replace bots");
+          if (this.ratedSeats() && !me.uid) throw new RoomError('ACCOUNT_REQUIRED', 'Sign in to take a seat in a rated game');
         } else if (slot.kind === 'human') throw new RoomError('SEAT_TAKEN', 'That seat is taken');
         if (me.seat !== null) d.seats[me.seat] = { kind: 'empty' };
         d.seats[msg.seat] = { kind: 'human', playerId: pid };
@@ -604,8 +727,9 @@ export class Room {
   /**
    * A game move. Order of checks:
    *  1. duplicate id (a retry of a move that was already applied) → ack ok+dup, nothing applied again
-   *  2. stale seq (the game moved on since the client chose this move: its turn timed out and auto-played, the hand
-   *     ended, …) → silently dropped: ack stale + a fresh state for that connection, never an error
+   *  2. missing or stale seq (the client didn't say which version it moved from, or the game moved on since: the
+   *     turn timed out and auto-played, the hand ended, …) → silently dropped: ack stale + a fresh state, never an error.
+   *     A late play must not become this seat's next lead.
    *  3. rule checks → ack with the rule error code (or an `error` message for legacy clients that send no id)
    * The DO is single-threaded, so a late human move and the turn-timer auto-play can't interleave: whichever runs
    * first bumps `seq` and the other one becomes stale (auto-play re-checks the turn key before acting).
@@ -618,7 +742,7 @@ export class Room {
       this.io.send(connId, { t: 'ack', id, ok: true, dup: true });
       return;
     }
-    if (msg.seq !== undefined && msg.seq !== d.seq) {
+    if (msg.seq === undefined || msg.seq !== (d.seq ?? 0)) {
       this.sendState(connId);
       if (id) this.io.send(connId, { t: 'ack', id, ok: false, stale: true });
       return;
@@ -710,7 +834,7 @@ export class Room {
     delete d.members[target];
     if (d.votes) delete d.votes[target];
     d.ready = d.ready.filter((x) => x !== target);
-    d.kicked = [...(d.kicked ?? []), m.token];
+    d.kicked = [...(d.kicked ?? []), m.token, ...(m.uid ? [m.uid] : [])];
     if (d.music?.mode === 'stream' && d.music.by === target) d.music = { mode: 'off' };
     this.system(how === 'host' ? `${m.name} was removed by the host${d.phase === 'playing' ? ' — a bot took their seat' : ''}` : `${m.name} was voted off the table${d.phase === 'playing' ? ' — a bot took their seat' : ''}`);
     for (const [cid, p] of this.conns) {
@@ -724,9 +848,35 @@ export class Room {
 
   private passHost(): void {
     const d = this.data;
+    const prev = d.hostId;
+    delete d.hostAwaySince;
     const ids = Object.keys(d.members).sort((a, b) => d.members[a]!.joinedAt - d.members[b]!.joinedAt);
     d.hostId = ids.find((id) => this.isConnected(id)) ?? ids[0] ?? null;
-    if (d.hostId) this.system(`${d.members[d.hostId]!.name} is now the host`);
+    if (d.hostId && d.hostId !== prev) this.system(`${d.members[d.hostId]!.name} is now the host`);
+  }
+
+  /** Host's socket is gone: after a grace period (long enough for a reload), the oldest connected member takes over. */
+  private considerHost(): boolean {
+    const d = this.data;
+    const id = d.hostId;
+    const host = id ? d.members[id] : undefined;
+    if (!host || !id) {
+      if (d.hostAwaySince === undefined) return false;
+      delete d.hostAwaySince;
+      return true;
+    }
+    if (this.isConnected(id)) {
+      if (d.hostAwaySince === undefined) return false;
+      delete d.hostAwaySince;
+      return true;
+    }
+    let marked = false;
+    if (d.hostAwaySince === undefined) { d.hostAwaySince = this.io.now(); marked = true; }
+    const due = d.hostAwaySince + HOST_DISCONNECT_GRACE_MS;
+    if (this.io.now() < due) { this.io.setAlarm(due); return marked; }
+    if (!Object.keys(d.members).some((pid) => pid !== id && this.isConnected(pid))) return marked;
+    this.passHost();
+    return true;
   }
 
 
@@ -757,6 +907,7 @@ export class Room {
     const seats = d.seats.slice(0, n);
     if (!d.tournament && !seats.some((s) => s.kind === 'human')) throw new RoomError('NO_PLAYERS', 'Sit down first');
     for (let s = 0; s < n; s++) if (d.seats[s]!.kind === 'empty') d.seats[s] = { kind: 'bot', name: this.botName(), level: d.botLevel };
+    d.rated = this.ratedTable();
     // a rematch continues the deal rotation (one seat clockwise from the last dealer); a new game deals from a random seat
     const dealer = rematch && prevGame && prevGame.rules.playerCount === n ? nextDealer(prevGame) : undefined;
     try {
@@ -945,6 +1096,7 @@ export class Room {
   /** Recompute timers after any change, run due bots/auto-plays, broadcast, persist. */
   private after(): void {
     this.checkVotes();
+    this.considerHost();
     this.drive();
     this.broadcast();
     this.io.persist();
@@ -953,6 +1105,7 @@ export class Room {
   /** Called by timers/alarms. One bad tick must not kill the alarm loop. */
   tick(): void {
     try {
+      const hostChanged = this.considerHost();
       const t = this.data.tournament;
       if (t?.autostartAt && this.data.phase === 'lobby' && this.io.now() >= t.autostartAt - 50) {
         this.autostart();
@@ -960,7 +1113,7 @@ export class Room {
         return;
       }
       const changed = this.drive();
-      if (changed) {
+      if (changed || hostChanged) {
         this.broadcast();
         this.io.persist();
       }
@@ -1173,7 +1326,7 @@ export class Room {
       venue: d.venue ?? 'classic', ...(d.venueNow ? { venueNow: d.venueNow } : {}),
       teamNames: d.rules.partnerships ? [...(d.teamNames ?? [null, null])] : undefined, series: d.series ?? null, revealed: [...(d.talk?.revealed ?? [])],
       ...(d.tournament ? { tournament: { id: d.tournament.id, name: d.tournament.name, match: d.tournament.match, autostartAt: d.tournament.autostartAt, reserved: d.tournament.reserved.map((r) => r?.name ?? null) } } : {}),
-      private: !!d.private, replaceBots: d.replaceBots !== false, takeable: this.takeable(),
+      private: !!d.private, replaceBots: this.replaceBotsOn(), takeable: this.takeable(),
       spectators: d.phase === 'lobby' ? [] : Object.entries(d.members).filter(([id, m]) => m.seat === null && this.isConnected(id)).map(([playerId, m]) => ({ playerId, name: m.name })),
       ...(d.votes && Object.keys(d.votes).length ? { votes: Object.entries(d.votes).map(([target, by]) => ({ target, by: [...by], need: this.votesNeeded(target) })) } : {}), ...(d.music && d.music.mode !== 'off' ? { music: d.music } : {}),
     };
@@ -1194,7 +1347,8 @@ export class Room {
   takeable(): number[] {
     const d = this.data;
     if (d.phase !== 'playing' || d.tournament || !d.game) return [];
-    return d.seats.slice(0, d.rules.playerCount).flatMap((s, i) => (s.kind === 'bot' && (s.vacated || d.replaceBots !== false) ? [i] : []));
+    const bots = this.replaceBotsOn();
+    return d.seats.slice(0, d.rules.playerCount).flatMap((s, i) => (s.kind === 'bot' && (s.vacated || bots) ? [i] : []));
   }
 
   /** Release 10: the Open tables entry (null = not listed: private, or nobody connected) */

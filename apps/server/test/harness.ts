@@ -33,7 +33,8 @@ export class FakeEnv {
       },
       close: (cid) => { this.closed.push(cid); },
       wake: (ms) => { this.wakes.push(this.t + ms); },
-      setAlarm: (at) => { if (at !== null && at !== this.alarm) { this.alarm = at; this.alarmSets++; } },
+      // match the DO: a later alarm does not postpone an earlier one; clearing is a no-op
+      setAlarm: (at) => { if (at === null || (this.alarm !== null && this.alarm <= at)) return; this.alarm = at; this.alarmSets++; },
       persist: () => { this.persists++; },
       gameOver: (rec, rated) => { this.records.push({ rec, rated }); },
       tournamentResult: (t, scores, places) => { this.tourResults.push({ match: t.match, scores, places }); },
@@ -77,9 +78,9 @@ export class FakeEnv {
   errors(cid: string) { return this.msgs(cid).filter((x) => x.t === 'error') as Extract<ServerMsg, { t: 'error' }>[]; }
   clear(): void { this.sent.clear(); }
 
-  join(cid: string, name: string, token?: string): { pid: string; token: string } {
+  join(cid: string, name: string, token?: string, uid?: string): { pid: string; token: string } {
     this.room.open(cid);
-    this.send(cid, { t: 'hello', name, token });
+    this.room.message(cid, JSON.stringify({ t: 'hello', name, ...(token ? { token } : {}) }), uid);
     const w = this.last(cid, 'welcome')!;
     return { pid: w.you, token: w.token };
   }
