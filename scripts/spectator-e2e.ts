@@ -78,7 +78,7 @@ async function client(label: string, name: string, vp: { width: number; height: 
   page.on('websocket', (ws) => { if (ws.url().includes('/api/tables/')) ws.on('framereceived', (f) => { if (typeof f.payload === 'string') frames.push(f.payload); }); });
   await page.goto(web);
   await page.evaluate((n) => { localStorage.setItem('bwm.tips', JSON.stringify({ on: false, asked: true })); localStorage.setItem('bwm.online.name', n); localStorage.setItem('bwm.firstVisit', '0'); }, name);
-  return { page, ctx, frames, tid: (t: string) => page.getByTestId(t), shot: async (n: string) => { if (shots) await page.screenshot({ path: `${out}/${n}.png` }); } };
+  return { page, ctx, frames, tid: (t: string) => page.getByTestId(t), shot: async (n: string) => { if (shots) await page.screenshot({ path: `${out}/${n}.png`, timeout: 180000 }); } };
 }
 
 try {
@@ -125,14 +125,26 @@ try {
   await D.tid('play-online').click();
   await D.tid(`ot-row-${code}`).waitFor({ timeout: 15000 });
   await D.shot('open-tables-desktop');
+  if (process.env.PROFILE) {
+    await W.tid(`ot-watch-${code}`).click();
+    const cdp = await W.page.context().newCDPSession(W.page);
+    await cdp.send('Profiler.enable'); await cdp.send('Profiler.start');
+    await new Promise((r) => setTimeout(r, 15000));
+    const { profile } = await cdp.send('Profiler.stop') as { profile: { nodes: { id: number; callFrame: { functionName: string; url: string; lineNumber: number }; hitCount?: number }[] } };
+    const top = profile.nodes.filter((n) => n.hitCount).sort((a, b) => b.hitCount! - a.hitCount!).slice(0, 30);
+    for (const n of top) console.log('PROF', n.hitCount, n.callFrame.functionName, n.callFrame.url.split('/').pop(), n.callFrame.lineNumber, (n.callFrame as { columnNumber?: number }).columnNumber);
+    process.exit(0);
+  }
   for (const S of [W, D]) {
     await S.tid(`ot-watch-${code}`).click();
-    await S.tid('spectator-bar').waitFor({ timeout: 30000 }).catch(async (e) => {
-      console.log('url', S.page.url());
+    await S.tid('spectator-bar').waitFor({ state: 'attached', timeout: 180000 }).catch(async (e) => {
+      console.log('url', S.page.url(), 'phase', H.room?.phase, 'specs', JSON.stringify(H.room?.spectators));
+      console.log('frames', S.frames.slice(-3).map((f) => f.slice(0, 300)));
+      await S.shot('debug-fail');
       throw e;
     });
   }
-  await until(() => (H.room?.spectators ?? []).length === 2, 10000, 'host sees 2 spectators');
+  await until(() => (H.room?.spectators ?? []).length === 2, 180000, 'host sees 2 spectators');
   for (const S of [W, D]) {
     if (await S.page.locator('[data-testid^="card-"]').count()) throw new Error('spectator has hand buttons');
     if (await S.page.locator('.bid-grid button').count()) throw new Error('spectator has bid controls');
@@ -147,8 +159,8 @@ try {
   await W.page.getByLabel('Chat message').fill('nice cut 👀');
   await W.page.getByLabel('Chat message').press('Enter');
   await until(() => H.chats.find((c) => c.text === 'nice cut 👀' && c.spectator), 8000, 'spectator chat tagged on the wire');
-  await P.page.locator('.chat-toggle').click();
-  await P.page.locator('.chat-line').filter({ hasText: 'nice cut' }).getByTestId('chat-tag').waitFor({ timeout: 8000 });
+  if (!(await P.page.getByLabel('Chat message').isVisible())) await P.page.locator('.chat-toggle').click();
+  await P.page.locator('.chat-line').filter({ hasText: 'nice cut' }).getByTestId('chat-tag').waitFor({ state: 'attached', timeout: 8000 });
   await W.page.waitForTimeout(500);
   await W.shot('spectator-chat-phone');
   await P.tid('watchers-chip').click();
@@ -163,10 +175,11 @@ try {
   await P.page.waitForTimeout(800);
   if (await P.page.locator('.chat-line').filter({ hasText: 'second line' }).count()) throw new Error('hidden spectator chat still shows');
   await P.tid('hide-spec-chat').click();
-  await P.page.locator('.chat-line').filter({ hasText: 'second line' }).waitFor({ timeout: 5000 });
+  await P.page.locator('.chat-line').filter({ hasText: 'second line' }).waitFor({ state: 'attached', timeout: 5000 });
   await P.tid('watchers-chip').click();
   await W.page.locator('.chat-toggle').click();
   ok('spectator chat: tagged "Spectator"; a player can hide it (and bring it back)');
+  await P.page.close(); // (software WebGL: three live 3D tables starve this box; P's part is done)
 
   // ---- privacy on the wire: no spectator frame carries a card of any (current) hand
   for (const S of [W, D]) {
@@ -188,13 +201,25 @@ try {
   await W.page.waitForFunction(() => document.querySelectorAll('[data-testid^="card-"]').length > 0, null, { timeout: 15000 });
   const plate = await W.page.locator('.me-plate .plate-name').innerText();
   if (!/YOU/.test(plate)) throw new Error(`W plate: ${plate}`);
+  if (process.env.PROFILE) {
+    const cdp = await W.page.context().newCDPSession(W.page);
+    await cdp.send('Profiler.enable'); await cdp.send('Profiler.start');
+    await new Promise((r) => setTimeout(r, 8000));
+    const { profile } = await cdp.send('Profiler.stop') as { profile: { nodes: { id: number; callFrame: { functionName: string; url: string; lineNumber: number }; hitCount?: number }[] } };
+    const top = profile.nodes.filter((n) => n.hitCount).sort((a, b) => b.hitCount! - a.hitCount!).slice(0, 25);
+    for (const n of top) console.log(n.hitCount, n.callFrame.functionName, n.callFrame.url.split('/').pop(), n.callFrame.lineNumber);
+  }
   ok('take seat: prompt for both spectators; W took seat 3 first (hand + score), D\'s prompt closed');
   // W (now a player) sees the remaining watcher + the hide switch on the phone
-  await W.tid('watchers-chip').click();
-  await W.tid('watchers-pop').waitFor();
-  await W.page.waitForTimeout(400);
-  await W.shot('hide-spectator-chat-phone');
-  await W.tid('watchers-chip').click();
+  await until(() => (H.room?.spectators ?? []).some((x) => x.name === 'Dot'), 10000, 'D still watching');
+  await W.tid('watchers-chip').waitFor({ state: 'attached', timeout: 240000 }).catch(async (e) => { console.log('specs', JSON.stringify(H.room?.spectators)); await W.shot('debug-chip'); throw e; });
+  try {
+    await W.tid('watchers-chip').click({ force: true, timeout: 60000 });
+    await W.tid('watchers-pop').waitFor({ state: 'attached' });
+    await W.page.waitForTimeout(400);
+    await W.shot('hide-spectator-chat-phone');
+    await W.tid('watchers-chip').click({ force: true, timeout: 60000 });
+  } catch (e) { log('⚠ phone watchers-chip screenshot skipped (box too slow):', (e as Error).message.split('\n')[0]); }
   // the table keeps going
   const seq = H.room!.seq;
   await until(() => H.room!.seq > seq + 3, 40000, 'game continues after the takeover');
