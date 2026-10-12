@@ -10,7 +10,7 @@ ALLOWED_ORIGINS = "https://bid-wit-me.pages.dev,http://localhost:5173,http://loc
 # Public site that fronts /api/auth/* (Pages Functions proxy): OAuth redirect URIs, passkey RP ID, cookie site.
 PUBLIC_ORIGIN = "https://bid-wit-me.pages.dev"
 # Chat moderators (Release 9): usernames, comma-separated, case-insensitive. Empty = nobody.
-ADMIN_USERNAMES = ""
+ADMIN_USERNAMES = "M33CH"
 # Sign-in providers turn on only when BOTH of their secrets exist (npx wrangler secret put …):
 #   GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET · DISCORD_CLIENT_ID / DISCORD_CLIENT_SECRET
 #   X_CLIENT_ID / X_CLIENT_SECRET · FACEBOOK_APP_ID / FACEBOOK_APP_SECRET
