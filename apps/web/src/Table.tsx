@@ -6,11 +6,11 @@ import { createPortal } from 'react-dom';
 import {
   type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, isNukeTrick, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, partnerOf, sideOf, sortHand, trumpOrder,
 } from '@spades/rules';
-import { ScorePad, defaultSideName, setTeamNames, sideName } from './Modals';
+import { ScorePad, setTeamNames, sideName } from './Modals';
 import { LockedRulesPanel } from './LockedRules';
 import { type Series, addSeriesGame, seriesSides, summarizeGame } from '@spades/rules';
 import { SeriesChip, SeriesSheet, loadSeries, saveSeries } from './Series';
-import { TeamNameField, myTeamName, useMyTeamName } from './TeamName';
+import { useMyTeamName } from './TeamName';
 import { offlineTalk } from './offlineTalk';
 import { BidOrder } from './PartnerTalk';
 import { SocialButton } from './social/Social';
@@ -41,7 +41,7 @@ import { type TipsPref, bumpTip, loadTips, saveTips, tipCount } from './tips';
 import { BidCoach } from './BidCoach';
 import { RUN_FX_MS } from '@spades/protocol';
 import { RUN_SHOW_MS, RUN_SLAM_MS, RUN_IT_CALLOUTS, RUN_TORNADO_AFTER_MS, RUN_ZOOM_MS } from './runIt';
-import { RunItReview, RunZoom } from './RunZoom';
+import { RunItReview, RunZoom, runReviewOverTable } from './RunZoom';
 import { TrashTalkButton } from './TrashTalk';
 import { isPromoted } from './cardFaces';
 import { QUICK_TRASH_SET } from './quickTrash';
@@ -256,7 +256,7 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
   return { msgs, push };
 }
 
-function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only', extra, trash }: { msgs: ChatMsg[]; open: boolean; onToggle: () => void; onSend: (t: string) => void; unread: number; scope?: string; extra?: ReactNode; trash?: ReactNode }) {
+function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only', extra, trash, overRecap = false }: { msgs: ChatMsg[]; open: boolean; onToggle: () => void; onSend: (t: string) => void; unread: number; scope?: string; extra?: ReactNode; trash?: ReactNode; /** hand recap: the log is a sheet, opened from the corner button on that screen */ overRecap?: boolean }) {
   const listRef = useRef<HTMLDivElement>(null);
   const [text, setText] = useState('');
   const [tray, setTray] = useState(false);
@@ -270,21 +270,23 @@ function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only',
   };
   return (
     <>
-      <div className={`ctl-cluster ctl-tray ${tray ? 'expanded' : 'collapsed'}`} role="group" aria-label="Table controls" data-testid="ctl-tray">
-        {tray && <>
-          {extra}
-          {trash}
-          <button type="button" className={`chat-toggle ${open ? 'open' : ''}`} onClick={onToggle} aria-label="Toggle chat">
-            💬{!open && unread > 0 && <span className="unread">{unread}</span>}
+      {!overRecap && (
+        <div className={`ctl-cluster ctl-tray ${tray ? 'expanded' : 'collapsed'}`} role="group" aria-label="Table controls" data-testid="ctl-tray">
+          {tray && <>
+            {extra}
+            {trash}
+            <button type="button" className={`chat-toggle ${open ? 'open' : ''}`} onClick={onToggle} aria-label="Toggle chat">
+              💬{!open && unread > 0 && <span className="unread">{unread}</span>}
+            </button>
+          </>}
+          <button type="button" className={`tray-toggle ${tray ? 'on' : ''}`} data-testid="tray-toggle" aria-expanded={tray} aria-label={tray ? 'Close controls' : 'Open controls: camera, mic, voice, chat'} onClick={() => setTray(!tray)}>
+            {tray ? '✕' : <>💬<small>⋯</small></>}{!tray && unread > 0 && <span className="unread" data-testid="tray-unread">{unread}</span>}
           </button>
-        </>}
-        <button type="button" className={`tray-toggle ${tray ? 'on' : ''}`} data-testid="tray-toggle" aria-expanded={tray} aria-label={tray ? 'Close controls' : 'Open controls: camera, mic, voice, chat'} onClick={() => setTray(!tray)}>
-          {tray ? '✕' : <>💬<small>⋯</small></>}{!tray && unread > 0 && <span className="unread" data-testid="tray-unread">{unread}</span>}
-        </button>
-      </div>
-      {!open && last && <div key={last.id} className="chat-ticker"><b style={{ color: last.color }}>{last.user}</b> {last.text}</div>}
-      <aside className={`chat glass slant ${open ? 'open' : ''}`} aria-label="Table chat">
-        <header><span className="live-dot" /> LIVE CHAT <small>{scope}</small></header>
+        </div>
+      )}
+      {!overRecap && !open && last && <div key={last.id} className="chat-ticker"><b style={{ color: last.color }}>{last.user}</b> {last.text}</div>}
+      <aside className={`chat glass slant ${open ? 'open' : ''}${overRecap ? ' recap-chat' : ''}`} aria-label="Table chat">
+        <header><span className="live-dot" /> {overRecap ? 'TABLE TALK' : 'LIVE CHAT'} <small>{scope}</small>{overRecap && <button type="button" className="sheet-x" aria-label="Close chat" onClick={onToggle}>✕</button>}</header>
         <div className="chat-list" ref={listRef}>
           {msgs.map((m) => (
             <div key={m.id} className={`chat-line ${m.system ? 'system' : ''}`}>
@@ -397,7 +399,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // bot skill per seat: the table setting (Mixed = a hidden, seeded roll per seat) + persona floors (the Hustler is Pro+)
   const levelFor = useCallback((seat: number) => botSkillFor(settings.botLevel, seed, seat, botNames[seat] ?? ''), [settings.botLevel, seed, botNames]);
   const partnerHint = useRef<{ hand: number; text: string } | null>(null);
-  const { st, view, pause, error, apply, introHand, dealing, k } = online ? online.source : useGame(initialRules, seed, levelFor, speed, resume?.state, learning && tipOpen, startDealer, partnerHint);
+  const localReport = useRef<{ names: string[]; teamNames: (string | null)[] | null }>({ names: botNames, teamNames: null });
+  const { st, view, pause, error, apply, introHand, dealing, k } = online ? online.source : useGame(initialRules, seed, levelFor, speed, resume?.state, learning && tipOpen, startDealer, partnerHint, localReport);
   useEffect(() => { online?.setLearning?.(learning); }, [learning]); // eslint-disable-line react-hooks/exhaustive-deps
   const r = st.rules;
   const n = r.playerCount;
@@ -408,6 +411,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [showPad, setShowPad] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [ltOpen, setLtOpen] = useState(false);
+  const [clearedOpen, setClearedOpen] = useState(true);
+  useEffect(() => { setClearedOpen(true); }, [st.handNo]);
   const [chatOpen, setChatOpen] = useState(() => window.innerWidth >= 900 && window.innerHeight > 600);
   const [seenMsgs, setSeenMsgs] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -427,6 +432,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const myName = useMyTeamName();
   const [botTeam] = useState(() => resume?.teamNames?.[1] ?? pickTeamName(Math.abs([...seed].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7))));
   const teamNames: (string | null)[] | null = !r.partnerships ? null : online ? (online.teamNames ?? [null, null]) : [myName || null, botTeam];
+  localReport.current = { names, teamNames };
   setTeamNames(teamNames); // sideName() everywhere (scorebug, results, Table Talk, Victory, score pad) uses these
   useEffect(() => () => setTeamNames(null), []);
 
@@ -478,14 +484,6 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (!online && !resume && (loadSeries()?.games.length ?? 0) > 0) window.setTimeout(() => offlineTalk.moment({ kind: 'rematch' }), 2500);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const seriesChip = (cls = '') => <SeriesChip series={series} onOpen={() => setSeriesOpen(true)} className={cls} />;
-  const teamEdit = r.partnerships && (online ? online.setTeamName : true) ? (
-    <TeamNameField
-      value={(teamNames?.[sideOf(HUMAN, r)] ?? '') || ''}
-      placeholder={defaultSideName(r, sideOf(HUMAN, r), names)}
-      onSave={(v) => (online ? online.setTeamName?.(v) : myTeamName.set(v))}
-      testId="tt-team-name"
-    />
-  ) : null;
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [feedback, setFeedback] = useState(false);
   // the Victory screen's tip-jar line: at most once every few finished games, never during play
@@ -621,11 +619,15 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       if (!view.runHands && runOpenKey.current) { runOpenKey.current = null; setLtOpen(false); }
       return;
     }
+    // Table Talk / game over are full-screen. The cleared-hands portal is another full-screen
+    // scrim on document.body (z-index above both), so auto-opening it here swallows every
+    // tap and slide on the recap. The hands render inside Table Talk instead.
+    if (!runReviewOverTable(st.phase)) { setLtOpen(false); return; }
     const key = `${st.handNo}:${st.tricks.length}`;
     if (runOpenKey.current === key) return;
     runOpenKey.current = key;
     setLtOpen(true);
-  }, [runFx, view.runHands, st.handNo, st.tricks.length]);
+  }, [runFx, view.runHands, st.handNo, st.tricks.length, st.phase]);
   // the scoreboard (scores, bags, books taken, result) holds the pre-run numbers until the tornado is over
   const sb = runFx ? runFx.before.st : st;
   const winnerSeat = pause && !ranHand ? shownTrick.winner : null;
@@ -802,6 +804,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   useEffect(() => {
     if ((st.phase !== 'handOver' && st.phase !== 'gameOver') || pause || runFx) { setTalkOpen(false); return; }
     setTalkOpen(true);
+    // the recap itself stays clear; banter lands in the corner chat sheet
+    if (st.phase === 'handOver') setChatOpen(false);
   }, [st.phase, st.handNo, pause, !!runFx]); // eslint-disable-line react-hooks/exhaustive-deps
   const talkSend = (text: string) => {
     push('You', text);
@@ -994,7 +998,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       {/* last-trick readout. After a resolved 'Run it!' the same chip opens every hand the tornado cleared. */}
       {(piles.length > 0 || !!runHands) && (() => {
         const seatLabel = (seat: number) => (spectating ? names[seat] : seat === HUMAN ? 'You' : names[seat]) ?? `Seat ${seat + 1}`;
-        if (runHands && runClaimer !== null && ltOpen) {
+        if (runHands && runClaimer !== null && ltOpen && runReviewOverTable(st.phase)) {
           return createPortal(
             <>
               <div className="run-review-scrim" onClick={() => setLtOpen(false)} />
@@ -1045,7 +1049,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         ))}
       </div>
 
-      <ChatPanel msgs={msgs} open={chatOpen} onToggle={() => setChatOpen(!chatOpen)} onSend={(t) => push('You', t)} unread={unread} scope={online ? 'table' : undefined} extra={online ? online.controls : <OfflineMediaBar />}
+      <ChatPanel msgs={msgs} open={chatOpen} onToggle={() => setChatOpen(!chatOpen)} onSend={(t) => (st.phase === 'handOver' ? talkSend(t) : push('You', t))} unread={unread} scope={online ? 'table' : undefined} extra={online ? online.controls : <OfflineMediaBar />}
+        overRecap={st.phase === 'handOver' && !pause && talkOpen && !showPad}
         trash={!runFx && !modalOpen && !spectating ? <TrashTalkButton st={st} me={HUMAN} intensity={intensity} onSend={(t) => push('You', t)} /> : null} />
       {help && !bidTurn && view.hand && view.hand.length > 0 && st.phase !== 'handOver' && st.phase !== 'gameOver' && (
         <div className="bid-coach-float glass slant"><BidCoach view={view} startOpen title="COUNT YOUR BOOKS" onClose={() => setHelp(false)} /></div>
@@ -1142,16 +1147,30 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           st={st}
           names={names}
           mySide={mySide}
-          msgs={msgs}
-          onSend={talkSend}
           secs={online?.talk?.secs ?? null}
           ready={online?.talk?.ready}
-          tile={online?.talk?.tile}
           online={!!online}
           onReady={() => apply({ type: 'nextHand' })}
           onScorePad={() => setShowPad(true)}
           series={seriesChip()}
-          teamEdit={teamEdit}
+          unread={unread}
+          chatOpen={chatOpen}
+          onChat={() => setChatOpen(!chatOpen)}
+          runReview={runHands && runClaimer !== null ? (
+            clearedOpen ? (
+              <div className="tt-run" data-testid="talk-run">
+                <RunItReview
+                  hands={runHands}
+                  claimer={runClaimer}
+                  labels={runHands.map((_, seat) => (spectating ? names[seat] : seat === HUMAN ? 'You' : names[seat]) ?? `Seat ${seat + 1}`)}
+                  r={r}
+                  onClose={() => setClearedOpen(false)}
+                />
+              </div>
+            ) : (
+              <button type="button" className="tt-run-show" data-testid="talk-run-show" onClick={() => setClearedOpen(true)}>Run it — cleared hands</button>
+            )
+          ) : null}
         />
       )}
       {seriesOpen && series && <SeriesSheet series={series} mine={seriesMine} onClose={() => setSeriesOpen(false)} />}

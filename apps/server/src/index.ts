@@ -9,6 +9,7 @@
  *   POST /api/feedback            → player feedback (+ up to 3 screenshots), see feedback.ts
  *   GET  /api/feedback/admin      → private listing (sign-in form → HttpOnly admin cookie; never a token in the URL)
  *   /api/auth/*                   → accounts + sign-in (D1), see auth/routes.ts; served same-origin via the Pages proxy
+ *   POST /api/stats/local         → signed-in offline game (rebuilt server-side, unrated)
  *   GET  /health
  *
  * Free-plan notes (spec §13):
@@ -25,10 +26,12 @@ import { FEEDBACK_LIMITS, type FeedbackRow, adminHtml, hashIp, notifyOwner, pars
 import { ADMIN_COOKIE, ADMIN_TTL_MS, adminCookieOk, adminLoginHtml, makeAdminCookie, readCookie } from './admin';
 import { type Bucket, LIMITS, type LimitEnv, hit, limited } from './limits';
 import { type AuthEnv, handleAuth } from './auth/routes';
+import { handleLocalStats } from './stats/local';
 import { type SocialEnv, handleSocialHttp, isAdmin } from './social/routes';
 import { verifyTicket } from './social/ticket';
 import { type ConnAtt, type GlobalLog, Hub, type TableLog } from './social/hub';
 import { saveRecord } from './stats/record';
+import { backfillHomiesOnce } from './stats/backfill';
 import { handleTournaments } from './tournament/routes';
 import type { TOp } from './tournament/do';
 import type { TableRules } from '@spades/rules';
@@ -155,7 +158,9 @@ async function feedbackRoute(req: Request, env: Env, parts: string[], url: URL, 
 }
 
 export default {
-  async fetch(req: Request, env: Env): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    // rides the deploy: one attempt per isolate, retried until the offline-games columns exist
+    if (env.DB) ctx.waitUntil(backfillHomiesOnce(env.DB));
     const url = new URL(req.url);
     const origin = allowedOrigin(req, env);
     if (req.method === 'OPTIONS') {
@@ -181,6 +186,12 @@ export default {
       const bucket = ['me', 'config', 'deletion-status'].includes(parts[2] ?? '') ? null : parts[2] === 'username' && parts[3] === 'check' ? 'info' : 'auth';
       if (bucket) { const slow = await limited(req, env, bucket); if (slow) return slow; }
       return handleAuth(req, env, url, parts, { fetch: (i, init) => fetch(i, init), now: () => Date.now() });
+    }
+
+    if (parts[1] === 'stats' && parts[2] === 'local' && req.method === 'POST') {
+      const slow = await limited(req, env, 'stats', origin);
+      if (slow) return slow;
+      return handleLocalStats(req, env, url, Date.now());
     }
 
     if (parts[1] === 'social') {

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { Quaternion, Vector3 } from 'three';
-import { GROUP_PAD_PX, GROUP_RADIUS_PX, cardPartOrder, cssPxToPlane, fanGapPx, handRenderOrder, hitsInPaintOrder, raiseLocalY, screenRaise } from '../src/three/handLift';
-import { fanLayout, handCardPlane, handFan, makeCamera } from '../src/three/layout';
+import { MeshStandardMaterial, Quaternion, Vector3 } from 'three';
+import { FACE_POLYGON_OFFSET, GROUP_PAD_PX, GROUP_RADIUS_PX, LEGAL_LIFT_PX, LEGAL_NEAR, applyFaceDepthBias, cardMeshPaint, cardPartOrder, cssPxToPlane, fanGapPx, handRenderOrder, hitsInPaintOrder, raiseLocalY, screenRaise } from '../src/three/handLift';
+import { FACE_CAP_GAP, fanLayout, handCardPlane, handFan, makeCamera } from '../src/three/layout';
+import { cardGeometry } from '../src/three/geometry';
 import { contourContains, groupOutline, haloLocal, placeOnPlane, planePointOk, unionContours } from '../src/three/playableOutline';
 
 /**
@@ -23,10 +24,44 @@ describe('a tap hits the card you see', () => {
     expect(ordered[0]!.eventObject.renderOrder).toBeGreaterThan(ordered[1]!.eventObject.renderOrder);
   });
 
-  it('keeps the face above the blank edge when depth testing is off', () => {
-    expect(cardPartOrder('face')).toBeGreaterThan(cardPartOrder('edge'));
-    expect(cardPartOrder('face')).toBeGreaterThan(cardPartOrder('back'));
-    expect(cardPartOrder('back')).toBeGreaterThan(cardPartOrder('edge'));
+  it('keeps the face above the body, and the front material depth-tests', () => {
+    const order = handRenderOrder(4, true);
+    const face = cardMeshPaint(order, 'face');
+    const body = cardMeshPaint(order, 'edge');
+    const back = cardMeshPaint(order, 'back');
+    const glow = cardMeshPaint(order, 'glow');
+    expect(face.renderOrder).toBeGreaterThan(body.renderOrder);
+    expect(face.renderOrder).toBe(order + 0.5);
+    expect(back.renderOrder).toBe(face.renderOrder);
+    expect(glow.renderOrder).toBe(order - 1);
+    expect(face.depthTest).toBe(true);
+    expect(body.depthTest).toBe(true);
+    expect(cardPartOrder('face', order)).toBeGreaterThan(cardPartOrder('edge', order));
+  });
+
+  it('keeps the face in front of the cap on a 16-bit depth buffer', () => {
+    const aspect = 390 / 844;
+    const screenH = 844;
+    const geo = cardGeometry();
+    const front = geo.front.getAttribute('position');
+    const body = geo.body.getAttribute('position');
+    let frontZ = -Infinity;
+    let bodyZ = -Infinity;
+    for (let i = 0; i < front.count; i++) frontZ = Math.max(frontZ, front.getZ(i));
+    for (let i = 0; i < body.count; i++) bodyZ = Math.max(bodyZ, body.getZ(i));
+    expect(frontZ - bodyZ).toBeCloseTo(FACE_CAP_GAP, 6);
+    const cam = makeCamera(aspect, false);
+    const n = 13;
+    const plane = handCardPlane(aspect, n, n - 1, 0, 0, { near: LEGAL_NEAR }, 0, screenH);
+    const world = FACE_CAP_GAP * plane.s * plane.depth;
+    const z = plane.depth;
+    const dz = (z * z) * (cam.far - cam.near) / (cam.near * cam.far * 65535);
+    expect(world).toBeGreaterThan(dz * 2);
+    const face = new MeshStandardMaterial();
+    applyFaceDepthBias(face);
+    expect(face.polygonOffset).toBe(true);
+    expect(face.polygonOffsetUnits).toBe(FACE_POLYGON_OFFSET.units);
+    expect(FACE_POLYGON_OFFSET.units).toBeLessThan(0);
   });
 
   it('keeps left-to-right order inside the legal group and does not jump on a tie', () => {
@@ -124,6 +159,69 @@ describe('the legal outline matches the card bounds', () => {
     expect(planePointOk(1e6, 0)).toBe(false);
     expect(planePointOk(NaN, 0)).toBe(false);
   });
+
+  it('follows the fan on a sloping run, with 4px of pad after the lift', () => {
+    const n = 13;
+    const viewH = fanLayout(aspect, n).viewH;
+    const px = viewH / screenH;
+    const lift = cssPxToPlane(LEGAL_LIFT_PX, viewH, screenH);
+    const runs: { name: string; cards: number[] }[] = [
+      { name: 'left', cards: [0, 1, 2, 3, 4] },
+      { name: 'middle', cards: [5, 6, 7] },
+      { name: 'right', cards: [8, 9, 10, 11, 12] },
+      { name: 'one', cards: [12] },
+    ];
+    const center = (poly: { x: number; y: number }[]) => {
+      let x = 0, y = 0;
+      for (const p of poly) { x += p.x; y += p.y; }
+      return { x: x / poly.length, y: y / poly.length };
+    };
+    const extents = (pts: { x: number; y: number }[], ang: number) => {
+      const co = Math.cos(ang), si = Math.sin(ang);
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const p of pts) {
+        const x = p.x * co + p.y * si;
+        const y = -p.x * si + p.y * co;
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+      return { minX, minY, maxX, maxY };
+    };
+    for (const run of runs) {
+      const flags = Array.from({ length: n }, (_, i) => run.cards.includes(i));
+      const gaps = fanGapPx(flags);
+      const faces = run.cards.map((i) => {
+        const pose = handCardPlane(aspect, n, i, 0, 0, {}, gaps[i]!, screenH);
+        // The legal lift is the same screen-up shift on every card in the run.
+        return placeOnPlane(haloLocal(1, 1), pose).map((p) => ({ x: p.x, y: p.y + lift }));
+      });
+      const rect = groupOutline(faces, GROUP_PAD_PX * px, GROUP_RADIUS_PX * px);
+      expect(rect, run.name).toBeTruthy();
+      const first = center(faces[0]!);
+      const last = center(faces[faces.length - 1]!);
+      const ang = faces.length >= 2
+        ? Math.atan2(last.y - first.y, last.x - first.x)
+        : handCardPlane(aspect, n, run.cards[0]!, 0, 0, {}, gaps[run.cards[0]!]!, screenH).roll + Math.PI / 2;
+      const facePts = faces.flat();
+      const f = extents(facePts, ang);
+      const o = extents(rect!, ang);
+      for (const side of ['minX', 'maxX', 'minY', 'maxY'] as const) {
+        const extra = side.startsWith('min') ? (f[side] - o[side]) / px : (o[side] - f[side]) / px;
+        expect(extra, `${run.name} ${side}`).toBeCloseTo(GROUP_PAD_PX, 0);
+      }
+      // An upright box on the card-height axis left a corner about 29px off the lower cards.
+      // The 10px corner radius keeps a hugging box under 16px from the nearest face point.
+      let stray = 0;
+      for (const p of rect!) {
+        let near = Infinity;
+        for (const q of facePts) near = Math.min(near, Math.hypot(p.x - q.x, p.y - q.y));
+        stray = Math.max(stray, near);
+      }
+      expect(stray / px, `${run.name} stray`).toBeLessThan(16);
+    }
+  });
 });
 
 describe('a bad viewport cannot throw the hand away', () => {
@@ -208,6 +306,31 @@ describe('a bad viewport cannot throw the hand away', () => {
     const raised = raiseLocalY('legal', L.viewH, screenH, L.ch);
     expect(raised).toBeGreaterThan(0);
     expect(raised).toBeLessThan(0.2);
+  });
+
+  it('brings a playable card forward without sliding the outline off its slot', () => {
+    const n = 13;
+    const gaps = fanGapPx(Array.from({ length: n }, (_, i) => i >= 5 && i <= 7));
+    const slot = handCardPlane(aspect, n, 6, 0, 0, {}, gaps[6]!, screenH);
+    const near = handCardPlane(aspect, n, 6, 0, 0, { near: LEGAL_NEAR }, gaps[6]!, screenH);
+    const beside = handCardPlane(aspect, n, 9, 0, 0, {}, gaps[9]!, screenH);
+    expect(LEGAL_NEAR).toBe(0.02);
+    expect(slot.depth - near.depth).toBeCloseTo(LEGAL_NEAR, 6);
+    // Three fan steps (0.006) is the overlap. 0.02 clears that neighbour and stays above the 16-bit z-fight.
+    expect(near.depth).toBeLessThan(beside.depth);
+    expect(near.x).toBeCloseTo(slot.x, 6);
+    expect(near.y).toBeCloseTo(slot.y, 6);
+    const px = fanLayout(aspect, n).viewH / screenH;
+    const faces = [5, 6, 7].map((i) => placeOnPlane(haloLocal(1, 1), handCardPlane(aspect, n, i, 0, 0, { near: LEGAL_NEAR }, gaps[i]!, screenH)));
+    const rect = groupOutline(faces, GROUP_PAD_PX * px, GROUP_RADIUS_PX * px);
+    expect(rect).toBeTruthy();
+    let faceX = 0;
+    for (const face of faces) faceX += face.reduce((s, p) => s + p.x, 0) / face.length;
+    faceX /= faces.length;
+    const outlineX = rect!.reduce((s, p) => s + p.x, 0) / rect!.length;
+    expect(Math.abs((outlineX - faceX) / px)).toBeLessThan(1);
+    const slidePx = Math.abs((near.x - handCardPlane(aspect, n, 6, 0, 0, {}, 0, screenH).x) / px);
+    expect(slidePx).toBeLessThanOrEqual(8.01);
   });
 
   it('raises the end card straight up the screen instead of walking it out of the fan', () => {

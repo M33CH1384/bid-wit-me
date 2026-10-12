@@ -32,6 +32,15 @@ export function RunZoom({ cards, who, line, r }: { cards: Card[]; who: string; l
 }
 
 /**
+ * The cleared-hands sheet is a full-screen portal (scrim + dialog) on `document.body`.
+ * Table Talk and the game-over screen are also full-screen; the portal must not open over them
+ * or it eats every tap and slide on the recap.
+ */
+export function runReviewOverTable(phase: string): boolean {
+  return phase !== 'handOver' && phase !== 'gameOver';
+}
+
+/**
  * After a resolved 'Run it!': every hand the tornado cleared, labeled by player, so the table can check the claim.
  * `hands` is already in local seat order (seat 0 is the viewer, or the anchor for a spectator).
  */

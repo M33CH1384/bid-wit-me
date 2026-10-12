@@ -419,7 +419,8 @@ async function playGame(mode, label, { shots = false, speed = 'turbo', extra = {
     if (await next.count()) {
       if (!tookSummary) {
         if (shots) await shot('04-table-talk');
-        for (const id of ['talk-recap', 'talk-grid', 'react-gg', 'react-run it back', 'react-too easy', 'react-🔥', 'react-😭']) if (!(await page.getByTestId(id).count())) throw new Error(`${label}: Table Talk is missing ${id}`);
+        for (const id of ['talk-recap', 'recap-chat', 'talk-ready']) if (!(await page.getByTestId(id).count())) throw new Error(`${label}: Table Talk is missing ${id}`);
+        for (const id of ['talk-grid', 'react-gg']) if (await page.getByTestId(id).count()) throw new Error(`${label}: Table Talk still shows ${id}`);
         tookSummary = true;
       }
       await next.click(); hands++; continue;

@@ -65,11 +65,15 @@ export function buildRecord(o: { id: string; room: string; game: GameState; seat
       if (!mine) continue;
       if (typeof b === 'number') {
         st.bids++; st.bidSum += b;
-        if (mine.contractMade === true) { st.made++; st.bags += mine.bagsAdded; } else if (mine.contractMade === false) st.set++;
+        if (mine.contractMade === true) st.made++;
+        else if (mine.contractMade === false) st.set++;
       } else if (b === 'nil' || b === 'blindNil') {
         st.nilBids++;
         if (mine.nils.find((x) => x.seat === seat)?.made) st.nilMade++;
       }
+      // Side bags from scoreHand: overtricks on a make, nil tricks on a set, tricks with no contract.
+      // Books hands and "bags off" already store bagsAdded 0, so this matches the score pad.
+      st.bags += mine.bagsAdded;
       if (mine.contractMade === false) st.shotsTaken++;
       st.shotsGiven += h.sides.filter((s) => s.side !== side && s.contractMade === false).length;
       const wheel = r.partnerships ? (mine.contract >= 10 && mine.contractMade === true) || (h.bids.every((x) => x === 'books') && mine.tricks >= 10) : mine.tricks >= 10;
@@ -130,6 +134,12 @@ export function placementsOf(final: number[], winners: number[]): number[] {
 }
 
 export interface SaveMeta {
+  /** online (default) or an offline upload */
+  source?: 'online' | 'offline';
+  /** series backfill without a full hand history */
+  partial?: boolean;
+  /** idempotency key for an offline upload, already namespaced by user */
+  clientGameId?: string | null;
   /** finished (default) or abandoned before the game ended */
   endReason?: 'finished' | 'abandoned';
   /** signed-in player who left, or the host when a new game replaces this one. null on room expiry */
@@ -194,8 +204,8 @@ export async function saveRecord(db: D1Database, rec: GameRecord, rated: boolean
   const abandoned = meta.endReason === 'abandoned';
   const elo = !rated ? {} : abandoned ? leaverLoss({ ...rec, players }, cur, meta.leaverId ?? null) : eloUpdate({ ...rec, players }, placementsOf(rec.final, rec.winners), cur);
   const stmts = [
-    db.prepare('INSERT OR IGNORE INTO games (id, room, mode, kind, ended_at, hands, final, winners, names, seats, rated, tournament_id, end_reason, leaver_id, family) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(rec.id, rec.room, rec.mode, rec.kind, rec.endedAt, rec.hands, JSON.stringify(rec.final), JSON.stringify(rec.winners), JSON.stringify(rec.names), JSON.stringify(rec.seats), rated ? 1 : 0, rec.tournamentId ?? null, abandoned ? 'abandoned' : 'finished', meta.leaverId ?? null, meta.family ?? null),
+    db.prepare('INSERT OR IGNORE INTO games (id, room, mode, kind, ended_at, hands, final, winners, names, seats, rated, tournament_id, source, client_game_id, partial, end_reason, leaver_id, family) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(rec.id, rec.room, rec.mode, rec.kind, rec.endedAt, rec.hands, JSON.stringify(rec.final), JSON.stringify(rec.winners), JSON.stringify(rec.names), JSON.stringify(rec.seats), rated ? 1 : 0, rec.tournamentId ?? null, meta.source ?? 'online', meta.clientGameId ?? null, meta.partial ? 1 : 0, abandoned ? 'abandoned' : 'finished', meta.leaverId ?? null, meta.family ?? null),
   ];
   for (const p of players) {
     const e = elo[p.uid];

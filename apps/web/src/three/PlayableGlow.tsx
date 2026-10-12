@@ -215,7 +215,9 @@ export default function PlayableGlow({ runs, handNames, quality }: Props) {
     let stampNow = '';
     const cam = camera as import('three').PerspectiveCamera;
     const viewH = 2 * Math.tan(((cam.fov ?? 50) * Math.PI) / 360);
-    const px = viewH / Math.max(1, size.height);
+    // A 0-height canvas used to turn 4px of padding into several screen-heights (max(1, height) = 1).
+    const screenH = size.height >= 32 ? size.height : 0;
+    const px = screenH > 0 ? viewH / screenH : 0;
     const crispParts: Float32Array[] = [];
     const bloomPos: Float32Array[] = [];
     const bloomUv: Float32Array[] = [];
@@ -224,7 +226,7 @@ export default function PlayableGlow({ runs, handNames, quality }: Props) {
     const shineAlong: Float32Array[] = [];
     const shineSpan: Float32Array[] = [];
     let glowPeak = 0;
-    for (const run of rs) {
+    for (const run of px > 0 ? rs : []) {
       const faces: Pt[][] = [];
       let runSelected = false;
       for (const anchor of run) {

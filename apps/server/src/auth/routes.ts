@@ -78,7 +78,7 @@ function withParams(path: string, params: Record<string, string>): string {
   return u.pathname + u.search;
 }
 /** CSRF: POSTs must come from the site (exact public origin or an allowed dev origin). */
-function fromSite(req: Request, env: AuthEnv, url: URL): boolean {
+export function fromSite(req: Request, env: AuthEnv, url: URL): boolean {
   const o = req.headers.get('Origin');
   if (!o) return false;
   if (o === publicOrigin(env, url)) return true;

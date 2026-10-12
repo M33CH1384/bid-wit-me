@@ -1,5 +1,5 @@
 import { BufferAttribute, type BufferGeometry, ExtrudeGeometry, Path, Shape, ShapeGeometry } from 'three';
-import { CH, CR, CT, CW, FELT, RAIL } from './layout';
+import { CH, CR, CT, CW, FACE_CAP_GAP, FELT, RAIL } from './layout';
 
 function rr(shape: Shape | Path, w: number, h: number, r: number, cx = 0, cy = 0, reverse = false) {
   const x = cx - w / 2, y = cy - h / 2;
@@ -52,11 +52,11 @@ export function cardGeometry() {
   body.translate(0, 0, -CT / 2);
   const front = new ShapeGeometry(shape, 4);
   remapUV(front, CW, CH);
-  front.translate(0, 0, CT / 2 + 0.0002);
+  front.translate(0, 0, CT / 2 + FACE_CAP_GAP);
   const back = new ShapeGeometry(shape, 4);
   remapUV(back, CW, CH, true);
   back.rotateY(Math.PI);
-  back.translate(0, 0, -CT / 2 - 0.0002);
+  back.translate(0, 0, -CT / 2 - FACE_CAP_GAP);
   cardGeo = { body, front, back };
   return cardGeo;
 }

@@ -656,6 +656,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 /* Banner for the 3.6s 3D blast: in after a short beat, gone with the explosion. */
 .nuke-banner { position: absolute; left: 50%; top: 18%; z-index: 3; transform: translateX(-50%); text-align: center; pointer-events: auto; cursor: pointer; animation: nb-in 3.3s cubic-bezier(.2,.8,.2,1) .45s both; }
 .nuke-banner.calm { animation-delay: .05s; }
+.nuke-banner.driven, .nuke-banner.driven * { pointer-events: none; }
 .nuke-banner.driven { animation: none; opacity: 0; }
 .nuke-banner.driven .nb-sub { letter-spacing: .04em; text-transform: none; font-size: clamp(10px, 2.7vw, 15px); }
 .nuke-banner .nb-title { position: relative; font: 900 clamp(40px, 9vw, 104px)/1 var(--display, 'Bebas Neue', Impact, sans-serif); letter-spacing: .14em; white-space: nowrap;
@@ -695,22 +696,24 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 @media (prefers-reduced-motion: reduce) { .nuke-flash { display: none; } .table-screen[class*="jolt"] > * { animation: none !important; } }
 
 /* ------------------------------------------------------------- Table Talk intermission */
-.tt-backdrop { position: fixed; inset: 0; z-index: 18; display: grid; place-items: center; padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); background: radial-gradient(ellipse at center, rgba(20,8,40,.55), rgba(6,3,12,.82)); animation: fade-up .35s ease both; }
-.tt { width: min(1040px, 100%); max-height: 100%; display: flex; flex-direction: column; --slant: 16px; overflow: hidden; background: linear-gradient(160deg, rgba(42,18,80,.95), rgba(14,7,26,.96)); box-sizing: border-box; }
+.tt-backdrop { position: fixed; inset: 0; z-index: 18; display: flex; align-items: stretch; justify-content: center; padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); background: radial-gradient(ellipse at center, rgba(20,8,40,.55), rgba(6,3,12,.82)); animation: fade-up .35s ease both; }
+.tt { width: min(560px, 100%); max-height: 100%; align-self: stretch; display: flex; flex-direction: column; --slant: 16px; overflow: hidden; background: linear-gradient(160deg, rgba(42,18,80,.95), rgba(14,7,26,.96)); box-sizing: border-box; }
 .tt * { box-sizing: border-box; min-width: 0; }
-.tt-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px 8px; border-bottom: 1px solid rgba(185,128,255,.25); font-family: var(--display); font-weight: 800; letter-spacing: .1em; }
+.tt-head { display: flex; align-items: center; gap: 10px; padding: 12px 112px 10px 16px; border-bottom: 1px solid rgba(185,128,255,.25); font-family: var(--display); font-weight: 800; letter-spacing: .1em; flex: none; }
 .tt-live { display: flex; align-items: center; gap: 6px; color: #fff; background: var(--red); padding: 2px 10px 2px 8px; font-size: 13px; clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%); }
 .tt-live .live-dot { background: #fff; box-shadow: 0 0 6px #fff; }
-.tt-title { color: var(--gold); font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tt-title { color: var(--gold); font-size: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tt-chat-btn { position: fixed; z-index: 1025; top: calc(8px + env(safe-area-inset-top)); right: calc(56px + env(safe-area-inset-right)); width: 40px; height: 40px; border: 0; border-radius: 12px; font-size: 18px; line-height: 1; color: #fff; background: rgba(155,92,255,.92); box-shadow: 0 6px 16px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.25); display: grid; place-items: center; pointer-events: auto; }
+.tt-chat-btn.on { background: rgba(40,24,64,.95); }
+.tt-chat-btn .unread { top: -6px; right: -6px; }
 .tt-count { margin-left: auto; font-size: 14px; color: var(--muted); white-space: nowrap; }
 .tt-count.hot { color: var(--red); }
-.tt-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 14px; padding: 12px 16px; }
-.tt-left, .tt-right { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.tt-recap { display: flex; flex-direction: column; gap: 8px; }
-.tt-team { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name total" "line total" "players total" "bar bar"; align-items: center; gap: 4px 14px; padding: 10px 12px; background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px rgba(185,128,255,.2); clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%); }
+.tt-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; justify-content: safe center; align-items: center; gap: 16px; padding: 22px 16px 26px; }
+.tt-recap { display: flex; flex-direction: column; justify-content: center; gap: 16px; width: min(520px, 100%); }
+.tt-team { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name total" "line total" "players total" "bar bar"; align-items: center; gap: 8px 16px; padding: 18px 16px 16px; background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px rgba(185,128,255,.2); clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); }
 .tt-team.mine { background: rgba(245,197,66,.08); box-shadow: inset 3px 0 0 var(--gold), inset 0 0 0 1px rgba(245,197,66,.25); }
 .tt-team-name { grid-area: name; display: flex; flex-direction: column; gap: 4px; }
-.tt-team-name b { font-family: var(--display); font-size: 17px; letter-spacing: .04em; overflow-wrap: anywhere; }
+.tt-team-name b { font-family: var(--display); font-size: 22px; letter-spacing: .04em; overflow-wrap: anywhere; }
 .tt-badges { display: flex; flex-wrap: wrap; gap: 4px; }
 .tt-verdict { font-family: var(--display); font-weight: 800; font-size: 11px; letter-spacing: .08em; padding: 1px 6px; border-radius: 3px; white-space: nowrap; }
 .tt-verdict.ok { color: #0d2a12; background: #7dff9b; }
@@ -721,22 +724,27 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-stat small { font-family: var(--display); font-weight: 700; font-size: 10px; letter-spacing: .12em; color: var(--muted); }
 .tt-stat b { font-family: var(--display); font-size: 24px; font-weight: 800; }
 /* "Bid 8 · Took 6 · SET · −80": the score pad's words, one readable line */
-.tt-line { grid-area: line; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; font-family: var(--display); font-weight: 700; font-size: 17px; letter-spacing: .02em; }
+.tt-line { grid-area: line; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; font-family: var(--display); font-weight: 700; font-size: 18px; letter-spacing: .02em; }
 .tt-line i { font-style: normal; color: var(--muted); }
 .tt-line .rchip { font-size: 12px; }
 .tt-line b { font-weight: 800; font-size: 19px; }
 .tt-line b.pos { color: #8dffab; } .tt-line b.neg { color: #ff9db0; }
-.tt-team ul.tt-players { grid-area: players; list-style: none; margin: 0; padding: 0; justify-content: flex-start; gap: 0 12px; font-size: 13px; }
+.tt-team ul.tt-players { grid-area: players; list-style: none; margin: 0; padding: 0; justify-content: flex-start; gap: 2px 12px; font-size: 13px; }
 .tt-players b { color: #fff; font-weight: 700; }
 .tt-bags { font-size: 11px; color: var(--muted); }
 .rchip.bags { background: rgba(245,197,66,.14); color: var(--gold); }
 .tt-stat.total { grid-area: total; min-width: 64px; }
-.tt-stat.total b { font-size: 34px; color: #fff; text-shadow: 0 0 14px rgba(185,128,255,.8); }
+.tt-stat.total b { font-size: 46px; color: #fff; text-shadow: 0 0 14px rgba(185,128,255,.8); }
 .tt-team.mine .tt-stat.total b { color: var(--gold); text-shadow: 0 0 14px rgba(245,197,66,.7); }
 .tt-players { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 6px; font-size: 11px; color: var(--muted); }
 .nil-tag { font-style: normal; font-weight: 800; font-size: 10px; padding: 0 3px; border-radius: 2px; background: var(--purple); color: #fff; }
 .tt-team .tt-bar { grid-area: bar; }
-.tt-bar { position: relative; height: 8px; background: rgba(255,255,255,.08); border-radius: 4px; overflow: hidden; margin-top: 4px; }
+.tt-bar { position: relative; height: 12px; background: rgba(255,255,255,.08); border-radius: 6px; overflow: hidden; margin-top: 6px; }
+.tt-recap.crowded { gap: 10px; }
+.tt-recap.crowded .tt-team { padding: 12px 14px; gap: 4px 12px; }
+.tt-recap.crowded .tt-team-name b { font-size: 18px; }
+.tt-recap.crowded .tt-stat.total b { font-size: 34px; }
+.tt-recap.crowded .tt-line { font-size: 16px; }
 .tt-bar i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, var(--purple), var(--purple-hot)); border-radius: 4px; transition: width 1s ease; }
 .tt-team.mine .tt-bar i { background: linear-gradient(90deg, #c9961c, var(--gold)); }
 .tt-bar small { position: absolute; right: 4px; top: -1px; font-size: 8px; line-height: 10px; color: rgba(255,255,255,.7); }
@@ -775,29 +783,30 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-foot .primary { min-width: 160px; }
 .tt-foot > button:first-child { margin-right: auto; }
 @media (max-width: 760px), (max-height: 520px) and (max-width: 900px) {
-  .tt-body { grid-template-columns: minmax(0, 1fr); }
+  .tt-body { padding: 18px 12px 22px; }
 }
 /* landscape phones: two columns but compact */
 @media (max-height: 520px) and (min-width: 600px) {
-  .tt-body { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 10px; padding: 8px 12px; }
-  .tt-head { padding: 6px 12px; } .tt-foot { padding: 6px 12px; }
+  .tt-body { gap: 10px; padding: 8px 12px; justify-content: safe center; }
+  .tt-head { padding: 6px 108px 6px 12px; } .tt-foot { padding: 6px 12px; }
   .tt-deal { display: none; }
   .tt-grid { grid-template-columns: repeat(4, 1fr); }
   .tt-tile { aspect-ratio: 1; }
   .tt-chat { min-height: 120px; }
 }
-/* narrow phones: each team stacks as a card — name on top, stats in a row, nothing overflows */
+/* narrow phones: the two team cards stay large; cutthroat (3–4 cards) tightens so they still fit */
 @media (max-width: 480px) {
-  .tt-team { gap: 4px 10px; }
-  .tt-line { font-size: 16px; }
+  .tt-team { gap: 6px 12px; padding: 16px 14px 14px; }
+  .tt-line { font-size: 17px; }
   .tt-stat b { font-size: 22px; }
   .tt-stat.total { min-width: 0; }
-  .tt-stat.total b { font-size: 30px; }
-  .tt-body { padding: 10px; gap: 10px; }
-  .tt-head { padding: 8px 10px; gap: 6px; } .tt-title { font-size: 15px; }
+  .tt-stat.total b { font-size: 42px; }
+  .tt-team-name b { font-size: 20px; }
+  .tt-body { padding: 16px 12px 20px; gap: 14px; }
+  .tt-head { padding: 10px 108px 8px 12px; gap: 8px; } .tt-title { font-size: 17px; }
   .tt-foot { padding: 8px 10px; } .tt-foot .primary { min-width: 0; flex: 1; }
-  .tt-deal { height: 70px; }
-  .tt-chat .chat-list { max-height: 130px; }
+  .tt-recap.crowded .tt-stat.total b { font-size: 30px; }
+  .tt-recap.crowded .tt-team { padding: 10px 12px; }
 }
 /* portrait phones: the scorebug must fit 4-digit scores like "-155" and two-digit bags (quality toggle lives in the gear menu) */
 @media (orientation: portrait) and (max-width: 600px) {
@@ -825,18 +834,21 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
   .bug-meta > .learn-badge { min-width: 0; }
   .bug-books { display: none; } /* the hand-1 rule is in the center banner and the score pad */
 }
-.tt-head { padding-right: 64px; }
+.tt-run { margin: 2px 0 4px; align-self: center; width: min(520px, 100%); }
+.tt-run-show { align-self: center; font-weight: 800; }
 .tt-backdrop ~ .modal-backdrop { z-index: 50; }
 .tt-foot.bid-row { margin: 0; flex-wrap: nowrap; }
-@media (max-width: 760px) {
-  .tt-body { display: flex; flex-direction: column; }
-  .tt-left, .tt-right { display: contents; }
-  .tt-recap { order: 1; } .tt-callouts { order: 2; } .tt-grid { order: 3; } .tt-mics { order: 4; } .tt-chat { order: 5; flex: none; } .tt-deal { order: 6; flex: none; }
-  .tt-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
-  .tt-tile { aspect-ratio: 3 / 4; }
-  .tt-name { font-size: 10px; left: 3px; bottom: 3px; padding: 0 4px; }
-  .tt-avatar { width: 64%; font-size: 22px; }
+.chat.glass.slant.recap-chat {
+  position: fixed; z-index: 1045; left: 0; right: 0; bottom: 0; top: auto;
+  width: auto; height: min(68dvh, calc(100dvh - 96px)); max-height: calc(100dvh - 96px);
+  border-radius: 18px 18px 0 0; clip-path: none; --slant: 0;
+  display: none; flex-direction: column; filter: none; pointer-events: auto;
+  background: rgba(18, 9, 32, .98); box-shadow: 0 -16px 40px rgba(0,0,0,.55);
 }
+.chat.glass.slant.recap-chat.open { display: flex; }
+.chat.glass.slant.recap-chat::before { display: none; }
+.chat.recap-chat header .sheet-x { position: static; width: 32px; height: 32px; margin-left: 8px; flex: none; }
+.chat.recap-chat .chat-list { min-height: 120px; }
 /* ------------------------------------------------------------- modal stacking
  * Modals (Table Talk, game over, score pad, leave confirm) sit above everything on the table: name plates and video
  * bubbles (drei <Html>, zIndexRange [5,0] inside .badge-layer), chat, last trick, controls. Behind an open modal the
@@ -845,7 +857,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-backdrop ~ .modal-backdrop { z-index: 1010; }
 .hype-layer { z-index: 1100; }
 .sound-dock { z-index: 1050; }
-.table-screen.modal-open > :not(.modal-backdrop):not(.tt-backdrop):not(.hype-layer):not(.toasts):not(.badge-unlock):not(.victory-screen) {
+.table-screen.modal-open > :not(.modal-backdrop):not(.tt-backdrop):not(.hype-layer):not(.toasts):not(.badge-unlock):not(.victory-screen):not(.recap-chat) {
   filter: blur(3px) brightness(.55) saturate(.8); pointer-events: none; transition: filter .25s ease;
 }
 .table-screen.modal-open .modal-backdrop { background: rgba(6,3,12,.35); }
@@ -958,7 +970,9 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .wiz-right .icon-btn.gear { width: 46px; height: 46px; font-size: 21px; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
 .sound-dock.slotted { top: var(--dock-top) !important; right: var(--dock-right) !important; }
 .sound-dock.slotted .dock-btn { width: var(--dock-w) !important; height: var(--dock-h) !important; }
-.sound-dock.slotted.in-bug .dock-btn { background: var(--glass); box-shadow: inset 0 0 0 1px rgba(185,128,255,.35); clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
+/* square, top of the scorebug slot: the slot's full height covered the recap's Save button */
+.sound-dock.slotted.in-bug { width: 40px; height: 40px; }
+.sound-dock.slotted.in-bug .dock-btn { width: 40px !important; height: 40px !important; background: var(--glass); box-shadow: inset 0 0 0 1px rgba(185,128,255,.35); clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
 .sound-dock.slotted.in-bug .dock-btn { font-size: 16px; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
 .table-screen.short .sound-dock.slotted.in-bug .dock-btn { font-size: 14px; }
 
