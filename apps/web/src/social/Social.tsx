@@ -175,20 +175,15 @@ function SocialPanel() {
 function AloneEmpty() {
   const s = useSocial();
   const shareCode = async () => {
-    if (s.myTable) { await shareLink(inviteLink(s.myTable.code), `Pull up to my Spades table on Bid Wit Me 🃏 Code ${s.myTable.code}`); return; }
-    try {
-      const code = await createTable(serverUrl());
-      sessionStorage.setItem(`bwm.created.${code}`, '1');
-      await shareLink(inviteLink(code), `Pull up to my Spades table on Bid Wit Me 🃏 Code ${code}`);
-      social.close(); navigate(`/t/${code}`);
-    } catch { social.toast("Couldn't create a table. Try again.", 'error'); }
+    if (s.myTable) await shareLink(inviteLink(s.myTable.code), `Pull up to my Spades table on Bid Wit Me 🃏 Code ${s.myTable.code}`);
   };
   return (
     <div className="soc-alone" data-testid="soc-alone">
       <span className="soc-alone-ic" aria-hidden>🃏</span>
       <p><b>It's just you right now.</b><br />Bring your people to the table.</p>
-      <button type="button" className="primary" data-testid="alone-invite" onClick={() => void shareLink(location.origin, 'Come play Spades with me on Bid Wit Me 🃏')}>Invite friends</button>
-      <button type="button" data-testid="alone-share-code" onClick={() => void shareCode()}>{s.myTable ? `Share table code ${s.myTable.code}` : 'Share table code'}</button>
+      {s.myTable
+        ? <button type="button" className="primary" data-testid="alone-share-code" onClick={() => void shareCode()}>Share table code {s.myTable.code}</button>
+        : <button type="button" className="primary" data-testid="alone-invite" onClick={() => void shareLink(location.origin, 'Come play Spades with me on Bid Wit Me 🃏')}>Invite friends</button>}
     </div>
   );
 }
