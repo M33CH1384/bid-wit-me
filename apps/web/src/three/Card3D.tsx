@@ -3,12 +3,11 @@ import { memo, useLayoutEffect, useMemo, useRef } from 'react';
 import { Color, type Group, type Material, type Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Quaternion, type Texture, Vector3 } from 'three';
 import { cardGeometry } from './geometry';
 import { ILLEGAL_COLOR, RAISE_S, applyFaceDepthBias, cardMeshPaint, liftEase, screenRaise } from './handLift';
-import JokerAura from './JokerAura';
 import { CT } from './layout';
 import type { Xform } from './layout';
 import { type Sfx, sound } from '../audio';
 import { fireCue, fx } from '../fx';
-import { getBurst, type JokerKind } from '../jokerFx';
+import { getBurst } from '../jokerFx';
 import { SWEEP_MS, canvasOwnsBlast, cardBlow, jokerCrush, jokerPop } from '../nukeBlast';
 import { restingFlightWait } from '../trickTiming';
 
@@ -46,12 +45,9 @@ interface Props {
   sfxLand?: string; // comma-separated Sfx names, e.g. 'play,cut'
   /** how the nuke's blast treats this card: table cards are blown outward; hand cards only in Full Nuke */
   blast?: 'table' | 'hand';
-  /** Joker sitting in an open trick: radioactive rim behind the face (Big = green, Little = purple). */
-  jokerAura?: { kind: JokerKind; cardsAfter: number };
   inTrick?: boolean;
   /** The card's id when it is face-up ('BJ' / 'LJ' / a rank). */
   played?: string | null;
-  reduceMotion?: boolean;
 }
 
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
@@ -76,7 +72,7 @@ function withSaturation<M extends MeshStandardMaterial>(m: M): M & { userData: {
   return m as M & { userData: { sat: { value: number } } };
 }
 
-function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, raise = 0, roll = 0, order = 0, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand, blast = 'table', jokerAura, inTrick, played, reduceMotion }: Props) {
+function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, raise = 0, roll = 0, order = 0, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand, blast = 'table', inTrick, played }: Props) {
   const ref = useRef<Group>(null);
   const lift = useRef<Group>(null);
   const inner = useRef<Group>(null);
@@ -104,7 +100,6 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
 
   // Your turn: cards you can't play sit at 55% brightness (still readable); playable cards stay at full colour.
   // Their shared gold outline is PlayableGlow, not a per-card edge. This backing is a tip mark.
-  // The joker pulse is JokerAura, behind the face.
   const glowMat = useMemo(() => new MeshBasicMaterial({ color: '#f5c542', transparent: true, opacity: 0, depthWrite: false, toneMapped: false }), []);
   const edge = useMemo(() => edgeMat.clone(), []);
   // The root group keeps `order` for taps. Child groups reset Three.js groupOrder, so each mesh
@@ -129,7 +124,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       for (const m of list) m.depthTest = paint.depthTest;
     });
     invalidate();
-  }, [order, face, jokerAura, glow, frontMat, backMat, glowMat, invalidate]);
+  }, [order, face, glow, frontMat, backMat, glowMat, invalidate]);
   const look = useRef({ target: new Color(1, 1, 1), glow: 0, sat: 1 });
   const burstFx = useRef({ on: false });
   const burstScratch = useRef(new Vector3());
@@ -262,7 +257,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
         m.opacity = op;
       }
     };
-    const popNode = () => (inner.current?.getObjectByName('joker-beat') as Group | undefined) ?? inner.current;
+    const popNode = () => inner.current;
     const restore = () => {
       setOp(1);
       st.on = false;
@@ -331,7 +326,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     const notePos = () => {
       if (!name || (fx.warp === null && !getBurst())) return;
       const bag = ((window as unknown as { __bwmCardPos?: Record<string, { x: number; z: number; op: number; pop: number | null }> }).__bwmCardPos ??= {});
-      const beat = inner.current?.getObjectByName('joker-beat') ?? inner.current;
+      const beat = inner.current;
       bag[name] = {
         x: Math.round(g.position.x * 1000) / 1000,
         z: Math.round(g.position.z * 1000) / 1000,
@@ -459,21 +454,10 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     >
       <group ref={lift} name={name}>
       <group ref={inner}>
-        {jokerAura ? (
-          <JokerAura kind={jokerAura.kind} cardsAfter={jokerAura.cardsAfter} reduceMotion={reduceMotion}>
-            <mesh geometry={geo.body} material={edge} castShadow={castShadow} />
-            <mesh geometry={geo.front} material={frontMat} />
-            <mesh geometry={geo.back} material={backMat} />
-            {face && <mesh geometry={geo.front} material={glowMat} position={[0, 0, -CT - 0.003]} scale={[1.09, 1.065, 1]} visible={glowMat.opacity > 0.01 || !!glow} renderOrder={-1} />}
-          </JokerAura>
-        ) : (
-          <>
-            <mesh geometry={geo.body} material={edge} castShadow={castShadow} />
-            <mesh geometry={geo.front} material={frontMat} />
-            <mesh geometry={geo.back} material={backMat} />
-            {face && <mesh geometry={geo.front} material={glowMat} position={[0, 0, -CT - 0.003]} scale={[1.09, 1.065, 1]} visible={glowMat.opacity > 0.01 || !!glow} renderOrder={-1} />}
-          </>
-        )}
+        <mesh geometry={geo.body} material={edge} castShadow={castShadow} />
+        <mesh geometry={geo.front} material={frontMat} />
+        <mesh geometry={geo.back} material={backMat} />
+        {face && <mesh geometry={geo.front} material={glowMat} position={[0, 0, -CT - 0.003]} scale={[1.09, 1.065, 1]} visible={glowMat.opacity > 0.01 || !!glow} renderOrder={-1} />}
       </group>
       </group>
     </group>
