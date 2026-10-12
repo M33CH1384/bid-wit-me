@@ -1566,10 +1566,18 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .run-hand > b { flex: 0 0 72px; width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-family: var(--display); letter-spacing: .02em; }
 .run-hand.claimer > b { color: var(--gold); }
 .run-hand-cards { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.run-card { position: relative; display: block; line-height: 0; }
 .run-hand-cards img { width: 52px; height: auto; aspect-ratio: 240 / 336; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,.45); }
+.run-card.played img { filter: saturate(0.35) brightness(0.78); }
+.run-card.played i {
+  position: absolute; left: 2px; right: 2px; bottom: 4px; z-index: 1;
+  font-style: normal; font-weight: 800; font-size: 7px; letter-spacing: .04em; line-height: 12px;
+  text-align: center; text-transform: uppercase; color: #1a1024; background: var(--gold); border-radius: 2px; pointer-events: none;
+}
 @media (max-width: 400px) {
   .run-hand > b { flex-basis: 64px; width: 64px; font-size: 12px; }
   .run-hand-cards img { width: 48px; }
+  .run-card.played i { font-size: 7px; letter-spacing: .02em; }
 }
 
 /* score pad v2 */

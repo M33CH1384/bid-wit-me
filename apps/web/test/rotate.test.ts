@@ -87,7 +87,7 @@ describe('online seat rotation', () => {
     for (let me = 0; me < 4; me++) expect(rotateView(viewFor(st, me)).view.runHands).toBeUndefined();
     expect(rotateView(spectatorView(st, 0)).view.runHands).toBeUndefined();
     const after = applyAction(st, { type: 'runIt', seat: 0 });
-    const sort = (xs: readonly Card[]) => [...xs].sort();
+    const sort = (xs: readonly { card: Card; played?: true }[]) => xs.map((x) => `${x.card}${x.played ? '*' : ''}`).sort();
     for (let me = 0; me < 4; me++) {
       const { view } = rotateView(viewFor(after, me));
       const real = viewFor(after, me).runHands!;
@@ -96,5 +96,27 @@ describe('online seat rotation', () => {
     }
     const watch = rotateView(spectatorView(after, 0)).view.runHands!;
     expect(watch.map(sort)).toEqual(viewFor(after, 0).runHands!.map(sort));
+  });
+
+  it('rotates a mid-trick Run it! recap, played flags included', () => {
+    const rules = makeRules('cutthroat', { playerCount: 4 });
+    const dealt = newGame(rules, 'rot-run-mid');
+    const hands: Card[][] = [['BJ', 'LJ', '2D'], ['5C', '6C'], ['7C', '8C'], ['9C', 'TC', 'JC']];
+    const st: GameState = {
+      ...dealt, phase: 'playing', hands, bids: [2, 2, 2, 2],
+      tricks: Array.from({ length: 10 }, () => ({ leader: 0, plays: [], winner: 1 })),
+      tricksWon: [0, 0, 0, 0], turn: 3, trick: { leader: 1, plays: [{ seat: 1, card: '3H' }, { seat: 2, card: '4D' }], winner: null }, spadesBroken: true,
+    };
+    const after = applyAction(st, { type: 'runIt', seat: 0 });
+    const sig = (xs: readonly { card: Card; played?: true }[]) => xs.map((x) => `${x.card}${x.played ? '*' : ''}`).sort();
+    for (let me = 0; me < 4; me++) {
+      const { view } = rotateView(viewFor(after, me));
+      const real = viewFor(after, me).runHands!;
+      for (let local = 0; local < 4; local++) expect(sig(view.runHands![local]!)).toEqual(sig(real[(local + me) % 4]!));
+    }
+    const you = rotateView(viewFor(after, 0)).view.runHands!;
+    expect(you.map((h) => h.length)).toEqual([3, 3, 3, 3]);
+    expect(you[1]!.some((c) => c.card === '3H' && c.played)).toBe(true);
+    expect(you[2]!.some((c) => c.card === '4D' && c.played)).toBe(true);
   });
 });

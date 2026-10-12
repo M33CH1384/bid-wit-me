@@ -903,7 +903,7 @@ describe("'Run it!' any time (Release 10)", () => {
 });
 
 describe('Run it! cleared hands are sent only after the claim resolves', () => {
-  const sorted = (hands: readonly (readonly string[])[]) => hands.map((h) => [...h].sort());
+  const sorted = (hands: readonly (readonly (string | { card: string })[])[]) => hands.map((h) => h.map((c) => (typeof c === 'string' ? c : c.card)).sort());
 
   function table(mode: 'joker' | 'cutthroat', playerCount: 3 | 4) {
     const env = new FakeEnv(undefined, FAST);
@@ -919,15 +919,19 @@ describe('Run it! cleared hands are sent only after the claim resolves', () => {
   }
 
   /** Rewrite the live hand to a late spot and broadcast that state, before anyone claims. */
-  function plant(env: FakeEnv, hands: string[][]) {
+  function plant(env: FakeEnv, hands: string[][], trick?: { leader: number; plays: { seat: number; card: string }[] }) {
     const d = env.room.data;
     const g = d.game!;
     const n = hands.length;
-    const left = hands[0]!.length;
+    const plays = trick?.plays ?? [];
+    const leader = trick?.leader ?? 0;
+    // Cards still in the longest hand are the tricks left, including the one in progress.
+    const left = Math.max(...hands.map((h) => h.length));
     d.game = {
       ...g, phase: 'playing', hands: hands as never, bids: Array(n).fill(2),
       tricks: Array.from({ length: handSize(g.rules) - left }, () => ({ leader: 0, plays: [], winner: 1 })),
-      tricksWon: Array(n).fill(0), turn: 0, trick: { leader: 0, plays: [], winner: null }, spadesBroken: true,
+      tricksWon: Array(n).fill(0), turn: (leader + plays.length) % n,
+      trick: { leader, plays, winner: null }, spadesBroken: true,
     } as never;
     d.seq = (d.seq ?? 0) + 1;
     env.send('a', { t: 'media', media: { cam: false, mic: false } });
@@ -980,6 +984,30 @@ describe('Run it! cleared hands are sent only after the claim resolves', () => {
       }
     });
   }
+
+  it('Cutthroat mid-trick: table cards are marked played after the claim, and unseen cards stay hidden before it', () => {
+    const { env, cids } = table('cutthroat', 4);
+    const hands = [['BJ', 'LJ', '2D'], ['5C', '6C'], ['7C', '8C'], ['9C', 'TC', 'JC']];
+    plant(env, hands, { leader: 1, plays: [{ seat: 1, card: '3H' }, { seat: 2, card: '4D' }] });
+    expect(env.last('a', 'state')!.view!.canRunIt).toBe(true);
+    for (const [i, cid] of cids.entries()) assertHidden(env, cid, hands, i);
+    assertHidden(env, 's', hands, null);
+    const before = wire(env.last('b', 'state'));
+    expect(before.includes('"runHands"')).toBe(false);
+    expect(before.includes('"3H"')).toBe(true);
+    expect(before.includes('"BJ"')).toBe(false);
+
+    env.send('a', { t: 'act', action: { type: 'runIt' }, seq: env.room.data.seq });
+    expect(env.room.data.game!.phase === 'handOver' || env.room.data.game!.phase === 'gameOver').toBe(true);
+    for (const cid of [...cids, 's']) {
+      const rows = env.last(cid, 'state')!.view!.runHands!;
+      expect(rows.map((h) => h.length), cid).toEqual([3, 3, 3, 3]);
+      const marked = rows.flatMap((h, seat) => h.filter((c) => c.played).map((c) => `${seat}:${c.card}`));
+      expect(marked, cid).toEqual(['1:3H', '2:4D']);
+      expect(sorted([rows[0]!]), cid).toEqual([['2D', 'BJ', 'LJ']]);
+      expect(rows[0]!.every((c) => !c.played), cid).toBe(true);
+    }
+  });
 });
 
 describe('rule lock (house rules locked for the game)', () => {

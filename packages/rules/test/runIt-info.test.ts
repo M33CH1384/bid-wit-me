@@ -273,6 +273,36 @@ describe('Run it! hides the layout', () => {
   });
 });
 
+describe('Run it! mid-trick claim validation', () => {
+  it('agrees with a deal-enumerating search when two cards are already on the table', () => {
+    const pool = ['AS', 'KS', 'QS', 'JS', 'AH', 'KH', 'QH', 'JH', 'AD', 'KD', '2D', '5S', '9C', '3H', '4C', '7D', '8C', '6H', 'BJ', 'LJ'] as Card[];
+    const layouts: { rules: TableRules; n: number; seed: number }[] = [];
+    for (let seed = 1; seed <= 8; seed++) layouts.push({ rules: joker, n: 4, seed });
+    for (let seed = 1; seed <= 4; seed++) layouts.push({ rules: cut3, n: 3, seed: seed + 20 });
+    for (const c of layouts) {
+      const deck = shuffle(pool.filter((card) => c.rules.deck === 'joker54' || (card !== 'BJ' && card !== 'LJ')), c.seed);
+      const hands: Card[][] = Array.from({ length: c.n }, () => []);
+      deck.slice(0, c.n * 2).forEach((card, i) => hands[i % c.n]!.push(card));
+      // Two cards down, neither of them the claimer's, so seat 0 still holds two cards.
+      const leader = 1;
+      const table = [hands[leader]!.pop()!, hands[(leader + 1) % c.n]!.pop()!];
+      const st = playing(c.rules, hands, leader, table, true);
+      expect(st.trick.plays).toHaveLength(2);
+      expect(st.hands[0]).toHaveLength(2);
+      const got = canRunIt(st, 0);
+      expect(got, JSON.stringify({ seed: c.seed, n: c.n, hands: st.hands, table })).toBe(oracle(st, 0));
+      if (got) {
+        const after = applyAction(st, { type: 'runIt', seat: 0 });
+        expect(after.tricks.slice(st.tricks.length).every((t) => t.winner === 0)).toBe(true);
+        const rows = viewFor(after, 0).runHands!;
+        expect(rows.every((h) => h.length === rows[0]!.length)).toBe(true);
+        const marked = rows.flat().filter((x) => x.played).map((x) => x.card).sort();
+        expect(marked).toEqual([...table].sort());
+      }
+    }
+  });
+});
+
 describe('Run it! is proved once per state and never for a spectator', () => {
   it('does not search on long hands, searches each short seat once, and spectators add nothing', () => {
     resetRunItProofs();
