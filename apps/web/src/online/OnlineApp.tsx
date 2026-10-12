@@ -11,7 +11,7 @@ import { codeFromPath, navigate } from './nav';
 import OnlineTable from './OnlineTable';
 import { preloadTable } from '../three/preload';
 import { useConn } from './useOnline';
-import { social } from '../social/store';
+import { STATS_OFF_LABEL, social } from '../social/store';
 import { usePresence } from '../social/Social';
 import { VideoMesh } from './video';
 import './online.css';
@@ -199,6 +199,7 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
       <div className="setup online-entry">
         <p className="muted">{cs.status === 'reconnecting' ? `Can't reach table ${code}. Retrying…` : `Joining table ${code}…`}</p>
         <button type="button" className="link" onClick={() => navigate('/online')}>← Back</button>
+        <StatsOff conn={conn} on={cs.statsOff} />
       </div>
     );
   }
@@ -224,7 +225,13 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
           onLeave={() => leave()}
         />
       )}
+      <StatsOff conn={conn} on={cs.statsOff} />
     </>
   );
+}
+
+function StatsOff({ conn, on }: { conn: TableConnection; on: boolean }) {
+  if (!on) return null;
+  return <button type="button" className="stats-off-chip" data-testid="stats-off" onClick={() => conn.relinkStats()}>{STATS_OFF_LABEL}</button>;
 }
 

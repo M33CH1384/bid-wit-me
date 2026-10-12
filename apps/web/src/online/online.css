@@ -99,6 +99,12 @@
   background: rgba(120,20,40,.9); color: #fff; font-family: var(--display); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; font-size: 14px;
 }
 .conn-banner.subtle { background: rgba(14,8,26,.85); color: var(--muted); top: auto; bottom: calc(10px + env(safe-area-inset-bottom)); }
+.stats-off-chip {
+  position: fixed; z-index: 50; top: calc(8px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+  max-width: calc(100vw - 24px); background: #1b1030; color: var(--gold); border: 1px solid var(--gold);
+  font-family: var(--display); font-weight: 800; letter-spacing: .03em; font-size: 13px; line-height: 1.2;
+  padding: 8px 14px; border-radius: 999px; cursor: pointer; box-shadow: 0 8px 24px rgba(0,0,0,.45);
+}
 .online-cta { width: 100%; margin-top: 10px; }
 
 /* ---------- lobby v3: columns on wide screens, chat drawer on phones ---------- */
