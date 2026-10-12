@@ -181,6 +181,10 @@ export function SoundDock() {
       // in the scorebug, the slot takes its neighbour's width so the whole cluster is one size
       let nb = slot?.classList.contains('bug-btn') ? (slot.previousElementSibling as HTMLElement | null) : null;
       while (nb && nb.getBoundingClientRect().width === 0) nb = nb.previousElementSibling as HTMLElement | null;
+      // only ever borrow a sibling BUTTON's width: borrowing the score block's width (it became the slot's neighbour when
+      // the ?/📋/HQ buttons moved into the menu) made the slot swallow the bug, which shrank, re-synced, and so on: the
+      // header flickered, the score text vanished and the (blurred) speaker button grew to the score block's size
+      if (nb && !(nb.classList.contains('bug-btn') && nb.tagName === 'BUTTON')) nb = null;
       if (slot && nb) { const nw = `${nb.getBoundingClientRect().width}px`; if (nb.getBoundingClientRect().width > 0 && slot.style.getPropertyValue('width') !== nw) slot.style.setProperty('width', nw, 'important'); }
       const r = slot?.getBoundingClientRect();
       if (!slot || !r) { el.classList.remove('slotted', 'in-bug'); return; }

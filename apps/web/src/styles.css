@@ -1553,3 +1553,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
   .pad-row.v2 .lbl { display: block; font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 }
 .score-pad.v2 > .primary.big { width: 100%; margin-top: 10px; }
+/* header fix: the in-game speaker slot is a fixed square at the right edge; the dock never animates its position */
+.scorebug .dock-slot { flex: 0 0 auto; width: 40px !important; min-width: 40px; max-width: 46px; }
+.scorebug .bug { min-width: 0; flex: 1 1 auto; }
+.sound-dock, .sound-dock .dock-btn { transition: none !important; }

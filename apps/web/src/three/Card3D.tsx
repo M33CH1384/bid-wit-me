@@ -77,7 +77,8 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
   const backMat = useMemo(() => mk(back), [back, quality]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Your turn: cards you can't play get a soft cool/purple dim (still readable); playable cards stay at full colour
-  // (no emissive tint, which made them look washed-out) and get a gold edge glow behind them. Both ease in ~150 ms.
+  // (no emissive tint, which made them look washed-out). Their shared gold rail is PlayableGlow, not a per-card edge.
+  // This per-card backing is only a selected card or a tip mark. The joker pulse is JokerAura, behind the face.
   const glowMat = useMemo(() => new MeshBasicMaterial({ color: '#f5c542', transparent: true, opacity: 0, depthWrite: false, toneMapped: false }), []);
   const look = useRef({ target: new Color(1, 1, 1), glow: 0, sat: 1 });
   const burstFx = useRef({ on: false, baseOp: 1 });

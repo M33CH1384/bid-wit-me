@@ -7,6 +7,8 @@ import { type ReactNode, type RefObject, Suspense, useEffect, useLayoutEffect, u
 import { type Camera, type Group, type Mesh, type MeshBasicMaterial, type Object3D, type Texture, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, Matrix4, Quaternion, MeshPhysicalMaterial, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, Vector2, Vector3 } from 'three';
 import type { Card, Play, Trick } from '@spades/rules';
 import Card3D from './Card3D';
+import PlayableGlow, { type GlowAnchor } from './PlayableGlow';
+import { contiguousRuns } from './playableOutline';
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline } from './dealTimeline';
 import { type Sfx, sound } from '../audio';
@@ -17,7 +19,7 @@ import Venue3D, { feltPatternTexture, preloadVenueAssets } from './Venue3D';
 import { type VenueDef, type VenueId, VENUE_DEFS, venueAssetUrls } from '../venues';
 import { bodyGeometry, cardGeometry, feltGeometry, railGeometry } from './geometry';
 import {
-  CH, CW, TRICK_SCALE, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, deckSpot, fanLayout, handFan, makeCamera, jitterOf, opponentFan, pileSpot, ringSpot, trickSpot,
+  CH, CW, TRICK_SCALE, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, deckSpot, fanLayout, handCardPlane, handFan, makeCamera, jitterOf, opponentFan, pileSpot, ringSpot, trickSpot,
 } from './layout';
 
 export interface SceneProps {
@@ -362,11 +364,20 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   }
   // the human hand
   const mine = myHand ?? Array.from({ length: handCounts[human]! }, () => null);
+  // One outline per contiguous run of playable cards (see playableOutline). Not when every card is playable:
+  // there's nothing to distinguish, same as before.
+  const groupLegal = legal.length > 0 && legal.length < mine.length;
+  const glowAnchors: (GlowAnchor & { playable: boolean })[] = [];
   mine.forEach((c, i) => {
     const isLegal = !!c && legal.includes(c);
     const lift = c && selected === c ? 0.24 : isLegal ? (props.hintLegal ? 0.12 : wide && legal.length < mine.length ? 0.09 : 0.07) : 0;
     const target = handFan(aspect, mine.length, i, lift, safeFrac, fanOpts);
     const flip = flipIn && !!c;
+    const grouped = groupLegal && isLegal;
+    if (c) {
+      const plane = handCardPlane(aspect, mine.length, i, lift, safeFrac, fanOpts);
+      glowAnchors.push({ name: `${handNo}-${c}`, x: plane.x, y: plane.y, playable: grouped });
+    }
     items.push({
       hand: true,
       key: c ? `${handNo}-${c}` : `${handNo}-hb-${i}`,
@@ -376,14 +387,16 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       delay: flip ? i * 0.022 : intro ? dealDelay(i, human) : 0,
       sfxStart: flip ? undefined : 'deal',
       dim: !!c && legal.length > 0 && !isLegal,
-      // playable cards (when some aren't) get the gold edge on every device; the rest are dimmed (dim above)
-      glow: !!c && (selected === c || !!props.marked?.includes(c) || (isLegal && legal.length < mine.length)),
+      // the group rail (PlayableGlow) marks playable cards. A selected card keeps its own edge only when it isn't
+      // already inside that rail (every card playable). Tip marks still point at one card.
+      glow: !!c && ((selected === c && !grouped) || !!props.marked?.includes(c)),
       tap: c && isLegal ? () => onCardTap(c) : undefined,
       shadow: false,
       duration: flip ? 0.34 : intro ? tl.fly : 0.32,
       arc: flip ? 0 : 0.05,
     });
   });
+  const glowRuns = contiguousRuns(glowAnchors.map((a) => a.playable)).map(([a, b]) => glowAnchors.slice(a, b + 1));
 
   // test probe: every key that was ever dealt from the deck, per hand (a re-deal would add new keys)
   useEffect(() => {
@@ -424,6 +437,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
         />
       ))}
       {wide && mine.length > 0 && <HandGlow aspect={aspect} count={mine.length} safeFrac={safeFrac} opts={fanOpts} />}
+      <PlayableGlow runs={glowRuns} handNames={glowAnchors.map((a) => a.name)} quality={quality} />
       {intro && <ShuffleDeck key={`shuffle-${handNo}`} at={deck} back={back} tl={tl} quality={quality} />}
     </group>
   );
