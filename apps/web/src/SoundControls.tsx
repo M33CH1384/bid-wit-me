@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { sound, useSoundSettings } from './audio';
 import { HostMusicFields } from './online/HostMusic';
-import { hostMusic, useHostMusic } from './hostMusic';
+import { useHostMusic } from './hostMusic';
 import { tableIntensity, talkPrefs, useTalkPrefs } from './talkPrefs';
 import { TALK_INTENSITY_LABEL } from '@spades/bots';
 import { type NukeIntensity, fx, useNukeIntensity, useReduceEffects, useTableNuke } from './fx';
@@ -73,7 +73,6 @@ export function SoundSheet({ allOff, onMuteAll, onClose }: { allOff: boolean; on
           toggle={{ on: s.music, label: 'Music', testId: 'music-switch', set: (on) => sound.set({ music: on }) }} />
         {s.music && s.musicStatus === 'error' && <small className="sf-note">Can't load the track</small>}
         <VolumeRow label="Bot voices" value={t.voiceVolume} disabled={!t.voices || !voiceOk} testId="bot-voice-volume" onChange={(v) => talkPrefs.set({ voiceVolume: v })} />
-        {hm.room && <VolumeRow label="Host music" value={hm.volume} testId="host-music-volume" onChange={(v) => hostMusic.setVolume(v)} />}
       </section>
 
       <section className="sheet-sec" aria-label="Bots">
@@ -95,7 +94,7 @@ export function SoundSheet({ allOff, onMuteAll, onClose }: { allOff: boolean; on
       {hm.room && (
         <section className="sheet-sec" aria-label="Host music">
           <h4>Host music</h4>
-          <HostMusicFields noVolume />
+          <HostMusicFields />
         </section>
       )}
 
@@ -253,10 +252,17 @@ export default function SoundButton() {
           <div className="panel-title">SOUND</div>
           <NowPlayingLine />
           <SoundFields compact />
+          <HostMusicPopSection />
         </div>
       )}
     </div>
   );
+}
+
+function HostMusicPopSection() {
+  const hm = useHostMusic();
+  if (!hm.room) return null;
+  return <div className="sheet-sec" aria-label="Host music"><HostMusicFields /></div>;
 }
 
 /** Track info line for the speaker menus (the only persistent place it shows). */

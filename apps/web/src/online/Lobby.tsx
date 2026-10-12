@@ -1,4 +1,3 @@
-import { HostMusicFields } from './HostMusic';
 import { SocialButton } from '../social/Social';
 import { VENUE_DEFS, VENUE_LIST, type VenueChoice, type VenueId, venueLabel } from '../venues';
 import { TeamNameField } from '../TeamName';
@@ -294,11 +293,6 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
         </div>
       )}
 
-      {/* table music, before the game too: the host picks Beats / a link / a stream; everyone sets their own volume */}
-      <section className="panel lobby-music" data-testid="lobby-music">
-        <div className="panel-title">TABLE MUSIC{isHost ? <small> (host)</small> : null}</div>
-        <HostMusicFields />
-      </section>
       </div>
       <LobbyChat cs={cs} onSend={(text) => conn.send({ t: 'chat', text })} open={chatOpen} setOpen={setChatOpen} wide={wide} />
       {!wide && createPortal(

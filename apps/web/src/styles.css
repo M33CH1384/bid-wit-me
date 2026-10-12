@@ -1491,3 +1491,9 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 @keyframes np-quiet { 0% { opacity: 0; } 15%, 80% { opacity: 1; } 100% { opacity: 0; } }
 .np-line { font-size: 12.5px; color: var(--muted); margin: 2px 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .np-line b { color: var(--gold); }
+/* v7: host music lives in the speaker menu; tabs and chips never overlap (no inner scroll box) */
+.hm-host { display: grid; gap: 8px; margin-top: 6px; }
+.hm-tabs { flex-wrap: wrap; position: relative; z-index: 1; }
+.hm-tabs button { flex: 1 1 auto; }
+.hm-beats, .sheet-sec .hm-beats, .sound-pop .hm-beats { max-height: none; overflow: visible; margin-top: 0; }
+.sound-pop { max-height: calc(100dvh - 80px); overflow-y: auto; overscroll-behavior: contain; }
