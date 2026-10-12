@@ -229,7 +229,7 @@ export function VictorySpotlight({ winners, losers, title, sub, mesh, vs }: { wi
         <h3 className="vs-title" data-testid="vs-title">{title}</h3>
         {sub && <div className="vs-sub" data-testid="vs-sub">{sub}</div>}
       </div>
-      <div className="vs-winners">
+      <div className="vs-winners" style={{ ['--n' as string]: winners.length }}>
         {shown.map(({ p, stream }) => stream ? (
           <figure key={p.key} className="vs-tile win video" data-testid={`vs-win-${p.key}`}>
             <div className="vs-frame">{stream}</div>
@@ -241,13 +241,13 @@ export function VictorySpotlight({ winners, losers, title, sub, mesh, vs }: { wi
             <div className="vs-card" data-testid={`vs-avatar-${p.key}`}>
               <span className="vs-initial" aria-hidden>{p.name.trim().charAt(0).toUpperCase() || '?'}</span>
               <b className="vs-name" data-testid={`vs-name-${p.key}`}>{label(p)}</b>
-              {p.seat?.kind === 'bot' && <small>BOT</small>}
+              <small className={p.seat?.kind === 'bot' ? '' : 'vs-nobot'} aria-hidden={p.seat?.kind !== 'bot'}>BOT</small>
             </div>
           </figure>
         ))}
       </div>
       {losers.length > 0 && (
-        <div className="vs-losers" aria-label="Other players">
+        <div className="vs-losers" aria-label="Other players" style={{ ['--n' as string]: losers.length }}>
           {losers.map((p) => (
             <figure key={p.key} className="vs-tile lose" data-testid={`vs-lose-${p.key}`}>
               <div className="vs-frame">{liveStream(p, mesh, vs) ?? <Avatar p={p} />}</div>

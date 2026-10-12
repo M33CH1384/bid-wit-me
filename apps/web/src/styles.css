@@ -1371,10 +1371,10 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .vic-head { margin: 0; font-family: var(--display); font-weight: 800; letter-spacing: .14em; font-size: clamp(15px, 2.6vw, 22px); opacity: .9; color: var(--gold); text-shadow: 0 0 24px rgba(255,200,60,.55); display: flex; gap: 10px; align-items: center; }
 .vic-head small { font-size: .8em; }
 .victory-spot { position: relative; z-index: 2; width: 100%; max-width: 1100px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
-.vs-winners { display: flex; gap: clamp(10px, 2vw, 24px); justify-content: center; width: 100%; }
+/* Release 10: every winner box is identical (equal grid columns, same height) and together they span the section */
+.vs-winners { display: grid; grid-template-columns: repeat(var(--n, 2), minmax(0, 1fr)); gap: 10px; width: min(100%, 900px); align-items: stretch; }
+.victory-spot.n1 .vs-winners { width: min(100%, 520px); }
 .vs-tile { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
-.vs-tile.win.video { flex: 0 1 min(44vw, 440px); }
-.victory-spot.n1 .vs-tile.win.video { flex-basis: min(80vw, 520px); }
 .vs-frame { position: relative; width: 100%; aspect-ratio: 4 / 3; border-radius: 18px; overflow: hidden; background: #1a1024; isolation: isolate; }
 .vs-tile.win .vs-frame { border: 3px solid #f2c84b; box-shadow: 0 0 0 2px rgba(255,236,170,.4), 0 0 38px rgba(255,196,48,.6), 0 0 90px rgba(255,170,30,.3); animation: vs-glow 2.4s ease-in-out infinite; }
 @keyframes vs-glow { 50% { box-shadow: 0 0 0 2px rgba(255,236,170,.6), 0 0 52px rgba(255,196,48,.85), 0 0 120px rgba(255,170,30,.4); } }
@@ -1389,19 +1389,23 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
   font-size: clamp(34px, 9vw, 68px); color: var(--gold); text-shadow: 0 0 28px rgba(255,200,60,.6), 0 3px 0 rgba(90,50,0,.7); overflow-wrap: anywhere; }
 .vs-sub { font-family: var(--display); font-weight: 700; letter-spacing: .06em; font-size: clamp(17px, 3.4vw, 26px); color: #fff; }
 /* winners without live video (bots / camera off): modest gold-framed name cards side by side */
-.vs-tile.win.card { flex: 0 1 200px; min-width: 0; }
-.vs-card { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 12px 10px; border-radius: 16px;
+.vs-tile.win { width: 100%; min-width: 0; }
+.vs-tile.win.card { justify-content: stretch; }
+.victory-spot.has-video .vs-tile.win.card .vs-card { aspect-ratio: 4 / 3; justify-content: center; }
+.vs-card small.vs-nobot { visibility: hidden; }
+.vs-card { position: relative; box-sizing: border-box; width: 100%; height: 100%; min-height: 132px; justify-content: center; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 12px 10px; border-radius: 16px;
   background: radial-gradient(circle at 50% 30%, #5b2d8f, #241236 75%); border: 3px solid #f2c84b;
   box-shadow: 0 0 0 2px rgba(255,236,170,.35), 0 0 26px rgba(255,196,48,.5); animation: vs-glow 2.4s ease-in-out infinite; }
 .vs-initial { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 50%; background: rgba(0,0,0,.28); border: 2px solid rgba(242,200,75,.7);
   font-family: var(--display); font-weight: 800; font-size: 28px; color: #fff; }
 .vs-name { font-family: var(--display); font-weight: 800; letter-spacing: .03em; font-size: clamp(20px, 4.6vw, 26px); color: var(--gold); line-height: 1.05;
-  text-align: center; max-width: 100%; overflow-wrap: anywhere; }
+  text-align: center; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vs-card small { font-family: var(--display); letter-spacing: .14em; font-size: 11px; color: var(--muted); }
 .vs-tile figcaption { font-family: var(--display); font-weight: 800; letter-spacing: .06em; font-size: clamp(15px, 2.2vw, 22px); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vs-tile.win figcaption { color: var(--gold); }
-.vs-losers { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; opacity: .85; }
-.vs-tile.lose { width: clamp(72px, 12vw, 120px); }
+.vs-losers { display: grid; grid-template-columns: repeat(var(--n, 2), clamp(72px, 12vw, 120px)); gap: 8px; justify-content: center; opacity: .85; }
+.vs-tile.lose { width: 100%; min-width: 0; }
+.vs-tile.lose figcaption { width: 100%; text-align: center; }
 .vs-tile.lose .vs-frame { border-radius: 10px; border: 1px solid rgba(185,128,255,.35); }
 .vs-tile.lose .vs-avatar span { font-size: 28px; }
 .vs-tile.lose figcaption { font-size: 12px; font-weight: 700; color: var(--muted); }
@@ -1416,9 +1420,9 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 @keyframes vic-fall { to { transform: translateY(110vh) rotate(720deg); } }
 /* narrow phones: a team's two winners stack */
 @media (max-width: 520px) {
-  .victory-spot.has-video .vs-winners { flex-direction: column; align-items: center; }
-  .vs-tile.win.video, .victory-spot.n1 .vs-tile.win.video { flex: none; width: min(78vw, 340px); }
-  .vs-tile.win.card { flex: 1 1 0; max-width: 46vw; }
+  .vs-winners { gap: 8px; }
+  .victory-spot.n3 .vs-winners, .victory-spot.n4 .vs-winners { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .vs-name { font-size: clamp(16px, 4.6vw, 22px); }
   .vs-frame { aspect-ratio: 16 / 10; }
 }
 
@@ -1480,3 +1484,6 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .lobby-venue-panel .venue-pick small { display: block; font-weight: 400; font-size: 13px; opacity: 0.75; margin-top: 2px; }
 .lobby-venue-panel .venue-pick select { width: 100%; min-height: 44px; font-size: 16px; }
 .lobby-venue-panel div.venue-pick small { margin-top: 6px; }
+/* Release 10: the video winner's name rides inside its frame, so a video box and a name card are exactly the same size */
+.vs-tile.win.video { position: relative; }
+.vs-tile.win.video figcaption { position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 2; text-align: center; text-shadow: 0 2px 8px rgba(0,0,0,.85); }
