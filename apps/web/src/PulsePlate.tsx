@@ -138,7 +138,8 @@ export default function PulsePlate({ reduced }: { reduced: boolean }) {
       video.style.display = 'none';
       sheet.style.display = 'none';
       if (show && box) {
-        const canvas = document.querySelector('canvas.table-canvas');
+        // className lands on the R3F wrapper, not the <canvas>.
+        const canvas = document.querySelector('.table-canvas canvas') ?? document.querySelector('canvas.table-canvas');
         const layer = host.closest('.hype-layer');
         let placed = box;
         if (canvas && layer) {
