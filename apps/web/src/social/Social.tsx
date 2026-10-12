@@ -228,7 +228,7 @@ function Players({ signedIn }: { signedIn: boolean }) {
         {list.map((u) => <PlayerRow key={u.id} u={u} me={u.id === s.you?.id} friend={friendIds.has(u.id)} pending={outgoing.has(u.id)} signedIn={signedIn} myTable={s.myTable} />)}
         {!list.length && q && <li className="soc-empty">Nobody by that name is online.</li>}
       </ul>
-      {!q && list.filter((u) => u.id !== s.you?.id).length === 0 && <AloneEmpty />}
+      {!q && s.status === 'open' && list.filter((u) => u.id !== s.you?.id).length === 0 && <AloneEmpty />}
     </div>
   );
 }
