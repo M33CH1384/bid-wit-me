@@ -18,3 +18,5 @@ export const RUN_SLAM_MS = 1100;
 export const RUN_CASCADE_MS = 380;
 export const RUN_TORNADO_AFTER_MS = 1100 + 650; // slow-mo slam, a beat of pain, then the tornado
 export const RUN_TORNADO_MS = 2100;
+/** Claim → tornado done. The score screen opens when this elapses (no extra trick hold or toast beat). */
+export const RUN_SHOW_MS = RUN_ZOOM_MS + RUN_TORNADO_AFTER_MS + RUN_TORNADO_MS;

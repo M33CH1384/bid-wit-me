@@ -673,7 +673,7 @@ describe('table talk + host music', () => {
     env.advance(10);
     const st = env.last('a', 'state')!;
     expect(st.room.deadline! - st.room.now).toBeGreaterThan(40_000);
-    expect(st.room.deadline! - st.room.now).toBeGreaterThan(45_000 + HAND_END_HOLD_MS - 100); // + the hand-end hype hold
+    expect(st.room.deadline! - st.room.now).toBeGreaterThan(45_000 + HAND_END_HOLD_MS - 100); // + the score-screen lead-in
     env.advance(46_000 + HAND_END_HOLD_MS + 6_000); // (+ the Run it! show when the hand ended on one)
     expect(env.room.data.game!.phase).not.toBe('handOver');
   });

@@ -38,8 +38,8 @@ import { useViewport } from './viewport';
 import { Coach, LedSuitChip } from './Coach';
 import { type TipsPref, bumpTip, loadTips, saveTips, tipCount } from './tips';
 import { BidCoach } from './BidCoach';
-import { HAND_END_BEAT_MS, RUN_FX_MS } from '@spades/protocol';
-import { RUN_SLAM_MS, RUN_IT_CALLOUTS, RUN_TORNADO_AFTER_MS, RUN_TORNADO_MS, RUN_ZOOM_MS } from './runIt';
+import { RUN_FX_MS } from '@spades/protocol';
+import { RUN_SHOW_MS, RUN_SLAM_MS, RUN_IT_CALLOUTS, RUN_TORNADO_AFTER_MS, RUN_ZOOM_MS } from './runIt';
 import { RunZoom } from './RunZoom';
 import { TrashTalkButton } from './TrashTalk';
 import { isPromoted } from './cardFaces';
@@ -585,7 +585,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     }, RUN_ZOOM_MS);
     // (capture scripts set __bwmHoldRun to step the tornado frame by frame via fx.warp)
     const hold = !!(window as unknown as { __bwmHoldRun?: boolean }).__bwmHoldRun;
-    const timers = hold ? [impact] : [impact, window.setTimeout(endRun, (tornadoAt + RUN_TORNADO_MS / 1000) * 1000)];
+    const timers = hold ? [impact] : [impact, window.setTimeout(endRun, RUN_SHOW_MS)];
     (window as unknown as { __bwmEndRun?: () => void }).__bwmEndRun = endRun;
     if (runFx.claimer === HUMAN && !spectating) {
       runItUsed();
@@ -725,8 +725,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [histTick, setHistTick] = useState(0);
   const ranWaited = useRef(-1);
   useEffect(() => {
-    // the hand's scoring toasts + hype wait until the last trick has been shown (incl. the nuke allowance), so the Wheels
-    // car / SHOT pop-ups don't pile on top of the nuke
+    // scoring toasts + hype still wait until the last trick has been shown (incl. a nuke or Run it!), so they
+    // don't pile on the blast. They no longer hold the score screen — that opens when the trick hold ends.
     if (pause && st.history.length > lastHist.current) return;
     if (st.history.length <= lastHist.current) { lastHist.current = st.history.length; return; }
     lastHist.current = st.history.length;
@@ -734,7 +734,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const ranDelay = st.tricks.at(-1)?.plays.some((p) => p.run) ? RUN_FX_MS : 0;
     if (ranDelay && ranWaited.current !== st.history.length) {
       const len = st.history.length;
-      const release = fx.hold(ranDelay + 300, 'runIt'); // the hand end waits for the tornado + the toasts after it
+      const release = fx.hold(ranDelay + 300, 'runIt'); // toasts follow the tornado; the score does not wait on this hold
       const t0 = window.setTimeout(() => { ranWaited.current = len; lastHist.current = len - 1; setHistTick((x) => x + 1); release(); }, ranDelay);
       return () => { clearTimeout(t0); release(); };
     }
@@ -770,12 +770,13 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     return () => { clearTimeout(tm); toastHold(); timers.forEach((c) => c()); };
   }, [st.history, histTick, r, names, mySide, !!pause]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Hand end: Table Talk / the scorecard (and the game-over screen) wait until every hype effect, banner and toast has
-  // finished (fx queue, capped at HYPE_SETTLE_MAX_MS), then a short beat. The rest of the game keeps its pace.
+  // Hand end: the score screen opens as soon as the trick hold ends. That hold is the beat after the last
+  // card lands (~700 ms at normal speed). A nuke or Run it! keeps the screen closed until that show ends
+  // (`pause` / `runFx`); scoring toasts and hype no longer add another wait on top.
   const [talkOpen, setTalkOpen] = useState(false);
   useEffect(() => {
     if ((st.phase !== 'handOver' && st.phase !== 'gameOver') || pause || runFx) { setTalkOpen(false); return; }
-    return fx.whenIdle(() => setTalkOpen(true), HAND_END_BEAT_MS);
+    setTalkOpen(true);
   }, [st.phase, st.handNo, pause, !!runFx]); // eslint-disable-line react-hooks/exhaustive-deps
   const talkSend = (text: string) => {
     push('You', text);
