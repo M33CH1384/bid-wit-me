@@ -15,19 +15,62 @@ export const NUKE_INTENSITIES = ['full', 'classic', 'off'] as const;
 export const TALK_INTENSITIES = ['family', 'cookout', 'nomercy'] as const;
 export type TalkIntensity = (typeof TALK_INTENSITIES)[number];
 export type NukeIntensity = (typeof NUKE_INTENSITIES)[number];
-/** Extra lead-in after a nuked trick, per table level (ms). */
+/** Extra lead-in after a nuked trick, per table level (ms). Covers the ~3.6 s blast; the score opens when this hold ends. */
 export const NUKE_ALLOWANCE_MS: Record<NukeIntensity, number> = { full: 4000, classic: 3500, off: 1200 };
-/** 'Run it!': how long clients play the slam + tornado before the hand's end shows (Table Talk waits this much longer). */
-/** zoom (1.5 s) + slow-motion slam (1.1 s) + a beat + tornado (2.1 s) */
+/**
+ * 'Run it!': server cushion for the slam + tornado (zoom 1.5 s + slam 1.1 s + a beat + tornado 2.1 s).
+ * The client show itself is 5350 ms (`RUN_SHOW_MS`); this is a little longer so the Table Talk countdown
+ * is not already ticking down when the score screen opens.
+ */
 export const RUN_FX_MS = 5800;
 /**
- * End of a hand: clients hold the scorecard / Table Talk until every hype effect, banner and toast has finished
- * (Wheels car, nuke, SHOT / streak pop-ups, scoring toasts), capped at HYPE_SETTLE_MAX_MS, then a HAND_END_BEAT_MS beat.
- * The server adds the same worst case to the Table Talk deadline so the countdown players see is never cut short.
+ * How long a finished trick stays on the table between hands' tricks (ms), at normal speed.
+ * Not the hand-end score delay — see HAND_END_REVEAL_MS.
  */
+export const TRICK_HOLD_MS = 1150;
+/**
+ * Flight of the last card onto the trick (Scene duration 0.5 s). The hand-end clock starts when the
+ * play state arrives, which is when that flight starts, so the score is HAND_END_REVEAL_MS − this
+ * after the card lands.
+ */
+export const CARD_LAND_MS = 500;
+/** Readable beat after the last card lands, before the score screen, at normal speed. Inside 600–900 ms. */
+export const HAND_END_AFTER_LAND_MS = 700;
+/**
+ * Normal hand end (no nuke, no Run it!): play state → score screen, at speed 1.
+ * 500 ms flight + 700 ms to see the trick = 1200 ms. Other speeds scale this the same way as trick holds.
+ *
+ * Previously the screen also waited out scoring toasts (3200 ms), every hype effect (cap HYPE_SETTLE_MAX_MS),
+ * and then HAND_END_BEAT_MS (1200 ms) — about 5 s after the card landed at normal speed, before any
+ * Wheels / SHOT popup. Those still play; they no longer gate the screen.
+ */
+export const HAND_END_REVEAL_MS = CARD_LAND_MS + HAND_END_AFTER_LAND_MS;
+/** Cap on one fx.hold so a stuck celebration cannot hang a caller of fx.whenIdle. Not added to the score delay. */
 export const HYPE_SETTLE_MAX_MS = 8000;
-export const HAND_END_BEAT_MS = 1200;
-export const HAND_END_HOLD_MS = HYPE_SETTLE_MAX_MS + HAND_END_BEAT_MS;
+/**
+ * No extra beat after the trick is readable. Kept at 0 so older imports still resolve;
+ * the old value was 1200 ms on top of the toast / hype queue.
+ */
+export const HAND_END_BEAT_MS = 0;
+/**
+ * Table Talk countdown lead-in for a normal hand: the same moment the client opens the score,
+ * so the countdown the player sees is the talk time they picked.
+ * Old value was HYPE_SETTLE_MAX_MS + 1200 = 9200 ms, matched to the old client wait.
+ * A Run it! hand uses RUN_FX_MS instead. A nuked final trick adds NUKE_ALLOWANCE_MS on top of this
+ * (the blast starts while the trick is still on the table). Tests pass handEndHoldMs: 0 to skip it.
+ */
+export const HAND_END_HOLD_MS = HAND_END_REVEAL_MS;
+
+/**
+ * How long the server pushes the Table Talk deadline out past the hand ending.
+ * `holdMs` is the configured beat (0 in fast tests). A run's show replaces that beat.
+ * A nuke adds its allowance only when the beat is on, so tests that zero the hold stay fast.
+ */
+export function handEndLeadMs(opts: { holdMs: number; run: boolean; nuke: NukeIntensity | null }): number {
+  if (opts.run) return RUN_FX_MS;
+  if (opts.nuke && opts.holdMs > 0) return opts.holdMs + NUKE_ALLOWANCE_MS[opts.nuke];
+  return opts.holdMs;
+}
 export const PROTOCOL_VERSION = 1;
 
 /* ---------------------------------------------------------------- limits */

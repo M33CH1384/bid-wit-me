@@ -1,7 +1,7 @@
 /**
  * Offline save for the hand-end check (e2e): hand 2, last trick, both Jokers about to meet, my team bid 10 (Wheels).
  * Seat 1 led the Little Joker, seats 2 and 3 followed; I (seat 0) hold only the Big Joker. Playing it nukes the trick,
- * my team takes its 10th book (Wheels made) and the hand ends → the scorecard / Table Talk must wait for both effects.
+ * my team takes its 10th book (Wheels made) and the hand ends on a nuke → the score screen waits out the blast, then opens.
  * Usage: npx tsx scripts/handend-state.ts
  */
 import { type Card, type GameState, type Trick, applyAction, buildDeck, newGame, pendingTurn, viewFor } from '@spades/rules';
