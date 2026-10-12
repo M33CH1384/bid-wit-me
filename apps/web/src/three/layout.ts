@@ -227,8 +227,8 @@ export function handCardPlane(aspect: number, count: number, i: number, lift: nu
   const L = fanLayout(aspect, count, safeFrac, o);
   const halfN = (count - 1) / 2;
   const off = i - halfN;
-  // `gapPx` opens the fan beside a legal run. Depth and roll stay on the index, so this is only a sideways slide.
-  // 0 / NaN is NaN, so a missing viewport used to poison the whole fan even when the gap itself was 0.
+  // `gapPx` opens the fan beside a legal run, in CSS pixels. Depth and roll stay on the index.
+  // Dividing by max(1, screenH) turned an 8px subset gap into screen-heights on a 0-height canvas, and 0/NaN poisoned x.
   const sh = Number.isFinite(screenH) && screenH >= 32 ? screenH : 0;
   const gap = Number.isFinite(gapPx) ? gapPx : 0;
   const x = off * L.step + (sh > 0 ? (gap / sh) * L.viewH : 0);

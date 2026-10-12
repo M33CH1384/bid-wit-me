@@ -130,6 +130,57 @@ describe('a bad viewport cannot throw the hand away', () => {
   const aspect = 390 / 844;
   const screenH = 844;
 
+  it('keeps a left, middle, and right run in its own fan slot', () => {
+    const n = 13;
+    const px = fanLayout(aspect, n).viewH / screenH;
+    const rightEdge = handCardPlane(aspect, n, n - 1, 0, 0, {}, 0, screenH);
+    const runs: { name: string; cards: number[] }[] = [
+      { name: 'left', cards: [0, 1, 2] },
+      { name: 'middle', cards: [5, 6, 7] },
+      { name: 'right', cards: [10, 11, 12] },
+    ];
+    for (const run of runs) {
+      const flags = Array.from({ length: n }, (_, i) => i >= run.cards[0]! && i <= run.cards[run.cards.length - 1]!);
+      const gaps = fanGapPx(flags);
+      for (let i = 0; i < n; i++) {
+        const slid = handCardPlane(aspect, n, i, 0, 0, {}, gaps[i]!, screenH);
+        const slot = handCardPlane(aspect, n, i, 0, 0, {}, 0, screenH);
+        // 8px of air beside the run. The index, the roll, and the depth do not change, so a card cannot jump to the far side.
+        expect(Math.abs(gaps[i]!), `${run.name} gap`).toBeLessThanOrEqual(8);
+        expect(Math.abs((slid.x - slot.x) / px), `${run.name}[${i}]`).toBeLessThanOrEqual(8.01);
+        expect(slid.roll).toBeCloseTo(slot.roll, 6);
+        expect(slid.depth).toBeCloseTo(slot.depth, 6);
+      }
+      const faces = run.cards.map((i) => placeOnPlane(haloLocal(1, 1), handCardPlane(aspect, n, i, 0, 0, {}, gaps[i]!, screenH)));
+      const rect = groupOutline(faces, GROUP_PAD_PX * px, GROUP_RADIUS_PX * px);
+      expect(rect, run.name).toBeTruthy();
+      const [outline] = unionContours([rect!], 64);
+      expect(outline).toBeTruthy();
+      let faceX = 0;
+      for (const face of faces) {
+        let cx = 0;
+        for (const p of face) { cx += p.x; expect(contourContains(outline!, p)).toBe(true); }
+        faceX += cx / face.length;
+      }
+      faceX /= faces.length;
+      const outlineX = rect!.reduce((s, p) => s + p.x, 0) / rect!.length;
+      expect(Math.abs((outlineX - faceX) / px), `${run.name} outline`).toBeLessThan(1);
+      if (run.name !== 'right') expect(Math.abs((outlineX - rightEdge.x) / px)).toBeGreaterThan(80);
+    }
+    // A subset has a real gap. A 0-height canvas used to divide by 1px and throw that run off the screen.
+    const middle = fanGapPx(Array.from({ length: n }, (_, i) => i >= 5 && i <= 7));
+    expect(middle.some((g) => g !== 0)).toBe(true);
+    const home = handCardPlane(aspect, n, 7, 0, 0, {}, 0, screenH);
+    for (const bad of [0, NaN, Infinity]) {
+      const plane = handCardPlane(aspect, n, 7, 0, 0, {}, middle[7]!, bad);
+      expect(plane.x).toBeCloseTo(home.x, 6);
+      expect(plane.y).toBeCloseTo(home.y, 6);
+      const fan = handFan(aspect, n, 7, 0, 0, {}, middle[7]!, bad);
+      expect(fan.p.every(Number.isFinite)).toBe(true);
+      expect(fan.s).toBeGreaterThan(0.05);
+    }
+  });
+
   it('keeps a void hand and an all-legal lead finite when the canvas size is 0 or NaN', () => {
     const n = 13;
     const gaps = fanGapPx(Array.from({ length: n }, () => true));
