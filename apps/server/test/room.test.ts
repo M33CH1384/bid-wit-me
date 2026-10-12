@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type Card, bidOrder, checkGameEnd, makeRules, scoreHand } from '@spades/rules';
+import { type Card, bidOrder, checkGameEnd, handSize, makeRules, scoreHand } from '@spades/rules';
 import { chooseBotAction } from '@spades/bots';
 import type { GameAction } from '@spades/protocol';
 import { HAND_END_HOLD_MS } from '@spades/protocol';
@@ -900,6 +900,86 @@ describe("'Run it!' any time (Release 10)", () => {
     expect(g.tricks.slice(11).map((t) => t.winner)).toEqual([2, 2]);
     expect(env.room.data.chat.some((c) => /ran the board/.test(c.text))).toBe(true);
   });
+});
+
+describe('Run it! cleared hands are sent only after the claim resolves', () => {
+  const sorted = (hands: readonly (readonly string[])[]) => hands.map((h) => [...h].sort());
+
+  function table(mode: 'joker' | 'cutthroat', playerCount: 3 | 4) {
+    const env = new FakeEnv(undefined, FAST);
+    const cids = ['a', 'b', 'c', 'd'].slice(0, playerCount);
+    ['Dee', 'Ray', 'Kim', 'Jo'].slice(0, playerCount).forEach((name, i) => {
+      env.join(cids[i]!, name);
+      env.send(cids[i]!, { t: 'sit', seat: i });
+    });
+    env.send('a', { t: 'config', rules: makeRules(mode, { playerCount, targetScore: 5000 }) });
+    env.send('a', { t: 'start' });
+    env.join('s', 'Watcher');
+    return { env, cids };
+  }
+
+  /** Rewrite the live hand to a late spot and broadcast that state, before anyone claims. */
+  function plant(env: FakeEnv, hands: string[][]) {
+    const d = env.room.data;
+    const g = d.game!;
+    const n = hands.length;
+    const left = hands[0]!.length;
+    d.game = {
+      ...g, phase: 'playing', hands: hands as never, bids: Array(n).fill(2),
+      tricks: Array.from({ length: handSize(g.rules) - left }, () => ({ leader: 0, plays: [], winner: 1 })),
+      tricksWon: Array(n).fill(0), turn: 0, trick: { leader: 0, plays: [], winner: null }, spadesBroken: true,
+    } as never;
+    d.seq = (d.seq ?? 0) + 1;
+    env.send('a', { t: 'media', media: { cam: false, mic: false } });
+  }
+
+  function wire(msg: unknown): string {
+    const copy = JSON.parse(JSON.stringify(msg)) as { room?: { rules?: unknown }; view?: { rules?: unknown } };
+    if (copy.room) delete copy.room.rules;
+    if (copy.view) delete copy.view.rules;
+    return JSON.stringify(copy);
+  }
+
+  /** Cards still in other seats' hands must not appear anywhere in this client's latest state. */
+  function assertHidden(env: FakeEnv, cid: string, hands: string[][], seat: number | null) {
+    const msg = env.last(cid, 'state')!;
+    const text = wire(msg);
+    expect(msg.view?.runHands, cid).toBeUndefined();
+    expect(text.includes('"runHands"'), cid).toBe(false);
+    const mine = new Set(seat === null ? [] : hands[seat]);
+    for (let s = 0; s < hands.length; s++) {
+      if (s === seat) continue;
+      for (const c of hands[s]!) {
+        if (mine.has(c)) continue;
+        expect(text.includes(`"${c}"`), `${cid} was sent unseen ${c} before the claim resolved`).toBe(false);
+      }
+    }
+  }
+
+  const cases: { label: string; mode: 'joker' | 'cutthroat'; n: 3 | 4; hands: string[][]; claimer: number }[] = [
+    { label: '2v2', mode: 'joker', n: 4, hands: [['3H', '4H'], ['5C', '6C'], ['BJ', 'LJ'], ['3D', '7D']], claimer: 2 },
+    { label: 'Cutthroat 4', mode: 'cutthroat', n: 4, hands: [['3H', '4H'], ['5C', '6C'], ['BJ', 'LJ'], ['3D', '7D']], claimer: 2 },
+    { label: 'Cutthroat 3', mode: 'cutthroat', n: 3, hands: [['5C', '6C'], ['3D', '7D'], ['BJ', 'LJ']], claimer: 2 },
+  ];
+
+  for (const c of cases) {
+    it(`${c.label}: no unseen cards before resolution; every cleared hand, claimer included, after — players and a spectator`, () => {
+      const { env, cids } = table(c.mode, c.n);
+      plant(env, c.hands);
+      expect(env.last(cids[c.claimer]!, 'state')!.view!.canRunIt).toBe(true);
+      for (const [i, cid] of cids.entries()) assertHidden(env, cid, c.hands, i);
+      assertHidden(env, 's', c.hands, null);
+      expect(env.last('s', 'state')!.spectator).toBe(true);
+
+      const held = c.hands.map((h) => [...h]);
+      env.send(cids[c.claimer]!, { t: 'act', action: { type: 'runIt' }, seq: env.room.data.seq });
+      expect(env.room.data.game!.hands.every((h) => h.length === 0)).toBe(true);
+      for (const cid of [...cids, 's']) {
+        const view = env.last(cid, 'state')!.view!;
+        expect(sorted(view.runHands!), cid).toEqual(sorted(held));
+      }
+    });
+  }
 });
 
 describe('rule lock (house rules locked for the game)', () => {

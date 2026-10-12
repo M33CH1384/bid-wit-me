@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CLASSIC_JOKER, type Card, type GameState, type TableRules, scoreHand, bidOrder, isFreshDeal, RuleError, applyAction, bidOptions, buildDeck, deckForHand, legalPlays, legalPlaysFor, effectiveSuit,
-  makeRules, newGame as realNewGame, pendingTurn, trickWinner, viewFor, viewMustLeadTwoOfClubs, RulesConfigError, lowestLegal, radioactiveBigJoker, canRunIt, type Play, type Trick,
+  makeRules, newGame as realNewGame, pendingTurn, trickWinner, viewFor, spectatorView, viewMustLeadTwoOfClubs, RulesConfigError, lowestLegal, radioactiveBigJoker, canRunIt, type Play, type Trick,
 } from '../src';
 import { bidAll, fill, play, rigged } from './helpers';
 
@@ -500,6 +500,14 @@ describe("'Run it!' guarantee solver", () => {
     expect(after.tricks.slice(-2).every((t) => t.winner === 0 && t.plays.every((p) => p.run))).toBe(true);
     expect(viewFor(st, 0).canRunIt).toBe(true);
     expect(viewFor(st, 1).canRunIt).toBe(false);
+    // the cleared hands are not on any view until the claim resolves, then every seat and a spectator gets them
+    expect(viewFor(st, 0).runHands).toBeUndefined();
+    expect(viewFor(st, 1).runHands).toBeUndefined();
+    expect(spectatorView(st).runHands).toBeUndefined();
+    const sorted = (hands: readonly (readonly Card[])[]) => hands.map((h) => [...h].sort());
+    expect(sorted(viewFor(after, 3).runHands!)).toEqual(sorted(st.hands));
+    expect(sorted(spectatorView(after).runHands!)).toEqual(sorted(st.hands));
+    expect(viewFor(after, 2).hand).toEqual([]);
   });
   it('a seemingly strong hand (A♥ K♥ A♦) loses to a cut: not guaranteed, and the claim is refused', () => {
     const st = late([['AH', 'KH', 'AD'], ['3H', '4H', '5H'], ['6H', '7D', '8D'], ['4S', '7C', '8C']]);

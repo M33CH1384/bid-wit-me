@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type GameState, applyAction, makeRules, newGame, pendingTurn, scoreHand, sideOf, viewFor } from '@spades/rules';
+import { type Card, type GameState, applyAction, makeRules, newGame, pendingTurn, scoreHand, sideOf, spectatorView, viewFor } from '@spades/rules';
 import { chooseBotAction } from '@spades/bots';
 import { HIDDEN, rotateView, rotation } from '../src/online/rotate';
 
@@ -73,5 +73,28 @@ describe('online seat rotation', () => {
       expect(plays.find((p) => p.card === st.hands[2]![0])!.run).toBe(true);
       expect(plays.find((p) => p.card === st.hands[3]![0])!.auto).toBe(true);
     }
+  });
+
+  it('rotates cleared Run it! hands into local seats, and omits them before the claim', () => {
+    const rules = makeRules('joker');
+    const dealt = newGame(rules, 'rot-run-hands');
+    const hands: Card[][] = [['BJ', 'LJ'], ['3H', '4H'], ['5C', '6C'], ['3D', '7D']];
+    const st: GameState = {
+      ...dealt, phase: 'playing', hands, bids: [2, 2, 2, 2],
+      tricks: Array.from({ length: 11 }, () => ({ leader: 0, plays: [], winner: 1 })),
+      tricksWon: [0, 0, 0, 0], turn: 0, trick: { leader: 0, plays: [], winner: null }, spadesBroken: true,
+    };
+    for (let me = 0; me < 4; me++) expect(rotateView(viewFor(st, me)).view.runHands).toBeUndefined();
+    expect(rotateView(spectatorView(st, 0)).view.runHands).toBeUndefined();
+    const after = applyAction(st, { type: 'runIt', seat: 0 });
+    const sort = (xs: readonly Card[]) => [...xs].sort();
+    for (let me = 0; me < 4; me++) {
+      const { view } = rotateView(viewFor(after, me));
+      const real = viewFor(after, me).runHands!;
+      expect(view.runHands).toHaveLength(4);
+      for (let local = 0; local < 4; local++) expect(sort(view.runHands![local]!)).toEqual(sort(real[(local + me) % 4]!));
+    }
+    const watch = rotateView(spectatorView(after, 0)).view.runHands!;
+    expect(watch.map(sort)).toEqual(viewFor(after, 0).runHands!.map(sort));
   });
 });
