@@ -194,10 +194,12 @@ export function mushroomSprites(
   const capW = minSide * 0.46 * s;
   const capH = minSide * 0.16 * s;
   const sprites: MushroomSprite[] = [];
+  // One solid column so the stem still reads on green felt and through the full-path screen fire.
+  sprites.push({ x: 0, y: -stem * 0.46, rx: minSide * 0.055 * s, ry: stem * 0.52, hot: 1 });
   for (let i = 0; i < 5; i++) {
     const t = i / 4;
-    const rad = minSide * (0.03 + 0.02 * t) * s;
-    sprites.push({ x: 0, y: -stem * t, rx: rad * 0.8, ry: rad * 1.2, hot: 1 });
+    const rad = minSide * (0.04 + 0.022 * t) * s;
+    sprites.push({ x: 0, y: -stem * t, rx: rad * 0.9, ry: rad * 1.15, hot: 1 });
   }
   for (let i = 0; i < 7; i++) {
     const u = i / 6;

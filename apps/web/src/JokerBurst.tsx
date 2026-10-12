@@ -128,18 +128,27 @@ function paint(
     const deepHex = kind === 'BJ' ? '#FF8A3D' : JOKER_PALETTE.LJ.core.hex;
     const fadeHex = kind === 'BJ' ? 'rgba(255,138,61,0)' : 'rgba(200,107,255,0)';
     const sprites = mushroomSprites(cloud, kind, Math.min(w, h));
+    const soot = kind === 'BJ' ? '#3a0c02' : '#1a0630';
     ctx.save();
-    // One soft halo, additive against the other sprites, then a solid stem and cap on top.
+    ctx.globalCompositeOperation = 'source-over';
+    // Dark rim first, so the cap and stem stay a silhouette on the orange screen-fire wash.
+    for (const s of sprites) {
+      ctx.globalAlpha = cloud.opacity * 0.72;
+      ctx.fillStyle = soot;
+      ctx.beginPath();
+      ctx.ellipse(cx + s.x, cy + s.y, Math.max(1, s.rx * 1.22), Math.max(1, s.ry * 1.22), 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
     const cap = sprites[sprites.length - 1]!;
-    const halo = Math.max(cap.rx, cap.ry) * 2.4;
+    const halo = Math.max(cap.rx, cap.ry) * 1.8;
     ctx.globalCompositeOperation = 'lighter';
-    const hg = ctx.createRadialGradient(cx + cap.x, cy + cap.y, halo * 0.2, cx + cap.x, cy + cap.y, halo);
+    const hg = ctx.createRadialGradient(cx + cap.x, cy + cap.y, halo * 0.15, cx + cap.x, cy + cap.y, halo);
     hg.addColorStop(0, hotHex);
     hg.addColorStop(1, fadeHex);
-    ctx.globalAlpha = cloud.opacity * 0.45;
+    ctx.globalAlpha = cloud.opacity * 0.35;
     ctx.fillStyle = hg;
     ctx.beginPath();
-    ctx.ellipse(cx + cap.x, cy + cap.y, halo, halo * 0.72, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx + cap.x, cy + cap.y, halo, halo * 0.62, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalCompositeOperation = 'source-over';
     for (const s of sprites) {
