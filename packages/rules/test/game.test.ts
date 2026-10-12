@@ -560,3 +560,51 @@ describe('bidding order', () => {
     }
   });
 });
+
+describe("'Run it!' in Cutthroat + mid-trick (Release 10)", () => {
+  const cut4 = makeRules('cutthroat', { playerCount: 4 });
+  const cut3 = makeRules('cutthroat', { playerCount: 3 });
+  /** seat `me` to act; `table` = plays already in the current trick (led by `leader`); `gone` = earlier tricks (cards out) */
+  const spot = (rules: TableRules, hands: Card[][], leader: number, table: Card[], gone: Card[] = []): GameState => {
+    const n = rules.playerCount;
+    const st = rigged(rules, hands);
+    const size = n === 4 ? 13 : 17;
+    const left = hands[leader]!.length + (table.length ? 1 : 0);
+    const filler: Trick[] = Array.from({ length: size - left }, (_, i) => ({ leader: 0, plays: i === 0 ? gone.map((c, k) => ({ seat: k % n, card: c })) : [], winner: 1 }));
+    const plays = table.map((card, k) => ({ seat: (leader + k) % n, card }));
+    return { ...st, phase: 'playing', bids: Array(n).fill(2), tricks: filler, tricksWon: Array(n).fill(0), turn: (leader + table.length) % n, trick: { leader, plays, winner: null }, spadesBroken: true };
+  };
+
+  it('4-player Cutthroat (Joker deck), on lead with both Jokers: offered, and the run credits every book', () => {
+    const st = spot(cut4, [['BJ', 'LJ'], ['3H', '4H'], ['5C', '6C'], ['3S', '7D']], 0, []);
+    expect(canRunIt(st, 0)).toBe(true);
+    const after = applyAction(st, { type: 'runIt', seat: 0 });
+    expect(after.tricks.slice(-2).every((t) => t.winner === 0)).toBe(true);
+  });
+  it('3-player Cutthroat (Joker deck): offered on lead with 3 sure winners', () => {
+    const st = spot(cut3, [['BJ', 'LJ', '2S'], ['3H', '4H', '5H'], ['5C', '6C', '7C']], 0, []);
+    expect(canRunIt(st, 0)).toBe(true);
+  });
+  it("Demetrius's spot: following with Little Joker + 2♦ (the trump right under it) after 10♠ / J♦, Big Joker gone: offered mid-trick", () => {
+    // seats 2, 3 led 10♠, J♦; seat 0 (me) holds LJ + 2♦; the Big Joker was played earlier; seat 1 still holds a diamond
+    const st = spot(cut4, [['LJ', '2D'], ['9D', '4C'], ['5C'], ['3C']], 2, ['TS', 'JD'], ['BJ']);
+    expect(st.turn).toBe(0);
+    expect(canRunIt(st, 0)).toBe(true);
+    const after = applyAction(st, { type: 'runIt', seat: 0 });
+    expect(after.tricks.slice(-2).map((t) => t.winner)).toEqual([0, 0]);
+  });
+  it('the same spot when the 2♦ is safe (nobody can follow or cut): offered mid-trick, Little Joker boss once the Big Joker is gone', () => {
+    const st = spot(cut4, [['LJ', '2D'], ['4C', '5C'], ['6C'], ['7C']], 2, ['TS', 'JD'], ['BJ']);
+    expect(canRunIt(st, 0)).toBe(true);
+    const after = applyAction(st, { type: 'runIt', seat: 0 });
+    expect(after.tricks.slice(-2).map((t) => t.winner)).toEqual([0, 0]);
+  });
+  it('mid-trick: not offered while the Big Joker is still out (the Little Joker can lose)', () => {
+    const st = spot(cut4, [['LJ', '2D'], ['BJ', '5C'], ['6C'], ['7C']], 2, ['TS', 'JD']);
+    expect(canRunIt(st, 0)).toBe(false);
+  });
+  it('1 card left: no claim (it just plays)', () => {
+    const st = spot(cut4, [['BJ'], ['3H'], ['5C'], ['3S']], 0, []);
+    expect(canRunIt(st, 0)).toBe(false);
+  });
+});

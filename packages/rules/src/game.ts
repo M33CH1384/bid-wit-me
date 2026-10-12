@@ -274,7 +274,8 @@ function guaranteedLead(st: GameState, seat: Seat): Card | null {
   const memo = new Map<string, boolean>();
   const lead = (s: GameState): Card | null | 'done' => {
     if (s.phase !== 'playing' || s.hands[seat]!.length === 0) return 'done';
-    if (s.turn !== seat || s.trick.plays.length) return null;
+    // Release 10: also mid-trick (following): the card must win the CURRENT trick against every remaining response
+    if (s.turn !== seat) return null;
     for (const c of legalPlays(s, seat)) if (wins(applyAction(s, { type: 'play', seat, card: c }), s.tricks.length)) return c;
     return null;
   };
@@ -295,9 +296,14 @@ function guaranteedLead(st: GameState, seat: Seat): Card | null {
   return c === 'done' ? null : c;
 }
 
-/** True when `seat` may claim 'Run it!': on lead, 2..RUN_IT_MAX cards left, and every remaining book is guaranteed. */
+/**
+ * True when `seat` may claim 'Run it!': its turn, 2..RUN_IT_MAX cards left, and every remaining book is guaranteed.
+ * Release 10: also when following (not on lead), if the card it plays now is sure to win the CURRENT trick too and
+ * then every lead after it wins (full information: cards already played count, so a Little Joker is boss once the
+ * Big Joker is gone). With 1 card left there's nothing to claim: it just plays. Every mode (2v2, Cutthroat 3/4).
+ */
 export function canRunIt(st: GameState, seat: Seat): boolean {
-  if (st.phase !== 'playing' || st.turn !== seat || st.trick.plays.length !== 0) return false;
+  if (st.phase !== 'playing' || st.turn !== seat) return false;
   const left = st.hands[seat]!.length;
   return left >= 2 && left <= RUN_IT_MAX && guaranteedLead(st, seat) !== null;
 }
