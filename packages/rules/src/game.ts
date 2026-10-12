@@ -1,5 +1,6 @@
 import type { Card } from './cards';
 import { type TableRules, buildDeck, cardPower, effectiveSuit, handSize, isTrump, shotOutOn, validateRules, RulesConfigError } from './config';
+import { evaluateRunIt } from './runIt';
 import { createRng, shuffle } from './rng';
 import {
   type Bid, type GameResult, type SideHandResult,
@@ -266,11 +267,10 @@ export function isNukeTrick(plays: readonly { card: Card; run?: boolean }[]): bo
 export const RUN_IT_MAX = 4;
 
 /**
- * Exact minimax with full information (Release 10 rule): from the CURRENT state — any turn, mid-trick or not — does
- * `seat` win EVERY trick from here on (the one in progress included) whatever everyone else (partner included) legally
- * plays, choosing its own cards? A card already on the table that beats everything the claimer could play = no.
- * Runs on the real engine (applyAction), so trump order, Ace Down, following suit, breaking spades and the
- * last-trick nuke all apply.
+ * Full-information line for PLAYING OUT a claim that was already proved from the claimer's own view.
+ * Used only after `canRunIt` says yes, so the yes/no itself never depends on which hidden hand holds which card.
+ * The cards are about to be face up anyway. Trump order, Ace Down, following suit, breaking spades and the
+ * last-trick nuke all come from the real engine (`applyAction`).
  */
 function runSolver(seat: Seat) {
   const memo = new Map<string, boolean>();
@@ -297,14 +297,12 @@ function runSolver(seat: Seat) {
 
 /**
  * True when `seat` may claim 'Run it!' (Release 10): 2..RUN_IT_MAX cards left and every remaining trick — the one on
- * the table included — is guaranteed to be theirs. Any time during trick play: on lead, following, or even when it's
- * not their turn. With 1 card left there's nothing to claim: it just plays. Every mode (2v2, Cutthroat 3/4, Ace Down).
+ * the table included — is guaranteed to be theirs against every way the unseen cards could be split. Any time during
+ * trick play: on lead, following, or even when it's not their turn. With 1 card left there's nothing to claim: it
+ * just plays. Every mode (2v2, Cutthroat 3/4, Ace Down). Memoized once per seat per state; see `evaluateRunIt`.
  */
 export function canRunIt(st: GameState, seat: Seat): boolean {
-  if (st.phase !== 'playing') return false;
-  const left = st.hands[seat]!.length;
-  if (left < 2 || left > RUN_IT_MAX) return false;
-  return runSolver(seat).ok(st, st.tricks.length);
+  return evaluateRunIt(st, seat);
 }
 
 /**
@@ -544,12 +542,12 @@ export interface PlayerView {
   result: GameResult | null;
   bidOptions: BidOptions | null;
   legal: Card[];
-  /** this seat is on lead and provably wins every remaining trick: 'Run it!' is available (computed with full info) */
+  /** This seat can claim 'Run it!': guaranteed from cards they can see, not from the hidden layout. */
   canRunIt?: boolean;
 }
 
-export function viewFor(st: GameState, seat: Seat): PlayerView {
-  const hidden = st.phase === 'bidding' && !st.revealed[seat];
+function project(st: GameState, seat: Seat, spectate: boolean): PlayerView {
+  const hidden = spectate || (st.phase === 'bidding' && !st.revealed[seat]);
   return {
     seat, rules: st.rules, phase: st.phase, handNo: st.handNo, dealer: st.dealer, turn: st.turn,
     hand: hidden ? null : [...st.hands[seat]!],
@@ -557,10 +555,15 @@ export function viewFor(st: GameState, seat: Seat): PlayerView {
     bids: [...st.bids], revealed: [...st.revealed], exchange: st.exchange.map((e) => ({ ...e })),
     trick: st.trick, tricks: st.tricks, tricksWon: [...st.tricksWon], spadesBroken: st.spadesBroken,
     scores: [...st.scores], bags: [...st.bags], history: st.history, result: st.result,
-    bidOptions: st.phase === 'bidding' && st.turn === seat ? bidOptions(st, seat) : null,
-    legal: legalPlays(st, seat),
-    canRunIt: canRunIt(st, seat),
+    bidOptions: spectate ? null : st.phase === 'bidding' && st.turn === seat ? bidOptions(st, seat) : null,
+    legal: spectate ? [] : legalPlays(st, seat),
+    // Spectators never learn whether a seat can run it, and we don't search to find out.
+    canRunIt: spectate ? false : canRunIt(st, seat),
   };
+}
+
+export function viewFor(st: GameState, seat: Seat): PlayerView {
+  return project(st, seat, false);
 }
 
 /**
@@ -569,8 +572,7 @@ export function viewFor(st: GameState, seat: Seat): PlayerView {
  * Everything else in PlayerView is public (bids, played tricks, scores, history).
  */
 export function spectatorView(st: GameState, anchor: Seat = 0): PlayerView {
-  const v = viewFor(st, anchor);
-  return { ...v, hand: null, legal: [], bidOptions: null, canRunIt: false };
+  return project(st, anchor, true);
 }
 
 /** True if this view's opening lead must be the 2♣. */

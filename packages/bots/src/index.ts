@@ -23,7 +23,7 @@ export function chooseBotAction(v: PlayerView, level: BotLevel = 'pro', rng: Rng
     case 'exchange':
       return { type: 'exchange', seat: v.seat, cards: chooseExchange(v) };
     case 'playing':
-      // guaranteed the rest (the view proves it with full info): run it most of the time, for the show
+      // guaranteed the rest from cards this seat can see: run it most of the time, for the show
       if (v.canRunIt && rng.int(100) < 65) return { type: 'runIt', seat: v.seat };
       return { type: 'play', seat: v.seat, card: choosePlay(v, level, rng) };
     default:
