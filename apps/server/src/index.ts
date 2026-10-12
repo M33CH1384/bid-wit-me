@@ -29,11 +29,17 @@ import { type SocialEnv, handleSocialHttp, isAdmin } from './social/routes';
 import { verifyTicket } from './social/ticket';
 import { type ConnAtt, type GlobalLog, Hub } from './social/hub';
 import { saveRecord } from './stats/record';
+import { handleTournaments } from './tournament/routes';
+import type { TOp } from './tournament/do';
+import type { TableRules } from '@spades/rules';
+export { TournamentDO } from './tournament/do';
+import type { TournamentDO } from './tournament/do';
 import type { SocialChatLine, SocialServerMsg } from '@spades/protocol';
 
 export interface Env extends LimitEnv, AuthEnv, SocialEnv {
   TABLES: DurableObjectNamespace<TableDO>;
   SOCIAL: DurableObjectNamespace<SocialDO>;
+  TOURNAMENTS: DurableObjectNamespace<TournamentDO>;
   ALLOWED_ORIGINS?: string;
   TURN_KEY_ID?: string;
   TURN_KEY_API_TOKEN?: string;
@@ -50,6 +56,8 @@ const STUN = [{ urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:
 const SAVE_DEBOUNCE_MS = 2000;
 const SAVE_MAX_DELAY_MS = 10_000;
 const IDLE_DELETE_MS = 24 * 3600_000;
+/** tournament e2e on local wrangler (TEST_HOOKS=1 + fast) only */
+const FAST_TIMING = { botMs: 40, trickPauseMs: 60, dealMs: 80, disconnectGraceMs: 3000, handOverMs: 1200, handEndHoldMs: 0 };
 
 /* ------------------------------------------------------------------ worker */
 
@@ -193,6 +201,13 @@ export default {
       return handleSocialHttp(req as Request & { cf?: unknown }, env, url, parts, Date.now());
     }
 
+    if (parts[1] === 'tournaments') {
+      const slow = await limited(req, env, req.method === 'POST' && !parts[2] ? 'create' : 'info');
+      if (slow) return slow;
+      return handleTournaments(req, env, url, parts, Date.now(), (id, op: TOp) =>
+        env.TOURNAMENTS.get(env.TOURNAMENTS.idFromName(id)).fetch('https://tournament/op', { method: 'POST', body: JSON.stringify(op) }));
+    }
+
     if (parts[1] === 'tables' && parts.length === 2 && req.method === 'POST') {
       const slow = await limited(req, env, 'create', origin);
       if (slow) return slow;
@@ -271,7 +286,12 @@ export class TableDO extends DurableObject<Env> {
       persist: () => this.scheduleSave(),
       randomId: () => crypto.randomUUID().replace(/-/g, ''),
       gameOver: (rec, rated) => { if (this.env.DB) this.ctx.waitUntil(saveRecord(this.env.DB, rec, rated).catch((e) => console.error('saveRecord', e))); },
-    });
+      tournamentResult: (t, scores, places) => {
+        const stub = this.env.TOURNAMENTS.get(this.env.TOURNAMENTS.idFromName(t.id));
+        const op: TOp = { op: 'result', match: t.match, scores, places };
+        this.ctx.waitUntil(stub.fetch('https://tournament/op', { method: 'POST', body: JSON.stringify(op) }).then(() => undefined).catch((e) => console.error('tournamentResult', e)));
+      },
+    }, data.tournament?.fast && this.env.TEST_HOOKS === '1' ? FAST_TIMING : undefined);
   }
 
   private send(cid: string, msg: ServerMsg): void {
@@ -324,6 +344,17 @@ export class TableDO extends DurableObject<Env> {
       this.flush();
       // garbage-collect the table if it's never used
       this.armAlarm(Date.now() + IDLE_DELETE_MS);
+      return new Response('created', { status: 201 });
+    }
+    if (url.pathname === '/tournament-setup' && req.method === 'POST') {
+      // internal only (TournamentDO → table); not routed from the public Worker
+      if (this.room) return new Response('exists', { status: 409 });
+      const b = await req.json() as { tid: string; name: string; match: string; rules: TableRules; reserved: ({ uid: string; name: string } | null)[]; autostartAt: number; bots: boolean; fast?: boolean };
+      const data = newRoomData(code, Date.now());
+      data.tournament = { id: b.tid, match: b.match, name: b.name, reserved: b.reserved, autostartAt: b.autostartAt, bots: b.bots, ...(b.fast ? { fast: true } : {}) };
+      this.attach(data);
+      this.room!.setupTournament(data.tournament, b.rules);
+      this.flush();
       return new Response('created', { status: 201 });
     }
     if (url.pathname === '/test-state' && req.method === 'POST') {
@@ -510,7 +541,12 @@ export class SocialDO extends DurableObject<Env> {
   }
 
   override async fetch(req: Request): Promise<Response> {
-    if (new URL(req.url).pathname !== '/ws') return new Response('not found', { status: 404 });
+    const path = new URL(req.url).pathname;
+    if (path === '/notify' && req.method === 'POST') {
+      const b = await req.json() as { uids: string[]; notice: { text: string; code?: string; seat?: number; tid?: string } };
+      return Response.json({ sent: this.hub.notify(b.uids ?? [], b.notice) });
+    }
+    if (path !== '/ws') return new Response('not found', { status: 404 });
     if (this.sockets.size >= 5000) return new Response('busy', { status: 503 });
     const pair = new WebSocketPair();
     const [client, server] = [pair[0], pair[1]];

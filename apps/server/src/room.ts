@@ -17,7 +17,7 @@ import {
   HAND_END_HOLD_MS, NUKE_ALLOWANCE_MS, RUN_FX_MS, type NukeIntensity, type TalkIntensity, cleanTeamName, pickTeamName, type VenueChoice, type VenueId, rollVenue,
 } from '@spades/protocol';
 import { blockLinks, cleanName, cleanText, maskProfanity } from './filter';
-import { type GameRecord, type LiveStats, type SeatRef, buildRecord, isRated, newLiveStats } from './stats/record';
+import { type GameRecord, type LiveStats, type SeatRef, buildRecord, isRated, newLiveStats, placementsOf } from './stats/record';
 
 export const ROOM_DATA_VERSION = 1;
 
@@ -98,7 +98,24 @@ export interface RoomData {
   /** Release 9: per-seat counters for the current game (think times, Big Joker wins) */
   live?: LiveStats;
   /** Release 9b: this table runs a tournament match */
-  tournament?: { id: string; match: string; reserved?: (string | null)[]; autostartAt?: number | null };
+  tournament?: TournamentSeat;
+}
+
+/** Release 9b: this table plays one tournament match (rules locked, seats reserved for the entrants, autostart). */
+export interface TournamentSeat {
+  id: string;
+  match: string;
+  name?: string;
+  /** per seat: the account that owns it (null = a bot plays) */
+  reserved: ({ uid: string; name: string } | null)[];
+  autostartAt: number | null;
+  /** bots play for entrants who don't show (off = a side with nobody present forfeits) */
+  bots: boolean;
+  /** local test runs: fast bot timing */
+  fast?: boolean;
+  reported?: boolean;
+  /** everyone left mid-match since … (after a grace period the match is played out by bots so the bracket can't stall) */
+  emptySince?: number;
 }
 
 export interface RoomTiming {
@@ -118,6 +135,8 @@ export interface RoomTiming {
 
 /** learning mode (a player with tips on): their own turn timer runs this much longer */
 export const LEARNING_TIMER = 1.5;
+/** tournament table with nobody connected: play the match out after this long */
+export const TOURNAMENT_EMPTY_GRACE_MS = 90_000;
 export const DEFAULT_TIMING: RoomTiming = { botMs: 750, trickPauseMs: 1300, dealMs: 3200, disconnectGraceMs: 10_000, handOverMs: 20_000 };
 
 /** What the host environment (Durable Object or test harness) provides. */
@@ -136,6 +155,8 @@ export interface RoomIO {
   randomId(): string;
   /** Release 9: a finished game with at least one signed-in player (DO: write stats/Elo to D1) */
   gameOver?(rec: GameRecord, rated: boolean): void;
+  /** Release 9b: a tournament match finished (per side: final score and placement, 1 = won) */
+  tournamentResult?(t: TournamentSeat, scores: number[], places: number[]): void;
 }
 
 
@@ -211,7 +232,77 @@ export class Room {
     // one seat per account per table: an older member of the same account loses the link
     for (const o of Object.values(this.data.members)) if (o !== m && o.uid === uid) delete o.uid;
     m.uid = uid;
+    this.seatReserved(pid!);
+    this.after();
     this.io.persist();
+  }
+
+  /** Release 9b: turn a fresh table into a tournament match. */
+  setupTournament(t: TournamentSeat, rules: TableRules): void {
+    const d = this.data;
+    d.rules = clampRules(rules);
+    d.tournament = { ...t, reported: false };
+    d.botLevel = 'mixed';
+    d.seats = Array.from({ length: 4 }, () => ({ kind: 'empty' as const }));
+    d.teamNames = undefined;
+    if (t.autostartAt) this.io.setAlarm(t.autostartAt);
+    this.system(`Tournament match${t.name ? ` · ${t.name}` : ''}: seats are reserved; the game starts automatically`);
+    this.io.persist();
+  }
+
+  /** a member whose account owns a reserved seat sits there */
+  private seatReserved(pid: string): void {
+    const d = this.data;
+    const t = d.tournament;
+    const m = d.members[pid];
+    if (!t || !m?.uid || m.seat !== null) return;
+    const seat = t.reserved.findIndex((r) => r?.uid === m.uid);
+    if (seat < 0) return;
+    const slot = d.seats[seat]!;
+    if (slot.kind === 'human' && slot.playerId !== pid && this.isConnected(slot.playerId)) return;
+    if (slot.kind === 'human' && slot.playerId !== pid) d.members[slot.playerId]!.seat = null;
+    if (d.phase === 'lobby' || slot.kind === 'bot' || slot.kind === 'empty' || slot.kind === 'human') {
+      d.seats[seat] = { kind: 'human', playerId: pid };
+      m.seat = seat;
+      m.timeouts = 0;
+    }
+    if (d.phase === 'lobby' && this.allReservedSeated()) this.autostart();
+  }
+
+  private allReservedSeated(): boolean {
+    const d = this.data;
+    const t = d.tournament!;
+    return t.reserved.slice(0, d.rules.playerCount).every((r, i) => !r || (d.seats[i]?.kind === 'human' && this.isConnected((d.seats[i] as { playerId: string }).playerId)));
+  }
+
+  /** start the match now (deadline passed, or everyone is here); no-shows → bots, or a forfeit when bots are off */
+  private autostart(): void {
+    const d = this.data;
+    const t = d.tournament!;
+    if (d.phase !== 'lobby') return;
+    t.autostartAt = null;
+    const n = d.rules.playerCount;
+    const sides = d.rules.partnerships ? 2 : n;
+    const present = Array.from({ length: sides }, (_, side) => {
+      const seats = Array.from({ length: n }, (_, i) => i).filter((i) => (d.rules.partnerships ? i % 2 : i) === side);
+      return seats.some((i) => d.seats[i]?.kind === 'human') || seats.every((i) => !t.reserved[i]);
+    });
+    if (!t.bots && present.some((p) => !p)) {
+      // forfeit: sides with someone present win, absent sides lose
+      d.phase = 'over';
+      t.reported = true;
+      const places = present.map((p) => (p ? 1 : 2));
+      this.system(present.some(Boolean) ? 'No-show: the match is forfeited' : 'Nobody showed up: the match is a double forfeit');
+      this.io.tournamentResult?.(t, present.map(() => 0), present.some(Boolean) ? places : present.map(() => 1));
+      return;
+    }
+    for (let i = 0; i < n; i++) {
+      const r = t.reserved[i];
+      if (d.seats[i]!.kind === 'empty') d.seats[i] = { kind: 'bot', name: r ? `${r.name} (bot)`.slice(0, 20) : this.botName(), level: 'pro' };
+    }
+    // nobody showed at all: no grace, the bots play it out right away
+    if (this.humansConnected() === 0) t.emptySince = this.io.now() - TOURNAMENT_EMPTY_GRACE_MS;
+    this.startGame();
   }
 
   /** member ids → account ids (for tournament / stats bookkeeping) */
@@ -276,6 +367,12 @@ export class Room {
     switch (msg.t) {
       case 'sit': {
         if (msg.seat >= n) throw new RoomError('BAD_SEAT', 'No such seat');
+        if (d.tournament) {
+          const r = d.tournament.reserved[msg.seat];
+          if (!r || r.uid !== me.uid) throw new RoomError('RESERVED', 'Seats at a tournament table are reserved for the entrants');
+          this.seatReserved(pid);
+          break;
+        }
         const slot = d.seats[msg.seat]!;
         if (me.seat === msg.seat) return;
         if (d.phase === 'playing') {
@@ -299,6 +396,7 @@ export class Room {
       }
       case 'addBot': {
         this.requireHost(isHost);
+        if (d.tournament) throw new RoomError('LOCKED', 'Tournament tables are locked');
         if (d.phase === 'playing') throw new RoomError('IN_GAME', 'Game in progress');
         if (msg.seat >= n) throw new RoomError('BAD_SEAT', 'No such seat');
         const slot = d.seats[msg.seat]!;
@@ -310,6 +408,7 @@ export class Room {
       }
       case 'removeBot': {
         this.requireHost(isHost);
+        if (d.tournament) throw new RoomError('LOCKED', 'Tournament tables are locked');
         if (d.phase === 'playing') throw new RoomError('IN_GAME', 'Game in progress');
         if (d.seats[msg.seat]?.kind !== 'bot') throw new RoomError('BAD_SEAT', 'No bot there');
         d.seats[msg.seat] = { kind: 'empty' };
@@ -317,6 +416,7 @@ export class Room {
       }
       case 'config': {
         this.requireHost(isHost);
+        if (d.tournament) throw new RoomError('LOCKED', 'Tournament tables are locked');
         if (d.phase === 'playing') {
           // Rule lock: anything that affects scoring / the outcome is locked until the game ends (rematch / new game
           // unlocks it). Social + pace settings (Table Talk timer, AFK kick, bot chat on/off) stay adjustable.
@@ -388,6 +488,12 @@ export class Room {
         break;
       }
       case 'start': {
+        if (d.tournament) {
+          if (d.phase !== 'lobby') throw new RoomError('IN_GAME', 'Game in progress');
+          if (!this.allReservedSeated()) throw new RoomError('WAITING', 'Waiting for every entrant (the match starts automatically)');
+          this.autostart();
+          break;
+        }
         this.requireHost(isHost);
         if (d.phase === 'playing') throw new RoomError('IN_GAME', 'Game in progress');
         this.startGame();
@@ -395,6 +501,7 @@ export class Room {
       }
       case 'rematch': {
         this.requireHost(isHost);
+        if (d.tournament) throw new RoomError('LOCKED', 'Tournament matches have no rematch: check the bracket');
         if (d.phase !== 'over') throw new RoomError('WRONG_PHASE', 'The game is not over');
         this.startGame(true);
         this.talk({ kind: 'rematch' });
@@ -432,6 +539,7 @@ export class Room {
         break;
       }
       case 'kick': {
+        if (d.tournament) throw new RoomError('LOCKED', 'No kicking at tournament tables');
         const slot = d.seats[msg.seat];
         if (!slot || slot.kind !== 'human') throw new RoomError('BAD_SEAT', 'No player there');
         const target = slot.playerId;
@@ -618,7 +726,7 @@ export class Room {
     const prevGame = d.game;
     const n = d.rules.playerCount;
     const seats = d.seats.slice(0, n);
-    if (!seats.some((s) => s.kind === 'human')) throw new RoomError('NO_PLAYERS', 'Sit down first');
+    if (!d.tournament && !seats.some((s) => s.kind === 'human')) throw new RoomError('NO_PLAYERS', 'Sit down first');
     for (let s = 0; s < n; s++) if (d.seats[s]!.kind === 'empty') d.seats[s] = { kind: 'bot', name: this.botName(), level: d.botLevel };
     // a rematch continues the deal rotation (one seat clockwise from the last dealer); a new game deals from a random seat
     const dealer = rematch && prevGame && prevGame.rules.playerCount === n ? nextDealer(prevGame) : undefined;
@@ -665,6 +773,10 @@ export class Room {
       const res = d.game.result!;
       this.recordSeries();
       this.reportGame();
+      if (d.tournament && !d.tournament.reported) {
+        d.tournament.reported = true;
+        this.io.tournamentResult?.(d.tournament, [...res.finalScores], d.game.result ? placementsOf([...res.finalScores], [...res.winners]) : []);
+      }
       this.system(`Game over: ${res.winners.map((w) => this.sideLabel(w)).join(' & ')} win${res.winners.length > 1 || d.rules.partnerships ? '' : 's'}`);
     }
   }
@@ -806,6 +918,12 @@ export class Room {
 
   /** Called by timers/alarms. */
   tick(): void {
+    const t = this.data.tournament;
+    if (t?.autostartAt && this.data.phase === 'lobby' && this.io.now() >= t.autostartAt - 50) {
+      this.autostart();
+      this.after();
+      return;
+    }
     const changed = this.drive();
     if (changed) {
       this.broadcast();
@@ -833,7 +951,26 @@ export class Room {
         this.botKey = null;
         changed = true;
       }
-      const paused = this.humansConnected() === 0; // nobody watching: don't burn writes autoplaying
+      let paused = this.humansConnected() === 0; // nobody watching: don't burn writes autoplaying
+      const tour = d.tournament;
+      if (tour) {
+        if (!paused) delete tour.emptySince;
+        else {
+          tour.emptySince ??= now;
+          const graceAt = tour.emptySince + (tour.fast ? 3000 : TOURNAMENT_EMPTY_GRACE_MS);
+          if (now < graceAt) { this.io.setAlarm(graceAt); return changed; }
+          // nobody came back: bots play the match out instantly (the bracket must keep moving)
+          paused = false;
+          if (g.phase === 'handOver') { this.nextHand(); changed = true; continue; }
+          const tt = pendingTurn(g);
+          if (!tt) return changed;
+          const sl = d.seats[tt.seat]!;
+          this.autoAct(tt.seat, sl.kind === 'bot' ? sl.level : 'normal');
+          changed = true;
+          if (guard === 399) this.io.wake(10);
+          continue;
+        }
+      }
 
       if (g.phase === 'handOver') {
         const humans = d.seats.filter((s): s is Extract<SeatSlot, { kind: 'human' }> => s.kind === 'human' && this.isConnected(s.playerId));
@@ -991,6 +1128,7 @@ export class Room {
       talkSec: d.talkSec ?? Math.round(this.timing.handOverMs / 1000), afkLimit: d.afkLimit ?? DEFAULT_AFK_LIMIT, partnerMicMute: d.partnerMicMute ?? false, nukeIntensity: d.nukeIntensity ?? 'full', talkIntensity: d.talkIntensity ?? 'cookout', botTalk: d.botTalk ?? true,
       venue: d.venue ?? 'classic', ...(d.venueNow ? { venueNow: d.venueNow } : {}),
       teamNames: d.rules.partnerships ? [...(d.teamNames ?? [null, null])] : undefined, series: d.series ?? null, revealed: [...(d.talk?.revealed ?? [])],
+      ...(d.tournament ? { tournament: { id: d.tournament.id, name: d.tournament.name, match: d.tournament.match, autostartAt: d.tournament.autostartAt, reserved: d.tournament.reserved.map((r) => r?.name ?? null) } } : {}),
       ...(d.votes && Object.keys(d.votes).length ? { votes: Object.entries(d.votes).map(([target, by]) => ({ target, by: [...by], need: this.votesNeeded(target) })) } : {}), ...(d.music && d.music.mode !== 'off' ? { music: d.music } : {}),
     };
   }

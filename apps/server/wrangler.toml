@@ -57,6 +57,15 @@ class_name = "SocialDO"
 tag = "v4"
 new_sqlite_classes = ["SocialDO"]
 
+# Release 9b: one Durable Object per tournament (bracket state, check-in + start alarms)
+[[durable_objects.bindings]]
+name = "TOURNAMENTS"
+class_name = "TournamentDO"
+
+[[migrations]]
+tag = "v5"
+new_sqlite_classes = ["TournamentDO"]
+
 # Accounts (users, linked logins, passkeys, sessions, progress). Free tier. Schema: migrations/
 [[d1_databases]]
 binding = "DB"

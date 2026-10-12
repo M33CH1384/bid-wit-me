@@ -76,6 +76,8 @@ export type SocialServerMsg =
   | { t: 'friends'; friends: FriendsState }
   | { t: 'settings'; settings: SocialSettings }
   | { t: 'ok'; what: string }
+  /** Release 9b: tournament reminders / match-ready (code + seat = jump to the table) */
+  | { t: 'notice'; text: string; code?: string; seat?: number; tid?: string }
   | { t: 'error'; code: string; message: string };
 
 const isStr = (v: unknown, max: number): v is string => typeof v === 'string' && v.length > 0 && v.length <= max;

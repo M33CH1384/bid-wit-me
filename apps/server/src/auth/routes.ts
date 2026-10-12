@@ -147,6 +147,9 @@ async function deleteUser(db: D1Database, userId: string): Promise<void> {
     db.prepare('DELETE FROM game_players WHERE user_id = ?').bind(userId),
     db.prepare('UPDATE game_players SET partner_id = NULL WHERE partner_id = ?').bind(userId),
     db.prepare('DELETE FROM ratings WHERE user_id = ?').bind(userId),
+    db.prepare('DELETE FROM tournament_players WHERE user_id = ?').bind(userId),
+    db.prepare('DELETE FROM awards WHERE user_id = ?').bind(userId),
+    db.prepare('DELETE FROM tournaments WHERE host_id = ?').bind(userId),
     db.prepare("UPDATE games SET seats = replace(seats, ?, 'deleted') WHERE instr(seats, ?) > 0").bind(userId, userId),
     db.prepare('DELETE FROM users WHERE id = ?').bind(userId),
   ]);

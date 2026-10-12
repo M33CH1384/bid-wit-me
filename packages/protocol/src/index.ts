@@ -171,6 +171,8 @@ export interface RoomInfo {
   series?: Series | null;
   /** open vote-kicks: target player, who voted, votes needed */
   votes?: { target: string; by: string[]; need: number }[];
+  /** Release 9b: this table plays a tournament match */
+  tournament?: { id: string; name?: string; match: string; autostartAt: number | null; reserved: (string | null)[] };
 }
 
 export interface ChatLine {

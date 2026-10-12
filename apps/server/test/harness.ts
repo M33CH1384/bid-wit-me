@@ -14,6 +14,7 @@ export class FakeEnv {
   raw: ServerMsg[] = [];
   rng = createRng('test-ids');
   room: Room;
+  tourResults: { match: string; scores: number[]; places: number[] }[] = [];
   records: { rec: import('../src/stats/record').GameRecord; rated: boolean }[] = [];
 
   constructor(data?: RoomData, public timing: RoomTiming = DEFAULT_TIMING) {
@@ -35,6 +36,7 @@ export class FakeEnv {
       setAlarm: (at) => { if (at !== null && at !== this.alarm) { this.alarm = at; this.alarmSets++; } },
       persist: () => { this.persists++; },
       gameOver: (rec, rated) => { this.records.push({ rec, rated }); },
+      tournamentResult: (t, scores, places) => { this.tourResults.push({ match: t.match, scores, places }); },
       randomId: () => Array.from({ length: 4 }, () => this.rng.nextUint32().toString(16).padStart(8, '0')).join(''),
     };
   }

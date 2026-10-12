@@ -118,6 +118,13 @@ export class Hub {
     for (const inv of [...this.invites.values()]) if (inv.to === att.pid || inv.from === att.pid) this.dropInvite(inv, 'cancelled');
   }
 
+  /** Release 9b: server-side notice to accounts (tournament check-in / match ready); returns how many tabs got it */
+  notify(uids: string[], n: { text: string; code?: string; seat?: number; tid?: string }): number {
+    let sent = 0;
+    for (const uid of new Set(uids)) for (const c of this.connsOf(`u:${uid}`)) { this.io.send(c, { t: 'notice', ...n }); sent++; }
+    return sent;
+  }
+
   /* ---------------------------------------------------------------- presence */
 
   private online(pid: string): boolean {

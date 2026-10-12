@@ -52,7 +52,7 @@ export async function profileFor(db: D1Database, username: string, viewer: strin
   let badges: { id: string; earnedAt: number }[] = [];
   let teamFromProgress: string | null = null;
   try { const p = prog ? JSON.parse(prog.data) : null; badges = (p?.badges ?? []).map((b: { id: string; earnedAt: number }) => ({ id: b.id, earnedAt: b.earnedAt })); teamFromProgress = p?.teamName ?? null; } catch { /* ignore */ }
-  const champ = await db.prepare("SELECT COUNT(*) AS n FROM kv WHERE k LIKE ?").bind(`champ:${u.id}:%`).first<{ n: number }>();
+  const champ = await db.prepare("SELECT COUNT(*) AS n FROM awards WHERE user_id = ? AND kind = 'champion'").bind(u.id).first<{ n: number }>();
   const teams = (await db.prepare('SELECT team_name, COUNT(*) AS n FROM game_players WHERE user_id = ? AND team_name IS NOT NULL GROUP BY team_name ORDER BY n DESC LIMIT 6').bind(u.id).all<{ team_name: string }>()).results.map((r) => r.team_name);
   if (teamFromProgress && !teams.includes(teamFromProgress)) teams.unshift(teamFromProgress);
   const totals = await db.prepare('SELECT COUNT(*) AS games, COALESCE(SUM(won), 0) AS wins FROM game_players WHERE user_id = ?').bind(u.id).first<{ games: number; wins: number }>();
