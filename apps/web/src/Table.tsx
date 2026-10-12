@@ -2,7 +2,7 @@ import { winHeadline } from './headline';
 import { type VenueId, VENUE_DEFS, resolveVenue } from './venues';
 import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
-  type Card, type GameState, type PlayerView, type Play, type TableRules, radioactiveBigJoker, viewFor, isNukeTrick, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, partnerOf, sideOf, sortHand, trumpOrder,
+  type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, isNukeTrick, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, partnerOf, sideOf, sortHand, trumpOrder,
 } from '@spades/rules';
 import { ScorePad, defaultSideName, setTeamNames, sideName } from './Modals';
 import { LockedRulesPanel } from './LockedRules';
@@ -26,6 +26,7 @@ import { fireCue, fx, useReduceEffects } from './fx';
 import { loadScene } from './three/preload';
 import { endReasonText, onNoticeSides, shotChatLines } from './shotOut';
 import { type Sfx, sound } from './audio';
+import { HAPTIC, haptic } from './haptics';
 import { type ChatMsg, LINES, SEAT_COLORS, TALK_LINES, type Toast, TickNumber, USER_COLORS, pick, toastsFor } from './overlay';
 import { type Settings, modeTitle } from './settings';
 import type { SeatPos } from './three/layout';
@@ -732,6 +733,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const base = Date.now();
     const list = toastsFor(rec, r, names, mySide).map((t, i) => ({ ...t, id: base + i }));
     setToasts(list);
+    const setToast = list.some((t) => t.kind === 'set' || t.kind === 'bust');
     const cue: Record<Toast['kind'], Sfx | null> = { made: 'made', set: 'set', nil: 'nil', bust: 'set', bags: 'bags', info: null };
     list.forEach((t, i) => { const c = cue[t.kind]; if (c) sound.play(c, { delay: 0.1 + i * 0.45 }); });
     const tm = setTimeout(() => setToasts([]), 3200);
@@ -742,6 +744,12 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const calls = calloutsFor(st, mySide, names);
     const shot = calls.find((c) => c.kind === 'shot') ?? calls.find((c) => c.kind === 'gotShot');
     if (shot) timers.push(fx.later(shot.kind as 'shot' | 'gotShot', 350, { text: shot.title ?? shot.text, sub: shot.sub }));
+    // Set/bust toasts are on screen now. A shot pop waits the same 350ms as its callout (not the sound delay).
+    if (setToast) haptic(HAPTIC.setOrShot, 'set');
+    else if (shot) {
+      const ht = window.setTimeout(() => haptic(HAPTIC.setOrShot, 'shot'), 350);
+      timers.push(() => clearTimeout(ht));
+    }
     const streak = calls.find((c) => c.kind === 'streak');
     // Wheels made: a team that bid 10+ together and took 10+ books → the supercar peel-out
     const made = wheelsMade(r, rec);
@@ -769,8 +777,6 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // venue: online = the room's; offline = the setting, with Random rolled from the game seed (same spot after a refresh)
   const venue: VenueId = online ? (online.venue ?? 'classic') : resolveVenue(settings.venue, seedFloat(seed));
   useEffect(() => { sound.setVenueBed(VENUE_DEFS[venue].bed); return () => sound.setVenueBed('none'); }, [venue]);
-  // last trick: Big Joker down, Little Joker still out → radioactive pulse + Geiger crackle until the trick resolves
-  const radioactive = radioactiveBigJoker(st);
   // nuke watchdog: the blast is normally cued by the second Joker's 3D landing; on a stalled renderer (Safari compiling
   // shaders, a backgrounded tab, very slow frames) that landing can come late or never — so once a nuked trick is on
   // the table, make sure the nuke fires anyway (fx dedupes, so it never plays twice).
@@ -782,7 +788,14 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const t = window.setTimeout(() => { fireCue('nuke'); release(); }, 1100);
     return () => { clearTimeout(t); release(); };
   }, [nukeKey]);
-  useEffect(() => { sound.geiger(radioactive); return () => sound.geiger(false); }, [radioactive]);
+  const winBuzzed = useRef(false);
+  useEffect(() => { if (st.phase !== 'gameOver') winBuzzed.current = false; }, [st.phase]);
+  const localWin = st.phase === 'gameOver' && !pause && !runFx && talkOpen && !!st.result?.winners.includes(mySide) && !spectating;
+  useEffect(() => {
+    if (!localWin || winBuzzed.current) return;
+    winBuzzed.current = true;
+    haptic(HAPTIC.gameWin, 'game-win');
+  }, [localWin]);
   // any modal up: the table, plates, chat, video bubbles etc. dim + blur behind it and can't paint over it
   const modalOpen = (st.phase === 'handOver' && !pause && talkOpen) || confirmLeave || showPad || (st.phase === 'gameOver' && !pause && !runFx && talkOpen && !!st.result);
 
@@ -869,7 +882,6 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           handCounts={display.counts}
           shownTrick={display.trick}
           slam={display.slam}
-          radioactive={radioactive}
           reduceFx={reduceFx}
           venue={venue}
           piles={display.piles}

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { type FxEvent, type NukeIntensity, fx } from './fx';
+import JokerBurst from './JokerBurst';
 import { WheelsCelebration } from './WheelsCar';
 
 /**
@@ -60,20 +61,21 @@ export default function Hype({ reduced, low = false }: { reduced: boolean; low?:
   // HUD jolt (the 3D camera shakes separately)
   useEffect(() => {
     if (reduced) return;
-    const big = nuke && nuke.mode !== 'off' ? 'jolt-nuke' : pulse?.big ? 'jolt-big' : pulse ? 'jolt-small' : null;
+    // The detonation overlay owns the nuke shake. A CSS jolt on top of it double-shakes the table.
+    const big = nuke ? null : pulse?.big ? 'jolt-big' : pulse ? 'jolt-small' : null;
     if (!big) return;
     const el = document.querySelector('.table-screen');
     el?.classList.add(big);
-    const t = window.setTimeout(() => el?.classList.remove(big), big === 'jolt-nuke' ? 1500 : big === 'jolt-big' ? 900 : 350);
+    const t = window.setTimeout(() => el?.classList.remove(big), big === 'jolt-big' ? 900 : 350);
     return () => { clearTimeout(t); el?.classList.remove(big); };
   }, [nuke, pulse, reduced]);
 
   return (
     <div className="hype-layer" aria-live="polite" data-testid="hype">
+      <JokerBurst />
       {pulse && <div key={pulse.id} className={`joker-pulse ${pulse.big ? 'big' : ''}`} data-testid="joker-pulse" />}
       {nuke && (
         <>
-          {!reduced && nuke.mode !== 'off' && <div key={`f${nuke.id}`} className="nuke-flash" data-testid="nuke-flash" />}
           <div key={`b${nuke.id}`} className={`nuke-banner ${nuke.mode === 'off' || reduced ? 'calm' : ''}`} data-testid="nuke" onClick={() => setNuke(null)}>
             <div className="nb-title" data-text="☢ NUKED ☢">☢ NUKED ☢</div>
             <div className="nb-sub">Big Joker over Little Joker</div>
