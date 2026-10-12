@@ -113,7 +113,12 @@ export function ripplePose(ageMs: number, kind: JokerKind): { scale: number; opa
   return { scale: 1 + (to - 1) * e, opacity: 0.5 * (1 - e) };
 }
 
-export const BURST_MS: Record<JokerKind, number> = { BJ: 1100, LJ: 800 };
+/** Overlay lifetime. Longer than the mushroom so the last fade frame still paints. */
+export const BURST_MS: Record<JokerKind, number> = { BJ: 2300, LJ: 1600 };
+
+/** Mushroom window. Big Joker stays readable for ~1.8s; the Little Joker is shorter. */
+const CLOUD_START = 180;
+const CLOUD_END: Record<JokerKind, number> = { BJ: 2200, LJ: 1500 };
 
 /**
  * White flash. Big Joker only: 0→.85 over 60ms, then back to 0 over 220ms ease-out.
@@ -148,19 +153,66 @@ export function shakeOffset(tMs: number, kind: JokerKind, reduced: boolean): { x
   return { x: amp * Math.sin(phase), y: amp * 0.65 * Math.cos(phase) };
 }
 
-/** Mushroom sprites: rise and scale from 120ms, gone by 900ms (sooner and smaller for the Little Joker). */
+/**
+ * Mushroom pose. `rise` and `scale` are 0..1 fractions (pixel size comes from the viewport).
+ * The Big Joker cloud is already large on its first frame and stays bright for about 1.8s.
+ * Reduced motion draws no cloud.
+ */
 export function cloudPose(tMs: number, kind: JokerKind, reduced: boolean): { rise: number; scale: number; opacity: number } | null {
   if (reduced) return null;
-  const start = 120;
-  const end = kind === 'BJ' ? 900 : 680;
-  if (tMs < start || tMs > end) return null;
-  const u = (tMs - start) / (end - start);
-  const riseMax = kind === 'BJ' ? 60 : 36;
-  const scaleMax = kind === 'BJ' ? 1.3 : 0.95;
-  const scaleMin = 0.4;
-  const grow = Math.min(1, u / 0.62);
-  const fade = u < 0.55 ? 1 : Math.max(0, 1 - (u - 0.55) / 0.45);
-  return { rise: riseMax * grow, scale: scaleMin + (scaleMax - scaleMin) * grow, opacity: fade };
+  const end = CLOUD_END[kind];
+  if (tMs < CLOUD_START || tMs > end) return null;
+  const u = (tMs - CLOUD_START) / (end - CLOUD_START);
+  const grow = Math.min(1, u / 0.18);
+  const fadeIn = Math.min(1, 0.7 + u / 0.06);
+  const fadeOut = u < 0.84 ? 1 : Math.max(0, 1 - (u - 0.84) / 0.16);
+  return { rise: 0.35 + 0.65 * grow, scale: 0.78 + 0.22 * grow, opacity: fadeIn * fadeOut };
+}
+
+export interface MushroomSprite {
+  /** Offset from the blast center, CSS pixels. y grows downward. */
+  x: number;
+  y: number;
+  rx: number;
+  ry: number;
+  /** 0 = yellow crown, 1 = orange body. */
+  hot: 0 | 1;
+}
+
+/**
+ * A handful of billboards: a stem and a wide cap. Sized from the short side of the screen so a 390px
+ * phone gets a cloud that covers the trick, not a 60px puff. No particle system.
+ */
+export function mushroomSprites(
+  pose: { rise: number; scale: number },
+  kind: JokerKind,
+  minSide: number,
+): MushroomSprite[] {
+  const k = kind === 'BJ' ? 1 : 0.62;
+  const s = pose.scale * k;
+  const stem = minSide * 0.34 * pose.rise * k;
+  const capW = minSide * 0.46 * s;
+  const capH = minSide * 0.16 * s;
+  const sprites: MushroomSprite[] = [];
+  for (let i = 0; i < 5; i++) {
+    const t = i / 4;
+    const rad = minSide * (0.03 + 0.02 * t) * s;
+    sprites.push({ x: 0, y: -stem * t, rx: rad * 0.8, ry: rad * 1.2, hot: 1 });
+  }
+  for (let i = 0; i < 7; i++) {
+    const u = i / 6;
+    const crown = Math.sin(u * Math.PI);
+    const rad = capH * (0.55 + 0.35 * crown);
+    sprites.push({
+      x: (u - 0.5) * capW,
+      y: -stem - crown * capH,
+      rx: rad * 1.05,
+      ry: rad * 0.72,
+      hot: i % 2 === 0 ? 0 : 1,
+    });
+  }
+  sprites.push({ x: 0, y: -stem - capH * 0.35, rx: capH * 0.5, ry: capH * 0.38, hot: 0 });
+  return sprites;
 }
 
 /**
@@ -232,7 +284,13 @@ export function startBurst(kind: JokerKind, reduced: boolean, now = performance.
  */
 export function advanceBurst(now = performance.now()): BurstClock | null {
   if (!burst) return null;
-  if (burst.last) burst.elapsed += Math.min(50, Math.max(0, now - burst.last));
+  if (burst.last) {
+    const dt = Math.max(0, now - burst.last);
+    // Opening flash stays frame-capped so a hitch cannot skip it. After that, allow a longer
+    // step so the mushroom keeps up with the wall clock when a frame is late.
+    const cap = burst.elapsed < 300 ? 50 : 200;
+    burst.elapsed += Math.min(cap, dt);
+  }
   burst.last = now;
   return burst;
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   BEAT_MARKS, BURST_MS, JOKER_PALETTE,
-  cardPush, clearBurst, cloudPose, cycleMs, flashOpacity, getBurst, heartbeat, jitterPx, jokerPop,
+  cardPush, clearBurst, cloudPose, cycleMs, flashOpacity, getBurst, heartbeat, jitterPx, jokerPop, mushroomSprites,
   ripplePose, shakeOffset, shockwave, startBurst, subscribeBurst,
 } from '../src/jokerFx';
 
@@ -87,15 +87,30 @@ describe('detonation keyframes', () => {
     expect(Math.hypot(shakeOffset(0, 'LJ', false).x, shakeOffset(0, 'LJ', false).y)).toBeCloseTo(4 * 0.65, 5);
   });
 
-  it('raises the cloud from 120ms and keeps it gone under reduced motion', () => {
+  it('holds a large mushroom for about 1.8s and skips it under reduced motion', () => {
     expect(cloudPose(100, 'BJ', false)).toBeNull();
-    expect(cloudPose(200, 'BJ', true)).toBeNull();
-    const c = cloudPose(200, 'BJ', false)!;
-    expect(c.rise).toBeGreaterThan(0);
-    expect(c.scale).toBeGreaterThanOrEqual(0.4);
-    expect(c.opacity).toBeGreaterThan(0);
-    expect(cloudPose(901, 'BJ', false)).toBeNull();
-    expect(cloudPose(681, 'LJ', false)).toBeNull();
+    expect(cloudPose(500, 'BJ', true)).toBeNull();
+    const mid = cloudPose(1000, 'BJ', false)!;
+    expect(mid.opacity).toBeGreaterThan(0.85);
+    expect(mid.rise).toBeGreaterThan(0.9);
+    const sprites = mushroomSprites(mid, 'BJ', 390);
+    expect(sprites.length).toBeLessThanOrEqual(16);
+    const xs = sprites.flatMap((s) => [s.x - s.rx, s.x + s.rx]);
+    const width = Math.max(...xs) - Math.min(...xs);
+    const top = Math.min(...sprites.map((s) => s.y - s.ry));
+    expect(width).toBeGreaterThan(200);
+    expect(top).toBeLessThan(-140);
+    const little = mushroomSprites(cloudPose(1000, 'LJ', false)!, 'LJ', 390);
+    const littleW = Math.max(...little.flatMap((s) => [s.x - s.rx, s.x + s.rx])) - Math.min(...little.flatMap((s) => [s.x - s.rx, s.x + s.rx]));
+    expect(littleW).toBeLessThan(width);
+    expect(cloudPose(1700, 'BJ', false)!.opacity).toBeGreaterThan(0.8);
+    expect(cloudPose(2000, 'BJ', false)!.opacity).toBeGreaterThan(0.5);
+    expect(cloudPose(2201, 'BJ', false)).toBeNull();
+    expect(cloudPose(1501, 'LJ', false)).toBeNull();
+    let visible = 0;
+    for (let t = 0; t <= 2500; t += 10) if ((cloudPose(t, 'BJ', false)?.opacity ?? 0) > 0.55) visible += 10;
+    expect(visible).toBeGreaterThanOrEqual(1500);
+    expect(visible).toBeLessThanOrEqual(2000);
   });
 
   it('pops the winning joker from 200ms and settles by 700ms', () => {
@@ -120,9 +135,11 @@ describe('detonation keyframes', () => {
     }
   });
 
-  it('runs about 1.1s for the Big Joker and 0.8s for the Little one', () => {
-    expect(BURST_MS.BJ).toBe(1100);
-    expect(BURST_MS.LJ).toBe(800);
+  it('keeps the overlay up through the mushroom fade', () => {
+    expect(BURST_MS.BJ).toBeGreaterThanOrEqual(2200);
+    expect(BURST_MS.LJ).toBeGreaterThanOrEqual(1500);
+    expect(BURST_MS.BJ).toBe(2300);
+    expect(BURST_MS.LJ).toBe(1600);
   });
 });
 
