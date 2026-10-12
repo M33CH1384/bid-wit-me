@@ -168,9 +168,24 @@ export function stackFor(pose: HandPose): HandStack {
   return 'rest';
 }
 
-/** Plane-space distance of `px` CSS pixels at depth 1. */
+/**
+ * Plane-space distance of `px` CSS pixels at depth 1.
+ * A missing viewport (0, NaN) must not be treated as a 1px screen: 14px would become many screens tall
+ * and the raised cards leave the picture.
+ */
 export function cssPxToPlane(px: number, viewH: number, screenH: number): number {
-  return (px / Math.max(1, screenH)) * viewH;
+  if (!(Number.isFinite(px) && Number.isFinite(viewH) && Number.isFinite(screenH) && screenH >= 32)) return 0;
+  return (px / screenH) * viewH;
+}
+
+/**
+ * Local offset that raises a rolled card straight up the screen.
+ * The fan quaternion is the camera times this roll, so a raw translateY walks the end cards sideways,
+ * out of the fan. Applying the fan's roll to this offset puts the whole raise on screen-up.
+ */
+export function screenRaise(roll: number, distance: number): { x: number; y: number } {
+  if (!Number.isFinite(roll) || !Number.isFinite(distance)) return { x: 0, y: 0 };
+  return { x: Math.sin(roll) * distance, y: Math.cos(roll) * distance };
 }
 
 /** `handFan` / `handCardPlane` lift, as a fraction of card height. Positive raises the card. */

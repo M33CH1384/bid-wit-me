@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { GROUP_PAD_PX, GROUP_RADIUS_PX, cardPartOrder, fanGapPx, handRenderOrder, hitsInPaintOrder } from '../src/three/handLift';
-import { fanLayout, handCardPlane } from '../src/three/layout';
-import { contourContains, groupOutline, haloLocal, placeOnPlane, unionContours } from '../src/three/playableOutline';
+import { Quaternion, Vector3 } from 'three';
+import { GROUP_PAD_PX, GROUP_RADIUS_PX, cardPartOrder, cssPxToPlane, fanGapPx, handRenderOrder, hitsInPaintOrder, raiseLocalY, screenRaise } from '../src/three/handLift';
+import { fanLayout, handCardPlane, handFan, makeCamera } from '../src/three/layout';
+import { contourContains, groupOutline, haloLocal, placeOnPlane, planePointOk, unionContours } from '../src/three/playableOutline';
 
 /**
  * The fan draws a legal card over the illegal card beside it, but that neighbour stays closer in z.
@@ -85,5 +86,92 @@ describe('the legal outline matches the card bounds', () => {
     expect(contourContains(outline!, { x: pastRight.x, y: pastRight.y })).toBe(false);
     expect(contourContains(outline!, { x: pastLeft.x, y: pastLeft.y })).toBe(false);
     expect(contourContains(outline!, { x: oMaxX + 12 * px, y: (oMinY + oMaxY) / 2 })).toBe(false);
+  });
+
+  it('wraps the whole hand when every card is legal, and ignores a wild corner', () => {
+    const n = 13;
+    const gaps = fanGapPx(Array.from({ length: n }, () => true));
+    expect(gaps.every((g) => g === 0)).toBe(true);
+    const L = fanLayout(aspect, n);
+    const px = L.viewH / screenH;
+    const faces = gaps.map((_, i) => placeOnPlane(haloLocal(1, 1), handCardPlane(aspect, n, i, 0, 0, {}, gaps[i]!, screenH)));
+    const rect = groupOutline(faces, GROUP_PAD_PX * px, GROUP_RADIUS_PX * px);
+    expect(rect).toBeTruthy();
+    const [outline] = unionContours([rect!], 80);
+    expect(outline).toBeTruthy();
+    let fMinX = Infinity, fMaxX = -Infinity;
+    for (const face of faces) {
+      let cx = 0, cy = 0;
+      for (const p of face) { cx += p.x; cy += p.y; fMinX = Math.min(fMinX, p.x); fMaxX = Math.max(fMaxX, p.x); }
+      expect(contourContains(outline!, { x: cx / face.length, y: cy / face.length })).toBe(true);
+    }
+    const widthPx = (fMaxX - fMinX) / px;
+    const outlinePx = (Math.max(...rect!.map((p) => p.x)) - Math.min(...rect!.map((p) => p.x))) / px;
+    // One card is about 100px. The whole fan is the run, not a single end card and not the viewport.
+    expect(widthPx).toBeGreaterThan(250);
+    expect(outlinePx).toBeGreaterThan(widthPx);
+    expect(outlinePx - widthPx).toBeLessThan(20);
+    // One exploded corner is dropped. The run stays the size of the hand, not the size of the view.
+    const wild = faces.map((face, i) => (i === n - 1 ? face.map((p, k) => (k === 0 ? { x: 1e6, y: p.y } : p)) : face));
+    const kept = groupOutline(wild, GROUP_PAD_PX * px, GROUP_RADIUS_PX * px);
+    expect(kept).toBeTruthy();
+    expect((Math.max(...kept!.map((p) => p.x)) - Math.min(...kept!.map((p) => p.x))) / px).toBeLessThan(outlinePx + 2);
+    expect(groupOutline([[{ x: 1e6, y: 0 }, { x: -1e6, y: 1 }]], GROUP_PAD_PX * px, GROUP_RADIUS_PX * px)).toBeNull();
+    const withNan = faces.map((face, i) => (i === 0 ? face.map((p, k) => (k === 0 ? { x: NaN, y: NaN } : p)) : face));
+    const dropped = groupOutline(withNan, GROUP_PAD_PX * px, GROUP_RADIUS_PX * px);
+    expect(dropped).toBeTruthy();
+    expect((Math.max(...dropped!.map((p) => p.x)) - Math.min(...dropped!.map((p) => p.x))) / px).toBeLessThan(outlinePx + 2);
+    expect(planePointOk(1e6, 0)).toBe(false);
+    expect(planePointOk(NaN, 0)).toBe(false);
+  });
+});
+
+describe('a bad viewport cannot throw the hand away', () => {
+  const aspect = 390 / 844;
+  const screenH = 844;
+
+  it('keeps a void hand and an all-legal lead finite when the canvas size is 0 or NaN', () => {
+    const n = 13;
+    const gaps = fanGapPx(Array.from({ length: n }, () => true));
+    const good = handCardPlane(aspect, n, 12, 0, 0, {}, 0, screenH);
+    for (const bad of [0, NaN, Infinity]) {
+      const plane = handCardPlane(aspect, n, 12, 0, 0, {}, gaps[12]!, bad);
+      expect(plane.x).toBeCloseTo(good.x, 6);
+      expect(plane.y).toBeCloseTo(good.y, 6);
+      const fan = handFan(aspect, n, 0, 0, 0, {}, gaps[0]!, bad);
+      expect(fan.p.every(Number.isFinite)).toBe(true);
+      expect(fan.q.every(Number.isFinite)).toBe(true);
+      expect(Number.isFinite(fan.s)).toBe(true);
+      expect(fan.s).toBeGreaterThan(0.05);
+    }
+    for (const badAspect of [0, NaN, Infinity]) {
+      const fan = handFan(badAspect, n, 6, 0, 0, {}, 0, screenH);
+      expect(fan.p.every(Number.isFinite)).toBe(true);
+      expect(Number.isFinite(fan.s) && fan.s > 0.05).toBe(true);
+    }
+    const L = fanLayout(aspect, n);
+    expect(cssPxToPlane(14, L.viewH, 0)).toBe(0);
+    expect(cssPxToPlane(14, L.viewH, NaN)).toBe(0);
+    expect(raiseLocalY('legal', L.viewH, 0, L.ch)).toBe(0);
+    expect(raiseLocalY('legal', L.viewH, NaN, L.ch)).toBe(0);
+    const raised = raiseLocalY('legal', L.viewH, screenH, L.ch);
+    expect(raised).toBeGreaterThan(0);
+    expect(raised).toBeLessThan(0.2);
+  });
+
+  it('raises the end card straight up the screen instead of walking it out of the fan', () => {
+    const cam = makeCamera(aspect);
+    const screenUp = new Vector3(0, 1, 0).applyQuaternion(cam.quaternion).normalize();
+    const i = 12;
+    const plane = handCardPlane(aspect, 13, i, 0);
+    const fan = handFan(aspect, 13, i, 0);
+    const q = new Quaternion(...fan.q);
+    const d = 0.05;
+    const fixed = screenRaise(plane.roll, d);
+    const world = new Vector3(fixed.x, fixed.y, 0).applyQuaternion(q);
+    expect(world.clone().cross(screenUp).length()).toBeLessThan(1e-6);
+    expect(world.dot(screenUp)).toBeCloseTo(d, 6);
+    const raw = new Vector3(0, d, 0).applyQuaternion(q);
+    expect(raw.clone().cross(screenUp).length()).toBeGreaterThan(0.01);
   });
 });

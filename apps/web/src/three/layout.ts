@@ -124,6 +124,8 @@ export interface CamSpec { pos: [number, number, number]; look: [number, number,
 
 /** Camera from the human seat looking across the table; framing adapts to portrait/landscape. */
 export function cameraFor(aspect: number, short = false): CamSpec {
+  // A 0×0 canvas (iPhone chrome, first frame) is 0 or NaN. That fov never recovers on its own.
+  if (!(Number.isFinite(aspect) && aspect > 0.05 && aspect < 20)) aspect = 9 / 16;
   if (short) return shortLandscapeCamera(aspect);
   const t = Math.min(1, Math.max(0, (aspect - 0.5) / (1.6 - 0.5))); // 0 = tall phone, 1 = wide desktop
   const lerp = (a: number, b: number) => a + (b - a) * t;
@@ -179,6 +181,8 @@ export interface FanOpts {
 }
 
 export function fanLayout(aspect: number, count: number, safeFrac = 0, o: FanOpts = {}): FanLayout {
+  if (!(Number.isFinite(aspect) && aspect > 0.05 && aspect < 20)) aspect = 9 / 16;
+  if (!(count >= 1)) count = 1;
   const cam = makeCamera(aspect, o.short);
   const D = 1;
   const viewH = 2 * Math.tan((cam.fov * Math.PI) / 360) * D;
@@ -224,7 +228,10 @@ export function handCardPlane(aspect: number, count: number, i: number, lift: nu
   const halfN = (count - 1) / 2;
   const off = i - halfN;
   // `gapPx` opens the fan beside a legal run. Depth and roll stay on the index, so this is only a sideways slide.
-  const x = off * L.step + (gapPx / Math.max(1, screenH)) * L.viewH;
+  // 0 / NaN is NaN, so a missing viewport used to poison the whole fan even when the gap itself was 0.
+  const sh = Number.isFinite(screenH) && screenH >= 32 ? screenH : 0;
+  const gap = Number.isFinite(gapPx) ? gapPx : 0;
+  const x = off * L.step + (sh > 0 ? (gap / sh) * L.viewH : 0);
   const roll = halfN > 0 ? -(off / halfN) * L.maxRoll : 0;
   const curve = x * x * L.curveK;
   // the outermost (most rolled, most curved-down) card's lowest corner sits exactly on the bottom margin

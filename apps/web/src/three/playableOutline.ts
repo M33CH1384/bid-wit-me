@@ -68,9 +68,16 @@ function clusterAngle(pts: readonly Pt[]): number {
  * you can't play. One convex outline — no per-card scallop, so the stroke has nothing to flare into rays.
  * Returns null when there is nothing to wrap.
  */
+/** A projected corner past this (plane units at depth 1) is a bad divide, not a card. A hand is under 1. */
+export const MAX_PLANE = 6;
+
+export function planePointOk(x: number, y: number): boolean {
+  return Number.isFinite(x) && Number.isFinite(y) && Math.abs(x) <= MAX_PLANE && Math.abs(y) <= MAX_PLANE;
+}
+
 export function groupOutline(polys: readonly (readonly Pt[])[], pad: number, radius: number, segs = 5): Pt[] | null {
   const pts: Pt[] = [];
-  for (const poly of polys) for (const p of poly) pts.push(p);
+  for (const poly of polys) for (const p of poly) if (planePointOk(p.x, p.y)) pts.push(p);
   if (!pts.length) return null;
   let cx = 0, cy = 0;
   for (const p of pts) { cx += p.x; cy += p.y; }
@@ -90,6 +97,8 @@ export function groupOutline(polys: readonly (readonly Pt[])[], pad: number, rad
   if (!(maxX >= minX) || !(maxY >= minY)) return null;
   const hw = (maxX - minX) / 2 + pad;
   const hh = (maxY - minY) / 2 + pad;
+  // One wild corner used to stretch the stroke across the whole view. Drop the run instead.
+  if (!planePointOk(hw, hh)) return null;
   const ox = (minX + maxX) / 2;
   const oy = (minY + maxY) / 2;
   return roundedRect(hw, hh, radius, radius, segs).map((p) => {

@@ -5,7 +5,7 @@ import {
   BREATHE_SCALE, GLOW_RENDER_ORDER, GROUP_PAD_PX, GROUP_RADIUS_PX, LIFT_S, OUTLINE_COLOR, SELECT_GLOW_OP, SHINE_PEAK, SHINE_S, SHINE_WIDTH,
   breatheOpacity, easeOut, glowFalloff, glowRadiusPx, liftEase, outlineRadiusPx, shineAxis,
 } from './handLift';
-import { contoursToTriangles, groupOutline, haloLocal, strokeContour, strokeOutward, unionContours, type Pt } from './playableOutline';
+import { contoursToTriangles, groupOutline, haloLocal, planePointOk, strokeContour, strokeOutward, unionContours, type Pt } from './playableOutline';
 
 export interface GlowAnchor { name: string; x: number; y: number; selected?: boolean }
 
@@ -70,9 +70,14 @@ function findCard(scene: Object3D, cache: Map<string, Object3D>, name: string): 
 function projectHalo(card: Object3D, cameraInverse: Matrix4, local: readonly Pt[], out: Pt[]): boolean {
   out.length = 0;
   for (const p of local) {
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) return false;
     _v.set(p.x, p.y, 0).applyMatrix4(card.matrixWorld).applyMatrix4(cameraInverse);
-    if (_v.z >= -0.05) return false;
-    out.push({ x: _v.x / -_v.z, y: _v.y / -_v.z });
+    // NaN fails the comparison and used to be divided through, which stretched the stroke over the view.
+    if (!Number.isFinite(_v.x) || !Number.isFinite(_v.y) || !Number.isFinite(_v.z) || _v.z >= -0.05) return false;
+    const x = _v.x / -_v.z;
+    const y = _v.y / -_v.z;
+    if (!planePointOk(x, y)) return false;
+    out.push({ x, y });
   }
   return true;
 }
@@ -229,8 +234,8 @@ export default function PlayableGlow({ runs, handNames, quality }: Props) {
         card.updateWorldMatrix(true, false);
         _v.set(0, 0, 0).applyMatrix4(card.matrixWorld).applyMatrix4(inv);
         stampNow += `${_v.x.toFixed(3)},${_v.y.toFixed(3)},${_v.z.toFixed(3)};`;
-        if (_v.z > near) near = _v.z;
-        if (_v.z >= -0.05 || Math.hypot(_v.x / -_v.z - anchor.x, _v.y / -_v.z - anchor.y) > FLIGHT) settled = false;
+        if (Number.isFinite(_v.z) && _v.z > near) near = _v.z;
+        if (!Number.isFinite(_v.z) || _v.z >= -0.05 || !planePointOk(_v.x / -_v.z, _v.y / -_v.z) || Math.hypot(_v.x / -_v.z - anchor.x, _v.y / -_v.z - anchor.y) > FLIGHT) settled = false;
         const face: Pt[] = [];
         if (!projectHalo(card, inv, FACE, face)) { settled = false; continue; }
         faces.push(face);

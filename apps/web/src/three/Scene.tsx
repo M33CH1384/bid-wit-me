@@ -73,9 +73,10 @@ function CameraRig() {
   const { camera, size, invalidate } = useThree();
   const short = isShortLandscape(size.width, size.height);
   useLayoutEffect(() => {
-    const a = size.width / size.height;
+    const a = size.width >= 32 && size.height >= 32 ? size.width / size.height : 9 / 16;
     const s = cameraFor(a, short);
     const cam = camera as import('three').PerspectiveCamera;
+    if (!Number.isFinite(s.fov)) return;
     cam.fov = s.fov;
     cam.aspect = a;
     cam.position.set(...s.pos);
@@ -292,8 +293,11 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   const tl = dealTimeline(props.animK, n, handCounts.reduce((a, b) => a + b, 0) + piles.length * n + shownTrick.length);
   const size = useThree((s) => s.size);
   const short = isShortLandscape(size.width, size.height); // from the canvas size, like the camera — never out of step with it
-  // same source as CameraRig, so the hand is always laid out for the camera that renders it (no stale aspect after a rotate)
-  const aspect = size.width / size.height;
+  // A 0×0 canvas (first frame, iPhone chrome) must not divide. That NaN pose sticks: lerp never leaves it,
+  // and the next trick is an empty gold box where the hand was.
+  const sized = size.width >= 32 && size.height >= 32;
+  const aspect = sized ? size.width / size.height : 390 / 844;
+  const screenH = sized ? size.height : 844;
   const safe = props.safe ?? { l: 0, r: 0, t: 0, b: 0 };
   // landscape: the bottom corners hold your plate (left) and last trick + controls (right); the hand fans between
   // desktop / wide: a bigger hand (≈35% over the 0.16 default), kept between your plate (left) and last trick (right)
@@ -310,7 +314,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   if (held.current.handNo !== handNo) held.current = { handNo, cards: new Set(), slots: new Map(), count: 0, seen: new Set() };
   const pendingHold = useRef<Held>(held.current);
 
-  type Item = { key: string; card: Card | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: (() => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide'; raise?: number; order?: number; cover?: boolean; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; inTrick?: boolean; played?: string | null; jokerAura?: { kind: 'BJ' | 'LJ'; cardsAfter: number } };
+  type Item = { key: string; card: Card | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: (() => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide'; raise?: number; roll?: number; order?: number; cover?: boolean; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; inTrick?: boolean; played?: string | null; jokerAura?: { kind: 'BJ' | 'LJ'; cardsAfter: number } };
   const items: Item[] = [];
   const dealDelay = (slot: number, seat: number) => tl.shuffle + (slot * n + ((seat - dealer - 1 + n) % n)) * tl.step;
 
@@ -392,18 +396,18 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
     const isLegal = !!c && legal.includes(c);
     const pose = c ? playablePose(yourTurn, isLegal, selected === c) : 'flat';
     const above = pose === 'legal' || pose === 'selected';
-    // The raise stays a translateY. The gap is a sideways slide of the same fan, and stacking is render order.
-    const target = handFan(aspect, mine.length, i, 0, safeFrac, fanOpts, gaps[i] ?? 0, size.height);
+    // The raise is screen-up (counter-rotated by the fan roll). The gap is a sideways slide, and stacking is render order.
+    const target = handFan(aspect, mine.length, i, 0, safeFrac, fanOpts, gaps[i] ?? 0, screenH);
     const flip = flipIn && !!c;
     const id = c ? handCardKey(c) : '';
     // intro stays on for the whole hand; only cards we have not shown yet come from the deck.
     const fresh = !!id && intro && !held.current.seen.has(id);
     const move = fanMotion({ flip, fresh, closing });
+    const plane = handCardPlane(aspect, mine.length, i, 0, safeFrac, fanOpts, gaps[i] ?? 0, screenH);
     if (c) {
       nextCards.add(c);
       nextSlots.set(id, target);
       nextSeen.add(id);
-      const plane = handCardPlane(aspect, mine.length, i, 0, safeFrac, fanOpts, gaps[i] ?? 0, size.height);
       glowAnchors.push({
         name: handReactKey(handNo, c, i), x: plane.x, y: plane.y,
         playable: pose === 'legal' || pose === 'selected', selected: pose === 'selected',
@@ -426,7 +430,8 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       duration: move.kind === 'flip' ? 0.34 : move.kind === 'deal' ? tl.fly : move.kind === 'slide' ? GAP_S : LIFT_S,
       motion: move.motion,
       arc: move.arc,
-      raise: c ? raiseLocalY(pose, fan.viewH, size.height, fan.ch) : 0,
+      raise: c ? raiseLocalY(pose, fan.viewH, screenH, fan.ch) : 0,
+      roll: plane.roll,
       order: handRenderOrder(i, above),
       cover: above,
     });
@@ -468,6 +473,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
           motion={it.motion}
           arc={it.arc}
           raise={it.raise}
+          roll={it.roll}
           order={it.order}
           cover={it.cover}
           dim={it.dim}
