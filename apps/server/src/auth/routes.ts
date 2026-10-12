@@ -138,6 +138,16 @@ async function deleteUser(db: D1Database, userId: string): Promise<void> {
     db.prepare('DELETE FROM progress WHERE user_id = ?').bind(userId),
     db.prepare('DELETE FROM oauth_states WHERE user_id = ?').bind(userId),
     db.prepare('DELETE FROM webauthn_challenges WHERE user_id = ?').bind(userId),
+    // Release 9 social data (game records of other players keep the game, just not this player's row)
+    db.prepare('DELETE FROM social_settings WHERE user_id = ?').bind(userId),
+    db.prepare('DELETE FROM friends WHERE a = ? OR b = ?').bind(userId, userId),
+    db.prepare('DELETE FROM blocks WHERE blocker = ? OR blocked = ?').bind(userId, userId),
+    db.prepare('DELETE FROM dms WHERE sender = ? OR recipient = ?').bind(userId, userId),
+    db.prepare('DELETE FROM reports WHERE reporter = ?').bind(userId),
+    db.prepare('DELETE FROM game_players WHERE user_id = ?').bind(userId),
+    db.prepare('UPDATE game_players SET partner_id = NULL WHERE partner_id = ?').bind(userId),
+    db.prepare('DELETE FROM ratings WHERE user_id = ?').bind(userId),
+    db.prepare("UPDATE games SET seats = replace(seats, ?, 'deleted') WHERE instr(seats, ?) > 0").bind(userId, userId),
     db.prepare('DELETE FROM users WHERE id = ?').bind(userId),
   ]);
 }

@@ -25,9 +25,15 @@ import { FEEDBACK_LIMITS, type FeedbackRow, adminHtml, hashIp, notifyOwner, pars
 import { ADMIN_COOKIE, ADMIN_TTL_MS, adminCookieOk, adminLoginHtml, makeAdminCookie, readCookie } from './admin';
 import { type Bucket, LIMITS, type LimitEnv, hit, limited } from './limits';
 import { type AuthEnv, handleAuth } from './auth/routes';
+import { type SocialEnv, handleSocialHttp, isAdmin } from './social/routes';
+import { verifyTicket } from './social/ticket';
+import { type ConnAtt, type GlobalLog, Hub } from './social/hub';
+import { saveRecord } from './stats/record';
+import type { SocialChatLine, SocialServerMsg } from '@spades/protocol';
 
-export interface Env extends LimitEnv, AuthEnv {
+export interface Env extends LimitEnv, AuthEnv, SocialEnv {
   TABLES: DurableObjectNamespace<TableDO>;
+  SOCIAL: DurableObjectNamespace<SocialDO>;
   ALLOWED_ORIGINS?: string;
   TURN_KEY_ID?: string;
   TURN_KEY_API_TOKEN?: string;
@@ -169,6 +175,24 @@ export default {
       return handleAuth(req, env, url, parts, { fetch: (i, init) => fetch(i, init), now: () => Date.now() });
     }
 
+    if (parts[1] === 'social') {
+      if (parts[2] === 'ws') {
+        if (req.headers.get('Upgrade') !== 'websocket') return json({ error: 'expected websocket' }, { status: 426 }, origin);
+        const slow = await limited(req, env, 'join', origin);
+        if (slow) return slow;
+        const t = await verifyTicket(env.DB, url.searchParams.get('ticket'), Date.now());
+        const h = new Headers(req.headers);
+        h.delete('x-uid'); h.delete('x-name'); h.delete('x-admin');
+        if (t) { h.set('x-uid', t.uid); h.set('x-name', t.name); if (isAdmin(env, t.uid, t.name)) h.set('x-admin', '1'); }
+        else h.set('x-name', (url.searchParams.get('name') ?? 'Guest').slice(0, 40));
+        const stub = env.SOCIAL.get(env.SOCIAL.idFromName('hub'));
+        return stub.fetch(new Request('https://social/ws', { headers: h }));
+      }
+      const slow = await limited(req, env, 'info');
+      if (slow) return slow;
+      return handleSocialHttp(req as Request & { cf?: unknown }, env, url, parts, Date.now());
+    }
+
     if (parts[1] === 'tables' && parts.length === 2 && req.method === 'POST') {
       const slow = await limited(req, env, 'create', origin);
       if (slow) return slow;
@@ -246,6 +270,7 @@ export class TableDO extends DurableObject<Env> {
       setAlarm: (at) => this.armAlarm(at),
       persist: () => this.scheduleSave(),
       randomId: () => crypto.randomUUID().replace(/-/g, ''),
+      gameOver: (rec, rated) => { if (this.env.DB) this.ctx.waitUntil(saveRecord(this.env.DB, rec, rated).catch((e) => console.error('saveRecord', e))); },
     });
   }
 
@@ -335,7 +360,16 @@ export class TableDO extends DurableObject<Env> {
   override async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
     const cid = this.cidOf(ws);
     if (!cid || !this.room || typeof message !== 'string') return;
+    // Release 9: hello may carry a signed account ticket → link the seat to the account (stats / ratings)
+    let uid: string | null = null;
+    if (message.length < 4000 && message.includes('"ticket"')) {
+      try {
+        const m = JSON.parse(message) as { t?: string; ticket?: string };
+        if (m.t === 'hello' && m.ticket) uid = (await verifyTicket(this.env.DB, m.ticket, Date.now()))?.uid ?? null;
+      } catch { /* malformed: the room rejects it */ }
+    }
     this.room.message(cid, message);
+    if (uid) this.room.linkUser(cid, uid);
   }
 
   override async webSocketClose(ws: WebSocket, code: number): Promise<void> {
@@ -431,3 +465,86 @@ export class RateLimitDO extends DurableObject<Env> {
   }
 }
 
+
+/* ------------------------------------------------------- social hub */
+
+/** One instance ("hub"): presence + invites in memory (rebuilt from socket attachments), global chat in SQLite. */
+export class SocialDO extends DurableObject<Env> {
+  private hub: Hub;
+  private sockets = new Map<string, WebSocket>();
+  private sql: SqlStorage;
+
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    this.sql = ctx.storage.sql;
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS global (id INTEGER PRIMARY KEY AUTOINCREMENT, from_id TEXT, name TEXT, text TEXT, at INTEGER, admin INTEGER DEFAULT 0)`);
+    ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
+    const sql = this.sql;
+    const global: GlobalLog = {
+      add: (l) => {
+        const id = sql.exec<{ id: number }>('INSERT INTO global (from_id, name, text, at, admin) VALUES (?, ?, ?, ?, ?) RETURNING id', l.from, l.name, l.text, l.at, l.admin ? 1 : 0).one().id;
+        sql.exec('DELETE FROM global WHERE id <= ?', id - 200);
+        return { id, ...l };
+      },
+      list: (n) => sql.exec<{ id: number; from_id: string; name: string; text: string; at: number; admin: number }>('SELECT * FROM global ORDER BY id DESC LIMIT ?', n).toArray().reverse()
+        .map((r) => ({ id: r.id, from: r.from_id, name: r.name, text: r.text, at: r.at, ...(r.admin ? { admin: true } : {}) } satisfies SocialChatLine)),
+      get: (id) => { const r = sql.exec<{ id: number; from_id: string; name: string; text: string; at: number }>('SELECT * FROM global WHERE id = ?', id).toArray()[0]; return r ? { id: r.id, from: r.from_id, name: r.name, text: r.text, at: r.at } : null; },
+      del: (id) => sql.exec('DELETE FROM global WHERE id = ?', id).rowsWritten > 0,
+    };
+    this.hub = new Hub({
+      now: () => Date.now(),
+      send: (cid, msg: SocialServerMsg) => { const ws = this.sockets.get(cid); if (ws) try { ws.send(JSON.stringify(msg)); } catch { /* closing */ } },
+      save: (cid, att) => { try { this.sockets.get(cid)?.serializeAttachment({ cid, att }); } catch { /* closed */ } },
+      global,
+      later: (ms, f) => { setTimeout(f, ms); },
+      randomId: () => crypto.randomUUID().replace(/-/g, ''),
+    }, env.DB);
+    ctx.blockConcurrencyWhile(async () => {
+      for (const ws of ctx.getWebSockets()) {
+        const a = ws.deserializeAttachment() as { cid: string; att?: ConnAtt } | null;
+        if (!a?.att) continue;
+        this.sockets.set(a.cid, ws);
+        await this.hub.restore(a.cid, a.att);
+      }
+    });
+  }
+
+  override async fetch(req: Request): Promise<Response> {
+    if (new URL(req.url).pathname !== '/ws') return new Response('not found', { status: 404 });
+    if (this.sockets.size >= 5000) return new Response('busy', { status: 503 });
+    const pair = new WebSocketPair();
+    const [client, server] = [pair[0], pair[1]];
+    const cid = crypto.randomUUID();
+    this.ctx.acceptWebSocket(server);
+    server.serializeAttachment({ cid });
+    this.sockets.set(cid, server);
+    const uid = req.headers.get('x-uid') ?? undefined;
+    await this.hub.open(cid, { uid, name: req.headers.get('x-name') ?? 'Guest', admin: req.headers.get('x-admin') === '1' });
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  private cidOf(ws: WebSocket): string | null {
+    const a = ws.deserializeAttachment() as { cid: string; att?: ConnAtt } | null;
+    if (!a) return null;
+    if (!this.sockets.has(a.cid)) { this.sockets.set(a.cid, ws); if (a.att) void this.hub.restore(a.cid, a.att); }
+    return a.cid;
+  }
+
+  override async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+    const cid = this.cidOf(ws);
+    if (!cid || typeof message !== 'string' || message.length > 4000) return;
+    await this.hub.message(cid, message).catch((e) => console.error('social', e));
+  }
+
+  override async webSocketClose(ws: WebSocket, code: number): Promise<void> {
+    const cid = this.cidOf(ws);
+    if (!cid) return;
+    this.sockets.delete(cid);
+    this.hub.close(cid);
+    try { ws.close(code === 1005 ? 1000 : code, 'bye'); } catch { /* already closed */ }
+  }
+
+  override async webSocketError(ws: WebSocket): Promise<void> {
+    await this.webSocketClose(ws, 1011);
+  }
+}

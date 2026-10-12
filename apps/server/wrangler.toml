@@ -9,6 +9,8 @@ workers_dev = true
 ALLOWED_ORIGINS = "https://bid-wit-me.pages.dev,http://localhost:5173,http://localhost:4173,http://127.0.0.1:4173"
 # Public site that fronts /api/auth/* (Pages Functions proxy): OAuth redirect URIs, passkey RP ID, cookie site.
 PUBLIC_ORIGIN = "https://bid-wit-me.pages.dev"
+# Chat moderators (Release 9): usernames, comma-separated, case-insensitive. Empty = nobody.
+ADMIN_USERNAMES = ""
 # Sign-in providers turn on only when BOTH of their secrets exist (npx wrangler secret put …):
 #   GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET · DISCORD_CLIENT_ID / DISCORD_CLIENT_SECRET
 #   X_CLIENT_ID / X_CLIENT_SECRET · FACEBOOK_APP_ID / FACEBOOK_APP_SECRET
@@ -44,6 +46,16 @@ class_name = "RateLimitDO"
 [[migrations]]
 tag = "v3"
 new_sqlite_classes = ["RateLimitDO"]
+
+# Release 9: the Social hub (presence, invites, global chat; friends/DMs live in D1). One instance, hibernating websockets.
+# Chat moderators: ADMIN_USERNAMES (comma-separated usernames) and/or ADMIN_USER_IDS (account ids).
+[[durable_objects.bindings]]
+name = "SOCIAL"
+class_name = "SocialDO"
+
+[[migrations]]
+tag = "v4"
+new_sqlite_classes = ["SocialDO"]
 
 # Accounts (users, linked logins, passkeys, sessions, progress). Free tier. Schema: migrations/
 [[d1_databases]]

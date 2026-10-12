@@ -5,6 +5,7 @@
  */
 import type { Card, PlayerView, Series, TableRules } from '@spades/rules';
 export * from './filter';
+export * from './social';
 
 /** Built-in host-music tracks the server accepts (the web playlist has 17; headroom for more). */
 export const MAX_BEAT_TRACKS = 64;
@@ -84,7 +85,7 @@ export function isMusicLink(url: string): boolean {
 }
 
 export type ClientMsg =
-  | { t: 'hello'; name: string; token?: string; v?: number }
+  | { t: 'hello'; name: string; token?: string; v?: number; /** Release 9: signed account ticket (links the seat to an account for stats) */ ticket?: string }
   | { t: 'sit'; seat: number }
   | { t: 'stand' }
   | { t: 'addBot'; seat: number }
@@ -240,7 +241,7 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
   switch (m.t) {
     case 'hello':
       if (!isStr(m.name, 100)) return null;
-      return { t: 'hello', name: m.name, token: isStr(m.token, 100) ? m.token : undefined, v: isInt(m.v) ? m.v : undefined };
+      return { t: 'hello', name: m.name, token: isStr(m.token, 100) ? m.token : undefined, v: isInt(m.v) ? m.v : undefined, ...(isStr(m.ticket, 400) ? { ticket: m.ticket } : {}) };
     case 'sit': case 'addBot': case 'removeBot': case 'kick':
       return isInt(m.seat) && m.seat >= 0 && m.seat < 4 ? { t: m.t, seat: m.seat } : null;
     case 'stand': case 'start': case 'next': case 'rematch': case 'leave':

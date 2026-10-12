@@ -14,6 +14,7 @@ export class FakeEnv {
   raw: ServerMsg[] = [];
   rng = createRng('test-ids');
   room: Room;
+  records: { rec: import('../src/stats/record').GameRecord; rated: boolean }[] = [];
 
   constructor(data?: RoomData, public timing: RoomTiming = DEFAULT_TIMING) {
     this.room = new Room(data ?? newRoomData('ABCDE', this.t), this.io(), timing);
@@ -33,6 +34,7 @@ export class FakeEnv {
       wake: (ms) => { this.wakes.push(this.t + ms); },
       setAlarm: (at) => { if (at !== null && at !== this.alarm) { this.alarm = at; this.alarmSets++; } },
       persist: () => { this.persists++; },
+      gameOver: (rec, rated) => { this.records.push({ rec, rated }); },
       randomId: () => Array.from({ length: 4 }, () => this.rng.nextUint32().toString(16).padStart(8, '0')).join(''),
     };
   }

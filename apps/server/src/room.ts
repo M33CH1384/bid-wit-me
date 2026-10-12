@@ -17,6 +17,7 @@ import {
   HAND_END_HOLD_MS, NUKE_ALLOWANCE_MS, RUN_FX_MS, type NukeIntensity, type TalkIntensity, cleanTeamName, pickTeamName, type VenueChoice, type VenueId, rollVenue,
 } from '@spades/protocol';
 import { blockLinks, cleanName, cleanText, maskProfanity } from './filter';
+import { type GameRecord, type LiveStats, type SeatRef, buildRecord, isRated, newLiveStats } from './stats/record';
 
 export const ROOM_DATA_VERSION = 1;
 
@@ -39,6 +40,8 @@ export interface Member {
   acts?: string[];
   /** badges earned at this table (same shape as the client's local badges, for a future accounts system) */
   badges?: { id: string; earnedAt: number; context?: Record<string, unknown> }[];
+  /** Release 9: signed-in account behind this seat (from a verified account ticket) → stats, ratings, recent players */
+  uid?: string;
 }
 
 /** Everything that survives hibernation / restarts. Plain JSON. */
@@ -92,6 +95,10 @@ export interface RoomData {
   /** open vote-kicks: target player id → voter ids */
   votes?: Record<string, string[]>;
   gamesPlayed: number;
+  /** Release 9: per-seat counters for the current game (think times, Big Joker wins) */
+  live?: LiveStats;
+  /** Release 9b: this table runs a tournament match */
+  tournament?: { id: string; match: string; reserved?: (string | null)[]; autostartAt?: number | null };
 }
 
 export interface RoomTiming {
@@ -127,6 +134,8 @@ export interface RoomIO {
   persist(): void;
   /** random id/token/seed source (crypto in prod, seeded in tests) */
   randomId(): string;
+  /** Release 9: a finished game with at least one signed-in player (DO: write stats/Elo to D1) */
+  gameOver?(rec: GameRecord, rated: boolean): void;
 }
 
 
@@ -193,6 +202,20 @@ export class Room {
   humansConnected(): number {
     return this.data.seats.filter((s) => s.kind === 'human' && this.isConnected(s.playerId)).length;
   }
+
+  /** Release 9: the connection proved an account (verified ticket): link its member for stats. */
+  linkUser(connId: string, uid: string): void {
+    const pid = this.conns.get(connId);
+    const m = pid ? this.data.members[pid] : undefined;
+    if (!m || m.uid === uid) return;
+    // one seat per account per table: an older member of the same account loses the link
+    for (const o of Object.values(this.data.members)) if (o !== m && o.uid === uid) delete o.uid;
+    m.uid = uid;
+    this.io.persist();
+  }
+
+  /** member ids → account ids (for tournament / stats bookkeeping) */
+  accountOf(pid: string): string | undefined { return this.data.members[pid]?.uid; }
 
   /* --------------------------------------------------------------- messages */
 
@@ -478,8 +501,15 @@ export class Room {
         : a.type === 'exchange' ? { type: 'exchange', seat: me.seat, cards: a.cards }
         : a.type === 'runIt' ? { type: 'runIt', seat: me.seat }
         : { type: 'play', seat: me.seat, card: a.card };
+      const g0 = d.game;
+      const thinkMs = g0.turn === me.seat && d.turnStartedAt !== null ? Math.max(0, Math.min(120_000, this.io.now() - d.turnStartedAt - this.leadIn(g0))) : null;
       this.apply(action);
       me.timeouts = 0;
+      if (thinkMs !== null && d.live && (action.type === 'bid' || action.type === 'play')) {
+        const k = action.type === 'bid' ? 'bid' : 'play';
+        d.live[`${k}Ms`][me.seat] = (d.live[`${k}Ms`][me.seat] ?? 0) + thinkMs;
+        d.live[`${k}N`][me.seat] = (d.live[`${k}N`][me.seat] ?? 0) + 1;
+      }
     } catch (e) {
       if (!id || !(e instanceof RuleError || e instanceof RoomError)) throw e;
       this.io.send(connId, { t: 'ack', id, ok: false, code: e.code, message: e.message });
@@ -601,6 +631,7 @@ export class Room {
     d.turnKey = null;
     d.deadline = null;
     d.gamesPlayed++;
+    d.live = newLiveStats(n);
     this.startSeries();
     d.talk = { ...newTalkState(), revealed: [] }; // a new game: every Hustler is back in character
     d.kicked = []; // a new game: kicked players may come back
@@ -619,6 +650,7 @@ export class Room {
     for (const ev of momentsFor(before, action, d.game)) this.talk(ev);
     d.lastActive = this.io.now();
     const fresh = d.game.handNo === before.handNo ? d.game.tricks.slice(before.tricks.length) : [];
+    if (d.live) for (const t of fresh) if (t.winner !== null && t.plays.some((p) => p.seat === t.winner && p.card === 'BJ')) d.live.bj[t.winner] = (d.live.bj[t.winner] ?? 0) + 1;
     if (action.type === 'runIt') {
       const books = fresh.length;
       this.system(`🌪 ${this.seatName(action.seat)} ran the board (+${books} books)`);
@@ -632,6 +664,7 @@ export class Room {
       d.phase = 'over';
       const res = d.game.result!;
       this.recordSeries();
+      this.reportGame();
       this.system(`Game over: ${res.winners.map((w) => this.sideLabel(w)).join(' & ')} win${res.winners.length > 1 || d.rules.partnerships ? '' : 's'}`);
     }
   }
@@ -702,6 +735,24 @@ export class Room {
     const mode = d.rules.mode ?? 'mode';
     const no = (d.series?.games.length ?? 0) + 1;
     d.series = addSeriesGame(d.series, mode, sides, summarizeGame(g, names, no, this.io.now()));
+  }
+
+  /** Release 9: hand the finished game to the host (stats + Elo) when an account played */
+  private reportGame(): void {
+    const d = this.data;
+    if (!this.io.gameOver || !d.game) return;
+    const n = d.rules.playerCount;
+    const seats: SeatRef[] = d.seats.slice(0, n).map((s, i) => {
+      const side = d.rules.partnerships ? i % 2 : i;
+      if (s.kind === 'human') {
+        const m = d.members[s.playerId];
+        return m?.uid ? { name: m.name, side, kind: 'user', uid: m.uid } : { name: m?.name ?? 'Player', side, kind: 'guest' };
+      }
+      return { name: s.kind === 'bot' ? s.name : `Seat ${i + 1}`, side, kind: 'bot' };
+    });
+    if (!seats.some((x) => x.kind === 'user')) return;
+    const rec = buildRecord({ id: `${d.code}-${d.createdAt.toString(36)}-${d.gamesPlayed}`, room: d.code, game: d.game, seats, names: this.sideNames(), teamNames: d.teamNames, live: d.live, endedAt: this.io.now(), tournamentId: d.tournament?.id });
+    this.io.gameOver(rec, isRated(rec, d.rules));
   }
 
   private sideLabel(side: number): string {
