@@ -163,6 +163,7 @@ export class TableConnection {
     return true;
   }
 
+  /** seq is required: the server drops a move that doesn't say which game version it was chosen from. */
   private actMsg(p: PendingAct): ClientMsg {
     return { t: 'act', action: p.action, seq: p.seq, id: p.id };
   }

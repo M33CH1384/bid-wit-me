@@ -103,9 +103,10 @@ export type ClientMsg =
   | { t: 'music'; music: HostMusic }
   | { t: 'start' }
   /**
-   * A game move. `seq` = the game version (RoomInfo.seq) the move was chosen from: if the game has moved on since
-   * (e.g. the turn timer auto-played), the server drops it and answers `ack {stale}` + a fresh state instead of an
-   * error. `id` = client-chosen idempotency key: re-sending the same id (e.g. after a reconnect) never applies twice.
+   * A game move. `seq` is required: the game version (RoomInfo.seq) the move was chosen from. Missing or outdated
+   * seq is stale — the server drops the move (a late play must not become the next lead after the timer auto-played)
+   * and answers `ack {stale}` + a fresh state instead of an error. `id` = client-chosen idempotency key: re-sending
+   * the same id (e.g. after a reconnect) never applies twice.
    */
   | { t: 'act'; action: GameAction; seq?: number; id?: string }
   | { t: 'next' }
@@ -120,7 +121,8 @@ export type ClientMsg =
   | { t: 'rtc'; to: string; data: unknown }
   | { t: 'leave' }
   /** Release 10, host: table options (any phase). private = hidden from Open tables (invite / code only);
-   *  replaceBots = spectators may take a bot's seat mid-game (default on; seats a player vacated are always open) */
+   *  replaceBots = spectators may take a bot's seat mid-game (default on, except rated tables where the default is off;
+   *  seats a player vacated are always open, and a rated game still requires an account to take one) */
   | { t: 'tableOpts'; private?: boolean; replaceBots?: boolean };
 
 /* ------------------------------------------------------------ server → client */
@@ -182,7 +184,7 @@ export interface RoomInfo {
   tournament?: { id: string; name?: string; match: string; autostartAt: number | null; reserved: (string | null)[] };
   /** Release 10: hidden from the Open tables list (default public) */
   private?: boolean;
-  /** Release 10: spectators may take bot seats mid-game (default on) */
+  /** Release 10: spectators may take bot seats mid-game (default on; off by default when the table is rated) */
   replaceBots?: boolean;
   /** Release 10: connected spectators (unseated members while a game is on) */
   spectators?: { playerId: string; name: string }[];
