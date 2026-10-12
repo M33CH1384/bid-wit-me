@@ -1,0 +1,64 @@
+# Deploys the live site on every push to master (including merges) and on manual runs.
+#
+# Repository Actions secrets (Settings → Secrets and variables → Actions):
+#   CLOUDFLARE_API_TOKEN    custom account token, scoped to this account only:
+#                             Account Settings → Read
+#                             Workers Scripts → Edit   (Worker + Durable Object migrations)
+#                             D1 → Edit                (remote migrations apply)
+#                             Cloudflare Pages → Edit  (pages deploy, project bid-wit-me)
+#   CLOUDFLARE_ACCOUNT_ID   account id that owns the Worker, D1 database, and Pages project
+#
+# The deploy step runs scripts/deploy-online.sh (pnpm deploy:online): remote D1 migrations,
+# apps/server (Worker + Durable Objects), web build with VITE_SERVER_URL, then
+# `wrangler pages deploy` for project bid-wit-me on branch main.
+# Typecheck and tests run first; a failure skips the deploy step.
+
+name: Deploy
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+# Queue production deploys. Do not cancel an in-flight run: a D1 migration
+# or a half-finished Worker/Pages deploy should run to completion.
+concurrency:
+  group: deploy-online
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Typecheck, test, and deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: pnpm deploy:online
