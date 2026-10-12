@@ -133,8 +133,17 @@ export function placementsOf(final: number[], winners: number[]): number[] {
   return final.map((s, i) => (winners.includes(i) ? 1 : 1 + winners.length + final.filter((o, j) => !winners.includes(j) && o > s).length));
 }
 
+export interface SaveMeta {
+  /** online (default) or an offline upload */
+  source?: 'online' | 'offline';
+  /** series backfill without a full hand history */
+  partial?: boolean;
+  /** idempotency key for an offline upload, already namespaced by user */
+  clientGameId?: string | null;
+}
+
 /** Write a finished game + Elo to D1 (one batch). */
-export async function saveRecord(db: D1Database, rec: GameRecord, rated: boolean): Promise<void> {
+export async function saveRecord(db: D1Database, rec: GameRecord, rated: boolean, meta: SaveMeta = {}): Promise<void> {
   if (!rec.players.length) return;
   if (await db.prepare('SELECT 1 AS ok FROM games WHERE id = ?').bind(rec.id).first()) return; // already saved (retry)
   const uids = rec.players.map((p) => p.uid);
@@ -148,8 +157,8 @@ export async function saveRecord(db: D1Database, rec: GameRecord, rated: boolean
   if (!players.length) return;
   const elo = rated ? eloUpdate({ ...rec, players }, placementsOf(rec.final, rec.winners), cur) : {};
   const stmts = [
-    db.prepare('INSERT OR IGNORE INTO games (id, room, mode, kind, ended_at, hands, final, winners, names, seats, rated, tournament_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(rec.id, rec.room, rec.mode, rec.kind, rec.endedAt, rec.hands, JSON.stringify(rec.final), JSON.stringify(rec.winners), JSON.stringify(rec.names), JSON.stringify(rec.seats), rated ? 1 : 0, rec.tournamentId ?? null),
+    db.prepare('INSERT OR IGNORE INTO games (id, room, mode, kind, ended_at, hands, final, winners, names, seats, rated, tournament_id, source, client_game_id, partial) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(rec.id, rec.room, rec.mode, rec.kind, rec.endedAt, rec.hands, JSON.stringify(rec.final), JSON.stringify(rec.winners), JSON.stringify(rec.names), JSON.stringify(rec.seats), rated ? 1 : 0, rec.tournamentId ?? null, meta.source ?? 'online', meta.clientGameId ?? null, meta.partial ? 1 : 0),
   ];
   for (const p of players) {
     const e = elo[p.uid];
