@@ -12,6 +12,7 @@ import type { ConnState, TableConnection } from './connection';
 import { type Rotation, rotateView } from './rotate';
 import type { VideoMesh, VideoState } from './video';
 import { dealTimeline } from '../three/dealTimeline';
+import { nextTrickPause } from '../trickTiming';
 
 export function useConn(conn: TableConnection): ConnState {
   return useSyncExternalStore(conn.subscribe, conn.getState);
@@ -50,6 +51,19 @@ export function useOnlineSource(cs: ConnState, conn: TableConnection): (GameSour
   const [, force] = useState(0);
   const prev = useRef<GameState | null>(null);
   const [shown, setShown] = useState(rotated);
+
+  // Apply the incoming state before paint. Waiting for an effect lets one frame sweep a just-finished
+  // trick into the piles; if that frame is the one that sticks (the nuke's white flash stalling the
+  // canvas), the last-trick cards never come back and the explosion has nothing to play on.
+  if (rotated && shown?.st !== rotated.st) {
+    const decision = nextTrickPause(
+      shown ? { handNo: shown.st.handNo, trickCount: shown.st.tricks.length } : null,
+      { handNo: rotated.st.handNo, trickCount: rotated.st.tricks.length },
+    );
+    setShown(rotated);
+    if (decision === 'hold' && !pause) setPause(true);
+    else if (decision === 'release' && pause) setPause(false);
+  }
 
   useEffect(() => {
     if (!rotated) { setShown(null); return; }
