@@ -682,8 +682,9 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .hype-pop.streak .hype-text { background: linear-gradient(180deg, #fff2a8 0%, #ffb03b 45%, #ff4d1a 100%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 0 14px rgba(255,120,30,.9)) drop-shadow(0 3px 0 #5a1400); animation: pop-in .45s cubic-bezier(.2,1.8,.4,1) both, pop-out .35s ease-in 1.9s forwards; }
 .hype-pop.streak.lvl3 .hype-text { animation: pop-in .45s cubic-bezier(.2,1.8,.4,1) both, flicker .18s steps(2) .45s 6, pop-out .35s ease-in 1.9s forwards; }
 .hype-pop.streak.lvl4 .hype-text, .hype-pop.streak.lvl5 .hype-text, .hype-pop.streak.lvl6 .hype-text { background: linear-gradient(180deg, #fff 0%, #ffe14d 30%, #ff3b3b 70%, #9b5cff 100%); -webkit-background-clip: text; background-clip: text; font-size: clamp(42px, 12.5vmin, 96px); animation: pop-in .5s cubic-bezier(.2,1.8,.4,1) both, wobble .3s ease-in-out .5s 4, pop-out .35s ease-in 1.9s forwards; }
-.hype-pop.shot { top: 40%; }
-.hype-pop.shot .hype-text { color: #fff; background: #e0173c; clip-path: polygon(4% 0, 100% 0, 96% 100%, 0 100%); padding: .05em .45em; box-shadow: 0 0 40px rgba(255,30,70,.9); text-shadow: 0 3px 0 #5c0013; animation: slam .38s cubic-bezier(.5,0,.75,0) both, pop-out .3s ease-in 1.65s forwards; }
+.hype-pop.shot { top: 40%; width: calc(100vw - 32px); max-width: calc(100vw - 32px); padding: 0 16px; box-sizing: border-box; white-space: normal; text-align: center; overflow-x: hidden; }
+.hype-pop.shot .hype-text { color: #fff; background: #e0173c; clip-path: polygon(4% 0, 100% 0, 96% 100%, 0 100%); min-width: 0; max-width: 100%; box-sizing: border-box; padding: .05em 16px; white-space: normal; overflow-wrap: anywhere; text-align: center; box-shadow: 0 0 40px rgba(255,30,70,.9); text-shadow: 0 3px 0 #5c0013; animation: slam .38s cubic-bezier(.5,0,.75,0) both, pop-out .3s ease-in 1.65s forwards; }
+.hype-pop.shot .hype-sub { min-width: 0; max-width: 100%; box-sizing: border-box; white-space: normal; overflow-wrap: anywhere; text-align: center; letter-spacing: .04em; }
 .hype-pop.gotShot { top: 40%; }
 .hype-pop.gotShot .hype-text { color: #c9d6ff; font-size: clamp(30px, 8vmin, 58px); text-shadow: 0 0 18px rgba(80,120,255,.7); animation: drop .5s ease-out both, pop-out .35s ease-in 1.5s forwards; }
 .hype-pop.nuke { top: 22%; }
