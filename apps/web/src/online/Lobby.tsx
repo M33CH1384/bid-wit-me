@@ -1,4 +1,5 @@
 import { HostMusicFields } from './HostMusic';
+import { SocialButton } from '../social/Social';
 import { VENUE_DEFS, VENUE_LIST, type VenueChoice, type VenueId, venueLabel } from '../venues';
 import { TeamNameField } from '../TeamName';
 import type { NukeIntensity } from '@spades/protocol';
@@ -88,6 +89,7 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
         <div className="invite">
           <input readOnly value={link} aria-label="Invite link" onFocus={(e) => e.currentTarget.select()} />
           <button type="button" className="primary" onClick={share}>{copied ? 'Copied!' : 'Invite'}</button>
+          <SocialButton className="lobby-social" />
         </div>
         {cs.status !== 'open' && <p className="muted">{cs.status === 'reconnecting' ? 'Reconnecting…' : 'Connecting…'}</p>}
       </header>

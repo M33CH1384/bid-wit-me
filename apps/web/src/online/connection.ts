@@ -3,6 +3,7 @@
  * the tab becomes visible again — iOS Safari kills sockets in the background). The seat token makes every
  * reconnect land back in the same seat.
  */
+import { accountTicket } from '../social/store';
 import type { ChatLine, ClientMsg, GameAction, RoomInfo, ServerMsg } from '@spades/protocol';
 import type { PlayerView } from '@spades/rules';
 import { wsUrl } from './config';
@@ -66,11 +67,20 @@ export class TableConnection {
 
   private open(): void {
     if (this.stopped) return;
+    // Release 9: signed in → a short-lived account ticket rides on hello (stats/ratings); never blocks a guest
+    if (this.opening) return;
+    this.opening = true;
+    void accountTicket().then((ticket) => { this.opening = false; this.openWith(ticket); });
+  }
+  private opening = false;
+
+  private openWith(ticket: string | null): void {
+    if (this.stopped) return;
     const ws = new WebSocket(wsUrl(this.code));
     this.ws = ws;
     ws.onopen = () => {
       this.retry = 0;
-      ws.send(JSON.stringify({ t: 'hello', name: this.name, token: tokenFor(this.code), v: 1 } satisfies ClientMsg));
+      ws.send(JSON.stringify({ t: 'hello', name: this.name, token: tokenFor(this.code), v: 1, ...(ticket ? { ticket } : {}) } satisfies ClientMsg));
       // a move that was in flight when the socket dropped: resend it with the SAME id and seq. The server applies it
       // at most once (dup → ack ok) and drops it if the game moved on meanwhile (stale → fresh state).
       if (this.inflight) { ws.send(JSON.stringify(this.actMsg(this.inflight))); this.armAckTimer(); }

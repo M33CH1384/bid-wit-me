@@ -11,6 +11,7 @@ import { SeriesChip, SeriesSheet, loadSeries, saveSeries } from './Series';
 import { TeamNameField, myTeamName, useMyTeamName } from './TeamName';
 import { offlineTalk } from './offlineTalk';
 import { BidOrder } from './PartnerTalk';
+import { SocialButton } from './social/Social';
 import { setTableIntensity, showLine, speakBot, useTalkPrefs } from './talkPrefs';
 import { pickTeamName } from '@spades/protocol';
 import { Intermission, calloutsFor } from './Intermission';
@@ -878,6 +879,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       {/* scorebug */}
       <header className="scorebug">
         <button type="button" className="bug-btn" onClick={() => (online || st.phase === 'gameOver' ? leave() : setConfirmLeave(true))} aria-label="Menu" data-testid="menu">☰</button>
+        <SocialButton className="compact in-bug" label={false} />
         <div className="bug glass">
           <img className="bug-logo" src="/assets/bwm-wordmark-white.svg" alt="Bid Wit Me" />
           <span className="beta-tag in-bug" aria-label="Beta">BETA</span>

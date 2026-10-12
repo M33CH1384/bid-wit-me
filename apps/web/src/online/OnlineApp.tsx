@@ -11,6 +11,8 @@ import { codeFromPath, navigate } from './nav';
 import OnlineTable from './OnlineTable';
 import { preloadTable } from '../three/preload';
 import { useConn } from './useOnline';
+import { social } from '../social/store';
+import { usePresence } from '../social/Social';
 import { VideoMesh } from './video';
 import './online.css';
 
@@ -139,11 +141,32 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
       sessionStorage.removeItem(`bwm.created.${code}`);
       conn.send({ t: 'config', rules: settingsToRules(settings), botLevel: settings.botLevel });
     }
-    if (cs.seat === null && room.phase === 'lobby') {
+    // Release 9 invites deep-link a seat (/t/CODE?seat=N): take it if it's still open (a bot's seat mid-game)
+    const q = new URLSearchParams(location.search);
+    const want = q.has('seat') ? Number(q.get('seat')) : NaN;
+    if (q.has('seat')) { q.delete('seat'); history.replaceState(history.state, '', location.pathname + (q.toString() ? `?${q}` : '')); }
+    if (cs.seat === null && Number.isInteger(want) && room.seats[want] && (room.phase === 'lobby' ? room.seats[want]!.kind === 'empty' : room.seats[want]!.kind === 'bot')) {
+      conn.send({ t: 'sit', seat: want });
+    } else if (cs.seat === null && room.phase === 'lobby') {
       const free = room.seats.findIndex((s) => s.kind === 'empty');
       if (free >= 0) conn.send({ t: 'sit', seat: free });
+    } else if (cs.seat === null && Number.isInteger(want)) {
+      const bot = room.seats.findIndex((s) => s.kind === 'bot');
+      if (bot >= 0 && room.phase !== 'lobby') conn.send({ t: 'sit', seat: bot });
     }
   }, [cs.room, cs.you, cs.seat, autoDone, code, conn, settings]);
+
+  // Release 9 presence + "Invite to my table": the code, mode and the first seat a friend could take
+  const room0 = cs.room;
+  const openSeat = room0 ? room0.seats.findIndex((s) => (room0.phase === 'lobby' ? s.kind === 'empty' : s.kind === 'bot')) : -1;
+  const openCount = room0 ? room0.seats.filter((s) => (room0.phase === 'lobby' ? s.kind === 'empty' : s.kind === 'bot')).length : 0;
+  const pmode = room0 ? (room0.rules.mode === 'joker' || room0.rules.mode === 'aceDown' ? room0.rules.mode : 'cutthroat') : undefined;
+  usePresence(room0 ? { kind: room0.phase === 'lobby' ? 'lobby' : 'table', mode: pmode, open: openCount, code } : null);
+  useEffect(() => {
+    if (!room0) return;
+    social.setMyTable({ code, mode: pmode, open: openCount, ...(openSeat >= 0 ? { seat: openSeat } : {}) });
+  }, [code, pmode, openCount, openSeat, room0]);
+  useEffect(() => () => social.setMyTable(null), []);
 
   // game (re)started → leave the lobby view
   const game = cs.room?.game ?? 0;

@@ -35,10 +35,11 @@ const tricks: Trick[] = winners.map((w) => {
 });
 const state: GameState = {
   ...st,
-  phase: 'playing', bids: [6, 2, 4, 1], revealed: [true, true, true, true], exchange: [],
+  // SHOT=1: the other team bids 8 and ends on 3 → "BUCS GOT SHOT: bid 8, took 3" (Release 9 shot popup)
+  phase: 'playing', bids: process.env.SHOT ? [6, 5, 4, 3] : [6, 2, 4, 1], revealed: [true, true, true, true], exchange: [],
   hands: [['BJ'], [], [], []],
   tricks, tricksWon: [5, 3, 4, 0], spadesBroken: true,
   trick: { leader: 1, plays: [{ seat: 1, card: 'LJ' }, { seat: 2, card: 'AS' }, { seat: 3, card: 'KS' }], winner: null },
   turn: 0,
 };
-process.stdout.write(JSON.stringify({ v: 1, savedAt: Date.now(), seed, settings, state, chat: [], names: ['You', ...pickBotNames(3, ['You'], seed)], teamNames: ['Homies', 'Set Squad'] }));
+process.stdout.write(JSON.stringify({ v: 1, savedAt: Date.now(), seed, settings, state, chat: [], names: ['You', ...pickBotNames(3, ['You'], seed)], teamNames: ['Homies', process.env.SHOT ? 'Bucs' : 'Set Squad'] }));

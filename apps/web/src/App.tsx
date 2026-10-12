@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { preloadTable } from './three/preload';
 import { secureSeed } from '@spades/rules';
 import Setup from './Setup';
+import { usePresence } from './social/Social';
 import { NowPlaying } from './SoundControls';
 import Table from './Table';
 import { MODES, type Settings, loadSettings, saveSettings, settingsToRules } from './settings';
@@ -20,6 +21,10 @@ export default function App() {
     const saved = loadGame();
     return saved ? { seed: saved.seed, settings: saved.settings, resume: saved } : null;
   });
+
+  // Release 9 presence: on the start screen = Online; in an offline game = At a table (vs bots)
+  const offMode = game ? settingsToRules(game.settings).mode : undefined;
+  usePresence(game ? { kind: 'table', mode: offMode === 'joker' || offMode === 'aceDown' ? offMode : 'cutthroat', offline: true } : { kind: 'online' });
 
   // splash / wizard: fetch the 3D table (Scene chunk, textures, HDRI) in the background so "Deal me in" lands on it
   useEffect(() => { preloadTable(settings.quality, settings.venue); }, [settings.quality, settings.venue]);
