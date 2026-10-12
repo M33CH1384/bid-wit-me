@@ -376,7 +376,7 @@ function SeatCard({ seat, info, spot, team, mine, isHost, playing, hostId, onSit
   if (info.kind === 'empty') {
     return (
       <div className={cls} data-testid={`lobby-seat-${seat}`}>
-        <button type="button" className="sit seat-hit" aria-label="Sit here" onClick={onSit}>
+        <button type="button" className="seat-hit" aria-label="Sit here" onClick={onSit}>
           {top}<span className="seat-plus" aria-hidden>+</span><span className="seat-cta">Sit here</span>
         </button>
         {isHost && !playing && <button type="button" className="seat-bot" aria-label={`Add a bot to ${label}`} onClick={onBot}>+Bot</button>}
@@ -395,7 +395,7 @@ function SeatCard({ seat, info, spot, team, mine, isHost, playing, hostId, onSit
         {ready && <span className="ready-check" title="Ready" aria-label="ready">✓</span>}
       </div>
       <div className="seat-name">
-        {info.kind === 'human' && mine ? 'You' : name}{info.kind === 'human' && info.playerId === hostId && <span title="Host" aria-label="host">👑</span>}
+        {name}{info.kind === 'human' && info.playerId === hostId && <span title="Host" aria-label="host">👑</span>}
       </div>
       {info.kind === 'human' && !info.connected && <span className="chip bad">OFFLINE</span>}
       {info.kind === 'bot' && isHost && !playing && <button type="button" className="link seat-sub" onClick={onRemoveBot}>Remove</button>}

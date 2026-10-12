@@ -286,3 +286,8 @@
   .lobby-chat.drawer { bottom: calc(76px + env(safe-area-inset-bottom)); height: min(55vh, 440px); z-index: 42; }
   .lc-close { margin-left: auto; border: 0; background: none; color: var(--muted); font-size: 16px; }
 }
+.seat-card.spot-bottom, .seat-card.spot-top, .seat-card.spot-left, .seat-card.spot-right { left: auto; top: auto; }
+@media (max-width: 1023px), (max-height: 599px) {
+  .lobby-dock { background: linear-gradient(180deg, rgba(14,8,26,0), rgba(14,8,26,.97) 14px); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); border-top: 1px solid rgba(185,128,255,.18); padding-top: 10px; }
+  .lobby-dock .waiting { text-align: center; color: var(--muted); }
+}
