@@ -228,6 +228,14 @@ describe('trick play legality', () => {
     expect(st.history).toHaveLength(1);
     expect(st.history[0]!.sides.map((x) => x.totalScore)).toEqual(st.scores);
   });
+  it('a void in the led suit, and a lead after spades are broken, plays the whole hand', () => {
+    const hand = ['AS', 'KH', 'QC', 'JS', '9H', '7C'] as Card[];
+    // Diamonds are led and this seat holds none, so every card is legal. Same when it leads.
+    expect(legalPlaysFor(joker, hand, [{ seat: 1, card: 'KD' }], true)).toEqual(hand);
+    expect(legalPlaysFor(joker, hand, [], true)).toEqual(hand);
+    // 2♦ is trump, so it does not count as a diamond. The rest of the hand is still playable.
+    expect(legalPlaysFor(joker, ['2D', 'AS', 'KH', 'QC'], [{ seat: 1, card: 'AD' }], true)).toEqual(['2D', 'AS', 'KH', 'QC']);
+  });
   it('a hand of only spades may lead spades before broken', () => {
     expect(legalPlaysFor(joker, ['AS', 'BJ'], [], false)).toEqual(['AS', 'BJ']);
     expect(legalPlaysFor(joker, ['AS', '3H'], [], false)).toEqual(['3H']);

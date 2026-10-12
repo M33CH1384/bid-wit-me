@@ -2,7 +2,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { memo, useLayoutEffect, useMemo, useRef } from 'react';
 import { Color, type Group, type Material, type Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Quaternion, type Texture, Vector3 } from 'three';
 import { cardGeometry } from './geometry';
-import { ILLEGAL_COLOR, RAISE_S, cardPartOrder, liftEase } from './handLift';
+import { ILLEGAL_COLOR, RAISE_S, cardPartOrder, liftEase, screenRaise } from './handLift';
 import JokerAura from './JokerAura';
 import { CT } from './layout';
 import type { Xform } from './layout';
@@ -26,8 +26,11 @@ interface Props {
    *  'flight' is the deal / table arc. */
   motion?: 'lift' | 'flight' | 'slide';
   arc?: number;
-  /** Card-local translateY for a hand raise. Never folded into `target`, so a select does not retarget the fan. */
+  /** Card-local raise distance. Never folded into `target`, so a select does not retarget the fan.
+   *  Applied along screen-up (see `roll`), not along the rolled card, so the end card stays in the fan. */
   raise?: number;
+  /** Fan roll in radians. The raise is counter-rotated by this so it stays vertical on screen. */
+  roll?: number;
   /** Painter's order. Legal cards use a higher band than illegal cards; index order is kept inside each band. */
   order?: number;
   /** Draw this card over the cards beside it. Depth stays where it is; only the test changes. */
@@ -75,7 +78,7 @@ function withSaturation<M extends MeshStandardMaterial>(m: M): M & { userData: {
   return m as M & { userData: { sat: { value: number } } };
 }
 
-function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, raise = 0, order = 0, cover = false, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand, blast = 'table', jokerAura, inTrick, played, reduceMotion }: Props) {
+function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, raise = 0, roll = 0, order = 0, cover = false, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand, blast = 'table', jokerAura, inTrick, played, reduceMotion }: Props) {
   const ref = useRef<Group>(null);
   const lift = useRef<Group>(null);
   const inner = useRef<Group>(null);
@@ -146,6 +149,8 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   sfx.current = { sfxStart, sfxLand };
   const raiseNow = useRef(raise);
   raiseNow.current = raise;
+  const rollNow = useRef(roll);
+  rollNow.current = roll;
   const raiseTw = useRef({ y: 0, from: 0, to: 0, t: 1 });
 
   /** Nuke blast: lift / blow the card outward from the trick (world space), tumble it, then spring back and settle. */
@@ -325,17 +330,31 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       };
     };
     const s = tw.current;
+    const poseOk = (x: Xform) => x.p.every(Number.isFinite) && x.q.every(Number.isFinite) && Number.isFinite(x.s);
+    // A 0-height canvas produces NaN targets. Adopting one sticks: lerp(NaN, good, t) is NaN,
+    // so the hand leaves on that frame and the next trick is an empty outline.
+    const finiteTarget = poseOk(target);
     if (!s.init) {
-      const f = origin ?? from ?? target;
+      const f = (origin && poseOk(origin) ? origin : undefined) ?? (from && poseOk(from) ? from : undefined) ?? (finiteTarget ? target : undefined);
+      if (!f) return;
       g.position.set(...f.p);
       g.quaternion.set(...f.q);
       g.scale.setScalar(f.s);
       s.init = true;
       // consumed on init so this same frame's retarget does not snap a second time
-      if (origin) s.originKey = xKey(origin);
+      if (origin && poseOk(origin)) s.originKey = xKey(origin);
     }
-    const key = xKey(target);
-    if (key !== s.key) {
+    if (finiteTarget && (!Number.isFinite(g.position.x) || !Number.isFinite(g.scale.x))) {
+      g.position.set(...target.p);
+      g.quaternion.set(...target.q);
+      g.scale.setScalar(target.s);
+      s.sp.set(...target.p); s.sq.set(...target.q); s.ss = target.s;
+      s.tp.set(...target.p); s.tq.set(...target.q); s.ts = target.s;
+      s.t = 1;
+      s.key = xKey(target);
+    }
+    const key = finiteTarget ? xKey(target) : s.key;
+    if (finiteTarget && key !== s.key) {
       // retargeted before it landed (slow frames: the trick was swept while the card was still in flight) — still make its landing sound
       if (s.key && s.started && s.t < 1) {
         const land = s.land;
@@ -352,7 +371,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       const stamp = origin ? xKey(origin) : '';
       // A play starts at the card's own fan slot (not wherever the mesh was, and not the fan centre).
       // The stamp is consumed once, so the sweep to the pile keeps going from where the card is.
-      if (origin && s.originKey !== stamp) {
+      if (origin && poseOk(origin) && s.originKey !== stamp) {
         g.position.set(...origin.p);
         g.quaternion.set(...origin.q);
         g.scale.setScalar(origin.s);
@@ -360,6 +379,10 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
         s.originKey = stamp;
       } else {
         s.sp.copy(g.position); s.sq.copy(g.quaternion); s.ss = g.scale.x;
+        if (!Number.isFinite(s.sp.x) || !Number.isFinite(s.ss)) {
+          s.sp.set(...target.p); s.sq.set(...target.q); s.ss = target.s;
+          g.position.copy(s.sp); g.quaternion.copy(s.sq); g.scale.setScalar(s.ss);
+        }
       }
       s.tp.set(...target.p); s.tq.set(...target.q); s.ts = target.s;
       if (motion === 'slide') s.ss = s.ts; // translate + rotate only
@@ -370,15 +393,17 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     const liftG = lift.current;
     if (liftG) {
       const rt = raiseTw.current;
-      const dest = raiseNow.current;
+      const dest = Number.isFinite(raiseNow.current) ? raiseNow.current : 0;
+      if (!Number.isFinite(rt.y)) { rt.y = dest; rt.from = dest; rt.to = dest; rt.t = 1; }
       if (Math.abs(dest - rt.to) > 1e-5) { rt.from = rt.y; rt.to = dest; rt.t = 0; }
       if (rt.t < 1) {
         rt.t = Math.min(1, rt.t + Math.min(dt, 0.05) / RAISE_S);
         rt.y = rt.from + (rt.to - rt.from) * liftEase(rt.t);
         invalidate();
       } else rt.y = rt.to;
-      if (rt.t < 1 || liftG.position.y !== rt.y) {
-        liftG.position.set(0, rt.y, 0);
+      const off = screenRaise(rollNow.current, rt.y);
+      if (rt.t < 1 || liftG.position.x !== off.x || liftG.position.y !== off.y) {
+        liftG.position.set(off.x, off.y, 0);
         liftG.quaternion.identity();
         liftG.scale.set(1, 1, 1);
       }
