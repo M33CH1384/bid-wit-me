@@ -1,52 +1,28 @@
-# Stats review
+# Stats review (read-only, origin/master b086e28, 2026-10-12)
 
-Approved work for Bid Wit Me stats. Phase 1 is a set of small, independently mergeable changes. Phase 2 starts only after those pull requests are merged.
+## 1. Diagnosis: what D1 holds
+- `users`: one account, M33CH (`ed41194162a842d61600fdf573d9a9d5`).
+- `games`: 1 row server-wide: `MEZBY-mv4v3eiz-1`, online Cutthroat vs 3 bots, 3 hands, rated=0, he won.
+- `game_players`: 1 row. `ratings`: empty.
+- `progress`: his one-time "Save my progress" import holds an offline 2v2 Joker game vs bots he won 296-192 ("Homies"). It never reached `games`.
 
-Rules that stay in place: Elo and Best duos count signed-in opponents only. A guest does not make a game rated. Wins against guests count toward neither vs players nor vs bots. Bid accuracy counts every completed signed-in game, including games vs bots.
+## Gaps
+1. Offline games are never recorded: useGame.ts posts nothing at game over. Only the Room DO reports (room.ts:954-958, reportGame room.ts:1036-1051, index.ts:293 saveRecord).
+2. Online games left early aren't recorded: recording only fires on phase gameOver (room.ts:954). leave (room.ts:714), restart (room.ts:905-925) and expiry write nothing.
+3. accountTicket() (store.ts:299-311) waits at most 1.5s and then silently joins as a guest. reportGame returns early when no seat is a user (room.ts:1048). The link is only retried on hello (index.ts:429-438).
+4. Only signed-in seats get rows (record.ts:58). saveRecord skips the game if there are none (record.ts:134).
+5. Per-hand history is discarded; only aggregates are kept in game_players.stats (record.ts:152).
+6. The header "1 games (1 today)" is server-wide (stats/boards.ts serverStats) but reads as personal.
+7. personalStats has no losses, streak or recent form. Bags are counted only on made contracts (record.ts:68).
+8. isRated (record.ts:93-96) and Duos (boards.ts:52-57) are already correct.
 
-## Bags check (item f)
+## Plan
+Phase 1: record offline games (POST /api/stats/local, rated=0, source=offline, idempotent, sanity-checked, rate-limited, queued while offline); backfill the progress game as partial=1; record abandoned online games (end_reason=abandoned); show a link-status chip and retry the ticket on a timer; relabel the header; fix bags.
+Phase 2: per-mode Your stats card, post-game summary with deltas, streaks and last-10 results, per-hand history JSON.
+Later: partner chemistry, head-to-head, seasons, weekly titles, badges, profile graphs.
 
-`scoreHand` in `packages/rules/src/scoring.ts` is the in-game rule. `bagsAdded` is not “overtricks on a made contract” only:
-
-- A made contract adds one bag per overtrick.
-- A failed nil’s tricks are bags by default, including when the side is set (`contractMade === false`). The nil-scoring test covers this: bid nil, take 2, partner misses, `bagsAdded === 2`.
-- With no contract, tricks that are not book points are bags.
-- A books hand adds no bags. With “Bags and penalties” off, `bagsAdded` is forced to 0.
-
-`buildRecord` in `apps/server/src/stats/record.ts` only adds `bagsAdded` when `contractMade === true` and this seat bid a number. That drops bags from a set that still scored bags (busted nil) and from a hand with no contract. It is a bug. The fix is to add `bagsAdded` once per hand, which stays 0 for books hands and when bags are off, matching the score pad.
-
-## Phase 1
-
-Each item is its own pull request and can merge on its own.
-
-### (a) Finished offline games
-
-At `gameOver`, `useGame.ts` POSTs `/api/stats/local` for a signed-in player. The server rebuilds the record with `buildRecord`. Bots are `kind: 'bot'`. The row is stored `rated = 0`, `source = 'offline'`. The client game id is the idempotency key. The server checks a plausible hand count, a duration that fits the history, and scores that match the history. A per-user rate limit applies. A `localStorage` queue retries on reconnect. A D1 migration adds the new columns.
-
-### (b) Backfill the Homies win
-
-Backfill the offline 2v2 Joker win (296–192, team name Homies, user M33CH, id `ed41194162a842d61600fdf573d9a9d5`) from the `progress` import as an offline `partial = 1` record. Do it as an idempotent D1 migration or a server-side one-shot that reads `progress`, so it runs through the normal deploy. Safe to run twice.
-
-### (c) Games that end early
-
-Record online games that end early — leave (`room.ts` leave), restart / new game (`room.ts` `startGame`), and room expiry — with `end_reason = 'abandoned'`. If the game is rated, count it as a loss for the leaver. Count it in games started for everyone. Never count it as a win.
-
-### (d) Seat link retry
-
-`accountTicket()` in `store.ts` falls back to guest after 1.5s. Retry on a timer. When a signed-in user’s seat is not linked, show a “Stats off, tap to reconnect” chip.
-
-### (e) Site header
-
-Relabel the server-wide “1 games (1 today)” header to “Site: N games today”.
-
-### (f) Bags on every hand
-
-Count bags on every hand, not only made contracts, consistent with in-game scoring (see the bags check above).
-
-Add tests for each item. Typecheck and the full suite stay green. Attach 390px screenshots where there is UI.
-
-## Phase 2
-
-Only after the Phase 1 pull requests are merged.
-
-A richer per-mode Your stats card: games, W-L, win% vs players and vs bots (offline counts as vs bots), bid accuracy, set rate, nils made/tried, bags/hand, books/hand, shots, and rating or “Unrated”. Add the current streak, last-10 result dots, and a post-game summary with rating and accuracy deltas. Store compact per-hand history JSON. Elo and Best duos still count signed-in opponents only.
+| | Elo | Duos | Wins | Accuracy/nils/bags |
+|---|---|---|---|---|
+| Online vs signed-in | yes | yes | vs players | yes |
+| Online vs bots/guests | no | no | vs bots | yes |
+| Offline vs bots | no | no | vs bots (offline) | yes |
