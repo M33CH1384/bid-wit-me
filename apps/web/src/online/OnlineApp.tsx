@@ -16,6 +16,9 @@ import { usePresence } from '../social/Social';
 import { VideoMesh } from './video';
 import './online.css';
 
+/** players open video to at most this many spectators (each one is another upload stream from every player) */
+const SPECTATOR_VIDEO_MAX = 6;
+
 /** /online (create or join) and /t/CODE (a table). */
 export default function OnlineApp({ path }: { path: string }) {
   const code = codeFromPath(path);
@@ -123,12 +126,17 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
     return () => m.dispose();
   }, [conn, cs.you]);
 
-  // peers = the other seated, connected humans
+  // peers = the other seated, connected humans. Release 10: players also connect to the first few spectators
+  // (receive-only on their side: spectators never transmit), so watchers see the video tiles and hear the table.
   const peerKey = (cs.room?.seats ?? []).map((s) => (s.kind === 'human' && s.connected ? s.playerId : '')).join(',');
+  const watchKey = (cs.room?.spectators ?? []).slice(0, SPECTATOR_VIDEO_MAX).map((w) => w.playerId).join(',');
   useEffect(() => {
     if (!mesh) return;
-    mesh.setPeers(cs.seat === null ? [] : peerKey.split(',').filter(Boolean));
-  }, [mesh, peerKey, cs.seat]);
+    const seated = peerKey.split(',').filter(Boolean);
+    const watchers = watchKey.split(',').filter(Boolean);
+    if (cs.seat !== null) mesh.setPeers([...seated, ...watchers]);
+    else mesh.setPeers(cs.spectator && cs.you && watchers.includes(cs.you) ? seated : []);
+  }, [mesh, peerKey, watchKey, cs.seat, cs.spectator, cs.you]);
 
   // first arrival: the creator configures + takes seat 1; guests auto-sit in the first open seat
   const [autoDone, setAutoDone] = useState(false);
@@ -143,10 +151,15 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
     }
     // Release 9 invites deep-link a seat (/t/CODE?seat=N): take it if it's still open (a bot's seat mid-game)
     const q = new URLSearchParams(location.search);
+    // Release 10: "Watch" from Open tables: never auto-sit
+    const watch = q.has('watch');
+    if (watch) { q.delete('watch'); history.replaceState(history.state, '', location.pathname + (q.toString() ? `?${q}` : '')); }
     const want = q.has('seat') ? Number(q.get('seat')) : NaN;
     if (q.has('seat')) { q.delete('seat'); history.replaceState(history.state, '', location.pathname + (q.toString() ? `?${q}` : '')); }
     if (cs.seat === null && Number.isInteger(want) && room.seats[want] && (room.phase === 'lobby' ? room.seats[want]!.kind === 'empty' : room.seats[want]!.kind === 'bot')) {
       conn.send({ t: 'sit', seat: want });
+    } else if (watch) {
+      // just watching
     } else if (cs.seat === null && room.phase === 'lobby') {
       const free = room.seats.findIndex((s) => s.kind === 'empty');
       if (free >= 0) conn.send({ t: 'sit', seat: free });
@@ -195,7 +208,8 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
     // replace (not push) the table's entry, so the back button never re-enters a table you left
     setTimeout(() => navigate(to, true, to === '/' ? { wiz: 'home', d: 0 } : null), 50);
   };
-  const inGame = cs.room.phase !== 'lobby' && cs.seat !== null && !!cs.view;
+  // spectators (Release 10) get a redacted view and watch on the same 3D table
+  const inGame = cs.room.phase !== 'lobby' && !!cs.view && (cs.seat !== null || !!cs.spectator);
   return (
     <>
       <NowPlaying />

@@ -167,3 +167,30 @@ button.ghost { background: transparent !important; }
 .soc-stats.small b { font-size: 16px; }
 .soc-badge-chip.champ { border: 1px solid #f5c242; color: #f5c242; background: transparent; cursor: pointer; font: inherit; }
 .soc-notice { border-color: #f5c242; }
+
+/* ---- Release 10: Open tables (online "Pick a game") ---- */
+.open-tables { width: min(100%, 720px); margin: 18px auto 0; display: flex; flex-direction: column; gap: 10px; }
+.ot-head { display: flex; flex-direction: column; gap: 8px; }
+.ot-head h3 { margin: 0; font-family: var(--display); font-weight: 800; letter-spacing: .08em; text-transform: uppercase; font-size: 18px; display: flex; align-items: center; gap: 8px; }
+.ot-head h3 small { font-size: 12px; color: var(--muted); }
+.ot-live { width: 8px; height: 8px; border-radius: 50%; background: #3ddc84; box-shadow: 0 0 8px #3ddc84; animation: ot-pulse 1.6s ease-in-out infinite; }
+@keyframes ot-pulse { 50% { opacity: .35; } }
+.ot-filters { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.ot-filters button { flex: none; padding: 5px 11px; border-radius: 14px; border: 1px solid rgba(185,128,255,.35); background: rgba(255,255,255,.04); color: var(--ink); font-size: 13px; font-weight: 600; }
+.ot-filters button.on { background: rgba(185,128,255,.28); border-color: rgba(185,128,255,.85); }
+.ot-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.ot-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: rgba(20,11,34,.78); border: 1px solid rgba(185,128,255,.25); }
+.ot-row.waiting { border-color: rgba(61,220,132,.45); }
+.ot-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.ot-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ot-title b { font-family: var(--display); letter-spacing: .04em; font-size: 16px; }
+.ot-status { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 1px 7px; border-radius: 8px; background: rgba(255,255,255,.08); color: var(--muted); }
+.ot-status.waiting { background: rgba(61,220,132,.18); color: #7dffb0; }
+.ot-status.playing { background: rgba(245,197,66,.16); color: var(--gold); }
+.ot-meta { display: flex; gap: 10px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }
+.ot-meta b { color: var(--ink); font-weight: 600; }
+.ot-tour { color: var(--gold); }
+.ot-acts { display: flex; flex-direction: column; gap: 6px; flex: none; }
+.ot-acts button { min-width: 76px; padding: 7px 10px; border-radius: 10px; }
+.ot-empty { text-align: center; padding: 14px; border-radius: 12px; border: 1px dashed rgba(185,128,255,.35); }
+.ot-empty p { margin: 0 0 10px; color: var(--muted); }

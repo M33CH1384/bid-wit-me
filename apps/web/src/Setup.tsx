@@ -11,6 +11,7 @@ import { loadName, saveName } from './online/identity';
 import { navigate } from './online/nav';
 import { AccountEntry } from './account/AccountUI';
 import { SocialButton } from './social/Social';
+import { OpenTables } from './social/OpenTables';
 
 /**
  * Start flow as a wizard: splash (logo + Play Online / Play vs Bots + Resume) → mode → essentials → go.
@@ -143,6 +144,7 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
             </button>
           ))}
         </div>
+        {path === 'online' && <OpenTables selected={s.mode} onCreate={() => go('setup')} />}
       </>
     );
   } else {

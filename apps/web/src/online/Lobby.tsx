@@ -204,6 +204,12 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
               <button type="button" data-testid="mic-mute-toggle" className={`toggle ${room.partnerMicMute ? 'on' : ''}`} role="switch" aria-checked={!!room.partnerMicMute} aria-label="Partner mic mute" onClick={() => config(settings, timerKey(room), room.botLevel, room.talkSec, room.afkLimit ?? 3, !room.partnerMicMute)}><span /></button>
             </span></label>
           )}
+          <label className="row"><span className="row-label">Private table<small>hidden from Open tables · invite or code only</small></span><span className="row-control">
+            <button type="button" data-testid="private-toggle" className={`toggle ${room.private ? 'on' : ''}`} role="switch" aria-checked={!!room.private} aria-label="Private table" onClick={() => conn.send({ t: 'tableOpts', private: !room.private })}><span /></button>
+          </span></label>
+          <label className="row"><span className="row-label">Spectators can replace bots<small>a watcher may take a bot's seat mid-game (seats a player left are always open)</small></span><span className="row-control">
+            <button type="button" data-testid="replace-bots-toggle" className={`toggle ${room.replaceBots !== false ? 'on' : ''}`} role="switch" aria-checked={room.replaceBots !== false} aria-label="Spectators can replace bots" onClick={() => conn.send({ t: 'tableOpts', replaceBots: room.replaceBots === false })}><span /></button>
+          </span></label>
           <label className="row"><span className="row-label">Bot trash talk<small>bots talk smack in chat (players can hide or mute it)</small></span><span className="row-control">
             <button type="button" data-testid="bot-talk-toggle" className={`toggle ${room.botTalk !== false ? 'on' : ''}`} role="switch" aria-checked={room.botTalk !== false} aria-label="Bot trash talk" onClick={() => conn.send({ t: 'config', rules: room.rules, botLevel: room.botLevel, talkSec: room.talkSec, afkLimit: room.afkLimit ?? 3, partnerMicMute: room.partnerMicMute ?? false, nukeIntensity: room.nukeIntensity ?? 'full', talkIntensity: room.talkIntensity ?? 'cookout', botTalk: room.botTalk === false })}><span /></button>
           </span></label>

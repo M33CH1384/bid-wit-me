@@ -117,6 +117,10 @@ export interface OnlineBinding {
   victory?: (winners: number[], losers: number[], title: string, sub?: string) => ReactNode;
   /** the venue this online game is played in (everyone sees the same) */
   venue?: VenueId;
+  /** Release 10: watching, not playing. Seat 0 is a real player (names[0] is their name): no hand, no controls. */
+  spectator?: boolean;
+  /** Release 10: spectator banner / take-seat prompt / watchers chip, drawn over the table */
+  overlay?: ReactNode;
 }
 
 interface Props {
@@ -275,7 +279,7 @@ function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only',
         <div className="chat-list" ref={listRef}>
           {msgs.map((m) => (
             <div key={m.id} className={`chat-line ${m.system ? 'system' : ''}`}>
-              {m.system ? <span>{m.text}</span> : <><b style={{ color: m.color }}>{m.user}</b><span>{m.text}</span></>}
+              {m.system ? <span>{m.text}</span> : <><b style={{ color: m.color }}>{m.user}</b>{m.badge && <em className="chat-tag" data-testid="chat-tag">{m.badge}</em>}<span>{m.text}</span></>}
             </div>
           ))}
         </div>
@@ -485,7 +489,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const shownTrick = pause ? st.tricks[st.tricks.length - 1]! : st.trick;
   const piles = pause ? st.tricks.slice(0, -1) : st.tricks;
   // online: `locked` while our move is in flight (until the server acks it), so it can't be sent twice
-  const myTurn = !pause && !dealing && !(online?.source.locked) && st.turn === HUMAN;
+  const spectating = !!online?.spectator;
+  const myTurn = !spectating && !pause && !dealing && !(online?.source.locked) && st.turn === HUMAN;
   const hand = useMemo(() => (view.hand ? sortHand(view.hand, r) : null), [view.hand, r]);
   // cards stay face-down only while Blind Nil is actually on offer; otherwise just turn them over (no button)
   const autoReveal = myTurn && !dealing && st.phase === 'bidding' && view.hand === null && !!view.bidOptions && !view.bidOptions.blindNil;
@@ -563,7 +568,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const hold = !!(window as unknown as { __bwmHoldRun?: boolean }).__bwmHoldRun;
     const timers = hold ? [] : [window.setTimeout(endRun, (tornadoAt + RUN_TORNADO_MS / 1000) * 1000)];
     (window as unknown as { __bwmEndRun?: () => void }).__bwmEndRun = endRun;
-    if (runFx.claimer === HUMAN) {
+    if (runFx.claimer === HUMAN && !spectating) {
       runItUsed();
       if (award('storm-chaser', { mode: r.mode, online: !!online, hand: runFx.before.st.handNo, books: runFx.books })) pendingBadge.current = 'storm-chaser';
     }
@@ -951,7 +956,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       </div>
 
       <ChatPanel msgs={msgs} open={chatOpen} onToggle={() => setChatOpen(!chatOpen)} onSend={(t) => push('You', t)} unread={unread} scope={online ? 'table' : undefined} extra={online ? online.controls : <OfflineMediaBar />}
-        trash={!runFx && !modalOpen ? <TrashTalkButton st={st} me={HUMAN} intensity={intensity} onSend={(t) => push('You', t)} /> : null} />
+        trash={!runFx && !modalOpen && !spectating ? <TrashTalkButton st={st} me={HUMAN} intensity={intensity} onSend={(t) => push('You', t)} /> : null} />
       {help && !bidTurn && view.hand && view.hand.length > 0 && st.phase !== 'handOver' && st.phase !== 'gameOver' && (
         <div className="bid-coach-float glass slant"><BidCoach view={view} startOpen title="COUNT YOUR BOOKS" onClose={() => setHelp(false)} /></div>
       )}
@@ -984,7 +989,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             </div>
           )
         )}
-        {st.phase === 'bidding' && !dealing && view.hand === null && !myTurn && (
+        {st.phase === 'bidding' && !dealing && view.hand === null && !myTurn && !spectating && (
           <div className="bid-panel glass slant compact">
             <span>Cards face down — Blind Nil is open on your turn.</span>
             <button type="button" onClick={() => apply({ type: 'reveal', seat: HUMAN })}>See cards</button>
@@ -1000,7 +1005,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         <div className={`plate me-plate ${myTurn && st.phase !== 'handOver' ? 'turn' : ''}`} data-testid="seat-0">
           <div className="plate-avatar" style={{ ['--uc' as string]: USER_COLORS.You }}>Y</div>
           <div className="plate-body">
-            <div className="plate-name">YOU{st.dealer === HUMAN && <span className="chip dealer" data-testid="dealer-0">DEALER</span>}{notice.includes(sideOf(HUMAN, r)) && <span className="chip notice" data-testid="notice-0" title="Got shot last hand: one more shot and you're out">ON NOTICE</span>}{myBadges.map((b) => BADGES[b.id] && <span key={b.id} className="chip badge" title={`${BADGES[b.id]!.name}: ${BADGES[b.id]!.desc}`} data-testid={`plate-badge-${b.id}`}>{BADGES[b.id]!.icon}</span>)}</div>
+            <div className="plate-name">{spectating ? (names[HUMAN] ?? '').toUpperCase() : 'YOU'}{st.dealer === HUMAN && <span className="chip dealer" data-testid="dealer-0">DEALER</span>}{notice.includes(sideOf(HUMAN, r)) && <span className="chip notice" data-testid="notice-0" title="Got shot last hand: one more shot and you're out">ON NOTICE</span>}{!spectating && myBadges.map((b) => BADGES[b.id] && <span key={b.id} className="chip badge" title={`${BADGES[b.id]!.name}: ${BADGES[b.id]!.desc}`} data-testid={`plate-badge-${b.id}`}>{BADGES[b.id]!.icon}</span>)}</div>
             <div className="plate-stats">
               <span className="chip">{st.bids[HUMAN] === 'books' ? 'BOOKS' : `BID ${st.bids[HUMAN] === null ? '—' : bidLabel(st.bids[HUMAN]).toUpperCase()}`}</span>
               <span className="chip">TOOK {sb.tricksWon[HUMAN]}</span>
@@ -1013,6 +1018,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         </div>
         {error && <div className="err">{error}</div>}
       </section>
+      {online?.overlay}
       {canRun && <RunItButton tip={runTip} onDismissTip={() => setRunTip(false)} onRun={() => { setRunTip(false); setSelected(null); apply({ type: 'runIt', seat: HUMAN }); }} />}
       {runFx?.phase === 'zoom' && <RunZoom cards={runFx.cards} who={runFx.claimer === HUMAN ? 'You' : names[runFx.claimer]!} line={runLine} r={r} />}
       {callout && !runFx && <div className={`trash-callout seat-${pos[callout.seat]}`} key={callout.id} data-testid="trash-callout"><b>{callout.seat === HUMAN ? 'You' : names[callout.seat]}</b>{showLine(callout.text)}</div>}
@@ -1083,7 +1089,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         const winSeats = seats.filter((i) => res.winners.includes(sideOf(i, r)));
         const loseSeats = seats.filter((i) => !res.winners.includes(sideOf(i, r)));
         const title = winHeadline(res.winners.map((w) => sideName(r, w, names)), r.partnerships);
-        const iWon = res.winners.includes(mySide);
+        const iWon = !spectating && res.winners.includes(mySide);
         return (
           <div className="victory-screen" role="dialog" aria-label="Game over" data-testid="victory">
             <div className="vic-confetti" aria-hidden>{Array.from({ length: 18 }, (_, i) => <i key={i} style={{ left: `${(i % 2 ? 91 : 1) + ((i * 13) % 7)}%`, background: `hsl(${i * 47} 90% 60%)`, animationDuration: `${3.2 + (i % 5) * 0.5}s`, animationDelay: `${-i * 0.37}s` }} />)}</div>
@@ -1109,7 +1115,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
               <div className="bid-row">
                 <button type="button" onClick={() => setShowPad(true)}>Score pad</button>
                 <button type="button" data-testid="main-menu" onClick={mainMenu}>Main menu</button>
-                <button type="button" className="primary" data-testid="rematch" onClick={() => onRematch(nextDealer(st))}>Rematch</button>
+                {!spectating && <button type="button" className="primary" data-testid="rematch" onClick={() => onRematch(nextDealer(st))}>Rematch</button>}
               </div>
             </div>
           </div>

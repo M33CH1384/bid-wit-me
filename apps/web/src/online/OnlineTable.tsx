@@ -6,7 +6,8 @@ import { type Settings, loadSettings, saveSettings } from '../settings';
 import type { ConnState, TableConnection } from './connection';
 import { type KickInfo, MediaBar, SeatMedia, TalkTile, VictorySpotlight } from './Media';
 import { MusicLinkCard } from './HostMusic';
-import { localNames, useCountdown, useOnlineChat, useOnlineSource, useVideo } from './useOnline';
+import { loadHideSpectatorChat, localNames, saveHideSpectatorChat, useCountdown, useOnlineChat, useOnlineSource, useVideo } from './useOnline';
+import { SpectatorOverlay } from './Spectators';
 import type { VideoMesh } from './video';
 
 /** The 3D table, driven by the server: rotated per-seat view, real chat, video bubbles, turn clock. */
@@ -16,9 +17,17 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
   const [settings, setSettings] = useState<Settings>(() => ({ ...loadSettings(), speed: 'normal' }));
   const room = cs.room!;
   const rot = source?.rot ?? null;
-  const names = useMemo(() => (rot ? localNames(room, rot) : []), [room, rot]);
+  // Release 10: watching (no seat): seat 0 is a real player, so it shows their name instead of "You"
+  const spectator = !!cs.spectator && cs.seat === null;
+  const names = useMemo(() => {
+    if (!rot) return [];
+    const ns = localNames(room, rot);
+    if (spectator) { const s0 = room.seats[rot.R(0)]; ns[0] = !s0 || s0.kind === 'empty' ? 'Seat 1' : s0.name; }
+    return ns;
+  }, [room, rot, spectator]);
   const send = useCallback((text: string) => conn.send({ t: 'chat', text }), [conn]);
-  const chat = useOnlineChat(cs, source?.st ?? null, names, send);
+  const [hideSpec, setHideSpec] = useState(loadHideSpectatorChat);
+  const chat = useOnlineChat(cs, source?.st ?? null, names, send, hideSpec && !spectator);
   const skew = room.now - Date.now();
   const secs = useCountdown(room.deadline ? room.deadline - skew : null);
 
@@ -69,7 +78,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
     const offline = seat?.kind === 'human' && !seat.connected;
     return (
       <>
-        <SeatMedia seat={seat} isMe={local === 0} mesh={mesh} vs={vs} limited={!!seat && seat.kind === 'human' && vs.limited.includes(seat.playerId)} kick={kickFor(real)} />
+        <SeatMedia seat={seat} isMe={local === 0 && !spectator} mesh={mesh} vs={vs} limited={!!seat && seat.kind === 'human' && vs.limited.includes(seat.playerId)} kick={kickFor(real)} />
         {offline && <span className="chip bad seat-offline">OFFLINE</span>}
         {turnLocal === local && secs !== null && secs <= 15 && !source.pause && <span className={`turn-clock ${secs <= 5 ? 'hot' : ''}`} data-testid={`clock-${local}`}>{secs}s</span>}
       </>
@@ -89,7 +98,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
   return (
     <>
       <Table
-        key={`${room.code}:${room.game}`}
+        key={`${room.code}:${room.game}:${cs.seat ?? 'watch'}`}
         rules={r}
         seed={`${room.code}:${room.game}`}
         settings={settings}
@@ -108,15 +117,19 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
               const seat = room.seats[rot.R(L)];
               // your own card shows your display name ("Demetrius (you)"), not just "You"
               const own = L === 0 && seat && 'name' in seat && typeof seat.name === 'string' && seat.name.trim() ? seat.name.trim() : undefined;
-              return { key: String(rot.R(L)), name: own ?? names[L] ?? '?', seat, isMe: L === 0 };
+              return { key: String(rot.R(L)), name: (spectator ? undefined : own) ?? names[L] ?? '?', seat, isMe: L === 0 && !spectator };
             };
             return <VictorySpotlight winners={winners.map(sp)} losers={losers.map(sp)} title={title} sub={sub} mesh={mesh} vs={vs} />;
           },
-          controls: <MediaBar mesh={mesh} vs={vs} seated limited={limitedNow} />,
+          controls: spectator ? undefined : <MediaBar mesh={mesh} vs={vs} seated limited={limitedNow} />,
+          spectator,
+          overlay: <SpectatorOverlay room={room} cs={cs} spectator={spectator} names={names} hideChat={hideSpec}
+            onHideChat={(on) => { setHideSpec(on); saveHideSpectatorChat(on); }}
+            onTake={(seat) => conn.send({ t: 'sit', seat })} onLeave={onMainMenu} />,
           talk: {
             secs,
             ready: { mine: !!cs.you && room.ready.includes(cs.you), count: room.ready.length, of: room.seats.filter((x) => x.kind === 'human' && x.connected).length },
-            tile: (local) => <TalkTile seat={room.seats[rot.R(local)]} isMe={local === 0} mesh={mesh} vs={vs} />,
+            tile: (local) => <TalkTile seat={room.seats[rot.R(local)]} isMe={local === 0 && !spectator} mesh={mesh} vs={vs} />,
           },
         }}
       />

@@ -4,7 +4,7 @@
  * without one (they show up as "Guest", can read global chat and receive invites).
  */
 import { useSyncExternalStore } from 'react';
-import type { DmLine, FriendsState, InviteMsg, PresenceEntry, PresenceStatus, SocialChatLine, SocialClientMsg, SocialServerMsg, SocialSettings } from '@spades/protocol';
+import type { DmLine, FriendsState, InviteMsg, OpenTable, PresenceEntry, PresenceStatus, SocialChatLine, SocialClientMsg, SocialServerMsg, SocialSettings } from '@spades/protocol';
 import { account, loadAccount } from '../account/api';
 import { serverUrl } from '../online/config';
 import { loadName } from '../online/identity';
@@ -40,6 +40,8 @@ export interface SocialState {
   notices: Notice[];
   /** open tournament detail (id) */
   tour: string | null;
+  /** Release 10: public tables (Open tables list), by code */
+  tables: Record<string, OpenTable>;
 }
 
 const GLOBAL_SEEN_KEY = 'bwm.social.globalSeen';
@@ -47,7 +49,7 @@ const seen0 = (() => { try { return Number(localStorage.getItem(GLOBAL_SEEN_KEY)
 
 let state: SocialState = {
   status: 'off', you: null, admin: false, users: {}, global: [], friends: null, settings: null, unread: {}, dms: {}, names: {}, invites: [], sent: {}, toasts: [],
-  open: false, tab: 'players', dmWith: null, profile: null, globalSeen: seen0, myTable: null, notices: [], tour: null,
+  open: false, tab: 'players', dmWith: null, profile: null, globalSeen: seen0, myTable: null, notices: [], tour: null, tables: {},
 };
 const subs = new Set<() => void>();
 function set(p: Partial<SocialState> | ((s: SocialState) => Partial<SocialState>)) {
@@ -128,10 +130,20 @@ function onMessage(m: SocialServerMsg) {
     case 'hello': {
       const users: Record<string, PresenceEntry> = {};
       for (const u of m.users) users[u.id] = u;
-      set({ status: 'open', you: m.you, admin: m.admin, users, global: m.global, friends: m.friends, settings: m.settings, unread: m.unread });
+      const tables: Record<string, OpenTable> = {};
+      for (const t of m.tables ?? []) tables[t.code] = t;
+      set({ status: 'open', you: m.you, admin: m.admin, users, global: m.global, friends: m.friends, settings: m.settings, unread: m.unread, tables });
       send({ t: 'status', status });
       break;
     }
+    case 'tables':
+      set((s) => {
+        const tables = { ...s.tables };
+        for (const t of m.up ?? []) tables[t.code] = t;
+        for (const c of m.gone ?? []) delete tables[c];
+        return { tables };
+      });
+      break;
     case 'pres':
       set((s) => {
         const users = { ...s.users };

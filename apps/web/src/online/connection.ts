@@ -21,6 +21,8 @@ export interface ConnState {
   error: { code: string; message: string; at: number } | null;
   /** a move is in flight (sent, not yet acknowledged): the hand is locked so it can't be sent twice */
   pending: boolean;
+  /** Release 10: watching (unseated while a game is on; the view is the redacted spectator view) */
+  spectator?: boolean;
 }
 
 interface PendingAct { id: string; seq: number; action: GameAction; sentAt: number }
@@ -104,7 +106,7 @@ export class TableConnection {
           // the game moved past the version our in-flight move was based on: it was applied (or superseded)
           const settled = this.inflight !== null && m.room.seq > this.inflight.seq;
           if (settled) this.settle();
-          this.set({ status: 'open', room: m.room, seat: m.seat, view, ...(settled ? { pending: false } : {}) });
+          this.set({ status: 'open', room: m.room, seat: m.seat, view, spectator: !!m.spectator, ...(settled ? { pending: false } : {}) });
           break;
         }
         case 'ack': {

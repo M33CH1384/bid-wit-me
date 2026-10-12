@@ -143,7 +143,7 @@ export function colorFor(id: string): string {
 }
 
 /** Real table chat (server) + local system lines for bids/hand results, in arrival order, in the overlay's format. */
-export function useOnlineChat(cs: ConnState, st: GameState | null, names: string[], send: (text: string) => void) {
+export function useOnlineChat(cs: ConnState, st: GameState | null, names: string[], send: (text: string) => void, hideSpectators = false) {
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
   const seen = useRef(new Set<number>());
   const localId = useRef(1_000_000);
@@ -194,13 +194,20 @@ export function useOnlineChat(cs: ConnState, st: GameState | null, names: string
   }, [st, names, add]);
 
   const push = useCallback((_user: string, text: string) => send(text), [send]);
-  return { msgs, push };
+  // Release 10: a player may hide spectator chat (their own setting)
+  const shown = useMemo(() => (hideSpectators ? msgs.filter((m) => m.badge !== SPECTATOR_TAG) : msgs), [msgs, hideSpectators]);
+  return { msgs: shown, push };
 }
+
+export const SPECTATOR_TAG = 'Spectator';
+const HIDE_SPEC_KEY = 'bwm.hideSpectatorChat';
+export const loadHideSpectatorChat = () => { try { return localStorage.getItem(HIDE_SPEC_KEY) === '1'; } catch { return false; } };
+export const saveHideSpectatorChat = (on: boolean) => { try { localStorage.setItem(HIDE_SPEC_KEY, on ? '1' : '0'); } catch { /* private mode */ } };
 
 function lineToMsg(l: ChatLine, you: string | null): ChatMsg {
   if (l.system || !l.from) return { id: l.id, user: 'System', text: l.text, system: true, color: '#b892ff' };
   const mine = l.from === you;
-  return { id: l.id, user: mine ? 'You' : l.name, text: l.text, color: mine ? '#f5c542' : colorFor(l.from), ...(l.bot ? { bot: true } : {}), ...(l.hint ? { hint: true } : {}) };
+  return { id: l.id, user: mine ? 'You' : l.name, text: l.text, color: mine ? '#f5c542' : colorFor(l.from), ...(l.bot ? { bot: true } : {}), ...(l.hint ? { hint: true } : {}), ...(l.spectator ? { badge: SPECTATOR_TAG } : {}) };
 }
 
 /** Local-seat names: "You" at 0, then real names rotated. */

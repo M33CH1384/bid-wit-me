@@ -161,3 +161,22 @@
 .media-toast .mt-x { border: 0; background: rgba(255,255,255,.08); color: #fff; width: 28px; height: 28px; border-radius: 50%; flex: none; }
 .vbubble .vb-icon, .vbubble .vb-badge { pointer-events: none; }
 .tour-banner { margin: 6px 0; padding: 8px 12px; border-radius: 10px; border: 1px solid #f5c242; background: rgba(245,194,66,.12); font-size: 13px; }
+
+/* ---- Release 10: spectators ---- */
+.spec-dock { position: fixed; top: calc(58px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 60; display: flex; flex-direction: column; align-items: center; gap: 8px; width: min(94vw, 460px); pointer-events: none; }
+.spec-dock > * { pointer-events: auto; }
+.spec-banner { display: flex; align-items: center; gap: 8px; padding: 6px 14px; font-family: var(--display); letter-spacing: .08em; }
+.spec-banner b { color: var(--gold); }
+.spec-banner small { color: var(--muted); letter-spacing: .02em; }
+.spec-banner .link { margin-left: 6px; }
+.spec-take { width: 100%; padding: 12px 14px; text-align: center; border: 1px solid rgba(245,197,66,.7); box-shadow: 0 0 26px rgba(245,197,66,.35); animation: spec-in .3s ease-out both; }
+.spec-take-title { font-family: var(--display); font-weight: 800; letter-spacing: .12em; color: var(--gold); font-size: 20px; }
+.spec-take p { margin: 4px 0 10px; font-size: 13px; color: var(--muted); }
+.spec-take-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+@keyframes spec-in { from { transform: translateY(-8px); opacity: 0; } }
+.spec-chip-wrap { position: fixed; top: calc(62px + env(safe-area-inset-top)); left: 12px; z-index: 60; }
+.spec-chip { height: 32px; padding: 0 10px; border-radius: 16px; border: 1px solid rgba(185,128,255,.5); background: rgba(20,11,34,.85); color: var(--ink); font-weight: 700; }
+.spec-pop { position: absolute; top: 38px; left: 0; width: min(80vw, 280px); padding: 10px 12px; }
+.spec-pop ul { list-style: none; margin: 4px 0 8px; padding: 0; max-height: 30vh; overflow: auto; }
+.spec-pop li { padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,.06); }
+.chat-tag { font-style: normal; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: #cfb8ff; border: 1px solid rgba(185,128,255,.5); border-radius: 6px; padding: 0 5px; margin: 0 4px; }
