@@ -1102,6 +1102,15 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .hm-beats { max-height: min(40vh, 220px); overflow-y: auto; overscroll-behavior: contain; }
 /* Full Nuke: HUD blown outward from the blast, then it springs back */
 .table-screen.nuke-blow :is(.scorebug, .trump-strip, .badge-layer .plate, .me-plate, .last-trick, .chat, .chat-toggle, .ctl-cluster, .dock-btn) { animation: nuke-blow 2.4s cubic-bezier(.15,.8,.3,1) both; }
+/* the trump strip is centred with translateX(-50%): its blow keeps that offset so it never jumps half off screen */
+.table-screen.nuke-blow .trump-strip.trump-strip.trump-strip { animation-name: nuke-blow-c; }
+@keyframes nuke-blow-c {
+  0% { transform: translateX(-50%); }
+  12% { transform: translateX(-50%) translate(var(--bx, 0), var(--by, 0)) rotate(var(--br, 0deg)); opacity: .85; }
+  55% { transform: translateX(-50%) translate(calc(var(--bx, 0) * .8), calc(var(--by, 0) * .8)) rotate(var(--br, 0deg)); }
+  85% { transform: translateX(-50%) translate(calc(var(--bx, 0) * -.06), calc(var(--by, 0) * -.06)); opacity: 1; }
+  100% { transform: translateX(-50%); }
+}
 @keyframes nuke-blow {
   0% { transform: none; }
   12% { transform: translate(var(--bx, 0), var(--by, 0)) rotate(var(--br, 0deg)); opacity: .85; }
