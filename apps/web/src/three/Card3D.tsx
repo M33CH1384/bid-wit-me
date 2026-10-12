@@ -2,7 +2,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { memo, useLayoutEffect, useMemo, useRef } from 'react';
 import { Color, type Group, type Material, type Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Quaternion, type Texture, Vector3 } from 'three';
 import { cardGeometry } from './geometry';
-import { ILLEGAL_COLOR, RAISE_S, liftEase } from './handLift';
+import { ILLEGAL_COLOR, RAISE_S, cardPartOrder, liftEase } from './handLift';
 import JokerAura from './JokerAura';
 import { CT } from './layout';
 import type { Xform } from './layout';
@@ -98,17 +98,26 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   const glowMat = useMemo(() => new MeshBasicMaterial({ color: '#f5c542', transparent: true, opacity: 0, depthWrite: false, toneMapped: false }), []);
   const edge = useMemo(() => edgeMat.clone(), []);
   // Stacking is render order, not a new depth or a new key. Child groups would otherwise reset it to 0.
+  // depthTest is off for a legal card so it paints over the closer illegal card beside it. That also
+  // lets the untextured edge (drawn later, by material id) cover the face. The face mesh stays a step
+  // above the edge so the pips remain on top of the slab.
   useLayoutEffect(() => {
     const root = ref.current;
     if (!root) return;
     root.traverse((obj) => {
       if ((obj as Group).isGroup) obj.renderOrder = order;
-      const mat = (obj as Mesh).material as Material | Material[] | undefined;
-      if (!mat) return;
-      for (const m of Array.isArray(mat) ? mat : [mat]) m.depthTest = !cover;
+      const mesh = obj as Mesh;
+      if (mesh.isMesh) {
+        const mat = mesh.material as Material | Material[] | undefined;
+        const list = mat ? (Array.isArray(mat) ? mat : [mat]) : [];
+        const onFace = list.includes(frontMat);
+        const onBack = list.includes(backMat);
+        mesh.renderOrder = cardPartOrder(onFace ? 'face' : onBack ? 'back' : 'edge');
+        for (const m of list) m.depthTest = !cover;
+      }
     });
     invalidate();
-  }, [order, cover, face, jokerAura, glow, invalidate]);
+  }, [order, cover, face, jokerAura, glow, frontMat, backMat, invalidate]);
   const look = useRef({ target: new Color(1, 1, 1), glow: 0, sat: 1 });
   const burstFx = useRef({ on: false, baseOp: 1 });
   useLayoutEffect(() => {
