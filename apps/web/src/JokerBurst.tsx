@@ -36,8 +36,8 @@ export default function JokerBurst() {
     let clock = 0;
     let hapticCut = false;
     const stop = () => {
-      const screen = document.querySelector<HTMLElement>('.table-screen');
-      if (screen) screen.style.transform = '';
+      const table = document.querySelector<HTMLElement>('.table-canvas-wrap');
+      if (table) table.style.transform = '';
       if (flash.current) flash.current.style.opacity = '0';
       const c = canvas.current;
       const ctx = c?.getContext('2d');
@@ -50,7 +50,6 @@ export default function JokerBurst() {
       if (b.start !== clock) { clock = b.start; sawActive = false; hapticCut = false; }
       const warped = fx.warp;
       const t = warped !== null ? warped * 1000 : (advanceBurst()?.elapsed ?? 0);
-      const screen = document.querySelector<HTMLElement>('.table-screen');
       const nuke = (window as unknown as { __bwmNuke?: { active?: boolean } }).__bwmNuke;
       if (nuke?.active) sawActive = true;
       // The 3D blast bailed (stall watchdog, context loss, or a tap to skip). Stop vibration,
@@ -60,7 +59,8 @@ export default function JokerBurst() {
         hapticCut = true;
         cancelHaptics('nuke-skipped');
       }
-      paint(canvas.current, flash.current, screen, t, b.kind, b.reduced);
+      const table = document.querySelector<HTMLElement>('.table-canvas-wrap');
+      paint(canvas.current, flash.current, table, t, b.kind, b.reduced);
       if (warped === null && t >= BURST_MS[b.kind]) { clearBurst(); stop(); return; }
       raf = requestAnimationFrame(tick);
     };
@@ -74,8 +74,8 @@ export default function JokerBurst() {
 
   return (
     <div className="joker-burst" aria-hidden>
-      <div ref={flash} className="joker-flash" data-testid="joker-flash" />
       <canvas ref={canvas} className="joker-burst-canvas" />
+      <div ref={flash} className="joker-flash" data-testid="joker-flash" />
     </div>
   );
 }
@@ -83,15 +83,15 @@ export default function JokerBurst() {
 function paint(
   canvas: HTMLCanvasElement | null,
   flashEl: HTMLDivElement | null,
-  screen: HTMLElement | null,
+  tableEl: HTMLElement | null,
   t: number,
   kind: JokerKind,
   reduced: boolean,
 ) {
   if (flashEl) flashEl.style.opacity = String(flashOpacity(t, kind, reduced));
-  if (screen) {
+  if (tableEl) {
     const s = shakeOffset(t, kind, reduced);
-    screen.style.transform = s.x === 0 && s.y === 0 ? '' : `translate(${s.x.toFixed(2)}px, ${s.y.toFixed(2)}px)`;
+    tableEl.style.transform = s.x === 0 && s.y === 0 ? '' : `translate(${s.x.toFixed(2)}px, ${s.y.toFixed(2)}px)`;
   }
   if (!canvas) return;
   const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -111,17 +111,6 @@ function paint(
   const cx = trick.length ? trick.reduce((s, r) => s + r.x + r.w / 2, 0) / trick.length : w / 2;
   const cy = trick.length ? trick.reduce((s, r) => s + r.y + r.h / 2, 0) / trick.length : h * 0.46;
   const table = Math.min(w, h) * 0.92;
-  const sw = shockwave(t, kind);
-  if (sw && sw.opacity > 0.01 && sw.mul > 0.02) {
-    const rad = (sw.mul * table) / 2;
-    ctx.beginPath();
-    ctx.arc(cx, cy, rad, 0, Math.PI * 2);
-    ctx.strokeStyle = JOKER_PALETTE[kind].hot.hex;
-    ctx.globalAlpha = sw.opacity;
-    ctx.lineWidth = kind === 'BJ' ? 6 : 4;
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-  }
   const cloud = cloudPose(t, kind, false);
   if (cloud && cloud.opacity > 0.02) {
     const hotHex = kind === 'BJ' ? '#FFD24D' : JOKER_PALETTE.LJ.hot.hex;
@@ -163,6 +152,22 @@ function paint(
       ctx.ellipse(cx + s.x, cy + s.y, Math.max(1, s.rx), Math.max(1, s.ry), 0, 0, Math.PI * 2);
       ctx.fill();
     }
+    ctx.restore();
+  }
+  // Drawn last so the cap never covers it. #B6FF3B, 6px (Little Joker 4px), with a glow so it
+  // reads on the felt and on the full-path screen fire. The canvas itself stays transparent.
+  const sw = shockwave(t, kind);
+  if (sw && sw.opacity > 0.02 && sw.mul > 0.02) {
+    const rad = Math.max(1, (sw.mul * table) / 2);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, rad, 0, Math.PI * 2);
+    ctx.strokeStyle = kind === 'BJ' ? '#B6FF3B' : JOKER_PALETTE.LJ.hot.hex;
+    ctx.shadowBlur = 16;
+    ctx.shadowColor = kind === 'BJ' ? '#7CFF4F' : '#C86BFF';
+    ctx.globalAlpha = sw.opacity;
+    ctx.lineWidth = kind === 'BJ' ? 6 : 4;
+    ctx.stroke();
     ctx.restore();
   }
 }

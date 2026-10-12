@@ -1,8 +1,9 @@
 import { fx } from './fx';
 import { HAPTIC, haptic } from './haptics';
 import { startLittleBurst } from './JokerBurst';
+import { SWEEP_MS } from './jokerFx';
 import { offlineTalk } from './offlineTalk';
-import { NUKE_ALLOWANCE_MS, RUN_FX_MS } from '@spades/protocol';
+import { RUN_FX_MS } from '@spades/protocol';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type Action, type GameState, type TableRules, applyAction, canRunIt, isNukeTrick, newGame, pendingTurn, secureSeed, viewFor } from '@spades/rules';
 import { type BotLevel, type PartnerHint, chooseBotAction, parseHint } from '@spades/bots';
@@ -56,7 +57,7 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
   const littleBurstFor = useRef(-1);
   useEffect(() => {
     if (!pause || hold) return;
-    // a nuked trick (Big Joker over Little Joker) holds longer: the table's fixed nuke allowance
+    // A nuked trick sweeps on the short detonation clock. The server allowance stays on the online table.
     const trick = st.tricks[st.tricks.length - 1];
     const last = trick?.plays ?? [];
     // 'Run it!' holds for the slam + tornado instead (no nuke on a run: the tornado is the show).
@@ -67,12 +68,28 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
       const winCard = trick.winner == null ? null : last.find((p) => p.seat === trick.winner)?.card;
       if (winCard === 'LJ') { littleBurstFor.current = st.tricks.length; startLittleBurst(); }
     }
-    const extra = run ? RUN_FX_MS : nuke ? NUKE_ALLOWANCE_MS[fx.tableNuke ?? fx.prefs.nuke] : 0;
-    // The hold releasing is the moment the cards start sweeping to the books.
+    if (run) {
+      const t = setTimeout(() => setPause(false), 1150 * k + RUN_FX_MS);
+      return () => clearTimeout(t);
+    }
+    if (nuke) {
+      // Overlay sequence is about 1.2s. Release into the pile flight on that clock.
+      // A capture pins time with fx.warp; live play uses the wall clock from this pause.
+      // The server still waits NUKE_ALLOWANCE_MS — only this offline table sweeps early.
+      const t0 = performance.now();
+      let id = 0;
+      const tick = () => {
+        const elapsed = fx.warp !== null ? fx.warp * 1000 : performance.now() - t0;
+        if (elapsed >= SWEEP_MS) { setPause(false); return; }
+        id = requestAnimationFrame(tick);
+      };
+      id = requestAnimationFrame(tick);
+      return () => cancelAnimationFrame(id);
+    }
     const t = setTimeout(() => {
-      if (!run && !nuke) haptic(HAPTIC.trickWin, 'trick-win');
+      haptic(HAPTIC.trickWin, 'trick-win');
       setPause(false);
-    }, 1150 * k + extra);
+    }, 1150 * k);
     return () => clearTimeout(t);
   }, [pause, k, hold]);
 

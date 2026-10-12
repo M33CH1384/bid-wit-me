@@ -53,7 +53,8 @@ export default function Hype({ reduced, low = false }: { reduced: boolean; low?:
     else if (e.kind === 'nuke') {
       const c = trickCenter();
       setNuke({ id: e.id, ...c, mode: fx.nukeMode });
-      window.setTimeout(() => setNuke((n) => (n?.id === e.id ? null : n)), 3700);
+      const calm = fx.nukeMode === 'off' || reducedRef.current;
+      window.setTimeout(() => setNuke((n) => (n?.id === e.id ? null : n)), calm ? 700 : 1400);
     }
   }), []);
 
@@ -77,8 +78,8 @@ export default function Hype({ reduced, low = false }: { reduced: boolean; low?:
       {nuke && (
         <>
           <div key={`b${nuke.id}`} className={`nuke-banner ${nuke.mode === 'off' || reduced ? 'calm' : ''}`} data-testid="nuke" onClick={() => setNuke(null)}>
-            <div className="nb-title" data-text="☢ NUKED ☢">☢ NUKED ☢</div>
-            <div className="nb-sub">Big Joker over Little Joker</div>
+            <div className="nb-title" data-text="NUKED">NUKED</div>
+            <div className="nb-sub">(Big Joker Over Little Joker)</div>
           </div>
         </>
       )}

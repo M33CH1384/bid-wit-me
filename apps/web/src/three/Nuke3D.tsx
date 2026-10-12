@@ -339,11 +339,10 @@ function NukeRun({ start, full, detail, post, octaves, screen, onBail }: { start
     [p.sphere, p.torus, p.cyl, p.ringGeo, p.quad, p.smoke.geo, p.dust.geo, p.embers.geo, p.ash.geo].forEach((g) => g.dispose());
   }, [parts]);
 
-  // blast impulse for the cards + Full Nuke HUD blow-away
+  // blast impulse for the cards. The HUD stays put; the detonation shake is the table canvas.
   useEffect(() => {
     const t = window.setTimeout(() => {
       fx.blast = { start: performance.now(), hand: full };
-      if (full) blowHud();
     }, FLASH * 1000);
     const fov0 = baseFov.current;
     return () => { clearTimeout(t); cam.fov = fov0; cam.updateProjectionMatrix(); fx.blast = null; document.querySelector('.table-screen')?.classList.remove('nuke-blow'); invalidate(); };
@@ -500,26 +499,3 @@ export class NukeGuard extends Component<{ children: ReactNode }, { failed: bool
   override render() { return this.state.failed ? null : this.props.children; }
 }
 
-/** Full Nuke: the HUD (scorebug, plates, chat, last trick, controls) is blown outward from the blast, then springs back. */
-function blowHud() {
-  const screen = document.querySelector('.table-screen');
-  if (!screen) return;
-  const L = (window as unknown as { __bwmLayout?: { trick: { x: number; y: number; w: number; h: number }[] } }).__bwmLayout;
-  const tr = L?.trick ?? [];
-  const cx = tr.length ? tr.reduce((s, t) => s + t.x + t.w / 2, 0) / tr.length : innerWidth / 2;
-  const cy = tr.length ? tr.reduce((s, t) => s + t.y + t.h / 2, 0) / tr.length : innerHeight * 0.45;
-  for (const el of screen.querySelectorAll<HTMLElement>('.scorebug, .trump-strip, .badge-layer .plate, .me-plate, .last-trick, .chat, .chat-toggle, .ctl-cluster, .dock-btn')) {
-    const r = el.getBoundingClientRect();
-    if (!r.width) continue;
-    const dx = r.left + r.width / 2 - cx, dy = r.top + r.height / 2 - cy, d = Math.max(60, Math.hypot(dx, dy));
-    const push = 90 + 140 * Math.min(1, 300 / d);
-    el.style.setProperty('--bx', `${(dx / d) * push}px`);
-    el.style.setProperty('--by', `${(dy / d) * push}px`);
-    el.style.setProperty('--br', `${(Math.random() - 0.5) * 30}deg`);
-  }
-  screen.classList.remove('nuke-blow');
-  void (screen as HTMLElement).offsetWidth;
-  screen.classList.add('nuke-blow');
-  // (frame-exact captures drive time through fx.warp: the run's cleanup removes the class instead of a wall-clock timer)
-  if (fx.warp === null) window.setTimeout(() => screen.classList.remove('nuke-blow'), 2600);
-}
