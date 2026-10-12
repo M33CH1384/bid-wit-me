@@ -1,3 +1,4 @@
+import { retainHandOrder } from './handOrder';
 import { winHeadline } from './headline';
 import { type VenueId, VENUE_DEFS, resolveVenue } from './venues';
 import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -500,7 +501,15 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // online: `locked` while our move is in flight (until the server acks it), so it can't be sent twice
   const spectating = !!online?.spectator;
   const myTurn = !spectating && !pause && !dealing && !(online?.source.locked) && st.turn === HUMAN;
-  const hand = useMemo(() => (view.hand ? sortHand(view.hand, r) : null), [view.hand, r]);
+  // Sort once when the hand is dealt. A play only removes a card; re-sorting here is what made the fan look shuffled.
+  const handOrder = useRef<{ handNo: number; cards: Card[] } | null>(null);
+  const hand = useMemo(() => {
+    if (!view.hand) return null;
+    const prev = handOrder.current?.handNo === view.handNo ? handOrder.current.cards : null;
+    const next = retainHandOrder(prev, view.hand, r);
+    handOrder.current = { handNo: view.handNo, cards: next };
+    return next;
+  }, [view.hand, view.handNo, r]);
   // cards stay face-down only while Blind Nil is actually on offer; otherwise just turn them over (no button)
   const autoReveal = myTurn && !dealing && st.phase === 'bidding' && view.hand === null && !!view.bidOptions && !view.bidOptions.blindNil;
   useEffect(() => { if (autoReveal) apply({ type: 'reveal', seat: HUMAN }); }, [autoReveal]); // eslint-disable-line react-hooks/exhaustive-deps

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  GLOW_ALPHA, GLOW_BLUR_PX, ILLEGAL_BRIGHTNESS, ILLEGAL_COLOR, LIFT_S, OUTLINE_COLOR, OUTLINE_PX,
-  canTapCard, glowFalloff, glowRadiusPx, handLift, liftEase, outlineRadiusPx, playablePose, posePx, stackFor,
+  GAP_S, GLOW_ALPHA, GLOW_BLUR_PX, ILLEGAL_BRIGHTNESS, ILLEGAL_COLOR, LIFT_S, OUTLINE_COLOR, OUTLINE_PX,
+  canTapCard, fanMotion, glowFalloff, glowRadiusPx, handLift, liftEase, outlineRadiusPx, playablePose, posePx, stackFor,
 } from '../src/three/handLift';
 import { fanLayout, handCardPlane } from '../src/three/layout';
 import { contourContains, contiguousRuns, haloLocal, HALO_SX, HALO_SY, placeOnPlane, strokeContour, strokeRibbon, unionContours } from '../src/three/playableOutline';
@@ -13,6 +13,18 @@ describe('your-turn hand poses', () => {
     expect(posePx('legal')).toBe(14);
     expect(posePx('selected')).toBe(24);
     expect(LIFT_S).toBe(0.2);
+    expect(GAP_S).toBe(0.24);
+  });
+
+  it('closes a gap by sliding, and a highlight only lifts', () => {
+    expect(fanMotion({ flip: false, fresh: false, closing: true })).toEqual({ kind: 'slide', motion: 'slide', arc: 0 });
+    expect(fanMotion({ flip: false, fresh: false, closing: false })).toEqual({ kind: 'lift', motion: 'lift', arc: 0 });
+    expect(fanMotion({ flip: false, fresh: true, closing: true })).toEqual({ kind: 'deal', motion: 'flight', arc: 0.05 });
+    expect(fanMotion({ flip: true, fresh: true, closing: true })).toEqual({ kind: 'flip', motion: 'flight', arc: 0 });
+    // the slide uses the same curve as the lift, over the longer gap
+    expect(liftEase(0)).toBe(0);
+    expect(liftEase(1)).toBe(1);
+    expect(liftEase(0.5)).toBeGreaterThan(0.5);
   });
 
   it('is flat off turn, and a card you cannot play is not tappable', () => {

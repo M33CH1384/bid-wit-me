@@ -9,6 +9,8 @@ export const ILLEGAL_DROP_PX = 4;
 export const SELECT_LIFT_PX = 10;
 /** Group lift (and the return to flat) in seconds. */
 export const LIFT_S = 0.2;
+/** After a card leaves, the others slide into the gap. Same curve as the lift, a little longer. */
+export const GAP_S = 0.24;
 
 /** One continuous outline around each run of legal cards. No per-card border. */
 export const OUTLINE_COLOR = '#F2C14E';
@@ -115,7 +117,23 @@ export function cssCubicBezier(x1: number, y1: number, x2: number, y2: number, x
   return sampleY(t);
 }
 
-/** cubic-bezier(.2, .8, .2, 1) — the group lift. */
+/** cubic-bezier(.2, .8, .2, 1) — the group lift, and the slide that closes a gap. */
 export function liftEase(t: number): number {
   return cssCubicBezier(0.2, 0.8, 0.2, 1, t);
+}
+
+/**
+ * How one hand card moves this frame. A reveal flips in place, a card we have not shown yet flies in from
+ * the deck, a play slides the others into the gap (translate + rotate only), and a highlight only lifts.
+ * Legal state is not part of this — it must not change the card's key or restart the fan.
+ */
+export function fanMotion(o: { flip: boolean; fresh: boolean; closing: boolean }): {
+  kind: 'flip' | 'deal' | 'slide' | 'lift';
+  motion: 'lift' | 'flight' | 'slide';
+  arc: number;
+} {
+  if (o.flip) return { kind: 'flip', motion: 'flight', arc: 0 };
+  if (o.fresh) return { kind: 'deal', motion: 'flight', arc: 0.05 };
+  if (o.closing) return { kind: 'slide', motion: 'slide', arc: 0 };
+  return { kind: 'lift', motion: 'lift', arc: 0 };
 }
