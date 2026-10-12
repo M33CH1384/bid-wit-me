@@ -171,6 +171,11 @@ export interface FanOpts {
   /** Target card height as a fraction of the view height. */
   heightFrac?: number;
   short?: boolean;
+  /**
+   * Z-order. Omitted: derived from `lift` so older callers still work (`> 0.2` selected, `> 0` raised).
+   * The pixel lifts are small fractions of a card, so the hand passes this explicitly.
+   */
+  layer?: 'rest' | 'play' | 'selected';
 }
 
 export function fanLayout(aspect: number, count: number, safeFrac = 0, o: FanOpts = {}): FanLayout {
@@ -228,7 +233,9 @@ export function handCardPlane(aspect: number, count: number, i: number, lift: nu
   // z-order only: later cards sit on earlier ones, and every raised card comes forward past the whole fan
   // (18 × 0.006 < 0.12). The gaps are wide on purpose: phones with a 16-bit depth buffer (iPhone Safari) z-fight
   // at ~0.0003 here, which let the edges of the cards underneath bleed through as thin gold lines when the gap was 0.0015.
-  const depth = 1 - (i + 1) * 0.006 - (lift > 0 ? 0.12 : 0) - (lift > 0.2 ? 0.12 : 0); // the selected card tops all the raised ones too
+  const layer = o.layer ?? (lift > 0.2 ? 'selected' : lift > 0 ? 'play' : 'rest');
+  const boost = layer === 'selected' ? 0.24 : layer === 'play' ? 0.12 : 0;
+  const depth = 1 - (i + 1) * 0.006 - boost; // the selected card tops all the raised ones too
   return { x, y, roll, depth, s: L.s };
 }
 

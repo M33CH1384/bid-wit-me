@@ -1067,6 +1067,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             type="button"
             data-testid={`card-${c}`}
             data-legal={legal.includes(c) || humanExchanging ? 'true' : 'false'}
+            disabled={!humanExchanging && !legal.includes(c)}
             aria-pressed={selected === c || exchangePick.includes(c)}
             onClick={() => onCard(c)}
           >

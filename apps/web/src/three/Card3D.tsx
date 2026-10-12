@@ -2,6 +2,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { memo, useLayoutEffect, useMemo, useRef } from 'react';
 import { Color, type Group, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Quaternion, type Texture, Vector3 } from 'three';
 import { cardGeometry } from './geometry';
+import { ILLEGAL_COLOR, liftEase } from './handLift';
 import JokerAura from './JokerAura';
 import { CT } from './layout';
 import type { Xform } from './layout';
@@ -18,12 +19,15 @@ interface Props {
   from?: Xform;
   delay?: number;
   duration?: number;
+  /** 'lift' is the 200ms group rise (cubic-bezier .2,.8,.2,1). Everything else keeps the flight ease. */
+  motion?: 'lift' | 'flight';
   arc?: number;
   dim?: boolean;
   glow?: boolean;
   castShadow?: boolean;
   quality: 'high' | 'low';
-  onTap?: () => void;
+  /** undefined = not a button (trick cards). null = a hand card you can't play: the tap is swallowed. */
+  onTap?: (() => void) | null;
   name?: string;
   /** Sound when this card starts moving toward its current target (e.g. dealt flick, sweep). Fires once per value. */
   sfxStart?: Sfx;
@@ -42,9 +46,9 @@ interface Props {
 
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 const edgeMat = new MeshStandardMaterial({ color: '#efe9dc', roughness: 0.75 });
-/** full colour vs. the not-playable look: darker (~60% brightness on screen) with a faint cool tint, and desaturated */
+/** full colour vs. a card you can't play: 55% brightness on screen, faint cool tint, desaturated */
 const FULL = new Color(1, 1, 1);
-const DIM = new Color(0.2, 0.195, 0.25);
+const DIM = new Color(...ILLEGAL_COLOR);
 /** saturation of a not-playable card's face (1 = full colour, 0 = grey) */
 const DIM_SAT = 0.3;
 /** Adds a saturation control to a card face material (uSat: 1 = untouched); one shader variant shared by every card. */
@@ -61,7 +65,7 @@ function withSaturation<M extends MeshStandardMaterial>(m: M): M & { userData: {
   return m as M & { userData: { sat: { value: number } } };
 }
 
-function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.25, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand, blast = 'table', jokerAura, inTrick, played, reduceMotion }: Props) {
+function Card3D({ face, back, target, from, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand, blast = 'table', jokerAura, inTrick, played, reduceMotion }: Props) {
   const ref = useRef<Group>(null);
   const inner = useRef<Group>(null);
   const bl = useRef({ dir: new Vector3(), q: new Quaternion(), axis: new Vector3(), on: false });
@@ -76,9 +80,9 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
   const frontMat = useMemo(() => withSaturation(face ? mk(face) : mk(back)), [face, back, quality]); // eslint-disable-line react-hooks/exhaustive-deps
   const backMat = useMemo(() => mk(back), [back, quality]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Your turn: cards you can't play get a soft cool/purple dim (still readable); playable cards stay at full colour
-  // (no emissive tint, which made them look washed-out). Their shared gold rail is PlayableGlow, not a per-card edge.
-  // This per-card backing is only a selected card or a tip mark. The joker pulse is JokerAura, behind the face.
+  // Your turn: cards you can't play sit at 55% brightness (still readable); playable cards stay at full colour.
+  // Their shared gold outline is PlayableGlow, not a per-card edge. This backing is a tip mark.
+  // The joker pulse is JokerAura, behind the face.
   const glowMat = useMemo(() => new MeshBasicMaterial({ color: '#f5c542', transparent: true, opacity: 0, depthWrite: false, toneMapped: false }), []);
   const look = useRef({ target: new Color(1, 1, 1), glow: 0, sat: 1 });
   const burstFx = useRef({ on: false, baseOp: 1 });
@@ -296,7 +300,7 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
       const land = s.land;
       if (land && land !== s.firedLand) { s.firedLand = land; if (moving) land.split(',').forEach((c, i) => fireCue(c, i ? 0.02 : 0)); }
     }
-    const e = easeInOut(s.t);
+    const e = (motion === 'lift' ? liftEase : easeInOut)(s.t);
     g.position.lerpVectors(s.sp, s.tp, e);
     const dist = s.sp.distanceTo(s.tp);
     g.position.y += Math.sin(Math.PI * s.t) * arc * Math.min(1, dist);
@@ -308,7 +312,7 @@ function Card3D({ face, back, target, from, delay = 0, duration = 0.45, arc = 0.
     <group
       ref={ref}
       name={name}
-      onClick={onTap ? (e) => { e.stopPropagation(); onTap(); } : undefined}
+      onClick={onTap ? (e) => { e.stopPropagation(); onTap(); } : onTap === null ? (e) => { e.stopPropagation(); } : undefined}
       onPointerOver={onTap ? () => { document.body.style.cursor = 'pointer'; } : undefined}
       onPointerOut={onTap ? () => { document.body.style.cursor = ''; } : undefined}
     >

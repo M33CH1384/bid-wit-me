@@ -134,11 +134,11 @@ export function smoothContour(c: Contour, passes = 2): Contour {
 }
 
 /**
- * A closed gold stroke around a contour, in the same plane units. Drawn in front of the fan (see PlayableGlow):
- * a fill tucked behind the cards disappears wherever the next card overlaps, so the bottom and the end caps never
- * showed. The stroke is only the rim, so the faces stay clear and the whole run reads as one outline.
+ * A closed stroke around a contour, in the same plane units, plus a UV across the ribbon (u = 0 inside, 1 outside).
+ * Drawn in front of the fan (see PlayableGlow): a fill tucked behind the cards disappears wherever the next card
+ * overlaps, so the bottom and the end caps never showed. The stroke is only the rim.
  */
-export function strokeContour(c: Contour, radius: number): Float32Array {
+export function strokeRibbon(c: Contour, radius: number): { pos: Float32Array; uv: Float32Array } {
   const line: Pt[] = [];
   const push = (p: Pt) => {
     const prev = line[line.length - 1];
@@ -148,7 +148,7 @@ export function strokeContour(c: Contour, radius: number): Float32Array {
   for (let i = c.top.length - 1; i >= 0; i--) push(c.top[i]!);
   if (line.length > 2 && Math.hypot(line[0]!.x - line[line.length - 1]!.x, line[0]!.y - line[line.length - 1]!.y) < 1e-5) line.pop();
   const n = line.length;
-  if (n < 3 || radius <= 0) return new Float32Array();
+  if (n < 3 || radius <= 0) return { pos: new Float32Array(), uv: new Float32Array() };
   const outer: Pt[] = [];
   const inner: Pt[] = [];
   for (let i = 0; i < n; i++) {
@@ -160,15 +160,20 @@ export function strokeContour(c: Contour, radius: number): Float32Array {
     outer.push({ x: p.x + dy * radius, y: p.y - dx * radius });
     inner.push({ x: p.x - dy * radius, y: p.y + dx * radius });
   }
-  const arr = new Float32Array(n * 6 * 3);
-  let o = 0;
-  const vert = (p: Pt) => { arr[o++] = p.x; arr[o++] = p.y; arr[o++] = 0; };
+  const pos = new Float32Array(n * 6 * 3);
+  const uv = new Float32Array(n * 6 * 2);
+  let o = 0, u = 0;
+  const vert = (p: Pt, s: number) => { pos[o++] = p.x; pos[o++] = p.y; pos[o++] = 0; uv[u++] = s; uv[u++] = 0.5; };
   for (let i = 0; i < n; i++) {
     const j = (i + 1) % n;
-    vert(inner[i]!); vert(outer[i]!); vert(inner[j]!);
-    vert(inner[j]!); vert(outer[i]!); vert(outer[j]!);
+    vert(inner[i]!, 0); vert(outer[i]!, 1); vert(inner[j]!, 0);
+    vert(inner[j]!, 0); vert(outer[i]!, 1); vert(outer[j]!, 1);
   }
-  return arr;
+  return { pos, uv };
+}
+
+export function strokeContour(c: Contour, radius: number): Float32Array {
+  return strokeRibbon(c, radius).pos;
 }
 
 /** Triangle list (x,y,0) for one or more filled ribbons. Winding is not guaranteed; the mesh is double-sided. */
