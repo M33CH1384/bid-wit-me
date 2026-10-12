@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   BREATHE_HI, BREATHE_LO, BREATHE_S, BREATHE_SCALE, GAP_S, GLOW_ALPHA, GLOW_BLUR_PX, GLOW_REACH_PX, GLOW_SPREAD_PX,
   GROUP_PAD_PX, GROUP_RADIUS_PX, ILLEGAL_BRIGHTNESS, ILLEGAL_COLOR, LIFT_S, OUTLINE_COLOR, OUTLINE_PX, RAISE_S,
-  SELECT_GLOW_OP, SHINE_DEG, SHINE_PEAK, SHINE_S, SHINE_WIDTH,
-  breatheOpacity, canTapCard, easeOut, fanMotion, glowFalloff, glowRadiusPx, handLift, liftEase, outlineRadiusPx,
+  GROUP_GAP_PX, LEGAL_STACK, SELECT_GLOW_OP, SHINE_DEG, SHINE_PEAK, SHINE_S, SHINE_WIDTH,
+  breatheOpacity, canTapCard, easeOut, fanGapPx, fanMotion, glowFalloff, glowRadiusPx, handLift, handRenderOrder, liftEase, outlineRadiusPx,
   playablePose, posePx, raiseLocalY, shineAxis, shineBand, stackFor,
 } from '../src/three/handLift';
 import { fanLayout, handCardPlane, handFan } from '../src/three/layout';
@@ -207,6 +207,61 @@ describe('shine and idle breath', () => {
     expect(SELECT_GLOW_OP).toBeCloseTo(0.8, 6);
     expect(SELECT_GLOW_OP).toBeGreaterThan(BREATHE_HI);
     expect(ILLEGAL_BRIGHTNESS).toBe(0.55);
+  });
+});
+
+describe('legal cards stack above the cards beside them', () => {
+  const aspect = 390 / 844;
+  const screenH = 844;
+
+  it('puts every legal card after every illegal card, and keeps index order inside each band', () => {
+    const flags = [false, false, true, true, true, false, false];
+    const orders = flags.map((above, i) => handRenderOrder(i, above));
+    const legal = orders.filter((_, i) => flags[i]);
+    const illegal = orders.filter((_, i) => !flags[i]);
+    expect(Math.min(...legal)).toBeGreaterThan(Math.max(...illegal));
+    expect(orders[2]).toBeLessThan(orders[3]!);
+    expect(orders[3]).toBeLessThan(orders[4]!);
+    expect(orders[0]).toBeLessThan(orders[1]!);
+    expect(orders[5]).toBeLessThan(orders[6]!);
+    // a tap does not jump ahead of the other legal cards
+    expect(handRenderOrder(3, true)).toBe(LEGAL_STACK + 3);
+    expect(handRenderOrder(4, true) - handRenderOrder(3, true)).toBe(1);
+  });
+
+  it('opens about 8px on each side of a middle run without restacking or reordering', () => {
+    expect(GROUP_GAP_PX).toBe(8);
+    const n = 13;
+    const flags = Array.from({ length: n }, (_, i) => i >= 5 && i <= 7);
+    const gaps = fanGapPx(flags);
+    expect(fanGapPx(Array.from({ length: n }, () => false)).every((g) => g === 0)).toBe(true);
+    expect(fanGapPx(Array.from({ length: n }, () => true)).every((g) => g === 0)).toBe(true);
+    const L = fanLayout(aspect, n);
+    const px = (d: number) => (d / L.viewH) * screenH;
+    const at = (i: number, gap: number) => handCardPlane(aspect, n, i, 0, 0, {}, gap, screenH);
+    const gapBetween = (i: number, useGap: boolean) => {
+      const a = at(i, useGap ? gaps[i]! : 0);
+      const b = at(i + 1, useGap ? gaps[i + 1]! : 0);
+      return px(b.x - a.x);
+    };
+    expect(gapBetween(4, true) - gapBetween(4, false)).toBeCloseTo(8, 2);
+    expect(gapBetween(7, true) - gapBetween(7, false)).toBeCloseTo(8, 2);
+    // inside the run, and between two illegal cards, the step does not change
+    expect(gapBetween(5, true) - gapBetween(5, false)).toBeCloseTo(0, 2);
+    expect(gapBetween(1, true) - gapBetween(1, false)).toBeCloseTo(0, 2);
+    for (let i = 0; i < n; i++) {
+      const moved = at(i, gaps[i]!);
+      const still = at(i, 0);
+      expect(moved.x).toBeGreaterThan(i === 0 ? -Infinity : at(i - 1, gaps[i - 1]!).x);
+      expect(moved.depth).toBe(still.depth);
+      expect(moved.roll).toBe(still.roll);
+      // y only follows the fan arc as the card slides; it is not a lift
+      expect(Math.abs(px(moved.y - still.y))).toBeLessThan(4);
+    }
+    const fan = handFan(aspect, n, 6, 0, 0, {}, gaps[6]!, screenH);
+    const plain = handFan(aspect, n, 6, 0);
+    expect(fan.q).toEqual(plain.q);
+    expect(fan.s).toBe(plain.s);
   });
 });
 

@@ -5,7 +5,7 @@ import {
   BREATHE_SCALE, GROUP_PAD_PX, GROUP_RADIUS_PX, LIFT_S, OUTLINE_COLOR, SELECT_GLOW_OP, SHINE_PEAK, SHINE_S, SHINE_WIDTH,
   breatheOpacity, easeOut, glowFalloff, glowRadiusPx, liftEase, outlineRadiusPx, shineAxis,
 } from './handLift';
-import { contoursToTriangles, groupOutline, haloLocal, strokeContour, strokeRibbon, unionContours, type Pt } from './playableOutline';
+import { contoursToTriangles, groupOutline, haloLocal, strokeContour, strokeOutward, unionContours, type Pt } from './playableOutline';
 
 export interface GlowAnchor { name: string; x: number; y: number; selected?: boolean }
 
@@ -26,7 +26,7 @@ const FLIGHT = 0.22;
  * clear the 16-bit depth buffer (iPhone Safari z-fights around 0.0003; the fan itself uses 0.006).
  */
 const IN_FRONT = 0.02;
-/** White mask of the 18px gaussian, sampled across the ribbon (u = 0 inside, 1 outside). The material tints it gold. */
+/** White mask of the 18px gaussian. u = 0 is the outline (the peak) and u = 1 is the outer edge. */
 function glowAlphaMap(): CanvasTexture {
   const w = 64, h = 4;
   const canvas = document.createElement('canvas');
@@ -34,8 +34,7 @@ function glowAlphaMap(): CanvasTexture {
   const g = canvas.getContext('2d')!;
   const img = g.createImageData(w, h);
   for (let x = 0; x < w; x++) {
-    const fromCenter = Math.abs(x / (w - 1) - 0.5) * 2;
-    const a = Math.round(255 * glowFalloff(fromCenter));
+    const a = Math.round(255 * glowFalloff(x / (w - 1)));
     for (let y = 0; y < h; y++) {
       const i = (y * w + x) * 4;
       img.data[i] = 255; img.data[i + 1] = 255; img.data[i + 2] = 255; img.data[i + 3] = a;
@@ -148,13 +147,13 @@ export default function PlayableGlow({ runs, handNames, quality }: Props) {
   const bloomGeo = useMemo(() => emptyGeo([['position', 3], ['uv', 2], ['color', 4]]), []);
   const shineGeo = useMemo(() => emptyGeo([['position', 3], ['aAlong', 1], ['aSpan', 1]]), []);
   const glowMap = useMemo(() => glowAlphaMap(), []);
-  const crispMat = useMemo(() => new MeshBasicMaterial({ color: OUTLINE_COLOR, transparent: true, opacity: 0, depthWrite: false, toneMapped: false, side: DoubleSide }), []);
+  const crispMat = useMemo(() => new MeshBasicMaterial({ color: OUTLINE_COLOR, transparent: true, opacity: 0, depthWrite: false, depthTest: false, toneMapped: false, side: DoubleSide }), []);
   const bloomMat = useMemo(() => new MeshBasicMaterial({
     color: OUTLINE_COLOR, map: glowMap, vertexColors: true, transparent: true, opacity: 0,
-    depthWrite: false, toneMapped: false, side: DoubleSide,
+    depthWrite: false, depthTest: false, toneMapped: false, side: DoubleSide,
   }), [glowMap]);
   const shineMat = useMemo(() => new ShaderMaterial({
-    transparent: true, depthWrite: false, toneMapped: false, side: DoubleSide, blending: NormalBlending,
+    transparent: true, depthWrite: false, depthTest: false, toneMapped: false, side: DoubleSide, blending: NormalBlending,
     uniforms: {
       uT: { value: 0 },
       uPeak: { value: SHINE_PEAK },
@@ -208,7 +207,6 @@ export default function PlayableGlow({ runs, handNames, quality }: Props) {
 
     let settled = rs.length > 0;
     let near = -Infinity;
-    let far = Infinity;
     let stampNow = '';
     const cam = camera as import('three').PerspectiveCamera;
     const viewH = 2 * Math.tan(((cam.fov ?? 50) * Math.PI) / 360);
@@ -232,7 +230,6 @@ export default function PlayableGlow({ runs, handNames, quality }: Props) {
         _v.set(0, 0, 0).applyMatrix4(card.matrixWorld).applyMatrix4(inv);
         stampNow += `${_v.x.toFixed(3)},${_v.y.toFixed(3)},${_v.z.toFixed(3)};`;
         if (_v.z > near) near = _v.z;
-        if (_v.z < far) far = _v.z;
         if (_v.z >= -0.05 || Math.hypot(_v.x / -_v.z - anchor.x, _v.y / -_v.z - anchor.y) > FLIGHT) settled = false;
         const face: Pt[] = [];
         if (!projectHalo(card, inv, FACE, face)) { settled = false; continue; }
@@ -245,7 +242,8 @@ export default function PlayableGlow({ runs, handNames, quality }: Props) {
       // One convex outline per run. The scalloped per-card halo is what threw the rays.
       for (const contour of unionContours([rect], 80)) {
         crispParts.push(strokeContour(contour, outlineRadiusPx() * px));
-        const ribbon = strokeRibbon(contour, glowRadiusPx() * px);
+        // Outside the path only, so drawing above the neighbours does not tint the faces.
+        const ribbon = strokeOutward(contour, glowRadiusPx() * px);
         bloomPos.push(ribbon.pos);
         bloomUv.push(ribbon.uv);
         const colors = new Float32Array((ribbon.pos.length / 3) * 4);
@@ -281,7 +279,6 @@ export default function PlayableGlow({ runs, handNames, quality }: Props) {
       card.updateWorldMatrix(true, false);
       _v.set(0, 0, 0).applyMatrix4(card.matrixWorld).applyMatrix4(inv);
       if (_v.z > near) near = _v.z;
-      if (_v.z < far) far = _v.z;
     }
     const crispTris = concatTris(crispParts);
     const bloomTris = concatTris(bloomPos);
@@ -299,8 +296,8 @@ export default function PlayableGlow({ runs, handNames, quality }: Props) {
       const planeZ = (Number.isFinite(near) ? near : -1) + IN_FRONT;
       const crisp = crispRef.current, bloom = bloomRef.current;
       if (crisp) place(crisp, camera.matrixWorld, planeZ);
-      // Behind the fan: the faces stay at 100% and only the rim past the cards shows.
-      if (bloom) place(bloom, camera.matrixWorld, (Number.isFinite(far) ? far : -1) - 0.02);
+      // Just under the stroke, and above the neighbouring cards (depthTest is off; the ribbon stays outside the faces).
+      if (bloom) place(bloom, camera.matrixWorld, planeZ - 0.004);
     }
     if (shineTris.length) {
       writeTriangles(shineGeo, shineTris);
