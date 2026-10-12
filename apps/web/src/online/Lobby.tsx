@@ -42,7 +42,7 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
   const n = room.rules.playerCount;
   const playing = room.phase === 'playing';
   const [copied, setCopied] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(() => window.innerWidth >= 1024);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const link = inviteLink(room.code);
   const r = room.rules;
 
@@ -75,7 +75,15 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
   const [seen, setSeen] = useState(cs.chat.length);
   useEffect(() => { if (chatOpen || wide) setSeen(cs.chat.length); }, [chatOpen, wide, cs.chat.length]);
   const unread = Math.max(0, cs.chat.filter((l) => !l.system).length - cs.chat.slice(0, seen).filter((l) => !l.system).length);
-  const startBlock = <StartBlock room={room} cs={cs} conn={conn} isHost={isHost} playing={playing} seatedHumans={seatedHumans} n={n} onBackToGame={onBackToGame} onLeave={onLeave} />;
+  const teams = r.partnerships ? (
+          <div className="lobby-teams" data-testid="lobby-teams">
+            {[0, 1].map((t) => (
+              <TeamChip key={t} t={t} name={room.teamNames?.[t] ?? ''} editable={cs.seat !== null && cs.seat % 2 === t}
+                onSave={(name) => conn.send({ t: 'teamName', name })} />
+            ))}
+          </div>
+        ) : <p className="hint lobby-teams-note">No teams · every player for themselves</p>;
+  const startBlock = <StartBlock teams={wide ? null : teams} room={room} cs={cs} conn={conn} isHost={isHost} playing={playing} seatedHumans={seatedHumans} n={n} onBackToGame={onBackToGame} onLeave={onLeave} />;
 
   return (
     <div className="setup lobby lobby-v3" data-testid="lobby">
@@ -115,14 +123,7 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
             />
           ))}
         </div>
-        {r.partnerships ? (
-          <div className="lobby-teams" data-testid="lobby-teams">
-            {[0, 1].map((t) => (
-              <TeamChip key={t} t={t} name={room.teamNames?.[t] ?? ''} editable={cs.seat !== null && cs.seat % 2 === t}
-                onSave={(name) => conn.send({ t: 'teamName', name })} />
-            ))}
-          </div>
-        ) : <p className="hint lobby-teams-note">No teams · every player for themselves</p>}
+        {wide && teams}
         {wide && <MediaBar mesh={mesh} vs={vs} seated={cs.seat !== null} />}
         {room.series && room.series.games.length > 0 && <p className="hint" data-testid="lobby-series">Series {room.series.wins.join('–')} · {room.series.sides.map((s) => s.name).join(' vs ')}</p>}
       </section>
@@ -147,7 +148,7 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
       </section>
       {isHost && !playing ? (
         <details className="panel settings-panel" open={settingsOpen} onToggle={(e) => setSettingsOpen((e.currentTarget as HTMLDetailsElement).open)}>
-          <summary className="panel-title">TABLE SETTINGS <small>(host)</small></summary>
+          <summary className="panel-title settings-row" data-testid="settings-row"><span className="sr-mode">{modeTitle(r)} · to {r.targetScore}</span><span className="sr-edit">{settingsOpen ? 'Done' : 'Edit'}</span></summary>
           <div className="modes compact">
             {MODES.map((m) => (
               <button key={m.key} type="button" className={`mode ${settings.mode === m.key ? 'selected' : ''}`} onClick={() => set('mode', m.key as ModeKey)}>
@@ -320,8 +321,8 @@ function LockedRules({ room }: { room: RoomInfo }) {
   return <LockedRulesPanel rules={room.rules} nuke={room.nukeIntensity ?? 'full'} skill={room.botLevel} intensity={room.talkIntensity ?? 'cookout'} micMute={room.partnerMicMute ?? false} online />;
 }
 
-function StartBlock({ room, cs, conn, isHost, playing, seatedHumans, n, onBackToGame, onLeave }: {
-  room: RoomInfo; cs: ConnState; conn: TableConnection; isHost: boolean; playing: boolean; seatedHumans: number; n: number;
+function StartBlock({ teams, room, cs, conn, isHost, playing, seatedHumans, n, onBackToGame, onLeave }: {
+  teams: React.ReactNode; room: RoomInfo; cs: ConnState; conn: TableConnection; isHost: boolean; playing: boolean; seatedHumans: number; n: number;
   onBackToGame: (() => void) | null; onLeave: () => void;
 }) {
   const filled = room.seats.filter((s) => s.kind !== 'empty').length;
@@ -331,6 +332,7 @@ function StartBlock({ room, cs, conn, isHost, playing, seatedHumans, n, onBackTo
     : `${filled} of ${n} seated${open > 0 ? ` · waiting on ${open}` : ' · ready'}${open > 0 ? (isHost ? ` · Start fills with bot${open > 1 ? 's' : ''}` : '') : ''}`;
   return (
     <div className="lobby-start" data-testid="lobby-start">
+      {teams}
       {!playing && <p className="lobby-status" data-testid="lobby-status" aria-live="polite"><span className="live-dot" /><span key={status} className="status-text">{status}</span></p>}
       {onBackToGame && <button type="button" className="primary big" onClick={onBackToGame}>Back to the game</button>}
       {!playing && (isHost ? (

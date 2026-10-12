@@ -59,6 +59,7 @@ export function SoundSheet({ allOff, onMuteAll, onClose }: { allOff: boolean; on
         <span className="panel-title">SOUND</span>
         <button type="button" className="sheet-x" aria-label="Close sound settings" onClick={onClose}>✕</button>
       </div>
+      <NowPlayingLine />
       <div className="sheet-actions">
         <button type="button" className={`mute-all bot-mute big ${t.voices ? '' : 'off'}`} data-testid="bot-voice-quick" aria-pressed={!t.voices} onClick={() => talkPrefs.set({ voices: !t.voices })}>🤖 {t.voices ? 'Mute bots' : 'Bots muted'}</button>
         <button type="button" className="mute-all big" data-testid="mute-all" onClick={onMuteAll}>{allOff ? '🔊 Unmute' : '🔇 Mute all'}</button>
@@ -250,6 +251,7 @@ export default function SoundButton() {
       {open && (
         <div className="sound-pop glass slant" role="dialog" aria-label="Sound">
           <div className="panel-title">SOUND</div>
+          <NowPlayingLine />
           <SoundFields compact />
         </div>
       )}
@@ -257,23 +259,30 @@ export default function SoundButton() {
   );
 }
 
-/** "Now playing" ticker: slides in for a few seconds whenever a track starts. */
+/** Track info line for the speaker menus (the only persistent place it shows). */
+export function NowPlayingLine() {
+  const s = useSoundSettings();
+  if (!s.music || !s.nowPlaying) return null;
+  return <div className="np-line" data-testid="np-line">♫ <b>{s.nowPlaying.track.title}</b> <small>by {s.nowPlaying.track.artist}</small></div>;
+}
+
+let npShown = false; // once per page load, ever
+/** "Now playing": shown quietly ONCE, when a game starts (never in the lobby), auto-dismissed after ~2s. */
 export function NowPlaying() {
   const s = useSoundSettings();
-  const [show, setShow] = useState<null | { title: string; artist: string; key: number }>(null);
+  const [show, setShow] = useState<null | { title: string; key: number }>(null);
   useEffect(() => {
-    if (!s.music || !s.nowPlaying || Date.now() - s.nowPlaying.at > 3000) return;
-    setShow({ title: s.nowPlaying.track.title, artist: s.nowPlaying.track.artist, key: s.nowPlaying.at });
-    const t = setTimeout(() => setShow(null), 6500);
+    if (npShown || !s.music || !s.nowPlaying || Date.now() - s.nowPlaying.at > 3000) return;
+    if (document.querySelector('[data-testid="lobby"]')) return; // never over the lobby / dock
+    npShown = true;
+    setShow({ title: s.nowPlaying.track.title, key: s.nowPlaying.at });
+    const t = setTimeout(() => setShow(null), 2000);
     return () => clearTimeout(t);
   }, [s.nowPlaying, s.music]);
   if (!show) return null;
   return (
-    <div className="now-playing glass slant" key={show.key} role="status" data-testid="now-playing">
-      <span className="np-eq" aria-hidden><i /><i /><i /></span>
-      <span className="np-label">NOW PLAYING</span>
-      <span className="np-title">{show.title}</span>
-      <span className="np-by">by {show.artist}</span>
+    <div className="now-playing quiet" key={show.key} role="status" data-testid="now-playing">
+      <span className="np-title">♫ {show.title}</span>
     </div>
   );
 }
