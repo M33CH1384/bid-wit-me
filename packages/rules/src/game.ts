@@ -328,16 +328,35 @@ function playOutRun(st: GameState, seat: Seat): GameState {
 }
 
 /**
+ * One card in a resolved 'Run it!' recap.
+ * `played` marks a card that was already face up on the table when the claim was made
+ * (that play is not flagged `run`). The recap still includes it, so a mid-trick claim
+ * shows every seat the same number of cards.
+ */
+export interface RunCard {
+  card: Card;
+  played?: true;
+}
+
+/**
  * Each seat's cards a resolved 'Run it!' cleared (the claimer's included), in the order they were played out.
- * Read only from plays already marked `run`, which do not exist until the claim has resolved.
+ * The trick that was in progress also contributes the cards already on the table, marked `played`.
+ * Read only from tricks that contain a `run` play, which do not exist until the claim has resolved.
  * Null while the claim is still unmade — this is not a look at cards still in hand.
  */
-export function runClearedHands(st: Pick<GameState, 'rules' | 'tricks'>): Card[][] | null {
-  const hands: Card[][] = Array.from({ length: st.rules.playerCount }, () => []);
+export function runClearedHands(st: Pick<GameState, 'rules' | 'tricks'>): RunCard[][] | null {
+  const hands: RunCard[][] = Array.from({ length: st.rules.playerCount }, () => []);
   let any = false;
-  for (const t of st.tricks) for (const p of t.plays) if (p.run) {
+  for (const t of st.tricks) {
+    const firstRun = t.plays.findIndex((p) => p.run);
+    if (firstRun < 0) continue;
     any = true;
-    hands[p.seat]!.push(p.card);
+    for (let k = 0; k < t.plays.length; k++) {
+      const p = t.plays[k]!;
+      // The prefix before the first `run` play is what was already on the table.
+      if (k < firstRun) hands[p.seat]!.push({ card: p.card, played: true });
+      else if (p.run) hands[p.seat]!.push({ card: p.card });
+    }
   }
   return any ? hands : null;
 }
@@ -561,9 +580,10 @@ export interface PlayerView {
   canRunIt?: boolean;
   /**
    * Hands the tornado cleared, one array per seat, the claimer's included.
+   * Cards already on the table for the in-progress trick are included and marked `played`.
    * Present only after a 'Run it!' claim has resolved. Omitted while those cards are still hidden.
    */
-  runHands?: Card[][];
+  runHands?: RunCard[][];
 }
 
 function project(st: GameState, seat: Seat, spectate: boolean): PlayerView {

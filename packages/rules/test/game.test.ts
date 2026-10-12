@@ -512,9 +512,10 @@ describe("'Run it!' guarantee solver", () => {
     expect(viewFor(st, 0).runHands).toBeUndefined();
     expect(viewFor(st, 1).runHands).toBeUndefined();
     expect(spectatorView(st).runHands).toBeUndefined();
-    const sorted = (hands: readonly (readonly Card[])[]) => hands.map((h) => [...h].sort());
+    const sorted = (hands: readonly (readonly (Card | { card: Card })[])[]) => hands.map((h) => h.map((c) => (typeof c === 'string' ? c : c.card)).sort());
     expect(sorted(viewFor(after, 3).runHands!)).toEqual(sorted(st.hands));
     expect(sorted(spectatorView(after).runHands!)).toEqual(sorted(st.hands));
+    expect(viewFor(after, 0).runHands!.every((h) => h.every((c) => !c.played))).toBe(true);
     expect(viewFor(after, 2).hand).toEqual([]);
   });
   it('a seemingly strong hand (A♥ K♥ A♦) loses to a cut: not guaranteed, and the claim is refused', () => {
@@ -637,6 +638,38 @@ describe("'Run it!' in Cutthroat + mid-trick (Release 10)", () => {
     // the card already on the table isn't part of the run; everything after the claim is
     expect(after.tricks.at(-3)!.plays[0]!.run).toBeUndefined();
     expect(after.tricks.at(-3)!.plays.slice(1).every((p) => p.run)).toBe(true);
+    // the recap still counts that card, marked played, so every seat shows the same hand
+    const rows = viewFor(after, 1).runHands!;
+    expect(rows.map((h) => h.length)).toEqual([3, 3, 3]);
+    expect(rows[0]!.find((c) => c.card === 'BJ')).toEqual({ card: 'BJ', played: true });
+    expect(rows[0]!.filter((c) => c.card !== 'BJ').every((c) => !c.played)).toBe(true);
+    expect(spectatorView(after).runHands).toEqual(rows);
+  });
+  it('mid-trick claim (4p): cards already on the table stay in the recap, marked played, so the hands match', () => {
+    // The reported Cutthroat recap was 3, 2, 2, 3: two seats had already played one card, and those cards were dropped.
+    const hands: Card[][] = [['BJ', 'LJ', '2D'], ['5C', '6C'], ['7C', '8C'], ['9C', 'TC', 'JC']];
+    const st = spot(cut4, hands, 1, ['3H', '4D']);
+    expect(st.turn).toBe(3);
+    expect(st.trick.plays.map((p) => p.card)).toEqual(['3H', '4D']);
+    expect(canRunIt(st, 0)).toBe(true);
+    expect(viewFor(st, 0).runHands).toBeUndefined();
+    expect(viewFor(st, 2).canRunIt).toBe(false);
+    const after = applyAction(st, { type: 'runIt', seat: 0 });
+    const runTrick = after.tricks[st.tricks.length]!;
+    expect(runTrick.plays[0]!.run).toBeUndefined();
+    expect(runTrick.plays[1]!.run).toBeUndefined();
+    expect(runTrick.plays.slice(2).every((p) => p.run)).toBe(true);
+    const rows = viewFor(after, 0).runHands!;
+    expect(rows.map((h) => h.length)).toEqual([3, 3, 3, 3]);
+    const played = rows.flatMap((h, seat) => h.filter((c) => c.played).map((c) => `${seat}:${c.card}`));
+    expect(played).toEqual(['1:3H', '2:4D']);
+    expect(rows[0]!.map((c) => c.card).sort()).toEqual(['2D', 'BJ', 'LJ']);
+    expect(rows[0]!.every((c) => !c.played)).toBe(true);
+    expect(spectatorView(after).runHands).toEqual(rows);
+    // A card already down that the claimer cannot beat is not a claim, even with two cards on the table.
+    const beaten = spot(cut4, [['AH', 'KH', 'QH'], ['4C', '5C'], ['6C', '7C'], ['8C', '9C', 'TC']], 1, ['AS', '3D']);
+    expect(canRunIt(beaten, 0)).toBe(false);
+    expect(() => applyAction(beaten, { type: 'runIt', seat: 0 })).toThrow(RuleError);
   });
   it('a card already on the table that beats the claimer: no claim, and the server-side apply rejects it', () => {
     const st = spot(cut4, [['LJ', '2S'], ['BJ', '4H'], ['5C', '6C'], ['3S', '7D']], 1, []);

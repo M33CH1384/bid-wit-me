@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { type Card, type TableRules, sortHand } from '@spades/rules';
+import { type Card, type RunCard, type TableRules, sortHand } from '@spades/rules';
 import { drawFace } from './three/cardTextures';
 import { isPromoted } from './cardFaces';
 
@@ -45,29 +45,41 @@ export function runReviewOverTable(phase: string): boolean {
  * `hands` is already in local seat order (seat 0 is the viewer, or the anchor for a spectator).
  */
 export function RunItReview({ hands, claimer, labels, r, onClose }: {
-  hands: Card[][];
+  hands: RunCard[][];
   claimer: number;
   labels: string[];
   r: TableRules;
   onClose: () => void;
 }) {
-  const rows = useMemo(() => hands.map((cards) => cards.map((c) => ({ c, src: faceUrl(c, isPromoted(c, r)) }))), [hands, r]);
+  const rows = useMemo(() => hands.map((cards) => {
+    const byCard = new Map(cards.map((x) => [x.card, x]));
+    return sortHand(cards.map((x) => x.card), r).map((c) => {
+      const x = byCard.get(c)!;
+      return { c, played: x.played === true, src: faceUrl(c, isPromoted(c, r)) };
+    });
+  }), [hands, r]);
   const who = labels[claimer] ?? 'Someone';
+  const anyPlayed = rows.some((cards) => cards.some((c) => c.played));
   return (
     <div className="run-review" data-testid="run-it-view" role="dialog" aria-label="Run it" onClick={(e) => e.stopPropagation()}>
       <div className="run-review-head">
         <span className="lt-label">RUN IT!</span>
         <button type="button" className="run-review-x" aria-label="Close" onClick={onClose}>✕</button>
       </div>
-      <p className="run-review-sub">{who} ran the rest. Every hand the tornado cleared.</p>
+      <p className="run-review-sub">
+        {who} ran the rest. Every hand the tornado cleared.
+        {anyPlayed && ' Cards already on the table are marked played.'}
+      </p>
       {rows.map((cards, seat) => (
         <div key={seat} className={`run-hand${seat === claimer ? ' claimer' : ''}`} data-testid={`run-hand-${seat}`}>
           <b title={labels[seat]}>{labels[seat]}</b>
           <div className="run-hand-cards">
-            {sortHand(cards.map((x) => x.c), r).map((c) => {
-              const src = cards.find((x) => x.c === c)!.src;
-              return <img key={c} src={src} alt={c} data-card={c} />;
-            })}
+            {cards.map(({ c, played, src }) => (
+              <span key={c} className={`run-card${played ? ' played' : ''}`}>
+                <img src={src} alt={played ? `${c} played` : c} data-card={c} data-played={played ? 'true' : 'false'} />
+                {played && <i>Played</i>}
+              </span>
+            ))}
           </div>
         </div>
       ))}
