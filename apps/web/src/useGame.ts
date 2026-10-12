@@ -1,7 +1,6 @@
 import { fx } from './fx';
 import { HAPTIC, haptic } from './haptics';
 import { startLittleBurst } from './JokerBurst';
-import { SWEEP_MS } from './jokerFx';
 import { offlineTalk } from './offlineTalk';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type Action, type GameState, type TableRules, applyAction, canRunIt, isNukeTrick, newGame, pendingTurn, secureSeed, viewFor } from '@spades/rules';
@@ -57,7 +56,7 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
   const littleBurstFor = useRef(-1);
   useEffect(() => {
     if (!pause || hold) return;
-    // A nuked trick sweeps on the short detonation clock. The server allowance stays on the online table.
+    // A nuked trick stays up for the 3D blast. The allowance matches the server.
     const trick = st.tricks[st.tricks.length - 1];
     const last = trick?.plays ?? [];
     // 'Run it!' holds for the slam + tornado instead (no nuke on a run: the tornado is the show).
@@ -68,27 +67,18 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
       const winCard = trick.winner == null ? null : last.find((p) => p.seat === trick.winner)?.card;
       if (winCard === 'LJ') { littleBurstFor.current = st.tricks.length; startLittleBurst(); }
     }
-    if (nuke) {
-      // Overlay sequence is about 1.2s. Release into the pile flight on that clock.
-      // A capture pins time with fx.warp; live play uses the wall clock from this pause.
-      // The server still waits NUKE_ALLOWANCE_MS — only this offline table sweeps early.
-      // No trick-win haptic: the detonation pattern already fired.
-      const t0 = performance.now();
-      let id = 0;
-      const tick = () => {
-        const elapsed = fx.warp !== null ? fx.warp * 1000 : performance.now() - t0;
-        if (elapsed >= SWEEP_MS) { setPause(false); return; }
-        id = requestAnimationFrame(tick);
-      };
-      id = requestAnimationFrame(tick);
-      return () => cancelAnimationFrame(id);
-    }
     const ending = st.phase === 'handOver' || st.phase === 'gameOver';
     // Hand end: this hold is the whole wait (700 ms after the card lands at normal speed).
-    // Run it! holds for that show. Mid-hand tricks keep their pace. A nuke took the branch above.
-    const ms = finishedTrickHoldMs({ speed: k, handEnding: ending, run, nuke: null });
+    // Run it! holds for that show. A nuke holds for the 3D blast (NUKE_ALLOWANCE_MS), same as the server.
+    // No trick-win haptic on a nuke: the detonation pattern already fired.
+    const ms = finishedTrickHoldMs({
+      speed: k,
+      handEnding: ending,
+      run,
+      nuke: nuke ? (fx.tableNuke ?? fx.prefs.nuke) : null,
+    });
     const t = setTimeout(() => {
-      if (!run) haptic(HAPTIC.trickWin, 'trick-win');
+      if (!run && !nuke) haptic(HAPTIC.trickWin, 'trick-win');
       setPause(false);
     }, ms);
     return () => clearTimeout(t);

@@ -19,7 +19,7 @@ function ports(over: Partial<HapticPorts> = {}) {
 }
 
 describe('haptic patterns', () => {
-  it('matches the spec, including the detonation slots that cover flash and shockwave', () => {
+  it('matches the spec, including the detonation slots that open the 3D blast', () => {
     expect(HAPTIC.beat).toEqual([12]);
     expect(HAPTIC.detonation).toEqual([40, 30, 120, 40, 200]);
     expect(HAPTIC.detonation.reduce((a, b) => a + b, 0)).toBe(430);
