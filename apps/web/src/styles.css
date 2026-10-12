@@ -102,8 +102,10 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 
 /* ---------- table screen ---------- */
 .table-screen { position: relative; height: 100dvh; width: 100%; overflow: hidden; background: var(--bg); }
-.table-canvas { position: absolute !important; inset: 0; touch-action: manipulation; }
-.table-canvas-wrap { position: absolute; inset: 0; }
+/* The canvas fills the screen, so the shell's overflow does not crop a raised card or its glow.
+   The wrap itself stays visible: nothing between the canvas and the screen clips the hand. */
+.table-canvas { position: absolute !important; inset: 0; touch-action: manipulation; overflow: visible; }
+.table-canvas-wrap { position: absolute; inset: 0; overflow: visible; }
 .badge-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 2; }
 .loading3d { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 12px; font-family: var(--display); letter-spacing: .1em; color: var(--muted); }
 .spinner { width: 34px; height: 34px; border-radius: 50%; border: 3px solid rgba(155,92,255,.25); border-top-color: var(--purple-hot); animation: spin 0.8s linear infinite; }

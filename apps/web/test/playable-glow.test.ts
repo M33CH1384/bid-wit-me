@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { GROUP_PAD_PX, GROUP_RADIUS_PX, glowRadiusPx } from '../src/three/handLift';
 import { fanLayout, handCardPlane } from '../src/three/layout';
 import {
-  contourContains, contoursToTriangles, contiguousRuns, groupOutline, haloLocal, HALO_SX, HALO_SY, placeOnPlane, strokeContour, strokeRibbon, unionContours, yRangeAt, type Pt,
+  contourContains, contoursToTriangles, contiguousRuns, groupOutline, haloLocal, HALO_SX, HALO_SY, placeOnPlane, strokeContour, strokeOutward, strokeRibbon, unionContours, yRangeAt, type Pt,
 } from '../src/three/playableOutline';
 
 describe('contiguous playable runs', () => {
@@ -170,6 +170,12 @@ describe('rounded group outline', () => {
       if (Math.abs(ribbon.pos[i]! - mid) < px * 8) rim = Math.max(rim, ribbon.pos[i + 1]!);
     }
     expect((rim - maxY) / px).toBeCloseTo(GROUP_PAD_PX + glowRadiusPx(), 0);
+    const outward = strokeOutward(c!, glowRadiusPx() * px);
+    expect(outward.uv[0]).toBe(0);
+    expect(outward.uv[2]).toBe(1);
+    let outHigh = -Infinity;
+    for (let i = 0; i < outward.pos.length; i += 3) outHigh = Math.max(outHigh, outward.pos[i + 1]!);
+    expect((outHigh - maxY) / px).toBeCloseTo(GROUP_PAD_PX + glowRadiusPx(), 0);
   });
 
   it('keeps a gap as two outlines and does not contain the card between them', () => {
