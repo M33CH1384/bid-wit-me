@@ -191,6 +191,9 @@ export function Nuke3D({ quality }: { quality: 'high' | 'low' }) {
   const [run, setRun] = useState<{ id: number; start: number; full: boolean } | null>(null);
   const profile = useMemo(() => nukeProfile(quality, currentNukeDevice()), [quality]);
   useEffect(() => {
+    (window as unknown as { __bwmNukeProfile?: typeof profile }).__bwmNukeProfile = profile;
+  }, [profile]);
+  useEffect(() => {
     bailNuke = () => setRun(null);
     return () => { bailNuke = null; };
   }, []);
