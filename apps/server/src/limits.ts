@@ -14,6 +14,8 @@ export const LIMITS = {
   info: { limit: 120, windowMs: 60_000 },
   /** sign-in starts, callbacks, passkey ceremonies, username checks */
   auth: { limit: 40, windowMs: 10 * 60_000 },
+  /** offline game uploads (per IP; a tighter per-user cap is applied in the handler) */
+  stats: { limit: 30, windowMs: 60 * 60_000 },
 } satisfies Record<string, Limit>;
 export type Bucket = keyof typeof LIMITS;
 

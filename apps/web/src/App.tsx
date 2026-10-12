@@ -8,6 +8,7 @@ import { NowPlaying } from './SoundControls';
 import Table from './Table';
 import { MODES, type Settings, loadSettings, saveSettings, settingsToRules } from './settings';
 import { type SavedGame, loadGame } from './save';
+import { flushLocalGames, watchLocalGames } from './localStats';
 
 export default function App() {
   const [settings, setSettings] = useState<Settings>(loadSettings);
@@ -28,6 +29,8 @@ export default function App() {
 
   // splash / wizard: fetch the 3D table (Scene chunk, textures, HDRI) in the background so "Deal me in" lands on it
   useEffect(() => { preloadTable(settings.quality, settings.venue); }, [settings.quality, settings.venue]);
+  // a signed-in offline game that failed to upload stays in localStorage until the browser is online again
+  useEffect(() => { watchLocalGames(); void flushLocalGames(); }, []);
 
   if (!game) {
     const saved = loadGame();

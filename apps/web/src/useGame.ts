@@ -1,4 +1,5 @@
 import { fx } from './fx';
+import { noteLocalGame } from './localStats';
 import { HAPTIC, haptic } from './haptics';
 import { startLittleBurst } from './JokerBurst';
 import { SWEEP_MS, canvasOwnsBlast } from './nukeBlast';
@@ -17,7 +18,7 @@ export const SPEEDS = { slow: 2.2, relaxed: 1.5, normal: 1, fast: 0.5, turbo: 0.
 
 /** `hold`: a tip is open — bots wait and a finished trick stays on the table until it's dismissed. */
 /** `botLevel`: one level for every bot, or a per-seat resolver (Mixed skill / persona floors). `dealer`: a rematch continues the deal rotation. */
-export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((seat: number) => BotLevel), speed: keyof typeof SPEEDS, resume?: GameState, hold = false, dealer?: number, partnerHint?: { current: { hand: number; text: string } | null }) {
+export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((seat: number) => BotLevel), speed: keyof typeof SPEEDS, resume?: GameState, hold = false, dealer?: number, partnerHint?: { current: { hand: number; text: string } | null }, localReport?: { current: { names: string[]; teamNames: (string | null)[] | null } }) {
   const [st, setSt] = useState<GameState>(() => resume ?? newGame(rules, seed, { dealer }));
   const levelRef = useRef(botLevel);
   levelRef.current = botLevel;
@@ -28,6 +29,24 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
   const [error, setError] = useState<string | null>(null);
   const stRef = useRef(st);
   stRef.current = st;
+  const startedAt = useRef(Date.now());
+  const reported = useRef(false);
+  const reportRef = useRef(localReport);
+  reportRef.current = localReport;
+  useEffect(() => {
+    if (st.phase !== 'gameOver' || !st.result || reported.current) return;
+    reported.current = true;
+    const meta = reportRef.current?.current;
+    const id = `local-${seed}`.padEnd(8, '0').slice(0, 80);
+    noteLocalGame({
+      clientGameId: id,
+      startedAt: startedAt.current,
+      endedAt: Date.now(),
+      names: meta?.names ?? [],
+      teamNames: meta?.teamNames ?? null,
+      game: st,
+    });
+  }, [st.phase, seed, st]);
   const k = SPEEDS[speed];
   // while a fresh hand's shuffle + deal animation runs, nobody bids (bots wait, the bid panel stays hidden)
   const [dealtHand, setDealtHand] = useState<number | null>(null);
