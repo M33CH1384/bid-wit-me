@@ -327,6 +327,21 @@ function playOutRun(st: GameState, seat: Seat): GameState {
   return { ...s, tricks: s.tricks.map((t, i) => (i < fromTricks ? t : { ...t, plays: t.plays.map((p, k) => (i === fromTricks && k < onTable ? p : { ...p, run: true as const })) })) };
 }
 
+/**
+ * Each seat's cards a resolved 'Run it!' cleared (the claimer's included), in the order they were played out.
+ * Read only from plays already marked `run`, which do not exist until the claim has resolved.
+ * Null while the claim is still unmade — this is not a look at cards still in hand.
+ */
+export function runClearedHands(st: Pick<GameState, 'rules' | 'tricks'>): Card[][] | null {
+  const hands: Card[][] = Array.from({ length: st.rules.playerCount }, () => []);
+  let any = false;
+  for (const t of st.tricks) for (const p of t.plays) if (p.run) {
+    any = true;
+    hands[p.seat]!.push(p.card);
+  }
+  return any ? hands : null;
+}
+
 /** Both Jokers are in this (partial) trick: the nuke. */
 export function jokersMet(plays: readonly Play[]): boolean {
   return plays.some((p) => p.card === 'BJ') && plays.some((p) => p.card === 'LJ');
@@ -544,10 +559,16 @@ export interface PlayerView {
   legal: Card[];
   /** This seat can claim 'Run it!': guaranteed from cards they can see, not from the hidden layout. */
   canRunIt?: boolean;
+  /**
+   * Hands the tornado cleared, one array per seat, the claimer's included.
+   * Present only after a 'Run it!' claim has resolved. Omitted while those cards are still hidden.
+   */
+  runHands?: Card[][];
 }
 
 function project(st: GameState, seat: Seat, spectate: boolean): PlayerView {
   const hidden = spectate || (st.phase === 'bidding' && !st.revealed[seat]);
+  const runHands = runClearedHands(st);
   return {
     seat, rules: st.rules, phase: st.phase, handNo: st.handNo, dealer: st.dealer, turn: st.turn,
     hand: hidden ? null : [...st.hands[seat]!],
@@ -559,6 +580,8 @@ function project(st: GameState, seat: Seat, spectate: boolean): PlayerView {
     legal: spectate ? [] : legalPlays(st, seat),
     // Spectators never learn whether a seat can run it, and we don't search to find out.
     canRunIt: spectate ? false : canRunIt(st, seat),
+    // Cleared hands ride along only once the claim has resolved (the plays are public then). Never before.
+    ...(runHands ? { runHands } : {}),
   };
 }
 
@@ -569,7 +592,8 @@ export function viewFor(st: GameState, seat: Seat): PlayerView {
 /**
  * Release 10: what a spectator may see. A table view anchored at `anchor` (seat order only) with NO hand at all
  * (hand null = face-down placeholders of handCounts length), no legal moves, no bid options, no Run-it hint.
- * Everything else in PlayerView is public (bids, played tricks, scores, history).
+ * Everything else in PlayerView is public (bids, played tricks, scores, history). A resolved 'Run it!'
+ * adds `runHands` — the hands the tornado cleared — which is absent until that claim resolves.
  */
 export function spectatorView(st: GameState, anchor: Seat = 0): PlayerView {
   return project(st, anchor, true);

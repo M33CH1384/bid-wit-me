@@ -95,6 +95,8 @@ export function rotateView(v: PlayerView): { st: GameState; view: PlayerView; ro
     bags: st.bags,
     history: st.history,
     result: st.result,
+    // 'Run it!' cleared hands are public only after the claim; rotate them with the rest of the seats.
+    ...(v.runHands ? { runHands: permute(v.runHands, rot) } : {}),
   };
   return { st, view, rot };
 }

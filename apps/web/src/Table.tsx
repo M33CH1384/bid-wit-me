@@ -2,6 +2,7 @@ import { retainHandOrder } from './handOrder';
 import { winHeadline } from './headline';
 import { type VenueId, VENUE_DEFS, resolveVenue } from './venues';
 import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, isNukeTrick, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, partnerOf, sideOf, sortHand, trumpOrder,
 } from '@spades/rules';
@@ -40,7 +41,7 @@ import { type TipsPref, bumpTip, loadTips, saveTips, tipCount } from './tips';
 import { BidCoach } from './BidCoach';
 import { RUN_FX_MS } from '@spades/protocol';
 import { RUN_SHOW_MS, RUN_SLAM_MS, RUN_IT_CALLOUTS, RUN_TORNADO_AFTER_MS, RUN_ZOOM_MS } from './runIt';
-import { RunZoom } from './RunZoom';
+import { RunItReview, RunZoom } from './RunZoom';
 import { TrashTalkButton } from './TrashTalk';
 import { isPromoted } from './cardFaces';
 import { QUICK_TRASH_SET } from './quickTrash';
@@ -324,6 +325,15 @@ export { landCueFor } from './landCue';
 /** The plays of this hand recorded by 'Run it!' (empty if nobody ran it). */
 function runPlays(st: GameState): Play[] { return st.tricks.flatMap((t) => t.plays.filter((p) => p.run)); }
 
+/** Local seat that claimed 'Run it!' (they win every trick the claim played out). */
+function runClaimerSeat(st: GameState): number | null {
+  for (let i = st.tricks.length - 1; i >= 0; i--) {
+    const t = st.tricks[i]!;
+    if (t.winner !== null && t.plays.some((p) => p.run)) return t.winner;
+  }
+  return null;
+}
+
 /**
  * 'Run it!': the glowing button above your hand (only ever shown when the engine has proven every remaining book is yours).
  * The first few times it appears, a one-time spotlight tip points at it (shown even with tips off).
@@ -602,6 +612,20 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     return () => clearTimeout(t);
   }, [runFx]);
   const ranHand = useMemo(() => runPlays(st).length > 0, [st]);
+  // Cleared hands arrive on the view only after the claim resolves. Hold them back during the tornado.
+  const runHands = !runFx ? view.runHands : undefined;
+  const runClaimer = runHands ? runClaimerSeat(st) : null;
+  const runOpenKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (runFx || !view.runHands) {
+      if (!view.runHands && runOpenKey.current) { runOpenKey.current = null; setLtOpen(false); }
+      return;
+    }
+    const key = `${st.handNo}:${st.tricks.length}`;
+    if (runOpenKey.current === key) return;
+    runOpenKey.current = key;
+    setLtOpen(true);
+  }, [runFx, view.runHands, st.handNo, st.tricks.length]);
   // the scoreboard (scores, bags, books taken, result) holds the pre-run numbers until the tornado is over
   const sb = runFx ? runFx.before.st : st;
   const winnerSeat = pause && !ranHand ? shownTrick.winner : null;
@@ -959,8 +983,27 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         <span className="ts-label">TRUMPS</span> {trumps.join(' › ')}{st.spadesBroken && <span className="ts-broken">BROKEN</span>}
       </div>
 
-      {/* last-trick readout */}
-      {piles.length > 0 && (() => {
+      {/* last-trick readout. After a resolved 'Run it!' the same chip opens every hand the tornado cleared. */}
+      {(piles.length > 0 || !!runHands) && (() => {
+        const seatLabel = (seat: number) => (spectating ? names[seat] : seat === HUMAN ? 'You' : names[seat]) ?? `Seat ${seat + 1}`;
+        if (runHands && runClaimer !== null && ltOpen) {
+          return createPortal(
+            <>
+              <div className="run-review-scrim" onClick={() => setLtOpen(false)} />
+              <div className="last-trick glass slant open run-open" data-testid="last-trick" aria-expanded>
+                <RunItReview hands={runHands} claimer={runClaimer} labels={runHands.map((_, seat) => seatLabel(seat))} r={r} onClose={() => setLtOpen(false)} />
+              </div>
+            </>,
+            document.body,
+          );
+        }
+        if (runHands) {
+          return (
+            <div className="last-trick glass slant chip run-chip" data-testid="last-trick" aria-label="Run it" role="button" tabIndex={0} aria-expanded={false} onClick={() => setLtOpen(true)}>
+              <span className="lt-label">RUN IT!</span>
+            </div>
+          );
+        }
         const t = piles[piles.length - 1]!;
         const short = (c: Card) => (c === 'BJ' ? 'BJ' : c === 'LJ' ? 'LJ' : cardLabel(c));
         return (
