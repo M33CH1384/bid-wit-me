@@ -15,7 +15,7 @@ export class FakeEnv {
   rng = createRng('test-ids');
   room: Room;
   tourResults: { match: string; scores: number[]; places: number[] }[] = [];
-  records: { rec: import('../src/stats/record').GameRecord; rated: boolean }[] = [];
+  records: { rec: import('../src/stats/record').GameRecord; rated: boolean; meta?: import('../src/stats/record').SaveMeta }[] = [];
 
   constructor(data?: RoomData, public timing: RoomTiming = DEFAULT_TIMING) {
     this.room = new Room(data ?? newRoomData('ABCDE', this.t), this.io(), timing);
@@ -36,7 +36,7 @@ export class FakeEnv {
       // match the DO: a later alarm does not postpone an earlier one; clearing is a no-op
       setAlarm: (at) => { if (at === null || (this.alarm !== null && this.alarm <= at)) return; this.alarm = at; this.alarmSets++; },
       persist: () => { this.persists++; },
-      gameOver: (rec, rated) => { this.records.push({ rec, rated }); },
+      gameOver: (rec, rated, meta) => { this.records.push({ rec, rated, meta }); },
       tournamentResult: (t, scores, places) => { this.tourResults.push({ match: t.match, scores, places }); },
       randomId: () => Array.from({ length: 4 }, () => this.rng.nextUint32().toString(16).padStart(8, '0')).join(''),
     };

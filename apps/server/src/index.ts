@@ -301,7 +301,7 @@ export class TableDO extends DurableObject<Env> {
       setAlarm: (at) => this.armAlarm(at),
       persist: () => this.scheduleSave(),
       randomId: () => crypto.randomUUID().replace(/-/g, ''),
-      gameOver: (rec, rated) => { if (this.env.DB) this.ctx.waitUntil(saveRecord(this.env.DB, rec, rated).catch((e) => console.error('saveRecord', e))); },
+      gameOver: (rec, rated, meta) => { if (this.env.DB) this.ctx.waitUntil(saveRecord(this.env.DB, rec, rated, meta).catch((e) => console.error('saveRecord', e))); },
       listing: (t) => this.reportListing(t),
       tournamentResult: (t, scores, places) => {
         const stub = this.env.TOURNAMENTS.get(this.env.TOURNAMENTS.idFromName(t.id));
@@ -470,6 +470,7 @@ export class TableDO extends DurableObject<Env> {
     this.alarmAt = null;
     if (!this.room) return;
     if (this.sockets.size === 0 && Date.now() - this.room.data.lastActive >= IDLE_DELETE_MS - 60_000) {
+      this.room.expire();
       this.room = null;
       await this.ctx.storage.deleteAll();
       return;

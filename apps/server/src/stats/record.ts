@@ -140,6 +140,52 @@ export interface SaveMeta {
   partial?: boolean;
   /** idempotency key for an offline upload, already namespaced by user */
   clientGameId?: string | null;
+  /** finished (default) or abandoned before the game ended */
+  endReason?: 'finished' | 'abandoned';
+  /** signed-in player who left, or the host when a new game replaces this one. null on room expiry */
+  leaverId?: string | null;
+  /** shared by the abandoned row and the finished row of the same deal */
+  family?: string | null;
+}
+
+const emptyStats = (hands: number): PlayerGameStats => ({
+  won: false, hands, bids: 0, bidSum: 0, made: 0, set: 0, bags: 0, nilBids: 0, nilMade: 0, books: 0,
+  shotsTaken: 0, shotsGiven: 0, wheels: 0, bjWins: 0, bidMs: 0, bidN: 0, playMs: 0, playN: 0,
+});
+
+/** An in-progress game that will not be finished by these seats. Nobody won. Stats stay empty so accuracy is untouched. */
+export function abandonedRecord(o: { id: string; room: string; game: GameState; seats: SeatRef[]; names: string[]; teamNames?: (string | null)[]; endedAt: number; tournamentId?: string }): GameRecord {
+  const g = o.game;
+  const r = g.rules;
+  const n = r.playerCount;
+  const kind: RatingKind = r.partnerships ? 'team' : 'cutthroat';
+  const players: GameRecord['players'] = [];
+  for (let seat = 0; seat < n; seat++) {
+    const ref = o.seats[seat];
+    if (!ref || ref.kind !== 'user' || !ref.uid) continue;
+    const side = sideOf(seat, r);
+    const partnerSeat = r.partnerships ? (seat + 2) % n : -1;
+    const p = partnerSeat >= 0 ? o.seats[partnerSeat] : undefined;
+    players.push({
+      seat, uid: ref.uid, side, won: false,
+      partner: p?.kind === 'user' && p.uid ? p.uid : null,
+      teamName: r.partnerships ? (o.teamNames?.[side] ?? null) : null,
+      stats: emptyStats(0),
+    });
+  }
+  return {
+    id: o.id, room: o.room, mode: r.mode ?? 'joker', kind, endedAt: o.endedAt, hands: g.history.length,
+    final: [...g.scores], winners: [], names: [...o.names], seats: o.seats, players,
+    ...(o.tournamentId ? { tournamentId: o.tournamentId } : {}),
+  };
+}
+
+/** Rated abandon: only the leaver loses Elo, against a 1200 table. 0 games at 1200 → 1180. */
+export function leaverLoss(rec: GameRecord, current: Record<string, { elo: number; games: number }>, leaverId: string | null): Record<string, { before: number; after: number }> {
+  if (!leaverId || !rec.players.some((p) => p.uid === leaverId)) return {};
+  const before = current[leaverId]?.elo ?? ELO_START;
+  const after = Math.round((before + kFactor(current[leaverId]?.games ?? 0) * (0 - expected(before, ELO_BOT))) * 10) / 10;
+  return { [leaverId]: { before, after } };
 }
 
 /** Write a finished game + Elo to D1 (one batch). */
@@ -155,10 +201,11 @@ export async function saveRecord(db: D1Database, rec: GameRecord, rated: boolean
   const exist = new Set((await db.prepare(`SELECT id FROM users WHERE id IN (${uids.map(() => '?').join(',')})`).bind(...uids).all<{ id: string }>()).results.map((r) => r.id));
   const players = rec.players.filter((p) => exist.has(p.uid));
   if (!players.length) return;
-  const elo = rated ? eloUpdate({ ...rec, players }, placementsOf(rec.final, rec.winners), cur) : {};
+  const abandoned = meta.endReason === 'abandoned';
+  const elo = !rated ? {} : abandoned ? leaverLoss({ ...rec, players }, cur, meta.leaverId ?? null) : eloUpdate({ ...rec, players }, placementsOf(rec.final, rec.winners), cur);
   const stmts = [
-    db.prepare('INSERT OR IGNORE INTO games (id, room, mode, kind, ended_at, hands, final, winners, names, seats, rated, tournament_id, source, client_game_id, partial) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(rec.id, rec.room, rec.mode, rec.kind, rec.endedAt, rec.hands, JSON.stringify(rec.final), JSON.stringify(rec.winners), JSON.stringify(rec.names), JSON.stringify(rec.seats), rated ? 1 : 0, rec.tournamentId ?? null, meta.source ?? 'online', meta.clientGameId ?? null, meta.partial ? 1 : 0),
+    db.prepare('INSERT OR IGNORE INTO games (id, room, mode, kind, ended_at, hands, final, winners, names, seats, rated, tournament_id, source, client_game_id, partial, end_reason, leaver_id, family) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(rec.id, rec.room, rec.mode, rec.kind, rec.endedAt, rec.hands, JSON.stringify(rec.final), JSON.stringify(rec.winners), JSON.stringify(rec.names), JSON.stringify(rec.seats), rated ? 1 : 0, rec.tournamentId ?? null, meta.source ?? 'online', meta.clientGameId ?? null, meta.partial ? 1 : 0, abandoned ? 'abandoned' : 'finished', meta.leaverId ?? null, meta.family ?? null),
   ];
   for (const p of players) {
     const e = elo[p.uid];
