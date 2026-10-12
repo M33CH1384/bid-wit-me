@@ -1084,12 +1084,6 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             </div>
           )
         )}
-        {st.phase === 'bidding' && !dealing && view.hand === null && !myTurn && !spectating && (
-          <div className="bid-panel glass slant compact">
-            <span>Cards face down — Blind Nil is open on your turn.</span>
-            <button type="button" onClick={() => apply({ type: 'reveal', seat: HUMAN })}>See cards</button>
-          </div>
-        )}
         {humanExchanging && (
           <div className="bid-panel glass slant">
             <div className="panel-title">PASS {exchangeStep!.count} TO {names[exchangeStep!.to]!.toUpperCase()}</div>
