@@ -2,11 +2,11 @@ import { fx } from './fx';
 import { HAPTIC, haptic } from './haptics';
 import { startLittleBurst } from './JokerBurst';
 import { offlineTalk } from './offlineTalk';
-import { NUKE_ALLOWANCE_MS, RUN_FX_MS } from '@spades/protocol';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type Action, type GameState, type TableRules, applyAction, canRunIt, isNukeTrick, newGame, pendingTurn, secureSeed, viewFor } from '@spades/rules';
 import { type BotLevel, type PartnerHint, chooseBotAction, parseHint } from '@spades/bots';
 import { dealTimeline } from './three/dealTimeline';
+import { finishedTrickHoldMs } from './trickTiming';
 
 export const HUMAN = 0;
 
@@ -67,12 +67,20 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
       const winCard = trick.winner == null ? null : last.find((p) => p.seat === trick.winner)?.card;
       if (winCard === 'LJ') { littleBurstFor.current = st.tricks.length; startLittleBurst(); }
     }
-    const extra = run ? RUN_FX_MS : nuke ? NUKE_ALLOWANCE_MS[fx.tableNuke ?? fx.prefs.nuke] : 0;
+    const ending = st.phase === 'handOver' || st.phase === 'gameOver';
+    // Hand end: this hold is the whole wait (700 ms after the card lands at normal speed).
+    // A nuke or Run it! holds for that show; the score opens when it ends. Mid-hand tricks keep their pace.
+    const ms = finishedTrickHoldMs({
+      speed: k,
+      handEnding: ending,
+      run,
+      nuke: nuke ? (fx.tableNuke ?? fx.prefs.nuke) : null,
+    });
     // The hold releasing is the moment the cards start sweeping to the books.
     const t = setTimeout(() => {
       if (!run && !nuke) haptic(HAPTIC.trickWin, 'trick-win');
       setPause(false);
-    }, 1150 * k + extra);
+    }, ms);
     return () => clearTimeout(t);
   }, [pause, k, hold]);
 

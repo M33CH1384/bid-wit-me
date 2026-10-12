@@ -9,7 +9,7 @@ import type { Card, Play, Trick } from '@spades/rules';
 import Card3D from './Card3D';
 import PlayableGlow, { type GlowAnchor } from './PlayableGlow';
 import { departureSlot, handCardKey, handReactKey } from '../handOrder';
-import { GAP_S, LIFT_S, canTapCard, fanMotion, handLift, playablePose, stackFor } from './handLift';
+import { GAP_S, LIFT_S, canTapCard, fanMotion, playablePose, raiseLocalY } from './handLift';
 import { contiguousRuns } from './playableOutline';
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline } from './dealTimeline';
@@ -310,7 +310,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   if (held.current.handNo !== handNo) held.current = { handNo, cards: new Set(), slots: new Map(), count: 0, seen: new Set() };
   const pendingHold = useRef<Held>(held.current);
 
-  type Item = { key: string; card: Card | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: (() => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide'; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; inTrick?: boolean; played?: string | null; jokerAura?: { kind: 'BJ' | 'LJ'; cardsAfter: number } };
+  type Item = { key: string; card: Card | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: (() => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide'; raise?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; inTrick?: boolean; played?: string | null; jokerAura?: { kind: 'BJ' | 'LJ'; cardsAfter: number } };
   const items: Item[] = [];
   const dealDelay = (slot: number, seat: number) => tl.shuffle + (slot * n + ((seat - dealer - 1 + n) % n)) * tl.step;
 
@@ -389,9 +389,9 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   mine.forEach((c, i) => {
     const isLegal = !!c && legal.includes(c);
     const pose = c ? playablePose(yourTurn, isLegal, selected === c) : 'flat';
-    const lift = handLift(pose, fan.viewH, size.height, fan.ch);
-    const cardOpts = { ...fanOpts, layer: stackFor(pose) };
-    const target = handFan(aspect, mine.length, i, lift, safeFrac, cardOpts);
+    // The fan pose is the flat stack. A raise, a selection, or a legal-state change is translateY on an
+    // inner wrapper, so the mesh is not retargeted and the left-to-right order never changes.
+    const target = handFan(aspect, mine.length, i, 0, safeFrac, fanOpts);
     const flip = flipIn && !!c;
     const id = c ? handCardKey(c) : '';
     // intro stays on for the whole hand; only cards we have not shown yet come from the deck.
@@ -401,8 +401,11 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       nextCards.add(c);
       nextSlots.set(id, target);
       nextSeen.add(id);
-      const plane = handCardPlane(aspect, mine.length, i, lift, safeFrac, cardOpts);
-      glowAnchors.push({ name: handReactKey(handNo, c, i), x: plane.x, y: plane.y, playable: pose === 'legal' || pose === 'selected' });
+      const plane = handCardPlane(aspect, mine.length, i, 0, safeFrac, fanOpts);
+      glowAnchors.push({
+        name: handReactKey(handNo, c, i), x: plane.x, y: plane.y,
+        playable: pose === 'legal' || pose === 'selected', selected: pose === 'selected',
+      });
     }
     items.push({
       hand: true,
@@ -421,6 +424,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       duration: move.kind === 'flip' ? 0.34 : move.kind === 'deal' ? tl.fly : move.kind === 'slide' ? GAP_S : LIFT_S,
       motion: move.motion,
       arc: move.arc,
+      raise: c ? raiseLocalY(pose, fan.viewH, size.height, fan.ch) : 0,
     });
   });
   pendingHold.current = { handNo, cards: nextCards, slots: nextSlots, count: faceCount, seen: nextSeen };
@@ -459,6 +463,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
           duration={it.duration}
           motion={it.motion}
           arc={it.arc}
+          raise={it.raise}
           dim={it.dim}
           glow={it.glow}
           castShadow={it.shadow !== false && quality === 'high'}

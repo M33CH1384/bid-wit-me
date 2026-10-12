@@ -2,7 +2,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { memo, useLayoutEffect, useMemo, useRef } from 'react';
 import { Color, type Group, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Quaternion, type Texture, Vector3 } from 'three';
 import { cardGeometry } from './geometry';
-import { ILLEGAL_COLOR, liftEase } from './handLift';
+import { ILLEGAL_COLOR, RAISE_S, liftEase } from './handLift';
 import JokerAura from './JokerAura';
 import { CT } from './layout';
 import type { Xform } from './layout';
@@ -26,6 +26,8 @@ interface Props {
    *  'flight' is the deal / table arc. */
   motion?: 'lift' | 'flight' | 'slide';
   arc?: number;
+  /** Card-local translateY for a hand raise. Never folded into `target`, so a select does not retarget the fan. */
+  raise?: number;
   dim?: boolean;
   glow?: boolean;
   castShadow?: boolean;
@@ -70,8 +72,9 @@ function withSaturation<M extends MeshStandardMaterial>(m: M): M & { userData: {
   return m as M & { userData: { sat: { value: number } } };
 }
 
-function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand, blast = 'table', jokerAura, inTrick, played, reduceMotion }: Props) {
+function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, raise = 0, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand, blast = 'table', jokerAura, inTrick, played, reduceMotion }: Props) {
   const ref = useRef<Group>(null);
+  const lift = useRef<Group>(null);
   const inner = useRef<Group>(null);
   const bl = useRef({ dir: new Vector3(), q: new Quaternion(), axis: new Vector3(), on: false });
   const invalidate = useThree((s) => s.invalidate);
@@ -113,6 +116,9 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   });
   const sfx = useRef({ sfxStart, sfxLand });
   sfx.current = { sfxStart, sfxLand };
+  const raiseNow = useRef(raise);
+  raiseNow.current = raise;
+  const raiseTw = useRef({ y: 0, from: 0, to: 0, t: 1 });
 
   /** Nuke blast: lift / blow the card outward from the trick (world space), tumble it, then spring back and settle. */
   const applyBlast = (g: Group) => {
@@ -305,6 +311,24 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       if (motion === 'slide') s.ss = s.ts; // translate + rotate only
       s.started = false;
     }
+    // Raise is translateY on its own wrapper (the CSS `will-change: transform` idea). The outer fan
+    // quaternion and position stay put, including when the card is only selected or the legal set changes.
+    const liftG = lift.current;
+    if (liftG) {
+      const rt = raiseTw.current;
+      const dest = raiseNow.current;
+      if (Math.abs(dest - rt.to) > 1e-5) { rt.from = rt.y; rt.to = dest; rt.t = 0; }
+      if (rt.t < 1) {
+        rt.t = Math.min(1, rt.t + Math.min(dt, 0.05) / RAISE_S);
+        rt.y = rt.from + (rt.to - rt.from) * liftEase(rt.t);
+        invalidate();
+      } else rt.y = rt.to;
+      if (rt.t < 1 || liftG.position.y !== rt.y) {
+        liftG.position.set(0, rt.y, 0);
+        liftG.quaternion.identity();
+        liftG.scale.set(1, 1, 1);
+      }
+    }
     if (s.t >= 1) return;
     invalidate();
     if (s.wait > 0) { s.wait -= dt; return; }
@@ -332,11 +356,11 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   return (
     <group
       ref={ref}
-      name={name}
       onClick={onTap ? (e) => { e.stopPropagation(); onTap(); } : onTap === null ? (e) => { e.stopPropagation(); } : undefined}
       onPointerOver={onTap ? () => { document.body.style.cursor = 'pointer'; } : undefined}
       onPointerOut={onTap ? () => { document.body.style.cursor = ''; } : undefined}
     >
+      <group ref={lift} name={name}>
       <group ref={inner}>
         {jokerAura ? (
           <JokerAura kind={jokerAura.kind} cardsAfter={jokerAura.cardsAfter} reduceMotion={reduceMotion}>
@@ -353,6 +377,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
             {face && <mesh geometry={geo.front} material={glowMat} position={[0, 0, -CT - 0.003]} scale={[1.09, 1.065, 1]} visible={glowMat.opacity > 0.01 || !!glow} renderOrder={-1} />}
           </>
         )}
+      </group>
       </group>
     </group>
   );
