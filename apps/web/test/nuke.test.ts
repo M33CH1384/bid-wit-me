@@ -4,7 +4,7 @@ import { NUKE_ALLOWANCE_MS } from '@spades/protocol';
 import { isIosWebKit, nukeClockStalled, nukeProfile } from '../src/three/nukeVisual';
 import { nextTrickPause, restingFlightWait } from '../src/trickTiming';
 
-vi.mock('../src/audio', () => ({ sound: { play() {}, stopTornado() {}, geiger() {} } }));
+vi.mock('../src/audio', () => ({ sound: { play() {}, stopTornado() {} } }));
 
 /**
  * Regression: Demetrius's Big-over-Little nuke showed only a small flash (v0.3.1). Root cause: the macOS / iOS

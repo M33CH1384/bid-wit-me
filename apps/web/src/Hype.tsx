@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { type FxEvent, type NukeIntensity, fx } from './fx';
 import JokerBurst from './JokerBurst';
-import PulsePlate from './PulsePlate';
 import { getBurst } from './jokerFx';
 import { BLAST_MS, canvasOwnsBlast } from './nukeBlast';
 import { WheelsCelebration } from './WheelsCar';
 
 /**
- * Full-screen hype overlay: streak / SHOT! pop-ups, the joker pulse, and the nuke banner.
+ * Full-screen hype overlay: streak / SHOT! pop-ups, the joker landing vignette, and the nuke banner.
  * The detonation is the canvas blast when a 2D context exists, otherwise the 3D blast.
  */
 interface Pop { id: number; kind: FxEvent['kind']; text: string; sub?: string; level?: number }
@@ -92,7 +91,6 @@ export default function Hype({ reduced, low = false }: { reduced: boolean; low?:
 
   return (
     <div className="hype-layer" aria-live="polite" data-testid="hype">
-      <PulsePlate reduced={reduced} />
       <JokerBurst />
       {pulse && <div key={pulse.id} className={`joker-pulse ${pulse.big ? 'big' : ''}`} data-testid="joker-pulse" />}
       {nuke && !canvasOwnsBlast() && (

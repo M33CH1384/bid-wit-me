@@ -61,7 +61,7 @@ export interface SceneProps {
   hintLegal?: boolean;
   /** cards an open tip points at: they glow (on the table and in your hand) */
   marked?: Card[];
-  /** Reduce effects: a static radioactive rim, and the detonation overlay stays off */
+  /** Reduce effects: the venue stays calm and the nuke plays its calm version. */
   reduceFx?: boolean;
   /** 'Run it!': the claimer's remaining cards slam down face up in a row at the table centre ALL AT ONCE, then
    *  everyone else's remaining cards hit the table together in a quick cascade (then the tornado takes everything) */
@@ -315,7 +315,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   if (held.current.handNo !== handNo) held.current = { handNo, cards: new Set(), slots: new Map(), count: 0, seen: new Set() };
   const pendingHold = useRef<Held>(held.current);
 
-  type Item = { key: string; card: Card | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: (() => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide'; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; inTrick?: boolean; played?: string | null; jokerAura?: { kind: 'BJ' | 'LJ'; cardsAfter: number } };
+  type Item = { key: string; card: Card | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: (() => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide'; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; inTrick?: boolean; played?: string | null };
   const items: Item[] = [];
   const dealDelay = (slot: number, seat: number) => tl.shuffle + (slot * n + ((seat - dealer - 1 + n) % n)) * tl.step;
 
@@ -331,15 +331,11 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   // cards on the table this trick
   // last-trick nuke: the auto-played final cards fly in one after another, right into the blast
   const firstAuto = shownTrick.findIndex((pl) => pl.auto);
-  const trickOpen = shownTrick.length < n;
   shownTrick.forEach((pl, order) => {
     const autoDelay = pl.auto ? { delay: 0.35 + 0.12 * (order - firstAuto) } : {};
     const leftHand = pl.seat === human ? departureSlot(held.current.slots, held.current.cards, pl.card) : undefined;
     const fanFrom = leftHand ?? (pl.seat === human ? undefined : opponentFan(positions[pl.seat]!, n, Math.max(0, handCounts[pl.seat]! - 1) / 2, handCounts[pl.seat]! + 1));
-    const jokerAura = trickOpen && (pl.card === 'BJ' || pl.card === 'LJ')
-      ? { kind: pl.card, cardsAfter: Math.max(0, shownTrick.length - 1 - order) }
-      : undefined;
-    items.push({ key: `${handNo}-${pl.card}`, card: pl.card, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale), from: fanFrom, origin: leftHand, ...(props.landCue(pl.card).includes(',overcut') ? { duration: 0.34, arc: 0.7 } : { duration: 0.5, arc: 0.35 }), sfxLand: props.landCue(pl.card), glow: !!props.marked?.includes(pl.card), inTrick: true, played: pl.card, jokerAura, ...autoDelay });
+    items.push({ key: `${handNo}-${pl.card}`, card: pl.card, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale), from: fanFrom, origin: leftHand, ...(props.landCue(pl.card).includes(',overcut') ? { duration: 0.34, arc: 0.7 } : { duration: 0.5, arc: 0.35 }), sfxLand: props.landCue(pl.card), glow: !!props.marked?.includes(pl.card), inTrick: true, played: pl.card, ...autoDelay });
   });
   // 'Run it!': the claimer's cards slam down in sequence (then the tornado takes everything)
   if (props.slam) {
@@ -485,10 +481,8 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
           sfxStart={it.sfxStart}
           sfxLand={it.sfxLand}
           blast={it.hand ? 'hand' : 'table'}
-          jokerAura={it.jokerAura}
           inTrick={it.inTrick}
           played={it.played}
-          reduceMotion={!!props.reduceFx}
         />
       ))}
       {wide && mine.length > 0 && <HandGlow aspect={aspect} count={mine.length} safeFrac={safeFrac} opts={fanOpts} />}
