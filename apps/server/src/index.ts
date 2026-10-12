@@ -163,7 +163,9 @@ export default {
 
     if (parts[1] === 'auth') {
       // sign-in ceremonies + username checks are rate limited; reading /me and /config isn't
-      if (!['me', 'config'].includes(parts[2] ?? '')) { const slow = await limited(req, env, 'auth'); if (slow) return slow; }
+      // username checks run as you type, so they share the roomier lookup bucket
+      const bucket = ['me', 'config', 'deletion-status'].includes(parts[2] ?? '') ? null : parts[2] === 'username' && parts[3] === 'check' ? 'info' : 'auth';
+      if (bucket) { const slow = await limited(req, env, bucket); if (slow) return slow; }
       return handleAuth(req, env, url, parts, { fetch: (i, init) => fetch(i, init), now: () => Date.now() });
     }
 
