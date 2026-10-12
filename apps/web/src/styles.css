@@ -1487,3 +1487,66 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 /* Release 10: the video winner's name rides inside its frame, so a video box and a name card are exactly the same size */
 .vs-tile.win.video { position: relative; }
 .vs-tile.win.video figcaption { position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 2; text-align: center; text-shadow: 0 2px 8px rgba(0,0,0,.85); }
+.now-playing.quiet { position: fixed; left: 50%; top: calc(64px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 45; pointer-events: none; font-size: 12px; color: var(--muted); background: rgba(14,8,26,.7); padding: 3px 10px; border-radius: 10px; white-space: nowrap; max-width: 70vw; overflow: hidden; text-overflow: ellipsis; animation: np-quiet 2s ease forwards; }
+@keyframes np-quiet { 0% { opacity: 0; } 15%, 80% { opacity: 1; } 100% { opacity: 0; } }
+.np-line { font-size: 12.5px; color: var(--muted); margin: 2px 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.np-line b { color: var(--gold); }
+/* v7: host music lives in the speaker menu; tabs and chips never overlap (no inner scroll box) */
+.hm-host { display: grid; gap: 8px; margin-top: 6px; }
+.hm-tabs { flex-wrap: wrap; position: relative; z-index: 1; }
+.hm-tabs button { flex: 1 1 auto; }
+.hm-beats, .sheet-sec .hm-beats, .sound-pop .hm-beats { max-height: none; overflow: visible; margin-top: 0; }
+.sound-pop { max-height: calc(100dvh - 80px); overflow-y: auto; overscroll-behavior: contain; }
+
+/* ---------- in-game v2: menu, tray, last-trick chip, score pad ---------- */
+.menu-wrap { position: relative; display: flex; flex: none; }
+.menu-scrim { position: fixed; inset: 0; z-index: 60; }
+.game-menu { position: absolute; left: 0; top: calc(100% + 6px); z-index: 61; display: flex; flex-direction: column; min-width: 240px; padding: 6px; border-radius: 12px; background: rgba(20,11,34,.97); box-shadow: 0 14px 34px rgba(0,0,0,.6), inset 0 0 0 1px rgba(185,128,255,.4); }
+.game-menu > button { text-align: left; background: none; border: 0; color: var(--ink); padding: 11px 12px; font-size: 14px; font-weight: 600; border-radius: 8px; }
+.game-menu > button:hover, .game-menu > button.on { background: rgba(185,128,255,.18); }
+.game-menu > button.danger { color: #ff9db0; }
+.menu-social { padding: 4px 6px; }
+.menu-social .social-btn { width: 100%; justify-content: flex-start; }
+.scorebug .help-btn, .scorebug .bug-btn.q { display: none; }
+
+/* one collapsible tray, bottom-right, off the felt (above the hand, right of your plate) */
+.ctl-tray, .table-screen.short .ctl-tray { top: auto; bottom: calc(23vh + 8px + env(safe-area-inset-bottom)); right: calc(8px + env(safe-area-inset-right)); flex-direction: column-reverse; align-items: flex-end; gap: 6px; }
+.ctl-tray.expanded { padding: 6px; border-radius: 16px; background: rgba(14,8,26,.88); box-shadow: inset 0 0 0 1px rgba(185,128,255,.35), 0 8px 22px rgba(0,0,0,.5); pointer-events: auto; }
+.ctl-tray .av-bar { flex-direction: column; }
+.tray-toggle { position: relative; width: 46px; height: 46px; border: 0; border-radius: 14px; font-size: 18px; color: #fff; background: rgba(155,92,255,.85); box-shadow: 0 6px 16px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.25); display: grid; place-items: center; line-height: 1; pointer-events: auto; }
+.tray-toggle small { position: absolute; bottom: 3px; right: 6px; font-size: 12px; }
+.tray-toggle.on { background: rgba(40,24,64,.95); }
+.tray-toggle .unread { position: absolute; top: -5px; right: -5px; }
+
+/* last trick: a small chip; tap to expand */
+.last-trick.chip, .last-trick.chip.glass.slant { pointer-events: auto; cursor: pointer; padding: 4px 9px; max-width: none; }
+.last-trick.chip .lt-label { width: auto; font-size: 10px; }
+.last-trick.open { pointer-events: auto; cursor: pointer; }
+.last-trick { bottom: calc(23vh + 64px + env(safe-area-inset-bottom)) !important; }
+.last-trick.chip .lt-label { text-align: right; }
+
+/* score pad v2 */
+.modal-backdrop.pad-backdrop { z-index: 1200; background: rgba(6,3,12,.72); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.pad-open .tt-team-edit, .pad-open .tt-head, .pad-open .tt-foot > button:not(.primary) { visibility: hidden; }
+.score-pad.v2 { position: relative; }
+.pad-x { position: absolute; top: 8px; right: 10px; width: 36px; height: 36px; border: 0; border-radius: 50%; background: rgba(255,255,255,.08); color: var(--ink); font-size: 16px; z-index: 2; }
+.pad-rules.chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 6px 0 10px; }
+.rule-chip { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 12px; background: rgba(185,128,255,.16); box-shadow: inset 0 0 0 1px rgba(185,128,255,.4); color: var(--ink); white-space: nowrap; }
+.pad-cols.v2, .pad-row.v2 { grid-template-columns: 6px minmax(0, 1.6fr) repeat(2, minmax(0, .7fr)) minmax(0, .9fr) minmax(0, 1fr); }
+.pad-cols.v2 > span:first-child { grid-column: 1 / 3; }
+.pad-row.v2 { display: grid; align-items: center; gap: 6px; padding: 8px 6px 8px 0; }
+.pad-row.v2 .pad-bar { align-self: stretch; width: 6px; border-radius: 3px; background: var(--side); }
+.pad-row.v2 .pad-team { color: var(--side); font-weight: 800; display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.pad-row.v2 .pad-team .chips { display: flex; flex-wrap: wrap; gap: 3px; }
+.pad-row.v2 .pad-cell { display: flex; flex-direction: column; align-items: center; }
+.pad-row.v2 .pad-total b { font-size: 24px; font-family: var(--display); color: var(--gold); line-height: 1; }
+.pad-bags { font-size: 10px; color: var(--muted); }
+@media (max-width: 640px) {
+  .pad-cols.v2 { display: none; }
+  .pad-row.v2 { grid-template-columns: 6px repeat(4, minmax(0, 1fr)); row-gap: 4px; }
+  .pad-row.v2 .pad-bar { grid-row: span 2; }
+  .pad-row.v2 .pad-team { grid-column: 2 / -1; flex-direction: row; align-items: center; gap: 6px; }
+  .pad-row.v2 .pad-cell b { white-space: nowrap; }
+  .pad-row.v2 .lbl { display: block; font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+}
+.score-pad.v2 > .primary.big { width: 100%; margin-top: 10px; }

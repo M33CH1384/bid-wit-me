@@ -22,7 +22,7 @@ const DUCK_MS: Partial<Record<Sfx, number>> = { runSlam: 700, nuke: 3600, tornad
 
 export interface SoundSettings { on: boolean; volume: number; ambient: boolean; music: boolean; musicVolume: number; /** the venue's quiet ambient sound bed (Release 7), default on */ venueSound: boolean }
 const KEY = 'bwm.sound.v1';
-const DEFAULTS: SoundSettings = { on: true, volume: 0.7, ambient: false, music: false, musicVolume: 0.5, venueSound: true };
+const DEFAULTS: SoundSettings = { on: true, volume: 0.7, ambient: false, music: true, musicVolume: 0.5, venueSound: true };
 /** venue ambience beds (see venues.ts → bed) */
 export type VenueBed = 'none' | 'cookout' | 'mansion' | 'barbershop' | 'basement' | 'rooftop' | 'jazz' | 'casino' | 'beach' | 'kitchen' | 'yacht';
 export type MusicStatus = 'off' | 'loading' | 'playing' | 'error';

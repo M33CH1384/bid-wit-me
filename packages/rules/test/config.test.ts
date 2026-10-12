@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CLASSIC_JOKER, RulesConfigError, buildDeck, cardPower, defaultRules, effectiveSuit, handSize, isTrump, makeRules, sortHand,
+  CLASSIC_JOKER, RulesConfigError, acceptRules, bidOptions, buildDeck, cardPower, checkGameEnd, defaultRules, effectiveSuit, handSize, isTrump, makeRules, newGame, scoreHand, sortHand,
   trumpOrder, validateRules,
 } from '../src';
 
@@ -120,6 +120,68 @@ describe('validation', () => {
     for (const pair of [['2H', '2D'], ['2C', '2D'], ['2C', '2H']] as const) {
       expect(buildDeck(makeRules('joker', { removedCards: [...pair] }))).toHaveLength(52);
     }
+  });
+  it('type-checks fields that used to pass straight through', () => {
+    const joker = makeRules('joker');
+    const stringNil = { ...joker, nil: { allowed: true, value: '100' as never } };
+    expect(validateRules(stringNil).join()).toMatch(/nil\.value/);
+    // 0 + "100" concatenates, then the numeric top never matches the string score, so the game cannot end
+    const broken = scoreHand(stringNil, ['nil', 4, 4, 4], [0, 5, 4, 4], [400, 0], [0, 0]);
+    expect(typeof broken[0]!.totalScore).toBe('string');
+    expect(checkGameEnd(stringNil, broken.map((s) => s.totalScore))).toBeNull();
+    const missing = { ...joker };
+    delete (missing as { nil?: unknown }).nil;
+    expect(validateRules(missing).join()).toMatch(/nil/);
+    expect(() => newGame(missing, 'seed')).toThrow(RulesConfigError);
+  });
+});
+
+describe('acceptRules', () => {
+  const bad = (input: unknown) => {
+    try { acceptRules(input); } catch (e) { expect(e).toBeInstanceOf(RulesConfigError); return (e as RulesConfigError).problems.join('|'); }
+    throw new Error('expected RulesConfigError');
+  };
+  it('round-trips presets and drops fields that are not house rules', () => {
+    const samples = [
+      makeRules('joker'),
+      makeRules('aceDown'),
+      makeRules('cutthroat'),
+      makeRules('cutthroat', { playerCount: 3, deck: 'standard52' }),
+      makeRules('joker', {
+        ...CLASSIC_JOKER, deuceOfSpadesHigh: true, targetScore: 250, minTeamBid: 4, nil: { allowed: false },
+        blindNil: { allowed: true, onlyWhenBehindBy: null, exchangeCards: 2, value: 150 }, bagsPerPenalty: 5, bagPenalty: 50,
+        tenForTwoHundred: true, losingFloor: null, firstHandMin: 3, shotOut: false, bagsOn: false, firstHandBidsItself: false,
+        spadesMustBeBroken: false, firstLead: 'twoOfClubs', partnerMayAlsoNil: false, nilTricksCountForPartner: true,
+        turnTimerSec: { bid: 45, play: 15 },
+      }),
+    ];
+    for (const s of samples) expect(acceptRules(s)).toEqual(s);
+    const extra = acceptRules({ ...makeRules('joker'), injected: true, nil: { ...makeRules('joker').nil, bonus: 5 } } as never);
+    expect(extra).toEqual(makeRules('joker'));
+    expect('injected' in extra).toBe(false);
+  });
+  it('refuses a string nil value and fills a missing nil from the preset', () => {
+    const raw = { ...makeRules('joker', { targetScore: 250, firstHandBidsItself: false }), nil: { allowed: true, value: '100' } };
+    expect(bad(raw)).toMatch(/nil\.value/);
+    const hole = { ...makeRules('joker', { targetScore: 250, firstHandBidsItself: false }) } as { nil?: unknown };
+    delete hole.nil;
+    const r = acceptRules(hole);
+    expect(r.nil).toEqual({ allowed: true, value: 100 });
+    expect(r.targetScore).toBe(250);
+    expect(r.firstHandBidsItself).toBe(false);
+    const st = newGame(r, 'seed');
+    expect(() => bidOptions(st, st.turn!)).not.toThrow();
+    expect(bidOptions(st, st.turn!).nil).toBe(true);
+    const hand = scoreHand(r, ['nil', 4, 4, 4], [0, 5, 4, 4], [150, 0], [0, 0]);
+    expect(hand[0]!.totalScore).toBe(290);
+    expect(typeof hand[0]!.totalScore).toBe('number');
+  });
+  it('rejects an unknown mode and clamps timers', () => {
+    expect(bad(null)).toMatch(/object/);
+    expect(bad({ mode: 'whist' })).toMatch(/mode/);
+    expect(bad({ mode: 'joker', bagPenalty: '100' })).toMatch(/bagPenalty/);
+    expect(acceptRules({ ...makeRules('joker'), turnTimerSec: { bid: 1, play: 500 } }).turnTimerSec).toEqual({ bid: 3, play: 120 });
+    expect(acceptRules({ ...makeRules('joker'), turnTimerSec: { bid: 'fast', play: 10 } } as never).turnTimerSec).toEqual({ bid: 30, play: 10 });
   });
 });
 

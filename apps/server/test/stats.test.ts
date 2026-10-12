@@ -20,7 +20,7 @@ function playTurn(env: FakeEnv, cids: string[]): boolean {
     if (!a) continue;
     const action: GameAction = a.type === 'reveal' ? { type: 'reveal' } : a.type === 'bid' ? { type: 'bid', bid: a.bid } : a.type === 'play' ? { type: 'play', card: a.card } : a.type === 'runIt' ? { type: 'runIt' } : { type: 'exchange', cards: (a as { cards: Card[] }).cards };
     env.advance(400); // think time
-    env.send(cid, { t: 'act', action });
+    env.send(cid, { t: 'act', action, seq: st.room.seq });
     return true;
   }
   return false;

@@ -434,7 +434,7 @@ export class TableDO extends DurableObject<Env> {
         if (m.t === 'hello' && m.ticket) uid = (await verifyTicket(this.env.DB, m.ticket, Date.now()))?.uid ?? null;
       } catch { /* malformed: the room rejects it */ }
     }
-    this.room.message(cid, message);
+    this.room.message(cid, message, uid);
     if (uid) this.room.linkUser(cid, uid);
   }
 

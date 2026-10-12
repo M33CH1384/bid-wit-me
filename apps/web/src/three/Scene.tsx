@@ -4,7 +4,7 @@ import { Tornado3D } from './Tornado3D';
 import { Environment, Html, Preload, useEnvironment, useTexture } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { type ReactNode, type RefObject, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { type Camera, type Group, type Mesh, type Object3D, type Texture, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, Matrix4, Quaternion, MeshPhysicalMaterial, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, Vector2, Vector3 } from 'three';
+import { type Camera, type Group, type Mesh, type MeshBasicMaterial, type Object3D, type Texture, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, Matrix4, Quaternion, MeshPhysicalMaterial, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, Vector2, Vector3 } from 'three';
 import type { Card, Play, Trick } from '@spades/rules';
 import Card3D from './Card3D';
 import { isShortLandscape } from '../viewport';
@@ -246,11 +246,14 @@ function TableModel({ quality, onReady, def }: { quality: 'high' | 'low'; onRead
 
 function TurnRing({ pos, n, active }: { pos: SeatPos; n: number; active: boolean }) {
   const p = ringSpot(pos, n);
+  const mat = useRef<MeshBasicMaterial>(null);
+  // your-turn glow only: a soft breathing halo (Table passes turnSeat only when it's the human's turn)
+  useFrame(({ clock }) => { if (mat.current) mat.current.opacity = 0.35 + 0.3 * (0.5 + 0.5 * Math.sin(clock.elapsedTime * 3)); });
   if (!active) return null;
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[p.x, 0.003, p.z]}>
-      <ringGeometry args={[0.16, 0.2, 48]} />
-      <meshBasicMaterial color="#b36bff" transparent opacity={0.85} toneMapped={false} />
+      <ringGeometry args={[0.15, 0.21, 64]} />
+      <meshBasicMaterial ref={mat} color="#c58bff" transparent opacity={0.5} toneMapped={false} depthWrite={false} />
     </mesh>
   );
 }

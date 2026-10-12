@@ -25,9 +25,19 @@ export function rulesLine(r: TableRules): string {
   return parts.join(' · ');
 }
 
+/** compact rule chips from the real table settings: "To 250", "10 bags = −100", "Hand 1: 4+ books"… */
+export function rulesChips(r: TableRules): string[] {
+  const out = [`To ${r.targetScore}`];
+  if (r.losingFloor !== null) out.push(`Lose at ${r.losingFloor}`);
+  if (r.bagPenalty) out.push(`${r.bagsPerPenalty} bags = −${Math.abs(r.bagPenalty)}`);
+  const min = firstHandMinOf(r);
+  if (shotOutOn(r)) { out.push('Shot = out'); if (min) out.push(`Hand 1: ${min}+ books`); }
+  return out;
+}
+
 export function bidText(h: HandRecord, s: SideHandResult): string {
   const bids = s.seats.map((x) => h.bids[x]!);
-  if (bids.every((b) => b === 'books')) return 'Books (hand 1)';
+  if (bids.every((b) => b === 'books')) return '—';
   const labels = bids.map((b) => bidLabel(b));
   if (bids.length === 1) return labels[0]!;
   const nums = bids.filter((b): b is number => typeof b === 'number');
@@ -62,42 +72,47 @@ function breakdown(r: TableRules, s: SideHandResult): string[] {
   return lines;
 }
 
-export function ScorePad({ st, names, onClose, locked, sideName }: { st: GameState; names: string[]; onClose: () => void; locked?: ReactNode; sideName: (side: number) => string }) {
+function Row({ color, name, bid, took, points, chips, total, bags, bagsAdded, details }: { color: string; name: string; bid: string; took: number; points: ReactNode; chips?: Chip[]; total: number; bags: number; bagsAdded?: number; details?: string[] }) {
+  return (
+    <div className="pad-row v2" style={{ ['--side' as string]: color }}>
+      <i className="pad-bar" aria-hidden />
+      <div className="pad-team">{name}{chips && chips.length > 0 && <span className="chips">{chips.map((c) => <em key={c.text} className={`rchip ${c.kind}`}>{c.text}</em>)}</span>}</div>
+      <div className="pad-cell"><span className="lbl">Bid</span><b>{bid}</b></div>
+      <div className="pad-cell"><span className="lbl">Took</span><b>{took}</b></div>
+      <div className="pad-cell"><span className="lbl">Points</span>
+        {details ? <details className="pts"><summary className={typeof points === 'string' && points.startsWith('−') ? 'neg' : 'pos'} title="Tap for the breakdown">{points}</summary><ul>{details.map((l) => <li key={l}>{l}</li>)}</ul></details> : <b>{points}</b>}
+      </div>
+      <div className="pad-cell pad-total"><span className="lbl">Total</span><b>{total}</b><small className="pad-bags">{bags} bag{bags === 1 ? '' : 's'}{bagsAdded ? ` (+${bagsAdded})` : ''}</small></div>
+    </div>
+  );
+}
+
+export function ScorePad({ st, names, onClose, onContinue, locked, sideName }: { st: GameState; names: string[]; onClose: () => void; onContinue?: () => void; locked?: ReactNode; sideName: (side: number) => string }) {
   const r = st.rules;
   const sides = Array.from({ length: st.scores.length }, (_, i) => i);
   const lastNo = st.history[st.history.length - 1]?.handNo;
   const inProgress = st.phase !== 'gameOver' && st.phase !== 'handOver' && !st.history.some((h) => h.handNo === st.handNo);
   const seatName = (s: number) => names[s] ?? `Seat ${s + 1}`;
-  // open on the latest hand (the last scored one, or the one being played)
   const lastRef = useRef<HTMLElement>(null);
   useEffect(() => { lastRef.current?.scrollIntoView({ block: 'end' }); }, []);
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal glass slant score-pad" onClick={(e) => e.stopPropagation()} data-testid="score-pad">
+    <div className="modal-backdrop pad-backdrop" onClick={onClose}>
+      <div className="modal glass slant score-pad v2" onClick={(e) => e.stopPropagation()} data-testid="score-pad" role="dialog" aria-label="Score pad">
+        <button type="button" className="pad-x" aria-label="Close score pad" data-testid="pad-close" onClick={onClose}>✕</button>
         <div className="panel-title big">SCORE PAD</div>
-        <p className="pad-rules" data-testid="pad-rules">{rulesLine(r)}</p>
+        <div className="pad-rules chips" data-testid="pad-rules">{rulesChips(r).map((c) => <span key={c} className="rule-chip">{c}</span>)}</div>
         <div className="scroll pad2">
-          <div className="pad-cols" aria-hidden>
-            <span>{r.partnerships ? 'Team' : 'Player'}</span><span>Bid</span><span>Took</span><span>Result</span><span>Points</span><span>Bags</span><span>Total</span>
+          <div className="pad-cols v2" aria-hidden>
+            <span>{r.partnerships ? 'Team' : 'Player'}</span><span>Bid</span><span>Took</span><span>Points</span><span>Total</span>
           </div>
           {st.history.length === 0 && !inProgress && <p className="muted">No hands scored yet.</p>}
           {st.history.map((h) => (
             <section key={h.handNo} ref={h.handNo === lastNo && !inProgress ? lastRef : undefined} className={`pad-hand ${h.handNo === lastNo ? 'last' : ''}`} data-testid={`pad-hand-${h.handNo}`}>
-              <header className="pad-hand-head"><b>Hand {h.handNo}</b><span>{seatName(h.dealer)} dealt</span>{h.handNo === 1 && firstHandMinOf(r) && shotOutOn(r) ? <span className="pad-min">needs {firstHandMinOf(r)}+ books</span> : null}{h.handNo === lastNo && <span className="pad-last">{st.phase === 'gameOver' ? 'FINAL' : 'LAST HAND'}</span>}</header>
+              <header className="pad-hand-head"><b>Hand {h.handNo}</b><span>{seatName(h.dealer)} dealt</span>{h.handNo === lastNo && <span className="pad-last">{st.phase === 'gameOver' ? 'FINAL' : 'LAST HAND'}</span>}</header>
               {h.sides.map((s) => (
-                <div key={s.side} className="pad-row" style={{ ['--side' as string]: sideColor(r, s.side) }}>
-                  <div className="pad-team">{sideName(s.side)}</div>
-                  <div className="pad-cell"><span className="lbl">Bid</span><b>{bidText(h, s)}</b></div>
-                  <div className="pad-cell"><span className="lbl">Took</span><b>{s.tricks}</b></div>
-                  <div className="pad-cell pad-result"><span className="lbl">Result</span><span className="chips">{resultChips(r, h, s, st).map((c) => <em key={c.text} className={`rchip ${c.kind}`}>{c.text}</em>)}</span></div>
-                  <div className="pad-cell"><span className="lbl">Points</span>
-                    <details className="pts"><summary className={s.points < 0 ? 'neg' : 'pos'} title="Tap for the breakdown">{signed(s.points)}</summary>
-                      <ul>{breakdown(r, s).map((l) => <li key={l}>{l}</li>)}</ul>
-                    </details>
-                  </div>
-                  <div className="pad-cell"><span className="lbl">Bags</span><b>{s.totalBags}{s.bagsAdded ? <small> (+{s.bagsAdded})</small> : null}</b></div>
-                  <div className="pad-cell pad-total"><span className="lbl">Total</span><b>{s.totalScore}</b></div>
-                </div>
+                <Row key={s.side} color={sideColor(r, s.side)} name={sideName(s.side)} bid={bidText(h, s)} took={s.tricks}
+                  points={signed(s.points)} details={breakdown(r, s)} chips={resultChips(r, h, s, st).filter((c) => c.kind !== 'books' && c.kind !== 'made')}
+                  total={s.totalScore} bags={s.totalBags} bagsAdded={s.bagsAdded} />
               ))}
             </section>
           ))}
@@ -107,23 +122,15 @@ export function ScorePad({ st, names, onClose, locked, sideName }: { st: GameSta
               {sides.map((side) => {
                 const seats = r.partnerships ? [side, side + 2] : [side];
                 const bids = seats.map((x) => st.bids[x]);
-                return (
-                  <div key={side} className="pad-row" style={{ ['--side' as string]: sideColor(r, side) }}>
-                    <div className="pad-team">{sideName(side)}</div>
-                    <div className="pad-cell"><span className="lbl">Bid</span><b>{bids.every((b) => b === 'books') ? 'Books (hand 1)' : bids.map((b) => (b === null ? '…' : bidLabel(b))).join(' + ')}</b></div>
-                    <div className="pad-cell"><span className="lbl">Took</span><b>{seats.reduce((a, x) => a + (st.tricksWon[x] ?? 0), 0)}</b></div>
-                    <div className="pad-cell pad-result"><span className="lbl">Result</span><span className="muted">playing…</span></div>
-                    <div className="pad-cell"><span className="lbl">Points</span><b>–</b></div>
-                    <div className="pad-cell"><span className="lbl">Bags</span><b>{st.bags[side]}</b></div>
-                    <div className="pad-cell pad-total"><span className="lbl">Total</span><b>{st.scores[side]}</b></div>
-                  </div>
-                );
+                return <Row key={side} color={sideColor(r, side)} name={sideName(side)}
+                  bid={bids.every((b) => b === 'books') ? '—' : bids.map((b) => (b === null ? '…' : bidLabel(b))).join(' + ')}
+                  took={seats.reduce((a, x) => a + (st.tricksWon[x] ?? 0), 0)} points="–" total={st.scores[side]!} bags={st.bags[side]!} />;
               })}
             </section>
           )}
         </div>
         {locked && st.phase !== 'gameOver' && <details className="locked-details" data-testid="locked-rules-details"><summary>🔒 House rules for this game</summary>{locked}</details>}
-        <button type="button" className="primary" onClick={onClose}>Close</button>
+        <button type="button" className="primary big" data-testid="pad-continue" onClick={onContinue ?? onClose}>Continue</button>
       </div>
     </div>
   );

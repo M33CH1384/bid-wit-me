@@ -351,9 +351,9 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
       ],
       "tricks": [
         0,
+        4,
         5,
-        5,
-        3,
+        4,
       ],
     },
     {

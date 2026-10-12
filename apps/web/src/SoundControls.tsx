@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { sound, useSoundSettings } from './audio';
 import { HostMusicFields } from './online/HostMusic';
-import { hostMusic, useHostMusic } from './hostMusic';
+import { useHostMusic } from './hostMusic';
 import { tableIntensity, talkPrefs, useTalkPrefs } from './talkPrefs';
 import { TALK_INTENSITY_LABEL } from '@spades/bots';
 import { type NukeIntensity, fx, useNukeIntensity, useReduceEffects, useTableNuke } from './fx';
@@ -59,6 +59,7 @@ export function SoundSheet({ allOff, onMuteAll, onClose }: { allOff: boolean; on
         <span className="panel-title">SOUND</span>
         <button type="button" className="sheet-x" aria-label="Close sound settings" onClick={onClose}>✕</button>
       </div>
+      <NowPlayingLine />
       <div className="sheet-actions">
         <button type="button" className={`mute-all bot-mute big ${t.voices ? '' : 'off'}`} data-testid="bot-voice-quick" aria-pressed={!t.voices} onClick={() => talkPrefs.set({ voices: !t.voices })}>🤖 {t.voices ? 'Mute bots' : 'Bots muted'}</button>
         <button type="button" className="mute-all big" data-testid="mute-all" onClick={onMuteAll}>{allOff ? '🔊 Unmute' : '🔇 Mute all'}</button>
@@ -72,7 +73,6 @@ export function SoundSheet({ allOff, onMuteAll, onClose }: { allOff: boolean; on
           toggle={{ on: s.music, label: 'Music', testId: 'music-switch', set: (on) => sound.set({ music: on }) }} />
         {s.music && s.musicStatus === 'error' && <small className="sf-note">Can't load the track</small>}
         <VolumeRow label="Bot voices" value={t.voiceVolume} disabled={!t.voices || !voiceOk} testId="bot-voice-volume" onChange={(v) => talkPrefs.set({ voiceVolume: v })} />
-        {hm.room && <VolumeRow label="Host music" value={hm.volume} testId="host-music-volume" onChange={(v) => hostMusic.setVolume(v)} />}
       </section>
 
       <section className="sheet-sec" aria-label="Bots">
@@ -94,7 +94,7 @@ export function SoundSheet({ allOff, onMuteAll, onClose }: { allOff: boolean; on
       {hm.room && (
         <section className="sheet-sec" aria-label="Host music">
           <h4>Host music</h4>
-          <HostMusicFields noVolume />
+          <HostMusicFields />
         </section>
       )}
 
@@ -250,30 +250,45 @@ export default function SoundButton() {
       {open && (
         <div className="sound-pop glass slant" role="dialog" aria-label="Sound">
           <div className="panel-title">SOUND</div>
+          <NowPlayingLine />
           <SoundFields compact />
+          <HostMusicPopSection />
         </div>
       )}
     </div>
   );
 }
 
-/** "Now playing" ticker: slides in for a few seconds whenever a track starts. */
+function HostMusicPopSection() {
+  const hm = useHostMusic();
+  if (!hm.room) return null;
+  return <div className="sheet-sec" aria-label="Host music"><HostMusicFields /></div>;
+}
+
+/** Track info line for the speaker menus (the only persistent place it shows). */
+export function NowPlayingLine() {
+  const s = useSoundSettings();
+  if (!s.music || !s.nowPlaying) return null;
+  return <div className="np-line" data-testid="np-line">♫ <b>{s.nowPlaying.track.title}</b> <small>by {s.nowPlaying.track.artist}</small></div>;
+}
+
+let npShown = false; // once per page load, ever
+/** "Now playing": shown quietly ONCE, when a game starts (never in the lobby), auto-dismissed after ~2s. */
 export function NowPlaying() {
   const s = useSoundSettings();
-  const [show, setShow] = useState<null | { title: string; artist: string; key: number }>(null);
+  const [show, setShow] = useState<null | { title: string; key: number }>(null);
   useEffect(() => {
-    if (!s.music || !s.nowPlaying || Date.now() - s.nowPlaying.at > 3000) return;
-    setShow({ title: s.nowPlaying.track.title, artist: s.nowPlaying.track.artist, key: s.nowPlaying.at });
-    const t = setTimeout(() => setShow(null), 6500);
+    if (npShown || !s.music || !s.nowPlaying || Date.now() - s.nowPlaying.at > 3000) return;
+    if (document.querySelector('[data-testid="lobby"]')) return; // never over the lobby / dock
+    npShown = true;
+    setShow({ title: s.nowPlaying.track.title, key: s.nowPlaying.at });
+    const t = setTimeout(() => setShow(null), 2000);
     return () => clearTimeout(t);
   }, [s.nowPlaying, s.music]);
   if (!show) return null;
   return (
-    <div className="now-playing glass slant" key={show.key} role="status" data-testid="now-playing">
-      <span className="np-eq" aria-hidden><i /><i /><i /></span>
-      <span className="np-label">NOW PLAYING</span>
-      <span className="np-title">{show.title}</span>
-      <span className="np-by">by {show.artist}</span>
+    <div className="now-playing quiet" key={show.key} role="status" data-testid="now-playing">
+      <span className="np-title">♫ {show.title}</span>
     </div>
   );
 }
