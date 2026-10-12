@@ -194,3 +194,39 @@ button.ghost { background: transparent !important; }
 .ot-acts button { min-width: 76px; padding: 7px 10px; border-radius: 10px; }
 .ot-empty { text-align: center; padding: 14px; border-radius: 12px; border: 1px dashed rgba(185,128,255,.35); }
 .ot-empty p { margin: 0 0 10px; color: var(--muted); }
+
+/* ---------- social v2: bottom sheet on phones, 4 tabs, gear menu, empty state ---------- */
+.modal-backdrop.soc-backdrop { background: rgba(6,3,12,.55); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.soc-grab { display: none; }
+.soc-tabs { overflow-x: visible; }
+.soc-tabs > button, .soc-tabs button { flex: 1 1 0; text-align: center; padding: 10px 4px; display: inline-flex; justify-content: center; align-items: center; gap: 4px; }
+.soc-head .soc-conn { margin-right: auto; }
+.soc-gear-wrap { position: relative; }
+.soc-gear-wrap .icon-btn.on { color: var(--gold); }
+.soc-gear-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 5; display: flex; flex-direction: column; min-width: 210px; background: #1d1030; border: 1px solid rgba(185,128,255,.4); border-radius: 12px; box-shadow: 0 12px 30px rgba(0,0,0,.6); overflow: hidden; }
+.soc-gear-menu button { text-align: left; background: none; border: 0; color: var(--ink); padding: 12px 14px; font-size: 14px; font-weight: 600; }
+.soc-gear-menu button + button { border-top: 1px solid rgba(185,128,255,.18); }
+.soc-seg { display: flex; gap: 6px; padding: 8px 12px 0; flex: none; }
+.soc-seg button { flex: 1; border: 1px solid rgba(185,128,255,.35); background: rgba(255,255,255,.04); color: var(--muted); border-radius: 16px; padding: 6px 8px; font-size: 13px; font-weight: 700; display: inline-flex; justify-content: center; gap: 5px; align-items: center; }
+.soc-seg button.on { background: rgba(185,128,255,.28); color: var(--ink); border-color: rgba(185,128,255,.85); }
+.soc-alone { display: flex; flex-direction: column; align-items: stretch; gap: 10px; text-align: center; padding: 22px 16px; margin: 8px 4px; border-radius: 16px; background: rgba(185,128,255,.08); }
+.soc-alone-ic { font-size: 34px; }
+.soc-alone p { margin: 0 0 4px; color: var(--muted); line-height: 1.45; }
+.soc-alone p b { color: var(--ink); }
+.soc-alone button { padding: 12px; font-size: 15px; font-weight: 800; border-radius: 12px; }
+.soc-alone button:not(.primary) { background: rgba(255,255,255,.06); border: 1px solid rgba(245,197,66,.5); color: var(--gold); }
+@media (max-width: 720px) {
+  .modal-backdrop.soc-backdrop { align-items: flex-end; justify-content: stretch; }
+  .soc-panel { width: 100vw; height: calc(100dvh - 18px - env(safe-area-inset-top)); max-height: none; border-left: 0; border-radius: 20px 20px 0 0; border-top: 1px solid var(--edge); padding-top: 0; box-shadow: 0 -20px 50px rgba(0,0,0,.6); animation: soc-up .26s cubic-bezier(.2,.9,.3,1); transition: transform .2s ease; }
+  .soc-grab { display: flex; justify-content: center; padding: 8px 0 2px; touch-action: none; cursor: grab; flex: none; }
+  .soc-handle { width: 44px; height: 5px; border-radius: 3px; background: rgba(255,255,255,.35); }
+  .soc-head { touch-action: none; padding-top: 2px; }
+}
+@keyframes soc-up { from { transform: translateY(100%); } to { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .soc-panel { animation: none !important; } }
+
+/* open tables: big Create button on empty, edge fade on the filter chips */
+.ot-empty { border: 0; padding: 6px 0 0; }
+.ot-empty .ot-create { width: 100%; }
+.ot-filters-wrap { position: relative; }
+.ot-filters { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent); padding-right: 30px; }

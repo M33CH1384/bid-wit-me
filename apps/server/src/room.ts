@@ -8,7 +8,7 @@
  *  - all durable state lives in one plain-JSON `RoomData` object that the DO saves as a single row.
  */
 import {
-  type Action, type GameState, type Series, addSeriesGame, emptySeries, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, applyAction, canRunIt, type Seat, spectatorView, isFreshDeal, isNukeTrick, nextDealer, makeRules, newGame, pendingTurn, secureSeed, validateRules, viewFor,
+  type Action, type GameState, type Series, addSeriesGame, emptySeries, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, RulesConfigError, acceptRules, applyAction, canRunIt, type Seat, spectatorView, isFreshDeal, isNukeTrick, nextDealer, makeRules, newGame, pendingTurn, secureSeed, viewFor,
 } from '@spades/rules';
 import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, chooseBotAction, loudLoser, parseHint, leanBid, botSkillFor, personaSkillFloor, seatSkill, leanNil, momentsFor, newTalkState, pickBotNames, prePlayLine } from '@spades/bots';
 import {
@@ -176,10 +176,9 @@ export function newRoomData(code: string, now: number, rules: TableRules = makeR
   };
 }
 
-function clampRules(r: TableRules): TableRules {
-  const t = r.turnTimerSec ?? { bid: 30, play: 20 };
-  const clamp = (x: unknown, d: number) => (typeof x === 'number' && Number.isFinite(x) ? Math.max(3, Math.min(120, Math.round(x))) : d);
-  return { ...r, turnTimerSec: { bid: clamp(t.bid, 30), play: clamp(t.play, 20) } };
+/** Host rules are untrusted: rebuild them from the mode preset. Timers are clamped inside acceptRules. */
+function clampRules(r: unknown): TableRules {
+  return acceptRules(r);
 }
 
 export class Room {
@@ -319,19 +318,19 @@ export class Room {
   /* --------------------------------------------------------------- messages */
 
   message(connId: string, raw: unknown): void {
-    if (!this.conns.has(connId)) this.conns.set(connId, null);
-    const msg = parseClientMsg(raw);
-    if (!msg) return this.err(connId, 'BAD_MESSAGE', 'Malformed message');
-    const pid = this.conns.get(connId) ?? null;
-    if (msg.t === 'hello') return this.hello(connId, msg);
-    if (!pid || !this.data.members[pid]) return this.err(connId, 'NOT_JOINED', 'Say hello first');
-    this.data.lastActive = this.io.now();
+    let msg: ClientMsg | null = null;
     try {
+      if (!this.conns.has(connId)) this.conns.set(connId, null);
+      msg = parseClientMsg(raw);
+      if (!msg) return this.err(connId, 'BAD_MESSAGE', 'Malformed message');
+      const pid = this.conns.get(connId) ?? null;
+      if (msg.t === 'hello') return this.hello(connId, msg);
+      if (!pid || !this.data.members[pid]) return this.err(connId, 'NOT_JOINED', 'Say hello first');
+      this.data.lastActive = this.io.now();
       this.handle(connId, pid, msg);
     } catch (e) {
-      if (e instanceof RuleError) return this.err(connId, e.code, e.message);
-      if (e instanceof RoomError) return this.err(connId, e.code, e.message);
-      throw e;
+      // A throw used to escape the Durable Object handler and freeze the table. Answer this message and keep going.
+      this.failMessage(connId, msg, e);
     }
   }
 
@@ -447,10 +446,9 @@ export class Room {
         let rules: TableRules;
         try {
           rules = clampRules(msg.rules);
-          const problems = validateRules(rules);
-          if (problems.length) throw new RoomError('BAD_RULES', problems.join('; '));
         } catch (e) {
           if (e instanceof RoomError) throw e;
+          if (e instanceof RulesConfigError) throw new RoomError('BAD_RULES', e.problems.join('; ') || 'Invalid rules');
           throw new RoomError('BAD_RULES', 'Invalid rules');
         }
         d.rules = rules;
@@ -735,10 +733,16 @@ export class Room {
   private changesLockedRules(msg: Extract<ClientMsg, { t: 'config' }>): boolean {
     const d = this.data;
     let rules: TableRules;
-    try { rules = clampRules(msg.rules); } catch { return true; }
+    try { rules = clampRules(msg.rules); }
+    catch (e) {
+      if (e instanceof RulesConfigError) throw new RoomError('BAD_RULES', e.problems.join('; ') || 'Invalid rules');
+      return true;
+    }
+    let current: TableRules;
+    try { current = clampRules(d.rules); } catch { return true; }
     // the turn timer is pace, not outcome: it may change mid-game (applied below)
     const norm = (r: TableRules) => JSON.stringify(sortKeys({ ...r, turnTimerSec: null }));
-    if (norm(rules) !== norm(d.rules)) return true;
+    if (norm(rules) !== norm(current)) return true;
     if (msg.botLevel && msg.botLevel !== d.botLevel) return true;
     if (msg.nukeIntensity !== undefined && msg.nukeIntensity !== (d.nukeIntensity ?? 'full')) return true;
     if (msg.partnerMicMute !== undefined && msg.partnerMicMute !== (d.partnerMicMute ?? false)) return true;
@@ -755,7 +759,12 @@ export class Room {
     for (let s = 0; s < n; s++) if (d.seats[s]!.kind === 'empty') d.seats[s] = { kind: 'bot', name: this.botName(), level: d.botLevel };
     // a rematch continues the deal rotation (one seat clockwise from the last dealer); a new game deals from a random seat
     const dealer = rematch && prevGame && prevGame.rules.playerCount === n ? nextDealer(prevGame) : undefined;
-    d.game = newGame(d.rules, secureSeed(), { dealer });
+    try {
+      d.game = newGame(d.rules, secureSeed(), { dealer });
+    } catch (e) {
+      if (e instanceof RulesConfigError) throw new RoomError('BAD_RULES', e.problems.join('; ') || 'Invalid rules');
+      throw e;
+    }
     // venue: a 'random' pick is rolled per game (so a rematch can land somewhere new); everyone gets the same one
     d.venueNow = (d.venue ?? 'classic') === 'random' ? rollVenue(parseInt(secureSeed().slice(0, 8), 16) / 4294967296, d.venueNow) : (d.venue ?? 'classic') as VenueId;
     d.seq = (d.seq ?? 0) + 1;
@@ -941,18 +950,22 @@ export class Room {
     this.io.persist();
   }
 
-  /** Called by timers/alarms. */
+  /** Called by timers/alarms. One bad tick must not kill the alarm loop. */
   tick(): void {
-    const t = this.data.tournament;
-    if (t?.autostartAt && this.data.phase === 'lobby' && this.io.now() >= t.autostartAt - 50) {
-      this.autostart();
-      this.after();
-      return;
-    }
-    const changed = this.drive();
-    if (changed) {
-      this.broadcast();
-      this.io.persist();
+    try {
+      const t = this.data.tournament;
+      if (t?.autostartAt && this.data.phase === 'lobby' && this.io.now() >= t.autostartAt - 50) {
+        this.autostart();
+        this.after();
+        return;
+      }
+      const changed = this.drive();
+      if (changed) {
+        this.broadcast();
+        this.io.persist();
+      }
+    } catch (e) {
+      console.error('room tick failed', e);
     }
   }
 
@@ -1237,6 +1250,19 @@ export class Room {
 
   private err(connId: string, code: string, message: string): void {
     this.io.send(connId, { t: 'error', code, message });
+  }
+
+  /** Reply to the message that failed. An in-flight `act` gets an ack so the client unlocks its hand. */
+  private failMessage(connId: string, msg: ClientMsg | null, e: unknown): void {
+    let code = 'INTERNAL';
+    let text = 'Something went wrong';
+    if (e instanceof RuleError || e instanceof RoomError) { code = e.code; text = e.message; }
+    else console.error('room message failed', e);
+    if (msg?.t === 'act' && msg.id) {
+      this.io.send(connId, { t: 'ack', id: msg.id, ok: false, code, message: text });
+      return;
+    }
+    this.err(connId, code, text);
   }
 
   /** Public summary for the join screen (no secrets). */
