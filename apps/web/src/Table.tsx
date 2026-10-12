@@ -10,7 +10,7 @@ import { type Series, addSeriesGame, seriesSides, summarizeGame } from '@spades/
 import { SeriesChip, SeriesSheet, loadSeries, saveSeries } from './Series';
 import { TeamNameField, myTeamName, useMyTeamName } from './TeamName';
 import { offlineTalk } from './offlineTalk';
-import { BidOrder, PartnerTalk } from './PartnerTalk';
+import { BidOrder } from './PartnerTalk';
 import { setTableIntensity, showLine, speakBot, useTalkPrefs } from './talkPrefs';
 import { pickTeamName } from '@spades/protocol';
 import { Intermission, calloutsFor } from './Intermission';
@@ -41,7 +41,7 @@ import { TrashTalkButton } from './TrashTalk';
 import { isPromoted } from './cardFaces';
 import { QUICK_TRASH_SET } from './quickTrash';
 import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
-import { type TalkIntensity, botHint, botSkillFor, personaForName, personaTag, pickBotNames } from '@spades/bots';
+import { type TalkIntensity, botSkillFor, personaForName, personaTag, pickBotNames } from '@spades/bots';
 import { preloadVoice } from './voices/voices';
 const Scene = lazy(loadScene);
 
@@ -339,6 +339,17 @@ function RunItButton({ onRun, tip, onDismissTip }: { onRun: () => void; tip: boo
   );
 }
 
+/** the stand-in table wears the chosen venue's colours (felt, rail, floor, backdrop) so loading never flashes classic green */
+export function placeholderStyle(venue: VenueId): React.CSSProperties {
+  const d = VENUE_DEFS[venue];
+  const vars: Record<string, string> = {
+    '--tp-felt': d.felt, '--tp-rail': d.railTint, '--tp-apron': d.apron, '--tp-clear': d.clear, '--tp-floor': d.floorTint, '--tp-rim': d.rim,
+    '--tp-bg': venue === 'classic' ? 'none' : `url(/assets/venues/${venue}/bg.jpg)`,
+    '--tp-floor-tex': d.floorTex ? `url(/assets/venues/tex/${d.floorTex}_512.jpg)` : 'none',
+  };
+  return vars as React.CSSProperties;
+}
+
 /** a stable 0–1 number from a game seed (Random venue: same pick for the same game) */
 function seedFloat(seed: string): number {
   let h = 2166136261;
@@ -377,27 +388,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const localChat = useChat(st, names, resume?.chat);
   const { msgs: rawMsgs, push } = online ? online.chat : localChat;
   // partner talk presets (team games, bidding): plain PUBLIC table chat — everyone sees it, opponents included.
-  // Offline my bot partner also takes it as a hint when it bids after me (online the server does that).
   const partnerSeat = r.partnerships ? (HUMAN + 2) % n : -1;
-  const sendPartner = (text: string) => {
-    if (online) { push('You', text); return; } // online push sends it to the table
-    partnerHint.current = { hand: st.handNo, text };
-    localChat.push('You', text);
-  };
-  // offline: on my bidding turn, a bot partner that hasn't bid yet says (vaguely, in public chat) what it's got
-  const hintedHand = useRef<number | null>(null);
-  useEffect(() => {
-    if (online || !r.partnerships || st.phase !== 'bidding' || st.turn !== HUMAN || dealing || st.bids[partnerSeat] !== null) return;
-    if (hintedHand.current === st.handNo) return;
-    hintedHand.current = st.handNo;
-    const t = window.setTimeout(() => {
-      const text = botHint(st.hands[partnerSeat]!, viewFor(st, partnerSeat));
-      localChat.push(names[partnerSeat]!, text, false, 0, false, true);
-      speakBot(names[partnerSeat]!, text);
-    }, 500);
-    return () => clearTimeout(t);
-  }, [st, dealing]); // eslint-disable-line react-hooks/exhaustive-deps
-  const showPartnerTalk = r.partnerships && st.phase === 'bidding' && !dealing && !pause && (st.bids[HUMAN] === null || st.bids[partnerSeat] === null);
+  // (Release 9: no Partner talk preset panel and no typed bot-partner hints: partners talk out loud over open mics)
   const talkPrefs = useTalkPrefs();
   // trash-talk intensity is a table setting (offline: More options; online: the host); Family Friendly masks cursing
   const intensity = online ? (online.talkIntensity ?? 'cookout') : settings.talkIntensity;
@@ -734,7 +726,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const timers: (() => void)[] = [];
     const calls = calloutsFor(st, mySide, names);
     const shot = calls.find((c) => c.kind === 'shot') ?? calls.find((c) => c.kind === 'gotShot');
-    if (shot) timers.push(fx.later(shot.kind as 'shot' | 'gotShot', 350, { text: shot.text }));
+    if (shot) timers.push(fx.later(shot.kind as 'shot' | 'gotShot', 350, { text: shot.title ?? shot.text, sub: shot.sub }));
     const streak = calls.find((c) => c.kind === 'streak');
     // Wheels made: a team that bid 10+ together and took 10+ books → the supercar peel-out
     const made = wheelsMade(r, rec);
@@ -844,8 +836,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   return (
     <div ref={screenRef} className={`table-screen q-${settings.quality}${vp.short ? ' short' : ''}${modalOpen ? ' modal-open' : ''}`}>
       {/* styled stand-in table, on screen from the first paint until the 3D table has rendered (then it fades) */}
-      <div className={`table-placeholder ${tableReady ? 'gone' : ''}`} data-testid="table-placeholder" aria-hidden>
-        <div className="tp-table"><div className="tp-felt"><img src="/assets/bwm-wordmark-white.svg" alt="" /></div></div>
+      <div className={`table-placeholder ${tableReady ? 'gone' : ''}`} data-testid="table-placeholder" data-venue={venue} style={placeholderStyle(venue)} aria-hidden>
+        <div className="tp-floor" />
+        <div className="tp-table"><div className={`tp-felt${VENUE_DEFS[venue].feltPattern ? ` ${VENUE_DEFS[venue].feltPattern}` : ''}`}><img src="/assets/bwm-wordmark-white.svg" alt="" /></div></div>
         {!tableReady && <div className="tp-note">Setting the table…</div>}
       </div>
       <Suspense fallback={null}>
@@ -961,7 +954,6 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
       {/* the human's lower third + controls */}
       <section className="me">
-        {showPartnerTalk && <PartnerTalk partnerName={names[partnerSeat]!} onSend={sendPartner} />}
         {myTurn && !dealing && st.phase === 'bidding' && view.bidOptions && !autoReveal && (
           view.hand === null ? (
             <div className="bid-panel glass slant">

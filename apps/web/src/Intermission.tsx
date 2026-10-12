@@ -14,7 +14,7 @@ import { handWinner, streakLabel, streakOf } from './fx';
  */
 export const REACTIONS = ['gg', 'run it back', 'too easy', '🔥', '😭'];
 
-export interface Callout { kind: 'shot' | 'gotShot' | 'streak' | 'nil' | 'bust'; text: string; side?: number; level?: number }
+export interface Callout { kind: 'shot' | 'gotShot' | 'streak' | 'nil' | 'bust'; text: string; side?: number; level?: number; /** shot pop-up: big headline + detail line */ title?: string; sub?: string }
 
 /** What to shout about for the latest scored hand (also drives the fx pop-ups). */
 export function calloutsFor(st: GameState, mySide: number, names: string[]): Callout[] {
@@ -23,7 +23,18 @@ export function calloutsFor(st: GameState, mySide: number, names: string[]): Cal
   if (!rec) return [];
   const out: Callout[] = [];
   for (const s of rec.sides) {
-    if (s.contractMade === false) out.push({ kind: s.side === mySide ? 'gotShot' : 'shot', side: s.side, text: s.side === mySide ? `${r.partnerships ? 'We' : 'You'} got set (−${Math.abs(s.contractPoints)})` : `${sideName(r, s.side, names)} SET (−${Math.abs(s.contractPoints)})` });
+    if (s.contractMade === false) {
+      // name who got shot: "BUCS GOT SHOT: bid 8, took 6" (team + its players in 2v2, the player in Cutthroat)
+      const who = sideName(r, s.side, names);
+      const players = r.partnerships ? s.seats.map((x) => names[x]).join(' & ') : '';
+      const detail = `bid ${s.contract}, took ${s.contractTricks}`;
+      out.push({
+        kind: s.side === mySide ? 'gotShot' : 'shot', side: s.side,
+        text: `${who} GOT SHOT: ${detail}${players && players !== who ? ` (${players})` : ''}`,
+        title: `${who} GOT SHOT`.toUpperCase(),
+        sub: `${detail}${players && players !== who ? ` · ${players}` : ''}`,
+      });
+    }
     for (const nl of s.nils) out.push({ kind: nl.made ? 'nil' : 'bust', side: s.side, text: `${names[nl.seat]} ${nl.made ? 'made' : 'busted'} ${rec.bids[nl.seat] === 'blindNil' ? 'Blind Nil' : 'Nil'}` });
   }
   const w = handWinner(rec.sides.map((s) => s.points));

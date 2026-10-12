@@ -72,10 +72,8 @@ node scripts/shots3d.mjs  # screenshots/3d/{phone,desktop}-{1-start,2-bidding,3-
   `bidOrder` / `nextBidder` in `packages/rules` (server-authoritative); the table shows a BID ORDER strip.
 - **Partner talk during bidding:** partners can talk out loud about books during bidding; all chat is public. Partner
   mics are open while bidding (the host's partner mic mute applies only during trick play), and every typed line goes to
-  the whole table, opponents included; there is no private partner channel. The 🤝 Partner talk presets ("3-ish",
-  "I'm weak", "I can go Nil") just post to the public table chat and are labeled that way. Bot partners say their count
-  (a range, from their real estimate) in public chat on your bidding turn, and the bot voice can speak it. Bots bidding
-  after a human's hint take it into account (`packages/bots/src/partnerTalk.ts`); each player still bids their own number.
+  the whole table, opponents included; there is no private partner channel. (Release 9 removed the 🤝 Partner talk
+  preset panel and bot partners' typed hints: partners talk out loud over open mics; each player bids their own number.)
 
 ## Release 3 features
 

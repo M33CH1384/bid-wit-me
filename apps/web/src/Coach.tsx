@@ -123,11 +123,6 @@ export function tipsFor(c: CoachCtx): Tip[] {
       when: (x) => x.myTurn && x.st.phase === 'bidding' && !!x.view.bidOptions?.blindNil && !x.hand,
     },
     {
-      id: 'partnerTalk', title: 'Talk books with your partner', anchor: '.partner-talk', max: 2,
-      text: 'The team without the deal bids first, then the dealer\'s team, dealer last. While bidding, partners can talk out loud about books ("3-ish", "I\'m weak"); all chat is public, so the other team sees it too.',
-      when: (x) => r.partnerships && x.st.phase === 'bidding' && !!x.hand && (x.st.bids[x.me] === null || x.st.bids[(x.me + 2) % 4] === null),
-    },
-    {
       id: 'partnerBid', title: 'Your partner bid', anchor: '.bid-panel', max: 2,
       text: `${c.partnerName ?? 'Your partner'} bid ${typeof pBid === 'number' ? pBid : '—'}. Your {bid} plus theirs is the team's goal, and a hand only has ${n} {books|book}.`,
       when: (x) => x.myTurn && x.st.phase === 'bidding' && !!x.hand && r.partnerships && typeof x.st.bids[(x.me + 2) % 4] === 'number',

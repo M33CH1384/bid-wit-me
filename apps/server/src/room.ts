@@ -10,7 +10,7 @@
 import {
   type Action, type GameState, type Series, addSeriesGame, emptySeries, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, applyAction, isFreshDeal, isNukeTrick, nextDealer, makeRules, newGame, pendingTurn, secureSeed, validateRules, viewFor,
 } from '@spades/rules';
-import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, botHint, chooseBotAction, loudLoser, parseHint, leanBid, botSkillFor, personaSkillFloor, seatSkill, leanNil, momentsFor, newTalkState, pickBotNames, prePlayLine } from '@spades/bots';
+import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, chooseBotAction, loudLoser, parseHint, leanBid, botSkillFor, personaSkillFloor, seatSkill, leanNil, momentsFor, newTalkState, pickBotNames, prePlayLine } from '@spades/bots';
 import {
   type BotLevel, type ChatLine, type ClientMsg, type HostMusic, type MediaState, type RoomInfo, type RoomPhase, type SeatInfo, type ServerMsg,
   DEFAULT_AFK_LIMIT, LIMITS, PROTOCOL_VERSION, parseClientMsg,
@@ -637,7 +637,6 @@ export class Room {
   }
 
   private slowKey: string | null = null;
-  private hintKey: string | null = null;
 
   private talkState(): TalkState { return (this.data.talk ??= newTalkState()); }
 
@@ -836,18 +835,7 @@ export class Room {
         return changed;
       }
 
-      // a human's turn. Partner talk: a bot partner who hasn't bid yet says (vaguely, in public chat) what it's got
-      if (turn.kind === 'bid' && d.rules.partnerships && this.hintKey !== `${g.handNo}:${turn.seat}`) {
-        this.hintKey = `${g.handNo}:${turn.seat}`;
-        const mate = (turn.seat + 2) % d.rules.playerCount;
-        const ms = d.seats[mate];
-        if (ms?.kind === 'bot' && g.bids[mate] === null && g.hands[mate]!.length) {
-          const text = botHint(g.hands[mate]!, viewFor(g, mate));
-          (d.hints ??= {})[mate] = { hand: g.handNo, text };
-          this.pushChat({ id: d.chatSeq++, from: `bot:${mate}`, name: ms.name, text, at: now, hint: true });
-          changed = true;
-        }
-      }
+      // a human's turn (Release 9: bot partners no longer post typed bidding hints; partners talk out loud over open mics)
       const timerMs = (turn.kind === 'bid' ? d.rules.turnTimerSec.bid : d.rules.turnTimerSec.play) * 1000 * (d.members[slot.playerId]?.learning ? LEARNING_TIMER : 1);
       const full = (d.turnStartedAt ?? now) + leadIn + timerMs;
       const connected = this.isConnected(slot.playerId);

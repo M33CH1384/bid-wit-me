@@ -67,7 +67,6 @@ async function measure(page) {
     add('sound-dock', document.querySelector('.dock-btn'));
     add('banner', document.querySelector('.center-note'));
     add('chat', document.querySelector('.chat.open'));
-    add('partner-talk', document.querySelector('.partner-talk'));
     add('bid-order', document.querySelector('.center-note-wrap .bid-order'));
     const L = window.__bwmLayout ?? { trick: [], hand: [] };
     const ov = (a, b, pad = 0) => a.x + pad < b.x + b.w && b.x + pad < a.x + a.w && a.y + pad < b.y + b.h && b.y + pad < a.y + a.h;

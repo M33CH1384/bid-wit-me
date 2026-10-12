@@ -1260,15 +1260,6 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .bo-seat.now { opacity: 1; }
 .bo-seat.now b { text-decoration: underline; text-decoration-color: var(--purple); text-decoration-thickness: 2px; text-underline-offset: 3px; }
 .bo-seat.done { opacity: .9; }
-/* partner talk (bidding only, partner-only) */
-.partner-talk { width: min(520px, 100%); padding: 6px 10px 8px; display: flex; flex-direction: column; gap: 5px; }
-.pt-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.pt-title { font-family: var(--display); font-weight: 800; font-size: 11px; letter-spacing: .1em; color: #7fe3a0; }
-.pt-head small { font-size: 10px; opacity: .75; }
-.pt-row { display: flex; gap: 5px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; padding-bottom: 1px; }
-.pt-row::-webkit-scrollbar { display: none; }
-.pt-row button { flex: 0 0 auto; font-size: 12px; font-weight: 700; padding: 5px 10px; border-radius: 999px; border: 1px solid rgba(127,227,160,.55); background: rgba(127,227,160,.12); color: #e8fff0; cursor: pointer; white-space: nowrap; }
-.pt-row button:disabled { opacity: .45; }
 
 /* score pad (release 6): labeled columns on wide screens, stacked cards per hand on phones */
 .modal.score-pad { width: min(860px, calc(100vw - 16px)); max-width: none; }
@@ -1341,7 +1332,6 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .team-name-edit input { min-width: 0; }
 .sf-row > span { flex: 1 1 160px; }
 /* partner talk stays clear of the right-hand controls (chat / cam / mic / talk trash) on phones */
-@media (max-width: 700px) { .me > .partner-talk { align-self: flex-start; width: min(520px, calc(100% - 58px)); } }
 .pts { position: relative; }
 .pts ul { position: absolute; z-index: 3; left: 0; top: calc(100% + 2px); white-space: nowrap; box-shadow: 0 6px 18px rgba(0,0,0,.5); background: rgba(14,8,26,.97); }
 /* modals clear the always-on sound dock (top-right) on phones */
@@ -1355,12 +1345,20 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 
 /* Stand-in table: painted on the first frame, until the 3D table has rendered (then it fades out) */
 .table-placeholder { position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; display: grid; place-items: center;
-  background: radial-gradient(120% 80% at 50% 38%, #24123a 0%, #120a1c 55%, #0c0712 100%); transition: opacity .45s ease; }
+  --tp-felt: #0d6a45; --tp-rail: #c98a5a; --tp-apron: #7a4a2a; --tp-clear: #0c0712; --tp-floor: #120b18; --tp-rim: #9b5cff; --tp-bg: none; --tp-floor-tex: none;
+  background: radial-gradient(120% 80% at 50% 38%, color-mix(in srgb, var(--tp-rim) 22%, transparent) 0%, transparent 60%), linear-gradient(rgba(0,0,0,.35), rgba(0,0,0,.55)), var(--tp-bg) center / cover no-repeat, var(--tp-clear);
+  transition: opacity .45s ease; }
 .table-placeholder.gone { opacity: 0; visibility: hidden; transition: opacity .45s ease, visibility 0s .45s; }
+.tp-floor { position: absolute; left: -20%; right: -20%; bottom: -10%; height: 62%; transform: perspective(700px) rotateX(58deg); transform-origin: 50% 100%;
+  background: linear-gradient(rgba(0,0,0,.55), rgba(0,0,0,.15) 40%), var(--tp-floor-tex) center / 140px repeat, var(--tp-floor);
+  -webkit-mask-image: radial-gradient(70% 90% at 50% 100%, #000 55%, transparent 100%); mask-image: radial-gradient(70% 90% at 50% 100%, #000 55%, transparent 100%); }
+.table-placeholder[data-venue="classic"] .tp-floor { display: none; }
 .tp-table { position: absolute; left: 50%; top: 52%; width: min(128vw, 88vh); aspect-ratio: 1.5; border-radius: 46%; padding: clamp(12px, 3vw, 26px); transform: translate(-50%, -50%) perspective(900px) rotateX(36deg);
-  background: radial-gradient(60% 60% at 50% 30%, #b0703f, #6e3f22 70%, #3b2112); box-shadow: 0 30px 60px rgba(0,0,0,.6), inset 0 2px 0 rgba(255,220,180,.25); }
+  background: radial-gradient(60% 60% at 50% 30%, color-mix(in srgb, var(--tp-rail) 85%, #fff), var(--tp-rail) 45%, var(--tp-apron) 100%); box-shadow: 0 30px 60px rgba(0,0,0,.6), inset 0 2px 0 rgba(255,255,255,.22); }
 .tp-felt { width: 100%; height: 100%; border-radius: 50%; display: grid; place-items: center;
-  background: radial-gradient(70% 70% at 50% 45%, #13804f 0%, #0d6a45 55%, #084a30 100%); box-shadow: inset 0 0 0 2px rgba(217,176,74,.35), inset 0 8px 24px rgba(0,0,0,.45); }
+  background: radial-gradient(70% 70% at 50% 45%, color-mix(in srgb, var(--tp-felt) 82%, #fff) 0%, var(--tp-felt) 55%, color-mix(in srgb, var(--tp-felt) 65%, #000) 100%); box-shadow: inset 0 0 0 2px rgba(217,176,74,.35), inset 0 8px 24px rgba(0,0,0,.45); }
+.tp-felt.gingham { background: repeating-linear-gradient(0deg, color-mix(in srgb, var(--tp-felt) 55%, transparent) 0 14px, transparent 14px 28px), repeating-linear-gradient(90deg, color-mix(in srgb, var(--tp-felt) 55%, transparent) 0 14px, transparent 14px 28px), #f4f1ea; }
+.tp-felt.laminate { background: linear-gradient(115deg, rgba(255,255,255,.12), transparent 40%), var(--tp-felt); }
 .tp-felt img { width: 34%; opacity: .14; }
 .tp-note { position: absolute; bottom: 30%; font-family: var(--display); letter-spacing: .12em; font-size: 13px; color: var(--muted); animation: tp-pulse 1.4s ease-in-out infinite; }
 @keyframes tp-pulse { 50% { opacity: .45; } }

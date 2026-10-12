@@ -147,8 +147,12 @@ function condOk(meta: LineMeta | undefined, ev: TalkEvent, t: TalkTable): boolea
 /** Raw lines a persona draws on for a kind: its own pool, plus COMMON when its own pool is thin (< 3 at this intensity).
  * `self` is the speaking bot's gender (its name's voice gender): gendered self-references ("mama's thinking") only go to
  * bots of that gender. `target` is the gender of the bot the line is about (undefined for a human: never gendered). */
-export function poolFor(persona: PersonaId, kind: TalkKind, intensity: TalkIntensity = 'cookout', self?: 'f' | 'm', target?: 'f' | 'm'): string[] {
-  const ok = (l: string) => lineAllowed(l, intensity) && lineFitsGender(l, self, target);
+/** Lines that only make sense with partners ("sorry partner", "{team}", "your teammate"): never said in no-teams modes. */
+export const PARTNER_LINE = /partner|team ?mate|\{team\}|\b(my|your|whole|our) team\b/i;
+export function mentionsPartner(raw: string): boolean { return PARTNER_LINE.test(raw); }
+
+export function poolFor(persona: PersonaId, kind: TalkKind, intensity: TalkIntensity = 'cookout', self?: 'f' | 'm', target?: 'f' | 'm', teams = true): string[] {
+  const ok = (l: string) => lineAllowed(l, intensity) && lineFitsGender(l, self, target) && (teams || !mentionsPartner(l));
   const own = (PERSONAS[persona].lines[kind] ?? []).filter(ok);
   const noCommon = persona === 'silent' || (persona === 'hustler' && (kind === 'newbie' || kind === 'reveal'));
   if (noCommon || own.length >= 3) return own;
@@ -182,7 +186,7 @@ function botGender(t: TalkTable, seat: number | undefined): 'f' | 'm' | undefine
 }
 
 function pick(st: TalkState, t: TalkTable, persona: PersonaId, kind: TalkKind, ev: TalkEvent, rnd: () => number, self?: 'f' | 'm', target?: 'f' | 'm'): string | null {
-  const all = poolFor(persona, kind, t.intensity ?? 'cookout', self, target).filter((l) => condOk(LINE_META[l], ev, t));
+  const all = poolFor(persona, kind, t.intensity ?? 'cookout', self, target, t.partnerships).filter((l) => condOk(LINE_META[l], ev, t));
   if (!all.length) return null;
   // an Ace got cut: the Ace lines are the point
   const ace = ev.ace ? all.filter((l) => LINE_META[l]?.cond === 'ace') : [];
@@ -226,6 +230,8 @@ const ready = (st: TalkState, seat: number, now: number, big: boolean) => now - 
 export function botTalk(st: TalkState, t: TalkTable, ev: TalkEvent, now: number, rnd: () => number): TalkLine | null {
   const bots = t.seats.map((s, i) => (s.bot ? i : -1)).filter((i) => i >= 0);
   if (!bots.length) return null;
+  // no teams (Cutthroat): partner moments don't exist
+  if (!t.partnerships && (ev.kind === 'partnerBlunder' || ev.kind === 'hypePartner')) return null;
   const big = BIG.includes(ev.kind);
   const actor = ev.seat;
   const side = ev.side ?? (actor !== undefined ? sideOfSeat(t, actor) : undefined);

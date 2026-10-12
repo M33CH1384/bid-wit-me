@@ -904,31 +904,16 @@ describe('partner talk during bidding (all chat is public)', () => {
     expect(env.errors('a').length).toBe(errs);
     expect(chats(env, 'd').map((l) => l.text)).toContain('I got about 2');
   });
-  it('a bot partner hints in PUBLIC chat on the human\'s bidding turn (opponents see it too)', () => {
+  it('bot partners no longer post typed bidding hints (Release 9: partners talk out loud over open mics)', () => {
     const env = new FakeEnv(undefined, FAST);
     env.join('a', 'Dee'); env.join('b', 'Ray');
     env.send('a', { t: 'sit', seat: 0 }); env.send('b', { t: 'sit', seat: 1 });
     env.send('a', { t: 'addBot', seat: 2 }); env.send('a', { t: 'addBot', seat: 3 });
     env.send('a', { t: 'config', rules: makeRules('joker', { firstHandBidsItself: false }) });
     env.send('a', { t: 'start' });
-    let hinted = false;
-    for (let i = 0; i < 200 && !hinted; i++) {
-      const v = env.last('a', 'state')!.view!;
-      hinted = chats(env, 'a').some((l) => !!l.hint && l.from === 'bot:2');
-      if (hinted || v.phase !== 'bidding') break;
-      if (!playTurn(env, ['b'])) env.advance(50);
-    }
-    const line = chats(env, 'a').find((l) => !!l.hint && l.from === 'bot:2'); // (seat 3 may hint to Ray at seat 1 too)
-    const dealer = env.last('a', 'state')!.view!.dealer;
-    const order = bidOrder(makeRules('joker'), dealer);
-    if (order.indexOf(0) < order.indexOf(2)) expect(line, `dealer ${dealer}`).toBeDefined();
-    if (line) {
-      expect(line.text).toMatch(/about \d|weak|Nil|or more|Strong in spades/);
-      expect(line.from).toBe('bot:2');
-      expect(chats(env, 'b').some((l) => !!l.hint && l.text === line.text)).toBe(true);
-    } else {
-      expect(env.last('a', 'state')!.view!.bids[2]).not.toBeNull();
-    }
+    for (let i = 0; i < 200 && env.last('a', 'state')!.view!.phase === 'bidding'; i++) if (!playTurn(env, ['a', 'b'])) env.advance(50);
+    expect(env.last('a', 'state')!.view!.phase).toBe('playing');
+    expect(chats(env, 'a').some((l) => !!l.hint)).toBe(false);
   });
 });
 
