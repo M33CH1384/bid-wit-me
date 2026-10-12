@@ -5,6 +5,14 @@ export const CW = 0.25;
 export const CH = 0.35;
 export const CT = 0.004;
 export const CR = 0.022;
+/**
+ * How far the face plane sits in front of the extruded front cap, in card-local units.
+ * iPhone Safari's 16-bit depth fights at about 0.0003 world units once the card is a metre
+ * from the camera. 0.0002 local is about 0.00008 world on a phone fan, so the cap and the
+ * pips quantize to the same depth and the cream cap wins. 0.0025 local clears a few of
+ * those steps at the smallest fan scale, and stays under a pixel on screen.
+ */
+export const FACE_CAP_GAP = 0.0025;
 
 /** Felt half-extents and rail width. */
 export const FELT = { hx: 1.5, hz: 1.78, r: 0.95 };
@@ -178,6 +186,11 @@ export interface FanOpts {
    * The pixel lifts are small fractions of a card, so the hand passes this explicitly.
    */
   layer?: 'rest' | 'play' | 'selected';
+  /**
+   * Extra camera-near bias for a playable card (see LEGAL_NEAR). Subtracted from depth only.
+   * Screen x/y stay put, so the outline, which is built from those plane coordinates, does not slide.
+   */
+  near?: number;
 }
 
 export function fanLayout(aspect: number, count: number, safeFrac = 0, o: FanOpts = {}): FanLayout {
@@ -243,7 +256,9 @@ export function handCardPlane(aspect: number, count: number, i: number, lift: nu
   // at ~0.0003 here, which let the edges of the cards underneath bleed through as thin gold lines when the gap was 0.0015.
   const layer = o.layer ?? (lift > 0.2 ? 'selected' : lift > 0 ? 'play' : 'rest');
   const boost = layer === 'selected' ? 0.24 : layer === 'play' ? 0.12 : 0;
-  const depth = 1 - (i + 1) * 0.006 - boost; // the selected card tops all the raised ones too
+  // Playable cards come forward just enough to win the depth test against the neighbour that overlaps them.
+  const near = Number.isFinite(o.near) && o.near! > 0 ? o.near! : 0;
+  const depth = 1 - (i + 1) * 0.006 - boost - near; // the selected card tops all the raised ones too
   return { x, y, roll, depth, s: L.s };
 }
 

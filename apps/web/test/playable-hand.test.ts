@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { Quaternion, Vector3 } from 'three';
-import { GROUP_PAD_PX, GROUP_RADIUS_PX, cardPartOrder, cssPxToPlane, fanGapPx, handRenderOrder, hitsInPaintOrder, raiseLocalY, screenRaise } from '../src/three/handLift';
-import { fanLayout, handCardPlane, handFan, makeCamera } from '../src/three/layout';
+import { MeshStandardMaterial, Quaternion, Vector3 } from 'three';
+import { FACE_POLYGON_OFFSET, GROUP_PAD_PX, GROUP_RADIUS_PX, LEGAL_NEAR, applyLegalCardDepth, cardPartOrder, cssPxToPlane, fanGapPx, handRenderOrder, hitsInPaintOrder, raiseLocalY, screenRaise } from '../src/three/handLift';
+import { FACE_CAP_GAP, fanLayout, handCardPlane, handFan, makeCamera } from '../src/three/layout';
+import { cardGeometry } from '../src/three/geometry';
 import { contourContains, groupOutline, haloLocal, placeOnPlane, planePointOk, unionContours } from '../src/three/playableOutline';
 
 /**
@@ -23,10 +24,52 @@ describe('a tap hits the card you see', () => {
     expect(ordered[0]!.eventObject.renderOrder).toBeGreaterThan(ordered[1]!.eventObject.renderOrder);
   });
 
-  it('keeps the face above the blank edge when depth testing is off', () => {
+  it('keeps depth testing on for a legal card body, face, and back', () => {
+    // The old legal path set depthTest = !cover, and cover was true, so every mesh skipped the test.
+    const body = new MeshStandardMaterial({ color: '#efe9dc' });
+    const face = new MeshStandardMaterial();
+    const back = new MeshStandardMaterial();
+    body.depthTest = false;
+    face.depthTest = false;
+    back.depthTest = false;
+    applyLegalCardDepth([body, face, back]);
+    expect(body.depthTest).toBe(true);
+    expect(face.depthTest).toBe(true);
+    expect(back.depthTest).toBe(true);
+    // Face and body are both opaque, so they share one list. renderOrder can sort them there.
+    // The cap still covers the pips when the depth values quantize together, which is what
+    // the polygon offset and the face-to-cap gap are for.
+    expect(body.transparent).toBe(false);
+    expect(face.transparent).toBe(false);
+    expect(back.transparent).toBe(false);
+    expect(FACE_POLYGON_OFFSET.units).toBeLessThan(0);
     expect(cardPartOrder('face')).toBeGreaterThan(cardPartOrder('edge'));
-    expect(cardPartOrder('face')).toBeGreaterThan(cardPartOrder('back'));
-    expect(cardPartOrder('back')).toBeGreaterThan(cardPartOrder('edge'));
+  });
+
+  it('keeps the face in front of the cap on a 16-bit depth buffer', () => {
+    const aspect = 390 / 844;
+    const screenH = 844;
+    const geo = cardGeometry();
+    const front = geo.front.getAttribute('position');
+    const body = geo.body.getAttribute('position');
+    let frontZ = -Infinity;
+    let bodyZ = -Infinity;
+    for (let i = 0; i < front.count; i++) frontZ = Math.max(frontZ, front.getZ(i));
+    for (let i = 0; i < body.count; i++) bodyZ = Math.max(bodyZ, body.getZ(i));
+    expect(frontZ - bodyZ).toBeCloseTo(FACE_CAP_GAP, 6);
+    const cam = makeCamera(aspect, false);
+    const n = 13;
+    const plane = handCardPlane(aspect, n, n - 1, 0, 0, { near: LEGAL_NEAR }, 0, screenH);
+    const world = FACE_CAP_GAP * plane.s * plane.depth;
+    const z = plane.depth;
+    const dz = (z * z) * (cam.far - cam.near) / (cam.near * cam.far * 65535);
+    expect(LEGAL_NEAR).toBe(0.02);
+    expect(world).toBeGreaterThan(dz * 2);
+    const slot = handCardPlane(aspect, n, 6, 0, 0, {}, 0, screenH);
+    const near = handCardPlane(aspect, n, 6, 0, 0, { near: LEGAL_NEAR }, 0, screenH);
+    expect(slot.depth - near.depth).toBeCloseTo(LEGAL_NEAR, 6);
+    expect(near.x).toBeCloseTo(slot.x, 6);
+    expect(near.y).toBeCloseTo(slot.y, 6);
   });
 
   it('keeps left-to-right order inside the legal group and does not jump on a tie', () => {

@@ -94,8 +94,32 @@ export function handRenderOrder(index: number, above: boolean): number {
 }
 
 /**
- * Draw order inside one card. Legal cards turn depthTest off so they paint over a closer neighbour;
- * without this, the untextured edge is sorted after the face and the pips disappear under a blank slab.
+ * How far a playable card moves toward the camera, in the fan's depth units.
+ * The fan steps 0.006 per card. 0.02 clears the neighbours that overlap a card,
+ * and it is far above the ~0.0003 iPhone 16-bit depth fight. Position and scale
+ * are both multiplied by depth, so the card does not slide on screen.
+ */
+export const LEGAL_NEAR = 0.02;
+
+/**
+ * Window-space depth bias for the face and the back.
+ * A card facing the camera has almost no slope, so the units term is what separates
+ * the pips from the cream cap when both quantize to the same 16-bit depth.
+ */
+export const FACE_POLYGON_OFFSET = { factor: -1, units: -8 } as const;
+
+/**
+ * Body, face, and back always depth-test, including on a legal card.
+ * Turning the test off let the untextured cap paint over the pips. The group outline
+ * is a separate transparent mesh and is the one place the test stays off.
+ */
+export function applyLegalCardDepth(materials: { depthTest: boolean }[]): void {
+  for (const m of materials) m.depthTest = true;
+}
+
+/**
+ * Draw order inside one card. The face is a step after the body so a tie in the
+ * depth buffer still paints the pips last. Depth testing stays on.
  */
 export function cardPartOrder(part: 'edge' | 'back' | 'face'): number {
   if (part === 'face') return 2;
@@ -124,9 +148,9 @@ export function paintOrder(obj: PaintNode | null | undefined): number {
 
 /**
  * Deliver pointer hits in paint order, then by distance.
- * Legal cards are drawn over the illegal cards beside them (higher renderOrder, depth test off),
- * but those neighbours are still closer in z. A distance sort would give the tap to the card you
- * cannot see and the illegal handler would swallow it. The card on screen gets the tap.
+ * A legal card sits LEGAL_NEAR closer than its slot. A neighbour a few places to the right
+ * can still be nearer, and a distance sort would give the tap to that card. The card on
+ * screen gets the tap.
  */
 export function hitsInPaintOrder<T extends { distance: number; eventObject?: PaintNode | null; object: PaintNode }>(hits: readonly T[]): T[] {
   return hits.slice().sort((a, b) => {

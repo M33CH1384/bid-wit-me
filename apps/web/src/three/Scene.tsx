@@ -9,7 +9,7 @@ import { isNukeTrick, type Card, type Play, type Trick } from '@spades/rules';
 import Card3D from './Card3D';
 import PlayableGlow, { type GlowAnchor } from './PlayableGlow';
 import { departureSlot, handCardKey, handReactKey } from '../handOrder';
-import { GAP_S, LIFT_S, canTapCard, fanGapPx, fanMotion, handRenderOrder, hitsInPaintOrder, playablePose, raiseLocalY } from './handLift';
+import { GAP_S, LEGAL_NEAR, LIFT_S, canTapCard, fanGapPx, fanMotion, handRenderOrder, hitsInPaintOrder, playablePose, raiseLocalY } from './handLift';
 import { contiguousRuns } from './playableOutline';
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline } from './dealTimeline';
@@ -315,7 +315,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   if (held.current.handNo !== handNo) held.current = { handNo, cards: new Set(), slots: new Map(), count: 0, seen: new Set() };
   const pendingHold = useRef<Held>(held.current);
 
-  type Item = { key: string; card: Card | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: (() => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide'; raise?: number; roll?: number; order?: number; cover?: boolean; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; inTrick?: boolean; played?: string | null; jokerAura?: { kind: 'BJ' | 'LJ'; cardsAfter: number } };
+  type Item = { key: string; card: Card | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: (() => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide'; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; inTrick?: boolean; played?: string | null; jokerAura?: { kind: 'BJ' | 'LJ'; cardsAfter: number } };
   const items: Item[] = [];
   const dealDelay = (slot: number, seat: number) => tl.shuffle + (slot * n + ((seat - dealer - 1 + n) % n)) * tl.step;
 
@@ -397,14 +397,16 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
     const isLegal = !!c && legal.includes(c);
     const pose = c ? playablePose(yourTurn, isLegal, selected === c) : 'flat';
     const above = pose === 'legal' || pose === 'selected';
-    // The raise is screen-up (counter-rotated by the fan roll). The gap is a sideways slide, and stacking is render order.
-    const target = handFan(aspect, mine.length, i, 0, safeFrac, fanOpts, gaps[i] ?? 0, screenH);
+    // The raise is screen-up. The gap is a CSS-pixel slide. A playable card also sits LEGAL_NEAR
+    // closer so it wins the depth test against the neighbour. That bias does not move it on screen.
+    const opts = above ? { ...fanOpts, near: pose === 'selected' ? LEGAL_NEAR * 2 : LEGAL_NEAR } : fanOpts;
+    const target = handFan(aspect, mine.length, i, 0, safeFrac, opts, gaps[i] ?? 0, screenH);
     const flip = flipIn && !!c;
     const id = c ? handCardKey(c) : '';
     // intro stays on for the whole hand; only cards we have not shown yet come from the deck.
     const fresh = !!id && intro && !held.current.seen.has(id);
     const move = fanMotion({ flip, fresh, closing });
-    const plane = handCardPlane(aspect, mine.length, i, 0, safeFrac, fanOpts, gaps[i] ?? 0, screenH);
+    const plane = handCardPlane(aspect, mine.length, i, 0, safeFrac, opts, gaps[i] ?? 0, screenH);
     if (c) {
       nextCards.add(c);
       nextSlots.set(id, target);
@@ -434,7 +436,6 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       raise: c ? raiseLocalY(pose, fan.viewH, screenH, fan.ch) : 0,
       roll: plane.roll,
       order: handRenderOrder(i, above),
-      cover: above,
     });
   });
   pendingHold.current = { handNo, cards: nextCards, slots: nextSlots, count: faceCount, seen: nextSeen };
@@ -476,7 +477,6 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
           raise={it.raise}
           roll={it.roll}
           order={it.order}
-          cover={it.cover}
           dim={it.dim}
           glow={it.glow}
           castShadow={it.shadow !== false && quality === 'high'}
