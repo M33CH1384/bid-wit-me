@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { handCardPlane } from '../src/three/layout';
+import { GROUP_PAD_PX, GROUP_RADIUS_PX, glowRadiusPx } from '../src/three/handLift';
+import { fanLayout, handCardPlane } from '../src/three/layout';
 import {
-  contourContains, contoursToTriangles, contiguousRuns, haloLocal, HALO_SX, HALO_SY, placeOnPlane, strokeContour, unionContours, yRangeAt, type Pt,
+  contourContains, contoursToTriangles, contiguousRuns, groupOutline, haloLocal, HALO_SX, HALO_SY, placeOnPlane, strokeContour, strokeRibbon, unionContours, yRangeAt, type Pt,
 } from '../src/three/playableOutline';
 
 describe('contiguous playable runs', () => {
@@ -131,6 +132,58 @@ describe('playable fan on a phone', () => {
     // the outer tip of the run stays put; only the selected card's part of the rail rises
     expect(Math.abs(popped.top[0]!.y - flat.top[0]!.y)).toBeLessThan(0.008);
     expect(Math.abs(popped.bot[0]!.x - flat.bot[0]!.x)).toBeLessThan(1e-6);
+  });
+});
+
+describe('rounded group outline', () => {
+  const aspect = 390 / 844;
+  const screenH = 844;
+
+  it('pads one run by 4px, cuts the corner with a 10px radius, and stops the glow at 16px', () => {
+    const L = fanLayout(aspect, 13);
+    const px = L.viewH / screenH;
+    const face = placeOnPlane(haloLocal(1, 1), handCardPlane(aspect, 13, 6, 0));
+    const pad = GROUP_PAD_PX * px;
+    const rad = GROUP_RADIUS_PX * px;
+    const rect = groupOutline([face], pad, rad, 6);
+    expect(rect).toBeTruthy();
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of face) {
+      minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+    }
+    const top = Math.max(...rect!.map((p) => p.y));
+    const right = Math.max(...rect!.map((p) => p.x));
+    expect((top - maxY) / px).toBeCloseTo(GROUP_PAD_PX, 1);
+    expect((right - maxX) / px).toBeCloseTo(GROUP_PAD_PX, 1);
+    const corner = { x: maxX + pad, y: maxY + pad };
+    const nearest = Math.min(...rect!.map((p) => Math.hypot(p.x - corner.x, p.y - corner.y)));
+    expect(nearest / px).toBeGreaterThan(GROUP_RADIUS_PX * 0.25);
+    const [c] = unionContours([rect!], 48);
+    expect(c).toBeTruthy();
+    expect(contourContains(c!, corner)).toBe(false);
+    expect(contourContains(c!, { x: (minX + maxX) / 2, y: (minY + maxY) / 2 })).toBe(true);
+    const ribbon = strokeRibbon(c!, glowRadiusPx() * px);
+    let rim = -Infinity;
+    const mid = (minX + maxX) / 2;
+    for (let i = 0; i < ribbon.pos.length; i += 3) {
+      if (Math.abs(ribbon.pos[i]! - mid) < px * 8) rim = Math.max(rim, ribbon.pos[i + 1]!);
+    }
+    expect((rim - maxY) / px).toBeCloseTo(GROUP_PAD_PX + glowRadiusPx(), 0);
+  });
+
+  it('keeps a gap as two outlines and does not contain the card between them', () => {
+    const faces = (indexes: number[]) => indexes.map((i) => placeOnPlane(haloLocal(1, 1), handCardPlane(aspect, 13, i, 0)));
+    const px = fanLayout(aspect, 13).viewH / screenH;
+    const left = groupOutline(faces([2, 3]), GROUP_PAD_PX * px, GROUP_RADIUS_PX * px);
+    const right = groupOutline(faces([8, 9, 10]), GROUP_PAD_PX * px, GROUP_RADIUS_PX * px);
+    expect(left && right).toBeTruthy();
+    const [lc] = unionContours([left!], 40);
+    const [rc] = unionContours([right!], 40);
+    const between = handCardPlane(aspect, 13, 5, 0);
+    expect(contourContains(lc!, between)).toBe(false);
+    expect(contourContains(rc!, between)).toBe(false);
+    expect(Math.max(...left!.map((p) => p.x))).toBeLessThan(Math.min(...right!.map((p) => p.x)));
   });
 });
 

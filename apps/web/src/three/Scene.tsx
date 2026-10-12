@@ -402,7 +402,10 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       nextSlots.set(id, target);
       nextSeen.add(id);
       const plane = handCardPlane(aspect, mine.length, i, 0, safeFrac, fanOpts);
-      glowAnchors.push({ name: handReactKey(handNo, c, i), x: plane.x, y: plane.y, playable: pose === 'legal' || pose === 'selected' });
+      glowAnchors.push({
+        name: handReactKey(handNo, c, i), x: plane.x, y: plane.y,
+        playable: pose === 'legal' || pose === 'selected', selected: pose === 'selected',
+      });
     }
     items.push({
       hand: true,

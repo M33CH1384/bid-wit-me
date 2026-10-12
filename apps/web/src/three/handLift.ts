@@ -17,14 +17,39 @@ export const RAISE_S = 0.16;
 /** After a card leaves, the others slide into the gap. Same curve as the lift, a little longer. */
 export const GAP_S = 0.24;
 
-/** One continuous outline around each run of legal cards. No per-card border. */
+/** One rounded outline around each run of legal cards. No per-card border, no face tint. */
 export const OUTLINE_COLOR = '#F2C14E';
 export const OUTLINE_PX = 2;
-/** `box-shadow: 0 0 16px rgba(242,193,78,.45)` — same gold, blur radius 16px, peak alpha 0.45. */
-export const GLOW_BLUR_PX = 16;
-export const GLOW_ALPHA = 0.45;
-/** The glow mesh extends this many blur-radii so the gaussian has faded out at the edge. */
-export const GLOW_TAIL = 3;
+/** Corner radius of the group outline, in CSS pixels. */
+export const GROUP_RADIUS_PX = 10;
+/** Space between the card faces and the stroke centre. */
+export const GROUP_PAD_PX = 4;
+/**
+ * `box-shadow: 0 0 18px 4px rgba(242,193,78,.4)`.
+ * The ribbon is centred on the padding line and clipped so it ends about 16px from the cards.
+ */
+export const GLOW_BLUR_PX = 18;
+export const GLOW_SPREAD_PX = 4;
+export const GLOW_ALPHA = 0.4;
+/** Outer edge of the glow mesh, measured from the card faces. */
+export const GLOW_REACH_PX = 16;
+
+/** One diagonal sweep when the turn's highlight appears. It does not loop. */
+export const SHINE_MS = 650;
+export const SHINE_S = SHINE_MS / 1000;
+/** CSS linear-gradient angle: 0° is up, 90° is to the right. */
+export const SHINE_DEG = 105;
+/** Band width as a fraction of the group's span along the gradient. */
+export const SHINE_WIDTH = 0.35;
+export const SHINE_PEAK = 0.35;
+
+/** Idle underglow opacity. A 2.2s ease-in-out cycle, and the outline does not scale. */
+export const BREATHE_S = 2.2;
+export const BREATHE_LO = 0.3;
+export const BREATHE_HI = 0.5;
+export const BREATHE_SCALE = 1;
+/** Selected card: the same outline, brighter than the breath. */
+export const SELECT_GLOW_OP = 0.8;
 
 /**
  * Not-playable cards read at 55% brightness. The albedo below was tuned on the lit, tone-mapped card so that
@@ -92,18 +117,62 @@ export function outlineRadiusPx(): number {
   return OUTLINE_PX / 2;
 }
 
-/** Half-width of the glow ribbon, in CSS pixels. */
+/**
+ * Half-width of the glow ribbon, in CSS pixels.
+ * The stroke sits `GROUP_PAD_PX` outside the faces, so this reaches `GLOW_REACH_PX` from the cards.
+ */
 export function glowRadiusPx(): number {
-  return GLOW_BLUR_PX * GLOW_TAIL;
+  return GLOW_REACH_PX - GROUP_PAD_PX;
 }
 
 /**
- * Gaussian falloff of a 16px blur. `edge` is 0 on the outline and 1 at the ribbon edge (3 blur-radii out).
- * Peak is 1; multiply by GLOW_ALPHA for the shadow colour.
+ * Gaussian of an 18px CSS blur (sigma = blur / 2), plus a fade on the outer quarter so the
+ * clip at ~16px from the cards does not leave a hard ring. `edge` is 0 on the outline and 1 at the ribbon edge.
+ * Peak is 1. The breath (0.3–0.5) or the selected 0.8 is the shadow alpha — do not also multiply by GLOW_ALPHA.
  */
 export function glowFalloff(edge: number): number {
-  const sigmas = edge * GLOW_TAIL;
-  return Math.exp(-0.5 * sigmas * sigmas);
+  const px = Math.abs(edge) * glowRadiusPx();
+  const sigma = GLOW_BLUR_PX / 2;
+  const g = Math.exp(-0.5 * (px / sigma) ** 2);
+  const fade = edge >= 1 ? 0 : edge > 0.75 ? 1 - (edge - 0.75) / 0.25 : 1;
+  return g * fade;
+}
+
+/** CSS ease-out: cubic-bezier(0, 0, .58, 1). */
+export function easeOut(t: number): number {
+  return cssCubicBezier(0, 0, 0.58, 1, t);
+}
+
+/** CSS ease-in-out: cubic-bezier(.42, 0, .58, 1). */
+export function easeInOut(t: number): number {
+  return cssCubicBezier(0.42, 0, 0.58, 1, t);
+}
+
+/** Idle glow opacity at time `t` (seconds). Loops every BREATHE_S. Endpoints are 0.3, the half-cycle is 0.5. */
+export function breatheOpacity(t: number): number {
+  const phase = ((t % BREATHE_S) + BREATHE_S) % BREATHE_S / BREATHE_S;
+  const half = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
+  return BREATHE_LO + (BREATHE_HI - BREATHE_LO) * easeInOut(half);
+}
+
+/** Gradient direction in plane space (y up). CSS 105° points down-right. */
+export function shineAxis(): { x: number; y: number } {
+  const rad = (SHINE_DEG * Math.PI) / 180;
+  return { x: Math.sin(rad), y: Math.cos(rad) };
+}
+
+/**
+ * White-band alpha at `along` (0 at the group's leading edge, `span` at the trailing edge).
+ * `t` is 0..1 after ease-out. The 35% band enters from before the group and leaves past it; outside [0,1] it is off.
+ */
+export function shineBand(along: number, span: number, t: number): number {
+  if (!(t >= 0 && t <= 1) || !(span > 0)) return 0;
+  const width = SHINE_WIDTH * span;
+  const center = -width + easeOut(t) * (span + width * 2);
+  const half = width * 0.5;
+  const d = Math.abs(along - center) / half;
+  if (d >= 1) return 0;
+  return (1 - d) * SHINE_PEAK;
 }
 
 /** CSS cubic-bezier(x1, y1, x2, y2) sampled by x (time). Control x's must be in [0, 1]. */
