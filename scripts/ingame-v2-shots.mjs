@@ -11,23 +11,23 @@ try {
   await p.goto(`${base}/?autostart=1&seed=ingame-v2`);
   const legal = p.locator('[data-testid^="card-"][data-legal="true"]');
   let mine = false, other = false, trick = 0;
-  for (let i = 0; i < 40000; i++) {
-    if (await p.getByTestId('table-talk').count()) break;
+  for (let i = 0; i < 1500; i++) {
+    if (await p.getByTestId('table-talk').count() || await p.getByRole('button', { name: /^score pad$/i }).count()) break;
     const bid = p.locator('.bid-grid button'); if (await bid.count()) { await bid.nth(2).click().catch(() => {}); continue; }
     const ok = p.getByTestId('coach-ok'); if (await ok.count()) { await ok.click().catch(() => {}); continue; }
     if (await legal.count()) {
       if (!mine && trick >= 2) { await p.waitForTimeout(900); await p.screenshot({ path: `${out}/phone-390-my-turn.png` }); mine = true; }
       const c = legal.last(); await c.dispatchEvent('click'); await c.dispatchEvent('click').catch(() => {}); trick++;
       await p.waitForTimeout(700);
-      if (!other && trick >= 3) { await p.waitForTimeout(1800); await p.screenshot({ path: `${out}/phone-390-off-turn.png` }); other = true; }
+      if (!other && trick >= 3 && !(await legal.count())) { await p.screenshot({ path: `${out}/phone-390-off-turn.png` }); other = true; }
       continue;
     }
+    if (i % 200 === 199) await p.screenshot({ path: '/tmp/ig-probe.png' });
     await p.waitForTimeout(120);
   }
   await p.getByTestId('last-trick').click().catch(() => {});
-  await p.getByTestId('table-talk').waitFor({ timeout: 60000 });
   await p.waitForTimeout(1200);
-  await p.getByRole('button', { name: 'Score pad' }).click();
+  await p.getByRole('button', { name: /^score pad$/i }).first().click();
   await p.waitForTimeout(800);
   await p.screenshot({ path: `${out}/phone-390-score-pad.png` });
   console.log('ok', mine, other);
