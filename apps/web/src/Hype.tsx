@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { type FxEvent, type NukeIntensity, fx } from './fx';
 import JokerBurst from './JokerBurst';
+import PulsePlate from './PulsePlate';
+import { getBurst } from './jokerFx';
+import { BLAST_MS, canvasOwnsBlast } from './nukeBlast';
 import { WheelsCelebration } from './WheelsCar';
 
 /**
- * Full-screen hype overlay: streak / SHOT! pop-ups, joker vignette pulses and the Big-over-Little nuke banner.
- * The explosion is the 3D blast. With "Reduce effects" the screen shake is skipped (sound + text stay).
+ * Full-screen hype overlay: streak / SHOT! pop-ups, the joker pulse, and the nuke banner.
+ * The detonation is the canvas blast when a 2D context exists, otherwise the 3D blast.
  */
 interface Pop { id: number; kind: FxEvent['kind']; text: string; sub?: string; level?: number }
 
@@ -33,6 +36,7 @@ export default function Hype({ reduced, low = false }: { reduced: boolean; low?:
   const [pulse, setPulse] = useState<{ id: number; big: boolean } | null>(null);
   const reducedRef = useRef(reduced);
   reducedRef.current = reduced;
+  const nukeWatch = useRef(0);
 
   useEffect(() => {
     const off = fx.on((e) => {
@@ -53,10 +57,24 @@ export default function Hype({ reduced, low = false }: { reduced: boolean; low?:
     else if (e.kind === 'nuke') {
       const c = trickCenter();
       setNuke({ id: e.id, ...c, mode: fx.nukeMode });
-      window.setTimeout(() => setNuke((n) => (n?.id === e.id ? null : n)), 3700);
+      const id = e.id;
+      if (!canvasOwnsBlast()) {
+        window.setTimeout(() => setNuke((n) => (n?.id === id ? null : n)), 3700);
+        return;
+      }
+      cancelAnimationFrame(nukeWatch.current);
+      const watch = () => {
+        const b = getBurst();
+        if (!b || (fx.warp === null && b.elapsed >= BLAST_MS)) {
+          setNuke((n) => (n?.id === id ? null : n));
+          return;
+        }
+        nukeWatch.current = requestAnimationFrame(watch);
+      };
+      nukeWatch.current = requestAnimationFrame(watch);
     }
     });
-    return () => { off(); };
+    return () => { off(); cancelAnimationFrame(nukeWatch.current); };
   }, []);
 
 
@@ -74,13 +92,23 @@ export default function Hype({ reduced, low = false }: { reduced: boolean; low?:
 
   return (
     <div className="hype-layer" aria-live="polite" data-testid="hype">
+      <PulsePlate reduced={reduced} />
       <JokerBurst />
       {pulse && <div key={pulse.id} className={`joker-pulse ${pulse.big ? 'big' : ''}`} data-testid="joker-pulse" />}
       {nuke && (
         <>
-          <div key={`b${nuke.id}`} className={`nuke-banner ${nuke.mode === 'off' || reduced ? 'calm' : ''}`} data-testid="nuke" onClick={() => setNuke(null)}>
-            <div className="nb-title" data-text="☢ NUKED ☢">☢ NUKED ☢</div>
-            <div className="nb-sub">Big Joker over Little Joker</div>
+          <div key={`b${nuke.id}`} className={`nuke-banner ${canvasOwnsBlast() ? 'driven' : ''} ${nuke.mode === 'off' || reduced ? 'calm' : ''}`} data-testid="nuke" onClick={() => setNuke(null)}>
+            {canvasOwnsBlast() ? (
+              <>
+                <div className="nb-title" data-text="NUKED">NUKED</div>
+                <div className="nb-sub">(Big Joker Over Little Joker)</div>
+              </>
+            ) : (
+              <>
+                <div className="nb-title" data-text="☢ NUKED ☢">☢ NUKED ☢</div>
+                <div className="nb-sub">Big Joker over Little Joker</div>
+              </>
+            )}
           </div>
         </>
       )}

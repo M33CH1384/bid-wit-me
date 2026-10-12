@@ -7,6 +7,7 @@ import {
   PlaneGeometry, type PointLight, RingGeometry, ShaderMaterial, SphereGeometry, TorusGeometry, Vector2, Vector3,
 } from 'three';
 import { fx } from '../fx';
+import { canvasOwnsBlast } from '../nukeBlast';
 import { currentNukeDevice, nukeClockStalled, nukeProfile } from './nukeVisual';
 
 /**
@@ -199,6 +200,8 @@ export function Nuke3D({ quality }: { quality: 'high' | 'low' }) {
   }, []);
   useEffect(() => fx.on((e) => {
     if (e.kind !== 'nuke') return;
+    // The canvas blast is the detonation. Nuke3D stays the fallback when a 2D context is missing.
+    if (canvasOwnsBlast()) return;
     const mode = fx.nukeMode;
     if (mode === 'off') return;
     setRun({ id: e.id, start: performance.now(), full: mode === 'full' });

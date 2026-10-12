@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BEAT_MARKS, BURST_MS, JOKER_PALETTE,
   clearBurst, cycleMs, getBurst, heartbeat, jitterPx,
-  ripplePose, shakeOffset, startBurst, subscribeBurst,
+  ripplePose, startBurst, subscribeBurst,
 } from '../src/jokerFx';
 
 describe('radioactive heartbeat', () => {
@@ -58,18 +58,9 @@ describe('radioactive heartbeat', () => {
   });
 });
 
-describe('detonation shake', () => {
-  it('shakes the whole screen 8px over 350ms and skips it under reduced motion', () => {
-    expect(shakeOffset(0, 'BJ', true)).toEqual({ x: 0, y: 0 });
-    expect(shakeOffset(-1, 'BJ', false)).toEqual({ x: 0, y: 0 });
-    expect(shakeOffset(350, 'BJ', false)).toEqual({ x: 0, y: 0 });
-    const s = shakeOffset(0, 'BJ', false);
-    expect(Math.hypot(s.x, s.y)).toBeCloseTo(8 * 0.65, 5);
-    expect(Math.hypot(shakeOffset(0, 'LJ', false).x, shakeOffset(0, 'LJ', false).y)).toBeCloseTo(4 * 0.65, 5);
-  });
-
-  it('keeps the burst clock as long as the 3D blast so a stall can still cancel haptics', () => {
-    expect(BURST_MS.BJ).toBe(3600);
+describe('detonation clock', () => {
+  it('stays up for the canvas blast', () => {
+    expect(BURST_MS.BJ).toBe(1800);
     expect(BURST_MS.LJ).toBe(500);
   });
 });
