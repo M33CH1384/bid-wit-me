@@ -7,6 +7,12 @@ workers_dev = true
 [vars]
 # Comma-separated origins allowed to open tables / websockets ("*" during local dev).
 ALLOWED_ORIGINS = "https://bid-wit-me.pages.dev,http://localhost:5173,http://localhost:4173,http://127.0.0.1:4173"
+# Public site that fronts /api/auth/* (Pages Functions proxy): OAuth redirect URIs, passkey RP ID, cookie site.
+PUBLIC_ORIGIN = "https://bid-wit-me.pages.dev"
+# Sign-in providers turn on only when BOTH of their secrets exist (npx wrangler secret put …):
+#   GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET · DISCORD_CLIENT_ID / DISCORD_CLIENT_SECRET
+#   X_CLIENT_ID / X_CLIENT_SECRET · FACEBOOK_APP_ID / FACEBOOK_APP_SECRET
+# Passkeys need no secrets. AUTH_MOCK=1 (local tests only) adds a fake provider.
 # TURN (optional, later): set these as secrets to hand out Cloudflare Realtime TURN credentials via /api/ice
 #   npx wrangler secret put TURN_KEY_ID
 #   npx wrangler secret put TURN_KEY_API_TOKEN
@@ -38,3 +44,10 @@ class_name = "RateLimitDO"
 [[migrations]]
 tag = "v3"
 new_sqlite_classes = ["RateLimitDO"]
+
+# Accounts (users, linked logins, passkeys, sessions, progress). Free tier. Schema: migrations/
+[[d1_databases]]
+binding = "DB"
+database_name = "bid-wit-me"
+database_id = "31453fef-bbaa-444a-bd16-7c5c8cd62230"
+migrations_dir = "migrations"

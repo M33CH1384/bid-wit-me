@@ -6,6 +6,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 W="npx --yes wrangler@3"
 
+echo "▶ applying D1 migrations (accounts) to the remote database…"
+(cd apps/server && $W d1 migrations apply bid-wit-me --remote)
+
 echo "▶ deploying apps/server (bid-wit-me-server)…"
 out=$(cd apps/server && $W deploy 2>&1 | tee /dev/stderr)
 url=$(grep -oE 'https://bid-wit-me-server\.[a-z0-9-]+\.workers\.dev' <<<"$out" | head -1 || true)
@@ -17,5 +20,6 @@ echo "▶ building web with VITE_SERVER_URL=$url"
 (cd apps/web && VITE_SERVER_URL="$url" npx vite build)
 
 echo "▶ deploying Pages (bid-wit-me)…"
-$W pages deploy apps/web/dist --project-name=bid-wit-me --branch=main --commit-dirty=true
+# run from apps/web so wrangler picks up its wrangler.toml (the API service binding) and functions/ (the /api proxy)
+(cd apps/web && $W pages deploy dist --project-name=bid-wit-me --branch=main --commit-dirty=true)
 echo "✓ done: https://bid-wit-me.pages.dev  ·  server $url"

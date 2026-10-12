@@ -8,6 +8,7 @@
  *   GET  /api/ice                 → ICE servers for WebRTC (public STUN; TURN when configured)
  *   POST /api/feedback            → player feedback (+ up to 3 screenshots), see feedback.ts
  *   GET  /api/feedback/admin      → private listing (sign-in form → HttpOnly admin cookie; never a token in the URL)
+ *   /api/auth/*                   → accounts + sign-in (D1), see auth/routes.ts; served same-origin via the Pages proxy
  *   GET  /health
  *
  * Free-plan notes (spec §13):
@@ -23,8 +24,9 @@ import { Room, type RoomData, ROOM_DATA_VERSION, newRoomData } from './room';
 import { FEEDBACK_LIMITS, type FeedbackRow, adminHtml, hashIp, notifyOwner, parseFeedback, rateOk, tokenOk } from './feedback';
 import { ADMIN_COOKIE, ADMIN_TTL_MS, adminCookieOk, adminLoginHtml, makeAdminCookie, readCookie } from './admin';
 import { type Bucket, LIMITS, type LimitEnv, hit, limited } from './limits';
+import { type AuthEnv, handleAuth } from './auth/routes';
 
-export interface Env extends LimitEnv {
+export interface Env extends LimitEnv, AuthEnv {
   TABLES: DurableObjectNamespace<TableDO>;
   ALLOWED_ORIGINS?: string;
   TURN_KEY_ID?: string;
@@ -158,6 +160,12 @@ export default {
     if (parts[1] === 'ice' && req.method === 'GET') return json(await iceServers(env), {}, origin);
 
     if (parts[1] === 'feedback') return feedbackRoute(req, env, parts, url, origin);
+
+    if (parts[1] === 'auth') {
+      // sign-in ceremonies + username checks are rate limited; reading /me and /config isn't
+      if (!['me', 'config'].includes(parts[2] ?? '')) { const slow = await limited(req, env, 'auth'); if (slow) return slow; }
+      return handleAuth(req, env, url, parts, { fetch: (i, init) => fetch(i, init), now: () => Date.now() });
+    }
 
     if (parts[1] === 'tables' && parts.length === 2 && req.method === 'POST') {
       const slow = await limited(req, env, 'create', origin);

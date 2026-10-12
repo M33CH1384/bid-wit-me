@@ -1,0 +1,8 @@
+# Cloudflare Pages project (static site in dist/ + the /api proxy in functions/)
+name = "bid-wit-me"
+pages_build_output_dir = "dist"
+compatibility_date = "2025-07-18"
+
+[[services]]
+binding = "API"
+service = "bid-wit-me-server"
