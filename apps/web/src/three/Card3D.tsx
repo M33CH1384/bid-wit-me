@@ -91,8 +91,8 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     return m;
   }, [back, quality]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Your turn: cards you can't play sit at 55% brightness (still readable); playable cards stay at full colour.
-  // Their shared gold outline is PlayableGlow, not a per-card edge. This backing is a tip mark.
+  // Your turn: cards you can't play sit at 55% brightness (still readable); playable cards stay at full colour
+  // and get a gold edge glow behind them. Both ease in ~150 ms. This backing is also a tip mark.
   const glowMat = useMemo(() => new MeshBasicMaterial({ color: '#f5c542', transparent: true, opacity: 0, depthWrite: false, toneMapped: false }), []);
   const edge = useMemo(() => edgeMat.clone(), []);
   // The root group keeps `order` for taps. Child groups reset Three.js groupOrder, so each mesh
