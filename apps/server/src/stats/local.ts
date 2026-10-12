@@ -86,7 +86,11 @@ export async function recordOfflineGame(db: D1Database, user: { id: string; user
   });
   let teamNames: (string | null)[] | undefined;
   if (game.rules.partnerships && Array.isArray(b.teamNames)) {
-    teamNames = [0, 1].map((i) => (typeof b.teamNames![i] === 'string' ? cleanTeamName(b.teamNames![i] as string) : null));
+    const raw = b.teamNames as unknown[];
+    teamNames = [0, 1].map((i) => {
+      const name = raw[i];
+      return typeof name === 'string' ? cleanTeamName(name) : null;
+    });
   }
   const sideNames = game.rules.partnerships
     ? [0, 1].map((side) => teamNames?.[side] || `${seats[side]!.name} + ${seats[side + 2]?.name ?? 'Bot'}`)
