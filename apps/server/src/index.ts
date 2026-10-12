@@ -27,14 +27,14 @@ import { type Bucket, LIMITS, type LimitEnv, hit, limited } from './limits';
 import { type AuthEnv, handleAuth } from './auth/routes';
 import { type SocialEnv, handleSocialHttp, isAdmin } from './social/routes';
 import { verifyTicket } from './social/ticket';
-import { type ConnAtt, type GlobalLog, Hub } from './social/hub';
+import { type ConnAtt, type GlobalLog, Hub, type TableLog } from './social/hub';
 import { saveRecord } from './stats/record';
 import { handleTournaments } from './tournament/routes';
 import type { TOp } from './tournament/do';
 import type { TableRules } from '@spades/rules';
 export { TournamentDO } from './tournament/do';
 import type { TournamentDO } from './tournament/do';
-import type { SocialChatLine, SocialServerMsg } from '@spades/protocol';
+import type { OpenTable, SocialChatLine, SocialServerMsg } from '@spades/protocol';
 
 export interface Env extends LimitEnv, AuthEnv, SocialEnv {
   TABLES: DurableObjectNamespace<TableDO>;
@@ -198,6 +198,11 @@ export default {
       }
       const slow = await limited(req, env, 'info');
       if (slow) return slow;
+      if (parts[2] === 'tables' && parts.length === 3 && req.method === 'GET') {
+        // Release 10: the Open tables list over plain HTTP (the hub also pushes it live over its socket)
+        const r = await env.SOCIAL.get(env.SOCIAL.idFromName('hub')).fetch('https://social/tables');
+        return json(await r.json(), {}, origin);
+      }
       return handleSocialHttp(req as Request & { cf?: unknown }, env, url, parts, Date.now());
     }
 
@@ -286,12 +291,42 @@ export class TableDO extends DurableObject<Env> {
       persist: () => this.scheduleSave(),
       randomId: () => crypto.randomUUID().replace(/-/g, ''),
       gameOver: (rec, rated) => { if (this.env.DB) this.ctx.waitUntil(saveRecord(this.env.DB, rec, rated).catch((e) => console.error('saveRecord', e))); },
+      listing: (t) => this.reportListing(t),
       tournamentResult: (t, scores, places) => {
         const stub = this.env.TOURNAMENTS.get(this.env.TOURNAMENTS.idFromName(t.id));
         const op: TOp = { op: 'result', match: t.match, scores, places };
         this.ctx.waitUntil(stub.fetch('https://tournament/op', { method: 'POST', body: JSON.stringify(op) }).then(() => undefined).catch((e) => console.error('tournamentResult', e)));
       },
     }, data.tournament?.fast && this.env.TEST_HOOKS === '1' ? FAST_TIMING : undefined);
+  }
+
+  /** Release 10: Open tables. Only changes are sent (ignoring the timestamp), at most one report per 1.5 s per table. */
+  private lastListing: string | null = null;
+  private pendingListing: { t: OpenTable | null } | null = null;
+  private listingTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastListingAt = 0;
+  private reportListing(t: OpenTable | null): void {
+    const key = t ? JSON.stringify({ ...t, at: 0 }) : 'null';
+    if (key === this.lastListing && !this.pendingListing) return;
+    this.pendingListing = { t };
+    const flush = () => {
+      this.listingTimer = null;
+      const p = this.pendingListing;
+      this.pendingListing = null;
+      if (!p) return;
+      const k = p.t ? JSON.stringify({ ...p.t, at: 0 }) : 'null';
+      if (k === this.lastListing) return;
+      this.lastListing = k;
+      this.lastListingAt = Date.now();
+      const code = this.room?.data.code;
+      if (!code || !this.env.SOCIAL) return;
+      const stub = this.env.SOCIAL.get(this.env.SOCIAL.idFromName('hub'));
+      this.ctx.waitUntil(stub.fetch('https://social/table', { method: 'POST', body: JSON.stringify({ code, table: p.t }) }).then(() => undefined).catch((e) => console.error('listing', e)));
+    };
+    if (this.listingTimer) return;
+    const wait = Math.max(0, this.lastListingAt + 1500 - Date.now());
+    if (wait === 0) flush();
+    else this.listingTimer = setTimeout(flush, wait);
   }
 
   private send(cid: string, msg: ServerMsg): void {
@@ -509,8 +544,14 @@ export class SocialDO extends DurableObject<Env> {
     super(ctx, env);
     this.sql = ctx.storage.sql;
     this.sql.exec(`CREATE TABLE IF NOT EXISTS global (id INTEGER PRIMARY KEY AUTOINCREMENT, from_id TEXT, name TEXT, text TEXT, at INTEGER, admin INTEGER DEFAULT 0)`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS open_tables (code TEXT PRIMARY KEY, json TEXT, at INTEGER)`);
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
     const sql = this.sql;
+    const tables: TableLog = {
+      put: (t) => { sql.exec('INSERT OR REPLACE INTO open_tables (code, json, at) VALUES (?, ?, ?)', t.code, JSON.stringify(t), t.at); },
+      del: (code) => { sql.exec('DELETE FROM open_tables WHERE code = ?', code); },
+      list: () => sql.exec<{ json: string }>('SELECT json FROM open_tables').toArray().map((r) => JSON.parse(r.json) as OpenTable),
+    };
     const global: GlobalLog = {
       add: (l) => {
         const id = sql.exec<{ id: number }>('INSERT INTO global (from_id, name, text, at, admin) VALUES (?, ?, ?, ?, ?) RETURNING id', l.from, l.name, l.text, l.at, l.admin ? 1 : 0).one().id;
@@ -527,6 +568,7 @@ export class SocialDO extends DurableObject<Env> {
       send: (cid, msg: SocialServerMsg) => { const ws = this.sockets.get(cid); if (ws) try { ws.send(JSON.stringify(msg)); } catch { /* closing */ } },
       save: (cid, att) => { try { this.sockets.get(cid)?.serializeAttachment({ cid, att }); } catch { /* closed */ } },
       global,
+      tables,
       later: (ms, f) => { setTimeout(f, ms); },
       randomId: () => crypto.randomUUID().replace(/-/g, ''),
     }, env.DB);
@@ -545,6 +587,12 @@ export class SocialDO extends DurableObject<Env> {
     if (path === '/notify' && req.method === 'POST') {
       const b = await req.json() as { uids: string[]; notice: { text: string; code?: string; seat?: number; tid?: string } };
       return Response.json({ sent: this.hub.notify(b.uids ?? [], b.notice) });
+    }
+    if (path === '/tables') return Response.json({ tables: this.hub.openTables() });
+    if (path === '/table' && req.method === 'POST') {
+      const b = await req.json() as { code: string; table: OpenTable | null };
+      if (typeof b.code === 'string' && /^[A-Z0-9]{3,12}$/.test(b.code)) this.hub.tableUpdate(b.code, b.table ?? null);
+      return Response.json({ ok: true });
     }
     if (path !== '/ws') return new Response('not found', { status: 404 });
     if (this.sockets.size >= 5000) return new Response('busy', { status: 503 });

@@ -37,8 +37,12 @@ export const LIMITS = {
   /** chat lines per player per 10 s window */
   chatBurst: 5,
   chatHistory: 50,
-  /** max members (seated + waiting) per table */
-  members: 12,
+  /** max members (seated + spectators) per table: 4 seats + LIMITS.spectators */
+  members: 24,
+  /** Release 10: max spectators (unseated members) per table (free-tier friendly) */
+  spectators: 20,
+  /** spectator chat lines per 10 s (players get chatBurst) */
+  spectatorChatBurst: 3,
   /** max size of a relayed WebRTC signaling payload (SDP ~ 3–8 KB) */
   rtcMax: 16_000,
 } as const;
@@ -114,7 +118,10 @@ export type ClientMsg =
   /** host: kick the player in `seat` now (a bot takes over, no rejoin this game). Anyone else: vote to kick (toggles). */
   | { t: 'kick'; seat: number }
   | { t: 'rtc'; to: string; data: unknown }
-  | { t: 'leave' };
+  | { t: 'leave' }
+  /** Release 10, host: table options (any phase). private = hidden from Open tables (invite / code only);
+   *  replaceBots = spectators may take a bot's seat mid-game (default on; seats a player vacated are always open) */
+  | { t: 'tableOpts'; private?: boolean; replaceBots?: boolean };
 
 /* ------------------------------------------------------------ server → client */
 export type SeatInfo =
@@ -173,6 +180,14 @@ export interface RoomInfo {
   votes?: { target: string; by: string[]; need: number }[];
   /** Release 9b: this table plays a tournament match */
   tournament?: { id: string; name?: string; match: string; autostartAt: number | null; reserved: (string | null)[] };
+  /** Release 10: hidden from the Open tables list (default public) */
+  private?: boolean;
+  /** Release 10: spectators may take bot seats mid-game (default on) */
+  replaceBots?: boolean;
+  /** Release 10: connected spectators (unseated members while a game is on) */
+  spectators?: { playerId: string; name: string }[];
+  /** Release 10: seats a spectator may take right now (mid-game, non-tournament): vacated seats + bots if allowed */
+  takeable?: number[];
 }
 
 export interface ChatLine {
@@ -181,6 +196,8 @@ export interface ChatLine {
   bot?: { seat: number; persona: string; reveal?: boolean; line?: string; bid?: number };
   /** a bot partner's bidding hint ("I got about 3"): public like every line; clients may voice it */
   hint?: true;
+  /** Release 10: posted by a spectator (players may hide these) */
+  spectator?: true;
 }
 
 /** Venues (3D arenas). 'classic' = the original studio table; 'random' is a pick resolved when a game starts. */
@@ -199,7 +216,7 @@ export function rollVenue(r: number, not?: VenueId): VenueId {
 export type ServerMsg =
   | { t: 'welcome'; you: string; token: string; code: string; chat: ChatLine[]; v: number }
   /** `view.history` is null when unchanged since the last state sent on this connection (keep the previous one) */
-  | { t: 'state'; room: RoomInfo; seat: number | null; view: PlayerView | null }
+  | { t: 'state'; room: RoomInfo; seat: number | null; view: PlayerView | null; /** Release 10: you're watching (view = a redacted table view from seat 0: no hand, no legal moves) */ spectator?: boolean }
   | { t: 'chat'; line: ChatLine }
   | { t: 'rtc'; from: string; data: unknown }
   /**
@@ -288,6 +305,12 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return isObj(m.media) ? { t: 'media', media: { cam: m.media.cam === true, mic: m.media.mic === true } } : null;
     case 'learning':
       return { t: 'learning', on: m.on === true };
+    case 'tableOpts': {
+      const out: Extract<ClientMsg, { t: 'tableOpts' }> = { t: 'tableOpts' };
+      if (typeof m.private === 'boolean') out.private = m.private;
+      if (typeof m.replaceBots === 'boolean') out.replaceBots = m.replaceBots;
+      return out;
+    }
     case 'rtc':
       if (!isStr(m.to, 64) || m.data === undefined) return null;
       if (JSON.stringify(m.data).length > LIMITS.rtcMax) return null;

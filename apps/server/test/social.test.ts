@@ -14,6 +14,7 @@ class Harness {
   seq = 1;
   ids = 0;
   hub: Hub;
+  tables = new Map<string, import('@spades/protocol').OpenTable>();
   constructor(public db: D1Database) {
     const global: GlobalLog = {
       add: (l) => { const line = { id: this.seq++, ...l }; this.lines.push(line); if (this.lines.length > 200) this.lines.shift(); return line; },
@@ -26,6 +27,11 @@ class Harness {
       send: (cid, m) => { this.out.set(cid, [...(this.out.get(cid) ?? []), m]); },
       save: (cid, a) => this.atts.set(cid, { ...a }),
       global,
+      tables: {
+        put: (t) => { this.tables.set(t.code, t); },
+        del: (c) => { this.tables.delete(c); },
+        list: () => [...this.tables.values()],
+      },
       later: (ms, f) => this.timers.push({ at: this.t + ms, f }),
       randomId: () => `id${++this.ids}xxxxxxxxxxxxxxxx`,
     }, db);
@@ -278,5 +284,26 @@ describe('profiles + recent players (from game records)', () => {
     expect(await profileFor(db, 'nobody', null)).toBeNull();
     const recent = await recentPlayers(db, 'ua');
     expect(recent.map((r) => [r.name, r.games, r.partner])).toEqual(expect.arrayContaining([['Bobby', 3, false], ['Cee', 3, true]]));
+  });
+});
+
+describe('open tables (Release 10)', () => {
+  const T = (code: string, over: Partial<import('@spades/protocol').OpenTable> = {}) => ({ code, host: 'Dee', mode: 'joker', playerCount: 4, target: 500, venue: 'classic', humans: 1, bots: 0, open: 3, status: 'waiting' as const, spectators: 0, at: h.t, ...over });
+  it('hello carries the list; updates and removals reach everyone; stale entries expire', async () => {
+    h.hub.tableUpdate('AAAAA', T('AAAAA'));
+    await h.hub.open('c1', { name: 'Guest' });
+    expect(h.last('c1', 'hello')!.tables!.map((t) => t.code)).toEqual(['AAAAA']);
+    h.hub.tableUpdate('BBBBB', T('BBBBB', { status: 'playing', hand: 3, open: 1 }));
+    expect(h.last('c1', 'tables')!.up![0]).toMatchObject({ code: 'BBBBB', hand: 3 });
+    h.hub.tableUpdate('AAAAA', null);
+    expect(h.last('c1', 'tables')!.gone).toEqual(['AAAAA']);
+    expect(h.hub.openTables().map((t) => t.code)).toEqual(['BBBBB']);
+    h.t += 4 * 3600_000;
+    expect(h.hub.openTables()).toEqual([]);
+  });
+  it('waiting tables sort first', () => {
+    h.hub.tableUpdate('PPPPP', T('PPPPP', { status: 'playing', open: 2 }));
+    h.hub.tableUpdate('WWWWW', T('WWWWW', { status: 'waiting', open: 1 }));
+    expect(h.hub.openTables().map((t) => t.code)).toEqual(['WWWWW', 'PPPPP']);
   });
 });

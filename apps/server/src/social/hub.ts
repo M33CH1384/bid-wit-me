@@ -7,7 +7,7 @@
  *  - friends / blocks / DMs / reports / settings: D1 (SocialStore)
  */
 import {
-  type FriendsState, type InviteMsg, type PresenceEntry, type PresenceStatus, type SocialChatLine, type SocialClientMsg, type SocialServerMsg, type SocialSettings,
+  type FriendsState, type InviteMsg, type OpenTable, type PresenceEntry, type PresenceStatus, type SocialChatLine, type SocialClientMsg, type SocialServerMsg, type SocialSettings,
   SOCIAL_LIMITS, blockLinks, cleanName, cleanText, maskProfanity, parseSocialMsg,
 } from '@spades/protocol';
 import { isProfane } from '../auth/username';
@@ -34,12 +34,22 @@ export interface GlobalLog {
   del(id: number): boolean;
 }
 
+/** Release 10: Open tables, persisted so they survive the hub's hibernation */
+export interface TableLog {
+  put(t: OpenTable): void;
+  del(code: string): void;
+  list(): OpenTable[];
+}
+/** an entry not refreshed for this long is dropped (a table DO that vanished without reporting) */
+export const TABLE_TTL_MS = 3 * 3600_000;
+
 export interface HubIO {
   now(): number;
   send(cid: string, msg: SocialServerMsg): void;
   /** persist a socket's attachment (DO: ws.serializeAttachment) */
   save(cid: string, att: ConnAtt): void;
   global: GlobalLog;
+  tables?: TableLog;
   /** expire invites etc. (in-memory timer) */
   later(ms: number, f: () => void): void;
   randomId(): string;
@@ -104,8 +114,29 @@ export class Hub {
     const me = this.entry(att.pid)!;
     const users = this.visibleList(att.pid);
     const global = this.io.global.list(SOCIAL_LIMITS.globalSend).filter((l) => !this.hiddenBetween(att.pid, l.from));
-    this.io.send(cid, { t: 'hello', you: me, admin: !!att.admin, users, global, friends, settings, unread });
+    this.io.send(cid, { t: 'hello', you: me, admin: !!att.admin, users, global, friends, settings, unread, tables: this.openTables() });
     if (!wasOnline) this.broadcastEntry(att.pid);
+  }
+
+  /* ------------------------------------------------------------- open tables (Release 10) */
+
+  openTables(): OpenTable[] {
+    const log = this.io.tables;
+    if (!log) return [];
+    const now = this.io.now();
+    const out: OpenTable[] = [];
+    for (const t of log.list()) { if (now - t.at > TABLE_TTL_MS) log.del(t.code); else out.push(t); }
+    return out.sort((a, b) => (a.status === 'waiting' ? 0 : 1) - (b.status === 'waiting' ? 0 : 1) || b.open - a.open || b.at - a.at).slice(0, 100);
+  }
+
+  /** a table DO reports its entry (null = unlisted) → everyone online gets the change */
+  tableUpdate(code: string, t: OpenTable | null): void {
+    const log = this.io.tables;
+    if (!log) return;
+    if (t) log.put({ ...t, code });
+    else log.del(code);
+    const msg: SocialServerMsg = t ? { t: 'tables', up: [{ ...t, code }] } : { t: 'tables', gone: [code] };
+    for (const c of this.conns.keys()) this.io.send(c, msg);
   }
 
   close(cid: string): void {

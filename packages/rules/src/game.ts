@@ -558,6 +558,16 @@ export function viewFor(st: GameState, seat: Seat): PlayerView {
   };
 }
 
+/**
+ * Release 10: what a spectator may see. A table view anchored at `anchor` (seat order only) with NO hand at all
+ * (hand null = face-down placeholders of handCounts length), no legal moves, no bid options, no Run-it hint.
+ * Everything else in PlayerView is public (bids, played tricks, scores, history).
+ */
+export function spectatorView(st: GameState, anchor: Seat = 0): PlayerView {
+  const v = viewFor(st, anchor);
+  return { ...v, hand: null, legal: [], bidOptions: null, canRunIt: false };
+}
+
 /** True if this view's opening lead must be the 2♣. */
 export function viewMustLeadTwoOfClubs(v: PlayerView): boolean {
   return v.rules.firstLead === 'twoOfClubs' && v.tricks.length === 0;

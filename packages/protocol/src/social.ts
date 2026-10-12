@@ -62,8 +62,39 @@ export type SocialClientMsg =
   | { t: 'report'; kind: 'global' | 'dm' | 'user'; id?: number; user?: string; reason?: string }
   | { t: 'del'; id: number };
 
+/**
+ * Release 10: a public table on the "Open tables" list (the table's Durable Object reports it to the hub on every
+ * change; private tables and tables with no connected player are removed).
+ */
+export interface OpenTable {
+  code: string;
+  host: string;
+  /** rules mode: joker | cutthroat | aceDown */
+  mode: string;
+  playerCount: number;
+  /** points to win */
+  target: number;
+  venue: string;
+  /** seats with a human / with a bot */
+  humans: number;
+  bots: number;
+  /** seats a newcomer could take now (empty in the lobby; takeable bot seats mid-game; 0 at tournament tables) */
+  open: number;
+  status: 'waiting' | 'playing' | 'over';
+  hand?: number;
+  spectators: number;
+  /** spectators are full */
+  watchFull?: boolean;
+  tournament?: string;
+  /** a seat index a newcomer can take right now (the Join button deep-links it) */
+  seat?: number;
+  at: number;
+}
+
 export type SocialServerMsg =
-  | { t: 'hello'; you: PresenceEntry; admin: boolean; users: PresenceEntry[]; global: SocialChatLine[]; friends: FriendsState | null; settings: SocialSettings | null; unread: Record<string, number> }
+  | { t: 'hello'; you: PresenceEntry; admin: boolean; users: PresenceEntry[]; global: SocialChatLine[]; friends: FriendsState | null; settings: SocialSettings | null; unread: Record<string, number>; /** Release 10 */ tables?: OpenTable[] }
+  /** Release 10: Open tables changed */
+  | { t: 'tables'; up?: OpenTable[]; gone?: string[] }
   | { t: 'pres'; up?: PresenceEntry[]; gone?: string[] }
   | { t: 'chat'; line: SocialChatLine }
   | { t: 'deleted'; id: number }

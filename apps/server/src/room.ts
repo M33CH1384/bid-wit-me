@@ -8,7 +8,7 @@
  *  - all durable state lives in one plain-JSON `RoomData` object that the DO saves as a single row.
  */
 import {
-  type Action, type GameState, type Series, addSeriesGame, emptySeries, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, applyAction, isFreshDeal, isNukeTrick, nextDealer, makeRules, newGame, pendingTurn, secureSeed, validateRules, viewFor,
+  type Action, type GameState, type Series, addSeriesGame, emptySeries, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, applyAction, spectatorView, isFreshDeal, isNukeTrick, nextDealer, makeRules, newGame, pendingTurn, secureSeed, validateRules, viewFor,
 } from '@spades/rules';
 import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, chooseBotAction, loudLoser, parseHint, leanBid, botSkillFor, personaSkillFloor, seatSkill, leanNil, momentsFor, newTalkState, pickBotNames, prePlayLine } from '@spades/bots';
 import {
@@ -16,6 +16,7 @@ import {
   DEFAULT_AFK_LIMIT, LIMITS, PROTOCOL_VERSION, parseClientMsg,
   HAND_END_HOLD_MS, NUKE_ALLOWANCE_MS, RUN_FX_MS, type NukeIntensity, type TalkIntensity, cleanTeamName, pickTeamName, type VenueChoice, type VenueId, rollVenue,
 } from '@spades/protocol';
+import type { OpenTable } from '@spades/protocol';
 import { blockLinks, cleanName, cleanText, maskProfanity } from './filter';
 import { type GameRecord, type LiveStats, type SeatRef, buildRecord, isRated, newLiveStats, placementsOf } from './stats/record';
 
@@ -23,7 +24,8 @@ export const ROOM_DATA_VERSION = 1;
 
 export type SeatSlot =
   | { kind: 'empty' }
-  | { kind: 'bot'; name: string; level: BotLevel }
+  /** vacated: a bot that took over from a player who left / was kicked / went AFK (always open to spectators) */
+  | { kind: 'bot'; name: string; level: BotLevel; vacated?: boolean }
   | { kind: 'human'; playerId: string };
 
 export interface Member {
@@ -99,6 +101,10 @@ export interface RoomData {
   live?: LiveStats;
   /** Release 9b: this table runs a tournament match */
   tournament?: TournamentSeat;
+  /** Release 10: hidden from Open tables (invite / code only) */
+  private?: boolean;
+  /** Release 10: spectators may take bot seats mid-game (unset = on) */
+  replaceBots?: boolean;
 }
 
 /** Release 9b: this table plays one tournament match (rules locked, seats reserved for the entrants, autostart). */
@@ -157,6 +163,8 @@ export interface RoomIO {
   gameOver?(rec: GameRecord, rated: boolean): void;
   /** Release 9b: a tournament match finished (per side: final score and placement, 1 = won) */
   tournamentResult?(t: TournamentSeat, scores: number[], places: number[]): void;
+  /** Release 10: this table's Open tables entry (null = unlisted); called after every broadcast, the DO dedups */
+  listing?(t: OpenTable | null): void;
 }
 
 
@@ -341,7 +349,8 @@ export class Room {
       for (const [cid, p] of this.conns) if (p === pid && cid !== connId) { this.conns.delete(cid); this.io.close?.(cid, 4000, 'replaced'); }
       d.members[pid]!.name = name;
     } else {
-      if (Object.keys(d.members).length >= LIMITS.members) {
+      const watching = Object.values(d.members).filter((x) => x.seat === null).length;
+      if (Object.keys(d.members).length >= LIMITS.members || (d.phase !== 'lobby' && watching >= LIMITS.spectators)) {
         this.err(connId, 'TABLE_FULL', 'This table is full');
         this.io.close?.(connId, 4001, 'full');
         return;
@@ -379,12 +388,18 @@ export class Room {
           // mid-game you may only take over a bot's seat (and only if you're not already playing)
           if (me.seat !== null) throw new RoomError('IN_GAME', 'You are already playing');
           if (slot.kind !== 'bot') throw new RoomError('SEAT_TAKEN', 'That seat is taken');
+          if (!this.takeable().includes(msg.seat)) throw new RoomError('SEAT_LOCKED', "The host doesn't let spectators replace bots");
         } else if (slot.kind === 'human') throw new RoomError('SEAT_TAKEN', 'That seat is taken');
         if (me.seat !== null) d.seats[me.seat] = { kind: 'empty' };
         d.seats[msg.seat] = { kind: 'human', playerId: pid };
         me.seat = msg.seat;
         me.timeouts = 0;
-        if (d.phase === 'playing') this.system(`${me.name} took over seat ${msg.seat + 1}`);
+        if (d.phase === 'playing') {
+          // the new player takes over the seat's hand and score as is; on that seat's own turn their clock starts fresh
+          const g = d.game;
+          if (g && pendingTurn(g)?.seat === msg.seat) d.turnKey = null;
+          this.system(`${me.name} took over ${slot.kind === 'bot' ? `${slot.name}'s` : 'a'} seat`);
+        }
         break;
       }
       case 'stand': {
@@ -510,7 +525,7 @@ export class Room {
       case 'act':
         return this.act(connId, me, msg);
       case 'next': {
-        if (d.phase !== 'playing' || d.game?.phase !== 'handOver') return;
+        if (d.phase !== 'playing' || d.game?.phase !== 'handOver' || me.seat === null) return;
         if (!d.ready.includes(pid)) d.ready.push(pid);
         break;
       }
@@ -519,7 +534,8 @@ export class Room {
         if (!text) return;
         const now = this.io.now();
         const w = (this.chatWindow.get(pid) ?? []).filter((t) => now - t < 10_000);
-        if (w.length >= LIMITS.chatBurst) throw new RoomError('RATE_LIMITED', 'Slow down a little');
+        const watcher = me.seat === null && d.phase !== 'lobby';
+        if (w.length >= (watcher ? LIMITS.spectatorChatBurst : LIMITS.chatBurst)) throw new RoomError('RATE_LIMITED', 'Slow down a little');
         w.push(now);
         this.chatWindow.set(pid, w);
         // all chat is public. During bidding (team games) a line that reads like a count ("3-ish", "I'm weak") is
@@ -527,7 +543,7 @@ export class Room {
         const g = d.game;
         if (g && d.phase === 'playing' && d.rules.partnerships && me.seat !== null && g.phase === 'bidding' && parseHint(text))
           (d.hints ??= {})[me.seat] = { hand: g.handNo, text };
-        this.pushChat({ id: d.chatSeq++, from: pid, name: me.name, text, at: now });
+        this.pushChat({ id: d.chatSeq++, from: pid, name: me.name, text, at: now, ...(watcher ? { spectator: true as const } : {}) });
         // a trailing player running their mouth (3+ lines in 10 s): the bots answer
         const ev = loudLoser(d.game, me.seat, w);
         if (ev && d.phase === 'playing') this.talk(ev);
@@ -535,7 +551,8 @@ export class Room {
         return; // chat doesn't change the table state
       }
       case 'media': {
-        me.media = msg.media;
+        // spectators never transmit (they watch and listen)
+        me.media = me.seat === null && d.phase !== 'lobby' ? { cam: false, mic: false } : msg.media;
         break;
       }
       case 'kick': {
@@ -561,11 +578,19 @@ export class Room {
         break;
       }
       case 'rtc': {
-        // WebRTC signaling relay: only between seated humans at this table
+        // WebRTC signaling relay: between seated humans, and (Release 10) between a seated human and a spectator
+        // (receive-only: spectators' media is forced off). Never spectator ↔ spectator.
         const to = d.members[msg.to];
-        if (!to || me.seat === null || to.seat === null) return;
+        if (!to || (me.seat === null && to.seat === null) || ((me.seat === null || to.seat === null) && d.phase === 'lobby')) return;
         for (const [cid, p] of this.conns) if (p === msg.to) this.io.send(cid, { t: 'rtc', from: pid, data: msg.data });
         return;
+      }
+      case 'tableOpts': {
+        this.requireHost(isHost);
+        if (d.tournament) throw new RoomError('LOCKED', 'Tournament tables are locked');
+        if (msg.private !== undefined) d.private = msg.private;
+        if (msg.replaceBots !== undefined) d.replaceBots = msg.replaceBots;
+        break;
       }
       case 'leave': {
         this.leave(pid);
@@ -646,7 +671,7 @@ export class Room {
     if (!m) return;
     if (m.seat !== null) {
       // mid-game the seat goes to a bot so the others can finish; in the lobby it just opens up
-      d.seats[m.seat] = d.phase === 'playing' ? { kind: 'bot', name: this.botName(), level: d.botLevel } : { kind: 'empty' };
+      d.seats[m.seat] = d.phase === 'playing' ? { kind: 'bot', name: this.botName(), level: d.botLevel, vacated: true } : { kind: 'empty' };
     }
     delete d.members[pid];
     d.ready = d.ready.filter((x) => x !== pid);
@@ -683,7 +708,7 @@ export class Room {
     const d = this.data;
     const m = d.members[target];
     if (!m) return;
-    if (m.seat !== null) d.seats[m.seat] = d.phase === 'playing' ? { kind: 'bot', name: this.botName(), level: d.botLevel } : { kind: 'empty' };
+    if (m.seat !== null) d.seats[m.seat] = d.phase === 'playing' ? { kind: 'bot', name: this.botName(), level: d.botLevel, vacated: true } : { kind: 'empty' };
     delete d.members[target];
     if (d.votes) delete d.votes[target];
     d.ready = d.ready.filter((x) => x !== target);
@@ -1129,6 +1154,8 @@ export class Room {
       venue: d.venue ?? 'classic', ...(d.venueNow ? { venueNow: d.venueNow } : {}),
       teamNames: d.rules.partnerships ? [...(d.teamNames ?? [null, null])] : undefined, series: d.series ?? null, revealed: [...(d.talk?.revealed ?? [])],
       ...(d.tournament ? { tournament: { id: d.tournament.id, name: d.tournament.name, match: d.tournament.match, autostartAt: d.tournament.autostartAt, reserved: d.tournament.reserved.map((r) => r?.name ?? null) } } : {}),
+      private: !!d.private, replaceBots: d.replaceBots !== false, takeable: this.takeable(),
+      spectators: d.phase === 'lobby' ? [] : Object.entries(d.members).filter(([id, m]) => m.seat === null && this.isConnected(id)).map(([playerId, m]) => ({ playerId, name: m.name })),
       ...(d.votes && Object.keys(d.votes).length ? { votes: Object.entries(d.votes).map(([target, by]) => ({ target, by: [...by], need: this.votesNeeded(target) })) } : {}), ...(d.music && d.music.mode !== 'off' ? { music: d.music } : {}),
     };
   }
@@ -1141,6 +1168,36 @@ export class Room {
     d.rev++;
     const room = this.roomInfo();
     for (const cid of this.conns.keys()) this.sendState(cid, room);
+    this.io.listing?.(this.listing(room));
+  }
+
+  /** Release 10: seats a spectator may take right now (mid-game, not at a tournament table) */
+  takeable(): number[] {
+    const d = this.data;
+    if (d.phase !== 'playing' || d.tournament || !d.game) return [];
+    return d.seats.slice(0, d.rules.playerCount).flatMap((s, i) => (s.kind === 'bot' && (s.vacated || d.replaceBots !== false) ? [i] : []));
+  }
+
+  /** Release 10: the Open tables entry (null = not listed: private, or nobody connected) */
+  listing(room: RoomInfo = this.roomInfo()): OpenTable | null {
+    const d = this.data;
+    if (d.private) return null;
+    const humans = room.seats.filter((s) => s.kind === 'human').length;
+    if (!d.seats.some((s) => s.kind === 'human' && this.isConnected(s.playerId)) && !Object.keys(d.members).some((id) => this.isConnected(id))) return null;
+    const open = d.phase === 'lobby' ? room.seats.filter((s) => s.kind === 'empty').map((_, i) => i) : room.takeable ?? [];
+    const firstOpen = d.phase === 'lobby' ? room.seats.findIndex((s) => s.kind === 'empty') : (room.takeable ?? [])[0] ?? -1;
+    const spectators = room.spectators?.length ?? 0;
+    return {
+      code: d.code, host: d.hostId ? d.members[d.hostId]?.name ?? '' : '', mode: d.rules.mode, playerCount: d.rules.playerCount,
+      target: d.rules.targetScore, venue: d.venueNow ?? (d.venue && d.venue !== 'random' ? d.venue : d.venue ?? 'classic'),
+      humans, bots: room.seats.filter((s) => s.kind === 'bot').length, open: d.tournament ? 0 : open.length,
+      status: d.phase === 'lobby' ? 'waiting' : d.phase === 'playing' ? 'playing' : 'over',
+      ...(d.phase === 'playing' && d.game ? { hand: d.game.handNo } : {}),
+      spectators, ...(spectators >= LIMITS.spectators ? { watchFull: true } : {}),
+      ...(d.tournament ? { tournament: d.tournament.name ?? 'Tournament' } : {}),
+      ...(firstOpen >= 0 && !d.tournament ? { seat: firstOpen } : {}),
+      at: this.io.now(),
+    };
   }
 
   /** The current state as one connection may see it (its own seat's view only). */
@@ -1149,14 +1206,16 @@ export class Room {
     const pid = this.conns.get(cid);
     if (!pid) return;
     const seat = d.members[pid]?.seat ?? null;
-    let view: PlayerView | null = d.game && seat !== null && seat < d.rules.playerCount ? viewFor(d.game, seat) : null;
+    // Release 10: spectators (unseated mid-game) get the redacted table view: never a single card of any hand
+    const watching = seat === null && !!d.game && d.phase !== 'lobby';
+    let view: PlayerView | null = d.game && seat !== null && seat < d.rules.playerCount ? viewFor(d.game, seat) : watching ? spectatorView(d.game!, 0) : null;
     if (view) {
       // the hand history only changes once per hand: send it then, and `history: null` ("unchanged") otherwise
       const key = `${room.game}:${view.history.length}`;
       if (this.sentHistory.get(cid) === key) view = { ...view, history: null as unknown as PlayerView['history'] };
       else this.sentHistory.set(cid, key);
     }
-    this.io.send(cid, { t: 'state', room, seat, view });
+    this.io.send(cid, watching ? { t: 'state', room, seat, view, spectator: true } : { t: 'state', room, seat, view });
   }
 
   private system(text: string): void {

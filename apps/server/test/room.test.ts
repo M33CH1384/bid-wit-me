@@ -947,3 +947,166 @@ describe('venues (Release 7)', () => {
     for (const cid of ['b', 'c', 'd']) expect(room(env, cid).venueNow).toBe(v);
   });
 });
+
+/* ------------------------------------------------------------ Release 10: spectators */
+describe('spectators', () => {
+  function liveGame() {
+    const env = new FakeEnv(undefined, FAST);
+    const a = env.join('a', 'Dee');
+    env.send('a', { t: 'sit', seat: 0 });
+    for (const s of [1, 2, 3]) env.send('a', { t: 'addBot', seat: s });
+    env.send('a', { t: 'start' });
+    return { env, a };
+  }
+  const handCards = (v: unknown) => JSON.stringify(v);
+
+  it('a spectator gets a redacted view: no hand, no legal moves, no bid options, at every step of a game', () => {
+    const { env } = liveGame();
+    env.join('s', 'Watcher');
+    let checked = 0;
+    for (let i = 0; i < 400; i++) {
+      const st = env.last('s', 'state')!;
+      expect(st.seat).toBeNull();
+      expect(st.spectator).toBe(true);
+      const v = st.view!;
+      expect(v).toBeTruthy();
+      expect(v.hand).toBeNull();
+      expect(v.legal).toEqual([]);
+      expect(v.bidOptions).toBeNull();
+      expect(v.canRunIt).toBe(false);
+      // none of the cards still in anyone's hand appears anywhere in the spectator's message
+      const g = env.room.data.game!;
+      const raw = env.raw.filter((m) => m.t === 'state' && (m as { spectator?: boolean }).spectator).at(-1)!;
+      const r0 = JSON.parse(JSON.stringify(raw)) as { room: { rules?: unknown }; view: { rules?: unknown } };
+      delete r0.room.rules; delete r0.view.rules; // the rules name the trump cards (LJ, BJ, …): not a hand
+      const text = handCards(r0);
+      for (const hand of g.hands) for (const c of hand) expect(text.includes(`"${c}"`), `${c} leaked`).toBe(false);
+      checked++;
+      if (!playTurn(env, ['a'])) env.advance(200);
+      if (env.room.data.game!.handNo > 1) break;
+    }
+    expect(checked).toBeGreaterThan(20);
+  });
+
+  it('spectators cannot act, bid, ready up or transmit media', () => {
+    const { env } = liveGame();
+    env.join('s', 'Watcher');
+    env.send('s', { t: 'act', action: { type: 'reveal' } });
+    expect(env.errors('s').map((e) => e.code)).toContain('NOT_SEATED');
+    env.send('s', { t: 'media', media: { cam: true, mic: true } });
+    expect(env.room.data.members[Object.keys(env.room.data.members).find((k) => env.room.data.members[k]!.name === 'Watcher')!]!.media).toEqual({ cam: false, mic: false });
+  });
+
+  it('room info lists spectators and the takeable seats; tableOpts (host) can lock bots and make the table private', () => {
+    const { env, a } = liveGame();
+    env.join('s', 'Watcher');
+    const room = env.last('a', 'state')!.room;
+    expect(room.spectators!.map((x) => x.name)).toEqual(['Watcher']);
+    expect(room.takeable).toEqual([1, 2, 3]);
+    env.send('s', { t: 'tableOpts', replaceBots: false });
+    expect(env.errors('s').map((e) => e.code)).toContain('NOT_HOST');
+    env.send('a', { t: 'tableOpts', replaceBots: false, private: true });
+    expect(env.last('s', 'state')!.room.takeable).toEqual([]);
+    env.send('s', { t: 'sit', seat: 1 });
+    expect(env.errors('s').map((e) => e.code)).toContain('SEAT_LOCKED');
+    expect(env.room.listing()).toBeNull();
+    void a;
+  });
+
+  it('take seat: a spectator takes over a vacated seat (hand + score) first come first served; it works even with bots locked', () => {
+    const env = new FakeEnv(undefined, FAST);
+    const a = env.join('a', 'Dee'); env.send('a', { t: 'sit', seat: 0 });
+    env.join('b', 'Ray'); env.send('b', { t: 'sit', seat: 1 });
+    env.send('a', { t: 'addBot', seat: 2 }); env.send('a', { t: 'addBot', seat: 3 });
+    env.send('a', { t: 'tableOpts', replaceBots: false });
+    env.send('a', { t: 'start' });
+    for (let i = 0; i < 30; i++) if (!playTurn(env, ['a', 'b'])) env.advance(100);
+    env.join('s', 'Sam'); env.join('t', 'Tia');
+    expect(env.last('s', 'state')!.room.takeable).toEqual([]);
+    const handBefore = [...env.room.data.game!.hands[1]!];
+    env.send('b', { t: 'leave' });
+    expect(env.last('s', 'state')!.room.takeable).toEqual([1]);
+    env.send('s', { t: 'sit', seat: 1 });
+    env.send('t', { t: 'sit', seat: 1 });
+    expect(env.errors('t').map((e) => e.code)).toContain('SEAT_TAKEN');
+    const st = env.last('s', 'state')!;
+    expect(st.seat).toBe(1);
+    expect(st.spectator).toBeUndefined();
+    expect(st.view!.hand!.sort()).toEqual(env.room.data.game!.hands[1]!.slice().sort());
+    expect(handBefore.length).toBeGreaterThanOrEqual(st.view!.hand!.length);
+    void a;
+    // the game goes on with the new player
+    for (let i = 0; i < 400 && env.room.data.phase === 'playing' && env.room.data.game!.handNo === 1; i++) if (!playTurn(env, ['a', 's'])) env.advance(100);
+    expect(env.room.data.game!.handNo).toBeGreaterThanOrEqual(1);
+  });
+
+  it('taking a seat on its turn restarts the clock for the new player', () => {
+    const { env } = liveGame();
+    env.join('s', 'Sam');
+    // wait until it's a bot's turn, then take that seat before the bot moves
+    for (let i = 0; i < 200; i++) {
+      const g = env.room.data.game!;
+      if (g.turn !== null && g.turn !== 0 && g.phase === 'playing') break;
+      if (!playTurn(env, ['a'])) env.advance(5);
+    }
+    const seat = env.room.data.game!.turn!;
+    env.send('s', { t: 'sit', seat });
+    const st = env.last('s', 'state')!;
+    expect(st.seat).toBe(seat);
+    expect(st.view!.turn).toBe(seat);
+    expect(st.room.deadline).toBeGreaterThan(env.t + 5000);
+    env.send('s', { t: 'act', action: { type: 'play', card: st.view!.legal[0]! } });
+    expect(env.errors('s')).toEqual([]);
+  });
+
+  it('tournament tables: watch only', () => {
+    const env = new FakeEnv(undefined, FAST);
+    env.room.setupTournament({ id: 't1', match: 'm1', reserved: [null, null, null, null], autostartAt: env.t + 10, bots: true }, makeRules('joker'));
+    env.join('s', 'Sam');
+    env.advance(50);
+    expect(env.room.data.phase).not.toBe('lobby');
+    const st = env.last('s', 'state')!;
+    expect(st.spectator).toBe(true);
+    expect(st.room.takeable).toEqual([]);
+    env.send('s', { t: 'sit', seat: 1 });
+    expect(env.errors('s').map((e) => e.code)).toContain('RESERVED');
+    expect(env.room.listing()!.open).toBe(0);
+  });
+
+  it('spectator chat is tagged, rate limited harder, and profanity-filtered', () => {
+    const { env } = liveGame();
+    env.join('s', 'Sam');
+    env.send('s', { t: 'chat', text: 'nice shit play' });
+    const line = env.last('a', 'chat')!.line;
+    expect(line.spectator).toBe(true);
+    expect(line.text).not.toContain('shit');
+    env.send('a', { t: 'chat', text: 'thanks' });
+    expect(env.last('s', 'chat')!.line.spectator).toBeUndefined();
+    env.send('s', { t: 'chat', text: '2' }); env.send('s', { t: 'chat', text: '3' }); env.send('s', { t: 'chat', text: '4' });
+    expect(env.errors('s').map((e) => e.code)).toContain('RATE_LIMITED');
+  });
+
+  it('max 20 spectators per table while a game is on', () => {
+    const { env } = liveGame();
+    for (let i = 0; i < 20; i++) env.join(`s${i}`, `W${i}`);
+    env.room.open('s20');
+    env.room.message('s20', JSON.stringify({ t: 'hello', name: 'TooMany' }));
+    expect(env.errors('s20').map((e) => e.code)).toContain('TABLE_FULL');
+  });
+
+  it('WebRTC: a spectator may signal with a seated player mid-game, never with another spectator', () => {
+    const { env, a } = liveGame();
+    const s = env.join('s', 'Sam'); const t = env.join('t', 'Tia');
+    env.send('s', { t: 'rtc', to: a.pid, data: { x: 1 } });
+    expect(env.last('a', 'rtc')).toEqual({ t: 'rtc', from: s.pid, data: { x: 1 } });
+    env.send('s', { t: 'rtc', to: t.pid, data: { x: 2 } });
+    expect(env.msgs('t').some((m) => m.t === 'rtc')).toBe(false);
+  });
+
+  it('listing: public tables report host, mode, seats, status, hand, spectators; private ones are unlisted', () => {
+    const { env } = liveGame();
+    env.join('s', 'Sam');
+    const l = env.room.listing()!;
+    expect(l).toMatchObject({ code: 'ABCDE', host: 'Dee', mode: 'joker', playerCount: 4, humans: 1, bots: 3, open: 3, status: 'playing', hand: 1, spectators: 1, seat: 1 });
+  });
+});
