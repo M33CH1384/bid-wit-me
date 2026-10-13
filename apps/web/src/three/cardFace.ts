@@ -23,6 +23,16 @@ export function trickFacesShown(prev: ReadonlySet<string>, painted: readonly str
 }
 
 /**
+ * Faces that are on screen this frame. The trick and a Run it! slam are public the moment they
+ * land: a bot's claimed cards were never in this viewer's hand, and a human claimer's cards have
+ * already left it, so the one-per-frame hand painter would otherwise leave both on the card back.
+ */
+export function visibleFaceIds(prev: ReadonlySet<string>, painted: readonly string[], hand: readonly string[], trick: readonly string[], slam: readonly string[]): Set<string> {
+  const instant = [...trick, ...slam];
+  return trickFacesShown(prev, painted, new Set<string>([...hand, ...instant]), instant);
+}
+
+/**
  * A resumed hand paints one face per frame. Until that finishes, the flat felt fan is the hand.
  * Drawing the 3D fan in the same slot stacks a face-up fan on a face-down one.
  */

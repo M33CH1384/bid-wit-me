@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { retainFrontTexture, showResumeHand3D, shownFaceIds, trickFacesShown } from '../src/three/cardFace';
+import { retainFrontTexture, showResumeHand3D, shownFaceIds, trickFacesShown, visibleFaceIds } from '../src/three/cardFace';
 
 /**
  * The painter walks the hand one card per frame and starts over when its key changes.
@@ -59,6 +59,22 @@ describe('dealt faces survive a selection', () => {
     for (const id of hand) expect(shown.has(id)).toBe(true);
     // A card that left the table does not keep a face.
     expect(trickFacesShown(shown, [], new Set(hand), []).has('2C')).toBe(false);
+  });
+
+  it('a bot Run it! slam is face-up for a seat that never held those cards, and for a spectator', () => {
+    const viewer = visibleFaceIds(new Set(['AS', 'KS']), [], ['AS', 'KS'], [], ['BJ', 'LJ']);
+    expect(viewer.has('BJ')).toBe(true);
+    expect(viewer.has('LJ')).toBe(true);
+    expect(viewer.has('AS')).toBe(true);
+    const spectator = visibleFaceIds(new Set(), [], [], [], ['BJ', 'LJ', '3D']);
+    expect([...spectator].sort()).toEqual(['3D', 'BJ', 'LJ']);
+  });
+
+  it('a human claimer\'s slam cards stay face-up after they leave the hand', () => {
+    const shown = visibleFaceIds(new Set(['BJ', 'LJ', '3H']), [], ['3H'], [], ['BJ', 'LJ']);
+    expect(shown.has('BJ')).toBe(true);
+    expect(shown.has('LJ')).toBe(true);
+    expect(shown.has('3H')).toBe(true);
   });
 
   it('hides the 3D hand fan until a resumed hand has faces, so it does not stack on the felt fan', () => {
