@@ -360,6 +360,43 @@ export function newlyOneTrickFromShot<T extends { handNo: number; phase: string;
 }
 
 /**
+ * Seats whose Nil or Blind Nil just took its first book.
+ * The new completed trick names the winner, and that seat had 0 books before this transition.
+ * 2v2 only: that bust is a shot, and the shotgun plays here. Cutthroat does not.
+ * The first snapshot of a hand is a baseline, so a resumed or reconnecting client does not replay it.
+ * `already` stops a second pass of the same bust. Every client runs this on the same synced
+ * transition, so an online table hears the boom once, together.
+ */
+export function nilBustsJustResolved<T extends {
+  seed?: string;
+  handNo: number;
+  rules: TableRules;
+  bids: readonly (Bid | null)[];
+  tricksWon: readonly number[];
+  tricks: readonly { winner: number | null }[];
+}>(
+  prev: T | null,
+  next: T,
+  already: ReadonlySet<number>,
+): number[] {
+  if (!prev || prev.handNo !== next.handNo) return [];
+  if (prev.seed !== undefined && next.seed !== undefined && prev.seed !== next.seed) return [];
+  if (!next.rules.partnerships) return [];
+  if (next.tricks.length <= prev.tricks.length) return [];
+  const out: number[] = [];
+  const seen = new Set<number>();
+  for (const trick of next.tricks.slice(prev.tricks.length)) {
+    const seat = trick.winner;
+    if (seat === null || seen.has(seat) || already.has(seat)) continue;
+    if (!isNilBid(next.bids[seat])) continue;
+    if ((prev.tricksWon[seat] ?? 0) > 0) continue;
+    seen.add(seat);
+    out.push(seat);
+  }
+  return out;
+}
+
+/**
  * Shot = out after a hand: the sides that are out — shot on hand 1, or shot this hand AND the previous hand.
  * `prevShot[side]` = shot on the previous hand. Empty when the rule is off.
  */

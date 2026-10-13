@@ -82,18 +82,21 @@ export function Intermission({
   const callouts = calloutsFor(st, mySide, names);
   const notes = callouts.filter((c) => c.kind !== 'shot' && c.kind !== 'gotShot');
   const sides = rec.sides;
-  // Blast follows the engine shot (a set, or a busted Nil in 2v2) and a recorded set.
+  // Panel blast follows the engine shot (a set, or a busted Nil in 2v2) and a recorded set.
   const shotThisHand = (s: (typeof sides)[number]) => isShot(r, rec.bids, s) || s.contractMade === false;
-  const shotSides = sides.filter(shotThisHand);
+  // The shotgun at scoring is a set (contractMade === false). A busted Nil already played it
+  // when that first book resolved, so the scorecard does not play it again.
+  const scoreBoom = (s: (typeof sides)[number]) => s.contractMade === false && !s.nils.some((n) => !n.made);
+  const boomSides = sides.filter(scoreBoom);
   const covers = shotCovers(r, st.history, st.result);
   const target = r.targetScore;
-  const boomKey = `${st.seed}:${rec.handNo}:${shotSides.map((s) => s.side).join(',')}`;
+  const boomKey = `${st.seed}:${rec.handNo}:${boomSides.map((s) => s.side).join(',')}`;
   const boomed = useRef('');
   useEffect(() => {
-    if (!shotSides.length || boomed.current === boomKey) return;
+    if (!boomSides.length || boomed.current === boomKey) return;
     boomed.current = boomKey;
-    shotSides.forEach((_, i) => sound.play('shotgun', i ? { delay: i * 0.12 } : {}));
-  }, [boomKey, shotSides.length]); // eslint-disable-line react-hooks/exhaustive-deps
+    boomSides.forEach((_, i) => sound.play('shotgun', i ? { delay: i * 0.12 } : {}));
+  }, [boomKey, boomSides.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const sheetOn = covers.some((c) => c.sheet);
   const sirenKey = `${st.seed}:${rec.handNo}`;
   const sirened = useRef('');

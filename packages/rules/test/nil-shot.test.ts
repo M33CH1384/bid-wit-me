@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type Card, type GameState, applyAction, isBooksHand, isShot, makeRules, newGame, scoreHand, shotCovers, shotOutSides } from '../src';
+import { type Card, type GameState, applyAction, isBooksHand, isShot, makeRules, newGame, nilBustsJustResolved, scoreHand, shotCovers, shotOutSides } from '../src';
 
 const team = makeRules('joker', { firstHandBidsItself: false, targetScore: 500, losingFloor: null });
 
@@ -81,5 +81,51 @@ describe('2v2 busted Nil is a shot', () => {
     expect(st.result).toBeNull();
     expect(st.history[0]!.sides[0]!.shot).toBe(true);
     expect(shotCovers(team, st.history, st.result)[0]).toEqual({ tape: true, sheet: false, siren: false });
+  });
+});
+
+describe('shotgun when a Nil takes its first book', () => {
+  const rules = team;
+  type Snap = Parameters<typeof nilBustsJustResolved>[1];
+  function hand(tricksWon: number[], winners: number[], bids: Snap['bids'] = ['nil', 3, 4, 3]): Snap {
+    return { seed: 'nil-boom', handNo: 2, rules, bids, tricksWon, tricks: winners.map((winner) => ({ winner })) };
+  }
+
+  it('fires for the Nil bidder when the trick they take resolves, and only that once', () => {
+    const before = hand([0, 2, 2, 2], [1, 2, 1, 2, 3, 2]);
+    const bust = hand([1, 2, 2, 2], [1, 2, 1, 2, 3, 2, 0]);
+    expect(nilBustsJustResolved(before, bust, new Set())).toEqual([0]);
+    expect(nilBustsJustResolved(bust, bust, new Set([0]))).toEqual([]);
+    const again = hand([2, 2, 2, 1], [1, 2, 1, 2, 3, 2, 0, 0]);
+    expect(nilBustsJustResolved(bust, again, new Set())).toEqual([]);
+    expect(nilBustsJustResolved(null, bust, new Set())).toEqual([]);
+    expect(nilBustsJustResolved(before, { ...bust, handNo: 3 }, new Set())).toEqual([]);
+    expect(nilBustsJustResolved(before, { ...bust, seed: 'other' }, new Set())).toEqual([]);
+  });
+
+  it('stays quiet while the Nil is still good, and fires once for each Nil bidder who takes a book', () => {
+    const before = hand([0, 1, 1, 1], [1, 2, 3]);
+    expect(nilBustsJustResolved(before, hand([0, 1, 2, 1], [1, 2, 3, 2]), new Set())).toEqual([]);
+    expect(nilBustsJustResolved(before, before, new Set())).toEqual([]);
+    const blind = hand([0, 2, 2, 2], [1, 2, 1, 2, 3, 2], ['blindNil', 3, 4, 3]);
+    expect(nilBustsJustResolved(blind, hand([1, 2, 2, 2], [1, 2, 1, 2, 3, 2, 0], ['blindNil', 3, 4, 3]), new Set())).toEqual([0]);
+    const both = hand([0, 1, 0, 1], [1, 3], ['nil', 4, 'nil', 3]);
+    const first = hand([0, 1, 1, 1], [1, 3, 2], ['nil', 4, 'nil', 3]);
+    const second = hand([1, 1, 1, 1], [1, 3, 2, 0], ['nil', 4, 'nil', 3]);
+    expect(nilBustsJustResolved(both, first, new Set())).toEqual([2]);
+    expect(nilBustsJustResolved(first, second, new Set([2]))).toEqual([0]);
+    const batch = hand([1, 1, 1, 1], [1, 3, 2, 0], ['nil', 4, 'nil', 3]);
+    expect(nilBustsJustResolved(both, batch, new Set())).toEqual([2, 0]);
+    const ran = hand([3, 1, 1, 1], [1, 3, 0, 0, 0]);
+    expect(nilBustsJustResolved(hand([0, 1, 1, 1], [1, 3]), ran, new Set())).toEqual([0]);
+  });
+
+  it('does not fire in Cutthroat or on a number bid', () => {
+    const cut = makeRules('cutthroat', { playerCount: 4, firstHandBidsItself: false });
+    const before = { seed: 'c', handNo: 2, rules: cut, bids: ['nil', 4, 3, 3] as const, tricksWon: [0, 2, 2, 2], tricks: [{ winner: 1 }, { winner: 2 }] };
+    const after = { ...before, tricksWon: [1, 2, 2, 2], tricks: [...before.tricks, { winner: 0 }] };
+    expect(nilBustsJustResolved(before, after, new Set())).toEqual([]);
+    const num = hand([0, 0, 1, 1], [2, 3]);
+    expect(nilBustsJustResolved(num, hand([0, 1, 1, 1], [2, 3, 1]), new Set())).toEqual([]);
   });
 });
