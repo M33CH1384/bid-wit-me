@@ -171,7 +171,7 @@ export type ClientMsg =
 /* ------------------------------------------------------------ server → client */
 export type SeatInfo =
   | { kind: 'empty' }
-  | { kind: 'bot'; name: string; level: BotLevel }
+  | { kind: 'bot'; name: string; level: BotLevel; /** human this bot replaced mid-game; the game-over screen still names them */ was?: string }
   | { kind: 'human'; playerId: string; name: string; connected: boolean; media: MediaState; autoplay?: boolean };
 
 export interface MemberInfo { playerId: string; name: string; connected: boolean; seat: number | null }

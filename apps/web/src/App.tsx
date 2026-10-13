@@ -7,7 +7,7 @@ import { usePresence } from './social/Social';
 import { NowPlaying } from './SoundControls';
 import Table from './Table';
 import { MODES, type Settings, loadSettings, saveSettings, settingsToRules } from './settings';
-import { type SavedGame, loadGame } from './save';
+import { type SavedGame, loadGame, resumeOnLoad } from './save';
 import { flushLocalGames, watchLocalGames } from './localStats';
 
 export default function App() {
@@ -18,8 +18,9 @@ export default function App() {
       history.replaceState(null, '', location.pathname); // a later refresh resumes instead of restarting
       return { seed: p.get('seed') ?? secureSeed(), settings: loadSettings() };
     }
-    // refresh / reopen: drop straight back into an in-progress game
-    const saved = loadGame();
+    // refresh / reopen drops back in. Leave (including a spectator leaving an online table) sets
+    // wiz:home and must land on the menu, not on the previous bot game.
+    const saved = resumeOnLoad(history.state, loadGame(), false);
     return saved ? { seed: saved.seed, settings: saved.settings, resume: saved } : null;
   });
 
