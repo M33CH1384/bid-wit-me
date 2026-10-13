@@ -416,7 +416,7 @@ function LobbyChat({ cs, onSend, open, setOpen, wide }: { cs: ConnState; onSend:
       <div className="chat-list" ref={list}>
         {cs.chat.slice(-100).map((l) => (
           <div key={l.id} className={`chat-line ${l.system ? 'system' : ''}`}>
-            {l.system ? <span>{l.text}</span> : <><b style={{ color: l.from === cs.you ? '#f5c542' : colorFor(l.from ?? '') }}>{l.from === cs.you ? 'You' : l.name}</b> <span>{l.text}</span></>}
+            {l.system ? <span>{l.text}</span> : <><b style={{ color: l.from === cs.you && !cs.spectator ? '#f5c542' : colorFor(l.from ?? '') }}>{l.from === cs.you && !cs.spectator ? 'You' : l.name}</b> <span>{l.text}</span></>}
           </div>
         ))}
       </div>
