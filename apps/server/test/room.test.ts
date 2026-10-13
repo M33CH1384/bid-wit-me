@@ -818,7 +818,9 @@ describe('AFK + kicking', () => {
     for (let k = 0; k < 2; k++) { waitMyTurn(two.env); two.env.advance(5200); }
     expect(two.env.room.data.seats[0]!.kind).toBe('bot');
     const off = soloGame(0);
-    for (let k = 0; k < 6; k++) { waitMyTurn(off.env); off.env.advance(5200); }
+    // 5s play/bid timer plus a nuked-trick lead-in (4000ms). advance(5200) stops short of that
+    // deadline, so the next loop finishes the same timeout and the count comes up one short.
+    for (let k = 0; k < 6; k++) { waitMyTurn(off.env); off.env.advance(10_000); }
     expect(off.env.room.data.seats[0]!.kind).toBe('human');
     expect(off.env.room.data.members[off.a.pid]!.timeouts).toBeGreaterThanOrEqual(6);
   });
