@@ -1,11 +1,13 @@
 import { Mesh, OrthographicCamera, PlaneGeometry, Scene, ShaderMaterial, SRGBColorSpace, Texture, Vector3, WebGLRenderer } from 'three';
 
 /**
- * Draped cotton over one scorecard. A 64×64 three.js plane, top edge pinned, the free
- * bottom edge in a vertex-shader wind (layered sine plus noise, 0.6Hz, 6–10px). The police
- * RIP is a multiply decal on those UVs, so it bends with the folds. Two point lights,
- * #FF2A2A on the left and #2A5BFF on the right, take turns every 1.2s. Nothing here paints
- * a flat red/blue fill. prefers-reduced-motion renders one settled still and stops.
+ * Draped cotton over one scorecard. A 64×64 three.js plane, top edge pinned. The free
+ * bottom edge carries a low-frequency billow, a 0.6Hz ripple of mix(6.0, 10.0) px, and a
+ * finer wrinkle. A key light from the upper left, crease occlusion, and a subtle
+ * Blinn-Phong sheen shade the real normals. The police RIP is a multiply decal on those
+ * UVs, so it bends with the folds. Two point lights, #FF2A2A on the left and #2A5BFF on
+ * the right, take turns every 1.2s and catch the fold peaks. Nothing here paints a flat
+ * red/blue fill. prefers-reduced-motion renders one settled still and stops.
  */
 const VERT = /* glsl */ `
 uniform float uTime;
@@ -14,6 +16,8 @@ uniform float uWidth;
 uniform float uHeight;
 varying vec2 vUv;
 varying vec3 vWorld;
+varying float vFold;
+varying float vLow;
 
 float hash(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -32,30 +36,46 @@ float noise(vec2 p) {
 void main() {
   vUv = uv;
   float down = 1.0 - uv.y;
-  float free = smoothstep(0.0, 0.16, down);
-  float amp = mix(6.0, 10.0, down) * free * uWind;
+  float free = smoothstep(0.0, 0.2, down);
+  float hang = pow(down, 1.65);
+  float billowAmp = mix(18.0, 48.0, hang) * free * uWind;
+  float rippleAmp = mix(6.0, 10.0, hang) * free * uWind;
+  float wrinkleAmp = mix(5.0, 16.0, hang) * free * uWind;
   float w = 0.6 * 6.2831853;
-  float n = noise(uv * vec2(3.2, 2.1) + vec2(uTime * 0.17, 0.0));
-  float wave = sin(uv.x * 5.2 + uTime * w) * 0.62
-    + sin(uv.x * 11.4 - uTime * w * 0.73 + uv.y * 3.1) * 0.28
-    + (n - 0.5) * 0.5;
+  float billow = sin(uv.x * 2.2 + uTime * w) * 0.66
+    + sin(uv.x * 3.6 + uv.y * 1.35 - uTime * w * 0.52) * 0.46;
+  float ripple = sin(uv.x * 10.5 + uv.y * 4.4 + uTime * w * 1.7) * 0.62
+    + sin(uv.y * 13.5 - uv.x * 2.4 - uTime * w * 2.05) * 0.38;
+  float n1 = noise(uv * vec2(7.4, 5.2) + vec2(uTime * 0.09, 0.2));
+  float n2 = noise(uv * vec2(16.0, 11.5) + vec2(1.7, uTime * 0.13));
+  float wrinkle = (n1 - 0.5) * 1.7 + (n2 - 0.5) * 0.85;
+  // Fine wrinkles ease off under the RIP so the letters stay whole. The billow still carries them.
+  float ripCalm = smoothstep(0.08, 0.36, length((uv - vec2(0.5, 0.46)) * vec2(1.1, 1.8)));
+  float detail = mix(0.28, 1.0, ripCalm);
+  float zPx = billow * billowAmp + (ripple * rippleAmp + wrinkle * wrinkleAmp) * detail;
   vec3 p = position;
-  p.y += wave * 0.35 * (amp / uHeight);
-  p.x += sin(uv.y * 3.4 + uTime * w) * free * (amp * 0.18 / uWidth);
-  p.z += wave * (amp / uWidth);
+  p.z += zPx / uWidth;
+  p.y += billow * hang * (36.0 / uHeight) + ripple * detail * hang * (8.0 / uHeight);
+  p.x += sin(uv.y * 2.2 + uTime * w * 0.85) * hang * (30.0 / uWidth);
+  p.x += wrinkle * detail * hang * (wrinkleAmp * 0.22 / uWidth);
   vec4 world = modelMatrix * vec4(p, 1.0);
   vWorld = world.xyz;
+  vFold = zPx;
+  vLow = billow * billowAmp;
   gl_Position = projectionMatrix * viewMatrix * world;
 }
 `;
 
 const FRAG = /* glsl */ `
+precision highp float;
 uniform float uTime;
 uniform vec3 uLightL;
 uniform vec3 uLightR;
 uniform sampler2D uRip;
 varying vec2 vUv;
 varying vec3 vWorld;
+varying float vFold;
+varying float vLow;
 
 float hash(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -72,21 +92,32 @@ void main() {
   if (N.z < 0.0) N = -N;
   float warp = sin(vUv.x * 240.0) * 0.55 + sin(vUv.y * 240.0) * 0.55;
   float weft = sin(vUv.x * 240.0 + 1.7) * sin(vUv.y * 240.0);
-  N = normalize(N + vec3(sin(vUv.y * 240.0), sin(vUv.x * 240.0), 0.0) * 0.16);
+  N = normalize(N + vec3(sin(vUv.y * 240.0), sin(vUv.x * 240.0), 0.0) * 0.1);
   vec3 cotton = vec3(0.933, 0.941, 0.953);
-  cotton *= 0.9 + 0.1 * weft + 0.04 * warp;
+  cotton *= 0.88 + 0.12 * weft + 0.05 * warp;
+
+  vec3 keyDir = normalize(vec3(-0.66, 0.74, 0.62));
+  float ndlK = pow(max(dot(N, keyDir), 0.0), 0.9);
+  float depth = clamp(-vLow / 36.0, 0.0, 1.0);
+  float cavity = clamp((vLow - vFold) / 14.0, 0.0, 1.0);
+  float ao = clamp(1.0 - 0.52 * depth - 0.4 * cavity, 0.4, 1.0);
+  vec3 col = cotton * (0.22 + 1.05 * ndlK) * ao;
+
+  vec3 V = vec3(0.0, 0.0, 1.0);
+  vec3 H = normalize(keyDir + V);
+  float spec = pow(max(dot(N, H), 0.0), 20.0);
+  float sheen = pow(1.0 - max(dot(N, V), 0.0), 2.4);
+  float peak = smoothstep(-6.0, 16.0, vFold);
+  col += vec3(1.0, 0.96, 0.9) * (spec * 0.2 + sheen * 0.045) * peak;
 
   vec3 toL = normalize(uLightL - vWorld);
   vec3 toR = normalize(uLightR - vWorld);
-  float ndlL = max(dot(N, toL), 0.0);
-  float ndlR = max(dot(N, toR), 0.0);
-  float wrapL = pow(max(dot(N, toL) * 0.5 + 0.5, 0.0), 1.6);
-  float wrapR = pow(max(dot(N, toR) * 0.5 + 0.5, 0.0), 1.6);
+  float ndlL = pow(max(dot(N, toL), 0.0), 1.5);
+  float ndlR = pow(max(dot(N, toR), 0.0), 1.5);
   float redAmt = 0.5 + 0.5 * cos(uTime * 6.2831853 / 1.2);
   float blueAmt = 1.0 - redAmt;
-  vec3 col = cotton * (0.58 + 0.22 * ndlL + 0.22 * ndlR);
-  col += vec3(1.0, 0.1647, 0.1647) * (ndlL * 0.85 + wrapL * 0.22) * redAmt;
-  col += vec3(0.1647, 0.3569, 1.0) * (ndlR * 0.85 + wrapR * 0.22) * blueAmt;
+  col += vec3(1.0, 0.1647, 0.1647) * ndlL * peak * ao * redAmt;
+  col += vec3(0.1647, 0.3569, 1.0) * ndlR * peak * ao * blueAmt;
 
   vec2 c = vUv - vec2(0.5, 0.46);
   float ang = -4.0 * 0.017453292;
@@ -167,8 +198,8 @@ export function mountSheet(canvas: HTMLCanvasElement, wait: boolean): () => void
       mesh.scale.set(w, h, w);
       uniforms.uWidth.value = w;
       uniforms.uHeight.value = h;
-      uniforms.uLightL.value.set(-w * 0.62, h * 0.18, 120);
-      uniforms.uLightR.value.set(w * 0.62, -h * 0.08, 120);
+      uniforms.uLightL.value.set(-w * 0.78, h * 0.48, 150);
+      uniforms.uLightR.value.set(w * 0.78, -h * 0.36, 150);
     };
     fit();
     const ro = new ResizeObserver(fit);

@@ -388,6 +388,9 @@ describe('scorecard caution tape and shroud', () => {
     expect(cloth).toContain('1.2');
     expect(cloth).toContain('0.6');
     expect(cloth).toContain('mix(6.0, 10.0');
+    expect(cloth).toContain('mix(18.0, 48.0');
+    expect(cloth).toContain('Blinn-Phong');
+    expect(cloth).toContain('keyDir');
     expect(cloth).toContain('multiply');
     expect(cloth).toContain('prefers-reduced-motion');
     expect(cloth).toContain('-4.0');
