@@ -26,11 +26,27 @@ export interface PresenceStatus {
   open?: number;
   /** online table code (only set when the player can invite others in) */
   code?: string;
-  /** offline game vs bots (nobody can join) */
+  /**
+   * Offline game vs bots. It runs on that player's device: there is no server room,
+   * so nobody can join or spectate it.
+   */
   offline?: boolean;
   /** tournament name */
   name?: string;
+  /** seat a newcomer can take right now (empty, or a bot the table allows). Never a human. */
+  seat?: number;
+  /** the online table is not accepting more spectators */
+  watchFull?: boolean;
 }
+
+/** Client-minted guest session suffix. Same browser → one presence row. Not an account id. */
+export const GUEST_SESSION = /^[A-Za-z0-9_-]{8,32}$/;
+
+/**
+ * Drop a presence row that has not sent a social message in this long.
+ * The runtime answers websocket pings without waking the hub, so this is real traffic only.
+ */
+export const PRESENCE_TTL_MS = 3 * 3600_000;
 
 export interface PresenceEntry {
   /** 'u:<userId>' for accounts, 'g:<random>' for guests */
@@ -38,8 +54,30 @@ export interface PresenceEntry {
   name: string;
   guest: boolean;
   status: PresenceStatus;
+  /** epoch ms of this session's last social message */
+  at?: number;
   /** Elo per pool (accounts with rated games only) */
   rating?: { team?: number; cutthroat?: number };
+}
+
+/**
+ * Hide a players-list row for an ended table or an old session.
+ * Offline vs-bots games have no table code and stay. A private table is not in `ended`
+ * and is not listed as `over`, so it stays too.
+ */
+export function stalePresence(
+  entry: { status: PresenceStatus; at?: number },
+  tables: Iterable<{ code: string; status: 'waiting' | 'playing' | 'over' }>,
+  ended: Iterable<string>,
+  now: number,
+): boolean {
+  if (typeof entry.at === 'number' && now - entry.at > PRESENCE_TTL_MS) return true;
+  const s = entry.status;
+  if (s.offline) return false;
+  if ((s.kind !== 'table' && s.kind !== 'lobby') || !s.code) return false;
+  for (const code of ended) if (code === s.code) return true;
+  for (const t of tables) if (t.code === s.code && t.status === 'over') return true;
+  return false;
 }
 
 export interface SocialChatLine { id: number; from: string; name: string; text: string; at: number; admin?: boolean }
@@ -127,6 +165,8 @@ function parseStatus(v: unknown): PresenceStatus | null {
   if (isStr(s.code, 12) && /^[A-Z0-9]+$/.test(s.code)) out.code = s.code;
   if (s.offline === true) out.offline = true;
   if (isStr(s.name, 40)) out.name = s.name;
+  if (isInt(s.seat) && s.seat >= 0 && s.seat < 8) out.seat = s.seat;
+  if (s.watchFull === true) out.watchFull = true;
   return out;
 }
 

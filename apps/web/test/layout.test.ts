@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Vector3 } from 'three';
-import { type SeatPos, type Xform, fanLayout, handFan, makeCamera, ndcExtentX, opponentFan, pileSpot, trickSpot } from '../src/three/layout';
+import { type SeatPos, type Xform, HAND_EXPOSED_PX, fanCssPx, fanLayout, handFan, makeCamera, ndcCorners, ndcExtentX, opponentFan, phoneHandFan, pileSpot, trickSpot } from '../src/three/layout';
 
 // CSS-pixel viewports: iPhone SE, 12/13/14, 14 Pro Max, small Android, desktop, and iPhone landscape
 const VIEWPORTS: [number, number][] = [[320, 568], [375, 667], [390, 844], [393, 852], [430, 932], [360, 740], [1280, 800], [1920, 1080], [844, 390]];
@@ -98,6 +98,40 @@ describe('hand fan z-order', () => {
         expect(dist(handFan(aspect, n, n - 1, 0.24))).toBeLessThan(Math.min(...fan.map(dist)));
       }
     }
+  });
+});
+
+describe('phone portrait hand', () => {
+  const opts = phoneHandFan();
+  for (const [w, h] of [[390, 844], [336, 700]] as const) {
+    for (const n of [13, 17]) {
+      it(`${w}px holds ${n} cards, larger than the default fan, with no horizontal clip`, () => {
+        const aspect = w / h;
+        const phone = fanCssPx(fanLayout(aspect, n, 0, opts), w);
+        const base = fanCssPx(fanLayout(aspect, n), w);
+        expect(phone.height).toBeGreaterThan(base.height + 4);
+        expect(phone.width).toBeGreaterThan(base.width);
+        expect(phone.exposed).toBeGreaterThan(base.exposed);
+        const xs = Array.from({ length: n }, (_, i) => handFan(aspect, n, i, 0, 0, opts));
+        const [lo, hi] = ndcExtentX(aspect, xs);
+        expect(lo).toBeGreaterThanOrEqual(-0.99);
+        expect(hi).toBeLessThanOrEqual(0.99);
+        for (const t of xs) {
+          for (const [, y] of ndcCorners(aspect, t)) {
+            expect(y).toBeGreaterThanOrEqual(-1);
+            expect(y).toBeLessThanOrEqual(1);
+          }
+        }
+        const raised = ndcExtentX(aspect, [handFan(aspect, n, Math.floor(n / 2), 0.24, 0, opts)]);
+        expect(raised[0]).toBeGreaterThanOrEqual(-1);
+        expect(raised[1]).toBeLessThanOrEqual(1);
+      });
+    }
+  }
+
+  it('exposes at least 44px on a short hand at 390px', () => {
+    expect(fanCssPx(fanLayout(390 / 844, 6, 0, opts), 390).exposed).toBeGreaterThanOrEqual(HAND_EXPOSED_PX);
+    expect(fanCssPx(fanLayout(390 / 844, 5, 0, opts), 390).exposed).toBeGreaterThanOrEqual(HAND_EXPOSED_PX);
   });
 });
 

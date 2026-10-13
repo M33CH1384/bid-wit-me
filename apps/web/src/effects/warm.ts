@@ -1,5 +1,6 @@
 import type { Camera, WebGLRenderer } from 'three';
 import { sound } from '../audio';
+import { importChunk } from '../chunkLoad';
 
 /** How long a stuck effect may hold the loading screen. The 40s table give-up still applies on top. */
 export const EFFECT_WARM_TIMEOUT_MS = 12000;
@@ -148,7 +149,7 @@ export function warmTableEffects(): Promise<FxWarmTimes> {
       return compileAfterReady(Promise.resolve(), () => mod.warmSheet(), undefined);
     })();
     const tornado = (async () => {
-      const [ready, mod] = await Promise.all([rendererReady(), import('../three/Tornado3D')]);
+      const [ready, mod] = await Promise.all([rendererReady(), importChunk(() => import('../three/Tornado3D'))]);
       return compileAfterReady(Promise.resolve(), () => mod.warmTornado(ready.gl, ready.camera, ready.quality), undefined);
     })();
     const [holeR, tapeR, audioR, chromeR, sheetR, tornadoR] = await Promise.all([hole, tape, audio, chrome, sheet, tornado]);
@@ -184,7 +185,7 @@ export async function measureHotFire(): Promise<Record<string, number>> {
     const mod = await import('../sheetClothSim');
     await mod.loadRipImage();
   });
-  await lap('audio', () => { sound.warmEffects(); });
+  await lap('audio', () => sound.warmEffects());
   await lap('sheet', async () => {
     const mod = await import('../sheetClothSim');
     await mod.warmSheet();
@@ -192,7 +193,7 @@ export async function measureHotFire(): Promise<Record<string, number>> {
   if (gpu) {
     const ready = gpu;
     await lap('tornado', async () => {
-      const mod = await import('../three/Tornado3D');
+      const mod = await importChunk(() => import('../three/Tornado3D'));
       await mod.warmTornado(ready.gl, ready.camera, ready.quality);
     });
   }

@@ -1,4 +1,5 @@
 import { cardControlLabel } from './cardA11y';
+import { ignorePlayTap, playTrickOf, type PlayTrick } from './online/playGuard';
 import { actingSeat, seatMark } from './turnState';
 import { retainHandOrder } from './handOrder';
 import { winHeadline } from './headline';
@@ -6,7 +7,7 @@ import { type VenueId, VENUE_DEFS, resolveVenue } from './venues';
 import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, isFreshDeal, isNukeTrick, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, newlyOneTrickFromShot, nilBustsJustResolved, partnerOf, sideOf, sortHand,
+  type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, isFreshDeal, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, newlyOneTrickFromShot, nilBustsJustResolved, partnerOf, sideOf, sortHand,
 } from '@spades/rules';
 import { ScorePad, setTeamNames, sideName } from './Modals';
 import { LockedRulesPanel } from './LockedRules';
@@ -30,6 +31,7 @@ import { OfflineMediaBar } from './online/Media';
 import { fireCue, fx, useReduceEffects } from './fx';
 import { useDealtSlots } from './dealtSlots';
 import { FeltHand } from './FeltHand';
+import { clientSeesNuke } from './three/blastSweep';
 import { loadScene } from './three/preload';
 import { TableLoading } from './TableLoading';
 import { tableStillLoading, warmTableEffects } from './effects/warm';
@@ -42,6 +44,7 @@ import type { SeatPos } from './three/layout';
 import { HUMAN, useGame } from './useGame';
 import { DealerPopup } from './DealerPopup';
 import { dealerAnnouncement, dealerFromServer, withCurrentDealerLine } from './dealerName';
+import { biddingNote, noticeTip, seatFacingName, seatInitial, trickTakenLine } from './seatLabel';
 import { MinBidLine, bidChoices, minBidNote } from './minBid';
 import { type SavedGame, clearGame, saveGame } from './save';
 
@@ -102,7 +105,7 @@ function TrickBanner({ text }: { text: string }) {
 /** Online play: the table renders server state through the same UI (see online/OnlineTable.tsx). */
 export interface OnlineBinding {
   /** shape-compatible with useGame()'s result */
-  source: ReturnType<typeof useGame> & { locked?: boolean };
+  source: ReturnType<typeof useGame> & { locked?: boolean; playGate?: number };
   /** local-seat names (0 = you) */
   names: string[];
   chat: { msgs: ChatMsg[]; push: (user: string, text: string) => void };
@@ -547,6 +550,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const piles = pause ? st.tricks.slice(0, -1) : st.tricks;
   // online: `locked` while our move is in flight (until the server acks it), so it can't be sent twice
   const spectating = !!online?.spectator;
+  const face = (seat: number) => seatFacingName(names, seat, spectating);
   // Online: the server seat's current occupant (OnlineTable). Offline: engine dealer, viewer at seat 0.
   const dealerLabel = online?.dealerName || dealerFromServer({
     serverDealer: st.dealer,
@@ -664,13 +668,13 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     // 1) zoom: the claimer's cards big + face up at the centre while they talk their talk
     const recent = lastLine.current[runFx.claimer];
     if (recent && performance.now() - recent.at < 1800) setRunLine(showLine(recent.text));
-    else if (runFx.claimer === HUMAN) {
+    else if (runFx.claimer === HUMAN && !spectating) {
       const line = pick(RUN_IT_CALLOUTS as string[]);
       push('You', line);
     } else setRunLine(null);
     const zoom = RUN_ZOOM_MS / 1000;
     const tornadoAt = zoom + RUN_TORNADO_AFTER_MS / 1000;
-    const who = runFx.claimer === HUMAN ? 'You' : names[runFx.claimer]!;
+    const who = face(runFx.claimer);
     // 2) the claimer's cards slam down together in SLOW MOTION (heavy impact: shake + bass hit)
     // 3) the tornado snatches everything else at once — every hand + whatever is on the table. No trick-by-trick play.
     sound.play('runSlam', { delay: zoom + RUN_SLAM_MS / 1000 });
@@ -879,7 +883,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     }
     const rec = st.history[st.history.length - 1]!;
     const base = Date.now();
-    const list = toastsFor(rec, r, names, mySide).map((t, i) => ({ ...t, id: base + i }));
+    const list = toastsFor(rec, r, names, mySide, spectating).map((t, i) => ({ ...t, id: base + i }));
     setToasts(list);
     const setToast = list.some((t) => t.kind === 'set' || t.kind === 'bust');
     const cue: Record<Toast['kind'], Sfx | null> = { made: 'made', set: 'set', nil: 'nil', bust: 'set', bags: 'bags', info: null };
@@ -934,7 +938,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // nuke watchdog: the blast is normally cued by the second Joker's 3D landing; on a stalled renderer (Safari compiling
   // shaders, a backgrounded tab, very slow frames) that landing can come late or never — so once a nuked trick is on
   // the table, make sure the nuke fires anyway (fx dedupes, so it never plays twice).
-  const nukeKey = isNukeTrick(shownTrick.plays) && !display.slam ? `${st.seed}:${st.handNo}:${shownTrick.plays.map((p) => p.card).join('')}` : null;
+  const nukeKey = clientSeesNuke(shownTrick.plays, !!display.slam) ? `${st.seed}:${st.handNo}:${shownTrick.plays.map((p) => p.card).join('')}` : null;
   const nukeAtMount = useRef(nukeKey); // a resumed save already showing a nuked trick doesn't re-fire
   useEffect(() => {
     if (!nukeKey || nukeKey === nukeAtMount.current) return;
@@ -958,16 +962,41 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
   const promoted = useCallback((c: Card) => isPromoted(c, r), [r]);
 
+  // One play leaves the hand. Further taps do nothing until that trick moves (or the server rejects the play).
+  const playHold = useRef<PlayTrick | null>(null);
+  const playGateSeen = useRef(online?.source.playGate ?? 0);
+  const trickNow = useMemo(
+    () => playTrickOf(st),
+    [st.handNo, st.tricks.length, st.trick.plays.length, st.turn],
+  );
+  useEffect(() => {
+    const gate = online?.source.playGate ?? 0;
+    if (gate !== playGateSeen.current) {
+      playGateSeen.current = gate;
+      playHold.current = null;
+    }
+  }, [online?.source.playGate]);
+  useEffect(() => {
+    if (playHold.current && !ignorePlayTap(playHold.current, trickNow)) playHold.current = null;
+  }, [trickNow]);
+
   const onCard = useCallback((c: Card) => {
     if (humanExchanging) {
       sound.play('tap');
       setExchangePick((p) => (p.includes(c) ? p.filter((x) => x !== c) : p.length < exchangeStep!.count ? [...p, c] : p));
       return;
     }
+    if (ignorePlayTap(playHold.current, trickNow)) return;
     if (!legal.includes(c)) return;
-    if (selected === c) { apply({ type: 'play', seat: HUMAN, card: c }); setSelected(null); }
-    else { setSelected(c); sound.play('tap'); }
-  }, [humanExchanging, exchangeStep, legal, selected, apply]);
+    if (selected === c) {
+      const held = trickNow;
+      const sent = apply({ type: 'play', seat: HUMAN, card: c });
+      if (sent !== false) {
+        playHold.current = held;
+        setSelected(null);
+      }
+    } else { setSelected(c); sound.play('tap'); }
+  }, [humanExchanging, exchangeStep, legal, selected, apply, trickNow]);
 
   const isBotSeat = (seat: number) => (online ? !!online.botSeats?.includes(seat) : seat !== HUMAN);
   // recorded bot voices: fetch a persona's clips when one of its bots sits down
@@ -981,7 +1010,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const renderSeat = (seat: number) => {
     const mark = seatMark(actor, seat, st.phase, false, false, 0);
     const isTurn = mark === 'to-play' || mark === 'bidding';
-    const partner = r.partnerships && seat === partnerOf(HUMAN, r);
+    const partner = !spectating && r.partnerships && seat === partnerOf(HUMAN, r);
     const b = st.bids[seat];
     return (
       <div className={`plate ${isTurn ? 'turn' : ''} ${partner ? 'ally' : 'foe'}`} data-testid={`seat-${seat}`} title={isBotSeat(seat) ? `${names[seat]} · ${personaTag(names[seat]!, revealed.includes(seat))}` : undefined} data-persona={isBotSeat(seat) ? personaTag(names[seat]!, revealed.includes(seat)) : undefined}>
@@ -1133,7 +1162,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
       {/* last-trick readout. After a resolved 'Run it!' the same chip opens every hand the tornado cleared. */}
       {(piles.length > 0 || !!runHands) && (() => {
-        const seatLabel = (seat: number) => (spectating ? names[seat] : seat === HUMAN ? 'You' : names[seat]) ?? `Seat ${seat + 1}`;
+        const seatLabel = (seat: number) => face(seat);
         if (runHands && runClaimer !== null && ltOpen && runReviewOverTable(st.phase)) {
           return createPortal(
             <>
@@ -1156,10 +1185,10 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         const short = (c: Card) => (c === 'BJ' ? 'BJ' : c === 'LJ' ? 'LJ' : cardLabel(c));
         return (
           <div className={`last-trick glass slant ${ltOpen ? 'open' : 'chip'}`} data-testid="last-trick" aria-label="Last trick" role="button" tabIndex={0} aria-expanded={ltOpen} onClick={() => setLtOpen(!ltOpen)}>
-            <span className="lt-label">LAST TRICK{!ltOpen && t.winner !== null && <> · {t.winner === HUMAN ? 'You' : names[t.winner]!.slice(0, 8)}</>}</span>
+            <span className="lt-label">LAST TRICK{!ltOpen && t.winner !== null && <> · {face(t.winner).slice(0, 8)}</>}</span>
             {ltOpen && t.plays.map((pl) => (
               <span key={pl.card} className={`lt-card ${pl.seat === t.winner ? 'win' : ''} ${pl.card[1] === 'H' || pl.card[1] === 'D' || pl.card === 'BJ' ? 'red' : ''}`}>
-                <small>{pl.seat === HUMAN ? 'You' : names[pl.seat]!.slice(0, 3)}</small>{short(pl.card)}
+                <small>{face(pl.seat).slice(0, 3)}</small>{short(pl.card)}
               </span>
             ))}
           </div>
@@ -1169,12 +1198,12 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       {/* center notes */}
       <div className="center-note-wrap">
         {showDealer && <DealerPopup name={dealerLabel} localSeat={st.dealer} />}
-        {st.phase === 'bidding' && !pause && !dealing && st.turn !== HUMAN && <div className="center-note" data-testid="bidding-note">{r.partnerships && st.turn === partnerSeat ? `Your partner ${names[st.turn!]} is bidding…` : `${names[st.turn!]} is bidding…`}</div>}
+        {st.phase === 'bidding' && !pause && !dealing && st.turn !== HUMAN && <div className="center-note" data-testid="bidding-note">{biddingNote(names[st.turn!] ?? '', { partnerships: r.partnerships, partnerTurn: st.turn === partnerSeat, spectating })}</div>}
         {showCenterBidOrder(st.phase, pause, dealing) && <BidOrder st={st} names={names} me={spectating ? -1 : HUMAN} />}
         {isBooks && st.phase === 'playing' && !pause && !dealing && st.tricks.length === 0 && st.trick.plays.length === 0 && <div className="center-note books-note" data-testid="books-note">First hand: books bid themselves · 10 per book</div>}
         {st.phase === 'exchange' && !humanExchanging && <div className="center-note">{names[exchangeStep!.from]} passes {exchangeStep!.count} to {names[exchangeStep!.to]}…</div>}
       </div>
-      {winnerSeat !== null && <TrickBanner key={`${st.handNo}-${st.tricks.length}`} text={winnerSeat === HUMAN ? 'YOU TAKE IT' : `${names[winnerSeat]!.toUpperCase()} TAKES IT`} />}
+      {winnerSeat !== null && <TrickBanner key={`${st.handNo}-${st.tricks.length}`} text={trickTakenLine(face(winnerSeat))} />}
 
       {/* toasts */}
       <div className="toasts">
@@ -1232,9 +1261,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         )}
 
         <div className={`plate me-plate ${actor === HUMAN && !spectating ? 'turn' : ''}`} data-testid="seat-0">
-          <div className="plate-avatar" style={{ ['--uc' as string]: USER_COLORS.You }}>Y</div>
+          <div className="plate-avatar" style={{ ['--uc' as string]: spectating ? SEAT_COLORS[HUMAN] : USER_COLORS.You }}>{seatInitial(face(HUMAN))}</div>
           <div className="plate-body">
-            <div className="plate-name">{spectating ? (names[HUMAN] ?? '').toUpperCase() : 'YOU'}{st.dealer === HUMAN && <span className="chip dealer" data-testid="dealer-0">DEALER</span>}{notice.includes(sideOf(HUMAN, r)) && <span className="chip notice" data-testid="notice-0" title="Got shot last hand: one more shot and you're out">ON NOTICE</span>}{!spectating && myBadges.map((b) => BADGES[b.id] && <span key={b.id} className="chip badge" title={`${BADGES[b.id]!.name}: ${BADGES[b.id]!.desc}`} data-testid={`plate-badge-${b.id}`}>{BADGES[b.id]!.icon}</span>)}</div>
+            <div className="plate-name">{face(HUMAN).toUpperCase()}{st.dealer === HUMAN && <span className="chip dealer" data-testid="dealer-0">DEALER</span>}{notice.includes(sideOf(HUMAN, r)) && <span className="chip notice" data-testid="notice-0" title={noticeTip(spectating)}>ON NOTICE</span>}{!spectating && myBadges.map((b) => BADGES[b.id] && <span key={b.id} className="chip badge" title={`${BADGES[b.id]!.name}: ${BADGES[b.id]!.desc}`} data-testid={`plate-badge-${b.id}`}>{BADGES[b.id]!.icon}</span>)}</div>
             <div className="plate-stats">
               <span className="chip">{st.bids[HUMAN] === 'books' ? 'BOOKS' : `BID ${st.bids[HUMAN] === null ? '—' : bidLabel(st.bids[HUMAN]).toUpperCase()}`}</span>
               <span className="chip">TOOK {sb.tricksWon[HUMAN]}</span>
@@ -1249,8 +1278,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       </section>
       {online?.overlay}
       {canRun && <RunItButton tip={runTip} onDismissTip={() => setRunTip(false)} onRun={() => { setRunTip(false); setSelected(null); apply({ type: 'runIt', seat: HUMAN }); }} />}
-      {runFx?.phase === 'zoom' && <RunZoom cards={runFx.cards} who={runFx.claimer === HUMAN ? 'You' : names[runFx.claimer]!} line={runLine} r={r} />}
-      {callout && !runFx && <div className={`trash-callout seat-${pos[callout.seat]}`} key={callout.id} data-testid="trash-callout"><b>{callout.seat === HUMAN ? 'You' : names[callout.seat]}</b>{showLine(callout.text)}</div>}
+      {runFx?.phase === 'zoom' && <RunZoom cards={runFx.cards} who={face(runFx.claimer)} line={runLine} r={r} />}
+      {callout && !runFx && <div className={`trash-callout seat-${pos[callout.seat]}`} key={callout.id} data-testid="trash-callout"><b>{face(callout.seat)}</b>{showLine(callout.text)}</div>}
       {runFx && <button type="button" className="run-skip" data-testid="run-skip" aria-label="Skip" onClick={endRun}><span>Tap to skip</span></button>}
       {badgeToast && BADGES[badgeToast] && (
         <div className="badge-unlock glass slant" role="status" data-testid="badge-unlock" onClick={() => setBadgeToast(null)}>
@@ -1297,13 +1326,13 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
                 <RunItReview
                   hands={runHands}
                   claimer={runClaimer}
-                  labels={runHands.map((_, seat) => (spectating ? names[seat] : seat === HUMAN ? 'You' : names[seat]) ?? `Seat ${seat + 1}`)}
+                  labels={runHands.map((_, seat) => face(seat))}
                   r={r}
                   onClose={() => setClearedOpen(false)}
                 />
               </div>
             ) : (
-              <button type="button" className="tt-run-show" data-testid="talk-run-show" onClick={() => setClearedOpen(true)}>{(spectating ? names[runClaimer] : runClaimer === HUMAN ? 'You' : names[runClaimer]) ?? `Seat ${runClaimer + 1}`} ran the rest</button>
+              <button type="button" className="tt-run-show" data-testid="talk-run-show" onClick={() => setClearedOpen(true)}>{face(runClaimer)} ran the rest</button>
             )
           ) : null}
         />

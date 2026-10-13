@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { SocialChatLine, SocialServerMsg } from '@spades/protocol';
-import { type ConnAtt, type GlobalLog, Hub, maskChat } from '../src/social/hub';
+import { parseSocialMsg, PRESENCE_TTL_MS, type SocialChatLine, type SocialServerMsg } from '@spades/protocol';
+import { type ConnAtt, type GlobalLog, Hub, maskChat, uniqueGuestName } from '../src/social/hub';
 import { resetTicketKey, signTicket, verifyTicket } from '../src/social/ticket';
 import { coarseRegion, isAdmin, profileFor, recentPlayers } from '../src/social/routes';
 import { makeD1 } from './d1';
@@ -15,6 +15,11 @@ class Harness {
   ids = 0;
   hub: Hub;
   tables = new Map<string, import('@spades/protocol').OpenTable>();
+  /** when set, prune treats a socket outside this predicate as disconnected */
+  live: ((cid: string) => boolean) | null = null;
+  /** when set, prune asks this instead of a table DO */
+  phases: ((code: string) => 'live' | 'over' | 'gone' | null) | null = null;
+  dropped: string[] = [];
   constructor(public db: D1Database) {
     const global: GlobalLog = {
       add: (l) => { const line = { id: this.seq++, ...l }; this.lines.push(line); if (this.lines.length > 200) this.lines.shift(); return line; },
@@ -34,6 +39,9 @@ class Harness {
       },
       later: (ms, f) => this.timers.push({ at: this.t + ms, f }),
       randomId: () => `id${++this.ids}xxxxxxxxxxxxxxxx`,
+      connected: (cid) => (this.live ? this.live(cid) : true),
+      drop: (cid) => { this.dropped.push(cid); },
+      tablePhase: async (code) => (this.phases ? this.phases(code) : null),
     }, db);
   }
   advance(ms: number) { this.t += ms; const due = this.timers.filter((x) => x.at <= this.t); this.timers = this.timers.filter((x) => x.at > this.t); due.forEach((x) => x.f()); }
@@ -114,6 +122,47 @@ describe('presence', () => {
     expect(h.seen('a1')).toContain('u:ub');
     h.hub.close('b1');
     expect(h.seen('a1')).not.toContain('u:ub');
+  });
+
+  it('one guest session is one player; the same display name gets a distinct label', async () => {
+    await h.hub.open('a1', { uid: 'ua', name: 'Alice' });
+    await h.hub.open('g1', { name: 'SWE GUEST', gid: 'swe-guest-session' });
+    await h.hub.open('g2', { name: 'SWE GUEST', gid: 'swe-guest-session' });
+    const id = h.last('g1', 'hello')!.you.id;
+    expect(id).toBe('g:swe-guest-session');
+    expect(h.last('g2', 'hello')!.you.id).toBe(id);
+    expect(h.seen('a1').filter((x) => x.startsWith('g:'))).toEqual([id]);
+    expect(h.last('g2', 'hello')!.you.name).toBe('SWE GUEST');
+    // closing one tab keeps the session online
+    h.hub.close('g1');
+    expect(h.seen('a1')).toContain(id);
+    // a different browser with the same name is a second player, labeled apart
+    await h.hub.open('g3', { name: 'SWE GUEST', gid: 'other-guest-session' });
+    expect(h.last('g3', 'hello')!.you.name).toBe('SWE GUEST 2');
+    expect(h.seen('a1').filter((x) => x.startsWith('g:')).sort()).toEqual([id, 'g:other-guest-session'].sort());
+    // a guest may share an account's name; the Guest tag tells them apart
+    await h.hub.open('g4', { name: 'Alice', gid: 'alice-the-guest' });
+    expect(h.last('g4', 'hello')!.you.name).toBe('Alice');
+    // a bad session id cannot impersonate an account, and still won't stack the same name
+    await h.hub.open('g5', { name: 'SWE GUEST', gid: 'u:ua' });
+    await h.hub.open('g6', { name: 'SWE GUEST', gid: 'nope' });
+    expect(h.last('g5', 'hello')!.you.id).toMatch(/^g:/);
+    expect(h.last('g5', 'hello')!.you.id).not.toBe('u:ua');
+    expect(h.last('g6', 'hello')!.you.id).not.toBe(h.last('g5', 'hello')!.you.id);
+    const names = [h.last('g5', 'hello')!.you.name, h.last('g6', 'hello')!.you.name];
+    expect(new Set(names).size).toBe(2);
+    expect(names.every((n) => n.startsWith('SWE GUEST'))).toBe(true);
+    h.hub.close('g2');
+    expect(h.seen('a1')).not.toContain(id);
+  });
+
+  it('parses the seat and watch-full fields, and drops a seat that cannot exist', () => {
+    expect(parseSocialMsg({ t: 'status', status: { kind: 'table', mode: 'joker', open: 1, code: 'ABCD', seat: 2, watchFull: true } }))
+      .toEqual({ t: 'status', status: { kind: 'table', mode: 'joker', open: 1, code: 'ABCD', seat: 2, watchFull: true } });
+    expect(parseSocialMsg({ t: 'status', status: { kind: 'table', mode: 'joker', offline: true, seat: 9, watchFull: false } }))
+      .toEqual({ t: 'status', status: { kind: 'table', mode: 'joker', offline: true } });
+    expect(uniqueGuestName('SWE GUEST', ['swe guest'])).toBe('SWE GUEST 2');
+    expect(uniqueGuestName('Guest', [])).toBe('Guest');
   });
 });
 
@@ -305,5 +354,85 @@ describe('open tables (Release 10)', () => {
     h.hub.tableUpdate('PPPPP', T('PPPPP', { status: 'playing', open: 2 }));
     h.hub.tableUpdate('WWWWW', T('WWWWW', { status: 'waiting', open: 1 }));
     expect(h.hub.openTables().map((t) => t.code)).toEqual(['WWWWW', 'PPPPP']);
+  });
+});
+
+describe('stale presence rows', () => {
+  const T = (code: string, over: Partial<import('@spades/protocol').OpenTable> = {}) => ({
+    code, host: 'SWE', mode: 'joker', playerCount: 4, target: 250, venue: 'classic', humans: 0, bots: 4, open: 4, status: 'playing' as const, spectators: 0, at: h.t, ...over,
+  });
+
+  it('hides the guest who is still announcing an ended table, next to the live session', async () => {
+    await h.hub.open('live', { name: 'SWE 2', gid: 'swe-live-session' });
+    await h.hub.open('ghost', { name: 'SWE', gid: 'swe-old-session1' });
+    h.hub.tableUpdate('6SAQ2', T('6SAQ2'));
+    await h.send('ghost', { t: 'status', status: { kind: 'table', mode: 'joker', open: 4, code: '6SAQ2' } });
+    expect(h.seen('live')).toContain('g:swe-old-session1');
+    h.hub.tableUpdate('6SAQ2', T('6SAQ2', { status: 'over', open: 4 }));
+    expect(h.seen('live')).not.toContain('g:swe-old-session1');
+    // the frozen page keeps saying it is at that table; the row stays gone
+    await h.send('ghost', { t: 'status', status: { kind: 'table', mode: 'joker', open: 4, code: '6SAQ2' } });
+    expect(h.seen('live')).not.toContain('g:swe-old-session1');
+    await h.send('ghost', { t: 'status', status: { kind: 'online' } });
+    expect(h.seen('live')).toContain('g:swe-old-session1');
+    expect(h.last('live', 'pres')!.up![0]).toMatchObject({ id: 'g:swe-old-session1', status: { kind: 'online' } });
+  });
+
+  it('drops presence when a listed table disappears, and leaves a private table alone', async () => {
+    await h.hub.open('watch', { name: 'Watch', gid: 'watcher-session1' });
+    await h.hub.open('pub', { name: 'SWE', gid: 'swe-old-session1' });
+    await h.hub.open('priv', { name: 'Nia', gid: 'private-guest-ses' });
+    h.hub.tableUpdate('6SAQ2', T('6SAQ2'));
+    await h.send('pub', { t: 'status', status: { kind: 'table', mode: 'joker', open: 4, code: '6SAQ2' } });
+    await h.send('priv', { t: 'status', status: { kind: 'table', mode: 'joker', open: 2, code: 'PRIV8' } });
+    h.hub.tableUpdate('PRIV8', null);
+    h.hub.tableUpdate('6SAQ2', null);
+    expect(h.seen('watch')).not.toContain('g:swe-old-session1');
+    expect(h.seen('watch')).toContain('g:private-guest-ses');
+  });
+
+  it('asks the room about a code that is already unlisted and drops a gone table', async () => {
+    await h.hub.open('watch', { name: 'SWE 2', gid: 'swe-live-session' });
+    await h.hub.open('ghost', { name: 'SWE', gid: 'swe-old-session1' });
+    await h.send('ghost', { t: 'status', status: { kind: 'table', mode: 'joker', open: 4, code: '6SAQ2' } });
+    h.phases = (code) => (code === '6SAQ2' ? 'gone' : 'live');
+    await h.hub.prune(true);
+    expect(h.seen('watch')).not.toContain('g:swe-old-session1');
+    expect(h.seen('watch')).toContain('g:swe-live-session');
+  });
+
+  it('keeps a private table the room still calls live', async () => {
+    await h.hub.open('watch', { name: 'Watch', gid: 'watcher-session1' });
+    await h.hub.open('priv', { name: 'Nia', gid: 'private-guest-ses' });
+    await h.send('priv', { t: 'status', status: { kind: 'lobby', mode: 'joker', open: 3, code: 'PRIV8' } });
+    h.phases = () => 'live';
+    await h.hub.prune(true);
+    expect(h.seen('watch')).toContain('g:private-guest-ses');
+  });
+
+  it('drops a disconnected socket and a session that has gone quiet', async () => {
+    await h.hub.open('ghost', { name: 'SWE', gid: 'swe-old-session1' });
+    await h.hub.open('live', { name: 'SWE 2', gid: 'swe-live-session' });
+    h.live = (cid) => cid !== 'ghost';
+    await h.hub.prune(false);
+    expect(h.dropped).toContain('ghost');
+    expect(h.seen('live')).not.toContain('g:swe-old-session1');
+    expect(h.seen('live')).toContain('g:swe-live-session');
+
+    h.live = null;
+    await h.hub.open('old', { name: 'Old', gid: 'old-guest-session1' });
+    h.t += PRESENCE_TTL_MS + 1;
+    await h.hub.open('fresh', { name: 'Fresh', gid: 'fresh-guest-session' });
+    expect(h.last('fresh', 'hello')!.users.map((u) => u.id)).not.toContain('g:old-guest-session1');
+    expect(h.last('fresh', 'hello')!.users.map((u) => u.id)).toContain('g:fresh-guest-session');
+    expect(h.dropped).toContain('old');
+  });
+
+  it('keeps an offline vs-bots row when some other table ends', async () => {
+    await h.hub.open('watch', { name: 'Watch', gid: 'watcher-session1' });
+    await h.hub.open('bot', { name: 'Guest', gid: 'offline-guest-sess' });
+    await h.send('bot', { t: 'status', status: { kind: 'table', mode: 'joker', offline: true } });
+    h.hub.tableUpdate('6SAQ2', T('6SAQ2', { status: 'over' }));
+    expect(h.seen('watch')).toContain('g:offline-guest-sess');
   });
 });

@@ -6,23 +6,24 @@ import { type BufferGeometry, type Camera, type Group, type Material, type Mesh,
 import { type Card, type Play, type Trick, standardDeck } from '@spades/rules';
 import Card3D, { createLitCardMaterial, pooledCardMaterial } from './Card3D';
 import { departureSlot, handCardKey, handReactKey } from '../handOrder';
-import { GAP_S, LIFT_S, canTapCard, fanGapPx, fanMotion, handCardChrome, handDepthOpts, handRenderOrder, hitsInPaintOrder, raiseLocalY } from './handLift';
+import { GAP_S, LIFT_S, fanGapPx, fanMotion, handCardChrome, handDepthOpts, handRenderOrder, hitsInPaintOrder, raiseLocalY } from './handLift';
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline, seatDealDelay } from './dealTimeline';
 import { handNeedsDeal, handSlotKey } from './dealFlight';
-import { showResumeHand3D, trickFacesShown } from './cardFace';
+import { cardShowsFace, showResumeHand3D, trickFacesShown } from './cardFace';
 import { type Sfx, sound } from '../audio';
 import { fx } from '../fx';
 import { backTexture, faceTexture, logoTexture, refreshFacesGradually } from './cardTextures';
 import { loadTableImage, prefetchTableTextures, tableTextureUrls } from '../tableAssets';
 import { ClassicHall } from './hallEnv';
 import { forceProgram, nextFrame, quietShaderErrors } from './shaderBudget';
+import { importChunk } from '../chunkLoad';
 import { offerTableRenderer } from '../effects/warm';
 import Venue3D, { feltPatternTexture, preloadVenueAssets } from './Venue3D';
 import { type VenueDef, type VenueId, VENUE_DEFS, venueAssetUrls } from '../venues';
 import { bodyGeometry, cardGeometry, feltGeometry, railGeometry } from './geometry';
 import {
-  CH, CW, TRICK_SCALE, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, deckSpot, fanLayout, handCardPlane, handFan, makeCamera, jitterOf, opponentFan, pileSpot, ringSpot, trickSpot,
+  CH, CW, TRICK_SCALE, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, deckSpot, fanLayout, handCardPlane, handFan, makeCamera, jitterOf, opponentFan, phoneHandFan, pileSpot, ringSpot, trickSpot,
 } from './layout';
 
 export interface SceneProps {
@@ -496,9 +497,12 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   // landscape: the bottom corners hold your plate (left) and last trick + controls (right); the hand fans between
   // desktop / wide: a bigger hand (≈35% over the 0.16 default), kept between your plate (left) and last trick (right)
   const wide = !short && size.width >= 1024 && aspect >= 1.3;
+  // Portrait phones get a larger hand. Wide and landscape keep their own framing.
+  const portraitPhone = !short && !wide && size.width < 600 && aspect < 1.05;
   const fanOpts = short
     ? { short, reserveFrac: (Math.max(safe.l, safe.r) + 186) / size.width, bottomFrac: safe.b / size.height, heightFrac: 0.2 }
     : wide ? { reserveFrac: (size.width < 1400 ? 250 : 205) / size.width, bottomFrac: 0.012, heightFrac: 0.205 }
+    : portraitPhone ? phoneHandFan()
     : {};
   const trickScale = short ? 1.85 : undefined;
   // Last committed hand, so a play can launch from that card's own slot. Updated in an effect (not during render)
@@ -619,9 +623,9 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       holdUntilMove: move.kind === 'deal',
       sfxStart: move.kind === 'deal' ? 'deal' : undefined,
       dim: chrome.dim,
-      // playable cards (when some aren't) get the gold edge on every device; the rest are dimmed (dim above)
-      glow: !!c && chrome.glow,
-      tap: c && canTapCard(pose) ? () => onCardTap(c) : pose === 'illegal' ? null : undefined,
+      // No gold ring. A playable card is bright; a card you cannot play is dimmed in place.
+      glow: false,
+      tap: c && isLegal ? () => onCardTap(c) : pose === 'illegal' ? null : undefined,
       shadow: false,
       duration: move.kind === 'flip' ? 0.34 : move.kind === 'deal' ? tl.fly : move.kind === 'slide' ? GAP_S : LIFT_S,
       motion: move.motion,
@@ -679,7 +683,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
           key={it.key}
           name={it.key}
           lit={props.lit}
-          face={it.card && faceShown.current.has(it.card) ? face(it.card) : null}
+          face={it.card && cardShowsFace(it.card, faceShown.current, trickIds) ? face(it.card) : null}
           back={back}
           target={it.target}
           from={it.from}
@@ -801,7 +805,9 @@ function Lights({ quality, def, shadowSize }: { quality: 'high' | 'low'; def: Ve
         shadow-normalBias={0.012}
         shadow-radius={6}
       />
-      {def.id !== 'classic' && <HandFill />}
+      {/* Classic used to skip this. The spotlight falls off at the near edge, so the hand
+          rendered grey while the quick-load cards stayed white. Every venue gets the fill. */}
+      <HandFill />
       {/* purple rim from behind the table, for the stream-studio vibe */}
       <pointLight position={[0, 1.6, -4.2]} intensity={(hi ? 9 : 6) * (def.id === 'classic' ? 1 : 0.6)} color={def.rim} distance={9} />
     </>
@@ -1179,8 +1185,9 @@ function AfterTable({ quality, tableUp }: { quality: 'high' | 'low'; tableUp: bo
     if (!tableUp) return;
     let alive = true;
     const start = () => {
-      void import('./Nuke3D').then((m) => { if (alive) setNuke(m); });
-      void import('./Tornado3D').then((m) => { if (alive) setTornado(m); });
+      // A deploy can delete the hashed file this page still names. Retry, then reload once.
+      void importChunk(() => import('./Nuke3D')).then((m) => { if (alive) setNuke(m); }, () => {});
+      void importChunk(() => import('./Tornado3D')).then((m) => { if (alive) setTornado(m); }, () => {});
     };
     // Idle, after the cloth is on: the nuke shaders are not part of dealing a resumed hand back in.
     const ric = (window as unknown as { requestIdleCallback?: (fn: () => void, opts?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void }).requestIdleCallback;

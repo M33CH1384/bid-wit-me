@@ -167,7 +167,8 @@ function court(ctx: CanvasRenderingContext2D, W: number, H: number, rank: string
   ctx.fillStyle = color;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = `700 ${W * 0.3}px Georgia, "Times New Roman", serif`;
+  const courtFs = W * 0.3;
+  ctx.font = `800 ${courtFs}px "Barlow Condensed", "Arial Narrow", Arial, sans-serif`;
   ctx.fillText(rank, W / 2, y + h * 0.53);
   drawSuit(ctx, suit, W / 2, y + h * 0.84, W * 0.1, color);
 }

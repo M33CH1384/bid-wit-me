@@ -16,11 +16,12 @@
  *   - SQLite-backed DO (new_sqlite_classes), WebSocket Hibernation API, ping/pong auto-response (no wake-ups).
  *   - The whole room is ONE KV row. Saves are debounced (≤1 write per ~2 s burst of activity, forced at 10 s),
  *     so a full 4-human game costs a few hundred row writes, a 1-human + 3-bot game far fewer.
- *   - Turn timers use a single "ticking" alarm that is only re-armed when it fires (≈1 alarm write per turn timeout window).
+ *   - Human turn timers and bot moves share one storage alarm (re-armed only when nothing earlier is pending).
+ *     The in-memory wake is only the fast path: hibernation drops it, and ping/pong does not wake the object.
  *   - A table with nobody connected freezes (no bots, no timers) and is deleted after 24 h idle.
  */
 import { DurableObject } from 'cloudflare:workers';
-import { CODE_ALPHABET, CODE_LENGTH, type ServerMsg, isRoomCode, normalizeRoomCode } from '@spades/protocol';
+import { CODE_ALPHABET, CODE_LENGTH, GUEST_SESSION, type ServerMsg, isRoomCode, normalizeRoomCode } from '@spades/protocol';
 import { Room, type RoomData, ROOM_DATA_VERSION, newRoomData } from './room';
 import { FEEDBACK_LIMITS, type FeedbackRow, adminHtml, hashIp, notifyOwner, parseFeedback, rateOk, tokenOk } from './feedback';
 import { ADMIN_COOKIE, ADMIN_TTL_MS, adminCookieOk, adminLoginHtml, makeAdminCookie, readCookie } from './admin';
@@ -201,9 +202,13 @@ export default {
         if (slow) return slow;
         const t = await verifyTicket(env.DB, url.searchParams.get('ticket'), Date.now());
         const h = new Headers(req.headers);
-        h.delete('x-uid'); h.delete('x-name'); h.delete('x-admin');
+        h.delete('x-uid'); h.delete('x-name'); h.delete('x-admin'); h.delete('x-gid');
         if (t) { h.set('x-uid', t.uid); h.set('x-name', t.name); if (isAdmin(env, t.uid, t.name)) h.set('x-admin', '1'); }
-        else h.set('x-name', (url.searchParams.get('name') ?? 'Guest').slice(0, 40));
+        else {
+          h.set('x-name', (url.searchParams.get('name') ?? 'Guest').slice(0, 40));
+          const gid = url.searchParams.get('gid') ?? '';
+          if (GUEST_SESSION.test(gid)) h.set('x-gid', gid);
+        }
         const stub = env.SOCIAL.get(env.SOCIAL.idFromName('hub'));
         return stub.fetch(new Request('https://social/ws', { headers: h }));
       }
@@ -348,7 +353,10 @@ export class TableDO extends DurableObject<Env> {
     if (msg.t === 'welcome') ws.serializeAttachment({ cid, pid: msg.you } satisfies Attachment);
   }
 
-  /** Short in-memory timer (bot moves). While it's pending the DO stays awake, which is fine: it's ≤ a few seconds. */
+  /**
+   * Fast path for a bot move while this isolate stays up. Hibernation drops the timer and a
+   * WebSocket ping does not wake the object, so the room also arms a storage alarm.
+   */
   private wake(ms: number): void {
     const at = Date.now() + Math.max(0, ms);
     if (this.wakeTimer && at >= this.wakeAt) return;
@@ -363,7 +371,8 @@ export class TableDO extends DurableObject<Env> {
     const now = Date.now();
     if (this.alarmAt !== null && this.alarmAt > now - 5000 && this.alarmAt <= at) return;
     this.alarmAt = at;
-    void this.ctx.storage.setAlarm(at);
+    // keep the isolate alive until the alarm is stored; a floating promise is dropped on hibernation
+    this.ctx.waitUntil(this.ctx.storage.setAlarm(at));
   }
 
   private scheduleSave(): void {
@@ -557,12 +566,18 @@ export class SocialDO extends DurableObject<Env> {
     this.sql = ctx.storage.sql;
     this.sql.exec(`CREATE TABLE IF NOT EXISTS global (id INTEGER PRIMARY KEY AUTOINCREMENT, from_id TEXT, name TEXT, text TEXT, at INTEGER, admin INTEGER DEFAULT 0)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS open_tables (code TEXT PRIMARY KEY, json TEXT, at INTEGER)`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS ended_tables (code TEXT PRIMARY KEY)`);
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
     const sql = this.sql;
     const tables: TableLog = {
       put: (t) => { sql.exec('INSERT OR REPLACE INTO open_tables (code, json, at) VALUES (?, ?, ?)', t.code, JSON.stringify(t), t.at); },
       del: (code) => { sql.exec('DELETE FROM open_tables WHERE code = ?', code); },
       list: () => sql.exec<{ json: string }>('SELECT json FROM open_tables').toArray().map((r) => JSON.parse(r.json) as OpenTable),
+    };
+    const ended = {
+      add: (code: string) => { sql.exec('INSERT OR REPLACE INTO ended_tables (code) VALUES (?)', code); },
+      del: (code: string) => { sql.exec('DELETE FROM ended_tables WHERE code = ?', code); },
+      list: () => sql.exec<{ code: string }>('SELECT code FROM ended_tables').toArray().map((r) => r.code),
     };
     const global: GlobalLog = {
       add: (l) => {
@@ -581,6 +596,28 @@ export class SocialDO extends DurableObject<Env> {
       save: (cid, att) => { try { this.sockets.get(cid)?.serializeAttachment({ cid, att }); } catch { /* closed */ } },
       global,
       tables,
+      ended,
+      connected: (cid) => this.sockets.get(cid)?.readyState === WebSocket.OPEN,
+      drop: (cid) => {
+        const ws = this.sockets.get(cid);
+        this.sockets.delete(cid);
+        try { ws?.close(1000, 'presence'); } catch { /* already closed */ }
+      },
+      tablePhase: async (code) => {
+        if (!/^[A-Z0-9]{3,12}$/.test(code)) return null;
+        try {
+          const stub = env.TABLES.get(env.TABLES.idFromName(code));
+          const r = await stub.fetch(`https://table/info?code=${code}`);
+          if (r.status === 404) return 'gone';
+          const j = await r.json() as { exists?: boolean; phase?: string };
+          if (j.exists === false) return 'gone';
+          if (j.phase === 'over') return 'over';
+          if (j.phase === 'lobby' || j.phase === 'playing') return 'live';
+          return null;
+        } catch {
+          return null;
+        }
+      },
       later: (ms, f) => { setTimeout(f, ms); },
       randomId: () => crypto.randomUUID().replace(/-/g, ''),
     }, env.DB);
@@ -588,10 +625,23 @@ export class SocialDO extends DurableObject<Env> {
       for (const ws of ctx.getWebSockets()) {
         const a = ws.deserializeAttachment() as { cid: string; att?: ConnAtt } | null;
         if (!a?.att) continue;
+        // A socket that died while the hub slept must not come back as a seated player.
+        if (ws.readyState !== WebSocket.OPEN) {
+          try { ws.close(1000, 'presence'); } catch { /* already closed */ }
+          continue;
+        }
         this.sockets.set(a.cid, ws);
         await this.hub.restore(a.cid, a.att);
       }
+      // Tombstones and idle sessions only. Looking up other table DOs from the constructor can deadlock.
+      await this.hub.prune(false);
     });
+    void ctx.storage.setAlarm(Date.now() + 60_000);
+  }
+
+  override async alarm(): Promise<void> {
+    await this.hub.prune(true);
+    await this.ctx.storage.setAlarm(Date.now() + 60_000);
   }
 
   override async fetch(req: Request): Promise<Response> {
@@ -615,7 +665,8 @@ export class SocialDO extends DurableObject<Env> {
     server.serializeAttachment({ cid });
     this.sockets.set(cid, server);
     const uid = req.headers.get('x-uid') ?? undefined;
-    await this.hub.open(cid, { uid, name: req.headers.get('x-name') ?? 'Guest', admin: req.headers.get('x-admin') === '1' });
+    const gid = req.headers.get('x-gid') ?? undefined;
+    await this.hub.open(cid, { uid, name: req.headers.get('x-name') ?? 'Guest', admin: req.headers.get('x-admin') === '1', ...(gid ? { gid } : {}) });
     return new Response(null, { status: 101, webSocket: client });
   }
 

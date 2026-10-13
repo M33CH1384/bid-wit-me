@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { type Card, bidOrder, checkGameEnd, handSize, makeRules, scoreHand } from '@spades/rules';
+import { type Card, type Seat, bidOrder, checkGameEnd, handSize, legalPlays, makeRules, scoreHand, viewFor } from '@spades/rules';
 import { chooseBotAction } from '@spades/bots';
 import type { GameAction } from '@spades/protocol';
 import { HAND_END_HOLD_MS } from '@spades/protocol';
 import { BOT_NAMES } from '@spades/bots';
-import { HOST_DISCONNECT_GRACE_MS } from '../src/room';
+import { BOT_WATCHDOG_MS, HOST_DISCONNECT_GRACE_MS } from '../src/room';
 import { FakeEnv } from './harness';
 
 /** a bot seat got a name from the shared pool, unique at the table and not a human's name */
@@ -347,6 +347,111 @@ describe('game', () => {
     expect(env.last('a', 'state')!.room.deadline).toBeGreaterThan(env.t);
   });
 
+  it('a hibernated bot turn still plays on the durable alarm and is broadcast', () => {
+    const env = new FakeEnv(undefined, { ...FAST, botMs: 800 });
+    const a = env.join('a', 'Solo');
+    env.send('a', { t: 'sit', seat: 0 });
+    env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: 500 }), botTalk: false });
+    env.send('a', { t: 'start' });
+    if (env.room.data.game!.turn === 0) {
+      env.alarm = null;
+      const v = env.last('a', 'state')!.view!;
+      env.send('a', { t: 'act', action: { type: 'play', card: v.legal[0]! }, seq: env.room.data.seq });
+    }
+    const due = env.room.data.botDueAt!;
+    const seat = env.room.data.game!.turn!;
+    expect(seat).not.toBe(0);
+    expect(env.alarm).toBe(due);
+    expect(due - env.t).toBeLessThanOrEqual(800);
+    const before = [...env.room.data.game!.hands[seat]!];
+    const legal = legalPlays(env.room.data.game!, seat as Seat);
+    const seq = env.room.data.seq;
+    env.hibernate([['a', a.pid]]);
+    expect(env.wakes).toEqual([]);
+    expect(env.alarm).toBe(due);
+    expect(env.room.data.botDueAt).toBe(due);
+    env.advance(due - env.t + 20);
+    expect(env.t).toBeLessThan(due + BOT_WATCHDOG_MS);
+    expect(env.room.data.seq).toBeGreaterThan(seq);
+    const left = env.room.data.game!.hands[seat]!;
+    const played = before.filter((c) => !left.includes(c));
+    expect(played).toHaveLength(1);
+    expect(legal).toContain(played[0]);
+    expect(env.last('a', 'state')!.room.seq).toBe(env.room.data.seq);
+    expect(env.last('a', 'state')!.view!.turn).not.toBe(seat);
+  });
+
+  it('a stalled bot play is forced to a legal card and broadcast a few seconds later', () => {
+    const env = new FakeEnv(undefined, { ...FAST, botMs: 800 });
+    env.join('a', 'Solo');
+    env.send('a', { t: 'sit', seat: 0 });
+    env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: 500 }), botTalk: false });
+    env.send('a', { t: 'start' });
+    if (env.room.data.game!.turn === 0) {
+      env.alarm = null;
+      const v = env.last('a', 'state')!.view!;
+      env.send('a', { t: 'act', action: { type: 'play', card: v.legal[0]! }, seq: env.room.data.seq });
+    }
+    const due = env.room.data.botDueAt!;
+    const seat = env.room.data.game!.turn! as Seat;
+    const before = [...env.room.data.game!.hands[seat]!];
+    const legal = legalPlays(env.room.data.game!, seat);
+    const seq = env.room.data.seq;
+    env.room.stallsLeft = 4;
+    env.wakes = [];
+    env.advance(due - env.t);
+    expect(env.room.data.seq).toBe(seq);
+    expect(env.room.data.game!.turn).toBe(seat);
+    expect(env.room.data.game!.hands[seat]).toEqual(before);
+    expect(env.alarm! - due).toBe(BOT_WATCHDOG_MS);
+    env.wakes = [];
+    env.advance(env.alarm! - env.t);
+    const left = env.room.data.game!.hands[seat]!;
+    const played = before.filter((c) => !left.includes(c));
+    expect(played).toHaveLength(1);
+    expect(legal).toContain(played[0]);
+    expect(env.room.data.seq).toBe(seq + 1);
+    const msg = env.last('a', 'state')!;
+    expect(msg.room.seq).toBe(env.room.data.seq);
+    expect(msg.view!.handCounts[seat]).toBe(before.length - 1);
+    expect(msg.view!.turn).not.toBe(seat);
+  });
+
+  it('a stalled bot bid is forced to a legal bid or reveal and broadcast', () => {
+    const env = new FakeEnv(undefined, { ...FAST, botMs: 800 });
+    env.join('a', 'Solo');
+    env.send('a', { t: 'sit', seat: 0 });
+    env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: 500, firstHandBidsItself: false }), botTalk: false });
+    env.send('a', { t: 'start' });
+    if (env.room.data.game!.turn === 0) {
+      env.alarm = null;
+      const mine = env.last('a', 'state')!.view!;
+      if (mine.hand === null) env.send('a', { t: 'act', action: { type: 'reveal' }, seq: env.room.data.seq });
+      else env.send('a', { t: 'act', action: { type: 'bid', bid: mine.bidOptions!.min }, seq: env.room.data.seq });
+    }
+    expect(env.room.data.game!.phase).toBe('bidding');
+    const due = env.room.data.botDueAt!;
+    const seat = env.room.data.game!.turn! as Seat;
+    const view = viewFor(env.room.data.game!, seat);
+    const seq = env.room.data.seq;
+    env.room.stallsLeft = 4;
+    env.wakes = [];
+    env.advance(due - env.t);
+    expect(env.room.data.seq).toBe(seq);
+    expect(env.room.data.game!.turn).toBe(seat);
+    expect(env.alarm! - due).toBe(BOT_WATCHDOG_MS);
+    env.wakes = [];
+    env.advance(env.alarm! - env.t);
+    const g = env.room.data.game!;
+    if (view.hand === null) expect(g.revealed[seat]).toBe(true);
+    else expect(g.bids[seat]).toBe(view.bidOptions!.min);
+    expect(env.room.data.seq).toBe(seq + 1);
+    const msg = env.last('a', 'state')!;
+    expect(msg.room.seq).toBe(env.room.data.seq);
+    if (view.hand === null) expect(msg.view!.revealed[seat]).toBe(true);
+    else expect(msg.view!.bids[seat]).toBe(view.bidOptions!.min);
+  });
+
   it('a human who runs out of time gets auto-played', () => {
     const env = new FakeEnv(undefined, FAST);
     env.join('a', 'Slow');
@@ -630,6 +735,70 @@ describe('action ordering (real-network latency)', () => {
     expect(acks(env, 'a').at(-1)).toEqual({ t: 'ack', id: 'ok', ok: true });
     env.advance(6000);
     expect(env.room.data.chat.some((l) => l.text.includes('ran out of time') && l.at <= env.t - 5000)).toBe(false);
+  });
+
+  it('rejects a second card from the same seat in the current trick', () => {
+    const env = new FakeEnv(undefined, FAST);
+    env.join('a', 'Dee');
+    env.join('b', 'Ray');
+    env.send('a', { t: 'sit', seat: 0 });
+    env.send('b', { t: 'sit', seat: 1 });
+    env.send('a', { t: 'start' });
+    const d = env.room.data;
+    const g = d.game!;
+    d.game = {
+      ...g, phase: 'playing',
+      hands: [['AS', 'KS'], ['3C', '4C'], ['5D', '6D'], ['7H', '8H']] as never,
+      bids: [1, 1, 1, 1], tricks: [], tricksWon: [0, 0, 0, 0], turn: 0,
+      trick: { leader: 0, plays: [], winner: null }, spadesBroken: true,
+    } as never;
+    d.seq = (d.seq ?? 0) + 1;
+    d.turnKey = null;
+    d.deadline = null;
+    env.room.tick();
+    const seq = env.room.data.seq!;
+    env.send('a', { t: 'act', id: 'one', action: { type: 'play', card: 'AS' }, seq });
+    expect(acks(env, 'a').at(-1)).toMatchObject({ id: 'one', ok: true });
+    expect(env.room.data.game!.trick.plays.map((p) => ({ seat: p.seat, card: p.card }))).toEqual([{ seat: 0, card: 'AS' }]);
+    const after = env.room.data.seq!;
+    env.send('a', { t: 'act', id: 'two', action: { type: 'play', card: 'KS' }, seq: after });
+    expect(acks(env, 'a').at(-1)).toMatchObject({ id: 'two', ok: false, code: 'ALREADY_PLAYED' });
+    expect(env.room.data.game!.trick.plays).toHaveLength(1);
+    expect(env.room.data.game!.hands[0]).toContain('KS');
+    expect(env.room.data.game!.hands[0]).not.toContain('AS');
+    expect(env.room.data.seq).toBe(after);
+    // the same card again is the play already in the trick: acknowledged, not applied twice
+    env.send('a', { t: 'act', id: 'again', action: { type: 'play', card: 'AS' }, seq: after });
+    expect(acks(env, 'a').at(-1)).toMatchObject({ id: 'again', ok: true });
+    expect(env.room.data.game!.trick.plays).toHaveLength(1);
+    expect(env.room.data.seq).toBe(after);
+  });
+
+  it('rejects a play when it is not that seat\'s turn', () => {
+    const env = new FakeEnv(undefined, FAST);
+    env.join('a', 'Dee');
+    env.join('b', 'Ray');
+    env.send('a', { t: 'sit', seat: 0 });
+    env.send('b', { t: 'sit', seat: 1 });
+    env.send('a', { t: 'start' });
+    const d = env.room.data;
+    const g = d.game!;
+    d.game = {
+      ...g, phase: 'playing',
+      hands: [['AS', 'KS'], ['3C', '4C'], ['5D', '6D'], ['7H', '8H']] as never,
+      bids: [1, 1, 1, 1], tricks: [], tricksWon: [0, 0, 0, 0], turn: 0,
+      trick: { leader: 0, plays: [], winner: null }, spadesBroken: true,
+    } as never;
+    d.seq = (d.seq ?? 0) + 1;
+    d.turnKey = null;
+    d.deadline = null;
+    env.room.tick();
+    const seq = env.room.data.seq!;
+    env.send('b', { t: 'act', id: 'oot', action: { type: 'play', card: '3C' }, seq });
+    expect(acks(env, 'b').at(-1)).toMatchObject({ id: 'oot', ok: false, code: 'NOT_YOUR_TURN' });
+    expect(env.room.data.game!.trick.plays).toEqual([]);
+    expect(env.room.data.game!.hands[1]).toContain('3C');
+    expect(env.room.data.seq).toBe(seq);
   });
 
   it('real rule violations still come back as a failed ack with the reason', () => {

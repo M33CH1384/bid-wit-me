@@ -180,6 +180,13 @@ export interface FanOpts {
   bottomFrac?: number;
   /** Target card height as a fraction of the view height. */
   heightFrac?: number;
+  /**
+   * Side margin as a fraction of the view width. Omitted: the 6% floor (or the safe-area / HUD reserve).
+   * A phone portrait hand uses a smaller floor so the cards can be larger and still land on screen.
+   */
+  edgeFrac?: number;
+  /** Cap on the end-card roll, in radians. Omitted: 0.32. */
+  rollCap?: number;
   short?: boolean;
   /**
    * Z-order. Omitted: derived from `lift` so older callers still work (`> 0.2` selected, `> 0` raised).
@@ -200,11 +207,11 @@ export function fanLayout(aspect: number, count: number, safeFrac = 0, o: FanOpt
   const D = 1;
   const viewH = 2 * Math.tan((cam.fov * Math.PI) / 360) * D;
   const viewW = viewH * aspect;
-  const margin = viewW * Math.max(0.06, safeFrac + 0.025, o.reserveFrac ?? 0);
+  const margin = viewW * (o.edgeFrac ?? Math.max(0.06, safeFrac + 0.025, o.reserveFrac ?? 0));
   const halfAvail = viewW / 2 - margin;
   const persp = 1.0; // cards are parallel to the image plane → no perspective growth
   const halfN = Math.max(0, (count - 1) / 2);
-  const maxRoll = count > 1 ? Math.min(0.32, 0.03 * count) : 0;
+  const maxRoll = count > 1 ? Math.min(o.rollCap ?? 0.32, 0.03 * count) : 0;
   let s = Math.min(viewH * (o.heightFrac ?? 0.16), viewW * 0.25 * 1.4) / CH;
   let step = 0;
   for (let k = 0; k < 40; k++) {
@@ -220,6 +227,27 @@ export function fanLayout(aspect: number, count: number, safeFrac = 0, o: FanOpt
   const xo = halfN * Math.max(0, step);
   const curveK = xo > 0 ? Math.tan(maxRoll) / (2 * xo) : 0;
   return { s, cw: CW * s, ch: CH * s, step: Math.max(0, step), maxRoll, curveK, viewW, viewH };
+}
+
+/**
+ * Phone portrait hand. Taller than the 0.16 default, with a tighter side margin, so a full
+ * fan is easier to tap. The fit loop still shrinks a 13- or 17-card hand onto the screen.
+ * 44px of exposed width is the target when the count leaves room for it.
+ */
+export const PHONE_HAND_HEIGHT = 0.3;
+export const PHONE_HAND_EDGE = 0.018;
+export const PHONE_HAND_ROLL = 0.2;
+export const HAND_EXPOSED_PX = 44;
+
+export function phoneHandFan(): FanOpts {
+  return { heightFrac: PHONE_HAND_HEIGHT, edgeFrac: PHONE_HAND_EDGE, rollCap: PHONE_HAND_ROLL };
+}
+
+/** Card width, card height, and the strip of each card that is not covered by the next, in CSS pixels. */
+export function fanCssPx(layout: FanLayout, screenW: number): { width: number; height: number; exposed: number } {
+  const w = Number.isFinite(screenW) && screenW >= 32 ? screenW : 0;
+  const k = layout.viewW > 0 ? w / layout.viewW : 0;
+  return { width: layout.cw * k, height: layout.ch * k, exposed: layout.step * k };
 }
 
 /** Where a hand card sits on the depth-1 camera plane (the shape that actually projects to the screen). */

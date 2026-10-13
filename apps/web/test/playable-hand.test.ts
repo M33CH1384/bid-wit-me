@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MeshStandardMaterial, Quaternion, Vector3 } from 'three';
-import { FACE_POLYGON_OFFSET, GROUP_PAD_PX, GROUP_RADIUS_PX, LEGAL_LIFT_PX, LEGAL_NEAR, applyFaceDepthBias, cardMeshPaint, cardPartOrder, cssPxToPlane, fanGapPx, handRenderOrder, hitsInPaintOrder, raiseLocalY, screenRaise } from '../src/three/handLift';
+import { FACE_POLYGON_OFFSET, GROUP_PAD_PX, GROUP_RADIUS_PX, LEGAL_LIFT_PX, LEGAL_NEAR, RING_ABOVE, applyFaceDepthBias, cardMeshPaint, cardPartOrder, cssPxToPlane, fanGapPx, handRenderOrder, hitsInPaintOrder, raiseLocalY, screenRaise } from '../src/three/handLift';
 import { FACE_CAP_GAP, fanLayout, handCardPlane, handFan, makeCamera } from '../src/three/layout';
 import { cardGeometry } from '../src/three/geometry';
 import { contourContains, groupOutline, haloLocal, placeOnPlane, planePointOk, unionContours } from '../src/three/playableOutline';
@@ -35,7 +35,9 @@ describe('a tap hits the card you see', () => {
     // The face draws after the back, so a tied 16-bit depth shows the pips and not the BWM back.
     expect(face.renderOrder).toBeGreaterThan(back.renderOrder);
     expect(FACE_POLYGON_OFFSET.factor).toBe(0);
-    expect(glow.renderOrder).toBe(order - 1);
+    expect(glow.renderOrder).toBe(order + RING_ABOVE);
+    expect(glow.depthTest).toBe(false);
+    expect(glow.renderOrder).toBeGreaterThan(cardMeshPaint(handRenderOrder(16, true), 'face').renderOrder);
     expect(face.depthTest).toBe(true);
     expect(body.depthTest).toBe(true);
     expect(cardPartOrder('face', order)).toBeGreaterThan(cardPartOrder('edge', order));
@@ -267,15 +269,16 @@ describe('a bad viewport cannot throw the hand away', () => {
       expect(Math.abs((outlineX - faceX) / px), `${run.name} outline`).toBeLessThan(1);
       if (run.name !== 'right') expect(Math.abs((outlineX - rightEdge.x) / px)).toBeGreaterThan(80);
     }
-    // A subset has a real gap. A 0-height canvas used to divide by 1px and throw that run off the screen.
+    // The fan no longer opens air for an outline. A caller-supplied gap must still not explode
+    // when the canvas height is 0: that used to divide by 1px and throw the run off the screen.
     const middle = fanGapPx(Array.from({ length: n }, (_, i) => i >= 5 && i <= 7));
-    expect(middle.some((g) => g !== 0)).toBe(true);
+    expect(middle.every((g) => g === 0)).toBe(true);
     const home = handCardPlane(aspect, n, 7, 0, 0, {}, 0, screenH);
     for (const bad of [0, NaN, Infinity]) {
-      const plane = handCardPlane(aspect, n, 7, 0, 0, {}, middle[7]!, bad);
+      const plane = handCardPlane(aspect, n, 7, 0, 0, {}, 8, bad);
       expect(plane.x).toBeCloseTo(home.x, 6);
       expect(plane.y).toBeCloseTo(home.y, 6);
-      const fan = handFan(aspect, n, 7, 0, 0, {}, middle[7]!, bad);
+      const fan = handFan(aspect, n, 7, 0, 0, {}, 8, bad);
       expect(fan.p.every(Number.isFinite)).toBe(true);
       expect(fan.s).toBeGreaterThan(0.05);
     }

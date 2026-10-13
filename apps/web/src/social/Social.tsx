@@ -3,13 +3,15 @@
  * friends, profiles, settings), invite toasts and notices. Mounted once at the root so invites reach you anywhere.
  */
 import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { type InviteMsg, type PresenceEntry, type PresenceStatus, SOCIAL_LIMITS, statusLabel } from '@spades/protocol';
+import { type InviteMsg, type OpenTable, type PresenceEntry, type PresenceStatus, SOCIAL_LIMITS, statusLabel } from '@spades/protocol';
 import { useAccount } from '../account/api';
 import { BADGES } from '../badges';
 import { createTable } from '../online/connection';
 import { inviteLink, serverUrl } from '../online/config';
 import { navigate } from '../online/nav';
 import { loadSettings } from '../settings';
+import { shownPlayers } from './presence';
+import { type PlayerTableAction, playerTableAction } from './tableActions';
 import { type MyTable, type SocialTab, badgeCount, globalUnread, social, useSocial } from './store';
 import { Leaderboards, Tournaments } from './Compete';
 import { offlineStats } from '../offlineStats';
@@ -211,7 +213,7 @@ function Players({ signedIn }: { signedIn: boolean }) {
   const [q, setQ] = useState('');
   const friendIds = useMemo(() => new Set((s.friends?.friends ?? []).map((f) => f.id)), [s.friends]);
   const outgoing = useMemo(() => new Set((s.friends?.outgoing ?? []).map((f) => f.id)), [s.friends]);
-  const list = Object.values(s.users)
+  const list = shownPlayers(Object.values(s.users), s.tables, Object.keys(s.ended), Date.now())
     .filter((u) => !q.trim() || u.name.toLowerCase().includes(q.trim().toLowerCase()))
     .sort((a, b) => (a.id === s.you?.id ? -1 : b.id === s.you?.id ? 1 : 0) || (+friendIds.has(b.id) - +friendIds.has(a.id)) || (+a.guest - +b.guest) || a.name.localeCompare(b.name));
   return (
@@ -220,7 +222,7 @@ function Players({ signedIn }: { signedIn: boolean }) {
       {!signedIn && <SignInNote what="chat, add friends and invite players" />}
       {s.myTable && <p className="soc-mytable">Your table <b>{s.myTable.code}</b> · {s.myTable.open} seat{s.myTable.open === 1 ? '' : 's'} open</p>}
       <ul className="soc-list" data-testid="players-list">
-        {list.map((u) => <PlayerRow key={u.id} u={u} me={u.id === s.you?.id} friend={friendIds.has(u.id)} pending={outgoing.has(u.id)} signedIn={signedIn} myTable={s.myTable} />)}
+        {list.map((u) => <PlayerRow key={u.id} u={u} me={u.id === s.you?.id} friend={friendIds.has(u.id)} pending={outgoing.has(u.id)} signedIn={signedIn} myTable={s.myTable} tables={s.tables} />)}
         {!list.length && q && <li className="soc-empty">Nobody by that name is online.</li>}
       </ul>
       {!q && s.status === 'open' && list.filter((u) => u.id !== s.you?.id).length === 0 && <AloneEmpty />}
@@ -233,8 +235,12 @@ function Rating({ r }: { r?: PresenceEntry['rating'] }) {
   return <span className="soc-rating" title="Rating (2v2 / Cutthroat)">{r.team ? `⚔ ${r.team}` : ''}{r.team && r.cutthroat ? ' · ' : ''}{r.cutthroat ? `🔪 ${r.cutthroat}` : ''}</span>;
 }
 
-function PlayerRow({ u, me, friend, pending, signedIn, myTable }: { u: PresenceEntry; me: boolean; friend: boolean; pending: boolean; signedIn: boolean; myTable: MyTable | null }) {
+function PlayerRow({ u, me, friend, pending, signedIn, myTable, tables }: {
+  u: PresenceEntry; me: boolean; friend: boolean; pending: boolean; signedIn: boolean; myTable: MyTable | null;
+  tables: Record<string, OpenTable>;
+}) {
   const canInvite = signedIn && !me && !(myTable && myTable.open < 1);
+  const table = me ? null : playerTableAction(u.status, tables, myTable?.code ?? null);
   return (
     <li className={`soc-player ${friend ? 'friend' : ''}`} data-testid={`player-${u.name}`}>
       <div className="soc-pl-main">
@@ -247,6 +253,7 @@ function PlayerRow({ u, me, friend, pending, signedIn, myTable }: { u: PresenceE
       </div>
       {!me && (
         <div className="soc-pl-acts">
+          {table && <TableActs name={u.name} act={table} />}
           {!u.guest && <button type="button" disabled={!signedIn} onClick={() => social.openDm(u.id)} data-testid={`pl-chat-${u.name}`}>💬 Chat</button>}
           <button type="button" disabled={!canInvite} onClick={() => void inviteTo(u.id, myTable)} data-testid={`pl-invite-${u.name}`}>➕ Invite{myTable ? '' : ' (new table)'}</button>
           {!u.guest && !friend && <button type="button" disabled={!signedIn || pending} onClick={() => social.friend('request', u.id)} data-testid={`pl-add-${u.name}`}>{pending ? 'Requested' : '👋 Add friend'}</button>}
@@ -254,6 +261,29 @@ function PlayerRow({ u, me, friend, pending, signedIn, myTable }: { u: PresenceE
         </div>
       )}
     </li>
+  );
+}
+
+function goTable(code: string, query: string) {
+  social.close();
+  navigate(`/t/${code}${query}`);
+}
+
+function TableActs({ name, act }: { name: string; act: PlayerTableAction }) {
+  const reason = act.local ? act.joinReason : act.spectateReason;
+  return (
+    <>
+      <button type="button" disabled={act.local || !!act.spectateReason} title={act.spectateReason}
+        data-testid={`pl-spectate-${name}`}
+        onClick={() => { if (act.code && !act.spectateReason) goTable(act.code, '?watch=1'); }}>👁 Spectate</button>
+      {act.join && act.code ? (
+        <button type="button" className="primary" data-testid={`pl-join-${name}`}
+          onClick={() => goTable(act.code!, act.seat !== undefined ? `?seat=${act.seat}` : '')}>{act.joinLabel}</button>
+      ) : act.local ? (
+        <button type="button" disabled title={act.joinReason} data-testid={`pl-join-${name}`}>Join</button>
+      ) : null}
+      {reason && <span className="soc-pl-why" data-testid={`pl-why-${name}`}>{reason}</span>}
+    </>
   );
 }
 

@@ -1,15 +1,19 @@
 import { CH } from './layout';
 
 /**
- * Your-turn hand: legal cards rise together, cards you can't play sink and dim, a tap lifts one card further.
- * Distances are CSS pixels on the canvas. The fan lives on the depth-1 camera plane, so a pixel is
- * `viewH / screenH` plane units (see handCardPlane). The raise is a translateY on an inner wrapper;
- * it is not baked into the fan's rotate or position. Stacking is render order and depth
- * (`handRenderOrder`, `handDepthOpts`), not the translate.
+ * Your-turn hand: when some cards cannot be played, the playable ones rise a little and the
+ * others dim in place. An all-legal hand (a lead, or following while void) stays flat until a tap.
+ * There is no gold ring. The selected card is only higher. Distances are CSS pixels on the canvas.
+ * The fan lives on the depth-1 camera plane, so a pixel is `viewH / screenH` plane units
+ * (see handCardPlane). The raise is a translateY on an inner wrapper; it is not baked into the
+ * fan's rotate or position. Stacking is render order and depth (`handRenderOrder`, `handDepthOpts`),
+ * not the translate.
  */
 
-export const LEGAL_LIFT_PX = 14;
-export const ILLEGAL_DROP_PX = 4;
+/** A short rise, only when the hand is mixed. 28px lifted the playable cards out of the fan. */
+export const LEGAL_LIFT_PX = 12;
+/** Illegal cards stay on the fan arc. A drop made the locked spades a separate slab. */
+export const ILLEGAL_DROP_PX = 0;
 export const SELECT_LIFT_PX = 10;
 /** Group outline fade, in seconds. The cards themselves rise on RAISE_S. */
 export const LIFT_S = 0.2;
@@ -53,22 +57,22 @@ export const BREATHE_SCALE = 1;
 export const SELECT_GLOW_OP = 0.8;
 /**
  * Extra fan spacing on each side of a legal run, in CSS pixels.
- * The cards still overlap; this only opens the edge enough for the outline to read.
+ * It used to open room for a gold outline. That split the locked cards out of the fan, so it is 0.
  */
-export const GROUP_GAP_PX = 8;
+export const GROUP_GAP_PX = 0;
 /** Render order of a legal card sits above every illegal card. Index is added so left-to-right stays put. */
 export const LEGAL_STACK = 100;
 /**
  * A selected card draws after every other hand card. 400 clears a 17-card fan
- * (face is order + 0.5, ring is order − 1) and the unused group outline at LEGAL_STACK + 40.
+ * (face is order + 0.5, ring is order + RING_ABOVE) and the unused group outline at LEGAL_STACK + 40.
  */
 export const SELECT_STACK = 400;
 
 /**
- * Not-playable cards read at 55% brightness. The albedo below was tuned on the lit, tone-mapped card so that
- * (0.20, 0.195, 0.25) is about 60% on screen; scale it to the 55% target and keep the cool tint.
+ * Not-playable cards read at about 40% brightness. The albedo below was tuned on the lit, tone-mapped
+ * card so that (0.20, 0.195, 0.25) is about 60% on screen; scale it to the 40% target.
  */
-export const ILLEGAL_BRIGHTNESS = 0.55;
+export const ILLEGAL_BRIGHTNESS = 0.4;
 const DIM_AT_60 = [0.2, 0.195, 0.25] as const;
 const DIM_SCALE = ILLEGAL_BRIGHTNESS / 0.6;
 export const ILLEGAL_COLOR: readonly [number, number, number] = [
@@ -76,6 +80,18 @@ export const ILLEGAL_COLOR: readonly [number, number, number] = [
   DIM_AT_60[1] * DIM_SCALE,
   DIM_AT_60[2] * DIM_SCALE,
 ];
+/** Saturation of a card you cannot play. 1 leaves the texture alone. Desaturated, still a card. */
+export const ILLEGAL_SAT = 0.45;
+
+const FULL_COLOR: readonly [number, number, number] = [1, 1, 1];
+
+/**
+ * What the face shader should show. Legal and off-turn cards share full colour.
+ * Only an illegal card drops toward grey. A turn must not tint the cards you can play.
+ */
+export function faceLook(dim: boolean): { color: readonly [number, number, number]; sat: number } {
+  return dim ? { color: ILLEGAL_COLOR, sat: ILLEGAL_SAT } : { color: FULL_COLOR, sat: 1 };
+}
 
 export type HandPose = 'flat' | 'illegal' | 'legal' | 'selected';
 export type HandStack = 'rest' | 'play' | 'selected';
@@ -92,9 +108,21 @@ export function canTapCard(pose: HandPose): boolean {
 }
 
 /**
- * Per card, never on the fan. `dim` is only the illegal pose. `glow` is that card's own ring:
- * every playable card when the hand is mixed, plus a tap and a tip mark. An all-legal lead
- * does not outline the whole fan. Selecting a card does not turn the others off.
+ * A tap lands on pointerdown. Click waits for pointerup, and the gap-close slide has moved
+ * the card by then, so the finger misses the card it pressed.
+ */
+export function cardTapHandlers(onTap: (() => void) | null | undefined): {
+  onPointerDown?: (e: { stopPropagation: () => void }) => void;
+} {
+  if (onTap === undefined) return {};
+  if (onTap === null) return { onPointerDown: (e) => { e.stopPropagation(); } };
+  return { onPointerDown: (e) => { e.stopPropagation(); onTap(); } };
+}
+
+/**
+ * Per card, never on the fan. `dim` is only the illegal pose. There is no gold ring: `glow` stays
+ * false, including a tap and a tip mark. Playable cards rise only when something in the hand cannot
+ * be played. An all-legal lead, or a follow while void, stays on the fan until you tap one card.
  */
 export function handCardChrome(o: {
   yourTurn: boolean;
@@ -103,11 +131,14 @@ export function handCardChrome(o: {
   marked: boolean;
   anyIllegal: boolean;
 }): { pose: HandPose; dim: boolean; glow: boolean } {
-  const pose = playablePose(o.yourTurn, o.isLegal, o.selected);
+  const base = playablePose(o.yourTurn, o.isLegal, o.selected);
+  const pose = base === 'legal' && !o.anyIllegal ? 'flat' : base;
+  // A tip mark used to turn the ring on. The hand has no ring.
+  void o.marked;
   return {
     pose,
     dim: pose === 'illegal',
-    glow: o.selected || o.marked || (o.isLegal && o.anyIllegal),
+    glow: false,
   };
 }
 
@@ -173,13 +204,24 @@ export function applyFaceDepthBias(material: { polygonOffset: boolean; polygonOf
 /**
  * Paint state for one mesh of a card.
  * A child group resets Three.js groupOrder, so the group's renderOrder never decides the draw.
- * Depth testing stays on. The face is FACE_CAP_GAP in front of the cap and polygon-offset
+ * The face keeps the depth test: it is FACE_CAP_GAP in front of the cap and polygon-offset
  * toward the camera, and half a step later in render order, so the cap cannot cover the pips.
+ * A ring drawn just under its own face is covered wherever the next card overlaps it,
+ * so a run of legal cards reads as one outline around the group. The ring instead draws
+ * RING_ABOVE past its band: past every peer face in a 17-card hand, and still under the
+ * selected card's face (SELECT_STACK is 400, a legal face tops out near 116).
  */
-export function cardMeshPaint(order: number, part: 'edge' | 'back' | 'face' | 'glow'): { renderOrder: number; depthTest: true } {
+export const RING_ABOVE = 40;
+
+export function cardMeshPaint(order: number, part: 'edge' | 'back' | 'face' | 'glow'): { renderOrder: number; depthTest: boolean } {
   // The face draws after the back. A 16-bit tie used to keep whichever mesh sorted last,
   // and that was the BWM back for every card except the one pulled forward by a selection.
-  const renderOrder = part === 'glow' ? order - 1 : part === 'edge' ? order : part === 'back' ? order + 0.25 : order + 0.5;
+  if (part === 'glow') {
+    // Depth test off: the card on the right is closer, and it would hide this stroke
+    // even when the ring is painted later. The hole in the ring leaves the pips alone.
+    return { renderOrder: order + RING_ABOVE, depthTest: false };
+  }
+  const renderOrder = part === 'edge' ? order : part === 'back' ? order + 0.25 : order + 0.5;
   return { renderOrder, depthTest: true };
 }
 
@@ -239,7 +281,7 @@ export function fanGapPx(playable: readonly boolean[]): number[] {
 export function posePx(pose: HandPose): number {
   switch (pose) {
     case 'flat': return 0;
-    case 'illegal': return -ILLEGAL_DROP_PX;
+    case 'illegal': return ILLEGAL_DROP_PX === 0 ? 0 : -ILLEGAL_DROP_PX;
     case 'legal': return LEGAL_LIFT_PX;
     case 'selected': return LEGAL_LIFT_PX + SELECT_LIFT_PX;
   }

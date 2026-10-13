@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { FeltHand, FELT_LEGAL_Z, FELT_SELECT_LIFT_PX, FELT_SELECT_Z, feltCardTransform, feltCardZ } from '../src/FeltHand';
+import { FeltHand, FELT_LEGAL_Z, FELT_SELECT_LIFT_PX, FELT_SELECT_Z, feltCardBox, feltCardTransform, feltCardZ } from '../src/FeltHand';
 
 describe('quick-load hand', () => {
   it('keeps the fan, and lifts a selected card straight up outside that rotation', () => {
@@ -46,15 +46,16 @@ describe('quick-load hand', () => {
     expect(html).toContain(feltCardTransform(0, 3, false));
   });
 
-  it('dims only an illegal card, and outlines a legal one without a filter on the fan', () => {
+  it('dims only an illegal card, and a legal one has no outline and no filter on the fan', () => {
     const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
     const fan = css.split('\n').find((line) => line.startsWith('.felt-hand {')) ?? '';
     expect(fan).toContain('filter: none');
     expect(fan).toContain('opacity: 1');
     expect(fan).not.toMatch(/opacity:\s*0?\.\d/);
-    expect(css).toContain('.felt-hand button:disabled:not(.legal) { filter: saturate(.45) brightness(.9); }');
+    expect(css).toContain('.felt-hand button:disabled:not(.legal) { filter: saturate(.45) brightness(.4); }');
     expect(css).not.toContain('.felt-hand button:disabled { filter:');
-    expect(css).toContain('.felt-hand button.legal { filter: none; outline: 2px solid #f5c542; outline-offset: 1px; }');
+    expect(css).toContain('.felt-hand button.legal { filter: none; }');
+    expect(css).not.toContain('outline: 2px solid #f5c542');
   });
 
   it('stacks a raised card and its outline above later neighbours', () => {
@@ -78,6 +79,22 @@ describe('quick-load hand', () => {
     expect(feltCardZ(0, false, false)).toBe(0);
     expect(FELT_LEGAL_Z).toBeGreaterThan(16);
     expect(FELT_SELECT_Z).toBeGreaterThan(FELT_LEGAL_Z + 16);
+  });
+
+  it('grows the quick-load cards and keeps a full hand inside 390px and 336px', () => {
+    for (const w of [390, 336]) {
+      for (const n of [13, 17]) {
+        const box = feltCardBox(n, w);
+        const row = box.width + (n - 1) * box.exposed;
+        expect(row).toBeLessThanOrEqual(w - 12 + 0.6);
+        expect(box.width).toBeGreaterThan(52);
+        expect(box.exposed).toBeGreaterThan(14);
+        expect(box.height / box.width).toBeCloseTo(1.4, 5);
+      }
+    }
+    expect(feltCardBox(5, 390).exposed).toBeGreaterThanOrEqual(44);
+    expect(feltCardBox(8, 390).exposed).toBeGreaterThanOrEqual(44);
+    expect(feltCardBox(6, 336).exposed).toBeGreaterThanOrEqual(44);
     for (const n of [13, 17]) {
       const picked = feltCardZ(3, true, true);
       for (let i = 0; i < n; i++) {

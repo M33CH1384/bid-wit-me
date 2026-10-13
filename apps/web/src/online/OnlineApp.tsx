@@ -5,6 +5,8 @@ import { HostMusicBridge } from './HostMusic';
 import { type Settings, loadSettings, saveSettings, settingsToRules } from '../settings';
 import { serverUrl } from './config';
 import { TableConnection, createTable, tableInfo } from './connection';
+import { joinableSeats, spectatorsFull } from './joinable';
+import { canEnterTable, tableEntryName } from './entryGate';
 import { forgetToken, loadName, saveName } from './identity';
 import Lobby from './Lobby';
 import { codeFromPath, navigate } from './nav';
@@ -26,12 +28,14 @@ export default function OnlineApp({ path }: { path: string }) {
   // "/online" itself is the wizard's online step on the start screen
   useEffect(() => { if (!code) navigate('/', true, { wiz: 'setup', path: 'online' }); }, [code]);
   const [name, setName] = useState(loadName);
-  const [ready, setReady] = useState(() => !!code && !!loadName());
+  const [ready, setReady] = useState(() => canEnterTable(code, loadName(), location.search));
+  // A later Spectate link can land on this same screen. ?watch=1 must not wait on the name form.
+  const enter = ready || canEnterTable(code, loadName(), location.search);
   if (!code) return null;
-  if (!ready) {
+  if (!enter) {
     return <Entry code={code} name={name} onName={setName} onGo={(c) => { saveName(name.trim()); setReady(true); if (c !== code) navigate(`/t/${c}`); }} />;
   }
-  return <TableRoom key={code} code={code} name={name.trim() || 'Player'} />;
+  return <TableRoom key={code} code={code} name={tableEntryName(name, location.search)} />;
 }
 
 function Entry({ code, name, onName, onGo }: { code: string | null; name: string; onName: (n: string) => void; onGo: (code: string) => void }) {
@@ -119,6 +123,13 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
   const [lobbyOpen, setLobbyOpen] = useState(false);
   const [mesh, setMesh] = useState<VideoMesh | null>(null);
 
+  // A missing table never sends state. Say so as soon as the info request knows, ahead of the join timeout.
+  useEffect(() => {
+    let alive = true;
+    tableInfo(serverUrl(), code).then((i) => { if (alive && !i.exists) conn.markMissing(); }).catch(() => {});
+    return () => { alive = false; };
+  }, [conn, code]);
+
   // one video mesh per page/session once we know our player id
   useEffect(() => {
     if (!cs.you) return;
@@ -157,7 +168,9 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
     if (watch) { q.delete('watch'); history.replaceState(history.state, '', location.pathname + (q.toString() ? `?${q}` : '')); }
     const want = q.has('seat') ? Number(q.get('seat')) : NaN;
     if (q.has('seat')) { q.delete('seat'); history.replaceState(history.state, '', location.pathname + (q.toString() ? `?${q}` : '')); }
-    if (cs.seat === null && Number.isInteger(want) && room.seats[want] && (room.phase === 'lobby' ? room.seats[want]!.kind === 'empty' : room.seats[want]!.kind === 'bot')) {
+    // empty or a bot the server will accept — never a human seat
+    const open = joinableSeats(room);
+    if (cs.seat === null && open.includes(want)) {
       conn.send({ t: 'sit', seat: want });
     } else if (watch) {
       // just watching
@@ -165,17 +178,24 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
       const free = room.seats.findIndex((s) => s.kind === 'empty');
       if (free >= 0) conn.send({ t: 'sit', seat: free });
     } else if (cs.seat === null && Number.isInteger(want)) {
-      const bot = room.seats.findIndex((s) => s.kind === 'bot');
-      if (bot >= 0 && room.phase !== 'lobby') conn.send({ t: 'sit', seat: bot });
+      const bot = open.find((i) => room.seats[i]?.kind === 'bot');
+      if (bot !== undefined && room.phase !== 'lobby') conn.send({ t: 'sit', seat: bot });
     }
   }, [cs.room, cs.you, cs.seat, autoDone, code, conn, settings]);
 
   // Release 9 presence + "Invite to my table": the code, mode and the first seat a friend could take
   const room0 = cs.room;
-  const openSeat = room0 ? room0.seats.findIndex((s) => (room0.phase === 'lobby' ? s.kind === 'empty' : s.kind === 'bot')) : -1;
-  const openCount = room0 ? room0.seats.filter((s) => (room0.phase === 'lobby' ? s.kind === 'empty' : s.kind === 'bot')).length : 0;
+  const seatsOpen = room0 ? joinableSeats(room0) : [];
+  const openSeat = seatsOpen[0] ?? -1;
+  const openCount = seatsOpen.length;
   const pmode = room0 ? (room0.rules.mode === 'joker' || room0.rules.mode === 'aceDown' ? room0.rules.mode : 'cutthroat') : undefined;
-  usePresence(room0 ? { kind: room0.phase === 'lobby' ? 'lobby' : 'table', mode: pmode, open: openCount, code } : null);
+  const watchFull = room0 ? spectatorsFull(room0) : false;
+  // A finished game is not a table anyone can spectate. Reporting it kept a guest row up after the room ended.
+  usePresence(!room0 ? null : room0.phase === 'over' ? { kind: 'online' } : {
+    kind: room0.phase === 'lobby' ? 'lobby' : 'table', mode: pmode, open: openCount, code,
+    ...(openSeat >= 0 ? { seat: openSeat } : {}),
+    ...(watchFull ? { watchFull: true } : {}),
+  });
   useEffect(() => {
     if (!room0) return;
     social.setMyTable({ code, mode: pmode, open: openCount, ...(openSeat >= 0 ? { seat: openSeat } : {}) });
@@ -198,7 +218,12 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
   if (!cs.room) {
     return (
       <>
-        <TableLoading progress={cs.status === 'reconnecting' ? 0.12 : 0.18} onBack={() => navigate('/online')} />
+        <TableLoading
+          progress={cs.joinFault ? undefined : cs.status === 'reconnecting' ? 0.12 : 0.18}
+          fault={cs.joinFault?.message}
+          onRetry={cs.joinFault ? () => conn.retryJoin() : undefined}
+          onBack={() => navigate('/online')}
+        />
         <StatsOff conn={conn} on={cs.statsOff} />
       </>
     );
