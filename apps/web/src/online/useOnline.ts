@@ -8,6 +8,7 @@ import type { ChatLine, RoomInfo } from '@spades/protocol';
 import type { ChatMsg } from '../overlay';
 import type { ConnState, TableConnection } from './connection';
 import { type Rotation, rotateView } from './rotate';
+import { dealerAnnouncement, hudSeatName, withCurrentDealerLine } from '../dealerName';
 import type { VideoMesh, VideoState } from './video';
 import { dealTimeline } from '../three/dealTimeline';
 import { finishedTrickHoldMs, nextTrickPause } from '../trickTiming';
@@ -158,7 +159,7 @@ export function colorFor(id: string): string {
 }
 
 /** Real table chat (server) + local system lines for bids/hand results, in arrival order, in the overlay's format. */
-export function useOnlineChat(cs: ConnState, st: GameState | null, names: string[], send: (text: string) => void, hideSpectators = false) {
+export function useOnlineChat(cs: ConnState, st: GameState | null, names: string[], send: (text: string) => void, hideSpectators = false, dealerName = '') {
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
   const seen = useRef(new Set<number>());
   const localId = useRef(1_000_000);
@@ -196,8 +197,9 @@ export function useOnlineChat(cs: ConnState, st: GameState | null, names: string
     const p = prevSt.current;
     prevSt.current = st;
     if (!st) return;
-    if (!p) { if (st.tricks.length === 0 && st.trick.plays.length === 0) add({ user: 'System', text: `Hand ${st.handNo} · ${names[st.dealer]} deals`, system: true, color: '#b892ff' }); return; }
-    if (st.handNo !== p.handNo) add({ user: 'System', text: `Hand ${st.handNo} · ${names[st.dealer]} deals`, system: true, color: '#b892ff' });
+    const line = dealerAnnouncement(st.handNo, dealerName || hudSeatName(st.dealer, names));
+    if (!p) { if (st.tricks.length === 0 && st.trick.plays.length === 0) add({ user: 'System', text: line, system: true, color: '#b892ff' }); return; }
+    if (st.handNo !== p.handNo) add({ user: 'System', text: line, system: true, color: '#b892ff' });
     st.bids.forEach((b, s) => {
       if (b !== null && p.bids[s] === null && p.handNo === st.handNo) add({ user: 'System', text: `${names[s]} bid ${bidLabel(b)}`, system: true, color: '#b892ff' });
     });
@@ -206,7 +208,18 @@ export function useOnlineChat(cs: ConnState, st: GameState | null, names: string
       add({ user: 'System', text: `Hand ${rec.handNo}: ${rec.sides.map((x) => `${x.seats.map((s) => names[s]).join('+')} ${x.points >= 0 ? '+' : ''}${x.points}`).join(' · ')}`, system: true, color: '#b892ff' });
       for (const t of shotChatLines(st.rules, rec, st, (side) => (rec.sides[side]?.seats ?? []).map((s) => names[s]).join(' & '))) add({ user: 'System', text: t, system: true, color: '#ff6b6b' });
     }
-  }, [st, names, add]);
+  }, [st, names, add, dealerName]);
+
+  // Seat changes and bot takeovers update the roster without starting a new hand. Keep this hand's line on the current occupant.
+  useEffect(() => {
+    if (!st || !dealerName) return;
+    const line = dealerAnnouncement(st.handNo, dealerName);
+    setMsgs((xs) => {
+      const texts = withCurrentDealerLine(xs.map((m) => m.text), st.handNo, line);
+      if (!texts) return xs;
+      return xs.map((m, i) => (m.text === texts[i] ? m : { ...m, text: texts[i]! }));
+    });
+  }, [st, dealerName]);
 
   const push = useCallback((_user: string, text: string) => send(text), [send]);
   // Release 10: a player may hide spectator chat (their own setting)

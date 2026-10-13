@@ -36,6 +36,17 @@ export function clearGame(): void {
   try { localStorage.removeItem(SAVE_KEY); } catch { /* ignore */ }
 }
 
+/**
+ * Leave / main menu replaces history with `{ wiz: 'home' }`. That must not reopen a saved bot
+ * game: the home screen is the menu (Resume stays available). A refresh has no wizard state
+ * and drops back into the game. `autostart` is the test hook and always starts fresh.
+ */
+export function resumeOnLoad(state: unknown, saved: SavedGame | null, autostart: boolean): SavedGame | null {
+  if (autostart || !saved) return null;
+  if (state && typeof state === 'object' && (state as { wiz?: unknown }).wiz === 'home') return null;
+  return saved;
+}
+
 const isArr = (x: unknown): x is unknown[] => Array.isArray(x);
 
 /** Parse + validate a save. Anything old, corrupted or finished is discarded (returns null and clears it). */

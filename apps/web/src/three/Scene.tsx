@@ -6,17 +6,18 @@ import { type BufferGeometry, type Camera, type Group, type Material, type Mesh,
 import { type Card, type Play, type Trick } from '@spades/rules';
 import Card3D, { createLitCardMaterial } from './Card3D';
 import { departureSlot, handCardKey, handReactKey } from '../handOrder';
-import { GAP_S, LEGAL_NEAR, LIFT_S, canTapCard, fanGapPx, fanMotion, handCardChrome, handRenderOrder, hitsInPaintOrder, raiseLocalY } from './handLift';
+import { GAP_S, LIFT_S, canTapCard, fanGapPx, fanMotion, handCardChrome, handDepthOpts, handRenderOrder, hitsInPaintOrder, raiseLocalY } from './handLift';
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline, seatDealDelay } from './dealTimeline';
 import { handNeedsDeal, handSlotKey } from './dealFlight';
-import { shownFaceIds } from './cardFace';
+import { showResumeHand3D, trickFacesShown } from './cardFace';
 import { type Sfx, sound } from '../audio';
 import { fx } from '../fx';
 import { backTexture, faceTexture, logoTexture, refreshFacesGradually } from './cardTextures';
 import { loadTableImage, prefetchTableTextures, tableTextureUrls } from '../tableAssets';
 import { ClassicHall } from './hallEnv';
 import { forceProgram, nextFrame, quietShaderErrors } from './shaderBudget';
+import { offerTableRenderer } from '../effects/warm';
 import Venue3D, { feltPatternTexture, preloadVenueAssets } from './Venue3D';
 import { type VenueDef, type VenueId, VENUE_DEFS, venueAssetUrls } from '../venues';
 import { bodyGeometry, cardGeometry, feltGeometry, railGeometry } from './geometry';
@@ -28,6 +29,8 @@ export interface SceneProps {
   quality: 'high' | 'low';
   /** the 3D table has rendered its first frame (the placeholder fades out). Textures and the hall light stream in after this. */
   onTableReady?: () => void;
+  /** Felt and rail maps have settled (each one applied, or that download failed), so the cloth is no longer a flat stand-in. */
+  onTableDressed?: () => void;
   /** the human's cards are in the 3D scene with faces, so the flat hand can leave */
   onHandLive?: () => void;
   n: number;
@@ -169,13 +172,16 @@ function isColorMap(url: string): boolean {
 }
 
 /** Decode the cloth and wood maps as they arrive and publish one Texture per frame (a single upload). */
-function useStreamedMaps(urls: string[]): (Texture | null)[] {
+function useStreamedMaps(urls: string[]): { maps: (Texture | null)[]; settled: boolean } {
   const invalidate = useThree((s) => s.invalidate);
   const key = urls.join('|');
   const [maps, setMaps] = useState<(Texture | null)[]>(() => urls.map(() => null));
+  const [settled, setSettled] = useState(urls.length === 0);
   useEffect(() => {
     const list = key ? key.split('|') : [];
+    if (!list.length) { setSettled(true); return; }
     let alive = true;
+    setSettled(false);
     const status = list.map(() => 'wait' as 'wait' | 'ok' | 'bad');
     const imgs: HTMLImageElement[] = [];
     const made = list.map(() => false);
@@ -195,12 +201,13 @@ function useStreamedMaps(urls: string[]): (Texture | null)[] {
         invalidate();
       }
       const done = status.every((s, idx) => s === 'bad' || made[idx]);
-      if (!done) requestAnimationFrame(pump);
+      if (done) { if (alive) setSettled(true); return; }
+      requestAnimationFrame(pump);
     };
     const id = requestAnimationFrame(pump);
     return () => { alive = false; cancelAnimationFrame(id); };
   }, [key, invalidate]);
-  return maps;
+  return { maps, settled };
 }
 
 type TableGeos = { felt: BufferGeometry; rail: BufferGeometry; body: BufferGeometry };
@@ -278,7 +285,7 @@ function buildTableMaterials(def: VenueDef, quality: 'high' | 'low') {
 function TableModel({ quality, lit, onReady, onTextured, def }: { quality: 'high' | 'low'; lit: boolean; onReady?: () => void; onTextured?: () => void; def: VenueDef }) {
   const railUrl = railTextureUrl(def, quality);
   const urls = useMemo(() => (railUrl ? [...tableTextureUrls(quality), railUrl] : tableTextureUrls(quality)), [quality, railUrl]);
-  const maps = useStreamedMaps(urls);
+  const { maps, settled } = useStreamedMaps(urls);
   const invalidate = useThree((s) => s.invalidate);
   const geos = useTableGeos();
   const basic = useMemo(() => ({
@@ -338,6 +345,16 @@ function TableModel({ quality, lit, onReady, onTextured, def }: { quality: 'high
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
   }, [lit, maps, def, full, urls.length, invalidate, onTextured]);
+  // A failed download never fills its slot. Once nothing is still in flight, lift the loading screen anyway.
+  useEffect(() => {
+    if (!settled || textured.current) return;
+    if (maps.some((m) => !m)) {
+      textured.current = true;
+      const w = window as unknown as { __bwmTexturedAt?: number };
+      w.__bwmTexturedAt ??= performance.now();
+      onTextured?.();
+    }
+  }, [settled, maps, onTextured]);
   useEffect(() => {
     const w = window as unknown as { __bwmTableAt?: number };
     const a = requestAnimationFrame(() => requestAnimationFrame(() => { w.__bwmTableAt ??= performance.now(); onReady?.(); }));
@@ -553,9 +570,9 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       : { pose: 'flat' as const, dim: false, glow: false };
     const pose = chrome.pose;
     const above = pose === 'legal' || pose === 'selected';
-    // The raise is screen-up. The gap is a CSS-pixel slide. Playable cards also sit LEGAL_NEAR closer
-    // so they win the depth test against the neighbour; that bias does not move them on screen.
-    const opts = above ? { ...fanOpts, near: pose === 'selected' ? LEGAL_NEAR * 2 : LEGAL_NEAR } : fanOpts;
+    // The raise is screen-up. The gap is a CSS-pixel slide. Depth is a separate nearer bias
+    // (handDepthOpts) so a selected card wins the depth test against a higher-index neighbour.
+    const opts = { ...fanOpts, ...handDepthOpts(pose) };
     const target = handFan(aspect, mine.length, i, 0, safeFrac, opts, gaps[i] ?? 0, screenH);
     // One shot. Later renders (a tap, a highlight) must not pass the face-down pose again.
     const flip = flipIn && flippedHand.current !== handNo && !!c;
@@ -591,7 +608,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       arc: move.arc,
       raise: c ? raiseLocalY(pose, fan.viewH, screenH, fan.ch) : 0,
       roll: plane.roll,
-      order: handRenderOrder(i, above),
+      order: handRenderOrder(i, above, pose === 'selected'),
     });
   });
   pendingHold.current = { handNo, cards: nextCards, slots: nextSlots, count: faceCount, seen: nextSeen };
@@ -626,14 +643,18 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
     faceShown.current = new Set();
     faceHand.current = handNo;
   }
-  const faceOrder = [...(myHand ?? []), ...shownTrick.map((p) => p.card)];
-  faceShown.current = shownFaceIds(faceShown.current, faceOrder.slice(0, nFaces), new Set(faceOrder));
+  const trickIds = shownTrick.map((p) => p.card);
+  for (const id of trickIds) face(id);
+  const faceOrder = [...(myHand ?? []), ...trickIds];
+  faceShown.current = trickFacesShown(faceShown.current, faceOrder.slice(0, nFaces), new Set(faceOrder), trickIds);
   if (!showCards) return null;
   const shown = resume ? [...items.filter((it) => it.hand), ...items.filter((it) => !it.hand).slice(0, extra)] : items;
+  const hand3D = showResumeHand3D(resume, myHand?.length ?? 0, nFaces);
+  const drawn = hand3D ? shown : shown.filter((it) => !it.hand);
   return (
     <group>
       <LayoutProbe positions={positions} n={n} short={short} items={items} trickKeys={shownTrick.map((pl) => `${handNo}-${pl.card}`)} handKeys={mine.map((c, i) => handReactKey(handNo, c, i))} />
-      {shown.map((it) => (
+      {drawn.map((it) => (
         <Card3D
           key={it.key}
           name={it.key}
@@ -934,8 +955,8 @@ function ResumeRamp({ quality, def, onShow, onLit, onDpr, onShadow, onHall }: { 
       new MeshBasicMaterial({ name: 'basic-stripe', color: '#d9b04a', transparent: true, opacity: 0.35, depthWrite: false }),
       new MeshBasicMaterial({ name: 'basic-map', map: white }),
       new MeshBasicMaterial({ name: 'basic-logo', map: white, transparent: true, opacity: 0.13, depthWrite: false }),
-      // Same program as the per-card gold ring (tone mapping off, no depth write).
-      new MeshBasicMaterial({ name: 'basic-gold', color: '#f5c542', transparent: true, opacity: 0, depthWrite: false, toneMapped: false }),
+      // Same program as the per-card gold ring: opaque, tone mapping off, no depth write.
+      new MeshBasicMaterial({ name: 'basic-gold', color: '#f5c542', depthWrite: false, toneMapped: false }),
       new MeshStandardMaterial({ name: 'edge', color: '#efe9dc', roughness: 0.75 }),
     ];
     table.felt.name = 'felt';
@@ -1070,7 +1091,8 @@ export default function Scene(props: SceneProps) {
   const tableReady = useCallback(() => { onTableReady?.(); }, [onTableReady]);
   const onShow = useCallback(() => setShowTable(true), []);
   const onLit = useCallback(() => setLit(true), []);
-  const onTextured = useCallback(() => setTextured(true), []);
+  const onDressed = props.onTableDressed;
+  const onTextured = useCallback(() => { setTextured(true); onDressed?.(); }, [onDressed]);
   const onDpr = useCallback((n: number) => setDprCap(n), []);
   const onShadow = useCallback((n: number) => setShadowSize(n), []);
   const onHall = useCallback(() => setHallGo(true), []);
@@ -1095,6 +1117,7 @@ export default function Scene(props: SceneProps) {
       resize={{ debounce: 50 }}
     >
       <AspectWatcher onAspect={setAspect} />
+      <EffectWarmup quality={props.quality} />
       <SnapHook />
       <CameraRig />
       <FxShake table={tableGroup} />
@@ -1115,6 +1138,14 @@ export default function Scene(props: SceneProps) {
     <div ref={badgeLayer} className="badge-layer" />
     </div>
   );
+}
+
+/** Hands the table renderer to the effect warm so tornado shaders link before the loading screen lifts. */
+function EffectWarmup({ quality }: { quality: 'high' | 'low' }) {
+  const gl = useThree((s) => s.gl);
+  const camera = useThree((s) => s.camera);
+  useEffect(() => { offerTableRenderer(gl, camera, quality); }, [gl, camera, quality]);
+  return null;
 }
 
 /**

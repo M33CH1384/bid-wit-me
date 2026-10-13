@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { type GameState, applyAction, newGame, pendingTurn, viewFor } from '@spades/rules';
 import { chooseBotAction } from '@spades/bots';
-import { SAVE_VERSION, parseSave } from '../src/save';
+import { SAVE_VERSION, parseSave, resumeOnLoad } from '../src/save';
 import { DEFAULT_SETTINGS, type Settings, settingsToRules } from '../src/settings';
 
 function step(st: GameState): GameState {
@@ -56,5 +56,17 @@ describe('save / restore', () => {
     expect(parseSave(blob(settings, { ...st, hands: [[]] } as GameState))).toBeNull();
     expect(parseSave(blob(settings, { ...st, phase: 'gameOver' } as GameState))).toBeNull();
     expect(parseSave(JSON.stringify({ v: SAVE_VERSION, seed: 'x', settings, state: { rules: { playerCount: 4 } } }))).toBeNull();
+  });
+});
+
+describe('returning home does not reopen a saved bot game', () => {
+  const saved = { v: SAVE_VERSION, savedAt: 1, seed: 's', settings: DEFAULT_SETTINGS, state: {} as GameState, chat: [] };
+
+  it('drops back in on a refresh, and stays on the menu after Leave', () => {
+    expect(resumeOnLoad(null, saved, false)).toBe(saved);
+    expect(resumeOnLoad({ wiz: 'setup' }, saved, false)).toBe(saved);
+    expect(resumeOnLoad({ wiz: 'home', d: 0 }, saved, false)).toBeNull();
+    expect(resumeOnLoad({ wiz: 'home' }, saved, true)).toBeNull();
+    expect(resumeOnLoad(null, null, false)).toBeNull();
   });
 });

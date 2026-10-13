@@ -3,7 +3,7 @@
  * Plain TS types + small hand-written guards (no runtime schema lib, to keep the Worker bundle and CPU tiny).
  * Every client message is validated on the server with `parseClientMsg`; anything malformed is dropped.
  */
-import type { Card, PlayerView, Series, TableRules } from '@spades/rules';
+import type { Card, PlayerView, RunPlayout, Series, TableRules } from '@spades/rules';
 export * from './filter';
 export * from './social';
 
@@ -171,7 +171,7 @@ export type ClientMsg =
 /* ------------------------------------------------------------ server → client */
 export type SeatInfo =
   | { kind: 'empty' }
-  | { kind: 'bot'; name: string; level: BotLevel; /** a person left this seat; a spectator may take it */ vacated?: boolean }
+  | { kind: 'bot'; name: string; level: BotLevel; /** a person left this seat; a spectator may take it */ vacated?: boolean; /** human this bot replaced mid-game; the game-over screen still names them */ was?: string }
   | { kind: 'human'; playerId: string; name: string; connected: boolean; media: MediaState; autoplay?: boolean };
 
 export interface MemberInfo { playerId: string; name: string; connected: boolean; seat: number | null }
@@ -258,10 +258,18 @@ export function rollVenue(r: number, not?: VenueId): VenueId {
   return pool[Math.min(pool.length - 1, Math.floor(r * pool.length))]!;
 }
 
+/**
+ * Public play-out of a resolved 'Run it!', real seats, kept until the next hand.
+ * `seq` is the room version of the claim so each client starts the show once.
+ */
+export interface RunPlayback extends RunPlayout {
+  seq: number;
+}
+
 export type ServerMsg =
   | { t: 'welcome'; you: string; token: string; code: string; chat: ChatLine[]; v: number }
   /** `view.history` is null when unchanged since the last state sent on this connection (keep the previous one) */
-  | { t: 'state'; room: RoomInfo; seat: number | null; view: PlayerView | null; /** Release 10: you're watching (view = a redacted table view from seat 0: no hand, no legal moves) */ spectator?: boolean }
+  | { t: 'state'; room: RoomInfo; seat: number | null; view: PlayerView | null; /** Release 10: you're watching (view = a redacted table view from seat 0: no hand, no legal moves) */ spectator?: boolean; /** remaining tricks of a resolved Run it!, so every client can play them out */ run?: RunPlayback }
   | { t: 'chat'; line: ChatLine }
   | { t: 'rtc'; from: string; data: unknown }
   /**

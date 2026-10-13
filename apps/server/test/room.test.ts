@@ -918,8 +918,9 @@ describe('AFK + kicking', () => {
     expect(env.last('a', 'state')!.room.afkLimit).toBe(3);
     for (let k = 0; k < 3; k++) { waitMyTurn(env); env.advance(5200); }
     const d = env.room.data;
-    expect(d.seats[0]).toMatchObject({ kind: 'bot', vacated: true });
+    expect(d.seats[0]).toMatchObject({ kind: 'bot', vacated: true, was: 'Slow' });
     const botName = (d.seats[0] as { name: string }).name;
+    expect(env.last('a', 'state')!.room.seats[0]).toMatchObject({ kind: 'bot', name: botName, vacated: true, was: 'Slow' });
     expectPoolBot(d.seats, 0);
     expect(d.members[a.pid]!.seat).toBeNull();
     expect(d.chat.some((l) => l.text === `Slow was AFK and replaced by a bot (${botName})`)).toBe(true);
@@ -1179,6 +1180,75 @@ describe('Run it! cleared hands are sent only after the claim resolves', () => {
       expect(sorted([rows[0]!]), cid).toEqual([['2D', 'BJ', 'LJ']]);
       expect(rows[0]!.every((c) => !c.played), cid).toBe(true);
     }
+  });
+});
+
+describe('Run it! play-out is broadcast with the resolving state', () => {
+  const hands = [['3H', '4H'], ['5C', '6C'], ['BJ', 'LJ'], ['3D', '7D']];
+
+  /** Rewrite the live hand to a late spot. Does not broadcast — call `ping` or `tick` for that. */
+  function late(env: FakeEnv, turn = 0) {
+    const d = env.room.data;
+    const g = d.game!;
+    d.game = {
+      ...g, phase: 'playing', hands: hands as never, bids: [2, 2, 2, 2],
+      tricks: Array.from({ length: handSize(g.rules) - 2 }, () => ({ leader: 0, plays: [], winner: 1 })),
+      tricksWon: [0, 0, 0, 0], turn, trick: { leader: turn, plays: [], winner: null }, spadesBroken: true,
+    } as never;
+    d.seq = (d.seq ?? 0) + 1;
+  }
+
+  function cardsOf(tricks: { plays: { card: string }[] }[]) {
+    return tricks.flatMap((t) => t.plays.map((p) => p.card)).sort();
+  }
+
+  it('a non-actor and a spectator both receive every remaining trick, then the finished hand', () => {
+    const { env } = fourHumans();
+    env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: 1000 }) });
+    env.send('a', { t: 'start' });
+    env.join('s', 'Watcher');
+    late(env, 0);
+    env.send('a', { t: 'media', media: { cam: false, mic: false } });
+    for (const cid of ['a', 'b', 's']) expect(env.last(cid, 'state')!.run, cid).toBeUndefined();
+
+    env.send('c', { t: 'act', action: { type: 'runIt' }, seq: env.room.data.seq });
+    expect(env.room.data.game!.hands.every((h) => h.length === 0)).toBe(true);
+    const held = [...hands.flat()].sort();
+    for (const cid of ['a', 'b', 's']) {
+      const msg = env.last(cid, 'state')!;
+      expect(msg.run, cid).toBeTruthy();
+      expect(msg.run!.claimer, cid).toBe(2);
+      expect(msg.run!.books, cid).toBeGreaterThanOrEqual(2);
+      expect(msg.run!.tricks, cid).toHaveLength(msg.run!.books);
+      expect(cardsOf(msg.run!.tricks), cid).toEqual(held);
+      expect(msg.run!.seq, cid).toBe(env.room.data.seq);
+      expect(msg.view!.handCounts.every((n) => n === 0), cid).toBe(true);
+      expect(msg.view!.phase === 'handOver' || msg.view!.phase === 'gameOver', cid).toBe(true);
+    }
+    expect(env.last('s', 'state')!.spectator).toBe(true);
+    expect(env.last('a', 'state')!.run).toEqual(env.last('s', 'state')!.run);
+  });
+
+  it('a bot claim in the same tick is on the human and the spectator broadcasts', () => {
+    const env = new FakeEnv(undefined, FAST);
+    env.join('a', 'Dee');
+    env.send('a', { t: 'sit', seat: 0 });
+    env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: 1000 }) });
+    env.send('a', { t: 'start' });
+    env.join('s', 'Watcher');
+    late(env, 0);
+    expect(env.last('a', 'state')!.run).toBeUndefined();
+    expect(env.last('s', 'state')!.run).toBeUndefined();
+    // late() does not reschedule the clock; tick() is what the alarm does, and it claims before the one broadcast.
+    env.room.tick();
+    for (const cid of ['a', 's']) {
+      const msg = env.last(cid, 'state')!;
+      expect(msg.run?.claimer, cid).toBe(2);
+      expect(msg.run!.books, cid).toBeGreaterThanOrEqual(2);
+      expect(cardsOf(msg.run!.tricks), cid).toEqual([...hands.flat()].sort());
+      expect(msg.view!.phase === 'handOver' || msg.view!.phase === 'gameOver', cid).toBe(true);
+    }
+    expect(env.last('s', 'state')!.spectator).toBe(true);
   });
 });
 
