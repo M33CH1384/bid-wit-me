@@ -17,6 +17,7 @@ import { backTexture, faceTexture, logoTexture, refreshFacesGradually } from './
 import { loadTableImage, prefetchTableTextures, tableTextureUrls } from '../tableAssets';
 import { ClassicHall } from './hallEnv';
 import { forceProgram, nextFrame, quietShaderErrors } from './shaderBudget';
+import { importChunk } from '../chunkLoad';
 import { offerTableRenderer } from '../effects/warm';
 import Venue3D, { feltPatternTexture, preloadVenueAssets } from './Venue3D';
 import { type VenueDef, type VenueId, VENUE_DEFS, venueAssetUrls } from '../venues';
@@ -1164,8 +1165,9 @@ function AfterTable({ quality, tableUp }: { quality: 'high' | 'low'; tableUp: bo
     if (!tableUp) return;
     let alive = true;
     const start = () => {
-      void import('./Nuke3D').then((m) => { if (alive) setNuke(m); });
-      void import('./Tornado3D').then((m) => { if (alive) setTornado(m); });
+      // A deploy can delete the hashed file this page still names. Retry, then reload once.
+      void importChunk(() => import('./Nuke3D')).then((m) => { if (alive) setNuke(m); }, () => {});
+      void importChunk(() => import('./Tornado3D')).then((m) => { if (alive) setTornado(m); }, () => {});
     };
     // Idle, after the cloth is on: the nuke shaders are not part of dealing a resumed hand back in.
     const ric = (window as unknown as { requestIdleCallback?: (fn: () => void, opts?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void }).requestIdleCallback;
