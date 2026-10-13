@@ -42,14 +42,30 @@ export function SocialButton({ className = '', label = true }: { className?: str
   );
 }
 
+function useOnWizard(): boolean {
+  const [on, setOn] = useState(() => typeof document !== 'undefined' && !!document.querySelector('.wizard'));
+  useEffect(() => {
+    const root = document.getElementById('root');
+    if (!root) return;
+    const read = () => setOn(!!document.querySelector('.wizard'));
+    read();
+    const mo = new MutationObserver(read);
+    mo.observe(root, { childList: true });
+    return () => mo.disconnect();
+  }, []);
+  return on;
+}
+
 export function SocialRoot() {
   const s = useSocial();
+  const wizard = useOnWizard();
   useEffect(() => { social.start(); }, []);
   return (
     <>
       {s.open && <SocialPanel />}
+      {wizard && s.invites.length > 0 && <ExpireInvites />}
       <div className={`soc-toasts${s.open ? ' over-panel' : ''}`} aria-live="polite">
-        {s.invites.map((inv) => <InviteToast key={inv.id} inv={inv} />)}
+        {!wizard && s.invites.map((inv) => <InviteToast key={inv.id} inv={inv} />)}
         {s.notices.map((n) => (
           <div key={n.id} className="soc-invite soc-notice" data-testid="soc-notice">
             <div className="soc-invite-txt">🏆 {n.text}</div>
@@ -78,11 +94,7 @@ function InviteToast({ inv }: { inv: InviteMsg }) {
   const now = useNow();
   const left = Math.max(0, Math.ceil((inv.expiresAt - now) / 1000));
   useEffect(() => { if (left <= 0) social.replyInvite(inv, false); }, [left, inv]);
-  const accept = () => {
-    social.replyInvite(inv, true);
-    social.close();
-    navigate(`/t/${inv.code}${inv.seat !== undefined ? `?seat=${inv.seat}` : ''}`);
-  };
+  const accept = () => acceptInvite(inv);
   return (
     <div className="soc-invite glass slant" role="alertdialog" aria-label={`Invite from ${inv.fromName}`} data-testid="invite-toast">
       <div className="soc-invite-txt"><b>{inv.fromName}</b> invited you to {inv.mode ? modeName(inv.mode) : 'a table'}<small>Table {inv.code} · {left}s</small></div>
@@ -91,6 +103,41 @@ function InviteToast({ inv }: { inv: InviteMsg }) {
         <button type="button" className="primary" onClick={accept} data-testid="invite-accept">Accept</button>
       </div>
       <i className="soc-invite-bar" style={{ width: `${(left / 60) * 100}%` }} />
+    </div>
+  );
+}
+
+function acceptInvite(inv: InviteMsg) {
+  social.replyInvite(inv, true);
+  social.close();
+  navigate(`/t/${inv.code}${inv.seat !== undefined ? `?seat=${inv.seat}` : ''}`);
+}
+
+/** While the start wizard is up, invite toasts stay hidden. Still drop them when they expire. */
+function ExpireInvites() {
+  const s = useSocial();
+  const now = useNow();
+  useEffect(() => {
+    for (const inv of s.invites) if (inv.expiresAt <= now) social.replyInvite(inv, false);
+  }, [s.invites, now]);
+  return null;
+}
+
+function PendingInvites({ invites }: { invites: InviteMsg[] }) {
+  const now = useNow();
+  return (
+    <div className="soc-pending" data-testid="pending-invites">
+      <div className="panel-title">INVITES</div>
+      {invites.map((inv) => {
+        const left = Math.max(0, Math.ceil((inv.expiresAt - now) / 1000));
+        return (
+          <div key={inv.id} className="soc-pending-row" data-testid="pending-invite">
+            <span><b>{inv.fromName}</b> invited you<small>Table {inv.code} · {left}s</small></span>
+            <button type="button" onClick={() => social.replyInvite(inv, false)} data-testid="pending-decline">Decline</button>
+            <button type="button" className="primary" onClick={() => acceptInvite(inv)} data-testid="pending-accept">Join</button>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -157,6 +204,7 @@ function SocialPanel() {
             <button type="button" role="tab" aria-selected={s.tab === 'messages'} className={s.tab === 'messages' ? 'on' : ''} data-testid="soc-tab-messages" onClick={() => social.tab('messages')}>✉ Messages{unreadDm > 0 && <i className="soc-count">{unreadDm}</i>}</button>
           </div>
         )}
+        {s.invites.length > 0 && <PendingInvites invites={s.invites} />}
         <div className="soc-body">
           {s.profile ? <Profile name={s.profile} /> :
             s.tab === 'players' ? <Players signedIn={signedIn} /> :

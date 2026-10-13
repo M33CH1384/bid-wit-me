@@ -1,5 +1,6 @@
 import { cardControlLabel } from './cardA11y';
 import { actingSeat, seatMark } from './turnState';
+import { chatStartsOpen, placeCallout, type Rect } from './chatLayout';
 import { retainHandOrder } from './handOrder';
 import { winHeadline } from './headline';
 import { type VenueId, VENUE_DEFS, resolveVenue } from './venues';
@@ -89,6 +90,37 @@ function TrickBanner({ text }: { text: string }) {
   return (
     <div className="trick-banner-wrap" style={{ top: pos?.top ?? -999, visibility: pos ? 'visible' : 'hidden' }}>
       <div ref={ref} className="center-note win">{text}</div>
+    </div>
+  );
+}
+
+/** Bot (and player) trash talk, beside the speaker and off the trick. */
+function TrashCallout({ seat, name, text }: { seat: string; name: string; text: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [box, setBox] = useState<{ left: number; top: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const cls = seat === 'top' ? 'side-topc' : `side-${seat}`;
+    const plateEl = (seat === 'bottom' ? document.querySelector('.me-plate') : document.querySelector(`.seat-anchor.${cls} > .plate`)) as HTMLElement | null;
+    const pr = plateEl?.getBoundingClientRect();
+    const plate: Rect | null = pr ? { left: pr.left, top: pr.top, right: pr.right, bottom: pr.bottom } : null;
+    const L = (window as unknown as { __bwmLayout?: { trick: { x: number; y: number; w: number; h: number }[] } }).__bwmLayout;
+    const obstacles: Rect[] = (L?.trick ?? []).map((t) => ({ left: t.x, top: t.y, right: t.x + t.w, bottom: t.y + t.h }));
+    for (const node of document.querySelectorAll('.chat.open, .chat-list, .scorebug, .trump-strip')) {
+      const r = node.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) obstacles.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+    }
+    setBox(placeCallout(plate, seat, { w: el.offsetWidth || 180, h: el.offsetHeight || 48 }, { w: window.innerWidth, h: window.innerHeight }, obstacles));
+  }, [seat, text]);
+  return (
+    <div
+      ref={ref}
+      className="trash-callout"
+      data-testid="trash-callout"
+      style={box ? { left: box.left, top: box.top, right: 'auto', bottom: 'auto', width: 'max-content' } : { visibility: 'hidden' }}
+    >
+      <b>{name}</b>{text}
     </div>
   );
 }
@@ -419,7 +451,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [ltOpen, setLtOpen] = useState(false);
   const [clearedOpen, setClearedOpen] = useState(false);
   useEffect(() => { setClearedOpen(false); }, [st.handNo]);
-  const [chatOpen, setChatOpen] = useState(() => window.innerWidth >= 900 && window.innerHeight > 600);
+  const [chatOpen, setChatOpen] = useState(() => chatStartsOpen(window.innerWidth, window.innerHeight));
   const [seenMsgs, setSeenMsgs] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const localChat = useChat(st, names, resume?.chat);
@@ -1172,7 +1204,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       {online?.overlay}
       {canRun && <RunItButton tip={runTip} onDismissTip={() => setRunTip(false)} onRun={() => { setRunTip(false); setSelected(null); apply({ type: 'runIt', seat: HUMAN }); }} />}
       {runFx?.phase === 'zoom' && <RunZoom cards={runFx.cards} who={runFx.claimer === HUMAN ? 'You' : names[runFx.claimer]!} line={runLine} r={r} />}
-      {callout && !runFx && <div className={`trash-callout seat-${pos[callout.seat]}`} key={callout.id} data-testid="trash-callout"><b>{callout.seat === HUMAN ? 'You' : names[callout.seat]}</b>{showLine(callout.text)}</div>}
+      {callout && !runFx && <TrashCallout key={callout.id} seat={pos[callout.seat]!} name={callout.seat === HUMAN ? 'You' : names[callout.seat]!} text={showLine(callout.text)} />}
       {runFx && <button type="button" className="run-skip" data-testid="run-skip" aria-label="Skip" onClick={endRun}><span>Tap to skip</span></button>}
       {badgeToast && BADGES[badgeToast] && (
         <div className="badge-unlock glass slant" role="status" data-testid="badge-unlock" onClick={() => setBadgeToast(null)}>

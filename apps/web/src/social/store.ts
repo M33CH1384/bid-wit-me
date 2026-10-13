@@ -342,5 +342,8 @@ export async function accountTicket(): Promise<string | null> {
   return (await accountTicketState()).ticket;
 }
 
-// e2e / debugging: read-only peek at the social state
-if (typeof window !== 'undefined') (window as unknown as { __bwmSocial: unknown }).__bwmSocial = { get: () => state };
+// e2e / debugging: peek at social state, and drop in an invite the hub would have sent
+if (typeof window !== 'undefined') (window as unknown as { __bwmSocial: unknown }).__bwmSocial = {
+  get: () => state,
+  debugInvite(invite: InviteMsg) { set((s) => ({ invites: [...s.invites.filter((i) => i.id !== invite.id), invite] })); },
+};

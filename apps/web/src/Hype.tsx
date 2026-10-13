@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { type FxEvent, type NukeIntensity, fx } from './fx';
 import { WheelsCelebration } from './WheelsCar';
+import { overcutBannerTop } from './chatLayout';
 
 /**
  * Full-screen hype overlay: streak pop-ups, joker vignette pulses and the Big-over-Little nuke.
@@ -8,7 +9,7 @@ import { WheelsCelebration } from './WheelsCar';
  * (white flash → mushroom cloud particles over the trick → shockwave ring → smoke clears).
  * Listens to the fx bus; with "Reduce effects" the flash, shockwave and screen jolt are skipped (sound + text stay).
  */
-interface Pop { id: number; kind: FxEvent['kind']; text: string; sub?: string; level?: number }
+interface Pop { id: number; kind: FxEvent['kind']; text: string; sub?: string; level?: number; top?: number }
 
 function trickCenter(): { x: number; y: number } {
   const L = (window as unknown as { __bwmLayout?: { trick: { x: number; y: number; w: number; h: number }[] } }).__bwmLayout;
@@ -41,7 +42,8 @@ export default function Hype({ reduced, low = false }: { reduced: boolean; low?:
     else if (e.kind === 'shot' || e.kind === 'gotShot') { /* scorecard panel blast; no full-screen banner */ }
     else if (e.kind === 'overcut') {
       const lvl = (e.level ?? 2) >= 3 ? 3 : 2;
-      add({ id: e.id, kind: e.kind, text: e.text ?? 'SAY LESS!', level: lvl }, lvl === 3 ? 1700 : 1300);
+      const trick = (window as unknown as { __bwmLayout?: { trick: { x: number; y: number; w: number; h: number }[] } }).__bwmLayout?.trick ?? [];
+      add({ id: e.id, kind: e.kind, text: e.text ?? 'SAY LESS!', level: lvl, top: overcutBannerTop(trick, window.innerHeight) }, lvl === 3 ? 1700 : 1300);
       if (!reducedRef.current) { const c = lastTrickCard(); setSpark({ id: e.id, level: lvl, ...c }); window.setTimeout(() => setSpark((s) => (s?.id === e.id ? null : s)), lvl === 3 ? 800 : 600); }
     }
     else if (e.kind === 'wheelsCar') setCar({ id: e.id, who: e.text ?? '' });
@@ -83,7 +85,7 @@ export default function Hype({ reduced, low = false }: { reduced: boolean; low?:
       {spark && <div key={`s${spark.id}`} className={`overcut-spark lvl${spark.level}`} style={{ left: spark.x, top: spark.y }} data-testid="overcut-spark"><i /><i /><i /><i /><i /><i /><i /><i /></div>}
       {car && <WheelsCelebration key={car.id} id={car.id} who={car.who} reduced={reduced} low={low} onDone={() => { fx.carRelease?.(); fx.carRelease = null; setCar((c) => (c?.id === car.id ? null : c)); }} />}
       {pops.map((p) => (
-        <div key={p.id} className={`hype-pop ${p.kind} lvl${p.level ?? 0}`} data-testid={`pop-${p.kind}`} role="status">
+        <div key={p.id} className={`hype-pop ${p.kind} lvl${p.level ?? 0}`} data-testid={`pop-${p.kind}`} role="status" style={p.kind === 'overcut' && p.top != null ? { top: p.top, transform: 'translate(-50%, 0)' } : undefined}>
           <span className="hype-text">{p.text}</span>
           {p.sub && <span className="hype-sub">{p.sub}</span>}
         </div>

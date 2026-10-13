@@ -38,8 +38,6 @@ export default function App() {
   if (!game) {
     const saved = loadGame();
     return (
-      <>
-      <NowPlaying />
       <Setup
         settings={settings}
         onChange={(s) => { setSettings(s); saveSettings(s); }}
@@ -47,7 +45,6 @@ export default function App() {
         onResume={saved ? () => setGame({ seed: saved.seed, settings: saved.settings, resume: saved }) : null}
         resumeLabel={saved ? `${MODES.find((m) => m.key === saved.settings.mode)?.title ?? 'game'} · hand ${saved.state.handNo}` : undefined}
       />
-      </>
     );
   }
   return (

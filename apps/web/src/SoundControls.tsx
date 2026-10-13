@@ -323,7 +323,8 @@ export function NowPlaying() {
   const [show, setShow] = useState<null | { title: string; key: number }>(null);
   useEffect(() => {
     if (npShown || !s.music || !s.nowPlaying || Date.now() - s.nowPlaying.at > 3000) return;
-    if (document.querySelector('[data-testid="lobby"]')) return; // never over the lobby / dock
+    // Never over the lobby, the invite entry, or the start wizard ("Pick a game").
+    if (document.querySelector('[data-testid="lobby"], .wizard, .online-entry')) return;
     npShown = true;
     setShow({ title: s.nowPlaying.track.title, key: s.nowPlaying.at });
     const t = setTimeout(() => setShow(null), 2000);
