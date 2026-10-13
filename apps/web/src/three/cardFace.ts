@@ -12,6 +12,26 @@ export function shownFaceIds(prev: ReadonlySet<string>, painted: readonly string
 }
 
 /**
+ * Cards in the current trick are public and few. They must show their faces on the frame they
+ * land, not after the hand's one-per-frame painter walks past them (that walk resets whenever
+ * the trick changes, so a centre card can sit on the BWM back for the whole turn).
+ */
+export function trickFacesShown(prev: ReadonlySet<string>, painted: readonly string[], stillHere: ReadonlySet<string>, trick: readonly string[]): Set<string> {
+  const next = shownFaceIds(prev, painted, stillHere);
+  for (const id of trick) if (id && stillHere.has(id)) next.add(id);
+  return next;
+}
+
+/**
+ * A resumed hand paints one face per frame. Until that finishes, the flat felt fan is the hand.
+ * Drawing the 3D fan in the same slot stacks a face-up fan on a face-down one.
+ */
+export function showResumeHand3D(resume: boolean, handCount: number, facesReady: number): boolean {
+  if (!resume || handCount <= 0) return true;
+  return facesReady >= handCount;
+}
+
+/**
  * Texture on the camera-facing side. Null means "not painted yet" and the mesh shows the back.
  * Once a face has been shown, a later null (painter reset, selection rerender) keeps that face.
  */

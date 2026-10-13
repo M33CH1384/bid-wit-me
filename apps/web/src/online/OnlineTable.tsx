@@ -1,4 +1,6 @@
+import { winHeadline } from '../headline';
 import { fx } from '../fx';
+import { victoryHeadline, victoryIdentity } from './victory';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { sideOf } from '@spades/rules';
 import Table from '../Table';
@@ -115,11 +117,20 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
           victory: (winners, losers, title, sub) => {
             const sp = (L: number) => {
               const seat = room.seats[rot.R(L)];
+              const id = victoryIdentity(seat, names[L] ?? '?');
               // your own card shows your display name ("Demetrius (you)"), not just "You"
-              const own = L === 0 && seat && 'name' in seat && typeof seat.name === 'string' && seat.name.trim() ? seat.name.trim() : undefined;
-              return { key: String(rot.R(L)), name: (spectator ? undefined : own) ?? names[L] ?? '?', seat, isMe: L === 0 && !spectator };
+              const own = L === 0 && !spectator && seat?.kind === 'human' && seat.name.trim() ? seat.name.trim() : undefined;
+              return { key: String(rot.R(L)), name: own ?? id.name, seat, isMe: L === 0 && !spectator };
             };
-            return <VictorySpotlight winners={winners.map(sp)} losers={losers.map(sp)} title={title} sub={sub} mesh={mesh} vs={vs} />;
+            const win = winners.map(sp);
+            const lose = losers.map(sp);
+            // No team name: the headline is the people (a replaced human, not the bot who finished).
+            // A named team ("Shot Callers win") is not the seats' display names, so it stays.
+            const seatHeadline = winHeadline(winners.map((L) => names[L] ?? '?'), r.partnerships);
+            const nextTitle = victoryHeadline(r.partnerships, title, seatHeadline, win);
+            const who = r.partnerships ? win.map((p) => p.name).join(' & ') : undefined;
+            const nextSub = who && !nextTitle.toLowerCase().startsWith(who.toLowerCase()) ? who : sub;
+            return <VictorySpotlight winners={win} losers={lose} title={nextTitle} sub={nextSub} mesh={mesh} vs={vs} />;
           },
           controls: spectator ? undefined : <MediaBar mesh={mesh} vs={vs} seated limited={limitedNow} />,
           spectator,
