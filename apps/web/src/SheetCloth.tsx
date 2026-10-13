@@ -1,18 +1,18 @@
 import { useEffect, useRef } from 'react';
 
-/** Canvas for the draped sheet. The three.js sim loads on demand so the first script stays light. */
+/** Host for the draped sheet. The warmed canvas is moved in here; the sim stays off the first script. */
 export function SheetCloth({ wait }: { wait: boolean }) {
-  const ref = useRef<HTMLCanvasElement>(null);
+  const host = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const canvas = ref.current;
-    if (!canvas) return;
+    const el = host.current;
+    if (!el) return;
     let stop = () => {};
     let dead = false;
     void import('./sheetClothSim').then((m) => {
-      if (dead) { return; }
-      stop = m.mountSheet(canvas, wait);
+      if (dead || !host.current) return;
+      stop = m.mountSheet(host.current, wait);
     });
     return () => { dead = true; stop(); };
   }, [wait]);
-  return <canvas ref={ref} className="cloth" data-testid="sheet-cloth" />;
+  return <div ref={host} className="cloth-host" data-testid="sheet-cloth" />;
 }

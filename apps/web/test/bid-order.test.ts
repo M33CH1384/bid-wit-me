@@ -38,6 +38,15 @@ describe('bid order display', () => {
     }
   });
 
+  it('does not relabel the bottom seat as You for a spectator', () => {
+    const rules = makeRules('joker', { firstHandBidsItself: false });
+    const st = newGame(rules, 'bid-order-spec', { dealer: 0 });
+    const html = renderToStaticMarkup(createElement(BidOrder, { st, names: ['Ava', 'Lamar', 'Mei', 'Jules'], me: -1 }));
+    expect(html).toContain('>Ava<');
+    expect(html).not.toContain('>You<');
+    expect(html).toContain('Dealer bids last');
+  });
+
   it('names a seat when the roster has a hole', () => {
     const rules = makeRules('joker', { firstHandBidsItself: false });
     const st = newGame(rules, 'bid-order-hole', { dealer: 1 });

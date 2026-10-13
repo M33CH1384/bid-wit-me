@@ -10,6 +10,7 @@ import Lobby from './Lobby';
 import { codeFromPath, navigate } from './nav';
 import OnlineTable from './OnlineTable';
 import { preloadTable } from '../three/preload';
+import { TableLoading } from '../TableLoading';
 import { useConn } from './useOnline';
 import { STATS_OFF_LABEL, social } from '../social/store';
 import { usePresence } from '../social/Social';
@@ -196,11 +197,10 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
   }
   if (!cs.room) {
     return (
-      <div className="setup online-entry">
-        <p className="muted">{cs.status === 'reconnecting' ? `Can't reach table ${code}. Retrying…` : `Joining table ${code}…`}</p>
-        <button type="button" className="link" onClick={() => navigate('/online')}>← Back</button>
+      <>
+        <TableLoading progress={cs.status === 'reconnecting' ? 0.12 : 0.18} onBack={() => navigate('/online')} />
         <StatsOff conn={conn} on={cs.statsOff} />
-      </div>
+      </>
     );
   }
   const leave = (to = '/online') => {
