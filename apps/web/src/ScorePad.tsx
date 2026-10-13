@@ -6,7 +6,7 @@
  * played shows as "in progress" with the bids so far.
  */
 import { type ReactNode, useEffect, useRef } from 'react';
-import { type GameState, type HandRecord, type SideHandResult, type TableRules, bidLabel, firstHandMinOf, shotOutOn } from '@spades/rules';
+import { type GameState, type HandRecord, type SideHandResult, type TableRules, bidLabel, hostMinimum, shotOutOn } from '@spades/rules';
 import { SEAT_COLORS } from './overlay';
 
 export const signed = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0');
@@ -20,24 +20,26 @@ export function rulesLine(r: TableRules): string {
   const parts = [`Playing to ${r.targetScore}`];
   if (r.losingFloor !== null) parts.push(`Lose at ${r.losingFloor}`);
   parts.push(`${r.bagsPerPenalty} bags = −${Math.abs(r.bagPenalty)}`);
-  const min = firstHandMinOf(r);
-  if (shotOutOn(r)) parts.push(`Shot = out${min ? ` · hand 1 needs ${min}+ books` : ''}`);
+  const min = hostMinimum(r);
+  if (min > 0) parts.push(`Minimum ${min}`);
+  if (shotOutOn(r)) parts.push('Shot = out');
   return parts.join(' · ');
 }
 
-/** compact rule chips from the real table settings: "To 250", "10 bags = −100", "Hand 1: 4+ books"… */
+/** compact rule chips from the real table settings: "To 250", "10 bags = −100", "Minimum 4"… */
 export function rulesChips(r: TableRules): string[] {
   const out = [`To ${r.targetScore}`];
   if (r.losingFloor !== null) out.push(`Lose at ${r.losingFloor}`);
   if (r.bagPenalty) out.push(`${r.bagsPerPenalty} bags = −${Math.abs(r.bagPenalty)}`);
-  const min = firstHandMinOf(r);
-  if (shotOutOn(r)) { out.push('Shot = out'); if (min) out.push(`Hand 1: ${min}+ books`); }
+  const min = hostMinimum(r);
+  if (min > 0) out.push(`Minimum ${min}`);
+  if (shotOutOn(r)) out.push('Shot = out');
   return out;
 }
 
 export function bidText(h: HandRecord, s: SideHandResult): string {
   const bids = s.seats.map((x) => h.bids[x]!);
-  if (bids.every((b) => b === 'books')) return '—';
+  if (bids.every((b) => b === 'books')) return s.contractMade === false ? `Set ${s.contract}` : '—';
   const labels = bids.map((b) => bidLabel(b));
   if (bids.length === 1) return labels[0]!;
   const nums = bids.filter((b): b is number => typeof b === 'number');
@@ -48,7 +50,7 @@ export interface Chip { text: string; kind: 'made' | 'set' | 'nil-ok' | 'nil-bus
 export function resultChips(r: TableRules, h: HandRecord, s: SideHandResult, st: Pick<GameState, 'result' | 'history'>): Chip[] {
   const out: Chip[] = [];
   const books = s.seats.every((x) => h.bids[x] === 'books');
-  if (books) out.push({ text: `${s.tricks} books`, kind: 'books' });
+  if (books && s.contractMade !== false) out.push({ text: `${s.tricks} books`, kind: 'books' });
   else if (s.contractMade === true) out.push({ text: 'Made', kind: 'made' });
   else if (s.contractMade === false) out.push({ text: 'SET', kind: 'set' });
   for (const n of s.nils) out.push({ text: `${n.kind === 'blindNil' ? 'Blind Nil' : 'Nil'} ${n.made ? 'made' : 'busted'}`, kind: n.made ? 'nil-ok' : 'nil-bust' });

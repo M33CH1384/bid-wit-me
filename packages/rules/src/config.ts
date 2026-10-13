@@ -31,7 +31,11 @@ export interface TableRules {
   deuceOfSpadesHigh: boolean;
   spadesMustBeBroken: boolean;
   firstLead: 'leftOfDealer' | 'twoOfClubs';
-  /** Minimum combined team bid (or individual bid in Cutthroat). 0 = no minimum. Nil is always exempt. */
+  /**
+   * Minimum combined team bid (or each player's bid in Cutthroat). 0 = no extra bid floor.
+   * Together with `firstHandMin`, the higher number is the host minimum for every hand (`hostMinimum`).
+   * In 2v2, Nil is allowed, but then the partner's bid alone must reach that minimum.
+   */
   minTeamBid: number;
   nil: NilRules;
   blindNil: BlindNilRules;
@@ -58,8 +62,10 @@ export interface TableRules {
    */
   shotOut?: boolean;
   /**
-   * First hand (books bid themselves): a side taking fewer books than this is shot. 3, 4 or 5; null = off.
-   * Default 4 in team modes, off in Cutthroat. Optional for older saves (undefined = the mode default).
+   * Host "minimum books / bid". 3, 4 or 5; null = off (the bid minimum still applies).
+   * Every hand: on the books hand, fewer books than the host minimum is a shot, scored as a set at that number.
+   * From the next hand on, bids must reach it. Default 4 in team modes, off in Cutthroat
+   * (Cutthroat uses `minTeamBid`). Optional for older saves (undefined = the mode default).
    */
   firstHandMin?: 3 | 4 | 5 | null;
   /**
@@ -73,6 +79,53 @@ export interface TableRules {
 export function firstHandMinOf(r: Pick<TableRules, 'firstHandMin' | 'partnerships'>): number | null {
   if (r.firstHandMin === undefined) return r.partnerships ? 4 : null;
   return r.firstHandMin;
+}
+
+/**
+ * The host minimum for every hand (books on hand 1, bids after that).
+ * The books/bid setting and the minimum-bid setting are one floor: the higher one wins. 0 = off.
+ */
+export function hostMinimum(r: Pick<TableRules, 'firstHandMin' | 'partnerships' | 'minTeamBid'>): number {
+  const books = firstHandMinOf(r);
+  const bid = typeof r.minTeamBid === 'number' && Number.isInteger(r.minTeamBid) ? Math.max(0, r.minTeamBid) : 0;
+  return books === null ? bid : Math.max(books, bid);
+}
+
+/**
+ * Nil / Blind Nil as stored on a live game. Older rows and damaged rules can omit the objects entirely;
+ * reading `.allowed` on them throws and used to kill a room tick mid-broadcast. Missing pieces fall back
+ * to the mode preset (Nil on, except Cutthroat) and a complete object is returned unchanged.
+ */
+export function nilRulesOf(r: { mode?: string; nil?: Partial<NilRules> | null }): NilRules {
+  const n = r.nil;
+  const fallbackAllowed = r.mode !== 'cutthroat';
+  if (!n || typeof n !== 'object') return { allowed: fallbackAllowed, value: 100 };
+  const allowed = typeof n.allowed === 'boolean' ? n.allowed : fallbackAllowed;
+  const value = typeof n.value === 'number' && Number.isFinite(n.value) ? n.value : 100;
+  if (n.allowed === allowed && n.value === value) return n as NilRules;
+  return { allowed, value };
+}
+
+export function blindNilRulesOf(r: { mode?: string; blindNil?: Partial<BlindNilRules> | null }): BlindNilRules {
+  const b = r.blindNil;
+  const fallbackAllowed = r.mode !== 'cutthroat';
+  if (!b || typeof b !== 'object') return { allowed: fallbackAllowed, value: 200, onlyWhenBehindBy: 100, exchangeCards: 0 };
+  const allowed = typeof b.allowed === 'boolean' ? b.allowed : fallbackAllowed;
+  const value = typeof b.value === 'number' && Number.isFinite(b.value) ? b.value : 200;
+  const onlyWhenBehindBy = b.onlyWhenBehindBy === null || (typeof b.onlyWhenBehindBy === 'number' && Number.isFinite(b.onlyWhenBehindBy))
+    ? b.onlyWhenBehindBy
+    : 100;
+  const exchangeCards: 0 | 1 | 2 = b.exchangeCards === 0 || b.exchangeCards === 1 || b.exchangeCards === 2 ? b.exchangeCards : 0;
+  if (b.allowed === allowed && b.value === value && b.onlyWhenBehindBy === onlyWhenBehindBy && b.exchangeCards === exchangeCards) return b as BlindNilRules;
+  return { allowed, value, onlyWhenBehindBy, exchangeCards };
+}
+
+/** Same rules object when Nil and Blind Nil are already complete; otherwise a copy with both filled in. */
+export function withCompleteNil<T extends { mode?: string; nil?: Partial<NilRules> | null; blindNil?: Partial<BlindNilRules> | null }>(r: T): T {
+  const nil = nilRulesOf(r);
+  const blindNil = blindNilRulesOf(r);
+  if (r.nil === nil && r.blindNil === blindNil) return r;
+  return { ...r, nil, blindNil };
 }
 export const bagsOnOf = (r: Pick<TableRules, 'bagsOn'>) => r.bagsOn !== false;
 export const shotOutOn = (r: Pick<TableRules, 'shotOut'>) => r.shotOut !== false;
@@ -118,10 +171,11 @@ export function defaultRules(mode: Mode, playerCount: 3 | 4 = 4): TableRules {
     case 'joker':
       return { ...BASE, mode, partnerships: true, playerCount: 4, deck: 'joker54', removedCards: defaultRemovedCards('joker54', 4), trumpOrderTop: [...JOKER_TRUMP_TOP], targetScore: 500, firstHandMin: 4 };
     case 'cutthroat':
-      // Cutthroat defaults (Demetrius): min bid 1, Nil on, Blind Nil off, bags on, first-hand minimum off, to 300
+      // Cutthroat: min bid 1, Nil and Blind Nil off, bags on, books minimum off (the bid minimum still applies), to 300
       return {
         ...BASE, mode, partnerships: false, playerCount, deck: 'joker54', removedCards: defaultRemovedCards('joker54', playerCount),
         trumpOrderTop: [...JOKER_TRUMP_TOP], targetScore: 300, firstHandMin: null, minTeamBid: 1,
+        nil: { ...BASE.nil, allowed: false },
         blindNil: { ...BASE.blindNil, allowed: false, onlyWhenBehindBy: null },
       };
     case 'aceDown':
@@ -163,6 +217,11 @@ export function makeRules(mode: Mode, overrides: RulesOverrides = {}): TableRule
   if (overrides.trumpOrderTop === undefined)
     r.trumpOrderTop = r.deck === 'joker54' ? JOKER_TRUMP_TOP.filter((c) => !r.removedCards.includes(c)) : [];
   if (mode === 'aceDown') r.deuceOfSpadesHigh = false; // forced off (spec §3.4)
+  if (mode === 'cutthroat') {
+    // Nil and Blind Nil are off for the whole mode. A host toggle cannot turn them back on.
+    r.nil = { ...r.nil, allowed: false };
+    r.blindNil = { ...r.blindNil, allowed: false };
+  }
   const problems = validateRules(r);
   if (problems.length) throw new RulesConfigError(problems);
   return r;

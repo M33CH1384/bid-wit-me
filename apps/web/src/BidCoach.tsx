@@ -43,7 +43,7 @@ export function BidCoach({ view, startOpen, onClose, title = 'BID COACH' }: { vi
   useEffect(() => { if (how) requestAnimationFrame(() => howRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })); }, [how]);
   const adv = useMemo(() => {
     if (!view.hand) return null;
-    const v: PlayerView = view.bidOptions ? view : { ...view, bidOptions: { min: 1, max: handSize(view.rules), nil: view.rules.nil.allowed, blindNil: false } };
+    const v: PlayerView = view.bidOptions ? view : { ...view, bidOptions: { min: 1, max: handSize(view.rules), nil: view.rules.nil.allowed, blindNil: false, blockReason: null, nilReason: null } };
     return bidAdvice(v, createRng(`${view.seat}:${view.handNo}:coach`));
   }, [view]);
   if (!adv) return null;

@@ -17,10 +17,10 @@ function playHands(n: number, rules = makeRules('joker', { targetScore: 250 })):
 
 describe('score pad', () => {
   it('readable rules line', () => {
-    expect(rulesLine(makeRules('joker', { targetScore: 250 }))).toBe('Playing to 250 · Lose at -200 · 10 bags = −100 · Shot = out · hand 1 needs 4+ books');
+    expect(rulesLine(makeRules('joker', { targetScore: 250 }))).toBe('Playing to 250 · Lose at -200 · 10 bags = −100 · Minimum 4 · Shot = out');
   });
   it('compact rule chips', () => {
-    expect(rulesChips(makeRules('joker', { targetScore: 250 }))).toEqual(['To 250', 'Lose at -200', '10 bags = −100', 'Shot = out', 'Hand 1: 4+ books']);
+    expect(rulesChips(makeRules('joker', { targetScore: 250 }))).toEqual(['To 250', 'Lose at -200', '10 bags = −100', 'Minimum 4', 'Shot = out']);
   });
   it('labeled columns per team: bid as "a + b = total", took, result chip, points with a breakdown, running bags, total, dealer per hand', () => {
     const st = playHands(3);
@@ -40,7 +40,7 @@ describe('score pad', () => {
     const handsAt = html.indexOf('pad-hand');
     expect(html.slice(0, handsAt)).not.toContain('rule-chip');
     expect(html.indexOf('data-testid="pad-rules"')).toBeGreaterThan(html.indexOf('locked-rules-details'));
-    for (const chip of ['Lose at -200', '10 bags = −100', 'Shot = out', 'Hand 1: 4+ books']) expect(html).toContain(chip);
+    for (const chip of ['Lose at -200', '10 bags = −100', 'Shot = out', 'Minimum 4']) expect(html).toContain(chip);
   });
   it('scoreboard lists every cutthroat player, not two teams', () => {
     const st = newGame(makeRules('cutthroat', { playerCount: 3, targetScore: 300 }), 'cut-pad');

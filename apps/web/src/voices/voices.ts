@@ -8,7 +8,7 @@
  * Opus/WebM where the browser can play it, else AAC/M4A (Safari).
  */
 import { type PersonaId, lineById, voiceFor } from '@spades/bots';
-import { sound } from '../audio';
+import { decodeAudioBuffer, sound } from '../audio';
 
 let ext: 'webm' | 'm4a' | null = null;
 function format(): 'webm' | 'm4a' {
@@ -38,7 +38,7 @@ function load(key: string): Promise<Sprite | null> {
         if (!res.ok) return { clips, buf: null };
         const data = await res.arrayBuffer();
         const ctx = sound.audioContext();
-        return { clips, buf: ctx ? await ctx.decodeAudioData(data) : null };
+        return { clips, buf: ctx ? await decodeAudioBuffer(ctx, data) : null };
       } catch { return null; }
     })();
     cache.set(key, p);
