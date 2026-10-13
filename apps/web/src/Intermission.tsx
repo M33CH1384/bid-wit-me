@@ -45,14 +45,15 @@ export function calloutsFor(st: GameState, mySide: number, names: string[]): Cal
 }
 
 /**
- * Three punched holes in empty card space. Raster art in /shot/hole.png
- * (original render, no third-party illustration). Rotation and scale are fixed
- * per slot so a reconnect does not reshuffle them.
+ * Three punched holes. Raster art in /shot/hole.png (original render). The
+ * sprite is 40–48px and the glass spiderweb runs out to 1.5× the punch.
+ * Rotation and scale are fixed per slot so a reconnect does not reshuffle them.
+ * The lower-left hole sits on the progress bar. None of them sit on the total.
  */
 const HOLES: readonly { x: string; y: string; rot: number; scale: number }[] = [
-  { x: '60%', y: '28%', rot: -14, scale: 0.88 }, // gap between the name and the total
-  { x: '11%', y: '93%', rot: 18, scale: 0.85 },  // lower-left, at the start of the bar
-  { x: '88%', y: '72%', rot: 6, scale: 0.85 },   // mid-right, under the total
+  { x: '40%', y: '18%', rot: -12, scale: 1 },    // beside the name, clear of the total
+  { x: '16%', y: '84%', rot: 16, scale: 0.92 },  // lower-left, across the progress bar
+  { x: '55%', y: '68%', rot: -6, scale: 0.96 },  // low center, under the bid line
 ];
 
 export function Intermission({
@@ -174,7 +175,8 @@ export function Intermission({
                   )}
                   {cover.tape && (
                     <div className="caution-x" data-testid={`recap-tape-${s.side}`} aria-hidden="true">
-                      <img className="tape" src="/shot/tape.png" alt="" />
+                      <img className="tape a" src="/shot/tape.png" alt="" />
+                      <img className="tape b" src="/shot/tape.png" alt="" />
                     </div>
                   )}
                   <div className="tt-face">
