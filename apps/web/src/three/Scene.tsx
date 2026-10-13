@@ -764,7 +764,9 @@ function Lights({ quality, def, shadowSize }: { quality: 'high' | 'low'; def: Ve
         shadow-normalBias={0.012}
         shadow-radius={6}
       />
-      {def.id !== 'classic' && <HandFill />}
+      {/* Classic used to skip this. The spotlight falls off at the near edge, so the hand
+          rendered grey while the quick-load cards stayed white. Every venue gets the fill. */}
+      <HandFill />
       {/* purple rim from behind the table, for the stream-studio vibe */}
       <pointLight position={[0, 1.6, -4.2]} intensity={(hi ? 9 : 6) * (def.id === 'classic' ? 1 : 0.6)} color={def.rim} distance={9} />
     </>
