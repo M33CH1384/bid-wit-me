@@ -51,7 +51,7 @@ export function calloutsFor(st: GameState, mySide: number, names: string[]): Cal
  * The lower-left hole sits on the progress bar. None of them sit on the total.
  */
 const HOLES: readonly { x: string; y: string; rot: number; scale: number }[] = [
-  { x: '40%', y: '18%', rot: -12, scale: 1 },    // beside the name, clear of the total
+  { x: '40%', y: '16%', rot: -12, scale: 1 },    // beside the name, clear of the border and the total
   { x: '16%', y: '84%', rot: 16, scale: 0.92 },  // lower-left, across the progress bar
   { x: '55%', y: '68%', rot: -6, scale: 0.96 },  // low center, under the bid line
 ];
