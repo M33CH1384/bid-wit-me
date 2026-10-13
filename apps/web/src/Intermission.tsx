@@ -120,14 +120,20 @@ export function Intermission({
     punched.current = sirenKey;
     haptic([30, 60, 30, 60, 30, 90, 60], 'shot-card');
   }, [noticeIn, sirenKey]);
+  // The sheet's own pattern, separate from the shot-card punches. One shot, just over the 250ms throttle.
+  const sheetIn = sides.some((s) => {
+    const cover = covers[s.side];
+    return !!cover?.sheet && isShot(r, rec.bids, s);
+  });
+  const dropped = useRef('');
+  useEffect(() => {
+    if (!sheetIn || dropped.current === sirenKey) return;
+    dropped.current = sirenKey;
+    haptic([80, 40, 160], 'sheet-drop');
+  }, [sheetIn, sirenKey]);
 
   return (
     <div className="tt-backdrop" data-testid="table-talk" role="dialog" aria-label="Hand recap">
-      {sheetOn && (
-        <div className="police-lights" data-testid="police-lights" aria-hidden="true">
-          <i className="red" /><i className="blue" />
-        </div>
-      )}
       <div className="tt glass slant">
         <header className="tt-head">
           <span className="tt-title">HAND {rec.handNo} RECAP</span>
@@ -174,9 +180,18 @@ export function Intermission({
                     </div>
                   )}
                   {cover.sheet && (
-                    <div className="shroud" data-testid={`recap-shroud-${s.side}`} aria-hidden="true">
-                      <i /><i /><i />
-                      <b className="rip" data-testid={`recap-rip-${s.side}`}>RIP<span /><span /><span /></b>
+                    <div className="shroud" data-testid={`recap-shroud-${s.side}`}>
+                      <picture className="cloth">
+                        <source srcSet="/shot/sheet.webp" type="image/webp" />
+                        <img src="/shot/sheet.png" alt="" />
+                      </picture>
+                      <div className="police-lights" data-testid="police-lights" aria-hidden="true">
+                        <i className="wash red" /><i className="wash blue" />
+                      </div>
+                      <picture className="rip">
+                        <source srcSet="/shot/rip.webp" type="image/webp" />
+                        <img src="/shot/rip.png" alt="RIP" data-testid={`recap-rip-${s.side}`} />
+                      </picture>
                     </div>
                   )}
                   {cover.tape && (
