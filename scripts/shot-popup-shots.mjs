@@ -14,10 +14,10 @@ for (const [tag, vp, mobile] of [['phone', { width: 390, height: 844 }, true], [
   const bj = page.locator('[data-testid="card-BJ"][data-legal="true"]');
   await bj.waitFor({ timeout: 60000 });
   await bj.dispatchEvent('click'); await bj.dispatchEvent('click', {}, { timeout: 2000 }).catch(() => {});
-  await page.waitForFunction(() => /GOT SHOT/i.test(document.querySelector('[data-testid=hype]')?.textContent ?? ''), null, { timeout: 45000, polling: 100 });
-  await page.waitForTimeout(350);
+  await page.waitForSelector('[data-testid="table-talk"] .tt-team.blast', { timeout: 45000 });
+  await page.waitForTimeout(700);
   await page.screenshot({ path: `screenshots/release-9/shot-popup-${tag}.png` });
-  console.log(`✓ shot-popup-${tag}: ${(await page.evaluate(() => document.querySelector('[data-testid=hype]')?.textContent))}`);
+  console.log(`✓ shot-popup-${tag}: blast panels ${(await page.evaluate(() => document.querySelectorAll('.tt-team.blast').length))}`);
   await ctx.close();
 }
 await browser.close();

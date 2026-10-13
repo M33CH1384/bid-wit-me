@@ -137,7 +137,7 @@ class FxBus {
       if (kind === 'jokerLittle') this.shake = { start: e.at, dur: 0.35, amp: 0.035 };
       else if (kind === 'jokerBig') this.shake = { start: e.at, dur: 0.95, amp: 0.07 };
       else if (kind === 'nuke' && this.nukeMode !== 'off') this.shake = { start: e.at + 260, dur: 2.2, amp: 0.15 };
-      else if (kind === 'shot') this.shake = { start: e.at + 80, dur: 0.3, amp: 0.03 };
+      // a set shakes that scorecard panel, not the camera
       // over-cut: one short, sharp nudge (not the joker's rolling rumble)
       else if (kind === 'overcut') this.shake = (e.level ?? 2) >= 3 ? { start: e.at, dur: 0.45, amp: 0.085 } : { start: e.at, dur: 0.24, amp: 0.045 };
       else if (kind === 'wheels') this.shake = { start: e.at + 60, dur: 0.25, amp: 0.02 };
