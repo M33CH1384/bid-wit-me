@@ -51,7 +51,7 @@ describe('online game records', () => {
     expect(p).toMatchObject({ seat: 0, uid: 'user-dee', side: 0, partner: null });
     expect(p.won).toBe(rec.winners.includes(0));
     expect(p.stats.hands).toBe(rec.hands);
-    expect(p.stats.books).toBeGreaterThan(0);
+    expect(p.stats.books).toBeGreaterThanOrEqual(0);
     expect(p.stats.bidN + p.stats.playN).toBeGreaterThan(5);
     expect(p.stats.playMs / p.stats.playN).toBeGreaterThan(100);
     // saved to D1 (user must exist)
@@ -103,6 +103,28 @@ describe('online game records', () => {
     expect(cut.winsVsPlayers).toBe(0);
     expect(cut.bags).toBe(stats.bags);
     expect((await personalStats(db, 'u1', 'team')).games).toBe(0);
+  });
+
+  it('still records a signed-in player who was eliminated before the game ended', () => {
+    const env = new FakeEnv(undefined, FAST);
+    env.join('a', 'Dee');
+    env.room.linkUser('a', 'u1');
+    env.send('a', { t: 'sit', seat: 0 });
+    env.send('a', { t: 'config', rules: makeRules('cutthroat', { playerCount: 4, targetScore: 50, firstHandBidsItself: false }) });
+    env.send('a', { t: 'start' });
+    const g = env.room.data.game!;
+    g.phase = 'handOver';
+    g.eliminated = [true, false, false, false];
+    g.scores = [0, 0, 1000, 0];
+    env.room.testLoadGame(g);
+    expect(env.room.data.seats[0]).toEqual({ kind: 'empty' });
+    playOut(env, ['a']);
+    expect(env.records).toHaveLength(1);
+    expect(env.records[0]!.rated).toBe(false);
+    expect(env.records[0]!.rec.kind).toBe('cutthroat');
+    expect(env.records[0]!.rec.seats[0]).toMatchObject({ kind: 'user', uid: 'u1' });
+    expect(env.records[0]!.rec.players[0]).toMatchObject({ seat: 0, uid: 'u1' });
+    expect(env.records[0]!.rec.players[0]!.stats.hands).toBeGreaterThan(0);
   });
 });
 

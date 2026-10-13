@@ -2,13 +2,13 @@
  * Turn a game step (state before → after an action) into trash-talk moments for the talk engine.
  * Shared by the server (online) and the offline game.
  */
-import { type Action, type Card, type GameState, effectiveSuit, isTrump, legalPlays, sideCount, sideOf, trickWinner } from '@spades/rules';
+import { type Action, type Card, type GameState, effectiveSuit, isTrump, legalPlays, rulesForLive, sideCount, sideOf, trickWinner } from '@spades/rules';
 import type { TalkEvent } from './talk';
 
 const LOW = new Set(['2', '3', '4', '5']);
 
 export function momentsFor(before: GameState, action: Action, after: GameState): TalkEvent[] {
-  const r = before.rules;
+  const r = rulesForLive(before);
   const out: TalkEvent[] = [];
   const gapFor = (side: number) => {
     const s = after.scores; const others = s.filter((_, i) => i !== side);

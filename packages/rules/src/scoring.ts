@@ -223,11 +223,6 @@ export function shotCounts(r: TableRules, history: readonly { bids: readonly Bid
   return counts;
 }
 
-/** True when the host minimum is not higher than the tricks this hand will play. */
-export function minimumFits(r: TableRules, tricks: number): boolean {
-  return hostMinimum(r) <= tricks;
-}
-
 /** The side made its books: a made contract, or a books hand that reached the host minimum. */
 function madeItsBooks(r: TableRules, bids: readonly Bid[], side: SideHandResult): boolean {
   if (isBooksHand(bids)) {
