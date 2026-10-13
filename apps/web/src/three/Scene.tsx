@@ -1,7 +1,5 @@
 import { RUN_SLAM_MS } from '../runIt';
-import { Nuke3D, NukeGlRecovery, NukeGuard } from './Nuke3D';
-import { Tornado3D } from './Tornado3D';
-import { Environment, Html, Preload, useEnvironment, useTexture } from '@react-three/drei';
+import { Environment, Html, useTexture } from '@react-three/drei';
 import { Canvas, events as r3fEvents, useFrame, useThree } from '@react-three/fiber';
 import { type ReactNode, type RefObject, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { type Camera, type Group, type Mesh, type MeshBasicMaterial, type Object3D, type Texture, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, Matrix4, Quaternion, MeshPhysicalMaterial, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, Vector2, Vector3 } from 'three';
@@ -151,8 +149,10 @@ const HDRI_URL = '/assets/hdri/billiard_hall_512.hdr';
 /** Warm the loader caches (called from the splash / wizard via three/preload.ts). */
 export function preloadTableAssets(quality: 'high' | 'low', venue: VenueId = 'classic'): void {
   useTexture.preload(tableTextureUrls(quality));
-  if (venue === 'classic') { if (quality === 'high') useEnvironment.preload({ files: HDRI_URL }); }
-  else preloadVenueAssets(venue, quality);
+  // The classic hall HDRI is ~400 KB. Fetching it here put it on the same slow link as the felt
+  // and wood maps, so a reload's table textures waited behind it. <Environment> loads it once the
+  // table has painted. Other venues still warm their own (smaller) files while you sit on the splash.
+  if (venue !== 'classic') preloadVenueAssets(venue, quality);
 }
 
 /** a venue's rail texture (marble / teak / bamboo / leather) rides with the table textures (20–35 KB) */
@@ -764,25 +764,47 @@ export default function Scene(props: SceneProps) {
       <color attach="background" args={[def.clear]} />
       {classic && <fog attach="fog" args={['#0c0712', 7, 16]} />}
       <Lights quality={props.quality} def={def} />
-      {/* the table never waits for the HDRI / venue: separate boundaries, the surroundings fade in when they land */}
+      {/* HDRI starts after the felt is on screen. drei's <Preload all> also stays out of this commit:
+          it calls gl.compile and then renders the whole scene into a cube camera (six passes) inside
+          useLayoutEffect, so a cold reload froze on "Setting the table…" until that finished. */}
       <Suspense fallback={null}>
-        {hi && classic && <Environment files={HDRI_URL} environmentIntensity={0.55} background backgroundBlurriness={0.55} backgroundIntensity={0.22} />}
+        {tableUp && hi && classic && <Environment files={HDRI_URL} environmentIntensity={0.55} background backgroundBlurriness={0.55} backgroundIntensity={0.22} />}
       </Suspense>
       {!classic && tableUp && <Venue3D key={def.id} def={def} quality={props.quality} reduceFx={!!props.reduceFx} />}
       <Suspense fallback={null}>
         <group ref={tableGroup}><TableModel quality={props.quality} onReady={tableReady} def={def} /></group>
-        {/* warm-up: compile every material + upload textures before the first real frame (no hitch on the deal) */}
-        <Preload all />
       </Suspense>
       {props.positions.map((p, seat) => <TurnRing key={seat} pos={p} n={props.n} active={props.turnSeat === seat} />)}
       <Cards {...props} aspect={aspect} fontsReady={fontsReady} safeFrac={safeFrac} />
-      <NukeGlRecovery />
-      <NukeGuard><Nuke3D quality={props.quality} /></NukeGuard>
-      <Tornado3D quality={props.quality} />
+      <AfterTable quality={props.quality} tableUp={tableUp} />
       {layerReady && <Badges positions={props.positions} n={props.n} human={props.human} renderSeat={props.renderSeat} portal={badgeLayer} safeFrac={safeFrac} short={!!props.short} safe={props.safe ?? { l: 0, r: 0, t: 0, b: 0 }} />}
     </Canvas>
     <div ref={badgeLayer} className="badge-layer" />
     </div>
+  );
+}
+
+/**
+ * Nuke and Run it! shaders, including the postprocessing library, load only after the felt is up.
+ * They are not on the reload path: a cold open used to download and compile them before the table could paint.
+ */
+function AfterTable({ quality, tableUp }: { quality: 'high' | 'low'; tableUp: boolean }) {
+  const [nuke, setNuke] = useState<typeof import('./Nuke3D') | null>(null);
+  const [tornado, setTornado] = useState<typeof import('./Tornado3D') | null>(null);
+  useEffect(() => {
+    if (!tableUp) return;
+    let alive = true;
+    void import('./Nuke3D').then((m) => { if (alive) setNuke(m); });
+    void import('./Tornado3D').then((m) => { if (alive) setTornado(m); });
+    return () => { alive = false; };
+  }, [tableUp]);
+  if (!nuke && !tornado) return null;
+  return (
+    <>
+      {nuke && <nuke.NukeGlRecovery />}
+      {nuke && <nuke.NukeGuard><nuke.Nuke3D quality={quality} /></nuke.NukeGuard>}
+      {tornado && <tornado.Tornado3D quality={quality} />}
+    </>
   );
 }
 

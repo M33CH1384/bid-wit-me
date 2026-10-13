@@ -352,7 +352,7 @@ export function NukeIntensityRow() {
     <div className="sf-row nuke-row">
       <span>Nuke intensity<small className="sf-note"> · {reduced ? 'Off while Reduce effects is on' : v === 'full' ? 'blast + everything blown away' : v === 'classic' ? 'cinematic blast only' : 'banner + boom'}</small></span>
       <div className="seg" role="radiogroup" aria-label="Nuke intensity" data-testid="nuke-intensity">
-        {opts.map(([k, l]) => <button key={k} type="button" role="radio" aria-checked={v === k} className={v === k ? 'on' : ''} disabled={reduced} onClick={() => fx.setNuke(k)}>{l}</button>)}
+        {opts.map(([k, l]) => <button key={k} type="button" role="radio" aria-label={l} aria-checked={v === k} className={v === k ? 'on' : ''} disabled={reduced} onClick={() => fx.setNuke(k)}>{l}</button>)}
       </div>
     </div>
   );

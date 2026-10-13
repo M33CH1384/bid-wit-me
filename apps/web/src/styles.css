@@ -481,6 +481,12 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 /* gear sheet */
 .sheet-backdrop { align-items: end; padding: 0; }
 .sheet { width: min(560px, 100%); max-height: 86dvh; display: flex; flex-direction: column; padding: 12px 16px calc(14px + env(safe-area-inset-bottom)); --slant: 16px; animation: sheet-up .32s cubic-bezier(.2,.8,.2,1) both; }
+/* More Options sits over the gold Deal button. Glass blur washes through the transparent volume tracks. */
+[data-testid="more-options"].slant.glass {
+  background: rgba(14, 8, 26, 0.98);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
 @keyframes sheet-up { from { transform: translateY(40%); opacity: 0; } to { transform: none; opacity: 1; } }
 .sheet-head { display: flex; align-items: center; justify-content: space-between; padding-bottom: 6px; border-bottom: 1px solid rgba(185,128,255,.2); }
 .sheet-head .icon-btn { width: 40px; height: 40px; font-size: 16px; }
@@ -1559,6 +1565,12 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 
 /* ---------- in-game v2: menu, tray, last-trick chip, score pad ---------- */
 .menu-wrap { position: relative; display: flex; flex: none; }
+/* The header stretches its children, so Menu used to be as tall as the scorebug and sat on the card buttons.
+   The control stays 32px; only its top band takes taps, above the card-button row. */
+.scorebug > .menu-wrap { align-self: flex-start; margin-top: -6px; pointer-events: none; }
+.scorebug > .menu-wrap > .bug-btn { align-self: flex-start; position: relative; height: 32px; pointer-events: none; }
+.scorebug > .menu-wrap > .bug-btn::after { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 20px; pointer-events: auto; }
+.menu-scrim, .game-menu { pointer-events: auto; }
 .menu-scrim { position: fixed; inset: 0; z-index: 60; }
 .game-menu { position: absolute; left: 0; top: calc(100% + 6px); z-index: 61; display: flex; flex-direction: column; min-width: 240px; padding: 6px; border-radius: 12px; background: rgba(20,11,34,.97); box-shadow: 0 14px 34px rgba(0,0,0,.6), inset 0 0 0 1px rgba(185,128,255,.4); }
 .game-menu > button { text-align: left; background: none; border: 0; color: var(--ink); padding: 11px 12px; font-size: 14px; font-weight: 600; border-radius: 8px; }

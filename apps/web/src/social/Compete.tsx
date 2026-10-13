@@ -212,7 +212,7 @@ function FilterSheet({ board, scope, period, kind, onBoard, onScope, onPeriod, o
       <p className="ranks-filter-label" id={id}>{label}</p>
       <div className="ranks-pills" role="radiogroup" aria-labelledby={id}>
         {opts.map(([k, l, disabled]) => (
-          <button key={k} type="button" role="radio" aria-checked={value === k} disabled={!!disabled} className={value === k ? 'on' : ''} data-testid={`${id}-${k}`} onClick={() => set(k)}>{l}</button>
+          <button key={k} type="button" role="radio" aria-label={l} aria-checked={value === k} disabled={!!disabled} className={value === k ? 'on' : ''} data-testid={`${id}-${k}`} onClick={() => set(k)}>{l}</button>
         ))}
       </div>
     </>
