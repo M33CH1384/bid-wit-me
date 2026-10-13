@@ -10,25 +10,25 @@ import {
 import { fanLayout, handCardPlane, handFan } from '../src/three/layout';
 import { contourContains, contiguousRuns, haloLocal, HALO_SX, HALO_SY, placeOnPlane, strokeContour, strokeRibbon, unionContours } from '../src/three/playableOutline';
 
-describe('legal cards stay bright, with no ring', () => {
-  it('dims only the illegal card, and a tap does not draw a ring', () => {
+describe('legal cards stay bright and outlined on their own', () => {
+  it('dims only the illegal card and outlines every other playable card, not just the one you tap', () => {
     const legal = handCardChrome({ yourTurn: true, isLegal: true, selected: false, marked: false, anyIllegal: true });
     const illegal = handCardChrome({ yourTurn: true, isLegal: false, selected: false, marked: false, anyIllegal: true });
     const tapped = handCardChrome({ yourTurn: true, isLegal: true, selected: true, marked: false, anyIllegal: true });
-    const marked = handCardChrome({ yourTurn: true, isLegal: true, selected: false, marked: true, anyIllegal: true });
-    expect(legal).toMatchObject({ pose: 'legal', dim: false, glow: false });
+    expect(legal).toMatchObject({ pose: 'legal', dim: false, glow: true });
     expect(illegal).toMatchObject({ pose: 'illegal', dim: true, glow: false });
-    expect(tapped).toMatchObject({ pose: 'selected', dim: false, glow: false });
-    expect(marked.glow).toBe(false);
+    expect(tapped).toMatchObject({ pose: 'selected', dim: false, glow: true });
+    // a tap does not take the ring off the other legal cards
+    expect(legal.glow).toBe(true);
   });
 
-  it('on a lead where some cards are locked, lifts the ones you can play and dims the rest in place', () => {
+  it('on a lead where some cards are locked, outlines the ones you can play and dims the rest', () => {
     const club = handCardChrome({ yourTurn: true, isLegal: true, selected: false, marked: false, anyIllegal: true });
     const spade = handCardChrome({ yourTurn: true, isLegal: false, selected: false, marked: false, anyIllegal: true });
-    expect(club).toMatchObject({ pose: 'legal', dim: false, glow: false });
-    expect(spade).toMatchObject({ pose: 'illegal', dim: true, glow: false });
-    expect(posePx(club.pose)).toBe(LEGAL_LIFT_PX);
-    expect(posePx(spade.pose)).toBe(0);
+    expect(club.dim).toBe(false);
+    expect(club.glow).toBe(true);
+    expect(spade.dim).toBe(true);
+    expect(spade.glow).toBe(false);
   });
 
   it('paints a legal card with the same full colour as that card off turn', () => {
@@ -50,27 +50,22 @@ describe('legal cards stay bright, with no ring', () => {
     expect(scene).not.toContain("def.id !== 'classic' && <HandFill");
   });
 
-  it('does not dim or lift an all-legal hand, and a tap only raises the card you picked', () => {
+  it('does not dim the fan off turn, and does not outline an all-legal lead until you tap', () => {
     const resting = handCardChrome({ yourTurn: false, isLegal: false, selected: false, marked: false, anyIllegal: false });
     const lead = handCardChrome({ yourTurn: true, isLegal: true, selected: false, marked: false, anyIllegal: false });
-    const voidFollow = handCardChrome({ yourTurn: true, isLegal: true, selected: false, marked: false, anyIllegal: false });
     const leadTap = handCardChrome({ yourTurn: true, isLegal: true, selected: true, marked: false, anyIllegal: false });
     expect(resting).toMatchObject({ pose: 'flat', dim: false, glow: false });
-    expect(lead).toMatchObject({ pose: 'flat', dim: false, glow: false });
-    expect(voidFollow).toMatchObject({ pose: 'flat', dim: false, glow: false });
-    expect(posePx(lead.pose)).toBe(0);
-    expect(leadTap).toMatchObject({ pose: 'selected', dim: false, glow: false });
-    expect(posePx(leadTap.pose)).toBe(LEGAL_LIFT_PX + 10);
+    expect(lead).toMatchObject({ dim: false, glow: false });
+    expect(leadTap).toMatchObject({ pose: 'selected', dim: false, glow: true });
   });
 });
 
 describe('your-turn hand poses', () => {
-  it('lifts a playable card 12px when the hand is mixed, leaves illegal cards on the fan, and adds 10px on the tapped card', () => {
+  it('lifts the legal group clear of the fan, drops illegal cards 4px, and adds 10px on the tapped card', () => {
     expect(posePx('flat')).toBe(0);
-    expect(posePx('illegal')).toBe(0);
-    expect(ILLEGAL_DROP_PX).toBe(0);
-    expect(LEGAL_LIFT_PX).toBe(12);
-    expect(posePx('legal')).toBe(12);
+    expect(posePx('illegal')).toBe(-4);
+    expect(LEGAL_LIFT_PX).toBe(28);
+    expect(posePx('legal')).toBe(28);
     expect(posePx('selected')).toBe(LEGAL_LIFT_PX + 10);
     expect(LIFT_S).toBe(0.2);
     expect(GAP_S).toBe(0.24);
@@ -155,7 +150,7 @@ describe('your-turn hand poses', () => {
     const selected = at('selected');
     const px = (a: number, b: number) => ((a - b) / L.viewH) * screenH;
     expect(px(legal.y, flat.y)).toBeCloseTo(LEGAL_LIFT_PX, 4);
-    expect(px(flat.y, illegal.y)).toBeCloseTo(0, 4);
+    expect(px(flat.y, illegal.y)).toBeCloseTo(4, 4);
     expect(px(selected.y, legal.y)).toBeCloseTo(10, 4);
     expect(selected.depth).toBeLessThan(legal.depth);
     expect(legal.depth).toBeLessThan(illegal.depth);
@@ -166,12 +161,10 @@ describe('your-turn hand poses', () => {
     expect(flagged.depth).toBeLessThan(resting.depth);
   });
 
-  it('illegal cards are about 40% brightness and desaturated', () => {
-    expect(ILLEGAL_BRIGHTNESS).toBe(0.4);
-    expect(ILLEGAL_SAT).toBeLessThan(1);
-    expect(ILLEGAL_SAT).toBeGreaterThan(0);
+  it('illegal cards are 55% of the brightness the old dim was tuned to', () => {
+    expect(ILLEGAL_BRIGHTNESS).toBe(0.55);
     const lum = (c: readonly number[]) => 0.299 * c[0]! + 0.587 * c[1]! + 0.114 * c[2]!;
-    expect(lum(ILLEGAL_COLOR) / lum([0.2, 0.195, 0.25])).toBeCloseTo(0.4 / 0.6, 6);
+    expect(lum(ILLEGAL_COLOR) / lum([0.2, 0.195, 0.25])).toBeCloseTo(0.55 / 0.6, 6);
   });
 });
 
@@ -277,7 +270,7 @@ describe('shine and idle breath', () => {
     expect(posePx('selected') - posePx('legal')).toBe(10);
     expect(SELECT_GLOW_OP).toBeCloseTo(0.8, 6);
     expect(SELECT_GLOW_OP).toBeGreaterThan(BREATHE_HI);
-    expect(ILLEGAL_BRIGHTNESS).toBe(0.4);
+    expect(ILLEGAL_BRIGHTNESS).toBe(0.55);
   });
 });
 
@@ -346,8 +339,8 @@ describe('legal cards stack above the cards beside them', () => {
     expect(handDepthOpts('flat')).toEqual({ layer: 'rest' });
   });
 
-  it('does not open a gap around a legal run, so locked cards stay in the fan', () => {
-    expect(GROUP_GAP_PX).toBe(0);
+  it('opens about 8px on each side of a middle run without restacking or reordering', () => {
+    expect(GROUP_GAP_PX).toBe(8);
     const n = 13;
     const flags = Array.from({ length: n }, (_, i) => i >= 5 && i <= 7);
     const gaps = fanGapPx(flags);
@@ -361,8 +354,8 @@ describe('legal cards stack above the cards beside them', () => {
       const b = at(i + 1, useGap ? gaps[i + 1]! : 0);
       return px(b.x - a.x);
     };
-    expect(gapBetween(4, true) - gapBetween(4, false)).toBeCloseTo(0, 2);
-    expect(gapBetween(7, true) - gapBetween(7, false)).toBeCloseTo(0, 2);
+    expect(gapBetween(4, true) - gapBetween(4, false)).toBeCloseTo(8, 2);
+    expect(gapBetween(7, true) - gapBetween(7, false)).toBeCloseTo(8, 2);
     // inside the run, and between two illegal cards, the step does not change
     expect(gapBetween(5, true) - gapBetween(5, false)).toBeCloseTo(0, 2);
     expect(gapBetween(1, true) - gapBetween(1, false)).toBeCloseTo(0, 2);

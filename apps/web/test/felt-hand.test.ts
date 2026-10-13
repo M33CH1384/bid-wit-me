@@ -46,16 +46,15 @@ describe('quick-load hand', () => {
     expect(html).toContain(feltCardTransform(0, 3, false));
   });
 
-  it('dims only an illegal card, and a legal one has no outline and no filter on the fan', () => {
+  it('dims only an illegal card, and outlines a legal one without a filter on the fan', () => {
     const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
     const fan = css.split('\n').find((line) => line.startsWith('.felt-hand {')) ?? '';
     expect(fan).toContain('filter: none');
     expect(fan).toContain('opacity: 1');
     expect(fan).not.toMatch(/opacity:\s*0?\.\d/);
-    expect(css).toContain('.felt-hand button:disabled:not(.legal) { filter: saturate(.45) brightness(.4); }');
+    expect(css).toContain('.felt-hand button:disabled:not(.legal) { filter: saturate(.45) brightness(.9); }');
     expect(css).not.toContain('.felt-hand button:disabled { filter:');
-    expect(css).toContain('.felt-hand button.legal { filter: none; }');
-    expect(css).not.toContain('outline: 2px solid #f5c542');
+    expect(css).toContain('.felt-hand button.legal { filter: none; outline: 2px solid #f5c542; outline-offset: 1px; }');
   });
 
   it('stacks a raised card and its outline above later neighbours', () => {

@@ -1537,10 +1537,10 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .felt-hand { position: absolute; z-index: 7; left: 0; right: 0; bottom: calc(15vh + env(safe-area-inset-bottom)); height: 132px; display: flex; justify-content: center; align-items: flex-end; pointer-events: none; filter: none; opacity: 1; }
 .felt-hand button { pointer-events: auto; position: relative; width: 52px; height: 74px; margin: 0 -12px; padding: 0; border: 0; border-radius: 5px; background: #fbf8f1; color: #15161a; box-shadow: 0 8px 16px rgba(0,0,0,.45); overflow: hidden; }
 .felt-hand button.red { color: #c4122f; }
-/* Dim only a card that cannot be played, to about 40% and desaturated. :not(.legal) keeps this off a playable card. */
-.felt-hand button:disabled:not(.legal) { filter: saturate(.45) brightness(.4); }
-/* No gold outline. Playable cards stay the paper colour. */
-.felt-hand button.legal { filter: none; }
+/* Dim only a card that cannot be played. :not(.legal) keeps this from beating the legal rule. */
+.felt-hand button:disabled:not(.legal) { filter: saturate(.45) brightness(.9); }
+/* Outline, not box-shadow: WebKit clips a shadow on a radius with overflow:hidden, which hid the ring. */
+.felt-hand button.legal { filter: none; outline: 2px solid #f5c542; outline-offset: 1px; }
 .felt-hand button canvas { width: 100%; height: 100%; display: block; }
 .felt-hand button span { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--display); font-weight: 800; font-size: 18px; letter-spacing: .02em; }
 .felt-hand button.drawn span { opacity: 0; }

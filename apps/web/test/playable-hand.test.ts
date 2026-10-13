@@ -269,16 +269,15 @@ describe('a bad viewport cannot throw the hand away', () => {
       expect(Math.abs((outlineX - faceX) / px), `${run.name} outline`).toBeLessThan(1);
       if (run.name !== 'right') expect(Math.abs((outlineX - rightEdge.x) / px)).toBeGreaterThan(80);
     }
-    // The fan no longer opens air for an outline. A caller-supplied gap must still not explode
-    // when the canvas height is 0: that used to divide by 1px and throw the run off the screen.
+    // A subset has a real gap. A 0-height canvas used to divide by 1px and throw that run off the screen.
     const middle = fanGapPx(Array.from({ length: n }, (_, i) => i >= 5 && i <= 7));
-    expect(middle.every((g) => g === 0)).toBe(true);
+    expect(middle.some((g) => g !== 0)).toBe(true);
     const home = handCardPlane(aspect, n, 7, 0, 0, {}, 0, screenH);
     for (const bad of [0, NaN, Infinity]) {
-      const plane = handCardPlane(aspect, n, 7, 0, 0, {}, 8, bad);
+      const plane = handCardPlane(aspect, n, 7, 0, 0, {}, middle[7]!, bad);
       expect(plane.x).toBeCloseTo(home.x, 6);
       expect(plane.y).toBeCloseTo(home.y, 6);
-      const fan = handFan(aspect, n, 7, 0, 0, {}, 8, bad);
+      const fan = handFan(aspect, n, 7, 0, 0, {}, middle[7]!, bad);
       expect(fan.p.every(Number.isFinite)).toBe(true);
       expect(fan.s).toBeGreaterThan(0.05);
     }

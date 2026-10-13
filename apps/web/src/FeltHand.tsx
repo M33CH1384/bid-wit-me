@@ -2,10 +2,8 @@ import { type Card, cardLabel } from '@spades/rules';
 import { useEffect, useRef, useState } from 'react';
 import { paintFace } from './cardArt';
 
-/** How far a tapped card rises, in CSS pixels, on top of any playable lift. Same extra as the 3D selected pose. */
+/** How far a tapped card rises, in CSS pixels. Same extra as the 3D selected pose. */
 export const FELT_SELECT_LIFT_PX = 10;
-/** How far a playable card rises when the hand is mixed. Same as the 3D legal pose. No ring. */
-export const FELT_LEGAL_LIFT_PX = 12;
 /** Exposed strip we aim for. A full 13- or 17-card row cannot reach it and still fit, so the card grows instead. */
 export const FELT_EXPOSED_PX = 44;
 
@@ -58,13 +56,12 @@ export function feltCardZ(index: number, legal: boolean, selected: boolean): num
   return index;
 }
 
-export function feltCardTransform(index: number, count: number, selected: boolean, raised = false): string {
+export function feltCardTransform(index: number, count: number, selected: boolean): string {
   const mid = (count - 1) / 2;
   const rot = (index - mid) * 3.2;
   const sag = Math.abs(index - mid) * 3;
   const fan = `rotate(${rot}deg) translateY(${sag}px)`;
-  const up = (raised ? FELT_LEGAL_LIFT_PX : 0) + (selected ? FELT_SELECT_LIFT_PX : 0);
-  return up > 0 ? `translateY(-${up}px) ${fan}` : fan;
+  return selected ? `translateY(-${FELT_SELECT_LIFT_PX}px) ${fan}` : fan;
 }
 
 /**
@@ -130,7 +127,6 @@ export function FeltHand({ cards, trick, legal, selected, onCard, promoted, visi
           const red = c[1] === 'H' || c[1] === 'D' || c === 'BJ';
           const can = legal.includes(c);
           const picked = selected === c;
-          const mixed = legal.length > 0 && legal.length < cards.length;
           return (
             <button
               key={c}
@@ -138,7 +134,7 @@ export function FeltHand({ cards, trick, legal, selected, onCard, promoted, visi
               tabIndex={-1}
               className={`${red ? 'red' : ''} ${can ? 'legal' : ''} ${picked ? 'sel' : ''}`}
               style={{
-                transform: feltCardTransform(i, cards.length, picked, can && mixed),
+                transform: feltCardTransform(i, cards.length, picked),
                 zIndex: feltCardZ(i, can, picked),
                 width: box.width,
                 height: box.height,
