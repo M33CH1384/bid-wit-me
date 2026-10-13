@@ -192,17 +192,18 @@ export function Intermission({
                         <source srcSet="/shot/sheet.webp" type="image/webp" />
                         <img src="/shot/sheet.png" alt="" />
                       </picture>
-                      <picture className="rip">
-                        <source srcSet="/shot/rip.webp" type="image/webp" />
-                        <img src="/shot/rip.png" alt="RIP" data-testid={`recap-rip-${s.side}`} />
-                      </picture>
                     </div>
                   )}
                   {cover.sheet && (
                     <div className="police-lights" data-testid="police-lights" aria-hidden="true">
                       <i className="wash red" /><i className="wash blue" />
-                      <i className="wash ink red" /><i className="wash ink blue" />
                     </div>
+                  )}
+                  {cover.sheet && (
+                    <picture className="rip">
+                      <source srcSet="/shot/rip.webp" type="image/webp" />
+                      <img src="/shot/rip.png" alt="RIP" data-testid={`recap-rip-${s.side}`} />
+                    </picture>
                   )}
                   {showTape && (
                     <div className="caution-x" data-testid={`recap-tape-${s.side}`} aria-hidden="true">
@@ -251,7 +252,7 @@ export function Intermission({
           {sheetOn && (
             <p className="tod" data-testid="time-of-death" data-hand={rec.handNo}>
               {Array.from(`Time of death: Hand ${rec.handNo}`, (ch, i) => (
-                <span key={i} style={{ animationDelay: `${(0.35 + i * 0.055).toFixed(3)}s` }}>{ch === ' ' ? '\u00a0' : ch}</span>
+                <span key={i} style={{ animationDelay: `${(0.12 + i * 0.016).toFixed(3)}s` }}>{ch === ' ' ? '\u00a0' : ch}</span>
               ))}
             </p>
           )}

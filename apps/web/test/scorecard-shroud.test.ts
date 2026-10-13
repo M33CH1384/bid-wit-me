@@ -382,6 +382,12 @@ describe('scorecard caution tape and shroud', () => {
     expect(css).toContain('#FF2A2A');
     expect(css).toContain('#2A5BFF');
     expect(css).toContain('mix-blend-mode: soft-light');
+    expect(css).toContain('radial-gradient(ellipse 72% 78% at 30% 42%, color-mix(in srgb, var(--police-red) 55%, transparent)');
+    expect(css).toContain('radial-gradient(ellipse 72% 78% at 70% 58%, color-mix(in srgb, var(--police-blue) 55%, transparent)');
+    expect(css).toContain('mask-image: url(/shot/sheet.png)');
+    expect(css).toContain(':not(.rip)');
+    expect(css).not.toContain('wash ink');
+    expect(css).toContain('min-width: max-content');
     expect(css).toContain('animation: police-red 1.2s');
     expect(css).toContain('animation: police-blue 1.2s');
     expect(css).toContain('animation: fold-ripple');

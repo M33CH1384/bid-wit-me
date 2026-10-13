@@ -710,7 +710,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-team { position: relative; padding: 18px 16px 16px; background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px rgba(185,128,255,.2); clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); }
 .tt-face { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name total" "line total" "players total" "bar bar"; align-items: center; gap: 8px 16px; position: relative; z-index: 5; }
 /* On-notice shot card: knocked 4px and -1.5deg, red vignette and glow, one raster hole per shot, then a shallow tape X. Full fidelity at every width, including 360–390. */
-.tt-team > :not(.shot-holes):not(.caution-x):not(.shroud):not(.police-lights) { position: relative; z-index: 5; }
+.tt-team > :not(.shot-holes):not(.caution-x):not(.shroud):not(.police-lights):not(.rip) { position: relative; z-index: 5; }
 .tt-team.taped { clip-path: none; overflow: visible; }
 .tt-team.notice, .tt-team.mine.notice {
   clip-path: none; overflow: visible; border: 1px solid #FF4D4D; margin-right: 6px;
@@ -770,26 +770,25 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .shroud .cloth, .shroud .cloth img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; pointer-events: none; }
 /* Lights are siblings of the dropping cloth so WebKit starts them after the drop, not inside that animation. */
 .police-lights {
-  position: absolute; z-index: 7; left: -10px; right: -10px; top: 0; bottom: -22px;
-  pointer-events: none; overflow: hidden;
+  position: absolute; z-index: 6; left: -10px; right: -10px; top: 0; bottom: -22px;
+  pointer-events: none; overflow: hidden; mix-blend-mode: soft-light;
+  --police-red: #FF2A2A; --police-blue: #2A5BFF;
 }
 .police-lights .wash {
-  position: absolute; inset: 0; pointer-events: none; mix-blend-mode: soft-light; opacity: 0;
-  -webkit-mask-image: url(/shot/sheet-map.png); mask-image: url(/shot/sheet-map.png);
+  position: absolute; inset: 0; pointer-events: none; opacity: 0;
+  -webkit-mask-image: url(/shot/sheet.png); mask-image: url(/shot/sheet.png);
   -webkit-mask-size: 100% 100%; mask-size: 100% 100%;
+  -webkit-mask-mode: alpha; mask-mode: alpha;
   -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
 }
 .police-lights .wash.red {
-  background: linear-gradient(100deg, #FF2A2A 0%, rgba(255, 42, 42, .95) 46%, transparent 78%);
+  background: radial-gradient(ellipse 72% 78% at 30% 42%, color-mix(in srgb, var(--police-red) 55%, transparent) 0%, transparent 68%);
   animation: police-red 1.2s ease-in-out infinite;
 }
 .police-lights .wash.blue {
-  background: linear-gradient(260deg, #2A5BFF 0%, rgba(42, 91, 255, .95) 46%, transparent 78%);
+  background: radial-gradient(ellipse 72% 78% at 70% 58%, color-mix(in srgb, var(--police-blue) 55%, transparent) 0%, transparent 68%);
   animation: police-blue 1.2s ease-in-out infinite;
 }
-.police-lights .wash.ink { mix-blend-mode: multiply; }
-.police-lights .wash.ink.red { background: linear-gradient(100deg, rgba(255, 42, 42, .8) 0%, rgba(255, 42, 42, .35) 42%, transparent 74%); }
-.police-lights .wash.ink.blue { background: linear-gradient(260deg, rgba(42, 91, 255, .8) 0%, rgba(42, 91, 255, .35) 42%, transparent 74%); }
 .tt-team.sheet-in .police-lights .wash,
 .tt-team.sheet-in .police-rim,
 .tt-team.shrouded { animation-delay: 450ms; }
@@ -814,17 +813,19 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
   0%, 100% { opacity: 1; box-shadow: inset 0 0 88px 20px rgba(255, 42, 42, .78); }
   50% { opacity: 1; box-shadow: inset 0 0 88px 20px rgba(42, 91, 255, .78); }
 }
-.shroud .rip {
-  position: absolute; z-index: 1; left: 50%; top: 44%; width: 78%;
+.tt-team.shrouded > .rip {
+  position: absolute; z-index: 7; left: 50%; top: 44%; width: 78%;
   transform: translate(-50%, -50%) rotate(-4deg);
   mix-blend-mode: multiply; opacity: 0.92; pointer-events: none;
 }
-.shroud .rip img { width: 100%; height: auto; display: block; }
-.tt-recap.crowded .shroud .rip { width: 68%; top: 46%; }
-.tod {
-  margin: 0; padding: 5px 12px; position: relative; z-index: 5;
+.tt-team.shrouded > .rip img { width: 100%; height: auto; display: block; }
+.tt-recap.crowded .tt-team.shrouded > .rip { width: 68%; top: 46%; }
+.tt .tod {
+  margin: 10px 0 0; padding: 5px 12px; position: relative; z-index: 9;
+  align-self: center; flex: 0 0 auto; width: max-content; max-width: none; min-width: max-content;
+  overflow: visible; white-space: nowrap;
   font-family: "Courier New", Courier, ui-monospace, monospace;
-  font-size: 15px; letter-spacing: .03em; line-height: 1.2; white-space: nowrap;
+  font-size: 15px; letter-spacing: .03em; line-height: 1.2;
   color: #f4efe4; background: rgba(6, 4, 8, .72);
   box-shadow: inset 0 0 0 1px rgba(244, 239, 228, .28);
   pointer-events: none;
@@ -835,7 +836,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-team.sheet-in .shroud .cloth { animation: fold-ripple 450ms cubic-bezier(.3, 1.4, .4, 1) both; }
 @keyframes sheet-drop { 0% { opacity: 0; transform: translate3d(0, -108%, 0); } 100% { opacity: 1; transform: none; } }
 @keyframes fold-ripple { 0% { transform: scaleY(1.05) skewX(-1.4deg); } 62% { transform: scaleY(0.99) skewX(0.5deg); } 100% { transform: none; } }
-@media (prefers-reduced-motion: reduce) { .tt-team.notice.tape-in, .tt-team.tape-in .caution-x, .tt-team.tape-in .caution-x .tape, .shot-holes img.hole-in, .tt-team.sheet-in .shroud, .tt-team.sheet-in .shroud .cloth, .tt-team.shrouded .wash.red, .tt-team.shrouded .wash.blue, .tt-team.shrouded, .police-rim { animation: none; } .tt-team.shrouded .wash.red { opacity: .85; } .tt-team.shrouded .wash.blue { opacity: .2; } .tt-team.shrouded { box-shadow: 0 0 26px 8px rgba(255, 42, 42, .9); } .police-rim { opacity: .85; box-shadow: inset 0 0 88px 20px rgba(255, 42, 42, .55); } }
+@media (prefers-reduced-motion: reduce) { .tt-team.notice.tape-in, .tt-team.tape-in .caution-x, .tt-team.tape-in .caution-x .tape, .shot-holes img.hole-in, .tt-team.sheet-in .shroud, .tt-team.sheet-in .shroud .cloth, .tt-team.shrouded .wash.red, .tt-team.shrouded .wash.blue, .tt-team.shrouded, .police-rim { animation: none; } .tt-team.shrouded .wash.red { opacity: 1; } .tt-team.shrouded .wash.blue { opacity: .15; } .tt-team.shrouded { box-shadow: 0 0 26px 8px rgba(255, 42, 42, .9); } .police-rim { opacity: .85; box-shadow: inset 0 0 88px 20px rgba(255, 42, 42, .55); } }
 @media (prefers-reduced-motion: reduce) { .tod span { animation: none; opacity: 1; } }
 .tt-team.mine { background: rgba(245,197,66,.08); box-shadow: inset 3px 0 0 var(--gold), inset 0 0 0 1px rgba(245,197,66,.25); }
 .tt-team-name { grid-area: name; display: flex; flex-direction: column; gap: 4px; }
