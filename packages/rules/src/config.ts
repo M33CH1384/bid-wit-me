@@ -90,6 +90,43 @@ export function hostMinimum(r: Pick<TableRules, 'firstHandMin' | 'partnerships' 
   const bid = typeof r.minTeamBid === 'number' && Number.isInteger(r.minTeamBid) ? Math.max(0, r.minTeamBid) : 0;
   return books === null ? bid : Math.max(books, bid);
 }
+
+/**
+ * Nil / Blind Nil as stored on a live game. Older rows and damaged rules can omit the objects entirely;
+ * reading `.allowed` on them throws and used to kill a room tick mid-broadcast. Missing pieces fall back
+ * to the mode preset (Nil on, except Cutthroat) and a complete object is returned unchanged.
+ */
+export function nilRulesOf(r: { mode?: string; nil?: Partial<NilRules> | null }): NilRules {
+  const n = r.nil;
+  const fallbackAllowed = r.mode !== 'cutthroat';
+  if (!n || typeof n !== 'object') return { allowed: fallbackAllowed, value: 100 };
+  const allowed = typeof n.allowed === 'boolean' ? n.allowed : fallbackAllowed;
+  const value = typeof n.value === 'number' && Number.isFinite(n.value) ? n.value : 100;
+  if (n.allowed === allowed && n.value === value) return n as NilRules;
+  return { allowed, value };
+}
+
+export function blindNilRulesOf(r: { mode?: string; blindNil?: Partial<BlindNilRules> | null }): BlindNilRules {
+  const b = r.blindNil;
+  const fallbackAllowed = r.mode !== 'cutthroat';
+  if (!b || typeof b !== 'object') return { allowed: fallbackAllowed, value: 200, onlyWhenBehindBy: 100, exchangeCards: 0 };
+  const allowed = typeof b.allowed === 'boolean' ? b.allowed : fallbackAllowed;
+  const value = typeof b.value === 'number' && Number.isFinite(b.value) ? b.value : 200;
+  const onlyWhenBehindBy = b.onlyWhenBehindBy === null || (typeof b.onlyWhenBehindBy === 'number' && Number.isFinite(b.onlyWhenBehindBy))
+    ? b.onlyWhenBehindBy
+    : 100;
+  const exchangeCards: 0 | 1 | 2 = b.exchangeCards === 0 || b.exchangeCards === 1 || b.exchangeCards === 2 ? b.exchangeCards : 0;
+  if (b.allowed === allowed && b.value === value && b.onlyWhenBehindBy === onlyWhenBehindBy && b.exchangeCards === exchangeCards) return b as BlindNilRules;
+  return { allowed, value, onlyWhenBehindBy, exchangeCards };
+}
+
+/** Same rules object when Nil and Blind Nil are already complete; otherwise a copy with both filled in. */
+export function withCompleteNil<T extends { mode?: string; nil?: Partial<NilRules> | null; blindNil?: Partial<BlindNilRules> | null }>(r: T): T {
+  const nil = nilRulesOf(r);
+  const blindNil = blindNilRulesOf(r);
+  if (r.nil === nil && r.blindNil === blindNil) return r;
+  return { ...r, nil, blindNil };
+}
 export const bagsOnOf = (r: Pick<TableRules, 'bagsOn'>) => r.bagsOn !== false;
 export const shotOutOn = (r: Pick<TableRules, 'shotOut'>) => r.shotOut !== false;
 
