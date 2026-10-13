@@ -19,12 +19,9 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
   const rot = source?.rot ?? null;
   // Release 10: watching (no seat): seat 0 is a real player, so it shows their name instead of "You"
   const spectator = !!cs.spectator && cs.seat === null;
-  const names = useMemo(() => {
-    if (!rot) return [];
-    const ns = localNames(room, rot);
-    if (spectator) { const s0 = room.seats[rot.R(0)]; ns[0] = !s0 || s0.kind === 'empty' ? 'Seat 1' : s0.name; }
-    return ns;
-  }, [room, rot, spectator]);
+  const names = useMemo(() => (rot ? localNames(room, rot, spectator) : []), [room, rot, spectator]);
+  const heldSeat = useRef<number | null>(null);
+  if (cs.seat !== null) heldSeat.current = cs.seat;
   const send = useCallback((text: string) => conn.send({ t: 'chat', text }), [conn]);
   const [hideSpec, setHideSpec] = useState(loadHideSpectatorChat);
   const chat = useOnlineChat(cs, source?.st ?? null, names, send, hideSpec && !spectator);
@@ -124,6 +121,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
           controls: spectator ? undefined : <MediaBar mesh={mesh} vs={vs} seated limited={limitedNow} />,
           spectator,
           overlay: <SpectatorOverlay room={room} cs={cs} spectator={spectator} names={names} hideChat={hideSpec}
+            retake={spectator ? heldSeat.current : null}
             onHideChat={(on) => { setHideSpec(on); saveHideSpectatorChat(on); }}
             onTake={(seat) => conn.send({ t: 'sit', seat })} onLeave={onMainMenu} />,
           talk: {

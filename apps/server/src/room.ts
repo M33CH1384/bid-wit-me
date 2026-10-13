@@ -1347,7 +1347,7 @@ export class Room {
     const limit = d.afkLimit ?? DEFAULT_AFK_LIMIT;
     if (!limit || m.timeouts < limit || d.seats[seat]?.kind !== 'human') return;
     const bot = this.botName();
-    d.seats[seat] = { kind: 'bot', name: bot, level: d.botLevel };
+    d.seats[seat] = { kind: 'bot', name: bot, level: d.botLevel, vacated: true };
     m.seat = null;
     m.timeouts = 0;
     if (d.votes) delete d.votes[pid];
@@ -1408,7 +1408,7 @@ export class Room {
     const d = this.data;
     const seats: SeatInfo[] = d.seats.slice(0, d.rules.playerCount).map((s) => {
       if (s.kind === 'empty') return { kind: 'empty' };
-      if (s.kind === 'bot') return { kind: 'bot', name: s.name, level: s.level };
+      if (s.kind === 'bot') return { kind: 'bot', name: s.name, level: s.level, ...(s.vacated ? { vacated: true } : {}) };
       const m = d.members[s.playerId];
       return { kind: 'human', playerId: s.playerId, name: m?.name ?? 'Player', connected: this.isConnected(s.playerId), media: m?.media ?? { cam: false, mic: false } };
     });

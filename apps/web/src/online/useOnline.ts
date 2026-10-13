@@ -226,9 +226,10 @@ function lineToMsg(l: ChatLine, you: string | null): ChatMsg {
 }
 
 /** Local-seat names: "You" at 0, then real names rotated. */
-export function localNames(room: RoomInfo, rot: Rotation): string[] {
+export function localNames(room: RoomInfo, rot: Rotation, spectating = false): string[] {
   return Array.from({ length: rot.n }, (_, i) => {
-    if (i === 0) return 'You';
+    // A watcher has no seat. Seat 0 is whoever the view is anchored on, never "You".
+    if (i === 0 && !spectating) return 'You';
     const s = room.seats[rot.R(i)];
     return !s || s.kind === 'empty' ? `Seat ${rot.R(i) + 1}` : s.name;
   });

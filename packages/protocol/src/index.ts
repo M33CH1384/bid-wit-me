@@ -171,7 +171,7 @@ export type ClientMsg =
 /* ------------------------------------------------------------ server → client */
 export type SeatInfo =
   | { kind: 'empty' }
-  | { kind: 'bot'; name: string; level: BotLevel }
+  | { kind: 'bot'; name: string; level: BotLevel; /** a person left this seat; a spectator may take it */ vacated?: boolean }
   | { kind: 'human'; playerId: string; name: string; connected: boolean; media: MediaState; autoplay?: boolean };
 
 export interface MemberInfo { playerId: string; name: string; connected: boolean; seat: number | null }

@@ -949,7 +949,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   });
 
   return (
-    <div ref={screenRef} className={`table-screen q-${settings.quality}${vp.short ? ' short' : ''}${modalOpen ? ' modal-open' : ''}${showPad ? ' pad-open' : ''}`}>
+    <div ref={screenRef} className={`table-screen q-${settings.quality}${vp.short ? ' short' : ''}${spectating ? ' spectating' : ''}${modalOpen ? ' modal-open' : ''}${showPad ? ' pad-open' : ''}`}>
       {/* styled stand-in table, on screen from the first paint until the 3D table has rendered (then it fades) */}
       <div className={`table-placeholder ${tableReady ? 'gone' : ''}`} data-testid="table-placeholder" data-venue={venue} style={placeholderStyle(venue)} aria-hidden>
         <div className="tp-floor" />
@@ -977,8 +977,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           dealer={st.dealer}
           positions={pos}
           human={HUMAN}
-          myHand={display.hand}
-          handCounts={display.counts}
+          myHand={spectating ? [] : display.hand}
+          handCounts={spectating ? display.counts.map((c, i) => (i === HUMAN ? 0 : c)) : display.counts}
           shownTrick={display.trick}
           slam={display.slam}
           reduceFx={reduceFx}
@@ -1148,7 +1148,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         )}
 
         <div className={`plate me-plate ${myTurn && st.phase !== 'handOver' ? 'turn' : ''}`} data-testid="seat-0">
-          <div className="plate-avatar" style={{ ['--uc' as string]: USER_COLORS.You }}>Y</div>
+          <div className="plate-avatar" style={{ ['--uc' as string]: USER_COLORS.You }}>{spectating ? ((names[HUMAN] ?? '?').trim().charAt(0).toUpperCase() || '?') : 'Y'}</div>
           <div className="plate-body">
             <div className="plate-name">{spectating ? (names[HUMAN] ?? '').toUpperCase() : 'YOU'}{st.dealer === HUMAN && <span className="chip dealer" data-testid="dealer-0">DEALER</span>}{notice.includes(sideOf(HUMAN, r)) && <span className="chip notice" data-testid="notice-0" title="Got shot last hand: one more shot and you're out">ON NOTICE</span>}{!spectating && myBadges.map((b) => BADGES[b.id] && <span key={b.id} className="chip badge" title={`${BADGES[b.id]!.name}: ${BADGES[b.id]!.desc}`} data-testid={`plate-badge-${b.id}`}>{BADGES[b.id]!.icon}</span>)}</div>
             <div className="plate-stats">

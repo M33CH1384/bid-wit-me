@@ -918,12 +918,13 @@ describe('AFK + kicking', () => {
     expect(env.last('a', 'state')!.room.afkLimit).toBe(3);
     for (let k = 0; k < 3; k++) { waitMyTurn(env); env.advance(5200); }
     const d = env.room.data;
-    expect(d.seats[0]).toMatchObject({ kind: 'bot' });
+    expect(d.seats[0]).toMatchObject({ kind: 'bot', vacated: true });
     const botName = (d.seats[0] as { name: string }).name;
     expectPoolBot(d.seats, 0);
     expect(d.members[a.pid]!.seat).toBeNull();
     expect(d.chat.some((l) => l.text === `Slow was AFK and replaced by a bot (${botName})`)).toBe(true);
-    // still at the table: the seat (now a bot) can be taken back
+    // still at the table: the freed seat can be taken back even when spectators cannot replace other bots
+    env.send('a', { t: 'tableOpts', replaceBots: false });
     env.send('a', { t: 'sit', seat: 0 });
     expect(env.errors('a')).toHaveLength(0);
     expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid });

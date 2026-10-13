@@ -169,16 +169,19 @@
 .tour-banner { margin: 6px 0; padding: 8px 12px; border-radius: 10px; border: 1px solid #f5c242; background: rgba(245,194,66,.12); font-size: 13px; }
 
 /* ---- Release 10: spectators ---- */
-.spec-dock { position: fixed; top: calc(58px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 60; display: flex; flex-direction: column; align-items: center; gap: 8px; width: min(94vw, 460px); pointer-events: none; }
+.spec-dock { position: fixed; top: calc(74px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 60; display: flex; flex-direction: column; align-items: center; gap: 8px; width: min(94vw, 460px); pointer-events: none; }
 .spec-dock > * { pointer-events: auto; }
-.spec-banner { display: flex; align-items: center; gap: 8px; padding: 6px 14px; font-family: var(--display); letter-spacing: .08em; }
+.spec-banner { display: flex; align-items: center; gap: 8px; padding: 4px 12px; font-family: var(--display); font-size: 14px; letter-spacing: .08em; }
 .spec-banner b { color: var(--gold); }
 .spec-banner small { color: var(--muted); letter-spacing: .02em; }
-.spec-banner .link { margin-left: 6px; }
-.spec-take { width: 100%; padding: 12px 14px; text-align: center; border: 1px solid rgba(245,197,66,.7); box-shadow: 0 0 26px rgba(245,197,66,.35); animation: spec-in .3s ease-out both; }
-.spec-take-title { font-family: var(--display); font-weight: 800; letter-spacing: .12em; color: var(--gold); font-size: 20px; }
-.spec-take p { margin: 4px 0 10px; font-size: 13px; color: var(--muted); }
-.spec-take-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.spec-banner .link { margin-left: 6px; padding: 0; font-size: 14px; }
+/* Compact retake: pinned to the bottom, clear of the trick (centre) and the trump bar (top).
+   .slant.glass sets position:relative, so this has to outrank it or the banner stays in normal flow. */
+.spec-take-banner.slant.glass { position: fixed; z-index: 40; left: 12px; right: 12px; top: auto; bottom: calc(10px + env(safe-area-inset-bottom)); width: auto; margin: 0;
+  display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 12px; pointer-events: auto;
+  border: 1px solid rgba(245,197,66,.7); box-shadow: 0 8px 24px rgba(0,0,0,.45); animation: spec-in .3s ease-out both; }
+.spec-take-banner .primary { flex: 1; min-height: 44px; }
+.spec-take-x { flex: none; width: 44px; height: 44px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); font-size: 18px; }
 @keyframes spec-in { from { transform: translateY(-8px); opacity: 0; } }
 .spec-chip-wrap { position: fixed; top: calc(62px + env(safe-area-inset-top)); left: 12px; z-index: 60; }
 .spec-chip { height: 32px; padding: 0 10px; border-radius: 16px; border: 1px solid rgba(185,128,255,.5); background: rgba(20,11,34,.85); color: var(--ink); font-weight: 700; }
