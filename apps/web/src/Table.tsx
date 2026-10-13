@@ -47,6 +47,8 @@ import { type TipsPref, bumpTip, loadTips, saveTips, tipCount } from './tips';
 import { BidCoach } from './BidCoach';
 import { RUN_FX_MS } from '@spades/protocol';
 import { RUN_SHOW_MS, RUN_SLAM_MS, RUN_IT_CALLOUTS, RUN_TORNADO_AFTER_MS, RUN_ZOOM_MS } from './runIt';
+import { pickRunShow, scoreOpened } from './runPlayback';
+import type { RunPlayback } from '@spades/protocol';
 import { RunItReview, RunZoom, runReviewOverTable } from './RunZoom';
 import { TrashTalkButton } from './TrashTalk';
 import { isPromoted } from './cardFaces';
@@ -128,6 +130,8 @@ export interface OnlineBinding {
   venue?: VenueId;
   /** Release 10: watching, not playing. Seat 0 is a real player (names[0] is their name): no hand, no controls. */
   spectator?: boolean;
+  /** Resolved Run it! in local seats. Present for every viewer until the next hand, including the one who did not claim. */
+  run?: RunPlayback | null;
   /** Release 10: spectator banner / take-seat prompt / watchers chip, drawn over the table */
   overlay?: ReactNode;
 }
@@ -538,6 +542,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   type RunFx = { id: number; before: { st: GameState; view: PlayerView }; claimer: number; cards: Card[]; others: { seat: number; card: Card }[]; books: number; phase: 'zoom' | 'slam'; at: number };
   const [seen, setSeen] = useState<{ st: GameState; view: PlayerView }>(() => ({ st, view }));
   const [runFx, setRunFx] = useState<RunFx | null>(null);
+  /** Server playback seq already started, so a later state for the same claim does not replay it. */
+  const [playedSeq, setPlayedSeq] = useState<number | null>(null);
   const [tableReady, setTableReady] = useState(false);
   const [webglHand, setWebglHand] = useState(false);
   const onTableReady = useCallback(() => setTableReady(true), []);
@@ -548,20 +554,22 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const id = requestAnimationFrame(() => { w.__bwmPlayableAt ??= performance.now(); });
     return () => cancelAnimationFrame(id);
   }, []);
-  if (seen.st !== st) {
-    const b = seen.st;
-    if (b.handNo === st.handNo && st.tricks.length > b.tricks.length && st.tricks[b.tricks.length]!.plays.some((p) => p.run)) {
-      const fresh = st.tricks.slice(b.tricks.length);
-      const claimer = fresh.at(-1)!.winner!; // a run is won trick by trick by its claimer (off-turn claims auto-play others first)
-      const onTable = new Set(b.trick.plays.map((p) => p.card));
-      const plays = fresh.flatMap((t) => t.plays).filter((p) => !onTable.has(p.card));
+  const playback = online?.run ?? null;
+  // Playback (every online viewer) or a jump that hides the run behind an ordinary trick (offline, bundled bot claim).
+  if (seen.st !== st || (playback !== null && playback.handNo === st.handNo && playback.seq !== playedSeq)) {
+    const show = pickRunShow(seen.st, st, playback, playedSeq);
+    if (show) {
       setRunFx({
-        id: Date.now(), before: seen, claimer, books: fresh.length, phase: 'zoom', at: performance.now(),
-        cards: plays.filter((p) => p.seat === claimer).map((p) => p.card),
-        others: plays.filter((p) => p.seat !== claimer).map((p) => ({ seat: p.seat, card: p.card })),
+        id: show.fromServer ? show.id : Date.now(),
+        before: seen.st.handNo === st.handNo ? seen : { st, view },
+        claimer: show.claimer, books: show.books, phase: 'zoom', at: performance.now(),
+        cards: show.cards, others: show.others,
       });
+      if (show.fromServer) setPlayedSeq(show.id);
+    } else if (playback && playback.handNo === st.handNo && playback.seq !== playedSeq) {
+      setPlayedSeq(playback.seq);
     }
-    setSeen({ st, view });
+    if (seen.st !== st) setSeen({ st, view });
   }
   const [badgeToast, setBadgeToast] = useState<string | null>(null);
   const endRun = useCallback(() => { fx.tornado = null; sound.stopTornado(); setRunFx(null); }, []);
@@ -842,7 +850,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [shotRecapAck, setShotRecapAck] = useState(false);
   useEffect(() => { setShotRecapAck(false); }, [st.phase, st.handNo]);
   useEffect(() => {
-    if ((st.phase !== 'handOver' && st.phase !== 'gameOver') || pause || runFx) { setTalkOpen(false); return; }
+    if (!scoreOpened(st.phase, pause, !!runFx)) { setTalkOpen(false); return; }
     setTalkOpen(true);
     // the recap itself stays clear; banter lands in the corner chat sheet
     if (st.phase === 'handOver') setChatOpen(false);
