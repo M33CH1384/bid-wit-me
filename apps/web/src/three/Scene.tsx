@@ -1,17 +1,21 @@
 import { RUN_SLAM_MS } from '../runIt';
-import { Environment, Html, useTexture } from '@react-three/drei';
+import { Html } from '@react-three/drei';
 import { Canvas, events as r3fEvents, useFrame, useThree } from '@react-three/fiber';
-import { type ReactNode, type RefObject, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { type Camera, type Group, type Mesh, type MeshBasicMaterial, type Object3D, type Texture, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, Matrix4, Quaternion, MeshPhysicalMaterial, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, Vector2, Vector3 } from 'three';
+import { type ReactNode, type RefObject, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type BufferGeometry, type Camera, type Group, type Material, type Mesh, type Object3D, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, DataTexture, Matrix4, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, PCFSoftShadowMap, Quaternion, RepeatWrapping, Scene as ThreeScene, SRGBColorSpace, Texture, Vector2, Vector3 } from 'three';
 import { type Card, type Play, type Trick } from '@spades/rules';
-import Card3D from './Card3D';
+import Card3D, { createLitCardMaterial } from './Card3D';
 import { departureSlot, handCardKey, handReactKey } from '../handOrder';
 import { GAP_S, LEGAL_NEAR, LIFT_S, canTapCard, fanGapPx, fanMotion, handRenderOrder, hitsInPaintOrder, playablePose, raiseLocalY } from './handLift';
 import { isShortLandscape } from '../viewport';
-import { type DealTimeline, dealTimeline } from './dealTimeline';
+import { type DealTimeline, dealTimeline, seatDealDelay } from './dealTimeline';
+import { handNeedsDeal, handSlotKey } from './dealFlight';
 import { type Sfx, sound } from '../audio';
 import { fx } from '../fx';
-import { backTexture, faceTexture, logoTexture } from './cardTextures';
+import { backTexture, faceTexture, logoTexture, refreshFacesGradually } from './cardTextures';
+import { loadTableImage, prefetchTableTextures, tableTextureUrls } from '../tableAssets';
+import { ClassicHall } from './hallEnv';
+import { forceProgram, nextFrame, quietShaderErrors } from './shaderBudget';
 import Venue3D, { feltPatternTexture, preloadVenueAssets } from './Venue3D';
 import { type VenueDef, type VenueId, VENUE_DEFS, venueAssetUrls } from '../venues';
 import { bodyGeometry, cardGeometry, feltGeometry, railGeometry } from './geometry';
@@ -21,8 +25,10 @@ import {
 
 export interface SceneProps {
   quality: 'high' | 'low';
-  /** the textured table has rendered its first frame (the placeholder fades out) */
+  /** the 3D table has rendered its first frame (the placeholder fades out). Textures and the hall light stream in after this. */
   onTableReady?: () => void;
+  /** the human's cards are in the 3D scene with faces, so the flat hand can leave */
+  onHandLive?: () => void;
   n: number;
   handNo: number;
   dealer: number;
@@ -133,25 +139,14 @@ function FxShake({ table }: { table: RefObject<Group | null> }) {
 
 /**
  * Table textures. High quality keeps 1k colour / normal maps; roughness maps are 512 at both levels (their detail
- * doesn't show at table distance, and they were the heaviest files). HDRI: 512×256 (it's blurred + dimmed anyway).
+ * doesn't show at table distance, and they were the heaviest files). The hall HDRI streams in after the cloth.
  */
-function tableTextureUrls(quality: 'high' | 'low'): string[] {
-  const res = quality === 'high' ? '1k' : '512';
-  return [
-    `/assets/textures/scuba_suede_nor_gl_${res}.jpg`,
-    '/assets/textures/scuba_suede_rough_512.jpg',
-    `/assets/textures/dark_wood_diff_${res}.jpg`,
-    `/assets/textures/dark_wood_nor_gl_${res}.jpg`,
-    '/assets/textures/dark_wood_rough_512.jpg',
-  ];
-}
-const HDRI_URL = '/assets/hdri/billiard_hall_512.hdr';
-/** Warm the loader caches (called from the splash / wizard via three/preload.ts). */
+/** Warm the image cache (called from the splash / wizard via three/preload.ts). Does not suspend the table. */
 export function preloadTableAssets(quality: 'high' | 'low', venue: VenueId = 'classic'): void {
-  useTexture.preload(tableTextureUrls(quality));
-  // The classic hall HDRI is ~400 KB. Fetching it here put it on the same slow link as the felt
-  // and wood maps, so a reload's table textures waited behind it. <Environment> loads it once the
-  // table has painted. Other venues still warm their own (smaller) files while you sit on the splash.
+  const rail = venueAssetUrls(venue, quality).rail;
+  prefetchTableTextures(quality, rail ? [rail] : []);
+  // The classic hall HDRI is ~400 KB and its PMREM filter used to freeze the page after the felt appeared.
+  // It starts only once the cloth is up (see ClassicHall). Other venues still warm their own files here.
   if (venue !== 'classic') preloadVenueAssets(venue, quality);
 }
 
@@ -160,85 +155,221 @@ function railTextureUrl(def: VenueDef, quality: 'high' | 'low'): string | null {
   return venueAssetUrls(def.id, quality).rail;
 }
 
-function TableModel({ quality, onReady, def }: { quality: 'high' | 'low'; onReady?: () => void; def: VenueDef }) {
-  const railUrl = railTextureUrl(def, quality);
-  const loaded = useTexture(railUrl ? [...tableTextureUrls(quality), railUrl] : tableTextureUrls(quality)) as Texture[];
-  const [feltN, feltR, woodC, woodN, woodR] = loaded;
-  const railMap = railUrl ? loaded[5]! : null;
+function flatTex(bytes: [number, number, number, number], srgb = false): DataTexture {
+  const t = new DataTexture(new Uint8Array(bytes), 1, 1);
+  t.wrapS = t.wrapT = RepeatWrapping;
+  if (srgb) t.colorSpace = SRGBColorSpace;
+  t.needsUpdate = true;
+  return t;
+}
+
+function isColorMap(url: string): boolean {
+  return url.includes('diff') || url.includes('/venues/');
+}
+
+/** Decode the cloth and wood maps as they arrive and publish one Texture per frame (a single upload). */
+function useStreamedMaps(urls: string[]): (Texture | null)[] {
   const invalidate = useThree((s) => s.invalidate);
-  const mats = useMemo(() => {
-    for (const t of [feltN!, feltR!]) { t.wrapS = t.wrapT = RepeatWrapping; t.repeat.set(2.2, 2.2); }
-    for (const t of [woodC!, woodN!, woodR!]) { t.wrapS = t.wrapT = RepeatWrapping; t.repeat.set(0.9, 0.9); }
-    woodC!.colorSpace = SRGBColorSpace;
-    const hi = quality === 'high';
-    let felt: MeshStandardMaterial;
-    if (def.feltPattern) {
-      // printed cloth / laminate top instead of felt
-      felt = new MeshStandardMaterial({ map: feltPatternTexture(def.feltPattern, def.felt), roughness: def.feltPattern === 'gingham' ? 0.45 : 0.6, envMapIntensity: 0.25 });
-      if (def.feltPattern === 'gingham') { felt.normalMap = feltN!; felt.normalScale.set(0.15, 0.15); }
-    } else {
-      felt = new MeshStandardMaterial({ color: def.felt, roughness: 1, roughnessMap: feltR!, normalMap: feltN!, envMapIntensity: 0.35 });
-      felt.normalScale.set(0.9, 0.9);
-    }
-    if (railMap) { railMap.wrapS = railMap.wrapT = RepeatWrapping; railMap.repeat.set(1.4, 1.4); railMap.colorSpace = SRGBColorSpace; }
-    let wood: MeshStandardMaterial;
-    switch (def.rail) {
-      case 'crystal':
-        wood = new MeshPhysicalMaterial({ color: def.railTint, roughness: 0.04, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.02, transparent: true, opacity: 0.55, iridescence: hi ? 0.35 : 0, envMapIntensity: 2.2 });
-        break;
-      case 'chrome':
-        wood = new MeshStandardMaterial({ color: def.railTint, metalness: 1, roughness: 0.14, envMapIntensity: 1.6 });
-        break;
-      case 'metal':
-        wood = new MeshStandardMaterial({ color: def.railTint, metalness: 0.65, roughness: 0.38 });
-        break;
-      case 'leather':
-        wood = new MeshStandardMaterial({ map: railMap, color: def.railTint, roughness: 0.5, normalMap: feltN!, normalScale: new Vector2(0.3, 0.3) });
-        break;
-      case 'wood':
-        wood = hi
-          ? new MeshPhysicalMaterial({ map: woodC!, normalMap: woodN!, roughnessMap: woodR!, roughness: 0.8, clearcoat: 0.8, clearcoatRoughness: 0.18, color: def.railTint })
-          : new MeshStandardMaterial({ map: woodC!, normalMap: woodN!, roughness: 0.45, color: def.railTint });
-        break;
-      default: // teak, bamboo, marble: their own texture, varnished
-        wood = hi
-          ? new MeshPhysicalMaterial({ map: railMap, roughness: 0.55, clearcoat: 0.7, clearcoatRoughness: 0.2, color: def.railTint })
-          : new MeshStandardMaterial({ map: railMap, roughness: 0.45, color: def.railTint });
-    }
-    const apron = def.rail === 'crystal'
-      ? new MeshPhysicalMaterial({ color: def.apron, roughness: 0.05, clearcoat: 1, transparent: true, opacity: 0.4 })
-      : def.rail === 'chrome' || def.rail === 'metal'
-        ? new MeshStandardMaterial({ color: def.apron, metalness: 0.7, roughness: 0.3 })
-        : new MeshStandardMaterial({ map: def.rail === 'wood' ? woodC! : railMap, roughness: 0.6, color: def.apron });
-    return { felt, wood, apron };
-  }, [feltN, feltR, woodC, woodN, woodR, railMap, quality, def]);
-  const geos = useMemo(() => ({ felt: feltGeometry(), rail: railGeometry(), body: bodyGeometry() }), []);
+  const key = urls.join('|');
+  const [maps, setMaps] = useState<(Texture | null)[]>(() => urls.map(() => null));
+  useEffect(() => {
+    const list = key ? key.split('|') : [];
+    let alive = true;
+    const status = list.map(() => 'wait' as 'wait' | 'ok' | 'bad');
+    const imgs: HTMLImageElement[] = [];
+    const made = list.map(() => false);
+    list.forEach((url, i) => {
+      loadTableImage(url).then((img) => { status[i] = 'ok'; imgs[i] = img; }).catch(() => { status[i] = 'bad'; });
+    });
+    const pump = () => {
+      if (!alive) return;
+      const i = status.findIndex((s, idx) => s === 'ok' && !made[idx]);
+      if (i >= 0) {
+        made[i] = true;
+        const tex = new Texture(imgs[i]!);
+        tex.needsUpdate = true;
+        tex.wrapS = tex.wrapT = RepeatWrapping;
+        if (isColorMap(list[i]!)) tex.colorSpace = SRGBColorSpace;
+        setMaps((prev) => { const next = prev.slice(); next[i] = tex; return next; });
+        invalidate();
+      }
+      const done = status.every((s, idx) => s === 'bad' || made[idx]);
+      if (!done) requestAnimationFrame(pump);
+    };
+    const id = requestAnimationFrame(pump);
+    return () => { alive = false; cancelAnimationFrame(id); };
+  }, [key, invalidate]);
+  return maps;
+}
+
+type TableGeos = { felt: BufferGeometry; rail: BufferGeometry; body: BufferGeometry };
+let geosCache: TableGeos | null = null;
+
+/** Felt, rail, then apron, each in its own frame. The first paint uses a flat disc so extrude work is not on it. */
+function useTableGeos(): TableGeos | null {
+  const [geos, setGeos] = useState<TableGeos | null>(geosCache);
+  useEffect(() => {
+    if (geosCache) { setGeos(geosCache); return; }
+    let alive = true;
+    void (async () => {
+      await nextFrame();
+      if (!alive) return;
+      const felt = feltGeometry();
+      await nextFrame();
+      if (!alive) return;
+      const rail = railGeometry();
+      await nextFrame();
+      if (!alive) return;
+      geosCache = { felt, rail, body: bodyGeometry() };
+      if (alive) setGeos(geosCache);
+    })();
+    return () => { alive = false; };
+  }, []);
+  return geos;
+}
+
+function buildTableMaterials(def: VenueDef, quality: 'high' | 'low') {
+  const hi = quality === 'high';
+  const flatN = flatTex([128, 128, 255, 255]);
+  const flatR = flatTex([255, 255, 255, 255]);
+  const white = flatTex([255, 255, 255, 255], true);
+  let felt: MeshStandardMaterial;
+  if (def.feltPattern) {
+    felt = new MeshStandardMaterial({ map: feltPatternTexture(def.feltPattern, def.felt), roughness: def.feltPattern === 'gingham' ? 0.45 : 0.6, envMapIntensity: 0.25 });
+    if (def.feltPattern === 'gingham') { felt.normalMap = flatN; felt.normalScale.set(0.15, 0.15); }
+  } else {
+    felt = new MeshStandardMaterial({ color: def.felt, roughness: 1, roughnessMap: flatR, normalMap: flatN, envMapIntensity: 0.35 });
+    felt.normalScale.set(0.9, 0.9);
+  }
+  let wood: MeshStandardMaterial;
+  switch (def.rail) {
+    case 'crystal':
+      wood = new MeshPhysicalMaterial({ color: def.railTint, roughness: 0.04, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.02, transparent: true, opacity: 0.55, iridescence: hi ? 0.35 : 0, envMapIntensity: 2.2 });
+      break;
+    case 'chrome':
+      wood = new MeshStandardMaterial({ color: def.railTint, metalness: 1, roughness: 0.14, envMapIntensity: 1.6 });
+      break;
+    case 'metal':
+      wood = new MeshStandardMaterial({ color: def.railTint, metalness: 0.65, roughness: 0.38 });
+      break;
+    case 'leather':
+      wood = new MeshStandardMaterial({ map: white, color: def.railTint, roughness: 0.5, normalMap: flatN, normalScale: new Vector2(0.3, 0.3) });
+      break;
+    case 'wood':
+      wood = hi
+        ? new MeshPhysicalMaterial({ map: white, normalMap: flatN, roughnessMap: flatR, roughness: 0.8, clearcoat: 0.8, clearcoatRoughness: 0.18, color: def.railTint })
+        : new MeshStandardMaterial({ map: white, normalMap: flatN, roughness: 0.45, color: def.railTint });
+      break;
+    default:
+      wood = hi
+        ? new MeshPhysicalMaterial({ map: white, roughness: 0.55, clearcoat: 0.7, clearcoatRoughness: 0.2, color: def.railTint })
+        : new MeshStandardMaterial({ map: white, roughness: 0.45, color: def.railTint });
+  }
+  const apron = def.rail === 'crystal'
+    ? new MeshPhysicalMaterial({ color: def.apron, roughness: 0.05, clearcoat: 1, transparent: true, opacity: 0.4 })
+    : def.rail === 'chrome' || def.rail === 'metal'
+      ? new MeshStandardMaterial({ color: def.apron, metalness: 0.7, roughness: 0.3 })
+      : new MeshStandardMaterial({ map: white, roughness: 0.6, color: def.apron });
+  const floor = new MeshStandardMaterial({ color: '#120b18', roughness: 0.95 });
+  return { felt, wood, apron, floor };
+}
+
+function TableModel({ quality, lit, onReady, onTextured, def }: { quality: 'high' | 'low'; lit: boolean; onReady?: () => void; onTextured?: () => void; def: VenueDef }) {
+  const railUrl = railTextureUrl(def, quality);
+  const urls = useMemo(() => (railUrl ? [...tableTextureUrls(quality), railUrl] : tableTextureUrls(quality)), [quality, railUrl]);
+  const maps = useStreamedMaps(urls);
+  const invalidate = useThree((s) => s.invalidate);
+  const geos = useTableGeos();
+  const basic = useMemo(() => ({
+    felt: new MeshBasicMaterial({ color: def.felt }),
+    wood: new MeshBasicMaterial({ color: def.railTint }),
+    apron: new MeshBasicMaterial({ color: def.apron }),
+    floor: new MeshBasicMaterial({ color: '#120b18' }),
+    stripe: new MeshBasicMaterial({ color: '#d9b04a', transparent: true, opacity: 0.35, depthWrite: false }),
+  }), [def]);
+  const full = useMemo(() => buildTableMaterials(def, quality), [def, quality]);
   const logo = useMemo(() => logoTexture(invalidate), [invalidate]);
-  // time-to-table marker (load checks): the first frame after the textured table mounted
+  const logoMat = useMemo(() => new MeshBasicMaterial({ map: logo, transparent: true, opacity: 0.13, depthWrite: false }), [logo]);
+  const textured = useRef(false);
+  // Swap placeholder maps for the real ones one texture per frame, after the lit shaders are already linked.
+  useEffect(() => {
+    if (!lit) return;
+    const jobs: (() => void)[] = [];
+    const [feltN, feltR, woodC, woodN, woodR, railMap] = maps;
+    const take = (tex: Texture | null, apply: (t: Texture) => void, repeat: number) => {
+      if (!tex || tex.userData.applied) return;
+      jobs.push(() => {
+        tex.userData.applied = 1;
+        tex.repeat.set(repeat, repeat);
+        apply(tex);
+        invalidate();
+      });
+    };
+    if (!def.feltPattern) {
+      take(feltN ?? null, (t) => { full.felt.normalMap = t; full.felt.normalScale.set(0.9, 0.9); full.felt.needsUpdate = true; }, 2.2);
+      take(feltR ?? null, (t) => { full.felt.roughnessMap = t; full.felt.needsUpdate = true; }, 2.2);
+    } else if (def.feltPattern === 'gingham') {
+      take(feltN ?? null, (t) => { full.felt.normalMap = t; full.felt.normalScale.set(0.15, 0.15); full.felt.needsUpdate = true; }, 2.2);
+    }
+    if (def.rail === 'wood') {
+      take(woodC ?? null, (t) => { full.wood.map = t; full.wood.needsUpdate = true; if (full.apron.map) { full.apron.map = t; full.apron.needsUpdate = true; } }, 0.9);
+      take(woodN ?? null, (t) => { full.wood.normalMap = t; full.wood.needsUpdate = true; }, 0.9);
+      take(woodR ?? null, (t) => { if (full.wood.roughnessMap) { full.wood.roughnessMap = t; full.wood.needsUpdate = true; } }, 0.9);
+    } else if (def.rail === 'leather') {
+      take(railMap ?? null, (t) => { full.wood.map = t; full.wood.needsUpdate = true; full.apron.map = t; full.apron.needsUpdate = true; }, 1.4);
+      take(feltN ?? null, (t) => { full.wood.normalMap = t; full.wood.normalScale.set(0.3, 0.3); full.wood.needsUpdate = true; }, 2.2);
+    } else if (def.rail !== 'crystal' && def.rail !== 'chrome' && def.rail !== 'metal') {
+      take(railMap ?? null, (t) => { full.wood.map = t; full.wood.needsUpdate = true; full.apron.map = t; full.apron.needsUpdate = true; }, 1.4);
+    }
+    let i = 0;
+    let raf = 0;
+    const step = () => {
+      if (i < jobs.length) { jobs[i++]!(); raf = requestAnimationFrame(step); return; }
+      const need = urls.length;
+      const have = maps.filter(Boolean).length;
+      if (!textured.current && have >= need && need > 0) {
+        textured.current = true;
+        const w = window as unknown as { __bwmTexturedAt?: number };
+        w.__bwmTexturedAt ??= performance.now();
+        onTextured?.();
+      }
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [lit, maps, def, full, urls.length, invalidate, onTextured]);
   useEffect(() => {
     const w = window as unknown as { __bwmTableAt?: number };
-    requestAnimationFrame(() => requestAnimationFrame(() => { w.__bwmTableAt ??= performance.now(); onReady?.(); }));
+    const a = requestAnimationFrame(() => requestAnimationFrame(() => { w.__bwmTableAt ??= performance.now(); onReady?.(); }));
+    return () => cancelAnimationFrame(a);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const feltMat = lit ? full.felt : basic.felt;
+  const woodMat = lit ? full.wood : basic.wood;
+  const apronMat = lit ? full.apron : basic.apron;
   return (
     <group>
-      <mesh geometry={geos.felt} material={mats.felt} receiveShadow />
-      <mesh geometry={geos.rail} material={mats.wood} castShadow receiveShadow />
-      <mesh geometry={geos.body} material={mats.apron} receiveShadow />
-      {/* printed logo on the felt */}
+      {geos ? (
+        <>
+          <mesh geometry={geos.felt} material={feltMat} receiveShadow />
+          <mesh geometry={geos.rail} material={woodMat} castShadow receiveShadow />
+          <mesh geometry={geos.body} material={apronMat} receiveShadow />
+        </>
+      ) : (
+        <mesh rotation={[-Math.PI / 2, 0, 0]} material={feltMat} receiveShadow>
+          <circleGeometry args={[1.22, 32]} />
+        </mesh>
+      )}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.0015, -0.02]}>
         <planeGeometry args={[1.5, 1.5 * (688 / 2552)]} />
-        <meshStandardMaterial map={logo} transparent opacity={0.13} depthWrite={false} roughness={1} />
+        <primitive object={logoMat} attach="material" />
       </mesh>
-      {/* gold pinstripe inset */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.001, 0]}>
         <ringGeometry args={[0.95, 0.965, 96]} />
-        <meshStandardMaterial color="#d9b04a" transparent opacity={0.35} depthWrite={false} roughness={0.5} metalness={0.6} />
+        <primitive object={basic.stripe} attach="material" />
       </mesh>
-      {/* floor (venues bring their own, see Venue3D) */}
       {def.id === 'classic' && (
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.9, 0]} receiveShadow>
           <planeGeometry args={[30, 30]} />
-          <meshStandardMaterial color="#120b18" roughness={0.95} />
+          <primitive object={lit ? full.floor : basic.floor} attach="material" />
         </mesh>
       )}
     </group>
@@ -266,13 +397,37 @@ function flipped(t: Xform): Xform {
   return { p: [t.p[0], t.p[1], t.p[2]], q: [q.x, q.y, q.z, q.w], s: t.s };
 }
 
-function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFrac: number }) {
+function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFrac: number; lit: boolean }) {
   const { safeFrac, quality, n, handNo, dealer, positions, human, myHand, handCounts, shownTrick, piles, legal, selected, promoted, onCardTap } = props;
   const gl = useThree((s) => s.gl);
+  const invalidate = useThree((s) => s.invalidate);
   const aniso = Math.min(quality === 'high' ? 8 : 2, gl.capabilities.getMaxAnisotropy());
   const res = quality;
   const back = useMemo(() => backTexture(res, aniso), [res, aniso]);
   const face = (c: Card) => faceTexture(c, res, promoted(c), aniso);
+  // A resumed hand is already dealt: paint one face per frame, and bring opponent cards in a few at a time,
+  // so the first WebGL frame is the table plus your hand instead of every card's canvas and shader at once.
+  const resume = props.introHand !== handNo;
+  const faceKey = `${(myHand ?? []).join(',')}|${shownTrick.map((p) => p.card).join(',')}|${res}`;
+  const [nFaces, setNFaces] = useState(0);
+  const [extra, setExtra] = useState(resume ? 0 : 999);
+  useEffect(() => { setNFaces(0); }, [faceKey]);
+  useEffect(() => {
+    const cards = [...(myHand ?? []), ...shownTrick.map((p) => p.card)];
+    if (nFaces >= cards.length) return;
+    const id = requestAnimationFrame(() => {
+      const c = cards[nFaces];
+      if (c) faceTexture(c, res, promoted(c), aniso);
+      setNFaces((k) => k + 1);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [nFaces, faceKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!resume || extra > 64) return;
+    const id = requestAnimationFrame(() => setExtra((k) => k + 4));
+    return () => cancelAnimationFrame(id);
+  }, [resume, extra]);
+  useEffect(() => (props.fontsReady ? refreshFacesGradually(() => invalidate()) : undefined), [props.fontsReady, invalidate]);
   const deck = deckSpot(positions[dealer]!, n);
   const intro = props.introHand === handNo;
   // Blind Nil: cards that were dealt face-down flip over in place on reveal — never re-dealt from the deck
@@ -311,9 +466,9 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   if (held.current.handNo !== handNo) held.current = { handNo, cards: new Set(), slots: new Map(), count: 0, seen: new Set() };
   const pendingHold = useRef<Held>(held.current);
 
-  type Item = { key: string; card: Card | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: (() => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide'; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean };
+  type Item = { key: string; card: Card | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: (() => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide'; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; holdUntilMove?: boolean };
   const items: Item[] = [];
-  const dealDelay = (slot: number, seat: number) => tl.shuffle + (slot * n + ((seat - dealer - 1 + n) % n)) * tl.step;
+  const dealDelay = (slot: number, seat: number) => seatDealDelay(tl, n, slot, seat, dealer);
 
   // completed tricks in piles
   const pileCount = Array(n).fill(0) as number[];
@@ -393,15 +548,17 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
     const target = handFan(aspect, mine.length, i, 0, safeFrac, opts, gaps[i] ?? 0, screenH);
     const flip = flipIn && !!c;
     const id = c ? handCardKey(c) : '';
+    const slotKey = handSlotKey(id, i);
     // intro stays on for the whole hand; only cards we have not shown yet come from the deck.
-    const fresh = !!id && intro && !held.current.seen.has(id);
+    // Face-down slots (Blind Nil) use the same round-robin delay as a face-up card.
+    const fresh = handNeedsDeal({ intro, flip, seen: held.current.seen, slotKey });
     const move = fanMotion({ flip, fresh, closing });
     const plane = handCardPlane(aspect, mine.length, i, 0, safeFrac, opts, gaps[i] ?? 0, screenH);
     if (c) {
       nextCards.add(c);
       nextSlots.set(id, target);
-      nextSeen.add(id);
     }
+    nextSeen.add(slotKey);
     items.push({
       hand: true,
       key: handReactKey(handNo, c, i),
@@ -409,6 +566,8 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       target,
       from: move.kind === 'flip' ? flipped(target) : move.kind === 'deal' ? deck : undefined,
       delay: move.kind === 'flip' ? i * 0.022 : move.kind === 'deal' ? dealDelay(i, human) : 0,
+      // Stay hidden until this card's own deal beat. The fan must not be on screen while other seats are still being dealt.
+      holdUntilMove: move.kind === 'deal',
       sfxStart: move.kind === 'deal' ? 'deal' : undefined,
       dim: pose === 'illegal',
       // playable cards (when some aren't) get the gold edge on every device; the rest are dimmed (dim above)
@@ -427,10 +586,20 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
 
   // Commit after paint. A highlight render and the server ack both read the previous hand, so they share keys
   // and the played card still knows the slot it left. Strict Mode's extra render sees the same snapshot.
+  const showCards = props.fontsReady || resume;
   useEffect(() => {
-    if (!props.fontsReady) return;
+    if (!showCards) return;
     held.current = pendingHold.current;
   });
+  useEffect(() => {
+    const live = props.onHandLive;
+    if (!live) return;
+    const mine = myHand ?? [];
+    if (resume && mine.length > 0 && nFaces < mine.length) return;
+    let cancel = false;
+    const a = requestAnimationFrame(() => requestAnimationFrame(() => { if (!cancel) live(); }));
+    return () => { cancel = true; cancelAnimationFrame(a); };
+  }, [nFaces, resume, myHand, props.onHandLive]);
 
   // test probe: every key that was ever dealt from the deck, per hand (a re-deal would add new keys)
   useEffect(() => {
@@ -441,15 +610,18 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
     log[handNo] = [...set];
   });
 
-  if (!props.fontsReady) return null;
+  if (!showCards) return null;
+  const paintedCards = new Set([...(myHand ?? []), ...shownTrick.map((p) => p.card)].slice(0, nFaces));
+  const shown = resume ? [...items.filter((it) => it.hand), ...items.filter((it) => !it.hand).slice(0, extra)] : items;
   return (
     <group>
       <LayoutProbe positions={positions} n={n} short={short} items={items} trickKeys={shownTrick.map((pl) => `${handNo}-${pl.card}`)} handKeys={mine.map((c, i) => handReactKey(handNo, c, i))} />
-      {items.map((it) => (
+      {shown.map((it) => (
         <Card3D
           key={it.key}
           name={it.key}
-          face={it.card ? face(it.card) : null}
+          lit={props.lit}
+          face={it.card && paintedCards.has(it.card) ? face(it.card) : null}
           back={back}
           target={it.target}
           from={it.from}
@@ -468,6 +640,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
           onTap={it.tap}
           sfxStart={it.sfxStart}
           sfxLand={it.sfxLand}
+          holdUntilMove={it.holdUntilMove}
           blast={it.hand ? 'hand' : 'table'}
         />
       ))}
@@ -550,8 +723,9 @@ function HandFill() {
 }
 const _up = new Vector3(0, 0.25, 0);
 
-function Lights({ quality, def }: { quality: 'high' | 'low'; def: VenueDef }) {
+function Lights({ quality, def, shadowSize }: { quality: 'high' | 'low'; def: VenueDef; shadowSize: number }) {
   const hi = quality === 'high';
+  const cast = hi && shadowSize > 0;
   return (
     <>
       <ambientLight intensity={hi ? 0.15 : 0.55} />
@@ -563,8 +737,8 @@ function Lights({ quality, def }: { quality: 'high' | 'low'; def: VenueDef }) {
         intensity={(hi ? 70 : 55) * def.keyK}
         decay={2}
         color={def.key}
-        castShadow={hi}
-        shadow-mapSize={[2048, 2048]}
+        castShadow={cast}
+        shadow-mapSize={[Math.max(shadowSize, 256), Math.max(shadowSize, 256)]}
         shadow-bias={-0.00012}
         shadow-normalBias={0.012}
         shadow-radius={6}
@@ -720,6 +894,137 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
   );
 }
 
+/**
+ * The resumed table is playable before any of this finishes. Each program is linked on its own frame,
+ * then the shadow map grows. The end state is the iPhone look: 1k maps, clearcoat, sheen, 1.75×,
+ * soft 2048 shadows, and the hall.
+ */
+function ResumeRamp({ quality, def, onShow, onLit, onDpr, onShadow, onHall }: { quality: 'high' | 'low'; def: VenueDef; onShow: () => void; onLit: () => void; onDpr: (n: number) => void; onShadow: (n: number) => void; onHall: () => void }) {
+  const gl = useThree((s) => s.gl);
+  const camera = useThree((s) => s.camera);
+  const scene = useThree((s) => s.scene);
+  useEffect(() => {
+    let alive = true;
+    const hi = quality === 'high';
+    const white = flatTex([255, 255, 255, 255], true);
+    const table = buildTableMaterials(def, quality);
+    const card = createLitCardMaterial(white, quality, true);
+    const cardDim = createLitCardMaterial(white, quality, true);
+    if (cardDim instanceof MeshPhysicalMaterial) { cardDim.clearcoat = 0.05; cardDim.sheen = 0; }
+    const cardBack = createLitCardMaterial(white, quality, false);
+    const basics: Material[] = [
+      new MeshBasicMaterial({ name: 'basic-color', color: def.felt }),
+      new MeshBasicMaterial({ name: 'basic-stripe', color: '#d9b04a', transparent: true, opacity: 0.35, depthWrite: false }),
+      new MeshBasicMaterial({ name: 'basic-map', map: white }),
+      new MeshBasicMaterial({ name: 'basic-logo', map: white, transparent: true, opacity: 0.13, depthWrite: false }),
+      // Same program as the per-card gold ring (tone mapping off, no depth write).
+      new MeshBasicMaterial({ name: 'basic-gold', color: '#f5c542', transparent: true, opacity: 0, depthWrite: false, toneMapped: false }),
+      new MeshStandardMaterial({ name: 'edge', color: '#efe9dc', roughness: 0.75 }),
+    ];
+    table.felt.name = 'felt';
+    table.wood.name = 'wood';
+    table.apron.name = 'apron';
+    table.floor.name = 'floor';
+    card.name = 'card';
+    cardDim.name = 'card-dim';
+    cardBack.name = 'card-back';
+    const litMats = [table.felt, table.wood, table.apron, table.floor, card, cardDim, cardBack];
+    void (async () => {
+      await nextFrame();
+      if (!alive) return;
+      // One resize, while the scene is still empty. Stepping the buffer later reallocated an MSAA
+      // surface on every stop and each of those was its own long task.
+      if (hi) {
+        onDpr(1.75);
+        await nextFrame();
+        await nextFrame();
+      }
+      if (!alive) return;
+      for (const m of basics) {
+        if (!alive) return;
+        await forceProgram(gl, camera, m, scene);
+      }
+      if (!alive) return;
+      onShow();
+      // Let the solid table paint before the next link.
+      await nextFrame();
+      await nextFrame();
+      for (const m of litMats) {
+        if (!alive) return;
+        await forceProgram(gl, camera, m, scene);
+      }
+      if (!alive) return;
+      onLit();
+      await nextFrame();
+      await nextFrame();
+      if (!hi) { onHall(); return; }
+      const spots: { castShadow: boolean; shadow: { mapSize: { set: (x: number, y: number) => void } } }[] = [];
+      scene.traverse((o) => {
+        const light = o as unknown as { isSpotLight?: boolean; castShadow: boolean; shadow: { mapSize: { set: (x: number, y: number) => void } } };
+        if (light.isSpotLight) spots.push(light);
+      });
+      for (const m of litMats) {
+        if (!alive) return;
+        await forceProgram(gl, camera, m, scene, undefined, () => {
+          // On only while this program links, so a visible frame cannot compile every shadow variant at once.
+          gl.shadowMap.enabled = true;
+          gl.shadowMap.type = PCFSoftShadowMap;
+          for (const light of spots) { light.castShadow = true; light.shadow.mapSize.set(256, 256); }
+          return () => {
+            gl.shadowMap.enabled = false;
+            for (const light of spots) light.castShadow = false;
+          };
+        });
+      }
+      if (!alive) return;
+      for (const size of [256, 512, 1024, 2048]) {
+        if (!alive) return;
+        onShadow(size);
+        await nextFrame();
+        await nextFrame();
+      }
+      if (alive) onHall();
+    })();
+    return () => { alive = false; };
+  }, [quality, def, gl, camera, scene, onShow, onLit, onDpr, onShadow, onHall]);
+  return null;
+}
+
+function HallAttach({ active }: { active: boolean }) {
+  const gl = useThree((s) => s.gl);
+  const camera = useThree((s) => s.camera);
+  const scene = useThree((s) => s.scene);
+  const invalidate = useThree((s) => s.invalidate);
+  const onMap = useCallback((tex: Texture) => {
+    void (async () => {
+      const dummy = new ThreeScene();
+      dummy.environment = tex;
+      dummy.fog = scene.fog;
+      const lights: Object3D[] = [];
+      scene.traverse((o) => { if ((o as { isLight?: boolean }).isLight) lights.push(o); });
+      for (const light of lights) dummy.add(light.clone());
+      const mats = new Set<Material>();
+      scene.traverse((o) => {
+        const mesh = o as Mesh;
+        if (!mesh.isMesh || !mesh.material) return;
+        const list = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const m of list) if ((m as MeshStandardMaterial).isMeshStandardMaterial) mats.add(m);
+      });
+      for (const m of mats) {
+        if (!dummy.environment) return;
+        await forceProgram(gl, camera, m, dummy);
+      }
+      scene.environment = tex;
+      scene.background = tex;
+      scene.backgroundBlurriness = 0.55;
+      scene.backgroundIntensity = 0.22;
+      scene.environmentIntensity = 0.55;
+      invalidate();
+    })();
+  }, [gl, camera, scene, invalidate]);
+  return <ClassicHall active={active} onMap={onMap} />;
+}
+
 export default function Scene(props: SceneProps) {
   const [fontsReady, setFontsReady] = useState(false);
   const [aspect, setAspect] = useState(() => window.innerWidth / window.innerHeight);
@@ -738,21 +1043,36 @@ export default function Scene(props: SceneProps) {
   const [layerReady, setLayerReady] = useState(false);
   const def = VENUE_DEFS[props.venue ?? 'classic'];
   const classic = def.id === 'classic';
-  // the venue waits for the table's first frame: its files + shader compiles never delay time-to-table
-  const [tableUp, setTableUp] = useState(false);
+  const [showTable, setShowTable] = useState(false);
+  const [lit, setLit] = useState(false);
+  const [shadowSize, setShadowSize] = useState(0);
+  const [dprCap, setDprCap] = useState(1);
+  const [textured, setTextured] = useState(false);
+  const [hallGo, setHallGo] = useState(false);
   const onTableReady = props.onTableReady;
-  const tableReady = useMemo(() => () => { setTableUp(true); onTableReady?.(); }, [onTableReady]);
+  const tableReady = useCallback(() => { onTableReady?.(); }, [onTableReady]);
+  const onShow = useCallback(() => setShowTable(true), []);
+  const onLit = useCallback(() => setLit(true), []);
+  const onTextured = useCallback(() => setTextured(true), []);
+  const onDpr = useCallback((n: number) => setDprCap(n), []);
+  const onShadow = useCallback((n: number) => setShadowSize(n), []);
+  const onHall = useCallback(() => setHallGo(true), []);
   useEffect(() => { setLayerReady(true); }, []);
   return (
     <div className="table-canvas-wrap">
     <Canvas
       className="table-canvas"
       frameloop="demand"
-      shadows={hi ? 'soft' : false}
-      dpr={hi ? [1, 1.75] : 1}
+      shadows={shadowSize > 0 ? 'soft' : false}
+      dpr={hi ? [1, dprCap] : 1}
       gl={{ antialias: hi, powerPreference: 'high-performance', toneMapping: ACESFilmicToneMapping, toneMappingExposure: 1.05 }}
       camera={{ fov: 50, near: 0.05, far: 60, position: [0, 4, 3.5] }}
-      onCreated={({ size }) => setAspect(size.width / size.height)}
+      onCreated={({ gl, size }) => {
+        quietShaderErrors(gl);
+        const w = window as unknown as { __bwmParallelShaders?: boolean };
+        w.__bwmParallelShaders = gl.extensions.has('KHR_parallel_shader_compile');
+        setAspect(size.width / size.height);
+      }}
       onPointerMissed={() => undefined}
       events={(store) => ({ ...r3fEvents(store), filter: (hits) => hitsInPaintOrder(hits) })}
       resize={{ debounce: 50 }}
@@ -763,20 +1083,16 @@ export default function Scene(props: SceneProps) {
       <FxShake table={tableGroup} />
       <color attach="background" args={[def.clear]} />
       {classic && <fog attach="fog" args={['#0c0712', 7, 16]} />}
-      <Lights quality={props.quality} def={def} />
-      {/* HDRI starts after the felt is on screen. drei's <Preload all> also stays out of this commit:
-          it calls gl.compile and then renders the whole scene into a cube camera (six passes) inside
-          useLayoutEffect, so a cold reload froze on "Setting the table…" until that finished. */}
-      <Suspense fallback={null}>
-        {tableUp && hi && classic && <Environment files={HDRI_URL} environmentIntensity={0.55} background backgroundBlurriness={0.55} backgroundIntensity={0.22} />}
-      </Suspense>
-      {!classic && tableUp && <Venue3D key={def.id} def={def} quality={props.quality} reduceFx={!!props.reduceFx} />}
-      <Suspense fallback={null}>
-        <group ref={tableGroup}><TableModel quality={props.quality} onReady={tableReady} def={def} /></group>
-      </Suspense>
-      {props.positions.map((p, seat) => <TurnRing key={seat} pos={p} n={props.n} active={props.turnSeat === seat} />)}
-      <Cards {...props} aspect={aspect} fontsReady={fontsReady} safeFrac={safeFrac} />
-      <AfterTable quality={props.quality} tableUp={tableUp} />
+      <Lights quality={props.quality} def={def} shadowSize={shadowSize} />
+      {/* The hall is filtered one mip per frame, and only after the cloth maps are on the table.
+          drei's <Preload all> stays out: it compiled and rendered a cube camera inside useLayoutEffect. */}
+      <ResumeRamp quality={props.quality} def={def} onShow={onShow} onLit={onLit} onDpr={onDpr} onShadow={onShadow} onHall={onHall} />
+      {hi && classic && <HallAttach active={hallGo && textured} />}
+      {!classic && textured && <Venue3D key={def.id} def={def} quality={props.quality} reduceFx={!!props.reduceFx} />}
+      {showTable && <group ref={tableGroup}><TableModel quality={props.quality} lit={lit} onReady={tableReady} onTextured={onTextured} def={def} /></group>}
+      {showTable && props.positions.map((p, seat) => <TurnRing key={seat} pos={p} n={props.n} active={props.turnSeat === seat} />)}
+      {showTable && <Cards {...props} aspect={aspect} fontsReady={fontsReady} safeFrac={safeFrac} lit={lit} />}
+      <AfterTable quality={props.quality} tableUp={textured} />
       {layerReady && <Badges positions={props.positions} n={props.n} human={props.human} renderSeat={props.renderSeat} portal={badgeLayer} safeFrac={safeFrac} short={!!props.short} safe={props.safe ?? { l: 0, r: 0, t: 0, b: 0 }} />}
     </Canvas>
     <div ref={badgeLayer} className="badge-layer" />
@@ -794,9 +1110,15 @@ function AfterTable({ quality, tableUp }: { quality: 'high' | 'low'; tableUp: bo
   useEffect(() => {
     if (!tableUp) return;
     let alive = true;
-    void import('./Nuke3D').then((m) => { if (alive) setNuke(m); });
-    void import('./Tornado3D').then((m) => { if (alive) setTornado(m); });
-    return () => { alive = false; };
+    const start = () => {
+      void import('./Nuke3D').then((m) => { if (alive) setNuke(m); });
+      void import('./Tornado3D').then((m) => { if (alive) setTornado(m); });
+    };
+    // Idle, after the cloth is on: the nuke shaders are not part of dealing a resumed hand back in.
+    const ric = (window as unknown as { requestIdleCallback?: (fn: () => void, opts?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void }).requestIdleCallback;
+    const cancel = (window as unknown as { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback;
+    const id = ric ? ric(start, { timeout: 2500 }) : window.setTimeout(start, 800);
+    return () => { alive = false; if (ric && cancel) cancel(id as number); else clearTimeout(id as number); };
   }, [tableUp]);
   if (!nuke && !tornado) return null;
   return (

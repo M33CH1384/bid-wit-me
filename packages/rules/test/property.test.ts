@@ -1,7 +1,7 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import {
-  CLASSIC_JOKER, type Bid, type GameState, type TableRules, RuleError, applyAction, buildDeck, createRng, handSize, legalPlays, makeRules,
+  CLASSIC_JOKER, type Bid, type GameState, type TableRules, RuleError, applyAction, buildDeck, createRng, handSize, hostMinimum, legalPlays, makeRules,
   newGame, scoreHand,
 } from '../src';
 
@@ -87,8 +87,16 @@ describe.each(presets)('first hand bids itself: %s', (_name, rules) => {
       expect(fresh.bids.every((b) => b === 'books')).toBe(true);
       const st = playRandomHand(rules, seed, () => {});
       const rec = st.history[0]!;
+      const floor = hostMinimum(rules);
       rec.sides.forEach((side, i) => {
-        expect(side.points).toBe(10 * side.tricks);
+        if (floor > 0 && side.tricks < floor) {
+          expect(side.points).toBe(-10 * floor);
+          expect(side.contractMade).toBe(false);
+          expect(side.bookPoints).toBe(0);
+        } else {
+          expect(side.points).toBe(10 * side.tricks);
+          expect(side.contractMade).toBeNull();
+        }
         expect(side.bagsAdded).toBe(0);
         expect(side.nils).toEqual([]);
         expect(st.bags[i]).toBe(0);

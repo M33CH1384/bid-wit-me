@@ -220,6 +220,38 @@ function joker(ctx: CanvasRenderingContext2D, W: number, H: number, big: boolean
   ctx.fillText('JOKER', cx, H * 0.79);
 }
 
+const painted = new Map<string, HTMLCanvasElement>();
+
+function faceKey(card: Card, W: number, badge: boolean): string {
+  return `${card}:${W}:${badge ? 1 : 0}`;
+}
+
+/** Cached face. The HTML hand and the 3D card share one canvas, so a face is drawn once. */
+export function paintFace(card: Card, W: number, H: number, badge: boolean): HTMLCanvasElement {
+  const key = faceKey(card, W, badge);
+  const hit = painted.get(key);
+  if (hit) return hit;
+  const cv = drawFace(card, W, H, badge);
+  painted.set(key, cv);
+  return cv;
+}
+
+export function paintedFaceKeys(): string[] {
+  return [...painted.keys()];
+}
+
+/** Redraw one cached face in place (after webfonts arrive) and return that canvas. */
+export function repaintFace(key: string): HTMLCanvasElement | null {
+  const cv = painted.get(key);
+  if (!cv) return null;
+  const [card, w, badge] = key.split(':');
+  const W = Number(w);
+  const fresh = drawFace(card as Card, W, Math.round(W * 1.4), badge === '1');
+  const ctx = cv.getContext('2d');
+  if (ctx) { ctx.clearRect(0, 0, cv.width, cv.height); ctx.drawImage(fresh, 0, 0); }
+  return cv;
+}
+
 export function drawFace(card: Card, W: number, H: number, badge: boolean): HTMLCanvasElement {
   const cv = document.createElement('canvas');
   cv.width = W;

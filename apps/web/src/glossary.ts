@@ -1,4 +1,4 @@
-import { type TableRules, cardLabel, firstHandMinOf, shotOutOn, trumpOrder } from '@spades/rules';
+import { type TableRules, cardLabel, hostMinimum, shotOutOn, trumpOrder } from '@spades/rules';
 
 /**
  * Card basics for people who have never played a trick-taking game: plain definitions, worded for the table's
@@ -65,9 +65,9 @@ export function glossary(r: TableRules): Record<TermKey, Term> {
       : 'Cutthroat has no partners: everyone plays for themselves.'),
     shot: t('shot', 'Shot (Shot = out)', (() => {
       const who = r.partnerships ? 'team' : 'player';
-      const min = firstHandMinOf(r);
+      const min = hostMinimum(r);
       if (!shotOutOn(r)) return `Getting shot means getting set: taking fewer books than you bid. (Shot = out is off at this table.)`;
-      return `Getting shot means getting set: taking fewer books than you bid. A ${who} shot two hands in a row loses the game (SHOT OUT). After one shot the ${who} is ON NOTICE.${r.firstHandBidsItself !== false ? (min !== null ? ` On the first hand, taking fewer than ${min} books is a shot, and a shot on hand 1 loses right away.` : '') : ' Getting shot on hand 1 loses right away.'} If both sides go out on the same hand, the higher score wins.`;
+      return `Getting shot means getting set: taking fewer books than you bid. A ${who} shot two hands in a row loses the game (SHOT OUT). After one shot the ${who} is ON NOTICE, until they make their books.${min > 0 ? ` The minimum is ${min}: on hand 1, fewer books than that is a shot and loses right away, scored as a set at ${min}. Later bids have to reach ${min}.` : ' Getting shot on hand 1 loses right away.'} If both sides go out on the same hand, the higher score wins.`;
     })()),
     wheels: t('wheels', 'Wheels', `A team bidding 10+ books together, or taking 10+ books yourself in Cutthroat.${r.partnerships ? ' Make it and the wheels come out.' : ''}`),
   };

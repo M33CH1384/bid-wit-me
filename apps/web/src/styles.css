@@ -226,6 +226,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .err { color: var(--red); font-size: 12px; }
 .bid-panel { width: min(520px, 100%); padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 8px; align-items: center; text-align: center; }
 .bid-panel p { margin: 0; color: var(--muted); }
+.bid-panel .bid-block { margin: 0; max-width: 100%; font-size: 13px; line-height: 1.35; color: #ffd969; text-wrap: wrap; }
 .bid-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; width: 100%; }
 .bid-grid button { padding: 9px 0; font-size: 20px; }
 .bid-grid .nil { grid-column: span 2; background: linear-gradient(180deg, var(--purple-hot), #6a2ad6); box-shadow: 0 0 12px rgba(155,92,255,.6); }
@@ -692,35 +693,112 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-backdrop { position: fixed; inset: 0; z-index: 18; display: flex; align-items: stretch; justify-content: center; padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); background: radial-gradient(ellipse at center, rgba(20,8,40,.55), rgba(6,3,12,.82)); animation: fade-up .35s ease both; }
 .tt { width: min(560px, 100%); max-height: 100%; align-self: stretch; display: flex; flex-direction: column; --slant: 16px; overflow: hidden; background: linear-gradient(160deg, rgba(42,18,80,.95), rgba(14,7,26,.96)); box-sizing: border-box; }
 .tt * { box-sizing: border-box; min-width: 0; }
-.tt-head { display: flex; align-items: center; gap: 10px; padding: 12px 112px 10px 16px; border-bottom: 1px solid rgba(185,128,255,.25); font-family: var(--display); font-weight: 800; letter-spacing: .1em; flex: none; }
+.tt-head { display: flex; align-items: center; gap: 10px; padding: 12px 56px 10px 16px; border-bottom: 1px solid rgba(185,128,255,.25); font-family: var(--display); font-weight: 800; letter-spacing: .1em; flex: none; }
 .tt-live { display: flex; align-items: center; gap: 6px; color: #fff; background: var(--red); padding: 2px 10px 2px 8px; font-size: 13px; clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%); }
 .tt-live .live-dot { background: #fff; box-shadow: 0 0 6px #fff; }
 .tt-title { color: var(--gold); font-size: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tt-chat-btn { position: fixed; z-index: 1025; top: calc(8px + env(safe-area-inset-top)); right: calc(56px + env(safe-area-inset-right)); width: 40px; height: 40px; border: 0; border-radius: 12px; font-size: 18px; line-height: 1; color: #fff; background: rgba(155,92,255,.92); box-shadow: 0 6px 16px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.25); display: grid; place-items: center; pointer-events: auto; }
+.tt-chat-btn { position: fixed; z-index: 1025; top: calc(54px + env(safe-area-inset-top)); right: calc(8px + env(safe-area-inset-right)); width: 40px; height: 40px; border: 0; border-radius: 12px; font-size: 18px; line-height: 1; color: #fff; background: rgba(155,92,255,.92); box-shadow: 0 6px 16px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.25); display: grid; place-items: center; pointer-events: auto; }
 .tt-chat-btn.on { background: rgba(40,24,64,.95); }
 .tt-chat-btn .unread { top: -6px; right: -6px; }
 .tt-count { margin-left: auto; font-size: 14px; color: var(--muted); white-space: nowrap; }
 .tt-count.hot { color: var(--red); }
-.tt-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; justify-content: safe center; align-items: center; gap: 16px; padding: 22px 16px 26px; }
+.tt-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; justify-content: safe center; align-items: center; gap: 16px; padding: 56px 16px 26px; }
 .tt-recap { display: flex; flex-direction: column; justify-content: center; gap: 16px; width: min(520px, 100%); }
-.tt-team { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name total" "line total" "players total" "bar bar"; align-items: center; gap: 8px 16px; padding: 18px 16px 16px; background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px rgba(185,128,255,.2); clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); }
-/* scorecard shotgun: full flash, holes, and cracks at every width (including 360–390). Reduced motion drops the shake only. */
-.tt-team.blast { isolation: isolate; animation: panel-blast .55s cubic-bezier(.36,.07,.19,.97) both; }
-.tt-team > :not(.blast-flash):not(.blast-holes):not(.blast-cracks) { position: relative; z-index: 1; }
-.blast-flash, .blast-holes, .blast-cracks { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.blast-flash { z-index: 2; opacity: 0; mix-blend-mode: screen; background: radial-gradient(circle at 18% 14%, rgba(255,255,255,.98) 0%, rgba(255,236,170,.82) 9%, rgba(255,150,40,.42) 24%, transparent 50%); animation: muzzle-flash .5s ease-out both; }
-.blast-holes { z-index: 0; opacity: 0; animation: blast-marks-in .16s linear .18s forwards; }
-.blast-holes i { position: absolute; transform: translate(-50%, -50%); border-radius: 50%; background: radial-gradient(circle at 36% 32%, rgba(255,250,230,.95) 0 14%, transparent 16%), radial-gradient(circle at 50% 50%, #1a0604 0 36%, #ffe6a8 40% 54%, #ff6a1a 56% 74%, transparent 78%); box-shadow: 0 0 0 1px rgba(255,220,160,.55), 0 0 8px rgba(255,140,40,.8); }
-.blast-cracks { z-index: 0; opacity: 0; animation: blast-marks-in .2s linear .22s forwards; }
-.tt-team.blast .tt-line { text-shadow: 0 1px 2px rgba(8,2,16,.9); }
-@keyframes panel-blast { 0%, 100% { transform: translate3d(0,0,0); } 12% { transform: translate3d(-7px, 3px, 0) rotate(-0.7deg); } 28% { transform: translate3d(6px, -4px, 0) rotate(0.6deg); } 44% { transform: translate3d(-4px, -2px, 0) rotate(-0.3deg); } 62% { transform: translate3d(3px, 2px, 0); } 78% { transform: translate3d(-2px, 1px, 0); } }
-@keyframes muzzle-flash { 0% { opacity: 0; } 10% { opacity: 1; } 28% { opacity: .75; } 100% { opacity: 0; } }
-@keyframes blast-marks-in { to { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .tt-team.blast { animation: none; } }
+.tt-team { position: relative; padding: 18px 16px 16px; background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px rgba(185,128,255,.2); clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); }
+.tt-face { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name total" "line total" "players total" "bar bar"; align-items: center; gap: 8px 16px; position: relative; z-index: 5; }
+/* On-notice shot card: dim the face, red border, three raster holes, then the corner tape. Full fidelity at every width, including 360–390. */
+.tt-team > :not(.shot-holes):not(.caution-x):not(.shroud) { position: relative; z-index: 5; }
+.tt-team.taped { clip-path: none; overflow: hidden; }
+.tt-team.notice, .tt-team.mine.notice { clip-path: none; overflow: hidden; border: 1px solid #FF4D4D; box-shadow: none; }
+.tt-team.notice .tt-face { filter: brightness(.85); }
+.tt-team.notice.tape-in { animation: hole-jolt 90ms linear 0ms, hole-jolt 90ms linear 90ms, hole-jolt 90ms linear 180ms; }
+@keyframes hole-jolt { 0%, 100% { transform: translate3d(0, 0, 0); } 45% { transform: translate3d(3px, 0, 0); } }
+.shot-holes { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.shot-holes img { position: absolute; width: 32px; height: 32px; transform: translate(-50%, -50%) rotate(var(--rot, 0deg)) scale(var(--s, 1)); pointer-events: none; }
+.tt-team.notice.tape-in .shot-holes img { animation: hole-punch 120ms cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes hole-punch { 0% { opacity: 0; transform: translate(-50%, -50%) rotate(var(--rot, 0deg)) scale(calc(var(--s, 1) * 1.4)); } 12% { opacity: 1; transform: translate(-50%, -50%) rotate(var(--rot, 0deg)) scale(calc(var(--s, 1) * 1.28)); } 100% { opacity: 1; transform: translate(-50%, -50%) rotate(var(--rot, 0deg)) scale(var(--s, 1)); } }
+/* One strip across the top-right corner, inside the card. The card clips it so a rotated end cannot paint outside. */
+.caution-x { position: absolute; z-index: 4; top: 0; right: 0; width: 30%; height: 14px; opacity: 0.95; overflow: hidden; pointer-events: none; transform: rotate(-6deg); transform-origin: 100% 0; filter: drop-shadow(0 2px 2px rgba(0,0,0,.4)); }
+.caution-x .tape { display: block; width: 100%; height: 100%; object-fit: cover; }
+.tt-team.tape-in .caution-x { animation: tape-slap 260ms cubic-bezier(.2, 1.3, .3, 1) 300ms both; }
+@keyframes tape-slap { from { opacity: 0; transform: rotate(8deg) scale(1.15); } to { opacity: 0.95; transform: rotate(-6deg) scale(1); } }
+/* Tape after a non-losing shot, off once they make their books. A hand-1 loss shows the tape and the sheet.
+   Later eliminations are the sheet alone. RIP, the police lights, and the time-of-death caption stay at full fidelity at every width, including 360–390. */
+.shroud {
+  position: absolute; z-index: 2; inset: 0; pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.45), transparent 22%),
+    radial-gradient(130% 90% at 50% -10%, #fbf8f2 0%, #efeae1 46%, #ddd6c8 100%);
+  box-shadow: inset 0 -36px 28px rgba(70, 52, 36, .16);
+  clip-path: polygon(0 0, 100% 0, 100% 84%, 88% 96%, 64% 86%, 40% 98%, 16% 88%, 0 96%);
+}
+.shroud i { position: absolute; left: 8%; right: 8%; height: 16%; border-radius: 40%; background: linear-gradient(180deg, rgba(255,255,255,.7), rgba(190,178,160,.05) 55%, rgba(90,70,50,.13)); }
+.shroud > i:nth-child(1) { top: 10%; }
+.shroud > i:nth-child(2) { top: 40%; height: 20%; }
+.shroud > i:nth-child(3) { top: 68%; }
+.shroud .rip {
+  position: absolute; z-index: 1; left: 50%; top: 46%;
+  transform: translate(-50%, -50%) rotate(-8deg) skewX(-8deg);
+  margin: 0; font-family: var(--display); font-weight: 900; font-style: italic;
+  font-size: 78px; letter-spacing: .12em; line-height: .8; color: #16110e;
+  text-shadow:
+    0 0 0 #16110e,
+    1px 0 0 #16110e, -2px 1px 0 rgba(22,17,14,.55),
+    3px 2px 0 rgba(22,17,14,.28), -4px 6px 0 rgba(22,17,14,.18),
+    0 10px 0 rgba(22,17,14,.22), 8px -2px 0 rgba(22,17,14,.12),
+    14px 4px 1px rgba(22,17,14,.16), -10px 8px 1px rgba(22,17,14,.14);
+  pointer-events: none;
+}
+.shroud .rip span {
+  position: absolute; top: 86%; width: 8px; border-radius: 0 0 8px 8px;
+  background: linear-gradient(#16110e, rgba(22,17,14,.15));
+}
+.shroud .rip span:nth-child(1) { left: 12%; height: 22px; transform: rotate(6deg); }
+.shroud .rip span:nth-child(2) { left: 48%; height: 14px; }
+.shroud .rip span:nth-child(3) { left: 74%; height: 26px; width: 6px; transform: rotate(-4deg); }
+.tt-recap.crowded .shroud .rip { font-size: 52px; top: 48%; }
+.police-lights { position: fixed; inset: 0; z-index: 30; pointer-events: none; overflow: hidden; }
+.police-lights i { position: absolute; inset: 0; }
+.police-lights .red {
+  background: radial-gradient(70% 90% at -10% 45%, rgba(255, 24, 48, .78), transparent 58%);
+  animation: police-red .48s ease-in-out infinite;
+}
+.police-lights .blue {
+  background: radial-gradient(70% 90% at 110% 55%, rgba(36, 92, 255, .78), transparent 58%);
+  animation: police-blue .48s ease-in-out infinite;
+}
+@keyframes police-red { 0%, 100% { opacity: 1; } 50% { opacity: .28; } }
+@keyframes police-blue { 0%, 100% { opacity: .28; } 50% { opacity: 1; } }
+.tod {
+  margin: 0; padding: 5px 12px; position: relative; z-index: 5;
+  font-family: "Courier New", Courier, ui-monospace, monospace;
+  font-size: 15px; letter-spacing: .03em; line-height: 1.2; white-space: nowrap;
+  color: #f4efe4; background: rgba(6, 4, 8, .72);
+  box-shadow: inset 0 0 0 1px rgba(244, 239, 228, .28);
+  pointer-events: none;
+}
+.tod span { opacity: 0; animation: tod-key .01s linear forwards; }
+@keyframes tod-key { to { opacity: 1; } }
+.tt-team.sheet-in .shroud { animation: sheet-drop .8s cubic-bezier(.2,.7,.2,1) .7s both; }
+.tt-team.shrouded .tt-team-name b,
+.tt-team.shrouded .tt-line,
+.tt-team.shrouded .tt-players,
+.tt-team.shrouded .tt-stat,
+.tt-team.shrouded .tt-stat.total b { color: #24160f; text-shadow: 0 1px 0 rgba(255,255,255,.75); }
+.tt-team.shrouded .tt-line b.neg { color: #8e2436; }
+.tt-team.shrouded .tt-line b.pos { color: #1c6a34; }
+.tt-team.shrouded .tt-players { color: #4a382c; }
+.tt-recap.crowded .caution-x { height: 16px; width: 42%; }
+.tt-recap.crowded .shot-holes img { width: 28px; height: 28px; }
+@keyframes sheet-drop { 0% { opacity: 0; transform: translate3d(0, -108%, 0); } 100% { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .tt-team.notice.tape-in, .tt-team.tape-in .caution-x, .tt-team.notice.tape-in .shot-holes img, .tt-team.sheet-in .shroud { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .tod span { animation: none; opacity: 1; } }
 .tt-team.mine { background: rgba(245,197,66,.08); box-shadow: inset 3px 0 0 var(--gold), inset 0 0 0 1px rgba(245,197,66,.25); }
 .tt-team-name { grid-area: name; display: flex; flex-direction: column; gap: 4px; }
 .tt-team-name b { font-family: var(--display); font-size: 22px; letter-spacing: .04em; overflow-wrap: anywhere; }
-.tt-badges { display: flex; flex-wrap: wrap; gap: 4px; }
+.tt-badges { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.shot-stamp { font-family: var(--display); font-style: normal; font-weight: 900; font-size: 13px; letter-spacing: .14em; color: #fff; background: #e10600; border: 2px solid #FF4D4D; padding: 1px 7px; transform: rotate(-8deg); box-shadow: 0 1px 0 rgba(0,0,0,.35); }
+.notice-pill { font-family: var(--display); font-style: normal; font-weight: 800; font-size: 11px; letter-spacing: .08em; color: #ffd0d0; background: rgba(255,77,77,.18); border: 1px solid rgba(255,77,77,.75); border-radius: 999px; padding: 2px 8px; }
 .tt-verdict { font-family: var(--display); font-weight: 800; font-size: 11px; letter-spacing: .08em; padding: 1px 6px; border-radius: 3px; white-space: nowrap; }
 .tt-verdict.ok { color: #0d2a12; background: #7dff9b; }
 .tt-verdict.bad { color: #fff; background: var(--red); }
@@ -747,7 +825,8 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-team .tt-bar { grid-area: bar; }
 .tt-bar { position: relative; height: 12px; background: rgba(255,255,255,.08); border-radius: 6px; overflow: hidden; margin-top: 6px; }
 .tt-recap.crowded { gap: 10px; }
-.tt-recap.crowded .tt-team { padding: 12px 14px; gap: 4px 12px; }
+.tt-recap.crowded .tt-team { padding: 12px 14px; }
+.tt-recap.crowded .tt-face { gap: 4px 12px; }
 .tt-recap.crowded .tt-team-name b { font-size: 18px; }
 .tt-recap.crowded .tt-stat.total b { font-size: 34px; }
 .tt-recap.crowded .tt-line { font-size: 16px; }
@@ -789,12 +868,12 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-foot .primary { min-width: 160px; }
 .tt-foot > button:first-child { margin-right: auto; }
 @media (max-width: 760px), (max-height: 520px) and (max-width: 900px) {
-  .tt-body { padding: 18px 12px 22px; }
+  .tt-body { padding: 56px 12px 22px; }
 }
 /* landscape phones: two columns but compact */
 @media (max-height: 520px) and (min-width: 600px) {
-  .tt-body { gap: 10px; padding: 8px 12px; justify-content: safe center; }
-  .tt-head { padding: 6px 108px 6px 12px; } .tt-foot { padding: 6px 12px; }
+  .tt-body { gap: 10px; padding: 52px 12px 8px; justify-content: safe center; }
+  .tt-head { padding: 6px 52px 6px 12px; } .tt-foot { padding: 6px 12px; }
   .tt-deal { display: none; }
   .tt-grid { grid-template-columns: repeat(4, 1fr); }
   .tt-tile { aspect-ratio: 1; }
@@ -802,14 +881,15 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 }
 /* narrow phones: the two team cards stay large; cutthroat (3–4 cards) tightens so they still fit */
 @media (max-width: 480px) {
-  .tt-team { gap: 6px 12px; padding: 16px 14px 14px; }
+  .tt-team { padding: 16px 14px 14px; }
+  .tt-face { gap: 6px 12px; }
   .tt-line { font-size: 17px; }
   .tt-stat b { font-size: 22px; }
   .tt-stat.total { min-width: 0; }
   .tt-stat.total b { font-size: 42px; }
   .tt-team-name b { font-size: 20px; }
-  .tt-body { padding: 16px 12px 20px; gap: 14px; }
-  .tt-head { padding: 10px 108px 8px 12px; gap: 8px; } .tt-title { font-size: 17px; }
+  .tt-body { padding: 58px 12px 20px; gap: 14px; }
+  .tt-head { padding: 10px 52px 8px 12px; gap: 8px; } .tt-title { font-size: 17px; }
   .tt-foot { padding: 8px 10px; } .tt-foot .primary { min-width: 0; flex: 1; }
   .tt-recap.crowded .tt-stat.total b { font-size: 30px; }
   .tt-recap.crowded .tt-team { padding: 10px 12px; }
@@ -841,7 +921,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
   .bug-books { display: none; } /* the hand-1 rule is in the center banner and the score pad */
 }
 .tt-run { margin: 2px 0 4px; align-self: center; width: min(520px, 100%); }
-.tt-run-show { align-self: center; font-weight: 800; }
+.tt-run-show { align-self: center; margin: 0; padding: 6px 14px; appearance: none; -webkit-appearance: none; font-family: var(--display); font-weight: 800; font-size: 15px; letter-spacing: .06em; color: #f6f2ff; background: rgba(20, 10, 36, .92); border: 1px solid rgba(185, 128, 255, .55); border-radius: 999px; }
 .tt-backdrop ~ .modal-backdrop { z-index: 50; }
 .tt-foot.bid-row { margin: 0; flex-wrap: nowrap; }
 .chat.glass.slant.recap-chat {
@@ -1276,11 +1356,15 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .trash-callout.seat-right { right: 12px; top: 38vh; }
 @keyframes callout-out { to { opacity: 0; } }
 
-/* bidding order (team games: the non-dealing team bids first, back to back; the dealer's partner; the dealer last) */
-.bid-order { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px 6px; max-width: min(560px, calc(100vw - 20px)); font-size: 12px; padding: 4px 10px; background: rgba(10,6,20,.72); border-radius: 999px; box-shadow: 0 0 0 1px var(--edge); }
-.bid-panel .bid-order { background: transparent; box-shadow: none; padding: 0; }
-.bo-title { font-family: var(--display); font-weight: 800; font-size: 10px; letter-spacing: .1em; opacity: .7; }
-.bo-seat { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; opacity: .75; }
+/* bidding order (team games: the non-dealing team bids first, back to back; the dealer's partner; the dealer last).
+   Parked under the trump line so the bid panel cannot cover it, and wrapped inside the viewport:
+   a 999px pill plus min-width:auto clipped the last name (and the whole strip, once it was your bid). */
+.bid-order { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; align-content: center; gap: 4px 6px; box-sizing: border-box; width: min(560px, calc(100vw - 16px)); max-width: min(560px, calc(100vw - 16px)); min-width: 0; overflow: visible; font-size: 12px; padding: 4px 10px; background: rgba(10,6,20,.92); border-radius: 12px; box-shadow: 0 0 0 1px var(--edge); }
+.center-note-wrap > .bid-order { position: fixed; z-index: 7; top: calc(124px + env(safe-area-inset-top)); left: 0; right: 0; margin-inline: auto; }
+.table-screen.short .center-note-wrap > .bid-order { top: calc(50px + env(safe-area-inset-top)); }
+.bid-panel .bid-order { position: static; width: 100%; max-width: 100%; background: transparent; box-shadow: none; padding: 0; }
+.bo-title { font-family: var(--display); font-weight: 800; font-size: 10px; letter-spacing: .1em; opacity: .7; flex: 0 0 auto; }
+.bo-seat { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; opacity: .75; flex: 0 0 auto; min-width: min-content; }
 .bo-seat i { font-style: normal; opacity: .5; margin-right: 2px; }
 .bo-seat b { font-weight: 700; }
 .bo-seat.mine b { color: var(--gold); }
@@ -1391,6 +1475,17 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tp-felt img { width: 34%; opacity: .14; }
 .tp-note { position: absolute; bottom: 30%; font-family: var(--display); letter-spacing: .12em; font-size: 13px; color: var(--muted); animation: tp-pulse 1.4s ease-in-out infinite; }
 @keyframes tp-pulse { 50% { opacity: .45; } }
+/* Resumed hand, on screen before WebGL. Buttons work immediately; the canvas face fills in one card per frame. */
+.felt-hand { position: absolute; z-index: 7; left: 0; right: 0; bottom: calc(15vh + env(safe-area-inset-bottom)); height: 132px; display: flex; justify-content: center; align-items: flex-end; pointer-events: none; }
+.felt-hand button { pointer-events: auto; position: relative; width: 52px; height: 74px; margin: 0 -12px; padding: 0; border: 0; border-radius: 5px; background: #fbf8f1; color: #15161a; box-shadow: 0 8px 16px rgba(0,0,0,.45); overflow: hidden; }
+.felt-hand button.red { color: #c4122f; }
+.felt-hand button.legal { box-shadow: 0 0 0 2px #f5c542, 0 8px 16px rgba(0,0,0,.45); }
+.felt-hand button:disabled { filter: saturate(.45) brightness(.9); }
+.felt-hand button canvas { width: 100%; height: 100%; display: block; }
+.felt-hand button span { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--display); font-weight: 800; font-size: 18px; letter-spacing: .02em; }
+.felt-hand button.drawn span { opacity: 0; }
+.felt-trick { position: absolute; z-index: 6; left: 50%; top: 46%; transform: translate(-50%, -50%); display: flex; gap: 6px; pointer-events: none; }
+.felt-trick canvas { width: 40px; height: 56px; border-radius: 4px; background: #fbf8f1; box-shadow: 0 6px 12px rgba(0,0,0,.4); }
 
 /* Online victory spotlight: winners' video front and center, losers small along the edge, score + buttons secondary */
 .victory-screen { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; align-items: center; gap: clamp(8px, 1.6vh, 16px);
