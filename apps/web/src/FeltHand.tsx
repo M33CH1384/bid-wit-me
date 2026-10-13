@@ -10,6 +10,16 @@ export const FELT_SELECT_LIFT_PX = 10;
  * left of the rotation: an inline transform replaces any class transform, and a translate
  * inside the rotation would walk the end cards sideways.
  */
+/** Flat cards keep fan order. A legal card clears every flat card; a selection clears the legal band too. */
+export const FELT_LEGAL_Z = 200;
+export const FELT_SELECT_Z = 400;
+
+export function feltCardZ(index: number, legal: boolean, selected: boolean): number {
+  if (selected) return FELT_SELECT_Z + index;
+  if (legal) return FELT_LEGAL_Z + index;
+  return index;
+}
+
 export function feltCardTransform(index: number, count: number, selected: boolean): string {
   const mid = (count - 1) / 2;
   const rot = (index - mid) * 3.2;
@@ -80,7 +90,7 @@ export function FeltHand({ cards, trick, legal, selected, onCard, promoted, visi
               type="button"
               tabIndex={-1}
               className={`${red ? 'red' : ''} ${can ? 'legal' : ''} ${picked ? 'sel' : ''}`}
-              style={{ transform: feltCardTransform(i, cards.length, picked), zIndex: picked ? 20 : i }}
+              style={{ transform: feltCardTransform(i, cards.length, picked), zIndex: feltCardZ(i, can, picked) }}
               disabled={!can}
               aria-pressed={selected === c}
               onClick={() => onCard(c)}

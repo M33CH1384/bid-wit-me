@@ -53,7 +53,7 @@ describe('per-card outline', () => {
     const pos = g.getAttribute('position');
     let z = -Infinity;
     for (let i = 0; i < pos.count; i++) z = Math.max(z, pos.getZ(i));
-    // off the face plane, so the transparent ring is not depth-tested as coplanar with the pips
+    // off the face plane, so the ring is not depth-tested as coplanar with the pips
     expect(z).toBeCloseTo(CT / 2 + FACE_CAP_GAP + OUTLINE_AHEAD, 5);
     expect(OUTLINE_AHEAD).toBeGreaterThan(0);
     const aspects = [390 / 844, 844 / 390, 16 / 9];

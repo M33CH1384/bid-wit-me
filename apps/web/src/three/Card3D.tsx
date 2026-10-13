@@ -118,19 +118,20 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   // Your turn: cards you can't play sit at 55% brightness (still readable); playable cards stay at full colour
   // and get a gold ring on their own rounded edge. The face eases in ~150 ms. The ring is also a tip mark.
   // The ring stays opaque and is drawn before this card's face (render order just under the body).
-  // A transparent ring is painted after every opaque face, then depth-tested against the face's
-  // polygon offset, and iPhone's 16-bit buffer fails that test — so the outline survived only on
-  // the selected card, which sits closer. Opaque, with no depth write, the face covers the inside
-  // of the stroke and the outer edge stays gold on every playable card.
+  // A transparent ring is painted after every opaque face, so a neighbour's stroke crosses this
+  // card no matter how high its render order is, and iPhone's 16-bit buffer then fails the depth
+  // test against the face's polygon offset. Opaque, with no depth write, the face covers the
+  // inside of the stroke and the outer edge stays gold. A selected card's whole band, ring
+  // included, is ordered and biased in front of every neighbour.
   const glowMat = useMemo(() => new MeshBasicMaterial({ color: '#f5c542', transparent: false, opacity: 1, depthWrite: false, toneMapped: false }), []);
   const edge = useMemo(() => edgeMat.clone(), []);
   // The root group keeps `order` for taps. Child groups reset Three.js groupOrder, so each mesh
-  // carries its own: body at `order`, face and back half a step later, tip glow just behind.
+  // carries its own: body at `order`, face and back half a step later, tip glow just behind
+  // its own face and still inside this card's band. A selected card's band is above every neighbour.
   // Depth testing stays on. The face is FACE_CAP_GAP ahead of the cap and biased in window
   // depth, so a 16-bit buffer cannot paint the cream cap over the pips. The gold ring is opaque
   // and one step earlier than the body, and it still sits OUTLINE_AHEAD of the face so a later
-  // depth test cannot bury the stroke. Neighbours lose because a playable card is nudged toward
-  // the camera (LEGAL_NEAR).
+  // depth test cannot bury the stroke.
   useLayoutEffect(() => {
     const root = ref.current;
     if (!root) return;
@@ -149,16 +150,15 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     });
     invalidate();
   }, [order, face, glow, frontMat, backMat, glowMat, invalidate]);
-  const look = useRef({ target: new Color(1, 1, 1), glow: 0, sat: 1 });
+  const look = useRef({ target: new Color(1, 1, 1), sat: 1 });
   useLayoutEffect(() => {
     look.current.target.copy(dim ? DIM : FULL);
-    look.current.glow = glow ? (quality === 'high' ? 1 : 0.9) : 0;
     look.current.sat = dim ? DIM_SAT : 1;
     if ('emissive' in frontMat && frontMat.emissive) frontMat.emissive.set('#000000');
     // the clear coat / sheen add white on top of the colour (and ACES squashes the rest), so ease them off too when dimmed
     if (frontMat instanceof MeshPhysicalMaterial) { frontMat.clearcoat = dim ? 0.05 : 0.35; frontMat.sheen = dim ? 0 : 0.2; }
     invalidate();
-  }, [dim, glow, frontMat, quality, invalidate]);
+  }, [dim, frontMat, invalidate]);
 
   const tw = useRef({
     init: false,
@@ -274,7 +274,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     if (hideUntilStart.current && !tw.current.started) g.visible = false;
     // A resume hitch must not fast-forward the fan. One frame advances at most 50ms, same as a slow paint.
     const dt = Math.min(Math.max(rawDt, 0), 0.05);
-    // colour / glow easing (~150 ms), also capped so a long frame does not snap it
+    // colour easing (~150 ms), also capped so a long frame does not snap it
     const L = look.current, k = Math.min(1, dt / 0.15);
     const c = frontMat.color;
     if (Math.abs(c.r - L.target.r) + Math.abs(c.g - L.target.g) + Math.abs(c.b - L.target.b) > 0.004) { c.lerp(L.target, k); invalidate(); } else c.copy(L.target);
