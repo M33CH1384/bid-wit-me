@@ -195,21 +195,23 @@ export function checkGameEnd(r: TableRules, scores: readonly number[]): GameResu
 }
 
 /**
- * Was `side` shot this hand? Shot = set: the side had a contract and missed it (a busted Nil alone never makes a side
- * shot — same as the set logic). Books hand: shot when it took fewer books than the host minimum (off = nobody is shot).
+ * Was `side` shot this hand? Shot = set: the side missed its number, or (2v2) a Nil bidder took any book.
+ * A made Nil is not a shot. Books hand: shot when it took fewer books than the host minimum (off = nobody is shot).
+ * That hand has no bids, so a Nil shot there only exists when the host turned "books bid themselves" off.
  */
 export function isShot(r: TableRules, bids: readonly Bid[], side: SideHandResult): boolean {
   if (isBooksHand(bids)) {
     const min = hostMinimum(r);
     return min > 0 && side.tricks < min;
   }
-  return side.contractMade === false;
+  if (side.contractMade === false) return true;
+  return r.partnerships && side.nils.some((n) => !n.made);
 }
 
 /**
  * How many times each side has been shot this game, counted from the scored hands.
  * History is part of the synced state, so every client and a reconnect see the same counts.
- * A busted nil alone is not a shot. A books hand counts only when it missed the first-hand minimum.
+ * In 2v2 a busted Nil counts. A made Nil does not. A books hand counts only when it missed the host minimum.
  */
 export function shotCounts(r: TableRules, history: readonly { bids: readonly Bid[]; sides: readonly SideHandResult[] }[]): number[] {
   const counts = Array.from({ length: sideCount(r) }, () => 0);
@@ -321,7 +323,7 @@ export function tricksStillRemaining(st: { rules: TableRules; tricks: { length: 
 /**
  * Sides exactly one trick from being shot: books still needed equals tricks still remaining,
  * so losing one more trick makes the contract (or the first-hand minimum) unreachable.
- * A nil bid is not itself a shot; it only changes which tricks count toward the partner's contract.
+ * A Nil does not get this pump. It only changes which tricks count toward the partner's contract.
  */
 export function sidesOneTrickFromShot(st: {
   phase: string;

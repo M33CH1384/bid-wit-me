@@ -60,8 +60,10 @@ describe('one trick from getting shot', () => {
     expect(sidesOneTrickFromShot({ ...countedEdge, rules: team })).toEqual([]);
   });
 
-  it('does not pump a side that only bid nil, or a hand still being bid', () => {
+  it('does not pump a side that only bid nil, or a Nil that is one book from busting', () => {
     expect(sidesOneTrickFromShot(at({ bids: ['nil', 4, 'blindNil', 4], tricksWon: [0, 4, 0, 4], played: 8 }))).toEqual([]);
+    // One trick left, Nil has none, and the number is already made. Nil gets no pump.
+    expect(sidesOneTrickFromShot(at({ bids: ['nil', 3, 4, 3], tricksWon: [0, 4, 4, 4], played: 12 }))).toEqual([]);
     expect(sidesOneTrickFromShot(at({ phase: 'bidding', bids: [4, null, null, null], tricksWon: [0, 0, 0, 0], played: 0 }))).toEqual([]);
   });
 
