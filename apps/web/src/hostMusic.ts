@@ -10,6 +10,8 @@
 import { useSyncExternalStore } from 'react';
 import type { HostMusic as HostMusicState } from '@spades/protocol';
 import { TRACKS, sound } from './audio';
+import { audioElementPool } from './audioPool';
+import { settleAudio } from './audioSession';
 
 const KEY = 'bwm.hostMusic';
 export interface HostSource { kind: 'file' | 'device'; title: string }
@@ -61,7 +63,9 @@ class HostMusicStore {
     this.stopBeat();
     this.beatKey = key;
     const t = TRACKS[track % TRACKS.length]!;
-    const el = new Audio(`/audio/music/${t.file}.mp3`);
+    const el = audioElementPool().acquire();
+    if (!el) { this.beatKey = ''; this.status = 'error'; this.emit(); return; }
+    el.src = `/audio/music/${t.file}.mp3`;
     el.loop = true; el.volume = this.volume; el.preload = 'auto';
     el.setAttribute('playsinline', '');
     this.beat = el;
@@ -80,7 +84,7 @@ class HostMusicStore {
   resume() { if (this.beat) { const [tr, at] = this.beatKey.split(':').map(Number); this.beatKey = ''; this.playBeat(tr!, at!, 0); } }
   private stopBeat() {
     clearTimeout(this.beatTimer);
-    if (this.beat) { this.beat.pause(); this.beat.src = ''; this.beat = null; }
+    if (this.beat) { audioElementPool().release(this.beat); this.beat = null; }
     this.beatKey = '';
     if (this.status !== 'idle') this.status = 'idle';
   }
@@ -93,16 +97,23 @@ class HostMusicStore {
   /** Host (c): stream a local audio file — played into a MediaStream (and to the host's own speakers). */
   async streamFile(file: File) {
     this.stopSource(false);
-    const ctx = new AudioContext();
-    const el = new Audio(URL.createObjectURL(file));
+    const el = audioElementPool().acquire();
+    if (!el) throw new Error('Sound is busy — try again in a moment.');
+    const url = URL.createObjectURL(file);
+    el.src = url;
     el.loop = true;
-    const src = ctx.createMediaElementSource(el);
-    const dest = ctx.createMediaStreamDestination();
-    const monitor = ctx.createGain(); monitor.gain.value = this.volume;
-    src.connect(dest); src.connect(monitor); monitor.connect(ctx.destination);
-    await el.play();
-    this.srcGain = monitor;
-    this.startSource(dest.stream.getAudioTracks()[0]!, { kind: 'file', title: file.name.replace(/\.[^.]+$/, '') }, () => { el.pause(); URL.revokeObjectURL(el.src); void ctx.close(); });
+    let ctx: AudioContext | null = null;
+    const stop = () => { URL.revokeObjectURL(url); audioElementPool().retire(el); void settleAudio(ctx?.close()); };
+    try {
+      ctx = new AudioContext();
+      const src = ctx.createMediaElementSource(el);
+      const dest = ctx.createMediaStreamDestination();
+      const monitor = ctx.createGain(); monitor.gain.value = this.volume;
+      src.connect(dest); src.connect(monitor); monitor.connect(ctx.destination);
+      await el.play();
+      this.srcGain = monitor;
+      this.startSource(dest.stream.getAudioTracks()[0]!, { kind: 'file', title: file.name.replace(/\.[^.]+$/, '') }, stop);
+    } catch (e) { stop(); throw e; }
   }
   /** Host (c): stream device / tab audio (desktop browsers; the picker must include audio). */
   async streamDevice() {

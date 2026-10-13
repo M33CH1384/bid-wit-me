@@ -9,16 +9,20 @@
  */
 import { type PersonaId, lineById, voiceFor } from '@spades/bots';
 import { decodeAudioBuffer, sound } from '../audio';
+import { audioElementPool } from '../audioPool';
 
 let ext: 'webm' | 'm4a' | null = null;
 function format(): 'webm' | 'm4a' {
   if (ext) return ext;
+  // One pooled element, released immediately. A throwaway <audio> stays in iOS's media pool and
+  // later music/voice elements fail with no error.
+  const a = audioElementPool().acquire();
   try {
-    const a = document.createElement('audio');
     // Safari can say "maybe" for WebM/Opus but fail in decodeAudioData: only trust it off WebKit-only browsers
     const webkitOnly = /AppleWebKit/.test(navigator.userAgent) && !/Chrome|Chromium|Edg|Firefox|FxiOS|CriOS/.test(navigator.userAgent);
-    ext = !webkitOnly && a.canPlayType('audio/webm; codecs="opus"') ? 'webm' : 'm4a';
+    ext = !webkitOnly && a?.canPlayType('audio/webm; codecs="opus"') ? 'webm' : 'm4a';
   } catch { ext = 'm4a'; }
+  finally { if (a) audioElementPool().release(a); }
   return ext;
 }
 
