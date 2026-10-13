@@ -1,3 +1,4 @@
+import { DEAL_LIFT_HAND } from './dealArc';
 import { CH } from './layout';
 
 /**
@@ -388,7 +389,7 @@ export function fanMotion(o: { flip: boolean; fresh: boolean; closing: boolean }
   arc: number;
 } {
   if (o.flip) return { kind: 'flip', motion: 'flight', arc: 0 };
-  if (o.fresh) return { kind: 'deal', motion: 'flight', arc: 0.05 };
+  if (o.fresh) return { kind: 'deal', motion: 'flight', arc: DEAL_LIFT_HAND };
   if (o.closing) return { kind: 'slide', motion: 'slide', arc: 0 };
   return { kind: 'lift', motion: 'lift', arc: 0 };
 }

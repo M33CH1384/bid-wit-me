@@ -3,12 +3,13 @@ import { Html } from '@react-three/drei';
 import { Canvas, events as r3fEvents, useFrame, useThree } from '@react-three/fiber';
 import { type ReactNode, type RefObject, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { type BufferGeometry, type Camera, type Group, type Material, type Mesh, type Object3D, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, DataTexture, Matrix4, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, PCFSoftShadowMap, Quaternion, RepeatWrapping, Scene as ThreeScene, SRGBColorSpace, Texture, Vector2, Vector3 } from 'three';
-import { type Card, type Play, type Trick } from '@spades/rules';
-import Card3D, { createLitCardMaterial } from './Card3D';
+import { type Card, type Play, type Trick, standardDeck } from '@spades/rules';
+import Card3D, { createLitCardMaterial, pooledCardMaterial } from './Card3D';
 import { departureSlot, handCardKey, handReactKey } from '../handOrder';
 import { GAP_S, LIFT_S, canTapCard, fanGapPx, fanMotion, handCardChrome, handDepthOpts, handRenderOrder, hitsInPaintOrder, raiseLocalY } from './handLift';
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline, seatDealDelay } from './dealTimeline';
+import { DEAL_LIFT_SEAT } from './dealArc';
 import { handNeedsDeal, handSlotKey } from './dealFlight';
 import { showResumeHand3D, trickFacesShown } from './cardFace';
 import { type Sfx, sound } from '../audio';
@@ -471,9 +472,29 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   if (held.current.handNo !== handNo) held.current = { handNo, cards: new Set(), slots: new Map(), count: 0, seen: new Set() };
   const pendingHold = useRef<Held>(held.current);
 
-  type Item = { key: string; card: Card | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: (() => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide'; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; holdUntilMove?: boolean };
+  type Item = { key: string; card: Card | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: (() => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide'; path?: 'hop' | 'deal'; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; holdUntilMove?: boolean };
   const items: Item[] = [];
   const dealDelay = (slot: number, seat: number) => seatDealDelay(tl, n, slot, seat, dealer);
+  const promotedRef = useRef(props.promoted);
+  promotedRef.current = props.promoted;
+  useEffect(() => {
+    // After the ribbon has landed, paint the rest of the deck one face per frame.
+    // Doing it during the flight, or all at once when the first trick card appears, is the stall.
+    if (!intro) return;
+    const ids: Card[] = [...standardDeck(), 'BJ', 'LJ'];
+    let i = 0;
+    let raf = 0;
+    let dead = false;
+    const step = () => {
+      if (dead || i >= ids.length) return;
+      const c = ids[i++]!;
+      const tex = faceTexture(c, res, promotedRef.current(c), aniso);
+      pooledCardMaterial(tex, quality, true, true);
+      raf = requestAnimationFrame(step);
+    };
+    const wait = window.setTimeout(() => { if (!dead) raf = requestAnimationFrame(step); }, tl.total * 1000);
+    return () => { dead = true; clearTimeout(wait); cancelAnimationFrame(raf); };
+  }, [intro, handNo, res, aniso, quality, tl.total]);
 
   // completed tricks in piles
   const pileCount = Array(n).fill(0) as number[];
@@ -527,7 +548,17 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
     if (seat === human) continue;
     const c = handCounts[seat]!;
     for (let i = 0; i < c; i++) {
-      items.push({ key: `${handNo}-b${seat}-${i}`, card: null, target: opponentFan(positions[seat]!, n, i, c), from: intro ? deck : undefined, delay: intro ? dealDelay(i, seat) : 0, duration: tl.fly, arc: 0.3, sfxStart: 'deal' });
+      items.push({
+        key: `${handNo}-b${seat}-${i}`, card: null, target: opponentFan(positions[seat]!, n, i, c),
+        from: intro ? deck : undefined,
+        delay: intro ? dealDelay(i, seat) : 0,
+        duration: tl.fly,
+        arc: intro ? DEAL_LIFT_SEAT : 0.3,
+        path: intro ? 'deal' : undefined,
+        // Hidden until this card's own beat, so the deck is the shuffle pile and not a stack of every seat's cards.
+        holdUntilMove: intro,
+        sfxStart: 'deal',
+      });
     }
   }
   // the human hand
@@ -578,6 +609,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       target,
       from: move.kind === 'flip' ? flipped(target) : move.kind === 'deal' ? deck : undefined,
       delay: move.kind === 'flip' ? i * 0.022 : move.kind === 'deal' ? dealDelay(i, human) : 0,
+      path: move.kind === 'deal' ? 'deal' : undefined,
       // Stay hidden until this card's own deal beat. The fan must not be on screen while other seats are still being dealt.
       holdUntilMove: move.kind === 'deal',
       sfxStart: move.kind === 'deal' ? 'deal' : undefined,
@@ -662,6 +694,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
           sfxStart={it.sfxStart}
           sfxLand={it.sfxLand}
           holdUntilMove={it.holdUntilMove}
+          path={it.path}
           blast={it.hand ? 'hand' : 'table'}
         />
       ))}

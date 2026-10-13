@@ -9,6 +9,7 @@ import { type Sfx, sound } from '../audio';
 import { fireCue, fx } from '../fx';
 import { restingFlightWait } from '../trickTiming';
 import { openingFlight } from './dealFlight';
+import { dealArcPoint } from './dealArc';
 import { retainFrontTexture } from './cardFace';
 
 interface Props {
@@ -47,6 +48,8 @@ interface Props {
   blast?: 'table' | 'hand';
   /** Deal flight: stay invisible until this card leaves the deck, so the fan does not show up early. */
   holdUntilMove?: boolean;
+  /** 'deal' is the ribbon from the deck to a seat. Everything else keeps the short vertical hop. */
+  path?: 'hop' | 'deal';
   /** False until the physical shader has been linked off the draw. The card stays a basic textured quad, then becomes the lit card. */
   lit?: boolean;
 }
@@ -54,6 +57,7 @@ interface Props {
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 const xKey = (x: Xform) => x.p.map((v) => v.toFixed(4)).join() + x.q.map((v) => v.toFixed(4)).join() + x.s.toFixed(4);
 const edgeMat = new MeshStandardMaterial({ color: '#efe9dc', roughness: 0.75 });
+const glowShared = new MeshBasicMaterial({ color: '#f5c542', transparent: false, opacity: 1, depthWrite: false, toneMapped: false });
 /** full colour vs. a card you can't play: 55% brightness on screen, faint cool tint, desaturated */
 const FULL = new Color(1, 1, 1);
 const DIM = new Color(...ILLEGAL_COLOR);
@@ -85,10 +89,31 @@ export function createLitCardMaterial(map: Texture, quality: 'high' | 'low', sat
   return saturate ? withSaturation(m) : m;
 }
 
-function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, raise = 0, roll = 0, order = 0, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand, blast = 'table', holdUntilMove = false, lit = true }: Props) {
+const materialPool = new Map<string, MeshStandardMaterial | MeshBasicMaterial>();
+
+/**
+ * One material per texture. A fresh MeshPhysicalMaterial on every card made the first deal
+ * and the first trick rebuild the whole deck on the GPU. Faces still look the same: each
+ * painted card keeps its own map.
+ */
+export function pooledCardMaterial(map: Texture, quality: 'high' | 'low', lit: boolean, saturate: boolean): MeshStandardMaterial | MeshBasicMaterial {
+  const key = `${lit ? 1 : 0}:${quality}:${saturate ? 1 : 0}:${map.uuid}`;
+  let m = materialPool.get(key);
+  if (!m) {
+    m = lit ? createLitCardMaterial(map, quality, saturate) : new MeshBasicMaterial({ map });
+    applyFaceDepthBias(m);
+    materialPool.set(key, m);
+  }
+  return m;
+}
+
+function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, raise = 0, roll = 0, order = 0, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand, blast = 'table', holdUntilMove = false, lit = true, path = 'hop' }: Props) {
   const ref = useRef<Group>(null);
   // First mount only. A follow-up render drops the deal props before useFrame runs.
   const mountedFlight = useRef({ from, delay });
+  const openingPath = useRef(path);
+  const openingArc = useRef(arc);
+  const openingDone = useRef(false);
   const hideUntilStart = useRef(holdUntilMove);
   const lift = useRef<Group>(null);
   const inner = useRef<Group>(null);
@@ -100,20 +125,8 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   const shownFace = useRef<Texture | null>(null);
   const frontTex = retainFrontTexture(face, shownFace.current);
   if (frontTex) shownFace.current = frontTex;
-  const frontMat = useMemo(() => {
-    const map = frontTex ?? back;
-    // Unlit until the physical program is linked. MeshBasic with a map is one small shader shared by every card.
-    const m = lit ? createLitCardMaterial(map, quality, true) : new MeshBasicMaterial({ map });
-    // Face and cap are both opaque, so they share one list. renderOrder can sort them,
-    // but a 16-bit depth test still drops the face when the two planes quantize together.
-    applyFaceDepthBias(m);
-    return m;
-  }, [frontTex, back, quality, lit]); // eslint-disable-line react-hooks/exhaustive-deps
-  const backMat = useMemo(() => {
-    const m = lit ? createLitCardMaterial(back, quality, false) : new MeshBasicMaterial({ map: back });
-    applyFaceDepthBias(m);
-    return m;
-  }, [back, quality, lit]); // eslint-disable-line react-hooks/exhaustive-deps
+  const frontMat = useMemo(() => pooledCardMaterial(frontTex ?? back, quality, lit, true), [frontTex, back, quality, lit]);
+  const backMat = useMemo(() => pooledCardMaterial(back, quality, lit, false), [back, quality, lit]);
 
   // Your turn: cards you can't play sit at 55% brightness (still readable); playable cards stay at full colour
   // and get a gold ring on their own rounded edge. The face eases in ~150 ms. The ring is also a tip mark.
@@ -123,8 +136,8 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   // test against the face's polygon offset. Opaque, with no depth write, the face covers the
   // inside of the stroke and the outer edge stays gold. A selected card's whole band, ring
   // included, is ordered and biased in front of every neighbour.
-  const glowMat = useMemo(() => new MeshBasicMaterial({ color: '#f5c542', transparent: false, opacity: 1, depthWrite: false, toneMapped: false }), []);
-  const edge = useMemo(() => edgeMat.clone(), []);
+  const glowMat = glowShared;
+  const edge = edgeMat;
   // The root group keeps `order` for taps. Child groups reset Three.js groupOrder, so each mesh
   // carries its own: body at `order`, face and back half a step later, tip glow just behind
   // its own face and still inside this card's band. A selected card's band is above every neighbour.
@@ -154,7 +167,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   useLayoutEffect(() => {
     look.current.target.copy(dim ? DIM : FULL);
     look.current.sat = dim ? DIM_SAT : 1;
-    if ('emissive' in frontMat && frontMat.emissive) frontMat.emissive.set('#000000');
+    if (frontMat instanceof MeshStandardMaterial) frontMat.emissive.set('#000000');
     // the clear coat / sheen add white on top of the colour (and ACES squashes the rest), so ease them off too when dimmed
     if (frontMat instanceof MeshPhysicalMaterial) { frontMat.clearcoat = dim ? 0.05 : 0.35; frontMat.sheen = dim ? 0 : 0.2; }
     invalidate();
@@ -382,11 +395,21 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       if (land && land !== s.firedLand) { s.firedLand = land; if (moving) land.split(',').forEach((c, i) => fireCue(c, i ? 0.02 : 0)); }
     }
     const e = (motion === 'flight' ? easeInOut : liftEase)(s.t);
-    g.position.lerpVectors(s.sp, s.tp, e);
-    const dist = s.sp.distanceTo(s.tp);
-    const hop = motion === 'slide' ? 0 : arc;
-    g.position.y += Math.sin(Math.PI * s.t) * hop * Math.min(1, dist);
-    g.quaternion.slerpQuaternions(s.sq, s.tq, e);
+    // The ribbon is the opening deal only. A later slide or play on this mesh stays a hop.
+    const ribbon = openingPath.current === 'deal' && !openingDone.current;
+    if (ribbon) {
+      const p = dealArcPoint(s.sp.x, s.sp.y, s.sp.z, s.tp.x, s.tp.y, s.tp.z, e, openingArc.current);
+      g.position.set(p[0], p[1], p[2]);
+    } else {
+      g.position.lerpVectors(s.sp, s.tp, e);
+      const dist = s.sp.distanceTo(s.tp);
+      const hop = motion === 'slide' ? 0 : arc;
+      g.position.y += Math.sin(Math.PI * s.t) * hop * Math.min(1, dist);
+    }
+    if (ribbon && s.started && s.t >= 1) openingDone.current = true;
+    // Stay face-down along the ribbon and turn into the fan only as the card arrives.
+    const spin = ribbon ? Math.max(0, (e - 0.68) / 0.32) : e;
+    g.quaternion.slerpQuaternions(s.sq, s.tq, spin);
     g.scale.setScalar(motion === 'slide' ? s.ts : s.ss + (s.ts - s.ss) * e);
   });
 
@@ -399,10 +422,11 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     >
       <group ref={lift} name={name}>
       <group ref={inner}>
-        <mesh geometry={geo.body} material={edge} castShadow={castShadow} />
-        <mesh geometry={geo.front} material={frontMat} />
-        <mesh geometry={geo.back} material={backMat} />
-        {frontTex && <mesh geometry={cardOutlineGeometry()} material={glowMat} visible={!!glow} renderOrder={-1} />}
+        {/* Shared geometry and materials. Disposing them when one card leaves would drop the GPU buffers for every card still in flight. */}
+        <mesh geometry={geo.body} material={edge} castShadow={castShadow} dispose={null} />
+        <mesh geometry={geo.front} material={frontMat} dispose={null} />
+        <mesh geometry={geo.back} material={backMat} dispose={null} />
+        {frontTex && <mesh geometry={cardOutlineGeometry()} material={glowMat} visible={!!glow} renderOrder={-1} dispose={null} />}
       </group>
       </group>
     </group>

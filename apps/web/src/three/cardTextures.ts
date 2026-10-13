@@ -28,6 +28,14 @@ export function backTexture(res: 'high' | 'low', anisotropy: number): Texture {
   return tex;
 }
 
+/** Only the texture whose canvas was just redrawn. Uploading the whole cache each face was a multi-second hitch mid-deal. */
+export function texturesForRepaint<T extends { image: unknown }>(textures: Iterable<T>, canvas: unknown): T[] {
+  const out: T[] = [];
+  if (!canvas) return out;
+  for (const t of textures) if (t.image === canvas) out.push(t);
+  return out;
+}
+
 /** Fonts arrived: redraw cached faces one canvas per frame so the main thread never repaints the deck at once. */
 export function refreshFacesGradually(onPaint: () => void): () => void {
   const keys = paintedFaceKeys();
@@ -35,11 +43,10 @@ export function refreshFacesGradually(onPaint: () => void): () => void {
   let raf = 0;
   const step = () => {
     if (i >= keys.length) return;
-    const key = keys[i++]!;
-    if (repaintFace(key)) {
-      for (const t of cache.values()) if (t.image) t.needsUpdate = true;
-      onPaint();
-    }
+    const cv = repaintFace(keys[i++]!);
+    const hit = cv ? texturesForRepaint(cache.values(), cv) : [];
+    for (const t of hit) t.needsUpdate = true;
+    if (hit.length) onPaint();
     raf = requestAnimationFrame(step);
   };
   raf = requestAnimationFrame(step);

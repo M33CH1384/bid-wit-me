@@ -10,12 +10,15 @@ export function dealTimeline(k: number, players: number, cards = 52): DealTimeli
   return { shuffle, step, fly, dealSpan, total: shuffle + dealSpan + fly };
 }
 
-/** Seconds from the start of the shuffle until this card leaves the deck.
- *  Cards go clockwise, one per seat, starting on the dealer's left. `slot` is that seat's nth card. */
-export function seatDealDelay(tl: DealTimeline, players: number, slot: number, seat: number, dealer: number): number {
+/** Clockwise deal index, starting on the dealer's left. `slot` is that seat's nth card. */
+export function dealOrder(players: number, slot: number, seat: number, dealer: number): number {
   const n = Math.max(1, players);
-  const order = slot * n + ((seat - dealer - 1 + n) % n);
-  return tl.shuffle + order * tl.step;
+  return slot * n + ((seat - dealer - 1 + n) % n);
+}
+
+/** Seconds from the start of the shuffle until this card leaves the deck. */
+export function seatDealDelay(tl: DealTimeline, players: number, slot: number, seat: number, dealer: number): number {
+  return tl.shuffle + dealOrder(players, slot, seat, dealer) * tl.step;
 }
 
 /** How many of this seat's cards have left the deck by `elapsed` seconds. Slots are dealt in order. */

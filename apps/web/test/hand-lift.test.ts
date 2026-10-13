@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DEAL_LIFT_HAND } from '../src/three/dealArc';
 import {
   BREATHE_HI, BREATHE_LO, BREATHE_S, BREATHE_SCALE, GAP_S, GLOW_ALPHA, GLOW_BLUR_PX, GLOW_REACH_PX, GLOW_SPREAD_PX,
   GROUP_PAD_PX, GROUP_RADIUS_PX, ILLEGAL_BRIGHTNESS, ILLEGAL_COLOR, LIFT_S, OUTLINE_COLOR, OUTLINE_PX, RAISE_S,
@@ -80,7 +81,7 @@ describe('your-turn hand poses', () => {
   it('closes a gap by sliding, and a highlight only lifts', () => {
     expect(fanMotion({ flip: false, fresh: false, closing: true })).toEqual({ kind: 'slide', motion: 'slide', arc: 0 });
     expect(fanMotion({ flip: false, fresh: false, closing: false })).toEqual({ kind: 'lift', motion: 'lift', arc: 0 });
-    expect(fanMotion({ flip: false, fresh: true, closing: true })).toEqual({ kind: 'deal', motion: 'flight', arc: 0.05 });
+    expect(fanMotion({ flip: false, fresh: true, closing: true })).toEqual({ kind: 'deal', motion: 'flight', arc: DEAL_LIFT_HAND });
     expect(fanMotion({ flip: true, fresh: true, closing: true })).toEqual({ kind: 'flip', motion: 'flight', arc: 0 });
     // the slide uses the same curve as the lift, over the longer gap
     expect(liftEase(0)).toBe(0);
