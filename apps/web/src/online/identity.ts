@@ -11,6 +11,34 @@ export function saveName(n: string): void {
   try { localStorage.setItem(NAME_KEY, n); } catch { /* ignore */ }
 }
 
+/** "Player" and "Guest" are fillers, not a name someone chose. */
+export function isPlaceholderName(n: string): boolean {
+  const t = n.trim().toLowerCase();
+  return t === '' || t === 'player' || t === 'guest';
+}
+
+const NAME_OK = 'bwm.nameok.';
+
+/** This browser already has a seat at the table. Does not mint a token. */
+export function hasToken(code: string): boolean {
+  return !!tokens()[code]?.token;
+}
+
+/** An invite (or any fresh /t/CODE arrival) should confirm a name before sitting.
+ *  Skip when this tab just created the table, just typed the name, or already holds the seat. */
+export function inviteNeedsName(code: string): boolean {
+  if (!code) return false;
+  try {
+    if (sessionStorage.getItem(`bwm.created.${code}`) === '1') return false;
+    if (sessionStorage.getItem(`${NAME_OK}${code}`) === '1') return false;
+  } catch { /* private mode */ }
+  return !hasToken(code);
+}
+
+export function markNameConfirmed(code: string): void {
+  try { sessionStorage.setItem(`${NAME_OK}${code}`, '1'); } catch { /* private mode */ }
+}
+
 type TokenBook = Record<string, { token: string; at: number }>;
 
 function readLocal(): TokenBook {

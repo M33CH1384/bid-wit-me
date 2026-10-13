@@ -7,7 +7,7 @@ import { serverUrl } from './online/config';
 import { createTable, tableInfo } from './online/connection';
 import { type PendingMusic, SetupMusicPicker, savePendingMusic } from './online/HostMusic';
 import { isMusicLink } from '@spades/protocol';
-import { loadName, saveName } from './online/identity';
+import { loadName, markNameConfirmed, saveName } from './online/identity';
 import { navigate } from './online/nav';
 import { AccountEntry } from './account/AccountUI';
 import { SocialButton } from './social/Social';
@@ -265,6 +265,7 @@ function OnlineEssentials({ settings, deck, tipsRow }: { settings: Settings; dec
       const i = await tableInfo(serverUrl(), c);
       if (!i.exists) { setErr(`No table with code ${c}`); return; }
       saveName(name.trim());
+      markNameConfirmed(c);
       navigate(`/t/${c}`);
     } catch { setErr("Can't reach the game server."); } finally { setBusy(false); }
   };

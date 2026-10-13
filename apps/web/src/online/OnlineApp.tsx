@@ -5,7 +5,7 @@ import { HostMusicBridge } from './HostMusic';
 import { type Settings, loadSettings, saveSettings, settingsToRules } from '../settings';
 import { serverUrl } from './config';
 import { TableConnection, createTable, tableInfo } from './connection';
-import { forgetToken, loadName, saveName } from './identity';
+import { forgetToken, inviteNeedsName, isPlaceholderName, loadName, markNameConfirmed, saveName } from './identity';
 import Lobby from './Lobby';
 import { codeFromPath, navigate } from './nav';
 import OnlineTable from './OnlineTable';
@@ -25,10 +25,21 @@ export default function OnlineApp({ path }: { path: string }) {
   // "/online" itself is the wizard's online step on the start screen
   useEffect(() => { if (!code) navigate('/', true, { wiz: 'setup', path: 'online' }); }, [code]);
   const [name, setName] = useState(loadName);
-  const [ready, setReady] = useState(() => !!code && !!loadName());
+  const [touched, setTouched] = useState(false);
+  // Confirmed code, not a sticky "ready" flag: a later invite in this same tab still asks.
+  const [confirmed, setConfirmed] = useState<string | null>(null);
   if (!code) return null;
-  if (!ready) {
-    return <Entry code={code} name={name} onName={setName} onGo={(c) => { saveName(name.trim()); setReady(true); if (c !== code) navigate(`/t/${c}`); }} />;
+  const asking = confirmed !== code && inviteNeedsName(code);
+  if (asking) {
+    const shown = !touched && isPlaceholderName(name) ? '' : name;
+    return (
+      <Entry
+        code={code}
+        name={shown}
+        onName={(n) => { setTouched(true); setName(n); }}
+        onGo={(c) => { saveName(name.trim()); markNameConfirmed(c); setConfirmed(c); if (c !== code) navigate(`/t/${c}`); }}
+      />
+    );
   }
   return <TableRoom key={code} code={code} name={name.trim() || 'Player'} />;
 }
@@ -80,7 +91,7 @@ function Entry({ code, name, onName, onGo }: { code: string | null; name: string
       </header>
       <section className="panel">
         <label className="row"><span className="row-label">Your name<small>shown at the table</small></span>
-          <span className="row-control"><input className="name-input" value={name} maxLength={20} autoComplete="nickname" placeholder="e.g. Meech" onChange={(e) => onName(e.target.value)} aria-label="Your name" /></span>
+          <span className="row-control"><input className="name-input" value={name} maxLength={20} autoComplete="nickname" placeholder="e.g. Meech" autoFocus={!!code} data-testid="invite-name" onChange={(e) => onName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && code) { e.preventDefault(); void doJoin(); } }} aria-label="Your name" /></span>
         </label>
       </section>
       {code && info?.exists ? (
