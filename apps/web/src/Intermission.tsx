@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useRef } from 'react';
-import { type GameState, bidLabel, isNilBid, isShot, shotCounts } from '@spades/rules';
+import { type GameState, bidLabel, isNilBid, isShot, shotCovers } from '@spades/rules';
 import { resultChips, signed } from './ScorePad';
 import { sideName } from './Modals';
 import { handWinner, streakLabel, streakOf } from './fx';
@@ -99,7 +99,7 @@ export function Intermission({
   const notes = callouts.filter((c) => c.kind !== 'shot' && c.kind !== 'gotShot');
   const sides = rec.sides;
   const shotSides = sides.filter((s) => s.contractMade === false);
-  const shots = shotCounts(r, st.history);
+  const covers = shotCovers(r, st.history);
   const target = r.targetScore;
   const boomKey = `${st.seed}:${rec.handNo}:${shotSides.map((s) => s.side).join(',')}`;
   const boomed = useRef('');
@@ -108,6 +108,14 @@ export function Intermission({
     boomed.current = boomKey;
     shotSides.forEach((_, i) => sound.play('shotgun', i ? { delay: i * 0.12 } : {}));
   }, [boomKey, shotSides.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sirenOn = covers.some((c) => c.siren);
+  const sirenKey = `${st.seed}:${rec.handNo}`;
+  const sirened = useRef('');
+  useEffect(() => {
+    if (!sirenOn || sirened.current === sirenKey) return;
+    sirened.current = sirenKey;
+    sound.play('siren', { delay: 0.12 });
+  }, [sirenKey, sirenOn]);
 
   return (
     <div className="tt-backdrop" data-testid="table-talk" role="dialog" aria-label="Hand recap">
@@ -144,21 +152,19 @@ export function Intermission({
               const main = chips.find((c) => c.kind === 'made' || c.kind === 'set' || c.kind === 'books');
               const bidPart = books ? 'Books (hand 1)' : s.contract ? `Bid ${s.contract}` : `Bid ${s.seats.map((x) => bidLabel(rec.bids[x]!)).join(' + ')}`;
               const shot = s.contractMade === false;
-              const times = shots[s.side] ?? 0;
-              const shrouded = times >= 2;
-              const taped = times === 1;
+              const cover = covers[s.side] ?? { tape: false, sheet: false, siren: false };
               const justShot = isShot(r, rec.bids, s);
               return (
-                <div key={s.side} className={`tt-team${s.side === mySide ? ' mine' : ''}${shot ? ' blast' : ''}${taped ? ' taped' : ''}${taped && justShot ? ' tape-in' : ''}${shrouded ? ' shrouded' : ''}${shrouded && justShot ? ' sheet-in' : ''}`} data-testid={`recap-side-${s.side}`} data-blast={shot ? 'yes' : 'no'} data-shots={times}>
+                <div key={s.side} className={`tt-team${s.side === mySide ? ' mine' : ''}${shot ? ' blast' : ''}${cover.tape ? ' taped' : ''}${cover.tape && justShot ? ' tape-in' : ''}${cover.sheet ? ' shrouded' : ''}${cover.sheet && justShot ? ' sheet-in' : ''}`} data-testid={`recap-side-${s.side}`} data-blast={shot ? 'yes' : 'no'} data-tape={cover.tape ? 'yes' : 'no'} data-sheet={cover.sheet ? 'yes' : 'no'} data-siren={cover.siren ? 'yes' : 'no'}>
                   {shot && <BlastMarks side={s.side} />}
-                  {taped && (
-                    <div className="caution-tape" data-testid={`recap-tape-${s.side}`} aria-hidden="true">
-                      <b>CAUTION</b><b>SHOT</b><b>CAUTION</b><b>SHOT</b><b>CAUTION</b><b>SHOT</b>
-                    </div>
-                  )}
-                  {shrouded && (
+                  {cover.sheet && (
                     <div className="shroud" data-testid={`recap-shroud-${s.side}`} aria-hidden="true">
                       <i /><i /><i />
+                    </div>
+                  )}
+                  {cover.tape && (
+                    <div className="caution-tape" data-testid={`recap-tape-${s.side}`} aria-hidden="true">
+                      <b>CAUTION</b><b>SHOT</b><b>CAUTION</b><b>SHOT</b><b>CAUTION</b><b>SHOT</b>
                     </div>
                   )}
                   <div className="tt-team-name">

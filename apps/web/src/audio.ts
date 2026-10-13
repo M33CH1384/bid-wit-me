@@ -13,12 +13,12 @@ export type Sfx =
   | 'shuffle' | 'deal' | 'play' | 'tap' | 'sweep' | 'broken' | 'turn' | 'bid' | 'bidSoft'
   | 'cut' | 'made' | 'set' | 'nil' | 'bags' | 'pop' | 'win' | 'lose' | 'flip'
   // hype effects (all synthesized): joker rumbles, the Big-over-Little nuke, streaks, shots
-  | 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak1' | 'streak2' | 'streak3' | 'shot' | 'gotShot' | 'shotgun' | 'wheels' | 'wheelsCar' | 'overcut' | 'overcut3' | 'tornado'
+  | 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak1' | 'streak2' | 'streak3' | 'shot' | 'gotShot' | 'shotgun' | 'siren' | 'wheels' | 'wheelsCar' | 'overcut' | 'overcut3' | 'tornado'
   // 'Run it!': the claimer's cards all slam at once / everyone else's cards hit in a quick cascade
   | 'runSlam' | 'runThud';
 
 /** SFX that bot voices duck under, and for how long (ms). */
-const DUCK_MS: Partial<Record<Sfx, number>> = { runSlam: 700, nuke: 3600, tornado: 2600, wheelsCar: 3000, jokerBig: 1100, shot: 1200, shotgun: 700, streak2: 1400, streak3: 1800, overcut3: 1000, win: 2000, lose: 1600, set: 1200, nil: 1600 };
+const DUCK_MS: Partial<Record<Sfx, number>> = { runSlam: 700, nuke: 3600, tornado: 2600, wheelsCar: 3000, jokerBig: 1100, shot: 1200, shotgun: 700, siren: 1800, streak2: 1400, streak3: 1800, overcut3: 1000, win: 2000, lose: 1600, set: 1200, nil: 1600 };
 
 export interface SoundSettings { on: boolean; volume: number; ambient: boolean; music: boolean; musicVolume: number; /** the venue's quiet ambient sound bed (Release 7), default on */ venueSound: boolean }
 const KEY = 'bwm.sound.v1';
@@ -447,6 +447,7 @@ class Engine {
       case 'shot': return this.slam(t, g);
       case 'gotShot': return this.sting(t, g);
       case 'shotgun': return this.shotgunBoom(t, g);
+      case 'siren': return this.siren(t, g);
       // wheels: a quick rising two-step + hit (short, not a fanfare)
       case 'wheelsCar': return this.peelOut(t, g);
       case 'overcut': return this.overcutSlam(t, g, 2);
@@ -817,6 +818,35 @@ class Engine {
     this.tone(t + 0.01, 1180, 0.8, 'square', 0.04 * g, { filter: 5000 });
     this.tone(t + 0.01, 1590, 0.7, 'square', 0.03 * g, { filter: 5000 });
     for (const f of [146.83, 207.65, 293.66]) this.tone(t + 0.04, f, 0.6, 'sawtooth', 0.08 * g, { filter: 1600, attack: 0.01 });
+  }
+
+  /**
+   * Hand-1 shot-out: a two-tone police yelp. Original synthesis, no sampled recording, no third-party license.
+   * Goes out the sfx bus, so mute and the volume slider apply.
+   */
+  private siren(t: number, g: number) {
+    const c = this.ctx!;
+    const o = c.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(640, t);
+    for (let i = 0; i < 4; i++) {
+      const at = t + i * 0.42;
+      o.frequency.exponentialRampToValueAtTime(920, at + 0.16);
+      o.frequency.exponentialRampToValueAtTime(640, at + 0.42);
+    }
+    const filter = c.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 1400;
+    filter.Q.value = 0.8;
+    const gain = c.createGain();
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.2 * g, t + 0.03);
+    gain.gain.setValueAtTime(0.2 * g, t + 1.5);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 1.72);
+    o.connect(filter).connect(gain).connect(this.sfxBus!);
+    o.start(t);
+    o.stop(t + 1.8);
+    this.tone(t, 320, 1.68, 'sine', 0.08 * g, { attack: 0.03 });
   }
 
   /** Scorecard shotgun: a low boom, a muzzle crack, and a short pellet hiss. Goes out the sfx bus, so mute and volume apply. */

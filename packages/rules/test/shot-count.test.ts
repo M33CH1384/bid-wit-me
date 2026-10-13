@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { type Bid, makeRules, scoreHand, shotCounts } from '../src';
+import { type Bid, makeRules, scoreHand, shotCounts, shotCovers, shotOutResult, shotOutSides } from '../src';
 
 const joker = makeRules('joker');
 const cutthroat = makeRules('cutthroat', { playerCount: 3 });
 
-function hand(rules: ReturnType<typeof makeRules>, bids: Bid[], tricks: number[]) {
+function hand(rules: ReturnType<typeof makeRules>, bids: Bid[], tricks: number[], handNo = 1) {
   const n = rules.partnerships ? 2 : rules.playerCount;
-  return { bids, sides: scoreHand(rules, bids, tricks, Array(n).fill(0), Array(n).fill(0)) };
+  return { handNo, bids, sides: scoreHand(rules, bids, tricks, Array(n).fill(0), Array(n).fill(0)) };
 }
 
 describe('shotCounts', () => {
@@ -43,5 +43,54 @@ describe('shotCounts', () => {
     expect(shotCounts(cutthroat, [one, again])).toEqual([2, 0, 0]);
     const nil = hand(cutthroat, ['nil', 4, 3], [2, 5, 4]);
     expect(shotCounts(cutthroat, [nil])).toEqual([0, 0, 0]);
+  });
+});
+
+describe('shotCovers', () => {
+  const books = ['books', 'books', 'books', 'books'] as const;
+
+  it('a shot on hand 1 already ends the game, so the panel gets the sheet and the tape', () => {
+    expect(shotOutSides(joker, 1, [false, true], [false, false])).toEqual([1]);
+    expect(shotOutResult([-30, 80], [1])).toMatchObject({ endReason: 'shotOut', shotOut: [1] });
+    const short = hand(joker, [...books], [5, 2, 5, 1], 1); // side 1: 3 books
+    expect(shotCovers(joker, [short])[1]).toEqual({ tape: true, sheet: true, siren: true });
+    expect(shotCovers(joker, [short])[0]).toEqual({ tape: false, sheet: false, siren: false });
+    // Shot = out off: hand 1 does not end the game, so it is tape only
+    expect(shotOutSides({ ...joker, shotOut: false }, 1, [false, true], [false, false])).toEqual([]);
+    expect(shotCovers({ ...joker, shotOut: false }, [short])[1]).toEqual({ tape: true, sheet: false, siren: false });
+  });
+
+  it('tapes a later shot and pulls the tape off when they make their books', () => {
+    const clear = hand(joker, [...books], [4, 4, 4, 1], 1);
+    const set = hand(joker, [4, 5, 2, 3], [4, 1, 2, 2], 2); // side 1 bid 8, took 3
+    const made = hand(joker, [3, 3, 3, 3], [3, 3, 3, 4], 3);
+    expect(shotCovers(joker, [clear, set])[1]).toEqual({ tape: true, sheet: false, siren: false });
+    expect(shotCovers(joker, [clear, set, made])[1]).toEqual({ tape: false, sheet: false, siren: false });
+  });
+
+  it('a shot while the previous hand was a shot is the loss: sheet, no tape', () => {
+    const clear = hand(joker, [...books], [4, 4, 4, 1], 1);
+    const set = hand(joker, [4, 5, 2, 3], [4, 1, 2, 2], 2);
+    const again = hand(joker, [3, 4, 3, 4], [4, 1, 3, 1], 3);
+    expect(shotOutSides(joker, 3, [false, true], [false, true])).toEqual([1]);
+    expect(shotCovers(joker, [clear, set, again])[1]).toEqual({ tape: false, sheet: true, siren: false });
+    expect(shotCovers(joker, [clear, set, again])[0]).toEqual({ tape: false, sheet: false, siren: false });
+  });
+
+  it('a hand that is not a shot and does not make books leaves the tape up, and does not count as the loss', () => {
+    const clear = hand(joker, [...books], [4, 4, 4, 1], 1);
+    const set = hand(joker, [4, 5, 2, 3], [4, 1, 2, 2], 2);
+    const nils = hand(joker, ['nil', 'nil', 'nil', 'nil'], [0, 0, 0, 0], 3);
+    const later = hand(joker, [3, 4, 3, 4], [3, 1, 3, 2], 4);
+    expect(shotCovers(joker, [clear, set, nils])[1]).toEqual({ tape: true, sheet: false, siren: false });
+    expect(shotOutSides(joker, 4, [false, true], [false, false])).toEqual([]);
+    expect(shotCovers(joker, [clear, set, nils, later])[1]).toEqual({ tape: true, sheet: false, siren: false });
+  });
+
+  it('tapes one Cutthroat player, and sheets that player when the next hand shoots them too', () => {
+    const set = hand(cutthroat, [6, 4, 5], [2, 5, 8], 2);
+    expect(shotCovers(cutthroat, [hand(cutthroat, [4, 4, 4], [4, 4, 5], 1), set])[0]).toEqual({ tape: true, sheet: false, siren: false });
+    const again = hand(cutthroat, [5, 4, 4], [1, 6, 6], 3);
+    expect(shotCovers(cutthroat, [hand(cutthroat, [4, 4, 4], [4, 4, 5], 1), set, again])[0]).toEqual({ tape: false, sheet: true, siren: false });
   });
 });
