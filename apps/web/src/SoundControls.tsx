@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { sound, useSoundSettings } from './audio';
+import { RestoreSoundChip } from './RestoreSound';
 import { HostMusicFields } from './online/HostMusic';
 import { useHostMusic } from './hostMusic';
 import { tableIntensity, talkPrefs, useTalkPrefs } from './talkPrefs';
@@ -263,6 +264,7 @@ export function SoundDock() {
         {playing && <span className="np-eq dock-eq" aria-hidden><i /><i /><i /></span>}
       </button>
       {flash && <div className="dock-flash" role="status">{flash}</div>}
+      <RestoreSoundChip show={s.needsRestore} onRestore={() => sound.wake('gesture')} />
       {open && (
         <SoundSheet allOff={allOff} onMuteAll={muteAll} onClose={() => setOpen(false)} />
       )}
