@@ -80,9 +80,9 @@ describe('scorecard caution tape and shroud', () => {
     expect(html).toContain('animation-delay:90ms');
     expect(html).toContain('animation-delay:180ms');
     expect(html).not.toContain('animation-delay:270ms');
-    expect(html).toContain('left:40%');
-    expect(html).toContain('left:16%');
-    expect(html).toContain('left:55%');
+    expect(html).toContain('left:62%');
+    expect(html).toContain('left:13%');
+    expect(html).toContain('left:78%');
     expect(html).toContain('data-testid="recap-shot-stamp-1"');
     expect(html).toContain('>SHOT<');
     expect(html).toContain('data-testid="recap-notice-1"');

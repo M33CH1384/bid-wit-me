@@ -48,12 +48,13 @@ export function calloutsFor(st: GameState, mySide: number, names: string[]): Cal
  * Three punched holes. Raster art in /shot/hole.png (original render). The
  * sprite is 40–48px and the glass spiderweb runs out to 1.5× the punch.
  * Rotation and scale are fixed per slot so a reconnect does not reshuffle them.
- * The lower-left hole sits on the progress bar. None of them sit on the total.
+ * One sits in the top-right gap left of the total, one in the lower left, and one on the progress bar.
+ * None of them sit on type.
  */
 const HOLES: readonly { x: string; y: string; rot: number; scale: number }[] = [
-  { x: '40%', y: '16%', rot: -12, scale: 1 },    // beside the name, clear of the border and the total
-  { x: '16%', y: '84%', rot: 16, scale: 0.92 },  // lower-left, across the progress bar
-  { x: '55%', y: '68%', rot: -6, scale: 0.96 },  // low center, under the bid line
+  { x: '62%', y: '16%', rot: -8, scale: 0.96 }, // top-right gap, left of the total
+  { x: '13%', y: '92.5%', rot: 12, scale: 0.87 }, // lower left, in the padding under the bar
+  { x: '78%', y: '81%', rot: -6, scale: 1 },    // on the progress bar, clear of the names
 ];
 
 export function Intermission({

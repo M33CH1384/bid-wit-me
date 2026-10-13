@@ -711,39 +711,43 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-team.taped { clip-path: none; overflow: visible; }
 .tt-team.notice, .tt-team.mine.notice {
   clip-path: none; overflow: visible; border: 1px solid #FF4D4D; margin-right: 6px;
+  padding: 22px 14px 46px;
   transform: translateX(4px) rotate(-1.5deg);
   box-shadow: 0 0 24px rgba(255,60,60,.25), inset 0 0 48px rgba(255,60,60,.12);
+}
+/* No backing chips. A hard 2px shadow plus a soft 6px glow keeps the type readable where a strip passes close. */
+.tt-team.notice .tt-team-name,
+.tt-team.notice .tt-team-name b,
+.tt-team.notice .tt-line,
+.tt-team.notice .tt-line *,
+.tt-team.notice .tt-players,
+.tt-team.notice .tt-players *,
+.tt-team.notice .tt-stat.total,
+.tt-team.notice .tt-stat.total * {
+  text-shadow: 0 2px 0 #140810, 0 0 6px rgba(8, 4, 12, .95);
 }
 .tt-team.notice .tt-team-name,
 .tt-team.notice .tt-line,
 .tt-team.notice .tt-players,
-.tt-team.notice .tt-stat.total {
-  position: relative; z-index: 6;
-  text-shadow: 0 2px 0 #140810;
-  background: #100814;
-  border-radius: 3px;
-  padding: 0 4px;
-  box-shadow: 0 0 0 3px #100814;
-}
+.tt-team.notice .tt-stat.total { position: relative; z-index: 6; background: transparent; box-shadow: none; }
 .tt-team.notice .tt-team-name,
 .tt-team.notice .tt-line,
-.tt-team.notice .tt-players { filter: brightness(.85); justify-self: start; width: fit-content; max-width: 100%; }
+.tt-team.notice .tt-players { filter: brightness(.85); }
+/* The tape's lane sits between the badges and the bid line. It is tall enough that a ±8° pair of 28px strips can cross in it and still miss the total. */
+.tt-team.notice .tt-line { margin-top: 88px; }
+.tt-team.notice .tt-stat.total { align-self: start; }
 .tt-team.notice.tape-in { animation: hole-jolt 90ms linear 0ms, hole-jolt 90ms linear 90ms, hole-jolt 90ms linear 180ms; }
 @keyframes hole-jolt { 0%, 100% { transform: translateX(4px) rotate(-1.5deg); } 45% { transform: translateX(7px) rotate(-1.5deg); } }
 .shot-holes { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
 .shot-holes img { position: absolute; width: 46px; height: 46px; transform: translate(-50%, -50%) rotate(var(--rot, 0deg)) scale(var(--s, 1)); pointer-events: none; }
 .tt-team.notice.tape-in .shot-holes img { animation: hole-punch 120ms cubic-bezier(.2, .8, .2, 1) both; }
 @keyframes hole-punch { 0% { opacity: 0; transform: translate(-50%, -50%) rotate(var(--rot, 0deg)) scale(calc(var(--s, 1) * 1.4)); } 12% { opacity: 1; transform: translate(-50%, -50%) rotate(var(--rot, 0deg)) scale(calc(var(--s, 1) * 1.28)); } 100% { opacity: 1; transform: translate(-50%, -50%) rotate(var(--rot, 0deg)) scale(var(--s, 1)); } }
-/* Two full-width strips in a shallow X. They cross in the open left-center, overhang the card, and stay behind the type. A mask keeps the total clear. */
+/* Two full-width strips in a shallow X. They cross in the open band under the badges, run edge to edge, and are not masked. */
 .caution-x {
   position: absolute; z-index: 2; left: -14px; width: calc(100% + 28px); top: -16px; bottom: -16px;
   opacity: 0.95; overflow: visible; pointer-events: none;
-  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cmask id='m'%3E%3Crect width='100' height='100' fill='white'/%3E%3Crect x='70' y='0' width='30' height='64' fill='black'/%3E%3C/mask%3E%3C/defs%3E%3Crect width='100' height='100' fill='white' mask='url(%23m)'/%3E%3C/svg%3E");
-  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cmask id='m'%3E%3Crect width='100' height='100' fill='white'/%3E%3Crect x='70' y='0' width='30' height='64' fill='black'/%3E%3C/mask%3E%3C/defs%3E%3Crect width='100' height='100' fill='white' mask='url(%23m)'/%3E%3C/svg%3E");
-  -webkit-mask-size: 100% 100%; mask-size: 100% 100%;
-  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
 }
-.caution-x .tape { position: absolute; left: 0; top: 30%; width: 100%; height: 28px; object-fit: cover; transform-origin: 52% 50%; filter: drop-shadow(0 2px 1px rgba(0,0,0,.45)); }
+.caution-x .tape { position: absolute; left: 0; top: 132px; width: 100%; height: 28px; object-fit: cover; transform-origin: 48% 50%; filter: drop-shadow(0 2px 1px rgba(0,0,0,.45)); }
 .caution-x .tape.a { --from: 20deg; --to: 8deg; transform: rotate(8deg); }
 .caution-x .tape.b { --from: -20deg; --to: -8deg; transform: rotate(-8deg); }
 .tt-team.tape-in .caution-x .tape { animation: tape-slap 260ms cubic-bezier(.2, 1.3, .3, 1) 300ms both; }
@@ -845,10 +849,12 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-stat.total b { font-size: 46px; color: #fff; text-shadow: 0 0 14px rgba(185,128,255,.8); }
 .tt-team.mine .tt-stat.total b { color: var(--gold); text-shadow: 0 0 14px rgba(245,197,66,.7); }
 .tt-team.notice .tt-stat.total b,
-.tt-team.mine.notice .tt-stat.total b { color: #FF6B6B; text-shadow: 0 2px 0 #140810; background: transparent; }
+.tt-team.mine.notice .tt-stat.total b { color: #FF6B6B; text-shadow: 0 2px 0 #140810, 0 0 6px rgba(8, 4, 12, .95); background: transparent; }
 .tt-players { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 6px; font-size: 11px; color: var(--muted); }
 .nil-tag { font-style: normal; font-weight: 800; font-size: 10px; padding: 0 3px; border-radius: 2px; background: var(--purple); color: #fff; }
 .tt-team .tt-bar { grid-area: bar; }
+.tt-team.notice .tt-bar { overflow: visible; }
+.tt-team.notice .tt-bar small { top: auto; bottom: calc(100% + 3px); }
 .tt-bar { position: relative; height: 12px; background: rgba(255,255,255,.08); border-radius: 6px; overflow: hidden; margin-top: 6px; }
 .tt-recap.crowded { gap: 10px; }
 .tt-recap.crowded .tt-team { padding: 12px 14px; }
@@ -919,6 +925,8 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
   .tt-foot { padding: 8px 10px; } .tt-foot .primary { min-width: 0; flex: 1; }
   .tt-recap.crowded .tt-stat.total b { font-size: 30px; }
   .tt-recap.crowded .tt-team { padding: 10px 12px; }
+  .tt-team.notice, .tt-team.mine.notice { padding: 22px 14px 46px; }
+  .tt-team.notice .tt-line { margin-top: 88px; }
 }
 /* portrait phones: the scorebug must fit 4-digit scores like "-155" and two-digit bags (quality toggle lives in the gear menu) */
 @media (orientation: portrait) and (max-width: 600px) {
