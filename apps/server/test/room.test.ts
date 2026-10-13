@@ -190,6 +190,41 @@ describe('game', () => {
     expect(env.errors(turn).at(-1)!.code).toBe('BAD_MESSAGE');
   });
 
+  it('enforces the host minimum on bids, including a Nil partner', () => {
+    const { env } = fourHumans();
+    env.send('a', { t: 'config', rules: makeRules('joker', { firstHandBidsItself: false, firstHandMin: 4, minTeamBid: 0 }) });
+    env.send('a', { t: 'start' });
+    const cids = ['a', 'b', 'c', 'd'];
+    const firstSeat = env.room.data.game!.turn!;
+    const first = cids[firstSeat]!;
+    env.send(first, { t: 'act', action: { type: 'bid', bid: 1 }, seq: env.room.data.seq });
+    expect(env.room.data.game!.bids[firstSeat]).toBe(1);
+    const partner = cids[env.room.data.game!.turn!]!;
+    env.send(partner, { t: 'act', action: { type: 'bid', bid: 'nil' }, seq: env.room.data.seq });
+    expect(env.errors(partner).at(-1)).toMatchObject({ code: 'NIL_NOT_ALLOWED', message: "Can't Nil — partner bid 1" });
+    env.send(partner, { t: 'act', action: { type: 'bid', bid: 2 }, seq: env.room.data.seq });
+    expect(env.errors(partner).at(-1)).toMatchObject({ code: 'BID_TOO_LOW', message: 'Minimum is 4' });
+    expect(env.room.data.game!.bids[env.room.data.game!.turn!]).toBeNull();
+    env.send(partner, { t: 'act', action: { type: 'bid', bid: 3 }, seq: env.room.data.seq });
+    expect(env.room.data.game!.bids[(firstSeat + 2) % 4]).toBe(3);
+  });
+
+  it('stores Cutthroat with Nil and Blind Nil off and rejects those bids', () => {
+    const { env } = fourHumans();
+    const raw = makeRules('cutthroat', { playerCount: 4, firstHandBidsItself: false, minTeamBid: 4 });
+    env.send('a', { t: 'config', rules: { ...raw, nil: { allowed: true, value: 100 }, blindNil: { allowed: true, value: 200, onlyWhenBehindBy: null, exchangeCards: 0 } } });
+    expect(env.room.data.rules.nil.allowed).toBe(false);
+    expect(env.room.data.rules.blindNil.allowed).toBe(false);
+    env.send('a', { t: 'start' });
+    const cid = ['a', 'b', 'c', 'd'][env.room.data.game!.turn!]!;
+    env.send(cid, { t: 'act', action: { type: 'bid', bid: 'nil' }, seq: env.room.data.seq });
+    expect(env.errors(cid).at(-1)).toMatchObject({ code: 'NIL_NOT_ALLOWED', message: 'Nil is off in Cutthroat' });
+    env.send(cid, { t: 'act', action: { type: 'bid', bid: 'blindNil' }, seq: env.room.data.seq });
+    expect(env.errors(cid).at(-1)).toMatchObject({ code: 'BLIND_NIL_NOT_ALLOWED', message: 'Blind Nil is off in Cutthroat' });
+    env.send(cid, { t: 'act', action: { type: 'bid', bid: 3 }, seq: env.room.data.seq });
+    expect(env.errors(cid).at(-1)).toMatchObject({ code: 'BID_TOO_LOW', message: 'Minimum bid is 4' });
+  });
+
   it('bots play their turns and stop at the human', () => {
     const env = new FakeEnv(undefined, FAST);
     env.join('a', 'Solo');

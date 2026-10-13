@@ -6,15 +6,15 @@ describe('Cutthroat setup', () => {
   it('summary line for 4 players with the defaults', () => {
     const r = settingsToRules({ ...DEFAULT_SETTINGS, mode: 'cutthroat4', cutthroatDeck: 'standard52' });
     expect(r.targetScore).toBe(300);
-    expect(rulesSummary(r)).toBe('4 players • 13 cards each • 13 books • Min bid 1 • Nil on • Blind Nil off • Bags on');
+    expect(rulesSummary(r)).toBe('4 players • 13 cards each • 13 books • Minimum 1 • Nil off • Blind Nil off • Bags on');
   });
   it('3 players: the removed card is named; options flow into the rules', () => {
     const s = { ...DEFAULT_SETTINGS, mode: 'cutthroat3' as const, cutthroatDeck: 'standard52' as const, cutMinBid: 3 as const, nilAllowed: false, cutBlindNil: true, bagsOn: false, targetScore: 500 };
     const r = settingsToRules(s);
     expect(r).toMatchObject({ playerCount: 3, minTeamBid: 3, targetScore: 500, bagsOn: false, removedCards: ['2C'] });
     expect(r.nil.allowed).toBe(false);
-    expect(r.blindNil.allowed).toBe(true);
-    expect(rulesSummary(r)).toBe('3 players • 17 cards each • 17 books • 2♣ removed • Min bid 3 • Nil off • Blind Nil on • Bags off');
+    expect(r.blindNil.allowed).toBe(false);
+    expect(rulesSummary(r)).toBe('3 players • 17 cards each • 17 books • 2♣ removed • Minimum 3 • Nil off • Blind Nil off • Bags off');
     expect(glossary(r).bid.def).toContain('2♣ is removed');
     expect(glossary(r).bags.def).toContain('off at this table');
     const jr = settingsToRules({ ...s, cutthroatDeck: 'joker54' });

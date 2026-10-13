@@ -7,14 +7,14 @@ import {
 const noBooks = { firstHandBidsItself: false } as const;
 
 describe('Cutthroat', () => {
-  it('defaults: no teams, to 300, min bid 1, Nil on, Blind Nil off, bags on, no first-hand minimum', () => {
+  it('defaults: no teams, to 300, min bid 1, Nil and Blind Nil off, bags on, no separate books minimum', () => {
     for (const pc of [3, 4] as const) {
       const r = defaultRules('cutthroat', pc);
       expect(r.partnerships).toBe(false);
       expect(sideCount(r)).toBe(pc); // bids, scores and bags are per player
       expect(r.targetScore).toBe(300);
       expect(r.minTeamBid).toBe(1);
-      expect(r.nil.allowed).toBe(true);
+      expect(r.nil.allowed).toBe(false);
       expect(r.blindNil.allowed).toBe(false);
       expect(r.bagsOn).not.toBe(false);
       expect(r.firstHandMin).toBeNull();
@@ -90,15 +90,14 @@ describe('Cutthroat', () => {
     expect(st.turn).toBe((st.dealer + 1) % 3);
   });
 
-  it('a bid of 0 is Nil; with Nil off it is refused and the minimum bid applies', () => {
-    const on = newGame(makeRules('cutthroat', { playerCount: 4, ...noBooks }), 'nil');
-    const after = applyAction(on, { type: 'bid', seat: on.turn!, bid: 0 });
-    expect(after.bids[on.turn!]).toBe('nil');
-
-    const off = newGame(makeRules('cutthroat', { playerCount: 4, nil: { allowed: false }, minTeamBid: 3, ...noBooks }), 'nil-off');
+  it('Nil and Blind Nil stay off, and the minimum bid applies', () => {
+    const off = newGame(makeRules('cutthroat', { playerCount: 4, nil: { allowed: true }, blindNil: { allowed: true }, minTeamBid: 3, ...noBooks }), 'nil-off');
+    expect(off.rules.nil.allowed).toBe(false);
+    expect(off.rules.blindNil.allowed).toBe(false);
     const opt = bidOptions(off, off.turn!);
-    expect(opt).toMatchObject({ min: 3, nil: false, blindNil: false });
-    expect(() => applyAction(off, { type: 'bid', seat: off.turn!, bid: 0 })).toThrow(RuleError);
+    expect(opt).toMatchObject({ min: 3, nil: false, blindNil: false, blockReason: 'Minimum bid is 3' });
+    expect(() => applyAction(off, { type: 'bid', seat: off.turn!, bid: 0 })).toThrow(/Nil is off in Cutthroat/);
+    expect(() => applyAction(off, { type: 'bid', seat: off.turn!, bid: 'blindNil' })).toThrow(/Blind Nil is off in Cutthroat/);
     expect(() => applyAction(off, { type: 'bid', seat: off.turn!, bid: 2 })).toThrow(/Minimum bid is 3/);
     expect(applyAction(off, { type: 'bid', seat: off.turn!, bid: 3 }).bids[off.turn!]).toBe(3);
   });
@@ -117,9 +116,11 @@ describe('Cutthroat', () => {
     expect(st.revealed.every(Boolean)).toBe(true);
     expect(bidOptions(st, 0).blindNil).toBe(false);
     expect(() => applyAction(st, { type: 'bid', seat: st.turn!, bid: 'blindNil' })).toThrow(RuleError);
-    // turned on: available (no "behind by" condition in Cutthroat)
+    // A host override cannot turn it back on.
     const on = newGame(makeRules('cutthroat', { playerCount: 4, blindNil: { allowed: true, onlyWhenBehindBy: null }, ...noBooks }), 'bn-on');
-    expect(on.revealed.some((x) => !x)).toBe(true);
+    expect(on.rules.blindNil.allowed).toBe(false);
+    expect(on.revealed.every(Boolean)).toBe(true);
+    expect(bidOptions(on, on.turn!).blindNil).toBe(false);
   });
 
   it('per-player scoring; bags and penalties can be turned off', () => {

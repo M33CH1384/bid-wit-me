@@ -191,10 +191,10 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
           <label className="row"><span className="row-label">Shot = out<small>shot on hand 1, or twice in a row, loses</small></span><span className="row-control">
             <button type="button" data-testid="lobby-shot-out" className={`toggle ${settings.shotOut !== false ? 'on' : ''}`} role="switch" aria-checked={settings.shotOut !== false} aria-label="Shot = out" onClick={() => set('shotOut', settings.shotOut === false)}><span /></button>
           </span></label>
-          {settings.shotOut !== false && (
-            <label className="row"><span className="row-label">First-hand minimum<small>fewer books on hand 1 = shot</small></span><span className="row-control">
+          {!settings.mode.startsWith('cutthroat') && (
+            <label className="row"><span className="row-label">Minimum books / bid<small>Every hand. Hand 1: fewer books is a shot. Later: bids must reach it.</small></span><span className="row-control">
               <select data-testid="lobby-first-hand-min" value={String(settings.firstHandMin)} onChange={(e) => set('firstHandMin', (e.target.value === 'default' || e.target.value === 'off' ? e.target.value : Number(e.target.value)) as Settings['firstHandMin'])}>
-                <option value="default">Default ({settings.mode.startsWith('cutthroat') ? 'off' : 4})</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="off">Off</option>
+                <option value="default">Default (4)</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="off">Off</option>
               </select></span></label>
           )}
           <label className="row"><span className="row-label">Table Talk<small>between hands · all mics open</small></span><span className="row-control">
@@ -226,18 +226,10 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
               </select></span></label>
           )}
           {settings.mode.startsWith('cutthroat') ? (
-            <>
-              <label className="row"><span className="row-label">Minimum bid<small>0 is always Nil</small></span><span className="row-control">
-                <select data-testid="lobby-min-bid" value={String(settings.cutMinBid ?? 1)} onChange={(e) => set('cutMinBid', Number(e.target.value) as Settings['cutMinBid'])}>
-                  {[1, 2, 3, 4].map((x) => <option key={x} value={x}>{x}{x === 1 ? ' (default)' : ''}</option>)}
-                </select></span></label>
-              <label className="row"><span className="row-label">Allow Nil</span><span className="row-control">
-                <button type="button" data-testid="lobby-nil" className={`toggle ${settings.nilAllowed ? 'on' : ''}`} role="switch" aria-checked={settings.nilAllowed} aria-label="Allow Nil" onClick={() => set('nilAllowed', !settings.nilAllowed)}><span /></button>
-              </span></label>
-              <label className="row"><span className="row-label">Allow Blind Nil</span><span className="row-control">
-                <button type="button" data-testid="lobby-blind-nil" className={`toggle ${!!settings.cutBlindNil ? 'on' : ''}`} role="switch" aria-checked={!!settings.cutBlindNil} aria-label="Allow Blind Nil" onClick={() => set('cutBlindNil', !settings.cutBlindNil)}><span /></button>
-              </span></label>
-            </>
+            <label className="row"><span className="row-label">Minimum books / bid<small>Every hand. Hand 1: fewer books is a shot. Nil is off.</small></span><span className="row-control">
+              <select data-testid="lobby-min-bid" value={String(settings.cutMinBid ?? 1)} onChange={(e) => set('cutMinBid', Number(e.target.value) as Settings['cutMinBid'])}>
+                {[1, 2, 3, 4].map((x) => <option key={x} value={x}>{x}{x === 1 ? ' (default)' : ''}</option>)}
+              </select></span></label>
           ) : (
           <label className="row"><span className="row-label">Blind Nil</span><span className="row-control">
             <select value={settings.blindNil} onChange={(e) => set('blindNil', e.target.value as Settings['blindNil'])}>
