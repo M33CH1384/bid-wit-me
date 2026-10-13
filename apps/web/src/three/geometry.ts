@@ -1,5 +1,5 @@
 import { BufferAttribute, type BufferGeometry, ExtrudeGeometry, Path, Shape, ShapeGeometry } from 'three';
-import { OUTLINE_PX } from './handLift';
+import { OUTLINE_AHEAD, OUTLINE_PX } from './handLift';
 import { CH, CR, CT, CW, FACE_CAP_GAP, FELT, RAIL } from './layout';
 
 /**
@@ -78,6 +78,8 @@ let outlineGeo: BufferGeometry | null = null;
  * A ring on the card's own rounded rectangle. The hole is the face, tucked a fraction under it
  * so the gold meets the edge with no light gap. The mesh is a child of the card, so the fan roll
  * turns the outline with the card. It is not a rectangle around the hand.
+ * OUTLINE_AHEAD lifts the whole ring off the face plane. Coplanar with the polygon-offset face,
+ * the ring fails the depth test on iPhone's 16-bit buffer and the highlight never appears.
  */
 export function cardOutlineGeometry(): BufferGeometry {
   if (outlineGeo) return outlineGeo;
@@ -89,7 +91,7 @@ export function cardOutlineGeometry(): BufferGeometry {
   rr(hole, CW - tuck * 2, CH - tuck * 2, Math.max(0.001, CR - tuck), 0, 0, true);
   outer.holes.push(hole);
   const g = new ShapeGeometry(outer, 4);
-  g.translate(0, 0, CT / 2 + FACE_CAP_GAP);
+  g.translate(0, 0, CT / 2 + FACE_CAP_GAP + OUTLINE_AHEAD);
   outlineGeo = g;
   return g;
 }

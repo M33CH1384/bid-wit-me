@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { CH, CR, CW } from '../src/three/layout';
 import { cardOutlineGeometry, cardOutlineStroke } from '../src/three/geometry';
+import { FACE_POLYGON_OFFSET, LEGAL_NEAR, OUTLINE_AHEAD } from '../src/three/handLift';
+import { CH, CR, CT, CW, FACE_CAP_GAP, handCardPlane, makeCamera } from '../src/three/layout';
 
 /** True when (x, y) lands in a triangle of the outline ring. */
 function covers(x: number, y: number): boolean {
@@ -45,5 +46,29 @@ describe('per-card outline', () => {
     // the stroke follows the same corner centre as the card
     const mid = CR + stroke / 2;
     expect(covers(CW / 2 - CR + mid / Math.SQRT2, CH / 2 - CR + mid / Math.SQRT2)).toBe(true);
+  });
+
+  it('sits in front of the face bias on a 16-bit iPhone buffer, and behind the next card', () => {
+    const g = cardOutlineGeometry();
+    const pos = g.getAttribute('position');
+    let z = -Infinity;
+    for (let i = 0; i < pos.count; i++) z = Math.max(z, pos.getZ(i));
+    // off the face plane, so the transparent ring is not depth-tested as coplanar with the pips
+    expect(z).toBeCloseTo(CT / 2 + FACE_CAP_GAP + OUTLINE_AHEAD, 5);
+    expect(OUTLINE_AHEAD).toBeGreaterThan(0);
+    const aspects = [390 / 844, 844 / 390, 16 / 9];
+    for (const aspect of aspects) {
+      const cam = makeCamera(aspect, false);
+      const n = 13;
+      for (let i = 0; i < n; i++) {
+        const plane = handCardPlane(aspect, n, i, 0, 0, { layer: 'play', near: LEGAL_NEAR }, 0, 844);
+        const lead = OUTLINE_AHEAD * plane.s * plane.depth;
+        const ulp = (plane.depth * plane.depth) * (cam.far - cam.near) / (cam.near * cam.far * 65535);
+        // clears the face's window bias (8 units toward the camera) with room to spare
+        expect(lead).toBeGreaterThan(ulp * Math.abs(FACE_POLYGON_OFFSET.units) * 1.5);
+        // the fan steps 0.006; staying under that keeps the outline from painting the next card
+        expect(lead).toBeLessThan(0.005);
+      }
+    }
   });
 });
