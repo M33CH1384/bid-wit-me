@@ -4,7 +4,7 @@ import { TeamNameField } from '../TeamName';
 import type { NukeIntensity } from '@spades/protocol';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { cardLabel, trumpOrder } from '@spades/rules';
+import { TrumpLadder } from '../trumpLadder';
 import { BOT_SKILL_SETTINGS, SKILL_SETTING_LABEL, TALK_INTENSITY_LABEL, type TalkIntensity, skillSettingOf } from '@spades/bots';
 import { TALK_INTENSITIES, type BotLevel } from '@spades/protocol';
 import { TALK_HINT } from '../MoreOptions';
@@ -66,7 +66,6 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
     try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch { /* ignore */ }
   };
 
-  const order = trumpOrder(r).slice(0, 5).map((c) => (c === 'BJ' ? 'Big 🃏' : c === 'LJ' ? 'Little 🃏' : cardLabel(c)));
   const team = (seat: number) => (r.partnerships ? (seat % 2 === 0 ? 'A' : 'B') : null);
   const seatedHumans = room.seats.filter((s) => s.kind === 'human').length;
   const wide = useWide();
@@ -271,7 +270,7 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
         </>
       ) : (
         <div className="summary">
-          <span>{modeTitle(r)} · Trumps: {order.join(' › ')} …</span>
+          <span>{modeTitle(r)} · Trumps: <TrumpLadder rules={r} n={5} style="emoji" /> …</span>
           <span>Target {r.targetScore} · timer {r.turnTimerSec.bid}s/{r.turnTimerSec.play}s</span>
           {r.firstHandBidsItself && <span>First hand: books bid themselves</span>}
           <span>Table Talk {room.talkSec ?? 20}s between hands · all mics open</span>

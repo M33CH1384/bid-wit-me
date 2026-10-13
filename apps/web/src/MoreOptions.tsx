@@ -3,7 +3,9 @@ import Credits from './Credits';
 import Feedback, { AboutRow } from './Feedback';
 import { BotTrashTalkRow, NukeIntensityRow, ReduceEffectsRow, SoundFields } from './SoundControls';
 import { TeamNameField, myTeamName, useMyTeamName } from './TeamName';
+import { CLASSIC_JOKER, makeRules } from '@spades/rules';
 import { type Settings, settingsToRules } from './settings';
+import { TRUMP_SEP, trumpLadder, trumpLadderText } from './trumpLadder';
 import { type TipsPref, saveTips } from './tips';
 import { BADGES, useBadges } from './badges';
 import { VENUE_DEFS, VENUE_LIST, type VenueChoice } from './venues';
@@ -110,8 +112,8 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
               {isJokerDeck && (
                 <Row label="Joker trump order" hint={s.jokerOrder === 'house' ? '2♣ 2♥ removed · 2♦ is a spade' : '2♥ 2♦ removed'}>
                   <select value={s.jokerOrder} onChange={(e) => set('jokerOrder', e.target.value as Settings['jokerOrder'])}>
-                    <option value="house">BJ › LJ › 2♦ › 2♠ › A♠</option>
-                    <option value="classic">BJ › LJ › A♠ … 2♠</option>
+                    <option value="house">{trumpLadderText(makeRules('joker'), 5, 'short')}</option>
+                    <option value="classic">{trumpLadder(makeRules('joker', { ...CLASSIC_JOKER }), 3, 'short').join(TRUMP_SEP)} … 2♠</option>
                   </select>
                 </Row>
               )}

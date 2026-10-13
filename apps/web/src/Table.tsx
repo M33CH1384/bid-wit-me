@@ -5,7 +5,7 @@ import { type VenueId, VENUE_DEFS, resolveVenue } from './venues';
 import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, isNukeTrick, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, newlyOneTrickFromShot, nilBustsJustResolved, partnerOf, sideOf, sortHand, trumpOrder,
+  type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, isNukeTrick, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, newlyOneTrickFromShot, nilBustsJustResolved, partnerOf, sideOf, sortHand,
 } from '@spades/rules';
 import { ScorePad, setTeamNames, sideName } from './Modals';
 import { LockedRulesPanel } from './LockedRules';
@@ -14,6 +14,7 @@ import { SeriesChip, SeriesSheet, loadSeries, saveSeries } from './Series';
 import { useMyTeamName } from './TeamName';
 import { offlineTalk } from './offlineTalk';
 import { BidOrder, showCenterBidOrder } from './PartnerTalk';
+import { TrumpLadder } from './trumpLadder';
 import { SocialButton } from './social/Social';
 import { recordOfflineGame } from './offlineStats';
 import { setTableIntensity, showLine, speakBot, useTalkPrefs } from './talkPrefs';
@@ -875,8 +876,6 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const showResults = st.phase === 'gameOver' && !pause && !runFx && talkOpen && !!st.result && !shotOutRecap;
   const modalOpen = (st.phase === 'handOver' && !pause && talkOpen) || confirmLeave || showPad || (st.phase === 'gameOver' && !pause && !runFx && talkOpen && !!st.result);
 
-  const trumps = useMemo(() => trumpOrder(r).slice(0, 5).map((c) => (c === 'BJ' ? 'BIG JKR' : c === 'LJ' ? 'LIL JKR' : cardLabel(c))), [r]);
-  const trumpsShort = useMemo(() => trumpOrder(r).slice(0, 4).map((c) => (c === 'BJ' ? 'BJ' : c === 'LJ' ? 'LJ' : cardLabel(c))), [r]);
   const promoted = useCallback((c: Card) => isPromoted(c, r), [r]);
 
   const onCard = useCallback((c: Card) => {
@@ -1030,7 +1029,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             ))}
           </div>
           <div className="bug-trumps" aria-label="Trump order">
-            <span className="ts-label">TRUMPS</span>{trumpsShort.join('›')}{st.spadesBroken && <i className="bt-broken" title="Spades broken">BROKEN</i>}
+            <span className="ts-label">TRUMPS</span><TrumpLadder rules={r} n={4} style="short" />{st.spadesBroken && <i className="bt-broken" title="Spades broken">BROKEN</i>}
           </div>
           <div className="bug-meta">
             <span className="bug-mode">{modeTitle(r).toUpperCase()}</span>
@@ -1044,7 +1043,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       </header>
 
       <div className="trump-strip glass slant">
-        <span className="ts-label">TRUMPS</span> {trumps.join(' › ')}{st.spadesBroken && <span className="ts-broken">BROKEN</span>}
+        <span className="ts-label">TRUMPS</span> <TrumpLadder rules={r} n={5} style="long" />{st.spadesBroken && <span className="ts-broken">BROKEN</span>}
       </div>
 
       {/* last-trick readout. After a resolved 'Run it!' the same chip opens every hand the tornado cleared. */}
