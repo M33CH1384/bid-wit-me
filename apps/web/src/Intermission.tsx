@@ -45,14 +45,14 @@ export function calloutsFor(st: GameState, mySide: number, names: string[]): Cal
 }
 
 /**
- * Four punched holes in the lower-left clear space: below the bid line, left of the total.
- * Raster art in /shot/hole.png (original, no third-party license).
+ * Three punched holes in empty card space. Raster art in /shot/hole.png
+ * (original render, no third-party illustration). Rotation and scale are fixed
+ * per slot so a reconnect does not reshuffle them.
  */
-const HOLES: readonly (readonly [string, string])[] = [
-  ['10%', '86%'],
-  ['26%', '90%'],
-  ['42%', '84%'],
-  ['56%', '88%'],
+const HOLES: readonly { x: string; y: string; rot: number; scale: number }[] = [
+  { x: '60%', y: '28%', rot: -14, scale: 0.88 }, // gap between the name and the total
+  { x: '11%', y: '93%', rot: 18, scale: 0.85 },  // lower-left, at the start of the bar
+  { x: '88%', y: '72%', rot: 6, scale: 0.85 },   // mid-right, under the total
 ];
 
 export function Intermission({
@@ -111,7 +111,7 @@ export function Intermission({
   useEffect(() => {
     if (!noticeIn || punched.current === sirenKey) return;
     punched.current = sirenKey;
-    haptic([30, 60, 30, 60, 30, 60, 30, 90, 60], 'shot-card');
+    haptic([30, 60, 30, 60, 30, 90, 60], 'shot-card');
   }, [noticeIn, sirenKey]);
 
   return (
@@ -161,8 +161,8 @@ export function Intermission({
                 <div key={s.side} className={`tt-team${s.side === mySide ? ' mine' : ''}${shot ? ' blast' : ''}${cover.tape ? ' taped' : ''}${cover.tape && justShot ? ' tape-in' : ''}${notice ? ' notice' : ''}${cover.sheet ? ' shrouded' : ''}${cover.sheet && justShot ? ' sheet-in' : ''}`} data-testid={`recap-side-${s.side}`} data-blast={shot ? 'yes' : 'no'} data-tape={cover.tape ? 'yes' : 'no'} data-sheet={cover.sheet ? 'yes' : 'no'} data-siren={cover.siren ? 'yes' : 'no'}>
                   {notice && (
                     <div className="shot-holes" data-testid={`recap-holes-${s.side}`} aria-hidden="true">
-                      {HOLES.map(([x, y], i) => (
-                        <img key={i} src="/shot/hole.png" alt="" style={{ left: x, top: y, animationDelay: `${i * 90}ms` }} />
+                      {HOLES.map((h, i) => (
+                        <img key={i} src="/shot/hole.png" alt="" style={{ left: h.x, top: h.y, animationDelay: `${i * 90}ms`, ['--rot' as string]: `${h.rot}deg`, ['--s' as string]: String(h.scale) }} />
                       ))}
                     </div>
                   )}
@@ -174,8 +174,7 @@ export function Intermission({
                   )}
                   {cover.tape && (
                     <div className="caution-x" data-testid={`recap-tape-${s.side}`} aria-hidden="true">
-                      <img className="tape a" src="/shot/tape.png" alt="" />
-                      <img className="tape b" src="/shot/tape.png" alt="" />
+                      <img className="tape" src="/shot/tape.png" alt="" />
                     </div>
                   )}
                   <div className="tt-face">
@@ -194,7 +193,7 @@ export function Intermission({
                   </div>
                   <div className="tt-line" data-testid={`recap-line-${s.side}`}>
                     <span>{bidPart}</span><i>·</i><span>Took {s.tricks}</span>
-                    {main && main.kind !== 'books' && !(notice && main.kind === 'set') && <><i>·</i><em className={`rchip ${main.kind}`}>{main.text}</em></>}
+                    {main && main.kind !== 'books' && !(shot && main.kind === 'set') && <><i>·</i><em className={`rchip ${main.kind}`}>{main.text}</em></>}
                     <i>·</i><b className={s.points < 0 ? 'neg' : 'pos'} data-testid={`recap-points-${s.side}`}>{signed(s.points)}</b>
                   </div>
                   <ul className="tt-players" data-testid={`recap-players-${s.side}`}>

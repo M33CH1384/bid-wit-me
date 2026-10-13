@@ -70,15 +70,19 @@ describe('scorecard caution tape and shroud', () => {
     expect(html).toContain('class="tt-team blast taped tape-in notice"');
     expect(html).toContain('data-testid="recap-tape-1"');
     expect(html).toContain('src="/shot/tape.png"');
-    expect(html).toContain('class="tape a"');
-    expect(html).toContain('class="tape b"');
+    expect(html.match(/src="\/shot\/tape.png"/g)).toHaveLength(1);
+    expect(html).not.toContain('class="tape a"');
+    expect(html).not.toContain('class="tape b"');
     expect(html).toContain('data-testid="recap-holes-1"');
     expect(html).toContain('src="/shot/hole.png"');
-    expect(html.match(/src="\/shot\/hole.png"/g)).toHaveLength(4);
+    expect(html.match(/src="\/shot\/hole.png"/g)).toHaveLength(3);
     expect(html).toContain('animation-delay:0ms');
     expect(html).toContain('animation-delay:90ms');
     expect(html).toContain('animation-delay:180ms');
-    expect(html).toContain('animation-delay:270ms');
+    expect(html).not.toContain('animation-delay:270ms');
+    expect(html).toContain('left:60%');
+    expect(html).toContain('left:11%');
+    expect(html).toContain('left:88%');
     expect(html).toContain('data-testid="recap-shot-stamp-1"');
     expect(html).toContain('>SHOT<');
     expect(html).toContain('data-testid="recap-notice-1"');
@@ -182,14 +186,17 @@ describe('scorecard caution tape and shroud', () => {
 
   it('keeps the tape and the sheet at phone widths, and skips only their entrance when motion is reduced', () => {
     const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
-    expect(css).toContain('tape-slap-a');
-    expect(css).toContain('animation-duration: 260ms');
-    expect(css).toContain('cubic-bezier(.2, 1.3, .3, 1)');
+    expect(css).toContain('animation: tape-slap 260ms cubic-bezier(.2, 1.3, .3, 1)');
+    expect(css).toContain('opacity: 0.95');
     expect(css).toContain('brightness(.85)');
     expect(css).toContain('#FF4D4D');
-    expect(css).toContain('inset: -8px');
-    expect(css).toContain('rotate(-12deg)');
-    expect(css).toContain('rotate(12deg)');
+    expect(css).toContain('top: -8px');
+    expect(css).toContain('right: -8px');
+    expect(css).not.toContain('rotate(-12deg)');
+    expect(css).not.toContain('rotate(12deg)');
+    expect(css).not.toContain('ff6a1a');
+    expect(css).not.toContain('blast-cracks');
+    expect(css).not.toContain('muzzle-flash');
     expect(css).toContain('animation: sheet-drop');
     expect(css).toContain('top: calc(54px + env(safe-area-inset-top))');
     expect(css).toContain('.tt-chat-btn { position: fixed; z-index: 1025; top: calc(54px + env(safe-area-inset-top)); right: calc(8px + env(safe-area-inset-right));');
@@ -213,7 +220,7 @@ describe('scorecard caution tape and shroud', () => {
     expect(table).toContain('ran the rest');
     expect(table).not.toContain('Run it — cleared hands');
     const recapSrc = readFileSync(new URL('../src/Intermission.tsx', import.meta.url), 'utf8');
-    expect(recapSrc).toContain("haptic([30, 60, 30, 60, 30, 60, 30, 90, 60], 'shot-card')");
+    expect(recapSrc).toContain("haptic([30, 60, 30, 60, 30, 90, 60], 'shot-card')");
     expect(recapSrc).not.toContain('BlastMarks');
     expect(recapSrc).not.toContain('PELLETS');
     const tape = readFileSync(new URL('../public/shot/tape.png', import.meta.url));
