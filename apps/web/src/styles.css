@@ -709,8 +709,8 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-recap { display: flex; flex-direction: column; justify-content: center; gap: 16px; width: min(520px, 100%); }
 .tt-team { position: relative; padding: 18px 16px 16px; background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px rgba(185,128,255,.2); clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); }
 .tt-face { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name total" "line total" "players total" "bar bar"; align-items: center; gap: 8px 16px; position: relative; z-index: 5; }
-/* On-notice shot card: knocked 4px and -1.5deg, red vignette and glow, three raster holes, then a shallow tape X. Full fidelity at every width, including 360–390. */
-.tt-team > :not(.shot-holes):not(.caution-x):not(.shroud) { position: relative; z-index: 5; }
+/* On-notice shot card: knocked 4px and -1.5deg, red vignette and glow, one raster hole per shot, then a shallow tape X. Full fidelity at every width, including 360–390. */
+.tt-team > :not(.shot-holes):not(.caution-x):not(.shroud):not(.tod) { position: relative; z-index: 5; }
 .tt-team.taped { clip-path: none; overflow: visible; }
 .tt-team.notice, .tt-team.mine.notice {
   clip-path: none; overflow: visible; border: 1px solid #FF4D4D; margin-right: 6px;
@@ -742,8 +742,8 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-team.notice.tape-in { animation: hole-jolt 90ms linear 0ms, hole-jolt 90ms linear 90ms, hole-jolt 90ms linear 180ms; }
 @keyframes hole-jolt { 0%, 100% { transform: translateX(4px) rotate(-1.5deg); } 45% { transform: translateX(7px) rotate(-1.5deg); } }
 .shot-holes { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
-.shot-holes img { position: absolute; width: 46px; height: 46px; transform: translate(-50%, -50%) rotate(var(--rot, 0deg)) scale(var(--s, 1)); pointer-events: none; }
-.tt-team.notice.tape-in .shot-holes img { animation: hole-punch 120ms cubic-bezier(.2, .8, .2, 1) both; }
+.shot-holes img { position: absolute; width: 44px; height: 44px; transform: translate(-50%, -50%) rotate(var(--rot, 0deg)) scale(var(--s, 1)); pointer-events: none; }
+.shot-holes img.hole-in { animation: hole-punch 120ms cubic-bezier(.2, .8, .2, 1) both; }
 @keyframes hole-punch { 0% { opacity: 0; transform: translate(-50%, -50%) rotate(var(--rot, 0deg)) scale(calc(var(--s, 1) * 1.4)); } 12% { opacity: 1; transform: translate(-50%, -50%) rotate(var(--rot, 0deg)) scale(calc(var(--s, 1) * 1.28)); } 100% { opacity: 1; transform: translate(-50%, -50%) rotate(var(--rot, 0deg)) scale(var(--s, 1)); } }
 /* Two full-width strips in a shallow X. They cross in the open band under the badges, run edge to edge, and are not masked. */
 .caution-x {
@@ -755,80 +755,61 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .caution-x .tape.b { --from: -20deg; --to: -8deg; transform: rotate(-8deg); }
 .tt-team.tape-in .caution-x .tape { animation: tape-slap 260ms cubic-bezier(.2, 1.3, .3, 1) 300ms both; }
 @keyframes tape-slap { from { opacity: 0; transform: rotate(var(--from)) scale(1.15); } to { opacity: 0.95; transform: rotate(var(--to)) scale(1); } }
-/* Tape after a non-losing shot, off once they make their books. A hand-1 loss shows the tape and the sheet.
-   Later eliminations are the sheet alone. RIP, the police lights, and the time-of-death caption stay at full fidelity at every width, including 360–390. */
+/* Tape after a non-losing shot, off once they make their books. Every elimination also
+   wears the tape, above the cloth. The draped cloth, the RIP, the police lights, and the
+   time-of-death caption stay at full fidelity at every width, including 360–390. */
+.tt-team.shrouded { clip-path: none; overflow: visible; }
+.tt-team.shrouded .caution-x { z-index: 8; }
+/* On the sheet the two strips stay the same ±8° X, split to the top and bottom so the RIP letters stay clear. */
+.tt-team.shrouded .caution-x .tape.a { top: 14px; }
+.tt-team.shrouded .caution-x .tape.b { top: auto; bottom: 16px; }
+/* Card content sits under the cloth. The cloth covers the whole card, then the tape, then the toe tag. */
 .shroud {
-  position: absolute; z-index: 2; inset: 0; pointer-events: none;
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.45), transparent 22%),
-    radial-gradient(130% 90% at 50% -10%, #fbf8f2 0%, #efeae1 46%, #ddd6c8 100%);
-  box-shadow: inset 0 -36px 28px rgba(70, 52, 36, .16);
-  clip-path: polygon(0 0, 100% 0, 100% 84%, 88% 96%, 64% 86%, 40% 98%, 16% 88%, 0 96%);
-}
-.shroud i { position: absolute; left: 8%; right: 8%; height: 16%; border-radius: 40%; background: linear-gradient(180deg, rgba(255,255,255,.7), rgba(190,178,160,.05) 55%, rgba(90,70,50,.13)); }
-.shroud > i:nth-child(1) { top: 10%; }
-.shroud > i:nth-child(2) { top: 40%; height: 20%; }
-.shroud > i:nth-child(3) { top: 68%; }
-.shroud .rip {
-  position: absolute; z-index: 1; left: 50%; top: 46%;
-  transform: translate(-50%, -50%) rotate(-8deg) skewX(-8deg);
-  margin: 0; font-family: var(--display); font-weight: 900; font-style: italic;
-  font-size: 78px; letter-spacing: .12em; line-height: .8; color: #16110e;
-  text-shadow:
-    0 0 0 #16110e,
-    1px 0 0 #16110e, -2px 1px 0 rgba(22,17,14,.55),
-    3px 2px 0 rgba(22,17,14,.28), -4px 6px 0 rgba(22,17,14,.18),
-    0 10px 0 rgba(22,17,14,.22), 8px -2px 0 rgba(22,17,14,.12),
-    14px 4px 1px rgba(22,17,14,.16), -10px 8px 1px rgba(22,17,14,.14);
+  position: absolute; z-index: 6; left: -16px; right: -16px; top: -4px; bottom: -20px;
   pointer-events: none;
 }
-.shroud .rip span {
-  position: absolute; top: 86%; width: 8px; border-radius: 0 0 8px 8px;
-  background: linear-gradient(#16110e, rgba(22,17,14,.15));
+.shroud canvas.cloth { position: absolute; inset: 0; width: 100%; height: 100%; display: block; background: transparent; }
+.shroud .rip-src { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.tt-team.sheet-in .shroud { animation: sheet-drop 600ms cubic-bezier(.18, .85, .22, 1) both; }
+.tt-team.sheet-in.sheet-wait .shroud,
+.tt-team.sheet-in.sheet-wait .tod { animation-delay: 400ms; }
+@keyframes sheet-drop {
+  0% { opacity: 0; transform: translate3d(0, -110%, 0); }
+  70% { opacity: 1; transform: translate3d(0, 1.2%, 0); }
+  100% { opacity: 1; transform: none; }
 }
-.shroud .rip span:nth-child(1) { left: 12%; height: 22px; transform: rotate(6deg); }
-.shroud .rip span:nth-child(2) { left: 48%; height: 14px; }
-.shroud .rip span:nth-child(3) { left: 74%; height: 26px; width: 6px; transform: rotate(-4deg); }
-.tt-recap.crowded .shroud .rip { font-size: 52px; top: 48%; }
-.police-lights { position: fixed; inset: 0; z-index: 30; pointer-events: none; overflow: hidden; }
-.police-lights i { position: absolute; inset: 0; }
-.police-lights .red {
-  background: radial-gradient(70% 90% at -10% 45%, rgba(255, 24, 48, .78), transparent 58%);
-  animation: police-red .48s ease-in-out infinite;
+.police-rim {
+  position: fixed; inset: 0; z-index: 17; pointer-events: none; opacity: 0;
+  animation: police-rim 1.2s ease-in-out infinite;
 }
-.police-lights .blue {
-  background: radial-gradient(70% 90% at 110% 55%, rgba(36, 92, 255, .78), transparent 58%);
-  animation: police-blue .48s ease-in-out infinite;
+.police-rim.wait { animation-delay: 400ms; }
+@keyframes police-rim {
+  0%, 100% { opacity: 1; box-shadow: inset 0 0 42px 8px rgba(255, 42, 42, .45); }
+  50% { opacity: 1; box-shadow: inset 0 0 42px 8px rgba(42, 91, 255, .45); }
 }
-@keyframes police-red { 0%, 100% { opacity: 1; } 50% { opacity: .28; } }
-@keyframes police-blue { 0%, 100% { opacity: .28; } 50% { opacity: 1; } }
-.tod {
-  margin: 0; padding: 5px 12px; position: relative; z-index: 5;
-  font-family: "Courier New", Courier, ui-monospace, monospace;
-  font-size: 15px; letter-spacing: .03em; line-height: 1.2; white-space: nowrap;
-  color: #f4efe4; background: rgba(6, 4, 8, .72);
-  box-shadow: inset 0 0 0 1px rgba(244, 239, 228, .28);
+.tt-team.shrouded > .tod {
+  position: absolute; z-index: 9; right: 14px; bottom: 8px; margin: 0;
+  width: max-content; min-width: max-content; max-width: none;
+  padding: 7px 10px 6px 16px; transform: rotate(-7deg); transform-origin: 100% 100%;
+  font-family: var(--display); font-weight: 800; font-size: 12px; letter-spacing: .04em; line-height: 1.15;
+  white-space: nowrap; color: #2a2118; background: #e4d0a2;
+  box-shadow: 2px 3px 0 rgba(0, 0, 0, .35);
   pointer-events: none;
 }
-.tod span { opacity: 0; animation: tod-key .01s linear forwards; }
-@keyframes tod-key { to { opacity: 1; } }
-.tt-team.sheet-in .shroud { animation: sheet-drop .8s cubic-bezier(.2,.7,.2,1) .7s both; }
-.tt-team.shrouded .tt-team-name b,
-.tt-team.shrouded .tt-line,
-.tt-team.shrouded .tt-players,
-.tt-team.shrouded .tt-stat,
-.tt-team.shrouded .tt-stat.total b { color: #24160f; text-shadow: 0 1px 0 rgba(255,255,255,.75); }
-.tt-team.shrouded .tt-line b.neg { color: #8e2436; }
-.tt-team.shrouded .tt-line b.pos { color: #1c6a34; }
-.tt-team.shrouded .tt-players { color: #4a382c; }
-@keyframes sheet-drop { 0% { opacity: 0; transform: translate3d(0, -108%, 0); } 100% { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .tt-team.notice.tape-in, .tt-team.tape-in .caution-x, .tt-team.tape-in .caution-x .tape, .tt-team.notice.tape-in .shot-holes img, .tt-team.sheet-in .shroud { animation: none; } }
-@media (prefers-reduced-motion: reduce) { .tod span { animation: none; opacity: 1; } }
+.tt-team.shrouded > .tod::before {
+  content: ""; position: absolute; left: 5px; top: 5px; width: 6px; height: 6px; border-radius: 50%;
+  background: #1a120c; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .35);
+}
+.tt-team.sheet-in .tod { animation: tod-key 600ms ease both; }
+@keyframes tod-key { from { opacity: 0; transform: rotate(-7deg) translateY(-10px); } to { opacity: 1; transform: rotate(-7deg); } }
+@media (prefers-reduced-motion: reduce) { .tt-team.notice.tape-in, .tt-team.tape-in .caution-x, .tt-team.tape-in .caution-x .tape, .shot-holes img.hole-in, .tt-team.sheet-in .shroud, .police-rim { animation: none; } .police-rim { opacity: .7; box-shadow: inset 0 0 42px 8px rgba(255, 42, 42, .4); } }
+@media (prefers-reduced-motion: reduce) { .tod { animation: none; opacity: 1; } }
 .tt-team.mine { background: rgba(245,197,66,.08); box-shadow: inset 3px 0 0 var(--gold), inset 0 0 0 1px rgba(245,197,66,.25); }
 .tt-team-name { grid-area: name; display: flex; flex-direction: column; gap: 4px; }
 .tt-team-name b { font-family: var(--display); font-size: 22px; letter-spacing: .04em; overflow-wrap: anywhere; }
 .tt-badges { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .shot-stamp { font-family: var(--display); font-style: normal; font-weight: 900; font-size: 13px; letter-spacing: .14em; color: #fff; background: #e10600; border: 2px solid #FF4D4D; padding: 1px 7px; transform: rotate(-8deg); box-shadow: 0 1px 0 rgba(0,0,0,.35); }
+.shot-tally { font-family: var(--display); font-style: normal; font-weight: 800; font-size: 12px; letter-spacing: .04em; color: #ffd0d0; padding: 0 1px; }
 .notice-pill { font-family: var(--display); font-style: normal; font-weight: 800; font-size: 11px; letter-spacing: .08em; color: #ffd0d0; background: rgba(255,77,77,.18); border: 1px solid rgba(255,77,77,.75); border-radius: 999px; padding: 2px 8px; }
 .tt-verdict { font-family: var(--display); font-weight: 800; font-size: 11px; letter-spacing: .08em; padding: 1px 6px; border-radius: 3px; white-space: nowrap; }
 .tt-verdict.ok { color: #0d2a12; background: #7dff9b; }
@@ -861,6 +842,8 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-bar { position: relative; height: 12px; background: rgba(255,255,255,.08); border-radius: 6px; overflow: hidden; margin-top: 6px; }
 .tt-recap.crowded { gap: 10px; }
 .tt-recap.crowded .tt-team { padding: 12px 14px; }
+/* Compact elimination cards have no tape lane. The extra bottom padding is the lower-left hole's seat, clear of the player line. */
+.tt-team.shrouded { padding-bottom: 58px; }
 .tt-recap.crowded .tt-face { gap: 4px 12px; }
 .tt-recap.crowded .tt-team-name b { font-size: 18px; }
 .tt-recap.crowded .tt-stat.total b { font-size: 34px; }
