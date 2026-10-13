@@ -190,8 +190,13 @@ describe('scorecard caution tape and shroud', () => {
     expect(css).toContain('opacity: 0.95');
     expect(css).toContain('brightness(.85)');
     expect(css).toContain('#FF4D4D');
-    expect(css).toContain('top: -8px');
-    expect(css).toContain('right: -8px');
+    expect(css).toContain('.tt-team.taped { clip-path: none; overflow: hidden; }');
+    expect(css).toContain('.tt-team.notice, .tt-team.mine.notice { clip-path: none; overflow: hidden;');
+    expect(css).toContain('.caution-x { position: absolute; z-index: 4; top: 0; right: 0;');
+    expect(css).not.toContain('top: -8px');
+    expect(css).not.toContain('right: -8px');
+    expect(css).toMatch(/\.tt-run-show \{[^}]*background:/);
+    expect(css).toMatch(/\.tt-run-show \{[^}]*appearance:\s*none/);
     expect(css).not.toContain('rotate(-12deg)');
     expect(css).not.toContain('rotate(12deg)');
     expect(css).not.toContain('ff6a1a');

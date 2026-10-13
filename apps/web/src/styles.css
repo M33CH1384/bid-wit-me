@@ -707,8 +707,8 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-face { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name total" "line total" "players total" "bar bar"; align-items: center; gap: 8px 16px; position: relative; z-index: 5; }
 /* On-notice shot card: dim the face, red border, three raster holes, then the corner tape. Full fidelity at every width, including 360–390. */
 .tt-team > :not(.shot-holes):not(.caution-x):not(.shroud) { position: relative; z-index: 5; }
-.tt-team.taped { clip-path: none; overflow: visible; }
-.tt-team.notice, .tt-team.mine.notice { clip-path: none; overflow: visible; border: 1px solid #FF4D4D; box-shadow: none; }
+.tt-team.taped { clip-path: none; overflow: hidden; }
+.tt-team.notice, .tt-team.mine.notice { clip-path: none; overflow: hidden; border: 1px solid #FF4D4D; box-shadow: none; }
 .tt-team.notice .tt-face { filter: brightness(.85); }
 .tt-team.notice.tape-in { animation: hole-jolt 90ms linear 0ms, hole-jolt 90ms linear 90ms, hole-jolt 90ms linear 180ms; }
 @keyframes hole-jolt { 0%, 100% { transform: translate3d(0, 0, 0); } 45% { transform: translate3d(3px, 0, 0); } }
@@ -716,8 +716,8 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .shot-holes img { position: absolute; width: 32px; height: 32px; transform: translate(-50%, -50%) rotate(var(--rot, 0deg)) scale(var(--s, 1)); pointer-events: none; }
 .tt-team.notice.tape-in .shot-holes img { animation: hole-punch 120ms cubic-bezier(.2, .8, .2, 1) both; }
 @keyframes hole-punch { 0% { opacity: 0; transform: translate(-50%, -50%) rotate(var(--rot, 0deg)) scale(calc(var(--s, 1) * 1.4)); } 12% { opacity: 1; transform: translate(-50%, -50%) rotate(var(--rot, 0deg)) scale(calc(var(--s, 1) * 1.28)); } 100% { opacity: 1; transform: translate(-50%, -50%) rotate(var(--rot, 0deg)) scale(var(--s, 1)); } }
-/* One strip across the top-right corner. It hangs off the card and stays above the name, the total, and the points. */
-.caution-x { position: absolute; z-index: 4; top: -8px; right: -8px; width: 30%; height: 14px; opacity: 0.95; pointer-events: none; transform: rotate(-6deg); transform-origin: 100% 0; filter: drop-shadow(0 2px 2px rgba(0,0,0,.4)); }
+/* One strip across the top-right corner, inside the card. The card clips it so a rotated end cannot paint outside. */
+.caution-x { position: absolute; z-index: 4; top: 0; right: 0; width: 30%; height: 14px; opacity: 0.95; overflow: hidden; pointer-events: none; transform: rotate(-6deg); transform-origin: 100% 0; filter: drop-shadow(0 2px 2px rgba(0,0,0,.4)); }
 .caution-x .tape { display: block; width: 100%; height: 100%; object-fit: cover; }
 .tt-team.tape-in .caution-x { animation: tape-slap 260ms cubic-bezier(.2, 1.3, .3, 1) 300ms both; }
 @keyframes tape-slap { from { opacity: 0; transform: rotate(8deg) scale(1.15); } to { opacity: 0.95; transform: rotate(-6deg) scale(1); } }
@@ -920,7 +920,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
   .bug-books { display: none; } /* the hand-1 rule is in the center banner and the score pad */
 }
 .tt-run { margin: 2px 0 4px; align-self: center; width: min(520px, 100%); }
-.tt-run-show { align-self: center; font-weight: 800; }
+.tt-run-show { align-self: center; margin: 0; padding: 6px 14px; appearance: none; -webkit-appearance: none; font-family: var(--display); font-weight: 800; font-size: 15px; letter-spacing: .06em; color: #f6f2ff; background: rgba(20, 10, 36, .92); border: 1px solid rgba(185, 128, 255, .55); border-radius: 999px; }
 .tt-backdrop ~ .modal-backdrop { z-index: 50; }
 .tt-foot.bid-row { margin: 0; flex-wrap: nowrap; }
 .chat.glass.slant.recap-chat {
