@@ -31,6 +31,7 @@ import { fireCue, fx, useReduceEffects } from './fx';
 import { useDealtSlots } from './dealtSlots';
 import { FeltHand } from './FeltHand';
 import { loadScene } from './three/preload';
+import { TableLoading } from './TableLoading';
 import { endReasonText, onNoticeSides, shotChatLines } from './shotOut';
 import { type Sfx, sound } from './audio';
 import { HAPTIC, haptic } from './haptics';
@@ -579,9 +580,31 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   /** Server playback seq already started, so a later state for the same claim does not replay it. */
   const [playedSeq, setPlayedSeq] = useState<number | null>(null);
   const [tableReady, setTableReady] = useState(false);
+  const [dressed, setDressed] = useState(false);
+  const [loadProgress, setLoadProgress] = useState(0.08);
+  const [loadGiveUp, setLoadGiveUp] = useState(false);
+  const [loadGone, setLoadGone] = useState(false);
   const [webglHand, setWebglHand] = useState(false);
-  const onTableReady = useCallback(() => setTableReady(true), []);
+  const onTableReady = useCallback(() => { setTableReady(true); setLoadProgress((p) => Math.max(p, 0.72)); }, []);
+  const onTableDressed = useCallback(() => { setDressed(true); setLoadProgress(1); }, []);
   const onHandLive = useCallback(() => setWebglHand(true), []);
+  // The scene chunk is the long download. Bump the bar when it arrives, ahead of the first frame.
+  useEffect(() => {
+    let alive = true;
+    loadScene().then(() => { if (alive) setLoadProgress((p) => Math.max(p, 0.42)); }).catch(() => undefined);
+    return () => { alive = false; };
+  }, []);
+  // WebGL that never starts, or a texture that never settles, must not trap the player on the loader.
+  useEffect(() => {
+    const t = window.setTimeout(() => setLoadGiveUp(true), 40000);
+    return () => window.clearTimeout(t);
+  }, []);
+  const loading = !dressed && !loadGiveUp;
+  useEffect(() => {
+    if (loading) return;
+    const t = window.setTimeout(() => setLoadGone(true), 380);
+    return () => window.clearTimeout(t);
+  }, [loading]);
   // The saved game is already in memory. The flat hand is playable on the first paint; the 3D scene catches up.
   useEffect(() => {
     const w = window as unknown as { __bwmPlayableAt?: number };
@@ -997,7 +1020,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   });
 
   return (
-    <div ref={screenRef} className={`table-screen q-${settings.quality}${vp.short ? ' short' : ''}${modalOpen ? ' modal-open' : ''}${showPad ? ' pad-open' : ''}`}>
+    <div ref={screenRef} className={`table-screen q-${settings.quality}${vp.short ? ' short' : ''}${modalOpen ? ' modal-open' : ''}${showPad ? ' pad-open' : ''}`} inert={loading ? true : undefined}>
       {/* styled stand-in table, on screen from the first paint until the 3D table has rendered (then it fades) */}
       <div className={`table-placeholder ${tableReady ? 'gone' : ''}`} data-testid="table-placeholder" data-venue={venue} style={placeholderStyle(venue)} aria-hidden>
         <div className="tp-floor" />
@@ -1018,6 +1041,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       <Suspense fallback={null}>
         <Scene
           onTableReady={onTableReady}
+          onTableDressed={onTableDressed}
           onHandLive={onHandLive}
           quality={settings.quality}
           n={n}
@@ -1048,6 +1072,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           marked={tipMarked}
         />
       </Suspense>
+      {!loadGone && <TableLoading progress={loadProgress} leaving={!loading} />}
 
       {/* scorebug */}
       <header className="scorebug">

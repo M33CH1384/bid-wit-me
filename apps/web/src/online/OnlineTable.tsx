@@ -4,6 +4,7 @@ import { victoryHeadline, victoryIdentity } from './victory';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { sideOf } from '@spades/rules';
 import Table from '../Table';
+import { TableLoading } from '../TableLoading';
 import { type Settings, loadSettings, saveSettings } from '../settings';
 import type { ConnState, TableConnection } from './connection';
 import { type KickInfo, MediaBar, SeatMedia, TalkTile, VictorySpotlight } from './Media';
@@ -78,7 +79,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
     }
   }, [limitedNow]);
 
-  if (!source || !rot) return <div className="online-wait">Joining the table…</div>;
+  if (!source || !rot) return <TableLoading progress={0.24} />;
   const r = room.rules;
   const turnLocal = source.st.turn;
 
