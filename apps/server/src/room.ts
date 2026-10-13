@@ -96,6 +96,8 @@ export interface RoomData {
   kicked?: string[];
   /** Cutthroat players eliminated this game. They can watch, and they cannot sit again until the next game. */
   outPlayers?: string[];
+  /** Seat each eliminated human left, so a finished game still records the account that played it. */
+  outSeats?: { playerId: string; seat: number }[];
   /** open vote-kicks: target player id → voter ids */
   votes?: Record<string, string[]>;
   gamesPlayed: number;
@@ -936,6 +938,7 @@ export class Room {
     d.talk = { ...newTalkState(), revealed: [] }; // a new game: every Hustler is back in character
     d.kicked = []; // a new game: kicked players may come back
     d.outPlayers = [];
+    d.outSeats = [];
     d.votes = {};
     for (const m of Object.values(d.members)) m.timeouts = 0;
     this.system(`Game ${d.gamesPlayed} started`);
@@ -1053,6 +1056,11 @@ export class Room {
     const n = d.rules.playerCount;
     return d.seats.slice(0, n).map((s, i) => {
       const side = d.rules.partnerships ? i % 2 : i;
+      const parked = d.outSeats?.find((o) => o.seat === i);
+      if (parked) {
+        const m = d.members[parked.playerId];
+        return m?.uid ? { name: m.name, side, kind: 'user' as const, uid: m.uid } : { name: m?.name ?? 'Player', side, kind: 'guest' as const };
+      }
       if (s.kind === 'human') {
         const m = d.members[s.playerId];
         return m?.uid ? { name: m.name, side, kind: 'user', uid: m.uid } : { name: m?.name ?? 'Player', side, kind: 'guest' };
@@ -1149,6 +1157,7 @@ export class Room {
       if (m && m.seat === seat) {
         m.seat = null;
         if (!d.outPlayers?.includes(slot.playerId)) d.outPlayers = [...(d.outPlayers ?? []), slot.playerId];
+        if (!d.outSeats?.some((o) => o.seat === seat)) d.outSeats = [...(d.outSeats ?? []), { playerId: slot.playerId, seat }];
         d.seats[seat] = { kind: 'empty' };
         this.system(`${m.name} is out`);
       }
