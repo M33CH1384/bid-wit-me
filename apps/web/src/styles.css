@@ -709,7 +709,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-recap { display: flex; flex-direction: column; justify-content: center; gap: 16px; width: min(520px, 100%); }
 .tt-team { position: relative; padding: 18px 16px 16px; background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px rgba(185,128,255,.2); clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); }
 .tt-face { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name total" "line total" "players total" "bar bar"; align-items: center; gap: 8px 16px; position: relative; z-index: 5; }
-/* On-notice shot card: knocked 4px and -1.5deg, red vignette and glow, three raster holes, then a shallow tape X. Full fidelity at every width, including 360–390. */
+/* On-notice shot card: knocked 4px and -1.5deg, red vignette and glow, one raster hole per shot, then a shallow tape X. Full fidelity at every width, including 360–390. */
 .tt-team > :not(.shot-holes):not(.caution-x):not(.shroud) { position: relative; z-index: 5; }
 .tt-team.taped { clip-path: none; overflow: visible; }
 .tt-team.notice, .tt-team.mine.notice {
@@ -742,8 +742,8 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-team.notice.tape-in { animation: hole-jolt 90ms linear 0ms, hole-jolt 90ms linear 90ms, hole-jolt 90ms linear 180ms; }
 @keyframes hole-jolt { 0%, 100% { transform: translateX(4px) rotate(-1.5deg); } 45% { transform: translateX(7px) rotate(-1.5deg); } }
 .shot-holes { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
-.shot-holes img { position: absolute; width: 46px; height: 46px; transform: translate(-50%, -50%) rotate(var(--rot, 0deg)) scale(var(--s, 1)); pointer-events: none; }
-.tt-team.notice.tape-in .shot-holes img { animation: hole-punch 120ms cubic-bezier(.2, .8, .2, 1) both; }
+.shot-holes img { position: absolute; width: 44px; height: 44px; transform: translate(-50%, -50%) rotate(var(--rot, 0deg)) scale(var(--s, 1)); pointer-events: none; }
+.shot-holes img.hole-in { animation: hole-punch 120ms cubic-bezier(.2, .8, .2, 1) both; }
 @keyframes hole-punch { 0% { opacity: 0; transform: translate(-50%, -50%) rotate(var(--rot, 0deg)) scale(calc(var(--s, 1) * 1.4)); } 12% { opacity: 1; transform: translate(-50%, -50%) rotate(var(--rot, 0deg)) scale(calc(var(--s, 1) * 1.28)); } 100% { opacity: 1; transform: translate(-50%, -50%) rotate(var(--rot, 0deg)) scale(var(--s, 1)); } }
 /* Two full-width strips in a shallow X. They cross in the open band under the badges, run edge to edge, and are not masked. */
 .caution-x {
@@ -781,6 +781,10 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
   animation: police-blue 1.2s ease-in-out infinite;
 }
 .tt-team.sheet-in .shroud .wash { animation-delay: 450ms; }
+/* Second shot eliminates: hold the cloth ~400ms so both holes read, then drop. Lights follow the drop. */
+.tt-team.sheet-in.sheet-wait .shroud,
+.tt-team.sheet-in.sheet-wait .shroud .cloth { animation-delay: 400ms; }
+.tt-team.sheet-in.sheet-wait .shroud .wash { animation-delay: 850ms; }
 @keyframes police-red { 0%, 100% { opacity: .82; } 50% { opacity: .06; } }
 @keyframes police-blue { 0%, 100% { opacity: .06; } 50% { opacity: .82; } }
 .shroud .rip {
@@ -804,7 +808,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-team.sheet-in .shroud .cloth { animation: fold-ripple 450ms cubic-bezier(.3, 1.4, .4, 1) both; }
 @keyframes sheet-drop { 0% { opacity: 0; transform: translate3d(0, -108%, 0); } 100% { opacity: 1; transform: none; } }
 @keyframes fold-ripple { 0% { transform: scaleY(1.05) skewX(-1.4deg); } 62% { transform: scaleY(0.99) skewX(0.5deg); } 100% { transform: none; } }
-@media (prefers-reduced-motion: reduce) { .tt-team.notice.tape-in, .tt-team.tape-in .caution-x, .tt-team.tape-in .caution-x .tape, .tt-team.notice.tape-in .shot-holes img, .tt-team.sheet-in .shroud, .tt-team.sheet-in .shroud .cloth, .shroud .wash.red, .shroud .wash.blue { animation: none; } .shroud .wash { opacity: .42; } }
+@media (prefers-reduced-motion: reduce) { .tt-team.notice.tape-in, .tt-team.tape-in .caution-x, .tt-team.tape-in .caution-x .tape, .shot-holes img.hole-in, .tt-team.sheet-in .shroud, .tt-team.sheet-in .shroud .cloth, .shroud .wash.red, .shroud .wash.blue { animation: none; } .shroud .wash { opacity: .42; } }
 @media (prefers-reduced-motion: reduce) { .tod span { animation: none; opacity: 1; } }
 .tt-team.mine { background: rgba(245,197,66,.08); box-shadow: inset 3px 0 0 var(--gold), inset 0 0 0 1px rgba(245,197,66,.25); }
 .tt-team-name { grid-area: name; display: flex; flex-direction: column; gap: 4px; }

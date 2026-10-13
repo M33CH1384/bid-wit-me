@@ -5,6 +5,7 @@ import { sideName } from './Modals';
 import { handWinner, streakLabel, streakOf } from './fx';
 import { sound } from './audio';
 import { haptic } from './haptics';
+import { HOLE_SLOTS, claimHoleBuzz, holeStreak, markHolePunched, markSheetPlayed, punchedLabel, rememberHoles } from './shotMarks';
 
 /**
  * Hand recap between hands (online and offline).
@@ -43,19 +44,6 @@ export function calloutsFor(st: GameState, mySide: number, names: string[]): Cal
   }
   return out;
 }
-
-/**
- * Three punched holes. Raster art in /shot/hole.png (original render). The
- * sprite is 40–48px and the glass spiderweb runs out to 1.5× the punch.
- * Rotation and scale are fixed per slot so a reconnect does not reshuffle them.
- * One sits in the top-right gap left of the total, one in the lower left, and one on the progress bar.
- * None of them sit on type.
- */
-const HOLES: readonly { x: string; y: string; rot: number; scale: number }[] = [
-  { x: '62%', y: '16%', rot: -8, scale: 0.96 }, // top-right gap, left of the total
-  { x: '13%', y: '92.5%', rot: 12, scale: 0.87 }, // lower left, in the padding under the bar
-  { x: '78%', y: '81%', rot: -6, scale: 1 },    // on the progress bar, clear of the names
-];
 
 export function Intermission({
   st, names, mySide, secs, ready, onReady, online, onScorePad, series, chatOpen, unread, onChat, runReview,
@@ -108,29 +96,39 @@ export function Intermission({
     sound.play('docSting', { delay: 0.05 });
     sound.play('siren', { delay: 0.12 });
   }, [sirenKey, sheetOn]);
-  // One pattern so each hole's [30] and the tape's [60] land on the punch timeline.
-  // iOS and a missing vibrate API skip inside haptic(); the throttle stays at 250ms.
-  const noticeIn = sides.some((s) => {
-    const cover = covers[s.side];
-    return !!cover?.tape && !cover.sheet && isShot(r, rec.bids, s);
-  });
-  const punched = useRef('');
+  // Hole count is the shot streak on the team record. A new hole buzzes [30] once.
+  // The sheet waits ~400ms so both holes read, then plays its own pattern.
+  const streaks = holeStreak(r, st.history);
+  const handKey = `${st.seed}:${rec.handNo}`;
+  const anim = useRef<{ key: string; punch: Set<string>; waitSheet: Set<number> } | null>(null);
+  if (!anim.current || anim.current.key !== handKey) {
+    const punch = new Set<string>();
+    const waitSheet = new Set<number>();
+    for (const s of sides) {
+      const info = streaks[s.side] ?? { count: 0, fresh: -1 };
+      const marks = rememberHoles(st.seed, s.side, info.count, info.fresh);
+      if (info.fresh >= 0 && !marks.punched[info.fresh]) punch.add(`${s.side}:${info.fresh}`);
+      if (covers[s.side]?.sheet && info.fresh >= 0 && !marks.sheetPlayed) waitSheet.add(s.side);
+    }
+    anim.current = { key: handKey, punch, waitSheet };
+  }
   useEffect(() => {
-    if (!noticeIn || punched.current === sirenKey) return;
-    punched.current = sirenKey;
-    haptic([30, 60, 30, 60, 30, 90, 60], 'shot-card');
-  }, [noticeIn, sirenKey]);
-  // The sheet's own pattern, separate from the shot-card punches. One shot, just over the 250ms throttle.
-  const sheetIn = sides.some((s) => {
-    const cover = covers[s.side];
-    return !!cover?.sheet && isShot(r, rec.bids, s);
-  });
-  const dropped = useRef('');
-  useEffect(() => {
-    if (!sheetIn || dropped.current === sirenKey) return;
-    dropped.current = sirenKey;
-    haptic([80, 40, 160], 'sheet-drop');
-  }, [sheetIn, sirenKey]);
+    const snap = anim.current;
+    if (!snap || snap.key !== handKey) return;
+    const timers: number[] = [];
+    for (const id of snap.punch) {
+      const [side, idx] = id.split(':').map(Number);
+      if (claimHoleBuzz(st.seed, side!, idx!)) haptic([30], 'shot-hole');
+      timers.push(window.setTimeout(() => markHolePunched(st.seed, side!, idx!), 120));
+    }
+    if (snap.waitSheet.size) {
+      timers.push(window.setTimeout(() => {
+        for (const side of snap.waitSheet) markSheetPlayed(st.seed, side);
+        haptic([80, 40, 160], 'sheet-drop');
+      }, 400));
+    }
+    return () => { for (const t of timers) window.clearTimeout(t); };
+  }, [handKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="tt-backdrop" data-testid="table-talk" role="dialog" aria-label="Hand recap">
@@ -170,12 +168,16 @@ export function Intermission({
               const cover = covers[s.side] ?? { tape: false, sheet: false, siren: false };
               const justShot = isShot(r, rec.bids, s);
               const notice = cover.tape && !cover.sheet;
+              const info = streaks[s.side] ?? { count: 0, fresh: -1 };
+              const marks = rememberHoles(st.seed, s.side, info.count, info.fresh);
+              const sheetAnim = !!cover.sheet && anim.current!.waitSheet.has(s.side);
+              const showHoles = info.count > 0 && (notice || !!cover.sheet);
               return (
-                <div key={s.side} className={`tt-team${s.side === mySide ? ' mine' : ''}${shot ? ' blast' : ''}${cover.tape ? ' taped' : ''}${cover.tape && justShot ? ' tape-in' : ''}${notice ? ' notice' : ''}${cover.sheet ? ' shrouded' : ''}${cover.sheet && justShot ? ' sheet-in' : ''}`} data-testid={`recap-side-${s.side}`} data-blast={shot ? 'yes' : 'no'} data-tape={cover.tape ? 'yes' : 'no'} data-sheet={cover.sheet ? 'yes' : 'no'} data-siren={cover.siren ? 'yes' : 'no'}>
-                  {notice && (
+                <div key={s.side} className={`tt-team${s.side === mySide ? ' mine' : ''}${shot ? ' blast' : ''}${cover.tape ? ' taped' : ''}${cover.tape && justShot ? ' tape-in' : ''}${notice ? ' notice' : ''}${cover.sheet ? ' shrouded' : ''}${sheetAnim ? ' sheet-in sheet-wait' : ''}`} data-testid={`recap-side-${s.side}`} data-blast={shot ? 'yes' : 'no'} data-tape={cover.tape ? 'yes' : 'no'} data-sheet={cover.sheet ? 'yes' : 'no'} data-siren={cover.siren ? 'yes' : 'no'} data-holes={info.count} data-punched={punchedLabel(marks)}>
+                  {showHoles && (
                     <div className="shot-holes" data-testid={`recap-holes-${s.side}`} aria-hidden="true">
-                      {HOLES.map((h, i) => (
-                        <img key={i} src="/shot/hole.png" alt="" style={{ left: h.x, top: h.y, animationDelay: `${i * 90}ms`, ['--rot' as string]: `${h.rot}deg`, ['--s' as string]: String(h.scale) }} />
+                      {HOLE_SLOTS.slice(0, info.count).map((h, i) => (
+                        <img key={i} className={anim.current!.punch.has(`${s.side}:${i}`) ? 'hole-in' : undefined} src="/shot/hole.png" alt="" style={{ left: h.x, top: h.y, ['--rot' as string]: `${h.rot}deg` }} />
                       ))}
                     </div>
                   )}
