@@ -73,9 +73,17 @@ describe('one trick from getting shot', () => {
     expect(sidesOneTrickFromShot(at({ handNo: 1, bids: books, tricksWon: [1, 2, 1, 2], played: 6 }))).toEqual([]);
     // Already short: 3 books still needed and only 1 trick left.
     expect(sidesOneTrickFromShot(at({ handNo: 1, bids: books, tricksWon: [1, 5, 0, 6], played: 12 }))).toEqual([]);
-    // Minimum off: the books hand is not a shot, so there is nothing to rack for.
+    // Cutthroat minimum bid is 1, so 0 books with one trick left is the edge.
     expect(sidesOneTrickFromShot(at({
       handNo: 1, rules: cutthroat, bids: ['books', 'books', 'books'], tricksWon: [0, 8, 8], played: 16,
+    }))).toEqual([0]);
+    // Both minimums off: the books hand is not a shot.
+    expect(sidesOneTrickFromShot(at({
+      handNo: 1,
+      rules: makeRules('cutthroat', { playerCount: 3, minTeamBid: 0, firstHandMin: null }),
+      bids: ['books', 'books', 'books'],
+      tricksWon: [0, 8, 8],
+      played: 16,
     }))).toEqual([]);
     // Cutthroat with a minimum: that player has 3 of 4, and one trick is left.
     expect(sidesOneTrickFromShot(at({

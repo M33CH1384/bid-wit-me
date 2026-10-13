@@ -1,5 +1,5 @@
 import type { Card } from './cards';
-import { type TableRules, buildDeck, cardPower, effectiveSuit, handSize, isTrump, shotOutOn, validateRules, RulesConfigError } from './config';
+import { type TableRules, buildDeck, cardPower, effectiveSuit, handSize, hostMinimum, isTrump, shotOutOn, validateRules, RulesConfigError } from './config';
 import { evaluateRunIt } from './runIt';
 import { createRng, shuffle } from './rng';
 import {
@@ -173,24 +173,51 @@ export interface BidOptions {
   max: number;
   nil: boolean;
   blindNil: boolean;
+  /** Why a number below `min` is blocked. Null when 1 is legal. */
+  blockReason: string | null;
+  /** Why Nil is blocked because of the partner's bid. Null when Nil is allowed, or when this table has no Nil. */
+  nilReason: string | null;
 }
 
 /** Bids available to `seat` right now (ignores whose turn it is). */
 export function bidOptions(st: GameState, seat: Seat): BidOptions {
   const r = st.rules;
   const max = handSize(r);
+  const floor = Math.min(Math.max(0, hostMinimum(r)), max);
   const partner = partnerOf(seat, r);
   const pBid = partner === null ? null : st.bids[partner];
-  let min = Math.max(1, r.minTeamBid);
-  if (partner !== null && typeof pBid === 'number') min = Math.max(1, r.minTeamBid - pBid);
-  else if (partner !== null && pBid === null) min = 1; // partner bids second and must reach the minimum
-  min = Math.min(min, max);
-  const partnerNil = isNilBid(pBid);
-  const nilOk = !partnerNil || r.partnerMayAlsoNil;
+  let min = 1;
+  let nil = r.nil.allowed;
+  let blockReason: string | null = null;
+  let nilReason: string | null = null;
+  if (!r.partnerships) {
+    // Cutthroat: each bid stands alone. Nil and Blind Nil are off.
+    nil = false;
+    min = Math.max(1, floor);
+    if (min > 1) blockReason = `Minimum bid is ${min}`;
+  } else {
+    const partnerNil = isNilBid(pBid);
+    if (partnerNil && !r.partnerMayAlsoNil) nil = false;
+    if (floor > 0 && partnerNil) {
+      // Whoever bid Nil first: the other bid alone has to reach the minimum.
+      min = Math.max(1, floor);
+      nil = false;
+      blockReason = `Partner bid Nil — you need ${floor}`;
+      nilReason = 'Can\'t Nil — partner bid Nil';
+    } else if (floor > 0 && typeof pBid === 'number') {
+      min = Math.max(1, floor - pBid);
+      if (pBid < floor) {
+        nil = false;
+        nilReason = `Can't Nil — partner bid ${pBid}`;
+      }
+      if (min > 1) blockReason = `Minimum is ${floor}`;
+    }
+    // Partner still to bid: a low number is legal (they can cover it). Nil is legal; they then bid the floor alone.
+  }
+  min = Math.min(Math.max(1, min), max);
   return {
-    min, max,
-    nil: r.nil.allowed && nilOk,
-    blindNil: r.blindNil.allowed && nilOk && !st.revealed[seat] && blindNilScoreEligible(st, seat),
+    min, max, nil, blockReason, nilReason,
+    blindNil: nil && r.blindNil.allowed && !st.revealed[seat] && blindNilScoreEligible(st, seat),
   };
 }
 
@@ -444,12 +471,12 @@ export function applyAction(st: GameState, action: Action): GameState {
       if (bid === 'books') throw new RuleError('BAD_BID', 'Books is not a bid you can choose');
       const opt = bidOptions(st, seat);
       if (bid === 'nil') {
-        if (!opt.nil) throw new RuleError('NIL_NOT_ALLOWED', 'Nil is not allowed');
+        if (!opt.nil) throw new RuleError('NIL_NOT_ALLOWED', opt.nilReason ?? (r.partnerships ? 'Nil is not allowed' : 'Nil is off in Cutthroat'));
       } else if (bid === 'blindNil') {
-        if (!opt.blindNil) throw new RuleError('BLIND_NIL_NOT_ALLOWED', 'Blind Nil is not allowed');
+        if (!opt.blindNil) throw new RuleError('BLIND_NIL_NOT_ALLOWED', r.partnerships ? 'Blind Nil is not allowed' : 'Blind Nil is off in Cutthroat');
       } else {
         if (typeof bid !== 'number' || !Number.isInteger(bid) || bid < 0 || bid > opt.max) throw new RuleError('BAD_BID', `Bid must be 0–${opt.max}`);
-        if (bid < opt.min) throw new RuleError('BID_TOO_LOW', `Minimum bid is ${opt.min}`);
+        if (bid < opt.min) throw new RuleError('BID_TOO_LOW', opt.blockReason ?? `Minimum bid is ${opt.min}`);
       }
       const bids = [...st.bids];
       bids[seat] = bid;
