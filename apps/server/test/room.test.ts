@@ -208,6 +208,68 @@ describe('game', () => {
     expect(env.errors(turn).at(-1)!.code).toBe('BAD_MESSAGE');
   });
 
+  it('offers and accepts 2v2 Nil with no minimum, and when the partner bid meets the floor', () => {
+    const cids = ['a', 'b', 'c', 'd'];
+    const open = (rules: ReturnType<typeof makeRules>) => {
+      const { env } = fourHumans();
+      env.send('a', { t: 'config', rules });
+      expect(env.room.data.rules.nil.allowed).toBe(true);
+      expect(env.room.data.rules.mode).not.toBe('cutthroat');
+      env.send('a', { t: 'start' });
+      return env;
+    };
+    const whose = (env: ReturnType<typeof fourHumans>['env']) => {
+      const seat = env.room.data.game!.turn!;
+      return { seat, cid: cids[seat]! };
+    };
+
+    // No minimum: Nil is legal before the partner bids, and still legal after a low partner bid.
+    const none = open(makeRules('joker', { firstHandBidsItself: false, firstHandMin: null, minTeamBid: 0 }));
+    let turn = whose(none);
+    expect(none.last(turn.cid, 'state')!.view!.bidOptions).toMatchObject({ nil: true, nilReason: null, min: 1 });
+    none.send(turn.cid, { t: 'act', action: { type: 'bid', bid: 'nil' }, seq: none.room.data.seq });
+    expect(none.room.data.game!.bids[turn.seat]).toBe('nil');
+    expect(none.errors(turn.cid).at(-1)?.code).not.toBe('NIL_NOT_ALLOWED');
+
+    // Minimum 4: the first partner may Nil. Once they bid 4, the other seat may Nil too.
+    const met = open(makeRules('joker', { firstHandBidsItself: false, firstHandMin: 4, minTeamBid: 0 }));
+    turn = whose(met);
+    expect(met.last(turn.cid, 'state')!.view!.rules.nil.allowed).toBe(true);
+    expect(met.last(turn.cid, 'state')!.view!.bidOptions).toMatchObject({ nil: true, nilReason: null });
+    met.send(turn.cid, { t: 'act', action: { type: 'bid', bid: 4 }, seq: met.room.data.seq });
+    const cover = whose(met);
+    expect((cover.seat + 2) % 4).toBe(turn.seat);
+    expect(met.last(cover.cid, 'state')!.view!.bidOptions).toMatchObject({ nil: true, nilReason: null, min: 1 });
+    met.send(cover.cid, { t: 'act', action: { type: 'bid', bid: 'nil' }, seq: met.room.data.seq });
+    expect(met.room.data.game!.bids[cover.seat]).toBe('nil');
+
+    // Same floor, partner bid under it: Nil is refused with the reason. Cutthroat stays off (next test).
+    const low = open(makeRules('joker', { firstHandBidsItself: false, firstHandMin: 4, minTeamBid: 0 }));
+    turn = whose(low);
+    low.send(turn.cid, { t: 'act', action: { type: 'bid', bid: 2 }, seq: low.room.data.seq });
+    const blocked = whose(low);
+    expect(low.last(blocked.cid, 'state')!.view!.bidOptions).toMatchObject({
+      nil: false, nilReason: "Can't Nil — partner bid 2", blockReason: 'Minimum is 4',
+    });
+    low.send(blocked.cid, { t: 'act', action: { type: 'bid', bid: 'nil' }, seq: low.room.data.seq });
+    expect(low.errors(blocked.cid).at(-1)).toMatchObject({ code: 'NIL_NOT_ALLOWED', message: "Can't Nil — partner bid 2" });
+    expect(low.room.data.game!.bids[blocked.seat]).toBeNull();
+
+    // A saved 2v2 game that lost its nil object must not come back with Nil off.
+    const hole = open(makeRules('joker', { firstHandBidsItself: false, firstHandMin: null, minTeamBid: 0 }));
+    delete (hole.room.data.rules as { nil?: unknown }).nil;
+    delete (hole.room.data.game!.rules as { nil?: unknown }).nil;
+    hole.room.tick();
+    expect(hole.room.data.rules.nil.allowed).toBe(true);
+    expect(hole.room.data.game!.rules.nil.allowed).toBe(true);
+    const healed = whose(hole);
+    const view = hole.last(healed.cid, 'state')!.view!;
+    expect(view.rules.nil.allowed).toBe(true);
+    expect(view.bidOptions).toMatchObject({ nil: true, nilReason: null });
+    hole.send(healed.cid, { t: 'act', action: { type: 'bid', bid: 'nil' }, seq: hole.room.data.seq });
+    expect(hole.room.data.game!.bids[healed.seat]).toBe('nil');
+  });
+
   it('enforces the host minimum on bids, including a Nil partner', () => {
     const { env } = fourHumans();
     env.send('a', { t: 'config', rules: makeRules('joker', { firstHandBidsItself: false, firstHandMin: 4, minTeamBid: 0 }) });

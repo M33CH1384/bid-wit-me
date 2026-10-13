@@ -12,8 +12,14 @@ describe('minimum books / bid in the UI', () => {
     expect(lobby).toContain('data-testid="lobby-min-bid"');
     expect(house).toContain('Minimum books / bid');
     expect(table).toContain('data-testid="bid-block"');
+    expect(table).toContain('data-testid="bid-nil"');
     expect(table).toContain('view.bidOptions.min');
-    expect(table).toContain('view.bidOptions.nil');
+    // 2v2 keeps the Nil button whenever the table allows Nil. A partner who bid under the floor disables it
+    // (the reason stays on the button and in the gold line). Cutthroat never allows Nil, so the button is absent.
+    expect(table).toContain('view.rules.nil.allowed');
+    expect(table).toContain('disabled={!view.bidOptions.nil}');
+    expect(css).toContain('.bid-grid .nil:disabled');
+    expect(css).toContain('.table-screen:not(.short) .bid-panel .bid-grid');
     expect(css).toContain('.bid-block');
     expect(css).toContain('text-wrap: wrap');
   });
