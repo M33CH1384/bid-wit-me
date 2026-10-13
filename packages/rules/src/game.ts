@@ -1,5 +1,5 @@
 import type { Card } from './cards';
-import { type TableRules, buildDeck, cardPower, effectiveSuit, handSize, hostMinimum, isTrump, minimumFits, removedForActive, shotOutOn, tricksForActive, validateRules, RulesConfigError } from './config';
+import { type TableRules, blindNilRulesOf, buildDeck, cardPower, effectiveSuit, handSize, hostMinimum, isTrump, minimumFits, nilRulesOf, removedForActive, shotOutOn, tricksForActive, validateRules, withCompleteNil, RulesConfigError } from './config';
 import { evaluateRunIt } from './runIt';
 import { createRng, shuffle } from './rng';
 import {
@@ -228,11 +228,12 @@ export function isFreshDeal(st: Pick<GameState, 'phase' | 'bids' | 'tricks' | 't
 
 function blindNilScoreEligible(st: GameState, seat: Seat): boolean {
   const r = st.rules;
-  if (!r.blindNil.allowed) return false;
-  if (r.blindNil.onlyWhenBehindBy === null) return true;
+  const blind = blindNilRulesOf(r);
+  if (!blind.allowed) return false;
+  if (blind.onlyWhenBehindBy === null) return true;
   const mine = sideOf(seat, r);
   const best = Math.max(...st.scores.filter((_, i) => i !== mine));
-  return best - st.scores[mine]! >= r.blindNil.onlyWhenBehindBy;
+  return best - st.scores[mine]! >= blind.onlyWhenBehindBy;
 }
 
 export interface BidOptions {
@@ -254,7 +255,7 @@ export function bidOptions(st: GameState, seat: Seat): BidOptions {
   const partner = partnerOf(seat, r);
   const pBid = partner === null ? null : st.bids[partner];
   let min = 1;
-  let nil = r.nil.allowed;
+  let nil = nilRulesOf(r).allowed;
   let blockReason: string | null = null;
   let nilReason: string | null = null;
   if (!r.partnerships) {
@@ -284,7 +285,7 @@ export function bidOptions(st: GameState, seat: Seat): BidOptions {
   min = Math.min(Math.max(1, min), max);
   return {
     min, max, nil, blockReason, nilReason,
-    blindNil: nil && r.blindNil.allowed && !st.revealed[seat] && blindNilScoreEligible(st, seat),
+    blindNil: nil && blindNilRulesOf(r).allowed && !st.revealed[seat] && blindNilScoreEligible(st, seat),
   };
 }
 
@@ -499,14 +500,15 @@ function startPlay(st: GameState): GameState {
 
 function exchangeSteps(st: GameState): ExchangeStep[] {
   const r = st.rules;
-  if (!r.partnerships || r.blindNil.exchangeCards === 0) return [];
+  const exchangeCards = blindNilRulesOf(r).exchangeCards;
+  if (!r.partnerships || exchangeCards === 0) return [];
   const steps: ExchangeStep[] = [];
   const done = new Set<Seat>();
   for (let i = 1; i <= r.playerCount; i++) {
     const s = (st.dealer + i) % r.playerCount;
     if (st.bids[s] !== 'blindNil' || done.has(s)) continue;
     const p = partnerOf(s, r)!;
-    steps.push({ from: s, to: p, count: r.blindNil.exchangeCards }, { from: p, to: s, count: r.blindNil.exchangeCards });
+    steps.push({ from: s, to: p, count: exchangeCards }, { from: p, to: s, count: exchangeCards });
     done.add(s).add(p);
   }
   return steps;
@@ -514,6 +516,8 @@ function exchangeSteps(st: GameState): ExchangeStep[] {
 
 /** Applies an action and returns the new state. Throws RuleError on illegal actions. Never mutates `st`. */
 export function applyAction(st: GameState, action: Action): GameState {
+  const rules = withCompleteNil(st.rules);
+  if (rules !== st.rules) st = { ...st, rules };
   const r = st.rules;
   const n = r.playerCount;
   if (action.type === 'nextHand') {
@@ -689,7 +693,7 @@ function project(st: GameState, seat: Seat, spectate: boolean): PlayerView {
   const hidden = spectate || (st.phase === 'bidding' && !st.revealed[seat]);
   const runHands = runClearedHands(st);
   return {
-    seat, rules: st.rules, phase: st.phase, handNo: st.handNo, dealer: st.dealer, turn: st.turn,
+    seat, rules: withCompleteNil(st.rules), phase: st.phase, handNo: st.handNo, dealer: st.dealer, turn: st.turn,
     hand: hidden ? null : [...st.hands[seat]!],
     handCounts: st.hands.map((h) => h.length),
     bids: [...st.bids], revealed: [...st.revealed], exchange: st.exchange.map((e) => ({ ...e })),

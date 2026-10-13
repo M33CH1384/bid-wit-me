@@ -22,13 +22,15 @@ export function feltCardTransform(index: number, count: number, selected: boolea
  * The saved hand, drawn with canvas (no WebGL) so a reload can be played before the 3D scene arrives.
  * Faces paint one card per frame. The buttons are live on the first frame, with the rank as a stand-in.
  */
-export function FeltHand({ cards, trick, legal, selected, onCard, promoted }: {
+export function FeltHand({ cards, trick, legal, selected, onCard, promoted, visibleCount }: {
   cards: Card[];
   trick: Card[];
   legal: Card[];
   selected: Card | null;
   onCard: (c: Card) => void;
   promoted: (c: Card) => boolean;
+  /** Fan slots that have left the deck. Omit to show the whole hand (a resumed deal is already finished). */
+  visibleCount?: number;
 }) {
   const slots = useRef(new Map<string, HTMLCanvasElement | null>());
   const key = `${cards.join(',')}|${trick.join(',')}`;
@@ -65,8 +67,10 @@ export function FeltHand({ cards, trick, legal, selected, onCard, promoted }: {
           ))}
         </div>
       )}
-      <div className="felt-hand" data-testid="felt-hand" role="group" aria-label="Your hand">
+      {/* Visual only. The screen-reader hand in Table is the one labeled control per card. */}
+      <div className="felt-hand" data-testid="felt-hand" aria-hidden="true">
         {cards.map((c, i) => {
+          if (i >= (visibleCount ?? cards.length)) return null;
           const red = c[1] === 'H' || c[1] === 'D' || c === 'BJ';
           const can = legal.includes(c);
           const picked = selected === c;
@@ -74,6 +78,7 @@ export function FeltHand({ cards, trick, legal, selected, onCard, promoted }: {
             <button
               key={c}
               type="button"
+              tabIndex={-1}
               className={`${red ? 'red' : ''} ${can ? 'legal' : ''} ${picked ? 'sel' : ''}`}
               style={{ transform: feltCardTransform(i, cards.length, picked), zIndex: picked ? 20 : i }}
               disabled={!can}
