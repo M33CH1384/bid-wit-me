@@ -1,5 +1,5 @@
 import type { Card } from './cards';
-import { type TableRules, buildDeck, cardPower, effectiveSuit, handSize, hostMinimum, isTrump, shotOutOn, validateRules, RulesConfigError } from './config';
+import { type TableRules, buildDeck, cardPower, effectiveSuit, handSize, hostMinimum, isTrump, minimumFits, removedForActive, shotOutOn, tricksForActive, validateRules, RulesConfigError } from './config';
 import { evaluateRunIt } from './runIt';
 import { createRng, shuffle } from './rng';
 import {
@@ -47,6 +47,14 @@ export interface GameState {
   result: GameResult | null;
   /** Per side: Big-over-Little-Joker nukes dropped this game (set only once one happens). */
   nukes?: number[];
+  /** Cutthroat seats already out. The next deal counts who is still in and leaves this list alone. */
+  eliminated?: boolean[];
+  /** Consecutive failed bids. The deal does not touch this. */
+  failStreak?: number[];
+  /** Books in this hand when the table is short. Omitted on a full table (13 or 17 from the rules). */
+  trickCount?: number;
+  /** Face-down cards not dealt when two players are still in. Never copied into a seat's view. */
+  undealt?: Card[];
 }
 
 export type Action =
@@ -61,7 +69,7 @@ export type Action =
 export type RuleErrorCode =
   | 'WRONG_PHASE' | 'NOT_YOUR_TURN' | 'BAD_SEAT' | 'BAD_BID' | 'BID_TOO_LOW' | 'NIL_NOT_ALLOWED'
   | 'BLIND_NIL_NOT_ALLOWED' | 'CARD_NOT_IN_HAND' | 'MUST_FOLLOW_SUIT' | 'SPADES_NOT_BROKEN'
-  | 'MUST_LEAD_TWO_OF_CLUBS' | 'BAD_EXCHANGE' | 'ALREADY_REVEALED' | 'CANNOT_RUN_IT';
+  | 'MUST_LEAD_TWO_OF_CLUBS' | 'BAD_EXCHANGE' | 'ALREADY_REVEALED' | 'CANNOT_RUN_IT' | 'ELIMINATED' | 'BAD_RULES';
 
 export class RuleError extends Error {
   constructor(public readonly code: RuleErrorCode, message: string) {
@@ -115,31 +123,90 @@ export function bidOrder(r: Pick<TableRules, 'partnerships' | 'playerCount'>, de
   return Array.from({ length: n }, (_, k) => (dealer + 1 + k) % n);
 }
 /** Who bids after `seat` this hand (null when `seat` is the last bidder). */
-export function nextBidder(st: Pick<GameState, 'rules' | 'dealer' | 'bids'>, seat: Seat): Seat | null {
+export function nextBidder(st: Pick<GameState, 'rules' | 'dealer' | 'bids' | 'eliminated'>, seat: Seat): Seat | null {
   const order = bidOrder(st.rules, st.dealer);
   const i = order.indexOf(seat);
-  for (let k = i + 1; k < order.length; k++) if (st.bids[order[k]!] === null) return order[k]!;
+  for (let k = i + 1; k < order.length; k++) {
+    const s = order[k]!;
+    if (isEliminated(st, s)) continue;
+    if (st.bids[s] === null) return s;
+  }
   return null;
+}
+
+/** Cutthroat seat that is already out. */
+export function isEliminated(st: { eliminated?: readonly boolean[] | undefined }, seat: number): boolean {
+  return !!st.eliminated?.[seat];
+}
+
+/** Seats still being dealt in, in seat order. Partnerships always deal every seat. */
+export function liveSeats(st: Pick<GameState, 'rules' | 'eliminated'>): number[] {
+  const n = st.rules.playerCount;
+  const out: number[] = [];
+  for (let i = 0; i < n; i++) if (st.rules.partnerships || !isEliminated(st, i)) out.push(i);
+  return out;
+}
+
+/** Next clockwise seat that is still in. */
+export function nextLive(st: Pick<GameState, 'rules' | 'eliminated'>, seat: number): number {
+  const n = st.rules.playerCount;
+  for (let k = 1; k <= n; k++) {
+    const s = (seat + k) % n;
+    if (st.rules.partnerships || !isEliminated(st, s)) return s;
+  }
+  return seat;
+}
+
+/** Tricks this hand deals and plays. */
+export function booksInHand(st: { rules: TableRules; trickCount?: number }): number {
+  return st.trickCount ?? handSize(st.rules);
 }
 
 function dealHand(prev: GameState, handNo: number, dealer: Seat): GameState {
   const r = prev.rules;
   const n = r.playerCount;
-  const deck = deckForHand(r, prev.seed, handNo);
+  const live = liveSeats(prev);
+  const active = live.length;
+  const tricks = tricksForActive(active);
+  if (!r.partnerships && !minimumFits(r, tricks)) {
+    throw new RuleError('BAD_RULES', `Minimum books ${hostMinimum(r)} is higher than the ${tricks} in this hand`);
+  }
+  const removed = removedForActive(r, active);
+  const sameRemoval = removed.length === r.removedCards.length && removed.every((c, i) => c === r.removedCards[i]);
+  const deck = sameRemoval
+    ? deckForHand(r, prev.seed, handNo)
+    : shuffle(buildDeck({ ...r, removedCards: removed }), createRng(`${prev.seed}:hand:${handNo}`));
   const hands: Card[][] = Array.from({ length: n }, () => []);
-  // one at a time clockwise, starting left of the dealer
-  deck.forEach((c, i) => hands[(dealer + 1 + i) % n]!.push(c));
+  let trickCount: number | undefined;
+  let undealt: Card[] | undefined;
+  if (live.length === n) {
+    // one at a time clockwise, starting left of the dealer
+    deck.forEach((c, i) => hands[(dealer + 1 + i) % n]!.push(c));
+  } else {
+    trickCount = tricks;
+    const used = deck.slice(0, tricks * live.length);
+    const rest = deck.slice(used.length);
+    if (rest.length) undealt = rest;
+    const start = nextLive(prev, dealer);
+    const at = Math.max(0, live.indexOf(start));
+    used.forEach((c, i) => hands[live[(at + i) % live.length]!]!.push(c));
+  }
+  const order = bidOrder(r, dealer);
+  const turn = order.find((s) => r.partnerships || !isEliminated(prev, s)) ?? order[0]!;
   const st: GameState = {
-    ...prev, phase: 'bidding', handNo, dealer, turn: bidOrder(r, dealer)[0]!,
+    ...prev, phase: 'bidding', handNo, dealer, turn,
     hands, bids: Array(n).fill(null), revealed: Array(n).fill(true), exchange: [],
-    trick: { leader: (dealer + 1) % n, plays: [], winner: null }, tricks: [],
+    trick: { leader: nextLive(prev, dealer), plays: [], winner: null }, tricks: [],
     tricksWon: Array(n).fill(0), spadesBroken: false,
+    trickCount, undealt,
   };
   if (handNo === 1 && r.firstHandBidsItself) {
     // "First hand: books bid themselves": no bidding, straight to play; every book scores 10
-    return startPlay({ ...st, bids: Array(n).fill('books') });
+    const bids = Array(n).fill(null);
+    for (const s of live) bids[s] = 'books';
+    return startPlay({ ...st, bids });
   }
-  st.revealed = st.revealed.map((_, seat) => !blindNilScoreEligible(st, seat));
+  st.revealed = st.revealed.map((_, seat) => isEliminated(st, seat) || !blindNilScoreEligible(st, seat));
   return st;
 }
 
@@ -182,7 +249,7 @@ export interface BidOptions {
 /** Bids available to `seat` right now (ignores whose turn it is). */
 export function bidOptions(st: GameState, seat: Seat): BidOptions {
   const r = st.rules;
-  const max = handSize(r);
+  const max = booksInHand(st);
   const floor = Math.min(Math.max(0, hostMinimum(r)), max);
   const partner = partnerOf(seat, r);
   const pBid = partner === null ? null : st.bids[partner];
@@ -272,8 +339,8 @@ export function lowestLegal(r: TableRules, hand: readonly Card[], trickPlays: re
  * Last trick of the hand, the Big Joker is on the table and the Little Joker hasn't shown up anywhere this hand: by
  * elimination someone still to play holds it, so the Big Joker "goes radioactive". Public information only.
  */
-export function radioactiveBigJoker(st: Pick<GameState, 'rules' | 'phase' | 'tricks' | 'trick'>): boolean {
-  if (st.rules.deck !== 'joker54' || st.phase !== 'playing' || st.tricks.length !== handSize(st.rules) - 1) return false;
+export function radioactiveBigJoker(st: Pick<GameState, 'rules' | 'phase' | 'tricks' | 'trick' | 'trickCount'>): boolean {
+  if (st.rules.deck !== 'joker54' || st.phase !== 'playing' || st.tricks.length !== booksInHand(st) - 1) return false;
   if (!st.trick.plays.some((p) => p.card === 'BJ')) return false;
   return !st.trick.plays.some((p) => p.card === 'LJ') && !st.tricks.some((t) => t.plays.some((p) => p.card === 'LJ'));
 }
@@ -329,6 +396,7 @@ function runSolver(seat: Seat) {
  * just plays. Every mode (2v2, Cutthroat 3/4, Ace Down). Memoized once per seat per state; see `evaluateRunIt`.
  */
 export function canRunIt(st: GameState, seat: Seat): boolean {
+  if (isEliminated(st, seat) || st.eliminated?.some(Boolean)) return false;
   return evaluateRunIt(st, seat);
 }
 
@@ -419,9 +487,9 @@ function explainIllegal(st: GameState, seat: Seat, card: Card): RuleError {
 function firstLeader(st: GameState): Seat {
   if (st.rules.firstLead === 'twoOfClubs') {
     const h = st.hands.findIndex((hand) => hand.includes('2C'));
-    if (h >= 0) return h;
+    if (h >= 0 && !isEliminated(st, h)) return h;
   }
-  return (st.dealer + 1) % st.rules.playerCount;
+  return nextLive(st, st.dealer);
 }
 
 function startPlay(st: GameState): GameState {
@@ -454,6 +522,7 @@ export function applyAction(st: GameState, action: Action): GameState {
   }
   const seat = action.seat;
   if (!Number.isInteger(seat) || seat < 0 || seat >= n) throw new RuleError('BAD_SEAT', `Bad seat ${seat}`);
+  if (!r.partnerships && isEliminated(st, seat)) throw new RuleError('ELIMINATED', 'You are out of this game');
 
   switch (action.type) {
     case 'reveal': {
@@ -482,8 +551,8 @@ export function applyAction(st: GameState, action: Action): GameState {
       bids[seat] = bid;
       const revealed = [...st.revealed];
       revealed[seat] = true;
-      let next: GameState = { ...st, bids, revealed, turn: nextBidder({ ...st, bids }, seat) ?? (seat + 1) % n };
-      if (bids.every((b) => b !== null)) {
+      let next: GameState = { ...st, bids, revealed, turn: nextBidder({ ...st, bids }, seat) ?? nextLive(st, seat) };
+      if (liveSeats(st).every((s) => bids[s] !== null)) {
         const steps = exchangeSteps(next);
         next = steps.length ? { ...next, phase: 'exchange', exchange: steps, turn: steps[0]!.from } : startPlay(next);
       }
@@ -520,16 +589,19 @@ export function applyAction(st: GameState, action: Action): GameState {
       let spadesBroken = st.spadesBroken || isTrump(action.card, r);
       // ☢ last-trick nuke: once both Jokers are in the hand's final trick, everyone still to play auto-plays their last
       // card at once (one card each, so no choice is made for them); other tricks play out normally
-      if (st.tricks.length === handSize(r) - 1 && jokersMet(plays)) {
-        for (let k = plays.length, s2 = (seat + 1) % n; k < n; k++, s2 = (s2 + 1) % n) {
+      const liveN = liveSeats(st).length;
+      if (st.tricks.length === booksInHand(st) - 1 && jokersMet(plays)) {
+        let s2 = nextLive(st, seat);
+        while (plays.length < liveN) {
           const card = lowestLegal(r, hands[s2]!, plays, spadesBroken);
           hands[s2] = hands[s2]!.filter((c) => c !== card);
           plays.push({ seat: s2, card, auto: true });
           spadesBroken = spadesBroken || isTrump(card, r);
+          s2 = nextLive(st, s2);
         }
       }
-      if (plays.length < n) {
-        return { ...st, hands, spadesBroken, trick: { ...st.trick, plays }, turn: (seat + 1) % n };
+      if (plays.length < liveN) {
+        return { ...st, hands, spadesBroken, trick: { ...st.trick, plays }, turn: nextLive(st, seat) };
       }
       const winner = trickWinner(plays, r);
       const done: Trick = { leader: st.trick.leader, plays, winner };
@@ -543,7 +615,7 @@ export function applyAction(st: GameState, action: Action): GameState {
         ...st, hands, spadesBroken, tricks, tricksWon, ...(nukes ? { nukes } : {}),
         trick: { leader: winner, plays: [], winner: null }, turn: winner,
       };
-      if (tricks.length === handSize(r)) next = finishHand(next);
+      if (tricks.length === booksInHand(st)) next = finishHand(next);
       return next;
     }
   }

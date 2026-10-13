@@ -424,6 +424,31 @@ export function handSize(r: TableRules): number {
   return r.playerCount === 4 ? 13 : 17;
 }
 
+/** Books dealt when this many Cutthroat players are still in. Three players take 17; two or four take 13. */
+export function tricksForActive(active: number): number {
+  return active === 3 ? 17 : 13;
+}
+
+/**
+ * Cards pulled from the deck for this many active players. The table's saved removals stay put.
+ * Three still in also drop 3♣ (joker) or 2♣ (standard) so 51 cards split 17 ways.
+ * Two still in play the wide deck: joker is 54−2♣−2♥, and the extra 3-player card comes back, with 26 face down.
+ */
+export function removedForActive(r: TableRules, active: number): Card[] {
+  if (r.partnerships || active === r.playerCount || active >= 4 || active < 2) return [...r.removedCards];
+  if (active === 3) {
+    const add: Card = r.deck === 'joker54' ? '3C' : '2C';
+    return r.removedCards.includes(add) ? [...r.removedCards] : [...r.removedCards, add];
+  }
+  const drop: Card = r.deck === 'joker54' ? '3C' : '2C';
+  return r.removedCards.filter((c) => c !== drop);
+}
+
+/** The host minimum can be bid and made with this many books in the hand. */
+export function minimumFits(r: Pick<TableRules, 'firstHandMin' | 'partnerships' | 'minTeamBid'>, tricks: number): boolean {
+  return hostMinimum(r) <= tricks;
+}
+
 /* ------------------------------------------------------------------ ranking */
 
 interface RankCtx {

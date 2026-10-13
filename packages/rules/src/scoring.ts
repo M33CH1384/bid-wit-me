@@ -313,9 +313,9 @@ export function booksStillNeeded(r: TableRules, bids: readonly (Bid | null)[], t
   return contract - taken;
 }
 
-/** Tricks not yet won. The trick in progress still counts as remaining. */
-export function tricksStillRemaining(st: { rules: TableRules; tricks: { length: number } }): number {
-  return handSize(st.rules) - st.tricks.length;
+/** Tricks not yet won. The trick in progress still counts as remaining. A short table uses that hand's book count. */
+export function tricksStillRemaining(st: { rules: TableRules; tricks: { length: number }; trickCount?: number }): number {
+  return (st.trickCount ?? handSize(st.rules)) - st.tricks.length;
 }
 
 /**
