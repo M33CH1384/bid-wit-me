@@ -1478,6 +1478,23 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .rules-summary { margin: 2px 0 0; font-size: 12.5px; line-height: 1.45; opacity: .82; text-align: center; overflow-wrap: anywhere; letter-spacing: .01em; }
 .lobby .rules-summary { text-align: left; padding: 6px 2px 0; }
 
+/* Branded hold: covers the table from join/start until the cloth is dressed and the first state is in. */
+.bwm-loading { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: calc(24px + env(safe-area-inset-top)) 20px calc(24px + env(safe-area-inset-bottom));
+  background:
+    radial-gradient(90% 60% at 50% 38%, rgba(155, 92, 255, .28), transparent 62%),
+    radial-gradient(70% 50% at 50% 80%, rgba(245, 197, 66, .12), transparent 70%),
+    #0c0712;
+  transition: opacity .36s ease; }
+.bwm-loading.leaving { opacity: 0; pointer-events: none; }
+.bwm-loading-card { width: min(100%, 360px); display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px; }
+.bwm-loading-mark { width: min(78%, 280px); height: auto; filter: drop-shadow(0 0 18px rgba(155, 92, 255, .65)) drop-shadow(0 6px 12px rgba(0, 0, 0, .6)); }
+.bwm-loading-line { margin: 0; min-height: 1.2em; font-family: var(--display); font-weight: 700; letter-spacing: .14em; text-transform: uppercase; font-size: 15px; color: var(--gold); text-shadow: 0 0 12px rgba(245, 197, 66, .45); }
+.bwm-loading-track { width: min(240px, 70%); height: 3px; border-radius: 99px; background: rgba(185, 128, 255, .25); overflow: hidden; }
+.bwm-loading-track > span { display: block; height: 100%; width: 8%; border-radius: inherit; background: linear-gradient(90deg, var(--purple-hot), var(--gold)); box-shadow: 0 0 10px rgba(245, 197, 66, .7); transition: width .45s ease; }
+.bwm-loading-track.indeterminate > span { width: 35%; animation: bwm-load-slide 1.2s ease-in-out infinite; }
+@keyframes bwm-load-slide { 0% { transform: translateX(-120%); } 100% { transform: translateX(320%); } }
+.bwm-loading-back { margin-top: 8px; }
+
 /* Stand-in table: painted on the first frame, until the 3D table has rendered (then it fades out) */
 .table-placeholder { position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; display: grid; place-items: center;
   --tp-felt: #0d6a45; --tp-rail: #c98a5a; --tp-apron: #7a4a2a; --tp-clear: #0c0712; --tp-floor: #120b18; --tp-rim: #9b5cff; --tp-bg: none; --tp-floor-tex: none;
