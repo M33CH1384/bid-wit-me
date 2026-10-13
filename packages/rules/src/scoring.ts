@@ -198,6 +198,84 @@ export function isShot(r: TableRules, bids: readonly Bid[], side: SideHandResult
 }
 
 /**
+ * How many times each side has been shot this game, counted from the scored hands.
+ * History is part of the synced state, so every client and a reconnect see the same counts.
+ * A busted nil alone is not a shot. A books hand counts only when it missed the first-hand minimum.
+ */
+export function shotCounts(r: TableRules, history: readonly { bids: readonly Bid[]; sides: readonly SideHandResult[] }[]): number[] {
+  const counts = Array.from({ length: sideCount(r) }, () => 0);
+  for (const hand of history) {
+    for (const side of hand.sides) {
+      if (isShot(r, hand.bids, side)) counts[side.side] = (counts[side.side] ?? 0) + 1;
+    }
+  }
+  return counts;
+}
+
+/** The side made its books: a made contract, or a books hand that reached the first-hand minimum. */
+function madeItsBooks(r: TableRules, bids: readonly Bid[], side: SideHandResult): boolean {
+  if (isBooksHand(bids)) {
+    const min = firstHandMinOf(r);
+    return min === null || side.tricks >= min;
+  }
+  return side.contractMade === true;
+}
+
+/**
+ * Scorecard cover for one side. This is the only place the recap decides tape and sheet.
+ * It reads the engine's shot-out result (`shotOutSides` / `shotOutResult`, or the recorded `result`).
+ * It does not count shots across the whole game.
+ */
+export interface ShotCover {
+  /** Caution tape after a non-losing shot, and also on a hand-1 loss (together with the sheet). Off once a later hand makes its books. */
+  tape: boolean;
+  /** White sheet only for an elimination: a hand-1 shot-out, or a later shot while the previous hand was a shot. */
+  sheet: boolean;
+  /** Siren and police lights. On whenever the sheet is showing. */
+  siren: boolean;
+}
+
+/**
+ * What covers each side's scorecard. History and `result` are synced, so every client and a reconnect agree.
+ * Tape marks a shot that did not lose the game, and comes off when a later hand makes its books.
+ * A hand-1 elimination shows the tape and the sheet together.
+ * The sheet follows the recorded loss (`result.endReason === 'shotOut'`). When `result` is omitted, the same
+ * shot-out functions the engine uses decide it, so a rules change shows up here without a second copy of the rule.
+ */
+export function shotCovers(
+  r: TableRules,
+  history: readonly { handNo: number; bids: readonly Bid[]; sides: readonly SideHandResult[] }[],
+  result?: GameResult | null,
+): ShotCover[] {
+  const n = sideCount(r);
+  const blank = (): ShotCover => ({ tape: false, sheet: false, siren: false });
+  const covers = Array.from({ length: n }, blank);
+  let prevShot = Array.from({ length: n }, () => false);
+  for (let h = 0; h < history.length; h++) {
+    const hand = history[h]!;
+    const shot = Array.from({ length: n }, () => false);
+    const made = Array.from({ length: n }, () => false);
+    const scores = Array.from({ length: n }, () => 0);
+    for (const side of hand.sides) {
+      shot[side.side] = isShot(r, hand.bids, side);
+      made[side.side] = madeItsBooks(r, hand.bids, side);
+      scores[side.side] = side.totalScore;
+    }
+    const last = h === history.length - 1;
+    const lost = last && result !== undefined
+      ? new Set(result?.endReason === 'shotOut' ? result.shotOut ?? [] : [])
+      : new Set(shotOutResult(scores, shotOutSides(r, hand.handNo, shot, prevShot))?.shotOut ?? []);
+    for (let side = 0; side < n; side++) {
+      if (lost.has(side)) covers[side] = { tape: hand.handNo === 1, sheet: true, siren: true };
+      else if (shot[side]) covers[side] = { tape: true, sheet: false, siren: false };
+      else if (made[side]) covers[side] = blank();
+    }
+    prevShot = shot;
+  }
+  return covers;
+}
+
+/**
  * Books still needed before this side is shot, or null when that side cannot be set
  * (bidding not finished, no numeric contract, or a books hand whose minimum is off).
  * On a books hand this is the first-hand minimum minus the books that side has taken.

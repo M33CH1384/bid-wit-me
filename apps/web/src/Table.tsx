@@ -814,6 +814,10 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // A nuke's hold is the 3D blast, so the score stays covered until that allowance ends.
   // Scoring toasts and hype no longer add another wait on top.
   const [talkOpen, setTalkOpen] = useState(false);
+  // A shot-out ends the hand in gameOver, which used to skip this recap. Hold the scorecard (blast, tape, sheet)
+  // until Continue, then open the results. The ack is local; the shot count still comes from synced history.
+  const [shotRecapAck, setShotRecapAck] = useState(false);
+  useEffect(() => { setShotRecapAck(false); }, [st.phase, st.handNo]);
   useEffect(() => {
     if ((st.phase !== 'handOver' && st.phase !== 'gameOver') || pause || runFx) { setTalkOpen(false); return; }
     setTalkOpen(true);
@@ -849,6 +853,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     haptic(HAPTIC.gameWin, 'game-win');
   }, [localWin]);
   // any modal up: the table, plates, chat, video bubbles etc. dim + blur behind it and can't paint over it
+  const shotOutRecap = st.phase === 'gameOver' && st.result?.endReason === 'shotOut' && !shotRecapAck;
+  const showRecap = !pause && talkOpen && (st.phase === 'handOver' || shotOutRecap);
+  const showResults = st.phase === 'gameOver' && !pause && !runFx && talkOpen && !!st.result && !shotOutRecap;
   const modalOpen = (st.phase === 'handOver' && !pause && talkOpen) || confirmLeave || showPad || (st.phase === 'gameOver' && !pause && !runFx && talkOpen && !!st.result);
 
   const trumps = useMemo(() => trumpOrder(r).slice(0, 5).map((c) => (c === 'BJ' ? 'BIG JKR' : c === 'LJ' ? 'LIL JKR' : cardLabel(c))), [r]);
@@ -1056,7 +1063,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       </div>
 
       <ChatPanel msgs={msgs} open={chatOpen} onToggle={() => setChatOpen(!chatOpen)} onSend={(t) => (st.phase === 'handOver' ? talkSend(t) : push('You', t))} unread={unread} scope={online ? 'table' : undefined} extra={online ? online.controls : <OfflineMediaBar />}
-        overRecap={st.phase === 'handOver' && !pause && talkOpen && !showPad}
+        overRecap={showRecap && !showPad}
         trash={!runFx && !modalOpen && !spectating ? <TrashTalkButton st={st} me={HUMAN} intensity={intensity} onSend={(t) => push('You', t)} /> : null} />
       {help && !bidTurn && view.hand && view.hand.length > 0 && st.phase !== 'handOver' && st.phase !== 'gameOver' && (
         <div className="bid-coach-float glass slant"><BidCoach view={view} startOpen title="COUNT YOUR BOOKS" onClose={() => setHelp(false)} /></div>
@@ -1142,15 +1149,15 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         ))}
       </div>
 
-      {st.phase === 'handOver' && !pause && talkOpen && (
+      {showRecap && (
         <Intermission
           st={st}
           names={names}
           mySide={mySide}
-          secs={online?.talk?.secs ?? null}
-          ready={online?.talk?.ready}
-          online={!!online}
-          onReady={() => apply({ type: 'nextHand' })}
+          secs={shotOutRecap ? null : (online?.talk?.secs ?? null)}
+          ready={shotOutRecap ? undefined : online?.talk?.ready}
+          online={shotOutRecap ? false : !!online}
+          onReady={() => { if (st.phase === 'gameOver') setShotRecapAck(true); else apply({ type: 'nextHand' }); }}
           onScorePad={() => setShowPad(true)}
           series={seriesChip()}
           unread={unread}
@@ -1191,7 +1198,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         </div>
       )}
 
-      {st.phase === 'gameOver' && !pause && !runFx && talkOpen && st.result && online?.victory && (() => {
+      {showResults && online?.victory && st.result && (() => {
         // online: the winners are the centerpiece (video spotlight); score, series and buttons sit underneath, secondary.
         // No auto-advance: it stays until someone leaves or the host starts the rematch.
         const res = st.result!;
@@ -1231,7 +1238,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           </div>
         );
       })()}
-      {st.phase === 'gameOver' && !pause && !runFx && talkOpen && st.result && !online?.victory && (
+      {showResults && st.result && !online?.victory && (
         <div className="modal-backdrop">
           <div className="modal glass slant gameover" role="dialog" aria-label="Game over">
             <button type="button" className="modal-x" aria-label="Close and go to the main menu" data-testid="gameover-x" onClick={mainMenu}>✕</button>

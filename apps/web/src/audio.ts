@@ -13,12 +13,12 @@ export type Sfx =
   | 'shuffle' | 'deal' | 'play' | 'tap' | 'sweep' | 'broken' | 'turn' | 'bid' | 'bidSoft'
   | 'cut' | 'made' | 'set' | 'nil' | 'bags' | 'pop' | 'win' | 'lose' | 'flip'
   // hype effects (all synthesized): joker rumbles, the Big-over-Little nuke, streaks, shots
-  | 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak1' | 'streak2' | 'streak3' | 'shot' | 'gotShot' | 'shotgun' | 'pump' | 'wheels' | 'wheelsCar' | 'overcut' | 'overcut3' | 'tornado'
+  | 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak1' | 'streak2' | 'streak3' | 'shot' | 'gotShot' | 'shotgun' | 'pump' | 'siren' | 'docSting' | 'wheels' | 'wheelsCar' | 'overcut' | 'overcut3' | 'tornado'
   // 'Run it!': the claimer's cards all slam at once / everyone else's cards hit in a quick cascade
   | 'runSlam' | 'runThud';
 
 /** SFX that bot voices duck under, and for how long (ms). */
-const DUCK_MS: Partial<Record<Sfx, number>> = { runSlam: 700, nuke: 3600, tornado: 2600, wheelsCar: 3000, jokerBig: 1100, shot: 1200, shotgun: 700, pump: 500, streak2: 1400, streak3: 1800, overcut3: 1000, win: 2000, lose: 1600, set: 1200, nil: 1600 };
+const DUCK_MS: Partial<Record<Sfx, number>> = { runSlam: 700, nuke: 3600, tornado: 2600, wheelsCar: 3000, jokerBig: 1100, shot: 1200, shotgun: 700, pump: 500, siren: 1800, docSting: 2400, streak2: 1400, streak3: 1800, overcut3: 1000, win: 2000, lose: 1600, set: 1200, nil: 1600 };
 
 export interface SoundSettings { on: boolean; volume: number; ambient: boolean; music: boolean; musicVolume: number; /** the venue's quiet ambient sound bed (Release 7), default on */ venueSound: boolean }
 const KEY = 'bwm.sound.v1';
@@ -448,6 +448,8 @@ class Engine {
       case 'gotShot': return this.sting(t, g);
       case 'shotgun': return this.shotgunBoom(t, g);
       case 'pump': return this.shotgunPump(t, g);
+      case 'siren': return this.siren(t, g);
+      case 'docSting': return this.docSting(t, g);
       // wheels: a quick rising two-step + hit (short, not a fanfare)
       case 'wheelsCar': return this.peelOut(t, g);
       case 'overcut': return this.overcutSlam(t, g, 2);
@@ -818,6 +820,50 @@ class Engine {
     this.tone(t + 0.01, 1180, 0.8, 'square', 0.04 * g, { filter: 5000 });
     this.tone(t + 0.01, 1590, 0.7, 'square', 0.03 * g, { filter: 5000 });
     for (const f of [146.83, 207.65, 293.66]) this.tone(t + 0.04, f, 0.6, 'sawtooth', 0.08 * g, { filter: 1600, attack: 0.01 });
+  }
+
+  /**
+   * White-sheet moment: a two-tone police yelp. Original synthesis, no sampled recording, no third-party license.
+   * Goes out the sfx bus, so mute and the volume slider apply.
+   */
+  private siren(t: number, g: number) {
+    const c = this.ctx!;
+    const o = c.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(640, t);
+    for (let i = 0; i < 4; i++) {
+      const at = t + i * 0.42;
+      o.frequency.exponentialRampToValueAtTime(920, at + 0.16);
+      o.frequency.exponentialRampToValueAtTime(640, at + 0.42);
+    }
+    const filter = c.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 1400;
+    filter.Q.value = 0.8;
+    const gain = c.createGain();
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.2 * g, t + 0.03);
+    gain.gain.setValueAtTime(0.2 * g, t + 1.5);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 1.72);
+    o.connect(filter).connect(gain).connect(this.sfxBus!);
+    o.start(t);
+    o.stop(t + 1.8);
+    this.tone(t, 320, 1.68, 'sine', 0.08 * g, { attack: 0.03 });
+  }
+
+  /**
+   * White-sheet moment: a slow D-minor pad and one camera shutter.
+   * Original synthesis, no sampled recording, no third-party license.
+   * Not based on any show theme.
+   * Goes out the sfx bus, so mute and the volume slider apply.
+   */
+  private docSting(t: number, g: number) {
+    this.tone(t, 73.42, 2.2, 'sine', 0.16 * g, { attack: 0.45, filter: 420 });
+    this.tone(t, 110, 2.15, 'triangle', 0.07 * g, { attack: 0.55, filter: 700 });
+    this.tone(t + 0.08, 174.61, 2.0, 'sine', 0.05 * g, { attack: 0.6, filter: 900 });
+    this.tone(t + 0.7, 349.23, 1.3, 'triangle', 0.03 * g, { attack: 0.35, filter: 1200 });
+    this.burst(t + 0.18, 0.035, 0.5 * g, 'highpass', 4200, { q: 0.7 });
+    this.burst(t + 0.22, 0.018, 0.18 * g, 'highpass', 6800);
   }
 
   /**

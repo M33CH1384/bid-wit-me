@@ -60,6 +60,8 @@ const shot = (p, name) => p.screenshot({ path: `${out}/${name}${sfx}.png` }).the
   await card.waitFor({ timeout: 60000 });
   await p.waitForTimeout(2000);
   await card.dispatchEvent('click'); await p.waitForTimeout(250); await card.dispatchEvent('click');
+  const recap = p.getByTestId('talk-ready');
+  if (await recap.waitFor({ timeout: 20000 }).then(() => true).catch(() => false)) await recap.dispatchEvent('click');
   await p.getByTestId('shot-out').waitFor({ timeout: 40000 });
   await p.waitForTimeout(1500);
   await shot(p, 'shot-out-game-over');
