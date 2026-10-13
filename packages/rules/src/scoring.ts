@@ -198,13 +198,20 @@ export function isShot(r: TableRules, bids: readonly Bid[], side: SideHandResult
 }
 
 /**
- * Books still needed for a side's contract, or null when that side cannot be set
- * (books hand, bidding not finished, or no numeric contract — nil bids are not a contract).
+ * Books still needed before this side is shot, or null when that side cannot be set
+ * (bidding not finished, no numeric contract, or a books hand whose minimum is off).
+ * On a books hand this is the first-hand minimum minus the books that side has taken.
  * Nil tricks count only when `nilTricksCountForPartner` is on, matching scoreHand.
  */
 export function booksStillNeeded(r: TableRules, bids: readonly (Bid | null)[], tricksWon: readonly number[], side: number): number | null {
-  if (bids.length === 0 || bids.some((b) => b === null || b === undefined) || isBooksHand(bids)) return null;
+  if (bids.length === 0 || bids.some((b) => b === null || b === undefined)) return null;
   const seats = sideSeats(side, r);
+  if (isBooksHand(bids)) {
+    const min = firstHandMinOf(r);
+    if (min === null) return null;
+    const taken = seats.reduce((n, seat) => n + (tricksWon[seat] ?? 0), 0);
+    return min - taken;
+  }
   let contract = 0;
   let taken = 0;
   let nilTricks = 0;
@@ -225,9 +232,9 @@ export function tricksStillRemaining(st: { rules: TableRules; tricks: { length: 
 }
 
 /**
- * Sides exactly one trick from being set: books still needed equals tricks still remaining,
- * so losing one more trick makes the contract unreachable. A nil bid is not itself a shot;
- * it only changes which tricks count toward the partner's contract.
+ * Sides exactly one trick from being shot: books still needed equals tricks still remaining,
+ * so losing one more trick makes the contract (or the first-hand minimum) unreachable.
+ * A nil bid is not itself a shot; it only changes which tricks count toward the partner's contract.
  */
 export function sidesOneTrickFromShot(st: {
   phase: string;

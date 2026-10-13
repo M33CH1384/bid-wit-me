@@ -743,8 +743,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   }, [isBooks, dealing, st.seed, st.handNo, st.tricks.length, resume]);
 
   useEffect(() => { setSelected(null); }, [st.turn, st.handNo]);
-  // One pump per side per hand, the moment they become exactly one trick from a set. Derived from the shared
-  // state (the same snapshot every online client applies), so the table hears it on the same trick.
+  // One pump per side per hand, the moment they become exactly one trick from a shot: a missed contract,
+  // or a books hand about to miss the minimum. Derived from the shared state, so the table hears it together.
   const pumpPrev = useRef<GameState | null>(null);
   const pumpedSides = useRef<Set<number>>(new Set());
   const pumpHand = useRef('');
