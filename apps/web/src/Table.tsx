@@ -30,6 +30,7 @@ import { OfflineMediaBar } from './online/Media';
 import { fireCue, fx, useReduceEffects } from './fx';
 import { useDealtSlots } from './dealtSlots';
 import { FeltHand } from './FeltHand';
+import { feltHandVisible } from './three/cardFace';
 import { loadScene } from './three/preload';
 import { TableLoading } from './TableLoading';
 import { tableStillLoading, warmTableEffects } from './effects/warm';
@@ -589,7 +590,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [webglHand, setWebglHand] = useState(false);
   const onTableReady = useCallback(() => { setTableReady(true); setLoadProgress((p) => Math.max(p, 0.72)); }, []);
   const onTableDressed = useCallback(() => { setDressed(true); setLoadProgress((p) => Math.max(p, 0.86)); }, []);
-  const onHandLive = useCallback(() => setWebglHand(true), []);
+  const onHandLive = useCallback((live: boolean) => setWebglHand(live), []);
   // The scene chunk is the long download. Bump the bar when it arrives, ahead of the first frame.
   useEffect(() => {
     let alive = true;
@@ -1035,9 +1036,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       <div className={`table-placeholder ${tableReady ? 'gone' : ''}`} data-testid="table-placeholder" data-venue={venue} style={placeholderStyle(venue)} aria-hidden>
         <div className="tp-floor" />
         <div className="tp-table"><div className={`tp-felt${VENUE_DEFS[venue].feltPattern ? ` ${VENUE_DEFS[venue].feltPattern}` : ''}`}><img src="/assets/bwm-wordmark-white.svg" alt="" /></div></div>
-        {!tableReady && !(resume && display.hand && display.hand.length > 0) && <div className="tp-note">Setting the table…</div>}
+        {!tableReady && !feltHandVisible(display.hand?.length ?? 0, introHand !== st.handNo, webglHand) && <div className="tp-note">Setting the table…</div>}
       </div>
-      {resume && !webglHand && display.hand && display.hand.length > 0 && (
+      {feltHandVisible(display.hand?.length ?? 0, introHand !== st.handNo, webglHand) && display.hand && (
         <FeltHand
           cards={display.hand}
           visibleCount={feltShown}
