@@ -61,6 +61,21 @@ describe('dealt faces survive a selection', () => {
     expect(trickFacesShown(shown, [], new Set(hand), []).has('2C')).toBe(false);
   });
 
+  it('shows faces for cards other seats played, not only the local hand', () => {
+    const mine = ['AS', 'KS', 'QS'] as const;
+    const trick = ['QH', 'JD', '2C'];
+    // The painter only walked the local hand. The bots' plays were never dealt here.
+    const shown = trickFacesShown(new Set(mine), [...mine], new Set(mine), trick);
+    for (const id of trick) expect(cardShowsFace(id, shown, trick)).toBe(true);
+    for (const id of mine) expect(cardShowsFace(id, shown, trick)).toBe(true);
+    // A rebuild cleared the set and only handed back the cards still in the local hand.
+    const rebuilt = trickFacesShown(new Set(), [], new Set(mine), trick);
+    for (const id of trick) {
+      expect(rebuilt.has(id)).toBe(true);
+      expect(cardShowsFace(id, new Set(), trick)).toBe(true);
+    }
+  });
+
   it('keeps trick cards face-up when a resize rebuilds the painter mid-trick', () => {
     const hand = ['AS', 'KS', 'QS'] as const;
     const trick = ['10S', '4S', '2C'];

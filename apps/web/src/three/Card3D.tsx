@@ -10,6 +10,7 @@ import { fireCue, fx } from '../fx';
 import { restingFlightWait } from '../trickTiming';
 import { openingFlight } from './dealFlight';
 import { retainFrontTexture } from './cardFace';
+import { restingFacing, trickFacingArrived } from './trickFacing';
 
 interface Props {
   face: Texture | null; // null = we only ever see the back
@@ -164,6 +165,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     sp: new Vector3(), sq: new Quaternion(), ss: 1,
     tp: new Vector3(), tq: new Quaternion(), ts: 1,
     started: false, firedStart: '' as string, firedLand: '' as string, land: undefined as string | undefined,
+    faced: false,
   });
   useLayoutEffect(() => {
     const g = ref.current;
@@ -313,6 +315,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       }
       const wasResting = !s.key || s.t >= 1;
       s.key = key;
+      s.faced = false;
       s.land = sfx.current.sfxLand; // this tween's landing cue
       s.t = 0;
       // last-trick auto-play retargets a card that is already on screen (your last card keeps its hand key).
@@ -360,7 +363,19 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
         liftG.scale.set(1, 1, 1);
       }
     }
-    if (s.t >= 1) return;
+    if (s.t >= 1) {
+      // A play that reached the trick must not keep the face-down fan quaternion.
+      if (!s.faced && finiteTarget) {
+        const q = restingFacing(
+          [g.quaternion.x, g.quaternion.y, g.quaternion.z, g.quaternion.w],
+          target.q,
+          true,
+        );
+        g.quaternion.set(q[0], q[1], q[2], q[3]);
+        s.faced = true;
+      }
+      return;
+    }
     invalidate();
     if (s.wait > 0) { s.wait -= dt; return; }
     const moving = s.sp.distanceTo(s.tp) > 0.02;
@@ -383,6 +398,15 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     g.position.y += Math.sin(Math.PI * s.t) * hop * Math.min(1, dist);
     g.quaternion.slerpQuaternions(s.sq, s.tq, e);
     g.scale.setScalar(motion === 'slide' ? s.ts : s.ss + (s.ts - s.ss) * e);
+    if (finiteTarget && trickFacingArrived(s.t, g.position.distanceTo(s.tp))) {
+      const q = restingFacing(
+        [g.quaternion.x, g.quaternion.y, g.quaternion.z, g.quaternion.w],
+        target.q,
+        true,
+      );
+      g.quaternion.set(q[0], q[1], q[2], q[3]);
+      s.faced = true;
+    }
   });
 
   return (
