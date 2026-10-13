@@ -16,7 +16,8 @@
  *   - SQLite-backed DO (new_sqlite_classes), WebSocket Hibernation API, ping/pong auto-response (no wake-ups).
  *   - The whole room is ONE KV row. Saves are debounced (≤1 write per ~2 s burst of activity, forced at 10 s),
  *     so a full 4-human game costs a few hundred row writes, a 1-human + 3-bot game far fewer.
- *   - Turn timers use a single "ticking" alarm that is only re-armed when it fires (≈1 alarm write per turn timeout window).
+ *   - Human turn timers and bot moves share one storage alarm (re-armed only when nothing earlier is pending).
+ *     The in-memory wake is only the fast path: hibernation drops it, and ping/pong does not wake the object.
  *   - A table with nobody connected freezes (no bots, no timers) and is deleted after 24 h idle.
  */
 import { DurableObject } from 'cloudflare:workers';
@@ -348,7 +349,10 @@ export class TableDO extends DurableObject<Env> {
     if (msg.t === 'welcome') ws.serializeAttachment({ cid, pid: msg.you } satisfies Attachment);
   }
 
-  /** Short in-memory timer (bot moves). While it's pending the DO stays awake, which is fine: it's ≤ a few seconds. */
+  /**
+   * Fast path for a bot move while this isolate stays up. Hibernation drops the timer and a
+   * WebSocket ping does not wake the object, so the room also arms a storage alarm.
+   */
   private wake(ms: number): void {
     const at = Date.now() + Math.max(0, ms);
     if (this.wakeTimer && at >= this.wakeAt) return;
@@ -363,7 +367,8 @@ export class TableDO extends DurableObject<Env> {
     const now = Date.now();
     if (this.alarmAt !== null && this.alarmAt > now - 5000 && this.alarmAt <= at) return;
     this.alarmAt = at;
-    void this.ctx.storage.setAlarm(at);
+    // keep the isolate alive until the alarm is stored; a floating promise is dropped on hibernation
+    this.ctx.waitUntil(this.ctx.storage.setAlarm(at));
   }
 
   private scheduleSave(): void {

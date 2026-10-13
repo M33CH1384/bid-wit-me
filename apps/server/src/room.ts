@@ -115,6 +115,11 @@ export interface RoomData {
   replaceBots?: boolean;
   /** epoch ms when the host's last socket dropped; another connected member becomes host after HOST_DISCONNECT_GRACE_MS */
   hostAwaySince?: number;
+  /**
+   * When the current bot turn should move (epoch ms). Saved with the row so a hibernated table
+   * still knows the deadline; the in-memory wake alone does not survive.
+   */
+  botDueAt?: number | null;
   /** latched when a game starts: this deal counts for Elo, so a leaver doesn't open their seat to a guest */
   rated?: boolean;
   /** this deal was already written as abandoned (leave, replacement, or expiry) */
@@ -165,6 +170,11 @@ export const TOURNAMENT_EMPTY_GRACE_MS = 90_000;
 /** seated host dropped without leaving: pass host after this long so the table can still start or rematch */
 export const HOST_DISCONNECT_GRACE_MS = 30_000;
 export const DEFAULT_TIMING: RoomTiming = { botMs: 750, trickPauseMs: 1300, dealMs: 3200, disconnectGraceMs: 10_000, handOverMs: 20_000 };
+/**
+ * After a bot's scheduled delay, this much longer with the turn still unmoved means the brain
+ * did not resolve it. The server then plays a legal bid or card itself.
+ */
+export const BOT_WATCHDOG_MS = 5_000;
 
 /** What the host environment (Durable Object or test harness) provides. */
 export interface RoomIO {
@@ -206,8 +216,11 @@ export class Room {
   /** connection id → player id (null until `hello`) */
   private conns = new Map<string, string | null>();
   private chatWindow = new Map<string, number[]>();
-  private botDueAt: number | null = null;
-  private botKey: string | null = null;
+  /**
+   * Tests only. The next N times a bot is due, the brain is skipped so the turn stays put
+   * and the watchdog has to play a legal card or bid.
+   */
+  stallsLeft = 0;
 
   constructor(public data: RoomData, private io: RoomIO, private timing: RoomTiming = DEFAULT_TIMING) {
     data.seq ??= 0;
@@ -1237,8 +1250,7 @@ export class Room {
         d.turnKey = key;
         d.turnStartedAt = now;
         d.deadline = null;
-        this.botDueAt = null;
-        this.botKey = null;
+        d.botDueAt = null;
         changed = true;
       }
       // Release 10: a bot claims 'Run it!' as soon as it's guaranteed from its own cards, even off-turn.
@@ -1302,28 +1314,57 @@ export class Room {
         // nobody is connected: freeze the table (no bot moves, no timers) until someone comes back
         if (d.deadline !== null) { d.deadline = null; changed = true; }
         d.turnKey = null; // the clock restarts when someone reconnects
-        this.botKey = null;
+        d.botDueAt = null;
         this.io.setAlarm(null);
         return changed;
       }
 
       if (slot.kind === 'bot' || slot.kind === 'empty') {
         d.deadline = null;
-        if (this.botKey !== key) {
-          this.botKey = key;
-          this.botDueAt = Math.max(now, (d.turnStartedAt ?? now) + leadIn + this.timing.botMs);
+        // The in-memory wake is the fast path. It does not survive hibernation, and a client
+        // ping is answered without waking the object, so a bot with only that timer sits on
+        // "to play" until some other message arrives. The storage alarm is the same durable
+        // clock a human turn already uses.
+        if (d.botDueAt == null) {
+          let at = Math.max(now, (d.turnStartedAt ?? now) + leadIn + this.timing.botMs);
           // sometimes a bot talks before it plays (never a tell: the line doesn't see its cards), then a short beat
           if (turn.kind === 'play' && slot.kind === 'bot' && d.botTalk !== false) {
             const line = prePlayLine(this.talkState(), this.talkTable(), turn.seat, now, Math.random);
-            if (line) { this.pushBotLine(line); this.botDueAt += 900; changed = true; }
+            if (line) { this.pushBotLine(line); at += 900; changed = true; }
           }
+          d.botDueAt = at;
+          changed = true;
         }
-        if (now >= this.botDueAt!) {
-          this.autoAct(turn.seat, slot.kind === 'bot' ? slot.level : d.botLevel);
+        const due = d.botDueAt;
+        const watchdogAt = due + BOT_WATCHDOG_MS;
+        if (now >= watchdogAt) {
+          try {
+            this.apply(this.fallbackAction(turn.seat));
+          } catch (e) {
+            console.error('bot watchdog failed', e);
+            this.io.wake(1000);
+            this.io.setAlarm(now + 1000);
+            return changed;
+          }
           changed = true;
           continue;
         }
-        this.io.wake(this.botDueAt! - now);
+        if (now >= due) {
+          const level = slot.kind === 'bot' ? slot.level : d.botLevel;
+          let moved = false;
+          if (this.stallsLeft > 0) this.stallsLeft--;
+          else {
+            try { this.autoAct(turn.seat, level); } catch (e) { console.error('bot act failed', e); }
+            moved = this.turnKeyOf(d.game!) !== key;
+          }
+          if (moved) { changed = true; continue; }
+          // The brain hung or declined. Do not spin: the watchdog plays a legal card or bid.
+          this.io.wake(Math.max(0, watchdogAt - now));
+          this.io.setAlarm(watchdogAt);
+          return true;
+        }
+        this.io.wake(due - now);
+        this.io.setAlarm(due);
         return changed;
       }
 
@@ -1370,8 +1411,7 @@ export class Room {
   private clearTimers(): void {
     this.data.deadline = null;
     this.data.turnKey = null;
-    this.botDueAt = null;
-    this.botKey = null;
+    this.data.botDueAt = null;
     this.io.setAlarm(null);
   }
 
@@ -1408,12 +1448,16 @@ export class Room {
       this.apply(action);
     } catch {
       // never get stuck: fall back to the first legal card / minimum bid
-      const v = viewFor(d.game!, seat);
-      action = v.phase === 'playing' ? { type: 'play', seat, card: v.legal[0]! }
-        : v.phase === 'bidding' ? (v.hand === null ? { type: 'reveal', seat } : { type: 'bid', seat, bid: v.bidOptions?.min ?? 1 })
-        : { type: 'exchange', seat, cards: (v.hand ?? []).slice(0, v.exchange[0]?.count ?? 0) };
-      this.apply(action);
+      this.apply(this.fallbackAction(seat));
     }
+  }
+
+  /** A legal bid, reveal, exchange, or card for `seat`. Used when the bot brain does not move the turn. */
+  private fallbackAction(seat: number): Action {
+    const v = viewFor(this.data.game!, seat);
+    if (v.phase === 'playing') return { type: 'play', seat, card: v.legal[0]! };
+    if (v.phase === 'bidding') return v.hand === null ? { type: 'reveal', seat } : { type: 'bid', seat, bid: v.bidOptions?.min ?? 1 };
+    return { type: 'exchange', seat, cards: (v.hand ?? []).slice(0, v.exchange[0]?.count ?? 0) };
   }
 
   /* --------------------------------------------------------------- output */
