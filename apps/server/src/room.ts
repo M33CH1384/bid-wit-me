@@ -8,11 +8,11 @@
  *  - all durable state lives in one plain-JSON `RoomData` object that the DO saves as a single row.
  */
 import {
-  type Action, type GameState, type Series, addSeriesGame, emptySeries, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, RulesConfigError, acceptRules, applyAction, canRunIt, type Seat, spectatorView, isFreshDeal, isNukeTrick, nextDealer, makeRules, newGame, pendingTurn, secureSeed, viewFor, withCompleteNil,
+  type Action, type GameState, type Series, addSeriesGame, emptySeries, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, RulesConfigError, acceptRules, applyAction, canRunIt, runPlayout, type Seat, spectatorView, isFreshDeal, isNukeTrick, nextDealer, makeRules, newGame, pendingTurn, secureSeed, viewFor, withCompleteNil,
 } from '@spades/rules';
 import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, chooseBotAction, loudLoser, parseHint, leanBid, botSkillFor, personaSkillFloor, seatSkill, leanNil, momentsFor, newTalkState, pickBotNames, prePlayLine } from '@spades/bots';
 import {
-  type BotLevel, type ChatLine, type ClientMsg, type HostMusic, type MediaState, type RoomInfo, type RoomPhase, type SeatInfo, type ServerMsg,
+  type BotLevel, type ChatLine, type ClientMsg, type HostMusic, type MediaState, type RoomInfo, type RoomPhase, type RunPlayback, type SeatInfo, type ServerMsg,
   DEFAULT_AFK_LIMIT, LIMITS, PROTOCOL_VERSION, parseClientMsg,
   HAND_END_HOLD_MS, NUKE_ALLOWANCE_MS, handEndLeadMs, type NukeIntensity, type TalkIntensity, cleanTeamName, pickTeamName, type VenueChoice, type VenueId, rollVenue,
 } from '@spades/protocol';
@@ -119,6 +119,11 @@ export interface RoomData {
   rated?: boolean;
   /** this deal was already written as abandoned (leave, replacement, or expiry) */
   abandonReported?: boolean;
+  /**
+   * The Run it! just resolved, in real seats. Broadcast with every state until the next hand
+   * so a client that missed the claim frame can still play the remaining tricks.
+   */
+  runPlayback?: RunPlayback;
 }
 
 /** Release 9b: this table plays one tournament match (rules locked, seats reserved for the entrants, autostart). */
@@ -942,6 +947,7 @@ export class Room {
     this.startSeries();
     d.talk = { ...newTalkState(), revealed: [] }; // a new game: every Hustler is back in character
     d.kicked = []; // a new game: kicked players may come back
+    d.runPlayback = undefined;
     d.outPlayers = [];
     d.outSeats = [];
     d.votes = {};
@@ -963,6 +969,8 @@ export class Room {
     if (d.live) for (const t of fresh) if (t.winner !== null && t.plays.some((p) => p.seat === t.winner && p.card === 'BJ')) d.live.bj[t.winner] = (d.live.bj[t.winner] ?? 0) + 1;
     if (action.type === 'runIt') {
       const books = fresh.length;
+      const playout = runPlayout(before, d.game, action.seat);
+      if (playout) d.runPlayback = { ...playout, seq: d.seq };
       this.system(`🌪 ${this.seatName(action.seat)} ran the board (+${books} books)`);
       const slot = d.seats[action.seat];
       const m = slot?.kind === 'human' ? d.members[slot.playerId] : undefined;
@@ -1371,6 +1379,7 @@ export class Room {
     const d = this.data;
     d.game = applyAction(d.game!, { type: 'nextHand' });
     d.seq = (d.seq ?? 0) + 1;
+    d.runPlayback = undefined;
     d.ready = [];
     d.deadline = null;
   }
@@ -1487,7 +1496,8 @@ export class Room {
       if (this.sentHistory.get(cid) === key) view = { ...view, history: null as unknown as PlayerView['history'] };
       else this.sentHistory.set(cid, key);
     }
-    this.io.send(cid, watching ? { t: 'state', room, seat, view, spectator: true } : { t: 'state', room, seat, view });
+    const run = d.runPlayback && view && d.runPlayback.handNo === view.handNo ? d.runPlayback : undefined;
+    this.io.send(cid, watching ? { t: 'state', room, seat, view, spectator: true, ...(run ? { run } : {}) } : { t: 'state', room, seat, view, ...(run ? { run } : {}) });
   }
 
   private system(text: string): void {

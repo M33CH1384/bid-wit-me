@@ -180,6 +180,8 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .center-note-wrap { position: absolute; left: 0; right: 0; top: 44%; display: flex; flex-direction: column; align-items: center; gap: 6px; z-index: 5; pointer-events: none; }
 .center-note { font-family: var(--display); font-weight: 700; letter-spacing: .08em; font-size: 15px; padding: 5px 14px; background: var(--glass-strong); box-shadow: 0 0 0 1px var(--edge); clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%); }
 .center-note.win { background: linear-gradient(90deg, var(--gold), #ffe08a); color: #1d1204; font-weight: 800; box-shadow: 0 0 22px rgba(245,197,66,.8); transform: translateY(40px); }
+.center-note.dealer-popup { display: inline-flex; align-items: baseline; gap: 6px; font-size: 18px; white-space: nowrap; }
+.center-note.dealer-popup b { color: var(--gold); font-weight: 800; }
 
 /* toasts */
 .toasts { position: absolute; top: 128px; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 40; pointer-events: none; }

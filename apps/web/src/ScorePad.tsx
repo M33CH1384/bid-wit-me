@@ -8,6 +8,7 @@
 import { type ReactNode, useEffect, useRef } from 'react';
 import { type GameState, type HandRecord, type SideHandResult, type TableRules, bidLabel, hostMinimum, shotOutOn } from '@spades/rules';
 import { SEAT_COLORS } from './overlay';
+import { hudSeatName } from './dealerName';
 import { holeMarks, punchedLabel, rememberHoles } from './shotMarks';
 
 export const signed = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0');
@@ -90,13 +91,14 @@ function Row({ color, name, bid, took, points, chips, total, bags, bagsAdded, de
   );
 }
 
-export function ScorePad({ st, names, onClose, onContinue, locked, sideName }: { st: GameState; names: string[]; onClose: () => void; onContinue?: () => void; locked?: ReactNode; sideName: (side: number) => string }) {
+export function ScorePad({ st, names, onClose, onContinue, locked, sideName, dealerName }: { st: GameState; names: string[]; onClose: () => void; onContinue?: () => void; locked?: ReactNode; sideName: (side: number) => string; /** current hand's dealer, from the engine seat's occupant; past hands keep their own dealer seat */ dealerName?: string }) {
   const r = st.rules;
   const sides = Array.from({ length: st.scores.length }, (_, i) => i);
   const streaks = holeMarks(r, st.history);
   const lastNo = st.history[st.history.length - 1]?.handNo;
   const inProgress = st.phase !== 'gameOver' && st.phase !== 'handOver' && !st.history.some((h) => h.handNo === st.handNo);
-  const seatName = (s: number) => names[s] ?? `Seat ${s + 1}`;
+  const seatName = (s: number) => hudSeatName(s, names);
+  const currentDealer = dealerName?.trim() || seatName(st.dealer);
   const lastRef = useRef<HTMLElement>(null);
   useEffect(() => { lastRef.current?.scrollIntoView({ block: 'end' }); }, []);
   const showLocked = locked && st.phase !== 'gameOver';
@@ -139,7 +141,7 @@ export function ScorePad({ st, names, onClose, onContinue, locked, sideName }: {
           ))}
           {inProgress && (
             <section ref={lastRef} className="pad-hand current" data-testid="pad-hand-current">
-              <header className="pad-hand-head"><b>Hand {st.handNo}</b><span>{seatName(st.dealer)} deals</span><span className="pad-last">IN PROGRESS</span></header>
+              <header className="pad-hand-head"><b>Hand {st.handNo}</b><span>{currentDealer} deals</span><span className="pad-last">IN PROGRESS</span></header>
               {sides.map((side) => {
                 const seats = r.partnerships ? [side, side + 2] : [side];
                 const bids = seats.map((x) => st.bids[x]);

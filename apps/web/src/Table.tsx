@@ -6,7 +6,7 @@ import { type VenueId, VENUE_DEFS, resolveVenue } from './venues';
 import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, isNukeTrick, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, newlyOneTrickFromShot, nilBustsJustResolved, partnerOf, sideOf, sortHand,
+  type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, isFreshDeal, isNukeTrick, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, newlyOneTrickFromShot, nilBustsJustResolved, partnerOf, sideOf, sortHand,
 } from '@spades/rules';
 import { ScorePad, setTeamNames, sideName } from './Modals';
 import { LockedRulesPanel } from './LockedRules';
@@ -40,6 +40,8 @@ import { type ChatMsg, LINES, SEAT_COLORS, TALK_LINES, type Toast, TickNumber, U
 import { type Settings, modeTitle } from './settings';
 import type { SeatPos } from './three/layout';
 import { HUMAN, useGame } from './useGame';
+import { DealerPopup } from './DealerPopup';
+import { dealerAnnouncement, dealerFromServer, withCurrentDealerLine } from './dealerName';
 import { MinBidLine, bidChoices, minBidNote } from './minBid';
 import { type SavedGame, clearGame, saveGame } from './save';
 
@@ -49,6 +51,8 @@ import { type TipsPref, bumpTip, loadTips, saveTips, tipCount } from './tips';
 import { BidCoach } from './BidCoach';
 import { RUN_FX_MS } from '@spades/protocol';
 import { RUN_SHOW_MS, RUN_SLAM_MS, RUN_IT_CALLOUTS, RUN_TORNADO_AFTER_MS, RUN_ZOOM_MS } from './runIt';
+import { pickRunShow, scoreOpened } from './runPlayback';
+import type { RunPlayback } from '@spades/protocol';
 import { RunItReview, RunZoom, runReviewOverTable } from './RunZoom';
 import { TrashTalkButton } from './TrashTalk';
 import { isPromoted } from './cardFaces';
@@ -130,6 +134,13 @@ export interface OnlineBinding {
   venue?: VenueId;
   /** Release 10: watching, not playing. Seat 0 is a real player (names[0] is their name): no hand, no controls. */
   spectator?: boolean;
+  /**
+   * Current hand's dealer, already mapped from the server seat to the plate name.
+   * Offline leaves this unset and derives it from the engine seat.
+   */
+  dealerName?: string;
+  /** Resolved Run it! in local seats. Present for every viewer until the next hand, including the one who did not claim. */
+  run?: RunPlayback | null;
   /** Release 10: spectator banner / take-seat prompt / watchers chip, drawn over the table */
   overlay?: ReactNode;
 }
@@ -188,14 +199,14 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
     const r = st.rules;
     if (!p) {
       push('System', `Table open · ${modeTitle(r)} · first to ${r.targetScore}`, true);
-      if (st.tricks.length === 0 && st.trick.plays.length === 0) push('System', `Hand ${st.handNo} · ${names[st.dealer] === 'You' ? 'You' : names[st.dealer]} deal${st.dealer === HUMAN ? '' : 's'}`, true);
+      if (st.tricks.length === 0 && st.trick.plays.length === 0) push('System', offlineDealerLine(st, names), true);
       if (talkOn()) {
         push(pick(bots), pick(LINES.start), false, 900);
         push(pick(bots), pick(['yo', 'what up', '👋', 'ready']), false, 1700);
       }
       return;
     }
-    if (st.handNo !== p.handNo) push('System', `Hand ${st.handNo} · ${st.dealer === HUMAN ? 'You deal' : `${names[st.dealer]} deals`}`, true);
+    if (st.handNo !== p.handNo) push('System', offlineDealerLine(st, names), true);
     // bids
     st.bids.forEach((b, s) => {
       if (b !== null && p.bids[s] === null && p.handNo === st.handNo) {
@@ -261,7 +272,27 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
     }
   }, [st, names, bots, n, push]);
 
+  // The line above is written once per hand. If that seat's occupant changes later, point it at the current name.
+  useEffect(() => {
+    const line = offlineDealerLine(st, names);
+    setMsgs((xs) => {
+      const texts = withCurrentDealerLine(xs.map((m) => m.text), st.handNo, line);
+      if (!texts) return xs;
+      return xs.map((m, i) => (m.text === texts[i] ? m : { ...m, text: texts[i]! }));
+    });
+  }, [st.handNo, st.dealer, names]);
+
   return { msgs, push };
+}
+
+/** Offline: the viewer is engine seat 0, so that seat's dealer name is "You" and every other seat is its current name. */
+function offlineDealerLine(st: GameState, names: readonly string[]): string {
+  const name = dealerFromServer({
+    serverDealer: st.dealer,
+    occupants: names.map((nm) => ({ name: nm, kind: 'human' as const })),
+    viewerSeat: 0,
+  }).name;
+  return dealerAnnouncement(st.handNo, name);
 }
 
 function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only', extra, trash, overRecap = false }: { msgs: ChatMsg[]; open: boolean; onToggle: () => void; onSend: (t: string) => void; unread: number; scope?: string; extra?: ReactNode; trash?: ReactNode; /** hand recap: the log is a sheet, opened from the corner button on that screen */ overRecap?: boolean }) {
@@ -516,6 +547,13 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const piles = pause ? st.tricks.slice(0, -1) : st.tricks;
   // online: `locked` while our move is in flight (until the server acks it), so it can't be sent twice
   const spectating = !!online?.spectator;
+  // Online: the server seat's current occupant (OnlineTable). Offline: engine dealer, viewer at seat 0.
+  const dealerLabel = online?.dealerName || dealerFromServer({
+    serverDealer: st.dealer,
+    occupants: names.map((name) => ({ name, kind: 'human' as const })),
+    viewerSeat: spectating ? null : 0,
+  }).name;
+  const showDealer = !!dealerLabel && (dealing || isFreshDeal(st));
   const turnLocked = !!online?.source.locked;
   // Badges and playable cards share this. `covered` (Run it!) is applied again once that show exists.
   const myTurn = actingSeat({ turn: st.turn, phase: st.phase, pause, dealing, locked: turnLocked, covered: false }) === HUMAN && !spectating;
@@ -540,6 +578,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   type RunFx = { id: number; before: { st: GameState; view: PlayerView }; claimer: number; cards: Card[]; others: { seat: number; card: Card }[]; books: number; phase: 'zoom' | 'slam'; at: number };
   const [seen, setSeen] = useState<{ st: GameState; view: PlayerView }>(() => ({ st, view }));
   const [runFx, setRunFx] = useState<RunFx | null>(null);
+  /** Server playback seq already started, so a later state for the same claim does not replay it. */
+  const [playedSeq, setPlayedSeq] = useState<number | null>(null);
   const [tableReady, setTableReady] = useState(false);
   const [dressed, setDressed] = useState(false);
   const [effectsWarm, setEffectsWarm] = useState(false);
@@ -581,20 +621,22 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const id = requestAnimationFrame(() => { w.__bwmPlayableAt ??= performance.now(); });
     return () => cancelAnimationFrame(id);
   }, []);
-  if (seen.st !== st) {
-    const b = seen.st;
-    if (b.handNo === st.handNo && st.tricks.length > b.tricks.length && st.tricks[b.tricks.length]!.plays.some((p) => p.run)) {
-      const fresh = st.tricks.slice(b.tricks.length);
-      const claimer = fresh.at(-1)!.winner!; // a run is won trick by trick by its claimer (off-turn claims auto-play others first)
-      const onTable = new Set(b.trick.plays.map((p) => p.card));
-      const plays = fresh.flatMap((t) => t.plays).filter((p) => !onTable.has(p.card));
+  const playback = online?.run ?? null;
+  // Playback (every online viewer) or a jump that hides the run behind an ordinary trick (offline, bundled bot claim).
+  if (seen.st !== st || (playback !== null && playback.handNo === st.handNo && playback.seq !== playedSeq)) {
+    const show = pickRunShow(seen.st, st, playback, playedSeq);
+    if (show) {
       setRunFx({
-        id: Date.now(), before: seen, claimer, books: fresh.length, phase: 'zoom', at: performance.now(),
-        cards: plays.filter((p) => p.seat === claimer).map((p) => p.card),
-        others: plays.filter((p) => p.seat !== claimer).map((p) => ({ seat: p.seat, card: p.card })),
+        id: show.fromServer ? show.id : Date.now(),
+        before: seen.st.handNo === st.handNo ? seen : { st, view },
+        claimer: show.claimer, books: show.books, phase: 'zoom', at: performance.now(),
+        cards: show.cards, others: show.others,
       });
+      if (show.fromServer) setPlayedSeq(show.id);
+    } else if (playback && playback.handNo === st.handNo && playback.seq !== playedSeq) {
+      setPlayedSeq(playback.seq);
     }
-    setSeen({ st, view });
+    if (seen.st !== st) setSeen({ st, view });
   }
   const [badgeToast, setBadgeToast] = useState<string | null>(null);
   const endRun = useCallback(() => { fx.tornado = null; sound.stopTornado(); setRunFx(null); }, []);
@@ -875,7 +917,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [shotRecapAck, setShotRecapAck] = useState(false);
   useEffect(() => { setShotRecapAck(false); }, [st.phase, st.handNo]);
   useEffect(() => {
-    if ((st.phase !== 'handOver' && st.phase !== 'gameOver') || pause || runFx) { setTalkOpen(false); return; }
+    if (!scoreOpened(st.phase, pause, !!runFx)) { setTalkOpen(false); return; }
     setTalkOpen(true);
     // the recap itself stays clear; banter lands in the corner chat sheet
     if (st.phase === 'handOver') setChatOpen(false);
@@ -1126,8 +1168,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
       {/* center notes */}
       <div className="center-note-wrap">
-        {st.phase === 'bidding' && !pause && st.turn !== HUMAN && <div className="center-note" data-testid="bidding-note">{r.partnerships && st.turn === partnerSeat ? `Your partner ${names[st.turn!]} is bidding…` : `${names[st.turn!]} is bidding…`}</div>}
-        {showCenterBidOrder(st.phase, pause, dealing) && <BidOrder st={st} names={names} me={HUMAN} />}
+        {showDealer && <DealerPopup name={dealerLabel} localSeat={st.dealer} />}
+        {st.phase === 'bidding' && !pause && !dealing && st.turn !== HUMAN && <div className="center-note" data-testid="bidding-note">{r.partnerships && st.turn === partnerSeat ? `Your partner ${names[st.turn!]} is bidding…` : `${names[st.turn!]} is bidding…`}</div>}
+        {showCenterBidOrder(st.phase, pause, dealing) && <BidOrder st={st} names={names} me={spectating ? -1 : HUMAN} />}
         {isBooks && st.phase === 'playing' && !pause && !dealing && st.tricks.length === 0 && st.trick.plays.length === 0 && <div className="center-note books-note" data-testid="books-note">First hand: books bid themselves · 10 per book</div>}
         {st.phase === 'exchange' && !humanExchanging && <div className="center-note">{names[exchangeStep!.from]} passes {exchangeStep!.count} to {names[exchangeStep!.to]}…</div>}
       </div>
@@ -1374,7 +1417,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
       {coachOn && !modalOpen && st.phase === 'playing' && !pause && <LedSuitChip st={st} />}
       <Hype reduced={reduceFx} low={settings.quality === 'low'} />
-      {showPad && <ScorePad st={st} names={names} onClose={() => setShowPad(false)} onContinue={st.phase === 'handOver' && talkOpen && !online?.talk?.ready?.mine ? () => { setShowPad(false); apply({ type: 'nextHand' }); } : undefined} locked={online ? undefined : <LockedRulesPanel rules={r} nuke={fx.tableNuke ?? fx.prefs.nuke} skill={settings.botLevel} intensity={settings.talkIntensity} />} />}
+      {showPad && <ScorePad st={st} names={names} dealerName={dealerLabel} onClose={() => setShowPad(false)} onContinue={st.phase === 'handOver' && talkOpen && !online?.talk?.ready?.mine ? () => { setShowPad(false); apply({ type: 'nextHand' }); } : undefined} locked={online ? undefined : <LockedRulesPanel rules={r} nuke={fx.tableNuke ?? fx.prefs.nuke} skill={settings.botLevel} intensity={settings.talkIntensity} />} />}
     </div>
   );
 }
