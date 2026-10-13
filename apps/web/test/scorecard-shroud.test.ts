@@ -115,7 +115,9 @@ describe('scorecard caution tape and shroud', () => {
     expect(html).not.toContain('recap-tape-');
     expect(html).not.toContain('recap-holes-');
     expect(html).not.toContain('recap-shroud-');
-    expect(html).toContain('data-holes="0"');
+    expect(html).toContain('data-holes="1"');
+    expect(html).toContain('data-punched="1"');
+    expect(pad(stamp(toHandOver('joker'), [[], [1], []]), names)).toContain('data-holes="1"');
     expect(html).not.toContain('time-of-death');
     expect(html).not.toContain('tape-in');
     expect(html).toContain('data-testid="recap-line-1"');
@@ -132,7 +134,7 @@ describe('scorecard caution tape and shroud', () => {
     expect(holes[0]).toContain('left:62%');
     expect(holes[0]).not.toContain('hole-in');
     expect(holes[1]).toContain('left:14%');
-    expect(holes[1]).toContain('top:82%');
+    expect(holes[1]).toContain('top:calc(100% - 40px)');
     expect(holes[1]).toContain('class="hole-in"');
     expect(html).not.toContain('left:78%');
     expect(html).toContain('data-testid="recap-shroud-1"');
@@ -162,7 +164,7 @@ describe('scorecard caution tape and shroud', () => {
     const again = rememberHoles(st.seed, 1, 2, 1);
     const same = rememberHoles(st.seed, 1, 2, 1);
     expect(same).toBe(again);
-    expect(HOLE_SLOTS).toHaveLength(2);
+    expect(HOLE_SLOTS).toHaveLength(3);
     markHolePunched(st.seed, 1, 1);
     markSheetPlayed(st.seed, 1);
     const second = recap(st, names);
@@ -187,6 +189,68 @@ describe('scorecard caution tape and shroud', () => {
     expect(oneAgain).not.toContain('hole-in');
     expect(oneAgain).toContain('left:62%');
     expect(pad(noticed, names)).toContain('data-punched="1"');
+  });
+
+  it('counts one hole per shot through four, and sheets only on a recorded elimination', () => {
+    const base = toHandOver('joker');
+    const one = recap(stamp(base, [[], [1]], { shotOut: false }), names);
+    expect(holeImgs(one)).toHaveLength(1);
+    expect(one).toContain('data-holes="1"');
+    expect(one).toContain('left:62%');
+    expect(one).not.toContain('recap-shroud-');
+    expect(one).not.toContain('recap-shot-tally-');
+    expect(one).toContain('>ON NOTICE<');
+
+    clearTeamHoles();
+    const two = recap(stamp(base, [[], [1], [1]], { shotOut: false }), names);
+    const twoHoles = holeImgs(two);
+    expect(twoHoles).toHaveLength(2);
+    expect(twoHoles[0]).toContain('left:62%');
+    expect(twoHoles[0]).not.toContain('hole-in');
+    expect(twoHoles[1]).toContain('left:14%');
+    expect(twoHoles[1]).toContain('class="hole-in"');
+    expect(two).toContain('data-holes="2"');
+    expect(two).not.toContain('recap-shroud-');
+    expect(two).toContain('>ON NOTICE<');
+
+    clearTeamHoles();
+    const three = recap(stamp(base, [[], [1], [1], [1]], { shotOut: false }), names);
+    const threeHoles = holeImgs(three);
+    expect(threeHoles).toHaveLength(3);
+    expect(threeHoles[0]).not.toContain('hole-in');
+    expect(threeHoles[1]).not.toContain('hole-in');
+    expect(threeHoles[2]).toContain('left:78%');
+    expect(threeHoles[2]).toContain('top:145px');
+    expect(threeHoles[2]).toContain('class="hole-in"');
+    expect(three).toContain('data-holes="3"');
+    expect(three).not.toContain('recap-shroud-');
+    expect(three).not.toContain('recap-shot-tally-');
+
+    clearTeamHoles();
+    const four = recap(stamp(base, [[], [1], [1], [1], [1]], { shotOut: false }), names);
+    expect(holeImgs(four)).toHaveLength(3);
+    expect(four).not.toContain('hole-in');
+    expect(four).toContain('data-holes="4"');
+    expect(four).toContain('data-punched="1,1,1"');
+    expect(four).toContain('data-testid="recap-shot-tally-1"');
+    expect(four).toContain('>x4<');
+    expect(four).toContain('data-testid="recap-shot-stamp-1"');
+    expect(four).toContain('>ON NOTICE<');
+    expect(four).not.toContain('recap-shroud-');
+    expect(pad(stamp(base, [[], [1], [1], [1], [1]], { shotOut: false }), names)).toContain('data-holes="4"');
+
+    clearTeamHoles();
+    const pending = recap(stamp(base, [[], [1], [1]]), names);
+    expect(holeImgs(pending)).toHaveLength(2);
+    expect(pending).toContain('data-tape="yes" data-sheet="no"');
+    expect(pending).not.toContain('recap-shroud-');
+
+    clearTeamHoles();
+    const eliminated = recap(stamp(base, [[], [1], [1]], { lost: [1] }), names);
+    expect(eliminated).toContain('data-sheet="yes"');
+    expect(eliminated).toContain('sheet-wait');
+    expect(holeImgs(eliminated)).toHaveLength(2);
+    expect(eliminated).not.toContain('>ON NOTICE<');
   });
 
   it('a hand-1 shot-out shows the tape and the sheet, and a non-loss stays tape', () => {

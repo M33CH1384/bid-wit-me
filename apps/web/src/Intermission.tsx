@@ -5,7 +5,7 @@ import { sideName } from './Modals';
 import { handWinner, streakLabel, streakOf } from './fx';
 import { sound } from './audio';
 import { haptic } from './haptics';
-import { HOLE_SLOTS, claimHoleBuzz, holeStreak, markHolePunched, markSheetPlayed, punchedLabel, rememberHoles } from './shotMarks';
+import { HOLE_CAP, HOLE_SLOTS, claimHoleBuzz, holeMarks, markHolePunched, markSheetPlayed, punchedLabel, rememberHoles } from './shotMarks';
 
 /**
  * Hand recap between hands (online and offline).
@@ -96,16 +96,16 @@ export function Intermission({
     sound.play('docSting', { delay: 0.05 });
     sound.play('siren', { delay: 0.12 });
   }, [sirenKey, sheetOn]);
-  // Hole count is the shot streak on the team record. A new hole buzzes [30] once.
-  // The sheet waits ~400ms so both holes read, then plays its own pattern.
-  const streaks = holeStreak(r, st.history);
+  // Hole count is the team's shot count. A new hole buzzes [30] once.
+  // The sheet is the engine's elimination. It waits ~400ms after a new punch.
+  const streaks = holeMarks(r, st.history);
   const handKey = `${st.seed}:${rec.handNo}`;
   const anim = useRef<{ key: string; punch: Set<string>; waitSheet: Set<number> } | null>(null);
   if (!anim.current || anim.current.key !== handKey) {
     const punch = new Set<string>();
     const waitSheet = new Set<number>();
     for (const s of sides) {
-      const info = streaks[s.side] ?? { count: 0, fresh: -1 };
+      const info = streaks[s.side] ?? { count: 0, visible: 0, fresh: -1 };
       const marks = rememberHoles(st.seed, s.side, info.count, info.fresh);
       if (info.fresh >= 0 && !marks.punched[info.fresh]) punch.add(`${s.side}:${info.fresh}`);
       if (covers[s.side]?.sheet && info.fresh >= 0 && !marks.sheetPlayed) waitSheet.add(s.side);
@@ -168,15 +168,15 @@ export function Intermission({
               const cover = covers[s.side] ?? { tape: false, sheet: false, siren: false };
               const justShot = isShot(r, rec.bids, s);
               const notice = cover.tape && !cover.sheet;
-              const info = streaks[s.side] ?? { count: 0, fresh: -1 };
+              const info = streaks[s.side] ?? { count: 0, visible: 0, fresh: -1 };
               const marks = rememberHoles(st.seed, s.side, info.count, info.fresh);
               const sheetAnim = !!cover.sheet && anim.current!.waitSheet.has(s.side);
-              const showHoles = info.count > 0 && (notice || !!cover.sheet);
+              const showHoles = info.visible > 0 && (notice || !!cover.sheet);
               return (
                 <div key={s.side} className={`tt-team${s.side === mySide ? ' mine' : ''}${shot ? ' blast' : ''}${cover.tape ? ' taped' : ''}${cover.tape && justShot ? ' tape-in' : ''}${notice ? ' notice' : ''}${cover.sheet ? ' shrouded' : ''}${sheetAnim ? ' sheet-in sheet-wait' : ''}`} data-testid={`recap-side-${s.side}`} data-blast={shot ? 'yes' : 'no'} data-tape={cover.tape ? 'yes' : 'no'} data-sheet={cover.sheet ? 'yes' : 'no'} data-siren={cover.siren ? 'yes' : 'no'} data-holes={info.count} data-punched={punchedLabel(marks)}>
                   {showHoles && (
                     <div className="shot-holes" data-testid={`recap-holes-${s.side}`} aria-hidden="true">
-                      {HOLE_SLOTS.slice(0, info.count).map((h, i) => (
+                      {HOLE_SLOTS.slice(0, info.visible).map((h, i) => (
                         <img key={i} className={anim.current!.punch.has(`${s.side}:${i}`) ? 'hole-in' : undefined} src="/shot/hole.png" alt="" style={{ left: h.x, top: h.y, ['--rot' as string]: `${h.rot}deg` }} />
                       ))}
                     </div>
@@ -209,6 +209,7 @@ export function Intermission({
                       {notice ? (
                         <>
                           <em className="shot-stamp" data-testid={`recap-shot-stamp-${s.side}`}>SHOT</em>
+                          {info.count > HOLE_CAP && <em className="shot-tally" data-testid={`recap-shot-tally-${s.side}`}>x{info.count}</em>}
                           <em className="notice-pill" data-testid={`recap-notice-${s.side}`}>ON NOTICE</em>
                         </>
                       ) : chips.map((c) => <em key={c.text} className={`rchip ${c.kind}`}>{c.text}</em>)}

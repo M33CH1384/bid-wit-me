@@ -781,7 +781,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
   animation: police-blue 1.2s ease-in-out infinite;
 }
 .tt-team.sheet-in .shroud .wash { animation-delay: 450ms; }
-/* Second shot eliminates: hold the cloth ~400ms so both holes read, then drop. Lights follow the drop. */
+/* When this shot eliminates, hold the cloth ~400ms so a new hole can punch, then drop. Lights follow the drop. */
 .tt-team.sheet-in.sheet-wait .shroud,
 .tt-team.sheet-in.sheet-wait .shroud .cloth { animation-delay: 400ms; }
 .tt-team.sheet-in.sheet-wait .shroud .wash { animation-delay: 850ms; }
@@ -815,6 +815,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-team-name b { font-family: var(--display); font-size: 22px; letter-spacing: .04em; overflow-wrap: anywhere; }
 .tt-badges { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .shot-stamp { font-family: var(--display); font-style: normal; font-weight: 900; font-size: 13px; letter-spacing: .14em; color: #fff; background: #e10600; border: 2px solid #FF4D4D; padding: 1px 7px; transform: rotate(-8deg); box-shadow: 0 1px 0 rgba(0,0,0,.35); }
+.shot-tally { font-family: var(--display); font-style: normal; font-weight: 800; font-size: 12px; letter-spacing: .04em; color: #ffd0d0; padding: 0 1px; }
 .notice-pill { font-family: var(--display); font-style: normal; font-weight: 800; font-size: 11px; letter-spacing: .08em; color: #ffd0d0; background: rgba(255,77,77,.18); border: 1px solid rgba(255,77,77,.75); border-radius: 999px; padding: 2px 8px; }
 .tt-verdict { font-family: var(--display); font-weight: 800; font-size: 11px; letter-spacing: .08em; padding: 1px 6px; border-radius: 3px; white-space: nowrap; }
 .tt-verdict.ok { color: #0d2a12; background: #7dff9b; }
@@ -847,6 +848,8 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-bar { position: relative; height: 12px; background: rgba(255,255,255,.08); border-radius: 6px; overflow: hidden; margin-top: 6px; }
 .tt-recap.crowded { gap: 10px; }
 .tt-recap.crowded .tt-team { padding: 12px 14px; }
+/* Compact elimination cards have no tape lane. The extra bottom padding is the lower-left hole's seat, clear of the player line. */
+.tt-team.shrouded { padding-bottom: 58px; }
 .tt-recap.crowded .tt-face { gap: 4px 12px; }
 .tt-recap.crowded .tt-team-name b { font-size: 18px; }
 .tt-recap.crowded .tt-stat.total b { font-size: 34px; }

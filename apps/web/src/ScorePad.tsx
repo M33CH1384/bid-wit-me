@@ -8,7 +8,7 @@
 import { type ReactNode, useEffect, useRef } from 'react';
 import { type GameState, type HandRecord, type SideHandResult, type TableRules, bidLabel, hostMinimum, shotOutOn } from '@spades/rules';
 import { SEAT_COLORS } from './overlay';
-import { holeStreak, punchedLabel, rememberHoles } from './shotMarks';
+import { holeMarks, punchedLabel, rememberHoles } from './shotMarks';
 
 export const signed = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0');
 
@@ -93,7 +93,7 @@ function Row({ color, name, bid, took, points, chips, total, bags, bagsAdded, de
 export function ScorePad({ st, names, onClose, onContinue, locked, sideName }: { st: GameState; names: string[]; onClose: () => void; onContinue?: () => void; locked?: ReactNode; sideName: (side: number) => string }) {
   const r = st.rules;
   const sides = Array.from({ length: st.scores.length }, (_, i) => i);
-  const streaks = holeStreak(r, st.history);
+  const streaks = holeMarks(r, st.history);
   const lastNo = st.history[st.history.length - 1]?.handNo;
   const inProgress = st.phase !== 'gameOver' && st.phase !== 'handOver' && !st.history.some((h) => h.handNo === st.handNo);
   const seatName = (s: number) => names[s] ?? `Seat ${s + 1}`;
@@ -110,7 +110,7 @@ export function ScorePad({ st, names, onClose, onContinue, locked, sideName }: {
             <p className="pad-playing" data-testid="pad-target">Playing to {r.targetScore}</p>
             <div className="pad-board" style={{ ['--sides' as string]: sides.length }} data-testid="pad-board">
               {sides.map((side) => {
-                const info = streaks[side] ?? { count: 0, fresh: -1 };
+                const info = streaks[side] ?? { count: 0, visible: 0, fresh: -1 };
                 const marks = rememberHoles(st.seed, side, info.count, info.fresh);
                 return (
                 <div key={side} className="pad-board-side" style={{ ['--side' as string]: sideColor(r, side) }} data-testid="pad-board-side" data-holes={info.count} data-punched={punchedLabel(marks)}>
