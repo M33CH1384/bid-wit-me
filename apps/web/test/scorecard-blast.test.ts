@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { type GameState, applyAction, makeRules, newGame, pendingTurn, viewFor } from '@spades/rules';
+import { type GameState, applyAction, isShot, makeRules, newGame, pendingTurn, scoreHand, viewFor } from '@spades/rules';
 import { chooseBotAction } from '@spades/bots';
 import { Intermission } from '../src/Intermission';
 
@@ -65,6 +65,27 @@ describe('scorecard shotgun blast', () => {
     expect(html).toContain('data-testid="recap-side-0" data-blast="no"');
     expect(html).toContain('data-testid="recap-side-1" data-blast="no"');
     expect(html).toContain('data-testid="recap-line-2"');
+  });
+
+  it('blasts and tapes a busted Nil, which the engine counts as a shot', () => {
+    const rules = makeRules('joker', { targetScore: 500 });
+    const bids = ['nil', 3, 4, 3] as const;
+    const tricksWon = [1, 4, 4, 4];
+    const sides = scoreHand(rules, [...bids], tricksWon, [0, 0], [0, 0]);
+    expect(isShot(rules, [...bids], sides[0]!)).toBe(true);
+    expect(sides[0]!.contractMade).toBe(true);
+    const base = toHandOver('joker');
+    const st: GameState = {
+      ...base, phase: 'handOver', result: null, handNo: 2,
+      history: [{ handNo: 2, dealer: 0, bids: [...bids], tricksWon, sides }],
+    };
+    const html = recap(st, ['You', 'Hana', 'Mei', 'Jamal']);
+    expect(html).toContain('data-testid="recap-side-0" data-blast="yes"');
+    expect(html).toContain('data-testid="recap-holes-0"');
+    expect(html).toContain('data-testid="recap-tape-0"');
+    expect(html).toContain('data-tape="yes"');
+    expect(html).not.toContain('data-testid="recap-shroud-0"');
+    expect(html).toContain('data-testid="recap-side-1" data-blast="no"');
   });
 
   it('drops the glowing constellation and keeps the boom readable', () => {

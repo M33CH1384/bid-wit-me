@@ -19,12 +19,16 @@ describe('shotCounts', () => {
     expect(shotCounts(joker, [made, made])).toEqual([0, 0]);
   });
 
-  it('a busted nil alone is not a shot', () => {
+  it('a busted nil is a shot for the team, and a made nil is not', () => {
     const nil = hand(joker, ['nil', 3, 4, 3], [1, 4, 4, 4]);
     expect(nil.sides[0]!.nils[0]!.made).toBe(false);
-    expect(shotCounts(joker, [nil])).toEqual([0, 0]);
-    const nilAndSet = hand(joker, ['nil', 6, 3, 2], [1, 1, 4, 2]); // side 0 nil bust, partner made; side 1 bid 8, took 3
-    expect(shotCounts(joker, [nilAndSet])).toEqual([0, 1]);
+    expect(nil.sides[0]!.contractMade).toBe(true);
+    expect(shotCounts(joker, [nil])).toEqual([1, 0]);
+    const made = hand(joker, ['nil', 3, 4, 3], [0, 4, 4, 5]);
+    expect(made.sides[0]!.nils[0]!.made).toBe(true);
+    expect(shotCounts(joker, [made])).toEqual([0, 0]);
+    const nilAndSet = hand(joker, ['nil', 6, 3, 2], [1, 1, 4, 2]); // side 0 nil bust (partner made); side 1 bid 8, took 3
+    expect(shotCounts(joker, [nilAndSet])).toEqual([1, 1]);
   });
 
   it('a books hand counts only when it misses the first-hand minimum', () => {
@@ -88,7 +92,8 @@ describe('shotCovers', () => {
     const set = hand(joker, [4, 5, 2, 3], [4, 1, 2, 2], 2);
     const nils = hand(joker, ['nil', 'nil', 'nil', 'nil'], [0, 0, 0, 0], 3);
     const later = hand(joker, [3, 4, 3, 4], [3, 1, 3, 2], 4);
-    expect(shotCovers(joker, [clear, set, nils])[1]).toEqual({ tape: true, sheet: false, siren: false });
+    // A made Nil leaves the team safe, so the tape from the set comes off. The next set is a fresh shot, not a loss.
+    expect(shotCovers(joker, [clear, set, nils])[1]).toEqual({ tape: false, sheet: false, siren: false });
     expect(shotOutSides(joker, 4, [false, true], [false, false])).toEqual([]);
     expect(shotCovers(joker, [clear, set, nils, later])[1]).toEqual({ tape: true, sheet: false, siren: false });
   });

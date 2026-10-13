@@ -23,11 +23,15 @@ describe('Shot = out (house rule)', () => {
     expect(isShot({ ...joker, firstHandMin: 3 }, [...bids], sides[0]!)).toBe(false);
     expect(isShot({ ...joker, firstHandMin: null }, [...bids], sides[0]!)).toBe(false);
   });
-  it('shot = set; a busted Nil alone is not shot', () => {
+  it('shot = set, and a busted Nil is a shot for that team', () => {
     const set = scoreHand(joker, [4, 3, 2, 3], [1, 4, 2, 6], [0, 0], [0, 0]); // side 0 bid 6 took 3
     expect(isShot(joker, [4, 3, 2, 3], set[0]!)).toBe(true);
     const nil = scoreHand(joker, ['nil', 3, 4, 3], [1, 4, 4, 4], [0, 0], [0, 0]); // nil busted, partner made 4
-    expect(isShot(joker, ['nil', 3, 4, 3], nil[0]!)).toBe(false);
+    expect(nil[0]!.contractMade).toBe(true);
+    expect(isShot(joker, ['nil', 3, 4, 3], nil[0]!)).toBe(true);
+    const made = scoreHand(joker, ['nil', 3, 4, 3], [0, 4, 4, 5], [0, 0], [0, 0]);
+    expect(made[0]!.nils[0]!.made).toBe(true);
+    expect(isShot(joker, ['nil', 3, 4, 3], made[0]!)).toBe(false);
   });
   it('out on hand 1, or shot two hands in a row after hand 1', () => {
     expect(shotOutSides(joker, 1, [true, false], [false, false])).toEqual([0]);

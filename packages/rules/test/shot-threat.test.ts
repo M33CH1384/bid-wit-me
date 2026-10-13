@@ -60,9 +60,18 @@ describe('one trick from getting shot', () => {
     expect(sidesOneTrickFromShot({ ...countedEdge, rules: team })).toEqual([]);
   });
 
-  it('does not pump a side that only bid nil, or a hand still being bid', () => {
-    expect(sidesOneTrickFromShot(at({ bids: ['nil', 4, 'blindNil', 4], tricksWon: [0, 4, 0, 4], played: 8 }))).toEqual([]);
-    expect(sidesOneTrickFromShot(at({ phase: 'bidding', bids: [4, null, null, null], tricksWon: [0, 0, 0, 0], played: 0 }))).toEqual([]);
+  it('pumps a Nil sitting at zero books, once, and stops when that Nil takes a book', () => {
+    const zero = at({ bids: ['nil', 3, 4, 3], tricksWon: [0, 4, 4, 4], played: 12 });
+    expect(sidesOneTrickFromShot(zero)).toEqual([0]);
+    expect(sidesOneTrickFromShot(at({ bids: ['nil', 'blindNil', 4, 4], tricksWon: [0, 0, 4, 4], played: 8 }))).toEqual([0, 1]);
+    expect(sidesOneTrickFromShot(at({ bids: ['nil', 3, 4, 3], tricksWon: [1, 2, 3, 2], played: 8 }))).toEqual([]);
+    expect(sidesOneTrickFromShot(at({ phase: 'bidding', bids: ['nil', 3, 4, 3], tricksWon: [0, 0, 0, 0], played: 0 }))).toEqual([]);
+    expect(sidesOneTrickFromShot(at({ rules: cutthroat, bids: ['nil', 4, 3], tricksWon: [0, 4, 4], played: 8 }))).toEqual([]);
+    const bidding = at({ phase: 'bidding', bids: ['nil', 3, 4, 3], tricksWon: [0, 0, 0, 0], played: 0 });
+    const live = at({ bids: ['nil', 3, 4, 3], tricksWon: [0, 1, 1, 1], played: 3 });
+    expect(newlyOneTrickFromShot(bidding, live, new Set())).toEqual([0]);
+    expect(newlyOneTrickFromShot(live, { ...live, tricksWon: [0, 2, 2, 1] }, new Set([0]))).toEqual([]);
+    expect(newlyOneTrickFromShot(null, live, new Set())).toEqual([]);
   });
 
   it('pumps a books hand when one more loss would miss the minimum', () => {

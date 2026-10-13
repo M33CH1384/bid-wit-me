@@ -197,21 +197,23 @@ export function checkGameEnd(r: TableRules, scores: readonly number[]): GameResu
 }
 
 /**
- * Was `side` shot this hand? Shot = set: the side had a contract and missed it (a busted Nil alone never makes a side
- * shot — same as the set logic). Books hand: shot when it took fewer books than the host minimum (off = nobody is shot).
+ * Was `side` shot this hand? Shot = set: the side missed its number, or (2v2) a Nil bidder took any book.
+ * A made Nil is not a shot. Books hand: shot when it took fewer books than the host minimum (off = nobody is shot).
+ * That hand has no bids, so a Nil shot there only exists when the host turned "books bid themselves" off.
  */
 export function isShot(r: TableRules, bids: readonly Bid[], side: SideHandResult): boolean {
   if (isBooksHand(bids)) {
     const min = hostMinimum(r);
     return min > 0 && side.tricks < min;
   }
-  return side.contractMade === false;
+  if (side.contractMade === false) return true;
+  return r.partnerships && side.nils.some((n) => !n.made);
 }
 
 /**
  * How many times each side has been shot this game, counted from the scored hands.
  * History is part of the synced state, so every client and a reconnect see the same counts.
- * A busted nil alone is not a shot. A books hand counts only when it missed the first-hand minimum.
+ * In 2v2 a busted Nil counts. A made Nil does not. A books hand counts only when it missed the host minimum.
  */
 export function shotCounts(r: TableRules, history: readonly { bids: readonly Bid[]; sides: readonly SideHandResult[] }[]): number[] {
   const counts = Array.from({ length: sideCount(r) }, () => 0);
@@ -223,13 +225,18 @@ export function shotCounts(r: TableRules, history: readonly { bids: readonly Bid
   return counts;
 }
 
-/** The side made its books: a made contract, or a books hand that reached the host minimum. */
+/**
+ * The side made its books: a made contract, a books hand that reached the host minimum,
+ * or a made Nil when the team is safe this hand (no set, no busted Nil). That last case takes the tape off.
+ */
 function madeItsBooks(r: TableRules, bids: readonly Bid[], side: SideHandResult): boolean {
   if (isBooksHand(bids)) {
     const min = hostMinimum(r);
     return min === 0 || side.tricks >= min;
   }
-  return side.contractMade === true;
+  if (side.contractMade === false) return false;
+  if (side.contractMade === true) return true;
+  return r.partnerships && side.nils.length > 0 && side.nils.every((n) => n.made);
 }
 
 /**
@@ -238,7 +245,7 @@ function madeItsBooks(r: TableRules, bids: readonly Bid[], side: SideHandResult)
  * It does not count shots across the whole game.
  */
 export interface ShotCover {
-  /** Caution tape after a non-losing shot, and also on a hand-1 loss (together with the sheet). Off once a later hand makes its books. */
+  /** Caution tape after a non-losing shot, and also on a hand-1 loss (together with the sheet). Off once a later hand makes its books, including a made Nil when the team is safe. */
   tape: boolean;
   /** White sheet only for an elimination: a hand-1 shot-out, or a later shot while the previous hand was a shot. */
   sheet: boolean;
@@ -323,9 +330,10 @@ export function tricksStillRemaining(st: { rules: TableRules; tricks: { length: 
 }
 
 /**
- * Sides exactly one trick from being shot: books still needed equals tricks still remaining,
- * so losing one more trick makes the contract (or the first-hand minimum) unreachable.
- * A nil bid is not itself a shot; it only changes which tricks count toward the partner's contract.
+ * Sides in the shotgun-pump window. A numeric contract is here when books still needed equal
+ * tricks still remaining, so one more loss makes the contract (or the first-hand minimum) unreachable.
+ * In 2v2 a Nil or Blind Nil bidder who still has zero books is here too: one book busts that Nil.
+ * Taking a book leaves the window. Cutthroat Nil is not a shot, so it does not pump.
  */
 export function sidesOneTrickFromShot(st: {
   phase: string;
@@ -340,7 +348,9 @@ export function sidesOneTrickFromShot(st: {
   const out: number[] = [];
   for (let side = 0; side < sideCount(st.rules); side++) {
     const needed = booksStillNeeded(st.rules, st.bids, st.tricksWon, side);
-    if (needed !== null && needed > 0 && needed === remaining) out.push(side);
+    const onEdge = needed !== null && needed > 0 && needed === remaining;
+    const nilLive = st.rules.partnerships && sideSeats(side, st.rules).some((seat) => isNilBid(st.bids[seat]) && (st.tricksWon[seat] ?? 0) === 0);
+    if (onEdge || nilLive) out.push(side);
   }
   return out;
 }
@@ -359,6 +369,43 @@ export function newlyOneTrickFromShot<T extends { handNo: number; phase: string;
   if (!prev || prev.handNo !== next.handNo) return [];
   const before = new Set(sidesOneTrickFromShot(prev));
   return sidesOneTrickFromShot(next).filter((side) => !before.has(side) && !already.has(side));
+}
+
+/**
+ * Seats whose Nil or Blind Nil just took its first book.
+ * The new completed trick names the winner, and that seat had 0 books before this transition.
+ * 2v2 only: that bust is a shot, and the shotgun plays here. Cutthroat does not.
+ * The first snapshot of a hand is a baseline, so a resumed or reconnecting client does not replay it.
+ * `already` stops a second pass of the same bust. Every client runs this on the same synced
+ * transition, so an online table hears the boom once, together.
+ */
+export function nilBustsJustResolved<T extends {
+  seed?: string;
+  handNo: number;
+  rules: TableRules;
+  bids: readonly (Bid | null)[];
+  tricksWon: readonly number[];
+  tricks: readonly { winner: number | null }[];
+}>(
+  prev: T | null,
+  next: T,
+  already: ReadonlySet<number>,
+): number[] {
+  if (!prev || prev.handNo !== next.handNo) return [];
+  if (prev.seed !== undefined && next.seed !== undefined && prev.seed !== next.seed) return [];
+  if (!next.rules.partnerships) return [];
+  if (next.tricks.length <= prev.tricks.length) return [];
+  const out: number[] = [];
+  const seen = new Set<number>();
+  for (const trick of next.tricks.slice(prev.tricks.length)) {
+    const seat = trick.winner;
+    if (seat === null || seen.has(seat) || already.has(seat)) continue;
+    if (!isNilBid(next.bids[seat])) continue;
+    if ((prev.tricksWon[seat] ?? 0) > 0) continue;
+    seen.add(seat);
+    out.push(seat);
+  }
+  return out;
 }
 
 /**
