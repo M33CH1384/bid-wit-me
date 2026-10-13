@@ -54,6 +54,7 @@ interface Props {
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 const xKey = (x: Xform) => x.p.map((v) => v.toFixed(4)).join() + x.q.map((v) => v.toFixed(4)).join() + x.s.toFixed(4);
 const edgeMat = new MeshStandardMaterial({ color: '#efe9dc', roughness: 0.75 });
+const glowShared = new MeshBasicMaterial({ color: '#f5c542', transparent: false, opacity: 1, depthWrite: false, toneMapped: false });
 /** full colour vs. a card you can't play: 55% brightness on screen, faint cool tint, desaturated */
 const FULL = new Color(1, 1, 1);
 const DIM = new Color(...ILLEGAL_COLOR);
@@ -85,6 +86,24 @@ export function createLitCardMaterial(map: Texture, quality: 'high' | 'low', sat
   return saturate ? withSaturation(m) : m;
 }
 
+const materialPool = new Map<string, MeshStandardMaterial | MeshBasicMaterial>();
+
+/**
+ * One material per texture. A fresh physical material on every card made the first deal
+ * and the first trick rebuild the deck on the GPU. Each painted face still has its own
+ * map, so a dimmed card does not tint a different rank.
+ */
+export function pooledCardMaterial(map: Texture, quality: 'high' | 'low', lit: boolean, saturate: boolean): MeshStandardMaterial | MeshBasicMaterial {
+  const key = `${lit ? 1 : 0}:${quality}:${saturate ? 1 : 0}:${map.uuid}`;
+  let m = materialPool.get(key);
+  if (!m) {
+    m = lit ? createLitCardMaterial(map, quality, saturate) : new MeshBasicMaterial({ map });
+    applyFaceDepthBias(m);
+    materialPool.set(key, m);
+  }
+  return m;
+}
+
 function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, raise = 0, roll = 0, order = 0, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand, blast = 'table', holdUntilMove = false, lit = true }: Props) {
   const ref = useRef<Group>(null);
   // First mount only. A follow-up render drops the deal props before useFrame runs.
@@ -100,20 +119,8 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   const shownFace = useRef<Texture | null>(null);
   const frontTex = retainFrontTexture(face, shownFace.current);
   if (frontTex) shownFace.current = frontTex;
-  const frontMat = useMemo(() => {
-    const map = frontTex ?? back;
-    // Unlit until the physical program is linked. MeshBasic with a map is one small shader shared by every card.
-    const m = lit ? createLitCardMaterial(map, quality, true) : new MeshBasicMaterial({ map });
-    // Face and cap are both opaque, so they share one list. renderOrder can sort them,
-    // but a 16-bit depth test still drops the face when the two planes quantize together.
-    applyFaceDepthBias(m);
-    return m;
-  }, [frontTex, back, quality, lit]); // eslint-disable-line react-hooks/exhaustive-deps
-  const backMat = useMemo(() => {
-    const m = lit ? createLitCardMaterial(back, quality, false) : new MeshBasicMaterial({ map: back });
-    applyFaceDepthBias(m);
-    return m;
-  }, [back, quality, lit]); // eslint-disable-line react-hooks/exhaustive-deps
+  const frontMat = useMemo(() => pooledCardMaterial(frontTex ?? back, quality, lit, true), [frontTex, back, quality, lit]);
+  const backMat = useMemo(() => pooledCardMaterial(back, quality, lit, false), [back, quality, lit]);
 
   // Your turn: cards you can't play sit at 55% brightness (still readable); playable cards stay at full colour
   // and get a gold ring on their own rounded edge. The face eases in ~150 ms. The ring is also a tip mark.
@@ -123,8 +130,8 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   // test against the face's polygon offset. Opaque, with no depth write, the face covers the
   // inside of the stroke and the outer edge stays gold. A selected card's whole band, ring
   // included, is ordered and biased in front of every neighbour.
-  const glowMat = useMemo(() => new MeshBasicMaterial({ color: '#f5c542', transparent: false, opacity: 1, depthWrite: false, toneMapped: false }), []);
-  const edge = useMemo(() => edgeMat.clone(), []);
+  const glowMat = glowShared;
+  const edge = edgeMat;
   // The root group keeps `order` for taps. Child groups reset Three.js groupOrder, so each mesh
   // carries its own: body at `order`, face and back half a step later, tip glow just behind
   // its own face and still inside this card's band. A selected card's band is above every neighbour.
@@ -399,10 +406,11 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     >
       <group ref={lift} name={name}>
       <group ref={inner}>
-        <mesh geometry={geo.body} material={edge} castShadow={castShadow} />
-        <mesh geometry={geo.front} material={frontMat} />
-        <mesh geometry={geo.back} material={backMat} />
-        {frontTex && <mesh geometry={cardOutlineGeometry()} material={glowMat} visible={!!glow} renderOrder={-1} />}
+        {/* Shared geometry and materials. Disposing them when one card leaves would drop the GPU buffers for every card still on the table. */}
+        <mesh geometry={geo.body} material={edge} castShadow={castShadow} dispose={null} />
+        <mesh geometry={geo.front} material={frontMat} dispose={null} />
+        <mesh geometry={geo.back} material={backMat} dispose={null} />
+        {frontTex && <mesh geometry={cardOutlineGeometry()} material={glowMat} visible={!!glow} renderOrder={-1} dispose={null} />}
       </group>
       </group>
     </group>

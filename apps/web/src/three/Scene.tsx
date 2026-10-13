@@ -3,8 +3,8 @@ import { Html } from '@react-three/drei';
 import { Canvas, events as r3fEvents, useFrame, useThree } from '@react-three/fiber';
 import { type ReactNode, type RefObject, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { type BufferGeometry, type Camera, type Group, type Material, type Mesh, type Object3D, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, DataTexture, Matrix4, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, PCFSoftShadowMap, Quaternion, RepeatWrapping, Scene as ThreeScene, SRGBColorSpace, Texture, Vector2, Vector3 } from 'three';
-import { type Card, type Play, type Trick } from '@spades/rules';
-import Card3D, { createLitCardMaterial } from './Card3D';
+import { type Card, type Play, type Trick, standardDeck } from '@spades/rules';
+import Card3D, { createLitCardMaterial, pooledCardMaterial } from './Card3D';
 import { departureSlot, handCardKey, handReactKey } from '../handOrder';
 import { GAP_S, LIFT_S, canTapCard, fanGapPx, fanMotion, handCardChrome, handDepthOpts, handRenderOrder, hitsInPaintOrder, raiseLocalY } from './handLift';
 import { isShortLandscape } from '../viewport';
@@ -448,6 +448,27 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   useEffect(() => (props.fontsReady ? refreshFacesGradually(() => invalidate()) : undefined), [props.fontsReady, invalidate]);
   const deck = deckSpot(positions[dealer]!, n);
   const intro = props.introHand === handNo;
+  const tl = dealTimeline(props.animK, n, handCounts.reduce((a, b) => a + b, 0) + piles.length * n + shownTrick.length);
+  const promotedRef = useRef(props.promoted);
+  promotedRef.current = props.promoted;
+  useEffect(() => {
+    // After the deal has landed, paint the rest of the deck one face per frame and compile its material.
+    // Doing that during the flight, or all at once when the first trick card appears, is the stall.
+    if (!intro) return;
+    const ids: Card[] = [...standardDeck(), 'BJ', 'LJ'];
+    let i = 0;
+    let raf = 0;
+    let dead = false;
+    const step = () => {
+      if (dead || i >= ids.length) return;
+      const c = ids[i++]!;
+      const tex = faceTexture(c, res, promotedRef.current(c), aniso);
+      pooledCardMaterial(tex, quality, true, true);
+      raf = requestAnimationFrame(step);
+    };
+    const wait = window.setTimeout(() => { if (!dead) raf = requestAnimationFrame(step); }, tl.total * 1000);
+    return () => { dead = true; clearTimeout(wait); cancelAnimationFrame(raf); };
+  }, [intro, handNo, res, aniso, quality, tl.total]);
   // Blind Nil: cards that were dealt face-down flip over in place on reveal — never re-dealt from the deck
   const hiddenHand = useRef<number | null>(null);
   if (myHand === null) hiddenHand.current = handNo;
@@ -464,7 +485,6 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
     const w = window as unknown as { __bwmFlips?: Record<number, number> };
     (w.__bwmFlips ??= {})[handNo] = (w.__bwmFlips[handNo] ?? 0) + 1;
   }, [flipIn, handNo]);
-  const tl = dealTimeline(props.animK, n, handCounts.reduce((a, b) => a + b, 0) + piles.length * n + shownTrick.length);
   const size = useThree((s) => s.size);
   const short = isShortLandscape(size.width, size.height); // from the canvas size, like the camera — never out of step with it
   // A 0×0 canvas (first frame, iPhone chrome) must not divide. That NaN pose sticks: lerp never leaves it,
