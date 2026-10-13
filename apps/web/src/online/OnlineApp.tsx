@@ -5,6 +5,7 @@ import { HostMusicBridge } from './HostMusic';
 import { type Settings, loadSettings, saveSettings, settingsToRules } from '../settings';
 import { serverUrl } from './config';
 import { TableConnection, createTable, tableInfo } from './connection';
+import { joinableSeats, spectatorsFull } from './joinable';
 import { forgetToken, loadName, saveName } from './identity';
 import Lobby from './Lobby';
 import { codeFromPath, navigate } from './nav';
@@ -157,7 +158,9 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
     if (watch) { q.delete('watch'); history.replaceState(history.state, '', location.pathname + (q.toString() ? `?${q}` : '')); }
     const want = q.has('seat') ? Number(q.get('seat')) : NaN;
     if (q.has('seat')) { q.delete('seat'); history.replaceState(history.state, '', location.pathname + (q.toString() ? `?${q}` : '')); }
-    if (cs.seat === null && Number.isInteger(want) && room.seats[want] && (room.phase === 'lobby' ? room.seats[want]!.kind === 'empty' : room.seats[want]!.kind === 'bot')) {
+    // empty or a bot the server will accept — never a human seat
+    const open = joinableSeats(room);
+    if (cs.seat === null && open.includes(want)) {
       conn.send({ t: 'sit', seat: want });
     } else if (watch) {
       // just watching
@@ -165,17 +168,23 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
       const free = room.seats.findIndex((s) => s.kind === 'empty');
       if (free >= 0) conn.send({ t: 'sit', seat: free });
     } else if (cs.seat === null && Number.isInteger(want)) {
-      const bot = room.seats.findIndex((s) => s.kind === 'bot');
-      if (bot >= 0 && room.phase !== 'lobby') conn.send({ t: 'sit', seat: bot });
+      const bot = open.find((i) => room.seats[i]?.kind === 'bot');
+      if (bot !== undefined && room.phase !== 'lobby') conn.send({ t: 'sit', seat: bot });
     }
   }, [cs.room, cs.you, cs.seat, autoDone, code, conn, settings]);
 
   // Release 9 presence + "Invite to my table": the code, mode and the first seat a friend could take
   const room0 = cs.room;
-  const openSeat = room0 ? room0.seats.findIndex((s) => (room0.phase === 'lobby' ? s.kind === 'empty' : s.kind === 'bot')) : -1;
-  const openCount = room0 ? room0.seats.filter((s) => (room0.phase === 'lobby' ? s.kind === 'empty' : s.kind === 'bot')).length : 0;
+  const seatsOpen = room0 ? joinableSeats(room0) : [];
+  const openSeat = seatsOpen[0] ?? -1;
+  const openCount = seatsOpen.length;
   const pmode = room0 ? (room0.rules.mode === 'joker' || room0.rules.mode === 'aceDown' ? room0.rules.mode : 'cutthroat') : undefined;
-  usePresence(room0 ? { kind: room0.phase === 'lobby' ? 'lobby' : 'table', mode: pmode, open: openCount, code } : null);
+  const watchFull = room0 ? spectatorsFull(room0) : false;
+  usePresence(room0 ? {
+    kind: room0.phase === 'lobby' ? 'lobby' : 'table', mode: pmode, open: openCount, code,
+    ...(openSeat >= 0 ? { seat: openSeat } : {}),
+    ...(watchFull ? { watchFull: true } : {}),
+  } : null);
   useEffect(() => {
     if (!room0) return;
     social.setMyTable({ code, mode: pmode, open: openCount, ...(openSeat >= 0 ? { seat: openSeat } : {}) });

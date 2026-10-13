@@ -7,7 +7,7 @@ import { useSyncExternalStore } from 'react';
 import type { DmLine, FriendsState, InviteMsg, OpenTable, PresenceEntry, PresenceStatus, SocialChatLine, SocialClientMsg, SocialServerMsg, SocialSettings } from '@spades/protocol';
 import { account, loadAccount } from '../account/api';
 import { serverUrl } from '../online/config';
-import { loadName } from '../online/identity';
+import { guestSessionId, loadName } from '../online/identity';
 
 export type SocialTab = 'players' | 'chat' | 'messages' | 'friends' | 'leaders' | 'tournaments' | 'settings';
 export interface Toast { id: string; kind: 'info' | 'error' | 'ok'; text: string; at: number }
@@ -95,7 +95,7 @@ async function connect() {
   set({ status: state.status === 'open' ? 'retrying' : 'connecting' });
   await loadAccount().catch(() => undefined);
   identity = idKey();
-  let q = `name=${encodeURIComponent(loadName() || 'Guest')}`;
+  let q = `name=${encodeURIComponent(loadName() || 'Guest')}&gid=${encodeURIComponent(guestSessionId())}`;
   if (identity) {
     try {
       const r = await fetch('/api/social/ticket', { credentials: 'same-origin' });
