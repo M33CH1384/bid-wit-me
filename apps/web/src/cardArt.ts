@@ -103,59 +103,6 @@ const PIPS: Record<string, [number, number][]> = {
   T: [[0.3, 0.2], [0.7, 0.2], [0.5, 0.31], [0.3, 0.4], [0.7, 0.4], [0.3, 0.6], [0.7, 0.6], [0.5, 0.69], [0.3, 0.8], [0.7, 0.8]],
 };
 
-/**
- * A stroke from the lower-right of the bowl, leaving the letter.
- * A condensed or serif Q closes up at phone size and reads as 0; the tail is what keeps it a queen.
- * `reach` shortens the tip so the big court letter stays inside its frame. 1 is the corner index.
- */
-export function queenTail(
-  centerX: number,
-  centerY: number,
-  fontSize: number,
-  reach = 1,
-): { x1: number; y1: number; x2: number; y2: number; width: number } {
-  const fs = Math.max(1, fontSize);
-  const r = Math.max(0.4, Math.min(1, reach));
-  const x1 = centerX + fs * 0.18;
-  const y1 = centerY + fs * 0.22;
-  return {
-    x1,
-    y1,
-    x2: x1 + fs * 0.4 * r,
-    y2: y1 + fs * 0.18 * r,
-    width: fs * 0.15,
-  };
-}
-
-/** Open bowl plus a tail. The font Q's own tail stays inside the stroke and reads as a zero. */
-function drawQueenMark(
-  ctx: CanvasRenderingContext2D,
-  centerX: number,
-  centerY: number,
-  fontSize: number,
-  color: string,
-  reach = 1,
-) {
-  const fs = Math.max(1, fontSize);
-  const t = queenTail(centerX, centerY, fs, reach);
-  ctx.save();
-  ctx.strokeStyle = color;
-  ctx.fillStyle = color;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.lineWidth = fs * 0.13;
-  ctx.beginPath();
-  // Gap on the lower right (canvas angles grow clockwise) so the bowl cannot close into a zero.
-  ctx.ellipse(centerX, centerY, fs * 0.32, fs * 0.4, 0, 1.15, Math.PI * 2 + 0.4);
-  ctx.stroke();
-  ctx.lineWidth = t.width;
-  ctx.beginPath();
-  ctx.moveTo(t.x1, t.y1);
-  ctx.lineTo(t.x2, t.y2);
-  ctx.stroke();
-  ctx.restore();
-}
-
 function corner(ctx: CanvasRenderingContext2D, W: number, rank: string, suit: Suit, color: string, badge: boolean) {
   const label = rank === 'T' ? '10' : rank;
   ctx.fillStyle = color;
@@ -170,10 +117,7 @@ function corner(ctx: CanvasRenderingContext2D, W: number, rank: string, suit: Su
   ctx.lineWidth = W * 0.011;
   ctx.lineJoin = 'round';
   if (label.length > 1) { ctx.save(); ctx.translate(cx, 0); ctx.scale(0.86, 1); ctx.fillText(label, 0, W * 0.255); ctx.strokeText(label, 0, W * 0.255); ctx.restore(); }
-  else if (rank === 'Q') {
-    // Drawn, not the font: Barlow's Q closes into a zero once the card is phone-sized.
-    drawQueenMark(ctx, cx, W * 0.255 - fs * 0.36, fs, color);
-  } else { ctx.fillText(label, cx, W * 0.255); ctx.strokeText(label, cx, W * 0.255); }
+  else { ctx.fillText(label, cx, W * 0.255); ctx.strokeText(label, cx, W * 0.255); }
   drawSuit(ctx, suit, cx, W * 0.37, W * 0.165, color);
   if (badge) {
     ctx.beginPath();
@@ -225,10 +169,7 @@ function court(ctx: CanvasRenderingContext2D, W: number, H: number, rank: string
   ctx.textBaseline = 'middle';
   const courtFs = W * 0.3;
   ctx.font = `800 ${courtFs}px "Barlow Condensed", "Arial Narrow", Arial, sans-serif`;
-  if (rank === 'Q') {
-    // Shorter reach: the court frame is narrow, and a full corner-length tail would cross it.
-    drawQueenMark(ctx, W / 2, y + h * 0.53, courtFs, color, 0.55);
-  } else ctx.fillText(rank, W / 2, y + h * 0.53);
+  ctx.fillText(rank, W / 2, y + h * 0.53);
   drawSuit(ctx, suit, W / 2, y + h * 0.84, W * 0.1, color);
 }
 
