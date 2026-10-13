@@ -8,7 +8,7 @@
  *  - all durable state lives in one plain-JSON `RoomData` object that the DO saves as a single row.
  */
 import {
-  type Action, type GameState, type Series, addSeriesGame, emptySeries, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, RulesConfigError, acceptRules, applyAction, canRunIt, type Seat, spectatorView, isFreshDeal, isNukeTrick, nextDealer, makeRules, newGame, pendingTurn, secureSeed, viewFor,
+  type Action, type GameState, type Series, addSeriesGame, emptySeries, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, RulesConfigError, acceptRules, applyAction, canRunIt, type Seat, spectatorView, isFreshDeal, isNukeTrick, nextDealer, makeRules, newGame, pendingTurn, secureSeed, viewFor, withCompleteNil,
 } from '@spades/rules';
 import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, chooseBotAction, loudLoser, parseHint, leanBid, botSkillFor, personaSkillFloor, seatSkill, leanNil, momentsFor, newTalkState, pickBotNames, prePlayLine } from '@spades/bots';
 import {
@@ -736,6 +736,7 @@ export class Room {
    */
   private act(connId: string, me: Member, msg: Extract<ClientMsg, { t: 'act' }>): void {
     const d = this.data;
+    this.healNilRules();
     const id = msg.id;
     if (id && me.acts?.includes(id)) {
       this.sendState(connId);
@@ -1129,8 +1130,22 @@ export class Room {
     this.after();
   }
 
+  /**
+   * Older saved games can omit `nil` / `blindNil`. Bidding reads `.allowed` on those objects; a throw there
+   * aborts the tick before broadcast, so the table (and every spectator) stops. Fill the preset in place.
+   */
+  private healNilRules(): void {
+    const d = this.data;
+    const rules = withCompleteNil(d.rules);
+    if (rules !== d.rules) d.rules = rules;
+    if (!d.game) return;
+    const gr = withCompleteNil(d.game.rules);
+    if (gr !== d.game.rules) d.game.rules = gr;
+  }
+
   /** Recompute timers after any change, run due bots/auto-plays, broadcast, persist. */
   private after(): void {
+    this.healNilRules();
     this.checkVotes();
     this.considerHost();
     this.drive();
@@ -1141,6 +1156,7 @@ export class Room {
   /** Called by timers/alarms. One bad tick must not kill the alarm loop. */
   tick(): void {
     try {
+      this.healNilRules();
       const hostChanged = this.considerHost();
       const t = this.data.tournament;
       if (t?.autostartAt && this.data.phase === 'lobby' && this.io.now() >= t.autostartAt - 50) {
