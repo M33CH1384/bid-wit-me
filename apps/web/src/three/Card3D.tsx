@@ -1,6 +1,7 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { memo, useLayoutEffect, useMemo, useRef } from 'react';
 import { Color, type Group, type Material, type Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Quaternion, type Texture, Vector3 } from 'three';
+import { cardFaceFragment } from './cardSat';
 import { cardGeometry, cardOutlineGeometry } from './geometry';
 import { ILLEGAL_COLOR, RAISE_S, applyFaceDepthBias, cardMeshPaint, liftEase, screenRaise } from './handLift';
 import type { Xform } from './layout';
@@ -64,9 +65,7 @@ function withSaturation<M extends MeshStandardMaterial>(m: M): M & { userData: {
   m.userData.sat = sat;
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uSat = sat;
-    sh.fragmentShader = sh.fragmentShader
-      .replace('void main() {', 'uniform float uSat;\nvoid main() {')
-      .replace('#include <map_fragment>', '#include <map_fragment>\n  diffuseColor.rgb = mix(vec3(dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114))), diffuseColor.rgb, uSat);');
+    sh.fragmentShader = cardFaceFragment(sh.fragmentShader);
   };
   m.customProgramCacheKey = () => 'card-sat';
   return m as M & { userData: { sat: { value: number } } };
@@ -121,7 +120,8 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   // The root group keeps `order` for taps. Child groups reset Three.js groupOrder, so each mesh
   // carries its own: body at `order`, face and back half a step later, tip glow just behind.
   // Depth testing stays on. The face is FACE_CAP_GAP ahead of the cap and biased in window
-  // depth, so a 16-bit buffer cannot paint the cream cap over the pips. Neighbours lose
+  // depth, so a 16-bit buffer cannot paint the cream cap over the pips. The gold ring is
+  // OUTLINE_AHEAD in front of that face, or the same bias hides it on iPhone. Neighbours lose
   // because a playable card is nudged toward the camera (LEGAL_NEAR).
   useLayoutEffect(() => {
     const root = ref.current;

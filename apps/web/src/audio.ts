@@ -3,11 +3,16 @@
  * - Card/chip foley: Kenney "Casino Audio" + "UI Audio" (CC0), re-encoded to small mono MP3 (plays on Safari/iOS).
  * - Musical cues (turn chime, stingers, jingles, spades-broken sting, whoosh, buzz) and the optional lounge ambience
  *   are synthesized here with oscillators/noise — no extra files.
- * - iOS/Safari only allow audio after a user gesture: the context is created/resumed on the first tap/key.
+ * - iOS/Safari only allow audio after a user gesture: the context is created/resumed on the first
+ *   touchstart/pointerdown (and a key). visibilitychange and pageshow resume it when the page returns.
+ *   An 'interrupted' or closed context is rebuilt. If it stays suspended, the header speaker
+ *   shows a needs-tap state; tapping that icon resumes or rebuilds inside the gesture.
  *   (The iPhone silent switch mutes Web Audio; there is no way around that from a web page.)
  * - Settings (on/off, volume, ambience) persist in localStorage.
  */
 import { useSyncExternalStore } from 'react';
+import { audioElementPool } from './audioPool';
+import { audioContextAction, settleAudio, soundRestorePending } from './audioSession';
 
 /**
  * decodeAudioData completion runs on the main thread. Decoding every stinger and voice sprite in
@@ -15,7 +20,15 @@ import { useSyncExternalStore } from 'react';
  */
 let decodeChain: Promise<void> = Promise.resolve();
 export function decodeAudioBuffer(ctx: AudioContext, data: ArrayBuffer): Promise<AudioBuffer> {
-  const task = decodeChain.then(() => new Promise<AudioBuffer>((ok, bad) => { ctx.decodeAudioData(data, ok, bad); }));
+  const task = decodeChain.then(() => new Promise<AudioBuffer>((ok, bad) => {
+    // Callback form for older Safari. The method also returns a promise; leaving that rejection
+    // unhandled surfaces as "Context is closed" / EncodingError when a rebuilt context abandons a decode.
+    try {
+      void settleAudio(ctx.decodeAudioData(data, ok, bad));
+    } catch (err) {
+      bad(err instanceof DOMException ? err : new DOMException(String(err)));
+    }
+  }));
   decodeChain = task.then(
     () => new Promise((resolve) => { setTimeout(resolve, 0); }),
     () => new Promise((resolve) => { setTimeout(resolve, 0); }),
@@ -109,6 +122,17 @@ class Engine {
   private ambNodes: AudioNode[] = [];
   private lastAt = new Map<Sfx, number>();
   unlocked = false;
+  /**
+   * Automated checks (Playwright): pretend iOS reported this AudioContext.state.
+   * 'interrupted' / 'closed' rebuild the context. A stuck 'suspended' leaves the header speaker in its needs-tap state.
+   * Null uses the real state.
+   */
+  testState: string | null = null;
+  needsRestore = false;
+  private unlockInstalled = false;
+  private recreating = false;
+  private wakeGen = 0;
+  private loadGen = 0;
   /** cue counter (exposed for automated checks) */
   played: Record<string, number> = {};
 
@@ -141,8 +165,8 @@ class Engine {
     this.set({ on: b.on || !b.music, music: b.music, ambient: b.ambient });
     return false;
   }
-  private emit() { this.snapshot = { ...this.settings, musicStatus: this.musicStatus, nowPlaying: this.nowPlaying }; this.listeners.forEach((f) => f()); }
-  snapshot: SoundSettings & { musicStatus: MusicStatus; nowPlaying: { track: Track; at: number } | null } = { ...this.settings, musicStatus: 'off', nowPlaying: null };
+  private emit() { this.snapshot = { ...this.settings, musicStatus: this.musicStatus, nowPlaying: this.nowPlaying, needsRestore: this.needsRestore }; this.listeners.forEach((f) => f()); }
+  snapshot: SoundSettings & { musicStatus: MusicStatus; nowPlaying: { track: Track; at: number } | null; needsRestore: boolean } = { ...this.settings, musicStatus: 'off', nowPlaying: null, needsRestore: false };
   getSnapshot = () => this.snapshot;
 
   /* ---------- music: shuffled playlist with crossfade + gentle mid/side widening ---------- */
@@ -189,9 +213,16 @@ class Engine {
 
   private ensureDecks() {
     if (this.decks.length || !this.ctx) return;
+    const pool = audioElementPool();
+    const a = pool.acquire();
+    const b = pool.acquire();
+    if (!a || !b) {
+      if (a) pool.release(a);
+      if (b) pool.release(b);
+      return;
+    }
     const chain = this.buildMusicChain();
-    for (let i = 0; i < 2; i++) {
-      const el = new Audio();
+    for (const el of [a, b]) {
       el.preload = 'auto';
       el.setAttribute('playsinline', '');
       const gain = this.ctx.createGain(); gain.gain.value = 0;
@@ -202,6 +233,18 @@ class Engine {
       el.addEventListener('playing', () => { if (deck.url && this.decks[this.active] === deck && this.musicStatus !== 'playing') { this.musicStatus = 'playing'; this.emit(); } });
       this.decks.push(deck);
     }
+  }
+
+  /** Music elements are bound to this context. Free their decoder slots; a new context gets new elements. */
+  private releaseDecks() {
+    const pool = audioElementPool();
+    for (const d of this.decks) {
+      if (d.url) { try { URL.revokeObjectURL(d.url); } catch { /* already revoked */ } d.url = null; }
+      pool.retire(d.el);
+    }
+    this.decks = [];
+    this.fading = false;
+    this.active = 0;
   }
 
   /** iOS: an <audio> element must first be played inside a user gesture; prime both decks with a silent blip. */
@@ -293,7 +336,8 @@ class Engine {
       return;
     }
     this.ensureDecks();
-    this.musicBus!.gain.setTargetAtTime(this.settings.musicVolume ** 1.6 * 0.85, this.ctx.currentTime, 0.1);
+    if (!this.decks.length || !this.musicBus) return;
+    this.musicBus.gain.setTargetAtTime(this.settings.musicVolume ** 1.6 * 0.85, this.ctx.currentTime, 0.1);
     const cur = this.decks[this.active]!;
     if (cur.track === null) {
       // first start happens inside the user's tap: prime both decks for iOS, then fetch + play
@@ -321,26 +365,150 @@ class Engine {
     }
   }
 
-  /* ---------- unlock on first gesture (iOS) ---------- */
+  /* ---------- unlock, and bring sound back after iOS interrupts it ---------- */
+  private liveState(c: AudioContext | null): string {
+    return this.testState ?? c?.state ?? 'none';
+  }
+
   installUnlock() {
-    if (typeof window === 'undefined') return;
-    // stays installed: iOS can 'interrupt' the context (calls, Siri, backgrounding) — any later tap resumes it
-    const unlock = () => {
-      if (this.unlocked && this.ctx?.state === 'running') return;
-      this.ensure();
-      const c = this.ctx;
-      if (!c) return;
-      if (c.state !== 'running') void c.resume();
-      // play one silent frame — required by older iOS to fully unlock
-      const b = c.createBuffer(1, 1, 22050); const s = c.createBufferSource(); s.buffer = b; s.connect(c.destination); s.start(0);
-      this.unlocked = true;
+    if (typeof window === 'undefined' || this.unlockInstalled) return;
+    this.unlockInstalled = true;
+    const gesture = () => this.wake('gesture');
+    const show = () => this.wake('show');
+    // touchstart and pointerdown both count as the first gesture on iOS. keydown covers desktop.
+    window.addEventListener('pointerdown', gesture, true);
+    window.addEventListener('touchstart', gesture, true);
+    window.addEventListener('keydown', gesture, true);
+    // backgrounding suspends the context; pageshow also fires when iOS restores the page from bfcache
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) show(); });
+    window.addEventListener('pageshow', show);
+  }
+
+  /**
+   * Resume, or rebuild, the context. Called inside the gesture (touch/pointer) and when the page
+   * is shown again. `resume()` is invoked synchronously so iOS still counts it as the user gesture.
+   */
+  wake(kind: 'gesture' | 'show') {
+    if (kind === 'show' && !this.unlocked) return;
+    if (kind === 'gesture' && this.unlocked && this.liveState(this.ctx) === 'running') {
+      if (this.needsRestore) this.publishRestore();
+      return;
+    }
+    if (kind === 'gesture') this.unlocked = true;
+    this.ensure();
+    const c = this.ctx;
+    if (!c) { this.publishRestore(); return; }
+    const action = audioContextAction(this.liveState(c));
+    if (action === 'recreate') {
+      this.testState = null;
+      if (!this.recreating) {
+        this.recreating = true;
+        try { this.recreateContext(); } finally { this.recreating = false; }
+      }
+    }
+    const gen = ++this.wakeGen;
+    // play() has to happen in this turn. Waiting for the resume promise drops the iOS gesture.
+    if (kind === 'gesture') {
+      if (this.ctx) this.blip(this.ctx);
       this.syncAmbient();
       this.syncVenue();
       this.syncMusic();
+    }
+    // Start resume() now, inside the gesture. A simulated stuck state must not actually resume,
+    // or the test hook could never leave the speaker in its needs-tap state. Publish that state
+    // in this same turn: the resume promise settles later, and a rejection must not skip the update.
+    const resumePromise = this.testState == null ? settleAudio(this.ctx?.resume()) : Promise.resolve();
+    this.publishRestore();
+    void resumePromise.then(() => {
+      if (gen !== this.wakeGen) return;
+      if (this.liveState(this.ctx) === 'running') {
+        this.syncAmbient();
+        this.syncVenue();
+        this.syncMusic();
+      }
+      this.publishRestore();
+    });
+  }
+
+  private blip(c: AudioContext) {
+    try {
+      const b = c.createBuffer(1, 1, 22050); const s = c.createBufferSource(); s.buffer = b; s.connect(c.destination); s.start(0);
+    } catch { /* context not runnable yet */ }
+  }
+
+  private publishRestore() {
+    const next = soundRestorePending(this.liveState(this.ctx), this.unlocked, !!(this.settings.on || this.settings.music));
+    if (next === this.needsRestore) return;
+    this.needsRestore = next;
+    this.emit();
+  }
+
+  private watchContext(c: AudioContext) {
+    c.onstatechange = () => {
+      if (c !== this.ctx || !this.unlocked || this.recreating) return;
+      if (audioContextAction(this.liveState(c)) === 'recreate') {
+        this.testState = null;
+        this.recreating = true;
+        try { this.recreateContext(); } finally { this.recreating = false; }
+      }
+      this.publishRestore();
     };
-    ['pointerdown', 'touchend', 'keydown'].forEach((e) => window.addEventListener(e, unlock, true));
-    // iOS suspends the context when the app is backgrounded; resume on return
-    document.addEventListener('visibilitychange', () => { if (!document.hidden && this.ctx && this.ctx.state !== 'running' && this.unlocked) void this.ctx.resume(); });
+  }
+
+  /** Build a new context. Interrupted and closed ones cannot be resumed. Buffers are copied across. */
+  private recreateContext() {
+    const saved = this.copyBuffers();
+    this.stopVoice();
+    this.releaseDecks();
+    this.stopBeds();
+    const old = this.ctx;
+    this.ctx = null;
+    this.master = this.sfxBus = this.sfxDuck = this.nukeBus = this.ambBus = this.venueBus = this.voiceDuck = this.musicBus = this.musicDuck = null;
+    this.loading = null;
+    this.loadGen++;
+    if (old && old.state !== 'closed') void settleAudio(old.close());
+    const next = this.ensure({ skipLoad: true });
+    if (!next) return;
+    if (saved.length) this.restoreBuffers(saved);
+    if (this.buffers.size === 0) this.load();
+    if (next.state !== 'running') void settleAudio(next.resume());
+  }
+
+  private copyBuffers(): { key: string; rate: number; channels: Float32Array[] }[] {
+    const out: { key: string; rate: number; channels: Float32Array[] }[] = [];
+    for (const [key, buf] of this.buffers) {
+      try {
+        const channels: Float32Array[] = [];
+        for (let i = 0; i < buf.numberOfChannels; i++) channels.push(new Float32Array(buf.getChannelData(i)));
+        out.push({ key, rate: buf.sampleRate, channels });
+      } catch { /* closed context: the samples are gone, re-decode */ }
+    }
+    this.buffers = new Map();
+    return out;
+  }
+
+  private restoreBuffers(saved: { key: string; rate: number; channels: Float32Array[] }[]) {
+    const c = this.ctx;
+    if (!c) return;
+    for (const s of saved) {
+      const frames = s.channels[0]?.length ?? 0;
+      if (!frames || !s.channels.length) continue;
+      try {
+        const buf = c.createBuffer(s.channels.length, frames, s.rate || c.sampleRate);
+        s.channels.forEach((data, i) => buf.copyToChannel(data, i));
+        this.buffers.set(s.key, buf);
+      } catch { /* re-fetch below */ }
+    }
+  }
+
+  private stopBeds() {
+    if (this.ambTimer !== null) { window.clearInterval(this.ambTimer); this.ambTimer = null; }
+    this.ambNodes = [];
+    this.venueTimers.forEach((t) => window.clearTimeout(t));
+    this.venueTimers = [];
+    const nodes = this.venueNodes; this.venueNodes = [];
+    nodes.forEach((n) => { try { n.stop(); } catch { /* dead context */ } });
+    this.venuePlaying = 'none';
   }
 
   /* ---------- recorded bot voices (see voices/voices.ts) ---------- */
@@ -380,10 +548,11 @@ class Engine {
     d.gain.setTargetAtTime(1, t + ms / 1000, 0.25);
   }
 
-  private ensure() {
-    if (this.ctx || !AC) return;
+  private ensure(opts?: { skipLoad?: boolean }): AudioContext | null {
+    if (this.ctx || !AC) return this.ctx;
     const c = new AC({ latencyHint: 'interactive' });
     this.ctx = c;
+    this.watchContext(c);
     this.master = c.createGain();
     const comp = c.createDynamicsCompressor();
     comp.threshold.value = -14; comp.ratio.value = 4;
@@ -394,7 +563,8 @@ class Engine {
     this.venueBus = c.createGain(); this.venueBus.gain.value = 0; this.venueBus.connect(this.master);
     this.voiceDuck = c.createGain(); this.voiceDuck.connect(this.master);
     this.applyGain();
-    this.load();
+    if (!opts?.skipLoad) this.load();
+    return c;
   }
 
   private applyGain() {
@@ -406,12 +576,14 @@ class Engine {
   private load() {
     if (this.loading || !this.ctx) return this.loading;
     const c = this.ctx;
+    const gen = this.loadGen;
     const names = Object.values(FILES).flat();
     this.loading = Promise.all(names.map(async (n) => {
       try {
         const res = await fetch(`/assets/sfx/${n}.mp3`);
         const data = await res.arrayBuffer();
         const buf = await decodeAudioBuffer(c, data); // callback form for older Safari, one buffer per turn
+        if (gen !== this.loadGen || this.ctx !== c) return; // a rebuilt context owns the new buffers
         this.buffers.set(n, buf);
       } catch { /* missing sound is not fatal */ }
     })).then(() => undefined);

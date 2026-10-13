@@ -1,5 +1,5 @@
 import { type PartnerHint, applyHint } from './partnerTalk';
-import { type Card, type PlayerView, type Rng, blindNilRulesOf, effectiveSuit, isNilBid, isTrump, nilRulesOf, partnerOf, sideOf, trumpOrder } from '@spades/rules';
+import { type Card, type PlayerView, type Rng, blindNilRulesOf, effectiveSuit, hostMinimum, isNilBid, isTrump, nilRulesOf, partnerOf, sideOf, trumpOrder } from '@spades/rules';
 
 /** One line of a hand's book count (shared by the bots' bidding and the player-facing bid coach). */
 export interface BookItem { cards: Card[]; value: number; note: string }
@@ -247,7 +247,8 @@ export function bidAdvice(v: PlayerView, rng: Rng): BidAdvice | null {
   if (partner !== null) {
     if (typeof pBid === 'number') {
       const t0 = pBid + low, t1 = pBid + high;
-      partnerNote = `Partner bid ${pBid} → team total ${t0 === t1 ? t0 : `${t0}–${t1}`}.${t1 > room ? ` More than ${room} can't all be made — trim it.` : ''}${r.minTeamBid && t0 < r.minTeamBid ? ` Your team needs at least ${r.minTeamBid}.` : ''}`;
+      const floor = hostMinimum(r);
+      partnerNote = `Partner bid ${pBid} → team total ${t0 === t1 ? t0 : `${t0}–${t1}`}.${t1 > room ? ` More than ${room} can't all be made — trim it.` : ''}${floor > 0 && pBid < floor ? ` Your team needs at least ${floor}.` : ''}`;
     } else if (partnerNil) {
       partnerNote = 'Partner is going Nil (zero books): win with your high cards to protect them (+½ book).';
     } else {

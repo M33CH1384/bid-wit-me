@@ -532,6 +532,8 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 }
 .dock-btn.muted { box-shadow: inset 0 0 0 1px rgba(255,77,109,.6); }
 .dock-btn.playing { box-shadow: inset 0 0 0 1px var(--gold), 0 0 12px rgba(245,197,66,.4); }
+.dock-btn.needs-tap { background: rgba(255,217,105,.28); box-shadow: inset 0 0 0 2px #ffd969, 0 0 10px rgba(255,217,105,.55); }
+.dock-btn.needs-tap .dock-icon { opacity: .8; }
 .dock-eq { position: absolute; right: 5px; bottom: 5px; height: 9px; }
 .dock-eq i { width: 2px; background: var(--gold); }
 .sound-dock .sound-pop, .sound-dock .sound-pop.glass.slant { position: absolute; right: 0; top: calc(100% + 8px); width: min(270px, calc(100vw - 24px)); max-height: calc(100dvh - 70px); overflow: auto; }
@@ -1515,11 +1517,14 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tp-note { position: absolute; bottom: 30%; font-family: var(--display); letter-spacing: .12em; font-size: 13px; color: var(--muted); animation: tp-pulse 1.4s ease-in-out infinite; }
 @keyframes tp-pulse { 50% { opacity: .45; } }
 /* Resumed hand, on screen before WebGL. Buttons work immediately; the canvas face fills in one card per frame. */
-.felt-hand { position: absolute; z-index: 7; left: 0; right: 0; bottom: calc(15vh + env(safe-area-inset-bottom)); height: 132px; display: flex; justify-content: center; align-items: flex-end; pointer-events: none; }
+/* No filter or opacity on the fan. A parent filter would dim every card, legal ones included. */
+.felt-hand { position: absolute; z-index: 7; left: 0; right: 0; bottom: calc(15vh + env(safe-area-inset-bottom)); height: 132px; display: flex; justify-content: center; align-items: flex-end; pointer-events: none; filter: none; opacity: 1; }
 .felt-hand button { pointer-events: auto; position: relative; width: 52px; height: 74px; margin: 0 -12px; padding: 0; border: 0; border-radius: 5px; background: #fbf8f1; color: #15161a; box-shadow: 0 8px 16px rgba(0,0,0,.45); overflow: hidden; }
 .felt-hand button.red { color: #c4122f; }
-.felt-hand button.legal { box-shadow: 0 0 0 2px #f5c542, 0 8px 16px rgba(0,0,0,.45); }
-.felt-hand button:disabled { filter: saturate(.45) brightness(.9); }
+/* Dim only a card that cannot be played. :not(.legal) keeps this from beating the legal rule. */
+.felt-hand button:disabled:not(.legal) { filter: saturate(.45) brightness(.9); }
+/* Outline, not box-shadow: WebKit clips a shadow on a radius with overflow:hidden, which hid the ring. */
+.felt-hand button.legal { filter: none; outline: 2px solid #f5c542; outline-offset: 1px; }
 .felt-hand button canvas { width: 100%; height: 100%; display: block; }
 .felt-hand button span { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--display); font-weight: 800; font-size: 18px; letter-spacing: .02em; }
 .felt-hand button.drawn span { opacity: 0; }

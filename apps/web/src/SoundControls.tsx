@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { sound, useSoundSettings } from './audio';
+import { speakerAriaLabel } from './audioSession';
 import { HostMusicFields } from './online/HostMusic';
 import { useHostMusic } from './hostMusic';
 import { tableIntensity, talkPrefs, useTalkPrefs } from './talkPrefs';
@@ -182,8 +183,9 @@ export function SoundFields({ compact = false }: { compact?: boolean }) {
 
 /**
  * Always-visible speaker (every screen, top-right corner, safe-area aware). Tap: popover with music + SFX controls.
- * Long-press or double-tap: mute everything instantly (again to restore). Shows a muted icon when all is off and
- * animated bars while music is playing.
+ * The same tap resumes or rebuilds a suspended AudioContext and primes music inside the gesture.
+ * Long-press or double-tap: mute everything instantly (again to restore). Shows a muted icon when all is off,
+ * a needs-tap ring while the context is suspended, and animated bars while music is playing.
  */
 export function SoundDock() {
   const s = useSoundSettings();
@@ -234,12 +236,15 @@ export function SoundDock() {
   const muteAll = () => { const muted = sound.toggleMuteAll(); setOpen(false); setFlash(muted ? 'MUTED' : 'SOUND ON'); };
   const allOff = !s.on && !s.music;
   const playing = s.music && s.musicStatus === 'playing';
+  const needsTap = s.needsRestore;
   return (
     <div className={`sound-dock ${open ? 'open' : ''}`} ref={ref}>
       <button
-        type="button" className={`dock-btn ${allOff ? 'muted' : ''} ${playing ? 'playing' : ''}`}
-        aria-label={allOff ? 'Sound (muted) — hold to unmute' : 'Sound settings — hold to mute all'} aria-expanded={open} data-testid="sound-button"
+        type="button" className={`dock-btn ${allOff ? 'muted' : ''} ${playing ? 'playing' : ''} ${needsTap ? 'needs-tap' : ''}`}
+        aria-label={speakerAriaLabel(needsTap, allOff)} aria-expanded={open} data-testid="sound-button" data-needs-tap={needsTap ? 'true' : 'false'}
         onPointerDown={(e) => {
+          // Inside the user gesture: resume or rebuild, and prime the music elements before the sheet opens.
+          sound.wake('gesture');
           press.current.long = false;
           press.current.down = e.timeStamp;
           press.current.timer = window.setTimeout(() => { press.current.long = true; muteAll(); }, 500);

@@ -86,6 +86,26 @@ export function canTapCard(pose: HandPose): boolean {
 }
 
 /**
+ * Per card, never on the fan. `dim` is only the illegal pose. `glow` is that card's own ring:
+ * every playable card when the hand is mixed, plus a tap and a tip mark. An all-legal lead
+ * does not outline the whole fan. Selecting a card does not turn the others off.
+ */
+export function handCardChrome(o: {
+  yourTurn: boolean;
+  isLegal: boolean;
+  selected: boolean;
+  marked: boolean;
+  anyIllegal: boolean;
+}): { pose: HandPose; dim: boolean; glow: boolean } {
+  const pose = playablePose(o.yourTurn, o.isLegal, o.selected);
+  return {
+    pose,
+    dim: pose === 'illegal',
+    glow: o.selected || o.marked || (o.isLegal && o.anyIllegal),
+  };
+}
+
+/**
  * Painter's order for one hand card. Every legal card draws after every illegal card.
  * Within each group the index still increases left to right, and a tap does not jump the queue.
  */
@@ -109,6 +129,20 @@ export const LEGAL_NEAR = 0.02;
  * factor swaps the back in front of the face on every redraw (the selection lift).
  */
 export const FACE_POLYGON_OFFSET = { factor: 0, units: -8 } as const;
+
+/**
+ * How far the per-card gold ring sits in front of the face, in card-local units.
+ * The ring is transparent, so it is drawn after the opaque face and then depth-tested against it.
+ * The face is already FACE_CAP_GAP ahead of the cap and polygon-offset another 8 window units
+ * toward the camera. On a 24-bit desktop buffer those 8 units are a sliver and the outer stroke
+ * still wins. iPhone Safari's 16-bit depth makes the same 8 units about 0.0018 camera units at
+ * the hand, which is enough to fail the ring — including the part that sticks past the face,
+ * once the face and the hairline share a depth tile. A local push of 0.012 is about 0.003 camera
+ * units on a phone fan: past those 8 units, and still under the 0.006 step to the next card, so
+ * the neighbour keeps covering the overlap. It is geometry, not polygonOffset, because the
+ * Metal depth bias that feeds polygonOffset is the part that goes wrong on that buffer.
+ */
+export const OUTLINE_AHEAD = 0.012;
 
 /** Pull the face and the back toward the camera in window depth. The body stays unbiased. */
 export function applyFaceDepthBias(material: { polygonOffset: boolean; polygonOffsetFactor: number; polygonOffsetUnits: number }): void {
