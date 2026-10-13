@@ -439,7 +439,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .big-choice {
   display: flex; align-items: center; gap: 16px; border: 0; padding: 18px 20px; min-height: 84px; text-align: left;
   clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
-  transition: transform .1s, filter .2s;
+  transition: transform .1s, filter .2s; touch-action: manipulation;
 }
 .big-choice:active { transform: scale(.97); }
 .big-choice.online { background: linear-gradient(180deg, #ffd969, var(--gold-deep)); color: #1d1204; box-shadow: 0 0 26px rgba(245,197,66,.4); }
@@ -497,6 +497,12 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .sheet-body { padding-top: 4px; }
 .sheet-h { display: block; font-family: var(--display); letter-spacing: .1em; color: var(--gold); font-size: 15px; text-transform: uppercase; margin: 12px 0 0; }
 .tips-ask p { text-align: center; color: var(--muted); margin: 0; }
+/* WebKit drops the next click after a backdrop-filter layer is removed. This prompt closes onto the splash choices. */
+.tips-ask.glass {
+  background: rgba(14, 8, 26, 0.96);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
 
 /* landscape start screens */
 @media (orientation: landscape) and (max-height: 540px) {
@@ -1503,6 +1509,9 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .bwm-loading-tip-kicker { display: block; margin-bottom: 6px; font-family: var(--display); font-weight: 800; letter-spacing: .16em; text-transform: uppercase; font-size: 12px; color: var(--gold); }
 .bwm-loading-tip-text { display: block; font-size: 17px; line-height: 1.35; font-weight: 600; color: var(--ink); text-wrap: balance; }
 .bwm-loading-back { margin-top: 8px; }
+.bwm-loading-fault { margin: 0; max-width: 22rem; font-size: 16px; line-height: 1.4; color: var(--ink); }
+.bwm-loading-actions { display: flex; flex-direction: column; align-items: center; gap: 4px; width: min(240px, 100%); }
+.bwm-loading-actions .primary { min-height: 44px; width: 100%; }
 
 /* Stand-in table: painted on the first frame, until the 3D table has rendered (then it fades out) */
 .table-placeholder { position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; display: grid; place-items: center;

@@ -120,6 +120,13 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
   const [lobbyOpen, setLobbyOpen] = useState(false);
   const [mesh, setMesh] = useState<VideoMesh | null>(null);
 
+  // A missing table never sends state. Say so as soon as the info request knows, ahead of the join timeout.
+  useEffect(() => {
+    let alive = true;
+    tableInfo(serverUrl(), code).then((i) => { if (alive && !i.exists) conn.markMissing(); }).catch(() => {});
+    return () => { alive = false; };
+  }, [conn, code]);
+
   // one video mesh per page/session once we know our player id
   useEffect(() => {
     if (!cs.you) return;
@@ -207,7 +214,12 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
   if (!cs.room) {
     return (
       <>
-        <TableLoading progress={cs.status === 'reconnecting' ? 0.12 : 0.18} onBack={() => navigate('/online')} />
+        <TableLoading
+          progress={cs.joinFault ? undefined : cs.status === 'reconnecting' ? 0.12 : 0.18}
+          fault={cs.joinFault?.message}
+          onRetry={cs.joinFault ? () => conn.retryJoin() : undefined}
+          onBack={() => navigate('/online')}
+        />
         <StatsOff conn={conn} on={cs.statsOff} />
       </>
     );

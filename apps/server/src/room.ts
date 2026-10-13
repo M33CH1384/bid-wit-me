@@ -1190,12 +1190,20 @@ export class Room {
     if (gr !== d.game.rules) d.game.rules = gr;
   }
 
-  /** Recompute timers after any change, run due bots/auto-plays, broadcast, persist. */
+  /**
+   * Recompute timers after any change, run due bots/auto-plays, broadcast, persist.
+   * A throw in the drive used to skip the broadcast. Hello has already sent welcome by then,
+   * and the client waits on state, so the loader never leaves. Send the state we have anyway.
+   */
   private after(): void {
-    this.healNilRules();
-    this.checkVotes();
-    this.considerHost();
-    this.drive();
+    try {
+      this.healNilRules();
+      this.checkVotes();
+      this.considerHost();
+      this.drive();
+    } catch (e) {
+      console.error('room after failed', e);
+    }
     this.broadcast();
     this.io.persist();
   }
@@ -1244,7 +1252,13 @@ export class Room {
       // Release 10: a bot claims 'Run it!' as soon as it's guaranteed from its own cards, even off-turn.
       // canRunIt is proved at most once per seat per state (and never for a spectator), so this loop stays cheap.
       if (g.phase === 'playing') {
-        const claimer = d.seats.slice(0, g.rules.playerCount).findIndex((sl, i) => sl.kind === 'bot' && i !== g.turn && canRunIt(g, i as Seat));
+        let claimer = -1;
+        try {
+          // A throw here must not abort the turn. The claim itself is unchanged when the proof returns.
+          claimer = d.seats.slice(0, g.rules.playerCount).findIndex((sl, i) => !!sl && sl.kind === 'bot' && i !== g.turn && canRunIt(g, i as Seat));
+        } catch (e) {
+          console.error('run it check failed', e);
+        }
         if (claimer >= 0) { this.apply({ type: 'runIt', seat: claimer as Seat }); changed = true; continue; }
       }
       // Seated players or a connected spectator (an eliminated player stays to watch). Nobody connected: freeze.

@@ -56,32 +56,48 @@ function LoadingTips() {
  * Full-screen Bid Wit Me hold, from the moment a table is joined or started until the 3D scene
  * and the first game state are both ready. The half-drawn table stays underneath and cannot be tapped.
  */
-export function TableLoading({ progress, leaving, onBack }: { progress?: number; leaving?: boolean; onBack?: () => void }) {
+export function TableLoading({ progress, leaving, onBack, onRetry, fault }: {
+  progress?: number; leaving?: boolean; onBack?: () => void; onRetry?: () => void; fault?: string | null;
+}) {
   const [line, setLine] = useState(0);
   useEffect(() => {
+    if (fault) return;
     const id = window.setInterval(() => setLine((n) => (n + 1) % LOADING_LINES.length), 1600);
     return () => window.clearInterval(id);
-  }, []);
+  }, [fault]);
   const known = progress !== undefined && Number.isFinite(progress);
   const pct = known ? Math.max(4, Math.min(100, Math.round(progress * 100))) : undefined;
   const node = (
-    <div className={`bwm-loading${leaving ? ' leaving' : ''}`} role="status" data-testid="table-loading">
+    <div className={`bwm-loading${leaving ? ' leaving' : ''}`} role={fault ? 'alert' : 'status'} data-testid="table-loading">
       <div className="bwm-loading-card">
         <img className="bwm-loading-mark" src="/assets/bwm-wordmark-white.svg" alt="Bid Wit Me" />
         <span className="beta-tag">BETA</span>
-        <p className="bwm-loading-line" data-testid="table-loading-line" aria-live="polite">{LOADING_LINES[line]}</p>
-        <div
-          className={`bwm-loading-track${known ? '' : ' indeterminate'}`}
-          role="progressbar"
-          aria-label="Loading the table"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={pct}
-        >
-          <span style={pct !== undefined ? { width: `${pct}%` } : undefined} />
-        </div>
-        <LoadingTips />
-        {onBack && <button type="button" className="link bwm-loading-back" onClick={onBack}>← Back</button>}
+        {fault ? (
+          <>
+            <p className="bwm-loading-line" data-testid="join-fault">Couldn&apos;t join this table</p>
+            <p className="bwm-loading-fault">{fault}</p>
+            <div className="bwm-loading-actions">
+              {onRetry && <button type="button" className="primary" data-testid="join-retry" onClick={onRetry}>Retry</button>}
+              {onBack && <button type="button" className="link bwm-loading-back" data-testid="join-back" onClick={onBack}>← Back</button>}
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="bwm-loading-line" data-testid="table-loading-line" aria-live="polite">{LOADING_LINES[line]}</p>
+            <div
+              className={`bwm-loading-track${known ? '' : ' indeterminate'}`}
+              role="progressbar"
+              aria-label="Loading the table"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={pct}
+            >
+              <span style={pct !== undefined ? { width: `${pct}%` } : undefined} />
+            </div>
+            <LoadingTips />
+            {onBack && <button type="button" className="link bwm-loading-back" onClick={onBack}>← Back</button>}
+          </>
+        )}
       </div>
     </div>
   );
