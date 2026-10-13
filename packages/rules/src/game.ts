@@ -1,5 +1,5 @@
 import type { Card } from './cards';
-import { type TableRules, blindNilRulesOf, buildDeck, cardPower, effectiveSuit, handSize, hostMinimum, isTrump, nilRulesOf, shotOutOn, validateRules, withCompleteNil, RulesConfigError } from './config';
+import { type TableRules, blindNilRulesOf, buildDeck, cardPower, effectiveSuit, handSize, hostMinimum, isTrump, minimumFits, nilRulesOf, removedForActive, shotOutOn, tricksForActive, validateRules, withCompleteNil, RulesConfigError } from './config';
 import { evaluateRunIt } from './runIt';
 import { createRng, shuffle } from './rng';
 import {
@@ -50,14 +50,14 @@ export interface GameState {
   /**
    * Cutthroat: consecutive failed bids per player. A made bid sets it back to 0.
    * Hand 1 eliminates on the first failure; from hand 2, two in a row eliminate.
-   * Synced on the seat view.
+   * Synced on the seat view. The deal does not touch this.
    */
   failStreak?: number[];
-  /** Cutthroat: eliminated players. They cannot bid, play, or sit back down. */
+  /** Cutthroat: eliminated players. They cannot bid, play, or sit back down. The next deal counts who is still in and leaves this list alone. */
   eliminated?: boolean[];
-  /** Tricks in this hand. Omitted on older states: the table's normal hand size. */
+  /** Books in this hand when the table is short. Omitted on a full table (13 or 17 from the rules). */
   trickCount?: number;
-  /** Cards dealt to nobody this hand (a short table). Faces stay off the seat view. */
+  /** Face-down cards not dealt when two players are still in. Never copied into a seat's view. */
   undealt?: Card[];
 }
 
@@ -73,7 +73,7 @@ export type Action =
 export type RuleErrorCode =
   | 'WRONG_PHASE' | 'NOT_YOUR_TURN' | 'BAD_SEAT' | 'BAD_BID' | 'BID_TOO_LOW' | 'NIL_NOT_ALLOWED'
   | 'BLIND_NIL_NOT_ALLOWED' | 'CARD_NOT_IN_HAND' | 'MUST_FOLLOW_SUIT' | 'SPADES_NOT_BROKEN'
-  | 'MUST_LEAD_TWO_OF_CLUBS' | 'BAD_EXCHANGE' | 'ALREADY_REVEALED' | 'CANNOT_RUN_IT' | 'ELIMINATED';
+  | 'MUST_LEAD_TWO_OF_CLUBS' | 'BAD_EXCHANGE' | 'ALREADY_REVEALED' | 'CANNOT_RUN_IT' | 'ELIMINATED' | 'BAD_RULES';
 
 export class RuleError extends Error {
   constructor(public readonly code: RuleErrorCode, message: string) {
@@ -144,20 +144,31 @@ export function isEliminated(st: { eliminated?: readonly boolean[] | undefined }
   return !!st.eliminated?.[seat];
 }
 
-/** Seats still in the game, in seat order. */
+/** Seats still being dealt in, in seat order. Partnerships always deal every seat. */
 export function liveSeats(st: Pick<GameState, 'rules' | 'eliminated'>): number[] {
   const n = st.rules.playerCount;
   const out: number[] = [];
-  for (let i = 0; i < n; i++) if (!isEliminated(st, i)) out.push(i);
+  for (let i = 0; i < n; i++) if (st.rules.partnerships || !isEliminated(st, i)) out.push(i);
   return out;
 }
 
-/** Next seat clockwise that is still in the game. */
+/**
+ * Rules the cards in this hand are ranked by. The saved `rules.removedCards` stay the table's base list.
+ * A short Cutthroat hand may put a card back in (3♣ or 2♣) or take one out; play and the seat view use that list.
+ */
+export function rulesForLive(st: Pick<GameState, 'rules' | 'eliminated'>): TableRules {
+  const r = st.rules;
+  const removed = removedForActive(r, liveSeats(st).length);
+  if (removed.length === r.removedCards.length && removed.every((c, i) => c === r.removedCards[i])) return r;
+  return { ...r, removedCards: removed };
+}
+
+/** Next clockwise seat that is still in. Partnerships never skip a seat. */
 export function nextLive(st: Pick<GameState, 'rules' | 'eliminated'>, seat: number): number {
   const n = st.rules.playerCount;
   for (let k = 1; k <= n; k++) {
     const s = (seat + k) % n;
-    if (!isEliminated(st, s)) return s;
+    if (st.rules.partnerships || !isEliminated(st, s)) return s;
   }
   return seat;
 }
@@ -170,31 +181,41 @@ export function booksInHand(st: { rules: TableRules; trickCount?: number }): num
 function dealHand(prev: GameState, handNo: number, dealer: Seat): GameState {
   const r = prev.rules;
   const n = r.playerCount;
-  const deck = deckForHand(r, prev.seed, handNo);
   const live = liveSeats(prev);
+  const active = live.length;
+  const tricks = tricksForActive(active);
+  if (!r.partnerships && !minimumFits(r, tricks)) {
+    throw new RuleError('BAD_RULES', `Minimum books ${hostMinimum(r)} is higher than the ${tricks} in this hand`);
+  }
+  const removed = removedForActive(r, active);
+  const sameRemoval = removed.length === r.removedCards.length && removed.every((c, i) => c === r.removedCards[i]);
+  const deck = sameRemoval
+    ? deckForHand(r, prev.seed, handNo)
+    : shuffle(buildDeck({ ...r, removedCards: removed }), createRng(`${prev.seed}:hand:${handNo}`));
   const hands: Card[][] = Array.from({ length: n }, () => []);
-  let trickCount = handSize(r);
+  let trickCount: number | undefined;
   let undealt: Card[] | undefined;
   if (live.length === n) {
-    // one at a time clockwise, starting left of the dealer
+    // one at a time clockwise, starting left of the dealer. A full table keeps the seeded deck.
     deck.forEach((c, i) => hands[(dealer + 1 + i) % n]!.push(c));
-    trickCount = deck.length / n;
   } else {
-    // Short table: 3 still in get 17, 2 still in get 13 and the rest stays face down.
-    trickCount = live.length === 3 ? 17 : 13;
-    const used = deck.slice(0, trickCount * live.length);
-    undealt = deck.slice(used.length);
+    // Three still in: 17 books and the extra low card is out of the deck. Two still in: 13, with the rest face down.
+    trickCount = tricks;
+    const used = deck.slice(0, tricks * live.length);
+    const rest = deck.slice(used.length);
+    if (rest.length) undealt = rest;
     const start = nextLive(prev, dealer);
     const at = Math.max(0, live.indexOf(start));
     used.forEach((c, i) => hands[live[(at + i) % live.length]!]!.push(c));
   }
   const order = bidOrder(r, dealer);
-  const turn = order.find((s) => !isEliminated(prev, s)) ?? order[0]!;
+  const turn = order.find((s) => r.partnerships || !isEliminated(prev, s)) ?? order[0]!;
   const st: GameState = {
     ...prev, phase: 'bidding', handNo, dealer, turn,
     hands, bids: Array(n).fill(null), revealed: Array(n).fill(true), exchange: [],
     trick: { leader: nextLive(prev, dealer), plays: [], winner: null }, tricks: [],
-    tricksWon: Array(n).fill(0), spadesBroken: false, trickCount, ...(undealt && undealt.length ? { undealt } : { undealt: undefined }),
+    tricksWon: Array(n).fill(0), spadesBroken: false,
+    trickCount, undealt,
   };
   if (handNo === 1 && r.firstHandBidsItself) {
     // "First hand: books bid themselves": no bidding, straight to play; every book scores 10
@@ -464,7 +485,7 @@ function mustLead2C(st: GameState): boolean {
 
 export function legalPlays(st: GameState, seat: Seat): Card[] {
   if (st.phase !== 'playing' || st.turn !== seat) return [];
-  return legalPlaysFor(st.rules, st.hands[seat]!, st.trick.plays, st.spadesBroken, mustLead2C(st));
+  return legalPlaysFor(rulesForLive(st), st.hands[seat]!, st.trick.plays, st.spadesBroken, mustLead2C(st));
 }
 
 function explainIllegal(st: GameState, seat: Seat, card: Card): RuleError {
@@ -514,7 +535,7 @@ function exchangeSteps(st: GameState): ExchangeStep[] {
 export function applyAction(st: GameState, action: Action): GameState {
   const rules = withCompleteNil(st.rules);
   if (rules !== st.rules) st = { ...st, rules };
-  const r = st.rules;
+  const r = rulesForLive(st);
   const n = r.playerCount;
   if (action.type === 'nextHand') {
     if (st.phase !== 'handOver') throw new RuleError('WRONG_PHASE', 'Hand is not over');
@@ -774,7 +795,7 @@ function project(st: GameState, seat: Seat, spectate: boolean): PlayerView {
   const hidden = spectate || (st.phase === 'bidding' && !st.revealed[seat]);
   const runHands = runClearedHands(st);
   return {
-    seat, rules: withCompleteNil(st.rules), phase: st.phase, handNo: st.handNo, dealer: st.dealer, turn: st.turn,
+    seat, rules: withCompleteNil(rulesForLive(st)), phase: st.phase, handNo: st.handNo, dealer: st.dealer, turn: st.turn,
     hand: hidden ? null : [...st.hands[seat]!],
     handCounts: st.hands.map((h) => h.length),
     bids: [...st.bids], revealed: [...st.revealed], exchange: st.exchange.map((e) => ({ ...e })),

@@ -225,11 +225,6 @@ export function shotCounts(r: TableRules, history: readonly { bids: readonly Bid
   return counts;
 }
 
-/** True when the host minimum is not higher than the tricks this hand will play. */
-export function minimumFits(r: TableRules, tricks: number): boolean {
-  return hostMinimum(r) <= tricks;
-}
-
 /**
  * The side made its books: a made contract, a books hand that reached the host minimum,
  * or a made Nil when the team is safe this hand (no set, no busted Nil). That last case takes the tape off.

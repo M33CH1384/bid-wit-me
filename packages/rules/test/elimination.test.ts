@@ -62,7 +62,10 @@ describe('Cutthroat elimination', () => {
     expect(st.hands[1]).toHaveLength(17);
     expect(st.hands[2]).toHaveLength(17);
     expect(st.hands[3]).toHaveLength(17);
-    expect(st.undealt).toHaveLength(1);
+    expect(st.trickCount).toBe(17);
+    expect(st.undealt).toBeUndefined();
+    expect(st.hands.flat()).not.toContain('3C');
+    expect(st.rules.removedCards).toEqual(['2C', '2H']);
     expect(st.turn).not.toBe(0);
     expect(() => applyAction({ ...st, turn: 0 }, { type: 'bid', seat: 0, bid: 1 })).toThrow(/out of this game/);
     expect(() => applyAction({ ...st, phase: 'playing', turn: 0 }, { type: 'play', seat: 0, card: 'AS' })).toThrow(/out of this game/);
@@ -70,7 +73,7 @@ describe('Cutthroat elimination', () => {
     expect(v.eliminated[0]).toBe(true);
     expect(v.failStreak[0]).toBe(1);
     expect(v.handNo).toBe(2);
-    expect(JSON.stringify(v)).not.toContain(JSON.stringify(st.undealt));
+    expect(JSON.stringify(v)).not.toContain('"undealt"');
   });
 
   it('from hand 2, two failed bids in a row eliminate, and a made bid resets the counter', () => {
