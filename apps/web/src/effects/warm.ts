@@ -185,7 +185,7 @@ export async function measureHotFire(): Promise<Record<string, number>> {
     const mod = await import('../sheetClothSim');
     await mod.loadRipImage();
   });
-  await lap('audio', () => { sound.warmEffects(); });
+  await lap('audio', () => sound.warmEffects());
   await lap('sheet', async () => {
     const mod = await import('../sheetClothSim');
     await mod.warmSheet();

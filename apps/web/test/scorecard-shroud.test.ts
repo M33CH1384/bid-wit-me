@@ -340,7 +340,13 @@ describe('scorecard caution tape and shroud', () => {
     expect(play.startsWith('play(name: Sfx')).toBe(true);
     expect(play.indexOf('if (!this.settings.on || !this.unlocked) return')).toBeLessThan(play.indexOf("case 'siren'"));
     expect(audio).toContain('const v = this.settings.on ? this.settings.volume ** 1.6 : 0');
-    expect(audio).toContain('o.connect(filter).connect(gain).connect(this.sfxBus!)');
+    const sirenFn = audio.slice(audio.indexOf('private siren'), audio.indexOf('private docSting'));
+    expect(sirenFn).toContain("this.buffers.get('siren')");
+    expect(sirenFn).toContain('src.connect(gain).connect(this.sfxBus!)');
+    expect(sirenFn).toContain('0.32 * g');
+    expect(sirenFn).not.toContain('createOscillator');
+    expect(audio).toContain("siren: ['siren']");
+    expect(audio).toContain('return this.load()');
     expect(audio).toContain('Goes out the sfx bus, so mute and the volume slider apply');
   });
 
