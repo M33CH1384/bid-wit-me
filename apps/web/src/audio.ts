@@ -13,12 +13,12 @@ export type Sfx =
   | 'shuffle' | 'deal' | 'play' | 'tap' | 'sweep' | 'broken' | 'turn' | 'bid' | 'bidSoft'
   | 'cut' | 'made' | 'set' | 'nil' | 'bags' | 'pop' | 'win' | 'lose' | 'flip'
   // hype effects (all synthesized): joker rumbles, the Big-over-Little nuke, streaks, shots
-  | 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak1' | 'streak2' | 'streak3' | 'shot' | 'gotShot' | 'pump' | 'wheels' | 'wheelsCar' | 'overcut' | 'overcut3' | 'tornado'
+  | 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak1' | 'streak2' | 'streak3' | 'shot' | 'gotShot' | 'shotgun' | 'pump' | 'wheels' | 'wheelsCar' | 'overcut' | 'overcut3' | 'tornado'
   // 'Run it!': the claimer's cards all slam at once / everyone else's cards hit in a quick cascade
   | 'runSlam' | 'runThud';
 
 /** SFX that bot voices duck under, and for how long (ms). */
-const DUCK_MS: Partial<Record<Sfx, number>> = { runSlam: 700, nuke: 3600, tornado: 2600, wheelsCar: 3000, jokerBig: 1100, shot: 1200, pump: 500, streak2: 1400, streak3: 1800, overcut3: 1000, win: 2000, lose: 1600, set: 1200, nil: 1600 };
+const DUCK_MS: Partial<Record<Sfx, number>> = { runSlam: 700, nuke: 3600, tornado: 2600, wheelsCar: 3000, jokerBig: 1100, shot: 1200, shotgun: 700, pump: 500, streak2: 1400, streak3: 1800, overcut3: 1000, win: 2000, lose: 1600, set: 1200, nil: 1600 };
 
 export interface SoundSettings { on: boolean; volume: number; ambient: boolean; music: boolean; musicVolume: number; /** the venue's quiet ambient sound bed (Release 7), default on */ venueSound: boolean }
 const KEY = 'bwm.sound.v1';
@@ -446,6 +446,7 @@ class Engine {
       case 'streak3': return this.streakHit(t, g, 3);
       case 'shot': return this.slam(t, g);
       case 'gotShot': return this.sting(t, g);
+      case 'shotgun': return this.shotgunBoom(t, g);
       case 'pump': return this.shotgunPump(t, g);
       // wheels: a quick rising two-step + hit (short, not a fanfare)
       case 'wheelsCar': return this.peelOut(t, g);
@@ -829,6 +830,15 @@ class Engine {
     this.burst(t + 0.05, 0.16, 0.5 * g, 'bandpass', 1100, { q: 0.8, sweepTo: 380 });
     this.burst(t + 0.2, 0.045, 0.62 * g, 'highpass', 1600);
     this.tone(t + 0.2, 120, 0.07, 'triangle', 0.14 * g, { filter: 700, attack: 0.001 });
+  }
+
+  /** Scorecard shotgun: a low boom, a muzzle crack, and a short pellet hiss. Goes out the sfx bus, so mute and volume apply. */
+  private shotgunBoom(t: number, g: number) {
+    this.tone(t, 68, 0.46, 'sine', 0.95 * g, { glideTo: 28, attack: 0.001 });
+    this.tone(t, 108, 0.2, 'triangle', 0.32 * g, { glideTo: 40, attack: 0.001 });
+    this.burst(t, 0.18, 0.9 * g, 'lowpass', 200, { sweepTo: 48 });
+    this.burst(t, 0.07, 0.72 * g, 'highpass', 1700);
+    this.burst(t + 0.02, 0.26, 0.32 * g, 'bandpass', 1300, { q: 0.55, sweepTo: 420 });
   }
 
   /** "GOT SHOT": a soft descending sting. */

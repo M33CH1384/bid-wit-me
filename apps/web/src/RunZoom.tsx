@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { type Card, type RunCard, type TableRules, sortHand } from '@spades/rules';
-import { drawFace } from './three/cardTextures';
+import { drawFace } from './cardArt';
 import { isPromoted } from './cardFaces';
 
 const urls = new Map<string, string>();
