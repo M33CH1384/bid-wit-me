@@ -18,7 +18,7 @@ function toHandOver(mode: 'joker' | 'cutthroat'): GameState {
 }
 
 /** Replace history with numeric-bid hands. `sideShots[hand]` lists the sides set that hand. Hand 1 is index 0. */
-function stamp(st: GameState, sideShots: number[][], shotOut = true): GameState {
+function stamp(st: GameState, sideShots: number[][], opts: { shotOut?: boolean; lost?: number[] } = {}): GameState {
   const last = st.history.at(-1)!;
   const history = sideShots.map((shotSides, i) => ({
     ...last,
@@ -31,7 +31,22 @@ function stamp(st: GameState, sideShots: number[][], shotOut = true): GameState 
       contractTricks: shotSides.includes(s.side) ? 1 : 4,
     })),
   }));
-  return { ...st, rules: { ...st.rules, shotOut }, history, handNo: history.length, phase: 'handOver' };
+  const lost = opts.lost;
+  const result = lost ? {
+    endReason: 'shotOut' as const,
+    shotOut: lost,
+    finalScores: st.scores,
+    placements: st.scores.map(() => 1),
+    winners: [0],
+  } : null;
+  return {
+    ...st,
+    rules: { ...st.rules, shotOut: opts.shotOut !== false },
+    result,
+    history,
+    handNo: history.length,
+    phase: lost ? 'gameOver' : 'handOver',
+  };
 }
 
 function recap(st: GameState, names: string[]) {
@@ -65,26 +80,31 @@ describe('scorecard caution tape and shroud', () => {
     expect(html).toContain('data-testid="recap-line-1"');
   });
 
-  it('drapes the sheet when they are shot again while the previous hand was a shot', () => {
-    const html = recap(stamp(toHandOver('joker'), [[], [1], [1]]), names);
-    expect(html).toContain('data-testid="recap-side-1" data-blast="yes" data-tape="no" data-sheet="yes" data-siren="no"');
+  it('drapes the sheet, RIP, and the siren when the recorded result is a shot-out', () => {
+    const html = recap(stamp(toHandOver('joker'), [[], [1], [1]], { lost: [1] }), names);
+    expect(html).toContain('data-testid="recap-side-1" data-blast="yes" data-tape="no" data-sheet="yes" data-siren="yes"');
     expect(html).toContain('class="tt-team blast shrouded sheet-in"');
     expect(html).toContain('data-testid="recap-shroud-1"');
+    expect(html).toContain('data-testid="recap-rip-1"');
+    expect(html).toContain('>RIP');
+    expect(html).toContain('data-testid="police-lights"');
     expect(html).not.toContain('recap-tape-');
     expect(html).toContain('data-testid="recap-line-1"');
     expect(html).not.toContain('recap-shroud-0');
   });
 
-  it('on a hand-1 shot-out shows the sheet and the tape, and plays the siren through the volume bus', () => {
-    const html = recap(stamp(toHandOver('joker'), [[1]]), names);
-    expect(html).toContain('data-testid="recap-side-1" data-blast="yes" data-tape="yes" data-sheet="yes" data-siren="yes"');
-    expect(html).toContain('class="tt-team blast taped tape-in shrouded sheet-in"');
-    expect(html).toContain('data-testid="recap-tape-1"');
-    expect(html).toContain('data-testid="recap-shroud-1"');
+  it('a hand-1 shot-out is the sheet and the siren, and a non-loss stays tape', () => {
+    const html = recap(stamp(toHandOver('joker'), [[1]], { lost: [1] }), names);
+    expect(html).toContain('data-testid="recap-side-1" data-blast="yes" data-tape="no" data-sheet="yes" data-siren="yes"');
+    expect(html).toContain('class="tt-team blast shrouded sheet-in"');
+    expect(html).toContain('data-testid="recap-rip-1"');
+    expect(html).toContain('data-testid="police-lights"');
+    expect(html).not.toContain('recap-tape-');
     expect(html).toContain('data-testid="recap-line-1"');
-    const off = recap(stamp(toHandOver('joker'), [[1]], false), names);
+    const off = recap(stamp(toHandOver('joker'), [[1]], { shotOut: false }), names);
     expect(off).toContain('data-tape="yes" data-sheet="no" data-siren="no"');
     expect(off).not.toContain('recap-shroud-');
+    expect(off).not.toContain('police-lights');
     const audio = readFileSync(new URL('../src/audio.ts', import.meta.url), 'utf8');
     const play = audio.slice(audio.indexOf('play(name: Sfx'), audio.indexOf('private sample'));
     expect(play.indexOf('if (!this.settings.on')).toBeLessThan(play.indexOf("case 'siren'"));
@@ -92,7 +112,8 @@ describe('scorecard caution tape and shroud', () => {
     expect(audio).toContain('Original synthesis, no sampled recording');
     const recapSrc = readFileSync(new URL('../src/Intermission.tsx', import.meta.url), 'utf8');
     expect(recapSrc).toContain("sound.play('siren'");
-    expect(recapSrc).toContain('shotCovers(r, st.history)');
+    expect(recapSrc).toContain('shotCovers(r, st.history, st.result)');
+    expect(recapSrc).toContain('covers.some((c) => c.sheet)');
   });
 
   it('tapes that Cutthroat player’s own panel', () => {
@@ -113,7 +134,11 @@ describe('scorecard caution tape and shroud', () => {
     const entrance = blocks.find((b) => b.includes('.caution-tape') && b.includes('.shroud'));
     expect(entrance).toContain('animation: none');
     expect(entrance).not.toContain('display: none');
-    expect(css).not.toMatch(/@media[^{]*max-width[^{]*\{[^}]*(caution-tape|\.shroud)/);
+    expect(css).not.toMatch(/@media[^{]*max-width[^{]*\{[^}]*(caution-tape|\.shroud|police-lights|\.rip)/);
+    expect(css).toContain('animation: police-red');
+    expect(css).toContain('animation: police-blue');
+    const dim = blocks.find((b) => b.includes('police-lights') || b.includes('police-red'));
+    expect(dim).toBeUndefined();
     const table = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
     expect(table).toContain("endReason === 'shotOut' && !shotRecapAck");
     expect(table).toContain('setShotRecapAck(true)');

@@ -221,32 +221,33 @@ function madeItsBooks(r: TableRules, bids: readonly Bid[], side: SideHandResult)
   return side.contractMade === true;
 }
 
-/** Scorecard cover for one side, derived from the scored hands. */
+/** Scorecard cover for one side, derived from the scored hands and the recorded result. */
 export interface ShotCover {
-  /** Caution tape. On after a shot, off once a later hand makes its books. */
+  /** Caution tape after a shot that did not end the game. Comes off once a later hand makes its books. */
   tape: boolean;
-  /** White sheet. The loss: shot again while the previous hand was a shot, or a hand-1 shot-out. */
+  /** White sheet. Only when this side is in the game's shot-out result. */
   sheet: boolean;
-  /** Hand-1 shot-out. The panel has the sheet and the tape, and the recap plays the siren. */
+  /** Siren and police lights. On whenever the sheet is showing. */
   siren: boolean;
 }
 
 /**
- * What covers each side's scorecard. History is part of the synced state, so every client and a reconnect agree.
- * Tape goes on when a side is shot and comes off when a later hand makes its books.
- * Getting shot again while the previous hand was a shot is already a loss after hand 2 (Shot = out): the sheet.
- * A shot on hand 1 already ends the game when Shot = out is on, unless every side is out and tied for first.
- * That panel gets the sheet and the tape together. Shot = out off sheets nobody.
+ * What covers each side's scorecard. History and `result` are synced, so every client and a reconnect agree.
+ * Tape marks a shot that did not lose the game, and comes off when a later hand makes its books.
+ * The sheet follows the recorded loss (`result.endReason === 'shotOut'`). When `result` is omitted, the same
+ * shot-out functions the engine uses decide it, so a rules change shows up here without a second copy of the rule.
  */
 export function shotCovers(
   r: TableRules,
   history: readonly { handNo: number; bids: readonly Bid[]; sides: readonly SideHandResult[] }[],
+  result?: GameResult | null,
 ): ShotCover[] {
   const n = sideCount(r);
   const blank = (): ShotCover => ({ tape: false, sheet: false, siren: false });
   const covers = Array.from({ length: n }, blank);
   let prevShot = Array.from({ length: n }, () => false);
-  for (const hand of history) {
+  for (let h = 0; h < history.length; h++) {
+    const hand = history[h]!;
     const shot = Array.from({ length: n }, () => false);
     const made = Array.from({ length: n }, () => false);
     const scores = Array.from({ length: n }, () => 0);
@@ -255,11 +256,12 @@ export function shotCovers(
       made[side.side] = madeItsBooks(r, hand.bids, side);
       scores[side.side] = side.totalScore;
     }
-    const ended = shotOutResult(scores, shotOutSides(r, hand.handNo, shot, prevShot));
-    const lost = new Set(ended?.shotOut ?? []);
+    const last = h === history.length - 1;
+    const lost = last && result !== undefined
+      ? new Set(result?.endReason === 'shotOut' ? result.shotOut ?? [] : [])
+      : new Set(shotOutResult(scores, shotOutSides(r, hand.handNo, shot, prevShot))?.shotOut ?? []);
     for (let side = 0; side < n; side++) {
-      if (lost.has(side) && hand.handNo === 1) covers[side] = { tape: true, sheet: true, siren: true };
-      else if (lost.has(side)) covers[side] = { tape: false, sheet: true, siren: false };
+      if (lost.has(side)) covers[side] = { tape: false, sheet: true, siren: true };
       else if (shot[side]) covers[side] = { tape: true, sheet: false, siren: false };
       else if (made[side]) covers[side] = blank();
     }

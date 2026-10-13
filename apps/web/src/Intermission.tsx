@@ -99,7 +99,7 @@ export function Intermission({
   const notes = callouts.filter((c) => c.kind !== 'shot' && c.kind !== 'gotShot');
   const sides = rec.sides;
   const shotSides = sides.filter((s) => s.contractMade === false);
-  const covers = shotCovers(r, st.history);
+  const covers = shotCovers(r, st.history, st.result);
   const target = r.targetScore;
   const boomKey = `${st.seed}:${rec.handNo}:${shotSides.map((s) => s.side).join(',')}`;
   const boomed = useRef('');
@@ -108,17 +108,22 @@ export function Intermission({
     boomed.current = boomKey;
     shotSides.forEach((_, i) => sound.play('shotgun', i ? { delay: i * 0.12 } : {}));
   }, [boomKey, shotSides.length]); // eslint-disable-line react-hooks/exhaustive-deps
-  const sirenOn = covers.some((c) => c.siren);
+  const sheetOn = covers.some((c) => c.sheet);
   const sirenKey = `${st.seed}:${rec.handNo}`;
   const sirened = useRef('');
   useEffect(() => {
-    if (!sirenOn || sirened.current === sirenKey) return;
+    if (!sheetOn || sirened.current === sirenKey) return;
     sirened.current = sirenKey;
     sound.play('siren', { delay: 0.12 });
-  }, [sirenKey, sirenOn]);
+  }, [sirenKey, sheetOn]);
 
   return (
     <div className="tt-backdrop" data-testid="table-talk" role="dialog" aria-label="Hand recap">
+      {sheetOn && (
+        <div className="police-lights" data-testid="police-lights" aria-hidden="true">
+          <i className="red" /><i className="blue" />
+        </div>
+      )}
       <div className="tt glass slant">
         <header className="tt-head">
           <span className="tt-title">HAND {rec.handNo} RECAP</span>
@@ -160,6 +165,7 @@ export function Intermission({
                   {cover.sheet && (
                     <div className="shroud" data-testid={`recap-shroud-${s.side}`} aria-hidden="true">
                       <i /><i /><i />
+                      <b className="rip" data-testid={`recap-rip-${s.side}`}>RIP<span /><span /><span /></b>
                     </div>
                   )}
                   {cover.tape && (

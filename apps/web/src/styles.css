@@ -717,8 +717,8 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 @keyframes muzzle-flash { 0% { opacity: 0; } 10% { opacity: 1; } 28% { opacity: .75; } 100% { opacity: 0; } }
 @keyframes blast-marks-in { to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .tt-team.blast { animation: none; } }
-/* Tape after a shot, off once they make their books. Sheet when that shot already loses the game.
-   Hand 1 shows both. Same stripes and cloth at every width. Reduced motion skips the entrance only. */
+/* Tape after a non-losing shot, off once they make their books. The sheet follows a recorded shot-out.
+   RIP and the police lights stay at full fidelity at every width, including 360–390. */
 .caution-tape {
   position: absolute; z-index: 3; left: -18%; width: 136%; top: 42%; height: 28px; transform: rotate(-11deg);
   pointer-events: none; display: flex; align-items: center; justify-content: space-evenly; overflow: hidden;
@@ -737,9 +737,42 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
   clip-path: polygon(0 0, 100% 0, 100% 84%, 88% 96%, 64% 86%, 40% 98%, 16% 88%, 0 96%);
 }
 .shroud i { position: absolute; left: 8%; right: 8%; height: 16%; border-radius: 40%; background: linear-gradient(180deg, rgba(255,255,255,.7), rgba(190,178,160,.05) 55%, rgba(90,70,50,.13)); }
-.shroud i:nth-child(1) { top: 10%; }
-.shroud i:nth-child(2) { top: 40%; height: 20%; }
-.shroud i:nth-child(3) { top: 68%; }
+.shroud > i:nth-child(1) { top: 10%; }
+.shroud > i:nth-child(2) { top: 40%; height: 20%; }
+.shroud > i:nth-child(3) { top: 68%; }
+.shroud .rip {
+  position: absolute; z-index: 1; left: 50%; top: 46%;
+  transform: translate(-50%, -50%) rotate(-8deg) skewX(-8deg);
+  margin: 0; font-family: var(--display); font-weight: 900; font-style: italic;
+  font-size: 78px; letter-spacing: .12em; line-height: .8; color: #16110e;
+  text-shadow:
+    0 0 0 #16110e,
+    1px 0 0 #16110e, -2px 1px 0 rgba(22,17,14,.55),
+    3px 2px 0 rgba(22,17,14,.28), -4px 6px 0 rgba(22,17,14,.18),
+    0 10px 0 rgba(22,17,14,.22), 8px -2px 0 rgba(22,17,14,.12),
+    14px 4px 1px rgba(22,17,14,.16), -10px 8px 1px rgba(22,17,14,.14);
+  pointer-events: none;
+}
+.shroud .rip span {
+  position: absolute; top: 86%; width: 8px; border-radius: 0 0 8px 8px;
+  background: linear-gradient(#16110e, rgba(22,17,14,.15));
+}
+.shroud .rip span:nth-child(1) { left: 12%; height: 22px; transform: rotate(6deg); }
+.shroud .rip span:nth-child(2) { left: 48%; height: 14px; }
+.shroud .rip span:nth-child(3) { left: 74%; height: 26px; width: 6px; transform: rotate(-4deg); }
+.tt-recap.crowded .shroud .rip { font-size: 52px; top: 48%; }
+.police-lights { position: fixed; inset: 0; z-index: 30; pointer-events: none; overflow: hidden; }
+.police-lights i { position: absolute; inset: 0; }
+.police-lights .red {
+  background: radial-gradient(70% 90% at -10% 45%, rgba(255, 24, 48, .78), transparent 58%);
+  animation: police-red .48s ease-in-out infinite;
+}
+.police-lights .blue {
+  background: radial-gradient(70% 90% at 110% 55%, rgba(36, 92, 255, .78), transparent 58%);
+  animation: police-blue .48s ease-in-out infinite;
+}
+@keyframes police-red { 0%, 100% { opacity: 1; } 50% { opacity: .28; } }
+@keyframes police-blue { 0%, 100% { opacity: .28; } 50% { opacity: 1; } }
 .tt-team.sheet-in .shroud { animation: sheet-drop .8s cubic-bezier(.2,.7,.2,1) .7s both; }
 .tt-team.shrouded .tt-team-name b,
 .tt-team.shrouded .tt-line,
