@@ -1,6 +1,7 @@
 import { type VenueChoice, isVenueChoice } from '@spades/protocol';
 import { CLASSIC_JOKER, cardLabel, type Mode, type RulesOverrides, type TableRules, makeRules } from '@spades/rules';
 import { type BotSkillSetting, skillSettingOf } from '@spades/bots';
+import { trumpLadderText } from './trumpLadder';
 
 export type ModeKey = 'joker' | 'cutthroat4' | 'cutthroat3' | 'aceDown';
 
@@ -58,7 +59,7 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 export const MODES: { key: ModeKey; title: string; blurb: string; players: string }[] = [
-  { key: 'joker', title: 'Joker Spades', blurb: 'Big Joker › Little Joker › 2♦ › 2♠ › A♠. Partners sit across.', players: '2 v 2' },
+  { key: 'joker', title: 'Joker Spades', blurb: `${trumpLadderText(makeRules('joker'), 5, 'plain')}. Partners sit across.`, players: '2 v 2' },
   { key: 'cutthroat4', title: 'Cutthroat', blurb: 'Every player for themselves. Joker or standard deck, race to 300.', players: '4 players' },
   { key: 'cutthroat3', title: 'Cutthroat 3', blurb: 'Three players, 17 cards each, no partners.', players: '3 players' },
   { key: 'aceDown', title: 'Ace Down', blurb: 'Standard 52, no jokers, aces highest. Regular bidding & scoring.', players: '2 v 2' },

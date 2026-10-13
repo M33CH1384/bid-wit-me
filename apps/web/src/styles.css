@@ -135,7 +135,8 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tick.up { color: var(--green); text-shadow: 0 0 12px rgba(92,255,176,.8); transform: scale(1.12); }
 .tick.down { color: var(--red); text-shadow: 0 0 12px rgba(255,77,109,.8); transform: scale(1.12); }
 
-.trump-strip { position: absolute; left: 50%; transform: translateX(-50%); top: calc(92px + env(safe-area-inset-top)); z-index: 6; padding: 4px 14px; font-family: var(--display); font-weight: 700; font-size: 13px; letter-spacing: .06em; white-space: nowrap; --slant: 8px; pointer-events: none; }
+.trump-strip { position: absolute; left: 50%; transform: translateX(-50%); top: calc(92px + env(safe-area-inset-top)); z-index: 6; padding: 4px 14px; font-family: var(--display); font-weight: 700; font-size: 13px; letter-spacing: .06em; white-space: nowrap; --slant: 8px; pointer-events: none; direction: ltr; }
+.trump-ladder, .trump-rung { direction: ltr; unicode-bidi: isolate; }
 .ts-label { color: var(--gold); margin-right: 4px; }
 .ts-broken { margin-left: 8px; color: #1d1204; background: var(--red); padding: 0 6px; font-size: 11px; letter-spacing: .12em; }
 

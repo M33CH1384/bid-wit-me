@@ -1,4 +1,5 @@
 import { type TableRules, cardLabel, firstHandMinOf, shotOutOn, trumpOrder } from '@spades/rules';
+import { trumpLadder } from './trumpLadder';
 
 /**
  * Card basics for people who have never played a trick-taking game: plain definitions, worded for the table's
@@ -11,7 +12,7 @@ export interface Term { key: TermKey; term: string; def: string }
 export const TERM_ORDER: TermKey[] = ['book', 'suit', 'high', 'trump', 'lead', 'follow', 'cut', 'broken', 'bid', 'set', 'bags', 'nil', 'partner', 'wheels', 'shot'];
 
 export function topTrumps(r: TableRules, n = 4): string {
-  return trumpOrder(r).slice(0, n).map((c) => cardLabel(c)).join(', ');
+  return trumpLadder(r, n, 'plain').join(', ');
 }
 
 /** How to say "a trump" in plain words for this mode: spades, plus Jokers / promoted 2s (e.g. "a spade, a Joker or the 2♦"). */
