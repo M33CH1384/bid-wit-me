@@ -1,5 +1,17 @@
 import { BufferAttribute, type BufferGeometry, ExtrudeGeometry, Path, Shape, ShapeGeometry } from 'three';
+import { OUTLINE_PX } from './handLift';
 import { CH, CR, CT, CW, FACE_CAP_GAP, FELT, RAIL } from './layout';
+
+/**
+ * Phone fan cards are about 16% of an 844px screen tall. The stroke is OUTLINE_PX CSS pixels
+ * in that fan, in card-local units, so it scales with the card and stays a hairline on the edge.
+ */
+const PHONE_CARD_PX = 0.16 * 844;
+
+/** Thickness of the per-card outline, in card-local units. The ring starts on the card perimeter. */
+export function cardOutlineStroke(): number {
+  return (OUTLINE_PX / PHONE_CARD_PX) * CH;
+}
 
 function rr(shape: Shape | Path, w: number, h: number, r: number, cx = 0, cy = 0, reverse = false) {
   const x = cx - w / 2, y = cy - h / 2;
@@ -59,6 +71,27 @@ export function cardGeometry() {
   back.translate(0, 0, -CT / 2 - FACE_CAP_GAP);
   cardGeo = { body, front, back };
   return cardGeo;
+}
+
+let outlineGeo: BufferGeometry | null = null;
+/**
+ * A ring on the card's own rounded rectangle. The hole is the face, tucked a fraction under it
+ * so the gold meets the edge with no light gap. The mesh is a child of the card, so the fan roll
+ * turns the outline with the card. It is not a rectangle around the hand.
+ */
+export function cardOutlineGeometry(): BufferGeometry {
+  if (outlineGeo) return outlineGeo;
+  const stroke = cardOutlineStroke();
+  const tuck = stroke * 0.35;
+  const outer = new Shape();
+  rr(outer, CW + stroke * 2, CH + stroke * 2, CR + stroke);
+  const hole = new Path();
+  rr(hole, CW - tuck * 2, CH - tuck * 2, Math.max(0.001, CR - tuck), 0, 0, true);
+  outer.holes.push(hole);
+  const g = new ShapeGeometry(outer, 4);
+  g.translate(0, 0, CT / 2 + FACE_CAP_GAP);
+  outlineGeo = g;
+  return g;
 }
 
 /** Felt surface (flat, y = 0). UVs in world units. */

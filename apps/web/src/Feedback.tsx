@@ -75,7 +75,7 @@ export default function Feedback({ onClose }: { onClose: () => void }) {
         ) : (
           <div className="scroll sheet-body">
             <div className="seg fb-type" role="radiogroup" aria-label="Feedback type">
-              {TYPES.map(([k, l]) => <button key={k} type="button" role="radio" aria-checked={type === k} className={type === k ? 'on' : ''} onClick={() => setType(k)}>{l}</button>)}
+              {TYPES.map(([k, l]) => <button key={k} type="button" role="radio" aria-label={l} aria-checked={type === k} className={type === k ? 'on' : ''} onClick={() => setType(k)}>{l}</button>)}
             </div>
             <label className="fb-field">
               <span>{type === 'bug' ? 'What happened? What did you expect?' : type === 'idea' ? 'Your idea for a mode or house rule' : 'Your message'}</span>

@@ -481,6 +481,12 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 /* gear sheet */
 .sheet-backdrop { align-items: end; padding: 0; }
 .sheet { width: min(560px, 100%); max-height: 86dvh; display: flex; flex-direction: column; padding: 12px 16px calc(14px + env(safe-area-inset-bottom)); --slant: 16px; animation: sheet-up .32s cubic-bezier(.2,.8,.2,1) both; }
+/* More Options sits over the gold Deal button. Glass blur washes through the transparent volume tracks. */
+[data-testid="more-options"].slant.glass {
+  background: rgba(14, 8, 26, 0.98);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
 @keyframes sheet-up { from { transform: translateY(40%); opacity: 0; } to { transform: none; opacity: 1; } }
 .sheet-head { display: flex; align-items: center; justify-content: space-between; padding-bottom: 6px; border-bottom: 1px solid rgba(185,128,255,.2); }
 .sheet-head .icon-btn { width: 40px; height: 40px; font-size: 16px; }
@@ -672,11 +678,6 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .hype-pop.streak .hype-text { background: linear-gradient(180deg, #fff2a8 0%, #ffb03b 45%, #ff4d1a 100%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 0 14px rgba(255,120,30,.9)) drop-shadow(0 3px 0 #5a1400); animation: pop-in .45s cubic-bezier(.2,1.8,.4,1) both, pop-out .35s ease-in 1.9s forwards; }
 .hype-pop.streak.lvl3 .hype-text { animation: pop-in .45s cubic-bezier(.2,1.8,.4,1) both, flicker .18s steps(2) .45s 6, pop-out .35s ease-in 1.9s forwards; }
 .hype-pop.streak.lvl4 .hype-text, .hype-pop.streak.lvl5 .hype-text, .hype-pop.streak.lvl6 .hype-text { background: linear-gradient(180deg, #fff 0%, #ffe14d 30%, #ff3b3b 70%, #9b5cff 100%); -webkit-background-clip: text; background-clip: text; font-size: clamp(42px, 12.5vmin, 96px); animation: pop-in .5s cubic-bezier(.2,1.8,.4,1) both, wobble .3s ease-in-out .5s 4, pop-out .35s ease-in 1.9s forwards; }
-.hype-pop.shot { top: 40%; width: calc(100vw - 32px); max-width: calc(100vw - 32px); padding: 0 16px; box-sizing: border-box; white-space: normal; text-align: center; overflow-x: hidden; }
-.hype-pop.shot .hype-text { color: #fff; background: #e0173c; clip-path: polygon(4% 0, 100% 0, 96% 100%, 0 100%); min-width: 0; max-width: 100%; box-sizing: border-box; padding: .05em 16px; white-space: normal; overflow-wrap: anywhere; text-align: center; box-shadow: 0 0 40px rgba(255,30,70,.9); text-shadow: 0 3px 0 #5c0013; animation: slam .38s cubic-bezier(.5,0,.75,0) both, pop-out .3s ease-in 1.65s forwards; }
-.hype-pop.shot .hype-sub { min-width: 0; max-width: 100%; box-sizing: border-box; white-space: normal; overflow-wrap: anywhere; text-align: center; letter-spacing: .04em; }
-.hype-pop.gotShot { top: 40%; }
-.hype-pop.gotShot .hype-text { color: #c9d6ff; font-size: clamp(30px, 8vmin, 58px); text-shadow: 0 0 18px rgba(80,120,255,.7); animation: drop .5s ease-out both, pop-out .35s ease-in 1.5s forwards; }
 .hype-pop.nuke { top: 22%; }
 .hype-pop.nuke .hype-text { color: #fff4c2; text-shadow: 0 0 24px rgba(255,170,40,1), 0 0 4px #ff6a00; animation: pop-in .4s cubic-bezier(.2,1.8,.4,1) .35s both, pop-out .4s ease-in 2.2s forwards; }
 @keyframes pop-in { 0% { transform: scale(.2) rotate(-8deg); opacity: 0; } 100% { transform: none; opacity: 1; } }
@@ -702,7 +703,100 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-count.hot { color: var(--red); }
 .tt-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; justify-content: safe center; align-items: center; gap: 16px; padding: 22px 16px 26px; }
 .tt-recap { display: flex; flex-direction: column; justify-content: center; gap: 16px; width: min(520px, 100%); }
-.tt-team { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name total" "line total" "players total" "bar bar"; align-items: center; gap: 8px 16px; padding: 18px 16px 16px; background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px rgba(185,128,255,.2); clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); }
+.tt-team { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name total" "line total" "players total" "bar bar"; align-items: center; gap: 8px 16px; padding: 18px 16px 16px; background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px rgba(185,128,255,.2); clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); }
+/* scorecard shotgun: full flash, holes, and cracks at every width (including 360–390). Reduced motion drops the shake only. */
+.tt-team.blast { isolation: isolate; animation: panel-blast .55s cubic-bezier(.36,.07,.19,.97) both; }
+.tt-team > :not(.blast-flash):not(.blast-holes):not(.blast-cracks):not(.caution-tape):not(.shroud) { position: relative; z-index: 3; }
+.blast-flash, .blast-holes, .blast-cracks { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.blast-flash { z-index: 4; opacity: 0; mix-blend-mode: screen; background: radial-gradient(circle at 18% 14%, rgba(255,255,255,.98) 0%, rgba(255,236,170,.82) 9%, rgba(255,150,40,.42) 24%, transparent 50%); animation: muzzle-flash .5s ease-out both; }
+.blast-holes { z-index: 0; opacity: 0; animation: blast-marks-in .16s linear .18s forwards; }
+.blast-holes i { position: absolute; transform: translate(-50%, -50%); border-radius: 50%; background: radial-gradient(circle at 36% 32%, rgba(255,250,230,.95) 0 14%, transparent 16%), radial-gradient(circle at 50% 50%, #1a0604 0 36%, #ffe6a8 40% 54%, #ff6a1a 56% 74%, transparent 78%); box-shadow: 0 0 0 1px rgba(255,220,160,.55), 0 0 8px rgba(255,140,40,.8); }
+.blast-cracks { z-index: 0; opacity: 0; animation: blast-marks-in .2s linear .22s forwards; }
+.tt-team.blast .tt-line { text-shadow: 0 1px 2px rgba(8,2,16,.9); }
+@keyframes panel-blast { 0%, 100% { transform: translate3d(0,0,0); } 12% { transform: translate3d(-7px, 3px, 0) rotate(-0.7deg); } 28% { transform: translate3d(6px, -4px, 0) rotate(0.6deg); } 44% { transform: translate3d(-4px, -2px, 0) rotate(-0.3deg); } 62% { transform: translate3d(3px, 2px, 0); } 78% { transform: translate3d(-2px, 1px, 0); } }
+@keyframes muzzle-flash { 0% { opacity: 0; } 10% { opacity: 1; } 28% { opacity: .75; } 100% { opacity: 0; } }
+@keyframes blast-marks-in { to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .tt-team.blast { animation: none; } }
+/* Tape after a non-losing shot, off once they make their books. A hand-1 loss shows the tape and the sheet.
+   Later eliminations are the sheet alone. RIP, the police lights, and the time-of-death caption stay at full fidelity at every width, including 360–390. */
+.caution-tape {
+  position: absolute; z-index: 3; left: -18%; width: 136%; top: 42%; height: 28px; transform: rotate(-11deg);
+  pointer-events: none; display: flex; align-items: center; justify-content: space-evenly; overflow: hidden;
+  background: repeating-linear-gradient(135deg, #16120c 0 12px, #f5c542 12px 24px);
+  box-shadow: 0 3px 0 rgba(0,0,0,.45), 0 -2px 0 rgba(0,0,0,.35);
+  font-family: var(--display); font-weight: 900; font-size: 14px; letter-spacing: .16em; color: #16120c;
+}
+.caution-tape b { background: #f5c542; padding: 2px 6px; line-height: 1; }
+.tt-team.tape-in .caution-tape { animation: tape-slap .5s cubic-bezier(.2,.9,.2,1) .62s both; }
+.shroud {
+  position: absolute; z-index: 2; inset: 0; pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.45), transparent 22%),
+    radial-gradient(130% 90% at 50% -10%, #fbf8f2 0%, #efeae1 46%, #ddd6c8 100%);
+  box-shadow: inset 0 -36px 28px rgba(70, 52, 36, .16);
+  clip-path: polygon(0 0, 100% 0, 100% 84%, 88% 96%, 64% 86%, 40% 98%, 16% 88%, 0 96%);
+}
+.shroud i { position: absolute; left: 8%; right: 8%; height: 16%; border-radius: 40%; background: linear-gradient(180deg, rgba(255,255,255,.7), rgba(190,178,160,.05) 55%, rgba(90,70,50,.13)); }
+.shroud > i:nth-child(1) { top: 10%; }
+.shroud > i:nth-child(2) { top: 40%; height: 20%; }
+.shroud > i:nth-child(3) { top: 68%; }
+.shroud .rip {
+  position: absolute; z-index: 1; left: 50%; top: 46%;
+  transform: translate(-50%, -50%) rotate(-8deg) skewX(-8deg);
+  margin: 0; font-family: var(--display); font-weight: 900; font-style: italic;
+  font-size: 78px; letter-spacing: .12em; line-height: .8; color: #16110e;
+  text-shadow:
+    0 0 0 #16110e,
+    1px 0 0 #16110e, -2px 1px 0 rgba(22,17,14,.55),
+    3px 2px 0 rgba(22,17,14,.28), -4px 6px 0 rgba(22,17,14,.18),
+    0 10px 0 rgba(22,17,14,.22), 8px -2px 0 rgba(22,17,14,.12),
+    14px 4px 1px rgba(22,17,14,.16), -10px 8px 1px rgba(22,17,14,.14);
+  pointer-events: none;
+}
+.shroud .rip span {
+  position: absolute; top: 86%; width: 8px; border-radius: 0 0 8px 8px;
+  background: linear-gradient(#16110e, rgba(22,17,14,.15));
+}
+.shroud .rip span:nth-child(1) { left: 12%; height: 22px; transform: rotate(6deg); }
+.shroud .rip span:nth-child(2) { left: 48%; height: 14px; }
+.shroud .rip span:nth-child(3) { left: 74%; height: 26px; width: 6px; transform: rotate(-4deg); }
+.tt-recap.crowded .shroud .rip { font-size: 52px; top: 48%; }
+.police-lights { position: fixed; inset: 0; z-index: 30; pointer-events: none; overflow: hidden; }
+.police-lights i { position: absolute; inset: 0; }
+.police-lights .red {
+  background: radial-gradient(70% 90% at -10% 45%, rgba(255, 24, 48, .78), transparent 58%);
+  animation: police-red .48s ease-in-out infinite;
+}
+.police-lights .blue {
+  background: radial-gradient(70% 90% at 110% 55%, rgba(36, 92, 255, .78), transparent 58%);
+  animation: police-blue .48s ease-in-out infinite;
+}
+@keyframes police-red { 0%, 100% { opacity: 1; } 50% { opacity: .28; } }
+@keyframes police-blue { 0%, 100% { opacity: .28; } 50% { opacity: 1; } }
+.tod {
+  margin: 0; padding: 5px 12px; position: relative; z-index: 5;
+  font-family: "Courier New", Courier, ui-monospace, monospace;
+  font-size: 15px; letter-spacing: .03em; line-height: 1.2; white-space: nowrap;
+  color: #f4efe4; background: rgba(6, 4, 8, .72);
+  box-shadow: inset 0 0 0 1px rgba(244, 239, 228, .28);
+  pointer-events: none;
+}
+.tod span { opacity: 0; animation: tod-key .01s linear forwards; }
+@keyframes tod-key { to { opacity: 1; } }
+.tt-team.sheet-in .shroud { animation: sheet-drop .8s cubic-bezier(.2,.7,.2,1) .7s both; }
+.tt-team.shrouded .tt-team-name b,
+.tt-team.shrouded .tt-line,
+.tt-team.shrouded .tt-players,
+.tt-team.shrouded .tt-stat,
+.tt-team.shrouded .tt-stat.total b { color: #24160f; text-shadow: 0 1px 0 rgba(255,255,255,.75); }
+.tt-team.shrouded .tt-line b.neg { color: #8e2436; }
+.tt-team.shrouded .tt-line b.pos { color: #1c6a34; }
+.tt-team.shrouded .tt-players { color: #4a382c; }
+.tt-recap.crowded .caution-tape { height: 22px; font-size: 12px; top: 40%; }
+@keyframes tape-slap { 0% { opacity: 0; transform: rotate(-11deg) translate3d(-36%, -18px, 0) scaleX(.35); } 100% { opacity: 1; transform: rotate(-11deg) translate3d(0, 0, 0) scaleX(1); } }
+@keyframes sheet-drop { 0% { opacity: 0; transform: translate3d(0, -108%, 0); } 100% { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .tt-team.tape-in .caution-tape, .tt-team.sheet-in .shroud { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .tod span { animation: none; opacity: 1; } }
 .tt-team.mine { background: rgba(245,197,66,.08); box-shadow: inset 3px 0 0 var(--gold), inset 0 0 0 1px rgba(245,197,66,.25); }
 .tt-team-name { grid-area: name; display: flex; flex-direction: column; gap: 4px; }
 .tt-team-name b { font-family: var(--display); font-size: 22px; letter-spacing: .04em; overflow-wrap: anywhere; }
@@ -1527,6 +1621,12 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 
 /* ---------- in-game v2: menu, tray, last-trick chip, score pad ---------- */
 .menu-wrap { position: relative; display: flex; flex: none; }
+/* The header stretches its children, so Menu used to be as tall as the scorebug and sat on the card buttons.
+   The control stays 32px; only its top band takes taps, above the card-button row. */
+.scorebug > .menu-wrap { align-self: flex-start; margin-top: -6px; pointer-events: none; }
+.scorebug > .menu-wrap > .bug-btn { align-self: flex-start; position: relative; height: 32px; pointer-events: none; }
+.scorebug > .menu-wrap > .bug-btn::after { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 20px; pointer-events: auto; }
+.menu-scrim, .game-menu { pointer-events: auto; }
 .menu-scrim { position: fixed; inset: 0; z-index: 60; }
 .game-menu { position: absolute; left: 0; top: calc(100% + 6px); z-index: 61; display: flex; flex-direction: column; min-width: 240px; padding: 6px; border-radius: 12px; background: rgba(20,11,34,.97); box-shadow: 0 14px 34px rgba(0,0,0,.6), inset 0 0 0 1px rgba(185,128,255,.4); }
 .game-menu > button { text-align: left; background: none; border: 0; color: var(--ink); padding: 11px 12px; font-size: 14px; font-weight: 600; border-radius: 8px; }

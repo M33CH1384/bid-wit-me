@@ -4,7 +4,7 @@ import { type VenueId, VENUE_DEFS, resolveVenue } from './venues';
 import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, isNukeTrick, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, partnerOf, sideOf, sortHand, trumpOrder,
+  type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, isNukeTrick, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, newlyOneTrickFromShot, partnerOf, sideOf, sortHand, trumpOrder,
 } from '@spades/rules';
 import { ScorePad, setTeamNames, sideName } from './Modals';
 import { LockedRulesPanel } from './LockedRules';
@@ -752,6 +752,21 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   }, [isBooks, dealing, st.seed, st.handNo, st.tricks.length, resume]);
 
   useEffect(() => { setSelected(null); }, [st.turn, st.handNo]);
+  // One pump per side per hand, the moment they become exactly one trick from a shot: a missed contract,
+  // or a books hand about to miss the minimum. Derived from the shared state, so the table hears it together.
+  const pumpPrev = useRef<GameState | null>(null);
+  const pumpedSides = useRef<Set<number>>(new Set());
+  const pumpHand = useRef('');
+  useEffect(() => {
+    const key = `${st.seed}:${st.handNo}`;
+    if (pumpHand.current !== key) { pumpHand.current = key; pumpedSides.current = new Set(); }
+    const prev = pumpPrev.current;
+    pumpPrev.current = st;
+    newlyOneTrickFromShot(prev, st, pumpedSides.current).forEach((side, i) => {
+      pumpedSides.current.add(side);
+      sound.play('pump', i ? { delay: i * 0.16 } : {});
+    });
+  }, [st]);
   useEffect(() => { setExchangePick([]); }, [st.phase, st.turn]);
   useEffect(() => { if (chatOpen) setSeenMsgs(msgs.length); }, [chatOpen, msgs.length]);
 
@@ -782,16 +797,14 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     list.forEach((t, i) => { const c = cue[t.kind]; if (c) sound.play(c, { delay: 0.1 + i * 0.45 }); });
     const tm = setTimeout(() => setToasts([]), 3200);
     const toastHold = list.length ? fx.hold(3200, 'toasts') : () => {};
-    // hype: SHOT! / GOT SHOT and streak pop-ups (every client derives them from the same state)
-    // each one is queued with fx.later, so the hand-end transition (scorecard / Table Talk) waits until it has played
+    // A set is the shotgun blast on that scorecard panel (the recap plays the boom). No full-screen banner.
+    // Streak / Wheels wait a beat so their pop-ups don't cover the muzzle flash.
     const timers: (() => void)[] = [];
     const calls = calloutsFor(st, mySide, names);
-    const shot = calls.find((c) => c.kind === 'shot') ?? calls.find((c) => c.kind === 'gotShot');
-    if (shot) timers.push(fx.later(shot.kind as 'shot' | 'gotShot', 350, { text: shot.title ?? shot.text, sub: shot.sub }));
-    // Set/bust toasts are on screen now. A shot pop waits the same 350ms as its callout (not the sound delay).
+    const shot = calls.some((c) => c.kind === 'shot' || c.kind === 'gotShot');
     if (setToast) haptic(HAPTIC.setOrShot, 'set');
     else if (shot) {
-      const ht = window.setTimeout(() => haptic(HAPTIC.setOrShot, 'shot'), 350);
+      const ht = window.setTimeout(() => haptic(HAPTIC.setOrShot, 'shot'), 200);
       timers.push(() => clearTimeout(ht));
     }
     const streak = calls.find((c) => c.kind === 'streak');
@@ -799,9 +812,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const made = wheelsMade(r, rec);
     if (made.length) {
       const w = made[0]!;
-      timers.push(fx.later('wheelsCar', shot ? 3300 : streak ? 2600 : 600, { text: `${sideName(r, w.side, names)} made ${w.bid} · took ${w.books}` }));
+      timers.push(fx.later('wheelsCar', shot ? 1500 : streak ? 2600 : 600, { text: `${sideName(r, w.side, names)} made ${w.bid} · took ${w.books}` }));
     }
-    if (streak) timers.push(fx.later('streak', shot ? 1750 : 400, { level: streak.level, text: streak.text.split(' · ')[0], sub: streak.text.split(' · ')[1] }));
+    if (streak) timers.push(fx.later('streak', shot ? 1100 : 400, { level: streak.level, text: streak.text.split(' · ')[0], sub: streak.text.split(' · ')[1] }));
     return () => { clearTimeout(tm); toastHold(); timers.forEach((c) => c()); };
   }, [st.history, histTick, r, names, mySide, !!pause]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -810,6 +823,10 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // A nuke's hold is the 3D blast, so the score stays covered until that allowance ends.
   // Scoring toasts and hype no longer add another wait on top.
   const [talkOpen, setTalkOpen] = useState(false);
+  // A shot-out ends the hand in gameOver, which used to skip this recap. Hold the scorecard (blast, tape, sheet)
+  // until Continue, then open the results. The ack is local; the shot count still comes from synced history.
+  const [shotRecapAck, setShotRecapAck] = useState(false);
+  useEffect(() => { setShotRecapAck(false); }, [st.phase, st.handNo]);
   useEffect(() => {
     if ((st.phase !== 'handOver' && st.phase !== 'gameOver') || pause || runFx) { setTalkOpen(false); return; }
     setTalkOpen(true);
@@ -845,6 +862,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     haptic(HAPTIC.gameWin, 'game-win');
   }, [localWin]);
   // any modal up: the table, plates, chat, video bubbles etc. dim + blur behind it and can't paint over it
+  const shotOutRecap = st.phase === 'gameOver' && st.result?.endReason === 'shotOut' && !shotRecapAck;
+  const showRecap = !pause && talkOpen && (st.phase === 'handOver' || shotOutRecap);
+  const showResults = st.phase === 'gameOver' && !pause && !runFx && talkOpen && !!st.result && !shotOutRecap;
   const modalOpen = (st.phase === 'handOver' && !pause && talkOpen) || confirmLeave || showPad || (st.phase === 'gameOver' && !pause && !runFx && talkOpen && !!st.result);
 
   const trumps = useMemo(() => trumpOrder(r).slice(0, 5).map((c) => (c === 'BJ' ? 'BIG JKR' : c === 'LJ' ? 'LIL JKR' : cardLabel(c))), [r]);
@@ -1063,7 +1083,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       </div>
 
       <ChatPanel msgs={msgs} open={chatOpen} onToggle={() => setChatOpen(!chatOpen)} onSend={(t) => (st.phase === 'handOver' ? talkSend(t) : push('You', t))} unread={unread} scope={online ? 'table' : undefined} extra={online ? online.controls : <OfflineMediaBar />}
-        overRecap={st.phase === 'handOver' && !pause && talkOpen && !showPad}
+        overRecap={showRecap && !showPad}
         trash={!runFx && !modalOpen && !spectating ? <TrashTalkButton st={st} me={HUMAN} intensity={intensity} onSend={(t) => push('You', t)} /> : null} />
       {help && !bidTurn && view.hand && view.hand.length > 0 && st.phase !== 'handOver' && st.phase !== 'gameOver' && (
         <div className="bid-coach-float glass slant"><BidCoach view={view} startOpen title="COUNT YOUR BOOKS" onClose={() => setHelp(false)} /></div>
@@ -1149,15 +1169,15 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         ))}
       </div>
 
-      {st.phase === 'handOver' && !pause && talkOpen && (
+      {showRecap && (
         <Intermission
           st={st}
           names={names}
           mySide={mySide}
-          secs={online?.talk?.secs ?? null}
-          ready={online?.talk?.ready}
-          online={!!online}
-          onReady={() => apply({ type: 'nextHand' })}
+          secs={shotOutRecap ? null : (online?.talk?.secs ?? null)}
+          ready={shotOutRecap ? undefined : online?.talk?.ready}
+          online={shotOutRecap ? false : !!online}
+          onReady={() => { if (st.phase === 'gameOver') setShotRecapAck(true); else apply({ type: 'nextHand' }); }}
           onScorePad={() => setShowPad(true)}
           series={seriesChip()}
           unread={unread}
@@ -1198,7 +1218,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         </div>
       )}
 
-      {st.phase === 'gameOver' && !pause && !runFx && talkOpen && st.result && online?.victory && (() => {
+      {showResults && online?.victory && st.result && (() => {
         // online: the winners are the centerpiece (video spotlight); score, series and buttons sit underneath, secondary.
         // No auto-advance: it stays until someone leaves or the host starts the rematch.
         const res = st.result!;
@@ -1238,7 +1258,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           </div>
         );
       })()}
-      {st.phase === 'gameOver' && !pause && !runFx && talkOpen && st.result && !online?.victory && (
+      {showResults && st.result && !online?.victory && (
         <div className="modal-backdrop">
           <div className="modal glass slant gameover" role="dialog" aria-label="Game over">
             <button type="button" className="modal-x" aria-label="Close and go to the main menu" data-testid="gameover-x" onClick={mainMenu}>✕</button>

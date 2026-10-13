@@ -20,8 +20,9 @@ function when(at: number, now = Date.now()): string {
 
 type Board = 'rating' | 'wins' | 'accuracy' | 'duos';
 type Kind = 'team' | 'cutthroat';
+type Scope = 'global' | 'local';
+type Period = 'all' | 'month' | 'week';
 interface Row { rank: number; id: string; name: string; value: number; games: number; extra?: string; vsPlayers?: number; vsBots?: number }
-interface Stats { accounts: number; games: number; gamesToday: number; hands: number; tournamentsDone: number; tournamentsOpen: number }
 interface ModeStats {
   games: number; wins: number; winPct: number | null;
   winsVsPlayers: number; winsVsBots: number; gamesVsPlayers: number; gamesVsBots: number;
@@ -32,39 +33,157 @@ interface ModeStats {
 }
 interface MyStats { team: ModeStats; cutthroat: ModeStats }
 
-const pct = (n: number | null) => (n === null ? '—' : `${Number.isInteger(n) ? n : n}%`);
+const pct = (n: number | null) => (n === null ? '—' : `${n}%`);
 const num = (n: number | null) => (n === null ? '—' : String(n));
+const UNRATED_HINT = 'Play a signed-in player to get rated';
 
-/** Server-wide count. Personal stats live on the Your stats card, not in this line. */
+const BOARD_LABEL: Record<Board, string> = { rating: 'Rating', wins: 'Wins', accuracy: 'Bid accuracy', duos: 'Best duos' };
+const SCOPE_LABEL: Record<Scope, string> = { global: 'Global', local: 'Local' };
+const PERIOD_LABEL: Record<Period, string> = { week: 'This week', month: 'This month', all: 'All-time' };
+
+/** Server-wide count. Kept for callers; the Ranks tab no longer prints it. */
 export function siteGamesToday(n: number): string {
   return `Site: ${n} ${n === 1 ? 'game' : 'games'} today`;
 }
 
-function emptyCopy(board: Board, period: 'all' | 'month' | 'week', scope: 'global' | 'local'): string {
-  const local = scope === 'local' ? ' in your region' : '';
-  if (board === 'rating' && period === 'all') return `No rated games yet${local}. Your games vs bots count toward Wins and your stats. Elo needs signed-in players on at least two sides.`;
-  if (board === 'rating') return `No Elo change this ${period}${local}. Elo needs signed-in players on at least two sides. Your games vs bots still count toward Wins and your stats.`;
-  if (board === 'wins') return `No wins${local} yet. Vs players is a win against a signed-in opponent. Vs bots is a win when every opponent is a bot. Wins against guests count toward neither.`;
-  if (board === 'accuracy') return `No one${local} has enough bids for this board yet. Every finished signed-in game counts, including vs bots.`;
-  return `No duos${local} yet. Best duos needs two signed-in partners and at least two games against signed-in opponents.`;
+/** One line under the Ranks controls, e.g. "Rating · Global · This week". */
+export function ranksFilterSummary(board: Board, scope: Scope, period: Period): string {
+  return `${BOARD_LABEL[board]} · ${SCOPE_LABEL[scope]} · ${PERIOD_LABEL[period]}`;
 }
 
-function YourStats({ mine, kind }: { mine: MyStats; kind: Kind }) {
-  const primary = mine[kind];
-  const otherKey: Kind = kind === 'cutthroat' ? 'team' : 'cutthroat';
-  const other = mine[otherKey];
-  const label = kind === 'cutthroat' ? 'Cutthroat' : '2v2';
-  const otherLabel = otherKey === 'cutthroat' ? 'Cutthroat' : '2v2';
-  const winLabel = (games: number, rate: number | null, name: string) => `${name}${games ? ` · ${pct(rate)}` : ''}`;
+/** Single friendly sentence for an empty board. */
+export function ranksEmptyLine(board: Board, period: Period, scope: Scope): string {
+  const near = scope === 'local' ? ' nearby' : '';
+  if (board === 'rating' && period === 'week') return `No rating changes${near} this week yet.`;
+  if (board === 'rating' && period === 'month') return `No rating changes${near} this month yet.`;
+  if (board === 'rating') return `No rated players${near} yet.`;
+  if (board === 'wins') return `No wins${near} on this board yet.`;
+  if (board === 'accuracy') return `Not enough bids${near} for this board yet.`;
+  return `No duos${near} on this board yet.`;
+}
+
+function initials(name: string): string {
+  if (name.includes(' + ')) {
+    const [a, b] = name.split(' + ');
+    return `${a?.[0] ?? ''}${b?.[0] ?? ''}`.toUpperCase();
+  }
+  return (name[0] ?? '?').toUpperCase();
+}
+
+function isMineRow(r: Row, youId: string | undefined, myName: string | undefined): boolean {
+  if (youId && (r.id === youId || r.id === `u:${youId}` || r.id.split(':').includes(youId))) return true;
+  if (myName && (r.name === myName || r.name.split(' + ').includes(myName))) return true;
+  return false;
+}
+
+function metricText(board: Board, period: Period, r: Row): string {
+  if (board === 'accuracy') return `${r.value}%`;
+  if (board === 'rating' && period !== 'all') return `${r.value > 0 ? '+' : ''}${r.value}`;
+  return String(r.value);
+}
+
+function trendDir(board: Board, period: Period, value: number): 'up' | 'down' | 'flat' {
+  if (board !== 'rating' || period === 'all') return 'flat';
+  return value > 0 ? 'up' : value < 0 ? 'down' : 'flat';
+}
+
+function Trend({ dir }: { dir: 'up' | 'down' | 'flat' }) {
+  const label = dir === 'up' ? 'Up' : dir === 'down' ? 'Down' : 'No change';
   return (
-    <section className="soc-mystats" data-testid="your-stats">
-      <h3 className="soc-mystats-title">Your stats</h3>
-      <p className="soc-mystats-mode">{label}</p>
-      {primary.games === 0 ? <p className="soc-my-unrated">No {label} games yet.</p>
-        : primary.elo == null ? <p className="soc-my-unrated" data-testid="your-stats-unrated">{primary.unrated}</p>
-        : <p className="soc-my-elo" data-testid="your-stats-elo">{primary.elo}<span>Elo</span></p>}
-      {primary.games > 0 && (
-        <div className="soc-stats" data-testid="your-stats-grid">
+    <span className={`ranks-trend ${dir}`} aria-label={label}>
+      {dir === 'flat' ? (
+        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden><path d="M1.5 5h7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+      ) : (
+        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden><path d={dir === 'up' ? 'M5 1.5 8.5 8H1.5Z' : 'M1.5 2h7L5 8.5Z'} fill="currentColor" /></svg>
+      )}
+    </span>
+  );
+}
+
+function RankRow({ r, board, period, mine, onOpen, rowRef, testId }: {
+  r: Row; board: Board; period: Period; mine: boolean; onOpen?: () => void; rowRef?: (el: HTMLElement | null) => void; testId?: string;
+}) {
+  const dir = trendDir(board, period, r.value);
+  const tip = board === 'wins' ? `${r.vsPlayers ?? r.value} vs players, ${r.vsBots ?? 0} vs bots` : undefined;
+  const body = (
+    <>
+      <span className={`ranks-rk${r.rank <= 3 ? ' top' : ''}`}>{r.rank}</span>
+      <span className={`soc-av${initials(r.name).length > 1 ? ' duo' : ''}`} aria-hidden>{initials(r.name)}</span>
+      <span className="ranks-name">{r.name}</span>
+      <span className={`ranks-val ${dir}`} title={tip}>{metricText(board, period, r)}</span>
+      <Trend dir={dir} />
+    </>
+  );
+  const cls = `ranks-row${mine ? ' soc-me' : ''}`;
+  if (!onOpen) return <div className={cls} ref={rowRef} role="listitem" data-testid={testId}>{body}</div>;
+  return (
+    <button type="button" className={cls} ref={rowRef} role="listitem" data-testid={testId} onClick={onOpen}>{body}</button>
+  );
+}
+
+function useOffscreen(el: HTMLElement | null, root: HTMLElement | null, active: boolean): boolean {
+  const [off, setOff] = useState(false);
+  useEffect(() => {
+    if (!active || !el) { setOff(false); return; }
+    const io = new IntersectionObserver(([e]) => setOff(!e?.isIntersecting), { root, threshold: 0.01 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [el, root, active]);
+  return off;
+}
+
+function findGame() {
+  social.close();
+  navigate('/', false, { wiz: 'mode', path: 'online', d: 0 });
+}
+
+function YouCard({ mine, kind, rank, onMore }: { mine: MyStats; kind: Kind; rank: number | null; onMore: () => void }) {
+  const mode = mine[kind];
+  const rated = mode.elo != null;
+  return (
+    <section className="ranks-you" data-testid="your-stats">
+      <div className="ranks-you-top">
+        <span className="ranks-you-kicker">You</span>
+        <span className="ranks-you-rank" data-testid="your-stats-rank">{rank == null ? '—' : `#${rank}`}</span>
+        <button type="button" className="ranks-you-more" data-testid="your-stats-more" onClick={onMore}>See all stats</button>
+      </div>
+      <div className="ranks-you-rating">
+        {rated
+          ? <b data-testid="your-stats-elo">{mode.elo}<span>Elo</span></b>
+          : <><b className="unrated" data-testid="your-stats-unrated">Unrated</b><small>{UNRATED_HINT}</small></>}
+      </div>
+      <div className="ranks-you-stats">
+        <div><b>{mode.games}</b><small>Games</small></div>
+        <div><b>{pct(mode.winPct)}</b><small>Win %</small></div>
+        <div><b>{pct(mode.accuracy)}</b><small>Bid accuracy</small></div>
+      </div>
+    </section>
+  );
+}
+
+function StatsSheet({ mine, kind, onClose }: { mine: MyStats; kind: Kind; onClose: () => void }) {
+  const primary = mine[kind];
+  const label = kind === 'cutthroat' ? 'Cutthroat' : '2v2';
+  const winLabel = (games: number, rate: number | null, name: string) => `${name}${games ? ` · ${pct(rate)}` : ''}`;
+  const side = (k: Kind, name: string) => {
+    const m = mine[k];
+    return (
+      <div className={k === kind ? 'on' : ''}>
+        <small>{name}</small>
+        <b>{m.games ? `${m.wins}–${m.games - m.wins}` : '—'}</b>
+        <small>{m.elo == null ? 'Unrated' : `Elo ${m.elo}`}</small>
+      </div>
+    );
+  };
+  return (
+    <div className="ranks-sheet-back" onClick={onClose} data-testid="ranks-stats-back">
+      <div className="ranks-sheet" role="dialog" aria-label="Your stats" onClick={(e) => e.stopPropagation()} data-testid="ranks-stats-sheet">
+        <div className="ranks-sheet-grab" aria-hidden />
+        <div className="ranks-sheet-h">
+          <h3>Your stats · {label}</h3>
+          <button type="button" className="ranks-done" onClick={onClose} data-testid="ranks-stats-done">Done</button>
+        </div>
+        <div className="ranks-grid" data-testid="your-stats-grid">
           <div><b>{primary.games}</b><small>games</small></div>
           <div data-testid="your-stats-vs-players"><b>{primary.winsVsPlayers}</b><small>{winLabel(primary.gamesVsPlayers, primary.winPctPlayers, 'vs players')}</small></div>
           <div data-testid="your-stats-vs-bots"><b>{primary.winsVsBots}</b><small>{winLabel(primary.gamesVsBots, primary.winPctBots, 'vs bots')}</small></div>
@@ -75,12 +194,42 @@ function YourStats({ mine, kind }: { mine: MyStats; kind: Kind }) {
           <div><b>{primary.shotsGiven}/{primary.shotsTaken}</b><small>shots</small></div>
           <div><b>{primary.bjWins}</b><small>Big Joker wins</small></div>
         </div>
-      )}
-      <p className="soc-my-other" data-testid="your-stats-other">
-        {other.games === 0 ? `${otherLabel}: no games yet`
-          : `${otherLabel}: ${other.winsVsPlayers} vs players · ${other.winsVsBots} vs bots${other.elo == null ? ' · unrated' : ` · Elo ${other.elo}`}`}
-      </p>
-    </section>
+        <div className="ranks-split" data-testid="your-stats-other">
+          {side('team', '2v2')}
+          {side('cutthroat', 'Cutthroat')}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FilterSheet({ board, scope, period, kind, onBoard, onScope, onPeriod, onClose }: {
+  board: Board; scope: Scope; period: Period; kind: Kind;
+  onBoard: (b: Board) => void; onScope: (s: Scope) => void; onPeriod: (p: Period) => void; onClose: () => void;
+}) {
+  const pills = <T extends string>(id: string, label: string, value: T, set: (v: T) => void, opts: [T, string, boolean?][]) => (
+    <>
+      <p className="ranks-filter-label" id={id}>{label}</p>
+      <div className="ranks-pills" role="radiogroup" aria-labelledby={id}>
+        {opts.map(([k, l, disabled]) => (
+          <button key={k} type="button" role="radio" aria-label={l} aria-checked={value === k} disabled={!!disabled} className={value === k ? 'on' : ''} data-testid={`${id}-${k}`} onClick={() => set(k)}>{l}</button>
+        ))}
+      </div>
+    </>
+  );
+  return (
+    <div className="ranks-sheet-back" onClick={onClose}>
+      <div className="ranks-sheet ranks-sheet-sm" role="dialog" aria-label="Filters" onClick={(e) => e.stopPropagation()} data-testid="ranks-filters-sheet">
+        <div className="ranks-sheet-grab" aria-hidden />
+        <div className="ranks-sheet-h">
+          <h3>Filters</h3>
+          <button type="button" className="ranks-done" onClick={onClose} data-testid="ranks-filters-done">Done</button>
+        </div>
+        {pills('lb-board', 'Metric', board, onBoard, [['rating', 'Rating'], ['wins', 'Wins'], ['accuracy', 'Bid accuracy'], ['duos', 'Best duos', kind === 'cutthroat']])}
+        {pills('lb-scope', 'Scope', scope, onScope, [['global', 'Global'], ['local', 'Local']])}
+        {pills('lb-period', 'Period', period, onPeriod, [['week', 'Week'], ['month', 'Month'], ['all', 'All-time']])}
+      </div>
+    </div>
   );
 }
 
@@ -90,15 +239,17 @@ export function Leaderboards() {
   const signedIn = !!acct.user?.username;
   const [board, setBoard] = useState<Board>('rating');
   const [kind, setKind] = useState<Kind>('team');
-  const [scope, setScope] = useState<'global' | 'local'>('global');
-  const [period, setPeriod] = useState<'all' | 'month' | 'week'>('all');
+  const [scope, setScope] = useState<Scope>('global');
+  const [period, setPeriod] = useState<Period>('week');
   const [rows, setRows] = useState<Row[] | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  const [stats, setStats] = useState<Stats | null>(null);
   const [mine, setMine] = useState<MyStats | null>(null);
   const [ready, setReady] = useState(false);
+  const [filters, setFilters] = useState(false);
+  const [statsOpen, setStatsOpen] = useState(false);
+  const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
+  const [mineEl, setMineEl] = useState<HTMLElement | null>(null);
   const touched = useRef(false);
-  useEffect(() => { get('/api/social/stats').then(setStats).catch(() => undefined); }, []);
   useEffect(() => {
     if (!acct.ready) return;
     if (!signedIn) { setMine(null); setReady(true); return; }
@@ -118,73 +269,76 @@ export function Leaderboards() {
       .then((j) => { setRows(j.rows); setNote(j.note ?? (scope === 'local' && j.region ? `Region: ${j.region}` : null)); })
       .catch((e) => { setRows([]); setNote(String(e.message)); });
   }, [board, kind, scope, period, ready]);
-  const seg = <T extends string>(v: T, set: (x: T) => void, opts: [T, string][], id: string) => (
-    <div className="soc-seg" role="group" data-testid={`lb-${id}`}>{opts.map(([k, l]) => <button key={k} type="button" className={v === k ? 'on' : ''} onClick={() => set(k)} data-testid={`lb-${id}-${k}`}>{l}</button>)}</div>
-  );
-  const pickKind = (k: Kind) => { touched.current = true; setKind(k); };
-  const unit = board === 'rating' ? (period === 'all' ? '' : ' Elo') : board === 'accuracy' ? '%' : '';
+  useEffect(() => {
+    if (!filters && !statsOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      setFilters(false);
+      setStatsOpen(false);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [filters, statsOpen]);
+  const pickKind = (k: Kind) => {
+    touched.current = true;
+    setKind(k);
+    if (k === 'cutthroat' && board === 'duos') setBoard('rating');
+  };
+  const pickBoard = (b: Board) => {
+    setBoard(b);
+    if (b === 'duos' && kind === 'cutthroat') setKind('team');
+  };
   const accMin = period === 'all' ? 20 : 8;
-  const modeKey: Kind = board === 'duos' ? 'team' : kind;
-  const mode = mine?.[modeKey];
-  const myName = acct.user?.username;
-  const onBoard = !!rows?.some((r) => (s.you && r.id === s.you.id) || (!!myName && r.name === myName));
+  const mode = mine?.[kind];
+  const myName = acct.user?.username ?? undefined;
+  const youId = s.you?.id;
+  const mineIdx = rows?.findIndex((r) => isMineRow(r, youId, myName)) ?? -1;
+  const onBoard = mineIdx >= 0;
   const ownAcc = board === 'accuracy' && mode && mode.accuracy !== null && mode.bids < accMin && !onBoard ? mode : null;
   const unknownRegion = !!note && /no local board/i.test(note);
-  const mineRow = (r: Row) => ((s.you && r.id === s.you.id) || (myName && r.name === myName) ? 'soc-me' : '');
+  const mineRow = mineIdx >= 0 ? rows![mineIdx]! : null;
+  const offscreen = useOffscreen(mineEl, scrollEl, !!mineRow);
   return (
-    <div className="soc-lb" data-testid="leaderboard">
-      {stats && <p className="soc-serverstats" data-testid="server-stats">{Object.keys(s.users).length} online · {stats.accounts} players · {siteGamesToday(stats.gamesToday)} · {stats.tournamentsOpen} open tournament{stats.tournamentsOpen === 1 ? '' : 's'}</p>}
-      {signedIn && mine && <YourStats mine={mine} kind={kind} />}
-      {signedIn && !ready && <p className="soc-empty">Loading your stats…</p>}
-      {seg(board, setBoard, [['rating', 'Rating'], ['wins', 'Wins'], ['accuracy', 'Bid accuracy'], ['duos', 'Best duos']], 'board')}
-      <div className="soc-lb-filters">
-        {board !== 'duos' && seg(kind, pickKind, [['team', '2v2'], ['cutthroat', 'Cutthroat']], 'kind')}
-        {seg(scope, setScope, [['global', 'Global'], ['local', 'Local']], 'scope')}
-        {seg(period, setPeriod, [['all', 'All-time'], ['month', 'Month'], ['week', 'Week']], 'period')}
+    <div className="soc-lb ranks" data-testid="leaderboard">
+      <div className="ranks-scroll" ref={setScrollEl}>
+        {signedIn && mine && <YouCard mine={mine} kind={kind} rank={onBoard ? mineRow!.rank : null} onMore={() => setStatsOpen(true)} />}
+        {signedIn && !ready && <p className="soc-empty">Loading your stats…</p>}
+        <div className="ranks-controls">
+          <div className="ranks-kind" role="group" aria-label="Game" data-testid="lb-kind">
+            <button type="button" className={kind === 'team' ? 'on' : ''} data-testid="lb-kind-team" onClick={() => pickKind('team')}>2v2</button>
+            <button type="button" className={kind === 'cutthroat' ? 'on' : ''} data-testid="lb-kind-cutthroat" onClick={() => pickKind('cutthroat')}>Cutthroat</button>
+          </div>
+          <button type="button" className={`ranks-filters-btn${filters ? ' on' : ''}`} aria-expanded={filters} data-testid="ranks-filters" onClick={() => setFilters(true)}>Filters</button>
+        </div>
+        <p className="ranks-summary" data-testid="ranks-summary">{ranksFilterSummary(board, scope, period)}</p>
+        {note && <p className="ranks-note" data-testid="lb-note">{note}</p>}
+        {ownAcc && <p className="ranks-note" data-testid="lb-own-accuracy">Your bid accuracy shows after {accMin} bids.</p>}
+        {rows === null ? <p className="soc-empty">Loading…</p> : !rows.length ? (
+          unknownRegion ? null : (
+            <div className="ranks-empty" data-testid="lb-empty">
+              <p>{ownAcc ? `Your bid accuracy shows after ${accMin} bids.` : ranksEmptyLine(board, period, scope)}</p>
+              <button type="button" className="primary" data-testid="ranks-find-game" onClick={findGame}>Find a game</button>
+            </div>
+          )
+        ) : (
+          <div className="ranks-list" role="list" data-testid={board === 'wins' ? 'lb-wins' : 'lb-rows'}>
+            {rows.map((r, i) => (
+              <RankRow key={r.id} r={r} board={board} period={period} mine={i === mineIdx} rowRef={i === mineIdx ? setMineEl : undefined} testId={`lb-row-${r.rank}`} onOpen={board === 'duos' ? undefined : () => social.showProfile(r.name)} />
+            ))}
+          </div>
+        )}
+        <p className="soc-note">Elo and Best duos count signed-in opponents. Wins split into vs players and vs bots.</p>
       </div>
-      {note && <p className="soc-muted" data-testid="lb-note">{note}</p>}
-      {rows === null ? <p className="soc-empty">Loading…</p> : (
-        <>
-          {ownAcc && (
-            <table className="soc-lb-table soc-own-acc" data-testid="lb-own-accuracy"><tbody>
-              <tr className="soc-me">
-                <td className="rk">you</td>
-                <td>{myName ?? 'You'}</td>
-                <td className="v">{ownAcc.accuracy}%</td>
-                <td className="soc-muted">needs {accMin} bids</td>
-              </tr>
-            </tbody></table>
-          )}
-          {!rows.length ? (
-            unknownRegion ? null : <p className="soc-empty soc-lb-empty" data-testid="lb-empty">{ownAcc ? `The board lists players with at least ${accMin} bids. Yours counts now, including games vs bots.` : emptyCopy(board, period, scope)}</p>
-          ) : board === 'wins' ? (
-            <table className="soc-lb-table soc-wins" data-testid="lb-wins"><thead>
-              <tr><th /><th /><th>vs players</th><th>vs bots</th></tr>
-            </thead><tbody>
-              {rows.map((r) => (
-                <tr key={r.id} className={mineRow(r)}>
-                  <td className="rk">{r.rank <= 3 ? ['🥇', '🥈', '🥉'][r.rank - 1] : r.rank}</td>
-                  <td><button type="button" className="link" onClick={() => social.showProfile(r.name)}>{r.name}</button></td>
-                  <td className="v" data-testid={`lb-vs-players-${r.name}`}>{r.vsPlayers ?? r.value}</td>
-                  <td className="v" data-testid={`lb-vs-bots-${r.name}`}>{r.vsBots ?? 0}</td>
-                </tr>
-              ))}
-            </tbody></table>
-          ) : (
-            <table className="soc-lb-table"><tbody>
-              {rows.map((r) => (
-                <tr key={r.id} className={mineRow(r)}>
-                  <td className="rk">{r.rank <= 3 ? ['🥇', '🥈', '🥉'][r.rank - 1] : r.rank}</td>
-                  <td>{board === 'duos' ? r.name : <button type="button" className="link" onClick={() => social.showProfile(r.name)}>{r.name}</button>}</td>
-                  <td className="v">{board === 'rating' && period !== 'all' && r.value > 0 ? '+' : ''}{r.value}{unit}</td>
-                  <td className="soc-muted">{r.extra ?? `${r.games} g`}</td>
-                </tr>
-              ))}
-            </tbody></table>
-          )}
-        </>
+      {offscreen && mineRow && (
+        <div className="ranks-pin" data-testid="ranks-pin">
+          <RankRow r={mineRow} board={board} period={period} mine onOpen={() => mineEl?.scrollIntoView({ block: 'nearest' })} />
+        </div>
       )}
-      <p className="soc-note">Stats and bid accuracy count every finished signed-in game, including vs bots. Elo needs signed-in players on at least two sides. Wins split into vs players and vs bots; wins against guests count toward neither. Best duos only counts games against signed-in opponents.</p>
+      {filters && (
+        <FilterSheet board={board} scope={scope} period={period} kind={kind} onBoard={pickBoard} onScope={setScope} onPeriod={setPeriod} onClose={() => setFilters(false)} />
+      )}
+      {statsOpen && mine && <StatsSheet mine={mine} kind={kind} onClose={() => setStatsOpen(false)} />}
     </div>
   );
 }
