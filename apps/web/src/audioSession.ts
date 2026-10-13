@@ -13,12 +13,19 @@ export function audioContextAction(state: string | null | undefined): AudioWake 
 }
 
 /**
- * The "Tap to restore sound" chip. Only after the player has already unlocked audio, and only
- * while they still want sound. A brand-new suspended context (before the first tap) stays quiet.
+ * The header speaker should look tappable. Only after the player has already unlocked audio, and
+ * only while they still want sound. A brand-new suspended context (before the first tap) stays quiet.
  */
 export function soundRestorePending(state: string | null | undefined, unlocked: boolean, soundWanted: boolean): boolean {
   if (!unlocked || !soundWanted) return false;
   return state !== 'running';
+}
+
+/** Accessible name for the existing header speaker. A suspended context is restored by tapping that icon. */
+export function speakerAriaLabel(needsTap: boolean, muted: boolean): string {
+  if (needsTap) return 'Sound paused — tap to restore';
+  if (muted) return 'Sound (muted) — hold to unmute';
+  return 'Sound settings — hold to mute all';
 }
 
 /**
