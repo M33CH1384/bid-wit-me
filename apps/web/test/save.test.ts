@@ -59,14 +59,15 @@ describe('save / restore', () => {
   });
 });
 
-describe('returning home does not reopen a saved bot game', () => {
+describe('home never auto-resumes an unfinished bot game', () => {
   const saved = { v: SAVE_VERSION, savedAt: 1, seed: 's', settings: DEFAULT_SETTINGS, state: {} as GameState, chat: [] };
 
-  it('drops back in on a refresh, and stays on the menu after Leave', () => {
-    expect(resumeOnLoad(null, saved, false)).toBe(saved);
-    expect(resumeOnLoad({ wiz: 'setup' }, saved, false)).toBe(saved);
+  it('opens the menu on refresh, on Home, and when the app is opened with a save', () => {
+    expect(resumeOnLoad(null, saved, false)).toBeNull();
+    expect(resumeOnLoad({ wiz: 'setup' }, saved, false)).toBeNull();
     expect(resumeOnLoad({ wiz: 'home', d: 0 }, saved, false)).toBeNull();
     expect(resumeOnLoad({ wiz: 'home' }, saved, true)).toBeNull();
+    expect(resumeOnLoad(null, saved, true)).toBeNull();
     expect(resumeOnLoad(null, null, false)).toBeNull();
   });
 });
