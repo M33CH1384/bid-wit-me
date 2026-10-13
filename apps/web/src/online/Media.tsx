@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { loserCaption, victoryIdentity } from './victory';
 import { createPortal } from 'react-dom';
 import type { SeatInfo } from '@spades/protocol';
 import type { VideoMesh, VideoState } from './video';
@@ -220,9 +221,10 @@ export function VictorySpotlight({ winners, losers, title, sub, mesh, vs }: { wi
     mesh.setDucked(loserIds);
     return () => mesh.setDucked([]);
   }, [mesh, key]); // eslint-disable-line react-hooks/exhaustive-deps
-  const shown = winners.map((p) => ({ p, stream: liveStream(p, mesh, vs) }));
+  const shown = winners.map((p) => ({ p, stream: liveStream(p, mesh, vs), id: victoryIdentity(p.seat, p.name) }));
   const anyVideo = shown.some((x) => x.stream);
-  const label = (p: SpotPlayer) => (p.isMe && p.name !== 'You' ? `${p.name} (you)` : p.name);
+  const label = (p: SpotPlayer, name: string) => (p.isMe && name !== 'You' ? `${name} (you)` : name);
+  const lost = loserCaption(losers.length);
   return (
     <div className={`victory-spot n${winners.length}${anyVideo ? ' has-video' : ' no-video'}`} data-testid="victory-spot">
       <div className="vs-headline">
@@ -230,38 +232,44 @@ export function VictorySpotlight({ winners, losers, title, sub, mesh, vs }: { wi
         {sub && <div className="vs-sub" data-testid="vs-sub">{sub}</div>}
       </div>
       <div className="vs-winners" style={{ ['--n' as string]: winners.length }}>
-        {shown.map(({ p, stream }) => stream ? (
+        {shown.map(({ p, stream, id }) => stream ? (
           <figure key={p.key} className="vs-tile win video" data-testid={`vs-win-${p.key}`}>
             <div className="vs-frame">{stream}</div>
-            <figcaption>{label(p)}</figcaption>
+            <figcaption>{label(p, id.name)}{id.bot && <small className="vs-bot" data-testid={`vs-bot-${p.key}`}>BOT</small>}</figcaption>
           </figure>
         ) : (
           // no live video: a compact name card, the full name the star (not a giant empty tile with an initial)
           <figure key={p.key} className="vs-tile win card" data-testid={`vs-win-${p.key}`}>
             <div className="vs-card" data-testid={`vs-avatar-${p.key}`}>
-              <span className="vs-initial" aria-hidden>{p.name.trim().charAt(0).toUpperCase() || '?'}</span>
-              <b className="vs-name" data-testid={`vs-name-${p.key}`}>{label(p)}</b>
-              <small className={p.seat?.kind === 'bot' ? '' : 'vs-nobot'} aria-hidden={p.seat?.kind !== 'bot'}>BOT</small>
+              <span className="vs-initial" aria-hidden>{id.name.trim().charAt(0).toUpperCase() || '?'}</span>
+              <b className="vs-name" data-testid={`vs-name-${p.key}`}>{label(p, id.name)}</b>
+              {id.bot && <small className="vs-bot" data-testid={`vs-bot-${p.key}`}>BOT</small>}
             </div>
           </figure>
         ))}
       </div>
-      {losers.length > 0 && (
-        <div className="vs-losers" aria-label="Other players" style={{ ['--n' as string]: losers.length }}>
-          {losers.map((p) => (
-            <figure key={p.key} className="vs-tile lose" data-testid={`vs-lose-${p.key}`}>
-              <div className="vs-frame">{liveStream(p, mesh, vs) ?? <Avatar p={p} />}</div>
-              <figcaption>{p.name}</figcaption>
-            </figure>
-          ))}
+      {lost && (
+        <div className="vs-losers quiet" aria-label="Losing players" data-testid="vs-losers">
+          <p className="vs-lost" data-testid="vs-lost">{lost}</p>
+          <div className="vs-loser-row" style={{ ['--n' as string]: losers.length }}>
+            {losers.map((p) => {
+              const id = victoryIdentity(p.seat, p.name);
+              return (
+                <figure key={p.key} className="vs-tile lose quiet" data-testid={`vs-lose-${p.key}`}>
+                  <div className="vs-frame">{liveStream(p, mesh, vs) ?? <Avatar p={p} name={id.name} bot={id.bot} />}</div>
+                  <figcaption>{id.name}{id.bot && <small className="vs-bot" data-testid={`vs-bot-${p.key}`}>BOT</small>}</figcaption>
+                </figure>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-function Avatar({ p }: { p: SpotPlayer }) {
-  return <div className="vs-avatar" data-testid={`vs-avatar-${p.key}`}><span>{p.name.trim().charAt(0).toUpperCase() || '?'}</span>{p.seat?.kind === 'bot' && <small>BOT</small>}</div>;
+function Avatar({ p, name, bot }: { p: SpotPlayer; name: string; bot: boolean }) {
+  return <div className="vs-avatar" data-testid={`vs-avatar-${p.key}`}><span>{name.trim().charAt(0).toUpperCase() || '?'}</span>{bot && <small className="vs-bot">BOT</small>}</div>;
 }
 
 /** the player's live camera as a muted video element, or null (bot, camera off, not connected, hidden) */

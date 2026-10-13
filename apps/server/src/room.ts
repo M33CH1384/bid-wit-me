@@ -25,7 +25,7 @@ export const ROOM_DATA_VERSION = 1;
 export type SeatSlot =
   | { kind: 'empty' }
   /** vacated: a bot that took over from a player who left / was kicked / went AFK (always open to spectators) */
-  | { kind: 'bot'; name: string; level: BotLevel; vacated?: boolean }
+  | { kind: 'bot'; name: string; level: BotLevel; vacated?: boolean; /** display name of the human this bot replaced */ was?: string }
   | { kind: 'human'; playerId: string };
 
 export interface Member {
@@ -325,7 +325,7 @@ export class Room {
     }
     for (let i = 0; i < n; i++) {
       const r = t.reserved[i];
-      if (d.seats[i]!.kind === 'empty') d.seats[i] = { kind: 'bot', name: r ? `${r.name} (bot)`.slice(0, 20) : this.botName(), level: 'pro' };
+      if (d.seats[i]!.kind === 'empty') d.seats[i] = { kind: 'bot', name: r ? `${r.name} (bot)`.slice(0, 20) : this.botName(), level: 'pro', ...(r ? { was: r.name } : {}) };
     }
     // nobody showed at all: no grace, the bots play it out right away
     if (this.humansConnected() === 0) t.emptySince = this.io.now() - TOURNAMENT_EMPTY_GRACE_MS;
@@ -389,7 +389,7 @@ export class Room {
     const drop = d.members[dropId]!;
     const keep = d.members[keepId]!;
     if (drop.seat !== null && drop.seat !== keep.seat) {
-      d.seats[drop.seat] = d.phase === 'playing' ? { kind: 'bot', name: this.botName(), level: d.botLevel, vacated: true } : { kind: 'empty' };
+      d.seats[drop.seat] = d.phase === 'playing' ? this.botSeat(drop.name) : { kind: 'empty' };
     }
     for (const [cid, p] of this.conns) if (p === dropId) this.conns.set(cid, keepId);
     if (d.hostId === dropId) d.hostId = keepId;
@@ -785,6 +785,11 @@ export class Room {
     if (!isHost) throw new RoomError('NOT_HOST', 'Only the host can do that');
   }
 
+  /** A bot taking a human's seat mid-game. `was` keeps their name for the game-over screen. */
+  private botSeat(was: string): SeatSlot {
+    return { kind: 'bot', name: this.botName(), level: this.data.botLevel, vacated: true, was };
+  }
+
   private botName(): string {
     const used = new Set(this.data.seats.flatMap((s) => (s.kind === 'bot' ? [s.name] : [])));
     for (const m of Object.values(this.data.members)) used.add(m.name);
@@ -800,7 +805,7 @@ export class Room {
     if (m.seat !== null && d.phase === 'playing') this.reportAbandoned(pid);
     if (m.seat !== null) {
       // mid-game the seat goes to a bot so the others can finish; in the lobby it just opens up
-      d.seats[m.seat] = d.phase === 'playing' ? { kind: 'bot', name: this.botName(), level: d.botLevel, vacated: true } : { kind: 'empty' };
+      d.seats[m.seat] = d.phase === 'playing' ? this.botSeat(m.name) : { kind: 'empty' };
     }
     delete d.members[pid];
     d.ready = d.ready.filter((x) => x !== pid);
@@ -837,7 +842,7 @@ export class Room {
     const d = this.data;
     const m = d.members[target];
     if (!m) return;
-    if (m.seat !== null) d.seats[m.seat] = d.phase === 'playing' ? { kind: 'bot', name: this.botName(), level: d.botLevel, vacated: true } : { kind: 'empty' };
+    if (m.seat !== null) d.seats[m.seat] = d.phase === 'playing' ? this.botSeat(m.name) : { kind: 'empty' };
     delete d.members[target];
     if (d.votes) delete d.votes[target];
     d.ready = d.ready.filter((x) => x !== target);
@@ -1347,7 +1352,7 @@ export class Room {
     const limit = d.afkLimit ?? DEFAULT_AFK_LIMIT;
     if (!limit || m.timeouts < limit || d.seats[seat]?.kind !== 'human') return;
     const bot = this.botName();
-    d.seats[seat] = { kind: 'bot', name: bot, level: d.botLevel };
+    d.seats[seat] = { kind: 'bot', name: bot, level: d.botLevel, was: m.name };
     m.seat = null;
     m.timeouts = 0;
     if (d.votes) delete d.votes[pid];
@@ -1408,7 +1413,7 @@ export class Room {
     const d = this.data;
     const seats: SeatInfo[] = d.seats.slice(0, d.rules.playerCount).map((s) => {
       if (s.kind === 'empty') return { kind: 'empty' };
-      if (s.kind === 'bot') return { kind: 'bot', name: s.name, level: s.level };
+      if (s.kind === 'bot') return { kind: 'bot', name: s.name, level: s.level, ...(s.was ? { was: s.was } : {}) };
       const m = d.members[s.playerId];
       return { kind: 'human', playerId: s.playerId, name: m?.name ?? 'Player', connected: this.isConnected(s.playerId), media: m?.media ?? { cam: false, mic: false } };
     });

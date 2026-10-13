@@ -1,6 +1,6 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { memo, useLayoutEffect, useMemo, useRef } from 'react';
-import { Color, type Group, type Material, type Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Quaternion, type Texture, Vector3 } from 'three';
+import { Color, type Group, type Material, type Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NoToneMapping, Quaternion, type Texture, Vector3, type WebGLRenderer } from 'three';
 import { cardFaceFragment } from './cardSat';
 import { cardGeometry, cardOutlineGeometry } from './geometry';
 import { ILLEGAL_COLOR, RAISE_S, applyFaceDepthBias, cardMeshPaint, liftEase, screenRaise } from './handLift';
@@ -63,9 +63,11 @@ const DIM_SAT = 0.3;
 function withSaturation<M extends MeshStandardMaterial>(m: M): M & { userData: { sat: { value: number } } } {
   const sat = { value: 1 };
   m.userData.sat = sat;
-  m.onBeforeCompile = (sh) => {
+  m.onBeforeCompile = (sh, renderer) => {
     sh.uniforms.uSat = sat;
-    sh.fragmentShader = cardFaceFragment(sh.fragmentShader);
+    // Tone-mapped programs declare uSat above the prefix functions. Otherwise the user shader has to.
+    const toneMapped = (renderer as WebGLRenderer).toneMapping !== NoToneMapping;
+    sh.fragmentShader = cardFaceFragment(sh.fragmentShader, !toneMapped);
   };
   m.customProgramCacheKey = () => 'card-sat';
   return m as M & { userData: { sat: { value: number } } };
@@ -114,15 +116,21 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   }, [back, quality, lit]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Your turn: cards you can't play sit at 55% brightness (still readable); playable cards stay at full colour
-  // and get a gold ring on their own rounded edge. Both ease in ~150 ms. The ring is also a tip mark.
-  const glowMat = useMemo(() => new MeshBasicMaterial({ color: '#f5c542', transparent: true, opacity: 0, depthWrite: false, toneMapped: false }), []);
+  // and get a gold ring on their own rounded edge. The face eases in ~150 ms. The ring is also a tip mark.
+  // The ring stays opaque and is drawn before this card's face (render order just under the body).
+  // A transparent ring is painted after every opaque face, then depth-tested against the face's
+  // polygon offset, and iPhone's 16-bit buffer fails that test — so the outline survived only on
+  // the selected card, which sits closer. Opaque, with no depth write, the face covers the inside
+  // of the stroke and the outer edge stays gold on every playable card.
+  const glowMat = useMemo(() => new MeshBasicMaterial({ color: '#f5c542', transparent: false, opacity: 1, depthWrite: false, toneMapped: false }), []);
   const edge = useMemo(() => edgeMat.clone(), []);
   // The root group keeps `order` for taps. Child groups reset Three.js groupOrder, so each mesh
   // carries its own: body at `order`, face and back half a step later, tip glow just behind.
   // Depth testing stays on. The face is FACE_CAP_GAP ahead of the cap and biased in window
-  // depth, so a 16-bit buffer cannot paint the cream cap over the pips. The gold ring is
-  // OUTLINE_AHEAD in front of that face, or the same bias hides it on iPhone. Neighbours lose
-  // because a playable card is nudged toward the camera (LEGAL_NEAR).
+  // depth, so a 16-bit buffer cannot paint the cream cap over the pips. The gold ring is opaque
+  // and one step earlier than the body, and it still sits OUTLINE_AHEAD of the face so a later
+  // depth test cannot bury the stroke. Neighbours lose because a playable card is nudged toward
+  // the camera (LEGAL_NEAR).
   useLayoutEffect(() => {
     const root = ref.current;
     if (!root) return;
@@ -272,7 +280,6 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     if (Math.abs(c.r - L.target.r) + Math.abs(c.g - L.target.g) + Math.abs(c.b - L.target.b) > 0.004) { c.lerp(L.target, k); invalidate(); } else c.copy(L.target);
     const sat = frontMat.userData.sat as { value: number } | undefined;
     if (sat && Math.abs(sat.value - L.sat) > 0.01) { sat.value += (L.sat - sat.value) * k; invalidate(); } else if (sat) sat.value = L.sat;
-    if (Math.abs(glowMat.opacity - L.glow) > 0.01) { glowMat.opacity += (L.glow - glowMat.opacity) * k; invalidate(); } else glowMat.opacity = L.glow;
     if (!applyTornado(g)) applyBlast(g);
     const s = tw.current;
     const poseOk = (x: Xform) => x.p.every(Number.isFinite) && x.q.every(Number.isFinite) && Number.isFinite(x.s);
@@ -395,7 +402,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
         <mesh geometry={geo.body} material={edge} castShadow={castShadow} />
         <mesh geometry={geo.front} material={frontMat} />
         <mesh geometry={geo.back} material={backMat} />
-        {frontTex && <mesh geometry={cardOutlineGeometry()} material={glowMat} visible={glowMat.opacity > 0.01 || !!glow} renderOrder={-1} />}
+        {frontTex && <mesh geometry={cardOutlineGeometry()} material={glowMat} visible={!!glow} renderOrder={-1} />}
       </group>
       </group>
     </group>
