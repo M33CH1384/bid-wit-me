@@ -251,12 +251,43 @@ describe('trick play legality', () => {
     let st = play(start(), 'AH');
     expect(legalPlays(st, 1).every((c) => c[1] === 'H')).toBe(true);
     expectRuleError(() => applyAction(st, { type: 'play', seat: 1, card: '4S' }), 'MUST_FOLLOW_SUIT');
-    expectRuleError(() => applyAction(st, { type: 'play', seat: 0, card: '3H' }), 'NOT_YOUR_TURN');
+    expectRuleError(() => applyAction(st, { type: 'play', seat: 0, card: '3H' }), 'ALREADY_PLAYED');
     st = play(st, 'KH');
     // seat 2 has no hearts → any card
     expect(legalPlays(st, 2)).toHaveLength(13);
     st = play(st, '5C');
     expectRuleError(() => applyAction(st, { type: 'play', seat: 3, card: 'XX' as Card }), 'CARD_NOT_IN_HAND');
+  });
+
+  it('rejects a second card from a seat that already played in this trick', () => {
+    const st = play(start(), 'AH');
+    expect(st.trick.plays).toEqual([{ seat: 0, card: 'AH' }]);
+    // Turn has moved, and the turn pointer is also forced back: either way the other card stays in hand.
+    expectRuleError(() => applyAction(st, { type: 'play', seat: 0, card: '3H' }), 'ALREADY_PLAYED');
+    expectRuleError(() => applyAction({ ...st, turn: 0 }, { type: 'play', seat: 0, card: '3H' }), 'ALREADY_PLAYED');
+    expect(st.trick.plays).toHaveLength(1);
+    expect(st.hands[0]).toContain('3H');
+    expect(st.hands[0]).not.toContain('AH');
+  });
+
+  it('treats a repeat of the card already in the trick as the same play', () => {
+    const st = play(start(), 'AH');
+    const again = applyAction(st, { type: 'play', seat: 0, card: 'AH' });
+    expect(again).toBe(st);
+    expect(again.trick.plays).toEqual([{ seat: 0, card: 'AH' }]);
+    const forced = applyAction({ ...st, turn: 0 }, { type: 'play', seat: 0, card: 'AH' });
+    expect(forced.trick.plays).toEqual([{ seat: 0, card: 'AH' }]);
+    expect(forced.hands[0]).not.toContain('AH');
+  });
+
+  it('rejects a play when it is not that seat\'s turn', () => {
+    const st = start();
+    expect(st.turn).toBe(0);
+    expectRuleError(() => applyAction(st, { type: 'play', seat: 1, card: 'KH' }), 'NOT_YOUR_TURN');
+    expectRuleError(() => applyAction(st, { type: 'play', seat: 2, card: '5C' }), 'NOT_YOUR_TURN');
+    expect(st.trick.plays).toEqual([]);
+    expect(st.hands[1]).toContain('KH');
+    expect(st.hands[2]).toContain('5C');
   });
   it('trumping in breaks spades; highest trump wins; the winner leads next', () => {
     const fixed: Card[][] = [

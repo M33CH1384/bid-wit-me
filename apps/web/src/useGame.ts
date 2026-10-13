@@ -56,7 +56,7 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
     return () => clearTimeout(t);
   }, [introHand, k]);
 
-  const apply = useCallback((action: Action) => {
+  const apply = useCallback((action: Action): boolean => {
     const prev = stRef.current;
     try {
       const next = applyAction(prev, action);
@@ -65,8 +65,10 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
       if (next.tricks.length > prev.tricks.length) setPause(true);
       stRef.current = next;
       setSt(next);
+      return next !== prev;
     } catch (e) {
       setError((e as Error).message);
+      return false;
     }
   }, []);
 
