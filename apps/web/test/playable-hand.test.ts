@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MeshStandardMaterial, Quaternion, Vector3 } from 'three';
-import { FACE_POLYGON_OFFSET, GROUP_PAD_PX, GROUP_RADIUS_PX, LEGAL_LIFT_PX, LEGAL_NEAR, applyFaceDepthBias, cardMeshPaint, cardPartOrder, cssPxToPlane, fanGapPx, handRenderOrder, hitsInPaintOrder, raiseLocalY, screenRaise } from '../src/three/handLift';
+import { FACE_POLYGON_OFFSET, GROUP_PAD_PX, GROUP_RADIUS_PX, LEGAL_LIFT_PX, LEGAL_NEAR, RING_ABOVE, applyFaceDepthBias, cardMeshPaint, cardPartOrder, cssPxToPlane, fanGapPx, handRenderOrder, hitsInPaintOrder, raiseLocalY, screenRaise } from '../src/three/handLift';
 import { FACE_CAP_GAP, fanLayout, handCardPlane, handFan, makeCamera } from '../src/three/layout';
 import { cardGeometry } from '../src/three/geometry';
 import { contourContains, groupOutline, haloLocal, placeOnPlane, planePointOk, unionContours } from '../src/three/playableOutline';
@@ -35,7 +35,9 @@ describe('a tap hits the card you see', () => {
     // The face draws after the back, so a tied 16-bit depth shows the pips and not the BWM back.
     expect(face.renderOrder).toBeGreaterThan(back.renderOrder);
     expect(FACE_POLYGON_OFFSET.factor).toBe(0);
-    expect(glow.renderOrder).toBe(order - 1);
+    expect(glow.renderOrder).toBe(order + RING_ABOVE);
+    expect(glow.depthTest).toBe(false);
+    expect(glow.renderOrder).toBeGreaterThan(cardMeshPaint(handRenderOrder(16, true), 'face').renderOrder);
     expect(face.depthTest).toBe(true);
     expect(body.depthTest).toBe(true);
     expect(cardPartOrder('face', order)).toBeGreaterThan(cardPartOrder('edge', order));

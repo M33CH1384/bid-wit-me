@@ -8,7 +8,8 @@ import { CH } from './layout';
  * (`handRenderOrder`, `handDepthOpts`), not the translate.
  */
 
-export const LEGAL_LIFT_PX = 14;
+/** Clear of the fan. 14px was a sliver once the cards overlap. */
+export const LEGAL_LIFT_PX = 28;
 export const ILLEGAL_DROP_PX = 4;
 export const SELECT_LIFT_PX = 10;
 /** Group outline fade, in seconds. The cards themselves rise on RAISE_S. */
@@ -60,7 +61,7 @@ export const GROUP_GAP_PX = 8;
 export const LEGAL_STACK = 100;
 /**
  * A selected card draws after every other hand card. 400 clears a 17-card fan
- * (face is order + 0.5, ring is order − 1) and the unused group outline at LEGAL_STACK + 40.
+ * (face is order + 0.5, ring is order + RING_ABOVE) and the unused group outline at LEGAL_STACK + 40.
  */
 export const SELECT_STACK = 400;
 
@@ -76,6 +77,18 @@ export const ILLEGAL_COLOR: readonly [number, number, number] = [
   DIM_AT_60[1] * DIM_SCALE,
   DIM_AT_60[2] * DIM_SCALE,
 ];
+/** Saturation of a card you cannot play. 1 leaves the texture alone. */
+export const ILLEGAL_SAT = 0.3;
+
+const FULL_COLOR: readonly [number, number, number] = [1, 1, 1];
+
+/**
+ * What the face shader should show. Legal and off-turn cards share full colour.
+ * Only an illegal card drops toward grey. A turn must not tint the cards you can play.
+ */
+export function faceLook(dim: boolean): { color: readonly [number, number, number]; sat: number } {
+  return dim ? { color: ILLEGAL_COLOR, sat: ILLEGAL_SAT } : { color: FULL_COLOR, sat: 1 };
+}
 
 export type HandPose = 'flat' | 'illegal' | 'legal' | 'selected';
 export type HandStack = 'rest' | 'play' | 'selected';
@@ -173,13 +186,24 @@ export function applyFaceDepthBias(material: { polygonOffset: boolean; polygonOf
 /**
  * Paint state for one mesh of a card.
  * A child group resets Three.js groupOrder, so the group's renderOrder never decides the draw.
- * Depth testing stays on. The face is FACE_CAP_GAP in front of the cap and polygon-offset
+ * The face keeps the depth test: it is FACE_CAP_GAP in front of the cap and polygon-offset
  * toward the camera, and half a step later in render order, so the cap cannot cover the pips.
+ * A ring drawn just under its own face is covered wherever the next card overlaps it,
+ * so a run of legal cards reads as one outline around the group. The ring instead draws
+ * RING_ABOVE past its band: past every peer face in a 17-card hand, and still under the
+ * selected card's face (SELECT_STACK is 400, a legal face tops out near 116).
  */
-export function cardMeshPaint(order: number, part: 'edge' | 'back' | 'face' | 'glow'): { renderOrder: number; depthTest: true } {
+export const RING_ABOVE = 40;
+
+export function cardMeshPaint(order: number, part: 'edge' | 'back' | 'face' | 'glow'): { renderOrder: number; depthTest: boolean } {
   // The face draws after the back. A 16-bit tie used to keep whichever mesh sorted last,
   // and that was the BWM back for every card except the one pulled forward by a selection.
-  const renderOrder = part === 'glow' ? order - 1 : part === 'edge' ? order : part === 'back' ? order + 0.25 : order + 0.5;
+  if (part === 'glow') {
+    // Depth test off: the card on the right is closer, and it would hide this stroke
+    // even when the ring is painted later. The hole in the ring leaves the pips alone.
+    return { renderOrder: order + RING_ABOVE, depthTest: false };
+  }
+  const renderOrder = part === 'edge' ? order : part === 'back' ? order + 0.25 : order + 0.5;
   return { renderOrder, depthTest: true };
 }
 
