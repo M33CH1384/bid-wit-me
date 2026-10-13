@@ -92,7 +92,8 @@ describe('shotCovers', () => {
     const set = hand(joker, [4, 5, 2, 3], [4, 1, 2, 2], 2);
     const nils = hand(joker, ['nil', 'nil', 'nil', 'nil'], [0, 0, 0, 0], 3);
     const later = hand(joker, [3, 4, 3, 4], [3, 1, 3, 2], 4);
-    expect(shotCovers(joker, [clear, set, nils])[1]).toEqual({ tape: true, sheet: false, siren: false });
+    // A made Nil leaves the team safe, so the tape from the set comes off. The next set is a fresh shot, not a loss.
+    expect(shotCovers(joker, [clear, set, nils])[1]).toEqual({ tape: false, sheet: false, siren: false });
     expect(shotOutSides(joker, 4, [false, true], [false, false])).toEqual([]);
     expect(shotCovers(joker, [clear, set, nils, later])[1]).toEqual({ tape: true, sheet: false, siren: false });
   });

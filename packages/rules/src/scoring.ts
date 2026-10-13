@@ -223,13 +223,18 @@ export function shotCounts(r: TableRules, history: readonly { bids: readonly Bid
   return counts;
 }
 
-/** The side made its books: a made contract, or a books hand that reached the host minimum. */
+/**
+ * The side made its books: a made contract, a books hand that reached the host minimum,
+ * or a made Nil when the team is safe this hand (no set, no busted Nil). That last case takes the tape off.
+ */
 function madeItsBooks(r: TableRules, bids: readonly Bid[], side: SideHandResult): boolean {
   if (isBooksHand(bids)) {
     const min = hostMinimum(r);
     return min === 0 || side.tricks >= min;
   }
-  return side.contractMade === true;
+  if (side.contractMade === false) return false;
+  if (side.contractMade === true) return true;
+  return r.partnerships && side.nils.length > 0 && side.nils.every((n) => n.made);
 }
 
 /**
@@ -238,7 +243,7 @@ function madeItsBooks(r: TableRules, bids: readonly Bid[], side: SideHandResult)
  * It does not count shots across the whole game.
  */
 export interface ShotCover {
-  /** Caution tape after a non-losing shot, and also on a hand-1 loss (together with the sheet). Off once a later hand makes its books. */
+  /** Caution tape after a non-losing shot, and also on a hand-1 loss (together with the sheet). Off once a later hand makes its books, including a made Nil when the team is safe. */
   tape: boolean;
   /** White sheet only for an elimination: a hand-1 shot-out, or a later shot while the previous hand was a shot. */
   sheet: boolean;
@@ -321,9 +326,10 @@ export function tricksStillRemaining(st: { rules: TableRules; tricks: { length: 
 }
 
 /**
- * Sides exactly one trick from being shot: books still needed equals tricks still remaining,
- * so losing one more trick makes the contract (or the first-hand minimum) unreachable.
- * A Nil does not get this pump. It only changes which tricks count toward the partner's contract.
+ * Sides in the shotgun-pump window. A numeric contract is here when books still needed equal
+ * tricks still remaining, so one more loss makes the contract (or the first-hand minimum) unreachable.
+ * In 2v2 a Nil or Blind Nil bidder who still has zero books is here too: one book busts that Nil.
+ * Taking a book leaves the window. Cutthroat Nil is not a shot, so it does not pump.
  */
 export function sidesOneTrickFromShot(st: {
   phase: string;
@@ -338,7 +344,9 @@ export function sidesOneTrickFromShot(st: {
   const out: number[] = [];
   for (let side = 0; side < sideCount(st.rules); side++) {
     const needed = booksStillNeeded(st.rules, st.bids, st.tricksWon, side);
-    if (needed !== null && needed > 0 && needed === remaining) out.push(side);
+    const onEdge = needed !== null && needed > 0 && needed === remaining;
+    const nilLive = st.rules.partnerships && sideSeats(side, st.rules).some((seat) => isNilBid(st.bids[seat]) && (st.tricksWon[seat] ?? 0) === 0);
+    if (onEdge || nilLive) out.push(side);
   }
   return out;
 }

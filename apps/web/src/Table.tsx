@@ -756,8 +756,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
   useEffect(() => { setSelected(null); }, [st.turn, st.handNo]);
   // Pump and the Nil-bust shotgun both come from the shared state, so every online client hears each once.
-  // The pump is the moment a side is exactly one trick from a shot. A busted Nil has no pump; its shotgun
-  // plays when the trick that gives that Nil bidder their first book resolves. Mute and volume are the bus.
+  // The pump is one book from a shot: a contract on the edge, or a Nil bidder still sitting at zero books.
+  // The shotgun plays when the trick that gives that Nil bidder their first book resolves. Mute and volume are the bus.
   const pumpPrev = useRef<GameState | null>(null);
   const pumpedSides = useRef<Set<number>>(new Set());
   const nilBusted = useRef<Set<number>>(new Set());
