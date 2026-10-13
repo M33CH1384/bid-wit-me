@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { type Card, type GameState, type PlayerView, SUIT_NAME, type Suit, booksHand, cardLabel, cardPower, effectiveSuit, handSize, hostMinimum, isTrump, shotOutOn, sideOf, trumpOrder } from '@spades/rules';
+import { promotedTrumpLabels } from './trumpLadder';
 import { TERM_ORDER, type TermKey, glossary, parseTerms, topTrumps, trumpWords } from './glossary';
 import { TIP_MAX_SHOWS, bumpTip, tipCount, tipDurationMs } from './tips';
 
@@ -67,8 +68,11 @@ export function tipsFor(c: CoachCtx): Tip[] {
       ? `Your ${label(best)} ${effectiveSuit(best, r) === 'S' && best.endsWith('S') ? 'is a spade' : 'counts as a spade'} (a {trump}): it beats every heart, diamond and club.`
       : bestAce ? `Your ${label(bestAce)} is the {highest|high} ${SUIT_NAME[effectiveSuit(bestAce, r)].toLowerCase().replace(/s$/, '')}.` : '';
   const handMark = bestIsTop || (best && isTrump(best, r)) ? best : bestAce;
-  const rankLine = jokers
-    ? `{Bigger cards|high} win: 2 is lowest, Ace highest, and the Jokers${order.some((x) => x === '2D') ? ', 2♦' : ''}${order.some((x) => x === '2S') ? ' and 2♠' : ''} beat everything.`
+  const aboveAce = promotedTrumpLabels(r);
+  const rankExtras = [...(jokers ? ['the Jokers'] : []), ...aboveAce];
+  const rankList = rankExtras.length > 1 ? `${rankExtras.slice(0, -1).join(', ')} and ${rankExtras[rankExtras.length - 1]}` : rankExtras[0] ?? '';
+  const rankLine = rankList
+    ? `{Bigger cards|high} win: 2 is lowest, Ace highest, and ${rankList} beat everything.`
     : '{Bigger cards|high} win: 2 is lowest, Ace is highest.';
   // the cut tip: trumps you could cut with vs. low cards you could throw away
   const throwaways = hand.filter((x) => !isTrump(x, r) && c.legal.includes(x)).sort((a, b) => cardPower(a, r) - cardPower(b, r)).slice(0, 2);
