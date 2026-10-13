@@ -488,7 +488,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // offline trash talk: same engine as the server
   useEffect(() => {
     if (online) return;
-    offlineTalk.table = { seats: names.map((nm, i) => ({ name: nm, bot: i !== HUMAN })), partnerships: r.partnerships, teamNames: Array.from({ length: st.scores.length }, (_, i) => sideName(r, i, names)), intensity, jokers: r.deck === 'joker54' };
+    offlineTalk.table = { seats: names.map((nm, i) => ({ name: nm, bot: i !== HUMAN })), partnerships: r.partnerships, teamNames: Array.from({ length: st.scores.length }, (_, i) => sideName(r, i, names)), intensity, jokers: r.deck === 'joker54', spadesBroken: st.spadesBroken };
   });
   useEffect(() => {
     if (online) return;

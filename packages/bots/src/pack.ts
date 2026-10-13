@@ -146,7 +146,7 @@ export const PACK: PackSection[] = [
     'Somebody get the camera. This was historic!',
   ] },
   { kind: 'hypePartner', group: ['loud', 'all'], lines: ['Talk that talk!', 'I got you, partner!', 'Run that!'] },
-  { kind: 'prePlay', group: ['loud', 'petty', 'all'], lines: ['We playing house rules!', "Spades ain't broke!"] },
+  { kind: 'prePlay', group: ['loud', 'petty', 'all'], lines: ['We playing house rules!', "Spades ain't broke! @unbroken"] },
   { kind: 'roast', group: ['petty', 'quiet', 'all'], lines: [
     '!Your Spades license has been revoked.', "!I ain't playing against you. I'm babysitting.", 'You got cooked, seasoned, and served.',
     '!You need a tutorial before you need a rematch.', 'Even the computer would\'ve played that better.', "You just made that card everybody else's problem.",

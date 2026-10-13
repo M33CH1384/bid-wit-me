@@ -50,6 +50,8 @@ export interface TalkTable {
   intensity?: TalkIntensity;
   /** Joker deck (gates '@jk' lines) */
   jokers?: boolean;
+  /** Live: spades have been broken. Read at the moment a line is chosen. Gates '@unbroken'. */
+  spadesBroken?: boolean;
 }
 export interface TalkState {
   lastAt: number; seatAt: number[]; revealed: number[]; recent: string[];
@@ -141,6 +143,7 @@ function condOk(meta: LineMeta | undefined, ev: TalkEvent, t: TalkTable): boolea
     case 'big': return ev.card === 'BJ';
     case 'little': return ev.card === 'LJ';
     case 'jk': return t.jokers !== false;
+    case 'unbroken': return t.spadesBroken !== true;
   }
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BOT_NAMES, COMMON, PERSONAS, TALK, botTalk, leanBid, maskMild, newTalkState, personaForName, personaTag, prePlayLine, type TalkTable } from '../src';
+import { BOT_NAMES, COMMON, LINE_META, PACK_OWNERS, PERSONAS, TALK, botTalk, leanBid, maskMild, newTalkState, personaForName, personaTag, poolFor, prePlayLine, type PersonaId, type TalkTable } from '../src';
 
 const rng = (seed = 1) => { let x = seed; return () => { x = (x * 1103515245 + 12345) % 2 ** 31; return x / 2 ** 31; }; };
 const nameFor = (p: string) => BOT_NAMES.find((n) => personaForName(n) === p)!;
@@ -59,6 +59,24 @@ describe('bot trash talk', () => {
     expect(l.seat).toBe(2);
     expect(l.text).toContain('DEE');
     expect(l.text).not.toMatch(/\{\w+\}/);
+  });
+  it("does not say spades ain't broke once spades are broken", () => {
+    expect(LINE_META["Spades ain't broke!"]?.cond).toBe('unbroken');
+    const owners = PACK_OWNERS["Spades ain't broke!"] ?? [];
+    const persona = owners.find((p) => p !== 'hustler' && p !== 'silent' && !PERSONAS[p].caps);
+    expect(persona).toBeTruthy();
+    const speaker = nameFor(persona as PersonaId);
+    const every = poolFor(persona as PersonaId, 'prePlay', 'cookout');
+    expect(every).toContain("Spades ain't broke!");
+    const names = ['You', speaker, nameFor('og'), nameFor('coach')];
+    const openState = newTalkState();
+    openState.used = { [`${persona}:prePlay`]: every.filter((l) => l !== "Spades ain't broke!") };
+    const open = prePlayLine(openState, { ...table(names), spadesBroken: false }, 1, 1_000_000, () => 0);
+    expect(open?.text.toLowerCase()).toBe("spades ain't broke!");
+    const shutState = newTalkState();
+    shutState.used = { [`${persona}:prePlay`]: every.filter((l) => l !== "Spades ain't broke!") };
+    const shut = prePlayLine(shutState, { ...table(names), spadesBroken: true }, 1, 1_000_000, () => 0);
+    expect(shut?.text.toLowerCase() ?? '').not.toBe("spades ain't broke!");
   });
   it('Hustler bids conservatively while acting, never below 1; clean talk masks mild cursing', () => {
     const h = nameFor('hustler');

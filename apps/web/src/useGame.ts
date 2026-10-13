@@ -125,7 +125,7 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
       const leaned = offlineTalk.lean(action);
       if (leaned !== action) { try { applyAction(st, leaned); action = leaned; } catch { /* keep the original */ } }
       // sometimes a bot talks before it plays, then a short beat before the card lands
-      if (action.type === 'play' && offlineTalk.prePlay(turn.seat)) { const a = action; t2 = window.setTimeout(() => apply(a), 900 * Math.max(0.6, k)); }
+      if (action.type === 'play' && offlineTalk.prePlay(turn.seat, st.spadesBroken)) { const a = action; t2 = window.setTimeout(() => apply(a), 900 * Math.max(0.6, k)); }
       else apply(action);
     }, delay);
     return () => { clearTimeout(t); clearTimeout(t2); };

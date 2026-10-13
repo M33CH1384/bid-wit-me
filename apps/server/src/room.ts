@@ -1015,7 +1015,7 @@ export class Room {
     const d = this.data;
     const n = d.rules.playerCount;
     const seats = d.seats.slice(0, n).map((s, i) => ({ bot: s.kind === 'bot', name: s.kind === 'human' ? (d.members[s.playerId]?.name ?? 'Player') : s.kind === 'bot' ? s.name : `Seat ${i + 1}` }));
-    return { seats, partnerships: d.rules.partnerships, teamNames: this.sideNames(), intensity: d.talkIntensity ?? 'cookout', jokers: d.rules.deck === 'joker54' };
+    return { seats, partnerships: d.rules.partnerships, teamNames: this.sideNames(), intensity: d.talkIntensity ?? 'cookout', jokers: d.rules.deck === 'joker54', spadesBroken: d.game?.spadesBroken === true };
   }
 
   /** a game moment → maybe one bot line (cooldowns live in the talk state) */

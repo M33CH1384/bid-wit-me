@@ -18,8 +18,13 @@ export const offlineTalk = {
     for (const ev of momentsFor(before, action, after)) this.emit(botTalk(this.state, this.table!, ev, performance.now(), Math.random));
   },
   moment(ev: Parameters<typeof botTalk>[2]) { if (this.on()) this.emit(botTalk(this.state, this.table!, ev, performance.now(), Math.random)); },
-  /** before a bot plays: maybe a line (never sees the card); true = give it a beat */
-  prePlay(seat: number): boolean { return this.on() && this.emit(prePlayLine(this.state, this.table!, seat, performance.now(), Math.random)); },
+  /** before a bot plays: maybe a line (never sees the card); true = give it a beat.
+   * `spadesBroken` is the game's flag at this call, not a value cached from an earlier turn. */
+  prePlay(seat: number, spadesBroken: boolean): boolean {
+    if (!this.on() || !this.table) return false;
+    this.table = { ...this.table, spadesBroken };
+    return this.emit(prePlayLine(this.state, this.table, seat, performance.now(), Math.random));
+  },
   lean(action: Action): Action {
     const t = this.table;
     if (!t || action.type !== 'bid') return action;

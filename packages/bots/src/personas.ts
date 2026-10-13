@@ -50,7 +50,7 @@ export type TalkKind =
 export type PersonaId = 'professor' | 'mama' | 'hype' | 'petty' | 'og' | 'hustler' | 'silent'
   | 'deacon' | 'conspiracy' | 'barber' | 'gambler' | 'hothead' | 'comedian' | 'lilcuz' | 'coach' | 'smooth' | 'storyteller' | 'influencer' | 'sorelose';
 export type TalkIntensity = 'family' | 'cookout' | 'nomercy';
-export type LineCond = 'ace' | 'neg' | 'big' | 'little' | 'jk';
+export type LineCond = 'ace' | 'neg' | 'big' | 'little' | 'jk' | 'unbroken';
 /** per raw line: minimum intensity and an event condition (lines without an entry are Family Friendly, unconditional) */
 export interface LineMeta {
   min?: 'cookout' | 'nomercy'; cond?: LineCond;
@@ -541,7 +541,7 @@ for (const sec of PACK) {
     if (m) { only = m[1]!.split(',') as PersonaId[]; raw = raw.slice(m[0].length); }
     const meta: LineMeta = {};
     if (raw.startsWith('!!')) { meta.min = 'nomercy'; raw = raw.slice(2); } else if (raw.startsWith('!')) { meta.min = 'cookout'; raw = raw.slice(1); }
-    const c = / @(ace|neg|big|little|jk)$/.exec(raw);
+    const c = / @(ace|neg|big|little|jk|unbroken)$/.exec(raw);
     if (c) { meta.cond = c[1] as LineCond; raw = raw.slice(0, c.index); }
     // one style group per line, rotating through the section's groups; 2 owners, 3 for every third line
     let owners = only;
