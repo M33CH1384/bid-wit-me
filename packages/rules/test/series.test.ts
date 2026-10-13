@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type GameState, addSeriesGame, makeRules, newGame, seriesSides, seriesTally, summarizeGame } from '../src';
+import { type GameState, addSeriesGame, makeRules, newGame, seriesForGameStart, seriesSides, seriesTally, summarizeGame } from '../src';
 
 const fakeOver = (st: GameState, scores: number[], winners: number[]): GameState => ({
   ...st, phase: 'gameOver', scores, result: { endReason: 'target', finalScores: scores, placements: scores.map(() => 1), winners },
@@ -49,6 +49,23 @@ describe('rematch series', () => {
     const s2 = addSeriesGame(s1, 'joker', swapped, g);
     expect(s2.games).toHaveLength(1);
     expect(s2.note).toMatch(/teams changed/);
+  });
+  it('a new game starts at 0–0; resuming the series keeps a stored 0–2', () => {
+    const loss = summarizeGame(fakeOver(st, [100, 510], [1]), ['Us', 'Them'], 1, 1);
+    let stored = addSeriesGame(null, 'joker', sides, loss);
+    stored = addSeriesGame(stored, 'joker', sides, loss);
+    expect(seriesTally(stored)).toBe('0–2');
+    // Fresh game: the stored tally is not the one this game records onto.
+    const opened = seriesForGameStart(stored, false);
+    expect(opened).toBeNull();
+    const fresh = addSeriesGame(opened, 'joker', sides, loss);
+    expect(seriesTally(fresh)).toBe('0–1');
+    expect(fresh.games).toHaveLength(1);
+    // Explicit resume (rematch / resume): the next result continues 0–2.
+    const kept = seriesForGameStart(stored, true);
+    expect(kept).toBe(stored);
+    const continued = addSeriesGame(kept, 'joker', sides, loss);
+    expect(seriesTally(continued)).toBe('0–3');
   });
   it('cutthroat: one side per player', () => {
     const ct = newGame(makeRules('cutthroat'), 'ct');

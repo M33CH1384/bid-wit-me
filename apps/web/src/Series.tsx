@@ -1,7 +1,7 @@
 /**
  * Rematch series UI: a compact "SERIES 3–1" chip (scorebug, Victory, Table Talk) that opens a sheet listing every game
  * (final scores, winner, hands, highlights) with an expandable hand-by-hand score table.
- * Offline the series lives in localStorage (kept with the game; reset when a new game starts from the menu).
+ * Offline the series lives in localStorage. A new game starts at 0–0. Rematch and resume keep it.
  */
 import { useState } from 'react';
 import { type Series, seriesTally } from '@spades/rules';

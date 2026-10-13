@@ -954,6 +954,21 @@ describe('team names, rematch series, bot trash talk', () => {
     expect(env2.errors('a').at(-1)!.code).toBe('NO_TEAMS');
   });
 
+  it('a new start opens the series at 0–0; rematch is what keeps the tally', () => {
+    const { env } = fourHumans();
+    env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: 150 }) });
+    env.send('a', { t: 'start' });
+    for (let i = 0; i < 5000 && env.room.data.phase === 'playing'; i++) if (!playTurn(env, ['a', 'b', 'c', 'd'])) env.advance(100);
+    const done = env.room.data.series!;
+    expect(done.games.length).toBeGreaterThan(0);
+    expect(done.wins.reduce((x, y) => x + y, 0)).toBe(1);
+    env.send('a', { t: 'start' });
+    const fresh = env.room.data.series!;
+    expect(fresh.games).toHaveLength(0);
+    expect(fresh.wins).toEqual([0, 0]);
+    expect(fresh.wins.join('–')).toBe('0–0');
+  });
+
   it('keeps a series across rematches, keyed by who is on each team (not the name); resets with a note when teams change', () => {
     const { env } = fourHumans();
     env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: 150 }) });
