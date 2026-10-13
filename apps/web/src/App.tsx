@@ -28,9 +28,9 @@ export default function App() {
   const offMode = game ? settingsToRules(game.settings).mode : undefined;
   usePresence(game ? { kind: 'table', mode: offMode === 'joker' || offMode === 'aceDown' ? offMode : 'cutthroat', offline: true } : { kind: 'online' });
 
-  // splash / wizard: fetch the 3D table (Scene chunk, textures, HDRI) in the background so "Deal me in" lands on it
-  // Splash keeps the idle delay (the first paint should not share the link with three). A resumed
-  // game is already on screen, so the scene chunk starts as soon as that first paint has committed.
+  // splash / wizard: cloth maps start immediately; the Scene chunk still waits for idle so the first
+  // paint does not share the link with three. A resumed game is already on screen, so that chunk
+  // starts as soon as the first paint has committed.
   useEffect(() => { preloadTable(settings.quality, settings.venue, { immediate: game !== null }); }, [settings.quality, settings.venue, game]);
   // a signed-in offline game that failed to upload stays in localStorage until the browser is online again
   useEffect(() => { watchLocalGames(); void flushLocalGames(); }, []);

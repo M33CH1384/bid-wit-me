@@ -17,12 +17,14 @@ export function tableTextureUrls(quality: 'high' | 'low'): string[] {
 }
 
 /** One shared decode per URL. Later Texture uploads reuse the same element, so nothing is fetched twice. */
-export function loadTableImage(url: string): Promise<HTMLImageElement> {
+export function loadTableImage(url: string, priority?: 'high' | 'low' | 'auto'): Promise<HTMLImageElement> {
   let pending = images.get(url);
   if (!pending) {
     pending = new Promise((resolve, reject) => {
       const img = new Image();
       img.decoding = 'async';
+      // Prefetch stays behind the Scene chunk. Once that script is done the pipe is free and these finish.
+      if (priority) img.fetchPriority = priority;
       img.onload = () => resolve(img);
       img.onerror = () => reject(new Error(`texture ${url}`));
       img.src = url;
@@ -33,5 +35,5 @@ export function loadTableImage(url: string): Promise<HTMLImageElement> {
 }
 
 export function prefetchTableTextures(quality: 'high' | 'low', extra: string[] = []): void {
-  for (const url of [...tableTextureUrls(quality), ...extra]) void loadTableImage(url).catch(() => undefined);
+  for (const url of [...tableTextureUrls(quality), ...extra]) void loadTableImage(url, 'low').catch(() => undefined);
 }
