@@ -51,6 +51,19 @@ export class FakeEnv {
     this.alarm = null;
   }
 
+  /**
+   * Hibernation: the in-memory bot wake is gone, the saved row and the storage alarm remain.
+   * A WebSocket ping does not wake the object, so nothing here calls tick until the alarm.
+   */
+  hibernate(conns: [string, string | null][]): void {
+    const alarm = this.alarm;
+    const data = JSON.parse(JSON.stringify(this.room.data)) as RoomData;
+    this.room = new Room(data, this.io(), this.timing);
+    for (const [cid, pid] of conns) this.room.restoreConnection(cid, pid);
+    this.wakes = [];
+    this.alarm = alarm;
+  }
+
   send(cid: string, msg: ClientMsg): void {
     this.room.message(cid, JSON.stringify(msg));
   }
