@@ -74,6 +74,8 @@ export interface SideHandResult {
   totalBags: number;
   /** "Shot" this hand (set, or short of the first-hand minimum). Set by the game (finishHand) when Shot = out is on. */
   shot?: boolean;
+  /** Cutthroat: this player was eliminated when the hand was scored. The sheet stays on. */
+  out?: boolean;
 }
 
 /**
@@ -221,6 +223,11 @@ export function shotCounts(r: TableRules, history: readonly { bids: readonly Bid
   return counts;
 }
 
+/** True when the host minimum is not higher than the tricks this hand will play. */
+export function minimumFits(r: TableRules, tricks: number): boolean {
+  return hostMinimum(r) <= tricks;
+}
+
 /** The side made its books: a made contract, or a books hand that reached the host minimum. */
 function madeItsBooks(r: TableRules, bids: readonly Bid[], side: SideHandResult): boolean {
   if (isBooksHand(bids)) {
@@ -265,17 +272,19 @@ export function shotCovers(
     const shot = Array.from({ length: n }, () => false);
     const made = Array.from({ length: n }, () => false);
     const scores = Array.from({ length: n }, () => 0);
+    const markedOut = new Set<number>();
     for (const side of hand.sides) {
-      shot[side.side] = isShot(r, hand.bids, side);
+      shot[side.side] = isShot(r, hand.bids, side) || side.shot === true;
       made[side.side] = madeItsBooks(r, hand.bids, side);
       scores[side.side] = side.totalScore;
+      if (side.out) markedOut.add(side.side);
     }
     const last = h === history.length - 1;
     const lost = last && result !== undefined
       ? new Set(result?.endReason === 'shotOut' ? result.shotOut ?? [] : [])
       : new Set(shotOutResult(scores, shotOutSides(r, hand.handNo, shot, prevShot))?.shotOut ?? []);
     for (let side = 0; side < n; side++) {
-      if (lost.has(side)) covers[side] = { tape: hand.handNo === 1, sheet: true, siren: true };
+      if (lost.has(side) || markedOut.has(side)) covers[side] = { tape: hand.handNo === 1, sheet: true, siren: true };
       else if (shot[side]) covers[side] = { tape: true, sheet: false, siren: false };
       else if (made[side]) covers[side] = blank();
     }
@@ -313,9 +322,9 @@ export function booksStillNeeded(r: TableRules, bids: readonly (Bid | null)[], t
   return contract - taken;
 }
 
-/** Tricks not yet won. The trick in progress still counts as remaining. */
-export function tricksStillRemaining(st: { rules: TableRules; tricks: { length: number } }): number {
-  return handSize(st.rules) - st.tricks.length;
+/** Tricks not yet won. The trick in progress still counts as remaining. A short Cutthroat table uses that hand's trick count. */
+export function tricksStillRemaining(st: { rules: TableRules; tricks: { length: number }; trickCount?: number }): number {
+  return (st.trickCount ?? handSize(st.rules)) - st.tricks.length;
 }
 
 /**
