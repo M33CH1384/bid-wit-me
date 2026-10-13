@@ -76,6 +76,25 @@ describe('dealt faces survive a selection', () => {
     }
   });
 
+  it('keeps other seats face-up across two tricks, including a resize of the second', () => {
+    const mine = ['AS', 'KS', 'QS', 'JS'] as const;
+    const trick1 = ['QH', 'JD', '2C', 'AH'];
+    const trick2 = ['10H', '9D', '8C', 'KH'];
+    let shown = trickFacesShown(new Set(mine), [...mine], new Set([...mine, ...trick1]), trick1);
+    for (const id of trick1) expect(cardShowsFace(id, shown, trick1)).toBe(true);
+    // Trick 1 left the table. Those backs must not be what trick 2 paints.
+    shown = trickFacesShown(shown, [], new Set(mine), []);
+    for (const id of trick1) expect(cardShowsFace(id, shown, [])).toBe(false);
+    // Trick 2: the painter only has the local hand. The bots' new cards still show.
+    shown = trickFacesShown(shown, [], new Set(mine), trick2);
+    for (const id of trick2) expect(cardShowsFace(id, shown, trick2)).toBe(true);
+    const rebuilt = trickFacesShown(new Set(), [], new Set(mine), trick2);
+    for (const id of trick2) {
+      expect(rebuilt.has(id)).toBe(true);
+      expect(cardShowsFace(id, new Set(), trick2)).toBe(true);
+    }
+  });
+
   it('keeps trick cards face-up when a resize rebuilds the painter mid-trick', () => {
     const hand = ['AS', 'KS', 'QS'] as const;
     const trick = ['10S', '4S', '2C'];

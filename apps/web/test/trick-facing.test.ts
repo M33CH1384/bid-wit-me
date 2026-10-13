@@ -31,4 +31,52 @@ describe('bot trick cards settle face-up', () => {
     const slot = trickSpot('bottom', 4, 0, 0);
     expect(trickPlayFrom({ firstShow: false, humanSlot: slot, fan })).toBe(slot);
   });
+
+  it('keeps every other seat face-up across two tricks, and a rebuild does not relaunch them', () => {
+    const handNo = 3;
+    const shown = new Set<string>();
+    const tricks = [
+      [
+        { card: 'QH', seat: 'left' as const },
+        { card: 'JD', seat: 'top' as const },
+        { card: '2C', seat: 'right' as const },
+        { card: 'AS', seat: 'bottom' as const },
+      ],
+      [
+        { card: '10H', seat: 'left' as const },
+        { card: '9D', seat: 'top' as const },
+        { card: '8C', seat: 'right' as const },
+        { card: 'KS', seat: 'bottom' as const },
+      ],
+    ];
+    for (const trick of tricks) {
+      trick.forEach((pl, order) => {
+        const playKey = `${handNo}-${pl.card}`;
+        // A new card id is a first show. Trick 1's keys must not swallow trick 2.
+        expect(shown.has(playKey)).toBe(false);
+        if (pl.seat === 'bottom') {
+          const slot = trickSpot('bottom', 4, order, 0);
+          const from = trickPlayFrom({ firstShow: true, humanSlot: slot });
+          expect(from).toBe(slot);
+          expect(frontNormalY(from!.q)).toBeGreaterThan(0.5);
+        } else {
+          const fan = opponentFan(pl.seat, 4, 1, 6);
+          expect(frontNormalY(fan.q)).toBeLessThan(0);
+          const from = trickPlayFrom({ firstShow: true, fan });
+          expect(from).toBeDefined();
+          expect(frontNormalY(from!.q)).toBeGreaterThan(0);
+          const spot = trickSpot(pl.seat, 4, order, 0);
+          const rested = restingFacing(fan.q, spot.q, true);
+          expect(frontNormalY(rested)).toBeGreaterThan(0.5);
+          expect(rested).toEqual(spot.q);
+        }
+        shown.add(playKey);
+        // Already on the table, or the canvas rebuilt: do not launch from the face-down fan.
+        if (pl.seat !== 'bottom') {
+          const fan = opponentFan(pl.seat, 4, 1, 6);
+          expect(trickPlayFrom({ firstShow: !shown.has(playKey), fan })).toBeUndefined();
+        }
+      });
+    }
+  });
 });
