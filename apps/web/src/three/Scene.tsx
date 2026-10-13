@@ -10,7 +10,7 @@ import { GAP_S, LIFT_S, canTapCard, fanGapPx, fanMotion, handCardChrome, handDep
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline, seatDealDelay } from './dealTimeline';
 import { handNeedsDeal, handSlotKey } from './dealFlight';
-import { showResumeHand3D, trickFacesShown } from './cardFace';
+import { cardShowsFace, showResumeHand3D, trickFacesShown } from './cardFace';
 import { type Sfx, sound } from '../audio';
 import { fx } from '../fx';
 import { backTexture, faceTexture, logoTexture, refreshFacesGradually } from './cardTextures';
@@ -662,7 +662,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
           key={it.key}
           name={it.key}
           lit={props.lit}
-          face={it.card && faceShown.current.has(it.card) ? face(it.card) : null}
+          face={it.card && cardShowsFace(it.card, faceShown.current, trickIds) ? face(it.card) : null}
           back={back}
           target={it.target}
           from={it.from}
