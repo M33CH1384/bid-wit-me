@@ -6,6 +6,7 @@ import { cardGeometry, cardOutlineGeometry } from './geometry';
 import { RAISE_S, applyFaceDepthBias, cardMeshPaint, cardTapHandlers, faceLook, liftEase, screenRaise } from './handLift';
 import type { Xform } from './layout';
 import { type Sfx, sound } from '../audio';
+import { blastPose } from './blastSweep';
 import { fireCue, fx } from '../fx';
 import { restingFlightWait } from '../trickTiming';
 import { openingFlight } from './dealFlight';
@@ -89,7 +90,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   const hideUntilStart = useRef(holdUntilMove);
   const lift = useRef<Group>(null);
   const inner = useRef<Group>(null);
-  const bl = useRef({ dir: new Vector3(), q: new Quaternion(), axis: new Vector3(), on: false });
+  const bl = useRef({ dir: new Vector3(), q: new Quaternion(), axis: new Vector3(), on: false, flung: false, stamp: -1 });
   const invalidate = useThree((s) => s.invalidate);
   const geo = cardGeometry();
   // A null face means "not painted yet" and the front shows the back. Once the pips have
@@ -179,12 +180,16 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   rollNow.current = roll;
   const raiseTw = useRef({ y: 0, from: 0, to: 0, t: 1 });
 
-  /** Nuke blast: lift / blow the card outward from the trick (world space), tumble it, then spring back and settle. */
+  /** Nuke blast. Table cards sweep off the felt and stay there. Hand cards kick and spring home. */
   const applyBlast = (g: Group) => {
     const ig = inner.current, B = fx.blast, st = bl.current;
     if (!ig) return;
+    if (B && st.stamp !== B.start) { st.stamp = B.start; st.on = false; st.flung = false; }
     const u = B && (blast === 'table' || B.hand) ? (fx.warp !== null ? fx.warp - 0.3 : (performance.now() - B.start) / 1000) : -1;
-    if (u < 0 || u > 2.6) {
+    const pose = blastPose(u, blast === 'hand' ? 'hand' : 'table');
+    // A table card that has left stays off the cloth when the cloud ends. Coming back reads as a miss.
+    if (!pose) {
+      if (blast === 'table' && st.flung) return;
       if (st.on) { ig.position.set(0, 0, 0); ig.quaternion.identity(); st.on = false; invalidate(); }
       return;
     }
@@ -196,17 +201,13 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       st.dir.normalize();
       st.axis.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
     }
-    // fast kick out, hang, then a damped spring home
-    const env = u < 0.22 ? 1 - (1 - u / 0.22) ** 3 : Math.max(0, Math.exp(-(u - 0.22) * 1.9) * Math.cos((u - 0.22) * 2.4));
-    const near = blast === 'hand' ? 0.35 : Math.max(0.35, 1.1 - g.position.length() * 0.4);
-    const A = (blast === 'hand' ? 0.32 : 0.75) * near;
-    const lift = (blast === 'hand' ? 0.12 : 0.55) * near * (u < 1.2 ? Math.sin(Math.PI * Math.min(1, u / 1.2)) : 0);
-    const w = new Vector3(st.dir.x * A * env, lift, st.dir.z * A * env + (blast === 'hand' ? 0.08 * env : 0));
+    if (blast === 'table' && pose.out > 3) st.flung = true;
+    const w = new Vector3(st.dir.x * pose.out, pose.lift, st.dir.z * pose.out + (pose.z ?? 0));
     // world offset → this card's local space
     st.q.copy(g.quaternion).invert();
     w.applyQuaternion(st.q).divideScalar(g.scale.x || 1);
     ig.position.copy(w);
-    ig.quaternion.setFromAxisAngle(st.axis, env * (blast === 'hand' ? 0.35 : 1.4));
+    ig.quaternion.setFromAxisAngle(st.axis, pose.tumble);
   };
 
   /**
@@ -308,6 +309,13 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     }
     const key = finiteTarget ? xKey(target) : s.key;
     if (finiteTarget && key !== s.key) {
+      // A new spot (the book pile) starts from the card, not from the flung offset.
+      if (bl.current.on || bl.current.flung) {
+        bl.current.on = false;
+        bl.current.flung = false;
+        const ig = inner.current;
+        if (ig) { ig.position.set(0, 0, 0); ig.quaternion.identity(); }
+      }
       // retargeted before it landed (slow frames: the trick was swept while the card was still in flight) — still make its landing sound
       if (s.key && s.started && s.t < 1) {
         const land = s.land;
