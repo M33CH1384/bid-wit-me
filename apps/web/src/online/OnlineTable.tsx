@@ -4,12 +4,15 @@ import { victoryHeadline, victoryIdentity } from './victory';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { sideOf } from '@spades/rules';
 import Table from '../Table';
+import { TableLoading } from '../TableLoading';
 import { type Settings, loadSettings, saveSettings } from '../settings';
 import type { ConnState, TableConnection } from './connection';
 import { type KickInfo, MediaBar, SeatMedia, TalkTile, VictorySpotlight } from './Media';
 import { MusicLinkCard } from './HostMusic';
 import { loadHideSpectatorChat, localNames, saveHideSpectatorChat, useCountdown, useOnlineChat, useOnlineSource, useVideo } from './useOnline';
+import { dealerFromServer } from '../dealerName';
 import { SpectatorOverlay } from './Spectators';
+import { orientRun } from '../runPlayback';
 import type { VideoMesh } from './video';
 
 /** The 3D table, driven by the server: rotated per-seat view, real chat, video bubbles, turn clock. */
@@ -28,8 +31,21 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
     return ns;
   }, [room, rot, spectator]);
   const send = useCallback((text: string) => conn.send({ t: 'chat', text }), [conn]);
+  // Engine dealer seat (unrotated view) → the current occupant's plate name. Not the rotated index, and not a name frozen at the deal.
+  const dealerName = useMemo(() => {
+    if (!cs.view) return '';
+    const n = room.rules.playerCount;
+    const occupants = room.seats.slice(0, n).map((s) => (
+      !s || s.kind === 'empty' ? { name: '', kind: 'empty' as const } : { name: s.name, kind: s.kind }
+    ));
+    return dealerFromServer({
+      serverDealer: cs.view.dealer,
+      occupants,
+      viewerSeat: spectator || cs.seat === null ? null : cs.seat,
+    }).name;
+  }, [cs.view, room.seats, room.rules.playerCount, spectator, cs.seat]);
   const [hideSpec, setHideSpec] = useState(loadHideSpectatorChat);
-  const chat = useOnlineChat(cs, source?.st ?? null, names, send, hideSpec && !spectator);
+  const chat = useOnlineChat(cs, source?.st ?? null, names, send, hideSpec && !spectator, dealerName);
   const skew = room.now - Date.now();
   const secs = useCountdown(room.deadline ? room.deadline - skew : null);
 
@@ -63,7 +79,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
     }
   }, [limitedNow]);
 
-  if (!source || !rot) return <div className="online-wait">Joining the table…</div>;
+  if (!source || !rot) return <TableLoading progress={0.24} />;
   const r = room.rules;
   const turnLocal = source.st.turn;
 
@@ -134,6 +150,8 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
           },
           controls: spectator ? undefined : <MediaBar mesh={mesh} vs={vs} seated limited={limitedNow} />,
           spectator,
+          dealerName,
+          run: cs.run ? orientRun(cs.run, spectator ? null : cs.seat, rot.n) : null,
           overlay: <SpectatorOverlay room={room} cs={cs} spectator={spectator} names={names} hideChat={hideSpec}
             onHideChat={(on) => { setHideSpec(on); saveHideSpectatorChat(on); }}
             onTake={(seat) => conn.send({ t: 'sit', seat })} onLeave={onMainMenu} />,

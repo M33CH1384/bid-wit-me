@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { SocialChatLine, SocialServerMsg } from '@spades/protocol';
-import { type ConnAtt, type GlobalLog, Hub, maskChat } from '../src/social/hub';
+import { parseSocialMsg, type SocialChatLine, type SocialServerMsg } from '@spades/protocol';
+import { type ConnAtt, type GlobalLog, Hub, maskChat, uniqueGuestName } from '../src/social/hub';
 import { resetTicketKey, signTicket, verifyTicket } from '../src/social/ticket';
 import { coarseRegion, isAdmin, profileFor, recentPlayers } from '../src/social/routes';
 import { makeD1 } from './d1';
@@ -114,6 +114,47 @@ describe('presence', () => {
     expect(h.seen('a1')).toContain('u:ub');
     h.hub.close('b1');
     expect(h.seen('a1')).not.toContain('u:ub');
+  });
+
+  it('one guest session is one player; the same display name gets a distinct label', async () => {
+    await h.hub.open('a1', { uid: 'ua', name: 'Alice' });
+    await h.hub.open('g1', { name: 'SWE GUEST', gid: 'swe-guest-session' });
+    await h.hub.open('g2', { name: 'SWE GUEST', gid: 'swe-guest-session' });
+    const id = h.last('g1', 'hello')!.you.id;
+    expect(id).toBe('g:swe-guest-session');
+    expect(h.last('g2', 'hello')!.you.id).toBe(id);
+    expect(h.seen('a1').filter((x) => x.startsWith('g:'))).toEqual([id]);
+    expect(h.last('g2', 'hello')!.you.name).toBe('SWE GUEST');
+    // closing one tab keeps the session online
+    h.hub.close('g1');
+    expect(h.seen('a1')).toContain(id);
+    // a different browser with the same name is a second player, labeled apart
+    await h.hub.open('g3', { name: 'SWE GUEST', gid: 'other-guest-session' });
+    expect(h.last('g3', 'hello')!.you.name).toBe('SWE GUEST 2');
+    expect(h.seen('a1').filter((x) => x.startsWith('g:')).sort()).toEqual([id, 'g:other-guest-session'].sort());
+    // a guest may share an account's name; the Guest tag tells them apart
+    await h.hub.open('g4', { name: 'Alice', gid: 'alice-the-guest' });
+    expect(h.last('g4', 'hello')!.you.name).toBe('Alice');
+    // a bad session id cannot impersonate an account, and still won't stack the same name
+    await h.hub.open('g5', { name: 'SWE GUEST', gid: 'u:ua' });
+    await h.hub.open('g6', { name: 'SWE GUEST', gid: 'nope' });
+    expect(h.last('g5', 'hello')!.you.id).toMatch(/^g:/);
+    expect(h.last('g5', 'hello')!.you.id).not.toBe('u:ua');
+    expect(h.last('g6', 'hello')!.you.id).not.toBe(h.last('g5', 'hello')!.you.id);
+    const names = [h.last('g5', 'hello')!.you.name, h.last('g6', 'hello')!.you.name];
+    expect(new Set(names).size).toBe(2);
+    expect(names.every((n) => n.startsWith('SWE GUEST'))).toBe(true);
+    h.hub.close('g2');
+    expect(h.seen('a1')).not.toContain(id);
+  });
+
+  it('parses the seat and watch-full fields, and drops a seat that cannot exist', () => {
+    expect(parseSocialMsg({ t: 'status', status: { kind: 'table', mode: 'joker', open: 1, code: 'ABCD', seat: 2, watchFull: true } }))
+      .toEqual({ t: 'status', status: { kind: 'table', mode: 'joker', open: 1, code: 'ABCD', seat: 2, watchFull: true } });
+    expect(parseSocialMsg({ t: 'status', status: { kind: 'table', mode: 'joker', offline: true, seat: 9, watchFull: false } }))
+      .toEqual({ t: 'status', status: { kind: 'table', mode: 'joker', offline: true } });
+    expect(uniqueGuestName('SWE GUEST', ['swe guest'])).toBe('SWE GUEST 2');
+    expect(uniqueGuestName('Guest', [])).toBe('Guest');
   });
 });
 

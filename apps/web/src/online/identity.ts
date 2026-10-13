@@ -7,6 +7,21 @@ const TOKEN_COOKIE = 'bwm_tokens';
 export function loadName(): string {
   try { return localStorage.getItem(NAME_KEY) ?? ''; } catch { return ''; }
 }
+
+/** One guest id per browser. Social presence keys off it, so a second tab or a reconnect is the same player. */
+const GUEST_KEY = 'bwm.social.guest';
+const GUEST_RE = /^[A-Za-z0-9_-]{8,32}$/;
+let guestMem: string | null = null;
+export function guestSessionId(): string {
+  if (guestMem && GUEST_RE.test(guestMem)) return guestMem;
+  try {
+    const cur = localStorage.getItem(GUEST_KEY);
+    if (cur && GUEST_RE.test(cur)) { guestMem = cur; return cur; }
+  } catch { /* private mode */ }
+  guestMem = mintToken().slice(0, 22);
+  try { localStorage.setItem(GUEST_KEY, guestMem); } catch { /* ignore */ }
+  return guestMem;
+}
 export function saveName(n: string): void {
   try { localStorage.setItem(NAME_KEY, n); } catch { /* ignore */ }
 }

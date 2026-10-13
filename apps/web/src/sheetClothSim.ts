@@ -137,99 +137,225 @@ void main() {
 }
 `;
 
-export function mountSheet(canvas: HTMLCanvasElement, wait: boolean): () => void {
-    const host = canvas.parentElement;
-    if (!host) return () => {};
-    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
-    let renderer: WebGLRenderer;
-    try {
-      renderer = new WebGLRenderer({ canvas, alpha: true, antialias: true, premultipliedAlpha: true, powerPreference: 'high-performance' });
-    } catch {
-      return () => {};
-    }
-    renderer.setClearColor(0x000000, 0);
-    renderer.outputColorSpace = SRGBColorSpace;
-    const scene = new Scene();
-    const camera = new OrthographicCamera(-1, 1, 1, -1, 0.1, 2000);
-    camera.position.set(0, 0, 800);
-    const geo = new PlaneGeometry(1, 1, 64, 64);
-    const ripTex = new Texture();
-    ripTex.colorSpace = SRGBColorSpace;
-    const uniforms = {
-      uTime: { value: reduce ? 0.35 : 0 },
-      uWind: { value: reduce ? 1 : 0 },
-      uWidth: { value: 300 },
-      uHeight: { value: 220 },
-      uLightL: { value: new Vector3() },
-      uLightR: { value: new Vector3() },
-      uRip: { value: ripTex },
-    };
-    const mat = new ShaderMaterial({
-      uniforms,
-      vertexShader: VERT,
-      fragmentShader: FRAG,
-      transparent: true,
-      depthWrite: false,
-      toneMapped: false,
+const RIP_URL = '/shot/rip.webp';
+
+let ripImage: Promise<HTMLImageElement> | null = null;
+/** One decode of the RIP decal. The sheet texture and the recap image share the browser cache. */
+export function loadRipImage(): Promise<HTMLImageElement> {
+  if (!ripImage) {
+    ripImage = new Promise((resolve, reject) => {
+      const img = new Image();
+      img.decoding = 'async';
+      img.fetchPriority = 'low';
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error(RIP_URL));
+      img.src = RIP_URL;
     });
-    const mesh = new Mesh(geo, mat);
-    scene.add(mesh);
+  }
+  return ripImage;
+}
 
-    const img = new Image();
-    img.src = '/shot/rip.png';
-    const arm = () => {
-      ripTex.image = img;
-      ripTex.needsUpdate = true;
-    };
-    if (img.complete && img.naturalWidth) arm();
-    else img.addEventListener('load', arm);
+interface SheetRig {
+  canvas: HTMLCanvasElement;
+  renderer: WebGLRenderer;
+  scene: Scene;
+  camera: OrthographicCamera;
+  mesh: Mesh;
+  uniforms: {
+    uTime: { value: number };
+    uWind: { value: number };
+    uWidth: { value: number };
+    uHeight: { value: number };
+    uLightL: { value: Vector3 };
+    uLightR: { value: Vector3 };
+    uRip: { value: Texture };
+  };
+  geo: PlaneGeometry;
+  mat: ShaderMaterial;
+  ripTex: Texture;
+  busy: boolean;
+  stop: () => void;
+}
 
-    const fit = () => {
-      const w = Math.max(2, host.clientWidth);
-      const h = Math.max(2, host.clientHeight);
-      const dpr = window.devicePixelRatio || 1;
-      renderer.setPixelRatio(dpr);
-      renderer.setSize(w, h, false);
-      camera.left = -w / 2;
-      camera.right = w / 2;
-      camera.top = h / 2;
-      camera.bottom = -h / 2;
-      camera.updateProjectionMatrix();
-      mesh.scale.set(w, h, w);
-      uniforms.uWidth.value = w;
-      uniforms.uHeight.value = h;
-      uniforms.uLightL.value.set(-w * 0.78, h * 0.48, 150);
-      uniforms.uLightR.value.set(w * 0.78, -h * 0.36, 150);
-    };
-    fit();
-    const ro = new ResizeObserver(fit);
-    ro.observe(host);
+function createRig(canvas: HTMLCanvasElement): SheetRig | null {
+  let renderer: WebGLRenderer;
+  try {
+    renderer = new WebGLRenderer({ canvas, alpha: true, antialias: true, premultipliedAlpha: true, powerPreference: 'high-performance' });
+  } catch {
+    return null;
+  }
+  renderer.setClearColor(0x000000, 0);
+  renderer.outputColorSpace = SRGBColorSpace;
+  const scene = new Scene();
+  const camera = new OrthographicCamera(-1, 1, 1, -1, 0.1, 2000);
+  camera.position.set(0, 0, 800);
+  const geo = new PlaneGeometry(1, 1, 64, 64);
+  const ripTex = new Texture();
+  ripTex.colorSpace = SRGBColorSpace;
+  const uniforms = {
+    uTime: { value: 0 },
+    uWind: { value: 0 },
+    uWidth: { value: 300 },
+    uHeight: { value: 220 },
+    uLightL: { value: new Vector3() },
+    uLightR: { value: new Vector3() },
+    uRip: { value: ripTex },
+  };
+  const mat = new ShaderMaterial({
+    uniforms,
+    vertexShader: VERT,
+    fragmentShader: FRAG,
+    transparent: true,
+    depthWrite: false,
+    toneMapped: false,
+  });
+  const mesh = new Mesh(geo, mat);
+  scene.add(mesh);
+  return { canvas, renderer, scene, camera, mesh, uniforms, geo, mat, ripTex, busy: false, stop: () => {} };
+}
 
-    let raf = 0;
-    const t0 = performance.now();
-    const hold = reduce ? 0 : (wait ? 400 + 600 : 600);
-    const draw = (now: number) => {
-      if (!reduce) {
-        const elapsed = now - t0;
-        uniforms.uTime.value = elapsed / 1000;
-        uniforms.uWind.value = Math.min(1, Math.max(0, (elapsed - hold) / 280));
-      }
-      renderer.render(scene, camera);
-      if (!reduce) raf = requestAnimationFrame(draw);
-    };
-    const paintStill = () => { if (reduce) renderer.render(scene, camera); };
-    img.addEventListener('load', paintStill);
-    if (reduce) renderer.render(scene, camera);
-    else raf = requestAnimationFrame(draw);
-    return () => {
-      cancelAnimationFrame(raf);
-      ro.disconnect();
-      img.removeEventListener('load', arm);
-      img.removeEventListener('load', paintStill);
-      geo.dispose();
-      mat.dispose();
-      ripTex.dispose();
-      renderer.dispose();
-      renderer.forceContextLoss();
-    };
+function fitSize(rig: SheetRig, w: number, h: number) {
+  w = Math.max(2, w);
+  h = Math.max(2, h);
+  const dpr = window.devicePixelRatio || 1;
+  rig.renderer.setPixelRatio(dpr);
+  rig.renderer.setSize(w, h, false);
+  rig.camera.left = -w / 2;
+  rig.camera.right = w / 2;
+  rig.camera.top = h / 2;
+  rig.camera.bottom = -h / 2;
+  rig.camera.updateProjectionMatrix();
+  rig.mesh.scale.set(w, h, w);
+  rig.uniforms.uWidth.value = w;
+  rig.uniforms.uHeight.value = h;
+  rig.uniforms.uLightL.value.set(-w * 0.78, h * 0.48, 150);
+  rig.uniforms.uLightR.value.set(w * 0.78, -h * 0.36, 150);
+}
+
+function fit(rig: SheetRig, host: HTMLElement) {
+  fitSize(rig, host.clientWidth, host.clientHeight);
+}
+
+/** Start the billow from this moment. The program and the RIP texture are already on the GPU. */
+function play(rig: SheetRig, host: HTMLElement, wait: boolean): () => void {
+  rig.stop();
+  const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+  fit(rig, host);
+  const ro = new ResizeObserver(() => fit(rig, host));
+  ro.observe(host);
+  let raf = 0;
+  const t0 = performance.now();
+  const hold = reduce ? 0 : (wait ? 400 + 600 : 600);
+  const draw = (now: number) => {
+    if (!reduce) {
+      const elapsed = now - t0;
+      rig.uniforms.uTime.value = elapsed / 1000;
+      rig.uniforms.uWind.value = Math.min(1, Math.max(0, (elapsed - hold) / 280));
+    }
+    rig.renderer.render(rig.scene, rig.camera);
+    if (!reduce) raf = requestAnimationFrame(draw);
+  };
+  if (reduce) {
+    rig.uniforms.uTime.value = 0.35;
+    rig.uniforms.uWind.value = 1;
+    rig.renderer.render(rig.scene, rig.camera);
+  } else raf = requestAnimationFrame(draw);
+  const stop = () => { cancelAnimationFrame(raf); ro.disconnect(); };
+  rig.stop = stop;
+  return stop;
+}
+
+let shared: SheetRig | null = null;
+let warming: Promise<void> | null = null;
+
+/** Compile the cloth and upload the RIP decal on a hidden canvas. The first shroud adopts this context. */
+export function warmSheet(): Promise<void> {
+  if (typeof document === 'undefined') return Promise.resolve();
+  if (shared) return Promise.resolve();
+  warming ??= (async () => {
+    const canvas = document.createElement('canvas');
+    canvas.className = 'cloth';
+    canvas.setAttribute('aria-hidden', 'true');
+    canvas.style.cssText = 'position:fixed;left:-9999px;top:0;width:64px;height:64px;opacity:0;pointer-events:none';
+    document.body.appendChild(canvas);
+    const built = createRig(canvas);
+    if (!built) return;
+    fitSize(built, 64, 64);
+    try {
+      const img = await loadRipImage();
+      built.ripTex.image = img;
+      built.ripTex.needsUpdate = true;
+      built.renderer.initTexture(built.ripTex);
+    } catch { /* a missing decal still compiles the cloth */ }
+    await built.renderer.compileAsync(built.scene, built.camera);
+    built.renderer.render(built.scene, built.camera);
+    shared = built;
+  })().catch(() => undefined);
+  return warming;
+}
+
+function disposeRig(rig: SheetRig) {
+  rig.stop();
+  rig.geo.dispose();
+  rig.mat.dispose();
+  rig.ripTex.dispose();
+  rig.renderer.dispose();
+  rig.renderer.forceContextLoss();
+  rig.canvas.remove();
+}
+
+export function mountSheet(host: HTMLElement, wait: boolean): () => void {
+  let extra: SheetRig | null = null;
+  let stop = () => {};
+  let dead = false;
+  const adopt = (built: SheetRig) => {
+    if (dead) return;
+    if (built.busy) {
+      const canvas = document.createElement('canvas');
+      canvas.className = 'cloth';
+      host.appendChild(canvas);
+      const next = createRig(canvas);
+      if (!next) return;
+      extra = next;
+      void loadRipImage().then((img) => {
+        next.ripTex.image = img;
+        next.ripTex.needsUpdate = true;
+        next.renderer.initTexture(next.ripTex);
+      }).catch(() => undefined);
+      stop = play(next, host, wait);
+      return;
+    }
+    built.busy = true;
+    built.canvas.style.cssText = '';
+    if (built.canvas.parentElement !== host) host.appendChild(built.canvas);
+    stop = play(built, host, wait);
+  };
+  if (shared) adopt(shared);
+  else void warmSheet().then(() => {
+    if (dead) return;
+    if (shared) { adopt(shared); return; }
+    const canvas = document.createElement('canvas');
+    canvas.className = 'cloth';
+    host.appendChild(canvas);
+    const next = createRig(canvas);
+    if (!next) return;
+    extra = next;
+    void loadRipImage().then((img) => {
+      next.ripTex.image = img;
+      next.ripTex.needsUpdate = true;
+      next.renderer.initTexture(next.ripTex);
+    }).catch(() => undefined);
+    stop = play(next, host, wait);
+  });
+  return () => {
+    dead = true;
+    stop();
+    if (extra) disposeRig(extra);
+    else if (shared) {
+      shared.busy = false;
+      shared.stop();
+      shared.canvas.style.cssText = 'position:fixed;left:-9999px;top:0;width:64px;height:64px;opacity:0;pointer-events:none';
+      document.body.appendChild(shared.canvas);
+    }
+  };
 }
