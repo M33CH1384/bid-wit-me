@@ -65,7 +65,8 @@ export function FeltHand({ cards, trick, legal, selected, onCard, promoted }: {
           ))}
         </div>
       )}
-      <div className="felt-hand" data-testid="felt-hand" role="group" aria-label="Your hand">
+      {/* Visual only. The screen-reader hand in Table is the one labeled control per card. */}
+      <div className="felt-hand" data-testid="felt-hand" aria-hidden="true">
         {cards.map((c, i) => {
           const red = c[1] === 'H' || c[1] === 'D' || c === 'BJ';
           const can = legal.includes(c);
@@ -74,6 +75,7 @@ export function FeltHand({ cards, trick, legal, selected, onCard, promoted }: {
             <button
               key={c}
               type="button"
+              tabIndex={-1}
               className={`${red ? 'red' : ''} ${can ? 'legal' : ''} ${picked ? 'sel' : ''}`}
               style={{ transform: feltCardTransform(i, cards.length, picked), zIndex: picked ? 20 : i }}
               disabled={!can}
