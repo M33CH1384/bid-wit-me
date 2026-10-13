@@ -140,7 +140,7 @@ describe('scorecard caution tape and shroud', () => {
     expect(html).toContain('data-testid="recap-shroud-1"');
     expect(html).toContain('data-testid="recap-rip-1"');
     expect(html).toContain('alt="RIP"');
-    expect(html).toContain('src="/shot/rip.png"');
+    expect(html).toContain('src="/shot/rip.webp"');
     expect(html).toContain('data-testid="sheet-cloth"');
     expect(html).not.toContain('>RIP<');
     expect(html).not.toContain('police-lights');

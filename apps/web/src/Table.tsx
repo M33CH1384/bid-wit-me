@@ -32,6 +32,7 @@ import { useDealtSlots } from './dealtSlots';
 import { FeltHand } from './FeltHand';
 import { loadScene } from './three/preload';
 import { TableLoading } from './TableLoading';
+import { tableStillLoading, warmTableEffects } from './effects/warm';
 import { endReasonText, onNoticeSides, shotChatLines } from './shotOut';
 import { type Sfx, sound } from './audio';
 import { HAPTIC, haptic } from './haptics';
@@ -581,12 +582,13 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [playedSeq, setPlayedSeq] = useState<number | null>(null);
   const [tableReady, setTableReady] = useState(false);
   const [dressed, setDressed] = useState(false);
+  const [effectsWarm, setEffectsWarm] = useState(false);
   const [loadProgress, setLoadProgress] = useState(0.08);
   const [loadGiveUp, setLoadGiveUp] = useState(false);
   const [loadGone, setLoadGone] = useState(false);
   const [webglHand, setWebglHand] = useState(false);
   const onTableReady = useCallback(() => { setTableReady(true); setLoadProgress((p) => Math.max(p, 0.72)); }, []);
-  const onTableDressed = useCallback(() => { setDressed(true); setLoadProgress(1); }, []);
+  const onTableDressed = useCallback(() => { setDressed(true); setLoadProgress((p) => Math.max(p, 0.86)); }, []);
   const onHandLive = useCallback(() => setWebglHand(true), []);
   // The scene chunk is the long download. Bump the bar when it arrives, ahead of the first frame.
   useEffect(() => {
@@ -599,7 +601,15 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const t = window.setTimeout(() => setLoadGiveUp(true), 40000);
     return () => window.clearTimeout(t);
   }, []);
-  const loading = !dressed && !loadGiveUp;
+  // Shot, sheet, and tornado assets warm during this screen. A stalled shader compile gives up
+  // after 12s; the timer above still lifts the loader if a download never finishes.
+  useEffect(() => {
+    let alive = true;
+    warmTableEffects().then(() => { if (alive) setEffectsWarm(true); }).catch(() => { if (alive) setEffectsWarm(true); });
+    return () => { alive = false; };
+  }, []);
+  useEffect(() => { if (dressed && effectsWarm) setLoadProgress(1); }, [dressed, effectsWarm]);
+  const loading = tableStillLoading(dressed, effectsWarm, loadGiveUp);
   useEffect(() => {
     if (loading) return;
     const t = window.setTimeout(() => setLoadGone(true), 380);

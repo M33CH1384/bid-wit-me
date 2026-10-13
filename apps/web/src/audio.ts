@@ -117,6 +117,8 @@ class Engine {
   private sfxBus: GainNode | null = null;
   private ambBus: GainNode | null = null;
   private buffers = new Map<string, AudioBuffer>();
+  /** Noise the shot, sheet, and tornado build on first play. Keyed by duration in milliseconds. */
+  private noiseBank = new Map<number, AudioBuffer>();
   private loading: Promise<void> | null = null;
   private ambTimer: number | null = null;
   private ambNodes: AudioNode[] = [];
@@ -671,11 +673,25 @@ class Engine {
     o.start(t); o.stop(t + dur + 0.05);
   }
 
+  /** Decode those buffers into the live context. Safe before a gesture: a blocked context just skips. */
+  warmEffects(): void {
+    try {
+      const c = this.ensure();
+      if (!c || c.state === 'closed') return;
+      for (const dur of EFFECT_NOISE_SECONDS) this.noise(dur);
+      this.shaper(12);
+    } catch { /* autoplay policy: the next gesture still builds them */ }
+  }
+
   private noise(dur: number): AudioBuffer {
     const c = this.ctx!;
+    const key = Math.round(dur * 1000);
+    const hit = this.noiseBank.get(key);
+    if (hit && hit.sampleRate === c.sampleRate) return hit;
     const b = c.createBuffer(1, Math.ceil(c.sampleRate * dur), c.sampleRate);
     const d = b.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    this.noiseBank.set(key, b);
     return b;
   }
 
@@ -1244,6 +1260,9 @@ class Engine {
     }
   }
 }
+
+/** Durations (seconds) the gunshot, shotgun, and tornado wind fill on first play. */
+export const EFFECT_NOISE_SECONDS = [0.085, 0.095, 0.12, 0.21, 0.23, 0.25, 0.31, 0.4, 0.75, 2.7];
 
 export const sound = new Engine();
 sound.installUnlock();
