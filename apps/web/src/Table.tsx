@@ -4,7 +4,7 @@ import { type VenueId, VENUE_DEFS, resolveVenue } from './venues';
 import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, isNukeTrick, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, partnerOf, sideOf, sortHand, trumpOrder,
+  type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, isNukeTrick, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, newlyOneTrickFromShot, partnerOf, sideOf, sortHand, trumpOrder,
 } from '@spades/rules';
 import { ScorePad, setTeamNames, sideName } from './Modals';
 import { LockedRulesPanel } from './LockedRules';
@@ -743,6 +743,21 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   }, [isBooks, dealing, st.seed, st.handNo, st.tricks.length, resume]);
 
   useEffect(() => { setSelected(null); }, [st.turn, st.handNo]);
+  // One pump per side per hand, the moment they become exactly one trick from a shot: a missed contract,
+  // or a books hand about to miss the minimum. Derived from the shared state, so the table hears it together.
+  const pumpPrev = useRef<GameState | null>(null);
+  const pumpedSides = useRef<Set<number>>(new Set());
+  const pumpHand = useRef('');
+  useEffect(() => {
+    const key = `${st.seed}:${st.handNo}`;
+    if (pumpHand.current !== key) { pumpHand.current = key; pumpedSides.current = new Set(); }
+    const prev = pumpPrev.current;
+    pumpPrev.current = st;
+    newlyOneTrickFromShot(prev, st, pumpedSides.current).forEach((side, i) => {
+      pumpedSides.current.add(side);
+      sound.play('pump', i ? { delay: i * 0.16 } : {});
+    });
+  }, [st]);
   useEffect(() => { setExchangePick([]); }, [st.phase, st.turn]);
   useEffect(() => { if (chatOpen) setSeenMsgs(msgs.length); }, [chatOpen, msgs.length]);
 

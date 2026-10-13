@@ -13,12 +13,12 @@ export type Sfx =
   | 'shuffle' | 'deal' | 'play' | 'tap' | 'sweep' | 'broken' | 'turn' | 'bid' | 'bidSoft'
   | 'cut' | 'made' | 'set' | 'nil' | 'bags' | 'pop' | 'win' | 'lose' | 'flip'
   // hype effects (all synthesized): joker rumbles, the Big-over-Little nuke, streaks, shots
-  | 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak1' | 'streak2' | 'streak3' | 'shot' | 'gotShot' | 'shotgun' | 'siren' | 'docSting' | 'wheels' | 'wheelsCar' | 'overcut' | 'overcut3' | 'tornado'
+  | 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak1' | 'streak2' | 'streak3' | 'shot' | 'gotShot' | 'shotgun' | 'pump' | 'siren' | 'docSting' | 'wheels' | 'wheelsCar' | 'overcut' | 'overcut3' | 'tornado'
   // 'Run it!': the claimer's cards all slam at once / everyone else's cards hit in a quick cascade
   | 'runSlam' | 'runThud';
 
 /** SFX that bot voices duck under, and for how long (ms). */
-const DUCK_MS: Partial<Record<Sfx, number>> = { runSlam: 700, nuke: 3600, tornado: 2600, wheelsCar: 3000, jokerBig: 1100, shot: 1200, shotgun: 700, siren: 1800, docSting: 2400, streak2: 1400, streak3: 1800, overcut3: 1000, win: 2000, lose: 1600, set: 1200, nil: 1600 };
+const DUCK_MS: Partial<Record<Sfx, number>> = { runSlam: 700, nuke: 3600, tornado: 2600, wheelsCar: 3000, jokerBig: 1100, shot: 1200, shotgun: 700, pump: 500, siren: 1800, docSting: 2400, streak2: 1400, streak3: 1800, overcut3: 1000, win: 2000, lose: 1600, set: 1200, nil: 1600 };
 
 export interface SoundSettings { on: boolean; volume: number; ambient: boolean; music: boolean; musicVolume: number; /** the venue's quiet ambient sound bed (Release 7), default on */ venueSound: boolean }
 const KEY = 'bwm.sound.v1';
@@ -447,6 +447,7 @@ class Engine {
       case 'shot': return this.slam(t, g);
       case 'gotShot': return this.sting(t, g);
       case 'shotgun': return this.shotgunBoom(t, g);
+      case 'pump': return this.shotgunPump(t, g);
       case 'siren': return this.siren(t, g);
       case 'docSting': return this.docSting(t, g);
       // wheels: a quick rising two-step + hit (short, not a fanfare)
@@ -822,7 +823,7 @@ class Engine {
   }
 
   /**
-   * Hand-1 shot-out: a two-tone police yelp. Original synthesis, no sampled recording, no third-party license.
+   * White-sheet moment: a two-tone police yelp. Original synthesis, no sampled recording, no third-party license.
    * Goes out the sfx bus, so mute and the volume slider apply.
    */
   private siren(t: number, g: number) {
@@ -863,6 +864,18 @@ class Engine {
     this.tone(t + 0.7, 349.23, 1.3, 'triangle', 0.03 * g, { attack: 0.35, filter: 1200 });
     this.burst(t + 0.18, 0.035, 0.5 * g, 'highpass', 4200, { q: 0.7 });
     this.burst(t + 0.22, 0.018, 0.18 * g, 'highpass', 6800);
+  }
+
+  /**
+   * Shotgun pump / rack. Original synthesis in this engine (no sampled recording, no third-party license):
+   * a release click, the slide scrape, and the forward lock. Routed through the sfx bus, so mute and volume apply.
+   */
+  private shotgunPump(t: number, g: number) {
+    this.burst(t, 0.035, 0.42 * g, 'highpass', 2200);
+    this.tone(t, 180, 0.04, 'square', 0.05 * g, { filter: 2400, attack: 0.001 });
+    this.burst(t + 0.05, 0.16, 0.5 * g, 'bandpass', 1100, { q: 0.8, sweepTo: 380 });
+    this.burst(t + 0.2, 0.045, 0.62 * g, 'highpass', 1600);
+    this.tone(t + 0.2, 120, 0.07, 'triangle', 0.14 * g, { filter: 700, attack: 0.001 });
   }
 
   /** Scorecard shotgun: a low boom, a muzzle crack, and a short pellet hiss. Goes out the sfx bus, so mute and volume apply. */
