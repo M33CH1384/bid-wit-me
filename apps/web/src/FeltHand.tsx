@@ -2,6 +2,22 @@ import { type Card, cardLabel } from '@spades/rules';
 import { useEffect, useRef } from 'react';
 import { paintFace } from './cardArt';
 
+/** How far a tapped card rises, in CSS pixels. Same extra as the 3D selected pose. */
+export const FELT_SELECT_LIFT_PX = 10;
+
+/**
+ * Fan pose for one quick-load card. The selected lift is a screen-up translate written to the
+ * left of the rotation: an inline transform replaces any class transform, and a translate
+ * inside the rotation would walk the end cards sideways.
+ */
+export function feltCardTransform(index: number, count: number, selected: boolean): string {
+  const mid = (count - 1) / 2;
+  const rot = (index - mid) * 3.2;
+  const sag = Math.abs(index - mid) * 3;
+  const fan = `rotate(${rot}deg) translateY(${sag}px)`;
+  return selected ? `translateY(-${FELT_SELECT_LIFT_PX}px) ${fan}` : fan;
+}
+
 /**
  * The saved hand, drawn with canvas (no WebGL) so a reload can be played before the 3D scene arrives.
  * Faces paint one card per frame. The buttons are live on the first frame, with the rank as a stand-in.
@@ -53,15 +69,13 @@ export function FeltHand({ cards, trick, legal, selected, onCard, promoted }: {
         {cards.map((c, i) => {
           const red = c[1] === 'H' || c[1] === 'D' || c === 'BJ';
           const can = legal.includes(c);
-          const n = cards.length;
-          const mid = (n - 1) / 2;
-          const rot = (i - mid) * 3.2;
+          const picked = selected === c;
           return (
             <button
               key={c}
               type="button"
-              className={`${red ? 'red' : ''} ${can ? 'legal' : ''} ${selected === c ? 'sel' : ''}`}
-              style={{ transform: `rotate(${rot}deg) translateY(${Math.abs(i - mid) * 3}px)`, zIndex: selected === c ? 20 : i }}
+              className={`${red ? 'red' : ''} ${can ? 'legal' : ''} ${picked ? 'sel' : ''}`}
+              style={{ transform: feltCardTransform(i, cards.length, picked), zIndex: picked ? 20 : i }}
               disabled={!can}
               aria-pressed={selected === c}
               onClick={() => onCard(c)}
