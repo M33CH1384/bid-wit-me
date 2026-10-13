@@ -79,4 +79,39 @@ describe('bot trick cards settle face-up', () => {
       });
     }
   });
+
+  it('keeps every other seat face-up across a full hand of 13 tricks', () => {
+    const handNo = 1;
+    const shown = new Set<string>();
+    const ranks = ['A', 'K', 'Q', 'J', '10', '9', '8', '7', '6', '5', '4', '3', '2'];
+    const deck = ['S', 'H', 'D', 'C'].flatMap((suit) => ranks.map((rank) => `${rank}${suit}`));
+    const order = ['left', 'top', 'right', 'bottom'] as const;
+    for (let trickNo = 0; trickNo < 13; trickNo++) {
+      order.forEach((seat, i) => {
+        const card = deck[trickNo * 4 + i]!;
+        const playKey = `${handNo}-${card}`;
+        // Earlier tricks stay in the shown set. A new card is still a first show.
+        expect(shown.has(playKey)).toBe(false);
+        if (seat === 'bottom') {
+          const slot = trickSpot('bottom', 4, i, 0);
+          const from = trickPlayFrom({ firstShow: true, humanSlot: slot });
+          expect(from).toBe(slot);
+          expect(frontNormalY(from!.q)).toBeGreaterThan(0.5);
+        } else {
+          const fan = opponentFan(seat, 4, Math.max(0, 12 - trickNo), 13 - trickNo);
+          expect(frontNormalY(fan.q)).toBeLessThan(0);
+          const from = trickPlayFrom({ firstShow: true, fan });
+          expect(from).toBeDefined();
+          expect(frontNormalY(from!.q)).toBeGreaterThan(0);
+          const spot = trickSpot(seat, 4, i, 0);
+          const rested = restingFacing(fan.q, spot.q, true);
+          expect(frontNormalY(rested)).toBeGreaterThan(0.5);
+          expect(rested).toEqual(spot.q);
+          expect(trickPlayFrom({ firstShow: false, fan })).toBeUndefined();
+        }
+        shown.add(playKey);
+      });
+    }
+    expect(shown.size).toBe(52);
+  });
 });
