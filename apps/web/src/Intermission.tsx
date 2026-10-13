@@ -4,6 +4,7 @@ import { resultChips, signed } from './ScorePad';
 import { sideName } from './Modals';
 import { handWinner, streakLabel, streakOf } from './fx';
 import { sound } from './audio';
+import { haptic } from './haptics';
 
 /**
  * Hand recap between hands (online and offline).
@@ -43,33 +44,16 @@ export function calloutsFor(st: GameState, mySide: number, names: string[]): Cal
   return out;
 }
 
-/** Buckshot sits on the panel edges so the bid/took line in the middle stays readable. */
-const PELLETS: readonly (readonly [number, number, number])[] = [
-  [8, 12, 6], [22, 6, 3.5], [46, 7, 3], [70, 8, 4], [90, 11, 5],
-  [4, 24, 3], [96, 20, 3.5],
-  [5, 82, 4], [14, 94, 5], [36, 96, 3.5], [58, 95, 4], [80, 93, 3.5], [93, 88, 6],
+/**
+ * Three punched holes in empty card space. Raster art in /shot/hole.png
+ * (original render, no third-party illustration). Rotation and scale are fixed
+ * per slot so a reconnect does not reshuffle them.
+ */
+const HOLES: readonly { x: string; y: string; rot: number; scale: number }[] = [
+  { x: '60%', y: '28%', rot: -14, scale: 0.88 }, // gap between the name and the total
+  { x: '11%', y: '93%', rot: 18, scale: 0.85 },  // lower-left, at the start of the bar
+  { x: '88%', y: '72%', rot: 6, scale: 0.85 },   // mid-right, under the total
 ];
-
-function BlastMarks({ side }: { side: number }) {
-  return (
-    <>
-      <div className="blast-flash" aria-hidden="true" />
-      <div className="blast-holes" aria-hidden="true" data-testid={`recap-blast-${side}`}>
-        {PELLETS.map(([x, y, r], i) => <i key={i} style={{ left: `${x}%`, top: `${y}%`, width: r * 2, height: r * 2 }} />)}
-      </div>
-      <svg className="blast-cracks" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-        <g fill="none" stroke="rgba(255, 244, 214, 0.95)" strokeWidth="1.7" strokeLinecap="round">
-          <path vectorEffect="non-scaling-stroke" d="M8 12 L18 22 L14 32" />
-          <path vectorEffect="non-scaling-stroke" d="M90 11 L78 22 L82 32" />
-          <path vectorEffect="non-scaling-stroke" d="M14 94 L24 82 L22 72" />
-          <path vectorEffect="non-scaling-stroke" d="M93 88 L80 78 L82 68" />
-          <path vectorEffect="non-scaling-stroke" d="M4 24 L12 28" />
-          <path vectorEffect="non-scaling-stroke" d="M96 20 L88 26" />
-        </g>
-      </svg>
-    </>
-  );
-}
 
 export function Intermission({
   st, names, mySide, secs, ready, onReady, online, onScorePad, series, chatOpen, unread, onChat, runReview,
@@ -117,6 +101,18 @@ export function Intermission({
     sound.play('docSting', { delay: 0.05 });
     sound.play('siren', { delay: 0.12 });
   }, [sirenKey, sheetOn]);
+  // One pattern so each hole's [30] and the tape's [60] land on the punch timeline.
+  // iOS and a missing vibrate API skip inside haptic(); the throttle stays at 250ms.
+  const noticeIn = sides.some((s) => {
+    const cover = covers[s.side];
+    return !!cover?.tape && !cover.sheet && isShot(r, rec.bids, s);
+  });
+  const punched = useRef('');
+  useEffect(() => {
+    if (!noticeIn || punched.current === sirenKey) return;
+    punched.current = sirenKey;
+    haptic([30, 60, 30, 60, 30, 90, 60], 'shot-card');
+  }, [noticeIn, sirenKey]);
 
   return (
     <div className="tt-backdrop" data-testid="table-talk" role="dialog" aria-label="Hand recap">
@@ -160,9 +156,16 @@ export function Intermission({
               const shot = s.contractMade === false;
               const cover = covers[s.side] ?? { tape: false, sheet: false, siren: false };
               const justShot = isShot(r, rec.bids, s);
+              const notice = cover.tape && !cover.sheet;
               return (
-                <div key={s.side} className={`tt-team${s.side === mySide ? ' mine' : ''}${shot ? ' blast' : ''}${cover.tape ? ' taped' : ''}${cover.tape && justShot ? ' tape-in' : ''}${cover.sheet ? ' shrouded' : ''}${cover.sheet && justShot ? ' sheet-in' : ''}`} data-testid={`recap-side-${s.side}`} data-blast={shot ? 'yes' : 'no'} data-tape={cover.tape ? 'yes' : 'no'} data-sheet={cover.sheet ? 'yes' : 'no'} data-siren={cover.siren ? 'yes' : 'no'}>
-                  {shot && <BlastMarks side={s.side} />}
+                <div key={s.side} className={`tt-team${s.side === mySide ? ' mine' : ''}${shot ? ' blast' : ''}${cover.tape ? ' taped' : ''}${cover.tape && justShot ? ' tape-in' : ''}${notice ? ' notice' : ''}${cover.sheet ? ' shrouded' : ''}${cover.sheet && justShot ? ' sheet-in' : ''}`} data-testid={`recap-side-${s.side}`} data-blast={shot ? 'yes' : 'no'} data-tape={cover.tape ? 'yes' : 'no'} data-sheet={cover.sheet ? 'yes' : 'no'} data-siren={cover.siren ? 'yes' : 'no'}>
+                  {notice && (
+                    <div className="shot-holes" data-testid={`recap-holes-${s.side}`} aria-hidden="true">
+                      {HOLES.map((h, i) => (
+                        <img key={i} src="/shot/hole.png" alt="" style={{ left: h.x, top: h.y, animationDelay: `${i * 90}ms`, ['--rot' as string]: `${h.rot}deg`, ['--s' as string]: String(h.scale) }} />
+                      ))}
+                    </div>
+                  )}
                   {cover.sheet && (
                     <div className="shroud" data-testid={`recap-shroud-${s.side}`} aria-hidden="true">
                       <i /><i /><i />
@@ -170,21 +173,27 @@ export function Intermission({
                     </div>
                   )}
                   {cover.tape && (
-                    <div className="caution-tape" data-testid={`recap-tape-${s.side}`} aria-hidden="true">
-                      <b>CAUTION</b><b>SHOT</b><b>CAUTION</b><b>SHOT</b><b>CAUTION</b><b>SHOT</b>
+                    <div className="caution-x" data-testid={`recap-tape-${s.side}`} aria-hidden="true">
+                      <img className="tape" src="/shot/tape.png" alt="" />
                     </div>
                   )}
+                  <div className="tt-face">
                   <div className="tt-team-name">
                     <b>{sideName(r, s.side, names)}</b>
                     <span className="tt-badges chips">
-                      {chips.map((c) => <em key={c.text} className={`rchip ${c.kind}`}>{c.text}</em>)}
+                      {notice ? (
+                        <>
+                          <em className="shot-stamp" data-testid={`recap-shot-stamp-${s.side}`}>SHOT</em>
+                          <em className="notice-pill" data-testid={`recap-notice-${s.side}`}>ON NOTICE</em>
+                        </>
+                      ) : chips.map((c) => <em key={c.text} className={`rchip ${c.kind}`}>{c.text}</em>)}
                       {!books && s.bagsAdded > 0 && <em className="rchip bags">+{s.bagsAdded} bag{s.bagsAdded === 1 ? '' : 's'}</em>}
                       {s.bagPenaltyCount > 0 && <em className="rchip set">Bag penalty {signed(s.bagPenaltyPoints)}</em>}
                     </span>
                   </div>
                   <div className="tt-line" data-testid={`recap-line-${s.side}`}>
                     <span>{bidPart}</span><i>·</i><span>Took {s.tricks}</span>
-                    {main && main.kind !== 'books' && <><i>·</i><em className={`rchip ${main.kind}`}>{main.text}</em></>}
+                    {main && main.kind !== 'books' && !(shot && main.kind === 'set') && <><i>·</i><em className={`rchip ${main.kind}`}>{main.text}</em></>}
                     <i>·</i><b className={s.points < 0 ? 'neg' : 'pos'} data-testid={`recap-points-${s.side}`}>{signed(s.points)}</b>
                   </div>
                   <ul className="tt-players" data-testid={`recap-players-${s.side}`}>
@@ -200,6 +209,7 @@ export function Intermission({
                     <span className="tt-bags">{s.totalBags} bag{s.totalBags === 1 ? '' : 's'}</span>
                   </div>
                   <div className="tt-bar" aria-label={`${s.totalScore} of ${target}`}><i style={{ width: `${pct * 100}%` }} /><small>to {target}</small></div>
+                  </div>
                 </div>
               );
             })}
