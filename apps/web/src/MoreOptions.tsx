@@ -29,7 +29,7 @@ export function Seg<T extends string | number>({ value, options, onChange, label
   return (
     <span className="seg" role="radiogroup" aria-label={label}>
       {options.map(([v, text]) => (
-        <button key={String(v)} type="button" role="radio" aria-checked={value === v} className={value === v ? 'on' : ''} onClick={() => onChange(v)}>{text}</button>
+        <button key={String(v)} type="button" role="radio" aria-label={text} aria-checked={value === v} className={value === v ? 'on' : ''} onClick={() => onChange(v)}>{text}</button>
       ))}
     </span>
   );

@@ -160,11 +160,14 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
             <div className="row deck-choice">
               <span className="row-label">Deck<small>{settings.cutthroatDeck === 'joker54' ? 'Jokers + 2♦ are trumps' : 'No jokers, A♠ is the top trump'}</small></span>
               <span className="seg" role="radiogroup" aria-label="Deck">
-                {(['joker54', 'standard52'] as const).map((d) => (
-                  <button key={d} type="button" role="radio" aria-checked={settings.cutthroatDeck === d} className={settings.cutthroatDeck === d ? 'on' : ''} onClick={() => set('cutthroatDeck', d)}>
-                    {d === 'joker54' ? 'Joker' : 'Standard 52'}
-                  </button>
-                ))}
+                {(['joker54', 'standard52'] as const).map((d) => {
+                  const label = d === 'joker54' ? 'Joker' : 'Standard 52';
+                  return (
+                    <button key={d} type="button" role="radio" aria-label={label} aria-checked={settings.cutthroatDeck === d} className={settings.cutthroatDeck === d ? 'on' : ''} onClick={() => set('cutthroatDeck', d)}>
+                      {label}
+                    </button>
+                  );
+                })}
               </span>
             </div>
           )}
