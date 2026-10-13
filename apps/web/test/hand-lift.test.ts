@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   BREATHE_HI, BREATHE_LO, BREATHE_S, BREATHE_SCALE, GAP_S, GLOW_ALPHA, GLOW_BLUR_PX, GLOW_REACH_PX, GLOW_SPREAD_PX,
   GROUP_PAD_PX, GROUP_RADIUS_PX, ILLEGAL_BRIGHTNESS, ILLEGAL_COLOR, LIFT_S, OUTLINE_COLOR, OUTLINE_PX, RAISE_S,
-  GROUP_GAP_PX, LEGAL_STACK, SELECT_GLOW_OP, SHINE_DEG, SHINE_PEAK, SHINE_S, SHINE_WIDTH,
-  breatheOpacity, canTapCard, easeOut, fanGapPx, fanMotion, glowFalloff, glowRadiusPx, handLift, handRenderOrder, liftEase, outlineRadiusPx,
+  GROUP_GAP_PX, LEGAL_NEAR, LEGAL_STACK, SELECT_GLOW_OP, SELECT_STACK, SHINE_DEG, SHINE_PEAK, SHINE_S, SHINE_WIDTH,
+  breatheOpacity, canTapCard, cardMeshPaint, easeOut, fanGapPx, fanMotion, glowFalloff, glowRadiusPx, handDepthOpts, handLift, handRenderOrder, liftEase, outlineRadiusPx,
   handCardChrome, playablePose, posePx, raiseLocalY, shineAxis, shineBand, stackFor,
 } from '../src/three/handLift';
 import { fanLayout, handCardPlane, handFan } from '../src/three/layout';
@@ -255,9 +255,51 @@ describe('legal cards stack above the cards beside them', () => {
     expect(orders[3]).toBeLessThan(orders[4]!);
     expect(orders[0]).toBeLessThan(orders[1]!);
     expect(orders[5]).toBeLessThan(orders[6]!);
-    // a tap does not jump ahead of the other legal cards
+    // peers stay in index order. A tap is a separate front band, not another step in this one.
     expect(handRenderOrder(3, true)).toBe(LEGAL_STACK + 3);
     expect(handRenderOrder(4, true) - handRenderOrder(3, true)).toBe(1);
+  });
+
+  it('draws a selected card and its outline above every neighbour in a 13- and a 17-card hand', () => {
+    const paint = (index: number, above: boolean, front = false) => {
+      const order = handRenderOrder(index, above, front);
+      return {
+        glow: cardMeshPaint(order, 'glow').renderOrder,
+        face: cardMeshPaint(order, 'face').renderOrder,
+      };
+    };
+    const aspect = 390 / 844;
+    for (const n of [13, 17]) {
+      const selected = 4;
+      const mine = paint(selected, true, true);
+      expect(mine.face).toBeGreaterThan(mine.glow);
+      expect(handRenderOrder(selected, true, true)).toBe(SELECT_STACK + selected);
+      for (let i = 0; i < n; i++) {
+        if (i === selected) continue;
+        const legal = paint(i, true);
+        const illegal = paint(i, false);
+        expect(mine.glow).toBeGreaterThan(legal.face);
+        expect(mine.glow).toBeGreaterThan(legal.glow);
+        expect(mine.face).toBeGreaterThan(legal.face);
+        expect(mine.glow).toBeGreaterThan(illegal.face);
+        const sel = handCardPlane(aspect, n, selected, 0, 0, handDepthOpts('selected'), 0, 844);
+        const peer = handCardPlane(aspect, n, i, 0, 0, handDepthOpts('legal'), 0, 844);
+        const flat = handCardPlane(aspect, n, i, 0, 0, handDepthOpts('illegal'), 0, 844);
+        expect(sel.depth).toBeLessThan(peer.depth);
+        expect(sel.depth).toBeLessThan(flat.depth);
+        expect(peer.depth).toBeLessThan(flat.depth);
+      }
+      const lead = handCardPlane(aspect, n, 0, 0, 0, handDepthOpts('legal'), 0, 844);
+      const tail = handCardPlane(aspect, n, n - 1, 0, 0, handDepthOpts('illegal'), 0, 844);
+      expect(lead.depth).toBeLessThan(tail.depth);
+    }
+    // a legal card's own ring still sits under its face, and above every flat card
+    const legal = paint(0, true);
+    expect(legal.face).toBeGreaterThan(legal.glow);
+    expect(legal.glow).toBeGreaterThan(paint(16, false).face);
+    expect(handDepthOpts('legal').near).toBe(LEGAL_NEAR);
+    expect(handDepthOpts('selected').near).toBe(LEGAL_NEAR * 2);
+    expect(handDepthOpts('flat')).toEqual({ layer: 'rest' });
   });
 
   it('opens about 8px on each side of a middle run without restacking or reordering', () => {

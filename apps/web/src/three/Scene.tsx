@@ -6,7 +6,7 @@ import { type BufferGeometry, type Camera, type Group, type Material, type Mesh,
 import { type Card, type Play, type Trick } from '@spades/rules';
 import Card3D, { createLitCardMaterial } from './Card3D';
 import { departureSlot, handCardKey, handReactKey } from '../handOrder';
-import { GAP_S, LEGAL_NEAR, LIFT_S, canTapCard, fanGapPx, fanMotion, handCardChrome, handRenderOrder, hitsInPaintOrder, raiseLocalY } from './handLift';
+import { GAP_S, LIFT_S, canTapCard, fanGapPx, fanMotion, handCardChrome, handDepthOpts, handRenderOrder, hitsInPaintOrder, raiseLocalY } from './handLift';
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline, seatDealDelay } from './dealTimeline';
 import { handNeedsDeal, handSlotKey } from './dealFlight';
@@ -569,9 +569,9 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       : { pose: 'flat' as const, dim: false, glow: false };
     const pose = chrome.pose;
     const above = pose === 'legal' || pose === 'selected';
-    // The raise is screen-up. The gap is a CSS-pixel slide. Playable cards also sit LEGAL_NEAR closer
-    // so they win the depth test against the neighbour; that bias does not move them on screen.
-    const opts = above ? { ...fanOpts, near: pose === 'selected' ? LEGAL_NEAR * 2 : LEGAL_NEAR } : fanOpts;
+    // The raise is screen-up. The gap is a CSS-pixel slide. Depth is a separate nearer bias
+    // (handDepthOpts) so a selected card wins the depth test against a higher-index neighbour.
+    const opts = { ...fanOpts, ...handDepthOpts(pose) };
     const target = handFan(aspect, mine.length, i, 0, safeFrac, opts, gaps[i] ?? 0, screenH);
     // One shot. Later renders (a tap, a highlight) must not pass the face-down pose again.
     const flip = flipIn && flippedHand.current !== handNo && !!c;
@@ -607,7 +607,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       arc: move.arc,
       raise: c ? raiseLocalY(pose, fan.viewH, screenH, fan.ch) : 0,
       roll: plane.roll,
-      order: handRenderOrder(i, above),
+      order: handRenderOrder(i, above, pose === 'selected'),
     });
   });
   pendingHold.current = { handNo, cards: nextCards, slots: nextSlots, count: faceCount, seen: nextSeen };
@@ -954,8 +954,8 @@ function ResumeRamp({ quality, def, onShow, onLit, onDpr, onShadow, onHall }: { 
       new MeshBasicMaterial({ name: 'basic-stripe', color: '#d9b04a', transparent: true, opacity: 0.35, depthWrite: false }),
       new MeshBasicMaterial({ name: 'basic-map', map: white }),
       new MeshBasicMaterial({ name: 'basic-logo', map: white, transparent: true, opacity: 0.13, depthWrite: false }),
-      // Same program as the per-card gold ring (tone mapping off, no depth write).
-      new MeshBasicMaterial({ name: 'basic-gold', color: '#f5c542', transparent: true, opacity: 0, depthWrite: false, toneMapped: false }),
+      // Same program as the per-card gold ring: opaque, tone mapping off, no depth write.
+      new MeshBasicMaterial({ name: 'basic-gold', color: '#f5c542', depthWrite: false, toneMapped: false }),
       new MeshStandardMaterial({ name: 'edge', color: '#efe9dc', roughness: 0.75 }),
     ];
     table.felt.name = 'felt';

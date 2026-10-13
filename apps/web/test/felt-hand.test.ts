@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { FeltHand, FELT_SELECT_LIFT_PX, feltCardTransform } from '../src/FeltHand';
+import { FeltHand, FELT_LEGAL_Z, FELT_SELECT_LIFT_PX, FELT_SELECT_Z, feltCardTransform, feltCardZ } from '../src/FeltHand';
 
 describe('quick-load hand', () => {
   it('keeps the fan, and lifts a selected card straight up outside that rotation', () => {
@@ -55,5 +55,36 @@ describe('quick-load hand', () => {
     expect(css).toContain('.felt-hand button:disabled:not(.legal) { filter: saturate(.45) brightness(.9); }');
     expect(css).not.toContain('.felt-hand button:disabled { filter:');
     expect(css).toContain('.felt-hand button.legal { filter: none; outline: 2px solid #f5c542; outline-offset: 1px; }');
+  });
+
+  it('stacks a raised card and its outline above later neighbours', () => {
+    const cards = ['AS', 'KH', '2C', 'QD', '7S'] as const;
+    const html = renderToStaticMarkup(createElement(FeltHand, {
+      cards: [...cards],
+      trick: [],
+      legal: ['KH', '2C', 'QD'],
+      selected: '2C',
+      onCard: () => {},
+      promoted: () => false,
+    }));
+    const z = [...html.matchAll(/z-index:(\d+)/g)].map((m) => Number(m[1]));
+    expect(z).toEqual(cards.map((c, i) => feltCardZ(i, ['KH', '2C', 'QD'].includes(c), c === '2C')));
+    const selected = feltCardZ(2, true, true);
+    for (let i = 0; i < cards.length; i++) {
+      if (i === 2) continue;
+      expect(selected).toBeGreaterThan(feltCardZ(i, i > 0 && i < 4, false));
+    }
+    expect(feltCardZ(1, true, false)).toBeGreaterThan(feltCardZ(4, false, false));
+    expect(feltCardZ(0, false, false)).toBe(0);
+    expect(FELT_LEGAL_Z).toBeGreaterThan(16);
+    expect(FELT_SELECT_Z).toBeGreaterThan(FELT_LEGAL_Z + 16);
+    for (const n of [13, 17]) {
+      const picked = feltCardZ(3, true, true);
+      for (let i = 0; i < n; i++) {
+        if (i === 3) continue;
+        expect(picked).toBeGreaterThan(feltCardZ(i, true, false));
+        expect(feltCardZ(i, true, false)).toBeGreaterThan(feltCardZ(i, false, false));
+      }
+    }
   });
 });
