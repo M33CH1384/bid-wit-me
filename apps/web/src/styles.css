@@ -231,7 +231,6 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .bid-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; width: 100%; }
 .bid-grid button { padding: 9px 0; font-size: 20px; }
 .bid-grid .nil { grid-column: span 2; background: linear-gradient(180deg, var(--purple-hot), #6a2ad6); box-shadow: 0 0 12px rgba(155,92,255,.6); }
-.bid-grid .nil:disabled { opacity: .45; box-shadow: none; cursor: default; }
 .bid-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 
 /* ---------- modals ---------- */
@@ -1146,10 +1145,8 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .bid-coach-float .bid-coach { display: flex; flex-direction: column; min-height: 0; }
 .bid-coach-float .bc-body { min-height: 0; overflow-y: auto; }
 .me.over-chat { z-index: 12; }
-/* 13 bids + Nil in two rows (8 across) instead of three. Portrait phones are not `.short`
-   (that class is landscape), so this applies with or without the coach. Seven columns wrap Nil
-   onto a third row, under the hand, where it reads as missing. */
-.table-screen:not(.short) .bid-panel .bid-grid { grid-template-columns: repeat(8, 1fr); }
+/* 13 bids + Nil in two rows (8 across) instead of three */
+.table-screen:not(.short) .bid-panel.with-coach .bid-grid { grid-template-columns: repeat(8, 1fr); }
 /* little room (short desktop windows, phones): smaller buttons, tighter gaps, no "YOUR BID" line when the coach is open */
 .me > .bid-panel.tight { gap: 5px; padding-top: 6px; padding-bottom: 8px; }
 .me > .bid-panel.tight .bid-grid button { padding: 5px 0; font-size: 17px; }

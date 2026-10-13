@@ -1133,9 +1133,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
                 {Array.from({ length: view.bidOptions.max - view.bidOptions.min + 1 }, (_, i) => view.bidOptions!.min + i).map((b) => (
                   <button type="button" key={b} onClick={() => apply({ type: 'bid', seat: HUMAN, bid: b })}>{b}</button>
                 ))}
-                {view.rules.nil.allowed && (
-                  <button type="button" className="nil" data-testid="bid-nil" disabled={!view.bidOptions.nil} title={view.bidOptions.nilReason ?? undefined} onClick={() => apply({ type: 'bid', seat: HUMAN, bid: 'nil' })}>NIL</button>
-                )}
+                {view.bidOptions.nil && <button type="button" className="nil" onClick={() => apply({ type: 'bid', seat: HUMAN, bid: 'nil' })}>NIL</button>}
               </div>
             </div>
           )
