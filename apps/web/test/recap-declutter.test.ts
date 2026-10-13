@@ -71,4 +71,17 @@ describe('hand recap', () => {
     expect(css).toMatch(/modal-open > :not\([\s\S]*?:not\(\.recap-chat\)/);
     expect(css).toContain('.tt-chat-btn');
   });
+
+  it('is opaque above the table chat, and the player row uses the full card on a phone', () => {
+    const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    expect(css).toContain('.tt-backdrop { position: fixed; inset: 0; z-index: 18; display: flex; align-items: stretch; justify-content: center; padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); background: #07030e;');
+    expect(css).toContain('.tt.glass.slant { background: linear-gradient(160deg, #2a1250, #0e071a); -webkit-backdrop-filter: none; backdrop-filter: none; }');
+    expect(css).toContain('.modal-backdrop, .tt-backdrop { z-index: 1000; }');
+    expect(css).toContain('z-index: 1045');
+    expect(css).toContain('grid-template-areas: "name total" "line total" "players players" "bar bar"');
+    expect(css).toContain('.tt-team ul.tt-players > li { flex: 0 1 auto; min-width: min-content; max-width: 100%; overflow-wrap: anywhere; }');
+    const names = ['You', 'Leilani', 'Queenie', 'Elena'];
+    const html = recap(toHandOver(makeRules('joker', { targetScore: 500 })), names);
+    for (const name of names) expect(html).toContain(name);
+  });
 });
