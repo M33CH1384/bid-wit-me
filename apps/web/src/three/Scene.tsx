@@ -9,6 +9,7 @@ import { departureSlot, handCardKey, handReactKey } from '../handOrder';
 import { GAP_S, LEGAL_NEAR, LIFT_S, canTapCard, fanGapPx, fanMotion, handRenderOrder, hitsInPaintOrder, playablePose, raiseLocalY } from './handLift';
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline } from './dealTimeline';
+import { handNeedsDeal, handSlotKey } from './dealFlight';
 import { type Sfx, sound } from '../audio';
 import { fx } from '../fx';
 import { backTexture, faceTexture, logoTexture } from './cardTextures';
@@ -311,7 +312,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   if (held.current.handNo !== handNo) held.current = { handNo, cards: new Set(), slots: new Map(), count: 0, seen: new Set() };
   const pendingHold = useRef<Held>(held.current);
 
-  type Item = { key: string; card: Card | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: (() => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide'; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean };
+  type Item = { key: string; card: Card | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: (() => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide'; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; holdUntilMove?: boolean };
   const items: Item[] = [];
   const dealDelay = (slot: number, seat: number) => tl.shuffle + (slot * n + ((seat - dealer - 1 + n) % n)) * tl.step;
 
@@ -393,15 +394,17 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
     const target = handFan(aspect, mine.length, i, 0, safeFrac, opts, gaps[i] ?? 0, screenH);
     const flip = flipIn && !!c;
     const id = c ? handCardKey(c) : '';
+    const slotKey = handSlotKey(id, i);
     // intro stays on for the whole hand; only cards we have not shown yet come from the deck.
-    const fresh = !!id && intro && !held.current.seen.has(id);
+    // Face-down slots (Blind Nil) use the same round-robin delay as a face-up card.
+    const fresh = handNeedsDeal({ intro, flip, seen: held.current.seen, slotKey });
     const move = fanMotion({ flip, fresh, closing });
     const plane = handCardPlane(aspect, mine.length, i, 0, safeFrac, opts, gaps[i] ?? 0, screenH);
     if (c) {
       nextCards.add(c);
       nextSlots.set(id, target);
-      nextSeen.add(id);
     }
+    nextSeen.add(slotKey);
     items.push({
       hand: true,
       key: handReactKey(handNo, c, i),
@@ -409,6 +412,8 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       target,
       from: move.kind === 'flip' ? flipped(target) : move.kind === 'deal' ? deck : undefined,
       delay: move.kind === 'flip' ? i * 0.022 : move.kind === 'deal' ? dealDelay(i, human) : 0,
+      // Stay hidden until this card's own deal beat. The fan must not be on screen while other seats are still being dealt.
+      holdUntilMove: move.kind === 'deal',
       sfxStart: move.kind === 'deal' ? 'deal' : undefined,
       dim: pose === 'illegal',
       // playable cards (when some aren't) get the gold edge on every device; the rest are dimmed (dim above)
@@ -468,6 +473,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
           onTap={it.tap}
           sfxStart={it.sfxStart}
           sfxLand={it.sfxLand}
+          holdUntilMove={it.holdUntilMove}
           blast={it.hand ? 'hand' : 'table'}
         />
       ))}

@@ -7,6 +7,7 @@ import type { Xform } from './layout';
 import { type Sfx, sound } from '../audio';
 import { fireCue, fx } from '../fx';
 import { restingFlightWait } from '../trickTiming';
+import { openingFlight } from './dealFlight';
 
 interface Props {
   face: Texture | null; // null = we only ever see the back
@@ -42,6 +43,8 @@ interface Props {
   sfxLand?: string; // comma-separated Sfx names, e.g. 'play,cut'
   /** how the nuke's blast treats this card: table cards are blown outward; hand cards only in Full Nuke */
   blast?: 'table' | 'hand';
+  /** Deal flight: stay invisible until this card leaves the deck, so the fan does not show up early. */
+  holdUntilMove?: boolean;
 }
 
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
@@ -66,8 +69,11 @@ function withSaturation<M extends MeshStandardMaterial>(m: M): M & { userData: {
   return m as M & { userData: { sat: { value: number } } };
 }
 
-function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, raise = 0, roll = 0, order = 0, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand, blast = 'table' }: Props) {
+function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, raise = 0, roll = 0, order = 0, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand, blast = 'table', holdUntilMove = false }: Props) {
   const ref = useRef<Group>(null);
+  // First mount only. A follow-up render drops the deal props before useFrame runs.
+  const mountedFlight = useRef({ from, delay });
+  const hideUntilStart = useRef(holdUntilMove);
   const lift = useRef<Group>(null);
   const inner = useRef<Group>(null);
   const bl = useRef({ dir: new Vector3(), q: new Quaternion(), axis: new Vector3(), on: false });
@@ -137,6 +143,10 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     sp: new Vector3(), sq: new Quaternion(), ss: 1,
     tp: new Vector3(), tq: new Quaternion(), ts: 1,
     started: false, firedStart: '' as string, firedLand: '' as string, land: undefined as string | undefined,
+  });
+  useLayoutEffect(() => {
+    const g = ref.current;
+    if (g && hideUntilStart.current && !tw.current.started) g.visible = false;
   });
   const sfx = useRef({ sfxStart, sfxLand });
   sfx.current = { sfxStart, sfxLand };
@@ -235,6 +245,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   useFrame((_, dt) => {
     const g = ref.current;
     if (!g) return;
+    if (hideUntilStart.current && !tw.current.started) g.visible = false;
     // colour / glow easing (~150 ms)
     const L = look.current, k = Math.min(1, dt / 0.05);
     const c = frontMat.color;
@@ -248,8 +259,12 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     // A 0-height canvas produces NaN targets. Adopting one sticks: lerp(NaN, good, t) is NaN,
     // so the hand leaves on that frame and the next trick is an empty outline.
     const finiteTarget = poseOk(target);
+    const firstTween = !s.key;
+    const liveFrom = from && poseOk(from) ? from : undefined;
+    const mountedFrom = mountedFlight.current.from && poseOk(mountedFlight.current.from) ? mountedFlight.current.from : undefined;
+    const open = openingFlight({ from: liveFrom, delay }, { from: mountedFrom, delay: mountedFlight.current.delay }, firstTween);
     if (!s.init) {
-      const f = (origin && poseOk(origin) ? origin : undefined) ?? (from && poseOk(from) ? from : undefined) ?? (finiteTarget ? target : undefined);
+      const f = (origin && poseOk(origin) ? origin : undefined) ?? open.from ?? (finiteTarget ? target : undefined);
       if (!f) return;
       g.position.set(...f.p);
       g.quaternion.set(...f.q);
@@ -280,7 +295,8 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       s.t = 0;
       // last-trick auto-play retargets a card that is already on screen (your last card keeps its hand key).
       // The stagger is a prop; apply it when the card leaves a resting pose, or it never waits.
-      const hold = restingFlightWait(delay, wasResting);
+      // The opening tween keeps the deal delay the card was mounted with, even if this render already cleared it.
+      const hold = restingFlightWait(open.delay, wasResting);
       if (hold !== null) s.wait = hold;
       const stamp = origin ? xKey(origin) : '';
       // A play starts at the card's own fan slot (not wherever the mesh was, and not the fan centre).
@@ -329,6 +345,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     if (!s.started) {
       // the card leaves now — animation-driven sound, so it always matches what you see (any game speed)
       s.started = true;
+      if (hideUntilStart.current) { hideUntilStart.current = false; g.visible = true; }
       const st = sfx.current.sfxStart;
       if (st && st !== s.firedStart) { s.firedStart = st; if (moving) sound.play(st); }
     }
