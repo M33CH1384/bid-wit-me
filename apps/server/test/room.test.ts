@@ -122,15 +122,33 @@ describe('lobby', () => {
     env.room.data.game!.turn = 0;
     env.send('a', { t: 'act', action: { type: 'bid', bid: 3 }, seq: env.room.data.seq });
     expect(env.room.data.game!.bids[0]).toBe(3);
-    // rules already in a live game (an older table, or a bug) must not take the handler down
+    // A live game (an older table, or a damaged row) can be missing nil and blindNil.
+    // That used to throw inside bid options (`reading 'allowed'`) and drop the bid.
     delete (env.room.data.game!.rules as { nil?: unknown }).nil;
+    delete (env.room.data.game!.rules as { blindNil?: unknown }).blindNil;
     env.room.data.game!.turn = 0;
-    expect(() => env.room.message('a', JSON.stringify({ t: 'act', seq: env.room.data.seq, id: 'b1', action: { type: 'bid', bid: 4 } }))).not.toThrow();
-    expect(env.msgs('a').some((m) => m.t === 'ack' && m.id === 'b1' && m.ok === false)).toBe(true);
-    expect(env.room.data.game!.bids[0]).toBe(3);
-    expect(() => env.send('a', { t: 'chat', text: 'still here' })).not.toThrow();
-    expect(env.msgs('a').some((m) => m.t === 'chat' && m.line.text === 'still here')).toBe(true);
-    expect(() => env.room.tick()).not.toThrow();
+    env.room.data.game!.bids[0] = null;
+    const logged: string[] = [];
+    const orig = console.error;
+    console.error = (...args: unknown[]) => { logged.push(args.map(String).join(' ')); };
+    try {
+      expect(() => env.room.message('a', JSON.stringify({ t: 'act', seq: env.room.data.seq, id: 'b1', action: { type: 'bid', bid: 4 } }))).not.toThrow();
+      expect(env.msgs('a').some((m) => m.t === 'ack' && m.id === 'b1' && m.ok === true)).toBe(true);
+      expect(env.room.data.game!.bids[0]).toBe(4);
+      expect(env.room.data.game!.rules.nil).toEqual({ allowed: true, value: 100 });
+      expect(env.room.data.game!.rules.blindNil.allowed).toBe(true);
+      expect(() => env.send('a', { t: 'chat', text: 'still here' })).not.toThrow();
+      expect(env.msgs('a').some((m) => m.t === 'chat' && m.line.text === 'still here')).toBe(true);
+      expect(() => env.room.tick()).not.toThrow();
+      // a bid the rules reject is an ack, and the table is still there
+      env.room.data.game!.turn = 0;
+      expect(() => env.room.message('a', JSON.stringify({ t: 'act', seq: env.room.data.seq, id: 'b2', action: { type: 'bid', bid: 14 } }))).not.toThrow();
+      expect(env.msgs('a').some((m) => m.t === 'ack' && m.id === 'b2' && m.ok === false)).toBe(true);
+      expect(env.room.data.game!.bids[0]).toBe(4);
+    } finally {
+      console.error = orig;
+    }
+    expect(logged.some((l) => l.includes('allowed'))).toBe(false);
   });
 
   it('validates house rules; cutthroat-3 vacates seat 4; cutthroat deck choice sticks', () => {
@@ -831,7 +849,9 @@ describe('AFK + kicking', () => {
     for (let k = 0; k < 2; k++) { waitMyTurn(two.env); two.env.advance(5200); }
     expect(two.env.room.data.seats[0]!.kind).toBe('bot');
     const off = soloGame(0);
-    for (let k = 0; k < 6; k++) { waitMyTurn(off.env); off.env.advance(5200); }
+    // 5s play/bid timer plus a nuked-trick lead-in (4000ms). advance(5200) stops short of that
+    // deadline, so the next loop finishes the same timeout and the count comes up one short.
+    for (let k = 0; k < 6; k++) { waitMyTurn(off.env); off.env.advance(10_000); }
     expect(off.env.room.data.seats[0]!.kind).toBe('human');
     expect(off.env.room.data.members[off.a.pid]!.timeouts).toBeGreaterThanOrEqual(6);
   });
@@ -1261,7 +1281,46 @@ describe('spectators', () => {
       if (!playTurn(env, ['a'])) env.advance(200);
       if (env.room.data.game!.handNo > 1) break;
     }
-    expect(checked).toBeGreaterThan(20);
+    // Run-it can finish a books hand once four cards remain, so a full watch of hand 1
+    // is sometimes only the mid-teens. The floor stays under that.
+    expect(checked).toBeGreaterThan(12);
+  });
+
+  it('a spectator still gets a redacted view when nil rules are missing during bidding', () => {
+    const env = new FakeEnv(undefined, FAST);
+    env.join('a', 'Dee');
+    env.send('a', { t: 'sit', seat: 0 });
+    for (const s of [1, 2, 3]) env.send('a', { t: 'addBot', seat: s });
+    env.send('a', { t: 'config', rules: makeRules('joker', { firstHandBidsItself: false }) });
+    env.send('a', { t: 'start' });
+    expect(env.room.data.game!.phase).toBe('bidding');
+    delete (env.room.data.game!.rules as { nil?: unknown }).nil;
+    delete (env.room.data.game!.rules as { blindNil?: unknown }).blindNil;
+    const logged: string[] = [];
+    const orig = console.error;
+    console.error = (...args: unknown[]) => { logged.push(args.map(String).join(' ')); };
+    try {
+      env.join('s', 'Watcher');
+      for (let i = 0; i < 40; i++) {
+        const st = env.last('s', 'state')!;
+        expect(st.spectator).toBe(true);
+        expect(st.seat).toBeNull();
+        const v = st.view!;
+        expect(v.hand).toBeNull();
+        expect(v.legal).toEqual([]);
+        expect(v.bidOptions).toBeNull();
+        expect(v.rules.nil.allowed).toBe(true);
+        expect(v.rules.blindNil.allowed).toBe(true);
+        if (!playTurn(env, ['a'])) env.advance(200);
+        if (env.room.data.game!.bids.every((b) => b !== null)) break;
+      }
+    } finally {
+      console.error = orig;
+    }
+    expect(logged.some((l) => l.includes('allowed'))).toBe(false);
+    expect(env.room.data.game!.bids.every((b) => b !== null)).toBe(true);
+    expect(env.room.data.game!.rules.nil).toEqual({ allowed: true, value: 100 });
+    expect(env.room.data.game!.rules.blindNil.allowed).toBe(true);
   });
 
   it('spectators cannot act, bid, ready up or transmit media', () => {

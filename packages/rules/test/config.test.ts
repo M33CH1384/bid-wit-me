@@ -125,10 +125,11 @@ describe('validation', () => {
     const joker = makeRules('joker');
     const stringNil = { ...joker, nil: { allowed: true, value: '100' as never } };
     expect(validateRules(stringNil).join()).toMatch(/nil\.value/);
-    // 0 + "100" concatenates, then the numeric top never matches the string score, so the game cannot end
+    // A string nil value used to concatenate into the score, so the game could never end.
+    // Scoring treats it as the preset (100): made nil is +100, and the total stays a number.
     const broken = scoreHand(stringNil, ['nil', 4, 4, 4], [0, 5, 4, 4], [400, 0], [0, 0]);
-    expect(typeof broken[0]!.totalScore).toBe('string');
-    expect(checkGameEnd(stringNil, broken.map((s) => s.totalScore))).toBeNull();
+    expect(broken[0]!.totalScore).toBe(540);
+    expect(checkGameEnd(stringNil, broken.map((s) => s.totalScore))?.endReason).toBe('target');
     const missing = { ...joker };
     delete (missing as { nil?: unknown }).nil;
     expect(validateRules(missing).join()).toMatch(/nil/);

@@ -1,4 +1,4 @@
-import { type TableRules, bagsOnOf, handSize, hostMinimum, shotOutOn } from './config';
+import { type TableRules, bagsOnOf, blindNilRulesOf, handSize, hostMinimum, nilRulesOf, shotOutOn } from './config';
 
 /**
  * A bid: a number of tricks (≥1), Nil, or Blind Nil. A numeric 0 is normalised to 'nil'.
@@ -106,7 +106,7 @@ export function scoreHand(
       if (b === 'books') {
         bookPoints += BOOK_VALUE * t; // first hand: every book counts, no bags
       } else if (isNilBid(b)) {
-        const value = b === 'nil' ? r.nil.value : r.blindNil.value;
+        const value = b === 'nil' ? nilRulesOf(r).value : blindNilRulesOf(r).value;
         const made = t === 0;
         const points = made ? value : -value;
         nils.push({ seat: s, kind: b, tricks: t, made, points });
