@@ -41,7 +41,7 @@ describe('online seat rotation', () => {
         let bags = Array(L.scores.length).fill(0);
         for (const rec of L.history) {
           const sides = scoreHand(rules, rec.bids as never, rec.tricksWon, scores, bags);
-          expect(sides).toEqual(rec.sides.map(({ shot: _s, ...x }) => x));
+          expect(sides).toEqual(rec.sides.map(({ shot: _s, out: _o, ...x }) => x));
           scores = sides.map((s) => s.totalScore);
           bags = sides.map((s) => s.totalBags);
         }

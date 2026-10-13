@@ -225,6 +225,37 @@ describe('game', () => {
     expect(env.errors(cid).at(-1)).toMatchObject({ code: 'BID_TOO_LOW', message: 'Minimum bid is 4' });
   });
 
+  it('an eliminated Cutthroat player stays to watch and cannot sit again', () => {
+    const { env } = fourHumans();
+    env.send('a', { t: 'config', rules: makeRules('cutthroat', { playerCount: 4, firstHandBidsItself: false }) });
+    env.send('a', { t: 'start' });
+    const g = env.room.data.game!;
+    const handNo = g.handNo;
+    g.eliminated = [true, false, false, false];
+    g.failStreak = [1, 0, 0, 0];
+    g.phase = 'bidding';
+    g.turn = 1;
+    env.room.testLoadGame(g);
+    expect(env.room.data.seats[0]).toEqual({ kind: 'empty' });
+    expect(env.room.data.outPlayers).toHaveLength(1);
+    const gone = env.room.data.outPlayers![0]!;
+    expect(env.room.data.members[gone]!.seat).toBeNull();
+    env.send('a', { t: 'sit', seat: 0 });
+    expect(env.errors('a').at(-1)!.code).toBe('ELIMINATED');
+    env.send('a', { t: 'sit', seat: 1 });
+    expect(env.errors('a').at(-1)!.code).toBe('ELIMINATED');
+    const view = env.last('b', 'state')!.view!;
+    expect(view.eliminated).toEqual([true, false, false, false]);
+    expect(view.failStreak).toEqual([1, 0, 0, 0]);
+    expect(view.handNo).toBe(handNo);
+    expect(env.last('a', 'state')!.spectator).toBe(true);
+    // The eliminated player is still watching, so the table keeps its clock and the seat stays empty.
+    expect(env.room.data.deadline).toBeGreaterThan(env.t);
+    env.advance(500);
+    expect(env.room.data.seats[0]).toEqual({ kind: 'empty' });
+    expect(env.last('a', 'state')!.spectator).toBe(true);
+  });
+
   it('bots play their turns and stop at the human', () => {
     const env = new FakeEnv(undefined, FAST);
     env.join('a', 'Solo');

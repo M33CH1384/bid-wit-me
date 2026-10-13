@@ -14,7 +14,7 @@ function playTurn(env: FakeEnv, cids: string[]): boolean {
   for (const cid of cids) {
     const st = env.last(cid, 'state');
     const v = st?.view;
-    if (!v || st.room.phase !== 'playing') continue;
+    if (!v || st.room.phase !== 'playing' || st.spectator || st.seat === null) continue;
     if (v.phase === 'handOver') { env.send(cid, { t: 'next' }); continue; }
     if (v.turn !== v.seat) continue;
     const a = chooseBotAction(v, 'normal');
