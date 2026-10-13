@@ -28,7 +28,9 @@ export interface GameSource {
   view: PlayerView;
   pause: boolean;
   error: string | null;
-  apply: (a: Action) => void;
+  apply: (a: Action) => boolean;
+  /** Bumps when a sent play is released, so a tap held locally can open again. */
+  playGate?: number;
   restart: () => void;
   introHand: number | null;
   dealing: boolean;
@@ -105,15 +107,15 @@ export function useOnlineSource(cs: ConnState, conn: TableConnection): (GameSour
   }, [cs.error]);
 
   const seq = shown?.seq ?? 0;
-  const apply = useCallback((a: Action) => {
-    // conn.act() drops the move if another one is still in flight or this view is already outdated
+  const apply = useCallback((a: Action): boolean => {
+    // conn.act() drops the move if another one is still in flight, a play is waiting on the server, or this view is outdated
     switch (a.type) {
-      case 'reveal': conn.act({ type: 'reveal' }, seq); break;
-      case 'bid': if (a.bid !== 'books') conn.act({ type: 'bid', bid: a.bid }, seq); break;
-      case 'play': conn.act({ type: 'play', card: a.card }, seq); break;
-      case 'exchange': conn.act({ type: 'exchange', cards: a.cards }, seq); break;
-      case 'runIt': conn.act({ type: 'runIt' }, seq); break;
-      case 'nextHand': conn.send({ t: 'next' }); break;
+      case 'reveal': return conn.act({ type: 'reveal' }, seq);
+      case 'bid': return a.bid !== 'books' && conn.act({ type: 'bid', bid: a.bid }, seq);
+      case 'play': return conn.act({ type: 'play', card: a.card }, seq);
+      case 'exchange': return conn.act({ type: 'exchange', cards: a.cards }, seq);
+      case 'runIt': return conn.act({ type: 'runIt' }, seq);
+      case 'nextHand': conn.send({ t: 'next' }); return true;
     }
   }, [conn, seq]);
 
@@ -121,6 +123,7 @@ export function useOnlineSource(cs: ConnState, conn: TableConnection): (GameSour
   return {
     st: shown.st, view: shown.view, rot: shown.rot, pause, error: err, apply, restart: () => {},
     introHand: intro && intro.hand === shown.st.handNo ? intro.hand : null, dealing, k: 1, locked: cs.pending,
+    playGate: cs.playGate ?? 0,
   };
 }
 

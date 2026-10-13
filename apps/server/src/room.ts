@@ -973,7 +973,10 @@ export class Room {
   private apply(action: Action): void {
     const d = this.data;
     const before = d.game!;
-    d.game = applyAction(before, action);
+    const next = applyAction(before, action);
+    // Idempotent play: the seat already has this card in the trick. Do not bump seq or retell the moment.
+    if (next === before) return;
+    d.game = next;
     d.seq = (d.seq ?? 0) + 1;
     this.parkEliminated();
     for (const ev of momentsFor(before, action, d.game)) this.talk(ev);

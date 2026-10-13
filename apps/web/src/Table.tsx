@@ -1,4 +1,5 @@
 import { cardControlLabel } from './cardA11y';
+import { ignorePlayTap, playTrickOf, type PlayTrick } from './online/playGuard';
 import { actingSeat, seatMark } from './turnState';
 import { retainHandOrder } from './handOrder';
 import { winHeadline } from './headline';
@@ -102,7 +103,7 @@ function TrickBanner({ text }: { text: string }) {
 /** Online play: the table renders server state through the same UI (see online/OnlineTable.tsx). */
 export interface OnlineBinding {
   /** shape-compatible with useGame()'s result */
-  source: ReturnType<typeof useGame> & { locked?: boolean };
+  source: ReturnType<typeof useGame> & { locked?: boolean; playGate?: number };
   /** local-seat names (0 = you) */
   names: string[];
   chat: { msgs: ChatMsg[]; push: (user: string, text: string) => void };
@@ -958,16 +959,41 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
   const promoted = useCallback((c: Card) => isPromoted(c, r), [r]);
 
+  // One play leaves the hand. Further taps do nothing until that trick moves (or the server rejects the play).
+  const playHold = useRef<PlayTrick | null>(null);
+  const playGateSeen = useRef(online?.source.playGate ?? 0);
+  const trickNow = useMemo(
+    () => playTrickOf(st),
+    [st.handNo, st.tricks.length, st.trick.plays.length, st.turn],
+  );
+  useEffect(() => {
+    const gate = online?.source.playGate ?? 0;
+    if (gate !== playGateSeen.current) {
+      playGateSeen.current = gate;
+      playHold.current = null;
+    }
+  }, [online?.source.playGate]);
+  useEffect(() => {
+    if (playHold.current && !ignorePlayTap(playHold.current, trickNow)) playHold.current = null;
+  }, [trickNow]);
+
   const onCard = useCallback((c: Card) => {
     if (humanExchanging) {
       sound.play('tap');
       setExchangePick((p) => (p.includes(c) ? p.filter((x) => x !== c) : p.length < exchangeStep!.count ? [...p, c] : p));
       return;
     }
+    if (ignorePlayTap(playHold.current, trickNow)) return;
     if (!legal.includes(c)) return;
-    if (selected === c) { apply({ type: 'play', seat: HUMAN, card: c }); setSelected(null); }
-    else { setSelected(c); sound.play('tap'); }
-  }, [humanExchanging, exchangeStep, legal, selected, apply]);
+    if (selected === c) {
+      const held = trickNow;
+      const sent = apply({ type: 'play', seat: HUMAN, card: c });
+      if (sent !== false) {
+        playHold.current = held;
+        setSelected(null);
+      }
+    } else { setSelected(c); sound.play('tap'); }
+  }, [humanExchanging, exchangeStep, legal, selected, apply, trickNow]);
 
   const isBotSeat = (seat: number) => (online ? !!online.botSeats?.includes(seat) : seat !== HUMAN);
   // recorded bot voices: fetch a persona's clips when one of its bots sits down
