@@ -4,7 +4,8 @@ import { CH } from './layout';
  * Your-turn hand: legal cards rise together, cards you can't play sink and dim, a tap lifts one card further.
  * Distances are CSS pixels on the canvas. The fan lives on the depth-1 camera plane, so a pixel is
  * `viewH / screenH` plane units (see handCardPlane). The raise is a translateY on an inner wrapper;
- * it is not baked into the fan's rotate or position, and it does not change stacking order.
+ * it is not baked into the fan's rotate or position. Stacking is render order and depth
+ * (`handRenderOrder`, `handDepthOpts`), not the translate.
  */
 
 export const LEGAL_LIFT_PX = 14;
@@ -57,6 +58,11 @@ export const SELECT_GLOW_OP = 0.8;
 export const GROUP_GAP_PX = 8;
 /** Render order of a legal card sits above every illegal card. Index is added so left-to-right stays put. */
 export const LEGAL_STACK = 100;
+/**
+ * A selected card draws after every other hand card. 400 clears a 17-card fan
+ * (face is order + 0.5, ring is order − 1) and the unused group outline at LEGAL_STACK + 40.
+ */
+export const SELECT_STACK = 400;
 
 /**
  * Not-playable cards read at 55% brightness. The albedo below was tuned on the lit, tone-mapped card so that
@@ -107,10 +113,19 @@ export function handCardChrome(o: {
 
 /**
  * Painter's order for one hand card. Every legal card draws after every illegal card.
- * Within each group the index still increases left to right, and a tap does not jump the queue.
+ * Within each group the index still increases left to right.
+ * `front` is the tapped card: it jumps ahead of every neighbour, including a higher index.
  */
-export function handRenderOrder(index: number, above: boolean): number {
+export function handRenderOrder(index: number, above: boolean, front = false): number {
+  if (front) return SELECT_STACK + index;
   return (above ? LEGAL_STACK : 0) + index;
+}
+
+/** Camera-space stack for one pose. Depth is not the screen raise; the selected card still has to be nearer than a higher-index neighbour. */
+export function handDepthOpts(pose: HandPose): { layer: 'rest' | 'play' | 'selected'; near?: number } {
+  if (pose === 'selected') return { layer: 'selected', near: LEGAL_NEAR * 2 };
+  if (pose === 'legal') return { layer: 'play', near: LEGAL_NEAR };
+  return { layer: 'rest' };
 }
 
 /**
@@ -132,15 +147,19 @@ export const FACE_POLYGON_OFFSET = { factor: 0, units: -8 } as const;
 
 /**
  * How far the per-card gold ring sits in front of the face, in card-local units.
- * The ring is transparent, so it is drawn after the opaque face and then depth-tested against it.
+ * The ring is opaque and depth-write is off, so it shares the card's draw queue and the face
+ * (half a step later) covers the stroke where it tucks under the pips. A transparent ring would
+ * be drawn after every face, and a neighbour's stroke would then paint across this card.
  * The face is already FACE_CAP_GAP ahead of the cap and polygon-offset another 8 window units
  * toward the camera. On a 24-bit desktop buffer those 8 units are a sliver and the outer stroke
  * still wins. iPhone Safari's 16-bit depth makes the same 8 units about 0.0018 camera units at
  * the hand, which is enough to fail the ring — including the part that sticks past the face,
  * once the face and the hairline share a depth tile. A local push of 0.012 is about 0.003 camera
- * units on a phone fan: past those 8 units, and still under the 0.006 step to the next card, so
- * the neighbour keeps covering the overlap. It is geometry, not polygonOffset, because the
- * Metal depth bias that feeds polygonOffset is the part that goes wrong on that buffer.
+ * units on a phone fan: past those 8 units, and still under the 0.006 step to the next peer, so
+ * a card at the same raise still lets the card on its right cover the overlap. A selected card
+ * does not: its render order and depth sit in front of every neighbour. It is geometry, not
+ * polygonOffset, because the Metal depth bias that feeds polygonOffset is the part that goes
+ * wrong on that buffer.
  */
 export const OUTLINE_AHEAD = 0.012;
 

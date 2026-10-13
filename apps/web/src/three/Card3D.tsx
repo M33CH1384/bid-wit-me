@@ -114,15 +114,18 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   }, [back, quality, lit]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Your turn: cards you can't play sit at 55% brightness (still readable); playable cards stay at full colour
-  // and get a gold ring on their own rounded edge. Both ease in ~150 ms. The ring is also a tip mark.
-  const glowMat = useMemo(() => new MeshBasicMaterial({ color: '#f5c542', transparent: true, opacity: 0, depthWrite: false, toneMapped: false }), []);
+  // and get a gold ring on their own rounded edge. Colour eases in ~150 ms. The ring is also a tip mark.
+  // Opaque, with depth write off: a transparent ring is sorted after every face, so a neighbour's
+  // stroke paints across this card no matter how high its render order is. The face draws a half
+  // step later and covers the part of the stroke that tucks under the pips.
+  const glowMat = useMemo(() => new MeshBasicMaterial({ color: '#f5c542', depthWrite: false, toneMapped: false }), []);
   const edge = useMemo(() => edgeMat.clone(), []);
   // The root group keeps `order` for taps. Child groups reset Three.js groupOrder, so each mesh
-  // carries its own: body at `order`, face and back half a step later, tip glow just behind.
+  // carries its own: body at `order`, face and back half a step later, tip glow just behind
+  // its own face and still inside this card's band. A selected card's band is above every neighbour.
   // Depth testing stays on. The face is FACE_CAP_GAP ahead of the cap and biased in window
   // depth, so a 16-bit buffer cannot paint the cream cap over the pips. The gold ring is
-  // OUTLINE_AHEAD in front of that face, or the same bias hides it on iPhone. Neighbours lose
-  // because a playable card is nudged toward the camera (LEGAL_NEAR).
+  // OUTLINE_AHEAD in front of that face, or the same bias hides it on iPhone.
   useLayoutEffect(() => {
     const root = ref.current;
     if (!root) return;
@@ -141,16 +144,15 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     });
     invalidate();
   }, [order, face, glow, frontMat, backMat, glowMat, invalidate]);
-  const look = useRef({ target: new Color(1, 1, 1), glow: 0, sat: 1 });
+  const look = useRef({ target: new Color(1, 1, 1), sat: 1 });
   useLayoutEffect(() => {
     look.current.target.copy(dim ? DIM : FULL);
-    look.current.glow = glow ? (quality === 'high' ? 1 : 0.9) : 0;
     look.current.sat = dim ? DIM_SAT : 1;
     if ('emissive' in frontMat && frontMat.emissive) frontMat.emissive.set('#000000');
     // the clear coat / sheen add white on top of the colour (and ACES squashes the rest), so ease them off too when dimmed
     if (frontMat instanceof MeshPhysicalMaterial) { frontMat.clearcoat = dim ? 0.05 : 0.35; frontMat.sheen = dim ? 0 : 0.2; }
     invalidate();
-  }, [dim, glow, frontMat, quality, invalidate]);
+  }, [dim, frontMat, invalidate]);
 
   const tw = useRef({
     init: false,
@@ -266,13 +268,12 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     if (hideUntilStart.current && !tw.current.started) g.visible = false;
     // A resume hitch must not fast-forward the fan. One frame advances at most 50ms, same as a slow paint.
     const dt = Math.min(Math.max(rawDt, 0), 0.05);
-    // colour / glow easing (~150 ms), also capped so a long frame does not snap it
+    // colour easing (~150 ms), also capped so a long frame does not snap it
     const L = look.current, k = Math.min(1, dt / 0.15);
     const c = frontMat.color;
     if (Math.abs(c.r - L.target.r) + Math.abs(c.g - L.target.g) + Math.abs(c.b - L.target.b) > 0.004) { c.lerp(L.target, k); invalidate(); } else c.copy(L.target);
     const sat = frontMat.userData.sat as { value: number } | undefined;
     if (sat && Math.abs(sat.value - L.sat) > 0.01) { sat.value += (L.sat - sat.value) * k; invalidate(); } else if (sat) sat.value = L.sat;
-    if (Math.abs(glowMat.opacity - L.glow) > 0.01) { glowMat.opacity += (L.glow - glowMat.opacity) * k; invalidate(); } else glowMat.opacity = L.glow;
     if (!applyTornado(g)) applyBlast(g);
     const s = tw.current;
     const poseOk = (x: Xform) => x.p.every(Number.isFinite) && x.q.every(Number.isFinite) && Number.isFinite(x.s);
@@ -395,7 +396,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
         <mesh geometry={geo.body} material={edge} castShadow={castShadow} />
         <mesh geometry={geo.front} material={frontMat} />
         <mesh geometry={geo.back} material={backMat} />
-        {frontTex && <mesh geometry={cardOutlineGeometry()} material={glowMat} visible={glowMat.opacity > 0.01 || !!glow} renderOrder={-1} />}
+        {frontTex && <mesh geometry={cardOutlineGeometry()} material={glowMat} visible={!!glow} renderOrder={-1} />}
       </group>
       </group>
     </group>
