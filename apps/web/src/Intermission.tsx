@@ -196,8 +196,8 @@ export function Intermission({
                   )}
                   {showTape && (
                     <div className="caution-x" data-testid={`recap-tape-${s.side}`} aria-hidden="true">
-                      <img className="tape a" src="/shot/tape.png" alt="" />
-                      <img className="tape b" src="/shot/tape.png" alt="" />
+                      <img className="tape a" src="/shot/tape.webp" alt="" />
+                      <img className="tape b" src="/shot/tape.webp" alt="" />
                     </div>
                   )}
                   {cover.sheet && (

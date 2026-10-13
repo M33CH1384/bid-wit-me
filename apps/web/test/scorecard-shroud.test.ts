@@ -82,8 +82,8 @@ describe('scorecard caution tape and shroud', () => {
     expect(html).toContain('data-testid="recap-side-1" data-blast="yes" data-tape="yes" data-sheet="no" data-siren="no"');
     expect(html).toContain('class="tt-team blast taped tape-in notice"');
     expect(html).toContain('data-testid="recap-tape-1"');
-    expect(html).toContain('src="/shot/tape.png"');
-    expect(html.match(/src="\/shot\/tape.png"/g)).toHaveLength(2);
+    expect(html).toContain('src="/shot/tape.webp"');
+    expect(html.match(/src="\/shot\/tape.webp"/g)).toHaveLength(2);
     expect(html).toContain('class="tape a"');
     expect(html).toContain('class="tape b"');
     expect(html).toContain('data-testid="recap-holes-1"');
@@ -261,7 +261,7 @@ describe('scorecard caution tape and shroud', () => {
     expect(html).toContain('data-testid="recap-side-1" data-blast="yes" data-tape="yes" data-sheet="yes" data-siren="yes"');
     expect(html).toContain('class="tt-team blast taped tape-in shrouded sheet-in sheet-wait"');
     expect(html).toContain('data-testid="recap-tape-1"');
-    expect(html).toContain('src="/shot/tape.png"');
+    expect(html).toContain('src="/shot/tape.webp"');
     expect(html).toContain('data-testid="recap-holes-1"');
     expect(holeImgs(html)).toHaveLength(1);
     expect(html).toContain('data-holes="1"');
@@ -423,13 +423,15 @@ describe('scorecard caution tape and shroud', () => {
     expect(recapSrc).toContain('rememberHoles');
     expect(recapSrc).not.toContain('BlastMarks');
     expect(recapSrc).not.toContain('PELLETS');
-    const tape = readFileSync(new URL('../public/shot/tape.png', import.meta.url));
+    const tape = readFileSync(new URL('../public/shot/tape.webp', import.meta.url));
     const hole = readFileSync(new URL('../public/shot/hole.png', import.meta.url));
     const sheet = readFileSync(new URL('../public/shot/sheet.png', import.meta.url));
-    expect(tape.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a');
+    expect(tape.subarray(0, 4).toString('ascii')).toBe('RIFF');
+    expect(tape.subarray(8, 12).toString('ascii')).toBe('WEBP');
     expect(hole.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a');
     expect(sheet.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a');
     expect(tape.length).toBeGreaterThan(8000);
+    expect(tape.length).toBeLessThan(180000);
     expect(hole.length).toBeGreaterThan(4000);
     expect(sheet.length).toBeGreaterThan(8000);
   });

@@ -15,7 +15,7 @@ describe('effect warm', () => {
 
   it('prebuilds the shot and tornado noise buffers and decodes the shot images', () => {
     expect(EFFECT_NOISE_SECONDS).toContain(2.7);
-    expect(SHOT_IMAGE_URLS).toEqual(['/shot/hole.png', '/shot/tape.png']);
+    expect(SHOT_IMAGE_URLS).toEqual(['/shot/hole.png', '/shot/tape.webp']);
     const sheet = readFileSync(new URL('../src/sheetClothSim.ts', import.meta.url), 'utf8');
     expect(sheet).toContain('/shot/rip.webp');
     expect(sheet).toContain('initTexture');

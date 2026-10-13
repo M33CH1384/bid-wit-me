@@ -9,7 +9,7 @@ export function tableStillLoading(dressed: boolean, effectsWarm: boolean, giveUp
   return (!dressed || !effectsWarm) && !giveUp;
 }
 
-export const SHOT_IMAGE_URLS = ['/shot/hole.png', '/shot/tape.png'] as const;
+export const SHOT_IMAGE_URLS = ['/shot/hole.png', '/shot/tape.webp'] as const;
 
 export interface FxWarmTimes {
   holeMs: number;
@@ -179,7 +179,7 @@ export async function measureHotFire(): Promise<Record<string, number>> {
     out[name] = Math.round(performance.now() - t0);
   };
   await lap('hole', () => warmDomImage('/shot/hole.png'));
-  await lap('tape', () => warmDomImage('/shot/tape.png'));
+  await lap('tape', () => warmDomImage('/shot/tape.webp'));
   await lap('rip', async () => {
     const mod = await import('../sheetClothSim');
     await mod.loadRipImage();
