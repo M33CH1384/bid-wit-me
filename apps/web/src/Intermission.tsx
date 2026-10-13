@@ -5,6 +5,7 @@ import { sideName } from './Modals';
 import { handWinner, streakLabel, streakOf } from './fx';
 import { sound } from './audio';
 import { haptic } from './haptics';
+import { SheetCloth } from './SheetCloth';
 import { HOLE_CAP, HOLE_SLOTS, claimHoleBuzz, holeMarks, markHolePunched, markSheetPlayed, punchedLabel, rememberHoles } from './shotMarks';
 
 /**
@@ -176,6 +177,7 @@ export function Intermission({
               const info = streaks[s.side] ?? { count: 0, visible: 0, fresh: -1 };
               const marks = rememberHoles(st.seed, s.side, info.count, info.fresh);
               const sheetAnim = !!cover.sheet && anim.current!.waitSheet.has(s.side);
+              const tod = `Time of death: Hand ${rec.handNo}`;
               const showHoles = info.visible > 0 && (notice || !!cover.sheet);
               return (
                 <div key={s.side} className={`tt-team${s.side === mySide ? ' mine' : ''}${shot ? ' blast' : ''}${cover.tape ? ' taped' : ''}${cover.tape && justShot ? ' tape-in' : ''}${notice ? ' notice' : ''}${cover.sheet ? ' shrouded' : ''}${sheetAnim ? ' sheet-in sheet-wait' : ''}`} data-testid={`recap-side-${s.side}`} data-blast={shot ? 'yes' : 'no'} data-tape={cover.tape ? 'yes' : 'no'} data-sheet={cover.sheet ? 'yes' : 'no'} data-siren={cover.siren ? 'yes' : 'no'} data-holes={info.count} data-punched={punchedLabel(marks)}>
@@ -188,28 +190,18 @@ export function Intermission({
                   )}
                   {cover.sheet && (
                     <div className="shroud" data-testid={`recap-shroud-${s.side}`}>
-                      <picture className="cloth">
-                        <source srcSet="/shot/sheet.webp" type="image/webp" />
-                        <img src="/shot/sheet.png" alt="" />
-                      </picture>
+                      <SheetCloth wait={sheetAnim} />
+                      <img className="rip-src" src="/shot/rip.png" alt="RIP" data-testid={`recap-rip-${s.side}`} />
                     </div>
-                  )}
-                  {cover.sheet && (
-                    <div className="police-lights" data-testid="police-lights" aria-hidden="true">
-                      <i className="wash red" /><i className="wash blue" />
-                    </div>
-                  )}
-                  {cover.sheet && (
-                    <picture className="rip">
-                      <source srcSet="/shot/rip.webp" type="image/webp" />
-                      <img src="/shot/rip.png" alt="RIP" data-testid={`recap-rip-${s.side}`} />
-                    </picture>
                   )}
                   {showTape && (
                     <div className="caution-x" data-testid={`recap-tape-${s.side}`} aria-hidden="true">
                       <img className="tape a" src="/shot/tape.png" alt="" />
                       <img className="tape b" src="/shot/tape.png" alt="" />
                     </div>
+                  )}
+                  {cover.sheet && (
+                    <p className="tod" data-testid="time-of-death" data-hand={rec.handNo}>{tod}</p>
                   )}
                   <div className="tt-face">
                   <div className="tt-team-name">
@@ -249,13 +241,6 @@ export function Intermission({
               );
             })}
           </div>
-          {sheetOn && (
-            <p className="tod" data-testid="time-of-death" data-hand={rec.handNo}>
-              {Array.from(`Time of death: Hand ${rec.handNo}`, (ch, i) => (
-                <span key={i} style={{ animationDelay: `${(0.12 + i * 0.016).toFixed(3)}s` }}>{ch === ' ' ? '\u00a0' : ch}</span>
-              ))}
-            </p>
-          )}
           {runReview}
         </div>
 
