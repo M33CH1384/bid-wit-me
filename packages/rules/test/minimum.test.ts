@@ -51,6 +51,22 @@ describe('host minimum books / bid', () => {
     expect(set[0]!.points).toBe(-40);
   });
 
+  it('with no minimum, 2v2 Nil is offered and accepted in either order', () => {
+    const r = makeRules('joker', { firstHandMin: null, minTeamBid: 0, firstHandBidsItself: false });
+    expect(r.nil.allowed).toBe(true);
+    expect(hostMinimum(r)).toBe(0);
+    let st = rigged(r, fill(r, [[], [], [], []]), 3);
+    expect(bidOptions(st, 0)).toMatchObject({ min: 1, nil: true, nilReason: null, blockReason: null });
+    st = applyAction(st, { type: 'bid', seat: 0, bid: 'nil' });
+    expect(st.bids[0]).toBe('nil');
+    // No floor, and partners may both go Nil: the other seat is still offered Nil.
+    expect(bidOptions(st, 2)).toMatchObject({ nil: true, nilReason: null });
+    let other = rigged(r, fill(r, [[], [], [], []]), 1);
+    other = applyAction(other, { type: 'bid', seat: 2, bid: 1 });
+    expect(bidOptions(other, 0)).toMatchObject({ nil: true, nilReason: null, blockReason: null });
+    expect(applyAction(other, { type: 'bid', seat: 0, bid: 'nil' }).bids[0]).toBe('nil');
+  });
+
   it('2v2 Nil is allowed, but the partner bid alone must reach the minimum, in either order', () => {
     const r = makeRules('joker', { firstHandMin: 4, minTeamBid: 0, firstHandBidsItself: false });
     // Seat 0 bids first (dealer 3).
