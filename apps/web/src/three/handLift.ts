@@ -105,6 +105,18 @@ export function canTapCard(pose: HandPose): boolean {
 }
 
 /**
+ * A tap lands on pointerdown. Click waits for pointerup, and the gap-close slide has moved
+ * the card by then, so the finger misses the card it pressed.
+ */
+export function cardTapHandlers(onTap: (() => void) | null | undefined): {
+  onPointerDown?: (e: { stopPropagation: () => void }) => void;
+} {
+  if (onTap === undefined) return {};
+  if (onTap === null) return { onPointerDown: (e) => { e.stopPropagation(); } };
+  return { onPointerDown: (e) => { e.stopPropagation(); onTap(); } };
+}
+
+/**
  * Per card, never on the fan. `dim` is only the illegal pose. `glow` is that card's own ring:
  * every playable card when the hand is mixed, plus a tap and a tip mark. An all-legal lead
  * does not outline the whole fan. Selecting a card does not turn the others off.
