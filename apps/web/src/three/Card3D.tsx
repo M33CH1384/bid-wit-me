@@ -8,6 +8,7 @@ import { type Sfx, sound } from '../audio';
 import { fireCue, fx } from '../fx';
 import { restingFlightWait } from '../trickTiming';
 import { openingFlight } from './dealFlight';
+import { retainFrontTexture } from './cardFace';
 
 interface Props {
   face: Texture | null; // null = we only ever see the back
@@ -93,15 +94,20 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   const bl = useRef({ dir: new Vector3(), q: new Quaternion(), axis: new Vector3(), on: false });
   const invalidate = useThree((s) => s.invalidate);
   const geo = cardGeometry();
+  // A null face means "not painted yet" and the front shows the back. Once the pips have
+  // been on screen, a later null (painter restart, selection rerender) keeps them.
+  const shownFace = useRef<Texture | null>(null);
+  const frontTex = retainFrontTexture(face, shownFace.current);
+  if (frontTex) shownFace.current = frontTex;
   const frontMat = useMemo(() => {
-    const map = face ?? back;
+    const map = frontTex ?? back;
     // Unlit until the physical program is linked. MeshBasic with a map is one small shader shared by every card.
     const m = lit ? createLitCardMaterial(map, quality, true) : new MeshBasicMaterial({ map });
     // Face and cap are both opaque, so they share one list. renderOrder can sort them,
     // but a 16-bit depth test still drops the face when the two planes quantize together.
     applyFaceDepthBias(m);
     return m;
-  }, [face, back, quality, lit]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [frontTex, back, quality, lit]); // eslint-disable-line react-hooks/exhaustive-deps
   const backMat = useMemo(() => {
     const m = lit ? createLitCardMaterial(back, quality, false) : new MeshBasicMaterial({ map: back });
     applyFaceDepthBias(m);
@@ -389,7 +395,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
         <mesh geometry={geo.body} material={edge} castShadow={castShadow} />
         <mesh geometry={geo.front} material={frontMat} />
         <mesh geometry={geo.back} material={backMat} />
-        {face && <mesh geometry={cardOutlineGeometry()} material={glowMat} visible={glowMat.opacity > 0.01 || !!glow} renderOrder={-1} />}
+        {frontTex && <mesh geometry={cardOutlineGeometry()} material={glowMat} visible={glowMat.opacity > 0.01 || !!glow} renderOrder={-1} />}
       </group>
       </group>
     </group>

@@ -105,8 +105,10 @@ export const LEGAL_NEAR = 0.02;
  * Window-space depth bias for the face and the back.
  * A card facing the camera has almost no slope, so the units term is what separates
  * the pips from the cream cap when both quantize to the same 16-bit depth.
+ * The factor term is 0: on a phone-sized card the depth slope is noise, and a non-zero
+ * factor swaps the back in front of the face on every redraw (the selection lift).
  */
-export const FACE_POLYGON_OFFSET = { factor: -1, units: -8 } as const;
+export const FACE_POLYGON_OFFSET = { factor: 0, units: -8 } as const;
 
 /** Pull the face and the back toward the camera in window depth. The body stays unbiased. */
 export function applyFaceDepthBias(material: { polygonOffset: boolean; polygonOffsetFactor: number; polygonOffsetUnits: number }): void {
@@ -122,7 +124,9 @@ export function applyFaceDepthBias(material: { polygonOffset: boolean; polygonOf
  * toward the camera, and half a step later in render order, so the cap cannot cover the pips.
  */
 export function cardMeshPaint(order: number, part: 'edge' | 'back' | 'face' | 'glow'): { renderOrder: number; depthTest: true } {
-  const renderOrder = part === 'glow' ? order - 1 : part === 'edge' ? order : order + 0.5;
+  // The face draws after the back. A 16-bit tie used to keep whichever mesh sorted last,
+  // and that was the BWM back for every card except the one pulled forward by a selection.
+  const renderOrder = part === 'glow' ? order - 1 : part === 'edge' ? order : part === 'back' ? order + 0.25 : order + 0.5;
   return { renderOrder, depthTest: true };
 }
 
