@@ -8,7 +8,7 @@
  */
 import {
   type FriendsState, type InviteMsg, type OpenTable, type PresenceEntry, type PresenceStatus, type SocialChatLine, type SocialClientMsg, type SocialServerMsg, type SocialSettings,
-  SOCIAL_LIMITS, blockLinks, cleanName, cleanText, maskProfanity, parseSocialMsg,
+  GUEST_SESSION, SOCIAL_LIMITS, blockLinks, cleanName, cleanText, maskProfanity, parseSocialMsg,
 } from '@spades/protocol';
 import { isProfane } from '../auth/username';
 import { DEFAULT_SETTINGS, SocialStore, uidOf } from './store';
@@ -55,7 +55,25 @@ export interface HubIO {
   randomId(): string;
 }
 
-export interface Ident { uid?: string; name: string; admin?: boolean }
+export interface Ident { uid?: string; name: string; admin?: boolean; /** stable guest session suffix */ gid?: string }
+
+/**
+ * Two guests who picked the same display name need different labels. The same session keeps its own name
+ * (callers omit that session from `taken`).
+ */
+export function uniqueGuestName(wanted: string, taken: Iterable<string>): string {
+  const base = (wanted.trim() || 'Guest').slice(0, 20);
+  const used = new Set<string>();
+  for (const n of taken) used.add(n.trim().toLowerCase());
+  if (!used.has(base.toLowerCase())) return base;
+  for (let n = 2; n < 100; n++) {
+    const suffix = ` ${n}`;
+    const stem = base.slice(0, Math.max(1, 20 - suffix.length)).trimEnd() || 'Guest';
+    const candidate = `${stem}${suffix}`.slice(0, 20);
+    if (!used.has(candidate.toLowerCase())) return candidate;
+  }
+  return `${base.slice(0, 16)} 99`.slice(0, 20);
+}
 
 interface Invite extends InviteMsg { to: string }
 
@@ -103,7 +121,18 @@ export class Hub {
       this.blocks.set(who.uid, bl);
       att = { pid: `u:${who.uid}`, name: who.name, guest: false, status: { kind: 'online' }, admin: !!who.admin, hidden: st.appearOffline, friendsOnly: st.friendsOnlyInvites, rating, at: now };
     } else {
-      att = { pid: `g:${this.io.randomId().slice(0, 10)}`, name: cleanName(who.name, 20) || 'Guest', guest: true, status: { kind: 'online' }, at: now };
+      // One browser shares one guest id (localStorage). A second tab or a reconnect is the same player, not a second row.
+      const pid = who.gid && GUEST_SESSION.test(who.gid) ? `g:${who.gid}` : `g:${this.io.randomId().slice(0, 10)}`;
+      const existing = this.entry(pid);
+      const taken: string[] = [];
+      const seen = new Set<string>();
+      for (const a of this.conns.values()) {
+        if (!a.guest || a.pid === pid || seen.has(a.pid)) continue;
+        seen.add(a.pid);
+        taken.push(a.name);
+      }
+      const name = existing?.name ?? uniqueGuestName(cleanName(who.name, 20) || 'Guest', taken);
+      att = { pid, name, guest: true, status: { kind: 'online' }, at: now };
     }
     const wasOnline = this.online(att.pid);
     // a second tab keeps the newest status of the first

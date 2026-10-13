@@ -26,11 +26,21 @@ export interface PresenceStatus {
   open?: number;
   /** online table code (only set when the player can invite others in) */
   code?: string;
-  /** offline game vs bots (nobody can join) */
+  /**
+   * Offline game vs bots. It runs on that player's device: there is no server room,
+   * so nobody can join or spectate it.
+   */
   offline?: boolean;
   /** tournament name */
   name?: string;
+  /** seat a newcomer can take right now (empty, or a bot the table allows). Never a human. */
+  seat?: number;
+  /** the online table is not accepting more spectators */
+  watchFull?: boolean;
 }
+
+/** Client-minted guest session suffix. Same browser → one presence row. Not an account id. */
+export const GUEST_SESSION = /^[A-Za-z0-9_-]{8,32}$/;
 
 export interface PresenceEntry {
   /** 'u:<userId>' for accounts, 'g:<random>' for guests */
@@ -127,6 +137,8 @@ function parseStatus(v: unknown): PresenceStatus | null {
   if (isStr(s.code, 12) && /^[A-Z0-9]+$/.test(s.code)) out.code = s.code;
   if (s.offline === true) out.offline = true;
   if (isStr(s.name, 40)) out.name = s.name;
+  if (isInt(s.seat) && s.seat >= 0 && s.seat < 8) out.seat = s.seat;
+  if (s.watchFull === true) out.watchFull = true;
   return out;
 }
 

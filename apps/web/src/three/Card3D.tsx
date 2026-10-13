@@ -3,7 +3,7 @@ import { memo, useLayoutEffect, useMemo, useRef } from 'react';
 import { Color, type Group, type Material, type Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NoToneMapping, Quaternion, type Texture, Vector3, type WebGLRenderer } from 'three';
 import { cardFaceFragment } from './cardSat';
 import { cardGeometry, cardOutlineGeometry } from './geometry';
-import { ILLEGAL_COLOR, RAISE_S, applyFaceDepthBias, cardMeshPaint, liftEase, screenRaise } from './handLift';
+import { RAISE_S, applyFaceDepthBias, cardMeshPaint, cardTapHandlers, faceLook, liftEase, screenRaise } from './handLift';
 import type { Xform } from './layout';
 import { type Sfx, sound } from '../audio';
 import { fireCue, fx } from '../fx';
@@ -55,10 +55,6 @@ const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 
 const xKey = (x: Xform) => x.p.map((v) => v.toFixed(4)).join() + x.q.map((v) => v.toFixed(4)).join() + x.s.toFixed(4);
 const edgeMat = new MeshStandardMaterial({ color: '#efe9dc', roughness: 0.75 });
 /** full colour vs. a card you can't play: 55% brightness on screen, faint cool tint, desaturated */
-const FULL = new Color(1, 1, 1);
-const DIM = new Color(...ILLEGAL_COLOR);
-/** saturation of a not-playable card's face (1 = full colour, 0 = grey) */
-const DIM_SAT = 0.3;
 /** Adds a saturation control to a card face material (uSat: 1 = untouched); one shader variant shared by every card. */
 function withSaturation<M extends MeshStandardMaterial>(m: M): M & { userData: { sat: { value: number } } } {
   const sat = { value: 1 };
@@ -117,21 +113,19 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
 
   // Your turn: cards you can't play sit at 55% brightness (still readable); playable cards stay at full colour
   // and get a gold ring on their own rounded edge. The face eases in ~150 ms. The ring is also a tip mark.
-  // The ring stays opaque and is drawn before this card's face (render order just under the body).
-  // A transparent ring is painted after every opaque face, so a neighbour's stroke crosses this
-  // card no matter how high its render order is, and iPhone's 16-bit buffer then fails the depth
-  // test against the face's polygon offset. Opaque, with no depth write, the face covers the
-  // inside of the stroke and the outer edge stays gold. A selected card's whole band, ring
-  // included, is ordered and biased in front of every neighbour.
+  // The ring is opaque, does not write depth, and is drawn after every peer face.
+  // Drawn under the face, the card beside it covers the shared edge and a run of legal
+  // cards becomes one outline. The hole in the ring leaves the pips showing. A selected
+  // card's face still draws after those peer rings, and its own ring draws after that.
   const glowMat = useMemo(() => new MeshBasicMaterial({ color: '#f5c542', transparent: false, opacity: 1, depthWrite: false, toneMapped: false }), []);
   const edge = useMemo(() => edgeMat.clone(), []);
   // The root group keeps `order` for taps. Child groups reset Three.js groupOrder, so each mesh
-  // carries its own: body at `order`, face and back half a step later, tip glow just behind
-  // its own face and still inside this card's band. A selected card's band is above every neighbour.
-  // Depth testing stays on. The face is FACE_CAP_GAP ahead of the cap and biased in window
-  // depth, so a 16-bit buffer cannot paint the cream cap over the pips. The gold ring is opaque
-  // and one step earlier than the body, and it still sits OUTLINE_AHEAD of the face so a later
-  // depth test cannot bury the stroke.
+  // carries its own: body at `order`, face and back half a step later, the gold ring after
+  // every peer face. A selected card's face stays above those rings.
+  // The face keeps the depth test: it is FACE_CAP_GAP ahead of the cap and biased in window
+  // depth, so a 16-bit buffer cannot paint the cream cap over the pips. The ring does not.
+  // The card on the right is closer, and a depth test would hide this stroke even after the
+  // later paint. OUTLINE_AHEAD still lifts the ring off its own face plane.
   useLayoutEffect(() => {
     const root = ref.current;
     if (!root) return;
@@ -152,8 +146,9 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   }, [order, face, glow, frontMat, backMat, glowMat, invalidate]);
   const look = useRef({ target: new Color(1, 1, 1), sat: 1 });
   useLayoutEffect(() => {
-    look.current.target.copy(dim ? DIM : FULL);
-    look.current.sat = dim ? DIM_SAT : 1;
+    const lookAt = faceLook(!!dim);
+    look.current.target.setRGB(lookAt.color[0], lookAt.color[1], lookAt.color[2]);
+    look.current.sat = lookAt.sat;
     if ('emissive' in frontMat && frontMat.emissive) frontMat.emissive.set('#000000');
     // the clear coat / sheen add white on top of the colour (and ACES squashes the rest), so ease them off too when dimmed
     if (frontMat instanceof MeshPhysicalMaterial) { frontMat.clearcoat = dim ? 0.05 : 0.35; frontMat.sheen = dim ? 0 : 0.2; }
@@ -393,7 +388,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   return (
     <group
       ref={ref}
-      onClick={onTap ? (e) => { e.stopPropagation(); onTap(); } : onTap === null ? (e) => { e.stopPropagation(); } : undefined}
+      {...cardTapHandlers(onTap)}
       onPointerOver={onTap ? () => { document.body.style.cursor = 'pointer'; } : undefined}
       onPointerOut={onTap ? () => { document.body.style.cursor = ''; } : undefined}
     >

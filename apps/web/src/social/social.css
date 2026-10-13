@@ -42,9 +42,11 @@
 .soc-tag.mod { background: rgba(255,77,109,.2); color: #ff9db0; }
 .soc-rating { font-size: 12px; color: var(--gold); white-space: nowrap; flex: none; }
 .soc-pl-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.soc-pl-why { flex: 1 0 100%; font-size: 12px; line-height: 1.35; color: var(--muted); }
 .soc-pl-acts button, .soc-frow button, .soc-prof-acts button, .soc-dm-head > button:not(.link):not(.soc-dm-name) { background: rgba(185,128,255,.14); border: 1px solid rgba(185,128,255,.45); color: var(--ink); border-radius: 8px; padding: 6px 10px; font-size: 13px; }
 .soc-pl-acts button:disabled, .soc-frow button:disabled { opacity: .4; }
 .soc-frow button.primary, .soc-pl-acts button.primary { background: linear-gradient(180deg, #ffd969, var(--gold-deep)); color: #1d1204; border: 0; font-weight: 700; }
+.soc-pl-acts button.primary { clip-path: none; padding: 6px 10px; font-family: inherit; font-size: 13px; letter-spacing: 0; text-transform: none; box-shadow: none; }
 button.ghost { background: transparent !important; }
 .soc-online { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--green); margin: 0 6px 1px; vertical-align: middle; }
 

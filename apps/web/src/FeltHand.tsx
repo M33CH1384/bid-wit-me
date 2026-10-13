@@ -1,9 +1,45 @@
 import { type Card, cardLabel } from '@spades/rules';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { paintFace } from './cardArt';
 
 /** How far a tapped card rises, in CSS pixels. Same extra as the 3D selected pose. */
 export const FELT_SELECT_LIFT_PX = 10;
+/** Exposed strip we aim for. A full 13- or 17-card row cannot reach it and still fit, so the card grows instead. */
+export const FELT_EXPOSED_PX = 44;
+
+/**
+ * Quick-load card box. Bigger than the old 52×74, kept inside `screenW` with a few pixels for the outline.
+ * The exposed strip is 44px when that still leaves a readable card; otherwise the row fits at about a third showing.
+ */
+export function feltCardBox(count: number, screenW: number): { width: number; height: number; margin: number; exposed: number } {
+  const widthPx = Number.isFinite(screenW) && screenW >= 32 ? screenW : 390;
+  const avail = Math.max(80, widthPx - 12);
+  const gaps = Math.max(0, Math.max(1, count) - 1);
+  let width: number;
+  let exposed: number;
+  if (gaps === 0) {
+    width = Math.min(120, avail);
+    exposed = width;
+  } else {
+    const widthAt44 = avail - gaps * FELT_EXPOSED_PX;
+    if (widthAt44 >= 64) {
+      width = Math.min(120, widthAt44);
+      exposed = (avail - width) / gaps;
+      if (exposed < width * 0.3) {
+        width = avail / (1 + gaps * 0.3);
+        exposed = width * 0.3;
+      }
+    } else {
+      width = Math.min(120, avail / (1 + gaps * 0.32));
+      exposed = (avail - width) / gaps;
+      if (exposed < width * 0.3) {
+        width = avail / (1 + gaps * 0.3);
+        exposed = (avail - width) / gaps;
+      }
+    }
+  }
+  return { width, height: width * 1.4, margin: -(width - exposed) / 2, exposed };
+}
 
 /**
  * Fan pose for one quick-load card. The selected lift is a screen-up translate written to the
@@ -44,6 +80,13 @@ export function FeltHand({ cards, trick, legal, selected, onCard, promoted, visi
 }) {
   const slots = useRef(new Map<string, HTMLCanvasElement | null>());
   const key = `${cards.join(',')}|${trick.join(',')}`;
+  const [screenW, setScreenW] = useState(() => (typeof window === 'undefined' ? 390 : window.innerWidth));
+  useEffect(() => {
+    const onResize = () => setScreenW(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  const box = feltCardBox(cards.length, screenW);
 
   useEffect(() => {
     const queue = [...cards, ...trick];
@@ -78,7 +121,7 @@ export function FeltHand({ cards, trick, legal, selected, onCard, promoted, visi
         </div>
       )}
       {/* Visual only. The screen-reader hand in Table is the one labeled control per card. */}
-      <div className="felt-hand" data-testid="felt-hand" aria-hidden="true">
+      <div className="felt-hand" data-testid="felt-hand" aria-hidden="true" style={{ height: box.height + 36 }}>
         {cards.map((c, i) => {
           if (i >= (visibleCount ?? cards.length)) return null;
           const red = c[1] === 'H' || c[1] === 'D' || c === 'BJ';
@@ -90,7 +133,13 @@ export function FeltHand({ cards, trick, legal, selected, onCard, promoted, visi
               type="button"
               tabIndex={-1}
               className={`${red ? 'red' : ''} ${can ? 'legal' : ''} ${picked ? 'sel' : ''}`}
-              style={{ transform: feltCardTransform(i, cards.length, picked), zIndex: feltCardZ(i, can, picked) }}
+              style={{
+                transform: feltCardTransform(i, cards.length, picked),
+                zIndex: feltCardZ(i, can, picked),
+                width: box.width,
+                height: box.height,
+                margin: `0 ${box.margin}px`,
+              }}
               disabled={!can}
               aria-pressed={selected === c}
               onClick={() => onCard(c)}

@@ -21,7 +21,7 @@
  *   - A table with nobody connected freezes (no bots, no timers) and is deleted after 24 h idle.
  */
 import { DurableObject } from 'cloudflare:workers';
-import { CODE_ALPHABET, CODE_LENGTH, type ServerMsg, isRoomCode, normalizeRoomCode } from '@spades/protocol';
+import { CODE_ALPHABET, CODE_LENGTH, GUEST_SESSION, type ServerMsg, isRoomCode, normalizeRoomCode } from '@spades/protocol';
 import { Room, type RoomData, ROOM_DATA_VERSION, newRoomData } from './room';
 import { FEEDBACK_LIMITS, type FeedbackRow, adminHtml, hashIp, notifyOwner, parseFeedback, rateOk, tokenOk } from './feedback';
 import { ADMIN_COOKIE, ADMIN_TTL_MS, adminCookieOk, adminLoginHtml, makeAdminCookie, readCookie } from './admin';
@@ -202,9 +202,13 @@ export default {
         if (slow) return slow;
         const t = await verifyTicket(env.DB, url.searchParams.get('ticket'), Date.now());
         const h = new Headers(req.headers);
-        h.delete('x-uid'); h.delete('x-name'); h.delete('x-admin');
+        h.delete('x-uid'); h.delete('x-name'); h.delete('x-admin'); h.delete('x-gid');
         if (t) { h.set('x-uid', t.uid); h.set('x-name', t.name); if (isAdmin(env, t.uid, t.name)) h.set('x-admin', '1'); }
-        else h.set('x-name', (url.searchParams.get('name') ?? 'Guest').slice(0, 40));
+        else {
+          h.set('x-name', (url.searchParams.get('name') ?? 'Guest').slice(0, 40));
+          const gid = url.searchParams.get('gid') ?? '';
+          if (GUEST_SESSION.test(gid)) h.set('x-gid', gid);
+        }
         const stub = env.SOCIAL.get(env.SOCIAL.idFromName('hub'));
         return stub.fetch(new Request('https://social/ws', { headers: h }));
       }
@@ -620,7 +624,8 @@ export class SocialDO extends DurableObject<Env> {
     server.serializeAttachment({ cid });
     this.sockets.set(cid, server);
     const uid = req.headers.get('x-uid') ?? undefined;
-    await this.hub.open(cid, { uid, name: req.headers.get('x-name') ?? 'Guest', admin: req.headers.get('x-admin') === '1' });
+    const gid = req.headers.get('x-gid') ?? undefined;
+    await this.hub.open(cid, { uid, name: req.headers.get('x-name') ?? 'Guest', admin: req.headers.get('x-admin') === '1', ...(gid ? { gid } : {}) });
     return new Response(null, { status: 101, webSocket: client });
   }
 
