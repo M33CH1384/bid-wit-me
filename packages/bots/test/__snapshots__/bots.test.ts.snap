@@ -510,6 +510,7 @@ exports[`full bot games > golden: cutthroat 3 final result 1`] = `
       3,
       2,
     ],
+    "shotOut": [],
     "winners": [
       0,
     ],
@@ -526,37 +527,37 @@ exports[`full bot games > golden: cutthroat 4 final result 1`] = `
 {
   "bags": [
     0,
-    2,
-    2,
-    1,
+    5,
+    7,
+    7,
   ],
-  "hands": 4,
+  "hands": 8,
   "result": {
-    "endReason": "shotOut",
+    "endReason": "target",
     "finalScores": [
       -30,
-      122,
-      102,
-      121,
+      315,
+      247,
+      337,
     ],
     "placements": [
       4,
-      1,
-      3,
       2,
+      3,
+      1,
     ],
     "shotOut": [
       0,
     ],
     "winners": [
-      1,
+      3,
     ],
   },
   "scores": [
     -30,
-    122,
-    102,
-    121,
+    315,
+    247,
+    337,
   ],
 }
 `;
