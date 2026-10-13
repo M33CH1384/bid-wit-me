@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Xform } from '../src/three/layout';
 import { handNeedsDeal, handSlotKey, openingFlight } from '../src/three/dealFlight';
+import { dealTimeline, dealtSlotCount, seatDealDelay } from '../src/three/dealTimeline';
 
 const deck: Xform = { p: [1, 2, 3], q: [0, 0, 0, 1], s: 1 };
 const hand: Xform = { p: [0, 0, 4], q: [0, 0, 0, 1], s: 2 };
@@ -37,5 +38,27 @@ describe('which hand cards are still being dealt', () => {
     const seen = new Set<string>();
     expect(handNeedsDeal({ intro: false, flip: false, seen, slotKey: 'AS' })).toBe(false);
     expect(handNeedsDeal({ intro: true, flip: true, seen, slotKey: 'AS' })).toBe(false);
+  });
+});
+
+describe('cards dealt so far', () => {
+  const tl = dealTimeline(1, 4);
+  // Dealer is seat 3, so seat 0 is dealt first: delay is just the shuffle.
+  const first = seatDealDelay(tl, 4, 0, 0, 3);
+
+  it('waits out the shuffle, then reveals one card per round', () => {
+    expect(first).toBeCloseTo(tl.shuffle);
+    expect(dealtSlotCount(first - 0.01, tl, 4, 0, 3, 13)).toBe(0);
+    expect(dealtSlotCount(first, tl, 4, 0, 3, 13)).toBe(1);
+    expect(dealtSlotCount(first + 4 * tl.step - 0.001, tl, 4, 0, 3, 13)).toBe(1);
+    expect(dealtSlotCount(first + 4 * tl.step, tl, 4, 0, 3, 13)).toBe(2);
+  });
+
+  it('does not deal the human first when someone else is on the dealer\'s left', () => {
+    const mine = seatDealDelay(tl, 4, 0, 0, 0);
+    const left = seatDealDelay(tl, 4, 0, 1, 0);
+    expect(left).toBeCloseTo(tl.shuffle);
+    expect(mine).toBeGreaterThan(left);
+    expect(dealtSlotCount(left, tl, 4, 0, 0, 13)).toBe(0);
   });
 });

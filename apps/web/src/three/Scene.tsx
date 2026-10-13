@@ -8,7 +8,7 @@ import Card3D, { createLitCardMaterial } from './Card3D';
 import { departureSlot, handCardKey, handReactKey } from '../handOrder';
 import { GAP_S, LEGAL_NEAR, LIFT_S, canTapCard, fanGapPx, fanMotion, handRenderOrder, hitsInPaintOrder, playablePose, raiseLocalY } from './handLift';
 import { isShortLandscape } from '../viewport';
-import { type DealTimeline, dealTimeline } from './dealTimeline';
+import { type DealTimeline, dealTimeline, seatDealDelay } from './dealTimeline';
 import { handNeedsDeal, handSlotKey } from './dealFlight';
 import { type Sfx, sound } from '../audio';
 import { fx } from '../fx';
@@ -468,7 +468,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
 
   type Item = { key: string; card: Card | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: (() => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide'; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; holdUntilMove?: boolean };
   const items: Item[] = [];
-  const dealDelay = (slot: number, seat: number) => tl.shuffle + (slot * n + ((seat - dealer - 1 + n) % n)) * tl.step;
+  const dealDelay = (slot: number, seat: number) => seatDealDelay(tl, n, slot, seat, dealer);
 
   // completed tricks in piles
   const pileCount = Array(n).fill(0) as number[];
