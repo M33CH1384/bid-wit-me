@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -43,5 +44,16 @@ describe('quick-load hand', () => {
     expect(html).toContain('A♠');
     expect(html).not.toContain('K♥');
     expect(html).toContain(feltCardTransform(0, 3, false));
+  });
+
+  it('dims only an illegal card, and outlines a legal one without a filter on the fan', () => {
+    const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    const fan = css.split('\n').find((line) => line.startsWith('.felt-hand {')) ?? '';
+    expect(fan).toContain('filter: none');
+    expect(fan).toContain('opacity: 1');
+    expect(fan).not.toMatch(/opacity:\s*0?\.\d/);
+    expect(css).toContain('.felt-hand button:disabled:not(.legal) { filter: saturate(.45) brightness(.9); }');
+    expect(css).not.toContain('.felt-hand button:disabled { filter:');
+    expect(css).toContain('.felt-hand button.legal { filter: none; outline: 2px solid #f5c542; outline-offset: 1px; }');
   });
 });

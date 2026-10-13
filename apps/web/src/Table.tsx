@@ -1,4 +1,5 @@
 import { cardControlLabel } from './cardA11y';
+import { actingSeat, seatMark } from './turnState';
 import { retainHandOrder } from './handOrder';
 import { winHeadline } from './headline';
 import { type VenueId, VENUE_DEFS, resolveVenue } from './venues';
@@ -513,7 +514,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const piles = pause ? st.tricks.slice(0, -1) : st.tricks;
   // online: `locked` while our move is in flight (until the server acks it), so it can't be sent twice
   const spectating = !!online?.spectator;
-  const myTurn = !spectating && !pause && !dealing && !(online?.source.locked) && st.turn === HUMAN;
+  const turnLocked = !!online?.source.locked;
+  // Badges and playable cards share this. `covered` (Run it!) is applied again once that show exists.
+  const myTurn = actingSeat({ turn: st.turn, phase: st.phase, pause, dealing, locked: turnLocked, covered: false }) === HUMAN && !spectating;
   // Sort once when the hand is dealt. A play only removes a card; re-sorting here is what made the fan look shuffled.
   const handOrder = useRef<{ handNo: number; cards: Card[] } | null>(null);
   const hand = useMemo(() => {
@@ -526,7 +529,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // cards stay face-down only while Blind Nil is actually on offer; otherwise just turn them over (no button)
   const autoReveal = myTurn && !dealing && st.phase === 'bidding' && view.hand === null && !!view.bidOptions && !view.bidOptions.blindNil;
   useEffect(() => { if (autoReveal) apply({ type: 'reveal', seat: HUMAN }); }, [autoReveal]); // eslint-disable-line react-hooks/exhaustive-deps
-  const legal = myTurn && st.phase === 'playing' ? view.legal : [];
+  const legal = myTurn && st.phase === 'playing' ? view.legal.filter((c) => (hand ?? []).includes(c)) : [];
   const exchangeStep = st.phase === 'exchange' ? st.exchange[0] : undefined;
   const humanExchanging = myTurn && exchangeStep?.from === HUMAN;
   const mySide = sideOf(HUMAN, r);
@@ -899,8 +902,10 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     names.forEach((nm, i) => { if (isBotSeat(i)) preloadVoice(personaForName(nm), nm); });
   }, [botKey, talkPrefs.voices]); // eslint-disable-line react-hooks/exhaustive-deps
   const notice = onNoticeSides(sb);
+  const actor = actingSeat({ turn: st.turn, phase: st.phase, pause, dealing, locked: turnLocked, covered: !!runFx });
   const renderSeat = (seat: number) => {
-    const isTurn = st.turn === seat && !pause && st.phase !== 'handOver' && st.phase !== 'gameOver';
+    const mark = seatMark(actor, seat, st.phase, false, false, 0);
+    const isTurn = mark === 'to-play' || mark === 'bidding';
     const partner = r.partnerships && seat === partnerOf(HUMAN, r);
     const b = st.bids[seat];
     return (
@@ -913,7 +918,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             <span className="chip">TOOK {sb.tricksWon[seat]}</span>
           </div>
         </div>
-        {isTurn && <div className="plate-turn">{st.phase === 'bidding' ? 'BIDDING' : 'TO PLAY'}</div>}
+        {mark === 'bidding' && <div className="plate-turn" data-testid={`bidding-${seat}`}>BIDDING</div>}
+        {mark === 'to-play' && <div className="plate-turn" data-testid={`to-play-${seat}`}>TO PLAY</div>}
         {online?.seatExtra(seat)}
       </div>
     );
@@ -1147,7 +1153,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           </div>
         )}
 
-        <div className={`plate me-plate ${myTurn && st.phase !== 'handOver' ? 'turn' : ''}`} data-testid="seat-0">
+        <div className={`plate me-plate ${actor === HUMAN && !spectating ? 'turn' : ''}`} data-testid="seat-0">
           <div className="plate-avatar" style={{ ['--uc' as string]: USER_COLORS.You }}>{spectating ? ((names[HUMAN] ?? '?').trim().charAt(0).toUpperCase() || '?') : 'Y'}</div>
           <div className="plate-body">
             <div className="plate-name">{spectating ? (names[HUMAN] ?? '').toUpperCase() : 'YOU'}{st.dealer === HUMAN && <span className="chip dealer" data-testid="dealer-0">DEALER</span>}{notice.includes(sideOf(HUMAN, r)) && <span className="chip notice" data-testid="notice-0" title="Got shot last hand: one more shot and you're out">ON NOTICE</span>}{!spectating && myBadges.map((b) => BADGES[b.id] && <span key={b.id} className="chip badge" title={`${BADGES[b.id]!.name}: ${BADGES[b.id]!.desc}`} data-testid={`plate-badge-${b.id}`}>{BADGES[b.id]!.icon}</span>)}</div>
@@ -1157,8 +1163,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
               {isNilBid(st.bids[HUMAN]) && sb.tricksWon[HUMAN]! > 0 && <span className="chip bad">NIL BUSTED</span>}
             </div>
           </div>
-          {myTurn && st.phase === 'playing' && <div className="plate-turn">{selected ? 'TAP AGAIN TO PLAY' : 'YOUR TURN'}</div>}
-          {myTurn && st.phase === 'bidding' && <div className="plate-turn">YOUR BID</div>}
+          {seatMark(actor, HUMAN, st.phase, true, spectating, legal.length) === 'your-turn' && <div className="plate-turn" data-testid="your-turn">{selected ? 'TAP AGAIN TO PLAY' : 'YOUR TURN'}</div>}
+          {seatMark(actor, HUMAN, st.phase, true, spectating, legal.length) === 'your-bid' && <div className="plate-turn" data-testid="your-bid">YOUR BID</div>}
           {online?.seatExtra(HUMAN)}
         </div>
         {error && <div className="err">{error}</div>}

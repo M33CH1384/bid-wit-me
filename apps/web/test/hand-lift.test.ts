@@ -4,10 +4,41 @@ import {
   GROUP_PAD_PX, GROUP_RADIUS_PX, ILLEGAL_BRIGHTNESS, ILLEGAL_COLOR, LIFT_S, OUTLINE_COLOR, OUTLINE_PX, RAISE_S,
   GROUP_GAP_PX, LEGAL_STACK, SELECT_GLOW_OP, SHINE_DEG, SHINE_PEAK, SHINE_S, SHINE_WIDTH,
   breatheOpacity, canTapCard, easeOut, fanGapPx, fanMotion, glowFalloff, glowRadiusPx, handLift, handRenderOrder, liftEase, outlineRadiusPx,
-  playablePose, posePx, raiseLocalY, shineAxis, shineBand, stackFor,
+  handCardChrome, playablePose, posePx, raiseLocalY, shineAxis, shineBand, stackFor,
 } from '../src/three/handLift';
 import { fanLayout, handCardPlane, handFan } from '../src/three/layout';
 import { contourContains, contiguousRuns, haloLocal, HALO_SX, HALO_SY, placeOnPlane, strokeContour, strokeRibbon, unionContours } from '../src/three/playableOutline';
+
+describe('legal cards stay bright and outlined on their own', () => {
+  it('dims only the illegal card and outlines every other playable card, not just the one you tap', () => {
+    const legal = handCardChrome({ yourTurn: true, isLegal: true, selected: false, marked: false, anyIllegal: true });
+    const illegal = handCardChrome({ yourTurn: true, isLegal: false, selected: false, marked: false, anyIllegal: true });
+    const tapped = handCardChrome({ yourTurn: true, isLegal: true, selected: true, marked: false, anyIllegal: true });
+    expect(legal).toMatchObject({ pose: 'legal', dim: false, glow: true });
+    expect(illegal).toMatchObject({ pose: 'illegal', dim: true, glow: false });
+    expect(tapped).toMatchObject({ pose: 'selected', dim: false, glow: true });
+    // a tap does not take the ring off the other legal cards
+    expect(legal.glow).toBe(true);
+  });
+
+  it('on a lead where some cards are locked, outlines the ones you can play and dims the rest', () => {
+    const club = handCardChrome({ yourTurn: true, isLegal: true, selected: false, marked: false, anyIllegal: true });
+    const spade = handCardChrome({ yourTurn: true, isLegal: false, selected: false, marked: false, anyIllegal: true });
+    expect(club.dim).toBe(false);
+    expect(club.glow).toBe(true);
+    expect(spade.dim).toBe(true);
+    expect(spade.glow).toBe(false);
+  });
+
+  it('does not dim the fan off turn, and does not outline an all-legal lead until you tap', () => {
+    const resting = handCardChrome({ yourTurn: false, isLegal: false, selected: false, marked: false, anyIllegal: false });
+    const lead = handCardChrome({ yourTurn: true, isLegal: true, selected: false, marked: false, anyIllegal: false });
+    const leadTap = handCardChrome({ yourTurn: true, isLegal: true, selected: true, marked: false, anyIllegal: false });
+    expect(resting).toMatchObject({ pose: 'flat', dim: false, glow: false });
+    expect(lead).toMatchObject({ dim: false, glow: false });
+    expect(leadTap).toMatchObject({ pose: 'selected', dim: false, glow: true });
+  });
+});
 
 describe('your-turn hand poses', () => {
   it('lifts the legal group 14px, drops illegal cards 4px, and adds 10px on the tapped card', () => {

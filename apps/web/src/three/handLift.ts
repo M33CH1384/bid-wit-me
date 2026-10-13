@@ -86,6 +86,26 @@ export function canTapCard(pose: HandPose): boolean {
 }
 
 /**
+ * Per card, never on the fan. `dim` is only the illegal pose. `glow` is that card's own ring:
+ * every playable card when the hand is mixed, plus a tap and a tip mark. An all-legal lead
+ * does not outline the whole fan. Selecting a card does not turn the others off.
+ */
+export function handCardChrome(o: {
+  yourTurn: boolean;
+  isLegal: boolean;
+  selected: boolean;
+  marked: boolean;
+  anyIllegal: boolean;
+}): { pose: HandPose; dim: boolean; glow: boolean } {
+  const pose = playablePose(o.yourTurn, o.isLegal, o.selected);
+  return {
+    pose,
+    dim: pose === 'illegal',
+    glow: o.selected || o.marked || (o.isLegal && o.anyIllegal),
+  };
+}
+
+/**
  * Painter's order for one hand card. Every legal card draws after every illegal card.
  * Within each group the index still increases left to right, and a tap does not jump the queue.
  */

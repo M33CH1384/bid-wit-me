@@ -5,7 +5,8 @@
  *   are synthesized here with oscillators/noise — no extra files.
  * - iOS/Safari only allow audio after a user gesture: the context is created/resumed on the first
  *   touchstart/pointerdown (and a key). visibilitychange and pageshow resume it when the page returns.
- *   An 'interrupted' or closed context is rebuilt; if it stays suspended, a "Tap to restore sound" chip shows.
+ *   An 'interrupted' or closed context is rebuilt. If it stays suspended, the header speaker
+ *   shows a needs-tap state; tapping that icon resumes or rebuilds inside the gesture.
  *   (The iPhone silent switch mutes Web Audio; there is no way around that from a web page.)
  * - Settings (on/off, volume, ambience) persist in localStorage.
  */
@@ -123,7 +124,7 @@ class Engine {
   unlocked = false;
   /**
    * Automated checks (Playwright): pretend iOS reported this AudioContext.state.
-   * 'interrupted' / 'closed' rebuild the context. A stuck 'suspended' leaves the restore chip up.
+   * 'interrupted' / 'closed' rebuild the context. A stuck 'suspended' leaves the header speaker in its needs-tap state.
    * Null uses the real state.
    */
   testState: string | null = null;
@@ -414,8 +415,8 @@ class Engine {
       this.syncMusic();
     }
     // Start resume() now, inside the gesture. A simulated stuck state must not actually resume,
-    // or the test hook could never leave the chip up. Publish the chip in this same turn: the
-    // resume promise settles later, and a rejection must not skip the update.
+    // or the test hook could never leave the speaker in its needs-tap state. Publish that state
+    // in this same turn: the resume promise settles later, and a rejection must not skip the update.
     const resumePromise = this.testState == null ? settleAudio(this.ctx?.resume()) : Promise.resolve();
     this.publishRestore();
     void resumePromise.then(() => {
