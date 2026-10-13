@@ -18,7 +18,10 @@ export function shownFaceIds(prev: ReadonlySet<string>, painted: readonly string
  */
 export function trickFacesShown(prev: ReadonlySet<string>, painted: readonly string[], stillHere: ReadonlySet<string>, trick: readonly string[]): Set<string> {
   const next = shownFaceIds(prev, painted, stillHere);
-  for (const id of trick) if (id && stillHere.has(id)) next.add(id);
+  // The current trick is public even when a rebuild's "still here" set is only the cards
+  // left in the hand (a resize resets the painter, and a played card is no longer in the hand).
+  // Gating on stillHere dropped those ids and the front mesh came back as the BWM back.
+  for (const id of trick) if (id) next.add(id);
   return next;
 }
 
@@ -26,10 +29,22 @@ export function trickFacesShown(prev: ReadonlySet<string>, painted: readonly str
  * Faces that are on screen this frame. The trick and a Run it! slam are public the moment they
  * land: a bot's claimed cards were never in this viewer's hand, and a human claimer's cards have
  * already left it, so the one-per-frame hand painter would otherwise leave both on the card back.
+ * Trick ids are kept even when a resize rebuilds the painter with only the hand still in the set.
  */
 export function visibleFaceIds(prev: ReadonlySet<string>, painted: readonly string[], hand: readonly string[], trick: readonly string[], slam: readonly string[]): Set<string> {
   const instant = [...trick, ...slam];
   return trickFacesShown(prev, painted, new Set<string>([...hand, ...instant]), instant);
+}
+
+/**
+ * Whether the camera-facing side is the painted face.
+ * Trick cards, and a Run it! slam, stay face-up even when the painter set was cleared by a rebuild.
+ * A card that has left the trick falls through to that set, which drops it once it leaves the hand.
+ */
+export function cardShowsFace(id: string | null, shown: ReadonlySet<string>, trick: readonly string[]): boolean {
+  if (!id) return false;
+  for (const played of trick) if (played === id) return true;
+  return shown.has(id);
 }
 
 /**
