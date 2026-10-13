@@ -181,7 +181,7 @@ export function useOnlineChat(cs: ConnState, st: GameState | null, names: string
     for (const l of cs.chat) {
       if (seen.current.has(l.id)) continue;
       seen.current.add(l.id);
-      add(lineToMsg(l, cs.you));
+      add(lineToMsg(l, cs.you, !!cs.spectator));
       // live bot lines (not the backlog on join): voice + the Hustler reveal pop
       if (l.bot && primed.current) {
         speakBot(l.name, l.text, l.bot.persona, l.bot.line, l.bot.bid);
@@ -232,18 +232,25 @@ const HIDE_SPEC_KEY = 'bwm.hideSpectatorChat';
 export const loadHideSpectatorChat = () => { try { return localStorage.getItem(HIDE_SPEC_KEY) === '1'; } catch { return false; } };
 export const saveHideSpectatorChat = (on: boolean) => { try { localStorage.setItem(HIDE_SPEC_KEY, on ? '1' : '0'); } catch { /* private mode */ } };
 
-function lineToMsg(l: ChatLine, you: string | null): ChatMsg {
-  if (l.system || !l.from) return { id: l.id, user: 'System', text: l.text, system: true, color: '#b892ff' };
-  const mine = l.from === you;
-  return { id: l.id, user: mine ? 'You' : l.name, text: l.text, color: mine ? '#f5c542' : colorFor(l.from), ...(l.bot ? { bot: true } : {}), ...(l.hint ? { hint: true } : {}), ...(l.spectator ? { badge: SPECTATOR_TAG } : {}) };
+/** Chat speaker. Spectators see the sender's name, including their own — never "You". */
+export function chatUserLabel(lineName: string, from: string | null | undefined, you: string | null, spectating: boolean): string {
+  if (!spectating && from && from === you) return 'You';
+  return lineName || 'Player';
 }
 
-/** Local-seat names: "You" at 0, then real names rotated. */
-export function localNames(room: RoomInfo, rot: Rotation): string[] {
+function lineToMsg(l: ChatLine, you: string | null, spectating = false): ChatMsg {
+  if (l.system || !l.from) return { id: l.id, user: 'System', text: l.text, system: true, color: '#b892ff' };
+  const mine = !spectating && l.from === you;
+  return { id: l.id, user: chatUserLabel(l.name, l.from, you, spectating), text: l.text, color: mine ? '#f5c542' : colorFor(l.from), ...(l.bot ? { bot: true } : {}), ...(l.hint ? { hint: true } : {}), ...(l.spectator ? { badge: SPECTATOR_TAG } : {}) };
+}
+
+/** Local-seat names. Seat 0 is "You" for a seated viewer; a spectator gets the occupant (person or bot). */
+export function localNames(room: RoomInfo, rot: Rotation, spectating = false): string[] {
   return Array.from({ length: rot.n }, (_, i) => {
-    if (i === 0) return 'You';
     const s = room.seats[rot.R(i)];
-    return !s || s.kind === 'empty' ? `Seat ${rot.R(i) + 1}` : s.name;
+    const occ = !s || s.kind === 'empty' ? `Seat ${rot.R(i) + 1}` : s.name;
+    if (!spectating && i === 0) return 'You';
+    return occ;
   });
 }
 

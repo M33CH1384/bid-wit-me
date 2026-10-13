@@ -28,14 +28,27 @@ export function TickNumber({ value, className = '' }: { value: number; className
 
 export interface Toast { id: number; text: string; kind: 'made' | 'set' | 'nil' | 'bust' | 'bags' | 'info'; sub?: string }
 
-/** Toasts for a scored hand: BID MADE / SET / NIL! / NIL BUSTED / BAG PENALTY. */
-export function toastsFor(rec: HandRecord, rules: TableRules, names: string[], mySide: number): Omit<Toast, 'id'>[] {
+/** Toasts for a scored hand: BID MADE / SET / NIL! / NIL BUSTED / BAG PENALTY. Spectators get occupant names, never YOU. */
+export function toastsFor(rec: HandRecord, rules: TableRules, names: string[], mySide: number, spectating = false): Omit<Toast, 'id'>[] {
   const out: Omit<Toast, 'id'>[] = [];
-  const sideLabel = (side: number) => (rules.partnerships ? (side === mySide ? 'YOUR TEAM' : 'THEM') : side === mySide ? 'YOU' : names[side]!.toUpperCase());
+  const whoName = (seat: number) => {
+    const raw = (names[seat] ?? '').trim();
+    if (spectating && (!raw || raw.toLowerCase() === 'you')) return `SEAT ${seat + 1}`;
+    return raw.toUpperCase();
+  };
+  const sideLabel = (side: number) => {
+    if (spectating) {
+      if (!rules.partnerships) return whoName(side);
+      const a = side === 0 ? 0 : 1;
+      const b = side === 0 ? 2 : 3;
+      return `${whoName(a)} & ${whoName(b)}`;
+    }
+    return rules.partnerships ? (side === mySide ? 'YOUR TEAM' : 'THEM') : side === mySide ? 'YOU' : names[side]!.toUpperCase();
+  };
   const ordered = [...rec.sides].sort((a, b) => (a.side === mySide ? -1 : b.side === mySide ? 1 : 0));
   for (const s of ordered) {
     for (const nl of s.nils) {
-      const who = nl.seat === 0 ? 'YOU' : names[nl.seat]!.toUpperCase();
+      const who = !spectating && nl.seat === 0 ? 'YOU' : whoName(nl.seat);
       out.push(nl.made ? { text: nl.kind === 'blindNil' ? 'BLIND NIL!' : 'NIL!', kind: 'nil', sub: `${who} +${nl.points}` } : { text: 'NIL BUSTED', kind: 'bust', sub: `${who} ${nl.points}` });
     }
     if (s.bookPoints) out.push({ text: s.side === mySide ? 'BOOKS BANKED' : 'BOOKS', kind: s.side === mySide ? 'made' : 'info', sub: `${sideLabel(s.side)} ${s.tricks} books · +${s.bookPoints}` });
