@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useRef } from 'react';
-import { type GameState, bidLabel, isNilBid } from '@spades/rules';
+import { type GameState, bidLabel, isNilBid, isShot, shotCounts } from '@spades/rules';
 import { resultChips, signed } from './ScorePad';
 import { sideName } from './Modals';
 import { handWinner, streakLabel, streakOf } from './fx';
@@ -99,6 +99,7 @@ export function Intermission({
   const notes = callouts.filter((c) => c.kind !== 'shot' && c.kind !== 'gotShot');
   const sides = rec.sides;
   const shotSides = sides.filter((s) => s.contractMade === false);
+  const shots = shotCounts(r, st.history);
   const target = r.targetScore;
   const boomKey = `${st.seed}:${rec.handNo}:${shotSides.map((s) => s.side).join(',')}`;
   const boomed = useRef('');
@@ -143,9 +144,23 @@ export function Intermission({
               const main = chips.find((c) => c.kind === 'made' || c.kind === 'set' || c.kind === 'books');
               const bidPart = books ? 'Books (hand 1)' : s.contract ? `Bid ${s.contract}` : `Bid ${s.seats.map((x) => bidLabel(rec.bids[x]!)).join(' + ')}`;
               const shot = s.contractMade === false;
+              const times = shots[s.side] ?? 0;
+              const shrouded = times >= 2;
+              const taped = times === 1;
+              const justShot = isShot(r, rec.bids, s);
               return (
-                <div key={s.side} className={`tt-team${s.side === mySide ? ' mine' : ''}${shot ? ' blast' : ''}`} data-testid={`recap-side-${s.side}`} data-blast={shot ? 'yes' : 'no'}>
+                <div key={s.side} className={`tt-team${s.side === mySide ? ' mine' : ''}${shot ? ' blast' : ''}${taped ? ' taped' : ''}${taped && justShot ? ' tape-in' : ''}${shrouded ? ' shrouded' : ''}${shrouded && justShot ? ' sheet-in' : ''}`} data-testid={`recap-side-${s.side}`} data-blast={shot ? 'yes' : 'no'} data-shots={times}>
                   {shot && <BlastMarks side={s.side} />}
+                  {taped && (
+                    <div className="caution-tape" data-testid={`recap-tape-${s.side}`} aria-hidden="true">
+                      <b>CAUTION</b><b>SHOT</b><b>CAUTION</b><b>SHOT</b><b>CAUTION</b><b>SHOT</b>
+                    </div>
+                  )}
+                  {shrouded && (
+                    <div className="shroud" data-testid={`recap-shroud-${s.side}`} aria-hidden="true">
+                      <i /><i /><i />
+                    </div>
+                  )}
                   <div className="tt-team-name">
                     <b>{sideName(r, s.side, names)}</b>
                     <span className="tt-badges chips">

@@ -198,6 +198,21 @@ export function isShot(r: TableRules, bids: readonly Bid[], side: SideHandResult
 }
 
 /**
+ * How many times each side has been shot this game, counted from the scored hands.
+ * History is part of the synced state, so every client and a reconnect see the same counts.
+ * A busted nil alone is not a shot. A books hand counts only when it missed the first-hand minimum.
+ */
+export function shotCounts(r: TableRules, history: readonly { bids: readonly Bid[]; sides: readonly SideHandResult[] }[]): number[] {
+  const counts = Array.from({ length: sideCount(r) }, () => 0);
+  for (const hand of history) {
+    for (const side of hand.sides) {
+      if (isShot(r, hand.bids, side)) counts[side.side] = (counts[side.side] ?? 0) + 1;
+    }
+  }
+  return counts;
+}
+
+/**
  * Shot = out after a hand: the sides that are out — shot on hand 1, or shot this hand AND the previous hand.
  * `prevShot[side]` = shot on the previous hand. Empty when the rule is off.
  */
