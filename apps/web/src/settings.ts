@@ -1,5 +1,5 @@
 import { type VenueChoice, isVenueChoice } from '@spades/protocol';
-import { CLASSIC_JOKER, cardLabel, type Mode, type RulesOverrides, type TableRules, makeRules } from '@spades/rules';
+import { CLASSIC_JOKER, cardLabel, hostMinimum, type Mode, type RulesOverrides, type TableRules, makeRules } from '@spades/rules';
 import { type BotSkillSetting, skillSettingOf } from '@spades/bots';
 import { trumpLadderText } from './trumpLadder';
 
@@ -82,16 +82,18 @@ export function settingsToRules(s: Settings): TableRules {
     shotOut: s.shotOut !== false,
     bagsOn: s.bagsOn !== false,
   };
-  if (s.firstHandMin !== undefined && s.firstHandMin !== 'default') o.firstHandMin = s.firstHandMin === 'off' ? null : s.firstHandMin;
+  if ((s.mode === 'joker' || s.mode === 'aceDown') && s.firstHandMin !== undefined && s.firstHandMin !== 'default') o.firstHandMin = s.firstHandMin === 'off' ? null : s.firstHandMin;
   if (s.targetScore !== 'default') o.targetScore = s.targetScore;
   const classic = s.jokerOrder === 'classic';
   if (s.mode === 'joker' && classic) Object.assign(o, CLASSIC_JOKER, { deuceOfSpadesHigh: s.deuceOfSpadesHigh });
   if (s.mode === 'cutthroat4' || s.mode === 'cutthroat3') {
     o.playerCount = s.mode === 'cutthroat3' ? 3 : 4;
     o.deck = s.cutthroatDeck;
-    // Cutthroat has its own bid settings: min positive bid 1–4, Blind Nil on/off (always available when on)
+    // Cutthroat's minimum books / bid is this 1–4 setting. Nil and Blind Nil stay off.
     o.minTeamBid = [1, 2, 3, 4].includes(s.cutMinBid) ? s.cutMinBid : 1;
-    o.blindNil = { allowed: !!s.cutBlindNil, onlyWhenBehindBy: null, exchangeCards: 0 };
+    o.firstHandMin = null;
+    o.nil = { allowed: false };
+    o.blindNil = { allowed: false, onlyWhenBehindBy: null, exchangeCards: 0 };
     if (s.cutthroatDeck === 'joker54' && classic) {
       o.trumpOrderTop = CLASSIC_JOKER.trumpOrderTop;
       o.removedCards = s.mode === 'cutthroat3' ? ['2C', '2H', '2D'] : CLASSIC_JOKER.removedCards;
@@ -129,15 +131,15 @@ export function saveSettings(s: Settings): void {
 
 /**
  * One-line table summary for the setup screen, e.g.
- * "4 players • 13 cards each • 13 books • Min bid 1 • Nil on • Blind Nil off • Bags on" (Cutthroat 3 adds "2♣ removed").
+ * "4 players • 13 cards each • 13 books • Minimum 1 • Nil off • Blind Nil off • Bags on" (Cutthroat 3 adds "2♣ removed").
  */
 export function rulesSummary(r: TableRules): string {
   const hs = r.playerCount === 4 ? 13 : 17;
   const removed = r.removedCards.length ? `${r.removedCards.map((c) => cardLabel(c)).join(' ')} removed` : null;
   const parts = [`${r.playerCount} players`, `${hs} cards each`, `${hs} books`];
   if (r.playerCount === 3 && removed) parts.push(removed);
-  if (r.partnerships) parts.push(r.minTeamBid ? `Team min ${r.minTeamBid}` : 'No team min');
-  else parts.push(`Min bid ${Math.max(1, r.minTeamBid)}`);
+  const floor = hostMinimum(r);
+  parts.push(floor > 0 ? `Minimum ${floor}` : 'No minimum');
   parts.push(`Nil ${r.nil.allowed ? 'on' : 'off'}`, `Blind Nil ${r.blindNil.allowed ? 'on' : 'off'}`, `Bags ${r.bagsOn !== false ? 'on' : 'off'}`);
   return parts.join(' • ');
 }

@@ -1,4 +1,4 @@
-import { type TableRules, bagsOnOf, firstHandMinOf, shotOutOn } from './config';
+import { type TableRules, bagsOnOf, blindNilRulesOf, handSize, hostMinimum, nilRulesOf, shotOutOn } from './config';
 
 /**
  * A bid: a number of tricks (≥1), Nil, or Blind Nil. A numeric 0 is normalised to 'nil'.
@@ -104,7 +104,7 @@ export function scoreHand(
       if (b === 'books') {
         bookPoints += BOOK_VALUE * t; // first hand: every book counts, no bags
       } else if (isNilBid(b)) {
-        const value = b === 'nil' ? r.nil.value : r.blindNil.value;
+        const value = b === 'nil' ? nilRulesOf(r).value : blindNilRulesOf(r).value;
         const made = t === 0;
         const points = made ? value : -value;
         nils.push({ seat: s, kind: b, tricks: t, made, points });
@@ -133,6 +133,16 @@ export function scoreHand(
       bagsAdded += contractTricks; // no contract: every trick is a bag
     }
 
+    if (isBooksHand(bids)) {
+      const floor = hostMinimum(r);
+      if (floor > 0 && tricks < floor) {
+        // Short of the host minimum: a set at that number, not 10 points per book taken.
+        bookPoints = 0;
+        contract = floor;
+        contractMade = false;
+        contractPoints = -10 * floor;
+      }
+    }
     if (!bagsOnOf(r)) bagsAdded = 0; // "Bags and penalties" off: overtricks score nothing and never add up to a penalty
     let totalBags = bags[side]! + bagsAdded;
     const bagPenaltyCount = Math.floor(totalBags / r.bagsPerPenalty);
@@ -186,15 +196,165 @@ export function checkGameEnd(r: TableRules, scores: readonly number[]): GameResu
 
 /**
  * Was `side` shot this hand? Shot = set: the side had a contract and missed it (a busted Nil alone never makes a side
- * shot — same as the set logic). First hand where books bid themselves: shot when it took fewer books than the
- * first-hand minimum (off = nobody is shot that hand).
+ * shot — same as the set logic). Books hand: shot when it took fewer books than the host minimum (off = nobody is shot).
  */
 export function isShot(r: TableRules, bids: readonly Bid[], side: SideHandResult): boolean {
   if (isBooksHand(bids)) {
-    const min = firstHandMinOf(r);
-    return min !== null && side.tricks < min;
+    const min = hostMinimum(r);
+    return min > 0 && side.tricks < min;
   }
   return side.contractMade === false;
+}
+
+/**
+ * How many times each side has been shot this game, counted from the scored hands.
+ * History is part of the synced state, so every client and a reconnect see the same counts.
+ * A busted nil alone is not a shot. A books hand counts only when it missed the first-hand minimum.
+ */
+export function shotCounts(r: TableRules, history: readonly { bids: readonly Bid[]; sides: readonly SideHandResult[] }[]): number[] {
+  const counts = Array.from({ length: sideCount(r) }, () => 0);
+  for (const hand of history) {
+    for (const side of hand.sides) {
+      if (isShot(r, hand.bids, side)) counts[side.side] = (counts[side.side] ?? 0) + 1;
+    }
+  }
+  return counts;
+}
+
+/** The side made its books: a made contract, or a books hand that reached the host minimum. */
+function madeItsBooks(r: TableRules, bids: readonly Bid[], side: SideHandResult): boolean {
+  if (isBooksHand(bids)) {
+    const min = hostMinimum(r);
+    return min === 0 || side.tricks >= min;
+  }
+  return side.contractMade === true;
+}
+
+/**
+ * Scorecard cover for one side. This is the only place the recap decides tape and sheet.
+ * It reads the engine's shot-out result (`shotOutSides` / `shotOutResult`, or the recorded `result`).
+ * It does not count shots across the whole game.
+ */
+export interface ShotCover {
+  /** Caution tape after a non-losing shot, and also on a hand-1 loss (together with the sheet). Off once a later hand makes its books. */
+  tape: boolean;
+  /** White sheet only for an elimination: a hand-1 shot-out, or a later shot while the previous hand was a shot. */
+  sheet: boolean;
+  /** Siren and police lights. On whenever the sheet is showing. */
+  siren: boolean;
+}
+
+/**
+ * What covers each side's scorecard. History and `result` are synced, so every client and a reconnect agree.
+ * Tape marks a shot that did not lose the game, and comes off when a later hand makes its books.
+ * A hand-1 elimination shows the tape and the sheet together.
+ * The sheet follows the recorded loss (`result.endReason === 'shotOut'`). When `result` is omitted, the same
+ * shot-out functions the engine uses decide it, so a rules change shows up here without a second copy of the rule.
+ */
+export function shotCovers(
+  r: TableRules,
+  history: readonly { handNo: number; bids: readonly Bid[]; sides: readonly SideHandResult[] }[],
+  result?: GameResult | null,
+): ShotCover[] {
+  const n = sideCount(r);
+  const blank = (): ShotCover => ({ tape: false, sheet: false, siren: false });
+  const covers = Array.from({ length: n }, blank);
+  let prevShot = Array.from({ length: n }, () => false);
+  for (let h = 0; h < history.length; h++) {
+    const hand = history[h]!;
+    const shot = Array.from({ length: n }, () => false);
+    const made = Array.from({ length: n }, () => false);
+    const scores = Array.from({ length: n }, () => 0);
+    for (const side of hand.sides) {
+      shot[side.side] = isShot(r, hand.bids, side);
+      made[side.side] = madeItsBooks(r, hand.bids, side);
+      scores[side.side] = side.totalScore;
+    }
+    const last = h === history.length - 1;
+    const lost = last && result !== undefined
+      ? new Set(result?.endReason === 'shotOut' ? result.shotOut ?? [] : [])
+      : new Set(shotOutResult(scores, shotOutSides(r, hand.handNo, shot, prevShot))?.shotOut ?? []);
+    for (let side = 0; side < n; side++) {
+      if (lost.has(side)) covers[side] = { tape: hand.handNo === 1, sheet: true, siren: true };
+      else if (shot[side]) covers[side] = { tape: true, sheet: false, siren: false };
+      else if (made[side]) covers[side] = blank();
+    }
+    prevShot = shot;
+  }
+  return covers;
+}
+
+/**
+ * Books still needed before this side is shot, or null when that side cannot be set
+ * (bidding not finished, no numeric contract, or a books hand whose minimum is off).
+ * On a books hand this is the host minimum minus the books that side has taken.
+ * Nil tricks count only when `nilTricksCountForPartner` is on, matching scoreHand.
+ */
+export function booksStillNeeded(r: TableRules, bids: readonly (Bid | null)[], tricksWon: readonly number[], side: number): number | null {
+  if (bids.length === 0 || bids.some((b) => b === null || b === undefined)) return null;
+  const seats = sideSeats(side, r);
+  if (isBooksHand(bids)) {
+    const min = hostMinimum(r);
+    if (min <= 0) return null;
+    const taken = seats.reduce((n, seat) => n + (tricksWon[seat] ?? 0), 0);
+    return min - taken;
+  }
+  let contract = 0;
+  let taken = 0;
+  let nilTricks = 0;
+  for (const seat of seats) {
+    const b = bids[seat]!;
+    const t = tricksWon[seat] ?? 0;
+    if (isNilBid(b)) nilTricks += t;
+    else if (typeof b === 'number') { contract += b; taken += t; }
+  }
+  if (contract <= 0) return null;
+  if (r.nilTricksCountForPartner) taken += nilTricks;
+  return contract - taken;
+}
+
+/** Tricks not yet won. The trick in progress still counts as remaining. */
+export function tricksStillRemaining(st: { rules: TableRules; tricks: { length: number } }): number {
+  return handSize(st.rules) - st.tricks.length;
+}
+
+/**
+ * Sides exactly one trick from being shot: books still needed equals tricks still remaining,
+ * so losing one more trick makes the contract (or the first-hand minimum) unreachable.
+ * A nil bid is not itself a shot; it only changes which tricks count toward the partner's contract.
+ */
+export function sidesOneTrickFromShot(st: {
+  phase: string;
+  rules: TableRules;
+  bids: readonly (Bid | null)[];
+  tricksWon: readonly number[];
+  tricks: { length: number };
+}): number[] {
+  if (st.phase !== 'playing') return [];
+  const remaining = tricksStillRemaining(st);
+  if (remaining <= 0) return [];
+  const out: number[] = [];
+  for (let side = 0; side < sideCount(st.rules); side++) {
+    const needed = booksStillNeeded(st.rules, st.bids, st.tricksWon, side);
+    if (needed !== null && needed > 0 && needed === remaining) out.push(side);
+  }
+  return out;
+}
+
+/**
+ * Sides that just entered the one-trick-from-set window. The first snapshot of a hand is a baseline
+ * (a resumed game does not replay the cue). `already` remembers who has been pumped this hand, so
+ * dropping out and falling back in does not play a second time. Every client runs this on the same
+ * state transition, so an online table hears it together.
+ */
+export function newlyOneTrickFromShot<T extends { handNo: number; phase: string; rules: TableRules; bids: readonly (Bid | null)[]; tricksWon: readonly number[]; tricks: { length: number } }>(
+  prev: T | null,
+  next: T,
+  already: ReadonlySet<number>,
+): number[] {
+  if (!prev || prev.handNo !== next.handNo) return [];
+  const before = new Set(sidesOneTrickFromShot(prev));
+  return sidesOneTrickFromShot(next).filter((side) => !before.has(side) && !already.has(side));
 }
 
 /**

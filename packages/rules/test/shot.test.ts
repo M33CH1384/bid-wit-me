@@ -17,7 +17,9 @@ describe('Shot = out (house rule)', () => {
     const bids = ['books', 'books', 'books', 'books'] as const;
     const sides = scoreHand(joker, [...bids], [2, 5, 1, 5], [0, 0], [0, 0]); // side 0: 3 books, side 1: 10
     expect(isShot(joker, [...bids], sides[0]!)).toBe(true);
+    expect(sides[0]).toMatchObject({ contract: 4, contractMade: false, points: -40, bookPoints: 0 });
     expect(isShot(joker, [...bids], sides[1]!)).toBe(false);
+    expect(sides[1]!.points).toBe(100);
     expect(isShot({ ...joker, firstHandMin: 3 }, [...bids], sides[0]!)).toBe(false);
     expect(isShot({ ...joker, firstHandMin: null }, [...bids], sides[0]!)).toBe(false);
   });
@@ -55,6 +57,7 @@ describe('Shot = out (house rule)', () => {
     const out = st.result!.shotOut![0]!;
     expect(st.history[0]!.sides[out]!.tricks).toBeLessThan(4);
     expect(st.history[0]!.sides[out]!.shot).toBe(true);
+    expect(st.history[0]!.sides[out]!.points).toBe(-40);
     const g = summarizeGame(st, ['A', 'B'], 1, 0);
     expect(g.endReason).toBe('shotOut');
     expect(g.shots![out]).toBe(1);

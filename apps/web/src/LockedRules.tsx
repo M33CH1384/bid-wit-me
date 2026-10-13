@@ -1,4 +1,4 @@
-import { type TableRules, firstHandMinOf, shotOutOn } from '@spades/rules';
+import { type TableRules, hostMinimum, shotOutOn } from '@spades/rules';
 import { SKILL_SETTING_LABEL, TALK_INTENSITY_LABEL, type TalkIntensity, skillSettingOf } from '@spades/bots';
 import { modeTitle, rulesSummary } from './settings';
 
@@ -6,12 +6,13 @@ const NUKE_LABEL = { full: 'Full Nuke', classic: 'Classic', off: 'Off' } as cons
 
 /** The rules locked for the running game (online: the server enforces it; offline: fixed when the game started). */
 export function lockedRows(r: TableRules, o: { nuke?: keyof typeof NUKE_LABEL; skill?: unknown; intensity?: TalkIntensity; micMute?: boolean }): [string, string][] {
-  const min = firstHandMinOf(r);
+  const min = hostMinimum(r);
   return [
     ['Mode', `${modeTitle(r)}${r.partnerships ? '' : r.deck === 'joker54' ? ' · Joker deck' : ' · Standard 52'}`],
     ['Table', rulesSummary(r)],
     ['Target', String(r.targetScore)],
-    ['Shot = out', shotOutOn(r) ? `On · first hand ${min === null ? 'no minimum' : `needs ${min}+ books`}` : 'Off'],
+    ['Minimum books / bid', min > 0 ? String(min) : 'Off'],
+    ['Shot = out', shotOutOn(r) ? 'On' : 'Off'],
     ['First hand bids itself', r.firstHandBidsItself ? 'On' : 'Off'],
     ['Nil / Blind Nil', `${r.nil.allowed ? `Nil ${r.nil.value}` : 'No Nil'} · ${r.blindNil.allowed ? `Blind Nil ${r.blindNil.value}` : 'no Blind Nil'}`],
     ['Bags', r.bagsOn !== false && r.bagsPerPenalty > 0 ? `${r.bagsPerPenalty} bags = −${r.bagPenalty}` : 'Off'],

@@ -101,10 +101,10 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
               <Row label="Shot = out" hint={rules.partnerships ? 'Shot (set) on hand 1, or two hands in a row, loses the game' : 'A player shot (set) on hand 1, or twice in a row, loses the game'}>
                 <Toggle label="Shot = out" value={s.shotOut !== false} onChange={(v) => set('shotOut', v)} />
               </Row>
-              {s.shotOut !== false && s.firstHandBidsItself !== false && (
-                <Row label="First-hand minimum" hint="Fewer books than this on hand 1 is a shot">
+              {rules.partnerships && (
+                <Row label="Minimum books / bid" hint="Every hand. Hand 1: fewer books is a shot. Later: bids must reach it.">
                   <select data-testid="first-hand-min" value={String(s.firstHandMin ?? 'default')} onChange={(e) => { const v = e.target.value; set('firstHandMin', v === 'default' || v === 'off' ? v : (Number(v) as 3 | 4 | 5)); }}>
-                    <option value="default">Default ({rules.partnerships ? '4 books' : 'off'})</option><option value="3">3 books</option><option value="4">4 books</option><option value="5">5 books</option><option value="off">Off</option>
+                    <option value="default">Default (4)</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="off">Off</option>
                   </select>
                 </Row>
               )}
@@ -131,13 +131,13 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
                   </select>
                 </Row>
               ) : (
-                <Row label="Minimum bid" hint="0 is always Nil">
+                <Row label="Minimum books / bid" hint="Every hand. Hand 1: fewer books is a shot. Nil is off.">
                   <select data-testid="cut-min-bid" value={s.cutMinBid ?? 1} onChange={(e) => set('cutMinBid', Number(e.target.value) as Settings['cutMinBid'])}>
                     {[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n}{n === 1 ? ' (default)' : ''}</option>)}
                   </select>
                 </Row>
               )}
-              <Row label="Nil allowed"><Toggle value={s.nilAllowed} onChange={(v) => set('nilAllowed', v)} /></Row>
+              {rules.partnerships && <Row label="Nil allowed"><Toggle value={s.nilAllowed} onChange={(v) => set('nilAllowed', v)} /></Row>}
               {rules.partnerships ? (
                 <Row label="Blind Nil">
                   <select value={s.blindNil} onChange={(e) => set('blindNil', e.target.value as Settings['blindNil'])}>
@@ -146,9 +146,7 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
                     <option value="off">Off</option>
                   </select>
                 </Row>
-              ) : (
-                <Row label="Blind Nil allowed"><Toggle label="Allow Blind Nil" value={!!s.cutBlindNil} onChange={(v) => set('cutBlindNil', v)} /></Row>
-              )}
+              ) : null}
               {rules.partnerships && (
                 <>
                   <Row label="Blind Nil card exchange"><Toggle value={s.blindNilExchange === 2} onChange={(v) => set('blindNilExchange', v ? 2 : 0)} /></Row>

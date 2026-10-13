@@ -83,18 +83,48 @@ describe('bidding', () => {
     expect(bidOptions(st, 0).max).toBe(17);
     expect(applyAction(st, { type: 'bid', seat: 0, bid: 17 }).bids[0]).toBe(17);
   });
+  it('missing nil and blind nil do not throw while bidding or dealing the next hand', () => {
+    // Older saved games omit these objects. bidOptions used to throw reading `.allowed`,
+    // which aborted the room tick before a spectator (or the seat to act) got a view.
+    const hole = (st: GameState) => {
+      delete (st.rules as { nil?: unknown }).nil;
+      delete (st.rules as { blindNil?: unknown }).blindNil;
+      return st;
+    };
+    let st = hole(newGame(joker, 'nil-hole'));
+    expect(st.phase).toBe('bidding');
+    const opt = bidOptions(st, st.turn!);
+    expect(opt.min).toBeGreaterThanOrEqual(1);
+    expect(opt.nil).toBe(true);
+    expect(typeof opt.blindNil).toBe('boolean');
+    const watched = spectatorView(st, 0);
+    expect(watched.bidOptions).toBeNull();
+    expect(watched.hand).toBeNull();
+    expect(watched.rules.nil).toEqual({ allowed: true, value: 100 });
+    expect(watched.rules.blindNil.allowed).toBe(true);
+    st = applyAction(st, { type: 'bid', seat: st.turn!, bid: opt.min });
+    expect(st.rules.nil).toEqual({ allowed: true, value: 100 });
+    expect(st.bids.some((b) => b !== null)).toBe(true);
+    st = hole({ ...st, phase: 'handOver', turn: null });
+    expect(() => applyAction(st, { type: 'nextHand' })).not.toThrow();
+    const cut = hole(rigged(makeRules('cutthroat'), fill(makeRules('cutthroat'), [[], [], [], []])));
+    expect(bidOptions(cut, 0)).toMatchObject({ nil: false, blindNil: false });
+    expect(spectatorView(cut, 0).rules.nil.allowed).toBe(false);
+  });
   it('nil can be disabled', () => {
     const r = makeRules('joker', { nil: { allowed: false } });
     const st = rigged(r, fill(r, [[], [], [], []]));
     expectRuleError(() => applyAction(st, { type: 'bid', seat: 0, bid: 'nil' }), 'NIL_NOT_ALLOWED');
   });
   it('partner of a nil bidder may also bid nil by default, but not when disabled', () => {
+    // Floor off, so this is the partnerMayAlsoNil rule and not the host minimum.
     // dealer 3: bidding order 0, 2 (partners back to back), 1, 3 (dealer last)
-    const st = applyAction(base(), { type: 'bid', seat: 0, bid: 'nil' });
+    const open = makeRules('joker', { firstHandMin: null, minTeamBid: 0 });
+    const st = applyAction(rigged(open, fill(open, [[], [], [], []]), 3), { type: 'bid', seat: 0, bid: 'nil' });
     expect(st.turn).toBe(2);
     expect(bidOptions(st, 2).nil).toBe(true);
-    const r = makeRules('joker', { partnerMayAlsoNil: false });
-    const s2 = applyAction(rigged(r, fill(r, [[], [], [], []])), { type: 'bid', seat: 0, bid: 'nil' });
+    const r = makeRules('joker', { firstHandMin: null, minTeamBid: 0, partnerMayAlsoNil: false });
+    const s2 = applyAction(rigged(r, fill(r, [[], [], [], []]), 3), { type: 'bid', seat: 0, bid: 'nil' });
     expect(bidOptions(s2, 2).nil).toBe(false);
     expectRuleError(() => applyAction(s2, { type: 'bid', seat: 2, bid: 'nil' }), 'NIL_NOT_ALLOWED');
   });
@@ -105,7 +135,8 @@ describe('bidding', () => {
     st = applyAction(st, { type: 'bid', seat: 0, bid: 1 });
     expect(bidOptions(st, 2).min).toBe(3);
     expectRuleError(() => applyAction(st, { type: 'bid', seat: 2, bid: 2 }), 'BID_TOO_LOW');
-    expect(applyAction(st, { type: 'bid', seat: 2, bid: 'nil' }).bids[2]).toBe('nil'); // nil is exempt
+    expect(bidOptions(st, 2).nilReason).toMatch(/Can't Nil/);
+    expectRuleError(() => applyAction(st, { type: 'bid', seat: 2, bid: 'nil' }), 'NIL_NOT_ALLOWED');
     st = applyAction(st, { type: 'bid', seat: 2, bid: 3 });
     expect(st.turn).toBe(1);
     expect(bidOptions(st, 1).min).toBe(1); // the dealer still to bid
@@ -160,11 +191,13 @@ describe('bidding', () => {
     const off = makeRules('joker', { blindNil: { allowed: false, onlyWhenBehindBy: null } });
     expect(newGame(off, 'x').revealed.every(Boolean)).toBe(true);
   });
-  it('cutthroat blind nil (when turned on with "behind by 100") compares you with the leader', () => {
+  it('Cutthroat never offers Blind Nil, even far behind and even if the override says on', () => {
     const r = makeRules('cutthroat', { blindNil: { allowed: true, onlyWhenBehindBy: 100 } });
+    expect(r.blindNil.allowed).toBe(false);
     let st: GameState = { ...newGame(r, 'ct'), scores: [120, 10, 30, 0], phase: 'handOver', turn: null };
     st = applyAction(st, { type: 'nextHand' });
-    expect(st.revealed).toEqual([true, false, true, false]);
+    expect(st.revealed).toEqual([true, true, true, true]);
+    expect(bidOptions(st, st.turn!).blindNil).toBe(false);
   });
   it('rejects actions in the wrong phase or from bad seats', () => {
     const st = base();
@@ -337,7 +370,7 @@ describe('blind nil exchange', () => {
     for (let i = 1; i < 4; i++) {
       const s = st.turn!;
       if (!st.revealed[s]) st = applyAction(st, { type: 'reveal', seat: s });
-      st = applyAction(st, { type: 'bid', seat: s, bid: 3 });
+      st = applyAction(st, { type: 'bid', seat: s, bid: 4 }); // covers a Nil partner under the default minimum of 4
     }
     expect(st.phase).toBe('exchange');
     expect(st.exchange).toEqual([{ from: first, to: (first + 2) % 4, count: 2 }, { from: (first + 2) % 4, to: first, count: 2 }]);
@@ -360,11 +393,15 @@ describe('blind nil exchange', () => {
   it('no exchange in cutthroat even if configured', () => {
     const r = makeRules('cutthroat', { blindNil: { allowed: true, onlyWhenBehindBy: null, exchangeCards: 2 } });
     let st = newGame(r, 'ct');
-    for (let i = 0; i < 4; i++) st = applyAction(st, { type: 'bid', seat: st.turn!, bid: i === 0 ? 'blindNil' : 3 });
+    expect(st.rules.nil.allowed).toBe(false);
+    expect(st.rules.blindNil.allowed).toBe(false);
+    for (let i = 0; i < 4; i++) st = applyAction(st, { type: 'bid', seat: st.turn!, bid: 3 });
     expect(st.phase).toBe('playing');
+    expect(st.exchange).toEqual([]);
   });
   it('both partners blind nil produce a single swap', () => {
-    const r = makeRules('joker', { blindNil: { onlyWhenBehindBy: null, exchangeCards: 1 } });
+    // Minimum off: with a floor, the partner of a Nil cannot also Nil.
+    const r = makeRules('joker', { firstHandMin: null, minTeamBid: 0, blindNil: { onlyWhenBehindBy: null, exchangeCards: 1 } });
     let st = newGame(r, 'ex2');
     const a = st.turn!;
     st = applyAction(st, { type: 'bid', seat: a, bid: 'blindNil' });

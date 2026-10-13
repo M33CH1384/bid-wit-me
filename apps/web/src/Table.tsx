@@ -4,7 +4,7 @@ import { type VenueId, VENUE_DEFS, resolveVenue } from './venues';
 import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, isNukeTrick, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, partnerOf, sideOf, sortHand,
+  type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, isNukeTrick, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, newlyOneTrickFromShot, partnerOf, sideOf, sortHand,
 } from '@spades/rules';
 import { ScorePad, setTeamNames, sideName } from './Modals';
 import { LockedRulesPanel } from './LockedRules';
@@ -12,7 +12,7 @@ import { type Series, addSeriesGame, seriesSides, summarizeGame } from '@spades/
 import { SeriesChip, SeriesSheet, loadSeries, saveSeries } from './Series';
 import { useMyTeamName } from './TeamName';
 import { offlineTalk } from './offlineTalk';
-import { BidOrder } from './PartnerTalk';
+import { BidOrder, showCenterBidOrder } from './PartnerTalk';
 import { TrumpLadder } from './trumpLadder';
 import { SocialButton } from './social/Social';
 import { recordOfflineGame } from './offlineStats';
@@ -26,6 +26,8 @@ import { setFeedbackGame } from './feedbackContext';
 import { loadTipJar, openTip, saveTipJar, tipNudgeDue } from './support';
 import { OfflineMediaBar } from './online/Media';
 import { fireCue, fx, useReduceEffects } from './fx';
+import { useDealtSlots } from './dealtSlots';
+import { FeltHand } from './FeltHand';
 import { loadScene } from './three/preload';
 import { endReasonText, onNoticeSides, shotChatLines } from './shotOut';
 import { type Sfx, sound } from './audio';
@@ -412,8 +414,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [showPad, setShowPad] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [ltOpen, setLtOpen] = useState(false);
-  const [clearedOpen, setClearedOpen] = useState(true);
-  useEffect(() => { setClearedOpen(true); }, [st.handNo]);
+  const [clearedOpen, setClearedOpen] = useState(false);
+  useEffect(() => { setClearedOpen(false); }, [st.handNo]);
   const [chatOpen, setChatOpen] = useState(() => window.innerWidth >= 900 && window.innerHeight > 600);
   const [seenMsgs, setSeenMsgs] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -532,7 +534,15 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [seen, setSeen] = useState<{ st: GameState; view: PlayerView }>(() => ({ st, view }));
   const [runFx, setRunFx] = useState<RunFx | null>(null);
   const [tableReady, setTableReady] = useState(false);
+  const [webglHand, setWebglHand] = useState(false);
   const onTableReady = useCallback(() => setTableReady(true), []);
+  const onHandLive = useCallback(() => setWebglHand(true), []);
+  // The saved game is already in memory. The flat hand is playable on the first paint; the 3D scene catches up.
+  useEffect(() => {
+    const w = window as unknown as { __bwmPlayableAt?: number };
+    const id = requestAnimationFrame(() => { w.__bwmPlayableAt ??= performance.now(); });
+    return () => cancelAnimationFrame(id);
+  }, []);
   if (seen.st !== st) {
     const b = seen.st;
     if (b.handNo === st.handNo && st.tricks.length > b.tricks.length && st.tricks[b.tricks.length]!.plays.some((p) => p.run)) {
@@ -744,6 +754,21 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   }, [isBooks, dealing, st.seed, st.handNo, st.tricks.length, resume]);
 
   useEffect(() => { setSelected(null); }, [st.turn, st.handNo]);
+  // One pump per side per hand, the moment they become exactly one trick from a shot: a missed contract,
+  // or a books hand about to miss the minimum. Derived from the shared state, so the table hears it together.
+  const pumpPrev = useRef<GameState | null>(null);
+  const pumpedSides = useRef<Set<number>>(new Set());
+  const pumpHand = useRef('');
+  useEffect(() => {
+    const key = `${st.seed}:${st.handNo}`;
+    if (pumpHand.current !== key) { pumpHand.current = key; pumpedSides.current = new Set(); }
+    const prev = pumpPrev.current;
+    pumpPrev.current = st;
+    newlyOneTrickFromShot(prev, st, pumpedSides.current).forEach((side, i) => {
+      pumpedSides.current.add(side);
+      sound.play('pump', i ? { delay: i * 0.16 } : {});
+    });
+  }, [st]);
   useEffect(() => { setExchangePick([]); }, [st.phase, st.turn]);
   useEffect(() => { if (chatOpen) setSeenMsgs(msgs.length); }, [chatOpen, msgs.length]);
 
@@ -800,6 +825,10 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // A nuke's hold is the 3D blast, so the score stays covered until that allowance ends.
   // Scoring toasts and hype no longer add another wait on top.
   const [talkOpen, setTalkOpen] = useState(false);
+  // A shot-out ends the hand in gameOver, which used to skip this recap. Hold the scorecard (blast, tape, sheet)
+  // until Continue, then open the results. The ack is local; the shot count still comes from synced history.
+  const [shotRecapAck, setShotRecapAck] = useState(false);
+  useEffect(() => { setShotRecapAck(false); }, [st.phase, st.handNo]);
   useEffect(() => {
     if ((st.phase !== 'handOver' && st.phase !== 'gameOver') || pause || runFx) { setTalkOpen(false); return; }
     setTalkOpen(true);
@@ -835,6 +864,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     haptic(HAPTIC.gameWin, 'game-win');
   }, [localWin]);
   // any modal up: the table, plates, chat, video bubbles etc. dim + blur behind it and can't paint over it
+  const shotOutRecap = st.phase === 'gameOver' && st.result?.endReason === 'shotOut' && !shotRecapAck;
+  const showRecap = !pause && talkOpen && (st.phase === 'handOver' || shotOutRecap);
+  const showResults = st.phase === 'gameOver' && !pause && !runFx && talkOpen && !!st.result && !shotOutRecap;
   const modalOpen = (st.phase === 'handOver' && !pause && talkOpen) || confirmLeave || showPad || (st.phase === 'gameOver' && !pause && !runFx && talkOpen && !!st.result);
 
   const promoted = useCallback((c: Card) => isPromoted(c, r), [r]);
@@ -897,17 +929,39 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     return () => clearInterval(t);
   }, [measureHand, vp.short]);
 
+  // The quick-load hand is on screen before WebGL. During a deal it may only show the cards that have left the deck.
+  const feltShown = useDealtSlots(dealing, {
+    speedK: k,
+    players: n,
+    dealer: st.dealer,
+    seat: HUMAN,
+    slots: display.hand?.length ?? 0,
+    handNo: st.handNo,
+  });
+
   return (
     <div ref={screenRef} className={`table-screen q-${settings.quality}${vp.short ? ' short' : ''}${modalOpen ? ' modal-open' : ''}${showPad ? ' pad-open' : ''}`}>
       {/* styled stand-in table, on screen from the first paint until the 3D table has rendered (then it fades) */}
       <div className={`table-placeholder ${tableReady ? 'gone' : ''}`} data-testid="table-placeholder" data-venue={venue} style={placeholderStyle(venue)} aria-hidden>
         <div className="tp-floor" />
         <div className="tp-table"><div className={`tp-felt${VENUE_DEFS[venue].feltPattern ? ` ${VENUE_DEFS[venue].feltPattern}` : ''}`}><img src="/assets/bwm-wordmark-white.svg" alt="" /></div></div>
-        {!tableReady && <div className="tp-note">Setting the table…</div>}
+        {!tableReady && !(resume && display.hand && display.hand.length > 0) && <div className="tp-note">Setting the table…</div>}
       </div>
+      {resume && !webglHand && display.hand && display.hand.length > 0 && (
+        <FeltHand
+          cards={display.hand}
+          visibleCount={feltShown}
+          trick={display.trick.map((p) => p.card)}
+          legal={runFx ? [] : humanExchanging && hand ? hand : legal}
+          selected={runFx ? null : selected}
+          onCard={onCard}
+          promoted={promoted}
+        />
+      )}
       <Suspense fallback={null}>
         <Scene
           onTableReady={onTableReady}
+          onHandLive={onHandLive}
           quality={settings.quality}
           n={n}
           handNo={st.handNo}
@@ -1023,7 +1077,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       {/* center notes */}
       <div className="center-note-wrap">
         {st.phase === 'bidding' && !pause && st.turn !== HUMAN && <div className="center-note" data-testid="bidding-note">{r.partnerships && st.turn === partnerSeat ? `Your partner ${names[st.turn!]} is bidding…` : `${names[st.turn!]} is bidding…`}</div>}
-        {st.phase === 'bidding' && !pause && !dealing && st.turn !== HUMAN && <BidOrder st={st} names={names} me={HUMAN} />}
+        {showCenterBidOrder(st.phase, pause, dealing) && <BidOrder st={st} names={names} me={HUMAN} />}
         {isBooks && st.phase === 'playing' && !pause && !dealing && st.tricks.length === 0 && st.trick.plays.length === 0 && <div className="center-note books-note" data-testid="books-note">First hand: books bid themselves · 10 per book</div>}
         {st.phase === 'exchange' && !humanExchanging && <div className="center-note">{names[exchangeStep!.from]} passes {exchangeStep!.count} to {names[exchangeStep!.to]}…</div>}
       </div>
@@ -1040,7 +1094,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       </div>
 
       <ChatPanel msgs={msgs} open={chatOpen} onToggle={() => setChatOpen(!chatOpen)} onSend={(t) => (st.phase === 'handOver' ? talkSend(t) : push('You', t))} unread={unread} scope={online ? 'table' : undefined} extra={online ? online.controls : <OfflineMediaBar />}
-        overRecap={st.phase === 'handOver' && !pause && talkOpen && !showPad}
+        overRecap={showRecap && !showPad}
         trash={!runFx && !modalOpen && !spectating ? <TrashTalkButton st={st} me={HUMAN} intensity={intensity} onSend={(t) => push('You', t)} /> : null} />
       {help && !bidTurn && view.hand && view.hand.length > 0 && st.phase !== 'handOver' && st.phase !== 'gameOver' && (
         <div className="bid-coach-float glass slant"><BidCoach view={view} startOpen title="COUNT YOUR BOOKS" onClose={() => setHelp(false)} /></div>
@@ -1065,6 +1119,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
               {coachBid && <BidCoach key={bcKey} view={view} startOpen={help || bcOpen} />}
               <div className="panel-title">YOUR BID{r.partnerships && st.bids[2] !== null ? <small> · partner bid {bidLabel(st.bids[2]!)}</small> : r.partnerships ? <small> · partner bids right after you</small> : null}</div>
               <BidOrder st={st} names={names} me={HUMAN} />
+              {(view.bidOptions.blockReason || view.bidOptions.nilReason) && (
+                <p className="bid-block" data-testid="bid-block">{[view.bidOptions.blockReason, view.bidOptions.nilReason].filter(Boolean).join(' · ')}</p>
+              )}
               <div className="bid-grid">
                 {Array.from({ length: view.bidOptions.max - view.bidOptions.min + 1 }, (_, i) => view.bidOptions!.min + i).map((b) => (
                   <button type="button" key={b} onClick={() => apply({ type: 'bid', seat: HUMAN, bid: b })}>{b}</button>
@@ -1126,15 +1183,15 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         ))}
       </div>
 
-      {st.phase === 'handOver' && !pause && talkOpen && (
+      {showRecap && (
         <Intermission
           st={st}
           names={names}
           mySide={mySide}
-          secs={online?.talk?.secs ?? null}
-          ready={online?.talk?.ready}
-          online={!!online}
-          onReady={() => apply({ type: 'nextHand' })}
+          secs={shotOutRecap ? null : (online?.talk?.secs ?? null)}
+          ready={shotOutRecap ? undefined : online?.talk?.ready}
+          online={shotOutRecap ? false : !!online}
+          onReady={() => { if (st.phase === 'gameOver') setShotRecapAck(true); else apply({ type: 'nextHand' }); }}
           onScorePad={() => setShowPad(true)}
           series={seriesChip()}
           unread={unread}
@@ -1152,7 +1209,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
                 />
               </div>
             ) : (
-              <button type="button" className="tt-run-show" data-testid="talk-run-show" onClick={() => setClearedOpen(true)}>Run it — cleared hands</button>
+              <button type="button" className="tt-run-show" data-testid="talk-run-show" onClick={() => setClearedOpen(true)}>{(spectating ? names[runClaimer] : runClaimer === HUMAN ? 'You' : names[runClaimer]) ?? `Seat ${runClaimer + 1}`} ran the rest</button>
             )
           ) : null}
         />
@@ -1175,7 +1232,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         </div>
       )}
 
-      {st.phase === 'gameOver' && !pause && !runFx && talkOpen && st.result && online?.victory && (() => {
+      {showResults && online?.victory && st.result && (() => {
         // online: the winners are the centerpiece (video spotlight); score, series and buttons sit underneath, secondary.
         // No auto-advance: it stays until someone leaves or the host starts the rematch.
         const res = st.result!;
@@ -1215,7 +1272,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           </div>
         );
       })()}
-      {st.phase === 'gameOver' && !pause && !runFx && talkOpen && st.result && !online?.victory && (
+      {showResults && st.result && !online?.victory && (
         <div className="modal-backdrop">
           <div className="modal glass slant gameover" role="dialog" aria-label="Game over">
             <button type="button" className="modal-x" aria-label="Close and go to the main menu" data-testid="gameover-x" onClick={mainMenu}>✕</button>
