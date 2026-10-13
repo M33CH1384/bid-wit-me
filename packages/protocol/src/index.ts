@@ -188,6 +188,12 @@ export interface RoomInfo {
   members: MemberInfo[];
   /** epoch ms when the current turn auto-plays (null when no human is on the clock) */
   deadline: number | null;
+  /**
+   * Epoch ms when that human's own clock started, after the deal / trick lead-in.
+   * Null when `deadline` is not a turn clock (Table Talk, a bot, nobody to act).
+   * The HUD ring is `(deadline − now) / (deadline − turnClockStart)`.
+   */
+  turnClockStart: number | null;
   /** players (ids) who have pressed "next hand" */
   ready: string[];
   /** monotonically increasing broadcast counter (any change: seats, media, timers, game) */

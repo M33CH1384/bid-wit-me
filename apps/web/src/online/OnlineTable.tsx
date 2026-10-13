@@ -1,6 +1,7 @@
 import { fx } from '../fx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { sideOf } from '@spades/rules';
+import { TurnCountdown } from '../TurnRing';
 import Table from '../Table';
 import { type Settings, loadSettings, saveSettings } from '../settings';
 import type { ConnState, TableConnection } from './connection';
@@ -28,8 +29,13 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
   const send = useCallback((text: string) => conn.send({ t: 'chat', text }), [conn]);
   const [hideSpec, setHideSpec] = useState(loadHideSpectatorChat);
   const chat = useOnlineChat(cs, source?.st ?? null, names, send, hideSpec && !spectator);
-  const skew = room.now - Date.now();
+  // Capture skew once per server timestamp. Recomputing it on every render (the
+  // countdown ticks twice a second) would slide the deadline forward and the ring would never drain.
+  const skew = useMemo(() => room.now - Date.now(), [room.now]);
   const secs = useCountdown(room.deadline ? room.deadline - skew : null);
+  // Local epochs of the server turn window. The ring reads these, not a client-side timer.
+  const turnDeadline = room.deadline != null && room.turnClockStart != null ? room.deadline - skew : null;
+  const turnStart = room.turnClockStart != null ? room.turnClockStart - skew : null;
 
   // Voice anti-cheat (host option): during TRICK PLAY my mic isn't sent to my partner and theirs isn't played here.
   // Partners may talk books during bidding (vaguely: "I got about 3"), so mics stay open while bidding, between hands
@@ -64,6 +70,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
   if (!source || !rot) return <div className="online-wait">Joining the table…</div>;
   const r = room.rules;
   const turnLocal = source.st.turn;
+  const onClock = turnDeadline != null && turnStart != null && (gp === 'bidding' || gp === 'playing' || gp === 'exchange');
 
   // host: Kick (with confirm); seated non-hosts: Vote to kick (majority of the other humans)
   const kickFor = (real: number): KickInfo | undefined => {
@@ -81,6 +88,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
         <SeatMedia seat={seat} isMe={local === 0 && !spectator} mesh={mesh} vs={vs} limited={!!seat && seat.kind === 'human' && vs.limited.includes(seat.playerId)} kick={kickFor(real)} />
         {offline && <span className="chip bad seat-offline">OFFLINE</span>}
         {turnLocal === local && secs !== null && secs <= 15 && !source.pause && <span className={`turn-clock ${secs <= 5 ? 'hot' : ''}`} data-testid={`clock-${local}`}>{secs}s</span>}
+        {onClock && turnLocal === local && turnStart != null && turnDeadline != null && <TurnCountdown start={turnStart} deadline={turnDeadline} mine={local === 0 && !spectator} />}
       </>
     );
   };
