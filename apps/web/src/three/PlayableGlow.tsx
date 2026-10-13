@@ -1,6 +1,7 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
-import { BufferAttribute, BufferGeometry, CanvasTexture, ClampToEdgeWrapping, DoubleSide, LinearFilter, Matrix4, MeshBasicMaterial, NormalBlending, Quaternion, ShaderMaterial, SRGBColorSpace, Vector3, type Mesh, type Object3D } from 'three';
+import { BufferAttribute, BufferGeometry, CanvasTexture, ClampToEdgeWrapping, DoubleSide, Float32BufferAttribute, LinearFilter, Matrix4, MeshBasicMaterial, NormalBlending, Quaternion, ShaderMaterial, SRGBColorSpace, Vector3, type Camera, type Mesh, type Object3D, type Scene, type WebGLRenderer } from 'three';
+import { forceProgram } from './shaderBudget';
 import {
   BREATHE_SCALE, GLOW_RENDER_ORDER, GROUP_PAD_PX, GROUP_RADIUS_PX, LIFT_S, OUTLINE_COLOR, SELECT_GLOW_OP, SHINE_PEAK, SHINE_S, SHINE_WIDTH,
   breatheOpacity, easeOut, glowFalloff, glowRadiusPx, liftEase, outlineRadiusPx, shineAxis,
@@ -8,6 +9,60 @@ import {
 import { contoursToTriangles, groupOutline, haloLocal, planePointOk, strokeContour, strokeOutward, unionContours, type Pt } from './playableOutline';
 
 export interface GlowAnchor { name: string; x: number; y: number; selected?: boolean }
+
+const SHINE_VERT = `
+      attribute float aAlong;
+      attribute float aSpan;
+      varying float vAlong;
+      varying float vSpan;
+      void main() {
+        vAlong = aAlong;
+        vSpan = aSpan;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `;
+const SHINE_FRAG = `
+      uniform float uT, uPeak, uWidth, uFade;
+      varying float vAlong;
+      varying float vSpan;
+      void main() {
+        if (uFade < 0.001 || vSpan < 1e-5) discard;
+        float width = uWidth * vSpan;
+        float center = -width + uT * (vSpan + width * 2.0);
+        float d = abs(vAlong - center) / max(width * 0.5, 1e-5);
+        float a = (d >= 1.0 ? 0.0 : (1.0 - d)) * uPeak * uFade;
+        if (a < 0.004) discard;
+        gl_FragColor = vec4(1.0, 1.0, 1.0, a);
+      }
+    `;
+
+/** Link the legal-card outline before a resumed hand draws it, one program per frame. */
+export async function warmPlayableGlow(gl: WebGLRenderer, camera: Camera, lighting: Scene): Promise<void> {
+  const glowMap = glowAlphaMap();
+  const crisp = new MeshBasicMaterial({ color: OUTLINE_COLOR, transparent: true, opacity: 0, depthWrite: false, depthTest: false, toneMapped: false, side: DoubleSide });
+  const bloom = new MeshBasicMaterial({
+    color: OUTLINE_COLOR, map: glowMap, vertexColors: true, transparent: true, opacity: 0,
+    depthWrite: false, depthTest: false, toneMapped: false, side: DoubleSide,
+  });
+  const shine = new ShaderMaterial({
+    transparent: true, depthWrite: false, depthTest: false, toneMapped: false, side: DoubleSide, blending: NormalBlending,
+    uniforms: { uT: { value: 0 }, uPeak: { value: SHINE_PEAK }, uWidth: { value: SHINE_WIDTH }, uFade: { value: 0 } },
+    vertexShader: SHINE_VERT,
+    fragmentShader: SHINE_FRAG,
+  });
+  const bloomGeo = new BufferGeometry();
+  bloomGeo.setAttribute('position', new Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0], 3));
+  bloomGeo.setAttribute('color', new Float32BufferAttribute([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], 4));
+  const shineGeo = new BufferGeometry();
+  shineGeo.setAttribute('position', new Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0], 3));
+  shineGeo.setAttribute('aAlong', new Float32BufferAttribute([0, 1, 0.5], 1));
+  shineGeo.setAttribute('aSpan', new Float32BufferAttribute([1, 1, 1], 1));
+  await forceProgram(gl, camera, crisp, lighting);
+  await forceProgram(gl, camera, bloom, lighting, bloomGeo);
+  await forceProgram(gl, camera, shine, lighting, shineGeo);
+  bloomGeo.dispose();
+  shineGeo.dispose();
+}
 
 interface Props {
   /** Contiguous runs of playable cards, in fan order. Empty fades the highlight out. */
@@ -165,31 +220,8 @@ export default function PlayableGlow({ runs, handNames, quality }: Props) {
       uWidth: { value: SHINE_WIDTH },
       uFade: { value: 0 },
     },
-    vertexShader: `
-      attribute float aAlong;
-      attribute float aSpan;
-      varying float vAlong;
-      varying float vSpan;
-      void main() {
-        vAlong = aAlong;
-        vSpan = aSpan;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: `
-      uniform float uT, uPeak, uWidth, uFade;
-      varying float vAlong;
-      varying float vSpan;
-      void main() {
-        if (uFade < 0.001 || vSpan < 1e-5) discard;
-        float width = uWidth * vSpan;
-        float center = -width + uT * (vSpan + width * 2.0);
-        float d = abs(vAlong - center) / max(width * 0.5, 1e-5);
-        float a = (d >= 1.0 ? 0.0 : (1.0 - d)) * uPeak * uFade;
-        if (a < 0.004) discard;
-        gl_FragColor = vec4(1.0, 1.0, 1.0, a);
-      }
-    `,
+    vertexShader: SHINE_VERT,
+    fragmentShader: SHINE_FRAG,
   }), []);
   useEffect(() => () => {
     crispGeo.dispose(); bloomGeo.dispose(); shineGeo.dispose();

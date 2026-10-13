@@ -25,6 +25,7 @@ import { setFeedbackGame } from './feedbackContext';
 import { loadTipJar, openTip, saveTipJar, tipNudgeDue } from './support';
 import { OfflineMediaBar } from './online/Media';
 import { fireCue, fx, useReduceEffects } from './fx';
+import { FeltHand } from './FeltHand';
 import { loadScene } from './three/preload';
 import { endReasonText, onNoticeSides, shotChatLines } from './shotOut';
 import { type Sfx, sound } from './audio';
@@ -531,7 +532,15 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [seen, setSeen] = useState<{ st: GameState; view: PlayerView }>(() => ({ st, view }));
   const [runFx, setRunFx] = useState<RunFx | null>(null);
   const [tableReady, setTableReady] = useState(false);
+  const [webglHand, setWebglHand] = useState(false);
   const onTableReady = useCallback(() => setTableReady(true), []);
+  const onHandLive = useCallback(() => setWebglHand(true), []);
+  // The saved game is already in memory. The flat hand is playable on the first paint; the 3D scene catches up.
+  useEffect(() => {
+    const w = window as unknown as { __bwmPlayableAt?: number };
+    const id = requestAnimationFrame(() => { w.__bwmPlayableAt ??= performance.now(); });
+    return () => cancelAnimationFrame(id);
+  }, []);
   if (seen.st !== st) {
     const b = seen.st;
     if (b.handNo === st.handNo && st.tricks.length > b.tricks.length && st.tricks[b.tricks.length]!.plays.some((p) => p.run)) {
@@ -906,11 +915,22 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       <div className={`table-placeholder ${tableReady ? 'gone' : ''}`} data-testid="table-placeholder" data-venue={venue} style={placeholderStyle(venue)} aria-hidden>
         <div className="tp-floor" />
         <div className="tp-table"><div className={`tp-felt${VENUE_DEFS[venue].feltPattern ? ` ${VENUE_DEFS[venue].feltPattern}` : ''}`}><img src="/assets/bwm-wordmark-white.svg" alt="" /></div></div>
-        {!tableReady && <div className="tp-note">Setting the table…</div>}
+        {!tableReady && !(resume && display.hand && display.hand.length > 0) && <div className="tp-note">Setting the table…</div>}
       </div>
+      {resume && !webglHand && display.hand && display.hand.length > 0 && (
+        <FeltHand
+          cards={display.hand}
+          trick={display.trick.map((p) => p.card)}
+          legal={runFx ? [] : humanExchanging && hand ? hand : legal}
+          selected={runFx ? null : selected}
+          onCard={onCard}
+          promoted={promoted}
+        />
+      )}
       <Suspense fallback={null}>
         <Scene
           onTableReady={onTableReady}
+          onHandLive={onHandLive}
           quality={settings.quality}
           n={n}
           handNo={st.handNo}

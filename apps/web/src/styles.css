@@ -1377,6 +1377,18 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tp-felt img { width: 34%; opacity: .14; }
 .tp-note { position: absolute; bottom: 30%; font-family: var(--display); letter-spacing: .12em; font-size: 13px; color: var(--muted); animation: tp-pulse 1.4s ease-in-out infinite; }
 @keyframes tp-pulse { 50% { opacity: .45; } }
+/* Resumed hand, on screen before WebGL. Buttons work immediately; the canvas face fills in one card per frame. */
+.felt-hand { position: absolute; z-index: 7; left: 0; right: 0; bottom: calc(15vh + env(safe-area-inset-bottom)); height: 132px; display: flex; justify-content: center; align-items: flex-end; pointer-events: none; }
+.felt-hand button { pointer-events: auto; position: relative; width: 52px; height: 74px; margin: 0 -12px; padding: 0; border: 0; border-radius: 5px; background: #fbf8f1; color: #15161a; box-shadow: 0 8px 16px rgba(0,0,0,.45); overflow: hidden; }
+.felt-hand button.red { color: #c4122f; }
+.felt-hand button.legal { box-shadow: 0 0 0 2px #f5c542, 0 8px 16px rgba(0,0,0,.45); }
+.felt-hand button.sel { transform: translateY(-10px); }
+.felt-hand button:disabled { filter: saturate(.45) brightness(.9); }
+.felt-hand button canvas { width: 100%; height: 100%; display: block; }
+.felt-hand button span { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--display); font-weight: 800; font-size: 18px; letter-spacing: .02em; }
+.felt-hand button.drawn span { opacity: 0; }
+.felt-trick { position: absolute; z-index: 6; left: 50%; top: 46%; transform: translate(-50%, -50%); display: flex; gap: 6px; pointer-events: none; }
+.felt-trick canvas { width: 40px; height: 56px; border-radius: 4px; background: #fbf8f1; box-shadow: 0 6px 12px rgba(0,0,0,.4); }
 
 /* Online victory spotlight: winners' video front and center, losers small along the edge, score + buttons secondary */
 .victory-screen { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; align-items: center; gap: clamp(8px, 1.6vh, 16px);
