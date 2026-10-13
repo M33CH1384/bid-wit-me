@@ -5,6 +5,11 @@
  */
 import { type GameState, bidLabel, bidOrder } from '@spades/rules';
 
+/** Center strip: the whole auction, including the hand you bid first. Hidden only while the deal animation or a pause is up. */
+export function showCenterBidOrder(phase: string, pause: boolean, dealing: boolean): boolean {
+  return phase === 'bidding' && !pause && !dealing;
+}
+
 export function BidOrder({ st, names, me }: { st: GameState; names: string[]; me: number }) {
   if (st.phase !== 'bidding') return null;
   const order = bidOrder(st.rules, st.dealer);
@@ -15,7 +20,7 @@ export function BidOrder({ st, names, me }: { st: GameState; names: string[]; me
       {order.map((s, i) => {
         const b = st.bids[s];
         const now = st.turn === s;
-        const who = s === me ? 'You' : names[s];
+        const who = (s === me ? 'You' : names[s]) || `Seat ${s + 1}`;
         return (
           <span key={s} className={`bo-seat ${now ? 'now' : ''} ${b !== null ? 'done' : ''} ${s === me || s === partner ? 'mine' : 'theirs'}`} data-testid={`bid-order-${i}`}>
             {i > 0 && <i aria-hidden>›</i>}

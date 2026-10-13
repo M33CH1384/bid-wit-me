@@ -12,7 +12,7 @@ import { type Series, addSeriesGame, seriesSides, summarizeGame } from '@spades/
 import { SeriesChip, SeriesSheet, loadSeries, saveSeries } from './Series';
 import { useMyTeamName } from './TeamName';
 import { offlineTalk } from './offlineTalk';
-import { BidOrder } from './PartnerTalk';
+import { BidOrder, showCenterBidOrder } from './PartnerTalk';
 import { SocialButton } from './social/Social';
 import { recordOfflineGame } from './offlineStats';
 import { setTableIntensity, showLine, speakBot, useTalkPrefs } from './talkPrefs';
@@ -1078,7 +1078,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       {/* center notes */}
       <div className="center-note-wrap">
         {st.phase === 'bidding' && !pause && st.turn !== HUMAN && <div className="center-note" data-testid="bidding-note">{r.partnerships && st.turn === partnerSeat ? `Your partner ${names[st.turn!]} is bidding…` : `${names[st.turn!]} is bidding…`}</div>}
-        {st.phase === 'bidding' && !pause && !dealing && st.turn !== HUMAN && <BidOrder st={st} names={names} me={HUMAN} />}
+        {showCenterBidOrder(st.phase, pause, dealing) && <BidOrder st={st} names={names} me={HUMAN} />}
         {isBooks && st.phase === 'playing' && !pause && !dealing && st.tricks.length === 0 && st.trick.plays.length === 0 && <div className="center-note books-note" data-testid="books-note">First hand: books bid themselves · 10 per book</div>}
         {st.phase === 'exchange' && !humanExchanging && <div className="center-note">{names[exchangeStep!.from]} passes {exchangeStep!.count} to {names[exchangeStep!.to]}…</div>}
       </div>

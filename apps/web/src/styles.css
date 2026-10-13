@@ -1356,11 +1356,15 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .trash-callout.seat-right { right: 12px; top: 38vh; }
 @keyframes callout-out { to { opacity: 0; } }
 
-/* bidding order (team games: the non-dealing team bids first, back to back; the dealer's partner; the dealer last) */
-.bid-order { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px 6px; max-width: min(560px, calc(100vw - 20px)); font-size: 12px; padding: 4px 10px; background: rgba(10,6,20,.72); border-radius: 999px; box-shadow: 0 0 0 1px var(--edge); }
-.bid-panel .bid-order { background: transparent; box-shadow: none; padding: 0; }
-.bo-title { font-family: var(--display); font-weight: 800; font-size: 10px; letter-spacing: .1em; opacity: .7; }
-.bo-seat { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; opacity: .75; }
+/* bidding order (team games: the non-dealing team bids first, back to back; the dealer's partner; the dealer last).
+   Parked under the trump line so the bid panel cannot cover it, and wrapped inside the viewport:
+   a 999px pill plus min-width:auto clipped the last name (and the whole strip, once it was your bid). */
+.bid-order { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; align-content: center; gap: 4px 6px; box-sizing: border-box; width: min(560px, calc(100vw - 16px)); max-width: min(560px, calc(100vw - 16px)); min-width: 0; overflow: visible; font-size: 12px; padding: 4px 10px; background: rgba(10,6,20,.92); border-radius: 12px; box-shadow: 0 0 0 1px var(--edge); }
+.center-note-wrap > .bid-order { position: fixed; z-index: 7; top: calc(124px + env(safe-area-inset-top)); left: 0; right: 0; margin-inline: auto; }
+.table-screen.short .center-note-wrap > .bid-order { top: calc(50px + env(safe-area-inset-top)); }
+.bid-panel .bid-order { position: static; width: 100%; max-width: 100%; background: transparent; box-shadow: none; padding: 0; }
+.bo-title { font-family: var(--display); font-weight: 800; font-size: 10px; letter-spacing: .1em; opacity: .7; flex: 0 0 auto; }
+.bo-seat { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; opacity: .75; flex: 0 0 auto; min-width: min-content; }
 .bo-seat i { font-style: normal; opacity: .5; margin-right: 2px; }
 .bo-seat b { font-weight: 700; }
 .bo-seat.mine b { color: var(--gold); }
