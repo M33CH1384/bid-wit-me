@@ -6,7 +6,7 @@ import { type BufferGeometry, type Camera, type Group, type Material, type Mesh,
 import { type Card, type Play, type Trick } from '@spades/rules';
 import Card3D, { createLitCardMaterial } from './Card3D';
 import { departureSlot, handCardKey, handReactKey } from '../handOrder';
-import { GAP_S, LEGAL_NEAR, LIFT_S, canTapCard, fanGapPx, fanMotion, handRenderOrder, hitsInPaintOrder, playablePose, raiseLocalY } from './handLift';
+import { GAP_S, LEGAL_NEAR, LIFT_S, canTapCard, fanGapPx, fanMotion, handCardChrome, handRenderOrder, hitsInPaintOrder, raiseLocalY } from './handLift';
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline, seatDealDelay } from './dealTimeline';
 import { handNeedsDeal, handSlotKey } from './dealFlight';
@@ -545,7 +545,13 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   const gaps = fanGapPx(mine.map((c) => !!c && legal.includes(c)));
   mine.forEach((c, i) => {
     const isLegal = !!c && legal.includes(c);
-    const pose = c ? playablePose(yourTurn, isLegal, selected === c) : 'flat';
+    // A face-down slot is not an illegal card. Only a real card you cannot play dims.
+    const chrome = c
+      ? handCardChrome({
+        yourTurn, isLegal, selected: selected === c, marked: !!props.marked?.includes(c), anyIllegal: legal.length < mine.length,
+      })
+      : { pose: 'flat' as const, dim: false, glow: false };
+    const pose = chrome.pose;
     const above = pose === 'legal' || pose === 'selected';
     // The raise is screen-up. The gap is a CSS-pixel slide. Playable cards also sit LEGAL_NEAR closer
     // so they win the depth test against the neighbour; that bias does not move them on screen.
@@ -575,9 +581,9 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       // Stay hidden until this card's own deal beat. The fan must not be on screen while other seats are still being dealt.
       holdUntilMove: move.kind === 'deal',
       sfxStart: move.kind === 'deal' ? 'deal' : undefined,
-      dim: pose === 'illegal',
+      dim: chrome.dim,
       // playable cards (when some aren't) get the gold edge on every device; the rest are dimmed (dim above)
-      glow: !!c && (selected === c || !!props.marked?.includes(c) || (isLegal && legal.length < mine.length)),
+      glow: !!c && chrome.glow,
       tap: c && canTapCard(pose) ? () => onCardTap(c) : pose === 'illegal' ? null : undefined,
       shadow: false,
       duration: move.kind === 'flip' ? 0.34 : move.kind === 'deal' ? tl.fly : move.kind === 'slide' ? GAP_S : LIFT_S,

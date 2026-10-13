@@ -1,6 +1,7 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { memo, useLayoutEffect, useMemo, useRef } from 'react';
 import { Color, type Group, type Material, type Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Quaternion, type Texture, Vector3 } from 'three';
+import { cardFaceFragment } from './cardSat';
 import { cardGeometry, cardOutlineGeometry } from './geometry';
 import { ILLEGAL_COLOR, RAISE_S, applyFaceDepthBias, cardMeshPaint, liftEase, screenRaise } from './handLift';
 import type { Xform } from './layout';
@@ -64,9 +65,7 @@ function withSaturation<M extends MeshStandardMaterial>(m: M): M & { userData: {
   m.userData.sat = sat;
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uSat = sat;
-    sh.fragmentShader = sh.fragmentShader
-      .replace('void main() {', 'uniform float uSat;\nvoid main() {')
-      .replace('#include <map_fragment>', '#include <map_fragment>\n  diffuseColor.rgb = mix(vec3(dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114))), diffuseColor.rgb, uSat);');
+    sh.fragmentShader = cardFaceFragment(sh.fragmentShader);
   };
   m.customProgramCacheKey = () => 'card-sat';
   return m as M & { userData: { sat: { value: number } } };
