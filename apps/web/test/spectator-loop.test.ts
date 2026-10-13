@@ -82,7 +82,7 @@ function watch(st: GameState, seq: number, prev?: PlayerView | null): ConnState 
   if (prev && view && prev.history.length === view.history.length) view = { ...view, history: null as unknown as PlayerView['history'] };
   if (view && view.history === null) view = { ...view, history: prev?.history ?? [] };
   return {
-    status: 'open', you: 'spec', room: roomFor(st, seq), seat: null, view, chat: [], error: null, pending: false, spectator: true, statsOff: false,
+    status: 'open', you: 'spec', room: roomFor(st, seq), seat: null, view, chat: [], error: null, pending: false, spectator: true, statsOff: false, joinFault: null,
   };
 }
 

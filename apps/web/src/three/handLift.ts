@@ -1,16 +1,19 @@
 import { CH } from './layout';
 
 /**
- * Your-turn hand: legal cards rise together, cards you can't play sink and dim, a tap lifts one card further.
- * Distances are CSS pixels on the canvas. The fan lives on the depth-1 camera plane, so a pixel is
- * `viewH / screenH` plane units (see handCardPlane). The raise is a translateY on an inner wrapper;
- * it is not baked into the fan's rotate or position. Stacking is render order and depth
- * (`handRenderOrder`, `handDepthOpts`), not the translate.
+ * Your-turn hand: when some cards cannot be played, the playable ones rise a little and the
+ * others dim in place. An all-legal hand (a lead, or following while void) stays flat until a tap.
+ * There is no gold ring. The selected card is only higher. Distances are CSS pixels on the canvas.
+ * The fan lives on the depth-1 camera plane, so a pixel is `viewH / screenH` plane units
+ * (see handCardPlane). The raise is a translateY on an inner wrapper; it is not baked into the
+ * fan's rotate or position. Stacking is render order and depth (`handRenderOrder`, `handDepthOpts`),
+ * not the translate.
  */
 
-/** Clear of the fan. 14px was a sliver once the cards overlap. */
-export const LEGAL_LIFT_PX = 28;
-export const ILLEGAL_DROP_PX = 4;
+/** A short rise, only when the hand is mixed. 28px lifted the playable cards out of the fan. */
+export const LEGAL_LIFT_PX = 12;
+/** Illegal cards stay on the fan arc. A drop made the locked spades a separate slab. */
+export const ILLEGAL_DROP_PX = 0;
 export const SELECT_LIFT_PX = 10;
 /** Group outline fade, in seconds. The cards themselves rise on RAISE_S. */
 export const LIFT_S = 0.2;
@@ -54,9 +57,9 @@ export const BREATHE_SCALE = 1;
 export const SELECT_GLOW_OP = 0.8;
 /**
  * Extra fan spacing on each side of a legal run, in CSS pixels.
- * The cards still overlap; this only opens the edge enough for the outline to read.
+ * It used to open room for a gold outline. That split the locked cards out of the fan, so it is 0.
  */
-export const GROUP_GAP_PX = 8;
+export const GROUP_GAP_PX = 0;
 /** Render order of a legal card sits above every illegal card. Index is added so left-to-right stays put. */
 export const LEGAL_STACK = 100;
 /**
@@ -66,10 +69,10 @@ export const LEGAL_STACK = 100;
 export const SELECT_STACK = 400;
 
 /**
- * Not-playable cards read at 55% brightness. The albedo below was tuned on the lit, tone-mapped card so that
- * (0.20, 0.195, 0.25) is about 60% on screen; scale it to the 55% target and keep the cool tint.
+ * Not-playable cards read at about 40% brightness. The albedo below was tuned on the lit, tone-mapped
+ * card so that (0.20, 0.195, 0.25) is about 60% on screen; scale it to the 40% target.
  */
-export const ILLEGAL_BRIGHTNESS = 0.55;
+export const ILLEGAL_BRIGHTNESS = 0.4;
 const DIM_AT_60 = [0.2, 0.195, 0.25] as const;
 const DIM_SCALE = ILLEGAL_BRIGHTNESS / 0.6;
 export const ILLEGAL_COLOR: readonly [number, number, number] = [
@@ -77,8 +80,8 @@ export const ILLEGAL_COLOR: readonly [number, number, number] = [
   DIM_AT_60[1] * DIM_SCALE,
   DIM_AT_60[2] * DIM_SCALE,
 ];
-/** Saturation of a card you cannot play. 1 leaves the texture alone. */
-export const ILLEGAL_SAT = 0.3;
+/** Saturation of a card you cannot play. 1 leaves the texture alone. Desaturated, still a card. */
+export const ILLEGAL_SAT = 0.45;
 
 const FULL_COLOR: readonly [number, number, number] = [1, 1, 1];
 
@@ -117,9 +120,9 @@ export function cardTapHandlers(onTap: (() => void) | null | undefined): {
 }
 
 /**
- * Per card, never on the fan. `dim` is only the illegal pose. `glow` is that card's own ring:
- * every playable card when the hand is mixed, plus a tap and a tip mark. An all-legal lead
- * does not outline the whole fan. Selecting a card does not turn the others off.
+ * Per card, never on the fan. `dim` is only the illegal pose. There is no gold ring: `glow` stays
+ * false, including a tap and a tip mark. Playable cards rise only when something in the hand cannot
+ * be played. An all-legal lead, or a follow while void, stays on the fan until you tap one card.
  */
 export function handCardChrome(o: {
   yourTurn: boolean;
@@ -128,11 +131,14 @@ export function handCardChrome(o: {
   marked: boolean;
   anyIllegal: boolean;
 }): { pose: HandPose; dim: boolean; glow: boolean } {
-  const pose = playablePose(o.yourTurn, o.isLegal, o.selected);
+  const base = playablePose(o.yourTurn, o.isLegal, o.selected);
+  const pose = base === 'legal' && !o.anyIllegal ? 'flat' : base;
+  // A tip mark used to turn the ring on. The hand has no ring.
+  void o.marked;
   return {
     pose,
     dim: pose === 'illegal',
-    glow: o.selected || o.marked || (o.isLegal && o.anyIllegal),
+    glow: false,
   };
 }
 
@@ -275,7 +281,7 @@ export function fanGapPx(playable: readonly boolean[]): number[] {
 export function posePx(pose: HandPose): number {
   switch (pose) {
     case 'flat': return 0;
-    case 'illegal': return -ILLEGAL_DROP_PX;
+    case 'illegal': return ILLEGAL_DROP_PX === 0 ? 0 : -ILLEGAL_DROP_PX;
     case 'legal': return LEGAL_LIFT_PX;
     case 'selected': return LEGAL_LIFT_PX + SELECT_LIFT_PX;
   }
