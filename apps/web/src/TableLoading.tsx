@@ -5,31 +5,44 @@ import tips from './data/loading-tips.json';
 /** Copy that rotates while the table is still coming up. The first line is the one tests and the first paint use. */
 export const LOADING_LINES = ['Shuffling the deck…', 'Setting the table…', 'Warming the felt…', 'Dealing you in…'];
 
-export interface LoadingTip { id: string; text: string }
+export interface LoadingTip { id: number; text: string }
 
 /**
- * Strategy lines shipped inside this chunk. Reading them is synchronous, so the list never
- * waits on the network and never holds the 3D scene or the first game state.
+ * Strategy lines shipped inside this chunk, in file order. Reading them is synchronous, so the
+ * list never waits on the network and never holds the 3D scene or the first game state.
  */
 export const LOADING_TIPS: LoadingTip[] = tips;
 
+/** A new order each time the loading screen mounts. The JSON file itself stays in its authored order. */
+export function shuffleTips<T>(list: readonly T[], random: () => number = Math.random): T[] {
+  const next = list.slice();
+  for (let i = next.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    const swap = next[i]!;
+    next[i] = next[j]!;
+    next[j] = swap;
+  }
+  return next;
+}
+
 /** One tip at a time. The next fades in on a timer that does not touch the loader's progress. */
 function LoadingTips() {
+  const [order] = useState(() => shuffleTips(LOADING_TIPS));
   const [index, setIndex] = useState(0);
   const [visible, setVisible] = useState(true);
   useEffect(() => {
-    if (LOADING_TIPS.length < 2) return;
+    if (order.length < 2) return;
     let fade = 0;
     const id = window.setInterval(() => {
       setVisible(false);
       fade = window.setTimeout(() => {
-        setIndex((n) => (n + 1) % LOADING_TIPS.length);
+        setIndex((n) => (n + 1) % order.length);
         setVisible(true);
       }, 280);
     }, 3400);
     return () => { window.clearInterval(id); window.clearTimeout(fade); };
-  }, []);
-  const tip = LOADING_TIPS[index];
+  }, [order]);
+  const tip = order[index];
   if (!tip?.text) return null;
   return (
     <p className={`bwm-loading-tip${visible ? ' in' : ''}`} data-testid="table-loading-tip" data-tip={tip.id} aria-live="polite">
