@@ -1,8 +1,9 @@
-import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
+import { type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { CODE_LENGTH, isRoomCode, normalizeRoomCode } from '@spades/protocol';
 import MoreOptions, { Seg, Toggle } from './MoreOptions';
 import { type ModeKey, type Settings, MODES, rulesSummary, settingsToRules } from './settings';
 import { type TipsPref, isFirstVisit, loadTips, saveTips } from './tips';
+import { splashAction } from './splashTap';
 import { serverUrl } from './online/config';
 import { createTable, tableInfo } from './online/connection';
 import { type PendingMusic, SetupMusicPicker, savePendingMusic } from './online/HostMusic';
@@ -70,6 +71,18 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
   const [tips, setTips] = useState<TipsPref>(loadTips);
   const [ask, setAsk] = useState(isFirstVisit);
   const onlineSeat = useOnlineSeat();
+  const touchAt = useRef(0);
+  const choose = (fn: () => void) => ({
+    onPointerUp: (e: ReactPointerEvent) => {
+      if (splashAction({ type: 'pointerup', pointerType: e.pointerType }, touchAt.current, performance.now()) === 'ignore') return;
+      touchAt.current = performance.now();
+      fn();
+    },
+    onClick: () => {
+      if (splashAction({ type: 'click' }, touchAt.current, performance.now()) === 'ignore') return;
+      fn();
+    },
+  });
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => onChange({ ...s, [k]: v });
 
   useEffect(() => {
@@ -116,10 +129,10 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
           <p className="tagline">Spades with the crew</p>
         </div>
         <div className="wiz-actions">
-          <button type="button" className="big-choice online" data-testid="play-online" onClick={() => go('mode', 'online')}>
+          <button type="button" className="big-choice online" data-testid="play-online" {...choose(() => go('mode', 'online'))}>
             <span className="bc-icon" aria-hidden>👥</span><span className="bc-text"><b>Play Online</b><small>with friends</small></span>
           </button>
-          <button type="button" className="big-choice bots" data-testid="play-bots" onClick={() => go('mode', 'bots')}>
+          <button type="button" className="big-choice bots" data-testid="play-bots" {...choose(() => go('mode', 'bots'))}>
             <span className="bc-icon" aria-hidden>🤖</span><span className="bc-text"><b>Play vs Bots</b><small>solo, any time</small></span>
           </button>
           {(onResume || onlineSeat) && (

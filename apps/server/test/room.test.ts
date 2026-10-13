@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { type Card, bidOrder, checkGameEnd, handSize, makeRules, scoreHand } from '@spades/rules';
+import { type Card, type Seat, bidOrder, checkGameEnd, handSize, legalPlays, makeRules, scoreHand, viewFor } from '@spades/rules';
 import { chooseBotAction } from '@spades/bots';
 import type { GameAction } from '@spades/protocol';
 import { HAND_END_HOLD_MS } from '@spades/protocol';
 import { BOT_NAMES } from '@spades/bots';
-import { HOST_DISCONNECT_GRACE_MS } from '../src/room';
+import { BOT_WATCHDOG_MS, HOST_DISCONNECT_GRACE_MS } from '../src/room';
 import { FakeEnv } from './harness';
 
 /** a bot seat got a name from the shared pool, unique at the table and not a human's name */
@@ -345,6 +345,111 @@ describe('game', () => {
     const g = env.room.data.game!;
     expect(g.turn).toBe(0);
     expect(env.last('a', 'state')!.room.deadline).toBeGreaterThan(env.t);
+  });
+
+  it('a hibernated bot turn still plays on the durable alarm and is broadcast', () => {
+    const env = new FakeEnv(undefined, { ...FAST, botMs: 800 });
+    const a = env.join('a', 'Solo');
+    env.send('a', { t: 'sit', seat: 0 });
+    env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: 500 }), botTalk: false });
+    env.send('a', { t: 'start' });
+    if (env.room.data.game!.turn === 0) {
+      env.alarm = null;
+      const v = env.last('a', 'state')!.view!;
+      env.send('a', { t: 'act', action: { type: 'play', card: v.legal[0]! }, seq: env.room.data.seq });
+    }
+    const due = env.room.data.botDueAt!;
+    const seat = env.room.data.game!.turn!;
+    expect(seat).not.toBe(0);
+    expect(env.alarm).toBe(due);
+    expect(due - env.t).toBeLessThanOrEqual(800);
+    const before = [...env.room.data.game!.hands[seat]!];
+    const legal = legalPlays(env.room.data.game!, seat as Seat);
+    const seq = env.room.data.seq;
+    env.hibernate([['a', a.pid]]);
+    expect(env.wakes).toEqual([]);
+    expect(env.alarm).toBe(due);
+    expect(env.room.data.botDueAt).toBe(due);
+    env.advance(due - env.t + 20);
+    expect(env.t).toBeLessThan(due + BOT_WATCHDOG_MS);
+    expect(env.room.data.seq).toBeGreaterThan(seq);
+    const left = env.room.data.game!.hands[seat]!;
+    const played = before.filter((c) => !left.includes(c));
+    expect(played).toHaveLength(1);
+    expect(legal).toContain(played[0]);
+    expect(env.last('a', 'state')!.room.seq).toBe(env.room.data.seq);
+    expect(env.last('a', 'state')!.view!.turn).not.toBe(seat);
+  });
+
+  it('a stalled bot play is forced to a legal card and broadcast a few seconds later', () => {
+    const env = new FakeEnv(undefined, { ...FAST, botMs: 800 });
+    env.join('a', 'Solo');
+    env.send('a', { t: 'sit', seat: 0 });
+    env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: 500 }), botTalk: false });
+    env.send('a', { t: 'start' });
+    if (env.room.data.game!.turn === 0) {
+      env.alarm = null;
+      const v = env.last('a', 'state')!.view!;
+      env.send('a', { t: 'act', action: { type: 'play', card: v.legal[0]! }, seq: env.room.data.seq });
+    }
+    const due = env.room.data.botDueAt!;
+    const seat = env.room.data.game!.turn! as Seat;
+    const before = [...env.room.data.game!.hands[seat]!];
+    const legal = legalPlays(env.room.data.game!, seat);
+    const seq = env.room.data.seq;
+    env.room.stallsLeft = 4;
+    env.wakes = [];
+    env.advance(due - env.t);
+    expect(env.room.data.seq).toBe(seq);
+    expect(env.room.data.game!.turn).toBe(seat);
+    expect(env.room.data.game!.hands[seat]).toEqual(before);
+    expect(env.alarm! - due).toBe(BOT_WATCHDOG_MS);
+    env.wakes = [];
+    env.advance(env.alarm! - env.t);
+    const left = env.room.data.game!.hands[seat]!;
+    const played = before.filter((c) => !left.includes(c));
+    expect(played).toHaveLength(1);
+    expect(legal).toContain(played[0]);
+    expect(env.room.data.seq).toBe(seq + 1);
+    const msg = env.last('a', 'state')!;
+    expect(msg.room.seq).toBe(env.room.data.seq);
+    expect(msg.view!.handCounts[seat]).toBe(before.length - 1);
+    expect(msg.view!.turn).not.toBe(seat);
+  });
+
+  it('a stalled bot bid is forced to a legal bid or reveal and broadcast', () => {
+    const env = new FakeEnv(undefined, { ...FAST, botMs: 800 });
+    env.join('a', 'Solo');
+    env.send('a', { t: 'sit', seat: 0 });
+    env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: 500, firstHandBidsItself: false }), botTalk: false });
+    env.send('a', { t: 'start' });
+    if (env.room.data.game!.turn === 0) {
+      env.alarm = null;
+      const mine = env.last('a', 'state')!.view!;
+      if (mine.hand === null) env.send('a', { t: 'act', action: { type: 'reveal' }, seq: env.room.data.seq });
+      else env.send('a', { t: 'act', action: { type: 'bid', bid: mine.bidOptions!.min }, seq: env.room.data.seq });
+    }
+    expect(env.room.data.game!.phase).toBe('bidding');
+    const due = env.room.data.botDueAt!;
+    const seat = env.room.data.game!.turn! as Seat;
+    const view = viewFor(env.room.data.game!, seat);
+    const seq = env.room.data.seq;
+    env.room.stallsLeft = 4;
+    env.wakes = [];
+    env.advance(due - env.t);
+    expect(env.room.data.seq).toBe(seq);
+    expect(env.room.data.game!.turn).toBe(seat);
+    expect(env.alarm! - due).toBe(BOT_WATCHDOG_MS);
+    env.wakes = [];
+    env.advance(env.alarm! - env.t);
+    const g = env.room.data.game!;
+    if (view.hand === null) expect(g.revealed[seat]).toBe(true);
+    else expect(g.bids[seat]).toBe(view.bidOptions!.min);
+    expect(env.room.data.seq).toBe(seq + 1);
+    const msg = env.last('a', 'state')!;
+    expect(msg.room.seq).toBe(env.room.data.seq);
+    if (view.hand === null) expect(msg.view!.revealed[seat]).toBe(true);
+    else expect(msg.view!.bids[seat]).toBe(view.bidOptions!.min);
   });
 
   it('a human who runs out of time gets auto-played', () => {
