@@ -6,6 +6,7 @@ import { type Settings, loadSettings, saveSettings, settingsToRules } from '../s
 import { serverUrl } from './config';
 import { TableConnection, createTable, tableInfo } from './connection';
 import { joinableSeats, spectatorsFull } from './joinable';
+import { canEnterTable, tableEntryName } from './entryGate';
 import { forgetToken, loadName, saveName } from './identity';
 import Lobby from './Lobby';
 import { codeFromPath, navigate } from './nav';
@@ -27,12 +28,14 @@ export default function OnlineApp({ path }: { path: string }) {
   // "/online" itself is the wizard's online step on the start screen
   useEffect(() => { if (!code) navigate('/', true, { wiz: 'setup', path: 'online' }); }, [code]);
   const [name, setName] = useState(loadName);
-  const [ready, setReady] = useState(() => !!code && !!loadName());
+  const [ready, setReady] = useState(() => canEnterTable(code, loadName(), location.search));
+  // A later Spectate link can land on this same screen. ?watch=1 must not wait on the name form.
+  const enter = ready || canEnterTable(code, loadName(), location.search);
   if (!code) return null;
-  if (!ready) {
+  if (!enter) {
     return <Entry code={code} name={name} onName={setName} onGo={(c) => { saveName(name.trim()); setReady(true); if (c !== code) navigate(`/t/${c}`); }} />;
   }
-  return <TableRoom key={code} code={code} name={name.trim() || 'Player'} />;
+  return <TableRoom key={code} code={code} name={tableEntryName(name, location.search)} />;
 }
 
 function Entry({ code, name, onName, onGo }: { code: string | null; name: string; onName: (n: string) => void; onGo: (code: string) => void }) {
