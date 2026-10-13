@@ -121,7 +121,8 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   // The root group keeps `order` for taps. Child groups reset Three.js groupOrder, so each mesh
   // carries its own: body at `order`, face and back half a step later, tip glow just behind.
   // Depth testing stays on. The face is FACE_CAP_GAP ahead of the cap and biased in window
-  // depth, so a 16-bit buffer cannot paint the cream cap over the pips. Neighbours lose
+  // depth, so a 16-bit buffer cannot paint the cream cap over the pips. The gold ring is
+  // OUTLINE_AHEAD in front of that face, or the same bias hides it on iPhone. Neighbours lose
   // because a playable card is nudged toward the camera (LEGAL_NEAR).
   useLayoutEffect(() => {
     const root = ref.current;
