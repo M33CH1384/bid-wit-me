@@ -6,7 +6,7 @@ import { type BufferGeometry, type Camera, type Group, type Material, type Mesh,
 import { type Card, type Play, type Trick } from '@spades/rules';
 import Card3D, { createLitCardMaterial } from './Card3D';
 import { departureSlot, handCardKey, handReactKey } from '../handOrder';
-import { GAP_S, LIFT_S, canTapCard, fanGapPx, fanMotion, handCardChrome, handDepthOpts, handRenderOrder, hitsInPaintOrder, raiseLocalY } from './handLift';
+import { GAP_S, LIFT_S, fanGapPx, fanMotion, handCardChrome, handDepthOpts, handRenderOrder, hitsInPaintOrder, raiseLocalY } from './handLift';
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline, seatDealDelay } from './dealTimeline';
 import { handNeedsDeal, handSlotKey } from './dealFlight';
@@ -602,9 +602,9 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       holdUntilMove: move.kind === 'deal',
       sfxStart: move.kind === 'deal' ? 'deal' : undefined,
       dim: chrome.dim,
-      // playable cards (when some aren't) get the gold edge on every device; the rest are dimmed (dim above)
-      glow: !!c && chrome.glow,
-      tap: c && canTapCard(pose) ? () => onCardTap(c) : pose === 'illegal' ? null : undefined,
+      // No gold ring. A playable card is bright; a card you cannot play is dimmed in place.
+      glow: false,
+      tap: c && isLegal ? () => onCardTap(c) : pose === 'illegal' ? null : undefined,
       shadow: false,
       duration: move.kind === 'flip' ? 0.34 : move.kind === 'deal' ? tl.fly : move.kind === 'slide' ? GAP_S : LIFT_S,
       motion: move.motion,
