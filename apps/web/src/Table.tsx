@@ -7,7 +7,7 @@ import { type VenueId, VENUE_DEFS, resolveVenue } from './venues';
 import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, isFreshDeal, isNukeTrick, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, newlyOneTrickFromShot, nilBustsJustResolved, partnerOf, sideOf, sortHand,
+  type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, isFreshDeal, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, newlyOneTrickFromShot, nilBustsJustResolved, partnerOf, sideOf, sortHand,
 } from '@spades/rules';
 import { ScorePad, setTeamNames, sideName } from './Modals';
 import { LockedRulesPanel } from './LockedRules';
@@ -31,6 +31,7 @@ import { OfflineMediaBar } from './online/Media';
 import { fireCue, fx, useReduceEffects } from './fx';
 import { useDealtSlots } from './dealtSlots';
 import { FeltHand } from './FeltHand';
+import { clientSeesNuke } from './three/blastSweep';
 import { loadScene } from './three/preload';
 import { TableLoading } from './TableLoading';
 import { tableStillLoading, warmTableEffects } from './effects/warm';
@@ -937,7 +938,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // nuke watchdog: the blast is normally cued by the second Joker's 3D landing; on a stalled renderer (Safari compiling
   // shaders, a backgrounded tab, very slow frames) that landing can come late or never — so once a nuked trick is on
   // the table, make sure the nuke fires anyway (fx dedupes, so it never plays twice).
-  const nukeKey = isNukeTrick(shownTrick.plays) && !display.slam ? `${st.seed}:${st.handNo}:${shownTrick.plays.map((p) => p.card).join('')}` : null;
+  const nukeKey = clientSeesNuke(shownTrick.plays, !!display.slam) ? `${st.seed}:${st.handNo}:${shownTrick.plays.map((p) => p.card).join('')}` : null;
   const nukeAtMount = useRef(nukeKey); // a resumed save already showing a nuked trick doesn't re-fire
   useEffect(() => {
     if (!nukeKey || nukeKey === nukeAtMount.current) return;

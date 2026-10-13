@@ -14,7 +14,7 @@ import { currentNukeDevice, nukeClockStalled, nukeProfile } from './nukeVisual';
  *   0.00 hot pin-point of light at the trick (silent beat)
  *   0.30 white-out flash + bloom overexposure, chromatic aberration, vignette pulse, camera punch-in + decaying shake
  *   0.30 fireball (noise-displaced emissive shells, white → yellow → orange → deep red), shockwave ring across the felt,
- *        dust skirt, trick cards (and in Full Nuke the hand + HUD) blown outward, then settling
+ *        dust skirt, every card on the felt swept off and held out (Full Nuke also kicks the hand + HUD)
  *   0.90 it rises into a mushroom cloud: stem + rolling toroidal cap (animated noise), soft smoke particles
  *   1.80 embers and ash drift down; the scene light is tinted orange throughout, then everything clears
  * Table setting "Nuke intensity": full / classic / off (+ Reduce effects forces off locally). Low graphics, and
