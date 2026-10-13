@@ -329,9 +329,18 @@ describe('game', () => {
     env.send('a', { t: 'start' });
     for (let i = 0; i < 5000 && env.room.data.phase === 'playing'; i++) if (!playTurn(env, ['a', 'b', 'c', 'd'])) env.advance(100);
     expect(env.room.data.phase).toBe('over');
-    expect(env.last('c', 'state')!.view!.result).not.toBeNull();
-    // writes: the room asks for a save after each change; the DO debounces these into far fewer rows
-    expect(env.persists).toBeGreaterThan(50);
+    const result = env.room.data.game!.result!;
+    expect(env.last('c', 'state')!.view!.result).toMatchObject({ endReason: result.endReason, finalScores: result.finalScores, winners: result.winners });
+    // A books hand under the minimum is an instant loss, so a finished game can be one hand.
+    // That still saves as it plays; the ending is the result, not a fixed save count.
+    expect(env.persists).toBeGreaterThan(0);
+    expect(result.finalScores).toHaveLength(2);
+    if (result.endReason === 'target') expect(Math.max(...result.finalScores)).toBeGreaterThanOrEqual(250);
+    else if (result.endReason === 'floor') expect(result.finalScores.some((s) => s <= -200)).toBe(true);
+    else {
+      expect(result.endReason).toBe('shotOut');
+      expect(result.shotOut?.length).toBeGreaterThan(0);
+    }
   });
 
   it('sends the hand history only when it changes (bandwidth)', () => {
