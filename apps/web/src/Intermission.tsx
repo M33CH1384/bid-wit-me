@@ -191,7 +191,7 @@ export function Intermission({
                   {cover.sheet && (
                     <div className="shroud" data-testid={`recap-shroud-${s.side}`}>
                       <SheetCloth wait={sheetAnim} />
-                      <img className="rip-src" src="/shot/rip.png" alt="RIP" data-testid={`recap-rip-${s.side}`} />
+                      <img className="rip-src" src="/shot/rip.webp" alt="RIP" data-testid={`recap-rip-${s.side}`} />
                     </div>
                   )}
                   {showTape && (

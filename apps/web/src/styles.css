@@ -770,6 +770,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
   position: absolute; z-index: 6; left: -16px; right: -16px; top: -4px; bottom: -20px;
   pointer-events: none;
 }
+.shroud .cloth-host { position: absolute; inset: 0; }
 .shroud canvas.cloth { position: absolute; inset: 0; width: 100%; height: 100%; display: block; background: transparent; }
 .shroud .rip-src { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .tt-team.sheet-in .shroud { animation: sheet-drop 600ms cubic-bezier(.18, .85, .22, 1) both; }

@@ -1,6 +1,6 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useMemo, useRef } from 'react';
-import { AdditiveBlending, BufferAttribute, BufferGeometry, NormalBlending, type Points, ShaderMaterial } from 'three';
+import { AdditiveBlending, BufferAttribute, BufferGeometry, Group, NormalBlending, Points, ShaderMaterial, WebGLRenderTarget, type Camera, type WebGLRenderer } from 'three';
 import { fx } from '../fx';
 import { HAPTIC, cancelHaptics, haptic } from '../haptics';
 
@@ -57,14 +57,47 @@ function mat(opts: { size: number; alpha: number; a: [number, number, number]; b
   });
 }
 
-export function Tornado3D({ quality }: { quality: 'high' | 'low' }) {
-  const hi = quality === 'high';
-  const parts = useMemo(() => ({
+function tornadoParts(hi: boolean) {
+  return {
     dust: cloud(hi ? 1400 : 450),
     debris: cloud(hi ? 260 : 90),
     dustMat: mat({ size: 0.26, alpha: 0.72, a: [0.5, 0.48, 0.58], b: [0.36, 0.26, 0.55], additive: false }),
     debrisMat: mat({ size: 0.06, alpha: 1.0, a: [0.95, 0.85, 1.0], b: [0.6, 0.95, 0.7], additive: true }),
-  }), [hi]);
+  };
+}
+
+/** Kept alive so the linked program stays in the table renderer's cache after the warm pass. */
+const warmed: ReturnType<typeof tornadoParts>[] = [];
+
+/**
+ * Link the funnel shaders on the table's renderer, into a 4×4 target the player never sees.
+ * The real Tornado3D draw later hits that cached program instead of compiling mid-spin.
+ */
+export async function warmTornado(gl: WebGLRenderer, camera: Camera, quality: 'high' | 'low'): Promise<void> {
+  const parts = tornadoParts(quality === 'high');
+  warmed.push(parts);
+  const group = new Group();
+  for (const [geo, material] of [[parts.dust, parts.dustMat], [parts.debris, parts.debrisMat]] as const) {
+    const points = new Points(geo, material);
+    points.frustumCulled = false;
+    group.add(points);
+  }
+  const target = new WebGLRenderTarget(4, 4);
+  const prev = gl.getRenderTarget();
+  try {
+    gl.setRenderTarget(target);
+    await gl.compileAsync(group, camera);
+    gl.render(group, camera);
+    gl.getContext().flush();
+  } finally {
+    gl.setRenderTarget(prev);
+    target.dispose();
+  }
+}
+
+export function Tornado3D({ quality }: { quality: 'high' | 'low' }) {
+  const hi = quality === 'high';
+  const parts = useMemo(() => tornadoParts(hi), [hi]);
   const dust = useRef<Points>(null), debris = useRef<Points>(null);
   const spun = useRef(false);
   const hit = useRef(false);

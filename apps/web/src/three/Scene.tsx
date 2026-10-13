@@ -17,6 +17,7 @@ import { backTexture, faceTexture, logoTexture, refreshFacesGradually } from './
 import { loadTableImage, prefetchTableTextures, tableTextureUrls } from '../tableAssets';
 import { ClassicHall } from './hallEnv';
 import { forceProgram, nextFrame, quietShaderErrors } from './shaderBudget';
+import { offerTableRenderer } from '../effects/warm';
 import Venue3D, { feltPatternTexture, preloadVenueAssets } from './Venue3D';
 import { type VenueDef, type VenueId, VENUE_DEFS, venueAssetUrls } from '../venues';
 import { bodyGeometry, cardGeometry, feltGeometry, railGeometry } from './geometry';
@@ -1116,6 +1117,7 @@ export default function Scene(props: SceneProps) {
       resize={{ debounce: 50 }}
     >
       <AspectWatcher onAspect={setAspect} />
+      <EffectWarmup quality={props.quality} />
       <SnapHook />
       <CameraRig />
       <FxShake table={tableGroup} />
@@ -1136,6 +1138,14 @@ export default function Scene(props: SceneProps) {
     <div ref={badgeLayer} className="badge-layer" />
     </div>
   );
+}
+
+/** Hands the table renderer to the effect warm so tornado shaders link before the loading screen lifts. */
+function EffectWarmup({ quality }: { quality: 'high' | 'low' }) {
+  const gl = useThree((s) => s.gl);
+  const camera = useThree((s) => s.camera);
+  useEffect(() => { offerTableRenderer(gl, camera, quality); }, [gl, camera, quality]);
+  return null;
 }
 
 /**
