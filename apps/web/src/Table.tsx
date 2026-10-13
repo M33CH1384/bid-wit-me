@@ -25,6 +25,7 @@ import { setFeedbackGame } from './feedbackContext';
 import { loadTipJar, openTip, saveTipJar, tipNudgeDue } from './support';
 import { OfflineMediaBar } from './online/Media';
 import { fireCue, fx, useReduceEffects } from './fx';
+import { useDealtSlots } from './dealtSlots';
 import { FeltHand } from './FeltHand';
 import { loadScene } from './three/preload';
 import { endReasonText, onNoticeSides, shotChatLines } from './shotOut';
@@ -929,6 +930,16 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     return () => clearInterval(t);
   }, [measureHand, vp.short]);
 
+  // The quick-load hand is on screen before WebGL. During a deal it may only show the cards that have left the deck.
+  const feltShown = useDealtSlots(dealing, {
+    speedK: k,
+    players: n,
+    dealer: st.dealer,
+    seat: HUMAN,
+    slots: display.hand?.length ?? 0,
+    handNo: st.handNo,
+  });
+
   return (
     <div ref={screenRef} className={`table-screen q-${settings.quality}${vp.short ? ' short' : ''}${modalOpen ? ' modal-open' : ''}${showPad ? ' pad-open' : ''}`}>
       {/* styled stand-in table, on screen from the first paint until the 3D table has rendered (then it fades) */}
@@ -940,6 +951,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       {resume && !webglHand && display.hand && display.hand.length > 0 && (
         <FeltHand
           cards={display.hand}
+          visibleCount={feltShown}
           trick={display.trick.map((p) => p.card)}
           legal={runFx ? [] : humanExchanging && hand ? hand : legal}
           selected={runFx ? null : selected}
