@@ -55,6 +55,27 @@ describe('newGame and dealing', () => {
   it('nextHand only when the hand is over', () => {
     expectRuleError(() => applyAction(newGame(joker, 'x'), { type: 'nextHand' }), 'WRONG_PHASE');
   });
+  it('clears spades broken when the next hand is dealt', () => {
+    // QA: hand 2's bid screen showed BROKEN before anyone played a card.
+    // dealHand resets the flag; finishHand leaves the closed hand's value in place until then.
+    const hands = fill(joker, [['3H'], ['2D'], [], []]);
+    let st = bidAll(rigged(joker, hands, 3), [3, 3, 3, 3]);
+    expect(st.spadesBroken).toBe(false);
+    // Seat 1 is void in hearts so the 2♦ can trump in and break spades.
+    st = { ...st, hands: st.hands.map((h, i) => (i === 1 ? h.filter((c) => c === '2D' || effectiveSuit(c, joker) !== 'H') : h)) };
+    st = play(st, '3H', '2D');
+    expect(st.spadesBroken).toBe(true);
+    st = { ...st, phase: 'handOver', turn: null };
+    expect(viewFor(st, 0).spadesBroken).toBe(true);
+    st = applyAction(st, { type: 'nextHand' });
+    expect(st.phase).toBe('bidding');
+    expect(st.handNo).toBe(2);
+    expect(st.spadesBroken).toBe(false);
+    expect(st.tricks).toEqual([]);
+    expect(st.trick.plays).toEqual([]);
+    expect(viewFor(st, 0).spadesBroken).toBe(false);
+    expect(spectatorView(st, 0).spadesBroken).toBe(false);
+  });
 });
 
 describe('bidding', () => {
