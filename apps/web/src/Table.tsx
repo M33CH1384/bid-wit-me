@@ -773,16 +773,14 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     list.forEach((t, i) => { const c = cue[t.kind]; if (c) sound.play(c, { delay: 0.1 + i * 0.45 }); });
     const tm = setTimeout(() => setToasts([]), 3200);
     const toastHold = list.length ? fx.hold(3200, 'toasts') : () => {};
-    // hype: SHOT! / GOT SHOT and streak pop-ups (every client derives them from the same state)
-    // each one is queued with fx.later, so the hand-end transition (scorecard / Table Talk) waits until it has played
+    // A set is the shotgun blast on that scorecard panel (the recap plays the boom). No full-screen banner.
+    // Streak / Wheels wait a beat so their pop-ups don't cover the muzzle flash.
     const timers: (() => void)[] = [];
     const calls = calloutsFor(st, mySide, names);
-    const shot = calls.find((c) => c.kind === 'shot') ?? calls.find((c) => c.kind === 'gotShot');
-    if (shot) timers.push(fx.later(shot.kind as 'shot' | 'gotShot', 350, { text: shot.title ?? shot.text, sub: shot.sub }));
-    // Set/bust toasts are on screen now. A shot pop waits the same 350ms as its callout (not the sound delay).
+    const shot = calls.some((c) => c.kind === 'shot' || c.kind === 'gotShot');
     if (setToast) haptic(HAPTIC.setOrShot, 'set');
     else if (shot) {
-      const ht = window.setTimeout(() => haptic(HAPTIC.setOrShot, 'shot'), 350);
+      const ht = window.setTimeout(() => haptic(HAPTIC.setOrShot, 'shot'), 200);
       timers.push(() => clearTimeout(ht));
     }
     const streak = calls.find((c) => c.kind === 'streak');
@@ -790,9 +788,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const made = wheelsMade(r, rec);
     if (made.length) {
       const w = made[0]!;
-      timers.push(fx.later('wheelsCar', shot ? 3300 : streak ? 2600 : 600, { text: `${sideName(r, w.side, names)} made ${w.bid} · took ${w.books}` }));
+      timers.push(fx.later('wheelsCar', shot ? 1500 : streak ? 2600 : 600, { text: `${sideName(r, w.side, names)} made ${w.bid} · took ${w.books}` }));
     }
-    if (streak) timers.push(fx.later('streak', shot ? 1750 : 400, { level: streak.level, text: streak.text.split(' · ')[0], sub: streak.text.split(' · ')[1] }));
+    if (streak) timers.push(fx.later('streak', shot ? 1100 : 400, { level: streak.level, text: streak.text.split(' · ')[0], sub: streak.text.split(' · ')[1] }));
     return () => { clearTimeout(tm); toastHold(); timers.forEach((c) => c()); };
   }, [st.history, histTick, r, names, mySide, !!pause]); // eslint-disable-line react-hooks/exhaustive-deps
 
