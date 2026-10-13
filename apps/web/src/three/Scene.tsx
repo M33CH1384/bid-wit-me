@@ -17,6 +17,7 @@ import { backTexture, faceTexture, logoTexture, refreshFacesGradually } from './
 import { loadTableImage, prefetchTableTextures, tableTextureUrls } from '../tableAssets';
 import { ClassicHall } from './hallEnv';
 import { forceProgram, nextFrame, quietShaderErrors } from './shaderBudget';
+import { offerTableRenderer } from '../effects/warm';
 import Venue3D, { feltPatternTexture, preloadVenueAssets } from './Venue3D';
 import { type VenueDef, type VenueId, VENUE_DEFS, venueAssetUrls } from '../venues';
 import { bodyGeometry, cardGeometry, feltGeometry, railGeometry } from './geometry';
@@ -28,6 +29,8 @@ export interface SceneProps {
   quality: 'high' | 'low';
   /** the 3D table has rendered its first frame (the placeholder fades out). Textures and the hall light stream in after this. */
   onTableReady?: () => void;
+  /** Felt and rail maps have settled (each one applied, or that download failed), so the cloth is no longer a flat stand-in. */
+  onTableDressed?: () => void;
   /** the human's cards are in the 3D scene with faces, so the flat hand can leave */
   onHandLive?: () => void;
   n: number;
@@ -169,13 +172,16 @@ function isColorMap(url: string): boolean {
 }
 
 /** Decode the cloth and wood maps as they arrive and publish one Texture per frame (a single upload). */
-function useStreamedMaps(urls: string[]): (Texture | null)[] {
+function useStreamedMaps(urls: string[]): { maps: (Texture | null)[]; settled: boolean } {
   const invalidate = useThree((s) => s.invalidate);
   const key = urls.join('|');
   const [maps, setMaps] = useState<(Texture | null)[]>(() => urls.map(() => null));
+  const [settled, setSettled] = useState(urls.length === 0);
   useEffect(() => {
     const list = key ? key.split('|') : [];
+    if (!list.length) { setSettled(true); return; }
     let alive = true;
+    setSettled(false);
     const status = list.map(() => 'wait' as 'wait' | 'ok' | 'bad');
     const imgs: HTMLImageElement[] = [];
     const made = list.map(() => false);
@@ -195,12 +201,13 @@ function useStreamedMaps(urls: string[]): (Texture | null)[] {
         invalidate();
       }
       const done = status.every((s, idx) => s === 'bad' || made[idx]);
-      if (!done) requestAnimationFrame(pump);
+      if (done) { if (alive) setSettled(true); return; }
+      requestAnimationFrame(pump);
     };
     const id = requestAnimationFrame(pump);
     return () => { alive = false; cancelAnimationFrame(id); };
   }, [key, invalidate]);
-  return maps;
+  return { maps, settled };
 }
 
 type TableGeos = { felt: BufferGeometry; rail: BufferGeometry; body: BufferGeometry };
@@ -278,7 +285,7 @@ function buildTableMaterials(def: VenueDef, quality: 'high' | 'low') {
 function TableModel({ quality, lit, onReady, onTextured, def }: { quality: 'high' | 'low'; lit: boolean; onReady?: () => void; onTextured?: () => void; def: VenueDef }) {
   const railUrl = railTextureUrl(def, quality);
   const urls = useMemo(() => (railUrl ? [...tableTextureUrls(quality), railUrl] : tableTextureUrls(quality)), [quality, railUrl]);
-  const maps = useStreamedMaps(urls);
+  const { maps, settled } = useStreamedMaps(urls);
   const invalidate = useThree((s) => s.invalidate);
   const geos = useTableGeos();
   const basic = useMemo(() => ({
@@ -338,6 +345,16 @@ function TableModel({ quality, lit, onReady, onTextured, def }: { quality: 'high
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
   }, [lit, maps, def, full, urls.length, invalidate, onTextured]);
+  // A failed download never fills its slot. Once nothing is still in flight, lift the loading screen anyway.
+  useEffect(() => {
+    if (!settled || textured.current) return;
+    if (maps.some((m) => !m)) {
+      textured.current = true;
+      const w = window as unknown as { __bwmTexturedAt?: number };
+      w.__bwmTexturedAt ??= performance.now();
+      onTextured?.();
+    }
+  }, [settled, maps, onTextured]);
   useEffect(() => {
     const w = window as unknown as { __bwmTableAt?: number };
     const a = requestAnimationFrame(() => requestAnimationFrame(() => { w.__bwmTableAt ??= performance.now(); onReady?.(); }));
@@ -1074,7 +1091,8 @@ export default function Scene(props: SceneProps) {
   const tableReady = useCallback(() => { onTableReady?.(); }, [onTableReady]);
   const onShow = useCallback(() => setShowTable(true), []);
   const onLit = useCallback(() => setLit(true), []);
-  const onTextured = useCallback(() => setTextured(true), []);
+  const onDressed = props.onTableDressed;
+  const onTextured = useCallback(() => { setTextured(true); onDressed?.(); }, [onDressed]);
   const onDpr = useCallback((n: number) => setDprCap(n), []);
   const onShadow = useCallback((n: number) => setShadowSize(n), []);
   const onHall = useCallback(() => setHallGo(true), []);
@@ -1099,6 +1117,7 @@ export default function Scene(props: SceneProps) {
       resize={{ debounce: 50 }}
     >
       <AspectWatcher onAspect={setAspect} />
+      <EffectWarmup quality={props.quality} />
       <SnapHook />
       <CameraRig />
       <FxShake table={tableGroup} />
@@ -1119,6 +1138,14 @@ export default function Scene(props: SceneProps) {
     <div ref={badgeLayer} className="badge-layer" />
     </div>
   );
+}
+
+/** Hands the table renderer to the effect warm so tornado shaders link before the loading screen lifts. */
+function EffectWarmup({ quality }: { quality: 'high' | 'low' }) {
+  const gl = useThree((s) => s.gl);
+  const camera = useThree((s) => s.camera);
+  useEffect(() => { offerTableRenderer(gl, camera, quality); }, [gl, camera, quality]);
+  return null;
 }
 
 /**
