@@ -464,7 +464,8 @@ describe('cutthroat 3 online', () => {
     expect(nilTried).toBe(true);
     const g = env.room.data.game!;
     for (const h of g.history) {
-      for (const b of h.bids) expect(typeof b === 'number' && b >= 2).toBe(true);
+      // A seat already out has no bid. Everyone still in bid a number at or above the minimum.
+      for (const b of h.bids) if (b !== null) expect(typeof b === 'number' && b >= 2).toBe(true);
       for (const sd of h.sides) expect(sd.bagsAdded).toBe(0);
     }
   });
