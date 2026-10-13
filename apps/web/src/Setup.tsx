@@ -160,12 +160,10 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
     const cutRules = cut && (
       <>
         <div className="ess-row">
-          <span className="ess-label">Min bid<small>0 is always Nil</small></span>
-          <Seg label="Minimum bid" value={s.cutMinBid ?? 1} options={[[1, '1'], [2, '2'], [3, '3'], [4, '4']]} onChange={(v) => set('cutMinBid', v)} />
+          <span className="ess-label">Minimum books / bid<small>Hand 1: fewer books is a shot. Nil is off.</small></span>
+          <Seg label="Minimum books / bid" value={s.cutMinBid ?? 1} options={[[1, '1'], [2, '2'], [3, '3'], [4, '4']]} onChange={(v) => set('cutMinBid', v)} />
         </div>
         <div className="ess-row cut-toggles" data-testid="cut-toggles">
-          <label><span>Nil</span><Toggle label="Allow Nil" value={s.nilAllowed} onChange={(v) => set('nilAllowed', v)} /></label>
-          <label><span>Blind Nil</span><Toggle label="Allow Blind Nil" value={!!s.cutBlindNil} onChange={(v) => set('cutBlindNil', v)} /></label>
           <label><span>Bags</span><Toggle label="Bags and penalties" value={s.bagsOn !== false} onChange={(v) => set('bagsOn', v)} /></label>
         </div>
       </>

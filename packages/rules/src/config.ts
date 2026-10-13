@@ -31,7 +31,11 @@ export interface TableRules {
   deuceOfSpadesHigh: boolean;
   spadesMustBeBroken: boolean;
   firstLead: 'leftOfDealer' | 'twoOfClubs';
-  /** Minimum combined team bid (or individual bid in Cutthroat). 0 = no minimum. Nil is always exempt. */
+  /**
+   * Minimum combined team bid (or each player's bid in Cutthroat). 0 = no extra bid floor.
+   * Together with `firstHandMin`, the higher number is the host minimum for every hand (`hostMinimum`).
+   * In 2v2, Nil is allowed, but then the partner's bid alone must reach that minimum.
+   */
   minTeamBid: number;
   nil: NilRules;
   blindNil: BlindNilRules;
@@ -58,8 +62,10 @@ export interface TableRules {
    */
   shotOut?: boolean;
   /**
-   * First hand (books bid themselves): a side taking fewer books than this is shot. 3, 4 or 5; null = off.
-   * Default 4 in team modes, off in Cutthroat. Optional for older saves (undefined = the mode default).
+   * Host "minimum books / bid". 3, 4 or 5; null = off (the bid minimum still applies).
+   * Every hand: on the books hand, fewer books than the host minimum is a shot, scored as a set at that number.
+   * From the next hand on, bids must reach it. Default 4 in team modes, off in Cutthroat
+   * (Cutthroat uses `minTeamBid`). Optional for older saves (undefined = the mode default).
    */
   firstHandMin?: 3 | 4 | 5 | null;
   /**
@@ -73,6 +79,16 @@ export interface TableRules {
 export function firstHandMinOf(r: Pick<TableRules, 'firstHandMin' | 'partnerships'>): number | null {
   if (r.firstHandMin === undefined) return r.partnerships ? 4 : null;
   return r.firstHandMin;
+}
+
+/**
+ * The host minimum for every hand (books on hand 1, bids after that).
+ * The books/bid setting and the minimum-bid setting are one floor: the higher one wins. 0 = off.
+ */
+export function hostMinimum(r: Pick<TableRules, 'firstHandMin' | 'partnerships' | 'minTeamBid'>): number {
+  const books = firstHandMinOf(r);
+  const bid = typeof r.minTeamBid === 'number' && Number.isInteger(r.minTeamBid) ? Math.max(0, r.minTeamBid) : 0;
+  return books === null ? bid : Math.max(books, bid);
 }
 export const bagsOnOf = (r: Pick<TableRules, 'bagsOn'>) => r.bagsOn !== false;
 export const shotOutOn = (r: Pick<TableRules, 'shotOut'>) => r.shotOut !== false;
@@ -118,10 +134,11 @@ export function defaultRules(mode: Mode, playerCount: 3 | 4 = 4): TableRules {
     case 'joker':
       return { ...BASE, mode, partnerships: true, playerCount: 4, deck: 'joker54', removedCards: defaultRemovedCards('joker54', 4), trumpOrderTop: [...JOKER_TRUMP_TOP], targetScore: 500, firstHandMin: 4 };
     case 'cutthroat':
-      // Cutthroat defaults (Demetrius): min bid 1, Nil on, Blind Nil off, bags on, first-hand minimum off, to 300
+      // Cutthroat: min bid 1, Nil and Blind Nil off, bags on, books minimum off (the bid minimum still applies), to 300
       return {
         ...BASE, mode, partnerships: false, playerCount, deck: 'joker54', removedCards: defaultRemovedCards('joker54', playerCount),
         trumpOrderTop: [...JOKER_TRUMP_TOP], targetScore: 300, firstHandMin: null, minTeamBid: 1,
+        nil: { ...BASE.nil, allowed: false },
         blindNil: { ...BASE.blindNil, allowed: false, onlyWhenBehindBy: null },
       };
     case 'aceDown':
@@ -163,6 +180,11 @@ export function makeRules(mode: Mode, overrides: RulesOverrides = {}): TableRule
   if (overrides.trumpOrderTop === undefined)
     r.trumpOrderTop = r.deck === 'joker54' ? JOKER_TRUMP_TOP.filter((c) => !r.removedCards.includes(c)) : [];
   if (mode === 'aceDown') r.deuceOfSpadesHigh = false; // forced off (spec §3.4)
+  if (mode === 'cutthroat') {
+    // Nil and Blind Nil are off for the whole mode. A host toggle cannot turn them back on.
+    r.nil = { ...r.nil, allowed: false };
+    r.blindNil = { ...r.blindNil, allowed: false };
+  }
   const problems = validateRules(r);
   if (problems.length) throw new RulesConfigError(problems);
   return r;

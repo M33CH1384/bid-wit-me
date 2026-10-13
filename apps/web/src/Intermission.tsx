@@ -156,7 +156,7 @@ export function Intermission({
               const pct = Math.max(0, Math.min(1, s.totalScore / target));
               const chips = resultChips(r, rec, s, st);
               const main = chips.find((c) => c.kind === 'made' || c.kind === 'set' || c.kind === 'books');
-              const bidPart = books ? 'Books (hand 1)' : s.contract ? `Bid ${s.contract}` : `Bid ${s.seats.map((x) => bidLabel(rec.bids[x]!)).join(' + ')}`;
+              const bidPart = books ? (s.contractMade === false ? `Set at ${s.contract}` : 'Books (hand 1)') : s.contract ? `Bid ${s.contract}` : `Bid ${s.seats.map((x) => bidLabel(rec.bids[x]!)).join(' + ')}`;
               const shot = s.contractMade === false;
               const cover = covers[s.side] ?? { tape: false, sheet: false, siren: false };
               const justShot = isShot(r, rec.bids, s);

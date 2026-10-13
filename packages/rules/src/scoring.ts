@@ -1,4 +1,4 @@
-import { type TableRules, bagsOnOf, firstHandMinOf, handSize, shotOutOn } from './config';
+import { type TableRules, bagsOnOf, handSize, hostMinimum, shotOutOn } from './config';
 
 /**
  * A bid: a number of tricks (≥1), Nil, or Blind Nil. A numeric 0 is normalised to 'nil'.
@@ -133,6 +133,16 @@ export function scoreHand(
       bagsAdded += contractTricks; // no contract: every trick is a bag
     }
 
+    if (isBooksHand(bids)) {
+      const floor = hostMinimum(r);
+      if (floor > 0 && tricks < floor) {
+        // Short of the host minimum: a set at that number, not 10 points per book taken.
+        bookPoints = 0;
+        contract = floor;
+        contractMade = false;
+        contractPoints = -10 * floor;
+      }
+    }
     if (!bagsOnOf(r)) bagsAdded = 0; // "Bags and penalties" off: overtricks score nothing and never add up to a penalty
     let totalBags = bags[side]! + bagsAdded;
     const bagPenaltyCount = Math.floor(totalBags / r.bagsPerPenalty);
@@ -186,13 +196,12 @@ export function checkGameEnd(r: TableRules, scores: readonly number[]): GameResu
 
 /**
  * Was `side` shot this hand? Shot = set: the side had a contract and missed it (a busted Nil alone never makes a side
- * shot — same as the set logic). First hand where books bid themselves: shot when it took fewer books than the
- * first-hand minimum (off = nobody is shot that hand).
+ * shot — same as the set logic). Books hand: shot when it took fewer books than the host minimum (off = nobody is shot).
  */
 export function isShot(r: TableRules, bids: readonly Bid[], side: SideHandResult): boolean {
   if (isBooksHand(bids)) {
-    const min = firstHandMinOf(r);
-    return min !== null && side.tricks < min;
+    const min = hostMinimum(r);
+    return min > 0 && side.tricks < min;
   }
   return side.contractMade === false;
 }
@@ -212,11 +221,11 @@ export function shotCounts(r: TableRules, history: readonly { bids: readonly Bid
   return counts;
 }
 
-/** The side made its books: a made contract, or a books hand that reached the first-hand minimum. */
+/** The side made its books: a made contract, or a books hand that reached the host minimum. */
 function madeItsBooks(r: TableRules, bids: readonly Bid[], side: SideHandResult): boolean {
   if (isBooksHand(bids)) {
-    const min = firstHandMinOf(r);
-    return min === null || side.tricks >= min;
+    const min = hostMinimum(r);
+    return min === 0 || side.tricks >= min;
   }
   return side.contractMade === true;
 }
@@ -278,15 +287,15 @@ export function shotCovers(
 /**
  * Books still needed before this side is shot, or null when that side cannot be set
  * (bidding not finished, no numeric contract, or a books hand whose minimum is off).
- * On a books hand this is the first-hand minimum minus the books that side has taken.
+ * On a books hand this is the host minimum minus the books that side has taken.
  * Nil tricks count only when `nilTricksCountForPartner` is on, matching scoreHand.
  */
 export function booksStillNeeded(r: TableRules, bids: readonly (Bid | null)[], tricksWon: readonly number[], side: number): number | null {
   if (bids.length === 0 || bids.some((b) => b === null || b === undefined)) return null;
   const seats = sideSeats(side, r);
   if (isBooksHand(bids)) {
-    const min = firstHandMinOf(r);
-    if (min === null) return null;
+    const min = hostMinimum(r);
+    if (min <= 0) return null;
     const taken = seats.reduce((n, seat) => n + (tricksWon[seat] ?? 0), 0);
     return min - taken;
   }

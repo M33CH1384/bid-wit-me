@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { type Card, type GameState, type PlayerView, SUIT_NAME, type Suit, booksHand, cardLabel, cardPower, effectiveSuit, firstHandMinOf, handSize, isTrump, shotOutOn, sideOf, trumpOrder } from '@spades/rules';
+import { type Card, type GameState, type PlayerView, SUIT_NAME, type Suit, booksHand, cardLabel, cardPower, effectiveSuit, handSize, hostMinimum, isTrump, shotOutOn, sideOf, trumpOrder } from '@spades/rules';
 import { TERM_ORDER, type TermKey, glossary, parseTerms, topTrumps, trumpWords } from './glossary';
 import { TIP_MAX_SHOWS, bumpTip, tipCount, tipDurationMs } from './tips';
 
@@ -84,7 +84,7 @@ export function tipsFor(c: CoachCtx): Tip[] {
   const partnerSeat = (c.me + 2) % 4;
   const lastRec = c.st.history[c.st.history.length - 1];
   const onNoticeMine = !!lastRec?.sides[sideOf(c.me, r)]?.shot;
-  const firstMin = firstHandMinOf(r);
+  const firstMin = hostMinimum(r);
   const pBid = c.st.bids[partnerSeat];
   const n = handSize(r);
   return [
@@ -166,7 +166,7 @@ export function tipsFor(c: CoachCtx): Tip[] {
     {
       id: 'shot', title: 'On notice', anchor: '.scorebug .bug', max: 2,
       text: shotOutOn(r)
-        ? `${onNoticeMine ? 'Your side got {shot} last hand, so you\'re ON NOTICE: get shot again this hand and you lose the game. Bid what you can make.' : 'A side that gets {shot} (takes fewer books than it bid) is ON NOTICE: shot again next hand and it\'s out.'}${firstMin !== null ? ` On the first hand, fewer than ${firstMin} books is a shot too, and a shot on hand 1 ends the game.` : ''}`
+        ? `${onNoticeMine ? 'Your side got {shot} last hand, so you\'re ON NOTICE: get shot again this hand and you lose the game. Bid what you can make.' : 'A side that gets {shot} (takes fewer books than it bid) is ON NOTICE: shot again next hand and it\'s out.'}${firstMin > 0 ? ` On hand 1, fewer than ${firstMin} books is a shot and ends the game.` : ''}`
         : '',
       when: (x) => shotOutOn(r) && x.st.phase === 'bidding' && x.st.history.length > 0 && !!x.st.history[x.st.history.length - 1]!.sides.some((sd) => sd.shot),
     },
