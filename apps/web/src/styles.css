@@ -717,8 +717,8 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 @keyframes muzzle-flash { 0% { opacity: 0; } 10% { opacity: 1; } 28% { opacity: .75; } 100% { opacity: 0; } }
 @keyframes blast-marks-in { to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .tt-team.blast { animation: none; } }
-/* Tape after a non-losing shot, off once they make their books. The sheet follows a recorded shot-out.
-   RIP, the police lights, and the time-of-death caption stay at full fidelity at every width, including 360–390. */
+/* Tape after a non-losing shot, off once they make their books. A hand-1 loss shows the tape and the sheet.
+   Later eliminations are the sheet alone. RIP, the police lights, and the time-of-death caption stay at full fidelity at every width, including 360–390. */
 .caution-tape {
   position: absolute; z-index: 3; left: -18%; width: 136%; top: 42%; height: 28px; transform: rotate(-11deg);
   pointer-events: none; display: flex; align-items: center; justify-content: space-evenly; overflow: hidden;

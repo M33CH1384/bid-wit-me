@@ -49,19 +49,19 @@ describe('shotCounts', () => {
 describe('shotCovers', () => {
   const books = ['books', 'books', 'books', 'books'] as const;
 
-  it('a recorded shot-out is the sheet and the siren, with no tape', () => {
+  it('a hand-1 shot-out shows the tape and the sheet together', () => {
     expect(shotOutSides(joker, 1, [false, true], [false, false])).toEqual([1]);
     expect(shotOutResult([-30, 80], [1])).toMatchObject({ endReason: 'shotOut', shotOut: [1] });
     const short = hand(joker, [...books], [5, 2, 5, 1], 1); // side 1: 3 books
-    expect(shotCovers(joker, [short])[1]).toEqual({ tape: false, sheet: true, siren: true });
+    expect(shotCovers(joker, [short])[1]).toEqual({ tape: true, sheet: true, siren: true });
     expect(shotCovers(joker, [short])[0]).toEqual({ tape: false, sheet: false, siren: false });
     const ace = makeRules('aceDown');
-    expect(shotCovers(ace, [hand(ace, [...books], [5, 2, 5, 1], 1)])[1]).toEqual({ tape: false, sheet: true, siren: true });
+    expect(shotCovers(ace, [hand(ace, [...books], [5, 2, 5, 1], 1)])[1]).toEqual({ tape: true, sheet: true, siren: true });
     const playedOn: GameResult = { endReason: 'target', finalScores: [-30, 80], placements: [2, 1], winners: [1] };
     expect(shotCovers(joker, [short], null)[1]).toEqual({ tape: true, sheet: false, siren: false });
     expect(shotCovers(joker, [short], playedOn)[1]).toEqual({ tape: true, sheet: false, siren: false });
     const lost: GameResult = { endReason: 'shotOut', shotOut: [1], finalScores: [-30, 80], placements: [2, 1], winners: [0] };
-    expect(shotCovers(joker, [short], lost)[1]).toEqual({ tape: false, sheet: true, siren: true });
+    expect(shotCovers(joker, [short], lost)[1]).toEqual({ tape: true, sheet: true, siren: true });
     expect(shotOutSides({ ...joker, shotOut: false }, 1, [false, true], [false, false])).toEqual([]);
     expect(shotCovers({ ...joker, shotOut: false }, [short])[1]).toEqual({ tape: true, sheet: false, siren: false });
   });
@@ -83,7 +83,7 @@ describe('shotCovers', () => {
     expect(shotCovers(joker, [clear, set, again])[0]).toEqual({ tape: false, sheet: false, siren: false });
   });
 
-  it('a hand that is not a shot and does not make books leaves the tape up, and does not count as the loss', () => {
+  it('does not treat a second shot after a gap as a loss, because the engine only looks at the previous hand', () => {
     const clear = hand(joker, [...books], [4, 4, 4, 1], 1);
     const set = hand(joker, [4, 5, 2, 3], [4, 1, 2, 2], 2);
     const nils = hand(joker, ['nil', 'nil', 'nil', 'nil'], [0, 0, 0, 0], 3);
@@ -98,5 +98,12 @@ describe('shotCovers', () => {
     expect(shotCovers(cutthroat, [hand(cutthroat, [4, 4, 4], [4, 4, 5], 1), set])[0]).toEqual({ tape: true, sheet: false, siren: false });
     const again = hand(cutthroat, [5, 4, 4], [1, 6, 6], 3);
     expect(shotCovers(cutthroat, [hand(cutthroat, [4, 4, 4], [4, 4, 5], 1), set, again])[0]).toEqual({ tape: false, sheet: true, siren: true });
+    // A books hand is not a miss when the minimum is off, so nobody is eliminated.
+    expect(shotCovers(cutthroat, [hand(cutthroat, ['books', 'books', 'books'], [2, 8, 7], 1)])[0]).toEqual({ tape: false, sheet: false, siren: false });
+    // A real hand-1 set eliminates that player: tape and sheet together.
+    const miss = hand(cutthroat, [6, 4, 5], [2, 5, 8], 1);
+    expect(shotOutSides(cutthroat, 1, [true, false, false], [false, false, false])).toEqual([0]);
+    expect(shotCovers(cutthroat, [miss])[0]).toEqual({ tape: true, sheet: true, siren: true });
+    expect(shotCovers(cutthroat, [miss])[1]).toEqual({ tape: false, sheet: false, siren: false });
   });
 });

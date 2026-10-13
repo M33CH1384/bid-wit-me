@@ -103,13 +103,14 @@ describe('scorecard caution tape and shroud', () => {
     expect(caption(html)).toBe('Time of death: Hand 3');
   });
 
-  it('a hand-1 shot-out is the sheet and the siren, and a non-loss stays tape', () => {
+  it('a hand-1 shot-out shows the tape and the sheet, and a non-loss stays tape', () => {
     const html = recap(stamp(toHandOver('joker'), [[1]], { lost: [1] }), names);
-    expect(html).toContain('data-testid="recap-side-1" data-blast="yes" data-tape="no" data-sheet="yes" data-siren="yes"');
-    expect(html).toContain('class="tt-team blast shrouded sheet-in"');
+    expect(html).toContain('data-testid="recap-side-1" data-blast="yes" data-tape="yes" data-sheet="yes" data-siren="yes"');
+    expect(html).toContain('class="tt-team blast taped tape-in shrouded sheet-in"');
+    expect(html).toContain('data-testid="recap-tape-1"');
+    expect(html).toContain('>CAUTION<');
     expect(html).toContain('data-testid="recap-rip-1"');
     expect(html).toContain('data-testid="police-lights"');
-    expect(html).not.toContain('recap-tape-');
     expect(html).toContain('data-testid="recap-line-1"');
     expect(html).toContain('data-hand="1"');
     expect(caption(html)).toBe('Time of death: Hand 1');
@@ -131,8 +132,20 @@ describe('scorecard caution tape and shroud', () => {
     expect(recapSrc).toContain("sound.play('siren'");
     expect(recapSrc).toContain("sound.play('docSting'");
     expect(recapSrc).toContain('shotCovers(r, st.history, st.result)');
+    expect(recapSrc).not.toContain('shotCounts');
     expect(recapSrc).toContain('covers.some((c) => c.sheet)');
     expect(recapSrc).toContain('Time of death: Hand ${rec.handNo}');
+  });
+
+  it('a Cutthroat hand-1 elimination shows tape and the sheet on that player', () => {
+    const html = recap(stamp(toHandOver('cutthroat'), [[2]], { lost: [2] }), ['You', 'Ace', 'Bea']);
+    expect(html).toContain('data-testid="recap-side-2" data-blast="yes" data-tape="yes" data-sheet="yes" data-siren="yes"');
+    expect(html).toContain('class="tt-team blast taped tape-in shrouded sheet-in"');
+    expect(html).toContain('data-testid="recap-tape-2"');
+    expect(html).toContain('data-testid="recap-shroud-2"');
+    expect(html).not.toContain('recap-shroud-0');
+    expect(html).not.toContain('recap-tape-0');
+    expect(caption(html)).toBe('Time of death: Hand 1');
   });
 
   it('tapes that Cutthroat player’s own panel', () => {
