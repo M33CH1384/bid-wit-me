@@ -718,7 +718,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 @keyframes blast-marks-in { to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .tt-team.blast { animation: none; } }
 /* Tape after a non-losing shot, off once they make their books. The sheet follows a recorded shot-out.
-   RIP and the police lights stay at full fidelity at every width, including 360–390. */
+   RIP, the police lights, and the time-of-death caption stay at full fidelity at every width, including 360–390. */
 .caution-tape {
   position: absolute; z-index: 3; left: -18%; width: 136%; top: 42%; height: 28px; transform: rotate(-11deg);
   pointer-events: none; display: flex; align-items: center; justify-content: space-evenly; overflow: hidden;
@@ -773,6 +773,16 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 }
 @keyframes police-red { 0%, 100% { opacity: 1; } 50% { opacity: .28; } }
 @keyframes police-blue { 0%, 100% { opacity: .28; } 50% { opacity: 1; } }
+.tod {
+  margin: 0; padding: 5px 12px; position: relative; z-index: 5;
+  font-family: "Courier New", Courier, ui-monospace, monospace;
+  font-size: 15px; letter-spacing: .03em; line-height: 1.2; white-space: nowrap;
+  color: #f4efe4; background: rgba(6, 4, 8, .72);
+  box-shadow: inset 0 0 0 1px rgba(244, 239, 228, .28);
+  pointer-events: none;
+}
+.tod span { opacity: 0; animation: tod-key .01s linear forwards; }
+@keyframes tod-key { to { opacity: 1; } }
 .tt-team.sheet-in .shroud { animation: sheet-drop .8s cubic-bezier(.2,.7,.2,1) .7s both; }
 .tt-team.shrouded .tt-team-name b,
 .tt-team.shrouded .tt-line,
@@ -786,6 +796,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 @keyframes tape-slap { 0% { opacity: 0; transform: rotate(-11deg) translate3d(-36%, -18px, 0) scaleX(.35); } 100% { opacity: 1; transform: rotate(-11deg) translate3d(0, 0, 0) scaleX(1); } }
 @keyframes sheet-drop { 0% { opacity: 0; transform: translate3d(0, -108%, 0); } 100% { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .tt-team.tape-in .caution-tape, .tt-team.sheet-in .shroud { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .tod span { animation: none; opacity: 1; } }
 .tt-team.mine { background: rgba(245,197,66,.08); box-shadow: inset 3px 0 0 var(--gold), inset 0 0 0 1px rgba(245,197,66,.25); }
 .tt-team-name { grid-area: name; display: flex; flex-direction: column; gap: 4px; }
 .tt-team-name b { font-family: var(--display); font-size: 22px; letter-spacing: .04em; overflow-wrap: anywhere; }

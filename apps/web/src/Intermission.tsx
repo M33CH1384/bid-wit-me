@@ -114,6 +114,7 @@ export function Intermission({
   useEffect(() => {
     if (!sheetOn || sirened.current === sirenKey) return;
     sirened.current = sirenKey;
+    sound.play('docSting', { delay: 0.05 });
     sound.play('siren', { delay: 0.12 });
   }, [sirenKey, sheetOn]);
 
@@ -203,6 +204,13 @@ export function Intermission({
               );
             })}
           </div>
+          {sheetOn && (
+            <p className="tod" data-testid="time-of-death" data-hand={rec.handNo}>
+              {Array.from(`Time of death: Hand ${rec.handNo}`, (ch, i) => (
+                <span key={i} style={{ animationDelay: `${(0.35 + i * 0.055).toFixed(3)}s` }}>{ch === ' ' ? '\u00a0' : ch}</span>
+              ))}
+            </p>
+          )}
           {runReview}
         </div>
 

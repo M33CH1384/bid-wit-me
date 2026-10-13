@@ -56,6 +56,11 @@ function recap(st: GameState, names: string[]) {
   }));
 }
 
+function caption(html: string): string {
+  const m = html.match(/<p class="tod"[\s\S]*?<\/p>/);
+  return (m?.[0] ?? '').replace(/<[^>]+>/g, '').replace(/\u00a0|&nbsp;|&#160;/g, ' ');
+}
+
 describe('scorecard caution tape and shroud', () => {
   const names = ['You', 'Hana', 'Mei', 'Jamal'];
 
@@ -66,6 +71,7 @@ describe('scorecard caution tape and shroud', () => {
     expect(html).toContain('data-testid="recap-tape-1"');
     expect(html).toContain('>CAUTION<');
     expect(html).not.toContain('data-testid="recap-shroud-1"');
+    expect(html).not.toContain('time-of-death');
     expect(html).not.toContain('recap-tape-0');
     expect(html).toContain('data-testid="recap-side-0" data-blast="no" data-tape="no" data-sheet="no" data-siren="no"');
     expect(html).toContain('data-testid="recap-line-1"');
@@ -76,6 +82,7 @@ describe('scorecard caution tape and shroud', () => {
     expect(html).toContain('data-testid="recap-side-1" data-blast="no" data-tape="no" data-sheet="no" data-siren="no"');
     expect(html).not.toContain('recap-tape-');
     expect(html).not.toContain('recap-shroud-');
+    expect(html).not.toContain('time-of-death');
     expect(html).not.toContain('tape-in');
     expect(html).toContain('data-testid="recap-line-1"');
   });
@@ -91,6 +98,9 @@ describe('scorecard caution tape and shroud', () => {
     expect(html).not.toContain('recap-tape-');
     expect(html).toContain('data-testid="recap-line-1"');
     expect(html).not.toContain('recap-shroud-0');
+    expect(html).toContain('data-testid="time-of-death"');
+    expect(html).toContain('data-hand="3"');
+    expect(caption(html)).toBe('Time of death: Hand 3');
   });
 
   it('a hand-1 shot-out is the sheet and the siren, and a non-loss stays tape', () => {
@@ -101,19 +111,28 @@ describe('scorecard caution tape and shroud', () => {
     expect(html).toContain('data-testid="police-lights"');
     expect(html).not.toContain('recap-tape-');
     expect(html).toContain('data-testid="recap-line-1"');
+    expect(html).toContain('data-hand="1"');
+    expect(caption(html)).toBe('Time of death: Hand 1');
     const off = recap(stamp(toHandOver('joker'), [[1]], { shotOut: false }), names);
     expect(off).toContain('data-tape="yes" data-sheet="no" data-siren="no"');
     expect(off).not.toContain('recap-shroud-');
     expect(off).not.toContain('police-lights');
+    expect(off).not.toContain('time-of-death');
     const audio = readFileSync(new URL('../src/audio.ts', import.meta.url), 'utf8');
     const play = audio.slice(audio.indexOf('play(name: Sfx'), audio.indexOf('private sample'));
     expect(play.indexOf('if (!this.settings.on')).toBeLessThan(play.indexOf("case 'siren'"));
+    expect(play.indexOf('if (!this.settings.on')).toBeLessThan(play.indexOf("case 'docSting'"));
     expect(play).toContain("case 'siren': return this.siren");
+    expect(play).toContain("case 'docSting': return this.docSting");
     expect(audio).toContain('Original synthesis, no sampled recording');
+    expect(audio).toContain('no third-party license');
+    expect(audio).toContain('Not based on any show theme');
     const recapSrc = readFileSync(new URL('../src/Intermission.tsx', import.meta.url), 'utf8');
     expect(recapSrc).toContain("sound.play('siren'");
+    expect(recapSrc).toContain("sound.play('docSting'");
     expect(recapSrc).toContain('shotCovers(r, st.history, st.result)');
     expect(recapSrc).toContain('covers.some((c) => c.sheet)');
+    expect(recapSrc).toContain('Time of death: Hand ${rec.handNo}');
   });
 
   it('tapes that Cutthroat player’s own panel', () => {
@@ -134,7 +153,12 @@ describe('scorecard caution tape and shroud', () => {
     const entrance = blocks.find((b) => b.includes('.caution-tape') && b.includes('.shroud'));
     expect(entrance).toContain('animation: none');
     expect(entrance).not.toContain('display: none');
-    expect(css).not.toMatch(/@media[^{]*max-width[^{]*\{[^}]*(caution-tape|\.shroud|police-lights|\.rip)/);
+    expect(css).not.toMatch(/@media[^{]*max-width[^{]*\{[^}]*(caution-tape|\.shroud|police-lights|\.rip|\.tod)/);
+    expect(css).toContain('animation: tod-key');
+    const tod = blocks.find((b) => b.includes('.tod'));
+    expect(tod).toContain('animation: none');
+    expect(tod).toContain('opacity: 1');
+    expect(tod).not.toContain('display: none');
     expect(css).toContain('animation: police-red');
     expect(css).toContain('animation: police-blue');
     const dim = blocks.find((b) => b.includes('police-lights') || b.includes('police-red'));
