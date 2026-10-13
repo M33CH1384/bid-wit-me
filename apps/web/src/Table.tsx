@@ -1,3 +1,4 @@
+import { cardControlLabel } from './cardA11y';
 import { retainHandOrder } from './handOrder';
 import { winHeadline } from './headline';
 import { type VenueId, VENUE_DEFS, resolveVenue } from './venues';
@@ -1176,10 +1177,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             data-testid={`card-${c}`}
             data-legal={legal.includes(c) || humanExchanging ? 'true' : 'false'}
             disabled={!humanExchanging && !legal.includes(c)}
+            aria-label={cardControlLabel(c, humanExchanging || legal.includes(c))}
             aria-pressed={selected === c || exchangePick.includes(c)}
             onClick={() => onCard(c)}
           >
-            {cardLabel(c)}
+            <span aria-hidden="true">{cardLabel(c)}</span>
           </button>
         ))}
       </div>

@@ -14,6 +14,20 @@ describe('quick-load hand', () => {
     expect(feltCardTransform(2, 5, true)).toBe('translateY(-10px) rotate(0deg) translateY(0px)');
   });
 
+  it('stays out of the accessibility tree so each card is only the labeled hand control', () => {
+    const html = renderToStaticMarkup(createElement(FeltHand, {
+      cards: ['AS', 'KH'],
+      trick: [],
+      legal: ['AS'],
+      selected: null,
+      onCard: () => {},
+      promoted: () => false,
+    }));
+    expect(html).toContain('aria-hidden="true"');
+    expect(html).toContain('tabindex="-1"');
+    expect(html).not.toContain('aria-label="Your hand"');
+  });
+
   it('draws only the cards dealt so far, still sitting in the full fan', () => {
     const html = renderToStaticMarkup(createElement(FeltHand, {
       cards: ['AS', 'KH', '2C'],
