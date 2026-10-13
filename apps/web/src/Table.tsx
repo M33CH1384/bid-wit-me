@@ -37,6 +37,7 @@ import { type ChatMsg, LINES, SEAT_COLORS, TALK_LINES, type Toast, TickNumber, U
 import { type Settings, modeTitle } from './settings';
 import type { SeatPos } from './three/layout';
 import { HUMAN, useGame } from './useGame';
+import { MinBidLine, bidChoices, minBidNote } from './minBid';
 import { type SavedGame, clearGame, saveGame } from './save';
 
 import { useViewport } from './viewport';
@@ -684,6 +685,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // bid coach: inside the bid panel while tips are on (open the first couple of times), or on request ("?")
   const bidTurn = myTurn && !dealing && st.phase === 'bidding' && !!view.bidOptions && !!view.hand;
   const coachBid = bidTurn && (coachOn || help);
+  const raisedMin = view.bidOptions ? minBidNote(view.bidOptions, r, partnerSeat >= 0 ? st.bids[partnerSeat] ?? null : null) : null;
   const wheelSides = new Set(st.phase === 'bidding' || st.phase === 'playing' ? wheelsFor(r, st.bids).map((w) => w.side) : []);
   // The bid panel (and the floating "count your books" coach) never grows past the top bar: its max height is the room
   // between its (bottom-anchored) bottom edge and the scorebug / trump strip; the coach body scrolls inside.
@@ -1126,11 +1128,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
               {coachBid && <BidCoach key={bcKey} view={view} startOpen={help || bcOpen} />}
               <div className="panel-title">YOUR BID{r.partnerships && st.bids[2] !== null ? <small> · partner bid {bidLabel(st.bids[2]!)}</small> : r.partnerships ? <small> · partner bids right after you</small> : null}</div>
               <BidOrder st={st} names={names} me={HUMAN} />
-              {(view.bidOptions.blockReason || view.bidOptions.nilReason) && (
+              {raisedMin ? <MinBidLine note={raisedMin} /> : (view.bidOptions.blockReason || view.bidOptions.nilReason) && (
                 <p className="bid-block" data-testid="bid-block">{[view.bidOptions.blockReason, view.bidOptions.nilReason].filter(Boolean).join(' · ')}</p>
               )}
               <div className="bid-grid">
-                {Array.from({ length: view.bidOptions.max - view.bidOptions.min + 1 }, (_, i) => view.bidOptions!.min + i).map((b) => (
+                {bidChoices(view.bidOptions.min, view.bidOptions.max).map((b) => (
                   <button type="button" key={b} onClick={() => apply({ type: 'bid', seat: HUMAN, bid: b })}>{b}</button>
                 ))}
                 {view.bidOptions.nil && <button type="button" className="nil" onClick={() => apply({ type: 'bid', seat: HUMAN, bid: 'nil' })}>NIL</button>}
