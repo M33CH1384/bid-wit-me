@@ -474,6 +474,32 @@ export function runClearedHands(st: Pick<GameState, 'rules' | 'tricks'>): RunCar
   return any ? hands : null;
 }
 
+/**
+ * The tricks a resolved 'Run it!' added, in play order, for every client to animate.
+ * Cards already face up when the claim was made are marked `played`. Null when this step was not a run.
+ * The cards are the same public plays as `runClearedHands` — nothing that was still hidden.
+ */
+export interface RunPlayout {
+  handNo: number;
+  claimer: Seat;
+  books: number;
+  tricks: { winner: Seat; plays: { seat: Seat; card: Card; played?: true }[] }[];
+}
+
+export function runPlayout(before: GameState, after: GameState, claimer: Seat): RunPlayout | null {
+  if (before.handNo !== after.handNo) return null;
+  const tricks = after.tricks.slice(before.tricks.length).flatMap((t) => {
+    const firstRun = t.plays.findIndex((p) => p.run);
+    if (firstRun < 0 || t.winner === null) return [];
+    return [{
+      winner: t.winner,
+      plays: t.plays.map((p, k) => ({ seat: p.seat, card: p.card, ...(k < firstRun ? { played: true as const } : {}) })),
+    }];
+  });
+  if (!tricks.length) return null;
+  return { handNo: after.handNo, claimer, books: tricks.length, tricks };
+}
+
 /** Both Jokers are in this (partial) trick: the nuke. */
 export function jokersMet(plays: readonly Play[]): boolean {
   return plays.some((p) => p.card === 'BJ') && plays.some((p) => p.card === 'LJ');

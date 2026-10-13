@@ -11,6 +11,7 @@ import { MusicLinkCard } from './HostMusic';
 import { loadHideSpectatorChat, localNames, saveHideSpectatorChat, useCountdown, useOnlineChat, useOnlineSource, useVideo } from './useOnline';
 import { dealerFromServer } from '../dealerName';
 import { SpectatorOverlay } from './Spectators';
+import { orientRun } from '../runPlayback';
 import type { VideoMesh } from './video';
 
 /** The 3D table, driven by the server: rotated per-seat view, real chat, video bubbles, turn clock. */
@@ -149,6 +150,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
           controls: spectator ? undefined : <MediaBar mesh={mesh} vs={vs} seated limited={limitedNow} />,
           spectator,
           dealerName,
+          run: cs.run ? orientRun(cs.run, spectator ? null : cs.seat, rot.n) : null,
           overlay: <SpectatorOverlay room={room} cs={cs} spectator={spectator} names={names} hideChat={hideSpec}
             onHideChat={(on) => { setHideSpec(on); saveHideSpectatorChat(on); }}
             onTake={(seat) => conn.send({ t: 'sit', seat })} onLeave={onMainMenu} />,

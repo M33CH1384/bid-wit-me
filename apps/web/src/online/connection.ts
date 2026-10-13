@@ -4,7 +4,7 @@
  * reconnect land back in the same seat.
  */
 import { TICKET_RETRY_MS, accountTicketState, clearAccountTicket } from '../social/store';
-import type { ChatLine, ClientMsg, GameAction, RoomInfo, ServerMsg } from '@spades/protocol';
+import type { ChatLine, ClientMsg, GameAction, RoomInfo, RunPlayback, ServerMsg } from '@spades/protocol';
 import type { PlayerView } from '@spades/rules';
 import { wsUrl } from './config';
 import { saveToken, tokenFor } from './identity';
@@ -17,6 +17,8 @@ export interface ConnState {
   room: RoomInfo | null;
   seat: number | null;
   view: PlayerView | null;
+  /** Public Run it! play-out (real seats), or null once the next hand starts. */
+  run: RunPlayback | null;
   chat: ChatLine[];
   error: { code: string; message: string; at: number } | null;
   /** a move is in flight (sent, not yet acknowledged): the hand is locked so it can't be sent twice */
@@ -35,7 +37,7 @@ const newId = () => (crypto.randomUUID?.() ?? `${Date.now().toString(36)}${Math.
 type RtcHandler = (from: string, data: unknown) => void;
 
 export class TableConnection {
-  state: ConnState = { status: 'connecting', you: null, room: null, seat: null, view: null, chat: [], error: null, pending: false, statsOff: false };
+  state: ConnState = { status: 'connecting', you: null, room: null, seat: null, view: null, run: null, chat: [], error: null, pending: false, statsOff: false };
   private inflight: PendingAct | null = null;
   private ackTimer: number | null = null;
   private ws: WebSocket | null = null;
@@ -164,7 +166,7 @@ export class TableConnection {
           // the game moved past the version our in-flight move was based on: it was applied (or superseded)
           const settled = this.inflight !== null && m.room.seq > this.inflight.seq;
           if (settled) this.settle();
-          this.set({ status: 'open', room: m.room, seat: m.seat, view, spectator: !!m.spectator, ...(settled ? { pending: false } : {}) });
+          this.set({ status: 'open', room: m.room, seat: m.seat, view, run: m.run ?? null, spectator: !!m.spectator, ...(settled ? { pending: false } : {}) });
           break;
         }
         case 'ack': {
