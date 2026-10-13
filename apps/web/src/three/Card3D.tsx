@@ -1,6 +1,6 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { memo, useLayoutEffect, useMemo, useRef } from 'react';
-import { Color, type Group, type Material, type Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Quaternion, type Texture, Vector3 } from 'three';
+import { Color, type Group, type Material, type Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NoToneMapping, Quaternion, type Texture, Vector3, type WebGLRenderer } from 'three';
 import { cardFaceFragment } from './cardSat';
 import { cardGeometry, cardOutlineGeometry } from './geometry';
 import { ILLEGAL_COLOR, RAISE_S, applyFaceDepthBias, cardMeshPaint, liftEase, screenRaise } from './handLift';
@@ -63,9 +63,11 @@ const DIM_SAT = 0.3;
 function withSaturation<M extends MeshStandardMaterial>(m: M): M & { userData: { sat: { value: number } } } {
   const sat = { value: 1 };
   m.userData.sat = sat;
-  m.onBeforeCompile = (sh) => {
+  m.onBeforeCompile = (sh, renderer) => {
     sh.uniforms.uSat = sat;
-    sh.fragmentShader = cardFaceFragment(sh.fragmentShader);
+    // Tone-mapped programs declare uSat above the prefix functions. Otherwise the user shader has to.
+    const toneMapped = (renderer as WebGLRenderer).toneMapping !== NoToneMapping;
+    sh.fragmentShader = cardFaceFragment(sh.fragmentShader, !toneMapped);
   };
   m.customProgramCacheKey = () => 'card-sat';
   return m as M & { userData: { sat: { value: number } } };
@@ -114,18 +116,22 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   }, [back, quality, lit]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Your turn: cards you can't play sit at 55% brightness (still readable); playable cards stay at full colour
-  // and get a gold ring on their own rounded edge. Colour eases in ~150 ms. The ring is also a tip mark.
-  // Opaque, with depth write off: a transparent ring is sorted after every face, so a neighbour's
-  // stroke paints across this card no matter how high its render order is. The face draws a half
-  // step later and covers the part of the stroke that tucks under the pips.
-  const glowMat = useMemo(() => new MeshBasicMaterial({ color: '#f5c542', depthWrite: false, toneMapped: false }), []);
+  // and get a gold ring on their own rounded edge. The face eases in ~150 ms. The ring is also a tip mark.
+  // The ring stays opaque and is drawn before this card's face (render order just under the body).
+  // A transparent ring is painted after every opaque face, so a neighbour's stroke crosses this
+  // card no matter how high its render order is, and iPhone's 16-bit buffer then fails the depth
+  // test against the face's polygon offset. Opaque, with no depth write, the face covers the
+  // inside of the stroke and the outer edge stays gold. A selected card's whole band, ring
+  // included, is ordered and biased in front of every neighbour.
+  const glowMat = useMemo(() => new MeshBasicMaterial({ color: '#f5c542', transparent: false, opacity: 1, depthWrite: false, toneMapped: false }), []);
   const edge = useMemo(() => edgeMat.clone(), []);
   // The root group keeps `order` for taps. Child groups reset Three.js groupOrder, so each mesh
   // carries its own: body at `order`, face and back half a step later, tip glow just behind
   // its own face and still inside this card's band. A selected card's band is above every neighbour.
   // Depth testing stays on. The face is FACE_CAP_GAP ahead of the cap and biased in window
-  // depth, so a 16-bit buffer cannot paint the cream cap over the pips. The gold ring is
-  // OUTLINE_AHEAD in front of that face, or the same bias hides it on iPhone.
+  // depth, so a 16-bit buffer cannot paint the cream cap over the pips. The gold ring is opaque
+  // and one step earlier than the body, and it still sits OUTLINE_AHEAD of the face so a later
+  // depth test cannot bury the stroke.
   useLayoutEffect(() => {
     const root = ref.current;
     if (!root) return;

@@ -10,7 +10,7 @@ import { GAP_S, LIFT_S, canTapCard, fanGapPx, fanMotion, handCardChrome, handDep
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline, seatDealDelay } from './dealTimeline';
 import { handNeedsDeal, handSlotKey } from './dealFlight';
-import { shownFaceIds } from './cardFace';
+import { showResumeHand3D, trickFacesShown } from './cardFace';
 import { type Sfx, sound } from '../audio';
 import { fx } from '../fx';
 import { backTexture, faceTexture, logoTexture, refreshFacesGradually } from './cardTextures';
@@ -626,14 +626,18 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
     faceShown.current = new Set();
     faceHand.current = handNo;
   }
-  const faceOrder = [...(myHand ?? []), ...shownTrick.map((p) => p.card)];
-  faceShown.current = shownFaceIds(faceShown.current, faceOrder.slice(0, nFaces), new Set(faceOrder));
+  const trickIds = shownTrick.map((p) => p.card);
+  for (const id of trickIds) face(id);
+  const faceOrder = [...(myHand ?? []), ...trickIds];
+  faceShown.current = trickFacesShown(faceShown.current, faceOrder.slice(0, nFaces), new Set(faceOrder), trickIds);
   if (!showCards) return null;
   const shown = resume ? [...items.filter((it) => it.hand), ...items.filter((it) => !it.hand).slice(0, extra)] : items;
+  const hand3D = showResumeHand3D(resume, myHand?.length ?? 0, nFaces);
+  const drawn = hand3D ? shown : shown.filter((it) => !it.hand);
   return (
     <group>
       <LayoutProbe positions={positions} n={n} short={short} items={items} trickKeys={shownTrick.map((pl) => `${handNo}-${pl.card}`)} handKeys={mine.map((c, i) => handReactKey(handNo, c, i))} />
-      {shown.map((it) => (
+      {drawn.map((it) => (
         <Card3D
           key={it.key}
           name={it.key}

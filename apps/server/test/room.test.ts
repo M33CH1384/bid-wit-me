@@ -918,8 +918,9 @@ describe('AFK + kicking', () => {
     expect(env.last('a', 'state')!.room.afkLimit).toBe(3);
     for (let k = 0; k < 3; k++) { waitMyTurn(env); env.advance(5200); }
     const d = env.room.data;
-    expect(d.seats[0]).toMatchObject({ kind: 'bot' });
+    expect(d.seats[0]).toMatchObject({ kind: 'bot', was: 'Slow' });
     const botName = (d.seats[0] as { name: string }).name;
+    expect(env.last('a', 'state')!.room.seats[0]).toMatchObject({ kind: 'bot', name: botName, was: 'Slow' });
     expectPoolBot(d.seats, 0);
     expect(d.members[a.pid]!.seat).toBeNull();
     expect(d.chat.some((l) => l.text === `Slow was AFK and replaced by a bot (${botName})`)).toBe(true);
