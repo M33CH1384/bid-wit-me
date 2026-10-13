@@ -1,10 +1,11 @@
 /**
- * iPhone-sized WebKit check for the sound-restore chip.
+ * iPhone-sized WebKit check: a suspended context marks the header speaker, and tapping it
+ * resumes or rebuilds (and primes music) with no extra button.
  * Usage: node scripts/ios-audio-check.mjs [base=http://127.0.0.1:5173]
  *
- * Headless WPE WebKit aborts the process inside HTMLAudioElement.play() of a real
- * buffer (mp3 or wav). The chip does not depend on that, so music stays off here.
- * A real iPhone still primes the music elements inside the gesture.
+ * Headless WPE WebKit aborts inside HTMLAudioElement playback of a real buffer, so music
+ * stays off. The speaker tap still rebuilds an interrupted context. Priming lives in
+ * wake('gesture') → syncMusic(), covered by the engine source test.
  */
 import { webkit } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
@@ -23,7 +24,8 @@ await page.addInitScript(() => {
   localStorage.setItem('bwm.tips', JSON.stringify({ on: false, asked: true }));
 });
 await page.goto(base, { waitUntil: 'domcontentloaded' });
-await page.locator('[data-testid="sound-button"]').waitFor();
+const speaker = page.locator('[data-testid="sound-button"]');
+await speaker.waitFor();
 
 const unlocked = await page.evaluate(() => {
   const s = window.__bwmSound;
@@ -47,48 +49,68 @@ await page.evaluate(() => {
   s.testState = 'suspended';
   document.dispatchEvent(new Event('visibilitychange'));
 });
-const chip = page.locator('[data-testid="restore-sound"]');
-await chip.waitFor({ timeout: 5000 });
-const box = await chip.boundingBox();
-const layout = await page.evaluate(() => ({
-  scrollWidth: document.documentElement.scrollWidth,
-  innerWidth: window.innerWidth,
-  text: document.querySelector('[data-testid="restore-sound"]')?.textContent ?? '',
-}));
-await page.screenshot({ path: '/tmp/ios-audio/restore-390.png' });
-
-await page.evaluate(() => { window.__bwmSound.testState = null; });
-await chip.click();
-await page.waitForTimeout(300);
-const tapped = await page.evaluate(() => {
-  const s = window.__bwmSound;
-  return { state: s.audioContext()?.state ?? 'none', needs: s.getSnapshot().needsRestore };
+await page.waitForFunction(() => document.querySelector('[data-testid="sound-button"]')?.getAttribute('data-needs-tap') === 'true');
+const box = await speaker.boundingBox();
+const layout = await page.evaluate(() => {
+  const btn = document.querySelector('[data-testid="sound-button"]');
+  return {
+    scrollWidth: document.documentElement.scrollWidth,
+    innerWidth: window.innerWidth,
+    label: btn?.getAttribute('aria-label') ?? '',
+    needsTap: btn?.getAttribute('data-needs-tap') ?? '',
+    className: btn?.className ?? '',
+    chip: !!document.querySelector('[data-testid="restore-sound"]'),
+    chipText: document.body.innerText.includes('Tap to restore sound'),
+    buttons: document.querySelectorAll('button').length,
+  };
 });
-// This WebKit build cannot start an audio device, so resume() stays suspended and the chip
-// correctly stays up. A running context (what a real tap achieves on iPhone) hides it.
+await page.screenshot({ path: '/tmp/ios-audio/speaker-suspended-390.png' });
+
+// Rebuild on the speaker tap while no media element is bound. Closing a context that owns
+// a media-element source aborts this headless WebKit; a phone does not.
+await page.evaluate(() => {
+  const s = window.__bwmSound;
+  window.__beforeCtx = s.audioContext();
+  s.testState = 'interrupted';
+});
+await speaker.click();
+const afterTap = await page.evaluate(() => {
+  const s = window.__bwmSound;
+  const btn = document.querySelector('[data-testid="sound-button"]');
+  return {
+    rebuilt: window.__beforeCtx !== s.audioContext(),
+    chip: !!document.querySelector('[data-testid="restore-sound"]'),
+    needs: s.getSnapshot().needsRestore,
+    label: btn?.getAttribute('aria-label') ?? '',
+  };
+});
 await page.evaluate(() => {
   window.__bwmSound.testState = 'running';
   window.dispatchEvent(new Event('pageshow'));
 });
-await chip.waitFor({ state: 'hidden', timeout: 3000 });
-const afterTap = await page.evaluate(() => {
-  const s = window.__bwmSound;
-  return { chip: !!document.querySelector('[data-testid="restore-sound"]'), needs: s.getSnapshot().needsRestore, device: s.audioContext()?.state ?? 'none' };
+await page.waitForFunction(() => document.querySelector('[data-testid="sound-button"]')?.getAttribute('data-needs-tap') === 'false');
+const cleared = await page.evaluate(() => {
+  const btn = document.querySelector('[data-testid="sound-button"]');
+  return { needsTap: btn?.getAttribute('data-needs-tap') ?? '', className: btn?.className ?? '', chip: !!document.querySelector('[data-testid="restore-sound"]') };
 });
-afterTap.tapped = tapped;
-await page.screenshot({ path: '/tmp/ios-audio/after-tap-390.png' });
 
-const report = { unlocked, recreated, box, layout, afterTap, errors };
+const report = { unlocked, recreated, box, layout, afterTap, cleared, errors };
 console.log(JSON.stringify(report, null, 2));
 const fit = box && box.x >= 0 && box.x + box.width <= 390 + 1 && box.y >= 0 && box.y + box.height <= 844;
 const ok = unlocked.hasCtx
   && recreated.same === false
-  && layout.text.includes('Tap to restore sound')
+  && layout.needsTap === 'true'
+  && layout.className.includes('needs-tap')
+  && layout.label.includes('tap to restore')
+  && layout.chip === false
+  && layout.chipText === false
   && layout.scrollWidth <= 390 + 1
   && fit
+  && afterTap.rebuilt === true
   && afterTap.chip === false
-  && afterTap.needs === false
-  && (afterTap.tapped.state === 'running' || afterTap.tapped.needs === true)
+  && cleared.needsTap === 'false'
+  && !cleared.className.includes('needs-tap')
+  && cleared.chip === false
   && errors.length === 0;
 await browser.close();
 if (!ok) process.exit(1);

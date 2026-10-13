@@ -1,10 +1,7 @@
 import { readFileSync } from 'node:fs';
-import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { AUDIO_ELEMENT_CAP, AudioElementPool } from '../src/audioPool';
-import { audioContextAction, settleAudio, soundRestorePending } from '../src/audioSession';
-import { RestoreSoundChip } from '../src/RestoreSound';
+import { audioContextAction, settleAudio, soundRestorePending, speakerAriaLabel } from '../src/audioSession';
 
 function fakeAudio() {
   return {
@@ -33,7 +30,7 @@ describe('iOS audio session', () => {
     await expect(settleAudio(Promise.resolve('running'))).resolves.toBeUndefined();
   });
 
-  it('asks for a tap only after unlock, while sound is still wanted and the context is not running', () => {
+  it('marks the header speaker only after unlock, while sound is still wanted and the context is not running', () => {
     expect(soundRestorePending('suspended', false, true)).toBe(false);
     expect(soundRestorePending('suspended', true, false)).toBe(false);
     expect(soundRestorePending('running', true, true)).toBe(false);
@@ -71,12 +68,17 @@ describe('iOS audio session', () => {
     expect(pool.acquire()).toBeNull();
   });
 
-  it('renders the restore chip only while sound is stuck', () => {
-    expect(renderToStaticMarkup(createElement(RestoreSoundChip, { show: false, onRestore() {} }))).toBe('');
-    const html = renderToStaticMarkup(createElement(RestoreSoundChip, { show: true, onRestore() {} }));
-    expect(html).toContain('Tap to restore sound');
-    expect(html).toContain('data-testid="restore-sound"');
-    expect(html).toContain('sound-restore');
+  it('names the existing speaker as the restore control and adds no second button', () => {
+    expect(speakerAriaLabel(false, false)).toBe('Sound settings — hold to mute all');
+    expect(speakerAriaLabel(false, true)).toBe('Sound (muted) — hold to unmute');
+    expect(speakerAriaLabel(true, false)).toBe('Sound paused — tap to restore');
+    const dock = readFileSync(new URL('../src/SoundControls.tsx', import.meta.url), 'utf8');
+    const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    expect(dock).not.toContain('RestoreSound');
+    expect(dock).not.toContain('Tap to restore sound');
+    expect(dock).not.toContain('restore-sound');
+    expect(css).not.toContain('sound-restore');
+    expect(css).toContain('.dock-btn.needs-tap');
   });
 
   it('wires resume, recreate, and the element pool into the engine', () => {
@@ -98,7 +100,9 @@ describe('iOS audio session', () => {
     expect(voices).not.toContain("createElement('audio')");
     expect(host).toContain('audioElementPool');
     expect(host).not.toContain('new Audio(');
-    expect(dock).toContain('RestoreSoundChip');
-    expect(dock).toContain('sound.wake');
+    expect(dock).toContain('needs-tap');
+    expect(dock).toContain('speakerAriaLabel');
+    expect(dock).toContain("sound.wake('gesture')");
+    expect(dock).not.toContain('RestoreSoundChip');
   });
 });
