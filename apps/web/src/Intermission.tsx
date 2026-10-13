@@ -90,12 +90,6 @@ export function Intermission({
   const sheetOn = covers.some((c) => c.sheet);
   const sirenKey = `${st.seed}:${rec.handNo}`;
   const sirened = useRef('');
-  useEffect(() => {
-    if (!sheetOn || sirened.current === sirenKey) return;
-    sirened.current = sirenKey;
-    sound.play('docSting', { delay: 0.05 });
-    sound.play('siren', { delay: 0.12 });
-  }, [sirenKey, sheetOn]);
   // Hole count is the team's shot count. A new hole buzzes [30] once.
   // The sheet is the engine's elimination. It waits ~400ms after a new punch.
   const streaks = holeMarks(r, st.history);
@@ -129,9 +123,19 @@ export function Intermission({
     }
     return () => { for (const t of timers) window.clearTimeout(t); };
   }, [handKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    // Sheet and siren both come from shotCovers (synced history + result), so online clients agree.
+    // Mute and the volume slider are the sfx bus inside sound.play. The yelp starts as the cloth drops.
+    if (!sheetOn || sirened.current === sirenKey) return;
+    sirened.current = sirenKey;
+    const delay = anim.current?.waitSheet.size ? 0.4 : 0.05;
+    sound.play('docSting', { delay });
+    sound.play('siren', { delay: delay + 0.04 });
+  }, [sirenKey, sheetOn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="tt-backdrop" data-testid="table-talk" role="dialog" aria-label="Hand recap">
+      {sheetOn && <div className={`police-rim${anim.current?.waitSheet.size ? ' wait' : ''}`} data-testid="police-rim" aria-hidden="true" />}
       <div className="tt glass slant">
         <header className="tt-head">
           <span className="tt-title">HAND {rec.handNo} RECAP</span>
@@ -168,6 +172,7 @@ export function Intermission({
               const cover = covers[s.side] ?? { tape: false, sheet: false, siren: false };
               const justShot = isShot(r, rec.bids, s);
               const notice = cover.tape && !cover.sheet;
+              const showTape = cover.tape || !!cover.sheet;
               const info = streaks[s.side] ?? { count: 0, visible: 0, fresh: -1 };
               const marks = rememberHoles(st.seed, s.side, info.count, info.fresh);
               const sheetAnim = !!cover.sheet && anim.current!.waitSheet.has(s.side);
@@ -187,16 +192,19 @@ export function Intermission({
                         <source srcSet="/shot/sheet.webp" type="image/webp" />
                         <img src="/shot/sheet.png" alt="" />
                       </picture>
-                      <div className="police-lights" data-testid="police-lights" aria-hidden="true">
-                        <i className="wash red" /><i className="wash blue" />
-                      </div>
                       <picture className="rip">
                         <source srcSet="/shot/rip.webp" type="image/webp" />
                         <img src="/shot/rip.png" alt="RIP" data-testid={`recap-rip-${s.side}`} />
                       </picture>
                     </div>
                   )}
-                  {cover.tape && (
+                  {cover.sheet && (
+                    <div className="police-lights" data-testid="police-lights" aria-hidden="true">
+                      <i className="wash red" /><i className="wash blue" />
+                      <i className="wash ink red" /><i className="wash ink blue" />
+                    </div>
+                  )}
+                  {showTape && (
                     <div className="caution-x" data-testid={`recap-tape-${s.side}`} aria-hidden="true">
                       <img className="tape a" src="/shot/tape.png" alt="" />
                       <img className="tape b" src="/shot/tape.png" alt="" />

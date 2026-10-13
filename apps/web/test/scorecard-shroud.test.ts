@@ -144,7 +144,10 @@ describe('scorecard caution tape and shroud', () => {
     expect(html).toContain('srcSet="/shot/sheet.webp"');
     expect(html).not.toContain('>RIP<');
     expect(html).toContain('data-testid="police-lights"');
-    expect(html).not.toContain('recap-tape-');
+    expect(html).toContain('data-testid="police-rim"');
+    expect(html).toContain('data-testid="recap-tape-1"');
+    expect(html).toContain('class="tape a"');
+    expect(html).toContain('class="tape b"');
     expect(html).toContain('data-testid="recap-line-1"');
     expect(html).not.toContain('recap-shroud-0');
     expect(html).toContain('data-testid="time-of-death"');
@@ -287,6 +290,7 @@ describe('scorecard caution tape and shroud', () => {
     const recapSrc = readFileSync(new URL('../src/Intermission.tsx', import.meta.url), 'utf8');
     expect(recapSrc).toContain("sound.play('siren'");
     expect(recapSrc).toContain("sound.play('docSting'");
+    expect(recapSrc).toContain('if (!sheetOn || sirened.current === sirenKey) return');
     expect(recapSrc).toContain('shotCovers(r, st.history, st.result)');
     expect(recapSrc).not.toContain('shotCounts');
     expect(recapSrc).toContain('covers.some((c) => c.sheet)');
@@ -317,6 +321,27 @@ describe('scorecard caution tape and shroud', () => {
     expect(html).not.toContain('recap-tape-0');
     expect(html).not.toContain('recap-tape-1');
     expect(html).toContain('data-testid="recap-line-2"');
+  });
+
+  it('elimination triggers the siren cue, and a shot that is not a loss does not', () => {
+    const lost = recap(stamp(toHandOver('joker'), [[], [1], [1]], { lost: [1] }), names);
+    expect(lost).toContain('data-sheet="yes" data-siren="yes"');
+    expect(lost).toContain('data-testid="police-rim"');
+    const notice = recap(stamp(toHandOver('joker'), [[], [1]], { shotOut: false }), names);
+    expect(notice).toContain('data-sheet="no" data-siren="no"');
+    expect(notice).not.toContain('data-testid="police-rim"');
+    const src = readFileSync(new URL('../src/Intermission.tsx', import.meta.url), 'utf8');
+    const cue = src.slice(src.indexOf('const sheetOn'), src.indexOf('data-testid="table-talk"'));
+    expect(cue).toContain('if (!sheetOn || sirened.current === sirenKey) return');
+    expect(cue).toContain("sound.play('siren'");
+    expect(cue).toContain('waitSheet.size ? 0.4 : 0.05');
+    const audio = readFileSync(new URL('../src/audio.ts', import.meta.url), 'utf8');
+    const play = audio.slice(audio.indexOf('play(name: Sfx'), audio.indexOf('private sample'));
+    expect(play.startsWith('play(name: Sfx')).toBe(true);
+    expect(play.indexOf('if (!this.settings.on || !this.unlocked) return')).toBeLessThan(play.indexOf("case 'siren'"));
+    expect(audio).toContain('const v = this.settings.on ? this.settings.volume ** 1.6 : 0');
+    expect(audio).toContain('o.connect(filter).connect(gain).connect(this.sfxBus!)');
+    expect(audio).toContain('Goes out the sfx bus, so mute and the volume slider apply');
   });
 
   it('keeps the tape and the sheet at phone widths, and skips only their entrance when motion is reduced', () => {

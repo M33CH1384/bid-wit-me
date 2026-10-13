@@ -710,7 +710,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-team { position: relative; padding: 18px 16px 16px; background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px rgba(185,128,255,.2); clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); }
 .tt-face { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name total" "line total" "players total" "bar bar"; align-items: center; gap: 8px 16px; position: relative; z-index: 5; }
 /* On-notice shot card: knocked 4px and -1.5deg, red vignette and glow, one raster hole per shot, then a shallow tape X. Full fidelity at every width, including 360–390. */
-.tt-team > :not(.shot-holes):not(.caution-x):not(.shroud) { position: relative; z-index: 5; }
+.tt-team > :not(.shot-holes):not(.caution-x):not(.shroud):not(.police-lights) { position: relative; z-index: 5; }
 .tt-team.taped { clip-path: none; overflow: visible; }
 .tt-team.notice, .tt-team.mine.notice {
   clip-path: none; overflow: visible; border: 1px solid #FF4D4D; margin-right: 6px;
@@ -755,38 +755,65 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .caution-x .tape.b { --from: -20deg; --to: -8deg; transform: rotate(-8deg); }
 .tt-team.tape-in .caution-x .tape { animation: tape-slap 260ms cubic-bezier(.2, 1.3, .3, 1) 300ms both; }
 @keyframes tape-slap { from { opacity: 0; transform: rotate(var(--from)) scale(1.15); } to { opacity: 0.95; transform: rotate(var(--to)) scale(1); } }
-/* Tape after a non-losing shot, off once they make their books. A hand-1 loss shows the tape and the sheet.
-   Later eliminations are the sheet alone. The draped cloth, the RIP, the police lights, and the
+/* Tape after a non-losing shot, off once they make their books. Every elimination also
+   wears the tape, above the cloth. The draped cloth, the RIP, the police lights, and the
    time-of-death caption stay at full fidelity at every width, including 360–390. */
 .tt-team.shrouded { clip-path: none; overflow: visible; }
-.tt-team.shrouded .caution-x { z-index: 7; }
+.tt-team.shrouded .caution-x { z-index: 8; }
+/* On the sheet the two strips stay the same ±8° X, split to the top and bottom so the RIP letters stay clear. */
+.tt-team.shrouded .caution-x .tape.a { top: 14px; }
+.tt-team.shrouded .caution-x .tape.b { top: auto; bottom: 16px; }
 .shroud {
   position: absolute; z-index: 6; left: -10px; right: -10px; top: 0; bottom: -22px;
   pointer-events: none;
 }
 .shroud .cloth, .shroud .cloth img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; pointer-events: none; }
-.shroud .police-lights { position: absolute; inset: 0; pointer-events: none; }
-.shroud .wash {
+/* Lights are siblings of the dropping cloth so WebKit starts them after the drop, not inside that animation. */
+.police-lights {
+  position: absolute; z-index: 7; left: -10px; right: -10px; top: 0; bottom: -22px;
+  pointer-events: none; overflow: hidden;
+}
+.police-lights .wash {
   position: absolute; inset: 0; pointer-events: none; mix-blend-mode: soft-light; opacity: 0;
   -webkit-mask-image: url(/shot/sheet-map.png); mask-image: url(/shot/sheet-map.png);
   -webkit-mask-size: 100% 100%; mask-size: 100% 100%;
   -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
 }
-.shroud .wash.red {
-  background: linear-gradient(90deg, #FF2A2A 0%, rgba(255, 42, 42, .55) 26%, transparent 52%);
+.police-lights .wash.red {
+  background: linear-gradient(100deg, #FF2A2A 0%, rgba(255, 42, 42, .95) 46%, transparent 78%);
   animation: police-red 1.2s ease-in-out infinite;
 }
-.shroud .wash.blue {
-  background: linear-gradient(270deg, #2A5BFF 0%, rgba(42, 91, 255, .5) 26%, transparent 52%);
+.police-lights .wash.blue {
+  background: linear-gradient(260deg, #2A5BFF 0%, rgba(42, 91, 255, .95) 46%, transparent 78%);
   animation: police-blue 1.2s ease-in-out infinite;
 }
-.tt-team.sheet-in .shroud .wash { animation-delay: 450ms; }
+.police-lights .wash.ink { mix-blend-mode: multiply; }
+.police-lights .wash.ink.red { background: linear-gradient(100deg, rgba(255, 42, 42, .8) 0%, rgba(255, 42, 42, .35) 42%, transparent 74%); }
+.police-lights .wash.ink.blue { background: linear-gradient(260deg, rgba(42, 91, 255, .8) 0%, rgba(42, 91, 255, .35) 42%, transparent 74%); }
+.tt-team.sheet-in .police-lights .wash,
+.tt-team.sheet-in .police-rim,
+.tt-team.shrouded { animation-delay: 450ms; }
 /* When this shot eliminates, hold the cloth ~400ms so a new hole can punch, then drop. Lights follow the drop. */
 .tt-team.sheet-in.sheet-wait .shroud,
 .tt-team.sheet-in.sheet-wait .shroud .cloth { animation-delay: 400ms; }
-.tt-team.sheet-in.sheet-wait .shroud .wash { animation-delay: 850ms; }
-@keyframes police-red { 0%, 100% { opacity: .82; } 50% { opacity: .06; } }
-@keyframes police-blue { 0%, 100% { opacity: .06; } 50% { opacity: .82; } }
+.tt-team.sheet-in.sheet-wait .police-lights .wash,
+.tt-team.sheet-in.sheet-wait.shrouded,
+.police-rim.wait { animation-delay: 850ms; }
+@keyframes police-red { 0%, 100% { opacity: 1; } 50% { opacity: .05; } }
+@keyframes police-blue { 0%, 100% { opacity: .05; } 50% { opacity: 1; } }
+.tt-team.shrouded { animation: police-card 1.2s ease-in-out 450ms infinite; }
+@keyframes police-card {
+  0%, 100% { box-shadow: 0 0 26px 8px rgba(255, 42, 42, .9); }
+  50% { box-shadow: 0 0 26px 8px rgba(42, 91, 255, .9); }
+}
+.police-rim {
+  position: fixed; inset: 0; z-index: 17; pointer-events: none; opacity: 0;
+  animation: police-rim 1.2s ease-in-out 450ms infinite;
+}
+@keyframes police-rim {
+  0%, 100% { opacity: 1; box-shadow: inset 0 0 88px 20px rgba(255, 42, 42, .78); }
+  50% { opacity: 1; box-shadow: inset 0 0 88px 20px rgba(42, 91, 255, .78); }
+}
 .shroud .rip {
   position: absolute; z-index: 1; left: 50%; top: 44%; width: 78%;
   transform: translate(-50%, -50%) rotate(-4deg);
@@ -808,7 +835,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-team.sheet-in .shroud .cloth { animation: fold-ripple 450ms cubic-bezier(.3, 1.4, .4, 1) both; }
 @keyframes sheet-drop { 0% { opacity: 0; transform: translate3d(0, -108%, 0); } 100% { opacity: 1; transform: none; } }
 @keyframes fold-ripple { 0% { transform: scaleY(1.05) skewX(-1.4deg); } 62% { transform: scaleY(0.99) skewX(0.5deg); } 100% { transform: none; } }
-@media (prefers-reduced-motion: reduce) { .tt-team.notice.tape-in, .tt-team.tape-in .caution-x, .tt-team.tape-in .caution-x .tape, .shot-holes img.hole-in, .tt-team.sheet-in .shroud, .tt-team.sheet-in .shroud .cloth, .shroud .wash.red, .shroud .wash.blue { animation: none; } .shroud .wash { opacity: .42; } }
+@media (prefers-reduced-motion: reduce) { .tt-team.notice.tape-in, .tt-team.tape-in .caution-x, .tt-team.tape-in .caution-x .tape, .shot-holes img.hole-in, .tt-team.sheet-in .shroud, .tt-team.sheet-in .shroud .cloth, .tt-team.shrouded .wash.red, .tt-team.shrouded .wash.blue, .tt-team.shrouded, .police-rim { animation: none; } .tt-team.shrouded .wash.red { opacity: .85; } .tt-team.shrouded .wash.blue { opacity: .2; } .tt-team.shrouded { box-shadow: 0 0 26px 8px rgba(255, 42, 42, .9); } .police-rim { opacity: .85; box-shadow: inset 0 0 88px 20px rgba(255, 42, 42, .55); } }
 @media (prefers-reduced-motion: reduce) { .tod span { animation: none; opacity: 1; } }
 .tt-team.mine { background: rgba(245,197,66,.08); box-shadow: inset 3px 0 0 var(--gold), inset 0 0 0 1px rgba(245,197,66,.25); }
 .tt-team-name { grid-area: name; display: flex; flex-direction: column; gap: 4px; }
