@@ -3,7 +3,7 @@ import {
   BREATHE_HI, BREATHE_LO, BREATHE_S, BREATHE_SCALE, GAP_S, GLOW_ALPHA, GLOW_BLUR_PX, GLOW_REACH_PX, GLOW_SPREAD_PX,
   GROUP_PAD_PX, GROUP_RADIUS_PX, ILLEGAL_BRIGHTNESS, ILLEGAL_COLOR, LIFT_S, OUTLINE_COLOR, OUTLINE_PX, RAISE_S,
   GROUP_GAP_PX, LEGAL_NEAR, LEGAL_STACK, SELECT_GLOW_OP, SELECT_STACK, SHINE_DEG, SHINE_PEAK, SHINE_S, SHINE_WIDTH,
-  breatheOpacity, canTapCard, cardMeshPaint, easeOut, fanGapPx, fanMotion, glowFalloff, glowRadiusPx, handDepthOpts, handLift, handRenderOrder, liftEase, outlineRadiusPx,
+  breatheOpacity, canTapCard, cardMeshPaint, cardTapHandlers, easeOut, fanGapPx, fanMotion, glowFalloff, glowRadiusPx, handDepthOpts, handLift, handRenderOrder, liftEase, outlineRadiusPx,
   handCardChrome, playablePose, posePx, raiseLocalY, shineAxis, shineBand, stackFor,
 } from '../src/three/handLift';
 import { fanLayout, handCardPlane, handFan } from '../src/three/layout';
@@ -101,6 +101,18 @@ describe('your-turn hand poses', () => {
     expect(stackFor('illegal')).toBe('rest');
     expect(stackFor('legal')).toBe('play');
     expect(stackFor('selected')).toBe('selected');
+  });
+
+  it('takes the tap on pointerdown, while the card may still be sliding into place', () => {
+    const taps: string[] = [];
+    const live = cardTapHandlers(() => { taps.push('play'); });
+    live.onPointerDown?.({ stopPropagation() {} });
+    expect(taps).toEqual(['play']);
+    expect(cardTapHandlers(undefined).onPointerDown).toBeUndefined();
+    let stopped = false;
+    cardTapHandlers(null).onPointerDown?.({ stopPropagation() { stopped = true; } });
+    expect(stopped).toBe(true);
+    expect(taps).toEqual(['play']);
   });
 
   it('those pixel offsets are CSS pixels on a phone, and the tapped card still stacks in front', () => {

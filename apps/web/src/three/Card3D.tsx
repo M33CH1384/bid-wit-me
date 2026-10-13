@@ -3,7 +3,7 @@ import { memo, useLayoutEffect, useMemo, useRef } from 'react';
 import { Color, type Group, type Material, type Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NoToneMapping, Quaternion, type Texture, Vector3, type WebGLRenderer } from 'three';
 import { cardFaceFragment } from './cardSat';
 import { cardGeometry, cardOutlineGeometry } from './geometry';
-import { ILLEGAL_COLOR, RAISE_S, applyFaceDepthBias, cardMeshPaint, liftEase, screenRaise } from './handLift';
+import { ILLEGAL_COLOR, RAISE_S, applyFaceDepthBias, cardMeshPaint, cardTapHandlers, liftEase, screenRaise } from './handLift';
 import type { Xform } from './layout';
 import { type Sfx, sound } from '../audio';
 import { fireCue, fx } from '../fx';
@@ -393,7 +393,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   return (
     <group
       ref={ref}
-      onClick={onTap ? (e) => { e.stopPropagation(); onTap(); } : onTap === null ? (e) => { e.stopPropagation(); } : undefined}
+      {...cardTapHandlers(onTap)}
       onPointerOver={onTap ? () => { document.body.style.cursor = 'pointer'; } : undefined}
       onPointerOut={onTap ? () => { document.body.style.cursor = ''; } : undefined}
     >

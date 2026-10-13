@@ -21,7 +21,7 @@ import Venue3D, { feltPatternTexture, preloadVenueAssets } from './Venue3D';
 import { type VenueDef, type VenueId, VENUE_DEFS, venueAssetUrls } from '../venues';
 import { bodyGeometry, cardGeometry, feltGeometry, railGeometry } from './geometry';
 import {
-  CH, CW, TRICK_SCALE, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, deckSpot, fanLayout, handCardPlane, handFan, makeCamera, jitterOf, opponentFan, pileSpot, ringSpot, trickSpot,
+  CH, CW, TRICK_SCALE, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, deckSpot, fanLayout, handCardPlane, handFan, makeCamera, jitterOf, opponentFan, phoneHandFan, pileSpot, ringSpot, trickSpot,
 } from './layout';
 
 export interface SceneProps {
@@ -459,9 +459,12 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   // landscape: the bottom corners hold your plate (left) and last trick + controls (right); the hand fans between
   // desktop / wide: a bigger hand (≈35% over the 0.16 default), kept between your plate (left) and last trick (right)
   const wide = !short && size.width >= 1024 && aspect >= 1.3;
+  // Portrait phones get a larger hand. Wide and landscape keep their own framing.
+  const portraitPhone = !short && !wide && size.width < 600 && aspect < 1.05;
   const fanOpts = short
     ? { short, reserveFrac: (Math.max(safe.l, safe.r) + 186) / size.width, bottomFrac: safe.b / size.height, heightFrac: 0.2 }
     : wide ? { reserveFrac: (size.width < 1400 ? 250 : 205) / size.width, bottomFrac: 0.012, heightFrac: 0.205 }
+    : portraitPhone ? phoneHandFan()
     : {};
   const trickScale = short ? 1.85 : undefined;
   // Last committed hand, so a play can launch from that card's own slot. Updated in an effect (not during render)
