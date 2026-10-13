@@ -103,6 +103,37 @@ const PIPS: Record<string, [number, number][]> = {
   T: [[0.3, 0.2], [0.7, 0.2], [0.5, 0.31], [0.3, 0.4], [0.7, 0.4], [0.3, 0.6], [0.7, 0.6], [0.5, 0.69], [0.3, 0.8], [0.7, 0.8]],
 };
 
+/**
+ * Corner queen. Barlow Condensed draws Q as a closed bowl, and in a phone fan that reads as 0.
+ * The bowl is left open and a tail crosses out of it, still inside the exposed left strip.
+ */
+export function queenIndex(cx: number, baseline: number, size: number): { bowlRight: number; tailX: number; tailY: number; bowlBottom: number } {
+  const r = size * 0.36;
+  const oy = baseline - r * 0.9;
+  // The bowl stops short of a closed loop. The tail runs past that gap, down and to the right.
+  return { bowlRight: cx + r * 0.35, tailX: cx + r * 1.5, tailY: oy + r * 1.65, bowlBottom: oy + r * 0.35 };
+}
+
+export function drawQueenIndex(ctx: CanvasRenderingContext2D, cx: number, baseline: number, size: number, color: string) {
+  const g = queenIndex(cx, baseline, size);
+  const r = size * 0.36;
+  const oy = baseline - r * 0.9;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = Math.max(2, size * 0.18);
+  ctx.beginPath();
+  ctx.arc(cx, oy, r, 0.95, Math.PI * 1.72);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(cx + r * 0.05, oy + r * 0.35);
+  ctx.lineTo(g.tailX, g.tailY);
+  ctx.lineWidth = Math.max(2.25, size * 0.2);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function corner(ctx: CanvasRenderingContext2D, W: number, rank: string, suit: Suit, color: string, badge: boolean) {
   const label = rank === 'T' ? '10' : rank;
   ctx.fillStyle = color;
@@ -116,7 +147,8 @@ function corner(ctx: CanvasRenderingContext2D, W: number, rank: string, suit: Su
   ctx.strokeStyle = color;
   ctx.lineWidth = W * 0.011;
   ctx.lineJoin = 'round';
-  if (label.length > 1) { ctx.save(); ctx.translate(cx, 0); ctx.scale(0.86, 1); ctx.fillText(label, 0, W * 0.255); ctx.strokeText(label, 0, W * 0.255); ctx.restore(); }
+  if (label === 'Q') drawQueenIndex(ctx, cx, W * 0.255, fs, color);
+  else if (label.length > 1) { ctx.save(); ctx.translate(cx, 0); ctx.scale(0.86, 1); ctx.fillText(label, 0, W * 0.255); ctx.strokeText(label, 0, W * 0.255); ctx.restore(); }
   else { ctx.fillText(label, cx, W * 0.255); ctx.strokeText(label, cx, W * 0.255); }
   drawSuit(ctx, suit, cx, W * 0.37, W * 0.165, color);
   if (badge) {

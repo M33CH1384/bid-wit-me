@@ -462,7 +462,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   const fanOpts = short
     ? { short, reserveFrac: (Math.max(safe.l, safe.r) + 186) / size.width, bottomFrac: safe.b / size.height, heightFrac: 0.2 }
     : wide ? { reserveFrac: (size.width < 1400 ? 250 : 205) / size.width, bottomFrac: 0.012, heightFrac: 0.205 }
-    : {};
+    : { screenH, phoneRows: sized && size.width <= 520 };
   const trickScale = short ? 1.85 : undefined;
   // Last committed hand, so a play can launch from that card's own slot. Updated in an effect (not during render)
   // so a highlight change and the server ack share one set of keys and don't restart the fan.
@@ -537,7 +537,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   const closing = held.current.count > 0 && faceCount < held.current.count;
   // Off turn, legal is empty: every card stays flat and at full brightness.
   const yourTurn = legal.length > 0;
-  const fan = fanLayout(aspect, Math.max(1, mine.length), safeFrac, fanOpts);
+  const fan = fanLayout(aspect, Math.max(1, mine.length), safeFrac, { ...fanOpts, screenH });
   const nextCards = new Set<string>();
   const nextSlots = new Map<string, Xform>();
   const nextSeen = new Set<string>();
@@ -838,7 +838,7 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
               if (sideEls.some((e) => e.dataset.moved === '1')) cy = minY;
               return [Math.max(pad + left, Math.min(x, size.width - pad - pw + left)), cy];
             }
-            const ax = side === 'left' ? Math.max(pad, x - 72) : Math.min(size.width - pad, x + 72);
+            const ax = side === 'left' ? Math.max(pad, x - 72) : Math.min(size.width - pad - (size.width <= 430 ? 6 : 0), x + 72);
             // never cover a trick slot (phones in portrait: the side plates sit right beside the trick cards).
             // 1) if the plate would reach into a slot beside it, it goes narrow (chips wrap under the name);
             // 2) if it still touches one, it moves up, clear of the trick zone (never above the top bar).

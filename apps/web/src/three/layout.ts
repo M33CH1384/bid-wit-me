@@ -61,10 +61,11 @@ const yawOf = (d: Vector3) => Math.atan2(d.x, d.z);
 export function opponentFan(pos: SeatPos, n: number, i: number, count: number): Xform {
   const d = seatDir(pos, n);
   const side = pos === 'left' || pos === 'right';
-  const base = edgePoint(d, side ? 0.3 : 0.05).add(new Vector3(0, 0.3, 0)).add(d.clone().multiplyScalar(0.12));
+  // Side seats sit further in from the rail so a phone viewport does not crop the right-hand fan or its plate.
+  const base = edgePoint(d, side ? 0.48 : 0.05).add(new Vector3(0, 0.3, 0)).add(d.clone().multiplyScalar(side ? 0.02 : 0.12));
   const yaw = yawOf(d);
   const off = i - (count - 1) / 2;
-  const spread = 0.038;
+  const spread = side ? 0.03 : 0.038;
   const tangent = new Vector3(Math.cos(yaw), 0, -Math.sin(yaw)); // local +x of a card facing outward
   const p = base.clone().add(tangent.multiplyScalar(off * spread)).add(new Vector3(0, -Math.abs(off) * off * 0 - off * off * 0.0016, 0)).add(d.clone().multiplyScalar(i * 0.0016));
   // face toward the owner (outward), tilted back, fanned by roll
@@ -191,11 +192,53 @@ export interface FanOpts {
    * Screen x/y stay put, so the outline, which is built from those plane coordinates, does not slide.
    */
   near?: number;
+  /** CSS height of the viewport. Phone strips are measured in CSS pixels, so the fan needs it. */
+  screenH?: number;
+  /**
+   * Portrait phones: two rows when one row cannot show a 44px strip.
+   * Desktop and the existing single-arc tests leave this off.
+   */
+  phoneRows?: boolean;
 }
 
-export function fanLayout(aspect: number, count: number, safeFrac = 0, o: FanOpts = {}): FanLayout {
-  if (!(Number.isFinite(aspect) && aspect > 0.05 && aspect < 20)) aspect = 9 / 16;
-  if (!(count >= 1)) count = 1;
+/** Exposed left edge of a card in the phone fan, in CSS pixels. */
+export const MIN_STRIP_PX = 44;
+
+export function fanScreenW(aspect: number, screenH?: number): number {
+  const sh = Number.isFinite(screenH) && (screenH ?? 0) >= 32 ? screenH! : 844;
+  const a = Number.isFinite(aspect) && aspect > 0.05 && aspect < 20 ? aspect : 9 / 16;
+  return sh * a;
+}
+
+/**
+ * One row when every card can keep a 44px strip. A full phone hand cannot
+ * (13 × 44px is wider than 336–390), so it splits into two rows: the top row,
+ * then the bottom row. The bottom row is nearer the camera and holds the extra card.
+ */
+export function fanRowCounts(count: number, screenW: number, phoneRows = false): number[] {
+  const n = Math.max(1, count | 0);
+  if (!phoneRows || n === 1 || !(screenW > 0) || screenW > 520) return [n];
+  const margin = Math.max(6, Math.min(screenW * 0.04, 12));
+  const avail = screenW - margin * 2;
+  const need = (k: number) => (k <= 1 ? MIN_STRIP_PX : (k - 1) * MIN_STRIP_PX + MIN_STRIP_PX + 6);
+  if (need(n) <= avail) return [n];
+  const bottom = Math.ceil(n / 2);
+  const top = n - bottom;
+  return top > 0 ? [top, bottom] : [n];
+}
+
+function rowPlacement(count: number, i: number, screenW: number, phoneRows: boolean): { start: number; n: number; above: number } {
+  const plan = fanRowCounts(count, screenW, phoneRows);
+  let start = 0;
+  for (let r = 0; r < plan.length; r++) {
+    const n = plan[r]!;
+    if (i < start + n) return { start, n, above: plan.length - 1 - r };
+    start += n;
+  }
+  return { start: 0, n: Math.max(1, count), above: 0 };
+}
+
+function solveLegacy(aspect: number, count: number, safeFrac: number, o: FanOpts): FanLayout {
   const cam = makeCamera(aspect, o.short);
   const D = 1;
   const viewH = 2 * Math.tan((cam.fov * Math.PI) / 360) * D;
@@ -215,11 +258,64 @@ export function fanLayout(aspect: number, count: number, safeFrac = 0, o: FanOpt
     if (halfN === 0 ? room >= 0 : step >= cw * 0.3) break; // ≥30% of a card exposed keeps the corner index readable
     s *= 0.96;
   }
-  // the arc follows the cards' roll: at the ends its slope equals the end card's tilt, like a fan held in a hand.
-  // (A fixed curve with a separately-scaled roll left the end cards kinked against the arc: the "skewed" right-most card.)
   const xo = halfN * Math.max(0, step);
   const curveK = xo > 0 ? Math.tan(maxRoll) / (2 * xo) : 0;
   return { s, cw: CW * s, ch: CH * s, step: Math.max(0, step), maxRoll, curveK, viewW, viewH };
+}
+
+/** Narrow screens: a short row, a gentle roll, and a step of at least 44 CSS pixels when the width allows. */
+function solvePhone(aspect: number, count: number, safeFrac: number, o: FanOpts, screenW: number): FanLayout {
+  const cam = makeCamera(aspect, o.short);
+  const D = 1;
+  const viewH = 2 * Math.tan((cam.fov * Math.PI) / 360) * D;
+  const viewW = viewH * aspect;
+  const marginPx = Math.max(10, Math.min(16, screenW * Math.max(0.025, safeFrac))) + 2;
+  const margin = Math.max((marginPx / screenW) * viewW, viewW * (o.reserveFrac ?? 0), viewW * Math.max(0, safeFrac));
+  const halfAvail = viewW / 2 - margin;
+  const halfN = Math.max(0, (count - 1) / 2);
+  const maxRoll = count > 1 ? Math.min(0.06, 0.008 * count) : 0;
+  // Roll trims the projected gap by a couple of pixels. Aim high so the narrowest edge is still 44. 
+  const want = ((MIN_STRIP_PX + 4) / Math.max(1, screenW)) * viewW;
+  let s = Math.min(viewH * (o.heightFrac ?? 0.135), viewW * 0.28) / CH;
+  let step = 0;
+  let cw = CW * s;
+  let ch = CH * s;
+  for (let k = 0; k < 56; k++) {
+    cw = CW * s;
+    ch = CH * s;
+    const outer = (cw / 2) * Math.cos(maxRoll) + (ch / 2) * Math.sin(maxRoll);
+    const room = halfAvail - outer;
+    const maxStep = halfN > 0 ? room / halfN : 0;
+    if (halfN === 0 ? room >= 0 : maxStep >= want - 1e-6) {
+      step = halfN > 0 ? Math.min(maxStep, Math.max(want, Math.min(cw * 0.7, maxStep))) : 0;
+      break;
+    }
+    s *= 0.96;
+  }
+  if (halfN > 0 && !(step > 0)) {
+    const outer = (cw / 2) * Math.cos(maxRoll) + (ch / 2) * Math.sin(maxRoll);
+    step = Math.max(0, (halfAvail - outer) / halfN);
+  }
+  const xo = halfN * Math.max(0, step);
+  const curveK = xo > 0 ? Math.tan(maxRoll) / (2 * xo) : 0;
+  return { s, cw: CW * s, ch: CH * s, step: Math.max(0, step), maxRoll, curveK, viewW, viewH };
+}
+
+export function fanLayout(aspect: number, count: number, safeFrac = 0, o: FanOpts = {}): FanLayout {
+  if (!(Number.isFinite(aspect) && aspect > 0.05 && aspect < 20)) aspect = 9 / 16;
+  if (!(count >= 1)) count = 1;
+  const screenW = fanScreenW(aspect, o.screenH);
+  const plan = fanRowCounts(count, screenW, !!o.phoneRows);
+  if (!o.phoneRows) return solveLegacy(aspect, count, safeFrac, o);
+  if (plan.length === 1) {
+    const legacy = solveLegacy(aspect, count, safeFrac, o);
+    const strip = (legacy.step / legacy.viewW) * screenW;
+    // Roll tightens the gaps on one side. Headroom keeps the narrowest edge at 44px.
+    if (screenW > 520 || strip >= MIN_STRIP_PX + 8) return legacy;
+    return solvePhone(aspect, count, safeFrac, o, screenW);
+  }
+  // Both rows share the larger row's card size, so a 6-card row matches the 7-card row beside it.
+  return solvePhone(aspect, Math.max(...plan), safeFrac, o, screenW);
 }
 
 /** Where a hand card sits on the depth-1 camera plane (the shape that actually projects to the screen). */
@@ -237,20 +333,28 @@ export interface HandCardPlane {
  * Shared by the card mesh and the playable-group outline so the highlight can't drift from the fan.
  */
 export function handCardPlane(aspect: number, count: number, i: number, lift: number, safeFrac = 0, o: FanOpts = {}, gapPx = 0, screenH = 844): HandCardPlane {
-  const L = fanLayout(aspect, count, safeFrac, o);
-  const halfN = (count - 1) / 2;
-  const off = i - halfN;
+  const sized = Number.isFinite(screenH) && screenH >= 32;
+  const sh = sized ? screenH : 844;
+  const screenW = fanScreenW(aspect, sh);
+  const row = rowPlacement(count, i, screenW, !!o.phoneRows);
+  const L = fanLayout(aspect, count, safeFrac, { ...o, screenH: sh });
+  const halfN = (row.n - 1) / 2;
+  const off = (i - row.start) - halfN;
   // `gapPx` opens the fan beside a legal run, in CSS pixels. Depth and roll stay on the index.
-  // Dividing by max(1, screenH) turned an 8px subset gap into screen-heights on a 0-height canvas, and 0/NaN poisoned x.
-  const sh = Number.isFinite(screenH) && screenH >= 32 ? screenH : 0;
-  const gap = Number.isFinite(gapPx) ? gapPx : 0;
-  const x = off * L.step + (sh > 0 ? (gap / sh) * L.viewH : 0);
+  // A 0-height canvas used to turn an 8px gap into screen-heights and poison x. Skip it.
+  const gap = sized && Number.isFinite(gapPx) ? gapPx : 0;
+  const x = off * L.step + (gap / sh) * L.viewH;
   const roll = halfN > 0 ? -(off / halfN) * L.maxRoll : 0;
-  const curve = x * x * L.curveK;
-  // the outermost (most rolled, most curved-down) card's lowest corner sits exactly on the bottom margin
-  const xo = halfN * L.step;
-  const lowest = xo * xo * L.curveK + (L.ch / 2) * Math.cos(L.maxRoll) + (L.cw / 2) * Math.sin(L.maxRoll);
-  const y = -L.viewH / 2 + L.viewH * (0.015 + (o.bottomFrac ?? 0)) + lowest - curve + lift * L.ch;
+  const xoRow = halfN * L.step;
+  const curveK = xoRow > 0 ? Math.tan(L.maxRoll) / (2 * xoRow) : 0;
+  const curve = x * x * curveK;
+  // the bottom row's outermost card sits on the bottom margin. A row above it rises so its rank stays clear.
+  const bottomN = fanRowCounts(count, screenW, !!o.phoneRows).at(-1) ?? row.n;
+  const bottomHalf = Math.max(0, (bottomN - 1) / 2);
+  const xo = bottomHalf * L.step;
+  const bottomK = xo > 0 ? Math.tan(L.maxRoll) / (2 * xo) : 0;
+  const lowest = xo * xo * bottomK + (L.ch / 2) * Math.cos(L.maxRoll) + (L.cw / 2) * Math.sin(L.maxRoll);
+  const y = -L.viewH / 2 + L.viewH * (0.015 + (o.bottomFrac ?? 0)) + lowest - curve + lift * L.ch + row.above * L.ch * 0.62;
   // z-order only: later cards sit on earlier ones, and every raised card comes forward past the whole fan
   // (18 × 0.006 < 0.12). The gaps are wide on purpose: phones with a 16-bit depth buffer (iPhone Safari) z-fight
   // at ~0.0003 here, which let the edges of the cards underneath bleed through as thin gold lines when the gap was 0.0015.

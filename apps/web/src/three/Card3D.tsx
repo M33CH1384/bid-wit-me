@@ -85,8 +85,20 @@ export function createLitCardMaterial(map: Texture, quality: 'high' | 'low', sat
   return saturate ? withSaturation(m) : m;
 }
 
+/** Invisible, but it still raycasts. Sits on the settled slot while the face slides into the gap. */
+const slotHitMat = new MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, depthTest: false, colorWrite: false });
+const skipRaycast = () => null;
+
 function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, raise = 0, roll = 0, order = 0, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand, blast = 'table', holdUntilMove = false, lit = true }: Props) {
   const ref = useRef<Group>(null);
+  const hit = useRef<Group>(null);
+  useLayoutEffect(() => {
+    const slot = hit.current;
+    if (!slot || !target.p.every(Number.isFinite) || !target.q.every(Number.isFinite) || !Number.isFinite(target.s)) return;
+    slot.position.set(...target.p);
+    slot.quaternion.set(...target.q);
+    slot.scale.setScalar(target.s);
+  });
   // First mount only. A follow-up render drops the deal props before useFrame runs.
   const mountedFlight = useRef({ from, delay });
   const hideUntilStart = useRef(holdUntilMove);
@@ -300,6 +312,12 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       // consumed on init so this same frame's retarget does not snap a second time
       if (origin && poseOk(origin)) s.originKey = xKey(origin);
     }
+    const slot = hit.current;
+    if (slot && finiteTarget) {
+      slot.position.set(...target.p);
+      slot.quaternion.set(...target.q);
+      slot.scale.setScalar(target.s);
+    }
     if (finiteTarget && (!Number.isFinite(g.position.x) || !Number.isFinite(g.scale.x))) {
       g.position.set(...target.p);
       g.quaternion.set(...target.q);
@@ -390,22 +408,32 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     g.scale.setScalar(motion === 'slide' ? s.ts : s.ss + (s.ts - s.ss) * e);
   });
 
+  const sliding = motion === 'slide';
+  const tap = onTap !== undefined
+    ? (e: { stopPropagation: () => void }) => { e.stopPropagation(); onTap?.(); }
+    : undefined;
   return (
-    <group
-      ref={ref}
-      onClick={onTap ? (e) => { e.stopPropagation(); onTap(); } : onTap === null ? (e) => { e.stopPropagation(); } : undefined}
-      onPointerOver={onTap ? () => { document.body.style.cursor = 'pointer'; } : undefined}
-      onPointerOut={onTap ? () => { document.body.style.cursor = ''; } : undefined}
-    >
-      <group ref={lift} name={name}>
-      <group ref={inner}>
-        <mesh geometry={geo.body} material={edge} castShadow={castShadow} />
-        <mesh geometry={geo.front} material={frontMat} />
-        <mesh geometry={geo.back} material={backMat} />
-        {frontTex && <mesh geometry={cardOutlineGeometry()} material={glowMat} visible={!!glow} renderOrder={-1} />}
+    <>
+      {/* The face is mid-slide, so a click (down + up on the same mesh) misses. This slot stays put and takes the tap. */}
+      <group ref={hit} visible={sliding} renderOrder={order} onPointerDown={sliding ? tap : undefined}>
+        <mesh geometry={geo.front} material={slotHitMat} dispose={null} />
       </group>
+      <group
+        ref={ref}
+        onPointerDown={sliding ? undefined : tap}
+        onPointerOver={onTap ? () => { document.body.style.cursor = 'pointer'; } : undefined}
+        onPointerOut={onTap ? () => { document.body.style.cursor = ''; } : undefined}
+      >
+        <group ref={lift} name={name}>
+        <group ref={inner}>
+          <mesh geometry={geo.body} material={edge} castShadow={castShadow} raycast={sliding ? skipRaycast : undefined} />
+          <mesh geometry={geo.front} material={frontMat} raycast={sliding ? skipRaycast : undefined} />
+          <mesh geometry={geo.back} material={backMat} raycast={sliding ? skipRaycast : undefined} />
+          {frontTex && <mesh geometry={cardOutlineGeometry()} material={glowMat} visible={!!glow} renderOrder={-1} raycast={sliding ? skipRaycast : undefined} />}
+        </group>
+        </group>
       </group>
-    </group>
+    </>
   );
 }
 

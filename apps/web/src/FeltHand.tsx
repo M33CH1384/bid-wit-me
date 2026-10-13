@@ -22,7 +22,8 @@ export function feltCardZ(index: number, legal: boolean, selected: boolean): num
 
 export function feltCardTransform(index: number, count: number, selected: boolean): string {
   const mid = (count - 1) / 2;
-  const rot = (index - mid) * 3.2;
+  const spread = count >= 10 ? 1.5 : 3.2;
+  const rot = (index - mid) * spread;
   const sag = Math.abs(index - mid) * 3;
   const fan = `rotate(${rot}deg) translateY(${sag}px)`;
   return selected ? `translateY(-${FELT_SELECT_LIFT_PX}px) ${fan}` : fan;

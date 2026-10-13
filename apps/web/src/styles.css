@@ -288,6 +288,12 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 /* seat plates on the sides are edge-anchored and clamped on screen (see Badges in three/Scene.tsx) */
 .seat-anchor.side-left > .plate, .seat-anchor.side-top > .plate { transform: translate(0, -50%); }
 .seat-anchor.side-right > .plate { transform: translate(-100%, -50%); }
+@media (max-width: 430px) {
+  .seat-anchor.side-left > .plate, .seat-anchor.side-right > .plate { max-width: calc(100vw - 16px); }
+  .seat-anchor.side-left > .plate .plate-name, .seat-anchor.side-right > .plate .plate-name {
+    max-width: 34vw; overflow: hidden; text-overflow: ellipsis;
+  }
+}
 
 /* ---------- sound controls ---------- */
 .sound-btn-wrap { position: relative; display: flex; flex: none; }
@@ -1513,6 +1519,15 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .felt-hand button canvas { width: 100%; height: 100%; display: block; }
 .felt-hand button span { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--display); font-weight: 800; font-size: 18px; letter-spacing: .02em; }
 .felt-hand button.drawn span { opacity: 0; }
+/* A 13-card row of 52px cards overflows 336–390px. Two rows, each strip 44px (48px card, 4px overlap). */
+@media (max-width: 420px) {
+  .felt-hand {
+    width: min(100% - 8px, 316px); left: 50%; right: auto; transform: translateX(-50%);
+    height: auto; min-height: 148px; flex-wrap: wrap; align-content: flex-end; overflow: visible;
+    padding: 0 4px;
+  }
+  .felt-hand button { width: 48px; height: 68px; margin: 0 0 4px -4px; flex: 0 0 48px; }
+}
 .felt-trick { position: absolute; z-index: 6; left: 50%; top: 46%; transform: translate(-50%, -50%); display: flex; gap: 6px; pointer-events: none; }
 .felt-trick canvas { width: 40px; height: 56px; border-radius: 4px; background: #fbf8f1; box-shadow: 0 6px 12px rgba(0,0,0,.4); }
 

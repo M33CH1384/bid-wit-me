@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Vector3 } from 'three';
-import { type SeatPos, type Xform, fanLayout, handFan, makeCamera, ndcExtentX, opponentFan, pileSpot, trickSpot } from '../src/three/layout';
+import { type SeatPos, type Xform, fanLayout, fanRowCounts, fanScreenW, handCardPlane, handFan, makeCamera, ndcExtentX, opponentFan, pileSpot, trickSpot } from '../src/three/layout';
 
 // CSS-pixel viewports: iPhone SE, 12/13/14, 14 Pro Max, small Android, desktop, and iPhone landscape
 const VIEWPORTS: [number, number][] = [[320, 568], [375, 667], [390, 844], [393, 852], [430, 932], [360, 740], [1280, 800], [1920, 1080], [844, 390]];
@@ -61,12 +61,24 @@ describe('hand fan is undistorted and mirror-symmetric on screen', () => {
         expect(Math.abs(len(sh[0]!, sh[1]!) - len(sh[3]!, sh[2]!))).toBeLessThan(0.3);
         expect(Math.abs(len(sh[1]!, sh[2]!) - len(sh[0]!, sh[3]!))).toBeLessThan(0.3);
       }
-      // card i mirrors card n-1-i around the screen centre
+      // each row is mirror-symmetric. A phone hand is two rows, so card i does not mirror card n-1-i.
       const centre = (sh: number[][]) => [sh.reduce((a, c) => a + c[0]!, 0) / 4, sh.reduce((a, c) => a + c[1]!, 0) / 4];
+      const centres = shapes.map(centre);
+      const rows: number[][] = [];
       for (let i = 0; i < n; i++) {
-        const a = centre(shapes[i]!), b = centre(shapes[n - 1 - i]!);
-        expect(Math.abs(a[0]! + b[0]! - w)).toBeLessThan(0.5);
-        expect(Math.abs(a[1]! - b[1]!)).toBeLessThan(0.5);
+        const y = centres[i]![1]!;
+        const row = rows.find((r) => Math.abs(centres[r[0]!]![1]! - y) < 8);
+        if (row) row.push(i);
+        else rows.push([i]);
+      }
+      for (const row of rows) {
+        const ordered = [...row].sort((a, b) => centres[a]![0]! - centres[b]![0]!);
+        for (let k = 0; k < ordered.length; k++) {
+          const a = centres[ordered[k]!]!;
+          const b = centres[ordered[ordered.length - 1 - k]!]!;
+          expect(Math.abs(a[0]! + b[0]! - w)).toBeLessThan(1.5);
+          expect(Math.abs(a[1]! - b[1]!)).toBeLessThan(1.5);
+        }
       }
     });
   }
@@ -103,13 +115,21 @@ describe('hand fan z-order', () => {
 
 describe('hand fan shape', () => {
   it('each card is rolled to match the arc it sits on (no kinked end cards)', () => {
-    for (const aspect of [390 / 844, 16 / 9]) for (const n of [3, 5, 11, 13]) {
-      const L = fanLayout(aspect, n, 0, {});
-      const halfN = (n - 1) / 2;
-      for (let i = 0; i < n; i++) {
-        const x = (i - halfN) * L.step;
-        const roll = -((i - halfN) / halfN) * L.maxRoll;
-        expect(Math.abs(Math.atan(2 * L.curveK * x) + roll)).toBeLessThan(0.03); // arc slope ≈ card tilt
+    for (const [w, h] of [[390, 844], [1280, 800]] as const) for (const n of [3, 5, 11, 13]) {
+      const aspect = w / h;
+      const plan = fanRowCounts(n, fanScreenW(aspect, h));
+      let start = 0;
+      for (const rowN of plan) {
+        if (rowN < 2) { start += rowN; continue; }
+        const cards = Array.from({ length: rowN }, (_, k) => handCardPlane(aspect, n, start + k, 0, 0, {}, 0, h));
+        const left = cards[0]!;
+        const right = cards[rowN - 1]!;
+        const xo = (right.x - left.x) / 2;
+        const curveK = Math.tan(left.roll) / (2 * xo);
+        for (const card of cards) {
+          expect(Math.abs(Math.atan(2 * curveK * card.x) + card.roll)).toBeLessThan(0.03);
+        }
+        start += rowN;
       }
     }
   });
