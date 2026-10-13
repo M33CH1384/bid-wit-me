@@ -180,11 +180,12 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
   const openCount = seatsOpen.length;
   const pmode = room0 ? (room0.rules.mode === 'joker' || room0.rules.mode === 'aceDown' ? room0.rules.mode : 'cutthroat') : undefined;
   const watchFull = room0 ? spectatorsFull(room0) : false;
-  usePresence(room0 ? {
+  // A finished game is not a table anyone can spectate. Reporting it kept a guest row up after the room ended.
+  usePresence(!room0 ? null : room0.phase === 'over' ? { kind: 'online' } : {
     kind: room0.phase === 'lobby' ? 'lobby' : 'table', mode: pmode, open: openCount, code,
     ...(openSeat >= 0 ? { seat: openSeat } : {}),
     ...(watchFull ? { watchFull: true } : {}),
-  } : null);
+  });
   useEffect(() => {
     if (!room0) return;
     social.setMyTable({ code, mode: pmode, open: openCount, ...(openSeat >= 0 ? { seat: openSeat } : {}) });

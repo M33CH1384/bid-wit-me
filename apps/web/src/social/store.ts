@@ -4,10 +4,11 @@
  * without one (they show up as "Guest", can read global chat and receive invites).
  */
 import { useSyncExternalStore } from 'react';
-import type { DmLine, FriendsState, InviteMsg, OpenTable, PresenceEntry, PresenceStatus, SocialChatLine, SocialClientMsg, SocialServerMsg, SocialSettings } from '@spades/protocol';
+import { type DmLine, type FriendsState, type InviteMsg, type OpenTable, type PresenceEntry, type PresenceStatus, type SocialChatLine, type SocialClientMsg, type SocialServerMsg, type SocialSettings, stalePresence } from '@spades/protocol';
 import { account, loadAccount } from '../account/api';
 import { serverUrl } from '../online/config';
 import { guestSessionId, loadName } from '../online/identity';
+import { keepUsers } from './presence';
 
 export type SocialTab = 'players' | 'chat' | 'messages' | 'friends' | 'leaders' | 'tournaments' | 'settings';
 export interface Toast { id: string; kind: 'info' | 'error' | 'ok'; text: string; at: number }
@@ -42,6 +43,8 @@ export interface SocialState {
   tour: string | null;
   /** Release 10: public tables (Open tables list), by code */
   tables: Record<string, OpenTable>;
+  /** public table codes that ended or left the open list */
+  ended: Record<string, true>;
 }
 
 const GLOBAL_SEEN_KEY = 'bwm.social.globalSeen';
@@ -49,7 +52,7 @@ const seen0 = (() => { try { return Number(localStorage.getItem(GLOBAL_SEEN_KEY)
 
 let state: SocialState = {
   status: 'off', you: null, admin: false, users: {}, global: [], friends: null, settings: null, unread: {}, dms: {}, names: {}, invites: [], sent: {}, toasts: [],
-  open: false, tab: 'players', dmWith: null, profile: null, globalSeen: seen0, myTable: null, notices: [], tour: null, tables: {},
+  open: false, tab: 'players', dmWith: null, profile: null, globalSeen: seen0, myTable: null, notices: [], tour: null, tables: {}, ended: {},
 };
 const subs = new Set<() => void>();
 function set(p: Partial<SocialState> | ((s: SocialState) => Partial<SocialState>)) {
@@ -128,26 +131,46 @@ async function connect() {
 function onMessage(m: SocialServerMsg) {
   switch (m.t) {
     case 'hello': {
+      const tables: Record<string, OpenTable> = {};
+      const ended: Record<string, true> = {};
+      for (const t of m.tables ?? []) {
+        tables[t.code] = t;
+        if (t.status === 'over') ended[t.code] = true;
+      }
       const users: Record<string, PresenceEntry> = {};
       for (const u of m.users) users[u.id] = u;
-      const tables: Record<string, OpenTable> = {};
-      for (const t of m.tables ?? []) tables[t.code] = t;
-      set({ status: 'open', you: m.you, admin: m.admin, users, global: m.global, friends: m.friends, settings: m.settings, unread: m.unread, tables });
+      const now = Date.now();
+      set({ status: 'open', you: m.you, admin: m.admin, users: keepUsers(users, tables, Object.keys(ended), now), global: m.global, friends: m.friends, settings: m.settings, unread: m.unread, tables, ended });
       send({ t: 'status', status });
       break;
     }
     case 'tables':
       set((s) => {
         const tables = { ...s.tables };
-        for (const t of m.up ?? []) tables[t.code] = t;
-        for (const c of m.gone ?? []) delete tables[c];
-        return { tables };
+        const ended = { ...s.ended };
+        for (const t of m.up ?? []) {
+          tables[t.code] = t;
+          if (t.status === 'over') ended[t.code] = true;
+          else delete ended[t.code];
+        }
+        for (const c of m.gone ?? []) {
+          // Only a table we had listed was public. A private table's "gone" must not hide its players.
+          if (tables[c]) ended[c] = true;
+          delete tables[c];
+        }
+        return { tables, ended, users: keepUsers(s.users, tables, Object.keys(ended), Date.now()) };
       });
       break;
     case 'pres':
       set((s) => {
         const users = { ...s.users };
-        for (const u of m.up ?? []) users[u.id] = u;
+        const listed = Object.values(s.tables);
+        const codes = Object.keys(s.ended);
+        const now = Date.now();
+        for (const u of m.up ?? []) {
+          if (stalePresence(u, listed, codes, now)) { delete users[u.id]; continue; }
+          users[u.id] = u;
+        }
         for (const g of m.gone ?? []) delete users[g];
         const you = s.you && users[s.you.id] ? users[s.you.id]! : s.you;
         return { users, you };
