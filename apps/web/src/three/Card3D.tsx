@@ -42,6 +42,8 @@ interface Props {
   sfxLand?: string; // comma-separated Sfx names, e.g. 'play,cut'
   /** how the nuke's blast treats this card: table cards are blown outward; hand cards only in Full Nuke */
   blast?: 'table' | 'hand';
+  /** False until the physical shader has been linked off the draw. The card stays a basic textured quad, then becomes the lit card. */
+  lit?: boolean;
 }
 
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
@@ -66,29 +68,39 @@ function withSaturation<M extends MeshStandardMaterial>(m: M): M & { userData: {
   return m as M & { userData: { sat: { value: number } } };
 }
 
-function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, raise = 0, roll = 0, order = 0, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand, blast = 'table' }: Props) {
+function cardMaterial(map: Texture, quality: 'high' | 'low') {
+  return quality === 'high'
+    ? new MeshPhysicalMaterial({ map, roughness: 0.42, clearcoat: 0.35, clearcoatRoughness: 0.35, sheen: 0.2, sheenRoughness: 0.6 })
+    : new MeshStandardMaterial({ map, roughness: 0.5 });
+}
+
+/** The lit card program (clearcoat + sheen on high). Warmed before it is ever drawn. */
+export function createLitCardMaterial(map: Texture, quality: 'high' | 'low', saturate: boolean) {
+  const m = cardMaterial(map, quality);
+  return saturate ? withSaturation(m) : m;
+}
+
+function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, raise = 0, roll = 0, order = 0, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand, blast = 'table', lit = true }: Props) {
   const ref = useRef<Group>(null);
   const lift = useRef<Group>(null);
   const inner = useRef<Group>(null);
   const bl = useRef({ dir: new Vector3(), q: new Quaternion(), axis: new Vector3(), on: false });
   const invalidate = useThree((s) => s.invalidate);
   const geo = cardGeometry();
-  const mk = (map: Texture) =>
-    quality === 'high'
-      ? new MeshPhysicalMaterial({ map, roughness: 0.42, clearcoat: 0.35, clearcoatRoughness: 0.35, sheen: 0.2, sheenRoughness: 0.6 })
-      : new MeshStandardMaterial({ map, roughness: 0.5 });
   const frontMat = useMemo(() => {
-    const m = withSaturation(face ? mk(face) : mk(back));
+    const map = face ?? back;
+    // Unlit until the physical program is linked. MeshBasic with a map is one small shader shared by every card.
+    const m = lit ? createLitCardMaterial(map, quality, true) : new MeshBasicMaterial({ map });
     // Face and cap are both opaque, so they share one list. renderOrder can sort them,
     // but a 16-bit depth test still drops the face when the two planes quantize together.
     applyFaceDepthBias(m);
     return m;
-  }, [face, back, quality]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [face, back, quality, lit]); // eslint-disable-line react-hooks/exhaustive-deps
   const backMat = useMemo(() => {
-    const m = mk(back);
+    const m = lit ? createLitCardMaterial(back, quality, false) : new MeshBasicMaterial({ map: back });
     applyFaceDepthBias(m);
     return m;
-  }, [back, quality]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [back, quality, lit]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Your turn: cards you can't play sit at 55% brightness (still readable); playable cards stay at full colour
   // and get a gold ring on their own rounded edge. Both ease in ~150 ms. The ring is also a tip mark.
@@ -122,7 +134,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     look.current.target.copy(dim ? DIM : FULL);
     look.current.glow = glow ? (quality === 'high' ? 1 : 0.9) : 0;
     look.current.sat = dim ? DIM_SAT : 1;
-    frontMat.emissive.set('#000000');
+    if ('emissive' in frontMat && frontMat.emissive) frontMat.emissive.set('#000000');
     // the clear coat / sheen add white on top of the colour (and ACES squashes the rest), so ease them off too when dimmed
     if (frontMat instanceof MeshPhysicalMaterial) { frontMat.clearcoat = dim ? 0.05 : 0.35; frontMat.sheen = dim ? 0 : 0.2; }
     invalidate();
@@ -232,15 +244,17 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     return true;
   };
 
-  useFrame((_, dt) => {
+  useFrame((_, rawDt) => {
     const g = ref.current;
     if (!g) return;
-    // colour / glow easing (~150 ms)
-    const L = look.current, k = Math.min(1, dt / 0.05);
+    // A resume hitch must not fast-forward the fan. One frame advances at most 50ms, same as a slow paint.
+    const dt = Math.min(Math.max(rawDt, 0), 0.05);
+    // colour / glow easing (~150 ms), also capped so a long frame does not snap it
+    const L = look.current, k = Math.min(1, dt / 0.15);
     const c = frontMat.color;
     if (Math.abs(c.r - L.target.r) + Math.abs(c.g - L.target.g) + Math.abs(c.b - L.target.b) > 0.004) { c.lerp(L.target, k); invalidate(); } else c.copy(L.target);
-    const sat = frontMat.userData.sat;
-    if (Math.abs(sat.value - L.sat) > 0.01) { sat.value += (L.sat - sat.value) * k; invalidate(); } else sat.value = L.sat;
+    const sat = frontMat.userData.sat as { value: number } | undefined;
+    if (sat && Math.abs(sat.value - L.sat) > 0.01) { sat.value += (L.sat - sat.value) * k; invalidate(); } else if (sat) sat.value = L.sat;
     if (Math.abs(glowMat.opacity - L.glow) > 0.01) { glowMat.opacity += (L.glow - glowMat.opacity) * k; invalidate(); } else glowMat.opacity = L.glow;
     if (!applyTornado(g)) applyBlast(g);
     const s = tw.current;
@@ -311,7 +325,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       if (!Number.isFinite(rt.y)) { rt.y = dest; rt.from = dest; rt.to = dest; rt.t = 1; }
       if (Math.abs(dest - rt.to) > 1e-5) { rt.from = rt.y; rt.to = dest; rt.t = 0; }
       if (rt.t < 1) {
-        rt.t = Math.min(1, rt.t + Math.min(dt, 0.05) / RAISE_S);
+        rt.t = Math.min(1, rt.t + dt / RAISE_S);
         rt.y = rt.from + (rt.to - rt.from) * liftEase(rt.t);
         invalidate();
       } else rt.y = rt.to;
@@ -332,7 +346,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       const st = sfx.current.sfxStart;
       if (st && st !== s.firedStart) { s.firedStart = st; if (moving) sound.play(st); }
     }
-    s.t = Math.min(1, s.t + Math.min(dt, 0.05) / duration);
+    s.t = Math.min(1, s.t + dt / duration);
     if (s.t >= 1) {
       const land = s.land;
       if (land && land !== s.firedLand) { s.firedLand = land; if (moving) land.split(',').forEach((c, i) => fireCue(c, i ? 0.02 : 0)); }

@@ -9,6 +9,20 @@
  */
 import { useSyncExternalStore } from 'react';
 
+/**
+ * decodeAudioData completion runs on the main thread. Decoding every stinger and voice sprite in
+ * one turn was a resume hitch, so decodes take a ticket and yield a frame between them.
+ */
+let decodeChain: Promise<void> = Promise.resolve();
+export function decodeAudioBuffer(ctx: AudioContext, data: ArrayBuffer): Promise<AudioBuffer> {
+  const task = decodeChain.then(() => new Promise<AudioBuffer>((ok, bad) => { ctx.decodeAudioData(data, ok, bad); }));
+  decodeChain = task.then(
+    () => new Promise((resolve) => { setTimeout(resolve, 0); }),
+    () => new Promise((resolve) => { setTimeout(resolve, 0); }),
+  );
+  return task;
+}
+
 export type Sfx =
   | 'shuffle' | 'deal' | 'play' | 'tap' | 'sweep' | 'broken' | 'turn' | 'bid' | 'bidSoft'
   | 'cut' | 'made' | 'set' | 'nil' | 'bags' | 'pop' | 'win' | 'lose' | 'flip'
@@ -397,7 +411,7 @@ class Engine {
       try {
         const res = await fetch(`/assets/sfx/${n}.mp3`);
         const data = await res.arrayBuffer();
-        const buf = await new Promise<AudioBuffer>((ok, bad) => c.decodeAudioData(data, ok, bad)); // callback form for older Safari
+        const buf = await decodeAudioBuffer(c, data); // callback form for older Safari, one buffer per turn
         this.buffers.set(n, buf);
       } catch { /* missing sound is not fatal */ }
     })).then(() => undefined);
