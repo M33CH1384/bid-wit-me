@@ -1,8 +1,43 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import tips from './data/loading-tips.json';
 
 /** Copy that rotates while the table is still coming up. The first line is the one tests and the first paint use. */
 export const LOADING_LINES = ['Shuffling the deck…', 'Setting the table…', 'Warming the felt…', 'Dealing you in…'];
+
+export interface LoadingTip { id: string; text: string }
+
+/**
+ * Strategy lines shipped inside this chunk. Reading them is synchronous, so the list never
+ * waits on the network and never holds the 3D scene or the first game state.
+ */
+export const LOADING_TIPS: LoadingTip[] = tips;
+
+/** One tip at a time. The next fades in on a timer that does not touch the loader's progress. */
+function LoadingTips() {
+  const [index, setIndex] = useState(0);
+  const [visible, setVisible] = useState(true);
+  useEffect(() => {
+    if (LOADING_TIPS.length < 2) return;
+    let fade = 0;
+    const id = window.setInterval(() => {
+      setVisible(false);
+      fade = window.setTimeout(() => {
+        setIndex((n) => (n + 1) % LOADING_TIPS.length);
+        setVisible(true);
+      }, 280);
+    }, 3400);
+    return () => { window.clearInterval(id); window.clearTimeout(fade); };
+  }, []);
+  const tip = LOADING_TIPS[index];
+  if (!tip?.text) return null;
+  return (
+    <p className={`bwm-loading-tip${visible ? ' in' : ''}`} data-testid="table-loading-tip" data-tip={tip.id} aria-live="polite">
+      <span className="bwm-loading-tip-kicker">Strategy</span>
+      <span className="bwm-loading-tip-text">{tip.text}</span>
+    </p>
+  );
+}
 
 /**
  * Full-screen Bid Wit Me hold, from the moment a table is joined or started until the 3D scene
@@ -17,11 +52,11 @@ export function TableLoading({ progress, leaving, onBack }: { progress?: number;
   const known = progress !== undefined && Number.isFinite(progress);
   const pct = known ? Math.max(4, Math.min(100, Math.round(progress * 100))) : undefined;
   const node = (
-    <div className={`bwm-loading${leaving ? ' leaving' : ''}`} role="status" aria-live="polite" data-testid="table-loading">
+    <div className={`bwm-loading${leaving ? ' leaving' : ''}`} role="status" data-testid="table-loading">
       <div className="bwm-loading-card">
         <img className="bwm-loading-mark" src="/assets/bwm-wordmark-white.svg" alt="Bid Wit Me" />
         <span className="beta-tag">BETA</span>
-        <p className="bwm-loading-line" data-testid="table-loading-line">{LOADING_LINES[line]}</p>
+        <p className="bwm-loading-line" data-testid="table-loading-line" aria-live="polite">{LOADING_LINES[line]}</p>
         <div
           className={`bwm-loading-track${known ? '' : ' indeterminate'}`}
           role="progressbar"
@@ -32,6 +67,7 @@ export function TableLoading({ progress, leaving, onBack }: { progress?: number;
         >
           <span style={pct !== undefined ? { width: `${pct}%` } : undefined} />
         </div>
+        <LoadingTips />
         {onBack && <button type="button" className="link bwm-loading-back" onClick={onBack}>← Back</button>}
       </div>
     </div>

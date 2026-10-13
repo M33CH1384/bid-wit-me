@@ -1,0 +1,7 @@
+[
+  { "id": "count-books", "text": "Count the books you can win before you bid." },
+  { "id": "spades-trump", "text": "Spades are trump. Save them until you need them." },
+  { "id": "bid-talks", "text": "Your bid is how you talk to your partner." },
+  { "id": "nil-means-zero", "text": "A nil bid is a promise to take no books." },
+  { "id": "watch-the-play", "text": "See what has been played before you spend a high card." }
+]
