@@ -27,4 +27,21 @@ describe('quick-load hand', () => {
     expect(html).toContain('tabindex="-1"');
     expect(html).not.toContain('aria-label="Your hand"');
   });
+
+  it('draws only the cards dealt so far, still sitting in the full fan', () => {
+    const html = renderToStaticMarkup(createElement(FeltHand, {
+      cards: ['AS', 'KH', '2C'],
+      trick: [],
+      legal: [],
+      selected: null,
+      onCard: () => {},
+      promoted: () => false,
+      visibleCount: 1,
+    }));
+    const buttons = html.match(/<button/g) ?? [];
+    expect(buttons).toHaveLength(1);
+    expect(html).toContain('A♠');
+    expect(html).not.toContain('K♥');
+    expect(html).toContain(feltCardTransform(0, 3, false));
+  });
 });

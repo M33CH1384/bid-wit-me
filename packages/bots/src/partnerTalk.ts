@@ -8,7 +8,7 @@
  * - applyHint: how a bot that bids after (or while) its partner hinted adjusts its own number.
  */
 import type { Card, PlayerView } from '@spades/rules';
-import { isTrump } from '@spades/rules';
+import { isTrump, nilRulesOf } from '@spades/rules';
 import { estimateTricks, nilWorthy } from './bidding';
 
 export const PARTNER_TALK_PRESETS = ['I got about 2', '3-ish', '4+', "I'm weak", 'I can go Nil', 'Strong in spades'] as const;
@@ -42,7 +42,7 @@ export function parseHint(text: string): PartnerHint | null {
 export function botHint(hand: readonly Card[], v: PlayerView): string {
   const est = estimateTricks(hand, v);
   const spades = hand.filter((c) => isTrump(c, v.rules)).length;
-  if (v.bidOptions?.nil !== false && v.rules.nil.allowed && est < 1.4 && nilWorthy(hand, v)) return 'I might go Nil';
+  if (v.bidOptions?.nil !== false && nilRulesOf(v.rules).allowed && est < 1.4 && nilWorthy(hand, v)) return 'I might go Nil';
   if (est < 1.5) return "I'm weak this hand";
   const n = Math.round(est);
   if (spades >= 5 && n >= 3) return `Strong in spades, about ${n}`;

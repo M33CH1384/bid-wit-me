@@ -13,7 +13,7 @@ import { type Series, addSeriesGame, seriesSides, summarizeGame } from '@spades/
 import { SeriesChip, SeriesSheet, loadSeries, saveSeries } from './Series';
 import { useMyTeamName } from './TeamName';
 import { offlineTalk } from './offlineTalk';
-import { BidOrder } from './PartnerTalk';
+import { BidOrder, showCenterBidOrder } from './PartnerTalk';
 import { SocialButton } from './social/Social';
 import { recordOfflineGame } from './offlineStats';
 import { setTableIntensity, showLine, speakBot, useTalkPrefs } from './talkPrefs';
@@ -26,6 +26,7 @@ import { setFeedbackGame } from './feedbackContext';
 import { loadTipJar, openTip, saveTipJar, tipNudgeDue } from './support';
 import { OfflineMediaBar } from './online/Media';
 import { fireCue, fx, useReduceEffects } from './fx';
+import { useDealtSlots } from './dealtSlots';
 import { FeltHand } from './FeltHand';
 import { loadScene } from './three/preload';
 import { endReasonText, onNoticeSides, shotChatLines } from './shotOut';
@@ -413,8 +414,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [showPad, setShowPad] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [ltOpen, setLtOpen] = useState(false);
-  const [clearedOpen, setClearedOpen] = useState(true);
-  useEffect(() => { setClearedOpen(true); }, [st.handNo]);
+  const [clearedOpen, setClearedOpen] = useState(false);
+  useEffect(() => { setClearedOpen(false); }, [st.handNo]);
   const [chatOpen, setChatOpen] = useState(() => window.innerWidth >= 900 && window.innerHeight > 600);
   const [seenMsgs, setSeenMsgs] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -930,6 +931,16 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     return () => clearInterval(t);
   }, [measureHand, vp.short]);
 
+  // The quick-load hand is on screen before WebGL. During a deal it may only show the cards that have left the deck.
+  const feltShown = useDealtSlots(dealing, {
+    speedK: k,
+    players: n,
+    dealer: st.dealer,
+    seat: HUMAN,
+    slots: display.hand?.length ?? 0,
+    handNo: st.handNo,
+  });
+
   return (
     <div ref={screenRef} className={`table-screen q-${settings.quality}${vp.short ? ' short' : ''}${modalOpen ? ' modal-open' : ''}${showPad ? ' pad-open' : ''}`}>
       {/* styled stand-in table, on screen from the first paint until the 3D table has rendered (then it fades) */}
@@ -941,6 +952,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       {resume && !webglHand && display.hand && display.hand.length > 0 && (
         <FeltHand
           cards={display.hand}
+          visibleCount={feltShown}
           trick={display.trick.map((p) => p.card)}
           legal={runFx ? [] : humanExchanging && hand ? hand : legal}
           selected={runFx ? null : selected}
@@ -1067,7 +1079,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       {/* center notes */}
       <div className="center-note-wrap">
         {st.phase === 'bidding' && !pause && st.turn !== HUMAN && <div className="center-note" data-testid="bidding-note">{r.partnerships && st.turn === partnerSeat ? `Your partner ${names[st.turn!]} is bidding…` : `${names[st.turn!]} is bidding…`}</div>}
-        {st.phase === 'bidding' && !pause && !dealing && st.turn !== HUMAN && <BidOrder st={st} names={names} me={HUMAN} />}
+        {showCenterBidOrder(st.phase, pause, dealing) && <BidOrder st={st} names={names} me={HUMAN} />}
         {isBooks && st.phase === 'playing' && !pause && !dealing && st.tricks.length === 0 && st.trick.plays.length === 0 && <div className="center-note books-note" data-testid="books-note">First hand: books bid themselves · 10 per book</div>}
         {st.phase === 'exchange' && !humanExchanging && <div className="center-note">{names[exchangeStep!.from]} passes {exchangeStep!.count} to {names[exchangeStep!.to]}…</div>}
       </div>
@@ -1200,7 +1212,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
                 />
               </div>
             ) : (
-              <button type="button" className="tt-run-show" data-testid="talk-run-show" onClick={() => setClearedOpen(true)}>Run it — cleared hands</button>
+              <button type="button" className="tt-run-show" data-testid="talk-run-show" onClick={() => setClearedOpen(true)}>{(spectating ? names[runClaimer] : runClaimer === HUMAN ? 'You' : names[runClaimer]) ?? `Seat ${runClaimer + 1}`} ran the rest</button>
             )
           ) : null}
         />

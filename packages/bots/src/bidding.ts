@@ -1,5 +1,5 @@
 import { type PartnerHint, applyHint } from './partnerTalk';
-import { type Card, type PlayerView, type Rng, effectiveSuit, isNilBid, isTrump, partnerOf, sideOf, trumpOrder } from '@spades/rules';
+import { type Card, type PlayerView, type Rng, blindNilRulesOf, effectiveSuit, isNilBid, isTrump, nilRulesOf, partnerOf, sideOf, trumpOrder } from '@spades/rules';
 
 /** One line of a hand's book count (shared by the bots' bidding and the player-facing bid coach). */
 export interface BookItem { cards: Card[]; value: number; note: string }
@@ -185,7 +185,7 @@ export function wantsBlindNil(v: PlayerView, level: BotLevel): boolean {
   const pBid = partner === null ? null : v.bids[partner];
   // Only with a partner who has already shown a strong hand to cover (never in Cutthroat).
   // A desperation move: far behind, or the leaders are close to winning.
-  const strongPartner = r.blindNil.exchangeCards > 0 ? 4 : 5;
+  const strongPartner = blindNilRulesOf(r).exchangeCards > 0 ? 4 : 5;
   if (partner === null || typeof pBid !== 'number' || pBid < strongPartner) return false;
   return best - mine >= 350 || (best - mine >= 150 && best >= r.targetScore - 100);
 }
@@ -258,7 +258,7 @@ export function bidAdvice(v: PlayerView, rng: Rng): BidAdvice | null {
   let nil: BidAdvice['nil'] = null;
   if (opt.nil) {
     const problem = nilProblem(hand, v);
-    nil = problem ? { ok: false, note: `Nil? Not this hand: ${problem}.` } : { ok: true, note: `Nil looks good: low cards everywhere (±${r.nil.value}).${r.partnerships ? ' Your partner covers you.' : ''}` };
+    nil = problem ? { ok: false, note: `Nil? Not this hand: ${problem}.` } : { ok: true, note: `Nil looks good: low cards everywhere (±${nilRulesOf(r).value}).${r.partnerships ? ' Your partner covers you.' : ''}` };
   }
   return { analysis, estimate, low, high, botBid, partnerNote, tableNote, nil };
 }
