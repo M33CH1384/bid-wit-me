@@ -204,6 +204,8 @@ export interface RoomInfo {
   music?: HostMusic;
   /** consecutive timeouts before a bot replaces a player (0 = off) */
   afkLimit?: number;
+  /** Seat whose current turn is the one that would hand it to a bot. That player sees "Still there?" */
+  afkWarn?: number;
   /** host option: partners can't hear each other during trick play (from the first card led); bidding, Table Talk and lobby stay open; default off */
   partnerMicMute?: boolean;
   /** table setting: how big the Big-over-Little-Joker nuke plays for everyone (default full) */

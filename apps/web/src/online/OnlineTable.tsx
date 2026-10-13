@@ -134,6 +134,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
         }}
       />
       {cs.status !== 'open' && <div className="conn-banner" role="status">{cs.status === 'reconnecting' ? 'Reconnecting…' : 'Connecting…'}</div>}
+      {room.afkWarn === cs.seat && cs.seat !== null && <div className="still-there" role="status" data-testid="still-there">Still there?</div>}
       {talkOver && <div className="talk-over-toast" role="status" data-testid="talk-over">First card's down — partner mics muted 🤐</div>}
       {room.music?.mode === 'link' && source.st.phase !== 'handOver' && <div className="music-card-dock"><MusicLinkCard music={room.music} compact /></div>}
       {room.phase === 'over' && room.hostId !== cs.you && <div className="conn-banner subtle">Waiting for the host to start a rematch…</div>}

@@ -93,6 +93,13 @@
   background: var(--purple); color: #fff; box-shadow: 0 0 10px rgba(155,92,255,.8);
 }
 .turn-clock.hot { background: var(--red); box-shadow: 0 0 12px rgba(255,77,109,.9); }
+/* Last turn before a bot takes the seat. Sits above your name, clear of the trick and the trump bar. */
+.still-there {
+  position: fixed; z-index: 36; left: calc(12px + env(safe-area-inset-left));
+  bottom: calc(23vh + 72px + env(safe-area-inset-bottom));
+  padding: 6px 12px; font-family: var(--display); font-weight: 800; letter-spacing: .06em; font-size: 15px;
+  color: #1d1204; background: var(--gold); border-radius: 10px; box-shadow: 0 6px 18px rgba(0,0,0,.4); pointer-events: none;
+}
 
 .conn-banner {
   position: fixed; z-index: 40; top: calc(64px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); padding: 6px 14px;

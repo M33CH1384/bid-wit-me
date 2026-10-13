@@ -890,6 +890,32 @@ describe('learning mode', () => {
 });
 
 describe('AFK + kicking', () => {
+  it('a long turn does not draw bot trash talk about being slow', () => {
+    const env = new FakeEnv(undefined, FAST);
+    env.join('a', 'Slow');
+    env.send('a', { t: 'sit', seat: 0 });
+    env.send('a', { t: 'config', rules: makeRules('joker', { turnTimerSec: { bid: 40, play: 40 }, firstHandBidsItself: false }), afkLimit: 0 });
+    env.send('a', { t: 'start' });
+    for (let i = 0; i < 80 && !(env.room.data.seats[0]!.kind === 'human' && env.room.data.game!.turn === 0); i++) env.advance(50);
+    expect(env.room.data.game!.turn).toBe(0);
+    const before = env.room.data.chat.length;
+    env.advance(30_000);
+    expect(env.room.data.game!.turn).toBe(0);
+    expect(env.room.data.seats[0]!.kind).toBe('human');
+    expect(env.room.data.chat.slice(before).filter((l) => l.bot)).toEqual([]);
+  });
+
+  it('the turn that would hand the seat to a bot warns Still there, and does not replace yet', () => {
+    const { env, a } = soloGame(2);
+    waitMyTurn(env);
+    expect(env.last('a', 'state')!.room.afkWarn).toBeUndefined();
+    env.advance(5200);
+    waitMyTurn(env);
+    expect(env.room.data.members[a.pid]!.timeouts).toBe(1);
+    expect(env.room.data.seats[0]!.kind).toBe('human');
+    expect(env.last('a', 'state')!.room.afkWarn).toBe(0);
+  });
+
   const soloGame = (afkLimit?: number) => {
     const env = new FakeEnv(undefined, FAST);
     const a = env.join('a', 'Slow');

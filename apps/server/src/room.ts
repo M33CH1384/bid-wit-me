@@ -978,8 +978,6 @@ export class Room {
     }
   }
 
-  private slowKey: string | null = null;
-
   private talkState(): TalkState { return (this.data.talk ??= newTalkState()); }
 
   private talkTable(): TalkTable {
@@ -1321,10 +1319,6 @@ export class Room {
       const want = connected ? full : Math.min(full, now + this.timing.disconnectGraceMs);
       // the deadline only ever moves earlier for a turn (a disconnect shortens it; a reconnect doesn't extend it)
       if (d.deadline === null || want < d.deadline) { d.deadline = want; changed = true; }
-      // a slow human gets roasted once per turn (bots only)
-      const slowAt = (d.turnStartedAt ?? now) + leadIn + Math.max(12_000, timerMs * 0.6);
-      if (this.slowKey !== key && now >= slowAt && now < d.deadline) { this.slowKey = key; this.talk({ kind: 'slow', them: turn.seat }); changed = true; }
-      else if (this.slowKey !== key && slowAt < d.deadline) this.io.wake(Math.max(50, slowAt - now));
       if (now >= d.deadline) {
         this.autoAct(turn.seat, 'normal');
         this.system(`${this.seatName(turn.seat)} ran out of time`);
@@ -1404,8 +1398,21 @@ export class Room {
 
   /* --------------------------------------------------------------- output */
 
+  /** The seat on the turn that would give it to a bot, so the client can ask "Still there?" first. */
+  private afkWarning(): number | null {
+    const d = this.data;
+    const g = d.game;
+    const limit = d.afkLimit ?? DEFAULT_AFK_LIMIT;
+    if (!limit || d.phase !== 'playing' || !g || g.turn === null) return null;
+    const slot = d.seats[g.turn];
+    if (slot?.kind !== 'human') return null;
+    const missed = d.members[slot.playerId]?.timeouts ?? 0;
+    return missed + 1 >= limit ? g.turn : null;
+  }
+
   roomInfo(): RoomInfo {
     const d = this.data;
+    const afkWarn = this.afkWarning();
     const seats: SeatInfo[] = d.seats.slice(0, d.rules.playerCount).map((s) => {
       if (s.kind === 'empty') return { kind: 'empty' };
       if (s.kind === 'bot') return { kind: 'bot', name: s.name, level: s.level };
@@ -1416,7 +1423,7 @@ export class Room {
       code: d.code, hostId: d.hostId ?? '', phase: d.phase, rules: d.rules, botLevel: d.botLevel, seats,
       members: Object.entries(d.members).map(([playerId, m]) => ({ playerId, name: m.name, connected: this.isConnected(playerId), seat: m.seat })),
       deadline: d.deadline, ready: [...d.ready], rev: d.rev, seq: d.seq ?? 0, game: d.gamesPlayed, now: this.io.now(),
-      talkSec: d.talkSec ?? Math.round(this.timing.handOverMs / 1000), afkLimit: d.afkLimit ?? DEFAULT_AFK_LIMIT, partnerMicMute: d.partnerMicMute ?? false, nukeIntensity: d.nukeIntensity ?? 'full', talkIntensity: d.talkIntensity ?? 'cookout', botTalk: d.botTalk ?? true,
+      talkSec: d.talkSec ?? Math.round(this.timing.handOverMs / 1000), afkLimit: d.afkLimit ?? DEFAULT_AFK_LIMIT, ...(afkWarn !== null ? { afkWarn } : {}), partnerMicMute: d.partnerMicMute ?? false, nukeIntensity: d.nukeIntensity ?? 'full', talkIntensity: d.talkIntensity ?? 'cookout', botTalk: d.botTalk ?? true,
       venue: d.venue ?? 'classic', ...(d.venueNow ? { venueNow: d.venueNow } : {}),
       teamNames: d.rules.partnerships ? [...(d.teamNames ?? [null, null])] : undefined, series: d.series ?? null, revealed: [...(d.talk?.revealed ?? [])],
       ...(d.tournament ? { tournament: { id: d.tournament.id, name: d.tournament.name, match: d.tournament.match, autostartAt: d.tournament.autostartAt, reserved: d.tournament.reserved.map((r) => r?.name ?? null) } } : {}),

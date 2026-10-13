@@ -18,7 +18,7 @@ import { MediaBar, SeatMedia } from './Media';
 import { colorFor, useVideo } from './useOnline';
 import type { VideoMesh } from './video';
 
-const TIMERS = { relaxed: { bid: 45, play: 30 }, normal: { bid: 30, play: 20 }, fast: { bid: 15, play: 10 } } as const;
+const TIMERS = { relaxed: { bid: 45, play: 30 }, normal: { bid: 30, play: 25 }, fast: { bid: 25, play: 20 } } as const;
 type TimerKey = keyof typeof TIMERS;
 
 function timerKey(room: RoomInfo): TimerKey {
@@ -177,7 +177,7 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
             </select></span></label>
           <label className="row"><span className="row-label">Turn timer<small>then the bot plays for you</small></span><span className="row-control">
             <select value={timerKey(room)} onChange={(e) => config(settings, e.target.value as TimerKey)}>
-              <option value="relaxed">Relaxed (45s / 30s)</option><option value="normal">Normal (30s / 20s)</option><option value="fast">Fast (15s / 10s)</option>
+              <option value="relaxed">Relaxed (45s / 30s)</option><option value="normal">Normal (30s / 25s)</option><option value="fast">Fast (25s / 20s)</option>
             </select></span></label>
           <label className="row"><span className="row-label">Bot skill<small>Mixed: every bot rolls its own (hidden)</small></span><span className="row-control">
             <select data-testid="lobby-bot-skill" value={skillSettingOf(room.botLevel)} onChange={(e) => config(settings, timerKey(room), e.target.value as BotLevel)}>
@@ -252,7 +252,7 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
               <summary className="panel-title">PACE &amp; TABLE <small>(host · still changeable)</small></summary>
               <label className="row"><span className="row-label">Turn timer<small>then the bot plays for you</small></span><span className="row-control">
                 <select value={timerKey(room)} onChange={(e) => config(settings, e.target.value as TimerKey)}>
-                  <option value="relaxed">Relaxed (45s / 30s)</option><option value="normal">Normal (30s / 20s)</option><option value="fast">Fast (15s / 10s)</option>
+                  <option value="relaxed">Relaxed (45s / 30s)</option><option value="normal">Normal (30s / 25s)</option><option value="fast">Fast (25s / 20s)</option>
                 </select></span></label>
               <label className="row"><span className="row-label">Table Talk<small>between hands · all mics open</small></span><span className="row-control">
                 <select data-testid="talk-sec" value={String(room.talkSec ?? 20)} onChange={(e) => config(settings, timerKey(room), room.botLevel, Number(e.target.value))}>
