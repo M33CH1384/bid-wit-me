@@ -161,6 +161,15 @@ describe('bid coach (bidAdvice / analyzeHand)', () => {
     expect(adv.partnerNote).toMatch(/Partner bid 4 → team total/);
     expect(adv.tableNote).toMatch(/9 of 13/);
   });
+  it('names the house minimum when a low partner bid leaves the team short', () => {
+    const weak: Card[] = ['3S', '4H', '5H', '6H', '7H', '3D', '4D', '5D', '6D', '4C', '5C', '6C', '7C'];
+    const hands = fill(joker, [[], weak, [], []]);
+    // Default joker: minTeamBid is 0, host minimum is 4. Partner (seat 3) bid 1.
+    const st = rig(joker, hands, { turn: 1, bids: [null, null, null, 1] });
+    const adv = bidAdvice(viewFor(st, 1), createRng(1))!;
+    expect(adv.partnerNote).toMatch(/Partner bid 1/);
+    expect(adv.partnerNote).toMatch(/Your team needs at least 4/);
+  });
   it('every random hand: range is legal, low ≤ high, and contains the numeric bot bid', () => {
     for (let i = 0; i < 60; i++) {
       const r = i % 3 === 0 ? makeRules('cutthroat', { playerCount: 3, firstHandBidsItself: false }) : { ...joker, firstHandBidsItself: false };
