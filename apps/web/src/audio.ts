@@ -39,13 +39,13 @@ export function decodeAudioBuffer(ctx: AudioContext, data: ArrayBuffer): Promise
 export type Sfx =
   | 'shuffle' | 'deal' | 'play' | 'tap' | 'sweep' | 'broken' | 'turn' | 'bid' | 'bidSoft'
   | 'cut' | 'made' | 'set' | 'nil' | 'bags' | 'pop' | 'win' | 'lose' | 'flip'
-  // hype effects (all synthesized): joker rumbles, the Big-over-Little nuke, streaks, shots
+  // hype effects. The sheet siren is a recorded wail (CREDITS.md); the rest are synthesized.
   | 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak1' | 'streak2' | 'streak3' | 'shot' | 'gotShot' | 'shotgun' | 'pump' | 'siren' | 'docSting' | 'wheels' | 'wheelsCar' | 'overcut' | 'overcut3' | 'tornado'
   // 'Run it!': the claimer's cards all slam at once / everyone else's cards hit in a quick cascade
   | 'runSlam' | 'runThud';
 
 /** SFX that bot voices duck under, and for how long (ms). */
-const DUCK_MS: Partial<Record<Sfx, number>> = { runSlam: 700, nuke: 3600, tornado: 2600, wheelsCar: 3000, jokerBig: 1100, shot: 1200, shotgun: 700, pump: 500, siren: 1800, docSting: 2400, streak2: 1400, streak3: 1800, overcut3: 1000, win: 2000, lose: 1600, set: 1200, nil: 1600 };
+const DUCK_MS: Partial<Record<Sfx, number>> = { runSlam: 700, nuke: 3600, tornado: 2600, wheelsCar: 3000, jokerBig: 1100, shot: 1200, shotgun: 700, pump: 500, siren: 2700, docSting: 2400, streak2: 1400, streak3: 1800, overcut3: 1000, win: 2000, lose: 1600, set: 1200, nil: 1600 };
 
 export interface SoundSettings { on: boolean; volume: number; ambient: boolean; music: boolean; musicVolume: number; /** the venue's quiet ambient sound bed (Release 7), default on */ venueSound: boolean }
 const KEY = 'bwm.sound.v1';
@@ -100,6 +100,8 @@ function load(): SoundSettings {
 const FILES: Record<string, string[]> = {
   shuffle: ['shuffle'], deal: ['deal-1', 'deal-2', 'deal-3'], play: ['play-1', 'play-2', 'play-3'],
   sweep: ['sweep-1', 'sweep-2'], bid: ['bid'], tap: ['tap'], pop: ['pop'],
+  // RIP-sheet wail. Same fetch/decode path as the card foley, so warmEffects has it before the first sheet.
+  siren: ['siren'],
 };
 
 type Ctx = AudioContext;
@@ -673,13 +675,18 @@ class Engine {
     o.start(t); o.stop(t + dur + 0.05);
   }
 
-  /** Decode those buffers into the live context. Safe before a gesture: a blocked context just skips. */
-  warmEffects(): void {
+  /**
+   * Decode the sfx buffers (card foley and the sheet siren) and fill the noise bank.
+   * Safe before a gesture: a blocked context just skips. The returned promise is the
+   * same load the context started, so the loading screen can wait until the siren is decoded.
+   */
+  warmEffects(): Promise<void> | undefined {
     try {
       const c = this.ensure();
       if (!c || c.state === 'closed') return;
       for (const dur of EFFECT_NOISE_SECONDS) this.noise(dur);
       this.shaper(12);
+      return this.load() ?? Promise.resolve();
     } catch { /* autoplay policy: the next gesture still builds them */ }
   }
 
@@ -1025,32 +1032,23 @@ class Engine {
   }
 
   /**
-   * White-sheet moment: a two-tone police yelp. Original synthesis, no sampled recording, no third-party license.
-   * Goes out the sfx bus, so mute and the volume slider apply.
+   * RIP sheet: recorded Whelen police wail (CREDITS.md), already trimmed and faded.
+   * 0.32 sits under shotgunBoom (boom 0.95, muzzle crack 0.72) and the 120 ms rise
+   * lets that crack lead, so the shot stays on top. The file is in FILES and decoded
+   * by warmEffects. Goes out the sfx bus, so mute and the volume slider apply.
    */
   private siren(t: number, g: number) {
+    const buf = this.buffers.get('siren');
+    if (!buf || g <= 0) return;
     const c = this.ctx!;
-    const o = c.createOscillator();
-    o.type = 'sawtooth';
-    o.frequency.setValueAtTime(640, t);
-    for (let i = 0; i < 4; i++) {
-      const at = t + i * 0.42;
-      o.frequency.exponentialRampToValueAtTime(920, at + 0.16);
-      o.frequency.exponentialRampToValueAtTime(640, at + 0.42);
-    }
-    const filter = c.createBiquadFilter();
-    filter.type = 'bandpass';
-    filter.frequency.value = 1400;
-    filter.Q.value = 0.8;
+    const src = c.createBufferSource();
+    src.buffer = buf;
     const gain = c.createGain();
+    const peak = 0.32 * g;
     gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.exponentialRampToValueAtTime(0.2 * g, t + 0.03);
-    gain.gain.setValueAtTime(0.2 * g, t + 1.5);
-    gain.gain.exponentialRampToValueAtTime(0.0001, t + 1.72);
-    o.connect(filter).connect(gain).connect(this.sfxBus!);
-    o.start(t);
-    o.stop(t + 1.8);
-    this.tone(t, 320, 1.68, 'sine', 0.08 * g, { attack: 0.03 });
+    gain.gain.exponentialRampToValueAtTime(peak, t + 0.12);
+    src.connect(gain).connect(this.sfxBus!);
+    src.start(t);
   }
 
   /**

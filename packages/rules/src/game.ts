@@ -73,7 +73,7 @@ export type Action =
 export type RuleErrorCode =
   | 'WRONG_PHASE' | 'NOT_YOUR_TURN' | 'BAD_SEAT' | 'BAD_BID' | 'BID_TOO_LOW' | 'NIL_NOT_ALLOWED'
   | 'BLIND_NIL_NOT_ALLOWED' | 'CARD_NOT_IN_HAND' | 'MUST_FOLLOW_SUIT' | 'SPADES_NOT_BROKEN'
-  | 'MUST_LEAD_TWO_OF_CLUBS' | 'BAD_EXCHANGE' | 'ALREADY_REVEALED' | 'CANNOT_RUN_IT' | 'ELIMINATED' | 'BAD_RULES';
+  | 'MUST_LEAD_TWO_OF_CLUBS' | 'BAD_EXCHANGE' | 'ALREADY_REVEALED' | 'ALREADY_PLAYED' | 'CANNOT_RUN_IT' | 'ELIMINATED' | 'BAD_RULES';
 
 export class RuleError extends Error {
   constructor(public readonly code: RuleErrorCode, message: string) {
@@ -628,6 +628,14 @@ export function applyAction(st: GameState, action: Action): GameState {
     }
     case 'play': {
       if (st.phase !== 'playing') throw new RuleError('WRONG_PHASE', 'Not in trick play');
+      // One card per seat per trick. A retry of the card already down is a no-op so a duplicate
+      // message cannot add a second play. A different card from that seat is rejected even when
+      // the turn pointer still names them.
+      const mine = st.trick.plays.find((p) => p.seat === seat);
+      if (mine) {
+        if (mine.card === action.card) return st;
+        throw new RuleError('ALREADY_PLAYED', 'You already played in this trick');
+      }
       if (st.turn !== seat) throw new RuleError('NOT_YOUR_TURN', 'Not your turn to play');
       const legal = legalPlays(st, seat);
       if (!legal.includes(action.card)) throw explainIllegal(st, seat, action.card);
