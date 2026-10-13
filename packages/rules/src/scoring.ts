@@ -1,4 +1,4 @@
-import { type TableRules, bagsOnOf, firstHandMinOf, shotOutOn } from './config';
+import { type TableRules, bagsOnOf, firstHandMinOf, handSize, shotOutOn } from './config';
 
 /**
  * A bid: a number of tricks (≥1), Nil, or Blind Nil. A numeric 0 is normalised to 'nil'.
@@ -195,6 +195,72 @@ export function isShot(r: TableRules, bids: readonly Bid[], side: SideHandResult
     return min !== null && side.tricks < min;
   }
   return side.contractMade === false;
+}
+
+/**
+ * Books still needed for a side's contract, or null when that side cannot be set
+ * (books hand, bidding not finished, or no numeric contract — nil bids are not a contract).
+ * Nil tricks count only when `nilTricksCountForPartner` is on, matching scoreHand.
+ */
+export function booksStillNeeded(r: TableRules, bids: readonly (Bid | null)[], tricksWon: readonly number[], side: number): number | null {
+  if (bids.length === 0 || bids.some((b) => b === null || b === undefined) || isBooksHand(bids)) return null;
+  const seats = sideSeats(side, r);
+  let contract = 0;
+  let taken = 0;
+  let nilTricks = 0;
+  for (const seat of seats) {
+    const b = bids[seat]!;
+    const t = tricksWon[seat] ?? 0;
+    if (isNilBid(b)) nilTricks += t;
+    else if (typeof b === 'number') { contract += b; taken += t; }
+  }
+  if (contract <= 0) return null;
+  if (r.nilTricksCountForPartner) taken += nilTricks;
+  return contract - taken;
+}
+
+/** Tricks not yet won. The trick in progress still counts as remaining. */
+export function tricksStillRemaining(st: { rules: TableRules; tricks: { length: number } }): number {
+  return handSize(st.rules) - st.tricks.length;
+}
+
+/**
+ * Sides exactly one trick from being set: books still needed equals tricks still remaining,
+ * so losing one more trick makes the contract unreachable. A nil bid is not itself a shot;
+ * it only changes which tricks count toward the partner's contract.
+ */
+export function sidesOneTrickFromShot(st: {
+  phase: string;
+  rules: TableRules;
+  bids: readonly (Bid | null)[];
+  tricksWon: readonly number[];
+  tricks: { length: number };
+}): number[] {
+  if (st.phase !== 'playing') return [];
+  const remaining = tricksStillRemaining(st);
+  if (remaining <= 0) return [];
+  const out: number[] = [];
+  for (let side = 0; side < sideCount(st.rules); side++) {
+    const needed = booksStillNeeded(st.rules, st.bids, st.tricksWon, side);
+    if (needed !== null && needed > 0 && needed === remaining) out.push(side);
+  }
+  return out;
+}
+
+/**
+ * Sides that just entered the one-trick-from-set window. The first snapshot of a hand is a baseline
+ * (a resumed game does not replay the cue). `already` remembers who has been pumped this hand, so
+ * dropping out and falling back in does not play a second time. Every client runs this on the same
+ * state transition, so an online table hears it together.
+ */
+export function newlyOneTrickFromShot<T extends { handNo: number; phase: string; rules: TableRules; bids: readonly (Bid | null)[]; tricksWon: readonly number[]; tricks: { length: number } }>(
+  prev: T | null,
+  next: T,
+  already: ReadonlySet<number>,
+): number[] {
+  if (!prev || prev.handNo !== next.handNo) return [];
+  const before = new Set(sidesOneTrickFromShot(prev));
+  return sidesOneTrickFromShot(next).filter((side) => !before.has(side) && !already.has(side));
 }
 
 /**
