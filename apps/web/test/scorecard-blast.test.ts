@@ -37,18 +37,20 @@ describe('scorecard shotgun blast', () => {
     const names = ['You', 'Hana', 'Mei', 'Jamal'];
     const one = recap(markShot(toHandOver('joker'), [1]), names);
     expect(one).toContain('data-testid="recap-side-1" data-blast="yes"');
-    expect(one).toContain('data-testid="recap-blast-1"');
+    expect(one).not.toContain('recap-blast-');
+    expect(one).not.toContain('blast-holes');
+    expect(one).not.toContain('blast-cracks');
+    expect(one).not.toContain('/shot/hole.png');
+    expect(one).not.toContain('/shot/tape.png');
     expect(one).toContain('class="tt-team blast"');
     expect(one).toContain('data-testid="recap-side-0" data-blast="no"');
-    expect(one).not.toContain('data-testid="recap-blast-0"');
     expect(one).toContain('data-testid="recap-line-1"');
     expect(one).toContain('Took 9');
     expect(one).not.toContain('GOT SHOT');
     expect(one).not.toContain('hype-pop');
 
     const both = recap(markShot(toHandOver('joker'), [0, 1]), names);
-    expect(both).toContain('data-testid="recap-blast-0"');
-    expect(both).toContain('data-testid="recap-blast-1"');
+    expect(both).not.toContain('/shot/hole.png');
     expect(both).toContain('class="tt-team mine blast"');
     expect(both).toContain('class="tt-team blast"');
   });
@@ -58,26 +60,28 @@ describe('scorecard shotgun blast', () => {
     const html = recap(markShot(toHandOver('cutthroat'), [2]), names);
     expect(html).toContain('tt-recap crowded');
     expect(html).toContain('data-testid="recap-side-2" data-blast="yes"');
-    expect(html).toContain('data-testid="recap-blast-2"');
+    expect(html).not.toContain('/shot/hole.png');
+    expect(html).not.toContain('/shot/tape.png');
     expect(html).toContain('data-testid="recap-side-0" data-blast="no"');
     expect(html).toContain('data-testid="recap-side-1" data-blast="no"');
-    expect(html).not.toContain('data-testid="recap-blast-0"');
-    expect(html).not.toContain('data-testid="recap-blast-1"');
     expect(html).toContain('data-testid="recap-line-2"');
   });
 
-  it('keeps the flash and the holes, and lets reduced motion drop only the shake', () => {
+  it('drops the glowing constellation and keeps the boom readable', () => {
     const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
     expect(css).not.toContain('.hype-pop.shot');
     expect(css).not.toContain('.hype-pop.gotShot');
-    expect(css).toContain('animation: muzzle-flash');
-    expect(css).toContain('animation: blast-marks-in');
-    expect(css).toContain('animation: panel-blast');
+    expect(css).not.toContain('muzzle-flash');
+    expect(css).not.toContain('blast-marks-in');
+    expect(css).not.toContain('panel-blast');
+    expect(css).not.toContain('.blast-holes');
+    expect(css).toContain('animation: hole-punch');
+    expect(css).toContain('animation: hole-jolt');
     const blocks = [...css.matchAll(/@media \(prefers-reduced-motion: reduce\) \{[^}]*\}/g)].map((m) => m[0]);
-    const shake = blocks.find((b) => b.includes('.tt-team.blast'));
-    expect(shake).toContain('animation: none');
-    expect(shake).not.toMatch(/blast-flash|blast-holes|blast-cracks|muzzle-flash/);
-    expect(css).not.toMatch(/@media[^{]*max-width[^{]*\{[^}]*\.tt-team\.blast/);
+    const shake = blocks.find((b) => b.includes('.shot-holes') && b.includes('animation: none'));
+    expect(shake).toBeTruthy();
+    expect(shake).not.toContain('display: none');
+    expect(css).not.toMatch(/@media[^{]*max-width[^{]*\{[^}]*(shot-holes|caution-x|hole-punch|hole-jolt)/);
     const hype = readFileSync(new URL('../src/Hype.tsx', import.meta.url), 'utf8');
     expect(hype).not.toContain("'SHOT!'");
     expect(hype).not.toContain("'GOT SHOT'");

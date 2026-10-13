@@ -412,8 +412,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [showPad, setShowPad] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [ltOpen, setLtOpen] = useState(false);
-  const [clearedOpen, setClearedOpen] = useState(true);
-  useEffect(() => { setClearedOpen(true); }, [st.handNo]);
+  const [clearedOpen, setClearedOpen] = useState(false);
+  useEffect(() => { setClearedOpen(false); }, [st.handNo]);
   const [chatOpen, setChatOpen] = useState(() => window.innerWidth >= 900 && window.innerHeight > 600);
   const [seenMsgs, setSeenMsgs] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -1195,7 +1195,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
                 />
               </div>
             ) : (
-              <button type="button" className="tt-run-show" data-testid="talk-run-show" onClick={() => setClearedOpen(true)}>Run it — cleared hands</button>
+              <button type="button" className="tt-run-show" data-testid="talk-run-show" onClick={() => setClearedOpen(true)}>{(spectating ? names[runClaimer] : runClaimer === HUMAN ? 'You' : names[runClaimer]) ?? `Seat ${runClaimer + 1}`} ran the rest</button>
             )
           ) : null}
         />
