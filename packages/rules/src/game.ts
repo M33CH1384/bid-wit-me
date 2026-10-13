@@ -47,10 +47,14 @@ export interface GameState {
   result: GameResult | null;
   /** Per side: Big-over-Little-Joker nukes dropped this game (set only once one happens). */
   nukes?: number[];
-  /** Cutthroat seats already out. The next deal counts who is still in and leaves this list alone. */
-  eliminated?: boolean[];
-  /** Consecutive failed bids. The deal does not touch this. */
+  /**
+   * Cutthroat: consecutive failed bids per player. A made bid sets it back to 0.
+   * Hand 1 eliminates on the first failure; from hand 2, two in a row eliminate.
+   * Synced on the seat view. The deal does not touch this.
+   */
   failStreak?: number[];
+  /** Cutthroat: eliminated players. They cannot bid, play, or sit back down. The next deal counts who is still in and leaves this list alone. */
+  eliminated?: boolean[];
   /** Books in this hand when the table is short. Omitted on a full table (13 or 17 from the rules). */
   trickCount?: number;
   /** Face-down cards not dealt when two players are still in. Never copied into a seat's view. */
@@ -97,6 +101,7 @@ export function newGame(rules: TableRules, seed: string | number, opts: { dealer
     trick: { leader: 0, plays: [], winner: null }, tricks: [], tricksWon: [], spadesBroken: false,
     scores: Array(sideCount(rules)).fill(0), bags: Array(sideCount(rules)).fill(0),
     history: [], result: null,
+    failStreak: Array(n).fill(0), eliminated: Array(n).fill(false),
   };
   return dealHand(base, 1, dealer);
 }
@@ -134,7 +139,7 @@ export function nextBidder(st: Pick<GameState, 'rules' | 'dealer' | 'bids' | 'el
   return null;
 }
 
-/** Cutthroat seat that is already out. */
+/** Cutthroat seat that has already been eliminated. */
 export function isEliminated(st: { eliminated?: readonly boolean[] | undefined }, seat: number): boolean {
   return !!st.eliminated?.[seat];
 }
@@ -147,7 +152,18 @@ export function liveSeats(st: Pick<GameState, 'rules' | 'eliminated'>): number[]
   return out;
 }
 
-/** Next clockwise seat that is still in. */
+/**
+ * Rules the cards in this hand are ranked by. The saved `rules.removedCards` stay the table's base list.
+ * A short Cutthroat hand may put a card back in (3♣ or 2♣) or take one out; play and the seat view use that list.
+ */
+export function rulesForLive(st: Pick<GameState, 'rules' | 'eliminated'>): TableRules {
+  const r = st.rules;
+  const removed = removedForActive(r, liveSeats(st).length);
+  if (removed.length === r.removedCards.length && removed.every((c, i) => c === r.removedCards[i])) return r;
+  return { ...r, removedCards: removed };
+}
+
+/** Next clockwise seat that is still in. Partnerships never skip a seat. */
 export function nextLive(st: Pick<GameState, 'rules' | 'eliminated'>, seat: number): number {
   const n = st.rules.playerCount;
   for (let k = 1; k <= n; k++) {
@@ -157,7 +173,7 @@ export function nextLive(st: Pick<GameState, 'rules' | 'eliminated'>, seat: numb
   return seat;
 }
 
-/** Tricks this hand deals and plays. */
+/** Tricks this hand deals and plays. A full table uses the normal 13 or 17. */
 export function booksInHand(st: { rules: TableRules; trickCount?: number }): number {
   return st.trickCount ?? handSize(st.rules);
 }
@@ -180,9 +196,10 @@ function dealHand(prev: GameState, handNo: number, dealer: Seat): GameState {
   let trickCount: number | undefined;
   let undealt: Card[] | undefined;
   if (live.length === n) {
-    // one at a time clockwise, starting left of the dealer
+    // one at a time clockwise, starting left of the dealer. A full table keeps the seeded deck.
     deck.forEach((c, i) => hands[(dealer + 1 + i) % n]!.push(c));
   } else {
+    // Three still in: 17 books and the extra low card is out of the deck. Two still in: 13, with the rest face down.
     trickCount = tricks;
     const used = deck.slice(0, tricks * live.length);
     const rest = deck.slice(used.length);
@@ -468,7 +485,7 @@ function mustLead2C(st: GameState): boolean {
 
 export function legalPlays(st: GameState, seat: Seat): Card[] {
   if (st.phase !== 'playing' || st.turn !== seat) return [];
-  return legalPlaysFor(st.rules, st.hands[seat]!, st.trick.plays, st.spadesBroken, mustLead2C(st));
+  return legalPlaysFor(rulesForLive(st), st.hands[seat]!, st.trick.plays, st.spadesBroken, mustLead2C(st));
 }
 
 function explainIllegal(st: GameState, seat: Seat, card: Card): RuleError {
@@ -518,7 +535,7 @@ function exchangeSteps(st: GameState): ExchangeStep[] {
 export function applyAction(st: GameState, action: Action): GameState {
   const rules = withCompleteNil(st.rules);
   if (rules !== st.rules) st = { ...st, rules };
-  const r = st.rules;
+  const r = rulesForLive(st);
   const n = r.playerCount;
   if (action.type === 'nextHand') {
     if (st.phase !== 'handOver') throw new RuleError('WRONG_PHASE', 'Hand is not over');
@@ -526,7 +543,7 @@ export function applyAction(st: GameState, action: Action): GameState {
   }
   const seat = action.seat;
   if (!Number.isInteger(seat) || seat < 0 || seat >= n) throw new RuleError('BAD_SEAT', `Bad seat ${seat}`);
-  if (!r.partnerships && isEliminated(st, seat)) throw new RuleError('ELIMINATED', 'You are out of this game');
+  if (isEliminated(st, seat)) throw new RuleError('ELIMINATED', 'You are out of this game');
 
   switch (action.type) {
     case 'reveal': {
@@ -555,7 +572,8 @@ export function applyAction(st: GameState, action: Action): GameState {
       bids[seat] = bid;
       const revealed = [...st.revealed];
       revealed[seat] = true;
-      let next: GameState = { ...st, bids, revealed, turn: nextBidder({ ...st, bids }, seat) ?? nextLive(st, seat) };
+      const after = nextBidder({ ...st, bids }, seat);
+      let next: GameState = { ...st, bids, revealed, turn: after ?? nextLive(st, seat) };
       if (liveSeats(st).every((s) => bids[s] !== null)) {
         const steps = exchangeSteps(next);
         next = steps.length ? { ...next, phase: 'exchange', exchange: steps, turn: steps[0]!.from } : startPlay(next);
@@ -637,9 +655,89 @@ function finishHand(st: GameState): GameState {
   const prev = st.history[st.history.length - 1];
   const prevShot = sides.map((_, i) => !!prev?.sides[i]?.shot);
   const record: HandRecord = { handNo: st.handNo, dealer: st.dealer, bids: [...bids], tricksWon: [...st.tricksWon], sides };
+  if (!r.partnerships) return finishCutthroat(st, sides, scores, bags, record);
   const result = shotOutResult(scores, shotOutSides(r, st.handNo, shot, prevShot)) ?? checkGameEnd(r, scores);
   return {
     ...st, scores, bags, history: [...st.history, record], result, turn: null,
+    phase: result ? 'gameOver' : 'handOver',
+  };
+}
+
+/** A cutthroat bid failed: short of the minimum on the books hand, a missed number, or a busted Nil. */
+function cutthroatFailed(r: TableRules, bid: Bid | null, side: SideHandResult, books: boolean): boolean {
+  if (books) return hostMinimum(r) > 0 && side.tricks < hostMinimum(r);
+  if (bid === null || bid === 'books') return false;
+  if (isNilBid(bid)) return side.tricks > 0;
+  return side.contractMade === false;
+}
+
+function rankedResult(r: TableRules, scores: readonly number[], eliminated: readonly boolean[], winners: number[], endReason: GameResult['endReason'], shotOut: number[]): GameResult {
+  const key = (i: number) => (eliminated[i] && !winners.includes(i) ? -1e9 : 0) + scores[i]!;
+  const keys = scores.map((_, i) => key(i));
+  const placements = keys.map((k) => 1 + keys.filter((o) => o > k).length);
+  return { endReason, shotOut, finalScores: [...scores], placements, winners };
+}
+
+/**
+ * Cutthroat: drop players after the hand is scored. One player left wins. An active player at the host's
+ * target wins, and the highest score wins if several get there. A tie plays another hand.
+ * Everyone still in who fails on the same hand: the higher score wins; a tie plays on.
+ */
+function finishCutthroat(st: GameState, sides: SideHandResult[], scores: number[], bags: number[], record: HandRecord): GameState {
+  const r = st.rules;
+  const n = r.playerCount;
+  const wasOut = st.eliminated ?? Array(n).fill(false);
+  const streak = [...(st.failStreak ?? Array(n).fill(0))];
+  const books = isBooksHand(st.bids as Bid[]);
+  const scoreBids = (st.bids as (Bid | null)[]).map((b, i) => (wasOut[i] ? 'books' as const : b)) as Bid[];
+  if (wasOut.some(Boolean)) {
+    const rescored = scoreHand(r, scoreBids, st.tricksWon, st.scores, st.bags);
+    for (let i = 0; i < n; i++) if (wasOut[i]) sides[i] = rescored[i]!;
+  }
+  const eliminated = [...wasOut];
+  for (let i = 0; i < n; i++) {
+    if (wasOut[i]) {
+      scores[i] = st.scores[i]!;
+      bags[i] = st.bags[i]!;
+      sides[i] = { ...sides[i]!, points: 0, bookPoints: 0, contractPoints: 0, contractMade: null, bagsAdded: 0, totalScore: scores[i]!, totalBags: bags[i]!, shot: false, out: true };
+      continue;
+    }
+    const failed = cutthroatFailed(r, st.bids[i] ?? null, sides[i]!, books);
+    streak[i] = failed ? (streak[i] ?? 0) + 1 : 0;
+    const out = failed && (st.handNo === 1 || (streak[i] ?? 0) >= 2);
+    if (out) eliminated[i] = true;
+    sides[i] = { ...sides[i]!, shot: failed, out };
+  }
+  const active = eliminated.flatMap((out, i) => (out ? [] : [i]));
+  const justOut = eliminated.flatMap((out, i) => (out ? [i] : []));
+  let result: GameResult | null = null;
+  if (active.length === 1) {
+    const winner = active[0]!;
+    result = rankedResult(r, scores, eliminated, [winner], scores[winner]! >= r.targetScore ? 'target' : 'shotOut', justOut);
+  } else if (active.length === 0) {
+    const pool = wasOut.flatMap((out, i) => (out ? [] : [i]));
+    const top = Math.max(...pool.map((i) => scores[i]!));
+    const leaders = pool.filter((i) => scores[i] === top);
+    if (leaders.length === 1) {
+      result = rankedResult(r, scores, eliminated, leaders, 'shotOut', justOut);
+    } else {
+      // Tied for the win: those players stay in and play a tiebreaker hand. The rest stay out.
+      for (const i of leaders) {
+        eliminated[i] = false;
+        sides[i] = { ...sides[i]!, out: false };
+      }
+    }
+  } else {
+    const top = Math.max(...active.map((i) => scores[i]!));
+    const leaders = active.filter((i) => scores[i] === top);
+    const floorHit = r.losingFloor !== null && active.some((i) => scores[i]! <= r.losingFloor!);
+    if (leaders.length === 1 && (top >= r.targetScore || floorHit)) {
+      result = rankedResult(r, scores, eliminated, leaders, top >= r.targetScore ? 'target' : 'floor', eliminated.flatMap((out, i) => (out ? [i] : [])));
+    }
+  }
+  const saved: HandRecord = { ...record, sides };
+  return {
+    ...st, scores, bags, failStreak: streak, eliminated, history: [...st.history, saved], result, turn: null,
     phase: result ? 'gameOver' : 'handOver',
   };
 }
@@ -677,6 +775,10 @@ export interface PlayerView {
   bags: number[];
   history: HandRecord[];
   result: GameResult | null;
+  /** Cutthroat consecutive-fail counters. Empty until a cutthroat hand is scored. */
+  failStreak: number[];
+  /** Cutthroat seats that are out. */
+  eliminated: boolean[];
   bidOptions: BidOptions | null;
   legal: Card[];
   /** This seat can claim 'Run it!': guaranteed from cards they can see, not from the hidden layout. */
@@ -693,12 +795,13 @@ function project(st: GameState, seat: Seat, spectate: boolean): PlayerView {
   const hidden = spectate || (st.phase === 'bidding' && !st.revealed[seat]);
   const runHands = runClearedHands(st);
   return {
-    seat, rules: withCompleteNil(st.rules), phase: st.phase, handNo: st.handNo, dealer: st.dealer, turn: st.turn,
+    seat, rules: withCompleteNil(rulesForLive(st)), phase: st.phase, handNo: st.handNo, dealer: st.dealer, turn: st.turn,
     hand: hidden ? null : [...st.hands[seat]!],
     handCounts: st.hands.map((h) => h.length),
     bids: [...st.bids], revealed: [...st.revealed], exchange: st.exchange.map((e) => ({ ...e })),
     trick: st.trick, tricks: st.tricks, tricksWon: [...st.tricksWon], spadesBroken: st.spadesBroken,
     scores: [...st.scores], bags: [...st.bags], history: st.history, result: st.result,
+    failStreak: [...(st.failStreak ?? [])], eliminated: [...(st.eliminated ?? [])],
     bidOptions: spectate ? null : st.phase === 'bidding' && st.turn === seat ? bidOptions(st, seat) : null,
     legal: spectate ? [] : legalPlays(st, seat),
     // Spectators never learn whether a seat can run it, and we don't search to find out.

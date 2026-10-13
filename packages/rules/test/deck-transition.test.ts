@@ -86,7 +86,8 @@ describe('Cutthroat deck transitions', () => {
     expect(st.handNo).toBe(2);
     expect(st.tricks).toHaveLength(17);
     expect(st.tricks.every((t) => t.plays.length === 3)).toBe(true);
-    expect(st.failStreak).toEqual(failStreak);
+    expect(st.failStreak?.[0]).toBe(0);
+    const scoredStreak = [...st.failStreak!];
     expect(st.history).toHaveLength(history.length + 1);
     expect(st.scores[0]).toBe(scores[0]);
 
@@ -95,7 +96,7 @@ describe('Cutthroat deck transitions', () => {
     st = applyAction({ ...st, eliminated: [true, true, false, false] }, { type: 'nextHand' });
     expect(st.handNo).toBe(3);
     expect(st.scores).toEqual(keptScores);
-    expect(st.failStreak).toEqual(failStreak);
+    expect(st.failStreak).toEqual(scoredStreak);
     expect(st.history).toBe(keptHistory);
     expect(st.rules.removedCards).toEqual(['2C', '2H']);
     expect(st.hands[0]).toEqual([]);

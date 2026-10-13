@@ -243,6 +243,37 @@ describe('game', () => {
     expect(env.errors(cid).at(-1)).toMatchObject({ code: 'BID_TOO_LOW', message: 'Minimum bid is 4' });
   });
 
+  it('an eliminated Cutthroat player stays to watch and cannot sit again', () => {
+    const { env } = fourHumans();
+    env.send('a', { t: 'config', rules: makeRules('cutthroat', { playerCount: 4, firstHandBidsItself: false }) });
+    env.send('a', { t: 'start' });
+    const g = env.room.data.game!;
+    const handNo = g.handNo;
+    g.eliminated = [true, false, false, false];
+    g.failStreak = [1, 0, 0, 0];
+    g.phase = 'bidding';
+    g.turn = 1;
+    env.room.testLoadGame(g);
+    expect(env.room.data.seats[0]).toEqual({ kind: 'empty' });
+    expect(env.room.data.outPlayers).toHaveLength(1);
+    const gone = env.room.data.outPlayers![0]!;
+    expect(env.room.data.members[gone]!.seat).toBeNull();
+    env.send('a', { t: 'sit', seat: 0 });
+    expect(env.errors('a').at(-1)!.code).toBe('ELIMINATED');
+    env.send('a', { t: 'sit', seat: 1 });
+    expect(env.errors('a').at(-1)!.code).toBe('ELIMINATED');
+    const view = env.last('b', 'state')!.view!;
+    expect(view.eliminated).toEqual([true, false, false, false]);
+    expect(view.failStreak).toEqual([1, 0, 0, 0]);
+    expect(view.handNo).toBe(handNo);
+    expect(env.last('a', 'state')!.spectator).toBe(true);
+    // The eliminated player is still watching, so the table keeps its clock and the seat stays empty.
+    expect(env.room.data.deadline).toBeGreaterThan(env.t);
+    env.advance(500);
+    expect(env.room.data.seats[0]).toEqual({ kind: 'empty' });
+    expect(env.last('a', 'state')!.spectator).toBe(true);
+  });
+
   it('bots play their turns and stop at the human', () => {
     const env = new FakeEnv(undefined, FAST);
     env.join('a', 'Solo');
@@ -393,20 +424,32 @@ describe('game', () => {
 });
 
 describe('cutthroat 3 online', () => {
-  it('the removed 2♣ never reaches any client hand; options (min bid, Nil off, bags off) are enforced', () => {
+  it('keeps 2♣ out while three play and brings it back for two; options (min bid, Nil off, bags off) are enforced', () => {
     const env = new FakeEnv(undefined, FAST);
     const ps = ['a', 'b', 'c'].map((cid, i) => { const p = env.join(cid, ['Dee', 'Ray', 'Kim'][i]!); return { cid, ...p }; });
     env.send('a', { t: 'config', rules: makeRules('cutthroat', { playerCount: 3, deck: 'standard52', minTeamBid: 2, nil: { allowed: false }, bagsOn: false, targetScore: 100, firstHandBidsItself: false }) });
     ps.forEach((p, i) => env.send(p.cid, { t: 'sit', seat: i }));
     env.send('a', { t: 'start' });
     const cids = ps.map((p) => p.cid);
-    let checked = 0, nilTried = false;
+    let checked = 0, nilTried = false, sawThree = false;
     for (let i = 0; i < 20000 && env.room.data.phase === 'playing'; i++) {
       for (const cid of cids) {
         const v = env.last(cid, 'state')?.view;
         if (!v) continue;
-        expect(v.hand ?? []).not.toContain('2C');
-        if (v.hand) { expect(v.hand.length).toBeLessThanOrEqual(17); checked++; }
+        const live = v.eliminated.filter((out) => !out).length;
+        if (v.hand) {
+          // Three still in: 2♣ stays out of the deck. Two still in: the wide deck puts 2♣ back.
+          if (live >= 3) {
+            sawThree = true;
+            expect(v.hand).not.toContain('2C');
+            expect(v.hand.length).toBeLessThanOrEqual(17);
+          } else {
+            expect(v.rules.removedCards).not.toContain('2C');
+            expect(v.hand.length).toBeLessThanOrEqual(13);
+          }
+          for (const card of v.hand) expect(v.rules.removedCards).not.toContain(card);
+          checked++;
+        }
         if (v.bidOptions) expect(v.bidOptions).toMatchObject({ min: 2, nil: false });
         if (!nilTried && v.phase === 'bidding' && v.turn === v.seat) {
           nilTried = true;
@@ -417,6 +460,7 @@ describe('cutthroat 3 online', () => {
       if (!playTurn(env, cids)) env.advance(100);
     }
     expect(checked).toBeGreaterThan(0);
+    expect(sawThree).toBe(true);
     expect(nilTried).toBe(true);
     const g = env.room.data.game!;
     for (const h of g.history) {

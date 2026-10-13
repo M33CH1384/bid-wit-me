@@ -94,6 +94,8 @@ export interface RoomData {
   seriesSeats?: string[];
   /** seat tokens and account ids kicked during the current game (can't rejoin until the next game starts) */
   kicked?: string[];
+  /** Cutthroat players eliminated this game. They can watch, and they cannot sit again until the next game. */
+  outPlayers?: string[];
   /** open vote-kicks: target player id → voter ids */
   votes?: Record<string, string[]>;
   gamesPlayed: number;
@@ -494,6 +496,7 @@ export class Room {
     switch (msg.t) {
       case 'sit': {
         if (msg.seat >= n) throw new RoomError('BAD_SEAT', 'No such seat');
+        if (d.phase === 'playing' && (d.outPlayers?.includes(pid) || d.game?.eliminated?.[msg.seat])) throw new RoomError('ELIMINATED', 'You are out of this game');
         if (d.tournament) {
           const r = d.tournament.reserved[msg.seat];
           if (!r || r.uid !== me.uid) throw new RoomError('RESERVED', 'Seats at a tournament table are reserved for the entrants');
@@ -932,6 +935,7 @@ export class Room {
     this.startSeries();
     d.talk = { ...newTalkState(), revealed: [] }; // a new game: every Hustler is back in character
     d.kicked = []; // a new game: kicked players may come back
+    d.outPlayers = [];
     d.votes = {};
     for (const m of Object.values(d.members)) m.timeouts = 0;
     this.system(`Game ${d.gamesPlayed} started`);
@@ -944,6 +948,7 @@ export class Room {
     const before = d.game!;
     d.game = applyAction(before, action);
     d.seq = (d.seq ?? 0) + 1;
+    this.parkEliminated();
     for (const ev of momentsFor(before, action, d.game)) this.talk(ev);
     d.lastActive = this.io.now();
     const fresh = d.game.handNo === before.handNo ? d.game.tricks.slice(before.tricks.length) : [];
@@ -1127,7 +1132,27 @@ export class Room {
     d.phase = 'playing';
     d.seq = (d.seq ?? 0) + 1;
     d.turnKey = null; d.deadline = null; d.ready = [];
+    this.parkEliminated();
     this.after();
+  }
+
+  /** Cutthroat: an eliminated human leaves the seat and stays as a spectator. The seat cannot be taken. */
+  private parkEliminated(): void {
+    const d = this.data;
+    const g = d.game;
+    if (!g || g.rules.partnerships || !g.eliminated?.some(Boolean)) return;
+    g.eliminated.forEach((out, seat) => {
+      if (!out) return;
+      const slot = d.seats[seat];
+      if (slot?.kind !== 'human') return;
+      const m = d.members[slot.playerId];
+      if (m && m.seat === seat) {
+        m.seat = null;
+        if (!d.outPlayers?.includes(slot.playerId)) d.outPlayers = [...(d.outPlayers ?? []), slot.playerId];
+        d.seats[seat] = { kind: 'empty' };
+        this.system(`${m.name} is out`);
+      }
+    });
   }
 
   /**
@@ -1200,7 +1225,8 @@ export class Room {
         const claimer = d.seats.slice(0, g.rules.playerCount).findIndex((sl, i) => sl.kind === 'bot' && i !== g.turn && canRunIt(g, i as Seat));
         if (claimer >= 0) { this.apply({ type: 'runIt', seat: claimer as Seat }); changed = true; continue; }
       }
-      let paused = this.humansConnected() === 0; // nobody watching: don't burn writes autoplaying
+      // Seated players or a connected spectator (an eliminated player stays to watch). Nobody connected: freeze.
+      let paused = !Object.keys(this.data.members).some((id) => this.isConnected(id));
       const tour = d.tournament;
       if (tour) {
         if (!paused) delete tour.emptySince;
@@ -1407,7 +1433,7 @@ export class Room {
     const d = this.data;
     if (d.phase !== 'playing' || d.tournament || !d.game) return [];
     const bots = this.replaceBotsOn();
-    return d.seats.slice(0, d.rules.playerCount).flatMap((s, i) => (s.kind === 'bot' && (s.vacated || bots) ? [i] : []));
+    return d.seats.slice(0, d.rules.playerCount).flatMap((s, i) => (s.kind === 'bot' && (s.vacated || bots) && !d.game?.eliminated?.[i] ? [i] : []));
   }
 
   /** Release 10: the Open tables entry (null = not listed: private, or nobody connected) */
