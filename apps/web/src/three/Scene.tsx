@@ -10,6 +10,7 @@ import { GAP_S, LEGAL_NEAR, LIFT_S, canTapCard, fanGapPx, fanMotion, handRenderO
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline, seatDealDelay } from './dealTimeline';
 import { handNeedsDeal, handSlotKey } from './dealFlight';
+import { shownFaceIds } from './cardFace';
 import { type Sfx, sound } from '../audio';
 import { fx } from '../fx';
 import { backTexture, faceTexture, logoTexture, refreshFacesGradually } from './cardTextures';
@@ -435,6 +436,10 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   if (myHand === null) hiddenHand.current = handNo;
   const flipIn = myHand !== null && hiddenHand.current === handNo;
   const flippedHand = useRef<number | null>(null);
+  // Card ids whose front has resolved. A selection rerender must not drop them: the front mesh
+  // is rebuilt on the BWM back the moment an id leaves this set.
+  const faceShown = useRef(new Set<string>());
+  const faceHand = useRef<number | null>(null);
   useEffect(() => {
     if (!flipIn || flippedHand.current === handNo) return;
     flippedHand.current = handNo;
@@ -546,7 +551,8 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
     // so they win the depth test against the neighbour; that bias does not move them on screen.
     const opts = above ? { ...fanOpts, near: pose === 'selected' ? LEGAL_NEAR * 2 : LEGAL_NEAR } : fanOpts;
     const target = handFan(aspect, mine.length, i, 0, safeFrac, opts, gaps[i] ?? 0, screenH);
-    const flip = flipIn && !!c;
+    // One shot. Later renders (a tap, a highlight) must not pass the face-down pose again.
+    const flip = flipIn && flippedHand.current !== handNo && !!c;
     const id = c ? handCardKey(c) : '';
     const slotKey = handSlotKey(id, i);
     // intro stays on for the whole hand; only cards we have not shown yet come from the deck.
@@ -610,8 +616,13 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
     log[handNo] = [...set];
   });
 
+  if (faceHand.current !== handNo) {
+    faceShown.current = new Set();
+    faceHand.current = handNo;
+  }
+  const faceOrder = [...(myHand ?? []), ...shownTrick.map((p) => p.card)];
+  faceShown.current = shownFaceIds(faceShown.current, faceOrder.slice(0, nFaces), new Set(faceOrder));
   if (!showCards) return null;
-  const paintedCards = new Set([...(myHand ?? []), ...shownTrick.map((p) => p.card)].slice(0, nFaces));
   const shown = resume ? [...items.filter((it) => it.hand), ...items.filter((it) => !it.hand).slice(0, extra)] : items;
   return (
     <group>
@@ -621,7 +632,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
           key={it.key}
           name={it.key}
           lit={props.lit}
-          face={it.card && paintedCards.has(it.card) ? face(it.card) : null}
+          face={it.card && faceShown.current.has(it.card) ? face(it.card) : null}
           back={back}
           target={it.target}
           from={it.from}

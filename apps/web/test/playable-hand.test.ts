@@ -32,7 +32,9 @@ describe('a tap hits the card you see', () => {
     const glow = cardMeshPaint(order, 'glow');
     expect(face.renderOrder).toBeGreaterThan(body.renderOrder);
     expect(face.renderOrder).toBe(order + 0.5);
-    expect(back.renderOrder).toBe(face.renderOrder);
+    // The face draws after the back, so a tied 16-bit depth shows the pips and not the BWM back.
+    expect(face.renderOrder).toBeGreaterThan(back.renderOrder);
+    expect(FACE_POLYGON_OFFSET.factor).toBe(0);
     expect(glow.renderOrder).toBe(order - 1);
     expect(face.depthTest).toBe(true);
     expect(body.depthTest).toBe(true);
