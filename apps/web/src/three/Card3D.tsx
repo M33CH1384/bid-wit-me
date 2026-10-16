@@ -171,6 +171,14 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   useLayoutEffect(() => {
     const g = ref.current;
     if (g && hideUntilStart.current && !tw.current.started) g.visible = false;
+    // A resumed card has no flight. Snap it before the first paint so the hand and the trick
+    // are not at the origin for a frame (that frame reads as an empty fan or an empty trick).
+    if (!g || tw.current.init || from || origin) return;
+    if (!target.p.every(Number.isFinite) || !target.q.every(Number.isFinite) || !Number.isFinite(target.s)) return;
+    g.position.set(...target.p);
+    g.quaternion.set(...target.q);
+    g.scale.setScalar(target.s);
+    g.updateMatrixWorld(true);
   });
   const sfx = useRef({ sfxStart, sfxLand });
   sfx.current = { sfxStart, sfxLand };

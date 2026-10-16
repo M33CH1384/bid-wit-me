@@ -10,8 +10,8 @@ import { GAP_S, LIFT_S, fanGapPx, fanMotion, handCardChrome, handDepthOpts, hand
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline, seatDealDelay } from './dealTimeline';
 import { handNeedsDeal, handSlotKey } from './dealFlight';
-import { cardShowsFace, handLatched, latchHand, showResumeHand3D, visibleFaceIds } from './cardFace';
-import { trickPlayFrom } from './trickFacing';
+import { cardShowsFace, handLatched, latchHand, resumeDrawList, showResumeHand3D, visibleFaceIds } from './cardFace';
+import { openingTrickKeys, trickCardLaunches, trickPlayFrom } from './trickFacing';
 import { type Sfx, sound } from '../audio';
 import { fx } from '../fx';
 import { backTexture, faceTexture, logoTexture, peekFaceTexture, refreshFacesGradually } from './cardTextures';
@@ -462,6 +462,8 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   // Plays already given their opening flight. A later render (or a canvas rebuild) must not
   // launch them from the face-down fan again.
   const playShown = useRef<{ hand: number; keys: Set<string> }>({ hand: -1, keys: new Set() });
+  // Cards already in the trick on the first paint of a resumed scene. They must not fly in later.
+  const openingTrick = useRef<Set<string> | null>(null);
   useEffect(() => {
     if (!flipIn || flippedHand.current === handNo) return;
     flippedHand.current = handNo;
@@ -496,7 +498,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   if (held.current.handNo !== handNo) held.current = { handNo, cards: new Set(), slots: new Map(), count: 0, seen: new Set() };
   const pendingHold = useRef<Held>(held.current);
 
-  type Item = { key: string; card: Card | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: (() => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide'; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; holdUntilMove?: boolean };
+  type Item = { key: string; card: Card | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: (() => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide'; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; public?: boolean; holdUntilMove?: boolean };
   const items: Item[] = [];
   const dealDelay = (slot: number, seat: number) => seatDealDelay(tl, n, slot, seat, dealer);
 
@@ -513,13 +515,15 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   // last-trick nuke: the auto-played final cards fly in one after another, right into the blast
   const firstAuto = shownTrick.findIndex((pl) => pl.auto);
   if (playShown.current.hand !== handNo) playShown.current = { hand: handNo, keys: new Set() };
+  if (openingTrick.current === null) openingTrick.current = openingTrickKeys(resume, shownTrick.map((pl) => `${handNo}-${pl.card}`));
   shownTrick.forEach((pl, order) => {
     const autoDelay = pl.auto ? { delay: 0.35 + 0.12 * (order - firstAuto) } : {};
     const leftHand = pl.seat === human ? departureSlot(held.current.slots, held.current.cards, pl.card) : undefined;
     const playKey = `${handNo}-${pl.card}`;
     const fan = pl.seat === human ? undefined : opponentFan(positions[pl.seat]!, n, Math.max(0, handCounts[pl.seat]! - 1) / 2, handCounts[pl.seat]! + 1);
-    const from = trickPlayFrom({ firstShow: !playShown.current.keys.has(playKey), humanSlot: leftHand, fan });
-    items.push({ key: playKey, card: pl.card, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale), from, origin: leftHand, ...(props.landCue(pl.card).includes(',overcut') ? { duration: 0.34, arc: 0.7 } : { duration: 0.5, arc: 0.35 }), sfxLand: props.landCue(pl.card), glow: !!props.marked?.includes(pl.card), ...autoDelay });
+    const launches = trickCardLaunches(playKey, openingTrick.current!, playShown.current.keys);
+    const from = trickPlayFrom({ firstShow: launches, humanSlot: leftHand, fan });
+    items.push({ key: playKey, card: pl.card, public: true, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale), from, origin: leftHand, ...(props.landCue(pl.card).includes(',overcut') ? { duration: 0.34, arc: 0.7 } : { duration: 0.5, arc: 0.35 }), sfxLand: props.landCue(pl.card), glow: !!props.marked?.includes(pl.card), ...autoDelay });
   });
   // 'Run it!': the claimer's cards slam down in sequence (then the tornado takes everything)
   if (props.slam) {
@@ -531,7 +535,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       const target: Xform = { ...base, p: [(i - (k - 1) / 2) * w, base.p[1] + 0.01 * i, 0.02] };
       const leftHand = seat === human ? departureSlot(held.current.slots, held.current.cards, c) : undefined;
       const from = leftHand ?? (seat === human ? undefined : opponentFan(positions[seat]!, n, Math.min(i, k - 1), k));
-      items.push({ key: `${handNo}-${c}`, card: c, target, from, origin: leftHand, delay: 0.02, duration: RUN_SLAM_MS / 1000, arc: 0.9 }); // slow motion
+      items.push({ key: `${handNo}-${c}`, card: c, public: true, target, from, origin: leftHand, delay: 0.02, duration: RUN_SLAM_MS / 1000, arc: 0.9 }); // slow motion
     });
     // the rest of the table's cards: one quick cascade, a smaller row under the claimer's (from each player's spot)
     const others = props.slam.others ?? [];
@@ -547,7 +551,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       const target: Xform = { ...base, s: sc, p: [(col - (Math.min(perRow, m - row * perRow) - 1) / 2) * w, base.p[1] * 0.8 + 0.002 * i, 0.02 - (hc * 0.55 + ho * 0.5) - row * ho * 0.92] };
       const leftHand = s2 === human ? departureSlot(held.current.slots, held.current.cards, c) : undefined;
       const from = leftHand ?? (s2 === human ? undefined : opponentFan(positions[s2]!, n, 0, 1));
-      items.push({ key: `${handNo}-${c}`, card: c, target, from, origin: leftHand, delay: 0.38 + i * 0.03, duration: 0.18, arc: 0.25 });
+      items.push({ key: `${handNo}-${c}`, card: c, public: true, target, from, origin: leftHand, delay: 0.38 + i * 0.03, duration: 0.18, arc: 0.25 });
     });
   }
   // opponents' fans
@@ -680,13 +684,23 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   // Slam cards are public. Without this, a bot's Run it! lands on the back: those ids were never
   // in the viewer's hand, so the face set (hand + trick only) leaves the new mesh on the BWM back.
   const slamIds = props.slam ? [...props.slam.cards, ...(props.slam.others ?? []).map((o) => o.card)] : [];
+  const ownIds = (myHand ?? []).filter((c): c is Card => !!c);
   const instant = [...trickIds, ...slamIds];
-  for (const id of instant) face(id);
-  const faceOrder = [...(myHand ?? []), ...instant];
-  faceShown.current = visibleFaceIds(faceShown.current, faceOrder.slice(0, nFaces), myHand ?? [], trickIds, slamIds);
+  // Paint your hand in this same render. A mesh must not mount on the BWM back and wait for the painter.
+  for (const id of [...ownIds, ...instant]) face(id);
+  const faceOrder = [...ownIds, ...instant];
+  faceShown.current = visibleFaceIds(faceShown.current, faceOrder.slice(0, nFaces), ownIds, trickIds, slamIds);
   if (!showCards) return null;
-  const shown = resume ? [...items.filter((it) => it.hand), ...items.filter((it) => !it.hand).slice(0, extra)] : items;
+  const shown = resumeDrawList(items, resume, extra);
   const drawn = hand3D ? shown : shown.filter((it) => !it.hand);
+  if (typeof window !== 'undefined') {
+    const w = window as unknown as { __bwmDrawn?: { hand: string[]; trick: (string | null)[]; ownFaces: string[] } };
+    w.__bwmDrawn = {
+      hand: drawn.filter((it) => it.hand && it.card).map((it) => it.card as string),
+      trick: drawn.filter((it) => it.public).map((it) => it.card),
+      ownFaces: ownIds.filter((id) => faceShown.current.has(id)),
+    };
+  }
   const frontOf = (card: Card) => {
     // Trick and slam cards are public on the frame they land, even if a rebuild cleared the painter set.
     if (cardShowsFace(card, faceShown.current, instant)) return face(card);

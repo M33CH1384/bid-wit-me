@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { opponentFan, pileSpot, trickSpot } from '../src/three/layout';
-import { faceUpPlayFrom, frontNormalY, restingFacing, trickPlayFrom } from '../src/three/trickFacing';
+import { faceUpPlayFrom, frontNormalY, openingTrickKeys, restingFacing, trickCardLaunches, trickPlayFrom } from '../src/three/trickFacing';
 
 describe('bot trick cards settle face-up', () => {
   const seats = ['left', 'top', 'right'] as const;
@@ -18,6 +18,18 @@ describe('bot trick cards settle face-up', () => {
       // Still in the air: don't snap it yet.
       expect(restingFacing(fan.q, trick.q, false)).toBe(fan.q);
     }
+  });
+
+  it('keeps a reloaded trick on the table instead of launching it out of the centre', () => {
+    const keys = ['3-AC', '3-KD'];
+    const opening = openingTrickKeys(true, keys);
+    expect(trickCardLaunches('3-AC', opening, new Set())).toBe(false);
+    expect(trickPlayFrom({ firstShow: trickCardLaunches('3-AC', opening, new Set()), fan: opponentFan('top', 4, 0, 6) })).toBeUndefined();
+    // A card played after the scene is up still flies in.
+    expect(trickCardLaunches('3-4D', opening, new Set())).toBe(true);
+    // A fresh deal has no opening trick, so the first play launches.
+    expect(openingTrickKeys(false, keys).size).toBe(0);
+    expect(trickCardLaunches('3-AC', openingTrickKeys(false, keys), new Set())).toBe(true);
   });
 
   it('launches a bot card face-up once, then a rebuild rests on the trick spot', () => {
