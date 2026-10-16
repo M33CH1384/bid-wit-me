@@ -200,7 +200,7 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
             <select data-testid="talk-sec" value={String(room.talkSec ?? 20)} onChange={(e) => config(settings, timerKey(room), room.botLevel, Number(e.target.value))}>
               {[15, 20, 30, 45].map((x) => <option key={x} value={x}>{x}s{x === 20 ? ' (default)' : ''}</option>)}
             </select></span></label>
-          <label className="row"><span className="row-label">AFK kick<small>timeouts in a row before a bot takes over</small></span><span className="row-control">
+          <label className="row"><span className="row-label">AFK kick<small>a timeout plays that turn. The seat stays yours until you leave.</small></span><span className="row-control">
             <select data-testid="afk-limit" value={String(room.afkLimit ?? 3)} onChange={(e) => config(settings, timerKey(room), room.botLevel, room.talkSec, Number(e.target.value))}>
               {[2, 3, 5, 0].map((x) => <option key={x} value={x}>{x === 0 ? 'Off' : `${x} in a row${x === 3 ? ' (default)' : ''}`}</option>)}
             </select></span></label>
@@ -258,7 +258,7 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
                 <select data-testid="talk-sec" value={String(room.talkSec ?? 20)} onChange={(e) => config(settings, timerKey(room), room.botLevel, Number(e.target.value))}>
                   {[15, 20, 30, 45].map((x) => <option key={x} value={x}>{x}s{x === 20 ? ' (default)' : ''}</option>)}
                 </select></span></label>
-              <label className="row"><span className="row-label">AFK kick<small>timeouts in a row before a bot takes over</small></span><span className="row-control">
+              <label className="row"><span className="row-label">AFK kick<small>a timeout plays that turn. The seat stays yours until you leave.</small></span><span className="row-control">
                 <select data-testid="afk-limit" value={String(room.afkLimit ?? 3)} onChange={(e) => config(settings, timerKey(room), room.botLevel, room.talkSec, Number(e.target.value))}>
                   {[2, 3, 5, 0].map((x) => <option key={x} value={x}>{x === 0 ? 'Off' : `${x} in a row${x === 3 ? ' (default)' : ''}`}</option>)}
                 </select></span></label>
@@ -283,7 +283,7 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
           <span data-testid="venue-summary">Venue: {venueLabel(room.venueNow ?? room.venue ?? 'classic')}</span>
           <span data-testid="bot-talk-summary">Bot trash talk: {room.botTalk !== false ? 'On' : 'Off'}</span>
           {r.deck === 'joker54' && <span data-testid="nuke-summary">Nuke: {NUKE_LABEL[room.nukeIntensity ?? 'full']}</span>}
-          <span>{room.afkLimit === 0 ? 'AFK kick off' : `A bot takes over after ${room.afkLimit ?? 3} timeouts in a row`}</span>
+          <span>{room.afkLimit === 0 ? 'AFK kick off' : 'A timeout plays your turn. Your seat stays yours until you leave.'}</span>
         </div>
       )}
 

@@ -36,8 +36,6 @@ export interface ConnState {
 }
 
 interface PendingAct { id: string; seq: number; action: GameAction; sentAt: number }
-/** if an ack never comes (lost socket that we didn't notice), unlock after this long */
-const ACK_TIMEOUT_MS = 8000;
 /** A play's ping should be answered well inside this. No pong means the socket is open in name only. */
 const PONG_WAIT_MS = 2500;
 /** A signed-in ticket fetch must not hold the socket shut. Stats can link on a later hello. */
@@ -76,6 +74,8 @@ export class TableConnection {
   private rehelloed = false;
   /** Set when the in-flight play's ping has not been answered yet. */
   private pongWait = false;
+  /** How many times this in-flight move has been sent again without an ack. */
+  private playResends = 0;
   /** Close this socket and open again immediately, keeping the in-flight move to resend. */
   private recover = false;
 
@@ -372,15 +372,18 @@ export class TableConnection {
     // One play is in flight until the server's seq moves past it. A second tap must not send.
     if (action.type === 'play' && playSendBlocked(this.playSentSeq, room?.seq ?? seq)) return false;
     if (this.inflight || !room || seq !== room.seq) return false;
+    this.inflight = { id: newId(), seq, action, sentAt: Date.now() };
+    this.playResends = 0;
+    if (action.type === 'play') this.playSentSeq = seq;
+    this.set({ pending: true });
+    // The socket may be down (reload, or the RECONNECTING banner). Keep the move and send it
+    // on the next hello instead of swallowing the tap.
     if (this.ws?.readyState !== WebSocket.OPEN) {
       if (this.ws?.readyState !== WebSocket.CONNECTING && !this.opening) this.recoverSocket();
-      return false;
+      return true;
     }
-    this.inflight = { id: newId(), seq, action, sentAt: Date.now() };
-    if (action.type === 'play') this.playSentSeq = seq;
     this.ws.send(JSON.stringify(this.actMsg(this.inflight)));
     this.armAckTimer();
-    this.set({ pending: true });
     return true;
   }
 
@@ -396,19 +399,28 @@ export class TableConnection {
     this.ackTimer = window.setTimeout(() => this.onActQuiet(), PONG_WAIT_MS);
   }
 
-  /** The play was sent and nothing came back. A dead socket swallows taps until the TCP timeout (~10s). */
+  /**
+   * The play was sent and no ack came back. A pong only proves the socket, not that the table
+   * applied the card — the auto-pong answers without waking the game. Send the same move again.
+   * A socket with no pong is reopened. After several tries, unlock so they can choose again.
+   */
   private onActQuiet(): void {
     this.ackTimer = null;
     if (!this.inflight) return;
-    if (this.pongWait) { this.recoverSocket(); return; }
-    this.ackTimer = window.setTimeout(() => {
-      this.ackTimer = null;
-      if (!this.inflight) return;
-      const play = this.inflight.action.type === 'play';
-      this.inflight = null;
-      if (play) this.playSentSeq = null;
-      this.set({ pending: false, ...(play ? { playGate: (this.state.playGate ?? 0) + 1 } : {}) });
-    }, ACK_TIMEOUT_MS - PONG_WAIT_MS);
+    const ws = this.ws;
+    const open = !!ws && ws.readyState === WebSocket.OPEN;
+    if (this.playResends < 4) {
+      this.playResends++;
+      if (!open || this.pongWait) { this.recoverSocket(); return; }
+      try { ws.send(JSON.stringify(this.actMsg(this.inflight))); } catch { this.recoverSocket(); return; }
+      this.armAckTimer();
+      return;
+    }
+    const play = this.inflight.action.type === 'play';
+    this.inflight = null;
+    this.playResends = 0;
+    if (play) this.playSentSeq = null;
+    this.set({ pending: false, ...(play ? { playGate: (this.state.playGate ?? 0) + 1 } : {}) });
   }
 
   /** The socket looks open and is not. Reconnect now and resend the same move on the new hello. */

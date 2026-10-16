@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { GameState } from '@spades/rules';
+import { makeRules, type GameState } from '@spades/rules';
 import { dispatchTableMessage } from '../src/dispatch';
 import { FakeEnv } from './harness';
 
@@ -46,6 +46,9 @@ describe('reconnect keeps the seat and the name', () => {
     const st = env.last('z', 'state')!;
     expect(st.seat).toBe(0);
     expect(st.spectator).toBeUndefined();
+    expect(st.view!.turn).toBe(0);
+    expect(st.view!.legal).toContain('AS');
+    expect(Array.isArray(st.view!.history)).toBe(true);
     env.send('z', { t: 'act', id: 'reload-play', action: { type: 'play', card: 'AS' }, seq: env.room.data.seq });
     expect(env.room.data.game!.trick.plays.map((p) => ({ seat: p.seat, card: p.card }))).toEqual([{ seat: 0, card: 'AS' }]);
     expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid });
@@ -130,5 +133,109 @@ describe('reconnect keeps the seat and the name', () => {
     await pending;
     expect(env.room.data.members[a.pid]!.name).toBe('Meech');
     expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid });
+  });
+
+  it('holds the turn clock while the table is drawing, then starts a full timer without giving up the seat', () => {
+    const { env, a } = seated();
+    const seq = env.room.data.seq!;
+    env.send('a', { t: 'interactive', on: false });
+    env.advance(20_000);
+    expect(env.room.data.seq).toBe(seq);
+    expect(env.room.data.game!.trick.plays).toEqual([]);
+    expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid });
+    expect(env.room.data.deadline).toBeNull();
+    env.send('a', { t: 'interactive', on: true });
+    const left = env.room.data.deadline! - env.t;
+    expect(left).toBeGreaterThan(19_000);
+    env.advance(left - 500);
+    expect(env.room.data.game!.trick.plays).toEqual([]);
+    expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid, });
+    env.advance(1000);
+    expect(env.room.data.seq!).toBeGreaterThan(seq);
+    expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid });
+    expect(env.room.data.members[a.pid]!.name).toBe('Meech');
+  });
+
+  it('applies the chosen card when the seq is behind but this turn has not moved', () => {
+    const { env } = seated();
+    const seq = env.room.data.seq!;
+    expect(env.room.data.turnSeq).toBeLessThanOrEqual(seq);
+    env.room.data.seq = seq + 1;
+    env.send('a', { t: 'act', id: 'behind', action: { type: 'play', card: 'AS' }, seq });
+    expect(env.room.data.game!.trick.plays.map((p) => p.card)).toEqual(['AS']);
+    expect(env.last('a', 'ack')).toMatchObject({ id: 'behind', ok: true });
+    expect(env.room.data.seats[0]?.kind).toBe('human');
+  });
+
+  it('drops a card chosen before this turn and resends the full turn', () => {
+    const { env } = seated();
+    const seq = env.room.data.seq!;
+    env.room.data.seq = seq + 2;
+    env.room.data.turnSeq = seq + 1;
+    env.send('a', { t: 'act', id: 'old-turn', action: { type: 'play', card: 'KS' }, seq });
+    expect(env.room.data.game!.trick.plays).toEqual([]);
+    expect(env.last('a', 'ack')).toMatchObject({ id: 'old-turn', ok: false, stale: true });
+    const st = env.last('a', 'state')!;
+    expect(st.view!.turn).toBe(0);
+    expect(st.view!.legal).toContain('AS');
+    expect(Array.isArray(st.view!.history)).toBe(true);
+  });
+
+  it('keeps a Relaxed play clock through a reconnect and does not auto-play at 12s', () => {
+    const env = new FakeEnv();
+    const a = env.join('a', 'Meech', undefined, undefined, 'guestmeech000000000001');
+    env.join('b', 'Imani');
+    env.send('a', { t: 'sit', seat: 0 });
+    env.send('b', { t: 'sit', seat: 2 });
+    env.send('a', { t: 'addBot', seat: 1 });
+    env.send('a', { t: 'addBot', seat: 3 });
+    env.send('a', { t: 'config', rules: makeRules('joker', { turnTimerSec: { bid: 45, play: 30 }, firstHandBidsItself: false }) });
+    env.send('a', { t: 'start' });
+    pinLead(env);
+    expect(env.room.data.rules.turnTimerSec).toEqual({ bid: 45, play: 30 });
+    expect(env.room.data.deadline! - env.t).toBe(30_000);
+    env.join('w', 'Watcher');
+    env.room.close('a');
+    env.advance(2_000);
+    env.join('z', 'Someone', a.token);
+    expect(env.room.data.members[a.pid]!.interactive).toBe(false);
+    expect(env.room.data.deadline).toBeNull();
+    env.advance(12_000);
+    expect(env.room.data.game!.trick.plays).toEqual([]);
+    env.send('z', { t: 'interactive', on: true });
+    expect(env.room.data.deadline! - env.t).toBe(30_000);
+    env.advance(12_000);
+    expect(env.room.data.game!.trick.plays).toEqual([]);
+    expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid });
+    env.send('z', { t: 'act', id: 'relaxed-play', action: { type: 'play', card: 'AS' }, seq: env.room.data.seq });
+    expect(env.room.data.game!.trick.plays.map((p) => p.card)).toEqual(['AS']);
+  });
+
+  it('logs the socket close, the reconnect, and a leave that is the only way a bot gets the seat', () => {
+    const lines: string[] = [];
+    const orig = console.log;
+    console.log = (m?: unknown) => { lines.push(String(m ?? '')); };
+    try {
+      const { env, a } = seated();
+      env.room.noteSocketClose('a', 1001, 'going away', false);
+      env.room.close('a');
+      env.join('z', 'Ty', a.token);
+      expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid });
+      env.send('z', { t: 'leave' });
+    } finally {
+      console.log = orig;
+    }
+    const events = lines.flatMap((line) => {
+      try {
+        const row = JSON.parse(line) as { src?: string; event?: string };
+        return row.src === 'bwm.table' ? [row] : [];
+      } catch { return []; }
+    });
+    const close = events.find((e) => e.event === 'socket_close') as { code?: number; reason?: string; seat?: number };
+    const again = events.find((e) => e.event === 'reconnect' && (e as { how?: string }).how === 'token') as { seat?: number; returning?: boolean };
+    const seat = events.find((e) => e.event === 'seat' && (e as { cause?: string }).cause === 'leave') as { toKind?: string; fromPid?: string };
+    expect(close).toMatchObject({ code: 1001, reason: 'going away', seat: 0 });
+    expect(again).toMatchObject({ seat: 0, returning: true });
+    expect(seat).toMatchObject({ toKind: 'bot', fromPid: expect.any(String) });
   });
 });

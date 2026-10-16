@@ -538,10 +538,15 @@ describe('game', () => {
     expect(st.seat).toBe(turnSeat);
     expect(st.spectator).toBeUndefined();
     expect(st.view!.turn).toBe(turnSeat);
-    // the grace shortening is undone, back to the original timer, not a fresh clock
-    expect(env.room.data.deadline).toBeGreaterThan(dl);
+    // The reloaded client is drawing the table, so the clock is held. It starts fresh once they can act.
+    expect(env.room.data.members[p.pid]!.interactive).toBe(false);
+    expect(env.room.data.deadline).toBeNull();
+    expect(env.room.data.seats[turnSeat]).toMatchObject({ kind: 'human', playerId: p.pid });
+    env.send('z', { t: 'interactive', on: true });
     const timerMs = (env.room.data.game!.phase === 'playing' ? 20 : 30) * 1000;
+    expect(env.room.data.deadline! - env.t).toBeGreaterThan(timerMs - 50);
     expect(env.room.data.deadline).toBe(env.room.data.turnStartedAt! + timerMs);
+    void dl;
   });
 
   it('survives a restart (JSON round-trip of the saved row) mid-game', () => {
@@ -1101,27 +1106,23 @@ describe('AFK + kicking', () => {
     expect(env.room.data.members[a.pid]!.timeouts).toBe(0);
   });
 
-  it('after N timeouts in a row (default 3) a bot replaces the player; they can sit back down', () => {
+  it('timeouts auto-play the turn and never give the seat to a bot', () => {
     const { env, a } = soloGame();
     expect(env.last('a', 'state')!.room.afkLimit).toBe(3);
     for (let k = 0; k < 3; k++) { waitMyTurn(env); env.advance(5200); }
     const d = env.room.data;
-    expect(d.seats[0]).toMatchObject({ kind: 'bot', was: 'Slow' });
-    const botName = (d.seats[0] as { name: string }).name;
-    expect(env.last('a', 'state')!.room.seats[0]).toMatchObject({ kind: 'bot', name: botName, was: 'Slow' });
-    expectPoolBot(d.seats, 0);
-    expect(d.members[a.pid]!.seat).toBeNull();
-    expect(d.chat.some((l) => l.text === `Slow was AFK and replaced by a bot (${botName})`)).toBe(true);
-    // still at the table: the seat (now a bot) can be taken back
-    env.send('a', { t: 'sit', seat: 0 });
-    expect(env.errors('a')).toHaveLength(0);
-    expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid });
+    expect(d.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid });
+    expect(d.members[a.pid]!.name).toBe('Slow');
+    expect(d.members[a.pid]!.seat).toBe(0);
+    expect(d.members[a.pid]!.timeouts).toBe(3);
+    expect(d.chat.some((l) => /replaced by a bot/.test(l.text))).toBe(false);
   });
 
-  it('the host can set the AFK limit (2) or turn it off', () => {
+  it('the host can set the AFK limit (2) or turn it off; neither one vacates the seat', () => {
     const two = soloGame(2);
     for (let k = 0; k < 2; k++) { waitMyTurn(two.env); two.env.advance(5200); }
-    expect(two.env.room.data.seats[0]!.kind).toBe('bot');
+    expect(two.env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: two.a.pid });
+    expect(two.env.room.data.members[two.a.pid]!.timeouts).toBe(2);
     const off = soloGame(0);
     // 5s play/bid timer plus a nuked-trick lead-in (4000ms). advance(5200) stops short of that
     // deadline, so the next loop finishes the same timeout and the count comes up one short.

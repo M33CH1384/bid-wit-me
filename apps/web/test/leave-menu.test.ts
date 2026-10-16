@@ -42,4 +42,13 @@ describe('leave menu', () => {
     expect(src).toContain('leaveChoice');
     expect(src).not.toContain('onClick={() => setMenuOpen(false)}');
   });
+
+  it('sends an online Leave straight to the home menu', () => {
+    const src = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
+    const fn = src.slice(src.indexOf('const leave = () =>'), src.indexOf('const leaveGesture'));
+    expect(fn).toContain('if (!online)');
+    expect(fn).toContain('onExit()');
+    expect(fn).toContain('(onMainMenu ?? onExit)()');
+    expect(fn.indexOf('if (!online)')).toBeLessThan(fn.indexOf('(onMainMenu ?? onExit)()'));
+  });
 });

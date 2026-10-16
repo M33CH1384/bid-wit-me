@@ -106,7 +106,7 @@ export interface MediaState { cam: boolean; mic: boolean }
 
 /** Between-hands "Table Talk" countdown choices (seconds). */
 export const TALK_SECS = [15, 20, 30, 45] as const;
-/** consecutive turn timeouts before a player is replaced by a bot (0 = never) */
+/** Older clients still send this. A timeout plays the turn; it does not give the seat to a bot. */
 export const AFK_LIMITS = [0, 2, 3, 5] as const;
 export const DEFAULT_AFK_LIMIT = 3;
 export const DEFAULT_TALK_SEC = 20;
@@ -159,6 +159,8 @@ export type ClientMsg =
   | { t: 'media'; media: MediaState }
   /** "Learning mode" (tips on): this player's own turn timers run 50% longer */
   | { t: 'learning'; on: boolean }
+  /** This client's table is drawn and can take a bid or a play. False while the loader is up. */
+  | { t: 'interactive'; on: boolean }
   /** host: kick the player in `seat` now (a bot takes over, no rejoin this game). Anyone else: vote to kick (toggles). */
   | { t: 'kick'; seat: number }
   | { t: 'rtc'; to: string; data: unknown }
@@ -217,7 +219,7 @@ export interface RoomInfo {
   venueNow?: VenueId;
   /** per side: a custom team name, or null = default (partner names) */
   teamNames?: (string | null)[];
-  /** bot seats whose Hustler act is over (plate tag shows the real persona) */
+  /** bot seats whose Hustler act is over (their lines drop the newbie cover; the plate tag does not) */
   revealed?: number[];
   /** rematch series at this table (survives reconnects; resets when the teams change) */
   series?: Series | null;
@@ -358,6 +360,8 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return isObj(m.media) ? { t: 'media', media: { cam: m.media.cam === true, mic: m.media.mic === true } } : null;
     case 'learning':
       return { t: 'learning', on: m.on === true };
+    case 'interactive':
+      return { t: 'interactive', on: m.on === true };
     case 'tableOpts': {
       const out: Extract<ClientMsg, { t: 'tableOpts' }> = { t: 'tableOpts' };
       if (typeof m.private === 'boolean') out.private = m.private;

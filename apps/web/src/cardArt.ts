@@ -103,6 +103,25 @@ const PIPS: Record<string, [number, number][]> = {
   T: [[0.3, 0.2], [0.7, 0.2], [0.5, 0.31], [0.3, 0.4], [0.7, 0.4], [0.3, 0.6], [0.7, 0.6], [0.5, 0.69], [0.3, 0.8], [0.7, 0.8]],
 };
 
+/**
+ * Barlow Condensed's Q tail is a short slab under the bowl (about 0.09em, and it
+ * never clears the bowl's right edge). On a phone fan only the left third of the
+ * card shows, so that slab reads as 0. This continues the same ink past the bowl,
+ * still inside the exposed corner, so the letter on the card is still the Barlow glyph.
+ */
+function queenTail(ctx: CanvasRenderingContext2D, cx: number, baseline: number, fs: number, color: string) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineCap = 'round';
+  ctx.lineWidth = Math.max(2.5, fs * 0.2);
+  ctx.beginPath();
+  // Start on the native tail and leave the bowl (the bowl ends near 0.23em).
+  ctx.moveTo(cx + fs * 0.1, baseline + fs * 0.04);
+  ctx.lineTo(cx + fs * 0.62, baseline + fs * 0.32);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function corner(ctx: CanvasRenderingContext2D, W: number, rank: string, suit: Suit, color: string, badge: boolean) {
   const label = rank === 'T' ? '10' : rank;
   ctx.fillStyle = color;
@@ -117,8 +136,13 @@ function corner(ctx: CanvasRenderingContext2D, W: number, rank: string, suit: Su
   ctx.lineWidth = W * 0.011;
   ctx.lineJoin = 'round';
   if (label.length > 1) { ctx.save(); ctx.translate(cx, 0); ctx.scale(0.86, 1); ctx.fillText(label, 0, W * 0.255); ctx.strokeText(label, 0, W * 0.255); ctx.restore(); }
-  else { ctx.fillText(label, cx, W * 0.255); ctx.strokeText(label, cx, W * 0.255); }
+  else {
+    ctx.fillText(label, cx, W * 0.255);
+    ctx.strokeText(label, cx, W * 0.255);
+  }
   drawSuit(ctx, suit, cx, W * 0.37, W * 0.165, color);
+  // After the pip, so the tail stays visible where it passes the suit.
+  if (label === 'Q') queenTail(ctx, cx, W * 0.255, fs, color);
   if (badge) {
     ctx.beginPath();
     ctx.arc(cx, W * 0.53, W * 0.07, 0, Math.PI * 2);
@@ -169,8 +193,10 @@ function court(ctx: CanvasRenderingContext2D, W: number, H: number, rank: string
   ctx.textBaseline = 'middle';
   const courtFs = W * 0.3;
   ctx.font = `800 ${courtFs}px "Barlow Condensed", "Arial Narrow", Arial, sans-serif`;
-  ctx.fillText(rank, W / 2, y + h * 0.53);
+  const courtY = y + h * 0.53;
+  ctx.fillText(rank, W / 2, courtY);
   drawSuit(ctx, suit, W / 2, y + h * 0.84, W * 0.1, color);
+  if (rank === 'Q') queenTail(ctx, W / 2, courtY + courtFs * 0.33, courtFs, color);
 }
 
 function joker(ctx: CanvasRenderingContext2D, W: number, H: number, big: boolean) {
