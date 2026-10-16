@@ -5,13 +5,14 @@ import { cameraFor } from '../src/three/layout';
 
 const path = (pts: [number, number][]): DragSample[] => pts.map(([x, y], i) => ({ t: i * 40, x, y }));
 describe('camera view', () => {
-  it('sitting is lower and closer than standing', () => {
+  it('sitting is lower than standing, reframed so the hand fan fits (wider fov, aim toward hand)', () => {
     const st = cameraFor(390 / 844, false, 'standing'); const si = cameraFor(390 / 844, false, 'sitting');
-    expect(si.pos[1]).toBeLessThan(st.pos[1]); expect(si.pos[2]).toBeLessThan(st.pos[2]);
+    expect(si.pos[1]).toBeLessThan(st.pos[1]);
+    expect(si.fov).toBeGreaterThan(st.fov); expect(si.look[2]).toBeGreaterThan(st.look[2]);
   });
   it('sitting applies in short landscape too', () => {
     const st = cameraFor(844 / 390, true, 'standing'); const si = cameraFor(844 / 390, true, 'sitting');
-    expect(si.pos[1]).toBeLessThan(st.pos[1]); expect(si.pos[2]).toBeLessThan(st.pos[2]);
+    expect(si.pos[1]).toBeLessThan(st.pos[1]); expect(si.fov).toBeGreaterThan(st.fov);
   });
   it('view setting normalises (default standing)', () => {
     expect(normalizeSettings({}).view).toBe('standing');
