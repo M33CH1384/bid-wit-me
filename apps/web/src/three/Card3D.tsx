@@ -7,6 +7,7 @@ import { RAISE_S, applyFaceDepthBias, cardMeshPaint, cardTapHandlers, faceLook, 
 import { type Xform } from './layout';
 import { type Sfx, sound } from '../audio';
 import { blastPose } from './blastSweep';
+import { releaseTornadoCard, tornadoCardLeft } from './tornadoSweep';
 import { fireCue, fx } from '../fx';
 import { restingFlightWait } from '../trickTiming';
 import { openingFlight } from './dealFlight';
@@ -260,14 +261,18 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
    * funnel, then flung out and gone. Reduce effects: a plain slide into the centre that shrinks away.
    * Returns true while it owns the inner offset (the nuke blast is skipped then).
    */
-  const tn = useRef({ on: false, a0: 0, h0: 0, delay: 0, axis: new Vector3(), q: new Quaternion() });
+  const tn = useRef({ on: false, gone: false, a0: 0, h0: 0, delay: 0, axis: new Vector3(), q: new Quaternion() });
   const applyTornado = (g: Group): boolean => {
     const ig = inner.current, T = fx.tornado, st = tn.current;
     if (!ig) return false;
+    // Already flung. A later frame must not put this mesh back on the trick or in the hand.
+    if (st.gone) { ig.visible = false; return true; }
     const u = T ? (fx.warp !== null ? fx.warp : (performance.now() - T.start) / 1000) : -1;
     if (!T || u < 0) {
+      const next = releaseTornadoCard({ taken: st.on, gone: st.gone, visible: ig.visible });
+      st.gone = next.gone;
+      if (next.gone) { ig.visible = false; invalidate(); return true; }
       if (T) invalidate(); // waiting for the funnel to start: keep frames coming (frameloop is on demand)
-      if (st.on) { st.on = false; ig.position.set(0, 0, 0); ig.quaternion.identity(); ig.scale.setScalar(1); ig.visible = true; invalidate(); }
       return false;
     }
     invalidate();
@@ -300,7 +305,9 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       // everything the same size in the funnel (your hand cards are bigger, near the camera)
       scale = 1 + ((0.85 / (g.scale.x || 1)) - 1) * pull;
     }
-    ig.visible = scale > 0.002 && tt < 1.9;
+    const left = tornadoCardLeft(tt, scale);
+    ig.visible = !left;
+    if (left) st.gone = true;
     // world funnel spot → this card's local space (offset from its resting spot)
     const off = w.sub(g.position).multiplyScalar(pull);
     st.q.copy(g.quaternion).invert();
