@@ -93,8 +93,10 @@ const clamp01 = (v: number) => (Number.isFinite(v) ? Math.max(0, Math.min(1, v))
 export function slamFeel(intensity: number, reducedMotion = false): SlamFeel {
   const i = clamp01(intensity);
   return {
-    duration: 0.42 - 0.22 * i,
-    arc: 0.22 - 0.16 * i,
+    // A max slam is fast but NEVER a beam: floor the flight time and give hard slams a higher
+    // parabolic toss (rise then fall), so the arc stays visible at intensity 1.
+    duration: Math.max(0.27, 0.44 - 0.16 * i),
+    arc: Math.max(0.14, 0.16 + 0.16 * i),
     bounce: reducedMotion ? 0.006 : 0.012 + 0.05 * i,
     shake: reducedMotion || i < 0.45 ? 0 : 0.012 + 0.03 * ((i - 0.45) / 0.55),
     volume: 0.45 + 0.55 * i,
