@@ -295,7 +295,7 @@ describe('scorecard caution tape and shroud', () => {
     expect(recapSrc).toContain('shotCovers(r, st.history, st.result)');
     expect(recapSrc).not.toContain('shotCounts');
     expect(recapSrc).toContain('covers.some((c) => c.sheet)');
-    expect(recapSrc).toContain('Time of death: Hand ${rec.handNo}');
+    expect(recapSrc).toContain('Time of death: Hand ${cover.outHand ?? rec.handNo}');
   });
 
   it('a Cutthroat hand-1 elimination shows tape and the sheet on that player', () => {
@@ -308,6 +308,20 @@ describe('scorecard caution tape and shroud', () => {
     expect(html).not.toContain('recap-shroud-0');
     expect(html).not.toContain('recap-tape-0');
     expect(caption(html)).toBe('Time of death: Hand 1');
+  });
+
+  it('keeps the real time of death on later recaps after an elimination', () => {
+    // Side 2 went out on hand 2 (the engine re-marks out: true on later hands).
+    // The hand-3 recap must still show the sheet, with the hand-2 time of death.
+    const st = stamp(toHandOver('cutthroat'), [[], [2], []], { shotOut: true });
+    const history = st.history.map((h, i) => (i === 0 ? h : {
+      ...h,
+      sides: h.sides.map((s) => (s.side === 2 ? { ...s, out: true } : s)),
+    }));
+    const html = recap({ ...st, history }, ['You', 'Ace', 'Bea']);
+    expect(html).toContain('data-testid="recap-shroud-2"');
+    expect(html).toContain('data-sheet="yes"');
+    expect(caption(html)).toBe('Time of death: Hand 2');
   });
 
   it('tapes that Cutthroat player’s own panel', () => {

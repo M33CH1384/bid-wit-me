@@ -251,6 +251,8 @@ export interface ShotCover {
   sheet: boolean;
   /** Siren and police lights. On whenever the sheet is showing. */
   siren: boolean;
+  /** Hand this side was eliminated on. Stays set on later hands (the sheet stays on), so a later recap can keep the real time of death instead of its own hand number. Null when the side was never out. */
+  outHand: number | null;
 }
 
 /**
@@ -266,9 +268,11 @@ export function shotCovers(
   result?: GameResult | null,
 ): ShotCover[] {
   const n = sideCount(r);
-  const blank = (): ShotCover => ({ tape: false, sheet: false, siren: false });
+  const blank = (): ShotCover => ({ tape: false, sheet: false, siren: false, outHand: null });
   const covers = Array.from({ length: n }, blank);
+  const outHand = Array.from({ length: n }, () => null as number | null);
   let prevShot = Array.from({ length: n }, () => false);
+  let prevOut = Array.from({ length: n }, () => false);
   for (let h = 0; h < history.length; h++) {
     const hand = history[h]!;
     const shot = Array.from({ length: n }, () => false);
@@ -286,8 +290,13 @@ export function shotCovers(
       ? new Set(result?.endReason === 'shotOut' ? result.shotOut ?? [] : [])
       : new Set(shotOutResult(scores, shotOutSides(r, hand.handNo, shot, prevShot))?.shotOut ?? []);
     for (let side = 0; side < n; side++) {
-      if (lost.has(side) || markedOut.has(side)) covers[side] = { tape: hand.handNo === 1, sheet: true, siren: true };
-      else if (shot[side]) covers[side] = { tape: true, sheet: false, siren: false };
+      const isOut = lost.has(side) || markedOut.has(side);
+      // The sheet stays on once a side is out, so remember the hand it went out on:
+      // a later recap must show the real time of death, not its own hand number.
+      if (isOut && !prevOut[side]) outHand[side] = hand.handNo;
+      prevOut[side] = isOut;
+      if (isOut) covers[side] = { tape: hand.handNo === 1, sheet: true, siren: true, outHand: outHand[side] };
+      else if (shot[side]) covers[side] = { tape: true, sheet: false, siren: false, outHand: outHand[side] };
       else if (made[side]) covers[side] = blank();
     }
     prevShot = shot;

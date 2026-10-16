@@ -170,14 +170,14 @@ export function Intermission({
               const main = chips.find((c) => c.kind === 'made' || c.kind === 'set' || c.kind === 'books');
               const bidPart = books ? (s.contractMade === false ? `Set at ${s.contract}` : 'Books (hand 1)') : s.contract ? `Bid ${s.contract}` : `Bid ${s.seats.map((x) => bidLabel(rec.bids[x]!)).join(' + ')}`;
               const shot = shotThisHand(s);
-              const cover = covers[s.side] ?? { tape: false, sheet: false, siren: false };
+              const cover = covers[s.side] ?? { tape: false, sheet: false, siren: false, outHand: null };
               const justShot = isShot(r, rec.bids, s);
               const notice = cover.tape && !cover.sheet;
               const showTape = cover.tape || !!cover.sheet;
               const info = streaks[s.side] ?? { count: 0, visible: 0, fresh: -1 };
               const marks = rememberHoles(st.seed, s.side, info.count, info.fresh);
               const sheetAnim = !!cover.sheet && anim.current!.waitSheet.has(s.side);
-              const tod = `Time of death: Hand ${rec.handNo}`;
+              const tod = `Time of death: Hand ${cover.outHand ?? rec.handNo}`;
               const showHoles = info.visible > 0 && (notice || !!cover.sheet);
               return (
                 <div key={s.side} className={`tt-team${s.side === mySide ? ' mine' : ''}${shot ? ' blast' : ''}${cover.tape ? ' taped' : ''}${cover.tape && justShot ? ' tape-in' : ''}${notice ? ' notice' : ''}${cover.sheet ? ' shrouded' : ''}${sheetAnim ? ' sheet-in sheet-wait' : ''}`} data-testid={`recap-side-${s.side}`} data-blast={shot ? 'yes' : 'no'} data-tape={cover.tape ? 'yes' : 'no'} data-sheet={cover.sheet ? 'yes' : 'no'} data-siren={cover.siren ? 'yes' : 'no'} data-holes={info.count} data-punched={punchedLabel(marks)}>

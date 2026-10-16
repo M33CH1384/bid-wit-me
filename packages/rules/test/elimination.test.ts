@@ -50,8 +50,8 @@ describe('Cutthroat elimination', () => {
     expect(st.failStreak).toEqual([1, 0, 0, 0]);
     expect(st.history[0]!.sides[0]).toMatchObject({ tricks: 0, points: -10, out: true, shot: true });
     expect(st.history[0]!.sides[1]!.out).toBe(false);
-    expect(shotCovers(ct, st.history, st.result)[0]).toEqual({ tape: true, sheet: true, siren: true });
-    expect(shotCovers(ct, st.history, st.result)[1]).toEqual({ tape: false, sheet: false, siren: false });
+    expect(shotCovers(ct, st.history, st.result)[0]).toEqual({ tape: true, sheet: true, siren: true, outHand: 1 });
+    expect(shotCovers(ct, st.history, st.result)[1]).toEqual({ tape: false, sheet: false, siren: false, outHand: null });
     const score = st.scores[1];
     st = applyAction(st, { type: 'nextHand' });
     expect(st.handNo).toBe(2);
@@ -88,12 +88,12 @@ describe('Cutthroat elimination', () => {
     expect(st.failStreak?.[0]).toBe(1);
     expect(st.eliminated?.[0]).toBe(false);
     expect(st.history.at(-1)!.sides[0]).toMatchObject({ points: -40, contract: 4, contractMade: false, shot: true, out: false });
-    expect(shotCovers(ct, st.history, st.result)[0]).toEqual({ tape: true, sheet: false, siren: false });
+    expect(shotCovers(ct, st.history, st.result)[0]).toEqual({ tape: true, sheet: false, siren: false, outHand: null });
     st = applyAction(st, { type: 'nextHand' });
     st = closeHand(st, [4, 3, 3, 3], [3, 3, 3, 3], 0);
     expect(st.failStreak?.[0]).toBe(0);
     expect(st.eliminated?.[0]).toBe(false);
-    expect(shotCovers(ct, st.history, st.result)[0]).toEqual({ tape: false, sheet: false, siren: false });
+    expect(shotCovers(ct, st.history, st.result)[0]).toEqual({ tape: false, sheet: false, siren: false, outHand: null });
     st = applyAction(st, { type: 'nextHand' });
     st = closeHand(st, [0, 5, 4, 4], [3, 3, 3, 3], 1);
     expect(st.handNo).toBe(4);
@@ -104,7 +104,13 @@ describe('Cutthroat elimination', () => {
     expect(st.failStreak?.[0]).toBe(2);
     expect(st.eliminated?.[0]).toBe(true);
     expect(st.phase).toBe('handOver');
-    expect(shotCovers(ct, st.history, st.result)[0]).toEqual({ tape: false, sheet: true, siren: true });
+    expect(shotCovers(ct, st.history, st.result)[0]).toEqual({ tape: false, sheet: true, siren: true, outHand: 5 });
+    // The sheet stays on in later recaps, but the time of death stays on the elimination hand.
+    st = applyAction(st, { type: 'nextHand' });
+    st = closeHand(st, [0, 6, 6, 5], [2, 3, 4, 4], 1);
+    expect(st.handNo).toBe(6);
+    expect(st.eliminated?.[0]).toBe(true);
+    expect(shotCovers(ct, st.history, st.result)[0]).toEqual({ tape: false, sheet: true, siren: true, outHand: 5 });
   });
 
   it('two players eliminated on the books hand stay out, and the hand number carries on', () => {
