@@ -75,8 +75,8 @@ async function playTrick(page: Page, to: { x: number; y: number }, shot: string)
 
 type Rest = Record<string, { y: number; tilt: number; spin: number }>;
 const rests = (page: Page) => page.evaluate(() => (window as unknown as { __bwmRest?: Rest }).__bwmRest ?? {});
-/** Tips-off cards must lie flat on the felt: no tilt, felt height plus the small stack step, spin within ±35°. */
-function checkFlat(r: Rest, label: string): void {
+/** Settled trick cards (Tips on or off) must lie flat on the felt: no tilt, felt height plus the small stack step, spin within ±35°. */
+function checkFlat(r: Rest, label: string, maxSpin = 36): void {
   const vals = Object.entries(r);
   if (vals.length < 4) throw new Error(`${label}: only ${vals.length} settled cards probed`);
   const maxTilt = Math.max(...vals.map(([, v]) => v.tilt));
@@ -84,6 +84,7 @@ function checkFlat(r: Rest, label: string): void {
   console.log(`${label}: ${vals.length} settled, max tilt ${maxTilt.toFixed(2)}°, height ${Math.min(...ys).toFixed(4)}..${Math.max(...ys).toFixed(4)}, spins ${vals.map(([, v]) => v.spin.toFixed(0)).join(' ')}`);
   if (maxTilt > 0.5) throw new Error(`${label}: a settled card is tilted ${maxTilt.toFixed(1)}° off the felt`);
   if (Math.min(...ys) < 0.005 || Math.max(...ys) > 0.006 + 4 * 0.003 + 0.001) throw new Error(`${label}: a settled card is not at felt height (${Math.min(...ys)}..${Math.max(...ys)})`);
+  if (Math.max(...vals.map(([, v]) => Math.abs(v.spin))) > maxSpin) throw new Error(`${label}: spin over ${maxSpin}°`);
   if (new Set(ys.map((y) => y.toFixed(4))).size < ys.length) throw new Error(`${label}: two cards share a height (z-fighting)`);
 }
 
@@ -98,6 +99,7 @@ const dist = (a: Record<string, { x: number; y: number }>, b: Record<string, { x
     // Tips ON: fixed spots
     let p = await open(b, save, true);
     const fixed = await playTrick(p, flick, `${SHOTS}/land-tips-on-390.png`);
+    checkFlat(await rests(p), 'tips on', 0.05 * 180 / Math.PI + 0.5);
     await p.close();
     // Tips OFF: twice with the same seed and throw → identical
     p = await open(b, save, false);

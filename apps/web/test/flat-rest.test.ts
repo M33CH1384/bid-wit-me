@@ -21,11 +21,14 @@ describe('landed cards lie flat on the felt', () => {
       expect(x.p[1]).toBeCloseTo(FELT_REST_Y + order * STACK_DY, 9);
     }
   });
-  it('a physics-landed trick card has no lean; a Tips-on fixed spot keeps its lean', () => {
+  it('trick cards lie flat: physics-landed and the Tips-on fixed spots', () => {
     const landed = trickSpot('bottom', 4, 2, 0.7, undefined, { dx: 0.05, dz: -0.03, spin: 0.4 });
     expect(tiltDeg(quatOf(landed as never))).toBeLessThan(1e-4);
     expect(landed.p[1]).toBeCloseTo(FELT_REST_Y + 2 * STACK_DY, 9);
-    const fixed = trickSpot('bottom', 4, 2, 0.7);
-    expect(tiltDeg(quatOf(fixed as never))).toBeGreaterThan(1);
+    for (const pos of ['bottom', 'left', 'top', 'right'] as const) {
+      const fixed = trickSpot(pos, 4, 1, 0.7);
+      expect(tiltDeg(quatOf(fixed as never))).toBeLessThan(1e-4);
+      expect(fixed.p[1]).toBeCloseTo(FELT_REST_Y + STACK_DY, 9);
+    }
   });
 });
