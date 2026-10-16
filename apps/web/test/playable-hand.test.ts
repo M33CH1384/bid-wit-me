@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MeshStandardMaterial, Quaternion, Vector3 } from 'three';
-import { FACE_POLYGON_OFFSET, GROUP_PAD_PX, GROUP_RADIUS_PX, LEGAL_LIFT_PX, LEGAL_NEAR, RING_ABOVE, applyFaceDepthBias, cardMeshPaint, cardPartOrder, cssPxToPlane, fanGapPx, handRenderOrder, hitsInPaintOrder, raiseLocalY, screenRaise } from '../src/three/handLift';
+import { FACE_POLYGON_OFFSET, GROUP_PAD_PX, GROUP_RADIUS_PX, LEGAL_LIFT_PX, LEGAL_NEAR, RING_ABOVE, TAP_PLAY_ARM_MS, applyFaceDepthBias, cardIdFromHit, cardMeshPaint, cardPartOrder, cardTapHandlers, confirmPlay, cssPxToPlane, fanGapPx, handRenderOrder, hitsInPaintOrder, raiseLocalY, screenRaise, setPointerSelected } from '../src/three/handLift';
 import { FACE_CAP_GAP, fanLayout, handCardPlane, handFan, makeCamera } from '../src/three/layout';
 import { cardGeometry } from '../src/three/geometry';
 import { contourContains, groupOutline, haloLocal, placeOnPlane, planePointOk, unionContours } from '../src/three/playableOutline';
@@ -66,6 +66,47 @@ describe('a tap hits the card you see', () => {
     expect(face.polygonOffset).toBe(true);
     expect(face.polygonOffsetUnits).toBe(FACE_POLYGON_OFFSET.units);
     expect(FACE_POLYGON_OFFSET.units).toBeLessThan(0);
+  });
+
+  it('plays the selected card id when a closer neighbour is also under the finger', () => {
+    // Q♦ is raised. 4♦ is closer in z and overlaps it. The ray hits both.
+    const queen = {
+      renderOrder: handRenderOrder(4, true, true),
+      parent: null,
+      userData: { cardId: 'QD' },
+    };
+    const four = {
+      renderOrder: handRenderOrder(6, true, false),
+      parent: null,
+      userData: { cardId: '4D' },
+    };
+    const hits = [
+      { distance: 0.4, object: { renderOrder: 0, parent: four, userData: {} }, eventObject: four, name: '4D' },
+      { distance: 1.1, object: { renderOrder: 0, parent: queen, userData: {} }, eventObject: queen, name: 'QD' },
+    ];
+    setPointerSelected('QD');
+    try {
+      const ordered = hitsInPaintOrder(hits);
+      expect(ordered).toHaveLength(1);
+      expect(cardIdFromHit(ordered[0]!.object)).toBe('QD');
+    } finally {
+      setPointerSelected(null);
+    }
+
+    // The mesh stamp wins over a stale closure that still says 4♦.
+    const played: string[] = [];
+    const handlers = cardTapHandlers((id) => played.push(id), '4D');
+    handlers.onPointerDown?.({ stopPropagation() {}, object: queen });
+    expect(played).toEqual(['QD']);
+
+    // Selecting Q♦ and then hitting 4♦ changes the selection. It does not play 4♦.
+    expect(confirmPlay('QD', '4D', 0, 500)).toEqual({ type: 'select', card: '4D' });
+    // The tap that selected Q♦ must not also play it.
+    expect(confirmPlay('QD', 'QD', 1000, 1000 + TAP_PLAY_ARM_MS - 1)).toEqual({ type: 'ignore' });
+    // The confirming tap plays Q♦, the selected id, not the neighbour and not an index.
+    const play = confirmPlay('QD', 'QD', 1000, 1000 + TAP_PLAY_ARM_MS);
+    expect(play).toEqual({ type: 'play', card: 'QD' });
+    if (play.type === 'play') expect(play.card).toBe('QD');
   });
 
   it('keeps left-to-right order inside the legal group and does not jump on a tie', () => {
