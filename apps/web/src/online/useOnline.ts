@@ -28,7 +28,9 @@ export interface GameSource {
   view: PlayerView;
   pause: boolean;
   error: string | null;
-  apply: (a: Action) => void;
+  apply: (a: Action) => boolean;
+  /** Bumps when a sent play is released, so a tap held locally can open again. */
+  playGate?: number;
   restart: () => void;
   introHand: number | null;
   dealing: boolean;
@@ -105,15 +107,15 @@ export function useOnlineSource(cs: ConnState, conn: TableConnection): (GameSour
   }, [cs.error]);
 
   const seq = shown?.seq ?? 0;
-  const apply = useCallback((a: Action) => {
-    // conn.act() drops the move if another one is still in flight or this view is already outdated
+  const apply = useCallback((a: Action): boolean => {
+    // conn.act() drops the move if another one is still in flight, a play is waiting on the server, or this view is outdated
     switch (a.type) {
-      case 'reveal': conn.act({ type: 'reveal' }, seq); break;
-      case 'bid': if (a.bid !== 'books') conn.act({ type: 'bid', bid: a.bid }, seq); break;
-      case 'play': conn.act({ type: 'play', card: a.card }, seq); break;
-      case 'exchange': conn.act({ type: 'exchange', cards: a.cards }, seq); break;
-      case 'runIt': conn.act({ type: 'runIt' }, seq); break;
-      case 'nextHand': conn.send({ t: 'next' }); break;
+      case 'reveal': return conn.act({ type: 'reveal' }, seq);
+      case 'bid': return a.bid !== 'books' && conn.act({ type: 'bid', bid: a.bid }, seq);
+      case 'play': return conn.act({ type: 'play', card: a.card }, seq);
+      case 'exchange': return conn.act({ type: 'exchange', cards: a.cards }, seq);
+      case 'runIt': return conn.act({ type: 'runIt' }, seq);
+      case 'nextHand': conn.send({ t: 'next' }); return true;
     }
   }, [conn, seq]);
 
@@ -121,6 +123,7 @@ export function useOnlineSource(cs: ConnState, conn: TableConnection): (GameSour
   return {
     st: shown.st, view: shown.view, rot: shown.rot, pause, error: err, apply, restart: () => {},
     introHand: intro && intro.hand === shown.st.handNo ? intro.hand : null, dealing, k: 1, locked: cs.pending,
+    playGate: cs.playGate ?? 0,
   };
 }
 
@@ -181,7 +184,7 @@ export function useOnlineChat(cs: ConnState, st: GameState | null, names: string
     for (const l of cs.chat) {
       if (seen.current.has(l.id)) continue;
       seen.current.add(l.id);
-      add(lineToMsg(l, cs.you));
+      add(lineToMsg(l, cs.you, !!cs.spectator));
       // live bot lines (not the backlog on join): voice + the Hustler reveal pop
       if (l.bot && primed.current) {
         speakBot(l.name, l.text, l.bot.persona, l.bot.line, l.bot.bid);
@@ -232,18 +235,25 @@ const HIDE_SPEC_KEY = 'bwm.hideSpectatorChat';
 export const loadHideSpectatorChat = () => { try { return localStorage.getItem(HIDE_SPEC_KEY) === '1'; } catch { return false; } };
 export const saveHideSpectatorChat = (on: boolean) => { try { localStorage.setItem(HIDE_SPEC_KEY, on ? '1' : '0'); } catch { /* private mode */ } };
 
-function lineToMsg(l: ChatLine, you: string | null): ChatMsg {
-  if (l.system || !l.from) return { id: l.id, user: 'System', text: l.text, system: true, color: '#b892ff' };
-  const mine = l.from === you;
-  return { id: l.id, user: mine ? 'You' : l.name, text: l.text, color: mine ? '#f5c542' : colorFor(l.from), ...(l.bot ? { bot: true } : {}), ...(l.hint ? { hint: true } : {}), ...(l.spectator ? { badge: SPECTATOR_TAG } : {}) };
+/** Chat speaker. Spectators see the sender's name, including their own — never "You". */
+export function chatUserLabel(lineName: string, from: string | null | undefined, you: string | null, spectating: boolean): string {
+  if (!spectating && from && from === you) return 'You';
+  return lineName || 'Player';
 }
 
-/** Local-seat names: "You" at 0, then real names rotated. */
-export function localNames(room: RoomInfo, rot: Rotation): string[] {
+function lineToMsg(l: ChatLine, you: string | null, spectating = false): ChatMsg {
+  if (l.system || !l.from) return { id: l.id, user: 'System', text: l.text, system: true, color: '#b892ff' };
+  const mine = !spectating && l.from === you;
+  return { id: l.id, user: chatUserLabel(l.name, l.from, you, spectating), text: l.text, color: mine ? '#f5c542' : colorFor(l.from), ...(l.bot ? { bot: true } : {}), ...(l.hint ? { hint: true } : {}), ...(l.spectator ? { badge: SPECTATOR_TAG } : {}) };
+}
+
+/** Local-seat names. Seat 0 is "You" for a seated viewer; a spectator gets the occupant (person or bot). */
+export function localNames(room: RoomInfo, rot: Rotation, spectating = false): string[] {
   return Array.from({ length: rot.n }, (_, i) => {
-    if (i === 0) return 'You';
     const s = room.seats[rot.R(i)];
-    return !s || s.kind === 'empty' ? `Seat ${rot.R(i) + 1}` : s.name;
+    const occ = !s || s.kind === 'empty' ? `Seat ${rot.R(i) + 1}` : s.name;
+    if (!spectating && i === 0) return 'You';
+    return occ;
   });
 }
 

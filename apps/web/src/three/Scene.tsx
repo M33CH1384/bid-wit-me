@@ -10,7 +10,7 @@ import { GAP_S, LIFT_S, fanGapPx, fanMotion, handCardChrome, handDepthOpts, hand
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline, seatDealDelay } from './dealTimeline';
 import { handNeedsDeal, handSlotKey } from './dealFlight';
-import { handLatched, latchHand, showResumeHand3D, trickFacesShown } from './cardFace';
+import { cardShowsFace, handLatched, latchHand, showResumeHand3D, visibleFaceIds } from './cardFace';
 import { type Sfx, sound } from '../audio';
 import { fx } from '../fx';
 import { backTexture, faceTexture, logoTexture, peekFaceTexture, refreshFacesGradually } from './cardTextures';
@@ -665,14 +665,19 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
     faceHand.current = handNo;
   }
   const trickIds = shownTrick.map((p) => p.card);
-  for (const id of trickIds) face(id);
-  const faceOrder = [...(myHand ?? []), ...trickIds];
-  faceShown.current = trickFacesShown(faceShown.current, faceOrder.slice(0, nFaces), new Set(faceOrder), trickIds);
+  // Slam cards are public. Without this, a bot's Run it! lands on the back: those ids were never
+  // in the viewer's hand, so the face set (hand + trick only) leaves the new mesh on the BWM back.
+  const slamIds = props.slam ? [...props.slam.cards, ...(props.slam.others ?? []).map((o) => o.card)] : [];
+  const instant = [...trickIds, ...slamIds];
+  for (const id of instant) face(id);
+  const faceOrder = [...(myHand ?? []), ...instant];
+  faceShown.current = visibleFaceIds(faceShown.current, faceOrder.slice(0, nFaces), myHand ?? [], trickIds, slamIds);
   if (!showCards) return null;
   const shown = resume ? [...items.filter((it) => it.hand), ...items.filter((it) => !it.hand).slice(0, extra)] : items;
   const drawn = hand3D ? shown : shown.filter((it) => !it.hand);
   const frontOf = (card: Card) => {
-    if (faceShown.current.has(card)) return face(card);
+    // Trick and slam cards are public on the frame they land, even if a rebuild cleared the painter set.
+    if (cardShowsFace(card, faceShown.current, instant)) return face(card);
     // A remount starts the painter over. The cached face stays; don't paint a back or a second texture.
     return peekFaceTexture(card, res, promoted(card));
   };

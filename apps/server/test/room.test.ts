@@ -737,6 +737,70 @@ describe('action ordering (real-network latency)', () => {
     expect(env.room.data.chat.some((l) => l.text.includes('ran out of time') && l.at <= env.t - 5000)).toBe(false);
   });
 
+  it('rejects a second card from the same seat in the current trick', () => {
+    const env = new FakeEnv(undefined, FAST);
+    env.join('a', 'Dee');
+    env.join('b', 'Ray');
+    env.send('a', { t: 'sit', seat: 0 });
+    env.send('b', { t: 'sit', seat: 1 });
+    env.send('a', { t: 'start' });
+    const d = env.room.data;
+    const g = d.game!;
+    d.game = {
+      ...g, phase: 'playing',
+      hands: [['AS', 'KS'], ['3C', '4C'], ['5D', '6D'], ['7H', '8H']] as never,
+      bids: [1, 1, 1, 1], tricks: [], tricksWon: [0, 0, 0, 0], turn: 0,
+      trick: { leader: 0, plays: [], winner: null }, spadesBroken: true,
+    } as never;
+    d.seq = (d.seq ?? 0) + 1;
+    d.turnKey = null;
+    d.deadline = null;
+    env.room.tick();
+    const seq = env.room.data.seq!;
+    env.send('a', { t: 'act', id: 'one', action: { type: 'play', card: 'AS' }, seq });
+    expect(acks(env, 'a').at(-1)).toMatchObject({ id: 'one', ok: true });
+    expect(env.room.data.game!.trick.plays.map((p) => ({ seat: p.seat, card: p.card }))).toEqual([{ seat: 0, card: 'AS' }]);
+    const after = env.room.data.seq!;
+    env.send('a', { t: 'act', id: 'two', action: { type: 'play', card: 'KS' }, seq: after });
+    expect(acks(env, 'a').at(-1)).toMatchObject({ id: 'two', ok: false, code: 'ALREADY_PLAYED' });
+    expect(env.room.data.game!.trick.plays).toHaveLength(1);
+    expect(env.room.data.game!.hands[0]).toContain('KS');
+    expect(env.room.data.game!.hands[0]).not.toContain('AS');
+    expect(env.room.data.seq).toBe(after);
+    // the same card again is the play already in the trick: acknowledged, not applied twice
+    env.send('a', { t: 'act', id: 'again', action: { type: 'play', card: 'AS' }, seq: after });
+    expect(acks(env, 'a').at(-1)).toMatchObject({ id: 'again', ok: true });
+    expect(env.room.data.game!.trick.plays).toHaveLength(1);
+    expect(env.room.data.seq).toBe(after);
+  });
+
+  it('rejects a play when it is not that seat\'s turn', () => {
+    const env = new FakeEnv(undefined, FAST);
+    env.join('a', 'Dee');
+    env.join('b', 'Ray');
+    env.send('a', { t: 'sit', seat: 0 });
+    env.send('b', { t: 'sit', seat: 1 });
+    env.send('a', { t: 'start' });
+    const d = env.room.data;
+    const g = d.game!;
+    d.game = {
+      ...g, phase: 'playing',
+      hands: [['AS', 'KS'], ['3C', '4C'], ['5D', '6D'], ['7H', '8H']] as never,
+      bids: [1, 1, 1, 1], tricks: [], tricksWon: [0, 0, 0, 0], turn: 0,
+      trick: { leader: 0, plays: [], winner: null }, spadesBroken: true,
+    } as never;
+    d.seq = (d.seq ?? 0) + 1;
+    d.turnKey = null;
+    d.deadline = null;
+    env.room.tick();
+    const seq = env.room.data.seq!;
+    env.send('b', { t: 'act', id: 'oot', action: { type: 'play', card: '3C' }, seq });
+    expect(acks(env, 'b').at(-1)).toMatchObject({ id: 'oot', ok: false, code: 'NOT_YOUR_TURN' });
+    expect(env.room.data.game!.trick.plays).toEqual([]);
+    expect(env.room.data.game!.hands[1]).toContain('3C');
+    expect(env.room.data.seq).toBe(seq);
+  });
+
   it('real rule violations still come back as a failed ack with the reason', () => {
     const { env } = fourHumans();
     env.send('a', { t: 'config', rules: makeRules('joker', { firstHandBidsItself: false }) });
@@ -1351,6 +1415,56 @@ describe('Run it! play-out is broadcast with the resolving state', () => {
       expect(msg.run!.books, cid).toBeGreaterThanOrEqual(2);
       expect(cardsOf(msg.run!.tricks), cid).toEqual([...hands.flat()].sort());
       expect(msg.view!.phase === 'handOver' || msg.view!.phase === 'gameOver', cid).toBe(true);
+    }
+    expect(env.last('s', 'state')!.spectator).toBe(true);
+  });
+
+  /** The claimer's own cards in the play-out, in seat order, with their real identities. */
+  function claimed(run: { claimer: number; tricks: { plays: { seat: number; card: string; played?: boolean }[] }[] }) {
+    return run.tricks.flatMap((t) => t.plays.filter((p) => p.seat === run.claimer && !p.played).map((p) => p.card)).sort();
+  }
+
+  it('a bot Run it! play-out reveals the claimer\'s cards to every seat and to spectators', () => {
+    const env = new FakeEnv(undefined, FAST);
+    for (const [cid, name, seat] of [['a', 'Dee', 0], ['b', 'Ray', 1], ['d', 'Jo', 3]] as const) {
+      env.join(cid, name);
+      env.send(cid, { t: 'sit', seat });
+    }
+    env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: 1000 }) });
+    env.send('a', { t: 'start' });
+    expect(env.room.data.seats[2]!.kind).toBe('bot');
+    env.join('s', 'Watcher');
+    late(env, 0);
+    env.room.tick();
+    expect(env.room.data.game!.tricks.slice(-2).every((t) => t.winner === 2)).toBe(true);
+    const sample = env.last('a', 'state')!.run!;
+    expect(claimed(sample)).toEqual(['BJ', 'LJ']);
+    for (const cid of ['a', 'b', 'd', 's']) {
+      const msg = env.last(cid, 'state')!;
+      expect(msg.run, cid).toBeTruthy();
+      expect(msg.run!.claimer, cid).toBe(2);
+      expect(claimed(msg.run!), cid).toEqual(['BJ', 'LJ']);
+      expect(cardsOf(msg.run!.tricks), cid).toEqual([...hands.flat()].sort());
+      expect(msg.run, cid).toEqual(sample);
+    }
+    expect(env.last('s', 'state')!.spectator).toBe(true);
+  });
+
+  it('a human claimer\'s play-out reveals those same cards to every seat and to spectators', () => {
+    const { env } = fourHumans();
+    env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: 1000 }) });
+    env.send('a', { t: 'start' });
+    env.join('s', 'Watcher');
+    late(env, 0);
+    env.send('a', { t: 'media', media: { cam: false, mic: false } });
+    env.send('c', { t: 'act', action: { type: 'runIt' }, seq: env.room.data.seq });
+    const sample = env.last('c', 'state')!.run!;
+    expect(claimed(sample)).toEqual(['BJ', 'LJ']);
+    for (const cid of ['a', 'b', 'c', 'd', 's']) {
+      const msg = env.last(cid, 'state')!;
+      expect(claimed(msg.run!), cid).toEqual(['BJ', 'LJ']);
+      expect(cardsOf(msg.run!.tricks), cid).toEqual([...hands.flat()].sort());
+      expect(msg.run, cid).toEqual(sample);
     }
     expect(env.last('s', 'state')!.spectator).toBe(true);
   });

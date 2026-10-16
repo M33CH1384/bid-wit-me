@@ -37,14 +37,17 @@ export function clearGame(): void {
 }
 
 /**
- * Leave / main menu replaces history with `{ wiz: 'home' }`. That must not reopen a saved bot
- * game: the home screen is the menu (Resume stays available). A refresh has no wizard state
- * and drops back into the game. `autostart` is the test hook and always starts fresh.
+ * Opening the app, refreshing, and landing on Home always show the menu. A saved
+ * unfinished bot game is not resumed on its own: the save stays in storage for the
+ * existing Resume button, and nothing asks the player to continue. `autostart` is
+ * the test hook and starts a new game. `state` and `saved` stay in the signature so
+ * every former auto-resume path is still checked.
  */
 export function resumeOnLoad(state: unknown, saved: SavedGame | null, autostart: boolean): SavedGame | null {
-  if (autostart || !saved) return null;
-  if (state && typeof state === 'object' && (state as { wiz?: unknown }).wiz === 'home') return null;
-  return saved;
+  void state;
+  void saved;
+  void autostart;
+  return null;
 }
 
 const isArr = (x: unknown): x is unknown[] => Array.isArray(x);

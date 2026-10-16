@@ -22,14 +22,9 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
   const [settings, setSettings] = useState<Settings>(() => ({ ...loadSettings(), speed: 'normal' }));
   const room = cs.room!;
   const rot = source?.rot ?? null;
-  // Release 10: watching (no seat): seat 0 is a real player, so it shows their name instead of "You"
+  // Watching (no seat): every plate, including the bottom one, is the occupant — a person or a bot — never "You".
   const spectator = !!cs.spectator && cs.seat === null;
-  const names = useMemo(() => {
-    if (!rot) return [];
-    const ns = localNames(room, rot);
-    if (spectator) { const s0 = room.seats[rot.R(0)]; ns[0] = !s0 || s0.kind === 'empty' ? 'Seat 1' : s0.name; }
-    return ns;
-  }, [room, rot, spectator]);
+  const names = useMemo(() => (rot ? localNames(room, rot, spectator) : []), [room, rot, spectator]);
   const send = useCallback((text: string) => conn.send({ t: 'chat', text }), [conn]);
   // Engine dealer seat (unrotated view) → the current occupant's plate name. Not the rotated index, and not a name frozen at the deal.
   const dealerName = useMemo(() => {

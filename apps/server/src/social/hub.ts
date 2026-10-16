@@ -8,7 +8,7 @@
  */
 import {
   type FriendsState, type InviteMsg, type OpenTable, type PresenceEntry, type PresenceStatus, type SocialChatLine, type SocialClientMsg, type SocialServerMsg, type SocialSettings,
-  GUEST_SESSION, SOCIAL_LIMITS, blockLinks, cleanName, cleanText, maskProfanity, parseSocialMsg,
+  GUEST_SESSION, PRESENCE_TTL_MS, SOCIAL_LIMITS, blockLinks, cleanName, cleanText, maskProfanity, parseSocialMsg, stalePresence,
 } from '@spades/protocol';
 import { isProfane } from '../auth/username';
 import { DEFAULT_SETTINGS, SocialStore, uidOf } from './store';
@@ -23,7 +23,7 @@ export interface ConnAtt {
   hidden?: boolean;
   friendsOnly?: boolean;
   rating?: { team?: number; cutthroat?: number };
-  /** when this socket last changed status (newest wins across a user's tabs) */
+  /** last social message (newest status wins across a user's tabs; old sessions are pruned) */
   at: number;
 }
 
@@ -43,6 +43,13 @@ export interface TableLog {
 /** an entry not refreshed for this long is dropped (a table DO that vanished without reporting) */
 export const TABLE_TTL_MS = 3 * 3600_000;
 
+/** Public table codes that ended or were unlisted. Kept so a hibernated hub still knows. */
+export interface EndedLog {
+  add(code: string): void;
+  del(code: string): void;
+  list(): string[];
+}
+
 export interface HubIO {
   now(): number;
   send(cid: string, msg: SocialServerMsg): void;
@@ -50,6 +57,19 @@ export interface HubIO {
   save(cid: string, att: ConnAtt): void;
   global: GlobalLog;
   tables?: TableLog;
+  ended?: EndedLog;
+  /**
+   * false when this socket is already gone. Omit to treat every conn as connected.
+   * A disconnected session is dropped even if its attachment was restored.
+   */
+  connected?(cid: string): boolean;
+  /** close and forget a socket the hub dropped */
+  drop?(cid: string): void;
+  /**
+   * Is this table still a live room? 'over' / 'gone' drop its presence rows.
+   * 'live' keeps them (a private table is live and never listed). null = don't know yet.
+   */
+  tablePhase?(code: string): Promise<'live' | 'over' | 'gone' | null>;
   /** expire invites etc. (in-memory timer) */
   later(ms: number, f: () => void): void;
   randomId(): string;
@@ -93,10 +113,15 @@ export class Hub {
   private blocks = new Map<string, Set<string>>(); // uid → uids blocking/blocked
   private invites = new Map<string, Invite>();
   private windows = new Map<string, number[]>();
+  /** hidden from the players list until they send a status that is not an ended table */
+  private quiet = new Set<string>();
+  private endedCodes = new Set<string>();
+  private phaseCache = new Map<string, { at: number; phase: 'live' | 'over' | 'gone' }>();
   private store: SocialStore | null;
 
   constructor(private io: HubIO, db: D1Database | undefined) {
     this.store = db ? new SocialStore(db) : null;
+    for (const code of io.ended?.list() ?? []) this.endedCodes.add(code);
   }
 
   /* ------------------------------------------------------------- connections */
@@ -135,16 +160,18 @@ export class Hub {
       att = { pid, name, guest: true, status: { kind: 'online' }, at: now };
     }
     const wasOnline = this.online(att.pid);
-    // a second tab keeps the newest status of the first
+    // a second tab keeps the newest status of the first, unless that status is a table that already ended
     const prev = this.entry(att.pid);
-    if (prev) att.status = prev.status;
+    if (prev) att.status = this.endedClaim(prev.status) ? { kind: 'online' } : prev.status;
+    this.quiet.delete(att.pid);
     this.conns.set(cid, att);
     this.io.save(cid, att);
+    await this.prune(true);
     const me = this.entry(att.pid)!;
     const users = this.visibleList(att.pid);
     const global = this.io.global.list(SOCIAL_LIMITS.globalSend).filter((l) => !this.hiddenBetween(att.pid, l.from));
     this.io.send(cid, { t: 'hello', you: me, admin: !!att.admin, users, global, friends, settings, unread, tables: this.openTables() });
-    if (!wasOnline) this.broadcastEntry(att.pid);
+    if (!wasOnline && !this.quiet.has(att.pid)) this.broadcastEntry(att.pid);
   }
 
   /* ------------------------------------------------------------- open tables (Release 10) */
@@ -162,20 +189,28 @@ export class Hub {
   tableUpdate(code: string, t: OpenTable | null): void {
     const log = this.io.tables;
     if (!log) return;
-    if (t) log.put({ ...t, code });
-    else log.del(code);
+    const had = log.list().some((row) => row.code === code);
+    if (t && t.status !== 'over') {
+      this.clearEnded(code);
+      log.put({ ...t, code });
+    } else if (t) {
+      log.put({ ...t, code });
+      this.markEnded(code);
+      this.retire(code);
+    } else {
+      log.del(code);
+      // A private table is never listed, so its null report must not erase the people sitting there.
+      if (had) {
+        this.markEnded(code);
+        this.retire(code);
+      }
+    }
     const msg: SocialServerMsg = t ? { t: 'tables', up: [{ ...t, code }] } : { t: 'tables', gone: [code] };
     for (const c of this.conns.keys()) this.io.send(c, msg);
   }
 
   close(cid: string): void {
-    const att = this.conns.get(cid);
-    if (!att) return;
-    this.conns.delete(cid);
-    if (this.online(att.pid)) { this.broadcastEntry(att.pid); return; } // another tab: its status wins now
-    for (const [vcid, v] of this.conns) if (v.pid !== att.pid) this.io.send(vcid, { t: 'pres', gone: [att.pid] });
-    // pending invites to/from them go away
-    for (const inv of [...this.invites.values()]) if (inv.to === att.pid || inv.from === att.pid) this.dropInvite(inv, 'cancelled');
+    this.removeConn(cid);
   }
 
   /** Release 9b: server-side notice to accounts (tournament check-in / match ready); returns how many tabs got it */
@@ -201,7 +236,7 @@ export class Hub {
     let best: ConnAtt | null = null;
     for (const a of this.conns.values()) if (a.pid === pid && (!best || a.at >= best.at)) best = a;
     if (!best) return null;
-    return { id: pid, name: best.name, guest: best.guest, status: best.status, ...(best.rating && Object.keys(best.rating).length ? { rating: best.rating } : {}) };
+    return { id: pid, name: best.name, guest: best.guest, status: best.status, at: best.at, ...(best.rating && Object.keys(best.rating).length ? { rating: best.rating } : {}) };
   }
 
   private isHidden(pid: string): boolean {
@@ -224,27 +259,130 @@ export class Hub {
   private visibleList(viewer: string): PresenceEntry[] {
     const seen = new Set<string>();
     const out: PresenceEntry[] = [];
+    const now = this.io.now();
+    const tables = this.openTables();
     for (const a of this.conns.values()) {
       if (seen.has(a.pid)) continue;
       seen.add(a.pid);
-      if (this.visibleTo(viewer, a.pid)) out.push(this.entry(a.pid)!);
+      if (a.pid !== viewer && this.quiet.has(a.pid)) continue;
+      if (!this.visibleTo(viewer, a.pid)) continue;
+      const e = this.entry(a.pid)!;
+      if (a.pid !== viewer && stalePresence(e, tables, this.endedCodes, now)) continue;
+      out.push(e);
     }
     return out;
   }
 
   /** tell everyone (who may see it) about pid's current entry; those who may not see it get 'gone' */
   private broadcastEntry(pid: string): void {
+    if (this.quiet.has(pid)) {
+      this.broadcastGone(pid);
+      return;
+    }
     const e = this.entry(pid);
     for (const [cid, v] of this.conns) {
-      if (!e) this.io.send(cid, { t: 'pres', gone: [pid] });
+      if (!e || (v.pid !== pid && stalePresence(e, this.openTables(), this.endedCodes, this.io.now()))) this.io.send(cid, { t: 'pres', gone: [pid] });
       else if (this.visibleTo(v.pid, pid)) this.io.send(cid, { t: 'pres', up: [e] });
       else if (v.pid !== pid) this.io.send(cid, { t: 'pres', gone: [pid] });
     }
   }
 
+  private broadcastGone(pid: string): void {
+    for (const [cid, v] of this.conns) if (v.pid !== pid) this.io.send(cid, { t: 'pres', gone: [pid] });
+  }
+
   /** count of distinct visible players (for tests / health) */
   onlineCount(): number {
     return new Set([...this.conns.values()].map((a) => a.pid)).size;
+  }
+
+  /**
+   * Drop presence for ended tables, disconnected sockets, and sessions with no social message
+   * inside PRESENCE_TTL_MS. `lookup` asks the table DO about codes that are no longer listed
+   * (a room that died without a final report). Do not call that from the DO constructor.
+   */
+  async prune(lookup = false): Promise<void> {
+    const now = this.io.now();
+    for (const [cid, a] of [...this.conns]) {
+      const dead = this.io.connected?.(cid) === false;
+      const old = now - a.at > PRESENCE_TTL_MS;
+      if (!dead && !old) continue;
+      this.io.drop?.(cid);
+      this.removeConn(cid);
+    }
+    for (const t of this.openTables()) if (t.status === 'over') this.markEnded(t.code);
+    if (lookup && this.io.tablePhase) {
+      const need = new Set<string>();
+      for (const a of this.conns.values()) {
+        const code = a.status.code;
+        if (!code || a.status.offline) continue;
+        if (a.status.kind !== 'table' && a.status.kind !== 'lobby') continue;
+        if (this.endedCodes.has(code)) continue;
+        const listed = this.openTables().find((t) => t.code === code);
+        if (listed && listed.status !== 'over') continue;
+        need.add(code);
+      }
+      for (const code of need) {
+        const hit = this.phaseCache.get(code);
+        let phase = hit && now - hit.at < 60_000 ? hit.phase : null;
+        if (!hit || now - hit.at >= 60_000) {
+          phase = await this.io.tablePhase(code);
+          if (phase) this.phaseCache.set(code, { at: now, phase });
+        }
+        if (phase === 'over' || phase === 'gone') this.markEnded(code);
+      }
+    }
+    for (const code of this.endedCodes) this.retire(code);
+  }
+
+  private endedClaim(status: PresenceStatus): boolean {
+    if (status.offline || !status.code) return false;
+    if (status.kind !== 'table' && status.kind !== 'lobby') return false;
+    if (this.endedCodes.has(status.code)) return true;
+    return this.openTables().some((t) => t.code === status.code && t.status === 'over');
+  }
+
+  private markEnded(code: string): void {
+    if (this.endedCodes.has(code)) return;
+    this.endedCodes.add(code);
+    this.io.ended?.add(code);
+  }
+
+  private clearEnded(code: string): void {
+    if (!this.endedCodes.delete(code)) return;
+    this.io.ended?.del(code);
+    this.phaseCache.delete(code);
+  }
+
+  /** Take an ended table's rows off the list. A live socket stays up, hidden until it sends a real status. */
+  private retire(code: string): void {
+    const pids = new Set<string>();
+    for (const [cid, a] of this.conns) {
+      if (a.status.offline || a.status.code !== code) continue;
+      if (a.status.kind !== 'table' && a.status.kind !== 'lobby') continue;
+      a.status = { kind: 'online' };
+      this.io.save(cid, a);
+      pids.add(a.pid);
+    }
+    for (const pid of pids) {
+      if (this.quiet.has(pid)) continue;
+      this.quiet.add(pid);
+      this.broadcastGone(pid);
+    }
+  }
+
+  private removeConn(cid: string): void {
+    const att = this.conns.get(cid);
+    if (!att) return;
+    this.conns.delete(cid);
+    if (this.online(att.pid)) {
+      if (this.quiet.has(att.pid)) this.broadcastGone(att.pid);
+      else this.broadcastEntry(att.pid);
+      return;
+    }
+    this.quiet.delete(att.pid);
+    this.broadcastGone(att.pid);
+    for (const inv of [...this.invites.values()]) if (inv.to === att.pid || inv.from === att.pid) this.dropInvite(inv, 'cancelled');
   }
 
   /* ---------------------------------------------------------------- messages */
@@ -291,6 +429,13 @@ export class Hub {
 
   private async handle(cid: string, att: ConnAtt, msg: SocialClientMsg): Promise<void> {
     const now = this.io.now();
+    // Any real message keeps the session. Status sets `at` itself, after the ended-table check.
+    if (msg.t !== 'status') {
+      att.at = now;
+      const woke = this.quiet.delete(att.pid);
+      this.io.save(cid, att);
+      if (woke) this.broadcastEntry(att.pid);
+    }
     const uid = uidOf(att.pid);
     const s = this.store;
     const needUser = (): boolean => {
@@ -301,8 +446,17 @@ export class Hub {
     switch (msg.t) {
       case 'status': {
         // every tab of the user reports; the newest wins
-        att.status = msg.status;
         att.at = now;
+        if (this.endedClaim(msg.status)) {
+          // Still announcing a table that ended (6SAQ2 next to a new session): keep the socket, hide the row.
+          att.status = { kind: 'online' };
+          this.io.save(cid, att);
+          this.quiet.add(att.pid);
+          this.broadcastGone(att.pid);
+          return;
+        }
+        att.status = msg.status;
+        this.quiet.delete(att.pid);
         this.io.save(cid, att);
         if (!att.hidden) this.broadcastEntry(att.pid);
         else for (const c of this.connsOf(att.pid)) this.io.send(c, { t: 'pres', up: [this.entry(att.pid)!] });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { feltHandVisible, handLatched, latchHand, presentHand, resetHandLatch, retainFrontTexture, showResumeHand3D, shownFaceIds, trickFacesShown } from '../src/three/cardFace';
+import { cardShowsFace, feltHandVisible, handLatched, latchHand, presentHand, resetHandLatch, retainFrontTexture, showResumeHand3D, shownFaceIds, trickFacesShown, visibleFaceIds } from '../src/three/cardFace';
 
 /**
  * The painter walks the hand one card per frame and starts over when its key changes.
@@ -59,6 +59,48 @@ describe('dealt faces survive a selection', () => {
     for (const id of hand) expect(shown.has(id)).toBe(true);
     // A card that left the table does not keep a face.
     expect(trickFacesShown(shown, [], new Set(hand), []).has('2C')).toBe(false);
+  });
+
+  it('a bot Run it! slam is face-up for a seat that never held those cards, and for a spectator', () => {
+    const viewer = visibleFaceIds(new Set(['AS', 'KS']), [], ['AS', 'KS'], [], ['BJ', 'LJ']);
+    expect(viewer.has('BJ')).toBe(true);
+    expect(viewer.has('LJ')).toBe(true);
+    expect(viewer.has('AS')).toBe(true);
+    const spectator = visibleFaceIds(new Set(), [], [], [], ['BJ', 'LJ', '3D']);
+    expect([...spectator].sort()).toEqual(['3D', 'BJ', 'LJ']);
+    // A rebuild that cleared the painter set still shows the slam, the same way a trick card stays up.
+    for (const id of ['BJ', 'LJ']) expect(cardShowsFace(id, new Set(), ['BJ', 'LJ'])).toBe(true);
+  });
+
+  it('a human claimer\'s slam cards stay face-up after they leave the hand', () => {
+    const shown = visibleFaceIds(new Set(['BJ', 'LJ', '3H']), [], ['3H'], [], ['BJ', 'LJ']);
+    expect(shown.has('BJ')).toBe(true);
+    expect(shown.has('LJ')).toBe(true);
+    expect(shown.has('3H')).toBe(true);
+    expect(cardShowsFace('BJ', shown, ['BJ', 'LJ'])).toBe(true);
+    expect(cardShowsFace('3H', shown, ['BJ', 'LJ'])).toBe(true);
+  });
+
+  it('keeps trick cards face-up when a resize rebuilds the painter mid-trick', () => {
+    const hand = ['AS', 'KS', 'QS'] as const;
+    const trick = ['10S', '4S', '2C'];
+    // Painter restarted: nothing remembered, nothing painted this frame, and the only
+    // ids it was given are the cards still in the hand. The lead and the rest of the trick stay up.
+    const shown = trickFacesShown(new Set(), [], new Set(hand), trick);
+    for (const id of trick) {
+      expect(shown.has(id)).toBe(true);
+      expect(cardShowsFace(id, new Set(), trick)).toBe(true);
+    }
+    for (const id of hand) {
+      expect(shown.has(id)).toBe(false);
+      expect(cardShowsFace(id, shown, trick)).toBe(false);
+    }
+    // Once the hand walk resumes, dealt faces come back and the trick stays up.
+    const walked = trickFacesShown(shown, hand, new Set([...hand, ...trick]), trick);
+    for (const id of [...hand, ...trick]) expect(cardShowsFace(id, walked, trick)).toBe(true);
+    // A card that left the trick does not keep a face.
+    expect(trickFacesShown(shown, [], new Set(hand), []).has('10S')).toBe(false);
+    expect(cardShowsFace('10S', new Set(), [])).toBe(false);
   });
 
   it('keeps the 3D fan off the felt fan until a resumed hand has faces, then does not take it down again', () => {

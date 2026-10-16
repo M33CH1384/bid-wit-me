@@ -6,6 +6,7 @@
 import { TICKET_RETRY_MS, accountTicketState, clearAccountTicket } from '../social/store';
 import type { ChatLine, ClientMsg, GameAction, RoomInfo, RunPlayback, ServerMsg } from '@spades/protocol';
 import type { PlayerView } from '@spades/rules';
+import { playSendBlocked } from './playGuard';
 import { wsUrl } from './config';
 import { saveToken, tokenFor } from './identity';
 import { JOIN_TIMEOUT_MS, type JoinFaultKind, type JoinStage, joinFaultLog, joinFaultMessage } from './joinTimeout';
@@ -24,6 +25,8 @@ export interface ConnState {
   error: { code: string; message: string; at: number } | null;
   /** a move is in flight (sent, not yet acknowledged): the hand is locked so it can't be sent twice */
   pending: boolean;
+  /** Bumps when a sent play is released (server seq moved, the play was rejected, or the ack timed out). */
+  playGate?: number;
   /** Release 10: watching (unseated while a game is on; the view is the redacted spectator view) */
   spectator?: boolean;
   /** Signed in, but this socket's hello had no account ticket, so the seat is not linked. */
@@ -42,8 +45,10 @@ const newId = () => (crypto.randomUUID?.() ?? `${Date.now().toString(36)}${Math.
 type RtcHandler = (from: string, data: unknown) => void;
 
 export class TableConnection {
-  state: ConnState = { status: 'connecting', you: null, room: null, seat: null, view: null, run: null, chat: [], error: null, pending: false, statsOff: false, joinFault: null };
+  state: ConnState = { status: 'connecting', you: null, room: null, seat: null, view: null, run: null, chat: [], error: null, pending: false, playGate: 0, statsOff: false, joinFault: null };
   private inflight: PendingAct | null = null;
+  /** Seq of a play that has been sent and not yet passed by the server. A second play is refused until then. */
+  private playSentSeq: number | null = null;
   private ackTimer: number | null = null;
   private ws: WebSocket | null = null;
   private listeners = new Set<() => void>();
@@ -260,16 +265,30 @@ export class TableConnection {
           // the game moved past the version our in-flight move was based on: it was applied (or superseded)
           const settled = this.inflight !== null && m.room.seq > this.inflight.seq;
           if (settled) this.settle();
+          const playAdvanced = this.playSentSeq !== null && m.room.seq > this.playSentSeq;
+          if (playAdvanced) this.playSentSeq = null;
           this.clearJoinWatch();
-          this.set({ status: 'open', room: m.room, seat: m.seat, view, run: m.run ?? null, spectator: !!m.spectator, joinFault: null, ...(settled ? { pending: false } : {}) });
+          this.set({
+            status: 'open', room: m.room, seat: m.seat, view, run: m.run ?? null, spectator: !!m.spectator, joinFault: null,
+            ...(settled ? { pending: false } : {}),
+            ...(playAdvanced ? { playGate: (this.state.playGate ?? 0) + 1 } : {}),
+          });
           break;
         }
         case 'ack': {
           if (!this.inflight || m.id !== this.inflight.id) break; // an old ack (we already moved on)
+          const wasPlay = this.inflight.action.type === 'play';
+          const rejectedPlay = wasPlay && !m.ok && !m.stale;
           this.settle();
+          // State is delivered before this ack. A play that changed the trick already cleared
+          // playSentSeq. If it is still set, the trick did not move: the play was rejected, or it
+          // was a repeat of the card already down. Open the hand either way.
+          const unchangedPlay = wasPlay && !!m.ok && this.playSentSeq !== null;
+          const release = rejectedPlay || unchangedPlay;
+          if (release) this.playSentSeq = null;
           // stale/dup are normal under latency (the timer auto-played, a retry after reconnect): no error shown
-          if (!m.ok && !m.stale && m.code) this.set({ pending: false, error: { code: m.code, message: m.message ?? m.code, at: Date.now() } });
-          else this.set({ pending: false });
+          if (!m.ok && !m.stale && m.code) this.set({ pending: false, ...(release ? { playGate: (this.state.playGate ?? 0) + 1 } : {}), error: { code: m.code, message: m.message ?? m.code, at: Date.now() } });
+          else this.set({ pending: false, ...(release ? { playGate: (this.state.playGate ?? 0) + 1 } : {}) });
           break;
         }
         case 'chat':
@@ -318,9 +337,12 @@ export class TableConnection {
    */
   act(action: GameAction, seq: number): boolean {
     const room = this.state.room;
+    // One play is in flight until the server's seq moves past it. A second tap must not send.
+    if (action.type === 'play' && playSendBlocked(this.playSentSeq, room?.seq ?? seq)) return false;
     if (this.inflight || !room || seq !== room.seq) return false;
     if (this.ws?.readyState !== WebSocket.OPEN) return false;
     this.inflight = { id: newId(), seq, action, sentAt: Date.now() };
+    if (action.type === 'play') this.playSentSeq = seq;
     this.ws.send(JSON.stringify(this.actMsg(this.inflight)));
     this.armAckTimer();
     this.set({ pending: true });
@@ -336,8 +358,10 @@ export class TableConnection {
     if (this.ackTimer) clearTimeout(this.ackTimer);
     this.ackTimer = window.setTimeout(() => {
       if (!this.inflight) return;
+      const play = this.inflight.action.type === 'play';
       this.inflight = null;
-      this.set({ pending: false });
+      if (play) this.playSentSeq = null;
+      this.set({ pending: false, ...(play ? { playGate: (this.state.playGate ?? 0) + 1 } : {}) });
     }, ACK_TIMEOUT_MS);
   }
 

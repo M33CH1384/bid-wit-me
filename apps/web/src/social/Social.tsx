@@ -10,6 +10,7 @@ import { createTable } from '../online/connection';
 import { inviteLink, serverUrl } from '../online/config';
 import { navigate } from '../online/nav';
 import { loadSettings } from '../settings';
+import { shownPlayers } from './presence';
 import { type PlayerTableAction, playerTableAction } from './tableActions';
 import { type MyTable, type SocialTab, badgeCount, globalUnread, social, useSocial } from './store';
 import { Leaderboards, Tournaments } from './Compete';
@@ -212,7 +213,7 @@ function Players({ signedIn }: { signedIn: boolean }) {
   const [q, setQ] = useState('');
   const friendIds = useMemo(() => new Set((s.friends?.friends ?? []).map((f) => f.id)), [s.friends]);
   const outgoing = useMemo(() => new Set((s.friends?.outgoing ?? []).map((f) => f.id)), [s.friends]);
-  const list = Object.values(s.users)
+  const list = shownPlayers(Object.values(s.users), s.tables, Object.keys(s.ended), Date.now())
     .filter((u) => !q.trim() || u.name.toLowerCase().includes(q.trim().toLowerCase()))
     .sort((a, b) => (a.id === s.you?.id ? -1 : b.id === s.you?.id ? 1 : 0) || (+friendIds.has(b.id) - +friendIds.has(a.id)) || (+a.guest - +b.guest) || a.name.localeCompare(b.name));
   return (
