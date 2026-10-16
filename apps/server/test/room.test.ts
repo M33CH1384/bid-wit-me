@@ -530,14 +530,18 @@ describe('game', () => {
     const dl = env.room.data.deadline!;
     expect(dl - env.t).toBeLessThanOrEqual(5000);
     expect(env.last(ps[(turnSeat + 1) % 4]!.cid, 'state')!.room.seats[turnSeat]).toMatchObject({ connected: false });
-    // comes back on a new socket with the stored token
-    const again = env.join('z', 'whatever', p.token);
+    // comes back on a new socket with the stored token, under a different display name
+    const again = env.join('z', 'Auntie Pat', p.token);
     expect(again.pid).toBe(p.pid);
+    expect(env.room.data.members[p.pid]!.name).toBe(['Dee', 'Ray', 'Kim', 'Jo'][turnSeat]);
     const st = env.last('z', 'state')!;
     expect(st.seat).toBe(turnSeat);
+    expect(st.spectator).toBeUndefined();
     expect(st.view!.turn).toBe(turnSeat);
-    // their old socket was replaced; deadline was not extended
-    expect(env.room.data.deadline).toBe(dl);
+    // the grace shortening is undone, back to the original timer, not a fresh clock
+    expect(env.room.data.deadline).toBeGreaterThan(dl);
+    const timerMs = (env.room.data.game!.phase === 'playing' ? 20 : 30) * 1000;
+    expect(env.room.data.deadline).toBe(env.room.data.turnStartedAt! + timerMs);
   });
 
   it('survives a restart (JSON round-trip of the saved row) mid-game', () => {
