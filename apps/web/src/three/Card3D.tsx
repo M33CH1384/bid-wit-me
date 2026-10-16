@@ -13,6 +13,8 @@ import { restingFlightWait } from '../trickTiming';
 import { openingFlight } from './dealFlight';
 import { retainFrontTexture } from './cardFace';
 import { restingFacing, trickFacingArrived } from './trickFacing';
+import { impactFraction } from '../landTiming';
+import { PILE_THUMP, slamThump } from './shake';
 
 interface Props {
   face: Texture | null; // null = we only ever see the back
@@ -180,7 +182,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     wait: delay,
     sp: new Vector3(), sq: new Quaternion(), ss: 1,
     tp: new Vector3(), tq: new Quaternion(), ts: 1,
-    started: false, firedStart: '' as string, firedLand: '' as string, land: undefined as string | undefined,
+    started: false, firedStart: '' as string, firedLand: '' as string, landDone: false, land: undefined as string | undefined,
     faced: false,
   });
   useLayoutEffect(() => {
@@ -386,6 +388,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       const wasResting = !s.key || s.t >= 1;
       s.key = key;
       s.faced = false;
+      s.landDone = false;
       s.land = sfx.current.sfxLand; // this tween's landing cue
       s.t = 0;
       // last-trick auto-play retargets a card that is already on screen (your last card keeps its hand key).
@@ -439,7 +442,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       // Test probe: keep sampling a slammed card's screen position for a few frames after it lands.
       if (slamNow.current && cardId && postLand.current < 30) {
         postLand.current++;
-        const w = window as unknown as { __bwmFly?: Record<string, { t: number; x: number; y: number }[]> };
+        const w = window as unknown as { __bwmFly?: Record<string, { now?: number; t: number; x: number; y: number }[]> };
         cam.updateMatrixWorld();
         const v = g.getWorldPosition(new Vector3()).project(cam);
         // relative to the table centre, so a camera shake (which moves everything) does not read as the card moving
@@ -468,7 +471,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       if (hideUntilStart.current) { hideUntilStart.current = false; g.visible = true; }
       // Test probe: the pose the flight leaves from (before the first frame moves it)
       if (slamNow.current && cardId) {
-        const w = window as unknown as { __bwmFly?: Record<string, { t: number; x: number; y: number }[]> };
+        const w = window as unknown as { __bwmFly?: Record<string, { now?: number; t: number; x: number; y: number }[]> };
         cam.updateMatrixWorld();
         const v = g.getWorldPosition(new Vector3()).project(cam);
         const o = new Vector3(0, 0, 0).project(cam); v.x -= o.x; v.y -= o.y;
@@ -478,18 +481,6 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       if (st && st !== s.firedStart) { s.firedStart = st; if (moving) sound.play(st); }
     }
     s.t = Math.min(1, s.t + dt / duration);
-    if (s.t >= 1) {
-      const land = s.land;
-      if (land && land !== s.firedLand) {
-        s.firedLand = land;
-        const sl = slamNow.current;
-        if (moving) land.split(',').forEach((c, i) => {
-          if (c === 'play' && sl && sl.intensity >= 0) { sound.cardSmack(sl.intensity); return; }
-          fireCue(c, i ? 0.02 : 0);
-        });
-        if (moving && sl && sl.shake > 0 && !fx.reduced && !fx.osReducedMotion) fx.shake = { start: performance.now(), dur: 0.16 + sl.shake * 3, amp: sl.shake * 0.6, thump: true };
-      }
-    }
     const e = motion === 'glide' ? 1 - Math.pow(1 - Math.pow(s.t, 1.4), 3) : (motion === 'flight' ? easeInOut : liftEase)(s.t);
     g.position.lerpVectors(s.sp, s.tp, e);
     const dist = s.sp.distanceTo(s.tp);
@@ -501,16 +492,36 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     const sl = slamNow.current;
     // Test probe: screen position of a trick card in flight, per frame (CSS px).
     if (sl && cardId) {
-      const w = window as unknown as { __bwmFly?: Record<string, { t: number; x: number; y: number }[]> };
+      const w = window as unknown as { __bwmFly?: Record<string, { now?: number; t: number; x: number; y: number }[]> };
       cam.updateMatrixWorld();
       const v = g.getWorldPosition(new Vector3()).project(cam);
         // relative to the table centre, so a camera shake (which moves everything) does not read as the card moving
         const o = new Vector3(0, 0, 0).project(cam); v.x -= o.x; v.y -= o.y;
-      ((w.__bwmFly ??= {})[cardId] ??= []).push({ t: s.t, x: ((v.x + 1) / 2) * viewSize.width + 0, y: ((1 - v.y) / 2) * viewSize.height });
+      ((w.__bwmFly ??= {})[cardId] ??= []).push({ now: performance.now(), t: s.t, x: ((v.x + 1) / 2) * viewSize.width + 0, y: ((1 - v.y) / 2) * viewSize.height });
     }
     if (sl && s.t > 0.75 && dist > 0.02) { const u = (s.t - 0.75) / 0.25; g.position.y += sl.bounce * Math.abs(Math.sin(2 * Math.PI * u)) * (1 - u); }
     g.quaternion.slerpQuaternions(s.sq, s.tq, e);
     g.scale.setScalar(s.ss + (s.ts - s.ss) * e); // every motion eases hand size → table size: no pop
+    // Landing sound + thump fire here, on the frame the card visually hits the felt (after its pose is applied):
+    // glide cards touch down at t=0.35 and then slide, so waiting for t=1 played the sound ~0.3s late.
+    if (!s.landDone && s.t >= impactFraction(motion)) {
+      s.landDone = true;
+      const land = s.land;
+      if (land && moving) {
+        s.firedLand = land;
+        const sl2 = slamNow.current;
+        land.split(',').forEach((c, i) => {
+          if (c === 'play' && sl2 && sl2.intensity >= 0) { sound.cardSmack(sl2.intensity); return; }
+          fireCue(c, i ? 0.02 : 0);
+        });
+        if (!fx.reduced && !fx.osReducedMotion) {
+          if (land.includes('runSlam')) fx.shake = { start: performance.now(), ...PILE_THUMP };
+          else if (sl2 && sl2.shake > 0) fx.shake = { start: performance.now(), ...slamThump(sl2.intensity) };
+        }
+        const lw = window as unknown as { __bwmLandProbe?: boolean; __bwmLandFx?: { card: string; at: number; t: number }[] };
+        if (lw.__bwmLandProbe && cardId) (lw.__bwmLandFx ??= []).push({ card: cardId, at: performance.now(), t: s.t });
+      }
+    }
     if (rw0.__bwmRestProbe && cardId && slamNow.current) ((rw0.__bwmScale ??= {})[cardId] ??= []).push(g.scale.x);
     if (finiteTarget && trickFacingArrived(s.t, g.position.distanceTo(s.tp))) {
       const q = restingFacing(
