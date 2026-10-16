@@ -110,13 +110,20 @@ export function canTapCard(pose: HandPose): boolean {
 /**
  * A tap lands on pointerdown. Click waits for pointerup, and the gap-close slide has moved
  * the card by then, so the finger misses the card it pressed.
+ * The id is read off the mesh that was hit, then the card id closed over at the last render.
+ * A fan index is never the thing that gets played.
  */
-export function cardTapHandlers(onTap: (() => void) | null | undefined): {
-  onPointerDown?: (e: { stopPropagation: () => void }) => void;
+export function cardTapHandlers(onTap: ((cardId: string) => void) | null | undefined, cardId = ''): {
+  onPointerDown?: (e: { stopPropagation: () => void; object?: CardHitNode | null }) => void;
 } {
   if (onTap === undefined) return {};
   if (onTap === null) return { onPointerDown: (e) => { e.stopPropagation(); } };
-  return { onPointerDown: (e) => { e.stopPropagation(); onTap(); } };
+  return {
+    onPointerDown: (e) => {
+      e.stopPropagation();
+      onTap(cardIdFromHit(e.object) ?? cardId);
+    },
+  };
 }
 
 /**
@@ -237,6 +244,18 @@ export function cardPartOrder(part: 'edge' | 'back' | 'face' | 'glow', order = 0
 export const GLOW_RENDER_ORDER = LEGAL_STACK + 40;
 
 interface PaintNode { renderOrder: number; parent?: PaintNode | null }
+export interface CardHitNode extends PaintNode { userData?: { cardId?: string } }
+
+/** Card id stamped on the mesh that was drawn. Walks parents. Never a fan index. */
+export function cardIdFromHit(obj: CardHitNode | null | undefined): string | null {
+  let o = obj;
+  while (o) {
+    const id = o.userData?.cardId;
+    if (typeof id === 'string' && id) return id;
+    o = o.parent;
+  }
+  return null;
+}
 
 /** Highest renderOrder on this object or an ancestor. The card root carries the stack for taps. */
 export function paintOrder(obj: PaintNode | null | undefined): number {
@@ -249,16 +268,33 @@ export function paintOrder(obj: PaintNode | null | undefined): number {
   return best;
 }
 
+/** The card that is raised. The raycast filter reads this so a closer neighbour cannot take its tap. */
+let pointerSelected: string | null = null;
+
+export function setPointerSelected(id: string | null): void {
+  pointerSelected = id;
+}
+
+export function pointerSelectedId(): string | null {
+  return pointerSelected;
+}
+
 /**
  * Deliver pointer hits in paint order, then by distance.
  * Legal cards are drawn over the illegal cards beside them. A distance sort would give the tap
  * to the closer illegal neighbour, and its handler would swallow it. The card on screen gets the tap.
+ * The fibre filter runs before it stamps eventObject, so the mesh and its parents both count.
+ * A selected card that the ray also touched wins outright: it is the card drawn on top.
  */
-export function hitsInPaintOrder<T extends { distance: number; eventObject?: PaintNode | null; object: PaintNode }>(hits: readonly T[]): T[] {
-  return hits.slice().sort((a, b) => {
-    const d = paintOrder(b.eventObject ?? b.object) - paintOrder(a.eventObject ?? a.object);
+export function hitsInPaintOrder<T extends { distance: number; eventObject?: CardHitNode | null; object: CardHitNode }>(hits: readonly T[], selected: string | null = pointerSelected): T[] {
+  const orderOf = (h: T) => Math.max(paintOrder(h.object), paintOrder(h.eventObject));
+  const ranked = hits.slice().sort((a, b) => {
+    const d = orderOf(b) - orderOf(a);
     return d !== 0 ? d : a.distance - b.distance;
   });
+  if (!selected) return ranked;
+  const mine = ranked.filter((h) => (cardIdFromHit(h.object) ?? cardIdFromHit(h.eventObject)) === selected);
+  return mine.length > 0 ? mine : ranked;
 }
 
 /**

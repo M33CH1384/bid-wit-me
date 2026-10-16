@@ -27,3 +27,24 @@ export function ignorePlayTap(held: PlayTrick | null, now: PlayTrick): boolean {
 export function playSendBlocked(sentSeq: number | null, serverSeq: number): boolean {
   return sentSeq !== null && serverSeq <= sentSeq;
 }
+
+/**
+ * How long a freshly selected card stays a selection. A second pointer event in this window
+ * (a touch plus the mouse event iOS synthesises) must not play the card it just selected,
+ * and it must not play the neighbour underneath a card that is still rising.
+ */
+export const TAP_PLAY_ARM_MS = 120;
+
+/**
+ * One tap selects. The next tap plays, and the card that leaves the hand is the selected id.
+ * A hit on a different card changes the selection. It never plays that other card.
+ */
+export function confirmPlay(selected: string | null, hit: string, selectedAt: number, now: number):
+  { type: 'play'; card: string } | { type: 'select'; card: string } | { type: 'ignore' } {
+  if (!hit) return { type: 'ignore' };
+  if (selected !== null && hit === selected) {
+    if (!(now - selectedAt >= TAP_PLAY_ARM_MS)) return { type: 'ignore' };
+    return { type: 'play', card: selected };
+  }
+  return { type: 'select', card: hit };
+}

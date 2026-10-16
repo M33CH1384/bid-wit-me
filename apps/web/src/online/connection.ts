@@ -8,7 +8,7 @@ import type { ChatLine, ClientMsg, GameAction, RoomInfo, RunPlayback, ServerMsg 
 import type { PlayerView } from '@spades/rules';
 import { playSendBlocked } from './playGuard';
 import { wsUrl } from './config';
-import { saveToken, tokenFor } from './identity';
+import { guestSessionId, saveToken, tokenFor } from './identity';
 import { JOIN_TIMEOUT_MS, type JoinFaultKind, type JoinStage, joinFaultLog, joinFaultMessage } from './joinTimeout';
 
 export type ConnStatus = 'connecting' | 'open' | 'reconnecting' | 'closed' | 'notFound';
@@ -68,6 +68,10 @@ export class TableConnection {
   private openGen = 0;
   private ticketTimedOut = false;
   private lastClose: { code: number; reason: string } | null = null;
+  /** Ticket from the hello that opened this socket, so a NOT_JOINED re-hello can carry it. */
+  private helloTicket: string | null = null;
+  /** One re-hello per socket when a play lands before the server has bound this connection. */
+  private rehelloed = false;
 
   constructor(public readonly code: string, private name: string) {
     this.onVisible = this.onVisible.bind(this);
@@ -233,14 +237,20 @@ export class TableConnection {
     this.open();
   }
 
+  private helloBody(ticket: string | null): ClientMsg {
+    return { t: 'hello', name: this.name, token: tokenFor(this.code), gid: guestSessionId(), v: 1, ...(ticket ? { ticket } : {}) };
+  }
+
   private openWith(ticket: string | null): void {
     if (this.stopped) return;
     this.joinStage = 'socket';
+    this.helloTicket = ticket;
+    this.rehelloed = false;
     const ws = new WebSocket(wsUrl(this.code));
     this.ws = ws;
     ws.onopen = () => {
       this.retry = 0;
-      ws.send(JSON.stringify({ t: 'hello', name: this.name, token: tokenFor(this.code), v: 1, ...(ticket ? { ticket } : {}) } satisfies ClientMsg));
+      ws.send(JSON.stringify(this.helloBody(ticket)));
       // a move that was in flight when the socket dropped: resend it with the SAME id and seq. The server applies it
       // at most once (dup → ack ok) and drops it if the game moved on meanwhile (stale → fresh state).
       if (this.inflight) { ws.send(JSON.stringify(this.actMsg(this.inflight))); this.armAckTimer(); }
@@ -255,6 +265,7 @@ export class TableConnection {
       switch (m.t) {
         case 'welcome':
           saveToken(this.code, m.token);
+          this.rehelloed = false;
           this.joinStage = 'welcome';
           this.set({ status: 'open', you: m.you, chat: m.chat });
           break;
@@ -298,6 +309,13 @@ export class TableConnection {
           this.rtcHandlers.forEach((h) => h(m.from, m.data));
           break;
         case 'error':
+          // A hibernated socket can wake with no player id. The play is rejected once;
+          // say hello again on this same socket so the seat is rebound.
+          if (m.code === 'NOT_JOINED' && ws.readyState === WebSocket.OPEN && !this.rehelloed) {
+            this.rehelloed = true;
+            ws.send(JSON.stringify(this.helloBody(this.helloTicket)));
+            break;
+          }
           this.set({ error: { code: m.code, message: m.message, at: Date.now() } });
           // KICKED has its own screen. Any other error before the first state is the join failing.
           if (!this.state.room && m.code !== 'KICKED') this.noteJoinFault('server');

@@ -6,7 +6,7 @@ import { type BufferGeometry, type Camera, type Group, type Material, type Mesh,
 import { type Card, type Play, type Trick } from '@spades/rules';
 import Card3D, { createLitCardMaterial } from './Card3D';
 import { departureSlot, handCardKey, handReactKey } from '../handOrder';
-import { GAP_S, LIFT_S, fanGapPx, fanMotion, handCardChrome, handDepthOpts, handRenderOrder, hitsInPaintOrder, raiseLocalY } from './handLift';
+import { GAP_S, LIFT_S, fanGapPx, fanMotion, handCardChrome, handDepthOpts, handRenderOrder, hitsInPaintOrder, raiseLocalY, setPointerSelected } from './handLift';
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline, seatDealDelay } from './dealTimeline';
 import { handNeedsDeal, handSlotKey } from './dealFlight';
@@ -498,7 +498,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   if (held.current.handNo !== handNo) held.current = { handNo, cards: new Set(), slots: new Map(), count: 0, seen: new Set() };
   const pendingHold = useRef<Held>(held.current);
 
-  type Item = { key: string; card: Card | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: (() => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide'; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; public?: boolean; holdUntilMove?: boolean };
+  type Item = { key: string; card: Card | null; cardId?: string | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: ((cardId: string) => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide'; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; public?: boolean; holdUntilMove?: boolean };
   const items: Item[] = [];
   const dealDelay = (slot: number, seat: number) => seatDealDelay(tl, n, slot, seat, dealer);
 
@@ -616,7 +616,9 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       dim: chrome.dim,
       // No gold ring. A playable card is bright; a card you cannot play is dimmed in place.
       glow: false,
-      tap: c && isLegal ? () => onCardTap(c) : pose === 'illegal' ? null : undefined,
+      cardId: c,
+      // The id comes from the mesh that was hit. Fall back to this card only if the mesh has no stamp.
+      tap: c && isLegal ? (hit: string) => onCardTap((hit || c) as Card) : pose === 'illegal' ? null : undefined,
       shadow: false,
       duration: move.kind === 'flip' ? 0.34 : move.kind === 'deal' ? tl.fly : move.kind === 'slide' ? GAP_S : LIFT_S,
       motion: move.motion,
@@ -631,6 +633,10 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   // Commit after paint. A highlight render and the server ack both read the previous hand, so they share keys
   // and the played card still knows the slot it left. Strict Mode's extra render sees the same snapshot.
   const showCards = props.fontsReady || resume;
+  useEffect(() => {
+    setPointerSelected(selected ?? null);
+    return () => setPointerSelected(null);
+  }, [selected]);
   // Once this hand has been drawn in 3D, keep it through a painter restart. The felt fan
   // covers the frames before that. Neither gate may leave a hand that exists in state with nothing on screen.
   const handCount = myHand?.length ?? 0;
@@ -693,21 +699,6 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   if (!showCards) return null;
   const shown = resumeDrawList(items, resume, extra);
   const drawn = hand3D ? shown : shown.filter((it) => !it.hand);
-  if (typeof window !== 'undefined') {
-    const handIds = drawn.filter((it) => it.hand && it.card).map((it) => it.card as string);
-    const trickIdsDrawn = drawn.filter((it) => it.public).map((it) => it.card);
-    const ownFaces = ownIds.filter((id) => faceShown.current.has(id));
-    const w = window as unknown as {
-      __bwmDrawn?: { hand: string[]; trick: (string | null)[]; ownFaces: string[] };
-      __bwmDrawnHist?: { hand: number; trick: number; faces: number }[];
-    };
-    w.__bwmDrawn = { hand: handIds, trick: trickIdsDrawn, ownFaces };
-    const hist = (w.__bwmDrawnHist ??= []);
-    const prev = hist[hist.length - 1];
-    if (hist.length < 40 && (!prev || prev.hand !== handIds.length || prev.trick !== trickIdsDrawn.length || prev.faces !== ownFaces.length)) {
-      hist.push({ hand: handIds.length, trick: trickIdsDrawn.length, faces: ownFaces.length });
-    }
-  }
   const frontOf = (card: Card) => {
     // Trick and slam cards are public on the frame they land, even if a rebuild cleared the painter set.
     if (cardShowsFace(card, faceShown.current, instant)) return face(card);
@@ -738,6 +729,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
           glow={it.glow}
           castShadow={it.shadow !== false && quality === 'high'}
           quality={quality}
+          cardId={it.cardId ?? it.card}
           onTap={it.tap}
           sfxStart={it.sfxStart}
           sfxLand={it.sfxLand}

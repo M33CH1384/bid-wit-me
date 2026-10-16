@@ -38,8 +38,11 @@ interface Props {
   glow?: boolean;
   castShadow?: boolean;
   quality: 'high' | 'low';
-  /** undefined = not a button (trick cards). null = a hand card you can't play: the tap is swallowed. */
-  onTap?: (() => void) | null;
+  /** undefined = not a button (trick cards). null = a hand card you can't play: the tap is swallowed.
+   *  The argument is the card id stamped on the mesh that was hit. */
+  onTap?: ((cardId: string) => void) | null;
+  /** Card id drawn on this mesh. The tap reads this, not a fan index. */
+  cardId?: string | null;
   name?: string;
   /** Sound when this card starts moving toward its current target (e.g. dealt flick, sweep). Fires once per value. */
   sfxStart?: Sfx;
@@ -83,7 +86,7 @@ export function createLitCardMaterial(map: Texture, quality: 'high' | 'low', sat
   return saturate ? withSaturation(m) : m;
 }
 
-function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, raise = 0, roll = 0, order = 0, dim, glow, castShadow = true, quality, onTap, name, sfxStart, sfxLand, blast = 'table', holdUntilMove = false, lit = true }: Props) {
+function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, raise = 0, roll = 0, order = 0, dim, glow, castShadow = true, quality, onTap, cardId = null, name, sfxStart, sfxLand, blast = 'table', holdUntilMove = false, lit = true }: Props) {
   const ref = useRef<Group>(null);
   // First mount only. A follow-up render drops the deal props before useFrame runs.
   const mountedFlight = useRef({ from, delay });
@@ -132,6 +135,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     const root = ref.current;
     if (!root) return;
     root.renderOrder = order;
+    if (cardId) root.userData.cardId = cardId;
     root.traverse((obj) => {
       const mesh = obj as Mesh;
       if (!mesh.isMesh) return;
@@ -145,7 +149,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       for (const m of list) m.depthTest = paint.depthTest;
     });
     invalidate();
-  }, [order, face, glow, frontMat, backMat, glowMat, invalidate]);
+  }, [order, cardId, face, glow, frontMat, backMat, glowMat, invalidate]);
   const look = useRef({ target: new Color(1, 1, 1), sat: 1 });
   useLayoutEffect(() => {
     const lookAt = faceLook(!!dim);
@@ -428,7 +432,8 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   return (
     <group
       ref={ref}
-      {...cardTapHandlers(onTap)}
+      userData={cardId ? { cardId } : undefined}
+      {...cardTapHandlers(onTap, cardId ?? '')}
       onPointerOver={onTap ? () => { document.body.style.cursor = 'pointer'; } : undefined}
       onPointerOut={onTap ? () => { document.body.style.cursor = ''; } : undefined}
     >
