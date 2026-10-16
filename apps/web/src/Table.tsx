@@ -175,6 +175,7 @@ interface Props {
   /** offline rematch: first dealer of this game (undefined = random) */
   startDealer?: number;
   onQuality: (q: Settings['quality']) => void;
+  onView?: (v: Settings['view']) => void;
   /** A saved in-progress game to resume at exactly the same point. */
   resume?: SavedGame;
   /** Rematch or resume: keep the series tally. A new game leaves this unset and starts at 0–0. */
@@ -470,7 +471,7 @@ function seedFloat(seed: string): number {
   return ((h >>> 0) % 100000) / 100000;
 }
 
-export default function Table({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, resume, continueSeries, online, onMainMenu, startDealer }: Props) {
+export default function Table({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, onView, resume, continueSeries, online, onMainMenu, startDealer }: Props) {
   // `online` never changes for a mounted Table, so this is always the same hook path per instance
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const vp = useViewport();
@@ -1115,7 +1116,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (action.type === 'ignore') return;
     if (action.type === 'play') {
       const held = trickNow;
-      const sent = apply({ type: 'play', seat: HUMAN, card: action.card as Card, ...(dragged && slam !== undefined ? { slam } : {}), ...(dragged && rel ? { rel } : {}) });
+      const sent = apply({ type: 'play', seat: HUMAN, card: action.card as Card, ...(dragged && slam !== undefined ? { slam } : !dragged && settings.view === 'standing' ? { slam: 1 } : {}), ...(dragged && rel ? { rel } : {}) });
       if (sent !== false) {
         playHold.current = held;
         playArmed.current = false;
@@ -1130,7 +1131,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       setSelected(action.card as Card);
       sound.play('tap');
     }
-  }, [humanExchanging, exchangeStep, legal, apply, trickNow]);
+  }, [humanExchanging, exchangeStep, legal, apply, trickNow, settings.view]);
 
   const onCardDrop = useCallback((c: Card, slam?: number, rel?: [number, number]) => onCard(c, true, slam, rel), [onCard]);
 
@@ -1304,6 +1305,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           slam={display.slam}
           reduceFx={reduceFx}
           venue={venue}
+          view={settings.view}
           piles={display.piles}
           legal={runFx ? [] : humanExchanging && hand ? hand : legal}
           selected={runFx ? null : selected}
@@ -1341,6 +1343,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
                 <button type="button" role="menuitem" className={help ? 'on' : ''} data-testid="help" aria-pressed={help} onClick={() => { setHelp(!help); setMenuOpen(false); }}>❓ Help: tips &amp; book counting</button>
                 <button type="button" role="menuitem" data-testid="scorepad-button" onClick={() => { setShowPad(true); setMenuOpen(false); }}>📋 Score pad &amp; house rules</button>
                 <button type="button" role="menuitem" onClick={() => onQuality(settings.quality === 'high' ? 'low' : 'high')}>🎨 Graphics: {settings.quality === 'high' ? 'High' : 'Low'}</button>
+                <button type="button" role="menuitem" data-testid="view-toggle" onClick={() => onView?.(settings.view === 'sitting' ? 'standing' : 'sitting')}>{settings.view === 'sitting' ? '🪑' : '🧍'} View: {settings.view === 'sitting' ? 'Sitting' : 'Standing'}</button>
                 <div className="menu-social"><SocialButton className="compact" /></div>
                 <button type="button" role="menuitem" className="danger" data-testid="menu-leave" onPointerDown={(e) => { e.currentTarget.setPointerCapture?.(e.pointerId); runLeaveMenu(e, 'leave'); }} onPointerUp={(e) => runLeaveMenu(e, 'leave')} onClick={(e) => runLeaveMenu(e, 'leave')}>🚪 Leave table</button>
               </div>

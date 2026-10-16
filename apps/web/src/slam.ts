@@ -37,6 +37,37 @@ export function releaseVector(samples: readonly DragSample[], windowMs = SLAM_WI
 }
 
 /** Speed → intensity 0..1, continuous, clamped so a wild flick is never sillier than a full slam. */
+/** Sitting V-gesture: one continuous path that first travels UP on screen then DOWN (screen y down),
+ *  each leg at least minLegPx, released during/after the downstroke. Forgiving by design. Mouse parity:
+ *  the same pointer samples feed it, so mouse and touch behave identically. */
+export function isVGesture(samples: readonly DragSample[], minLegPx = 24): boolean {
+  if (samples.length < 3) return false;
+  const last = samples[samples.length - 1]!;
+  let highest = samples[0]!.y; // smallest y seen so far is the up-leg peak; track travel from the lowest point before it
+  let lowestBefore = samples[0]!.y;
+  for (let i = 1; i < samples.length; i++) {
+    const y = samples[i]!.y;
+    if (y > lowestBefore) lowestBefore = y;
+    if (y < highest) highest = y;
+    const up = lowestBefore - y;
+    if (up < minLegPx) continue;
+    // this sample is an up-leg peak: look for a down leg of minLegPx completed shortly before release
+    for (let j = i + 1; j < samples.length; j++) {
+      if (samples[j]!.y - y >= minLegPx) return last.t - samples[j]!.t <= 800;
+    }
+  }
+  return false;
+}
+
+/** Slam intensity for a human drag given the camera view. Standing: always max. Sitting: a V-gesture
+ *  slams at max; otherwise the release speed scales it (straight drags stay gentle). */
+export function dragSlamIntensity(samples: readonly DragSample[], view: 'standing' | 'sitting'): number {
+  if (view === 'standing') return 1;
+  // Sitting: speed alone NEVER slams. Only the up-then-down V gesture slams; every other drag,
+  // however fast, lands gentle (intensity 0).
+  return isVGesture(samples) ? 1 : 0;
+}
+
 export function slamIntensity(pxPerMs: number): number {
   if (!Number.isFinite(pxPerMs) || pxPerMs <= SLAM_SOFT) return 0;
   return Math.min(1, (pxPerMs - SLAM_SOFT) / (SLAM_FULL - SLAM_SOFT));
