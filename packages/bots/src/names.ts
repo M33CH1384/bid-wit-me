@@ -41,16 +41,33 @@ export function possessive(name: string | undefined): 'his' | 'her' | 'their' {
   return g === 'f' ? 'her' : g === 'm' ? 'his' : 'their';
 }
 
-/** `count` distinct names, none in `taken` (case-insensitive). Falls back to "Bot N" if the pool runs out. */
-export function pickBotNames(count: number, taken: Iterable<string> = [], rng: Rng | string = createRng(String(Math.random()))): string[] {
+/**
+ * `count` distinct names, none in `taken` (case-insensitive). Falls back to "Bot N" if the pool runs out.
+ * `tagOf`, when passed, also keeps plate tags unique: two bots at one table cannot both be "Conspiracy Theorist".
+ */
+export function pickBotNames(count: number, taken: Iterable<string> = [], rng: Rng | string = createRng(String(Math.random())), tagOf?: (name: string) => string): string[] {
   const r = typeof rng === 'string' ? createRng(`names:${rng}`) : rng;
   const used = new Set([...taken].map((x) => x.trim().toLowerCase()));
-  const pool = BOT_NAMES.filter((x) => !used.has(x.toLowerCase()));
+  const tags = new Set<string>();
+  if (tagOf) for (const name of taken) tags.add(tagOf(name));
+  const blocked = (name: string) => used.has(name.trim().toLowerCase()) || (tagOf != null && tags.has(tagOf(name)));
+  const pool = BOT_NAMES.filter((x) => !blocked(x));
   const out: string[] = [];
+  const take = (name: string) => {
+    out.push(name);
+    used.add(name.trim().toLowerCase());
+    if (tagOf) tags.add(tagOf(name));
+  };
   for (let i = 0; i < count; i++) {
-    if (pool.length) out.push(pool.splice(r.int(pool.length), 1)[0]!);
-    else { let k = out.length + 1; while (used.has(`bot ${k}`) || out.includes(`Bot ${k}`)) k++; out.push(`Bot ${k}`); }
-    used.add(out[i]!.toLowerCase());
+    for (let j = pool.length - 1; j >= 0; j--) if (blocked(pool[j]!)) pool.splice(j, 1);
+    if (pool.length) take(pool.splice(r.int(pool.length), 1)[0]!);
+    else {
+      let k = out.length + 1;
+      let name = `Bot ${k}`;
+      let guard = 0;
+      while (blocked(name) && guard++ < 400) { k++; name = `Bot ${k}`; }
+      take(name);
+    }
   }
   return out;
 }

@@ -184,7 +184,7 @@ interface Props {
 function offlineNames(n: number, seed: string): string[] {
   let mine = '';
   try { mine = (localStorage.getItem('bwm.online.name') ?? '').replace(/^"|"$/g, ''); } catch { /* ignore */ }
-  return ['You', ...pickBotNames(n - 1, mine ? [mine, 'You'] : ['You'], seed)];
+  return ['You', ...pickBotNames(n - 1, mine ? [mine, 'You'] : ['You'], seed, platePersona)];
 }
 
 function positions(n: number): SeatPos[] {
