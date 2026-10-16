@@ -1487,25 +1487,18 @@ export class Room {
     return changed;
   }
 
-  /** AFK: after `afkLimit` timeouts in a row a bot takes the seat; the player stays at the table and can sit again.
-   *  A disconnected player is not replaced until the disconnect grace has actually elapsed, and the bot
-   *  remembers them so the same identity reclaims the seat instead of watching. */
+  /** AFK: after `afkLimit` timeouts in a row, while the player is still connected, a bot takes the seat.
+   *  A dropped socket is not abandonment. The turn is auto-played, and the seat and the name stay
+   *  reserved so a reconnect is the same player, not a spectator watching Kai or Ty. */
   private countTimeout(pid: string, seat: number): void {
     const d = this.data;
     const m = d.members[pid];
-    if (!m) return;
+    if (!m || !this.isConnected(pid)) return;
     m.timeouts = (m.timeouts ?? 0) + 1;
     const limit = d.afkLimit ?? DEFAULT_AFK_LIMIT;
     if (!limit || m.timeouts < limit || d.seats[seat]?.kind !== 'human') return;
-    const connected = this.isConnected(pid);
-    if (!connected) {
-      const since = m.disconnectedAt ?? this.io.now();
-      if (this.io.now() < since + this.timing.disconnectGraceMs) return;
-    }
     const bot = this.botName();
-    d.seats[seat] = connected
-      ? { kind: 'bot', name: bot, level: d.botLevel, was: m.name }
-      : { kind: 'bot', name: bot, level: d.botLevel, was: m.name, vacated: true, replacedPid: pid };
+    d.seats[seat] = { kind: 'bot', name: bot, level: d.botLevel, was: m.name };
     m.seat = null;
     m.timeouts = 0;
     if (d.votes) delete d.votes[pid];

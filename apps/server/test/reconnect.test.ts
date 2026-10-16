@@ -88,19 +88,22 @@ describe('reconnect keeps the seat and the name', () => {
     expect(env.last('z', 'state')!.spectator).toBeUndefined();
   });
 
-  it('a bot takes the seat only after the disconnect grace, and the same player reclaims it', () => {
+  it('a disconnect past the grace auto-plays the turn and never gives the seat or the name to a bot', () => {
     const { env, a } = seated();
     env.join('w', 'Watcher');
-    env.room.data.members[a.pid]!.timeouts = 2;
+    env.room.data.afkLimit = 1;
+    env.room.data.members[a.pid]!.timeouts = 5;
+    const seq = env.room.data.seq!;
     env.room.close('a');
     env.advance(1000);
     expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid });
-    env.advance(5000);
-    const bot = env.room.data.seats[0];
-    expect(bot).toMatchObject({ kind: 'bot', was: 'Meech', vacated: true, replacedPid: a.pid });
-    expect(env.room.data.members[a.pid]!.seat).toBeNull();
+    env.advance(6000);
+    expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid });
     expect(env.room.data.members[a.pid]!.name).toBe('Meech');
-    const again = env.join('z', 'Auntie Pat', a.token);
+    expect(env.room.data.members[a.pid]!.seat).toBe(0);
+    expect(env.room.data.seq!).toBeGreaterThan(seq);
+    expect(env.room.data.game!.turn !== 0 || env.room.data.game!.trick.plays.length > 0).toBe(true);
+    const again = env.join('z', 'Ty', a.token);
     expect(again.pid).toBe(a.pid);
     expect(env.room.data.members[a.pid]!.name).toBe('Meech');
     expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid });
