@@ -100,11 +100,20 @@ const sideCount = (t: TalkTable) => (t.partnerships ? 2 : t.seats.length);
 
 export function personaOf(t: TalkTable, seat: number): PersonaId { return personaForName(t.seats[seat]?.name ?? ''); }
 
-/** Tag for the bot's plate tooltip (the Hustler wears a fake one until revealed). */
+/** Tag for talk and the Hustler's cover. The plate uses `platePersona`, which does not flip. */
 export function personaTag(name: string, revealed: boolean): string {
   const p = PERSONAS[personaForName(name)];
   if (!revealed && p.fakeTag) return p.fakeTag;
   return (voiceGender(name) === 'f' ? p.tagF : p.tagM) ?? p.tag;
+}
+
+/**
+ * The name plate's personality, for the whole game.
+ * The Hustler still talks like a newbie until the act drops, but that reveal
+ * used to retitle the plate on the next hand. The plate keeps the real tag.
+ */
+export function platePersona(name: string): string {
+  return personaTag(name, true);
 }
 
 export function cardWords(c: string | undefined): string {

@@ -11,6 +11,7 @@ import { type KickInfo, MediaBar, SeatMedia, TalkTile, VictorySpotlight } from '
 import { MusicLinkCard } from './HostMusic';
 import { loadHideSpectatorChat, localNames, saveHideSpectatorChat, useCountdown, useOnlineChat, useOnlineSource, useVideo } from './useOnline';
 import { dealerFromServer } from '../dealerName';
+import { localSeatOfServerTurn } from '../turnState';
 import { SpectatorOverlay } from './Spectators';
 import { orientRun } from '../runPlayback';
 import type { VideoMesh } from './video';
@@ -80,7 +81,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
   useEffect(() => { if (!drawn) conn.send({ t: 'interactive', on: false }); }, [drawn, conn]);
   if (!drawn || !source || !rot) return <TableLoading progress={0.24} />;
   const r = room.rules;
-  const turnLocal = source.st.turn;
+  const turnLocal = localSeatOfServerTurn(cs.view?.turn ?? null, spectator || cs.seat === null ? null : cs.seat, r.playerCount);
 
   // host: Kick (with confirm); seated non-hosts: Vote to kick (majority of the other humans)
   const kickFor = (real: number): KickInfo | undefined => {
@@ -109,7 +110,6 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
   const teamNames = r.partnerships ? [0, 1].map((L) => room.teamNames?.[sideOf(rot.R(L), r)] ?? null) : undefined;
   const localSeats = Array.from({ length: rot.n }, (_, i) => i);
   const botSeats = localSeats.filter((L) => room.seats[rot.R(L)]?.kind === 'bot');
-  const revealed = localSeats.filter((L) => (room.revealed ?? []).includes(rot.R(L)));
   const seriesMine = cs.seat === null ? 0 : sideOf(cs.seat, r);
 
   return (
@@ -126,7 +126,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
         onRematch={() => conn.send({ t: 'rematch' })}
         onQuality={(quality) => { const s = { ...settings, quality }; setSettings(s); saveSettings({ ...loadSettings(), quality }); }}
         online={{
-          source, names, chat, seatExtra, sideLabel, teamNames, botSeats, revealed, talkIntensity: room.talkIntensity,
+          source, names, chat, seatExtra, sideLabel, teamNames, botSeats, talkIntensity: room.talkIntensity,
           setTeamName: cs.seat !== null && r.partnerships ? (name) => conn.send({ t: 'teamName', name }) : undefined,
           series: { series: room.series ?? null, mine: seriesMine },
           setLearning: (on) => conn.send({ t: 'learning', on }),
@@ -154,6 +154,8 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
           spectator,
           dealerName,
           dealerSeat: dealer?.localSeat,
+          serverTurn: cs.view?.turn ?? null,
+          viewerSeat: spectator || cs.seat === null ? null : cs.seat,
           run: cs.run ? orientRun(cs.run, spectator ? null : cs.seat, rot.n) : null,
           overlay: <SpectatorOverlay room={room} cs={cs} spectator={spectator} names={names} hideChat={hideSpec}
             onHideChat={(on) => { setHideSpec(on); saveHideSpectatorChat(on); }}

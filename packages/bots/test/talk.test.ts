@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BOT_NAMES, COMMON, PERSONAS, TALK, botTalk, leanBid, maskMild, newTalkState, personaForName, personaTag, prePlayLine, type TalkTable } from '../src';
+import { BOT_NAMES, COMMON, PERSONAS, TALK, botTalk, leanBid, maskMild, newTalkState, personaForName, personaTag, platePersona, prePlayLine, type TalkTable } from '../src';
 
 const rng = (seed = 1) => { let x = seed; return () => { x = (x * 1103515245 + 12345) % 2 ** 31; return x / 2 ** 31; }; };
 const nameFor = (p: string) => BOT_NAMES.find((n) => personaForName(n) === p)!;
@@ -18,6 +18,14 @@ describe('bot trash talk', () => {
     expect(personaForName(h)).toBe(personaForName(h));
     expect(personaTag(h, false)).toBe('Newbie');
     expect(personaTag(h, true)).toBe('The Hustler');
+  });
+  it('the plate personality is the real tag for the whole game', () => {
+    const h = nameFor('hustler');
+    expect(platePersona(h)).toBe('The Hustler');
+    expect(platePersona(h)).toBe(platePersona(h));
+    expect(platePersona('Queenie')).toBe('Big Mama');
+    expect(platePersona('Auntie Pat')).toBe('Auntie Gossip');
+    expect(platePersona('Unc')).toBe(platePersona('Unc'));
   });
   it('cooldowns: never two lines inside the global gap; a bot rests between lines', () => {
     const t = table(['You', nameFor('hype'), nameFor('mama'), nameFor('og')]);
