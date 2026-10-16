@@ -495,6 +495,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     const hop = motion === 'slide' ? 0 : arc;
     // glide: the toss is only the first part; the rest is the card sliding flat on the felt
     g.position.y += (motion === 'glide' ? (s.t < 0.35 ? Math.sin((Math.PI * s.t) / 0.35) : 0) : Math.sin(Math.PI * s.t)) * hop * Math.min(1, dist);
+    const rw0 = window as unknown as { __bwmRestProbe?: boolean; __bwmScale?: Record<string, number[]> };
     // Landing bounce: a quick rebound off the felt over the last quarter, scaled by the slam.
     const sl = slamNow.current;
     // Test probe: screen position of a trick card in flight, per frame (CSS px).
@@ -508,7 +509,8 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     }
     if (sl && s.t > 0.75 && dist > 0.02) { const u = (s.t - 0.75) / 0.25; g.position.y += sl.bounce * Math.abs(Math.sin(2 * Math.PI * u)) * (1 - u); }
     g.quaternion.slerpQuaternions(s.sq, s.tq, e);
-    g.scale.setScalar(motion === 'slide' ? s.ts : s.ss + (s.ts - s.ss) * e);
+    g.scale.setScalar(s.ss + (s.ts - s.ss) * e); // every motion eases hand size → table size: no pop
+    if (rw0.__bwmRestProbe && cardId && slamNow.current) ((rw0.__bwmScale ??= {})[cardId] ??= []).push(g.scale.x);
     if (finiteTarget && trickFacingArrived(s.t, g.position.distanceTo(s.tp))) {
       const q = restingFacing(
         [g.quaternion.x, g.quaternion.y, g.quaternion.z, g.quaternion.w],
@@ -519,11 +521,11 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       s.faced = true;
     }
     // Test probe (opt-in): a settled card's height and its tilt off the felt (degrees between its face normal and straight up).
-    const rw = window as unknown as { __bwmRestProbe?: boolean; __bwmRest?: Record<string, { y: number; tilt: number; spin: number }> };
+    const rw = window as unknown as { __bwmRestProbe?: boolean; __bwmRest?: Record<string, { s: number; y: number; tilt: number; spin: number }> };
     if (rw.__bwmRestProbe && cardId && s.t >= 1) {
       const nrm = new Vector3(0, 0, 1).applyQuaternion(g.quaternion);
       const up = new Vector3(0, 1, 0).applyQuaternion(g.quaternion);
-      (rw.__bwmRest ??= {})[cardId] = { y: g.position.y, tilt: (Math.acos(Math.min(1, Math.abs(nrm.y))) * 180) / Math.PI, spin: (Math.atan2(-up.x, -up.z) * 180) / Math.PI };
+      (rw.__bwmRest ??= {})[cardId] = { s: g.scale.x, y: g.position.y, tilt: (Math.acos(Math.min(1, Math.abs(nrm.y))) * 180) / Math.PI, spin: (Math.atan2(-up.x, -up.z) * 180) / Math.PI };
     }
   });
 
