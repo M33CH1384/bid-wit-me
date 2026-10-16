@@ -178,7 +178,7 @@ export const LEARNING_TIMER = 1.5;
 export const TOURNAMENT_EMPTY_GRACE_MS = 90_000;
 /** seated host dropped without leaving: pass host after this long so the table can still start or rematch */
 export const HOST_DISCONNECT_GRACE_MS = 30_000;
-export const DEFAULT_TIMING: RoomTiming = { botMs: 750, trickPauseMs: 1300, dealMs: 3200, disconnectGraceMs: 25_000, handOverMs: 20_000 };
+export const DEFAULT_TIMING: RoomTiming = { botMs: 750, trickPauseMs: 1300, dealMs: 3200, disconnectGraceMs: 10_000, handOverMs: 20_000 };
 /** A loader that never reports ready must not freeze the table. Matches the client's give-up. */
 export const LOADER_HOLD_MAX_MS = 45_000;
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { GameState } from '@spades/rules';
+import { makeRules, type GameState } from '@spades/rules';
 import { dispatchTableMessage } from '../src/dispatch';
 import { FakeEnv } from './harness';
 
@@ -151,6 +151,36 @@ describe('reconnect keeps the seat and the name', () => {
     expect(env.room.data.seq!).toBeGreaterThan(seq);
     expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid });
     expect(env.room.data.members[a.pid]!.name).toBe('Meech');
+  });
+
+  it('keeps a Relaxed play clock through a reconnect and does not auto-play at 12s', () => {
+    const env = new FakeEnv();
+    const a = env.join('a', 'Meech', undefined, undefined, 'guestmeech000000000001');
+    env.join('b', 'Imani');
+    env.send('a', { t: 'sit', seat: 0 });
+    env.send('b', { t: 'sit', seat: 2 });
+    env.send('a', { t: 'addBot', seat: 1 });
+    env.send('a', { t: 'addBot', seat: 3 });
+    env.send('a', { t: 'config', rules: makeRules('joker', { turnTimerSec: { bid: 45, play: 30 }, firstHandBidsItself: false }) });
+    env.send('a', { t: 'start' });
+    pinLead(env);
+    expect(env.room.data.rules.turnTimerSec).toEqual({ bid: 45, play: 30 });
+    expect(env.room.data.deadline! - env.t).toBe(30_000);
+    env.join('w', 'Watcher');
+    env.room.close('a');
+    env.advance(2_000);
+    env.join('z', 'Someone', a.token);
+    expect(env.room.data.members[a.pid]!.interactive).toBe(false);
+    expect(env.room.data.deadline).toBeNull();
+    env.advance(12_000);
+    expect(env.room.data.game!.trick.plays).toEqual([]);
+    env.send('z', { t: 'interactive', on: true });
+    expect(env.room.data.deadline! - env.t).toBe(30_000);
+    env.advance(12_000);
+    expect(env.room.data.game!.trick.plays).toEqual([]);
+    expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid });
+    env.send('z', { t: 'act', id: 'relaxed-play', action: { type: 'play', card: 'AS' }, seq: env.room.data.seq });
+    expect(env.room.data.game!.trick.plays.map((p) => p.card)).toEqual(['AS']);
   });
 
   it('logs the socket close, the reconnect, and a leave that is the only way a bot gets the seat', () => {
