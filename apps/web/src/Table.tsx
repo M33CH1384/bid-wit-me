@@ -63,7 +63,7 @@ import { TrashTalkButton } from './TrashTalk';
 import { isPromoted } from './cardFaces';
 import { QUICK_TRASH_SET } from './quickTrash';
 import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
-import { type TalkIntensity, botSkillFor, personaForName, personaTag, pickBotNames } from '@spades/bots';
+import { type TalkIntensity, botSkillFor, personaForName, platePersona, pickBotNames } from '@spades/bots';
 import { preloadVoice } from './voices/voices';
 const Scene = lazy(loadScene);
 
@@ -127,8 +127,6 @@ export interface OnlineBinding {
   setTeamName?: (name: string) => void;
   /** the table's rematch series + which of its sides is mine */
   series?: { series: Series | null; mine: number };
-  /** local seats whose Hustler act is over */
-  revealed?: number[];
   /** local seats held by bots */
   botSeats?: number[];
   /** the host's trash-talk intensity */
@@ -504,12 +502,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       localChat.push(l.name, l.text, false, 0, true);
       speakBot(l.name, l.text, l.persona, l.line, l.bid);
       if (l.reveal) fx.emit('hustled', { text: `${l.name} was never new` });
-      setRevealedTick((x) => x + 1);
     };
     return () => { offlineTalk.sink = null; offlineTalk.table = null; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const [, setRevealedTick] = useState(0);
-  const revealed = online ? (online.revealed ?? []) : offlineTalk.state.revealed;
 
   // rematch series: online from the server. Offline, a new game opens at 0–0. Rematch and resume keep the tally.
   const [offSeries, setOffSeries] = useState<Series | null>(() => {
@@ -1048,7 +1043,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const partner = !spectating && r.partnerships && seat === partnerOf(HUMAN, r);
     const b = st.bids[seat];
     return (
-      <div className={`plate ${isTurn ? 'turn' : ''} ${partner ? 'ally' : 'foe'}`} data-testid={`seat-${seat}`} title={isBotSeat(seat) ? `${names[seat]} · ${personaTag(names[seat]!, revealed.includes(seat))}` : undefined} data-persona={isBotSeat(seat) ? personaTag(names[seat]!, revealed.includes(seat)) : undefined}>
+      <div className={`plate ${isTurn ? 'turn' : ''} ${partner ? 'ally' : 'foe'}`} data-testid={`seat-${seat}`} title={isBotSeat(seat) ? `${names[seat]} · ${platePersona(names[seat]!)}` : undefined} data-persona={isBotSeat(seat) ? platePersona(names[seat]!) : undefined}>
         <div className="plate-avatar" style={{ ['--uc' as string]: SEAT_COLORS[seat] }}>{names[seat]![0]}</div>
         <div className="plate-body">
           <div className="plate-name">{names[seat]}{dealerSeat === seat && <span className="chip dealer" data-testid={`dealer-${seat}`}>DEALER</span>}{partner && <span className="chip ally">PARTNER</span>}{notice.includes(sideOf(seat, r)) && <span className="chip notice" data-testid={`notice-${seat}`} title="Got shot last hand: one more shot and they're out">ON NOTICE</span>}</div>

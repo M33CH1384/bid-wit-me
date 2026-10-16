@@ -106,7 +106,6 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
   const teamNames = r.partnerships ? [0, 1].map((L) => room.teamNames?.[sideOf(rot.R(L), r)] ?? null) : undefined;
   const localSeats = Array.from({ length: rot.n }, (_, i) => i);
   const botSeats = localSeats.filter((L) => room.seats[rot.R(L)]?.kind === 'bot');
-  const revealed = localSeats.filter((L) => (room.revealed ?? []).includes(rot.R(L)));
   const seriesMine = cs.seat === null ? 0 : sideOf(cs.seat, r);
 
   return (
@@ -123,7 +122,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
         onRematch={() => conn.send({ t: 'rematch' })}
         onQuality={(quality) => { const s = { ...settings, quality }; setSettings(s); saveSettings({ ...loadSettings(), quality }); }}
         online={{
-          source, names, chat, seatExtra, sideLabel, teamNames, botSeats, revealed, talkIntensity: room.talkIntensity,
+          source, names, chat, seatExtra, sideLabel, teamNames, botSeats, talkIntensity: room.talkIntensity,
           setTeamName: cs.seat !== null && r.partnerships ? (name) => conn.send({ t: 'teamName', name }) : undefined,
           series: { series: room.series ?? null, mine: seriesMine },
           setLearning: (on) => conn.send({ t: 'learning', on }),

@@ -217,7 +217,7 @@ export interface RoomInfo {
   venueNow?: VenueId;
   /** per side: a custom team name, or null = default (partner names) */
   teamNames?: (string | null)[];
-  /** bot seats whose Hustler act is over (plate tag shows the real persona) */
+  /** bot seats whose Hustler act is over (their lines drop the newbie cover; the plate tag does not) */
   revealed?: number[];
   /** rematch series at this table (survives reconnects; resets when the teams change) */
   series?: Series | null;
