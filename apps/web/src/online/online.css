@@ -176,6 +176,16 @@
 .spec-banner small { color: var(--muted); letter-spacing: .02em; }
 .spec-banner .link { margin-left: 6px; }
 .spec-take { width: 100%; padding: 12px 14px; text-align: center; border: 1px solid rgba(245,197,66,.7); box-shadow: 0 0 26px rgba(245,197,66,.35); animation: spec-in .3s ease-out both; }
+/* Phone: the card used to hang under the scorebug and cover the partner's name plate.
+   The dock is translated, which would trap a fixed child, so the translation comes off first and the card pins to the viewport bottom, under the plates. */
+@media (max-width: 700px) {
+  .spec-dock { left: 0; right: 0; width: 100%; transform: none; }
+  .spec-dock .spec-take {
+    position: fixed; left: 8px; right: 8px; top: auto; width: auto; z-index: 60;
+    bottom: calc(6px + env(safe-area-inset-bottom));
+    padding: 8px 10px; animation: none;
+  }
+}
 .spec-take-title { font-family: var(--display); font-weight: 800; letter-spacing: .12em; color: var(--gold); font-size: 20px; }
 .spec-take p { margin: 4px 0 10px; font-size: 13px; color: var(--muted); }
 .spec-take-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
