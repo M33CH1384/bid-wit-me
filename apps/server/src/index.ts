@@ -457,10 +457,11 @@ export class TableDO extends DurableObject<Env> {
     await dispatchTableMessage(this.room, cid, message, (ticket) => verifyTicket(this.env.DB, ticket, Date.now()));
   }
 
-  override async webSocketClose(ws: WebSocket, code: number): Promise<void> {
+  override async webSocketClose(ws: WebSocket, code: number, reason = '', wasClean = false): Promise<void> {
     const cid = this.cidOf(ws);
     if (!cid) return;
     this.sockets.delete(cid);
+    this.room?.noteSocketClose(cid, code, reason, wasClean);
     this.room?.close(cid);
     try { ws.close(code === 1005 ? 1000 : code, 'bye'); } catch { /* already closed */ }
     if (this.sockets.size === 0) {

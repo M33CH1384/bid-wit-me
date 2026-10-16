@@ -4,7 +4,7 @@
  *  - it shuffles/deals (packages/rules), validates every bid/play, and only ever sends a seat its own view;
  *  - bots (packages/bots) fill empty seats and play from that seat's view only;
  *  - human turns have a deadline; when it passes (or a disconnected player's short grace runs out)
- *    the bot logic plays for them;
+ *    the bot logic plays that turn. The seat stays the human's unless they explicitly leave;
  *  - all durable state lives in one plain-JSON `RoomData` object that the DO saves as a single row.
  */
 import {
@@ -79,7 +79,7 @@ export interface RoomData {
   /** host-set Table Talk countdown (s); unset = timing.handOverMs */
   talkSec?: number;
   music?: HostMusic;
-  /** consecutive timeouts before a bot replaces a player; 0 = off; unset = DEFAULT_AFK_LIMIT */
+  /** Kept for older clients. Timeouts are counted; they never hand the seat to a bot. */
   afkLimit?: number;
   /** host option: partner voice limiting during trick play (from the first card led); unset = off */
   partnerMicMute?: boolean;
@@ -229,6 +229,22 @@ export class Room {
 
   constructor(public data: RoomData, private io: RoomIO, private timing: RoomTiming = DEFAULT_TIMING) {
     data.seq ??= 0;
+  }
+
+  /** One JSON line per table event. Wrangler tail and Workers logs can filter `src=bwm.table`. */
+  private trace(event: string, fields: Record<string, unknown>): void {
+    console.log(JSON.stringify({ src: 'bwm.table', event, table: this.data.code, at: this.io.now(), ...fields }));
+  }
+
+  /** The Durable Object calls this before `close`, while the socket is still bound. */
+  noteSocketClose(connId: string, code: number, reason: string, wasClean: boolean): void {
+    const pid = this.conns.get(connId) ?? null;
+    const m = pid ? this.data.members[pid] : undefined;
+    let others = 0;
+    if (pid) for (const [cid, p] of this.conns) if (p === pid && cid !== connId) others++;
+    this.trace('socket_close', {
+      cid: connId, code, reason: reason.slice(0, 120), wasClean, pid, seat: m?.seat ?? null, name: m?.name ?? null, otherSockets: others,
+    });
   }
 
   /* ------------------------------------------------------------ connections */
@@ -492,17 +508,28 @@ export class Room {
     this.dropGhosts();
     const name = cleanName(msg.name, LIMITS.nameMax) || 'Player';
     const gid = msg.gid && this.gidOk(msg.gid) ? msg.gid : undefined;
-    if (this.kickedOut(msg.token, uid, gid)) { this.rejectKick(connId); return; }
+    if (this.kickedOut(msg.token, uid, gid)) {
+      this.trace('reconnect', { cid: connId, how: 'kicked', name });
+      this.rejectKick(connId);
+      return;
+    }
     // same seat token, same account, or the same browser guest (a reload can mint a new token)
+    let how: 'token' | 'uid' | 'gid' | 'new' = 'new';
     let pid = msg.token ? Object.keys(d.members).find((id) => d.members[id]!.token === msg.token) : undefined;
     if (pid && uid && d.members[pid]!.uid && d.members[pid]!.uid !== uid) pid = undefined;
-    if (!pid && uid) pid = Object.keys(d.members).find((id) => d.members[id]!.uid === uid);
+    if (pid) how = 'token';
+    if (!pid && uid) {
+      pid = Object.keys(d.members).find((id) => d.members[id]!.uid === uid);
+      if (pid) how = 'uid';
+    }
     if (!pid && gid) {
       pid = Object.keys(d.members).find((id) => {
         const m = d.members[id]!;
         return m.gid === gid && !(uid && m.uid && m.uid !== uid);
       });
+      if (pid) how = 'gid';
     }
+    const returning = !!pid && !this.isConnected(pid);
     if (pid) {
       const m = d.members[pid]!;
       // The name stuck at the first hello. A reconnect, a second tab, or an account
@@ -522,6 +549,7 @@ export class Room {
     } else {
       const { members, watching } = this.liveCounts();
       if (members >= LIMITS.members || (d.phase !== 'lobby' && watching >= LIMITS.spectators)) {
+        this.trace('reconnect', { cid: connId, how: 'full', name });
         this.err(connId, 'TABLE_FULL', 'This table is full');
         this.io.close?.(connId, 4001, 'full');
         return;
@@ -544,6 +572,7 @@ export class Room {
     this.reclaimSeat(pid);
     this.sentHistory.delete(connId);
     const m = d.members[pid]!;
+    this.trace('reconnect', { cid: connId, how, returning, pid, seat: m.seat, name: m.name });
     this.io.send(connId, { t: 'welcome', you: pid, token: m.token, code: d.code, chat: d.chat.slice(-LIMITS.chatHistory), v: PROTOCOL_VERSION });
     if (uid) this.seatReserved(pid);
     d.lastActive = this.io.now();
@@ -557,6 +586,7 @@ export class Room {
     if (!m || m.seat !== null) return;
     const seat = d.seats.findIndex((s) => s.kind === 'bot' && s.replacedPid === pid);
     if (seat < 0) return;
+    this.trace('seat', { cause: 'reclaim', seat, fromPid: pid, toKind: 'human', toPid: pid, turnKey: d.turnKey, turnStartedAt: d.turnStartedAt, deadline: d.deadline });
     d.seats[seat] = { kind: 'human', playerId: pid };
     m.seat = seat;
     m.timeouts = 0;
@@ -620,8 +650,10 @@ export class Room {
         if (msg.seat >= n) throw new RoomError('BAD_SEAT', 'No such seat');
         const slot = d.seats[msg.seat]!;
         // the host may replace a player who disconnected from the lobby
-        if (slot.kind === 'human' && !this.isConnected(slot.playerId)) d.members[slot.playerId]!.seat = null;
-        else if (slot.kind !== 'empty') throw new RoomError('SEAT_TAKEN', 'That seat is taken');
+        if (slot.kind === 'human' && !this.isConnected(slot.playerId)) {
+          this.trace('seat', { cause: 'addBot', seat: msg.seat, fromPid: slot.playerId, toKind: 'bot', turnKey: d.turnKey, turnStartedAt: d.turnStartedAt, deadline: d.deadline });
+          d.members[slot.playerId]!.seat = null;
+        } else if (slot.kind !== 'empty') throw new RoomError('SEAT_TAKEN', 'That seat is taken');
         d.seats[msg.seat] = { kind: 'bot', name: this.botName(), level: d.botLevel };
         break;
       }
@@ -867,6 +899,20 @@ export class Room {
     return { kind: 'bot', name: this.botName(), level: this.data.botLevel, vacated: true, was };
   }
 
+  /** The only mid-game path that gives a human's chair to a bot: they left, or the table removed them. */
+  private handSeatToBot(seat: number, was: string, fromPid: string, cause: 'leave' | 'host' | 'vote'): SeatSlot {
+    const d = this.data;
+    const bot = this.botSeat(was);
+    const name = bot.kind === 'bot' ? bot.name : null;
+    this.trace('seat', {
+      cause, seat, fromPid, toKind: 'bot', botName: name,
+      timeouts: d.members[fromPid]?.timeouts ?? null,
+      disconnectedAt: d.members[fromPid]?.disconnectedAt ?? null,
+      turnKey: d.turnKey, turnStartedAt: d.turnStartedAt, deadline: d.deadline,
+    });
+    return bot;
+  }
+
   private botName(): string {
     const used = new Set(this.data.seats.flatMap((s) => (s.kind === 'bot' ? [s.name] : [])));
     for (const m of Object.values(this.data.members)) used.add(m.name);
@@ -882,7 +928,12 @@ export class Room {
     if (m.seat !== null && d.phase === 'playing') this.reportAbandoned(pid);
     if (m.seat !== null) {
       // mid-game the seat goes to a bot so the others can finish; in the lobby it just opens up
-      d.seats[m.seat] = d.phase === 'playing' ? this.botSeat(m.name) : { kind: 'empty' };
+      const seat = m.seat;
+      if (d.phase === 'playing') d.seats[seat] = this.handSeatToBot(seat, m.name, pid, 'leave');
+      else {
+        this.trace('seat', { cause: 'leave', seat, fromPid: pid, toKind: 'empty', turnKey: d.turnKey, turnStartedAt: d.turnStartedAt, deadline: d.deadline });
+        d.seats[seat] = { kind: 'empty' };
+      }
     }
     delete d.members[pid];
     d.ready = d.ready.filter((x) => x !== pid);
@@ -919,7 +970,11 @@ export class Room {
     const d = this.data;
     const m = d.members[target];
     if (!m) return;
-    if (m.seat !== null) d.seats[m.seat] = d.phase === 'playing' ? this.botSeat(m.name) : { kind: 'empty' };
+    if (m.seat !== null) {
+      const seat = m.seat;
+      d.seats[seat] = d.phase === 'playing' ? this.handSeatToBot(seat, m.name, target, how) : { kind: 'empty' };
+      if (d.phase !== 'playing') this.trace('seat', { cause: how, seat, fromPid: target, toKind: 'empty', turnKey: d.turnKey, turnStartedAt: d.turnStartedAt, deadline: d.deadline });
+    }
     delete d.members[target];
     if (d.votes) delete d.votes[target];
     d.ready = d.ready.filter((x) => x !== target);
@@ -1487,22 +1542,18 @@ export class Room {
     return changed;
   }
 
-  /** AFK: after `afkLimit` timeouts in a row, while the player is still connected, a bot takes the seat.
-   *  A dropped socket is not abandonment. The turn is auto-played, and the seat and the name stay
-   *  reserved so a reconnect is the same player, not a spectator watching Kai or Ty. */
+  /** A timed-out turn was auto-played. The chair is not part of that: only `leave` gives it to a bot. */
   private countTimeout(pid: string, seat: number): void {
     const d = this.data;
     const m = d.members[pid];
-    if (!m || !this.isConnected(pid)) return;
+    if (!m) return;
+    const connected = this.isConnected(pid);
+    if (!connected) {
+      this.trace('timeout', { cause: 'disconnect-autoplay', seat, pid, name: m.name, connected, turnKey: d.turnKey, turnStartedAt: d.turnStartedAt, deadline: d.deadline });
+      return;
+    }
     m.timeouts = (m.timeouts ?? 0) + 1;
-    const limit = d.afkLimit ?? DEFAULT_AFK_LIMIT;
-    if (!limit || m.timeouts < limit || d.seats[seat]?.kind !== 'human') return;
-    const bot = this.botName();
-    d.seats[seat] = { kind: 'bot', name: bot, level: d.botLevel, was: m.name };
-    m.seat = null;
-    m.timeouts = 0;
-    if (d.votes) delete d.votes[pid];
-    this.system(`${m.name} was AFK and replaced by a bot (${bot})`);
+    this.trace('timeout', { cause: 'turn-timer', seat, pid, name: m.name, connected, timeouts: m.timeouts, turnKey: d.turnKey, turnStartedAt: d.turnStartedAt, deadline: d.deadline });
   }
 
   private clearTimers(): void {

@@ -131,4 +131,32 @@ describe('reconnect keeps the seat and the name', () => {
     expect(env.room.data.members[a.pid]!.name).toBe('Meech');
     expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid });
   });
+
+  it('logs the socket close, the reconnect, and a leave that is the only way a bot gets the seat', () => {
+    const lines: string[] = [];
+    const orig = console.log;
+    console.log = (m?: unknown) => { lines.push(String(m ?? '')); };
+    try {
+      const { env, a } = seated();
+      env.room.noteSocketClose('a', 1001, 'going away', false);
+      env.room.close('a');
+      env.join('z', 'Ty', a.token);
+      expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid });
+      env.send('z', { t: 'leave' });
+    } finally {
+      console.log = orig;
+    }
+    const events = lines.flatMap((line) => {
+      try {
+        const row = JSON.parse(line) as { src?: string; event?: string };
+        return row.src === 'bwm.table' ? [row] : [];
+      } catch { return []; }
+    });
+    const close = events.find((e) => e.event === 'socket_close') as { code?: number; reason?: string; seat?: number };
+    const again = events.find((e) => e.event === 'reconnect' && (e as { how?: string }).how === 'token') as { seat?: number; returning?: boolean };
+    const seat = events.find((e) => e.event === 'seat' && (e as { cause?: string }).cause === 'leave') as { toKind?: string; fromPid?: string };
+    expect(close).toMatchObject({ code: 1001, reason: 'going away', seat: 0 });
+    expect(again).toMatchObject({ seat: 0, returning: true });
+    expect(seat).toMatchObject({ toKind: 'bot', fromPid: expect.any(String) });
+  });
 });
