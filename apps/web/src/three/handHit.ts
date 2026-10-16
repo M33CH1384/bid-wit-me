@@ -37,25 +37,26 @@ export function pointInPoly(x: number, y: number, poly: readonly { x: number; y:
 }
 
 /**
- * Longest horizontal run, in CSS pixels, where `id` is the card drawn on top.
- * A fully covered card is 0. The run is taken through the middle of that card.
+ * Longest run, in CSS pixels, where `id` is the card drawn on top. The run is taken along a line
+ * parallel to the card's top edge, 20% of the way down, which is where a held fan shows each card.
+ * Quads are bottom-left, bottom-right, top-right, top-left. A fully covered card is 0.
  */
-export function visibleStripPx(cards: readonly HandHitCard[], id: string, samples = 64): number {
+export function visibleStripPx(cards: readonly HandHitCard[], id: string, samples = 96): number {
   const card = cards.find((c) => c.id === id);
-  if (!card || card.poly.length < 3) return 0;
-  const xs = card.poly.map((p) => p.x);
-  const ys = card.poly.map((p) => p.y);
-  const x0 = Math.min(...xs);
-  const x1 = Math.max(...xs);
-  const y = (Math.min(...ys) + Math.max(...ys)) / 2;
-  if (!(x1 > x0) || !Number.isFinite(y)) return 0;
-  const dx = (x1 - x0) / samples;
+  if (!card || card.poly.length < 4) return 0;
+  const [bl, br, tr, tl] = card.poly as [{ x: number; y: number }, { x: number; y: number }, { x: number; y: number }, { x: number; y: number }];
+  const f = 0.2;
+  const a = { x: tl.x + (bl.x - tl.x) * f, y: tl.y + (bl.y - tl.y) * f };
+  const b = { x: tr.x + (br.x - tr.x) * f, y: tr.y + (br.y - tr.y) * f };
+  const len = Math.hypot(b.x - a.x, b.y - a.y);
+  if (!(len > 0)) return 0;
   let run = 0;
   let best = 0;
+  const d = len / samples;
   for (let s = 0; s <= samples; s++) {
-    const x = x0 + dx * s;
-    if (pickHandCard(x, y, cards) === id) {
-      run += dx;
+    const t = s / samples;
+    if (pickHandCard(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, cards) === id) {
+      run += d;
       if (run > best) best = run;
     } else run = 0;
   }
