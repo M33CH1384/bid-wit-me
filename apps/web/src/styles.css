@@ -1812,3 +1812,10 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .table-screen.arch-plate .me-plate .plate-turn { position: static; order: -1; margin-bottom: 2px; font-size: 10px; letter-spacing: .1em; }
 .table-screen.arch-plate .me-plate .plate-name .chip { font-size: 8.5px; }
 .table-screen.arch-plate .me-plate .plate-name { display: none; }
+
+/* drag-to-play: the lifted card under your finger, drawn above everything */
+.drag-ghost { position: fixed; z-index: 60; pointer-events: none; border-radius: 6px; box-shadow: 0 18px 30px rgba(0,0,0,.55); transform: scale(1.08) rotate(-3deg); transition: transform .12s; }
+.drag-ghost.snap { transition: left .2s ease-out, top .2s ease-out, opacity .2s; opacity: .2; }
+.drag-ghost.played { opacity: 0; transition: opacity .1s; }
+.drag-ghost.shake { animation: drag-shake .36s ease-in-out; }
+@keyframes drag-shake { 20%, 60% { transform: translateX(-7px) rotate(-3deg); } 40%, 80% { transform: translateX(7px) rotate(-3deg); } }

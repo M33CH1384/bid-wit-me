@@ -7,7 +7,9 @@ import { type Card, type Play, type Trick } from '@spades/rules';
 import Card3D, { createLitCardMaterial } from './Card3D';
 import { departureSlot, handCardKey, handReactKey } from '../handOrder';
 import { GAP_S, RAISE_SPREAD, cardIdFromHit, echoTap, fanGapPx, fanMotion, handCardChrome, handDepthOpts, handRenderOrder, hitsInPaintOrder, noteTapUp, pointerNdc, posePx, raiseLocalY, raiseSpreadPx, spreadFitScale } from './handLift';
-import { type HandHitCard, pickHandCard, publishHandHits } from './handHit';
+import { type HandHitCard, pickHandCard, publishHandHits, publishedHandHits } from './handHit';
+import { paintFace } from '../cardArt';
+import { dragStarted, dropResult } from '../dragPlay';
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline, seatDealDelay } from './dealTimeline';
 import { dealHeld, handDealsIn, handOnFan, handSlotKey } from './dealFlight';
@@ -55,6 +57,8 @@ export interface SceneProps {
   winnerSeat: number | null;
   promoted: (c: Card) => boolean;
   onCardTap: (c: Card) => void;
+  /** Drag-to-play: a legal card released over the felt. */
+  onCardDrop?: (c: Card) => void;
   /** A tap on the cloth, not on a card. Puts the raised card down. */
   onFeltTap?: () => void;
   renderSeat: (seat: number) => ReactNode;
@@ -426,7 +430,7 @@ function flipped(t: Xform): Xform {
   return { p: [t.p[0], t.p[1], t.p[2]], q: [q.x, q.y, q.z, q.w], s: t.s };
 }
 
-function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFrac: number; lit: boolean }) {
+function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fontsReady: boolean; safeFrac: number; lit: boolean }) {
   const { safeFrac, quality, n, handNo, dealer, positions, human, myHand, handCounts, shownTrick, piles, legal, selected, promoted, onCardTap } = props;
   const gl = useThree((s) => s.gl);
   const invalidate = useThree((s) => s.invalidate);
@@ -654,6 +658,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       });
     }
     nextSeen.add(slotKey);
+    if (c && c === props.dragCard) return;
     items.push({
       hand: true,
       key: handReactKey(handNo, c, i),
@@ -1174,18 +1179,75 @@ function HallAttach({ active }: { active: boolean }) {
 }
 
 /** Hand taps resolve against the quads Cards published this render, before the raycaster. */
-function HandPointer({ onTap }: { onTap: (card: Card) => void }) {
+function HandPointer({ onTap, onDrop, legal, onDragging }: { onTap: (card: Card) => void; onDrop?: (card: Card) => void; legal: readonly Card[]; onDragging: (card: Card | null) => void }) {
+  const dragging = useRef(onDragging);
+  dragging.current = onDragging;
   const gl = useThree((s) => s.gl);
   const tap = useRef(onTap);
   tap.current = onTap;
+  const drop = useRef(onDrop);
+  drop.current = onDrop;
+  const legalNow = useRef(legal);
+  legalNow.current = legal;
   useLayoutEffect(() => {
     const el = gl.domElement;
+    // Drag-to-play: the press still selects (first tap). Past 10px a lifted copy of the card follows the
+    // finger on top of everything; release over the felt plays it, anywhere else it snaps back.
+    let drag: { id: Card; x0: number; y0: number; on: boolean; ghost: HTMLCanvasElement | null; w: number; h: number; top: number } | null = null;
+    const endGhost = (g: HTMLCanvasElement | null, cls: string, ms: number, to?: { x: number; y: number }) => {
+      if (!g) return;
+      g.classList.add(cls);
+      if (to) { g.style.left = `${to.x}px`; g.style.top = `${to.y}px`; }
+      window.setTimeout(() => g.remove(), ms);
+    };
+    const move = (e: PointerEvent) => {
+      if (!drag) return;
+      const dx = e.clientX - drag.x0, dy = e.clientY - drag.y0;
+      if (!drag.on && !dragStarted(dx, dy)) return;
+      e.preventDefault();
+      if (!drag.on) {
+        drag.on = true;
+        el.style.touchAction = 'none';
+        const g = paintFace(drag.id, 200, 280, false);
+        g.className = 'drag-ghost';
+        g.dataset.testid = 'drag-ghost';
+        g.style.width = `${drag.w}px`;
+        g.style.height = `${drag.h}px`;
+        document.body.appendChild(g);
+        drag.ghost = g;
+        dragging.current(drag.id);
+        (window as unknown as { __bwmDrag?: string }).__bwmDrag = `drag:${drag.id}`;
+      }
+      const g = drag.ghost!;
+      g.style.left = `${e.clientX - drag.w / 2}px`;
+      g.style.top = `${e.clientY - drag.h * 0.7}px`;
+    };
+    const finish = (e: PointerEvent) => {
+      const d = drag;
+      drag = null;
+      el.style.touchAction = '';
+      if (!d?.on) return;
+      e.preventDefault();
+      dragging.current(null);
+      const result = dropResult({ legal: legalNow.current.includes(d.id), y: e.clientY, handTop: d.top, screenH: window.innerHeight });
+      (window as unknown as { __bwmDrag?: string }).__bwmDrag = `${result}:${d.id}`;
+      if (result === 'play') { endGhost(d.ghost, 'played', 120); drop.current?.(d.id); }
+      else if (result === 'shake') endGhost(d.ghost, 'shake', 380);
+      else endGhost(d.ghost, 'snap', 220, { x: d.x0 - d.w / 2, y: d.y0 - d.h * 0.7 });
+    };
+    const noScroll = (e: TouchEvent) => { if (drag?.on) e.preventDefault(); };
     const down = (e: PointerEvent) => {
       const rect = el.getBoundingClientRect();
       const id = pickHandCard(e.clientX - rect.left, e.clientY - rect.top);
       if (!id) return;
       e.stopPropagation();
       e.preventDefault();
+      const hits = publishedHandHits();
+      const me = hits.find((h) => h.id === id);
+      const side = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(b.x - a.x, b.y - a.y);
+      const w = me ? side(me.poly[0]!, me.poly[1]!) : 60;
+      const top = hits.length ? Math.min(...hits.flatMap((h) => h.poly.map((p) => p.y))) + rect.top : window.innerHeight * 0.7;
+      drag = { id: id as Card, x0: e.clientX, y0: e.clientY, on: false, ghost: null, w, h: w * 1.4, top };
       if (echoTap(e, id)) {
         (window as unknown as { __bwmLastTap?: string }).__bwmLastTap = `echo:${id}`;
         return;
@@ -1193,7 +1255,9 @@ function HandPointer({ onTap }: { onTap: (card: Card) => void }) {
       (window as unknown as { __bwmLastTap?: string }).__bwmLastTap = `${id}@${e.clientX.toFixed(0)},${e.clientY.toFixed(0)}`;
       tap.current(id as Card);
     };
-    const up = () => noteTapUp();
+    const up = (e: PointerEvent) => { noteTapUp(); finish(e); };
+    window.addEventListener('pointermove', move, { passive: false });
+    document.addEventListener('touchmove', noScroll, { passive: false });
     el.addEventListener('pointerdown', down, true);
     el.addEventListener('pointerup', up, true);
     el.addEventListener('pointercancel', up, true);
@@ -1203,6 +1267,8 @@ function HandPointer({ onTap }: { onTap: (card: Card) => void }) {
       el.removeEventListener('pointerup', up, true);
       el.removeEventListener('pointercancel', up, true);
       window.removeEventListener('pointerup', up, true);
+      window.removeEventListener('pointermove', move);
+      document.removeEventListener('touchmove', noScroll);
     };
   }, [gl]);
   return null;
@@ -1232,6 +1298,8 @@ export default function Scene(props: SceneProps) {
   const [dprCap, setDprCap] = useState(1);
   const [textured, setTextured] = useState(false);
   const [hallGo, setHallGo] = useState(false);
+  // Drag-to-play: the card under the finger is drawn by the lifted copy, so its slot in the fan is left open.
+  const [dragCard, setDragCard] = useState<Card | null>(null);
   const onTableReady = props.onTableReady;
   const tableReady = useCallback(() => { onTableReady?.(); }, [onTableReady]);
   const onShow = useCallback(() => setShowTable(true), []);
@@ -1298,8 +1366,8 @@ export default function Scene(props: SceneProps) {
         </group>
       )}
       {showTable && props.positions.map((p, seat) => <TurnRing key={seat} pos={p} n={props.n} active={props.turnSeat === seat} />)}
-      {showTable && <Cards {...props} aspect={aspect} fontsReady={fontsReady} safeFrac={safeFrac} lit={lit} />}
-      {showTable && <HandPointer onTap={props.onCardTap} />}
+      {showTable && <Cards {...props} dragCard={dragCard} aspect={aspect} fontsReady={fontsReady} safeFrac={safeFrac} lit={lit} />}
+      {showTable && <HandPointer onTap={props.onCardTap} onDrop={props.onCardDrop} legal={props.legal} onDragging={setDragCard} />}
       <AfterTable quality={props.quality} tableUp={textured} />
       {layerReady && <Badges positions={props.positions} n={props.n} human={props.human} renderSeat={props.renderSeat} portal={badgeLayer} safeFrac={safeFrac} short={!!props.short} safe={props.safe ?? { l: 0, r: 0, t: 0, b: 0 }} />}
     </Canvas>
