@@ -111,13 +111,17 @@ const PIPS: Record<string, [number, number][]> = {
  */
 function queenTail(ctx: CanvasRenderingContext2D, cx: number, baseline: number, fs: number, color: string) {
   ctx.save();
-  ctx.strokeStyle = color;
-  ctx.lineCap = 'round';
-  ctx.lineWidth = Math.max(2.5, fs * 0.2);
+  // The corner index only. A round cap on a longer stroke ran through the pip and off the card.
   ctx.beginPath();
-  // Start on the native tail and leave the bowl (the bowl ends near 0.23em).
-  ctx.moveTo(cx + fs * 0.1, baseline + fs * 0.04);
-  ctx.lineTo(cx + fs * 0.62, baseline + fs * 0.32);
+  ctx.rect(cx - fs * 0.55, baseline - fs * 0.9, fs * 0.95, fs * 1.05);
+  ctx.clip();
+  ctx.strokeStyle = color;
+  ctx.lineCap = 'butt';
+  ctx.lineWidth = fs * 0.16;
+  ctx.beginPath();
+  // Start on the native tail and leave the bowl (the bowl ends near 0.23em). Stop above the pip.
+  ctx.moveTo(cx + fs * 0.08, baseline + fs * 0.02);
+  ctx.lineTo(cx + fs * 0.34, baseline + fs * 0.14);
   ctx.stroke();
   ctx.restore();
 }
@@ -155,10 +159,17 @@ function corner(ctx: CanvasRenderingContext2D, W: number, rank: string, suit: Su
   }
 }
 
+/**
+ * Court frame, as a fraction of card width. A full phone fan exposes about 31% of each card.
+ * The gold stroke is 1.8% wide, so a frame at 34% left a hair of gold on the card in front of it.
+ */
+export const COURT_FRAME_X = 0.46;
+export const COURT_FRAME_W = 0.3;
+
 function court(ctx: CanvasRenderingContext2D, W: number, H: number, rank: string, suit: Suit, color: string) {
-  // the frame stays right of the corner-index strip: in a phone fan only the left ~31% of a card shows, and a frame
-  // edge there read as a thin gold line cutting through the card (Release 6 hotfix, iPhone)
-  const x = W * 0.34, y = H * 0.1, w = W * 0.32, h = H * 0.8;
+  // Right of the exposed corner. A frame on that strip reads as a gold line through the next card.
+  const x = W * COURT_FRAME_X, y = H * 0.1, w = W * COURT_FRAME_W, h = H * 0.8;
+  const mid = x + w / 2;
   const g = ctx.createLinearGradient(0, y, 0, y + h);
   const tint = color === RED ? ['#fde9e6', '#f6cfc7'] : ['#e9edf7', '#cfd6ea'];
   g.addColorStop(0, tint[0]!);
@@ -178,7 +189,7 @@ function court(ctx: CanvasRenderingContext2D, W: number, H: number, rank: string
   const cy = y + h * 0.2;
   ctx.beginPath();
   const n = rank === 'K' ? 5 : rank === 'Q' ? 4 : 3;
-  const bw = w * 0.5, bx = W / 2 - bw / 2;
+  const bw = w * 0.5, bx = mid - bw / 2;
   ctx.moveTo(bx, cy + W * 0.06);
   for (let i = 0; i <= n; i++) {
     const px = bx + (bw * i) / n;
@@ -194,9 +205,9 @@ function court(ctx: CanvasRenderingContext2D, W: number, H: number, rank: string
   const courtFs = W * 0.3;
   ctx.font = `800 ${courtFs}px "Barlow Condensed", "Arial Narrow", Arial, sans-serif`;
   const courtY = y + h * 0.53;
-  ctx.fillText(rank, W / 2, courtY);
-  drawSuit(ctx, suit, W / 2, y + h * 0.84, W * 0.1, color);
-  if (rank === 'Q') queenTail(ctx, W / 2, courtY + courtFs * 0.33, courtFs, color);
+  ctx.fillText(rank, mid, courtY);
+  drawSuit(ctx, suit, mid, y + h * 0.84, W * 0.1, color);
+  if (rank === 'Q') queenTail(ctx, mid, courtY + courtFs * 0.33, courtFs, color);
 }
 
 function joker(ctx: CanvasRenderingContext2D, W: number, H: number, big: boolean) {

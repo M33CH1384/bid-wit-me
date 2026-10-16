@@ -159,10 +159,14 @@ export function handRenderOrder(index: number, above: boolean, front = false): n
   return (above ? LEGAL_STACK : 0) + index;
 }
 
-/** Camera-space stack for one pose. Depth is not the screen raise; the selected card still has to be nearer than a higher-index neighbour. */
+/**
+ * Camera-space stack for one pose. Depth is not the screen raise.
+ * A selected card uses the same stack as any other playable card. Jumping it in front of the
+ * fan buried the ranks beside it: the 10 covered the 9, and the queen covered the hearts on its right.
+ * The card on the right stays nearer, and the raise is only the upward slide.
+ */
 export function handDepthOpts(pose: HandPose): { layer: 'rest' | 'play' | 'selected'; near?: number } {
-  if (pose === 'selected') return { layer: 'selected', near: LEGAL_NEAR * 2 };
-  if (pose === 'legal') return { layer: 'play', near: LEGAL_NEAR };
+  if (pose === 'selected' || pose === 'legal') return { layer: 'play', near: LEGAL_NEAR };
   return { layer: 'rest' };
 }
 
