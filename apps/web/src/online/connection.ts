@@ -27,6 +27,8 @@ export interface ConnState {
   pending: boolean;
   /** Bumps when a sent play is released (server seq moved, the play was rejected, or the ack timed out). */
   playGate?: number;
+  /** Bumps on every welcome, so the table can say again whether it is drawn. */
+  socketGen: number;
   /** Release 10: watching (unseated while a game is on; the view is the redacted spectator view) */
   spectator?: boolean;
   /** Signed in, but this socket's hello had no account ticket, so the seat is not linked. */
@@ -45,7 +47,7 @@ const newId = () => (crypto.randomUUID?.() ?? `${Date.now().toString(36)}${Math.
 type RtcHandler = (from: string, data: unknown) => void;
 
 export class TableConnection {
-  state: ConnState = { status: 'connecting', you: null, room: null, seat: null, view: null, run: null, chat: [], error: null, pending: false, playGate: 0, statsOff: false, joinFault: null };
+  state: ConnState = { status: 'connecting', you: null, room: null, seat: null, view: null, run: null, chat: [], error: null, pending: false, playGate: 0, socketGen: 0, statsOff: false, joinFault: null };
   private inflight: PendingAct | null = null;
   /** Seq of a play that has been sent and not yet passed by the server. A second play is refused until then. */
   private playSentSeq: number | null = null;
@@ -273,7 +275,7 @@ export class TableConnection {
           saveToken(this.code, m.token);
           this.rehelloed = false;
           this.joinStage = 'welcome';
-          this.set({ status: 'open', you: m.you, chat: m.chat });
+          this.set({ status: 'open', you: m.you, chat: m.chat, socketGen: this.state.socketGen + 1 });
           break;
         case 'state': {
           let view = m.view;

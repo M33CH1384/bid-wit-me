@@ -29,6 +29,23 @@ export function playSendBlocked(sentSeq: number | null, serverSeq: number): bool
 }
 
 /**
+ * The chosen card leaves the hand as soon as the play is sent. The server answer
+ * can take a few seconds (the first message sometimes lands only on the resend);
+ * the card should not sit back in the fan, looking deselected, while that happens.
+ * Once the trick already has the card, or the play was dropped, nothing is added.
+ */
+export function flyPlay<C extends string>(
+  hand: readonly C[] | null,
+  trick: readonly { card: string }[],
+  flying: string | null,
+): { hand: C[] | null; card: C | null } {
+  if (flying == null || hand == null || !(hand as readonly string[]).includes(flying) || trick.some((p) => p.card === flying)) {
+    return { hand: hand == null ? null : [...hand], card: null };
+  }
+  return { hand: hand.filter((c) => c !== flying), card: flying as C };
+}
+
+/**
  * How long a freshly selected card stays a selection. A second pointer event in this window
  * (a touch plus the mouse event iOS synthesises) must not play the card it just selected,
  * and it must not play the neighbour underneath a card that is still rising.

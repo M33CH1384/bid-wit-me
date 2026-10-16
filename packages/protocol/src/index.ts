@@ -190,6 +190,13 @@ export interface RoomInfo {
   members: MemberInfo[];
   /** epoch ms when the current turn auto-plays (null when no human is on the clock) */
   deadline: number | null;
+  /**
+   * Seconds on the clock for the current human turn: the table's bid or play setting
+   * (longer while that player has learning mode on). The countdown is `deadline`; this
+   * is the length it was given, so the client does not invent a shorter one. Null when
+   * no human is on the clock.
+   */
+  turnSec?: number | null;
   /** players (ids) who have pressed "next hand" */
   ready: string[];
   /** monotonically increasing broadcast counter (any change: seats, media, timers, game) */
