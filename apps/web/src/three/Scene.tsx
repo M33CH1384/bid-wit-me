@@ -694,12 +694,19 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   const shown = resumeDrawList(items, resume, extra);
   const drawn = hand3D ? shown : shown.filter((it) => !it.hand);
   if (typeof window !== 'undefined') {
-    const w = window as unknown as { __bwmDrawn?: { hand: string[]; trick: (string | null)[]; ownFaces: string[] } };
-    w.__bwmDrawn = {
-      hand: drawn.filter((it) => it.hand && it.card).map((it) => it.card as string),
-      trick: drawn.filter((it) => it.public).map((it) => it.card),
-      ownFaces: ownIds.filter((id) => faceShown.current.has(id)),
+    const handIds = drawn.filter((it) => it.hand && it.card).map((it) => it.card as string);
+    const trickIdsDrawn = drawn.filter((it) => it.public).map((it) => it.card);
+    const ownFaces = ownIds.filter((id) => faceShown.current.has(id));
+    const w = window as unknown as {
+      __bwmDrawn?: { hand: string[]; trick: (string | null)[]; ownFaces: string[] };
+      __bwmDrawnHist?: { hand: number; trick: number; faces: number }[];
     };
+    w.__bwmDrawn = { hand: handIds, trick: trickIdsDrawn, ownFaces };
+    const hist = (w.__bwmDrawnHist ??= []);
+    const prev = hist[hist.length - 1];
+    if (hist.length < 40 && (!prev || prev.hand !== handIds.length || prev.trick !== trickIdsDrawn.length || prev.faces !== ownFaces.length)) {
+      hist.push({ hand: handIds.length, trick: trickIdsDrawn.length, faces: ownFaces.length });
+    }
   }
   const frontOf = (card: Card) => {
     // Trick and slam cards are public on the frame they land, even if a rebuild cleared the painter set.
