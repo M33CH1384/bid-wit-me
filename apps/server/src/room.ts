@@ -71,6 +71,8 @@ export interface RoomData {
   /** key of the turn the deadline belongs to */
   turnKey: string | null;
   turnStartedAt: number | null;
+  /** `seq` when this turn began. A play from earlier than this belongs to a previous turn. */
+  turnSeq?: number;
   deadline: number | null;
   ready: string[];
   chat: ChatLine[];
@@ -871,8 +873,9 @@ export class Room {
    * A game move. Order of checks:
    *  1. duplicate id (a retry of a move that was already applied) → ack ok+dup, nothing applied again
    *  2. missing or stale seq (the client didn't say which version it moved from, or the game moved on since: the
-   *     turn timed out and auto-played, the hand ended, …) → silently dropped: ack stale + a fresh state, never an error.
-   *     A late play must not become this seat's next lead.
+   *     turn timed out and auto-played, the hand ended, …) → silently dropped: ack stale + a fresh FULL state, never an error.
+   *     A card that is still legal on this same turn is applied (a reload can be holding the seq this turn started on).
+   *     A play from before this turn is not: it must not become the next lead.
    *  3. rule checks → ack with the rule error code (or an `error` message for legacy clients that send no id)
    * The DO is single-threaded, so a late human move and the turn-timer auto-play can't interleave: whichever runs
    * first bumps `seq` and the other one becomes stale (auto-play re-checks the turn key before acting).
@@ -887,9 +890,17 @@ export class Room {
       return;
     }
     if (msg.seq === undefined || msg.seq !== (d.seq ?? 0)) {
-      this.sendState(connId);
-      if (id) this.io.send(connId, { t: 'ack', id, ok: false, stale: true });
-      return;
+      // The turn did not move (a reload's seq can be the one this turn started on). Apply the card
+      // they chose. A play from before this turn stays stale, so it cannot become the next lead.
+      if (msg.action.type === 'play' && this.sameTurnCard(me, msg.action.card, msg.seq)) {
+        this.trace('play', { cause: 'accept-stale-seq', seq: msg.seq ?? null, serverSeq: d.seq ?? 0, seat: me.seat, card: msg.action.card });
+      } else {
+        this.sentHistory.delete(connId);
+        this.sendState(connId);
+        if (id) this.io.send(connId, { t: 'ack', id, ok: false, stale: true });
+        this.trace('play', { cause: 'drop-stale', seq: msg.seq ?? null, serverSeq: d.seq ?? 0, seat: me.seat, turn: d.game ? pendingTurn(d.game)?.seat ?? null : null });
+        return;
+      }
     }
     try {
       if (d.phase !== 'playing' || !d.game) throw new RoomError('WRONG_PHASE', 'No game in progress');
@@ -917,6 +928,21 @@ export class Room {
     if (id) me.acts = [...(me.acts ?? []).slice(-7), id];
     this.after();
     if (id) this.io.send(connId, { t: 'ack', id, ok: true });
+  }
+
+  /**
+   * A card play that is still legal for the turn in progress. `seq` has to be from this turn
+   * (`turnSeq`), not from the previous trick, or a late tap would lead the next one.
+   */
+  private sameTurnCard(me: Member, card: string, seq: number | undefined): boolean {
+    const d = this.data;
+    const g = d.game;
+    if (!g || d.phase !== 'playing' || me.seat === null || seq === undefined) return false;
+    if (seq < (d.turnSeq ?? 0)) return false;
+    const turn = pendingTurn(g);
+    if (!turn || turn.kind !== 'play' || turn.seat !== me.seat) return false;
+    if (g.trick.plays.some((p) => p.seat === me.seat)) return false;
+    return viewFor(g, me.seat).legal.some((c) => c === card);
   }
 
   private requireHost(isHost: boolean): void {
@@ -1405,10 +1431,11 @@ export class Room {
       if (key !== d.turnKey) {
         d.turnKey = key;
         d.turnStartedAt = now;
+        d.turnSeq = d.seq ?? 0;
         d.deadline = null;
         d.botDueAt = null;
         changed = true;
-      }
+      } else if (d.turnSeq === undefined) d.turnSeq = d.seq ?? 0;
       // Release 10: a bot claims 'Run it!' as soon as it's guaranteed from its own cards, even off-turn.
       // canRunIt is proved at most once per seat per state (and never for a spectator), so this loop stays cheap.
       if (g.phase === 'playing') {

@@ -578,8 +578,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const dealerSeat = online?.dealerSeat != null ? online.dealerSeat : offlineDealer.localSeat;
   const showDealer = !!dealerLabel && (dealing || isFreshDeal(st));
   const turnLocked = !!online?.source.locked;
-  // Badges and playable cards share this. `covered` (Run it!) is applied again once that show exists.
-  const myTurn = actingSeat({ turn: st.turn, phase: st.phase, pause, dealing, locked: turnLocked, covered: false }) === HUMAN && !spectating;
+  // The badge keeps naming this seat while the play is in flight. The hand itself stays locked
+  // so a second tap cannot send another card before the server answers.
+  const myTurn = actingSeat({ turn: st.turn, phase: st.phase, pause, dealing, locked: false, covered: false }) === HUMAN && !spectating && !turnLocked;
   // Sort once when the hand is dealt. A play only removes a card; re-sorting here is what made the fan look shuffled.
   const handOrder = useRef<{ handNo: number; cards: Card[] } | null>(null);
   const hand = useMemo(() => {
@@ -1047,7 +1048,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     names.forEach((nm, i) => { if (isBotSeat(i)) preloadVoice(personaForName(nm), nm); });
   }, [botKey, talkPrefs.voices]); // eslint-disable-line react-hooks/exhaustive-deps
   const notice = onNoticeSides(sb);
-  const actor = actingSeat({ turn: st.turn, phase: st.phase, pause, dealing, locked: turnLocked, covered: !!runFx });
+  const actor = actingSeat({ turn: st.turn, phase: st.phase, pause, dealing, locked: false, covered: !!runFx });
   const renderSeat = (seat: number) => {
     const mark = seatMark(actor, seat, st.phase, false, false, 0);
     const isTurn = mark === 'to-play' || mark === 'bidding';
@@ -1311,7 +1312,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
               {isNilBid(st.bids[HUMAN]) && sb.tricksWon[HUMAN]! > 0 && <span className="chip bad">NIL BUSTED</span>}
             </div>
           </div>
-          {seatMark(actor, HUMAN, st.phase, true, spectating, legal.length) === 'your-turn' && <div className="plate-turn" data-testid="your-turn">{selected ? 'TAP AGAIN TO PLAY' : 'YOUR TURN'}</div>}
+          {seatMark(actor, HUMAN, st.phase, true, spectating, st.phase === 'playing' ? view.legal.filter((c) => (hand ?? []).includes(c)).length : legal.length) === 'your-turn' && <div className="plate-turn" data-testid="your-turn">{selected ? 'TAP AGAIN TO PLAY' : 'YOUR TURN'}</div>}
           {seatMark(actor, HUMAN, st.phase, true, spectating, legal.length) === 'your-bid' && <div className="plate-turn" data-testid="your-bid">YOUR BID</div>}
           {online?.seatExtra(HUMAN)}
         </div>
