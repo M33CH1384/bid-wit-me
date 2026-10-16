@@ -13,6 +13,7 @@ import { dragStarted, dropResult } from '../dragPlay';
 import { DEFAULT_SLAM, type DragSample, clearDrop, noteDrop, releaseVector, releaseVelocity, slamFeel, slamIntensity, takeDrop } from '../slam';
 import { reducedMotion } from './handLift';
 import { VISIBLE_FELT, landTrick, playSeed } from './landing';
+import { shakeOffset, swayOffset } from './shake';
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline, seatDealDelay } from './dealTimeline';
 import { dealHeld, handDealsIn, handOnFan, handSlotKey } from './dealFlight';
@@ -115,7 +116,7 @@ function CameraRig() {
 }
 
 /**
- * Hype-effect camera shake + table vibration (fx.shake, set by joker rumbles / the nuke). The offsets are added on top
+ * Hype-effect thump (fx.shake: jokers, the nuke, slams). Vertical only — see shake.ts. The offsets are added on top
  * of whatever CameraRig set and removed again every frame, so the layout camera never drifts.
  */
 function FxShake({ table }: { table: RefObject<Group | null> }) {
@@ -133,10 +134,8 @@ function FxShake({ table }: { table: RefObject<Group | null> }) {
     if (T && !T.reduced) {
       const u = (fx.warp !== null ? fx.warp : (performance.now() - T.start) / 1000) + 0.4;
       if (u > 0 && u < 2.6) {
-        const env = Math.sin(Math.PI * Math.min(1, u / 2.6));
-        a.x += 0.06 * env * Math.sin(u * 3.2);
-        a.y += 0.025 * env * Math.sin(u * 4.1 + 1);
-        a.roll += 0.03 * env * Math.sin(u * 2.4 + 0.5);
+        const o = swayOffset(u);
+        a.y += o.y;
         invalidate();
       }
     }
@@ -147,18 +146,8 @@ function FxShake({ table }: { table: RefObject<Group | null> }) {
       else if (t > s.dur) { if (last.current === s) fx.shake = null; invalidate(); }
       else {
         last.current = s;
-        const k = s.amp * Math.pow(1 - t / s.dur, 2);
-        const w = 2 * Math.PI * t;
-        if (s.thump) {
-          // A card slam: the table thumps down and back. The camera stays put, so nothing wiggles sideways.
-          a.ty -= k * Math.abs(Math.sin(w * 9));
-        } else {
-          a.x += k * (Math.sin(w * 23) * 0.6 + Math.sin(w * 37 + 1) * 0.4);
-          a.y += k * (Math.sin(w * 29 + 2) * 0.6 + Math.sin(w * 41) * 0.4);
-          a.z += k * 0.5 * Math.sin(w * 31 + 0.5);
-          a.roll += k * 0.25 * Math.sin(w * 19 + 1.3);
-          a.ty += k * 0.18 * Math.sin(w * 53);
-        }
+        const o = shakeOffset(s, t);
+        a.x += o.x; a.y += o.y; a.z += o.z; a.roll += o.roll; a.ty += o.ty;
         invalidate();
       }
     }
