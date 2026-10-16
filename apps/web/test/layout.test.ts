@@ -73,7 +73,7 @@ describe('hand fan is undistorted and mirror-symmetric on screen', () => {
 });
 
 describe('hand fan z-order', () => {
-  it('keeps index order when a card is raised, so the card on the right stays closer', () => {
+  it('puts a raised card in front of the neighbours it overlaps', () => {
     for (const aspect of [16 / 9, 390 / 844, 844 / 390]) {
       const cam = makeCamera(aspect); cam.updateMatrixWorld();
       // view-space depth (what the depth buffer and the raycast order go by)
@@ -81,10 +81,12 @@ describe('hand fan z-order', () => {
       const n = 13;
       const fan = Array.from({ length: n }, (_, i) => handFan(aspect, n, i, i === 7 || i === 8 ? 0.09 : 0));
       for (let i = 1; i < n; i++) expect(dist(fan[i]!)).toBeLessThan(dist(fan[i - 1]!));
-      // A selected lift must not pull the left card in front of the ranks to its right.
-      const raisedLeft = handFan(aspect, n, 0, 0.24, 0, { layer: 'selected' });
-      expect(dist(fan[8]!)).toBeLessThan(dist(raisedLeft));
-      expect(dist(handFan(aspect, n, 8, 0.24, 0, { layer: 'selected' }))).toBeLessThan(dist(handFan(aspect, n, 7, 0)));
+      // Index 6 raised. The three cards on either side are the ones that share pixels with it.
+      const raised = handFan(aspect, n, 6, 0.24, 0, { layer: 'selected' });
+      for (const j of [3, 4, 5, 7, 8, 9]) {
+        expect(dist(raised)).toBeLessThan(dist(handFan(aspect, n, j, 0, 0, { layer: 'play' })));
+        expect(dist(raised)).toBeLessThan(dist(handFan(aspect, n, j, 0)));
+      }
     }
   });
 
@@ -95,10 +97,11 @@ describe('hand fan z-order', () => {
       for (const n of [5, 13, 18]) {
         const fan = Array.from({ length: n }, (_, i) => handFan(aspect, n, i, 0));
         for (let i = 1; i < n; i++) expect(dist(fan[i - 1]!) - dist(fan[i]!)).toBeGreaterThan(0.005);
-        // Raising the last card does not drag it in front of the rest of the fan.
-        const raised = dist(handFan(aspect, n, n - 1, 0.24, 0, { layer: 'selected' }));
-        expect(Math.abs(raised - dist(fan[n - 1]!))).toBeLessThan(1e-6);
-        expect(raised).toBeLessThan(dist(fan[n - 2]!));
+        const last = n - 1;
+        const raised = dist(handFan(aspect, n, last, 0.24, 0, { layer: 'selected' }));
+        // The raised end card sits in front of the neighbour it overlaps, still clear of a 16-bit step.
+        expect(dist(fan[last - 1]!) - raised).toBeGreaterThan(0.005);
+        expect(raised).toBeLessThan(dist(fan[last]!));
       }
     }
   });

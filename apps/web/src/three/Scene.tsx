@@ -590,8 +590,8 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       : { pose: 'flat' as const, dim: false, glow: false };
     const pose = chrome.pose;
     const above = pose === 'legal' || pose === 'selected';
-    // The raise is screen-up. The gap is a CSS-pixel slide. Depth follows the fan index
-    // (handDepthOpts), so the card on the right stays nearer than the one you raised.
+    // The raise is screen-up. Depth and render order (handDepthOpts, handRenderOrder) put a
+    // raised card in front of the neighbours it overlaps, and the raycast uses that same order.
     const opts = { ...fanOpts, ...handDepthOpts(pose) };
     const target = handFan(aspect, fanCards.length, i, 0, safeFrac, opts, gaps[i] ?? 0, screenH);
     // One shot. Later renders (a tap, a highlight) must not pass the face-down pose again.
@@ -628,7 +628,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       arc: move.arc,
       raise: c ? raiseLocalY(pose, fan.viewH, screenH, fan.ch) : 0,
       roll: plane.roll,
-      order: handRenderOrder(i, above),
+      order: handRenderOrder(i, above, pose === 'selected'),
     });
   });
   pendingHold.current = { handNo, cards: nextCards, slots: nextSlots, count: faceCount, seen: nextSeen };

@@ -7,22 +7,43 @@ import { cardGeometry } from '../src/three/geometry';
 import { contourContains, groupOutline, haloLocal, placeOnPlane, planePointOk, unionContours } from '../src/three/playableOutline';
 
 /**
- * The card nearer the camera is the one the depth test draws. A render-order sort handed the tap
- * to a legal card hidden under the rank you touched.
+ * The painter draws a higher renderOrder later. The ray sorts the same way, then by distance
+ * inside one order. A raised card therefore wins wherever its face was hit. A neighbour wins
+ * only on a ray that missed the card drawn over it.
  */
 describe('a tap hits the card you see', () => {
   function hit(order: number, distance: number, name: string) {
-    const group = { renderOrder: order, parent: null, name };
-    return { distance, object: { renderOrder: 0, parent: group }, eventObject: group, name };
+    const group = { renderOrder: order, parent: null, name, userData: { cardId: name } };
+    return { distance, object: { renderOrder: 0, parent: group, userData: {} }, eventObject: group, name };
   }
 
-  it('gives the tap to the closer card, even when a legal card has a later render order', () => {
-    // 3♣ is legal and drawn later. K♦ is nearer the camera, so that is the rank on screen.
-    const diamond = hit(handRenderOrder(8, false), 1.0, 'KD');
-    const club = hit(handRenderOrder(7, true), 1.35, '3C');
-    const ordered = hitsInPaintOrder([diamond, club]);
-    expect(ordered[0]!.name).toBe('KD');
-    expect(ordered[0]!.distance).toBeLessThan(ordered[1]!.distance);
+  it('gives a raised 7 of spades the tap across its face, and each neighbour only where that neighbour was hit', () => {
+    // 5♠ sits left of the 7, K♣ sits right. The 7 is the raised card, so it paints after both.
+    const five = hit(handRenderOrder(4, true), 1.2, '5S');
+    const seven = hit(handRenderOrder(5, true, true), 0.9, '7S');
+    const king = hit(handRenderOrder(6, true), 0.7, 'KC');
+    expect(cardIdFromHit(hitsInPaintOrder([five, king, seven])[0]!.object)).toBe('7S');
+    expect(cardIdFromHit(hitsInPaintOrder([king, seven])[0]!.object)).toBe('7S');
+    expect(cardIdFromHit(hitsInPaintOrder([five, seven])[0]!.object)).toBe('7S');
+    expect(cardIdFromHit(hitsInPaintOrder([five])[0]!.object)).toBe('5S');
+    expect(cardIdFromHit(hitsInPaintOrder([king])[0]!.object)).toBe('KC');
+    const aspect = 390 / 844;
+    const sevenDepth = handCardPlane(aspect, 13, 5, 0, 0, handDepthOpts('selected')).depth;
+    const fiveDepth = handCardPlane(aspect, 13, 4, 0, 0, handDepthOpts('legal')).depth;
+    const kingDepth = handCardPlane(aspect, 13, 6, 0, 0, handDepthOpts('legal')).depth;
+    expect(sevenDepth).toBeLessThan(fiveDepth);
+    expect(sevenDepth).toBeLessThan(kingDepth);
+    expect(handRenderOrder(5, true, true)).toBeGreaterThan(handRenderOrder(6, true));
+    expect(handRenderOrder(5, true, true)).toBeGreaterThan(handRenderOrder(4, false));
+  });
+
+  it('selects the 6 of clubs when that is the only card the ray hit', () => {
+    const six = hit(handRenderOrder(8, true), 1.1, '6C');
+    const other = hit(handRenderOrder(2, true), 0.4, '3H');
+    expect(cardIdFromHit(hitsInPaintOrder([six])[0]!.object)).toBe('6C');
+    // The 6 is further right, so it paints after 3♥. A ray that hits both still lands on the 6.
+    expect(cardIdFromHit(hitsInPaintOrder([other, six])[0]!.object)).toBe('6C');
+    expect(confirmPlay(null, '6C', 0, 200)).toEqual({ type: 'select', card: '6C' });
   });
 
   it('keeps the face above the body, and the front material depth-tests', () => {
@@ -69,10 +90,10 @@ describe('a tap hits the card you see', () => {
     expect(FACE_POLYGON_OFFSET.units).toBeLessThan(0);
   });
 
-  it('plays the card that is closer when a raised card and its neighbour are both under the finger', () => {
-    // Q♦ is raised. 4♦ is closer in z and overlaps it, so 4♦ is the card on screen.
+  it('plays the raised card when it and a neighbour are both under the finger', () => {
+    // Q♦ is raised, so it paints after 4♦. A ray through both faces hits the queen.
     const queen = {
-      renderOrder: handRenderOrder(4, true),
+      renderOrder: handRenderOrder(4, true, true),
       parent: null,
       userData: { cardId: 'QD' },
     };
@@ -86,11 +107,11 @@ describe('a tap hits the card you see', () => {
       { distance: 1.1, object: { renderOrder: 0, parent: queen, userData: {} }, eventObject: queen, name: 'QD' },
     ];
     const ordered = hitsInPaintOrder(hits);
-    expect(cardIdFromHit(ordered[0]!.object)).toBe('4D');
-    const onTheQueen = hitsInPaintOrder([
-      { distance: 0.5, object: { renderOrder: 0, parent: queen, userData: {} }, eventObject: queen, name: 'QD' },
+    expect(cardIdFromHit(ordered[0]!.object)).toBe('QD');
+    const onTheFour = hitsInPaintOrder([
+      { distance: 0.4, object: { renderOrder: 0, parent: four, userData: {} }, eventObject: four, name: '4D' },
     ]);
-    expect(cardIdFromHit(onTheQueen[0]!.object)).toBe('QD');
+    expect(cardIdFromHit(onTheFour[0]!.object)).toBe('4D');
 
     // The mesh stamp wins over a stale closure that still says 4♦.
     const played: string[] = [];
@@ -108,13 +129,13 @@ describe('a tap hits the card you see', () => {
     if (play.type === 'play') expect(play.card).toBe('QD');
   });
 
-  it('keeps the neighbour that was actually hit, and the card on the right stays nearer', () => {
-    // QS is raised. 10S is the next card. It stays closer, so a ray that hit only 10S plays 10S.
+  it('keeps the neighbour that was actually hit, and the raised card stays in front of it', () => {
+    // QS is raised. 10S is the next card. The queen is closer, and a ray that hit only 10S selects 10S.
     const aspect = 390 / 844;
     const queenDepth = handCardPlane(aspect, 10, 4, 0, 0, handDepthOpts('selected')).depth;
     const tenDepth = handCardPlane(aspect, 10, 5, 0, 0, handDepthOpts('legal')).depth;
-    expect(tenDepth).toBeLessThan(queenDepth);
-    expect(queenDepth - tenDepth).toBeGreaterThan(HAND_DEPTH_STEP - LEGAL_NEAR - 1e-9);
+    expect(queenDepth).toBeLessThan(tenDepth);
+    expect(tenDepth - queenDepth).toBeGreaterThan(HAND_DEPTH_STEP);
     const ten = {
       renderOrder: handRenderOrder(5, true),
       parent: null,
@@ -384,13 +405,16 @@ describe('a bad viewport cannot throw the hand away', () => {
     const n = 13;
     const gaps = fanGapPx(Array.from({ length: n }, (_, i) => i >= 5 && i <= 7));
     const slot = handCardPlane(aspect, n, 6, 0, 0, {}, gaps[6]!, screenH);
-    const near = handCardPlane(aspect, n, 6, 0, 0, { near: LEGAL_NEAR }, gaps[6]!, screenH);
+    const near = handCardPlane(aspect, n, 6, 0, 0, handDepthOpts('legal'), gaps[6]!, screenH);
     const beside = handCardPlane(aspect, n, 9, 0, 0, {}, gaps[9]!, screenH);
-    expect(LEGAL_NEAR).toBeLessThan(HAND_DEPTH_STEP);
-    expect(LEGAL_NEAR).toBeGreaterThan(0);
+    expect(LEGAL_NEAR).toBeGreaterThan(HAND_DEPTH_STEP * 3);
     expect(slot.depth - near.depth).toBeCloseTo(LEGAL_NEAR, 6);
-    // The card three steps to the right stays nearer. 0.02 used to clear that neighbour and hide its rank.
-    expect(beside.depth).toBeLessThan(near.depth);
+    // Three steps is the last neighbour that overlaps. The playable card is in front of it.
+    expect(near.depth).toBeLessThan(beside.depth);
+    const raised = handCardPlane(aspect, n, 6, 0, 0, handDepthOpts('selected'), gaps[6]!, screenH);
+    const rightLegal = handCardPlane(aspect, n, 7, 0, 0, handDepthOpts('legal'), gaps[7]!, screenH);
+    expect(raised.depth).toBeLessThan(rightLegal.depth);
+    expect(raised.x).toBeCloseTo(slot.x, 6);
     expect(near.x).toBeCloseTo(slot.x, 6);
     expect(near.y).toBeCloseTo(slot.y, 6);
     const px = fanLayout(aspect, n).viewH / screenH;

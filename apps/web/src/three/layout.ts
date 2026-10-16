@@ -18,6 +18,16 @@ export const FACE_CAP_GAP = 0.0025;
  * A near-bias larger than this step pulls one card in front of the next and hides its rank.
  */
 export const HAND_DEPTH_STEP = 0.006;
+/**
+ * How far a playable card comes toward the camera. Three fan steps is the overlap
+ * (0.018). 0.02 puts that card in front of the neighbours it actually covers.
+ */
+export const PLAY_DEPTH = 0.02;
+/**
+ * A raised card comes forward of those playable neighbours too, so its whole face
+ * wins the depth test. Four steps past the play bias clears the cards it overlaps.
+ */
+export const SELECT_DEPTH = PLAY_DEPTH + 4 * HAND_DEPTH_STEP;
 
 /** Felt half-extents and rail width. */
 export const FELT = { hx: 1.5, hz: 1.78, r: 0.95 };
@@ -194,8 +204,8 @@ export interface FanOpts {
   rollCap?: number;
   short?: boolean;
   /**
-   * Kept for callers that used to pick a depth boost from the pose. Depth no longer reads it:
-   * a play or selected boost covered the ranks on both sides of the raised card.
+   * Who comes forward. `play` is a playable card (PLAY_DEPTH). `selected` is the raised card
+   * (SELECT_DEPTH), in front of the neighbours it overlaps. Omitted: rest.
    */
   layer?: 'rest' | 'play' | 'selected';
   /**
@@ -284,12 +294,13 @@ export function handCardPlane(aspect: number, count: number, i: number, lift: nu
   const xo = halfN * L.step;
   const lowest = xo * xo * L.curveK + (L.ch / 2) * Math.cos(L.maxRoll) + (L.cw / 2) * Math.sin(L.maxRoll);
   const y = -L.viewH / 2 + L.viewH * (0.015 + (o.bottomFrac ?? 0)) + lowest - curve + lift * L.ch;
-  // z-order only: a higher index is closer by HAND_DEPTH_STEP. The card on the right stays in front,
-  // including a raised card. A 0.12 play boost (18 × HAND_DEPTH_STEP < 0.12) used to pull one card
-  // in front of the whole fan, so a raised 7 covered the 5 and the king beside it.
+  // A higher index is closer by HAND_DEPTH_STEP. Playable cards, and a raised card even more,
+  // come forward of the neighbours they overlap so the depth buffer matches the draw order.
   // Phones with a 16-bit depth buffer (iPhone Safari) z-fight at ~0.0003 here; the step stays well above that.
+  const layer = o.layer ?? 'rest';
+  const boost = layer === 'selected' ? SELECT_DEPTH : layer === 'play' ? PLAY_DEPTH : 0;
   const near = Number.isFinite(o.near) && o.near! > 0 ? o.near! : 0;
-  const depth = 1 - (i + 1) * HAND_DEPTH_STEP - near;
+  const depth = 1 - (i + 1) * HAND_DEPTH_STEP - boost - near;
   return { x, y, roll, depth, s: L.s };
 }
 

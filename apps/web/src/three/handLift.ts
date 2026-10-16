@@ -1,4 +1,4 @@
-import { CH } from './layout';
+import { CH, PLAY_DEPTH, SELECT_DEPTH } from './layout';
 
 /**
  * Your-turn hand: when some cards cannot be played, the playable ones rise a little and the
@@ -62,6 +62,13 @@ export const SELECT_GLOW_OP = 0.8;
 export const GROUP_GAP_PX = 0;
 /** Render order of a legal card sits above every illegal card. Index is added so left-to-right stays put. */
 export const LEGAL_STACK = 100;
+/**
+ * A selected card draws after every other hand card. 400 clears a 17-card fan
+ * (face is order + 0.5, ring is order + RING_ABOVE). It matches SELECT_DEPTH:
+ * the raised card is closer, and it is painted last, so the depth buffer and the
+ * painter agree on which card is on top.
+ */
+export const SELECT_STACK = 400;
 
 /**
  * Not-playable cards read at about 40% brightness. The albedo below was tuned on the lit, tone-mapped
@@ -147,31 +154,33 @@ export function handCardChrome(o: {
 /**
  * Painter's order for one hand card. Every legal card draws after every illegal card.
  * Within each group the index still increases left to right.
- * A raised card used to jump ahead of every neighbour. That painted it over the closer card
- * on its right, so the 7 covered the king even though the king was nearer the camera.
+ * `front` is the raised card: it draws after every neighbour, and SELECT_DEPTH keeps it closer,
+ * so the card you see and the card the ray hits are the same one.
  */
-export function handRenderOrder(index: number, above: boolean): number {
+export function handRenderOrder(index: number, above: boolean, front = false): number {
+  if (front) return SELECT_STACK + index;
   return (above ? LEGAL_STACK : 0) + index;
 }
 
 /**
  * Camera-space stack for one pose. Depth is not the screen raise.
- * Legal and selected share one tie-break, smaller than a fan step, so the card on the right
- * stays nearer. The raise is only the upward slide.
+ * A playable card comes forward of the neighbours it overlaps. A raised card comes
+ * forward of those too, so its whole face stays visible.
  */
-export function handDepthOpts(pose: HandPose): { layer: 'rest'; near?: number } {
-  if (pose === 'selected' || pose === 'legal') return { layer: 'rest', near: LEGAL_NEAR };
+export function handDepthOpts(pose: HandPose): { layer: 'rest' | 'play' | 'selected' } {
+  if (pose === 'selected') return { layer: 'selected' };
+  if (pose === 'legal') return { layer: 'play' };
   return { layer: 'rest' };
 }
 
 /**
  * How far a playable card moves toward the camera, in the fan's depth units.
- * The fan steps 0.006 per card. 0.02 cleared the three neighbours that overlap a card
- * and hid their ranks (a tap on the 6 then hit the 3 that was painted over it).
- * This stays under one step: a tie-break against the same slot, not a new order.
+ * The fan steps 0.006 per card. This clears the three neighbours that overlap a card.
  * It does not change the picture: position and scale are both multiplied by depth.
  */
-export const LEGAL_NEAR = 0.003;
+export const LEGAL_NEAR = PLAY_DEPTH;
+/** How far a raised card sits in front of a playable neighbour. */
+export const SELECT_NEAR = SELECT_DEPTH;
 
 /**
  * Window-space depth bias for the face and the back.
@@ -194,7 +203,7 @@ export const FACE_POLYGON_OFFSET = { factor: 0, units: -8 } as const;
  * once the face and the hairline share a depth tile. A local push of 0.012 is about 0.003 camera
  * units on a phone fan: past those 8 units, and still under the 0.006 step to the next peer, so
  * a card at the same raise still lets the card on its right cover the overlap. A selected card
- * uses that same step: it does not come forward of either neighbour. It is geometry, not
+ * does not: SELECT_DEPTH and SELECT_STACK put it in front of both neighbours. It is geometry, not
  * polygonOffset, because the Metal depth bias that feeds polygonOffset is the part that goes
  * wrong on that buffer.
  */
@@ -214,8 +223,8 @@ export function applyFaceDepthBias(material: { polygonOffset: boolean; polygonOf
  * toward the camera, and half a step later in render order, so the cap cannot cover the pips.
  * A ring drawn just under its own face is covered wherever the next card overlaps it,
  * so a run of legal cards reads as one outline around the group. The ring instead draws
- * RING_ABOVE past its band: past every peer face in a 17-card hand. The raised card does not
- * get a later band — that painted it over the ranks beside it.
+ * RING_ABOVE past its band: past every peer face in a 17-card hand, and still under the
+ * selected card's face (SELECT_STACK is 400, a legal face tops out near 116).
  */
 export const RING_ABOVE = 40;
 
@@ -256,6 +265,17 @@ export function cardIdFromHit(obj: CardHitNode | null | undefined): string | nul
   return null;
 }
 
+/** Highest renderOrder on this object or an ancestor. The card root carries the stack for taps. */
+export function paintOrder(obj: PaintNode | null | undefined): number {
+  let best = 0;
+  let o = obj;
+  while (o) {
+    if (o.renderOrder > best) best = o.renderOrder;
+    o = o.parent;
+  }
+  return best;
+}
+
 export interface PlanePoint { x: number; y: number }
 
 export interface PointerCss {
@@ -285,13 +305,20 @@ export function pointerNdc(
 }
 
 /**
- * The closest mesh under the finger gets the tap. That is the card the depth test draws.
- * Sorting by render order, or retargeting a neighbour hit onto a saved screen quad, gave the
- * tap to a card you could not see: a raised 7 played the 5 under it, and a first tap on the
- * 6 of clubs selected the 3 of hearts. The quad was also a frame behind the raise.
+ * Same order the renderer uses. Three.js draws a higher renderOrder later, so that card is
+ * the one on top. Within one renderOrder the closer mesh is the one that wrote the depth.
+ * A raised card therefore wins wherever its face is what you see. A neighbour wins only
+ * where the ray actually hit that neighbour and not the card drawn over it.
+ * No saved screen quad: that quad lagged the raise and disagreed with this order.
  */
-export function hitsInPaintOrder<T extends { distance: number }>(hits: readonly T[]): T[] {
-  return hits.slice().sort((a, b) => a.distance - b.distance);
+export function hitsInPaintOrder<T extends { distance: number; eventObject?: CardHitNode | null; object: CardHitNode }>(
+  hits: readonly T[],
+): T[] {
+  const orderOf = (h: T) => Math.max(paintOrder(h.object), paintOrder(h.eventObject));
+  return hits.slice().sort((a, b) => {
+    const d = orderOf(b) - orderOf(a);
+    return d !== 0 ? d : a.distance - b.distance;
+  });
 }
 
 /**
