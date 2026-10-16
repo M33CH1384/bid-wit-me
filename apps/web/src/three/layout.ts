@@ -193,6 +193,10 @@ export interface FanLayout {
   viewH: number;
   /** CSS pixels reserved on each side of a raised card. 0 when nothing is raised. */
   raiseOpen: number;
+  /** Pivot fan only: distance from the pivot (below the screen) to each card's centre, in plane units. 0 = flat arc. */
+  pivotR?: number;
+  /** Pivot fan only: angle between neighbouring cards, in radians. */
+  dTheta?: number;
 }
 
 /** Widest strip we ask for. A 13-card fan on a 390px phone can hold this. */
@@ -264,11 +268,57 @@ export interface FanOpts {
    * Screen x/y stay put, so the outline, which is built from those plane coordinates, does not slide.
    */
   near?: number;
+  /**
+   * Pivot fan: cards rotate about a point this many card heights below each card's centre,
+   * like a hand of cards held in a fist. The tappable strip is measured near the top of the
+   * card, where the fan opens widest, so the cards can be much larger than in a flat row.
+   * Needs `pxW` and `minStripPx`.
+   */
+  pivot?: number;
+}
+
+/** Where the strip is measured, as a fraction of the card height below its top edge. */
+export const STRIP_LINE_FRAC = 0.2;
+
+function pivotFanLayout(aspect: number, count: number, safeFrac: number, o: FanOpts): FanLayout | null {
+  const pivot = o.pivot ?? 0;
+  const pxW = Number.isFinite(o.pxW) && o.pxW! >= 32 ? o.pxW! : 0;
+  if (!(pivot > 0) || !pxW || !(o.minStripPx! > 0)) return null;
+  const cam = makeCamera(aspect, o.short);
+  const viewH = 2 * Math.tan((cam.fov * Math.PI) / 360);
+  const viewW = viewH * aspect;
+  const k = pxW / viewW;
+  const edge = o.edgeFrac ?? 0.06;
+  const halfAvail = viewW / 2 - viewW * (o.edgeFrac ?? Math.max(0.06, safeFrac + 0.025, o.reserveFrac ?? 0));
+  const halfN = Math.max(0, (count - 1) / 2);
+  // A few pixels over the floor: a lifted playable card slides its tilted edge sideways over the next strip.
+  const strip = Math.min(o.minStripPx!, Math.max(16, (pxW * (1 - 2 * edge)) / Math.max(1, count)) * 1.6) + 4;
+  const spread = Number.isFinite(o.spread) && o.spread! > 0;
+  let s = Math.min(viewH * (o.heightFrac ?? 0.16), viewW * 0.25 * 1.4 * 1.5) / CH;
+  let out: FanLayout | null = null;
+  for (let it = 0; it < 80; it++) {
+    const cw = CW * s;
+    const ch = CH * s;
+    const R = pivot * ch;
+    const rLine = R + ch * (0.5 - STRIP_LINE_FRAC);
+    const dTheta = halfN > 0 ? Math.min(0.5, strip / k / rLine) : 0;
+    const tMax = halfN * dTheta;
+    const outer = R * Math.sin(tMax) + (cw / 2) * Math.cos(tMax) + (ch / 2) * Math.sin(tMax);
+    const step = rLine * dTheta;
+    // Room for a raised card is always reserved, so the cards keep one size whether or not one is raised.
+    const open = raiseOpenPx(cw * k, step * k, strip);
+    out = { s, cw, ch, step, maxRoll: tMax, curveK: 0, viewW, viewH, raiseOpen: spread ? open : 0, pivotR: R, dTheta };
+    if ((halfAvail - outer) * k >= open + 1) break;
+    s *= 0.97;
+  }
+  return out;
 }
 
 export function fanLayout(aspect: number, count: number, safeFrac = 0, o: FanOpts = {}): FanLayout {
   if (!(Number.isFinite(aspect) && aspect > 0.05 && aspect < 20)) aspect = 9 / 16;
   if (!(count >= 1)) count = 1;
+  const pivoted = pivotFanLayout(aspect, count, safeFrac, o);
+  if (pivoted) return pivoted;
   const cam = makeCamera(aspect, o.short);
   const D = 1;
   const viewH = 2 * Math.tan((cam.fov * Math.PI) / 360) * D;
@@ -366,10 +416,12 @@ export function fanLayout(aspect: number, count: number, safeFrac = 0, o: FanOpt
 export const PHONE_HAND_HEIGHT = 0.3;
 export const PHONE_HAND_EDGE = 0.018;
 export const PHONE_HAND_ROLL = 0.2;
+/** Phone fan pivot, in card heights below each card's centre. Smaller is a rounder arc. */
+export const PHONE_HAND_PIVOT = 2.4;
 export const HAND_EXPOSED_PX = 44;
 
 export function phoneHandFan(): FanOpts {
-  return { heightFrac: PHONE_HAND_HEIGHT, edgeFrac: PHONE_HAND_EDGE, rollCap: PHONE_HAND_ROLL };
+  return { heightFrac: PHONE_HAND_HEIGHT, edgeFrac: PHONE_HAND_EDGE, rollCap: PHONE_HAND_ROLL, pivot: PHONE_HAND_PIVOT };
 }
 
 /** Card width, card height, and the strip of each card that is not covered by the next, in CSS pixels. */
@@ -401,12 +453,28 @@ export function handCardPlane(aspect: number, count: number, i: number, lift: nu
   // Dividing by max(1, screenH) turned an 8px subset gap into screen-heights on a 0-height canvas, and 0/NaN poisoned x.
   const sh = Number.isFinite(screenH) && screenH >= 32 ? screenH : 0;
   const gap = Number.isFinite(gapPx) ? gapPx : 0;
-  const x = off * L.step + (sh > 0 ? (gap / sh) * L.viewH : 0);
-  const roll = halfN > 0 ? -(off / halfN) * L.maxRoll : 0;
-  const curve = x * x * L.curveK;
-  // the outermost (most rolled, most curved-down) card's lowest corner sits exactly on the bottom margin
-  const xo = halfN * L.step;
-  const lowest = xo * xo * L.curveK + (L.ch / 2) * Math.cos(L.maxRoll) + (L.cw / 2) * Math.sin(L.maxRoll);
+  const gapX = sh > 0 ? (gap / sh) * L.viewH : 0;
+  let x: number;
+  let roll: number;
+  let curve: number;
+  let lowest: number;
+  if (L.pivotR && L.pivotR > 0) {
+    // Pivot fan: each card turns about one point below the hand, so the tops open wider than the bottoms.
+    // A gap (raise spread, legal-run gap) opens the fan along its arc, measured on the strip line.
+    const rLine = L.pivotR + L.ch * (0.5 - STRIP_LINE_FRAC);
+    const t = off * (L.dTheta ?? 0) + gapX / rLine;
+    x = L.pivotR * Math.sin(t);
+    roll = -t;
+    curve = L.pivotR * (1 - Math.cos(t));
+    lowest = L.pivotR * (1 - Math.cos(L.maxRoll)) + (L.ch / 2) * Math.cos(L.maxRoll) + (L.cw / 2) * Math.sin(L.maxRoll);
+  } else {
+    x = off * L.step + gapX;
+    roll = halfN > 0 ? -(off / halfN) * L.maxRoll : 0;
+    curve = x * x * L.curveK;
+    // the outermost (most rolled, most curved-down) card's lowest corner sits exactly on the bottom margin
+    const xo = halfN * L.step;
+    lowest = xo * xo * L.curveK + (L.ch / 2) * Math.cos(L.maxRoll) + (L.cw / 2) * Math.sin(L.maxRoll);
+  }
   const y = -L.viewH / 2 + L.viewH * (0.015 + (o.bottomFrac ?? 0)) + lowest - curve + lift * L.ch;
   // A higher index is closer by HAND_DEPTH_STEP. Playable cards, and a raised card even more,
   // come forward of the neighbours they overlap so the depth buffer matches the draw order.
