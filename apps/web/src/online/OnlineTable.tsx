@@ -26,9 +26,9 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
   const spectator = !!cs.spectator && cs.seat === null;
   const names = useMemo(() => (rot ? localNames(room, rot, spectator) : []), [room, rot, spectator]);
   const send = useCallback((text: string) => conn.send({ t: 'chat', text }), [conn]);
-  // Engine dealer seat (unrotated view) → the current occupant's plate name. Not the rotated index, and not a name frozen at the deal.
-  const dealerName = useMemo(() => {
-    if (!cs.view) return '';
+  // Engine dealer seat (unrotated view) and its current occupant. The chip and the popup both use this.
+  const dealer = useMemo(() => {
+    if (!cs.view) return null;
     const n = room.rules.playerCount;
     const occupants = room.seats.slice(0, n).map((s) => (
       !s || s.kind === 'empty' ? { name: '', kind: 'empty' as const } : { name: s.name, kind: s.kind }
@@ -37,8 +37,9 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
       serverDealer: cs.view.dealer,
       occupants,
       viewerSeat: spectator || cs.seat === null ? null : cs.seat,
-    }).name;
+    });
   }, [cs.view, room.seats, room.rules.playerCount, spectator, cs.seat]);
+  const dealerName = dealer?.name ?? '';
   const [hideSpec, setHideSpec] = useState(loadHideSpectatorChat);
   const chat = useOnlineChat(cs, source?.st ?? null, names, send, hideSpec && !spectator, dealerName);
   const skew = room.now - Date.now();
@@ -146,6 +147,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
           controls: spectator ? undefined : <MediaBar mesh={mesh} vs={vs} seated limited={limitedNow} />,
           spectator,
           dealerName,
+          dealerSeat: dealer?.localSeat,
           run: cs.run ? orientRun(cs.run, spectator ? null : cs.seat, rot.n) : null,
           overlay: <SpectatorOverlay room={room} cs={cs} spectator={spectator} names={names} hideChat={hideSpec}
             onHideChat={(on) => { setHideSpec(on); saveHideSpectatorChat(on); }}

@@ -139,10 +139,13 @@ export interface OnlineBinding {
   /** Release 10: watching, not playing. Seat 0 is a real player (names[0] is their name): no hand, no controls. */
   spectator?: boolean;
   /**
-   * Current hand's dealer, already mapped from the server seat to the plate name.
-   * Offline leaves this unset and derives it from the engine seat.
+   * Current hand's dealer, from one `dealerFromServer` result: the engine seat's occupant
+   * and that seat after the table rotates the viewer to the bottom. Offline leaves these
+   * unset and derives both from the engine seat.
    */
   dealerName?: string;
+  /** Local seat for `dealerName`. Same call, so the DEALER chip and the popup cannot name two bots. */
+  dealerSeat?: number;
   /** Resolved Run it! in local seats. Present for every viewer until the next hand, including the one who did not claim. */
   run?: RunPlayback | null;
   /** Release 10: spectator banner / take-seat prompt / watchers chip, drawn over the table */
@@ -561,12 +564,15 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // online: `locked` while our move is in flight (until the server acks it), so it can't be sent twice
   const spectating = !!online?.spectator;
   const face = (seat: number) => seatFacingName(names, seat, spectating);
-  // Online: the server seat's current occupant (OnlineTable). Offline: engine dealer, viewer at seat 0.
-  const dealerLabel = online?.dealerName || dealerFromServer({
+  // One identity for the chip and the popup. Online passes the engine seat's occupant (and its
+  // local seat) from dealerFromServer. Offline: the viewer sits at engine seat 0.
+  const offlineDealer = dealerFromServer({
     serverDealer: st.dealer,
     occupants: names.map((name) => ({ name, kind: 'human' as const })),
     viewerSeat: spectating ? null : 0,
-  }).name;
+  });
+  const dealerLabel = online?.dealerName || offlineDealer.name;
+  const dealerSeat = online?.dealerSeat != null ? online.dealerSeat : offlineDealer.localSeat;
   const showDealer = !!dealerLabel && (dealing || isFreshDeal(st));
   const turnLocked = !!online?.source.locked;
   // Badges and playable cards share this. `covered` (Run it!) is applied again once that show exists.
@@ -1026,7 +1032,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       <div className={`plate ${isTurn ? 'turn' : ''} ${partner ? 'ally' : 'foe'}`} data-testid={`seat-${seat}`} title={isBotSeat(seat) ? `${names[seat]} · ${personaTag(names[seat]!, revealed.includes(seat))}` : undefined} data-persona={isBotSeat(seat) ? personaTag(names[seat]!, revealed.includes(seat)) : undefined}>
         <div className="plate-avatar" style={{ ['--uc' as string]: SEAT_COLORS[seat] }}>{names[seat]![0]}</div>
         <div className="plate-body">
-          <div className="plate-name">{names[seat]}{st.dealer === seat && <span className="chip dealer" data-testid={`dealer-${seat}`}>DEALER</span>}{partner && <span className="chip ally">PARTNER</span>}{notice.includes(sideOf(seat, r)) && <span className="chip notice" data-testid={`notice-${seat}`} title="Got shot last hand: one more shot and they're out">ON NOTICE</span>}</div>
+          <div className="plate-name">{names[seat]}{dealerSeat === seat && <span className="chip dealer" data-testid={`dealer-${seat}`}>DEALER</span>}{partner && <span className="chip ally">PARTNER</span>}{notice.includes(sideOf(seat, r)) && <span className="chip notice" data-testid={`notice-${seat}`} title="Got shot last hand: one more shot and they're out">ON NOTICE</span>}</div>
           <div className="plate-stats">
             <span className="chip">{b === 'books' ? 'BOOKS' : `BID ${b === null ? (isTurn && st.phase === 'bidding' ? '…' : '—') : bidLabel(b).toUpperCase()}`}</span>
             <span className="chip">TOOK {sb.tricksWon[seat]}</span>
@@ -1207,7 +1213,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
       {/* center notes */}
       <div className="center-note-wrap">
-        {showDealer && <DealerPopup name={dealerLabel} localSeat={st.dealer} />}
+        {showDealer && <DealerPopup name={dealerLabel} localSeat={dealerSeat} />}
         {st.phase === 'bidding' && !pause && !dealing && st.turn !== HUMAN && <div className="center-note" data-testid="bidding-note">{biddingNote(names[st.turn!] ?? '', { partnerships: r.partnerships, partnerTurn: st.turn === partnerSeat, spectating })}</div>}
         {showCenterBidOrder(st.phase, pause, dealing) && <BidOrder st={st} names={names} me={spectating ? -1 : HUMAN} />}
         {isBooks && st.phase === 'playing' && !pause && !dealing && st.tricks.length === 0 && st.trick.plays.length === 0 && <div className="center-note books-note" data-testid="books-note">First hand: books bid themselves · 10 per book</div>}
@@ -1273,7 +1279,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         <div className={`plate me-plate ${actor === HUMAN && !spectating ? 'turn' : ''}`} data-testid="seat-0">
           <div className="plate-avatar" style={{ ['--uc' as string]: spectating ? SEAT_COLORS[HUMAN] : USER_COLORS.You }}>{seatInitial(face(HUMAN))}</div>
           <div className="plate-body">
-            <div className="plate-name">{face(HUMAN).toUpperCase()}{st.dealer === HUMAN && <span className="chip dealer" data-testid="dealer-0">DEALER</span>}{notice.includes(sideOf(HUMAN, r)) && <span className="chip notice" data-testid="notice-0" title={noticeTip(spectating)}>ON NOTICE</span>}{!spectating && myBadges.map((b) => BADGES[b.id] && <span key={b.id} className="chip badge" title={`${BADGES[b.id]!.name}: ${BADGES[b.id]!.desc}`} data-testid={`plate-badge-${b.id}`}>{BADGES[b.id]!.icon}</span>)}</div>
+            <div className="plate-name">{face(HUMAN).toUpperCase()}{dealerSeat === HUMAN && <span className="chip dealer" data-testid="dealer-0">DEALER</span>}{notice.includes(sideOf(HUMAN, r)) && <span className="chip notice" data-testid="notice-0" title={noticeTip(spectating)}>ON NOTICE</span>}{!spectating && myBadges.map((b) => BADGES[b.id] && <span key={b.id} className="chip badge" title={`${BADGES[b.id]!.name}: ${BADGES[b.id]!.desc}`} data-testid={`plate-badge-${b.id}`}>{BADGES[b.id]!.icon}</span>)}</div>
             <div className="plate-stats">
               <span className="chip">{st.bids[HUMAN] === 'books' ? 'BOOKS' : `BID ${st.bids[HUMAN] === null ? '—' : bidLabel(st.bids[HUMAN]).toUpperCase()}`}</span>
               <span className="chip">TOOK {sb.tricksWon[HUMAN]}</span>
