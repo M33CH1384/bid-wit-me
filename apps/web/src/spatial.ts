@@ -45,6 +45,24 @@ export function withVoiceMuted(muted: Record<string, true> | undefined, playerId
 }
 
 export const SOUNDSCAPE_ROOMS: Exclude<VenueBed, 'none'>[] = ['cookout', 'basement', 'barbershop', 'casino', 'jazz', 'beach', 'kitchen', 'mansion', 'rooftop', 'yacht'];
+/** Demetrius's four soundscape families. EVERY room stays in the Auto random pool; each room maps to
+ *  exactly one family's audio character (bed tone, convolver size, card surface). Competitive
+ *  Tournament is a family (large hall), not a room — mansion/casino carry it. */
+export type SoundscapeFamily = 'cookout' | 'basement' | 'barbershop' | 'tournament';
+export const ROOM_FAMILY: Record<(typeof SOUNDSCAPE_ROOMS)[number], SoundscapeFamily> = {
+  cookout: 'cookout', beach: 'cookout', rooftop: 'cookout', yacht: 'cookout', kitchen: 'cookout',
+  basement: 'basement',
+  barbershop: 'barbershop', jazz: 'barbershop',
+  mansion: 'tournament', casino: 'tournament',
+};
+export function familyOf(room: VenueBed): SoundscapeFamily | null { return room === 'none' ? null : ROOM_FAMILY[room as (typeof SOUNDSCAPE_ROOMS)[number]] ?? null; }
+/** Intelligible name for the loading chip / menu (Phase 4): the room's own name; the family only
+ *  shapes the audio. basement's room is the Church Basement venue, whose soundscape name follows. */
+export const ROOM_NAMES: Record<(typeof SOUNDSCAPE_ROOMS)[number], string> = {
+  cookout: 'Backyard Cookout', basement: 'Basement Spades Night', barbershop: 'Barbershop', casino: 'Vegas High Roller',
+  jazz: 'Speakeasy Lounge', beach: 'Beach Cabana', kitchen: "Grandma's Kitchen", mansion: 'Mansion', rooftop: 'Rooftop', yacht: 'Yacht Deck',
+};
+export function roomName(room: VenueBed): string { return room === 'none' ? '' : ROOM_NAMES[room as (typeof SOUNDSCAPE_ROOMS)[number]] ?? room; }
 function seedHash(seed: string): number { let h = 2166136261; for (let i = 0; i < seed.length; i++) { h ^= seed.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
 /** Room resolver. Explicit room wins and persists; then a Story stop's mapped room; then Auto =
  *  a seeded random room per game/session (host/session seed, so online clients agree).
