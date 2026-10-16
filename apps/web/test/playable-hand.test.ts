@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MeshStandardMaterial, Quaternion, Vector3 } from 'three';
-import { FACE_POLYGON_OFFSET, GROUP_PAD_PX, GROUP_RADIUS_PX, LEGAL_LIFT_PX, LEGAL_NEAR, RING_ABOVE, TAP_PLAY_ARM_MS, applyFaceDepthBias, cardIdFromHit, cardMeshPaint, cardPartOrder, cardTapHandlers, confirmPlay, cssPxToPlane, fanGapPx, handRenderOrder, hitsInPaintOrder, raiseLocalY, screenRaise, setPointerSelected } from '../src/three/handLift';
+import { FACE_POLYGON_OFFSET, GROUP_PAD_PX, GROUP_RADIUS_PX, LEGAL_LIFT_PX, LEGAL_NEAR, RING_ABOVE, applyFaceDepthBias, cardIdFromHit, cardMeshPaint, cardPartOrder, cardTapHandlers, cssPxToPlane, fanGapPx, handRenderOrder, hitsInPaintOrder, raiseLocalY, screenRaise, setPointerSelected } from '../src/three/handLift';
+import { TAP_PLAY_ARM_MS, confirmPlay } from '../src/online/playGuard';
 import { FACE_CAP_GAP, fanLayout, handCardPlane, handFan, makeCamera } from '../src/three/layout';
 import { cardGeometry } from '../src/three/geometry';
 import { contourContains, groupOutline, haloLocal, placeOnPlane, planePointOk, unionContours } from '../src/three/playableOutline';

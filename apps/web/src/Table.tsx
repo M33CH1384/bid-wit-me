@@ -1,6 +1,5 @@
 import { cardControlLabel } from './cardA11y';
-import { ignorePlayTap, playTrickOf, type PlayTrick } from './online/playGuard';
-import { confirmPlay } from './three/handLift';
+import { confirmPlay, ignorePlayTap, playTrickOf, type PlayTrick } from './online/playGuard';
 import { actingSeat, seatMark } from './turnState';
 import { retainHandOrder } from './handOrder';
 import { winHeadline } from './headline';

@@ -127,27 +127,6 @@ export function cardTapHandlers(onTap: ((cardId: string) => void) | null | undef
 }
 
 /**
- * How long a freshly selected card stays a selection. A second pointer event in this window
- * (a touch plus the mouse event iOS synthesises) must not play the card it just selected,
- * and it must not play the neighbour underneath a card that is still rising.
- */
-export const TAP_PLAY_ARM_MS = 120;
-
-/**
- * One tap selects. The next tap plays, and the card that leaves the hand is the selected id.
- * A hit on a different card changes the selection. It never plays that other card.
- */
-export function confirmPlay(selected: string | null, hit: string, selectedAt: number, now: number):
-  { type: 'play'; card: string } | { type: 'select'; card: string } | { type: 'ignore' } {
-  if (!hit) return { type: 'ignore' };
-  if (selected !== null && hit === selected) {
-    if (!(now - selectedAt >= TAP_PLAY_ARM_MS)) return { type: 'ignore' };
-    return { type: 'play', card: selected };
-  }
-  return { type: 'select', card: hit };
-}
-
-/**
  * Per card, never on the fan. `dim` is only the illegal pose. There is no gold ring: `glow` stays
  * false, including a tap and a tip mark. Playable cards rise only when something in the hand cannot
  * be played. An all-legal lead, or a follow while void, stays on the fan until you tap one card.
