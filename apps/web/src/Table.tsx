@@ -45,6 +45,7 @@ import type { SeatPos } from './three/layout';
 import { HUMAN, useGame } from './useGame';
 import { DealerPopup } from './DealerPopup';
 import { dealerAnnouncement, dealerFromServer, withCurrentDealerLine } from './dealerName';
+import { leaveChoice, leaveMenuAction, type LeaveGesture } from './leaveMenu';
 import { biddingNote, noticeTip, seatFacingName, seatInitial, trickTakenLine } from './seatLabel';
 import { MinBidLine, bidChoices, minBidNote } from './minBid';
 import { type SavedGame, clearGame, saveGame } from './save';
@@ -834,6 +835,20 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     return () => clearTimeout(t);
   }, [resume]);
   const leave = () => { if (!online) clearGame(); onExit(); };
+  // A tap that starts on Leave always leaves, even when WebKit delivers the click to the scrim.
+  const leaveGesture = useRef<LeaveGesture>({ armed: false, actedAt: 0 });
+  const runLeaveMenu = (e: { type: string; pointerType?: string }, where: 'leave' | 'scrim') => {
+    const now = performance.now();
+    const action = leaveMenuAction({ type: e.type as 'pointerdown' | 'pointerup' | 'click', pointerType: e.pointerType }, where, leaveGesture.current, now);
+    if (action === 'arm') { leaveGesture.current = { ...leaveGesture.current, armed: true }; return; }
+    if (action === 'disarm') { leaveGesture.current = { ...leaveGesture.current, armed: false }; return; }
+    if (action === 'ignore') return;
+    if (action === 'close') { leaveGesture.current = { armed: false, actedAt: 0 }; setMenuOpen(false); return; }
+    leaveGesture.current = { armed: false, actedAt: now };
+    setMenuOpen(false);
+    if (leaveChoice(!!online, st.phase) === 'leave') leave();
+    else setConfirmLeave(true);
+  };
   // game over: no confirmation — the game is finished
   const mainMenu = () => { if (!online) clearGame(); (onMainMenu ?? onExit)(); };
   const isBooks = booksHand(st);
@@ -1133,13 +1148,13 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           <button type="button" className={`bug-btn ${menuOpen ? 'on' : ''}`} onClick={() => setMenuOpen(!menuOpen)} aria-label="Menu" aria-expanded={menuOpen} data-testid="menu">☰</button>
           {menuOpen && (
             <>
-              <div className="menu-scrim" onClick={() => setMenuOpen(false)} />
+              <div className="menu-scrim" onPointerDown={(e) => runLeaveMenu(e, 'scrim')} onPointerUp={(e) => runLeaveMenu(e, 'scrim')} onClick={(e) => runLeaveMenu(e, 'scrim')} />
               <div className="game-menu glass" role="menu" data-testid="game-menu">
                 <button type="button" role="menuitem" className={help ? 'on' : ''} data-testid="help" aria-pressed={help} onClick={() => { setHelp(!help); setMenuOpen(false); }}>❓ Help: tips &amp; book counting</button>
                 <button type="button" role="menuitem" data-testid="scorepad-button" onClick={() => { setShowPad(true); setMenuOpen(false); }}>📋 Score pad &amp; house rules</button>
                 <button type="button" role="menuitem" onClick={() => onQuality(settings.quality === 'high' ? 'low' : 'high')}>🎨 Graphics: {settings.quality === 'high' ? 'High' : 'Low'}</button>
                 <div className="menu-social"><SocialButton className="compact" /></div>
-                <button type="button" role="menuitem" className="danger" data-testid="menu-leave" onClick={() => { setMenuOpen(false); if (online || st.phase === 'gameOver') leave(); else setConfirmLeave(true); }}>🚪 Leave table</button>
+                <button type="button" role="menuitem" className="danger" data-testid="menu-leave" onPointerDown={(e) => { e.currentTarget.setPointerCapture?.(e.pointerId); runLeaveMenu(e, 'leave'); }} onPointerUp={(e) => runLeaveMenu(e, 'leave')} onClick={(e) => runLeaveMenu(e, 'leave')}>🚪 Leave table</button>
               </div>
             </>
           )}
@@ -1355,8 +1370,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
       {feedback && <Feedback onClose={() => setFeedback(false)} />}
       {confirmLeave && (
-        <div className="modal-backdrop" onClick={() => setConfirmLeave(false)}>
-          <div className="modal glass slant confirm" role="dialog" aria-label="Leave this game?" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-backdrop" onPointerDown={(e) => { if (e.target === e.currentTarget) setConfirmLeave(false); }}>
+          <div className="modal glass slant confirm" role="dialog" aria-label="Leave this game?" data-testid="confirm-leave" onPointerDown={(e) => e.stopPropagation()}>
             <div className="panel-title big">LEAVE THIS GAME?</div>
             <p className="muted">{onSuspend ? 'Leave ends it for good. Save & quit lets you resume from the menu.' : 'Your progress in this game will be lost.'}</p>
             <div className="bid-row">
