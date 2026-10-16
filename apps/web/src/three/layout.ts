@@ -420,7 +420,7 @@ export const PHONE_HAND_HEIGHT = 0.3;
 export const PHONE_HAND_EDGE = 0.018;
 export const PHONE_HAND_ROLL = 0.2;
 /** Phone fan pivot, in card heights below each card's centre. Smaller is a rounder arc. */
-export const PHONE_HAND_PIVOT = 2.4;
+export const PHONE_HAND_PIVOT = 1.3;
 export const HAND_EXPOSED_PX = 44;
 
 export function phoneHandFan(): FanOpts {

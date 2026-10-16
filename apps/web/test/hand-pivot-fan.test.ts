@@ -22,6 +22,13 @@ describe('phone pivot fan', () => {
     expect(fanCssPx(L, W).width).toBeGreaterThanOrEqual(34 * 1.3);
     expect(L.maxRoll).toBeGreaterThan(0.5);
   });
+  // Real iPhone Safari viewports (browser bars showing) and the full-height 390x844.
+  for (const [w, h] of [[375, 667], [390, 664], [393, 659], [430, 739], [390, 844]] as const) {
+    it(`a 13-card hand is ~1.7x the old 34px card on a ${w}x${h} phone`, () => {
+      const L = fanLayout(w / h, 13, 0, { ...phoneHandFan(), minStripPx: MIN_STRIP_PX, pxW: w, spread: 0.4 });
+      expect(fanCssPx(L, w).width).toBeGreaterThanOrEqual(55);
+    });
+  }
   it('keeps the card size the same when a card is raised', () => {
     const base = { ...phoneHandFan(), minStripPx: MIN_STRIP_PX, pxW: W };
     expect(fanLayout(A, 13, 0, { ...base, spread: 0.4 }).cw).toBeCloseTo(fanLayout(A, 13, 0, base).cw, 6);
