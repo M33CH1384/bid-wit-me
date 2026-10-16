@@ -10,7 +10,7 @@ import { GAP_S, RAISE_SPREAD, spreadSeconds, cardIdFromHit, echoTap, fanGapPx, f
 import { type HandHitCard, pickHandCard, publishHandHits, publishedHandHits } from './handHit';
 import { paintFace } from '../cardArt';
 import { dragStarted, dropResult } from '../dragPlay';
-import { DEFAULT_SLAM, type DragSample, clearDrop, noteDrop, releaseVector, releaseVelocity, slamFeel, slamIntensity, takeDrop } from '../slam';
+import { DEFAULT_SLAM, type DragSample, clearDrop, dragSlamIntensity, noteDrop, releaseVector, releaseVelocity, slamFeel, slamIntensity, takeDrop } from '../slam';
 import { reducedMotion } from './handLift';
 import { VISIBLE_FELT, landTrick, playSeed, runScatter } from './landing';
 import { shakeOffset, swayOffset } from './shake';
@@ -97,23 +97,38 @@ export interface SceneProps {
   slam?: { seat: number; cards: Card[]; others?: { seat: number; card: Card }[] } | null;
   /** the venue (3D arena) around the table; default classic */
   venue?: VenueId;
+  /** camera view: standing (default) or sitting (lower/closer) */
+  view?: 'standing' | 'sitting';
 }
 
-function CameraRig() {
+function CameraRig({ view = 'standing' }: { view?: 'standing' | 'sitting' }) {
   const { camera, size, invalidate } = useThree();
   const short = isShortLandscape(size.width, size.height);
+  const anim = useRef<{ from: InstanceType<typeof Vector3>; to: InstanceType<typeof Vector3>; fromLook: InstanceType<typeof Vector3>; toLook: InstanceType<typeof Vector3>; t: number } | null>(null);
   useLayoutEffect(() => {
     const a = size.width >= 32 && size.height >= 32 ? size.width / size.height : 9 / 16;
-    const s = cameraFor(a, short);
+    const s = cameraFor(a, short, view);
     const cam = camera as import('three').PerspectiveCamera;
     if (!Number.isFinite(s.fov)) return;
     cam.fov = s.fov;
     cam.aspect = a;
-    cam.position.set(...s.pos);
-    cam.lookAt(new Vector3(...s.look));
     cam.updateProjectionMatrix();
+    const to = new Vector3(...s.pos); const toLook = new Vector3(...s.look);
+    (window as unknown as { __bwmCam?: unknown }).__bwmCam = { view, y: to.y, z: to.z };
+    if (cam.position.lengthSq() === 0) { cam.position.copy(to); cam.lookAt(toLook); }
+    else anim.current = { from: cam.position.clone(), to, fromLook: new Vector3(0, 0, s.look[2]), toLook, t: 0 };
     invalidate();
-  }, [camera, size, short, invalidate]);
+  }, [camera, size, short, view, invalidate]);
+  useFrame((_, dt) => {
+    const a = anim.current; if (!a) return;
+    a.t = Math.min(1, a.t + dt / 0.6);
+    const k = 1 - Math.pow(1 - a.t, 3);
+    const cam = camera as import('three').PerspectiveCamera;
+    cam.position.lerpVectors(a.from, a.to, k);
+    cam.lookAt(new Vector3(0, 0, a.fromLook.z + (a.toLook.z - a.fromLook.z) * k));
+    if (a.t >= 1) anim.current = null;
+    invalidate();
+  });
   return null;
 }
 
@@ -1229,7 +1244,7 @@ function HallAttach({ active }: { active: boolean }) {
 }
 
 /** Hand taps resolve against the quads Cards published this render, before the raycaster. */
-function HandPointer({ onTap, onDrop, legal, onDragging }: { onTap: (card: Card) => void; onDrop?: (card: Card, slam?: number, rel?: [number, number]) => void; legal: readonly Card[]; onDragging: (card: Card | null) => void }) {
+function HandPointer({ onTap, onDrop, legal, onDragging, view = 'standing' }: { onTap: (card: Card) => void; onDrop?: (card: Card, slam?: number, rel?: [number, number]) => void; legal: readonly Card[]; onDragging: (card: Card | null) => void; view?: 'standing' | 'sitting' }) {
   const dragging = useRef(onDragging);
   dragging.current = onDragging;
   const gl = useThree((s) => s.gl);
@@ -1269,7 +1284,7 @@ function HandPointer({ onTap, onDrop, legal, onDragging }: { onTap: (card: Card)
         (window as unknown as { __bwmDrag?: string }).__bwmDrag = `drag:${drag.id}`;
       }
       drag.trail.push({ t: e.timeStamp || performance.now(), x: e.clientX, y: e.clientY });
-      if (drag.trail.length > 24) drag.trail.shift();
+      if (drag.trail.length > 80) drag.trail.shift();
       const g = drag.ghost!;
       g.style.left = `${e.clientX - drag.w / 2}px`;
       g.style.top = `${e.clientY - drag.h * 0.7}px`;
@@ -1286,7 +1301,7 @@ function HandPointer({ onTap, onDrop, legal, onDragging }: { onTap: (card: Card)
       if (result === 'play') {
         d.trail.push({ t: e.timeStamp || performance.now(), x: e.clientX, y: e.clientY });
         const v = releaseVelocity(d.trail);
-        const intensity = slamIntensity(v);
+        const intensity = dragSlamIntensity(d.trail, view);
         const rect = el.getBoundingClientRect();
         // The 3D card takes over at the finger point (card centre), so the copy can go at once.
         noteDrop({ card: d.id, x: e.clientX - rect.left, y: e.clientY - d.h * 0.2 - rect.top, intensity, at: performance.now() });
@@ -1409,7 +1424,7 @@ export default function Scene(props: SceneProps) {
       <AspectWatcher onAspect={setAspect} />
       <EffectWarmup quality={props.quality} />
       <SnapHook />
-      <CameraRig />
+      <CameraRig view={props.view} />
       <FxShake table={tableGroup} />
       <color attach="background" args={[def.clear]} />
       {classic && <fog attach="fog" args={['#0c0712', 7, 16]} />}
@@ -1433,7 +1448,7 @@ export default function Scene(props: SceneProps) {
       )}
       {showTable && props.positions.map((p, seat) => <TurnRing key={seat} pos={p} n={props.n} active={props.turnSeat === seat} />)}
       {showTable && <Cards {...props} dragCard={dragCard} aspect={aspect} fontsReady={fontsReady} safeFrac={safeFrac} lit={lit} />}
-      {showTable && <HandPointer onTap={props.onCardTap} onDrop={props.onCardDrop} legal={props.legal} onDragging={setDragCard} />}
+      {showTable && <HandPointer onTap={props.onCardTap} onDrop={props.onCardDrop} legal={props.legal} onDragging={setDragCard} view={props.view} />}
       <AfterTable quality={props.quality} tableUp={textured} />
       {layerReady && <Badges positions={props.positions} n={props.n} human={props.human} renderSeat={props.renderSeat} portal={badgeLayer} safeFrac={safeFrac} short={!!props.short} safe={props.safe ?? { l: 0, r: 0, t: 0, b: 0 }} />}
     </Canvas>
