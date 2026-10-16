@@ -1,10 +1,12 @@
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Card } from '@spades/rules';
 import { drawFace } from '../src/cardArt';
 
 /**
  * PR #88 drew the queen as an open bowl with a tail. The rank is the Barlow glyph again,
- * the same fill and stroke the jack and king already use.
+ * the same fill and stroke the jack and king already use. A short stroke continues
+ * Barlow's own tail so it still reads as Q when the card is phone-sized.
  */
 type TextOp = { method: 'fillText' | 'strokeText'; text: string; x: number; y: number; font: string };
 
@@ -66,5 +68,14 @@ describe('queen rank glyph', () => {
     // Corner index is filled and stroked; the court letter is filled. No drawn bowl.
     expect(queen.filter((op) => op.method === 'strokeText')).toHaveLength(2);
     expect(queen.filter((op) => op.method === 'fillText')).toHaveLength(3);
+  });
+
+  it('continues the Barlow tail instead of drawing a new queen', () => {
+    const src = readFileSync(new URL('../src/cardArt.ts', import.meta.url), 'utf8');
+    expect(src).toContain('function queenTail');
+    expect(src).toContain("if (label === 'Q') queenTail");
+    expect(src).toContain("if (rank === 'Q') queenTail");
+    expect(src).toContain('ctx.fillText(label, cx, W * 0.255)');
+    expect(src).toContain('ctx.fillText(rank, W / 2, courtY)');
   });
 });
