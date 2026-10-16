@@ -106,7 +106,7 @@ export interface MediaState { cam: boolean; mic: boolean }
 
 /** Between-hands "Table Talk" countdown choices (seconds). */
 export const TALK_SECS = [15, 20, 30, 45] as const;
-/** consecutive turn timeouts before a player is replaced by a bot (0 = never) */
+/** Older clients still send this. A timeout plays the turn; it does not give the seat to a bot. */
 export const AFK_LIMITS = [0, 2, 3, 5] as const;
 export const DEFAULT_AFK_LIMIT = 3;
 export const DEFAULT_TALK_SEC = 20;
