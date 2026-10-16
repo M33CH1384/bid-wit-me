@@ -138,3 +138,12 @@ export function seriesMatches(s: Series | null | undefined, mode: string, sides:
 export function seriesTally(s: Series): string {
   return s.wins.join('–');
 }
+
+/**
+ * Series a game opens with. A new game is 0–0 (no carried wins). Rematch, or resuming the
+ * saved game, keeps the tally the player already has.
+ */
+export function seriesForGameStart(prev: Series | null | undefined, resumeSeries: boolean): Series | null {
+  if (!resumeSeries || !prev) return null;
+  return prev;
+}

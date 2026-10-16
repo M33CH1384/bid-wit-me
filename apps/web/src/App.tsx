@@ -12,17 +12,17 @@ import { flushLocalGames, watchLocalGames } from './localStats';
 
 export default function App() {
   const [settings, setSettings] = useState<Settings>(loadSettings);
-  const [game, setGame] = useState<{ seed: string; settings: Settings; resume?: SavedGame; dealer?: number } | null>(() => {
+  const [game, setGame] = useState<{ seed: string; settings: Settings; resume?: SavedGame; dealer?: number; continueSeries?: boolean } | null>(() => {
     const p = new URLSearchParams(location.search);
     if (p.get('autostart')) {
       history.replaceState(null, '', location.pathname); // a later refresh opens the menu, not this game
       saveSeries(null); // a test start is a fresh game: 0–0, same as Deal me in
-      return { seed: p.get('seed') ?? secureSeed(), settings: loadSettings() };
+      return { seed: p.get('seed') ?? secureSeed(), settings: loadSettings(), continueSeries: false };
     }
     // Opening the app and refreshing land on the menu. A saved bot game is not resumed.
     // Leave (including a spectator leaving an online table) also sets wiz:home.
     const saved = resumeOnLoad(history.state, loadGame(), false);
-    return saved ? { seed: saved.seed, settings: saved.settings, resume: saved } : null;
+    return saved ? { seed: saved.seed, settings: saved.settings, resume: saved, continueSeries: true } : null;
   });
 
   // Release 9 presence: on the start screen = Online; in an offline game = At a table (vs bots)
@@ -44,8 +44,8 @@ export default function App() {
       <Setup
         settings={settings}
         onChange={(s) => { setSettings(s); saveSettings(s); }}
-        onStart={() => { saveSettings(settings); saveSeries(null); setGame({ seed: secureSeed(), settings }); }}
-        onResume={saved ? () => setGame({ seed: saved.seed, settings: saved.settings, resume: saved }) : null}
+        onStart={() => { saveSettings(settings); saveSeries(null); setGame({ seed: secureSeed(), settings, continueSeries: false }); }}
+        onResume={saved ? () => setGame({ seed: saved.seed, settings: saved.settings, resume: saved, continueSeries: true }) : null}
         resumeLabel={saved ? `${MODES.find((m) => m.key === saved.settings.mode)?.title ?? 'game'} · hand ${saved.state.handNo}` : undefined}
       />
       </>
@@ -59,10 +59,11 @@ export default function App() {
       rules={settingsToRules(game.settings)}
       seed={game.seed}
       resume={game.resume}
+      continueSeries={game.continueSeries}
       settings={game.settings}
       onExit={() => { history.replaceState({ wiz: 'home', d: 0 }, '', '/'); setGame(null); }}
       onSuspend={() => { history.replaceState({ wiz: 'home', d: 0 }, '', '/'); setGame(null); }}
-      onRematch={(dealer) => setGame({ seed: secureSeed(), settings: game.settings, dealer })}
+      onRematch={(dealer) => setGame({ seed: secureSeed(), settings: game.settings, dealer, continueSeries: true })}
       startDealer={game.dealer}
       onQuality={(quality) => { const s = { ...game.settings, quality }; setGame({ ...game, settings: s }); setSettings(s); saveSettings(s); }}
     />

@@ -11,7 +11,7 @@ import {
 } from '@spades/rules';
 import { ScorePad, setTeamNames, sideName } from './Modals';
 import { LockedRulesPanel } from './LockedRules';
-import { type Series, addSeriesGame, seriesSides, summarizeGame } from '@spades/rules';
+import { type Series, addSeriesGame, seriesForGameStart, seriesSides, summarizeGame } from '@spades/rules';
 import { SeriesChip, SeriesSheet, loadSeries, saveSeries } from './Series';
 import { useMyTeamName } from './TeamName';
 import { offlineTalk } from './offlineTalk';
@@ -31,6 +31,7 @@ import { OfflineMediaBar } from './online/Media';
 import { fireCue, fx, useReduceEffects } from './fx';
 import { useDealtSlots } from './dealtSlots';
 import { FeltHand } from './FeltHand';
+import { feltHandVisible } from './three/cardFace';
 import { clientSeesNuke } from './three/blastSweep';
 import { loadScene } from './three/preload';
 import { TableLoading } from './TableLoading';
@@ -160,6 +161,8 @@ interface Props {
   onQuality: (q: Settings['quality']) => void;
   /** A saved in-progress game to resume at exactly the same point. */
   resume?: SavedGame;
+  /** Rematch or resume: keep the series tally. A new game leaves this unset and starts at 0–0. */
+  continueSeries?: boolean;
   online?: OnlineBinding;
   /** Game over → straight to the splash screen (offline: the finished save is cleared; online: leaves the table). */
   onMainMenu?: () => void;
@@ -425,7 +428,7 @@ function seedFloat(seed: string): number {
   return ((h >>> 0) % 100000) / 100000;
 }
 
-export default function Table({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, resume, online, onMainMenu, startDealer }: Props) {
+export default function Table({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, resume, continueSeries, online, onMainMenu, startDealer }: Props) {
   // `online` never changes for a mounted Table, so this is always the same hook path per instance
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const vp = useViewport();
@@ -504,8 +507,13 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [, setRevealedTick] = useState(0);
   const revealed = online ? (online.revealed ?? []) : offlineTalk.state.revealed;
 
-  // rematch series: online from the server; offline kept in localStorage (reset when a new game starts from the menu)
-  const [offSeries, setOffSeries] = useState<Series | null>(() => (online ? null : loadSeries()));
+  // rematch series: online from the server. Offline, a new game opens at 0–0. Rematch and resume keep the tally.
+  const [offSeries, setOffSeries] = useState<Series | null>(() => {
+    if (online) return null;
+    const kept = seriesForGameStart(loadSeries(), !!resume || !!continueSeries);
+    if (!kept) saveSeries(null);
+    return kept;
+  });
   const series = online ? online.series?.series ?? null : offSeries;
   const seriesMine = online ? online.series?.mine ?? 0 : sideOf(HUMAN, r);
   const [seriesOpen, setSeriesOpen] = useState(false);
@@ -516,7 +524,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     recordOfflineGame(r.mode, st.result.winners.includes(sideOf(HUMAN, r)));
     const ids = names.map((_, i) => (i === HUMAN ? 'you' : `bot:${i}`));
     const sideNames = Array.from({ length: st.scores.length }, (_, i) => sideName(r, i, names));
-    const prevS = loadSeries();
+    // Record onto the series this game opened with, not whatever localStorage holds now.
+    // A late write from the previous game must not turn a fresh result into Series 0–2.
+    const prevS = offSeries;
     const next = addSeriesGame(prevS, r.mode, seriesSides(st, ids, sideNames), summarizeGame(st, sideNames, (prevS?.games.length ?? 0) + 1, Date.now()));
     saveSeries(next);
     setOffSeries(next);
@@ -593,7 +603,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [webglHand, setWebglHand] = useState(false);
   const onTableReady = useCallback(() => { setTableReady(true); setLoadProgress((p) => Math.max(p, 0.72)); }, []);
   const onTableDressed = useCallback(() => { setDressed(true); setLoadProgress((p) => Math.max(p, 0.86)); }, []);
-  const onHandLive = useCallback(() => setWebglHand(true), []);
+  const onHandLive = useCallback((live: boolean) => setWebglHand(live), []);
   // The scene chunk is the long download. Bump the bar when it arrives, ahead of the first frame.
   useEffect(() => {
     let alive = true;
@@ -1064,9 +1074,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       <div className={`table-placeholder ${tableReady ? 'gone' : ''}`} data-testid="table-placeholder" data-venue={venue} style={placeholderStyle(venue)} aria-hidden>
         <div className="tp-floor" />
         <div className="tp-table"><div className={`tp-felt${VENUE_DEFS[venue].feltPattern ? ` ${VENUE_DEFS[venue].feltPattern}` : ''}`}><img src="/assets/bwm-wordmark-white.svg" alt="" /></div></div>
-        {!tableReady && !(resume && display.hand && display.hand.length > 0) && <div className="tp-note">Setting the table…</div>}
+        {!tableReady && !feltHandVisible(display.hand?.length ?? 0, introHand !== st.handNo, webglHand) && <div className="tp-note">Setting the table…</div>}
       </div>
-      {resume && !webglHand && display.hand && display.hand.length > 0 && (
+      {feltHandVisible(display.hand?.length ?? 0, introHand !== st.handNo, webglHand) && display.hand && (
         <FeltHand
           cards={display.hand}
           visibleCount={feltShown}
