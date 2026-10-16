@@ -70,12 +70,14 @@ describe('queen rank glyph', () => {
     expect(queen.filter((op) => op.method === 'fillText')).toHaveLength(3);
   });
 
-  it('continues the Barlow tail instead of drawing a new queen', () => {
+  it('continues the Barlow tail past the bowl instead of drawing a new queen', () => {
     const src = readFileSync(new URL('../src/cardArt.ts', import.meta.url), 'utf8');
     expect(src).toContain('function queenTail');
     expect(src).toContain("if (label === 'Q') queenTail");
     expect(src).toContain("if (rank === 'Q') queenTail");
     expect(src).toContain('ctx.fillText(label, cx, W * 0.255)');
     expect(src).toContain('ctx.fillText(rank, W / 2, courtY)');
+    // The bowl's right edge is about 0.23em. The stroke has to clear that, or a phone corner still reads as 0.
+    expect(src).toContain('ctx.lineTo(cx + fs * 0.62, baseline + fs * 0.32)');
   });
 });
