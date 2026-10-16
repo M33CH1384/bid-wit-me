@@ -171,6 +171,15 @@ source + licence in `docs/asset-licenses.md` before it ships.
    banner. Resolver order: explicit room > Story stop mapping > **Auto: seeded per-game roll**.
    There is no follow-venue fallback: on Auto the room is random even if the venue is fixed.
 
+8. **Loading screen (lands with Phase 4):** the loading screen shows the session's room name
+   (the explicit or seeded-random room, e.g. "Barbershop") for a minimum of ~2.5–3 s — long enough
+   to read, never an artificial delay beyond asset load + that minimum. Room ambience fades IN
+   while the loading screen is still up (crossfade tied to the dismiss timing, ambience category
+   volume + mute respected), so the table is already alive when the screen lifts. iOS: if the
+   AudioContext is still locked until first touch, the fade starts at first unlock instead — do not
+   regress the #156/#169 unlock or sound-sync behaviour. E2E must assert: room name visible,
+   minimum display duration, and the ambience gain ramp starting before dismiss.
+
 ## 5. Risks / open questions for Yoda
 - HRTF CPU on older iPhones — Phase 8 may default spatial to `equalpower` on phones.
 - Voice chat panning vs intelligibility: keep partner gain compensation so panning never buries speech.
