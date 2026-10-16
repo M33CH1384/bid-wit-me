@@ -11,6 +11,7 @@ import { type KickInfo, MediaBar, SeatMedia, TalkTile, VictorySpotlight } from '
 import { MusicLinkCard } from './HostMusic';
 import { loadHideSpectatorChat, localNames, saveHideSpectatorChat, useCountdown, useOnlineChat, useOnlineSource, useVideo } from './useOnline';
 import { dealerFromServer } from '../dealerName';
+import { localSeatOfServerTurn } from '../turnState';
 import { SpectatorOverlay } from './Spectators';
 import { orientRun } from '../runPlayback';
 import type { VideoMesh } from './video';
@@ -77,7 +78,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
 
   if (!source || !rot) return <TableLoading progress={0.24} />;
   const r = room.rules;
-  const turnLocal = source.st.turn;
+  const turnLocal = localSeatOfServerTurn(cs.view?.turn ?? null, spectator || cs.seat === null ? null : cs.seat, r.playerCount);
 
   // host: Kick (with confirm); seated non-hosts: Vote to kick (majority of the other humans)
   const kickFor = (real: number): KickInfo | undefined => {
@@ -150,6 +151,8 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
           spectator,
           dealerName,
           dealerSeat: dealer?.localSeat,
+          serverTurn: cs.view?.turn ?? null,
+          viewerSeat: spectator || cs.seat === null ? null : cs.seat,
           run: cs.run ? orientRun(cs.run, spectator ? null : cs.seat, rot.n) : null,
           overlay: <SpectatorOverlay room={room} cs={cs} spectator={spectator} names={names} hideChat={hideSpec}
             onHideChat={(on) => { setHideSpec(on); saveHideSpectatorChat(on); }}
