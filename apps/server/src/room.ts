@@ -900,7 +900,7 @@ export class Room {
   }
 
   /** The only mid-game path that gives a human's chair to a bot: they left, or the table removed them. */
-  private handSeatToBot(seat: number, was: string, fromPid: string, cause: 'leave' | 'kick' | 'vote'): SeatSlot {
+  private handSeatToBot(seat: number, was: string, fromPid: string, cause: 'leave' | 'host' | 'vote'): SeatSlot {
     const d = this.data;
     const bot = this.botSeat(was);
     const name = bot.kind === 'bot' ? bot.name : null;
