@@ -57,3 +57,11 @@ describe('online slam field', () => {
     expect((parseClientMsg({ t: 'act', action: { type: 'play', card: 'AS', slam: 'x' } }) as { action: { slam?: number } }).action.slam).toBeUndefined();
   });
 });
+describe('max slam flight arc (never a beam)', () => {
+  it('intensity 1 keeps min flight time and a real toss arc', () => {
+    const hard = slamFeel(1);
+    expect(hard.duration).toBeGreaterThanOrEqual(0.25);
+    expect(hard.arc).toBeGreaterThanOrEqual(0.25);
+    expect(hard.arc).toBeGreaterThan(slamFeel(0).arc);
+  });
+});
