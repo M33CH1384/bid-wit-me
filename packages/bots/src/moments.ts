@@ -72,12 +72,12 @@ export function momentsFor(before: GameState, action: Action, after: GameState):
     const h = after.history[after.history.length - 1]!;
     for (const s of h.sides) {
       const other = r.partnerships ? 1 - s.side : undefined;
-      if (r.partnerships ? (s.contract >= 10 && s.contractMade) || (h.bids.every((b) => b === 'books') && s.tricks >= 10) : s.tricks >= 10) out.push({ kind: 'wheels', side: s.side, seat: s.seats[0], bid: s.contract, gap: gapFor(s.side) });
+      if (r.partnerships ? (s.contract >= 10 && s.contractMade) || (h.bids.every((b) => b === 'books') && s.tricks >= 10) : s.tricks >= 10) out.push({ kind: 'wheels', side: s.side, seat: s.seats[0], bid: s.contract, books: s.tricks, gap: gapFor(s.side) });
       for (const n of s.nils) {
         if (n.made) out.push({ kind: 'nilMade', side: s.side, seat: n.seat });
         // (a busted Nil is called the moment it takes its first book, above)
       }
-      if (s.contractMade === false && other !== undefined) out.push({ kind: 'setThem', side: other, them: s.seats[0], bid: s.contract, gap: gapFor(other), ...((after.scores[s.side] ?? 0) < 0 ? { neg: true } : {}) });
+      if (s.contractMade === false && other !== undefined) out.push({ kind: 'setThem', side: other, them: s.seats[0], bid: s.contract, books: s.tricks, gap: gapFor(other), ...((after.scores[s.side] ?? 0) < 0 ? { neg: true } : {}) });
       if ((s.bagPenaltyCount > 0 || (s.contractMade && s.tricks - s.contract >= 3)) && other !== undefined) out.push({ kind: 'bags', side: other, them: s.seats[0] });
       if (s.tricks >= 13 && typeof s.contract === 'number') out.push({ kind: 'boston', side: s.side, seat: s.seats[0] });
       if (s.shot && !after.result && other !== undefined) out.push({ kind: 'onNotice', side: other, them: s.seats[0] });

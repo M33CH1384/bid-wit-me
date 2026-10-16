@@ -7,6 +7,7 @@
  */
 import { COMMON, LINE_META, PACK_OWNERS, PERSONAS, type LineMeta, type PersonaId, type TalkIntensity, type TalkKind, lineAllowed, lineFitsGender, personaForName, personaSkillFloor } from './personas';
 import { possessive, voiceGender } from './names';
+import { type CatalogMemory, type VoiceMoment, bucketFor, pickCatalog } from './catalog';
 import { BOT_SKILLS, type BotSkill, seatSkill } from './bidding';
 
 export { COMMON, LINE_META, PACK_OWNERS, PERSONAS, lineAllowed, personaForName, personaSkillFloor };
@@ -50,6 +51,8 @@ export interface TalkTable {
   intensity?: TalkIntensity;
   /** Joker deck (gates '@jk' lines) */
   jokers?: boolean;
+  /** Voice Phase 3 host flag (default off): Getting set / Wheels / match win may carry a pre-voiced catalog line */
+  aiTalk?: boolean;
 }
 export interface TalkState {
   lastAt: number; seatAt: number[]; revealed: number[]; recent: string[];
@@ -57,6 +60,8 @@ export interface TalkState {
   used?: Record<string, string[]>;
   /** the last raw line said at this table (never twice in a row) */
   last?: string;
+  /** catalog ids already said this game (Voice Phase 3) */
+  ai?: CatalogMemory;
 }
 export interface TalkEvent {
   kind: TalkKind;
@@ -73,9 +78,11 @@ export interface TalkEvent {
   ace?: boolean;
   /** the target side is below zero (gates '@neg' lines) */
   neg?: boolean;
+  /** books the side took this hand (Voice Phase 3 buckets: set by N, Wheels bid/books) */
+  books?: number;
 }
 /** `line`: stable id of the raw line, `<pool>.<kind>.<index>` (pool = persona id or 'common'): clients map it to a recorded clip */
-export interface TalkLine { seat: number; name: string; text: string; persona: PersonaId; reveal?: boolean; line?: string; /** the bid number in a '{bid}' line (picks the numbered clip) */ bid?: number }
+export interface TalkLine { seat: number; name: string; text: string; persona: PersonaId; reveal?: boolean; line?: string; /** the bid number in a '{bid}' line (picks the numbered clip) */ bid?: number; /** Voice Phase 3: a pre-voiced catalog alternative. The client uses it (text + clip together) only when its clip plays; otherwise the canned text/line above */ ai?: { id: string; text: string } }
 
 /** The id of a raw (unfilled) line as picked for this persona + kind. */
 export function lineIdOf(persona: PersonaId, kind: TalkKind, raw: string): string | undefined {
@@ -230,7 +237,21 @@ function say(st: TalkState, t: TalkTable, seat: number, kind: TalkKind, ev: Talk
   let text = fill(raw, t, seat, ev, them);
   if (PERSONAS[persona].caps) text = text.toUpperCase();
   const line = lineIdOf(persona, kind, raw);
-  return { seat, name: t.seats[seat]!.name, text, persona, ...(reveal ? { reveal: true } : {}), ...(line ? { line } : {}), ...(raw.includes('{bid}') && typeof ev.bid === 'number' ? { bid: ev.bid } : {}) };
+  const ai = aiAlternative(st, t, persona, voiceGender(name), kind, ev, rnd);
+  return { ...(ai ? { ai } : {}), seat, name: t.seats[seat]!.name, text, persona, ...(reveal ? { reveal: true } : {}), ...(line ? { line } : {}), ...(raw.includes('{bid}') && typeof ev.bid === 'number' ? { bid: ev.bid } : {}) };
+}
+
+const AI_MOMENT: Partial<Record<TalkKind, VoiceMoment>> = { setThem: 'set', wheels: 'wheels', win: 'win' };
+/** Voice Phase 3: a catalog line for this moment's facts, only behind the host flag. Null → the canned line alone. */
+function aiAlternative(st: TalkState, t: TalkTable, persona: PersonaId, g: 'f' | 'm' | undefined, kind: TalkKind, ev: TalkEvent, rnd: () => number): { id: string; text: string } | null {
+  const moment = AI_MOMENT[kind];
+  if (!t.aiTalk || !moment || !g) return null;
+  const bucket = bucketFor(moment, { bid: ev.bid, books: ev.books });
+  if (!bucket) return null;
+  const hit = pickCatalog((st.ai ??= {}), persona, g, bucket, rnd);
+  if (!hit) return null;
+  const text = PERSONAS[persona].caps ? hit.text.toUpperCase() : hit.text;
+  return { id: hit.id, text };
 }
 
 const ready = (st: TalkState, seat: number, now: number, big: boolean) => now - (st.seatAt[seat] ?? -1e12) >= (big ? TALK.bigGapMs : TALK.seatGapMs);

@@ -25,6 +25,10 @@ export interface CatalogLine {
 }
 
 export const CATALOG: readonly CatalogLine[] = (CATALOG_JSON as { lines: CatalogLine[] }).lines;
+/** The catalog the table picks from (the baked one; tests and the bake preview swap it). */
+let active: readonly CatalogLine[] = CATALOG;
+export function setActiveCatalog(c: readonly CatalogLine[] | null): void { active = c ?? CATALOG; }
+export function activeCatalog(): readonly CatalogLine[] { return active; }
 export const AI_CLIP_BASE = '/voices/ai';
 export const aiClipUrl = (id: string) => `${AI_CLIP_BASE}/${id}.mp3`;
 
@@ -48,7 +52,7 @@ export interface CatalogMemory { said?: string[] }
  * A fresh catalog line for this persona-gender and bucket, never one this table already heard. Null → canned.
  * `heard` lets a client prefer clips it has not played (device memory) when the bucket still has others.
  */
-export function pickCatalog(mem: CatalogMemory, persona: PersonaId, g: 'f' | 'm', bucket: VoiceBucket, rnd: () => number, catalog: readonly CatalogLine[] = CATALOG): CatalogLine | null {
+export function pickCatalog(mem: CatalogMemory, persona: PersonaId, g: 'f' | 'm', bucket: VoiceBucket, rnd: () => number, catalog: readonly CatalogLine[] = active): CatalogLine | null {
   const said = (mem.said ??= []);
   const pool = catalog.filter((l) => l.persona === persona && l.g === g && l.bucket === bucket && !said.includes(l.id));
   if (!pool.length) return null;

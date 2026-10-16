@@ -38,6 +38,8 @@ export interface Settings {
   bagsOn: boolean;
   /** Bot trash-talk intensity (table setting): family / cookout (default) / nomercy. */
   talkIntensity: 'family' | 'cookout' | 'nomercy';
+  /** Voice Phase 3 host flag (default off, no menu yet): bots may use pre-voiced catalog lines at Getting set / Wheels / match win. */
+  aiTalk?: boolean;
   speed: 'slow' | 'relaxed' | 'normal' | 'fast' | 'turbo';
   /** 3D quality: low disables shadows, HDRI and MSAA and uses smaller textures. */
   quality: 'high' | 'low';
