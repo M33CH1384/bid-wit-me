@@ -318,14 +318,16 @@ function pivotFanLayout(aspect: number, count: number, safeFrac: number, o: FanO
     const ch = CH * s;
     const R = pivot * ch;
     const rLine = R + ch * (0.5 - STRIP_LINE_FRAC);
-    const dTheta = halfN > 0 ? Math.min(0.5, strip / k / rLine) : 0;
+    // Never wrap the fan past ~95° a side: edge cards would turn away and leave the screen.
+    const dTheta = halfN > 0 ? Math.min(0.5, strip / k / rLine, 1.65 / halfN) : 0;
     const tMax = halfN * dTheta;
     const outer = R * Math.sin(tMax) + (cw / 2) * Math.cos(tMax) + (ch / 2) * Math.sin(tMax);
     const step = rLine * dTheta;
-    // Room for a raised card is always reserved, so the cards keep one size whether or not one is raised.
+    // The raised layout reserves room for its opening; the resting fan uses the full width.
     const open = raiseOpenPx(cw * k, step * k, strip);
     out = { s, cw, ch, step, maxRoll: tMax, curveK: 0, viewW, viewH, raiseOpen: spread ? open : 0, pivotR: R, dTheta };
-    if ((halfAvail - outer) * k >= open + 1) break;
+    // Only the raised layout reserves its opening; the resting fan uses the full width.
+    if ((halfAvail - outer) * k >= (spread ? open : 0) + 1) break;
     s *= 0.97;
   }
   return out;
@@ -430,13 +432,15 @@ export function fanLayout(aspect: number, count: number, safeFrac = 0, o: FanOpt
  * fan is easier to tap. The fit loop still shrinks a 13- or 17-card hand onto the screen.
  * 44px of exposed width is the target when the count leaves room for it.
  */
-export const PHONE_HAND_HEIGHT = 0.3;
+export const PHONE_HAND_HEIGHT = 0.38;
 export const PHONE_HAND_EDGE = 0.012;
 export const PHONE_HAND_ROLL = 0.2;
 /** Phone fan pivot, in card heights below each card's centre. Smaller is a rounder arc. */
-export const PHONE_HAND_PIVOT = 1.0;
+export const PHONE_HAND_PIVOT = 1.4;
 /** Headroom over the 28px strip floor. The e2e still measures >= 28px with a card raised. */
-export const PHONE_HAND_STRIP_PAD = 2;
+export const PHONE_HAND_STRIP_PAD = 4;
+/** Phone portrait strip target: wider than the global floor so a raised card still leaves a tappable strip. */
+export const PHONE_HAND_STRIP_PX = 36;
 /** The fan rises off the bottom edge into the near rail, so the arch underneath it can hold your plate. */
 export const PHONE_HAND_RISE = 0.05;
 export const HAND_EXPOSED_PX = 44;

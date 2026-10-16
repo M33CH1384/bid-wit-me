@@ -410,7 +410,8 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
         }
       }
       s.tp.set(...target.p); s.tq.set(...target.q); s.ts = target.s;
-      if (motion === 'slide') s.ss = s.ts; // translate + rotate only
+      // Hand cards never inherit a table/flight scale from a reused mesh: they start exactly at fan scale.
+      if (motion === 'slide' || blast === 'hand') s.ss = s.ts;
       s.started = false;
     }
     // Raise is translateY on its own wrapper (the CSS `will-change: transform` idea). The outer fan
