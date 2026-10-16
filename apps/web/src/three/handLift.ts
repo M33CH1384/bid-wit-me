@@ -1,4 +1,4 @@
-import { CH } from './layout';
+import { CH, PLAY_DEPTH, SELECT_DEPTH } from './layout';
 
 /**
  * Your-turn hand: when some cards cannot be played, the playable ones rise a little and the
@@ -64,7 +64,9 @@ export const GROUP_GAP_PX = 0;
 export const LEGAL_STACK = 100;
 /**
  * A selected card draws after every other hand card. 400 clears a 17-card fan
- * (face is order + 0.5, ring is order + RING_ABOVE) and the unused group outline at LEGAL_STACK + 40.
+ * (face is order + 0.5, ring is order + RING_ABOVE). It matches SELECT_DEPTH:
+ * the raised card is closer, and it is painted last, so the depth buffer and the
+ * painter agree on which card is on top.
  */
 export const SELECT_STACK = 400;
 
@@ -152,7 +154,8 @@ export function handCardChrome(o: {
 /**
  * Painter's order for one hand card. Every legal card draws after every illegal card.
  * Within each group the index still increases left to right.
- * `front` is the tapped card: it jumps ahead of every neighbour, including a higher index.
+ * `front` is the raised card: it draws after every neighbour, and SELECT_DEPTH keeps it closer,
+ * so the card you see and the card the ray hits are the same one.
  */
 export function handRenderOrder(index: number, above: boolean, front = false): number {
   if (front) return SELECT_STACK + index;
@@ -161,22 +164,23 @@ export function handRenderOrder(index: number, above: boolean, front = false): n
 
 /**
  * Camera-space stack for one pose. Depth is not the screen raise.
- * A selected card uses the same stack as any other playable card. Jumping it in front of the
- * fan buried the ranks beside it: the 10 covered the 9, and the queen covered the hearts on its right.
- * The card on the right stays nearer, and the raise is only the upward slide.
+ * A playable card comes forward of the neighbours it overlaps. A raised card comes
+ * forward of those too, so its whole face stays visible.
  */
-export function handDepthOpts(pose: HandPose): { layer: 'rest' | 'play' | 'selected'; near?: number } {
-  if (pose === 'selected' || pose === 'legal') return { layer: 'play', near: LEGAL_NEAR };
+export function handDepthOpts(pose: HandPose): { layer: 'rest' | 'play' | 'selected' } {
+  if (pose === 'selected') return { layer: 'selected' };
+  if (pose === 'legal') return { layer: 'play' };
   return { layer: 'rest' };
 }
 
 /**
  * How far a playable card moves toward the camera, in the fan's depth units.
- * The fan steps 0.006 per card, and iPhone Safari's 16-bit depth fights around 0.0003.
- * 0.02 clears the three neighbours that actually overlap a card, and stays well clear of that fight.
+ * The fan steps 0.006 per card. This clears the three neighbours that overlap a card.
  * It does not change the picture: position and scale are both multiplied by depth.
  */
-export const LEGAL_NEAR = 0.02;
+export const LEGAL_NEAR = PLAY_DEPTH;
+/** How far a raised card sits in front of a playable neighbour. */
+export const SELECT_NEAR = SELECT_DEPTH;
 
 /**
  * Window-space depth bias for the face and the back.
@@ -199,7 +203,7 @@ export const FACE_POLYGON_OFFSET = { factor: 0, units: -8 } as const;
  * once the face and the hairline share a depth tile. A local push of 0.012 is about 0.003 camera
  * units on a phone fan: past those 8 units, and still under the 0.006 step to the next peer, so
  * a card at the same raise still lets the card on its right cover the overlap. A selected card
- * does not: its render order and depth sit in front of every neighbour. It is geometry, not
+ * does not: SELECT_DEPTH and SELECT_STACK put it in front of both neighbours. It is geometry, not
  * polygonOffset, because the Metal depth bias that feeds polygonOffset is the part that goes
  * wrong on that buffer.
  */
@@ -272,85 +276,49 @@ export function paintOrder(obj: PaintNode | null | undefined): number {
   return best;
 }
 
-/** The card that is raised. The raycast filter reads this so a closer neighbour cannot take its tap. */
-let pointerSelected: string | null = null;
-
-export function setPointerSelected(id: string | null): void {
-  pointerSelected = id;
-}
-
-export function pointerSelectedId(): string | null {
-  return pointerSelected;
-}
-
 export interface PlanePoint { x: number; y: number }
 
+export interface PointerCss {
+  clientX?: number;
+  clientY?: number;
+  offsetX?: number;
+  offsetY?: number;
+}
+
 /**
- * Screen quad of the raised card, in the same NDC space as the fibre pointer (+y up).
- * The neighbour on the right is closer in z and overlaps this card. A ray through that
- * overlap hits the neighbour and misses the face that is drawn on top. The quad is the
- * hit area: a finger inside it belongs to the selected card.
+ * NDC (+y up) for a pointer event.
+ * Fibre divides offsetX by the CSS canvas size. On a phone Chrome, offsetX can be a drawing-buffer
+ * pixel (devicePixelRatio times the CSS pixel), so that ray lands on a card to the right of the finger.
+ * clientX/clientY minus the canvas CSS rect stay in CSS pixels, which is the space `size` is in.
  */
-let selectedLayer: { id: string; ndc: PlanePoint[]; object: CardHitNode } | null = null;
-
-export function setSelectedTapLayer(id: string | null, ndc: readonly PlanePoint[] | null, object: CardHitNode | null): void {
-  if (!id || !ndc || ndc.length < 3 || !object) {
-    if (!id || selectedLayer?.id === id) selectedLayer = null;
-    return;
-  }
-  selectedLayer = { id, ndc: ndc.map((p) => ({ x: p.x, y: p.y })), object };
-}
-
-/** True when `p` is inside a convex polygon. Touches on an edge count as inside. */
-export function pointInConvex(p: PlanePoint, poly: readonly PlanePoint[]): boolean {
-  if (poly.length < 3 || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return false;
-  let sign = 0;
-  for (let i = 0; i < poly.length; i++) {
-    const a = poly[i]!;
-    const b = poly[(i + 1) % poly.length]!;
-    const cross = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
-    if (cross === 0) continue;
-    const s = cross > 0 ? 1 : -1;
-    if (!sign) sign = s;
-    else if (s !== sign) return false;
-  }
-  return sign !== 0;
-}
-
-/** The finger is on the raised card, including the part a closer neighbour overlaps. */
-export function selectedTapCovers(pointer: PlanePoint | null | undefined, id: string | null = pointerSelected): boolean {
-  if (!pointer || !id || !selectedLayer || selectedLayer.id !== id) return false;
-  return pointInConvex(pointer, selectedLayer.ndc);
+export function pointerNdc(
+  event: PointerCss,
+  rect: { left: number; top: number; width: number; height: number },
+  size: { width: number; height: number },
+): PlanePoint {
+  const useClient = Number.isFinite(event.clientX) && Number.isFinite(event.clientY) && rect.width > 0 && rect.height > 0;
+  const x = useClient ? event.clientX! - rect.left : (event.offsetX ?? 0);
+  const y = useClient ? event.clientY! - rect.top : (event.offsetY ?? 0);
+  const w = (useClient ? rect.width : (rect.width > 0 ? rect.width : size.width)) || 1;
+  const h = (useClient ? rect.height : (rect.height > 0 ? rect.height : size.height)) || 1;
+  return { x: (x / w) * 2 - 1, y: -(y / h) * 2 + 1 };
 }
 
 /**
- * Deliver pointer hits in paint order, then by distance.
- * Legal cards are drawn over the illegal cards beside them. A distance sort would give the tap
- * to the closer illegal neighbour, and its handler would swallow it. The card on screen gets the tap.
- * The fibre filter runs before it stamps eventObject, so the mesh and its parents both count.
- * While a card is selected it owns its whole raised area. A ray that only struck the neighbour
- * overlapping its right side still belongs to the selected card when the finger is inside that area.
+ * Same order the renderer uses. Three.js draws a higher renderOrder later, so that card is
+ * the one on top. Within one renderOrder the closer mesh is the one that wrote the depth.
+ * A raised card therefore wins wherever its face is what you see. A neighbour wins only
+ * where the ray actually hit that neighbour and not the card drawn over it.
+ * No saved screen quad: that quad lagged the raise and disagreed with this order.
  */
 export function hitsInPaintOrder<T extends { distance: number; eventObject?: CardHitNode | null; object: CardHitNode }>(
   hits: readonly T[],
-  selected: string | null = pointerSelected,
-  pointer: PlanePoint | null = null,
 ): T[] {
   const orderOf = (h: T) => Math.max(paintOrder(h.object), paintOrder(h.eventObject));
-  const ranked = hits.slice().sort((a, b) => {
+  return hits.slice().sort((a, b) => {
     const d = orderOf(b) - orderOf(a);
     return d !== 0 ? d : a.distance - b.distance;
   });
-  if (!selected) return ranked;
-  const mine = ranked.filter((h) => (cardIdFromHit(h.object) ?? cardIdFromHit(h.eventObject)) === selected);
-  if (mine.length > 0) return mine;
-  if (pointer && selectedTapCovers(pointer, selected) && selectedLayer) {
-    const object = selectedLayer.object;
-    const donor = ranked[0];
-    if (donor) return [{ ...donor, object, eventObject: object }];
-    return [{ distance: 0, object, eventObject: object } as T];
-  }
-  return ranked;
 }
 
 /**
@@ -379,7 +347,7 @@ export function posePx(pose: HandPose): number {
   }
 }
 
-/** Rest stays in the fan stack. The legal group comes forward, and the tapped card tops that. */
+/** Rest, play, and selected share the fan. Depth does not follow this label. */
 export function stackFor(pose: HandPose): HandStack {
   if (pose === 'selected') return 'selected';
   if (pose === 'legal') return 'play';

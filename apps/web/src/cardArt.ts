@@ -104,6 +104,27 @@ const PIPS: Record<string, [number, number][]> = {
 };
 
 /**
+ * How far the corner tail runs, in em of the index. Barlow's bowl ends near 0.23em.
+ * A phone fan exposes about 0.31 of the card, so 0.34em of tail (ink out to ~0.25 of
+ * the card) sat on that edge. 0.26em clears the bowl and leaves a margin before the overlap.
+ */
+export const QUEEN_TAIL_EM = 0.26;
+
+/**
+ * Rightmost ink of the corner Q tail, as a fraction of card width.
+ * Includes half the stroke, which extends past the endpoint on the diagonal.
+ */
+export function queenTailReach(cardW = 1): number {
+  const fs = cardW * 0.28;
+  const cx = cardW * 0.135;
+  const x1 = cx + fs * QUEEN_TAIL_EM;
+  const dy = fs * 0.12;
+  const dx = fs * (QUEEN_TAIL_EM - 0.08);
+  const len = Math.hypot(dx, dy) || 1;
+  return (x1 + fs * 0.08 * Math.abs(dy) / len) / cardW;
+}
+
+/**
  * Barlow Condensed's Q tail is a short slab under the bowl (about 0.09em, and it
  * never clears the bowl's right edge). On a phone fan only the left third of the
  * card shows, so that slab reads as 0. This continues the same ink past the bowl,
@@ -121,7 +142,7 @@ function queenTail(ctx: CanvasRenderingContext2D, cx: number, baseline: number, 
   ctx.beginPath();
   // Start on the native tail and leave the bowl (the bowl ends near 0.23em). Stop above the pip.
   ctx.moveTo(cx + fs * 0.08, baseline + fs * 0.02);
-  ctx.lineTo(cx + fs * 0.34, baseline + fs * 0.14);
+  ctx.lineTo(cx + fs * QUEEN_TAIL_EM, baseline + fs * 0.14);
   ctx.stroke();
   ctx.restore();
 }

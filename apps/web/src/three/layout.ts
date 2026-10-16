@@ -13,6 +13,21 @@ export const CR = 0.022;
  * those steps at the smallest fan scale, and stays under a pixel on screen.
  */
 export const FACE_CAP_GAP = 0.0025;
+/**
+ * Camera-space gap between neighbouring fan cards. Smaller depth is closer.
+ * A near-bias larger than this step pulls one card in front of the next and hides its rank.
+ */
+export const HAND_DEPTH_STEP = 0.006;
+/**
+ * How far a playable card comes toward the camera. Three fan steps is the overlap
+ * (0.018). 0.02 puts that card in front of the neighbours it actually covers.
+ */
+export const PLAY_DEPTH = 0.02;
+/**
+ * A raised card comes forward of those playable neighbours too, so its whole face
+ * wins the depth test. Four steps past the play bias clears the cards it overlaps.
+ */
+export const SELECT_DEPTH = PLAY_DEPTH + 4 * HAND_DEPTH_STEP;
 
 /** Felt half-extents and rail width. */
 export const FELT = { hx: 1.5, hz: 1.78, r: 0.95 };
@@ -189,8 +204,8 @@ export interface FanOpts {
   rollCap?: number;
   short?: boolean;
   /**
-   * Z-order. Omitted: derived from `lift` so older callers still work (`> 0.2` selected, `> 0` raised).
-   * The pixel lifts are small fractions of a card, so the hand passes this explicitly.
+   * Who comes forward. `play` is a playable card (PLAY_DEPTH). `selected` is the raised card
+   * (SELECT_DEPTH), in front of the neighbours it overlaps. Omitted: rest.
    */
   layer?: 'rest' | 'play' | 'selected';
   /**
@@ -279,16 +294,13 @@ export function handCardPlane(aspect: number, count: number, i: number, lift: nu
   const xo = halfN * L.step;
   const lowest = xo * xo * L.curveK + (L.ch / 2) * Math.cos(L.maxRoll) + (L.cw / 2) * Math.sin(L.maxRoll);
   const y = -L.viewH / 2 + L.viewH * (0.015 + (o.bottomFrac ?? 0)) + lowest - curve + lift * L.ch;
-  // z-order only: later cards sit on earlier ones, and every raised card comes forward past the whole fan
-  // (18 × 0.006 < 0.12). The gaps are wide on purpose: phones with a 16-bit depth buffer (iPhone Safari) z-fight
-  // at ~0.0003 here, which let the edges of the cards underneath bleed through as thin gold lines when the gap was 0.0015.
-  const layer = o.layer ?? (lift > 0.2 ? 'selected' : lift > 0 ? 'play' : 'rest');
-  // Selected and playable share one boost. A bigger selected boost put that card in front of the
-  // ranks to its right, and those cards disappeared for as long as it stayed raised.
-  const boost = layer === 'selected' || layer === 'play' ? 0.12 : 0;
-  // Playable cards come forward just enough to win the depth test against the neighbour that overlaps them.
+  // A higher index is closer by HAND_DEPTH_STEP. Playable cards, and a raised card even more,
+  // come forward of the neighbours they overlap so the depth buffer matches the draw order.
+  // Phones with a 16-bit depth buffer (iPhone Safari) z-fight at ~0.0003 here; the step stays well above that.
+  const layer = o.layer ?? 'rest';
+  const boost = layer === 'selected' ? SELECT_DEPTH : layer === 'play' ? PLAY_DEPTH : 0;
   const near = Number.isFinite(o.near) && o.near! > 0 ? o.near! : 0;
-  const depth = 1 - (i + 1) * 0.006 - boost - near; // the selected card tops all the raised ones too
+  const depth = 1 - (i + 1) * HAND_DEPTH_STEP - boost - near;
   return { x, y, roll, depth, s: L.s };
 }
 
