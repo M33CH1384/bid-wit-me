@@ -24,6 +24,18 @@ export function releaseVelocity(samples: readonly DragSample[], windowMs = SLAM_
   return Math.hypot(last.x - first.x, last.y - first.y) / dt;
 }
 
+/** Release velocity as a vector [x, y] in px/ms over the same window (y down), rounded for the wire. */
+export function releaseVector(samples: readonly DragSample[], windowMs = SLAM_WINDOW_MS): [number, number] {
+  if (samples.length < 2) return [0, 0];
+  const last = samples[samples.length - 1]!;
+  let first = last;
+  for (let i = samples.length - 2; i >= 0; i--) { first = samples[i]!; if (last.t - first.t >= windowMs) break; }
+  const dt = last.t - first.t;
+  if (dt <= 0) return [0, 0];
+  const r = (v: number) => Math.round(Math.max(-20, Math.min(20, v)) * 1000) / 1000;
+  return [r((last.x - first.x) / dt), r((last.y - first.y) / dt)];
+}
+
 /** Speed → intensity 0..1, continuous, clamped so a wild flick is never sillier than a full slam. */
 export function slamIntensity(pxPerMs: number): number {
   if (!Number.isFinite(pxPerMs) || pxPerMs <= SLAM_SOFT) return 0;
