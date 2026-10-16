@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEscapeClose } from './useEscapeClose';
 import { sound, useSoundSettings } from './audio';
 import { speakerAriaLabel } from './audioSession';
 import { HostMusicFields } from './online/HostMusic';
@@ -85,8 +86,9 @@ export function SoundSheet({ allOff, onMuteAll, onClose }: { allOff: boolean; on
   const hm = useHostMusic();
   const reduced = useReduceEffects();
   const voiceOk = typeof window !== 'undefined' && ('AudioContext' in window || 'webkitAudioContext' in window || 'speechSynthesis' in window);
+  const esc = useEscapeClose(onClose);
   return (
-    <div className="sound-pop sound-sheet glass" role="dialog" aria-label="Sound" data-testid="sound-sheet">
+    <div ref={esc} className="sound-pop sound-sheet glass" role="dialog" aria-label="Sound" data-testid="sound-sheet">
       <div className="sheet-head">
         <span className="panel-title">SOUND</span>
         <button type="button" className="sheet-x" aria-label="Close sound settings" onClick={onClose}>✕</button>
@@ -280,6 +282,7 @@ export default function SoundButton() {
   const s = useSoundSettings();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const esc = useEscapeClose(() => setOpen(false));
   useEffect(() => {
     if (!open) return;
     const close = (e: PointerEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
@@ -292,7 +295,7 @@ export default function SoundButton() {
         {icon(s.on, s.volume)}
       </button>
       {open && (
-        <div className="sound-pop glass slant" role="dialog" aria-label="Sound">
+        <div ref={esc} className="sound-pop glass slant" role="dialog" aria-label="Sound">
           <div className="panel-title">SOUND</div>
           <NowPlayingLine />
           <SoundFields compact />

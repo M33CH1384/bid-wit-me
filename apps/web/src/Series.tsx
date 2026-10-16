@@ -4,6 +4,7 @@
  * Offline the series lives in localStorage. A new game starts at 0–0. Rematch and resume keep it.
  */
 import { useState } from 'react';
+import { useEscapeClose } from './useEscapeClose';
 import { type Series, seriesTally } from '@spades/rules';
 
 const KEY = 'bwm.series.v1';
@@ -28,8 +29,9 @@ const hl = (n: number, label: string) => (n ? `${n > 1 ? `${n}× ` : ''}${label}
 export function SeriesSheet({ series, mine, onClose }: { series: Series; mine: number; onClose: () => void }) {
   const [open, setOpen] = useState<number | null>(null);
   const names = series.sides.map((s) => s.name);
+  const esc = useEscapeClose(onClose);
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" ref={esc} onClick={onClose}>
       <div className="modal glass slant sheet series-sheet" role="dialog" aria-label="Rematch series" data-testid="series-sheet" onClick={(e) => e.stopPropagation()}>
         <button type="button" className="modal-x" aria-label="Close" onClick={onClose}>✕</button>
         <h2>SERIES <span className="series-big">{seriesTally(series)}</span></h2>

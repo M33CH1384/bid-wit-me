@@ -1,4 +1,5 @@
 import { type ReactNode, useState } from 'react';
+import { useEscapeClose } from './useEscapeClose';
 import Credits from './Credits';
 import Feedback, { AboutRow } from './Feedback';
 import { BotTrashTalkRow, NukeIntensityRow, ReduceEffectsRow, SoundFields } from './SoundControls';
@@ -53,9 +54,10 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => onChange({ ...s, [k]: v });
   const rules = settingsToRules(s);
   const isJokerDeck = rules.deck === 'joker54';
+  const esc = useEscapeClose(onClose);
   return (
     <>
-    <div className="modal-backdrop sheet-backdrop" onClick={onClose}>
+    <div className="modal-backdrop sheet-backdrop" ref={esc} onClick={onClose}>
       <div className="sheet glass slant" role="dialog" aria-label="More options" onClick={(e) => e.stopPropagation()} data-testid="more-options">
         <header className="sheet-head">
           <span className="panel-title">MORE OPTIONS</span>
