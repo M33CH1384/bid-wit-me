@@ -291,19 +291,20 @@ describe('legal cards stack above the cards beside them', () => {
   const aspect = 390 / 844;
   const screenH = 844;
 
-  it('puts every legal card after every illegal card, and keeps index order inside each band', () => {
+  it('keeps fan order when a suit lifts, so the card to the right is not covered', () => {
     const flags = [false, false, true, true, true, false, false];
     const orders = flags.map((above, i) => handRenderOrder(i, above));
-    const legal = orders.filter((_, i) => flags[i]);
-    const illegal = orders.filter((_, i) => !flags[i]);
-    expect(Math.min(...legal)).toBeGreaterThan(Math.max(...illegal));
+    // The lifted suit stays in the fan. It does not jump in front of the locked cards beside it.
+    expect(orders[4]).toBeLessThan(orders[5]!);
+    expect(orders[2]).toBeGreaterThan(orders[1]!);
     expect(orders[2]).toBeLessThan(orders[3]!);
     expect(orders[3]).toBeLessThan(orders[4]!);
     expect(orders[0]).toBeLessThan(orders[1]!);
     expect(orders[5]).toBeLessThan(orders[6]!);
-    // peers stay in index order. A tap is a separate front band, not another step in this one.
-    expect(handRenderOrder(3, true)).toBe(LEGAL_STACK + 3);
+    expect(handRenderOrder(3, true)).toBe(3);
+    expect(handRenderOrder(3, false)).toBe(3);
     expect(handRenderOrder(4, true) - handRenderOrder(3, true)).toBe(1);
+    expect(LEGAL_STACK).toBeGreaterThan(16);
   });
 
   it('draws a raised card in front of both neighbours in a 13- and a 17-card hand', () => {
@@ -341,7 +342,7 @@ describe('legal cards stack above the cards beside them', () => {
     expect(cardMeshPaint(handRenderOrder(0, true), 'glow').depthTest).toBe(false);
     expect(legal.glow).toBeGreaterThan(paint(16, false).face);
     expect(legal.glow - handRenderOrder(0, true)).toBe(RING_ABOVE);
-    expect(LEGAL_NEAR).toBeGreaterThan(0.006 * 3);
+    expect(LEGAL_NEAR).toBeLessThan(0.006);
     expect(SELECT_NEAR).toBeGreaterThan(LEGAL_NEAR);
     expect(handDepthOpts('selected')).toEqual({ layer: 'selected' });
     expect(handDepthOpts('legal')).toEqual({ layer: 'play' });

@@ -46,23 +46,17 @@ export function flyPlay<C extends string>(
 }
 
 /**
- * How long a freshly selected card stays a selection. A second pointer event in this window
- * (a touch plus the mouse event iOS synthesises) must not play the card it just selected,
- * and it must not play the neighbour underneath a card that is still rising.
- */
-export const TAP_PLAY_ARM_MS = 120;
-
-/**
- * One tap selects. The next tap on that same card plays it. It never drops the selection:
- * a second tap is a play, or it is ignored while the card is still rising.
+ * One tap selects. The next tap on that same card plays it, and only after the
+ * selecting finger has lifted (`armed`). A second pointerdown from the same tap
+ * is not armed, so it cannot play the card before the raise paints.
  * A hit on a different card changes the selection. It never plays that other card.
  * The felt is not a card hit. That is the other way to put the raised card down.
  */
-export function confirmPlay(selected: string | null, hit: string, selectedAt: number, now: number):
+export function confirmPlay(selected: string | null, hit: string, armed: boolean):
   { type: 'play'; card: string } | { type: 'select'; card: string } | { type: 'ignore' } {
   if (!hit) return { type: 'ignore' };
   if (selected !== null && hit === selected) {
-    if (!(now - selectedAt >= TAP_PLAY_ARM_MS)) return { type: 'ignore' };
+    if (!armed) return { type: 'ignore' };
     return { type: 'play', card: selected };
   }
   return { type: 'select', card: hit };

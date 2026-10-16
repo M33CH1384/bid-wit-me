@@ -488,6 +488,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const names = online?.names ?? botNames;
   const pos = useMemo(() => positions(n), [n]);
   const [selected, setSelected] = useState<Card | null>(null);
+  const playArmed = useRef(false);
   const [exchangePick, setExchangePick] = useState<Card[]>([]);
   const [showPad, setShowPad] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -917,7 +918,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     return () => clearTimeout(t);
   }, [isBooks, dealing, st.seed, st.handNo, st.tricks.length, resume]);
 
-  useEffect(() => { setSelected(null); }, [st.turn, st.handNo]);
+  useEffect(() => { setSelected(null); playArmed.current = false; }, [st.turn, st.handNo]);
   // Pump and the Nil-bust shotgun both come from the shared state, so every online client hears each once.
   // The pump is one book from a shot: a contract on the edge, or a Nil bidder still sitting at zero books.
   // The shotgun plays when the trick that gives that Nil bidder their first book resolves. Mute and volume are the bus.
@@ -1063,6 +1064,20 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const pickedAt = useRef(0);
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
+  // Armed only after the selecting finger lifts, so one tap raises and the next tap plays.
+  useEffect(() => {
+    const up = () => {
+      // The click that follows pointerup is still this tap. Arm on the next frame,
+      // after that click, so the first tap cannot play.
+      requestAnimationFrame(() => { if (selectedRef.current) playArmed.current = true; });
+    };
+    window.addEventListener('pointerup', up, true);
+    window.addEventListener('pointercancel', up, true);
+    return () => {
+      window.removeEventListener('pointerup', up, true);
+      window.removeEventListener('pointercancel', up, true);
+    };
+  }, []);
   const onCard = useCallback((c: Card) => {
     if (humanExchanging) {
       sound.play('tap');
@@ -1072,17 +1087,25 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (ignorePlayTap(playHold.current, trickNow)) return;
     if (!legal.includes(c)) return;
     // Play sends the selected card id. A different hit only changes the selection.
-    const action = confirmPlay(selectedRef.current, c, pickedAt.current, performance.now());
+    const action = confirmPlay(selectedRef.current, c, playArmed.current && selectedRef.current === c);
     if (action.type === 'ignore') return;
     if (action.type === 'play') {
       const held = trickNow;
       const sent = apply({ type: 'play', seat: HUMAN, card: action.card as Card });
       if (sent !== false) {
         playHold.current = held;
+        playArmed.current = false;
+        selectedRef.current = null;
         setSelected(null);
         setFlying(action.card as Card);
       }
-    } else { pickedAt.current = performance.now(); setSelected(action.card as Card); sound.play('tap'); }
+    } else {
+      playArmed.current = false;
+      selectedRef.current = action.card as Card;
+      pickedAt.current = performance.now();
+      setSelected(action.card as Card);
+      sound.play('tap');
+    }
   }, [humanExchanging, exchangeStep, legal, apply, trickNow]);
 
   const isBotSeat = (seat: number) => (online ? !!online.botSeats?.includes(seat) : seat !== HUMAN);
@@ -1242,7 +1265,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           winnerSeat={winnerSeat}
           promoted={promoted}
           onCardTap={onCard}
-          onFeltTap={() => { if (feltClearsSelection(selected)) setSelected(null); }}
+          onFeltTap={() => { if (feltClearsSelection(selected)) { playArmed.current = false; setSelected(null); } }}
           renderSeat={renderSeat}
           introHand={introHand}
           animK={k}

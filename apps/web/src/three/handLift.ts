@@ -65,7 +65,10 @@ export const GROUP_GAP_PX = 0;
  * The raised card stays put and on top. The opened strip is what you tap on the neighbour.
  */
 export const RAISE_SPREAD = 0.4;
-/** Render order of a legal card sits above every illegal card. Index is added so left-to-right stays put. */
+/**
+ * Kept for the group outline's draw band. A legal card does not use it:
+ * jumping the whole suit forward covered the cards beside the run.
+ */
 export const LEGAL_STACK = 100;
 /**
  * A selected card draws after every other hand card. 400 clears a 17-card fan
@@ -120,15 +123,22 @@ export function canTapCard(pose: HandPose): boolean {
  * The id is read off the mesh that was hit, then the card id closed over at the last render.
  * A fan index is never the thing that gets played.
  */
-interface TapStamp { type: string; at: number; id: number; card: string }
+interface TapStamp { type: string; at: number; id: number; card: string; up: boolean }
 let lastTap: TapStamp | null = null;
 
 /** Test isolation. A previous tap must not swallow the next case. */
 export function resetEchoTap(): void { lastTap = null; }
 
+/** The selecting finger has come up. The next pointerdown can be a real second tap. */
+export function noteTapUp(): void {
+  if (lastTap) lastTap.up = true;
+}
+
 /**
  * The pointerdown that selected a card, and the mouse event a phone synthesises from that
- * same tap, are one gesture. A second pointer id is a real second tap and may play.
+ * same tap, are one gesture. A second pointerdown before the finger lifts is that same
+ * gesture too, even when both events say mouse. A second pointer id after pointerup is a
+ * real second tap and may play.
  */
 export function echoTap(e: { pointerType?: string; pointerId?: number }, card: string): boolean {
   const now = typeof performance !== 'undefined' ? performance.now() : 0;
@@ -136,8 +146,11 @@ export function echoTap(e: { pointerType?: string; pointerId?: number }, card: s
   // A phone turns one touch into a mouse event a moment later. That is still the tap
   // that selected the card. A later touch is a new tap, even when the pointer id is reused.
   const synthMouse = !!prev && prev.type === 'touch' && prev.card === card && now - prev.at < 1500 && (e.pointerType === 'mouse' || e.pointerType === 'pen');
-  if (synthMouse) return true;
-  lastTap = { type: e.pointerType || 'mouse', at: now, id: e.pointerId ?? -1, card };
+  // Two mouse downs before the finger lifts are one tap (a phone, or Chrome, reporting the
+  // click twice). A later touch is a new tap, even when the pointer id is reused.
+  const sameGesture = !!prev && !prev.up && prev.card === card && now - prev.at < 800 && (e.pointerType === 'mouse' || e.pointerType === 'pen');
+  if (synthMouse || sameGesture) return true;
+  lastTap = { type: e.pointerType || 'mouse', at: now, id: e.pointerId ?? -1, card, up: false };
   return false;
 }
 
@@ -188,7 +201,10 @@ export function handCardChrome(o: {
  */
 export function handRenderOrder(index: number, above: boolean, front = false): number {
   if (front) return SELECT_STACK + index;
-  return (above ? LEGAL_STACK : 0) + index;
+  // The card to the right stays on top of the overlap. A legal suit used to jump
+  // ahead of every locked card, and that covered the two cards beside the run.
+  void above;
+  return index;
 }
 
 /**
@@ -355,11 +371,11 @@ export function hitsInPaintOrder<T extends { distance: number; eventObject?: Car
  * Cards to the left move left, cards to the right move right, and the raised card stays.
  * No selection: every shift is 0.
  */
-export function raiseSpreadPx(count: number, selectedIndex: number, cardWidthPx: number): number[] {
+export function raiseSpreadPx(count: number, selectedIndex: number, cardWidthPx: number, openPx?: number): number[] {
   const shift = new Array<number>(count).fill(0);
   if (!(selectedIndex >= 0 && selectedIndex < count) || count < 2) return shift;
   if (!(Number.isFinite(cardWidthPx) && cardWidthPx > 0)) return shift;
-  const open = RAISE_SPREAD * cardWidthPx;
+  const open = Number.isFinite(openPx) && openPx! > 0 ? openPx! : RAISE_SPREAD * cardWidthPx;
   // The block on each side slides as a unit, so the gaps that are not next to the
   // raised card stay put. The fan solver reserved this much room on the screen.
   for (let i = 0; i < count; i++) {

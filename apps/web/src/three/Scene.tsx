@@ -6,7 +6,7 @@ import { type BufferGeometry, type Camera, type Group, type Material, type Mesh,
 import { type Card, type Play, type Trick } from '@spades/rules';
 import Card3D, { createLitCardMaterial } from './Card3D';
 import { departureSlot, handCardKey, handReactKey } from '../handOrder';
-import { GAP_S, RAISE_SPREAD, cardIdFromHit, echoTap, fanGapPx, fanMotion, handCardChrome, handDepthOpts, handRenderOrder, hitsInPaintOrder, pointerNdc, posePx, raiseLocalY, raiseSpreadPx, spreadFitScale } from './handLift';
+import { GAP_S, RAISE_SPREAD, cardIdFromHit, echoTap, fanGapPx, fanMotion, handCardChrome, handDepthOpts, handRenderOrder, hitsInPaintOrder, noteTapUp, pointerNdc, posePx, raiseLocalY, raiseSpreadPx, spreadFitScale } from './handLift';
 import { type HandHitCard, pickHandCard, publishHandHits } from './handHit';
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline, seatDealDelay } from './dealTimeline';
@@ -25,7 +25,7 @@ import Venue3D, { feltPatternTexture, preloadVenueAssets } from './Venue3D';
 import { type VenueDef, type VenueId, VENUE_DEFS, venueAssetUrls } from '../venues';
 import { bodyGeometry, cardGeometry, feltGeometry, railGeometry } from './geometry';
 import {
-  CH, CW, TRICK_SCALE, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, cardScreenQuad, deckSpot, fanCssPx, fanLayout, handCardPlane, handFan, makeCamera, jitterOf, opponentFan, phoneHandFan, pileSpot, ringSpot, trickSpot,
+  CH, CW, MIN_STRIP_PX, TRICK_SCALE, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, cardScreenQuad, deckSpot, fanCssPx, fanLayout, handCardPlane, handFan, makeCamera, jitterOf, opponentFan, phoneHandFan, pileSpot, ringSpot, trickSpot,
 } from './layout';
 
 export interface SceneProps {
@@ -489,11 +489,12 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   const wide = !short && size.width >= 1024 && aspect >= 1.3;
   // Portrait phones get a larger hand. Wide and landscape keep their own framing.
   const portraitPhone = !short && !wide && size.width < 600 && aspect < 1.05;
-  const fanOpts = short
-    ? { short, reserveFrac: (Math.max(safe.l, safe.r) + 186) / size.width, bottomFrac: safe.b / size.height, heightFrac: 0.2 }
-    : wide ? { reserveFrac: (size.width < 1400 ? 250 : 205) / size.width, bottomFrac: 0.012, heightFrac: 0.205 }
-    : portraitPhone ? phoneHandFan()
-    : {};
+  const strip = { minStripPx: MIN_STRIP_PX, pxW: screenW };
+  const fanOpts: FanOpts = short
+    ? { short, reserveFrac: (Math.max(safe.l, safe.r) + 186) / size.width, bottomFrac: safe.b / size.height, heightFrac: 0.2, ...strip }
+    : wide ? { reserveFrac: (size.width < 1400 ? 250 : 205) / size.width, bottomFrac: 0.012, heightFrac: 0.205, ...strip }
+    : portraitPhone ? { ...phoneHandFan(), ...strip }
+    : { ...strip };
   const trickScale = short ? 1.85 : undefined;
   // Last committed hand, so a play can launch from that card's own slot. Updated in an effect (not during render)
   // so a highlight change and the server ack share one set of keys and don't restart the fan.
@@ -584,14 +585,14 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   const laid = selectedIndex >= 0 ? { ...fanOpts, spread: RAISE_SPREAD } : fanOpts;
   const fan = fanLayout(aspect, Math.max(1, fanCards.length), safeFrac, laid);
   const cardPx = fanCssPx(fan, screenW).width;
-  const rawSpread = raiseSpreadPx(fanCards.length, selectedIndex, cardPx);
+  const rawSpread = raiseSpreadPx(fanCards.length, selectedIndex, cardPx, fan.raiseOpen > 0 ? fan.raiseOpen : undefined);
   const nFan = fanCards.length;
   let spreadScale = 1;
   if (nFan > 1 && rawSpread.some((v) => v !== 0)) {
     const edgeQuad = (i: number) => cardScreenQuad(aspect, handFan(aspect, nFan, i, 0, safeFrac, laid, 0, screenH), screenW, screenH, 0, !!laid.short);
     const leftEdge = Math.min(...edgeQuad(0).map((p) => p.x));
     const rightEdge = Math.max(...edgeQuad(nFan - 1).map((p) => p.x));
-    spreadScale = spreadFitScale(rawSpread, leftEdge, rightEdge, screenW, 8);
+    spreadScale = spreadFitScale(rawSpread, leftEdge, rightEdge, screenW, 1);
   }
   const spread = rawSpread.map((v) => v * spreadScale);
   const gaps = fanGapPx(fanCards.map((slot) => !!slot.card && legal.includes(slot.card))).map((g, i) => g + (spread[i] ?? 0));
@@ -1162,8 +1163,17 @@ function HandPointer({ onTap }: { onTap: (card: Card) => void }) {
       (window as unknown as { __bwmLastTap?: string }).__bwmLastTap = `${id}@${e.clientX.toFixed(0)},${e.clientY.toFixed(0)}`;
       tap.current(id as Card);
     };
+    const up = () => noteTapUp();
     el.addEventListener('pointerdown', down, true);
-    return () => el.removeEventListener('pointerdown', down, true);
+    el.addEventListener('pointerup', up, true);
+    el.addEventListener('pointercancel', up, true);
+    window.addEventListener('pointerup', up, true);
+    return () => {
+      el.removeEventListener('pointerdown', down, true);
+      el.removeEventListener('pointerup', up, true);
+      el.removeEventListener('pointercancel', up, true);
+      window.removeEventListener('pointerup', up, true);
+    };
   }, [gl]);
   return null;
 }
