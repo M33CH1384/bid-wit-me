@@ -50,3 +50,14 @@ describe('trump ladder', () => {
     expect(table).not.toContain("join(' › ')");
   });
 });
+
+import { trumpStripShown } from '../src/trumpLadder';
+describe('TRUMPS strip visibility', () => {
+  it('shows through deal and bidding, hides after the first card, returns next hand', () => {
+    expect(trumpStripShown({ phase: 'bidding', tricks: [], trick: { plays: [] } })).toBe(true);
+    expect(trumpStripShown({ phase: 'playing', tricks: [], trick: { plays: [] } })).toBe(true);
+    expect(trumpStripShown({ phase: 'playing', tricks: [], trick: { plays: [{}] } })).toBe(false);
+    expect(trumpStripShown({ phase: 'playing', tricks: [{}], trick: { plays: [] } })).toBe(false);
+    expect(trumpStripShown({ phase: 'bidding', tricks: [], trick: { plays: [] } })).toBe(true);
+  });
+});

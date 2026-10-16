@@ -42,6 +42,9 @@ export function syncPlateFacts(screen: ParentNode, facts: readonly SeatFact[]): 
     const plates = screen.querySelectorAll(`[data-testid="seat-${fact.seat}"]`);
     plates.forEach((plate) => {
       const inLayer = !!layer && layer.contains(plate);
+      // One DEALER chip per plate (bots and you). React's own chip and a synced one could both survive a re-render.
+      const nameEl = plate.querySelector('.plate-name');
+      if (nameEl) for (const d of [...nameEl.children].filter((el) => el.classList.contains('dealer')).slice(1)) { d.remove(); wrote = true; }
       if (inLayer) {
         const name = plate.querySelector('.plate-name');
         if (name) {
