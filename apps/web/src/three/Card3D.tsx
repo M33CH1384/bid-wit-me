@@ -28,7 +28,8 @@ interface Props {
   duration?: number;
   /** 'lift' is the 200ms group rise. 'slide' closes a gap over 240ms (translate + rotate only, same curve).
    *  'flight' is the deal / table arc. */
-  motion?: 'lift' | 'flight' | 'slide';
+  /** glide: tossed, then slides along the felt and slows with friction (physics landing) */
+  motion?: 'lift' | 'flight' | 'slide' | 'glide';
   arc?: number;
   /** Card-local raise distance. Never folded into `target`, so a select does not retarget the fan.
    *  Applied along screen-up (see `roll`), not along the rolled card, so the end card stays in the fan. */
@@ -480,11 +481,12 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
         if (moving && sl && sl.shake > 0 && !fx.reduced && !fx.osReducedMotion) fx.shake = { start: performance.now(), dur: 0.16 + sl.shake * 3, amp: sl.shake * 0.6, thump: true };
       }
     }
-    const e = (motion === 'flight' ? easeInOut : liftEase)(s.t);
+    const e = motion === 'glide' ? 1 - Math.pow(1 - s.t, 3) : (motion === 'flight' ? easeInOut : liftEase)(s.t);
     g.position.lerpVectors(s.sp, s.tp, e);
     const dist = s.sp.distanceTo(s.tp);
     const hop = motion === 'slide' ? 0 : arc;
-    g.position.y += Math.sin(Math.PI * s.t) * hop * Math.min(1, dist);
+    // glide: the toss is only the first part; the rest is the card sliding flat on the felt
+    g.position.y += (motion === 'glide' ? (s.t < 0.35 ? Math.sin((Math.PI * s.t) / 0.35) : 0) : Math.sin(Math.PI * s.t)) * hop * Math.min(1, dist);
     // Landing bounce: a quick rebound off the felt over the last quarter, scaled by the slam.
     const sl = slamNow.current;
     // Test probe: screen position of a trick card in flight, per frame (CSS px).
