@@ -1,4 +1,5 @@
 import { cardControlLabel } from './cardA11y';
+import { useEscapeClose } from './useEscapeClose';
 import { confirmPlay, feltClearsSelection, flyPlay, ignorePlayTap, playTrickOf, type PlayTrick } from './online/playGuard';
 import { actingSeat, localSeatOfServerTurn, turnView, type TurnBadge } from './turnState';
 import { retainHandOrder } from './handOrder';
@@ -395,6 +396,7 @@ function runClaimerSeat(st: GameState): number | null {
  * The first few times it appears, a one-time spotlight tip points at it (shown even with tips off).
  */
 function RunItButton({ onRun, tip, onDismissTip }: { onRun: () => void; tip: boolean; onDismissTip: () => void }) {
+  const escTip = useEscapeClose(onDismissTip);
   const [bottom, setBottom] = useState<number | null>(null);
   useLayoutEffect(() => {
     const place = () => {
@@ -409,7 +411,7 @@ function RunItButton({ onRun, tip, onDismissTip }: { onRun: () => void; tip: boo
   return (
     <div className="run-it-wrap" style={{ bottom: bottom ?? undefined }}>
       {tip && (
-        <div className="run-it-tip glass slant" role="dialog" aria-label="Run it tip" data-testid="run-it-tip">
+        <div ref={escTip} className="run-it-tip glass slant" role="dialog" aria-label="Run it tip" data-testid="run-it-tip">
           <span>You've got the rest locked. Tap <b>Run it!</b> to take every remaining book.</span>
           <button type="button" className="link" onClick={onDismissTip} aria-label="Dismiss tip">Got it</button>
         </div>
@@ -887,6 +889,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   };
   // A tap that starts on Leave always leaves, even when WebKit delivers the click to the scrim.
   const leaveGesture = useRef<LeaveGesture>({ armed: false, actedAt: 0 });
+  const escMenu = useEscapeClose(() => { leaveGesture.current = { armed: false, actedAt: 0 }; setMenuOpen(false); });
+  const escLeave = useEscapeClose(() => setConfirmLeave(false));
   const runLeaveMenu = (e: { type: string; pointerType?: string }, where: 'leave' | 'scrim') => {
     const now = performance.now();
     const action = leaveMenuAction({ type: e.type as 'pointerdown' | 'pointerup' | 'click', pointerType: e.pointerType }, where, leaveGesture.current, now);
@@ -1257,7 +1261,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           {menuOpen && (
             <>
               <div className="menu-scrim" onPointerDown={(e) => runLeaveMenu(e, 'scrim')} onPointerUp={(e) => runLeaveMenu(e, 'scrim')} onClick={(e) => runLeaveMenu(e, 'scrim')} />
-              <div className="game-menu glass" role="menu" data-testid="game-menu">
+              <div className="game-menu glass" role="menu" data-testid="game-menu" ref={escMenu}>
                 <button type="button" role="menuitem" className={help ? 'on' : ''} data-testid="help" aria-pressed={help} onClick={() => { setHelp(!help); setMenuOpen(false); }}>❓ Help: tips &amp; book counting</button>
                 <button type="button" role="menuitem" data-testid="scorepad-button" onClick={() => { setShowPad(true); setMenuOpen(false); }}>📋 Score pad &amp; house rules</button>
                 <button type="button" role="menuitem" onClick={() => onQuality(settings.quality === 'high' ? 'low' : 'high')}>🎨 Graphics: {settings.quality === 'high' ? 'High' : 'Low'}</button>
@@ -1477,7 +1481,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
       {feedback && <Feedback onClose={() => setFeedback(false)} />}
       {confirmLeave && (
-        <div className="modal-backdrop" onPointerDown={(e) => { if (e.target === e.currentTarget) setConfirmLeave(false); }}>
+        <div className="modal-backdrop" ref={escLeave} onPointerDown={(e) => { if (e.target === e.currentTarget) setConfirmLeave(false); }}>
           <div className="modal glass slant confirm" role="dialog" aria-label="Leave this game?" data-testid="confirm-leave" onPointerDown={(e) => e.stopPropagation()}>
             <div className="panel-title big">LEAVE THIS GAME?</div>
             <p className="muted">{onSuspend ? 'Leave ends it for good. Save & quit lets you resume from the menu.' : 'Your progress in this game will be lost.'}</p>
