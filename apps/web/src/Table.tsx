@@ -840,7 +840,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const t = setTimeout(() => setToasts((ts) => ts.filter((x) => x.id !== -1)), 2600);
     return () => clearTimeout(t);
   }, [resume]);
-  const leave = () => { if (!online) clearGame(); onExit(); };
+  // Online Leave goes home. onExit only opens the table lobby, so one Leave used to stop there.
+  const leave = () => {
+    if (!online) { clearGame(); onExit(); return; }
+    (onMainMenu ?? onExit)();
+  };
   // A tap that starts on Leave always leaves, even when WebKit delivers the click to the scrim.
   const leaveGesture = useRef<LeaveGesture>({ armed: false, actedAt: 0 });
   const runLeaveMenu = (e: { type: string; pointerType?: string }, where: 'leave' | 'scrim') => {
