@@ -17,13 +17,10 @@ import { navigate } from './nav';
 import { MediaBar, SeatMedia } from './Media';
 import { colorFor, useVideo } from './useOnline';
 import type { VideoMesh } from './video';
-
-const TIMERS = { relaxed: { bid: 45, play: 30 }, normal: { bid: 30, play: 20 }, fast: { bid: 15, play: 10 } } as const;
-type TimerKey = keyof typeof TIMERS;
+import { TURN_TIMERS, TurnTimerSelect, type TimerKey, timerKeyOf } from '../turnTimer';
 
 function timerKey(room: RoomInfo): TimerKey {
-  const t = room.rules.turnTimerSec;
-  return (Object.keys(TIMERS) as TimerKey[]).find((k) => TIMERS[k].bid === t.bid && TIMERS[k].play === t.play) ?? 'normal';
+  return timerKeyOf(room.rules.turnTimerSec) ?? 'normal';
 }
 
 const NUKE_LABEL: Record<NukeIntensity, string> = { full: 'Full Nuke', classic: 'Classic', off: 'Off' };
@@ -53,10 +50,11 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
   const config = (s: Settings, timer: TimerKey = timerKey(room), botLevel = room.botLevel, talkSec = room.talkSec, afkLimit = room.afkLimit ?? 3, partnerMicMute = room.partnerMicMute ?? false, nukeIntensity: NukeIntensity = room.nukeIntensity ?? 'full', talkIntensity: TalkIntensity = room.talkIntensity ?? 'cookout') => {
     onSettings(s);
     // mid-game only the pace / social settings may change: the game rules go back exactly as they are
-    const rules = playing ? { ...room.rules, turnTimerSec: { ...TIMERS[timer] } } : { ...settingsToRules(s), turnTimerSec: { ...TIMERS[timer] } };
+    const rules = playing ? { ...room.rules, turnTimerSec: { ...TURN_TIMERS[timer] } } : { ...settingsToRules(s), turnTimerSec: { ...TURN_TIMERS[timer] } };
     conn.send({ t: 'config', rules, botLevel, talkSec, afkLimit, partnerMicMute, nukeIntensity, talkIntensity });
   };
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => config({ ...settings, [k]: v });
+  const onTimer = (key: TimerKey) => config(settings, key);
 
   const share = async () => {
     const text = `Pull up to my Spades table on Bid Wit Me 🃏 Code ${room.code}`;
@@ -146,7 +144,13 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
       </section>
       {isHost && !playing ? (
         <details className="panel settings-panel" open={settingsOpen} onToggle={(e) => setSettingsOpen((e.currentTarget as HTMLDetailsElement).open)}>
-          <summary className="panel-title settings-row" data-testid="settings-row"><span className="sr-mode">{modeTitle(r)} · to {r.targetScore}</span><span className="sr-edit">{settingsOpen ? 'Done' : 'Edit'}</span></summary>
+          <summary className="panel-title settings-row" data-testid="settings-row">
+            <span className="sr-mode">{modeTitle(r)} · to {r.targetScore}</span>
+            <label className="sr-timer" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+              <TurnTimerSelect value={timerKey(room)} onChange={onTimer} testId="lobby-timer" />
+            </label>
+            <span className="sr-edit">{settingsOpen ? 'Done' : 'Edit'}</span>
+          </summary>
           <div className="modes compact">
             {MODES.map((m) => (
               <button key={m.key} type="button" className={`mode ${settings.mode === m.key ? 'selected' : ''}`} onClick={() => set('mode', m.key as ModeKey)}>
@@ -176,9 +180,8 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
               <option value="250">250</option><option value="300">300</option><option value="500">500</option>
             </select></span></label>
           <label className="row"><span className="row-label">Turn timer<small>then the bot plays for you</small></span><span className="row-control">
-            <select value={timerKey(room)} onChange={(e) => config(settings, e.target.value as TimerKey)}>
-              <option value="relaxed">Relaxed (45s / 30s)</option><option value="normal">Normal (30s / 20s)</option><option value="fast">Fast (15s / 10s)</option>
-            </select></span></label>
+            <TurnTimerSelect value={timerKey(room)} onChange={onTimer} testId="lobby-timer-edit" />
+          </span></label>
           <label className="row"><span className="row-label">Bot skill<small>Mixed: every bot rolls its own (hidden)</small></span><span className="row-control">
             <select data-testid="lobby-bot-skill" value={skillSettingOf(room.botLevel)} onChange={(e) => config(settings, timerKey(room), e.target.value as BotLevel)}>
               {BOT_SKILL_SETTINGS.map((k) => <option key={k} value={k}>{SKILL_SETTING_LABEL[k]}</option>)}
@@ -249,11 +252,15 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
           <LockedRules room={room} />
           {isHost && (
             <details className="panel settings-panel" open={settingsOpen} onToggle={(e) => setSettingsOpen((e.currentTarget as HTMLDetailsElement).open)} data-testid="pace-settings">
-              <summary className="panel-title">PACE &amp; TABLE <small>(host · still changeable)</small></summary>
+              <summary className="panel-title settings-row">
+                <span className="sr-mode">PACE &amp; TABLE <small>(host · still changeable)</small></span>
+                <label className="sr-timer" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+                  <TurnTimerSelect value={timerKey(room)} onChange={onTimer} testId="pace-timer" />
+                </label>
+              </summary>
               <label className="row"><span className="row-label">Turn timer<small>then the bot plays for you</small></span><span className="row-control">
-                <select value={timerKey(room)} onChange={(e) => config(settings, e.target.value as TimerKey)}>
-                  <option value="relaxed">Relaxed (45s / 30s)</option><option value="normal">Normal (30s / 20s)</option><option value="fast">Fast (15s / 10s)</option>
-                </select></span></label>
+                <TurnTimerSelect value={timerKey(room)} onChange={onTimer} testId="pace-timer-edit" />
+              </span></label>
               <label className="row"><span className="row-label">Table Talk<small>between hands · all mics open</small></span><span className="row-control">
                 <select data-testid="talk-sec" value={String(room.talkSec ?? 20)} onChange={(e) => config(settings, timerKey(room), room.botLevel, Number(e.target.value))}>
                   {[15, 20, 30, 45].map((x) => <option key={x} value={x}>{x}s{x === 20 ? ' (default)' : ''}</option>)}
@@ -271,7 +278,7 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
       ) : (
         <div className="summary">
           <span>{modeTitle(r)} · Trumps: <TrumpLadder rules={r} n={5} style="emoji" /> …</span>
-          <span>Target {r.targetScore} · timer {r.turnTimerSec.bid}s/{r.turnTimerSec.play}s</span>
+          <span>Target {r.targetScore} · bid {r.turnTimerSec.bid}s / play {r.turnTimerSec.play}s</span>
           {r.firstHandBidsItself && <span>First hand: books bid themselves</span>}
           <span>Table Talk {room.talkSec ?? 20}s between hands · all mics open</span>
           {r.partnerships && (

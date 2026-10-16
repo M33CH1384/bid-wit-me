@@ -111,6 +111,8 @@
 .lobby-home { position: fixed; z-index: 30; top: calc(10px + env(safe-area-inset-top)); left: calc(10px + env(safe-area-inset-left)); width: auto; padding: 0 10px; display: flex; align-items: center; gap: 6px; font-size: 16px; }
 .lobby-home img { height: 12px; width: auto; }
 .settings-panel > summary { cursor: pointer; list-style: none; padding: 6px 0; }
+/* A flex summary lets WebKit keep the editor body in the layout while the row still says Edit. Hide it until Edit. */
+.settings-panel:not([open]) > :not(summary) { display: none; }
 .settings-panel > summary::-webkit-details-marker { display: none; }
 .settings-panel > summary::before { content: '▸ '; color: var(--gold); }
 .settings-panel[open] > summary::before { content: '▾ '; }
@@ -312,7 +314,9 @@
 .settings-panel > summary.settings-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; text-transform: none; }
 .settings-panel > summary.settings-row::before { content: '⚙'; margin-right: 6px; }
 .settings-panel[open] > summary.settings-row::before { content: '⚙'; }
-.sr-mode { flex: 1; font-family: var(--display); letter-spacing: .06em; text-transform: uppercase; }
+.sr-mode { flex: 1; min-width: 0; font-family: var(--display); letter-spacing: .06em; text-transform: uppercase; }
+.sr-timer { flex: 0 1 auto; min-width: 0; }
+.sr-timer select { max-width: 100%; font-size: 12px; padding: 4px 6px; }
 .sr-edit { font-size: 12px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: #1d1204; background: var(--gold); padding: 3px 12px; border-radius: 10px; }
 @media (max-width: 1023px), (max-height: 599px) {
   /* solid top bar behind the back / sound buttons so content scrolls under it, never under bare icons */

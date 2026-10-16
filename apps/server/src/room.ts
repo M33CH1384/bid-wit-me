@@ -1324,14 +1324,14 @@ export class Room {
   }
 
   /**
-   * The host's timer for this kind of turn. A missing value keeps the preset
-   * (bid 30 / play 20). That preset is not a new online length.
+   * The host's timer for this kind of turn. A missing value keeps Normal
+   * (bid 20 / play 30). Play is the longer of the two. That is not a new length.
    */
   private turnSeconds(kind: string): number {
     const t = this.data.rules.turnTimerSec;
     const sec = kind === 'bid' ? t?.bid : t?.play;
     if (typeof sec === 'number' && Number.isFinite(sec)) return sec;
-    return kind === 'bid' ? 30 : 20;
+    return kind === 'bid' ? 20 : 30;
   }
 
   /** Milliseconds the table allows for this turn, including learning mode's stretch. */

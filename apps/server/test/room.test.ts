@@ -547,7 +547,7 @@ describe('game', () => {
     expect(env.room.data.deadline).toBeNull();
     expect(env.room.data.seats[turnSeat]).toMatchObject({ kind: 'human', playerId: p.pid });
     env.send('z', { t: 'interactive', on: true });
-    const timerMs = (env.room.data.game!.phase === 'playing' ? 20 : 30) * 1000;
+    const timerMs = (env.room.data.game!.phase === 'playing' ? env.room.data.rules.turnTimerSec.play : env.room.data.rules.turnTimerSec.bid) * 1000;
     expect(env.room.data.deadline! - env.t).toBeGreaterThan(timerMs - 50);
     expect(env.room.data.deadline).toBe(env.room.data.turnStartedAt! + timerMs);
     void dl;
