@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Xform } from '../src/three/layout';
-import { handNeedsDeal, handSlotKey, openingFlight } from '../src/three/dealFlight';
+import { handNeedsDeal, handOnFan, handSlotKey, openingFlight } from '../src/three/dealFlight';
 import { dealTimeline, dealtSlotCount, seatDealDelay } from '../src/three/dealTimeline';
 
 const deck: Xform = { p: [1, 2, 3], q: [0, 0, 0, 1], s: 1 };
@@ -32,6 +32,13 @@ describe('which hand cards are still being dealt', () => {
     seen.add('down-2');
     expect(handNeedsDeal({ intro: true, flip: false, seen, slotKey: 'AS' })).toBe(false);
     expect(handNeedsDeal({ intro: true, flip: false, seen, slotKey: 'down-2' })).toBe(false);
+  });
+
+  it('draws every card in the current hand, and does not draw the queen twice', () => {
+    const fan = handOnFan(['QS', '10S', 'QS', '8D', null]);
+    expect(fan.map((slot) => slot.card)).toEqual(['QS', '10S', '8D', null]);
+    expect(fan.every((slot) => slot.hidden === false)).toBe(true);
+    expect(handOnFan<string>([]).length).toBe(0);
   });
 
   it('does not deal on a resume or on a Blind Nil flip', () => {

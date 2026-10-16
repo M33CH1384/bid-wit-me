@@ -1535,6 +1535,10 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 /* Resumed hand, on screen before WebGL. Buttons work immediately; the canvas face fills in one card per frame. */
 /* No filter or opacity on the fan. A parent filter would dim every card, legal ones included. */
 .felt-hand { position: absolute; z-index: 7; left: 0; right: 0; bottom: calc(15vh + env(safe-area-inset-bottom)); height: 132px; display: flex; justify-content: center; align-items: flex-end; pointer-events: none; filter: none; opacity: 1; }
+/* The 3D fan is up. The flat cards would paint a second face behind it and catch the tap. */
+.table-screen.hand-3d .felt-hand,
+.table-screen.hand-3d .felt-hand button,
+.table-screen.hand-3d .felt-trick { visibility: hidden; pointer-events: none !important; }
 .felt-hand button { pointer-events: auto; position: relative; width: 52px; height: 74px; margin: 0 -12px; padding: 0; border: 0; border-radius: 5px; background: #fbf8f1; color: #15161a; box-shadow: 0 8px 16px rgba(0,0,0,.45); overflow: hidden; }
 .felt-hand button.red { color: #c4122f; }
 /* Dim only a card that cannot be played, to about 40% and desaturated. :not(.legal) keeps this off a playable card. */

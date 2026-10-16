@@ -3,8 +3,8 @@ import { memo, useLayoutEffect, useMemo, useRef } from 'react';
 import { Color, type Group, type Material, type Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NoToneMapping, Quaternion, type Texture, Vector3, type WebGLRenderer } from 'three';
 import { cardFaceFragment } from './cardSat';
 import { cardGeometry, cardOutlineGeometry } from './geometry';
-import { RAISE_S, applyFaceDepthBias, cardMeshPaint, cardTapHandlers, faceLook, liftEase, screenRaise } from './handLift';
-import type { Xform } from './layout';
+import { RAISE_S, applyFaceDepthBias, cardMeshPaint, cardTapHandlers, faceLook, liftEase, pointerSelectedId, screenRaise, setSelectedTapLayer } from './handLift';
+import { CH, CT, CW, FACE_CAP_GAP, type Xform } from './layout';
 import { type Sfx, sound } from '../audio';
 import { blastPose } from './blastSweep';
 import { fireCue, fx } from '../fx';
@@ -80,6 +80,15 @@ function cardMaterial(map: Texture, quality: 'high' | 'low') {
     : new MeshStandardMaterial({ map, roughness: 0.5 });
 }
 
+/** Corners of the face, in the lift group's local space. The raise lives on that group. */
+const FACE_Z = CT / 2 + FACE_CAP_GAP;
+const TAP_CORNERS = [
+  new Vector3(-CW / 2, -CH / 2, FACE_Z),
+  new Vector3(CW / 2, -CH / 2, FACE_Z),
+  new Vector3(CW / 2, CH / 2, FACE_Z),
+  new Vector3(-CW / 2, CH / 2, FACE_Z),
+];
+
 /** The lit card program (clearcoat + sheen on high). Warmed before it is ever drawn. */
 export function createLitCardMaterial(map: Texture, quality: 'high' | 'low', saturate: boolean) {
   const m = cardMaterial(map, quality);
@@ -95,6 +104,8 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   const inner = useRef<Group>(null);
   const bl = useRef({ dir: new Vector3(), q: new Quaternion(), axis: new Vector3(), on: false, flung: false, stamp: -1 });
   const invalidate = useThree((s) => s.invalidate);
+  const camera = useThree((s) => s.camera);
+  const ndcCorner = useRef(new Vector3());
   const geo = cardGeometry();
   // A null face means "not painted yet" and the front shows the back. Once the pips have
   // been on screen, a later null (painter restart, selection rerender) keeps them.
@@ -112,7 +123,9 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   }, [frontTex, back, quality, lit]); // eslint-disable-line react-hooks/exhaustive-deps
   const backMat = useMemo(() => {
     const m = lit ? createLitCardMaterial(back, quality, false) : new MeshBasicMaterial({ map: back });
-    applyFaceDepthBias(m);
+    // The face bias pulls toward the camera. The same bias on the back plane drew a second
+    // copy of the pips just behind the card (the ghost queen behind the queen of spades).
+    m.polygonOffset = false;
     return m;
   }, [back, quality, lit]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -383,6 +396,16 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
         liftG.scale.set(1, 1, 1);
       }
     }
+    // The raised card's screen quad is its tap layer, including the right edge a neighbour covers.
+    if (cardId && cardId === pointerSelectedId() && liftG) {
+      g.updateMatrixWorld(true);
+      const ndc: { x: number; y: number }[] = [];
+      for (const corner of TAP_CORNERS) {
+        const p = ndcCorner.current.copy(corner).applyMatrix4(liftG.matrixWorld).project(camera);
+        ndc.push({ x: p.x, y: p.y });
+      }
+      setSelectedTapLayer(cardId, ndc, g);
+    }
     if (s.t >= 1) {
       // A play that reached the trick must not keep the face-down fan quaternion.
       if (!s.faced && finiteTarget) {
@@ -397,7 +420,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       return;
     }
     invalidate();
-    if (s.wait > 0) { s.wait -= dt; return; }
+    if (s.wait > 0) { s.wait -= dt; invalidate(); return; }
     const moving = s.sp.distanceTo(s.tp) > 0.02;
     if (!s.started) {
       // the card leaves now — animation-driven sound, so it always matches what you see (any game speed)

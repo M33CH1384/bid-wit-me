@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cardShowsFace, feltHandVisible, handLatched, latchHand, presentHand, resetHandLatch, resumeDrawList, retainFrontTexture, showResumeHand3D, shownFaceIds, trickFacesShown, visibleFaceIds } from '../src/three/cardFace';
+import { cardShowsFace, feltHandVisible, flatFanHidden, handLatched, latchHand, presentHand, resetHandLatch, resumeDrawList, retainFrontTexture, showResumeHand3D, shownFaceIds, trickFacesShown, visibleFaceIds } from '../src/three/cardFace';
 
 /**
  * The painter walks the hand one card per frame and starts over when its key changes.
@@ -178,6 +178,10 @@ describe('dealt faces survive a selection', () => {
     expect(presentHand({ cardCount: 0, resume: true, latched: false, facesReady: 0 })).toEqual({ webgl: false, felt: false, visible: 0 });
     // A fresh deal is the 3D fan, so the flat fan does not stack on it.
     expect(feltHandVisible(13, false, false)).toBe(false);
+    // The flat fan is gone on the frame the 3D hand exists. Waiting another frame stacks a ghost face.
+    expect(flatFanHidden(true, 13)).toBe(true);
+    expect(flatFanHidden(false, 13)).toBe(false);
+    expect(flatFanHidden(true, 0)).toBe(false);
   });
 
   it('keeps the 3D latch for the hand that was drawn, including after the group remounts', () => {

@@ -29,3 +29,21 @@ export function handSlotKey(cardId: string, index: number): string {
 export function handNeedsDeal(o: { intro: boolean; flip: boolean; seen: ReadonlySet<string>; slotKey: string }): boolean {
   return o.intro && !o.flip && !o.seen.has(o.slotKey);
 }
+
+/**
+ * The fan on screen is the current hand. A card that is already in state is drawn in its slot,
+ * not held at the deck until its deal beat (that beat is what left cards missing and taps ignored).
+ * A repeated id is one card. Two meshes for the queen is the ghost face behind it.
+ */
+export function handOnFan<T extends string>(hand: readonly (T | null)[]): { card: T | null; hidden: boolean }[] {
+  const seen = new Set<string>();
+  const out: { card: T | null; hidden: boolean }[] = [];
+  for (const card of hand) {
+    if (card !== null) {
+      if (seen.has(card)) continue;
+      seen.add(card);
+    }
+    out.push({ card, hidden: false });
+  }
+  return out;
+}

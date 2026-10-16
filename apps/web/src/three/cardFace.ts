@@ -107,6 +107,14 @@ export function feltHandVisible(cardCount: number, sceneResume: boolean, webglLi
 }
 
 /**
+ * The flat fan hides on the frame the 3D hand is drawn. Leaving it up paints a second
+ * queen behind the one in the fan, and its buttons sit above the canvas and take the tap.
+ */
+export function flatFanHidden(hand3D: boolean, handCount: number): boolean {
+  return hand3D && handCount > 0;
+}
+
+/**
  * Cards in state are on exactly one fan. Visible is the state count whenever that count
  * is positive: texture readiness may choose felt instead of WebGL, and it never chooses neither.
  */

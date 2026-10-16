@@ -279,14 +279,59 @@ export function pointerSelectedId(): string | null {
   return pointerSelected;
 }
 
+export interface PlanePoint { x: number; y: number }
+
+/**
+ * Screen quad of the raised card, in the same NDC space as the fibre pointer (+y up).
+ * The neighbour on the right is closer in z and overlaps this card. A ray through that
+ * overlap hits the neighbour and misses the face that is drawn on top. The quad is the
+ * hit area: a finger inside it belongs to the selected card.
+ */
+let selectedLayer: { id: string; ndc: PlanePoint[]; object: CardHitNode } | null = null;
+
+export function setSelectedTapLayer(id: string | null, ndc: readonly PlanePoint[] | null, object: CardHitNode | null): void {
+  if (!id || !ndc || ndc.length < 3 || !object) {
+    if (!id || selectedLayer?.id === id) selectedLayer = null;
+    return;
+  }
+  selectedLayer = { id, ndc: ndc.map((p) => ({ x: p.x, y: p.y })), object };
+}
+
+/** True when `p` is inside a convex polygon. Touches on an edge count as inside. */
+export function pointInConvex(p: PlanePoint, poly: readonly PlanePoint[]): boolean {
+  if (poly.length < 3 || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return false;
+  let sign = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i]!;
+    const b = poly[(i + 1) % poly.length]!;
+    const cross = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
+    if (cross === 0) continue;
+    const s = cross > 0 ? 1 : -1;
+    if (!sign) sign = s;
+    else if (s !== sign) return false;
+  }
+  return sign !== 0;
+}
+
+/** The finger is on the raised card, including the part a closer neighbour overlaps. */
+export function selectedTapCovers(pointer: PlanePoint | null | undefined, id: string | null = pointerSelected): boolean {
+  if (!pointer || !id || !selectedLayer || selectedLayer.id !== id) return false;
+  return pointInConvex(pointer, selectedLayer.ndc);
+}
+
 /**
  * Deliver pointer hits in paint order, then by distance.
  * Legal cards are drawn over the illegal cards beside them. A distance sort would give the tap
  * to the closer illegal neighbour, and its handler would swallow it. The card on screen gets the tap.
  * The fibre filter runs before it stamps eventObject, so the mesh and its parents both count.
- * A selected card that the ray also touched wins outright: it is the card drawn on top.
+ * While a card is selected it owns its whole raised area. A ray that only struck the neighbour
+ * overlapping its right side still belongs to the selected card when the finger is inside that area.
  */
-export function hitsInPaintOrder<T extends { distance: number; eventObject?: CardHitNode | null; object: CardHitNode }>(hits: readonly T[], selected: string | null = pointerSelected): T[] {
+export function hitsInPaintOrder<T extends { distance: number; eventObject?: CardHitNode | null; object: CardHitNode }>(
+  hits: readonly T[],
+  selected: string | null = pointerSelected,
+  pointer: PlanePoint | null = null,
+): T[] {
   const orderOf = (h: T) => Math.max(paintOrder(h.object), paintOrder(h.eventObject));
   const ranked = hits.slice().sort((a, b) => {
     const d = orderOf(b) - orderOf(a);
@@ -294,7 +339,14 @@ export function hitsInPaintOrder<T extends { distance: number; eventObject?: Car
   });
   if (!selected) return ranked;
   const mine = ranked.filter((h) => (cardIdFromHit(h.object) ?? cardIdFromHit(h.eventObject)) === selected);
-  return mine.length > 0 ? mine : ranked;
+  if (mine.length > 0) return mine;
+  if (pointer && selectedTapCovers(pointer, selected) && selectedLayer) {
+    const object = selectedLayer.object;
+    const donor = ranked[0];
+    if (donor) return [{ ...donor, object, eventObject: object }];
+    return [{ distance: 0, object, eventObject: object } as T];
+  }
+  return ranked;
 }
 
 /**

@@ -1,5 +1,5 @@
 import { cardControlLabel } from './cardA11y';
-import { confirmPlay, ignorePlayTap, playTrickOf, type PlayTrick } from './online/playGuard';
+import { confirmPlay, feltClearsSelection, ignorePlayTap, playTrickOf, type PlayTrick } from './online/playGuard';
 import { actingSeat, localSeatOfServerTurn, turnView, type TurnBadge } from './turnState';
 import { retainHandOrder } from './handOrder';
 import { winHeadline } from './headline';
@@ -1196,6 +1196,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           winnerSeat={winnerSeat}
           promoted={promoted}
           onCardTap={onCard}
+          onFeltTap={() => { if (feltClearsSelection(selected)) setSelected(null); }}
           renderSeat={renderSeat}
           introHand={introHand}
           animK={k}

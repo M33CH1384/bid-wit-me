@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MeshStandardMaterial, Quaternion, Vector3 } from 'three';
-import { FACE_POLYGON_OFFSET, GROUP_PAD_PX, GROUP_RADIUS_PX, LEGAL_LIFT_PX, LEGAL_NEAR, RING_ABOVE, applyFaceDepthBias, cardIdFromHit, cardMeshPaint, cardPartOrder, cardTapHandlers, cssPxToPlane, fanGapPx, handRenderOrder, hitsInPaintOrder, raiseLocalY, screenRaise, setPointerSelected } from '../src/three/handLift';
-import { TAP_PLAY_ARM_MS, confirmPlay } from '../src/online/playGuard';
+import { FACE_POLYGON_OFFSET, GROUP_PAD_PX, GROUP_RADIUS_PX, LEGAL_LIFT_PX, LEGAL_NEAR, RING_ABOVE, applyFaceDepthBias, cardIdFromHit, cardMeshPaint, cardPartOrder, cardTapHandlers, cssPxToPlane, fanGapPx, handRenderOrder, hitsInPaintOrder, raiseLocalY, screenRaise, setPointerSelected, setSelectedTapLayer } from '../src/three/handLift';
+import { TAP_PLAY_ARM_MS, confirmPlay, feltClearsSelection } from '../src/online/playGuard';
 import { FACE_CAP_GAP, fanLayout, handCardPlane, handFan, makeCamera } from '../src/three/layout';
 import { cardGeometry } from '../src/three/geometry';
 import { contourContains, groupOutline, haloLocal, placeOnPlane, planePointOk, unionContours } from '../src/three/playableOutline';
@@ -108,6 +108,49 @@ describe('a tap hits the card you see', () => {
     const play = confirmPlay('QD', 'QD', 1000, 1000 + TAP_PLAY_ARM_MS);
     expect(play).toEqual({ type: 'play', card: 'QD' });
     if (play.type === 'play') expect(play.card).toBe('QD');
+  });
+
+  it('gives the raised card the tap when only the neighbour on its right was hit', () => {
+    // QS is raised. 10S overlaps its right side and is the only mesh the ray struck.
+    const ten = {
+      renderOrder: handRenderOrder(5, true, false),
+      parent: null,
+      userData: { cardId: '10S' },
+    };
+    const queen = {
+      renderOrder: handRenderOrder(4, true, true),
+      parent: null,
+      userData: { cardId: 'QS' },
+    };
+    const hits = [
+      { distance: 0.4, object: { renderOrder: 0, parent: ten, userData: {} }, eventObject: ten, name: '10S' },
+    ];
+    const raised = [
+      { x: -0.2, y: 0.2 },
+      { x: 0.4, y: 0.2 },
+      { x: 0.4, y: -0.3 },
+      { x: -0.2, y: -0.3 },
+    ];
+    setPointerSelected('QS');
+    setSelectedTapLayer('QS', raised, queen);
+    try {
+      const onIt = hitsInPaintOrder(hits, 'QS', { x: 0.15, y: -0.05 });
+      expect(onIt).toHaveLength(1);
+      expect(cardIdFromHit(onIt[0]!.object)).toBe('QS');
+      // That second tap plays the selected queen. It does not play the ten, and it does not lower the queen.
+      const play = confirmPlay('QS', 'QS', 0, 500);
+      expect(play).toEqual({ type: 'play', card: 'QS' });
+      expect(confirmPlay('QS', 'QS', 1000, 1000 + TAP_PLAY_ARM_MS - 1)).toEqual({ type: 'ignore' });
+      // Past the raised card, the ten is a different card. Select it. Do not play it.
+      const beside = hitsInPaintOrder(hits, 'QS', { x: 0.9, y: -0.05 });
+      expect(cardIdFromHit(beside[0]!.object)).toBe('10S');
+      expect(confirmPlay('QS', '10S', 0, 500)).toEqual({ type: 'select', card: '10S' });
+      expect(feltClearsSelection('QS')).toBe(true);
+      expect(feltClearsSelection(null)).toBe(false);
+    } finally {
+      setPointerSelected(null);
+      setSelectedTapLayer(null, null, null);
+    }
   });
 
   it('keeps left-to-right order inside the legal group and does not jump on a tie', () => {
