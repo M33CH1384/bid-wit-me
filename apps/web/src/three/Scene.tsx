@@ -6,7 +6,8 @@ import { type BufferGeometry, type Camera, type Group, type Material, type Mesh,
 import { type Card, type Play, type Trick } from '@spades/rules';
 import Card3D, { createLitCardMaterial } from './Card3D';
 import { departureSlot, handCardKey, handReactKey } from '../handOrder';
-import { GAP_S, LIFT_S, cardIdFromHit, fanGapPx, fanMotion, handCardChrome, handDepthOpts, handRenderOrder, hitsInPaintOrder, pointerNdc, raiseLocalY } from './handLift';
+import { GAP_S, RAISE_SPREAD, cardIdFromHit, echoTap, fanGapPx, fanMotion, handCardChrome, handDepthOpts, handRenderOrder, hitsInPaintOrder, pointerNdc, posePx, raiseLocalY, raiseSpreadPx, spreadFitScale } from './handLift';
+import { type HandHitCard, pickHandCard, publishHandHits } from './handHit';
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline, seatDealDelay } from './dealTimeline';
 import { handOnFan, handSlotKey } from './dealFlight';
@@ -24,7 +25,7 @@ import Venue3D, { feltPatternTexture, preloadVenueAssets } from './Venue3D';
 import { type VenueDef, type VenueId, VENUE_DEFS, venueAssetUrls } from '../venues';
 import { bodyGeometry, cardGeometry, feltGeometry, railGeometry } from './geometry';
 import {
-  CH, CW, TRICK_SCALE, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, deckSpot, fanLayout, handCardPlane, handFan, makeCamera, jitterOf, opponentFan, phoneHandFan, pileSpot, ringSpot, trickSpot,
+  CH, CW, TRICK_SCALE, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, cardScreenQuad, deckSpot, fanCssPx, fanLayout, handCardPlane, handFan, makeCamera, jitterOf, opponentFan, phoneHandFan, pileSpot, ringSpot, trickSpot,
 } from './layout';
 
 export interface SceneProps {
@@ -481,6 +482,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   const sized = size.width >= 32 && size.height >= 32;
   const aspect = sized ? size.width / size.height : 390 / 844;
   const screenH = sized ? size.height : 844;
+  const screenW = sized ? size.width : 390;
   const safe = props.safe ?? { l: 0, r: 0, t: 0, b: 0 };
   // landscape: the bottom corners hold your plate (left) and last trick + controls (right); the hand fans between
   // desktop / wide: a bigger hand (≈35% over the 0.16 default), kept between your plate (left) and last trick (right)
@@ -573,12 +575,27 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   const yourTurn = legal.length > 0;
   // The meshes are the current hand. A deal beat must not leave a card out of this list.
   const fanCards = handOnFan(mine);
-  const fan = fanLayout(aspect, Math.max(1, fanCards.length), safeFrac, fanOpts);
   const nextCards = new Set<string>();
   const nextSlots = new Map<string, Xform>();
   const nextSeen = new Set<string>();
-  // 8px of air on each side of a legal run. The order of the cards does not change.
-  const gaps = fanGapPx(fanCards.map((slot) => !!slot.card && legal.includes(slot.card)));
+  // A raised card slides its neighbours apart by 40% of a card width. The solver
+  // reserves that room, and the same opts lay out every mesh and every hit quad.
+  const selectedIndex = fanCards.findIndex((slot) => !!slot.card && slot.card === selected);
+  const laid = selectedIndex >= 0 ? { ...fanOpts, spread: RAISE_SPREAD } : fanOpts;
+  const fan = fanLayout(aspect, Math.max(1, fanCards.length), safeFrac, laid);
+  const cardPx = fanCssPx(fan, screenW).width;
+  const rawSpread = raiseSpreadPx(fanCards.length, selectedIndex, cardPx);
+  const nFan = fanCards.length;
+  let spreadScale = 1;
+  if (nFan > 1 && rawSpread.some((v) => v !== 0)) {
+    const edgeQuad = (i: number) => cardScreenQuad(aspect, handFan(aspect, nFan, i, 0, safeFrac, laid, 0, screenH), screenW, screenH, 0, !!laid.short);
+    const leftEdge = Math.min(...edgeQuad(0).map((p) => p.x));
+    const rightEdge = Math.max(...edgeQuad(nFan - 1).map((p) => p.x));
+    spreadScale = spreadFitScale(rawSpread, leftEdge, rightEdge, screenW, 8);
+  }
+  const spread = rawSpread.map((v) => v * spreadScale);
+  const gaps = fanGapPx(fanCards.map((slot) => !!slot.card && legal.includes(slot.card))).map((g, i) => g + (spread[i] ?? 0));
+  const handQuads: HandHitCard[] = [];
   fanCards.forEach((slot, i) => {
     const c = slot.card;
     const isLegal = !!c && legal.includes(c);
@@ -592,7 +609,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
     const above = pose === 'legal' || pose === 'selected';
     // The raise is screen-up. Depth and render order (handDepthOpts, handRenderOrder) put a
     // raised card in front of the neighbours it overlaps, and the raycast uses that same order.
-    const opts = { ...fanOpts, ...handDepthOpts(pose) };
+    const opts = { ...laid, ...handDepthOpts(pose) };
     const target = handFan(aspect, fanCards.length, i, 0, safeFrac, opts, gaps[i] ?? 0, screenH);
     // One shot. Later renders (a tap, a highlight) must not pass the face-down pose again.
     const flip = flipIn && flippedHand.current !== handNo && !!c;
@@ -602,9 +619,15 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
     // cards missing after the state had moved on, and those hidden meshes ignore taps.
     const move = fanMotion({ flip, fresh: false, closing });
     const plane = handCardPlane(aspect, fanCards.length, i, 0, safeFrac, opts, gaps[i] ?? 0, screenH);
+    const order = handRenderOrder(i, above, pose === 'selected');
     if (c) {
       nextCards.add(c);
       nextSlots.set(id, target);
+      handQuads.push({
+        id: c,
+        order,
+        poly: cardScreenQuad(aspect, target, screenW, screenH, posePx(pose), !!fanOpts.short),
+      });
     }
     nextSeen.add(slotKey);
     items.push({
@@ -623,12 +646,12 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       // The id comes from the mesh that was hit. Fall back to this card only if the mesh has no stamp.
       tap: c && isLegal ? (hit: string) => onCardTap((hit || c) as Card) : pose === 'illegal' ? null : undefined,
       shadow: false,
-      duration: move.kind === 'flip' ? 0.34 : move.kind === 'deal' ? tl.fly : move.kind === 'slide' ? GAP_S : LIFT_S,
+      duration: move.kind === 'flip' ? 0.34 : move.kind === 'deal' ? tl.fly : move.kind === 'slide' ? GAP_S : 0,
       motion: move.motion,
       arc: move.arc,
       raise: c ? raiseLocalY(pose, fan.viewH, screenH, fan.ch) : 0,
       roll: plane.roll,
-      order: handRenderOrder(i, above, pose === 'selected'),
+      order,
     });
   });
   pendingHold.current = { handNo, cards: nextCards, slots: nextSlots, count: faceCount, seen: nextSeen };
@@ -641,6 +664,10 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   const handCount = myHand?.length ?? 0;
   const hand3D = showResumeHand3D(resume, handCount, nFaces, handCount > 0 && handLatched(handNo));
   if (hand3D && handCount > 0) latchHand(handNo);
+  // The quads are the cards on screen this render. A tap reads them, not a mesh that
+  // is still at the origin after a remount or still sitting in the un-raised slot.
+  publishHandHits(hand3D ? handQuads : []);
+  useEffect(() => () => { publishHandHits([]); }, []);
   useEffect(() => {
     if (!showCards) return;
     held.current = pendingHold.current;
@@ -1115,6 +1142,32 @@ function HallAttach({ active }: { active: boolean }) {
   return <ClassicHall active={active} onMap={onMap} />;
 }
 
+/** Hand taps resolve against the quads Cards published this render, before the raycaster. */
+function HandPointer({ onTap }: { onTap: (card: Card) => void }) {
+  const gl = useThree((s) => s.gl);
+  const tap = useRef(onTap);
+  tap.current = onTap;
+  useLayoutEffect(() => {
+    const el = gl.domElement;
+    const down = (e: PointerEvent) => {
+      const rect = el.getBoundingClientRect();
+      const id = pickHandCard(e.clientX - rect.left, e.clientY - rect.top);
+      if (!id) return;
+      e.stopPropagation();
+      e.preventDefault();
+      if (echoTap(e, id)) {
+        (window as unknown as { __bwmLastTap?: string }).__bwmLastTap = `echo:${id}`;
+        return;
+      }
+      (window as unknown as { __bwmLastTap?: string }).__bwmLastTap = `${id}@${e.clientX.toFixed(0)},${e.clientY.toFixed(0)}`;
+      tap.current(id as Card);
+    };
+    el.addEventListener('pointerdown', down, true);
+    return () => el.removeEventListener('pointerdown', down, true);
+  }, [gl]);
+  return null;
+}
+
 export default function Scene(props: SceneProps) {
   const [fontsReady, setFontsReady] = useState(false);
   const [aspect, setAspect] = useState(() => window.innerWidth / window.innerHeight);
@@ -1206,6 +1259,7 @@ export default function Scene(props: SceneProps) {
       )}
       {showTable && props.positions.map((p, seat) => <TurnRing key={seat} pos={p} n={props.n} active={props.turnSeat === seat} />)}
       {showTable && <Cards {...props} aspect={aspect} fontsReady={fontsReady} safeFrac={safeFrac} lit={lit} />}
+      {showTable && <HandPointer onTap={props.onCardTap} />}
       <AfterTable quality={props.quality} tableUp={textured} />
       {layerReady && <Badges positions={props.positions} n={props.n} human={props.human} renderSeat={props.renderSeat} portal={badgeLayer} safeFrac={safeFrac} short={!!props.short} safe={props.safe ?? { l: 0, r: 0, t: 0, b: 0 }} />}
     </Canvas>

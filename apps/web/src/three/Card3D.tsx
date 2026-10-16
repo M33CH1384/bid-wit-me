@@ -193,6 +193,37 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   const rollNow = useRef(roll);
   rollNow.current = roll;
   const raiseTw = useRef({ y: 0, from: 0, to: 0, t: 1 });
+  // A highlight used to tween for 160ms. The hit quad is the destination, so the mesh has to
+  // be there before paint. Otherwise a reload tap lands on the un-raised slot underneath.
+  const poseKey = xKey(target);
+  useLayoutEffect(() => {
+    if (motion !== 'lift') return;
+    const g = ref.current;
+    if (!g) return;
+    if (!target.p.every(Number.isFinite) || !target.q.every(Number.isFinite) || !Number.isFinite(target.s)) return;
+    g.position.set(...target.p);
+    g.quaternion.set(...target.q);
+    g.scale.setScalar(target.s);
+    const s = tw.current;
+    s.init = true;
+    s.key = poseKey;
+    s.t = 1;
+    s.started = true;
+    s.sp.set(...target.p); s.sq.set(...target.q); s.ss = target.s;
+    s.tp.set(...target.p); s.tq.set(...target.q); s.ts = target.s;
+    const dest = Number.isFinite(raise) ? raise : 0;
+    raiseTw.current.y = dest;
+    raiseTw.current.from = dest;
+    raiseTw.current.to = dest;
+    raiseTw.current.t = 1;
+    const liftG = lift.current;
+    if (liftG) {
+      const off = screenRaise(roll, dest);
+      liftG.position.set(off.x, off.y, 0);
+    }
+    g.updateMatrixWorld(true);
+    invalidate();
+  }, [motion, poseKey, raise, roll, invalidate, target]);
 
   /** Nuke blast. Table cards sweep off the felt and stay there. Hand cards kick and spring home. */
   const applyBlast = (g: Group) => {

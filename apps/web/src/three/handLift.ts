@@ -60,6 +60,11 @@ export const SELECT_GLOW_OP = 0.8;
  * It used to open room for a gold outline. That split the locked cards out of the fan, so it is 0.
  */
 export const GROUP_GAP_PX = 0;
+/**
+ * When a card is raised, each neighbour slides this fraction of a card width away from it.
+ * The raised card stays put and on top. The opened strip is what you tap on the neighbour.
+ */
+export const RAISE_SPREAD = 0.4;
 /** Render order of a legal card sits above every illegal card. Index is added so left-to-right stays put. */
 export const LEGAL_STACK = 100;
 /**
@@ -115,15 +120,39 @@ export function canTapCard(pose: HandPose): boolean {
  * The id is read off the mesh that was hit, then the card id closed over at the last render.
  * A fan index is never the thing that gets played.
  */
+interface TapStamp { type: string; at: number; id: number; card: string }
+let lastTap: TapStamp | null = null;
+
+/** Test isolation. A previous tap must not swallow the next case. */
+export function resetEchoTap(): void { lastTap = null; }
+
+/**
+ * The pointerdown that selected a card, and the mouse event a phone synthesises from that
+ * same tap, are one gesture. A second pointer id is a real second tap and may play.
+ */
+export function echoTap(e: { pointerType?: string; pointerId?: number }, card: string): boolean {
+  const now = typeof performance !== 'undefined' ? performance.now() : 0;
+  const prev = lastTap;
+  // A phone turns one touch into a mouse event a moment later. That is still the tap
+  // that selected the card. A later touch is a new tap, even when the pointer id is reused.
+  const synthMouse = !!prev && prev.type === 'touch' && prev.card === card && now - prev.at < 1500 && (e.pointerType === 'mouse' || e.pointerType === 'pen');
+  if (synthMouse) return true;
+  lastTap = { type: e.pointerType || 'mouse', at: now, id: e.pointerId ?? -1, card };
+  return false;
+}
+
 export function cardTapHandlers(onTap: ((cardId: string) => void) | null | undefined, cardId = ''): {
-  onPointerDown?: (e: { stopPropagation: () => void; object?: CardHitNode | null }) => void;
+  onPointerDown?: (e: { stopPropagation: () => void; object?: CardHitNode | null; pointerType?: string; pointerId?: number; nativeEvent?: { pointerType?: string; pointerId?: number } }) => void;
 } {
   if (onTap === undefined) return {};
   if (onTap === null) return { onPointerDown: (e) => { e.stopPropagation(); } };
   return {
     onPointerDown: (e) => {
       e.stopPropagation();
-      onTap(cardIdFromHit(e.object) ?? cardId);
+      const id = cardIdFromHit(e.object) ?? cardId;
+      const src = e.nativeEvent ?? e;
+      if (echoTap(src, id)) return;
+      onTap(id);
     },
   };
 }
@@ -319,6 +348,47 @@ export function hitsInPaintOrder<T extends { distance: number; eventObject?: Car
     const d = orderOf(b) - orderOf(a);
     return d !== 0 ? d : a.distance - b.distance;
   });
+}
+
+/**
+ * CSS-pixel shift that opens `RAISE_SPREAD` of a card width on each side of the raised card.
+ * Cards to the left move left, cards to the right move right, and the raised card stays.
+ * No selection: every shift is 0.
+ */
+export function raiseSpreadPx(count: number, selectedIndex: number, cardWidthPx: number): number[] {
+  const shift = new Array<number>(count).fill(0);
+  if (!(selectedIndex >= 0 && selectedIndex < count) || count < 2) return shift;
+  if (!(Number.isFinite(cardWidthPx) && cardWidthPx > 0)) return shift;
+  const open = RAISE_SPREAD * cardWidthPx;
+  // The block on each side slides as a unit, so the gaps that are not next to the
+  // raised card stay put. The fan solver reserved this much room on the screen.
+  for (let i = 0; i < count; i++) {
+    if (i < selectedIndex) shift[i] = -open;
+    else if (i > selectedIndex) shift[i] = open;
+  }
+  return shift;
+}
+
+/**
+ * Shrink a raise-spread so the end cards stay on screen. 1 keeps the full 40%.
+ * `leftEdge` / `rightEdge` are the unshifted end cards, in the same CSS pixels as `shifts`.
+ */
+export function spreadFitScale(shifts: readonly number[], leftEdge: number, rightEdge: number, screenW: number, margin: number): number {
+  if (!(Number.isFinite(screenW) && screenW > 0)) return 1;
+  const pad = Number.isFinite(margin) && margin > 0 ? margin : 0;
+  let scale = 1;
+  const left = shifts[0] ?? 0;
+  const right = shifts[shifts.length - 1] ?? 0;
+  if (left < -1e-3) {
+    const room = leftEdge - pad;
+    scale = Math.min(scale, room <= 0 ? 0 : room / -left);
+  }
+  if (right > 1e-3) {
+    const room = screenW - pad - rightEdge;
+    scale = Math.min(scale, room <= 0 ? 0 : room / right);
+  }
+  if (!Number.isFinite(scale) || scale < 0) return 0;
+  return Math.min(1, scale);
 }
 
 /**
