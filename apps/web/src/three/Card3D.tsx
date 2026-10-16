@@ -518,6 +518,13 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       g.quaternion.set(q[0], q[1], q[2], q[3]);
       s.faced = true;
     }
+    // Test probe (opt-in): a settled card's height and its tilt off the felt (degrees between its face normal and straight up).
+    const rw = window as unknown as { __bwmRestProbe?: boolean; __bwmRest?: Record<string, { y: number; tilt: number; spin: number }> };
+    if (rw.__bwmRestProbe && cardId && s.t >= 1) {
+      const nrm = new Vector3(0, 0, 1).applyQuaternion(g.quaternion);
+      const up = new Vector3(0, 1, 0).applyQuaternion(g.quaternion);
+      (rw.__bwmRest ??= {})[cardId] = { y: g.position.y, tilt: (Math.acos(Math.min(1, Math.abs(nrm.y))) * 180) / Math.PI, spin: (Math.atan2(-up.x, -up.z) * 180) / Math.PI };
+    }
   });
 
   return (

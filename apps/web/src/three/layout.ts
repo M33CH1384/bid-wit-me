@@ -108,8 +108,20 @@ export function trickSpot(pos: SeatPos, n: number, order: number, jitter: number
   const lift = 0.02 + order * 0.004 + (h / 2) * Math.sin(TRICK_LEAN);
   // Physics landing (Tips off): a small slide and an in-plane spin on top of the fixed spot. The card's
   // local +y is the far edge (-z), so a felt spin s is -s about the card normal.
-  if (land) return xf([off.x + land.dx, lift, off.z + 0.04 + land.dz], [-Math.PI / 2 + TRICK_LEAN, jitter * 0.05, -land.spin], scale, 'XYZ');
+  // A landed card lies flat on the felt (no lean, no tilt): only the spin about the vertical axis.
+  if (land) return flatRest(off.x + land.dx, off.z + 0.04 + land.dz, land.spin, order, scale);
   return xf([off.x, lift, off.z + 0.04], [-Math.PI / 2 + TRICK_LEAN, jitter * 0.05, 0], scale, 'XYZ');
+}
+
+/** Felt height a landed card rests at, and the per-card step that keeps overlapping cards from z-fighting. */
+export const FELT_REST_Y = 0.006;
+export const STACK_DY = 0.003;
+/**
+ * A card lying flat on the felt, face up: zero pitch and roll, only a spin about the vertical axis
+ * (positive spin turns it counter-clockwise seen from above). `order` stacks later cards a hair higher.
+ */
+export function flatRest(x: number, z: number, spin: number, order: number, scale = TRICK_SCALE): Xform {
+  return xf([x, FELT_REST_Y + order * STACK_DY, z], [-Math.PI / 2, 0, -spin], scale, 'XYZ');
 }
 
 /** Won-trick pile in front of a seat: tricks laid in an overlapping row, face down. */
