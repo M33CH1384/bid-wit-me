@@ -1,5 +1,5 @@
 import { cardControlLabel } from './cardA11y';
-import { confirmPlay, feltClearsSelection, ignorePlayTap, playTrickOf, type PlayTrick } from './online/playGuard';
+import { confirmPlay, feltClearsSelection, flyPlay, ignorePlayTap, playTrickOf, type PlayTrick } from './online/playGuard';
 import { actingSeat, localSeatOfServerTurn, turnView, type TurnBadge } from './turnState';
 import { retainHandOrder } from './handOrder';
 import { winHeadline } from './headline';
@@ -790,6 +790,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (runItTipDue()) { runItTipShown(); setRunTip(true); }
   }, [canRun]); // eslint-disable-line react-hooks/exhaustive-deps
   const myBadges = useBadges();
+  // The card the player just tapped, shown on the table before the server's state arrives.
+  const [flying, setFlying] = useState<Card | null>(null);
   // what the 3D table shows (see above)
   const display = (() => {
     if (runFx) {
@@ -805,8 +807,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         trick: b.st.trick.plays, piles: b.st.tricks, slam: { seat: runFx.claimer, cards: runFx.cards, others: [] },
       };
     }
-    if (ranHand) return { hand, counts: view.handCounts, trick: shownTrick.plays.some((p) => p.run) ? [] : shownTrick.plays, piles: [] as typeof piles, slam: null };
-    return { hand, counts: view.handCounts, trick: shownTrick.plays, piles, slam: null };
+    const baseTrick = ranHand && shownTrick.plays.some((p) => p.run) ? [] : shownTrick.plays;
+    const flown = flyPlay(hand, baseTrick, flying);
+    const trick = flown.card ? [...baseTrick, { seat: HUMAN, card: flown.card }] : baseTrick;
+    if (ranHand) return { hand: flown.hand, counts: view.handCounts, trick, piles: [] as typeof piles, slam: null };
+    return { hand: flown.hand, counts: view.handCounts, trick, piles, slam: null };
   })();
   useGameSounds(st, myTurn, mySide, msgs);
   const landCue = useCallback((c: Card) => landCueFor(st, c), [st]);
@@ -1044,6 +1049,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (gate !== playGateSeen.current) {
       playGateSeen.current = gate;
       playHold.current = null;
+      setFlying(null);
     }
   }, [online?.source.playGate]);
   useEffect(() => {
@@ -1068,6 +1074,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       if (sent !== false) {
         playHold.current = held;
         setSelected(null);
+        setFlying(action.card as Card);
       }
     } else { pickedAt.current = performance.now(); setSelected(action.card as Card); sound.play('tap'); }
   }, [humanExchanging, exchangeStep, legal, selected, apply, trickNow]);
@@ -1419,7 +1426,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
       {/* accessible / automation controls for the 3D hand */}
       <div className="sr-only" role="group" aria-label="Your hand" data-testid="hand" data-trick-count={shownTrick.plays.length}>
-        {(hand ?? []).map((c) => (
+        {((flying ? flyPlay(hand, shownTrick.plays, flying).hand : hand) ?? []).map((c) => (
           <button
             key={c}
             type="button"

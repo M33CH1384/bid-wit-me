@@ -3,8 +3,8 @@
  * unit-tested with mock sockets and a fake clock. The server is the referee (spec §4.2):
  *  - it shuffles/deals (packages/rules), validates every bid/play, and only ever sends a seat its own view;
  *  - bots (packages/bots) fill empty seats and play from that seat's view only;
- *  - human turns have a deadline; when it passes (or a disconnected player's short grace runs out)
- *    the bot logic plays that turn. The seat stays the human's unless they explicitly leave;
+ *  - human turns have a deadline from that table's timer; a disconnect waits the same length
+ *    (not a fixed 10s) and then the bot logic plays that turn. The seat stays the human's unless they explicitly leave;
  *  - all durable state lives in one plain-JSON `RoomData` object that the DO saves as a single row.
  */
 import {
@@ -548,8 +548,10 @@ export class Room {
       delete m.disconnectedAt;
       m.timeouts = 0;
       if (d.hostId === pid) delete d.hostAwaySince;
-      // A reload draws the table again. Hold this player's clock until that client says it can act.
-      if (returning) {
+      // A new socket draws the table again, even when the previous one has not closed yet.
+      // Hold this player's clock until that client says it can act, so a reload cannot
+      // auto-play a card behind the loader.
+      if (d.phase === 'playing') {
         m.interactive = false;
         m.loaderSince = this.io.now();
         const turn = d.game ? pendingTurn(d.game) : null;
@@ -1321,6 +1323,34 @@ export class Room {
     return `h${g.handNo}:${g.phase}:${g.tricks.length}:${g.trick.plays.length}:${t.seat}:${g.bids.filter((b) => b !== null).length}:${g.exchange.length}`;
   }
 
+  /**
+   * The host's timer for this kind of turn. A missing value keeps the preset
+   * (bid 30 / play 20). That preset is not a new online length.
+   */
+  private turnSeconds(kind: string): number {
+    const t = this.data.rules.turnTimerSec;
+    const sec = kind === 'bid' ? t?.bid : t?.play;
+    if (typeof sec === 'number' && Number.isFinite(sec)) return sec;
+    return kind === 'bid' ? 30 : 20;
+  }
+
+  /** Milliseconds the table allows for this turn, including learning mode's stretch. */
+  private turnLimitMs(kind: string, learning: boolean): number {
+    return this.turnSeconds(kind) * 1000 * (learning ? LEARNING_TIMER : 1);
+  }
+
+  /** What the client clock is counting: the table's setting for the human who is to act. */
+  private clockSeconds(): number | null {
+    const g = this.data.game;
+    if (this.data.phase !== 'playing' || !g) return null;
+    const turn = pendingTurn(g);
+    if (!turn) return null;
+    const slot = this.data.seats[turn.seat];
+    if (!slot || slot.kind !== 'human') return null;
+    const learning = !!this.data.members[slot.playerId]?.learning;
+    return Math.round(this.turnLimitMs(turn.kind, learning) / 1000);
+  }
+
   /** Extra pause owed before the current turn (trick just completed / fresh deal). */
   private leadIn(g: GameState): number {
     if (isFreshDeal(g)) return this.timing.dealMs; // also the books first hand, which starts straight in play
@@ -1558,9 +1588,9 @@ export class Room {
       }
 
       // a human's turn (Release 9: bot partners no longer post typed bidding hints; partners talk out loud over open mics)
-      const timerMs = (turn.kind === 'bid' ? d.rules.turnTimerSec.bid : d.rules.turnTimerSec.play) * 1000 * (d.members[slot.playerId]?.learning ? LEARNING_TIMER : 1);
-      const connected = this.isConnected(slot.playerId);
       const member = d.members[slot.playerId];
+      const timerMs = this.turnLimitMs(turn.kind, !!member?.learning);
+      const connected = this.isConnected(slot.playerId);
       // The clock does not run while this player's own table is still drawing.
       if (connected && member?.interactive === false) {
         if (d.deadline !== null) { d.deadline = null; changed = true; }
@@ -1586,10 +1616,12 @@ export class Room {
       }
       const full = (d.turnStartedAt ?? now) + leadIn + timerMs;
       if (!connected) {
-        // One grace from the moment the last socket dropped. Later ticks must not push it out.
+        // Same length as this table's bid or play timer, measured from the drop.
+        // A fixed 10s grace was auto-playing Relaxed tables during a reload.
+        // Later ticks must not push that deadline out.
         if (member && member.disconnectedAt == null) member.disconnectedAt = now;
         const since = member?.disconnectedAt ?? now;
-        const want = Math.min(full, since + this.timing.disconnectGraceMs);
+        const want = Math.min(full, since + timerMs);
         if (d.deadline === null || want < d.deadline) { d.deadline = want; changed = true; }
       } else {
         if (member) delete member.disconnectedAt;
@@ -1699,7 +1731,7 @@ export class Room {
     return {
       code: d.code, hostId: d.hostId ?? '', phase: d.phase, rules: d.rules, botLevel: d.botLevel, seats,
       members: Object.entries(d.members).map(([playerId, m]) => ({ playerId, name: m.name, connected: this.isConnected(playerId), seat: m.seat })),
-      deadline: d.deadline, ready: [...d.ready], rev: d.rev, seq: d.seq ?? 0, game: d.gamesPlayed, now: this.io.now(),
+      deadline: d.deadline, turnSec: this.clockSeconds(), ready: [...d.ready], rev: d.rev, seq: d.seq ?? 0, game: d.gamesPlayed, now: this.io.now(),
       talkSec: d.talkSec ?? Math.round(this.timing.handOverMs / 1000), afkLimit: d.afkLimit ?? DEFAULT_AFK_LIMIT, partnerMicMute: d.partnerMicMute ?? false, nukeIntensity: d.nukeIntensity ?? 'full', talkIntensity: d.talkIntensity ?? 'cookout', botTalk: d.botTalk ?? true,
       venue: d.venue ?? 'classic', ...(d.venueNow ? { venueNow: d.venueNow } : {}),
       teamNames: d.rules.partnerships ? [...(d.teamNames ?? [null, null])] : undefined, series: d.series ?? null, revealed: [...(d.talk?.revealed ?? [])],
