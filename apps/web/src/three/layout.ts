@@ -89,7 +89,7 @@ export function opponentFan(pos: SeatPos, n: number, i: number, count: number): 
 }
 
 /** Trick-card scale: big enough that rank + suit read clearly on a phone. */
-export const TRICK_SCALE = 2.3;
+export const TRICK_SCALE = 1.8; // 22% under the old 2.3: trick cards were too large on the felt
 const TRICK_LEAN = 0.38; // tilt toward the camera so the faces aren't foreshortened
 
 /**

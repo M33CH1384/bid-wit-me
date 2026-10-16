@@ -526,7 +526,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     : wide ? { reserveFrac: (size.width < 1400 ? 250 : 205) / size.width, bottomFrac: 0.012, heightFrac: 0.205, ...strip }
     : portraitPhone ? { ...phoneHandFan(), ...strip }
     : { ...strip };
-  const trickScale = short ? 1.85 : undefined;
+  const trickScale = short ? 1.45 : undefined;
   // Last committed hand, so a play can launch from that card's own slot. Updated in an effect (not during render)
   // so a highlight change and the server ack share one set of keys and don't restart the fan.
   type Held = { handNo: number; cards: Set<string>; slots: Map<string, Xform>; count: number; seen: Set<string> };

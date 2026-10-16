@@ -73,7 +73,8 @@ async function playTrick(page: Page, to: { x: number; y: number }, shot: string)
   });
 }
 
-type Rest = Record<string, { y: number; tilt: number; spin: number }>;
+type Rest = Record<string, { s: number; y: number; tilt: number; spin: number }>;
+const TRICK = 1.8; // TRICK_SCALE
 const rests = (page: Page) => page.evaluate(() => (window as unknown as { __bwmRest?: Rest }).__bwmRest ?? {});
 /** Settled trick cards (Tips on or off) must lie flat on the felt: no tilt, felt height plus the small stack step, spin within ±35°. */
 function checkFlat(r: Rest, label: string, maxSpin = 36): void {
@@ -82,6 +83,8 @@ function checkFlat(r: Rest, label: string, maxSpin = 36): void {
   const maxTilt = Math.max(...vals.map(([, v]) => v.tilt));
   const ys = vals.map(([, v]) => v.y);
   console.log(`${label}: ${vals.length} settled, max tilt ${maxTilt.toFixed(2)}°, height ${Math.min(...ys).toFixed(4)}..${Math.max(...ys).toFixed(4)}, spins ${vals.map(([, v]) => v.spin.toFixed(0)).join(' ')}`);
+  const sizes = vals.map(([, v]) => v.s);
+  if (sizes.some((x) => Math.abs(x - TRICK) > 0.01)) throw new Error(`${label}: settled card scale ${sizes.join(',')} is not the table size ${TRICK}`);
   if (maxTilt > 0.5) throw new Error(`${label}: a settled card is tilted ${maxTilt.toFixed(1)}° off the felt`);
   if (Math.min(...ys) < 0.005 || Math.max(...ys) > 0.006 + 4 * 0.003 + 0.001) throw new Error(`${label}: a settled card is not at felt height (${Math.min(...ys)}..${Math.max(...ys)})`);
   if (Math.max(...vals.map(([, v]) => Math.abs(v.spin))) > maxSpin) throw new Error(`${label}: spin over ${maxSpin}°`);
@@ -105,6 +108,15 @@ const dist = (a: Record<string, { x: number; y: number }>, b: Record<string, { x
     p = await open(b, save, false);
     const a = await playTrick(p, flick, `${SHOTS}/land-tips-off-a-390.png`);
     checkFlat(await rests(p), 'tips off a');
+    // the card shrinks smoothly from hand size to table size on the way down: no pop
+    const sc = await p.evaluate(() => (window as unknown as { __bwmScale?: Record<string, number[]> }).__bwmScale ?? {});
+    for (const [id, tr] of Object.entries(sc)) {
+      // a pop = one frame carrying most of the size change; a smooth ease spreads it over the flight
+      const total = Math.abs(tr.at(-1)! - tr[0]!) || 1;
+      const big = Math.max(0, ...tr.slice(1).map((v, i) => Math.abs(v - tr[i]!) / total));
+      console.log(`scale ${id}: ${tr[0]!.toFixed(2)} → ${tr.at(-1)!.toFixed(2)} over ${tr.length} frames, largest frame ${(big * 100).toFixed(0)}% of the change`);
+      if (tr.length < 6 || big > 0.35) throw new Error(`${id}: scale popped (${(big * 100).toFixed(0)}% of the change in one frame)`);
+    }
     await p.close();
     p = await open(b, save, false);
     const a2 = await playTrick(p, flick, `${SHOTS}/land-tips-off-a-repeat-390.png`);
