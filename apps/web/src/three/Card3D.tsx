@@ -3,7 +3,7 @@ import { memo, useLayoutEffect, useMemo, useRef } from 'react';
 import { Color, type Group, type Material, type Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NoToneMapping, Quaternion, type Texture, Vector3, type WebGLRenderer } from 'three';
 import { cardFaceFragment } from './cardSat';
 import { cardGeometry, cardOutlineGeometry } from './geometry';
-import { RAISE_S, applyFaceDepthBias, cardMeshPaint, cardTapHandlers, faceLook, liftEase, screenRaise } from './handLift';
+import { raiseSeconds, applyFaceDepthBias, cardMeshPaint, cardTapHandlers, faceLook, liftEase, screenRaise } from './handLift';
 import { type Xform } from './layout';
 import { type Sfx, sound } from '../audio';
 import { blastPose } from './blastSweep';
@@ -414,7 +414,8 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       if (!Number.isFinite(rt.y)) { rt.y = dest; rt.from = dest; rt.to = dest; rt.t = 1; }
       if (Math.abs(dest - rt.to) > 1e-5) { rt.from = rt.y; rt.to = dest; rt.t = 0; }
       if (rt.t < 1) {
-        rt.t = Math.min(1, rt.t + dt / RAISE_S);
+        const rs = raiseSeconds();
+        rt.t = rs <= 0 ? 1 : Math.min(1, rt.t + dt / rs);
         rt.y = rt.from + (rt.to - rt.from) * liftEase(rt.t);
         invalidate();
       } else rt.y = rt.to;
