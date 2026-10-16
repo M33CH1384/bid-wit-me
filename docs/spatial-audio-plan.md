@@ -152,11 +152,36 @@ source + licence in `docs/asset-licenses.md` before it ships.
    user has locked a manual soundscape, which wins and is announced in the picker). This is
    plumbing-level in Phase 2 (the resolver `soundscapeFor({venue, setting, storyStop})`), with
    per-stop content filled in as Story stops ship.
-5. **Phase 6 music tension layers are GATED:** do not build tension layers/stems until Demetrius
-   approves the richer-music pitch note (separate short doc + his explicit go-ahead). The plan's
-   Phase 6 stays on paper; Phases 2–5 and 7–8 may proceed around it.
+5. **Phase 6 music tension layers — APPROVED by Demetrius (Oct 2026, "I like the tension building
+   music"):** the gate is lifted. Still build it as its own small PR with the pitch details written
+   into that PR (layers/stems, tension signal, crossfade rules), free/CC0 stems only, light spend.
 
-6. **Soundscape is tailored to the room (Phase 4 implementation):** the chosen environment drives
+6. **One sound style PER ROOM (Demetrius; supersedes any shared-family mapping):** audit of the
+   repo's actual venues (`packages/protocol` VENUES, `apps/web/src/venues.ts`) gives **11 rooms**,
+   and in Phase 4 EACH gets its own distinct soundscape — unique ambience bed, reverb/IR character,
+   table surface and crowd character, and the loading-screen name tied to it. Random-per-game pool
+   = all 11 rooms; the explicit picker lists all 11 + Auto. Story Mode per-stop maps to its room's
+   own style. Free/CC0/commercial assets only (logged in `docs/asset-licenses.md`); iPhone-light:
+   pre-rendered beds and pre-baked IRs on shared convolvers, never per-card convolvers.
+
+   | # | Room (venue id) | Loading name | Bed | Reverb/IR | Surface | Crowd |
+   |---|---|---|---|---|---|---|
+   | 1 | classic | Classic Studio | none (studio quiet) | dry studio | felt | none |
+   | 2 | backyard | Backyard Cookout | cookout | minimal/dry outdoor | wood folding table | party chatter |
+   | 3 | mansion | Mansion | mansion | large hall | glass/marble slap | low murmur |
+   | 4 | barbershop | Barbershop | barbershop | small lively | wood | shop chatter, clippers |
+   | 5 | church | Basement Spades Night | basement | tight small room | laminate folding table | low fellowship murmur |
+   | 6 | rooftop | Rooftop | rooftop | dry outdoor, city air | wood | distant city, low |
+   | 7 | speakeasy | Speakeasy Lounge | jazz | warm lively | felt | low jazz-room murmur |
+   | 8 | vegas | Vegas High Roller | casino | large hall | casino felt | arena/slots wash |
+   | 9 | beach | Beach Cabana | beach | dry outdoor, surf air | wood tiki | low surf-side |
+   | 10 | grandma | Grandma's Kitchen | kitchen | tight home room | laminate/vinyl | none (clock, home tones) |
+   | 11 | yacht | Yacht Deck | yacht | dry open water | teak wood | low water/wind |
+
+   (`ROOM_STYLES` in `spatial.ts` already enumerates exactly this mapping; Phase 4 adds the audio
+   content per room. Demetrius: confirm no room is missing — this is the full repo venue list.)
+
+7. **Soundscape is tailored to the room (Phase 4 implementation):** the chosen environment drives
    three matched layers, not just a bed loop — (a) ambience bed, (b) room reflections: a convolver
    reverb per room (Backyard Cookout = minimal/dry outdoor, Basement = tight small-room,
    Barbershop = small lively, Competitive Tournament = large hall), generated/synthesised impulse
