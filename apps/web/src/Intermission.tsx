@@ -6,7 +6,7 @@ import { handWinner, streakLabel, streakOf } from './fx';
 import { sound } from './audio';
 import { haptic } from './haptics';
 import { SheetCloth } from './SheetCloth';
-import { HOLE_CAP, HOLE_SLOTS, claimHoleBuzz, holeMarks, markHolePunched, markSheetPlayed, punchedLabel, rememberHoles } from './shotMarks';
+import { HOLE_CAP, claimHoleBuzz, holeMarks, holeSlots, markHolePunched, markSheetPlayed, punchedLabel, rememberHoles } from './shotMarks';
 
 /**
  * Hand recap between hands (online and offline).
@@ -183,7 +183,7 @@ export function Intermission({
                 <div key={s.side} className={`tt-team${s.side === mySide ? ' mine' : ''}${shot ? ' blast' : ''}${cover.tape ? ' taped' : ''}${cover.tape && justShot ? ' tape-in' : ''}${notice ? ' notice' : ''}${cover.sheet ? ' shrouded' : ''}${sheetAnim ? ' sheet-in sheet-wait' : ''}`} data-testid={`recap-side-${s.side}`} data-blast={shot ? 'yes' : 'no'} data-tape={cover.tape ? 'yes' : 'no'} data-sheet={cover.sheet ? 'yes' : 'no'} data-siren={cover.siren ? 'yes' : 'no'} data-holes={info.count} data-punched={punchedLabel(marks)}>
                   {showHoles && (
                     <div className="shot-holes" data-testid={`recap-holes-${s.side}`} aria-hidden="true">
-                      {HOLE_SLOTS.slice(0, info.visible).map((h, i) => (
+                      {holeSlots(!!cover.sheet).slice(0, info.visible).map((h, i) => (
                         <img key={i} className={anim.current!.punch.has(`${s.side}:${i}`) ? 'hole-in' : undefined} src="/shot/hole.png" alt="" style={{ left: h.x, top: h.y, ['--rot' as string]: `${h.rot}deg` }} />
                       ))}
                     </div>

@@ -91,9 +91,10 @@ describe('scorecard caution tape and shroud', () => {
     expect(html).toContain('data-punched="0"');
     const holes = holeImgs(html);
     expect(holes).toHaveLength(1);
-    expect(holes[0]).toContain('left:62%');
+    expect(holes[0]).toContain('left:22%');
+    expect(holes[0]).toContain('top:124px');
     expect(holes[0]).toContain('class="hole-in"');
-    expect(html).not.toContain('left:14%');
+    expect(html).not.toContain('left:46%');
     expect(html).not.toContain('left:13%');
     expect(html).not.toContain('left:78%');
     expect(html).toContain('data-testid="recap-shot-stamp-1"');
@@ -131,12 +132,12 @@ describe('scorecard caution tape and shroud', () => {
     expect(html).toContain('data-punched="1,0"');
     const holes = holeImgs(html);
     expect(holes).toHaveLength(2);
-    expect(holes[0]).toContain('left:62%');
+    expect(holes[0]).toContain('left:12%');
     expect(holes[0]).not.toContain('hole-in');
-    expect(holes[1]).toContain('left:14%');
-    expect(holes[1]).toContain('top:calc(100% - 40px)');
+    expect(holes[1]).toContain('left:28%');
+    expect(holes[1]).toContain('top:calc(100% - 36px)');
     expect(holes[1]).toContain('class="hole-in"');
-    expect(html).not.toContain('left:78%');
+    expect(html).not.toContain('left:42%');
     expect(html).toContain('data-testid="recap-shroud-1"');
     expect(html).toContain('data-testid="recap-rip-1"');
     expect(html).toContain('alt="RIP"');
@@ -173,8 +174,8 @@ describe('scorecard caution tape and shroud', () => {
     const second = recap(st, names);
     const holes = holeImgs(second);
     expect(holes).toHaveLength(2);
-    expect(holes[0]).toContain('left:62%');
-    expect(holes[1]).toContain('left:14%');
+    expect(holes[0]).toContain('left:12%');
+    expect(holes[1]).toContain('left:28%');
     expect(second).not.toContain('hole-in');
     expect(second).not.toContain('sheet-in');
     expect(second).toContain('data-holes="2"');
@@ -190,7 +191,7 @@ describe('scorecard caution tape and shroud', () => {
     const oneAgain = recap(noticed, names);
     expect(holeImgs(oneAgain)).toHaveLength(1);
     expect(oneAgain).not.toContain('hole-in');
-    expect(oneAgain).toContain('left:62%');
+    expect(oneAgain).toContain('left:22%');
     expect(pad(noticed, names)).toContain('data-punched="1"');
   });
 
@@ -199,7 +200,7 @@ describe('scorecard caution tape and shroud', () => {
     const one = recap(stamp(base, [[], [1]], { shotOut: false }), names);
     expect(holeImgs(one)).toHaveLength(1);
     expect(one).toContain('data-holes="1"');
-    expect(one).toContain('left:62%');
+    expect(one).toContain('left:22%');
     expect(one).not.toContain('recap-shroud-');
     expect(one).not.toContain('recap-shot-tally-');
     expect(one).toContain('>ON NOTICE<');
@@ -208,9 +209,9 @@ describe('scorecard caution tape and shroud', () => {
     const two = recap(stamp(base, [[], [1], [1]], { shotOut: false }), names);
     const twoHoles = holeImgs(two);
     expect(twoHoles).toHaveLength(2);
-    expect(twoHoles[0]).toContain('left:62%');
+    expect(twoHoles[0]).toContain('left:22%');
     expect(twoHoles[0]).not.toContain('hole-in');
-    expect(twoHoles[1]).toContain('left:14%');
+    expect(twoHoles[1]).toContain('left:46%');
     expect(twoHoles[1]).toContain('class="hole-in"');
     expect(two).toContain('data-holes="2"');
     expect(two).not.toContain('recap-shroud-');
@@ -223,7 +224,7 @@ describe('scorecard caution tape and shroud', () => {
     expect(threeHoles[0]).not.toContain('hole-in');
     expect(threeHoles[1]).not.toContain('hole-in');
     expect(threeHoles[2]).toContain('left:78%');
-    expect(threeHoles[2]).toContain('top:145px');
+    expect(threeHoles[2]).toContain('top:118px');
     expect(threeHoles[2]).toContain('class="hole-in"');
     expect(three).toContain('data-holes="3"');
     expect(three).not.toContain('recap-shroud-');
@@ -265,7 +266,7 @@ describe('scorecard caution tape and shroud', () => {
     expect(html).toContain('data-testid="recap-holes-1"');
     expect(holeImgs(html)).toHaveLength(1);
     expect(html).toContain('data-holes="1"');
-    expect(html).not.toContain('left:14%');
+    expect(html).not.toContain('left:28%');
     expect(html).not.toContain('recap-notice-');
     expect(html).not.toContain('>ON NOTICE<');
     expect(html).toContain('data-testid="recap-rip-1"');
