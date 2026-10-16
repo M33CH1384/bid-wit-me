@@ -1,4 +1,6 @@
 import { cardControlLabel } from './cardA11y';
+import { archSpot } from './archSpot';
+import type { HandHitCard } from './three/handHit';
 import { useEscapeClose } from './useEscapeClose';
 import { confirmPlay, feltClearsSelection, flyPlay, ignorePlayTap, playTrickOf, type PlayTrick } from './online/playGuard';
 import { actingSeat, localSeatOfServerTurn, turnView, type TurnBadge } from './turnState';
@@ -1203,6 +1205,25 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // landscape phones: keep the bid / pass panel just above the top of the (resting) hand
   const screenRef = useRef<HTMLDivElement>(null);
   const measureHand = st.phase === 'bidding' || st.phase === 'exchange';
+  // Portrait phones: YOUR TURN and your plate sit in the open arch under the fan, clear of every card.
+  useEffect(() => {
+    if (vp.short) return;
+    const tick = () => {
+      const el = screenRef.current;
+      const hits = (window as unknown as { __bwmHandHits?: HandHitCard[] }).__bwmHandHits ?? [];
+      const arch = el && window.innerWidth < 600 && window.innerHeight > window.innerWidth ? archSpot(hits, window.innerWidth, window.innerHeight) : null;
+      if (!el) return;
+      el.classList.toggle('arch-plate', !!arch);
+      if (arch) {
+        el.style.setProperty('--arch-x', `${arch.x}px`);
+        el.style.setProperty('--arch-top', `${arch.top}px`);
+        el.style.setProperty('--arch-w', `${arch.w}px`);
+      }
+    };
+    tick();
+    const t = window.setInterval(tick, 250);
+    return () => { clearInterval(t); screenRef.current?.classList.remove('arch-plate'); };
+  }, [vp.short]);
   useEffect(() => {
     if (!measureHand) return;
     const tick = () => {

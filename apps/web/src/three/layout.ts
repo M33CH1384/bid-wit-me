@@ -275,6 +275,8 @@ export interface FanOpts {
    * Needs `pxW` and `minStripPx`.
    */
   pivot?: number;
+  /** Pixels added over the strip floor (headroom for a lifted card). */
+  stripPad?: number;
 }
 
 /** Where the strip is measured, as a fraction of the card height below its top edge. */
@@ -292,7 +294,7 @@ function pivotFanLayout(aspect: number, count: number, safeFrac: number, o: FanO
   const halfAvail = viewW / 2 - viewW * (o.edgeFrac ?? Math.max(0.06, safeFrac + 0.025, o.reserveFrac ?? 0));
   const halfN = Math.max(0, (count - 1) / 2);
   // A few pixels over the floor: a lifted playable card slides its tilted edge sideways over the next strip.
-  const strip = Math.min(o.minStripPx!, Math.max(16, (pxW * (1 - 2 * edge)) / Math.max(1, count)) * 1.6) + 4;
+  const strip = Math.min(o.minStripPx!, Math.max(16, (pxW * (1 - 2 * edge)) / Math.max(1, count)) * 1.6) + (o.stripPad ?? 4);
   const spread = Number.isFinite(o.spread) && o.spread! > 0;
   let s = Math.min(viewH * (o.heightFrac ?? 0.16), viewW * 0.25 * 1.4 * 1.5) / CH;
   let out: FanLayout | null = null;
@@ -414,14 +416,18 @@ export function fanLayout(aspect: number, count: number, safeFrac = 0, o: FanOpt
  * 44px of exposed width is the target when the count leaves room for it.
  */
 export const PHONE_HAND_HEIGHT = 0.3;
-export const PHONE_HAND_EDGE = 0.018;
+export const PHONE_HAND_EDGE = 0.012;
 export const PHONE_HAND_ROLL = 0.2;
 /** Phone fan pivot, in card heights below each card's centre. Smaller is a rounder arc. */
-export const PHONE_HAND_PIVOT = 1.3;
+export const PHONE_HAND_PIVOT = 1.0;
+/** Headroom over the 28px strip floor. The e2e still measures >= 28px with a card raised. */
+export const PHONE_HAND_STRIP_PAD = 2;
+/** The fan rises off the bottom edge into the near rail, so the arch underneath it can hold your plate. */
+export const PHONE_HAND_RISE = 0.05;
 export const HAND_EXPOSED_PX = 44;
 
 export function phoneHandFan(): FanOpts {
-  return { heightFrac: PHONE_HAND_HEIGHT, edgeFrac: PHONE_HAND_EDGE, rollCap: PHONE_HAND_ROLL, pivot: PHONE_HAND_PIVOT };
+  return { heightFrac: PHONE_HAND_HEIGHT, edgeFrac: PHONE_HAND_EDGE, rollCap: PHONE_HAND_ROLL, pivot: PHONE_HAND_PIVOT, stripPad: PHONE_HAND_STRIP_PAD, bottomFrac: PHONE_HAND_RISE };
 }
 
 /** Card width, card height, and the strip of each card that is not covered by the next, in CSS pixels. */

@@ -9,6 +9,7 @@ import { chromium, webkit, type Browser, type Page } from 'playwright-core';
 import { DEFAULT_SETTINGS } from '../src/settings';
 import { phoneHandFan, stripFloorPx } from '../src/three/layout';
 import { visibleStripPx, type HandHitCard } from '../src/three/handHit';
+import { rectHitsCards } from '../src/archSpot';
 
 const IPHONE = {
   viewport: { width: 390, height: 844 },
@@ -115,7 +116,9 @@ async function runCase(browser: Browser, base: string): Promise<void> {
       await ready(page, count);
       await expectStrips(page, count, `${count} before reload`);
       await page.reload();
-      await page.getByTestId('resume').click();
+      // #150: a refresh at the table goes straight back into the game
+      const resume = page.getByTestId('resume');
+      if (await resume.isVisible({ timeout: 1500 }).catch(() => false)) await resume.click();
       await ready(page, count);
       await expectStrips(page, count, `${count} after reload`);
       if (count === 8) {
@@ -156,6 +159,15 @@ async function runCase(browser: Browser, base: string): Promise<void> {
         if (await page.getByTestId(`card-${id}`).count() !== 1) throw new Error(`first tap removed ${id}`);
         await expectStrips(page, count, '8 with a card raised');
         await page.screenshot({ path: '/opt/cursor/artifacts/hand-strips-raised-390.png' });
+      }
+      if (count === 13) {
+        // YOUR TURN and the plate sit in the arch under the fan, readable and off every card
+        await page.waitForFunction(() => document.querySelector('.table-screen')?.classList.contains('arch-plate'));
+        const hits = await page.evaluate(() => (window as unknown as { __bwmHandHits?: HandHitCard[] }).__bwmHandHits ?? []);
+        const r = await page.evaluate(() => { const b = document.querySelector('.me-plate')!.getBoundingClientRect(); return { left: b.left, top: b.top, right: b.right, bottom: b.bottom, pe: getComputedStyle(document.querySelector('.me-plate')!).pointerEvents }; });
+        if (r.pe !== 'none') throw new Error('plate takes pointer events');
+        if (rectHitsCards(r, hits)) throw new Error(`plate covers a card ${JSON.stringify(r)}`);
+        if (!(await page.locator('.me-plate .plate-turn').isVisible())) throw new Error('YOUR TURN not visible');
       }
       if (count === 13) await page.screenshot({ path: '/opt/cursor/artifacts/hand-strips-13-390.png' });
       console.log(count, 'floor', stripFloorPx(count, 390, edge).toFixed(1));
