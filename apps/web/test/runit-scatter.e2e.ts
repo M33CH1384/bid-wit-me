@@ -26,12 +26,13 @@ function fixture(): string {
 }
 
 type Drop = { dx: number; dz: number; spin: number; delay: number };
-type Probe = { cards: string[]; drops: Drop[] | null; reduced: boolean; slams?: number; atTable?: boolean };
+type Probe = { cards: string[]; drops: Drop[] | null; reduced: boolean; slams?: number; atTable?: boolean; rest?: Record<string, { y: number; tilt: number }> };
 
 async function run(b: Browser, opts: { tips: boolean; reduced?: boolean; shots?: string }): Promise<Probe> {
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, reducedMotion: opts.reduced ? 'reduce' : 'no-preference' });
   const p = await ctx.newPage();
   const raw = fixture();
+  await p.addInitScript(() => { (window as unknown as { __bwmRestProbe: boolean }).__bwmRestProbe = true; });
   await p.goto(URL);
   await p.evaluate(({ raw, tips }) => {
     localStorage.setItem('bwm.game', raw);
@@ -51,11 +52,12 @@ async function run(b: Browser, opts: { tips: boolean; reduced?: boolean; shots?:
   if (opts.shots) await p.screenshot({ path: `${SHOTS}/runit-${opts.shots}-mid-drop-390.png` });
   await p.waitForTimeout(750);
   if (opts.shots) await p.screenshot({ path: `${SHOTS}/runit-${opts.shots}-settled-390.png` });
+  const rest = await p.evaluate(() => (window as unknown as { __bwmRest?: Record<string, { y: number; tilt: number }> }).__bwmRest ?? {});
   await p.waitForTimeout(1300);
   if (opts.shots) await p.screenshot({ path: `${SHOTS}/runit-${opts.shots}-tornado-390.png` });
   const s1 = await snd();
   const probe = await p.evaluate(() => (window as unknown as { __bwmRunDrop?: Probe }).__bwmRunDrop ?? null);
-  if (probe) { probe.slams = s1.play - s0.play; probe.atTable = s1.atTable; }
+  if (probe) { probe.rest = rest; probe.slams = s1.play - s0.play; probe.atTable = s1.atTable; }
   await ctx.close();
   if (!probe) throw new Error('no run drop probe: the slam never rendered');
   return probe;
@@ -80,6 +82,12 @@ async function run(b: Browser, opts: { tips: boolean; reduced?: boolean; shots?:
     if (JSON.stringify(a.drops) !== JSON.stringify(again.drops)) fails.push('same seed gave a different pile');
     if (JSON.stringify(a.drops) !== JSON.stringify(on.drops)) fails.push('Tips on did not scatter the same way');
     console.log(`repeat identical=${JSON.stringify(a.drops) === JSON.stringify(again.drops)} tips-on identical=${JSON.stringify(a.drops) === JSON.stringify(on.drops)} reduced drops=${red.drops === null ? 'none (tidy row)' : 'SCATTERED'}`);
+    const settled = a.cards.map((c) => a.rest?.[c]).filter(Boolean) as { y: number; tilt: number }[];
+    const tilt = Math.max(...settled.map((r) => r.tilt)), ys = settled.map((r) => r.y);
+    console.log(`run drop settled ${settled.length}/${a.cards.length}: max tilt ${tilt.toFixed(2)}°, height ${Math.min(...ys).toFixed(4)}..${Math.max(...ys).toFixed(4)}`);
+    if (settled.length !== a.cards.length) fails.push('not every run card settled before the tornado');
+    if (tilt > 0.5) fails.push(`a run card is tilted ${tilt.toFixed(1)}°`);
+    if (Math.max(...ys) > 0.006 + 8 * 0.003 + 0.001 || Math.min(...ys) < 0.005) fails.push('a run card is not at felt height');
     if (red.drops !== null) fails.push('reduced motion still scattered');
     console.log(`slam sounds at the table: ${a.slams} (atTable=${a.atTable})`);
     if (!a.atTable || (a.slams ?? 0) < 2) fails.push('the Run it slam sounds did not play at the table');
