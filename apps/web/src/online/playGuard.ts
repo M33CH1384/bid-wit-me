@@ -36,8 +36,10 @@ export function playSendBlocked(sentSeq: number | null, serverSeq: number): bool
 export const TAP_PLAY_ARM_MS = 120;
 
 /**
- * One tap selects. The next tap plays, and the card that leaves the hand is the selected id.
+ * One tap selects. The next tap on that same card plays it. It never drops the selection:
+ * a second tap is a play, or it is ignored while the card is still rising.
  * A hit on a different card changes the selection. It never plays that other card.
+ * The felt is not a card hit. That is the other way to put the raised card down.
  */
 export function confirmPlay(selected: string | null, hit: string, selectedAt: number, now: number):
   { type: 'play'; card: string } | { type: 'select'; card: string } | { type: 'ignore' } {
@@ -47,4 +49,9 @@ export function confirmPlay(selected: string | null, hit: string, selectedAt: nu
     return { type: 'play', card: selected };
   }
   return { type: 'select', card: hit };
+}
+
+/** A tap on the felt puts the raised card down. It does not play anything. */
+export function feltClearsSelection(selected: string | null): boolean {
+  return selected !== null;
 }

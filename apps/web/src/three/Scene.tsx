@@ -6,11 +6,11 @@ import { type BufferGeometry, type Camera, type Group, type Material, type Mesh,
 import { type Card, type Play, type Trick } from '@spades/rules';
 import Card3D, { createLitCardMaterial } from './Card3D';
 import { departureSlot, handCardKey, handReactKey } from '../handOrder';
-import { GAP_S, LIFT_S, fanGapPx, fanMotion, handCardChrome, handDepthOpts, handRenderOrder, hitsInPaintOrder, raiseLocalY, setPointerSelected } from './handLift';
+import { GAP_S, LIFT_S, cardIdFromHit, fanGapPx, fanMotion, handCardChrome, handDepthOpts, handRenderOrder, hitsInPaintOrder, raiseLocalY, setPointerSelected, setSelectedTapLayer } from './handLift';
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline, seatDealDelay } from './dealTimeline';
-import { handNeedsDeal, handSlotKey } from './dealFlight';
-import { cardShowsFace, handLatched, latchHand, resumeDrawList, showResumeHand3D, visibleFaceIds } from './cardFace';
+import { handOnFan, handSlotKey } from './dealFlight';
+import { cardShowsFace, flatFanHidden, handLatched, latchHand, resumeDrawList, showResumeHand3D, visibleFaceIds } from './cardFace';
 import { openingTrickKeys, trickCardLaunches, trickPlayFrom } from './trickFacing';
 import { type Sfx, sound } from '../audio';
 import { fx } from '../fx';
@@ -52,6 +52,8 @@ export interface SceneProps {
   winnerSeat: number | null;
   promoted: (c: Card) => boolean;
   onCardTap: (c: Card) => void;
+  /** A tap on the cloth, not on a card. Puts the raised card down. */
+  onFeltTap?: () => void;
   renderSeat: (seat: number) => ReactNode;
   /** Hand number whose shuffle + deal should be animated (null = place cards instantly, e.g. after a refresh). */
   introHand: number | null;
@@ -569,18 +571,21 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   const closing = held.current.count > 0 && faceCount < held.current.count;
   // Off turn, legal is empty: every card stays flat and at full brightness.
   const yourTurn = legal.length > 0;
-  const fan = fanLayout(aspect, Math.max(1, mine.length), safeFrac, fanOpts);
+  // The meshes are the current hand. A deal beat must not leave a card out of this list.
+  const fanCards = handOnFan(mine);
+  const fan = fanLayout(aspect, Math.max(1, fanCards.length), safeFrac, fanOpts);
   const nextCards = new Set<string>();
   const nextSlots = new Map<string, Xform>();
   const nextSeen = new Set<string>();
   // 8px of air on each side of a legal run. The order of the cards does not change.
-  const gaps = fanGapPx(mine.map((c) => !!c && legal.includes(c)));
-  mine.forEach((c, i) => {
+  const gaps = fanGapPx(fanCards.map((slot) => !!slot.card && legal.includes(slot.card)));
+  fanCards.forEach((slot, i) => {
+    const c = slot.card;
     const isLegal = !!c && legal.includes(c);
     // A face-down slot is not an illegal card. Only a real card you cannot play dims.
     const chrome = c
       ? handCardChrome({
-        yourTurn, isLegal, selected: selected === c, marked: !!props.marked?.includes(c), anyIllegal: legal.length < mine.length,
+        yourTurn, isLegal, selected: selected === c, marked: !!props.marked?.includes(c), anyIllegal: legal.length < fanCards.length,
       })
       : { pose: 'flat' as const, dim: false, glow: false };
     const pose = chrome.pose;
@@ -588,16 +593,15 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
     // The raise is screen-up. The gap is a CSS-pixel slide. Depth is a separate nearer bias
     // (handDepthOpts) so a selected card wins the depth test against a higher-index neighbour.
     const opts = { ...fanOpts, ...handDepthOpts(pose) };
-    const target = handFan(aspect, mine.length, i, 0, safeFrac, opts, gaps[i] ?? 0, screenH);
+    const target = handFan(aspect, fanCards.length, i, 0, safeFrac, opts, gaps[i] ?? 0, screenH);
     // One shot. Later renders (a tap, a highlight) must not pass the face-down pose again.
     const flip = flipIn && flippedHand.current !== handNo && !!c;
     const id = c ? handCardKey(c) : '';
     const slotKey = handSlotKey(id, i);
-    // intro stays on for the whole hand; only cards we have not shown yet come from the deck.
-    // Face-down slots (Blind Nil) use the same round-robin delay as a face-up card.
-    const fresh = handNeedsDeal({ intro, flip, seen: held.current.seen, slotKey });
-    const move = fanMotion({ flip, fresh, closing });
-    const plane = handCardPlane(aspect, mine.length, i, 0, safeFrac, opts, gaps[i] ?? 0, screenH);
+    // Already in the hand: sit in the fan this frame. Flying in from the deck is what left
+    // cards missing after the state had moved on, and those hidden meshes ignore taps.
+    const move = fanMotion({ flip, fresh: false, closing });
+    const plane = handCardPlane(aspect, fanCards.length, i, 0, safeFrac, opts, gaps[i] ?? 0, screenH);
     if (c) {
       nextCards.add(c);
       nextSlots.set(id, target);
@@ -608,11 +612,10 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       key: handReactKey(handNo, c, i),
       card: c,
       target,
-      from: move.kind === 'flip' ? flipped(target) : move.kind === 'deal' ? deck : undefined,
-      delay: move.kind === 'flip' ? i * 0.022 : move.kind === 'deal' ? dealDelay(i, human) : 0,
-      // Stay hidden until this card's own deal beat. The fan must not be on screen while other seats are still being dealt.
-      holdUntilMove: move.kind === 'deal',
-      sfxStart: move.kind === 'deal' ? 'deal' : undefined,
+      from: move.kind === 'flip' ? flipped(target) : undefined,
+      delay: move.kind === 'flip' ? i * 0.022 : 0,
+      holdUntilMove: slot.hidden,
+      sfxStart: undefined,
       dim: chrome.dim,
       // No gold ring. A playable card is bright; a card you cannot play is dimmed in place.
       glow: false,
@@ -635,7 +638,8 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   const showCards = props.fontsReady || resume;
   useEffect(() => {
     setPointerSelected(selected ?? null);
-    return () => setPointerSelected(null);
+    if (!selected) setSelectedTapLayer(null, null, null);
+    return () => { setPointerSelected(null); setSelectedTapLayer(null, null, null); };
   }, [selected]);
   // Once this hand has been drawn in 3D, keep it through a painter restart. The felt fan
   // covers the frames before that. Neither gate may leave a hand that exists in state with nothing on screen.
@@ -656,16 +660,12 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   });
   useLayoutEffect(() => {
     const live = props.onHandLive;
-    if (!live) return;
-    // Not drawn yet: the flat fan stays (or comes back) so a reload is playable on the first paint.
-    if (!hand3D || handCount === 0) {
-      live(false);
-      return;
-    }
-    let cancel = false;
-    // Two frames so the 3D fan has been submitted before the flat fan leaves. Both for a moment, never neither.
-    const a = requestAnimationFrame(() => requestAnimationFrame(() => { if (!cancel) live(true); }));
-    return () => { cancel = true; cancelAnimationFrame(a); };
+    // The flat fan leaves before paint once the 3D hand is in the tree. Two frames of both
+    // left a second queen behind the one you tap, and the flat buttons took the hit.
+    const on = flatFanHidden(hand3D, handCount);
+    document.querySelector('.table-screen')?.classList.toggle('hand-3d', on);
+    live?.(on);
+    return () => { document.querySelector('.table-screen')?.classList.remove('hand-3d'); };
   }, [hand3D, handCount, props.onHandLive]);
 
   useEffect(() => {
@@ -1169,8 +1169,8 @@ export default function Scene(props: SceneProps) {
         w.__bwmParallelShaders = gl.extensions.has('KHR_parallel_shader_compile');
         setAspect(size.width / size.height);
       }}
-      onPointerMissed={() => undefined}
-      events={(store) => ({ ...r3fEvents(store), filter: (hits) => hitsInPaintOrder(hits) })}
+      onPointerMissed={() => props.onFeltTap?.()}
+      events={(store) => ({ ...r3fEvents(store), filter: (hits, state) => hitsInPaintOrder(hits, undefined, state.pointer) })}
       resize={{ debounce: 50 }}
     >
       <AspectWatcher onAspect={setAspect} />
@@ -1186,7 +1186,18 @@ export default function Scene(props: SceneProps) {
       <ResumeRamp quality={props.quality} def={def} onShow={onShow} onLit={onLit} onDpr={onDpr} onShadow={onShadow} onHall={onHall} />
       {hi && classic && <HallAttach active={hallGo && textured} />}
       {!classic && textured && <Venue3D key={def.id} def={def} quality={props.quality} reduceFx={!!props.reduceFx} />}
-      {showTable && <group ref={tableGroup}><TableModel quality={props.quality} lit={lit} onReady={tableReady} onTextured={onTextured} def={def} /></group>}
+      {showTable && (
+        <group
+          ref={tableGroup}
+          onPointerDown={(e) => {
+            if (cardIdFromHit(e.object)) return;
+            e.stopPropagation();
+            props.onFeltTap?.();
+          }}
+        >
+          <TableModel quality={props.quality} lit={lit} onReady={tableReady} onTextured={onTextured} def={def} />
+        </group>
+      )}
       {showTable && props.positions.map((p, seat) => <TurnRing key={seat} pos={p} n={props.n} active={props.turnSeat === seat} />)}
       {showTable && <Cards {...props} aspect={aspect} fontsReady={fontsReady} safeFrac={safeFrac} lit={lit} />}
       <AfterTable quality={props.quality} tableUp={textured} />
