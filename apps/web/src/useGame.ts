@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { type Action, type GameState, type TableRules, applyAction, canRunIt, isNukeTrick, newGame, pendingTurn, secureSeed, viewFor } from '@spades/rules';
 import { type BotLevel, type PartnerHint, chooseBotAction, parseHint } from '@spades/bots';
 import { dealTimeline } from './three/dealTimeline';
+import { dealClockArmed } from './three/dealFlight';
 import { finishedTrickHoldMs } from './trickTiming';
 
 export const HUMAN = 0;
@@ -16,7 +17,7 @@ export const SPEEDS = { slow: 2.2, relaxed: 1.5, normal: 1, fast: 0.5, turbo: 0.
 
 /** `hold`: a tip is open — bots wait and a finished trick stays on the table until it's dismissed. */
 /** `botLevel`: one level for every bot, or a per-seat resolver (Mixed skill / persona floors). `dealer`: a rematch continues the deal rotation. */
-export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((seat: number) => BotLevel), speed: keyof typeof SPEEDS, resume?: GameState, hold = false, dealer?: number, partnerHint?: { current: { hand: number; text: string } | null }, localReport?: { current: { names: string[]; teamNames: (string | null)[] | null } }) {
+export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((seat: number) => BotLevel), speed: keyof typeof SPEEDS, resume?: GameState, hold = false, dealer?: number, partnerHint?: { current: { hand: number; text: string } | null }, localReport?: { current: { names: string[]; teamNames: (string | null)[] | null } }, dealReady = true, sceneDealt: number | null = null) {
   const [st, setSt] = useState<GameState>(() => resume ?? newGame(rules, seed, { dealer }));
   const levelRef = useRef(botLevel);
   levelRef.current = botLevel;
@@ -48,13 +49,19 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
   const k = SPEEDS[speed];
   // while a fresh hand's shuffle + deal animation runs, nobody bids (bots wait, the bid panel stays hidden)
   const [dealtHand, setDealtHand] = useState<number | null>(null);
-  const dealing = introHand !== null && dealtHand !== introHand;
+  // Bounded wait for a scene that never reports (no WebGL): the game is never stuck on a deal.
+  const [forcedHand, setForcedHand] = useState<number | null>(null);
+  const dealing = introHand !== null && forcedHand !== introHand && !(dealtHand === introHand && sceneDealt === introHand);
   useEffect(() => {
-    if (introHand === null) return;
+    // The clock starts with the table on screen. Started behind the loader, the deal was over
+    // before it showed, so YOUR TURN and the bots' lead ran under the flying cards.
+    if (!dealClockArmed(introHand, dealReady)) return;
     const cards = stRef.current.hands.reduce((a, h) => a + h.length, 0);
-    const t = setTimeout(() => setDealtHand(introHand), dealTimeline(k, stRef.current.rules.playerCount, cards).total * 1000 + 150);
-    return () => clearTimeout(t);
-  }, [introHand, k]);
+    const ms = dealTimeline(k, stRef.current.rules.playerCount, cards).total * 1000;
+    const t = setTimeout(() => setDealtHand(introHand), ms + 150);
+    const f = setTimeout(() => setForcedHand(introHand), ms * 3 + 4000);
+    return () => { clearTimeout(t); clearTimeout(f); };
+  }, [introHand, k, dealReady]);
 
   const apply = useCallback((action: Action): boolean => {
     const prev = stRef.current;

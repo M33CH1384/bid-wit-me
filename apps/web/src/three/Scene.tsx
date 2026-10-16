@@ -10,7 +10,7 @@ import { GAP_S, RAISE_SPREAD, cardIdFromHit, echoTap, fanGapPx, fanMotion, handC
 import { type HandHitCard, pickHandCard, publishHandHits } from './handHit';
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline, seatDealDelay } from './dealTimeline';
-import { handOnFan, handSlotKey } from './dealFlight';
+import { dealHeld, handDealsIn, handOnFan, handSlotKey } from './dealFlight';
 import { cardShowsFace, flatFanHidden, handLatched, latchHand, resumeDrawList, showResumeHand3D, visibleFaceIds } from './cardFace';
 import { openingTrickKeys, trickCardLaunches, trickPlayFrom } from './trickFacing';
 import { type Sfx, sound } from '../audio';
@@ -36,6 +36,8 @@ export interface SceneProps {
   onTableDressed?: () => void;
   /** True once the 3D hand is the fan on screen. False returns the flat fan; it must not stay true across a hand the 3D scene has stopped drawing. */
   onHandLive?: (live: boolean) => void;
+  /** The intro hand's deal has played out on the scene's own clock (frames, capped like the cards). */
+  onDealDone?: (handNo: number) => void;
   n: number;
   handNo: number;
   dealer: number;
@@ -58,6 +60,10 @@ export interface SceneProps {
   renderSeat: (seat: number) => ReactNode;
   /** Hand number whose shuffle + deal should be animated (null = place cards instantly, e.g. after a refresh). */
   introHand: number | null;
+  /** The intro hand's deal is still running (bots and your turn wait for it). */
+  dealing?: boolean;
+  /** The table is on screen. The intro hand is not drawn before this, so the deal is never hidden behind the loader. */
+  dealReady?: boolean;
   /** Game-speed factor (1 = normal, 0.5 = fast…): scales the shuffle/deal timeline. */
   animK: number;
   /** Landing sounds for a played card ('play' or 'play,cut' / 'play,broken'). */
@@ -453,6 +459,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   useEffect(() => (props.fontsReady ? refreshFacesGradually(() => invalidate()) : undefined), [props.fontsReady, invalidate]);
   const deck = deckSpot(positions[dealer]!, n);
   const intro = props.introHand === handNo;
+  const held0 = dealHeld({ intro, dealReady: props.dealReady !== false });
   // Blind Nil: cards that were dealt face-down flip over in place on reveal — never re-dealt from the deck
   const hiddenHand = useRef<number | null>(null);
   if (myHand === null) hiddenHand.current = handNo;
@@ -475,6 +482,19 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
     (w.__bwmFlips ??= {})[handNo] = (w.__bwmFlips[handNo] ?? 0) + 1;
   }, [flipIn, handNo]);
   const tl = dealTimeline(props.animK, n, handCounts.reduce((a, b) => a + b, 0) + piles.length * n + shownTrick.length);
+  // The cards' tweens advance at most 50ms a frame, so on a slow device they run behind the wall clock.
+  // Count the deal the same way and report when the last card has landed: until then nobody acts.
+  const dealClock = useRef<{ hand: number; t: number; done: boolean }>({ hand: -1, t: 0, done: false });
+  const onDealDone = props.onDealDone;
+  const dealArmed = intro && !held0;
+  useFrame((_, rawDt) => {
+    const c = dealClock.current;
+    if (!dealArmed) return;
+    if (c.hand !== handNo) { c.hand = handNo; c.t = 0; c.done = false; }
+    if (c.done) return;
+    c.t += Math.min(Math.max(rawDt, 0), 0.05);
+    if (c.t >= tl.total + 0.05) { c.done = true; onDealDone?.(handNo); } else invalidate();
+  });
   const size = useThree((s) => s.size);
   const short = isShortLandscape(size.width, size.height); // from the canvas size, like the camera — never out of step with it
   // A 0×0 canvas (first frame, iPhone chrome) must not divide. That NaN pose sticks: lerp never leaves it,
@@ -560,15 +580,15 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
     });
   }
   // opponents' fans
-  for (let seat = 0; seat < n; seat++) {
+  for (let seat = 0; seat < n && !held0; seat++) {
     if (seat === human) continue;
     const c = handCounts[seat]!;
     for (let i = 0; i < c; i++) {
-      items.push({ key: `${handNo}-b${seat}-${i}`, card: null, target: opponentFan(positions[seat]!, n, i, c), from: intro ? deck : undefined, delay: intro ? dealDelay(i, seat) : 0, duration: tl.fly, arc: 0.3, sfxStart: 'deal' });
+      items.push({ key: `${handNo}-b${seat}-${i}`, card: null, target: opponentFan(positions[seat]!, n, i, c), from: intro ? deck : undefined, delay: intro ? dealDelay(i, seat) : 0, holdUntilMove: intro, duration: tl.fly, arc: 0.3, sfxStart: 'deal' });
     }
   }
   // the human hand
-  const mine = myHand ?? Array.from({ length: handCounts[human]! }, () => null);
+  const mine = held0 ? [] : myHand ?? Array.from({ length: handCounts[human]! }, () => null);
   const faceCount = mine.reduce((nCards, c) => nCards + (c ? 1 : 0), 0);
   // A card left since the last committed hand: slide the gap shut. A highlight alone does not.
   const closing = held.current.count > 0 && faceCount < held.current.count;
@@ -597,6 +617,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   const spread = rawSpread.map((v) => v * spreadScale);
   const gaps = fanGapPx(fanCards.map((slot) => !!slot.card && legal.includes(slot.card))).map((g, i) => g + (spread[i] ?? 0));
   const handQuads: HandHitCard[] = [];
+  let dealtIn = 0;
   fanCards.forEach((slot, i) => {
     const c = slot.card;
     const isLegal = !!c && legal.includes(c);
@@ -618,7 +639,9 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
     const slotKey = handSlotKey(id, i);
     // Already in the hand: sit in the fan this frame. Flying in from the deck is what left
     // cards missing after the state had moved on, and those hidden meshes ignore taps.
-    const move = fanMotion({ flip, fresh: false, closing });
+    const dealIn = handDealsIn({ intro, dealing: !!props.dealing, flip });
+    if (dealIn) dealtIn++;
+    const move = fanMotion({ flip, fresh: dealIn, closing });
     const plane = handCardPlane(aspect, fanCards.length, i, 0, safeFrac, opts, gaps[i] ?? 0, screenH);
     const order = handRenderOrder(i, above, pose === 'selected');
     if (c) {
@@ -636,10 +659,11 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       key: handReactKey(handNo, c, i),
       card: c,
       target,
-      from: move.kind === 'flip' ? flipped(target) : undefined,
-      delay: move.kind === 'flip' ? i * 0.022 : 0,
-      holdUntilMove: slot.hidden,
-      sfxStart: undefined,
+      // Fresh deal: leave the deck face down on this card's beat, turn face up on the way into the slot.
+      from: move.kind === 'flip' ? flipped(target) : dealIn ? flipped(deck) : undefined,
+      delay: move.kind === 'flip' ? i * 0.022 : dealIn ? dealDelay(i, human) : 0,
+      holdUntilMove: slot.hidden || dealIn,
+      sfxStart: dealIn ? 'deal' : undefined,
       dim: chrome.dim,
       // No gold ring. A playable card is bright; a card you cannot play is dimmed in place.
       glow: false,
@@ -649,7 +673,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       shadow: false,
       duration: move.kind === 'flip' ? 0.34 : move.kind === 'deal' ? tl.fly : move.kind === 'slide' ? GAP_S : 0,
       motion: move.motion,
-      arc: move.arc,
+      arc: dealIn ? 0.3 : move.arc,
       raise: c ? raiseLocalY(pose, fan.viewH, screenH, fan.ch) : 0,
       roll: plane.roll,
       order,
@@ -667,7 +691,13 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   if (hand3D && handCount > 0) latchHand(handNo);
   // The quads are the cards on screen this render. A tap reads them, not a mesh that
   // is still at the origin after a remount or still sitting in the un-raised slot.
-  publishHandHits(hand3D ? handQuads : []);
+  // A card still flying in is not a tap target.
+  const dealingNow = intro && !!props.dealing;
+  publishHandHits(hand3D && !dealingNow ? handQuads : []);
+  useEffect(() => {
+    const w = window as unknown as { __bwmDeal?: { handNo: number; held: boolean; dealing: boolean; hand: number; flying: number; hits: number } };
+    w.__bwmDeal = { handNo, held: held0, dealing: dealingNow, hand: fanCards.length, flying: dealtIn, hits: hand3D && !dealingNow ? handQuads.length : 0 };
+  });
   useEffect(() => () => { publishHandHits([]); }, []);
   useEffect(() => {
     if (!showCards) return;
