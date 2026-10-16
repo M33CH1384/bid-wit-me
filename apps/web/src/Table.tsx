@@ -45,6 +45,7 @@ import type { SeatPos } from './three/layout';
 import { HUMAN, useGame } from './useGame';
 import { DealerPopup } from './DealerPopup';
 import { dealerAnnouncement, dealerFromServer, withCurrentDealerLine } from './dealerName';
+import { bidChipText, dealerChipMatches, syncPlateFacts, tookChipText, type SeatFact } from './plateFacts';
 import { leaveChoice, leaveMenuAction, type LeaveGesture } from './leaveMenu';
 import { biddingNote, noticeTip, seatFacingName, seatInitial, trickTakenLine } from './seatLabel';
 import { MinBidLine, bidChoices, minBidNote } from './minBid';
@@ -1112,6 +1113,38 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     sync();
     return () => cancelAnimationFrame(raf);
   }, [actor, spectating]);
+  // Canvas plates keep the previous hand's dealer chip and bid/took until their own root
+  // paints. Correct them before the browser paints, and only then show "X deals".
+  const plateKey = `${st.handNo}:${st.phase}:${dealerSeat}:${actor}:${st.bids.map((b) => (b == null ? '' : String(b))).join('.')}:${sb.tricksWon.join('.')}`;
+  const [dealerLive, setDealerLive] = useState(false);
+  useLayoutEffect(() => {
+    const facts: SeatFact[] = [];
+    for (let seat = 0; seat < n; seat++) {
+      facts.push({
+        seat,
+        bid: bidChipText(st.bids[seat] ?? null, actor === seat && st.phase === 'bidding'),
+        took: tookChipText(sb.tricksWon[seat] ?? 0),
+        dealer: dealerSeat === seat,
+      });
+    }
+    let dead = false;
+    let raf = 0;
+    const apply = () => {
+      if (dead) return;
+      const screen = document.querySelector('.table-screen');
+      if (screen) syncPlateFacts(screen, facts);
+      const hasPlate = !!screen?.querySelector('.plate');
+      const ok = !showDealer || (!!screen && hasPlate && dealerChipMatches(screen, dealerSeat));
+      setDealerLive((prev) => (prev === ok ? prev : ok));
+      cancelAnimationFrame(raf);
+      raf = showDealer && !ok ? requestAnimationFrame(apply) : 0;
+    };
+    const layer = document.querySelector('.badge-layer');
+    const obs = new MutationObserver(() => apply());
+    if (layer) obs.observe(layer, { childList: true, subtree: true, characterData: true });
+    apply();
+    return () => { dead = true; cancelAnimationFrame(raf); obs.disconnect(); };
+  }, [plateKey, showDealer]); // eslint-disable-line react-hooks/exhaustive-deps
   const renderSeat = (seat: number) => {
     const isTurn = actor === seat;
     const partner = !spectating && r.partnerships && seat === partnerOf(HUMAN, r);
@@ -1122,8 +1155,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         <div className="plate-body">
           <div className="plate-name">{names[seat]}{dealerSeat === seat && <span className="chip dealer" data-testid={`dealer-${seat}`}>DEALER</span>}{partner && <span className="chip ally">PARTNER</span>}{notice.includes(sideOf(seat, r)) && <span className="chip notice" data-testid={`notice-${seat}`} title="Got shot last hand: one more shot and they're out">ON NOTICE</span>}</div>
           <div className="plate-stats">
-            <span className="chip">{b === 'books' ? 'BOOKS' : `BID ${b === null ? (isTurn && st.phase === 'bidding' ? '…' : '—') : bidLabel(b).toUpperCase()}`}</span>
-            <span className="chip">TOOK {sb.tricksWon[seat]}</span>
+            <span className="chip">{bidChipText(b ?? null, isTurn && st.phase === 'bidding')}</span>
+            <span className="chip">{tookChipText(sb.tricksWon[seat] ?? 0)}</span>
           </div>
         </div>
         {online?.seatExtra(seat)}
@@ -1301,7 +1334,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
       {/* center notes */}
       <div className="center-note-wrap">
-        {showDealer && <DealerPopup name={dealerLabel} localSeat={dealerSeat} />}
+        {showDealer && dealerLive && <DealerPopup name={dealerLabel} localSeat={dealerSeat} />}
         {st.phase === 'bidding' && !pause && !dealing && localTurn !== HUMAN && localTurn !== null && <div className="center-note" data-testid="bidding-note">{biddingNote(names[localTurn] ?? '', { partnerships: r.partnerships, partnerTurn: localTurn === partnerSeat, spectating })}</div>}
         {showCenterBidOrder(st.phase, pause, dealing) && <BidOrder st={st} names={names} me={spectating ? -1 : HUMAN} />}
         {isBooks && st.phase === 'playing' && !pause && !dealing && st.tricks.length === 0 && st.trick.plays.length === 0 && <div className="center-note books-note" data-testid="books-note">First hand: books bid themselves · 10 per book</div>}

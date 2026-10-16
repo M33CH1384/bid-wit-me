@@ -205,6 +205,9 @@ describe('dealer name from the current hand', () => {
 
     const tableSrc = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
     const onlineTable = readFileSync(new URL('../src/online/OnlineTable.tsx', import.meta.url), 'utf8');
+    expect(tableSrc).toContain('syncPlateFacts(screen, facts)');
+    expect(tableSrc).toContain('{showDealer && dealerLive && <DealerPopup');
+    expect(tableSrc).toContain('dealerChipMatches(screen, dealerSeat)');
     expect(tableSrc).toContain('dealerSeat === seat');
     expect(tableSrc).toContain('dealerSeat === HUMAN');
     expect(tableSrc).toContain('localSeat={dealerSeat}');
