@@ -91,6 +91,7 @@ export function createLitCardMaterial(map: Texture, quality: 'high' | 'low', sat
 
 function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, raise = 0, roll = 0, order = 0, dim, glow, castShadow = true, quality, onTap, cardId = null, name, sfxStart, sfxLand, blast = 'table', holdUntilMove = false, lit = true, slam }: Props) {
   const slamNow = useRef(slam);
+  const postLand = useRef(0);
   slamNow.current = slam;
   const ref = useRef<Group>(null);
   // First mount only. A follow-up render drops the deal props before useFrame runs.
@@ -433,6 +434,17 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       }
     }
     if (s.t >= 1) {
+      // Test probe: keep sampling a slammed card's screen position for a few frames after it lands.
+      if (slamNow.current && cardId && postLand.current < 30) {
+        postLand.current++;
+        const w = window as unknown as { __bwmFly?: Record<string, { t: number; x: number; y: number }[]> };
+        cam.updateMatrixWorld();
+        const v = g.getWorldPosition(new Vector3()).project(cam);
+        // relative to the table centre, so a camera shake (which moves everything) does not read as the card moving
+        const o = new Vector3(0, 0, 0).project(cam); v.x -= o.x; v.y -= o.y;
+        ((w.__bwmFly ??= {})[cardId] ??= []).push({ t: 1, x: ((v.x + 1) / 2) * viewSize.width + 0, y: ((1 - v.y) / 2) * viewSize.height });
+        invalidate();
+      }
       // A play that reached the trick must not keep the face-down fan quaternion.
       if (!s.faced && finiteTarget) {
         const q = restingFacing(
@@ -462,10 +474,10 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
         s.firedLand = land;
         const sl = slamNow.current;
         if (moving) land.split(',').forEach((c, i) => {
-          if (c === 'play' && sl) { sound.play('play', { gain: sl.volume }); return; }
+          if (c === 'play' && sl && sl.intensity >= 0) { sound.cardSmack(sl.intensity); return; }
           fireCue(c, i ? 0.02 : 0);
         });
-        if (moving && sl && sl.shake > 0 && !fx.reduced && !fx.osReducedMotion) fx.shake = { start: performance.now(), dur: 0.18 + sl.shake * 4, amp: sl.shake };
+        if (moving && sl && sl.shake > 0 && !fx.reduced && !fx.osReducedMotion) fx.shake = { start: performance.now(), dur: 0.16 + sl.shake * 3, amp: sl.shake * 0.6, thump: true };
       }
     }
     const e = (motion === 'flight' ? easeInOut : liftEase)(s.t);
@@ -478,8 +490,11 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     // Test probe: screen position of a trick card in flight, per frame (CSS px).
     if (sl && cardId) {
       const w = window as unknown as { __bwmFly?: Record<string, { t: number; x: number; y: number }[]> };
-      const v = g.position.clone().project(cam);
-      ((w.__bwmFly ??= {})[cardId] ??= []).push({ t: s.t, x: ((v.x + 1) / 2) * viewSize.width, y: ((1 - v.y) / 2) * viewSize.height });
+      cam.updateMatrixWorld();
+      const v = g.getWorldPosition(new Vector3()).project(cam);
+        // relative to the table centre, so a camera shake (which moves everything) does not read as the card moving
+        const o = new Vector3(0, 0, 0).project(cam); v.x -= o.x; v.y -= o.y;
+      ((w.__bwmFly ??= {})[cardId] ??= []).push({ t: s.t, x: ((v.x + 1) / 2) * viewSize.width + 0, y: ((1 - v.y) / 2) * viewSize.height });
     }
     if (sl && s.t > 0.75 && dist > 0.02) { const u = (s.t - 0.75) / 0.25; g.position.y += sl.bounce * Math.abs(Math.sin(2 * Math.PI * u)) * (1 - u); }
     g.quaternion.slerpQuaternions(s.sq, s.tq, e);

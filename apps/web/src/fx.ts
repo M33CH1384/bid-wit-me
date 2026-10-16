@@ -38,7 +38,7 @@ class FxBus {
   private prefListeners = new Set<() => void>();
   private seq = 1;
   /** camera shake for the 3D scene: amplitude (world units) and duration (s), read every frame by Scene */
-  shake: { start: number; dur: number; amp: number } | null = null;
+  shake: { start: number; dur: number; amp: number; /** table-only vertical thump: never moves the camera sideways */ thump?: boolean } | null = null;
   /** counters (exposed for automated checks) */
   fired: Record<string, number> = {};
 
@@ -174,7 +174,7 @@ export function fireCue(c: string, delay = 0) {
     return;
   }
   // level-1 cut: the crisp cut sound + a light accent nudge
-  if (c === 'cut' && !fx.reduced && !fx.osReducedMotion) window.setTimeout(() => { fx.shake = { start: performance.now(), dur: 0.14, amp: 0.012 }; }, delay * 1000);
+  if (c === 'cut' && !fx.reduced && !fx.osReducedMotion) window.setTimeout(() => { fx.shake = { start: performance.now(), dur: 0.14, amp: 0.012, thump: true }; }, delay * 1000);
   sound.play(c as Sfx, delay ? { delay } : {});
 }
 
