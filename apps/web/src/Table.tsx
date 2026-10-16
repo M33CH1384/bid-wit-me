@@ -481,7 +481,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const levelFor = useCallback((seat: number) => botSkillFor(settings.botLevel, seed, seat, botNames[seat] ?? ''), [settings.botLevel, seed, botNames]);
   const partnerHint = useRef<{ hand: number; text: string } | null>(null);
   const localReport = useRef<{ names: string[]; teamNames: (string | null)[] | null }>({ names: botNames, teamNames: null });
-  const { st, view, pause, error, apply, introHand, dealing, k } = online ? online.source : useGame(initialRules, seed, levelFor, speed, resume?.state, learning && tipOpen, startDealer, partnerHint, localReport);
+  // The deal starts once the loader is gone. Behind it, hand 1 was already dealt when the felt showed.
+  const [dealReady, setDealReady] = useState(false);
+  const [sceneDealt, setSceneDealt] = useState<number | null>(null);
+  const onDealDone = useCallback((h: number) => setSceneDealt(h), []);
+  const { st, view, pause, error, apply, introHand, dealing, k } = online ? online.source : useGame(initialRules, seed, levelFor, speed, resume?.state, learning && tipOpen, startDealer, partnerHint, localReport, dealReady, sceneDealt);
   useEffect(() => { online?.setLearning?.(learning); }, [learning]); // eslint-disable-line react-hooks/exhaustive-deps
   const r = st.rules;
   const n = r.playerCount;
@@ -665,6 +669,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   }, []);
   useEffect(() => { if (dressed && effectsWarm) setLoadProgress(1); }, [dressed, effectsWarm]);
   const loading = tableStillLoading(dressed, effectsWarm, loadGiveUp);
+  useEffect(() => { if (tableReady && !loading) setDealReady(true); }, [tableReady, loading]);
   useEffect(() => {
     if (loading) return;
     const t = window.setTimeout(() => setLoadGone(true), 380);
@@ -1223,7 +1228,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   });
 
   return (
-    <div ref={screenRef} className={`table-screen q-${settings.quality}${vp.short ? ' short' : ''}${modalOpen ? ' modal-open' : ''}${showPad ? ' pad-open' : ''}`} inert={loading ? true : undefined}>
+    <div ref={screenRef} className={`table-screen q-${settings.quality}${vp.short ? ' short' : ''}${modalOpen ? ' modal-open' : ''}${showPad ? ' pad-open' : ''}`} inert={loading ? true : undefined} data-dealing={dealing ? 'yes' : 'no'} data-my-turn={myTurn ? 'yes' : 'no'}>
       {/* styled stand-in table, on screen from the first paint until the 3D table has rendered (then it fades) */}
       <div className={`table-placeholder ${tableReady ? 'gone' : ''}`} data-testid="table-placeholder" data-venue={venue} style={placeholderStyle(venue)} aria-hidden>
         <div className="tp-floor" />
@@ -1246,6 +1251,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           onTableReady={onTableReady}
           onTableDressed={onTableDressed}
           onHandLive={onHandLive}
+          onDealDone={onDealDone}
           quality={settings.quality}
           n={n}
           handNo={st.handNo}
@@ -1268,6 +1274,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           onFeltTap={() => { if (feltClearsSelection(selected)) { playArmed.current = false; setSelected(null); } }}
           renderSeat={renderSeat}
           introHand={introHand}
+          dealing={dealing}
+          dealReady={dealReady}
           animK={k}
           landCue={landCue}
           short={vp.short}

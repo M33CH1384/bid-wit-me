@@ -342,7 +342,9 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     const open = openingFlight({ from: liveFrom, delay }, { from: mountedFrom, delay: mountedFlight.current.delay }, firstTween);
     if (!s.init) {
       const f = (origin && poseOk(origin) ? origin : undefined) ?? open.from ?? (finiteTarget ? target : undefined);
-      if (!f) return;
+      // No pose yet (0-size canvas): stay hidden. A mesh left at the origin is a stray card mid-felt.
+      if (!f) { g.visible = false; return; }
+      if (!hideUntilStart.current) g.visible = true;
       g.position.set(...f.p);
       g.quaternion.set(...f.q);
       g.scale.setScalar(f.s);

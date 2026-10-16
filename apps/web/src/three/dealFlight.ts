@@ -47,3 +47,24 @@ export function handOnFan<T extends string>(hand: readonly (T | null)[]): { card
   }
   return out;
 }
+
+/**
+ * A fresh deal: your cards are not on the fan yet. Each one leaves the deck face down on its
+ * deal beat and turns face up as it lands. A resumed hand (not the intro hand) is drawn at once.
+ */
+export function handDealsIn(o: { intro: boolean; dealing: boolean; flip: boolean }): boolean {
+  return o.intro && o.dealing && !o.flip;
+}
+
+/**
+ * The intro hand's cards wait for the table. Before it is up, nothing of this hand is drawn,
+ * so the deal (and its clock) starts when the felt is on screen, not behind the loader.
+ */
+export function dealHeld(o: { intro: boolean; dealReady: boolean }): boolean {
+  return o.intro && !o.dealReady;
+}
+
+/** The deal clock (bots, YOUR TURN, the timer) runs only once the table can show the deal. */
+export function dealClockArmed(introHand: number | null, dealReady: boolean): boolean {
+  return introHand !== null && dealReady;
+}
