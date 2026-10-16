@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useEscapeClose } from './useEscapeClose';
 import { type Card, type RunCard, type TableRules, sortHand } from '@spades/rules';
 import { drawFace } from './cardArt';
 import { isPromoted } from './cardFaces';
@@ -60,8 +61,9 @@ export function RunItReview({ hands, claimer, labels, r, onClose }: {
   }), [hands, r]);
   const who = labels[claimer] ?? 'Someone';
   const anyPlayed = rows.some((cards) => cards.some((c) => c.played));
+  const esc = useEscapeClose(onClose);
   return (
-    <div className="run-review" data-testid="run-it-view" role="dialog" aria-label="Run it" onClick={(e) => e.stopPropagation()}>
+    <div ref={esc} className="run-review" data-testid="run-it-view" role="dialog" aria-label="Run it" onClick={(e) => e.stopPropagation()}>
       <div className="run-review-head">
         <span className="lt-label">RUN IT!</span>
         <button type="button" className="run-review-x" aria-label="Close" onClick={onClose}>✕</button>

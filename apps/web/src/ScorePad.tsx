@@ -6,6 +6,7 @@
  * played shows as "in progress" with the bids so far.
  */
 import { type ReactNode, useEffect, useRef } from 'react';
+import { useEscapeClose } from './useEscapeClose';
 import { type GameState, type HandRecord, type SideHandResult, type TableRules, bidLabel, hostMinimum, shotOutOn } from '@spades/rules';
 import { SEAT_COLORS } from './overlay';
 import { hudSeatName } from './dealerName';
@@ -102,8 +103,9 @@ export function ScorePad({ st, names, onClose, onContinue, locked, sideName, dea
   const lastRef = useRef<HTMLElement>(null);
   useEffect(() => { lastRef.current?.scrollIntoView({ block: 'end' }); }, []);
   const showLocked = locked && st.phase !== 'gameOver';
+  const esc = useEscapeClose(onClose);
   return (
-    <div className="modal-backdrop pad-backdrop" onClick={onClose}>
+    <div className="modal-backdrop pad-backdrop" ref={esc} onClick={onClose}>
       <div className="modal glass slant score-pad v2" onClick={(e) => e.stopPropagation()} data-testid="score-pad" role="dialog" aria-label="Score pad">
         <div className="scroll pad2">
           <header className="pad-sticky">

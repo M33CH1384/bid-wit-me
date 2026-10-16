@@ -1,4 +1,5 @@
 import { type ReactNode } from 'react';
+import { useEscapeClose } from './useEscapeClose';
 import { TRACKS } from './audio';
 
 /** Text with its URLs turned into links. */
@@ -10,8 +11,9 @@ import { AboutRow } from './Feedback';
 
 /** In-game credits & licenses (mirrors CREDITS.md). */
 export default function Credits({ onClose }: { onClose: () => void }) {
+  const esc = useEscapeClose(onClose);
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" ref={esc} onClick={onClose}>
       <div className="modal glass slant credits" role="dialog" aria-label="Credits" onClick={(e) => e.stopPropagation()}>
         <div className="panel-title big">CREDITS</div>
         <div className="scroll">

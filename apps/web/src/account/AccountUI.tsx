@@ -4,6 +4,7 @@
  * Mounted on the start screens; guests see a small "Sign in" chip and nothing else changes.
  */
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
+import { useEscapeClose } from '../useEscapeClose';
 import './account.css';
 import {
   type AccountUser, type ProviderId, PROVIDER_LABEL, PROVIDER_ORDER, account, checkUsername, deleteAccount, hasLocalProgress, loadAccount,
@@ -26,8 +27,9 @@ export function ProviderIcon({ p }: { p: ProviderId | 'passkey' }) {
 }
 
 function SheetFrame({ title, label, onClose, children, testId }: { title: string; label: string; onClose?: () => void; children: ReactNode; testId: string }) {
+  const esc = useEscapeClose(() => onClose?.());
   return (
-    <div className="modal-backdrop sheet-backdrop acct-backdrop" onClick={onClose}>
+    <div className="modal-backdrop sheet-backdrop acct-backdrop" ref={onClose ? esc : undefined} onClick={onClose}>
       <div className="sheet glass slant acct-sheet" role="dialog" aria-label={label} data-testid={testId} onClick={(e) => e.stopPropagation()}>
         <header className="sheet-head">
           <span className="panel-title">{title}</span>
