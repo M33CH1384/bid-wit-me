@@ -7,7 +7,7 @@ import { usePresence } from './social/Social';
 import { NowPlaying } from './SoundControls';
 import Table from './Table';
 import { MODES, type Settings, loadSettings, saveSettings, settingsToRules } from './settings';
-import { type SavedGame, confirmReplaceSave, landOnHome, loadGame, resumeOnLoad } from './save';
+import { type SavedGame, confirmReplaceSave, loadGame, markInGame, resumeOnLoad, wasInGame } from './save';
 import { flushLocalGames, watchLocalGames } from './localStats';
 
 export default function App() {
@@ -21,10 +21,8 @@ export default function App() {
     }
     // Opening the app and refreshing land on the menu. A saved bot game is not resumed.
     // Leave (including a spectator leaving an online table) also sets wiz:home.
-    // history.state survives a reload. Left at wiz:'setup' by Deal me in, a refresh mid-game opened the
-    // bot setup screen (where Deal me in would replace the save) instead of Home with its Resume button.
-    if (landOnHome(history.state, loadGame() !== null)) history.replaceState({ wiz: 'home', d: 0 }, '', location.pathname);
-    const saved = resumeOnLoad(history.state, loadGame(), false);
+    const saved = resumeOnLoad(history.state, loadGame(), false, wasInGame());
+    if (!saved) markInGame(false);
     return saved ? { seed: saved.seed, settings: saved.settings, resume: saved, continueSeries: true } : null;
   });
 
@@ -38,6 +36,9 @@ export default function App() {
   useEffect(() => { preloadTable(settings.quality, settings.venue, { immediate: game !== null }); }, [settings.quality, settings.venue, game]);
   // a signed-in offline game that failed to upload stays in localStorage until the browser is online again
   useEffect(() => { watchLocalGames(); void flushLocalGames(); }, []);
+
+  // Refresh at the table returns to it; refresh anywhere else keeps that screen (history.state holds the wizard step).
+  useEffect(() => { markInGame(game !== null); }, [game]);
 
   if (!game) {
     const saved = loadGame();

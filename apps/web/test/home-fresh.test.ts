@@ -77,6 +77,7 @@ describe('home starts fresh', () => {
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     expect(localStorage.getItem(SAVE_KEY)).not.toBeNull();
 
+    window.confirm = () => true; // Deal me in asks before replacing the save
     await act(async () => { document.querySelector<HTMLButtonElement>('[data-testid="play-bots"]')!.click(); });
     await act(async () => { document.querySelector<HTMLButtonElement>('[data-testid="mode-joker"]')!.click(); });
     await act(async () => { document.querySelector<HTMLButtonElement>('[data-testid="start-bots"]')!.click(); });
