@@ -9,7 +9,7 @@ import { type Settings, loadSettings, saveSettings } from '../settings';
 import type { ConnState, TableConnection } from './connection';
 import { type KickInfo, MediaBar, SeatMedia, TalkTile, VictorySpotlight } from './Media';
 import { MusicLinkCard } from './HostMusic';
-import { loadHideSpectatorChat, localNames, saveHideSpectatorChat, useCountdown, useOnlineChat, useOnlineSource, useVideo } from './useOnline';
+import { clientDeadline, loadHideSpectatorChat, localNames, saveHideSpectatorChat, useCountdown, useOnlineChat, useOnlineSource, useVideo } from './useOnline';
 import { dealerFromServer } from '../dealerName';
 import { localSeatOfServerTurn } from '../turnState';
 import { SpectatorOverlay } from './Spectators';
@@ -43,8 +43,14 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
   const dealerName = dealer?.name ?? '';
   const [hideSpec, setHideSpec] = useState(loadHideSpectatorChat);
   const chat = useOnlineChat(cs, source?.st ?? null, names, send, hideSpec && !spectator, dealerName);
-  const skew = room.now - Date.now();
-  const secs = useCountdown(room.deadline ? room.deadline - skew : null);
+  // One absolute client time for this server snapshot. Rebuilding it from Date.now()
+  // on every render froze the number at whatever the last state said (a stuck "12s"
+  // while the server clock kept running).
+  const clockAt = useMemo(
+    () => clientDeadline(room.deadline, room.now, Date.now()),
+    [room.deadline, room.now],
+  );
+  const secs = useCountdown(clockAt);
   const socketGen = cs.socketGen;
   // A new socket has to say again whether the table is drawn. The server holds the clock until then.
   const onInteractive = useCallback((on: boolean) => conn.send({ t: 'interactive', on }), [conn, socketGen]);
