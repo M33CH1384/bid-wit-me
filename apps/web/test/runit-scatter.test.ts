@@ -31,7 +31,7 @@ describe("'Run it!' drop and scatter", () => {
     expect(Math.max(...d.map((x) => Math.abs(x.spin)))).toBeGreaterThan(0.15);
     expect(new Set(d.map((x) => x.dz.toFixed(2))).size).toBeGreaterThan(1);
   });
-  it('the scene scatters regardless of Tips, tidy row on reduced motion; the pile slam fires on the last card's landing', () => {
+  it('the scene scatters regardless of Tips, tidy row on reduced motion; the pile slam fires on the last card landing', () => {
     const scene = readFileSync(fileURLToPath(new URL('../src/three/Scene.tsx', import.meta.url)), 'utf8');
     expect(scene).toMatch(/const drops = reduced \? null : runScatter\(playSeed\(props\.gameSeed/);
     const table = readFileSync(fileURLToPath(new URL('../src/Table.tsx', import.meta.url)), 'utf8');
