@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { opponentFan, trickSpot } from '../src/three/layout';
+import { opponentFan, pileSpot, trickSpot } from '../src/three/layout';
 import { faceUpPlayFrom, frontNormalY, restingFacing, trickPlayFrom } from '../src/three/trickFacing';
 
 describe('bot trick cards settle face-up', () => {
@@ -78,6 +78,22 @@ describe('bot trick cards settle face-up', () => {
         }
       });
     }
+  });
+
+  it('turns a Run it! slam that is still on the fan quaternion face-up, and leaves a book pile face-down', () => {
+    const fan = opponentFan('top', 4, 0, 4);
+    // The claimer's slam row uses the face-up bottom trick spot.
+    const slam = trickSpot('bottom', 4, 0, 0);
+    expect(frontNormalY(fan.q)).toBeLessThan(0);
+    expect(frontNormalY(slam.q)).toBeGreaterThan(0.5);
+    const rested = restingFacing(fan.q, slam.q, true);
+    expect(rested).toEqual(slam.q);
+    expect(frontNormalY(rested)).toBeGreaterThan(0.5);
+    // A slam that already finished face-up is left on that pose.
+    expect(restingFacing(slam.q, slam.q, true)).toEqual(slam.q);
+    const pile = pileSpot('bottom', 4, 0, 0, 0);
+    expect(frontNormalY(pile.q)).toBeLessThan(0);
+    expect(restingFacing(fan.q, pile.q, true)).toEqual(fan.q);
   });
 
   it('keeps every other seat face-up across a full hand of 13 tricks', () => {
