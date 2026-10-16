@@ -8,7 +8,7 @@ import { DEFAULT_SETTINGS } from '../src/settings';
 import { pickHandCard, type HandHitCard } from '../src/three/handHit';
 
 const SHOTS = process.env.BWM_SHOTS ?? '/opt/cursor/artifacts';
-type Fly = Record<string, { t: number; x: number; y: number }[]>;
+type Fly = Record<string, { now?: number; t: number; x: number; y: number }[]>;
 type W = { __bwmHandHits: HandHitCard[]; __bwmFly?: Fly; __bwmDrag?: string };
 
 function saveFor(seed: string): string {
@@ -20,7 +20,7 @@ function saveFor(seed: string): string {
 async function open(b: Browser, save: string, tips: boolean): Promise<Page> {
   const page = await b.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
   page.setDefaultTimeout(30000);
-  await page.addInitScript(([raw, on]) => { localStorage.setItem('bwm.game', raw as string); localStorage.setItem('bwm.tips', JSON.stringify({ on, asked: true, counts: {}, skipped: false })); (window as unknown as { __bwmRestProbe: boolean }).__bwmRestProbe = true; }, [save, tips] as const);
+  await page.addInitScript(([raw, on]) => { localStorage.setItem('bwm.game', raw as string); localStorage.setItem('bwm.tips', JSON.stringify({ on, asked: true, counts: {}, skipped: false })); (window as unknown as { __bwmRestProbe: boolean }).__bwmRestProbe = true; (window as unknown as { __bwmLandProbe: boolean }).__bwmLandProbe = true; }, [save, tips] as const);
   await page.goto(process.env.BWM_URL ?? 'http://127.0.0.1:5173');
   await page.getByTestId('resume').click();
   await page.waitForFunction(() => ((window as unknown as W).__bwmHandHits ?? []).length === 13, undefined, { timeout: 45000 });
@@ -43,7 +43,7 @@ async function grip(page: Page): Promise<{ x: number; y: number }> {
 }
 
 /** Throw the first legal card toward `to` (fast) and wait for the whole trick to rest. Returns resting screen spots. */
-async function playTrick(page: Page, to: { x: number; y: number }, shot: string): Promise<Record<string, { x: number; y: number }>> {
+async function playTrick(page: Page, to: { x: number; y: number }, shot: string, impact = 1): Promise<Record<string, { x: number; y: number }>> {
   const g = await grip(page);
   await page.mouse.move(g.x, g.y);
   await page.mouse.down();
@@ -63,6 +63,15 @@ async function playTrick(page: Page, to: { x: number; y: number }, shot: string)
   });
   dismissing = false;
   await dismiss;
+  // Sound-sync: each card's landing sound must fire within 50ms of the frame it visually hits the felt.
+  const timing = await page.evaluate(() => ({ land: (window as unknown as { __bwmLandFx?: { card: string; at: number; t: number }[] }).__bwmLandFx ?? [], fly: (window as unknown as W).__bwmFly ?? {} }));
+  for (const l of timing.land) {
+    const f = (timing.fly as Fly)[l.card]?.find((x) => x.t >= impact);
+    if (!f?.now) throw new Error(`${l.card}: no impact frame`);
+    const diff = l.at - f.now;
+    console.log(`sound-sync ${l.card}: impact t=${impact}, sound ${diff >= 0 ? '+' : ''}${diff.toFixed(0)}ms vs impact frame`);
+    if (Math.abs(diff) > 50) throw new Error(`${l.card}: landing sound ${diff.toFixed(0)}ms from its impact frame`);
+  }
   await page.waitForTimeout(150);
   await page.screenshot({ path: shot });
   return page.evaluate(() => {
@@ -101,12 +110,12 @@ const dist = (a: Record<string, { x: number; y: number }>, b: Record<string, { x
     const flick = { x: 260, y: 300 };
     // Tips ON: fixed spots
     let p = await open(b, save, true);
-    const fixed = await playTrick(p, flick, `${SHOTS}/land-tips-on-390.png`);
+    const fixed = await playTrick(p, flick, `${SHOTS}/land-tips-on-390.png`, 1);
     checkFlat(await rests(p), 'tips on', 0.05 * 180 / Math.PI + 0.5);
     await p.close();
     // Tips OFF: twice with the same seed and throw → identical
     p = await open(b, save, false);
-    const a = await playTrick(p, flick, `${SHOTS}/land-tips-off-a-390.png`);
+    const a = await playTrick(p, flick, `${SHOTS}/land-tips-off-a-390.png`, 0.35);
     checkFlat(await rests(p), 'tips off a');
     // the card shrinks smoothly from hand size to table size on the way down: no pop
     const sc = await p.evaluate(() => (window as unknown as { __bwmScale?: Record<string, number[]> }).__bwmScale ?? {});
@@ -119,7 +128,7 @@ const dist = (a: Record<string, { x: number; y: number }>, b: Record<string, { x
     }
     await p.close();
     p = await open(b, save, false);
-    const a2 = await playTrick(p, flick, `${SHOTS}/land-tips-off-a-repeat-390.png`);
+    const a2 = await playTrick(p, flick, `${SHOTS}/land-tips-off-a-repeat-390.png`, 0.35);
     await p.close();
     const same = dist(a, a2), moved = dist(a, fixed);
     console.log(`tips on spots ${Object.keys(fixed).length}, tips off repeat drift ${same.toFixed(1)}px, off vs on max ${moved.toFixed(1)}px`);
@@ -129,13 +138,13 @@ const dist = (a: Record<string, { x: number; y: number }>, b: Record<string, { x
     // a few more resting layouts (different seeds / throws)
     for (const [seed, to, name] of [['land-2', { x: 120, y: 320 }, 'b'], ['land-3', { x: 195, y: 260 }, 'c']] as const) {
       p = await open(b, saveFor(seed), false);
-      await playTrick(p, to, `${SHOTS}/land-tips-off-${name}-390.png`);
+      await playTrick(p, to, `${SHOTS}/land-tips-off-${name}-390.png`, 0.35);
       checkFlat(await rests(p), `tips off ${name}`);
       await p.close();
     }
     // Tips ON again with a different throw → still the fixed spots
     p = await open(b, save, true);
-    const fixed2 = await playTrick(p, { x: 120, y: 320 }, `${SHOTS}/land-tips-on-other-throw-390.png`);
+    const fixed2 = await playTrick(p, { x: 120, y: 320 }, `${SHOTS}/land-tips-on-other-throw-390.png`, 1);
     await p.close();
     const fd = dist(fixed, fixed2);
     console.log(`tips on, different throw drift ${fd.toFixed(1)}px`);

@@ -26,13 +26,13 @@ function fixture(): string {
 }
 
 type Drop = { dx: number; dz: number; spin: number; delay: number };
-type Probe = { cards: string[]; drops: Drop[] | null; reduced: boolean; slams?: number; atTable?: boolean; rest?: Record<string, { y: number; tilt: number }> };
+type Probe = { cards: string[]; drops: Drop[] | null; reduced: boolean; slams?: number; runSlams?: number; atTable?: boolean; rest?: Record<string, { y: number; tilt: number }> };
 
 async function run(b: Browser, opts: { tips: boolean; reduced?: boolean; shots?: string }): Promise<Probe> {
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, reducedMotion: opts.reduced ? 'reduce' : 'no-preference' });
   const p = await ctx.newPage();
   const raw = fixture();
-  await p.addInitScript(() => { (window as unknown as { __bwmRestProbe: boolean }).__bwmRestProbe = true; });
+  await p.addInitScript(() => { (window as unknown as { __bwmRestProbe: boolean }).__bwmRestProbe = true; (window as unknown as { __bwmLandProbe: boolean }).__bwmLandProbe = true; });
   await p.goto(URL);
   await p.evaluate(({ raw, tips }) => {
     localStorage.setItem('bwm.game', raw);
@@ -55,9 +55,15 @@ async function run(b: Browser, opts: { tips: boolean; reduced?: boolean; shots?:
   const rest = await p.evaluate(() => (window as unknown as { __bwmRest?: Record<string, { y: number; tilt: number }> }).__bwmRest ?? {});
   await p.waitForTimeout(1300);
   if (opts.shots) await p.screenshot({ path: `${SHOTS}/runit-${opts.shots}-tornado-390.png` });
+  const timing = await p.evaluate(() => ({ land: (window as unknown as { __bwmLandFx?: { card: string; at: number; t: number }[] }).__bwmLandFx ?? [], fly: (window as unknown as { __bwmFly?: Record<string, { now?: number; t: number }[]> }).__bwmFly ?? {} }));
+  for (const l of timing.land) {
+    const f = timing.fly[l.card]?.find((x) => x.t >= 1);
+    if (f?.now && Math.abs(l.at - f.now) > 50) throw new Error(`run drop ${l.card}: sound ${Math.abs(l.at - f.now).toFixed(0)}ms from impact`);
+  }
+  console.log(`run sound-sync: ${timing.land.length} landing sounds on their impact frames`);
   const s1 = await snd();
   const probe = await p.evaluate(() => (window as unknown as { __bwmRunDrop?: Probe }).__bwmRunDrop ?? null);
-  if (probe) { probe.rest = rest; probe.slams = s1.play - s0.play; probe.atTable = s1.atTable; }
+  if (probe) { probe.rest = rest; probe.runSlams = s1.runSlam - s0.runSlam; probe.slams = s1.play - s0.play; probe.atTable = s1.atTable; }
   await ctx.close();
   if (!probe) throw new Error('no run drop probe: the slam never rendered');
   return probe;
@@ -91,6 +97,7 @@ async function run(b: Browser, opts: { tips: boolean; reduced?: boolean; shots?:
     if (red.drops !== null) fails.push('reduced motion still scattered');
     console.log(`slam sounds at the table: ${a.slams} (atTable=${a.atTable})`);
     if (!a.atTable || (a.slams ?? 0) < 2) fails.push('the Run it slam sounds did not play at the table');
+    if ((a.runSlams ?? 0) < 1) fails.push('the Run it pile slam (runSlam) did not play on the last card');
   } finally { await b.close(); }
   if (fails.length) { console.error(fails.join('\n')); process.exit(1); }
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -31,11 +31,12 @@ describe("'Run it!' drop and scatter", () => {
     expect(Math.max(...d.map((x) => Math.abs(x.spin)))).toBeGreaterThan(0.15);
     expect(new Set(d.map((x) => x.dz.toFixed(2))).size).toBeGreaterThan(1);
   });
-  it('the scene scatters regardless of Tips, tidy row on reduced motion; the run impact is a vertical thump', () => {
+  it('the scene scatters regardless of Tips, tidy row on reduced motion; the pile slam fires on the last card landing', () => {
     const scene = readFileSync(fileURLToPath(new URL('../src/three/Scene.tsx', import.meta.url)), 'utf8');
     expect(scene).toMatch(/const drops = reduced \? null : runScatter\(playSeed\(props\.gameSeed/);
     const table = readFileSync(fileURLToPath(new URL('../src/Table.tsx', import.meta.url)), 'utf8');
-    expect(table).toMatch(/RUN_ZOOM_MS \+ RUN_SLAM_MS\); \/\/ vertical thump only/);
-    expect(table).toMatch(/amp: 0\.05, thump: true/);
+    // the pile slam is not scheduled from the claim: the last dropped card fires it on its landing frame
+    expect(table).not.toMatch(/sound\.play\('runSlam', \{ delay/);
+    expect(scene).toMatch(/sfxLand: i === k - 1 \? 'play,runSlam' : 'play'/);
   });
 });

@@ -146,7 +146,7 @@ export const RUN_DROP_WINDOW = 1.1;
 export function runScatter(seed: number, k: number): RunDrop[] {
   const r = rng(seed);
   const j = () => r() * 2 - 1;
-  const step = k > 1 ? Math.min(0.12, RUN_DROP_WINDOW / k) : 0;
+  const step = k > 1 ? Math.min(0.07, RUN_DROP_WINDOW / k) : 0;
   const out: RunDrop[] = [];
   for (let i = 0; i < k; i++) {
     // thrown away from the claimer, fanning left and right: speed sets the slide, friction stops it

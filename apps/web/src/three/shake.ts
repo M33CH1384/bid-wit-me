@@ -21,3 +21,12 @@ export function swayOffset(u: number): ShakeOffset {
   const env = Math.sin(Math.PI * Math.min(1, u / 2.6));
   return { x: 0, y: 0.025 * env * Math.sin(u * 4.1 + 1), z: 0, roll: 0, ty: 0 };
 }
+
+/** The 'Run it!' pile landing: the biggest vertical thump in the game (peak ty 0.20, above the old 0.13 Run it shake). */
+export const PILE_THUMP = { dur: 1.05, amp: 0.2, thump: true } as const;
+/** A card slam's thump, scaled by intensity: gentle drops barely move the table, a full flick thumps hard. */
+export function slamThump(intensity: number, reduced = false): { dur: number; amp: number; thump: boolean } {
+  const i = Number.isFinite(intensity) ? Math.max(0, Math.min(1, intensity)) : 0;
+  if (reduced) return { dur: 0.18, amp: 0.01, thump: true };
+  return { dur: 0.38 + 0.35 * i, amp: 0.015 + 0.115 * i * i, thump: true };
+}

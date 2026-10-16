@@ -749,8 +749,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const who = face(runFx.claimer);
     // 2) the claimer's cards slam down together in SLOW MOTION (heavy impact: shake + bass hit)
     // 3) the tornado snatches everything else at once — every hand + whatever is on the table. No trick-by-trick play.
-    sound.play('runSlam', { delay: zoom + RUN_SLAM_MS / 1000 });
-    const impact = window.setTimeout(() => { if (!fx.reduced && !fx.osReducedMotion) fx.shake = { start: performance.now(), dur: 0.5, amp: 0.05, thump: true }; }, RUN_ZOOM_MS + RUN_SLAM_MS); // vertical thump only
+    // No scheduled runSlam: the last dropped card fires it (and the pile thump) on its landing frame.
     sound.play('tornado', { delay: Math.max(0, tornadoAt - 0.3) });
     const toSlam = window.setTimeout(() => {
       setRunFx((f) => (f && f.id === runFx.id ? { ...f, phase: 'slam' } : f));
@@ -760,7 +759,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     }, RUN_ZOOM_MS);
     // (capture scripts set __bwmHoldRun to step the tornado frame by frame via fx.warp)
     const hold = !!(window as unknown as { __bwmHoldRun?: boolean }).__bwmHoldRun;
-    const timers = hold ? [impact] : [impact, window.setTimeout(endRun, RUN_SHOW_MS)];
+    const timers = hold ? [] : [window.setTimeout(endRun, RUN_SHOW_MS)];
     (window as unknown as { __bwmEndRun?: () => void }).__bwmEndRun = endRun;
     if (runFx.claimer === HUMAN && !spectating) {
       runItUsed();
