@@ -6,7 +6,7 @@ import { type BufferGeometry, type Camera, type Group, type Material, type Mesh,
 import { type Card, type Play, type Trick } from '@spades/rules';
 import Card3D, { createLitCardMaterial } from './Card3D';
 import { departureSlot, handCardKey, handReactKey } from '../handOrder';
-import { GAP_S, RAISE_SPREAD, cardIdFromHit, echoTap, fanGapPx, fanMotion, handCardChrome, handDepthOpts, handRenderOrder, hitsInPaintOrder, noteTapUp, pointerNdc, posePx, raiseLocalY, raiseSpreadPx, spreadFitScale } from './handLift';
+import { GAP_S, RAISE_SPREAD, spreadSeconds, cardIdFromHit, echoTap, fanGapPx, fanMotion, handCardChrome, handDepthOpts, handRenderOrder, hitsInPaintOrder, noteTapUp, pointerNdc, posePx, raiseLocalY, raiseSpreadPx, spreadFitScale } from './handLift';
 import { type HandHitCard, pickHandCard, publishHandHits } from './handHit';
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline, seatDealDelay } from './dealTimeline';
@@ -671,7 +671,7 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
       // The id comes from the mesh that was hit. Fall back to this card only if the mesh has no stamp.
       tap: c && isLegal ? (hit: string) => onCardTap((hit || c) as Card) : pose === 'illegal' ? null : undefined,
       shadow: false,
-      duration: move.kind === 'flip' ? 0.34 : move.kind === 'deal' ? tl.fly : move.kind === 'slide' ? GAP_S : 0,
+      duration: move.kind === 'flip' ? 0.34 : move.kind === 'deal' ? tl.fly : move.kind === 'slide' ? GAP_S : handSpreadProbe(spreadSeconds()),
       motion: move.motion,
       arc: dealIn ? 0.3 : move.arc,
       raise: c ? raiseLocalY(pose, fan.viewH, screenH, fan.ch) : 0,
@@ -1437,3 +1437,6 @@ function SnapHook() {
   }, [gl, scene, camera]);
   return null;
 }
+
+/** Test probe: the last hand spread/raise tween length in seconds (0 under reduced motion). */
+function handSpreadProbe(s: number): number { if (typeof window !== 'undefined') (window as unknown as { __bwmSpreadS?: number }).__bwmSpreadS = s; return s; }
