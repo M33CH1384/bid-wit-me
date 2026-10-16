@@ -58,6 +58,27 @@ async function grip(page: Page) {
     await page.mouse.up(); await page.waitForTimeout(300);
     slam = await page.evaluate(() => (window as unknown as W).__bwmSlam); console.log('sitting straight slow slam', slam);
     if (!slam || slam.intensity >= 0.6) throw new Error(`sitting straight intensity ${slam?.intensity}`);
+    await page.close();
+    // Sitting fast straight flick (no V) => gentle, never a slam
+    page = await open(b, 'sitting');
+    g = await grip(page);
+    await page.mouse.move(g.x, g.y); await page.mouse.down();
+    for (let i = 1; i <= 4; i++) { await page.mouse.move(g.x + ((120 - g.x) * i) / 4, g.y + ((330 - g.y) * i) / 4); }
+    await page.mouse.up(); await page.waitForTimeout(300);
+    slam = await page.evaluate(() => (window as unknown as W).__bwmSlam); console.log('sitting FAST straight slam', slam);
+    if (!slam || slam.intensity !== 0) throw new Error(`sitting fast straight intensity ${slam?.intensity}`);
+    await page.close();
+    // Landscape (844x390) sitting: camera probe + hand visible
+    const lp = await b.newPage({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 2 });
+    lp.setDefaultTimeout(30000);
+    await lp.addInitScript((raw) => { localStorage.setItem('bwm.game', raw); localStorage.setItem('bwm.tips', JSON.stringify({ on: false, asked: true, counts: {} })); }, saveFor('sitting'));
+    await lp.goto(process.env.BWM_URL ?? 'http://127.0.0.1:5173');
+    await lp.getByTestId('resume').click();
+    await lp.waitForFunction(() => ((window as unknown as W).__bwmHandHits ?? []).length >= 10, undefined, { timeout: 45000 });
+    await lp.waitForTimeout(900);
+    cam = await lp.evaluate(() => (window as unknown as W).__bwmCam); console.log('landscape sitting cam', cam);
+    if (!cam || cam.view !== 'sitting' || cam.y >= 3.1) throw new Error(`landscape sitting cam ${JSON.stringify(cam)}`);
+    await lp.screenshot({ path: `${SHOTS}/camera-sitting-landscape.png` });
     console.log('camera-view OK');
   } finally { await b.close(); }
 })();

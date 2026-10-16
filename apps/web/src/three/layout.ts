@@ -166,7 +166,7 @@ export interface CamSpec { pos: [number, number, number]; look: [number, number,
 export function cameraFor(aspect: number, short = false, view: 'standing' | 'sitting' = 'standing'): CamSpec {
   // A 0×0 canvas (iPhone chrome, first frame) is 0 or NaN. That fov never recovers on its own.
   if (!(Number.isFinite(aspect) && aspect > 0.05 && aspect < 20)) aspect = 9 / 16;
-  if (short) return shortLandscapeCamera(aspect);
+  if (short) return shortLandscapeCamera(aspect, view);
   const t = Math.min(1, Math.max(0, (aspect - 0.5) / (1.6 - 0.5))); // 0 = tall phone, 1 = wide desktop
   const lerp = (a: number, b: number) => a + (b - a) * t;
   const pos: [number, number, number] = [0, lerp(4.5, 3.45), lerp(3.75, 3.4)];
@@ -187,8 +187,9 @@ export function cameraFor(aspect: number, short = false, view: 'standing' | 'sit
  * Phone landscape: little height, lots of width. A lower, more frontal camera (less foreshortening of the far half)
  * framed so the felt fills the height between the one-line scorebug and the hand, leaving the sides for name plates.
  */
-function shortLandscapeCamera(aspect: number): CamSpec {
+function shortLandscapeCamera(aspect: number, view: 'standing' | 'sitting' = 'standing'): CamSpec {
   void aspect;
+  if (view === 'sitting') return { pos: [0, 2.42, 2.87], look: [0, 0, 0.34], fov: 42 }; // ×0.78 / ×0.82, same as portrait sitting
   return { pos: [0, 3.1, 3.5], look: [0, 0, 0.22], fov: 42 };
 }
 

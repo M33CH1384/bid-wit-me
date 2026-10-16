@@ -63,8 +63,9 @@ export function isVGesture(samples: readonly DragSample[], minLegPx = 24): boole
  *  slams at max; otherwise the release speed scales it (straight drags stay gentle). */
 export function dragSlamIntensity(samples: readonly DragSample[], view: 'standing' | 'sitting'): number {
   if (view === 'standing') return 1;
-  if (isVGesture(samples)) return 1;
-  return slamIntensity(releaseVelocity(samples));
+  // Sitting: speed alone NEVER slams. Only the up-then-down V gesture slams; every other drag,
+  // however fast, lands gentle (intensity 0).
+  return isVGesture(samples) ? 1 : 0;
 }
 
 export function slamIntensity(pxPerMs: number): number {
