@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { VENUES } from '@spades/protocol';
+import { cameraFor } from '../src/three/layout';
 import { DEFAULT_CATEGORY_VOLUMES, ROOM_STYLES, SOUNDSCAPE_ROOMS, styleForVenue, Spatializer, defaultAudioQuality, isVoiceMuted, listenerPose, normalizeCategoryVolumes, pannerCap, pickPanningModel, resolveSoundscape, roomName, seatPoint, withVoiceMuted, type SpatialCtxLike } from '../src/spatial';
 
 const fakeCtx = (): SpatialCtxLike => ({
@@ -20,7 +21,7 @@ describe('spatial phase 2 plumbing', () => {
   it('seat points oppose across the table; listener follows sitting camera', () => {
     const top = seatPoint('top', 4), bottom = seatPoint('bottom', 4);
     expect(top.z).toBeLessThan(0); expect(bottom.z).toBeGreaterThan(0);
-    expect(listenerPose(390 / 844, false, 'sitting').position.y).toBeLessThan(listenerPose(390 / 844, false, 'standing').position.y);
+    expect(listenerPose(cameraFor(390 / 844, false, 'sitting')).position.y).toBeLessThan(listenerPose(cameraFor(390 / 844, false, 'standing')).position.y);
   });
   it('soundscape resolver: explicit > story > seeded Auto roll (never venue)', () => {
     expect(resolveSoundscape({ explicit: 'barbershop', storyRoom: 'basement', seed: 'g1' })).toBe('barbershop');
@@ -47,7 +48,7 @@ describe('spatial phase 2 plumbing', () => {
     const on = new Spatializer('low', true, 'equalpower');
     for (let i = 0; i < 4; i++) expect(on.seatPanner(ctx, 'top', 4)).not.toBeNull();
     expect(on.seatPanner(ctx, 'top', 4)).toBeNull(); // cap 4 at low
-    on.applyListener(ctx, 390 / 844, false, 'sitting');
+    on.applyListener(ctx, cameraFor(390 / 844, false, 'sitting'));
     expect(ctx.listener!.positionY.value).toBeGreaterThan(0);
   });
 });

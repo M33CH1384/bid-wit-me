@@ -1,8 +1,16 @@
 /** Spatial audio groundwork (Phase 2): pure helpers + a thin PannerNode factory over the ONE existing
  *  engine in audio.ts. No second engine, and trigger timing is untouched — spatial nodes only route
  *  gain/pan downstream of the existing impact-frame triggers (#169). */
-import { cameraFor, seatDir, type SeatPos } from './three/layout';
 import type { VenueBed } from './audio';
+
+/** Seat directions mirrored from three/layout.ts seatDir (kept import-free: audio.ts loads on the
+ *  first script, which must never statically pull in three). Keep in sync with layout.seatDir. */
+export type SeatPos = 'bottom' | 'top' | 'left' | 'right';
+function seatDirLocal(pos: SeatPos, n: number): { x: number; z: number } {
+  if (n === 3 && pos === 'left') return { x: -0.86, z: -0.5 };
+  if (n === 3 && pos === 'right') return { x: 0.86, z: -0.5 };
+  switch (pos) { case 'bottom': return { x: 0, z: 1 }; case 'top': return { x: 0, z: -1 }; case 'left': return { x: -1, z: 0 }; case 'right': return { x: 1, z: 0 }; }
+}
 
 export type AudioQuality = 'low' | 'balanced' | 'high';
 export type Category = 'master' | 'music' | 'ambience' | 'sfx' | 'playerVoice' | 'aiVoice' | 'crowd';
@@ -27,13 +35,16 @@ export function pickPanningModel(supportsHRTF: boolean, isPhone: boolean): 'HRTF
 
 /** World point for a seat's sounds (card lands / voice): seat direction at table radius, ear height. */
 export function seatPoint(pos: SeatPos, n: number): { x: number; y: number; z: number } {
-  const d = seatDir(pos, n);
-  return { x: d.x * 2.1, y: 0.55, z: d.z * 2.1 };
+  const d = seatDirLocal(pos, n);
+  const len = Math.hypot(d.x, d.z) || 1;
+  return { x: (d.x / len) * 2.1, y: 0.55, z: (d.z / len) * 2.1 };
 }
 /** The AudioListener follows the actual camera, so Sitting (lower/closer) hears a closer table. */
-export function listenerPose(aspect: number, short: boolean, view: 'standing' | 'sitting') {
-  const c = cameraFor(aspect, short, view);
-  return { position: { x: c.pos[0], y: c.pos[1], z: c.pos[2] }, look: { x: c.look[0], y: c.look[1], z: c.look[2] } };
+export interface CamPose { pos: readonly number[]; look: readonly number[] }
+/** Maps a camera pose (from three/layout cameraFor, passed in by the scene) to a listener pose, so
+ *  the listener follows Sitting/Standing without spatial.ts importing three. */
+export function listenerPose(c: CamPose) {
+  return { position: { x: c.pos[0]!, y: c.pos[1]!, z: c.pos[2]! }, look: { x: c.look[0]!, y: c.look[1]!, z: c.look[2]! } };
 }
 
 /** Per-player local voice mute (never signalled; card SFX for that seat are unaffected). */
@@ -96,9 +107,9 @@ export class Spatializer {
   }
   release(): void { if (this.live > 0) this.live--; }
   /** Slave the listener to the camera pose for the current view. */
-  applyListener(ctx: SpatialCtxLike, aspect: number, short: boolean, view: 'standing' | 'sitting'): void {
+  applyListener(ctx: SpatialCtxLike, cam: CamPose): void {
     const l = ctx.listener; if (!l) return;
-    const pose = listenerPose(aspect, short, view);
+    const pose = listenerPose(cam);
     l.positionX.value = pose.position.x; l.positionY.value = pose.position.y; l.positionZ.value = pose.position.z;
     l.forwardX.value = pose.look.x - pose.position.x; l.forwardY.value = pose.look.y - pose.position.y; l.forwardZ.value = pose.look.z - pose.position.z;
     l.upX.value = 0; l.upY.value = 1; l.upZ.value = 0;
