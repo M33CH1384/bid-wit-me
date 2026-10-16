@@ -73,19 +73,18 @@ describe('hand fan is undistorted and mirror-symmetric on screen', () => {
 });
 
 describe('hand fan z-order', () => {
-  it('raised (playable / selected) cards sit in front of every resting card, keeping fan order among themselves', () => {
+  it('keeps index order when a card is raised, so the card on the right stays closer', () => {
     for (const aspect of [16 / 9, 390 / 844, 844 / 390]) {
       const cam = makeCamera(aspect); cam.updateMatrixWorld();
       // view-space depth (what the depth buffer and the raycast order go by)
       const dist = (t: { p: number[] }) => -new Vector3(t.p[0], t.p[1], t.p[2]).applyMatrix4(cam.matrixWorldInverse).z;
-      const n = 13, lifted = new Set([7, 8]);
-      const fan = Array.from({ length: n }, (_, i) => handFan(aspect, n, i, lifted.has(i) ? 0.09 : 0));
-      const farthestRaised = Math.max(...[...lifted].map((i) => dist(fan[i]!)));
-      const nearestResting = Math.min(...fan.filter((_, i) => !lifted.has(i)).map(dist));
-      expect(farthestRaised).toBeLessThan(nearestResting);
-      expect(dist(fan[8]!)).toBeLessThan(dist(fan[7]!)); // fan order kept among raised cards
-      // A raised card does not jump in front of the cards to its right. That bury is what hid the 9 beside the 10.
-      expect(dist(handFan(aspect, n, 0, 0.24))).toBeGreaterThan(dist(fan[8]!));
+      const n = 13;
+      const fan = Array.from({ length: n }, (_, i) => handFan(aspect, n, i, i === 7 || i === 8 ? 0.09 : 0));
+      for (let i = 1; i < n; i++) expect(dist(fan[i]!)).toBeLessThan(dist(fan[i - 1]!));
+      // A selected lift must not pull the left card in front of the ranks to its right.
+      const raisedLeft = handFan(aspect, n, 0, 0.24, 0, { layer: 'selected' });
+      expect(dist(fan[8]!)).toBeLessThan(dist(raisedLeft));
+      expect(dist(handFan(aspect, n, 8, 0.24, 0, { layer: 'selected' }))).toBeLessThan(dist(handFan(aspect, n, 7, 0)));
     }
   });
 
@@ -96,7 +95,10 @@ describe('hand fan z-order', () => {
       for (const n of [5, 13, 18]) {
         const fan = Array.from({ length: n }, (_, i) => handFan(aspect, n, i, 0));
         for (let i = 1; i < n; i++) expect(dist(fan[i - 1]!) - dist(fan[i]!)).toBeGreaterThan(0.005);
-        expect(dist(handFan(aspect, n, n - 1, 0.24))).toBeLessThan(Math.min(...fan.map(dist)));
+        // Raising the last card does not drag it in front of the rest of the fan.
+        const raised = dist(handFan(aspect, n, n - 1, 0.24, 0, { layer: 'selected' }));
+        expect(Math.abs(raised - dist(fan[n - 1]!))).toBeLessThan(1e-6);
+        expect(raised).toBeLessThan(dist(fan[n - 2]!));
       }
     }
   });
