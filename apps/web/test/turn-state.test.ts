@@ -11,14 +11,22 @@ describe('acting seat', () => {
     expect(actingSeat({ ...open, phase: 'exchange', turn: 1 })).toBe(1);
   });
 
-  it('marks nobody while a deal, a held trick, a locked move, or a show is in the way', () => {
+  it('marks nobody while a deal, a held trick, or a show is in the way', () => {
     expect(actingSeat({ ...open, dealing: true })).toBeNull();
     expect(actingSeat({ ...open, pause: true })).toBeNull();
-    expect(actingSeat({ ...open, locked: true })).toBeNull();
     expect(actingSeat({ ...open, covered: true })).toBeNull();
     expect(actingSeat({ ...open, phase: 'handOver' })).toBeNull();
     expect(actingSeat({ ...open, phase: 'gameOver' })).toBeNull();
     expect(actingSeat({ ...open, turn: null })).toBeNull();
+  });
+
+  it('keeps the seat marked while a move is in flight so the table does not look empty', () => {
+    expect(actingSeat({ ...open, locked: true })).toBe(0);
+    expect(actingSeat({ ...open, locked: true, turn: 2 })).toBe(2);
+    const mine = turnView({ ...open, locked: true, turn: 0, viewerSeat: 0, spectating: false, legalCount: 2, selected: false });
+    expect(mine.badge?.testId).toBe('your-turn');
+    const theirs = turnView({ ...open, locked: true, turn: 2, viewerSeat: 0, spectating: false, legalCount: 0, selected: false });
+    expect(theirs.badge?.testId).toBe('to-play-2');
   });
 });
 

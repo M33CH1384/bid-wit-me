@@ -46,6 +46,9 @@ describe('reconnect keeps the seat and the name', () => {
     const st = env.last('z', 'state')!;
     expect(st.seat).toBe(0);
     expect(st.spectator).toBeUndefined();
+    expect(st.view!.turn).toBe(0);
+    expect(st.view!.legal).toContain('AS');
+    expect(Array.isArray(st.view!.history)).toBe(true);
     env.send('z', { t: 'act', id: 'reload-play', action: { type: 'play', card: 'AS' }, seq: env.room.data.seq });
     expect(env.room.data.game!.trick.plays.map((p) => ({ seat: p.seat, card: p.card }))).toEqual([{ seat: 0, card: 'AS' }]);
     expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid });
@@ -151,6 +154,31 @@ describe('reconnect keeps the seat and the name', () => {
     expect(env.room.data.seq!).toBeGreaterThan(seq);
     expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid });
     expect(env.room.data.members[a.pid]!.name).toBe('Meech');
+  });
+
+  it('applies the chosen card when the seq is behind but this turn has not moved', () => {
+    const { env } = seated();
+    const seq = env.room.data.seq!;
+    expect(env.room.data.turnSeq).toBeLessThanOrEqual(seq);
+    env.room.data.seq = seq + 1;
+    env.send('a', { t: 'act', id: 'behind', action: { type: 'play', card: 'AS' }, seq });
+    expect(env.room.data.game!.trick.plays.map((p) => p.card)).toEqual(['AS']);
+    expect(env.last('a', 'ack')).toMatchObject({ id: 'behind', ok: true });
+    expect(env.room.data.seats[0]?.kind).toBe('human');
+  });
+
+  it('drops a card chosen before this turn and resends the full turn', () => {
+    const { env } = seated();
+    const seq = env.room.data.seq!;
+    env.room.data.seq = seq + 2;
+    env.room.data.turnSeq = seq + 1;
+    env.send('a', { t: 'act', id: 'old-turn', action: { type: 'play', card: 'KS' }, seq });
+    expect(env.room.data.game!.trick.plays).toEqual([]);
+    expect(env.last('a', 'ack')).toMatchObject({ id: 'old-turn', ok: false, stale: true });
+    const st = env.last('a', 'state')!;
+    expect(st.view!.turn).toBe(0);
+    expect(st.view!.legal).toContain('AS');
+    expect(Array.isArray(st.view!.history)).toBe(true);
   });
 
   it('keeps a Relaxed play clock through a reconnect and does not auto-play at 12s', () => {

@@ -605,8 +605,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const localTurn = !online || online.serverTurn == null
     ? st.turn
     : localSeatOfServerTurn(online.serverTurn, spectating || online.viewerSeat == null ? null : online.viewerSeat, n);
-  // Badges and playable cards share this. `covered` (Run it!) is applied again once that show exists.
-  const myTurn = actingSeat({ turn: localTurn, phase: st.phase, pause, dealing, locked: turnLocked, covered: false }) === HUMAN && !spectating;
+  // The badge keeps naming this seat while the play is in flight. The hand itself stays locked
+  // so a second tap cannot send another card before the server answers.
+  const myTurn = actingSeat({ turn: localTurn, phase: st.phase, pause, dealing, locked: false, covered: false }) === HUMAN && !spectating && !turnLocked;
   // Sort once when the hand is dealt. A play only removes a card; re-sorting here is what made the fan look shuffled.
   const handOrder = useRef<{ handNo: number; cards: Card[] } | null>(null);
   const hand = useMemo(() => {
@@ -1078,9 +1079,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     names.forEach((nm, i) => { if (isBotSeat(i)) preloadVoice(personaForName(nm), nm); });
   }, [botKey, talkPrefs.voices]); // eslint-disable-line react-hooks/exhaustive-deps
   const notice = onNoticeSides(sb);
+  // `legal` is empty while the play is in flight. The badge still needs the cards that were legal.
+  const playableCount = st.phase === 'playing' ? view.legal.filter((c) => (hand ?? []).includes(c)).length : legal.length;
   const live = turnView({
     turn: localTurn, phase: st.phase, pause, dealing, locked: turnLocked, covered: !!runFx,
-    viewerSeat: HUMAN, spectating, legalCount: legal.length, selected: !!selected,
+    viewerSeat: HUMAN, spectating, legalCount: playableCount, selected: !!selected,
   });
   const actor = live.actor;
   const badge = live.badge;

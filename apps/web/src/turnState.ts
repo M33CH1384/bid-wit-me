@@ -1,7 +1,8 @@
 /**
  * Who is acting, for the seat badges and the playable cards together.
- * A second check (deal still running, trick on hold, move in flight) used to
- * light YOUR TURN on this seat while another seat said TO PLAY and the hand sat grey.
+ * A deal, a held trick, or a show hides every badge so two seats cannot both
+ * look ready. A move already in flight does not: blanking YOUR TURN and TO PLAY
+ * made a slow ack look like the table had forgotten whose turn it was.
  */
 
 export interface TurnInputs {
@@ -30,7 +31,9 @@ export function localSeatOfServerTurn(serverTurn: number | null, viewerSeat: num
 
 /** The seat to mark, or null when nobody should look like they are to act. */
 export function actingSeat(t: TurnInputs): number | null {
-  if (t.turn === null || t.pause || t.dealing || t.locked || t.covered) return null;
+  // `locked` stays on the input so callers can pass it, but it must not clear the badge.
+  void t.locked;
+  if (t.turn === null || t.pause || t.dealing || t.covered) return null;
   if (t.phase !== 'bidding' && t.phase !== 'playing' && t.phase !== 'exchange') return null;
   return t.turn;
 }
