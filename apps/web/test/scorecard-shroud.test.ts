@@ -435,7 +435,7 @@ describe('scorecard caution tape and shroud', () => {
     const table = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
     expect(table).toContain("endReason === 'shotOut' && !shotRecapAck");
     expect(table).toContain('setShotRecapAck(true)');
-    expect(table).toContain('ran the rest');
+    expect(table).toContain('Review last trick');
     expect(table).not.toContain('Run it — cleared hands');
     const recapSrc = readFileSync(new URL('../src/Intermission.tsx', import.meta.url), 'utf8');
     expect(recapSrc).toContain("haptic([30], 'shot-hole')");

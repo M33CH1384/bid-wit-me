@@ -1548,7 +1548,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
                 />
               </div>
             ) : (
-              <button type="button" className="tt-run-show" data-testid="talk-run-show" onClick={() => setClearedOpen(true)}>{face(runClaimer)} ran the rest</button>
+              <button type="button" className="tt-run-show" data-testid="talk-run-show" onClick={() => setClearedOpen(true)}>Review last trick</button>
             )
           ) : null}
         />
