@@ -11,3 +11,7 @@ screenshots/release-3
 .dev.vars
 screenshots/release-4
 apps/web/dist-prod
+
+# voice bake scratch
+voice/bake-plan.json
+.voice-models/
