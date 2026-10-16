@@ -5,6 +5,6 @@ describe('spatial audio phase 1 plan', () => {
     const p = new URL('../../../docs/spatial-audio-plan.md', import.meta.url);
     expect(existsSync(p)).toBe(true);
     const doc = readFileSync(p, 'utf8');
-    for (const t of ['PannerNode', 'video.ts', 'LiveKit', 'HRTF', 'Competitive Tournament', 'asset-licenses', 'Phase 8']) expect(doc).toContain(t);
+    for (const t of ['PannerNode', 'video.ts', 'LiveKit', 'HRTF', 'Competitive Tournament', 'asset-licenses', 'Phase 8', 'Audio-quality setting', 'Per-player mute', 'Separate environment picker', 'Story Mode per-stop', 'GATED', 'convolver', 'randomised per game', 'Loading screen', 'seeded by the host']) expect(doc).toContain(t);
   });
 });
