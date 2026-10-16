@@ -36,6 +36,32 @@ export function pointInPoly(x: number, y: number, poly: readonly { x: number; y:
   return inside;
 }
 
+/**
+ * Longest horizontal run, in CSS pixels, where `id` is the card drawn on top.
+ * A fully covered card is 0. The run is taken through the middle of that card.
+ */
+export function visibleStripPx(cards: readonly HandHitCard[], id: string, samples = 64): number {
+  const card = cards.find((c) => c.id === id);
+  if (!card || card.poly.length < 3) return 0;
+  const xs = card.poly.map((p) => p.x);
+  const ys = card.poly.map((p) => p.y);
+  const x0 = Math.min(...xs);
+  const x1 = Math.max(...xs);
+  const y = (Math.min(...ys) + Math.max(...ys)) / 2;
+  if (!(x1 > x0) || !Number.isFinite(y)) return 0;
+  const dx = (x1 - x0) / samples;
+  let run = 0;
+  let best = 0;
+  for (let s = 0; s <= samples; s++) {
+    const x = x0 + dx * s;
+    if (pickHandCard(x, y, cards) === id) {
+      run += dx;
+      if (run > best) best = run;
+    } else run = 0;
+  }
+  return best;
+}
+
 /** The card drawn on top at this canvas CSS pixel. Empty when the point misses the fan. */
 export function pickHandCard(x: number, y: number, cards: readonly HandHitCard[] = hits): string | null {
   let best: HandHitCard | null = null;

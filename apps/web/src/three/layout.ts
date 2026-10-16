@@ -19,10 +19,12 @@ export const FACE_CAP_GAP = 0.0025;
  */
 export const HAND_DEPTH_STEP = 0.006;
 /**
- * How far a playable card comes toward the camera. Three fan steps is the overlap
- * (0.018). 0.02 puts that card in front of the neighbours it actually covers.
+ * How far a playable card comes toward the camera.
+ * It stays under one fan step, so the card to its right — already one step closer —
+ * keeps the overlap. A bigger pull put the whole lifted suit in front of the next
+ * cards and hid them.
  */
-export const PLAY_DEPTH = 0.02;
+export const PLAY_DEPTH = HAND_DEPTH_STEP * 0.35;
 /**
  * A raised card comes forward of those playable neighbours too, so its whole face
  * wins the depth test. Four steps past the play bias clears the cards it overlaps.
@@ -180,7 +182,45 @@ export function makeCamera(aspect: number, short = false): PerspectiveCamera {
   return cam;
 }
 
-export interface FanLayout { s: number; cw: number; ch: number; step: number; maxRoll: number; curveK: number; viewW: number; viewH: number }
+export interface FanLayout {
+  s: number;
+  cw: number;
+  ch: number;
+  step: number;
+  maxRoll: number;
+  curveK: number;
+  viewW: number;
+  viewH: number;
+  /** CSS pixels reserved on each side of a raised card. 0 when nothing is raised. */
+  raiseOpen: number;
+}
+
+/** Widest strip we ask for. A 13-card fan on a 390px phone can hold this. */
+export const MIN_STRIP_PX = 28;
+
+/**
+ * Strip the fan can actually keep. 28px when the row has room (13 cards at 390).
+ * A longer row compresses, and still leaves a tappable edge.
+ */
+export function stripFloorPx(count: number, screenW: number, edgeFrac = 0.02): number {
+  const w = Number.isFinite(screenW) && screenW >= 32 ? screenW : 390;
+  const n = count >= 1 ? count : 1;
+  const usable = w * (1 - 2 * edgeFrac);
+  const fit = usable / n;
+  return Math.min(MIN_STRIP_PX, Math.max(16, fit));
+}
+
+/**
+ * Extra centre-gap, in CSS pixels, so a card painted on top of both neighbours
+ * still leaves `minStrip` of the next card. The next card covers that neighbour
+ * from the other side, so the open has to replace what both of them hide.
+ */
+export function raiseOpenPx(cardWidthPx: number, stepPx: number, minStripPx: number): number {
+  if (!(cardWidthPx > 0) || !(minStripPx > 0)) return 0;
+  const step = Number.isFinite(stepPx) && stepPx > 0 ? stepPx : 0;
+  const need = minStripPx - (2 * step - cardWidthPx);
+  return Math.max(0, need);
+}
 
 /**
  * Solve the human fan so it always fits the camera frustum width at the hand's depth (D = 1 in camera space):
@@ -206,8 +246,14 @@ export interface FanOpts {
   /**
    * Fraction of a card width kept clear on each side of a raised card.
    * The solver shrinks the fan so that gap still fits on the screen.
+   * When `pxW` is set, the reserved gap is at least this fraction and at least
+   * enough that the neighbour's visible strip stays `minStripPx`.
    */
   spread?: number;
+  /** Minimum visible strip of each card, in CSS pixels. Needs `pxW`. */
+  minStripPx?: number;
+  /** Viewport width the strip is measured against. */
+  pxW?: number;
   /**
    * Who comes forward. `play` is a playable card (PLAY_DEPTH). `selected` is the raised card
    * (SELECT_DEPTH), in front of the neighbours it overlaps. Omitted: rest.
@@ -232,28 +278,84 @@ export function fanLayout(aspect: number, count: number, safeFrac = 0, o: FanOpt
   const halfN = Math.max(0, (count - 1) / 2);
   const maxRoll = count > 1 ? Math.min(o.rollCap ?? 0.32, 0.03 * count) : 0;
   const spread = Number.isFinite(o.spread) && o.spread! > 0 ? o.spread! : 0;
-  let s = Math.min(viewH * (o.heightFrac ?? 0.16), viewW * 0.25 * 1.4) / CH;
-  let step = 0;
-  let boost = 0;
-  for (let pass = 0; pass < (spread > 0 ? 4 : 1); pass++) {
-    const halfAvail = viewW / 2 - baseMargin - boost;
-    s = Math.min(viewH * (o.heightFrac ?? 0.16), viewW * 0.25 * 1.4) / CH;
-    for (let k = 0; k < 40; k++) {
-      const cw = CW * s, ch = CH * s;
-      const outer = (cw / 2) * Math.cos(maxRoll) + (ch / 2) * Math.sin(maxRoll); // half-extent of a rolled card
-      const room = halfAvail / persp - outer;
-      step = halfN > 0 ? Math.min(cw * 0.62, room / halfN) : 0;
-      if (halfN === 0 ? room >= 0 : step >= cw * 0.3) break; // ≥30% of a card exposed keeps the corner index readable
-      s *= 0.96;
+  const pxW = Number.isFinite(o.pxW) && o.pxW! >= 32 ? o.pxW! : 0;
+  const edge = o.edgeFrac ?? 0.06;
+  const stripWant = pxW > 0 && o.minStripPx && o.minStripPx > 0 ? stripFloorPx(count, pxW, edge) : 0;
+  // A 28px strip on a narrow card is most of the face. The 0.62 cap hid that strip
+  // under the next card once the hand grew past four.
+  const stepCap = stripWant > 0 ? 0.94 : 0.62;
+  const heightS = Math.min(viewH * (o.heightFrac ?? 0.16), viewW * 0.25 * 1.4) / CH;
+  const solve = (reserve: number, pixelStrip: boolean, maxS = heightS) => {
+    const halfAvail = viewW / 2 - baseMargin - reserve;
+    let ss = maxS;
+    let st = 0;
+    if (pixelStrip && pxW > 0 && viewW > 0) {
+      let bestS = ss;
+      let bestStep = 0;
+      let bestPx = -1;
+      for (let k = 0; k < 70; k++) {
+        const cw = CW * ss;
+        const ch = CH * ss;
+        const outer = (cw / 2) * Math.cos(maxRoll) + (ch / 2) * Math.sin(maxRoll);
+        const room = halfAvail / persp - outer;
+        st = halfN > 0 ? Math.min(cw * stepCap, Math.max(0, room) / halfN) : 0;
+        const exposedPx = st * (pxW / viewW);
+        if (exposedPx > bestPx) { bestPx = exposedPx; bestS = ss; bestStep = st; }
+        if (halfN === 0 || exposedPx + 0.25 >= stripWant) break;
+        // Past here the step is the card-width cap, so shrinking only hides more of each card.
+        if (halfN > 0 && room / halfN >= cw * stepCap && exposedPx < bestPx - 0.3) break;
+        ss *= 0.96;
+      }
+      return { s: bestS, step: bestStep };
     }
-    // One side of the raised card. The next pass solves into the room this leaves.
-    boost = spread * CW * s;
+    for (let k = 0; k < 40; k++) {
+      const cw = CW * ss, ch = CH * ss;
+      const outer = (cw / 2) * Math.cos(maxRoll) + (ch / 2) * Math.sin(maxRoll);
+      const room = halfAvail / persp - outer;
+      st = halfN > 0 ? Math.min(cw * 0.62, Math.max(0, room) / halfN) : 0;
+      if (halfN === 0 ? room >= 0 : st >= cw * 0.3) break;
+      ss *= 0.96;
+    }
+    return { s: ss, step: st };
+  };
+  let solved = solve(0, stripWant > 0);
+  let raiseOpen = 0;
+  if (spread > 0 && stripWant > 0 && pxW > 0 && viewW > 0) {
+    const k = pxW / viewW;
+    const marginOf = (ss: number, st: number) => {
+      const cw = CW * ss;
+      const ch = CH * ss;
+      const outer = (cw / 2) * Math.cos(maxRoll) + (ch / 2) * Math.sin(maxRoll);
+      return pxW / 2 - (halfN * Math.max(0, st) + outer) * k;
+    };
+    let cap = heightS;
+    let open = 0;
+    // The row slides into its margin when that covers the neighbour. A wide card
+    // on a full row has no margin, so the card shrinks until the gap fits and
+    // the strip is still there. Reserving the gap by tightening the step made
+    // the overlap worse.
+    for (let pass = 0; pass < 24; pass++) {
+      solved = solve(0, true, cap);
+      open = raiseOpenPx(CW * solved.s * k, Math.max(0, solved.step) * k, stripWant);
+      if (marginOf(solved.s, solved.step) >= open + 1) break;
+      cap *= 0.94;
+    }
+    raiseOpen = Math.max(0, open);
+  } else if (spread > 0) {
+    let reserve = 0;
+    for (let pass = 0; pass < 4; pass++) {
+      solved = solve(reserve, false);
+      reserve = spread * CW * solved.s;
+    }
+    raiseOpen = pxW > 0 && viewW > 0 ? reserve * (pxW / viewW) : 0;
   }
+  const s = solved.s;
+  const step = solved.step;
   // the arc follows the cards' roll: at the ends its slope equals the end card's tilt, like a fan held in a hand.
   // (A fixed curve with a separately-scaled roll left the end cards kinked against the arc: the "skewed" right-most card.)
   const xo = halfN * Math.max(0, step);
   const curveK = xo > 0 ? Math.tan(maxRoll) / (2 * xo) : 0;
-  return { s, cw: CW * s, ch: CH * s, step: Math.max(0, step), maxRoll, curveK, viewW, viewH };
+  return { s, cw: CW * s, ch: CH * s, step: Math.max(0, step), maxRoll, curveK, viewW, viewH, raiseOpen };
 }
 
 /**
