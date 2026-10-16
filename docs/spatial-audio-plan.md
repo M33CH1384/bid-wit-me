@@ -155,6 +155,20 @@ source + licence in `docs/asset-licenses.md` before it ships.
    approves the richer-music pitch note (separate short doc + his explicit go-ahead). The plan's
    Phase 6 stays on paper; Phases 2–5 and 7–8 may proceed around it.
 
+6. **Soundscape is tailored to the room (Phase 4 implementation):** the chosen environment drives
+   three matched layers, not just a bed loop — (a) ambience bed, (b) room reflections: a convolver
+   reverb per room (Backyard Cookout = minimal/dry outdoor, Basement = tight small-room,
+   Barbershop = small lively, Competitive Tournament = large hall), generated/synthesised impulse
+   responses or CC0 IRs logged in `docs/asset-licenses.md`, and (c) card-sound character per surface
+   (wood-table slap vs felt softness: slam sample set + low-pass/thump tuning keyed to the room's
+   surface). Changing rooms crossfades bed + convolver + card character together.
+7. **Room selection logic:** if the player has NOT explicitly chosen an environment in settings,
+   the room is **randomised per game/session, seeded by the host/session seed** so every online
+   client renders the same room (seed ships with the session state; offline = game seed). An
+   explicit settings choice overrides the roll and persists. The room name shows subtly — a small
+   chip on table load / in the table menu — never a modal or banner. Resolver order:
+   explicit setting > Story stop mapping > seeded session roll > venue default (`Auto`).
+
 ## 5. Risks / open questions for Yoda
 - HRTF CPU on older iPhones — Phase 8 may default spatial to `equalpower` on phones.
 - Voice chat panning vs intelligibility: keep partner gain compensation so panning never buries speech.
