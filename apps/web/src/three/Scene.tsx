@@ -11,6 +11,7 @@ import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline, seatDealDelay } from './dealTimeline';
 import { handNeedsDeal, handSlotKey } from './dealFlight';
 import { cardShowsFace, handLatched, latchHand, showResumeHand3D, visibleFaceIds } from './cardFace';
+import { trickPlayFrom } from './trickFacing';
 import { type Sfx, sound } from '../audio';
 import { fx } from '../fx';
 import { backTexture, faceTexture, logoTexture, peekFaceTexture, refreshFacesGradually } from './cardTextures';
@@ -458,6 +459,9 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   // is rebuilt on the BWM back the moment an id leaves this set.
   const faceShown = useRef(new Set<string>());
   const faceHand = useRef<number | null>(null);
+  // Plays already given their opening flight. A later render (or a canvas rebuild) must not
+  // launch them from the face-down fan again.
+  const playShown = useRef<{ hand: number; keys: Set<string> }>({ hand: -1, keys: new Set() });
   useEffect(() => {
     if (!flipIn || flippedHand.current === handNo) return;
     flippedHand.current = handNo;
@@ -508,11 +512,14 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   // cards on the table this trick
   // last-trick nuke: the auto-played final cards fly in one after another, right into the blast
   const firstAuto = shownTrick.findIndex((pl) => pl.auto);
+  if (playShown.current.hand !== handNo) playShown.current = { hand: handNo, keys: new Set() };
   shownTrick.forEach((pl, order) => {
     const autoDelay = pl.auto ? { delay: 0.35 + 0.12 * (order - firstAuto) } : {};
     const leftHand = pl.seat === human ? departureSlot(held.current.slots, held.current.cards, pl.card) : undefined;
-    const fanFrom = leftHand ?? (pl.seat === human ? undefined : opponentFan(positions[pl.seat]!, n, Math.max(0, handCounts[pl.seat]! - 1) / 2, handCounts[pl.seat]! + 1));
-    items.push({ key: `${handNo}-${pl.card}`, card: pl.card, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale), from: fanFrom, origin: leftHand, ...(props.landCue(pl.card).includes(',overcut') ? { duration: 0.34, arc: 0.7 } : { duration: 0.5, arc: 0.35 }), sfxLand: props.landCue(pl.card), glow: !!props.marked?.includes(pl.card), ...autoDelay });
+    const playKey = `${handNo}-${pl.card}`;
+    const fan = pl.seat === human ? undefined : opponentFan(positions[pl.seat]!, n, Math.max(0, handCounts[pl.seat]! - 1) / 2, handCounts[pl.seat]! + 1);
+    const from = trickPlayFrom({ firstShow: !playShown.current.keys.has(playKey), humanSlot: leftHand, fan });
+    items.push({ key: playKey, card: pl.card, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale), from, origin: leftHand, ...(props.landCue(pl.card).includes(',overcut') ? { duration: 0.34, arc: 0.7 } : { duration: 0.5, arc: 0.35 }), sfxLand: props.landCue(pl.card), glow: !!props.marked?.includes(pl.card), ...autoDelay });
   });
   // 'Run it!': the claimer's cards slam down in sequence (then the tornado takes everything)
   if (props.slam) {
@@ -650,6 +657,11 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
     const a = requestAnimationFrame(() => requestAnimationFrame(() => { if (!cancel) live(true); }));
     return () => { cancel = true; cancelAnimationFrame(a); };
   }, [hand3D, handCount, props.onHandLive]);
+
+  useEffect(() => {
+    const keys = playShown.current.keys;
+    for (const pl of shownTrick) keys.add(`${handNo}-${pl.card}`);
+  });
 
   // test probe: every key that was ever dealt from the deck, per hand (a re-deal would add new keys)
   useEffect(() => {

@@ -61,6 +61,40 @@ describe('dealt faces survive a selection', () => {
     expect(trickFacesShown(shown, [], new Set(hand), []).has('2C')).toBe(false);
   });
 
+  it('shows faces for cards other seats played, not only the local hand', () => {
+    const mine = ['AS', 'KS', 'QS'] as const;
+    const trick = ['QH', 'JD', '2C'];
+    // The painter only walked the local hand. The bots' plays were never dealt here.
+    const shown = trickFacesShown(new Set(mine), [...mine], new Set(mine), trick);
+    for (const id of trick) expect(cardShowsFace(id, shown, trick)).toBe(true);
+    for (const id of mine) expect(cardShowsFace(id, shown, trick)).toBe(true);
+    // A rebuild cleared the set and only handed back the cards still in the local hand.
+    const rebuilt = trickFacesShown(new Set(), [], new Set(mine), trick);
+    for (const id of trick) {
+      expect(rebuilt.has(id)).toBe(true);
+      expect(cardShowsFace(id, new Set(), trick)).toBe(true);
+    }
+  });
+
+  it('keeps other seats face-up across two tricks, including a resize of the second', () => {
+    const mine = ['AS', 'KS', 'QS', 'JS'] as const;
+    const trick1 = ['QH', 'JD', '2C', 'AH'];
+    const trick2 = ['10H', '9D', '8C', 'KH'];
+    let shown = trickFacesShown(new Set(mine), [...mine], new Set([...mine, ...trick1]), trick1);
+    for (const id of trick1) expect(cardShowsFace(id, shown, trick1)).toBe(true);
+    // Trick 1 left the table. Those backs must not be what trick 2 paints.
+    shown = trickFacesShown(shown, [], new Set(mine), []);
+    for (const id of trick1) expect(cardShowsFace(id, shown, [])).toBe(false);
+    // Trick 2: the painter only has the local hand. The bots' new cards still show.
+    shown = trickFacesShown(shown, [], new Set(mine), trick2);
+    for (const id of trick2) expect(cardShowsFace(id, shown, trick2)).toBe(true);
+    const rebuilt = trickFacesShown(new Set(), [], new Set(mine), trick2);
+    for (const id of trick2) {
+      expect(rebuilt.has(id)).toBe(true);
+      expect(cardShowsFace(id, new Set(), trick2)).toBe(true);
+    }
+  });
+
   it('a bot Run it! slam is face-up for a seat that never held those cards, and for a spectator', () => {
     const viewer = visibleFaceIds(new Set(['AS', 'KS']), [], ['AS', 'KS'], [], ['BJ', 'LJ']);
     expect(viewer.has('BJ')).toBe(true);
