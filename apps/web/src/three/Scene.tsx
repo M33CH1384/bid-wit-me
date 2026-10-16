@@ -12,7 +12,7 @@ import { paintFace } from '../cardArt';
 import { dragStarted, dropResult } from '../dragPlay';
 import { DEFAULT_SLAM, type DragSample, clearDrop, noteDrop, releaseVector, releaseVelocity, slamFeel, slamIntensity, takeDrop } from '../slam';
 import { reducedMotion } from './handLift';
-import { VISIBLE_FELT, landTrick, playSeed } from './landing';
+import { VISIBLE_FELT, landTrick, playSeed, runScatter } from './landing';
 import { shakeOffset, swayOffset } from './shake';
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline, seatDealDelay } from './dealTimeline';
@@ -32,6 +32,7 @@ import { type VenueDef, type VenueId, VENUE_DEFS, venueAssetUrls } from '../venu
 import { bodyGeometry, cardGeometry, feltGeometry, railGeometry } from './geometry';
 import {
   CH, CW, MIN_STRIP_PX, TRICK_SCALE, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, cardScreenQuad, deckSpot, fanCssPx, fanLayout, handCardPlane, handFan, makeCamera, jitterOf, opponentFan, phoneHandFan, pileSpot, ringSpot, trickSpot,
+  xf,
 } from './layout';
 
 export interface SceneProps {
@@ -597,13 +598,21 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   if (props.slam) {
     const { seat, cards } = props.slam;
     const k = cards.length;
+    // Thrown down one after another and scattered like real cards hitting a table (every viewer, Tips or not:
+    // it's a show moment). Same seed on every client, so online tables see the same pile. Reduced motion: a tidy row.
+    const drops = reduced ? null : runScatter(playSeed(props.gameSeed ?? '', handNo, 99, `runit:${seat}`), k);
+    if (typeof window !== 'undefined') (window as unknown as { __bwmRunDrop?: unknown }).__bwmRunDrop = { cards, drops, reduced };
     cards.forEach((c, i) => {
       const base = trickSpot('bottom', n, i, jitterOf(c), trickScale);
       const w = CW * (trickScale ?? TRICK_SCALE) * 0.84; // slightly overlapped: 4 cards ≈ the trick's width
-      const target: Xform = { ...base, p: [(i - (k - 1) / 2) * w, base.p[1] + 0.01 * i, 0.02] };
+      const d = drops?.[i];
+      const target: Xform = d
+        ? xf([d.dx, base.p[1] + 0.006 * i, d.dz], [-Math.PI / 2, 0, -d.spin], base.s, 'XYZ')
+        : { ...base, p: [(i - (k - 1) / 2) * w, base.p[1] + 0.01 * i, 0.02] };
       const leftHand = seat === human ? departureSlot(held.current.slots, held.current.cards, c) : undefined;
       const from = leftHand ?? (seat === human ? undefined : opponentFan(positions[seat]!, n, Math.min(i, k - 1), k));
-      items.push({ key: `${handNo}-${c}`, card: c, public: true, target, from, origin: leftHand, delay: 0.02, duration: RUN_SLAM_MS / 1000, arc: 0.9 }); // slow motion
+      if (d) items.push({ key: `${handNo}-${c}`, card: c, public: true, target, from, origin: leftHand, delay: 0.02 + d.delay, duration: 0.42, arc: 0.55, sfxLand: i < 6 || i === k - 1 ? 'play' : undefined });
+      else items.push({ key: `${handNo}-${c}`, card: c, public: true, target, from, origin: leftHand, delay: 0.02, duration: RUN_SLAM_MS / 1000, arc: reduced ? 0 : 0.9, ...(reduced ? { motion: 'slide' as const } : {}) }); // slow motion
     });
     // the rest of the table's cards: one quick cascade, a smaller row under the claimer's (from each player's spot)
     const others = props.slam.others ?? [];
