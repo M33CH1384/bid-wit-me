@@ -8,7 +8,7 @@
  *  - all durable state lives in one plain-JSON `RoomData` object that the DO saves as a single row.
  */
 import {
-  type Action, type GameState, type Series, addSeriesGame, emptySeries, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, RulesConfigError, acceptRules, applyAction, canRunIt, runPlayout, type Seat, spectatorView, isFreshDeal, isNukeTrick, nextDealer, makeRules, newGame, pendingTurn, secureSeed, viewFor, withCompleteNil,
+  type Action, type GameState, type Series, addSeriesGame, emptySeries, seriesForGameStart, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, RulesConfigError, acceptRules, applyAction, canRunIt, runPlayout, type Seat, spectatorView, isFreshDeal, isNukeTrick, nextDealer, makeRules, newGame, pendingTurn, secureSeed, viewFor, withCompleteNil,
 } from '@spades/rules';
 import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, chooseBotAction, loudLoser, parseHint, leanBid, botSkillFor, personaSkillFloor, seatSkill, leanNil, momentsFor, newTalkState, pickBotNames, prePlayLine } from '@spades/bots';
 import {
@@ -957,6 +957,8 @@ export class Room {
     d.gamesPlayed++;
     d.abandonReported = false;
     d.live = newLiveStats(n);
+    // A new game opens at 0–0. Rematch is the explicit resume and keeps the tally.
+    d.series = seriesForGameStart(d.series, rematch);
     this.startSeries();
     d.talk = { ...newTalkState(), revealed: [] }; // a new game: every Hustler is back in character
     d.kicked = []; // a new game: kicked players may come back
