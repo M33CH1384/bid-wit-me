@@ -80,3 +80,15 @@ export function loadGame(): SavedGame | null {
   if (raw && !g) clearGame();
   return g;
 }
+
+/** A reload with a saved bot game always opens Home (where Resume is), never a deeper wizard step. */
+export function landOnHome(state: unknown, hasSave: boolean): boolean {
+  const wiz = (state as { wiz?: string } | null)?.wiz;
+  return hasSave && wiz !== undefined && wiz !== 'home';
+}
+
+/** Deal me in never silently replaces a game in progress. */
+export function confirmReplaceSave(saved: SavedGame | null, ask: (msg: string) => boolean): boolean {
+  if (!saved) return true;
+  return ask(`Start a new game? Your game in progress (hand ${saved.state.handNo}) will be lost. Tap Cancel, then Back, to resume it.`);
+}

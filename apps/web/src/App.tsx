@@ -7,7 +7,7 @@ import { usePresence } from './social/Social';
 import { NowPlaying } from './SoundControls';
 import Table from './Table';
 import { MODES, type Settings, loadSettings, saveSettings, settingsToRules } from './settings';
-import { type SavedGame, loadGame, resumeOnLoad } from './save';
+import { type SavedGame, confirmReplaceSave, landOnHome, loadGame, resumeOnLoad } from './save';
 import { flushLocalGames, watchLocalGames } from './localStats';
 
 export default function App() {
@@ -21,6 +21,9 @@ export default function App() {
     }
     // Opening the app and refreshing land on the menu. A saved bot game is not resumed.
     // Leave (including a spectator leaving an online table) also sets wiz:home.
+    // history.state survives a reload. Left at wiz:'setup' by Deal me in, a refresh mid-game opened the
+    // bot setup screen (where Deal me in would replace the save) instead of Home with its Resume button.
+    if (landOnHome(history.state, loadGame() !== null)) history.replaceState({ wiz: 'home', d: 0 }, '', location.pathname);
     const saved = resumeOnLoad(history.state, loadGame(), false);
     return saved ? { seed: saved.seed, settings: saved.settings, resume: saved, continueSeries: true } : null;
   });
@@ -44,8 +47,8 @@ export default function App() {
       <Setup
         settings={settings}
         onChange={(s) => { setSettings(s); saveSettings(s); }}
-        onStart={() => { saveSettings(settings); saveSeries(null); setGame({ seed: secureSeed(), settings, continueSeries: false }); }}
-        onResume={saved ? () => setGame({ seed: saved.seed, settings: saved.settings, resume: saved, continueSeries: true }) : null}
+        onStart={() => { if (!confirmReplaceSave(saved, (m) => window.confirm(m))) return; history.replaceState({ wiz: 'home', d: 0 }, '', location.pathname); saveSettings(settings); saveSeries(null); setGame({ seed: secureSeed(), settings, continueSeries: false }); }}
+        onResume={saved ? () => { history.replaceState({ wiz: 'home', d: 0 }, '', location.pathname); setGame({ seed: saved.seed, settings: saved.settings, resume: saved, continueSeries: true }); } : null}
         resumeLabel={saved ? `${MODES.find((m) => m.key === saved.settings.mode)?.title ?? 'game'} · hand ${saved.state.handNo}` : undefined}
       />
       </>
