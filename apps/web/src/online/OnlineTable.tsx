@@ -45,7 +45,9 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
   const chat = useOnlineChat(cs, source?.st ?? null, names, send, hideSpec && !spectator, dealerName);
   const skew = room.now - Date.now();
   const secs = useCountdown(room.deadline ? room.deadline - skew : null);
-  const onInteractive = useCallback((on: boolean) => conn.send({ t: 'interactive', on }), [conn]);
+  const socketGen = cs.socketGen;
+  // A new socket has to say again whether the table is drawn. The server holds the clock until then.
+  const onInteractive = useCallback((on: boolean) => conn.send({ t: 'interactive', on }), [conn, socketGen]);
 
   // Voice anti-cheat (host option): during TRICK PLAY my mic isn't sent to my partner and theirs isn't played here.
   // Partners may talk books during bidding (vaguely: "I got about 3"), so mics stay open while bidding, between hands
@@ -78,7 +80,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
   }, [limitedNow]);
 
   const drawn = !!source && !!rot;
-  useEffect(() => { if (!drawn) conn.send({ t: 'interactive', on: false }); }, [drawn, conn]);
+  useEffect(() => { if (!drawn) conn.send({ t: 'interactive', on: false }); }, [drawn, conn, socketGen]);
   if (!drawn || !source || !rot) return <TableLoading progress={0.24} />;
   const r = room.rules;
   const turnLocal = localSeatOfServerTurn(cs.view?.turn ?? null, spectator || cs.seat === null ? null : cs.seat, r.playerCount);
@@ -98,7 +100,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
       <>
         <SeatMedia seat={seat} isMe={local === 0 && !spectator} mesh={mesh} vs={vs} limited={!!seat && seat.kind === 'human' && vs.limited.includes(seat.playerId)} kick={kickFor(real)} />
         {offline && <span className="chip bad seat-offline">OFFLINE</span>}
-        {turnLocal === local && secs !== null && secs <= 15 && !source.pause && <span className={`turn-clock ${secs <= 5 ? 'hot' : ''}`} data-testid={`clock-${local}`}>{secs}s</span>}
+        {turnLocal === local && secs !== null && !source.pause && <span className={`turn-clock ${secs <= 5 ? 'hot' : ''}`} data-testid={`clock-${local}`} data-turn-sec={room.turnSec ?? ''}>{secs}s</span>}
       </>
     );
   };
