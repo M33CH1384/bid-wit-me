@@ -1819,3 +1819,6 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .drag-ghost.played { opacity: 0; transition: opacity .1s; }
 .drag-ghost.shake { animation: drag-shake .36s ease-in-out; }
 @keyframes drag-shake { 20%, 60% { transform: translateX(-7px) rotate(-3deg); } 40%, 80% { transform: translateX(7px) rotate(-3deg); } }
+
+/* Never two DEALER chips on one plate (human or bot), whatever wrote the second. */
+.plate-name .chip.dealer ~ .chip.dealer { display: none; }

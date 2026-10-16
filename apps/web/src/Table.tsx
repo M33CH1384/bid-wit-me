@@ -19,7 +19,7 @@ import { SeriesChip, SeriesSheet, loadSeries, saveSeries } from './Series';
 import { useMyTeamName } from './TeamName';
 import { offlineTalk } from './offlineTalk';
 import { BidOrder, showCenterBidOrder } from './PartnerTalk';
-import { TrumpLadder } from './trumpLadder';
+import { TrumpLadder, trumpStripShown } from './trumpLadder';
 import { SocialButton } from './social/Social';
 import { recordOfflineGame } from './offlineStats';
 import { setTableIntensity, showLine, speakBot, useTalkPrefs } from './talkPrefs';
@@ -1355,9 +1355,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         <span className="bug-btn dock-slot" aria-hidden />
       </header>
 
-      <div className="trump-strip glass slant">
+      {trumpStripShown(st) && <div className="trump-strip glass slant" data-testid="trump-strip">
         <span className="ts-label">TRUMPS</span> <TrumpLadder rules={r} n={5} style="long" />{st.spadesBroken && <span className="ts-broken">BROKEN</span>}
-      </div>
+      </div>}
 
       {/* last-trick readout. After a resolved 'Run it!' the same chip opens every hand the tornado cleared. */}
       {(piles.length > 0 || !!runHands) && (() => {
