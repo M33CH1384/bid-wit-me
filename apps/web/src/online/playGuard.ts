@@ -34,6 +34,15 @@ export function playSendBlocked(sentSeq: number | null, serverSeq: number): bool
  * the card should not sit back in the fan, looking deselected, while that happens.
  * Once the trick already has the card, or the play was dropped, nothing is added.
  */
+/** A card you just played, drawn on the table until the state shows it. Tied to the hand and trick it was played in. */
+export interface FlyingPlay { card: string; handNo: number; trickNo: number }
+
+/** The flying card to draw now, or null once the hand or trick it belonged to is over. */
+export function flyingCard<C extends string>(f: FlyingPlay | null, handNo: number, phase: string, trickNo: number): C | null {
+  if (!f || f.handNo !== handNo || phase !== 'playing' || f.trickNo !== trickNo) return null;
+  return f.card as C;
+}
+
 export function flyPlay<C extends string>(
   hand: readonly C[] | null,
   trick: readonly { card: string }[],
