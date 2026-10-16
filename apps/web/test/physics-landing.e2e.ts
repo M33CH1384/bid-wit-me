@@ -54,7 +54,7 @@ async function playTrick(page: Page, to: { x: number; y: number }, shot: string)
   const dismiss = (async () => { while (dismissing) { const ok = page.getByRole('button', { name: 'OK', exact: true }); if (await ok.count().catch(() => 0)) await ok.first().click({ timeout: 1000 }).catch(() => {}); await page.waitForTimeout(250).catch(() => {}); } })();
   await page.waitForFunction(() => {
     const f = (window as unknown as W).__bwmFly ?? {};
-    const done = Object.values(f).filter((s) => s.length && s[s.length - 1]!.t >= 1);
+    const done = Object.values(f).filter((s) => s.some((p) => p.t >= 1));
     return done.length >= 4;
   }, undefined, { timeout: 30000 }).catch(async (e) => {
     await page.screenshot({ path: shot.replace('.png', '-TIMEOUT.png') });

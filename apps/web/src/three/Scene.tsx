@@ -12,7 +12,8 @@ import { paintFace } from '../cardArt';
 import { dragStarted, dropResult } from '../dragPlay';
 import { DEFAULT_SLAM, type DragSample, clearDrop, noteDrop, releaseVector, releaseVelocity, slamFeel, slamIntensity, takeDrop } from '../slam';
 import { reducedMotion } from './handLift';
-import { landTrick, playSeed } from './landing';
+import { VISIBLE_FELT, landTrick, playSeed } from './landing';
+import { shakeOffset, swayOffset } from './shake';
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline, seatDealDelay } from './dealTimeline';
 import { dealHeld, handDealsIn, handOnFan, handSlotKey } from './dealFlight';
@@ -30,7 +31,7 @@ import Venue3D, { feltPatternTexture, preloadVenueAssets } from './Venue3D';
 import { type VenueDef, type VenueId, VENUE_DEFS, venueAssetUrls } from '../venues';
 import { bodyGeometry, cardGeometry, feltGeometry, railGeometry } from './geometry';
 import {
-  CH, CW, FELT, MIN_STRIP_PX, TRICK_SCALE, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, cardScreenQuad, deckSpot, fanCssPx, fanLayout, handCardPlane, handFan, makeCamera, jitterOf, opponentFan, phoneHandFan, pileSpot, ringSpot, trickSpot,
+  CH, CW, MIN_STRIP_PX, TRICK_SCALE, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, cardScreenQuad, deckSpot, fanCssPx, fanLayout, handCardPlane, handFan, makeCamera, jitterOf, opponentFan, phoneHandFan, pileSpot, ringSpot, trickSpot,
 } from './layout';
 
 export interface SceneProps {
@@ -115,7 +116,7 @@ function CameraRig() {
 }
 
 /**
- * Hype-effect camera shake + table vibration (fx.shake, set by joker rumbles / the nuke). The offsets are added on top
+ * Hype-effect thump (fx.shake: jokers, the nuke, slams). Vertical only — see shake.ts. The offsets are added on top
  * of whatever CameraRig set and removed again every frame, so the layout camera never drifts.
  */
 function FxShake({ table }: { table: RefObject<Group | null> }) {
@@ -133,10 +134,8 @@ function FxShake({ table }: { table: RefObject<Group | null> }) {
     if (T && !T.reduced) {
       const u = (fx.warp !== null ? fx.warp : (performance.now() - T.start) / 1000) + 0.4;
       if (u > 0 && u < 2.6) {
-        const env = Math.sin(Math.PI * Math.min(1, u / 2.6));
-        a.x += 0.06 * env * Math.sin(u * 3.2);
-        a.y += 0.025 * env * Math.sin(u * 4.1 + 1);
-        a.roll += 0.03 * env * Math.sin(u * 2.4 + 0.5);
+        const o = swayOffset(u);
+        a.y += o.y;
         invalidate();
       }
     }
@@ -147,18 +146,8 @@ function FxShake({ table }: { table: RefObject<Group | null> }) {
       else if (t > s.dur) { if (last.current === s) fx.shake = null; invalidate(); }
       else {
         last.current = s;
-        const k = s.amp * Math.pow(1 - t / s.dur, 2);
-        const w = 2 * Math.PI * t;
-        if (s.thump) {
-          // A card slam: the table thumps down and back. The camera stays put, so nothing wiggles sideways.
-          a.ty -= k * Math.abs(Math.sin(w * 9));
-        } else {
-          a.x += k * (Math.sin(w * 23) * 0.6 + Math.sin(w * 37 + 1) * 0.4);
-          a.y += k * (Math.sin(w * 29 + 2) * 0.6 + Math.sin(w * 41) * 0.4);
-          a.z += k * 0.5 * Math.sin(w * 31 + 0.5);
-          a.roll += k * 0.25 * Math.sin(w * 19 + 1.3);
-          a.ty += k * 0.18 * Math.sin(w * 53);
-        }
+        const o = shakeOffset(s, t);
+        a.x += o.x; a.y += o.y; a.z += o.z; a.roll += o.roll; a.ty += o.ty;
         invalidate();
       }
     }
@@ -543,7 +532,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   if (held.current.handNo !== handNo) held.current = { handNo, cards: new Set(), slots: new Map(), count: 0, seen: new Set() };
   const pendingHold = useRef<Held>(held.current);
 
-  type Item = { slam?: import('../slam').SlamFeel; key: string; card: Card | null; cardId?: string | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: ((cardId: string) => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide'; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; public?: boolean; holdUntilMove?: boolean };
+  type Item = { slam?: import('../slam').SlamFeel; key: string; card: Card | null; cardId?: string | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: ((cardId: string) => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide' | 'glide'; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; public?: boolean; holdUntilMove?: boolean };
   const items: Item[] = [];
   const dealDelay = (slot: number, seat: number) => seatDealDelay(tl, n, slot, seat, dealer);
 
@@ -570,7 +559,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
       shownTrick.map((pl, order) => { const t = trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale); return { x: t.p[0], z: t.p[2] }; }),
       { hw: (CW * (trickScale ?? TRICK_SCALE)) / 2, hh: (CH * (trickScale ?? TRICK_SCALE)) / 2 },
       (card) => playSeed(props.gameSeed ?? '', handNo, trickNo, card),
-      { minX: -FELT.hx, maxX: FELT.hx, minZ: -FELT.hz, maxZ: FELT.hz },
+      VISIBLE_FELT,
     )
     : [];
   const reduced = reducedMotion();
@@ -602,7 +591,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     // Two-tap / bot tosses vary a little per play (same seed → same toss on every client); reduced motion slides.
     const toss = land && !dragged ? 0.8 + ((playSeed(props.gameSeed ?? '', handNo, trickNo, pl.card) % 1000) / 1000) * 0.5 : 1;
     const flight = props.landCue(pl.card).includes(',overcut') ? { duration: 0.34, arc: 0.7 } : dragged ? { duration: feel.duration, arc: feel.arc } : { duration: 0.5, arc: 0.35 * toss };
-    items.push({ key: playKey, card: pl.card, public: true, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale, land), from, origin, slam: dragged ? feel : { ...feel, intensity: -1 }, ...flight, ...(land && reduced ? { motion: 'slide' as const, arc: 0 } : {}), sfxLand: props.landCue(pl.card), glow: !!props.marked?.includes(pl.card), ...autoDelay });
+    items.push({ key: playKey, card: pl.card, public: true, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale, land), from, origin, slam: dragged ? feel : { ...feel, intensity: -1 }, ...flight, ...(land && reduced ? { motion: 'slide' as const, arc: 0 } : land && !props.landCue(pl.card).includes(',overcut') ? { motion: 'glide' as const, arc: Math.min(0.3, flight.arc) } : {}), sfxLand: props.landCue(pl.card), glow: !!props.marked?.includes(pl.card), ...autoDelay });
   });
   // 'Run it!': the claimer's cards slam down in sequence (then the tornado takes everything)
   if (props.slam) {

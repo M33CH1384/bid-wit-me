@@ -1,8 +1,9 @@
+import { enterTable, quitGame, silenceGame, suspendGame } from './gameSession';
 import { cardControlLabel } from './cardA11y';
 import { archSpot } from './archSpot';
 import type { HandHitCard } from './three/handHit';
 import { useEscapeClose } from './useEscapeClose';
-import { confirmPlay, feltClearsSelection, flyPlay, ignorePlayTap, playTrickOf, type PlayTrick } from './online/playGuard';
+import { type FlyingPlay, confirmPlay, feltClearsSelection, flyPlay, flyingCard, ignorePlayTap, playTrickOf, type PlayTrick } from './online/playGuard';
 import { actingSeat, localSeatOfServerTurn, turnView, type TurnBadge } from './turnState';
 import { retainHandOrder } from './handOrder';
 import { winHeadline } from './headline';
@@ -806,7 +807,12 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   }, [canRun]); // eslint-disable-line react-hooks/exhaustive-deps
   const myBadges = useBadges();
   // The card the player just tapped, shown on the table before the server's state arrives.
-  const [flying, setFlying] = useState<Card | null>(null);
+  // It belongs to the hand (and trick) it was played in: a card from the last hand that is dealt to you again must
+  // never be drawn on the table (offline nothing else ever cleared it).
+  const [flyingPlay, setFlyingPlay] = useState<FlyingPlay | null>(null);
+  const flying = flyingCard(flyingPlay, st.handNo, st.phase, st.tricks.length);
+  const setFlying = (c: Card | null) => setFlyingPlay(c ? { card: c, handNo: st.handNo, trickNo: st.tricks.length } : null);
+  useEffect(() => { setFlyingPlay(null); }, [st.handNo]);
   // what the 3D table shows (see above)
   const display = (() => {
     if (runFx) {
@@ -888,6 +894,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     else saveGame({ seed, settings, state: st, chat: rawMsgs, names, teamNames: [null, botTeam], nuke: fx.tableNuke ?? fx.prefs.nuke });
   }, [st, rawMsgs, seed, settings, online]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Game sound only while this table is on screen; any way off it (menu, Leave, Save & quit, online leave) silences it.
+  useEffect(() => { enterTable(); return silenceGame; }, []);
   // "Resuming your game…" toast
   useEffect(() => {
     if (!resume) return;
@@ -897,7 +905,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   }, [resume]);
   // Online Leave goes home. onExit only opens the table lobby, so one Leave used to stop there.
   const leave = () => {
-    if (!online) { clearGame(); onExit(); return; }
+    if (!online) { quitGame(); onExit(); return; }
     (onMainMenu ?? onExit)();
   };
   // A tap that starts on Leave always leaves, even when WebKit delivers the click to the scrim.
@@ -917,7 +925,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     else setConfirmLeave(true);
   };
   // game over: no confirmation — the game is finished
-  const mainMenu = () => { if (!online) clearGame(); (onMainMenu ?? onExit)(); };
+  const mainMenu = () => { if (!online) quitGame(); (onMainMenu ?? onExit)(); };
   const isBooks = booksHand(st);
   // "First hand: books bid themselves" — announce it once the deal lands
   const booksAnnounced = useRef<string | null>(null);
@@ -1552,7 +1560,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             <p className="muted">{onSuspend ? 'Leave ends it for good. Save & quit lets you resume from the menu.' : 'Your progress in this game will be lost.'}</p>
             <div className="bid-row">
               <button type="button" onClick={() => setConfirmLeave(false)}>Stay</button>
-              {onSuspend && <button type="button" data-testid="save-quit" onClick={onSuspend}>Save &amp; quit</button>}
+              {onSuspend && <button type="button" data-testid="save-quit" onClick={() => { suspendGame(); onSuspend(); }}>Save &amp; quit</button>}
               <button type="button" className="primary" onClick={leave}>Leave</button>
             </div>
             <button type="button" className="link fb-open-ingame" data-testid="open-feedback" onClick={() => { setConfirmLeave(false); setFeedback(true); }}>✉ Send feedback (bug, idea…)</button>
