@@ -127,6 +127,34 @@ Scope rule for all phases: small reviewable PRs, no paid APIs, no new secrets, p
 Asset rule for every phase: CC0 or clear commercial-use licence only, each asset logged with
 source + licence in `docs/asset-licenses.md` before it ships.
 
+## 4b. Amendments (Yoda review, Oct 2026 — required before Phase 2)
+
+1. **Audio-quality setting** (`Low / Balanced / High`, persisted, default Balanced): controls
+   codec/bitrate choices for streamed music + ambience (e.g. Low = 64–96 kbps mono-ish baked mixes,
+   Balanced = 128 kbps stereo, High = 192 kbps+ / lossless-leaning baked mixes), how many HRTF
+   panners may run concurrently (Low 4 / Balanced 8 / High 12), and whether crowd/soundscape layers
+   are full stems or a single baked loop. iOS perf rule: quality auto-drops a tier when the device
+   reports low memory/cores (same heuristic as the existing graphics `defaultQuality()`), and the
+   user can always override. Baked assets ship per-tier files only where the difference is audible.
+2. **Per-player mute controls:** every human/bot seat gets a local mute for that player's
+   voice/chat audio (tap a plate → mute voice; persisted per player id for the session, local only —
+   never signalled). Muting a voice must not mute that seat's card SFX. Bots' AI voices share the
+   same per-seat control. This lands with Phase 5/7 plumbing but the setting shape is defined now:
+   `mutedVoices: Record<playerId, true>`.
+3. **Separate environment picker:** soundscape is NOT hard-bundled to the visual venue. A new
+   persisted `soundscape` setting (`Auto` = follow venue as today, or any soundscape id:
+   Backyard Cookout, Basement Spades Night, Barbershop, Competitive Tournament, plus the existing
+   bed ids) overrides the venue bed/crowd/music-mood independently of the 3D theme. `Auto` keeps
+   current behaviour exactly; the venue picker never changes audio unless soundscape is `Auto`.
+4. **Story Mode per-stop soundscapes:** Story Mode stops each declare a soundscape mapping
+   (stop id → soundscape id) in their stop data; entering a stop applies that soundscape (unless the
+   user has locked a manual soundscape, which wins and is announced in the picker). This is
+   plumbing-level in Phase 2 (the resolver `soundscapeFor({venue, setting, storyStop})`), with
+   per-stop content filled in as Story stops ship.
+5. **Phase 6 music tension layers are GATED:** do not build tension layers/stems until Demetrius
+   approves the richer-music pitch note (separate short doc + his explicit go-ahead). The plan's
+   Phase 6 stays on paper; Phases 2–5 and 7–8 may proceed around it.
+
 ## 5. Risks / open questions for Yoda
 - HRTF CPU on older iPhones — Phase 8 may default spatial to `equalpower` on phones.
 - Voice chat panning vs intelligibility: keep partner gain compensation so panning never buries speech.
