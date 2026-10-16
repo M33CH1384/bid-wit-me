@@ -10,7 +10,7 @@
 import {
   type Action, type GameState, type Series, addSeriesGame, emptySeries, seriesForGameStart, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, RulesConfigError, acceptRules, applyAction, canRunIt, runPlayout, type Seat, spectatorView, isFreshDeal, isNukeTrick, nextDealer, makeRules, newGame, pendingTurn, secureSeed, viewFor, withCompleteNil,
 } from '@spades/rules';
-import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, chooseBotAction, loudLoser, parseHint, leanBid, botSkillFor, personaSkillFloor, seatSkill, leanNil, momentsFor, newTalkState, pickBotNames, prePlayLine } from '@spades/bots';
+import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, chooseBotAction, loudLoser, parseHint, leanBid, botSkillFor, personaSkillFloor, seatSkill, leanNil, momentsFor, newTalkState, pickBotNames, platePersona, prePlayLine } from '@spades/bots';
 import {
   type BotLevel, type ChatLine, type ClientMsg, type HostMusic, type MediaState, type RoomInfo, type RoomPhase, type RunPlayback, type SeatInfo, type ServerMsg,
   DEFAULT_AFK_LIMIT, LIMITS, PROTOCOL_VERSION, parseClientMsg,
@@ -973,9 +973,9 @@ export class Room {
   private botName(): string {
     const used = new Set(this.data.seats.flatMap((s) => (s.kind === 'bot' ? [s.name] : [])));
     for (const m of Object.values(this.data.members)) used.add(m.name);
-    // random per table from the shared pool (packages/bots/src/names.ts); stored in the seat, so every client sees
-    // the same name and it survives reconnects / refreshes for the whole game
-    return pickBotNames(1, used)[0]!;
+    // random per table from the shared pool, with a plate tag no one else at the table already has.
+    // The name is stored on the seat, so every client sees the same tag for the whole game.
+    return pickBotNames(1, used, undefined, platePersona)[0]!;
   }
 
   private leave(pid: string): void {
