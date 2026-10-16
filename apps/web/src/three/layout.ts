@@ -96,6 +96,8 @@ const TRICK_LEAN = 0.38; // tilt toward the camera so the faces aren't foreshort
  * Card's spot in the middle of the table when played by this seat: a non-overlapping "plus" layout
  * (each card toward its player), face up, almost square to the table edge, leaned up toward the camera.
  */
+export const TRICK_ORDER_LIFT = 0.03;
+
 export function trickSpot(pos: SeatPos, n: number, order: number, jitter: number, scale = TRICK_SCALE): Xform {
   const d = seatDir(pos, n);
   const w = CW * scale, h = CH * scale;
@@ -105,7 +107,8 @@ export function trickSpot(pos: SeatPos, n: number, order: number, jitter: number
     ? new Vector3(Math.sign(d.x) * (w + 0.06), 0, 0.02)
     : new Vector3(0, 0, Math.sign(d.z) * (h / 2 + 0.05 + h * Math.sin(TRICK_LEAN) * 0.42)); // the lean lifts the near card's top edge toward the far one
   if (n === 3 && pos !== 'bottom') off.set(Math.sign(d.x) * (w / 2 + 0.04), 0, -(h / 2 + 0.01));
-  const lift = 0.02 + order * 0.004 + (h / 2) * Math.sin(TRICK_LEAN);
+  // Each later play sits clearly above the earlier ones, so the led card never draws over a later card.
+  const lift = 0.02 + order * TRICK_ORDER_LIFT + (h / 2) * Math.sin(TRICK_LEAN);
   return xf([off.x, lift, off.z + 0.04], [-Math.PI / 2 + TRICK_LEAN, jitter * 0.05, 0], scale, 'XYZ');
 }
 

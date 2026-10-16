@@ -2,7 +2,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { memo, useLayoutEffect, useMemo, useRef } from 'react';
 import { Color, type Group, type Material, type Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NoToneMapping, Quaternion, type Texture, Vector3, type WebGLRenderer } from 'three';
 import { cardFaceFragment } from './cardSat';
-import { cardGeometry, cardOutlineGeometry } from './geometry';
+import { cardGeometry } from './geometry';
 import { RAISE_S, applyFaceDepthBias, cardMeshPaint, cardTapHandlers, faceLook, liftEase, screenRaise } from './handLift';
 import { type Xform } from './layout';
 import { type Sfx, sound } from '../audio';
@@ -484,7 +484,6 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
         <mesh geometry={geo.body} material={edge} castShadow={castShadow} />
         <mesh geometry={geo.front} material={frontMat} />
         <mesh geometry={geo.back} material={backMat} />
-        {frontTex && <mesh geometry={cardOutlineGeometry()} material={glowMat} visible={!!glow} renderOrder={-1} />}
       </group>
       </group>
     </group>

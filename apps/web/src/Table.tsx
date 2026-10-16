@@ -8,10 +8,11 @@ import { type VenueId, VENUE_DEFS, resolveVenue } from './venues';
 import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, isFreshDeal, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, newlyOneTrickFromShot, nilBustsJustResolved, partnerOf, sideOf, sortHand,
+  type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, hostMinimum, isFreshDeal, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, newlyOneTrickFromShot, nilBustsJustResolved, partnerOf, sideOf, sortHand,
 } from '@spades/rules';
 import { ScorePad, setTeamNames, sideName } from './Modals';
 import { LockedRulesPanel } from './LockedRules';
+import { booksBanner, teamMinNote } from './polishText';
 import { type Series, addSeriesGame, seriesForGameStart, seriesSides, summarizeGame } from '@spades/rules';
 import { SeriesChip, SeriesSheet, loadSeries, saveSeries } from './Series';
 import { useMyTeamName } from './TeamName';
@@ -330,11 +331,11 @@ function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only',
           {tray && <>
             {extra}
             {trash}
-            <button type="button" className={`chat-toggle ${open ? 'open' : ''}`} onClick={onToggle} aria-label="Toggle chat">
+            <button type="button" className={`chat-toggle ${open ? 'open' : ''}`} onClick={onToggle} aria-label={open ? 'Hide chat' : 'Show chat'}>
               💬{!open && unread > 0 && <span className="unread">{unread}</span>}
             </button>
           </>}
-          <button type="button" className={`tray-toggle ${tray ? 'on' : ''}`} data-testid="tray-toggle" aria-expanded={tray} aria-label={tray ? 'Close controls' : 'Open controls: camera, mic, voice, chat'} onClick={() => setTray(!tray)}>
+          <button type="button" className={`tray-toggle ${tray ? 'on' : ''}`} data-testid="tray-toggle" aria-label={tray ? 'Close controls' : 'Open controls: camera, mic, voice, chat'} onClick={() => setTray(!tray)}>
             {tray ? '✕' : <>💬<small>⋯</small></>}{!tray && unread > 0 && <span className="unread" data-testid="tray-unread">{unread}</span>}
           </button>
         </div>
@@ -1290,7 +1291,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       {/* scorebug */}
       <header className="scorebug">
         <div className="menu-wrap">
-          <button type="button" className={`bug-btn ${menuOpen ? 'on' : ''}`} onClick={() => setMenuOpen(!menuOpen)} aria-label="Menu" aria-expanded={menuOpen} data-testid="menu">☰</button>
+          <button type="button" className={`bug-btn ${menuOpen ? 'on' : ''}`} onClick={() => setMenuOpen(!menuOpen)} aria-label="Menu" aria-haspopup="dialog" data-testid="menu">☰</button>
           {menuOpen && (
             <>
               <div className="menu-scrim" onPointerDown={(e) => runLeaveMenu(e, 'scrim')} onPointerUp={(e) => runLeaveMenu(e, 'scrim')} onClick={(e) => runLeaveMenu(e, 'scrim')} />
@@ -1374,7 +1375,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         {showDealer && dealerLive && <DealerPopup name={dealerLabel} localSeat={dealerSeat} />}
         {st.phase === 'bidding' && !pause && !dealing && localTurn !== HUMAN && localTurn !== null && <div className="center-note" data-testid="bidding-note">{biddingNote(names[localTurn] ?? '', { partnerships: r.partnerships, partnerTurn: localTurn === partnerSeat, spectating })}</div>}
         {showCenterBidOrder(st.phase, pause, dealing) && <BidOrder st={st} names={names} me={spectating ? -1 : HUMAN} />}
-        {isBooks && st.phase === 'playing' && !pause && !dealing && st.tricks.length === 0 && st.trick.plays.length === 0 && <div className="center-note books-note" data-testid="books-note">First hand: books bid themselves · 10 per book</div>}
+        {isBooks && st.phase === 'playing' && !pause && !dealing && st.tricks.length === 0 && st.trick.plays.length === 0 && <div className="center-note books-note" data-testid="books-note">{booksBanner(hostMinimum(r), r.partnerships)}</div>}
         {st.phase === 'exchange' && !humanExchanging && <div className="center-note">{names[exchangeStep!.from]} passes {exchangeStep!.count} to {names[exchangeStep!.to]}…</div>}
       </div>
       {winnerSeat !== null && <TrickBanner key={`${st.handNo}-${st.tricks.length}`} text={trickTakenLine(face(winnerSeat))} />}
@@ -1415,6 +1416,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
               {coachBid && <BidCoach key={bcKey} view={view} startOpen={help || bcOpen} />}
               <div className="panel-title">YOUR BID{r.partnerships && st.bids[2] !== null ? <small> · partner bid {bidLabel(st.bids[2]!)}</small> : r.partnerships ? <small> · partner bids right after you</small> : null}</div>
               <BidOrder st={st} names={names} me={HUMAN} />
+              {!raisedMin && teamMinNote(hostMinimum(r), r.partnerships) && <p className="team-min-note" data-testid="team-min-note">{teamMinNote(hostMinimum(r), r.partnerships)}</p>}
               {raisedMin ? <MinBidLine note={raisedMin} /> : (view.bidOptions.blockReason || view.bidOptions.nilReason) && (
                 <p className="bid-block" data-testid="bid-block">{[view.bidOptions.blockReason, view.bidOptions.nilReason].filter(Boolean).join(' · ')}</p>
               )}

@@ -45,6 +45,9 @@ export function syncPlateFacts(screen: ParentNode, facts: readonly SeatFact[]): 
       if (inLayer) {
         const name = plate.querySelector('.plate-name');
         if (name) {
+          // One DEALER chip per plate. React's own chip and a synced one could both survive a re-render.
+          const dupes = [...name.children].filter((el) => el.classList.contains('dealer')).slice(1);
+          for (const d of dupes) { d.remove(); wrote = true; }
           const chip = childChip(name, (el) => el.classList.contains('dealer'));
           if (fact.dealer) {
             if (!chip) {

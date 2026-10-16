@@ -29,7 +29,7 @@ export function TeamNameField({ value, placeholder, onSave, label = 'Team name',
   return (
     <form className="team-name-edit" onSubmit={submit} data-testid={testId}>
       <label className="sr-only" htmlFor={`${testId}-in`}>{label}</label>
-      <input id={`${testId}-in`} value={text} maxLength={TEAM_NAME_MAX * 2} placeholder={placeholder} onChange={(e) => setText(e.target.value)} onBlur={submit} aria-label={label} />
+      <input id={`${testId}-in`} value={text} maxLength={TEAM_NAME_MAX} placeholder={placeholder} onChange={(e) => setText(e.target.value)} onBlur={submit} aria-label={label} />
       <button type="submit" className="small">Save</button>
       {err && <small className="err" role="alert">{err}</small>}
     </form>

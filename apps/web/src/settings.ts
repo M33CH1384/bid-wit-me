@@ -1,3 +1,4 @@
+import { minimumChip } from './polishText';
 import { type VenueChoice, isVenueChoice } from '@spades/protocol';
 import { CLASSIC_JOKER, cardLabel, hostMinimum, type Mode, type RulesOverrides, type TableRules, makeRules } from '@spades/rules';
 import { type BotSkillSetting, skillSettingOf } from '@spades/bots';
@@ -139,7 +140,7 @@ export function rulesSummary(r: TableRules): string {
   const parts = [`${r.playerCount} players`, `${hs} cards each`, `${hs} books`];
   if (r.playerCount === 3 && removed) parts.push(removed);
   const floor = hostMinimum(r);
-  parts.push(floor > 0 ? `Minimum ${floor}` : 'No minimum');
+  parts.push(minimumChip(floor, r.partnerships));
   parts.push(`Nil ${r.nil.allowed ? 'on' : 'off'}`, `Blind Nil ${r.blindNil.allowed ? 'on' : 'off'}`, `Bags ${r.bagsOn !== false ? 'on' : 'off'}`);
   return parts.join(' • ');
 }
