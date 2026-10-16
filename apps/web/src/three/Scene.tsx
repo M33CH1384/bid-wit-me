@@ -602,7 +602,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     // Two-tap / bot tosses vary a little per play (same seed → same toss on every client); reduced motion slides.
     const toss = land && !dragged ? 0.8 + ((playSeed(props.gameSeed ?? '', handNo, trickNo, pl.card) % 1000) / 1000) * 0.5 : 1;
     const flight = props.landCue(pl.card).includes(',overcut') ? { duration: 0.34, arc: 0.7 } : dragged ? { duration: feel.duration, arc: feel.arc } : { duration: 0.5, arc: 0.35 * toss };
-    items.push({ key: playKey, card: pl.card, public: true, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale, land), from, origin, slam: dragged ? feel : { ...feel, intensity: -1 }, ...flight, ...(land && reduced ? { motion: 'slide' as const, arc: 0 } : land && !props.landCue(pl.card).includes(',overcut') ? { motion: 'glide' as const, duration: Math.max(0.55, flight.duration + 0.25), arc: Math.min(0.3, flight.arc) } : {}), sfxLand: props.landCue(pl.card), glow: !!props.marked?.includes(pl.card), ...autoDelay });
+    items.push({ key: playKey, card: pl.card, public: true, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale, land), from, origin, slam: dragged ? feel : { ...feel, intensity: -1 }, ...flight, ...(land && reduced ? { motion: 'slide' as const, arc: 0 } : land && !props.landCue(pl.card).includes(',overcut') ? { motion: 'glide' as const, arc: Math.min(0.3, flight.arc) } : {}), sfxLand: props.landCue(pl.card), glow: !!props.marked?.includes(pl.card), ...autoDelay });
   });
   // 'Run it!': the claimer's cards slam down in sequence (then the tornado takes everything)
   if (props.slam) {
