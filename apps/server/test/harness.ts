@@ -16,6 +16,8 @@ export class FakeEnv {
   room: Room;
   tourResults: { match: string; scores: number[]; places: number[] }[] = [];
   records: { rec: import('../src/stats/record').GameRecord; rated: boolean; meta?: import('../src/stats/record').SaveMeta }[] = [];
+  /** The DO's socket close can re-enter the room. Tests set this to simulate that. */
+  onClose?: (cid: string) => void;
 
   constructor(data?: RoomData, public timing: RoomTiming = DEFAULT_TIMING) {
     this.room = new Room(data ?? newRoomData('ABCDE', this.t), this.io(), timing);
@@ -31,7 +33,7 @@ export class FakeEnv {
         if (m.t === 'state' && m.view && m.view.history === null) m.view.history = this.last(cid, 'state')?.view?.history ?? [];
         (this.sent.get(cid) ?? this.sent.set(cid, []).get(cid)!).push(m);
       },
-      close: (cid) => { this.closed.push(cid); },
+      close: (cid) => { this.closed.push(cid); this.onClose?.(cid); },
       wake: (ms) => { this.wakes.push(this.t + ms); },
       // match the DO: a later alarm does not postpone an earlier one; clearing is a no-op
       setAlarm: (at) => { if (at === null || (this.alarm !== null && this.alarm <= at)) return; this.alarm = at; this.alarmSets++; },
@@ -91,9 +93,9 @@ export class FakeEnv {
   errors(cid: string) { return this.msgs(cid).filter((x) => x.t === 'error') as Extract<ServerMsg, { t: 'error' }>[]; }
   clear(): void { this.sent.clear(); }
 
-  join(cid: string, name: string, token?: string, uid?: string): { pid: string; token: string } {
+  join(cid: string, name: string, token?: string, uid?: string, gid?: string): { pid: string; token: string } {
     this.room.open(cid);
-    this.room.message(cid, JSON.stringify({ t: 'hello', name, ...(token ? { token } : {}) }), uid);
+    this.room.message(cid, JSON.stringify({ t: 'hello', name, ...(token ? { token } : {}), ...(gid ? { gid } : {}) }), uid);
     const w = this.last(cid, 'welcome')!;
     return { pid: w.you, token: w.token };
   }

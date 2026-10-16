@@ -24,8 +24,9 @@ export const ROOM_DATA_VERSION = 1;
 
 export type SeatSlot =
   | { kind: 'empty' }
-  /** vacated: a bot that took over from a player who left / was kicked / went AFK (always open to spectators) */
-  | { kind: 'bot'; name: string; level: BotLevel; vacated?: boolean; /** display name of the human this bot replaced */ was?: string }
+  /** vacated: a bot that took over from a player who left / was kicked / went AFK (always open to spectators).
+   *  replacedPid: the member who still owns this seat after a disconnect. A reconnect reclaims it; a leave does not set this. */
+  | { kind: 'bot'; name: string; level: BotLevel; vacated?: boolean; /** display name of the human this bot replaced */ was?: string; replacedPid?: string }
   | { kind: 'human'; playerId: string };
 
 export interface Member {
@@ -44,6 +45,10 @@ export interface Member {
   badges?: { id: string; earnedAt: number; context?: Record<string, unknown> }[];
   /** Release 9: signed-in account behind this seat (from a verified account ticket) → stats, ratings, recent players */
   uid?: string;
+  /** Browser guest id. A reload that minted a new seat token is still this member. */
+  gid?: string;
+  /** Epoch ms of the last socket drop. The disconnect grace is measured from here, not from each tick. */
+  disconnectedAt?: number;
 }
 
 /** Everything that survives hibernation / restarts. Plain JSON. */
@@ -228,9 +233,13 @@ export class Room {
 
   /* ------------------------------------------------------------ connections */
 
-  /** Re-register a connection that survived hibernation (DO wake-up). */
+  /** Re-register a connection that survived hibernation (DO wake-up). A null id must not wipe a live binding. */
   restoreConnection(connId: string, playerId: string | null): void {
-    this.conns.set(connId, playerId && this.data.members[playerId] ? playerId : null);
+    if (playerId && this.data.members[playerId]) {
+      this.conns.set(connId, playerId);
+      return;
+    }
+    if (!this.conns.has(connId)) this.conns.set(connId, null);
   }
 
   open(connId: string): void {
@@ -243,8 +252,12 @@ export class Room {
     this.conns.delete(connId);
     if (!pid || this.isConnected(pid)) return;
     const m = this.data.members[pid];
+    // The grace starts when the last socket actually drops. A second socket for this
+    // player returns above, so a reload is not a leave and does not start a new grace.
+    if (m) m.disconnectedAt = this.io.now();
     if (m && m.seat === null) {
-      // an unseated member who dropped, in any phase: forget them so they don't fill the table
+      // an unseated member who dropped, in any phase: forget them so they don't fill the table.
+      // A seat held by their replacement bot is not forgotten — the reconnect reclaims it.
       this.dropGhosts();
     } else if (m && this.data.hostId === pid) {
       this.data.hostAwaySince ??= this.io.now();
@@ -358,9 +371,14 @@ export class Room {
     return /^[A-Za-z0-9_-]{16,100}$/.test(token);
   }
 
-  private kickedOut(token?: string, uid?: string): boolean {
+  private kickedOut(token?: string, uid?: string, gid?: string): boolean {
     const k = this.data.kicked ?? [];
-    return (!!token && k.includes(token)) || (!!uid && k.includes(uid));
+    return (!!token && k.includes(token)) || (!!uid && k.includes(uid)) || (!!gid && this.gidOk(gid) && k.includes(gid));
+  }
+
+  /** Same shape the browser mints for `bwm.social.guest`. */
+  private gidOk(gid: string): boolean {
+    return /^[A-Za-z0-9_-]{8,64}$/.test(gid);
   }
 
   private rejectKick(connId: string): void {
@@ -380,11 +398,16 @@ export class Room {
     return { members, watching };
   }
 
+  /** A bot is keeping this member's seat until they reconnect. */
+  private seatHeld(pid: string): boolean {
+    return this.data.seats.some((s) => s.kind === 'bot' && s.replacedPid === pid);
+  }
+
   /** forget disconnected unseated members (they must not hold a member or spectator slot) */
   private dropGhosts(): void {
     const d = this.data;
     for (const [id, m] of Object.entries(d.members)) {
-      if (m.seat !== null || this.isConnected(id)) continue;
+      if (m.seat !== null || this.isConnected(id) || this.seatHeld(id)) continue;
       delete d.members[id];
       if (d.hostId === id) this.passHost();
     }
@@ -412,9 +435,10 @@ export class Room {
     for (const [cid, p] of this.conns) if (p === dropId) this.conns.set(cid, keepId);
     if (d.hostId === dropId) d.hostId = keepId;
     if (d.hostId && this.isConnected(d.hostId)) delete d.hostAwaySince;
+    keep.gid ??= drop.gid;
     delete d.members[dropId];
     keep.uid = uid;
-    keep.name = m.name;
+    // The name already on the kept member stays. A second hello must not rename the seat.
     this.seatReserved(keepId);
   }
 
@@ -467,18 +491,34 @@ export class Room {
     const d = this.data;
     this.dropGhosts();
     const name = cleanName(msg.name, LIMITS.nameMax) || 'Player';
-    if (this.kickedOut(msg.token, uid)) { this.rejectKick(connId); return; }
-    // same seat token, or the same account (a second tab / cleared storage still presenting the ticket)
+    const gid = msg.gid && this.gidOk(msg.gid) ? msg.gid : undefined;
+    if (this.kickedOut(msg.token, uid, gid)) { this.rejectKick(connId); return; }
+    // same seat token, same account, or the same browser guest (a reload can mint a new token)
     let pid = msg.token ? Object.keys(d.members).find((id) => d.members[id]!.token === msg.token) : undefined;
     if (pid && uid && d.members[pid]!.uid && d.members[pid]!.uid !== uid) pid = undefined;
     if (!pid && uid) pid = Object.keys(d.members).find((id) => d.members[id]!.uid === uid);
+    if (!pid && gid) {
+      pid = Object.keys(d.members).find((id) => {
+        const m = d.members[id]!;
+        return m.gid === gid && !(uid && m.uid && m.uid !== uid);
+      });
+    }
     if (pid) {
-      // reconnect: same player, same seat; drop any older socket of theirs
-      for (const [cid, p] of this.conns) if (p === pid && cid !== connId) { this.conns.delete(cid); this.io.close?.(cid, 4000, 'replaced'); }
       const m = d.members[pid]!;
-      m.name = name;
+      // The name stuck at the first hello. A reconnect, a second tab, or an account
+      // username must not rewrite the scoreboard.
+      if (!m.name) m.name = name;
+      if (gid && !m.gid) m.gid = gid;
       if (uid) m.uid = uid;
+      delete m.disconnectedAt;
+      m.timeouts = 0;
       if (d.hostId === pid) delete d.hostAwaySince;
+      // Bind the new socket BEFORE dropping the old one. Closing the old socket can
+      // re-enter close() (the DO restores the dying socket). If this socket is not
+      // bound yet, that re-entry looks like the player left and the turn clock starts
+      // the disconnect grace — the path that hands the seat to a bot.
+      this.conns.set(connId, pid);
+      for (const [cid, p] of this.conns) if (p === pid && cid !== connId) { this.conns.delete(cid); this.io.close?.(cid, 4000, 'replaced'); }
     } else {
       const { members, watching } = this.liveCounts();
       if (members >= LIMITS.members || (d.phase !== 'lobby' && watching >= LIMITS.spectators)) {
@@ -490,22 +530,41 @@ export class Room {
       // honor a client-minted token so a second tab that stored it first lands in this same member
       const tokenTaken = !!msg.token && Object.values(d.members).some((m) => m.token === msg.token);
       const token = msg.token && this.tokenOk(msg.token) && !tokenTaken ? msg.token : this.io.randomId();
-      d.members[pid] = { name, token, seat: null, media: { cam: false, mic: false }, joinedAt: this.io.now(), ...(uid ? { uid } : {}) };
+      d.members[pid] = { name, token, seat: null, media: { cam: false, mic: false }, joinedAt: this.io.now(), ...(uid ? { uid } : {}), ...(gid ? { gid } : {}) };
       if (!d.hostId || !d.members[d.hostId]) d.hostId = pid;
       this.system(`${name} joined`);
+      this.conns.set(connId, pid);
     }
-    this.conns.set(connId, pid);
     // token matched a different body than the account already seated here: fold them into one member
     if (uid && Object.keys(d.members).some((id) => id !== pid && d.members[id]!.uid === uid)) {
       this.claimAccount(pid, uid);
       pid = this.conns.get(connId) ?? pid;
     }
+    // A bot that took the seat during the disconnect grace gives it back. Never leave them watching.
+    this.reclaimSeat(pid);
     this.sentHistory.delete(connId);
     const m = d.members[pid]!;
     this.io.send(connId, { t: 'welcome', you: pid, token: m.token, code: d.code, chat: d.chat.slice(-LIMITS.chatHistory), v: PROTOCOL_VERSION });
     if (uid) this.seatReserved(pid);
     d.lastActive = this.io.now();
     this.after();
+  }
+
+  /** Put `pid` back in the seat a disconnect-grace bot is holding for them. */
+  private reclaimSeat(pid: string): void {
+    const d = this.data;
+    const m = d.members[pid];
+    if (!m || m.seat !== null) return;
+    const seat = d.seats.findIndex((s) => s.kind === 'bot' && s.replacedPid === pid);
+    if (seat < 0) return;
+    d.seats[seat] = { kind: 'human', playerId: pid };
+    m.seat = seat;
+    m.timeouts = 0;
+    const g = d.game;
+    if (g && pendingTurn(g)?.seat === seat) {
+      d.turnKey = null;
+      d.deadline = null;
+    }
   }
 
   private handle(connId: string, pid: string, msg: ClientMsg): void {
@@ -864,7 +923,7 @@ export class Room {
     delete d.members[target];
     if (d.votes) delete d.votes[target];
     d.ready = d.ready.filter((x) => x !== target);
-    d.kicked = [...(d.kicked ?? []), m.token, ...(m.uid ? [m.uid] : [])];
+    d.kicked = [...(d.kicked ?? []), m.token, ...(m.uid ? [m.uid] : []), ...(m.gid ? [m.gid] : [])];
     if (d.music?.mode === 'stream' && d.music.by === target) d.music = { mode: 'off' };
     this.system(how === 'host' ? `${m.name} was removed by the host${d.phase === 'playing' ? ' — a bot took their seat' : ''}` : `${m.name} was voted off the table${d.phase === 'playing' ? ' — a bot took their seat' : ''}`);
     for (const [cid, p] of this.conns) {
@@ -1391,15 +1450,32 @@ export class Room {
       const timerMs = (turn.kind === 'bid' ? d.rules.turnTimerSec.bid : d.rules.turnTimerSec.play) * 1000 * (d.members[slot.playerId]?.learning ? LEARNING_TIMER : 1);
       const full = (d.turnStartedAt ?? now) + leadIn + timerMs;
       const connected = this.isConnected(slot.playerId);
-      const want = connected ? full : Math.min(full, now + this.timing.disconnectGraceMs);
-      // the deadline only ever moves earlier for a turn (a disconnect shortens it; a reconnect doesn't extend it)
-      if (d.deadline === null || want < d.deadline) { d.deadline = want; changed = true; }
+      const member = d.members[slot.playerId];
+      if (!connected) {
+        // One grace from the moment the last socket dropped. Later ticks must not push it out.
+        if (member && member.disconnectedAt == null) member.disconnectedAt = now;
+        const since = member?.disconnectedAt ?? now;
+        const want = Math.min(full, since + this.timing.disconnectGraceMs);
+        if (d.deadline === null || want < d.deadline) { d.deadline = want; changed = true; }
+      } else {
+        if (member) delete member.disconnectedAt;
+        // A reconnect undoes the grace shortening, back up to the original timer — not a new clock.
+        if (d.deadline === null || d.deadline < full) { d.deadline = full; changed = true; }
+      }
       // a slow human gets roasted once per turn (bots only)
       const slowAt = (d.turnStartedAt ?? now) + leadIn + Math.max(12_000, timerMs * 0.6);
-      if (this.slowKey !== key && now >= slowAt && now < d.deadline) { this.slowKey = key; this.talk({ kind: 'slow', them: turn.seat }); changed = true; }
-      else if (this.slowKey !== key && slowAt < d.deadline) this.io.wake(Math.max(50, slowAt - now));
-      if (now >= d.deadline) {
-        this.autoAct(turn.seat, 'normal');
+      if (this.slowKey !== key && now >= slowAt && now < (d.deadline ?? full)) { this.slowKey = key; this.talk({ kind: 'slow', them: turn.seat }); changed = true; }
+      else if (this.slowKey !== key && slowAt < (d.deadline ?? full)) this.io.wake(Math.max(50, slowAt - now));
+      if (d.deadline !== null && now >= d.deadline) {
+        const before = d.seq ?? 0;
+        try { this.autoAct(turn.seat, 'normal'); } catch (e) { console.error('human auto-act failed', e); }
+        // The brain declined and the fallback didn't move. Counting that as AFK in a tight
+        // loop is how one reload replaced the player with a bot in the same tick.
+        if ((d.seq ?? 0) === before) {
+          this.io.wake(1000);
+          this.io.setAlarm(now + 1000);
+          return changed;
+        }
         this.system(`${this.seatName(turn.seat)} ran out of time`);
         this.countTimeout(slot.playerId, turn.seat);
         changed = true;
@@ -1411,7 +1487,9 @@ export class Room {
     return changed;
   }
 
-  /** AFK: after `afkLimit` timeouts in a row a bot takes the seat; the player stays at the table and can sit again. */
+  /** AFK: after `afkLimit` timeouts in a row a bot takes the seat; the player stays at the table and can sit again.
+   *  A disconnected player is not replaced until the disconnect grace has actually elapsed, and the bot
+   *  remembers them so the same identity reclaims the seat instead of watching. */
   private countTimeout(pid: string, seat: number): void {
     const d = this.data;
     const m = d.members[pid];
@@ -1419,8 +1497,15 @@ export class Room {
     m.timeouts = (m.timeouts ?? 0) + 1;
     const limit = d.afkLimit ?? DEFAULT_AFK_LIMIT;
     if (!limit || m.timeouts < limit || d.seats[seat]?.kind !== 'human') return;
+    const connected = this.isConnected(pid);
+    if (!connected) {
+      const since = m.disconnectedAt ?? this.io.now();
+      if (this.io.now() < since + this.timing.disconnectGraceMs) return;
+    }
     const bot = this.botName();
-    d.seats[seat] = { kind: 'bot', name: bot, level: d.botLevel, was: m.name };
+    d.seats[seat] = connected
+      ? { kind: 'bot', name: bot, level: d.botLevel, was: m.name }
+      : { kind: 'bot', name: bot, level: d.botLevel, was: m.name, vacated: true, replacedPid: pid };
     m.seat = null;
     m.timeouts = 0;
     if (d.votes) delete d.votes[pid];
@@ -1453,8 +1538,7 @@ export class Room {
     const mate = d.rules.partnerships ? (seat + 2) % d.rules.playerCount : -1;
     const h = mate >= 0 ? d.hints?.[mate] : undefined;
     const hint = h && h.hand === d.game!.handNo && d.seats[mate]?.kind === 'human' ? parseHint(h.text) : null;
-    let action = chooseBotAction(view, skill, undefined, hint);
-    if (!action) return;
+    let action = chooseBotAction(view, skill, undefined, hint) ?? this.fallbackAction(seat);
     // persona lean (bots only): a slight bid nudge / Nil reluctance; illegal nudges fall through to the catch below
     const slot = d.seats[seat];
     if (slot?.kind === 'bot' && action.type === 'bid') {

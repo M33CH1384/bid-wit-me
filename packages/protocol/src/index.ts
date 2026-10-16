@@ -132,7 +132,7 @@ export function isMusicLink(url: string): boolean {
 }
 
 export type ClientMsg =
-  | { t: 'hello'; name: string; token?: string; v?: number; /** Release 9: signed account ticket (links the seat to an account for stats) */ ticket?: string }
+  | { t: 'hello'; name: string; token?: string; v?: number; /** stable browser guest id, so a new seat token on reload is still this player */ gid?: string; /** Release 9: signed account ticket (links the seat to an account for stats) */ ticket?: string }
   | { t: 'sit'; seat: number }
   | { t: 'stand' }
   | { t: 'addBot'; seat: number }
@@ -313,7 +313,7 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
   switch (m.t) {
     case 'hello':
       if (!isStr(m.name, 100)) return null;
-      return { t: 'hello', name: m.name, token: isStr(m.token, 100) ? m.token : undefined, v: isInt(m.v) ? m.v : undefined, ...(isStr(m.ticket, 400) ? { ticket: m.ticket } : {}) };
+      return { t: 'hello', name: m.name, token: isStr(m.token, 100) ? m.token : undefined, v: isInt(m.v) ? m.v : undefined, ...(isStr(m.gid, 64) ? { gid: m.gid } : {}), ...(isStr(m.ticket, 400) ? { ticket: m.ticket } : {}) };
     case 'sit': case 'addBot': case 'removeBot': case 'kick':
       return isInt(m.seat) && m.seat >= 0 && m.seat < 4 ? { t: m.t, seat: m.seat } : null;
     case 'stand': case 'start': case 'next': case 'rematch': case 'leave':
