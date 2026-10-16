@@ -1085,8 +1085,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       window.removeEventListener('pointercancel', up, true);
     };
   }, []);
-  const onCard = useCallback((c: Card) => {
+  const onCard = useCallback((c: Card, dragged = false) => {
     if (humanExchanging) {
+      if (dragged) return;
       sound.play('tap');
       setExchangePick((p) => (p.includes(c) ? p.filter((x) => x !== c) : p.length < exchangeStep!.count ? [...p, c] : p));
       return;
@@ -1094,7 +1095,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (ignorePlayTap(playHold.current, trickNow)) return;
     if (!legal.includes(c)) return;
     // Play sends the selected card id. A different hit only changes the selection.
-    const action = confirmPlay(selectedRef.current, c, playArmed.current && selectedRef.current === c);
+    const action = dragged ? { type: 'play' as const, card: c } : confirmPlay(selectedRef.current, c, playArmed.current && selectedRef.current === c);
     if (action.type === 'ignore') return;
     if (action.type === 'play') {
       const held = trickNow;
@@ -1114,6 +1115,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       sound.play('tap');
     }
   }, [humanExchanging, exchangeStep, legal, apply, trickNow]);
+
+  const onCardDrop = useCallback((c: Card) => onCard(c, true), [onCard]);
 
   const isBotSeat = (seat: number) => (online ? !!online.botSeats?.includes(seat) : seat !== HUMAN);
   // recorded bot voices: fetch a persona's clips when one of its bots sits down
@@ -1292,6 +1295,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           winnerSeat={winnerSeat}
           promoted={promoted}
           onCardTap={onCard}
+          onCardDrop={onCardDrop}
           onFeltTap={() => { if (feltClearsSelection(selected)) { playArmed.current = false; setSelected(null); } }}
           renderSeat={renderSeat}
           introHand={introHand}
