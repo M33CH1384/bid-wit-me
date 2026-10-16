@@ -112,7 +112,7 @@ export function useOnlineSource(cs: ConnState, conn: TableConnection): (GameSour
     switch (a.type) {
       case 'reveal': return conn.act({ type: 'reveal' }, seq);
       case 'bid': return a.bid !== 'books' && conn.act({ type: 'bid', bid: a.bid }, seq);
-      case 'play': return conn.act({ type: 'play', card: a.card }, seq);
+      case 'play': return conn.act(a.slam !== undefined ? { type: 'play', card: a.card, slam: a.slam } : { type: 'play', card: a.card }, seq);
       case 'exchange': return conn.act({ type: 'exchange', cards: a.cards }, seq);
       case 'runIt': return conn.act({ type: 'runIt' }, seq);
       case 'nextHand': conn.send({ t: 'next' }); return true;

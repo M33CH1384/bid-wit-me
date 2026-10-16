@@ -1085,7 +1085,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       window.removeEventListener('pointercancel', up, true);
     };
   }, []);
-  const onCard = useCallback((c: Card, dragged = false) => {
+  const onCard = useCallback((c: Card, dragged = false, slam?: number) => {
     if (humanExchanging) {
       if (dragged) return;
       sound.play('tap');
@@ -1099,7 +1099,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (action.type === 'ignore') return;
     if (action.type === 'play') {
       const held = trickNow;
-      const sent = apply({ type: 'play', seat: HUMAN, card: action.card as Card });
+      const sent = apply(dragged && slam !== undefined ? { type: 'play', seat: HUMAN, card: action.card as Card, slam } : { type: 'play', seat: HUMAN, card: action.card as Card });
       if (sent !== false) {
         playHold.current = held;
         playArmed.current = false;
@@ -1116,7 +1116,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     }
   }, [humanExchanging, exchangeStep, legal, apply, trickNow]);
 
-  const onCardDrop = useCallback((c: Card) => onCard(c, true), [onCard]);
+  const onCardDrop = useCallback((c: Card, slam?: number) => onCard(c, true, slam), [onCard]);
 
   const isBotSeat = (seat: number) => (online ? !!online.botSeats?.includes(seat) : seat !== HUMAN);
   // recorded bot voices: fetch a persona's clips when one of its bots sits down

@@ -11,7 +11,7 @@ export type Seat = number;
 export type Phase = 'bidding' | 'exchange' | 'playing' | 'handOver' | 'gameOver';
 
 /** `auto`: played automatically when both Jokers landed in the trick (the nuke auto-finish); counts as that seat's play. */
-export interface Play { seat: Seat; card: Card; auto?: true; /** played out by a 'Run it!' claim */ run?: true }
+export interface Play { seat: Seat; card: Card; /** drag-to-play slam strength 0..1 (optional, cosmetic) */ slam?: number; auto?: true; /** played out by a 'Run it!' claim */ run?: true }
 export interface Trick { leader: Seat; plays: Play[]; winner: Seat | null }
 export interface ExchangeStep { from: Seat; to: Seat; count: number }
 
@@ -65,7 +65,7 @@ export type Action =
   | { type: 'reveal'; seat: Seat }
   | { type: 'bid'; seat: Seat; bid: Bid }
   | { type: 'exchange'; seat: Seat; cards: Card[] }
-  | { type: 'play'; seat: Seat; card: Card }
+  | { type: 'play'; seat: Seat; card: Card; slam?: number }
   /** 'Run it!': `seat` claims every remaining trick, any time in trick play (only legal when canRunIt proves it) */
   | { type: 'runIt'; seat: Seat }
   | { type: 'nextHand' };
@@ -641,7 +641,7 @@ export function applyAction(st: GameState, action: Action): GameState {
       if (!legal.includes(action.card)) throw explainIllegal(st, seat, action.card);
       const hands = [...st.hands];
       hands[seat] = hands[seat]!.filter((c) => c !== action.card);
-      const plays: Play[] = [...st.trick.plays, { seat, card: action.card }];
+      const plays: Play[] = [...st.trick.plays, typeof action.slam === 'number' && Number.isFinite(action.slam) ? { seat, card: action.card, slam: Math.max(0, Math.min(1, action.slam)) } : { seat, card: action.card }];
       let spadesBroken = st.spadesBroken || isTrump(action.card, r);
       // ☢ last-trick nuke: once both Jokers are in the hand's final trick, everyone still to play auto-plays their last
       // card at once (one card each, so no choice is made for them); other tricks play out normally
