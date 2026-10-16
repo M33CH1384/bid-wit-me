@@ -104,9 +104,14 @@ function prove(st: GameState, seat: Seat): boolean {
   const feasMemo = new Map<string, boolean>();
   const memo = new Map<string, boolean>();
 
-  /** Every remaining card of ours beats every outstanding card: definite, or null if the search still has work. */
+  /**
+   * Every card we still hold beats every outstanding card: definite, or null if the search still has work.
+   * "Beats" is one-way. A diamond is not beaten by a club, and a club is not beaten by that diamond, but the
+   * club still wins a trick it led. Treating "nothing beats us" as a win let an off-lead hand of unbeaten
+   * side cards claim Run it, then the playout threw once the neighbour led a suit we could not win.
+   */
   const fast = (hand: readonly Card[], unseen: readonly Card[], trick: readonly Play[], broken: boolean): boolean | null => {
-    for (const c of hand) for (const u of unseen) if (cardBeats(u, c, rules)) return null;
+    for (const c of hand) for (const u of unseen) if (!cardBeats(c, u, rules)) return null;
     if (trick.length === 0) return true;
     const mine = trick.find((p) => p.seat === seat);
     if (mine) {

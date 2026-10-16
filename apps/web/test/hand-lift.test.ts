@@ -157,7 +157,8 @@ describe('your-turn hand poses', () => {
     expect(px(legal.y, flat.y)).toBeCloseTo(LEGAL_LIFT_PX, 4);
     expect(px(flat.y, illegal.y)).toBeCloseTo(0, 4);
     expect(px(selected.y, legal.y)).toBeCloseTo(10, 4);
-    expect(selected.depth).toBeLessThan(legal.depth);
+    // Same slot, same depth. The extra selected boost was what covered the card on the right.
+    expect(selected.depth).toBeCloseTo(legal.depth, 6);
     expect(legal.depth).toBeLessThan(illegal.depth);
     expect(illegal.depth).toBeCloseTo(flat.depth, 6);
     // z-order is the pose, not the old `lift > 0.2` shortcut (24px can be under or over that, depending on the card size)
@@ -327,7 +328,9 @@ describe('legal cards stack above the cards beside them', () => {
         const sel = handCardPlane(aspect, n, selected, 0, 0, handDepthOpts('selected'), 0, 844);
         const peer = handCardPlane(aspect, n, i, 0, 0, handDepthOpts('legal'), 0, 844);
         const flat = handCardPlane(aspect, n, i, 0, 0, handDepthOpts('illegal'), 0, 844);
-        expect(sel.depth).toBeLessThan(peer.depth);
+        // Playable cards share one stack. Index order keeps the card on the right in front.
+        if (i > selected) expect(peer.depth).toBeLessThan(sel.depth);
+        else expect(sel.depth).toBeLessThan(peer.depth);
         expect(sel.depth).toBeLessThan(flat.depth);
         expect(peer.depth).toBeLessThan(flat.depth);
       }
@@ -342,7 +345,7 @@ describe('legal cards stack above the cards beside them', () => {
     expect(legal.glow).toBeGreaterThan(paint(16, false).face);
     expect(legal.glow - handRenderOrder(0, true)).toBe(RING_ABOVE);
     expect(handDepthOpts('legal').near).toBe(LEGAL_NEAR);
-    expect(handDepthOpts('selected').near).toBe(LEGAL_NEAR * 2);
+    expect(handDepthOpts('selected')).toEqual(handDepthOpts('legal'));
     expect(handDepthOpts('flat')).toEqual({ layer: 'rest' });
   });
 

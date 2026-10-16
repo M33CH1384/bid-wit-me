@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MeshStandardMaterial, Quaternion, Vector3 } from 'three';
-import { FACE_POLYGON_OFFSET, GROUP_PAD_PX, GROUP_RADIUS_PX, LEGAL_LIFT_PX, LEGAL_NEAR, RING_ABOVE, applyFaceDepthBias, cardIdFromHit, cardMeshPaint, cardPartOrder, cardTapHandlers, cssPxToPlane, fanGapPx, handRenderOrder, hitsInPaintOrder, raiseLocalY, screenRaise, setPointerSelected, setSelectedTapLayer } from '../src/three/handLift';
+import { FACE_POLYGON_OFFSET, GROUP_PAD_PX, GROUP_RADIUS_PX, LEGAL_LIFT_PX, LEGAL_NEAR, RING_ABOVE, applyFaceDepthBias, cardIdFromHit, cardMeshPaint, cardPartOrder, cardTapHandlers, cssPxToPlane, fanGapPx, handDepthOpts, handRenderOrder, hitsInPaintOrder, raiseLocalY, screenRaise, setPointerSelected, setSelectedTapLayer } from '../src/three/handLift';
 import { TAP_PLAY_ARM_MS, confirmPlay, feltClearsSelection } from '../src/online/playGuard';
 import { FACE_CAP_GAP, fanLayout, handCardPlane, handFan, makeCamera } from '../src/three/layout';
 import { cardGeometry } from '../src/three/geometry';
@@ -111,7 +111,12 @@ describe('a tap hits the card you see', () => {
   });
 
   it('gives the raised card the tap when only the neighbour on its right was hit', () => {
-    // QS is raised. 10S overlaps its right side and is the only mesh the ray struck.
+    // QS is raised. 10S is the next card and draws in front of the overlap, so the ray hits only 10S.
+    // Depth and the tap are separate: the nearer neighbour does not get the play.
+    const aspect = 390 / 844;
+    const queenDepth = handCardPlane(aspect, 10, 4, 0.34, 0, handDepthOpts('selected')).depth;
+    const tenDepth = handCardPlane(aspect, 10, 5, 0.12, 0, handDepthOpts('legal')).depth;
+    expect(tenDepth).toBeLessThan(queenDepth);
     const ten = {
       renderOrder: handRenderOrder(5, true, false),
       parent: null,

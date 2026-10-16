@@ -84,7 +84,8 @@ describe('hand fan z-order', () => {
       const nearestResting = Math.min(...fan.filter((_, i) => !lifted.has(i)).map(dist));
       expect(farthestRaised).toBeLessThan(nearestResting);
       expect(dist(fan[8]!)).toBeLessThan(dist(fan[7]!)); // fan order kept among raised cards
-      expect(dist(handFan(aspect, n, 0, 0.24))).toBeLessThan(dist(fan[8]!)); // the selected card tops them all
+      // A raised card does not jump in front of the cards to its right. That bury is what hid the 9 beside the 10.
+      expect(dist(handFan(aspect, n, 0, 0.24))).toBeGreaterThan(dist(fan[8]!));
     }
   });
 

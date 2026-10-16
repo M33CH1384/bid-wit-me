@@ -283,7 +283,9 @@ export function handCardPlane(aspect: number, count: number, i: number, lift: nu
   // (18 × 0.006 < 0.12). The gaps are wide on purpose: phones with a 16-bit depth buffer (iPhone Safari) z-fight
   // at ~0.0003 here, which let the edges of the cards underneath bleed through as thin gold lines when the gap was 0.0015.
   const layer = o.layer ?? (lift > 0.2 ? 'selected' : lift > 0 ? 'play' : 'rest');
-  const boost = layer === 'selected' ? 0.24 : layer === 'play' ? 0.12 : 0;
+  // Selected and playable share one boost. A bigger selected boost put that card in front of the
+  // ranks to its right, and those cards disappeared for as long as it stayed raised.
+  const boost = layer === 'selected' || layer === 'play' ? 0.12 : 0;
   // Playable cards come forward just enough to win the depth test against the neighbour that overlaps them.
   const near = Number.isFinite(o.near) && o.near! > 0 ? o.near! : 0;
   const depth = 1 - (i + 1) * 0.006 - boost - near; // the selected card tops all the raised ones too

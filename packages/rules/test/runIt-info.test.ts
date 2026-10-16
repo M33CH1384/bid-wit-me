@@ -332,3 +332,51 @@ describe('Run it! is proved once per state and never for a spectator', () => {
     expect(runItProofsRun()).toBe(proofs);
   });
 });
+
+describe('Run it! does not treat an unbeaten side suit as a win', () => {
+  it('refuses when the seat on lead can cash a suit the claimer cannot win', () => {
+    // AH and AD are not beaten by anything outstanding. Seat 1 leads and can cash clubs.
+    const st = playing(joker, [['AH', 'AD'], ['3C', '4C'], ['5C', '6H'], ['7C', '8H']], 1);
+    expect(oracle(st, 0)).toBe(false);
+    expect(canRunIt(st, 0)).toBe(false);
+    expect(() => applyAction(st, { type: 'runIt', seat: 0 })).toThrow(RuleError);
+  });
+
+  it('still accepts an off-lead hand that beats every outstanding card', () => {
+    const st = playing(joker, [['AH', 'KH'], ['3H', '4H'], ['5H', '6H'], ['7H', '8H']], 1);
+    expect(oracle(st, 0)).toBe(true);
+    expect(canRunIt(st, 0)).toBe(true);
+    const after = applyAction(st, { type: 'runIt', seat: 0 });
+    expect(after.tricks.slice(st.tricks.length).every((t) => t.winner === 0)).toBe(true);
+  });
+
+  it('refuses the cutthroat layout whose claim used to stall the hand', () => {
+    // Seat 3 is void in clubs with KH 9♦ QD. Seat 1 is on lead and both neighbours hold clubs.
+    // A club lead wins, so the claim is illegal and the hand keeps playing.
+    const rules = makeRules('cutthroat', { targetScore: 150 });
+    const hands: Card[][] = [['7H', '9H', 'QH'], ['5C', '6C', 'TC'], ['8C', '8H', 'JH'], ['9D', 'KH', 'QD']];
+    const done: { winner: number; plays: string }[] = [
+      { winner: 0, plays: '0:AD,1:TD,2:4D,3:3D' },
+      { winner: 1, plays: '0:KD,1:4S,2:7D,3:6D' },
+      { winner: 1, plays: '1:BJ,2:6S,3:3S,0:5S' },
+      { winner: 2, plays: '1:TH,2:AH,3:3H,0:4H' },
+      { winner: 2, plays: '2:AC,3:7C,0:QC,1:KC' },
+      { winner: 2, plays: '2:LJ,3:9S,0:JS,1:AS' },
+      { winner: 3, plays: '2:4C,3:2S,0:5D,1:3C' },
+      { winner: 1, plays: '3:JD,0:QS,1:KS,2:8S' },
+      { winner: 3, plays: '1:JC,2:9C,3:2D,0:5H' },
+      { winner: 1, plays: '3:8D,0:6H,1:TS,2:7S' },
+    ];
+    const tricks = done.map((t) => {
+      const plays = t.plays.split(',').map((p) => {
+        const [seat, card] = p.split(':');
+        return { seat: Number(seat), card: card as Card };
+      });
+      return { leader: plays[0]!.seat, plays, winner: t.winner };
+    });
+    const st = playing(rules, hands, 1);
+    const laid = { ...st, tricks, spadesBroken: true, turn: 1, trick: { leader: 1, plays: [], winner: null } };
+    expect(canRunIt(laid, 3)).toBe(false);
+    expect(() => applyAction(laid, { type: 'runIt', seat: 3 })).toThrow(RuleError);
+  });
+});
