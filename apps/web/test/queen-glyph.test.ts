@@ -90,6 +90,8 @@ describe('queen rank glyph', () => {
 
   it('keeps the gold court frame out of the exposed phone-fan strip', () => {
     // A 13-card phone fan shows about 31% of each card. The stroke is 1.8% wide and centered on the frame.
-    expect(COURT_FRAME_X - 0.009).toBeGreaterThan(0.4);
+    // The fan step never exceeds 62% of the card. The stroke has to start past that, or its
+    // left edge is a gold line down the card in front.
+    expect(COURT_FRAME_X - 0.009).toBeGreaterThan(0.62);
   });
 });

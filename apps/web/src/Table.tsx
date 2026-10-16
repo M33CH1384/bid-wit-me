@@ -1061,6 +1061,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   }, [trickNow]);
 
   const pickedAt = useRef(0);
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
   const onCard = useCallback((c: Card) => {
     if (humanExchanging) {
       sound.play('tap');
@@ -1070,7 +1072,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (ignorePlayTap(playHold.current, trickNow)) return;
     if (!legal.includes(c)) return;
     // Play sends the selected card id. A different hit only changes the selection.
-    const action = confirmPlay(selected, c, pickedAt.current, performance.now());
+    const action = confirmPlay(selectedRef.current, c, pickedAt.current, performance.now());
     if (action.type === 'ignore') return;
     if (action.type === 'play') {
       const held = trickNow;
@@ -1081,7 +1083,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         setFlying(action.card as Card);
       }
     } else { pickedAt.current = performance.now(); setSelected(action.card as Card); sound.play('tap'); }
-  }, [humanExchanging, exchangeStep, legal, selected, apply, trickNow]);
+  }, [humanExchanging, exchangeStep, legal, apply, trickNow]);
 
   const isBotSeat = (seat: number) => (online ? !!online.botSeats?.includes(seat) : seat !== HUMAN);
   // recorded bot voices: fetch a persona's clips when one of its bots sits down

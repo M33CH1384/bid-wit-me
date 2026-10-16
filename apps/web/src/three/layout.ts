@@ -204,6 +204,11 @@ export interface FanOpts {
   rollCap?: number;
   short?: boolean;
   /**
+   * Fraction of a card width kept clear on each side of a raised card.
+   * The solver shrinks the fan so that gap still fits on the screen.
+   */
+  spread?: number;
+  /**
    * Who comes forward. `play` is a playable card (PLAY_DEPTH). `selected` is the raised card
    * (SELECT_DEPTH), in front of the neighbours it overlaps. Omitted: rest.
    */
@@ -222,20 +227,27 @@ export function fanLayout(aspect: number, count: number, safeFrac = 0, o: FanOpt
   const D = 1;
   const viewH = 2 * Math.tan((cam.fov * Math.PI) / 360) * D;
   const viewW = viewH * aspect;
-  const margin = viewW * (o.edgeFrac ?? Math.max(0.06, safeFrac + 0.025, o.reserveFrac ?? 0));
-  const halfAvail = viewW / 2 - margin;
+  const baseMargin = viewW * (o.edgeFrac ?? Math.max(0.06, safeFrac + 0.025, o.reserveFrac ?? 0));
   const persp = 1.0; // cards are parallel to the image plane → no perspective growth
   const halfN = Math.max(0, (count - 1) / 2);
   const maxRoll = count > 1 ? Math.min(o.rollCap ?? 0.32, 0.03 * count) : 0;
+  const spread = Number.isFinite(o.spread) && o.spread! > 0 ? o.spread! : 0;
   let s = Math.min(viewH * (o.heightFrac ?? 0.16), viewW * 0.25 * 1.4) / CH;
   let step = 0;
-  for (let k = 0; k < 40; k++) {
-    const cw = CW * s, ch = CH * s;
-    const outer = (cw / 2) * Math.cos(maxRoll) + (ch / 2) * Math.sin(maxRoll); // half-extent of a rolled card
-    const room = halfAvail / persp - outer;
-    step = halfN > 0 ? Math.min(cw * 0.62, room / halfN) : 0;
-    if (halfN === 0 ? room >= 0 : step >= cw * 0.3) break; // ≥30% of a card exposed keeps the corner index readable
-    s *= 0.96;
+  let boost = 0;
+  for (let pass = 0; pass < (spread > 0 ? 4 : 1); pass++) {
+    const halfAvail = viewW / 2 - baseMargin - boost;
+    s = Math.min(viewH * (o.heightFrac ?? 0.16), viewW * 0.25 * 1.4) / CH;
+    for (let k = 0; k < 40; k++) {
+      const cw = CW * s, ch = CH * s;
+      const outer = (cw / 2) * Math.cos(maxRoll) + (ch / 2) * Math.sin(maxRoll); // half-extent of a rolled card
+      const room = halfAvail / persp - outer;
+      step = halfN > 0 ? Math.min(cw * 0.62, room / halfN) : 0;
+      if (halfN === 0 ? room >= 0 : step >= cw * 0.3) break; // ≥30% of a card exposed keeps the corner index readable
+      s *= 0.96;
+    }
+    // One side of the raised card. The next pass solves into the room this leaves.
+    boost = spread * CW * s;
   }
   // the arc follows the cards' roll: at the ends its slope equals the end card's tilt, like a fan held in a hand.
   // (A fixed curve with a separately-scaled roll left the end cards kinked against the arc: the "skewed" right-most card.)
@@ -323,6 +335,23 @@ export function handFan(aspect: number, count: number, i: number, lift: number, 
   const p = new Vector3(), q = new Quaternion(), sc = new Vector3();
   world.decompose(p, q, sc);
   return { p: [p.x, p.y, p.z], q: [q.x, q.y, q.z, q.w], s: sc.x };
+}
+
+/**
+ * Canvas CSS pixels of one card's drawn corners. `liftPx` is the screen-up raise
+ * (the inner wrapper). The same quad is what the hand hit test uses.
+ */
+export function cardScreenQuad(aspect: number, t: Xform, screenW: number, screenH: number, liftPx = 0, short = false): { x: number; y: number }[] {
+  const cam = makeCamera(aspect, short);
+  cam.updateProjectionMatrix();
+  const m = new Matrix4().compose(new Vector3(...t.p), new Quaternion(...t.q), new Vector3(t.s, t.s, t.s));
+  const w = Number.isFinite(screenW) && screenW >= 32 ? screenW : 0;
+  const h = Number.isFinite(screenH) && screenH >= 32 ? screenH : 0;
+  const up = Number.isFinite(liftPx) ? liftPx : 0;
+  return ([[-CW / 2, -CH / 2], [CW / 2, -CH / 2], [CW / 2, CH / 2], [-CW / 2, CH / 2]] as const).map(([cx, cy]) => {
+    const v = new Vector3(cx, cy, 0).applyMatrix4(m).project(cam);
+    return { x: (v.x + 1) * 0.5 * w, y: (1 - v.y) * 0.5 * h - up };
+  });
 }
 
 /** Screen-space (NDC) corner positions of a card transform (for symmetry/fit tests). */

@@ -181,10 +181,11 @@ function corner(ctx: CanvasRenderingContext2D, W: number, rank: string, suit: Su
 }
 
 /**
- * Court frame, as a fraction of card width. A full phone fan exposes about 31% of each card.
- * The gold stroke is 1.8% wide, so a frame at 34% left a hair of gold on the card in front of it.
+ * Court frame, as a fraction of card width. The fan shows at most 62% of a card (the fit
+ * loop's step cap). The gold stroke is 1.8% wide, so the frame starts past that strip.
+ * A frame in the exposed strip reads as a gold line through the next card.
  */
-export const COURT_FRAME_X = 0.46;
+export const COURT_FRAME_X = 0.64;
 export const COURT_FRAME_W = 0.3;
 
 function court(ctx: CanvasRenderingContext2D, W: number, H: number, rank: string, suit: Suit, color: string) {

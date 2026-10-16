@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { MeshStandardMaterial, Quaternion, Vector3 } from 'three';
-import { FACE_POLYGON_OFFSET, GROUP_PAD_PX, GROUP_RADIUS_PX, LEGAL_LIFT_PX, LEGAL_NEAR, RING_ABOVE, applyFaceDepthBias, cardIdFromHit, cardMeshPaint, cardPartOrder, cardTapHandlers, cssPxToPlane, fanGapPx, handDepthOpts, handRenderOrder, hitsInPaintOrder, raiseLocalY, screenRaise } from '../src/three/handLift';
+import { FACE_POLYGON_OFFSET, GROUP_PAD_PX, GROUP_RADIUS_PX, LEGAL_LIFT_PX, LEGAL_NEAR, RAISE_SPREAD, RING_ABOVE, applyFaceDepthBias, cardIdFromHit, cardMeshPaint, cardPartOrder, cardTapHandlers, cssPxToPlane, echoTap, fanGapPx, handDepthOpts, handRenderOrder, hitsInPaintOrder, raiseLocalY, raiseSpreadPx, resetEchoTap, screenRaise, spreadFitScale } from '../src/three/handLift';
+import { pickHandCard, type HandHitCard } from '../src/three/handHit';
 import { TAP_PLAY_ARM_MS, confirmPlay, feltClearsSelection } from '../src/online/playGuard';
-import { FACE_CAP_GAP, HAND_DEPTH_STEP, fanLayout, handCardPlane, handFan, makeCamera } from '../src/three/layout';
+import { FACE_CAP_GAP, HAND_DEPTH_STEP, cardScreenQuad, fanCssPx, fanLayout, handCardPlane, handFan, makeCamera, ndcExtentX, phoneHandFan } from '../src/three/layout';
 import { cardGeometry } from '../src/three/geometry';
 import { contourContains, groupOutline, haloLocal, placeOnPlane, planePointOk, unionContours } from '../src/three/playableOutline';
 
@@ -444,5 +445,78 @@ describe('a bad viewport cannot throw the hand away', () => {
     expect(world.dot(screenUp)).toBeCloseTo(d, 6);
     const raw = new Vector3(0, d, 0).applyQuaternion(q);
     expect(raw.clone().cross(screenUp).length()).toBeGreaterThan(0.01);
+  });
+});
+
+describe('a raised card slides its neighbours apart', () => {
+  const aspect = 390 / 844;
+  const screenH = 844;
+  const screenW = 390;
+
+  it('opens about 40% of a card width on each side and keeps the fan on a phone', () => {
+    const n = 8;
+    const phone = phoneHandFan();
+    const openedOpts = { ...phone, spread: RAISE_SPREAD };
+    const layout = fanLayout(aspect, n, 0, openedOpts);
+    const width = fanCssPx(layout, screenW).width;
+    const spread = raiseSpreadPx(n, 6, width);
+    expect(RAISE_SPREAD).toBeCloseTo(0.4, 5);
+    // The raised card stays. Each side slides away as a block, so only the two
+    // neighbour gaps grow, by 40% of a card width.
+    expect(spread[6]).toBeCloseTo(0, 4);
+    expect(spread[6]! - spread[5]!).toBeCloseTo(0.4 * width, 4);
+    expect(spread[7]! - spread[6]!).toBeCloseTo(0.4 * width, 4);
+    expect(spread[1]! - spread[0]!).toBeCloseTo(0, 4);
+    expect(spread[0]).toBeCloseTo(-0.4 * width, 4);
+    expect(spread[n - 1]).toBeCloseTo(0.4 * width, 4);
+    expect(raiseSpreadPx(n, -1, width).every((g) => g === 0)).toBe(true);
+    const edge = (i: number) => cardScreenQuad(aspect, handFan(aspect, n, i, 0, 0, openedOpts, 0, screenH), screenW, screenH);
+    const scale = spreadFitScale(spread, Math.min(...edge(0).map((p) => p.x)), Math.max(...edge(n - 1).map((p) => p.x)), screenW, 8);
+    expect(scale).toBeGreaterThan(0.85);
+    const px = layout.viewH / screenH;
+    const raised = handCardPlane(aspect, n, 6, 0, 0, openedOpts, spread[6]! * scale, screenH);
+    const right = handCardPlane(aspect, n, 7, 0, 0, openedOpts, spread[7]! * scale, screenH);
+    const homeRaised = handCardPlane(aspect, n, 6, 0, 0, openedOpts, 0, screenH);
+    const homeRight = handCardPlane(aspect, n, 7, 0, 0, openedOpts, 0, screenH);
+    const opened = ((right.x - raised.x) - (homeRight.x - homeRaised.x)) / px;
+    expect(opened).toBeGreaterThan(0.34 * width);
+    const fans = Array.from({ length: n }, (_, i) => handFan(aspect, n, i, 0, 0, openedOpts, spread[i]! * scale, screenH));
+    const [lo, hi] = ndcExtentX(aspect, fans);
+    expect(lo).toBeGreaterThan(-1.05);
+    expect(hi).toBeLessThan(1.05);
+  });
+
+  it('gives the raised 7 of clubs the overlap, and the 5 only its own strip', () => {
+    const seven: HandHitCard = {
+      id: '7C', order: handRenderOrder(6, true, true),
+      poly: [{ x: 180, y: 700 }, { x: 280, y: 700 }, { x: 280, y: 840 }, { x: 180, y: 840 }],
+    };
+    const five: HandHitCard = {
+      id: '5C', order: handRenderOrder(7, true),
+      poly: [{ x: 240, y: 720 }, { x: 340, y: 720 }, { x: 340, y: 844 }, { x: 240, y: 844 }],
+    };
+    const king: HandHitCard = {
+      id: 'KC', order: handRenderOrder(5, true),
+      poly: [{ x: 100, y: 720 }, { x: 190, y: 720 }, { x: 190, y: 844 }, { x: 100, y: 844 }],
+    };
+    const six: HandHitCard = {
+      id: '6H', order: handRenderOrder(3, true),
+      poly: [{ x: 20, y: 720 }, { x: 90, y: 720 }, { x: 90, y: 844 }, { x: 20, y: 844 }],
+    };
+    const cards = [six, king, seven, five];
+    expect(pickHandCard(230, 760, cards)).toBe('7C');
+    expect(pickHandCard(300, 760, cards)).toBe('5C');
+    expect(pickHandCard(120, 760, cards)).toBe('KC');
+    expect(pickHandCard(40, 760, cards)).toBe('6H');
+  });
+
+  it('treats one tap as one gesture, including the mouse event a phone adds', () => {
+    resetEchoTap();
+    expect(echoTap({ pointerType: 'touch', pointerId: 4 }, 'AH')).toBe(false);
+    expect(echoTap({ pointerType: 'mouse', pointerId: 5 }, 'AH')).toBe(true);
+    expect(echoTap({ pointerType: 'touch', pointerId: 4 }, 'AH')).toBe(false);
+    expect(echoTap({ pointerType: 'touch', pointerId: 9 }, 'KC')).toBe(false);
+    expect(confirmPlay(null, 'AH', 0, 200)).toEqual({ type: 'select', card: 'AH' });
+    expect(confirmPlay('AH', 'AH', 200, 200 + TAP_PLAY_ARM_MS)).toEqual({ type: 'play', card: 'AH' });
   });
 });
