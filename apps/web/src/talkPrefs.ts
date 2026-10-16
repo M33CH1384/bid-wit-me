@@ -11,9 +11,9 @@ import { PERSONAS, type PersonaId, type TalkIntensity, maskMild, personaForName,
 import { sound } from './audio';
 import { playClip, rawLine } from './voices/voices';
 
-export interface TalkPrefs { botTalk: boolean; hideBotTalk: boolean; voices: boolean; voiceVolume: number }
+export interface TalkPrefs { botTalk: boolean; hideBotTalk: boolean; voices: boolean; voiceVolume: number; /** Voice Phase 3, on this device: play pre-voiced AI lines when the table offers them (default on; the host flag decides whether any are offered) */ aiVoices: boolean }
 const KEY = 'bwm.talk.v1';
-const DEFAULTS: TalkPrefs = { botTalk: true, hideBotTalk: false, voices: true, voiceVolume: 0.6 };
+const DEFAULTS: TalkPrefs = { botTalk: true, hideBotTalk: false, voices: true, voiceVolume: 0.6, aiVoices: true };
 
 function load(): TalkPrefs {
   try {

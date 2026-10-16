@@ -1,3 +1,4 @@
+import { deliverBotLine } from './voices/aiVoice';
 import { enterTable, quitGame, silenceGame, suspendGame } from './gameSession';
 import { cardControlLabel } from './cardA11y';
 import { archSpot } from './archSpot';
@@ -25,7 +26,7 @@ import { TrumpLadder, trumpStripShown } from './trumpLadder';
 import { landingMode } from './three/landing';
 import { SocialButton } from './social/Social';
 import { recordOfflineGame } from './offlineStats';
-import { setTableIntensity, showLine, speakBot, useTalkPrefs } from './talkPrefs';
+import { setTableIntensity, showLine, speakBot, talkPrefs as talkStore, useTalkPrefs } from './talkPrefs';
 import { pickTeamName } from '@spades/protocol';
 import { Intermission, calloutsFor } from './Intermission';
 import Hype from './Hype';
@@ -540,14 +541,17 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // offline trash talk: same engine as the server
   useEffect(() => {
     if (online) return;
-    offlineTalk.table = { seats: names.map((nm, i) => ({ name: nm, bot: i !== HUMAN })), partnerships: r.partnerships, teamNames: Array.from({ length: st.scores.length }, (_, i) => sideName(r, i, names)), intensity, jokers: r.deck === 'joker54' };
+    offlineTalk.table = { seats: names.map((nm, i) => ({ name: nm, bot: i !== HUMAN })), partnerships: r.partnerships, teamNames: Array.from({ length: st.scores.length }, (_, i) => sideName(r, i, names)), intensity, jokers: r.deck === 'joker54', aiTalk: !!settings.aiTalk };
   });
   useEffect(() => {
     if (online) return;
     if (!resume) offlineTalk.newGame();
     offlineTalk.sink = (l) => {
-      localChat.push(l.name, l.text, false, 0, true);
-      speakBot(l.name, l.text, l.persona, l.line, l.bid);
+      // Voice Phase 3: a catalog line plays with its own text; anything that misses is the canned line, as before.
+      const tp = talkStore.get();
+      void deliverBotLine(l, { aiVoices: tp.aiVoices, voices: tp.voices, soundOn: sound.settings.on && sound.settings.volume > 0, gain: tp.voiceVolume * 0.9 },
+        (text) => localChat.push(l.name, text, false, 0, true),
+        () => speakBot(l.name, l.text, l.persona, l.line, l.bid));
       if (l.reveal) fx.emit('hustled', { text: `${l.name} was never new` });
     };
     return () => { offlineTalk.sink = null; offlineTalk.table = null; };

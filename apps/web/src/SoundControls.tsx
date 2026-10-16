@@ -394,6 +394,12 @@ export function BotTalkFields() {
       {t.voices && (
         <VolumeRow label="Bot voice volume" value={t.voiceVolume} testId="bot-voice-volume" onChange={(v) => talkPrefs.set({ voiceVolume: v })} />
       )}
+      {t.voices && (
+        <label className="sf-row">
+          <span>AI voice lines<small className="sf-note"> · big moments, when the table has them</small></span>
+          <button type="button" role="switch" aria-checked={t.aiVoices} aria-label="AI voice lines" data-testid="ai-voices" className={`switch ${t.aiVoices ? 'on' : ''}`} onClick={() => talkPrefs.set({ aiVoices: !t.aiVoices })}><i /></button>
+        </label>
+      )}
       <label className="sf-row">
         <span>Hide bot trash talk<small className="sf-note"> · in your chat</small></span>
         <button type="button" role="switch" aria-checked={t.hideBotTalk} aria-label="Hide bot trash talk" data-testid="hide-bot-talk" className={`switch ${t.hideBotTalk ? 'on' : ''}`} onClick={() => talkPrefs.set({ hideBotTalk: !t.hideBotTalk })}><i /></button>
