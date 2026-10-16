@@ -139,6 +139,8 @@ class Engine {
   private loadGen = 0;
   /** cue counter (exposed for automated checks) */
   played: Record<string, number> = {};
+  /** Game sounds refused because no table was on screen (test probe). */
+  blocked: Record<string, number> = {};
 
   /* ---------- settings store ---------- */
   subscribe = (fn: () => void) => { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; };
@@ -528,6 +530,7 @@ class Engine {
   /** play a voice clip (optionally a [offsetSec, durationSec] slice of a sprite) */
   playVoice(buf: AudioBuffer, gain: number, slice?: [number, number]): boolean {
     if (!this.settings.on || !this.unlocked) return false;
+    if (!this.atTable) { this.blocked.voice = (this.blocked.voice ?? 0) + 1; return false; }
     this.ensure();
     const c = this.ctx;
     if (!c || c.state !== 'running' || !this.voiceDuck) return false;
@@ -541,6 +544,30 @@ class Engine {
     this.played.voice = (this.played.voice ?? 0) + 1;
     return true;
   }
+  /* ---------- table gate: game sound only while a game is on screen ---------- */
+  /** True while the table screen is mounted. Off it, only the settings previews (tap, bid) can sound. */
+  atTable = false;
+  enterTable() { this.atTable = true; }
+  /** Leaving the table: refuse game sound, and cut everything already scheduled (delayed deal ticks, stingers, voice, wind). */
+  leaveTable() {
+    this.atTable = false;
+    this.stopVoice();
+    this.stopTornado();
+    try { if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel(); } catch { /* ignore */ }
+    const c = this.ctx, old = this.sfxBus, duck = this.sfxDuck;
+    if (c && old && duck) {
+      // every scheduled node hangs off the sfx bus: detach it and start a fresh one
+      try { old.disconnect(); } catch { /* */ }
+      this.sfxBus = c.createGain(); this.sfxBus.connect(duck);
+    }
+    if (c && this.nukeBus && this.master) {
+      try { this.nukeBus.disconnect(); } catch { /* */ }
+      this.nukeBus = c.createGain(); this.nukeBus.connect(this.master);
+    }
+    this.applyGain();
+  }
+  /** Settings previews that may sound on Home. */
+  private static readonly UI_SFX: ReadonlySet<string> = new Set(['tap', 'bid']);
   stopVoice() {
     const v = this.voiceSrc; this.voiceSrc = null;
     if (!v || !this.ctx) return;
@@ -601,7 +628,7 @@ class Engine {
   /* ---------- playback ---------- */
   /** Card landing scaled by slam intensity 0..1: a soft tap for a gentle drop, a punchy smack + table thud for a flick. */
   cardSmack(intensity: number) {
-    if (!this.settings.on || !this.unlocked) return;
+    if (!this.settings.on || !this.unlocked || !this.atTable) return;
     this.ensure();
     const c = this.ctx;
     if (!c || c.state !== 'running') return;
@@ -617,6 +644,7 @@ class Engine {
 
   play(name: Sfx, opts: { delay?: number; gain?: number; dur?: number } = {}) {
     if (!this.settings.on || !this.unlocked) return;
+    if (!this.atTable && !Engine.UI_SFX.has(name)) { this.blocked[name] = (this.blocked[name] ?? 0) + 1; return; }
     this.ensure();
     const c = this.ctx;
     if (!c || c.state !== 'running') return;
