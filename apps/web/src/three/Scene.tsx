@@ -10,10 +10,10 @@ import { GAP_S, LIFT_S, fanGapPx, fanMotion, handCardChrome, handDepthOpts, hand
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline, seatDealDelay } from './dealTimeline';
 import { handNeedsDeal, handSlotKey } from './dealFlight';
-import { cardShowsFace, showResumeHand3D, visibleFaceIds } from './cardFace';
+import { cardShowsFace, handLatched, latchHand, showResumeHand3D, visibleFaceIds } from './cardFace';
 import { type Sfx, sound } from '../audio';
 import { fx } from '../fx';
-import { backTexture, faceTexture, logoTexture, refreshFacesGradually } from './cardTextures';
+import { backTexture, faceTexture, logoTexture, peekFaceTexture, refreshFacesGradually } from './cardTextures';
 import { loadTableImage, prefetchTableTextures, tableTextureUrls } from '../tableAssets';
 import { ClassicHall } from './hallEnv';
 import { forceProgram, nextFrame, quietShaderErrors } from './shaderBudget';
@@ -32,8 +32,8 @@ export interface SceneProps {
   onTableReady?: () => void;
   /** Felt and rail maps have settled (each one applied, or that download failed), so the cloth is no longer a flat stand-in. */
   onTableDressed?: () => void;
-  /** the human's cards are in the 3D scene with faces, so the flat hand can leave */
-  onHandLive?: () => void;
+  /** True once the 3D hand is the fan on screen. False returns the flat fan; it must not stay true across a hand the 3D scene has stopped drawing. */
+  onHandLive?: (live: boolean) => void;
   n: number;
   handNo: number;
   dealer: number;
@@ -620,19 +620,36 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   // Commit after paint. A highlight render and the server ack both read the previous hand, so they share keys
   // and the played card still knows the slot it left. Strict Mode's extra render sees the same snapshot.
   const showCards = props.fontsReady || resume;
+  // Once this hand has been drawn in 3D, keep it through a painter restart. The felt fan
+  // covers the frames before that. Neither gate may leave a hand that exists in state with nothing on screen.
+  const handCount = myHand?.length ?? 0;
+  const hand3D = showResumeHand3D(resume, handCount, nFaces, handCount > 0 && handLatched(handNo));
+  if (hand3D && handCount > 0) latchHand(handNo);
   useEffect(() => {
     if (!showCards) return;
     held.current = pendingHold.current;
   });
   useEffect(() => {
+    const w = window as unknown as { __bwmHandMounts?: number };
+    w.__bwmHandMounts = (w.__bwmHandMounts ?? 0) + 1;
+  }, []);
+  useEffect(() => {
+    const w = window as unknown as { __bwmHandVis?: { state: number; webgl: number; nFaces: number; latched: boolean } };
+    w.__bwmHandVis = { state: handCount, webgl: hand3D ? handCount : 0, nFaces, latched: handLatched(handNo) };
+  });
+  useLayoutEffect(() => {
     const live = props.onHandLive;
     if (!live) return;
-    const mine = myHand ?? [];
-    if (resume && mine.length > 0 && nFaces < mine.length) return;
+    // Not drawn yet: the flat fan stays (or comes back) so a reload is playable on the first paint.
+    if (!hand3D || handCount === 0) {
+      live(false);
+      return;
+    }
     let cancel = false;
-    const a = requestAnimationFrame(() => requestAnimationFrame(() => { if (!cancel) live(); }));
+    // Two frames so the 3D fan has been submitted before the flat fan leaves. Both for a moment, never neither.
+    const a = requestAnimationFrame(() => requestAnimationFrame(() => { if (!cancel) live(true); }));
     return () => { cancel = true; cancelAnimationFrame(a); };
-  }, [nFaces, resume, myHand, props.onHandLive]);
+  }, [hand3D, handCount, props.onHandLive]);
 
   // test probe: every key that was ever dealt from the deck, per hand (a re-deal would add new keys)
   useEffect(() => {
@@ -657,17 +674,22 @@ function Cards(props: SceneProps & { aspect: number; fontsReady: boolean; safeFr
   faceShown.current = visibleFaceIds(faceShown.current, faceOrder.slice(0, nFaces), myHand ?? [], trickIds, slamIds);
   if (!showCards) return null;
   const shown = resume ? [...items.filter((it) => it.hand), ...items.filter((it) => !it.hand).slice(0, extra)] : items;
-  const hand3D = showResumeHand3D(resume, myHand?.length ?? 0, nFaces);
   const drawn = hand3D ? shown : shown.filter((it) => !it.hand);
+  const frontOf = (card: Card) => {
+    // Trick and slam cards are public on the frame they land, even if a rebuild cleared the painter set.
+    if (cardShowsFace(card, faceShown.current, instant)) return face(card);
+    // A remount starts the painter over. The cached face stays; don't paint a back or a second texture.
+    return peekFaceTexture(card, res, promoted(card));
+  };
   return (
     <group>
-      <LayoutProbe positions={positions} n={n} short={short} items={items} trickKeys={shownTrick.map((pl) => `${handNo}-${pl.card}`)} handKeys={mine.map((c, i) => handReactKey(handNo, c, i))} />
+      <LayoutProbe positions={positions} n={n} short={short} items={items} trickKeys={shownTrick.map((pl) => `${handNo}-${pl.card}`)} handKeys={hand3D ? mine.map((c, i) => handReactKey(handNo, c, i)) : []} />
       {drawn.map((it) => (
         <Card3D
           key={it.key}
           name={it.key}
           lit={props.lit}
-          face={it.card && cardShowsFace(it.card, faceShown.current, instant) ? face(it.card) : null}
+          face={it.card ? frontOf(it.card) : null}
           back={back}
           target={it.target}
           from={it.from}

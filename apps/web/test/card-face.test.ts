@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cardShowsFace, retainFrontTexture, showResumeHand3D, shownFaceIds, trickFacesShown, visibleFaceIds } from '../src/three/cardFace';
+import { cardShowsFace, feltHandVisible, handLatched, latchHand, presentHand, resetHandLatch, retainFrontTexture, showResumeHand3D, shownFaceIds, trickFacesShown, visibleFaceIds } from '../src/three/cardFace';
 
 /**
  * The painter walks the hand one card per frame and starts over when its key changes.
@@ -103,12 +103,57 @@ describe('dealt faces survive a selection', () => {
     expect(cardShowsFace('10S', new Set(), [])).toBe(false);
   });
 
-  it('hides the 3D hand fan until a resumed hand has faces, so it does not stack on the felt fan', () => {
+  it('keeps the 3D fan off the felt fan until a resumed hand has faces, then does not take it down again', () => {
     expect(showResumeHand3D(true, 13, 0)).toBe(false);
     expect(showResumeHand3D(true, 13, 12)).toBe(false);
     expect(showResumeHand3D(true, 13, 13)).toBe(true);
+    // A tap or trick change restarts the painter at 0. The fan that is already up stays up.
+    expect(showResumeHand3D(true, 13, 0, true)).toBe(true);
+    expect(showResumeHand3D(true, 10, 0, true)).toBe(true);
     expect(showResumeHand3D(false, 13, 0)).toBe(true);
     expect(showResumeHand3D(true, 0, 0)).toBe(true);
+  });
+
+  it('shows a reloaded mid-game hand immediately, and a tap never blanks it', () => {
+    // Online reload: intro is over, nothing is latched, no face has painted. The felt fan is the hand.
+    const reloaded = presentHand({ cardCount: 10, resume: true, latched: false, facesReady: 0 });
+    expect(reloaded).toEqual({ webgl: false, felt: true, visible: 10 });
+    expect(feltHandVisible(10, true, false)).toBe(true);
+
+    // The painter finishes and the 3D fan takes over.
+    const ready = presentHand({ cardCount: 10, resume: true, latched: false, facesReady: 10 });
+    expect(ready).toEqual({ webgl: true, felt: false, visible: 10 });
+
+    // The next tap resets the painter. The hand stays on the 3D fan; it does not swap back to felt or disappear.
+    const tapped = presentHand({ cardCount: 10, resume: true, latched: true, facesReady: 0 });
+    expect(tapped).toEqual({ webgl: true, felt: false, visible: 10 });
+    expect(feltHandVisible(10, true, true)).toBe(false);
+  });
+
+  it('counts a visible card for every card in state', () => {
+    for (const cardCount of [1, 10, 13, 17]) {
+      const waiting = presentHand({ cardCount, resume: true, latched: false, facesReady: 0 });
+      const live = presentHand({ cardCount, resume: true, latched: true, facesReady: 0 });
+      const dealing = presentHand({ cardCount, resume: false, latched: false, facesReady: 0 });
+      for (const fans of [waiting, live, dealing]) {
+        expect(fans.visible).toBe(cardCount);
+        expect(fans.webgl || fans.felt).toBe(true);
+        expect(fans.webgl && fans.felt).toBe(false);
+      }
+    }
+    expect(presentHand({ cardCount: 0, resume: true, latched: false, facesReady: 0 })).toEqual({ webgl: false, felt: false, visible: 0 });
+    // A fresh deal is the 3D fan, so the flat fan does not stack on it.
+    expect(feltHandVisible(13, false, false)).toBe(false);
+  });
+
+  it('keeps the 3D latch for the hand that was drawn, including after the group remounts', () => {
+    resetHandLatch();
+    expect(handLatched(2)).toBe(false);
+    latchHand(2);
+    expect(handLatched(2)).toBe(true);
+    expect(handLatched(3)).toBe(false);
+    expect(showResumeHand3D(true, 10, 0, handLatched(2))).toBe(true);
+    resetHandLatch();
   });
 
   it('leaves a card on its back until that card has been dealt', () => {

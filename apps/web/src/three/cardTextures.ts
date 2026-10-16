@@ -4,10 +4,20 @@ import { drawBack, paintFace, paintedFaceKeys, repaintFace, loadLogo, onLogoLoad
 
 const cache = new Map<string, Texture>();
 
+/** A face already painted this session, or null. Does not paint. */
+export function peekFaceTexture(card: Card, res: 'high' | 'low', badge: boolean): Texture | null {
+  return cache.get(`${card}:${res}:${badge}`) ?? null;
+}
+
 export function faceTexture(card: Card, res: 'high' | 'low', badge: boolean, anisotropy: number): Texture {
   const key = `${card}:${res}:${badge}`;
   let t = cache.get(key);
   if (t) return t;
+  if (typeof window !== 'undefined') {
+    const w = window as unknown as { __bwmFaceLoads?: string[] };
+    // Tests opt in. A cache miss is a real upload; a tap must not add one.
+    if (w.__bwmFaceLoads) w.__bwmFaceLoads.push(key);
+  }
   const W = res === 'high' ? 360 : 200;
   t = new CanvasTexture(paintFace(card, W, Math.round(W * 1.4), badge));
   t.colorSpace = SRGBColorSpace;
