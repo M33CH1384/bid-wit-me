@@ -1,6 +1,6 @@
 import { cardControlLabel } from './cardA11y';
 import { confirmPlay, ignorePlayTap, playTrickOf, type PlayTrick } from './online/playGuard';
-import { actingSeat, seatMark } from './turnState';
+import { actingSeat, localSeatOfServerTurn, turnView, type TurnBadge } from './turnState';
 import { retainHandOrder } from './handOrder';
 import { winHeadline } from './headline';
 import { type VenueId, VENUE_DEFS, resolveVenue } from './venues';
@@ -147,6 +147,10 @@ export interface OnlineBinding {
   dealerName?: string;
   /** Local seat for `dealerName`. Same call, so the DEALER chip and the popup cannot name two bots. */
   dealerSeat?: number;
+  /** Server's current-turn seat, before the table rotates the viewer to the bottom. */
+  serverTurn?: number | null;
+  /** Viewer's server seat. Null while spectating: the view is already anchored. */
+  viewerSeat?: number | null;
   /** Resolved Run it! in local seats. Present for every viewer until the next hand, including the one who did not claim. */
   run?: RunPlayback | null;
   /** Release 10: spectator banner / take-seat prompt / watchers chip, drawn over the table */
@@ -425,6 +429,31 @@ export function placeholderStyle(venue: VenueId): React.CSSProperties {
   return vars as React.CSSProperties;
 }
 
+/** The one turn badge, painted over an opponent plate from the main tree so a stale canvas plate cannot keep the previous seat's label. */
+function SeatBadge({ badge }: { badge: TurnBadge }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    let raf = 0;
+    const place = () => {
+      const plate = document.querySelector(`[data-testid="seat-${badge.seat}"]`);
+      const el = ref.current;
+      if (plate && el) {
+        const r = plate.getBoundingClientRect();
+        el.style.left = `${r.left + 30}px`;
+        el.style.top = `${r.top - 16}px`;
+        el.hidden = r.width <= 0;
+      }
+      raf = requestAnimationFrame(place);
+    };
+    place();
+    return () => cancelAnimationFrame(raf);
+  }, [badge.seat, badge.text]);
+  return createPortal(
+    <div ref={ref} className="plate-turn acting-badge" data-testid={badge.testId} hidden style={{ position: 'fixed', zIndex: 4, pointerEvents: 'none' }}>{badge.text}</div>,
+    document.body,
+  );
+}
+
 /** a stable 0–1 number from a game seed (Random venue: same pick for the same game) */
 function seedFloat(seed: string): number {
   let h = 2166136261;
@@ -576,8 +605,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const dealerSeat = online?.dealerSeat != null ? online.dealerSeat : offlineDealer.localSeat;
   const showDealer = !!dealerLabel && (dealing || isFreshDeal(st));
   const turnLocked = !!online?.source.locked;
+  const localTurn = !online || online.serverTurn == null
+    ? st.turn
+    : localSeatOfServerTurn(online.serverTurn, spectating || online.viewerSeat == null ? null : online.viewerSeat, n);
   // Badges and playable cards share this. `covered` (Run it!) is applied again once that show exists.
-  const myTurn = actingSeat({ turn: st.turn, phase: st.phase, pause, dealing, locked: turnLocked, covered: false }) === HUMAN && !spectating;
+  const myTurn = actingSeat({ turn: localTurn, phase: st.phase, pause, dealing, locked: turnLocked, covered: false }) === HUMAN && !spectating;
   // Sort once when the hand is dealt. A play only removes a card; re-sorting here is what made the fan look shuffled.
   const handOrder = useRef<{ handNo: number; cards: Card[] } | null>(null);
   const hand = useMemo(() => {
@@ -1045,10 +1077,32 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     names.forEach((nm, i) => { if (isBotSeat(i)) preloadVoice(personaForName(nm), nm); });
   }, [botKey, talkPrefs.voices]); // eslint-disable-line react-hooks/exhaustive-deps
   const notice = onNoticeSides(sb);
-  const actor = actingSeat({ turn: st.turn, phase: st.phase, pause, dealing, locked: turnLocked, covered: !!runFx });
+  const live = turnView({
+    turn: localTurn, phase: st.phase, pause, dealing, locked: turnLocked, covered: !!runFx,
+    viewerSeat: HUMAN, spectating, legalCount: legal.length, selected: !!selected,
+  });
+  const actor = live.actor;
+  const badge = live.badge;
+  // The opponent plate lives in the canvas, which can paint a turn late. The class follows the same seat as the badge.
+  useEffect(() => {
+    let raf = 0;
+    const sync = () => {
+      if (typeof document === 'undefined') return;
+      const root = document.querySelector('.table-screen');
+      if (root) {
+        const id = actor === null || (actor === HUMAN && spectating) ? '' : `seat-${actor}`;
+        root.querySelectorAll('.plate').forEach((el) => {
+          const on = !!id && el.getAttribute('data-testid') === id;
+          if (el.classList.contains('turn') !== on) el.classList.toggle('turn', on);
+        });
+      }
+      raf = requestAnimationFrame(sync);
+    };
+    sync();
+    return () => cancelAnimationFrame(raf);
+  }, [actor, spectating]);
   const renderSeat = (seat: number) => {
-    const mark = seatMark(actor, seat, st.phase, false, false, 0);
-    const isTurn = mark === 'to-play' || mark === 'bidding';
+    const isTurn = actor === seat;
     const partner = !spectating && r.partnerships && seat === partnerOf(HUMAN, r);
     const b = st.bids[seat];
     return (
@@ -1061,8 +1115,6 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             <span className="chip">TOOK {sb.tricksWon[seat]}</span>
           </div>
         </div>
-        {mark === 'bidding' && <div className="plate-turn" data-testid={`bidding-${seat}`}>BIDDING</div>}
-        {mark === 'to-play' && <div className="plate-turn" data-testid={`to-play-${seat}`}>TO PLAY</div>}
         {online?.seatExtra(seat)}
       </div>
     );
@@ -1136,7 +1188,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           piles={display.piles}
           legal={runFx ? [] : humanExchanging && hand ? hand : legal}
           selected={runFx ? null : selected}
-          turnSeat={runFx || pause || st.phase === 'handOver' || st.phase === 'gameOver' || st.turn !== HUMAN ? null : st.turn}
+          turnSeat={actor === HUMAN && !spectating ? actor : null}
           winnerSeat={winnerSeat}
           promoted={promoted}
           onCardTap={onCard}
@@ -1151,6 +1203,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         />
       </Suspense>
       {!loadGone && <TableLoading progress={loadProgress} leaving={!loading} />}
+      {badge && badge.seat !== HUMAN && <SeatBadge badge={badge} />}
 
       {/* scorebug */}
       <header className="scorebug">
@@ -1237,7 +1290,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       {/* center notes */}
       <div className="center-note-wrap">
         {showDealer && <DealerPopup name={dealerLabel} localSeat={dealerSeat} />}
-        {st.phase === 'bidding' && !pause && !dealing && st.turn !== HUMAN && <div className="center-note" data-testid="bidding-note">{biddingNote(names[st.turn!] ?? '', { partnerships: r.partnerships, partnerTurn: st.turn === partnerSeat, spectating })}</div>}
+        {st.phase === 'bidding' && !pause && !dealing && localTurn !== HUMAN && localTurn !== null && <div className="center-note" data-testid="bidding-note">{biddingNote(names[localTurn] ?? '', { partnerships: r.partnerships, partnerTurn: localTurn === partnerSeat, spectating })}</div>}
         {showCenterBidOrder(st.phase, pause, dealing) && <BidOrder st={st} names={names} me={spectating ? -1 : HUMAN} />}
         {isBooks && st.phase === 'playing' && !pause && !dealing && st.tricks.length === 0 && st.trick.plays.length === 0 && <div className="center-note books-note" data-testid="books-note">First hand: books bid themselves · 10 per book</div>}
         {st.phase === 'exchange' && !humanExchanging && <div className="center-note">{names[exchangeStep!.from]} passes {exchangeStep!.count} to {names[exchangeStep!.to]}…</div>}
@@ -1309,8 +1362,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
               {isNilBid(st.bids[HUMAN]) && sb.tricksWon[HUMAN]! > 0 && <span className="chip bad">NIL BUSTED</span>}
             </div>
           </div>
-          {seatMark(actor, HUMAN, st.phase, true, spectating, legal.length) === 'your-turn' && <div className="plate-turn" data-testid="your-turn">{selected ? 'TAP AGAIN TO PLAY' : 'YOUR TURN'}</div>}
-          {seatMark(actor, HUMAN, st.phase, true, spectating, legal.length) === 'your-bid' && <div className="plate-turn" data-testid="your-bid">YOUR BID</div>}
+          {badge && badge.seat === HUMAN && <div className="plate-turn" data-testid={badge.testId}>{badge.text}</div>}
           {online?.seatExtra(HUMAN)}
         </div>
         {error && <div className="err">{error}</div>}
