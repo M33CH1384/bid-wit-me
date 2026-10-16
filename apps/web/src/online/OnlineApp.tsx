@@ -3,6 +3,7 @@ import { CODE_LENGTH, isRoomCode, normalizeRoomCode } from '@spades/protocol';
 import { NowPlaying } from '../SoundControls';
 import { HostMusicBridge } from './HostMusic';
 import { type Settings, loadSettings, saveSettings, settingsToRules } from '../settings';
+import { ONLINE_TURN_SEC } from './turnTimer';
 import { serverUrl } from './config';
 import { TableConnection, createTable, tableInfo } from './connection';
 import { joinableSeats, spectatorsFull } from './joinable';
@@ -159,7 +160,7 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
     const created = sessionStorage.getItem(`bwm.created.${code}`) === '1';
     if (created && room.hostId === cs.you && room.phase === 'lobby') {
       sessionStorage.removeItem(`bwm.created.${code}`);
-      conn.send({ t: 'config', rules: settingsToRules(settings), botLevel: settings.botLevel });
+      conn.send({ t: 'config', rules: { ...settingsToRules(settings), turnTimerSec: { bid: ONLINE_TURN_SEC, play: ONLINE_TURN_SEC } }, botLevel: settings.botLevel });
     }
     // Release 9 invites deep-link a seat (/t/CODE?seat=N): take it if it's still open (a bot's seat mid-game)
     const q = new URLSearchParams(location.search);

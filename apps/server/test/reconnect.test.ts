@@ -132,6 +132,27 @@ describe('reconnect keeps the seat and the name', () => {
     expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid });
   });
 
+  it('holds the turn clock while the table is drawing, then starts a full timer without giving up the seat', () => {
+    const { env, a } = seated();
+    const seq = env.room.data.seq!;
+    env.send('a', { t: 'interactive', on: false });
+    env.advance(20_000);
+    expect(env.room.data.seq).toBe(seq);
+    expect(env.room.data.game!.trick.plays).toEqual([]);
+    expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid });
+    expect(env.room.data.deadline).toBeNull();
+    env.send('a', { t: 'interactive', on: true });
+    const left = env.room.data.deadline! - env.t;
+    expect(left).toBeGreaterThan(19_000);
+    env.advance(left - 500);
+    expect(env.room.data.game!.trick.plays).toEqual([]);
+    expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid, });
+    env.advance(1000);
+    expect(env.room.data.seq!).toBeGreaterThan(seq);
+    expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid });
+    expect(env.room.data.members[a.pid]!.name).toBe('Meech');
+  });
+
   it('logs the socket close, the reconnect, and a leave that is the only way a bot gets the seat', () => {
     const lines: string[] = [];
     const orig = console.log;
