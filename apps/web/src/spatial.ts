@@ -45,24 +45,25 @@ export function withVoiceMuted(muted: Record<string, true> | undefined, playerId
 }
 
 export const SOUNDSCAPE_ROOMS: Exclude<VenueBed, 'none'>[] = ['cookout', 'basement', 'barbershop', 'casino', 'jazz', 'beach', 'kitchen', 'mansion', 'rooftop', 'yacht'];
-/** Demetrius's four soundscape families. EVERY room stays in the Auto random pool; each room maps to
- *  exactly one family's audio character (bed tone, convolver size, card surface). Competitive
- *  Tournament is a family (large hall), not a room — mansion/casino carry it. */
-export type SoundscapeFamily = 'cookout' | 'basement' | 'barbershop' | 'tournament';
-export const ROOM_FAMILY: Record<(typeof SOUNDSCAPE_ROOMS)[number], SoundscapeFamily> = {
-  cookout: 'cookout', beach: 'cookout', rooftop: 'cookout', yacht: 'cookout', kitchen: 'cookout',
-  basement: 'basement',
-  barbershop: 'barbershop', jazz: 'barbershop',
-  mansion: 'tournament', casino: 'tournament',
-};
-export function familyOf(room: VenueBed): SoundscapeFamily | null { return room === 'none' ? null : ROOM_FAMILY[room as (typeof SOUNDSCAPE_ROOMS)[number]] ?? null; }
-/** Intelligible name for the loading chip / menu (Phase 4): the room's own name; the family only
- *  shapes the audio. basement's room is the Church Basement venue, whose soundscape name follows. */
-export const ROOM_NAMES: Record<(typeof SOUNDSCAPE_ROOMS)[number], string> = {
-  cookout: 'Backyard Cookout', basement: 'Basement Spades Night', barbershop: 'Barbershop', casino: 'Vegas High Roller',
-  jazz: 'Speakeasy Lounge', beach: 'Beach Cabana', kitchen: "Grandma's Kitchen", mansion: 'Mansion', rooftop: 'Rooftop', yacht: 'Yacht Deck',
-};
-export function roomName(room: VenueBed): string { return room === 'none' ? '' : ROOM_NAMES[room as (typeof SOUNDSCAPE_ROOMS)[number]] ?? room; }
+export interface RoomStyle { venue: string; name: string; bed: VenueBed; surface: 'felt' | 'wood' | 'laminate' | 'glass'; reverb: 'dry-outdoor' | 'tight' | 'lively' | 'hall' | 'studio'; crowd: 'none' | 'low' | 'party' | 'arena' }
+/** One sound style PER ROOM (Demetrius, supersedes shared families). Every repo venue gets its own
+ *  ambience bed, reverb character, table surface and crowd. Pool/picker enumerate exactly these. */
+export const ROOM_STYLES: RoomStyle[] = [
+  { venue: 'classic', name: 'Classic Studio', bed: 'none', surface: 'felt', reverb: 'studio', crowd: 'none' },
+  { venue: 'backyard', name: 'Backyard Cookout', bed: 'cookout', surface: 'wood', reverb: 'dry-outdoor', crowd: 'party' },
+  { venue: 'mansion', name: 'Mansion', bed: 'mansion', surface: 'glass', reverb: 'hall', crowd: 'low' },
+  { venue: 'barbershop', name: 'Barbershop', bed: 'barbershop', surface: 'wood', reverb: 'lively', crowd: 'low' },
+  { venue: 'church', name: 'Basement Spades Night', bed: 'basement', surface: 'laminate', reverb: 'tight', crowd: 'low' },
+  { venue: 'rooftop', name: 'Rooftop', bed: 'rooftop', surface: 'wood', reverb: 'dry-outdoor', crowd: 'low' },
+  { venue: 'speakeasy', name: 'Speakeasy Lounge', bed: 'jazz', surface: 'felt', reverb: 'lively', crowd: 'low' },
+  { venue: 'vegas', name: 'Vegas High Roller', bed: 'casino', surface: 'felt', reverb: 'hall', crowd: 'arena' },
+  { venue: 'beach', name: 'Beach Cabana', bed: 'beach', surface: 'wood', reverb: 'dry-outdoor', crowd: 'low' },
+  { venue: 'grandma', name: "Grandma's Kitchen", bed: 'kitchen', surface: 'laminate', reverb: 'tight', crowd: 'none' },
+  { venue: 'yacht', name: 'Yacht Deck', bed: 'yacht', surface: 'wood', reverb: 'dry-outdoor', crowd: 'low' },
+];
+export function styleForVenue(venue: string): RoomStyle | undefined { return ROOM_STYLES.find((r) => r.venue === venue); }
+export function styleForBed(bed: VenueBed): RoomStyle | undefined { return ROOM_STYLES.find((r) => r.bed === bed && r.bed !== 'none') ?? ROOM_STYLES[0]; }
+export function roomName(room: VenueBed): string { return room === 'none' ? 'Classic Studio' : styleForBed(room)?.name ?? room; }
 function seedHash(seed: string): number { let h = 2166136261; for (let i = 0; i < seed.length; i++) { h ^= seed.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
 /** Room resolver. Explicit room wins and persists; then a Story stop's mapped room; then Auto =
  *  a seeded random room per game/session (host/session seed, so online clients agree).

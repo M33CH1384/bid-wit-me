@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_CATEGORY_VOLUMES, ROOM_FAMILY, SOUNDSCAPE_ROOMS, Spatializer, defaultAudioQuality, familyOf, isVoiceMuted, listenerPose, normalizeCategoryVolumes, pannerCap, pickPanningModel, resolveSoundscape, roomName, seatPoint, withVoiceMuted, type SpatialCtxLike } from '../src/spatial';
+import { VENUES } from '@spades/protocol';
+import { DEFAULT_CATEGORY_VOLUMES, ROOM_STYLES, SOUNDSCAPE_ROOMS, styleForVenue, Spatializer, defaultAudioQuality, isVoiceMuted, listenerPose, normalizeCategoryVolumes, pannerCap, pickPanningModel, resolveSoundscape, roomName, seatPoint, withVoiceMuted, type SpatialCtxLike } from '../src/spatial';
 
 const fakeCtx = (): SpatialCtxLike => ({
   createPanner: () => ({ panningModel: '', distanceModel: '', refDistance: 0, rolloffFactor: 0, positionX: { value: 0 }, positionY: { value: 0 }, positionZ: { value: 0 }, connect: (d: unknown) => d }),
@@ -27,14 +28,13 @@ describe('spatial phase 2 plumbing', () => {
     const roll = resolveSoundscape({ explicit: 'auto', seed: 'game-42' });
     expect(roll).not.toBe('none'); expect(resolveSoundscape({ explicit: 'auto', seed: 'game-42' })).toBe(roll); // deterministic: online agrees
   });
-  it('random pool keeps every room and covers all 4 soundscape families', () => {
-    expect(SOUNDSCAPE_ROOMS.length).toBe(10);
-    for (const r of SOUNDSCAPE_ROOMS) expect(ROOM_FAMILY[r]).toBeTruthy();
-    expect(new Set(Object.values(ROOM_FAMILY))).toEqual(new Set(['cookout', 'basement', 'barbershop', 'tournament']));
-    expect(familyOf('casino')).toBe('tournament'); expect(familyOf('cookout')).toBe('cookout');
+  it('one style per room: every repo venue has its own distinct soundscape', () => {
+    expect(ROOM_STYLES.map((r) => r.venue).sort()).toEqual([...VENUES].sort());
+    expect(new Set(ROOM_STYLES.map((r) => r.name)).size).toBe(ROOM_STYLES.length);
+    for (const r of ROOM_STYLES) { expect(r.reverb).toBeTruthy(); expect(r.surface).toBeTruthy(); }
+    expect(styleForVenue('vegas')?.crowd).toBe('arena'); expect(styleForVenue('classic')?.reverb).toBe('studio');
     expect(roomName('barbershop')).toBe('Barbershop'); expect(roomName('basement')).toBe('Basement Spades Night');
-    // every seeded roll lands on a named room in a family
-    for (const seed of ['a', 'game-1', 'xyz-9']) { const r = resolveSoundscape({ explicit: 'auto', seed }); expect(familyOf(r)).toBeTruthy(); expect(roomName(r).length).toBeGreaterThan(2); }
+    for (const seed of ['a', 'game-1', 'xyz-9']) { const r = resolveSoundscape({ explicit: 'auto', seed }); expect(roomName(r).length).toBeGreaterThan(2); }
   });
   it('per-player voice mute is local and reversible', () => {
     const m = withVoiceMuted(undefined, 'p2', true);
