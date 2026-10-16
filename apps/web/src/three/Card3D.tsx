@@ -123,6 +123,8 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   // cards becomes one outline. The hole in the ring leaves the pips showing. A selected
   // card's face still draws after those peer rings, and its own ring draws after that.
   const glowMat = useMemo(() => new MeshBasicMaterial({ color: '#f5c542', transparent: false, opacity: 1, depthWrite: false, toneMapped: false }), []);
+  // Stays on the fan slot while the face rises, so a second tap on the raised card or the spot it left is still this id.
+  const pickMat = useMemo(() => new MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, depthTest: false, colorWrite: false, toneMapped: false }), []);
   const edge = useMemo(() => edgeMat.clone(), []);
   // The root group keeps `order` for taps. Child groups reset Three.js groupOrder, so each mesh
   // carries its own: body at `order`, face and back half a step later, the gold ring after
@@ -149,7 +151,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       for (const m of list) m.depthTest = paint.depthTest;
     });
     invalidate();
-  }, [order, cardId, face, glow, frontMat, backMat, glowMat, invalidate]);
+  }, [order, cardId, face, glow, frontMat, backMat, glowMat, invalidate, raise]);
   const look = useRef({ target: new Color(1, 1, 1), sat: 1 });
   useLayoutEffect(() => {
     const lookAt = faceLook(!!dim);
@@ -437,6 +439,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       onPointerOver={onTap ? () => { document.body.style.cursor = 'pointer'; } : undefined}
       onPointerOut={onTap ? () => { document.body.style.cursor = ''; } : undefined}
     >
+      {raise > 0 && <mesh geometry={geo.body} material={pickMat} renderOrder={order} castShadow={false} userData={cardId ? { cardId } : undefined} />}
       <group ref={lift} name={name}>
       <group ref={inner}>
         <mesh geometry={geo.body} material={edge} castShadow={castShadow} />

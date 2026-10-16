@@ -58,12 +58,16 @@ export function feltCardZ(index: number, legal: boolean, selected: boolean): num
   return index;
 }
 
+export function feltLiftPx(selected: boolean, raised: boolean): number {
+  return (raised ? FELT_LEGAL_LIFT_PX : 0) + (selected ? FELT_SELECT_LIFT_PX : 0);
+}
+
 export function feltCardTransform(index: number, count: number, selected: boolean, raised = false): string {
   const mid = (count - 1) / 2;
   const rot = (index - mid) * 3.2;
   const sag = Math.abs(index - mid) * 3;
   const fan = `rotate(${rot}deg) translateY(${sag}px)`;
-  const up = (raised ? FELT_LEGAL_LIFT_PX : 0) + (selected ? FELT_SELECT_LIFT_PX : 0);
+  const up = feltLiftPx(selected, raised);
   return up > 0 ? `translateY(-${up}px) ${fan}` : fan;
 }
 
@@ -105,7 +109,7 @@ export function FeltHand({ cards, trick, legal, selected, onCard, promoted, visi
         if (ctx) {
           ctx.clearRect(0, 0, el.width, el.height);
           ctx.drawImage(src, 0, 0);
-          el.parentElement?.classList.add('drawn');
+          el.closest('button')?.classList.add('drawn');
         }
       }
       raf = requestAnimationFrame(step);
@@ -131,25 +135,31 @@ export function FeltHand({ cards, trick, legal, selected, onCard, promoted, visi
           const can = legal.includes(c);
           const picked = selected === c;
           const mixed = legal.length > 0 && legal.length < cards.length;
+          const lift = feltLiftPx(picked, can && mixed);
+          // The button stays in the fan slot and grows up over the rise, so a second tap on the
+          // raised face or the spot it left is still this card id. The face itself moves up inside it.
           return (
             <button
               key={c}
               type="button"
               tabIndex={-1}
-              className={`${red ? 'red' : ''} ${can ? 'legal' : ''} ${picked ? 'sel' : ''}`}
+              className={`${red ? 'red' : ''} ${can ? 'legal' : ''} ${picked ? 'sel' : ''} ${lift ? 'hit' : ''}`}
               style={{
-                transform: feltCardTransform(i, cards.length, picked, can && mixed),
+                transform: feltCardTransform(i, cards.length, false),
                 zIndex: feltCardZ(i, can, picked),
                 width: box.width,
-                height: box.height,
+                height: box.height + lift,
                 margin: `0 ${box.margin}px`,
+                marginTop: lift ? -lift : undefined,
               }}
               disabled={!can}
               aria-pressed={selected === c}
               onClick={() => onCard(c)}
             >
-              <canvas width={240} height={336} ref={(el) => { slots.current.set(c, el); }} />
-              <span>{cardLabel(c)}</span>
+              <span className="felt-face" style={lift ? { height: box.height } : undefined}>
+                <canvas width={240} height={336} ref={(el) => { slots.current.set(c, el); }} />
+                <span>{cardLabel(c)}</span>
+              </span>
             </button>
           );
         })}

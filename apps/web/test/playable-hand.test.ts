@@ -102,6 +102,8 @@ describe('a tap hits the card you see', () => {
 
     // Selecting Q♦ and then hitting 4♦ changes the selection. It does not play 4♦.
     expect(confirmPlay('QD', '4D', 0, 500)).toEqual({ type: 'select', card: '4D' });
+    // The event that follows the selecting tap (the card sliding, or the synthesised mouse event) must not drop Q♦.
+    expect(confirmPlay('QD', '4D', 1000, 1000 + TAP_PLAY_ARM_MS - 1)).toEqual({ type: 'ignore' });
     // The tap that selected Q♦ must not also play it.
     expect(confirmPlay('QD', 'QD', 1000, 1000 + TAP_PLAY_ARM_MS - 1)).toEqual({ type: 'ignore' });
     // The confirming tap plays Q♦, the selected id, not the neighbour and not an index.

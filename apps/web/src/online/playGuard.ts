@@ -38,6 +38,8 @@ export const TAP_PLAY_ARM_MS = 120;
 /**
  * One tap selects. The next tap plays, and the card that leaves the hand is the selected id.
  * A hit on a different card changes the selection. It never plays that other card.
+ * The pointer event that follows the selecting tap (a touch, then the mouse event, or the
+ * card sliding out from under the finger) must not drop that selection.
  */
 export function confirmPlay(selected: string | null, hit: string, selectedAt: number, now: number):
   { type: 'play'; card: string } | { type: 'select'; card: string } | { type: 'ignore' } {
@@ -46,5 +48,6 @@ export function confirmPlay(selected: string | null, hit: string, selectedAt: nu
     if (!(now - selectedAt >= TAP_PLAY_ARM_MS)) return { type: 'ignore' };
     return { type: 'play', card: selected };
   }
+  if (selected !== null && now - selectedAt < TAP_PLAY_ARM_MS) return { type: 'ignore' };
   return { type: 'select', card: hit };
 }

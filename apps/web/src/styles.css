@@ -1542,8 +1542,11 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 /* No gold outline. Playable cards stay the paper colour. */
 .felt-hand button.legal { filter: none; }
 .felt-hand button canvas { width: 100%; height: 100%; display: block; }
-.felt-hand button span { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--display); font-weight: 800; font-size: 18px; letter-spacing: .02em; }
-.felt-hand button.drawn span { opacity: 0; }
+.felt-hand button span:not(.felt-face) { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--display); font-weight: 800; font-size: 18px; letter-spacing: .02em; }
+.felt-hand .felt-face { display: block; height: 100%; }
+.felt-hand button.hit { overflow: visible; background: transparent; box-shadow: none; }
+.felt-hand button.hit .felt-face { position: absolute; left: 0; right: 0; top: 0; border-radius: 5px; overflow: hidden; background: #fbf8f1; box-shadow: 0 8px 16px rgba(0,0,0,.45); }
+.felt-hand button.drawn span:not(.felt-face) { opacity: 0; }
 .felt-trick { position: absolute; z-index: 6; left: 50%; top: 46%; transform: translate(-50%, -50%); display: flex; gap: 6px; pointer-events: none; }
 .felt-trick canvas { width: 40px; height: 56px; border-radius: 4px; background: #fbf8f1; box-shadow: 0 6px 12px rgba(0,0,0,.4); }
 

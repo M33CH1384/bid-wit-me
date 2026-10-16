@@ -456,6 +456,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const names = online?.names ?? botNames;
   const pos = useMemo(() => positions(n), [n]);
   const [selected, setSelected] = useState<Card | null>(null);
+  const selectedRef = useRef<Card | null>(null);
   const [exchangePick, setExchangePick] = useState<Card[]>([]);
   const [showPad, setShowPad] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -869,7 +870,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     return () => clearTimeout(t);
   }, [isBooks, dealing, st.seed, st.handNo, st.tricks.length, resume]);
 
-  useEffect(() => { setSelected(null); }, [st.turn, st.handNo]);
+  useEffect(() => { selectedRef.current = null; setSelected(null); }, [st.turn, st.handNo]);
   // Pump and the Nil-bust shotgun both come from the shared state, so every online client hears each once.
   // The pump is one book from a shot: a contract on the edge, or a Nil bidder still sitting at zero books.
   // The shotgun plays when the trick that gives that Nil bidder their first book resolves. Mute and volume are the bus.
@@ -1020,18 +1021,24 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     }
     if (ignorePlayTap(playHold.current, trickNow)) return;
     if (!legal.includes(c)) return;
-    // Play sends the selected card id. A different hit only changes the selection.
-    const action = confirmPlay(selected, c, pickedAt.current, performance.now());
+    // The selected card is an id. A second tap on that id plays it, even before React re-renders.
+    const action = confirmPlay(selectedRef.current, c, pickedAt.current, performance.now());
     if (action.type === 'ignore') return;
     if (action.type === 'play') {
       const held = trickNow;
       const sent = apply({ type: 'play', seat: HUMAN, card: action.card as Card });
       if (sent !== false) {
         playHold.current = held;
+        selectedRef.current = null;
         setSelected(null);
       }
-    } else { pickedAt.current = performance.now(); setSelected(action.card as Card); sound.play('tap'); }
-  }, [humanExchanging, exchangeStep, legal, selected, apply, trickNow]);
+    } else {
+      pickedAt.current = performance.now();
+      selectedRef.current = action.card as Card;
+      setSelected(action.card as Card);
+      sound.play('tap');
+    }
+  }, [humanExchanging, exchangeStep, legal, apply, trickNow]);
 
   const isBotSeat = (seat: number) => (online ? !!online.botSeats?.includes(seat) : seat !== HUMAN);
   // recorded bot voices: fetch a persona's clips when one of its bots sits down
