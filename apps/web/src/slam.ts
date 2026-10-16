@@ -53,6 +53,8 @@ export interface SlamFeel {
   shake: number;
   /** slam sound volume 0..1 */
   volume: number;
+  /** the intensity this feel came from (drives the card-smack sound) */
+  intensity: number;
 }
 
 const clamp01 = (v: number) => (Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : DEFAULT_SLAM);
@@ -65,6 +67,7 @@ export function slamFeel(intensity: number, reducedMotion = false): SlamFeel {
     bounce: reducedMotion ? 0.006 : 0.012 + 0.05 * i,
     shake: reducedMotion || i < 0.45 ? 0 : 0.012 + 0.03 * ((i - 0.45) / 0.55),
     volume: 0.45 + 0.55 * i,
+    intensity: i,
   };
 }
 

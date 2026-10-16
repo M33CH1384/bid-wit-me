@@ -149,11 +149,16 @@ function FxShake({ table }: { table: RefObject<Group | null> }) {
         last.current = s;
         const k = s.amp * Math.pow(1 - t / s.dur, 2);
         const w = 2 * Math.PI * t;
-        a.x += k * (Math.sin(w * 23) * 0.6 + Math.sin(w * 37 + 1) * 0.4);
-        a.y += k * (Math.sin(w * 29 + 2) * 0.6 + Math.sin(w * 41) * 0.4);
-        a.z += k * 0.5 * Math.sin(w * 31 + 0.5);
-        a.roll += k * 0.25 * Math.sin(w * 19 + 1.3);
-        a.ty += k * 0.18 * Math.sin(w * 53);
+        if (s.thump) {
+          // A card slam: the table thumps down and back. The camera stays put, so nothing wiggles sideways.
+          a.ty -= k * Math.abs(Math.sin(w * 9));
+        } else {
+          a.x += k * (Math.sin(w * 23) * 0.6 + Math.sin(w * 37 + 1) * 0.4);
+          a.y += k * (Math.sin(w * 29 + 2) * 0.6 + Math.sin(w * 41) * 0.4);
+          a.z += k * 0.5 * Math.sin(w * 31 + 0.5);
+          a.roll += k * 0.25 * Math.sin(w * 19 + 1.3);
+          a.ty += k * 0.18 * Math.sin(w * 53);
+        }
         invalidate();
       }
     }
@@ -597,7 +602,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     // Two-tap / bot tosses vary a little per play (same seed → same toss on every client); reduced motion slides.
     const toss = land && !dragged ? 0.8 + ((playSeed(props.gameSeed ?? '', handNo, trickNo, pl.card) % 1000) / 1000) * 0.5 : 1;
     const flight = props.landCue(pl.card).includes(',overcut') ? { duration: 0.34, arc: 0.7 } : dragged ? { duration: feel.duration, arc: feel.arc } : { duration: 0.5, arc: 0.35 * toss };
-    items.push({ key: playKey, card: pl.card, public: true, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale, land), from, origin, slam: feel, ...flight, ...(land && reduced ? { motion: 'slide' as const, arc: 0 } : land && dragged ? { motion: 'lift' as const } : {}), sfxLand: props.landCue(pl.card), glow: !!props.marked?.includes(pl.card), ...autoDelay });
+    items.push({ key: playKey, card: pl.card, public: true, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale, land), from, origin, slam: dragged ? feel : { ...feel, intensity: -1 }, ...flight, ...(land && reduced ? { motion: 'slide' as const, arc: 0 } : land && dragged ? { motion: 'lift' as const } : {}), sfxLand: props.landCue(pl.card), glow: !!props.marked?.includes(pl.card), ...autoDelay });
   });
   // 'Run it!': the claimer's cards slam down in sequence (then the tornado takes everything)
   if (props.slam) {
@@ -1239,7 +1244,7 @@ function HandPointer({ onTap, onDrop, legal, onDragging }: { onTap: (card: Card)
     const el = gl.domElement;
     // Drag-to-play: the press still selects (first tap). Past 10px a lifted copy of the card follows the
     // finger on top of everything; release over the felt plays it, anywhere else it snaps back.
-    let drag: { id: Card; x0: number; y0: number; on: boolean; ghost: HTMLCanvasElement | null; w: number; h: number; top: number; trail: DragSample[] } | null = null;
+    let drag: { id: Card; x0: number; y0: number; on: boolean; ghost: HTMLCanvasElement | null; w: number; h: number; top: number; trail: DragSample[]; legal: boolean } | null = null;
     const endGhost = (g: HTMLCanvasElement | null, cls: string, ms: number, to?: { x: number; y: number }) => {
       if (!g) return;
       g.classList.add(cls);
@@ -1276,7 +1281,8 @@ function HandPointer({ onTap, onDrop, legal, onDragging }: { onTap: (card: Card)
       el.style.touchAction = '';
       if (!d?.on) return;
       e.preventDefault();
-      const result = dropResult({ legal: legalNow.current.includes(d.id), y: e.clientY, handTop: d.top, screenH: window.innerHeight });
+      // Legal at press time or now: a legal card never shakes (the legal list can re-render mid-drag).
+      const result = dropResult({ legal: d.legal || legalNow.current.includes(d.id), y: e.clientY, handTop: d.top, screenH: window.innerHeight });
       (window as unknown as { __bwmDrag?: string }).__bwmDrag = `${result}:${d.id}`;
       if (result === 'play') {
         d.trail.push({ t: e.timeStamp || performance.now(), x: e.clientX, y: e.clientY });
@@ -1308,7 +1314,7 @@ function HandPointer({ onTap, onDrop, legal, onDragging }: { onTap: (card: Card)
       const side = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(b.x - a.x, b.y - a.y);
       const w = me ? side(me.poly[0]!, me.poly[1]!) : 60;
       const top = hits.length ? Math.min(...hits.flatMap((h) => h.poly.map((p) => p.y))) + rect.top : window.innerHeight * 0.7;
-      drag = { id: id as Card, x0: e.clientX, y0: e.clientY, on: false, ghost: null, w, h: w * 1.4, top, trail: [{ t: e.timeStamp || performance.now(), x: e.clientX, y: e.clientY }] };
+      drag = { id: id as Card, x0: e.clientX, y0: e.clientY, on: false, ghost: null, w, h: w * 1.4, top, trail: [{ t: e.timeStamp || performance.now(), x: e.clientX, y: e.clientY }], legal: legalNow.current.includes(id as Card) };
       if (echoTap(e, id)) {
         (window as unknown as { __bwmLastTap?: string }).__bwmLastTap = `echo:${id}`;
         return;

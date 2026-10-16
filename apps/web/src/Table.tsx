@@ -19,6 +19,7 @@ import { SeriesChip, SeriesSheet, loadSeries, saveSeries } from './Series';
 import { useMyTeamName } from './TeamName';
 import { offlineTalk } from './offlineTalk';
 import { BidOrder, showCenterBidOrder } from './PartnerTalk';
+import { guardTouches, lockBody } from './antiPan';
 import { TrumpLadder, trumpStripShown } from './trumpLadder';
 import { landingMode } from './three/landing';
 import { SocialButton } from './social/Social';
@@ -475,6 +476,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // and an open tip holds the bots + trick sweep until it's dismissed. Tips off → back to the chosen speed.
   const [tips, setTips] = useState<TipsPref>(loadTips);
   const [tipsSkipped, setTipsSkipped] = useState(false);
+  // Anti-pan: lock the page while this table is up, and stop touch pans on the table itself.
+  useEffect(() => lockBody(), []);
+  useEffect(() => { const el = screenRef.current; return el ? guardTouches(el) : undefined; }, []);
   const learning = tips.on && !tipsSkipped;
   const [tipOpen, setTipOpen] = useState(false);
   const speed = learning && settings.speed !== 'turbo' ? 'slow' : settings.speed;

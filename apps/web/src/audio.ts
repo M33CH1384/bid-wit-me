@@ -383,6 +383,10 @@ class Engine {
     window.addEventListener('pointerdown', gesture, true);
     window.addEventListener('touchstart', gesture, true);
     window.addEventListener('keydown', gesture, true);
+    // iOS only grants audio on touchend / pointerup / click. A drag-to-play never makes a click, so listen there too.
+    window.addEventListener('touchend', gesture, true);
+    window.addEventListener('pointerup', gesture, true);
+    window.addEventListener('click', gesture, true);
     // backgrounding suspends the context; pageshow also fires when iOS restores the page from bfcache
     document.addEventListener('visibilitychange', () => { if (!document.hidden) show(); });
     window.addEventListener('pageshow', show);
@@ -595,6 +599,22 @@ class Engine {
   }
 
   /* ---------- playback ---------- */
+  /** Card landing scaled by slam intensity 0..1: a soft tap for a gentle drop, a punchy smack + table thud for a flick. */
+  cardSmack(intensity: number) {
+    if (!this.settings.on || !this.unlocked) return;
+    this.ensure();
+    const c = this.ctx;
+    if (!c || c.state !== 'running') return;
+    const s = smackSound(intensity);
+    this.played.play = (this.played.play ?? 0) + 1;
+    this.played.smack = (this.played.smack ?? 0) + 1;
+    this.lastSmack = s;
+    const t = c.currentTime;
+    this.sample('play', t, s.gain, s.rate);
+    if (s.thud > 0) this.thud(t + 0.005, s.thud);
+  }
+  lastSmack: SmackSound | null = null;
+
   play(name: Sfx, opts: { delay?: number; gain?: number; dur?: number } = {}) {
     if (!this.settings.on || !this.unlocked) return;
     this.ensure();
@@ -1261,6 +1281,17 @@ class Engine {
 
 /** Durations (seconds) the gunshot, shotgun, and tornado wind fill on first play. */
 export const EFFECT_NOISE_SECONDS = [0.085, 0.095, 0.12, 0.21, 0.23, 0.25, 0.31, 0.4, 0.75, 2.7];
+
+/** Pure mapping, tested: intensity → card-hit gain, pitch and table thud. Master volume / mute apply on top. */
+export interface SmackSound { gain: number; rate: number; thud: number }
+export function smackSound(intensity: number): SmackSound {
+  const i = Number.isFinite(intensity) ? Math.max(0, Math.min(1, intensity)) : 0.3;
+  return {
+    gain: 0.35 + 0.95 * i, // soft tap 0.35 → full smack 1.3 (default play is 0.9)
+    rate: 1.12 - 0.27 * i, // a harder hit sounds lower and fuller
+    thud: i < 0.4 ? 0 : 0.25 + 0.55 * ((i - 0.4) / 0.6),
+  };
+}
 
 export const sound = new Engine();
 sound.installUnlock();
