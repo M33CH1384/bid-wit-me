@@ -111,8 +111,10 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
 
   return (
     <>
+      {/* Seat is not part of the key. A spectator frame used to remount the 3D table and hold
+          the full-screen "Shuffling the deck…" loader for several seconds. */}
       <Table
-        key={`${room.code}:${room.game}:${cs.seat ?? 'watch'}`}
+        key={`${room.code}:${room.game}`}
         rules={r}
         seed={`${room.code}:${room.game}`}
         settings={settings}
