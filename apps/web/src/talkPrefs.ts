@@ -72,7 +72,7 @@ export function speakBot(name: string, text: string, persona?: string, line?: st
 }
 
 function webSpeech(name: string, text: string): void {
-  if (typeof speechSynthesis === 'undefined') return;
+  if (typeof speechSynthesis === 'undefined' || !sound.atTable) return; // never talk behind Home
   const snd = sound.settings;
   const p = PERSONAS[personaForName(name)];
   const clean = maskMild(text).replace(/\*+/g, ''); // never read the asterisks out; masked words just drop
