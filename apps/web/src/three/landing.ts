@@ -8,11 +8,14 @@ export interface Landing { dx: number; dz: number; spin: number }
 export const NO_LANDING: Landing = { dx: 0, dz: 0, spin: 0 };
 
 /** Farthest a thrown card may rest from its seat's spot, and the spin cap (radians). */
-export const MAX_SLIDE = 0.2;
-export const TAP_SCATTER = 0.07;
-export const MAX_SPIN = 0.32;
+export const MAX_SLIDE = 0.6;
+export const TAP_SCATTER = 0.3;
+/** about ±35° */
+export const MAX_SPIN = 0.61;
+/** extra random spread on a throw, world units */
+export const THROW_SPREAD = 0.1;
 /** Felt friction: rest distance = v² / (2·FRICTION) in world units, v in world units per second. */
-export const FRICTION = 400;
+export const FRICTION = 260;
 /** CSS px per world unit on the felt at phone size (rough; only scales the throw). */
 export const PX_PER_WORLD = 150;
 
@@ -55,11 +58,12 @@ export function restingOffset(seed: number, release?: readonly [number, number] 
     const v = Math.hypot(vx, vz);
     const dist = Math.min(MAX_SLIDE, (v * v) / (2 * FRICTION));
     const ux = vx / v, uz = vz / v;
-    const spin = clampAbs(jitter() * 0.12 + Math.sign(release[0]) * Math.min(1, v / 12) * 0.22, MAX_SPIN);
-    return { dx: ux * dist + jitter() * 0.015, dz: uz * dist + jitter() * 0.015, spin };
+    // a wide random spin (±35°), nudged by the sideways flick
+    const spin = clampAbs(jitter() * MAX_SPIN + Math.sign(release[0]) * Math.min(1, v / 12) * 0.12, MAX_SPIN);
+    return { dx: ux * dist + jitter() * THROW_SPREAD, dz: uz * dist + jitter() * THROW_SPREAD, spin };
   }
   const a = r() * Math.PI * 2, d = Math.sqrt(r()) * TAP_SCATTER;
-  return { dx: Math.cos(a) * d, dz: Math.sin(a) * d, spin: clampAbs(jitter() * 0.18, MAX_SPIN) };
+  return { dx: Math.cos(a) * d, dz: Math.sin(a) * d, spin: clampAbs(jitter() * MAX_SPIN, MAX_SPIN) };
 }
 
 /** A card on the table plane: centre, half sizes and in-plane spin. */
@@ -81,19 +85,23 @@ export function covers(c: FeltCard, p: { x: number; z: number }, pad = 0.03): bo
 
 export interface Felt { minX: number; maxX: number; minZ: number; maxZ: number }
 
+/** The part of the felt that is on screen and not under the hand, for card centres (world units). */
+export const VISIBLE_FELT: Felt = { minX: -1.1, maxX: 1.1, minZ: -1.2, maxZ: 0.75 };
+
+const inside = (p: { x: number; z: number }, f: Felt) => p.x >= f.minX && p.x <= f.maxX && p.z >= f.minZ && p.z <= f.maxZ;
+
 /**
- * Keep a landing on the felt and off the corner index of every card already down. Shrinks the offset
- * toward the seat's fixed spot (which never overlaps) until it fits; worst case is the fixed spot.
+ * Keep a landing on the table and readable. Cards may overlap earlier cards, but the new (top) card's centre and
+ * corner index stay on the visible felt, and it never lands squarely on top of an earlier card (the one under
+ * keeps some of its face). Shrinks the offset toward the seat's fixed spot until it fits; worst case is that spot.
  */
 export function clampLanding(base: { x: number; z: number }, size: { hw: number; hh: number }, land: Landing, under: readonly FeltCard[], felt: Felt): Landing {
-  for (let k = 0; k <= 8; k++) {
-    const f = 1 - k / 8;
+  for (let k = 0; k <= 10; k++) {
+    const f = 1 - k / 10;
     const c: FeltCard = { x: base.x + land.dx * f, z: base.z + land.dz * f, hw: size.hw, hh: size.hh, spin: land.spin * f };
-    const r = Math.hypot(c.hw, c.hh);
-    const onFelt = c.x - r * 0.6 >= felt.minX && c.x + r * 0.6 <= felt.maxX && c.z - r * 0.6 >= felt.minZ && c.z + r * 0.6 <= felt.maxZ;
-    const clear = under.every((u) => !covers(c, cornerIndex(u)));
-    // stay readable: its own index must not be pushed off the felt either
-    if ((onFelt && clear) || k === 8) return { dx: land.dx * f, dz: land.dz * f, spin: land.spin * f };
+    const onTable = inside(c, felt) && inside(cornerIndex(c), felt);
+    const notStacked = under.every((u) => Math.hypot(u.x - c.x, u.z - c.z) >= size.hw * 0.7);
+    if ((onTable && notStacked) || k === 10) return k === 10 ? { dx: 0, dz: 0, spin: land.spin * 0.5 } : { dx: land.dx * f, dz: land.dz * f, spin: land.spin * f };
   }
   return NO_LANDING;
 }

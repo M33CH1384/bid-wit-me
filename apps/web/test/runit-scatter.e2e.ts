@@ -26,7 +26,7 @@ function fixture(): string {
 }
 
 type Drop = { dx: number; dz: number; spin: number; delay: number };
-type Probe = { cards: string[]; drops: Drop[] | null; reduced: boolean };
+type Probe = { cards: string[]; drops: Drop[] | null; reduced: boolean; slams?: number; atTable?: boolean };
 
 async function run(b: Browser, opts: { tips: boolean; reduced?: boolean; shots?: string }): Promise<Probe> {
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, reducedMotion: opts.reduced ? 'reduce' : 'no-preference' });
@@ -42,6 +42,9 @@ async function run(b: Browser, opts: { tips: boolean; reduced?: boolean; shots?:
   await p.getByTestId('resume').click();
   await p.getByTestId('run-it').waitFor({ timeout: 45000 });
   await p.waitForTimeout(1500);
+  await p.mouse.click(195, 300); // a gesture so audio unlocks
+  const snd = () => p.evaluate(() => { const s = (window as unknown as { __bwmSound: { played: Record<string, number>; atTable: boolean } }).__bwmSound; return { play: s.played.play ?? 0, runSlam: s.played.runSlam ?? 0, atTable: s.atTable }; });
+  const s0 = await snd();
   await p.getByTestId('run-it').click();
   // zoom 1.5s, then the drop (≤1.1s + 0.42s flight), a beat, then the tornado at +1.75s
   await p.waitForTimeout(1500 + 250);
@@ -50,7 +53,9 @@ async function run(b: Browser, opts: { tips: boolean; reduced?: boolean; shots?:
   if (opts.shots) await p.screenshot({ path: `${SHOTS}/runit-${opts.shots}-settled-390.png` });
   await p.waitForTimeout(1300);
   if (opts.shots) await p.screenshot({ path: `${SHOTS}/runit-${opts.shots}-tornado-390.png` });
+  const s1 = await snd();
   const probe = await p.evaluate(() => (window as unknown as { __bwmRunDrop?: Probe }).__bwmRunDrop ?? null);
+  if (probe) { probe.slams = s1.play - s0.play; probe.atTable = s1.atTable; }
   await ctx.close();
   if (!probe) throw new Error('no run drop probe: the slam never rendered');
   return probe;
@@ -76,6 +81,8 @@ async function run(b: Browser, opts: { tips: boolean; reduced?: boolean; shots?:
     if (JSON.stringify(a.drops) !== JSON.stringify(on.drops)) fails.push('Tips on did not scatter the same way');
     console.log(`repeat identical=${JSON.stringify(a.drops) === JSON.stringify(again.drops)} tips-on identical=${JSON.stringify(a.drops) === JSON.stringify(on.drops)} reduced drops=${red.drops === null ? 'none (tidy row)' : 'SCATTERED'}`);
     if (red.drops !== null) fails.push('reduced motion still scattered');
+    console.log(`slam sounds at the table: ${a.slams} (atTable=${a.atTable})`);
+    if (!a.atTable || (a.slams ?? 0) < 2) fails.push('the Run it slam sounds did not play at the table');
   } finally { await b.close(); }
   if (fails.length) { console.error(fails.join('\n')); process.exit(1); }
 })().catch((e) => { console.error(e); process.exit(1); });
