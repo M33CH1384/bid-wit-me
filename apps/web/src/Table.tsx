@@ -153,6 +153,8 @@ export interface OnlineBinding {
   run?: RunPlayback | null;
   /** Release 10: spectator banner / take-seat prompt / watchers chip, drawn over the table */
   overlay?: ReactNode;
+  /** True once this client's loader is gone and the table can take a bid or a play. */
+  onInteractive?: (on: boolean) => void;
 }
 
 interface Props {
@@ -663,6 +665,10 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const t = window.setTimeout(() => setLoadGone(true), 380);
     return () => window.clearTimeout(t);
   }, [loading]);
+  const reportInteractive = online?.onInteractive;
+  useEffect(() => {
+    reportInteractive?.(loadGone && !loading);
+  }, [loadGone, loading, reportInteractive]);
   // The saved game is already in memory. The flat hand is playable on the first paint; the 3D scene catches up.
   useEffect(() => {
     const w = window as unknown as { __bwmPlayableAt?: number };

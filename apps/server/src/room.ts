@@ -49,6 +49,10 @@ export interface Member {
   gid?: string;
   /** Epoch ms of the last socket drop. The disconnect grace is measured from here, not from each tick. */
   disconnectedAt?: number;
+  /** False while this client's table is still drawing. Unset means an older client: the clock may run. */
+  interactive?: boolean;
+  /** Epoch ms when the loader started holding this player's turn clock. */
+  loaderSince?: number;
 }
 
 /** Everything that survives hibernation / restarts. Plain JSON. */
@@ -175,6 +179,8 @@ export const TOURNAMENT_EMPTY_GRACE_MS = 90_000;
 /** seated host dropped without leaving: pass host after this long so the table can still start or rematch */
 export const HOST_DISCONNECT_GRACE_MS = 30_000;
 export const DEFAULT_TIMING: RoomTiming = { botMs: 750, trickPauseMs: 1300, dealMs: 3200, disconnectGraceMs: 10_000, handOverMs: 20_000 };
+/** A loader that never reports ready must not freeze the table. Matches the client's give-up. */
+export const LOADER_HOLD_MAX_MS = 45_000;
 /**
  * After a bot's scheduled delay, this much longer with the turn still unmoved means the brain
  * did not resolve it. The server then plays a legal bid or card itself.
@@ -540,6 +546,13 @@ export class Room {
       delete m.disconnectedAt;
       m.timeouts = 0;
       if (d.hostId === pid) delete d.hostAwaySince;
+      // A reload draws the table again. Hold this player's clock until that client says it can act.
+      if (returning) {
+        m.interactive = false;
+        m.loaderSince = this.io.now();
+        const turn = d.game ? pendingTurn(d.game) : null;
+        if (turn && m.seat === turn.seat) d.deadline = null;
+      }
       // Bind the new socket BEFORE dropping the old one. Closing the old socket can
       // re-enter close() (the DO restores the dying socket). If this socket is not
       // bound yet, that re-entry looks like the player left and the turn clock starts
@@ -810,6 +823,22 @@ export class Room {
       case 'learning': {
         if (me.learning === msg.on) return;
         me.learning = msg.on;
+        break;
+      }
+      case 'interactive': {
+        const turn = d.game ? pendingTurn(d.game) : null;
+        const mine = !!turn && me.seat === turn.seat;
+        if (msg.on) {
+          const held = me.interactive === false || me.loaderSince != null;
+          me.interactive = true;
+          delete me.loaderSince;
+          if (held && mine) { d.turnStartedAt = this.io.now(); d.deadline = null; }
+        } else {
+          me.interactive = false;
+          me.loaderSince ??= this.io.now();
+          if (mine) d.deadline = null;
+        }
+        this.trace('interactive', { pid, on: msg.on, seat: me.seat });
         break;
       }
       case 'rtc': {
@@ -1503,9 +1532,32 @@ export class Room {
 
       // a human's turn (Release 9: bot partners no longer post typed bidding hints; partners talk out loud over open mics)
       const timerMs = (turn.kind === 'bid' ? d.rules.turnTimerSec.bid : d.rules.turnTimerSec.play) * 1000 * (d.members[slot.playerId]?.learning ? LEARNING_TIMER : 1);
-      const full = (d.turnStartedAt ?? now) + leadIn + timerMs;
       const connected = this.isConnected(slot.playerId);
       const member = d.members[slot.playerId];
+      // The clock does not run while this player's own table is still drawing.
+      if (connected && member?.interactive === false) {
+        if (d.deadline !== null) { d.deadline = null; changed = true; }
+        if (member.loaderSince == null) { member.loaderSince = now; changed = true; }
+        const capAt = member.loaderSince + LOADER_HOLD_MAX_MS;
+        if (now >= capAt) {
+          member.interactive = true;
+          delete member.loaderSince;
+          d.turnStartedAt = now;
+          this.trace('timer', { cause: 'loader-cap', seat: turn.seat, pid: slot.playerId });
+          changed = true;
+          continue;
+        }
+        this.io.wake(Math.max(250, Math.min(1000, capAt - now)));
+        this.io.setAlarm(capAt);
+        return changed;
+      }
+      if (connected && member?.loaderSince != null) {
+        delete member.loaderSince;
+        d.turnStartedAt = now;
+        d.deadline = null;
+        changed = true;
+      }
+      const full = (d.turnStartedAt ?? now) + leadIn + timerMs;
       if (!connected) {
         // One grace from the moment the last socket dropped. Later ticks must not push it out.
         if (member && member.disconnectedAt == null) member.disconnectedAt = now;

@@ -45,6 +45,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
   const chat = useOnlineChat(cs, source?.st ?? null, names, send, hideSpec && !spectator, dealerName);
   const skew = room.now - Date.now();
   const secs = useCountdown(room.deadline ? room.deadline - skew : null);
+  const onInteractive = useCallback((on: boolean) => conn.send({ t: 'interactive', on }), [conn]);
 
   // Voice anti-cheat (host option): during TRICK PLAY my mic isn't sent to my partner and theirs isn't played here.
   // Partners may talk books during bidding (vaguely: "I got about 3"), so mics stay open while bidding, between hands
@@ -76,7 +77,9 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
     }
   }, [limitedNow]);
 
-  if (!source || !rot) return <TableLoading progress={0.24} />;
+  const drawn = !!source && !!rot;
+  useEffect(() => { if (!drawn) conn.send({ t: 'interactive', on: false }); }, [drawn, conn]);
+  if (!drawn || !source || !rot) return <TableLoading progress={0.24} />;
   const r = room.rules;
   const turnLocal = localSeatOfServerTurn(cs.view?.turn ?? null, spectator || cs.seat === null ? null : cs.seat, r.playerCount);
 
@@ -127,6 +130,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
           setTeamName: cs.seat !== null && r.partnerships ? (name) => conn.send({ t: 'teamName', name }) : undefined,
           series: { series: room.series ?? null, mine: seriesMine },
           setLearning: (on) => conn.send({ t: 'learning', on }),
+          onInteractive,
           venue: room.venueNow ?? (room.venue && room.venue !== 'random' ? room.venue : 'classic'),
           victory: (winners, losers, title, sub) => {
             const sp = (L: number) => {

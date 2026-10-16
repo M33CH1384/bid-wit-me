@@ -159,7 +159,12 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
     const created = sessionStorage.getItem(`bwm.created.${code}`) === '1';
     if (created && room.hostId === cs.you && room.phase === 'lobby') {
       sessionStorage.removeItem(`bwm.created.${code}`);
-      conn.send({ t: 'config', rules: settingsToRules(settings), botLevel: settings.botLevel });
+      // House rules from the menu. A turn timer the host already picked (Relaxed) stays;
+      // this arrival must not put the default clock back.
+      const base = settingsToRules(settings);
+      const chosen = room.rules.turnTimerSec;
+      const keepTimer = chosen.bid !== base.turnTimerSec.bid || chosen.play !== base.turnTimerSec.play;
+      conn.send({ t: 'config', rules: keepTimer ? { ...base, turnTimerSec: { ...chosen } } : base, botLevel: settings.botLevel });
     }
     // Release 9 invites deep-link a seat (/t/CODE?seat=N): take it if it's still open (a bot's seat mid-game)
     const q = new URLSearchParams(location.search);

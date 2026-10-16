@@ -538,10 +538,15 @@ describe('game', () => {
     expect(st.seat).toBe(turnSeat);
     expect(st.spectator).toBeUndefined();
     expect(st.view!.turn).toBe(turnSeat);
-    // the grace shortening is undone, back to the original timer, not a fresh clock
-    expect(env.room.data.deadline).toBeGreaterThan(dl);
+    // The reloaded client is drawing the table, so the clock is held. It starts fresh once they can act.
+    expect(env.room.data.members[p.pid]!.interactive).toBe(false);
+    expect(env.room.data.deadline).toBeNull();
+    expect(env.room.data.seats[turnSeat]).toMatchObject({ kind: 'human', playerId: p.pid });
+    env.send('z', { t: 'interactive', on: true });
     const timerMs = (env.room.data.game!.phase === 'playing' ? 20 : 30) * 1000;
+    expect(env.room.data.deadline! - env.t).toBeGreaterThan(timerMs - 50);
     expect(env.room.data.deadline).toBe(env.room.data.turnStartedAt! + timerMs);
+    void dl;
   });
 
   it('survives a restart (JSON round-trip of the saved row) mid-game', () => {
