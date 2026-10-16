@@ -105,12 +105,12 @@ export function trickSpot(pos: SeatPos, n: number, order: number, jitter: number
     ? new Vector3(Math.sign(d.x) * (w + 0.06), 0, 0.02)
     : new Vector3(0, 0, Math.sign(d.z) * (h / 2 + 0.05 + h * Math.sin(TRICK_LEAN) * 0.42)); // the lean lifts the near card's top edge toward the far one
   if (n === 3 && pos !== 'bottom') off.set(Math.sign(d.x) * (w / 2 + 0.04), 0, -(h / 2 + 0.01));
-  const lift = 0.02 + order * 0.004 + (h / 2) * Math.sin(TRICK_LEAN);
   // Physics landing (Tips off): a small slide and an in-plane spin on top of the fixed spot. The card's
   // local +y is the far edge (-z), so a felt spin s is -s about the card normal.
   // A landed card lies flat on the felt (no lean, no tilt): only the spin about the vertical axis.
   if (land) return flatRest(off.x + land.dx, off.z + 0.04 + land.dz, land.spin, order, scale);
-  return xf([off.x, lift, off.z + 0.04], [-Math.PI / 2 + TRICK_LEAN, jitter * 0.05, 0], scale, 'XYZ');
+  // Tips on: the fixed per-seat spot, also flat on the felt (a hair of spin from the jitter, like a real toss).
+  return flatRest(off.x, off.z + 0.04, jitter * 0.05, order, scale);
 }
 
 /** Felt height a landed card rests at, and the per-card step that keeps overlapping cards from z-fighting. */
