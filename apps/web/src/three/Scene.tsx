@@ -10,8 +10,9 @@ import { GAP_S, RAISE_SPREAD, spreadSeconds, cardIdFromHit, echoTap, fanGapPx, f
 import { type HandHitCard, pickHandCard, publishHandHits, publishedHandHits } from './handHit';
 import { paintFace } from '../cardArt';
 import { dragStarted, dropResult } from '../dragPlay';
-import { DEFAULT_SLAM, type DragSample, clearDrop, noteDrop, releaseVelocity, slamFeel, slamIntensity, takeDrop } from '../slam';
+import { DEFAULT_SLAM, type DragSample, clearDrop, noteDrop, releaseVector, releaseVelocity, slamFeel, slamIntensity, takeDrop } from '../slam';
 import { reducedMotion } from './handLift';
+import { landTrick, playSeed } from './landing';
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline, seatDealDelay } from './dealTimeline';
 import { dealHeld, handDealsIn, handOnFan, handSlotKey } from './dealFlight';
@@ -29,7 +30,7 @@ import Venue3D, { feltPatternTexture, preloadVenueAssets } from './Venue3D';
 import { type VenueDef, type VenueId, VENUE_DEFS, venueAssetUrls } from '../venues';
 import { bodyGeometry, cardGeometry, feltGeometry, railGeometry } from './geometry';
 import {
-  CH, CW, MIN_STRIP_PX, TRICK_SCALE, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, cardScreenQuad, deckSpot, fanCssPx, fanLayout, handCardPlane, handFan, makeCamera, jitterOf, opponentFan, phoneHandFan, pileSpot, ringSpot, trickSpot,
+  CH, CW, FELT, MIN_STRIP_PX, TRICK_SCALE, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, cardScreenQuad, deckSpot, fanCssPx, fanLayout, handCardPlane, handFan, makeCamera, jitterOf, opponentFan, phoneHandFan, pileSpot, ringSpot, trickSpot,
 } from './layout';
 
 export interface SceneProps {
@@ -60,7 +61,11 @@ export interface SceneProps {
   promoted: (c: Card) => boolean;
   onCardTap: (c: Card) => void;
   /** Drag-to-play: a legal card released over the felt. */
-  onCardDrop?: (c: Card, slam?: number) => void;
+  onCardDrop?: (c: Card, slam?: number, rel?: [number, number]) => void;
+  /** Tips ON keeps fixed trick spots; OFF lands cards where they were thrown (each viewer decides). */
+  landing?: 'fixed' | 'physics';
+  /** The game's seed: with hand, trick and card it seeds every landing, so all clients agree. */
+  gameSeed?: string;
   /** A tap on the cloth, not on a card. Puts the raised card down. */
   onFeltTap?: () => void;
   renderSeat: (seat: number) => ReactNode;
@@ -556,6 +561,19 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   const firstAuto = shownTrick.findIndex((pl) => pl.auto);
   if (playShown.current.hand !== handNo) playShown.current = { hand: handNo, keys: new Set() };
   if (openingTrick.current === null) openingTrick.current = openingTrickKeys(resume, shownTrick.map((pl) => `${handNo}-${pl.card}`));
+  // Physics landing: every client derives the same resting offsets from the seed + release vector.
+  const physics = props.landing === 'physics';
+  const trickNo = piles.length;
+  const lands = physics
+    ? landTrick(
+      shownTrick.map((pl) => ({ card: pl.card, rel: pl.rel })),
+      shownTrick.map((pl, order) => { const t = trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale); return { x: t.p[0], z: t.p[2] }; }),
+      { hw: (CW * (trickScale ?? TRICK_SCALE)) / 2, hh: (CH * (trickScale ?? TRICK_SCALE)) / 2 },
+      (card) => playSeed(props.gameSeed ?? '', handNo, trickNo, card),
+      { minX: -FELT.hx, maxX: FELT.hx, minZ: -FELT.hz, maxZ: FELT.hz },
+    )
+    : [];
+  const reduced = reducedMotion();
   shownTrick.forEach((pl, order) => {
     const autoDelay = pl.auto ? { delay: 0.35 + 0.12 * (order - firstAuto) } : {};
     const leftHand = pl.seat === human ? departureSlot(held.current.slots, held.current.cards, pl.card) : undefined;
@@ -580,7 +598,11 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     const from = origin && origin !== leftHand ? origin : trickPlayFrom({ firstShow: launches, humanSlot: leftHand, fan });
     const dragged = typeof pl.slam === 'number';
     const feel = slamFeel(dragged ? pl.slam! : DEFAULT_SLAM, reducedMotion());
-    items.push({ key: playKey, card: pl.card, public: true, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale), from, origin, slam: dragged ? feel : { ...feel, intensity: -1 }, ...(props.landCue(pl.card).includes(',overcut') ? { duration: 0.34, arc: 0.7 } : dragged ? { duration: feel.duration, arc: feel.arc } : { duration: 0.5, arc: 0.35 }), sfxLand: props.landCue(pl.card), glow: !!props.marked?.includes(pl.card), ...autoDelay });
+    const land = lands[order];
+    // Two-tap / bot tosses vary a little per play (same seed → same toss on every client); reduced motion slides.
+    const toss = land && !dragged ? 0.8 + ((playSeed(props.gameSeed ?? '', handNo, trickNo, pl.card) % 1000) / 1000) * 0.5 : 1;
+    const flight = props.landCue(pl.card).includes(',overcut') ? { duration: 0.34, arc: 0.7 } : dragged ? { duration: feel.duration, arc: feel.arc } : { duration: 0.5, arc: 0.35 * toss };
+    items.push({ key: playKey, card: pl.card, public: true, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale, land), from, origin, slam: dragged ? feel : { ...feel, intensity: -1 }, ...flight, ...(land && reduced ? { motion: 'slide' as const, arc: 0 } : {}), sfxLand: props.landCue(pl.card), glow: !!props.marked?.includes(pl.card), ...autoDelay });
   });
   // 'Run it!': the claimer's cards slam down in sequence (then the tornado takes everything)
   if (props.slam) {
@@ -1208,7 +1230,7 @@ function HallAttach({ active }: { active: boolean }) {
 }
 
 /** Hand taps resolve against the quads Cards published this render, before the raycaster. */
-function HandPointer({ onTap, onDrop, legal, onDragging }: { onTap: (card: Card) => void; onDrop?: (card: Card, slam?: number) => void; legal: readonly Card[]; onDragging: (card: Card | null) => void }) {
+function HandPointer({ onTap, onDrop, legal, onDragging }: { onTap: (card: Card) => void; onDrop?: (card: Card, slam?: number, rel?: [number, number]) => void; legal: readonly Card[]; onDragging: (card: Card | null) => void }) {
   const dragging = useRef(onDragging);
   dragging.current = onDragging;
   const gl = useThree((s) => s.gl);
@@ -1271,7 +1293,7 @@ function HandPointer({ onTap, onDrop, legal, onDragging }: { onTap: (card: Card)
         noteDrop({ card: d.id, x: e.clientX - rect.left, y: e.clientY - d.h * 0.2 - rect.top, intensity, at: performance.now() });
         (window as unknown as { __bwmSlam?: { v: number; intensity: number } }).__bwmSlam = { v, intensity };
         endGhost(d.ghost, 'played', 60);
-        drop.current?.(d.id, intensity);
+        drop.current?.(d.id, intensity, releaseVector(d.trail));
         // Keep the slot in the fan empty until the play lands in state, so the card never reappears in the hand.
         window.setTimeout(() => dragging.current(null), 900);
         return;

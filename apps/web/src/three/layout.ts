@@ -96,7 +96,7 @@ const TRICK_LEAN = 0.38; // tilt toward the camera so the faces aren't foreshort
  * Card's spot in the middle of the table when played by this seat: a non-overlapping "plus" layout
  * (each card toward its player), face up, almost square to the table edge, leaned up toward the camera.
  */
-export function trickSpot(pos: SeatPos, n: number, order: number, jitter: number, scale = TRICK_SCALE): Xform {
+export function trickSpot(pos: SeatPos, n: number, order: number, jitter: number, scale = TRICK_SCALE, land?: { dx: number; dz: number; spin: number }): Xform {
   const d = seatDir(pos, n);
   const w = CW * scale, h = CH * scale;
   // non-overlapping plus: top/bottom stacked by card height, sides beside them by a full card width,
@@ -106,6 +106,9 @@ export function trickSpot(pos: SeatPos, n: number, order: number, jitter: number
     : new Vector3(0, 0, Math.sign(d.z) * (h / 2 + 0.05 + h * Math.sin(TRICK_LEAN) * 0.42)); // the lean lifts the near card's top edge toward the far one
   if (n === 3 && pos !== 'bottom') off.set(Math.sign(d.x) * (w / 2 + 0.04), 0, -(h / 2 + 0.01));
   const lift = 0.02 + order * 0.004 + (h / 2) * Math.sin(TRICK_LEAN);
+  // Physics landing (Tips off): a small slide and an in-plane spin on top of the fixed spot. The card's
+  // local +y is the far edge (-z), so a felt spin s is -s about the card normal.
+  if (land) return xf([off.x + land.dx, lift, off.z + 0.04 + land.dz], [-Math.PI / 2 + TRICK_LEAN, jitter * 0.05, -land.spin], scale, 'XYZ');
   return xf([off.x, lift, off.z + 0.04], [-Math.PI / 2 + TRICK_LEAN, jitter * 0.05, 0], scale, 'XYZ');
 }
 
