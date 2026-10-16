@@ -172,14 +172,16 @@ export function cameraFor(aspect: number, short = false, view: 'standing' | 'sit
   const pos: [number, number, number] = [0, lerp(4.5, 3.45), lerp(3.75, 3.4)];
   const look: [number, number, number] = [0, 0, lerp(0.38, 0.08)];
   if (view === 'sitting') {
-    // Sitting: lower and closer to the felt (you are in the chair, not standing over the table).
-    pos[1] *= 0.78; pos[2] *= 0.82; look[2] += 0.12;
+    // Sitting: lower, in-the-chair angle. The first cut (lower+closer) pushed the hand fan off the
+    // bottom of the screen, so the reframe keeps the low height but pulls back, widens the fov and
+    // aims toward the hand: the full fan + YOUR TURN plate must fit (hand visibility wins).
+    pos[1] *= 0.58; pos[2] *= 0.95; look[2] += 0.45;
   }
   const dist = Math.hypot(pos[1] - look[1], pos[2] - look[2]);
   // fit the table width (with rail) horizontally, and keep at least a minimum vertical fov
   const halfW = FELT.hx + RAIL + lerp(-0.08, 0.1);
   const vFit = 2 * Math.atan(Math.tan(Math.atan(halfW / dist)) / aspect) * (180 / Math.PI);
-  const fov = Math.min(80, Math.max(lerp(56, 45.5), vFit));
+  const fov = Math.min(84, Math.max(lerp(56, 45.5), vFit) + (view === 'sitting' ? 11 : 0));
   return { pos, look, fov };
 }
 
@@ -189,7 +191,7 @@ export function cameraFor(aspect: number, short = false, view: 'standing' | 'sit
  */
 function shortLandscapeCamera(aspect: number, view: 'standing' | 'sitting' = 'standing'): CamSpec {
   void aspect;
-  if (view === 'sitting') return { pos: [0, 2.42, 2.87], look: [0, 0, 0.34], fov: 42 }; // ×0.78 / ×0.82, same as portrait sitting
+  if (view === 'sitting') return { pos: [0, 1.95, 3.45], look: [0, 0, 0.5], fov: 52 }; // seated: low, across the felt, wide enough for the fan
   return { pos: [0, 3.1, 3.5], look: [0, 0, 0.22], fov: 42 };
 }
 
