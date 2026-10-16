@@ -188,6 +188,10 @@ class Engine {
   private sfxDuck: GainNode | null = null;
   private nukeBus: GainNode | null = null;
   private fading = false;
+  /** One crossfade at a time: a second advance (an 'ended' racing the fade) would flip back and play two tracks. */
+  private advancing = false;
+  /** Test probe: decks actually audible right now (not paused, gain up). Must never exceed 2, and is 1 outside a crossfade. */
+  playingDeckCount(): number { return this.decks.filter((d) => d.url && !d.el.paused && d.gain.gain.value > 0.01).length; }
 
   /** Mono-compatible widening: M/S with the side (above 150 Hz) boosted and slowly "breathing". L+R is unchanged. */
   private buildMusicChain(): GainNode {
@@ -235,7 +239,7 @@ class Engine {
       this.ctx.createMediaElementSource(el).connect(gain).connect(chain);
       const deck: Deck = { el, gain, track: null, ready: null, url: null };
       el.addEventListener('timeupdate', () => this.onTime(deck));
-      el.addEventListener('ended', () => { if (deck.url && this.decks[this.active] === deck) { this.fading = true; this.advance(); } });
+      el.addEventListener('ended', () => { if (deck.url && this.decks[this.active] === deck && !this.fading) { this.fading = true; void this.advance(); } });
       el.addEventListener('playing', () => { if (deck.url && this.decks[this.active] === deck && this.musicStatus !== 'playing') { this.musicStatus = 'playing'; this.emit(); } });
       this.decks.push(deck);
     }
@@ -243,6 +247,7 @@ class Engine {
 
   /** Music elements are bound to this context. Free their decoder slots; a new context gets new elements. */
   private releaseDecks() {
+    this.advancing = false;
     const pool = audioElementPool();
     for (const d of this.decks) {
       if (d.url) { try { URL.revokeObjectURL(d.url); } catch { /* already revoked */ } d.url = null; }
@@ -295,14 +300,16 @@ class Engine {
 
   /** Crossfade to the pre-loaded deck, then queue the following track on the deck that just faded out. */
   private async advance() {
+    if (this.advancing) return; // a crossfade is already running: never start a second one
     if (!this.ctx || !this.settings.music) { this.fading = false; return; }
+    this.advancing = true;
     const c = this.ctx;
     const fromIdx = this.active, toIdx = 1 - this.active;
     const from = this.decks[fromIdx]!, to = this.decks[toIdx]!;
     if (to.track === null || !to.ready) this.loadDeck(toIdx, this.pickNext());
     let ok = await to.ready!;
     for (let tries = 0; !ok && tries < TRACKS.length; tries++) ok = await this.loadDeck(toIdx, this.pickNext());
-    if (!ok || !this.settings.music) { this.musicStatus = 'error'; this.fading = false; this.emit(); return; }
+    if (!ok || !this.settings.music) { this.musicStatus = 'error'; this.fading = false; this.advancing = false; this.emit(); return; }
     const now = c.currentTime;
     to.gain.gain.cancelScheduledValues(now); to.gain.gain.setValueAtTime(0.0001, now); to.gain.gain.linearRampToValueAtTime(1, now + XFADE);
     from.gain.gain.cancelScheduledValues(now); from.gain.gain.setValueAtTime(Math.max(0.0001, from.gain.gain.value), now); from.gain.gain.linearRampToValueAtTime(0.0001, now + XFADE);
@@ -314,6 +321,7 @@ class Engine {
       from.el.pause();
       from.track = null; from.ready = null;
       this.fading = false;
+      this.advancing = false;
       if (this.settings.music) this.loadDeck(fromIdx, this.pickNext()); // look-ahead
     }, XFADE * 1000 + 150);
   }
