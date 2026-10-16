@@ -2,7 +2,7 @@ import { cardControlLabel } from './cardA11y';
 import { archSpot } from './archSpot';
 import type { HandHitCard } from './three/handHit';
 import { useEscapeClose } from './useEscapeClose';
-import { confirmPlay, feltClearsSelection, flyPlay, ignorePlayTap, playTrickOf, type PlayTrick } from './online/playGuard';
+import { type FlyingPlay, confirmPlay, feltClearsSelection, flyPlay, flyingCard, ignorePlayTap, playTrickOf, type PlayTrick } from './online/playGuard';
 import { actingSeat, localSeatOfServerTurn, turnView, type TurnBadge } from './turnState';
 import { retainHandOrder } from './handOrder';
 import { winHeadline } from './headline';
@@ -806,7 +806,12 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   }, [canRun]); // eslint-disable-line react-hooks/exhaustive-deps
   const myBadges = useBadges();
   // The card the player just tapped, shown on the table before the server's state arrives.
-  const [flying, setFlying] = useState<Card | null>(null);
+  // It belongs to the hand (and trick) it was played in: a card from the last hand that is dealt to you again must
+  // never be drawn on the table (offline nothing else ever cleared it).
+  const [flyingPlay, setFlyingPlay] = useState<FlyingPlay | null>(null);
+  const flying = flyingCard(flyingPlay, st.handNo, st.phase, st.tricks.length);
+  const setFlying = (c: Card | null) => setFlyingPlay(c ? { card: c, handNo: st.handNo, trickNo: st.tricks.length } : null);
+  useEffect(() => { setFlyingPlay(null); }, [st.handNo]);
   // what the 3D table shows (see above)
   const display = (() => {
     if (runFx) {
