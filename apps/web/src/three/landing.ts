@@ -119,3 +119,42 @@ export function landTrick(
     return land;
   });
 }
+
+/** 'Run it!' drop: how the claimer's cards are thrown down before the tornado. Same physics as a Tips-off landing. */
+export interface RunDrop extends Landing { delay: number }
+/** Felt friction for the run drop (softer than a trick play: the cards are thrown down hard and slide further). */
+export const RUN_FRICTION = 90;
+export const RUN_MAX_SLIDE = 0.5;
+export const RUN_MAX_SPIN = 0.9;
+/** Half-extents of the patch of felt the dropped cards may rest on (world units, around the table centre). */
+export const RUN_AREA = { hx: 0.95, zMin: -0.7, zMax: 0.25 };
+/** The whole drop must land within this (s) so the tornado takes settled cards. */
+export const RUN_DROP_WINDOW = 1.1;
+
+/**
+ * Where each of the claimer's k cards comes to rest (offsets from the table centre, on the felt plane),
+ * plus when it is let go. Deterministic from the seed, so every client sees the same pile.
+ */
+export function runScatter(seed: number, k: number): RunDrop[] {
+  const r = rng(seed);
+  const j = () => r() * 2 - 1;
+  const step = k > 1 ? Math.min(0.12, RUN_DROP_WINDOW / k) : 0;
+  const out: RunDrop[] = [];
+  for (let i = 0; i < k; i++) {
+    // thrown away from the claimer, fanning left and right: speed sets the slide, friction stops it
+    const ang = j() * 0.75;
+    const v = 6 + r() * 4.5;
+    const dist = Math.min(RUN_MAX_SLIDE, (v * v) / (2 * RUN_FRICTION));
+    const row = k > 1 ? (i / (k - 1) - 0.5) * 1.1 : 0; // where it was let go along the drop line
+    let dx = row + Math.sin(ang) * dist + j() * 0.08;
+    let dz = 0.1 - Math.cos(ang) * dist + j() * 0.08;
+    // never squarely on top of another card: nudge sideways until the index of the one below shows
+    for (let tries = 0; tries < 6 && out.some((o) => Math.abs(o.dx - dx) < 0.12 && Math.abs(o.dz - dz) < 0.16); tries++) {
+      dx += (j() >= 0 ? 1 : -1) * 0.14; dz += j() * 0.06;
+    }
+    dx = clampAbs(dx, RUN_AREA.hx);
+    dz = Math.max(RUN_AREA.zMin, Math.min(RUN_AREA.zMax, dz));
+    out.push({ dx, dz, spin: clampAbs(j() * RUN_MAX_SPIN, RUN_MAX_SPIN), delay: i * step });
+  }
+  return out;
+}

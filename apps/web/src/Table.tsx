@@ -746,7 +746,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     // 2) the claimer's cards slam down together in SLOW MOTION (heavy impact: shake + bass hit)
     // 3) the tornado snatches everything else at once — every hand + whatever is on the table. No trick-by-trick play.
     sound.play('runSlam', { delay: zoom + RUN_SLAM_MS / 1000 });
-    const impact = window.setTimeout(() => { if (!fx.reduced && !fx.osReducedMotion) fx.shake = { start: performance.now(), dur: 1.0, amp: 0.13 }; }, RUN_ZOOM_MS + RUN_SLAM_MS);
+    const impact = window.setTimeout(() => { if (!fx.reduced && !fx.osReducedMotion) fx.shake = { start: performance.now(), dur: 0.5, amp: 0.05, thump: true }; }, RUN_ZOOM_MS + RUN_SLAM_MS); // vertical thump only
     sound.play('tornado', { delay: Math.max(0, tornadoAt - 0.3) });
     const toSlam = window.setTimeout(() => {
       setRunFx((f) => (f && f.id === runFx.id ? { ...f, phase: 'slam' } : f));
