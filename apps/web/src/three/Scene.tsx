@@ -10,6 +10,8 @@ import { GAP_S, RAISE_SPREAD, spreadSeconds, cardIdFromHit, echoTap, fanGapPx, f
 import { type HandHitCard, pickHandCard, publishHandHits, publishedHandHits } from './handHit';
 import { paintFace } from '../cardArt';
 import { dragStarted, dropResult } from '../dragPlay';
+import { DEFAULT_SLAM, type DragSample, clearDrop, noteDrop, releaseVelocity, slamFeel, slamIntensity, takeDrop } from '../slam';
+import { reducedMotion } from './handLift';
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline, seatDealDelay } from './dealTimeline';
 import { dealHeld, handDealsIn, handOnFan, handSlotKey } from './dealFlight';
@@ -58,7 +60,7 @@ export interface SceneProps {
   promoted: (c: Card) => boolean;
   onCardTap: (c: Card) => void;
   /** Drag-to-play: a legal card released over the felt. */
-  onCardDrop?: (c: Card) => void;
+  onCardDrop?: (c: Card, slam?: number) => void;
   /** A tap on the cloth, not on a card. Puts the raised card down. */
   onFeltTap?: () => void;
   renderSeat: (seat: number) => ReactNode;
@@ -433,6 +435,10 @@ function flipped(t: Xform): Xform {
 function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fontsReady: boolean; safeFrac: number; lit: boolean }) {
   const { safeFrac, quality, n, handNo, dealer, positions, human, myHand, handCounts, shownTrick, piles, legal, selected, promoted, onCardTap } = props;
   const gl = useThree((s) => s.gl);
+  const camera = useThree((s) => s.camera);
+  const canvasSize = useThree((s) => s.size);
+  // Drag-to-play: where a dropped card starts its flight (the finger point), fixed once per play.
+  const dropOrigins = useRef(new Map<string, Xform>());
   const invalidate = useThree((s) => s.invalidate);
   const aniso = Math.min(quality === 'high' ? 8 : 2, gl.capabilities.getMaxAnisotropy());
   const res = quality;
@@ -527,7 +533,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   if (held.current.handNo !== handNo) held.current = { handNo, cards: new Set(), slots: new Map(), count: 0, seen: new Set() };
   const pendingHold = useRef<Held>(held.current);
 
-  type Item = { key: string; card: Card | null; cardId?: string | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: ((cardId: string) => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide'; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; public?: boolean; holdUntilMove?: boolean };
+  type Item = { slam?: import('../slam').SlamFeel; key: string; card: Card | null; cardId?: string | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: ((cardId: string) => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide'; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; public?: boolean; holdUntilMove?: boolean };
   const items: Item[] = [];
   const dealDelay = (slot: number, seat: number) => seatDealDelay(tl, n, slot, seat, dealer);
 
@@ -551,8 +557,25 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     const playKey = `${handNo}-${pl.card}`;
     const fan = pl.seat === human ? undefined : opponentFan(positions[pl.seat]!, n, Math.max(0, handCounts[pl.seat]! - 1) / 2, handCounts[pl.seat]! + 1);
     const launches = trickCardLaunches(playKey, openingTrick.current!, playShown.current.keys);
-    const from = trickPlayFrom({ firstShow: launches, humanSlot: leftHand, fan });
-    items.push({ key: playKey, card: pl.card, public: true, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale), from, origin: leftHand, ...(props.landCue(pl.card).includes(',overcut') ? { duration: 0.34, arc: 0.7 } : { duration: 0.5, arc: 0.35 }), sfxLand: props.landCue(pl.card), glow: !!props.marked?.includes(pl.card), ...autoDelay });
+    // A drag drop flies from the finger point, never back through the hand slot.
+    let origin = dropOrigins.current.get(playKey) ?? leftHand;
+    if (pl.seat === human && !dropOrigins.current.has(playKey) && launches) {
+      const d = takeDrop(pl.card);
+      const base = leftHand ?? trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale);
+      if (d && canvasSize.width > 0) {
+        const z = new Vector3(...base.p).project(camera).z;
+        const w = new Vector3((d.x / canvasSize.width) * 2 - 1, -((d.y / canvasSize.height) * 2 - 1), z).unproject(camera);
+        if (Number.isFinite(w.x) && Number.isFinite(w.y) && Number.isFinite(w.z)) {
+          origin = { ...base, p: [w.x, w.y, w.z] };
+          dropOrigins.current.set(playKey, origin);
+        }
+        clearDrop(pl.card);
+      }
+    }
+    const from = origin && origin !== leftHand ? origin : trickPlayFrom({ firstShow: launches, humanSlot: leftHand, fan });
+    const dragged = typeof pl.slam === 'number';
+    const feel = slamFeel(dragged ? pl.slam! : DEFAULT_SLAM, reducedMotion());
+    items.push({ key: playKey, card: pl.card, public: true, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale), from, origin, slam: feel, ...(props.landCue(pl.card).includes(',overcut') ? { duration: 0.34, arc: 0.7 } : dragged ? { duration: feel.duration, arc: feel.arc } : { duration: 0.5, arc: 0.35 }), sfxLand: props.landCue(pl.card), glow: !!props.marked?.includes(pl.card), ...autoDelay });
   });
   // 'Run it!': the claimer's cards slam down in sequence (then the tornado takes everything)
   if (props.slam) {
@@ -776,6 +799,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
           target={it.target}
           from={it.from}
           origin={it.origin}
+          slam={it.slam}
           delay={it.delay}
           duration={it.duration}
           motion={it.motion}
@@ -1179,7 +1203,7 @@ function HallAttach({ active }: { active: boolean }) {
 }
 
 /** Hand taps resolve against the quads Cards published this render, before the raycaster. */
-function HandPointer({ onTap, onDrop, legal, onDragging }: { onTap: (card: Card) => void; onDrop?: (card: Card) => void; legal: readonly Card[]; onDragging: (card: Card | null) => void }) {
+function HandPointer({ onTap, onDrop, legal, onDragging }: { onTap: (card: Card) => void; onDrop?: (card: Card, slam?: number) => void; legal: readonly Card[]; onDragging: (card: Card | null) => void }) {
   const dragging = useRef(onDragging);
   dragging.current = onDragging;
   const gl = useThree((s) => s.gl);
@@ -1193,7 +1217,7 @@ function HandPointer({ onTap, onDrop, legal, onDragging }: { onTap: (card: Card)
     const el = gl.domElement;
     // Drag-to-play: the press still selects (first tap). Past 10px a lifted copy of the card follows the
     // finger on top of everything; release over the felt plays it, anywhere else it snaps back.
-    let drag: { id: Card; x0: number; y0: number; on: boolean; ghost: HTMLCanvasElement | null; w: number; h: number; top: number } | null = null;
+    let drag: { id: Card; x0: number; y0: number; on: boolean; ghost: HTMLCanvasElement | null; w: number; h: number; top: number; trail: DragSample[] } | null = null;
     const endGhost = (g: HTMLCanvasElement | null, cls: string, ms: number, to?: { x: number; y: number }) => {
       if (!g) return;
       g.classList.add(cls);
@@ -1218,6 +1242,8 @@ function HandPointer({ onTap, onDrop, legal, onDragging }: { onTap: (card: Card)
         dragging.current(drag.id);
         (window as unknown as { __bwmDrag?: string }).__bwmDrag = `drag:${drag.id}`;
       }
+      drag.trail.push({ t: e.timeStamp || performance.now(), x: e.clientX, y: e.clientY });
+      if (drag.trail.length > 24) drag.trail.shift();
       const g = drag.ghost!;
       g.style.left = `${e.clientX - drag.w / 2}px`;
       g.style.top = `${e.clientY - drag.h * 0.7}px`;
@@ -1228,11 +1254,24 @@ function HandPointer({ onTap, onDrop, legal, onDragging }: { onTap: (card: Card)
       el.style.touchAction = '';
       if (!d?.on) return;
       e.preventDefault();
-      dragging.current(null);
       const result = dropResult({ legal: legalNow.current.includes(d.id), y: e.clientY, handTop: d.top, screenH: window.innerHeight });
       (window as unknown as { __bwmDrag?: string }).__bwmDrag = `${result}:${d.id}`;
-      if (result === 'play') { endGhost(d.ghost, 'played', 120); drop.current?.(d.id); }
-      else if (result === 'shake') endGhost(d.ghost, 'shake', 380);
+      if (result === 'play') {
+        d.trail.push({ t: e.timeStamp || performance.now(), x: e.clientX, y: e.clientY });
+        const v = releaseVelocity(d.trail);
+        const intensity = slamIntensity(v);
+        const rect = el.getBoundingClientRect();
+        // The 3D card takes over at the finger point (card centre), so the copy can go at once.
+        noteDrop({ card: d.id, x: e.clientX - rect.left, y: e.clientY - d.h * 0.2 - rect.top, intensity, at: performance.now() });
+        (window as unknown as { __bwmSlam?: { v: number; intensity: number } }).__bwmSlam = { v, intensity };
+        endGhost(d.ghost, 'played', 60);
+        drop.current?.(d.id, intensity);
+        // Keep the slot in the fan empty until the play lands in state, so the card never reappears in the hand.
+        window.setTimeout(() => dragging.current(null), 900);
+        return;
+      }
+      dragging.current(null);
+      if (result === 'shake') endGhost(d.ghost, 'shake', 380);
       else endGhost(d.ghost, 'snap', 220, { x: d.x0 - d.w / 2, y: d.y0 - d.h * 0.7 });
     };
     const noScroll = (e: TouchEvent) => { if (drag?.on) e.preventDefault(); };
@@ -1247,7 +1286,7 @@ function HandPointer({ onTap, onDrop, legal, onDragging }: { onTap: (card: Card)
       const side = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(b.x - a.x, b.y - a.y);
       const w = me ? side(me.poly[0]!, me.poly[1]!) : 60;
       const top = hits.length ? Math.min(...hits.flatMap((h) => h.poly.map((p) => p.y))) + rect.top : window.innerHeight * 0.7;
-      drag = { id: id as Card, x0: e.clientX, y0: e.clientY, on: false, ghost: null, w, h: w * 1.4, top };
+      drag = { id: id as Card, x0: e.clientX, y0: e.clientY, on: false, ghost: null, w, h: w * 1.4, top, trail: [{ t: e.timeStamp || performance.now(), x: e.clientX, y: e.clientY }] };
       if (echoTap(e, id)) {
         (window as unknown as { __bwmLastTap?: string }).__bwmLastTap = `echo:${id}`;
         return;
