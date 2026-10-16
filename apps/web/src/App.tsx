@@ -15,11 +15,12 @@ export default function App() {
   const [game, setGame] = useState<{ seed: string; settings: Settings; resume?: SavedGame; dealer?: number; continueSeries?: boolean } | null>(() => {
     const p = new URLSearchParams(location.search);
     if (p.get('autostart')) {
-      history.replaceState(null, '', location.pathname); // a later refresh resumes instead of restarting
+      history.replaceState(null, '', location.pathname); // a later refresh opens the menu, not this game
+      saveSeries(null); // a test start is a fresh game: 0–0, same as Deal me in
       return { seed: p.get('seed') ?? secureSeed(), settings: loadSettings(), continueSeries: false };
     }
-    // refresh / reopen drops back in. Leave (including a spectator leaving an online table) sets
-    // wiz:home and must land on the menu, not on the previous bot game.
+    // Opening the app and refreshing land on the menu. A saved bot game is not resumed.
+    // Leave (including a spectator leaving an online table) also sets wiz:home.
     const saved = resumeOnLoad(history.state, loadGame(), false);
     return saved ? { seed: saved.seed, settings: saved.settings, resume: saved, continueSeries: true } : null;
   });

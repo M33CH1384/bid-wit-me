@@ -1433,6 +1433,56 @@ describe('Run it! play-out is broadcast with the resolving state', () => {
     }
     expect(env.last('s', 'state')!.spectator).toBe(true);
   });
+
+  /** The claimer's own cards in the play-out, in seat order, with their real identities. */
+  function claimed(run: { claimer: number; tricks: { plays: { seat: number; card: string; played?: boolean }[] }[] }) {
+    return run.tricks.flatMap((t) => t.plays.filter((p) => p.seat === run.claimer && !p.played).map((p) => p.card)).sort();
+  }
+
+  it('a bot Run it! play-out reveals the claimer\'s cards to every seat and to spectators', () => {
+    const env = new FakeEnv(undefined, FAST);
+    for (const [cid, name, seat] of [['a', 'Dee', 0], ['b', 'Ray', 1], ['d', 'Jo', 3]] as const) {
+      env.join(cid, name);
+      env.send(cid, { t: 'sit', seat });
+    }
+    env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: 1000 }) });
+    env.send('a', { t: 'start' });
+    expect(env.room.data.seats[2]!.kind).toBe('bot');
+    env.join('s', 'Watcher');
+    late(env, 0);
+    env.room.tick();
+    expect(env.room.data.game!.tricks.slice(-2).every((t) => t.winner === 2)).toBe(true);
+    const sample = env.last('a', 'state')!.run!;
+    expect(claimed(sample)).toEqual(['BJ', 'LJ']);
+    for (const cid of ['a', 'b', 'd', 's']) {
+      const msg = env.last(cid, 'state')!;
+      expect(msg.run, cid).toBeTruthy();
+      expect(msg.run!.claimer, cid).toBe(2);
+      expect(claimed(msg.run!), cid).toEqual(['BJ', 'LJ']);
+      expect(cardsOf(msg.run!.tricks), cid).toEqual([...hands.flat()].sort());
+      expect(msg.run, cid).toEqual(sample);
+    }
+    expect(env.last('s', 'state')!.spectator).toBe(true);
+  });
+
+  it('a human claimer\'s play-out reveals those same cards to every seat and to spectators', () => {
+    const { env } = fourHumans();
+    env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: 1000 }) });
+    env.send('a', { t: 'start' });
+    env.join('s', 'Watcher');
+    late(env, 0);
+    env.send('a', { t: 'media', media: { cam: false, mic: false } });
+    env.send('c', { t: 'act', action: { type: 'runIt' }, seq: env.room.data.seq });
+    const sample = env.last('c', 'state')!.run!;
+    expect(claimed(sample)).toEqual(['BJ', 'LJ']);
+    for (const cid of ['a', 'b', 'c', 'd', 's']) {
+      const msg = env.last(cid, 'state')!;
+      expect(claimed(msg.run!), cid).toEqual(['BJ', 'LJ']);
+      expect(cardsOf(msg.run!.tricks), cid).toEqual([...hands.flat()].sort());
+      expect(msg.run, cid).toEqual(sample);
+    }
+    expect(env.last('s', 'state')!.spectator).toBe(true);
+  });
 });
 
 describe('rule lock (house rules locked for the game)', () => {
