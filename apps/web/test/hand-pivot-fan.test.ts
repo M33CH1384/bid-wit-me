@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { MIN_STRIP_PX, cardScreenQuad, fanCssPx, fanLayout, handFan, phoneHandFan } from '../src/three/layout';
+import { Vector3 } from 'three';
+import { CW, TRICK_SCALE, makeCamera, trickSpot, MIN_STRIP_PX, cardScreenQuad, fanCssPx, fanLayout, handFan, phoneHandFan } from '../src/three/layout';
 import { raiseSpreadPx } from '../src/three/handLift';
 import { visibleStripPx, type HandHitCard } from '../src/three/handHit';
 
@@ -27,6 +28,12 @@ describe('phone pivot fan', () => {
     it(`a 13-card hand is ~1.7x the old 34px card on a ${w}x${h} phone`, () => {
       const L = fanLayout(w / h, 13, 0, { ...phoneHandFan(), minStripPx: MIN_STRIP_PX, pxW: w, spread: 0.4 });
       expect(fanCssPx(L, w).width).toBeGreaterThanOrEqual(55);
+      // at least as big as the far trick card on the felt (Demetrius: hand >= trick cards)
+      const cam = makeCamera(w / h);
+      const t = trickSpot('top', 4, 0, 0);
+      const half = (CW * TRICK_SCALE) / 2;
+      const px = (x: number) => ((new Vector3(x, t.p[1], t.p[2]).project(cam).x + 1) / 2) * w;
+      expect(fanCssPx(L, w).width).toBeGreaterThanOrEqual(px(t.p[0] + half) - px(t.p[0] - half));
     });
   }
   it('keeps the card size the same when a card is raised', () => {

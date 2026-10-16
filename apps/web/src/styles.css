@@ -1801,3 +1801,14 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .scorebug .dock-slot { flex: 0 0 auto; width: 40px !important; min-width: 40px; max-width: 46px; }
 .scorebug .bug { min-width: 0; flex: 1 1 auto; }
 .sound-dock, .sound-dock .dock-btn { transition: none !important; }
+
+/* Portrait phones: your plate and YOUR TURN live in the open arch under the fan (see archSpot), never on a card */
+.table-screen.arch-plate .me-plate { position: fixed; left: var(--arch-x); top: var(--arch-top); transform: translateX(-50%); width: auto; max-width: var(--arch-w); z-index: 8; pointer-events: none; display: flex; flex-direction: column; align-items: center; margin: 0; }
+.table-screen.arch-plate .me-plate .plate-avatar, .table-screen.arch-plate .me-plate > .vbubble { display: none; }
+.table-screen.arch-plate .me-plate .plate-body { margin: 0; padding: 2px 6px; min-width: 0; }
+.table-screen.arch-plate .me-plate .plate-name { font-size: 11px; justify-content: center; }
+.table-screen.arch-plate .me-plate .plate-stats { justify-content: center; flex-wrap: wrap; gap: 3px; }
+.table-screen.arch-plate .me-plate .plate-stats .chip { font-size: 9.5px; padding: 0 4px; }
+.table-screen.arch-plate .me-plate .plate-turn { position: static; order: -1; margin-bottom: 2px; font-size: 10px; letter-spacing: .1em; }
+.table-screen.arch-plate .me-plate .plate-name .chip { font-size: 8.5px; }
+.table-screen.arch-plate .me-plate .plate-name { display: none; }
