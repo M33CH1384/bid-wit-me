@@ -1,5 +1,5 @@
 import { cardControlLabel } from './cardA11y';
-import { ignorePlayTap, playTrickOf, type PlayTrick } from './online/playGuard';
+import { confirmPlay, ignorePlayTap, playTrickOf, type PlayTrick } from './online/playGuard';
 import { actingSeat, seatMark } from './turnState';
 import { retainHandOrder } from './handOrder';
 import { winHeadline } from './headline';
@@ -996,6 +996,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (playHold.current && !ignorePlayTap(playHold.current, trickNow)) playHold.current = null;
   }, [trickNow]);
 
+  const pickedAt = useRef(0);
   const onCard = useCallback((c: Card) => {
     if (humanExchanging) {
       sound.play('tap');
@@ -1004,14 +1005,17 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     }
     if (ignorePlayTap(playHold.current, trickNow)) return;
     if (!legal.includes(c)) return;
-    if (selected === c) {
+    // Play sends the selected card id. A different hit only changes the selection.
+    const action = confirmPlay(selected, c, pickedAt.current, performance.now());
+    if (action.type === 'ignore') return;
+    if (action.type === 'play') {
       const held = trickNow;
-      const sent = apply({ type: 'play', seat: HUMAN, card: c });
+      const sent = apply({ type: 'play', seat: HUMAN, card: action.card as Card });
       if (sent !== false) {
         playHold.current = held;
         setSelected(null);
       }
-    } else { setSelected(c); sound.play('tap'); }
+    } else { pickedAt.current = performance.now(); setSelected(action.card as Card); sound.play('tap'); }
   }, [humanExchanging, exchangeStep, legal, selected, apply, trickNow]);
 
   const isBotSeat = (seat: number) => (online ? !!online.botSeats?.includes(seat) : seat !== HUMAN);
