@@ -520,7 +520,7 @@ describe('game', () => {
     expect(env.last('a', 'state')!.view!.history).toHaveLength(env.room.data.game!.history.length);
   });
 
-  it('reconnect with the seat token rejoins the same seat; a disconnected turn uses a short grace', () => {
+  it('reconnect with the seat token rejoins the same seat; a disconnected turn keeps the table timer', () => {
     const { env, ps } = fourHumans();
     env.send('a', { t: 'start' });
     const turnSeat = env.room.data.game!.turn!;
@@ -528,7 +528,11 @@ describe('game', () => {
     env.room.close(p.cid);
     env.advance(10);
     const dl = env.room.data.deadline!;
-    expect(dl - env.t).toBeLessThanOrEqual(5000);
+    const sec = env.room.data.game!.phase === 'bidding' ? env.room.data.rules.turnTimerSec.bid : env.room.data.rules.turnTimerSec.play;
+    // The drop uses the table's timer. It does not shrink the clock to a fixed 5s or 10s.
+    expect(dl - env.t).toBeGreaterThan(sec * 1000 - 2000);
+    expect(dl - env.t).toBeLessThanOrEqual(sec * 1000);
+    expect(env.last(ps[(turnSeat + 1) % 4]!.cid, 'state')!.room.turnSec).toBe(sec);
     expect(env.last(ps[(turnSeat + 1) % 4]!.cid, 'state')!.room.seats[turnSeat]).toMatchObject({ connected: false });
     // comes back on a new socket with the stored token, under a different display name
     const again = env.join('z', 'Auntie Pat', p.token);

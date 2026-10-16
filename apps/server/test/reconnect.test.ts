@@ -100,7 +100,8 @@ describe('reconnect keeps the seat and the name', () => {
     env.room.close('a');
     env.advance(1000);
     expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid });
-    env.advance(6000);
+    // The disconnect wait is this table's play timer (20s), not a fixed 10s.
+    env.advance(20_000);
     expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid });
     expect(env.room.data.members[a.pid]!.name).toBe('Meech');
     expect(env.room.data.members[a.pid]!.seat).toBe(0);
@@ -209,6 +210,36 @@ describe('reconnect keeps the seat and the name', () => {
     expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid });
     env.send('z', { t: 'act', id: 'relaxed-play', action: { type: 'play', card: 'AS' }, seq: env.room.data.seq });
     expect(env.room.data.game!.trick.plays.map((p) => p.card)).toEqual(['AS']);
+  });
+
+  it('uses the Relaxed play timer for a disconnect, and tells the client that length', () => {
+    const env = new FakeEnv();
+    const a = env.join('a', 'Meech', undefined, undefined, 'guestmeech000000000001');
+    env.join('b', 'Imani');
+    env.send('a', { t: 'sit', seat: 0 });
+    env.send('b', { t: 'sit', seat: 2 });
+    env.send('a', { t: 'addBot', seat: 1 });
+    env.send('a', { t: 'addBot', seat: 3 });
+    env.send('a', { t: 'config', rules: makeRules('joker', { turnTimerSec: { bid: 45, play: 30 }, firstHandBidsItself: false }) });
+    env.send('a', { t: 'start' });
+    pinLead(env);
+    const started = env.last('a', 'state')!;
+    expect(started.room.rules.turnTimerSec).toEqual({ bid: 45, play: 30 });
+    expect(started.room.turnSec).toBe(30);
+    expect(started.room.deadline! - env.t).toBe(30_000);
+    env.join('w', 'Watcher');
+    env.room.close('a');
+    env.advance(12_000);
+    expect(env.room.data.game!.trick.plays).toEqual([]);
+    const left = env.room.data.deadline! - env.t;
+    expect(left).toBe(18_000);
+    const told = env.last('w', 'state')!;
+    expect(told.room.turnSec).toBe(30);
+    expect(told.room.rules.turnTimerSec.play).toBe(30);
+    expect(told.room.deadline! - env.t).toBe(18_000);
+    env.advance(left);
+    expect(env.room.data.game!.trick.plays).toHaveLength(1);
+    expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid });
   });
 
   it('logs the socket close, the reconnect, and a leave that is the only way a bot gets the seat', () => {

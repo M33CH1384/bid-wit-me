@@ -257,6 +257,16 @@ export function localNames(room: RoomInfo, rot: Rotation, spectating = false): s
   });
 }
 
+/**
+ * Client epoch ms when a server deadline is reached.
+ * Compute this once per server snapshot. Calling it again with a later `clientNow`
+ * slides the target forward and the countdown never moves.
+ */
+export function clientDeadline(deadline: number | null, serverNow: number, clientNow: number): number | null {
+  if (deadline == null) return null;
+  return clientNow + (deadline - serverNow);
+}
+
 /** Countdown (seconds) to a deadline, re-rendering every second. */
 export function useCountdown(deadline: number | null): number | null {
   const [, tick] = useState(0);
