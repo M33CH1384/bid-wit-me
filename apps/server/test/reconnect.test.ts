@@ -100,8 +100,8 @@ describe('reconnect keeps the seat and the name', () => {
     env.room.close('a');
     env.advance(1000);
     expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid });
-    // The disconnect wait is this table's play timer (20s), not a fixed 10s.
-    env.advance(20_000);
+    // The disconnect wait is this table's play timer (Normal, 30s), not a fixed 10s.
+    env.advance(30_000);
     expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid });
     expect(env.room.data.members[a.pid]!.name).toBe('Meech');
     expect(env.room.data.members[a.pid]!.seat).toBe(0);
@@ -147,7 +147,7 @@ describe('reconnect keeps the seat and the name', () => {
     expect(env.room.data.deadline).toBeNull();
     env.send('a', { t: 'interactive', on: true });
     const left = env.room.data.deadline! - env.t;
-    expect(left).toBeGreaterThan(19_000);
+    expect(left).toBe(30_000);
     env.advance(left - 500);
     expect(env.room.data.game!.trick.plays).toEqual([]);
     expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid, });
@@ -190,11 +190,11 @@ describe('reconnect keeps the seat and the name', () => {
     env.send('b', { t: 'sit', seat: 2 });
     env.send('a', { t: 'addBot', seat: 1 });
     env.send('a', { t: 'addBot', seat: 3 });
-    env.send('a', { t: 'config', rules: makeRules('joker', { turnTimerSec: { bid: 45, play: 30 }, firstHandBidsItself: false }) });
+    env.send('a', { t: 'config', rules: makeRules('joker', { turnTimerSec: { bid: 30, play: 45 }, firstHandBidsItself: false }) });
     env.send('a', { t: 'start' });
     pinLead(env);
-    expect(env.room.data.rules.turnTimerSec).toEqual({ bid: 45, play: 30 });
-    expect(env.room.data.deadline! - env.t).toBe(30_000);
+    expect(env.room.data.rules.turnTimerSec).toEqual({ bid: 30, play: 45 });
+    expect(env.room.data.deadline! - env.t).toBe(45_000);
     env.join('w', 'Watcher');
     env.room.close('a');
     env.advance(2_000);
@@ -204,7 +204,7 @@ describe('reconnect keeps the seat and the name', () => {
     env.advance(12_000);
     expect(env.room.data.game!.trick.plays).toEqual([]);
     env.send('z', { t: 'interactive', on: true });
-    expect(env.room.data.deadline! - env.t).toBe(30_000);
+    expect(env.room.data.deadline! - env.t).toBe(45_000);
     env.advance(12_000);
     expect(env.room.data.game!.trick.plays).toEqual([]);
     expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid });
@@ -220,23 +220,23 @@ describe('reconnect keeps the seat and the name', () => {
     env.send('b', { t: 'sit', seat: 2 });
     env.send('a', { t: 'addBot', seat: 1 });
     env.send('a', { t: 'addBot', seat: 3 });
-    env.send('a', { t: 'config', rules: makeRules('joker', { turnTimerSec: { bid: 45, play: 30 }, firstHandBidsItself: false }) });
+    env.send('a', { t: 'config', rules: makeRules('joker', { turnTimerSec: { bid: 30, play: 45 }, firstHandBidsItself: false }) });
     env.send('a', { t: 'start' });
     pinLead(env);
     const started = env.last('a', 'state')!;
-    expect(started.room.rules.turnTimerSec).toEqual({ bid: 45, play: 30 });
-    expect(started.room.turnSec).toBe(30);
-    expect(started.room.deadline! - env.t).toBe(30_000);
+    expect(started.room.rules.turnTimerSec).toEqual({ bid: 30, play: 45 });
+    expect(started.room.turnSec).toBe(45);
+    expect(started.room.deadline! - env.t).toBe(45_000);
     env.join('w', 'Watcher');
     env.room.close('a');
     env.advance(12_000);
     expect(env.room.data.game!.trick.plays).toEqual([]);
     const left = env.room.data.deadline! - env.t;
-    expect(left).toBe(18_000);
+    expect(left).toBe(33_000);
     const told = env.last('w', 'state')!;
-    expect(told.room.turnSec).toBe(30);
-    expect(told.room.rules.turnTimerSec.play).toBe(30);
-    expect(told.room.deadline! - env.t).toBe(18_000);
+    expect(told.room.turnSec).toBe(45);
+    expect(told.room.rules.turnTimerSec.play).toBe(45);
+    expect(told.room.deadline! - env.t).toBe(33_000);
     env.advance(left);
     expect(env.room.data.game!.trick.plays).toHaveLength(1);
     expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid });

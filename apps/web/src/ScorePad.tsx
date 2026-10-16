@@ -11,6 +11,7 @@ import { type GameState, type HandRecord, type SideHandResult, type TableRules, 
 import { SEAT_COLORS } from './overlay';
 import { hudSeatName } from './dealerName';
 import { holeMarks, punchedLabel, rememberHoles } from './shotMarks';
+import { timerSettingLabel } from './turnTimer';
 
 export const signed = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0');
 
@@ -37,6 +38,7 @@ export function rulesChips(r: TableRules): string[] {
   const min = hostMinimum(r);
   if (min > 0) out.push(`Minimum ${min}`);
   if (shotOutOn(r)) out.push('Shot = out');
+  out.push(timerSettingLabel(r.turnTimerSec));
   return out;
 }
 
