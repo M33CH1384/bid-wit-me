@@ -395,7 +395,7 @@ describe('scorecard caution tape and shroud', () => {
     expect(css).not.toContain('ff6a1a');
     expect(css).not.toContain('blast-cracks');
     expect(css).not.toContain('muzzle-flash');
-    expect(css).toContain('animation: sheet-drop 600ms cubic-bezier(.18, .85, .22, 1)');
+    expect(css).toContain('animation: sheet-roll 620ms cubic-bezier(.22, .75, .25, 1)'); // rolls down from the card top, not a screen-top drop
     expect(css).toContain('z-index: 6');
     expect(css).toContain('.tt-team.shrouded .caution-x { z-index: 8;');
     expect(css).toContain('.tt-team.shrouded > .tod {');
