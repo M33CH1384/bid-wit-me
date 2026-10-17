@@ -21,7 +21,7 @@ describe('Block Party wiring', () => {
     expect(audio).not.toMatch(/blockParty[^;]*\.(mp3|wav|ogg)/);
   });
   it('later approved scenes are NOT built here (noted only): no new scene pickers or beds beyond Block Party', () => {
-    for (const later of ['Front Porch', 'Beauty Salon', 'Park Dominoes', 'Fish Fry']) { // Kitchen-Table arrived as its own approved follow-up PR
+    for (const later of ['Beauty Salon', 'Park Dominoes', 'Fish Fry']) { // Kitchen-Table and Front Porch arrived as their own approved follow-up PRs
       expect(controls + audio).not.toContain(later);
     }
   });
