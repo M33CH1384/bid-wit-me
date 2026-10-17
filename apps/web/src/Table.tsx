@@ -56,6 +56,7 @@ import type { SeatPos } from './three/layout';
 import { HUMAN, useGame } from './useGame';
 import { DealerPopup } from './DealerPopup';
 import { dealerAnnouncement, dealerFromServer, withCurrentDealerLine } from './dealerName';
+import { plateTally, rememberHandTally, type HandTally } from './plateStats';
 import { bidChipText, dealerChipMatches, plateTookText, syncPlateFacts, type SeatFact } from './plateFacts';
 import { leaveChoice, leaveMenuAction, type LeaveGesture } from './leaveMenu';
 import { biddingNote, noticeTip, seatFacingName, seatInitial, trickTakenLine } from './seatLabel';
@@ -803,8 +804,12 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     runOpenKey.current = key;
     setLtOpen(true);
   }, [runFx, view.runHands, st.handNo, st.tricks.length, st.phase]);
-  // the scoreboard (scores, bags, books taken, result) holds the pre-run numbers until the tornado is over
-  const sb = runFx ? runFx.before.st : st;
+  // Scores hold the pre-run numbers until the tornado is over. A new hand never keeps that snapshot:
+  // the plates would still show the last hand's bid and books.
+  const sb = runFx && runFx.before.st.handNo === st.handNo ? runFx.before.st : st;
+  const platePrev = useRef<HandTally | null>(null);
+  const plates = plateTally(sb, platePrev.current, dealing && sb.handNo === st.handNo);
+  platePrev.current = rememberHandTally(platePrev.current, st);
   const winnerSeat = pause && !ranHand ? shownTrick.winner : null;
   // the Run it! button + its one-time spotlight tip
   const canRun = !spectating && !dealing && st.phase === 'playing' && !!view.canRunIt && !runFx;
@@ -1186,15 +1191,15 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   }, [actor, spectating]);
   // Canvas plates keep the previous hand's dealer chip and bid/took until their own root
   // paints. Correct them before the browser paints, and only then show "X deals".
-  const plateKey = `${st.handNo}:${st.phase}:${dealerSeat}:${actor}:${st.bids.map((b) => (b == null ? '' : String(b))).join('.')}:${sb.tricksWon.join('.')}`;
+  const plateKey = `${st.handNo}:${st.phase}:${dealerSeat}:${actor}:${plates.bids.map((b) => (b == null ? '' : String(b))).join('.')}:${plates.books.join('.')}`;
   const [dealerLive, setDealerLive] = useState(false);
   useLayoutEffect(() => {
     const facts: SeatFact[] = [];
     for (let seat = 0; seat < n; seat++) {
       facts.push({
         seat,
-        bid: bidChipText(st.bids[seat] ?? null, actor === seat && st.phase === 'bidding'),
-        took: plateTookText(sb.tricksWon[seat] ?? 0, st.phase),
+        bid: bidChipText(plates.bids[seat] ?? null, actor === seat && st.phase === 'bidding'),
+        took: plateTookText(plates.books[seat] ?? 0, st.phase),
         dealer: dealerSeat === seat,
       });
     }
@@ -1219,15 +1224,16 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const renderSeat = (seat: number) => {
     const isTurn = actor === seat;
     const partner = !spectating && r.partnerships && seat === partnerOf(HUMAN, r);
-    const b = st.bids[seat];
+    const b = plates.bids[seat];
+    const took = plates.books[seat] ?? 0;
     return (
       <div className={`plate ${isTurn ? 'turn' : ''} ${partner ? 'ally' : 'foe'}`} data-testid={`seat-${seat}`} title={isBotSeat(seat) ? `${names[seat]} · ${platePersona(names[seat]!)}` : undefined} data-persona={isBotSeat(seat) ? platePersona(names[seat]!) : undefined}>
         <div className="plate-avatar" style={{ ['--uc' as string]: SEAT_COLORS[seat] }}>{names[seat]![0]}</div>
         <div className="plate-body">
           <div className="plate-name">{names[seat]}{dealerSeat === seat && <span className="chip dealer" data-testid={`dealer-${seat}`}>DEALER</span>}{partner && <span className="chip ally">PARTNER</span>}{notice.includes(sideOf(seat, r)) && <span className="chip notice" data-testid={`notice-${seat}`} title="Got shot last hand: one more shot and they're out">ON NOTICE</span>}</div>
-          <div className="plate-stats">
-            <span className="chip">{bidChipText(b ?? null, isTurn && st.phase === 'bidding')}</span>
-            <span className="chip">{plateTookText(sb.tricksWon[seat] ?? 0, st.phase)}</span>
+          <div className="plate-stats" key={st.handNo}>
+            <span className="chip" data-testid={`bid-${seat}`}>{bidChipText(b ?? null, isTurn && st.phase === 'bidding')}</span>
+            <span className="chip" data-testid={`books-${seat}`}>{plateTookText(took, st.phase)}</span>
           </div>
         </div>
         {online?.seatExtra(seat)}
@@ -1501,10 +1507,10 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           <div className="plate-avatar" style={{ ['--uc' as string]: spectating ? SEAT_COLORS[HUMAN] : USER_COLORS.You }}>{seatInitial(face(HUMAN))}</div>
           <div className="plate-body">
             <div className="plate-name">{face(HUMAN).toUpperCase()}{dealerSeat === HUMAN && <span className="chip dealer" data-testid="dealer-0">DEALER</span>}{notice.includes(sideOf(HUMAN, r)) && <span className="chip notice" data-testid="notice-0" title={noticeTip(spectating)}>ON NOTICE</span>}{!spectating && myBadges.map((b) => BADGES[b.id] && <span key={b.id} className="chip badge" title={`${BADGES[b.id]!.name}: ${BADGES[b.id]!.desc}`} data-testid={`plate-badge-${b.id}`}>{BADGES[b.id]!.icon}</span>)}</div>
-            <div className="plate-stats">
-              <span className="chip">{st.bids[HUMAN] === 'books' ? 'BOOKS' : `BID ${st.bids[HUMAN] === null ? '—' : bidLabel(st.bids[HUMAN]).toUpperCase()}`}</span>
-              <span className="chip">{plateTookText(sb.tricksWon[HUMAN] ?? 0, st.phase)}</span>
-              {isNilBid(st.bids[HUMAN]) && sb.tricksWon[HUMAN]! > 0 && <span className="chip bad">NIL BUSTED</span>}
+            <div className="plate-stats" key={st.handNo}>
+              <span className="chip" data-testid="bid-0">{bidChipText(plates.bids[HUMAN] ?? null, actor === HUMAN && st.phase === 'bidding')}</span>
+              <span className="chip" data-testid="books-0">{plateTookText(plates.books[HUMAN] ?? 0, st.phase)}</span>
+              {isNilBid(plates.bids[HUMAN]) && (plates.books[HUMAN] ?? 0) > 0 && <span className="chip bad">NIL BUSTED</span>}
             </div>
             {!spectating && <button type="button" className="view-chip" data-testid="view-toggle-plate" aria-pressed={settings.view === 'sitting'} onClick={() => onView?.(settings.view === 'sitting' ? 'standing' : 'sitting')}>{settings.view === 'sitting' ? '🪑 Sitting view' : '🧍 Standing view'}</button>}
           </div>
