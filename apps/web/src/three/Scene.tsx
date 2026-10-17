@@ -471,7 +471,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   const invalidate = useThree((s) => s.invalidate);
   const aniso = Math.min(quality === 'high' ? 8 : 2, gl.capabilities.getMaxAnisotropy());
   const res = quality;
-  const back = useMemo(() => backTexture(res, aniso), [res, aniso]);
+  const back = backTexture(res, aniso); // cached per deck inside backTexture; read every render so a Setup deck change switches every back at once
   const face = (c: Card) => faceTexture(c, res, promoted(c), aniso);
   // A resumed hand is already dealt: paint one face per frame, and bring opponent cards in a few at a time,
   // so the first WebGL frame is the table plus your hand instead of every card's canvas and shader at once.
