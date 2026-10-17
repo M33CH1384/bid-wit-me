@@ -525,7 +525,7 @@ class Engine {
     this.stopBeds();
     const old = this.ctx;
     this.ctx = null;
-    this.master = this.sfxBus = this.sfxDuck = this.nukeBus = this.ambBus = this.venueBus = this.voiceDuck = this.musicBus = this.musicDuck = null;
+    this.master = this.sfxBus = this.sfxDuck = this.nukeBus = this.ambBus = this.venueBus = this.voiceDuck = this.voiceChatBus = this.musicBus = this.musicDuck = null; this.voiceChatNodes.clear();
     this.loading = null;
     this.loadGen++;
     if (old && old.state !== 'closed') void settleAudio(old.close());
@@ -575,6 +575,10 @@ class Engine {
 
   /* ---------- recorded bot voices (see voices/voices.ts) ---------- */
   private voiceDuck: GainNode | null = null;
+  /** Phase 7: human WebRTC voice chat bus. The playerVoice category is applied ONLY here. */
+  private voiceChatBus: GainNode | null = null;
+  private voiceChatNodes = new Map<string, { src: AudioNode; gain: GainNode; stream: MediaStream; release?: () => void }>();
+  voiceChatProbe: { id: string; seat: string; muted: boolean; model: string }[] = [];
   private voiceSrc: { src: AudioBufferSourceNode; gain: GainNode } | null = null;
   /** The (possibly still locked) context, for decoding voice clips ahead of time. */
   audioContext(): AudioContext | null { this.ensure(); return this.ctx; }
@@ -611,6 +615,56 @@ class Engine {
     this.played.voice = (this.played.voice ?? 0) + 1;
     return true;
   }
+  /* ---------- Phase 7: human WebRTC voice chat, spatialised per seat ---------- */
+  /**
+   * Route one peer's remote stream: MediaStreamSource -> per-peer gain -> seat panner -> voice-chat bus.
+   * Per-peer gain carries ONLY mute/duck (never the category): playerVoice is applied once, on the bus.
+   * Returns false when Web Audio routing is unavailable (caller keeps the <video> element audible).
+   */
+  attachVoiceChat(id: string, stream: MediaStream, seat?: SeatPos, playerCount = 4, opts?: { muted?: boolean; ducked?: boolean }): boolean {
+    const cur = this.voiceChatNodes.get(id);
+    if (cur?.stream === stream) { this.updateVoiceChat(id, opts); return true; }
+    this.detachVoiceChat(id);
+    if (!stream.getAudioTracks().length) return false;
+    this.ensure();
+    const c = this.ctx;
+    if (!c || !this.voiceChatBus || typeof c.createMediaStreamSource !== 'function') return false;
+    try {
+      const src = c.createMediaStreamSource(stream);
+      const g = c.createGain(); g.gain.value = opts?.muted ? 0 : opts?.ducked ? 0.4 : 1;
+      let release: (() => void) | undefined; let model = 'stereo';
+      if (seat && this.settings.spatial !== false) {
+        const sp = this.ensureSpatializer();
+        sp.applyListener(c as never, { pos: [this.listenerPoint.x, this.listenerPoint.y, this.listenerPoint.z], look: [this.listenerLook.x, this.listenerLook.y, this.listenerLook.z] });
+        const panner = sp.seatPanner(c as never, seat, playerCount);
+        if (panner) {
+          const comp = c.createGain(); comp.gain.value = seatCompensation(this.listenerPoint, seat, playerCount);
+          comp.connect(panner as unknown as AudioNode); (panner as unknown as AudioNode).connect(this.voiceChatBus);
+          g.connect(comp); model = (panner as unknown as { panningModel: string }).panningModel; release = () => sp.release();
+        } else g.connect(this.voiceChatBus);
+      } else g.connect(this.voiceChatBus);
+      src.connect(g);
+      this.voiceChatNodes.set(id, { src, gain: g, stream, release });
+      this.voiceChatProbe = [...this.voiceChatNodes.keys()].map((k) => ({ id: k, seat: seat ?? 'centre', muted: !!opts?.muted, model }));
+      if (typeof window !== 'undefined') (window as unknown as { __bwmVoiceChat?: unknown }).__bwmVoiceChat = this.voiceChatProbe;
+      return true;
+    } catch { return false; }
+  }
+  updateVoiceChat(id: string, opts?: { muted?: boolean; ducked?: boolean }): void {
+    const n = this.voiceChatNodes.get(id); if (!n || !this.ctx) return;
+    n.gain.gain.setTargetAtTime(opts?.muted ? 0 : opts?.ducked ? 0.4 : 1, this.ctx.currentTime, 0.05);
+  }
+  detachVoiceChat(id: string): void {
+    const n = this.voiceChatNodes.get(id); if (!n) return;
+    this.voiceChatNodes.delete(id);
+    try { n.src.disconnect(); } catch { /* gone */ }
+    try { n.gain.disconnect(); } catch { /* gone */ }
+    n.release?.();
+    this.voiceChatProbe = this.voiceChatProbe.filter((x) => x.id !== id);
+    if (typeof window !== 'undefined') (window as unknown as { __bwmVoiceChat?: unknown }).__bwmVoiceChat = this.voiceChatProbe;
+  }
+  detachAllVoiceChat(): void { for (const id of [...this.voiceChatNodes.keys()]) this.detachVoiceChat(id); }
+
   /* ---------- table gate: game sound only while a game is on screen ---------- */
   /** True while the table screen is mounted. Off it, only the settings previews (tap, bid) can sound. */
   atTable = false;
@@ -671,6 +725,7 @@ class Engine {
       if (this.roomStyle) { const spec = irSpec(this.roomStyle); this.convolver.buffer = this.makeIR(spec.seconds); this.convWet.gain.value = spec.wet; }
     } catch { this.convolver = null; this.convWet = null; }
     this.voiceDuck = c.createGain(); this.voiceDuck.connect(this.master);
+    this.voiceChatBus = c.createGain(); this.voiceChatBus.gain.value = normalizeCategoryVolumes(this.settings.volumes).playerVoice; this.voiceChatBus.connect(this.master);
     this.applyGain();
     if (!opts?.skipLoad) this.load();
     return c;
@@ -685,6 +740,7 @@ class Engine {
     const cats = normalizeCategoryVolumes(this.settings.volumes);
     if (this.sfxBus) this.sfxBus.gain.setTargetAtTime(cats.sfx, this.ctx.currentTime, 0.05);
     if (this.venueBus && this.venuePlaying !== 'none') this.venueBus.gain.setTargetAtTime(0.38 * cats.ambience, this.ctx.currentTime, 0.1);
+    if (this.voiceChatBus) this.voiceChatBus.gain.setTargetAtTime(cats.playerVoice, this.ctx.currentTime, 0.05);
   }
 
   private load() {
