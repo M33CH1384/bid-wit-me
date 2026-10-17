@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeSettings } from '../src/settings';
 import { dragSlamIntensity, isVGesture, type DragSample } from '../src/slam';
-import { CAMERA_VIEW_TWEEN_MS, cameraFor, cameraPoseAt, cardScreenQuad, handFan, phoneHandFan } from '../src/three/layout';
+import { CAMERA_VIEW_TWEEN_MS, TRICK_SCALE, cameraFor, cameraPoseAt, cardScreenQuad, fanCssPx, fanLayout, handFan, phoneHandFan, PHONE_HAND_STRIP_PX } from '../src/three/layout';
 
 const path = (pts: [number, number][]): DragSample[] => pts.map(([x, y], i) => ({ t: i * 40, x, y }));
 describe('camera view', () => {
@@ -17,6 +17,13 @@ describe('camera view', () => {
     expect(si.pos[2]).toBeLessThan(3.1); // closer over the felt (was 3.5625)
     const dist = (c: typeof si) => Math.hypot(c.pos[1] - c.look[1], c.pos[2] - c.look[2]);
     expect(dist(si)).toBeLessThan(dist(st)); // nearer the trick cards lying on the felt
+  });
+  it('bigger cards: trick scale is +25% and the phone fan grew while keeping its strip', () => {
+    expect(TRICK_SCALE).toBe(2.25); // was 1.8 (#166 shrink), +25% per Demetrius
+    const L = fanLayout(390 / 844, 13, 0, { ...phoneHandFan(), view: 'sitting', pxW: 390, minStripPx: PHONE_HAND_STRIP_PX });
+    const px = fanCssPx(L, 390);
+    expect(px.width).toBeGreaterThanOrEqual(76); // 68.3px before -> 77.1px (+13%, strip-bound on phone)
+    expect(px.exposed).toBeGreaterThanOrEqual(42);
   });
   it('sitting applies in short landscape too', () => {
     const st = cameraFor(844 / 390, true, 'standing'); const si = cameraFor(844 / 390, true, 'sitting');

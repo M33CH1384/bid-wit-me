@@ -23,7 +23,7 @@ const save = JSON.stringify({ v: 1, savedAt: Date.now(), seed: st.seed, settings
     console.log('cam', JSON.stringify(m.cam)); console.log('trickCards', JSON.stringify(m.trick));
     for (const [k, r] of Object.entries(m.trick)) console.log(`trick ${k}: w=${r.w.toFixed(1)} h=${r.h.toFixed(1)} (CSS px, viewport 390x844)`);
     const own = Object.values(m.trick)[0]!;
-    if (own.h < 56 || own.w < 64) throw new Error(`sitting trick card too small: ${own.w.toFixed(1)}x${own.h.toFixed(1)} (before-rework was 56.8x49.9)`);
+    if (own.h < 72 || own.w < 85) throw new Error(`sitting trick card too small: ${own.w.toFixed(1)}x${own.h.toFixed(1)} (+25% bigger-cards size is 92.4x78.9; the old 1.8 scale read 70.6x59.9)`);
     await page.screenshot({ path: `${SHOTS}/${process.env.BWM_TAG ?? 'trick'}-sitting-390.png` });
     console.log('sitting-trick OK');
   } finally { await b.close(); }
