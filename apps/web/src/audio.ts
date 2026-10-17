@@ -217,7 +217,7 @@ class Engine {
     try {
       g.gain.cancelScheduledValues(c.currentTime);
       g.gain.setTargetAtTime(0, c.currentTime, 0.05);
-      window.setTimeout(() => { for (const o of oscs) { try { o.stop(); } catch { /* already stopped */ } try { g.disconnect(); } catch { /* gone */ } }, 350);
+      window.setTimeout(() => { for (const o of oscs) { try { o.stop(); } catch { /* already stopped */ } } try { g.disconnect(); } catch { /* gone */ } }, 350);
     } catch { /* context closed */ }
   }
   nowPlaying: { track: Track; at: number } | null = null;
