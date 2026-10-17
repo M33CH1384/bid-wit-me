@@ -1261,22 +1261,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // landscape phones: keep the bid / pass panel just above the top of the (resting) hand
   const screenRef = useRef<HTMLDivElement>(null);
   const measureHand = st.phase === 'bidding' || st.phase === 'exchange';
-  // Portrait phones: YOUR TURN and your plate sit in the open arch under the fan, clear of every card.
-  useEffect(() => {
-    if (vp.short) return;
-    const tick = () => {
-      const el = screenRef.current;
-      const hits = (window as unknown as { __bwmHandHits?: HandHitCard[] }).__bwmHandHits ?? [];
-      // Founder call (Oct 17 beta): the YOU plate/avatar lives in the lower-left corner of the
-      // screen, never in the fan arch — in Sitting the arch band sits on the cards themselves.
-      const corner = el && window.innerWidth < 600 && window.innerHeight > window.innerWidth && hits.length >= 3;
-      if (!el) return;
-      el.classList.toggle('corner-plate', !!corner);
-    };
-    tick();
-    const t = window.setInterval(tick, 250);
-    return () => { clearInterval(t); screenRef.current?.classList.remove('corner-plate'); };
-  }, [vp.short]);
+  // Portrait phones: the YOU plate/avatar is pinned to the lower-left corner by a pure CSS
+  // media query in styles.css (max-width 600px + portrait). No JS gate: the class-toggle version
+  // depended on the published hand hits and never fired on the founder's real iPhone.
   useEffect(() => {
     if (!measureHand) return;
     const tick = () => {
