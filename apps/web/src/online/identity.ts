@@ -41,6 +41,12 @@ export function guestSessionId(): string {
   writeGuest(guestMem);
   return guestMem;
 }
+export function resetGuestSession(): void {
+  guestMem = null;
+  try { localStorage.removeItem(GUEST_KEY); } catch { /* ignore */ }
+  try { if (typeof document !== 'undefined') document.cookie = `${GUEST_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`; } catch { /* ignore */ }
+  guestSessionId(); // mint a fresh guest identity: the old one is signed out
+}
 export function saveName(n: string): void {
   try { localStorage.setItem(NAME_KEY, n); } catch { /* ignore */ }
 }

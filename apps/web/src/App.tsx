@@ -9,6 +9,7 @@ import Table from './Table';
 import { MODES, type Settings, loadSettings, saveSettings, settingsToRules } from './settings';
 import { type SavedGame, confirmReplaceSave, loadGame, markInGame, resumeOnLoad, wasInGame } from './save';
 import { flushLocalGames, watchLocalGames } from './localStats';
+import { holdIdleExemption } from './inactivity';
 
 export default function App() {
   const [settings, setSettings] = useState<Settings>(loadSettings);
@@ -37,6 +38,8 @@ export default function App() {
   // a signed-in offline game that failed to upload stays in localStorage until the browser is online again
   useEffect(() => { watchLocalGames(); void flushLocalGames(); }, []);
 
+  // Offline bot games NEVER idle-log-out: hold the exemption for the whole game.
+  useEffect(() => { if (!game) return; return holdIdleExemption(); }, [game !== null]);
   // Refresh at the table returns to it; refresh anywhere else keeps that screen (history.state holds the wizard step).
   useEffect(() => { markInGame(game !== null); }, [game]);
 

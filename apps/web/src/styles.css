@@ -1831,3 +1831,5 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 
 /* Never two DEALER chips on one plate (human or bot), whatever wrote the second. */
 .plate-name .chip.dealer ~ .chip.dealer { display: none; }
+.idle-badge{position:fixed;top:calc(env(safe-area-inset-top,0px) + 10px);left:50%;transform:translateX(-50%);z-index:90;background:rgba(20,16,12,.92);color:#ffe9b0;border:1px solid rgba(255,233,176,.4);border-radius:999px;padding:6px 14px;font-size:13px;pointer-events:none}
+.idle-notice{position:fixed;top:calc(env(safe-area-inset-top,0px) + 10px);left:50%;transform:translateX(-50%);z-index:91;display:flex;gap:10px;align-items:center;background:rgba(20,16,12,.95);color:#ffe9b0;border:1px solid rgba(255,233,176,.5);border-radius:12px;padding:10px 14px;font-size:14px}

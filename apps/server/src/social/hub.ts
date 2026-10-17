@@ -444,6 +444,7 @@ export class Hub {
       return false;
     };
     switch (msg.t) {
+      case 'heartbeat': return; // `at` was refreshed above: this socket is alive; nothing else to do
       case 'status': {
         // every tab of the user reports; the newest wins
         att.at = now;
