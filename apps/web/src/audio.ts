@@ -11,7 +11,7 @@
  * - Settings (on/off, volume, ambience) persist in localStorage.
  */
 import { useSyncExternalStore } from 'react';
-import { Spatializer, normalizeCategoryVolumes, pickPanningModel, pickVariant, seatPoint, type SeatPos } from './spatial';
+import { Spatializer, normalizeCategoryVolumes, pickPanningModel, pickVariant, seatCompensation, seatPoint, type SeatPos } from './spatial';
 import { audioElementPool } from './audioPool';
 import { audioContextAction, settleAudio, soundRestorePending } from './audioSession';
 
@@ -639,9 +639,17 @@ class Engine {
   /* ---------- playback ---------- */
   /** Card landing scaled by slam intensity 0..1: a soft tap for a gentle drop, a punchy smack + table thud for a flick. */
   /** Phase 3 test probe: every spatialised gameplay one-shot (seat + world point + model). */
-  spatialProbe: { event: string; seat: string; x: number; y: number; z: number; model: string }[] = [];
+  spatialProbe: { event: string; seat: string; x: number; y: number; z: number; model: string; gain?: number }[] = [];
   private lastVariant = new Map<string, number>();
   private spatializer: Spatializer | null = null;
+  /** Listener pose, slaved to the camera by the scene (Sitting hears a closer table than Standing). */
+  private listenerPoint = { x: 0, y: 4.5, z: 3.75 };
+  private listenerLook = { x: 0, y: 0, z: 0.38 };
+  setSpatialListener(pos: readonly number[], look: readonly number[]) {
+    this.listenerPoint = { x: pos[0]!, y: pos[1]!, z: pos[2]! };
+    this.listenerLook = { x: look[0]!, y: look[1]!, z: look[2]! };
+    if (this.ctx && this.spatializer) this.spatializer.applyListener(this.ctx as never, { pos, look });
+  }
   private spatializerKey = '';
   /** Route a one-shot through a seat panner (Phase 3). Spatial off / no seat / cap hit = the plain
    *  sfx bus, exactly Phase 2 behaviour. Trigger timing is untouched: this only chooses the node
@@ -654,14 +662,19 @@ class Engine {
     const model = pickPanningModel(typeof PannerNode !== 'undefined', isPhone);
     const key = `${quality}:${model}`;
     if (!this.spatializer || this.spatializerKey !== key) { this.spatializer = new Spatializer(quality, true, model); this.spatializerKey = key; }
+    this.spatializer.applyListener(this.ctx as never, { pos: [this.listenerPoint.x, this.listenerPoint.y, this.listenerPoint.z], look: [this.listenerLook.x, this.listenerLook.y, this.listenerLook.z] });
     const panner = this.spatializer.seatPanner(this.ctx as never, seat, playerCount);
     if (!panner) return { node: bus };
     (panner as unknown as AudioNode).connect(bus);
+    // Distance compensation: far seats get a level boost (capped) so their slams keep their punch.
+    const comp = seatCompensation(this.listenerPoint, seat, playerCount);
+    const compNode = this.ctx.createGain(); compNode.gain.value = comp;
+    compNode.connect(panner as unknown as AudioNode);
     const pt = seatPoint(seat, playerCount);
-    this.spatialProbe.push({ event, seat, ...pt, model });
+    this.spatialProbe.push({ event, seat, ...pt, model, gain: comp });
     if (this.spatialProbe.length > 64) this.spatialProbe.shift();
     const sp = this.spatializer;
-    return { node: panner as unknown as AudioNode, release: () => sp.release() };
+    return { node: compNode, release: () => sp.release() };
   }
 
   cardSmack(intensity: number, seat?: SeatPos, playerCount = 4) {

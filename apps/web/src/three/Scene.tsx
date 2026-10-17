@@ -115,6 +115,7 @@ function CameraRig({ view = 'standing' }: { view?: 'standing' | 'sitting' }) {
     cam.fov = spec.fov;
     cam.aspect = a;
     cam.updateProjectionMatrix();
+    sound.setSpatialListener(spec.pos, spec.look); // audio listener follows Sitting/Standing
     const probe = (t: number) => { (window as unknown as { __bwmCam?: unknown }).__bwmCam = { view, y: cam.position.y, z: cam.position.z, x: cam.position.x, t, tweenMs: CAMERA_VIEW_TWEEN_MS }; };
     if (!booted.current) { // first frame: land exactly on the saved view, no flight
       booted.current = true;
@@ -135,6 +136,7 @@ function CameraRig({ view = 'standing' }: { view?: 'standing' | 'sitting' }) {
     const pose = cameraPoseAt(a.from, a.to, a.fromLook, a.toLook, performance.now() - a.start, a.dur);
     cam.position.set(pose.pos[0]!, pose.pos[1]!, pose.pos[2]!);
     cam.lookAt(new Vector3(pose.look[0]!, pose.look[1]!, pose.look[2]!));
+    sound.setSpatialListener(pose.pos, pose.look);
     lookAtRef.current = pose.look;
     (window as unknown as { __bwmCam?: unknown }).__bwmCam = { view, y: cam.position.y, z: cam.position.z, x: cam.position.x, t: pose.t, tweenMs: CAMERA_VIEW_TWEEN_MS };
     if (pose.t >= 1) anim.current = null;
@@ -642,8 +644,8 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
         : { ...base, p: [(i - (k - 1) / 2) * w, base.p[1] + 0.01 * i, 0.02] };
       const leftHand = seat === human ? departureSlot(held.current.slots, held.current.cards, c) : undefined;
       const from = leftHand ?? (seat === human ? undefined : opponentFan(positions[seat]!, n, Math.min(i, k - 1), k));
-      if (d) items.push({ key: `${handNo}-${c}`, card: c, public: true, target, from, origin: leftHand, delay: 0.02 + d.delay, duration: 0.3, arc: 0.3, slam: slamFeel(i === k - 1 ? 1 : 0.85), sfxLand: i === k - 1 ? 'play,runSlam' : 'play' });
-      else items.push({ key: `${handNo}-${c}`, card: c, public: true, target, from, origin: leftHand, delay: 0.02, duration: RUN_SLAM_MS / 1000, arc: reduced ? 0 : 0.9, ...(reduced ? { motion: 'slide' as const } : {}), sfxLand: i === k - 1 ? 'runSlam' : undefined }); // slow motion
+      if (d) items.push({ key: `${handNo}-${c}`, card: c, public: true, target, from, origin: leftHand, delay: 0.02 + d.delay, duration: 0.3, arc: 0.3, slam: slamFeel(i === k - 1 ? 1 : 0.85), sfxLand: i === k - 1 ? 'play,runSlam' : 'play', spatialSeat: positions[seat]!, spatialN: n });
+      else items.push({ key: `${handNo}-${c}`, card: c, public: true, target, from, origin: leftHand, delay: 0.02, duration: RUN_SLAM_MS / 1000, arc: reduced ? 0 : 0.9, ...(reduced ? { motion: 'slide' as const } : {}), sfxLand: i === k - 1 ? 'runSlam' : undefined, spatialSeat: positions[seat]!, spatialN: n }); // slow motion
     });
     // the rest of the table's cards: one quick cascade, a smaller row under the claimer's (from each player's spot)
     const others = props.slam.others ?? [];
