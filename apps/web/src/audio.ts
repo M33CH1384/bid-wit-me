@@ -53,6 +53,22 @@ export interface SoundSettings { on: boolean; volume: number; ambient: boolean; 
   volumes?: import('./spatial').CategoryVolumes; quality?: import('./spatial').AudioQuality; spatial?: boolean; soundscape?: string; mutedVoices?: Record<string, true> }
 const KEY = 'bwm.sound.v1';
 const DEFAULTS: SoundSettings = { on: true, volume: 0.7, ambient: false, music: true, musicVolume: 0.5, venueSound: true };
+
+/* Music and ambience are MUTUALLY EXCLUSIVE: game music never plays together with either
+ * ambience bed (the lounge pad or the venue soundscape bed). Turning music on turns both
+ * ambience sources off; turning either ambience source on turns music off. Whichever was
+ * chosen last wins, the result is persisted, and the engine gates below re-check the rule
+ * on every sync, so no saved state, room change or soundscape change can make them overlap. */
+/** Either ambience source switched on? (venueSound defaults on when unset.) */
+export const ambienceOn = (s: SoundSettings): boolean => !!(s.ambient || s.venueSound !== false);
+/** Engine gate: music may only sound when no ambience source is on. */
+export const wantsMusic = (s: SoundSettings): boolean => !!s.music && !ambienceOn(s);
+/** Engine gate: ambience may only sound when music is off. */
+export const wantsAmbience = (s: SoundSettings): boolean => !s.music;
+/** Reconcile a (possibly legacy both-on) state: music wins, ambience goes off. */
+export function exclusiveMusicAmbience(s: SoundSettings): SoundSettings {
+  return s.music && ambienceOn(s) ? { ...s, ambient: false, venueSound: false } : s;
+}
 /** venue ambience beds (see venues.ts → bed) */
 export type VenueBed = 'none' | 'cookout' | 'mansion' | 'barbershop' | 'basement' | 'rooftop' | 'jazz' | 'casino' | 'beach' | 'kitchen' | 'yacht';
 export type MusicStatus = 'off' | 'loading' | 'playing' | 'error';
@@ -96,8 +112,8 @@ export function nextShuffle(prev: number | null, bag: number[], count: number, r
 }
 
 function load(): SoundSettings {
-  try { const raw = localStorage.getItem(KEY); if (raw) return { ...DEFAULTS, ...JSON.parse(raw) }; } catch { /* ignore */ }
-  return DEFAULTS;
+  try { const raw = localStorage.getItem(KEY); if (raw) return exclusiveMusicAmbience({ ...DEFAULTS, ...JSON.parse(raw) }); } catch { /* ignore */ }
+  return exclusiveMusicAmbience(DEFAULTS);
 }
 
 const FILES: Record<string, string[]> = {
@@ -152,7 +168,13 @@ class Engine {
   get loaded(): number { return this.buffers.size; }
   set(patch: Partial<SoundSettings>) {
     const clamp = (v: number) => Math.min(1, Math.max(0, v));
-    this.settings = { ...this.settings, ...patch, volume: clamp(patch.volume ?? this.settings.volume), musicVolume: clamp(patch.musicVolume ?? this.settings.musicVolume) };
+    let next: SoundSettings = { ...this.settings, ...patch, volume: clamp(patch.volume ?? this.settings.volume), musicVolume: clamp(patch.musicVolume ?? this.settings.musicVolume) };
+    // Mutual exclusivity, last choice wins: explicitly turning music on kills both ambience
+    // sources; explicitly turning either ambience source on kills music. Any other patch
+    // still passes through the reconciliation, so a legacy both-on state can never persist.
+    if (patch.music) { next = { ...next, ambient: false, venueSound: false }; }
+    else if (patch.ambient || patch.venueSound) { next = { ...next, music: false }; }
+    this.settings = exclusiveMusicAmbience(next);
     try { localStorage.setItem(KEY, JSON.stringify(this.settings)); } catch { /* ignore */ }
     this.applyGain();
     this.syncAmbient();
@@ -384,11 +406,11 @@ class Engine {
     if (!this.unlocked) return;
     this.ensure();
     if (!this.ctx) return;
-    if (!this.settings.music) {
+    if (!wantsMusic(this.settings)) {
       this.stopTensionPad();
       if (this.decks.length) {
         for (const d of this.decks) { d.gain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.25); }
-        window.setTimeout(() => { if (!this.settings.music) this.decks.forEach((d) => d.el.pause()); }, 1200);
+        window.setTimeout(() => { if (!wantsMusic(this.settings)) this.decks.forEach((d) => d.el.pause()); }, 1200);
       }
       if (this.musicStatus !== 'off') { this.musicStatus = 'off'; this.emit(); }
       return;
@@ -1356,7 +1378,7 @@ class Engine {
 
   /* ---------- optional lounge ambience (synth pad + room tone), off by default ---------- */
   private syncAmbient() {
-    const want = this.settings.on && this.settings.ambient && this.unlocked;
+    const want = this.settings.on && this.settings.ambient && wantsAmbience(this.settings) && this.unlocked;
     if (!this.ctx || !this.ambBus) return;
     const c = this.ctx;
     this.ambBus.gain.setTargetAtTime(want ? 0.5 * normalizeCategoryVolumes(this.settings.volumes).ambience : 0, c.currentTime, 0.6);
@@ -1432,7 +1454,7 @@ class Engine {
   voiceMuted(playerId: string): boolean { return isVoiceMuted(this.settings.mutedVoices, playerId); }
   setVenueBed(id: VenueBed) { this.venueBedId = id; this.syncVenue(); }
   private syncVenue() {
-    const want = this.settings.on && this.settings.venueSound !== false && this.unlocked && this.venueBedId !== 'none' ? this.venueBedId : 'none';
+    const want = this.settings.on && this.settings.venueSound !== false && wantsAmbience(this.settings) && this.unlocked && this.venueBedId !== 'none' ? this.venueBedId : 'none';
     if (want === this.venuePlaying) return;
     // stop what's playing (fade), then build the new bed
     if (this.venuePlaying !== 'none') {
