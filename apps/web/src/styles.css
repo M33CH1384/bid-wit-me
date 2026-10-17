@@ -778,7 +778,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-top-scores li .to-target { color: var(--muted); font-size: 12px; }
 .tt-top-scores li.mine .who, .tt-top-scores li.mine b { color: var(--gold); }
 .tt-team { position: relative; padding: 22px 18px 20px; background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px rgba(185,128,255,.2); clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); }
-.tt-face { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name total" "line total" "players total" "bar bar"; align-items: center; gap: 8px 16px; position: relative; z-index: 5; }
+.tt-face { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name bags" "line bags" "players bags" "bar bar"; align-items: center; gap: 8px 16px; position: relative; z-index: 5; }
 /* On-notice shot card: knocked 4px and -1.5deg, red vignette and glow, one raster hole per shot, then a shallow tape X. Full fidelity at every width, including 360–390. */
 .tt-team > :not(.shot-holes):not(.caution-x):not(.shroud):not(.tod) { position: relative; z-index: 5; }
 .tt-team.taped { clip-path: none; overflow: visible; }
@@ -795,20 +795,20 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-team.notice .tt-line *,
 .tt-team.notice .tt-players,
 .tt-team.notice .tt-players *,
-.tt-team.notice .tt-stat.total,
-.tt-team.notice .tt-stat.total * {
+.tt-team.notice .tt-stat.bags-stat,
+.tt-team.notice .tt-stat.bags-stat * {
   text-shadow: 0 2px 0 #140810, 0 0 6px rgba(8, 4, 12, .95);
 }
 .tt-team.notice .tt-team-name,
 .tt-team.notice .tt-line,
 .tt-team.notice .tt-players,
-.tt-team.notice .tt-stat.total { position: relative; z-index: 6; background: transparent; box-shadow: none; }
+.tt-team.notice .tt-stat.bags-stat { position: relative; z-index: 6; background: transparent; box-shadow: none; }
 .tt-team.notice .tt-team-name,
 .tt-team.notice .tt-line,
 .tt-team.notice .tt-players { filter: brightness(.85); }
 /* The tape's lane sits between the badges and the bid line. It is tall enough that a ±8° pair of 28px strips can cross in it and still miss the total. */
 .tt-team.notice .tt-line { margin-top: 88px; }
-.tt-team.notice .tt-stat.total { align-self: start; }
+.tt-team.notice .tt-stat.bags-stat { align-self: start; }
 .tt-team.notice.tape-in { animation: hole-jolt 90ms linear 0ms, hole-jolt 90ms linear 90ms, hole-jolt 90ms linear 180ms; }
 @keyframes hole-jolt { 0%, 100% { transform: translateX(4px) rotate(-1.5deg); } 45% { transform: translateX(7px) rotate(-1.5deg); } }
 .shot-holes { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
@@ -909,11 +909,11 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-players b { color: #fff; font-weight: 700; }
 .tt-bags { font-size: 11px; color: var(--muted); }
 .rchip.bags { background: rgba(245,197,66,.14); color: var(--gold); }
-.tt-stat.total { grid-area: total; min-width: 64px; }
-.tt-stat.total b { font-size: 46px; color: #fff; text-shadow: 0 0 14px rgba(185,128,255,.8); }
-.tt-team.mine .tt-stat.total b { color: var(--gold); text-shadow: 0 0 14px rgba(245,197,66,.7); }
-.tt-team.notice .tt-stat.total b,
-.tt-team.mine.notice .tt-stat.total b { color: #FF6B6B; text-shadow: 0 2px 0 #140810, 0 0 6px rgba(8, 4, 12, .95); background: transparent; }
+.tt-stat.bags-stat { grid-area: bags; min-width: 64px; }
+.tt-stat.bags-stat b { font-size: 26px; }
+.tt-team.mine .tt-stat.bags-stat b { color: var(--gold); }
+.tt-team.notice .tt-stat.bags-stat b,
+.tt-team.mine.notice .tt-stat.bags-stat b { color: #FF6B6B; text-shadow: 0 2px 0 #140810, 0 0 6px rgba(8, 4, 12, .95); background: transparent; }
 .tt-players { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 6px; font-size: 11px; color: var(--muted); }
 .nil-tag { font-style: normal; font-weight: 800; font-size: 10px; padding: 0 3px; border-radius: 2px; background: var(--purple); color: #fff; }
 .tt-team .tt-bar { grid-area: bar; }
@@ -926,7 +926,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-team.shrouded { padding-bottom: 58px; }
 .tt-recap.crowded .tt-face { gap: 4px 12px; }
 .tt-recap.crowded .tt-team-name b { font-size: 18px; }
-.tt-recap.crowded .tt-stat.total b { font-size: 34px; }
+.tt-recap.crowded .tt-stat.bags-stat b { font-size: 22px; }
 .tt-recap.crowded .tt-line { font-size: 16px; }
 .tt-bar i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, var(--purple), var(--purple-hot)); border-radius: 4px; transition: width 1s ease; }
 .tt-team.mine .tt-bar i { background: linear-gradient(90deg, #c9961c, var(--gold)); }
@@ -980,18 +980,18 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 /* narrow phones: the two team cards stay large; cutthroat (3–4 cards) tightens so they still fit */
 @media (max-width: 480px) {
   .tt-team { padding: 16px 14px 14px; }
-  .tt-face { gap: 6px 12px; grid-template-areas: "name total" "line total" "players players" "bar bar"; }
+  .tt-face { gap: 6px 12px; grid-template-areas: "name bags" "line bags" "players players" "bar bar"; }
   .tt-team ul.tt-players { width: 100%; flex-wrap: wrap; justify-content: flex-start; }
   .tt-team ul.tt-players > li { flex: 0 1 auto; min-width: min-content; max-width: 100%; overflow-wrap: anywhere; }
   .tt-line { font-size: 17px; }
   .tt-stat b { font-size: 22px; }
-  .tt-stat.total { min-width: 0; }
-  .tt-stat.total b { font-size: 42px; }
+  .tt-stat.bags-stat { min-width: 0; }
+  .tt-stat.bags-stat b { font-size: 24px; }
   .tt-team-name b { font-size: 20px; }
   .tt-body { padding: 58px 12px 20px; gap: 14px; }
   .tt-head { padding: 10px 52px 8px 12px; gap: 8px; } .tt-title { font-size: 17px; }
   .tt-foot { padding: 8px 10px; } .tt-foot .primary { min-width: 0; flex: 1; }
-  .tt-recap.crowded .tt-stat.total b { font-size: 30px; }
+  .tt-recap.crowded .tt-stat.bags-stat b { font-size: 20px; }
   .tt-recap.crowded .tt-team { padding: 10px 12px; }
   .tt-team.notice, .tt-team.mine.notice { padding: 22px 14px 46px; }
   .tt-team.notice .tt-line { margin-top: 88px; }

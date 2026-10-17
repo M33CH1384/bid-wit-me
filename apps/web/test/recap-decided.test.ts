@@ -47,6 +47,21 @@ describe('hand recap: top scores, spacing, and the decided-game flow', () => {
     expect(css).toMatch(/\.tt-body \{[^}]*gap: 24px/);
   });
 
+  it('each running total appears exactly once: in TOP SCORES, never again in a sheet', () => {
+    const st = toHandOver('recap-decided-a');
+    const html = recap(st);
+    expect(html).not.toContain('recap-total-');
+    expect(html).not.toContain('<small>TOTAL</small>');
+    // sheets keep their bags count (and books / took / points / progress bar) without the big total
+    for (const s of st.history[st.history.length - 1]!.sides) {
+      expect(html).toContain(`data-testid="recap-bags-${s.side}"`);
+      // the total number is rendered once, as the TOP SCORES row's <b>
+      expect(html.split(`<b>${s.totalScore}</b>`).length - 1).toBe(1);
+    }
+    expect(html).toContain('bag');
+    expect(html).toContain('to ' + st.rules.targetScore);
+  });
+
   it('a DECIDED game (winner already decided) shows the winner flow, never Continue to Hand N', () => {
     const base = toHandOver('recap-decided-b');
     const winners = [base.scores.indexOf(Math.max(...base.scores))];

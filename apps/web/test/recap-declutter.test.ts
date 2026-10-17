@@ -35,7 +35,7 @@ describe('hand recap', () => {
     expect(html).toContain('data-testid="recap-chat"');
     expect(html).toContain('data-testid="recap-unread"');
     expect(html.match(/data-testid="recap-side-/g)).toHaveLength(2);
-    for (const id of ['recap-line-', 'recap-players-', 'recap-points-', 'recap-total-']) {
+    for (const id of ['recap-line-', 'recap-players-', 'recap-points-', 'recap-bags-']) {
       expect(html).toContain(`data-testid="${id}0"`);
       expect(html).toContain(`data-testid="${id}1"`);
     }
@@ -79,7 +79,7 @@ describe('hand recap', () => {
     expect(css).toContain('.tt.glass.slant { background: linear-gradient(160deg, #2a1250, #0e071a); -webkit-backdrop-filter: none; backdrop-filter: none; }');
     expect(css).toContain('.modal-backdrop, .tt-backdrop { z-index: 1000; }');
     expect(css).toContain('z-index: 1045');
-    expect(css).toContain('grid-template-areas: "name total" "line total" "players players" "bar bar"');
+    expect(css).toContain('grid-template-areas: "name bags" "line bags" "players players" "bar bar"');
     expect(css).toContain('.tt-team ul.tt-players > li { flex: 0 1 auto; min-width: min-content; max-width: 100%; overflow-wrap: anywhere; }');
     const names = ['You', 'Leilani', 'Queenie', 'Elena'];
     const html = recap(toHandOver(makeRules('joker', { targetScore: 500 })), names);
