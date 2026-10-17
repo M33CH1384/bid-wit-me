@@ -3,7 +3,7 @@ import { loserCaption, victoryIdentity } from './victory';
 import { createPortal } from 'react-dom';
 import type { SeatInfo } from '@spades/protocol';
 import type { VideoMesh, VideoState } from './video';
-import { sound } from '../audio';
+import { sound, useSoundSettings } from '../audio';
 import type { SeatPos } from '../spatial';
 
 /** A <video> bound to a MediaStream (iOS: playsInline + muted autoplay; unmuted after the first tap). */
@@ -55,6 +55,8 @@ const MENU_EVT = 'bwm-vbmenu';
 
 export function SeatMedia({ seat, isMe, mesh, vs, limited = false, kick, seatPos, playerCount = 4 }: { seat: SeatInfo | undefined; isMe: boolean; mesh: VideoMesh | null; vs: VideoState; limited?: boolean; kick?: KickInfo; seatPos?: SeatPos; playerCount?: number }) {
   const [routed, setRouted] = useState(false);
+  useSoundSettings(); // re-render on persisted mute / rebuild emits: mutedVoices is the single mute source
+  const vcGen = sound.voiceChatGeneration;
   const [menu, setMenuState] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [frames, setFrames] = useState(false);
@@ -84,8 +86,8 @@ export function SeatMedia({ seat, isMe, mesh, vs, limited = false, kick, seatPos
   const camOn = seat.media.cam && !offline;
   const micOn = seat.media.mic && !offline;
   const hidden = vs.hidden.includes(id);
-  const muted = vs.muted.includes(id) || vs.needsTap || limited;
-  const peerMuted = vs.muted.includes(id) || sound.voiceMuted(id);
+  const peerMuted = sound.voiceMuted(id); // single source of truth (persisted); the mesh no longer keeps its own mute list
+  const muted = peerMuted || vs.needsTap || limited;
   // Phase 7: route this peer's voice through the engine (seat panner -> playerVoice bus).
   // While routed, the <video> element stays muted so the voice is heard exactly once.
   useEffect(() => {
@@ -94,7 +96,7 @@ export function SeatMedia({ seat, isMe, mesh, vs, limited = false, kick, seatPos
     setRouted(ok);
     return () => { sound.detachVoiceChat(id); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stream, seatPos, playerCount, vs.needsTap]);
+  }, [stream, seatPos, playerCount, vs.needsTap, vcGen]);
   useEffect(() => { if (routed) sound.updateVoiceChat(id, { muted: peerMuted || limited, ducked: vs.ducked?.includes(id) }); }, [routed, id, peerMuted, limited, vs.ducked]);
   const hasMedia = camOn || micOn;
   // no camera/mic (or offline): no "…" bubble — just their initial (with the OFFLINE badge on the plate), still
@@ -135,7 +137,7 @@ export function SeatMedia({ seat, isMe, mesh, vs, limited = false, kick, seatPos
       </button>
     )}
     {menu && <VbMenu onClose={() => setMenu(false)} label={`Options for ${seat.name}`}>
-      {hasMedia && <button type="button" onClick={() => { mesh.toggleMuted(id); sound.setVoiceMuted(id, !peerMuted); setMenu(false); }}>{peerMuted ? 'Unmute' : 'Mute'}</button>}
+      {hasMedia && <button type="button" onClick={() => { sound.setVoiceMuted(id, !peerMuted); setMenu(false); }}>{peerMuted ? 'Unmute' : 'Mute'}</button>}
       {camOn && <button type="button" onClick={() => { mesh.toggleHidden(id); setMenu(false); }}>{hidden ? 'Show video' : 'Hide video'}</button>}
       {kickItems}
     </VbMenu>}

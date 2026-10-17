@@ -525,7 +525,7 @@ class Engine {
     this.stopBeds();
     const old = this.ctx;
     this.ctx = null;
-    this.master = this.sfxBus = this.sfxDuck = this.nukeBus = this.ambBus = this.venueBus = this.voiceDuck = this.voiceChatBus = this.musicBus = this.musicDuck = null; this.voiceChatNodes.clear();
+    this.master = this.sfxBus = this.sfxDuck = this.nukeBus = this.ambBus = this.venueBus = this.voiceDuck = this.voiceChatBus = this.voiceChatOut = this.musicBus = this.musicDuck = null; this.voiceChatNodes.clear(); // regs kept: re-routed below
     this.loading = null;
     this.loadGen++;
     if (old && old.state !== 'closed') void settleAudio(old.close());
@@ -533,6 +533,9 @@ class Engine {
     if (!next) return;
     if (saved.length) this.restoreBuffers(saved);
     if (this.buffers.size === 0) this.load();
+    this.voiceChatGeneration++;
+    this.rerouteVoiceChat();
+    this.emit();
     if (next.state !== 'running') void settleAudio(next.resume());
   }
 
@@ -578,6 +581,11 @@ class Engine {
   /** Phase 7: human WebRTC voice chat bus. The playerVoice category is applied ONLY here. */
   private voiceChatBus: GainNode | null = null;
   private voiceChatNodes = new Map<string, { src: AudioNode; gain: GainNode; stream: MediaStream; release?: () => void }>();
+  /** Registrations survive a context rebuild (nodes do not): recreateContext re-routes these. */
+  private voiceChatRegs = new Map<string, { stream: MediaStream; seat?: SeatPos; playerCount: number; ducked?: boolean }>();
+  /** Independent voice-chat output: NOT through master, so game-sound-off / master 0 never silences chat. */
+  private voiceChatOut: GainNode | null = null;
+  voiceChatGeneration = 0;
   voiceChatProbe: { id: string; seat: string; muted: boolean; model: string }[] = [];
   private voiceSrc: { src: AudioBufferSourceNode; gain: GainNode } | null = null;
   /** The (possibly still locked) context, for decoding voice clips ahead of time. */
@@ -622,6 +630,7 @@ class Engine {
    * Returns false when Web Audio routing is unavailable (caller keeps the <video> element audible).
    */
   attachVoiceChat(id: string, stream: MediaStream, seat?: SeatPos, playerCount = 4, opts?: { muted?: boolean; ducked?: boolean }): boolean {
+    this.voiceChatRegs.set(id, { stream, seat, playerCount, ducked: opts?.ducked });
     const cur = this.voiceChatNodes.get(id);
     if (cur?.stream === stream) { this.updateVoiceChat(id, opts); return true; }
     this.detachVoiceChat(id);
@@ -631,7 +640,7 @@ class Engine {
     if (!c || !this.voiceChatBus || typeof c.createMediaStreamSource !== 'function') return false;
     try {
       const src = c.createMediaStreamSource(stream);
-      const g = c.createGain(); g.gain.value = opts?.muted ? 0 : opts?.ducked ? 0.4 : 1;
+      const g = c.createGain(); g.gain.value = (opts?.muted ?? this.voiceMuted(id)) ? 0 : opts?.ducked ? 0.4 : 1;
       let release: (() => void) | undefined; let model = 'stereo';
       if (seat && this.settings.spatial !== false) {
         const sp = this.ensureSpatializer();
@@ -651,10 +660,22 @@ class Engine {
     } catch { return false; }
   }
   updateVoiceChat(id: string, opts?: { muted?: boolean; ducked?: boolean }): void {
+    const reg = this.voiceChatRegs.get(id);
+    if (reg && opts?.ducked !== undefined) reg.ducked = opts.ducked;
     const n = this.voiceChatNodes.get(id); if (!n || !this.ctx) return;
-    n.gain.gain.setTargetAtTime(opts?.muted ? 0 : opts?.ducked ? 0.4 : 1, this.ctx.currentTime, 0.05);
+    const muted = opts?.muted ?? this.voiceMuted(id);
+    n.gain.gain.setTargetAtTime(muted ? 0 : opts?.ducked ? 0.4 : 1, this.ctx.currentTime, 0.05);
   }
+  /** After a context rebuild: rebuild every registered peer's chain on the new context. */
+  private rerouteVoiceChat(): void {
+    for (const [id, reg] of [...this.voiceChatRegs]) {
+      this.voiceChatNodes.delete(id);
+      this.attachVoiceChat(id, reg.stream, reg.seat, reg.playerCount, { muted: this.voiceMuted(id), ducked: reg.ducked });
+    }
+  }
+  voiceChatRouted(id: string): boolean { return this.voiceChatNodes.has(id); }
   detachVoiceChat(id: string): void {
+    this.voiceChatRegs.delete(id);
     const n = this.voiceChatNodes.get(id); if (!n) return;
     this.voiceChatNodes.delete(id);
     try { n.src.disconnect(); } catch { /* gone */ }
@@ -725,7 +746,8 @@ class Engine {
       if (this.roomStyle) { const spec = irSpec(this.roomStyle); this.convolver.buffer = this.makeIR(spec.seconds); this.convWet.gain.value = spec.wet; }
     } catch { this.convolver = null; this.convWet = null; }
     this.voiceDuck = c.createGain(); this.voiceDuck.connect(this.master);
-    this.voiceChatBus = c.createGain(); this.voiceChatBus.gain.value = normalizeCategoryVolumes(this.settings.volumes).playerVoice; this.voiceChatBus.connect(this.master);
+    this.voiceChatBus = c.createGain(); this.voiceChatBus.gain.value = normalizeCategoryVolumes(this.settings.volumes).playerVoice;
+    this.voiceChatOut = c.createGain(); this.voiceChatOut.gain.value = 1; this.voiceChatBus.connect(this.voiceChatOut); this.voiceChatOut.connect(c.destination);
     this.applyGain();
     if (!opts?.skipLoad) this.load();
     return c;
@@ -740,7 +762,7 @@ class Engine {
     const cats = normalizeCategoryVolumes(this.settings.volumes);
     if (this.sfxBus) this.sfxBus.gain.setTargetAtTime(cats.sfx, this.ctx.currentTime, 0.05);
     if (this.venueBus && this.venuePlaying !== 'none') this.venueBus.gain.setTargetAtTime(0.38 * cats.ambience, this.ctx.currentTime, 0.1);
-    if (this.voiceChatBus) this.voiceChatBus.gain.setTargetAtTime(cats.playerVoice, this.ctx.currentTime, 0.05);
+    if (this.voiceChatBus) this.voiceChatBus.gain.setTargetAtTime(cats.playerVoice, this.ctx.currentTime, 0.05); // independent of settings.on / master volume, by design
   }
 
   private load() {
@@ -1403,6 +1425,7 @@ class Engine {
   /** Per-player local voice mute (persisted in sound settings; that seat's card SFX are unaffected). */
   setVoiceMuted(playerId: string, mute: boolean) {
     this.settings = { ...this.settings, mutedVoices: withVoiceMuted(this.settings.mutedVoices, playerId, mute) };
+    this.updateVoiceChat(playerId, { muted: mute });
     try { localStorage.setItem(KEY, JSON.stringify(this.settings)); } catch { /* ignore */ }
     this.emit();
   }

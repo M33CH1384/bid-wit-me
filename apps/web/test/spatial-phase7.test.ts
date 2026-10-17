@@ -19,7 +19,7 @@ describe('spatial phase 7: human voice chat', () => {
     expect(hits.length).toBeGreaterThanOrEqual(2);
     expect(hits.every((l) => l.includes('voiceChatBus'))).toBe(true);
     // per-peer gain carries only mute/duck
-    expect(audio).toContain("g.gain.value = opts?.muted ? 0 : opts?.ducked ? 0.4 : 1");
+    expect(audio).toContain("(opts?.muted ?? this.voiceMuted(id)) ? 0 : opts?.ducked ? 0.4 : 1");
     expect(audio).not.toContain('voiceLineGain(gain, this.settings.volumes) * ');
   });
   it('AI voices: category applied exactly once in playVoice, callers pass only their gain (audit)', () => {
@@ -47,5 +47,39 @@ describe('spatial phase 7: human voice chat', () => {
     expect(settings).toContain('aiTalk?: boolean'); // optional, unset = off
     const table = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
     expect(table).toContain('aiTalk: !!settings.aiTalk');
+  });
+});
+
+describe('spatial phase 7 fixes (Yoda review)', () => {
+  it('(1) voice chat is independent of game sound / master: bus -> own output -> destination, slider always enabled', () => {
+    expect(audio).toContain('this.voiceChatOut.connect(c.destination)');
+    expect(audio).not.toContain('this.voiceChatBus.connect(this.master)');
+    expect(audio).toContain('independent of settings.on / master volume');
+    const row = controls.split('\n').find((l) => l.includes('voice-chat-volume')) ?? '';
+    expect(row).toContain('Voice chat volume');
+    expect(row).not.toContain('disabled');
+  });
+  it('(2) iOS context rebuild re-routes registered voice chat on the new context', () => {
+    expect(audio).toContain('voiceChatRegs');
+    expect(audio).toContain('private rerouteVoiceChat()');
+    const rebuild = audio.slice(audio.indexOf('private recreateContext()'), audio.indexOf('private copyBuffers()'));
+    expect(rebuild).toContain('this.rerouteVoiceChat()');
+    expect(rebuild).toContain('voiceChatGeneration++');
+    expect(rebuild).not.toContain('voiceChatRegs.clear()');
+    const media = readFileSync(new URL('../src/online/Media.tsx', import.meta.url), 'utf8');
+    expect(media).toContain('vcGen'); // SeatMedia re-attaches if generation changes
+  });
+  it('(3) mute has ONE source of truth: persisted mutedVoices, reload-safe, mesh list unused for voice', () => {
+    const media = readFileSync(new URL('../src/online/Media.tsx', import.meta.url), 'utf8');
+    expect(media).toContain('const peerMuted = sound.voiceMuted(id);');
+    expect(media).not.toContain('mesh.toggleMuted');
+    expect(media).not.toContain('vs.muted.includes');
+    expect(media).toContain('sound.setVoiceMuted(id, !peerMuted)');
+    // persistence: setVoiceMuted writes settings to localStorage and pushes the live gain
+    const seg = audio.slice(audio.indexOf('setVoiceMuted(playerId'), audio.indexOf('voiceMuted(playerId'));
+    expect(seg).toContain('localStorage.setItem(KEY, JSON.stringify(this.settings))');
+    expect(seg).toContain('this.updateVoiceChat(playerId, { muted: mute })');
+    // reload-safe: a fresh attach starts from the persisted mute
+    expect(audio).toContain('opts?.muted ?? this.voiceMuted(id)');
   });
 });

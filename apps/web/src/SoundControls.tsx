@@ -169,7 +169,7 @@ export function SpatialFields() {
         </select></label>
       <VolumeRow label="Effects volume" value={cats.sfx} disabled={!s.on} onChange={(v) => sound.set({ volumes: { ...cats, sfx: v } })} />
       <VolumeRow label="Ambience volume" value={cats.ambience} disabled={!s.on} onChange={(v) => sound.set({ volumes: { ...cats, ambience: v } })} />
-      <VolumeRow label="Voice chat volume" value={cats.playerVoice} disabled={!s.on} testId="voice-chat-volume" onChange={(v) => sound.set({ volumes: { ...cats, playerVoice: v } })} />
+      <VolumeRow label="Voice chat volume" value={cats.playerVoice} testId="voice-chat-volume" onChange={(v) => sound.set({ volumes: { ...cats, playerVoice: v } })} />
     </>
   );
 }
