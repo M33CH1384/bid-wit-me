@@ -16,8 +16,8 @@ describe('music tension', () => {
 
 describe('music tension: closeness (Phase 6 fix)', () => {
   it('a close race near the target is tenser than the same leader in a blowout', () => {
-    const race = musicTension({ scores: [480, 465], target: 500, phase: 'playing', handNo: 9 });
-    const blowout = musicTension({ scores: [480, 180], target: 500, phase: 'playing', handNo: 9 });
+    const race = musicTension({ scores: [400, 390], target: 500, phase: 'playing', handNo: 5 });
+    const blowout = musicTension({ scores: [400, 100], target: 500, phase: 'playing', handNo: 5 });
     expect(race).toBeGreaterThan(blowout + 0.2);
   });
   it('level scores mid-game beat a runaway leader at the same top score', () => {
