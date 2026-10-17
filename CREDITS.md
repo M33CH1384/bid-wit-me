@@ -93,6 +93,16 @@ Changes: every track loudness-normalized to −16 LUFS (two-pass ffmpeg loudnorm
 encoded to 128 kbps stereo MP3 (44.1 kHz), metadata/cover art stripped. At playback a gentle mid/side stereo widening
 (side boosted above 150 Hz with a slow width LFO; mono sum unchanged) and 4 s crossfades are applied.
 
+## Classic Studio room (Poly Haven, CC0)
+
+Licence for every Poly Haven item: CC0 — https://polyhaven.com/license (commercial use, no attribution required; credit voluntary).
+
+- Dining Chair 02 (Poly Haven, https://polyhaven.com/a/dining_chair_02): `apps/web/public/assets/venues/classic/chair.glb` — decimated 22,013 → 9,904 tris (gltfpack, 512px KTX2/Basis textures), ×4 seats.
+- Hanging Industrial Lamp (Poly Haven, https://polyhaven.com/a/hanging_industrial_lamp): `apps/web/public/assets/venues/classic/lamp.glb` — decimated 9,530 → 6,192 tris (gltfpack, KTX2), ×2 pendants.
+- Herringbone Parquet floor (Poly Haven, https://polyhaven.com/t/herringbone_parquet): 512px diffuse/normal/roughness in the same folder.
+- Basis transcoder (`apps/web/public/assets/basis/`, Basis Universal, Apache-2.0) ships with three.js for the KTX2 textures.
+- Not shipped: the test scene's GLB dining table (the game keeps its procedural bevelled-rail table) and the Warm Bar HDRI (the game's existing classic hall HDRI provides the IBL).
+
 ## Fonts
 - Barlow Condensed (600/700/800) by Jeremy Tribby, via `@fontsource/barlow-condensed` — SIL Open Font License 1.1.
 
