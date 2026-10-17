@@ -10,7 +10,9 @@
 import {
   type Action, type GameState, type Series, addSeriesGame, emptySeries, seriesForGameStart, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, RulesConfigError, acceptRules, applyAction, canRunIt, runPlayout, type Seat, spectatorView, isFreshDeal, isNukeTrick, nextDealer, makeRules, newGame, pendingTurn, secureSeed, viewFor, withCompleteNil,
 } from '@spades/rules';
-import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, chooseBotAction, loudLoser, parseHint, leanBid, botSkillFor, personaSkillFloor, seatSkill, leanNil, momentsFor, newTalkState, pickBotNames, platePersona, prePlayLine } from '@spades/bots';
+import { voiceGender } from '@spades/bots';
+import { BUCKET_THIN } from './voice/writer';
+import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, chooseBotAction, loudLoser, parseHint, leanBid, botSkillFor, personaSkillFloor, seatSkill, leanNil, momentsFor, newTalkState, pickBotNames, platePersona, prePlayLine, activeCatalog, bucketFor } from '@spades/bots';
 import {
   type BotLevel, type ChatLine, type ClientMsg, type HostMusic, type MediaState, type RoomInfo, type RoomPhase, type RunPlayback, type SeatInfo, type ServerMsg,
   DEFAULT_AFK_LIMIT, LIMITS, PROTOCOL_VERSION, parseClientMsg,
@@ -91,6 +93,8 @@ export interface RoomData {
   partnerMicMute?: boolean;
   nukeIntensity?: NukeIntensity;
   talkIntensity?: TalkIntensity;
+  /** host flag: pre-voiced AI catalog lines (default off); also gates the Voice (c) line writer */
+  aiTalk?: boolean;
   venue?: VenueChoice;
   venueNow?: VenueId;
   /** host option: bot trash talk (default on) */
@@ -209,6 +213,8 @@ export interface RoomIO {
   tournamentResult?(t: TournamentSeat, scores: number[], places: number[]): void;
   /** Release 10: this table's Open tables entry (null = unlisted); called after every broadcast, the DO dedups */
   listing?(t: OpenTable | null): void;
+  /** Voice (c): a persona's catalog bucket for a set/Wheels/win moment is thin; the DO runs the writer in waitUntil */
+  voiceMiss?(req: import('./voice/writer').WriterRequest): void;
 }
 
 
@@ -712,6 +718,7 @@ export class Room {
         if (msg.nukeIntensity !== undefined) d.nukeIntensity = msg.nukeIntensity;
         if (msg.talkIntensity !== undefined) d.talkIntensity = msg.talkIntensity;
         if (msg.botTalk !== undefined) d.botTalk = msg.botTalk;
+        if (msg.aiTalk !== undefined) d.aiTalk = msg.aiTalk;
         if (msg.botLevel) {
           d.botLevel = msg.botLevel;
           d.seats.forEach((s) => { if (s.kind === 'bot') s.level = msg.botLevel!; });
@@ -1188,7 +1195,7 @@ export class Room {
     const d = this.data;
     const n = d.rules.playerCount;
     const seats = d.seats.slice(0, n).map((s, i) => ({ bot: s.kind === 'bot', name: s.kind === 'human' ? (d.members[s.playerId]?.name ?? 'Player') : s.kind === 'bot' ? s.name : `Seat ${i + 1}` }));
-    return { seats, partnerships: d.rules.partnerships, teamNames: this.sideNames(), intensity: d.talkIntensity ?? 'cookout', jokers: d.rules.deck === 'joker54' };
+    return { seats, partnerships: d.rules.partnerships, teamNames: this.sideNames(), intensity: d.talkIntensity ?? 'cookout', jokers: d.rules.deck === 'joker54', aiTalk: !!d.aiTalk };
   }
 
   /** a game moment → maybe one bot line (cooldowns live in the talk state) */
@@ -1197,6 +1204,15 @@ export class Room {
     if (d.botTalk === false || d.phase === 'lobby') return;
     const line = botTalk(this.talkState(), this.talkTable(), ev, this.io.now(), Math.random);
     if (line) this.pushBotLine(line);
+    // Voice (c): behind the same host flag, a thin bucket schedules ONE writer pass (waitUntil in the DO).
+    if (d.aiTalk && this.io.voiceMiss && (ev.kind === 'setThem' || ev.kind === 'wheels' || ev.kind === 'win')) {
+      const bucket = bucketFor(ev.kind === 'setThem' ? 'set' : ev.kind, { bid: ev.bid, books: ev.books });
+      if (bucket && line) {
+        const g = voiceGender(line.name) ?? 'm';
+        const fresh = activeCatalog().filter((l) => l.persona === line.persona && l.g === g && l.bucket === bucket);
+        if (fresh.length < BUCKET_THIN) this.io.voiceMiss({ persona: line.persona, g, bucket, forbiddenNames: this.talkTable().seats.map((s) => s.name), existingTexts: fresh.map((l) => l.text) });
+      }
+    }
   }
 
   private pushBotLine(l: TalkLine): void {
@@ -1732,7 +1748,7 @@ export class Room {
       code: d.code, hostId: d.hostId ?? '', phase: d.phase, rules: d.rules, botLevel: d.botLevel, seats,
       members: Object.entries(d.members).map(([playerId, m]) => ({ playerId, name: m.name, connected: this.isConnected(playerId), seat: m.seat })),
       deadline: d.deadline, turnSec: this.clockSeconds(), ready: [...d.ready], rev: d.rev, seq: d.seq ?? 0, game: d.gamesPlayed, now: this.io.now(),
-      talkSec: d.talkSec ?? Math.round(this.timing.handOverMs / 1000), afkLimit: d.afkLimit ?? DEFAULT_AFK_LIMIT, partnerMicMute: d.partnerMicMute ?? false, nukeIntensity: d.nukeIntensity ?? 'full', talkIntensity: d.talkIntensity ?? 'cookout', botTalk: d.botTalk ?? true,
+      talkSec: d.talkSec ?? Math.round(this.timing.handOverMs / 1000), afkLimit: d.afkLimit ?? DEFAULT_AFK_LIMIT, partnerMicMute: d.partnerMicMute ?? false, nukeIntensity: d.nukeIntensity ?? 'full', talkIntensity: d.talkIntensity ?? 'cookout', botTalk: d.botTalk ?? true, aiTalk: !!d.aiTalk,
       venue: d.venue ?? 'classic', ...(d.venueNow ? { venueNow: d.venueNow } : {}),
       teamNames: d.rules.partnerships ? [...(d.teamNames ?? [null, null])] : undefined, series: d.series ?? null, revealed: [...(d.talk?.revealed ?? [])],
       ...(d.tournament ? { tournament: { id: d.tournament.id, name: d.tournament.name, match: d.tournament.match, autostartAt: d.tournament.autostartAt, reserved: d.tournament.reserved.map((r) => r?.name ?? null) } } : {}),

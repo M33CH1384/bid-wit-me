@@ -66,6 +66,11 @@ class_name = "TournamentDO"
 tag = "v5"
 new_sqlite_classes = ["TournamentDO"]
 
+# Voice (c) line writer (docs/voice-phase2-design.md): Workers AI on the free daily allowance.
+# Code hard-stops at 8,000 neurons/day (src/voice/writer.ts). Needs "Workers AI" permission on the deploy token.
+[ai]
+binding = "AI"
+
 # Accounts (users, linked logins, passkeys, sessions, progress). Free tier. Schema: migrations/
 [[d1_databases]]
 binding = "DB"
