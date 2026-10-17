@@ -1275,6 +1275,12 @@ function HandPointer({ onTap, onDrop, legal, onDragging, view = 'standing', turn
   drop.current = onDrop;
   const legalNow = useRef(legal);
   legalNow.current = legal;
+  // The pointer effect below subscribes once ([gl]); read the LIVE view/Turn Up through refs so
+  // toggling Turn Up (or Sit/Stand) mid-game gates the very next drag, not the value at mount.
+  const viewNow = useRef(view);
+  viewNow.current = view;
+  const turnUpNow = useRef(turnUp);
+  turnUpNow.current = turnUp;
   useLayoutEffect(() => {
     const el = gl.domElement;
     // Drag-to-play: the press still selects (first tap). Past 10px a lifted copy of the card follows the
@@ -1322,7 +1328,7 @@ function HandPointer({ onTap, onDrop, legal, onDragging, view = 'standing', turn
       if (result === 'play') {
         d.trail.push({ t: e.timeStamp || performance.now(), x: e.clientX, y: e.clientY });
         const v = releaseVelocity(d.trail);
-        const intensity = dragSlamIntensity(d.trail, view, turnUp);
+        const intensity = dragSlamIntensity(d.trail, viewNow.current, turnUpNow.current);
         const rect = el.getBoundingClientRect();
         // The 3D card takes over at the finger point (card centre), so the copy can go at once.
         noteDrop({ card: d.id, x: e.clientX - rect.left, y: e.clientY - d.h * 0.2 - rect.top, intensity, at: performance.now() });

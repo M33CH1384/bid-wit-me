@@ -61,7 +61,8 @@ describe('camera view', () => {
     const v = path([[195, 700], [195, 640], [195, 580], [195, 640], [195, 700], [180, 430]]);
     // final release point is over the felt; the V legs are the first five samples
     expect(isVGesture(v.slice(0, 5))).toBe(true);
-    expect(dragSlamIntensity(v.slice(0, 5), 'sitting')).toBe(1);
+    expect(dragSlamIntensity(v.slice(0, 5), 'sitting')).toBe(0); // Turn up OFF (default) gates the V
+    expect(dragSlamIntensity(v.slice(0, 5), 'sitting', true)).toBe(1); // Turn up ON: V slams as before
     const straight = path([[195, 700], [195, 690], [195, 680], [195, 670], [195, 660]]); // slow straight drag, no V
     expect(isVGesture(straight)).toBe(false);
     expect(dragSlamIntensity(straight, 'sitting')).toBe(0);

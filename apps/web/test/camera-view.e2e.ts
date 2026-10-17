@@ -1,4 +1,4 @@
-/** Camera view at 390px WebKit: standing (Turn up ON) slow drag slams max; sitting V-gesture slams; sitting straight slow drag gentle. */
+/** Camera view at 390px WebKit: standing (Turn up ON) slow drag slams max; sitting V-gesture slams ONLY with Turn Up ON (OFF gates it); sitting straight slow drag gentle. */
 import { makeRules, newGame, type GameState } from '@spades/rules';
 import { webkit, type Browser, type Page } from 'playwright-core';
 import { DEFAULT_SETTINGS } from '../src/settings';
@@ -38,8 +38,19 @@ async function grip(page: Page) {
     let slam = await page.evaluate(() => (window as unknown as W).__bwmSlam); console.log('standing slow drag slam', slam);
     if (!slam || slam.intensity !== 1) throw new Error(`standing slow drag intensity ${slam?.intensity}`);
     await page.close();
-    // Sitting: camera lower; V gesture slams; straight slow drag gentle
+    // Sitting + Turn Up OFF: the same V gesture must NOT slam (founder bug: swipe slammed with mode off)
     page = await open(b, 'sitting');
+    g = await grip(page);
+    await page.mouse.move(g.x, g.y); await page.mouse.down();
+    for (let i = 1; i <= 6; i++) { await page.mouse.move(g.x, g.y - 12 * i); await page.waitForTimeout(30); }
+    for (let i = 1; i <= 6; i++) { await page.mouse.move(g.x, g.y - 72 + 12 * i); await page.waitForTimeout(30); }
+    for (let i = 1; i <= 12; i++) { await page.mouse.move(g.x + ((120 - g.x) * i) / 12, (g.y + ((330 - g.y) * i) / 12)); await page.waitForTimeout(20); }
+    await page.mouse.up(); await page.waitForTimeout(300);
+    slam = await page.evaluate(() => (window as unknown as W).__bwmSlam); console.log('sitting V TurnUp OFF slam', slam);
+    if (!slam || slam.intensity !== 0) throw new Error(`sitting V TurnUp OFF intensity ${slam?.intensity}`);
+    await page.close();
+    // Sitting: camera lower; V gesture slams only with Turn Up ON; straight slow drag gentle
+    page = await open(b, 'sitting', true);
     cam = await page.evaluate(() => (window as unknown as W).__bwmCam); console.log('sitting cam', cam);
     await page.screenshot({ path: `${SHOTS}/camera-sitting-390.png` });
     g = await grip(page);

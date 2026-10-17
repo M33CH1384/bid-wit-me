@@ -29,12 +29,29 @@ describe('Turn up (slam mode) — opt-in, OFF by default', () => {
     expect(tapPlaySlamIntensity('standing', true)).toBe(1);
   });
 
-  it('Sitting V-gesture still slams regardless of the mode; Sitting tap never auto-slams', () => {
-    expect(dragSlamIntensity(vGesture, 'sitting', false)).toBe(1);
+  it('Turn Up OFF gates the Sitting V-gesture too; ON preserves it; Sitting tap never auto-slams', () => {
+    expect(dragSlamIntensity(vGesture, 'sitting', false)).toBe(0);
+    expect(dragSlamIntensity(vGesture, 'sitting')).toBe(0); // default arg = off
     expect(dragSlamIntensity(vGesture, 'sitting', true)).toBe(1);
     expect(dragSlamIntensity(straight, 'sitting', true)).toBe(0);
+    expect(dragSlamIntensity(straight, 'sitting', false)).toBe(0);
     expect(tapPlaySlamIntensity('sitting', true)).toBe(0);
     expect(tapPlaySlamIntensity('sitting', false)).toBe(0);
+  });
+
+  it('swipe-and-hold still places gently in BOTH Turn Up states (hold ages the V out, unchanged)', () => {
+    // V legs complete by t=64, then the finger holds still and releases at t=1200 (>800 ms later)
+    const swipeHold: DragSample[] = [
+      { t: 0, x: 195, y: 700 }, { t: 16, x: 195, y: 630 }, { t: 32, x: 195, y: 640 },
+      { t: 48, x: 195, y: 700 }, { t: 64, x: 180, y: 430 }, { t: 1200, x: 180, y: 430 },
+    ];
+    expect(dragSlamIntensity(swipeHold, 'sitting', false)).toBe(0);
+    expect(dragSlamIntensity(swipeHold, 'sitting', true)).toBe(0);
+  });
+
+  it('no slam field is sent for a gated/gentle drag (Table only attaches a positive slam)', () => {
+    const table = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
+    expect(table).toContain('dragged && slam ? { slam }');
   });
 
   it('toggle lives by the YOU plate, in the game menu, and in Settings — all from Settings.turnUp', () => {
@@ -55,6 +72,6 @@ describe('Turn up (slam mode) — opt-in, OFF by default', () => {
     expect(online).toContain('onTurnUp=');
     expect(online).toContain('saveSettings({ ...loadSettings(), turnUp })');
     const scene = readFileSync(new URL('../src/three/Scene.tsx', import.meta.url), 'utf8');
-    expect(scene).toContain('dragSlamIntensity(d.trail, view, turnUp)');
+    expect(scene).toContain('dragSlamIntensity(d.trail, viewNow.current, turnUpNow.current)'); // live refs, not mount-time props
   });
 });
