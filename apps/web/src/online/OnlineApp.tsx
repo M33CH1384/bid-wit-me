@@ -17,7 +17,7 @@ import { useConn } from './useOnline';
 import { STATS_OFF_LABEL, social } from '../social/store';
 import { usePresence } from '../social/Social';
 import { VideoMesh } from './video';
-import { IdleWatch, idleTimeoutFrom } from '../inactivity';
+import { IdleWatch, idlePolicyFrom } from '../inactivity';
 import './online.css';
 
 /** players open video to at most this many spectators (each one is another upload stream from every player) */
@@ -217,7 +217,7 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
   // table and shows a notice — presence/seat are released via the same leave.
   useEffect(() => {
     if (!cs.room || idleOut) return;
-    const watch = new IdleWatch(idleTimeoutFrom(localStorage));
+    const watch = new IdleWatch(idlePolicyFrom(localStorage));
     const onAct = () => watch.touch();
     const evs = ['pointerdown', 'keydown', 'touchstart', 'wheel'] as const;
     evs.forEach((e) => window.addEventListener(e, onAct, { passive: true }));
@@ -241,7 +241,7 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
   if (idleOut) {
     return (
       <div className="setup online-entry" data-testid="idle-logout">
-        <h2>Logged out — you were away</h2>
+        <h2>Signed out for inactivity</h2>
         <p className="muted">No activity for a while, so we left the table and freed your seat. Jump back in any time.</p>
         <button type="button" className="btn primary" onClick={() => navigate('/', true, { wiz: 'home', d: 0 })}>Main menu</button>
       </div>

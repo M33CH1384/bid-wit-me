@@ -4,6 +4,7 @@ import App from './App';
 import { isOnlinePath } from './online/nav';
 import { SoundDock } from './SoundControls';
 import { SocialRoot } from './social/Social';
+import IdleGuard from './IdleGuard';
 import '@fontsource/barlow-condensed/600.css';
 import '@fontsource/barlow-condensed/700.css';
 import '@fontsource/barlow-condensed/800.css';
@@ -24,6 +25,7 @@ function Root() {
       {isOnlinePath(path) ? <Suspense fallback={null}><OnlineApp path={path} /></Suspense> : <App key={path} />}
       <SoundDock />
       <SocialRoot />
+      <IdleGuard />
     </>
   );
 }
