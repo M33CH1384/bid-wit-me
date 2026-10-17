@@ -766,9 +766,18 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-chat-btn .unread { top: -6px; right: -6px; }
 .tt-count { margin-left: auto; font-size: 14px; color: var(--muted); white-space: nowrap; }
 .tt-count.hot { color: var(--red); }
-.tt-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; justify-content: safe center; align-items: center; gap: 16px; padding: 56px 16px 26px; }
-.tt-recap { display: flex; flex-direction: column; justify-content: center; gap: 16px; width: min(520px, 100%); }
-.tt-team { position: relative; padding: 18px 16px 16px; background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px rgba(185,128,255,.2); clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); }
+.tt-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; justify-content: flex-start; align-items: center; gap: 24px; padding: 22px 16px 30px; }
+.tt-recap { display: flex; flex-direction: column; justify-content: center; gap: 24px; width: min(520px, 100%); }
+.tt-top-scores { width: min(520px, 100%); background: rgba(245,197,66,.07); box-shadow: inset 0 0 0 1px rgba(245,197,66,.28); padding: 14px 16px 12px; }
+.tt-top-scores h3 { margin: 0 0 10px; font-family: var(--display); font-size: 13px; font-weight: 800; letter-spacing: .14em; color: var(--gold); }
+.tt-top-scores ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.tt-top-scores li { display: flex; align-items: baseline; gap: 10px; font-family: var(--display); font-size: 17px; }
+.tt-top-scores li .place { color: var(--muted); font-weight: 700; min-width: 26px; }
+.tt-top-scores li .who { flex: 1; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tt-top-scores li b { font-size: 22px; font-weight: 800; }
+.tt-top-scores li .to-target { color: var(--muted); font-size: 12px; }
+.tt-top-scores li.mine .who, .tt-top-scores li.mine b { color: var(--gold); }
+.tt-team { position: relative; padding: 22px 18px 20px; background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px rgba(185,128,255,.2); clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); }
 .tt-face { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name total" "line total" "players total" "bar bar"; align-items: center; gap: 8px 16px; position: relative; z-index: 5; }
 /* On-notice shot card: knocked 4px and -1.5deg, red vignette and glow, one raster hole per shot, then a shallow tape X. Full fidelity at every width, including 360–390. */
 .tt-team > :not(.shot-holes):not(.caution-x):not(.shroud):not(.tod) { position: relative; z-index: 5; }
