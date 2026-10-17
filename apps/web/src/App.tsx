@@ -5,6 +5,7 @@ import { secureSeed } from '@spades/rules';
 import Setup from './Setup';
 import { usePresence } from './social/Social';
 import { NowPlaying } from './SoundControls';
+import { sound } from './audio';
 import Table from './Table';
 import { MODES, type Settings, loadSettings, saveSettings, settingsToRules } from './settings';
 import { type SavedGame, confirmReplaceSave, loadGame, markInGame, resumeOnLoad, wasInGame } from './save';
@@ -42,6 +43,9 @@ export default function App() {
   useEffect(() => { if (!game) return; return holdIdleExemption(); }, [game !== null]);
   // Refresh at the table returns to it; refresh anywhere else keeps that screen (history.state holds the wizard step).
   useEffect(() => { markInGame(game !== null); }, [game]);
+  // Sound context at the root: no game on screen = menus (ambience by default). A mounted
+  // Table switches to 'game' itself; this covers boot, lobby and setup screens.
+  useEffect(() => { if (!game) sound.enterContext('menu'); }, [game === null]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!game) {
     const saved = loadGame();
