@@ -13,10 +13,11 @@ import { type VenueId, VENUE_DEFS } from './venues';
 import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, isFreshDeal, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, newlyOneTrickFromShot, nilBustsJustResolved, partnerOf, sideOf, sortHand,
+  type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, hostMinimum, isFreshDeal, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, newlyOneTrickFromShot, nilBustsJustResolved, partnerOf, sideOf, sortHand,
 } from '@spades/rules';
 import { ScorePad, setTeamNames, sideName } from './Modals';
 import { LockedRulesPanel } from './LockedRules';
+import { booksBanner, teamMinNote } from './polishText';
 import { type Series, addSeriesGame, seriesForGameStart, seriesSides, summarizeGame } from '@spades/rules';
 import { SeriesChip, SeriesSheet, loadSeries, saveSeries } from './Series';
 import { useMyTeamName } from './TeamName';
@@ -55,7 +56,7 @@ import type { SeatPos } from './three/layout';
 import { HUMAN, useGame } from './useGame';
 import { DealerPopup } from './DealerPopup';
 import { dealerAnnouncement, dealerFromServer, withCurrentDealerLine } from './dealerName';
-import { bidChipText, dealerChipMatches, syncPlateFacts, tookChipText, type SeatFact } from './plateFacts';
+import { bidChipText, dealerChipMatches, plateTookText, syncPlateFacts, type SeatFact } from './plateFacts';
 import { leaveChoice, leaveMenuAction, type LeaveGesture } from './leaveMenu';
 import { biddingNote, noticeTip, seatFacingName, seatInitial, trickTakenLine } from './seatLabel';
 import { MinBidLine, bidChoices, minBidNote } from './minBid';
@@ -340,11 +341,11 @@ function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only',
           {tray && <>
             {extra}
             {trash}
-            <button type="button" className={`chat-toggle ${open ? 'open' : ''}`} onClick={onToggle} aria-label="Toggle chat">
+            <button type="button" className={`chat-toggle ${open ? 'open' : ''}`} onClick={onToggle} aria-label={open ? 'Hide chat' : 'Show chat'}>
               💬{!open && unread > 0 && <span className="unread">{unread}</span>}
             </button>
           </>}
-          <button type="button" className={`tray-toggle ${tray ? 'on' : ''}`} data-testid="tray-toggle" aria-expanded={tray} aria-label={tray ? 'Close controls' : 'Open controls: camera, mic, voice, chat'} onClick={() => setTray(!tray)}>
+          <button type="button" className={`tray-toggle ${tray ? 'on' : ''}`} data-testid="tray-toggle" aria-label={tray ? 'Close controls' : 'Open controls: camera, mic, voice, chat'} onClick={() => setTray(!tray)}>
             {tray ? '✕' : <>💬<small>⋯</small></>}{!tray && unread > 0 && <span className="unread" data-testid="tray-unread">{unread}</span>}
           </button>
         </div>
@@ -1193,7 +1194,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       facts.push({
         seat,
         bid: bidChipText(st.bids[seat] ?? null, actor === seat && st.phase === 'bidding'),
-        took: tookChipText(sb.tricksWon[seat] ?? 0),
+        took: plateTookText(sb.tricksWon[seat] ?? 0, st.phase),
         dealer: dealerSeat === seat,
       });
     }
@@ -1226,7 +1227,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           <div className="plate-name">{names[seat]}{dealerSeat === seat && <span className="chip dealer" data-testid={`dealer-${seat}`}>DEALER</span>}{partner && <span className="chip ally">PARTNER</span>}{notice.includes(sideOf(seat, r)) && <span className="chip notice" data-testid={`notice-${seat}`} title="Got shot last hand: one more shot and they're out">ON NOTICE</span>}</div>
           <div className="plate-stats">
             <span className="chip">{bidChipText(b ?? null, isTurn && st.phase === 'bidding')}</span>
-            <span className="chip">{tookChipText(sb.tricksWon[seat] ?? 0)}</span>
+            <span className="chip">{plateTookText(sb.tricksWon[seat] ?? 0, st.phase)}</span>
           </div>
         </div>
         {online?.seatExtra(seat)}
@@ -1349,7 +1350,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       {/* scorebug */}
       <header className="scorebug">
         <div className="menu-wrap">
-          <button type="button" className={`bug-btn ${menuOpen ? 'on' : ''}`} onClick={() => setMenuOpen(!menuOpen)} aria-label="Menu" aria-expanded={menuOpen} data-testid="menu">☰</button>
+          <button type="button" className={`bug-btn ${menuOpen ? 'on' : ''}`} onClick={() => setMenuOpen(!menuOpen)} aria-label="Menu" aria-haspopup="dialog" data-testid="menu">☰</button>
           {menuOpen && (
             <>
               <div className="menu-scrim" onPointerDown={(e) => runLeaveMenu(e, 'scrim')} onPointerUp={(e) => runLeaveMenu(e, 'scrim')} onClick={(e) => runLeaveMenu(e, 'scrim')} />
@@ -1435,7 +1436,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         {showDealer && dealerLive && <DealerPopup name={dealerLabel} localSeat={dealerSeat} />}
         {st.phase === 'bidding' && !pause && !dealing && localTurn !== HUMAN && localTurn !== null && <div className="center-note" data-testid="bidding-note">{biddingNote(names[localTurn] ?? '', { partnerships: r.partnerships, partnerTurn: localTurn === partnerSeat, spectating })}</div>}
         {showCenterBidOrder(st.phase, pause, dealing) && <BidOrder st={st} names={names} me={spectating ? -1 : HUMAN} />}
-        {isBooks && st.phase === 'playing' && !pause && !dealing && st.tricks.length === 0 && st.trick.plays.length === 0 && <div className="center-note books-note" data-testid="books-note">First hand: books bid themselves · 10 per book</div>}
+        {isBooks && st.phase === 'playing' && !pause && !dealing && st.tricks.length === 0 && st.trick.plays.length === 0 && <div className="center-note books-note" data-testid="books-note">{booksBanner(hostMinimum(r), r.partnerships)}</div>}
         {st.phase === 'exchange' && !humanExchanging && <div className="center-note">{names[exchangeStep!.from]} passes {exchangeStep!.count} to {names[exchangeStep!.to]}…</div>}
       </div>
       {winnerSeat !== null && <TrickBanner key={`${st.handNo}-${st.tricks.length}`} text={trickTakenLine(face(winnerSeat))} />}
@@ -1476,6 +1477,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
               {coachBid && <BidCoach key={bcKey} view={view} startOpen={help || bcOpen} />}
               <div className="panel-title">YOUR BID{r.partnerships && st.bids[2] !== null ? <small> · partner bid {bidLabel(st.bids[2]!)}</small> : r.partnerships ? <small> · partner bids right after you</small> : null}</div>
               <BidOrder st={st} names={names} me={HUMAN} />
+              {!raisedMin && teamMinNote(hostMinimum(r), r.partnerships) && <p className="team-min-note" data-testid="team-min-note">{teamMinNote(hostMinimum(r), r.partnerships)}</p>}
               {raisedMin ? <MinBidLine note={raisedMin} /> : (view.bidOptions.blockReason || view.bidOptions.nilReason) && (
                 <p className="bid-block" data-testid="bid-block">{[view.bidOptions.blockReason, view.bidOptions.nilReason].filter(Boolean).join(' · ')}</p>
               )}
@@ -1501,7 +1503,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             <div className="plate-name">{face(HUMAN).toUpperCase()}{dealerSeat === HUMAN && <span className="chip dealer" data-testid="dealer-0">DEALER</span>}{notice.includes(sideOf(HUMAN, r)) && <span className="chip notice" data-testid="notice-0" title={noticeTip(spectating)}>ON NOTICE</span>}{!spectating && myBadges.map((b) => BADGES[b.id] && <span key={b.id} className="chip badge" title={`${BADGES[b.id]!.name}: ${BADGES[b.id]!.desc}`} data-testid={`plate-badge-${b.id}`}>{BADGES[b.id]!.icon}</span>)}</div>
             <div className="plate-stats">
               <span className="chip">{st.bids[HUMAN] === 'books' ? 'BOOKS' : `BID ${st.bids[HUMAN] === null ? '—' : bidLabel(st.bids[HUMAN]).toUpperCase()}`}</span>
-              <span className="chip">TOOK {sb.tricksWon[HUMAN]}</span>
+              <span className="chip">{plateTookText(sb.tricksWon[HUMAN] ?? 0, st.phase)}</span>
               {isNilBid(st.bids[HUMAN]) && sb.tricksWon[HUMAN]! > 0 && <span className="chip bad">NIL BUSTED</span>}
             </div>
             {!spectating && <button type="button" className="view-chip" data-testid="view-toggle-plate" aria-pressed={settings.view === 'sitting'} onClick={() => onView?.(settings.view === 'sitting' ? 'standing' : 'sitting')}>{settings.view === 'sitting' ? '🪑 Sitting view' : '🧍 Standing view'}</button>}

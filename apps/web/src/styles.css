@@ -350,8 +350,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 @keyframes banner { 0% { opacity: 0; transform: scale(.8); } 12%, 80% { opacity: 1; transform: none; } 100% { opacity: 0; } }
 .bug-trumps { display: none; }
 
-/* ======================================================================
-   Phone landscape (short + wide): one-line scorebug, plates on the table edges,
+/* ===============================================================   Phone landscape (short + wide): one-line scorebug, plates on the table edges,
    hand between the bottom corners, controls bottom-right. Class set from viewport.ts.
    ====================================================================== */
 .table-screen.short .scorebug { padding-top: calc(4px + env(safe-area-inset-top)); height: calc(42px + env(safe-area-inset-top)); gap: 5px; }
@@ -408,8 +407,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .table-screen.short .center-note { font-size: 13px; padding: 3px 12px; }
 .table-screen.short .trick-banner-wrap .center-note.win { font-size: 13px; padding: 2px 12px; }
 
-/* ======================================================================
-   Start wizard: splash → mode → essentials (+ gear sheet)
+/* ===============================================================   Start wizard: splash → mode → essentials (+ gear sheet)
    ====================================================================== */
 .wizard {
   position: relative; min-height: 100dvh; display: flex; flex-direction: column; overflow-x: hidden;
@@ -1811,6 +1809,15 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .scorebug .bug { min-width: 0; flex: 1 1 auto; }
 .sound-dock, .sound-dock .dock-btn { transition: none !important; }
 
+/* r17 polish: the countdown sits at the plate's right end, clear of the YOUR TURN tag */
+.turn-clock { left: auto !important; right: 0; z-index: 6; }
+.team-min-note { margin: 4px 0 0; font-size: 12px; opacity: .85; text-align: center; }
+/* portrait phones: a bot's bubble sits in the band above the felt, never over the cloth or the turn ring */
+@media (orientation: portrait) and (max-width: 600px) {
+  .trash-callout.seat-left, .trash-callout.seat-right, .trash-callout.seat-top { top: calc(150px + env(safe-area-inset-top)); max-width: min(300px, 76vw); }
+  .trash-callout.seat-left { left: 12px; right: auto; }
+  .trash-callout.seat-right { right: 12px; left: auto; }
+}
 /* Portrait phones: your plate and YOUR TURN live in the open arch under the fan (see archSpot), never on a card */
 .table-screen.arch-plate .me-plate { position: fixed; left: var(--arch-x); top: var(--arch-top); transform: translateX(-50%); width: auto; max-width: var(--arch-w); z-index: 8; pointer-events: none; display: flex; flex-direction: column; align-items: center; margin: 0; }
 .table-screen.arch-plate .me-plate .plate-avatar, .table-screen.arch-plate .me-plate > .vbubble { display: none; }

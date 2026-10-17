@@ -16,6 +16,12 @@ export function tookChipText(tricks: number): string {
   return `TOOK ${tricks}`;
 }
 
+/** Each new hand starts clean: while the table is still bidding, no books have
+ * been taken yet, so TOOK reads 0 even if a stale count leaks through. */
+export function plateTookText(tricks: number, phase: string): string {
+  return phase === 'bidding' ? 'TOOK 0' : tookChipText(tricks);
+}
+
 export interface SeatFact {
   seat: number;
   bid: string;
@@ -48,6 +54,9 @@ export function syncPlateFacts(screen: ParentNode, facts: readonly SeatFact[]): 
       if (inLayer) {
         const name = plate.querySelector('.plate-name');
         if (name) {
+          // One DEALER chip per plate. React's own chip and a synced one could both survive a re-render.
+          const dupes = [...name.children].filter((el) => el.classList.contains('dealer')).slice(1);
+          for (const d of dupes) { d.remove(); wrote = true; }
           const chip = childChip(name, (el) => el.classList.contains('dealer'));
           if (fact.dealer) {
             if (!chip) {
