@@ -27,6 +27,7 @@ import { landingMode } from './three/landing';
 import { SocialButton } from './social/Social';
 import { recordOfflineGame } from './offlineStats';
 import { setTableIntensity, showLine, speakBot, talkPrefs as talkStore, useTalkPrefs } from './talkPrefs';
+import { setActiveDeck } from './decks';
 import { pickTeamName } from '@spades/protocol';
 import { Intermission, calloutsFor } from './Intermission';
 import Hype from './Hype';
@@ -472,6 +473,7 @@ function seedFloat(seed: string): number {
 }
 
 export default function Table({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, onView, resume, continueSeries, online, onMainMenu, startDealer }: Props) {
+  useEffect(() => { setActiveDeck(settings.deck); }, [settings.deck]);
   // `online` never changes for a mounted Table, so this is always the same hook path per instance
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const vp = useViewport();
