@@ -139,7 +139,7 @@ export type ClientMsg =
   | { t: 'removeBot'; seat: number }
   /** host: the table's venue (lobby / between games); everyone sees the same one */
   | { t: 'venue'; venue: VenueChoice }
-  | { t: 'config'; rules: TableRules; botLevel?: BotLevel; talkSec?: number; afkLimit?: number; partnerMicMute?: boolean; nukeIntensity?: NukeIntensity; botTalk?: boolean; talkIntensity?: TalkIntensity }
+  | { t: 'config'; rules: TableRules; botLevel?: BotLevel; talkSec?: number; afkLimit?: number; partnerMicMute?: boolean; nukeIntensity?: NukeIntensity; botTalk?: boolean; talkIntensity?: TalkIntensity; aiTalk?: boolean }
   /** rename your own team (team modes); '' resets to the partner names */
   | { t: 'teamName'; name: string }
   /** host only: what plays for the whole table (the server stamps `startAt` for beats) */
@@ -220,6 +220,8 @@ export interface RoomInfo {
   talkIntensity?: TalkIntensity;
   /** host option: bots chat (trash talk) at the table; default on */
   botTalk?: boolean;
+  /** host option: pre-voiced AI catalog lines + Voice (c) writer; default off */
+  aiTalk?: boolean;
   /** the host's venue pick (default classic) */
   venue?: VenueChoice;
   /** the venue this game is played in ('random' resolved at the start; absent before the first game = venue) */
@@ -347,6 +349,7 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       if (isInt(m.afkLimit) && (AFK_LIMITS as readonly number[]).includes(m.afkLimit)) out.afkLimit = m.afkLimit;
       if (typeof m.partnerMicMute === 'boolean') out.partnerMicMute = m.partnerMicMute;
       if (typeof m.botTalk === 'boolean') out.botTalk = m.botTalk;
+      if (typeof m.aiTalk === 'boolean') out.aiTalk = m.aiTalk;
       if (typeof m.talkIntensity === 'string' && (TALK_INTENSITIES as readonly string[]).includes(m.talkIntensity)) out.talkIntensity = m.talkIntensity as TalkIntensity;
       if (typeof m.nukeIntensity === 'string' && (NUKE_INTENSITIES as readonly string[]).includes(m.nukeIntensity)) out.nukeIntensity = m.nukeIntensity as NukeIntensity;
       return out;

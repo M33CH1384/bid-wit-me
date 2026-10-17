@@ -41,7 +41,10 @@ export { TournamentDO } from './tournament/do';
 import type { TournamentDO } from './tournament/do';
 import type { OpenTable, SocialChatLine, SocialServerMsg } from '@spades/protocol';
 
+import { D1QueueStore, WriterBreaker, writeVoiceLine, type WorkersAiLike, type WriterRequest } from './voice/writer';
 export interface Env extends LimitEnv, AuthEnv, SocialEnv {
+  /** Voice (c) Workers AI binding ([ai] in wrangler.toml); absent in local tests without AI. */
+  AI?: WorkersAiLike;
   TABLES: DurableObjectNamespace<TableDO>;
   SOCIAL: DurableObjectNamespace<SocialDO>;
   TOURNAMENTS: DurableObjectNamespace<TournamentDO>;
@@ -57,6 +60,7 @@ export interface Env extends LimitEnv, AuthEnv, SocialEnv {
   TEST_HOOKS?: string;
 }
 
+const voiceBreaker = new WriterBreaker();
 const STUN = [{ urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
 const SAVE_DEBOUNCE_MS = 2000;
 const SAVE_MAX_DELAY_MS = 10_000;
@@ -315,6 +319,8 @@ export class TableDO extends DurableObject<Env> {
       persist: () => this.scheduleSave(),
       randomId: () => crypto.randomUUID().replace(/-/g, ''),
       gameOver: (rec, rated, meta) => { if (this.env.DB) this.ctx.waitUntil(saveRecord(this.env.DB, rec, rated, meta).catch((e) => console.error('saveRecord', e))); },
+      // Voice (c): a thin catalog bucket -> one writer call in waitUntil (never on the game path).
+      voiceMiss: (req: WriterRequest) => { if (this.env.AI && this.env.DB) this.ctx.waitUntil(writeVoiceLine({ ai: this.env.AI, store: new D1QueueStore(this.env.DB), breaker: voiceBreaker }, req).then(() => undefined).catch((e) => console.error('voiceWriter', e))); },
       listing: (t) => this.reportListing(t),
       tournamentResult: (t, scores, places) => {
         const stub = this.env.TOURNAMENTS.get(this.env.TOURNAMENTS.idFromName(t.id));
