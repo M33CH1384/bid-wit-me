@@ -1,4 +1,5 @@
 import { deliverBotLine } from './voices/aiVoice';
+import { musicTension } from './musicTension';
 import { enterTable, quitGame, silenceGame, suspendGame } from './gameSession';
 import { cardControlLabel } from './cardA11y';
 import { archSpot } from './archSpot';
@@ -1047,6 +1048,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const roomStyle = sessionRoom({ explicit: sound.get().soundscape, visualVenue: !online && settings.venue !== 'random' ? settings.venue : undefined, seed, onlineVenue: online?.venue });
   const venue: VenueId = roomStyle.venue as VenueId;
   const [roomName, setRoomName] = useState<string | undefined>(undefined);
+  // Phase 6: the music tension layer follows how close the game feels; calm again off the table.
+  useEffect(() => { sound.setMusicTension(musicTension({ scores: st.scores, target: r.targetScore, phase: st.phase, handNo: st.handNo, nilBid: st.bids.some((b) => b === 0) })); }, [st, r.targetScore]);
+  useEffect(() => () => sound.setMusicTension(0), []);
   const [, setMuteTick] = useState(0);
   useEffect(() => { const style = sound.applySoundscape(seed, online?.venue, !online && settings.venue !== 'random' ? settings.venue : undefined); setRoomName(style.name); return () => sound.setVenueBed('none'); }, [seed]); // eslint-disable-line react-hooks/exhaustive-deps
   // nuke watchdog: the blast is normally cued by the second Joker's 3D landing; on a stalled renderer (Safari compiling
