@@ -1365,13 +1365,13 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             ))}
           </div>
           <div className="bug-trumps" aria-label="Trump order">
-            <span className="ts-label">TRUMPS</span><TrumpLadder rules={r} n={4} style="short" />{st.spadesBroken && <i className="bt-broken" title="Spades broken">BROKEN</i>}
+            <span className="ts-label">TRUMPS</span><TrumpLadder rules={r} n={4} style="short" />{st.spadesBroken && tips.on && <i className="bt-broken" data-testid="spades-broken-short" title="Spades broken">SPADES BROKEN</i>}
           </div>
           <div className="bug-meta">
             <span className="bug-mode">{modeTitle(r).toUpperCase()}</span>
             {seriesChip('in-meta')}
             {learning && <span className="learn-badge" data-testid="learning-badge" title="Tips are on: the game slows down so you can read. Turn tips off to go back to your speed.">LEARNING MODE: SLOW</span>}
-            <span className="bug-hand" data-testid="bug-hand">HAND {st.handNo}{isBooks ? <span className="bug-books"> · BOOKS BID THEMSELVES</span> : ''} · TO {r.targetScore}</span>
+            {st.spadesBroken && tips.on && <span className="bt-broken" data-testid="spades-broken" title="Spades broken">SPADES BROKEN</span>}<span className="bug-hand" data-testid="bug-hand">HAND {st.handNo}{isBooks ? <span className="bug-books"> · BOOKS BID THEMSELVES</span> : ''} · TO {r.targetScore}</span>
           </div>
         </div>
         {/* the always-visible sound dock (main.tsx) sits on this slot */}
@@ -1379,7 +1379,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       </header>
 
       {trumpStripShown(st) && <div className="trump-strip glass slant" data-testid="trump-strip">
-        <span className="ts-label">TRUMPS</span> <TrumpLadder rules={r} n={5} style="long" />{st.spadesBroken && <span className="ts-broken">BROKEN</span>}
+        <span className="ts-label">TRUMPS</span> <TrumpLadder rules={r} n={5} style="long" />{st.spadesBroken && tips.on && <span className="ts-broken">SPADES BROKEN</span>}
       </div>}
 
       {/* last-trick readout. After a resolved 'Run it!' the same chip opens every hand the tornado cleared. */}
