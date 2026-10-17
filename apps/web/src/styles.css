@@ -967,7 +967,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-foot .primary { min-width: 160px; }
 .tt-foot > button:first-child { margin-right: auto; }
 @media (max-width: 760px), (max-height: 520px) and (max-width: 900px) {
-  .tt-body { padding: 56px 12px 22px; }
+  .tt-body { padding: 16px 12px 22px; }
 }
 /* landscape phones: two columns but compact */
 @media (max-height: 520px) and (min-width: 600px) {
@@ -989,7 +989,12 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
   .tt-stat.bags-stat { min-width: 0; }
   .tt-stat.bags-stat b { font-size: 24px; }
   .tt-team-name b { font-size: 20px; }
-  .tt-body { padding: 58px 12px 20px; gap: 14px; }
+  .tt-body { padding: 12px 12px 14px; gap: 10px; }
+  .tt-recap { gap: 16px; }
+  .tt-top-scores { padding: 10px 14px 9px; }
+  .tt-top-scores h3 { margin-bottom: 6px; }
+  .tt-top-scores ol { gap: 6px; }
+  .tt-foot.stack .exit-divider { margin: 0; }
   .tt-head { padding: 10px 52px 8px 12px; gap: 8px; } .tt-title { font-size: 17px; }
   .tt-foot { padding: 8px 10px; } .tt-foot .primary { min-width: 0; flex: 1; }
   .tt-recap.crowded .tt-stat.bags-stat b { font-size: 20px; }
