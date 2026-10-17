@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
-import { ambienceOn, exclusiveMusicAmbience, sound, wantsAmbience, wantsMusic, type SoundSettings } from '../src/audio';
+import { ambienceOn, exclusiveMusicAmbience, sceneOf, settingsForContext, sound, wantsAmbience, wantsMusic, type SoundSettings } from '../src/audio';
 
 const S = (p: Partial<SoundSettings>): SoundSettings => ({ on: true, volume: 0.7, ambient: false, music: false, musicVolume: 0.5, venueSound: false, ...p });
 const persisted = (): SoundSettings => JSON.parse(localStorage.getItem('bwm.sound.v1')!);
@@ -72,5 +72,70 @@ describe('music / ambience mutual exclusivity (engine gates)', () => {
       expect(s.music && ambienceOn(s)).toBe(false);
       expect(persisted().music && ambienceOn(persisted())).toBe(false);
     }
+  });
+});
+
+describe('context defaults (menus: ambience, game: music)', () => {
+  const reset = () => { sound.set({ scenes: undefined }); sound.enterContext('menu'); };
+  it('menu context defaults to ambience on / music off, game to music on / ambience off', () => {
+    reset();
+    expect(sound.soundContext).toBe('menu');
+    expect(sound.settings).toMatchObject({ music: false, ambient: true, venueSound: true });
+    sound.enterContext('game');
+    expect(sound.settings).toMatchObject({ music: true, ambient: false, venueSound: false });
+    sound.enterContext('menu');
+    expect(sound.settings).toMatchObject({ music: false, ambient: true, venueSound: true });
+    // applying a DEFAULT never records an explicit choice
+    expect(sound.settings.scenes?.menu).toBeUndefined();
+    expect(sound.settings.scenes?.game).toBeUndefined();
+  });
+  it('an explicit choice in one context is respected there and never leaks into the other', () => {
+    reset();
+    sound.set({ music: true }); // in menus: explicit menu choice = music
+    expect(sound.settings.scenes?.menu).toBe('music');
+    sound.enterContext('game'); // game still on its default
+    expect(sound.settings).toMatchObject({ music: true, ambient: false });
+    sound.set({ ambient: true }); // in game: explicit game choice = ambience
+    expect(sound.settings.scenes?.game).toBe('ambience');
+    sound.enterContext('menu'); // menu remembers music
+    expect(sound.settings).toMatchObject({ music: true, ambient: false, venueSound: false });
+    sound.enterContext('game'); // game remembers ambience
+    expect(sound.settings).toMatchObject({ music: false, ambient: true });
+    expect(persisted().scenes).toEqual({ menu: 'music', game: 'ambience' });
+  });
+  it('an explicit "neither" choice is respected and persisted per context', () => {
+    reset();
+    sound.enterContext('game');
+    sound.set({ music: true });
+    sound.set({ music: false }); // deliberate off, in game
+    expect(sceneOf(sound.settings)).toBe('none');
+    expect(sound.settings.scenes?.game).toBe('none');
+    sound.enterContext('menu');
+    sound.enterContext('game'); // still neither in game
+    expect(sceneOf(sound.settings)).toBe('none');
+    expect(persisted().scenes?.game).toBe('none');
+  });
+  it('mute-all does not overwrite explicit per-context choices', () => {
+    reset();
+    sound.set({ music: true }); // explicit menu = music
+    sound.toggleMuteAll();
+    expect(sound.settings.scenes?.menu).toBe('music');
+    sound.toggleMuteAll();
+    expect(sound.settings.scenes?.menu).toBe('music');
+  });
+  it('a legacy both-on save reconciles PER CONTEXT (ambience in menus, music in game)', () => {
+    const legacy = S({ music: true, ambient: true, venueSound: true });
+    expect(settingsForContext(legacy, 'menu')).toMatchObject({ music: false, ambient: true, venueSound: true });
+    expect(settingsForContext(legacy, 'game')).toMatchObject({ music: true, ambient: false, venueSound: false });
+    const withChoices = S({ music: true, ambient: true, venueSound: true, scenes: { menu: 'music', game: 'none' } });
+    expect(settingsForContext(withChoices, 'menu')).toMatchObject({ music: true, ambient: false });
+    expect(sceneOf(settingsForContext(withChoices, 'game'))).toBe('none');
+  });
+  it('persisted state reloads into the menu context scene (the load path)', () => {
+    reset();
+    sound.enterContext('game'); sound.set({ ambient: true }); // explicit game = ambience, live = ambience
+    const reloaded = settingsForContext(persisted(), 'menu'); // what load() computes at boot
+    expect(reloaded).toMatchObject({ music: false, ambient: true }); // menu default (no menu choice made)
+    expect(settingsForContext(persisted(), 'game')).toMatchObject({ music: false, ambient: true }); // game choice kept
   });
 });

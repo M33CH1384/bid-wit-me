@@ -211,6 +211,7 @@ export function SoundFields({ compact = false }: { compact?: boolean }) {
       {s.music && s.nowPlaying && <p className="hint np-inline">♫ {s.nowPlaying.track.title} — {s.nowPlaying.track.artist}</p>}
       <SpatialFields />
       <BotTalkFields />
+      <p className="hint">Menus default to ambience, games default to music — never both. Change it here and this kind of screen remembers your choice.</p>
       {!compact && <p className="hint">On iPhone, the silent switch also mutes game sound.</p>}
     </div>
   );

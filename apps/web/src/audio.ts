@@ -50,7 +50,16 @@ const DUCK_MS: Partial<Record<Sfx, number>> = { runSlam: 700, nuke: 3600, tornad
 
 export interface SoundSettings { on: boolean; volume: number; ambient: boolean; music: boolean; musicVolume: number; /** the venue's quiet ambient sound bed (Release 7), default on */ venueSound: boolean;
   /** Spatial Phase 2 (all optional; defaults reproduce today's sound): per-category volumes, audio quality, spatial on/off, separate soundscape room ('auto' = seeded random per game), per-player voice mutes. */
-  volumes?: import('./spatial').CategoryVolumes; quality?: import('./spatial').AudioQuality; spatial?: boolean; soundscape?: string; mutedVoices?: Record<string, true> }
+  volumes?: import('./spatial').CategoryVolumes; quality?: import('./spatial').AudioQuality; spatial?: boolean; soundscape?: string; mutedVoices?: Record<string, true>;
+  /** Per-context EXPLICIT sound scene (menus vs in-game) chosen by the player in that context.
+   *  Absent = use the context default (menus: ambience, game: music). Live flags always mirror
+   *  the active scene, so this only records deliberate choices — defaults never write it. */
+  scenes?: { menu?: SoundScene; game?: SoundScene } }
+
+/** Where the player is: menus (setup/home/lobby) or in a game. */
+export type SoundContext = 'menu' | 'game';
+/** The mutually-exclusive background scene: music, ambience (lounge and/or venue bed), or neither. */
+export type SoundScene = 'music' | 'ambience' | 'none';
 const KEY = 'bwm.sound.v1';
 const DEFAULTS: SoundSettings = { on: true, volume: 0.7, ambient: false, music: true, musicVolume: 0.5, venueSound: true };
 
@@ -68,6 +77,28 @@ export const wantsAmbience = (s: SoundSettings): boolean => !s.music;
 /** Reconcile a (possibly legacy both-on) state: music wins, ambience goes off. */
 export function exclusiveMusicAmbience(s: SoundSettings): SoundSettings {
   return s.music && ambienceOn(s) ? { ...s, ambient: false, venueSound: false } : s;
+}
+
+/** The scene the live switches currently describe. */
+export function sceneOf(s: SoundSettings): SoundScene {
+  return s.music ? 'music' : ambienceOn(s) ? 'ambience' : 'none';
+}
+const SCENE_PATCH: Record<SoundScene, Partial<SoundSettings>> = {
+  music: { music: true, ambient: false, venueSound: false },
+  ambience: { music: false, ambient: true, venueSound: true },
+  none: { music: false, ambient: false, venueSound: false },
+};
+/** Context default when the player has not made an explicit choice in that context. */
+export const contextDefault = (ctx: SoundContext): SoundScene => (ctx === 'menu' ? 'ambience' : 'music');
+/**
+ * The settings a context should run with: the player's explicit choice for that context if
+ * they made one, otherwise the context default. This is also how a legacy both-on save
+ * reconciles PER CONTEXT — the same stored profile yields ambience in menus and music in
+ * game until the player explicitly picks something in either place.
+ */
+export function settingsForContext(s: SoundSettings, ctx: SoundContext): SoundSettings {
+  const scene = s.scenes?.[ctx] ?? contextDefault(ctx);
+  return exclusiveMusicAmbience({ ...s, ...SCENE_PATCH[scene] });
 }
 /** venue ambience beds (see venues.ts → bed) */
 export type VenueBed = 'none' | 'cookout' | 'mansion' | 'barbershop' | 'basement' | 'rooftop' | 'jazz' | 'casino' | 'beach' | 'kitchen' | 'yacht';
@@ -112,8 +143,8 @@ export function nextShuffle(prev: number | null, bag: number[], count: number, r
 }
 
 function load(): SoundSettings {
-  try { const raw = localStorage.getItem(KEY); if (raw) return exclusiveMusicAmbience({ ...DEFAULTS, ...JSON.parse(raw) }); } catch { /* ignore */ }
-  return exclusiveMusicAmbience(DEFAULTS);
+  try { const raw = localStorage.getItem(KEY); if (raw) return settingsForContext({ ...DEFAULTS, ...JSON.parse(raw) }, 'menu'); } catch { /* ignore */ }
+  return settingsForContext(DEFAULTS, 'menu');
 }
 
 const FILES: Record<string, string[]> = {
@@ -162,6 +193,23 @@ class Engine {
   blocked: Record<string, number> = {};
 
   /* ---------- settings store ---------- */
+  /** Current context (boots in menus). Explicit toggle choices are remembered per context. */
+  private context: SoundContext = 'menu';
+  /** False while applying a context scene or mute-all, so programmatic changes are not
+   *  mistaken for an explicit per-context choice. */
+  private captureScene = true;
+  get soundContext(): SoundContext { return this.context; }
+  /**
+   * Enter a context (menus or a game): run its explicit saved scene, or the context default
+   * (menus: ambience on / music off; game: music on / ambience off). Applying a default does
+   * NOT record an explicit choice, so defaults keep working until the player picks in person.
+   */
+  enterContext(ctx: SoundContext) {
+    this.context = ctx;
+    const t = settingsForContext(this.settings, ctx);
+    this.captureScene = false;
+    try { this.set({ music: t.music, ambient: t.ambient, venueSound: t.venueSound }); } finally { this.captureScene = true; }
+  }
   subscribe = (fn: () => void) => { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; };
   get = () => this.settings;
   get state(): string { return this.ctx?.state ?? 'none'; }
@@ -174,7 +222,13 @@ class Engine {
     // still passes through the reconciliation, so a legacy both-on state can never persist.
     if (patch.music) { next = { ...next, ambient: false, venueSound: false }; }
     else if (patch.ambient || patch.venueSound) { next = { ...next, music: false }; }
-    this.settings = exclusiveMusicAmbience(next);
+    next = exclusiveMusicAmbience(next);
+    // A deliberate toggle in this context is that context's explicit choice: remember the
+    // resulting scene for this context only (the other context keeps its own choice/default).
+    if (this.captureScene && !('scenes' in patch) && ('music' in patch || 'ambient' in patch || 'venueSound' in patch)) {
+      next = { ...next, scenes: { ...next.scenes, [this.context]: sceneOf(next) } };
+    }
+    this.settings = next;
     try { localStorage.setItem(KEY, JSON.stringify(this.settings)); } catch { /* ignore */ }
     this.applyGain();
     this.syncAmbient();
@@ -186,15 +240,18 @@ class Engine {
   private beforeMute: Pick<SoundSettings, 'on' | 'music' | 'ambient'> | null = null;
   get allMuted(): boolean { return !this.settings.on && !this.settings.music; }
   toggleMuteAll(): boolean {
-    if (!this.allMuted) {
-      this.beforeMute = { on: this.settings.on, music: this.settings.music, ambient: this.settings.ambient };
-      this.set({ on: false, music: false, ambient: false });
-      return true;
-    }
-    const b = this.beforeMute ?? { on: true, music: false, ambient: this.settings.ambient };
-    this.beforeMute = null;
-    this.set({ on: b.on || !b.music, music: b.music, ambient: b.ambient });
-    return false;
+    this.captureScene = false;
+    try {
+      if (!this.allMuted) {
+        this.beforeMute = { on: this.settings.on, music: this.settings.music, ambient: this.settings.ambient };
+        this.set({ on: false, music: false, ambient: false });
+        return true;
+      }
+      const b = this.beforeMute ?? { on: true, music: false, ambient: this.settings.ambient };
+      this.beforeMute = null;
+      this.set({ on: b.on || !b.music, music: b.music, ambient: b.ambient });
+      return false;
+    } finally { this.captureScene = true; }
   }
   private emit() { this.snapshot = { ...this.settings, musicStatus: this.musicStatus, nowPlaying: this.nowPlaying, needsRestore: this.needsRestore }; this.listeners.forEach((f) => f()); }
   snapshot: SoundSettings & { musicStatus: MusicStatus; nowPlaying: { track: Track; at: number } | null; needsRestore: boolean } = { ...this.settings, musicStatus: 'off', nowPlaying: null, needsRestore: false };

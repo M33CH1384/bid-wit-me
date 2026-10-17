@@ -1058,6 +1058,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   useEffect(() => { sound.setMusicTension(musicTension({ scores: st.scores, target: r.targetScore, phase: st.phase, handNo: st.handNo, nilBid: st.bids.some((b) => b === 0) })); }, [st, r.targetScore]);
   useEffect(() => () => sound.setMusicTension(0), []);
   const [, setMuteTick] = useState(0);
+  // Sound context: a table is 'game' (music by default), leaving returns to 'menu'
+  // (ambience by default) — explicit per-context choices are kept inside the engine.
+  useEffect(() => { sound.enterContext('game'); return () => sound.enterContext('menu'); }, []);
   useEffect(() => { const style = sound.applySoundscape(seed, online?.venue, !online && settings.venue !== 'random' ? settings.venue : undefined); setRoomName(style.name); return () => sound.setVenueBed('none'); }, [seed]); // eslint-disable-line react-hooks/exhaustive-deps
   // nuke watchdog: the blast is normally cued by the second Joker's 3D landing; on a stalled renderer (Safari compiling
   // shaders, a backgrounded tab, very slow frames) that landing can come late or never — so once a nuked trick is on
