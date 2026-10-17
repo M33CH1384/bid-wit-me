@@ -69,7 +69,12 @@ export interface SoundSettings { on: boolean; volume: number; ambient: boolean; 
    *  Block Party / Kitchen-Table). Like Block Party it is a stored menu preference that
    *  may only SOUND in the menu context, never in-game, and is mutually exclusive with
    *  music. Kitchen-Table remains the in-game ambience choice. */
-  frontPorch?: boolean }
+  frontPorch?: boolean;
+  /** Beauty Salon: the lively menu-only ambience scene (separate PR, after Front Porch).
+   *  Like Block Party / Front Porch it is a stored menu preference that may only SOUND
+   *  in the menu context, never in-game, and is mutually exclusive with music.
+   *  Kitchen-Table remains the in-game ambience choice. */
+  beautySalon?: boolean }
 
 /** Where the player is: menus (setup/home/lobby) or in a game. */
 export type SoundContext = 'menu' | 'game';
@@ -105,6 +110,11 @@ export const frontPorchWanted = (s: SoundSettings, ctx: SoundContext): boolean =
 /** Front Porch level: rides the Ambience volume; the calm contrast scene, a touch under
  *  Block Party's 0.5 so menus stay hushed at dusk. */
 export const frontPorchLevel = (ambienceVolume: number): number => 0.45 * Math.min(1, Math.max(0, ambienceVolume));
+/** Beauty Salon gate: only in menus, only with music off — exactly like Block Party / Front Porch.
+ *  In-game the stored flag sits dormant and this gate keeps it silent. */
+export const beautySalonWanted = (s: SoundSettings, ctx: SoundContext): boolean => !!s.beautySalon && !s.music && ctx === 'menu';
+/** Beauty Salon level: rides the Ambience volume at Block Party's lively 0.5 factor. */
+export const beautySalonLevel = (ambienceVolume: number): number => 0.5 * Math.min(1, Math.max(0, ambienceVolume));
 /** Reconcile a (possibly legacy both-on) state: music wins, ambience goes off. */
 export function exclusiveMusicAmbience(s: SoundSettings): SoundSettings {
   return s.music && ambienceOn(s) ? { ...s, ambient: false, venueSound: false } : s;
@@ -112,7 +122,7 @@ export function exclusiveMusicAmbience(s: SoundSettings): SoundSettings {
 
 /** The scene the live switches currently describe. */
 export function sceneOf(s: SoundSettings): SoundScene {
-  return s.music ? 'music' : ambienceOn(s) || s.blockParty || s.frontPorch ? 'ambience' : 'none';
+  return s.music ? 'music' : ambienceOn(s) || s.blockParty || s.frontPorch || s.beautySalon ? 'ambience' : 'none';
 }
 const SCENE_PATCH: Record<SoundScene, Partial<SoundSettings>> = {
   music: { music: true, ambient: false, venueSound: false },
@@ -252,14 +262,14 @@ class Engine {
     // Mutual exclusivity, last choice wins: explicitly turning music on kills both ambience
     // sources; explicitly turning either ambience source on kills music. Any other patch
     // still passes through the reconciliation, so a legacy both-on state can never persist.
-    if (patch.music) { next = { ...next, ambient: false, venueSound: false }; if (this.context === 'menu') next = { ...next, blockParty: false, frontPorch: false }; if (this.captureScene) next = { ...next, kitchenTable: false }; }
-    else if (patch.ambient || patch.venueSound || patch.blockParty || patch.kitchenTable || patch.frontPorch) { next = { ...next, music: false }; }
+    if (patch.music) { next = { ...next, ambient: false, venueSound: false }; if (this.context === 'menu') next = { ...next, blockParty: false, frontPorch: false, beautySalon: false }; if (this.captureScene) next = { ...next, kitchenTable: false }; }
+    else if (patch.ambient || patch.venueSound || patch.blockParty || patch.kitchenTable || patch.frontPorch || patch.beautySalon) { next = { ...next, music: false }; }
     next = exclusiveMusicAmbience(next);
     // A deliberate toggle in this context is that context's explicit choice: remember the
     // resulting scene for this context only (the other context keeps its own choice/default).
-    if (this.captureScene && !('scenes' in patch) && ('music' in patch || 'ambient' in patch || 'venueSound' in patch || 'blockParty' in patch || 'kitchenTable' in patch || 'frontPorch' in patch)) {
+    if (this.captureScene && !('scenes' in patch) && ('music' in patch || 'ambient' in patch || 'venueSound' in patch || 'blockParty' in patch || 'kitchenTable' in patch || 'frontPorch' in patch || 'beautySalon' in patch)) {
       // A dormant menu Block Party flag must not make an in-game "everything off" read as ambience.
-      const sc: SoundScene = next.music ? 'music' : ambienceOn(next) || next.kitchenTable || (this.context === 'menu' && (next.blockParty || next.frontPorch)) ? 'ambience' : 'none';
+      const sc: SoundScene = next.music ? 'music' : ambienceOn(next) || next.kitchenTable || (this.context === 'menu' && (next.blockParty || next.frontPorch || next.beautySalon)) ? 'ambience' : 'none';
       next = { ...next, scenes: { ...next.scenes, [this.context]: sc } };
     }
     this.settings = next;
@@ -270,6 +280,7 @@ class Engine {
     this.syncBlockParty();
     this.syncKitchenTable();
     this.syncFrontPorch();
+    this.syncBeautySalon();
     this.syncMusic();
     this.emit();
   }
@@ -593,6 +604,7 @@ class Engine {
       this.syncBlockParty();
       this.syncKitchenTable();
       this.syncFrontPorch();
+      this.syncBeautySalon();
       this.syncMusic();
     }
     // Start resume() now, inside the gesture. A simulated stuck state must not actually resume,
@@ -608,6 +620,7 @@ class Engine {
         this.syncBlockParty();
         this.syncKitchenTable();
         this.syncFrontPorch();
+        this.syncBeautySalon();
         this.syncMusic();
       }
       this.publishRestore();
@@ -647,7 +660,7 @@ class Engine {
     this.stopBeds();
     const old = this.ctx;
     this.ctx = null;
-    this.master = this.sfxBus = this.sfxDuck = this.nukeBus = this.ambBus = this.venueBus = this.partyBus = this.kitchenBus = this.porchBus = this.voiceDuck = this.voiceChatBus = this.voiceChatOut = this.musicBus = this.musicDuck = null; this.voiceChatNodes.clear(); // regs kept: re-routed below
+    this.master = this.sfxBus = this.sfxDuck = this.nukeBus = this.ambBus = this.venueBus = this.partyBus = this.kitchenBus = this.porchBus = this.salonBus = this.voiceDuck = this.voiceChatBus = this.voiceChatOut = this.musicBus = this.musicDuck = null; this.voiceChatNodes.clear(); // regs kept: re-routed below
     this.loading = null;
     this.loadGen++;
     if (old && old.state !== 'closed') void settleAudio(old.close());
@@ -708,6 +721,10 @@ class Engine {
     this.porchTimers = [];
     this.porchNodes = [];
     this.porchPlaying = false;
+    this.salonTimers.forEach((t) => window.clearTimeout(t));
+    this.salonTimers = [];
+    this.salonNodes = [];
+    this.salonPlaying = false;
   }
 
   /* ---------- recorded bot voices (see voices/voices.ts) ---------- */
@@ -874,6 +891,7 @@ class Engine {
     this.partyBus = c.createGain(); this.partyBus.gain.value = 0; this.partyBus.connect(this.master);
     this.kitchenBus = c.createGain(); this.kitchenBus.gain.value = 0; this.kitchenBus.connect(this.master);
     this.porchBus = c.createGain(); this.porchBus.gain.value = 0; this.porchBus.connect(this.master);
+    this.salonBus = c.createGain(); this.salonBus.gain.value = 0; this.salonBus.connect(this.master);
     this.venueBus = c.createGain(); this.venueBus.gain.value = 0; this.venueBus.connect(this.master);
     // Room convolver (Phase 4): a generated impulse (no audio assets) whose length/wet match the room.
     try {
@@ -902,6 +920,7 @@ class Engine {
     if (this.partyBus && this.partyPlaying) this.partyBus.gain.setTargetAtTime(blockPartyLevel(cats.ambience), this.ctx.currentTime, 0.1);
     if (this.kitchenBus && this.kitchenPlaying) this.kitchenBus.gain.setTargetAtTime(kitchenLevel(cats.ambience, this.context), this.ctx.currentTime, 0.1);
     if (this.porchBus && this.porchPlaying) this.porchBus.gain.setTargetAtTime(frontPorchLevel(cats.ambience), this.ctx.currentTime, 0.1);
+    if (this.salonBus && this.salonPlaying) this.salonBus.gain.setTargetAtTime(beautySalonLevel(cats.ambience), this.ctx.currentTime, 0.1);
     if (this.voiceChatBus) this.voiceChatBus.gain.setTargetAtTime(cats.playerVoice, this.ctx.currentTime, 0.05); // independent of settings.on / master volume, by design
   }
 
@@ -1709,6 +1728,61 @@ class Engine {
     });
   }
 
+
+  /* ---------- Beauty Salon: the lively menu-only social scene ----------
+   * Fully synthesized (no assets, no real music). Dryers humming, scissors and
+   * clippers snipping, spray bottles, chairs swivelling, a door chime now and
+   * then, and lively stylist-client chatter with laughter over it all. Voices
+   * are deliberately wordless babble/laugh-shaped murmur (see PR): real words
+   * would fight the seat/bot voices, and the voice-clip system is for seats. */
+  private syncBeautySalon() {
+    const want = this.settings.on && beautySalonWanted(this.settings, this.context) && this.unlocked;
+    if (want === this.salonPlaying) {
+      if (want && this.salonBus && this.ctx) this.salonBus.gain.setTargetAtTime(beautySalonLevel(normalizeCategoryVolumes(this.settings.volumes).ambience), this.ctx.currentTime, 0.1);
+      return;
+    }
+    if (this.salonPlaying) {
+      this.salonTimers.forEach((t) => window.clearTimeout(t)); this.salonTimers = [];
+      const nodes = this.salonNodes; this.salonNodes = [];
+      if (this.ctx && this.salonBus) this.salonBus.gain.setTargetAtTime(0, this.ctx.currentTime, 0.3);
+      window.setTimeout(() => nodes.forEach((n) => { try { n.stop(); } catch { /* */ } }), 1200);
+    }
+    this.salonPlaying = want;
+    if (!want || !this.ctx || !this.salonBus) return;
+    this.salonBus.gain.setTargetAtTime(beautySalonLevel(normalizeCategoryVolumes(this.settings.volumes).ambience), this.ctx.currentTime, 0.8);
+    this.buildBeautySalon();
+  }
+  private buildBeautySalon() {
+    const B = this.salonBus!;
+    const live = () => this.salonPlaying;
+    const every = (min: number, max: number, fn: (t: number) => void) => this.vEvery(min, max, fn, live, this.salonTimers);
+    // the shop floor: bright room tone under everything
+    this.vNoise('bandpass', 620, 0.6, 0.028, 0.13, 0.5, B, this.salonNodes);
+    // dryers humming: a rushing band that breathes, plus a high sheen
+    this.vNoise('bandpass', 1050, 0.8, 0.02, 0.3, 0.55, B, this.salonNodes);
+    this.vNoise('highpass', 3400, 0.5, 0.006, 0.4, 0.5, B, this.salonNodes);
+    every(13, 21, (t) => this.vBurst(t, 2.6, 'bandpass', 950, 0.026, B)); // a dryer kicks up, then settles
+    // scissors snipping: quick double-snips, all day
+    every(1.8, 3.6, (t) => { this.vBurst(t, 0.014, 'highpass', 3300, 0.032, B); this.vBurst(t + 0.16, 0.014, 'highpass', 3600, 0.026, B); if (Math.random() < 0.4) this.tone(t + 0.3, 4300, 0.05, 'sine', 0.003, { dest: B }); });
+    // clippers buzzing past an ear now and then
+    every(9, 16, (t) => { this.tone(t, 118, 1.3, 'sawtooth', 0.009, { attack: 0.08, filter: 880, dest: B }); this.tone(t + 0.05, 236, 1.2, 'sawtooth', 0.004, { attack: 0.08, filter: 1200, dest: B }); });
+    // spray bottles: a pump-click then the mist
+    every(7, 13, (t) => { this.vBurst(t, 0.02, 'bandpass', 2200, 0.02, B); this.vBurst(t + 0.09, 0.38, 'highpass', 5200, 0.011, B); });
+    // chairs swivelling: a squeak-glide and the hydraulic sigh
+    every(11, 19, (t) => { this.tone(t, 540, 0.2, 'sine', 0.0045, { glideTo: 880, dest: B }); this.vBurst(t + 0.22, 0.3, 'highpass', 4200, 0.006, B); });
+    // lively stylist-client chatter: two registers trading wordless phrases, laughs riding often
+    every(4.5, 8, (t) => {
+      const stylist = 185 + Math.random() * 50;
+      const client = 138 + Math.random() * 36;
+      const n = 4 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < n; i++) this.tone(t + i * (0.11 + Math.random() * 0.04), stylist * (0.9 + Math.random() * 0.3), 0.08, 'sawtooth', 0.008, { filter: 760, dest: B });
+      for (let i = 0; i < 3; i++) this.tone(t + n * 0.12 + 0.25 + i * (0.12 + Math.random() * 0.04), client * (0.9 + Math.random() * 0.28), 0.08, 'sawtooth', 0.0065, { filter: 640, dest: B });
+      if (Math.random() < 0.55) for (let i = 0; i < 4; i++) this.tone(t + n * 0.12 + 0.85 + i * 0.095, stylist * (1.6 - i * 0.16), 0.07, 'sawtooth', 0.0055, { filter: 900, dest: B }); // somebody said something: laughter
+    });
+    // the door chime when a client walks in
+    every(23, 36, (t) => { this.tone(t, 1318.5, 0.32, 'sine', 0.006, { dest: B }); this.tone(t + 0.28, 1046.5, 0.42, 'sine', 0.005, { dest: B }); });
+  }
+
   /* ---------- venue ambience (Release 7): quiet procedural beds, one per venue (all generated here: no recordings) ---------- */
   /* Kitchen-Table (any-context ambience): own bus, restrained level in-game. */
   private kitchenBus: GainNode | null = null;
@@ -1731,6 +1805,13 @@ class Engine {
   private porchTimers: number[] = [];
   /** is the Front Porch bed sounding right now (exposed for checks) */
   get frontPorchNow(): boolean { return this.porchPlaying; }
+  /* Beauty Salon (menu-only ambience): own bus, stored flag dormant in-game. */
+  private salonBus: GainNode | null = null;
+  private salonPlaying = false;
+  private salonNodes: { stop: () => void }[] = [];
+  private salonTimers: number[] = [];
+  /** is the Beauty Salon bed sounding right now (exposed for checks) */
+  get beautySalonNow(): boolean { return this.salonPlaying; }
   private venueBus: GainNode | null = null;
   private venueBedId: VenueBed = 'none';
   private venuePlaying: VenueBed = 'none';
