@@ -47,7 +47,7 @@ export function calloutsFor(st: GameState, mySide: number, names: string[]): Cal
 }
 
 export function Intermission({
-  st, names, mySide, secs, ready, onReady, online, onScorePad, series, chatOpen, unread, onChat, runReview,
+  st, names, mySide, secs, ready, onReady, online, onScorePad, onLeave, series, chatOpen, unread, onChat, runReview,
 }: {
   /** rematch series chip */
   series?: ReactNode;
@@ -63,6 +63,8 @@ export function Intermission({
   onReady: () => void;
   online: boolean;
   onScorePad: () => void;
+  /** Hand Recap: open the Leave choice (Save & go to menu / Quit game) */
+  onLeave?: () => void;
   /** corner chat: unread count while the sheet is closed */
   unread: number;
   chatOpen: boolean;
@@ -246,6 +248,7 @@ export function Intermission({
 
         <footer className="tt-foot bid-row">
           <button type="button" onClick={onScorePad}>Score pad</button>
+          {onLeave && <button type="button" data-testid="recap-leave" onClick={onLeave}>Leave game</button>}
           {ready && <span className="muted" data-testid="talk-ready-count">{ready.count}/{ready.of} ready</span>}
           <button type="button" className="primary big" data-testid="talk-ready" disabled={!!ready?.mine} onClick={onReady}>
             {online ? (ready?.mine ? 'Waiting for the table…' : 'Ready') : 'Continue'}
