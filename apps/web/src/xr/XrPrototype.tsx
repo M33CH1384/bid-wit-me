@@ -3,7 +3,8 @@
  *  look-and-pinch (or click, on desktop) plays one card, which lands FLAT on the felt
  *  (xrPlayedRest -> the 2D game's flatRest). Honestly untested on real headsets — see PR body.
  *  Sitting is the default, and a default play is GENTLE (XR_DEFAULT_INTENSITY): slam only via a
- *  V/flick-equivalent gesture per the spike mapping, never max by default. */
+ *  V/flick-equivalent gesture per the spike mapping, never max by default.
+ *  Known gap: no slam gesture in this prototype yet — pinch/click is gentle only. */
 import { Suspense, useRef, useState } from 'react';
 import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber';
 import { XR, createXRStore, XROrigin } from '@react-three/xr';
@@ -61,10 +62,7 @@ function ProtoScene({ played, onPlay }: { played: string | null; onPlay: (id: st
         <planeGeometry args={[1.7, 1.1]} />
         <meshStandardMaterial color="#0d6a45" />
       </mesh>
-      <mesh position={[0, 0.755, -0.15]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[0.16, 0.22]} />
-        <meshStandardMaterial color="#0a5436" />
-      </mesh>
+      {/* No floating drop pad: an earlier pad hovered above the felt and hid the landed card. */}
       {HAND.map((id, i) => <ProtoCard key={id} i={i} id={id} played={played === id} onPlay={onPlay} />)}
       <XROrigin position={[0, 0, 0.95]} />
     </>
