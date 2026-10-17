@@ -47,7 +47,7 @@ import type { SeatPos } from './three/layout';
 import { HUMAN, useGame } from './useGame';
 import { DealerPopup } from './DealerPopup';
 import { dealerAnnouncement, dealerFromServer, withCurrentDealerLine } from './dealerName';
-import { bidChipText, dealerChipMatches, syncPlateFacts, tookChipText, type SeatFact } from './plateFacts';
+import { bidChipText, dealerChipMatches, plateTookText, syncPlateFacts, type SeatFact } from './plateFacts';
 import { leaveChoice, leaveMenuAction, type LeaveGesture } from './leaveMenu';
 import { biddingNote, noticeTip, seatFacingName, seatInitial, trickTakenLine } from './seatLabel';
 import { MinBidLine, bidChoices, minBidNote } from './minBid';
@@ -1158,7 +1158,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       facts.push({
         seat,
         bid: bidChipText(st.bids[seat] ?? null, actor === seat && st.phase === 'bidding'),
-        took: tookChipText(sb.tricksWon[seat] ?? 0),
+        took: plateTookText(sb.tricksWon[seat] ?? 0, st.phase),
         dealer: dealerSeat === seat,
       });
     }
@@ -1191,7 +1191,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           <div className="plate-name">{names[seat]}{dealerSeat === seat && <span className="chip dealer" data-testid={`dealer-${seat}`}>DEALER</span>}{partner && <span className="chip ally">PARTNER</span>}{notice.includes(sideOf(seat, r)) && <span className="chip notice" data-testid={`notice-${seat}`} title="Got shot last hand: one more shot and they're out">ON NOTICE</span>}</div>
           <div className="plate-stats">
             <span className="chip">{bidChipText(b ?? null, isTurn && st.phase === 'bidding')}</span>
-            <span className="chip">{tookChipText(sb.tricksWon[seat] ?? 0)}</span>
+            <span className="chip">{plateTookText(sb.tricksWon[seat] ?? 0, st.phase)}</span>
           </div>
         </div>
         {online?.seatExtra(seat)}
@@ -1442,7 +1442,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             <div className="plate-name">{face(HUMAN).toUpperCase()}{dealerSeat === HUMAN && <span className="chip dealer" data-testid="dealer-0">DEALER</span>}{notice.includes(sideOf(HUMAN, r)) && <span className="chip notice" data-testid="notice-0" title={noticeTip(spectating)}>ON NOTICE</span>}{!spectating && myBadges.map((b) => BADGES[b.id] && <span key={b.id} className="chip badge" title={`${BADGES[b.id]!.name}: ${BADGES[b.id]!.desc}`} data-testid={`plate-badge-${b.id}`}>{BADGES[b.id]!.icon}</span>)}</div>
             <div className="plate-stats">
               <span className="chip">{st.bids[HUMAN] === 'books' ? 'BOOKS' : `BID ${st.bids[HUMAN] === null ? '—' : bidLabel(st.bids[HUMAN]).toUpperCase()}`}</span>
-              <span className="chip">TOOK {sb.tricksWon[HUMAN]}</span>
+              <span className="chip">{plateTookText(sb.tricksWon[HUMAN] ?? 0, st.phase)}</span>
               {isNilBid(st.bids[HUMAN]) && sb.tricksWon[HUMAN]! > 0 && <span className="chip bad">NIL BUSTED</span>}
             </div>
           </div>

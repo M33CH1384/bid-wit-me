@@ -50,3 +50,13 @@ describe('r17 polish', () => {
     expect(src('styles.css')).toMatch(/\.turn-clock \{ left: auto !important; right: 0;/);
   });
 });
+
+describe('new hand plates start clean', () => {
+  it('TOOK is 0 while bidding, real count once playing', async () => {
+    const { plateTookText, bidChipText } = await import('../src/plateFacts');
+    expect(plateTookText(7, 'bidding')).toBe('TOOK 0');
+    expect(plateTookText(7, 'playing')).toBe('TOOK 7');
+    expect(bidChipText(null, false)).toBe('BID —'); // blank until this seat bids
+    expect(bidChipText(null, true)).toBe('BID …');
+  });
+});

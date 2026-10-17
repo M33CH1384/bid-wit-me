@@ -16,6 +16,12 @@ export function tookChipText(tricks: number): string {
   return `TOOK ${tricks}`;
 }
 
+/** Each new hand starts clean: while the table is still bidding, no books have
+ * been taken yet, so TOOK reads 0 even if a stale count leaks through. */
+export function plateTookText(tricks: number, phase: string): string {
+  return phase === 'bidding' ? 'TOOK 0' : tookChipText(tricks);
+}
+
 export interface SeatFact {
   seat: number;
   bid: string;
