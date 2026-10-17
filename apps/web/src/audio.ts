@@ -11,7 +11,7 @@
  * - Settings (on/off, volume, ambience) persist in localStorage.
  */
 import { useSyncExternalStore } from 'react';
-import { Spatializer, normalizeCategoryVolumes, pickPanningModel, pickVariant, seatCompensation, seatPoint, type SeatPos } from './spatial';
+import { Spatializer, irSpec, normalizeCategoryVolumes, pickPanningModel, pickVariant, seatCompensation, seatPoint, sessionRoom, surfaceHz, type RoomStyle, type SeatPos } from './spatial';
 import { audioElementPool } from './audioPool';
 import { audioContextAction, settleAudio, soundRestorePending } from './audioSession';
 
@@ -607,6 +607,13 @@ class Engine {
     this.nukeBus = c.createGain(); this.nukeBus.connect(this.master);
     this.ambBus = c.createGain(); this.ambBus.gain.value = 0; this.ambBus.connect(this.master);
     this.venueBus = c.createGain(); this.venueBus.gain.value = 0; this.venueBus.connect(this.master);
+    // Room convolver (Phase 4): a generated impulse (no audio assets) whose length/wet match the room.
+    try {
+      this.convolver = c.createConvolver();
+      this.convWet = c.createGain(); this.convWet.gain.value = 0;
+      this.venueBus.connect(this.convWet); this.convWet.connect(this.convolver); this.convolver.connect(this.master);
+      if (this.roomStyle) { const spec = irSpec(this.roomStyle); this.convolver.buffer = this.makeIR(spec.seconds); this.convWet.gain.value = spec.wet; }
+    } catch { this.convolver = null; this.convWet = null; }
     this.voiceDuck = c.createGain(); this.voiceDuck.connect(this.master);
     this.applyGain();
     if (!opts?.skipLoad) this.load();
@@ -758,7 +765,11 @@ class Engine {
     const src = c.createBufferSource(); src.buffer = buf; src.playbackRate.value = rate;
     const g = c.createGain(); g.gain.value = gain;
     const route = this.routeSfx(key, seat, playerCount);
-    src.connect(g).connect(route.node);
+    // Card-surface character (Phase 4): felt is softer, glass/wood slap brighter — card sounds only.
+    if (this.roomStyle && (key === 'play' || key === 'deal' || key === 'sweep')) {
+      const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = surfaceHz(this.roomStyle);
+      src.connect(g).connect(f).connect(route.node);
+    } else src.connect(g).connect(route.node);
     if (route.release) src.onended = () => route.release!();
     src.start(t);
     if (maxDur) { g.gain.setValueAtTime(gain, t + Math.max(0, maxDur - 0.18)); g.gain.linearRampToValueAtTime(0.0001, t + maxDur); src.stop(t + maxDur + 0.05); }
@@ -1239,6 +1250,31 @@ class Engine {
   private venueTimers: number[] = [];
   /** which bed is running (exposed for checks) */
   get venueBedNow(): VenueBed { return this.venuePlaying; }
+  private convolver: ConvolverNode | null = null;
+  private convWet: GainNode | null = null;
+  /** The unified session room (Phase 4): seen venue = heard soundscape = loading-screen name. */
+  roomStyle: RoomStyle | null = null;
+  /** Pick this game's room and apply its whole character: ambience bed + convolver IR + card surface.
+   *  The bed starts through setVenueBed/syncVenue, which only sounds once unlocked — on iPhone the
+   *  first tap's wake() re-runs syncVenue, so the fade begins at first unlock, never before it can. */
+  applySoundscape(seed: string, onlineVenue?: string, visualVenue?: string): RoomStyle {
+    const style = sessionRoom({ explicit: this.settings.soundscape, storyRoom: this.settings.soundscape, visualVenue, seed, onlineVenue });
+    this.roomStyle = style;
+    if (this.convolver && this.ctx) {
+      const spec = irSpec(style);
+      try { this.convolver.buffer = this.makeIR(spec.seconds); } catch { /* keep previous IR */ }
+      if (this.convWet) this.convWet.gain.setTargetAtTime(spec.wet, this.ctx.currentTime, 0.4);
+    }
+    if (typeof window !== 'undefined') (window as unknown as { __bwmRoom?: unknown }).__bwmRoom = { name: style.name, venue: style.venue, bed: style.bed, reverb: style.reverb, surface: style.surface, unlocked: this.unlocked };
+    this.setVenueBed(style.bed);
+    return style;
+  }
+  private makeIR(seconds: number): AudioBuffer {
+    const c = this.ctx!; const rate = c.sampleRate; const len = Math.max(1, Math.floor(rate * seconds));
+    const buf = c.createBuffer(2, len, rate);
+    for (let ch = 0; ch < 2; ch++) { const d = buf.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6); }
+    return buf;
+  }
   setVenueBed(id: VenueBed) { this.venueBedId = id; this.syncVenue(); }
   private syncVenue() {
     const want = this.settings.on && this.settings.venueSound !== false && this.unlocked && this.venueBedId !== 'none' ? this.venueBedId : 'none';
@@ -1251,6 +1287,7 @@ class Engine {
       window.setTimeout(() => nodes.forEach((n) => n.stop()), 1600);
     }
     this.venuePlaying = want;
+    if (typeof window !== 'undefined' && want !== 'none') (window as unknown as { __bwmRoomPlaying?: unknown }).__bwmRoomPlaying = { bed: want, at: performance.now() };
     if (want === 'none' || !this.ctx || !this.venueBus) return;
     const c = this.ctx; const bus = this.venueBus;
     window.setTimeout(() => { if (this.venuePlaying === want) { bus.gain.cancelScheduledValues(c.currentTime); bus.gain.setTargetAtTime(0.38, c.currentTime, 1.2); } }, this.venueNodes.length ? 0 : 50);

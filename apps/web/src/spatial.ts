@@ -95,6 +95,30 @@ export const ROOM_STYLES: RoomStyle[] = [
   { venue: 'yacht', name: 'Yacht Deck', bed: 'yacht', surface: 'wood', reverb: 'dry-outdoor', crowd: 'low' },
 ];
 export function styleForVenue(venue: string): RoomStyle | undefined { return ROOM_STYLES.find((r) => r.venue === venue); }
+/** Unified session room (Phase 4): what you SEE is what you HEAR is what the loading screen NAMES.
+ *  Online: the shared room venue decides (every client same). Explicit soundscape: that room.
+ *  Auto (no explicit soundscape): a seeded roll per game — and that rolled room becomes the
+ *  visual venue for the game too. One style per room, all 11 venues covered by ROOM_STYLES. */
+export function sessionRoom(o: { explicit?: string; visualVenue?: string; storyRoom?: string; seed?: string; onlineVenue?: string }): RoomStyle {
+  if (o.onlineVenue) return styleForVenue(o.onlineVenue) ?? ROOM_STYLES[0]!;
+  // 1) An explicit venue picked in settings wins (seen = heard = named, still unified).
+  if (o.visualVenue) return styleForVenue(o.visualVenue) ?? ROOM_STYLES[0]!;
+  // 2) A Story stop's room (the explicit soundscape carries it until Story data lands).
+  const story = o.storyRoom ?? o.explicit;
+  if (story && story !== 'auto' && (SOUNDSCAPE_ROOMS as string[]).includes(story)) return styleForBed(story as VenueBed) ?? ROOM_STYLES[0]!;
+  // 3) Auto: roll over ALL 11 rooms — Classic included (its bed is 'none': a quiet studio game).
+  if (o.seed !== undefined) return ROOM_STYLES[seedHash(o.seed) % ROOM_STYLES.length]!;
+  return ROOM_STYLES[0]!;
+}
+/** Convolver character per room (pre-baked/generated IRs only — no assets): length + wet level. */
+export const IR_SPECS: Record<RoomStyle['reverb'], { seconds: number; wet: number }> = {
+  'dry-outdoor': { seconds: 0.25, wet: 0.1 }, tight: { seconds: 0.55, wet: 0.22 }, lively: { seconds: 0.95, wet: 0.32 },
+  hall: { seconds: 2.3, wet: 0.42 }, studio: { seconds: 0.35, wet: 0.16 },
+};
+export function irSpec(style: RoomStyle): { seconds: number; wet: number } { return IR_SPECS[style.reverb]; }
+/** Card-sound surface character: brighter = harder surface (glass/wood slap), softer = felt. */
+export const SURFACE_HZ: Record<RoomStyle['surface'], number> = { felt: 5200, laminate: 6800, wood: 8400, glass: 11500 };
+export function surfaceHz(style: RoomStyle): number { return SURFACE_HZ[style.surface]; }
 export function styleForBed(bed: VenueBed): RoomStyle | undefined { return ROOM_STYLES.find((r) => r.bed === bed && r.bed !== 'none') ?? ROOM_STYLES[0]; }
 export function roomName(room: VenueBed): string { return room === 'none' ? 'Classic Studio' : styleForBed(room)?.name ?? room; }
 function seedHash(seed: string): number { let h = 2166136261; for (let i = 0; i < seed.length; i++) { h ^= seed.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }

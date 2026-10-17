@@ -8,7 +8,7 @@ import { type FlyingPlay, confirmPlay, feltClearsSelection, flyPlay, flyingCard,
 import { actingSeat, localSeatOfServerTurn, turnView, type TurnBadge } from './turnState';
 import { retainHandOrder } from './handOrder';
 import { winHeadline } from './headline';
-import { type VenueId, VENUE_DEFS, resolveVenue } from './venues';
+import { type VenueId, VENUE_DEFS } from './venues';
 import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -46,6 +46,7 @@ import { TableLoading } from './TableLoading';
 import { tableStillLoading, warmTableEffects } from './effects/warm';
 import { endReasonText, onNoticeSides, shotChatLines } from './shotOut';
 import { type Sfx, sound } from './audio';
+import { sessionRoom } from './spatial';
 import { HAPTIC, haptic } from './haptics';
 import { type ChatMsg, LINES, SEAT_COLORS, TALK_LINES, type Toast, TickNumber, USER_COLORS, pick, toastsFor } from './overlay';
 import { type Settings, modeTitle } from './settings';
@@ -465,12 +466,6 @@ function SeatBadge({ badge }: { badge: TurnBadge }) {
   );
 }
 
-/** a stable 0–1 number from a game seed (Random venue: same pick for the same game) */
-function seedFloat(seed: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < seed.length; i++) h = Math.imul(h ^ seed.charCodeAt(i), 16777619);
-  return ((h >>> 0) % 100000) / 100000;
-}
 
 export default function Table({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, onView, resume, continueSeries, online, onMainMenu, startDealer }: Props) {
   useEffect(() => { setActiveDeck(settings.deck); }, [settings.deck]);
@@ -685,9 +680,13 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   useEffect(() => { if (dressed && effectsWarm) setLoadProgress(1); }, [dressed, effectsWarm]);
   const loading = tableStillLoading(dressed, effectsWarm, loadGiveUp);
   useEffect(() => { if (tableReady && !loading) setDealReady(true); }, [tableReady, loading]);
+  const loadShownAt = useRef(performance.now());
+  useEffect(() => { (window as unknown as { __bwmLoading?: unknown }).__bwmLoading = { shownAt: loadShownAt.current, room: sound.roomStyle?.name ?? null }; }, []);
   useEffect(() => {
     if (loading) return;
-    const t = window.setTimeout(() => setLoadGone(true), 380);
+    // Loading screen minimum 3.0s: long enough to read the room name while its ambience fades in.
+    const wait = Math.max(380, 3000 - (performance.now() - loadShownAt.current));
+    const t = window.setTimeout(() => { (window as unknown as { __bwmLoading?: { goneAt?: number } }).__bwmLoading && ((window as unknown as { __bwmLoading: { goneAt?: number } }).__bwmLoading.goneAt = performance.now()); setLoadGone(true); }, wait);
     return () => window.clearTimeout(t);
   }, [loading]);
   const reportInteractive = online?.onInteractive;
@@ -1038,9 +1037,12 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (!online && replies) { const bots = names.slice(1); push(pick(bots), pick(replies), false, 900 + Math.random() * 700); }
   };
   const reduceFx = useReduceEffects();
-  // venue: online = the room's; offline = the setting, with Random rolled from the game seed (same spot after a refresh)
-  const venue: VenueId = online ? (online.venue ?? 'classic') : resolveVenue(settings.venue, seedFloat(seed));
-  useEffect(() => { sound.setVenueBed(VENUE_DEFS[venue].bed); return () => sound.setVenueBed('none'); }, [venue]);
+  // Unified session room (Phase 4): seen = heard = named. Online the shared room venue decides;
+  // Auto rolls a room from the game seed and that room IS the visual venue for this game.
+  const roomStyle = sessionRoom({ explicit: sound.get().soundscape, visualVenue: !online && settings.venue !== 'random' ? settings.venue : undefined, seed, onlineVenue: online?.venue });
+  const venue: VenueId = roomStyle.venue as VenueId;
+  const [roomName, setRoomName] = useState<string | undefined>(undefined);
+  useEffect(() => { const style = sound.applySoundscape(seed, online?.venue, !online && settings.venue !== 'random' ? settings.venue : undefined); setRoomName(style.name); return () => sound.setVenueBed('none'); }, [seed]); // eslint-disable-line react-hooks/exhaustive-deps
   // nuke watchdog: the blast is normally cued by the second Joker's 3D landing; on a stalled renderer (Safari compiling
   // shaders, a backgrounded tab, very slow frames) that landing can come late or never — so once a nuked trick is on
   // the table, make sure the nuke fires anyway (fx dedupes, so it never plays twice).
@@ -1331,7 +1333,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           marked={tipMarked}
         />
       </Suspense>
-      {!loadGone && <TableLoading progress={loadProgress} leaving={!loading} />}
+      {!loadGone && <TableLoading progress={loadProgress} leaving={!loading} room={roomName} />}
       {badge && badge.seat !== HUMAN && <SeatBadge badge={badge} />}
 
       {/* scorebug */}
