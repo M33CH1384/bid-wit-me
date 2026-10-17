@@ -56,8 +56,8 @@ function LoadingTips() {
  * Full-screen Bid Wit Me hold, from the moment a table is joined or started until the 3D scene
  * and the first game state are both ready. The half-drawn table stays underneath and cannot be tapped.
  */
-export function TableLoading({ progress, leaving, onBack, onRetry, fault }: {
-  progress?: number; leaving?: boolean; onBack?: () => void; onRetry?: () => void; fault?: string | null;
+export function TableLoading({ progress, leaving, onBack, onRetry, fault, room }: {
+  progress?: number; leaving?: boolean; onBack?: () => void; onRetry?: () => void; fault?: string | null; room?: string;
 }) {
   const [line, setLine] = useState(0);
   useEffect(() => {
@@ -72,6 +72,7 @@ export function TableLoading({ progress, leaving, onBack, onRetry, fault }: {
       <div className="bwm-loading-card">
         <img className="bwm-loading-mark" src="/assets/bwm-wordmark-white.svg" alt="Bid Wit Me" />
         <span className="beta-tag">BETA</span>
+        {room && <div className="bwm-loading-room" data-testid="loading-room">{room}</div>}
         {fault ? (
           <>
             <p className="bwm-loading-line" data-testid="join-fault">Couldn&apos;t join this table</p>

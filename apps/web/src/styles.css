@@ -1507,6 +1507,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .bwm-loading.leaving { opacity: 0; pointer-events: none; }
 .bwm-loading-card { width: min(100%, 360px); display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px; }
 .bwm-loading-mark { width: min(78%, 280px); height: auto; filter: drop-shadow(0 0 18px rgba(155, 92, 255, .65)) drop-shadow(0 6px 12px rgba(0, 0, 0, .6)); }
+.bwm-loading-room { margin-top: 6px; font: 700 12px/1 var(--display); letter-spacing: .18em; text-transform: uppercase; color: #ffe9b0; opacity: .92; }
 .bwm-loading-line { margin: 0; min-height: 1.2em; font-family: var(--display); font-weight: 700; letter-spacing: .14em; text-transform: uppercase; font-size: 15px; color: var(--gold); text-shadow: 0 0 12px rgba(245, 197, 66, .45); }
 .bwm-loading-track { width: min(240px, 70%); height: 3px; border-radius: 99px; background: rgba(185, 128, 255, .25); overflow: hidden; }
 .bwm-loading-track > span { display: block; height: 100%; width: 8%; border-radius: inherit; background: linear-gradient(90deg, var(--purple-hot), var(--gold)); box-shadow: 0 0 10px rgba(245, 197, 66, .7); transition: width .45s ease; }
