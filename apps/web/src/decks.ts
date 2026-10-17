@@ -4,6 +4,7 @@
  *  paints its own corners over it (the painted corners below are only the pre-load fallback).
  *  All decks unlocked for now — `locked` is the Story/purchase hook for later. */
 import type { Card } from '@spades/rules';
+import { noteDiag } from './diagnostics';
 
 export interface DeckDef { id: string; name: string; locked?: boolean }
 export const DECKS: DeckDef[] = [
@@ -55,6 +56,7 @@ export function getDeckImage(card: Card | string): HTMLImageElement | null {
   let img = images.get(url);
   if (!img) {
     img = new Image();
+    img.onerror = () => noteDiag('deck-art', url);
     img.src = url;
     // Notify on EVERY image load: waiters stay registered (the repaint hook must redraw each
     // court card as its own art arrives — clearing the list here left only the first card redrawn).

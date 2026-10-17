@@ -570,7 +570,10 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
 
   type Item = { spatialSeat?: SeatPos; spatialN?: number; slam?: import('../slam').SlamFeel; key: string; card: Card | null; cardId?: string | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: ((cardId: string) => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide' | 'glide'; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; public?: boolean; holdUntilMove?: boolean };
   const items: Item[] = [];
-  const dealDelay = (slot: number, seat: number) => seatDealDelay(tl, n, slot, seat, dealer);
+  // Seats still in this hand (a Cutthroat ejection leaves a seat with no cards): the deal
+  // schedule goes around these only, or late cards are timed past the end of the deal.
+  const liveSeatsForDeal = handCounts.flatMap((c, seat) => (c > 0 ? [seat] : []));
+  const dealDelay = (slot: number, seat: number) => seatDealDelay(tl, n, slot, seat, dealer, liveSeatsForDeal);
 
   // completed tricks in piles
   const pileCount = Array(n).fill(0) as number[];

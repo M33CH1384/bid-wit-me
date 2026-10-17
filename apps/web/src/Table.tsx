@@ -12,8 +12,7 @@ import { type VenueId, VENUE_DEFS } from './venues';
 import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, hostMinimum, isFreshDeal, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, newlyOneTrickFromShot, nilBustsJustResolved, partnerOf, sideOf, sortHand,
-} from '@spades/rules';
+  type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, hostMinimum, isFreshDeal, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, newlyOneTrickFromShot, nilBustsJustResolved, partnerOf, sideOf, sortHand, liveSeats } from '@spades/rules';
 import { ScorePad, setTeamNames, sideName } from './Modals';
 import { LockedRulesPanel } from './LockedRules';
 import { booksBanner, teamMinNote } from './polishText';
@@ -1288,6 +1287,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     seat: HUMAN,
     slots: display.hand?.length ?? 0,
     handNo: st.handNo,
+    live: liveSeats(st),
   });
 
   return (

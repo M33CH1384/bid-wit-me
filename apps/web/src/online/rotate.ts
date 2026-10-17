@@ -78,6 +78,12 @@ export function rotateView(v: PlayerView): { st: GameState; view: PlayerView; ro
     bags: permute(v.bags, rot, true),
     history: (v.history ?? []).map((h) => rotRecord(h, rot)),
     result: rotResult(v.result, rot),
+    // Cutthroat seat state must survive rotation, in LOCAL seat order: dropping it (and leaving
+    // the view's copy in real-seat order) meant the client rendered a post-ejection hand as if
+    // nobody was out — seat/count logic downstream read the wrong seats on first load.
+    failStreak: permute(v.failStreak ?? [], rot),
+    eliminated: permute(v.eliminated ?? [], rot),
+    ...(v.trickCount !== undefined ? { trickCount: v.trickCount } : {}),
   };
   const view: PlayerView = {
     ...v,
@@ -95,6 +101,8 @@ export function rotateView(v: PlayerView): { st: GameState; view: PlayerView; ro
     bags: st.bags,
     history: st.history,
     result: st.result,
+    failStreak: st.failStreak ?? [],
+    eliminated: st.eliminated ?? [],
     // 'Run it!' cleared hands are public only after the claim; rotate them with the rest of the seats.
     ...(v.runHands ? { runHands: permute(v.runHands, rot) } : {}),
   };
