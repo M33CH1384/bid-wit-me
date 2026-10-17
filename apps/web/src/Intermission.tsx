@@ -249,13 +249,13 @@ export function Intermission({
           {runReview}
         </div>
 
-        <footer className="tt-foot bid-row">
-          <button type="button" onClick={onScorePad}>Score pad</button>
-          {onLeave && <button type="button" data-testid="recap-leave" onClick={onLeave}>Leave game</button>}
+        <footer className="tt-foot stack">
+          <button type="button" className="quiet-row-btn" onClick={onScorePad}>Score pad</button>
           {ready && <span className="muted" data-testid="talk-ready-count">{ready.count}/{ready.of} ready</span>}
           <button type="button" className="primary big" data-testid="talk-ready" disabled={!!ready?.mine} onClick={onReady}>
-            {online ? (ready?.mine ? 'Waiting for the table…' : 'Ready') : 'Continue'}
+            {online ? (ready?.mine ? 'Waiting for the table…' : 'Ready') : `Continue to hand ${rec.handNo + 1}`}
           </button>
+          {onLeave && <><div className="exit-divider" aria-hidden="true" /><button type="button" className="leave-red" data-testid="recap-leave" onClick={onLeave}>Leave game</button></>}
         </footer>
       </div>
     </div>
