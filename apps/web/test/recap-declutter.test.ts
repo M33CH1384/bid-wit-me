@@ -45,7 +45,8 @@ describe('hand recap', () => {
     expect(html).toContain(`to ${st.rules.targetScore}`);
     expect(html).toContain('Score pad');
     expect(html).toContain('data-testid="talk-ready"');
-    expect(html).toContain('Continue');
+    // this seed actually ends the game on hand 1 (shot out): the CTA is the winner flow, not a next hand
+    expect(html).toContain(st.phase === 'gameOver' ? 'See final results' : 'Continue');
     expect(html).toContain('primary big');
     for (const gone of ['talk-grid', 'react-gg', 'data-testid="tt-team-name"', 'Shuffling', 'Talk your talk', 'YOUR TEAM NAME', 'class="tt-chat"', 'tt-deal', 'tt-reacts']) {
       expect(html).not.toContain(gone);
@@ -67,7 +68,7 @@ describe('hand recap', () => {
   it('keeps the corner chat sheet above the recap and the team cards centered', () => {
     const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
     expect(css).toContain('.chat.glass.slant.recap-chat');
-    expect(css).toContain('justify-content: safe center');
+    expect(css).toContain('.tt-top-scores'); // recap now starts at the top scores (flex-start), not vertically centred
     expect(css).toMatch(/modal-open > :not\([\s\S]*?:not\(\.recap-chat\)/);
     expect(css).toContain('.tt-chat-btn');
   });
