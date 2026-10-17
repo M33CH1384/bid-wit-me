@@ -400,6 +400,16 @@ describe('legal cards stack above the cards beside them', () => {
       expect(Math.abs(px(moved.y - still.y))).toBeLessThan(4);
     }
     const fan = handFan(aspect, n, 6, 0, 0, {}, gaps[6]!, screenH);
+    // Desktop raise-spread: a big sideways shift must not sink or re-roll the card.
+    // (Regression: the arc curve used the shifted x, so the block left of a selected
+    // card peeled down the parabola, steep and low, while the right side stayed put.)
+    for (const [i, gap] of [[0, -80], [2, -80], [10, 80], [12, 80]] as const) {
+      const moved = at(i, gap);
+      const still = at(i, 0);
+      expect(moved.y).toBeCloseTo(still.y, 6);
+      expect(moved.roll).toBeCloseTo(still.roll, 6);
+      expect(px(moved.x - still.x)).toBeCloseTo(gap, 0);
+    }
     const plain = handFan(aspect, n, 6, 0);
     expect(fan.q).toEqual(plain.q);
     expect(fan.s).toBe(plain.s);

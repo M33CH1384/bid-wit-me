@@ -515,9 +515,15 @@ export function handCardPlane(aspect: number, count: number, i: number, lift: nu
     curve = L.pivotR * (1 - Math.cos(t));
     lowest = L.pivotR * (1 - Math.cos(L.maxRoll)) + (L.ch / 2) * Math.cos(L.maxRoll) + (L.cw / 2) * Math.sin(L.maxRoll);
   } else {
-    x = off * L.step + gapX;
+    // Desktop fan: a gap (raise spread) slides a block sideways along the strip line.
+    // The arc curve and roll stay on the card's UNSHIFTED index position: curving from the
+    // shifted x sank the left block down the parabola while its roll lagged the arc slope,
+    // so a selected card's neighbours peeled away steep, low and kinked (phone's pivot fan
+    // opens along its arc instead, which is why only desktop showed it).
+    const baseX = off * L.step;
+    x = baseX + gapX;
     roll = halfN > 0 ? -(off / halfN) * L.maxRoll : 0;
-    curve = x * x * L.curveK;
+    curve = baseX * baseX * L.curveK;
     // the outermost (most rolled, most curved-down) card's lowest corner sits exactly on the bottom margin
     const xo = halfN * L.step;
     lowest = xo * xo * L.curveK + (L.ch / 2) * Math.cos(L.maxRoll) + (L.cw / 2) * Math.sin(L.maxRoll);
