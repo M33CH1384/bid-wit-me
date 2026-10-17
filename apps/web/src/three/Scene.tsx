@@ -558,11 +558,11 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   // bottom + a 12px breathing margin), in the LIVE view's camera. Standing keeps its exact framing.
   const sittingBottom = view === 'sitting' ? (safe.b + 12) / Math.max(1, screenH) : 0;
   const fanOpts: FanOpts = short
-    ? { short, view, reserveFrac: (Math.max(safe.l, safe.r) + 186) / size.width, bottomFrac: safe.b / Math.max(1, size.height) + sittingBottom, heightFrac: 0.2, ...strip }
-    : wide ? { view, reserveFrac: (size.width < 1400 ? 250 : 205) / size.width, bottomFrac: 0.012, heightFrac: 0.205, ...strip }
+    ? { short, view, reserveFrac: (Math.max(safe.l, safe.r) + 186) / size.width, bottomFrac: safe.b / Math.max(1, size.height) + sittingBottom, heightFrac: 0.25, ...strip } // +25% hand (was 0.2)
+    : wide ? { view, reserveFrac: (size.width < 1400 ? 250 : 205) / size.width, bottomFrac: 0.012, heightFrac: 0.256, ...strip } // +25% hand (was 0.205)
     : portraitPhone ? { ...phoneHandFan(), view, bottomFrac: (phoneHandFan().bottomFrac ?? 0) + sittingBottom, ...strip, minStripPx: (handCounts[human] ?? 13) > 13 ? MIN_STRIP_PX : PHONE_HAND_STRIP_PX }
     : { view, ...strip };
-  const trickScale = short ? 1.45 : undefined;
+  const trickScale = short ? 1.81 : undefined; // +25% over the old 1.45, same ratio as TRICK_SCALE
   // Last committed hand, so a play can launch from that card's own slot. Updated in an effect (not during render)
   // so a highlight change and the server ack share one set of keys and don't restart the fan.
   type Held = { handNo: number; cards: Set<string>; slots: Map<string, Xform>; count: number; seen: Set<string> };

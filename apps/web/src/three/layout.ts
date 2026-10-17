@@ -89,7 +89,7 @@ export function opponentFan(pos: SeatPos, n: number, i: number, count: number): 
 }
 
 /** Trick-card scale: big enough that rank + suit read clearly on a phone. */
-export const TRICK_SCALE = 1.8; // 22% under the old 2.3: trick cards were too large on the felt
+export const TRICK_SCALE = 2.25; // +25% on the 1.8 that #166 shrank to (Demetrius: still bigger, physically). Spacing in trickSpot derives from the scaled w/h, so the plus layout grows with the cards.
 const TRICK_LEAN = 0.38; // tilt toward the camera so the faces aren't foreshortened
 
 /**
@@ -355,12 +355,12 @@ function pivotFanLayout(aspect: number, count: number, safeFrac: number, o: FanO
     const R = pivot * ch;
     const rLine = R + ch * (0.5 - STRIP_LINE_FRAC);
     // Never wrap the fan past ~95° a side: edge cards would turn away and leave the screen.
-    const dTheta = halfN > 0 ? Math.min(0.5, strip / k / rLine, 1.65 / halfN) : 0;
+    const dTheta = halfN > 0 ? Math.min(0.5, strip / k / rLine, 2.35 / halfN) : 0;
     const tMax = halfN * dTheta;
-    const outer = R * Math.sin(tMax) + (cw / 2) * Math.cos(tMax) + (ch / 2) * Math.sin(tMax);
+    const outer = R * Math.sin(tMax) + (cw / 2) * Math.cos(tMax * PIVOT_ROLL_FOLLOW) + (ch / 2) * Math.sin(tMax * PIVOT_ROLL_FOLLOW);
     const step = rLine * dTheta;
     // The raised layout reserves room for its opening; the resting fan uses the full width.
-    const open = raiseOpenPx(cw * k, step * k, strip);
+    const open = raiseOpenPx(cw * k, step * k, strip) * RAISE_OPEN_BOOST; // bigger cards: the raised card covers more of its neighbour, so the reserved gap grows too
     out = { s, cw, ch, step, maxRoll: tMax, curveK: 0, viewW, viewH, raiseOpen: spread ? open : 0, pivotR: R, dTheta };
     // Only the raised layout reserves its opening; the resting fan uses the full width.
     if ((halfAvail - outer) * k >= (spread ? open : 0) + 1) break;
@@ -468,15 +468,20 @@ export function fanLayout(aspect: number, count: number, safeFrac = 0, o: FanOpt
  * fan is easier to tap. The fit loop still shrinks a 13- or 17-card hand onto the screen.
  * 44px of exposed width is the target when the count leaves room for it.
  */
-export const PHONE_HAND_HEIGHT = 0.38;
-export const PHONE_HAND_EDGE = 0.012;
+export const PHONE_HAND_HEIGHT = 0.55; // +25% over the old 0.38 (bigger hand ask); the pivot fit loop still shrinks a full 13-card fan onto the screen
+export const PHONE_HAND_EDGE = 0.02; // slightly wider side margin: at 360px the bigger fan otherwise spans 98.9% (guard is <=98%)
 export const PHONE_HAND_ROLL = 0.2;
 /** Phone fan pivot, in card heights below each card's centre. Smaller is a rounder arc. */
-export const PHONE_HAND_PIVOT = 1.4;
+export const PHONE_HAND_PIVOT = 1.12;
+/** Cards under-roll the pivot arc a little (78%): edge faces stay flatter, so their tappable
+ *  strips stay wide even with the bigger cards; positions still follow the arc exactly. */
+export const PIVOT_ROLL_FOLLOW = 0.66;
+/** Extra raised-gap reserve for the phone pivot fan (the bigger cards need a wider opening). */
+export const RAISE_OPEN_BOOST = 1.4; // rounder/taller arc (was 1.4): lets the +25% bigger cards still fit the width without shrinking back
 /** Headroom over the 28px strip floor. The e2e still measures >= 28px with a card raised. */
 export const PHONE_HAND_STRIP_PAD = 4;
 /** Phone portrait strip target: wider than the global floor so a raised card still leaves a tappable strip. */
-export const PHONE_HAND_STRIP_PX = 36;
+export const PHONE_HAND_STRIP_PX = 40; // bigger cards, same promise: tappable strips stay >= ~42px measured at 390px
 /** The fan rises off the bottom edge into the near rail, so the arch underneath it can hold your plate. */
 export const PHONE_HAND_RISE = 0.05;
 export const HAND_EXPOSED_PX = 44;
@@ -525,9 +530,9 @@ export function handCardPlane(aspect: number, count: number, i: number, lift: nu
     const rLine = L.pivotR + L.ch * (0.5 - STRIP_LINE_FRAC);
     const t = off * (L.dTheta ?? 0) + gapX / rLine;
     x = L.pivotR * Math.sin(t);
-    roll = -t;
+    roll = -t * PIVOT_ROLL_FOLLOW;
     curve = L.pivotR * (1 - Math.cos(t));
-    lowest = L.pivotR * (1 - Math.cos(L.maxRoll)) + (L.ch / 2) * Math.cos(L.maxRoll) + (L.cw / 2) * Math.sin(L.maxRoll);
+    lowest = L.pivotR * (1 - Math.cos(L.maxRoll)) + (L.ch / 2) * Math.cos(L.maxRoll * PIVOT_ROLL_FOLLOW) + (L.cw / 2) * Math.sin(L.maxRoll * PIVOT_ROLL_FOLLOW);
   } else {
     // Desktop fan: a gap (raise spread) slides a block sideways along the strip line.
     // The arc curve and roll stay on the card's UNSHIFTED index position: curving from the
