@@ -73,6 +73,15 @@ export const ROOM_STYLES: RoomStyle[] = [
   { venue: 'yacht', name: 'Yacht Deck', bed: 'yacht', surface: 'wood', reverb: 'dry-outdoor', crowd: 'low' },
 ];
 export function styleForVenue(venue: string): RoomStyle | undefined { return ROOM_STYLES.find((r) => r.venue === venue); }
+/** Convolver character per room (pre-baked/generated IRs only — no assets): length + wet level. */
+export const IR_SPECS: Record<RoomStyle['reverb'], { seconds: number; wet: number }> = {
+  'dry-outdoor': { seconds: 0.25, wet: 0.1 }, tight: { seconds: 0.55, wet: 0.22 }, lively: { seconds: 0.95, wet: 0.32 },
+  hall: { seconds: 2.3, wet: 0.42 }, studio: { seconds: 0.35, wet: 0.16 },
+};
+export function irSpec(style: RoomStyle): { seconds: number; wet: number } { return IR_SPECS[style.reverb]; }
+/** Card-sound surface character: brighter = harder surface (glass/wood slap), softer = felt. */
+export const SURFACE_HZ: Record<RoomStyle['surface'], number> = { felt: 5200, laminate: 6800, wood: 8400, glass: 11500 };
+export function surfaceHz(style: RoomStyle): number { return SURFACE_HZ[style.surface]; }
 export function styleForBed(bed: VenueBed): RoomStyle | undefined { return ROOM_STYLES.find((r) => r.bed === bed && r.bed !== 'none') ?? ROOM_STYLES[0]; }
 export function roomName(room: VenueBed): string { return room === 'none' ? 'Classic Studio' : styleForBed(room)?.name ?? room; }
 function seedHash(seed: string): number { let h = 2166136261; for (let i = 0; i < seed.length; i++) { h ^= seed.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }

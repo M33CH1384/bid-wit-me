@@ -11,7 +11,7 @@
  * - Settings (on/off, volume, ambience) persist in localStorage.
  */
 import { useSyncExternalStore } from 'react';
-import { Spatializer, defaultAudioQuality, normalizeCategoryVolumes, pickPanningModel, type CamPose } from './spatial';
+import { Spatializer, defaultAudioQuality, irSpec, normalizeCategoryVolumes, pickPanningModel, resolveSoundscape, roomName, styleForBed, surfaceHz, type CamPose, type RoomStyle } from './spatial';
 import { audioElementPool } from './audioPool';
 import { audioContextAction, settleAudio, soundRestorePending } from './audioSession';
 
@@ -616,6 +616,13 @@ class Engine {
     this.ambBus = c.createGain(); this.ambBus.gain.value = 0; this.ambBus.connect(this.master);
     this.venueBus = c.createGain(); this.venueBus.gain.value = 0; this.venueBus.connect(this.master);
     this.voiceDuck = c.createGain(); this.voiceDuck.connect(this.master);
+    // Room convolver (Phase 4): generated-IR reverb for the active room; wet level per room style.
+    try {
+      this.convolver = c.createConvolver();
+      this.convWet = c.createGain(); this.convWet.gain.value = 0;
+      this.venueBus.connect(this.convWet); this.convWet.connect(this.convolver); this.convolver.connect(this.master);
+      if (this.roomStyle) { const spec = irSpec(this.roomStyle); this.convolver.buffer = this.makeIR(spec.seconds); this.convWet.gain.value = spec.wet * 0.5; }
+    } catch { this.convolver = null; this.convWet = null; }
     // Spatial groundwork (Phase 3): one Spatializer over this engine; spatial off (or no PannerNode)
     // leaves the graph exactly as it was. Listener starts at the standing portrait pose; the scene
     // can move it with setListenerPose as the camera view changes.
@@ -668,7 +675,7 @@ class Engine {
     this.played.smack = (this.played.smack ?? 0) + 1;
     this.lastSmack = s;
     const t = c.currentTime;
-    this.sample('play', t, s.gain, s.rate, undefined, point);
+    this.sample('play', t, s.gain, s.rate, undefined, point, this.roomStyle ? surfaceHz(this.roomStyle) : undefined);
     if (s.thud > 0) this.thud(t + 0.005, s.thud);
   }
   lastSmack: SmackSound | null = null;
@@ -731,7 +738,7 @@ class Engine {
   }
 
   private lastVariant = new Map<string, number>();
-  private sample(key: string, t: number, gain: number, rate = 1, maxDur?: number, point?: { x: number; z: number }) {
+  private sample(key: string, t: number, gain: number, rate = 1, maxDur?: number, point?: { x: number; z: number }, surfaceHzVal?: number) {
     const c = this.ctx!; const list = FILES[key]!;
     const idx = pickVariantIdx(list.length, this.lastVariant.get(key) ?? -1);
     this.lastVariant.set(key, idx);
@@ -740,10 +747,14 @@ class Engine {
     const src = c.createBufferSource(); src.buffer = buf; src.playbackRate.value = rate;
     const g = c.createGain(); g.gain.value = gain;
     const pan = point && this.spatializer ? this.spatializer.pointPanner(c as never, point.x, point.z) : null;
+    let head: AudioNode = g;
+    if (surfaceHzVal) { const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = surfaceHzVal; g.connect(f); head = f; }
     if (pan) {
       (window as unknown as { __bwmSpatial?: unknown }).__bwmSpatial = { x: point!.x, z: point!.z, model: pan.panningModel, at: performance.now() };
-      src.connect(g); (g as GainNode).connect(pan as unknown as AudioNode); (pan as unknown as AudioNode).connect(this.sfxBus!);
+      src.connect(g); head.connect(pan as unknown as AudioNode); (pan as unknown as AudioNode).connect(this.sfxBus!);
       src.onended = () => this.spatializer?.release();
+    } else if (surfaceHzVal) {
+      src.connect(g); head.connect(this.sfxBus!);
     } else {
       src.connect(g).connect(this.sfxBus!);
     }
@@ -1221,6 +1232,29 @@ class Engine {
   /* ---------- venue ambience (Release 7): quiet procedural beds, one per venue (all generated here: no recordings) ---------- */
   private venueBus: GainNode | null = null;
   spatializer: Spatializer | null = null;
+  private convolver: ConvolverNode | null = null;
+  private convWet: GainNode | null = null;
+  roomStyle: RoomStyle | null = null;
+  /** Choose this session's room: explicit soundscape setting wins; otherwise a seeded roll per
+   *  game/session (same seed on every online client). Sets bed + convolver IR + surface character. */
+  applySoundscape(seed: string) {
+    const bed = resolveSoundscape({ explicit: this.settings.soundscape, seed });
+    const style = styleForBed(bed);
+    this.roomStyle = style ?? null;
+    if (style && this.convolver && this.ctx) {
+      const spec = irSpec(style);
+      this.convolver.buffer = this.makeIR(spec.seconds);
+      if (this.convWet) this.convWet.gain.setTargetAtTime(spec.wet, this.ctx.currentTime, 0.4);
+    }
+    if (typeof window !== 'undefined') (window as unknown as { __bwmRoom?: unknown }).__bwmRoom = { name: roomName(bed), bed, reverb: style?.reverb, surface: style?.surface };
+    this.setVenueBed(bed);
+  }
+  private makeIR(seconds: number): AudioBuffer {
+    const c = this.ctx!; const rate = c.sampleRate; const len = Math.max(1, Math.floor(rate * seconds));
+    const buf = c.createBuffer(2, len, rate);
+    for (let ch = 0; ch < 2; ch++) { const d = buf.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6); }
+    return buf;
+  }
   /** Move the spatial listener (camera view changes); pose from three/layout cameraFor via spatial.listenerPose callers. */
   setListenerPose(pose: CamPose) { try { if (this.ctx && this.spatializer) this.spatializer.applyListener(this.ctx as never, pose); } catch { /* stereo fallback */ } }
   private venueBedId: VenueBed = 'none';

@@ -683,9 +683,13 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   useEffect(() => { if (dressed && effectsWarm) setLoadProgress(1); }, [dressed, effectsWarm]);
   const loading = tableStillLoading(dressed, effectsWarm, loadGiveUp);
   useEffect(() => { if (tableReady && !loading) setDealReady(true); }, [tableReady, loading]);
+  const loadShownAt = useRef(performance.now());
+  useEffect(() => { (window as unknown as { __bwmLoading?: unknown }).__bwmLoading = { shownAt: loadShownAt.current, room: sound.roomStyle?.name ?? null }; }, []);
   useEffect(() => {
     if (loading) return;
-    const t = window.setTimeout(() => setLoadGone(true), 380);
+    // Loading screen minimum (~2.6s): long enough to read the room name, never a delay beyond that.
+    const wait = Math.max(380, 2600 - (performance.now() - loadShownAt.current));
+    const t = window.setTimeout(() => { (window as unknown as { __bwmLoading?: { goneAt?: number } }).__bwmLoading && ((window as unknown as { __bwmLoading: { goneAt?: number } }).__bwmLoading.goneAt = performance.now()); setLoadGone(true); }, wait);
     return () => window.clearTimeout(t);
   }, [loading]);
   const reportInteractive = online?.onInteractive;
@@ -1038,7 +1042,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const reduceFx = useReduceEffects();
   // venue: online = the room's; offline = the setting, with Random rolled from the game seed (same spot after a refresh)
   const venue: VenueId = online ? (online.venue ?? 'classic') : resolveVenue(settings.venue, seedFloat(seed));
-  useEffect(() => { sound.setVenueBed(VENUE_DEFS[venue].bed); return () => sound.setVenueBed('none'); }, [venue]);
+  const [roomName, setRoomName] = useState<string | undefined>(undefined);
+  useEffect(() => { sound.applySoundscape(seed); setRoomName(sound.roomStyle?.name); return () => sound.setVenueBed('none'); }, [seed]);
   // nuke watchdog: the blast is normally cued by the second Joker's 3D landing; on a stalled renderer (Safari compiling
   // shaders, a backgrounded tab, very slow frames) that landing can come late or never — so once a nuked trick is on
   // the table, make sure the nuke fires anyway (fx dedupes, so it never plays twice).
@@ -1329,7 +1334,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           marked={tipMarked}
         />
       </Suspense>
-      {!loadGone && <TableLoading progress={loadProgress} leaving={!loading} />}
+      {!loadGone && <TableLoading progress={loadProgress} leaving={!loading} room={roomName} />}
       {badge && badge.seat !== HUMAN && <SeatBadge badge={badge} />}
 
       {/* scorebug */}

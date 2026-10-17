@@ -62,3 +62,13 @@ describe('spatial phase 3: variant no-dup rule', () => {
     expect(pickVariantIdx(1, 0)).toBe(0);
   });
 });
+describe('spatial phase 4: room character', () => {
+  it('every room has a distinct IR + surface spec; tournament-scale rooms are halls', async () => {
+    const { ROOM_STYLES, irSpec, surfaceHz } = await import('../src/spatial');
+    for (const r of ROOM_STYLES) { expect(irSpec(r).seconds).toBeGreaterThan(0); expect(surfaceHz(r)).toBeGreaterThan(3000); }
+    const vegas = ROOM_STYLES.find((r) => r.venue === 'vegas')!;
+    const backyard = ROOM_STYLES.find((r) => r.venue === 'backyard')!;
+    expect(irSpec(vegas).seconds).toBeGreaterThan(irSpec(backyard).seconds * 4);
+    expect(surfaceHz(ROOM_STYLES.find((r) => r.venue === 'mansion')!)).toBeGreaterThan(surfaceHz(ROOM_STYLES.find((r) => r.venue === 'classic')!));
+  });
+});
