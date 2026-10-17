@@ -94,7 +94,7 @@ function Row({ color, name, bid, took, points, chips, total, bags, bagsAdded, de
   );
 }
 
-export function ScorePad({ st, names, onClose, onContinue, locked, sideName, dealerName }: { st: GameState; names: string[]; onClose: () => void; onContinue?: () => void; locked?: ReactNode; sideName: (side: number) => string; /** current hand's dealer, from the engine seat's occupant; past hands keep their own dealer seat */ dealerName?: string }) {
+export function ScorePad({ st, names, onClose, onContinue, locked, sideName, dealerName, onLeave }: { st: GameState; names: string[]; onClose: () => void; onContinue?: () => void; locked?: ReactNode; sideName: (side: number) => string; /** current hand's dealer, from the engine seat's occupant; past hands keep their own dealer seat */ dealerName?: string; /** Hand Recap only: open the Leave choice (Save & go to menu / Quit game) */ onLeave?: () => void }) {
   const r = st.rules;
   const sides = Array.from({ length: st.scores.length }, (_, i) => i);
   const streaks = holeMarks(r, st.history);
@@ -161,6 +161,7 @@ export function ScorePad({ st, names, onClose, onContinue, locked, sideName, dea
           <div className="pad-rules chips" data-testid="pad-rules">{rulesChips(r).map((c) => <span key={c} className="rule-chip">{c}</span>)}</div>
           {showLocked ? locked : null}
         </details>
+        {onLeave && <button type="button" className="big" data-testid="recap-leave" onClick={onLeave}>Leave game</button>}
         <button type="button" className="primary big" data-testid="pad-continue" onClick={onContinue ?? onClose}>Continue</button>
       </div>
     </div>

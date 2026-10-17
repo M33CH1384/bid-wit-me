@@ -1551,6 +1551,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           online={shotOutRecap ? false : !!online}
           onReady={() => { if (st.phase === 'gameOver') setShotRecapAck(true); else apply({ type: 'nextHand' }); }}
           onScorePad={() => setShowPad(true)}
+          onLeave={() => { if (online) leave(); else setConfirmLeave(true); }}
           series={seriesChip()}
           unread={unread}
           chatOpen={chatOpen}
@@ -1681,7 +1682,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
       {coachOn && !modalOpen && st.phase === 'playing' && !pause && <LedSuitChip st={st} />}
       <Hype reduced={reduceFx} low={settings.quality === 'low'} />
-      {showPad && <ScorePad st={st} names={names} dealerName={dealerLabel} onClose={() => setShowPad(false)} onContinue={st.phase === 'handOver' && talkOpen && !online?.talk?.ready?.mine ? () => { setShowPad(false); apply({ type: 'nextHand' }); } : undefined} locked={online ? undefined : <LockedRulesPanel rules={r} nuke={fx.tableNuke ?? fx.prefs.nuke} skill={settings.botLevel} intensity={settings.talkIntensity} />} />}
+      {showPad && <ScorePad st={st} names={names} dealerName={dealerLabel} onClose={() => setShowPad(false)} onContinue={st.phase === 'handOver' && talkOpen && !online?.talk?.ready?.mine ? () => { setShowPad(false); apply({ type: 'nextHand' }); } : undefined} onLeave={st.phase === 'handOver' ? () => { setShowPad(false); if (online) leave(); else setConfirmLeave(true); } : undefined} locked={online ? undefined : <LockedRulesPanel rules={r} nuke={fx.tableNuke ?? fx.prefs.nuke} skill={settings.botLevel} intensity={settings.talkIntensity} />} />}
     </div>
   );
 }

@@ -21,6 +21,6 @@ function signed(n: number): string {
 }
 
 import { ScorePad as ScorePadView } from './ScorePad';
-export function ScorePad({ st, names, onClose, locked, onContinue, dealerName }: { st: GameState; names: string[]; onClose: () => void; locked?: ReactNode; onContinue?: () => void; dealerName?: string }) {
-  return <ScorePadView st={st} names={names} dealerName={dealerName} onClose={onClose} onContinue={onContinue} locked={locked} sideName={(i) => sideName(st.rules, i, names)} />;
+export function ScorePad({ st, names, onClose, locked, onContinue, dealerName, onLeave }: { st: GameState; names: string[]; onClose: () => void; locked?: ReactNode; onContinue?: () => void; dealerName?: string; onLeave?: () => void }) {
+  return <ScorePadView st={st} names={names} dealerName={dealerName} onClose={onClose} onContinue={onContinue} onLeave={onLeave} locked={locked} sideName={(i) => sideName(st.rules, i, names)} />;
 }
