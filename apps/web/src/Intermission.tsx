@@ -134,6 +134,9 @@ export function Intermission({
     const delay = anim.current?.waitSheet.size ? 0.4 : 0.05;
     sound.play('docSting', { delay });
     sound.play('siren', { delay: delay + 0.04 });
+    // The sheet now ROLLS down from the scorecard's top edge: a soft fabric rustle timed to
+    // the 620ms roll (same wait delay as the animation), only when a roll will actually play.
+    if (anim.current?.waitSheet.size) sound.play('cloth', { delay });
   }, [sirenKey, sheetOn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (

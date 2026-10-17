@@ -43,7 +43,9 @@ export type Sfx =
   // hype effects. The sheet siren is a recorded wail (CREDITS.md); the rest are synthesized.
   | 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak1' | 'streak2' | 'streak3' | 'shot' | 'gotShot' | 'shotgun' | 'pump' | 'siren' | 'docSting' | 'wheels' | 'wheelsCar' | 'overcut' | 'overcut3' | 'tornado'
   // 'Run it!': the claimer's cards all slam at once / everyone else's cards hit in a quick cascade
-  | 'runSlam' | 'runThud';
+  | 'runSlam' | 'runThud'
+  // the white sheet unrolling over a scorecard: soft fabric rustle (synthesized, no sample)
+  | 'cloth';
 
 /** SFX that bot voices duck under, and for how long (ms). */
 const DUCK_MS: Partial<Record<Sfx, number>> = { runSlam: 700, nuke: 3600, tornado: 2600, wheelsCar: 3000, jokerBig: 1100, shot: 1200, shotgun: 700, pump: 500, siren: 2700, docSting: 2400, streak2: 1400, streak3: 1800, overcut3: 1000, win: 2000, lose: 1600, set: 1200, nil: 1600 };
@@ -970,6 +972,7 @@ class Engine {
       case 'shotgun': return this.shotgunBoom(t, g);
       case 'pump': return this.shotgunPump(t, g);
       case 'siren': return this.siren(t, g);
+      case 'cloth': return this.clothRustle(t, g);
       case 'docSting': return this.docSting(t, g);
       // wheels: a quick rising two-step + hit (short, not a fanfare)
       case 'wheelsCar': return this.peelOut(t, g);
@@ -1048,6 +1051,25 @@ class Engine {
     f.frequency.setValueAtTime(500, t); f.frequency.exponentialRampToValueAtTime(2600, t + 0.22); f.frequency.exponentialRampToValueAtTime(900, t + 0.45);
     const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + 0.12); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.48);
     s.connect(f).connect(g).connect(this.sfxBus!); s.start(t); s.stop(t + 0.5);
+  }
+
+  /** Fabric unfurl: band-swept noise with three soft rustle swells, ~0.62s to match the roll. */
+  private clothRustle(t: number, g: number) {
+    const c = this.ctx!;
+    const dur = 0.62;
+    const s = c.createBufferSource(); s.buffer = this.noise(1); s.loop = true;
+    const f = c.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 0.75;
+    f.frequency.setValueAtTime(820, t);
+    f.frequency.exponentialRampToValueAtTime(2400, t + dur * 0.55);
+    f.frequency.exponentialRampToValueAtTime(680, t + dur);
+    const gn = c.createGain();
+    gn.gain.setValueAtTime(0.0001, t);
+    gn.gain.exponentialRampToValueAtTime(0.11 * g, t + 0.07); // first unfurl
+    gn.gain.exponentialRampToValueAtTime(0.05 * g, t + 0.22);
+    gn.gain.exponentialRampToValueAtTime(0.09 * g, t + 0.36); // second ripple
+    gn.gain.exponentialRampToValueAtTime(0.035 * g, t + 0.5);
+    gn.gain.exponentialRampToValueAtTime(0.0001, t + dur); // settle
+    s.connect(f).connect(gn).connect(this.sfxBus!); s.start(t); s.stop(t + dur + 0.05);
   }
 
   private chime(t: number, g: number) {
