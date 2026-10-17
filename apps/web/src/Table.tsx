@@ -2,7 +2,6 @@ import { deliverBotLine } from './voices/aiVoice';
 import { musicTension } from './musicTension';
 import { enterTable, quitGame, silenceGame, suspendGame } from './gameSession';
 import { cardControlLabel } from './cardA11y';
-import { archSpot } from './archSpot';
 import type { HandHitCard } from './three/handHit';
 import { useEscapeClose } from './useEscapeClose';
 import { type FlyingPlay, confirmPlay, feltClearsSelection, flyPlay, flyingCard, ignorePlayTap, playTrickOf, type PlayTrick } from './online/playGuard';
@@ -1268,18 +1267,15 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const tick = () => {
       const el = screenRef.current;
       const hits = (window as unknown as { __bwmHandHits?: HandHitCard[] }).__bwmHandHits ?? [];
-      const arch = el && window.innerWidth < 600 && window.innerHeight > window.innerWidth ? archSpot(hits, window.innerWidth, window.innerHeight) : null;
+      // Founder call (Oct 17 beta): the YOU plate/avatar lives in the lower-left corner of the
+      // screen, never in the fan arch — in Sitting the arch band sits on the cards themselves.
+      const corner = el && window.innerWidth < 600 && window.innerHeight > window.innerWidth && hits.length >= 3;
       if (!el) return;
-      el.classList.toggle('arch-plate', !!arch);
-      if (arch) {
-        el.style.setProperty('--arch-x', `${arch.x}px`);
-        el.style.setProperty('--arch-top', `${arch.top}px`);
-        el.style.setProperty('--arch-w', `${arch.w}px`);
-      }
+      el.classList.toggle('corner-plate', !!corner);
     };
     tick();
     const t = window.setInterval(tick, 250);
-    return () => { clearInterval(t); screenRef.current?.classList.remove('arch-plate'); };
+    return () => { clearInterval(t); screenRef.current?.classList.remove('corner-plate'); };
   }, [vp.short]);
   useEffect(() => {
     if (!measureHand) return;
