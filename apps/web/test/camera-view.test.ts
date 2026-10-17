@@ -31,10 +31,12 @@ describe('camera view', () => {
       for (const pt of poly) { expect(pt.x).toBeGreaterThanOrEqual(-1); expect(pt.x).toBeLessThanOrEqual(W + 1); expect(pt.y).toBeGreaterThanOrEqual(-1); expect(pt.y).toBeLessThanOrEqual(H - chrome + 1); }
     }
   });
-  it('view setting normalises (default standing)', () => {
-    expect(normalizeSettings({}).view).toBe('standing');
-    expect(normalizeSettings({ view: 'sitting' as never }).view).toBe('sitting');
-    expect(normalizeSettings({ view: 'floor' as never }).view).toBe('standing');
+  it('view setting normalises: no saved preference -> Sitting; a saved choice always wins', () => {
+    expect(normalizeSettings({}).view).toBe('sitting'); // new player default
+    expect(normalizeSettings({ view: undefined as never }).view).toBe('sitting');
+    expect(normalizeSettings({ view: 'floor' as never }).view).toBe('sitting');
+    expect(normalizeSettings({ view: 'standing' as never }).view).toBe('standing'); // saved Standing respected exactly
+    expect(normalizeSettings({ view: 'sitting' as never }).view).toBe('sitting'); // saved Sitting respected exactly
   });
   it('V gesture: continuous up then down slams in sitting; straight drag stays gentle', () => {
     const v = path([[195, 700], [195, 640], [195, 580], [195, 640], [195, 700], [180, 430]]);
