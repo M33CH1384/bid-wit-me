@@ -64,7 +64,12 @@ export interface SoundSettings { on: boolean; volume: number; ambient: boolean; 
   /** Kitchen-Table Spades Night ambience: the in-game-safe scene — selectable at the table
    *  AND in menus (unlike Block Party), mutually exclusive with music, on the ambience bus
    *  under the Ambience volume, kept low and sparse in-game so seat voices stay on top. */
-  kitchenTable?: boolean }
+  kitchenTable?: boolean;
+  /** Front Porch / Stoop at Dusk: the calm menu-only ambience scene (separate PR, after
+   *  Block Party / Kitchen-Table). Like Block Party it is a stored menu preference that
+   *  may only SOUND in the menu context, never in-game, and is mutually exclusive with
+   *  music. Kitchen-Table remains the in-game ambience choice. */
+  frontPorch?: boolean }
 
 /** Where the player is: menus (setup/home/lobby) or in a game. */
 export type SoundContext = 'menu' | 'game';
@@ -94,6 +99,12 @@ export const kitchenTableWanted = (s: SoundSettings): boolean => !!s.kitchenTabl
 /** Kitchen-Table level: rides the Ambience volume; deliberately quieter IN-GAME (0.30 bus
  *  factor vs 0.50 in menus) so player VO and positional seat voices stay clearly on top. */
 export const kitchenLevel = (ambienceVolume: number, ctx: SoundContext): number => (ctx === 'game' ? 0.3 : 0.5) * Math.min(1, Math.max(0, ambienceVolume));
+/** Front Porch gate: only in menus, only with music off — exactly like Block Party.
+ *  In-game the stored flag sits dormant and this gate keeps it silent. */
+export const frontPorchWanted = (s: SoundSettings, ctx: SoundContext): boolean => !!s.frontPorch && !s.music && ctx === 'menu';
+/** Front Porch level: rides the Ambience volume; the calm contrast scene, a touch under
+ *  Block Party's 0.5 so menus stay hushed at dusk. */
+export const frontPorchLevel = (ambienceVolume: number): number => 0.45 * Math.min(1, Math.max(0, ambienceVolume));
 /** Reconcile a (possibly legacy both-on) state: music wins, ambience goes off. */
 export function exclusiveMusicAmbience(s: SoundSettings): SoundSettings {
   return s.music && ambienceOn(s) ? { ...s, ambient: false, venueSound: false } : s;
@@ -101,7 +112,7 @@ export function exclusiveMusicAmbience(s: SoundSettings): SoundSettings {
 
 /** The scene the live switches currently describe. */
 export function sceneOf(s: SoundSettings): SoundScene {
-  return s.music ? 'music' : ambienceOn(s) || s.blockParty ? 'ambience' : 'none';
+  return s.music ? 'music' : ambienceOn(s) || s.blockParty || s.frontPorch ? 'ambience' : 'none';
 }
 const SCENE_PATCH: Record<SoundScene, Partial<SoundSettings>> = {
   music: { music: true, ambient: false, venueSound: false },
@@ -241,14 +252,14 @@ class Engine {
     // Mutual exclusivity, last choice wins: explicitly turning music on kills both ambience
     // sources; explicitly turning either ambience source on kills music. Any other patch
     // still passes through the reconciliation, so a legacy both-on state can never persist.
-    if (patch.music) { next = { ...next, ambient: false, venueSound: false }; if (this.context === 'menu') next = { ...next, blockParty: false }; if (this.captureScene) next = { ...next, kitchenTable: false }; }
-    else if (patch.ambient || patch.venueSound || patch.blockParty || patch.kitchenTable) { next = { ...next, music: false }; }
+    if (patch.music) { next = { ...next, ambient: false, venueSound: false }; if (this.context === 'menu') next = { ...next, blockParty: false, frontPorch: false }; if (this.captureScene) next = { ...next, kitchenTable: false }; }
+    else if (patch.ambient || patch.venueSound || patch.blockParty || patch.kitchenTable || patch.frontPorch) { next = { ...next, music: false }; }
     next = exclusiveMusicAmbience(next);
     // A deliberate toggle in this context is that context's explicit choice: remember the
     // resulting scene for this context only (the other context keeps its own choice/default).
-    if (this.captureScene && !('scenes' in patch) && ('music' in patch || 'ambient' in patch || 'venueSound' in patch || 'blockParty' in patch || 'kitchenTable' in patch)) {
+    if (this.captureScene && !('scenes' in patch) && ('music' in patch || 'ambient' in patch || 'venueSound' in patch || 'blockParty' in patch || 'kitchenTable' in patch || 'frontPorch' in patch)) {
       // A dormant menu Block Party flag must not make an in-game "everything off" read as ambience.
-      const sc: SoundScene = next.music ? 'music' : ambienceOn(next) || next.kitchenTable || (this.context === 'menu' && next.blockParty) ? 'ambience' : 'none';
+      const sc: SoundScene = next.music ? 'music' : ambienceOn(next) || next.kitchenTable || (this.context === 'menu' && (next.blockParty || next.frontPorch)) ? 'ambience' : 'none';
       next = { ...next, scenes: { ...next.scenes, [this.context]: sc } };
     }
     this.settings = next;
@@ -258,6 +269,7 @@ class Engine {
     this.syncVenue();
     this.syncBlockParty();
     this.syncKitchenTable();
+    this.syncFrontPorch();
     this.syncMusic();
     this.emit();
   }
@@ -580,6 +592,7 @@ class Engine {
       this.syncVenue();
       this.syncBlockParty();
       this.syncKitchenTable();
+      this.syncFrontPorch();
       this.syncMusic();
     }
     // Start resume() now, inside the gesture. A simulated stuck state must not actually resume,
@@ -594,6 +607,7 @@ class Engine {
         this.syncVenue();
         this.syncBlockParty();
         this.syncKitchenTable();
+        this.syncFrontPorch();
         this.syncMusic();
       }
       this.publishRestore();
@@ -633,7 +647,7 @@ class Engine {
     this.stopBeds();
     const old = this.ctx;
     this.ctx = null;
-    this.master = this.sfxBus = this.sfxDuck = this.nukeBus = this.ambBus = this.venueBus = this.partyBus = this.kitchenBus = this.voiceDuck = this.voiceChatBus = this.voiceChatOut = this.musicBus = this.musicDuck = null; this.voiceChatNodes.clear(); // regs kept: re-routed below
+    this.master = this.sfxBus = this.sfxDuck = this.nukeBus = this.ambBus = this.venueBus = this.partyBus = this.kitchenBus = this.porchBus = this.voiceDuck = this.voiceChatBus = this.voiceChatOut = this.musicBus = this.musicDuck = null; this.voiceChatNodes.clear(); // regs kept: re-routed below
     this.loading = null;
     this.loadGen++;
     if (old && old.state !== 'closed') void settleAudio(old.close());
@@ -690,6 +704,10 @@ class Engine {
     this.kitchenTimers = [];
     this.kitchenNodes = [];
     this.kitchenPlaying = false;
+    this.porchTimers.forEach((t) => window.clearTimeout(t));
+    this.porchTimers = [];
+    this.porchNodes = [];
+    this.porchPlaying = false;
   }
 
   /* ---------- recorded bot voices (see voices/voices.ts) ---------- */
@@ -855,6 +873,7 @@ class Engine {
     this.ambBus = c.createGain(); this.ambBus.gain.value = 0; this.ambBus.connect(this.master);
     this.partyBus = c.createGain(); this.partyBus.gain.value = 0; this.partyBus.connect(this.master);
     this.kitchenBus = c.createGain(); this.kitchenBus.gain.value = 0; this.kitchenBus.connect(this.master);
+    this.porchBus = c.createGain(); this.porchBus.gain.value = 0; this.porchBus.connect(this.master);
     this.venueBus = c.createGain(); this.venueBus.gain.value = 0; this.venueBus.connect(this.master);
     // Room convolver (Phase 4): a generated impulse (no audio assets) whose length/wet match the room.
     try {
@@ -882,6 +901,7 @@ class Engine {
     if (this.venueBus && this.venuePlaying !== 'none') this.venueBus.gain.setTargetAtTime(0.38 * cats.ambience, this.ctx.currentTime, 0.1);
     if (this.partyBus && this.partyPlaying) this.partyBus.gain.setTargetAtTime(blockPartyLevel(cats.ambience), this.ctx.currentTime, 0.1);
     if (this.kitchenBus && this.kitchenPlaying) this.kitchenBus.gain.setTargetAtTime(kitchenLevel(cats.ambience, this.context), this.ctx.currentTime, 0.1);
+    if (this.porchBus && this.porchPlaying) this.porchBus.gain.setTargetAtTime(frontPorchLevel(cats.ambience), this.ctx.currentTime, 0.1);
     if (this.voiceChatBus) this.voiceChatBus.gain.setTargetAtTime(cats.playerVoice, this.ctx.currentTime, 0.05); // independent of settings.on / master volume, by design
   }
 
@@ -1626,6 +1646,69 @@ class Engine {
     });
   }
 
+
+  /* ---------- Front Porch / Stoop at Dusk: the calm menu-only contrast scene ----------
+   * Fully synthesized (no assets, no real radio music). Cicadas under low close talk,
+   * iced tea glasses, a screen door now and then, neighbours passing on the sidewalk
+   * and getting roasted from the stoop, and a radio in a window heard only as muffled
+   * between-stations warmth — tuning drift and static, never a track. Voices are
+   * deliberately wordless low babble/roast-shaped murmur (see PR): real words would
+   * fight the seat/bot voices, and the voice-clip system is for seats, not scenery. */
+  private syncFrontPorch() {
+    const want = this.settings.on && frontPorchWanted(this.settings, this.context) && this.unlocked;
+    if (want === this.porchPlaying) {
+      if (want && this.porchBus && this.ctx) this.porchBus.gain.setTargetAtTime(frontPorchLevel(normalizeCategoryVolumes(this.settings.volumes).ambience), this.ctx.currentTime, 0.1);
+      return;
+    }
+    if (this.porchPlaying) {
+      this.porchTimers.forEach((t) => window.clearTimeout(t)); this.porchTimers = [];
+      const nodes = this.porchNodes; this.porchNodes = [];
+      if (this.ctx && this.porchBus) this.porchBus.gain.setTargetAtTime(0, this.ctx.currentTime, 0.3);
+      window.setTimeout(() => nodes.forEach((n) => { try { n.stop(); } catch { /* */ } }), 1200);
+    }
+    this.porchPlaying = want;
+    if (!want || !this.ctx || !this.porchBus) return;
+    this.porchBus.gain.setTargetAtTime(frontPorchLevel(normalizeCategoryVolumes(this.settings.volumes).ambience), this.ctx.currentTime, 0.8);
+    this.buildFrontPorch();
+  }
+  private buildFrontPorch() {
+    const B = this.porchBus!;
+    const live = () => this.porchPlaying;
+    const every = (min: number, max: number, fn: (t: number) => void) => this.vEvery(min, max, fn, live, this.porchTimers);
+    // dusk air: a hush of evening room tone under everything
+    this.vNoise('lowpass', 260, 0.5, 0.03, 0, 0, B, this.porchNodes);
+    // cicadas: a faint high shimmer bed + pulsed chirp triples riding over it
+    this.vNoise('bandpass', 5600, 6, 0.006, 0.11, 0.6, B, this.porchNodes);
+    every(1.4, 2.8, (t) => { for (let i = 0; i < 3; i++) this.tone(t + i * 0.09, 5100 + Math.random() * 500, 0.045, 'sine', 0.0045, { dest: B }); });
+    // the radio in a window: muffled between-stations warmth only (never music)
+    this.vNoise('bandpass', 750, 0.6, 0.013, 0.07, 0.7, B, this.porchNodes);
+    every(17, 29, (t) => { this.tone(t, 235, 1.7, 'sawtooth', 0.0035, { glideTo: 138, filter: 420, dest: B }); this.vBurst(t + 0.4, 0.5, 'bandpass', 1900, 0.005, B); });
+    // iced tea glasses on the rail: sparse bright tinks, sometimes a stir
+    every(6, 11, (t) => { this.tone(t, 3120, 0.1, 'sine', 0.005, { dest: B }); this.tone(t + 0.08, 3980, 0.08, 'sine', 0.0035, { dest: B }); if (Math.random() < 0.35) this.tone(t + 0.3, 2650, 0.07, 'sine', 0.003, { dest: B }); });
+    // low close talk on the stoop: wordless murmur, calmer and sparser than the kitchen
+    every(8, 14, (t) => {
+      const base = 96 + Math.random() * 38;
+      const n = 4 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < n; i++) this.tone(t + i * (0.13 + Math.random() * 0.05), base * (0.9 + Math.random() * 0.28), 0.085, 'sawtooth', 0.006, { filter: 580, dest: B });
+    });
+    // a neighbour passes on the sidewalk and gets roasted from the stoop: boards,
+    // a tossed-off greeting from the street, then the stoop answers and laughs
+    every(21, 34, (t) => {
+      this.tone(t, 92, 0.09, 'sine', 0.014, { dest: B }); this.tone(t + 0.42, 88, 0.09, 'sine', 0.012, { dest: B });
+      const passer = 128 + Math.random() * 40;
+      for (let i = 0; i < 5; i++) this.tone(t + 0.8 + i * (0.12 + Math.random() * 0.04), passer * (0.9 + Math.random() * 0.3), 0.08, 'sawtooth', 0.0045, { filter: 500, dest: B });
+      const stoop = 102 + Math.random() * 30;
+      for (let i = 0; i < 4; i++) this.tone(t + 2.1 + i * 0.11, stoop * (0.95 + Math.random() * 0.25), 0.08, 'sawtooth', 0.007, { filter: 640, dest: B });
+      for (let i = 0; i < 4; i++) this.tone(t + 2.75 + i * 0.1, stoop * (1.55 - i * 0.15), 0.07, 'sawtooth', 0.005, { filter: 820, dest: B }); // the roast lands: a laugh
+    });
+    // the screen door: a hinge creak, a soft slam, the latch catching
+    every(19, 31, (t) => {
+      this.tone(t, 148, 0.5, 'sawtooth', 0.008, { glideTo: 92, filter: 380, dest: B });
+      this.vBurst(t + 0.65, 0.07, 'lowpass', 320, 0.04, B);
+      this.tone(t + 0.78, 1880, 0.06, 'sine', 0.004, { dest: B });
+    });
+  }
+
   /* ---------- venue ambience (Release 7): quiet procedural beds, one per venue (all generated here: no recordings) ---------- */
   /* Kitchen-Table (any-context ambience): own bus, restrained level in-game. */
   private kitchenBus: GainNode | null = null;
@@ -1641,6 +1724,13 @@ class Engine {
   private partyTimers: number[] = [];
   /** is the Block Party bed sounding right now (exposed for checks) */
   get blockPartyNow(): boolean { return this.partyPlaying; }
+  /* Front Porch (menu-only ambience): own bus, stored flag dormant in-game. */
+  private porchBus: GainNode | null = null;
+  private porchPlaying = false;
+  private porchNodes: { stop: () => void }[] = [];
+  private porchTimers: number[] = [];
+  /** is the Front Porch bed sounding right now (exposed for checks) */
+  get frontPorchNow(): boolean { return this.porchPlaying; }
   private venueBus: GainNode | null = null;
   private venueBedId: VenueBed = 'none';
   private venuePlaying: VenueBed = 'none';

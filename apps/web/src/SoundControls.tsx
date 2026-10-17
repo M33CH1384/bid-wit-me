@@ -134,6 +134,10 @@ export function SoundSheet({ allOff, onMuteAll, onClose }: { allOff: boolean; on
           <label className="sf-row"><span>Block Party<small className="sf-note"> · menu / celebration screens only</small></span>
             <button type="button" role="switch" aria-checked={!!s.blockParty} aria-label="Block Party ambience" className={`switch ${s.blockParty ? 'on' : ''}`} data-testid="block-party-switch" disabled={!s.on} onClick={() => sound.set({ blockParty: !s.blockParty })}><i /></button></label>
         )}
+        {s.soundContext === 'menu' && (
+          <label className="sf-row"><span>Front Porch<small className="sf-note"> · stoop at dusk, menu / celebration screens only</small></span>
+            <button type="button" role="switch" aria-checked={!!s.frontPorch} aria-label="Front Porch ambience" className={`switch ${s.frontPorch ? 'on' : ''}`} data-testid="front-porch-switch" disabled={!s.on} onClick={() => sound.set({ frontPorch: !s.frontPorch })}><i /></button></label>
+        )}
         <label className="sf-row"><span>Kitchen-Table Spades Night<small className="sf-note"> · quiet in game, voices stay on top</small></span>
           <button type="button" role="switch" aria-checked={!!s.kitchenTable} aria-label="Kitchen-Table Spades Night ambience" className={`switch ${s.kitchenTable ? 'on' : ''}`} data-testid="kitchen-table-switch" disabled={!s.on} onClick={() => sound.set({ kitchenTable: !s.kitchenTable })}><i /></button></label>
       </section>
@@ -208,6 +212,12 @@ export function SoundFields({ compact = false }: { compact?: boolean }) {
       <label className="sf-row">
         <span>Block Party<small className="sf-note"> · menu / celebration screens only</small></span>
         <button type="button" role="switch" aria-checked={!!s.blockParty} aria-label="Block Party ambience" className={`switch ${s.blockParty ? 'on' : ''}`} data-testid="block-party-switch" disabled={!s.on} onClick={() => sound.set({ blockParty: !s.blockParty })}>
+          <i />
+        </button>
+      </label>
+      <label className="sf-row">
+        <span>Front Porch<small className="sf-note"> · stoop at dusk, menu / celebration screens only</small></span>
+        <button type="button" role="switch" aria-checked={!!s.frontPorch} aria-label="Front Porch ambience" className={`switch ${s.frontPorch ? 'on' : ''}`} data-testid="front-porch-switch" disabled={!s.on} onClick={() => sound.set({ frontPorch: !s.frontPorch })}>
           <i />
         </button>
       </label>
