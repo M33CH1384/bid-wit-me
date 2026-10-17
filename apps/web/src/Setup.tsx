@@ -72,7 +72,7 @@ function useOnlineSeat(): string | null {
   return code;
 }
 
-const MODE_CRUMB: Record<ModeKey, string> = { joker: 'Team Game · Jokers', aceDown: 'Team Game · Ace Down', cutthroat4: 'Cutthroat · 4 Players', cutthroat3: 'Cutthroat · 3 Players' };
+const MODE_CRUMB: Record<ModeKey, string> = { joker: 'Team Game · Jokers', aceDown: 'Team Game · Ace Down', cutthroat4: 'Cutthroat', cutthroat3: 'Cutthroat · 3 Players' };
 
 /** Deck picker as real card thumbnails (founder menu rework): King of each deck, gold outline when picked. */
 export function DeckThumbs({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -140,7 +140,8 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
   const back = () => {
     const d = (history.state as { d?: number } | null)?.d ?? 0;
     if (d > 0) { history.back(); return; }
-    const prev = ORDER[Math.max(0, ORDER.indexOf(step) - 1)]!;
+    // Cutthroat has no branch step (Door 1 goes straight to Opponent): skip it on the in-place fallback.
+    const prev = step === 'opponent' && kind === 'cut' ? 'door' : ORDER[Math.max(0, ORDER.indexOf(step) - 1)]!;
     history.replaceState({ wiz: prev, path, kind, d: 0 }, '', '/');
     setDir('back');
     setWiz({ step: prev, path, kind });
@@ -182,12 +183,12 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
         <p className="wiz-stepno">Step 1 of 3</p>
         <div className="decision-cards">
           <DecisionCard testid="door-team" title="TEAM GAME" sub="2v2 — partners across from each other" emblem="PARTNERS" onPick={() => go('branch', path, 'team')} />
-          <DecisionCard testid="door-cutthroat" title="CUTTHROAT" sub="Every player for themselves" emblem="SOLO" onPick={() => go('branch', path, 'cut')} />
+          <DecisionCard testid="door-cutthroat" title="CUTTHROAT" sub="4 players — every player for themselves" emblem="SOLO" onPick={() => { set('mode', 'cutthroat4'); go('opponent', path, 'cut'); }} />
         </div>
       </>
     );
-  } else if (step === 'branch') {
-    body = kind === 'team' ? (
+  } else if (step === 'branch' && kind === 'team') {
+    body = (
       <>
         <p className="wiz-crumb">Team Game</p>
         <h2 className="wiz-title">Team Game — which kind?</h2>
@@ -197,23 +198,13 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
           <DecisionCard testid="mode-aceDown" title="ACE DOWN" sub="Ace Down — aces lead, partners" emblem="ACES LEAD" onPick={() => { set('mode', 'aceDown'); go('opponent'); }} />
         </div>
       </>
-    ) : (
-      <>
-        <p className="wiz-crumb">Cutthroat</p>
-        <h2 className="wiz-title">Cutthroat — how many?</h2>
-        <p className="wiz-stepno">Step 2 of 3</p>
-        <div className="decision-cards">
-          <DecisionCard testid="mode-cutthroat4" title="4 PLAYERS" sub="Four-handed, every player alone" emblem="4P-SOLO" onPick={() => { set('mode', 'cutthroat4'); go('opponent'); }} />
-          <DecisionCard testid="mode-cutthroat3" title="3 PLAYERS" sub="Three-handed, every player alone" emblem="3P-SOLO" onPick={() => { set('mode', 'cutthroat3'); go('opponent'); }} />
-        </div>
-      </>
     );
-  } else if (step === 'opponent') {
+  } else if (step === 'opponent' || step === 'branch') {
     body = (
       <>
         <p className="wiz-crumb">{MODE_CRUMB[s.mode]}</p>
         <h2 className="wiz-title">Who are you playing?</h2>
-        <p className="wiz-stepno">Step 3 of 3</p>
+        <p className="wiz-stepno">{kind === 'cut' ? 'Step 2 of 2' : 'Step 3 of 3'}</p>
         <div className="decision-cards">
           <DecisionCard testid="play-online" title="PLAY ONLINE" sub="Open tables, create or join with a code" emblem="TABLES" onPick={() => go('table', 'online')} />
           <DecisionCard testid="play-bots" title="VS BOTS" sub="Solo table — no seating step" emblem="SOLO TABLE" onPick={() => go('table', 'bots')} />
@@ -250,7 +241,7 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
     );
     body = (
       <>
-        <p className="wiz-crumb">{MODE_CRUMB[s.mode]} · {path === 'online' ? 'Online' : 'Vs Bots'}</p>
+        <p className="wiz-crumb">{MODE_CRUMB[s.mode]} · {path === 'online' ? 'Play Online' : 'Vs Bots'}</p>
         <h2 className="wiz-title">Your Table<small>{mode.title}</small></h2>
         {path === 'bots' ? (
           <div className="ess">
