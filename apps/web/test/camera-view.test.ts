@@ -10,6 +10,14 @@ describe('camera view', () => {
     expect(si.pos[1]).toBeLessThan(st.pos[1]);
     expect(si.fov).toBeGreaterThan(st.fov); expect(si.look[2]).toBeGreaterThan(st.look[2]);
   });
+  it('sitting is low and over the table: lower + closer than the first cut, standing untouched', () => {
+    const st = cameraFor(390 / 844, false, 'standing'); const si = cameraFor(390 / 844, false, 'sitting');
+    expect(st.pos).toEqual([0, 4.5, 3.75]); // standing unchanged
+    expect(si.pos[1]).toBeLessThan(2.1); // lower (was 2.61)
+    expect(si.pos[2]).toBeLessThan(3.1); // closer over the felt (was 3.5625)
+    const dist = (c: typeof si) => Math.hypot(c.pos[1] - c.look[1], c.pos[2] - c.look[2]);
+    expect(dist(si)).toBeLessThan(dist(st)); // nearer the trick cards lying on the felt
+  });
   it('sitting applies in short landscape too', () => {
     const st = cameraFor(844 / 390, true, 'standing'); const si = cameraFor(844 / 390, true, 'sitting');
     expect(si.pos[1]).toBeLessThan(st.pos[1]); expect(si.fov).toBeGreaterThan(st.fov);
