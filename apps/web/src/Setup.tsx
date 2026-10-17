@@ -11,6 +11,7 @@ import { isMusicLink } from '@spades/protocol';
 import { loadName, saveName } from './online/identity';
 import { navigate } from './online/nav';
 import { DECKS } from './decks';
+import { VENUE_DEFS, VENUE_LIST, savePendingVenue, type VenueChoice } from './venues';
 import { AccountEntry } from './account/AccountUI';
 import { SocialButton } from './social/Social';
 import { OpenTables } from './social/OpenTables';
@@ -94,6 +95,23 @@ function DecisionCard({ testid, title, sub, emblem, onPick }: { testid: string; 
       <span className="dc-main"><b>{title}</b><small>{sub}</small></span>
       <span className="dc-emblem">{emblem}</span>
     </button>
+  );
+}
+
+/**
+ * Venue choice in Table essentials (founder: it must be pickable per game in setup,
+ * not only buried in the Settings sheet). Feeds settings.venue unchanged: an explicit
+ * pick wins in sessionRoom, Random keeps the per-game roll.
+ */
+export function VenueSetupRow({ value, onChange }: { value: VenueChoice; onChange: (v: VenueChoice) => void }) {
+  return (
+    <div className="ess-row stack" data-testid="venue-row">
+      <span className="ess-label">Venue<small>{value === 'random' ? 'A different spot every game' : VENUE_DEFS[value].blurb}</small></span>
+      <select data-testid="venue-select-setup" aria-label="Venue" value={value} onChange={(e) => onChange(e.target.value as VenueChoice)}>
+        {VENUE_LIST.map((v) => <option key={v.id} value={v.id}>{v.emoji} {v.name}{v.id === 'classic' ? ' (default)' : ''}</option>)}
+        <option value="random">🎲 Random — a different spot every game</option>
+      </select>
+    </div>
   );
 }
 
@@ -255,6 +273,7 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
             </div>
             {deck}
             <div className="ess-row stack"><span className="ess-label">Pick your deck — tap for the full card</span><DeckThumbs value={s.deck} onChange={(v) => set('deck', v)} /></div>
+            <VenueSetupRow value={s.venue ?? 'classic'} onChange={(v) => set('venue', v)} />
             <button type="button" className="quiet-row" data-testid="house-rules" onClick={() => setMore(true)}><span>HOUSE RULES</span><span className="value-chip">Standard</span><i className="corner-tab" aria-hidden /></button>
             {cutRules}
             {summary}
@@ -262,7 +281,7 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
             <div className="sticky-primary"><button type="button" className="primary big go" data-testid="start-bots" onClick={onStart}>DEAL ME IN</button><p className="sticky-note">No seating step vs bots — bots fill the table</p></div>
           </div>
         ) : (
-          <OnlineEssentials settings={s} deck={deck} deckThumbs={<DeckThumbs value={s.deck} onChange={(v) => set('deck', v)} />} onHouseRules={() => setMore(true)} tipsRow={<>{summary}{tipsRow}</>} />
+          <OnlineEssentials settings={s} venue={s.venue ?? 'classic'} onVenue={(v) => set('venue', v)} deck={deck} deckThumbs={<DeckThumbs value={s.deck} onChange={(v) => set('deck', v)} />} onHouseRules={() => setMore(true)} tipsRow={<>{summary}{tipsRow}</>} />
         )}
       </>
     );
@@ -302,7 +321,7 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
   );
 }
 
-function OnlineEssentials({ settings, deck, deckThumbs, onHouseRules, tipsRow }: { settings: Settings; deck: ReactNode; deckThumbs: ReactNode; onHouseRules: () => void; tipsRow: ReactNode }) {
+function OnlineEssentials({ settings, venue, onVenue, deck, deckThumbs, onHouseRules, tipsRow }: { settings: Settings; venue: VenueChoice; onVenue: (v: VenueChoice) => void; deck: ReactNode; deckThumbs: ReactNode; onHouseRules: () => void; tipsRow: ReactNode }) {
   const [name, setName] = useState(loadName);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
@@ -316,6 +335,7 @@ function OnlineEssentials({ settings, deck, deckThumbs, onHouseRules, tipsRow }:
     setBusy(true); setErr(null);
     try {
       const c = await createTable(serverUrl());
+      savePendingVenue(c, venue);
       savePendingMusic(c, music?.mode === 'link' ? { ...music, url: music.url.trim() } : music);
       saveName(name.trim());
       sessionStorage.setItem(`bwm.created.${c}`, '1');
@@ -343,6 +363,7 @@ function OnlineEssentials({ settings, deck, deckThumbs, onHouseRules, tipsRow }:
       </label>
       {deck}
       <div className="ess-row stack"><span className="ess-label">Pick your deck — tap for the full card</span>{deckThumbs}</div>
+      <VenueSetupRow value={venue} onChange={onVenue} />
       {tipsRow}
       <SetupMusicPicker value={music} onChange={setMusic} />
       <button type="button" className="quiet-row" data-testid="house-rules" onClick={onHouseRules}><span>HOUSE RULES</span><span className="value-chip">Standard</span><i className="corner-tab" aria-hidden /></button>

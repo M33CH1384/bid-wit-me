@@ -12,6 +12,7 @@ import Lobby from './Lobby';
 import { codeFromPath, navigate } from './nav';
 import OnlineTable from './OnlineTable';
 import { preloadTable } from '../three/preload';
+import { takePendingVenue } from '../venues';
 import { TableLoading } from '../TableLoading';
 import { useConn } from './useOnline';
 import { STATS_OFF_LABEL, social } from '../social/store';
@@ -166,6 +167,9 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
       const chosen = room.rules.turnTimerSec;
       const keepTimer = chosen.bid !== base.turnTimerSec.bid || chosen.play !== base.turnTimerSec.play;
       conn.send({ t: 'config', rules: keepTimer ? { ...base, turnTimerSec: { ...chosen } } : base, botLevel: settings.botLevel });
+      // Venue picked on the setup screen: the host's room takes it before the game starts.
+      const pendingVenue = takePendingVenue(code);
+      if (pendingVenue && pendingVenue !== room.venue) conn.send({ t: 'venue', venue: pendingVenue });
     }
     // Release 9 invites deep-link a seat (/t/CODE?seat=N): take it if it's still open (a bot's seat mid-game)
     const q = new URLSearchParams(location.search);

@@ -6,7 +6,7 @@
  * jpg backdrop + a 256×128 .hdr for lighting in High quality), light colours, a few procedural props and a quiet
  * procedural ambient sound bed (audio.ts → venueBed). Sources are in CREDITS.md.
  */
-import { type VenueChoice, type VenueId, VENUES, rollVenue } from '@spades/protocol';
+import { isVenueChoice, type VenueChoice, type VenueId, VENUES, rollVenue } from '@spades/protocol';
 
 export type { VenueChoice, VenueId };
 export { VENUES };
@@ -88,4 +88,18 @@ export function venueAssetUrls(id: VenueId, quality: 'high' | 'low'): { bg: stri
     floor: d.floorTex ? `/assets/venues/tex/${d.floorTex}_512.jpg` : null,
     rail: rt ? `/assets/venues/tex/${rt}_512.jpg` : null,
   };
+}
+
+/** Venue picked on the online setup screen, carried to the table it creates (the host's
+ * client applies it once in the lobby, like pending music). One-shot: taking clears it. */
+export function savePendingVenue(code: string, venue: VenueChoice): void {
+  try { sessionStorage.setItem(`bwm.pendingVenue.${code}`, venue); } catch { /* ignore */ }
+}
+export function takePendingVenue(code: string): VenueChoice | null {
+  try {
+    const k = `bwm.pendingVenue.${code}`;
+    const v = sessionStorage.getItem(k);
+    if (v !== null) sessionStorage.removeItem(k);
+    return isVenueChoice(v) ? v : null;
+  } catch { return null; }
 }
