@@ -69,6 +69,13 @@ export function pickVariant(count: number, last: number, rnd: () => number = Mat
   return pick;
 }
 
+/** Voice line gain, applied EXACTLY once (in playVoice): caller gain (talk-prefs voiceVolume x 0.9)
+ *  times the AI-voice category volume. Callers must not pre-multiply the category, and the voice bus
+ *  must not apply it again — that was the double-count to avoid. */
+export function voiceLineGain(callerGain: number, volumes: Partial<CategoryVolumes> | undefined): number {
+  return callerGain * normalizeCategoryVolumes(volumes).aiVoice;
+}
+
 /** Per-player local voice mute (never signalled; card SFX for that seat are unaffected). */
 export function isVoiceMuted(muted: Record<string, true> | undefined, playerId: string): boolean { return !!muted?.[playerId]; }
 export function withVoiceMuted(muted: Record<string, true> | undefined, playerId: string, mute: boolean): Record<string, true> {

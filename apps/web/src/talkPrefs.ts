@@ -62,13 +62,14 @@ if (typeof speechSynthesis !== 'undefined') { loadVoices(); speechSynthesis.addE
  * Speak a bot line: its recorded clip (persona + line id → manifest), else the browser's Web Speech voice with the
  * persona's pitch/rate. No-op unless Bot voices is on and sound is on.
  */
-export function speakBot(name: string, text: string, persona?: string, line?: string, bid?: number): void {
+export function speakBot(name: string, text: string, persona?: string, line?: string, bid?: number, seat?: import('./spatial').SeatPos, playerCount = 4): void {
   if (!prefs.voices) return;
   const snd = sound.settings;
   if (!snd.on || snd.volume <= 0) return;
   const per = (persona && persona in PERSONAS ? persona : personaForName(name)) as PersonaId;
   // recorded clips go through the game's audio graph (master volume / mute already applied there)
-  void playClip(per, name, rawLine(line), prefs.voiceVolume * 0.9, bid).then((played) => { if (!played) webSpeech(name, text); });
+  if (sound.voiceMuted(name)) return; // per-player mute: the chat text still shows, the voice stays silent
+  void playClip(per, name, rawLine(line), prefs.voiceVolume * 0.9, bid, seat, playerCount).then((played) => { if (!played) webSpeech(name, text); });
 }
 
 function webSpeech(name: string, text: string): void {

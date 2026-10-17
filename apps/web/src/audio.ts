@@ -11,7 +11,7 @@
  * - Settings (on/off, volume, ambience) persist in localStorage.
  */
 import { useSyncExternalStore } from 'react';
-import { Spatializer, irSpec, normalizeCategoryVolumes, pickPanningModel, pickVariant, seatCompensation, seatPoint, sessionRoom, surfaceHz, type RoomStyle, type SeatPos } from './spatial';
+import { Spatializer, irSpec, isVoiceMuted, normalizeCategoryVolumes, pickPanningModel, pickVariant, seatCompensation, seatPoint, sessionRoom, surfaceHz, voiceLineGain, withVoiceMuted, type RoomStyle, type SeatPos } from './spatial';
 import { audioElementPool } from './audioPool';
 import { audioContextAction, settleAudio, soundRestorePending } from './audioSession';
 
@@ -539,7 +539,7 @@ class Engine {
   audioContext(): AudioContext | null { this.ensure(); return this.ctx; }
   /** Play one bot line (cuts off the previous one, like one person talking). Silent when sound is off / not unlocked yet. */
   /** play a voice clip (optionally a [offsetSec, durationSec] slice of a sprite) */
-  playVoice(buf: AudioBuffer, gain: number, slice?: [number, number]): boolean {
+  playVoice(buf: AudioBuffer, gain: number, slice?: [number, number], seat?: SeatPos, playerCount = 4): boolean {
     if (!this.settings.on || !this.unlocked) return false;
     if (!this.atTable) { this.blocked.voice = (this.blocked.voice ?? 0) + 1; return false; }
     this.ensure();
@@ -547,9 +547,24 @@ class Engine {
     if (!c || c.state !== 'running' || !this.voiceDuck) return false;
     this.stopVoice();
     const src = c.createBufferSource(); src.buffer = buf;
-    const g = c.createGain(); g.gain.value = gain;
-    src.connect(g).connect(this.voiceDuck);
-    src.onended = () => { if (this.voiceSrc?.src === src) this.voiceSrc = null; };
+    // Category volume applied once, here (voiceLineGain); callers pass only their own gain.
+    const g = c.createGain(); g.gain.value = voiceLineGain(gain, this.settings.volumes);
+    let release: (() => void) | undefined;
+    if (seat && this.settings.spatial !== false) {
+      // Voices: direction ONLY — full distance compensation, so a far character is never quieter.
+      const sp = this.ensureSpatializer();
+      sp.applyListener(c as never, { pos: [this.listenerPoint.x, this.listenerPoint.y, this.listenerPoint.z], look: [this.listenerLook.x, this.listenerLook.y, this.listenerLook.z] });
+      const panner = sp.seatPanner(c as never, seat, playerCount);
+      if (panner) {
+        const comp = c.createGain(); comp.gain.value = seatCompensation(this.listenerPoint, seat, playerCount);
+        comp.connect(panner as unknown as AudioNode); (panner as unknown as AudioNode).connect(this.voiceDuck);
+        src.connect(g).connect(comp);
+        this.voiceProbe = { seat, gain: comp.gain.value, model: (panner as unknown as { panningModel: string }).panningModel };
+        if (typeof window !== 'undefined') (window as unknown as { __bwmVoice?: unknown }).__bwmVoice = this.voiceProbe;
+        release = () => sp.release();
+      } else src.connect(g).connect(this.voiceDuck);
+    } else src.connect(g).connect(this.voiceDuck);
+    src.onended = () => { release?.(); if (this.voiceSrc?.src === src) this.voiceSrc = null; };
     if (slice) src.start(0, slice[0], slice[1]); else src.start();
     this.voiceSrc = { src, gain: g };
     this.played.voice = (this.played.voice ?? 0) + 1;
@@ -664,13 +679,9 @@ class Engine {
   private routeSfx(event: string, seat?: SeatPos, playerCount = 4): { node: AudioNode; release?: () => void } {
     const bus = this.sfxBus!;
     if (!seat || this.settings.spatial === false || !this.ctx) return { node: bus };
-    const quality = this.settings.quality ?? 'balanced';
-    const isPhone = typeof window !== 'undefined' && Math.min(window.innerWidth || 999, window.innerHeight || 999) < 600;
-    const model = pickPanningModel(typeof PannerNode !== 'undefined', isPhone);
-    const key = `${quality}:${model}`;
-    if (!this.spatializer || this.spatializerKey !== key) { this.spatializer = new Spatializer(quality, true, model); this.spatializerKey = key; }
-    this.spatializer.applyListener(this.ctx as never, { pos: [this.listenerPoint.x, this.listenerPoint.y, this.listenerPoint.z], look: [this.listenerLook.x, this.listenerLook.y, this.listenerLook.z] });
-    const panner = this.spatializer.seatPanner(this.ctx as never, seat, playerCount);
+    const sp = this.ensureSpatializer();
+    sp.applyListener(this.ctx as never, { pos: [this.listenerPoint.x, this.listenerPoint.y, this.listenerPoint.z], look: [this.listenerLook.x, this.listenerLook.y, this.listenerLook.z] });
+    const panner = sp.seatPanner(this.ctx as never, seat, playerCount);
     if (!panner) return { node: bus };
     (panner as unknown as AudioNode).connect(bus);
     // Distance compensation: far seats get a level boost (capped) so their slams keep their punch.
@@ -678,11 +689,23 @@ class Engine {
     const compNode = this.ctx.createGain(); compNode.gain.value = comp;
     compNode.connect(panner as unknown as AudioNode);
     const pt = seatPoint(seat, playerCount);
-    this.spatialProbe.push({ event, seat, ...pt, model, gain: comp });
+    this.spatialProbe.push({ event, seat, ...pt, model: this.spatializerModel, gain: comp });
     if (this.spatialProbe.length > 64) this.spatialProbe.shift();
-    const sp = this.spatializer;
     return { node: compNode, release: () => sp.release() };
   }
+
+  private spatializerModel: 'HRTF' | 'equalpower' = 'equalpower';
+  private ensureSpatializer(): Spatializer {
+    const quality = this.settings.quality ?? 'balanced';
+    const isPhone = typeof window !== 'undefined' && Math.min(window.innerWidth || 999, window.innerHeight || 999) < 600;
+    const model = pickPanningModel(typeof PannerNode !== 'undefined', isPhone);
+    this.spatializerModel = model;
+    const key = `${quality}:${model}`;
+    if (!this.spatializer || this.spatializerKey !== key) { this.spatializer = new Spatializer(quality, true, model); this.spatializerKey = key; }
+    return this.spatializer;
+  }
+  /** Phase 5 probe: last spatialised voice (seat, compensation gain, model). */
+  voiceProbe: { seat: string; gain: number; model: string } | null = null;
 
   cardSmack(intensity: number, seat?: SeatPos, playerCount = 4) {
     if (!this.settings.on || !this.unlocked || !this.atTable) return;
@@ -1275,6 +1298,13 @@ class Engine {
     for (let ch = 0; ch < 2; ch++) { const d = buf.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6); }
     return buf;
   }
+  /** Per-player local voice mute (persisted in sound settings; that seat's card SFX are unaffected). */
+  setVoiceMuted(playerId: string, mute: boolean) {
+    this.settings = { ...this.settings, mutedVoices: withVoiceMuted(this.settings.mutedVoices, playerId, mute) };
+    try { localStorage.setItem(KEY, JSON.stringify(this.settings)); } catch { /* ignore */ }
+    this.emit();
+  }
+  voiceMuted(playerId: string): boolean { return isVoiceMuted(this.settings.mutedVoices, playerId); }
   setVenueBed(id: VenueBed) { this.venueBedId = id; this.syncVenue(); }
   private syncVenue() {
     const want = this.settings.on && this.settings.venueSound !== false && this.unlocked && this.venueBedId !== 'none' ? this.venueBedId : 'none';
