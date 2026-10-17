@@ -547,9 +547,14 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     offlineTalk.sink = (l) => {
       // Voice Phase 3: a catalog line plays with its own text; anything that misses is the canned line, as before.
       const tp = talkStore.get();
-      void deliverBotLine(l, { aiVoices: tp.aiVoices, voices: tp.voices, soundOn: sound.settings.on && sound.settings.volume > 0, gain: tp.voiceVolume * 0.9 },
+      const seatIx = names.findIndex((nm) => nm === l.name);
+      const seatPos = seatIx >= 0 ? pos[seatIx] : undefined;
+      const muted = sound.voiceMuted(l.name);
+      void deliverBotLine(l, { aiVoices: tp.aiVoices && !muted, voices: tp.voices, soundOn: sound.settings.on && sound.settings.volume > 0, gain: tp.voiceVolume * 0.9 },
         (text) => localChat.push(l.name, text, false, 0, true),
-        () => speakBot(l.name, l.text, l.persona, l.line, l.bid));
+        muted ? () => {} : () => speakBot(l.name, l.text, l.persona, l.line, l.bid, seatPos, n),
+        undefined,
+        (b, gain) => sound.playVoice(b, gain, undefined, seatPos, n));
       if (l.reveal) fx.emit('hustled', { text: `${l.name} was never new` });
     };
     return () => { offlineTalk.sink = null; offlineTalk.table = null; };
@@ -1042,6 +1047,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const roomStyle = sessionRoom({ explicit: sound.get().soundscape, visualVenue: !online && settings.venue !== 'random' ? settings.venue : undefined, seed, onlineVenue: online?.venue });
   const venue: VenueId = roomStyle.venue as VenueId;
   const [roomName, setRoomName] = useState<string | undefined>(undefined);
+  const [, setMuteTick] = useState(0);
   useEffect(() => { const style = sound.applySoundscape(seed, online?.venue, !online && settings.venue !== 'random' ? settings.venue : undefined); setRoomName(style.name); return () => sound.setVenueBed('none'); }, [seed]); // eslint-disable-line react-hooks/exhaustive-deps
   // nuke watchdog: the blast is normally cued by the second Joker's 3D landing; on a stalled renderer (Safari compiling
   // shaders, a backgrounded tab, very slow frames) that landing can come late or never — so once a nuked trick is on
@@ -1348,6 +1354,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
                 <button type="button" role="menuitem" data-testid="scorepad-button" onClick={() => { setShowPad(true); setMenuOpen(false); }}>📋 Score pad &amp; house rules</button>
                 <button type="button" role="menuitem" onClick={() => onQuality(settings.quality === 'high' ? 'low' : 'high')}>🎨 Graphics: {settings.quality === 'high' ? 'High' : 'Low'}</button>
                 <button type="button" role="menuitem" data-testid="view-toggle" onClick={() => onView?.(settings.view === 'sitting' ? 'standing' : 'sitting')}>{settings.view === 'sitting' ? '🪑' : '🧍'} View: {settings.view === 'sitting' ? 'Sitting' : 'Standing'}</button>
+                {[1, 2, 3].map((seat) => seat < names.length ? <button key={seat} type="button" role="menuitem" data-testid={`voice-mute-${seat}`} aria-pressed={sound.voiceMuted(names[seat]!)} onClick={() => { sound.setVoiceMuted(names[seat]!, !sound.voiceMuted(names[seat]!)); setMuteTick((t) => t + 1); }}>{sound.voiceMuted(names[seat]!) ? '🔇' : '🔊'} {names[seat]} voice: {sound.voiceMuted(names[seat]!) ? 'muted' : 'on'}</button> : null)}
                 <div className="menu-social"><SocialButton className="compact" /></div>
                 <button type="button" role="menuitem" className="danger" data-testid="menu-leave" onPointerDown={(e) => { e.currentTarget.setPointerCapture?.(e.pointerId); runLeaveMenu(e, 'leave'); }} onPointerUp={(e) => runLeaveMenu(e, 'leave')} onClick={(e) => runLeaveMenu(e, 'leave')}>🚪 Leave table</button>
               </div>

@@ -66,13 +66,13 @@ export function preloadVoice(persona: PersonaId, name: string): void {
  * Play the recorded clip for this line. Resolves true when a clip played (or is playing), false when there's no clip
  * (the caller falls back to Web Speech). A sprite that isn't decoded yet still plays if it arrives within 1.5 s.
  */
-export async function playClip(persona: PersonaId, name: string, raw: string | undefined, gain: number, bid?: number): Promise<boolean> {
+export async function playClip(persona: PersonaId, name: string, raw: string | undefined, gain: number, bid?: number, seat?: import('../spatial').SeatPos, playerCount = 4): Promise<boolean> {
   if (!raw) return false;
   const t0 = performance.now();
   const sp = await load(voiceFor(persona, name).key);
   const at = sp && ((bid !== undefined ? sp.clips[`${raw}#${bid}`] : undefined) ?? sp.clips[raw]);
   if (!sp?.buf || !at) return false;
   if (performance.now() - t0 > 1500) return true; // too late to still fit the moment: stay quiet
-  sound.playVoice(sp.buf, gain, [at[0] / 1000, at[1] / 1000]);
+  sound.playVoice(sp.buf, gain, [at[0] / 1000, at[1] / 1000], seat, playerCount);
   return true;
 }
