@@ -11,7 +11,7 @@
  * - Settings (on/off, volume, ambience) persist in localStorage.
  */
 import { useSyncExternalStore } from 'react';
-import { normalizeCategoryVolumes } from './spatial';
+import { Spatializer, normalizeCategoryVolumes, pickPanningModel, pickVariant, seatPoint, type SeatPos } from './spatial';
 import { audioElementPool } from './audioPool';
 import { audioContextAction, settleAudio, soundRestorePending } from './audioSession';
 
@@ -638,7 +638,33 @@ class Engine {
 
   /* ---------- playback ---------- */
   /** Card landing scaled by slam intensity 0..1: a soft tap for a gentle drop, a punchy smack + table thud for a flick. */
-  cardSmack(intensity: number) {
+  /** Phase 3 test probe: every spatialised gameplay one-shot (seat + world point + model). */
+  spatialProbe: { event: string; seat: string; x: number; y: number; z: number; model: string }[] = [];
+  private lastVariant = new Map<string, number>();
+  private spatializer: Spatializer | null = null;
+  private spatializerKey = '';
+  /** Route a one-shot through a seat panner (Phase 3). Spatial off / no seat / cap hit = the plain
+   *  sfx bus, exactly Phase 2 behaviour. Trigger timing is untouched: this only chooses the node
+   *  the already-scheduled source connects to (#169). */
+  private routeSfx(event: string, seat?: SeatPos, playerCount = 4): { node: AudioNode; release?: () => void } {
+    const bus = this.sfxBus!;
+    if (!seat || this.settings.spatial === false || !this.ctx) return { node: bus };
+    const quality = this.settings.quality ?? 'balanced';
+    const isPhone = typeof window !== 'undefined' && Math.min(window.innerWidth || 999, window.innerHeight || 999) < 600;
+    const model = pickPanningModel(typeof PannerNode !== 'undefined', isPhone);
+    const key = `${quality}:${model}`;
+    if (!this.spatializer || this.spatializerKey !== key) { this.spatializer = new Spatializer(quality, true, model); this.spatializerKey = key; }
+    const panner = this.spatializer.seatPanner(this.ctx as never, seat, playerCount);
+    if (!panner) return { node: bus };
+    (panner as unknown as AudioNode).connect(bus);
+    const pt = seatPoint(seat, playerCount);
+    this.spatialProbe.push({ event, seat, ...pt, model });
+    if (this.spatialProbe.length > 64) this.spatialProbe.shift();
+    const sp = this.spatializer;
+    return { node: panner as unknown as AudioNode, release: () => sp.release() };
+  }
+
+  cardSmack(intensity: number, seat?: SeatPos, playerCount = 4) {
     if (!this.settings.on || !this.unlocked || !this.atTable) return;
     this.ensure();
     const c = this.ctx;
@@ -648,12 +674,12 @@ class Engine {
     this.played.smack = (this.played.smack ?? 0) + 1;
     this.lastSmack = s;
     const t = c.currentTime;
-    this.sample('play', t, s.gain, s.rate);
-    if (s.thud > 0) this.thud(t + 0.005, s.thud);
+    this.sample('play', t, s.gain, s.rate, undefined, seat, playerCount);
+    if (s.thud > 0) this.thud(t + 0.005, s.thud); // thud stays centred: it is the table, not the seat
   }
   lastSmack: SmackSound | null = null;
 
-  play(name: Sfx, opts: { delay?: number; gain?: number; dur?: number } = {}) {
+  play(name: Sfx, opts: { delay?: number; gain?: number; dur?: number; seat?: SeatPos; playerCount?: number } = {}) {
     if (!this.settings.on || !this.unlocked) return;
     if (!this.atTable && !Engine.UI_SFX.has(name)) { this.blocked[name] = (this.blocked[name] ?? 0) + 1; return; }
     this.ensure();
@@ -670,11 +696,11 @@ class Engine {
     if (duck) this.duckVoice(duck, t);
     switch (name) {
       case 'shuffle': return this.sample('shuffle', t, 0.75 * g, 1, Math.max(0.3, opts.dur ?? 1.6));
-      case 'deal': return this.sample('deal', t, 0.26 * g, 1.2 + Math.random() * 0.25, 0.3);
-      case 'play': return this.sample('play', t, 0.9 * g, 0.95 + Math.random() * 0.12);
+      case 'deal': return this.sample('deal', t, 0.26 * g, 1.2 + Math.random() * 0.25, 0.3, opts.seat, opts.playerCount);
+      case 'play': return this.sample('play', t, 0.9 * g, 0.95 + Math.random() * 0.12, undefined, opts.seat, opts.playerCount);
       case 'tap': return this.sample('tap', t, 0.5 * g, 1.1);
       case 'flip': this.sample('deal', t, 0.32 * g, 1.55); this.sample('deal', t + 0.07, 0.22 * g, 1.75); return this.whoosh(t, 0.06 * g);
-      case 'sweep': this.sample('sweep', t, 0.55 * g, 1.05); return this.whoosh(t, 0.18 * g);
+      case 'sweep': this.sample('sweep', t, 0.55 * g, 1.05, undefined, opts.seat, opts.playerCount); return this.whoosh(t, 0.18 * g);
       case 'bid': return this.sample('bid', t, 0.9 * g, 1);
       case 'bidSoft': return this.sample('bid', t, 0.35 * g, 1.15);
       case 'pop': return this.sample('pop', t, 0.45 * g, 1.2);
@@ -710,13 +736,17 @@ class Engine {
     }
   }
 
-  private sample(key: string, t: number, gain: number, rate = 1, maxDur?: number) {
+  private sample(key: string, t: number, gain: number, rate = 1, maxDur?: number, seat?: SeatPos, playerCount = 4) {
     const c = this.ctx!; const list = FILES[key]!;
-    const buf = this.buffers.get(list[Math.floor(Math.random() * list.length)]!);
+    const vi = pickVariant(list.length, this.lastVariant.get(key) ?? -1);
+    this.lastVariant.set(key, vi);
+    const buf = this.buffers.get(list[vi]!);
     if (!buf) return;
     const src = c.createBufferSource(); src.buffer = buf; src.playbackRate.value = rate;
     const g = c.createGain(); g.gain.value = gain;
-    src.connect(g).connect(this.sfxBus!);
+    const route = this.routeSfx(key, seat, playerCount);
+    src.connect(g).connect(route.node);
+    if (route.release) src.onended = () => route.release!();
     src.start(t);
     if (maxDur) { g.gain.setValueAtTime(gain, t + Math.max(0, maxDur - 0.18)); g.gain.linearRampToValueAtTime(0.0001, t + maxDur); src.stop(t + maxDur + 0.05); }
   }

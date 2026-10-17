@@ -54,6 +54,8 @@ interface Props {
   sfxStart?: Sfx;
   /** Sounds when this card lands on its current target (e.g. play / cut). Fires once per value. */
   sfxLand?: string; // comma-separated Sfx names, e.g. 'play,cut'
+  /** Phase 3: seat this card's sounds come from (spatialised play/slam/deal/collect). */
+  spatialSeat?: import('./layout').SeatPos; spatialN?: number;
   /** how the nuke's blast treats this card: table cards are blown outward; hand cards only in Full Nuke */
   blast?: 'table' | 'hand';
   /** Deal flight: stay invisible until this card leaves the deck, so the fan does not show up early. */
@@ -92,7 +94,7 @@ export function createLitCardMaterial(map: Texture, quality: 'high' | 'low', sat
   return saturate ? withSaturation(m) : m;
 }
 
-function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, raise = 0, roll = 0, order = 0, dim, glow, castShadow = true, quality, onTap, cardId = null, name, sfxStart, sfxLand, blast = 'table', holdUntilMove = false, lit = true, slam }: Props) {
+function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, raise = 0, roll = 0, order = 0, dim, glow, castShadow = true, quality, onTap, cardId = null, name, sfxStart, sfxLand, spatialSeat, spatialN = 4, blast = 'table', holdUntilMove = false, lit = true, slam }: Props) {
   const slamNow = useRef(slam);
   const postLand = useRef(0);
   slamNow.current = slam;
@@ -478,7 +480,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
         ((w.__bwmFly ??= {})[cardId] ??= []).push({ t: 0, x: ((v.x + 1) / 2) * viewSize.width, y: ((1 - v.y) / 2) * viewSize.height });
       }
       const st = sfx.current.sfxStart;
-      if (st && st !== s.firedStart) { s.firedStart = st; if (moving) sound.play(st); }
+      if (st && st !== s.firedStart) { s.firedStart = st; if (moving) sound.play(st, spatialSeat ? { seat: spatialSeat, playerCount: spatialN } : {}); }
     }
     s.t = Math.min(1, s.t + dt / duration);
     const e = motion === 'glide' ? 1 - Math.pow(1 - Math.pow(s.t, 1.4), 3) : (motion === 'flight' ? easeInOut : liftEase)(s.t);
@@ -511,8 +513,8 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
         s.firedLand = land;
         const sl2 = slamNow.current;
         land.split(',').forEach((c, i) => {
-          if (c === 'play' && sl2 && sl2.intensity >= 0) { sound.cardSmack(sl2.intensity); return; }
-          fireCue(c, i ? 0.02 : 0);
+          if (c === 'play' && sl2 && sl2.intensity >= 0) { sound.cardSmack(sl2.intensity, spatialSeat, spatialN); return; }
+          fireCue(c, i ? 0.02 : 0, spatialSeat, spatialN);
         });
         if (!fx.reduced && !fx.osReducedMotion) {
           if (land.includes('runSlam')) fx.shake = { start: performance.now(), ...PILE_THUMP };

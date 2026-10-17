@@ -564,7 +564,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   if (held.current.handNo !== handNo) held.current = { handNo, cards: new Set(), slots: new Map(), count: 0, seen: new Set() };
   const pendingHold = useRef<Held>(held.current);
 
-  type Item = { slam?: import('../slam').SlamFeel; key: string; card: Card | null; cardId?: string | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: ((cardId: string) => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide' | 'glide'; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; public?: boolean; holdUntilMove?: boolean };
+  type Item = { spatialSeat?: SeatPos; spatialN?: number; slam?: import('../slam').SlamFeel; key: string; card: Card | null; cardId?: string | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: ((cardId: string) => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide' | 'glide'; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; public?: boolean; holdUntilMove?: boolean };
   const items: Item[] = [];
   const dealDelay = (slot: number, seat: number) => seatDealDelay(tl, n, slot, seat, dealer);
 
@@ -574,7 +574,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     const w = t.winner!;
     const k = pileCount[w]!++;
     t.plays.forEach((pl, j) => {
-      items.push({ key: `${handNo}-${pl.card}`, card: pl.card, target: pileSpot(positions[w]!, n, k, j, jitterOf(pl.card)), duration: 0.55, arc: 0.15, sfxStart: 'sweep' });
+      items.push({ key: `${handNo}-${pl.card}`, card: pl.card, target: pileSpot(positions[w]!, n, k, j, jitterOf(pl.card)), duration: 0.55, arc: 0.15, sfxStart: 'sweep', spatialSeat: positions[w]!, spatialN: n });
     });
   }
   // cards on the table this trick
@@ -623,7 +623,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     // Two-tap / bot tosses vary a little per play (same seed → same toss on every client); reduced motion slides.
     const toss = land && !dragged ? 0.8 + ((playSeed(props.gameSeed ?? '', handNo, trickNo, pl.card) % 1000) / 1000) * 0.5 : 1;
     const flight = props.landCue(pl.card).includes(',overcut') ? { duration: 0.34, arc: 0.7 } : dragged ? { duration: feel.duration, arc: feel.arc } : { duration: 0.5, arc: 0.35 * toss };
-    items.push({ key: playKey, card: pl.card, public: true, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale, land), from, origin, slam: dragged ? feel : { ...feel, intensity: -1 }, ...flight, ...(land && reduced ? { motion: 'slide' as const, arc: 0 } : land && !props.landCue(pl.card).includes(',overcut') ? { motion: 'glide' as const, arc: Math.min(0.3, flight.arc) } : {}), sfxLand: props.landCue(pl.card), glow: !!props.marked?.includes(pl.card), ...autoDelay });
+    items.push({ key: playKey, card: pl.card, public: true, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale, land), from, origin, slam: dragged ? feel : { ...feel, intensity: -1 }, ...flight, ...(land && reduced ? { motion: 'slide' as const, arc: 0 } : land && !props.landCue(pl.card).includes(',overcut') ? { motion: 'glide' as const, arc: Math.min(0.3, flight.arc) } : {}), sfxLand: props.landCue(pl.card), spatialSeat: positions[pl.seat]!, spatialN: n, glow: !!props.marked?.includes(pl.card), ...autoDelay });
   });
   // 'Run it!': the claimer's cards slam down in sequence (then the tornado takes everything)
   if (props.slam) {
@@ -667,7 +667,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     if (seat === human) continue;
     const c = handCounts[seat]!;
     for (let i = 0; i < c; i++) {
-      items.push({ key: `${handNo}-b${seat}-${i}`, card: null, target: opponentFan(positions[seat]!, n, i, c), from: intro ? deck : undefined, delay: intro ? dealDelay(i, seat) : 0, holdUntilMove: intro, duration: tl.fly, arc: 0.3, sfxStart: 'deal' });
+      items.push({ key: `${handNo}-b${seat}-${i}`, card: null, target: opponentFan(positions[seat]!, n, i, c), from: intro ? deck : undefined, delay: intro ? dealDelay(i, seat) : 0, holdUntilMove: intro, duration: tl.fly, arc: 0.3, sfxStart: 'deal', spatialSeat: positions[seat]!, spatialN: n });
     }
   }
   // the human hand
@@ -747,7 +747,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
       from: move.kind === 'flip' ? flipped(target) : dealIn ? flipped(deck) : undefined,
       delay: move.kind === 'flip' ? i * 0.022 : dealIn ? dealDelay(i, human) : 0,
       holdUntilMove: slot.hidden || dealIn,
-      sfxStart: dealIn ? 'deal' : undefined,
+      sfxStart: dealIn ? 'deal' : undefined, spatialSeat: positions[human]!, spatialN: n,
       dim: chrome.dim,
       // No gold ring. A playable card is bright; a card you cannot play is dimmed in place.
       glow: false,
@@ -871,6 +871,8 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
           onTap={it.tap}
           sfxStart={it.sfxStart}
           sfxLand={it.sfxLand}
+          spatialSeat={it.spatialSeat}
+          spatialN={it.spatialN}
           holdUntilMove={it.holdUntilMove}
           blast={it.hand ? 'hand' : 'table'}
         />

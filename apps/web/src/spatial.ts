@@ -47,6 +47,14 @@ export function listenerPose(c: CamPose) {
   return { position: { x: c.pos[0]!, y: c.pos[1]!, z: c.pos[2]! }, look: { x: c.look[0]!, y: c.look[1]!, z: c.look[2]! } };
 }
 
+/** No-repeat variant picker: never the same sample variant twice in a row per event (count<=1 -> 0). */
+export function pickVariant(count: number, last: number, rnd: () => number = Math.random): number {
+  if (!(count > 1)) return 0;
+  let pick = Math.floor(rnd() * count) % count;
+  if (pick === last) pick = (pick + 1) % count;
+  return pick;
+}
+
 /** Per-player local voice mute (never signalled; card SFX for that seat are unaffected). */
 export function isVoiceMuted(muted: Record<string, true> | undefined, playerId: string): boolean { return !!muted?.[playerId]; }
 export function withVoiceMuted(muted: Record<string, true> | undefined, playerId: string, mute: boolean): Record<string, true> {
