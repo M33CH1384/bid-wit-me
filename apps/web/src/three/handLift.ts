@@ -21,6 +21,32 @@ export const LIFT_S = 0.2;
 export const RAISE_S = 0.16;
 /** After a card leaves, the others slide into the gap. Same curve as the lift, a little longer. */
 export const GAP_S = 0.24;
+/** Neighbours sliding apart for (or back from) a raised card. Ease-out, liftEase. */
+export const SPREAD_S = 0.18;
+
+/** prefers-reduced-motion: the fan snaps instead of sliding. */
+export function reducedMotion(): boolean {
+  try { return typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
+}
+
+/** Seconds for a fan re-layout (raise / lower / spread). 0 snaps. */
+export function spreadSeconds(reduced = reducedMotion()): number {
+  return reduced ? 0 : SPREAD_S;
+}
+
+/** Seconds for the raised card's own lift. 0 snaps. */
+export function raiseSeconds(reduced = reducedMotion()): number {
+  return reduced ? 0 : RAISE_S;
+}
+
+/**
+ * One frame of a tween that may be retargeted: `from` is wherever the value is drawn now,
+ * so an interrupted slide continues from that spot with no jump. `t` is 0..1 progress.
+ */
+export function stepTween(s: { from: number; to: number; t: number }, dt: number, seconds: number): { value: number; t: number } {
+  const t = seconds <= 0 ? 1 : Math.min(1, s.t + Math.max(0, dt) / seconds);
+  return { value: s.from + (s.to - s.from) * liftEase(t), t };
+}
 
 /** One rounded outline around each run of legal cards. No per-card border, no face tint. */
 export const OUTLINE_COLOR = '#F2C14E';

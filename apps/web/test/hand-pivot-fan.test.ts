@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { MIN_STRIP_PX, cardScreenQuad, fanCssPx, fanLayout, handFan, phoneHandFan } from '../src/three/layout';
+import { Vector3 } from 'three';
+import { CW, TRICK_SCALE, makeCamera, trickSpot, MIN_STRIP_PX, cardScreenQuad, fanCssPx, fanLayout, handFan, phoneHandFan, PHONE_HAND_STRIP_PX } from '../src/three/layout';
 import { raiseSpreadPx } from '../src/three/handLift';
 import { visibleStripPx, type HandHitCard } from '../src/three/handHit';
 
 const W = 390, H = 844, A = W / H;
 
 function quads(n: number, sel: number): HandHitCard[] {
-  const o = { ...phoneHandFan(), minStripPx: MIN_STRIP_PX, pxW: W, ...(sel >= 0 ? { spread: 0.4 } : {}) };
+  const o = { ...phoneHandFan(), minStripPx: n > 13 ? MIN_STRIP_PX : PHONE_HAND_STRIP_PX, pxW: W, ...(sel >= 0 ? { spread: 0.4 } : {}) };
   const L = fanLayout(A, n, 0, o);
   const sp = raiseSpreadPx(n, sel, fanCssPx(L, W).width, L.raiseOpen > 0 ? L.raiseOpen : undefined);
   return Array.from({ length: n }, (_, i) => ({
@@ -27,11 +28,19 @@ describe('phone pivot fan', () => {
     it(`a 13-card hand is ~1.7x the old 34px card on a ${w}x${h} phone`, () => {
       const L = fanLayout(w / h, 13, 0, { ...phoneHandFan(), minStripPx: MIN_STRIP_PX, pxW: w, spread: 0.4 });
       expect(fanCssPx(L, w).width).toBeGreaterThanOrEqual(55);
+      // at least as big as the far trick card on the felt (Demetrius: hand >= trick cards)
+      const cam = makeCamera(w / h);
+      const t = trickSpot('top', 4, 0, 0);
+      const half = (CW * TRICK_SCALE) / 2;
+      const px = (x: number) => ((new Vector3(x, t.p[1], t.p[2]).project(cam).x + 1) / 2) * w;
+      expect(fanCssPx(L, w).width).toBeGreaterThanOrEqual(px(t.p[0] + half) - px(t.p[0] - half));
     });
   }
-  it('keeps the card size the same when a card is raised', () => {
-    const base = { ...phoneHandFan(), minStripPx: MIN_STRIP_PX, pxW: W };
-    expect(fanLayout(A, 13, 0, { ...base, spread: 0.4 }).cw).toBeCloseTo(fanLayout(A, 13, 0, base).cw, 6);
+  it('the raised layout reserves its opening (it may shrink, but stays a big phone card)', () => {
+    const base = { ...phoneHandFan(), minStripPx: PHONE_HAND_STRIP_PX, pxW: W };
+    const raised = fanLayout(A, 13, 0, { ...base, spread: 0.4 });
+    expect(raised.cw).toBeLessThanOrEqual(fanLayout(A, 13, 0, base).cw + 1e-9);
+    expect(fanCssPx(raised, W).width).toBeGreaterThanOrEqual(55);
   });
   for (const n of [6, 8, 13, 17]) {
     it(`every card keeps a 28px strip at ${n} cards, resting and with the middle card raised`, () => {

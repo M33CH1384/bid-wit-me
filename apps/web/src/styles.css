@@ -22,7 +22,14 @@
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; height: 100%; }
 html, body { overflow-x: hidden; }
+html, body { overscroll-behavior: none; }
 body { overscroll-behavior: none; background: var(--bg); }
+/* In a game only: the page itself cannot scroll or pan; menus and the score pad scroll inside themselves. */
+html.bwm-in-game, html.bwm-in-game body { overflow: hidden; height: 100dvh; }
+html.bwm-in-game body { position: fixed; inset: 0; width: 100%; }
+.table-screen canvas, [data-testid="hand"] { touch-action: none; }
+.table-screen { touch-action: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.table-screen .scroll, .table-screen .sheet-body, .table-screen .bid-panel, .table-screen .bc-body, .table-screen .hm-beats, .table-screen [data-scroll], .table-screen .modal, .table-screen .modal-backdrop, .table-screen .game-menu, .table-screen .chat-list, .table-screen input, .table-screen textarea { touch-action: pan-y; -webkit-user-select: text; user-select: text; }
 button { font: inherit; color: inherit; cursor: pointer; }
 button:disabled { cursor: default; }
 .muted { color: var(--muted); }
@@ -104,7 +111,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .table-screen { position: relative; height: 100dvh; width: 100%; overflow: hidden; background: var(--bg); }
 /* The canvas fills the screen, so the shell's overflow does not crop a raised card or its glow.
    The wrap itself stays visible: nothing between the canvas and the screen clips the hand. */
-.table-canvas { position: absolute !important; inset: 0; touch-action: manipulation; overflow: visible; }
+.table-canvas { position: absolute !important; inset: 0; touch-action: none; overflow: visible; }
 .table-canvas-wrap { position: absolute; inset: 0; overflow: visible; }
 .badge-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 2; }
 .loading3d { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 12px; font-family: var(--display); letter-spacing: .1em; color: var(--muted); }
@@ -155,6 +162,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .plate.ally .plate-body { border-bottom-color: var(--gold); }
 .plate-name { font-family: var(--display); font-weight: 800; font-size: 17px; letter-spacing: .05em; text-transform: uppercase; display: flex; align-items: center; gap: 5px; }
 .plate-stats { display: flex; gap: 4px; margin-top: 1px; }
+.view-chip { display: inline-block; margin-top: 3px; font: 700 10px/1 var(--display); letter-spacing: .04em; padding: 4px 8px; border-radius: 999px; border: 1px solid rgba(255,255,255,.35); background: rgba(10,8,18,.72); color: #ffe9b0; cursor: pointer; pointer-events: auto; }
 .chip { font-family: var(--display); font-weight: 700; font-size: 11px; letter-spacing: .08em; padding: 1px 6px; background: rgba(155,92,255,.25); color: #e9dcff; }
 .chip.ally { background: rgba(245,197,66,.2); color: var(--gold); }
 .chip.dealer { background: #fff; color: #120a1c; font-weight: 800; letter-spacing: .04em; box-shadow: 0 0 0 1px rgba(0,0,0,.25), 0 0 10px rgba(255,255,255,.35); }
@@ -342,8 +350,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 @keyframes banner { 0% { opacity: 0; transform: scale(.8); } 12%, 80% { opacity: 1; transform: none; } 100% { opacity: 0; } }
 .bug-trumps { display: none; }
 
-/* ======================================================================
-   Phone landscape (short + wide): one-line scorebug, plates on the table edges,
+/* ===============================================================   Phone landscape (short + wide): one-line scorebug, plates on the table edges,
    hand between the bottom corners, controls bottom-right. Class set from viewport.ts.
    ====================================================================== */
 .table-screen.short .scorebug { padding-top: calc(4px + env(safe-area-inset-top)); height: calc(42px + env(safe-area-inset-top)); gap: 5px; }
@@ -400,8 +407,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .table-screen.short .center-note { font-size: 13px; padding: 3px 12px; }
 .table-screen.short .trick-banner-wrap .center-note.win { font-size: 13px; padding: 2px 12px; }
 
-/* ======================================================================
-   Start wizard: splash → mode → essentials (+ gear sheet)
+/* ===============================================================   Start wizard: splash → mode → essentials (+ gear sheet)
    ====================================================================== */
 .wizard {
   position: relative; min-height: 100dvh; display: flex; flex-direction: column; overflow-x: hidden;
@@ -1811,4 +1817,23 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
   .trash-callout.seat-left { left: 12px; right: auto; }
   .trash-callout.seat-right { right: 12px; left: auto; }
 }
+/* Portrait phones: your plate and YOUR TURN live in the open arch under the fan (see archSpot), never on a card */
+.table-screen.arch-plate .me-plate { position: fixed; left: var(--arch-x); top: var(--arch-top); transform: translateX(-50%); width: auto; max-width: var(--arch-w); z-index: 8; pointer-events: none; display: flex; flex-direction: column; align-items: center; margin: 0; }
+.table-screen.arch-plate .me-plate .plate-avatar, .table-screen.arch-plate .me-plate > .vbubble { display: none; }
+.table-screen.arch-plate .me-plate .plate-body { margin: 0; padding: 2px 6px; min-width: 0; }
+.table-screen.arch-plate .me-plate .plate-name { font-size: 11px; justify-content: center; }
+.table-screen.arch-plate .me-plate .plate-stats { justify-content: center; flex-wrap: wrap; gap: 3px; }
+.table-screen.arch-plate .me-plate .plate-stats .chip { font-size: 9.5px; padding: 0 4px; }
+.table-screen.arch-plate .me-plate .plate-turn { position: static; order: -1; margin-bottom: 2px; font-size: 10px; letter-spacing: .1em; }
+.table-screen.arch-plate .me-plate .plate-name .chip { font-size: 8.5px; }
+.table-screen.arch-plate .me-plate .plate-name { display: none; }
+
+/* drag-to-play: the lifted card under your finger, drawn above everything */
+.drag-ghost { position: fixed; z-index: 60; pointer-events: none; border-radius: 6px; box-shadow: 0 18px 30px rgba(0,0,0,.55); transform: scale(1.08) rotate(-3deg); transition: transform .12s; }
+.drag-ghost.snap { transition: left .2s ease-out, top .2s ease-out, opacity .2s; opacity: .2; }
+.drag-ghost.played { opacity: 0; transition: opacity .1s; }
+.drag-ghost.shake { animation: drag-shake .36s ease-in-out; }
+@keyframes drag-shake { 20%, 60% { transform: translateX(-7px) rotate(-3deg); } 40%, 80% { transform: translateX(7px) rotate(-3deg); } }
+
+/* Never two DEALER chips on one plate (human or bot), whatever wrote the second. */
 .plate-name .chip.dealer ~ .chip.dealer { display: none; }

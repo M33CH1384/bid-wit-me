@@ -61,5 +61,9 @@ export default defineConfig({
     __BUILD_DATE__: JSON.stringify(new Date().toISOString().slice(0, 10)),
   },
   // the three.js scene is a lazy-loaded chunk (~267 kB gzip); it's only fetched when a table opens
-  build: { chunkSizeWarningLimit: 1100 },
+  build: {
+    chunkSizeWarningLimit: 1100,
+    // throwaway WebXR prototype is its own page (xr.html) so @react-three/xr never enters the game bundle graph
+    rollupOptions: { input: { main: 'index.html', xr: 'xr.html' } },
+  },
 });

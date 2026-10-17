@@ -43,11 +43,21 @@ export function clearGame(): void {
  * the test hook and starts a new game. `state` and `saved` stay in the signature so
  * every former auto-resume path is still checked.
  */
-export function resumeOnLoad(state: unknown, saved: SavedGame | null, autostart: boolean): SavedGame | null {
+export function resumeOnLoad(state: unknown, saved: SavedGame | null, autostart: boolean, inGame = false): SavedGame | null {
   void state;
-  void saved;
-  void autostart;
-  return null;
+  // A refresh while at the table (this tab's session marker) goes straight back into the game.
+  // A fresh open (new tab: no marker) shows Home with Resume, as before.
+  if (autostart || !saved || !inGame) return null;
+  return saved;
+}
+
+/** Per-tab marker: set while a bot game is on screen. sessionStorage survives a reload, not a new tab. */
+export const IN_GAME_KEY = 'bwm.inGame';
+export function markInGame(on: boolean): void {
+  try { if (on) sessionStorage.setItem(IN_GAME_KEY, '1'); else sessionStorage.removeItem(IN_GAME_KEY); } catch { /* private mode */ }
+}
+export function wasInGame(): boolean {
+  try { return sessionStorage.getItem(IN_GAME_KEY) === '1'; } catch { return false; }
 }
 
 const isArr = (x: unknown): x is unknown[] => Array.isArray(x);
@@ -79,4 +89,11 @@ export function loadGame(): SavedGame | null {
   const g = parseSave(raw);
   if (raw && !g) clearGame();
   return g;
+}
+
+
+/** Deal me in never silently replaces a game in progress. */
+export function confirmReplaceSave(saved: SavedGame | null, ask: (msg: string) => boolean): boolean {
+  if (!saved) return true;
+  return ask(`Start a new game? Your game in progress (hand ${saved.state.handNo}) will be lost. Tap Cancel, then Back, to resume it.`);
 }

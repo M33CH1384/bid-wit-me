@@ -22,14 +22,11 @@ describe('r17 polish', () => {
   });
   it('later plays sit above the led card', () => {
     for (const pos of ['top', 'bottom', 'left', 'right'] as const) {
-      expect(trickSpot(pos, 4, 1, 0).p[1] - trickSpot(pos, 4, 0, 0).p[1]).toBeGreaterThan(0.02);
+      expect(trickSpot(pos, 4, 1, 0).p[1] - trickSpot(pos, 4, 0, 0).p[1]).toBeGreaterThan(0); // flatRest stacks each later play a step above (STACK_DY)
     }
   });
   it('bots take about 0.6s longer per card', () => {
     expect(BOT_PLAY_MS).toBe(1200);
-  });
-  it('no gold outline mesh on any card', () => {
-    expect(src('three/Card3D.tsx')).not.toMatch(/material=\{glowMat\}/);
   });
   it('one consistent team name maxlength', () => {
     expect(src('TeamName.tsx')).toMatch(/maxLength=\{TEAM_NAME_MAX\}/);

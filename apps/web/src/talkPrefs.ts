@@ -11,9 +11,9 @@ import { PERSONAS, type PersonaId, type TalkIntensity, maskMild, personaForName,
 import { sound } from './audio';
 import { playClip, rawLine } from './voices/voices';
 
-export interface TalkPrefs { botTalk: boolean; hideBotTalk: boolean; voices: boolean; voiceVolume: number }
+export interface TalkPrefs { botTalk: boolean; hideBotTalk: boolean; voices: boolean; voiceVolume: number; /** Voice Phase 3, on this device: play pre-voiced AI lines when the table offers them (default on; the host flag decides whether any are offered) */ aiVoices: boolean }
 const KEY = 'bwm.talk.v1';
-const DEFAULTS: TalkPrefs = { botTalk: true, hideBotTalk: false, voices: true, voiceVolume: 0.6 };
+const DEFAULTS: TalkPrefs = { botTalk: true, hideBotTalk: false, voices: true, voiceVolume: 0.6, aiVoices: true };
 
 function load(): TalkPrefs {
   try {
@@ -72,7 +72,7 @@ export function speakBot(name: string, text: string, persona?: string, line?: st
 }
 
 function webSpeech(name: string, text: string): void {
-  if (typeof speechSynthesis === 'undefined') return;
+  if (typeof speechSynthesis === 'undefined' || !sound.atTable) return; // never talk behind Home
   const snd = sound.settings;
   const p = PERSONAS[personaForName(name)];
   const clean = maskMild(text).replace(/\*+/g, ''); // never read the asterisks out; masked words just drop

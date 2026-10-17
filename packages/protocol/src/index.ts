@@ -99,7 +99,7 @@ export type GameAction =
   | { type: 'reveal' }
   | { type: 'bid'; bid: number | 'nil' | 'blindNil' }
   | { type: 'exchange'; cards: Card[] }
-  | { type: 'play'; card: Card }
+  | { type: 'play'; card: Card; slam?: number; rel?: [number, number] }
   | { type: 'runIt' };
 
 export interface MediaState { cam: boolean; mic: boolean }
@@ -305,7 +305,14 @@ function parseAction(a: unknown): GameAction | null {
     case 'exchange':
       return Array.isArray(a.cards) && a.cards.length <= 2 && a.cards.every((c) => isStr(c, 2)) ? { type: 'exchange', cards: a.cards as Card[] } : null;
     case 'play':
-      return isStr(a.card, 2) ? { type: 'play', card: a.card as Card } : null;
+      if (!isStr(a.card, 2)) return null;
+      {
+        const out: { type: 'play'; card: Card; slam?: number; rel?: [number, number] } = { type: 'play', card: a.card as Card };
+        if (typeof a.slam === 'number' && Number.isFinite(a.slam)) out.slam = Math.max(0, Math.min(1, a.slam));
+        const r = a.rel;
+        if (Array.isArray(r) && r.length === 2 && r.every((x) => typeof x === 'number' && Number.isFinite(x))) out.rel = [Math.max(-20, Math.min(20, r[0] as number)), Math.max(-20, Math.min(20, r[1] as number))];
+        return out;
+      }
     case 'runIt': return { type: 'runIt' };
     default: return null;
   }

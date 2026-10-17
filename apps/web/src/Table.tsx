@@ -1,6 +1,10 @@
+import { deliverBotLine } from './voices/aiVoice';
+import { enterTable, quitGame, silenceGame, suspendGame } from './gameSession';
 import { cardControlLabel } from './cardA11y';
+import { archSpot } from './archSpot';
+import type { HandHitCard } from './three/handHit';
 import { useEscapeClose } from './useEscapeClose';
-import { confirmPlay, feltClearsSelection, flyPlay, ignorePlayTap, playTrickOf, type PlayTrick } from './online/playGuard';
+import { type FlyingPlay, confirmPlay, feltClearsSelection, flyPlay, flyingCard, ignorePlayTap, playTrickOf, type PlayTrick } from './online/playGuard';
 import { actingSeat, localSeatOfServerTurn, turnView, type TurnBadge } from './turnState';
 import { retainHandOrder } from './handOrder';
 import { winHeadline } from './headline';
@@ -18,10 +22,13 @@ import { SeriesChip, SeriesSheet, loadSeries, saveSeries } from './Series';
 import { useMyTeamName } from './TeamName';
 import { offlineTalk } from './offlineTalk';
 import { BidOrder, showCenterBidOrder } from './PartnerTalk';
-import { TrumpLadder } from './trumpLadder';
+import { guardTouches, lockBody } from './antiPan';
+import { TrumpLadder, trumpStripShown } from './trumpLadder';
+import { landingMode } from './three/landing';
 import { SocialButton } from './social/Social';
 import { recordOfflineGame } from './offlineStats';
-import { setTableIntensity, showLine, speakBot, useTalkPrefs } from './talkPrefs';
+import { setTableIntensity, showLine, speakBot, talkPrefs as talkStore, useTalkPrefs } from './talkPrefs';
+import { setActiveDeck } from './decks';
 import { pickTeamName } from '@spades/protocol';
 import { Intermission, calloutsFor } from './Intermission';
 import Hype from './Hype';
@@ -170,6 +177,7 @@ interface Props {
   /** offline rematch: first dealer of this game (undefined = random) */
   startDealer?: number;
   onQuality: (q: Settings['quality']) => void;
+  onView?: (v: Settings['view']) => void;
   /** A saved in-progress game to resume at exactly the same point. */
   resume?: SavedGame;
   /** Rematch or resume: keep the series tally. A new game leaves this unset and starts at 0–0. */
@@ -465,7 +473,8 @@ function seedFloat(seed: string): number {
   return ((h >>> 0) % 100000) / 100000;
 }
 
-export default function Table({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, resume, continueSeries, online, onMainMenu, startDealer }: Props) {
+export default function Table({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, onView, resume, continueSeries, online, onMainMenu, startDealer }: Props) {
+  useEffect(() => { setActiveDeck(settings.deck); }, [settings.deck]);
   // `online` never changes for a mounted Table, so this is always the same hook path per instance
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const vp = useViewport();
@@ -473,6 +482,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // and an open tip holds the bots + trick sweep until it's dismissed. Tips off → back to the chosen speed.
   const [tips, setTips] = useState<TipsPref>(loadTips);
   const [tipsSkipped, setTipsSkipped] = useState(false);
+  // Anti-pan: lock the page while this table is up, and stop touch pans on the table itself.
+  useEffect(() => lockBody(), []);
+  useEffect(() => { const el = screenRef.current; return el ? guardTouches(el) : undefined; }, []);
   const learning = tips.on && !tipsSkipped;
   const [tipOpen, setTipOpen] = useState(false);
   const speed = learning && settings.speed !== 'turbo' ? 'slow' : settings.speed;
@@ -533,14 +545,17 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // offline trash talk: same engine as the server
   useEffect(() => {
     if (online) return;
-    offlineTalk.table = { seats: names.map((nm, i) => ({ name: nm, bot: i !== HUMAN })), partnerships: r.partnerships, teamNames: Array.from({ length: st.scores.length }, (_, i) => sideName(r, i, names)), intensity, jokers: r.deck === 'joker54' };
+    offlineTalk.table = { seats: names.map((nm, i) => ({ name: nm, bot: i !== HUMAN })), partnerships: r.partnerships, teamNames: Array.from({ length: st.scores.length }, (_, i) => sideName(r, i, names)), intensity, jokers: r.deck === 'joker54', aiTalk: !!settings.aiTalk };
   });
   useEffect(() => {
     if (online) return;
     if (!resume) offlineTalk.newGame();
     offlineTalk.sink = (l) => {
-      localChat.push(l.name, l.text, false, 0, true);
-      speakBot(l.name, l.text, l.persona, l.line, l.bid);
+      // Voice Phase 3: a catalog line plays with its own text; anything that misses is the canned line, as before.
+      const tp = talkStore.get();
+      void deliverBotLine(l, { aiVoices: tp.aiVoices, voices: tp.voices, soundOn: sound.settings.on && sound.settings.volume > 0, gain: tp.voiceVolume * 0.9 },
+        (text) => localChat.push(l.name, text, false, 0, true),
+        () => speakBot(l.name, l.text, l.persona, l.line, l.bid));
       if (l.reveal) fx.emit('hustled', { text: `${l.name} was never new` });
     };
     return () => { offlineTalk.sink = null; offlineTalk.table = null; };
@@ -738,8 +753,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const who = face(runFx.claimer);
     // 2) the claimer's cards slam down together in SLOW MOTION (heavy impact: shake + bass hit)
     // 3) the tornado snatches everything else at once — every hand + whatever is on the table. No trick-by-trick play.
-    sound.play('runSlam', { delay: zoom + RUN_SLAM_MS / 1000 });
-    const impact = window.setTimeout(() => { if (!fx.reduced && !fx.osReducedMotion) fx.shake = { start: performance.now(), dur: 1.0, amp: 0.13 }; }, RUN_ZOOM_MS + RUN_SLAM_MS);
+    // No scheduled runSlam: the last dropped card fires it (and the pile thump) on its landing frame.
     sound.play('tornado', { delay: Math.max(0, tornadoAt - 0.3) });
     const toSlam = window.setTimeout(() => {
       setRunFx((f) => (f && f.id === runFx.id ? { ...f, phase: 'slam' } : f));
@@ -749,7 +763,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     }, RUN_ZOOM_MS);
     // (capture scripts set __bwmHoldRun to step the tornado frame by frame via fx.warp)
     const hold = !!(window as unknown as { __bwmHoldRun?: boolean }).__bwmHoldRun;
-    const timers = hold ? [impact] : [impact, window.setTimeout(endRun, RUN_SHOW_MS)];
+    const timers = hold ? [] : [window.setTimeout(endRun, RUN_SHOW_MS)];
     (window as unknown as { __bwmEndRun?: () => void }).__bwmEndRun = endRun;
     if (runFx.claimer === HUMAN && !spectating) {
       runItUsed();
@@ -800,7 +814,12 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   }, [canRun]); // eslint-disable-line react-hooks/exhaustive-deps
   const myBadges = useBadges();
   // The card the player just tapped, shown on the table before the server's state arrives.
-  const [flying, setFlying] = useState<Card | null>(null);
+  // It belongs to the hand (and trick) it was played in: a card from the last hand that is dealt to you again must
+  // never be drawn on the table (offline nothing else ever cleared it).
+  const [flyingPlay, setFlyingPlay] = useState<FlyingPlay | null>(null);
+  const flying = flyingCard(flyingPlay, st.handNo, st.phase, st.tricks.length);
+  const setFlying = (c: Card | null) => setFlyingPlay(c ? { card: c, handNo: st.handNo, trickNo: st.tricks.length } : null);
+  useEffect(() => { setFlyingPlay(null); }, [st.handNo]);
   // what the 3D table shows (see above)
   const display = (() => {
     if (runFx) {
@@ -882,6 +901,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     else saveGame({ seed, settings, state: st, chat: rawMsgs, names, teamNames: [null, botTeam], nuke: fx.tableNuke ?? fx.prefs.nuke });
   }, [st, rawMsgs, seed, settings, online]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Game sound only while this table is on screen; any way off it (menu, Leave, Save & quit, online leave) silences it.
+  useEffect(() => { enterTable(); return silenceGame; }, []);
   // "Resuming your game…" toast
   useEffect(() => {
     if (!resume) return;
@@ -891,7 +912,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   }, [resume]);
   // Online Leave goes home. onExit only opens the table lobby, so one Leave used to stop there.
   const leave = () => {
-    if (!online) { clearGame(); onExit(); return; }
+    if (!online) { quitGame(); onExit(); return; }
     (onMainMenu ?? onExit)();
   };
   // A tap that starts on Leave always leaves, even when WebKit delivers the click to the scrim.
@@ -911,7 +932,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     else setConfirmLeave(true);
   };
   // game over: no confirmation — the game is finished
-  const mainMenu = () => { if (!online) clearGame(); (onMainMenu ?? onExit)(); };
+  const mainMenu = () => { if (!online) quitGame(); (onMainMenu ?? onExit)(); };
   const isBooks = booksHand(st);
   // "First hand: books bid themselves" — announce it once the deal lands
   const booksAnnounced = useRef<string | null>(null);
@@ -1084,8 +1105,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       window.removeEventListener('pointercancel', up, true);
     };
   }, []);
-  const onCard = useCallback((c: Card) => {
+  const onCard = useCallback((c: Card, dragged = false, slam?: number, rel?: [number, number]) => {
     if (humanExchanging) {
+      if (dragged) return;
       sound.play('tap');
       setExchangePick((p) => (p.includes(c) ? p.filter((x) => x !== c) : p.length < exchangeStep!.count ? [...p, c] : p));
       return;
@@ -1093,11 +1115,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (ignorePlayTap(playHold.current, trickNow)) return;
     if (!legal.includes(c)) return;
     // Play sends the selected card id. A different hit only changes the selection.
-    const action = confirmPlay(selectedRef.current, c, playArmed.current && selectedRef.current === c);
+    const action = dragged ? { type: 'play' as const, card: c } : confirmPlay(selectedRef.current, c, playArmed.current && selectedRef.current === c);
     if (action.type === 'ignore') return;
     if (action.type === 'play') {
       const held = trickNow;
-      const sent = apply({ type: 'play', seat: HUMAN, card: action.card as Card });
+      const sent = apply({ type: 'play', seat: HUMAN, card: action.card as Card, ...(dragged && slam !== undefined ? { slam } : !dragged && settings.view === 'standing' ? { slam: 1 } : {}), ...(dragged && rel ? { rel } : {}) });
       if (sent !== false) {
         playHold.current = held;
         playArmed.current = false;
@@ -1112,7 +1134,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       setSelected(action.card as Card);
       sound.play('tap');
     }
-  }, [humanExchanging, exchangeStep, legal, apply, trickNow]);
+  }, [humanExchanging, exchangeStep, legal, apply, trickNow, settings.view]);
+
+  const onCardDrop = useCallback((c: Card, slam?: number, rel?: [number, number]) => onCard(c, true, slam, rel), [onCard]);
 
   const isBotSeat = (seat: number) => (online ? !!online.botSeats?.includes(seat) : seat !== HUMAN);
   // recorded bot voices: fetch a persona's clips when one of its bots sits down
@@ -1204,6 +1228,25 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // landscape phones: keep the bid / pass panel just above the top of the (resting) hand
   const screenRef = useRef<HTMLDivElement>(null);
   const measureHand = st.phase === 'bidding' || st.phase === 'exchange';
+  // Portrait phones: YOUR TURN and your plate sit in the open arch under the fan, clear of every card.
+  useEffect(() => {
+    if (vp.short) return;
+    const tick = () => {
+      const el = screenRef.current;
+      const hits = (window as unknown as { __bwmHandHits?: HandHitCard[] }).__bwmHandHits ?? [];
+      const arch = el && window.innerWidth < 600 && window.innerHeight > window.innerWidth ? archSpot(hits, window.innerWidth, window.innerHeight) : null;
+      if (!el) return;
+      el.classList.toggle('arch-plate', !!arch);
+      if (arch) {
+        el.style.setProperty('--arch-x', `${arch.x}px`);
+        el.style.setProperty('--arch-top', `${arch.top}px`);
+        el.style.setProperty('--arch-w', `${arch.w}px`);
+      }
+    };
+    tick();
+    const t = window.setInterval(tick, 250);
+    return () => { clearInterval(t); screenRef.current?.classList.remove('arch-plate'); };
+  }, [vp.short]);
   useEffect(() => {
     if (!measureHand) return;
     const tick = () => {
@@ -1265,6 +1308,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           slam={display.slam}
           reduceFx={reduceFx}
           venue={venue}
+          view={settings.view}
           piles={display.piles}
           legal={runFx ? [] : humanExchanging && hand ? hand : legal}
           selected={runFx ? null : selected}
@@ -1272,6 +1316,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           winnerSeat={winnerSeat}
           promoted={promoted}
           onCardTap={onCard}
+          onCardDrop={onCardDrop}
+          landing={landingMode(tips.on)}
+          gameSeed={String(st.seed ?? '')}
           onFeltTap={() => { if (feltClearsSelection(selected)) { playArmed.current = false; setSelected(null); } }}
           renderSeat={renderSeat}
           introHand={introHand}
@@ -1299,6 +1346,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
                 <button type="button" role="menuitem" className={help ? 'on' : ''} data-testid="help" aria-pressed={help} onClick={() => { setHelp(!help); setMenuOpen(false); }}>❓ Help: tips &amp; book counting</button>
                 <button type="button" role="menuitem" data-testid="scorepad-button" onClick={() => { setShowPad(true); setMenuOpen(false); }}>📋 Score pad &amp; house rules</button>
                 <button type="button" role="menuitem" onClick={() => onQuality(settings.quality === 'high' ? 'low' : 'high')}>🎨 Graphics: {settings.quality === 'high' ? 'High' : 'Low'}</button>
+                <button type="button" role="menuitem" data-testid="view-toggle" onClick={() => onView?.(settings.view === 'sitting' ? 'standing' : 'sitting')}>{settings.view === 'sitting' ? '🪑' : '🧍'} View: {settings.view === 'sitting' ? 'Sitting' : 'Standing'}</button>
                 <div className="menu-social"><SocialButton className="compact" /></div>
                 <button type="button" role="menuitem" className="danger" data-testid="menu-leave" onPointerDown={(e) => { e.currentTarget.setPointerCapture?.(e.pointerId); runLeaveMenu(e, 'leave'); }} onPointerUp={(e) => runLeaveMenu(e, 'leave')} onClick={(e) => runLeaveMenu(e, 'leave')}>🚪 Leave table</button>
               </div>
@@ -1331,9 +1379,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         <span className="bug-btn dock-slot" aria-hidden />
       </header>
 
-      <div className="trump-strip glass slant">
+      {trumpStripShown(st) && <div className="trump-strip glass slant" data-testid="trump-strip">
         <span className="ts-label">TRUMPS</span> <TrumpLadder rules={r} n={5} style="long" />{st.spadesBroken && <span className="ts-broken">BROKEN</span>}
-      </div>
+      </div>}
 
       {/* last-trick readout. After a resolved 'Run it!' the same chip opens every hand the tornado cleared. */}
       {(piles.length > 0 || !!runHands) && (() => {
@@ -1445,6 +1493,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
               <span className="chip">{plateTookText(sb.tricksWon[HUMAN] ?? 0, st.phase)}</span>
               {isNilBid(st.bids[HUMAN]) && sb.tricksWon[HUMAN]! > 0 && <span className="chip bad">NIL BUSTED</span>}
             </div>
+            {!spectating && <button type="button" className="view-chip" data-testid="view-toggle-plate" aria-pressed={settings.view === 'sitting'} onClick={() => onView?.(settings.view === 'sitting' ? 'standing' : 'sitting')}>{settings.view === 'sitting' ? '🪑 Sitting view' : '🧍 Standing view'}</button>}
           </div>
           {badge && badge.seat === HUMAN && <div className="plate-turn" data-testid={badge.testId}>{badge.text}</div>}
           {online?.seatExtra(HUMAN)}
@@ -1507,7 +1556,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
                 />
               </div>
             ) : (
-              <button type="button" className="tt-run-show" data-testid="talk-run-show" onClick={() => setClearedOpen(true)}>{face(runClaimer)} ran the rest</button>
+              <button type="button" className="tt-run-show" data-testid="talk-run-show" onClick={() => setClearedOpen(true)}>Review last trick</button>
             )
           ) : null}
         />
@@ -1522,7 +1571,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             <p className="muted">{onSuspend ? 'Leave ends it for good. Save & quit lets you resume from the menu.' : 'Your progress in this game will be lost.'}</p>
             <div className="bid-row">
               <button type="button" onClick={() => setConfirmLeave(false)}>Stay</button>
-              {onSuspend && <button type="button" data-testid="save-quit" onClick={onSuspend}>Save &amp; quit</button>}
+              {onSuspend && <button type="button" data-testid="save-quit" onClick={() => { suspendGame(); onSuspend(); }}>Save &amp; quit</button>}
               <button type="button" className="primary" onClick={leave}>Leave</button>
             </div>
             <button type="button" className="link fb-open-ingame" data-testid="open-feedback" onClick={() => { setConfirmLeave(false); setFeedback(true); }}>✉ Send feedback (bug, idea…)</button>

@@ -11,6 +11,7 @@
  * - Settings (on/off, volume, ambience) persist in localStorage.
  */
 import { useSyncExternalStore } from 'react';
+import { Spatializer, normalizeCategoryVolumes, pickPanningModel, pickVariant, seatCompensation, seatPoint, type SeatPos } from './spatial';
 import { audioElementPool } from './audioPool';
 import { audioContextAction, settleAudio, soundRestorePending } from './audioSession';
 
@@ -47,7 +48,9 @@ export type Sfx =
 /** SFX that bot voices duck under, and for how long (ms). */
 const DUCK_MS: Partial<Record<Sfx, number>> = { runSlam: 700, nuke: 3600, tornado: 2600, wheelsCar: 3000, jokerBig: 1100, shot: 1200, shotgun: 700, pump: 500, siren: 2700, docSting: 2400, streak2: 1400, streak3: 1800, overcut3: 1000, win: 2000, lose: 1600, set: 1200, nil: 1600 };
 
-export interface SoundSettings { on: boolean; volume: number; ambient: boolean; music: boolean; musicVolume: number; /** the venue's quiet ambient sound bed (Release 7), default on */ venueSound: boolean }
+export interface SoundSettings { on: boolean; volume: number; ambient: boolean; music: boolean; musicVolume: number; /** the venue's quiet ambient sound bed (Release 7), default on */ venueSound: boolean;
+  /** Spatial Phase 2 (all optional; defaults reproduce today's sound): per-category volumes, audio quality, spatial on/off, separate soundscape room ('auto' = seeded random per game), per-player voice mutes. */
+  volumes?: import('./spatial').CategoryVolumes; quality?: import('./spatial').AudioQuality; spatial?: boolean; soundscape?: string; mutedVoices?: Record<string, true> }
 const KEY = 'bwm.sound.v1';
 const DEFAULTS: SoundSettings = { on: true, volume: 0.7, ambient: false, music: true, musicVolume: 0.5, venueSound: true };
 /** venue ambience beds (see venues.ts → bed) */
@@ -139,6 +142,8 @@ class Engine {
   private loadGen = 0;
   /** cue counter (exposed for automated checks) */
   played: Record<string, number> = {};
+  /** Game sounds refused because no table was on screen (test probe). */
+  blocked: Record<string, number> = {};
 
   /* ---------- settings store ---------- */
   subscribe = (fn: () => void) => { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; };
@@ -186,6 +191,10 @@ class Engine {
   private sfxDuck: GainNode | null = null;
   private nukeBus: GainNode | null = null;
   private fading = false;
+  /** One crossfade at a time: a second advance (an 'ended' racing the fade) would flip back and play two tracks. */
+  private advancing = false;
+  /** Test probe: decks actually audible right now (not paused, gain up). Must never exceed 2, and is 1 outside a crossfade. */
+  playingDeckCount(): number { return this.decks.filter((d) => d.url && !d.el.paused && d.gain.gain.value > 0.01).length; }
 
   /** Mono-compatible widening: M/S with the side (above 150 Hz) boosted and slowly "breathing". L+R is unchanged. */
   private buildMusicChain(): GainNode {
@@ -233,7 +242,7 @@ class Engine {
       this.ctx.createMediaElementSource(el).connect(gain).connect(chain);
       const deck: Deck = { el, gain, track: null, ready: null, url: null };
       el.addEventListener('timeupdate', () => this.onTime(deck));
-      el.addEventListener('ended', () => { if (deck.url && this.decks[this.active] === deck) { this.fading = true; this.advance(); } });
+      el.addEventListener('ended', () => { if (deck.url && this.decks[this.active] === deck && !this.fading) { this.fading = true; void this.advance(); } });
       el.addEventListener('playing', () => { if (deck.url && this.decks[this.active] === deck && this.musicStatus !== 'playing') { this.musicStatus = 'playing'; this.emit(); } });
       this.decks.push(deck);
     }
@@ -241,6 +250,7 @@ class Engine {
 
   /** Music elements are bound to this context. Free their decoder slots; a new context gets new elements. */
   private releaseDecks() {
+    this.advancing = false;
     const pool = audioElementPool();
     for (const d of this.decks) {
       if (d.url) { try { URL.revokeObjectURL(d.url); } catch { /* already revoked */ } d.url = null; }
@@ -293,14 +303,16 @@ class Engine {
 
   /** Crossfade to the pre-loaded deck, then queue the following track on the deck that just faded out. */
   private async advance() {
+    if (this.advancing) return; // a crossfade is already running: never start a second one
     if (!this.ctx || !this.settings.music) { this.fading = false; return; }
+    this.advancing = true;
     const c = this.ctx;
     const fromIdx = this.active, toIdx = 1 - this.active;
     const from = this.decks[fromIdx]!, to = this.decks[toIdx]!;
     if (to.track === null || !to.ready) this.loadDeck(toIdx, this.pickNext());
     let ok = await to.ready!;
     for (let tries = 0; !ok && tries < TRACKS.length; tries++) ok = await this.loadDeck(toIdx, this.pickNext());
-    if (!ok || !this.settings.music) { this.musicStatus = 'error'; this.fading = false; this.emit(); return; }
+    if (!ok || !this.settings.music) { this.musicStatus = 'error'; this.fading = false; this.advancing = false; this.emit(); return; }
     const now = c.currentTime;
     to.gain.gain.cancelScheduledValues(now); to.gain.gain.setValueAtTime(0.0001, now); to.gain.gain.linearRampToValueAtTime(1, now + XFADE);
     from.gain.gain.cancelScheduledValues(now); from.gain.gain.setValueAtTime(Math.max(0.0001, from.gain.gain.value), now); from.gain.gain.linearRampToValueAtTime(0.0001, now + XFADE);
@@ -312,6 +324,7 @@ class Engine {
       from.el.pause();
       from.track = null; from.ready = null;
       this.fading = false;
+      this.advancing = false;
       if (this.settings.music) this.loadDeck(fromIdx, this.pickNext()); // look-ahead
     }, XFADE * 1000 + 150);
   }
@@ -383,6 +396,10 @@ class Engine {
     window.addEventListener('pointerdown', gesture, true);
     window.addEventListener('touchstart', gesture, true);
     window.addEventListener('keydown', gesture, true);
+    // iOS only grants audio on touchend / pointerup / click. A drag-to-play never makes a click, so listen there too.
+    window.addEventListener('touchend', gesture, true);
+    window.addEventListener('pointerup', gesture, true);
+    window.addEventListener('click', gesture, true);
     // backgrounding suspends the context; pageshow also fires when iOS restores the page from bfcache
     document.addEventListener('visibilitychange', () => { if (!document.hidden) show(); });
     window.addEventListener('pageshow', show);
@@ -524,6 +541,7 @@ class Engine {
   /** play a voice clip (optionally a [offsetSec, durationSec] slice of a sprite) */
   playVoice(buf: AudioBuffer, gain: number, slice?: [number, number]): boolean {
     if (!this.settings.on || !this.unlocked) return false;
+    if (!this.atTable) { this.blocked.voice = (this.blocked.voice ?? 0) + 1; return false; }
     this.ensure();
     const c = this.ctx;
     if (!c || c.state !== 'running' || !this.voiceDuck) return false;
@@ -537,6 +555,30 @@ class Engine {
     this.played.voice = (this.played.voice ?? 0) + 1;
     return true;
   }
+  /* ---------- table gate: game sound only while a game is on screen ---------- */
+  /** True while the table screen is mounted. Off it, only the settings previews (tap, bid) can sound. */
+  atTable = false;
+  enterTable() { this.atTable = true; }
+  /** Leaving the table: refuse game sound, and cut everything already scheduled (delayed deal ticks, stingers, voice, wind). */
+  leaveTable() {
+    this.atTable = false;
+    this.stopVoice();
+    this.stopTornado();
+    try { if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel(); } catch { /* ignore */ }
+    const c = this.ctx, old = this.sfxBus, duck = this.sfxDuck;
+    if (c && old && duck) {
+      // every scheduled node hangs off the sfx bus: detach it and start a fresh one
+      try { old.disconnect(); } catch { /* */ }
+      this.sfxBus = c.createGain(); this.sfxBus.connect(duck);
+    }
+    if (c && this.nukeBus && this.master) {
+      try { this.nukeBus.disconnect(); } catch { /* */ }
+      this.nukeBus = c.createGain(); this.nukeBus.connect(this.master);
+    }
+    this.applyGain();
+  }
+  /** Settings previews that may sound on Home. */
+  private static readonly UI_SFX: ReadonlySet<string> = new Set(['tap', 'bid']);
   stopVoice() {
     const v = this.voiceSrc; this.voiceSrc = null;
     if (!v || !this.ctx) return;
@@ -561,7 +603,7 @@ class Engine {
     const comp = c.createDynamicsCompressor();
     comp.threshold.value = -14; comp.ratio.value = 4;
     this.master.connect(comp).connect(c.destination);
-    this.sfxBus = c.createGain(); this.sfxDuck = c.createGain(); this.sfxBus.connect(this.sfxDuck).connect(this.master);
+    this.sfxBus = c.createGain(); this.sfxBus.gain.value = normalizeCategoryVolumes(this.settings.volumes).sfx; this.sfxDuck = c.createGain(); this.sfxBus.connect(this.sfxDuck).connect(this.master);
     this.nukeBus = c.createGain(); this.nukeBus.connect(this.master);
     this.ambBus = c.createGain(); this.ambBus.gain.value = 0; this.ambBus.connect(this.master);
     this.venueBus = c.createGain(); this.venueBus.gain.value = 0; this.venueBus.connect(this.master);
@@ -595,8 +637,64 @@ class Engine {
   }
 
   /* ---------- playback ---------- */
-  play(name: Sfx, opts: { delay?: number; gain?: number; dur?: number } = {}) {
+  /** Card landing scaled by slam intensity 0..1: a soft tap for a gentle drop, a punchy smack + table thud for a flick. */
+  /** Phase 3 test probe: every spatialised gameplay one-shot (seat + world point + model). */
+  spatialProbe: { event: string; seat: string; x: number; y: number; z: number; model: string; gain?: number }[] = [];
+  private lastVariant = new Map<string, number>();
+  private spatializer: Spatializer | null = null;
+  /** Listener pose, slaved to the camera by the scene (Sitting hears a closer table than Standing). */
+  private listenerPoint = { x: 0, y: 4.5, z: 3.75 };
+  private listenerLook = { x: 0, y: 0, z: 0.38 };
+  setSpatialListener(pos: readonly number[], look: readonly number[]) {
+    this.listenerPoint = { x: pos[0]!, y: pos[1]!, z: pos[2]! };
+    this.listenerLook = { x: look[0]!, y: look[1]!, z: look[2]! };
+    if (this.ctx && this.spatializer) this.spatializer.applyListener(this.ctx as never, { pos, look });
+  }
+  private spatializerKey = '';
+  /** Route a one-shot through a seat panner (Phase 3). Spatial off / no seat / cap hit = the plain
+   *  sfx bus, exactly Phase 2 behaviour. Trigger timing is untouched: this only chooses the node
+   *  the already-scheduled source connects to (#169). */
+  private routeSfx(event: string, seat?: SeatPos, playerCount = 4): { node: AudioNode; release?: () => void } {
+    const bus = this.sfxBus!;
+    if (!seat || this.settings.spatial === false || !this.ctx) return { node: bus };
+    const quality = this.settings.quality ?? 'balanced';
+    const isPhone = typeof window !== 'undefined' && Math.min(window.innerWidth || 999, window.innerHeight || 999) < 600;
+    const model = pickPanningModel(typeof PannerNode !== 'undefined', isPhone);
+    const key = `${quality}:${model}`;
+    if (!this.spatializer || this.spatializerKey !== key) { this.spatializer = new Spatializer(quality, true, model); this.spatializerKey = key; }
+    this.spatializer.applyListener(this.ctx as never, { pos: [this.listenerPoint.x, this.listenerPoint.y, this.listenerPoint.z], look: [this.listenerLook.x, this.listenerLook.y, this.listenerLook.z] });
+    const panner = this.spatializer.seatPanner(this.ctx as never, seat, playerCount);
+    if (!panner) return { node: bus };
+    (panner as unknown as AudioNode).connect(bus);
+    // Distance compensation: far seats get a level boost (capped) so their slams keep their punch.
+    const comp = seatCompensation(this.listenerPoint, seat, playerCount);
+    const compNode = this.ctx.createGain(); compNode.gain.value = comp;
+    compNode.connect(panner as unknown as AudioNode);
+    const pt = seatPoint(seat, playerCount);
+    this.spatialProbe.push({ event, seat, ...pt, model, gain: comp });
+    if (this.spatialProbe.length > 64) this.spatialProbe.shift();
+    const sp = this.spatializer;
+    return { node: compNode, release: () => sp.release() };
+  }
+
+  cardSmack(intensity: number, seat?: SeatPos, playerCount = 4) {
+    if (!this.settings.on || !this.unlocked || !this.atTable) return;
+    this.ensure();
+    const c = this.ctx;
+    if (!c || c.state !== 'running') return;
+    const s = smackSound(intensity);
+    this.played.play = (this.played.play ?? 0) + 1;
+    this.played.smack = (this.played.smack ?? 0) + 1;
+    this.lastSmack = s;
+    const t = c.currentTime;
+    this.sample('play', t, s.gain, s.rate, undefined, seat, playerCount);
+    if (s.thud > 0) this.thud(t + 0.005, s.thud); // thud stays centred: it is the table, not the seat
+  }
+  lastSmack: SmackSound | null = null;
+
+  play(name: Sfx, opts: { delay?: number; gain?: number; dur?: number; seat?: SeatPos; playerCount?: number } = {}) {
     if (!this.settings.on || !this.unlocked) return;
+    if (!this.atTable && !Engine.UI_SFX.has(name)) { this.blocked[name] = (this.blocked[name] ?? 0) + 1; return; }
     this.ensure();
     const c = this.ctx;
     if (!c || c.state !== 'running') return;
@@ -611,11 +709,11 @@ class Engine {
     if (duck) this.duckVoice(duck, t);
     switch (name) {
       case 'shuffle': return this.sample('shuffle', t, 0.75 * g, 1, Math.max(0.3, opts.dur ?? 1.6));
-      case 'deal': return this.sample('deal', t, 0.26 * g, 1.2 + Math.random() * 0.25, 0.3);
-      case 'play': return this.sample('play', t, 0.9 * g, 0.95 + Math.random() * 0.12);
+      case 'deal': return this.sample('deal', t, 0.26 * g, 1.2 + Math.random() * 0.25, 0.3, opts.seat, opts.playerCount);
+      case 'play': return this.sample('play', t, 0.9 * g, 0.95 + Math.random() * 0.12, undefined, opts.seat, opts.playerCount);
       case 'tap': return this.sample('tap', t, 0.5 * g, 1.1);
       case 'flip': this.sample('deal', t, 0.32 * g, 1.55); this.sample('deal', t + 0.07, 0.22 * g, 1.75); return this.whoosh(t, 0.06 * g);
-      case 'sweep': this.sample('sweep', t, 0.55 * g, 1.05); return this.whoosh(t, 0.18 * g);
+      case 'sweep': this.sample('sweep', t, 0.55 * g, 1.05, undefined, opts.seat, opts.playerCount); return this.whoosh(t, 0.18 * g);
       case 'bid': return this.sample('bid', t, 0.9 * g, 1);
       case 'bidSoft': return this.sample('bid', t, 0.35 * g, 1.15);
       case 'pop': return this.sample('pop', t, 0.45 * g, 1.2);
@@ -651,13 +749,17 @@ class Engine {
     }
   }
 
-  private sample(key: string, t: number, gain: number, rate = 1, maxDur?: number) {
+  private sample(key: string, t: number, gain: number, rate = 1, maxDur?: number, seat?: SeatPos, playerCount = 4) {
     const c = this.ctx!; const list = FILES[key]!;
-    const buf = this.buffers.get(list[Math.floor(Math.random() * list.length)]!);
+    const vi = pickVariant(list.length, this.lastVariant.get(key) ?? -1);
+    this.lastVariant.set(key, vi);
+    const buf = this.buffers.get(list[vi]!);
     if (!buf) return;
     const src = c.createBufferSource(); src.buffer = buf; src.playbackRate.value = rate;
     const g = c.createGain(); g.gain.value = gain;
-    src.connect(g).connect(this.sfxBus!);
+    const route = this.routeSfx(key, seat, playerCount);
+    src.connect(g).connect(route.node);
+    if (route.release) src.onended = () => route.release!();
     src.start(t);
     if (maxDur) { g.gain.setValueAtTime(gain, t + Math.max(0, maxDur - 0.18)); g.gain.linearRampToValueAtTime(0.0001, t + maxDur); src.stop(t + maxDur + 0.05); }
   }
@@ -1261,6 +1363,17 @@ class Engine {
 
 /** Durations (seconds) the gunshot, shotgun, and tornado wind fill on first play. */
 export const EFFECT_NOISE_SECONDS = [0.085, 0.095, 0.12, 0.21, 0.23, 0.25, 0.31, 0.4, 0.75, 2.7];
+
+/** Pure mapping, tested: intensity → card-hit gain, pitch and table thud. Master volume / mute apply on top. */
+export interface SmackSound { gain: number; rate: number; thud: number }
+export function smackSound(intensity: number): SmackSound {
+  const i = Number.isFinite(intensity) ? Math.max(0, Math.min(1, intensity)) : 0.3;
+  return {
+    gain: 0.35 + 0.95 * i, // soft tap 0.35 → full smack 1.3 (default play is 0.9)
+    rate: 1.12 - 0.27 * i, // a harder hit sounds lower and fuller
+    thud: i < 0.4 ? 0 : 0.25 + 0.55 * ((i - 0.4) / 0.6),
+  };
+}
 
 export const sound = new Engine();
 sound.installUnlock();

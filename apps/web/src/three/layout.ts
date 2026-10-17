@@ -89,16 +89,14 @@ export function opponentFan(pos: SeatPos, n: number, i: number, count: number): 
 }
 
 /** Trick-card scale: big enough that rank + suit read clearly on a phone. */
-export const TRICK_SCALE = 2.3;
+export const TRICK_SCALE = 1.8; // 22% under the old 2.3: trick cards were too large on the felt
 const TRICK_LEAN = 0.38; // tilt toward the camera so the faces aren't foreshortened
 
 /**
  * Card's spot in the middle of the table when played by this seat: a non-overlapping "plus" layout
  * (each card toward its player), face up, almost square to the table edge, leaned up toward the camera.
  */
-export const TRICK_ORDER_LIFT = 0.03;
-
-export function trickSpot(pos: SeatPos, n: number, order: number, jitter: number, scale = TRICK_SCALE): Xform {
+export function trickSpot(pos: SeatPos, n: number, order: number, jitter: number, scale = TRICK_SCALE, land?: { dx: number; dz: number; spin: number }): Xform {
   const d = seatDir(pos, n);
   const w = CW * scale, h = CH * scale;
   // non-overlapping plus: top/bottom stacked by card height, sides beside them by a full card width,
@@ -107,9 +105,23 @@ export function trickSpot(pos: SeatPos, n: number, order: number, jitter: number
     ? new Vector3(Math.sign(d.x) * (w + 0.06), 0, 0.02)
     : new Vector3(0, 0, Math.sign(d.z) * (h / 2 + 0.05 + h * Math.sin(TRICK_LEAN) * 0.42)); // the lean lifts the near card's top edge toward the far one
   if (n === 3 && pos !== 'bottom') off.set(Math.sign(d.x) * (w / 2 + 0.04), 0, -(h / 2 + 0.01));
-  // Each later play sits clearly above the earlier ones, so the led card never draws over a later card.
-  const lift = 0.02 + order * TRICK_ORDER_LIFT + (h / 2) * Math.sin(TRICK_LEAN);
-  return xf([off.x, lift, off.z + 0.04], [-Math.PI / 2 + TRICK_LEAN, jitter * 0.05, 0], scale, 'XYZ');
+  // Physics landing (Tips off): a small slide and an in-plane spin on top of the fixed spot. The card's
+  // local +y is the far edge (-z), so a felt spin s is -s about the card normal.
+  // A landed card lies flat on the felt (no lean, no tilt): only the spin about the vertical axis.
+  if (land) return flatRest(off.x + land.dx, off.z + 0.04 + land.dz, land.spin, order, scale);
+  // Tips on: the fixed per-seat spot, also flat on the felt (a hair of spin from the jitter, like a real toss).
+  return flatRest(off.x, off.z + 0.04, jitter * 0.05, order, scale);
+}
+
+/** Felt height a landed card rests at, and the per-card step that keeps overlapping cards from z-fighting. */
+export const FELT_REST_Y = 0.006;
+export const STACK_DY = 0.003;
+/**
+ * A card lying flat on the felt, face up: zero pitch and roll, only a spin about the vertical axis
+ * (positive spin turns it counter-clockwise seen from above). `order` stacks later cards a hair higher.
+ */
+export function flatRest(x: number, z: number, spin: number, order: number, scale = TRICK_SCALE): Xform {
+  return xf([x, FELT_REST_Y + order * STACK_DY, z], [-Math.PI / 2, 0, -spin], scale, 'XYZ');
 }
 
 /** Won-trick pile in front of a seat: tricks laid in an overlapping row, face down. */
@@ -151,19 +163,25 @@ export function badgeSpot(pos: SeatPos, n: number): [number, number, number] {
 export interface CamSpec { pos: [number, number, number]; look: [number, number, number]; fov: number }
 
 /** Camera from the human seat looking across the table; framing adapts to portrait/landscape. */
-export function cameraFor(aspect: number, short = false): CamSpec {
+export function cameraFor(aspect: number, short = false, view: 'standing' | 'sitting' = 'standing'): CamSpec {
   // A 0×0 canvas (iPhone chrome, first frame) is 0 or NaN. That fov never recovers on its own.
   if (!(Number.isFinite(aspect) && aspect > 0.05 && aspect < 20)) aspect = 9 / 16;
-  if (short) return shortLandscapeCamera(aspect);
+  if (short) return shortLandscapeCamera(aspect, view);
   const t = Math.min(1, Math.max(0, (aspect - 0.5) / (1.6 - 0.5))); // 0 = tall phone, 1 = wide desktop
   const lerp = (a: number, b: number) => a + (b - a) * t;
   const pos: [number, number, number] = [0, lerp(4.5, 3.45), lerp(3.75, 3.4)];
   const look: [number, number, number] = [0, 0, lerp(0.38, 0.08)];
+  if (view === 'sitting') {
+    // Sitting: lower, in-the-chair angle. The first cut (lower+closer) pushed the hand fan off the
+    // bottom of the screen, so the reframe keeps the low height but pulls back, widens the fov and
+    // aims toward the hand: the full fan + YOUR TURN plate must fit (hand visibility wins).
+    pos[1] *= 0.58; pos[2] *= 0.95; look[2] += 0.45;
+  }
   const dist = Math.hypot(pos[1] - look[1], pos[2] - look[2]);
   // fit the table width (with rail) horizontally, and keep at least a minimum vertical fov
   const halfW = FELT.hx + RAIL + lerp(-0.08, 0.1);
   const vFit = 2 * Math.atan(Math.tan(Math.atan(halfW / dist)) / aspect) * (180 / Math.PI);
-  const fov = Math.min(80, Math.max(lerp(56, 45.5), vFit));
+  const fov = Math.min(84, Math.max(lerp(56, 45.5), vFit) + (view === 'sitting' ? 11 : 0));
   return { pos, look, fov };
 }
 
@@ -171,18 +189,30 @@ export function cameraFor(aspect: number, short = false): CamSpec {
  * Phone landscape: little height, lots of width. A lower, more frontal camera (less foreshortening of the far half)
  * framed so the felt fills the height between the one-line scorebug and the hand, leaving the sides for name plates.
  */
-function shortLandscapeCamera(aspect: number): CamSpec {
+function shortLandscapeCamera(aspect: number, view: 'standing' | 'sitting' = 'standing'): CamSpec {
   void aspect;
+  if (view === 'sitting') return { pos: [0, 1.95, 3.45], look: [0, 0, 0.5], fov: 52 }; // seated: low, across the felt, wide enough for the fan
   return { pos: [0, 3.1, 3.5], look: [0, 0, 0.22], fov: 42 };
 }
 
-export function makeCamera(aspect: number, short = false): PerspectiveCamera {
-  const s = cameraFor(aspect, short);
+export function makeCamera(aspect: number, short = false, view: 'standing' | 'sitting' = 'standing'): PerspectiveCamera {
+  const s = cameraFor(aspect, short, view);
   const cam = new PerspectiveCamera(s.fov, aspect, 0.05, 60);
   cam.position.set(...s.pos);
   cam.lookAt(new Vector3(...s.look));
   cam.updateMatrixWorld(true);
   return cam;
+}
+
+/** Sitting<->Standing camera move: 0.7s ease-out. Pure so tests can assert intermediate poses.
+ *  Wall-clock based (not frame dt): in frameloop="demand" the first dt after an idle table can be
+ *  seconds long, which used to consume the whole tween in one frame — the snap Demetrius saw. */
+export const CAMERA_VIEW_TWEEN_MS = 700;
+export function cameraPoseAt(from: readonly number[], to: readonly number[], fromLook: readonly number[], toLook: readonly number[], elapsedMs: number, durMs = CAMERA_VIEW_TWEEN_MS): { pos: number[]; look: number[]; t: number } {
+  const t = durMs <= 0 ? 1 : Math.min(1, Math.max(0, elapsedMs / durMs));
+  const k = 1 - Math.pow(1 - t, 3);
+  const mix = (a: readonly number[], b: readonly number[]) => a.map((v, i) => v + (b[i]! - v) * k);
+  return { pos: mix(from, to), look: mix(fromLook, toLook), t };
 }
 
 export interface FanLayout {
@@ -236,6 +266,10 @@ export function raiseOpenPx(cardWidthPx: number, stepPx: number, minStripPx: num
  * when even a tight overlap (rank index still visible) can't fit.
  */
 export interface FanOpts {
+  /** Camera view the fan is anchored to. The hand is screen-anchored, so it MUST be laid out with
+   *  the live view's camera — anchoring to Standing while Sitting renders pushed the fan off-screen
+   *  on real iPhone Safari (the old probe shared the wrong camera, so WebKit tests missed it). */
+  view?: 'standing' | 'sitting';
   /** Fraction of the width kept clear on each side (e.g. for the HUD corners in landscape). */
   reserveFrac?: number;
   /** Fraction of the height kept clear at the bottom (iOS home indicator). */
@@ -278,6 +312,8 @@ export interface FanOpts {
    * Needs `pxW` and `minStripPx`.
    */
   pivot?: number;
+  /** Pixels added over the strip floor (headroom for a lifted card). */
+  stripPad?: number;
 }
 
 /** Where the strip is measured, as a fraction of the card height below its top edge. */
@@ -287,7 +323,7 @@ function pivotFanLayout(aspect: number, count: number, safeFrac: number, o: FanO
   const pivot = o.pivot ?? 0;
   const pxW = Number.isFinite(o.pxW) && o.pxW! >= 32 ? o.pxW! : 0;
   if (!(pivot > 0) || !pxW || !(o.minStripPx! > 0)) return null;
-  const cam = makeCamera(aspect, o.short);
+  const cam = makeCamera(aspect, o.short, o.view);
   const viewH = 2 * Math.tan((cam.fov * Math.PI) / 360);
   const viewW = viewH * aspect;
   const k = pxW / viewW;
@@ -295,7 +331,7 @@ function pivotFanLayout(aspect: number, count: number, safeFrac: number, o: FanO
   const halfAvail = viewW / 2 - viewW * (o.edgeFrac ?? Math.max(0.06, safeFrac + 0.025, o.reserveFrac ?? 0));
   const halfN = Math.max(0, (count - 1) / 2);
   // A few pixels over the floor: a lifted playable card slides its tilted edge sideways over the next strip.
-  const strip = Math.min(o.minStripPx!, Math.max(16, (pxW * (1 - 2 * edge)) / Math.max(1, count)) * 1.6) + 4;
+  const strip = Math.min(o.minStripPx!, Math.max(16, (pxW * (1 - 2 * edge)) / Math.max(1, count)) * 1.6) + (o.stripPad ?? 4);
   const spread = Number.isFinite(o.spread) && o.spread! > 0;
   let s = Math.min(viewH * (o.heightFrac ?? 0.16), viewW * 0.25 * 1.4 * 1.5) / CH;
   let out: FanLayout | null = null;
@@ -304,14 +340,16 @@ function pivotFanLayout(aspect: number, count: number, safeFrac: number, o: FanO
     const ch = CH * s;
     const R = pivot * ch;
     const rLine = R + ch * (0.5 - STRIP_LINE_FRAC);
-    const dTheta = halfN > 0 ? Math.min(0.5, strip / k / rLine) : 0;
+    // Never wrap the fan past ~95° a side: edge cards would turn away and leave the screen.
+    const dTheta = halfN > 0 ? Math.min(0.5, strip / k / rLine, 1.65 / halfN) : 0;
     const tMax = halfN * dTheta;
     const outer = R * Math.sin(tMax) + (cw / 2) * Math.cos(tMax) + (ch / 2) * Math.sin(tMax);
     const step = rLine * dTheta;
-    // Room for a raised card is always reserved, so the cards keep one size whether or not one is raised.
+    // The raised layout reserves room for its opening; the resting fan uses the full width.
     const open = raiseOpenPx(cw * k, step * k, strip);
     out = { s, cw, ch, step, maxRoll: tMax, curveK: 0, viewW, viewH, raiseOpen: spread ? open : 0, pivotR: R, dTheta };
-    if ((halfAvail - outer) * k >= open + 1) break;
+    // Only the raised layout reserves its opening; the resting fan uses the full width.
+    if ((halfAvail - outer) * k >= (spread ? open : 0) + 1) break;
     s *= 0.97;
   }
   return out;
@@ -322,7 +360,7 @@ export function fanLayout(aspect: number, count: number, safeFrac = 0, o: FanOpt
   if (!(count >= 1)) count = 1;
   const pivoted = pivotFanLayout(aspect, count, safeFrac, o);
   if (pivoted) return pivoted;
-  const cam = makeCamera(aspect, o.short);
+  const cam = makeCamera(aspect, o.short, o.view);
   const D = 1;
   const viewH = 2 * Math.tan((cam.fov * Math.PI) / 360) * D;
   const viewW = viewH * aspect;
@@ -416,15 +454,21 @@ export function fanLayout(aspect: number, count: number, safeFrac = 0, o: FanOpt
  * fan is easier to tap. The fit loop still shrinks a 13- or 17-card hand onto the screen.
  * 44px of exposed width is the target when the count leaves room for it.
  */
-export const PHONE_HAND_HEIGHT = 0.3;
-export const PHONE_HAND_EDGE = 0.018;
+export const PHONE_HAND_HEIGHT = 0.38;
+export const PHONE_HAND_EDGE = 0.012;
 export const PHONE_HAND_ROLL = 0.2;
 /** Phone fan pivot, in card heights below each card's centre. Smaller is a rounder arc. */
-export const PHONE_HAND_PIVOT = 1.3;
+export const PHONE_HAND_PIVOT = 1.4;
+/** Headroom over the 28px strip floor. The e2e still measures >= 28px with a card raised. */
+export const PHONE_HAND_STRIP_PAD = 4;
+/** Phone portrait strip target: wider than the global floor so a raised card still leaves a tappable strip. */
+export const PHONE_HAND_STRIP_PX = 36;
+/** The fan rises off the bottom edge into the near rail, so the arch underneath it can hold your plate. */
+export const PHONE_HAND_RISE = 0.05;
 export const HAND_EXPOSED_PX = 44;
 
 export function phoneHandFan(): FanOpts {
-  return { heightFrac: PHONE_HAND_HEIGHT, edgeFrac: PHONE_HAND_EDGE, rollCap: PHONE_HAND_ROLL, pivot: PHONE_HAND_PIVOT };
+  return { heightFrac: PHONE_HAND_HEIGHT, edgeFrac: PHONE_HAND_EDGE, rollCap: PHONE_HAND_ROLL, pivot: PHONE_HAND_PIVOT, stripPad: PHONE_HAND_STRIP_PAD, bottomFrac: PHONE_HAND_RISE };
 }
 
 /** Card width, card height, and the strip of each card that is not covered by the next, in CSS pixels. */
@@ -496,7 +540,7 @@ export function handCardPlane(aspect: number, count: number, i: number, lift: nu
  * so every card projects at exactly the same size and spacing — a perfectly symmetric fan. Only the lifted card moves.
  */
 export function handFan(aspect: number, count: number, i: number, lift: number, safeFrac = 0, o: FanOpts = {}, gapPx = 0, screenH = 844): Xform {
-  const cam = makeCamera(aspect, o.short);
+  const cam = makeCamera(aspect, o.short, o.view);
   const c = handCardPlane(aspect, count, i, lift, safeFrac, o, gapPx, screenH);
   const { depth } = c;
   const local = new Matrix4().compose(
@@ -514,8 +558,8 @@ export function handFan(aspect: number, count: number, i: number, lift: number, 
  * Canvas CSS pixels of one card's drawn corners. `liftPx` is the screen-up raise
  * (the inner wrapper). The same quad is what the hand hit test uses.
  */
-export function cardScreenQuad(aspect: number, t: Xform, screenW: number, screenH: number, liftPx = 0, short = false): { x: number; y: number }[] {
-  const cam = makeCamera(aspect, short);
+export function cardScreenQuad(aspect: number, t: Xform, screenW: number, screenH: number, liftPx = 0, short = false, view: 'standing' | 'sitting' = 'standing'): { x: number; y: number }[] {
+  const cam = makeCamera(aspect, short, view);
   cam.updateProjectionMatrix();
   const m = new Matrix4().compose(new Vector3(...t.p), new Quaternion(...t.q), new Vector3(t.s, t.s, t.s));
   const w = Number.isFinite(screenW) && screenW >= 32 ? screenW : 0;

@@ -71,3 +71,15 @@ describe('plate facts on a new hand', () => {
     root.remove();
   });
 });
+
+describe('one DEALER chip per plate', () => {
+  it('drops a second DEALER chip on a bot plate and on your plate', () => {
+    const root = screen();
+    root.querySelector('[data-testid="seat-1"] .plate-name')!.insertAdjacentHTML('beforeend', '<span class="chip dealer">DEALER</span>');
+    root.querySelector('[data-testid="seat-0"] .plate-name')!.insertAdjacentHTML('beforeend', '<span class="chip dealer">DEALER</span><span class="chip dealer">DEALER</span>');
+    syncPlateFacts(root, [0, 1, 2, 3].map((seat) => ({ seat, dealer: seat === 1, bid: 'BID 3', took: 'TOOK 0' })) as never);
+    expect(root.querySelectorAll('[data-testid="seat-1"] .chip.dealer').length).toBe(1);
+    expect(root.querySelectorAll('[data-testid="seat-0"] .chip.dealer').length).toBeLessThanOrEqual(1);
+    root.remove();
+  });
+});
