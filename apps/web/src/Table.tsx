@@ -64,6 +64,7 @@ import { MinBidLine, bidChoices, minBidNote } from './minBid';
 import { type SavedGame, clearGame, saveGame } from './save';
 
 import { useViewport } from './viewport';
+import { tapPlaySlamIntensity } from './slam';
 import { effectiveView, handStarted, initialHandView, userToggledView, type HandViewState } from './handView';
 import { Coach, LedSuitChip } from './Coach';
 import { type TipsPref, bumpTip, loadTips, saveTips, tipCount } from './tips';
@@ -182,6 +183,7 @@ interface Props {
   startDealer?: number;
   onQuality: (q: Settings['quality']) => void;
   onView?: (v: Settings['view']) => void;
+  onTurnUp?: (on: boolean) => void;
   /** A saved in-progress game to resume at exactly the same point. */
   resume?: SavedGame;
   /** Rematch or resume: keep the series tally. A new game leaves this unset and starts at 0–0. */
@@ -471,7 +473,7 @@ function SeatBadge({ badge }: { badge: TurnBadge }) {
 }
 
 
-export default function Table({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, onView, resume, continueSeries, online, onMainMenu, startDealer }: Props) {
+export default function Table({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, onView, onTurnUp, resume, continueSeries, online, onMainMenu, startDealer }: Props) {
   useEffect(() => { setActiveDeck(settings.deck); }, [settings.deck]);
   // `online` never changes for a mounted Table, so this is always the same hook path per instance
   // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -661,6 +663,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [handView, setHandView] = useState<HandViewState>(initialHandView);
   useEffect(() => { setHandView((hv) => handStarted(hv, st.handNo)); }, [st.handNo]);
   const effView = effectiveView(settings.view, handView);
+  const turnUp = settings.turnUp === true;
+  const toggleTurnUp = () => onTurnUp?.(!turnUp);
   const toggleView = () => { setHandView((hv) => userToggledView(hv)); onView?.(effView === 'sitting' ? 'standing' : 'sitting'); };
   const [runFx, setRunFx] = useState<RunFx | null>(null);
   /** Server playback seq already started, so a later state for the same claim does not replay it. */
@@ -1147,7 +1151,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (action.type === 'ignore') return;
     if (action.type === 'play') {
       const held = trickNow;
-      const sent = apply({ type: 'play', seat: HUMAN, card: action.card as Card, ...(dragged && slam !== undefined ? { slam } : !dragged && effView === 'standing' ? { slam: 1 } : {}), ...(dragged && rel ? { rel } : {}) });
+      const tapSlam = dragged ? undefined : tapPlaySlamIntensity(effView, turnUp);
+      const sent = apply({ type: 'play', seat: HUMAN, card: action.card as Card, ...(dragged && slam !== undefined ? { slam } : tapSlam ? { slam: tapSlam } : {}), ...(dragged && rel ? { rel } : {}) });
       if (sent !== false) {
         playHold.current = held;
         playArmed.current = false;
@@ -1162,7 +1167,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       setSelected(action.card as Card);
       sound.play('tap');
     }
-  }, [humanExchanging, exchangeStep, legal, apply, trickNow, effView]);
+  }, [humanExchanging, exchangeStep, legal, apply, trickNow, effView, turnUp]);
 
   const onCardDrop = useCallback((c: Card, slam?: number, rel?: [number, number]) => onCard(c, true, slam, rel), [onCard]);
 
@@ -1338,6 +1343,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           reduceFx={reduceFx}
           venue={venue}
           view={effView}
+          turnUp={turnUp}
           piles={display.piles}
           legal={runFx ? [] : humanExchanging && hand ? hand : legal}
           selected={runFx ? null : selected}
@@ -1376,6 +1382,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
                 <button type="button" role="menuitem" data-testid="scorepad-button" onClick={() => { setShowPad(true); setMenuOpen(false); }}>📋 Score pad &amp; house rules</button>
                 <button type="button" role="menuitem" onClick={() => onQuality(settings.quality === 'high' ? 'low' : 'high')}>🎨 Graphics: {settings.quality === 'high' ? 'High' : 'Low'}</button>
                 <button type="button" role="menuitem" data-testid="view-toggle" onClick={toggleView}>{effView === 'sitting' ? '🪑' : '🧍'} View: {effView === 'sitting' ? 'Sitting' : 'Standing'}</button>
+                <button type="button" role="menuitem" data-testid="turnup-toggle" aria-pressed={turnUp} onClick={toggleTurnUp}>🔥 Turn up: {turnUp ? 'On — Standing slams' : 'Off — gentle plays'}</button>
                 {[1, 2, 3].map((seat) => seat < names.length ? <button key={seat} type="button" role="menuitem" data-testid={`voice-mute-${seat}`} aria-pressed={sound.voiceMuted(names[seat]!)} onClick={() => { sound.setVoiceMuted(names[seat]!, !sound.voiceMuted(names[seat]!)); setMuteTick((t) => t + 1); }}>{sound.voiceMuted(names[seat]!) ? '🔇' : '🔊'} {names[seat]} voice: {sound.voiceMuted(names[seat]!) ? 'muted' : 'on'}</button> : null)}
                 <div className="menu-social"><SocialButton className="compact" /></div>
                 <button type="button" role="menuitem" className="danger" data-testid="menu-leave" onPointerDown={(e) => { e.currentTarget.setPointerCapture?.(e.pointerId); runLeaveMenu(e, 'leave'); }} onPointerUp={(e) => runLeaveMenu(e, 'leave')} onClick={(e) => runLeaveMenu(e, 'leave')}>🚪 Leave table</button>
@@ -1523,7 +1530,12 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
               <span className="chip" data-testid="books-0">{plateTookText(plates.books[HUMAN] ?? 0, st.phase)}</span>
               {isNilBid(plates.bids[HUMAN]) && (plates.books[HUMAN] ?? 0) > 0 && <span className="chip bad">NIL BUSTED</span>}
             </div>
-            {!spectating && <button type="button" className="view-chip" data-testid="view-toggle-plate" aria-pressed={effView === 'sitting'} onClick={toggleView}>{effView === 'sitting' ? '🪑 Sitting view' : '🧍 Standing view'}</button>}
+            {!spectating && (
+              <span className="plate-toggles">
+                <button type="button" className="view-chip" data-testid="view-toggle-plate" aria-pressed={effView === 'sitting'} onClick={toggleView}>{effView === 'sitting' ? '🪑 Sitting view' : '🧍 Standing view'}</button>
+                <button type="button" className={`view-chip turnup-chip ${turnUp ? 'on' : ''}`} data-testid="turnup-toggle-plate" aria-pressed={turnUp} onClick={toggleTurnUp} title="Turn up: Standing plays slam hard. Off: Standing plays are gentle.">🔥 Turn up: {turnUp ? 'On' : 'Off'}</button>
+              </span>
+            )}
           </div>
           {badge && badge.seat === HUMAN && <div className="plate-turn" data-testid={badge.testId}>{badge.text}</div>}
           {online?.seatExtra(HUMAN)}

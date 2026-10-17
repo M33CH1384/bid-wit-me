@@ -46,8 +46,10 @@ export interface Settings {
   quality: 'high' | 'low';
   /** Venue (3D arena) for offline games: classic (default), one of the venues, or random (rolled per game) */
   venue: VenueChoice;
-  /** Camera view: sitting = lower/closer (DEFAULT for new players, V-gesture slams); standing = higher/farther (slams always max). A saved choice always wins. */
+  /** Camera view: sitting = lower/closer (DEFAULT for new players, V-gesture slams); standing = higher/farther. A saved choice always wins. */
   view: 'standing' | 'sitting';
+  /** Turn up (slam mode): OFF by default for everyone. When ON, Standing plays slam at max (sent online). When OFF, Standing plays are gentle. Sitting's V-gesture and other deliberate slams are not gated by this. */
+  turnUp: boolean;
   /** Card deck art pack (Desi decks; all unlocked for now, Story/purchase lock later). */
   deck: string;
 }
@@ -62,7 +64,7 @@ export const DEFAULT_SETTINGS: Settings = {
   mode: 'joker', targetScore: 'default', losingFloor: 'on', deuceOfSpadesHigh: false, jokerOrder: 'house',
   cutthroatDeck: 'joker54', spadesMustBeBroken: true, firstLead: 'leftOfDealer', minTeamBid: 0, nilAllowed: true,
   blindNil: 'behind100', blindNilExchange: 0, nilTricksCountForPartner: false, bags: '10/100', tenForTwoHundred: false,
-  firstHandBidsItself: true, botLevel: 'mixed', shotOut: true, firstHandMin: 'default', cutMinBid: 1, cutBlindNil: false, bagsOn: true, talkIntensity: 'cookout', speed: 'normal', quality: defaultQuality(), venue: 'classic', view: 'sitting', deck: 'classic',
+  firstHandBidsItself: true, botLevel: 'mixed', shotOut: true, firstHandMin: 'default', cutMinBid: 1, cutBlindNil: false, bagsOn: true, talkIntensity: 'cookout', speed: 'normal', quality: defaultQuality(), venue: 'classic', view: 'sitting', turnUp: false, deck: 'classic',
 };
 
 export const MODES: { key: ModeKey; title: string; blurb: string; players: string }[] = [
@@ -131,6 +133,7 @@ export function normalizeSettings(j: Omit<Partial<Settings>, 'botLevel'> & { bot
   if (!['family', 'cookout', 'nomercy'].includes(s.talkIntensity)) s.talkIntensity = 'cookout';
   if (!isVenueChoice(s.venue)) s.venue = 'classic';
   if (s.view !== 'sitting' && s.view !== 'standing') s.view = 'sitting'; // no saved preference (or junk) -> Sitting
+  if (typeof s.turnUp !== 'boolean') s.turnUp = false; // slam mode is opt-in; old saves start OFF
   if (!['classic', 'afrofuturist', 'harlem', 'hiphop', 'mali', 'egypt', 'greek'].includes(s.deck)) s.deck = 'classic';
   return s;
 }

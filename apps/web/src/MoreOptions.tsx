@@ -87,6 +87,9 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
           <Row label="Graphics" hint="Low saves battery">
             <Seg label="Graphics" value={s.quality} options={[['high', 'High'], ['low', 'Low']]} onChange={(v) => set('quality', v)} />
           </Row>
+          <Row label="Turn up (slam mode)" hint="On: Standing plays slam hard. Off (default): Standing plays are gentle. Sitting's V-gesture slam always works.">
+            <Toggle label="Turn up (slam mode)" value={s.turnUp === true} onChange={(v) => set('turnUp', v)} />
+          </Row>
           <h3 className="sheet-h">Sound &amp; music</h3>
           <SoundFields />
           <ReduceEffectsRow />

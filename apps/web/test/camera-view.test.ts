@@ -69,7 +69,9 @@ describe('camera view', () => {
     expect(dragSlamIntensity(fastStraight, 'sitting')).toBe(0);
     const fastFlickUp = path([[195, 700], [195, 500], [195, 320]]);
     expect(dragSlamIntensity(fastFlickUp, 'sitting')).toBe(0);
-    expect(dragSlamIntensity(straight, 'standing')).toBe(1);
+    expect(dragSlamIntensity(straight, 'standing')).toBe(0); // Turn up OFF (default): Standing is gentle
+    expect(dragSlamIntensity(straight, 'standing', true)).toBe(1); // Turn up ON: Standing slams max
+    expect(dragSlamIntensity(straight, 'standing', false)).toBe(0);
     expect(isVGesture(path([[195, 700], [195, 690], [195, 700]]))).toBe(false); // legs too small
   });
 });
