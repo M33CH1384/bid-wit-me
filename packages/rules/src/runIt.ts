@@ -105,6 +105,28 @@ function prove(st: GameState, seat: Seat): boolean {
   const memo = new Map<string, boolean>();
 
   /**
+   * Seats act once per trick and empty hands are skipped — the very rules the engine's nextLive deals by.
+   * Modeling a trick as `playerCount` plays in raw seat order breaks once a seat is eliminated: seats that
+   * already played get asked for a phantom second card inside the same trick, burning cards (a trump that
+   * would have ruffed the claimer's next lead) in a trick they were never really in, and the proof goes
+   * through on a layout that cannot happen. (Found by the full bot games the moment Cutthroat's blanket
+   * Run it! ban was lifted: the claim was 'proven', then the honest play-out lost the line and threw.)
+   */
+  const inTrick = (trick: readonly Play[], s: number): boolean => trick.some((pl) => pl.seat === s);
+  /** A trick is complete when every seat has either played in it or holds no cards (eliminated / spent). */
+  const trickDone = (trick: readonly Play[], counts: readonly number[]): boolean =>
+    trick.length > 0 && counts.every((c, s) => c === 0 || inTrick(trick, s));
+  /** The next seat that still has to act in this trick, skipping seats that played and empty hands. */
+  const nextTurn = (from: number, trick: readonly Play[], counts: readonly number[]): number => {
+    let t = from;
+    for (let i = 0; i < n; i++) {
+      t = (t + 1) % n;
+      if (!inTrick(trick, t) && counts[t]! > 0) return t;
+    }
+    return from;
+  };
+
+  /**
    * Every card we still hold beats every outstanding card: definite, or null if the search still has work.
    * "Beats" is one-way. A diamond is not beaten by a club, and a club is not beaten by that diamond, but the
    * club still wins a trick it led. Treating "nothing beats us" as a win let an off-lead hand of unbeaten
@@ -232,7 +254,7 @@ function prove(st: GameState, seat: Seat): boolean {
     hand: readonly Card[], unseen: readonly Card[], counts: readonly number[], voids: readonly number[],
     trick: Play[], turn: number, broken: boolean,
   ): boolean => {
-    while (trick.length === n) {
+    while (trickDone(trick, counts)) {
       const w = trickWinner(trick, rules);
       if (w !== seat) return false;
       if (hand.length === 0) return true;
@@ -256,7 +278,7 @@ function prove(st: GameState, seat: Seat): boolean {
         const nextHand = hand.filter((c) => c !== card);
         const nextCounts = counts.slice();
         nextCounts[seat]!--;
-        if (wins(nextHand, unseen, nextCounts, voids, [...trick, { seat, card }], (turn + 1) % n, broken || isTrump(card, rules))) {
+        if (wins(nextHand, unseen, nextCounts, voids, [...trick, { seat, card }], nextTurn(turn, [...trick, { seat, card }], nextCounts), broken || isTrump(card, rules))) {
           ans = true;
           break;
         }
@@ -281,7 +303,7 @@ function prove(st: GameState, seat: Seat): boolean {
             copied[turn] = copied[turn]! | ledBit;
             nextVoids = copied;
           }
-          if (!wins(hand, nextUnseen, nextCounts, nextVoids, [...trick, { seat: turn, card }], (turn + 1) % n, broken || isTrump(card, rules))) {
+          if (!wins(hand, nextUnseen, nextCounts, nextVoids, [...trick, { seat: turn, card }], nextTurn(turn, [...trick, { seat: turn, card }], nextCounts), broken || isTrump(card, rules))) {
             ans = false;
             break;
           }

@@ -72,6 +72,9 @@ export function Intermission({
 }) {
   const r = st.rules;
   const rec = st.history[st.history.length - 1]!;
+  // The match is decided when the engine has a result: this recap is then the last stop before
+  // the winner flow, never an offer to deal another hand (the shot-out hold in Table.tsx).
+  const decided = st.phase === 'gameOver' && !!st.result;
   const callouts = calloutsFor(st, mySide, names);
   const notes = callouts.filter((c) => c.kind !== 'shot' && c.kind !== 'gotShot');
   const sides = rec.sides;
@@ -134,16 +137,19 @@ export function Intermission({
     const delay = anim.current?.waitSheet.size ? 0.4 : 0.05;
     sound.play('docSting', { delay });
     sound.play('siren', { delay: delay + 0.04 });
+    // The sheet now ROLLS down from the scorecard's top edge: a soft fabric rustle timed to
+    // the 620ms roll (same wait delay as the animation), only when a roll will actually play.
+    if (anim.current?.waitSheet.size) sound.play('cloth', { delay });
   }, [sirenKey, sheetOn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="tt-backdrop" data-testid="table-talk" role="dialog" aria-label="Hand recap">
+    <div className="tt-backdrop" data-testid="table-talk" data-decided={decided ? 'yes' : 'no'} role="dialog" aria-label="Hand recap">
       {sheetOn && <div className={`police-rim${anim.current?.waitSheet.size ? ' wait' : ''}`} data-testid="police-rim" aria-hidden="true" />}
       <div className="tt glass slant">
         <header className="tt-head">
           <span className="tt-title">HAND {rec.handNo} RECAP</span>
           {series}
-          {secs !== null && <span className={`tt-count ${secs <= 5 ? 'hot' : ''}`} data-testid="talk-count">Next deal {secs}s</span>}
+          {secs !== null && !decided && <span className={`tt-count ${secs <= 5 ? 'hot' : ''}`} data-testid="talk-count">Next deal {secs}s</span>}
         </header>
         <button
           type="button"
@@ -158,6 +164,19 @@ export function Intermission({
         </button>
 
         <div className="tt-body">
+          <section className="tt-top-scores" data-testid="recap-top-scores" aria-label="Top scores">
+            <h3>TOP SCORES</h3>
+            <ol>
+              {[...sides].sort((a, b) => b.totalScore - a.totalScore || a.side - b.side).map((s, i) => (
+                <li key={s.side} className={s.side === mySide ? 'mine' : ''} data-testid={`recap-top-${s.side}`}>
+                  <span className="place">#{i + 1}</span>
+                  <span className="who">{sideName(r, s.side, names)}</span>
+                  <b>{s.totalScore}</b>
+                  <span className="to-target">to {target}</span>
+                </li>
+              ))}
+            </ol>
+          </section>
           {notes.length > 0 && (
             <div className="tt-callouts">
               {notes.map((c, i) => <span key={i} className={`tt-callout ${c.kind}`}>{c.kind === 'streak' ? '🔥 ' : ''}{c.text}</span>)}
@@ -232,10 +251,10 @@ export function Intermission({
                       return <li key={x}><b>{names[x]}:</b> {bid ? `${bid}, took ${rec.tricksWon[x]}` : `took ${rec.tricksWon[x]}`}</li>;
                     })}
                   </ul>
-                  <div className="tt-stat total">
-                    <small>TOTAL</small>
-                    <b data-testid={`recap-total-${s.side}`}>{s.totalScore}</b>
-                    <span className="tt-bags">{s.totalBags} bag{s.totalBags === 1 ? '' : 's'}</span>
+                  {/* the running total lives ONLY in TOP SCORES above (founder: no score twice on one screen) */}
+                  <div className="tt-stat bags-stat">
+                    <small>BAGS</small>
+                    <b data-testid={`recap-bags-${s.side}`}>{s.totalBags}</b>
                   </div>
                   <div className="tt-bar" aria-label={`${s.totalScore} of ${target}`}><i style={{ width: `${pct * 100}%` }} /><small>to {target}</small></div>
                   </div>
@@ -246,13 +265,13 @@ export function Intermission({
           {runReview}
         </div>
 
-        <footer className="tt-foot bid-row">
-          <button type="button" onClick={onScorePad}>Score pad</button>
-          {onLeave && <button type="button" data-testid="recap-leave" onClick={onLeave}>Leave game</button>}
+        <footer className="tt-foot stack">
+          <button type="button" className="quiet-row-btn" onClick={onScorePad}>Score pad</button>
           {ready && <span className="muted" data-testid="talk-ready-count">{ready.count}/{ready.of} ready</span>}
-          <button type="button" className="primary big" data-testid="talk-ready" disabled={!!ready?.mine} onClick={onReady}>
-            {online ? (ready?.mine ? 'Waiting for the table…' : 'Ready') : 'Continue'}
+          <button type="button" className="primary big" data-testid="talk-ready" data-decided={decided ? 'yes' : 'no'} disabled={!!ready?.mine} onClick={onReady}>
+            {decided ? 'See final results' : online ? (ready?.mine ? 'Waiting for the table…' : 'Ready') : `Continue to hand ${rec.handNo + 1}`}
           </button>
+          {onLeave && <><div className="exit-divider" aria-hidden="true" /><button type="button" className="leave-red" data-testid="recap-leave" onClick={onLeave}>Leave game</button></>}
         </footer>
       </div>
     </div>

@@ -328,3 +328,58 @@
   .lobby-dock .lobby-teams-note { margin: 0 0 4px; font-size: 12px; }
   .lobby-v3 { padding-bottom: calc(250px + env(safe-area-inset-bottom)); }
 }
+
+/* ---------- lobby v6 (founder menu rework PR-B): photoreal table, ring+plate seats ----------
+   Presentation only: same SeatCard states, spotOf diamond, seat%2 teams, host logic.
+   The table uses the game's own wood/felt texture assets (not a screenshot). */
+.mini-felt {
+  border: 13px solid transparent;
+  background:
+    radial-gradient(ellipse at 50% 42%, rgba(46,138,84,.96) 0%, rgba(22,90,54,.97) 58%, rgba(10,44,27,.98) 100%) padding-box,
+    url('/assets/textures/dark_wood_diff_512.jpg') border-box;
+  background-size: auto, cover;
+  box-shadow: inset 0 0 60px rgba(0,0,0,.55), inset 0 0 0 2px rgba(245,197,66,.35), 0 14px 34px rgba(0,0,0,.55);
+}
+.felt-center { background: rgba(16,9,28,.62); box-shadow: inset 0 0 0 1px rgba(185,128,255,.4); padding: 10px 8px;
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
+.lobby-pick-title { font-family: var(--display); font-weight: 800; font-size: 30px; letter-spacing: .05em; margin: 4px 0 2px; color: #fff; text-transform: uppercase; }
+.seat-ring { position: relative; width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; flex: none;
+  background: radial-gradient(circle at 35% 30%, #3a2a55, #140a20); box-shadow: 0 0 0 2px rgba(179,167,204,.65), 0 4px 10px rgba(0,0,0,.5); }
+.seat-ring .av-initial { font-family: var(--display); font-weight: 800; font-size: 21px; color: #fff; }
+.seat-ring.empty { background: rgba(10,26,18,.5); box-shadow: 0 0 0 2px rgba(179,167,204,.45); }
+.seat-ring.empty .seat-plus { font-size: 24px; color: var(--muted); line-height: 1; }
+.seat-ring.occupied { box-shadow: 0 0 0 2px var(--gold), 0 0 14px rgba(245,197,66,.45), 0 4px 10px rgba(0,0,0,.5); }
+.seat-ring.mine { box-shadow: 0 0 0 3px var(--gold), 0 0 20px rgba(245,197,66,.7), 0 4px 10px rgba(0,0,0,.5); width: 58px; height: 58px; }
+.seat-card .seat-ring .vbubble { position: absolute; inset: 0; width: 100%; height: 100%; left: 0; top: 0; transform: none; }
+.seat-plate { display: flex; align-items: center; justify-content: center; gap: 5px; max-width: 100%; padding: 3px 8px; margin-top: 2px;
+  background: rgba(22,11,40,.88); box-shadow: inset 0 0 0 1px rgba(185,128,255,.45);
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); }
+.seat-plate.empty { color: var(--muted); font-family: var(--display); font-weight: 700; font-size: 12px; letter-spacing: .12em; }
+.seat-plate .seat-name { font-size: 14px; }
+.host-tag { font-family: var(--display); font-size: 9px; font-weight: 800; letter-spacing: .1em; color: #1d1204; background: var(--gold); padding: 1px 4px; }
+.start-gold { text-transform: uppercase; letter-spacing: .05em; }
+.waiting-block { background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px rgba(185,128,255,.3); padding: 14px 12px; text-align: center; }
+.leave-table-btn { width: 100%; border: 0; padding: 12px; background: rgba(255,77,109,.14); color: #ff8fa5; box-shadow: inset 0 0 0 1px rgba(255,77,109,.55);
+  font-family: var(--display); font-weight: 800; font-size: 17px; letter-spacing: .1em; touch-action: manipulation;
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); }
+.leave-table-btn:active { transform: scale(.98); }
+.back-chip { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 10px 16px 10px 12px; border: 0; color: var(--gold);
+  background: rgba(24,12,44,.85); box-shadow: inset 0 0 0 1px rgba(185,128,255,.45); font-family: var(--display); font-weight: 800; letter-spacing: .14em; font-size: 16px;
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); }
+.lobby-home { width: auto; height: auto; }
+.exit-divider { height: 1px; background: rgba(185,128,255,.25); margin: 10px 0; }
+
+/* Menu rework PR-E: tablet rail — 452px phone column left, live table right (landscape);
+   portrait tablet stacks the rail on top with the table below. Phone + wide-desktop rules untouched. */
+@media (min-width: 900px) and (max-width: 1279px) {
+  .lobby-cols { display: grid; grid-template-columns: 452px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; grid-template-areas: "settings main" "settings chat"; gap: 14px; height: 100%; }
+  .lobby-main { grid-area: main; min-height: 0; overflow-y: auto; }
+  .lobby-settings { grid-area: settings; min-height: 0; overflow-y: auto; }
+  .lobby-chat { grid-area: chat; }
+}
+@media (min-width: 768px) and (max-width: 899px) {
+  .lobby-cols { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "settings" "main" "chat"; gap: 12px; }
+  .lobby-main { grid-area: main; }
+  .lobby-settings { grid-area: settings; }
+  .lobby-chat { grid-area: chat; }
+}

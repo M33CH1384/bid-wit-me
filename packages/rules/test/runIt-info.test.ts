@@ -380,3 +380,56 @@ describe('Run it! does not treat an unbeaten side suit as a win', () => {
     expect(() => applyAction(laid, { type: 'runIt', seat: 3 })).toThrow(RuleError);
   });
 });
+
+describe('Run it! in Cutthroat after an ejection', () => {
+  const cut4 = makeRules('cutthroat', { playerCount: 4 });
+  const out = (st: GameState): GameState => ({ ...st, eliminated: [false, false, false, true] });
+
+  it('a live seat can still claim once another seat is out (the old table-wide gate refused everyone)', () => {
+    // Both Jokers: the top two trumps, two cards left, nothing outstanding can beat them.
+    const st = out(playing(cut4, [['BJ', 'LJ'], ['4C', '5C'], ['5C', '6H'], []], 0));
+    expect(canRunIt(st, 0)).toBe(true);
+    const after = applyAction(st, { type: 'runIt', seat: 0 });
+    expect(after.tricks.slice(st.tricks.length).every((t) => t.winner === 0)).toBe(true);
+  });
+
+  it('the eliminated seat itself can never claim', () => {
+    const st = out(playing(cut4, [['BJ', 'LJ'], ['4C', '5C'], ['5C', '6H'], []], 0));
+    expect(canRunIt(st, 3)).toBe(false);
+    expect(() => applyAction(st, { type: 'runIt', seat: 3 })).toThrow(RuleError);
+  });
+
+  it('more than RUN_IT_MAX cards left is never a claim, however strong the hand', () => {
+    const st = out(playing(cut4, [['BJ', 'LJ', '2S', 'AS', 'KS'], ['3C', '4C', '5C', '6C', '7C'], ['3H', '4H', '5H', '6H', '7H'], []], 0));
+    expect(canRunIt(st, 0)).toBe(false);
+  });
+
+  it('Demetrius’s layout — both Jokers + 2D + 2S as the last four — IS a claim: in Joker rules both deuces are top trumps', () => {
+    const st = out(playing(cut4, [['BJ', 'LJ', '2S', '2D'], ['AD', '4C', '5C', '6C'], ['7C', '8C', '4H', '5H'], []], 1));
+    expect(canRunIt(st, 0)).toBe(true);
+    const after = applyAction(st, { type: 'runIt', seat: 0 });
+    expect(after.tricks.slice(st.tricks.length).every((t) => t.winner === 0)).toBe(true);
+  });
+
+  it('but a plain side card in the last four breaks it: an outstanding Ace still cashes against it', () => {
+    const st = out(playing(cut4, [['BJ', 'LJ', '2S', '3D'], ['AD', '4C', '5C', '6C'], ['7C', '8C', '4H', '5H'], []], 1));
+    expect(canRunIt(st, 0)).toBe(false);
+  });
+
+  it('a trump still out ruffs the claimer’s last side card — the proof must not burn it inside the trick on the table', () => {
+    // Seat 0 is out. Seat 2 led the 2♦ (a trump), seat 3 already played, and the claimer (seat 1) is on
+    // play holding BJ + 8♦: BJ takes this trick, but then the 8♦ lead runs into the outstanding LJ.
+    // The proof used to model every trick as four plays in raw seat order, so seat 2 got a phantom second
+    // card in THIS trick — the LJ — and the claim 'passed'. Seeded bot game full:3 crashed the honest
+    // play-out on exactly this shape ('run it: lost the guaranteed line').
+    const st = { ...playing(cut4, [[], ['BJ', '8D'], ['LJ'], ['9H']], 2, ['2D', 'TH']), eliminated: [true, false, false, false], turn: 1 as const };
+    expect(canRunIt(st, 1)).toBe(false);
+  });
+
+  it('matches Team behaviour for the same cards when nobody is out', () => {
+    const team = playing(joker, [['BJ', 'LJ'], ['4C', '5C'], ['5C', '6H'], ['7C', '8H']], 0);
+    const cut = playing(cut4, [['BJ', 'LJ'], ['4C', '5C'], ['5C', '6H'], ['7C', '8H']], 0);
+    expect(canRunIt(team, 0)).toBe(true);
+    expect(canRunIt(cut, 0)).toBe(canRunIt(team, 0));
+  });
+});

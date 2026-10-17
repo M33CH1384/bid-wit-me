@@ -28,6 +28,7 @@ import { forceProgram, nextFrame, quietShaderErrors } from './shaderBudget';
 import { importChunk } from '../chunkLoad';
 import { offerTableRenderer } from '../effects/warm';
 import Venue3D, { feltPatternTexture, preloadVenueAssets } from './Venue3D';
+import ClassicStudio, { preloadClassicStudio } from './ClassicStudio';
 import { type VenueDef, type VenueId, VENUE_DEFS, venueAssetUrls } from '../venues';
 import { bodyGeometry, cardGeometry, feltGeometry, railGeometry } from './geometry';
 import {
@@ -99,6 +100,8 @@ export interface SceneProps {
   venue?: VenueId;
   /** camera view: standing (default) or sitting (lower/closer) */
   view?: 'standing' | 'sitting';
+  /** Turn up (slam mode): Standing drags slam at max only when this is on. */
+  turnUp?: boolean;
 }
 
 function CameraRig({ view = 'standing' }: { view?: 'standing' | 'sitting' }) {
@@ -198,6 +201,7 @@ export function preloadTableAssets(quality: 'high' | 'low', venue: VenueId = 'cl
   // The classic hall HDRI is ~400 KB and its PMREM filter used to freeze the page after the felt appeared.
   // It starts only once the cloth is up (see ClassicHall). Other venues still warm their own files here.
   if (venue !== 'classic') preloadVenueAssets(venue, quality);
+  else if (quality === 'high') preloadClassicStudio();
 }
 
 /** a venue's rail texture (marble / teak / bamboo / leather) rides with the table textures (20–35 KB) */
@@ -471,7 +475,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   const invalidate = useThree((s) => s.invalidate);
   const aniso = Math.min(quality === 'high' ? 8 : 2, gl.capabilities.getMaxAnisotropy());
   const res = quality;
-  const back = useMemo(() => backTexture(res, aniso), [res, aniso]);
+  const back = backTexture(res, aniso); // cached per deck inside backTexture; read every render so a Setup deck change switches every back at once
   const face = (c: Card) => faceTexture(c, res, promoted(c), aniso);
   // A resumed hand is already dealt: paint one face per frame, and bring opponent cards in a few at a time,
   // so the first WebGL frame is the table plus your hand instead of every card's canvas and shader at once.
@@ -568,7 +572,10 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
 
   type Item = { spatialSeat?: SeatPos; spatialN?: number; slam?: import('../slam').SlamFeel; key: string; card: Card | null; cardId?: string | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: ((cardId: string) => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide' | 'glide'; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; public?: boolean; holdUntilMove?: boolean };
   const items: Item[] = [];
-  const dealDelay = (slot: number, seat: number) => seatDealDelay(tl, n, slot, seat, dealer);
+  // Seats still in this hand (a Cutthroat ejection leaves a seat with no cards): the deal
+  // schedule goes around these only, or late cards are timed past the end of the deal.
+  const liveSeatsForDeal = handCounts.flatMap((c, seat) => (c > 0 ? [seat] : []));
+  const dealDelay = (slot: number, seat: number) => seatDealDelay(tl, n, slot, seat, dealer, liveSeatsForDeal);
 
   // completed tricks in piles
   const pileCount = Array(n).fill(0) as number[];
@@ -1263,7 +1270,7 @@ function HallAttach({ active }: { active: boolean }) {
 }
 
 /** Hand taps resolve against the quads Cards published this render, before the raycaster. */
-function HandPointer({ onTap, onDrop, legal, onDragging, view = 'standing' }: { onTap: (card: Card) => void; onDrop?: (card: Card, slam?: number, rel?: [number, number]) => void; legal: readonly Card[]; onDragging: (card: Card | null) => void; view?: 'standing' | 'sitting' }) {
+function HandPointer({ onTap, onDrop, legal, onDragging, view = 'standing', turnUp = false }: { onTap: (card: Card) => void; onDrop?: (card: Card, slam?: number, rel?: [number, number]) => void; legal: readonly Card[]; onDragging: (card: Card | null) => void; view?: 'standing' | 'sitting'; turnUp?: boolean }) {
   const dragging = useRef(onDragging);
   dragging.current = onDragging;
   const gl = useThree((s) => s.gl);
@@ -1273,6 +1280,12 @@ function HandPointer({ onTap, onDrop, legal, onDragging, view = 'standing' }: { 
   drop.current = onDrop;
   const legalNow = useRef(legal);
   legalNow.current = legal;
+  // The pointer effect below subscribes once ([gl]); read the LIVE view/Turn Up through refs so
+  // toggling Turn Up (or Sit/Stand) mid-game gates the very next drag, not the value at mount.
+  const viewNow = useRef(view);
+  viewNow.current = view;
+  const turnUpNow = useRef(turnUp);
+  turnUpNow.current = turnUp;
   useLayoutEffect(() => {
     const el = gl.domElement;
     // Drag-to-play: the press still selects (first tap). Past 10px a lifted copy of the card follows the
@@ -1320,7 +1333,7 @@ function HandPointer({ onTap, onDrop, legal, onDragging, view = 'standing' }: { 
       if (result === 'play') {
         d.trail.push({ t: e.timeStamp || performance.now(), x: e.clientX, y: e.clientY });
         const v = releaseVelocity(d.trail);
-        const intensity = dragSlamIntensity(d.trail, view);
+        const intensity = dragSlamIntensity(d.trail, viewNow.current, turnUpNow.current);
         const rect = el.getBoundingClientRect();
         // The 3D card takes over at the finger point (card centre), so the copy can go at once.
         noteDrop({ card: d.id, x: e.clientX - rect.left, y: e.clientY - d.h * 0.2 - rect.top, intensity, at: performance.now() });
@@ -1453,6 +1466,7 @@ export default function Scene(props: SceneProps) {
       <ResumeRamp quality={props.quality} def={def} onShow={onShow} onLit={onLit} onDpr={onDpr} onShadow={onShadow} onHall={onHall} />
       {hi && classic && <HallAttach active={hallGo && textured} />}
       {!classic && textured && <Venue3D key={def.id} def={def} quality={props.quality} reduceFx={!!props.reduceFx} />}
+      {classic && textured && <ClassicStudio quality={props.quality} />}
       {showTable && (
         <group
           ref={tableGroup}
@@ -1467,7 +1481,7 @@ export default function Scene(props: SceneProps) {
       )}
       {showTable && props.positions.map((p, seat) => <TurnRing key={seat} pos={p} n={props.n} active={props.turnSeat === seat} />)}
       {showTable && <Cards {...props} dragCard={dragCard} aspect={aspect} fontsReady={fontsReady} safeFrac={safeFrac} lit={lit} />}
-      {showTable && <HandPointer onTap={props.onCardTap} onDrop={props.onCardDrop} legal={props.legal} onDragging={setDragCard} view={props.view} />}
+      {showTable && <HandPointer onTap={props.onCardTap} onDrop={props.onCardDrop} legal={props.legal} onDragging={setDragCard} view={props.view} turnUp={props.turnUp} />}
       <AfterTable quality={props.quality} tableUp={textured} />
       {layerReady && <Badges positions={props.positions} n={props.n} human={props.human} renderSeat={props.renderSeat} portal={badgeLayer} safeFrac={safeFrac} short={!!props.short} safe={props.safe ?? { l: 0, r: 0, t: 0, b: 0 }} />}
     </Canvas>

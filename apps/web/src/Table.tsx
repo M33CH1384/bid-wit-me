@@ -2,7 +2,6 @@ import { deliverBotLine } from './voices/aiVoice';
 import { musicTension } from './musicTension';
 import { enterTable, quitGame, silenceGame, suspendGame } from './gameSession';
 import { cardControlLabel } from './cardA11y';
-import { archSpot } from './archSpot';
 import type { HandHitCard } from './three/handHit';
 import { useEscapeClose } from './useEscapeClose';
 import { type FlyingPlay, confirmPlay, feltClearsSelection, flyPlay, flyingCard, ignorePlayTap, playTrickOf, type PlayTrick } from './online/playGuard';
@@ -13,8 +12,7 @@ import { type VenueId, VENUE_DEFS } from './venues';
 import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, hostMinimum, isFreshDeal, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, newlyOneTrickFromShot, nilBustsJustResolved, partnerOf, sideOf, sortHand,
-} from '@spades/rules';
+  type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, hostMinimum, isFreshDeal, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, newlyOneTrickFromShot, nilBustsJustResolved, partnerOf, sideOf, sortHand, liveSeats } from '@spades/rules';
 import { ScorePad, setTeamNames, sideName } from './Modals';
 import { LockedRulesPanel } from './LockedRules';
 import { booksBanner, teamMinNote } from './polishText';
@@ -64,6 +62,7 @@ import { MinBidLine, bidChoices, minBidNote } from './minBid';
 import { type SavedGame, clearGame, saveGame } from './save';
 
 import { useViewport } from './viewport';
+import { tapPlaySlamIntensity } from './slam';
 import { effectiveView, handStarted, initialHandView, userToggledView, type HandViewState } from './handView';
 import { Coach, LedSuitChip } from './Coach';
 import { type TipsPref, bumpTip, loadTips, saveTips, tipCount } from './tips';
@@ -72,9 +71,10 @@ import { RUN_FX_MS } from '@spades/protocol';
 import { RUN_SHOW_MS, RUN_SLAM_MS, RUN_IT_CALLOUTS, RUN_TORNADO_AFTER_MS, RUN_ZOOM_MS } from './runIt';
 import { pickRunShow, scoreOpened } from './runPlayback';
 import type { RunPlayback } from '@spades/protocol';
-import { RunItReview, RunZoom, runReviewOverTable } from './RunZoom';
+import { RunItReview, RunZoom, faceUrl, runReviewOverTable } from './RunZoom';
 import { TrashTalkButton } from './TrashTalk';
 import { isPromoted } from './cardFaces';
+import { misdealRevealKey, misdealRevealMs } from './misdeal';
 import { QUICK_TRASH_SET } from './quickTrash';
 import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
 import { type TalkIntensity, botSkillFor, personaForName, platePersona, pickBotNames } from '@spades/bots';
@@ -182,6 +182,7 @@ interface Props {
   startDealer?: number;
   onQuality: (q: Settings['quality']) => void;
   onView?: (v: Settings['view']) => void;
+  onTurnUp?: (on: boolean) => void;
   /** A saved in-progress game to resume at exactly the same point. */
   resume?: SavedGame;
   /** Rematch or resume: keep the series tally. A new game leaves this unset and starts at 0–0. */
@@ -434,6 +435,41 @@ function RunItButton({ onRun, tip, onDismissTip }: { onRun: () => void; tip: boo
   );
 }
 
+/**
+ * 'Call misdeal': shown only while the engine says this seat may call (spade-less hand, seen, not yet bid).
+ * Bidding instead is the decline — the engine closes the offer the moment this seat bids.
+ */
+function MisdealButton({ onCall }: { onCall: () => void }) {
+  return (
+    <div className="misdeal-wrap">
+      <button type="button" className="misdeal-btn" data-testid="misdeal" onClick={onCall}>Call misdeal — no spades</button>
+    </div>
+  );
+}
+
+/**
+ * The proof moment: the caller's whole hand lies face up on the table for the whole table to read,
+ * then the reshuffle/redeal takes over (the sources hold the deal for the same beat).
+ */
+function MisdealReveal({ title, cards, rules }: { title: string; cards: Card[]; rules: TableRules }) {
+  const spread = sortHand(cards, rules);
+  const perRow = Math.ceil(spread.length / 2);
+  return (
+    <div className="misdeal-reveal" data-testid="misdeal-reveal" role="status" aria-label={title}>
+      <div className="misdeal-panel glass">
+        <div className="misdeal-head">Misdeal called</div>
+        <div className="misdeal-sub">{title}</div>
+        <div className="misdeal-spread" style={{ '--per-row': perRow } as React.CSSProperties}>
+          {spread.map((c, i) => (
+            <img key={c} src={faceUrl(c, isPromoted(c, rules))} alt={c} className="misdeal-card" style={{ '--i': i } as React.CSSProperties} />
+          ))}
+        </div>
+        <div className="misdeal-foot">No spades in the hand — shuffling a fresh deal…</div>
+      </div>
+    </div>
+  );
+}
+
 /** the stand-in table wears the chosen venue's colours (felt, rail, floor, backdrop) so loading never flashes classic green */
 export function placeholderStyle(venue: VenueId): React.CSSProperties {
   const d = VENUE_DEFS[venue];
@@ -471,7 +507,7 @@ function SeatBadge({ badge }: { badge: TurnBadge }) {
 }
 
 
-export default function Table({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, onView, resume, continueSeries, online, onMainMenu, startDealer }: Props) {
+export default function Table({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, onView, onTurnUp, resume, continueSeries, online, onMainMenu, startDealer }: Props) {
   useEffect(() => { setActiveDeck(settings.deck); }, [settings.deck]);
   // `online` never changes for a mounted Table, so this is always the same hook path per instance
   // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -661,6 +697,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [handView, setHandView] = useState<HandViewState>(initialHandView);
   useEffect(() => { setHandView((hv) => handStarted(hv, st.handNo)); }, [st.handNo]);
   const effView = effectiveView(settings.view, handView);
+  const turnUp = settings.turnUp === true;
+  const toggleTurnUp = () => onTurnUp?.(!turnUp);
   const toggleView = () => { setHandView((hv) => userToggledView(hv)); onView?.(effView === 'sitting' ? 'standing' : 'sitting'); };
   const [runFx, setRunFx] = useState<RunFx | null>(null);
   /** Server playback seq already started, so a later state for the same claim does not replay it. */
@@ -821,6 +859,17 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const winnerSeat = pause && !ranHand ? shownTrick.winner : null;
   // the Run it! button + its one-time spotlight tip
   const canRun = !spectating && !dealing && st.phase === 'playing' && !!view.canRunIt && !runFx;
+  // Misdeal: offered only while the engine allows it; the thrown hand then sits face up for a beat
+  // (both sources fold the same beat into `dealing`, so nothing moves underneath it).
+  const canMisdeal = !spectating && !dealing && st.phase === 'bidding' && !!view.canMisdeal;
+  const revealKey = misdealRevealKey(view.handNo, view.misdealReveal);
+  const [seenReveal, setSeenReveal] = useState<string | null>(null);
+  const revealShowing = !!revealKey && seenReveal !== revealKey;
+  useEffect(() => {
+    if (!revealKey || seenReveal === revealKey) return;
+    const tm = setTimeout(() => setSeenReveal(revealKey), misdealRevealMs());
+    return () => clearTimeout(tm);
+  }, [revealKey, seenReveal]);
   const [runTip, setRunTip] = useState(false);
   const runTipKey = useRef<string | null>(null);
   useEffect(() => {
@@ -1147,7 +1196,10 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (action.type === 'ignore') return;
     if (action.type === 'play') {
       const held = trickNow;
-      const sent = apply({ type: 'play', seat: HUMAN, card: action.card as Card, ...(dragged && slam !== undefined ? { slam } : !dragged && effView === 'standing' ? { slam: 1 } : {}), ...(dragged && rel ? { rel } : {}) });
+      const tapSlam = dragged ? undefined : tapPlaySlamIntensity(effView, turnUp);
+      // Only a positive intensity goes on the wire/in state as a slam field: a gated (Turn Up
+      // OFF) or gentle drag sends no slam field at all, exactly like a gentle tap play.
+      const sent = apply({ type: 'play', seat: HUMAN, card: action.card as Card, ...(dragged && slam ? { slam } : tapSlam ? { slam: tapSlam } : {}), ...(dragged && rel ? { rel } : {}) });
       if (sent !== false) {
         playHold.current = held;
         playArmed.current = false;
@@ -1162,7 +1214,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       setSelected(action.card as Card);
       sound.play('tap');
     }
-  }, [humanExchanging, exchangeStep, legal, apply, trickNow, effView]);
+  }, [humanExchanging, exchangeStep, legal, apply, trickNow, effView, turnUp]);
 
   const onCardDrop = useCallback((c: Card, slam?: number, rel?: [number, number]) => onCard(c, true, slam, rel), [onCard]);
 
@@ -1257,25 +1309,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // landscape phones: keep the bid / pass panel just above the top of the (resting) hand
   const screenRef = useRef<HTMLDivElement>(null);
   const measureHand = st.phase === 'bidding' || st.phase === 'exchange';
-  // Portrait phones: YOUR TURN and your plate sit in the open arch under the fan, clear of every card.
-  useEffect(() => {
-    if (vp.short) return;
-    const tick = () => {
-      const el = screenRef.current;
-      const hits = (window as unknown as { __bwmHandHits?: HandHitCard[] }).__bwmHandHits ?? [];
-      const arch = el && window.innerWidth < 600 && window.innerHeight > window.innerWidth ? archSpot(hits, window.innerWidth, window.innerHeight) : null;
-      if (!el) return;
-      el.classList.toggle('arch-plate', !!arch);
-      if (arch) {
-        el.style.setProperty('--arch-x', `${arch.x}px`);
-        el.style.setProperty('--arch-top', `${arch.top}px`);
-        el.style.setProperty('--arch-w', `${arch.w}px`);
-      }
-    };
-    tick();
-    const t = window.setInterval(tick, 250);
-    return () => { clearInterval(t); screenRef.current?.classList.remove('arch-plate'); };
-  }, [vp.short]);
+  // Portrait phones: the YOU plate/avatar is pinned to the lower-left corner by a pure CSS
+  // media query in styles.css (max-width 600px + portrait). No JS gate: the class-toggle version
+  // depended on the published hand hits and never fired on the founder's real iPhone.
   useEffect(() => {
     if (!measureHand) return;
     const tick = () => {
@@ -1298,6 +1334,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     seat: HUMAN,
     slots: display.hand?.length ?? 0,
     handNo: st.handNo,
+    live: liveSeats(st),
   });
 
   return (
@@ -1338,6 +1375,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           reduceFx={reduceFx}
           venue={venue}
           view={effView}
+          turnUp={turnUp}
           piles={display.piles}
           legal={runFx ? [] : humanExchanging && hand ? hand : legal}
           selected={runFx ? null : selected}
@@ -1376,6 +1414,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
                 <button type="button" role="menuitem" data-testid="scorepad-button" onClick={() => { setShowPad(true); setMenuOpen(false); }}>📋 Score pad &amp; house rules</button>
                 <button type="button" role="menuitem" onClick={() => onQuality(settings.quality === 'high' ? 'low' : 'high')}>🎨 Graphics: {settings.quality === 'high' ? 'High' : 'Low'}</button>
                 <button type="button" role="menuitem" data-testid="view-toggle" onClick={toggleView}>{effView === 'sitting' ? '🪑' : '🧍'} View: {effView === 'sitting' ? 'Sitting' : 'Standing'}</button>
+                <button type="button" role="menuitem" data-testid="turnup-toggle" aria-pressed={turnUp} onClick={toggleTurnUp}>🔥 Turn up: {turnUp ? 'On — Standing slams' : 'Off — gentle plays'}</button>
                 {[1, 2, 3].map((seat) => seat < names.length ? <button key={seat} type="button" role="menuitem" data-testid={`voice-mute-${seat}`} aria-pressed={sound.voiceMuted(names[seat]!)} onClick={() => { sound.setVoiceMuted(names[seat]!, !sound.voiceMuted(names[seat]!)); setMuteTick((t) => t + 1); }}>{sound.voiceMuted(names[seat]!) ? '🔇' : '🔊'} {names[seat]} voice: {sound.voiceMuted(names[seat]!) ? 'muted' : 'on'}</button> : null)}
                 <div className="menu-social"><SocialButton className="compact" /></div>
                 <button type="button" role="menuitem" className="danger" data-testid="menu-leave" onPointerDown={(e) => { e.currentTarget.setPointerCapture?.(e.pointerId); runLeaveMenu(e, 'leave'); }} onPointerUp={(e) => runLeaveMenu(e, 'leave')} onClick={(e) => runLeaveMenu(e, 'leave')}>🚪 Leave table</button>
@@ -1523,7 +1562,12 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
               <span className="chip" data-testid="books-0">{plateTookText(plates.books[HUMAN] ?? 0, st.phase)}</span>
               {isNilBid(plates.bids[HUMAN]) && (plates.books[HUMAN] ?? 0) > 0 && <span className="chip bad">NIL BUSTED</span>}
             </div>
-            {!spectating && <button type="button" className="view-chip" data-testid="view-toggle-plate" aria-pressed={effView === 'sitting'} onClick={toggleView}>{effView === 'sitting' ? '🪑 Sitting view' : '🧍 Standing view'}</button>}
+            {!spectating && (
+              <span className="plate-toggles">
+                <button type="button" className="view-chip" data-testid="view-toggle-plate" aria-pressed={effView === 'sitting'} onClick={toggleView}>{effView === 'sitting' ? '🪑 Sitting view' : '🧍 Standing view'}</button>
+                <button type="button" className={`view-chip turnup-chip ${turnUp ? 'on' : ''}`} data-testid="turnup-toggle-plate" aria-pressed={turnUp} onClick={toggleTurnUp} title="Turn up: Standing plays slam hard. Off: Standing plays are gentle.">🔥 Turn up: {turnUp ? 'On' : 'Off'}</button>
+              </span>
+            )}
           </div>
           {badge && badge.seat === HUMAN && <div className="plate-turn" data-testid={badge.testId}>{badge.text}</div>}
           {online?.seatExtra(HUMAN)}
@@ -1532,6 +1576,14 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       </section>
       {online?.overlay}
       {canRun && <RunItButton tip={runTip} onDismissTip={() => setRunTip(false)} onRun={() => { setRunTip(false); setSelected(null); apply({ type: 'runIt', seat: HUMAN }); }} />}
+      {canMisdeal && <MisdealButton onCall={() => { setSelected(null); apply({ type: 'misdeal', seat: HUMAN }); }} />}
+      {revealShowing && view.misdealReveal && (
+        <MisdealReveal
+          title={view.misdealReveal.seat === HUMAN && !spectating ? 'You threw your hand face up' : `${names[view.misdealReveal.seat] ?? 'A player'} threw their hand face up`}
+          cards={view.misdealReveal.cards}
+          rules={r}
+        />
+      )}
       {runFx?.phase === 'zoom' && <RunZoom cards={runFx.cards} who={face(runFx.claimer)} line={runLine} r={r} />}
       {callout && !runFx && <div className={`trash-callout seat-${pos[callout.seat]}`} key={callout.id} data-testid="trash-callout"><b>{face(callout.seat)}</b>{showLine(callout.text)}</div>}
       {runFx && <button type="button" className="run-skip" data-testid="run-skip" aria-label="Skip" onClick={endRun}><span>Tap to skip</span></button>}
@@ -1600,10 +1652,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           <div className="modal glass slant confirm" role="dialog" aria-label="Leave this game?" data-testid="confirm-leave" onPointerDown={(e) => e.stopPropagation()}>
             <div className="panel-title big">LEAVE THIS GAME?</div>
             <p className="muted">{onSuspend ? 'Leave ends it for good. Save & quit lets you resume from the menu.' : 'Your progress in this game will be lost.'}</p>
-            <div className="bid-row">
-              <button type="button" onClick={() => setConfirmLeave(false)}>Stay</button>
-              {onSuspend && <button type="button" data-testid="save-quit" onClick={() => { suspendGame(); onSuspend(); }}>Save &amp; quit</button>}
-              <button type="button" className="primary" onClick={leave}>Leave</button>
+            <div className="confirm-actions">
+              <button type="button" className="stay-primary" onClick={() => setConfirmLeave(false)}>Stay</button>
+              {onSuspend && <button type="button" className="ghost-btn" data-testid="save-quit" onClick={() => { suspendGame(); onSuspend(); }}>Save &amp; quit</button>}
+              <div className="exit-divider" aria-hidden="true" />
+              <button type="button" className="leave-red" onClick={leave}>Leave</button>
             </div>
             <button type="button" className="link fb-open-ingame" data-testid="open-feedback" onClick={() => { setConfirmLeave(false); setFeedback(true); }}>✉ Send feedback (bug, idea…)</button>
           </div>
@@ -1641,10 +1694,10 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
               </ol>
               {seriesChip()}
               <p className="muted small" data-testid="end-reason">{endReasonText(r, st, (side) => sideName(r, side, names))} {st.history.length} hand{st.history.length === 1 ? '' : 's'} played.</p>
-              <div className="bid-row">
-                <button type="button" onClick={() => setShowPad(true)}>Score pad</button>
-                <button type="button" data-testid="main-menu" onClick={mainMenu}>Main menu</button>
-                {!spectating && <button type="button" className="primary" data-testid="rematch" onClick={() => onRematch(nextDealer(st))}>Rematch</button>}
+              <div className="confirm-actions">
+                <button type="button" className="quiet-row-btn" onClick={() => setShowPad(true)}>Score pad</button>
+                {!spectating && <button type="button" className="primary big" data-testid="rematch" onClick={() => onRematch(nextDealer(st))}>Play again — Rematch</button>}
+                <button type="button" className="ghost-btn" data-testid="main-menu" onClick={mainMenu}>Back to home</button>
               </div>
             </div>
           </div>
@@ -1677,11 +1730,12 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
                 <button type="button" className="link muted" onClick={() => { const s = loadTipJar(); saveTipJar({ ...s, never: true }); setTipNudge(false); }}>Don't show again</button>
               </p>
             )}
-            <div className="bid-row">
-              <button type="button" onClick={() => setShowPad(true)}>Score pad</button>
-              <button type="button" data-testid="main-menu" onClick={mainMenu}>Main menu</button>
-              <button type="button" onClick={leave}>Change mode</button>
-              <button type="button" className="primary" onClick={() => onRematch(nextDealer(st))}>Rematch</button>
+            <div className="confirm-actions">
+              <button type="button" className="quiet-row-btn" onClick={() => setShowPad(true)}>Score pad</button>
+              <button type="button" className="primary big" onClick={() => onRematch(nextDealer(st))}>Play again — Rematch</button>
+              <button type="button" className="ghost-btn" data-testid="main-menu" onClick={mainMenu}>Back to home</button>
+              <div className="exit-divider" aria-hidden="true" />
+              <button type="button" className="leave-red" onClick={leave}>Change mode</button>
             </div>
           </div>
         </div>

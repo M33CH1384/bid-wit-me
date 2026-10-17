@@ -5,13 +5,13 @@
  * - Pre-play lines never see the card about to be played (no tells): prePlayLine() takes no card/hand at all.
  * - Hustler persona plays dumb ('newbie' pool) until it pulls off a cut / lead-taking spade / set, then reveals once.
  */
-import { COMMON, LINE_META, PACK_OWNERS, PERSONAS, type LineMeta, type PersonaId, type TalkIntensity, type TalkKind, lineAllowed, lineFitsGender, personaForName, personaSkillFloor } from './personas';
+import { COMMON, LINE_META, PACK_OWNERS, PERSONAS, type LineFact, type LineMeta, type PersonaId, type TalkIntensity, type TalkKind, lineAllowed, lineFitsGender, personaForName, personaSkillFloor } from './personas';
 import { possessive, voiceGender } from './names';
 import { type CatalogMemory, type VoiceMoment, bucketFor, pickCatalog } from './catalog';
 import { BOT_SKILLS, type BotSkill, seatSkill } from './bidding';
 
 export { COMMON, LINE_META, PACK_OWNERS, PERSONAS, lineAllowed, personaForName, personaSkillFloor };
-export type { LineMeta, PersonaId, TalkIntensity, TalkKind };
+export type { LineFact, LineMeta, PersonaId, TalkIntensity, TalkKind };
 export const TALK_INTENSITY_LABEL: Record<TalkIntensity, string> = { family: 'Family Friendly', cookout: 'Cookout', nomercy: 'No Mercy' };
 
 export const TALK = {
@@ -80,7 +80,19 @@ export interface TalkEvent {
   neg?: boolean;
   /** books the side took this hand (Voice Phase 3 buckets: set by N, Wheels bid/books) */
   books?: number;
+  /** score-gap bucket for `side` (the moment's side), relative to the target score */
+  gapBucket?: GapBucket;
+  /** tricks still to play this hand, bucketed (the current trick counts as still to play) */
+  tricksLeft?: TricksLeftBucket;
+  /** hand/game pressure: a late hand in a close game, a deciding trick, or the game result */
+  pressure?: boolean;
+  /** the seat that held the contract this moment is about (made / set / Nil), when there is one */
+  bidderSeat?: number;
+  /** the side that held that contract */
+  bidderSide?: number;
 }
+export type GapBucket = 'close' | 'aheadBig' | 'behindBig';
+export type TricksLeftBucket = 'early' | 'mid' | 'late';
 /** `line`: stable id of the raw line, `<pool>.<kind>.<index>` (pool = persona id or 'common'): clients map it to a recorded clip */
 export interface TalkLine { seat: number; name: string; text: string; persona: PersonaId; reveal?: boolean; line?: string; /** the bid number in a '{bid}' line (picks the numbered clip) */ bid?: number; /** Voice Phase 3: a pre-voiced catalog alternative. The client uses it (text + clip together) only when its clip plays; otherwise the canned text/line above */ ai?: { id: string; text: string } }
 
@@ -149,6 +161,26 @@ function fill(text: string, t: TalkTable, speaker: number, ev: TalkEvent, them: 
 }
 
 /** does a line's condition hold for this event? */
+/** the score bucket from the SPEAKER's side (a mirrored moment flips ahead/behind; close stays close) */
+function speakerBucket(ev: TalkEvent, t: TalkTable, speaker: number | undefined): GapBucket | undefined {
+  if (!ev.gapBucket || speaker === undefined) return undefined;
+  if (ev.side === undefined || sideOfSeat(t, speaker) === ev.side) return ev.gapBucket;
+  return ev.gapBucket === 'aheadBig' ? 'behindBig' : ev.gapBucket === 'behindBig' ? 'aheadBig' : 'close';
+}
+
+/** does a line's game-state fact fit this moment, for this speaker? */
+function factOk(fact: LineFact | undefined, ev: TalkEvent, t: TalkTable, speaker: number | undefined): boolean {
+  switch (fact) {
+    case undefined: return false;
+    case 'close': case 'aheadBig': case 'behindBig': return speakerBucket(ev, t, speaker) === fact;
+    case 'lateHand': return ev.tricksLeft === 'late';
+    case 'deciding': return !!ev.pressure;
+    case 'bidderSelf': return speaker !== undefined && ev.bidderSeat === speaker;
+    case 'bidderPartner': return speaker !== undefined && ev.bidderSide !== undefined && ev.bidderSeat !== speaker && sideOfSeat(t, speaker) === ev.bidderSide;
+    case 'bidderOpp': return speaker !== undefined && ev.bidderSide !== undefined && sideOfSeat(t, speaker) !== ev.bidderSide;
+  }
+}
+
 function condOk(meta: LineMeta | undefined, ev: TalkEvent, t: TalkTable): boolean {
   switch (meta?.cond) {
     case undefined: return true;
@@ -201,12 +233,17 @@ function botGender(t: TalkTable, seat: number | undefined): 'f' | 'm' | undefine
   return s && s.bot ? voiceGender(s.name) : undefined;
 }
 
-function pick(st: TalkState, t: TalkTable, persona: PersonaId, kind: TalkKind, ev: TalkEvent, rnd: () => number, self?: 'f' | 'm', target?: 'f' | 'm'): string | null {
+function pick(st: TalkState, t: TalkTable, persona: PersonaId, kind: TalkKind, ev: TalkEvent, rnd: () => number, self?: 'f' | 'm', target?: 'f' | 'm', speaker?: number): string | null {
   const all = poolFor(persona, kind, t.intensity ?? 'cookout', self, target, t.partnerships).filter((l) => condOk(LINE_META[l], ev, t));
   if (!all.length) return null;
   // an Ace got cut: the Ace lines are the point
   const ace = ev.ace ? all.filter((l) => LINE_META[l]?.cond === 'ace') : [];
-  const base = ace.length && rnd() < 0.7 ? ace : all;
+  // lines tagged with a game-state fact that fits this moment are preferred just as strongly;
+  // when nothing tagged fits (or the roll misses) the whole pool still speaks — never silence
+  const factFit = all.filter((l) => factOk(LINE_META[l]?.fact, ev, t, speaker));
+  let base = all;
+  if (ace.length && rnd() < 0.7) base = ace;
+  else if (factFit.length && rnd() < 0.85) base = factFit;
   const key = `${persona}:${kind}`;
   const used = ((st.used ??= {})[key] ??= []);
   let fresh = base.filter((l) => !used.includes(l) && l !== st.last && !st.recent.includes(l));
@@ -228,7 +265,7 @@ function pick(st: TalkState, t: TalkTable, persona: PersonaId, kind: TalkKind, e
 function say(st: TalkState, t: TalkTable, seat: number, kind: TalkKind, ev: TalkEvent, them: number | undefined, now: number, rnd: () => number, reveal = false): TalkLine | null {
   const persona = personaOf(t, seat);
   const name = t.seats[seat]?.name ?? '';
-  const raw = pick(st, t, persona, kind, ev, rnd, voiceGender(name), botGender(t, them));
+  const raw = pick(st, t, persona, kind, ev, rnd, voiceGender(name), botGender(t, them), seat);
   if (!raw) return null;
   st.recent = [...st.recent, raw].slice(-TALK.recentMax);
   st.last = raw;

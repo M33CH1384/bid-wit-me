@@ -10,6 +10,8 @@ export function useDealtSlots(dealing: boolean, spec: {
   seat: number;
   slots: number;
   handNo: number;
+  /** seats still in (Cutthroat after an ejection); the deal goes around these only */
+  live?: readonly number[];
 }): number {
   const specRef = useRef(spec);
   specRef.current = spec;
@@ -22,7 +24,7 @@ export function useDealtSlots(dealing: boolean, spec: {
     const step = () => {
       const s = specRef.current;
       const elapsed = (performance.now() - start) / 1000;
-      const next = dealtSlotCount(elapsed, dealTimeline(s.speedK, s.players), s.players, s.seat, s.dealer, s.slots);
+      const next = dealtSlotCount(elapsed, dealTimeline(s.speedK, s.players), s.players, s.seat, s.dealer, s.slots, s.live);
       setTick((prev) => (prev.handNo === s.handNo && prev.count === next ? prev : { handNo: s.handNo, count: next }));
       if (next < s.slots) raf = requestAnimationFrame(step);
     };

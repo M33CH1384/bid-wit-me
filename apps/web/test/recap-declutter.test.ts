@@ -35,7 +35,7 @@ describe('hand recap', () => {
     expect(html).toContain('data-testid="recap-chat"');
     expect(html).toContain('data-testid="recap-unread"');
     expect(html.match(/data-testid="recap-side-/g)).toHaveLength(2);
-    for (const id of ['recap-line-', 'recap-players-', 'recap-points-', 'recap-total-']) {
+    for (const id of ['recap-line-', 'recap-players-', 'recap-points-', 'recap-bags-']) {
       expect(html).toContain(`data-testid="${id}0"`);
       expect(html).toContain(`data-testid="${id}1"`);
     }
@@ -45,7 +45,8 @@ describe('hand recap', () => {
     expect(html).toContain(`to ${st.rules.targetScore}`);
     expect(html).toContain('Score pad');
     expect(html).toContain('data-testid="talk-ready"');
-    expect(html).toContain('Continue');
+    // this seed actually ends the game on hand 1 (shot out): the CTA is the winner flow, not a next hand
+    expect(html).toContain(st.phase === 'gameOver' ? 'See final results' : 'Continue');
     expect(html).toContain('primary big');
     for (const gone of ['talk-grid', 'react-gg', 'data-testid="tt-team-name"', 'Shuffling', 'Talk your talk', 'YOUR TEAM NAME', 'class="tt-chat"', 'tt-deal', 'tt-reacts']) {
       expect(html).not.toContain(gone);
@@ -67,7 +68,7 @@ describe('hand recap', () => {
   it('keeps the corner chat sheet above the recap and the team cards centered', () => {
     const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
     expect(css).toContain('.chat.glass.slant.recap-chat');
-    expect(css).toContain('justify-content: safe center');
+    expect(css).toContain('.tt-top-scores'); // recap now starts at the top scores (flex-start), not vertically centred
     expect(css).toMatch(/modal-open > :not\([\s\S]*?:not\(\.recap-chat\)/);
     expect(css).toContain('.tt-chat-btn');
   });
@@ -78,7 +79,7 @@ describe('hand recap', () => {
     expect(css).toContain('.tt.glass.slant { background: linear-gradient(160deg, #2a1250, #0e071a); -webkit-backdrop-filter: none; backdrop-filter: none; }');
     expect(css).toContain('.modal-backdrop, .tt-backdrop { z-index: 1000; }');
     expect(css).toContain('z-index: 1045');
-    expect(css).toContain('grid-template-areas: "name total" "line total" "players players" "bar bar"');
+    expect(css).toContain('grid-template-areas: "name bags" "line bags" "players players" "bar bar"');
     expect(css).toContain('.tt-team ul.tt-players > li { flex: 0 1 auto; min-width: min-content; max-width: 100%; overflow-wrap: anywhere; }');
     const names = ['You', 'Leilani', 'Queenie', 'Elena'];
     const html = recap(toHandOver(makeRules('joker', { targetScore: 500 })), names);

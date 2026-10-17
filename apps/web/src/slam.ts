@@ -59,13 +59,23 @@ export function isVGesture(samples: readonly DragSample[], minLegPx = 24): boole
   return false;
 }
 
-/** Slam intensity for a human drag given the camera view. Standing: always max. Sitting: a V-gesture
- *  slams at max; otherwise the release speed scales it (straight drags stay gentle). */
-export function dragSlamIntensity(samples: readonly DragSample[], view: 'standing' | 'sitting'): number {
+/** Slam intensity for a human drag given the camera view and Turn up (slam mode).
+ *  Turn Up OFF (the default) gates EVERY drag route: Standing, the Sitting V gesture, and any
+ *  release-velocity/flick all land gentle (0), however they are thrown — no slam is felt locally
+ *  and none is sent online. Turn Up ON preserves the previous behaviour exactly: Standing slams
+ *  at max, and Sitting slams only on the deliberate up-then-down V gesture (every other Sitting
+ *  drag, however fast, lands gentle). Swipe-and-hold stays gentle in Sitting in both modes:
+ *  holding still for >800 ms after the down leg ages the V out (see isVGesture). */
+export function dragSlamIntensity(samples: readonly DragSample[], view: 'standing' | 'sitting', turnUp = false): number {
+  if (!turnUp) return 0;
   if (view === 'standing') return 1;
-  // Sitting: speed alone NEVER slams. Only the up-then-down V gesture slams; every other drag,
-  // however fast, lands gentle (intensity 0).
   return isVGesture(samples) ? 1 : 0;
+}
+
+/** Slam intensity for a non-drag play (tap / two-tap toss). Standing slams max only in Turn up
+ *  mode; otherwise (and always in Sitting) 0 = no slam field, the gentle default landing. */
+export function tapPlaySlamIntensity(view: 'standing' | 'sitting', turnUp = false): number {
+  return view === 'standing' && turnUp ? 1 : 0;
 }
 
 export function slamIntensity(pxPerMs: number): number {

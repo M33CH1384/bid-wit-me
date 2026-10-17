@@ -70,7 +70,9 @@ async function dragTo(page: Page, from: { x: number; y: number }, to: { x: numbe
       if (startOff > 45) throw new Error(`${name}: flight did not start at the finger (${startOff.toFixed(0)}px off)`);
       if (maxY > g.top - 10) throw new Error(`${name}: card went back toward the hand (y ${maxY.toFixed(0)})`);
       for (let i = 1; i < fly.length; i++) if (fly[i]!.t < fly[i - 1]!.t) throw new Error(`${name}: flight restarted`);
-      if (name === 'flick' && !(slam && slam.intensity > 0.5)) throw new Error('flick was not a slam');
+      // Default save is Sitting + Turn Up OFF: even a fast flick lands gentle — release velocity
+      // never creates a slam with the mode off (founder fix; velocity slam is Turn Up ON only).
+      if (name === 'flick' && !(slam && slam.intensity === 0)) throw new Error('flick slammed with Turn Up OFF');
       if (name === 'gentle' && !(slam && slam.intensity < 0.2)) throw new Error('slow drop was not gentle');
       await page.close();
     }

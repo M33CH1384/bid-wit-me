@@ -33,7 +33,7 @@ function SheetFrame({ title, label, onClose, children, testId }: { title: string
       <div className="sheet glass slant acct-sheet" role="dialog" aria-label={label} data-testid={testId} onClick={(e) => e.stopPropagation()}>
         <header className="sheet-head">
           <span className="panel-title">{title}</span>
-          {onClose && <button type="button" className="icon-btn" aria-label="Close" data-testid="acct-close" onClick={onClose}>✕</button>}
+          {onClose && <button type="button" className="sheet-close" aria-label="Close" data-testid="acct-close" onClick={onClose}>CLOSE</button>}
         </header>
         <div className="scroll sheet-body acct-body">{children}</div>
       </div>

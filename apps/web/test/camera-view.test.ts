@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeSettings } from '../src/settings';
 import { dragSlamIntensity, isVGesture, type DragSample } from '../src/slam';
-import { CAMERA_VIEW_TWEEN_MS, TRICK_SCALE, cameraFor, cameraPoseAt, cardScreenQuad, fanCssPx, fanLayout, handFan, phoneHandFan, PHONE_HAND_STRIP_PX } from '../src/three/layout';
+import { CAMERA_VIEW_TWEEN_MS, PHONE_HAND_STRIP_PX, SITTING_EXTRA_PITCH_DEG, TRICK_SCALE, cameraFor, cameraPoseAt, cardScreenQuad, fanCssPx, fanLayout, handFan, phoneHandFan } from '../src/three/layout';
 
 const path = (pts: [number, number][]): DragSample[] => pts.map(([x, y], i) => ({ t: i * 40, x, y }));
 describe('camera view', () => {
@@ -24,6 +24,17 @@ describe('camera view', () => {
     const px = fanCssPx(L, 390);
     expect(px.width).toBeGreaterThanOrEqual(76); // 68.3px before -> 77.1px (+13%, strip-bound on phone)
     expect(px.exposed).toBeGreaterThanOrEqual(42);
+  });
+  it('sitting pitches exactly +7 degrees further down toward the felt (Demetrius Sat 7:03am), position/fov/standing untouched', () => {
+    const pitch = (c: ReturnType<typeof cameraFor>) => Math.atan2(c.pos[1]! - c.look[1]!, c.pos[2]! - c.look[2]!) * (180 / Math.PI);
+    expect(SITTING_EXTRA_PITCH_DEG).toBe(7);
+    const st = cameraFor(390 / 844, false, 'standing'); const si = cameraFor(390 / 844, false, 'sitting');
+    expect(si.pos).toEqual([0, 1.98, 3.0]); // seated position unchanged — only the aim pitched
+    // the pre-tilt seated aim (y 1.98 / z 3.00, look [0,0,0.68]) pitched 40.5 degrees down; now exactly +7 more
+    expect(pitch(si)).toBeCloseTo(47.5, 0);
+    expect(pitch(si)).toBeGreaterThan(pitch(st) - 10); // still a real over-the-table angle, not a top-down view
+    expect(si.look[1]).toBeLessThan(0); // aiming below the table centre line, at the felt
+    expect(st.look).toEqual([0, 0, 0.38]); // standing aim untouched
   });
   it('sitting applies in short landscape too', () => {
     const st = cameraFor(844 / 390, true, 'standing'); const si = cameraFor(844 / 390, true, 'sitting');
@@ -57,7 +68,8 @@ describe('camera view', () => {
     const v = path([[195, 700], [195, 640], [195, 580], [195, 640], [195, 700], [180, 430]]);
     // final release point is over the felt; the V legs are the first five samples
     expect(isVGesture(v.slice(0, 5))).toBe(true);
-    expect(dragSlamIntensity(v.slice(0, 5), 'sitting')).toBe(1);
+    expect(dragSlamIntensity(v.slice(0, 5), 'sitting')).toBe(0); // Turn up OFF (default) gates the V
+    expect(dragSlamIntensity(v.slice(0, 5), 'sitting', true)).toBe(1); // Turn up ON: V slams as before
     const straight = path([[195, 700], [195, 690], [195, 680], [195, 670], [195, 660]]); // slow straight drag, no V
     expect(isVGesture(straight)).toBe(false);
     expect(dragSlamIntensity(straight, 'sitting')).toBe(0);
@@ -65,7 +77,9 @@ describe('camera view', () => {
     expect(dragSlamIntensity(fastStraight, 'sitting')).toBe(0);
     const fastFlickUp = path([[195, 700], [195, 500], [195, 320]]);
     expect(dragSlamIntensity(fastFlickUp, 'sitting')).toBe(0);
-    expect(dragSlamIntensity(straight, 'standing')).toBe(1);
+    expect(dragSlamIntensity(straight, 'standing')).toBe(0); // Turn up OFF (default): Standing is gentle
+    expect(dragSlamIntensity(straight, 'standing', true)).toBe(1); // Turn up ON: Standing slams max
+    expect(dragSlamIntensity(straight, 'standing', false)).toBe(0);
     expect(isVGesture(path([[195, 700], [195, 690], [195, 700]]))).toBe(false); // legs too small
   });
 });

@@ -21,7 +21,7 @@ describe('Block Party wiring', () => {
     expect(audio).not.toMatch(/blockParty[^;]*\.(mp3|wav|ogg)/);
   });
   it('later approved scenes are NOT built here (noted only): no new scene pickers or beds beyond Block Party', () => {
-    for (const later of ['Kitchen-Table Spades Night', 'Front Porch', 'Beauty Salon', 'Park Dominoes', 'Fish Fry']) {
+    for (const later of ['Fish Fry']) { // Kitchen-Table, Front Porch, Beauty Salon and Park Dominoes arrived as their own approved follow-up PRs; Fish Fry stays held for Story Mode
       expect(controls + audio).not.toContain(later);
     }
   });

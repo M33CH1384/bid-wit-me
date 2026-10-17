@@ -59,6 +59,13 @@ export interface GameState {
   trickCount?: number;
   /** Face-down cards not dealt when two players are still in. Never copied into a seat's view. */
   undealt?: Card[];
+  /** Misdeal redeals taken on the current hand (the hand number does not move). Omitted until one happens. */
+  misdeals?: number;
+  /**
+   * The hand a misdeal caller threw face up on the table: the caller's whole hand, public to every seat
+   * (it is the proof of no spades). Set by the misdeal action on the redealt state, cleared by the next deal.
+   */
+  misdealReveal?: { seat: Seat; cards: Card[] };
 }
 
 export type Action =
@@ -68,12 +75,14 @@ export type Action =
   | { type: 'play'; seat: Seat; card: Card; slam?: number; rel?: [number, number] }
   /** 'Run it!': `seat` claims every remaining trick, any time in trick play (only legal when canRunIt proves it) */
   | { type: 'runIt'; seat: Seat }
+  /** 'Call misdeal': `seat` throws a spade-less hand face up and the same hand is reshuffled and redealt (see canMisdeal) */
+  | { type: 'misdeal'; seat: Seat }
   | { type: 'nextHand' };
 
 export type RuleErrorCode =
   | 'WRONG_PHASE' | 'NOT_YOUR_TURN' | 'BAD_SEAT' | 'BAD_BID' | 'BID_TOO_LOW' | 'NIL_NOT_ALLOWED'
   | 'BLIND_NIL_NOT_ALLOWED' | 'CARD_NOT_IN_HAND' | 'MUST_FOLLOW_SUIT' | 'SPADES_NOT_BROKEN'
-  | 'MUST_LEAD_TWO_OF_CLUBS' | 'BAD_EXCHANGE' | 'ALREADY_REVEALED' | 'ALREADY_PLAYED' | 'CANNOT_RUN_IT' | 'ELIMINATED' | 'BAD_RULES';
+  | 'MUST_LEAD_TWO_OF_CLUBS' | 'BAD_EXCHANGE' | 'ALREADY_REVEALED' | 'ALREADY_PLAYED' | 'CANNOT_RUN_IT' | 'NO_MISDEAL' | 'ELIMINATED' | 'BAD_RULES';
 
 export class RuleError extends Error {
   constructor(public readonly code: RuleErrorCode, message: string) {
@@ -178,7 +187,7 @@ export function booksInHand(st: { rules: TableRules; trickCount?: number }): num
   return st.trickCount ?? handSize(st.rules);
 }
 
-function dealHand(prev: GameState, handNo: number, dealer: Seat): GameState {
+function dealHand(prev: GameState, handNo: number, dealer: Seat, misdeal = 0): GameState {
   const r = prev.rules;
   const n = r.playerCount;
   const live = liveSeats(prev);
@@ -188,10 +197,10 @@ function dealHand(prev: GameState, handNo: number, dealer: Seat): GameState {
     throw new RuleError('BAD_RULES', `Minimum books ${hostMinimum(r)} is higher than the ${tricks} in this hand`);
   }
   const removed = removedForActive(r, active);
-  const sameRemoval = removed.length === r.removedCards.length && removed.every((c, i) => c === r.removedCards[i]);
-  const deck = sameRemoval
-    ? deckForHand(r, prev.seed, handNo)
-    : shuffle(buildDeck({ ...r, removedCards: removed }), createRng(`${prev.seed}:hand:${handNo}`));
+  // A misdeal redeals the SAME hand number, so the plain hand seed would deal the identical cards back.
+  // Misdeal shuffles get their own seed line; every normal deal stays bit-identical to before.
+  const deckSeed = misdeal > 0 ? `${prev.seed}:hand:${handNo}:misdeal:${misdeal}` : `${prev.seed}:hand:${handNo}`;
+  const deck = shuffle(buildDeck({ ...r, removedCards: removed }), createRng(deckSeed));
   const hands: Card[][] = Array.from({ length: n }, () => []);
   let trickCount: number | undefined;
   let undealt: Card[] | undefined;
@@ -216,6 +225,9 @@ function dealHand(prev: GameState, handNo: number, dealer: Seat): GameState {
     trick: { leader: nextLive(prev, dealer), plays: [], winner: null }, tricks: [],
     tricksWon: Array(n).fill(0), spadesBroken: false,
     trickCount, undealt,
+    // a fresh deal (misdeal redeal included) starts clean: the thrown hand only lives on the state
+    // the misdeal action itself returns, and the per-hand redeal count restarts with the hand
+    misdeals: misdeal, misdealReveal: undefined,
   };
   if (handNo === 1 && r.firstHandBidsItself) {
     // "First hand: books bid themselves": no bidding, straight to play; every book scores 10
@@ -414,7 +426,12 @@ function runSolver(seat: Seat) {
  * just plays. Every mode (2v2, Cutthroat 3/4, Ace Down). Memoized once per seat per state; see `evaluateRunIt`.
  */
 export function canRunIt(st: GameState, seat: Seat): boolean {
-  if (isEliminated(st, seat) || st.eliminated?.some(Boolean)) return false;
+  // Only the eliminated seat itself is barred. Barring the whole table once ANYONE was out
+  // (the guard that landed with Cutthroat elimination) silently killed Run it! in every
+  // Cutthroat game after the first ejection, though the claim rule is every-mode by design.
+  // The proof already respects empty hands: an out seat holds no unseen cards and is never
+  // dealt a turn (nextLive), so a live seat's guarantee is unaffected.
+  if (isEliminated(st, seat)) return false;
   return evaluateRunIt(st, seat);
 }
 
@@ -558,6 +575,25 @@ function exchangeSteps(st: GameState): ExchangeStep[] {
 }
 
 /** Applies an action and returns the new state. Throws RuleError on illegal actions. Never mutates `st`. */
+/**
+ * True when `seat` may call a misdeal: the deal is in, they have SEEN their hand (no Blind Nil peeking),
+ * and the hand holds no spades at all — no spade-suit card and no Joker or trump deuce (`isTrump` covers
+ * all of them in every deck). The offer lives from the deal until that seat's own bidding is done: placing
+ * any bid IS the decline, and it never comes back for the hand; it also dies when bidding closes (so a
+ * first card played is far too late). Other seats bidding does not decline for you — in a live game the
+ * first accepted call wins and the redeal resets the window for everyone. Cutthroat's eliminated seats
+ * hold no cards and are out regardless. On the call, the caller's whole hand goes face up on the table
+ * (`misdealReveal`, public in every view) and the same hand — same number, dealer, scores, series — is
+ * reshuffled and redealt. A fresh deal can itself be spade-less: the rule simply applies again.
+ */
+export function canMisdeal(st: GameState, seat: Seat): boolean {
+  if (st.phase !== 'bidding' || isEliminated(st, seat)) return false;
+  const hand = st.hands[seat];
+  if (!hand || hand.length === 0 || !st.revealed[seat]) return false;
+  if (st.bids[seat] !== null) return false;
+  return !hand.some((c) => isTrump(c, st.rules));
+}
+
 export function applyAction(st: GameState, action: Action): GameState {
   const rules = withCompleteNil(st.rules);
   if (rules !== st.rules) st = { ...st, rules };
@@ -620,6 +656,13 @@ export function applyAction(st: GameState, action: Action): GameState {
       const rest = st.exchange.slice(1);
       const next: GameState = { ...st, hands, exchange: rest };
       return rest.length ? { ...next, turn: rest[0]!.from } : startPlay(next);
+    }
+    case 'misdeal': {
+      if (!canMisdeal(st, seat)) throw new RuleError('NO_MISDEAL', 'A misdeal needs a spade-less hand you have seen, before you have bid');
+      // Same hand, same dealer, same scores and series: only the deck is reshuffled. The thrown hand
+      // rides on the new state face up, so the whole table (every client's view) sees the proof.
+      const next = dealHand(st, st.handNo, st.dealer, (st.misdeals ?? 0) + 1);
+      return { ...next, misdealReveal: { seat, cards: [...st.hands[seat]!] } };
     }
     case 'runIt': {
       // Release 10: any time during trick play, not only on your turn (the claim is proven before it's applied)
@@ -817,10 +860,19 @@ export interface PlayerView {
   failStreak: number[];
   /** Cutthroat seats that are out. */
   eliminated: boolean[];
+  /** Books in this hand when the table is short (17 with three still in). */
+  trickCount?: number;
   bidOptions: BidOptions | null;
   legal: Card[];
   /** This seat can claim 'Run it!': guaranteed from cards they can see, not from the hidden layout. */
   canRunIt?: boolean;
+  /** This seat may call a misdeal right now: spade-less hand, seen, and they have not bid yet. */
+  canMisdeal?: boolean;
+  /**
+   * A misdeal was just called on this hand: the caller's whole hand, face up on the table for every seat
+   * to verify (the proof of no spades), on the redealt state until the next deal. Absent otherwise.
+   */
+  misdealReveal?: { seat: Seat; cards: Card[] };
   /**
    * Hands the tornado cleared, one array per seat, the claimer's included.
    * Cards already on the table for the in-progress trick are included and marked `played`.
@@ -839,11 +891,14 @@ function project(st: GameState, seat: Seat, spectate: boolean): PlayerView {
     bids: [...st.bids], revealed: [...st.revealed], exchange: st.exchange.map((e) => ({ ...e })),
     trick: st.trick, tricks: st.tricks, tricksWon: [...st.tricksWon], spadesBroken: st.spadesBroken,
     scores: [...st.scores], bags: [...st.bags], history: st.history, result: st.result,
-    failStreak: [...(st.failStreak ?? [])], eliminated: [...(st.eliminated ?? [])],
+    failStreak: [...(st.failStreak ?? [])], eliminated: [...(st.eliminated ?? [])], ...(st.trickCount !== undefined ? { trickCount: st.trickCount } : {}),
     bidOptions: spectate ? null : st.phase === 'bidding' && st.turn === seat ? bidOptions(st, seat) : null,
     legal: spectate ? [] : legalPlays(st, seat),
     // Spectators never learn whether a seat can run it, and we don't search to find out.
     canRunIt: spectate ? false : canRunIt(st, seat),
+    canMisdeal: spectate ? false : canMisdeal(st, seat),
+    // The thrown hand is public by design: every seat (spectators included) gets the same face-up cards.
+    ...(st.misdealReveal ? { misdealReveal: { seat: st.misdealReveal.seat, cards: [...st.misdealReveal.cards] } } : {}),
     // Cleared hands ride along only once the claim has resolved (the plays are public then). Never before.
     ...(runHands ? { runHands } : {}),
   };

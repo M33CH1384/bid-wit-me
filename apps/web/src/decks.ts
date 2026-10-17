@@ -1,9 +1,14 @@
 /** Desi deck art packs (court cards + jokers; number cards keep the painted faces).
+ *  The founder-approved set has the corner index BAKED INTO the art (gold frame, Barlow
+ *  corners), so a loaded deck image is the whole face: drawFace draws it as-is and never
+ *  paints its own corners over it (the painted corners below are only the pre-load fallback).
  *  All decks unlocked for now — `locked` is the Story/purchase hook for later. */
 import type { Card } from '@spades/rules';
+import { noteDiag } from './diagnostics';
 
 export interface DeckDef { id: string; name: string; locked?: boolean }
 export const DECKS: DeckDef[] = [
+  { id: 'base', name: 'Base' },
   { id: 'classic', name: 'Classic' },
   { id: 'afrofuturist', name: 'Afrofuturist' },
   { id: 'harlem', name: 'Harlem' },
@@ -51,6 +56,7 @@ export function getDeckImage(card: Card | string): HTMLImageElement | null {
   let img = images.get(url);
   if (!img) {
     img = new Image();
+    img.onerror = () => noteDiag('deck-art', url);
     img.src = url;
     // Notify on EVERY image load: waiters stay registered (the repaint hook must redraw each
     // court card as its own art arrives — clearing the list here left only the first card redrawn).

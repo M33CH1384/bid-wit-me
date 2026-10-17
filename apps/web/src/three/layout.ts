@@ -163,6 +163,17 @@ export function badgeSpot(pos: SeatPos, n: number): [number, number, number] {
 export interface CamSpec { pos: [number, number, number]; look: [number, number, number]; fov: number }
 
 /** Camera from the human seat looking across the table; framing adapts to portrait/landscape. */
+/** Demetrius (Sat 7:03am): Sitting needed MORE downward tilt — pitch the seated aim down
+ *  exactly this many extra degrees toward the felt, position and fov untouched, so the
+ *  trick cards read more face-on. Applied to every Sitting spec (portrait + short landscape). */
+export const SITTING_EXTRA_PITCH_DEG = 7;
+/** Rotate a camera aim down by SITTING_EXTRA_PITCH_DEG around its position (YZ plane). */
+export function pitchAimDown(pos: readonly number[], look: readonly number[]): [number, number, number] {
+  const a = (SITTING_EXTRA_PITCH_DEG * Math.PI) / 180;
+  const dy = look[1]! - pos[1]!; const dz = look[2]! - pos[2]!;
+  return [look[0]!, pos[1]! + dy * Math.cos(a) + dz * Math.sin(a), pos[2]! + dz * Math.cos(a) - dy * Math.sin(a)];
+}
+
 export function cameraFor(aspect: number, short = false, view: 'standing' | 'sitting' = 'standing'): CamSpec {
   // A 0×0 canvas (iPhone chrome, first frame) is 0 or NaN. That fov never recovers on its own.
   if (!(Number.isFinite(aspect) && aspect > 0.05 && aspect < 20)) aspect = 9 / 16;
@@ -178,6 +189,7 @@ export function cameraFor(aspect: number, short = false, view: 'standing' | 'sit
     // (it fits against this very camera, and the sitting-hand e2e guards 390/393px; hand
     // visibility still wins if the two ever fight). Standing is untouched.
     pos[1] *= 0.44; pos[2] *= 0.80; look[2] += 0.30;
+    const tilted = pitchAimDown(pos, look); look[0] = tilted[0]; look[1] = tilted[1]; look[2] = tilted[2];
   }
   const dist = Math.hypot(pos[1] - look[1], pos[2] - look[2]);
   // fit the table width (with rail) horizontally, and keep at least a minimum vertical fov
@@ -193,7 +205,7 @@ export function cameraFor(aspect: number, short = false, view: 'standing' | 'sit
  */
 function shortLandscapeCamera(aspect: number, view: 'standing' | 'sitting' = 'standing'): CamSpec {
   void aspect;
-  if (view === 'sitting') return { pos: [0, 1.95, 3.45], look: [0, 0, 0.5], fov: 52 }; // seated: low, across the felt, wide enough for the fan
+  if (view === 'sitting') { const spec: CamSpec = { pos: [0, 1.95, 3.45], look: [0, 0, 0.5], fov: 52 }; spec.look = pitchAimDown(spec.pos, spec.look); return spec; } // seated: low, across the felt + the +7° tilt, wide enough for the fan
   return { pos: [0, 3.1, 3.5], look: [0, 0, 0.22], fov: 42 };
 }
 

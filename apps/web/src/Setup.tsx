@@ -10,6 +10,8 @@ import { type PendingMusic, SetupMusicPicker, savePendingMusic } from './online/
 import { isMusicLink } from '@spades/protocol';
 import { loadName, saveName } from './online/identity';
 import { navigate } from './online/nav';
+import { DECKS } from './decks';
+import { VENUE_DEFS, VENUE_LIST, savePendingVenue, type VenueChoice } from './venues';
 import { AccountEntry } from './account/AccountUI';
 import { SocialButton } from './social/Social';
 import { OpenTables } from './social/OpenTables';
@@ -19,9 +21,13 @@ import { OpenTables } from './social/OpenTables';
  * Each step slides in; the browser / phone back gesture goes back a step (history.state.wiz).
  * Everything else lives behind the gear ("More options").
  */
-type Step = 'home' | 'mode' | 'setup';
+type Step = 'home' | 'door' | 'branch' | 'opponent' | 'table';
 type Path = 'bots' | 'online';
-const ORDER: Step[] = ['home', 'mode', 'setup'];
+type Kind = 'team' | 'cut';
+const ORDER: Step[] = ['home', 'door', 'branch', 'opponent', 'table'];
+/** Founder menu rework (Concept A): one decision per screen — format (Door 1), then the
+ *  branch choice, then opponent, then table essentials. Mode payloads are the same
+ *  settings.mode keys as before; only the asking order changed. */
 
 interface Props {
   settings: Settings;
@@ -40,9 +46,12 @@ const ONE_LINERS: Record<ModeKey, string> = {
 };
 const MODE_TAG: Record<ModeKey, string> = { joker: '2 v 2', cutthroat4: '4 players', cutthroat3: '3 players', aceDown: '2 v 2' };
 
-function readWiz(): { step: Step; path: Path } {
-  const w = (history.state ?? {}) as { wiz?: Step; path?: Path };
-  return { step: w.wiz && ORDER.includes(w.wiz) ? w.wiz : 'home', path: w.path ?? 'bots' };
+function readWiz(): { step: Step; path: Path; kind: Kind } {
+  const w = (history.state ?? {}) as { wiz?: string; path?: Path; kind?: Kind };
+  // legacy wizard steps from before the rework land on their nearest new screen
+  const legacy: Record<string, Step> = { mode: 'door', setup: 'table' };
+  const step = (w.wiz && (ORDER.includes(w.wiz as Step) ? (w.wiz as Step) : legacy[w.wiz])) || 'home';
+  return { step, path: w.path ?? 'bots', kind: w.kind ?? 'team' };
 }
 
 /** Most recent online seat (token saved in the last 12 h) → offer to rejoin it if the table still exists. */
@@ -64,8 +73,50 @@ function useOnlineSeat(): string | null {
   return code;
 }
 
+const MODE_CRUMB: Record<ModeKey, string> = { joker: 'Team Game · Jokers', aceDown: 'Team Game · Ace Down', cutthroat4: 'Cutthroat', cutthroat3: 'Cutthroat · 3 Players' };
+
+/** Deck picker as real card thumbnails (founder menu rework): King of each deck, gold outline when picked. */
+export function DeckThumbs({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="deck-thumbs" role="radiogroup" aria-label="Card deck">
+      {DECKS.map((d) => (
+        <button key={d.id} type="button" role="radio" aria-checked={value === d.id} className={`dt ${value === d.id ? 'on' : ''}`} aria-label={d.name} data-testid={`deck-${d.id}`} onClick={() => onChange(d.id)}>
+          <img src={`/assets/decks/${d.id}/KS.jpg`} alt="" loading="lazy" /><span>{d.name}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** One big neutral decision card (gold only once selected — cards navigate on tap, per §8 no pre-selection). */
+function DecisionCard({ testid, title, sub, emblem, onPick }: { testid: string; title: string; sub: string; emblem: string; onPick: () => void }) {
+  return (
+    <button type="button" className="decision-card" data-testid={testid} onClick={onPick}>
+      <span className="dc-main"><b>{title}</b><small>{sub}</small></span>
+      <span className="dc-emblem">{emblem}</span>
+    </button>
+  );
+}
+
+/**
+ * Venue choice in Table essentials (founder: it must be pickable per game in setup,
+ * not only buried in the Settings sheet). Feeds settings.venue unchanged: an explicit
+ * pick wins in sessionRoom, Random keeps the per-game roll.
+ */
+export function VenueSetupRow({ value, onChange }: { value: VenueChoice; onChange: (v: VenueChoice) => void }) {
+  return (
+    <div className="ess-row stack" data-testid="venue-row">
+      <span className="ess-label">Venue<small>{value === 'random' ? 'A different spot every game' : VENUE_DEFS[value].blurb}</small></span>
+      <select data-testid="venue-select-setup" aria-label="Venue" value={value} onChange={(e) => onChange(e.target.value as VenueChoice)}>
+        {VENUE_LIST.map((v) => <option key={v.id} value={v.id}>{v.emoji} {v.name}{v.id === 'classic' ? ' (default)' : ''}</option>)}
+        <option value="random">🎲 Random — a different spot every game</option>
+      </select>
+    </div>
+  );
+}
+
 export default function Setup({ settings: s, onChange, onStart, onResume, resumeLabel }: Props) {
-  const [{ step, path }, setWiz] = useState(readWiz);
+  const [{ step, path, kind }, setWiz] = useState(readWiz);
   const [dir, setDir] = useState<'fwd' | 'back'>('fwd');
   const [more, setMore] = useState(false);
   const [tips, setTips] = useState<TipsPref>(loadTips);
@@ -98,24 +149,25 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
   // Wizard history: steps pushed by the wizard carry a depth `d`. The back arrow only uses history.back() when the
   // entry before is one of ours (d > 0); otherwise (we arrived from a finished / left game, or a deep link) it steps
   // to the previous wizard step in place — it can never land back on a table.
-  const go = (next: Step, p: Path = path) => {
+  const go = (next: Step, p: Path = path, k: Kind = kind) => {
     const d = ((history.state as { d?: number } | null)?.d ?? 0) + 1;
-    history.pushState({ wiz: next, path: p, d }, '');
+    history.pushState({ wiz: next, path: p, kind: k, d }, '');
     setDir('fwd');
-    setWiz({ step: next, path: p });
+    setWiz({ step: next, path: p, kind: k });
   };
   const back = () => {
     const d = (history.state as { d?: number } | null)?.d ?? 0;
     if (d > 0) { history.back(); return; }
-    const prev = ORDER[Math.max(0, ORDER.indexOf(step) - 1)]!;
-    history.replaceState({ wiz: prev, path, d: 0 }, '', '/');
+    // Cutthroat has no branch step (Door 1 goes straight to Opponent): skip it on the in-place fallback.
+    const prev = step === 'opponent' && kind === 'cut' ? 'door' : ORDER[Math.max(0, ORDER.indexOf(step) - 1)]!;
+    history.replaceState({ wiz: prev, path, kind, d: 0 }, '', '/');
     setDir('back');
-    setWiz({ step: prev, path });
+    setWiz({ step: prev, path, kind });
   };
   const home = () => {
-    history.replaceState({ wiz: 'home', path, d: 0 }, '', '/');
+    history.replaceState({ wiz: 'home', path, kind, d: 0 }, '', '/');
     setDir('back');
-    setWiz({ step: 'home', path });
+    setWiz({ step: 'home', path, kind });
   };
   const setTipsPref = (on: boolean) => { const t = { on, asked: true }; saveTips(t); setTips(t); };
 
@@ -129,35 +181,52 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
           <p className="tagline">Spades with the crew</p>
         </div>
         <div className="wiz-actions">
-          <button type="button" className="big-choice online" data-testid="play-online" {...choose(() => go('mode', 'online'))}>
-            <span className="bc-icon" aria-hidden>👥</span><span className="bc-text"><b>Play Online</b><small>with friends</small></span>
-          </button>
-          <button type="button" className="big-choice bots" data-testid="play-bots" {...choose(() => go('mode', 'bots'))}>
-            <span className="bc-icon" aria-hidden>🤖</span><span className="bc-text"><b>Play vs Bots</b><small>solo, any time</small></span>
-          </button>
-          {(onResume || onlineSeat) && (
-            <div className="resume-row">
-              {onResume && <button type="button" className="resume-btn" data-testid="resume" onClick={onResume}>▶ Resume {resumeLabel ?? 'game'}</button>}
-              {onlineSeat && <button type="button" className="resume-btn" data-testid="resume-online" onClick={() => navigate(`/t/${onlineSeat}`)}>▶ Rejoin table {onlineSeat}</button>}
-            </div>
+          {onResume ? (
+            <>
+              <button type="button" className="hero-btn gold" data-testid="resume" onClick={onResume}><b>RESUME GAME</b><small>{resumeLabel ?? 'your game in progress'}</small></button>
+              <button type="button" className="hero-btn purple" data-testid="play" {...choose(() => go('door'))}><b>PLAY</b><small>start a new game</small></button>
+            </>
+          ) : (
+            <button type="button" className="hero-btn gold" data-testid="play" {...choose(() => go('door'))}><b>PLAY</b><small>Team Game or Cutthroat</small></button>
           )}
+          {onlineSeat && <button type="button" className="quiet-row" data-testid="resume-online" onClick={() => navigate(`/t/${onlineSeat}`)}><span>Rejoin your online table</span><span className="value-chip">{onlineSeat}</span></button>}
         </div>
       </div>
     );
-  } else if (step === 'mode') {
+  } else if (step === 'door') {
     body = (
       <>
-        <h2 className="wiz-title">Pick a game</h2>
-        <div className="mode-cards">
-          {MODES.map((m) => (
-            <button key={m.key} type="button" className={`mode-card ${s.mode === m.key ? 'selected' : ''}`} data-testid={`mode-${m.key}`} onClick={() => { set('mode', m.key as ModeKey); go('setup'); }}>
-              <span className="mc-title">{m.title}</span>
-              <span className="mc-tag">{MODE_TAG[m.key as ModeKey]}</span>
-              <span className="mc-line">{ONE_LINERS[m.key as ModeKey]}</span>
-            </button>
-          ))}
+        <p className="wiz-crumb">Play</p>
+        <h2 className="wiz-title">What are we playing?</h2>
+        <p className="wiz-stepno">Step 1 of 3</p>
+        <div className="decision-cards">
+          <DecisionCard testid="door-team" title="TEAM GAME" sub="2v2 — partners across from each other" emblem="PARTNERS" onPick={() => go('branch', path, 'team')} />
+          <DecisionCard testid="door-cutthroat" title="CUTTHROAT" sub="4 players — every player for themselves" emblem="SOLO" onPick={() => { set('mode', 'cutthroat4'); go('opponent', path, 'cut'); }} />
         </div>
-        {path === 'online' && <OpenTables selected={s.mode} onCreate={() => go('setup')} />}
+      </>
+    );
+  } else if (step === 'branch' && kind === 'team') {
+    body = (
+      <>
+        <p className="wiz-crumb">Team Game</p>
+        <h2 className="wiz-title">Team Game — which kind?</h2>
+        <p className="wiz-stepno">Step 2 of 3</p>
+        <div className="decision-cards">
+          <DecisionCard testid="mode-joker" title="JOKERS" sub="Joker Spades — jokers high, partners" emblem="JOKERS HIGH" onPick={() => { set('mode', 'joker'); go('opponent'); }} />
+          <DecisionCard testid="mode-aceDown" title="ACE DOWN" sub="Ace Down — aces lead, partners" emblem="ACES LEAD" onPick={() => { set('mode', 'aceDown'); go('opponent'); }} />
+        </div>
+      </>
+    );
+  } else if (step === 'opponent' || step === 'branch') {
+    body = (
+      <>
+        <p className="wiz-crumb">{MODE_CRUMB[s.mode]}</p>
+        <h2 className="wiz-title">Who are you playing?</h2>
+        <p className="wiz-stepno">{kind === 'cut' ? 'Step 2 of 2' : 'Step 3 of 3'}</p>
+        <div className="decision-cards">
+          <DecisionCard testid="play-online" title="PLAY ONLINE" sub="Open tables, create or join with a code" emblem="TABLES" onPick={() => go('table', 'online')} />
+          <DecisionCard testid="play-bots" title="VS BOTS" sub="Solo table — no seating step" emblem="SOLO TABLE" onPick={() => go('table', 'bots')} />
+        </div>
       </>
     );
   } else {
@@ -190,7 +259,8 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
     );
     body = (
       <>
-        <h2 className="wiz-title">{mode.title}<small>{path === 'online' ? 'online with friends' : 'vs bots'}</small></h2>
+        <p className="wiz-crumb">{MODE_CRUMB[s.mode]} · {path === 'online' ? 'Play Online' : 'Vs Bots'}</p>
+        <h2 className="wiz-title">Your Table<small>{mode.title}</small></h2>
         {path === 'bots' ? (
           <div className="ess">
             <div className="ess-row stack" data-testid="bots-row">
@@ -202,14 +272,16 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
               <Seg label="Target score" value={s.targetScore} options={[250, 300, 500].map((x) => (x === (cut ? 300 : 500) ? ['default', String(x)] : [x, String(x)])) as [number | 'default', string][]} onChange={(v) => set('targetScore', v)} />
             </div>
             {deck}
-            <div className="ess-row"><span className="ess-label">Cards</span><Seg label="Card deck" value={s.deck} options={[['classic', 'Classic'], ['afrofuturist', 'Afrofuturist'], ['harlem', 'Harlem'], ['hiphop', 'Boombox Royals'], ['mali', 'Mali'], ['egypt', 'Egypt'], ['greek', 'Greek']]} onChange={(v) => set('deck', v)} /></div>
+            <div className="ess-row stack"><span className="ess-label">Pick your deck — tap for the full card</span><DeckThumbs value={s.deck} onChange={(v) => set('deck', v)} /></div>
+            <VenueSetupRow value={s.venue ?? 'classic'} onChange={(v) => set('venue', v)} />
+            <button type="button" className="quiet-row" data-testid="house-rules" onClick={() => setMore(true)}><span>HOUSE RULES</span><span className="value-chip">Standard</span><i className="corner-tab" aria-hidden /></button>
             {cutRules}
             {summary}
             {tipsRow}
-            <button type="button" className="primary big go" data-testid="start-bots" onClick={onStart}>Deal me in</button>
+            <div className="sticky-primary"><button type="button" className="primary big go" data-testid="start-bots" onClick={onStart}>DEAL ME IN</button><p className="sticky-note">No seating step vs bots — bots fill the table</p></div>
           </div>
         ) : (
-          <OnlineEssentials settings={s} deck={deck} tipsRow={<>{summary}{tipsRow}</>} />
+          <OnlineEssentials settings={s} venue={s.venue ?? 'classic'} onVenue={(v) => set('venue', v)} deck={deck} deckThumbs={<DeckThumbs value={s.deck} onChange={(v) => set('deck', v)} />} onHouseRules={() => setMore(true)} tipsRow={<>{summary}{tipsRow}</>} />
         )}
       </>
     );
@@ -220,7 +292,7 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
       <header className="wiz-bar">
         {step !== 'home' ? (
           <span className="wiz-nav">
-            <button type="button" className="icon-btn back" aria-label="Back" data-testid="wiz-back" onClick={back}>←</button>
+            <button type="button" className="back-chip" aria-label="Back" data-testid="wiz-back" onClick={back}><svg width="18" height="12" viewBox="0 0 18 12" aria-hidden="true"><path d="M6 1 L1.5 6 L6 11 M2 6 H17" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="square"/></svg>BACK</button>
             <button type="button" className="icon-btn home" aria-label="Home" title="Home" data-testid="wiz-home" onClick={home}><img src="/assets/bwm-wordmark-white.svg" alt="" /></button>
           </span>
         ) : <AccountEntry showChip />}
@@ -249,7 +321,7 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
   );
 }
 
-function OnlineEssentials({ settings, deck, tipsRow }: { settings: Settings; deck: ReactNode; tipsRow: ReactNode }) {
+function OnlineEssentials({ settings, venue, onVenue, deck, deckThumbs, onHouseRules, tipsRow }: { settings: Settings; venue: VenueChoice; onVenue: (v: VenueChoice) => void; deck: ReactNode; deckThumbs: ReactNode; onHouseRules: () => void; tipsRow: ReactNode }) {
   const [name, setName] = useState(loadName);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
@@ -263,6 +335,7 @@ function OnlineEssentials({ settings, deck, tipsRow }: { settings: Settings; dec
     setBusy(true); setErr(null);
     try {
       const c = await createTable(serverUrl());
+      savePendingVenue(c, venue);
       savePendingMusic(c, music?.mode === 'link' ? { ...music, url: music.url.trim() } : music);
       saveName(name.trim());
       sessionStorage.setItem(`bwm.created.${c}`, '1');
@@ -289,13 +362,19 @@ function OnlineEssentials({ settings, deck, tipsRow }: { settings: Settings; dec
         <input className="name-input" value={name} maxLength={20} autoComplete="nickname" placeholder="e.g. Meech" onChange={(e) => setName(e.target.value)} aria-label="Your name" />
       </label>
       {deck}
+      <div className="ess-row stack"><span className="ess-label">Pick your deck — tap for the full card</span>{deckThumbs}</div>
+      <VenueSetupRow value={venue} onChange={onVenue} />
       {tipsRow}
       <SetupMusicPicker value={music} onChange={setMusic} />
-      <button type="button" className="primary big go" disabled={busy} onClick={create} data-testid="create-table">Create table</button>
-      <form className="join-row" onSubmit={join}>
+      <button type="button" className="quiet-row" data-testid="house-rules" onClick={onHouseRules}><span>HOUSE RULES</span><span className="value-chip">Standard</span><i className="corner-tab" aria-hidden /></button>
+      <div className="sticky-primary"><button type="button" className="primary big go" disabled={busy} onClick={create} data-testid="create-table">CREATE TABLE</button></div>
+      <div className="exit-divider" aria-hidden />
+      <form className="join-row quiet-join" onSubmit={join}>
+        <span className="ess-label">JOIN WITH A CODE</span>
         <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="TABLE CODE" maxLength={8} aria-label="Table code" autoCapitalize="characters" />
-        <button type="submit" className="primary" disabled={busy} data-testid="join-code">Join</button>
+        <button type="submit" className="micro-action" disabled={busy} data-testid="join-code">JOIN</button>
       </form>
+      <div className="quiet-open"><span className="ess-label">OPEN TABLES</span><OpenTables selected={settings.mode} onCreate={() => document.querySelector('[data-testid="create-table"]')?.scrollIntoView({ block: 'center' })} /></div>
       {err && <div className="err" role="alert">{err}</div>}
     </div>
   );
