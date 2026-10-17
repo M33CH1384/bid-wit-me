@@ -919,6 +919,7 @@ export class Room {
         : a.type === 'bid' ? { type: 'bid', seat: me.seat, bid: a.bid }
         : a.type === 'exchange' ? { type: 'exchange', seat: me.seat, cards: a.cards }
         : a.type === 'runIt' ? { type: 'runIt', seat: me.seat }
+        : a.type === 'misdeal' ? { type: 'misdeal', seat: me.seat }
         : { type: 'play', seat: me.seat, card: a.card, ...(a.slam !== undefined ? { slam: a.slam } : {}), ...(a.rel ? { rel: a.rel } : {}) };
       const g0 = d.game;
       const thinkMs = g0.turn === me.seat && d.turnStartedAt !== null ? Math.max(0, Math.min(120_000, this.io.now() - d.turnStartedAt - this.leadIn(g0))) : null;

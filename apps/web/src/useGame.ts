@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { type Action, type GameState, type TableRules, applyAction, canRunIt, isNukeTrick, newGame, pendingTurn, secureSeed, viewFor } from '@spades/rules';
 import { type BotLevel, type PartnerHint, chooseBotAction, parseHint } from '@spades/bots';
 import { dealTimeline } from './three/dealTimeline';
+import { misdealRevealMs } from './misdeal';
 import { dealClockArmed } from './three/dealFlight';
 import { finishedTrickHoldMs } from './trickTiming';
 
@@ -54,6 +55,17 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
   // Bounded wait for a scene that never reports (no WebGL): the game is never stuck on a deal.
   const [forcedHand, setForcedHand] = useState<number | null>(null);
   const dealing = introHand !== null && forcedHand !== introHand && !(dealtHand === introHand && sceneDealt === introHand);
+  // A called misdeal: the thrown hand sits face up on the table for a beat (see misdeal.ts) before the
+  // redeal lands. The beat rides the dealing flag, so bots wait, input waits and no new cards show early.
+  const revealKey = st.misdealReveal ? `${st.handNo}:${st.misdeals ?? 0}:${st.misdealReveal.seat}` : null;
+  const [revealDone, setRevealDone] = useState<string | null>(null);
+  const misdealShowing = !!revealKey && revealDone !== revealKey;
+  useEffect(() => {
+    if (!revealKey || revealDone === revealKey) return;
+    const tm = setTimeout(() => setRevealDone(revealKey), misdealRevealMs());
+    return () => clearTimeout(tm);
+  }, [revealKey, revealDone]);
+  const busy = dealing || misdealShowing;
   useEffect(() => {
     // The clock starts with the table on screen. Started behind the loader, the deal was over
     // before it showed, so YOUR TURN and the bots' lead ran under the flying cards.
@@ -110,7 +122,7 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
 
   // bots move on their turn
   useEffect(() => {
-    if (pause || dealing || hold) return;
+    if (pause || busy || hold) return;
     // Release 10: a bot claims 'Run it!' the moment it's guaranteed, even off-turn (mirrors the server)
     if (st.phase === 'playing') {
       const claimer = Array.from({ length: st.rules.playerCount }, (_, i) => i).find((i) => i !== HUMAN && i !== st.turn && canRunIt(st, i));
@@ -139,7 +151,7 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
       else apply(action);
     }, delay);
     return () => { clearTimeout(t); clearTimeout(t2); };
-  }, [st, pause, dealing, k, apply, hold]);
+  }, [st, pause, busy, k, apply, hold]);
 
   const restart = useCallback((r: TableRules = rules) => {
     const next = newGame(r, secureSeed());
@@ -149,5 +161,5 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
     setError(null);
   }, [rules]);
 
-  return { st, view: viewFor(st, HUMAN), pause, error, apply, restart, introHand, dealing, k };
+  return { st, view: viewFor(st, HUMAN), pause, error, apply, restart, introHand, dealing: busy, k };
 }

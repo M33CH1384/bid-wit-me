@@ -97,6 +97,9 @@ export function rotateView(v: PlayerView): { st: GameState; view: PlayerView; ro
     result: st.result,
     // 'Run it!' cleared hands are public only after the claim; rotate them with the rest of the seats.
     ...(v.runHands ? { runHands: permute(v.runHands, rot) } : {}),
+    // A called misdeal's thrown hand is face up for the whole table: the cards ride as-is (public),
+    // only the caller's seat moves into the local frame.
+    ...(v.misdealReveal ? { misdealReveal: { seat: rot.L(v.misdealReveal.seat), cards: v.misdealReveal.cards } } : {}),
   };
   return { st, view, rot };
 }
