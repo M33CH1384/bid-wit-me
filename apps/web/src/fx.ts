@@ -160,7 +160,7 @@ if (typeof window !== 'undefined') (window as unknown as { __bwmFx?: FxBus }).__
 
 const FX_CUES = new Set(['jokerLittle', 'jokerBig', 'nuke', 'overcut', 'overcut3']);
 /** A landing cue from a card animation: plain sounds play; joker cues go through the effects bus (sound + visuals). */
-export function fireCue(c: string, delay = 0) {
+export function fireCue(c: string, delay = 0, seat?: import('./three/layout').SeatPos, playerCount = 4) {
   if (FX_CUES.has(c.split('|')[0]!)) {
     const go = () => fx.emit(c as FxKind);
     if (c.startsWith('overcut')) {
@@ -175,7 +175,7 @@ export function fireCue(c: string, delay = 0) {
   }
   // level-1 cut: the crisp cut sound + a light accent nudge
   if (c === 'cut' && !fx.reduced && !fx.osReducedMotion) window.setTimeout(() => { fx.shake = { start: performance.now(), dur: 0.14, amp: 0.012, thump: true }; }, delay * 1000);
-  sound.play(c as Sfx, delay ? { delay } : {});
+  sound.play(c as Sfx, { ...(delay ? { delay } : {}), ...(seat ? { seat, playerCount } : {}) });
 }
 
 export function useReduceEffects(): boolean {

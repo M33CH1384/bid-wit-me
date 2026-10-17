@@ -47,6 +47,28 @@ export function listenerPose(c: CamPose) {
   return { position: { x: c.pos[0]!, y: c.pos[1]!, z: c.pos[2]! }, look: { x: c.look[0]!, y: c.look[1]!, z: c.look[2]! } };
 }
 
+/** Predicted PannerNode inverse-distance gain (matches Spatializer's refDistance/rolloff). */
+export function pannerGainAt(distance: number, refDistance = 2.2, rolloffFactor = 0.7): number {
+  if (!(distance > refDistance)) return 1;
+  return refDistance / (refDistance + rolloffFactor * (distance - refDistance));
+}
+/** Distance compensation for a seat: boost far seats back toward the near (bottom) seat's predicted
+ *  loudness, capped, so a far slam keeps its punch (within ~10-15% of pre-spatial) without
+ *  flattening the near seat. Direction still comes from the panner; this only restores level. */
+export function seatCompensation(listener: { x: number; y: number; z: number }, pos: SeatPos, n: number): number {
+  const d = (pt: { x: number; y: number; z: number }) => Math.hypot(pt.x - listener.x, pt.y - listener.y, pt.z - listener.z);
+  const ratio = pannerGainAt(d(seatPoint('bottom', n))) / pannerGainAt(d(seatPoint(pos, n)));
+  return Math.min(2.4, Math.max(1, ratio));
+}
+
+/** No-repeat variant picker: never the same sample variant twice in a row per event (count<=1 -> 0). */
+export function pickVariant(count: number, last: number, rnd: () => number = Math.random): number {
+  if (!(count > 1)) return 0;
+  let pick = Math.floor(rnd() * count) % count;
+  if (pick === last) pick = (pick + 1) % count;
+  return pick;
+}
+
 /** Per-player local voice mute (never signalled; card SFX for that seat are unaffected). */
 export function isVoiceMuted(muted: Record<string, true> | undefined, playerId: string): boolean { return !!muted?.[playerId]; }
 export function withVoiceMuted(muted: Record<string, true> | undefined, playerId: string, mute: boolean): Record<string, true> {
