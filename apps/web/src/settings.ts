@@ -48,7 +48,7 @@ export interface Settings {
   venue: VenueChoice;
   /** Camera view: sitting = lower/closer (DEFAULT for new players, V-gesture slams); standing = higher/farther. A saved choice always wins. */
   view: 'standing' | 'sitting';
-  /** Turn up (slam mode): OFF by default for everyone. When ON, Standing plays slam at max (sent online). When OFF, Standing plays are gentle. Sitting's V-gesture and other deliberate slams are not gated by this. */
+  /** Turn up (slam mode): OFF by default for everyone. When ON, Standing plays slam at max and Sitting's V-gesture slams (sent online). When OFF, NO play slams by any route (drag, flick, V-gesture, tap/toss). */
   turnUp: boolean;
   /** Card deck art pack (Desi decks; all unlocked for now, Story/purchase lock later). */
   deck: string;

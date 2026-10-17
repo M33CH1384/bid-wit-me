@@ -1151,7 +1151,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (action.type === 'play') {
       const held = trickNow;
       const tapSlam = dragged ? undefined : tapPlaySlamIntensity(effView, turnUp);
-      const sent = apply({ type: 'play', seat: HUMAN, card: action.card as Card, ...(dragged && slam !== undefined ? { slam } : tapSlam ? { slam: tapSlam } : {}), ...(dragged && rel ? { rel } : {}) });
+      // Only a positive intensity goes on the wire/in state as a slam field: a gated (Turn Up
+      // OFF) or gentle drag sends no slam field at all, exactly like a gentle tap play.
+      const sent = apply({ type: 'play', seat: HUMAN, card: action.card as Card, ...(dragged && slam ? { slam } : tapSlam ? { slam: tapSlam } : {}), ...(dragged && rel ? { rel } : {}) });
       if (sent !== false) {
         playHold.current = held;
         playArmed.current = false;
