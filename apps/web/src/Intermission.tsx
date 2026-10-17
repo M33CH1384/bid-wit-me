@@ -251,10 +251,10 @@ export function Intermission({
                       return <li key={x}><b>{names[x]}:</b> {bid ? `${bid}, took ${rec.tricksWon[x]}` : `took ${rec.tricksWon[x]}`}</li>;
                     })}
                   </ul>
-                  <div className="tt-stat total">
-                    <small>TOTAL</small>
-                    <b data-testid={`recap-total-${s.side}`}>{s.totalScore}</b>
-                    <span className="tt-bags">{s.totalBags} bag{s.totalBags === 1 ? '' : 's'}</span>
+                  {/* the running total lives ONLY in TOP SCORES above (founder: no score twice on one screen) */}
+                  <div className="tt-stat bags-stat">
+                    <small>BAGS</small>
+                    <b data-testid={`recap-bags-${s.side}`}>{s.totalBags}</b>
                   </div>
                   <div className="tt-bar" aria-label={`${s.totalScore} of ${target}`}><i style={{ width: `${pct * 100}%` }} /><small>to {target}</small></div>
                   </div>
