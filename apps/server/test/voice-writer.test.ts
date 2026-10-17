@@ -84,3 +84,15 @@ describe('D1 -> queue.json export merge', () => {
     expect(merged[1]!.bucket).toBe('win');
   });
 });
+
+describe('baked marking drains the D1 queue', () => {
+  it('queued line flips pending -> baked and stops counting as queued', async () => {
+    const s = await store();
+    expect(await writeVoiceLine({ ai: aiSaying('Set by one! Y all got too cute, partner.'), store: s, now: () => 7 }, req)).toBe('queued');
+    expect(await s.queuedCount('og', 'm', 'set1')).toBe(1);
+    const changed = await s.markBaked([{ persona: 'og', g: 'm', bucket: 'set1', norm: 'set by one! y all got too cute, partner.' }]);
+    expect(changed).toBe(1);
+    expect(await s.queuedCount('og', 'm', 'set1')).toBe(0);
+    expect(await s.markBaked([{ persona: 'og', g: 'm', bucket: 'set1', norm: 'set by one! y all got too cute, partner.' }])).toBe(0); // idempotent
+  });
+});

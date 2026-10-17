@@ -34,6 +34,8 @@ export interface QueueStore {
   queuedCount(persona: string, g: string, bucket: string): Promise<number>;
   queuedTexts(persona: string, g: string, bucket: string): Promise<string[]>;
   enqueue(l: { persona: string; g: string; bucket: string; text: string; norm: string; at: number }): Promise<boolean>;
+  /** The bake cataloged these lines: pending -> baked so the queue drains. Returns rows changed. */
+  markBaked(keys: { persona: string; g: string; bucket: string; norm: string }[]): Promise<number>;
 }
 
 /** D1-backed store (the same `bid-wit-me` database as accounts/social). */
@@ -53,6 +55,14 @@ export class D1QueueStore implements QueueStore {
   async queuedTexts(persona: string, g: string, bucket: string): Promise<string[]> {
     const r = await this.db.prepare("SELECT text FROM voice_queue WHERE persona = ? AND g = ? AND bucket = ? AND status = 'pending'").bind(persona, g, bucket).all<{ text: string }>();
     return (r.results ?? []).map((x) => x.text);
+  }
+  async markBaked(keys: { persona: string; g: string; bucket: string; norm: string }[]): Promise<number> {
+    let changed = 0;
+    for (const k of keys) {
+      const r = await this.db.prepare("UPDATE voice_queue SET status = 'baked' WHERE persona = ? AND g = ? AND bucket = ? AND norm = ? AND status = 'pending'").bind(k.persona, k.g, k.bucket, k.norm).run();
+      changed += (r.meta as { changes?: number } | undefined)?.changes ?? 0;
+    }
+    return changed;
   }
   async enqueue(l: { persona: string; g: string; bucket: string; text: string; norm: string; at: number }): Promise<boolean> {
     const r = await this.db.prepare("INSERT OR IGNORE INTO voice_queue (persona, g, bucket, text, norm, created_at) VALUES (?, ?, ?, ?, ?, ?)").bind(l.persona, l.g, l.bucket, l.text, l.norm, l.at).run();

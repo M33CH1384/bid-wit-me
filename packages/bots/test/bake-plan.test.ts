@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { apply, clipId, normalizeText, plan, rejectReason, remainingQueue, type QueueLine } from '../../../scripts/voice-bake/plan';
+import { apply, bakedLines, clipId, normalizeText, plan, rejectReason, remainingQueue, type QueueLine } from '../../../scripts/voice-bake/plan';
+import { bakedKeys } from '../../../scripts/voice-bake/mark-baked';
 
 const ok: QueueLine = { persona: 'mama', g: 'f', bucket: 'set2', text: 'Down two, baby. Sit with that. 😂' };
 
@@ -37,5 +38,21 @@ describe('voice bake planner', () => {
     expect(r.missing).toEqual([p.lines[1]!.id]);
     expect(r.catalog[0]).toEqual({ id: p.lines[0]!.id, persona: 'mama', g: 'f', bucket: 'set2', text: 'Down two, baby. Sit with that.' });
     expect(remainingQueue(q, r.catalog)).toEqual([{ ...ok, text: 'Another one' }]);
+  });
+});
+
+describe('baked marking (Voice (c) queue drain)', () => {
+  it('line queued -> bake catalogs it -> no longer pending, and a re-run does not re-bake it', () => {
+    const queue: QueueLine[] = [ok];
+    // before: nothing cataloged, nothing to mark
+    expect(bakedLines(queue, [])).toEqual([]);
+    const p = plan(queue, []);
+    const r = apply([], p, () => true); // the clip got baked
+    // after: the line is exactly what gets marked baked in D1
+    expect(bakedLines(queue, r.catalog)).toEqual([ok]);
+    expect(bakedKeys(queue, r.catalog)).toEqual([{ persona: 'mama', g: 'f', bucket: 'set2', norm: normalizeText(ok.text).toLowerCase() }]);
+    // re-run against the updated catalog plans nothing (no re-bake), and the file queue drops it too
+    expect(plan(queue, r.catalog).lines).toEqual([]);
+    expect(remainingQueue(queue, r.catalog)).toEqual([]);
   });
 });

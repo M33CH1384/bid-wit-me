@@ -70,6 +70,18 @@ export function apply(catalog: readonly CatalogLine[], p: Plan, clipExists: (id:
   return { catalog: [...byId.values()].sort((a, b) => a.id.localeCompare(b.id)), added, missing };
 }
 
+/** Queued lines whose clip is now in the catalog: these get marked 'baked' in D1 after a bake,
+ * so the writer's queue drains instead of staying pending forever (and they are never re-baked:
+ * plan() already skips catalog ids). */
+export function bakedLines(queue: QueueLine[], catalog: readonly CatalogLine[]): QueueLine[] {
+  const have = new Set(catalog.map((c) => c.id));
+  return queue.filter((l) => {
+    if (rejectReason(l)) return false;
+    const v = PERSONA_VOICES[l.persona as PersonaId][l.g as 'f' | 'm'];
+    return have.has(clipId(v.voice, v.speed, l.text));
+  });
+}
+
 /** Queue after a bake: drop lines now in the catalog; keep the rest (over the cap or failed) for next time. */
 export function remainingQueue(queue: QueueLine[], catalog: readonly CatalogLine[]): QueueLine[] {
   const have = new Set(catalog.map((c) => c.id));
