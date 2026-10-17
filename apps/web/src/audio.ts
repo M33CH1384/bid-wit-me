@@ -80,7 +80,11 @@ export interface SoundSettings { on: boolean; volume: number; ambient: boolean; 
    *  Party / Front Porch / Beauty Salon it is a stored menu preference that may only
    *  SOUND in the menu context, never in-game, and is mutually exclusive with music.
    *  Kitchen-Table remains the in-game ambience choice. */
-  parkDominoes?: boolean }
+  parkDominoes?: boolean;
+  /** Demetrius (Sat): menu ambience scenes are ONE AT A TIME. This records the last menu
+   *  ambience scene the player explicitly picked (or the reconciled winner of a legacy
+   *  stacked save), so menus restore that single scene and stacked saves have recency. */
+  menuAmbience?: MenuAmbienceScene }
 
 /** Where the player is: menus (setup/home/lobby) or in a game. */
 export type SoundContext = 'menu' | 'game';
@@ -102,7 +106,7 @@ export const wantsMusic = (s: SoundSettings): boolean => !!s.music && !ambienceO
 export const wantsAmbience = (s: SoundSettings): boolean => !s.music;
 /** Block Party gate: only in menus, only with music off. In-game it can never sound —
  *  enterContext('game') leaves the stored flag dormant and this gate keeps it silent. */
-export const blockPartyWanted = (s: SoundSettings, ctx: SoundContext): boolean => !!s.blockParty && !s.music && ctx === 'menu';
+export const blockPartyWanted = (s: SoundSettings, ctx: SoundContext): boolean => !!s.blockParty && !s.music && ctx === 'menu' && menuAmbienceOf(s) === 'blockParty';
 /** Block Party rides the existing ambience volume (same bus factor as the lounge pad). */
 export const blockPartyLevel = (ambienceVolume: number): number => 0.5 * Math.min(1, Math.max(0, ambienceVolume));
 /** Kitchen-Table gate: any context, but never with music (the #202 exclusivity rule). */
@@ -112,20 +116,50 @@ export const kitchenTableWanted = (s: SoundSettings): boolean => !!s.kitchenTabl
 export const kitchenLevel = (ambienceVolume: number, ctx: SoundContext): number => (ctx === 'game' ? 0.3 : 0.5) * Math.min(1, Math.max(0, ambienceVolume));
 /** Front Porch gate: only in menus, only with music off — exactly like Block Party.
  *  In-game the stored flag sits dormant and this gate keeps it silent. */
-export const frontPorchWanted = (s: SoundSettings, ctx: SoundContext): boolean => !!s.frontPorch && !s.music && ctx === 'menu';
+export const frontPorchWanted = (s: SoundSettings, ctx: SoundContext): boolean => !!s.frontPorch && !s.music && ctx === 'menu' && menuAmbienceOf(s) === 'frontPorch';
 /** Front Porch level: rides the Ambience volume; the calm contrast scene, a touch under
  *  Block Party's 0.5 so menus stay hushed at dusk. */
 export const frontPorchLevel = (ambienceVolume: number): number => 0.45 * Math.min(1, Math.max(0, ambienceVolume));
 /** Beauty Salon gate: only in menus, only with music off — exactly like Block Party / Front Porch.
  *  In-game the stored flag sits dormant and this gate keeps it silent. */
-export const beautySalonWanted = (s: SoundSettings, ctx: SoundContext): boolean => !!s.beautySalon && !s.music && ctx === 'menu';
+export const beautySalonWanted = (s: SoundSettings, ctx: SoundContext): boolean => !!s.beautySalon && !s.music && ctx === 'menu' && menuAmbienceOf(s) === 'beautySalon';
 /** Beauty Salon level: rides the Ambience volume at Block Party's lively 0.5 factor. */
 export const beautySalonLevel = (ambienceVolume: number): number => 0.5 * Math.min(1, Math.max(0, ambienceVolume));
 /** Park Dominoes gate: only in menus, only with music off — like the other menu scenes.
  *  In-game the stored flag sits dormant and this gate keeps it silent. */
-export const parkDominoesWanted = (s: SoundSettings, ctx: SoundContext): boolean => !!s.parkDominoes && !s.music && ctx === 'menu';
+export const parkDominoesWanted = (s: SoundSettings, ctx: SoundContext): boolean => !!s.parkDominoes && !s.music && ctx === 'menu' && menuAmbienceOf(s) === 'parkDominoes';
 /** Park Dominoes level: rides the Ambience volume at the lively 0.5 factor (bones slam hard). */
 export const parkDominoesLevel = (ambienceVolume: number): number => 0.5 * Math.min(1, Math.max(0, ambienceVolume));
+
+/** The menu ambience scenes that are ONE AT A TIME in menus (Demetrius, Sat): Lounge/Venue
+ *  (the ambient + venueSound pair, which compose as one scene), Block Party, Front Porch,
+ *  Beauty Salon, Park Dominoes — and Kitchen-Table when it is picked in menus (it stays
+ *  the in-game ambience; picking it at the table does not touch the menu choice). */
+export type MenuAmbienceScene = 'loungeVenue' | 'blockParty' | 'frontPorch' | 'beautySalon' | 'parkDominoes' | 'kitchenTable';
+const menuSceneOn = (s: SoundSettings, sc: MenuAmbienceScene): boolean => sc === 'loungeVenue' ? ambienceOn(s) : !!s[sc];
+/** Deterministic legacy fallback when a stacked save carries no recency: the newest-shipped
+ *  scene that is on wins (a scene could only have been picked after it shipped, so the
+ *  latest-shipped one on is the best available guess at the last pick). Lounge/Venue is
+ *  last because venueSound defaults on — it must never outrank a deliberate scene pick. */
+const MENU_SCENE_PRIORITY: MenuAmbienceScene[] = ['parkDominoes', 'beautySalon', 'frontPorch', 'blockParty', 'kitchenTable', 'loungeVenue'];
+/** The single menu ambience scene a settings state describes: the recorded last pick if
+ *  its flag is still on, otherwise the deterministic priority winner, otherwise none. */
+export function menuAmbienceOf(s: SoundSettings): MenuAmbienceScene | null {
+  if (s.menuAmbience && menuSceneOn(s, s.menuAmbience)) return s.menuAmbience;
+  return MENU_SCENE_PRIORITY.find((sc) => menuSceneOn(s, sc)) ?? null;
+}
+/** Reconcile any (possibly legacy stacked) state to the single winning menu scene: every
+ *  other menu scene flag goes off and the winner is recorded. Lounge/Venue keep their
+ *  ambient/venueSound pair exactly as they are — they compose as one scene. */
+export function exclusiveMenuAmbience(s: SoundSettings): SoundSettings {
+  const winner = menuAmbienceOf(s);
+  if (!winner) return { ...s, menuAmbience: undefined };
+  const out: SoundSettings = { ...s, blockParty: false, frontPorch: false, beautySalon: false, parkDominoes: false, kitchenTable: false, menuAmbience: winner };
+  if (winner === 'loungeVenue') return out;
+  out.ambient = false; out.venueSound = false;
+  out[winner] = true;
+  return out;
+}
 /** Reconcile a (possibly legacy both-on) state: music wins, ambience goes off. */
 export function exclusiveMusicAmbience(s: SoundSettings): SoundSettings {
   return s.music && ambienceOn(s) ? { ...s, ambient: false, venueSound: false } : s;
@@ -150,7 +184,13 @@ export const contextDefault = (ctx: SoundContext): SoundScene => (ctx === 'menu'
  */
 export function settingsForContext(s: SoundSettings, ctx: SoundContext): SoundSettings {
   const scene = s.scenes?.[ctx] ?? contextDefault(ctx);
-  return exclusiveMusicAmbience({ ...s, ...SCENE_PATCH[scene] });
+  let patched: SoundSettings = { ...s, ...SCENE_PATCH[scene] };
+  // Menus run ONE ambience scene: an ambience scene in menus means the player's single
+  // recorded menu scene (defaulting to Lounge/Venue), never a stack. In-game this is not
+  // applied — Kitchen-Table and the game scene behave exactly as before, and the menu
+  // flags simply sit dormant until menus restore the single menu choice.
+  if (ctx === 'menu' && scene === 'ambience') patched = exclusiveMenuAmbience({ ...patched, menuAmbience: menuAmbienceOf(s) ?? 'loungeVenue' });
+  return exclusiveMusicAmbience(patched);
 }
 /** venue ambience beds (see venues.ts → bed) */
 export type VenueBed = 'none' | 'cookout' | 'mansion' | 'barbershop' | 'basement' | 'rooftop' | 'jazz' | 'casino' | 'beach' | 'kitchen' | 'yacht';
@@ -276,6 +316,14 @@ class Engine {
     if (patch.music) { next = { ...next, ambient: false, venueSound: false }; if (this.context === 'menu') next = { ...next, blockParty: false, frontPorch: false, beautySalon: false, parkDominoes: false }; if (this.captureScene) next = { ...next, kitchenTable: false }; }
     else if (patch.ambient || patch.venueSound || patch.blockParty || patch.kitchenTable || patch.frontPorch || patch.beautySalon || patch.parkDominoes) { next = { ...next, music: false }; }
     next = exclusiveMusicAmbience(next);
+    // Menu ambience is ONE AT A TIME (menu context only): an explicit on-pick of any menu
+    // scene becomes the single menu scene and switches the others off; any other menu
+    // patch reconciles a stacked state to the recorded winner. In-game patches never
+    // touch this, so Kitchen-Table at the table and dormant menu flags behave as before.
+    if (this.context === 'menu') {
+      const picked: MenuAmbienceScene | null = patch.blockParty ? 'blockParty' : patch.frontPorch ? 'frontPorch' : patch.beautySalon ? 'beautySalon' : patch.parkDominoes ? 'parkDominoes' : patch.kitchenTable ? 'kitchenTable' : (patch.ambient || patch.venueSound) ? 'loungeVenue' : null;
+      next = exclusiveMenuAmbience(picked ? { ...next, menuAmbience: picked } : next);
+    }
     // A deliberate toggle in this context is that context's explicit choice: remember the
     // resulting scene for this context only (the other context keeps its own choice/default).
     if (this.captureScene && !('scenes' in patch) && ('music' in patch || 'ambient' in patch || 'venueSound' in patch || 'blockParty' in patch || 'kitchenTable' in patch || 'frontPorch' in patch || 'beautySalon' in patch || 'parkDominoes' in patch)) {
