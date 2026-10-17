@@ -180,6 +180,46 @@ class Engine {
 
   /* ---------- music: shuffled playlist with crossfade + gentle mid/side widening ---------- */
   musicStatus: MusicStatus = 'off';
+  /** Phase 6 tension layer: a synthesized pad under the music decks, gain from the game's tension. */
+  private tensionGain: GainNode | null = null;
+  private tensionOsc: OscillatorNode[] = [];
+  tensionLevel = 0;
+  setMusicTension(v: number) {
+    const lvl = Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0;
+    this.tensionLevel = lvl;
+    if (typeof window !== 'undefined') (window as unknown as { __bwmTension?: unknown }).__bwmTension = { level: lvl, audible: !!(this.ctx && this.tensionGain) };
+    this.applyTension();
+  }
+  private applyTension() {
+    const c = this.ctx; if (!c || !this.musicBus) return;
+    const want = this.settings.music && this.musicStatus === 'playing' ? Math.pow(this.tensionLevel, 1.6) * 0.13 : 0;
+    if (want > 0 && !this.tensionGain) {
+      try {
+        const g = c.createGain(); g.gain.value = 0;
+        const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 420;
+        const o1 = c.createOscillator(); o1.type = 'sine'; o1.frequency.value = 110;
+        const o2 = c.createOscillator(); o2.type = 'sine'; o2.frequency.value = 164.8;
+        const o3 = c.createOscillator(); o3.type = 'triangle'; o3.frequency.value = 220.5;
+        const g3 = c.createGain(); g3.gain.value = 0.35;
+        o1.connect(f); o2.connect(f); o3.connect(g3); g3.connect(f); f.connect(g); g.connect(this.musicBus);
+        o1.start(); o2.start(); o3.start();
+        this.tensionGain = g; this.tensionOsc = [o1, o2, o3];
+      } catch { return; }
+    }
+    if (this.tensionGain) this.tensionGain.gain.setTargetAtTime(want, c.currentTime, 1.4);
+  }
+  /** Music switched off: the tension pad must die NOW (no 1.4s linger) — fast ramp, stop + free the oscillators. */
+  private stopTensionPad() {
+    const c = this.ctx, g = this.tensionGain, oscs = this.tensionOsc;
+    this.tensionGain = null; this.tensionOsc = [];
+    if (typeof window !== 'undefined') (window as unknown as { __bwmTension?: unknown }).__bwmTension = { level: this.tensionLevel, audible: false };
+    if (!c || !g) return;
+    try {
+      g.gain.cancelScheduledValues(c.currentTime);
+      g.gain.setTargetAtTime(0, c.currentTime, 0.05);
+      window.setTimeout(() => { for (const o of oscs) { try { o.stop(); } catch { /* already stopped */ } } try { g.disconnect(); } catch { /* gone */ } }, 350);
+    } catch { /* context closed */ }
+  }
   nowPlaying: { track: Track; at: number } | null = null;
   private decks: Deck[] = [];
   private active = 0;
@@ -243,7 +283,7 @@ class Engine {
       const deck: Deck = { el, gain, track: null, ready: null, url: null };
       el.addEventListener('timeupdate', () => this.onTime(deck));
       el.addEventListener('ended', () => { if (deck.url && this.decks[this.active] === deck && !this.fading) { this.fading = true; void this.advance(); } });
-      el.addEventListener('playing', () => { if (deck.url && this.decks[this.active] === deck && this.musicStatus !== 'playing') { this.musicStatus = 'playing'; this.emit(); } });
+      el.addEventListener('playing', () => { if (deck.url && this.decks[this.active] === deck && this.musicStatus !== 'playing') { this.musicStatus = 'playing'; this.emit(); this.applyTension(); } });
       this.decks.push(deck);
     }
   }
@@ -345,6 +385,7 @@ class Engine {
     this.ensure();
     if (!this.ctx) return;
     if (!this.settings.music) {
+      this.stopTensionPad();
       if (this.decks.length) {
         for (const d of this.decks) { d.gain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.25); }
         window.setTimeout(() => { if (!this.settings.music) this.decks.forEach((d) => d.el.pause()); }, 1200);
@@ -376,7 +417,7 @@ class Engine {
     } else if (cur.el.paused) {
       cur.gain.gain.setTargetAtTime(1, this.ctx.currentTime, 0.3);
       void cur.el.play().catch(() => undefined);
-      this.musicStatus = 'playing'; this.emit();
+      this.musicStatus = 'playing'; this.emit(); this.applyTension();
     } else {
       cur.gain.gain.setTargetAtTime(1, this.ctx.currentTime, 0.3);
     }
