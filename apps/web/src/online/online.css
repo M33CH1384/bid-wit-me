@@ -368,3 +368,18 @@
   clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); }
 .lobby-home { width: auto; height: auto; }
 .exit-divider { height: 1px; background: rgba(185,128,255,.25); margin: 10px 0; }
+
+/* Menu rework PR-E: tablet rail — 452px phone column left, live table right (landscape);
+   portrait tablet stacks the rail on top with the table below. Phone + wide-desktop rules untouched. */
+@media (min-width: 900px) and (max-width: 1279px) {
+  .lobby-cols { display: grid; grid-template-columns: 452px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; grid-template-areas: "settings main" "settings chat"; gap: 14px; height: 100%; }
+  .lobby-main { grid-area: main; min-height: 0; overflow-y: auto; }
+  .lobby-settings { grid-area: settings; min-height: 0; overflow-y: auto; }
+  .lobby-chat { grid-area: chat; }
+}
+@media (min-width: 768px) and (max-width: 899px) {
+  .lobby-cols { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "settings" "main" "chat"; gap: 12px; }
+  .lobby-main { grid-area: main; }
+  .lobby-settings { grid-area: settings; }
+  .lobby-chat { grid-area: chat; }
+}
