@@ -101,8 +101,11 @@ async function run(browser: Browser, base: string): Promise<void> {
   {
     const page = await prep(browser, null);
     await page.goto(base);
-    await page.getByTestId('play-bots').click();
+    await page.getByTestId('play').click();
+    await page.getByTestId('door-team').click();
     const mode = page.locator('[data-testid^="mode-"]').first();
+    await mode.click();
+    await page.getByTestId('play-bots').click();
     if (await mode.isVisible().catch(() => false)) await mode.click();
     await page.getByTestId('start-bots').click();
     await watchDeal(page, 1, 'deal-fresh');
