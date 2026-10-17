@@ -95,6 +95,24 @@ async function check(page: Page, w: number, h: number, shot: string, chrome = 84
     await p3.waitForFunction(() => ((window as unknown as W).__bwmHandHits ?? []).length === 13, undefined, { timeout: 45000 });
     await p3.waitForTimeout(1000);
     await p3.screenshot({ path: `${SHOTS}/standing-portrait-390.png` });
+    // Phone-only scope (founder): the lower-left corner plate applies at phone widths only.
+    // A desktop/tablet width keeps the existing plate placement — no corner-plate class, plate not in the corner.
+    const p4 = await b.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
+    p4.setDefaultTimeout(30000);
+    await p4.addInitScript((raw) => { localStorage.setItem('bwm.game', raw); localStorage.setItem('bwm.tips', JSON.stringify({ on: false, asked: true, counts: {} })); }, save);
+    await p4.goto(process.env.BWM_URL ?? 'http://127.0.0.1:5173'); await p4.getByTestId('resume').click();
+    await p4.waitForFunction(() => ((window as unknown as W).__bwmHandHits ?? []).length === 13, undefined, { timeout: 45000 });
+    await p4.waitForTimeout(800);
+    const cornerClass = await p4.evaluate(() => document.querySelector('.table-screen')?.classList.contains('corner-plate'));
+    if (cornerClass) throw new Error('desktop width got the phone corner-plate placement');
+    const deskPlate = await p4.getByTestId('seat-0').boundingBox();
+    if (deskPlate && deskPlate.x <= 12 && deskPlate.y + deskPlate.height >= 790) throw new Error(`desktop plate pinned to lower-left corner: ${JSON.stringify(deskPlate)}`);
+    // ...and the phone page really does carry it (lower-left, inside the safe area).
+    const phoneClass = await p1.evaluate(() => document.querySelector('.table-screen')?.classList.contains('corner-plate'));
+    if (!phoneClass) throw new Error('phone width missing corner-plate placement');
+    const phonePlate = await p1.getByTestId('seat-0').boundingBox();
+    if (!phonePlate || phonePlate.x > 16 || phonePlate.y + phonePlate.height < 800) throw new Error(`phone plate not in lower-left corner: ${JSON.stringify(phonePlate)}`);
+    console.log('corner plate scope OK (phone yes, desktop no)', JSON.stringify(phonePlate), JSON.stringify(deskPlate));
     console.log('sitting-hand OK');
   } finally { await b.close(); }
 })();
