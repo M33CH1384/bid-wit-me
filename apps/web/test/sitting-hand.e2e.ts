@@ -43,6 +43,16 @@ async function check(page: Page, w: number, h: number, shot: string, chrome = 84
   if (minStrip < 20) throw new Error(`min strip ${minStrip.toFixed(1)}px too small`);
   const plate = await page.getByTestId('seat-0').boundingBox();
   if (!plate || plate.y < 0 || plate.y + plate.height > h) throw new Error(`YOU plate not fully visible: ${JSON.stringify(plate)}`);
+  // Oct 17 beta regression: no seat plate/avatar may cover a hand card (the YOU plate sat on the fan in Sitting).
+  for (const id of ['seat-0', 'seat-1', 'seat-2', 'seat-3']) {
+    const pl = await page.getByTestId(id).boundingBox().catch(() => null);
+    if (!pl) continue;
+    for (const [i, r] of live.entries()) {
+      const ox = Math.min(r.x + r.w, pl.x + pl.width) - Math.max(r.x, pl.x);
+      const oy = Math.min(r.y + r.h, pl.y + pl.height) - Math.max(r.y, pl.y);
+      if (ox > 6 && oy > 6) throw new Error(`${id} covers hand card ${i} by ${ox.toFixed(0)}x${oy.toFixed(0)}px in ${shot}`);
+    }
+  }
   await page.screenshot({ path: `${SHOTS}/${shot}` });
 }
 (async () => {
@@ -85,6 +95,24 @@ async function check(page: Page, w: number, h: number, shot: string, chrome = 84
     await p3.waitForFunction(() => ((window as unknown as W).__bwmHandHits ?? []).length === 13, undefined, { timeout: 45000 });
     await p3.waitForTimeout(1000);
     await p3.screenshot({ path: `${SHOTS}/standing-portrait-390.png` });
+    // Phone-only scope (founder): the lower-left corner plate applies at phone widths only.
+    // A desktop/tablet width keeps the existing plate placement — no corner-plate class, plate not in the corner.
+    const p4 = await b.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
+    p4.setDefaultTimeout(30000);
+    await p4.addInitScript((raw) => { localStorage.setItem('bwm.game', raw); localStorage.setItem('bwm.tips', JSON.stringify({ on: false, asked: true, counts: {} })); }, save);
+    await p4.goto(process.env.BWM_URL ?? 'http://127.0.0.1:5173'); await p4.getByTestId('resume').click();
+    await p4.waitForFunction(() => ((window as unknown as W).__bwmHandHits ?? []).length === 13, undefined, { timeout: 45000 });
+    await p4.waitForTimeout(800);
+    const deskStyle = await p4.evaluate(() => { const el = document.querySelector('.me-plate'); return el ? getComputedStyle(el).position : ''; });
+    if (deskStyle === 'fixed') throw new Error('desktop width got the phone corner-plate placement');
+    const deskPlate = await p4.getByTestId('seat-0').boundingBox();
+    if (deskPlate && deskPlate.x <= 12 && deskPlate.y + deskPlate.height >= 790) throw new Error(`desktop plate pinned to lower-left corner: ${JSON.stringify(deskPlate)}`);
+    // ...and the phone page really does carry it (lower-left, inside the safe area).
+    const phoneStyle = await p1.evaluate(() => { const el = document.querySelector('.me-plate'); return el ? getComputedStyle(el).position : ''; });
+    if (phoneStyle !== 'fixed') throw new Error('phone width missing corner-plate placement');
+    const phonePlate = await p1.getByTestId('seat-0').boundingBox();
+    if (!phonePlate || phonePlate.x > 16 || phonePlate.y + phonePlate.height < 800) throw new Error(`phone plate not in lower-left corner: ${JSON.stringify(phonePlate)}`);
+    console.log('corner plate scope OK (phone yes, desktop no)', JSON.stringify(phonePlate), JSON.stringify(deskPlate));
     console.log('sitting-hand OK');
   } finally { await b.close(); }
 })();

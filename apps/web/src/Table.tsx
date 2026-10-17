@@ -2,7 +2,6 @@ import { deliverBotLine } from './voices/aiVoice';
 import { musicTension } from './musicTension';
 import { enterTable, quitGame, silenceGame, suspendGame } from './gameSession';
 import { cardControlLabel } from './cardA11y';
-import { archSpot } from './archSpot';
 import type { HandHitCard } from './three/handHit';
 import { useEscapeClose } from './useEscapeClose';
 import { type FlyingPlay, confirmPlay, feltClearsSelection, flyPlay, flyingCard, ignorePlayTap, playTrickOf, type PlayTrick } from './online/playGuard';
@@ -1262,25 +1261,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // landscape phones: keep the bid / pass panel just above the top of the (resting) hand
   const screenRef = useRef<HTMLDivElement>(null);
   const measureHand = st.phase === 'bidding' || st.phase === 'exchange';
-  // Portrait phones: YOUR TURN and your plate sit in the open arch under the fan, clear of every card.
-  useEffect(() => {
-    if (vp.short) return;
-    const tick = () => {
-      const el = screenRef.current;
-      const hits = (window as unknown as { __bwmHandHits?: HandHitCard[] }).__bwmHandHits ?? [];
-      const arch = el && window.innerWidth < 600 && window.innerHeight > window.innerWidth ? archSpot(hits, window.innerWidth, window.innerHeight) : null;
-      if (!el) return;
-      el.classList.toggle('arch-plate', !!arch);
-      if (arch) {
-        el.style.setProperty('--arch-x', `${arch.x}px`);
-        el.style.setProperty('--arch-top', `${arch.top}px`);
-        el.style.setProperty('--arch-w', `${arch.w}px`);
-      }
-    };
-    tick();
-    const t = window.setInterval(tick, 250);
-    return () => { clearInterval(t); screenRef.current?.classList.remove('arch-plate'); };
-  }, [vp.short]);
+  // Portrait phones: the YOU plate/avatar is pinned to the lower-left corner by a pure CSS
+  // media query in styles.css (max-width 600px + portrait). No JS gate: the class-toggle version
+  // depended on the published hand hits and never fired on the founder's real iPhone.
   useEffect(() => {
     if (!measureHand) return;
     const tick = () => {
@@ -1612,10 +1595,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           <div className="modal glass slant confirm" role="dialog" aria-label="Leave this game?" data-testid="confirm-leave" onPointerDown={(e) => e.stopPropagation()}>
             <div className="panel-title big">LEAVE THIS GAME?</div>
             <p className="muted">{onSuspend ? 'Leave ends it for good. Save & quit lets you resume from the menu.' : 'Your progress in this game will be lost.'}</p>
-            <div className="bid-row">
-              <button type="button" onClick={() => setConfirmLeave(false)}>Stay</button>
-              {onSuspend && <button type="button" data-testid="save-quit" onClick={() => { suspendGame(); onSuspend(); }}>Save &amp; quit</button>}
-              <button type="button" className="primary" onClick={leave}>Leave</button>
+            <div className="confirm-actions">
+              <button type="button" className="stay-primary" onClick={() => setConfirmLeave(false)}>Stay</button>
+              {onSuspend && <button type="button" className="ghost-btn" data-testid="save-quit" onClick={() => { suspendGame(); onSuspend(); }}>Save &amp; quit</button>}
+              <div className="exit-divider" aria-hidden="true" />
+              <button type="button" className="leave-red" onClick={leave}>Leave</button>
             </div>
             <button type="button" className="link fb-open-ingame" data-testid="open-feedback" onClick={() => { setConfirmLeave(false); setFeedback(true); }}>✉ Send feedback (bug, idea…)</button>
           </div>
@@ -1653,10 +1637,10 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
               </ol>
               {seriesChip()}
               <p className="muted small" data-testid="end-reason">{endReasonText(r, st, (side) => sideName(r, side, names))} {st.history.length} hand{st.history.length === 1 ? '' : 's'} played.</p>
-              <div className="bid-row">
-                <button type="button" onClick={() => setShowPad(true)}>Score pad</button>
-                <button type="button" data-testid="main-menu" onClick={mainMenu}>Main menu</button>
-                {!spectating && <button type="button" className="primary" data-testid="rematch" onClick={() => onRematch(nextDealer(st))}>Rematch</button>}
+              <div className="confirm-actions">
+                <button type="button" className="quiet-row-btn" onClick={() => setShowPad(true)}>Score pad</button>
+                {!spectating && <button type="button" className="primary big" data-testid="rematch" onClick={() => onRematch(nextDealer(st))}>Play again — Rematch</button>}
+                <button type="button" className="ghost-btn" data-testid="main-menu" onClick={mainMenu}>Back to home</button>
               </div>
             </div>
           </div>
@@ -1689,11 +1673,12 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
                 <button type="button" className="link muted" onClick={() => { const s = loadTipJar(); saveTipJar({ ...s, never: true }); setTipNudge(false); }}>Don't show again</button>
               </p>
             )}
-            <div className="bid-row">
-              <button type="button" onClick={() => setShowPad(true)}>Score pad</button>
-              <button type="button" data-testid="main-menu" onClick={mainMenu}>Main menu</button>
-              <button type="button" onClick={leave}>Change mode</button>
-              <button type="button" className="primary" onClick={() => onRematch(nextDealer(st))}>Rematch</button>
+            <div className="confirm-actions">
+              <button type="button" className="quiet-row-btn" onClick={() => setShowPad(true)}>Score pad</button>
+              <button type="button" className="primary big" onClick={() => onRematch(nextDealer(st))}>Play again — Rematch</button>
+              <button type="button" className="ghost-btn" data-testid="main-menu" onClick={mainMenu}>Back to home</button>
+              <div className="exit-divider" aria-hidden="true" />
+              <button type="button" className="leave-red" onClick={leave}>Change mode</button>
             </div>
           </div>
         </div>

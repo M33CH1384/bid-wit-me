@@ -144,7 +144,7 @@ function SocialPanel() {
               </span>
             )}
           </span>
-          <button type="button" className="icon-btn" aria-label="Close" data-testid="social-close" onClick={() => social.close()}>✕</button>
+          <button type="button" className="sheet-close" aria-label="Close" data-testid="social-close" onClick={() => social.close()}>CLOSE</button>
         </header>
         <nav className="soc-tabs" role="tablist">
           {TABS.map(([k, label]) => (
