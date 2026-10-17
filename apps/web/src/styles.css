@@ -1851,3 +1851,11 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .plate-name .chip.dealer ~ .chip.dealer { display: none; }
 .idle-badge{position:fixed;top:calc(env(safe-area-inset-top,0px) + 10px);left:50%;transform:translateX(-50%);z-index:90;background:rgba(20,16,12,.92);color:#ffe9b0;border:1px solid rgba(255,233,176,.4);border-radius:999px;padding:6px 14px;font-size:13px;pointer-events:none}
 .idle-notice{position:fixed;top:calc(env(safe-area-inset-top,0px) + 10px);left:50%;transform:translateX(-50%);z-index:91;display:flex;gap:10px;align-items:center;background:rgba(20,16,12,.95);color:#ffe9b0;border:1px solid rgba(255,233,176,.5);border-radius:12px;padding:10px 14px;font-size:14px}
+
+/* Menu rework PR-C: one settings sheet — CLOSE label, value chips, gold corner tabs (no chevron glyphs). */
+.sheet-close { min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,.22); background: rgba(255,255,255,.06); color: #f3ead2; font: 800 12px/1 'Barlow Condensed', sans-serif; letter-spacing: .12em; cursor: pointer; }
+.value-chip { display: inline-block; margin-left: 8px; padding: 3px 10px; border-radius: 999px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.16); color: #f3ead2; font: 700 12px/1 'Barlow Condensed', sans-serif; letter-spacing: .06em; }
+.gold-tab-row { position: relative; overflow: hidden; }
+.gold-tab-row::after { content: ''; position: absolute; top: 0; right: 0; width: 22px; height: 22px; background: linear-gradient(135deg, transparent 50%, #d9a521 50%); pointer-events: none; }
+button.mode-pick, button.quiet-row { position: relative; overflow: hidden; }
+button.mode-pick::after, button.quiet-row::after { content: ''; position: absolute; top: 0; right: 0; width: 20px; height: 20px; background: linear-gradient(135deg, transparent 50%, rgba(217,165,33,.85) 50%); pointer-events: none; }

@@ -58,12 +58,13 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
   return (
     <>
     <div className="modal-backdrop sheet-backdrop" ref={esc} onClick={onClose}>
-      <div className="sheet glass slant" role="dialog" aria-label="More options" onClick={(e) => e.stopPropagation()} data-testid="more-options">
+      <div className="sheet glass slant" role="dialog" aria-label="Settings" onClick={(e) => e.stopPropagation()} data-testid="more-options">
         <header className="sheet-head">
-          <span className="panel-title">MORE OPTIONS</span>
-          <button type="button" className="icon-btn" aria-label="Close" onClick={onClose}>✕</button>
+          <span className="panel-title">SETTINGS</span>
+          <button type="button" className="sheet-close" aria-label="Close" onClick={onClose}>CLOSE</button>
         </header>
         <div className="scroll sheet-body">
+          <h3 className="sheet-h">Play</h3>
           <Row label="Tips while you play" hint="Coach marks + bid coach, until you turn them off">
             <Toggle label="Tips" value={tips.on} onChange={(on) => { const t = { on, asked: true }; saveTips(t); onTips(t); }} />
           </Row>
@@ -78,6 +79,12 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
           <Row label="Trash talk" hint={TALK_HINT[s.talkIntensity ?? 'cookout']}>
             <Seg label="Trash talk intensity" value={s.talkIntensity ?? 'cookout'} options={[['family', 'Family'], ['cookout', 'Cookout'], ['nomercy', 'No Mercy']]} onChange={(v) => set('talkIntensity', v)} />
           </Row>
+          <h3 className="sheet-h">Sound &amp; music</h3>
+          <SoundFields />
+          <ReduceEffectsRow />
+          <NukeIntensityRow />
+          <BotTrashTalkRow />
+          <h3 className="sheet-h">Look</h3>
           <Row label="Venue" hint={s.venue === 'random' ? 'A different spot every game' : VENUE_DEFS[s.venue ?? 'classic'].blurb}>
             <select data-testid="venue-select" aria-label="Venue" value={s.venue ?? 'classic'} onChange={(e) => set('venue', e.target.value as VenueChoice)}>
               {VENUE_LIST.map((v) => <option key={v.id} value={v.id}>{v.emoji} {v.name}{v.id === 'classic' ? ' (default)' : ''}</option>)}
@@ -90,14 +97,10 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
           <Row label="Turn up (slam mode)" hint="On: Standing plays slam hard. Off (default): Standing plays are gentle. Sitting's V-gesture slam always works.">
             <Toggle label="Turn up (slam mode)" value={s.turnUp === true} onChange={(v) => set('turnUp', v)} />
           </Row>
-          <h3 className="sheet-h">Sound &amp; music</h3>
-          <SoundFields />
-          <ReduceEffectsRow />
-          <NukeIntensityRow />
-          <BotTrashTalkRow />
+          <h3 className="sheet-h">You</h3>
           <TeamNameRow />
           <BadgesRow />
-          <button type="button" className="link sheet-h" aria-expanded={house} onClick={() => setHouse(!house)}>{house ? '▾' : '▸'} House rules</button>
+          <button type="button" className="link sheet-h gold-tab-row" aria-expanded={house} onClick={() => setHouse(!house)}>House rules <span className="value-chip">{house ? 'Hide' : 'Show'}</span></button>
           {house && (
             <div className="house">
               <Row label="First hand: books bid themselves" hint="No bidding in hand 1 · 10 points per book">
@@ -171,7 +174,7 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
           )}
           <h3 className="sheet-h">Beta feedback &amp; support</h3>
           <AboutRow onFeedback={() => setFeedback(true)} />
-          <button type="button" className="link sheet-h" onClick={() => setCredits(true)}>Credits &amp; licenses</button>
+          <button type="button" className="link sheet-h gold-tab-row" onClick={() => setCredits(true)}>Credits &amp; licenses</button>
         </div>
       </div>
     </div>
