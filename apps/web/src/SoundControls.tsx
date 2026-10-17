@@ -8,6 +8,7 @@ import { tableIntensity, talkPrefs, useTalkPrefs } from './talkPrefs';
 import { TALK_INTENSITY_LABEL } from '@spades/bots';
 import { type NukeIntensity, fx, useNukeIntensity, useReduceEffects, useTableNuke } from './fx';
 import { setVibration, useVibration } from './haptics';
+import { ROOM_STYLES, normalizeCategoryVolumes } from './spatial';
 
 const icon = (on: boolean, v: number) => (!on || v === 0 ? '🔇' : v < 0.4 ? '🔈' : v < 0.75 ? '🔉' : '🔊');
 
@@ -109,6 +110,11 @@ export function SoundSheet({ allOff, onMuteAll, onClose }: { allOff: boolean; on
         <VolumeRow label="Bot voices" value={t.voiceVolume} disabled={!t.voices || !voiceOk} testId="bot-voice-volume" onChange={(v) => talkPrefs.set({ voiceVolume: v })} />
       </section>
 
+      <section className="sheet-sec" aria-label="Spatial">
+        <h4>Spatial</h4>
+        <SpatialFields />
+      </section>
+
       <section className="sheet-sec" aria-label="Bots">
         <h4>Bots</h4>
         <label className="sf-row"><span>Bot voices{!voiceOk && <small className="sf-note"> · not supported here</small>}</span>
@@ -139,6 +145,31 @@ export function SoundSheet({ allOff, onMuteAll, onClose }: { allOff: boolean; on
         <TableNukeInfo short />
       </section>
     </div>
+  );
+}
+
+/** Spatial Phase 8 controls: spatial toggle, audio quality, room picker, category volumes.
+ *  Deliberately NO voice-chat volume here — human voice chat is Phase 7's control. */
+export function SpatialFields() {
+  const s = useSoundSettings();
+  const cats = normalizeCategoryVolumes(s.volumes);
+  return (
+    <>
+      <label className="sf-row"><span>Spatial audio</span>
+        <button type="button" role="switch" aria-checked={s.spatial !== false} aria-label="Spatial audio" data-testid="spatial-switch" className={`switch ${s.spatial !== false ? 'on' : ''}`} disabled={!s.on} onClick={() => sound.set({ spatial: s.spatial === false })}><i /></button></label>
+      <label className="sf-row"><span>Audio quality</span>
+        <span className="sf-seg" data-testid="quality-seg">
+          {(['low', 'balanced', 'high'] as const).map((q) => <button key={q} type="button" aria-pressed={(s.quality ?? 'balanced') === q} className={(s.quality ?? 'balanced') === q ? 'on' : ''} onClick={() => sound.set({ quality: q })}>{q}</button>)}
+        </span></label>
+      <label className="sf-row"><span>Room (soundscape)</span>
+        <select aria-label="Room soundscape" data-testid="soundscape-select" value={s.soundscape ?? 'auto'} onChange={(e) => sound.set({ soundscape: e.target.value })}>
+          <option value="auto">Auto (new room each game)</option>
+          {ROOM_STYLES.map((r) => <option key={r.venue} value={r.venue === 'classic' ? 'classic' : r.bed}>{r.name}</option>)}
+          <option value="tournament">Competitive Tournament</option>
+        </select></label>
+      <VolumeRow label="Effects volume" value={cats.sfx} disabled={!s.on} onChange={(v) => sound.set({ volumes: { ...cats, sfx: v } })} />
+      <VolumeRow label="Ambience volume" value={cats.ambience} disabled={!s.on} onChange={(v) => sound.set({ volumes: { ...cats, ambience: v } })} />
+    </>
   );
 }
 
@@ -177,6 +208,7 @@ export function SoundFields({ compact = false }: { compact?: boolean }) {
         <VolumeRow label="Music volume" value={s.musicVolume} onChange={(v) => sound.set({ musicVolume: v })} />
       )}
       {s.music && s.nowPlaying && <p className="hint np-inline">♫ {s.nowPlaying.track.title} — {s.nowPlaying.track.artist}</p>}
+      <SpatialFields />
       <BotTalkFields />
       {!compact && <p className="hint">On iPhone, the silent switch also mutes game sound.</p>}
     </div>

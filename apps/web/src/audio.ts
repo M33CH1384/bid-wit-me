@@ -639,6 +639,11 @@ class Engine {
     if (!this.master || !this.ctx) return;
     const v = this.settings.on ? this.settings.volume ** 1.6 : 0; // perceptual curve
     this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.03);
+    // Category volumes apply LIVE (Phase 8): moving a slider mid-game updates the running buses,
+    // including a venue bed that is already playing (syncVenue alone would early-return).
+    const cats = normalizeCategoryVolumes(this.settings.volumes);
+    if (this.sfxBus) this.sfxBus.gain.setTargetAtTime(cats.sfx, this.ctx.currentTime, 0.05);
+    if (this.venueBus && this.venuePlaying !== 'none') this.venueBus.gain.setTargetAtTime(0.38 * cats.ambience, this.ctx.currentTime, 0.1);
   }
 
   private load() {
@@ -1235,7 +1240,7 @@ class Engine {
     const want = this.settings.on && this.settings.ambient && this.unlocked;
     if (!this.ctx || !this.ambBus) return;
     const c = this.ctx;
-    this.ambBus.gain.setTargetAtTime(want ? 0.5 : 0, c.currentTime, 0.6);
+    this.ambBus.gain.setTargetAtTime(want ? 0.5 * normalizeCategoryVolumes(this.settings.volumes).ambience : 0, c.currentTime, 0.6);
     if (want && this.ambTimer === null) {
       // room tone: brown-ish noise, heavily low-passed
       const src = c.createBufferSource(); src.buffer = this.noise(4); src.loop = true;
@@ -1320,7 +1325,7 @@ class Engine {
     if (typeof window !== 'undefined' && want !== 'none') (window as unknown as { __bwmRoomPlaying?: unknown }).__bwmRoomPlaying = { bed: want, at: performance.now() };
     if (want === 'none' || !this.ctx || !this.venueBus) return;
     const c = this.ctx; const bus = this.venueBus;
-    window.setTimeout(() => { if (this.venuePlaying === want) { bus.gain.cancelScheduledValues(c.currentTime); bus.gain.setTargetAtTime(0.38, c.currentTime, 1.2); } }, this.venueNodes.length ? 0 : 50);
+    window.setTimeout(() => { if (this.venuePlaying === want) { bus.gain.cancelScheduledValues(c.currentTime); bus.gain.setTargetAtTime(0.38 * normalizeCategoryVolumes(this.settings.volumes).ambience, c.currentTime, 1.2); } }, this.venueNodes.length ? 0 : 50);
     this.buildBed(want);
   }
   /** filtered noise with a slow swell (crowd murmur, wind, waves, room tone) */

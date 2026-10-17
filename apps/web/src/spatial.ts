@@ -102,6 +102,9 @@ export const ROOM_STYLES: RoomStyle[] = [
   { venue: 'yacht', name: 'Yacht Deck', bed: 'yacht', surface: 'wood', reverb: 'dry-outdoor', crowd: 'low' },
 ];
 export function styleForVenue(venue: string): RoomStyle | undefined { return ROOM_STYLES.find((r) => r.venue === venue); }
+/** Competitive Tournament (Demetrius's named room): a tournament-hall soundscape riding the casino
+ *  bed/arena crowd — distinct name, hall reverb, felt surface. In the picker as its own choice. */
+export const TOURNAMENT_ROOM: RoomStyle = { venue: 'vegas', name: 'Competitive Tournament', bed: 'casino', surface: 'felt', reverb: 'hall', crowd: 'arena' };
 /** Unified session room (Phase 4): what you SEE is what you HEAR is what the loading screen NAMES.
  *  Online: the shared room venue decides (every client same). Explicit soundscape: that room.
  *  Auto (no explicit soundscape): a seeded roll per game — and that rolled room becomes the
@@ -112,6 +115,8 @@ export function sessionRoom(o: { explicit?: string; visualVenue?: string; storyR
   if (o.visualVenue) return styleForVenue(o.visualVenue) ?? ROOM_STYLES[0]!;
   // 2) A Story stop's room (the explicit soundscape carries it until Story data lands).
   const story = o.storyRoom ?? o.explicit;
+  if (story === 'tournament') return TOURNAMENT_ROOM;
+  if (story === 'classic') return ROOM_STYLES[0]!;
   if (story && story !== 'auto' && (SOUNDSCAPE_ROOMS as string[]).includes(story)) return styleForBed(story as VenueBed) ?? ROOM_STYLES[0]!;
   // 3) Auto: roll over ALL 11 rooms — Classic included (its bed is 'none': a quiet studio game).
   if (o.seed !== undefined) return ROOM_STYLES[seedHash(o.seed) % ROOM_STYLES.length]!;
