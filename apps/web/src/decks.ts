@@ -1,9 +1,13 @@
 /** Desi deck art packs (court cards + jokers; number cards keep the painted faces).
+ *  The founder-approved set has the corner index BAKED INTO the art (gold frame, Barlow
+ *  corners), so a loaded deck image is the whole face: drawFace draws it as-is and never
+ *  paints its own corners over it (the painted corners below are only the pre-load fallback).
  *  All decks unlocked for now — `locked` is the Story/purchase hook for later. */
 import type { Card } from '@spades/rules';
 
 export interface DeckDef { id: string; name: string; locked?: boolean }
 export const DECKS: DeckDef[] = [
+  { id: 'base', name: 'Base' },
   { id: 'classic', name: 'Classic' },
   { id: 'afrofuturist', name: 'Afrofuturist' },
   { id: 'harlem', name: 'Harlem' },
