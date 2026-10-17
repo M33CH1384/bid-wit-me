@@ -142,6 +142,10 @@ export function SoundSheet({ allOff, onMuteAll, onClose }: { allOff: boolean; on
           <label className="sf-row"><span>Beauty Salon<small className="sf-note"> · lively shop chatter, menu / celebration screens only</small></span>
             <button type="button" role="switch" aria-checked={!!s.beautySalon} aria-label="Beauty Salon ambience" className={`switch ${s.beautySalon ? 'on' : ''}`} data-testid="beauty-salon-switch" disabled={!s.on} onClick={() => sound.set({ beautySalon: !s.beautySalon })}><i /></button></label>
         )}
+        {s.soundContext === 'menu' && (
+          <label className="sf-row"><span>Park Dominoes<small className="sf-note"> · bones slamming at the park, menu / celebration screens only</small></span>
+            <button type="button" role="switch" aria-checked={!!s.parkDominoes} aria-label="Park Dominoes ambience" className={`switch ${s.parkDominoes ? 'on' : ''}`} data-testid="park-dominoes-switch" disabled={!s.on} onClick={() => sound.set({ parkDominoes: !s.parkDominoes })}><i /></button></label>
+        )}
         <label className="sf-row"><span>Kitchen-Table Spades Night<small className="sf-note"> · quiet in game, voices stay on top</small></span>
           <button type="button" role="switch" aria-checked={!!s.kitchenTable} aria-label="Kitchen-Table Spades Night ambience" className={`switch ${s.kitchenTable ? 'on' : ''}`} data-testid="kitchen-table-switch" disabled={!s.on} onClick={() => sound.set({ kitchenTable: !s.kitchenTable })}><i /></button></label>
       </section>
@@ -228,6 +232,12 @@ export function SoundFields({ compact = false }: { compact?: boolean }) {
       <label className="sf-row">
         <span>Beauty Salon<small className="sf-note"> · lively shop chatter, menu / celebration screens only</small></span>
         <button type="button" role="switch" aria-checked={!!s.beautySalon} aria-label="Beauty Salon ambience" className={`switch ${s.beautySalon ? 'on' : ''}`} data-testid="beauty-salon-switch" disabled={!s.on} onClick={() => sound.set({ beautySalon: !s.beautySalon })}>
+          <i />
+        </button>
+      </label>
+      <label className="sf-row">
+        <span>Park Dominoes<small className="sf-note"> · bones slamming at the park, menu / celebration screens only</small></span>
+        <button type="button" role="switch" aria-checked={!!s.parkDominoes} aria-label="Park Dominoes ambience" className={`switch ${s.parkDominoes ? 'on' : ''}`} data-testid="park-dominoes-switch" disabled={!s.on} onClick={() => sound.set({ parkDominoes: !s.parkDominoes })}>
           <i />
         </button>
       </label>
