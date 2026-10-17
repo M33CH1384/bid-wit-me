@@ -414,7 +414,12 @@ function runSolver(seat: Seat) {
  * just plays. Every mode (2v2, Cutthroat 3/4, Ace Down). Memoized once per seat per state; see `evaluateRunIt`.
  */
 export function canRunIt(st: GameState, seat: Seat): boolean {
-  if (isEliminated(st, seat) || st.eliminated?.some(Boolean)) return false;
+  // Only the eliminated seat itself is barred. Barring the whole table once ANYONE was out
+  // (the guard that landed with Cutthroat elimination) silently killed Run it! in every
+  // Cutthroat game after the first ejection, though the claim rule is every-mode by design.
+  // The proof already respects empty hands: an out seat holds no unseen cards and is never
+  // dealt a turn (nextLive), so a live seat's guarantee is unaffected.
+  if (isEliminated(st, seat)) return false;
   return evaluateRunIt(st, seat);
 }
 
