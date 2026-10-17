@@ -148,8 +148,8 @@ export function SoundSheet({ allOff, onMuteAll, onClose }: { allOff: boolean; on
   );
 }
 
-/** Spatial Phase 8 controls: spatial toggle, audio quality, room picker, category volumes.
- *  Deliberately NO voice-chat volume here — human voice chat is Phase 7's control. */
+/** Spatial controls: spatial toggle, audio quality, room picker, category volumes.
+ *  Phase 7 adds the human Voice chat volume (playerVoice category, applied once on the voice-chat bus). */
 export function SpatialFields() {
   const s = useSoundSettings();
   const cats = normalizeCategoryVolumes(s.volumes);
@@ -169,6 +169,7 @@ export function SpatialFields() {
         </select></label>
       <VolumeRow label="Effects volume" value={cats.sfx} disabled={!s.on} onChange={(v) => sound.set({ volumes: { ...cats, sfx: v } })} />
       <VolumeRow label="Ambience volume" value={cats.ambience} disabled={!s.on} onChange={(v) => sound.set({ volumes: { ...cats, ambience: v } })} />
+      <VolumeRow label="Voice chat volume" value={cats.playerVoice} testId="voice-chat-volume" onChange={(v) => sound.set({ volumes: { ...cats, playerVoice: v } })} />
     </>
   );
 }

@@ -104,7 +104,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
     const offline = seat?.kind === 'human' && !seat.connected;
     return (
       <>
-        <SeatMedia seat={seat} isMe={local === 0 && !spectator} mesh={mesh} vs={vs} limited={!!seat && seat.kind === 'human' && vs.limited.includes(seat.playerId)} kick={kickFor(real)} />
+        <SeatMedia seat={seat} seatPos={(rot.n === 4 ? ['bottom', 'left', 'top', 'right'] : ['bottom', 'left', 'right'])[local] as import('../spatial').SeatPos} playerCount={rot.n} isMe={local === 0 && !spectator} mesh={mesh} vs={vs} limited={!!seat && seat.kind === 'human' && vs.limited.includes(seat.playerId)} kick={kickFor(real)} />
         {offline && <span className="chip bad seat-offline">OFFLINE</span>}
         {turnLocal === local && secs !== null && !source.pause && <span className={`turn-clock ${secs <= 5 ? 'hot' : ''}`} data-testid={`clock-${local}`} data-turn-sec={room.turnSec ?? ''}>{secs}s</span>}
       </>

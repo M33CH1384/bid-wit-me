@@ -3,6 +3,8 @@ import { loserCaption, victoryIdentity } from './victory';
 import { createPortal } from 'react-dom';
 import type { SeatInfo } from '@spades/protocol';
 import type { VideoMesh, VideoState } from './video';
+import { sound, useSoundSettings } from '../audio';
+import type { SeatPos } from '../spatial';
 
 /** A <video> bound to a MediaStream (iOS: playsInline + muted autoplay; unmuted after the first tap). */
 function StreamVideo({ stream, muted, mirror, onFrames, volume = 1 }: { stream: MediaStream; muted: boolean; mirror?: boolean; onFrames?: (on: boolean) => void; volume?: number }) {
@@ -51,7 +53,10 @@ export interface KickInfo { host: boolean; votes: number; need: number; voted: b
 /** Only one bubble menu is open at a time: opening one closes the others. */
 const MENU_EVT = 'bwm-vbmenu';
 
-export function SeatMedia({ seat, isMe, mesh, vs, limited = false, kick }: { seat: SeatInfo | undefined; isMe: boolean; mesh: VideoMesh | null; vs: VideoState; limited?: boolean; kick?: KickInfo }) {
+export function SeatMedia({ seat, isMe, mesh, vs, limited = false, kick, seatPos, playerCount = 4 }: { seat: SeatInfo | undefined; isMe: boolean; mesh: VideoMesh | null; vs: VideoState; limited?: boolean; kick?: KickInfo; seatPos?: SeatPos; playerCount?: number }) {
+  const [routed, setRouted] = useState(false);
+  useSoundSettings(); // re-render on persisted mute / rebuild emits: mutedVoices is the single mute source
+  const vcGen = sound.voiceChatGeneration;
   const [menu, setMenuState] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [frames, setFrames] = useState(false);
@@ -81,7 +86,18 @@ export function SeatMedia({ seat, isMe, mesh, vs, limited = false, kick }: { sea
   const camOn = seat.media.cam && !offline;
   const micOn = seat.media.mic && !offline;
   const hidden = vs.hidden.includes(id);
-  const muted = vs.muted.includes(id) || vs.needsTap || limited;
+  const peerMuted = sound.voiceMuted(id); // single source of truth (persisted); the mesh no longer keeps its own mute list
+  const muted = peerMuted || vs.needsTap || limited;
+  // Phase 7: route this peer's voice through the engine (seat panner -> playerVoice bus).
+  // While routed, the <video> element stays muted so the voice is heard exactly once.
+  useEffect(() => {
+    if (!stream || vs.needsTap || !hasLive(stream, 'audio')) { setRouted(false); return; }
+    const ok = sound.attachVoiceChat(id, stream, seatPos, playerCount, { muted: peerMuted || limited, ducked: vs.ducked?.includes(id) });
+    setRouted(ok);
+    return () => { sound.detachVoiceChat(id); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stream, seatPos, playerCount, vs.needsTap, vcGen]);
+  useEffect(() => { if (routed) sound.updateVoiceChat(id, { muted: peerMuted || limited, ducked: vs.ducked?.includes(id) }); }, [routed, id, peerMuted, limited, vs.ducked]);
   const hasMedia = camOn || micOn;
   // no camera/mic (or offline): no "…" bubble — just their initial (with the OFFLINE badge on the plate), still
   // clickable when there's a kick option
@@ -107,7 +123,7 @@ export function SeatMedia({ seat, isMe, mesh, vs, limited = false, kick }: { sea
     {hasMedia ? (
       <div className={`vbubble ${camOn && !hidden ? '' : 'audio-only'}`} data-testid={`video-${id}`} data-live={live ? 'true' : 'false'}>
         {/* the clip layer keeps video circular everywhere (Safari ignores overflow+radius on <video> without its own layer) */}
-        <div className={`vb-clip ${frames ? '' : 'no-frames'}`}>{stream && <StreamVideo stream={stream} muted={muted} onFrames={setFrames} volume={vs.ducked?.includes(id) ? 0.4 : 1} />}</div>
+        <div className={`vb-clip ${frames ? '' : 'no-frames'}`}>{stream && <StreamVideo stream={stream} muted={routed ? true : muted} onFrames={setFrames} volume={vs.ducked?.includes(id) ? 0.4 : 1} />}</div>
         {(!camOn || hidden) && <span className="vb-icon">{hidden ? '🙈' : '🎙'}</span>}
         {/* camera on but no frames yet (connecting / stalled): their initial, never a black circle */}
         {camOn && !hidden && !frames && <span className="vb-icon initial" data-testid={`vb-initial-${id}`}>{seat.name.trim().charAt(0).toUpperCase() || '?'}</span>}
@@ -121,7 +137,7 @@ export function SeatMedia({ seat, isMe, mesh, vs, limited = false, kick }: { sea
       </button>
     )}
     {menu && <VbMenu onClose={() => setMenu(false)} label={`Options for ${seat.name}`}>
-      {hasMedia && <button type="button" onClick={() => { mesh.toggleMuted(id); setMenu(false); }}>{vs.muted.includes(id) ? 'Unmute' : 'Mute'}</button>}
+      {hasMedia && <button type="button" onClick={() => { sound.setVoiceMuted(id, !peerMuted); setMenu(false); }}>{peerMuted ? 'Unmute' : 'Mute'}</button>}
       {camOn && <button type="button" onClick={() => { mesh.toggleHidden(id); setMenu(false); }}>{hidden ? 'Show video' : 'Hide video'}</button>}
       {kickItems}
     </VbMenu>}
