@@ -52,7 +52,9 @@ export function getDeckImage(card: Card | string): HTMLImageElement | null {
   if (!img) {
     img = new Image();
     img.src = url;
-    img.onload = () => waiters.splice(0).forEach((f) => f());
+    // Notify on EVERY image load: waiters stay registered (the repaint hook must redraw each
+    // court card as its own art arrives — clearing the list here left only the first card redrawn).
+    img.onload = () => waiters.forEach((f) => f());
     images.set(url, img);
   }
   return img.complete && img.naturalWidth ? img : null;
