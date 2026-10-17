@@ -1,4 +1,5 @@
 import type { Card } from '@spades/rules';
+import { getDeckImage } from './decks';
 
 /**
  * Canvas card art with no WebGL imports. The Run it! zoom (and the first page load) draw faces from here.
@@ -317,6 +318,8 @@ export function drawFace(card: Card, W: number, H: number, badge: boolean): HTML
   cv.width = W;
   cv.height = H;
   const ctx = cv.getContext('2d')!;
+  const art = getDeckImage(card);
+  if (art) { ctx.drawImage(art, 0, 0, W, H); return cv; }
   paper(ctx, W, H);
   if (card === 'BJ' || card === 'LJ') {
     joker(ctx, W, H, card === 'BJ');

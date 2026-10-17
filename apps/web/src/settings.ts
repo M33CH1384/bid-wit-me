@@ -47,6 +47,8 @@ export interface Settings {
   venue: VenueChoice;
   /** Camera view: standing = higher/farther (default, slams always max); sitting = lower/closer (V-gesture slams). */
   view: 'standing' | 'sitting';
+  /** Card deck art pack (Desi decks; all unlocked for now, Story/purchase lock later). */
+  deck: string;
 }
 
 function defaultQuality(): 'high' | 'low' {
@@ -59,7 +61,7 @@ export const DEFAULT_SETTINGS: Settings = {
   mode: 'joker', targetScore: 'default', losingFloor: 'on', deuceOfSpadesHigh: false, jokerOrder: 'house',
   cutthroatDeck: 'joker54', spadesMustBeBroken: true, firstLead: 'leftOfDealer', minTeamBid: 0, nilAllowed: true,
   blindNil: 'behind100', blindNilExchange: 0, nilTricksCountForPartner: false, bags: '10/100', tenForTwoHundred: false,
-  firstHandBidsItself: true, botLevel: 'mixed', shotOut: true, firstHandMin: 'default', cutMinBid: 1, cutBlindNil: false, bagsOn: true, talkIntensity: 'cookout', speed: 'normal', quality: defaultQuality(), venue: 'classic', view: 'standing',
+  firstHandBidsItself: true, botLevel: 'mixed', shotOut: true, firstHandMin: 'default', cutMinBid: 1, cutBlindNil: false, bagsOn: true, talkIntensity: 'cookout', speed: 'normal', quality: defaultQuality(), venue: 'classic', view: 'standing', deck: 'classic',
 };
 
 export const MODES: { key: ModeKey; title: string; blurb: string; players: string }[] = [
@@ -128,6 +130,7 @@ export function normalizeSettings(j: Omit<Partial<Settings>, 'botLevel'> & { bot
   if (!['family', 'cookout', 'nomercy'].includes(s.talkIntensity)) s.talkIntensity = 'cookout';
   if (!isVenueChoice(s.venue)) s.venue = 'classic';
   if (s.view !== 'sitting' && s.view !== 'standing') s.view = 'standing';
+  if (!['classic', 'afrofuturist', 'harlem', 'hiphop', 'mali', 'egypt', 'greek'].includes(s.deck)) s.deck = 'classic';
   return s;
 }
 export function saveSettings(s: Settings): void {
