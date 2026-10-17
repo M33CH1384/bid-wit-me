@@ -16,6 +16,12 @@ describe('sitting slam regression (live bug: plain flick speed-slammed)', () => 
     const src = readFileSync(new URL('../src/online/OnlineTable.tsx', import.meta.url), 'utf8');
     expect(src).toContain('onView=');
     const table = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
-    expect(table).toContain('view={settings.view}');
+    // Table3D must receive the EFFECTIVE view (saved preference, or Sitting after the
+    // seated-each-hand reset), and both toggles must go through toggleView so a manual
+    // choice clears the auto-seat for the rest of the hand.
+    expect(table).toContain('view={effView}');
+    expect(table).toContain('const effView = effectiveView(settings.view, handView)');
+    expect(table).toContain('data-testid="view-toggle" onClick={toggleView}');
+    expect(table).toContain('data-testid="view-toggle-plate"');
   });
 });

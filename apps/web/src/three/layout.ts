@@ -172,10 +172,12 @@ export function cameraFor(aspect: number, short = false, view: 'standing' | 'sit
   const pos: [number, number, number] = [0, lerp(4.5, 3.45), lerp(3.75, 3.4)];
   const look: [number, number, number] = [0, 0, lerp(0.38, 0.08)];
   if (view === 'sitting') {
-    // Sitting: lower, in-the-chair angle. The first cut (lower+closer) pushed the hand fan off the
-    // bottom of the screen, so the reframe keeps the low height but pulls back, widens the fov and
-    // aims toward the hand: the full fan + YOUR TURN plate must fit (hand visibility wins).
-    pos[1] *= 0.58; pos[2] *= 0.95; look[2] += 0.45;
+    // Sitting: low, over-the-table, in-the-chair angle — lower AND closer in than the first cut,
+    // so the cards lying on the felt (the trick in front of you) face you more directly, read
+    // larger, and foreshorten less, while the fan solver still fits the whole hand on a phone
+    // (it fits against this very camera, and the sitting-hand e2e guards 390/393px; hand
+    // visibility still wins if the two ever fight). Standing is untouched.
+    pos[1] *= 0.44; pos[2] *= 0.80; look[2] += 0.30;
   }
   const dist = Math.hypot(pos[1] - look[1], pos[2] - look[2]);
   // fit the table width (with rail) horizontally, and keep at least a minimum vertical fov
