@@ -43,6 +43,16 @@ async function check(page: Page, w: number, h: number, shot: string, chrome = 84
   if (minStrip < 20) throw new Error(`min strip ${minStrip.toFixed(1)}px too small`);
   const plate = await page.getByTestId('seat-0').boundingBox();
   if (!plate || plate.y < 0 || plate.y + plate.height > h) throw new Error(`YOU plate not fully visible: ${JSON.stringify(plate)}`);
+  // Oct 17 beta regression: no seat plate/avatar may cover a hand card (the YOU plate sat on the fan in Sitting).
+  for (const id of ['seat-0', 'seat-1', 'seat-2', 'seat-3']) {
+    const pl = await page.getByTestId(id).boundingBox().catch(() => null);
+    if (!pl) continue;
+    for (const [i, r] of live.entries()) {
+      const ox = Math.min(r.x + r.w, pl.x + pl.width) - Math.max(r.x, pl.x);
+      const oy = Math.min(r.y + r.h, pl.y + pl.height) - Math.max(r.y, pl.y);
+      if (ox > 6 && oy > 6) throw new Error(`${id} covers hand card ${i} by ${ox.toFixed(0)}x${oy.toFixed(0)}px in ${shot}`);
+    }
+  }
   await page.screenshot({ path: `${SHOTS}/${shot}` });
 }
 (async () => {
