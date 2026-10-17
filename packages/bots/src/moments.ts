@@ -2,8 +2,8 @@
  * Turn a game step (state before → after an action) into trash-talk moments for the talk engine.
  * Shared by the server (online) and the offline game.
  */
-import { type Action, type Card, type GameState, effectiveSuit, isTrump, legalPlays, rulesForLive, sideCount, sideOf, trickWinner } from '@spades/rules';
-import type { TalkEvent } from './talk';
+import { type Action, type Card, type GameState, effectiveSuit, isTrump, legalPlays, rulesForLive, sideCount, sideOf, tricksStillRemaining, trickWinner } from '@spades/rules';
+import type { GapBucket, TalkEvent, TricksLeftBucket } from './talk';
 
 const LOW = new Set(['2', '3', '4', '5']);
 
@@ -14,8 +14,31 @@ export function momentsFor(before: GameState, action: Action, after: GameState):
     const s = after.scores; const others = s.filter((_, i) => i !== side);
     return (s[side] ?? 0) - Math.max(...others, -Infinity);
   };
+
+  // ---- contextual facts for bot speech (additive: kinds/speakers/cooldowns unchanged) ----
+  // score-gap bucket for a side, scaled to the target (500: big = 125+, close = within 50)
+  const gapBucketFor = (side: number, scores: number[]): GapBucket | undefined => {
+    const gap = (scores[side] ?? 0) - Math.max(...scores.filter((_, i) => i !== side), -Infinity);
+    const big = Math.max(75, r.targetScore * 0.25), close = Math.max(25, r.targetScore * 0.1);
+    return gap >= big ? 'aheadBig' : gap <= -big ? 'behindBig' : Math.abs(gap) <= close ? 'close' : undefined;
+  };
+  const tricksBucket = (st: GameState): TricksLeftBucket => {
+    const left = tricksStillRemaining(st);
+    return left <= 3 ? 'late' : left <= 6 ? 'mid' : 'early';
+  };
+  /** facts for a moment about `side`, scored on `after`, trick clock on `after` */
+  const factsFor = (side: number, bidder?: { seat: number; side: number }): Partial<TalkEvent> => {
+    const gapBucket = gapBucketFor(side, after.scores);
+    const tricksLeft = tricksBucket(after);
+    return {
+      ...(gapBucket ? { gapBucket } : {}), tricksLeft,
+      // pressure: late in a close game, or a late trick the side still needs for its contract
+      ...((tricksLeft === 'late' && gapBucket === 'close') || (tricksStillRemaining(after) <= 2 && needsBooks(before, side)) ? { pressure: true } : {}),
+      ...(bidder ? { bidderSeat: bidder.seat, bidderSide: bidder.side } : {}),
+    };
+  };
   // 'Run it!': the claimer speaks first (its own line), the other side may grumble
-  if (action.type === 'runIt') out.push({ kind: 'runIt', side: sideOf(action.seat, r), seat: action.seat, gap: gapFor(sideOf(action.seat, r)) });
+  if (action.type === 'runIt') out.push({ kind: 'runIt', side: sideOf(action.seat, r), seat: action.seat, gap: gapFor(sideOf(action.seat, r)), ...factsFor(sideOf(action.seat, r)) });
   if (action.type === 'play') {
     const plays = before.trick.plays;
     const card = action.card as Card;
@@ -29,72 +52,72 @@ export function momentsFor(before: GameState, action: Action, after: GameState):
       const takes = trickWinner(all, r) === seat;
       const li = all.findIndex((p) => p.card === 'LJ'), bi = all.findIndex((p) => p.card === 'BJ');
       const partnerWinning = r.partnerships && prevWin !== seat && sideOf(prevWin, r) === side;
-      if (card === 'BJ' && li >= 0 && bi > li) out.push({ kind: 'nuke', seat, side, card, them: all[li]!.seat });
+      if (card === 'BJ' && li >= 0 && bi > li) out.push({ kind: 'nuke', seat, side, card, them: all[li]!.seat, ...factsFor(side) });
       else if (takes && partnerWinning && isTrump(card, r) && !isTrump(prevCard, r) && !isNilSeat(before, prevWin)) {
         // cut your own partner's winner: the partner groans (or the other side laughs)
-        out.push({ kind: 'partnerBlunder', seat, side, card, them: seat });
-      } else if (takes && (card === 'BJ' || card === 'LJ')) out.push({ kind: 'joker', seat, side, card, them: prevWin });
-      else if (takes && isTrump(card, r) && !isTrump(plays[0]!.card, r)) out.push({ kind: isTrump(prevCard, r) ? 'overcut' : 'cut', seat, side, card, them: prevWin, ...(prevCard[0] === 'A' && !isTrump(prevCard, r) ? { ace: true } : {}) });
-      else if (!takes && !isTrump(card, r) && effectiveSuit(card, r) !== led && LOW.has(card[0]!) && sideOf(prevWin, r) !== side) out.push({ kind: 'duck', seat, side, card, them: seat });
+        out.push({ kind: 'partnerBlunder', seat, side, card, them: seat, ...factsFor(side) });
+      } else if (takes && (card === 'BJ' || card === 'LJ')) out.push({ kind: 'joker', seat, side, card, them: prevWin, ...factsFor(side) });
+      else if (takes && isTrump(card, r) && !isTrump(plays[0]!.card, r)) out.push({ kind: isTrump(prevCard, r) ? 'overcut' : 'cut', seat, side, card, them: prevWin, ...(prevCard[0] === 'A' && !isTrump(prevCard, r) ? { ace: true } : {}), ...factsFor(side) });
+      else if (!takes && !isTrump(card, r) && effectiveSuit(card, r) !== led && LOW.has(card[0]!) && sideOf(prevWin, r) !== side) out.push({ kind: 'duck', seat, side, card, them: seat, ...factsFor(side) });
       else if (!takes && r.partnerships && all.length === r.playerCount && !partnerWinning && !isNilSeat(before, seat) && needsBooks(before, side)) {
         // last to play, the book was there for the taking, and the side still needs books: ducked a sure book
         const could = legalPlays(before, seat).some((c) => trickWinner([...plays, { seat, card: c }], r) === seat);
-        if (could) out.push({ kind: 'partnerBlunder', seat, side, card, them: seat });
+        if (could) out.push({ kind: 'partnerBlunder', seat, side, card, them: seat, ...factsFor(side) });
       }
       // a trick taken with a big card by the last player: a slam
-      if (takes && all.length === r.playerCount && (card[0] === 'A' || card[0] === 'K' || card === 'BJ' || (isTrump(card, r) && 'AKQ'.includes(card[0]!)))) out.push({ kind: 'slam', seat, side, card, them: prevWin });
+      if (takes && all.length === r.playerCount && (card[0] === 'A' || card[0] === 'K' || card === 'BJ' || (isTrump(card, r) && 'AKQ'.includes(card[0]!)))) out.push({ kind: 'slam', seat, side, card, them: prevWin, ...factsFor(side) });
       // a Nil just took its first book
       const nilTaker = trickWinner(all, r);
       if (all.length === r.playerCount && isNilSeat(before, nilTaker) && (before.tricksWon[nilTaker] ?? 0) === 0 && r.partnerships) {
-        out.push({ kind: 'nilBust', side: 1 - sideOf(nilTaker, r), them: nilTaker });
+        out.push({ kind: 'nilBust', side: 1 - sideOf(nilTaker, r), them: nilTaker, ...factsFor(1 - sideOf(nilTaker, r), { seat: nilTaker, side: sideOf(nilTaker, r) }) });
       }
     }
   }
   if (action.type === 'bid' && typeof action.bid === 'number') {
     const big = r.partnerships ? 6 : 5;
     if (action.bid >= big) {
-      out.push({ kind: 'bigBid', seat: action.seat, side: sideOf(action.seat, r), bid: action.bid });
-      out.push({ kind: 'bidTooHigh', seat: action.seat, side: sideOf(action.seat, r), them: action.seat, bid: action.bid });
+      out.push({ kind: 'bigBid', seat: action.seat, side: sideOf(action.seat, r), bid: action.bid, ...factsFor(sideOf(action.seat, r), { seat: action.seat, side: sideOf(action.seat, r) }) });
+      out.push({ kind: 'bidTooHigh', seat: action.seat, side: sideOf(action.seat, r), them: action.seat, bid: action.bid, ...factsFor(sideOf(action.seat, r), { seat: action.seat, side: sideOf(action.seat, r) }) });
     }
     // the bidder's own hand (bluff-safe: keyed off the bid only, and sometimes said with a decent hand too)
-    if (action.bid <= 2 || (action.bid <= 4 && hashBit(`${before.seed}:${before.handNo}:${action.seat}`))) out.push({ kind: 'badHand', seat: action.seat, side: sideOf(action.seat, r) });
+    if (action.bid <= 2 || (action.bid <= 4 && hashBit(`${before.seed}:${before.handNo}:${action.seat}`))) out.push({ kind: 'badHand', seat: action.seat, side: sideOf(action.seat, r), ...factsFor(sideOf(action.seat, r), { seat: action.seat, side: sideOf(action.seat, r) }) });
   }
-  if (action.type === 'bid' && action.bid === 'nil') out.push({ kind: 'nilBid', seat: action.seat, side: sideOf(action.seat, r), them: action.seat });
-  if (action.type === 'bid' && action.bid === 'blindNil') out.push({ kind: 'blindNil', seat: action.seat, side: sideOf(action.seat, r), them: action.seat });
+  if (action.type === 'bid' && action.bid === 'nil') out.push({ kind: 'nilBid', seat: action.seat, side: sideOf(action.seat, r), them: action.seat, ...factsFor(sideOf(action.seat, r), { seat: action.seat, side: sideOf(action.seat, r) }) });
+  if (action.type === 'bid' && action.bid === 'blindNil') out.push({ kind: 'blindNil', seat: action.seat, side: sideOf(action.seat, r), them: action.seat, ...factsFor(sideOf(action.seat, r), { seat: action.seat, side: sideOf(action.seat, r) }) });
   if (action.type === 'bid' && before.phase === 'bidding' && after.phase !== 'bidding' && r.partnerships) {
     // bidding done: roast a scared-small or huge team bid
     for (let side = 0; side < 2; side++) {
       const total = after.bids.reduce<number>((s, b, i) => s + (sideOf(i, r) === side && typeof b === 'number' ? b : 0), 0);
-      if (total >= 10 || (total > 0 && total <= 3)) out.push({ kind: 'roastBid', side: 1 - side, bid: total });
+      if (total >= 10 || (total > 0 && total <= 3)) out.push({ kind: 'roastBid', side: 1 - side, bid: total, ...factsFor(1 - side) });
     }
   }
   if (after.history.length > before.history.length) {
     const h = after.history[after.history.length - 1]!;
     for (const s of h.sides) {
       const other = r.partnerships ? 1 - s.side : undefined;
-      if (r.partnerships ? (s.contract >= 10 && s.contractMade) || (h.bids.every((b) => b === 'books') && s.tricks >= 10) : s.tricks >= 10) out.push({ kind: 'wheels', side: s.side, seat: s.seats[0], bid: s.contract, books: s.tricks, gap: gapFor(s.side) });
+      if (r.partnerships ? (s.contract >= 10 && s.contractMade) || (h.bids.every((b) => b === 'books') && s.tricks >= 10) : s.tricks >= 10) out.push({ kind: 'wheels', side: s.side, seat: s.seats[0], bid: s.contract, books: s.tricks, gap: gapFor(s.side), ...factsFor(s.side, { seat: s.seats[0]!, side: s.side }) });
       for (const n of s.nils) {
-        if (n.made) out.push({ kind: 'nilMade', side: s.side, seat: n.seat });
+        if (n.made) out.push({ kind: 'nilMade', side: s.side, seat: n.seat, ...factsFor(s.side, { seat: n.seat, side: s.side }) });
         // (a busted Nil is called the moment it takes its first book, above)
       }
-      if (s.contractMade === false && other !== undefined) out.push({ kind: 'setThem', side: other, them: s.seats[0], bid: s.contract, books: s.tricks, gap: gapFor(other), ...((after.scores[s.side] ?? 0) < 0 ? { neg: true } : {}) });
-      if ((s.bagPenaltyCount > 0 || (s.contractMade && s.tricks - s.contract >= 3)) && other !== undefined) out.push({ kind: 'bags', side: other, them: s.seats[0] });
-      if (s.tricks >= 13 && typeof s.contract === 'number') out.push({ kind: 'boston', side: s.side, seat: s.seats[0] });
-      if (s.shot && !after.result && other !== undefined) out.push({ kind: 'onNotice', side: other, them: s.seats[0] });
+      if (s.contractMade === false && other !== undefined) out.push({ kind: 'setThem', side: other, them: s.seats[0], bid: s.contract, books: s.tricks, gap: gapFor(other), ...((after.scores[s.side] ?? 0) < 0 ? { neg: true } : {}), ...factsFor(other, { seat: s.seats[0]!, side: s.side }) });
+      if ((s.bagPenaltyCount > 0 || (s.contractMade && s.tricks - s.contract >= 3)) && other !== undefined) out.push({ kind: 'bags', side: other, them: s.seats[0], ...factsFor(other, { seat: s.seats[0]!, side: s.side }) });
+      if (s.tricks >= 13 && typeof s.contract === 'number') out.push({ kind: 'boston', side: s.side, seat: s.seats[0], ...factsFor(s.side, { seat: s.seats[0]!, side: s.side }) });
+      if (s.shot && !after.result && other !== undefined) out.push({ kind: 'onNotice', side: other, them: s.seats[0], ...factsFor(other, { seat: s.seats[0]!, side: s.side }) });
     }
-    for (const s of h.sides) if (s.contractMade && !(s.contract >= 10)) out.push({ kind: 'made', side: s.side, seat: s.seats[0], bid: s.contract });
+    for (const s of h.sides) if (s.contractMade && !(s.contract >= 10)) out.push({ kind: 'made', side: s.side, seat: s.seats[0], bid: s.contract, ...factsFor(s.side, { seat: s.seats[0]!, side: s.side }) });
     // streak: the same side out-scored everyone the last 3 hands
     const last = after.history.slice(-3);
     if (last.length === 3 && !after.result) {
       const best = (x: typeof h) => x.sides.reduce((a, b) => (b.points > a.points ? b : a)).side;
       const b0 = best(last[0]!);
-      if (last.every((x) => best(x) === b0)) out.push({ kind: 'streak', side: b0 });
+      if (last.every((x) => best(x) === b0)) out.push({ kind: 'streak', side: b0, ...factsFor(b0) });
     }
   }
   if (after.result && !before.result) {
     const w = after.result.winners[0]!;
-    if (after.result.endReason === 'shotOut') out.push({ kind: 'shotOut', side: w, gap: gapFor(w) });
-    out.push({ kind: 'win', side: w, gap: gapFor(w) });
+    if (after.result.endReason === 'shotOut') out.push({ kind: 'shotOut', side: w, gap: gapFor(w), ...factsFor(w), pressure: true });
+    out.push({ kind: 'win', side: w, gap: gapFor(w), ...factsFor(w), pressure: true });
   }
   void sideCount;
   return out;
