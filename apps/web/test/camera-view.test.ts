@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeSettings } from '../src/settings';
 import { dragSlamIntensity, isVGesture, type DragSample } from '../src/slam';
-import { cameraFor } from '../src/three/layout';
+import { CAMERA_VIEW_TWEEN_MS, cameraFor, cameraPoseAt, cardScreenQuad, handFan, phoneHandFan } from '../src/three/layout';
 
 const path = (pts: [number, number][]): DragSample[] => pts.map(([x, y], i) => ({ t: i * 40, x, y }));
 describe('camera view', () => {
@@ -13,6 +13,23 @@ describe('camera view', () => {
   it('sitting applies in short landscape too', () => {
     const st = cameraFor(844 / 390, true, 'standing'); const si = cameraFor(844 / 390, true, 'sitting');
     expect(si.pos[1]).toBeLessThan(st.pos[1]); expect(si.fov).toBeGreaterThan(st.fov);
+  });
+  it('camera tween: 0.7s wall-clock, intermediate poses, never a 1-frame jump from a huge first dt', () => {
+    const st = cameraFor(390 / 844, false, 'standing'), si = cameraFor(390 / 844, false, 'sitting');
+    expect(CAMERA_VIEW_TWEEN_MS).toBeGreaterThanOrEqual(500); expect(CAMERA_VIEW_TWEEN_MS).toBeLessThanOrEqual(900);
+    const mid = cameraPoseAt(st.pos, si.pos, st.look, si.look, CAMERA_VIEW_TWEEN_MS / 2);
+    expect(mid.t).toBe(0.5); expect(mid.pos[1]).toBeLessThan(st.pos[1]!); expect(mid.pos[1]).toBeGreaterThan(si.pos[1]!);
+    expect(mid.look[2]).toBeGreaterThan(st.look[2]!); expect(mid.look[2]).toBeLessThan(si.look[2]!); // look animates too (was instant)
+    expect(cameraPoseAt(st.pos, si.pos, st.look, si.look, 0).pos[1]).toBe(st.pos[1]);
+    expect(cameraPoseAt(st.pos, si.pos, st.look, si.look, 99999).t).toBe(1);
+  });
+  it('sitting hand: all 13 cards inside 390x844 and above an injected 34px home indicator + Safari chrome line', () => {
+    const W = 390, H = 844, chrome = 34 + 50; // home indicator + bottom bar, as on Demetrius's iPhone
+    const o = { ...phoneHandFan(), view: 'sitting' as const, bottomFrac: (phoneHandFan().bottomFrac ?? 0) + (34 + 12) / H, minStripPx: 36, pxW: W };
+    for (let i = 0; i < 13; i++) {
+      const poly = cardScreenQuad(W / H, handFan(W / H, 13, i, 0, 0, o, 0, H), W, H, 0, false, 'sitting');
+      for (const pt of poly) { expect(pt.x).toBeGreaterThanOrEqual(-1); expect(pt.x).toBeLessThanOrEqual(W + 1); expect(pt.y).toBeGreaterThanOrEqual(-1); expect(pt.y).toBeLessThanOrEqual(H - chrome + 1); }
+    }
   });
   it('view setting normalises (default standing)', () => {
     expect(normalizeSettings({}).view).toBe('standing');

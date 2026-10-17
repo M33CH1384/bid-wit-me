@@ -195,13 +195,24 @@ function shortLandscapeCamera(aspect: number, view: 'standing' | 'sitting' = 'st
   return { pos: [0, 3.1, 3.5], look: [0, 0, 0.22], fov: 42 };
 }
 
-export function makeCamera(aspect: number, short = false): PerspectiveCamera {
-  const s = cameraFor(aspect, short);
+export function makeCamera(aspect: number, short = false, view: 'standing' | 'sitting' = 'standing'): PerspectiveCamera {
+  const s = cameraFor(aspect, short, view);
   const cam = new PerspectiveCamera(s.fov, aspect, 0.05, 60);
   cam.position.set(...s.pos);
   cam.lookAt(new Vector3(...s.look));
   cam.updateMatrixWorld(true);
   return cam;
+}
+
+/** Sitting<->Standing camera move: 0.7s ease-out. Pure so tests can assert intermediate poses.
+ *  Wall-clock based (not frame dt): in frameloop="demand" the first dt after an idle table can be
+ *  seconds long, which used to consume the whole tween in one frame — the snap Demetrius saw. */
+export const CAMERA_VIEW_TWEEN_MS = 700;
+export function cameraPoseAt(from: readonly number[], to: readonly number[], fromLook: readonly number[], toLook: readonly number[], elapsedMs: number, durMs = CAMERA_VIEW_TWEEN_MS): { pos: number[]; look: number[]; t: number } {
+  const t = durMs <= 0 ? 1 : Math.min(1, Math.max(0, elapsedMs / durMs));
+  const k = 1 - Math.pow(1 - t, 3);
+  const mix = (a: readonly number[], b: readonly number[]) => a.map((v, i) => v + (b[i]! - v) * k);
+  return { pos: mix(from, to), look: mix(fromLook, toLook), t };
 }
 
 export interface FanLayout {
@@ -255,6 +266,10 @@ export function raiseOpenPx(cardWidthPx: number, stepPx: number, minStripPx: num
  * when even a tight overlap (rank index still visible) can't fit.
  */
 export interface FanOpts {
+  /** Camera view the fan is anchored to. The hand is screen-anchored, so it MUST be laid out with
+   *  the live view's camera — anchoring to Standing while Sitting renders pushed the fan off-screen
+   *  on real iPhone Safari (the old probe shared the wrong camera, so WebKit tests missed it). */
+  view?: 'standing' | 'sitting';
   /** Fraction of the width kept clear on each side (e.g. for the HUD corners in landscape). */
   reserveFrac?: number;
   /** Fraction of the height kept clear at the bottom (iOS home indicator). */
@@ -308,7 +323,7 @@ function pivotFanLayout(aspect: number, count: number, safeFrac: number, o: FanO
   const pivot = o.pivot ?? 0;
   const pxW = Number.isFinite(o.pxW) && o.pxW! >= 32 ? o.pxW! : 0;
   if (!(pivot > 0) || !pxW || !(o.minStripPx! > 0)) return null;
-  const cam = makeCamera(aspect, o.short);
+  const cam = makeCamera(aspect, o.short, o.view);
   const viewH = 2 * Math.tan((cam.fov * Math.PI) / 360);
   const viewW = viewH * aspect;
   const k = pxW / viewW;
@@ -345,7 +360,7 @@ export function fanLayout(aspect: number, count: number, safeFrac = 0, o: FanOpt
   if (!(count >= 1)) count = 1;
   const pivoted = pivotFanLayout(aspect, count, safeFrac, o);
   if (pivoted) return pivoted;
-  const cam = makeCamera(aspect, o.short);
+  const cam = makeCamera(aspect, o.short, o.view);
   const D = 1;
   const viewH = 2 * Math.tan((cam.fov * Math.PI) / 360) * D;
   const viewW = viewH * aspect;
@@ -525,7 +540,7 @@ export function handCardPlane(aspect: number, count: number, i: number, lift: nu
  * so every card projects at exactly the same size and spacing — a perfectly symmetric fan. Only the lifted card moves.
  */
 export function handFan(aspect: number, count: number, i: number, lift: number, safeFrac = 0, o: FanOpts = {}, gapPx = 0, screenH = 844): Xform {
-  const cam = makeCamera(aspect, o.short);
+  const cam = makeCamera(aspect, o.short, o.view);
   const c = handCardPlane(aspect, count, i, lift, safeFrac, o, gapPx, screenH);
   const { depth } = c;
   const local = new Matrix4().compose(
@@ -543,8 +558,8 @@ export function handFan(aspect: number, count: number, i: number, lift: number, 
  * Canvas CSS pixels of one card's drawn corners. `liftPx` is the screen-up raise
  * (the inner wrapper). The same quad is what the hand hit test uses.
  */
-export function cardScreenQuad(aspect: number, t: Xform, screenW: number, screenH: number, liftPx = 0, short = false): { x: number; y: number }[] {
-  const cam = makeCamera(aspect, short);
+export function cardScreenQuad(aspect: number, t: Xform, screenW: number, screenH: number, liftPx = 0, short = false, view: 'standing' | 'sitting' = 'standing'): { x: number; y: number }[] {
+  const cam = makeCamera(aspect, short, view);
   cam.updateProjectionMatrix();
   const m = new Matrix4().compose(new Vector3(...t.p), new Quaternion(...t.q), new Vector3(t.s, t.s, t.s));
   const w = Number.isFinite(screenW) && screenW >= 32 ? screenW : 0;
