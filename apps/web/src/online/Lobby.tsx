@@ -84,12 +84,13 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
   return (
     <div className="setup lobby lobby-v3" data-testid="lobby">
       {/* Home keeps your seat (the splash offers "Rejoin table"); "Leave table" gives it up */}
-      <button type="button" className="icon-btn lobby-home" data-testid="lobby-home" aria-label="Home" title="Home (keeps your seat)" onClick={() => navigate('/', true, { wiz: 'home', d: 0 })}>
-        ← <img src="/assets/bwm-wordmark-white.svg" alt="" />
+      <button type="button" className="back-chip lobby-home" data-testid="lobby-home" aria-label="Home" title="Home (keeps your seat)" onClick={() => navigate('/', true, { wiz: 'home', d: 0 })}>
+        <svg width="18" height="12" viewBox="0 0 18 12" aria-hidden="true"><path d="M6 1 L1.5 6 L6 11 M2 6 H17" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="square"/></svg>BACK
       </button>
       <div className="lobby-cols">
       <div className="lobby-main">
       <header className="lobby-head">
+        <h2 className="lobby-pick-title">PICK YOUR SEAT</h2>
         <img className="logo small" src="/assets/bwm-wordmark-white.svg" alt="Bid Wit Me" />
         <div className="lobby-share">
           <button type="button" className="room-code share-code" data-testid="room-code" aria-label={`Table code ${room.code}. Tap to share the invite link`} onClick={share}>
@@ -334,15 +335,16 @@ function StartBlock({ teams, room, cs, conn, isHost, playing, seatedHumans, n, o
       {!playing && <p className="lobby-status" data-testid="lobby-status" aria-live="polite"><span className="live-dot" /><span key={status} className="status-text">{status}</span></p>}
       {onBackToGame && <button type="button" className="primary big" onClick={onBackToGame}>Back to the game</button>}
       {!playing && (isHost ? (
-        <button type="button" className="primary big" data-testid="start" disabled={seatedHumans === 0} onClick={() => conn.send({ t: room.phase === 'over' ? 'rematch' : 'start' })}>
-          {room.phase === 'over' ? 'Rematch' : open > 0 ? `Start · ${open} bot${open > 1 ? 's' : ''} fill in` : 'Start game'}
+        <button type="button" className="primary big start-gold" data-testid="start" disabled={seatedHumans === 0} onClick={() => conn.send({ t: room.phase === 'over' ? 'rematch' : 'start' })}>
+          {room.phase === 'over' ? 'Rematch' : open > 0 ? `START — ${open} BOT${open > 1 ? 'S' : ''} FILL` : 'START'}
         </button>
       ) : (
-        <p className="waiting">Waiting for host{hostName !== 'host' ? ` (${hostName})` : ''}…</p>
+        <p className="waiting waiting-block">WAITING FOR HOST TO START{hostName !== 'host' ? ` — ${hostName.toUpperCase()}` : ''}</p>
       ))}
       {playing && cs.seat === null && <p className="waiting">Game in progress. Tap a bot's seat to take it over.</p>}
       {cs.error && Date.now() - cs.error.at < 4000 && <div className="err" role="alert">{cs.error.message}</div>}
-      <button type="button" className="link quiet" data-testid="leave-table" onClick={onLeave}>Leave table</button>
+      <div className="exit-divider" aria-hidden />
+      <button type="button" className="leave-table-btn" data-testid="leave-table" onClick={onLeave}>LEAVE TABLE</button>
     </div>
   );
 }
@@ -377,9 +379,9 @@ function SeatCard({ seat, info, spot, team, mine, isHost, playing, hostId, onSit
     return (
       <div className={cls} data-testid={`lobby-seat-${seat}`}>
         <button type="button" className="seat-hit" aria-label="Sit here" onClick={onSit}>
-          {top}<span className="seat-plus" aria-hidden>+</span><span className="seat-cta">Sit here</span>
+          {top}<span className="seat-ring empty" aria-hidden><span className="seat-plus">+</span></span><span className="seat-plate empty">SIT HERE</span>
         </button>
-        {isHost && !playing && <button type="button" className="seat-bot" aria-label={`Add a bot to ${label}`} onClick={onBot}>+Bot</button>}
+        {isHost && !playing && <button type="button" className="seat-bot" aria-label={`Add a bot to ${label}`} onClick={onBot}>+ BOT</button>}
       </div>
     );
   }
@@ -389,13 +391,13 @@ function SeatCard({ seat, info, spot, team, mine, isHost, playing, hostId, onSit
   return (
     <div className={cls} data-testid={`lobby-seat-${seat}`}>
       {top}
-      <div className="seat-avatar" style={info.kind === 'human' && !mine ? { ['--av' as string]: colorFor(info.playerId) } : undefined}>
+      <div className={`seat-ring occupied ${mine ? 'mine' : ''}`} style={info.kind === 'human' && !mine ? { ['--av' as string]: colorFor(info.playerId) } : undefined}>
         <span className="av-initial">{initial}</span>
         {info.kind === 'human' && media}
         {ready && <span className="ready-check" title="Ready" aria-label="ready">✓</span>}
       </div>
-      <div className="seat-name">
-        {name}{info.kind === 'human' && info.playerId === hostId && <span title="Host" aria-label="host">👑</span>}
+      <div className="seat-plate">
+        <span className="seat-name">{mine ? 'YOU' : name}</span>{info.kind === 'human' && info.playerId === hostId && <span className="host-tag" title="Host" aria-label="host">HOST</span>}
       </div>
       {info.kind === 'human' && !info.connected && <span className="chip bad">OFFLINE</span>}
       {info.kind === 'bot' && isHost && !playing && <button type="button" className="link seat-sub" onClick={onRemoveBot}>Remove</button>}
