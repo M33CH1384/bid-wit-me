@@ -1873,16 +1873,20 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
   .trash-callout.seat-right { right: 12px; left: auto; }
 }
 /* Portrait phones: your plate/avatar sits in the lower-left corner of the screen (founder call,
-   Oct 17 beta) — inside the safe area, clear of the fan, never on a card. pointer-events stay off
-   except the small view/turn-up chips. */
-.table-screen.corner-plate .me-plate { position: fixed; left: calc(8px + env(safe-area-inset-left)); bottom: calc(8px + env(safe-area-inset-bottom)); top: auto; transform: none; width: auto; max-width: 62vw; z-index: 8; pointer-events: none; display: flex; flex-direction: row; align-items: center; margin: 0; }
-.table-screen.corner-plate .me-plate .plate-avatar { width: 36px; height: 36px; font-size: 18px; }
-.table-screen.corner-plate .me-plate .plate-body { margin-left: -10px; padding: 3px 10px 4px 18px; min-width: 0; }
-.table-screen.corner-plate .me-plate .plate-name { font-size: 12px; }
-.table-screen.corner-plate .me-plate .plate-name .chip { font-size: 8.5px; }
-.table-screen.corner-plate .me-plate .plate-stats { flex-wrap: wrap; gap: 3px; }
-.table-screen.corner-plate .me-plate .plate-stats .chip { font-size: 9.5px; padding: 0 4px; }
-.table-screen.corner-plate .me-plate .plate-turn { left: 26px; top: -14px; font-size: 10px; letter-spacing: .1em; }
+   Oct 17 beta) — inside the safe area, clear of the fan, never on a card. Pure CSS gate on purpose:
+   the first ship toggled a JS class off the published hand hits, and on the founder's real iPhone
+   that gate never fired (plate stayed in the flow over the cards) while every emulator passed.
+   A media query cannot miss. Phone widths only — tablet/desktop keep the flow placement below. */
+@media (max-width: 600px) and (orientation: portrait) {
+  .table-screen .me-plate { position: fixed; left: calc(8px + env(safe-area-inset-left)); bottom: calc(8px + env(safe-area-inset-bottom)); top: auto; transform: none; width: auto; max-width: 62vw; z-index: 8; pointer-events: none; display: flex; flex-direction: row; align-items: center; margin: 0; }
+  .table-screen .me-plate .plate-avatar { width: 36px; height: 36px; font-size: 18px; }
+  .table-screen .me-plate .plate-body { margin-left: -10px; padding: 3px 10px 4px 18px; min-width: 0; }
+  .table-screen .me-plate .plate-name { font-size: 12px; }
+  .table-screen .me-plate .plate-name .chip { font-size: 8.5px; }
+  .table-screen .me-plate .plate-stats { flex-wrap: wrap; gap: 3px; }
+  .table-screen .me-plate .plate-stats .chip { font-size: 9.5px; padding: 0 4px; }
+  .table-screen .me-plate .plate-turn { left: 26px; top: -14px; font-size: 10px; letter-spacing: .1em; }
+}
 
 /* drag-to-play: the lifted card under your finger, drawn above everything */
 .drag-ghost { position: fixed; z-index: 60; pointer-events: none; border-radius: 6px; box-shadow: 0 18px 30px rgba(0,0,0,.55); transform: scale(1.08) rotate(-3deg); transition: transform .12s; }

@@ -162,7 +162,7 @@ async function runCase(browser: Browser, base: string): Promise<void> {
       }
       if (count === 13) {
         // YOUR TURN and the plate sit in the arch under the fan, readable and off every card
-        await page.waitForFunction(() => document.querySelector('.table-screen')?.classList.contains('corner-plate'));
+        await page.waitForFunction(() => { const b = document.querySelector('.me-plate')?.getBoundingClientRect(); return !!b && b.left <= 16 && b.bottom >= window.innerHeight - 60; });
         const hits = await page.evaluate(() => (window as unknown as { __bwmHandHits?: HandHitCard[] }).__bwmHandHits ?? []);
         const r = await page.evaluate(() => { const b = document.querySelector('.me-plate')!.getBoundingClientRect(); return { left: b.left, top: b.top, right: b.right, bottom: b.bottom, pe: getComputedStyle(document.querySelector('.me-plate')!).pointerEvents }; });
         if (r.pe !== 'none') throw new Error('plate takes pointer events');
