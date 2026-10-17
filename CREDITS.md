@@ -103,6 +103,14 @@ Licence for every Poly Haven item: CC0 — https://polyhaven.com/license (commer
 - Basis transcoder (`apps/web/public/assets/basis/`, Basis Universal, Apache-2.0) ships with three.js for the KTX2 textures.
 - Not shipped: the test scene's GLB dining table (the game keeps its procedural bevelled-rail table) and the Warm Bar HDRI (the game's existing classic hall HDRI provides the IBL).
 
+## Barbershop room (cube-room port, after Classic Studio)
+
+- Checker floor, teal walls, mirrors/stations, storefront: procedural (own/generated, no text/signage).
+- Chairs/pendants: Classic Studio's Poly Haven CC0 decimated GLBs are reused (see Classic Studio section) — no new GLBs.
+- Sky (day): "Cloud timelapse in New Mexico" — Wikimedia Commons, CC BY 2.0 (attribution required): https://commons.wikimedia.org/wiki/File:Cloud_timelapse_in_New_Mexico.webm — shipped as `venues/barbershop/room/sky-day.webm` (720p VP9, 32 s, 2.3 MB, trimmed/re-encoded).
+- Sky (night): "Clouds over Joshua Tree" — Wikimedia Commons, public domain: https://commons.wikimedia.org/wiki/File:Clouds_over_Joshua_Tree_(30585891255).webm — `venues/barbershop/room/sky-night.webm` (720p VP9, 0.36 MB).
+- Street: "Traffic on a cobbled street — soundscape" — Wikimedia Commons, CC BY 3.0: https://commons.wikimedia.org/wiki/File:Traffic_on_a_cobbled_street_-_soundscape.webm — RAW CLIP REJECTED (legible licence plate + signs). Shipped plate is NOT raw: downscaled to 960x540 and heavily Gaussian-blurred (ffmpeg gblur sigma=14) so no plate, sign or text is legible; traffic reads only as motion behind glass/silhouettes. `venues/barbershop/room/street.webm` (VP9, 0.18 MB). Posters (`sky-poster.jpg`/`street-poster.jpg`, Low-tier golden fallback) are frames from the design pass whose plate/sign regions were already masked, resized to 1024px.
+
 ## Fonts
 - Barlow Condensed (600/700/800) by Jeremy Tribby, via `@fontsource/barlow-condensed` — SIL Open Font License 1.1.
 

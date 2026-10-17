@@ -308,35 +308,6 @@ function Mansion() {
   );
 }
 
-function Barbershop({ fxOn }: { fxOn: boolean }) {
-  const pole = useRef<Mesh>(null);
-  const stripes = useMemo(() => {
-    const t = canvasTex(64, 128, (g) => { g.fillStyle = '#fff'; g.fillRect(0, 0, 64, 128); for (let i = -4; i < 8; i++) { g.save(); g.translate(0, i * 32); g.transform(1, 0.5, 0, 1, 0, 0); g.fillStyle = i % 2 ? '#d01c2a' : '#1d3fbf'; g.fillRect(0, 0, 64, 14); g.restore(); } });
-    t.wrapS = t.wrapT = RepeatWrapping; return t;
-  }, []);
-  useFrame((_, dt) => { if (fxOn && pole.current) stripes.offset.y = (stripes.offset.y + dt * 0.25) % 1; });
-  return (
-    <group>
-      {/* back wall with a mirror, the neon OPEN sign and a barber pole */}
-      <mesh position={[0, 0.6, -4.4]} receiveShadow><planeGeometry args={[12, 3]} /><meshStandardMaterial color="#2a2d3a" roughness={0.8} /></mesh>
-      <mesh position={[0, -0.88 + 0.6, -4.38]}><planeGeometry args={[12, 1.2]} /><meshStandardMaterial color="#e8e8e8" roughness={0.6} /></mesh>
-      <Neon text="OPEN" color="#ff2e55" p={[-1.6, 0.15, -4.3]} w={1.9} />
-      <Neon text="FADES" color="#3dd6ff" sub="& BEARD TRIMS" p={[1.9, 0.15, -4.3]} w={1.9} />
-      <group position={[-3.6, -0.2, -3.9]}>
-        <mesh ref={pole}><cylinderGeometry args={[0.1, 0.1, 1.0, 20]} /><meshStandardMaterial map={stripes} roughness={0.25} emissive="#ffffff" emissiveIntensity={0.25} emissiveMap={stripes} /></mesh>
-        <mesh position={[0, 0.55, 0]}><sphereGeometry args={[0.12, 16, 10]} /><meshStandardMaterial color="#c9a227" metalness={0.8} roughness={0.3} /></mesh>
-        <mesh position={[0, -0.55, 0]}><sphereGeometry args={[0.12, 16, 10]} /><meshStandardMaterial color="#c9a227" metalness={0.8} roughness={0.3} /></mesh>
-      </group>
-      {/* barber chair, side */}
-      <group position={[3.6, FLOOR_Y, -1.6]} rotation={[0, -0.9, 0]}>
-        <mesh position={[0, 0.25, 0]}><cylinderGeometry args={[0.28, 0.32, 0.5, 16]} /><meshStandardMaterial color="#c0c4c8" metalness={0.8} roughness={0.25} /></mesh>
-        <mesh position={[0, 0.62, 0]} castShadow><boxGeometry args={[0.6, 0.18, 0.55]} /><meshStandardMaterial color="#7a1018" roughness={0.45} /></mesh>
-        <mesh position={[0, 1.0, -0.25]} castShadow><boxGeometry args={[0.58, 0.65, 0.12]} /><meshStandardMaterial color="#7a1018" roughness={0.45} /></mesh>
-      </group>
-    </group>
-  );
-}
-
 function Church() {
   const banner = useMemo(() => canvasTex(512, 128, (g) => { g.fillStyle = '#f3ead2'; g.fillRect(0, 0, 512, 128); g.fillStyle = '#5b2a86'; g.font = '800 54px "Barlow Condensed", Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('FELLOWSHIP HALL', 256, 52); g.font = '600 26px "Barlow Condensed", Arial, sans-serif'; g.fillStyle = '#7a5a2a'; g.fillText('Spades Night · Coffee in the back', 256, 100); }), []);
   return (
@@ -548,7 +519,7 @@ export function VenueProps({ id, fxOn }: { id: VenueId; fxOn: boolean }) {
   switch (id) {
     case 'backyard': return <Backyard fxOn={fxOn} />;
     case 'mansion': return <Mansion />;
-    case 'barbershop': return <Barbershop fxOn={fxOn} />;
+    case 'barbershop': return null; // production cube room: three/BarbershopRoom.tsx (mounted by Scene)
     case 'church': return <Church />;
     case 'rooftop': return <Rooftop />;
     case 'speakeasy': return <Speakeasy />;
@@ -561,7 +532,7 @@ export function VenueProps({ id, fxOn }: { id: VenueId; fxOn: boolean }) {
 }
 
 /** venues with ambient motion (only animated when effects are on) */
-const MOVES: Partial<Record<VenueId, true>> = { backyard: true, barbershop: true, beach: true, yacht: true };
+const MOVES: Partial<Record<VenueId, true>> = { backyard: true, beach: true, yacht: true };
 
 /** Everything around the table for one venue. Mounted inside the Canvas; never suspends the table. */
 export default function Venue3D({ def, quality, reduceFx }: { def: VenueDef; quality: 'high' | 'low'; reduceFx: boolean }) {
