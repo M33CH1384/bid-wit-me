@@ -58,7 +58,11 @@ export interface SoundSettings { on: boolean; volume: number; ambient: boolean; 
   /** Block Party: the menu/celebration-only ambience scene (separate PR). It is a stored
    *  menu preference: it may only SOUND in the menu context, never in-game, and like every
    *  ambience it is mutually exclusive with music. Existing Lounge/Venue options unchanged. */
-  blockParty?: boolean }
+  blockParty?: boolean;
+  /** Kitchen-Table Spades Night ambience: the in-game-safe scene — selectable at the table
+   *  AND in menus (unlike Block Party), mutually exclusive with music, on the ambience bus
+   *  under the Ambience volume, kept low and sparse in-game so seat voices stay on top. */
+  kitchenTable?: boolean }
 
 /** Where the player is: menus (setup/home/lobby) or in a game. */
 export type SoundContext = 'menu' | 'game';
@@ -83,6 +87,11 @@ export const wantsAmbience = (s: SoundSettings): boolean => !s.music;
 export const blockPartyWanted = (s: SoundSettings, ctx: SoundContext): boolean => !!s.blockParty && !s.music && ctx === 'menu';
 /** Block Party rides the existing ambience volume (same bus factor as the lounge pad). */
 export const blockPartyLevel = (ambienceVolume: number): number => 0.5 * Math.min(1, Math.max(0, ambienceVolume));
+/** Kitchen-Table gate: any context, but never with music (the #202 exclusivity rule). */
+export const kitchenTableWanted = (s: SoundSettings): boolean => !!s.kitchenTable && !s.music;
+/** Kitchen-Table level: rides the Ambience volume; deliberately quieter IN-GAME (0.30 bus
+ *  factor vs 0.50 in menus) so player VO and positional seat voices stay clearly on top. */
+export const kitchenLevel = (ambienceVolume: number, ctx: SoundContext): number => (ctx === 'game' ? 0.3 : 0.5) * Math.min(1, Math.max(0, ambienceVolume));
 /** Reconcile a (possibly legacy both-on) state: music wins, ambience goes off. */
 export function exclusiveMusicAmbience(s: SoundSettings): SoundSettings {
   return s.music && ambienceOn(s) ? { ...s, ambient: false, venueSound: false } : s;
@@ -230,14 +239,14 @@ class Engine {
     // Mutual exclusivity, last choice wins: explicitly turning music on kills both ambience
     // sources; explicitly turning either ambience source on kills music. Any other patch
     // still passes through the reconciliation, so a legacy both-on state can never persist.
-    if (patch.music) { next = { ...next, ambient: false, venueSound: false }; if (this.context === 'menu') next = { ...next, blockParty: false }; }
-    else if (patch.ambient || patch.venueSound || patch.blockParty) { next = { ...next, music: false }; }
+    if (patch.music) { next = { ...next, ambient: false, venueSound: false }; if (this.context === 'menu') next = { ...next, blockParty: false }; if (this.captureScene) next = { ...next, kitchenTable: false }; }
+    else if (patch.ambient || patch.venueSound || patch.blockParty || patch.kitchenTable) { next = { ...next, music: false }; }
     next = exclusiveMusicAmbience(next);
     // A deliberate toggle in this context is that context's explicit choice: remember the
     // resulting scene for this context only (the other context keeps its own choice/default).
-    if (this.captureScene && !('scenes' in patch) && ('music' in patch || 'ambient' in patch || 'venueSound' in patch || 'blockParty' in patch)) {
+    if (this.captureScene && !('scenes' in patch) && ('music' in patch || 'ambient' in patch || 'venueSound' in patch || 'blockParty' in patch || 'kitchenTable' in patch)) {
       // A dormant menu Block Party flag must not make an in-game "everything off" read as ambience.
-      const sc: SoundScene = next.music ? 'music' : ambienceOn(next) || (this.context === 'menu' && next.blockParty) ? 'ambience' : 'none';
+      const sc: SoundScene = next.music ? 'music' : ambienceOn(next) || next.kitchenTable || (this.context === 'menu' && next.blockParty) ? 'ambience' : 'none';
       next = { ...next, scenes: { ...next.scenes, [this.context]: sc } };
     }
     this.settings = next;
@@ -246,6 +255,7 @@ class Engine {
     this.syncAmbient();
     this.syncVenue();
     this.syncBlockParty();
+    this.syncKitchenTable();
     this.syncMusic();
     this.emit();
   }
@@ -567,6 +577,7 @@ class Engine {
       this.syncAmbient();
       this.syncVenue();
       this.syncBlockParty();
+      this.syncKitchenTable();
       this.syncMusic();
     }
     // Start resume() now, inside the gesture. A simulated stuck state must not actually resume,
@@ -580,6 +591,7 @@ class Engine {
         this.syncAmbient();
         this.syncVenue();
         this.syncBlockParty();
+        this.syncKitchenTable();
         this.syncMusic();
       }
       this.publishRestore();
@@ -619,7 +631,7 @@ class Engine {
     this.stopBeds();
     const old = this.ctx;
     this.ctx = null;
-    this.master = this.sfxBus = this.sfxDuck = this.nukeBus = this.ambBus = this.venueBus = this.partyBus = this.voiceDuck = this.voiceChatBus = this.voiceChatOut = this.musicBus = this.musicDuck = null; this.voiceChatNodes.clear(); // regs kept: re-routed below
+    this.master = this.sfxBus = this.sfxDuck = this.nukeBus = this.ambBus = this.venueBus = this.partyBus = this.kitchenBus = this.voiceDuck = this.voiceChatBus = this.voiceChatOut = this.musicBus = this.musicDuck = null; this.voiceChatNodes.clear(); // regs kept: re-routed below
     this.loading = null;
     this.loadGen++;
     if (old && old.state !== 'closed') void settleAudio(old.close());
@@ -672,6 +684,10 @@ class Engine {
     this.partyTimers = [];
     this.partyNodes = [];
     this.partyPlaying = false;
+    this.kitchenTimers.forEach((t) => window.clearTimeout(t));
+    this.kitchenTimers = [];
+    this.kitchenNodes = [];
+    this.kitchenPlaying = false;
   }
 
   /* ---------- recorded bot voices (see voices/voices.ts) ---------- */
@@ -836,6 +852,7 @@ class Engine {
     this.nukeBus = c.createGain(); this.nukeBus.connect(this.master);
     this.ambBus = c.createGain(); this.ambBus.gain.value = 0; this.ambBus.connect(this.master);
     this.partyBus = c.createGain(); this.partyBus.gain.value = 0; this.partyBus.connect(this.master);
+    this.kitchenBus = c.createGain(); this.kitchenBus.gain.value = 0; this.kitchenBus.connect(this.master);
     this.venueBus = c.createGain(); this.venueBus.gain.value = 0; this.venueBus.connect(this.master);
     // Room convolver (Phase 4): a generated impulse (no audio assets) whose length/wet match the room.
     try {
@@ -862,6 +879,7 @@ class Engine {
     if (this.sfxBus) this.sfxBus.gain.setTargetAtTime(cats.sfx, this.ctx.currentTime, 0.05);
     if (this.venueBus && this.venuePlaying !== 'none') this.venueBus.gain.setTargetAtTime(0.38 * cats.ambience, this.ctx.currentTime, 0.1);
     if (this.partyBus && this.partyPlaying) this.partyBus.gain.setTargetAtTime(blockPartyLevel(cats.ambience), this.ctx.currentTime, 0.1);
+    if (this.kitchenBus && this.kitchenPlaying) this.kitchenBus.gain.setTargetAtTime(kitchenLevel(cats.ambience, this.context), this.ctx.currentTime, 0.1);
     if (this.voiceChatBus) this.voiceChatBus.gain.setTargetAtTime(cats.playerVoice, this.ctx.currentTime, 0.05); // independent of settings.on / master volume, by design
   }
 
@@ -1539,7 +1557,61 @@ class Engine {
     });
   }
 
+  /* ---------- Kitchen-Table Spades Night: close, low, sparse; fully synthesized ----------
+   * Cards snapping on Formica, ice in glasses, a pot lid rattling now and then, low sparse
+   * table talk/laughter, and mama refereeing from the stove in the distance. Voices are
+   * deliberately wordless low babble (see PR): real words would fight the seat voices. */
+  private syncKitchenTable() {
+    const want = this.settings.on && kitchenTableWanted(this.settings) && this.unlocked;
+    if (want === this.kitchenPlaying) {
+      if (want && this.kitchenBus && this.ctx) this.kitchenBus.gain.setTargetAtTime(kitchenLevel(normalizeCategoryVolumes(this.settings.volumes).ambience, this.context), this.ctx.currentTime, 0.1);
+      return;
+    }
+    if (this.kitchenPlaying) {
+      this.kitchenTimers.forEach((t) => window.clearTimeout(t)); this.kitchenTimers = [];
+      const nodes = this.kitchenNodes; this.kitchenNodes = [];
+      if (this.ctx && this.kitchenBus) this.kitchenBus.gain.setTargetAtTime(0, this.ctx.currentTime, 0.3);
+      window.setTimeout(() => nodes.forEach((n) => { try { n.stop(); } catch { /* */ } }), 1200);
+    }
+    this.kitchenPlaying = want;
+    if (!want || !this.ctx || !this.kitchenBus) return;
+    this.kitchenBus.gain.setTargetAtTime(kitchenLevel(normalizeCategoryVolumes(this.settings.volumes).ambience, this.context), this.ctx.currentTime, 0.8);
+    this.buildKitchenTable();
+  }
+  private buildKitchenTable() {
+    const B = this.kitchenBus!;
+    const live = () => this.kitchenPlaying;
+    const every = (min: number, max: number, fn: (t: number) => void) => this.vEvery(min, max, fn, live, this.kitchenTimers);
+    // the room itself: quiet close room tone
+    this.vNoise('lowpass', 240, 0.5, 0.035, 0, 0, B, this.kitchenNodes);
+    // cards snapping on Formica: a bright snap + a little table thock, every few seconds
+    every(2.8, 5.5, (t) => { this.vBurst(t, 0.025, 'bandpass', 2500, 0.045, B); this.tone(t, 165, 0.05, 'sine', 0.018, { dest: B }); });
+    // ice in glasses: sparse high tinks
+    every(5, 9, (t) => { this.tone(t, 3250, 0.11, 'sine', 0.006, { dest: B }); this.tone(t + 0.07, 4180, 0.09, 'sine', 0.004, { dest: B }); });
+    // a pot lid rattling on the stove, now and then
+    every(13, 22, (t) => { for (let i = 0; i < 4; i++) this.tone(t + i * (0.05 + Math.random() * 0.03), 590 + Math.random() * 360, 0.045, 'triangle', 0.007, { dest: B }); });
+    // close trash talk, LOW and sparse: wordless babble, with a low laugh riding sometimes
+    every(7, 13, (t) => {
+      const base = 98 + Math.random() * 42;
+      const n = 4 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < n; i++) this.tone(t + i * (0.12 + Math.random() * 0.05), base * (0.9 + Math.random() * 0.3), 0.085, 'sawtooth', 0.0075, { filter: 620, dest: B });
+      if (Math.random() < 0.45) for (let i = 0; i < 4; i++) this.tone(t + n * 0.14 + i * 0.1, base * (1.5 - i * 0.14), 0.07, 'sawtooth', 0.005, { filter: 800, dest: B });
+    });
+    // mama refereeing from the stove: farther, darker, rarer — a phrase tossed over her shoulder
+    every(24, 38, (t) => {
+      const base = 175 + Math.random() * 45;
+      for (let i = 0; i < 6; i++) this.tone(t + i * (0.15 + Math.random() * 0.05), base * (0.92 + Math.random() * 0.25), 0.1, 'sawtooth', 0.005, { filter: 480, dest: B });
+    });
+  }
+
   /* ---------- venue ambience (Release 7): quiet procedural beds, one per venue (all generated here: no recordings) ---------- */
+  /* Kitchen-Table (any-context ambience): own bus, restrained level in-game. */
+  private kitchenBus: GainNode | null = null;
+  private kitchenPlaying = false;
+  private kitchenNodes: { stop: () => void }[] = [];
+  private kitchenTimers: number[] = [];
+  /** is the Kitchen-Table bed sounding right now (exposed for checks) */
+  get kitchenNow(): boolean { return this.kitchenPlaying; }
   /* Block Party (menu-only ambience): own bus so it can never mix with a venue bed. */
   private partyBus: GainNode | null = null;
   private partyPlaying = false;
