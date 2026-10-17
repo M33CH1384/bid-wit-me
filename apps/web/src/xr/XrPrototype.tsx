@@ -1,35 +1,38 @@
 /** THROWAWAY WebXR prototype (flag-gated: /?xr=1). Not part of the game.
  *  Goal (per docs/visionpro-vr-spike.md §6.4): enter immersive VR, sit at the table (Sitting view),
- *  look-and-pinch (or click, on desktop) plays one card with the normal slam flight.
- *  Honestly untested on real headsets — see PR body. Slam rules carry over: the play uses
- *  slamFeel(1) (Standing/max semantics, parabolic arc per #178). */
+ *  look-and-pinch (or click, on desktop) plays one card, which lands FLAT on the felt
+ *  (xrPlayedRest -> the 2D game's flatRest). Honestly untested on real headsets — see PR body.
+ *  Sitting is the default, and a default play is GENTLE (XR_DEFAULT_INTENSITY): slam only via a
+ *  V/flick-equivalent gesture per the spike mapping, never max by default. */
 import { Suspense, useRef, useState } from 'react';
 import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber';
 import { XR, createXRStore, XROrigin } from '@react-three/xr';
-import { Group, Vector3 } from 'three';
+import { Group, Quaternion, Vector3 } from 'three';
 import { slamFeel } from '../slam';
+import { XR_DEFAULT_INTENSITY, xrPlayedRest } from './restPose';
 
 const HAND = ['AS', 'KS', 'QS', 'JS', '10S', '9S', 'AH'];
 const store = createXRStore({ handTracking: true });
 
-type PlayAnim = { t: number; from: Vector3; to: Vector3; arc: number; dur: number } | null;
+type PlayAnim = { t: number; from: Vector3; to: Vector3; fromQ: Quaternion; toQ: Quaternion; arc: number; dur: number } | null;
 
 function ProtoCard({ i, id, played, onPlay }: { i: number; id: string; played: boolean; onPlay: (id: string) => void }) {
   const ref = useRef<Group>(null);
   const anim = useRef<PlayAnim>(null);
   const a = (i - (HAND.length - 1) / 2) * 0.16;
   const home = new Vector3(a, 0.86, 0.55 - Math.abs(i - 3) * 0.012);
-  const spot = new Vector3(0, 0.765, -0.15);
+  const rest = xrPlayedRest();
+  const spot = new Vector3(...rest.position);
   useFrame((state, dt) => {
     const g = ref.current; if (!g) return;
-    if (played && !anim.current) { const f = slamFeel(1); anim.current = { t: 0, from: g.position.clone(), to: spot, arc: f.arc, dur: f.duration }; }
+    if (played && !anim.current) { const f = slamFeel(XR_DEFAULT_INTENSITY); anim.current = { t: 0, from: g.position.clone(), to: spot, fromQ: g.quaternion.clone(), toQ: new Quaternion(...rest.quaternion), arc: f.arc, dur: f.duration }; }
     const an = anim.current;
     if (an) {
       an.t = Math.min(1, an.t + dt / an.dur);
       g.position.lerpVectors(an.from, an.to, an.t);
       g.position.y += Math.sin(Math.PI * an.t) * an.arc * 0.35;
-      g.rotation.x = -Math.PI / 2 + an.t * 0.5;
-      if (an.t >= 1) anim.current = null;
+      g.quaternion.slerpQuaternions(an.fromQ, an.toQ, an.t); // ends exactly flat (0deg tilt)
+      if (an.t >= 1) { g.position.copy(an.to); g.quaternion.copy(an.toQ); anim.current = null; }
     }
     // desktop-fallback test probe: screen coords of each unplayed card
     if (!state.gl.xr.isPresenting) {
@@ -73,7 +76,7 @@ export default function XrPrototype() {
   const [support, setSupport] = useState<string>('checking…');
   const play = (id: string) => {
     setPlayed(id);
-    (window as unknown as { __bwmXr?: unknown }).__bwmXr = { played: id, slam: 'standing-max (slamFeel(1))' };
+    (window as unknown as { __bwmXr?: unknown }).__bwmXr = { played: id, intensity: XR_DEFAULT_INTENSITY, view: 'sitting' };
   };
   const check = async () => {
     try {
@@ -88,7 +91,7 @@ export default function XrPrototype() {
         <button type="button" onClick={() => { void check(); void store.enterVR(); }}>Enter VR</button>
         <button type="button" onClick={() => { location.href = '/'; }}>Back to game</button>
         <span style={{ fontSize: 12, opacity: 0.85 }}>{support}</span>
-        <span style={{ fontSize: 12 }}>{played ? `Played ${played} (max slam)` : 'Pinch/click a hand card to play it'}</span>
+        <span style={{ fontSize: 12 }}>{played ? `Played ${played} (gentle, flat landing)` : 'Pinch/click a hand card to play it'}</span>
       </div>
       <Canvas camera={{ position: [0, 1.35, 1.15], fov: 55, near: 0.05, far: 30 }} gl={{ antialias: true }}>
         <XR store={store}>
