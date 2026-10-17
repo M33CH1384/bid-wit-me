@@ -511,7 +511,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
         s.firedLand = land;
         const sl2 = slamNow.current;
         land.split(',').forEach((c, i) => {
-          if (c === 'play' && sl2 && sl2.intensity >= 0) { sound.cardSmack(sl2.intensity); return; }
+          if (c === 'play' && sl2 && sl2.intensity >= 0) { sound.cardSmack(sl2.intensity, { x: target.p[0], z: target.p[2] }); return; }
           fireCue(c, i ? 0.02 : 0);
         });
         if (!fx.reduced && !fx.osReducedMotion) {

@@ -52,3 +52,13 @@ describe('spatial phase 2 plumbing', () => {
     expect(ctx.listener!.positionY.value).toBeGreaterThan(0);
   });
 });
+describe('spatial phase 3: variant no-dup rule', () => {
+  it('never repeats the previous variant', async () => {
+    const { pickVariantIdx } = await import('../src/audio');
+    for (let last = 0; last < 3; last++) for (let r = 0; r < 20; r++) {
+      const i = pickVariantIdx(3, last, () => r / 20);
+      expect(i).not.toBe(last); expect(i).toBeGreaterThanOrEqual(0); expect(i).toBeLessThan(3);
+    }
+    expect(pickVariantIdx(1, 0)).toBe(0);
+  });
+});

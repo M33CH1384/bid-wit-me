@@ -11,7 +11,7 @@
  * - Settings (on/off, volume, ambience) persist in localStorage.
  */
 import { useSyncExternalStore } from 'react';
-import { normalizeCategoryVolumes } from './spatial';
+import { Spatializer, defaultAudioQuality, normalizeCategoryVolumes, pickPanningModel, type CamPose } from './spatial';
 import { audioElementPool } from './audioPool';
 import { audioContextAction, settleAudio, soundRestorePending } from './audioSession';
 
@@ -113,6 +113,14 @@ const AC: typeof AudioContext | undefined = typeof window !== 'undefined'
   : undefined;
 
 interface Deck { el: HTMLAudioElement; gain: GainNode; track: number | null; ready: Promise<boolean> | null; url: string | null }
+
+/** Variant picker with a no-repeat rule: never the same sample twice in a row for an event. */
+export function pickVariantIdx(len: number, last: number, rand: () => number = Math.random): number {
+  if (len <= 1) return 0;
+  let i = Math.floor(rand() * len);
+  if (i === last) i = (i + 1) % len;
+  return i;
+}
 
 class Engine {
   settings: SoundSettings = load();
@@ -608,6 +616,16 @@ class Engine {
     this.ambBus = c.createGain(); this.ambBus.gain.value = 0; this.ambBus.connect(this.master);
     this.venueBus = c.createGain(); this.venueBus.gain.value = 0; this.venueBus.connect(this.master);
     this.voiceDuck = c.createGain(); this.voiceDuck.connect(this.master);
+    // Spatial groundwork (Phase 3): one Spatializer over this engine; spatial off (or no PannerNode)
+    // leaves the graph exactly as it was. Listener starts at the standing portrait pose; the scene
+    // can move it with setListenerPose as the camera view changes.
+    try {
+      const probe = c.createPanner(); probe.panningModel = 'HRTF';
+      const nav = typeof navigator !== 'undefined' ? navigator as Navigator & { deviceMemory?: number } : undefined;
+      const coarse = typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches;
+      this.spatializer = new Spatializer(this.settings.quality ?? defaultAudioQuality({ deviceMemory: nav?.deviceMemory, cores: nav?.hardwareConcurrency }), this.settings.spatial !== false, pickPanningModel(probe.panningModel === 'HRTF', coarse));
+      this.spatializer.applyListener(c as never, { pos: [0, 4.5, 3.75], look: [0, 0, 0.38] });
+    } catch { this.spatializer = null; }
     this.applyGain();
     if (!opts?.skipLoad) this.load();
     return c;
@@ -638,7 +656,9 @@ class Engine {
 
   /* ---------- playback ---------- */
   /** Card landing scaled by slam intensity 0..1: a soft tap for a gentle drop, a punchy smack + table thud for a flick. */
-  cardSmack(intensity: number) {
+  /** Landing smack. Fires on the visual impact frame (caller guarantees timing, #169); the optional
+   *  landing point only routes it through a seat/point panner — timing is never re-scheduled. */
+  cardSmack(intensity: number, point?: { x: number; z: number }) {
     if (!this.settings.on || !this.unlocked || !this.atTable) return;
     this.ensure();
     const c = this.ctx;
@@ -648,7 +668,7 @@ class Engine {
     this.played.smack = (this.played.smack ?? 0) + 1;
     this.lastSmack = s;
     const t = c.currentTime;
-    this.sample('play', t, s.gain, s.rate);
+    this.sample('play', t, s.gain, s.rate, undefined, point);
     if (s.thud > 0) this.thud(t + 0.005, s.thud);
   }
   lastSmack: SmackSound | null = null;
@@ -710,13 +730,23 @@ class Engine {
     }
   }
 
-  private sample(key: string, t: number, gain: number, rate = 1, maxDur?: number) {
+  private lastVariant = new Map<string, number>();
+  private sample(key: string, t: number, gain: number, rate = 1, maxDur?: number, point?: { x: number; z: number }) {
     const c = this.ctx!; const list = FILES[key]!;
-    const buf = this.buffers.get(list[Math.floor(Math.random() * list.length)]!);
+    const idx = pickVariantIdx(list.length, this.lastVariant.get(key) ?? -1);
+    this.lastVariant.set(key, idx);
+    const buf = this.buffers.get(list[idx]!);
     if (!buf) return;
     const src = c.createBufferSource(); src.buffer = buf; src.playbackRate.value = rate;
     const g = c.createGain(); g.gain.value = gain;
-    src.connect(g).connect(this.sfxBus!);
+    const pan = point && this.spatializer ? this.spatializer.pointPanner(c as never, point.x, point.z) : null;
+    if (pan) {
+      (window as unknown as { __bwmSpatial?: unknown }).__bwmSpatial = { x: point!.x, z: point!.z, model: pan.panningModel, at: performance.now() };
+      src.connect(g); (g as GainNode).connect(pan as unknown as AudioNode); (pan as unknown as AudioNode).connect(this.sfxBus!);
+      src.onended = () => this.spatializer?.release();
+    } else {
+      src.connect(g).connect(this.sfxBus!);
+    }
     src.start(t);
     if (maxDur) { g.gain.setValueAtTime(gain, t + Math.max(0, maxDur - 0.18)); g.gain.linearRampToValueAtTime(0.0001, t + maxDur); src.stop(t + maxDur + 0.05); }
   }
@@ -1190,6 +1220,9 @@ class Engine {
 
   /* ---------- venue ambience (Release 7): quiet procedural beds, one per venue (all generated here: no recordings) ---------- */
   private venueBus: GainNode | null = null;
+  spatializer: Spatializer | null = null;
+  /** Move the spatial listener (camera view changes); pose from three/layout cameraFor via spatial.listenerPose callers. */
+  setListenerPose(pose: CamPose) { try { if (this.ctx && this.spatializer) this.spatializer.applyListener(this.ctx as never, pose); } catch { /* stereo fallback */ } }
   private venueBedId: VenueBed = 'none';
   private venuePlaying: VenueBed = 'none';
   private venueNodes: { stop: () => void }[] = [];

@@ -97,11 +97,16 @@ export class Spatializer {
   constructor(private quality: AudioQuality, private enabled: boolean, private model: 'HRTF' | 'equalpower') {}
   get livePanners(): number { return this.live; }
   seatPanner(ctx: SpatialCtxLike, pos: SeatPos, n: number): PannerLike | null {
+    const pt = seatPoint(pos, n);
+    return this.pointPanner(ctx, pt.x, pt.z, pt.y);
+  }
+  /** Panner at a world point (e.g. where a card lands). Null when spatial is off or the cap is hit —
+   *  callers then connect straight to the bus (today's stereo graph). */
+  pointPanner(ctx: SpatialCtxLike, x: number, z: number, y = 0.55): PannerLike | null {
     if (!this.enabled || this.live >= pannerCap(this.quality)) return null;
     const p = ctx.createPanner();
     p.panningModel = this.model; p.distanceModel = 'inverse'; p.refDistance = 2.2; p.rolloffFactor = 0.7;
-    const pt = seatPoint(pos, n);
-    p.positionX.value = pt.x; p.positionY.value = pt.y; p.positionZ.value = pt.z;
+    p.positionX.value = x; p.positionY.value = y; p.positionZ.value = z;
     this.live++;
     return p;
   }
