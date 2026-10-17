@@ -1612,10 +1612,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           <div className="modal glass slant confirm" role="dialog" aria-label="Leave this game?" data-testid="confirm-leave" onPointerDown={(e) => e.stopPropagation()}>
             <div className="panel-title big">LEAVE THIS GAME?</div>
             <p className="muted">{onSuspend ? 'Leave ends it for good. Save & quit lets you resume from the menu.' : 'Your progress in this game will be lost.'}</p>
-            <div className="bid-row">
-              <button type="button" onClick={() => setConfirmLeave(false)}>Stay</button>
-              {onSuspend && <button type="button" data-testid="save-quit" onClick={() => { suspendGame(); onSuspend(); }}>Save &amp; quit</button>}
-              <button type="button" className="primary" onClick={leave}>Leave</button>
+            <div className="confirm-actions">
+              <button type="button" className="stay-primary" onClick={() => setConfirmLeave(false)}>Stay</button>
+              {onSuspend && <button type="button" className="ghost-btn" data-testid="save-quit" onClick={() => { suspendGame(); onSuspend(); }}>Save &amp; quit</button>}
+              <div className="exit-divider" aria-hidden="true" />
+              <button type="button" className="leave-red" onClick={leave}>Leave</button>
             </div>
             <button type="button" className="link fb-open-ingame" data-testid="open-feedback" onClick={() => { setConfirmLeave(false); setFeedback(true); }}>✉ Send feedback (bug, idea…)</button>
           </div>
@@ -1653,10 +1654,10 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
               </ol>
               {seriesChip()}
               <p className="muted small" data-testid="end-reason">{endReasonText(r, st, (side) => sideName(r, side, names))} {st.history.length} hand{st.history.length === 1 ? '' : 's'} played.</p>
-              <div className="bid-row">
-                <button type="button" onClick={() => setShowPad(true)}>Score pad</button>
-                <button type="button" data-testid="main-menu" onClick={mainMenu}>Main menu</button>
-                {!spectating && <button type="button" className="primary" data-testid="rematch" onClick={() => onRematch(nextDealer(st))}>Rematch</button>}
+              <div className="confirm-actions">
+                <button type="button" className="quiet-row-btn" onClick={() => setShowPad(true)}>Score pad</button>
+                {!spectating && <button type="button" className="primary big" data-testid="rematch" onClick={() => onRematch(nextDealer(st))}>Play again — Rematch</button>}
+                <button type="button" className="ghost-btn" data-testid="main-menu" onClick={mainMenu}>Back to home</button>
               </div>
             </div>
           </div>
@@ -1689,11 +1690,12 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
                 <button type="button" className="link muted" onClick={() => { const s = loadTipJar(); saveTipJar({ ...s, never: true }); setTipNudge(false); }}>Don't show again</button>
               </p>
             )}
-            <div className="bid-row">
-              <button type="button" onClick={() => setShowPad(true)}>Score pad</button>
-              <button type="button" data-testid="main-menu" onClick={mainMenu}>Main menu</button>
-              <button type="button" onClick={leave}>Change mode</button>
-              <button type="button" className="primary" onClick={() => onRematch(nextDealer(st))}>Rematch</button>
+            <div className="confirm-actions">
+              <button type="button" className="quiet-row-btn" onClick={() => setShowPad(true)}>Score pad</button>
+              <button type="button" className="primary big" onClick={() => onRematch(nextDealer(st))}>Play again — Rematch</button>
+              <button type="button" className="ghost-btn" data-testid="main-menu" onClick={mainMenu}>Back to home</button>
+              <div className="exit-divider" aria-hidden="true" />
+              <button type="button" className="leave-red" onClick={leave}>Change mode</button>
             </div>
           </div>
         </div>
