@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeSettings } from '../src/settings';
 import { dragSlamIntensity, isVGesture, type DragSample } from '../src/slam';
-import { CAMERA_VIEW_TWEEN_MS, cameraFor, cameraPoseAt, cardScreenQuad, handFan, phoneHandFan } from '../src/three/layout';
+import { CAMERA_VIEW_TWEEN_MS, SITTING_EXTRA_PITCH_DEG, cameraFor, cameraPoseAt, cardScreenQuad, handFan, phoneHandFan } from '../src/three/layout';
 
 const path = (pts: [number, number][]): DragSample[] => pts.map(([x, y], i) => ({ t: i * 40, x, y }));
 describe('camera view', () => {
@@ -17,6 +17,17 @@ describe('camera view', () => {
     expect(si.pos[2]).toBeLessThan(3.1); // closer over the felt (was 3.5625)
     const dist = (c: typeof si) => Math.hypot(c.pos[1] - c.look[1], c.pos[2] - c.look[2]);
     expect(dist(si)).toBeLessThan(dist(st)); // nearer the trick cards lying on the felt
+  });
+  it('sitting pitches exactly +7 degrees further down toward the felt (Demetrius Sat 7:03am), position/fov/standing untouched', () => {
+    const pitch = (c: ReturnType<typeof cameraFor>) => Math.atan2(c.pos[1]! - c.look[1]!, c.pos[2]! - c.look[2]!) * (180 / Math.PI);
+    expect(SITTING_EXTRA_PITCH_DEG).toBe(7);
+    const st = cameraFor(390 / 844, false, 'standing'); const si = cameraFor(390 / 844, false, 'sitting');
+    expect(si.pos).toEqual([0, 1.98, 3.0]); // seated position unchanged — only the aim pitched
+    // the pre-tilt seated aim (y 1.98 / z 3.00, look [0,0,0.68]) pitched 40.5 degrees down; now exactly +7 more
+    expect(pitch(si)).toBeCloseTo(47.5, 0);
+    expect(pitch(si)).toBeGreaterThan(pitch(st) - 10); // still a real over-the-table angle, not a top-down view
+    expect(si.look[1]).toBeLessThan(0); // aiming below the table centre line, at the felt
+    expect(st.look).toEqual([0, 0, 0.38]); // standing aim untouched
   });
   it('sitting applies in short landscape too', () => {
     const st = cameraFor(844 / 390, true, 'standing'); const si = cameraFor(844 / 390, true, 'sitting');
