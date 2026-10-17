@@ -46,7 +46,9 @@ describe('Kitchen-Table Spades Night ambience (menus + in-game)', () => {
     expect(kitchenTableWanted(sound.settings)).toBe(true); // back on in menus
   });
   it('unlike Block Party it is wanted in-game as well as in menus', () => {
-    const s = { ...sound.settings, kitchenTable: true, blockParty: true, music: false };
+    // one-at-a-time (menu exclusivity PR): the recorded winner is the menu scene that may
+    // sound; here Block Party is the menu winner while Kitchen-Table is the table's bed
+    const s = { ...sound.settings, kitchenTable: true, blockParty: true, music: false, menuAmbience: 'blockParty' as const };
     expect(kitchenTableWanted(s)).toBe(true);
     expect(blockPartyWanted(s, 'game')).toBe(false);
     expect(blockPartyWanted(s, 'menu')).toBe(true);
