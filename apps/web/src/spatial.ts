@@ -99,10 +99,16 @@ export function styleForVenue(venue: string): RoomStyle | undefined { return ROO
  *  Online: the shared room venue decides (every client same). Explicit soundscape: that room.
  *  Auto (no explicit soundscape): a seeded roll per game — and that rolled room becomes the
  *  visual venue for the game too. One style per room, all 11 venues covered by ROOM_STYLES. */
-export function sessionRoom(o: { explicit?: string; seed?: string; onlineVenue?: string }): RoomStyle {
+export function sessionRoom(o: { explicit?: string; visualVenue?: string; storyRoom?: string; seed?: string; onlineVenue?: string }): RoomStyle {
   if (o.onlineVenue) return styleForVenue(o.onlineVenue) ?? ROOM_STYLES[0]!;
-  if (o.explicit && o.explicit !== 'auto' && (SOUNDSCAPE_ROOMS as string[]).includes(o.explicit)) return styleForBed(o.explicit as VenueBed) ?? ROOM_STYLES[0]!;
-  return styleForBed(resolveSoundscape({ seed: o.seed })) ?? ROOM_STYLES[0]!;
+  // 1) An explicit venue picked in settings wins (seen = heard = named, still unified).
+  if (o.visualVenue) return styleForVenue(o.visualVenue) ?? ROOM_STYLES[0]!;
+  // 2) A Story stop's room (the explicit soundscape carries it until Story data lands).
+  const story = o.storyRoom ?? o.explicit;
+  if (story && story !== 'auto' && (SOUNDSCAPE_ROOMS as string[]).includes(story)) return styleForBed(story as VenueBed) ?? ROOM_STYLES[0]!;
+  // 3) Auto: roll over ALL 11 rooms — Classic included (its bed is 'none': a quiet studio game).
+  if (o.seed !== undefined) return ROOM_STYLES[seedHash(o.seed) % ROOM_STYLES.length]!;
+  return ROOM_STYLES[0]!;
 }
 /** Convolver character per room (pre-baked/generated IRs only — no assets): length + wet level. */
 export const IR_SPECS: Record<RoomStyle['reverb'], { seconds: number; wet: number }> = {

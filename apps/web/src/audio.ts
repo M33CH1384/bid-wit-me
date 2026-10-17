@@ -1257,8 +1257,8 @@ class Engine {
   /** Pick this game's room and apply its whole character: ambience bed + convolver IR + card surface.
    *  The bed starts through setVenueBed/syncVenue, which only sounds once unlocked — on iPhone the
    *  first tap's wake() re-runs syncVenue, so the fade begins at first unlock, never before it can. */
-  applySoundscape(seed: string, onlineVenue?: string): RoomStyle {
-    const style = sessionRoom({ explicit: this.settings.soundscape, seed, onlineVenue });
+  applySoundscape(seed: string, onlineVenue?: string, visualVenue?: string): RoomStyle {
+    const style = sessionRoom({ explicit: this.settings.soundscape, storyRoom: this.settings.soundscape, visualVenue, seed, onlineVenue });
     this.roomStyle = style;
     if (this.convolver && this.ctx) {
       const spec = irSpec(style);

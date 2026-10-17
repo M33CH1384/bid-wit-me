@@ -16,15 +16,22 @@ describe('spatial phase 4: unified room (seen = heard = named)', () => {
     expect(a.name.length).toBeGreaterThan(2);
     expect(ROOM_STYLES).toContain(a); // venue field on the style is what Table renders
   });
-  it('online shared venue wins; explicit soundscape wins over the roll', () => {
-    expect(sessionRoom({ seed: 'game-42', onlineVenue: 'barbershop' }).venue).toBe('barbershop');
-    expect(sessionRoom({ seed: 'game-42', explicit: 'basement' }).name).toBe('Basement Spades Night');
+  it('resolver order: online > explicit settings venue > Story room > Auto roll', () => {
+    expect(sessionRoom({ seed: 'game-42', onlineVenue: 'barbershop', visualVenue: 'yacht' }).venue).toBe('barbershop');
+    expect(sessionRoom({ seed: 'game-42', visualVenue: 'mansion', storyRoom: 'basement' }).venue).toBe('mansion'); // explicit venue wins
+    expect(sessionRoom({ seed: 'game-42', storyRoom: 'basement' }).name).toBe('Basement Spades Night'); // then Story room
     expect(sessionRoom({ seed: 'game-42', explicit: 'basement', onlineVenue: 'yacht' }).venue).toBe('yacht');
+  });
+  it('Auto can roll Classic (all 11 rooms in the pool)', () => {
+    const seen = new Set<string>();
+    for (let i = 0; i < 300; i++) seen.add(sessionRoom({ seed: `g${i}` }).venue);
+    expect(seen.has('classic')).toBe(true);
+    expect(seen.size).toBeGreaterThan(8);
   });
   it('loading + engine wiring: 3.0s minimum, room named, ambience starts under the loader', () => {
     const table = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
     expect(table).toContain('3000 - (performance.now() - loadShownAt.current)');
-    expect(table).toContain('sound.applySoundscape(seed, online?.venue)');
+    expect(table).toContain('sound.applySoundscape(seed, online?.venue,');
     expect(table).toContain('const venue: VenueId = roomStyle.venue as VenueId');
     const audio = readFileSync(new URL('../src/audio.ts', import.meta.url), 'utf8');
     expect(audio).toContain('__bwmRoomPlaying'); // bed-start probe (fires on first unlock via wake->syncVenue)

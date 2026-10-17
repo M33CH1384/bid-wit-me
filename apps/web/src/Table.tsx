@@ -1039,10 +1039,10 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const reduceFx = useReduceEffects();
   // Unified session room (Phase 4): seen = heard = named. Online the shared room venue decides;
   // Auto rolls a room from the game seed and that room IS the visual venue for this game.
-  const roomStyle = sessionRoom({ explicit: sound.get().soundscape, seed, onlineVenue: online?.venue });
+  const roomStyle = sessionRoom({ explicit: sound.get().soundscape, visualVenue: !online && settings.venue !== 'random' ? settings.venue : undefined, seed, onlineVenue: online?.venue });
   const venue: VenueId = roomStyle.venue as VenueId;
   const [roomName, setRoomName] = useState<string | undefined>(undefined);
-  useEffect(() => { const style = sound.applySoundscape(seed, online?.venue); setRoomName(style.name); return () => sound.setVenueBed('none'); }, [seed]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { const style = sound.applySoundscape(seed, online?.venue, !online && settings.venue !== 'random' ? settings.venue : undefined); setRoomName(style.name); return () => sound.setVenueBed('none'); }, [seed]); // eslint-disable-line react-hooks/exhaustive-deps
   // nuke watchdog: the blast is normally cued by the second Joker's 3D landing; on a stalled renderer (Safari compiling
   // shaders, a backgrounded tab, very slow frames) that landing can come late or never — so once a nuked trick is on
   // the table, make sure the nuke fires anyway (fx dedupes, so it never plays twice).
