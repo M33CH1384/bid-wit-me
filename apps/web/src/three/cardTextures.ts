@@ -2,6 +2,7 @@ import { CanvasTexture, SRGBColorSpace, type Texture } from 'three';
 import type { Card } from '@spades/rules';
 import { drawBack, paintFace, paintedFaceKeys, repaintFace, loadLogo, onLogoLoad } from '../cardArt';
 import { getActiveDeck, onDeckArtLoad } from '../decks';
+import { noteDiag } from '../diagnostics';
 
 const cache = new Map<string, Texture>();
 
@@ -48,7 +49,7 @@ function loadDeckBack(deck: string, onReady: () => void): HTMLImageElement | nul
     img = new Image();
     backImages.set(deck, img);
     img.onload = () => backWaiters.get(deck)?.forEach((f) => f());
-    img.onerror = () => { backFailed.add(deck); backWaiters.get(deck)?.forEach((f) => f()); };
+    img.onerror = () => { noteDiag('card-back', deckBackUrl(deck)); backFailed.add(deck); backWaiters.get(deck)?.forEach((f) => f()); };
     img.src = deckBackUrl(deck);
   }
   if (img.complete && img.naturalWidth && !backFailed.has(deck)) return img;

@@ -860,6 +860,8 @@ export interface PlayerView {
   failStreak: number[];
   /** Cutthroat seats that are out. */
   eliminated: boolean[];
+  /** Books in this hand when the table is short (17 with three still in). */
+  trickCount?: number;
   bidOptions: BidOptions | null;
   legal: Card[];
   /** This seat can claim 'Run it!': guaranteed from cards they can see, not from the hidden layout. */
@@ -889,7 +891,7 @@ function project(st: GameState, seat: Seat, spectate: boolean): PlayerView {
     bids: [...st.bids], revealed: [...st.revealed], exchange: st.exchange.map((e) => ({ ...e })),
     trick: st.trick, tricks: st.tricks, tricksWon: [...st.tricksWon], spadesBroken: st.spadesBroken,
     scores: [...st.scores], bags: [...st.bags], history: st.history, result: st.result,
-    failStreak: [...(st.failStreak ?? [])], eliminated: [...(st.eliminated ?? [])],
+    failStreak: [...(st.failStreak ?? [])], eliminated: [...(st.eliminated ?? [])], ...(st.trickCount !== undefined ? { trickCount: st.trickCount } : {}),
     bidOptions: spectate ? null : st.phase === 'bidding' && st.turn === seat ? bidOptions(st, seat) : null,
     legal: spectate ? [] : legalPlays(st, seat),
     // Spectators never learn whether a seat can run it, and we don't search to find out.
