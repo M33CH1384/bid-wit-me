@@ -1,4 +1,4 @@
-/** Standing max-slam flight must arc (rise then fall, never a beam) + plate View toggle at 390px. */
+/** Standing max-slam flight (Turn up ON) must arc (rise then fall, never a beam) + plate View toggle at 390px. */
 import { makeRules, newGame, type GameState } from '@spades/rules';
 import { webkit, type Browser, type Page } from 'playwright-core';
 import { DEFAULT_SETTINGS } from '../src/settings';
@@ -7,7 +7,7 @@ const SHOTS = process.env.BWM_SHOTS ?? '/opt/cursor/artifacts';
 const dealt = newGame(makeRules('joker'), 'drag-13', { dealer: 3 });
 const st: GameState = { ...dealt, phase: 'playing', bids: [3, 3, 3, 3], tricks: [], tricksWon: [0, 0, 0, 0], turn: 0, trick: { leader: 0, winner: null, plays: [] }, spadesBroken: true, revealed: [true, true, true, true] };
 type W = { __bwmHandHits: HandHitCard[]; __bwmFly?: Record<string, { t: number; x: number; y: number }[]>; __bwmDrag?: string; __bwmCam?: { view: string; y: number } };
-const save = JSON.stringify({ v: 1, savedAt: Date.now(), seed: st.seed, settings: { ...DEFAULT_SETTINGS, speed: 'slow', quality: 'low', botLevel: 'novice', view: 'standing' }, state: st, chat: [], names: ['You', 'Big Mike', 'Omar', 'Sven'], teamNames: null });
+const save = JSON.stringify({ v: 1, savedAt: Date.now(), seed: st.seed, settings: { ...DEFAULT_SETTINGS, speed: 'slow', quality: 'low', botLevel: 'novice', view: 'standing', turnUp: true }, state: st, chat: [], names: ['You', 'Big Mike', 'Omar', 'Sven'], teamNames: null });
 async function open(b: Browser): Promise<Page> {
   const page = await b.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
   page.setDefaultTimeout(30000);
@@ -32,7 +32,7 @@ async function open(b: Browser): Promise<Page> {
     await page.getByTestId('view-toggle-plate').click();
     await page.waitForFunction(() => (window as unknown as W).__bwmCam?.view === 'standing', undefined, { timeout: 15000 });
     await page.waitForTimeout(800);
-    // grip a legal card and drag-play it (Standing => max slam)
+    // grip a legal card and drag-play it (Standing + Turn up => max slam)
     const hits = await page.evaluate(() => (window as unknown as W).__bwmHandHits);
     const legal = await page.locator('[data-testid="hand"] [data-legal="true"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-testid')!.slice(5)));
     let g: { id: string; x: number; y: number } | null = null;

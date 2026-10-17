@@ -99,6 +99,8 @@ export interface SceneProps {
   venue?: VenueId;
   /** camera view: standing (default) or sitting (lower/closer) */
   view?: 'standing' | 'sitting';
+  /** Turn up (slam mode): Standing drags slam at max only when this is on. */
+  turnUp?: boolean;
 }
 
 function CameraRig({ view = 'standing' }: { view?: 'standing' | 'sitting' }) {
@@ -1263,7 +1265,7 @@ function HallAttach({ active }: { active: boolean }) {
 }
 
 /** Hand taps resolve against the quads Cards published this render, before the raycaster. */
-function HandPointer({ onTap, onDrop, legal, onDragging, view = 'standing' }: { onTap: (card: Card) => void; onDrop?: (card: Card, slam?: number, rel?: [number, number]) => void; legal: readonly Card[]; onDragging: (card: Card | null) => void; view?: 'standing' | 'sitting' }) {
+function HandPointer({ onTap, onDrop, legal, onDragging, view = 'standing', turnUp = false }: { onTap: (card: Card) => void; onDrop?: (card: Card, slam?: number, rel?: [number, number]) => void; legal: readonly Card[]; onDragging: (card: Card | null) => void; view?: 'standing' | 'sitting'; turnUp?: boolean }) {
   const dragging = useRef(onDragging);
   dragging.current = onDragging;
   const gl = useThree((s) => s.gl);
@@ -1320,7 +1322,7 @@ function HandPointer({ onTap, onDrop, legal, onDragging, view = 'standing' }: { 
       if (result === 'play') {
         d.trail.push({ t: e.timeStamp || performance.now(), x: e.clientX, y: e.clientY });
         const v = releaseVelocity(d.trail);
-        const intensity = dragSlamIntensity(d.trail, view);
+        const intensity = dragSlamIntensity(d.trail, view, turnUp);
         const rect = el.getBoundingClientRect();
         // The 3D card takes over at the finger point (card centre), so the copy can go at once.
         noteDrop({ card: d.id, x: e.clientX - rect.left, y: e.clientY - d.h * 0.2 - rect.top, intensity, at: performance.now() });
@@ -1467,7 +1469,7 @@ export default function Scene(props: SceneProps) {
       )}
       {showTable && props.positions.map((p, seat) => <TurnRing key={seat} pos={p} n={props.n} active={props.turnSeat === seat} />)}
       {showTable && <Cards {...props} dragCard={dragCard} aspect={aspect} fontsReady={fontsReady} safeFrac={safeFrac} lit={lit} />}
-      {showTable && <HandPointer onTap={props.onCardTap} onDrop={props.onCardDrop} legal={props.legal} onDragging={setDragCard} view={props.view} />}
+      {showTable && <HandPointer onTap={props.onCardTap} onDrop={props.onCardDrop} legal={props.legal} onDragging={setDragCard} view={props.view} turnUp={props.turnUp} />}
       <AfterTable quality={props.quality} tableUp={textured} />
       {layerReady && <Badges positions={props.positions} n={props.n} human={props.human} renderSeat={props.renderSeat} portal={badgeLayer} safeFrac={safeFrac} short={!!props.short} safe={props.safe ?? { l: 0, r: 0, t: 0, b: 0 }} />}
     </Canvas>
