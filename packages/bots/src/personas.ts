@@ -51,9 +51,18 @@ export type PersonaId = 'professor' | 'mama' | 'hype' | 'petty' | 'og' | 'hustle
   | 'deacon' | 'conspiracy' | 'barber' | 'gambler' | 'hothead' | 'comedian' | 'lilcuz' | 'coach' | 'smooth' | 'storyteller' | 'influencer' | 'sorelose';
 export type TalkIntensity = 'family' | 'cookout' | 'nomercy';
 export type LineCond = 'ace' | 'neg' | 'big' | 'little' | 'jk';
+/**
+ * A game-state fact a line fits (step 1 of contextual bot speech). Facts are carried on
+ * TalkEvent (see moments.ts) and checked speaker-relative in talk.ts: score buckets are
+ * for the speaker's side, `bidder*` says who held the contract relative to the speaker.
+ * A fact is a PREFERENCE, never a gate: when no tagged line fits, the untagged pool speaks.
+ */
+export type LineFact = 'close' | 'aheadBig' | 'behindBig' | 'lateHand' | 'deciding' | 'bidderSelf' | 'bidderPartner' | 'bidderOpp';
 /** per raw line: minimum intensity and an event condition (lines without an entry are Family Friendly, unconditional) */
 export interface LineMeta {
   min?: 'cookout' | 'nomercy'; cond?: LineCond;
+  /** the game-state fact this line fits (preferred strongly when the moment carries it) */
+  fact?: LineFact;
   /** the speaker refers to themself as a woman / man ("mama's thinking", "grown-man card"): only bots of that gender say it */
   self?: 'f' | 'm';
   /** the line genders its target ({them} "IS HIM", "baby boy"): only said about a bot of that gender (never a human) */
@@ -567,6 +576,89 @@ for (const sec of PACK) {
 for (const list of [COMMON, ...Object.values(PERSONAS).map((p) => p.lines)]) {
   for (const arr of Object.values(list)) for (const l of arr ?? []) if (MILD.test(l) && !LINE_META[l]?.min) LINE_META[l] = { ...LINE_META[l], min: 'cookout' };
 }
+
+// ---- contextual facts: existing lines that already textually fit a game state, tagged by hand ----
+// ~66 lines across the highest-value kinds. No new lines written; untagged lines stay in play as fallback.
+export const FACT_TAGS: Record<string, LineFact> = {
+  // setThem: the contract was the opponents' (bidderOpp), or the scoreboard is the joke (aheadBig / close)
+  "y'all bid {bid} with what?": 'bidderOpp',
+  "you bid {bid}. you took fewer. I believe that's called math.": 'bidderOpp',
+  "baby, you bid {bid}? that was cute. sit down.": 'bidderOpp',
+  "remember when y'all said {bid}? I do.": 'bidderOpp',
+  "You bid {bid} for THAT?!": 'bidderOpp',
+  "y'all bid {bid} and took a punchline.": 'bidderOpp',
+  "That bid was a fairy tale!": 'bidderOpp',
+  "You should've bid what you HAD!": 'bidderOpp',
+  "You need a financial advisor for that bid!": 'bidderOpp',
+  "hustled out of {bid} books 🎩": 'bidderOpp',
+  "Don't look at me. Look at that scoreboard!": 'aheadBig',
+  "Look at that score! EMBARRASSING!": 'aheadBig',
+  "BYE BYE {gap} POINTS!!!": 'aheadBig',
+  "per my calculations, {opp} is down {gap}.": 'aheadBig',
+  "count again, {opp}. slowly this time.": 'close',
+  "SET!!! {opp} IN THE MUD!!!": 'deciding',
+  // gotSet: we held the contract and got set; comeback lines when the set leaves us way behind
+  "we will rise again. next hand.": 'behindBig',
+  "it's cool, it's cool, we bounce back.": 'behindBig',
+  "double or nothing, deal again.": 'behindBig',
+  "you win some. I bet more next hand.": 'behindBig',
+  "we regroup at halftime.": 'close',
+  // wheels: running away with it
+  "WHEELS! 🏎️ we outta here.": 'aheadBig',
+  "ten books, top down, wind in my hair.": 'aheadBig',
+  "WHEELS UP, {opp} WHEELS DOWN.": 'aheadBig',
+  "WHEELS!!! VROOOOM!!!": 'aheadBig',
+  // made: our side's contract, made
+  "bid made. easy work.": 'bidderSelf',
+  "we said {bid}, we got {bid}. accountants.": 'bidderSelf',
+  "expected value: realized.": 'bidderSelf',
+  "QED.": 'bidderSelf',
+  "just like we drew it up.": 'bidderPartner',
+  // cut / overcut: the emphatic closers fit a deciding (late + close) trick; the revenge line fits late
+  "CUT. sit down.": 'deciding',
+  "that's a cut, {them}. tell your friends.": 'deciding',
+  "that's for the last hand!": 'lateHand',
+  "over the top! sit DOWN.": 'deciding',
+  "you cut, I cut harder.": 'deciding',
+  "OVER THE TOP!!! SAY LESS!": 'deciding',
+  // nil family: busting / making / hunting the Nil bidder
+  "That's a hundred-point mistake!": 'bidderOpp',
+  "Your NIL has officially been canceled!": 'bidderOpp',
+  "There goes your hundred!": 'bidderOpp',
+  "nil BUSTED 💥 nice try {them}.": 'bidderOpp',
+  "You took that book like you wanted it!": 'bidderOpp',
+  "nil made. nothing to see here 😌": 'bidderSelf',
+  "zero books, all the points.": 'bidderSelf',
+  "nil on a long shot. pay me.": 'bidderSelf',
+  "nil? we coming for you.": 'bidderOpp',
+  "We hunting NILs today!": 'bidderOpp',
+  "One book. That's all I need!": 'bidderOpp',
+  "That NIL got a short expiration date!": 'bidderOpp',
+  // win / lose: game-deciding, running away, or the comeback speech
+  "that's game. put some respect on {team}.": 'deciding',
+  "final score confirms my hypothesis.": 'deciding',
+  "GAME!!! {team} ON TOP!!!": 'deciding',
+  "That's another one for the trophy case!": 'aheadBig',
+  "Who got NEXT?!": 'aheadBig',
+  "good game. I'd say it was close, but.": 'aheadBig',
+  "I'm one hand from a comeback. always.": 'behindBig',
+  "let's go double or nothing.": 'behindBig',
+  "we lost the battle. rematch is the war.": 'behindBig',
+  "an outlier. I demand a rematch for science.": 'behindBig',
+  // streak / boston
+  "we're on a heater 🔥": 'aheadBig',
+  "someone stop us. anyone.": 'aheadBig',
+  "back to back. get used to it.": 'aheadBig',
+  "all thirteen! that's a Boston!": 'deciding',
+  "THIRTEEN TO ZERO!": 'deciding',
+  "clean sweep. every book.": 'aheadBig',
+  // joker / nuke kept for the late hand; an equaliser when it's close
+  "bring in the closer!": 'lateHand',
+  "I been holding that Joker like a family secret.": 'lateHand',
+  "BOOM! I been waiting all night for that!": 'lateHand',
+  "now we're even for everything.": 'close',
+};
+for (const [raw, fact] of Object.entries(FACT_TAGS)) LINE_META[raw] = { ...LINE_META[raw], fact };
 
 // gendered lines: the speaker's own gender ("mama's thinking" vs "papa's thinking"), or the target's ("{them} IS HIM")
 export const SELF_F = [
