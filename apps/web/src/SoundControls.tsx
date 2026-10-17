@@ -92,7 +92,7 @@ export function SoundSheet({ allOff, onMuteAll, onClose }: { allOff: boolean; on
     <div ref={esc} className="sound-pop sound-sheet glass" role="dialog" aria-label="Sound" data-testid="sound-sheet">
       <div className="sheet-head">
         <span className="panel-title">SOUND</span>
-        <button type="button" className="sheet-x" aria-label="Close sound settings" onClick={onClose}>✕</button>
+        <button type="button" className="sheet-close" aria-label="Close sound settings" onClick={onClose}>CLOSE</button>
       </div>
       <NowPlayingLine />
       <div className="sheet-actions">
