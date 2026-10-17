@@ -111,7 +111,7 @@ export function ScorePad({ st, names, onClose, onContinue, locked, sideName, dea
       <div className="modal glass slant score-pad v2" onClick={(e) => e.stopPropagation()} data-testid="score-pad" role="dialog" aria-label="Score pad">
         <div className="scroll pad2">
           <header className="pad-sticky">
-            <button type="button" className="pad-x" aria-label="Close score pad" data-testid="pad-close" onClick={onClose}>✕</button>
+            <button type="button" className="sheet-close pad-close-btn" aria-label="Close score pad" data-testid="pad-close" onClick={onClose}>CLOSE</button>
             <div className="panel-title big">SCORE PAD</div>
             <p className="pad-playing" data-testid="pad-target">Playing to {r.targetScore}</p>
             <div className="pad-board" style={{ ['--sides' as string]: sides.length }} data-testid="pad-board">
@@ -161,8 +161,8 @@ export function ScorePad({ st, names, onClose, onContinue, locked, sideName, dea
           <div className="pad-rules chips" data-testid="pad-rules">{rulesChips(r).map((c) => <span key={c} className="rule-chip">{c}</span>)}</div>
           {showLocked ? locked : null}
         </details>
-        {onLeave && <button type="button" className="big" data-testid="recap-leave" onClick={onLeave}>Leave game</button>}
-        <button type="button" className="primary big" data-testid="pad-continue" onClick={onContinue ?? onClose}>Continue</button>
+        <button type="button" className="big quiet-continue" data-testid="pad-continue" onClick={onContinue ?? onClose}>Continue</button>
+        {onLeave && <><div className="exit-divider" aria-hidden="true" /><button type="button" className="big leave-red" data-testid="recap-leave" onClick={onLeave}>Leave game</button></>}
       </div>
     </div>
   );
