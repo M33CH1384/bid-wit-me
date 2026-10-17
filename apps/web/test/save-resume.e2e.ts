@@ -12,8 +12,11 @@ const snapSave = (page: Page) => page.evaluate(() => { const g = JSON.parse(loca
   await ctx.addInitScript(() => { if (!localStorage.getItem('e2e.seeded')) { localStorage.clear(); localStorage.setItem('e2e.seeded', '1'); } localStorage.setItem('bwm.tips', JSON.stringify({ on: false, asked: true, counts: {} })); });
   try {
     await page.goto(base);
-    await page.getByTestId('play-bots').click();
+    await page.getByTestId('play').click();
+    await page.getByTestId('door-team').click();
     const mode = page.locator('[data-testid^="mode-"]').first();
+    await mode.click();
+    await page.getByTestId('play-bots').click();
     if (await mode.isVisible().catch(() => false)) await mode.click();
     await page.getByTestId('start-bots').click();
     // let the deal land and the bots play a bit
@@ -41,9 +44,11 @@ const snapSave = (page: Page) => page.evaluate(() => { const g = JSON.parse(loca
     await tab.getByTestId('resume').waitFor({ state: 'visible' });
     await tab.screenshot({ path: `${shots}/fresh-open-home-resume-390.png` });
     // 3) refresh on bot setup stays on setup
-    await tab.getByTestId('play-bots').click();
+    await tab.getByTestId('play').click();
+    await tab.getByTestId('door-team').click();
     const m2 = tab.locator('[data-testid^="mode-"]').first();
-    if (await m2.isVisible().catch(() => false)) await m2.click();
+    await m2.click();
+    await tab.getByTestId('play-bots').click();
     await tab.getByTestId('start-bots').waitFor({ state: 'visible' });
     await tab.reload();
     await tab.getByTestId('start-bots').waitFor({ state: 'visible' });

@@ -70,16 +70,20 @@ describe('home starts fresh', () => {
 
     await act(async () => { root.render(createElement(App)); });
 
-    expect(document.querySelector('[data-testid="play-bots"]')).not.toBeNull();
-    expect(document.querySelector('[data-testid="play-online"]')).not.toBeNull();
+    // founder menu rework: Home is Resume/Play only — opponent and mode are later doors
+    expect(document.querySelector('[data-testid="play"]')).not.toBeNull();
+    expect(document.querySelector('[data-testid="play-bots"]')).toBeNull();
+    expect(document.querySelector('[data-testid="play-online"]')).toBeNull();
     expect(document.querySelector('[data-testid="hand"]')).toBeNull();
     expect(document.body.textContent).not.toContain('RESUMING YOUR GAME');
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     expect(localStorage.getItem(SAVE_KEY)).not.toBeNull();
 
     window.confirm = () => true; // Deal me in asks before replacing the save
-    await act(async () => { document.querySelector<HTMLButtonElement>('[data-testid="play-bots"]')!.click(); });
+    await act(async () => { document.querySelector<HTMLButtonElement>('[data-testid="play"]')!.click(); });
+    await act(async () => { document.querySelector<HTMLButtonElement>('[data-testid="door-team"]')!.click(); });
     await act(async () => { document.querySelector<HTMLButtonElement>('[data-testid="mode-joker"]')!.click(); });
+    await act(async () => { document.querySelector<HTMLButtonElement>('[data-testid="play-bots"]')!.click(); });
     await act(async () => { document.querySelector<HTMLButtonElement>('[data-testid="start-bots"]')!.click(); });
 
     expect(loadSeries()).toBeNull();
