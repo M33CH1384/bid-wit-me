@@ -31,7 +31,7 @@ import Venue3D, { feltPatternTexture, preloadVenueAssets } from './Venue3D';
 import { type VenueDef, type VenueId, VENUE_DEFS, venueAssetUrls } from '../venues';
 import { bodyGeometry, cardGeometry, feltGeometry, railGeometry } from './geometry';
 import {
-  CH, CW, MIN_STRIP_PX, TRICK_SCALE, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, cardScreenQuad, deckSpot, fanCssPx, fanLayout, handCardPlane, handFan, makeCamera, jitterOf, opponentFan, phoneHandFan, PHONE_HAND_STRIP_PX, pileSpot, ringSpot, trickSpot,
+  CH, CW, MIN_STRIP_PX, TRICK_SCALE, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, cameraPoseAt, CAMERA_VIEW_TWEEN_MS, cardScreenQuad, deckSpot, fanCssPx, fanLayout, handCardPlane, handFan, makeCamera, jitterOf, opponentFan, phoneHandFan, PHONE_HAND_STRIP_PX, pileSpot, ringSpot, trickSpot,
   flatRest,
   xf,
 } from './layout';
@@ -104,29 +104,40 @@ export interface SceneProps {
 function CameraRig({ view = 'standing' }: { view?: 'standing' | 'sitting' }) {
   const { camera, size, invalidate } = useThree();
   const short = isShortLandscape(size.width, size.height);
-  const anim = useRef<{ from: InstanceType<typeof Vector3>; to: InstanceType<typeof Vector3>; fromLook: InstanceType<typeof Vector3>; toLook: InstanceType<typeof Vector3>; t: number } | null>(null);
+  const anim = useRef<{ from: number[]; to: number[]; fromLook: number[]; toLook: number[]; start: number; dur: number } | null>(null);
+  const booted = useRef(false);
+  const lookAtRef = useRef<number[] | null>(null);
   useLayoutEffect(() => {
     const a = size.width >= 32 && size.height >= 32 ? size.width / size.height : 9 / 16;
-    const s = cameraFor(a, short, view);
+    const spec = cameraFor(a, short, view);
     const cam = camera as import('three').PerspectiveCamera;
-    if (!Number.isFinite(s.fov)) return;
-    cam.fov = s.fov;
+    if (!Number.isFinite(spec.fov)) return;
+    cam.fov = spec.fov;
     cam.aspect = a;
     cam.updateProjectionMatrix();
-    const to = new Vector3(...s.pos); const toLook = new Vector3(...s.look);
-    (window as unknown as { __bwmCam?: unknown }).__bwmCam = { view, y: to.y, z: to.z };
-    if (cam.position.lengthSq() === 0) { cam.position.copy(to); cam.lookAt(toLook); }
-    else anim.current = { from: cam.position.clone(), to, fromLook: new Vector3(0, 0, s.look[2]), toLook, t: 0 };
+    const probe = (t: number) => { (window as unknown as { __bwmCam?: unknown }).__bwmCam = { view, y: cam.position.y, z: cam.position.z, x: cam.position.x, t, tweenMs: CAMERA_VIEW_TWEEN_MS }; };
+    if (!booted.current) { // first frame: land exactly on the saved view, no flight
+      booted.current = true;
+      cam.position.set(...spec.pos); cam.lookAt(new Vector3(...spec.look));
+      lookAtRef.current = [...spec.look]; probe(1); invalidate(); return;
+    }
+    // Respect ONLY the real OS setting; the app's Reduce-effects pref must not kill the move.
+    const reduced = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const fromLook = lookAtRef.current ?? (() => { const d = new Vector3(); cam.getWorldDirection(d); return [cam.position.x + d.x, cam.position.y + d.y, cam.position.z + d.z]; })();
+    anim.current = { from: [cam.position.x, cam.position.y, cam.position.z], to: [...spec.pos], fromLook: [...fromLook], toLook: [...spec.look], start: performance.now(), dur: reduced ? 0 : CAMERA_VIEW_TWEEN_MS };
+    probe(0);
     invalidate();
   }, [camera, size, short, view, invalidate]);
-  useFrame((_, dt) => {
+  useFrame(() => {
     const a = anim.current; if (!a) return;
-    a.t = Math.min(1, a.t + dt / 0.6);
-    const k = 1 - Math.pow(1 - a.t, 3);
     const cam = camera as import('three').PerspectiveCamera;
-    cam.position.lerpVectors(a.from, a.to, k);
-    cam.lookAt(new Vector3(0, 0, a.fromLook.z + (a.toLook.z - a.fromLook.z) * k));
-    if (a.t >= 1) anim.current = null;
+    // Wall clock, never raw frame dt (see cameraPoseAt): an idle demand-loop's first dt is huge.
+    const pose = cameraPoseAt(a.from, a.to, a.fromLook, a.toLook, performance.now() - a.start, a.dur);
+    cam.position.set(pose.pos[0]!, pose.pos[1]!, pose.pos[2]!);
+    cam.lookAt(new Vector3(pose.look[0]!, pose.look[1]!, pose.look[2]!));
+    lookAtRef.current = pose.look;
+    (window as unknown as { __bwmCam?: unknown }).__bwmCam = { view, y: cam.position.y, z: cam.position.z, x: cam.position.x, t: pose.t, tweenMs: CAMERA_VIEW_TWEEN_MS };
+    if (pose.t >= 1) anim.current = null;
     invalidate();
   });
   return null;
@@ -536,11 +547,15 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   // Portrait phones get a larger hand. Wide and landscape keep their own framing.
   const portraitPhone = !short && !wide && size.width < 600 && aspect < 1.05;
   const strip = { minStripPx: MIN_STRIP_PX, pxW: screenW };
+  const view = props.view ?? 'standing';
+  // Sitting: lift the whole fan above the iPhone home indicator + Safari bottom chrome (safe-area
+  // bottom + a 12px breathing margin), in the LIVE view's camera. Standing keeps its exact framing.
+  const sittingBottom = view === 'sitting' ? (safe.b + 12) / Math.max(1, screenH) : 0;
   const fanOpts: FanOpts = short
-    ? { short, reserveFrac: (Math.max(safe.l, safe.r) + 186) / size.width, bottomFrac: safe.b / size.height, heightFrac: 0.2, ...strip }
-    : wide ? { reserveFrac: (size.width < 1400 ? 250 : 205) / size.width, bottomFrac: 0.012, heightFrac: 0.205, ...strip }
-    : portraitPhone ? { ...phoneHandFan(), ...strip, minStripPx: (handCounts[human] ?? 13) > 13 ? MIN_STRIP_PX : PHONE_HAND_STRIP_PX }
-    : { ...strip };
+    ? { short, view, reserveFrac: (Math.max(safe.l, safe.r) + 186) / size.width, bottomFrac: safe.b / Math.max(1, size.height) + sittingBottom, heightFrac: 0.2, ...strip }
+    : wide ? { view, reserveFrac: (size.width < 1400 ? 250 : 205) / size.width, bottomFrac: 0.012, heightFrac: 0.205, ...strip }
+    : portraitPhone ? { ...phoneHandFan(), view, bottomFrac: (phoneHandFan().bottomFrac ?? 0) + sittingBottom, ...strip, minStripPx: (handCounts[human] ?? 13) > 13 ? MIN_STRIP_PX : PHONE_HAND_STRIP_PX }
+    : { view, ...strip };
   const trickScale = short ? 1.45 : undefined;
   // Last committed hand, so a play can launch from that card's own slot. Updated in an effect (not during render)
   // so a highlight change and the server ack share one set of keys and don't restart the fan.
@@ -677,7 +692,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   const nFan = fanCards.length;
   let spreadScale = 1;
   if (nFan > 1 && rawSpread.some((v) => v !== 0)) {
-    const edgeQuad = (i: number) => cardScreenQuad(aspect, handFan(aspect, nFan, i, 0, safeFrac, laid, 0, screenH), screenW, screenH, 0, !!laid.short);
+    const edgeQuad = (i: number) => cardScreenQuad(aspect, handFan(aspect, nFan, i, 0, safeFrac, laid, 0, screenH), screenW, screenH, 0, !!laid.short, view);
     const leftEdge = Math.min(...edgeQuad(0).map((p) => p.x));
     const rightEdge = Math.max(...edgeQuad(nFan - 1).map((p) => p.x));
     spreadScale = spreadFitScale(rawSpread, leftEdge, rightEdge, screenW, 1);
@@ -718,7 +733,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
       handQuads.push({
         id: c,
         order,
-        poly: cardScreenQuad(aspect, target, screenW, screenH, posePx(pose), !!fanOpts.short),
+        poly: cardScreenQuad(aspect, target, screenW, screenH, posePx(pose), !!fanOpts.short, view),
       });
     }
     nextSeen.add(slotKey);
