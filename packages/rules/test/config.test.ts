@@ -182,7 +182,7 @@ describe('acceptRules', () => {
     expect(bad({ mode: 'whist' })).toMatch(/mode/);
     expect(bad({ mode: 'joker', bagPenalty: '100' })).toMatch(/bagPenalty/);
     expect(acceptRules({ ...makeRules('joker'), turnTimerSec: { bid: 1, play: 500 } }).turnTimerSec).toEqual({ bid: 3, play: 120 });
-    expect(acceptRules({ ...makeRules('joker'), turnTimerSec: { bid: 'fast', play: 10 } } as never).turnTimerSec).toEqual({ bid: 30, play: 10 });
+    expect(acceptRules({ ...makeRules('joker'), turnTimerSec: { bid: 'fast', play: 10 } } as never).turnTimerSec).toEqual({ bid: 20, play: 10 });
   });
 });
 

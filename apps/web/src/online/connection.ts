@@ -8,7 +8,7 @@ import type { ChatLine, ClientMsg, GameAction, RoomInfo, RunPlayback, ServerMsg 
 import type { PlayerView } from '@spades/rules';
 import { playSendBlocked } from './playGuard';
 import { wsUrl } from './config';
-import { saveToken, tokenFor } from './identity';
+import { guestSessionId, saveToken, tokenFor } from './identity';
 import { JOIN_TIMEOUT_MS, type JoinFaultKind, type JoinStage, joinFaultLog, joinFaultMessage } from './joinTimeout';
 
 export type ConnStatus = 'connecting' | 'open' | 'reconnecting' | 'closed' | 'notFound';
@@ -27,6 +27,8 @@ export interface ConnState {
   pending: boolean;
   /** Bumps when a sent play is released (server seq moved, the play was rejected, or the ack timed out). */
   playGate?: number;
+  /** Bumps on every welcome, so the table can say again whether it is drawn. */
+  socketGen: number;
   /** Release 10: watching (unseated while a game is on; the view is the redacted spectator view) */
   spectator?: boolean;
   /** Signed in, but this socket's hello had no account ticket, so the seat is not linked. */
@@ -36,8 +38,8 @@ export interface ConnState {
 }
 
 interface PendingAct { id: string; seq: number; action: GameAction; sentAt: number }
-/** if an ack never comes (lost socket that we didn't notice), unlock after this long */
-const ACK_TIMEOUT_MS = 8000;
+/** A play's ping should be answered well inside this. No pong means the socket is open in name only. */
+const PONG_WAIT_MS = 2500;
 /** A signed-in ticket fetch must not hold the socket shut. Stats can link on a later hello. */
 const TICKET_JOIN_MS = 4_000;
 const newId = () => (crypto.randomUUID?.() ?? `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`).slice(0, 36);
@@ -45,7 +47,7 @@ const newId = () => (crypto.randomUUID?.() ?? `${Date.now().toString(36)}${Math.
 type RtcHandler = (from: string, data: unknown) => void;
 
 export class TableConnection {
-  state: ConnState = { status: 'connecting', you: null, room: null, seat: null, view: null, run: null, chat: [], error: null, pending: false, playGate: 0, statsOff: false, joinFault: null };
+  state: ConnState = { status: 'connecting', you: null, room: null, seat: null, view: null, run: null, chat: [], error: null, pending: false, playGate: 0, socketGen: 0, statsOff: false, joinFault: null };
   private inflight: PendingAct | null = null;
   /** Seq of a play that has been sent and not yet passed by the server. A second play is refused until then. */
   private playSentSeq: number | null = null;
@@ -68,6 +70,16 @@ export class TableConnection {
   private openGen = 0;
   private ticketTimedOut = false;
   private lastClose: { code: number; reason: string } | null = null;
+  /** Ticket from the hello that opened this socket, so a NOT_JOINED re-hello can carry it. */
+  private helloTicket: string | null = null;
+  /** One re-hello per socket when a play lands before the server has bound this connection. */
+  private rehelloed = false;
+  /** Set when the in-flight play's ping has not been answered yet. */
+  private pongWait = false;
+  /** How many times this in-flight move has been sent again without an ack. */
+  private playResends = 0;
+  /** Close this socket and open again immediately, keeping the in-flight move to resend. */
+  private recover = false;
 
   constructor(public readonly code: string, private name: string) {
     this.onVisible = this.onVisible.bind(this);
@@ -233,14 +245,20 @@ export class TableConnection {
     this.open();
   }
 
+  private helloBody(ticket: string | null): ClientMsg {
+    return { t: 'hello', name: this.name, token: tokenFor(this.code), gid: guestSessionId(), v: 1, ...(ticket ? { ticket } : {}) };
+  }
+
   private openWith(ticket: string | null): void {
     if (this.stopped) return;
     this.joinStage = 'socket';
+    this.helloTicket = ticket;
+    this.rehelloed = false;
     const ws = new WebSocket(wsUrl(this.code));
     this.ws = ws;
     ws.onopen = () => {
       this.retry = 0;
-      ws.send(JSON.stringify({ t: 'hello', name: this.name, token: tokenFor(this.code), v: 1, ...(ticket ? { ticket } : {}) } satisfies ClientMsg));
+      ws.send(JSON.stringify(this.helloBody(ticket)));
       // a move that was in flight when the socket dropped: resend it with the SAME id and seq. The server applies it
       // at most once (dup → ack ok) and drops it if the game moved on meanwhile (stale → fresh state).
       if (this.inflight) { ws.send(JSON.stringify(this.actMsg(this.inflight))); this.armAckTimer(); }
@@ -249,14 +267,15 @@ export class TableConnection {
       this.pingTimer = window.setInterval(() => { if (ws.readyState === WebSocket.OPEN) ws.send('ping'); }, 25_000);
     };
     ws.onmessage = (ev) => {
-      if (ev.data === 'pong') return;
+      if (ev.data === 'pong') { this.pongWait = false; return; }
       let m: ServerMsg;
       try { m = JSON.parse(String(ev.data)); } catch { return; }
       switch (m.t) {
         case 'welcome':
           saveToken(this.code, m.token);
+          this.rehelloed = false;
           this.joinStage = 'welcome';
-          this.set({ status: 'open', you: m.you, chat: m.chat });
+          this.set({ status: 'open', you: m.you, chat: m.chat, socketGen: this.state.socketGen + 1 });
           break;
         case 'state': {
           let view = m.view;
@@ -298,6 +317,14 @@ export class TableConnection {
           this.rtcHandlers.forEach((h) => h(m.from, m.data));
           break;
         case 'error':
+          // A hibernated socket can wake with no player id. The play is rejected once;
+          // say hello again on this same socket so the seat is rebound.
+          if (m.code === 'NOT_JOINED' && ws.readyState === WebSocket.OPEN && !this.rehelloed) {
+            this.rehelloed = true;
+            ws.send(JSON.stringify(this.helloBody(this.helloTicket)));
+            if (this.inflight) ws.send(JSON.stringify(this.actMsg(this.inflight)));
+            break;
+          }
           this.set({ error: { code: m.code, message: m.message, at: Date.now() } });
           // KICKED has its own screen. Any other error before the first state is the join failing.
           if (!this.state.room && m.code !== 'KICKED') this.noteJoinFault('server');
@@ -309,6 +336,13 @@ export class TableConnection {
       this.lastClose = { code: ev.code, reason: ev.reason };
       if (this.pingTimer) { clearInterval(this.pingTimer); this.pingTimer = null; }
       if (this.relink) { this.relink = false; this.open(); return; }
+      if (this.recover) {
+        this.recover = false;
+        this.retry = 0;
+        this.set({ status: 'reconnecting' });
+        this.open();
+        return;
+      }
       if (this.stopped || ev.code === 4000 || ev.code === 4003) {
         this.set({ status: 'closed' });
         // 4003 is the kick screen. 4000 with no room (replaced before state) must not spin forever.
@@ -340,12 +374,18 @@ export class TableConnection {
     // One play is in flight until the server's seq moves past it. A second tap must not send.
     if (action.type === 'play' && playSendBlocked(this.playSentSeq, room?.seq ?? seq)) return false;
     if (this.inflight || !room || seq !== room.seq) return false;
-    if (this.ws?.readyState !== WebSocket.OPEN) return false;
     this.inflight = { id: newId(), seq, action, sentAt: Date.now() };
+    this.playResends = 0;
     if (action.type === 'play') this.playSentSeq = seq;
+    this.set({ pending: true });
+    // The socket may be down (reload, or the RECONNECTING banner). Keep the move and send it
+    // on the next hello instead of swallowing the tap.
+    if (this.ws?.readyState !== WebSocket.OPEN) {
+      if (this.ws?.readyState !== WebSocket.CONNECTING && !this.opening) this.recoverSocket();
+      return true;
+    }
     this.ws.send(JSON.stringify(this.actMsg(this.inflight)));
     this.armAckTimer();
-    this.set({ pending: true });
     return true;
   }
 
@@ -356,13 +396,46 @@ export class TableConnection {
 
   private armAckTimer(): void {
     if (this.ackTimer) clearTimeout(this.ackTimer);
-    this.ackTimer = window.setTimeout(() => {
-      if (!this.inflight) return;
-      const play = this.inflight.action.type === 'play';
-      this.inflight = null;
-      if (play) this.playSentSeq = null;
-      this.set({ pending: false, ...(play ? { playGate: (this.state.playGate ?? 0) + 1 } : {}) });
-    }, ACK_TIMEOUT_MS);
+    this.pongWait = true;
+    try { if (this.ws?.readyState === WebSocket.OPEN) this.ws.send('ping'); } catch { /* closing */ }
+    this.ackTimer = window.setTimeout(() => this.onActQuiet(), PONG_WAIT_MS);
+  }
+
+  /**
+   * The play was sent and no ack came back. A pong only proves the socket, not that the table
+   * applied the card — the auto-pong answers without waking the game. Send the same move again.
+   * A socket with no pong is reopened. After several tries, unlock so they can choose again.
+   */
+  private onActQuiet(): void {
+    this.ackTimer = null;
+    if (!this.inflight) return;
+    const ws = this.ws;
+    const open = !!ws && ws.readyState === WebSocket.OPEN;
+    if (this.playResends < 4) {
+      this.playResends++;
+      if (!open || this.pongWait) { this.recoverSocket(); return; }
+      try { ws.send(JSON.stringify(this.actMsg(this.inflight))); } catch { this.recoverSocket(); return; }
+      this.armAckTimer();
+      return;
+    }
+    const play = this.inflight.action.type === 'play';
+    this.inflight = null;
+    this.playResends = 0;
+    if (play) this.playSentSeq = null;
+    this.set({ pending: false, ...(play ? { playGate: (this.state.playGate ?? 0) + 1 } : {}) });
+  }
+
+  /** The socket looks open and is not. Reconnect now and resend the same move on the new hello. */
+  private recoverSocket(): void {
+    if (this.stopped || this.recover) return;
+    this.recover = true;
+    const ws = this.ws;
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+      try { ws.close(); return; } catch { /* open below */ }
+    }
+    this.recover = false;
+    this.retry = 0;
+    this.open();
   }
 
   private settle(): void {

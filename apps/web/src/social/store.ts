@@ -65,6 +65,7 @@ let ws: WebSocket | null = null;
 let retry = 0;
 let retryTimer: number | null = null;
 let pingTimer: number | null = null;
+let heartbeatPaused = false;
 let started = false;
 let identity: string | null | undefined; // account id the socket was opened as (null = guest)
 let status: PresenceStatus = { kind: 'online' };
@@ -111,7 +112,12 @@ async function connect() {
   sock.onopen = () => {
     retry = 0;
     if (pingTimer) clearInterval(pingTimer);
-    pingTimer = window.setInterval(() => { if (sock.readyState === WebSocket.OPEN) sock.send('ping'); }, 25_000);
+    pingTimer = window.setInterval(() => {
+      if (sock.readyState !== WebSocket.OPEN) return;
+      sock.send('ping');
+      // ~60 s server presence expiry: a real heartbeat refreshes `at`; paused at 15 min idle so the row expires.
+      if (!heartbeatPaused && ws === sock) send({ t: 'heartbeat' });
+    }, 25_000);
   };
   sock.onmessage = (ev) => {
     if (ev.data === 'pong' || ws !== sock) return;
@@ -270,6 +276,11 @@ export const social = {
       if (account.get().ready && identity !== undefined && idKey() !== identity) void connect();
     });
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !ws && started) void connect(); });
+  },
+  /** Idle >= 15 min: stop heartbeating so the server drops this user off the Online list (~60 s). */
+  setHeartbeatPaused(paused: boolean) {
+    heartbeatPaused = paused;
+    if (!paused) send({ t: 'heartbeat' });
   },
   setStatus(s: PresenceStatus) {
     status = s;

@@ -64,3 +64,4 @@ export * from './moments';
 export * from './voices';
 export { PACK, STYLE } from './pack';
 export * from './partnerTalk';
+export * from './catalog';

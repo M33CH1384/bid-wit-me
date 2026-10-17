@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   BREATHE_HI, BREATHE_LO, BREATHE_S, BREATHE_SCALE, GAP_S, GLOW_ALPHA, GLOW_BLUR_PX, GLOW_REACH_PX, GLOW_SPREAD_PX,
   GROUP_PAD_PX, GROUP_RADIUS_PX, ILLEGAL_BRIGHTNESS, ILLEGAL_COLOR, LIFT_S, OUTLINE_COLOR, OUTLINE_PX, RAISE_S,
-  GROUP_GAP_PX, ILLEGAL_DROP_PX, ILLEGAL_SAT, LEGAL_LIFT_PX, LEGAL_NEAR, LEGAL_STACK, RING_ABOVE, SELECT_GLOW_OP, SELECT_STACK, SHINE_DEG, SHINE_PEAK, SHINE_S, SHINE_WIDTH,
-  breatheOpacity, canTapCard, cardMeshPaint, cardTapHandlers, easeOut, faceLook, fanGapPx, fanMotion, glowFalloff, glowRadiusPx, handDepthOpts, handLift, handRenderOrder, liftEase, outlineRadiusPx,
+  GROUP_GAP_PX, ILLEGAL_DROP_PX, ILLEGAL_SAT, LEGAL_LIFT_PX, LEGAL_NEAR, LEGAL_STACK, RING_ABOVE, SELECT_GLOW_OP, SELECT_NEAR, SELECT_STACK, SHINE_DEG, SHINE_PEAK, SHINE_S, SHINE_WIDTH,
+  breatheOpacity, canTapCard, cardMeshPaint, cardTapHandlers, easeOut, faceLook, fanGapPx, fanMotion, glowFalloff, glowRadiusPx, handDepthOpts, handLift, handRenderOrder, liftEase, outlineRadiusPx, pointerNdc,
   handCardChrome, playablePose, posePx, raiseLocalY, shineAxis, shineBand, stackFor,
 } from '../src/three/handLift';
 import { fanLayout, handCardPlane, handFan } from '../src/three/layout';
@@ -98,9 +98,14 @@ describe('your-turn hand poses', () => {
       const px = ((localY * L.s) / L.viewH) * screenH;
       expect(px).toBeCloseTo(posePx(pose), 4);
     }
-    // Baking the raise into the fan transform is what shoved an off-center card sideways for a frame.
-    const baked = handFan(aspect, n, i, handLift('selected', L.viewH, screenH, L.ch), 0, { layer: 'selected' });
-    expect(baked.p[0]).not.toBeCloseTo(fan.p[0], 3);
+    // The live raise is the wrapper. Passing the lift still moves y. The selected layer
+    // only changes depth, and the plane x (what you see) stays put.
+    const baked = handFan(aspect, n, i, handLift('selected', L.viewH, screenH, L.ch), 0, handDepthOpts('selected'));
+    expect(baked.p[1]).not.toBeCloseTo(fan.p[1], 3);
+    const sel = handCardPlane(aspect, n, i, 0, 0, handDepthOpts('selected'));
+    const rest = handCardPlane(aspect, n, i, 0, 0, handDepthOpts('flat'));
+    expect(sel.x).toBeCloseTo(rest.x, 5);
+    expect(sel.depth).toBeLessThan(rest.depth);
   });
 
   it('closes a gap by sliding, and a highlight only lifts', () => {
@@ -141,7 +146,7 @@ describe('your-turn hand poses', () => {
     expect(taps).toEqual(['play']);
   });
 
-  it('those pixel offsets are CSS pixels on a phone, and the tapped card still stacks in front', () => {
+  it('those pixel offsets are CSS pixels on a phone, and a pose does not jump the card forward', () => {
     const aspect = 390 / 844;
     const screenH = 844;
     const n = 13;
@@ -157,13 +162,14 @@ describe('your-turn hand poses', () => {
     expect(px(legal.y, flat.y)).toBeCloseTo(LEGAL_LIFT_PX, 4);
     expect(px(flat.y, illegal.y)).toBeCloseTo(0, 4);
     expect(px(selected.y, legal.y)).toBeCloseTo(10, 4);
+    // Playable cards come forward of a resting card. The raised card comes forward of those too.
     expect(selected.depth).toBeLessThan(legal.depth);
     expect(legal.depth).toBeLessThan(illegal.depth);
     expect(illegal.depth).toBeCloseTo(flat.depth, 6);
-    // z-order is the pose, not the old `lift > 0.2` shortcut (24px can be under or over that, depending on the card size)
-    const flagged = handCardPlane(aspect, n, i, 0.01, 0, { layer: 'selected' });
-    const resting = handCardPlane(aspect, n, i, 0.5, 0, { layer: 'rest' });
+    const flagged = handCardPlane(aspect, n, i, 0.01, 0, handDepthOpts('selected'));
+    const resting = handCardPlane(aspect, n, i, 0.5, 0, handDepthOpts('flat'));
     expect(flagged.depth).toBeLessThan(resting.depth);
+    expect(flagged.x).toBeCloseTo(resting.x, 5);
   });
 
   it('illegal cards are about 40% brightness and desaturated', () => {
@@ -285,22 +291,23 @@ describe('legal cards stack above the cards beside them', () => {
   const aspect = 390 / 844;
   const screenH = 844;
 
-  it('puts every legal card after every illegal card, and keeps index order inside each band', () => {
+  it('keeps fan order when a suit lifts, so the card to the right is not covered', () => {
     const flags = [false, false, true, true, true, false, false];
     const orders = flags.map((above, i) => handRenderOrder(i, above));
-    const legal = orders.filter((_, i) => flags[i]);
-    const illegal = orders.filter((_, i) => !flags[i]);
-    expect(Math.min(...legal)).toBeGreaterThan(Math.max(...illegal));
+    // The lifted suit stays in the fan. It does not jump in front of the locked cards beside it.
+    expect(orders[4]).toBeLessThan(orders[5]!);
+    expect(orders[2]).toBeGreaterThan(orders[1]!);
     expect(orders[2]).toBeLessThan(orders[3]!);
     expect(orders[3]).toBeLessThan(orders[4]!);
     expect(orders[0]).toBeLessThan(orders[1]!);
     expect(orders[5]).toBeLessThan(orders[6]!);
-    // peers stay in index order. A tap is a separate front band, not another step in this one.
-    expect(handRenderOrder(3, true)).toBe(LEGAL_STACK + 3);
+    expect(handRenderOrder(3, true)).toBe(3);
+    expect(handRenderOrder(3, false)).toBe(3);
     expect(handRenderOrder(4, true) - handRenderOrder(3, true)).toBe(1);
+    expect(LEGAL_STACK).toBeGreaterThan(16);
   });
 
-  it('draws a selected card and its outline above every neighbour in a 13- and a 17-card hand', () => {
+  it('draws a raised card in front of both neighbours in a 13- and a 17-card hand', () => {
     const paint = (index: number, above: boolean, front = false) => {
       const order = handRenderOrder(index, above, front);
       return {
@@ -312,38 +319,55 @@ describe('legal cards stack above the cards beside them', () => {
     for (const n of [13, 17]) {
       const selected = 4;
       const mine = paint(selected, true, true);
-      // The ring is a hole, so it can paint after its own face and still leave the pips.
       expect(mine.glow).toBeGreaterThan(mine.face);
       expect(handRenderOrder(selected, true, true)).toBe(SELECT_STACK + selected);
       for (let i = 0; i < n; i++) {
         if (i === selected) continue;
         const legal = paint(i, true);
         const illegal = paint(i, false);
-        expect(mine.glow).toBeGreaterThan(legal.face);
-        expect(mine.glow).toBeGreaterThan(legal.glow);
-        expect(mine.face).toBeGreaterThan(legal.glow);
         expect(mine.face).toBeGreaterThan(legal.face);
-        expect(mine.glow).toBeGreaterThan(illegal.face);
+        expect(mine.face).toBeGreaterThan(illegal.face);
+        // Depth clears the cards that overlap (about three steps). A card further along the fan
+        // does not share pixels with this one, so it can sit closer without covering the face.
+        if (Math.abs(i - selected) > 3) continue;
         const sel = handCardPlane(aspect, n, selected, 0, 0, handDepthOpts('selected'), 0, 844);
-        const peer = handCardPlane(aspect, n, i, 0, 0, handDepthOpts('legal'), 0, 844);
-        const flat = handCardPlane(aspect, n, i, 0, 0, handDepthOpts('illegal'), 0, 844);
-        expect(sel.depth).toBeLessThan(peer.depth);
-        expect(sel.depth).toBeLessThan(flat.depth);
-        expect(peer.depth).toBeLessThan(flat.depth);
+        const peerLegal = handCardPlane(aspect, n, i, 0, 0, handDepthOpts('legal'), 0, 844);
+        const peerFlat = handCardPlane(aspect, n, i, 0, 0, handDepthOpts('illegal'), 0, 844);
+        expect(sel.depth).toBeLessThan(peerLegal.depth);
+        expect(sel.depth).toBeLessThan(peerFlat.depth);
       }
-      const lead = handCardPlane(aspect, n, 0, 0, 0, handDepthOpts('legal'), 0, 844);
-      const tail = handCardPlane(aspect, n, n - 1, 0, 0, handDepthOpts('illegal'), 0, 844);
-      expect(lead.depth).toBeLessThan(tail.depth);
     }
-    // each legal ring clears every peer face, including the card on its right, so the run cannot merge into one outline
     const legal = paint(0, true);
     expect(legal.glow).toBeGreaterThan(paint(16, true).face);
     expect(cardMeshPaint(handRenderOrder(0, true), 'glow').depthTest).toBe(false);
     expect(legal.glow).toBeGreaterThan(paint(16, false).face);
     expect(legal.glow - handRenderOrder(0, true)).toBe(RING_ABOVE);
-    expect(handDepthOpts('legal').near).toBe(LEGAL_NEAR);
-    expect(handDepthOpts('selected').near).toBe(LEGAL_NEAR * 2);
+    expect(LEGAL_NEAR).toBeLessThan(0.006);
+    expect(SELECT_NEAR).toBeGreaterThan(LEGAL_NEAR);
+    expect(handDepthOpts('selected')).toEqual({ layer: 'selected' });
+    expect(handDepthOpts('legal')).toEqual({ layer: 'play' });
     expect(handDepthOpts('flat')).toEqual({ layer: 'rest' });
+    expect(handDepthOpts('illegal')).toEqual({ layer: 'rest' });
+  });
+
+  it('reads the finger in CSS pixels, not drawing-buffer pixels', () => {
+    const css = { left: 0, top: 0, width: 390, height: 844 };
+    const size = { width: 390, height: 844 };
+    const clientX = 180;
+    const clientY = 700;
+    const dpr = 2;
+    const ndc = pointerNdc({ clientX, clientY, offsetX: clientX * dpr, offsetY: clientY * dpr }, css, size);
+    expect(ndc.x).toBeCloseTo((clientX / css.width) * 2 - 1, 6);
+    expect(ndc.y).toBeCloseTo(-(clientY / css.height) * 2 + 1, 6);
+    const bufferNdc = (clientX * dpr / css.width) * 2 - 1;
+    expect(bufferNdc).toBeGreaterThan(ndc.x + 0.5);
+    const shifted = pointerNdc(
+      { clientX: 230, clientY: 780, offsetX: 400, offsetY: 1400 },
+      { left: 50, top: 80, width: 390, height: 844 },
+      size,
+    );
+    expect(shifted.x).toBeCloseTo((180 / 390) * 2 - 1, 6);
+    expect(shifted.y).toBeCloseTo(-(700 / 844) * 2 + 1, 6);
   });
 
   it('does not open a gap around a legal run, so locked cards stay in the fan', () => {

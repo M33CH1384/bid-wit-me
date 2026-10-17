@@ -1,4 +1,5 @@
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
+import { useEscapeClose } from './useEscapeClose';
 import { type GameState, sideOf } from '@spades/rules';
 import type { TalkIntensity, TalkKind } from '@spades/bots';
 import { QUICK_CONTEXTS, QUICK_COOLDOWN_MS, generalLines, quickLines } from './quickTrash';
@@ -55,11 +56,12 @@ export function TrashTalkButton({ st, me, intensity, onSend }: { st: GameState; 
   const lines = tab === 'general' ? generalLines(intensity) : quickLines(tab, intensity);
   const [place, setPlace] = useState<CSSProperties>({});
   const cooling = cool > Date.now();
+  const esc = useEscapeClose(() => setOpen(false));
   const label = (k: TalkKind) => QUICK_CONTEXTS.find((c) => c.kind === k)?.label ?? k;
   return (
     <div className="trash-wrap" ref={ref}>
       {open && (
-        <div className="trash-pop glass slant" role="dialog" aria-label="Talk trash" data-testid="trash-pop" style={place}>
+        <div ref={esc} className="trash-pop glass slant" role="dialog" aria-label="Talk trash" data-testid="trash-pop" style={place}>
           <div className="trash-tabs" role="tablist">
             {ctx.slice(0, 3).map((k) => <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{label(k)}</button>)}
             <button type="button" role="tab" aria-selected={tab === 'general'} className={tab === 'general' ? 'on' : ''} data-testid="trash-tab-general" onClick={() => setTab('general')}>General</button>

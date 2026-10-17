@@ -12,6 +12,10 @@ function read(probe: HTMLElement | null): Viewport {
     const cs = getComputedStyle(probe);
     safe = { l: parseFloat(cs.paddingLeft) || 0, r: parseFloat(cs.paddingRight) || 0, t: parseFloat(cs.paddingTop) || 0, b: parseFloat(cs.paddingBottom) || 0 };
   }
+  // Automated-check seam (like sound.testState): an e2e can inject a real iPhone's safe-area bottom
+  // (home indicator ~34px) that desktop WebKit reports as 0, so chrome coverage is actually tested.
+  const injected = (window as unknown as { __bwmSafeBottom?: unknown }).__bwmSafeBottom;
+  if (typeof injected === 'number' && Number.isFinite(injected) && injected > safe.b) safe = { ...safe, b: injected };
   return { w, h, short: isShortLandscape(w, h), safe };
 }
 
@@ -26,7 +30,9 @@ export function useViewport(): Viewport {
     on();
     window.addEventListener('resize', on);
     window.addEventListener('orientationchange', on);
-    return () => { window.removeEventListener('resize', on); window.removeEventListener('orientationchange', on); probe.remove(); };
+    // Safari's bottom chrome shows/hides with scroll/gesture: innerHeight/dvh lag visualViewport.
+    window.visualViewport?.addEventListener('resize', on);
+    return () => { window.removeEventListener('resize', on); window.removeEventListener('orientationchange', on); window.visualViewport?.removeEventListener('resize', on); probe.remove(); };
   }, []);
   return vp;
 }

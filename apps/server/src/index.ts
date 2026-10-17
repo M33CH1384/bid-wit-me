@@ -23,6 +23,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import { CODE_ALPHABET, CODE_LENGTH, GUEST_SESSION, type ServerMsg, isRoomCode, normalizeRoomCode } from '@spades/protocol';
 import { Room, type RoomData, ROOM_DATA_VERSION, newRoomData } from './room';
+import { dispatchTableMessage } from './dispatch';
 import { FEEDBACK_LIMITS, type FeedbackRow, adminHtml, hashIp, notifyOwner, parseFeedback, rateOk, tokenOk } from './feedback';
 import { ADMIN_COOKIE, ADMIN_TTL_MS, adminCookieOk, adminLoginHtml, makeAdminCookie, readCookie } from './admin';
 import { type Bucket, LIMITS, type LimitEnv, hit, limited } from './limits';
@@ -301,7 +302,14 @@ export class TableDO extends DurableObject<Env> {
     this.room = new Room(data, {
       now: () => Date.now(),
       send: (cid, msg) => this.send(cid, msg),
-      close: (cid, code, reason) => { const ws = this.sockets.get(cid); this.sockets.delete(cid); try { ws?.close(code, reason); } catch { /* gone */ } },
+      close: (cid, code, reason) => {
+        const ws = this.sockets.get(cid);
+        this.sockets.delete(cid);
+        // Drop the player id before close. Otherwise webSocketClose restores this dying
+        // socket as the player and the room treats the reconnect as a disconnect.
+        try { ws?.serializeAttachment({ cid, pid: null } satisfies Attachment); } catch { /* gone */ }
+        try { ws?.close(code, reason); } catch { /* gone */ }
+      },
       wake: (ms) => this.wake(ms),
       setAlarm: (at) => this.armAlarm(at),
       persist: () => this.scheduleSave(),
@@ -446,22 +454,14 @@ export class TableDO extends DurableObject<Env> {
   override async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
     const cid = this.cidOf(ws);
     if (!cid || !this.room || typeof message !== 'string') return;
-    // Release 9: hello may carry a signed account ticket → link the seat to the account (stats / ratings)
-    let uid: string | null = null;
-    if (message.length < 4000 && message.includes('"ticket"')) {
-      try {
-        const m = JSON.parse(message) as { t?: string; ticket?: string };
-        if (m.t === 'hello' && m.ticket) uid = (await verifyTicket(this.env.DB, m.ticket, Date.now()))?.uid ?? null;
-      } catch { /* malformed: the room rejects it */ }
-    }
-    this.room.message(cid, message, uid);
-    if (uid) this.room.linkUser(cid, uid);
+    await dispatchTableMessage(this.room, cid, message, (ticket) => verifyTicket(this.env.DB, ticket, Date.now()));
   }
 
-  override async webSocketClose(ws: WebSocket, code: number): Promise<void> {
+  override async webSocketClose(ws: WebSocket, code: number, reason = '', wasClean = false): Promise<void> {
     const cid = this.cidOf(ws);
     if (!cid) return;
     this.sockets.delete(cid);
+    this.room?.noteSocketClose(cid, code, reason, wasClean);
     this.room?.close(cid);
     try { ws.close(code === 1005 ? 1000 : code, 'bye'); } catch { /* already closed */ }
     if (this.sockets.size === 0) {

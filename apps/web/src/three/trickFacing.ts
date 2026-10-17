@@ -30,6 +30,21 @@ export function trickPlayFrom(o: { firstShow: boolean; humanSlot?: Xform; fan?: 
   return faceUpPlayFrom(o.fan);
 }
 
+/**
+ * Cards already in the trick when a resumed scene first draws. They sit on the trick
+ * spot. Launching them from the opponent fan on that first paint leaves the centre empty.
+ * A card played after that is not in this set, so it still flies in.
+ */
+export function openingTrickKeys(resume: boolean, keys: readonly string[]): Set<string> {
+  return new Set(resume ? keys : []);
+}
+
+/** True when this trick card should launch from a hand. False when it is already on the table. */
+export function trickCardLaunches(playKey: string, opening: ReadonlySet<string>, seen: ReadonlySet<string>): boolean {
+  if (opening.has(playKey)) return false;
+  return !seen.has(playKey);
+}
+
 /** The flight has reached the trick spot (or is close enough that the card reads as landed). */
 export function trickFacingArrived(t: number, distance: number): boolean {
   return t >= 1 || distance < 0.12;

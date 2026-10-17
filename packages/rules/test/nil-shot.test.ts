@@ -32,7 +32,7 @@ describe('2v2 busted Nil is a shot', () => {
     expect(isShot(team, ['blindNil', 3, 4, 3], blind[0]!)).toBe(true);
     const hand = { handNo: 2, bids: [...bids], sides: bust };
     expect(shotOutSides(team, 2, [true, false], [false, false])).toEqual([]);
-    expect(shotCovers(team, [hand])[0]).toEqual({ tape: true, sheet: false, siren: false });
+    expect(shotCovers(team, [hand])[0]).toEqual({ tape: true, sheet: false, siren: false, outHand: null });
   });
 
   it('a made Nil does not count', () => {
@@ -40,19 +40,19 @@ describe('2v2 busted Nil is a shot', () => {
     const made = scoreHand(team, [...bids], [0, 4, 5, 4], [0, 0], [0, 0]);
     expect(made[0]!.nils[0]!.made).toBe(true);
     expect(isShot(team, [...bids], made[0]!)).toBe(false);
-    expect(shotCovers(team, [{ handNo: 2, bids: [...bids], sides: made }])[0]).toEqual({ tape: false, sheet: false, siren: false });
+    expect(shotCovers(team, [{ handNo: 2, bids: [...bids], sides: made }])[0]).toEqual({ tape: false, sheet: false, siren: false, outHand: null });
     const taped = scoreHand(team, [5, 3, 2, 4], [1, 4, 1, 4], [0, 0], [0, 0]);
     const safe = scoreHand(team, ['nil', 3, 4, 3], [0, 4, 5, 4], taped.map((s) => s.totalScore), [0, 0]);
     expect(isShot(team, ['nil', 3, 4, 3], safe[0]!)).toBe(false);
     expect(shotCovers(team, [
       { handNo: 2, bids: [5, 3, 2, 4], sides: taped },
       { handNo: 3, bids: ['nil', 3, 4, 3], sides: safe },
-    ])[0]).toEqual({ tape: false, sheet: false, siren: false });
+    ])[0]).toEqual({ tape: false, sheet: false, siren: false, outHand: null });
     const mixedBids = ['nil', 4, 2, 4] as const;
     const mixed = scoreHand(team, [...mixedBids], [0, 4, 1, 4], [0, 0], [0, 0]);
     expect(mixed[0]!.nils[0]!.made).toBe(true);
     expect(isShot(team, [...mixedBids], mixed[0]!)).toBe(true);
-    expect(shotCovers(team, [{ handNo: 2, bids: [...mixedBids], sides: mixed }])[0]).toEqual({ tape: true, sheet: false, siren: false });
+    expect(shotCovers(team, [{ handNo: 2, bids: [...mixedBids], sides: mixed }])[0]).toEqual({ tape: true, sheet: false, siren: false, outHand: null });
     const cut = makeRules('cutthroat', { playerCount: 4, firstHandBidsItself: false });
     const alone = scoreHand(cut, ['nil', 4, 3, 3], [1, 4, 4, 4], [0, 0, 0, 0], [0, 0, 0, 0]);
     expect(isShot(cut, ['nil', 4, 3, 3], alone[0]!)).toBe(false);
@@ -69,8 +69,8 @@ describe('2v2 busted Nil is a shot', () => {
       { handNo: 2, bids: [...setBids], sides: set },
       { handNo: 3, bids: [...nilBids], sides: bust },
     ]);
-    expect(covers[1]).toEqual({ tape: false, sheet: true, siren: true });
-    expect(covers[0]).toEqual({ tape: false, sheet: false, siren: false });
+    expect(covers[1]).toEqual({ tape: false, sheet: true, siren: true, outHand: 3 });
+    expect(covers[0]).toEqual({ tape: false, sheet: false, siren: false, outHand: null });
   });
 
   it('the default books hand has no Nil; with bidding on, a hand-1 bust is an instant loss', () => {
@@ -84,7 +84,7 @@ describe('2v2 busted Nil is a shot', () => {
     expect(st.phase).toBe('gameOver');
     expect(st.result).toMatchObject({ endReason: 'shotOut', shotOut: [0] });
     expect(st.history[0]!.sides[0]).toMatchObject({ shot: true, nils: [{ made: false }] });
-    expect(shotCovers(team, st.history, st.result)[0]).toEqual({ tape: true, sheet: true, siren: true });
+    expect(shotCovers(team, st.history, st.result)[0]).toEqual({ tape: true, sheet: true, siren: true, outHand: 1 });
 
     st = newGame(team, 'nil-hand-2', { dealer: 0 });
     st = { ...st, handNo: 2, bids: ['nil', 4, 3, 3] };
@@ -92,7 +92,7 @@ describe('2v2 busted Nil is a shot', () => {
     expect(st.phase).toBe('handOver');
     expect(st.result).toBeNull();
     expect(st.history[0]!.sides[0]!.shot).toBe(true);
-    expect(shotCovers(team, st.history, st.result)[0]).toEqual({ tape: true, sheet: false, siren: false });
+    expect(shotCovers(team, st.history, st.result)[0]).toEqual({ tape: true, sheet: false, siren: false, outHand: null });
   });
 });
 

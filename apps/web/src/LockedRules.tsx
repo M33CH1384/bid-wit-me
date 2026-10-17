@@ -1,6 +1,7 @@
 import { type TableRules, hostMinimum, shotOutOn } from '@spades/rules';
 import { SKILL_SETTING_LABEL, TALK_INTENSITY_LABEL, type TalkIntensity, skillSettingOf } from '@spades/bots';
 import { modeTitle, rulesSummary } from './settings';
+import { timerSettingLabel } from './turnTimer';
 
 const NUKE_LABEL = { full: 'Full Nuke', classic: 'Classic', off: 'Off' } as const;
 
@@ -11,6 +12,7 @@ export function lockedRows(r: TableRules, o: { nuke?: keyof typeof NUKE_LABEL; s
     ['Mode', `${modeTitle(r)}${r.partnerships ? '' : r.deck === 'joker54' ? ' · Joker deck' : ' · Standard 52'}`],
     ['Table', rulesSummary(r)],
     ['Target', String(r.targetScore)],
+    ['Turn timer', timerSettingLabel(r.turnTimerSec)],
     ['Minimum books / bid', min > 0 ? String(min) : 'Off'],
     ['Shot = out', shotOutOn(r) ? 'On' : 'Off'],
     ['First hand bids itself', r.firstHandBidsItself ? 'On' : 'Off'],

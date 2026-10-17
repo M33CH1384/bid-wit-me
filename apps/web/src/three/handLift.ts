@@ -1,4 +1,4 @@
-import { CH } from './layout';
+import { CH, PLAY_DEPTH, SELECT_DEPTH } from './layout';
 
 /**
  * Your-turn hand: when some cards cannot be played, the playable ones rise a little and the
@@ -21,6 +21,32 @@ export const LIFT_S = 0.2;
 export const RAISE_S = 0.16;
 /** After a card leaves, the others slide into the gap. Same curve as the lift, a little longer. */
 export const GAP_S = 0.24;
+/** Neighbours sliding apart for (or back from) a raised card. Ease-out, liftEase. */
+export const SPREAD_S = 0.18;
+
+/** prefers-reduced-motion: the fan snaps instead of sliding. */
+export function reducedMotion(): boolean {
+  try { return typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
+}
+
+/** Seconds for a fan re-layout (raise / lower / spread). 0 snaps. */
+export function spreadSeconds(reduced = reducedMotion()): number {
+  return reduced ? 0 : SPREAD_S;
+}
+
+/** Seconds for the raised card's own lift. 0 snaps. */
+export function raiseSeconds(reduced = reducedMotion()): number {
+  return reduced ? 0 : RAISE_S;
+}
+
+/**
+ * One frame of a tween that may be retargeted: `from` is wherever the value is drawn now,
+ * so an interrupted slide continues from that spot with no jump. `t` is 0..1 progress.
+ */
+export function stepTween(s: { from: number; to: number; t: number }, dt: number, seconds: number): { value: number; t: number } {
+  const t = seconds <= 0 ? 1 : Math.min(1, s.t + Math.max(0, dt) / seconds);
+  return { value: s.from + (s.to - s.from) * liftEase(t), t };
+}
 
 /** One rounded outline around each run of legal cards. No per-card border, no face tint. */
 export const OUTLINE_COLOR = '#F2C14E';
@@ -60,11 +86,21 @@ export const SELECT_GLOW_OP = 0.8;
  * It used to open room for a gold outline. That split the locked cards out of the fan, so it is 0.
  */
 export const GROUP_GAP_PX = 0;
-/** Render order of a legal card sits above every illegal card. Index is added so left-to-right stays put. */
+/**
+ * When a card is raised, each neighbour slides this fraction of a card width away from it.
+ * The raised card stays put and on top. The opened strip is what you tap on the neighbour.
+ */
+export const RAISE_SPREAD = 0.4;
+/**
+ * Kept for the group outline's draw band. A legal card does not use it:
+ * jumping the whole suit forward covered the cards beside the run.
+ */
 export const LEGAL_STACK = 100;
 /**
  * A selected card draws after every other hand card. 400 clears a 17-card fan
- * (face is order + 0.5, ring is order + RING_ABOVE) and the unused group outline at LEGAL_STACK + 40.
+ * (face is order + 0.5, ring is order + RING_ABOVE). It matches SELECT_DEPTH:
+ * the raised card is closer, and it is painted last, so the depth buffer and the
+ * painter agree on which card is on top.
  */
 export const SELECT_STACK = 400;
 
@@ -113,15 +149,49 @@ export function canTapCard(pose: HandPose): boolean {
  * The id is read off the mesh that was hit, then the card id closed over at the last render.
  * A fan index is never the thing that gets played.
  */
+interface TapStamp { type: string; at: number; id: number; card: string; up: boolean }
+let lastTap: TapStamp | null = null;
+
+/** Test isolation. A previous tap must not swallow the next case. */
+export function resetEchoTap(): void { lastTap = null; }
+
+/** The selecting finger has come up. The next pointerdown can be a real second tap. */
+export function noteTapUp(): void {
+  if (lastTap) lastTap.up = true;
+}
+
+/**
+ * The pointerdown that selected a card, and the mouse event a phone synthesises from that
+ * same tap, are one gesture. A second pointerdown before the finger lifts is that same
+ * gesture too, even when both events say mouse. A second pointer id after pointerup is a
+ * real second tap and may play.
+ */
+export function echoTap(e: { pointerType?: string; pointerId?: number }, card: string): boolean {
+  const now = typeof performance !== 'undefined' ? performance.now() : 0;
+  const prev = lastTap;
+  // A phone turns one touch into a mouse event a moment later. That is still the tap
+  // that selected the card. A later touch is a new tap, even when the pointer id is reused.
+  const synthMouse = !!prev && prev.type === 'touch' && prev.card === card && now - prev.at < 1500 && (e.pointerType === 'mouse' || e.pointerType === 'pen');
+  // Two mouse downs before the finger lifts are one tap (a phone, or Chrome, reporting the
+  // click twice). A later touch is a new tap, even when the pointer id is reused.
+  const sameGesture = !!prev && !prev.up && prev.card === card && now - prev.at < 800 && (e.pointerType === 'mouse' || e.pointerType === 'pen');
+  if (synthMouse || sameGesture) return true;
+  lastTap = { type: e.pointerType || 'mouse', at: now, id: e.pointerId ?? -1, card, up: false };
+  return false;
+}
+
 export function cardTapHandlers(onTap: ((cardId: string) => void) | null | undefined, cardId = ''): {
-  onPointerDown?: (e: { stopPropagation: () => void; object?: CardHitNode | null }) => void;
+  onPointerDown?: (e: { stopPropagation: () => void; object?: CardHitNode | null; pointerType?: string; pointerId?: number; nativeEvent?: { pointerType?: string; pointerId?: number } }) => void;
 } {
   if (onTap === undefined) return {};
   if (onTap === null) return { onPointerDown: (e) => { e.stopPropagation(); } };
   return {
     onPointerDown: (e) => {
       e.stopPropagation();
-      onTap(cardIdFromHit(e.object) ?? cardId);
+      const id = cardIdFromHit(e.object) ?? cardId;
+      const src = e.nativeEvent ?? e;
+      if (echoTap(src, id)) return;
+      onTap(id);
     },
   };
 }
@@ -152,27 +222,36 @@ export function handCardChrome(o: {
 /**
  * Painter's order for one hand card. Every legal card draws after every illegal card.
  * Within each group the index still increases left to right.
- * `front` is the tapped card: it jumps ahead of every neighbour, including a higher index.
+ * `front` is the raised card: it draws after every neighbour, and SELECT_DEPTH keeps it closer,
+ * so the card you see and the card the ray hits are the same one.
  */
 export function handRenderOrder(index: number, above: boolean, front = false): number {
   if (front) return SELECT_STACK + index;
-  return (above ? LEGAL_STACK : 0) + index;
+  // The card to the right stays on top of the overlap. A legal suit used to jump
+  // ahead of every locked card, and that covered the two cards beside the run.
+  void above;
+  return index;
 }
 
-/** Camera-space stack for one pose. Depth is not the screen raise; the selected card still has to be nearer than a higher-index neighbour. */
-export function handDepthOpts(pose: HandPose): { layer: 'rest' | 'play' | 'selected'; near?: number } {
-  if (pose === 'selected') return { layer: 'selected', near: LEGAL_NEAR * 2 };
-  if (pose === 'legal') return { layer: 'play', near: LEGAL_NEAR };
+/**
+ * Camera-space stack for one pose. Depth is not the screen raise.
+ * A playable card comes forward of the neighbours it overlaps. A raised card comes
+ * forward of those too, so its whole face stays visible.
+ */
+export function handDepthOpts(pose: HandPose): { layer: 'rest' | 'play' | 'selected' } {
+  if (pose === 'selected') return { layer: 'selected' };
+  if (pose === 'legal') return { layer: 'play' };
   return { layer: 'rest' };
 }
 
 /**
  * How far a playable card moves toward the camera, in the fan's depth units.
- * The fan steps 0.006 per card, and iPhone Safari's 16-bit depth fights around 0.0003.
- * 0.02 clears the three neighbours that actually overlap a card, and stays well clear of that fight.
+ * The fan steps 0.006 per card. This clears the three neighbours that overlap a card.
  * It does not change the picture: position and scale are both multiplied by depth.
  */
-export const LEGAL_NEAR = 0.02;
+export const LEGAL_NEAR = PLAY_DEPTH;
+/** How far a raised card sits in front of a playable neighbour. */
+export const SELECT_NEAR = SELECT_DEPTH;
 
 /**
  * Window-space depth bias for the face and the back.
@@ -195,7 +274,7 @@ export const FACE_POLYGON_OFFSET = { factor: 0, units: -8 } as const;
  * once the face and the hairline share a depth tile. A local push of 0.012 is about 0.003 camera
  * units on a phone fan: past those 8 units, and still under the 0.006 step to the next peer, so
  * a card at the same raise still lets the card on its right cover the overlap. A selected card
- * does not: its render order and depth sit in front of every neighbour. It is geometry, not
+ * does not: SELECT_DEPTH and SELECT_STACK put it in front of both neighbours. It is geometry, not
  * polygonOffset, because the Metal depth bias that feeds polygonOffset is the part that goes
  * wrong on that buffer.
  */
@@ -268,33 +347,90 @@ export function paintOrder(obj: PaintNode | null | undefined): number {
   return best;
 }
 
-/** The card that is raised. The raycast filter reads this so a closer neighbour cannot take its tap. */
-let pointerSelected: string | null = null;
+export interface PlanePoint { x: number; y: number }
 
-export function setPointerSelected(id: string | null): void {
-  pointerSelected = id;
-}
-
-export function pointerSelectedId(): string | null {
-  return pointerSelected;
+export interface PointerCss {
+  clientX?: number;
+  clientY?: number;
+  offsetX?: number;
+  offsetY?: number;
 }
 
 /**
- * Deliver pointer hits in paint order, then by distance.
- * Legal cards are drawn over the illegal cards beside them. A distance sort would give the tap
- * to the closer illegal neighbour, and its handler would swallow it. The card on screen gets the tap.
- * The fibre filter runs before it stamps eventObject, so the mesh and its parents both count.
- * A selected card that the ray also touched wins outright: it is the card drawn on top.
+ * NDC (+y up) for a pointer event.
+ * Fibre divides offsetX by the CSS canvas size. On a phone Chrome, offsetX can be a drawing-buffer
+ * pixel (devicePixelRatio times the CSS pixel), so that ray lands on a card to the right of the finger.
+ * clientX/clientY minus the canvas CSS rect stay in CSS pixels, which is the space `size` is in.
  */
-export function hitsInPaintOrder<T extends { distance: number; eventObject?: CardHitNode | null; object: CardHitNode }>(hits: readonly T[], selected: string | null = pointerSelected): T[] {
+export function pointerNdc(
+  event: PointerCss,
+  rect: { left: number; top: number; width: number; height: number },
+  size: { width: number; height: number },
+): PlanePoint {
+  const useClient = Number.isFinite(event.clientX) && Number.isFinite(event.clientY) && rect.width > 0 && rect.height > 0;
+  const x = useClient ? event.clientX! - rect.left : (event.offsetX ?? 0);
+  const y = useClient ? event.clientY! - rect.top : (event.offsetY ?? 0);
+  const w = (useClient ? rect.width : (rect.width > 0 ? rect.width : size.width)) || 1;
+  const h = (useClient ? rect.height : (rect.height > 0 ? rect.height : size.height)) || 1;
+  return { x: (x / w) * 2 - 1, y: -(y / h) * 2 + 1 };
+}
+
+/**
+ * Same order the renderer uses. Three.js draws a higher renderOrder later, so that card is
+ * the one on top. Within one renderOrder the closer mesh is the one that wrote the depth.
+ * A raised card therefore wins wherever its face is what you see. A neighbour wins only
+ * where the ray actually hit that neighbour and not the card drawn over it.
+ * No saved screen quad: that quad lagged the raise and disagreed with this order.
+ */
+export function hitsInPaintOrder<T extends { distance: number; eventObject?: CardHitNode | null; object: CardHitNode }>(
+  hits: readonly T[],
+): T[] {
   const orderOf = (h: T) => Math.max(paintOrder(h.object), paintOrder(h.eventObject));
-  const ranked = hits.slice().sort((a, b) => {
+  return hits.slice().sort((a, b) => {
     const d = orderOf(b) - orderOf(a);
     return d !== 0 ? d : a.distance - b.distance;
   });
-  if (!selected) return ranked;
-  const mine = ranked.filter((h) => (cardIdFromHit(h.object) ?? cardIdFromHit(h.eventObject)) === selected);
-  return mine.length > 0 ? mine : ranked;
+}
+
+/**
+ * CSS-pixel shift that opens `RAISE_SPREAD` of a card width on each side of the raised card.
+ * Cards to the left move left, cards to the right move right, and the raised card stays.
+ * No selection: every shift is 0.
+ */
+export function raiseSpreadPx(count: number, selectedIndex: number, cardWidthPx: number, openPx?: number): number[] {
+  const shift = new Array<number>(count).fill(0);
+  if (!(selectedIndex >= 0 && selectedIndex < count) || count < 2) return shift;
+  if (!(Number.isFinite(cardWidthPx) && cardWidthPx > 0)) return shift;
+  const open = Number.isFinite(openPx) && openPx! > 0 ? openPx! : RAISE_SPREAD * cardWidthPx;
+  // The block on each side slides as a unit, so the gaps that are not next to the
+  // raised card stay put. The fan solver reserved this much room on the screen.
+  for (let i = 0; i < count; i++) {
+    if (i < selectedIndex) shift[i] = -open;
+    else if (i > selectedIndex) shift[i] = open;
+  }
+  return shift;
+}
+
+/**
+ * Shrink a raise-spread so the end cards stay on screen. 1 keeps the full 40%.
+ * `leftEdge` / `rightEdge` are the unshifted end cards, in the same CSS pixels as `shifts`.
+ */
+export function spreadFitScale(shifts: readonly number[], leftEdge: number, rightEdge: number, screenW: number, margin: number): number {
+  if (!(Number.isFinite(screenW) && screenW > 0)) return 1;
+  const pad = Number.isFinite(margin) && margin > 0 ? margin : 0;
+  let scale = 1;
+  const left = shifts[0] ?? 0;
+  const right = shifts[shifts.length - 1] ?? 0;
+  if (left < -1e-3) {
+    const room = leftEdge - pad;
+    scale = Math.min(scale, room <= 0 ? 0 : room / -left);
+  }
+  if (right > 1e-3) {
+    const room = screenW - pad - rightEdge;
+    scale = Math.min(scale, room <= 0 ? 0 : room / right);
+  }
+  if (!Number.isFinite(scale) || scale < 0) return 0;
+  return Math.min(1, scale);
 }
 
 /**
@@ -323,7 +459,7 @@ export function posePx(pose: HandPose): number {
   }
 }
 
-/** Rest stays in the fan stack. The legal group comes forward, and the tapped card tops that. */
+/** Rest, play, and selected share the fan. Depth does not follow this label. */
 export function stackFor(pose: HandPose): HandStack {
   if (pose === 'selected') return 'selected';
   if (pose === 'legal') return 'play';

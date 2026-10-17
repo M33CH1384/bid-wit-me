@@ -1,25 +1,35 @@
+import { deliverBotLine } from './voices/aiVoice';
+import { musicTension } from './musicTension';
+import { enterTable, quitGame, silenceGame, suspendGame } from './gameSession';
 import { cardControlLabel } from './cardA11y';
-import { confirmPlay, ignorePlayTap, playTrickOf, type PlayTrick } from './online/playGuard';
-import { actingSeat, seatMark } from './turnState';
+import { archSpot } from './archSpot';
+import type { HandHitCard } from './three/handHit';
+import { useEscapeClose } from './useEscapeClose';
+import { type FlyingPlay, confirmPlay, feltClearsSelection, flyPlay, flyingCard, ignorePlayTap, playTrickOf, type PlayTrick } from './online/playGuard';
+import { actingSeat, localSeatOfServerTurn, turnView, type TurnBadge } from './turnState';
 import { retainHandOrder } from './handOrder';
 import { winHeadline } from './headline';
-import { type VenueId, VENUE_DEFS, resolveVenue } from './venues';
+import { type VenueId, VENUE_DEFS } from './venues';
 import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, isFreshDeal, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, newlyOneTrickFromShot, nilBustsJustResolved, partnerOf, sideOf, sortHand,
+  type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, hostMinimum, isFreshDeal, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, newlyOneTrickFromShot, nilBustsJustResolved, partnerOf, sideOf, sortHand,
 } from '@spades/rules';
 import { ScorePad, setTeamNames, sideName } from './Modals';
 import { LockedRulesPanel } from './LockedRules';
+import { booksBanner, teamMinNote } from './polishText';
 import { type Series, addSeriesGame, seriesForGameStart, seriesSides, summarizeGame } from '@spades/rules';
 import { SeriesChip, SeriesSheet, loadSeries, saveSeries } from './Series';
 import { useMyTeamName } from './TeamName';
 import { offlineTalk } from './offlineTalk';
 import { BidOrder, showCenterBidOrder } from './PartnerTalk';
-import { TrumpLadder } from './trumpLadder';
+import { guardTouches, lockBody } from './antiPan';
+import { TrumpLadder, trumpStripShown } from './trumpLadder';
+import { landingMode } from './three/landing';
 import { SocialButton } from './social/Social';
 import { recordOfflineGame } from './offlineStats';
-import { setTableIntensity, showLine, speakBot, useTalkPrefs } from './talkPrefs';
+import { setTableIntensity, showLine, speakBot, talkPrefs as talkStore, useTalkPrefs } from './talkPrefs';
+import { setActiveDeck } from './decks';
 import { pickTeamName } from '@spades/protocol';
 import { Intermission, calloutsFor } from './Intermission';
 import Hype from './Hype';
@@ -38,6 +48,7 @@ import { TableLoading } from './TableLoading';
 import { tableStillLoading, warmTableEffects } from './effects/warm';
 import { endReasonText, onNoticeSides, shotChatLines } from './shotOut';
 import { type Sfx, sound } from './audio';
+import { sessionRoom } from './spatial';
 import { HAPTIC, haptic } from './haptics';
 import { type ChatMsg, LINES, SEAT_COLORS, TALK_LINES, type Toast, TickNumber, USER_COLORS, pick, toastsFor } from './overlay';
 import { type Settings, modeTitle } from './settings';
@@ -46,6 +57,8 @@ import { HUMAN, useGame } from './useGame';
 import { DealerPopup } from './DealerPopup';
 import { dealerAnnouncement, dealerFromServer, withCurrentDealerLine } from './dealerName';
 import { plateTally, rememberHandTally, type HandTally } from './plateStats';
+import { bidChipText, dealerChipMatches, plateTookText, syncPlateFacts, type SeatFact } from './plateFacts';
+import { leaveChoice, leaveMenuAction, type LeaveGesture } from './leaveMenu';
 import { biddingNote, noticeTip, seatFacingName, seatInitial, trickTakenLine } from './seatLabel';
 import { MinBidLine, bidChoices, minBidNote } from './minBid';
 import { type SavedGame, clearGame, saveGame } from './save';
@@ -63,7 +76,7 @@ import { TrashTalkButton } from './TrashTalk';
 import { isPromoted } from './cardFaces';
 import { QUICK_TRASH_SET } from './quickTrash';
 import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
-import { type TalkIntensity, botSkillFor, personaForName, personaTag, pickBotNames } from '@spades/bots';
+import { type TalkIntensity, botSkillFor, personaForName, platePersona, pickBotNames } from '@spades/bots';
 import { preloadVoice } from './voices/voices';
 const Scene = lazy(loadScene);
 
@@ -127,8 +140,6 @@ export interface OnlineBinding {
   setTeamName?: (name: string) => void;
   /** the table's rematch series + which of its sides is mine */
   series?: { series: Series | null; mine: number };
-  /** local seats whose Hustler act is over */
-  revealed?: number[];
   /** local seats held by bots */
   botSeats?: number[];
   /** the host's trash-talk intensity */
@@ -140,14 +151,23 @@ export interface OnlineBinding {
   /** Release 10: watching, not playing. Seat 0 is a real player (names[0] is their name): no hand, no controls. */
   spectator?: boolean;
   /**
-   * Current hand's dealer, already mapped from the server seat to the plate name.
-   * Offline leaves this unset and derives it from the engine seat.
+   * Current hand's dealer, from one `dealerFromServer` result: the engine seat's occupant
+   * and that seat after the table rotates the viewer to the bottom. Offline leaves these
+   * unset and derives both from the engine seat.
    */
   dealerName?: string;
+  /** Local seat for `dealerName`. Same call, so the DEALER chip and the popup cannot name two bots. */
+  dealerSeat?: number;
+  /** Server's current-turn seat, before the table rotates the viewer to the bottom. */
+  serverTurn?: number | null;
+  /** Viewer's server seat. Null while spectating: the view is already anchored. */
+  viewerSeat?: number | null;
   /** Resolved Run it! in local seats. Present for every viewer until the next hand, including the one who did not claim. */
   run?: RunPlayback | null;
   /** Release 10: spectator banner / take-seat prompt / watchers chip, drawn over the table */
   overlay?: ReactNode;
+  /** True once this client's loader is gone and the table can take a bid or a play. */
+  onInteractive?: (on: boolean) => void;
 }
 
 interface Props {
@@ -160,6 +180,7 @@ interface Props {
   /** offline rematch: first dealer of this game (undefined = random) */
   startDealer?: number;
   onQuality: (q: Settings['quality']) => void;
+  onView?: (v: Settings['view']) => void;
   /** A saved in-progress game to resume at exactly the same point. */
   resume?: SavedGame;
   /** Rematch or resume: keep the series tally. A new game leaves this unset and starts at 0–0. */
@@ -175,7 +196,7 @@ interface Props {
 function offlineNames(n: number, seed: string): string[] {
   let mine = '';
   try { mine = (localStorage.getItem('bwm.online.name') ?? '').replace(/^"|"$/g, ''); } catch { /* ignore */ }
-  return ['You', ...pickBotNames(n - 1, mine ? [mine, 'You'] : ['You'], seed)];
+  return ['You', ...pickBotNames(n - 1, mine ? [mine, 'You'] : ['You'], seed, platePersona)];
 }
 
 function positions(n: number): SeatPos[] {
@@ -321,11 +342,11 @@ function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only',
           {tray && <>
             {extra}
             {trash}
-            <button type="button" className={`chat-toggle ${open ? 'open' : ''}`} onClick={onToggle} aria-label="Toggle chat">
+            <button type="button" className={`chat-toggle ${open ? 'open' : ''}`} onClick={onToggle} aria-label={open ? 'Hide chat' : 'Show chat'}>
               💬{!open && unread > 0 && <span className="unread">{unread}</span>}
             </button>
           </>}
-          <button type="button" className={`tray-toggle ${tray ? 'on' : ''}`} data-testid="tray-toggle" aria-expanded={tray} aria-label={tray ? 'Close controls' : 'Open controls: camera, mic, voice, chat'} onClick={() => setTray(!tray)}>
+          <button type="button" className={`tray-toggle ${tray ? 'on' : ''}`} data-testid="tray-toggle" aria-label={tray ? 'Close controls' : 'Open controls: camera, mic, voice, chat'} onClick={() => setTray(!tray)}>
             {tray ? '✕' : <>💬<small>⋯</small></>}{!tray && unread > 0 && <span className="unread" data-testid="tray-unread">{unread}</span>}
           </button>
         </div>
@@ -387,6 +408,7 @@ function runClaimerSeat(st: GameState): number | null {
  * The first few times it appears, a one-time spotlight tip points at it (shown even with tips off).
  */
 function RunItButton({ onRun, tip, onDismissTip }: { onRun: () => void; tip: boolean; onDismissTip: () => void }) {
+  const escTip = useEscapeClose(onDismissTip);
   const [bottom, setBottom] = useState<number | null>(null);
   useLayoutEffect(() => {
     const place = () => {
@@ -401,7 +423,7 @@ function RunItButton({ onRun, tip, onDismissTip }: { onRun: () => void; tip: boo
   return (
     <div className="run-it-wrap" style={{ bottom: bottom ?? undefined }}>
       {tip && (
-        <div className="run-it-tip glass slant" role="dialog" aria-label="Run it tip" data-testid="run-it-tip">
+        <div ref={escTip} className="run-it-tip glass slant" role="dialog" aria-label="Run it tip" data-testid="run-it-tip">
           <span>You've got the rest locked. Tap <b>Run it!</b> to take every remaining book.</span>
           <button type="button" className="link" onClick={onDismissTip} aria-label="Dismiss tip">Got it</button>
         </div>
@@ -422,14 +444,34 @@ export function placeholderStyle(venue: VenueId): React.CSSProperties {
   return vars as React.CSSProperties;
 }
 
-/** a stable 0–1 number from a game seed (Random venue: same pick for the same game) */
-function seedFloat(seed: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < seed.length; i++) h = Math.imul(h ^ seed.charCodeAt(i), 16777619);
-  return ((h >>> 0) % 100000) / 100000;
+/** The one turn badge, painted over an opponent plate from the main tree so a stale canvas plate cannot keep the previous seat's label. */
+function SeatBadge({ badge }: { badge: TurnBadge }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    let raf = 0;
+    const place = () => {
+      const plate = document.querySelector(`[data-testid="seat-${badge.seat}"]`);
+      const el = ref.current;
+      if (plate && el) {
+        const r = plate.getBoundingClientRect();
+        el.style.left = `${r.left + 30}px`;
+        el.style.top = `${r.top - 16}px`;
+        el.hidden = r.width <= 0;
+      }
+      raf = requestAnimationFrame(place);
+    };
+    place();
+    return () => cancelAnimationFrame(raf);
+  }, [badge.seat, badge.text]);
+  return createPortal(
+    <div ref={ref} className="plate-turn acting-badge" data-testid={badge.testId} hidden style={{ position: 'fixed', zIndex: 4, pointerEvents: 'none' }}>{badge.text}</div>,
+    document.body,
+  );
 }
 
-export default function Table({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, resume, continueSeries, online, onMainMenu, startDealer }: Props) {
+
+export default function Table({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, onView, resume, continueSeries, online, onMainMenu, startDealer }: Props) {
+  useEffect(() => { setActiveDeck(settings.deck); }, [settings.deck]);
   // `online` never changes for a mounted Table, so this is always the same hook path per instance
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const vp = useViewport();
@@ -437,6 +479,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // and an open tip holds the bots + trick sweep until it's dismissed. Tips off → back to the chosen speed.
   const [tips, setTips] = useState<TipsPref>(loadTips);
   const [tipsSkipped, setTipsSkipped] = useState(false);
+  // Anti-pan: lock the page while this table is up, and stop touch pans on the table itself.
+  useEffect(() => lockBody(), []);
+  useEffect(() => { const el = screenRef.current; return el ? guardTouches(el) : undefined; }, []);
   const learning = tips.on && !tipsSkipped;
   const [tipOpen, setTipOpen] = useState(false);
   const speed = learning && settings.speed !== 'turbo' ? 'slow' : settings.speed;
@@ -446,13 +491,18 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const levelFor = useCallback((seat: number) => botSkillFor(settings.botLevel, seed, seat, botNames[seat] ?? ''), [settings.botLevel, seed, botNames]);
   const partnerHint = useRef<{ hand: number; text: string } | null>(null);
   const localReport = useRef<{ names: string[]; teamNames: (string | null)[] | null }>({ names: botNames, teamNames: null });
-  const { st, view, pause, error, apply, introHand, dealing, k } = online ? online.source : useGame(initialRules, seed, levelFor, speed, resume?.state, learning && tipOpen, startDealer, partnerHint, localReport);
+  // The deal starts once the loader is gone. Behind it, hand 1 was already dealt when the felt showed.
+  const [dealReady, setDealReady] = useState(false);
+  const [sceneDealt, setSceneDealt] = useState<number | null>(null);
+  const onDealDone = useCallback((h: number) => setSceneDealt(h), []);
+  const { st, view, pause, error, apply, introHand, dealing, k } = online ? online.source : useGame(initialRules, seed, levelFor, speed, resume?.state, learning && tipOpen, startDealer, partnerHint, localReport, dealReady, sceneDealt);
   useEffect(() => { online?.setLearning?.(learning); }, [learning]); // eslint-disable-line react-hooks/exhaustive-deps
   const r = st.rules;
   const n = r.playerCount;
   const names = online?.names ?? botNames;
   const pos = useMemo(() => positions(n), [n]);
   const [selected, setSelected] = useState<Card | null>(null);
+  const playArmed = useRef(false);
   const [exchangePick, setExchangePick] = useState<Card[]>([]);
   const [showPad, setShowPad] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -492,21 +542,26 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // offline trash talk: same engine as the server
   useEffect(() => {
     if (online) return;
-    offlineTalk.table = { seats: names.map((nm, i) => ({ name: nm, bot: i !== HUMAN })), partnerships: r.partnerships, teamNames: Array.from({ length: st.scores.length }, (_, i) => sideName(r, i, names)), intensity, jokers: r.deck === 'joker54' };
+    offlineTalk.table = { seats: names.map((nm, i) => ({ name: nm, bot: i !== HUMAN })), partnerships: r.partnerships, teamNames: Array.from({ length: st.scores.length }, (_, i) => sideName(r, i, names)), intensity, jokers: r.deck === 'joker54', aiTalk: !!settings.aiTalk };
   });
   useEffect(() => {
     if (online) return;
     if (!resume) offlineTalk.newGame();
     offlineTalk.sink = (l) => {
-      localChat.push(l.name, l.text, false, 0, true);
-      speakBot(l.name, l.text, l.persona, l.line, l.bid);
+      // Voice Phase 3: a catalog line plays with its own text; anything that misses is the canned line, as before.
+      const tp = talkStore.get();
+      const seatIx = names.findIndex((nm) => nm === l.name);
+      const seatPos = seatIx >= 0 ? pos[seatIx] : undefined;
+      const muted = sound.voiceMuted(l.name);
+      void deliverBotLine(l, { aiVoices: tp.aiVoices && !muted, voices: tp.voices, soundOn: sound.settings.on && sound.settings.volume > 0, gain: tp.voiceVolume * 0.9 },
+        (text) => localChat.push(l.name, text, false, 0, true),
+        muted ? () => {} : () => speakBot(l.name, l.text, l.persona, l.line, l.bid, seatPos, n),
+        undefined,
+        (b, gain) => sound.playVoice(b, gain, undefined, seatPos, n));
       if (l.reveal) fx.emit('hustled', { text: `${l.name} was never new` });
-      setRevealedTick((x) => x + 1);
     };
     return () => { offlineTalk.sink = null; offlineTalk.table = null; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const [, setRevealedTick] = useState(0);
-  const revealed = online ? (online.revealed ?? []) : offlineTalk.state.revealed;
 
   // rematch series: online from the server. Offline, a new game opens at 0–0. Rematch and resume keep the tally.
   const [offSeries, setOffSeries] = useState<Series | null>(() => {
@@ -562,16 +617,23 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // online: `locked` while our move is in flight (until the server acks it), so it can't be sent twice
   const spectating = !!online?.spectator;
   const face = (seat: number) => seatFacingName(names, seat, spectating);
-  // Online: the server seat's current occupant (OnlineTable). Offline: engine dealer, viewer at seat 0.
-  const dealerLabel = online?.dealerName || dealerFromServer({
+  // One identity for the chip and the popup. Online passes the engine seat's occupant (and its
+  // local seat) from dealerFromServer. Offline: the viewer sits at engine seat 0.
+  const offlineDealer = dealerFromServer({
     serverDealer: st.dealer,
     occupants: names.map((name) => ({ name, kind: 'human' as const })),
     viewerSeat: spectating ? null : 0,
-  }).name;
+  });
+  const dealerLabel = online?.dealerName || offlineDealer.name;
+  const dealerSeat = online?.dealerSeat != null ? online.dealerSeat : offlineDealer.localSeat;
   const showDealer = !!dealerLabel && (dealing || isFreshDeal(st));
   const turnLocked = !!online?.source.locked;
-  // Badges and playable cards share this. `covered` (Run it!) is applied again once that show exists.
-  const myTurn = actingSeat({ turn: st.turn, phase: st.phase, pause, dealing, locked: turnLocked, covered: false }) === HUMAN && !spectating;
+  const localTurn = !online || online.serverTurn == null
+    ? st.turn
+    : localSeatOfServerTurn(online.serverTurn, spectating || online.viewerSeat == null ? null : online.viewerSeat, n);
+  // The badge keeps naming this seat while the play is in flight. The hand itself stays locked
+  // so a second tap cannot send another card before the server answers.
+  const myTurn = actingSeat({ turn: localTurn, phase: st.phase, pause, dealing, locked: false, covered: false }) === HUMAN && !spectating && !turnLocked;
   // Sort once when the hand is dealt. A play only removes a card; re-sorting here is what made the fan look shuffled.
   const handOrder = useRef<{ handNo: number; cards: Card[] } | null>(null);
   const hand = useMemo(() => {
@@ -625,11 +687,20 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   }, []);
   useEffect(() => { if (dressed && effectsWarm) setLoadProgress(1); }, [dressed, effectsWarm]);
   const loading = tableStillLoading(dressed, effectsWarm, loadGiveUp);
+  useEffect(() => { if (tableReady && !loading) setDealReady(true); }, [tableReady, loading]);
+  const loadShownAt = useRef(performance.now());
+  useEffect(() => { (window as unknown as { __bwmLoading?: unknown }).__bwmLoading = { shownAt: loadShownAt.current, room: sound.roomStyle?.name ?? null }; }, []);
   useEffect(() => {
     if (loading) return;
-    const t = window.setTimeout(() => setLoadGone(true), 380);
+    // Loading screen minimum 3.0s: long enough to read the room name while its ambience fades in.
+    const wait = Math.max(380, 3000 - (performance.now() - loadShownAt.current));
+    const t = window.setTimeout(() => { (window as unknown as { __bwmLoading?: { goneAt?: number } }).__bwmLoading && ((window as unknown as { __bwmLoading: { goneAt?: number } }).__bwmLoading.goneAt = performance.now()); setLoadGone(true); }, wait);
     return () => window.clearTimeout(t);
   }, [loading]);
+  const reportInteractive = online?.onInteractive;
+  useEffect(() => {
+    reportInteractive?.(loadGone && !loading);
+  }, [loadGone, loading, reportInteractive]);
   // The saved game is already in memory. The flat hand is playable on the first paint; the 3D scene catches up.
   useEffect(() => {
     const w = window as unknown as { __bwmPlayableAt?: number };
@@ -688,8 +759,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const who = face(runFx.claimer);
     // 2) the claimer's cards slam down together in SLOW MOTION (heavy impact: shake + bass hit)
     // 3) the tornado snatches everything else at once — every hand + whatever is on the table. No trick-by-trick play.
-    sound.play('runSlam', { delay: zoom + RUN_SLAM_MS / 1000 });
-    const impact = window.setTimeout(() => { if (!fx.reduced && !fx.osReducedMotion) fx.shake = { start: performance.now(), dur: 1.0, amp: 0.13 }; }, RUN_ZOOM_MS + RUN_SLAM_MS);
+    // No scheduled runSlam: the last dropped card fires it (and the pile thump) on its landing frame.
     sound.play('tornado', { delay: Math.max(0, tornadoAt - 0.3) });
     const toSlam = window.setTimeout(() => {
       setRunFx((f) => (f && f.id === runFx.id ? { ...f, phase: 'slam' } : f));
@@ -699,7 +769,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     }, RUN_ZOOM_MS);
     // (capture scripts set __bwmHoldRun to step the tornado frame by frame via fx.warp)
     const hold = !!(window as unknown as { __bwmHoldRun?: boolean }).__bwmHoldRun;
-    const timers = hold ? [impact] : [impact, window.setTimeout(endRun, RUN_SHOW_MS)];
+    const timers = hold ? [] : [window.setTimeout(endRun, RUN_SHOW_MS)];
     (window as unknown as { __bwmEndRun?: () => void }).__bwmEndRun = endRun;
     if (runFx.claimer === HUMAN && !spectating) {
       runItUsed();
@@ -753,6 +823,13 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (runItTipDue()) { runItTipShown(); setRunTip(true); }
   }, [canRun]); // eslint-disable-line react-hooks/exhaustive-deps
   const myBadges = useBadges();
+  // The card the player just tapped, shown on the table before the server's state arrives.
+  // It belongs to the hand (and trick) it was played in: a card from the last hand that is dealt to you again must
+  // never be drawn on the table (offline nothing else ever cleared it).
+  const [flyingPlay, setFlyingPlay] = useState<FlyingPlay | null>(null);
+  const flying = flyingCard(flyingPlay, st.handNo, st.phase, st.tricks.length);
+  const setFlying = (c: Card | null) => setFlyingPlay(c ? { card: c, handNo: st.handNo, trickNo: st.tricks.length } : null);
+  useEffect(() => { setFlyingPlay(null); }, [st.handNo]);
   // what the 3D table shows (see above)
   const display = (() => {
     if (runFx) {
@@ -768,8 +845,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         trick: b.st.trick.plays, piles: b.st.tricks, slam: { seat: runFx.claimer, cards: runFx.cards, others: [] },
       };
     }
-    if (ranHand) return { hand, counts: view.handCounts, trick: shownTrick.plays.some((p) => p.run) ? [] : shownTrick.plays, piles: [] as typeof piles, slam: null };
-    return { hand, counts: view.handCounts, trick: shownTrick.plays, piles, slam: null };
+    const baseTrick = ranHand && shownTrick.plays.some((p) => p.run) ? [] : shownTrick.plays;
+    const flown = flyPlay(hand, baseTrick, flying);
+    const trick = flown.card ? [...baseTrick, { seat: HUMAN, card: flown.card }] : baseTrick;
+    if (ranHand) return { hand: flown.hand, counts: view.handCounts, trick, piles: [] as typeof piles, slam: null };
+    return { hand: flown.hand, counts: view.handCounts, trick, piles, slam: null };
   })();
   useGameSounds(st, myTurn, mySide, msgs);
   const landCue = useCallback((c: Card) => landCueFor(st, c), [st]);
@@ -831,6 +911,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     else saveGame({ seed, settings, state: st, chat: rawMsgs, names, teamNames: [null, botTeam], nuke: fx.tableNuke ?? fx.prefs.nuke });
   }, [st, rawMsgs, seed, settings, online]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Game sound only while this table is on screen; any way off it (menu, Leave, Save & quit, online leave) silences it.
+  useEffect(() => { enterTable(); return silenceGame; }, []);
   // "Resuming your game…" toast
   useEffect(() => {
     if (!resume) return;
@@ -838,9 +920,29 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const t = setTimeout(() => setToasts((ts) => ts.filter((x) => x.id !== -1)), 2600);
     return () => clearTimeout(t);
   }, [resume]);
-  const leave = () => { if (!online) clearGame(); onExit(); };
+  // Online Leave goes home. onExit only opens the table lobby, so one Leave used to stop there.
+  const leave = () => {
+    if (!online) { quitGame(); onExit(); return; }
+    (onMainMenu ?? onExit)();
+  };
+  // A tap that starts on Leave always leaves, even when WebKit delivers the click to the scrim.
+  const leaveGesture = useRef<LeaveGesture>({ armed: false, actedAt: 0 });
+  const escMenu = useEscapeClose(() => { leaveGesture.current = { armed: false, actedAt: 0 }; setMenuOpen(false); });
+  const escLeave = useEscapeClose(() => setConfirmLeave(false));
+  const runLeaveMenu = (e: { type: string; pointerType?: string }, where: 'leave' | 'scrim') => {
+    const now = performance.now();
+    const action = leaveMenuAction({ type: e.type as 'pointerdown' | 'pointerup' | 'click', pointerType: e.pointerType }, where, leaveGesture.current, now);
+    if (action === 'arm') { leaveGesture.current = { ...leaveGesture.current, armed: true }; return; }
+    if (action === 'disarm') { leaveGesture.current = { ...leaveGesture.current, armed: false }; return; }
+    if (action === 'ignore') return;
+    if (action === 'close') { leaveGesture.current = { armed: false, actedAt: 0 }; setMenuOpen(false); return; }
+    leaveGesture.current = { armed: false, actedAt: now };
+    setMenuOpen(false);
+    if (leaveChoice(!!online, st.phase) === 'leave') leave();
+    else setConfirmLeave(true);
+  };
   // game over: no confirmation — the game is finished
-  const mainMenu = () => { if (!online) clearGame(); (onMainMenu ?? onExit)(); };
+  const mainMenu = () => { if (!online) quitGame(); (onMainMenu ?? onExit)(); };
   const isBooks = booksHand(st);
   // "First hand: books bid themselves" — announce it once the deal lands
   const booksAnnounced = useRef<string | null>(null);
@@ -853,7 +955,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     return () => clearTimeout(t);
   }, [isBooks, dealing, st.seed, st.handNo, st.tricks.length, resume]);
 
-  useEffect(() => { setSelected(null); }, [st.turn, st.handNo]);
+  useEffect(() => { setSelected(null); playArmed.current = false; }, [st.turn, st.handNo]);
   // Pump and the Nil-bust shotgun both come from the shared state, so every online client hears each once.
   // The pump is one book from a shot: a contract on the edge, or a Nil bidder still sitting at zero books.
   // The shotgun plays when the trick that gives that Nil bidder their first book resolves. Mute and volume are the bus.
@@ -947,9 +1049,16 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (!online && replies) { const bots = names.slice(1); push(pick(bots), pick(replies), false, 900 + Math.random() * 700); }
   };
   const reduceFx = useReduceEffects();
-  // venue: online = the room's; offline = the setting, with Random rolled from the game seed (same spot after a refresh)
-  const venue: VenueId = online ? (online.venue ?? 'classic') : resolveVenue(settings.venue, seedFloat(seed));
-  useEffect(() => { sound.setVenueBed(VENUE_DEFS[venue].bed); return () => sound.setVenueBed('none'); }, [venue]);
+  // Unified session room (Phase 4): seen = heard = named. Online the shared room venue decides;
+  // Auto rolls a room from the game seed and that room IS the visual venue for this game.
+  const roomStyle = sessionRoom({ explicit: sound.get().soundscape, visualVenue: !online && settings.venue !== 'random' ? settings.venue : undefined, seed, onlineVenue: online?.venue });
+  const venue: VenueId = roomStyle.venue as VenueId;
+  const [roomName, setRoomName] = useState<string | undefined>(undefined);
+  // Phase 6: the music tension layer follows how close the game feels; calm again off the table.
+  useEffect(() => { sound.setMusicTension(musicTension({ scores: st.scores, target: r.targetScore, phase: st.phase, handNo: st.handNo, nilBid: st.bids.some((b) => b === 0) })); }, [st, r.targetScore]);
+  useEffect(() => () => sound.setMusicTension(0), []);
+  const [, setMuteTick] = useState(0);
+  useEffect(() => { const style = sound.applySoundscape(seed, online?.venue, !online && settings.venue !== 'random' ? settings.venue : undefined); setRoomName(style.name); return () => sound.setVenueBed('none'); }, [seed]); // eslint-disable-line react-hooks/exhaustive-deps
   // nuke watchdog: the blast is normally cued by the second Joker's 3D landing; on a stalled renderer (Safari compiling
   // shaders, a backgrounded tab, very slow frames) that landing can come late or never — so once a nuked trick is on
   // the table, make sure the nuke fires anyway (fx dedupes, so it never plays twice).
@@ -989,6 +1098,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (gate !== playGateSeen.current) {
       playGateSeen.current = gate;
       playHold.current = null;
+      setFlying(null);
     }
   }, [online?.source.playGate]);
   useEffect(() => {
@@ -996,8 +1106,25 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   }, [trickNow]);
 
   const pickedAt = useRef(0);
-  const onCard = useCallback((c: Card) => {
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
+  // Armed only after the selecting finger lifts, so one tap raises and the next tap plays.
+  useEffect(() => {
+    const up = () => {
+      // The click that follows pointerup is still this tap. Arm on the next frame,
+      // after that click, so the first tap cannot play.
+      requestAnimationFrame(() => { if (selectedRef.current) playArmed.current = true; });
+    };
+    window.addEventListener('pointerup', up, true);
+    window.addEventListener('pointercancel', up, true);
+    return () => {
+      window.removeEventListener('pointerup', up, true);
+      window.removeEventListener('pointercancel', up, true);
+    };
+  }, []);
+  const onCard = useCallback((c: Card, dragged = false, slam?: number, rel?: [number, number]) => {
     if (humanExchanging) {
+      if (dragged) return;
       sound.play('tap');
       setExchangePick((p) => (p.includes(c) ? p.filter((x) => x !== c) : p.length < exchangeStep!.count ? [...p, c] : p));
       return;
@@ -1005,17 +1132,28 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (ignorePlayTap(playHold.current, trickNow)) return;
     if (!legal.includes(c)) return;
     // Play sends the selected card id. A different hit only changes the selection.
-    const action = confirmPlay(selected, c, pickedAt.current, performance.now());
+    const action = dragged ? { type: 'play' as const, card: c } : confirmPlay(selectedRef.current, c, playArmed.current && selectedRef.current === c);
     if (action.type === 'ignore') return;
     if (action.type === 'play') {
       const held = trickNow;
-      const sent = apply({ type: 'play', seat: HUMAN, card: action.card as Card });
+      const sent = apply({ type: 'play', seat: HUMAN, card: action.card as Card, ...(dragged && slam !== undefined ? { slam } : !dragged && settings.view === 'standing' ? { slam: 1 } : {}), ...(dragged && rel ? { rel } : {}) });
       if (sent !== false) {
         playHold.current = held;
+        playArmed.current = false;
+        selectedRef.current = null;
         setSelected(null);
+        setFlying(action.card as Card);
       }
-    } else { pickedAt.current = performance.now(); setSelected(action.card as Card); sound.play('tap'); }
-  }, [humanExchanging, exchangeStep, legal, selected, apply, trickNow]);
+    } else {
+      playArmed.current = false;
+      selectedRef.current = action.card as Card;
+      pickedAt.current = performance.now();
+      setSelected(action.card as Card);
+      sound.play('tap');
+    }
+  }, [humanExchanging, exchangeStep, legal, apply, trickNow, settings.view]);
+
+  const onCardDrop = useCallback((c: Card, slam?: number, rel?: [number, number]) => onCard(c, true, slam, rel), [onCard]);
 
   const isBotSeat = (seat: number) => (online ? !!online.botSeats?.includes(seat) : seat !== HUMAN);
   // recorded bot voices: fetch a persona's clips when one of its bots sits down
@@ -1025,25 +1163,79 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     names.forEach((nm, i) => { if (isBotSeat(i)) preloadVoice(personaForName(nm), nm); });
   }, [botKey, talkPrefs.voices]); // eslint-disable-line react-hooks/exhaustive-deps
   const notice = onNoticeSides(sb);
-  const actor = actingSeat({ turn: st.turn, phase: st.phase, pause, dealing, locked: turnLocked, covered: !!runFx });
+  // `legal` is empty while the play is in flight. The badge still needs the cards that were legal.
+  const playableCount = st.phase === 'playing' ? view.legal.filter((c) => (hand ?? []).includes(c)).length : legal.length;
+  const live = turnView({
+    turn: localTurn, phase: st.phase, pause, dealing, locked: turnLocked, covered: !!runFx,
+    viewerSeat: HUMAN, spectating, legalCount: playableCount, selected: !!selected,
+  });
+  const actor = live.actor;
+  const badge = live.badge;
+  // The opponent plate lives in the canvas, which can paint a turn late. The class follows the same seat as the badge.
+  useEffect(() => {
+    let raf = 0;
+    const sync = () => {
+      if (typeof document === 'undefined') return;
+      const root = document.querySelector('.table-screen');
+      if (root) {
+        const id = actor === null || (actor === HUMAN && spectating) ? '' : `seat-${actor}`;
+        root.querySelectorAll('.plate').forEach((el) => {
+          const on = !!id && el.getAttribute('data-testid') === id;
+          if (el.classList.contains('turn') !== on) el.classList.toggle('turn', on);
+        });
+      }
+      raf = requestAnimationFrame(sync);
+    };
+    sync();
+    return () => cancelAnimationFrame(raf);
+  }, [actor, spectating]);
+  // Canvas plates keep the previous hand's dealer chip and bid/took until their own root
+  // paints. Correct them before the browser paints, and only then show "X deals".
+  const plateKey = `${st.handNo}:${st.phase}:${dealerSeat}:${actor}:${plates.bids.map((b) => (b == null ? '' : String(b))).join('.')}:${plates.books.join('.')}`;
+  const [dealerLive, setDealerLive] = useState(false);
+  useLayoutEffect(() => {
+    const facts: SeatFact[] = [];
+    for (let seat = 0; seat < n; seat++) {
+      facts.push({
+        seat,
+        bid: bidChipText(plates.bids[seat] ?? null, actor === seat && st.phase === 'bidding'),
+        took: plateTookText(plates.books[seat] ?? 0, st.phase),
+        dealer: dealerSeat === seat,
+      });
+    }
+    let dead = false;
+    let raf = 0;
+    const apply = () => {
+      if (dead) return;
+      const screen = document.querySelector('.table-screen');
+      if (screen) syncPlateFacts(screen, facts);
+      const hasPlate = !!screen?.querySelector('.plate');
+      const ok = !showDealer || (!!screen && hasPlate && dealerChipMatches(screen, dealerSeat));
+      setDealerLive((prev) => (prev === ok ? prev : ok));
+      cancelAnimationFrame(raf);
+      raf = showDealer && !ok ? requestAnimationFrame(apply) : 0;
+    };
+    const layer = document.querySelector('.badge-layer');
+    const obs = new MutationObserver(() => apply());
+    if (layer) obs.observe(layer, { childList: true, subtree: true, characterData: true });
+    apply();
+    return () => { dead = true; cancelAnimationFrame(raf); obs.disconnect(); };
+  }, [plateKey, showDealer]); // eslint-disable-line react-hooks/exhaustive-deps
   const renderSeat = (seat: number) => {
-    const mark = seatMark(actor, seat, st.phase, false, false, 0);
-    const isTurn = mark === 'to-play' || mark === 'bidding';
+    const isTurn = actor === seat;
     const partner = !spectating && r.partnerships && seat === partnerOf(HUMAN, r);
     const b = plates.bids[seat];
     const took = plates.books[seat] ?? 0;
     return (
-      <div className={`plate ${isTurn ? 'turn' : ''} ${partner ? 'ally' : 'foe'}`} data-testid={`seat-${seat}`} title={isBotSeat(seat) ? `${names[seat]} · ${personaTag(names[seat]!, revealed.includes(seat))}` : undefined} data-persona={isBotSeat(seat) ? personaTag(names[seat]!, revealed.includes(seat)) : undefined}>
+      <div className={`plate ${isTurn ? 'turn' : ''} ${partner ? 'ally' : 'foe'}`} data-testid={`seat-${seat}`} title={isBotSeat(seat) ? `${names[seat]} · ${platePersona(names[seat]!)}` : undefined} data-persona={isBotSeat(seat) ? platePersona(names[seat]!) : undefined}>
         <div className="plate-avatar" style={{ ['--uc' as string]: SEAT_COLORS[seat] }}>{names[seat]![0]}</div>
         <div className="plate-body">
-          <div className="plate-name">{names[seat]}{st.dealer === seat && <span className="chip dealer" data-testid={`dealer-${seat}`}>DEALER</span>}{partner && <span className="chip ally">PARTNER</span>}{notice.includes(sideOf(seat, r)) && <span className="chip notice" data-testid={`notice-${seat}`} title="Got shot last hand: one more shot and they're out">ON NOTICE</span>}</div>
+          <div className="plate-name">{names[seat]}{dealerSeat === seat && <span className="chip dealer" data-testid={`dealer-${seat}`}>DEALER</span>}{partner && <span className="chip ally">PARTNER</span>}{notice.includes(sideOf(seat, r)) && <span className="chip notice" data-testid={`notice-${seat}`} title="Got shot last hand: one more shot and they're out">ON NOTICE</span>}</div>
           <div className="plate-stats" key={st.handNo}>
-            <span className="chip" data-testid={`bid-${seat}`}>{b === 'books' ? 'BOOKS' : `BID ${b === null ? (isTurn && st.phase === 'bidding' ? '…' : '—') : bidLabel(b).toUpperCase()}`}</span>
-            <span className="chip" data-testid={`books-${seat}`}>TOOK {took}</span>
+            <span className="chip" data-testid={`bid-${seat}`}>{bidChipText(b ?? null, isTurn && st.phase === 'bidding')}</span>
+            <span className="chip" data-testid={`books-${seat}`}>{plateTookText(took, st.phase)}</span>
           </div>
         </div>
-        {mark === 'bidding' && <div className="plate-turn" data-testid={`bidding-${seat}`}>BIDDING</div>}
-        {mark === 'to-play' && <div className="plate-turn" data-testid={`to-play-${seat}`}>TO PLAY</div>}
         {online?.seatExtra(seat)}
       </div>
     );
@@ -1054,6 +1246,25 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // landscape phones: keep the bid / pass panel just above the top of the (resting) hand
   const screenRef = useRef<HTMLDivElement>(null);
   const measureHand = st.phase === 'bidding' || st.phase === 'exchange';
+  // Portrait phones: YOUR TURN and your plate sit in the open arch under the fan, clear of every card.
+  useEffect(() => {
+    if (vp.short) return;
+    const tick = () => {
+      const el = screenRef.current;
+      const hits = (window as unknown as { __bwmHandHits?: HandHitCard[] }).__bwmHandHits ?? [];
+      const arch = el && window.innerWidth < 600 && window.innerHeight > window.innerWidth ? archSpot(hits, window.innerWidth, window.innerHeight) : null;
+      if (!el) return;
+      el.classList.toggle('arch-plate', !!arch);
+      if (arch) {
+        el.style.setProperty('--arch-x', `${arch.x}px`);
+        el.style.setProperty('--arch-top', `${arch.top}px`);
+        el.style.setProperty('--arch-w', `${arch.w}px`);
+      }
+    };
+    tick();
+    const t = window.setInterval(tick, 250);
+    return () => { clearInterval(t); screenRef.current?.classList.remove('arch-plate'); };
+  }, [vp.short]);
   useEffect(() => {
     if (!measureHand) return;
     const tick = () => {
@@ -1079,7 +1290,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   });
 
   return (
-    <div ref={screenRef} className={`table-screen q-${settings.quality}${vp.short ? ' short' : ''}${modalOpen ? ' modal-open' : ''}${showPad ? ' pad-open' : ''}`} inert={loading ? true : undefined}>
+    <div ref={screenRef} className={`table-screen q-${settings.quality}${vp.short ? ' short' : ''}${modalOpen ? ' modal-open' : ''}${showPad ? ' pad-open' : ''}`} inert={loading ? true : undefined} data-dealing={dealing ? 'yes' : 'no'} data-my-turn={myTurn ? 'yes' : 'no'}>
       {/* styled stand-in table, on screen from the first paint until the 3D table has rendered (then it fades) */}
       <div className={`table-placeholder ${tableReady ? 'gone' : ''}`} data-testid="table-placeholder" data-venue={venue} style={placeholderStyle(venue)} aria-hidden>
         <div className="tp-floor" />
@@ -1102,6 +1313,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           onTableReady={onTableReady}
           onTableDressed={onTableDressed}
           onHandLive={onHandLive}
+          onDealDone={onDealDone}
           quality={settings.quality}
           n={n}
           handNo={st.handNo}
@@ -1114,15 +1326,22 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           slam={display.slam}
           reduceFx={reduceFx}
           venue={venue}
+          view={settings.view}
           piles={display.piles}
           legal={runFx ? [] : humanExchanging && hand ? hand : legal}
           selected={runFx ? null : selected}
-          turnSeat={runFx || pause || st.phase === 'handOver' || st.phase === 'gameOver' || st.turn !== HUMAN ? null : st.turn}
+          turnSeat={actor === HUMAN && !spectating ? actor : null}
           winnerSeat={winnerSeat}
           promoted={promoted}
           onCardTap={onCard}
+          onCardDrop={onCardDrop}
+          landing={landingMode(tips.on)}
+          gameSeed={String(st.seed ?? '')}
+          onFeltTap={() => { if (feltClearsSelection(selected)) { playArmed.current = false; setSelected(null); } }}
           renderSeat={renderSeat}
           introHand={introHand}
+          dealing={dealing}
+          dealReady={dealReady}
           animK={k}
           landCue={landCue}
           short={vp.short}
@@ -1131,21 +1350,24 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           marked={tipMarked}
         />
       </Suspense>
-      {!loadGone && <TableLoading progress={loadProgress} leaving={!loading} />}
+      {!loadGone && <TableLoading progress={loadProgress} leaving={!loading} room={roomName} />}
+      {badge && badge.seat !== HUMAN && <SeatBadge badge={badge} />}
 
       {/* scorebug */}
       <header className="scorebug">
         <div className="menu-wrap">
-          <button type="button" className={`bug-btn ${menuOpen ? 'on' : ''}`} onClick={() => setMenuOpen(!menuOpen)} aria-label="Menu" aria-expanded={menuOpen} data-testid="menu">☰</button>
+          <button type="button" className={`bug-btn ${menuOpen ? 'on' : ''}`} onClick={() => setMenuOpen(!menuOpen)} aria-label="Menu" aria-haspopup="dialog" data-testid="menu">☰</button>
           {menuOpen && (
             <>
-              <div className="menu-scrim" onClick={() => setMenuOpen(false)} />
-              <div className="game-menu glass" role="menu" data-testid="game-menu">
+              <div className="menu-scrim" onPointerDown={(e) => runLeaveMenu(e, 'scrim')} onPointerUp={(e) => runLeaveMenu(e, 'scrim')} onClick={(e) => runLeaveMenu(e, 'scrim')} />
+              <div className="game-menu glass" role="menu" data-testid="game-menu" ref={escMenu}>
                 <button type="button" role="menuitem" className={help ? 'on' : ''} data-testid="help" aria-pressed={help} onClick={() => { setHelp(!help); setMenuOpen(false); }}>❓ Help: tips &amp; book counting</button>
                 <button type="button" role="menuitem" data-testid="scorepad-button" onClick={() => { setShowPad(true); setMenuOpen(false); }}>📋 Score pad &amp; house rules</button>
                 <button type="button" role="menuitem" onClick={() => onQuality(settings.quality === 'high' ? 'low' : 'high')}>🎨 Graphics: {settings.quality === 'high' ? 'High' : 'Low'}</button>
+                <button type="button" role="menuitem" data-testid="view-toggle" onClick={() => onView?.(settings.view === 'sitting' ? 'standing' : 'sitting')}>{settings.view === 'sitting' ? '🪑' : '🧍'} View: {settings.view === 'sitting' ? 'Sitting' : 'Standing'}</button>
+                {[1, 2, 3].map((seat) => seat < names.length ? <button key={seat} type="button" role="menuitem" data-testid={`voice-mute-${seat}`} aria-pressed={sound.voiceMuted(names[seat]!)} onClick={() => { sound.setVoiceMuted(names[seat]!, !sound.voiceMuted(names[seat]!)); setMuteTick((t) => t + 1); }}>{sound.voiceMuted(names[seat]!) ? '🔇' : '🔊'} {names[seat]} voice: {sound.voiceMuted(names[seat]!) ? 'muted' : 'on'}</button> : null)}
                 <div className="menu-social"><SocialButton className="compact" /></div>
-                <button type="button" role="menuitem" className="danger" data-testid="menu-leave" onClick={() => { setMenuOpen(false); if (online || st.phase === 'gameOver') leave(); else setConfirmLeave(true); }}>🚪 Leave table</button>
+                <button type="button" role="menuitem" className="danger" data-testid="menu-leave" onPointerDown={(e) => { e.currentTarget.setPointerCapture?.(e.pointerId); runLeaveMenu(e, 'leave'); }} onPointerUp={(e) => runLeaveMenu(e, 'leave')} onClick={(e) => runLeaveMenu(e, 'leave')}>🚪 Leave table</button>
               </div>
             </>
           )}
@@ -1163,22 +1385,22 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             ))}
           </div>
           <div className="bug-trumps" aria-label="Trump order">
-            <span className="ts-label">TRUMPS</span><TrumpLadder rules={r} n={4} style="short" />{st.spadesBroken && <i className="bt-broken" title="Spades broken">BROKEN</i>}
+            <span className="ts-label">TRUMPS</span><TrumpLadder rules={r} n={4} style="short" />{st.spadesBroken && tips.on && <i className="bt-broken" data-testid="spades-broken-short" title="Spades broken">SPADES BROKEN</i>}
           </div>
           <div className="bug-meta">
             <span className="bug-mode">{modeTitle(r).toUpperCase()}</span>
             {seriesChip('in-meta')}
             {learning && <span className="learn-badge" data-testid="learning-badge" title="Tips are on: the game slows down so you can read. Turn tips off to go back to your speed.">LEARNING MODE: SLOW</span>}
-            <span className="bug-hand" data-testid="bug-hand">HAND {st.handNo}{isBooks ? <span className="bug-books"> · BOOKS BID THEMSELVES</span> : ''} · TO {r.targetScore}</span>
+            {st.spadesBroken && tips.on && <span className="bt-broken" data-testid="spades-broken" title="Spades broken">SPADES BROKEN</span>}<span className="bug-hand" data-testid="bug-hand">HAND {st.handNo}{isBooks ? <span className="bug-books"> · BOOKS BID THEMSELVES</span> : ''} · TO {r.targetScore}</span>
           </div>
         </div>
         {/* the always-visible sound dock (main.tsx) sits on this slot */}
         <span className="bug-btn dock-slot" aria-hidden />
       </header>
 
-      <div className="trump-strip glass slant">
-        <span className="ts-label">TRUMPS</span> <TrumpLadder rules={r} n={5} style="long" />{st.spadesBroken && <span className="ts-broken">BROKEN</span>}
-      </div>
+      {trumpStripShown(st) && <div className="trump-strip glass slant" data-testid="trump-strip">
+        <span className="ts-label">TRUMPS</span> <TrumpLadder rules={r} n={5} style="long" />{st.spadesBroken && tips.on && <span className="ts-broken">SPADES BROKEN</span>}
+      </div>}
 
       {/* last-trick readout. After a resolved 'Run it!' the same chip opens every hand the tornado cleared. */}
       {(piles.length > 0 || !!runHands) && (() => {
@@ -1217,10 +1439,10 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
       {/* center notes */}
       <div className="center-note-wrap">
-        {showDealer && <DealerPopup name={dealerLabel} localSeat={st.dealer} />}
-        {st.phase === 'bidding' && !pause && !dealing && st.turn !== HUMAN && <div className="center-note" data-testid="bidding-note">{biddingNote(names[st.turn!] ?? '', { partnerships: r.partnerships, partnerTurn: st.turn === partnerSeat, spectating })}</div>}
+        {showDealer && dealerLive && <DealerPopup name={dealerLabel} localSeat={dealerSeat} />}
+        {st.phase === 'bidding' && !pause && !dealing && localTurn !== HUMAN && localTurn !== null && <div className="center-note" data-testid="bidding-note">{biddingNote(names[localTurn] ?? '', { partnerships: r.partnerships, partnerTurn: localTurn === partnerSeat, spectating })}</div>}
         {showCenterBidOrder(st.phase, pause, dealing) && <BidOrder st={st} names={names} me={spectating ? -1 : HUMAN} />}
-        {isBooks && st.phase === 'playing' && !pause && !dealing && st.tricks.length === 0 && st.trick.plays.length === 0 && <div className="center-note books-note" data-testid="books-note">First hand: books bid themselves · 10 per book</div>}
+        {isBooks && st.phase === 'playing' && !pause && !dealing && st.tricks.length === 0 && st.trick.plays.length === 0 && <div className="center-note books-note" data-testid="books-note">{booksBanner(hostMinimum(r), r.partnerships)}</div>}
         {st.phase === 'exchange' && !humanExchanging && <div className="center-note">{names[exchangeStep!.from]} passes {exchangeStep!.count} to {names[exchangeStep!.to]}…</div>}
       </div>
       {winnerSeat !== null && <TrickBanner key={`${st.handNo}-${st.tricks.length}`} text={trickTakenLine(face(winnerSeat))} />}
@@ -1261,6 +1483,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
               {coachBid && <BidCoach key={bcKey} view={view} startOpen={help || bcOpen} />}
               <div className="panel-title">YOUR BID{r.partnerships && st.bids[2] !== null ? <small> · partner bid {bidLabel(st.bids[2]!)}</small> : r.partnerships ? <small> · partner bids right after you</small> : null}</div>
               <BidOrder st={st} names={names} me={HUMAN} />
+              {!raisedMin && teamMinNote(hostMinimum(r), r.partnerships) && <p className="team-min-note" data-testid="team-min-note">{teamMinNote(hostMinimum(r), r.partnerships)}</p>}
               {raisedMin ? <MinBidLine note={raisedMin} /> : (view.bidOptions.blockReason || view.bidOptions.nilReason) && (
                 <p className="bid-block" data-testid="bid-block">{[view.bidOptions.blockReason, view.bidOptions.nilReason].filter(Boolean).join(' · ')}</p>
               )}
@@ -1283,15 +1506,15 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         <div className={`plate me-plate ${actor === HUMAN && !spectating ? 'turn' : ''}`} data-testid="seat-0">
           <div className="plate-avatar" style={{ ['--uc' as string]: spectating ? SEAT_COLORS[HUMAN] : USER_COLORS.You }}>{seatInitial(face(HUMAN))}</div>
           <div className="plate-body">
-            <div className="plate-name">{face(HUMAN).toUpperCase()}{st.dealer === HUMAN && <span className="chip dealer" data-testid="dealer-0">DEALER</span>}{notice.includes(sideOf(HUMAN, r)) && <span className="chip notice" data-testid="notice-0" title={noticeTip(spectating)}>ON NOTICE</span>}{!spectating && myBadges.map((b) => BADGES[b.id] && <span key={b.id} className="chip badge" title={`${BADGES[b.id]!.name}: ${BADGES[b.id]!.desc}`} data-testid={`plate-badge-${b.id}`}>{BADGES[b.id]!.icon}</span>)}</div>
+            <div className="plate-name">{face(HUMAN).toUpperCase()}{dealerSeat === HUMAN && <span className="chip dealer" data-testid="dealer-0">DEALER</span>}{notice.includes(sideOf(HUMAN, r)) && <span className="chip notice" data-testid="notice-0" title={noticeTip(spectating)}>ON NOTICE</span>}{!spectating && myBadges.map((b) => BADGES[b.id] && <span key={b.id} className="chip badge" title={`${BADGES[b.id]!.name}: ${BADGES[b.id]!.desc}`} data-testid={`plate-badge-${b.id}`}>{BADGES[b.id]!.icon}</span>)}</div>
             <div className="plate-stats" key={st.handNo}>
-              <span className="chip" data-testid="bid-0">{plates.bids[HUMAN] === 'books' ? 'BOOKS' : `BID ${plates.bids[HUMAN] === null ? '—' : bidLabel(plates.bids[HUMAN]).toUpperCase()}`}</span>
-              <span className="chip" data-testid="books-0">TOOK {plates.books[HUMAN] ?? 0}</span>
+              <span className="chip" data-testid="bid-0">{bidChipText(plates.bids[HUMAN] ?? null, actor === HUMAN && st.phase === 'bidding')}</span>
+              <span className="chip" data-testid="books-0">{plateTookText(plates.books[HUMAN] ?? 0, st.phase)}</span>
               {isNilBid(plates.bids[HUMAN]) && (plates.books[HUMAN] ?? 0) > 0 && <span className="chip bad">NIL BUSTED</span>}
             </div>
+            {!spectating && <button type="button" className="view-chip" data-testid="view-toggle-plate" aria-pressed={settings.view === 'sitting'} onClick={() => onView?.(settings.view === 'sitting' ? 'standing' : 'sitting')}>{settings.view === 'sitting' ? '🪑 Sitting view' : '🧍 Standing view'}</button>}
           </div>
-          {seatMark(actor, HUMAN, st.phase, true, spectating, legal.length) === 'your-turn' && <div className="plate-turn" data-testid="your-turn">{selected ? 'TAP AGAIN TO PLAY' : 'YOUR TURN'}</div>}
-          {seatMark(actor, HUMAN, st.phase, true, spectating, legal.length) === 'your-bid' && <div className="plate-turn" data-testid="your-bid">YOUR BID</div>}
+          {badge && badge.seat === HUMAN && <div className="plate-turn" data-testid={badge.testId}>{badge.text}</div>}
           {online?.seatExtra(HUMAN)}
         </div>
         {error && <div className="err">{error}</div>}
@@ -1310,7 +1533,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
       {/* accessible / automation controls for the 3D hand */}
       <div className="sr-only" role="group" aria-label="Your hand" data-testid="hand" data-trick-count={shownTrick.plays.length}>
-        {(hand ?? []).map((c) => (
+        {((flying ? flyPlay(hand, shownTrick.plays, flying).hand : hand) ?? []).map((c) => (
           <button
             key={c}
             type="button"
@@ -1336,6 +1559,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           online={shotOutRecap ? false : !!online}
           onReady={() => { if (st.phase === 'gameOver') setShotRecapAck(true); else apply({ type: 'nextHand' }); }}
           onScorePad={() => setShowPad(true)}
+          onLeave={() => { if (online) leave(); else setConfirmLeave(true); }}
           series={seriesChip()}
           unread={unread}
           chatOpen={chatOpen}
@@ -1352,7 +1576,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
                 />
               </div>
             ) : (
-              <button type="button" className="tt-run-show" data-testid="talk-run-show" onClick={() => setClearedOpen(true)}>{face(runClaimer)} ran the rest</button>
+              <button type="button" className="tt-run-show" data-testid="talk-run-show" onClick={() => setClearedOpen(true)}>Review last trick</button>
             )
           ) : null}
         />
@@ -1361,13 +1585,13 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
       {feedback && <Feedback onClose={() => setFeedback(false)} />}
       {confirmLeave && (
-        <div className="modal-backdrop" onClick={() => setConfirmLeave(false)}>
-          <div className="modal glass slant confirm" role="dialog" aria-label="Leave this game?" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-backdrop" ref={escLeave} onPointerDown={(e) => { if (e.target === e.currentTarget) setConfirmLeave(false); }}>
+          <div className="modal glass slant confirm" role="dialog" aria-label="Leave this game?" data-testid="confirm-leave" onPointerDown={(e) => e.stopPropagation()}>
             <div className="panel-title big">LEAVE THIS GAME?</div>
             <p className="muted">{onSuspend ? 'Leave ends it for good. Save & quit lets you resume from the menu.' : 'Your progress in this game will be lost.'}</p>
             <div className="bid-row">
               <button type="button" onClick={() => setConfirmLeave(false)}>Stay</button>
-              {onSuspend && <button type="button" data-testid="save-quit" onClick={onSuspend}>Save &amp; quit</button>}
+              {onSuspend && <button type="button" data-testid="save-quit" onClick={() => { suspendGame(); onSuspend(); }}>Save &amp; quit</button>}
               <button type="button" className="primary" onClick={leave}>Leave</button>
             </div>
             <button type="button" className="link fb-open-ingame" data-testid="open-feedback" onClick={() => { setConfirmLeave(false); setFeedback(true); }}>✉ Send feedback (bug, idea…)</button>
@@ -1466,7 +1690,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
       {coachOn && !modalOpen && st.phase === 'playing' && !pause && <LedSuitChip st={st} />}
       <Hype reduced={reduceFx} low={settings.quality === 'low'} />
-      {showPad && <ScorePad st={st} names={names} dealerName={dealerLabel} onClose={() => setShowPad(false)} onContinue={st.phase === 'handOver' && talkOpen && !online?.talk?.ready?.mine ? () => { setShowPad(false); apply({ type: 'nextHand' }); } : undefined} locked={online ? undefined : <LockedRulesPanel rules={r} nuke={fx.tableNuke ?? fx.prefs.nuke} skill={settings.botLevel} intensity={settings.talkIntensity} />} />}
+      {showPad && <ScorePad st={st} names={names} dealerName={dealerLabel} onClose={() => setShowPad(false)} onContinue={st.phase === 'handOver' && talkOpen && !online?.talk?.ready?.mine ? () => { setShowPad(false); apply({ type: 'nextHand' }); } : undefined} onLeave={st.phase === 'handOver' ? () => { setShowPad(false); if (online) leave(); else setConfirmLeave(true); } : undefined} locked={online ? undefined : <LockedRulesPanel rules={r} nuke={fx.tableNuke ?? fx.prefs.nuke} skill={settings.botLevel} intensity={settings.talkIntensity} />} />}
     </div>
   );
 }

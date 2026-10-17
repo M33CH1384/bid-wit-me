@@ -76,7 +76,7 @@ export function rotateView(v: PlayerView): { st: GameState; view: PlayerView; ro
     spadesBroken: v.spadesBroken,
     scores: permute(v.scores, rot, true),
     bags: permute(v.bags, rot, true),
-    history: v.history.map((h) => rotRecord(h, rot)),
+    history: (v.history ?? []).map((h) => rotRecord(h, rot)),
     result: rotResult(v.result, rot),
   };
   const view: PlayerView = {

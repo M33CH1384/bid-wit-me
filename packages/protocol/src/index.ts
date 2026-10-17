@@ -99,14 +99,14 @@ export type GameAction =
   | { type: 'reveal' }
   | { type: 'bid'; bid: number | 'nil' | 'blindNil' }
   | { type: 'exchange'; cards: Card[] }
-  | { type: 'play'; card: Card }
+  | { type: 'play'; card: Card; slam?: number; rel?: [number, number] }
   | { type: 'runIt' };
 
 export interface MediaState { cam: boolean; mic: boolean }
 
 /** Between-hands "Table Talk" countdown choices (seconds). */
 export const TALK_SECS = [15, 20, 30, 45] as const;
-/** consecutive turn timeouts before a player is replaced by a bot (0 = never) */
+/** Older clients still send this. A timeout plays the turn; it does not give the seat to a bot. */
 export const AFK_LIMITS = [0, 2, 3, 5] as const;
 export const DEFAULT_AFK_LIMIT = 3;
 export const DEFAULT_TALK_SEC = 20;
@@ -132,7 +132,7 @@ export function isMusicLink(url: string): boolean {
 }
 
 export type ClientMsg =
-  | { t: 'hello'; name: string; token?: string; v?: number; /** Release 9: signed account ticket (links the seat to an account for stats) */ ticket?: string }
+  | { t: 'hello'; name: string; token?: string; v?: number; /** stable browser guest id, so a new seat token on reload is still this player */ gid?: string; /** Release 9: signed account ticket (links the seat to an account for stats) */ ticket?: string }
   | { t: 'sit'; seat: number }
   | { t: 'stand' }
   | { t: 'addBot'; seat: number }
@@ -159,6 +159,8 @@ export type ClientMsg =
   | { t: 'media'; media: MediaState }
   /** "Learning mode" (tips on): this player's own turn timers run 50% longer */
   | { t: 'learning'; on: boolean }
+  /** This client's table is drawn and can take a bid or a play. False while the loader is up. */
+  | { t: 'interactive'; on: boolean }
   /** host: kick the player in `seat` now (a bot takes over, no rejoin this game). Anyone else: vote to kick (toggles). */
   | { t: 'kick'; seat: number }
   | { t: 'rtc'; to: string; data: unknown }
@@ -188,6 +190,13 @@ export interface RoomInfo {
   members: MemberInfo[];
   /** epoch ms when the current turn auto-plays (null when no human is on the clock) */
   deadline: number | null;
+  /**
+   * Seconds on the clock for the current human turn: the table's bid or play setting
+   * (longer while that player has learning mode on). The countdown is `deadline`; this
+   * is the length it was given, so the client does not invent a shorter one. Null when
+   * no human is on the clock.
+   */
+  turnSec?: number | null;
   /** players (ids) who have pressed "next hand" */
   ready: string[];
   /** monotonically increasing broadcast counter (any change: seats, media, timers, game) */
@@ -217,7 +226,7 @@ export interface RoomInfo {
   venueNow?: VenueId;
   /** per side: a custom team name, or null = default (partner names) */
   teamNames?: (string | null)[];
-  /** bot seats whose Hustler act is over (plate tag shows the real persona) */
+  /** bot seats whose Hustler act is over (their lines drop the newbie cover; the plate tag does not) */
   revealed?: number[];
   /** rematch series at this table (survives reconnects; resets when the teams change) */
   series?: Series | null;
@@ -296,7 +305,14 @@ function parseAction(a: unknown): GameAction | null {
     case 'exchange':
       return Array.isArray(a.cards) && a.cards.length <= 2 && a.cards.every((c) => isStr(c, 2)) ? { type: 'exchange', cards: a.cards as Card[] } : null;
     case 'play':
-      return isStr(a.card, 2) ? { type: 'play', card: a.card as Card } : null;
+      if (!isStr(a.card, 2)) return null;
+      {
+        const out: { type: 'play'; card: Card; slam?: number; rel?: [number, number] } = { type: 'play', card: a.card as Card };
+        if (typeof a.slam === 'number' && Number.isFinite(a.slam)) out.slam = Math.max(0, Math.min(1, a.slam));
+        const r = a.rel;
+        if (Array.isArray(r) && r.length === 2 && r.every((x) => typeof x === 'number' && Number.isFinite(x))) out.rel = [Math.max(-20, Math.min(20, r[0] as number)), Math.max(-20, Math.min(20, r[1] as number))];
+        return out;
+      }
     case 'runIt': return { type: 'runIt' };
     default: return null;
   }
@@ -313,7 +329,7 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
   switch (m.t) {
     case 'hello':
       if (!isStr(m.name, 100)) return null;
-      return { t: 'hello', name: m.name, token: isStr(m.token, 100) ? m.token : undefined, v: isInt(m.v) ? m.v : undefined, ...(isStr(m.ticket, 400) ? { ticket: m.ticket } : {}) };
+      return { t: 'hello', name: m.name, token: isStr(m.token, 100) ? m.token : undefined, v: isInt(m.v) ? m.v : undefined, ...(isStr(m.gid, 64) ? { gid: m.gid } : {}), ...(isStr(m.ticket, 400) ? { ticket: m.ticket } : {}) };
     case 'sit': case 'addBot': case 'removeBot': case 'kick':
       return isInt(m.seat) && m.seat >= 0 && m.seat < 4 ? { t: m.t, seat: m.seat } : null;
     case 'stand': case 'start': case 'next': case 'rematch': case 'leave':
@@ -358,6 +374,8 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return isObj(m.media) ? { t: 'media', media: { cam: m.media.cam === true, mic: m.media.mic === true } } : null;
     case 'learning':
       return { t: 'learning', on: m.on === true };
+    case 'interactive':
+      return { t: 'interactive', on: m.on === true };
     case 'tableOpts': {
       const out: Extract<ClientMsg, { t: 'tableOpts' }> = { t: 'tableOpts' };
       if (typeof m.private === 'boolean') out.private = m.private;

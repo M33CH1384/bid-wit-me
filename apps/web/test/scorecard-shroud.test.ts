@@ -91,9 +91,10 @@ describe('scorecard caution tape and shroud', () => {
     expect(html).toContain('data-punched="0"');
     const holes = holeImgs(html);
     expect(holes).toHaveLength(1);
-    expect(holes[0]).toContain('left:62%');
+    expect(holes[0]).toContain('left:22%');
+    expect(holes[0]).toContain('top:124px');
     expect(holes[0]).toContain('class="hole-in"');
-    expect(html).not.toContain('left:14%');
+    expect(html).not.toContain('left:46%');
     expect(html).not.toContain('left:13%');
     expect(html).not.toContain('left:78%');
     expect(html).toContain('data-testid="recap-shot-stamp-1"');
@@ -131,12 +132,12 @@ describe('scorecard caution tape and shroud', () => {
     expect(html).toContain('data-punched="1,0"');
     const holes = holeImgs(html);
     expect(holes).toHaveLength(2);
-    expect(holes[0]).toContain('left:62%');
+    expect(holes[0]).toContain('left:12%');
     expect(holes[0]).not.toContain('hole-in');
-    expect(holes[1]).toContain('left:14%');
-    expect(holes[1]).toContain('top:calc(100% - 40px)');
+    expect(holes[1]).toContain('left:28%');
+    expect(holes[1]).toContain('top:calc(100% - 36px)');
     expect(holes[1]).toContain('class="hole-in"');
-    expect(html).not.toContain('left:78%');
+    expect(html).not.toContain('left:42%');
     expect(html).toContain('data-testid="recap-shroud-1"');
     expect(html).toContain('data-testid="recap-rip-1"');
     expect(html).toContain('alt="RIP"');
@@ -173,8 +174,8 @@ describe('scorecard caution tape and shroud', () => {
     const second = recap(st, names);
     const holes = holeImgs(second);
     expect(holes).toHaveLength(2);
-    expect(holes[0]).toContain('left:62%');
-    expect(holes[1]).toContain('left:14%');
+    expect(holes[0]).toContain('left:12%');
+    expect(holes[1]).toContain('left:28%');
     expect(second).not.toContain('hole-in');
     expect(second).not.toContain('sheet-in');
     expect(second).toContain('data-holes="2"');
@@ -190,7 +191,7 @@ describe('scorecard caution tape and shroud', () => {
     const oneAgain = recap(noticed, names);
     expect(holeImgs(oneAgain)).toHaveLength(1);
     expect(oneAgain).not.toContain('hole-in');
-    expect(oneAgain).toContain('left:62%');
+    expect(oneAgain).toContain('left:22%');
     expect(pad(noticed, names)).toContain('data-punched="1"');
   });
 
@@ -199,7 +200,7 @@ describe('scorecard caution tape and shroud', () => {
     const one = recap(stamp(base, [[], [1]], { shotOut: false }), names);
     expect(holeImgs(one)).toHaveLength(1);
     expect(one).toContain('data-holes="1"');
-    expect(one).toContain('left:62%');
+    expect(one).toContain('left:22%');
     expect(one).not.toContain('recap-shroud-');
     expect(one).not.toContain('recap-shot-tally-');
     expect(one).toContain('>ON NOTICE<');
@@ -208,9 +209,9 @@ describe('scorecard caution tape and shroud', () => {
     const two = recap(stamp(base, [[], [1], [1]], { shotOut: false }), names);
     const twoHoles = holeImgs(two);
     expect(twoHoles).toHaveLength(2);
-    expect(twoHoles[0]).toContain('left:62%');
+    expect(twoHoles[0]).toContain('left:22%');
     expect(twoHoles[0]).not.toContain('hole-in');
-    expect(twoHoles[1]).toContain('left:14%');
+    expect(twoHoles[1]).toContain('left:46%');
     expect(twoHoles[1]).toContain('class="hole-in"');
     expect(two).toContain('data-holes="2"');
     expect(two).not.toContain('recap-shroud-');
@@ -223,7 +224,7 @@ describe('scorecard caution tape and shroud', () => {
     expect(threeHoles[0]).not.toContain('hole-in');
     expect(threeHoles[1]).not.toContain('hole-in');
     expect(threeHoles[2]).toContain('left:78%');
-    expect(threeHoles[2]).toContain('top:145px');
+    expect(threeHoles[2]).toContain('top:118px');
     expect(threeHoles[2]).toContain('class="hole-in"');
     expect(three).toContain('data-holes="3"');
     expect(three).not.toContain('recap-shroud-');
@@ -265,7 +266,7 @@ describe('scorecard caution tape and shroud', () => {
     expect(html).toContain('data-testid="recap-holes-1"');
     expect(holeImgs(html)).toHaveLength(1);
     expect(html).toContain('data-holes="1"');
-    expect(html).not.toContain('left:14%');
+    expect(html).not.toContain('left:28%');
     expect(html).not.toContain('recap-notice-');
     expect(html).not.toContain('>ON NOTICE<');
     expect(html).toContain('data-testid="recap-rip-1"');
@@ -294,7 +295,7 @@ describe('scorecard caution tape and shroud', () => {
     expect(recapSrc).toContain('shotCovers(r, st.history, st.result)');
     expect(recapSrc).not.toContain('shotCounts');
     expect(recapSrc).toContain('covers.some((c) => c.sheet)');
-    expect(recapSrc).toContain('Time of death: Hand ${rec.handNo}');
+    expect(recapSrc).toContain('Time of death: Hand ${cover.outHand ?? rec.handNo}');
   });
 
   it('a Cutthroat hand-1 elimination shows tape and the sheet on that player', () => {
@@ -307,6 +308,20 @@ describe('scorecard caution tape and shroud', () => {
     expect(html).not.toContain('recap-shroud-0');
     expect(html).not.toContain('recap-tape-0');
     expect(caption(html)).toBe('Time of death: Hand 1');
+  });
+
+  it('keeps the real time of death on later recaps after an elimination', () => {
+    // Side 2 went out on hand 2 (the engine re-marks out: true on later hands).
+    // The hand-3 recap must still show the sheet, with the hand-2 time of death.
+    const st = stamp(toHandOver('cutthroat'), [[], [2], []], { shotOut: true });
+    const history = st.history.map((h, i) => (i === 0 ? h : {
+      ...h,
+      sides: h.sides.map((s) => (s.side === 2 ? { ...s, out: true } : s)),
+    }));
+    const html = recap({ ...st, history }, ['You', 'Ace', 'Bea']);
+    expect(html).toContain('data-testid="recap-shroud-2"');
+    expect(html).toContain('data-sheet="yes"');
+    expect(caption(html)).toBe('Time of death: Hand 2');
   });
 
   it('tapes that Cutthroat player’s own panel', () => {
@@ -420,7 +435,7 @@ describe('scorecard caution tape and shroud', () => {
     const table = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
     expect(table).toContain("endReason === 'shotOut' && !shotRecapAck");
     expect(table).toContain('setShotRecapAck(true)');
-    expect(table).toContain('ran the rest');
+    expect(table).toContain('Review last trick');
     expect(table).not.toContain('Run it — cleared hands');
     const recapSrc = readFileSync(new URL('../src/Intermission.tsx', import.meta.url), 'utf8');
     expect(recapSrc).toContain("haptic([30], 'shot-hole')");

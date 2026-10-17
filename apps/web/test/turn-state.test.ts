@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { actingSeat, seatMark } from '../src/turnState';
+import { actingSeat, localSeatOfServerTurn, seatMark, turnView } from '../src/turnState';
 
 const open = { turn: 0, phase: 'playing', pause: false, dealing: false, locked: false, covered: false };
 
@@ -11,14 +11,22 @@ describe('acting seat', () => {
     expect(actingSeat({ ...open, phase: 'exchange', turn: 1 })).toBe(1);
   });
 
-  it('marks nobody while a deal, a held trick, a locked move, or a show is in the way', () => {
+  it('marks nobody while a deal, a held trick, or a show is in the way', () => {
     expect(actingSeat({ ...open, dealing: true })).toBeNull();
     expect(actingSeat({ ...open, pause: true })).toBeNull();
-    expect(actingSeat({ ...open, locked: true })).toBeNull();
     expect(actingSeat({ ...open, covered: true })).toBeNull();
     expect(actingSeat({ ...open, phase: 'handOver' })).toBeNull();
     expect(actingSeat({ ...open, phase: 'gameOver' })).toBeNull();
     expect(actingSeat({ ...open, turn: null })).toBeNull();
+  });
+
+  it('keeps the seat marked while a move is in flight so the table does not look empty', () => {
+    expect(actingSeat({ ...open, locked: true })).toBe(0);
+    expect(actingSeat({ ...open, locked: true, turn: 2 })).toBe(2);
+    const mine = turnView({ ...open, locked: true, turn: 0, viewerSeat: 0, spectating: false, legalCount: 2, selected: false });
+    expect(mine.badge?.testId).toBe('your-turn');
+    const theirs = turnView({ ...open, locked: true, turn: 2, viewerSeat: 0, spectating: false, legalCount: 0, selected: false });
+    expect(theirs.badge?.testId).toBe('to-play-2');
   });
 });
 
@@ -37,6 +45,32 @@ describe('seat badges', () => {
       if (actor === 0) expect(marks[0]).toBe('your-turn');
       if (actor !== null && actor !== 0) expect(marks[actor]).toBe('to-play');
     }
+  });
+
+  it('names YOUR TURN and TO PLAY from the server turn, one seat at a time', () => {
+    for (const turn of [0, 1, 2, 3]) {
+      const view = turnView({ ...open, turn, viewerSeat: 0, spectating: false, legalCount: 3, selected: false });
+      expect(view.actor).toBe(turn);
+      expect(view.badge?.seat).toBe(turn);
+      expect(view.badge?.text).toBe(turn === 0 ? 'YOUR TURN' : 'TO PLAY');
+      expect(view.badge?.testId).toBe(turn === 0 ? 'your-turn' : `to-play-${turn}`);
+    }
+    const quiet = turnView({ ...open, turn: 1, dealing: true, viewerSeat: 0, spectating: false, legalCount: 3, selected: false });
+    expect(quiet.actor).toBeNull();
+    expect(quiet.badge).toBeNull();
+    const held = turnView({ ...open, turn: 0, viewerSeat: 0, spectating: false, legalCount: 0, selected: true });
+    expect(held.actor).toBe(0);
+    expect(held.badge).toBeNull();
+  });
+
+  it('shifts the server seat into the bottom-seat frame once', () => {
+    expect(localSeatOfServerTurn(2, 1, 4)).toBe(1);
+    expect(localSeatOfServerTurn(1, 1, 4)).toBe(0);
+    expect(localSeatOfServerTurn(0, null, 4)).toBe(0);
+    expect(localSeatOfServerTurn(null, 2, 4)).toBeNull();
+    const local = localSeatOfServerTurn(2, 1, 4)!;
+    const view = turnView({ ...open, turn: local, viewerSeat: 0, spectating: false, legalCount: 2, selected: false });
+    expect(view.badge).toEqual({ seat: 1, mark: 'to-play', text: 'TO PLAY', testId: 'to-play-1' });
   });
 
   it('uses bidding copy on a bid and stays quiet for the viewer during an exchange', () => {

@@ -3,21 +3,26 @@ import { memo, useLayoutEffect, useMemo, useRef } from 'react';
 import { Color, type Group, type Material, type Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NoToneMapping, Quaternion, type Texture, Vector3, type WebGLRenderer } from 'three';
 import { cardFaceFragment } from './cardSat';
 import { cardGeometry, cardOutlineGeometry } from './geometry';
-import { RAISE_S, applyFaceDepthBias, cardMeshPaint, cardTapHandlers, faceLook, liftEase, screenRaise } from './handLift';
-import type { Xform } from './layout';
+import { raiseSeconds, applyFaceDepthBias, cardMeshPaint, cardTapHandlers, faceLook, liftEase, screenRaise } from './handLift';
+import { type Xform } from './layout';
 import { type Sfx, sound } from '../audio';
 import { blastPose } from './blastSweep';
+import { releaseTornadoCard, tornadoCardLeft } from './tornadoSweep';
 import { fireCue, fx } from '../fx';
 import { restingFlightWait } from '../trickTiming';
 import { openingFlight } from './dealFlight';
 import { retainFrontTexture } from './cardFace';
 import { restingFacing, trickFacingArrived } from './trickFacing';
+import { impactFraction } from '../landTiming';
+import { PILE_THUMP, slamThump } from './shake';
 
 interface Props {
   face: Texture | null; // null = we only ever see the back
   back: Texture;
   target: Xform;
   from?: Xform;
+  /** Landing feel for a trick card (bounce, shake, slam volume). */
+  slam?: import('../slam').SlamFeel;
   /** Where this mesh was last sitting in the hand. Applied once, so a play launches from that slot
    *  even if the mesh remounts, and a later sweep does not restart from the hand. */
   origin?: Xform;
@@ -25,7 +30,8 @@ interface Props {
   duration?: number;
   /** 'lift' is the 200ms group rise. 'slide' closes a gap over 240ms (translate + rotate only, same curve).
    *  'flight' is the deal / table arc. */
-  motion?: 'lift' | 'flight' | 'slide';
+  /** glide: tossed, then slides along the felt and slows with friction (physics landing) */
+  motion?: 'lift' | 'flight' | 'slide' | 'glide';
   arc?: number;
   /** Card-local raise distance. Never folded into `target`, so a select does not retarget the fan.
    *  Applied along screen-up (see `roll`), not along the rolled card, so the end card stays in the fan. */
@@ -48,6 +54,8 @@ interface Props {
   sfxStart?: Sfx;
   /** Sounds when this card lands on its current target (e.g. play / cut). Fires once per value. */
   sfxLand?: string; // comma-separated Sfx names, e.g. 'play,cut'
+  /** Phase 3: seat this card's sounds come from (spatialised play/slam/deal/collect). */
+  spatialSeat?: import('./layout').SeatPos; spatialN?: number;
   /** how the nuke's blast treats this card: table cards are blown outward; hand cards only in Full Nuke */
   blast?: 'table' | 'hand';
   /** Deal flight: stay invisible until this card leaves the deck, so the fan does not show up early. */
@@ -86,7 +94,10 @@ export function createLitCardMaterial(map: Texture, quality: 'high' | 'low', sat
   return saturate ? withSaturation(m) : m;
 }
 
-function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, raise = 0, roll = 0, order = 0, dim, glow, castShadow = true, quality, onTap, cardId = null, name, sfxStart, sfxLand, blast = 'table', holdUntilMove = false, lit = true }: Props) {
+function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, raise = 0, roll = 0, order = 0, dim, glow, castShadow = true, quality, onTap, cardId = null, name, sfxStart, sfxLand, spatialSeat, spatialN = 4, blast = 'table', holdUntilMove = false, lit = true, slam }: Props) {
+  const slamNow = useRef(slam);
+  const postLand = useRef(0);
+  slamNow.current = slam;
   const ref = useRef<Group>(null);
   // First mount only. A follow-up render drops the deal props before useFrame runs.
   const mountedFlight = useRef({ from, delay });
@@ -95,6 +106,8 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   const inner = useRef<Group>(null);
   const bl = useRef({ dir: new Vector3(), q: new Quaternion(), axis: new Vector3(), on: false, flung: false, stamp: -1 });
   const invalidate = useThree((s) => s.invalidate);
+  const cam = useThree((s) => s.camera);
+  const viewSize = useThree((s) => s.size);
   const geo = cardGeometry();
   // A null face means "not painted yet" and the front shows the back. Once the pips have
   // been on screen, a later null (painter restart, selection rerender) keeps them.
@@ -112,7 +125,9 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   }, [frontTex, back, quality, lit]); // eslint-disable-line react-hooks/exhaustive-deps
   const backMat = useMemo(() => {
     const m = lit ? createLitCardMaterial(back, quality, false) : new MeshBasicMaterial({ map: back });
-    applyFaceDepthBias(m);
+    // The face bias pulls toward the camera. The same bias on the back plane drew a second
+    // copy of the pips just behind the card (the ghost queen behind the queen of spades).
+    m.polygonOffset = false;
     return m;
   }, [back, quality, lit]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -169,12 +184,20 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     wait: delay,
     sp: new Vector3(), sq: new Quaternion(), ss: 1,
     tp: new Vector3(), tq: new Quaternion(), ts: 1,
-    started: false, firedStart: '' as string, firedLand: '' as string, land: undefined as string | undefined,
+    started: false, firedStart: '' as string, firedLand: '' as string, landDone: false, land: undefined as string | undefined,
     faced: false,
   });
   useLayoutEffect(() => {
     const g = ref.current;
     if (g && hideUntilStart.current && !tw.current.started) g.visible = false;
+    // A resumed card has no flight. Snap it before the first paint so the hand and the trick
+    // are not at the origin for a frame (that frame reads as an empty fan or an empty trick).
+    if (!g || tw.current.init || from || origin) return;
+    if (!target.p.every(Number.isFinite) || !target.q.every(Number.isFinite) || !Number.isFinite(target.s)) return;
+    g.position.set(...target.p);
+    g.quaternion.set(...target.q);
+    g.scale.setScalar(target.s);
+    g.updateMatrixWorld(true);
   });
   const sfx = useRef({ sfxStart, sfxLand });
   sfx.current = { sfxStart, sfxLand };
@@ -183,6 +206,37 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   const rollNow = useRef(roll);
   rollNow.current = roll;
   const raiseTw = useRef({ y: 0, from: 0, to: 0, t: 1 });
+  // A highlight used to tween for 160ms. The hit quad is the destination, so the mesh has to
+  // be there before paint. Otherwise a reload tap lands on the un-raised slot underneath.
+  const poseKey = xKey(target);
+  useLayoutEffect(() => {
+    if (motion !== 'lift') return;
+    const g = ref.current;
+    if (!g) return;
+    if (!target.p.every(Number.isFinite) || !target.q.every(Number.isFinite) || !Number.isFinite(target.s)) return;
+    g.position.set(...target.p);
+    g.quaternion.set(...target.q);
+    g.scale.setScalar(target.s);
+    const s = tw.current;
+    s.init = true;
+    s.key = poseKey;
+    s.t = 1;
+    s.started = true;
+    s.sp.set(...target.p); s.sq.set(...target.q); s.ss = target.s;
+    s.tp.set(...target.p); s.tq.set(...target.q); s.ts = target.s;
+    const dest = Number.isFinite(raise) ? raise : 0;
+    raiseTw.current.y = dest;
+    raiseTw.current.from = dest;
+    raiseTw.current.to = dest;
+    raiseTw.current.t = 1;
+    const liftG = lift.current;
+    if (liftG) {
+      const off = screenRaise(roll, dest);
+      liftG.position.set(off.x, off.y, 0);
+    }
+    g.updateMatrixWorld(true);
+    invalidate();
+  }, [motion, poseKey, raise, roll, invalidate, target]);
 
   /** Nuke blast. Table cards sweep off the felt and stay there. Hand cards kick and spring home. */
   const applyBlast = (g: Group) => {
@@ -219,14 +273,18 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
    * funnel, then flung out and gone. Reduce effects: a plain slide into the centre that shrinks away.
    * Returns true while it owns the inner offset (the nuke blast is skipped then).
    */
-  const tn = useRef({ on: false, a0: 0, h0: 0, delay: 0, axis: new Vector3(), q: new Quaternion() });
+  const tn = useRef({ on: false, gone: false, a0: 0, h0: 0, delay: 0, axis: new Vector3(), q: new Quaternion() });
   const applyTornado = (g: Group): boolean => {
     const ig = inner.current, T = fx.tornado, st = tn.current;
     if (!ig) return false;
+    // Already flung. A later frame must not put this mesh back on the trick or in the hand.
+    if (st.gone) { ig.visible = false; return true; }
     const u = T ? (fx.warp !== null ? fx.warp : (performance.now() - T.start) / 1000) : -1;
     if (!T || u < 0) {
+      const next = releaseTornadoCard({ taken: st.on, gone: st.gone, visible: ig.visible });
+      st.gone = next.gone;
+      if (next.gone) { ig.visible = false; invalidate(); return true; }
       if (T) invalidate(); // waiting for the funnel to start: keep frames coming (frameloop is on demand)
-      if (st.on) { st.on = false; ig.position.set(0, 0, 0); ig.quaternion.identity(); ig.scale.setScalar(1); ig.visible = true; invalidate(); }
       return false;
     }
     invalidate();
@@ -259,7 +317,9 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       // everything the same size in the funnel (your hand cards are bigger, near the camera)
       scale = 1 + ((0.85 / (g.scale.x || 1)) - 1) * pull;
     }
-    ig.visible = scale > 0.002 && tt < 1.9;
+    const left = tornadoCardLeft(tt, scale);
+    ig.visible = !left;
+    if (left) st.gone = true;
     // world funnel spot → this card's local space (offset from its resting spot)
     const off = w.sub(g.position).multiplyScalar(pull);
     st.q.copy(g.quaternion).invert();
@@ -294,7 +354,9 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     const open = openingFlight({ from: liveFrom, delay }, { from: mountedFrom, delay: mountedFlight.current.delay }, firstTween);
     if (!s.init) {
       const f = (origin && poseOk(origin) ? origin : undefined) ?? open.from ?? (finiteTarget ? target : undefined);
-      if (!f) return;
+      // No pose yet (0-size canvas): stay hidden. A mesh left at the origin is a stray card mid-felt.
+      if (!f) { g.visible = false; return; }
+      if (!hideUntilStart.current) g.visible = true;
       g.position.set(...f.p);
       g.quaternion.set(...f.q);
       g.scale.setScalar(f.s);
@@ -328,6 +390,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       const wasResting = !s.key || s.t >= 1;
       s.key = key;
       s.faced = false;
+      s.landDone = false;
       s.land = sfx.current.sfxLand; // this tween's landing cue
       s.t = 0;
       // last-trick auto-play retargets a card that is already on screen (your last card keeps its hand key).
@@ -352,7 +415,8 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
         }
       }
       s.tp.set(...target.p); s.tq.set(...target.q); s.ts = target.s;
-      if (motion === 'slide') s.ss = s.ts; // translate + rotate only
+      // Hand cards never inherit a table/flight scale from a reused mesh: they start exactly at fan scale.
+      if (motion === 'slide' || blast === 'hand') s.ss = s.ts;
       s.started = false;
     }
     // Raise is translateY on its own wrapper (the CSS `will-change: transform` idea). The outer fan
@@ -364,7 +428,8 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       if (!Number.isFinite(rt.y)) { rt.y = dest; rt.from = dest; rt.to = dest; rt.t = 1; }
       if (Math.abs(dest - rt.to) > 1e-5) { rt.from = rt.y; rt.to = dest; rt.t = 0; }
       if (rt.t < 1) {
-        rt.t = Math.min(1, rt.t + dt / RAISE_S);
+        const rs = raiseSeconds();
+        rt.t = rs <= 0 ? 1 : Math.min(1, rt.t + dt / rs);
         rt.y = rt.from + (rt.to - rt.from) * liftEase(rt.t);
         invalidate();
       } else rt.y = rt.to;
@@ -376,6 +441,17 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       }
     }
     if (s.t >= 1) {
+      // Test probe: keep sampling a slammed card's screen position for a few frames after it lands.
+      if (slamNow.current && cardId && postLand.current < 30) {
+        postLand.current++;
+        const w = window as unknown as { __bwmFly?: Record<string, { now?: number; t: number; x: number; y: number }[]> };
+        cam.updateMatrixWorld();
+        const v = g.getWorldPosition(new Vector3()).project(cam);
+        // relative to the table centre, so a camera shake (which moves everything) does not read as the card moving
+        const o = new Vector3(0, 0, 0).project(cam); v.x -= o.x; v.y -= o.y;
+        ((w.__bwmFly ??= {})[cardId] ??= []).push({ t: 1, x: ((v.x + 1) / 2) * viewSize.width + 0, y: ((1 - v.y) / 2) * viewSize.height });
+        invalidate();
+      }
       // A play that reached the trick must not keep the face-down fan quaternion.
       if (!s.faced && finiteTarget) {
         const q = restingFacing(
@@ -389,27 +465,66 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       return;
     }
     invalidate();
-    if (s.wait > 0) { s.wait -= dt; return; }
+    if (s.wait > 0) { s.wait -= dt; invalidate(); return; }
     const moving = s.sp.distanceTo(s.tp) > 0.02;
     if (!s.started) {
       // the card leaves now — animation-driven sound, so it always matches what you see (any game speed)
       s.started = true;
       if (hideUntilStart.current) { hideUntilStart.current = false; g.visible = true; }
+      // Test probe: the pose the flight leaves from (before the first frame moves it)
+      if (slamNow.current && cardId) {
+        const w = window as unknown as { __bwmFly?: Record<string, { now?: number; t: number; x: number; y: number }[]> };
+        cam.updateMatrixWorld();
+        const v = g.getWorldPosition(new Vector3()).project(cam);
+        const o = new Vector3(0, 0, 0).project(cam); v.x -= o.x; v.y -= o.y;
+        ((w.__bwmFly ??= {})[cardId] ??= []).push({ t: 0, x: ((v.x + 1) / 2) * viewSize.width, y: ((1 - v.y) / 2) * viewSize.height });
+      }
       const st = sfx.current.sfxStart;
-      if (st && st !== s.firedStart) { s.firedStart = st; if (moving) sound.play(st); }
+      if (st && st !== s.firedStart) { s.firedStart = st; if (moving) sound.play(st, spatialSeat ? { seat: spatialSeat, playerCount: spatialN } : {}); }
     }
     s.t = Math.min(1, s.t + dt / duration);
-    if (s.t >= 1) {
-      const land = s.land;
-      if (land && land !== s.firedLand) { s.firedLand = land; if (moving) land.split(',').forEach((c, i) => fireCue(c, i ? 0.02 : 0)); }
-    }
-    const e = (motion === 'flight' ? easeInOut : liftEase)(s.t);
+    const e = motion === 'glide' ? 1 - Math.pow(1 - Math.pow(s.t, 1.4), 3) : (motion === 'flight' ? easeInOut : liftEase)(s.t);
     g.position.lerpVectors(s.sp, s.tp, e);
     const dist = s.sp.distanceTo(s.tp);
     const hop = motion === 'slide' ? 0 : arc;
-    g.position.y += Math.sin(Math.PI * s.t) * hop * Math.min(1, dist);
+    // glide: the toss is only the first part; the rest is the card sliding flat on the felt
+    g.position.y += (motion === 'glide' ? (s.t < 0.35 ? Math.sin((Math.PI * s.t) / 0.35) : 0) : Math.sin(Math.PI * s.t)) * hop * Math.min(1, dist);
+    const rw0 = window as unknown as { __bwmRestProbe?: boolean; __bwmScale?: Record<string, number[]> };
+    // Landing bounce: a quick rebound off the felt over the last quarter, scaled by the slam.
+    const sl = slamNow.current;
+    // Test probe: screen position of a trick card in flight, per frame (CSS px).
+    if (sl && cardId) {
+      const w = window as unknown as { __bwmFly?: Record<string, { now?: number; t: number; x: number; y: number }[]> };
+      cam.updateMatrixWorld();
+      const v = g.getWorldPosition(new Vector3()).project(cam);
+        // relative to the table centre, so a camera shake (which moves everything) does not read as the card moving
+        const o = new Vector3(0, 0, 0).project(cam); v.x -= o.x; v.y -= o.y;
+      ((w.__bwmFly ??= {})[cardId] ??= []).push({ now: performance.now(), t: s.t, x: ((v.x + 1) / 2) * viewSize.width + 0, y: ((1 - v.y) / 2) * viewSize.height });
+    }
+    if (sl && s.t > 0.75 && dist > 0.02) { const u = (s.t - 0.75) / 0.25; g.position.y += sl.bounce * Math.abs(Math.sin(2 * Math.PI * u)) * (1 - u); }
     g.quaternion.slerpQuaternions(s.sq, s.tq, e);
-    g.scale.setScalar(motion === 'slide' ? s.ts : s.ss + (s.ts - s.ss) * e);
+    g.scale.setScalar(s.ss + (s.ts - s.ss) * e); // every motion eases hand size → table size: no pop
+    // Landing sound + thump fire here, on the frame the card visually hits the felt (after its pose is applied):
+    // glide cards touch down at t=0.35 and then slide, so waiting for t=1 played the sound ~0.3s late.
+    if (!s.landDone && s.t >= impactFraction(motion)) {
+      s.landDone = true;
+      const land = s.land;
+      if (land && moving) {
+        s.firedLand = land;
+        const sl2 = slamNow.current;
+        land.split(',').forEach((c, i) => {
+          if (c === 'play' && sl2 && sl2.intensity >= 0) { sound.cardSmack(sl2.intensity, spatialSeat, spatialN); return; }
+          fireCue(c, i ? 0.02 : 0, spatialSeat, spatialN);
+        });
+        if (!fx.reduced && !fx.osReducedMotion) {
+          if (land.includes('runSlam')) fx.shake = { start: performance.now(), ...PILE_THUMP };
+          else if (sl2 && sl2.shake > 0) fx.shake = { start: performance.now(), ...slamThump(sl2.intensity) };
+        }
+        const lw = window as unknown as { __bwmLandProbe?: boolean; __bwmLandFx?: { card: string; at: number; t: number }[] };
+        if (lw.__bwmLandProbe && cardId) (lw.__bwmLandFx ??= []).push({ card: cardId, at: performance.now(), t: s.t });
+      }
+    }
+    if (rw0.__bwmRestProbe && cardId && slamNow.current) ((rw0.__bwmScale ??= {})[cardId] ??= []).push(g.scale.x);
     if (finiteTarget && trickFacingArrived(s.t, g.position.distanceTo(s.tp))) {
       const q = restingFacing(
         [g.quaternion.x, g.quaternion.y, g.quaternion.z, g.quaternion.w],
@@ -418,6 +533,13 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       );
       g.quaternion.set(q[0], q[1], q[2], q[3]);
       s.faced = true;
+    }
+    // Test probe (opt-in): a settled card's height and its tilt off the felt (degrees between its face normal and straight up).
+    const rw = window as unknown as { __bwmRestProbe?: boolean; __bwmRest?: Record<string, { s: number; y: number; tilt: number; spin: number }> };
+    if (rw.__bwmRestProbe && cardId && s.t >= 1) {
+      const nrm = new Vector3(0, 0, 1).applyQuaternion(g.quaternion);
+      const up = new Vector3(0, 1, 0).applyQuaternion(g.quaternion);
+      (rw.__bwmRest ??= {})[cardId] = { s: g.scale.x, y: g.position.y, tilt: (Math.acos(Math.min(1, Math.abs(nrm.y))) * 180) / Math.PI, spin: (Math.atan2(-up.x, -up.z) * 180) / Math.PI };
     }
   });
 

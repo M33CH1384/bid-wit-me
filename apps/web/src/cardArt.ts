@@ -1,4 +1,5 @@
 import type { Card } from '@spades/rules';
+import { getDeckImage } from './decks';
 
 /**
  * Canvas card art with no WebGL imports. The Run it! zoom (and the first page load) draw faces from here.
@@ -103,6 +104,50 @@ const PIPS: Record<string, [number, number][]> = {
   T: [[0.3, 0.2], [0.7, 0.2], [0.5, 0.31], [0.3, 0.4], [0.7, 0.4], [0.3, 0.6], [0.7, 0.6], [0.5, 0.69], [0.3, 0.8], [0.7, 0.8]],
 };
 
+/**
+ * How far the corner tail runs, in em of the index. Barlow's bowl ends near 0.23em.
+ * A phone fan exposes about 0.31 of the card, so 0.34em of tail (ink out to ~0.25 of
+ * the card) sat on that edge. 0.26em clears the bowl and leaves a margin before the overlap.
+ */
+export const QUEEN_TAIL_EM = 0.26;
+
+/**
+ * Rightmost ink of the corner Q tail, as a fraction of card width.
+ * Includes half the stroke, which extends past the endpoint on the diagonal.
+ */
+export function queenTailReach(cardW = 1): number {
+  const fs = cardW * 0.28;
+  const cx = cardW * 0.135;
+  const x1 = cx + fs * QUEEN_TAIL_EM;
+  const dy = fs * 0.12;
+  const dx = fs * (QUEEN_TAIL_EM - 0.08);
+  const len = Math.hypot(dx, dy) || 1;
+  return (x1 + fs * 0.08 * Math.abs(dy) / len) / cardW;
+}
+
+/**
+ * Barlow Condensed's Q tail is a short slab under the bowl (about 0.09em, and it
+ * never clears the bowl's right edge). On a phone fan only the left third of the
+ * card shows, so that slab reads as 0. This continues the same ink past the bowl,
+ * still inside the exposed corner, so the letter on the card is still the Barlow glyph.
+ */
+function queenTail(ctx: CanvasRenderingContext2D, cx: number, baseline: number, fs: number, color: string) {
+  ctx.save();
+  // The corner index only. A round cap on a longer stroke ran through the pip and off the card.
+  ctx.beginPath();
+  ctx.rect(cx - fs * 0.55, baseline - fs * 0.9, fs * 0.95, fs * 1.05);
+  ctx.clip();
+  ctx.strokeStyle = color;
+  ctx.lineCap = 'butt';
+  ctx.lineWidth = fs * 0.16;
+  ctx.beginPath();
+  // Start on the native tail and leave the bowl (the bowl ends near 0.23em). Stop above the pip.
+  ctx.moveTo(cx + fs * 0.08, baseline + fs * 0.02);
+  ctx.lineTo(cx + fs * QUEEN_TAIL_EM, baseline + fs * 0.14);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function corner(ctx: CanvasRenderingContext2D, W: number, rank: string, suit: Suit, color: string, badge: boolean) {
   const label = rank === 'T' ? '10' : rank;
   ctx.fillStyle = color;
@@ -117,8 +162,13 @@ function corner(ctx: CanvasRenderingContext2D, W: number, rank: string, suit: Su
   ctx.lineWidth = W * 0.011;
   ctx.lineJoin = 'round';
   if (label.length > 1) { ctx.save(); ctx.translate(cx, 0); ctx.scale(0.86, 1); ctx.fillText(label, 0, W * 0.255); ctx.strokeText(label, 0, W * 0.255); ctx.restore(); }
-  else { ctx.fillText(label, cx, W * 0.255); ctx.strokeText(label, cx, W * 0.255); }
+  else {
+    ctx.fillText(label, cx, W * 0.255);
+    ctx.strokeText(label, cx, W * 0.255);
+  }
   drawSuit(ctx, suit, cx, W * 0.37, W * 0.165, color);
+  // After the pip, so the tail stays visible where it passes the suit.
+  if (label === 'Q') queenTail(ctx, cx, W * 0.255, fs, color);
   if (badge) {
     ctx.beginPath();
     ctx.arc(cx, W * 0.53, W * 0.07, 0, Math.PI * 2);
@@ -131,10 +181,18 @@ function corner(ctx: CanvasRenderingContext2D, W: number, rank: string, suit: Su
   }
 }
 
+/**
+ * Court frame, as a fraction of card width. The fan shows at most 62% of a card (the fit
+ * loop's step cap). The gold stroke is 1.8% wide, so the frame starts past that strip.
+ * A frame in the exposed strip reads as a gold line through the next card.
+ */
+export const COURT_FRAME_X = 0.64;
+export const COURT_FRAME_W = 0.3;
+
 function court(ctx: CanvasRenderingContext2D, W: number, H: number, rank: string, suit: Suit, color: string) {
-  // the frame stays right of the corner-index strip: in a phone fan only the left ~31% of a card shows, and a frame
-  // edge there read as a thin gold line cutting through the card (Release 6 hotfix, iPhone)
-  const x = W * 0.34, y = H * 0.1, w = W * 0.32, h = H * 0.8;
+  // Right of the exposed corner. A frame on that strip reads as a gold line through the next card.
+  const x = W * COURT_FRAME_X, y = H * 0.1, w = W * COURT_FRAME_W, h = H * 0.8;
+  const mid = x + w / 2;
   const g = ctx.createLinearGradient(0, y, 0, y + h);
   const tint = color === RED ? ['#fde9e6', '#f6cfc7'] : ['#e9edf7', '#cfd6ea'];
   g.addColorStop(0, tint[0]!);
@@ -154,7 +212,7 @@ function court(ctx: CanvasRenderingContext2D, W: number, H: number, rank: string
   const cy = y + h * 0.2;
   ctx.beginPath();
   const n = rank === 'K' ? 5 : rank === 'Q' ? 4 : 3;
-  const bw = w * 0.5, bx = W / 2 - bw / 2;
+  const bw = w * 0.5, bx = mid - bw / 2;
   ctx.moveTo(bx, cy + W * 0.06);
   for (let i = 0; i <= n; i++) {
     const px = bx + (bw * i) / n;
@@ -169,8 +227,10 @@ function court(ctx: CanvasRenderingContext2D, W: number, H: number, rank: string
   ctx.textBaseline = 'middle';
   const courtFs = W * 0.3;
   ctx.font = `800 ${courtFs}px "Barlow Condensed", "Arial Narrow", Arial, sans-serif`;
-  ctx.fillText(rank, W / 2, y + h * 0.53);
-  drawSuit(ctx, suit, W / 2, y + h * 0.84, W * 0.1, color);
+  const courtY = y + h * 0.53;
+  ctx.fillText(rank, mid, courtY);
+  drawSuit(ctx, suit, mid, y + h * 0.84, W * 0.1, color);
+  if (rank === 'Q') queenTail(ctx, mid, courtY + courtFs * 0.33, courtFs, color);
 }
 
 function joker(ctx: CanvasRenderingContext2D, W: number, H: number, big: boolean) {
@@ -258,6 +318,8 @@ export function drawFace(card: Card, W: number, H: number, badge: boolean): HTML
   cv.width = W;
   cv.height = H;
   const ctx = cv.getContext('2d')!;
+  const art = getDeckImage(card);
+  if (art) { ctx.drawImage(art, 0, 0, W, H); return cv; }
   paper(ctx, W, H);
   if (card === 'BJ' || card === 'LJ') {
     joker(ctx, W, H, card === 'BJ');

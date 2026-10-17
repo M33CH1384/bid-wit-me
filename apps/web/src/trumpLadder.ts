@@ -44,3 +44,8 @@ export function TrumpLadder({ rules, n, style }: { rules: TableRules; n: number;
       label)
   )));
 }
+
+/** The TRUMPS strip shows through the deal and bidding, and hides once the hand's first card is played. */
+export function trumpStripShown(st: { phase: string; tricks: readonly unknown[]; trick: { plays: readonly unknown[] } }): boolean {
+  return !(st.phase === 'playing' && (st.tricks.length > 0 || st.trick.plays.length > 0));
+}

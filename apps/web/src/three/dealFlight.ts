@@ -29,3 +29,42 @@ export function handSlotKey(cardId: string, index: number): string {
 export function handNeedsDeal(o: { intro: boolean; flip: boolean; seen: ReadonlySet<string>; slotKey: string }): boolean {
   return o.intro && !o.flip && !o.seen.has(o.slotKey);
 }
+
+/**
+ * The fan on screen is the current hand. A card that is already in state is drawn in its slot,
+ * not held at the deck until its deal beat (that beat is what left cards missing and taps ignored).
+ * A repeated id is one card. Two meshes for the queen is the ghost face behind it.
+ */
+export function handOnFan<T extends string>(hand: readonly (T | null)[]): { card: T | null; hidden: boolean }[] {
+  const seen = new Set<string>();
+  const out: { card: T | null; hidden: boolean }[] = [];
+  for (const card of hand) {
+    if (card !== null) {
+      if (seen.has(card)) continue;
+      seen.add(card);
+    }
+    out.push({ card, hidden: false });
+  }
+  return out;
+}
+
+/**
+ * A fresh deal: your cards are not on the fan yet. Each one leaves the deck face down on its
+ * deal beat and turns face up as it lands. A resumed hand (not the intro hand) is drawn at once.
+ */
+export function handDealsIn(o: { intro: boolean; dealing: boolean; flip: boolean }): boolean {
+  return o.intro && o.dealing && !o.flip;
+}
+
+/**
+ * The intro hand's cards wait for the table. Before it is up, nothing of this hand is drawn,
+ * so the deal (and its clock) starts when the felt is on screen, not behind the loader.
+ */
+export function dealHeld(o: { intro: boolean; dealReady: boolean }): boolean {
+  return o.intro && !o.dealReady;
+}
+
+/** The deal clock (bots, YOUR TURN, the timer) runs only once the table can show the deal. */
+export function dealClockArmed(introHand: number | null, dealReady: boolean): boolean {
+  return introHand !== null && dealReady;
+}

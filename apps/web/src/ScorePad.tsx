@@ -6,10 +6,12 @@
  * played shows as "in progress" with the bids so far.
  */
 import { type ReactNode, useEffect, useRef } from 'react';
+import { useEscapeClose } from './useEscapeClose';
 import { type GameState, type HandRecord, type SideHandResult, type TableRules, bidLabel, hostMinimum, shotOutOn } from '@spades/rules';
 import { SEAT_COLORS } from './overlay';
 import { hudSeatName } from './dealerName';
 import { holeMarks, punchedLabel, rememberHoles } from './shotMarks';
+import { timerSettingLabel } from './turnTimer';
 
 export const signed = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0');
 
@@ -36,6 +38,7 @@ export function rulesChips(r: TableRules): string[] {
   const min = hostMinimum(r);
   if (min > 0) out.push(`Minimum ${min}`);
   if (shotOutOn(r)) out.push('Shot = out');
+  out.push(timerSettingLabel(r.turnTimerSec));
   return out;
 }
 
@@ -91,7 +94,7 @@ function Row({ color, name, bid, took, points, chips, total, bags, bagsAdded, de
   );
 }
 
-export function ScorePad({ st, names, onClose, onContinue, locked, sideName, dealerName }: { st: GameState; names: string[]; onClose: () => void; onContinue?: () => void; locked?: ReactNode; sideName: (side: number) => string; /** current hand's dealer, from the engine seat's occupant; past hands keep their own dealer seat */ dealerName?: string }) {
+export function ScorePad({ st, names, onClose, onContinue, locked, sideName, dealerName, onLeave }: { st: GameState; names: string[]; onClose: () => void; onContinue?: () => void; locked?: ReactNode; sideName: (side: number) => string; /** current hand's dealer, from the engine seat's occupant; past hands keep their own dealer seat */ dealerName?: string; /** Hand Recap only: open the Leave choice (Save & go to menu / Quit game) */ onLeave?: () => void }) {
   const r = st.rules;
   const sides = Array.from({ length: st.scores.length }, (_, i) => i);
   const streaks = holeMarks(r, st.history);
@@ -102,8 +105,9 @@ export function ScorePad({ st, names, onClose, onContinue, locked, sideName, dea
   const lastRef = useRef<HTMLElement>(null);
   useEffect(() => { lastRef.current?.scrollIntoView({ block: 'end' }); }, []);
   const showLocked = locked && st.phase !== 'gameOver';
+  const esc = useEscapeClose(onClose);
   return (
-    <div className="modal-backdrop pad-backdrop" onClick={onClose}>
+    <div className="modal-backdrop pad-backdrop" ref={esc} onClick={onClose}>
       <div className="modal glass slant score-pad v2" onClick={(e) => e.stopPropagation()} data-testid="score-pad" role="dialog" aria-label="Score pad">
         <div className="scroll pad2">
           <header className="pad-sticky">
@@ -157,6 +161,7 @@ export function ScorePad({ st, names, onClose, onContinue, locked, sideName, dea
           <div className="pad-rules chips" data-testid="pad-rules">{rulesChips(r).map((c) => <span key={c} className="rule-chip">{c}</span>)}</div>
           {showLocked ? locked : null}
         </details>
+        {onLeave && <button type="button" className="big" data-testid="recap-leave" onClick={onLeave}>Leave game</button>}
         <button type="button" className="primary big" data-testid="pad-continue" onClick={onContinue ?? onClose}>Continue</button>
       </div>
     </div>

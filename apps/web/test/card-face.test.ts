@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cardShowsFace, feltHandVisible, handLatched, latchHand, presentHand, resetHandLatch, retainFrontTexture, showResumeHand3D, shownFaceIds, trickFacesShown, visibleFaceIds } from '../src/three/cardFace';
+import { cardShowsFace, feltHandVisible, flatFanHidden, handLatched, latchHand, presentHand, resetHandLatch, resumeDrawList, retainFrontTexture, showResumeHand3D, shownFaceIds, trickFacesShown, visibleFaceIds } from '../src/three/cardFace';
 
 /**
  * The painter walks the hand one card per frame and starts over when its key changes.
@@ -178,6 +178,10 @@ describe('dealt faces survive a selection', () => {
     expect(presentHand({ cardCount: 0, resume: true, latched: false, facesReady: 0 })).toEqual({ webgl: false, felt: false, visible: 0 });
     // A fresh deal is the 3D fan, so the flat fan does not stack on it.
     expect(feltHandVisible(13, false, false)).toBe(false);
+    // The flat fan is gone on the frame the 3D hand exists. Waiting another frame stacks a ghost face.
+    expect(flatFanHidden(true, 13)).toBe(true);
+    expect(flatFanHidden(false, 13)).toBe(false);
+    expect(flatFanHidden(true, 0)).toBe(false);
   });
 
   it('keeps the 3D latch for the hand that was drawn, including after the group remounts', () => {
@@ -188,6 +192,40 @@ describe('dealt faces survive a selection', () => {
     expect(handLatched(3)).toBe(false);
     expect(showResumeHand3D(true, 10, 0, handLatched(2))).toBe(true);
     resetHandLatch();
+  });
+
+  it('shows your own cards face-up before the painter has walked them', () => {
+    const mine = ['QD', '4D', 'AS', '10H'] as const;
+    // Fresh deal and a reload both start with nothing painted and nothing remembered.
+    const fresh = visibleFaceIds(new Set(), [], [...mine], [], []);
+    for (const id of mine) {
+      expect(fresh.has(id)).toBe(true);
+      expect(cardShowsFace(id, fresh, [])).toBe(true);
+    }
+    // A painter reset mid-hand (the face key changed) still keeps every card you hold face-up.
+    const reset = visibleFaceIds(new Set(), [], [...mine], ['AC'], []);
+    for (const id of mine) expect(cardShowsFace(id, reset, ['AC'])).toBe(true);
+    expect(cardShowsFace('AC', reset, ['AC'])).toBe(true);
+    // A card you do not hold, and that is not in the trick, stays on its back.
+    expect(cardShowsFace('KS', reset, ['AC'])).toBe(false);
+    // Blind Nil has no ids. Nothing in an empty hand is forced face-up.
+    expect(visibleFaceIds(new Set(), [], [], [], []).size).toBe(0);
+  });
+
+  it('never drops the trick while a resumed scene is still bringing the rest of the table in', () => {
+    const items = [
+      { id: 'pile', hand: false, public: false },
+      { id: 'AC', hand: false, public: true },
+      { id: 'QD', hand: true, public: false },
+      { id: '4D', hand: true, public: false },
+      { id: 'opp', hand: false, public: false },
+    ];
+    const first = resumeDrawList(items, true, 0);
+    expect(first.map((it) => it.id)).toEqual(['AC', 'QD', '4D']);
+    const next = resumeDrawList(items, true, 1);
+    expect(next.map((it) => it.id)).toEqual(['AC', 'QD', '4D', 'pile']);
+    // A live deal draws every card. The ramp is only for a resume.
+    expect(resumeDrawList(items, false, 0).map((it) => it.id)).toEqual(items.map((it) => it.id));
   });
 
   it('leaves a card on its back until that card has been dealt', () => {

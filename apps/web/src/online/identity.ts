@@ -8,19 +8,44 @@ export function loadName(): string {
   try { return localStorage.getItem(NAME_KEY) ?? ''; } catch { return ''; }
 }
 
-/** One guest id per browser. Social presence keys off it, so a second tab or a reconnect is the same player. */
+/** One guest id per browser. Social presence keys off it, so a second tab or a reconnect is the same player.
+ *  The cookie keeps it when local storage is empty, the same way the seat token survives. */
 const GUEST_KEY = 'bwm.social.guest';
+const GUEST_COOKIE = 'bwm_guest';
 const GUEST_RE = /^[A-Za-z0-9_-]{8,32}$/;
 let guestMem: string | null = null;
+function readGuestCookie(): string {
+  try {
+    if (typeof document === 'undefined' || !document.cookie) return '';
+    const raw = document.cookie.split('; ').map((p) => p.split('=')).find(([k]) => k === GUEST_COOKIE)?.[1];
+    if (!raw) return '';
+    const id = decodeURIComponent(raw);
+    return GUEST_RE.test(id) ? id : '';
+  } catch { return ''; }
+}
+function writeGuest(id: string): void {
+  try { localStorage.setItem(GUEST_KEY, id); } catch { /* private mode */ }
+  try {
+    if (typeof document === 'undefined') return;
+    document.cookie = `${GUEST_COOKIE}=${encodeURIComponent(id)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+  } catch { /* ignore */ }
+}
 export function guestSessionId(): string {
   if (guestMem && GUEST_RE.test(guestMem)) return guestMem;
+  let fromLocal = '';
   try {
     const cur = localStorage.getItem(GUEST_KEY);
-    if (cur && GUEST_RE.test(cur)) { guestMem = cur; return cur; }
+    if (cur && GUEST_RE.test(cur)) fromLocal = cur;
   } catch { /* private mode */ }
-  guestMem = mintToken().slice(0, 22);
-  try { localStorage.setItem(GUEST_KEY, guestMem); } catch { /* ignore */ }
+  guestMem = fromLocal || readGuestCookie() || mintToken().slice(0, 22);
+  writeGuest(guestMem);
   return guestMem;
+}
+export function resetGuestSession(): void {
+  guestMem = null;
+  try { localStorage.removeItem(GUEST_KEY); } catch { /* ignore */ }
+  try { if (typeof document !== 'undefined') document.cookie = `${GUEST_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`; } catch { /* ignore */ }
+  guestSessionId(); // mint a fresh guest identity: the old one is signed out
 }
 export function saveName(n: string): void {
   try { localStorage.setItem(NAME_KEY, n); } catch { /* ignore */ }

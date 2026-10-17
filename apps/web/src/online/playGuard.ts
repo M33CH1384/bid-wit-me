@@ -29,22 +29,49 @@ export function playSendBlocked(sentSeq: number | null, serverSeq: number): bool
 }
 
 /**
- * How long a freshly selected card stays a selection. A second pointer event in this window
- * (a touch plus the mouse event iOS synthesises) must not play the card it just selected,
- * and it must not play the neighbour underneath a card that is still rising.
+ * The chosen card leaves the hand as soon as the play is sent. The server answer
+ * can take a few seconds (the first message sometimes lands only on the resend);
+ * the card should not sit back in the fan, looking deselected, while that happens.
+ * Once the trick already has the card, or the play was dropped, nothing is added.
  */
-export const TAP_PLAY_ARM_MS = 120;
+/** A card you just played, drawn on the table until the state shows it. Tied to the hand and trick it was played in. */
+export interface FlyingPlay { card: string; handNo: number; trickNo: number }
+
+/** The flying card to draw now, or null once the hand or trick it belonged to is over. */
+export function flyingCard<C extends string>(f: FlyingPlay | null, handNo: number, phase: string, trickNo: number): C | null {
+  if (!f || f.handNo !== handNo || phase !== 'playing' || f.trickNo !== trickNo) return null;
+  return f.card as C;
+}
+
+export function flyPlay<C extends string>(
+  hand: readonly C[] | null,
+  trick: readonly { card: string }[],
+  flying: string | null,
+): { hand: C[] | null; card: C | null } {
+  if (flying == null || hand == null || !(hand as readonly string[]).includes(flying) || trick.some((p) => p.card === flying)) {
+    return { hand: hand == null ? null : [...hand], card: null };
+  }
+  return { hand: hand.filter((c) => c !== flying), card: flying as C };
+}
 
 /**
- * One tap selects. The next tap plays, and the card that leaves the hand is the selected id.
+ * One tap selects. The next tap on that same card plays it, and only after the
+ * selecting finger has lifted (`armed`). A second pointerdown from the same tap
+ * is not armed, so it cannot play the card before the raise paints.
  * A hit on a different card changes the selection. It never plays that other card.
+ * The felt is not a card hit. That is the other way to put the raised card down.
  */
-export function confirmPlay(selected: string | null, hit: string, selectedAt: number, now: number):
+export function confirmPlay(selected: string | null, hit: string, armed: boolean):
   { type: 'play'; card: string } | { type: 'select'; card: string } | { type: 'ignore' } {
   if (!hit) return { type: 'ignore' };
   if (selected !== null && hit === selected) {
-    if (!(now - selectedAt >= TAP_PLAY_ARM_MS)) return { type: 'ignore' };
+    if (!armed) return { type: 'ignore' };
     return { type: 'play', card: selected };
   }
   return { type: 'select', card: hit };
+}
+
+/** A tap on the felt puts the raised card down. It does not play anything. */
+export function feltClearsSelection(selected: string | null): boolean {
+  return selected !== null;
 }

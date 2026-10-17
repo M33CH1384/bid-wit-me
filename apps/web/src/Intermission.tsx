@@ -6,7 +6,7 @@ import { handWinner, streakLabel, streakOf } from './fx';
 import { sound } from './audio';
 import { haptic } from './haptics';
 import { SheetCloth } from './SheetCloth';
-import { HOLE_CAP, HOLE_SLOTS, claimHoleBuzz, holeMarks, markHolePunched, markSheetPlayed, punchedLabel, rememberHoles } from './shotMarks';
+import { HOLE_CAP, claimHoleBuzz, holeMarks, holeSlots, markHolePunched, markSheetPlayed, punchedLabel, rememberHoles } from './shotMarks';
 
 /**
  * Hand recap between hands (online and offline).
@@ -47,7 +47,7 @@ export function calloutsFor(st: GameState, mySide: number, names: string[]): Cal
 }
 
 export function Intermission({
-  st, names, mySide, secs, ready, onReady, online, onScorePad, series, chatOpen, unread, onChat, runReview,
+  st, names, mySide, secs, ready, onReady, online, onScorePad, onLeave, series, chatOpen, unread, onChat, runReview,
 }: {
   /** rematch series chip */
   series?: ReactNode;
@@ -63,6 +63,8 @@ export function Intermission({
   onReady: () => void;
   online: boolean;
   onScorePad: () => void;
+  /** Hand Recap: open the Leave choice (Save & go to menu / Quit game) */
+  onLeave?: () => void;
   /** corner chat: unread count while the sheet is closed */
   unread: number;
   chatOpen: boolean;
@@ -170,20 +172,20 @@ export function Intermission({
               const main = chips.find((c) => c.kind === 'made' || c.kind === 'set' || c.kind === 'books');
               const bidPart = books ? (s.contractMade === false ? `Set at ${s.contract}` : 'Books (hand 1)') : s.contract ? `Bid ${s.contract}` : `Bid ${s.seats.map((x) => bidLabel(rec.bids[x]!)).join(' + ')}`;
               const shot = shotThisHand(s);
-              const cover = covers[s.side] ?? { tape: false, sheet: false, siren: false };
+              const cover = covers[s.side] ?? { tape: false, sheet: false, siren: false, outHand: null };
               const justShot = isShot(r, rec.bids, s);
               const notice = cover.tape && !cover.sheet;
               const showTape = cover.tape || !!cover.sheet;
               const info = streaks[s.side] ?? { count: 0, visible: 0, fresh: -1 };
               const marks = rememberHoles(st.seed, s.side, info.count, info.fresh);
               const sheetAnim = !!cover.sheet && anim.current!.waitSheet.has(s.side);
-              const tod = `Time of death: Hand ${rec.handNo}`;
+              const tod = `Time of death: Hand ${cover.outHand ?? rec.handNo}`;
               const showHoles = info.visible > 0 && (notice || !!cover.sheet);
               return (
                 <div key={s.side} className={`tt-team${s.side === mySide ? ' mine' : ''}${shot ? ' blast' : ''}${cover.tape ? ' taped' : ''}${cover.tape && justShot ? ' tape-in' : ''}${notice ? ' notice' : ''}${cover.sheet ? ' shrouded' : ''}${sheetAnim ? ' sheet-in sheet-wait' : ''}`} data-testid={`recap-side-${s.side}`} data-blast={shot ? 'yes' : 'no'} data-tape={cover.tape ? 'yes' : 'no'} data-sheet={cover.sheet ? 'yes' : 'no'} data-siren={cover.siren ? 'yes' : 'no'} data-holes={info.count} data-punched={punchedLabel(marks)}>
                   {showHoles && (
                     <div className="shot-holes" data-testid={`recap-holes-${s.side}`} aria-hidden="true">
-                      {HOLE_SLOTS.slice(0, info.visible).map((h, i) => (
+                      {holeSlots(!!cover.sheet).slice(0, info.visible).map((h, i) => (
                         <img key={i} className={anim.current!.punch.has(`${s.side}:${i}`) ? 'hole-in' : undefined} src="/shot/hole.png" alt="" style={{ left: h.x, top: h.y, ['--rot' as string]: `${h.rot}deg` }} />
                       ))}
                     </div>
@@ -246,6 +248,7 @@ export function Intermission({
 
         <footer className="tt-foot bid-row">
           <button type="button" onClick={onScorePad}>Score pad</button>
+          {onLeave && <button type="button" data-testid="recap-leave" onClick={onLeave}>Leave game</button>}
           {ready && <span className="muted" data-testid="talk-ready-count">{ready.count}/{ready.of} ready</span>}
           <button type="button" className="primary big" data-testid="talk-ready" disabled={!!ready?.mine} onClick={onReady}>
             {online ? (ready?.mine ? 'Waiting for the table…' : 'Ready') : 'Continue'}

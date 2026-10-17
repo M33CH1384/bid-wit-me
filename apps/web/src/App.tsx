@@ -7,8 +7,9 @@ import { usePresence } from './social/Social';
 import { NowPlaying } from './SoundControls';
 import Table from './Table';
 import { MODES, type Settings, loadSettings, saveSettings, settingsToRules } from './settings';
-import { type SavedGame, loadGame, resumeOnLoad } from './save';
+import { type SavedGame, confirmReplaceSave, loadGame, markInGame, resumeOnLoad, wasInGame } from './save';
 import { flushLocalGames, watchLocalGames } from './localStats';
+import { holdIdleExemption } from './inactivity';
 
 export default function App() {
   const [settings, setSettings] = useState<Settings>(loadSettings);
@@ -21,7 +22,8 @@ export default function App() {
     }
     // Opening the app and refreshing land on the menu. A saved bot game is not resumed.
     // Leave (including a spectator leaving an online table) also sets wiz:home.
-    const saved = resumeOnLoad(history.state, loadGame(), false);
+    const saved = resumeOnLoad(history.state, loadGame(), false, wasInGame());
+    if (!saved) markInGame(false);
     return saved ? { seed: saved.seed, settings: saved.settings, resume: saved, continueSeries: true } : null;
   });
 
@@ -36,6 +38,11 @@ export default function App() {
   // a signed-in offline game that failed to upload stays in localStorage until the browser is online again
   useEffect(() => { watchLocalGames(); void flushLocalGames(); }, []);
 
+  // Offline bot games NEVER idle-log-out: hold the exemption for the whole game.
+  useEffect(() => { if (!game) return; return holdIdleExemption(); }, [game !== null]);
+  // Refresh at the table returns to it; refresh anywhere else keeps that screen (history.state holds the wizard step).
+  useEffect(() => { markInGame(game !== null); }, [game]);
+
   if (!game) {
     const saved = loadGame();
     return (
@@ -44,8 +51,8 @@ export default function App() {
       <Setup
         settings={settings}
         onChange={(s) => { setSettings(s); saveSettings(s); }}
-        onStart={() => { saveSettings(settings); saveSeries(null); setGame({ seed: secureSeed(), settings, continueSeries: false }); }}
-        onResume={saved ? () => setGame({ seed: saved.seed, settings: saved.settings, resume: saved, continueSeries: true }) : null}
+        onStart={() => { if (!confirmReplaceSave(saved, (m) => window.confirm(m))) return; history.replaceState({ wiz: 'home', d: 0 }, '', location.pathname); saveSettings(settings); saveSeries(null); setGame({ seed: secureSeed(), settings, continueSeries: false }); }}
+        onResume={saved ? () => { history.replaceState({ wiz: 'home', d: 0 }, '', location.pathname); setGame({ seed: saved.seed, settings: saved.settings, resume: saved, continueSeries: true }); } : null}
         resumeLabel={saved ? `${MODES.find((m) => m.key === saved.settings.mode)?.title ?? 'game'} · hand ${saved.state.handNo}` : undefined}
       />
       </>
@@ -66,6 +73,7 @@ export default function App() {
       onRematch={(dealer) => setGame({ seed: secureSeed(), settings: game.settings, dealer, continueSeries: true })}
       startDealer={game.dealer}
       onQuality={(quality) => { const s = { ...game.settings, quality }; setGame({ ...game, settings: s }); setSettings(s); saveSettings(s); }}
+      onView={(view) => { const s = { ...game.settings, view }; setGame({ ...game, settings: s }); setSettings(s); saveSettings(s); }}
     />
     </>
   );

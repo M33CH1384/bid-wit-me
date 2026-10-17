@@ -7,12 +7,30 @@
  */
 import { type Bid, type SideHandResult, type TableRules, isShot, sideCount } from '@spades/rules';
 
-/** Top-right gap left of the total, lower left by the bar, then mid-right under the total. */
+/**
+ * On-notice card. All three sit in the tape lane: below the name and the total,
+ * above the bid line. The old top slot (62%, 30px) sat on the team name, and
+ * 145px clipped the score line.
+ */
 export const HOLE_SLOTS: readonly { x: string; y: string; rot: number }[] = [
-  { x: '62%', y: '30px', rot: -8 },
-  { x: '14%', y: 'calc(100% - 40px)', rot: 9 },
-  { x: '78%', y: '145px', rot: -6 },
+  { x: '22%', y: '124px', rot: -8 },
+  { x: '46%', y: '128px', rot: 9 },
+  { x: '78%', y: '118px', rot: -6 },
 ];
+
+/**
+ * Eliminated card. There is no tape lane, so the holes sit in the bottom padding,
+ * left of the time-of-death tag.
+ */
+export const SHROUD_HOLE_SLOTS: readonly { x: string; y: string; rot: number }[] = [
+  { x: '12%', y: 'calc(100% - 30px)', rot: -8 },
+  { x: '28%', y: 'calc(100% - 36px)', rot: 8 },
+  { x: '42%', y: 'calc(100% - 28px)', rot: -5 },
+];
+
+export function holeSlots(sheet: boolean): readonly { x: string; y: string; rot: number }[] {
+  return sheet ? SHROUD_HOLE_SLOTS : HOLE_SLOTS;
+}
 
 export const HOLE_CAP = 3;
 

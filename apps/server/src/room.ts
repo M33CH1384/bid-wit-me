@@ -3,14 +3,14 @@
  * unit-tested with mock sockets and a fake clock. The server is the referee (spec §4.2):
  *  - it shuffles/deals (packages/rules), validates every bid/play, and only ever sends a seat its own view;
  *  - bots (packages/bots) fill empty seats and play from that seat's view only;
- *  - human turns have a deadline; when it passes (or a disconnected player's short grace runs out)
- *    the bot logic plays for them;
+ *  - human turns have a deadline from that table's timer; a disconnect waits the same length
+ *    (not a fixed 10s) and then the bot logic plays that turn. The seat stays the human's unless they explicitly leave;
  *  - all durable state lives in one plain-JSON `RoomData` object that the DO saves as a single row.
  */
 import {
   type Action, type GameState, type Series, addSeriesGame, emptySeries, seriesForGameStart, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, RulesConfigError, acceptRules, applyAction, canRunIt, runPlayout, type Seat, spectatorView, isFreshDeal, isNukeTrick, nextDealer, makeRules, newGame, pendingTurn, secureSeed, viewFor, withCompleteNil,
 } from '@spades/rules';
-import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, chooseBotAction, loudLoser, parseHint, leanBid, botSkillFor, personaSkillFloor, seatSkill, leanNil, momentsFor, newTalkState, pickBotNames, prePlayLine } from '@spades/bots';
+import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, chooseBotAction, loudLoser, parseHint, leanBid, botSkillFor, personaSkillFloor, seatSkill, leanNil, momentsFor, newTalkState, pickBotNames, platePersona, prePlayLine } from '@spades/bots';
 import {
   type BotLevel, type ChatLine, type ClientMsg, type HostMusic, type MediaState, type RoomInfo, type RoomPhase, type RunPlayback, type SeatInfo, type ServerMsg,
   DEFAULT_AFK_LIMIT, LIMITS, PROTOCOL_VERSION, parseClientMsg,
@@ -24,8 +24,9 @@ export const ROOM_DATA_VERSION = 1;
 
 export type SeatSlot =
   | { kind: 'empty' }
-  /** vacated: a bot that took over from a player who left / was kicked / went AFK (always open to spectators) */
-  | { kind: 'bot'; name: string; level: BotLevel; vacated?: boolean; /** display name of the human this bot replaced */ was?: string }
+  /** vacated: a bot that took over from a player who left / was kicked / went AFK (always open to spectators).
+   *  replacedPid: the member who still owns this seat after a disconnect. A reconnect reclaims it; a leave does not set this. */
+  | { kind: 'bot'; name: string; level: BotLevel; vacated?: boolean; /** display name of the human this bot replaced */ was?: string; replacedPid?: string }
   | { kind: 'human'; playerId: string };
 
 export interface Member {
@@ -44,6 +45,14 @@ export interface Member {
   badges?: { id: string; earnedAt: number; context?: Record<string, unknown> }[];
   /** Release 9: signed-in account behind this seat (from a verified account ticket) → stats, ratings, recent players */
   uid?: string;
+  /** Browser guest id. A reload that minted a new seat token is still this member. */
+  gid?: string;
+  /** Epoch ms of the last socket drop. The disconnect grace is measured from here, not from each tick. */
+  disconnectedAt?: number;
+  /** False while this client's table is still drawing. Unset means an older client: the clock may run. */
+  interactive?: boolean;
+  /** Epoch ms when the loader started holding this player's turn clock. */
+  loaderSince?: number;
 }
 
 /** Everything that survives hibernation / restarts. Plain JSON. */
@@ -62,6 +71,8 @@ export interface RoomData {
   /** key of the turn the deadline belongs to */
   turnKey: string | null;
   turnStartedAt: number | null;
+  /** `seq` when this turn began. A play from earlier than this belongs to a previous turn. */
+  turnSeq?: number;
   deadline: number | null;
   ready: string[];
   chat: ChatLine[];
@@ -74,7 +85,7 @@ export interface RoomData {
   /** host-set Table Talk countdown (s); unset = timing.handOverMs */
   talkSec?: number;
   music?: HostMusic;
-  /** consecutive timeouts before a bot replaces a player; 0 = off; unset = DEFAULT_AFK_LIMIT */
+  /** Kept for older clients. Timeouts are counted; they never hand the seat to a bot. */
   afkLimit?: number;
   /** host option: partner voice limiting during trick play (from the first card led); unset = off */
   partnerMicMute?: boolean;
@@ -170,6 +181,8 @@ export const TOURNAMENT_EMPTY_GRACE_MS = 90_000;
 /** seated host dropped without leaving: pass host after this long so the table can still start or rematch */
 export const HOST_DISCONNECT_GRACE_MS = 30_000;
 export const DEFAULT_TIMING: RoomTiming = { botMs: 750, trickPauseMs: 1300, dealMs: 3200, disconnectGraceMs: 10_000, handOverMs: 20_000 };
+/** A loader that never reports ready must not freeze the table. Matches the client's give-up. */
+export const LOADER_HOLD_MAX_MS = 45_000;
 /**
  * After a bot's scheduled delay, this much longer with the turn still unmoved means the brain
  * did not resolve it. The server then plays a legal bid or card itself.
@@ -226,11 +239,31 @@ export class Room {
     data.seq ??= 0;
   }
 
+  /** One JSON line per table event. Wrangler tail and Workers logs can filter `src=bwm.table`. */
+  private trace(event: string, fields: Record<string, unknown>): void {
+    console.log(JSON.stringify({ src: 'bwm.table', event, table: this.data.code, at: this.io.now(), ...fields }));
+  }
+
+  /** The Durable Object calls this before `close`, while the socket is still bound. */
+  noteSocketClose(connId: string, code: number, reason: string, wasClean: boolean): void {
+    const pid = this.conns.get(connId) ?? null;
+    const m = pid ? this.data.members[pid] : undefined;
+    let others = 0;
+    if (pid) for (const [cid, p] of this.conns) if (p === pid && cid !== connId) others++;
+    this.trace('socket_close', {
+      cid: connId, code, reason: reason.slice(0, 120), wasClean, pid, seat: m?.seat ?? null, name: m?.name ?? null, otherSockets: others,
+    });
+  }
+
   /* ------------------------------------------------------------ connections */
 
-  /** Re-register a connection that survived hibernation (DO wake-up). */
+  /** Re-register a connection that survived hibernation (DO wake-up). A null id must not wipe a live binding. */
   restoreConnection(connId: string, playerId: string | null): void {
-    this.conns.set(connId, playerId && this.data.members[playerId] ? playerId : null);
+    if (playerId && this.data.members[playerId]) {
+      this.conns.set(connId, playerId);
+      return;
+    }
+    if (!this.conns.has(connId)) this.conns.set(connId, null);
   }
 
   open(connId: string): void {
@@ -243,8 +276,12 @@ export class Room {
     this.conns.delete(connId);
     if (!pid || this.isConnected(pid)) return;
     const m = this.data.members[pid];
+    // The grace starts when the last socket actually drops. A second socket for this
+    // player returns above, so a reload is not a leave and does not start a new grace.
+    if (m) m.disconnectedAt = this.io.now();
     if (m && m.seat === null) {
-      // an unseated member who dropped, in any phase: forget them so they don't fill the table
+      // an unseated member who dropped, in any phase: forget them so they don't fill the table.
+      // A seat held by their replacement bot is not forgotten — the reconnect reclaims it.
       this.dropGhosts();
     } else if (m && this.data.hostId === pid) {
       this.data.hostAwaySince ??= this.io.now();
@@ -358,9 +395,14 @@ export class Room {
     return /^[A-Za-z0-9_-]{16,100}$/.test(token);
   }
 
-  private kickedOut(token?: string, uid?: string): boolean {
+  private kickedOut(token?: string, uid?: string, gid?: string): boolean {
     const k = this.data.kicked ?? [];
-    return (!!token && k.includes(token)) || (!!uid && k.includes(uid));
+    return (!!token && k.includes(token)) || (!!uid && k.includes(uid)) || (!!gid && this.gidOk(gid) && k.includes(gid));
+  }
+
+  /** Same shape the browser mints for `bwm.social.guest`. */
+  private gidOk(gid: string): boolean {
+    return /^[A-Za-z0-9_-]{8,64}$/.test(gid);
   }
 
   private rejectKick(connId: string): void {
@@ -380,11 +422,16 @@ export class Room {
     return { members, watching };
   }
 
+  /** A bot is keeping this member's seat until they reconnect. */
+  private seatHeld(pid: string): boolean {
+    return this.data.seats.some((s) => s.kind === 'bot' && s.replacedPid === pid);
+  }
+
   /** forget disconnected unseated members (they must not hold a member or spectator slot) */
   private dropGhosts(): void {
     const d = this.data;
     for (const [id, m] of Object.entries(d.members)) {
-      if (m.seat !== null || this.isConnected(id)) continue;
+      if (m.seat !== null || this.isConnected(id) || this.seatHeld(id)) continue;
       delete d.members[id];
       if (d.hostId === id) this.passHost();
     }
@@ -412,9 +459,10 @@ export class Room {
     for (const [cid, p] of this.conns) if (p === dropId) this.conns.set(cid, keepId);
     if (d.hostId === dropId) d.hostId = keepId;
     if (d.hostId && this.isConnected(d.hostId)) delete d.hostAwaySince;
+    keep.gid ??= drop.gid;
     delete d.members[dropId];
     keep.uid = uid;
-    keep.name = m.name;
+    // The name already on the kept member stays. A second hello must not rename the seat.
     this.seatReserved(keepId);
   }
 
@@ -467,21 +515,58 @@ export class Room {
     const d = this.data;
     this.dropGhosts();
     const name = cleanName(msg.name, LIMITS.nameMax) || 'Player';
-    if (this.kickedOut(msg.token, uid)) { this.rejectKick(connId); return; }
-    // same seat token, or the same account (a second tab / cleared storage still presenting the ticket)
+    const gid = msg.gid && this.gidOk(msg.gid) ? msg.gid : undefined;
+    if (this.kickedOut(msg.token, uid, gid)) {
+      this.trace('reconnect', { cid: connId, how: 'kicked', name });
+      this.rejectKick(connId);
+      return;
+    }
+    // same seat token, same account, or the same browser guest (a reload can mint a new token)
+    let how: 'token' | 'uid' | 'gid' | 'new' = 'new';
     let pid = msg.token ? Object.keys(d.members).find((id) => d.members[id]!.token === msg.token) : undefined;
     if (pid && uid && d.members[pid]!.uid && d.members[pid]!.uid !== uid) pid = undefined;
-    if (!pid && uid) pid = Object.keys(d.members).find((id) => d.members[id]!.uid === uid);
+    if (pid) how = 'token';
+    if (!pid && uid) {
+      pid = Object.keys(d.members).find((id) => d.members[id]!.uid === uid);
+      if (pid) how = 'uid';
+    }
+    if (!pid && gid) {
+      pid = Object.keys(d.members).find((id) => {
+        const m = d.members[id]!;
+        return m.gid === gid && !(uid && m.uid && m.uid !== uid);
+      });
+      if (pid) how = 'gid';
+    }
+    const returning = !!pid && !this.isConnected(pid);
     if (pid) {
-      // reconnect: same player, same seat; drop any older socket of theirs
-      for (const [cid, p] of this.conns) if (p === pid && cid !== connId) { this.conns.delete(cid); this.io.close?.(cid, 4000, 'replaced'); }
       const m = d.members[pid]!;
-      m.name = name;
+      // The name stuck at the first hello. A reconnect, a second tab, or an account
+      // username must not rewrite the scoreboard.
+      if (!m.name) m.name = name;
+      if (gid && !m.gid) m.gid = gid;
       if (uid) m.uid = uid;
+      delete m.disconnectedAt;
+      m.timeouts = 0;
       if (d.hostId === pid) delete d.hostAwaySince;
+      // A new socket draws the table again, even when the previous one has not closed yet.
+      // Hold this player's clock until that client says it can act, so a reload cannot
+      // auto-play a card behind the loader.
+      if (d.phase === 'playing') {
+        m.interactive = false;
+        m.loaderSince = this.io.now();
+        const turn = d.game ? pendingTurn(d.game) : null;
+        if (turn && m.seat === turn.seat) d.deadline = null;
+      }
+      // Bind the new socket BEFORE dropping the old one. Closing the old socket can
+      // re-enter close() (the DO restores the dying socket). If this socket is not
+      // bound yet, that re-entry looks like the player left and the turn clock starts
+      // the disconnect grace — the path that hands the seat to a bot.
+      this.conns.set(connId, pid);
+      for (const [cid, p] of this.conns) if (p === pid && cid !== connId) { this.conns.delete(cid); this.io.close?.(cid, 4000, 'replaced'); }
     } else {
       const { members, watching } = this.liveCounts();
       if (members >= LIMITS.members || (d.phase !== 'lobby' && watching >= LIMITS.spectators)) {
+        this.trace('reconnect', { cid: connId, how: 'full', name });
         this.err(connId, 'TABLE_FULL', 'This table is full');
         this.io.close?.(connId, 4001, 'full');
         return;
@@ -490,22 +575,43 @@ export class Room {
       // honor a client-minted token so a second tab that stored it first lands in this same member
       const tokenTaken = !!msg.token && Object.values(d.members).some((m) => m.token === msg.token);
       const token = msg.token && this.tokenOk(msg.token) && !tokenTaken ? msg.token : this.io.randomId();
-      d.members[pid] = { name, token, seat: null, media: { cam: false, mic: false }, joinedAt: this.io.now(), ...(uid ? { uid } : {}) };
+      d.members[pid] = { name, token, seat: null, media: { cam: false, mic: false }, joinedAt: this.io.now(), ...(uid ? { uid } : {}), ...(gid ? { gid } : {}) };
       if (!d.hostId || !d.members[d.hostId]) d.hostId = pid;
       this.system(`${name} joined`);
+      this.conns.set(connId, pid);
     }
-    this.conns.set(connId, pid);
     // token matched a different body than the account already seated here: fold them into one member
     if (uid && Object.keys(d.members).some((id) => id !== pid && d.members[id]!.uid === uid)) {
       this.claimAccount(pid, uid);
       pid = this.conns.get(connId) ?? pid;
     }
+    // A bot that took the seat during the disconnect grace gives it back. Never leave them watching.
+    this.reclaimSeat(pid);
     this.sentHistory.delete(connId);
     const m = d.members[pid]!;
+    this.trace('reconnect', { cid: connId, how, returning, pid, seat: m.seat, name: m.name });
     this.io.send(connId, { t: 'welcome', you: pid, token: m.token, code: d.code, chat: d.chat.slice(-LIMITS.chatHistory), v: PROTOCOL_VERSION });
     if (uid) this.seatReserved(pid);
     d.lastActive = this.io.now();
     this.after();
+  }
+
+  /** Put `pid` back in the seat a disconnect-grace bot is holding for them. */
+  private reclaimSeat(pid: string): void {
+    const d = this.data;
+    const m = d.members[pid];
+    if (!m || m.seat !== null) return;
+    const seat = d.seats.findIndex((s) => s.kind === 'bot' && s.replacedPid === pid);
+    if (seat < 0) return;
+    this.trace('seat', { cause: 'reclaim', seat, fromPid: pid, toKind: 'human', toPid: pid, turnKey: d.turnKey, turnStartedAt: d.turnStartedAt, deadline: d.deadline });
+    d.seats[seat] = { kind: 'human', playerId: pid };
+    m.seat = seat;
+    m.timeouts = 0;
+    const g = d.game;
+    if (g && pendingTurn(g)?.seat === seat) {
+      d.turnKey = null;
+      d.deadline = null;
+    }
   }
 
   private handle(connId: string, pid: string, msg: ClientMsg): void {
@@ -561,8 +667,10 @@ export class Room {
         if (msg.seat >= n) throw new RoomError('BAD_SEAT', 'No such seat');
         const slot = d.seats[msg.seat]!;
         // the host may replace a player who disconnected from the lobby
-        if (slot.kind === 'human' && !this.isConnected(slot.playerId)) d.members[slot.playerId]!.seat = null;
-        else if (slot.kind !== 'empty') throw new RoomError('SEAT_TAKEN', 'That seat is taken');
+        if (slot.kind === 'human' && !this.isConnected(slot.playerId)) {
+          this.trace('seat', { cause: 'addBot', seat: msg.seat, fromPid: slot.playerId, toKind: 'bot', turnKey: d.turnKey, turnStartedAt: d.turnStartedAt, deadline: d.deadline });
+          d.members[slot.playerId]!.seat = null;
+        } else if (slot.kind !== 'empty') throw new RoomError('SEAT_TAKEN', 'That seat is taken');
         d.seats[msg.seat] = { kind: 'bot', name: this.botName(), level: d.botLevel };
         break;
       }
@@ -721,6 +829,22 @@ export class Room {
         me.learning = msg.on;
         break;
       }
+      case 'interactive': {
+        const turn = d.game ? pendingTurn(d.game) : null;
+        const mine = !!turn && me.seat === turn.seat;
+        if (msg.on) {
+          const held = me.interactive === false || me.loaderSince != null;
+          me.interactive = true;
+          delete me.loaderSince;
+          if (held && mine) { d.turnStartedAt = this.io.now(); d.deadline = null; }
+        } else {
+          me.interactive = false;
+          me.loaderSince ??= this.io.now();
+          if (mine) d.deadline = null;
+        }
+        this.trace('interactive', { pid, on: msg.on, seat: me.seat });
+        break;
+      }
       case 'rtc': {
         // WebRTC signaling relay: between seated humans, and (Release 10) between a seated human and a spectator
         // (receive-only: spectators' media is forced off). Never spectator ↔ spectator.
@@ -751,8 +875,9 @@ export class Room {
    * A game move. Order of checks:
    *  1. duplicate id (a retry of a move that was already applied) → ack ok+dup, nothing applied again
    *  2. missing or stale seq (the client didn't say which version it moved from, or the game moved on since: the
-   *     turn timed out and auto-played, the hand ended, …) → silently dropped: ack stale + a fresh state, never an error.
-   *     A late play must not become this seat's next lead.
+   *     turn timed out and auto-played, the hand ended, …) → silently dropped: ack stale + a fresh FULL state, never an error.
+   *     A card that is still legal on this same turn is applied (a reload can be holding the seq this turn started on).
+   *     A play from before this turn is not: it must not become the next lead.
    *  3. rule checks → ack with the rule error code (or an `error` message for legacy clients that send no id)
    * The DO is single-threaded, so a late human move and the turn-timer auto-play can't interleave: whichever runs
    * first bumps `seq` and the other one becomes stale (auto-play re-checks the turn key before acting).
@@ -767,9 +892,17 @@ export class Room {
       return;
     }
     if (msg.seq === undefined || msg.seq !== (d.seq ?? 0)) {
-      this.sendState(connId);
-      if (id) this.io.send(connId, { t: 'ack', id, ok: false, stale: true });
-      return;
+      // The turn did not move (a reload's seq can be the one this turn started on). Apply the card
+      // they chose. A play from before this turn stays stale, so it cannot become the next lead.
+      if (msg.action.type === 'play' && this.sameTurnCard(me, msg.action.card, msg.seq)) {
+        this.trace('play', { cause: 'accept-stale-seq', seq: msg.seq ?? null, serverSeq: d.seq ?? 0, seat: me.seat, card: msg.action.card });
+      } else {
+        this.sentHistory.delete(connId);
+        this.sendState(connId);
+        if (id) this.io.send(connId, { t: 'ack', id, ok: false, stale: true });
+        this.trace('play', { cause: 'drop-stale', seq: msg.seq ?? null, serverSeq: d.seq ?? 0, seat: me.seat, turn: d.game ? pendingTurn(d.game)?.seat ?? null : null });
+        return;
+      }
     }
     try {
       if (d.phase !== 'playing' || !d.game) throw new RoomError('WRONG_PHASE', 'No game in progress');
@@ -779,7 +912,7 @@ export class Room {
         : a.type === 'bid' ? { type: 'bid', seat: me.seat, bid: a.bid }
         : a.type === 'exchange' ? { type: 'exchange', seat: me.seat, cards: a.cards }
         : a.type === 'runIt' ? { type: 'runIt', seat: me.seat }
-        : { type: 'play', seat: me.seat, card: a.card };
+        : { type: 'play', seat: me.seat, card: a.card, ...(a.slam !== undefined ? { slam: a.slam } : {}), ...(a.rel ? { rel: a.rel } : {}) };
       const g0 = d.game;
       const thinkMs = g0.turn === me.seat && d.turnStartedAt !== null ? Math.max(0, Math.min(120_000, this.io.now() - d.turnStartedAt - this.leadIn(g0))) : null;
       this.apply(action);
@@ -799,6 +932,21 @@ export class Room {
     if (id) this.io.send(connId, { t: 'ack', id, ok: true });
   }
 
+  /**
+   * A card play that is still legal for the turn in progress. `seq` has to be from this turn
+   * (`turnSeq`), not from the previous trick, or a late tap would lead the next one.
+   */
+  private sameTurnCard(me: Member, card: string, seq: number | undefined): boolean {
+    const d = this.data;
+    const g = d.game;
+    if (!g || d.phase !== 'playing' || me.seat === null || seq === undefined) return false;
+    if (seq < (d.turnSeq ?? 0)) return false;
+    const turn = pendingTurn(g);
+    if (!turn || turn.kind !== 'play' || turn.seat !== me.seat) return false;
+    if (g.trick.plays.some((p) => p.seat === me.seat)) return false;
+    return viewFor(g, me.seat).legal.some((c) => c === card);
+  }
+
   private requireHost(isHost: boolean): void {
     if (!isHost) throw new RoomError('NOT_HOST', 'Only the host can do that');
   }
@@ -808,12 +956,26 @@ export class Room {
     return { kind: 'bot', name: this.botName(), level: this.data.botLevel, vacated: true, was };
   }
 
+  /** The only mid-game path that gives a human's chair to a bot: they left, or the table removed them. */
+  private handSeatToBot(seat: number, was: string, fromPid: string, cause: 'leave' | 'host' | 'vote'): SeatSlot {
+    const d = this.data;
+    const bot = this.botSeat(was);
+    const name = bot.kind === 'bot' ? bot.name : null;
+    this.trace('seat', {
+      cause, seat, fromPid, toKind: 'bot', botName: name,
+      timeouts: d.members[fromPid]?.timeouts ?? null,
+      disconnectedAt: d.members[fromPid]?.disconnectedAt ?? null,
+      turnKey: d.turnKey, turnStartedAt: d.turnStartedAt, deadline: d.deadline,
+    });
+    return bot;
+  }
+
   private botName(): string {
     const used = new Set(this.data.seats.flatMap((s) => (s.kind === 'bot' ? [s.name] : [])));
     for (const m of Object.values(this.data.members)) used.add(m.name);
-    // random per table from the shared pool (packages/bots/src/names.ts); stored in the seat, so every client sees
-    // the same name and it survives reconnects / refreshes for the whole game
-    return pickBotNames(1, used)[0]!;
+    // random per table from the shared pool, with a plate tag no one else at the table already has.
+    // The name is stored on the seat, so every client sees the same tag for the whole game.
+    return pickBotNames(1, used, undefined, platePersona)[0]!;
   }
 
   private leave(pid: string): void {
@@ -823,7 +985,12 @@ export class Room {
     if (m.seat !== null && d.phase === 'playing') this.reportAbandoned(pid);
     if (m.seat !== null) {
       // mid-game the seat goes to a bot so the others can finish; in the lobby it just opens up
-      d.seats[m.seat] = d.phase === 'playing' ? this.botSeat(m.name) : { kind: 'empty' };
+      const seat = m.seat;
+      if (d.phase === 'playing') d.seats[seat] = this.handSeatToBot(seat, m.name, pid, 'leave');
+      else {
+        this.trace('seat', { cause: 'leave', seat, fromPid: pid, toKind: 'empty', turnKey: d.turnKey, turnStartedAt: d.turnStartedAt, deadline: d.deadline });
+        d.seats[seat] = { kind: 'empty' };
+      }
     }
     delete d.members[pid];
     d.ready = d.ready.filter((x) => x !== pid);
@@ -860,11 +1027,15 @@ export class Room {
     const d = this.data;
     const m = d.members[target];
     if (!m) return;
-    if (m.seat !== null) d.seats[m.seat] = d.phase === 'playing' ? this.botSeat(m.name) : { kind: 'empty' };
+    if (m.seat !== null) {
+      const seat = m.seat;
+      d.seats[seat] = d.phase === 'playing' ? this.handSeatToBot(seat, m.name, target, how) : { kind: 'empty' };
+      if (d.phase !== 'playing') this.trace('seat', { cause: how, seat, fromPid: target, toKind: 'empty', turnKey: d.turnKey, turnStartedAt: d.turnStartedAt, deadline: d.deadline });
+    }
     delete d.members[target];
     if (d.votes) delete d.votes[target];
     d.ready = d.ready.filter((x) => x !== target);
-    d.kicked = [...(d.kicked ?? []), m.token, ...(m.uid ? [m.uid] : [])];
+    d.kicked = [...(d.kicked ?? []), m.token, ...(m.uid ? [m.uid] : []), ...(m.gid ? [m.gid] : [])];
     if (d.music?.mode === 'stream' && d.music.by === target) d.music = { mode: 'off' };
     this.system(how === 'host' ? `${m.name} was removed by the host${d.phase === 'playing' ? ' — a bot took their seat' : ''}` : `${m.name} was voted off the table${d.phase === 'playing' ? ' — a bot took their seat' : ''}`);
     for (const [cid, p] of this.conns) {
@@ -1152,6 +1323,34 @@ export class Room {
     return `h${g.handNo}:${g.phase}:${g.tricks.length}:${g.trick.plays.length}:${t.seat}:${g.bids.filter((b) => b !== null).length}:${g.exchange.length}`;
   }
 
+  /**
+   * The host's timer for this kind of turn. A missing value keeps Normal
+   * (bid 20 / play 30). Play is the longer of the two. That is not a new length.
+   */
+  private turnSeconds(kind: string): number {
+    const t = this.data.rules.turnTimerSec;
+    const sec = kind === 'bid' ? t?.bid : t?.play;
+    if (typeof sec === 'number' && Number.isFinite(sec)) return sec;
+    return kind === 'bid' ? 20 : 30;
+  }
+
+  /** Milliseconds the table allows for this turn, including learning mode's stretch. */
+  private turnLimitMs(kind: string, learning: boolean): number {
+    return this.turnSeconds(kind) * 1000 * (learning ? LEARNING_TIMER : 1);
+  }
+
+  /** What the client clock is counting: the table's setting for the human who is to act. */
+  private clockSeconds(): number | null {
+    const g = this.data.game;
+    if (this.data.phase !== 'playing' || !g) return null;
+    const turn = pendingTurn(g);
+    if (!turn) return null;
+    const slot = this.data.seats[turn.seat];
+    if (!slot || slot.kind !== 'human') return null;
+    const learning = !!this.data.members[slot.playerId]?.learning;
+    return Math.round(this.turnLimitMs(turn.kind, learning) / 1000);
+  }
+
   /** Extra pause owed before the current turn (trick just completed / fresh deal). */
   private leadIn(g: GameState): number {
     if (isFreshDeal(g)) return this.timing.dealMs; // also the books first hand, which starts straight in play
@@ -1262,10 +1461,11 @@ export class Room {
       if (key !== d.turnKey) {
         d.turnKey = key;
         d.turnStartedAt = now;
+        d.turnSeq = d.seq ?? 0;
         d.deadline = null;
         d.botDueAt = null;
         changed = true;
-      }
+      } else if (d.turnSeq === undefined) d.turnSeq = d.seq ?? 0;
       // Release 10: a bot claims 'Run it!' as soon as it's guaranteed from its own cards, even off-turn.
       // canRunIt is proved at most once per seat per state (and never for a spectator), so this loop stays cheap.
       if (g.phase === 'playing') {
@@ -1388,18 +1588,60 @@ export class Room {
       }
 
       // a human's turn (Release 9: bot partners no longer post typed bidding hints; partners talk out loud over open mics)
-      const timerMs = (turn.kind === 'bid' ? d.rules.turnTimerSec.bid : d.rules.turnTimerSec.play) * 1000 * (d.members[slot.playerId]?.learning ? LEARNING_TIMER : 1);
-      const full = (d.turnStartedAt ?? now) + leadIn + timerMs;
+      const member = d.members[slot.playerId];
+      const timerMs = this.turnLimitMs(turn.kind, !!member?.learning);
       const connected = this.isConnected(slot.playerId);
-      const want = connected ? full : Math.min(full, now + this.timing.disconnectGraceMs);
-      // the deadline only ever moves earlier for a turn (a disconnect shortens it; a reconnect doesn't extend it)
-      if (d.deadline === null || want < d.deadline) { d.deadline = want; changed = true; }
+      // The clock does not run while this player's own table is still drawing.
+      if (connected && member?.interactive === false) {
+        if (d.deadline !== null) { d.deadline = null; changed = true; }
+        if (member.loaderSince == null) { member.loaderSince = now; changed = true; }
+        const capAt = member.loaderSince + LOADER_HOLD_MAX_MS;
+        if (now >= capAt) {
+          member.interactive = true;
+          delete member.loaderSince;
+          d.turnStartedAt = now;
+          this.trace('timer', { cause: 'loader-cap', seat: turn.seat, pid: slot.playerId });
+          changed = true;
+          continue;
+        }
+        this.io.wake(Math.max(250, Math.min(1000, capAt - now)));
+        this.io.setAlarm(capAt);
+        return changed;
+      }
+      if (connected && member?.loaderSince != null) {
+        delete member.loaderSince;
+        d.turnStartedAt = now;
+        d.deadline = null;
+        changed = true;
+      }
+      const full = (d.turnStartedAt ?? now) + leadIn + timerMs;
+      if (!connected) {
+        // Same length as this table's bid or play timer, measured from the drop.
+        // A fixed 10s grace was auto-playing Relaxed tables during a reload.
+        // Later ticks must not push that deadline out.
+        if (member && member.disconnectedAt == null) member.disconnectedAt = now;
+        const since = member?.disconnectedAt ?? now;
+        const want = Math.min(full, since + timerMs);
+        if (d.deadline === null || want < d.deadline) { d.deadline = want; changed = true; }
+      } else {
+        if (member) delete member.disconnectedAt;
+        // A reconnect undoes the grace shortening, back up to the original timer — not a new clock.
+        if (d.deadline === null || d.deadline < full) { d.deadline = full; changed = true; }
+      }
       // a slow human gets roasted once per turn (bots only)
       const slowAt = (d.turnStartedAt ?? now) + leadIn + Math.max(12_000, timerMs * 0.6);
-      if (this.slowKey !== key && now >= slowAt && now < d.deadline) { this.slowKey = key; this.talk({ kind: 'slow', them: turn.seat }); changed = true; }
-      else if (this.slowKey !== key && slowAt < d.deadline) this.io.wake(Math.max(50, slowAt - now));
-      if (now >= d.deadline) {
-        this.autoAct(turn.seat, 'normal');
+      if (this.slowKey !== key && now >= slowAt && now < (d.deadline ?? full)) { this.slowKey = key; this.talk({ kind: 'slow', them: turn.seat }); changed = true; }
+      else if (this.slowKey !== key && slowAt < (d.deadline ?? full)) this.io.wake(Math.max(50, slowAt - now));
+      if (d.deadline !== null && now >= d.deadline) {
+        const before = d.seq ?? 0;
+        try { this.autoAct(turn.seat, 'normal'); } catch (e) { console.error('human auto-act failed', e); }
+        // The brain declined and the fallback didn't move. Counting that as AFK in a tight
+        // loop is how one reload replaced the player with a bot in the same tick.
+        if ((d.seq ?? 0) === before) {
+          this.io.wake(1000);
+          this.io.setAlarm(now + 1000);
+          return changed;
+        }
         this.system(`${this.seatName(turn.seat)} ran out of time`);
         this.countTimeout(slot.playerId, turn.seat);
         changed = true;
@@ -1411,20 +1653,18 @@ export class Room {
     return changed;
   }
 
-  /** AFK: after `afkLimit` timeouts in a row a bot takes the seat; the player stays at the table and can sit again. */
+  /** A timed-out turn was auto-played. The chair is not part of that: only `leave` gives it to a bot. */
   private countTimeout(pid: string, seat: number): void {
     const d = this.data;
     const m = d.members[pid];
     if (!m) return;
+    const connected = this.isConnected(pid);
+    if (!connected) {
+      this.trace('timeout', { cause: 'disconnect-autoplay', seat, pid, name: m.name, connected, turnKey: d.turnKey, turnStartedAt: d.turnStartedAt, deadline: d.deadline });
+      return;
+    }
     m.timeouts = (m.timeouts ?? 0) + 1;
-    const limit = d.afkLimit ?? DEFAULT_AFK_LIMIT;
-    if (!limit || m.timeouts < limit || d.seats[seat]?.kind !== 'human') return;
-    const bot = this.botName();
-    d.seats[seat] = { kind: 'bot', name: bot, level: d.botLevel, was: m.name };
-    m.seat = null;
-    m.timeouts = 0;
-    if (d.votes) delete d.votes[pid];
-    this.system(`${m.name} was AFK and replaced by a bot (${bot})`);
+    this.trace('timeout', { cause: 'turn-timer', seat, pid, name: m.name, connected, timeouts: m.timeouts, turnKey: d.turnKey, turnStartedAt: d.turnStartedAt, deadline: d.deadline });
   }
 
   private clearTimers(): void {
@@ -1453,8 +1693,7 @@ export class Room {
     const mate = d.rules.partnerships ? (seat + 2) % d.rules.playerCount : -1;
     const h = mate >= 0 ? d.hints?.[mate] : undefined;
     const hint = h && h.hand === d.game!.handNo && d.seats[mate]?.kind === 'human' ? parseHint(h.text) : null;
-    let action = chooseBotAction(view, skill, undefined, hint);
-    if (!action) return;
+    let action = chooseBotAction(view, skill, undefined, hint) ?? this.fallbackAction(seat);
     // persona lean (bots only): a slight bid nudge / Nil reluctance; illegal nudges fall through to the catch below
     const slot = d.seats[seat];
     if (slot?.kind === 'bot' && action.type === 'bid') {
@@ -1492,7 +1731,7 @@ export class Room {
     return {
       code: d.code, hostId: d.hostId ?? '', phase: d.phase, rules: d.rules, botLevel: d.botLevel, seats,
       members: Object.entries(d.members).map(([playerId, m]) => ({ playerId, name: m.name, connected: this.isConnected(playerId), seat: m.seat })),
-      deadline: d.deadline, ready: [...d.ready], rev: d.rev, seq: d.seq ?? 0, game: d.gamesPlayed, now: this.io.now(),
+      deadline: d.deadline, turnSec: this.clockSeconds(), ready: [...d.ready], rev: d.rev, seq: d.seq ?? 0, game: d.gamesPlayed, now: this.io.now(),
       talkSec: d.talkSec ?? Math.round(this.timing.handOverMs / 1000), afkLimit: d.afkLimit ?? DEFAULT_AFK_LIMIT, partnerMicMute: d.partnerMicMute ?? false, nukeIntensity: d.nukeIntensity ?? 'full', talkIntensity: d.talkIntensity ?? 'cookout', botTalk: d.botTalk ?? true,
       venue: d.venue ?? 'classic', ...(d.venueNow ? { venueNow: d.venueNow } : {}),
       teamNames: d.rules.partnerships ? [...(d.teamNames ?? [null, null])] : undefined, series: d.series ?? null, revealed: [...(d.talk?.revealed ?? [])],

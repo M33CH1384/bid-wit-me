@@ -160,7 +160,7 @@ const BASE: Omit<TableRules, 'mode' | 'partnerships' | 'playerCount' | 'deck' | 
   bagPenalty: 100,
   tenForTwoHundred: false,
   losingFloor: -200,
-  turnTimerSec: { bid: 30, play: 20 },
+  turnTimerSec: { bid: 20, play: 30 },
   firstHandBidsItself: true,
   shotOut: true,
 };
@@ -369,7 +369,7 @@ export function acceptRules(input: unknown): TableRules {
   // Pace, not scoring: a non-number falls back to the preset instead of rejecting the rest of the rules.
   const timer = isRec(input.turnTimerSec) ? input.turnTimerSec : {};
   const clamp = (x: unknown, d: number) => (typeof x === 'number' && Number.isFinite(x) ? Math.max(3, Math.min(120, Math.round(x))) : d);
-  o.turnTimerSec = { bid: clamp(timer.bid, 30), play: clamp(timer.play, 20) };
+  o.turnTimerSec = { bid: clamp(timer.bid, BASE.turnTimerSec.bid), play: clamp(timer.play, BASE.turnTimerSec.play) };
   if (problems.length) throw new RulesConfigError(problems);
   return makeRules(mode, o);
 }

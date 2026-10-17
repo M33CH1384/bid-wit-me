@@ -32,8 +32,28 @@ export function trickFacesShown(prev: ReadonlySet<string>, painted: readonly str
  * Trick ids are kept even when a resize rebuilds the painter with only the hand still in the set.
  */
 export function visibleFaceIds(prev: ReadonlySet<string>, painted: readonly string[], hand: readonly string[], trick: readonly string[], slam: readonly string[]): Set<string> {
-  const instant = [...trick, ...slam];
-  return trickFacesShown(prev, painted, new Set<string>([...hand, ...instant]), instant);
+  // Your own cards are face-up on the frame they are drawn. The one-per-frame painter
+  // used to leave a fresh deal, and the felt-to-3D handoff, showing the BWM back.
+  const instant = [...hand, ...trick, ...slam];
+  return trickFacesShown(prev, painted, new Set<string>(instant), instant);
+}
+
+/**
+ * What a resumed scene draws this frame. Your hand and the cards already in the trick
+ * (and a Run it! slam) are always in the list. Opponent fans and book piles may arrive
+ * a few at a time. Slicing the trick with that ramp emptied the centre of the table
+ * for the frames after the flat fan left.
+ */
+export function resumeDrawList<T extends { hand?: boolean; public?: boolean }>(items: readonly T[], resume: boolean, extra: number): T[] {
+  if (!resume) return items.slice();
+  const live: T[] = [];
+  const delayed: T[] = [];
+  for (const it of items) {
+    if (it.hand || it.public) live.push(it);
+    else delayed.push(it);
+  }
+  const n = Number.isFinite(extra) ? Math.max(0, extra) : 0;
+  return live.concat(delayed.slice(0, n));
 }
 
 /**
@@ -84,6 +104,14 @@ export function resetHandLatch(): void {
  */
 export function feltHandVisible(cardCount: number, sceneResume: boolean, webglLive: boolean): boolean {
   return cardCount > 0 && sceneResume && !webglLive;
+}
+
+/**
+ * The flat fan hides on the frame the 3D hand is drawn. Leaving it up paints a second
+ * queen behind the one in the fan, and its buttons sit above the canvas and take the tap.
+ */
+export function flatFanHidden(hand3D: boolean, handCount: number): boolean {
+  return hand3D && handCount > 0;
 }
 
 /**

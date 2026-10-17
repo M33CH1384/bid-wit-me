@@ -202,6 +202,7 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
               <Seg label="Target score" value={s.targetScore} options={[250, 300, 500].map((x) => (x === (cut ? 300 : 500) ? ['default', String(x)] : [x, String(x)])) as [number | 'default', string][]} onChange={(v) => set('targetScore', v)} />
             </div>
             {deck}
+            <div className="ess-row"><span className="ess-label">Cards</span><Seg label="Card deck" value={s.deck} options={[['classic', 'Classic'], ['afrofuturist', 'Afrofuturist'], ['harlem', 'Harlem'], ['hiphop', 'Boombox Royals'], ['mali', 'Mali'], ['egypt', 'Egypt'], ['greek', 'Greek']]} onChange={(v) => set('deck', v)} /></div>
             {cutRules}
             {summary}
             {tipsRow}

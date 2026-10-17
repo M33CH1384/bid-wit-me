@@ -183,4 +183,38 @@ describe('dealer name from the current hand', () => {
     expect(onlineSrc).toContain('dealerAnnouncement');
     expect(onlineSrc).toContain('withCurrentDealerLine');
   });
+
+  it('puts the dealer chip and the popup on the same occupant', () => {
+    const rules = makeRules('joker');
+    for (const serverDealer of [0, 1, 2, 3]) {
+      for (let viewer = 0; viewer < 4; viewer++) {
+        const id = dealerFromServer({ serverDealer, occupants: table, viewerSeat: viewer });
+        const names = seatedNames(table, viewer);
+        expect(names[id.localSeat]).toBe(id.name);
+        expect(id.localSeat).toBe(rotation(rules, viewer).L(serverDealer));
+        // The rotated seat is not an index into the server roster. Using it that way names another bot.
+        if (viewer !== 0 && id.localSeat !== serverDealer) {
+          expect(table[id.localSeat]!.name).not.toBe(id.name);
+        }
+      }
+    }
+    const watching = dealerFromServer({ serverDealer: 2, occupants: table, viewerSeat: null });
+    const specNames = table.map((s) => s.name);
+    expect(specNames[watching.localSeat]).toBe(watching.name);
+    expect(watching.name).toBe('Mei');
+
+    const tableSrc = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
+    const onlineTable = readFileSync(new URL('../src/online/OnlineTable.tsx', import.meta.url), 'utf8');
+    expect(tableSrc).toContain('syncPlateFacts(screen, facts)');
+    expect(tableSrc).toContain('{showDealer && dealerLive && <DealerPopup');
+    expect(tableSrc).toContain('dealerChipMatches(screen, dealerSeat)');
+    expect(tableSrc).toContain('dealerSeat === seat');
+    expect(tableSrc).toContain('dealerSeat === HUMAN');
+    expect(tableSrc).toContain('localSeat={dealerSeat}');
+    expect(tableSrc).not.toContain('st.dealer === seat');
+    expect(tableSrc).not.toContain('st.dealer === HUMAN');
+    expect(tableSrc).not.toContain('localSeat={st.dealer}');
+    expect(onlineTable).toContain('dealerSeat: dealer?.localSeat');
+    expect(onlineTable).toContain('dealerFromServer');
+  });
 });

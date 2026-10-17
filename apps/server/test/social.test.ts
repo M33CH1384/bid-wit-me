@@ -436,3 +436,25 @@ describe('stale presence rows', () => {
     expect(h.seen('watch')).toContain('g:offline-guest-sess');
   });
 });
+
+describe('presence heartbeat expiry (~60s)', () => {
+  it('heartbeats keep a row alive; silence + a dead socket expire it on prune', async () => {
+    await h.hub.open('watch', { name: 'Watch', gid: 'watcher-session1' });
+    await h.hub.open('p1', { name: 'Pia', gid: 'pia-guest-session' });
+    // heartbeating every 25s of fake time: still listed well past 60s
+    for (let i = 0; i < 6; i++) { h.t += 25_000; await h.send('p1', { t: 'heartbeat' }); await h.send('watch', { t: 'heartbeat' }); }
+    await h.hub.prune(false);
+    expect(h.seen('watch')).toContain('g:pia-guest-session');
+    // tab closed / socket dead AND no heartbeat for >60s: expired + dropped
+    h.live = (cid) => cid !== 'p1';
+    h.t += PRESENCE_TTL_MS + 1;
+    await h.send('watch', { t: 'heartbeat' });
+    await h.hub.prune(false);
+    expect(h.dropped).toContain('p1');
+    expect(h.seen('watch')).not.toContain('g:pia-guest-session');
+  });
+  it('parseSocialMsg accepts a heartbeat and rejects junk', () => {
+    expect(parseSocialMsg('{"t":"heartbeat"}')).toEqual({ t: 'heartbeat' });
+    expect(parseSocialMsg('{"t":"nope"}')).toBeNull();
+  });
+});

@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { useEscapeClose } from './useEscapeClose';
 import { serverUrl } from './online/config';
 import { describeContext, feedbackContext, shrinkImage, snapScreen } from './feedbackContext';
 import { TIP_LABEL, TIP_NOTE, TIP_URL, openTip } from './support';
@@ -59,8 +60,9 @@ export default function Feedback({ onClose }: { onClose: () => void }) {
     setBusy('');
   };
 
+  const esc = useEscapeClose(onClose);
   return (
-    <div className="modal-backdrop sheet-backdrop" onClick={onClose} data-feedback-ui>
+    <div className="modal-backdrop sheet-backdrop" ref={esc} onClick={onClose} data-feedback-ui>
       <div className="sheet glass slant feedback" role="dialog" aria-label="Send feedback" data-testid="feedback" onClick={(e) => e.stopPropagation()}>
         <header className="sheet-head">
           <span className="panel-title">SEND FEEDBACK</span>

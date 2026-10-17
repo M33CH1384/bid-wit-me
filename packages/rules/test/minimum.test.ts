@@ -24,8 +24,8 @@ describe('host minimum books / bid', () => {
     expect(sides[1]).toMatchObject({ tricks: 10, contractMade: null, bookPoints: 100, points: 100 });
     expect(isShot(r, [...books], sides[1]!)).toBe(false);
     expect(shotOutSides(r, 1, [true, false], [false, false])).toEqual([0]);
-    expect(shotCovers(r, [{ handNo: 1, bids: [...books], sides }])[0]).toEqual({ tape: true, sheet: true, siren: true });
-    expect(shotCovers(r, [{ handNo: 1, bids: [...books], sides }])[1]).toEqual({ tape: false, sheet: false, siren: false });
+    expect(shotCovers(r, [{ handNo: 1, bids: [...books], sides }])[0]).toEqual({ tape: true, sheet: true, siren: true, outHand: 1 });
+    expect(shotCovers(r, [{ handNo: 1, bids: [...books], sides }])[1]).toEqual({ tape: false, sheet: false, siren: false, outHand: null });
   });
 
   it('hand 1: meeting the minimum is safe and still scores 10 per book', () => {
@@ -108,19 +108,19 @@ describe('host minimum books / bid', () => {
     expect(shotCovers(r, hands([
       { handNo: 1, bids: [...books], sides: clear },
       { handNo: 2, bids: [...setBids], sides: set },
-    ]))[1]).toEqual({ tape: true, sheet: false, siren: false });
+    ]))[1]).toEqual({ tape: true, sheet: false, siren: false, outHand: null });
     expect(shotOutSides(r, 2, [false, true], [false, false])).toEqual([]);
     expect(shotCovers(r, hands([
       { handNo: 1, bids: [...books], sides: clear },
       { handNo: 2, bids: [...setBids], sides: set },
       { handNo: 3, bids: [3, 3, 3, 3], sides: made },
-    ]))[1]).toEqual({ tape: false, sheet: false, siren: false });
+    ]))[1]).toEqual({ tape: false, sheet: false, siren: false, outHand: null });
     expect(shotOutSides(r, 3, [false, true], [false, true])).toEqual([1]);
     expect(shotCovers(r, hands([
       { handNo: 1, bids: [...books], sides: clear },
       { handNo: 2, bids: [...setBids], sides: set },
       { handNo: 3, bids: [3, 4, 3, 4], sides: again },
-    ]))[1]).toEqual({ tape: false, sheet: true, siren: true });
+    ]))[1]).toEqual({ tape: false, sheet: true, siren: true, outHand: 3 });
   });
 
   it('Cutthroat: Nil and Blind Nil are off, and each bid must reach the minimum', () => {

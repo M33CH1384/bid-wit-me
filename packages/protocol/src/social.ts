@@ -46,7 +46,9 @@ export const GUEST_SESSION = /^[A-Za-z0-9_-]{8,32}$/;
  * Drop a presence row that has not sent a social message in this long.
  * The runtime answers websocket pings without waking the hub, so this is real traffic only.
  */
-export const PRESENCE_TTL_MS = 3 * 3600_000;
+/** Presence expires ~60 s after the last heartbeat: closed tabs / dead sockets fall off the Online list. */
+export const PRESENCE_TTL_MS = 60_000;
+export const PRESENCE_HEARTBEAT_MS = PRESENCE_TTL_MS;
 
 export interface PresenceEntry {
   /** 'u:<userId>' for accounts, 'g:<random>' for guests */
@@ -89,6 +91,7 @@ export interface InviteMsg { id: string; from: string; fromName: string; code: s
 
 export type SocialClientMsg =
   | { t: 'status'; status: PresenceStatus }
+  | { t: 'heartbeat' }
   | { t: 'settings'; settings: Partial<SocialSettings> }
   | { t: 'chat'; text: string }
   | { t: 'dm'; to: string; text: string }
@@ -177,6 +180,7 @@ export function parseSocialMsg(raw: unknown): SocialClientMsg | null {
   if (!m || typeof m !== 'object') return null;
   switch (m.t) {
     case 'status': { const s = parseStatus(m.status); return s ? { t: 'status', status: s } : null; }
+    case 'heartbeat': return { t: 'heartbeat' };
     case 'settings': {
       const s = (m.settings ?? {}) as Record<string, unknown>;
       const out: Partial<SocialSettings> = {};

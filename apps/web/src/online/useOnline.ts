@@ -112,7 +112,7 @@ export function useOnlineSource(cs: ConnState, conn: TableConnection): (GameSour
     switch (a.type) {
       case 'reveal': return conn.act({ type: 'reveal' }, seq);
       case 'bid': return a.bid !== 'books' && conn.act({ type: 'bid', bid: a.bid }, seq);
-      case 'play': return conn.act({ type: 'play', card: a.card }, seq);
+      case 'play': return conn.act({ type: 'play', card: a.card, ...(a.slam !== undefined ? { slam: a.slam } : {}), ...(a.rel ? { rel: a.rel } : {}) }, seq);
       case 'exchange': return conn.act({ type: 'exchange', cards: a.cards }, seq);
       case 'runIt': return conn.act({ type: 'runIt' }, seq);
       case 'nextHand': conn.send({ t: 'next' }); return true;
@@ -255,6 +255,16 @@ export function localNames(room: RoomInfo, rot: Rotation, spectating = false): s
     if (!spectating && i === 0) return 'You';
     return occ;
   });
+}
+
+/**
+ * Client epoch ms when a server deadline is reached.
+ * Compute this once per server snapshot. Calling it again with a later `clientNow`
+ * slides the target forward and the countdown never moves.
+ */
+export function clientDeadline(deadline: number | null, serverNow: number, clientNow: number): number | null {
+  if (deadline == null) return null;
+  return clientNow + (deadline - serverNow);
 }
 
 /** Countdown (seconds) to a deadline, re-rendering every second. */

@@ -11,9 +11,9 @@ import { PERSONAS, type PersonaId, type TalkIntensity, maskMild, personaForName,
 import { sound } from './audio';
 import { playClip, rawLine } from './voices/voices';
 
-export interface TalkPrefs { botTalk: boolean; hideBotTalk: boolean; voices: boolean; voiceVolume: number }
+export interface TalkPrefs { botTalk: boolean; hideBotTalk: boolean; voices: boolean; voiceVolume: number; /** Voice Phase 3, on this device: play pre-voiced AI lines when the table offers them (default on; the host flag decides whether any are offered) */ aiVoices: boolean }
 const KEY = 'bwm.talk.v1';
-const DEFAULTS: TalkPrefs = { botTalk: true, hideBotTalk: false, voices: true, voiceVolume: 0.6 };
+const DEFAULTS: TalkPrefs = { botTalk: true, hideBotTalk: false, voices: true, voiceVolume: 0.6, aiVoices: true };
 
 function load(): TalkPrefs {
   try {
@@ -62,17 +62,18 @@ if (typeof speechSynthesis !== 'undefined') { loadVoices(); speechSynthesis.addE
  * Speak a bot line: its recorded clip (persona + line id → manifest), else the browser's Web Speech voice with the
  * persona's pitch/rate. No-op unless Bot voices is on and sound is on.
  */
-export function speakBot(name: string, text: string, persona?: string, line?: string, bid?: number): void {
+export function speakBot(name: string, text: string, persona?: string, line?: string, bid?: number, seat?: import('./spatial').SeatPos, playerCount = 4): void {
   if (!prefs.voices) return;
   const snd = sound.settings;
   if (!snd.on || snd.volume <= 0) return;
   const per = (persona && persona in PERSONAS ? persona : personaForName(name)) as PersonaId;
   // recorded clips go through the game's audio graph (master volume / mute already applied there)
-  void playClip(per, name, rawLine(line), prefs.voiceVolume * 0.9, bid).then((played) => { if (!played) webSpeech(name, text); });
+  if (sound.voiceMuted(name)) return; // per-player mute: the chat text still shows, the voice stays silent
+  void playClip(per, name, rawLine(line), prefs.voiceVolume * 0.9, bid, seat, playerCount).then((played) => { if (!played) webSpeech(name, text); });
 }
 
 function webSpeech(name: string, text: string): void {
-  if (typeof speechSynthesis === 'undefined') return;
+  if (typeof speechSynthesis === 'undefined' || !sound.atTable) return; // never talk behind Home
   const snd = sound.settings;
   const p = PERSONAS[personaForName(name)];
   const clean = maskMild(text).replace(/\*+/g, ''); // never read the asterisks out; masked words just drop

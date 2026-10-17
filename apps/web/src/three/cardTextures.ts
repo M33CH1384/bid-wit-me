@@ -1,16 +1,18 @@
 import { CanvasTexture, SRGBColorSpace, type Texture } from 'three';
 import type { Card } from '@spades/rules';
 import { drawBack, paintFace, paintedFaceKeys, repaintFace, loadLogo, onLogoLoad } from '../cardArt';
+import { getActiveDeck, onDeckArtLoad } from '../decks';
 
 const cache = new Map<string, Texture>();
 
 /** A face already painted this session, or null. Does not paint. */
 export function peekFaceTexture(card: Card, res: 'high' | 'low', badge: boolean): Texture | null {
-  return cache.get(`${card}:${res}:${badge}`) ?? null;
+  return cache.get(`${getActiveDeck()}:${card}:${res}:${badge}`) ?? null;
 }
 
 export function faceTexture(card: Card, res: 'high' | 'low', badge: boolean, anisotropy: number): Texture {
-  const key = `${card}:${res}:${badge}`;
+  hookDeckArtRefresh();
+  const key = `${getActiveDeck()}:${card}:${res}:${badge}`;
   let t = cache.get(key);
   if (t) return t;
   if (typeof window !== 'undefined') {
@@ -78,4 +80,16 @@ export function logoTexture(onReady: () => void): Texture {
   else onLogoLoad(draw);
   cache.set(key, tex);
   return tex;
+}
+
+let deckArtHooked = false;
+/** When deck court art finishes loading, repaint cached faces in place and flag textures dirty.
+ *  Self-subscribes on first face request so no scene/table wiring is needed. */
+function hookDeckArtRefresh(): void {
+  if (deckArtHooked) return;
+  deckArtHooked = true;
+  onDeckArtLoad(() => {
+    for (const key of paintedFaceKeys()) repaintFace(key);
+    for (const t of cache.values()) if (t.image) t.needsUpdate = true;
+  });
 }

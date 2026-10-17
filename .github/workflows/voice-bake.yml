@@ -1,0 +1,111 @@
+# Voice Phase 3: bake queued catalog lines into Kokoro clips and open a PR with them.
+#
+# No Cloudflare secrets: clips ship as static files under apps/web/public/voices/ai and go live through the normal
+# Deploy workflow when the bake PR is merged. Uses only the built-in GITHUB_TOKEN.
+# Repo setting needed for the PR step: Settings → Actions → General → Workflow permissions →
+#   "Allow GitHub Actions to create and approve pull requests". Without it the run still bakes and uploads the clips
+#   as an artifact, and says so.
+# Runs: manual (dry run by default) and nightly. An empty queue exits after the plan step.
+
+name: Voice bake
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Plan only, synthesize nothing
+        type: boolean
+        default: true
+  schedule:
+    - cron: '30 7 * * *' # 07:30 UTC, after the Workers AI daily reset
+
+concurrency:
+  group: voice-bake
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Plan
+        id: plan
+        run: npx tsx scripts/voice-bake/plan.ts plan
+
+      - name: Setup Python
+        if: steps.plan.outputs.count != '0'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Kokoro (CPU) and encoders
+        if: steps.plan.outputs.count != '0' && env.DRY_RUN != 'true'
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg espeak-ng
+          pip install -q kokoro-onnx==0.6.1 soundfile pyloudnorm
+
+      - name: Cache Kokoro models
+        if: steps.plan.outputs.count != '0' && env.DRY_RUN != 'true'
+        uses: actions/cache@v4
+        with:
+          path: .voice-models
+          key: kokoro-v1.0
+
+      - name: Fetch Kokoro models (sha256-checked)
+        if: steps.plan.outputs.count != '0' && env.DRY_RUN != 'true'
+        run: |
+          mkdir -p .voice-models && cd .voice-models
+          base=https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0
+          [ -f kokoro-v1.0.onnx ] || curl -sSfLO $base/kokoro-v1.0.onnx
+          [ -f voices-v1.0.bin ] || curl -sSfLO $base/voices-v1.0.bin
+          echo "7d5df8ecf7d4b1878015a32686053fd0eebe2bc377234608764cc0ef3636a6c5  kokoro-v1.0.onnx" | sha256sum -c
+          echo "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d  voices-v1.0.bin" | sha256sum -c
+
+      - name: Bake
+        if: steps.plan.outputs.count != '0'
+        run: python scripts/voice-bake/bake.py --models .voice-models ${{ env.DRY_RUN == 'true' && '--dry-run' || '' }}
+
+      - name: Apply to catalog
+        id: apply
+        if: steps.plan.outputs.count != '0' && env.DRY_RUN != 'true'
+        run: npx tsx scripts/voice-bake/plan.ts apply
+
+      - name: Upload clips
+        if: steps.apply.outputs.added && steps.apply.outputs.added != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: voice-bake-${{ github.run_id }}
+          path: |
+            apps/web/public/voices/ai/
+            packages/bots/src/catalog.json
+            voice/queue.json
+
+      - name: Open the bake PR
+        if: steps.apply.outputs.added && steps.apply.outputs.added != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          br="voice-bake/${{ github.run_id }}"
+          git config user.name "voice-bake[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$br"
+          git add apps/web/public/voices/ai packages/bots/src/catalog.json voice/queue.json
+          git commit -m "Voice bake: ${{ steps.apply.outputs.added }} catalog clip(s)"
+          git push origin "$br"
+          gh pr create --base master --head "$br" --title "Voice bake: ${{ steps.apply.outputs.added }} catalog clip(s)" \
+            --body "Kokoro clips for queued catalog lines (run ${{ github.run_id }}). Listen to a few in the artifact before merging; they go live with the next deploy." \
+            || echo "::warning::Could not open the PR. Enable 'Allow GitHub Actions to create and approve pull requests' in Settings → Actions → General. The clips are in the run artifact and on branch $br."
