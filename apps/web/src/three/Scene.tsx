@@ -28,6 +28,7 @@ import { forceProgram, nextFrame, quietShaderErrors } from './shaderBudget';
 import { importChunk } from '../chunkLoad';
 import { offerTableRenderer } from '../effects/warm';
 import Venue3D, { feltPatternTexture, preloadVenueAssets } from './Venue3D';
+import ClassicStudio, { preloadClassicStudio } from './ClassicStudio';
 import { type VenueDef, type VenueId, VENUE_DEFS, venueAssetUrls } from '../venues';
 import { bodyGeometry, cardGeometry, feltGeometry, railGeometry } from './geometry';
 import {
@@ -200,6 +201,7 @@ export function preloadTableAssets(quality: 'high' | 'low', venue: VenueId = 'cl
   // The classic hall HDRI is ~400 KB and its PMREM filter used to freeze the page after the felt appeared.
   // It starts only once the cloth is up (see ClassicHall). Other venues still warm their own files here.
   if (venue !== 'classic') preloadVenueAssets(venue, quality);
+  else if (quality === 'high') preloadClassicStudio();
 }
 
 /** a venue's rail texture (marble / teak / bamboo / leather) rides with the table textures (20–35 KB) */
@@ -1461,6 +1463,7 @@ export default function Scene(props: SceneProps) {
       <ResumeRamp quality={props.quality} def={def} onShow={onShow} onLit={onLit} onDpr={onDpr} onShadow={onShadow} onHall={onHall} />
       {hi && classic && <HallAttach active={hallGo && textured} />}
       {!classic && textured && <Venue3D key={def.id} def={def} quality={props.quality} reduceFx={!!props.reduceFx} />}
+      {classic && textured && <ClassicStudio quality={props.quality} />}
       {showTable && (
         <group
           ref={tableGroup}
