@@ -54,7 +54,11 @@ export interface SoundSettings { on: boolean; volume: number; ambient: boolean; 
   /** Per-context EXPLICIT sound scene (menus vs in-game) chosen by the player in that context.
    *  Absent = use the context default (menus: ambience, game: music). Live flags always mirror
    *  the active scene, so this only records deliberate choices — defaults never write it. */
-  scenes?: { menu?: SoundScene; game?: SoundScene } }
+  scenes?: { menu?: SoundScene; game?: SoundScene };
+  /** Block Party: the menu/celebration-only ambience scene (separate PR). It is a stored
+   *  menu preference: it may only SOUND in the menu context, never in-game, and like every
+   *  ambience it is mutually exclusive with music. Existing Lounge/Venue options unchanged. */
+  blockParty?: boolean }
 
 /** Where the player is: menus (setup/home/lobby) or in a game. */
 export type SoundContext = 'menu' | 'game';
@@ -74,6 +78,11 @@ export const ambienceOn = (s: SoundSettings): boolean => !!(s.ambient || s.venue
 export const wantsMusic = (s: SoundSettings): boolean => !!s.music && !ambienceOn(s);
 /** Engine gate: ambience may only sound when music is off. */
 export const wantsAmbience = (s: SoundSettings): boolean => !s.music;
+/** Block Party gate: only in menus, only with music off. In-game it can never sound —
+ *  enterContext('game') leaves the stored flag dormant and this gate keeps it silent. */
+export const blockPartyWanted = (s: SoundSettings, ctx: SoundContext): boolean => !!s.blockParty && !s.music && ctx === 'menu';
+/** Block Party rides the existing ambience volume (same bus factor as the lounge pad). */
+export const blockPartyLevel = (ambienceVolume: number): number => 0.5 * Math.min(1, Math.max(0, ambienceVolume));
 /** Reconcile a (possibly legacy both-on) state: music wins, ambience goes off. */
 export function exclusiveMusicAmbience(s: SoundSettings): SoundSettings {
   return s.music && ambienceOn(s) ? { ...s, ambient: false, venueSound: false } : s;
@@ -81,7 +90,7 @@ export function exclusiveMusicAmbience(s: SoundSettings): SoundSettings {
 
 /** The scene the live switches currently describe. */
 export function sceneOf(s: SoundSettings): SoundScene {
-  return s.music ? 'music' : ambienceOn(s) ? 'ambience' : 'none';
+  return s.music ? 'music' : ambienceOn(s) || s.blockParty ? 'ambience' : 'none';
 }
 const SCENE_PATCH: Record<SoundScene, Partial<SoundSettings>> = {
   music: { music: true, ambient: false, venueSound: false },
@@ -209,6 +218,7 @@ class Engine {
     const t = settingsForContext(this.settings, ctx);
     this.captureScene = false;
     try { this.set({ music: t.music, ambient: t.ambient, venueSound: t.venueSound }); } finally { this.captureScene = true; }
+    this.emit();
   }
   subscribe = (fn: () => void) => { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; };
   get = () => this.settings;
@@ -220,19 +230,22 @@ class Engine {
     // Mutual exclusivity, last choice wins: explicitly turning music on kills both ambience
     // sources; explicitly turning either ambience source on kills music. Any other patch
     // still passes through the reconciliation, so a legacy both-on state can never persist.
-    if (patch.music) { next = { ...next, ambient: false, venueSound: false }; }
-    else if (patch.ambient || patch.venueSound) { next = { ...next, music: false }; }
+    if (patch.music) { next = { ...next, ambient: false, venueSound: false }; if (this.context === 'menu') next = { ...next, blockParty: false }; }
+    else if (patch.ambient || patch.venueSound || patch.blockParty) { next = { ...next, music: false }; }
     next = exclusiveMusicAmbience(next);
     // A deliberate toggle in this context is that context's explicit choice: remember the
     // resulting scene for this context only (the other context keeps its own choice/default).
-    if (this.captureScene && !('scenes' in patch) && ('music' in patch || 'ambient' in patch || 'venueSound' in patch)) {
-      next = { ...next, scenes: { ...next.scenes, [this.context]: sceneOf(next) } };
+    if (this.captureScene && !('scenes' in patch) && ('music' in patch || 'ambient' in patch || 'venueSound' in patch || 'blockParty' in patch)) {
+      // A dormant menu Block Party flag must not make an in-game "everything off" read as ambience.
+      const sc: SoundScene = next.music ? 'music' : ambienceOn(next) || (this.context === 'menu' && next.blockParty) ? 'ambience' : 'none';
+      next = { ...next, scenes: { ...next.scenes, [this.context]: sc } };
     }
     this.settings = next;
     try { localStorage.setItem(KEY, JSON.stringify(this.settings)); } catch { /* ignore */ }
     this.applyGain();
     this.syncAmbient();
     this.syncVenue();
+    this.syncBlockParty();
     this.syncMusic();
     this.emit();
   }
@@ -253,8 +266,8 @@ class Engine {
       return false;
     } finally { this.captureScene = true; }
   }
-  private emit() { this.snapshot = { ...this.settings, musicStatus: this.musicStatus, nowPlaying: this.nowPlaying, needsRestore: this.needsRestore }; this.listeners.forEach((f) => f()); }
-  snapshot: SoundSettings & { musicStatus: MusicStatus; nowPlaying: { track: Track; at: number } | null; needsRestore: boolean } = { ...this.settings, musicStatus: 'off', nowPlaying: null, needsRestore: false };
+  private emit() { this.snapshot = { ...this.settings, musicStatus: this.musicStatus, nowPlaying: this.nowPlaying, needsRestore: this.needsRestore, soundContext: this.context }; this.listeners.forEach((f) => f()); }
+  snapshot: SoundSettings & { musicStatus: MusicStatus; nowPlaying: { track: Track; at: number } | null; needsRestore: boolean; soundContext: SoundContext } = { ...this.settings, musicStatus: 'off', nowPlaying: null, needsRestore: false, soundContext: 'menu' };
   getSnapshot = () => this.snapshot;
 
   /* ---------- music: shuffled playlist with crossfade + gentle mid/side widening ---------- */
@@ -553,6 +566,7 @@ class Engine {
       if (this.ctx) this.blip(this.ctx);
       this.syncAmbient();
       this.syncVenue();
+      this.syncBlockParty();
       this.syncMusic();
     }
     // Start resume() now, inside the gesture. A simulated stuck state must not actually resume,
@@ -565,6 +579,7 @@ class Engine {
       if (this.liveState(this.ctx) === 'running') {
         this.syncAmbient();
         this.syncVenue();
+        this.syncBlockParty();
         this.syncMusic();
       }
       this.publishRestore();
@@ -604,7 +619,7 @@ class Engine {
     this.stopBeds();
     const old = this.ctx;
     this.ctx = null;
-    this.master = this.sfxBus = this.sfxDuck = this.nukeBus = this.ambBus = this.venueBus = this.voiceDuck = this.voiceChatBus = this.voiceChatOut = this.musicBus = this.musicDuck = null; this.voiceChatNodes.clear(); // regs kept: re-routed below
+    this.master = this.sfxBus = this.sfxDuck = this.nukeBus = this.ambBus = this.venueBus = this.partyBus = this.voiceDuck = this.voiceChatBus = this.voiceChatOut = this.musicBus = this.musicDuck = null; this.voiceChatNodes.clear(); // regs kept: re-routed below
     this.loading = null;
     this.loadGen++;
     if (old && old.state !== 'closed') void settleAudio(old.close());
@@ -653,6 +668,10 @@ class Engine {
     const nodes = this.venueNodes; this.venueNodes = [];
     nodes.forEach((n) => { try { n.stop(); } catch { /* dead context */ } });
     this.venuePlaying = 'none';
+    this.partyTimers.forEach((t) => window.clearTimeout(t));
+    this.partyTimers = [];
+    this.partyNodes = [];
+    this.partyPlaying = false;
   }
 
   /* ---------- recorded bot voices (see voices/voices.ts) ---------- */
@@ -816,6 +835,7 @@ class Engine {
     this.sfxBus = c.createGain(); this.sfxBus.gain.value = normalizeCategoryVolumes(this.settings.volumes).sfx; this.sfxDuck = c.createGain(); this.sfxBus.connect(this.sfxDuck).connect(this.master);
     this.nukeBus = c.createGain(); this.nukeBus.connect(this.master);
     this.ambBus = c.createGain(); this.ambBus.gain.value = 0; this.ambBus.connect(this.master);
+    this.partyBus = c.createGain(); this.partyBus.gain.value = 0; this.partyBus.connect(this.master);
     this.venueBus = c.createGain(); this.venueBus.gain.value = 0; this.venueBus.connect(this.master);
     // Room convolver (Phase 4): a generated impulse (no audio assets) whose length/wet match the room.
     try {
@@ -841,6 +861,7 @@ class Engine {
     const cats = normalizeCategoryVolumes(this.settings.volumes);
     if (this.sfxBus) this.sfxBus.gain.setTargetAtTime(cats.sfx, this.ctx.currentTime, 0.05);
     if (this.venueBus && this.venuePlaying !== 'none') this.venueBus.gain.setTargetAtTime(0.38 * cats.ambience, this.ctx.currentTime, 0.1);
+    if (this.partyBus && this.partyPlaying) this.partyBus.gain.setTargetAtTime(blockPartyLevel(cats.ambience), this.ctx.currentTime, 0.1);
     if (this.voiceChatBus) this.voiceChatBus.gain.setTargetAtTime(cats.playerVoice, this.ctx.currentTime, 0.05); // independent of settings.on / master volume, by design
   }
 
@@ -1468,7 +1489,64 @@ class Engine {
     }
   }
 
+  /* ---------- Block Party: menu/celebration ambience, fully synthesized (no assets, no tracks) ----------
+   * Distant DJ BETWEEN songs (muffled bass thumps, then a vinyl-change wobble — never a song),
+   * crowd murmur, kids splashing, grill sizzle, and one loud spades table at the edge talking
+   * the most. Loopable: looped noise beds + recurring events on timers, all stopped together. */
+  private syncBlockParty() {
+    const want = this.settings.on && blockPartyWanted(this.settings, this.context) && this.unlocked;
+    if (want === this.partyPlaying) {
+      if (want && this.partyBus && this.ctx) this.partyBus.gain.setTargetAtTime(blockPartyLevel(normalizeCategoryVolumes(this.settings.volumes).ambience), this.ctx.currentTime, 0.1);
+      return;
+    }
+    if (this.partyPlaying) {
+      this.partyTimers.forEach((t) => window.clearTimeout(t)); this.partyTimers = [];
+      const nodes = this.partyNodes; this.partyNodes = [];
+      if (this.ctx && this.partyBus) this.partyBus.gain.setTargetAtTime(0, this.ctx.currentTime, 0.3);
+      window.setTimeout(() => nodes.forEach((n) => { try { n.stop(); } catch { /* */ } }), 1200);
+    }
+    this.partyPlaying = want;
+    if (!want || !this.ctx || !this.partyBus) return;
+    this.partyBus.gain.setTargetAtTime(blockPartyLevel(normalizeCategoryVolumes(this.settings.volumes).ambience), this.ctx.currentTime, 0.8);
+    this.buildBlockParty();
+  }
+  private buildBlockParty() {
+    const B = this.partyBus!;
+    const live = () => this.partyPlaying;
+    const every = (min: number, max: number, fn: (t: number) => void) => this.vEvery(min, max, fn, live, this.partyTimers);
+    // crowd murmur (the block), two wandering bands
+    this.vNoise('bandpass', 520, 0.7, 0.05, 0.21, 0.5, B, this.partyNodes);
+    this.vNoise('bandpass', 900, 1.2, 0.02, 0.13, 0.6, B, this.partyNodes);
+    // grill: steady sizzle + crackle pops
+    this.vNoise('highpass', 3800, 0.5, 0.007, 0.4, 0.6, B, this.partyNodes);
+    every(0.7, 2.0, (t) => { for (let i = 0; i < 3; i++) this.vBurst(t + Math.random() * 0.25, 0.012, 'highpass', 2600, 0.04, B); });
+    // the spades table at the edge talks LOUDEST: loose babble clusters (formant-ish blips, no words)
+    every(2.2, 4.5, (t) => {
+      const base = 105 + Math.random() * 55;
+      const n = 5 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < n; i++) this.tone(t + i * (0.11 + Math.random() * 0.05), base * (0.9 + Math.random() * 0.35), 0.09, 'sawtooth', 0.016, { filter: 750, dest: B });
+      if (Math.random() < 0.4) for (let i = 0; i < 3; i++) this.tone(t + n * 0.13 + i * 0.09, base * (1.6 - i * 0.18), 0.07, 'sawtooth', 0.012, { filter: 900, dest: B }); // a laugh riding over
+    });
+    // cards slapping on that table
+    every(3, 6.5, (t) => this.vBurst(t, 0.03, 'bandpass', 2100, 0.045, B));
+    // kids + water play: splashes and bright squeal-glides (abstract, no voices)
+    every(4, 8, (t) => { this.vBurst(t, 0.18, 'bandpass', 1600, 0.028, B); this.tone(t + 0.05, 880, 0.28, 'sine', 0.006, { glideTo: 1420, dest: B }); });
+    // distant DJ between songs: a few muffled bass thumps, then the vinyl-change wobble. Never a track.
+    every(16, 26, (t) => {
+      for (let i = 0; i < 6; i++) this.tone(t + i * 0.42, 52, 0.3, 'sine', 0.045, { filter: 170, dest: B });
+      this.tone(t + 2.7, 210, 0.85, 'sawtooth', 0.005, { glideTo: 75, filter: 380, dest: B });
+      this.vBurst(t + 2.65, 0.3, 'bandpass', 2400, 0.008, B);
+    });
+  }
+
   /* ---------- venue ambience (Release 7): quiet procedural beds, one per venue (all generated here: no recordings) ---------- */
+  /* Block Party (menu-only ambience): own bus so it can never mix with a venue bed. */
+  private partyBus: GainNode | null = null;
+  private partyPlaying = false;
+  private partyNodes: { stop: () => void }[] = [];
+  private partyTimers: number[] = [];
+  /** is the Block Party bed sounding right now (exposed for checks) */
+  get blockPartyNow(): boolean { return this.partyPlaying; }
   private venueBus: GainNode | null = null;
   private venueBedId: VenueBed = 'none';
   private venuePlaying: VenueBed = 'none';
@@ -1528,12 +1606,12 @@ class Engine {
     this.buildBed(want);
   }
   /** filtered noise with a slow swell (crowd murmur, wind, waves, room tone) */
-  private vNoise(type: BiquadFilterType, freq: number, q: number, gain: number, lfoRate = 0, lfoDepth = 0) {
+  private vNoise(type: BiquadFilterType, freq: number, q: number, gain: number, lfoRate = 0, lfoDepth = 0, dest?: AudioNode, sink?: { stop: () => void }[]) {
     const c = this.ctx!;
     const src = c.createBufferSource(); src.buffer = this.noise(4); src.loop = true;
     const f = c.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
     const g = c.createGain(); g.gain.value = gain;
-    src.connect(f).connect(g).connect(this.venueBus!); src.start();
+    src.connect(f).connect(g).connect(dest ?? this.venueBus!); src.start();
     const stops = [() => { try { src.stop(); } catch { /* */ } }];
     if (lfoRate > 0) {
       const lfo = c.createOscillator(); lfo.frequency.value = lfoRate;
@@ -1541,7 +1619,7 @@ class Engine {
       lfo.connect(d).connect(g.gain); lfo.start();
       stops.push(() => { try { lfo.stop(); } catch { /* */ } });
     }
-    this.venueNodes.push({ stop: () => stops.forEach((x) => x()) });
+    (sink ?? this.venueNodes).push({ stop: () => stops.forEach((x) => x()) });
   }
   /** electrical hum (neon, fluorescent tubes, fridge) */
   private vHum(freq: number, gain: number) {
@@ -1554,23 +1632,25 @@ class Engine {
     }
   }
   /** a sound every few seconds (random gap in [min, max] s) */
-  private vEvery(min: number, max: number, fn: (t: number) => void) {
+  private vEvery(min: number, max: number, fn: (t: number) => void, live?: () => boolean, timers?: number[]) {
     const bed = this.venuePlaying;
+    const isLive = live ?? (() => this.venuePlaying === bed);
+    const sink = timers ?? this.venueTimers;
     const loop = () => {
-      if (this.venuePlaying !== bed) return;
+      if (!isLive()) return;
       if (this.ctx && this.ctx.state === 'running') fn(this.ctx.currentTime + 0.05);
       const id = window.setTimeout(loop, (min + Math.random() * (max - min)) * 1000);
-      this.venueTimers.push(id);
+      sink.push(id);
     };
     const id = window.setTimeout(loop, (min * 0.5 + Math.random() * max * 0.5) * 1000);
-    this.venueTimers.push(id);
+    sink.push(id);
   }
-  private vBurst(t: number, dur: number, type: BiquadFilterType, freq: number, gain: number) {
+  private vBurst(t: number, dur: number, type: BiquadFilterType, freq: number, gain: number, dest?: AudioNode) {
     const c = this.ctx!;
     const src = c.createBufferSource(); src.buffer = this.noise(Math.max(0.05, dur));
     const f = c.createBiquadFilter(); f.type = type; f.frequency.value = freq;
     const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + Math.min(0.01, dur / 3)); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    src.connect(f).connect(g).connect(this.venueBus!); src.start(t); src.stop(t + dur + 0.05);
+    src.connect(f).connect(g).connect(dest ?? this.venueBus!); src.start(t); src.stop(t + dur + 0.05);
   }
   private buildBed(bed: VenueBed) {
     const B = this.venueBus!;
