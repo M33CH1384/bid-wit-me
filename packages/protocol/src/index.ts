@@ -100,7 +100,8 @@ export type GameAction =
   | { type: 'bid'; bid: number | 'nil' | 'blindNil' }
   | { type: 'exchange'; cards: Card[] }
   | { type: 'play'; card: Card; slam?: number; rel?: [number, number] }
-  | { type: 'runIt' };
+  | { type: 'runIt' }
+  | { type: 'misdeal' };
 
 export interface MediaState { cam: boolean; mic: boolean }
 
@@ -316,6 +317,7 @@ function parseAction(a: unknown): GameAction | null {
         return out;
       }
     case 'runIt': return { type: 'runIt' };
+    case 'misdeal': return { type: 'misdeal' };
     default: return null;
   }
 }

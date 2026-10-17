@@ -72,9 +72,10 @@ import { RUN_FX_MS } from '@spades/protocol';
 import { RUN_SHOW_MS, RUN_SLAM_MS, RUN_IT_CALLOUTS, RUN_TORNADO_AFTER_MS, RUN_ZOOM_MS } from './runIt';
 import { pickRunShow, scoreOpened } from './runPlayback';
 import type { RunPlayback } from '@spades/protocol';
-import { RunItReview, RunZoom, runReviewOverTable } from './RunZoom';
+import { RunItReview, RunZoom, faceUrl, runReviewOverTable } from './RunZoom';
 import { TrashTalkButton } from './TrashTalk';
 import { isPromoted } from './cardFaces';
+import { misdealRevealKey, misdealRevealMs } from './misdeal';
 import { QUICK_TRASH_SET } from './quickTrash';
 import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
 import { type TalkIntensity, botSkillFor, personaForName, platePersona, pickBotNames } from '@spades/bots';
@@ -431,6 +432,41 @@ function RunItButton({ onRun, tip, onDismissTip }: { onRun: () => void; tip: boo
         </div>
       )}
       <button type="button" className={`run-it-btn${tip ? ' attention' : ''}`} data-testid="run-it" onClick={onRun}>Run it! 🌪</button>
+    </div>
+  );
+}
+
+/**
+ * 'Call misdeal': shown only while the engine says this seat may call (spade-less hand, seen, not yet bid).
+ * Bidding instead is the decline — the engine closes the offer the moment this seat bids.
+ */
+function MisdealButton({ onCall }: { onCall: () => void }) {
+  return (
+    <div className="misdeal-wrap">
+      <button type="button" className="misdeal-btn" data-testid="misdeal" onClick={onCall}>Call misdeal — no spades</button>
+    </div>
+  );
+}
+
+/**
+ * The proof moment: the caller's whole hand lies face up on the table for the whole table to read,
+ * then the reshuffle/redeal takes over (the sources hold the deal for the same beat).
+ */
+function MisdealReveal({ title, cards, rules }: { title: string; cards: Card[]; rules: TableRules }) {
+  const spread = sortHand(cards, rules);
+  const perRow = Math.ceil(spread.length / 2);
+  return (
+    <div className="misdeal-reveal" data-testid="misdeal-reveal" role="status" aria-label={title}>
+      <div className="misdeal-panel glass">
+        <div className="misdeal-head">Misdeal called</div>
+        <div className="misdeal-sub">{title}</div>
+        <div className="misdeal-spread" style={{ '--per-row': perRow } as React.CSSProperties}>
+          {spread.map((c, i) => (
+            <img key={c} src={faceUrl(c, isPromoted(c, rules))} alt={c} className="misdeal-card" style={{ '--i': i } as React.CSSProperties} />
+          ))}
+        </div>
+        <div className="misdeal-foot">No spades in the hand — shuffling a fresh deal…</div>
+      </div>
     </div>
   );
 }
@@ -824,6 +860,17 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const winnerSeat = pause && !ranHand ? shownTrick.winner : null;
   // the Run it! button + its one-time spotlight tip
   const canRun = !spectating && !dealing && st.phase === 'playing' && !!view.canRunIt && !runFx;
+  // Misdeal: offered only while the engine allows it; the thrown hand then sits face up for a beat
+  // (both sources fold the same beat into `dealing`, so nothing moves underneath it).
+  const canMisdeal = !spectating && !dealing && st.phase === 'bidding' && !!view.canMisdeal;
+  const revealKey = misdealRevealKey(view.handNo, view.misdealReveal);
+  const [seenReveal, setSeenReveal] = useState<string | null>(null);
+  const revealShowing = !!revealKey && seenReveal !== revealKey;
+  useEffect(() => {
+    if (!revealKey || seenReveal === revealKey) return;
+    const tm = setTimeout(() => setSeenReveal(revealKey), misdealRevealMs());
+    return () => clearTimeout(tm);
+  }, [revealKey, seenReveal]);
   const [runTip, setRunTip] = useState(false);
   const runTipKey = useRef<string | null>(null);
   useEffect(() => {
@@ -1529,6 +1576,14 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       </section>
       {online?.overlay}
       {canRun && <RunItButton tip={runTip} onDismissTip={() => setRunTip(false)} onRun={() => { setRunTip(false); setSelected(null); apply({ type: 'runIt', seat: HUMAN }); }} />}
+      {canMisdeal && <MisdealButton onCall={() => { setSelected(null); apply({ type: 'misdeal', seat: HUMAN }); }} />}
+      {revealShowing && view.misdealReveal && (
+        <MisdealReveal
+          title={view.misdealReveal.seat === HUMAN && !spectating ? 'You threw your hand face up' : `${names[view.misdealReveal.seat] ?? 'A player'} threw their hand face up`}
+          cards={view.misdealReveal.cards}
+          rules={r}
+        />
+      )}
       {runFx?.phase === 'zoom' && <RunZoom cards={runFx.cards} who={face(runFx.claimer)} line={runLine} r={r} />}
       {callout && !runFx && <div className={`trash-callout seat-${pos[callout.seat]}`} key={callout.id} data-testid="trash-callout"><b>{face(callout.seat)}</b>{showLine(callout.text)}</div>}
       {runFx && <button type="button" className="run-skip" data-testid="run-skip" aria-label="Skip" onClick={endRun}><span>Tap to skip</span></button>}

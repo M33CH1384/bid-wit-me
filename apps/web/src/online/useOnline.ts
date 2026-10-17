@@ -4,6 +4,7 @@ import { shotChatLines } from '../shotOut';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { Action, GameState, PlayerView } from '@spades/rules';
 import { bidLabel, isFreshDeal, isNukeTrick } from '@spades/rules';
+import { misdealRevealKey, misdealRevealMs } from '../misdeal';
 import type { ChatLine, RoomInfo } from '@spades/protocol';
 import type { ChatMsg } from '../overlay';
 import type { ConnState, TableConnection } from './connection';
@@ -50,6 +51,7 @@ export function useOnlineSource(cs: ConnState, conn: TableConnection): (GameSour
   const [intro, setIntro] = useState<{ hand: number; until: number } | null>(null);
   const [, force] = useState(0);
   const prev = useRef<GameState | null>(null);
+  const revealRef = useRef<string | null>(null);
   const [shown, setShown] = useState(rotated);
 
   // Apply the incoming state before paint. Waiting for an effect lets one frame sweep a just-finished
@@ -73,6 +75,13 @@ export function useOnlineSource(cs: ConnState, conn: TableConnection): (GameSour
     if (p && p.handNo === st.handNo && st.tricks.length > p.tricks.length) setPause(true);
     const fresh = isFreshDeal(st) && st.tricks.length === 0;
     if ((p && st.handNo !== p.handNo) || (!p && fresh)) { setPause(false); setIntro({ hand: st.handNo, until: Date.now() + dealMs(st) }); }
+    // A called misdeal keeps the same hand number, so the fresh-deal branch above misses it: hold the
+    // thrown hand's reveal beat first, then let the redeal fly inside the same intro window.
+    const rk = misdealRevealKey(st.handNo, rotated.view.misdealReveal);
+    if (rk && rk !== revealRef.current) {
+      revealRef.current = rk;
+      setIntro({ hand: st.handNo, until: Date.now() + misdealRevealMs() + dealMs(st) });
+    }
     setShown(rotated);
   }, [rotated]);
 
@@ -115,6 +124,7 @@ export function useOnlineSource(cs: ConnState, conn: TableConnection): (GameSour
       case 'play': return conn.act({ type: 'play', card: a.card, ...(a.slam !== undefined ? { slam: a.slam } : {}), ...(a.rel ? { rel: a.rel } : {}) }, seq);
       case 'exchange': return conn.act({ type: 'exchange', cards: a.cards }, seq);
       case 'runIt': return conn.act({ type: 'runIt' }, seq);
+      case 'misdeal': return conn.act({ type: 'misdeal' }, seq);
       case 'nextHand': conn.send({ t: 'next' }); return true;
     }
   }, [conn, seq]);
