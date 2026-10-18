@@ -30,6 +30,7 @@ import { offerTableRenderer } from '../effects/warm';
 import Venue3D, { feltPatternTexture, preloadVenueAssets } from './Venue3D';
 import ClassicStudio, { preloadClassicStudio } from './ClassicStudio';
 import BarbershopRoom, { preloadBarbershopRoom } from './BarbershopRoom';
+import ChurchRoom, { preloadChurchRoom } from './ChurchRoom';
 import { type VenueDef, type VenueId, VENUE_DEFS, venueAssetUrls } from '../venues';
 import { bodyGeometry, cardGeometry, feltGeometry, railGeometry } from './geometry';
 import {
@@ -202,6 +203,7 @@ export function preloadTableAssets(quality: 'high' | 'low', venue: VenueId = 'cl
   // The classic hall HDRI is ~400 KB and its PMREM filter used to freeze the page after the felt appeared.
   // It starts only once the cloth is up (see ClassicHall). Other venues still warm their own files here.
   if (venue === 'barbershop') preloadBarbershopRoom();
+  else if (venue === 'church') preloadChurchRoom();
   else if (venue !== 'classic') preloadVenueAssets(venue, quality);
   else if (quality === 'high') preloadClassicStudio();
 }
@@ -1408,6 +1410,8 @@ export default function Scene(props: SceneProps) {
   const def = VENUE_DEFS[props.venue ?? 'classic'];
   const classic = def.id === 'classic';
   const barbershop = def.id === 'barbershop';
+  const church = def.id === 'church';
+  const cubeRoom = barbershop || church;
   const [showTable, setShowTable] = useState(false);
   const [lit, setLit] = useState(false);
   const [shadowSize, setShadowSize] = useState(0);
@@ -1468,9 +1472,10 @@ export default function Scene(props: SceneProps) {
           drei's <Preload all> stays out: it compiled and rendered a cube camera inside useLayoutEffect. */}
       <ResumeRamp quality={props.quality} def={def} onShow={onShow} onLit={onLit} onDpr={onDpr} onShadow={onShadow} onHall={onHall} />
       {hi && classic && <HallAttach active={hallGo && textured} />}
-      {!classic && !barbershop && textured && <Venue3D key={def.id} def={def} quality={props.quality} reduceFx={!!props.reduceFx} />}
+      {!classic && !cubeRoom && textured && <Venue3D key={def.id} def={def} quality={props.quality} reduceFx={!!props.reduceFx} />}
       {classic && textured && <ClassicStudio quality={props.quality} />}
       {barbershop && textured && <BarbershopRoom quality={props.quality} handNo={props.handNo} />}
+      {church && textured && <ChurchRoom quality={props.quality} handNo={props.handNo} />}
       {showTable && (
         <group
           ref={tableGroup}
