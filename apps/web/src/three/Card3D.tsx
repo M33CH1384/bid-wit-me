@@ -13,6 +13,7 @@ import { restingFlightWait } from '../trickTiming';
 import { openingFlight } from './dealFlight';
 import { retainFrontTexture } from './cardFace';
 import { restingFacing, trickFacingArrived } from './trickFacing';
+import { gatherPose } from './gather';
 import { impactFraction } from '../landTiming';
 import { PILE_THUMP, slamThump } from './shake';
 
@@ -31,7 +32,7 @@ interface Props {
   /** 'lift' is the 200ms group rise. 'slide' closes a gap over 240ms (translate + rotate only, same curve).
    *  'flight' is the deal / table arc. */
   /** glide: tossed, then slides along the felt and slows with friction (physics landing) */
-  motion?: 'lift' | 'flight' | 'slide' | 'glide';
+  motion?: 'lift' | 'flight' | 'slide' | 'glide' | 'gather';
   arc?: number;
   /** Card-local raise distance. Never folded into `target`, so a select does not retarget the fan.
    *  Applied along screen-up (see `roll`), not along the rolled card, so the end card stays in the fan. */
@@ -483,13 +484,26 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       if (st && st !== s.firedStart) { s.firedStart = st; if (moving) sound.play(st, spatialSeat ? { seat: spatialSeat, playerCount: spatialN } : {}); }
     }
     s.t = Math.min(1, s.t + dt / duration);
+    const dist = s.sp.distanceTo(s.tp);
+    const rw0 = window as unknown as { __bwmRestProbe?: boolean; __bwmScale?: Record<string, number[]> };
+    if (motion === 'gather') {
+      // Won-trick gather: same eased flip to the face-down pile, plus the
+      // corner-clearance lift from gather.ts so no corner dips into the felt.
+      const pose = gatherPose(
+        { p: [s.sp.x, s.sp.y, s.sp.z], q: [s.sq.x, s.sq.y, s.sq.z, s.sq.w], s: s.ss },
+        { p: [s.tp.x, s.tp.y, s.tp.z], q: [s.tq.x, s.tq.y, s.tq.z, s.tq.w], s: s.ts },
+        s.t,
+        arc,
+      );
+      g.position.set(...pose.p);
+      g.quaternion.set(...pose.q);
+      g.scale.setScalar(pose.s);
+    } else {
     const e = motion === 'glide' ? 1 - Math.pow(1 - Math.pow(s.t, 1.4), 3) : (motion === 'flight' ? easeInOut : liftEase)(s.t);
     g.position.lerpVectors(s.sp, s.tp, e);
-    const dist = s.sp.distanceTo(s.tp);
     const hop = motion === 'slide' ? 0 : arc;
     // glide: the toss is only the first part; the rest is the card sliding flat on the felt
     g.position.y += (motion === 'glide' ? (s.t < 0.35 ? Math.sin((Math.PI * s.t) / 0.35) : 0) : Math.sin(Math.PI * s.t)) * hop * Math.min(1, dist);
-    const rw0 = window as unknown as { __bwmRestProbe?: boolean; __bwmScale?: Record<string, number[]> };
     // Landing bounce: a quick rebound off the felt over the last quarter, scaled by the slam.
     const sl = slamNow.current;
     // Test probe: screen position of a trick card in flight, per frame (CSS px).
@@ -504,6 +518,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     if (sl && s.t > 0.75 && dist > 0.02) { const u = (s.t - 0.75) / 0.25; g.position.y += sl.bounce * Math.abs(Math.sin(2 * Math.PI * u)) * (1 - u); }
     g.quaternion.slerpQuaternions(s.sq, s.tq, e);
     g.scale.setScalar(s.ss + (s.ts - s.ss) * e); // every motion eases hand size → table size: no pop
+    }
     // Landing sound + thump fire here, on the frame the card visually hits the felt (after its pose is applied):
     // glide cards touch down at t=0.35 and then slide, so waiting for t=1 played the sound ~0.3s late.
     if (!s.landDone && s.t >= impactFraction(motion)) {
