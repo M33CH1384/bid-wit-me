@@ -60,3 +60,12 @@ describe('hand order', () => {
     expect(departureSlot(slots, new Set(['AS']), 'KH')).toBeUndefined();
   });
 });
+
+describe('fan order: wild deuce heads the hand', () => {
+  it("Demetrius's exact hand: 2♠ first, above plain J♠, and stays first after a play", () => {
+    const his = ['JS', 'TS', '9S', '6S', '5S', '3S', '2S', '9D', '5D'] as Card[];
+    const fan = retainHandOrder(null, his, rules);
+    expect(fan).toEqual(['2S', 'JS', 'TS', '9S', '6S', '5S', '3S', '9D', '5D']);
+    expect(retainHandOrder(fan, fan.filter((c) => c !== '9D'), rules)[0]).toBe('2S');
+  });
+});
