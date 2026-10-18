@@ -20,7 +20,7 @@ import { type Series, addSeriesGame, seriesForGameStart, seriesSides, summarizeG
 import { SeriesChip, SeriesSheet, loadSeries, saveSeries } from './Series';
 import { useMyTeamName } from './TeamName';
 import { offlineTalk } from './offlineTalk';
-import { BidOrder, showCenterBidOrder } from './PartnerTalk';
+import { BidOrder, BidSummary, showCenterBidOrder } from './PartnerTalk';
 import { guardTouches, lockBody } from './antiPan';
 import { TrumpLadder, trumpStripShown } from './trumpLadder';
 import { landingMode } from './three/landing';
@@ -1521,6 +1521,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             <div className="bid-panel glass slant">
               <div className="bid-tip-slot" />
               <div className="panel-title">BLIND NIL?</div>
+              <BidSummary st={st} names={names} me={HUMAN} />
               <p>Bid before looking — worth ±{r.blindNil.value}.</p>
               <div className="bid-row">
                 {view.bidOptions.blindNil && <button type="button" className="danger" onClick={() => apply({ type: 'bid', seat: HUMAN, bid: 'blindNil' })}>Blind Nil</button>}
@@ -1531,8 +1532,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             <div className={`bid-panel glass slant ${coachBid ? 'with-coach' : ''}`}>
               <div className="bid-tip-slot" />
               {coachBid && <BidCoach key={bcKey} view={view} startOpen={help || bcOpen} />}
-              <div className="panel-title">YOUR BID{r.partnerships && st.bids[2] !== null ? <small> · partner bid {bidLabel(st.bids[2]!)}</small> : r.partnerships ? <small> · partner bids right after you</small> : null}</div>
-              <BidOrder st={st} names={names} me={HUMAN} />
+              <div className="panel-title">YOUR BID</div>
+              <BidSummary st={st} names={names} me={HUMAN} />
               {!raisedMin && teamMinNote(hostMinimum(r), r.partnerships) && <p className="team-min-note" data-testid="team-min-note">{teamMinNote(hostMinimum(r), r.partnerships)}</p>}
               {raisedMin ? <MinBidLine note={raisedMin} /> : (view.bidOptions.blockReason || view.bidOptions.nilReason) && (
                 <p className="bid-block" data-testid="bid-block">{[view.bidOptions.blockReason, view.bidOptions.nilReason].filter(Boolean).join(' · ')}</p>

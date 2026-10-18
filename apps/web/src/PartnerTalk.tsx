@@ -3,7 +3,7 @@
  * - <BidOrder>: who bids when (non-dealing team first, back to back; then the dealer's partner; dealer last).
  * (Release 9 removed the one-tap partner-talk preset panel: partners talk out loud over open mics.)
  */
-import { type GameState, bidLabel, bidOrder } from '@spades/rules';
+import { type GameState, bidLabel, bidOrder, partnerOf } from '@spades/rules';
 
 /** Center strip: the whole auction, including the hand you bid first. Hidden only while the deal animation or a pause is up. */
 export function showCenterBidOrder(phase: string, pause: boolean, dealing: boolean): boolean {
@@ -30,6 +30,66 @@ export function BidOrder({ st, names, me }: { st: GameState; names: string[]; me
           </span>
         );
       })}
+    </div>
+  );
+}
+
+export interface BidSummaryEntry {
+  seat: number;
+  who: string;
+  bidText: string;
+  hasBid: boolean;
+  isPartner: boolean;
+  isMe: boolean;
+  isTurn: boolean;
+}
+
+/**
+ * Bids so far this hand, in bidding order — the decision-moment summary shown big
+ * inside the bid panel. Pure view of st.bids (the same public state the seat
+ * plates and BidOrder read); no parallel source. Partner is the seat across in
+ * team games (partnerOf); Cutthroat has no partner, so nobody is highlighted.
+ */
+export function bidSummaryEntries(st: GameState, names: string[], me: number): BidSummaryEntry[] {
+  const partner = me >= 0 ? partnerOf(me, st.rules) : null;
+  return bidOrder(st.rules, st.dealer).map((seat) => {
+    const b = st.bids[seat] ?? null;
+    return {
+      seat,
+      who: (seat === me ? 'You' : names[seat]) || `Seat ${seat + 1}`,
+      bidText: b !== null ? bidLabel(b) : st.turn === seat ? '…' : '—',
+      hasBid: b !== null,
+      isPartner: partner !== null && seat === partner,
+      isMe: seat === me,
+      isTurn: st.turn === seat,
+    };
+  });
+}
+
+/**
+ * The readable bid summary for the moment of decision: every seat's bid so far,
+ * in bidding order, with the partner's bid largest and gold-highlighted. Rendered
+ * inside the bid panel (which only exists on the human's bid turn), so it can
+ * never cover the hand, the YOU plate, the view chips, or the misdeal button.
+ */
+export function BidSummary({ st, names, me }: { st: GameState; names: string[]; me: number }) {
+  if (st.phase !== 'bidding') return null;
+  const entries = bidSummaryEntries(st, names, me);
+  return (
+    <div className="bid-summary" data-testid="bid-summary" role="list" aria-label="Bids so far this hand">
+      <span className="bs-title" aria-hidden="true">BIDS</span>
+      {entries.map((e) => (
+        <span
+          key={e.seat}
+          className={`bs-seat ${e.isPartner ? 'partner' : ''} ${e.isMe ? 'self' : ''} ${e.hasBid ? 'done' : 'pending'}`}
+          data-testid={`bid-summary-${e.seat}`}
+          role="listitem"
+          aria-label={`${e.isPartner ? 'Partner ' : ''}${e.who}: ${e.hasBid ? `bid ${e.bidText}` : e.isTurn ? 'bidding now' : 'has not bid yet'}`}
+        >
+          <small>{e.isPartner ? `★ PARTNER · ${e.who}` : e.who}</small>
+          <b>{e.bidText}</b>
+        </span>
+      ))}
     </div>
   );
 }
