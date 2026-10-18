@@ -103,6 +103,10 @@ Licence for every Poly Haven item: CC0 — https://polyhaven.com/license (commer
 - Basis transcoder (`apps/web/public/assets/basis/`, Basis Universal, Apache-2.0) ships with three.js for the KTX2 textures.
 - Not shipped: the test scene's GLB dining table (the game keeps its procedural bevelled-rail table) and the Warm Bar HDRI (the game's existing classic hall HDRI provides the IBL).
 
+## Speakeasy room
+
+Windowless by design (no sky/street plates). Herringbone floor already credited (Poly Haven CC0, darkened in-engine); back-bar bottles/booths/door are blank procedural shapes, no signage. Chairs/pendants reuse Classic CC0 GLBs.
+
 ## Grandma's Kitchen room
 
 - Linoleum Brown floor already credited above (Poly Haven, CC0). Kitchen run/fridge/stove/pie/clock are procedural (no text). Chairs/pendants reuse Classic Studio CC0 GLBs; sky plates reuse the Barbershop credits below (CC BY 2.0 day / public-domain night; Low = golden poster).
