@@ -24,7 +24,7 @@ const CLASSIC = '/assets/venues/classic';
 export interface CubeBox { p: [number, number, number]; s: [number, number, number]; c: string; r?: number; m?: number; e?: string; ei?: number; ry?: number; rz?: number }
 export interface CubeCyl { p: [number, number, number]; a: [number, number, number, number]; c: string; r?: number; m?: number; e?: string; ei?: number; rz?: number }
 export interface CubePlane { p: [number, number, number]; s: [number, number]; rot?: [number, number, number]; c?: string; sky?: boolean; sea?: boolean }
-export interface CubeTorus { p: [number, number, number]; a: [number, number, number]; c: string; ry?: number }
+export interface CubeTorus { p: [number, number, number]; a: [number, number, number, number]; c: string; ry?: number }
 export interface CubeWindow { x: number; y: number; w: number; h: number }
 export interface CubeVenueConfig {
   id: string; slug: string;
