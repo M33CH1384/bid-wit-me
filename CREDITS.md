@@ -23,6 +23,7 @@ from the original sources and re-encoded/resized (1k + 512px JPEG) for the web; 
 | `venues/tex/checkered_pavement_tiles_512.jpg` | "Checkered Pavement Tiles" (venue floor / rail colour map, 512px) | Poly Haven — https://polyhaven.com/a/checkered_pavement_tiles | CC0 1.0 |
 | `venues/tex/coast_sand_01_512.jpg` | "Coast Sand 01" (venue floor / rail colour map, 512px) | Poly Haven — https://polyhaven.com/a/coast_sand_01 | CC0 1.0 |
 | `venues/tex/concrete_floor_02_512.jpg` | "Concrete Floor 02" (venue floor / rail colour map, 512px) | Poly Haven — https://polyhaven.com/a/concrete_floor_02 | CC0 1.0 |
+| `venues/tex/brushed_concrete_512.jpg` | "Brushed Concrete" (Rooftop cube-room floor, 512px diffuse) | Poly Haven — https://polyhaven.com/t/brushed_concrete | CC0 1.0 |
 | `venues/tex/herringbone_parquet_512.jpg` | "Herringbone Parquet" (venue floor / rail colour map, 512px) | Poly Haven — https://polyhaven.com/a/herringbone_parquet | CC0 1.0 |
 | `venues/tex/leafy_grass_512.jpg` | "Leafy Grass" (venue floor / rail colour map, 512px) | Poly Haven — https://polyhaven.com/a/leafy_grass | CC0 1.0 |
 | `venues/tex/linoleum_brown_512.jpg` | "Linoleum Brown" (venue floor / rail colour map, 512px) | Poly Haven — https://polyhaven.com/a/linoleum_brown | CC0 1.0 |
