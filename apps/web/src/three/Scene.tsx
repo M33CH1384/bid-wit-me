@@ -31,6 +31,13 @@ import Venue3D, { feltPatternTexture, preloadVenueAssets } from './Venue3D';
 import ClassicStudio, { preloadClassicStudio } from './ClassicStudio';
 import BarbershopRoom, { preloadBarbershopRoom } from './BarbershopRoom';
 import YachtRoom, { preloadYachtRoom } from './YachtRoom';
+import BeachRoom, { preloadBeachRoom } from './BeachRoom';
+import BackyardRoom, { preloadBackyardRoom } from './BackyardRoom';
+import ChurchRoom, { preloadChurchRoom } from './ChurchRoom';
+import VegasRoom, { preloadVegasRoom } from './VegasRoom';
+import SpeakeasyRoom, { preloadSpeakeasyRoom } from './SpeakeasyRoom';
+import GrandmaRoom, { preloadGrandmaRoom } from './GrandmaRoom';
+import MansionRoom, { preloadMansionRoom } from './MansionRoom';
 import { type VenueDef, type VenueId, VENUE_DEFS, venueAssetUrls } from '../venues';
 import { bodyGeometry, cardGeometry, feltGeometry, railGeometry } from './geometry';
 import {
@@ -204,6 +211,13 @@ export function preloadTableAssets(quality: 'high' | 'low', venue: VenueId = 'cl
   // It starts only once the cloth is up (see ClassicHall). Other venues still warm their own files here.
   if (venue === 'barbershop') preloadBarbershopRoom();
   else if (venue === 'yacht') preloadYachtRoom();
+  else if (venue === 'beach') preloadBeachRoom();
+  else if (venue === 'backyard') preloadBackyardRoom();
+  else if (venue === 'church') preloadChurchRoom();
+  else if (venue === 'vegas') preloadVegasRoom();
+  else if (venue === 'speakeasy') preloadSpeakeasyRoom();
+  else if (venue === 'grandma') preloadGrandmaRoom();
+  else if (venue === 'mansion') preloadMansionRoom();
   else if (venue !== 'classic') preloadVenueAssets(venue, quality);
   else if (quality === 'high') preloadClassicStudio();
 }
@@ -1411,7 +1425,14 @@ export default function Scene(props: SceneProps) {
   const classic = def.id === 'classic';
   const barbershop = def.id === 'barbershop';
   const yacht = def.id === 'yacht';
-  const cubeRoom = barbershop || yacht;
+  const beach = def.id === 'beach';
+  const backyard = def.id === 'backyard';
+  const church = def.id === 'church';
+  const vegas = def.id === 'vegas';
+  const speakeasy = def.id === 'speakeasy';
+  const grandma = def.id === 'grandma';
+  const mansion = def.id === 'mansion';
+  const cubeRoom = barbershop || yacht || beach || backyard || church || vegas || speakeasy || grandma || mansion;
   const [showTable, setShowTable] = useState(false);
   const [lit, setLit] = useState(false);
   const [shadowSize, setShadowSize] = useState(0);
@@ -1476,6 +1497,13 @@ export default function Scene(props: SceneProps) {
       {classic && textured && <ClassicStudio quality={props.quality} />}
       {barbershop && textured && <BarbershopRoom quality={props.quality} handNo={props.handNo} />}
       {yacht && textured && <YachtRoom quality={props.quality} handNo={props.handNo} />}
+      {beach && textured && <BeachRoom quality={props.quality} handNo={props.handNo} />}
+      {backyard && textured && <BackyardRoom quality={props.quality} handNo={props.handNo} />}
+      {church && textured && <ChurchRoom quality={props.quality} handNo={props.handNo} />}
+      {vegas && textured && <VegasRoom quality={props.quality} handNo={props.handNo} />}
+      {speakeasy && textured && <SpeakeasyRoom quality={props.quality} handNo={props.handNo} />}
+      {grandma && textured && <GrandmaRoom quality={props.quality} handNo={props.handNo} />}
+      {mansion && textured && <MansionRoom quality={props.quality} handNo={props.handNo} />}
       {showTable && (
         <group
           ref={tableGroup}
