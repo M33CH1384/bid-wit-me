@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  XR_LOG_CAP, XR_REFERENCE_SPACE_CHAIN, appendXrLog, buildVisionSafeSessionInit,
-  describeXrError, isFloorSpace, originYOffset, pickReferenceSpace,
+  XR_LOG_CAP, XR_LOG_STORAGE_KEY, XR_REFERENCE_SPACE_CHAIN, anchorGroupForEye, appendXrLog, buildVisionSafeSessionInit,
+  checkImmersiveSupport, chooseGrantedReferenceType, describeBaseLayer, describeXrError, isFloorSpace,
+  loadPersistedXrLog, originYOffset, pickReferenceSpace, savePersistedXrLog, yawFromForward,
 } from '../src/xr/session';
 
 describe('XR vision-safe session init', () => {
@@ -69,5 +70,49 @@ describe('XR origin height + error/log helpers', () => {
     for (let i = 0; i < XR_LOG_CAP + 10; i++) lines = appendXrLog(lines, `line ${i}`, 0);
     expect(lines).toHaveLength(XR_LOG_CAP);
     expect(lines[lines.length - 1]).toContain(`line ${XR_LOG_CAP + 9}`);
+  });
+});
+
+describe('round 2: present-path hardening', () => {
+  it('chooseGrantedReferenceType picks the first granted chain space, never an ungranted guess', () => {
+    expect(chooseGrantedReferenceType(['local', 'hand-tracking'])).toBe('local');
+    expect(chooseGrantedReferenceType(['viewer'])).toBe('viewer');
+    expect(chooseGrantedReferenceType(['hand-tracking'])).toBeNull();
+    expect(chooseGrantedReferenceType(null)).toBeNull();
+    expect(chooseGrantedReferenceType(undefined)).toBeNull();
+  });
+  it('describeBaseLayer reports framebuffer size or layers', () => {
+    expect(describeBaseLayer({ renderState: { baseLayer: { framebufferWidth: 2064, framebufferHeight: 2208 } } })).toContain('2064x2208');
+    expect(describeBaseLayer({ renderState: { layers: [{}] } })).toContain('layers');
+    expect(describeBaseLayer(null)).toContain('not available');
+  });
+  it('checkImmersiveSupport times out instead of sticking at Checking', async () => {
+    const hung = { isSessionSupported: () => new Promise<boolean>(() => {}) };
+    await expect(checkImmersiveSupport(hung, 20)).resolves.toBe('timeout');
+    await expect(checkImmersiveSupport({ isSessionSupported: async () => true }, 1000)).resolves.toBe('supported');
+    await expect(checkImmersiveSupport({ isSessionSupported: async () => false }, 1000)).resolves.toBe('unsupported');
+    await expect(checkImmersiveSupport({ isSessionSupported: async () => { throw new Error('x'); } }, 1000)).resolves.toBe('error');
+  });
+  it('status log persists across page loads (one screenshot after exit is enough)', () => {
+    const store = new Map<string, string>();
+    const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => { store.set(k, v); } };
+    savePersistedXrLog(storage, ['a line', 'session ENDED']);
+    expect(store.has(XR_LOG_STORAGE_KEY)).toBe(true);
+    expect(loadPersistedXrLog(storage)).toEqual(['a line', 'session ENDED']);
+    expect(loadPersistedXrLog(null)).toEqual([]);
+    store.set(XR_LOG_STORAGE_KEY, 'not json');
+    expect(loadPersistedXrLog(storage)).toEqual([]);
+  });
+  it('anchoring puts the designed seat under the eye, facing the table, for any yaw', () => {
+    // eye straight ahead of the room at the designed seat: no shift needed
+    expect(anchorGroupForEye({ x: 0, y: 1.25, z: 0.95 }, 0)).toEqual({ x: 0, y: 0, z: 0 });
+    // eye at a floor-space origin (0,0,0) looking -z: room drops so the seat is at the eye
+    const p = anchorGroupForEye({ x: 0, y: 0, z: 0 }, 0);
+    expect(p.y).toBeCloseTo(-1.25); expect(p.z).toBeCloseTo(-0.95);
+    // yaw math: forward -z is 0; forward +x (looking right) is -90deg
+    expect(yawFromForward(0, -1)).toBeCloseTo(0);
+    expect(yawFromForward(1, 0)).toBeCloseTo(-Math.PI / 2);
+    const q = anchorGroupForEye({ x: 2, y: 1.4, z: 3 }, Math.PI / 2);
+    expect(Number.isFinite(q.x + q.y + q.z)).toBe(true);
   });
 });

@@ -88,3 +88,101 @@ export function appendXrLog(lines: readonly string[], line: string, now = Date.n
   const stamp = new Date(now).toLocaleTimeString('en-US', { hour12: false });
   return [...lines.slice(-(XR_LOG_CAP - 1)), `${stamp} ${line}`];
 }
+
+/* ---- Round 2 (after #234 still black on a real Vision Pro) ---- */
+
+/**
+ * The reference-space type three's WebXRManager will request inside
+ * setSession(). three (r180) does `await session.requestReferenceSpace(type)`
+ * with NO catch: if that type was not granted, setSession rejects after the
+ * headset is already immersive, the XR animation loop never starts, and the
+ * user gets a permanent black void. So the type handed to three must be one
+ * we have already verified against the granted session — never a guess the
+ * library re-asserts behind our back (@react-three/xr re-set 'local-floor').
+ */
+export function chooseGrantedReferenceType(enabled: Iterable<string> | null | undefined): XrReferenceSpaceType | null {
+  if (!enabled) return null;
+  const set = new Set(enabled);
+  return XR_REFERENCE_SPACE_CHAIN.find((t) => set.has(t)) ?? null;
+}
+
+/** Human line describing the session's base layer (framebuffer proof in the log). */
+export function describeBaseLayer(session: { renderState?: { baseLayer?: { framebufferWidth?: number; framebufferHeight?: number } | null; layers?: unknown[] } } | null | undefined): string {
+  const rs = session?.renderState;
+  if (!rs) return 'renderState not available';
+  if (rs.baseLayer) return `XRWebGLLayer ${rs.baseLayer.framebufferWidth ?? '?'}x${rs.baseLayer.framebufferHeight ?? '?'}`;
+  if (rs.layers?.length) return `XR layers (${rs.layers.length} projection layer(s))`;
+  return 'no baseLayer/layers in renderState yet';
+}
+
+export type SupportOutcome = 'supported' | 'unsupported' | 'timeout' | 'error';
+
+/**
+ * isSessionSupported with a deadline. On the Vision Pro the check was seen
+ * stuck at "Checking..." — a hung support promise must not brick the page:
+ * after the timeout the caller enables Enter VR anyway and lets the actual
+ * requestSession (inside the tap) decide.
+ */
+export async function checkImmersiveSupport(
+  xr: { isSessionSupported(mode: string): Promise<boolean> },
+  timeoutMs = 3500,
+): Promise<SupportOutcome> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const timed = new Promise<'timeout'>((res) => { timer = setTimeout(() => res('timeout'), timeoutMs); });
+    const result = await Promise.race([
+      xr.isSessionSupported('immersive-vr').then((ok) => (ok ? 'supported' as const : 'unsupported' as const)),
+      timed,
+    ]);
+    return result;
+  } catch {
+    return 'error';
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/* Status-log persistence: the last session's log survives exit/reload and sits
+ * at the TOP of the 2D page, so one ordinary screenshot captures the outcome. */
+export const XR_LOG_STORAGE_KEY = 'bwm-xr-log-v2';
+
+interface StorageLike { getItem(k: string): string | null; setItem(k: string, v: string): void }
+
+export function loadPersistedXrLog(storage: StorageLike | null | undefined): string[] {
+  try {
+    const raw = storage?.getItem(XR_LOG_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((l): l is string => typeof l === 'string').slice(-XR_LOG_CAP) : [];
+  } catch { return []; }
+}
+
+export function savePersistedXrLog(storage: StorageLike | null | undefined, lines: readonly string[]): void {
+  try { storage?.setItem(XR_LOG_STORAGE_KEY, JSON.stringify(lines.slice(-XR_LOG_CAP))); } catch { /* private mode etc: panel still works in-page */ }
+}
+
+/* Forgiving first-frame composition: the room is anchored to the FIRST real
+ * XR eye pose, so the table sits in front of the user whatever reference
+ * space was granted (local-floor / local / viewer, seated or standing). */
+
+/** The viewer's designed seat in room-local coords (matches the 2D camera). */
+export const XR_VIEWER_LOCAL = { x: 0, y: 1.25, z: 0.95 } as const;
+
+/** Yaw (around Y) that turns room-local -Z onto the given world forward. */
+export function yawFromForward(forwardX: number, forwardZ: number): number {
+  return Math.atan2(-forwardX, -forwardZ);
+}
+
+/**
+ * Room-group position for a given eye position + yaw: the eye lands exactly
+ * on XR_VIEWER_LOCAL inside the room. Pure math, unit-tested.
+ */
+export function anchorGroupForEye(
+  eye: { x: number; y: number; z: number },
+  yaw: number,
+): { x: number; y: number; z: number } {
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  const vx = XR_VIEWER_LOCAL.x * c + XR_VIEWER_LOCAL.z * s;
+  const vz = -XR_VIEWER_LOCAL.x * s + XR_VIEWER_LOCAL.z * c;
+  return { x: eye.x - vx, y: eye.y - XR_VIEWER_LOCAL.y, z: eye.z - vz };
+}
