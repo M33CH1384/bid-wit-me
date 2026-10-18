@@ -73,7 +73,7 @@ import { pickRunShow, scoreOpened } from './runPlayback';
 import type { RunPlayback } from '@spades/protocol';
 import { RunItReview, RunZoom, faceUrl, runReviewOverTable } from './RunZoom';
 import { TrashTalkButton } from './TrashTalk';
-import { isPromoted } from './cardFaces';
+import { isWildDeuce } from './cardFaces';
 import { misdealRevealKey, misdealRevealMs } from './misdeal';
 import { QUICK_TRASH_SET } from './quickTrash';
 import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
@@ -461,7 +461,7 @@ function MisdealReveal({ title, cards, rules }: { title: string; cards: Card[]; 
         <div className="misdeal-sub">{title}</div>
         <div className="misdeal-spread" style={{ '--per-row': perRow } as React.CSSProperties}>
           {spread.map((c, i) => (
-            <img key={c} src={faceUrl(c, isPromoted(c, rules))} alt={c} className="misdeal-card" style={{ '--i': i } as React.CSSProperties} />
+            <img key={c} src={faceUrl(c, isWildDeuce(c, rules))} alt={c} className="misdeal-card" style={{ '--i': i } as React.CSSProperties} />
           ))}
         </div>
         <div className="misdeal-foot">No spades in the hand — shuffling a fresh deal…</div>
@@ -1144,7 +1144,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const showResults = st.phase === 'gameOver' && !pause && !runFx && talkOpen && !!st.result && !shotOutRecap;
   const modalOpen = (st.phase === 'handOver' && !pause && talkOpen) || confirmLeave || showPad || (st.phase === 'gameOver' && !pause && !runFx && talkOpen && !!st.result);
 
-  const promoted = useCallback((c: Card) => isPromoted(c, r), [r]);
+  const promoted = useCallback((c: Card) => isWildDeuce(c, r), [r]); // badge BOTH wild deuces (2♦ and 2♠), not just the off-suit one
 
   // One play leaves the hand. Further taps do nothing until that trick moves (or the server rejects the play).
   const playHold = useRef<PlayTrick | null>(null);

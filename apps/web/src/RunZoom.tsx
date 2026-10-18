@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useEscapeClose } from './useEscapeClose';
 import { type Card, type RunCard, type TableRules, sortHand } from '@spades/rules';
 import { drawFace } from './cardArt';
-import { isPromoted } from './cardFaces';
+import { isWildDeuce } from './cardFaces';
 
 const urls = new Map<string, string>();
 /** the same face art as the 3D cards, as an image (cached) */
@@ -18,7 +18,7 @@ export function faceUrl(c: Card, badge: boolean): string {
  * them, with the claimer's line in a big speech bubble. Two rows when there are many (phones stay readable).
  */
 export function RunZoom({ cards, who, line, r }: { cards: Card[]; who: string; line: string | null; r: TableRules }) {
-  const imgs = useMemo(() => cards.map((c) => ({ c, src: faceUrl(c, isPromoted(c, r)) })), [cards, r]);
+  const imgs = useMemo(() => cards.map((c) => ({ c, src: faceUrl(c, isWildDeuce(c, r)) })), [cards, r]);
   const rows = cards.length > 7 ? 2 : 1;
   const perRow = Math.ceil(cards.length / rows);
   return (
@@ -56,7 +56,7 @@ export function RunItReview({ hands, claimer, labels, r, onClose }: {
     const byCard = new Map(cards.map((x) => [x.card, x]));
     return sortHand(cards.map((x) => x.card), r).map((c) => {
       const x = byCard.get(c)!;
-      return { c, played: x.played === true, src: faceUrl(c, isPromoted(c, r)) };
+      return { c, played: x.played === true, src: faceUrl(c, isWildDeuce(c, r)) };
     });
   }), [hands, r]);
   const who = labels[claimer] ?? 'Someone';
