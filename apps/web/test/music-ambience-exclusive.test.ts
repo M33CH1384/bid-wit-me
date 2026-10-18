@@ -75,16 +75,16 @@ describe('music / ambience mutual exclusivity (engine gates)', () => {
   });
 });
 
-describe('context defaults (menus: ambience, game: music)', () => {
+describe('context defaults (menus: none, game: music)', () => {
   const reset = () => { sound.set({ scenes: undefined }); sound.enterContext('menu'); };
-  it('menu context defaults to ambience on / music off, game to music on / ambience off', () => {
+  it('menu context defaults to no background scene, game to music on / ambience off', () => {
     reset();
     expect(sound.soundContext).toBe('menu');
-    expect(sound.settings).toMatchObject({ music: false, ambient: true, venueSound: true });
+    expect(sound.settings).toMatchObject({ music: false, ambient: false, venueSound: false });
     sound.enterContext('game');
     expect(sound.settings).toMatchObject({ music: true, ambient: false, venueSound: false });
     sound.enterContext('menu');
-    expect(sound.settings).toMatchObject({ music: false, ambient: true, venueSound: true });
+    expect(sound.settings).toMatchObject({ music: false, ambient: false, venueSound: false });
     // applying a DEFAULT never records an explicit choice
     expect(sound.settings.scenes?.menu).toBeUndefined();
     expect(sound.settings.scenes?.game).toBeUndefined();
@@ -123,9 +123,9 @@ describe('context defaults (menus: ambience, game: music)', () => {
     sound.toggleMuteAll();
     expect(sound.settings.scenes?.menu).toBe('music');
   });
-  it('a legacy both-on save reconciles PER CONTEXT (ambience in menus, music in game)', () => {
+  it('a legacy both-on save reconciles PER CONTEXT (no scene in menus, music in game)', () => {
     const legacy = S({ music: true, ambient: true, venueSound: true });
-    expect(settingsForContext(legacy, 'menu')).toMatchObject({ music: false, ambient: true, venueSound: true });
+    expect(settingsForContext(legacy, 'menu')).toMatchObject({ music: false, ambient: false, venueSound: false });
     expect(settingsForContext(legacy, 'game')).toMatchObject({ music: true, ambient: false, venueSound: false });
     const withChoices = S({ music: true, ambient: true, venueSound: true, scenes: { menu: 'music', game: 'none' } });
     expect(settingsForContext(withChoices, 'menu')).toMatchObject({ music: true, ambient: false });
@@ -135,7 +135,7 @@ describe('context defaults (menus: ambience, game: music)', () => {
     reset();
     sound.enterContext('game'); sound.set({ ambient: true }); // explicit game = ambience, live = ambience
     const reloaded = settingsForContext(persisted(), 'menu'); // what load() computes at boot
-    expect(reloaded).toMatchObject({ music: false, ambient: true }); // menu default (no menu choice made)
+    expect(reloaded).toMatchObject({ music: false, ambient: false }); // menu default is no background scene now
     expect(settingsForContext(persisted(), 'game')).toMatchObject({ music: false, ambient: true }); // game choice kept
   });
 });
