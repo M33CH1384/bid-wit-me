@@ -103,6 +103,10 @@ Licence for every Poly Haven item: CC0 — https://polyhaven.com/license (commer
 - Basis transcoder (`apps/web/public/assets/basis/`, Basis Universal, Apache-2.0) ships with three.js for the KTX2 textures.
 - Not shipped: the test scene's GLB dining table (the game keeps its procedural bevelled-rail table) and the Warm Bar HDRI (the game's existing classic hall HDRI provides the IBL).
 
+## Vegas High Roller room
+
+- Dirty Carpet floor (Poly Haven, https://polyhaven.com/t/dirty_carpet, CC0): `venues/tex/dirty_carpet_512.jpg`. Windowless by design; gold panels/chips are blank procedural shapes, no slot screens or signage. Chairs/pendants reuse Classic CC0 GLBs.
+
 ## Speakeasy room
 
 Windowless by design (no sky/street plates). Herringbone floor already credited (Poly Haven CC0, darkened in-engine); back-bar bottles/booths/door are blank procedural shapes, no signage. Chairs/pendants reuse Classic CC0 GLBs.
