@@ -501,6 +501,17 @@ function ctx(r: TableRules): RankCtx {
   let c = cache.get(r);
   if (c) return c;
   const top = [...r.trumpOrderTop];
+  // House-shaped tops self-heal a dropped 2S: a joker deck whose top carries
+  // the wild 2D but not 2S (a stale/serialised trumpOrderTop from an older
+  // build, or a hand-built rules object) used to rank 2S as a plain low
+  // spade everywhere -- trick winner, badge and hand sort all share this
+  // context, so the fan buried it under the plain spades (Demetrius's exact
+  // hand: JS TS 9S 6S 5S 3S 2S). The Classic top (BJ/LJ only, 2D removed)
+  // is a different, intentional shape and is left alone; its deuce-high
+  // toggle below still governs it.
+  if (r.deck === 'joker54' && top.includes('2D') && !top.includes('2S') && !r.removedCards.includes('2S')) {
+    top.splice(top.indexOf('2D') + 1, 0, '2S');
+  }
   if (r.deuceOfSpadesHigh && !top.includes('2S')) {
     let i = 0;
     while (i < top.length && isJoker(top[i]!)) i++;
