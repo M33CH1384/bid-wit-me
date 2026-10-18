@@ -1,5 +1,5 @@
 import { type PartnerHint, applyHint } from './partnerTalk';
-import { type Card, type PlayerView, type Rng, blindNilRulesOf, effectiveSuit, hostMinimum, isNilBid, isTrump, nilRulesOf, partnerOf, sideOf, trumpOrder } from '@spades/rules';
+import { type Card, type PlayerView, type Rng, bidOptions, blindNilRulesOf, createRng, effectiveSuit, hostMinimum, isNilBid, isTrump, nilRulesOf, partnerOf, sideOf, trumpOrder } from '@spades/rules';
 
 /** One line of a hand's book count (shared by the bots' bidding and the player-facing bid coach). */
 export interface BookItem { cards: Card[]; value: number; note: string }
@@ -153,6 +153,11 @@ export const BOT_SKILL_LABEL: Record<BotSkill, string> = { novice: 'Novice', reg
 /** Choose a bid. `hint`: what the partner said during bidding (partner talk), used while the partner hasn't bid yet. */
 export function chooseBid(v: PlayerView, level: BotLevel, rng: Rng, hint?: PartnerHint | null): number | 'nil' {
   const opt = v.bidOptions!;
+  // Partner already bid every book in the hand: no numeric bid can keep the team at or under
+  // the hand's book count, so the only bid left is Nil (the engine offers it in this spot when
+  // Nil is on; when Nil is off a partner bid of the whole hand cannot be created legally —
+  // bidOptions holds a book back for the second bidder in that case).
+  if (opt.max < 1) return 'nil';
   const hand = v.hand!;
   const r = v.rules;
   const partner = partnerOf(v.seat, r);
@@ -172,6 +177,13 @@ export function chooseBid(v: PlayerView, level: BotLevel, rng: Rng, hint?: Partn
   if (skill !== 'novice' && others + bid > room + 1) bid = Math.max(1, room + 1 - others);
   if (skill !== 'novice') bid = applyHint(bid, liveHint, v);
   return Math.min(opt.max, Math.max(opt.min, bid, 1));
+}
+
+/** What this bot would bid for its own hand right now, before its partner's bid caps it (chooseBid on its own view, with bidOptions filled in when it is not this seat's turn). Null while it has not looked at its cards — no estimate is shown for a hand the bot itself has not seen. This is the number a partner-facing "thinks N" may quote: the bot's real intended bid for its own books, nothing else about its hand. */
+export function partnerBidIntent(v: PlayerView, level: BotLevel, rng: Rng = createRng(`${v.seat}:${v.handNo}:${v.tricks.length}`)): number | 'nil' | null {
+  if (v.phase !== 'bidding' || !v.hand) return null;
+  const opt = v.bidOptions ?? bidOptions(v as unknown as Parameters<typeof bidOptions>[0], v.seat);
+  return chooseBid({ ...v, bidOptions: opt }, level, rng);
 }
 
 /** Bots decide on Blind Nil before looking (only from scores and the partner's bid). */

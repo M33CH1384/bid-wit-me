@@ -1731,7 +1731,7 @@ export class Room {
   private fallbackAction(seat: number): Action {
     const v = viewFor(this.data.game!, seat);
     if (v.phase === 'playing') return { type: 'play', seat, card: v.legal[0]! };
-    if (v.phase === 'bidding') return v.hand === null ? { type: 'reveal', seat } : { type: 'bid', seat, bid: v.bidOptions?.min ?? 1 };
+    if (v.phase === 'bidding') return v.hand === null ? { type: 'reveal', seat } : { type: 'bid', seat, bid: v.bidOptions && v.bidOptions.max < 1 && v.bidOptions.nil ? 'nil' : v.bidOptions?.min ?? 1 };
     return { type: 'exchange', seat, cards: (v.hand ?? []).slice(0, v.exchange[0]?.count ?? 0) };
   }
 
