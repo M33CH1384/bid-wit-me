@@ -124,17 +124,60 @@ export function flatRest(x: number, z: number, spin: number, order: number, scal
   return xf([x, FELT_REST_Y + order * STACK_DY, z], [-Math.PI / 2, 0, -spin], scale, 'XYZ');
 }
 
-/** Won-trick pile in front of a seat: tricks laid in an overlapping row, face down. */
+/**
+ * Won-trick books: ONE flattened stack per player on the table's RIM (the rail
+ * band between the felt edge and the outer rail edge, from the real table
+ * geometry: FELT + RAIL), at their own side, offset toward their right-hand
+ * corner so it clears the centre fan and the trick area. Demetrius: piles on
+ * the felt overlapped cards in play, and the old per-trick row on the felt
+ * staircased — every card's full thickness stacked visibly.
+ *
+ * Flattening: the pile rise per card is PILE_STEP (0.0012, under a third of
+ * the card's rendered thickness) for the first PILE_STEP_KNEE cards, then
+ * PILE_STEP_LATE (0.0002) after that — a soft height cap. A full 13-book
+ * stack rises ~0.022 world units instead of the old ~0.23. Card thickness
+ * in the hand and in play is unchanged (shared geometry); only the pile's
+ * per-card Y step is compressed. Book count stays readable from the stack
+ * plus the existing tricksWon/book displays.
+ */
+export const RAIL_TOP_Y = 0.1; // rail ring's top cap (railGeometry: 0.07 extrude + 0.05 bevel - 0.02 seat)
+export const PILE_STEP = 0.0012;
+export const PILE_STEP_LATE = 0.0002;
+export const PILE_STEP_KNEE = 12;
+export const PILE_EDGE_INSET = 0.06; // pile centre this far INSIDE the felt edge (see note below)
+export const PILE_TANGENT = 0.22; // along the rim toward the seat's right-hand corner
+
+/** Compressed pile height for the (0-based) global card index in a player's stack. */
+export function pileRise(globalIdx: number): number {
+  const i = Math.max(0, globalIdx);
+  return i <= PILE_STEP_KNEE ? i * PILE_STEP : PILE_STEP_KNEE * PILE_STEP + (i - PILE_STEP_KNEE) * PILE_STEP_LATE;
+}
+
+/** The rim point for a seat's book stack (before per-card jitter), from the actual felt/rail geometry.
+ *  Phone-portrait trade-off (measured, see book-piles-edge.test.ts): a stack centred on the
+ *  rail band itself (felt edge + up to RAIL out) projects off-screen on narrow portraits —
+ *  the camera frames the table, not beyond it. So the centre sits PILE_EDGE_INSET inside the
+ *  felt edge: the card straddles the rim line (its outer third over the rail), well clear of
+ *  every trick landing and physics-landed card, and the whole stack stays on screen at 390px. */
+export function pileEdgePoint(pos: SeatPos, n: number): Vector3 {
+  const d = seatDir(pos, n);
+  const edge = edgePoint(d, PILE_EDGE_INSET);
+  const tangent = new Vector3(d.z, 0, -d.x); // along the rim, toward the seat's right
+  return edge.add(tangent.multiplyScalar(PILE_TANGENT));
+}
+
 export function pileSpot(pos: SeatPos, n: number, trickIdx: number, cardIdx: number, jitter: number): Xform {
   const d = seatDir(pos, n);
-  let base: Vector3;
-  let along: Vector3;
-  if (pos === 'bottom') { base = new Vector3(0.55, 0, 1.12); along = new Vector3(0.075, 0, 0); }
-  else if (pos === 'top') { base = new Vector3(-0.55, 0, -1.2); along = new Vector3(-0.075, 0, 0); }
-  else { base = edgePoint(d, 0.32).add(new Vector3(0, 0, 0.45)); along = new Vector3(0, 0, 0.07); }
-  const p = base.add(along.multiplyScalar(trickIdx));
-  const yaw = pos === 'left' || pos === 'right' ? Math.PI / 2 : 0;
-  return xf([p.x + jitter * 0.008, 0.006 + (trickIdx * 4 + cardIdx) * 0.0045, p.z], [Math.PI / 2, yaw + jitter * 0.06, 0], 0.92);
+  const p = pileEdgePoint(pos, n);
+  // Long axis along the rim, so the card lies across the rail band instead of
+  // hanging off the felt or off the table's outer edge.
+  const yaw = yawOf(d) + Math.PI / 2;
+  const idx = trickIdx * 4 + cardIdx;
+  return xf(
+    [p.x + jitter * 0.008, RAIL_TOP_Y + FELT_REST_Y + pileRise(idx), p.z + jitter * 0.008],
+    [Math.PI / 2, yaw + jitter * 0.06, 0],
+    0.92,
+  );
 }
 
 /** Dealer's deck spot (cards fly from here when dealing). */
