@@ -63,3 +63,26 @@ for (const [name, r] of Object.entries(MODES)) {
     });
   });
 }
+
+describe('hand sort: Demetrius exact hand (Mansion, jokers)', () => {
+  // His fan, L-to-R as dealt: J♠ 10♠ 9♠ 6♠ 5♠ 3♠ 2♠ 9♦ 5♦ with the 2♠ buried
+  // as a plain low 2. In a jokers game the 2♠ is a wild deuce: it must head
+  // the hand, above the plain J♠ (and above A♠ when present), 2♦ above it.
+  const his: Card[] = ['JS', 'TS', '9S', '6S', '5S', '3S', '2S', '9D', '5D'];
+  it('sorts 2♠ first in every joker mode', () => {
+    for (const r of Object.values(MODES)) {
+      expect(sortHand(his, r)).toEqual(['2S', 'JS', 'TS', '9S', '6S', '5S', '3S', '9D', '5D']);
+      expect(sortHand([...his, 'AS', '2D', 'BJ'], r).slice(0, 4)).toEqual(['BJ', '2D', '2S', 'AS']);
+    }
+  });
+  it('self-heals a house-shaped trumpOrderTop that dropped 2♠ (stale/serialised rules)', () => {
+    const stale = makeRules('joker', { trumpOrderTop: ['BJ', 'LJ', '2D'] });
+    expect(trumpOrder(stale).slice(0, 5)).toEqual(['BJ', 'LJ', '2D', '2S', 'AS']);
+    expect(sortHand(his, stale)).toEqual(['2S', 'JS', 'TS', '9S', '6S', '5S', '3S', '9D', '5D']);
+    expect(cardPower('2S', stale)).toBeGreaterThan(cardPower('AS', stale));
+  });
+  it('classic shape is unchanged: BJ/LJ top with 2♦ removed keeps its own order', () => {
+    const classic = makeRules('joker', { trumpOrderTop: ['BJ', 'LJ'], removedCards: ['2H', '2D'] });
+    expect(trumpOrder(classic).slice(0, 3)).toEqual(['BJ', 'LJ', 'AS']);
+  });
+});
