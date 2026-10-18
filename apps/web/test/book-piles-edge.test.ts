@@ -25,7 +25,7 @@ function overlaps(a: ReturnType<typeof rect>, b: ReturnType<typeof rect>): boole
   return true;
 }
 
-describe('book piles live on the table rim, one flattened stack per player', () => {
+describe('book piles live on the table rim, in a side-by-side row per player', () => {
   it('pile centre is on the rail band (just beyond the felt edge, inside the outer rail), from real geometry', () => {
     for (const [n, seats] of [[4, SEATS4], [3, SEATS3]] as const) {
       for (const pos of seats) {
@@ -35,7 +35,7 @@ describe('book piles live on the table rim, one flattened stack per player', () 
         const radial = (v: Vector3) => v.x * d.x + v.z * d.z;
         // straddling the rim line: centre a hair inside the felt edge (portrait fit),
         // outer edge of the card over the rail, never beyond the outer rail edge
-        expect(radial(p)).toBeGreaterThan(radial(feltEdge) - 0.07);
+        expect(radial(p)).toBeGreaterThan(radial(feltEdge) - 0.15); // row centre inset for portrait fit (vertical books reach the rim line)
         expect(radial(p)).toBeLessThanOrEqual(radial(feltEdge) + 1e-9);
         // the whole card stays on the table (within the outer rounded rect, slack for corners)
         const r = rect(pileSpot(pos, n, 0, 0, 0));
@@ -48,14 +48,26 @@ describe('book piles live on the table rim, one flattened stack per player', () 
     }
   });
 
-  it('one stack per player: every book lands on the same rim spot (no row spreading over the felt)', () => {
+  it('one row per player: books side by side along the rim, woven overlap, slots stable as books arrive', () => {
     for (const pos of SEATS4) {
-      const a = pileSpot(pos, 4, 0, 0, 0);
-      for (let k = 1; k < 13; k++) {
-        const b = pileSpot(pos, 4, k, 0, 0);
-        expect(b.p[0]).toBeCloseTo(a.p[0], 9);
-        expect(b.p[2]).toBeCloseTo(a.p[2], 9);
-      }
+      const spots = Array.from({ length: 13 }, (_, k) => pileSpot(pos, 4, k, 0, 0));
+      // every slot distinct, in a line along the seat's tangent, none moving
+      for (let k = 1; k < 13; k++) expect(Math.hypot(spots[k].p[0] - spots[k-1].p[0], spots[k].p[2] - spots[k-1].p[2])).toBeGreaterThan(0.05);
+      // adjacent books overlap slightly (centre step under a card width) but do not coincide
+      const step = Math.hypot(spots[1].p[0] - spots[0].p[0], spots[1].p[2] - spots[0].p[2]);
+      expect(step).toBeLessThan(CW * 0.92);
+      expect(step).toBeGreaterThan(0.05);
+      // full 13-book row stays on the table
+      for (const s of spots) { expect(Math.abs(s.p[0])).toBeLessThanOrEqual(FELT.hx + RAIL); expect(Math.abs(s.p[2])).toBeLessThanOrEqual(FELT.hz + RAIL); }
+    }
+  });
+
+  it('odd books vertical (long edge front-to-back), even books horizontal (rotated 90°)', () => {
+    for (const pos of SEATS4) {
+      const d = seatDir(pos, 4);
+      const longAxis = (k: number) => rect(pileSpot(pos, 4, k, 0, 0)).axes[1];
+      for (const k of [0, 2, 4]) expect(Math.abs(longAxis(k).dot(d))).toBeGreaterThan(0.99); // portrait: long axis radial
+      for (const k of [1, 3, 5]) expect(Math.abs(longAxis(k).dot(d))).toBeLessThan(0.01); // landscape: long axis along rim
     }
   });
 
@@ -73,12 +85,13 @@ describe('book piles live on the table rim, one flattened stack per player', () 
     expect(pileRise(0)).toBe(0);
     expect(pileRise(PILE_STEP_KNEE)).toBeCloseTo(PILE_STEP_KNEE * PILE_STEP, 12);
     expect(PILE_STEP_LATE).toBeLessThan(PILE_STEP);
-    // a whole hand of books for one player (13 tricks x 4 cards) rises ~2cm, not ~23cm
-    const total = pileSpot('bottom', 4, 12, 3, 0).p[1] - pileSpot('bottom', 4, 0, 0, 0).p[1];
-    expect(total).toBeCloseTo(pileRise(51), 9);
-    expect(total).toBeLessThan(0.025);
-    expect(total).toBeGreaterThan(0.01); // still a visible stack, and monotonic
-    for (let i = 1; i <= 51; i++) expect(pileRise(i)).toBeGreaterThan(pileRise(i - 1));
+    // each book in the row is its own flat mini-stack: one book (4 cards)
+    // rises ~0.005 and every book has the same profile, never the ~23cm tower
+    const oneBook = pileSpot('bottom', 4, 12, 3, 0).p[1] - pileSpot('bottom', 4, 12, 0, 0).p[1];
+    expect(oneBook).toBeCloseTo(pileRise(3), 9);
+    expect(oneBook).toBeLessThan(0.006);
+    expect(pileSpot('bottom', 4, 12, 0, 0).p[1]).toBeCloseTo(pileSpot('bottom', 4, 0, 0, 0).p[1], 9); // no steps across the row
+    for (let i = 1; i <= 12; i++) expect(pileRise(i)).toBeGreaterThan(pileRise(i - 1));
     expect(pileSpot('bottom', 4, 0, 0, 0).p[1]).toBeCloseTo(RAIL_TOP_Y + 0.006, 9); // sits on the rail top
   });
 });
