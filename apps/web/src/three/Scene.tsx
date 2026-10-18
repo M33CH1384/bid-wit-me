@@ -30,6 +30,8 @@ import { offerTableRenderer } from '../effects/warm';
 import Venue3D, { feltPatternTexture, preloadVenueAssets } from './Venue3D';
 import ClassicStudio, { preloadClassicStudio } from './ClassicStudio';
 import BarbershopRoom, { preloadBarbershopRoom } from './BarbershopRoom';
+import YachtRoom, { preloadYachtRoom } from './YachtRoom';
+import BeachRoom, { preloadBeachRoom } from './BeachRoom';
 import BackyardRoom, { preloadBackyardRoom } from './BackyardRoom';
 import ChurchRoom, { preloadChurchRoom } from './ChurchRoom';
 import VegasRoom, { preloadVegasRoom } from './VegasRoom';
@@ -208,6 +210,8 @@ export function preloadTableAssets(quality: 'high' | 'low', venue: VenueId = 'cl
   // The classic hall HDRI is ~400 KB and its PMREM filter used to freeze the page after the felt appeared.
   // It starts only once the cloth is up (see ClassicHall). Other venues still warm their own files here.
   if (venue === 'barbershop') preloadBarbershopRoom();
+  else if (venue === 'yacht') preloadYachtRoom();
+  else if (venue === 'beach') preloadBeachRoom();
   else if (venue === 'backyard') preloadBackyardRoom();
   else if (venue === 'church') preloadChurchRoom();
   else if (venue === 'vegas') preloadVegasRoom();
@@ -1420,13 +1424,15 @@ export default function Scene(props: SceneProps) {
   const def = VENUE_DEFS[props.venue ?? 'classic'];
   const classic = def.id === 'classic';
   const barbershop = def.id === 'barbershop';
+  const yacht = def.id === 'yacht';
+  const beach = def.id === 'beach';
   const backyard = def.id === 'backyard';
   const church = def.id === 'church';
   const vegas = def.id === 'vegas';
   const speakeasy = def.id === 'speakeasy';
   const grandma = def.id === 'grandma';
   const mansion = def.id === 'mansion';
-  const cubeRoom = barbershop || backyard || church || vegas || speakeasy || grandma || mansion;
+  const cubeRoom = barbershop || yacht || beach || backyard || church || vegas || speakeasy || grandma || mansion;
   const [showTable, setShowTable] = useState(false);
   const [lit, setLit] = useState(false);
   const [shadowSize, setShadowSize] = useState(0);
@@ -1490,6 +1496,8 @@ export default function Scene(props: SceneProps) {
       {!classic && !cubeRoom && textured && <Venue3D key={def.id} def={def} quality={props.quality} reduceFx={!!props.reduceFx} />}
       {classic && textured && <ClassicStudio quality={props.quality} />}
       {barbershop && textured && <BarbershopRoom quality={props.quality} handNo={props.handNo} />}
+      {yacht && textured && <YachtRoom quality={props.quality} handNo={props.handNo} />}
+      {beach && textured && <BeachRoom quality={props.quality} handNo={props.handNo} />}
       {backyard && textured && <BackyardRoom quality={props.quality} handNo={props.handNo} />}
       {church && textured && <ChurchRoom quality={props.quality} handNo={props.handNo} />}
       {vegas && textured && <VegasRoom quality={props.quality} handNo={props.handNo} />}

@@ -103,6 +103,14 @@ Licence for every Poly Haven item: CC0 — https://polyhaven.com/license (commer
 - Basis transcoder (`apps/web/public/assets/basis/`, Basis Universal, Apache-2.0) ships with three.js for the KTX2 textures.
 - Not shipped: the test scene's GLB dining table (the game keeps its procedural bevelled-rail table) and the Warm Bar HDRI (the game's existing classic hall HDRI provides the IBL).
 
+## Yacht Deck room
+
+Wood Floor Deck already credited (Poly Haven CC0). Open-air: mast/rigging/rails/life-ring procedural, sea is a flat plane. Cabin wall sits on the south/camera side per design and is not faked into the playing view. Chairs reuse Classic CC0 GLBs. Sky plates reuse Barbershop credits (CC BY 2.0 / PD; Low = golden poster).
+
+## Beach Cabana room
+
+Coast Sand floor already credited (Poly Haven CC0). Open-air cabana: posts/thatch/rails/tiki/cooler are procedural; sea is a flat plane (no video). Chairs reuse Classic CC0 GLBs. Sky plates reuse Barbershop credits (CC BY 2.0 / PD; Low = golden poster).
+
 ## Backyard Cookout room
 
 Leafy Grass floor already credited (Poly Haven CC0). Open-air: fence/grill/cooler/string lights are procedural; chairs reuse Classic CC0 GLBs (no pendants outdoors). Sky plates reuse Barbershop credits (CC BY 2.0 day / PD night; Low = golden poster).
