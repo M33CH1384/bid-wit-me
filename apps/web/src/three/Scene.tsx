@@ -603,10 +603,9 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     const w = t.winner!;
     const k = pileCount[w]!++;
     t.plays.forEach((pl, j) => {
-      // Per-BOOK jitter (not per-card): all cards in one won trick share the
-      // same offset/rotation so the book stacks cleanly and the top card
-      // blends in with the ones under it. Demetrius 2026-10-19.
-      items.push({ key: `${handNo}-${pl.card}`, card: pl.card, target: pileSpot(positions[w]!, n, k, j, jitterOf(`book-${handNo}-${w}-${k}`)), duration: 0.55, arc: 0.15, motion: 'gather', sfxStart: 'sweep', spatialSeat: positions[w]!, spatialN: n });
+      // Books stack perfectly clean (zero jitter) so the top card's image is
+      // crisp, not a blend. Tiny height steps avoid z-fighting. Demetrius 2026-10-19.
+      items.push({ key: `${handNo}-${pl.card}`, card: pl.card, target: pileSpot(positions[w]!, n, k, j, 0), duration: 0.55, arc: 0.15, motion: 'gather', sfxStart: 'sweep', spatialSeat: positions[w]!, spatialN: n });
     });
   }
   // cards on the table this trick
