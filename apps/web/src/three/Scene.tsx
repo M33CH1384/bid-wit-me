@@ -6,7 +6,7 @@ import { type BufferGeometry, type Camera, type Group, type Material, type Mesh,
 import { type Card, type Play, type Trick } from '@spades/rules';
 import Card3D, { createLitCardMaterial } from './Card3D';
 import { departureSlot, handCardKey, handReactKey } from '../handOrder';
-import { GAP_S, RAISE_SPREAD, spreadSeconds, cardIdFromHit, echoTap, fanGapPx, fanMotion, handCardChrome, handDepthOpts, handRenderOrder, hitsInPaintOrder, noteTapUp, pointerNdc, posePx, raiseLocalY, raiseSpreadPx, spreadFitScale } from './handLift';
+import { GAP_S, spreadSeconds, cardIdFromHit, echoTap, fanGapPx, fanMotion, handCardChrome, handDepthOpts, handRenderOrder, hitsInPaintOrder, noteTapUp, pointerNdc, posePx, raiseLocalY, raiseSpreadPx, spreadFitScale } from './handLift';
 import { type HandHitCard, pickHandCard, publishHandHits, publishedHandHits } from './handHit';
 import { paintFace } from '../cardArt';
 import { dragStarted, dropResult } from '../dragPlay';
@@ -722,13 +722,16 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   const nextCards = new Set<string>();
   const nextSlots = new Map<string, Xform>();
   const nextSeen = new Set<string>();
-  // A raised card slides its neighbours apart by 40% of a card width. The solver
-  // reserves that room, and the same opts lay out every mesh and every hit quad.
-  const selectedIndex = fanCards.findIndex((slot) => !!slot.card && slot.card === selected);
-  const laid = selectedIndex >= 0 ? { ...fanOpts, spread: RAISE_SPREAD } : fanOpts;
+  // A selected card raises screen-up in place. It used to also slide its neighbours
+  // apart (spread: RAISE_SPREAD), which made the solver shrink the whole fan to
+  // reserve that room and drop the entire hand on the first tap. The fan is now laid
+  // out identically whether or not a card is selected: the same opts lay out every
+  // mesh and every hit quad, and only the raised card moves.
+  const laid = fanOpts;
   const fan = fanLayout(aspect, Math.max(1, fanCards.length), safeFrac, laid);
   const cardPx = fanCssPx(fan, screenW).width;
-  const rawSpread = raiseSpreadPx(fanCards.length, selectedIndex, cardPx, fan.raiseOpen > 0 ? fan.raiseOpen : undefined);
+  // No neighbour spread on selection: the fan anchor must not move when a card raises.
+  const rawSpread = raiseSpreadPx(fanCards.length, -1, cardPx, undefined);
   const nFan = fanCards.length;
   let spreadScale = 1;
   if (nFan > 1 && rawSpread.some((v) => v !== 0)) {
