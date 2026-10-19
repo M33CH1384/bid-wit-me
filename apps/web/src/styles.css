@@ -408,7 +408,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .seat-anchor.side-topc > .plate { transform: translate(0, 0); }
 
 .table-screen.short .me { bottom: calc(27vh + env(safe-area-inset-bottom)); }
-.table-screen.short .me-plate { position: fixed; left: calc(8px + env(safe-area-inset-left)); bottom: calc(160px + env(safe-area-inset-bottom)); } /* floats over the felt, above the lowered hand fan */
+.table-screen.short .me-plate { position: fixed; left: calc(8px + env(safe-area-inset-left)); bottom: calc(10px + env(safe-area-inset-bottom)); } /* lower-left in landscape; the hand fan is inset clear of it */
 .table-screen.short .bid-panel { width: min(480px, 58vw); padding: 6px 10px 8px; gap: 5px; }
 .table-screen.short .bid-grid { gap: 4px; }
 .table-screen.short .bid-grid button { padding: 4px 0; font-size: 16px; }
