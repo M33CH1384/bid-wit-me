@@ -18,10 +18,10 @@ describe('settings paths deal the exact joker deck (2♥/2♣ out, 2♠/2♦ in)
       expect(deck.filter((c) => c[0] === '2')).toEqual(['2S', '2D']);
     });
   }
-  it('the Classic trump-order setting is the one exception (2♣ in, 2♦ out) — check this setting if 2♣ appears', () => {
+  it('the Classic trump-order setting also removes 2♣ (2♥/2♣ out of all Joker games — Demetrius 2026-10-19)', () => {
     const deck = buildDeck(settingsToRules({ ...DEFAULT_SETTINGS, jokerOrder: 'classic' }));
-    expect(deck).toContain('2C');
-    expect(deck).not.toContain('2D');
+    expect(deck).not.toContain('2C');
     expect(deck).not.toContain('2H');
+    expect(deck).toContain('2D'); // regular diamond in Classic, not a trump
   });
 });

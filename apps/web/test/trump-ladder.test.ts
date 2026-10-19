@@ -45,7 +45,8 @@ describe('trump ladder', () => {
     }
     const table = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
     expect(table).toContain('<TrumpLadder rules={r} n={4} style="short" />');
-    expect(table).toContain('<TrumpLadder rules={r} n={5} style="long" />');
+    const popup = readFileSync(new URL('../src/TrumpPopup.tsx', import.meta.url), 'utf8');
+    expect(popup).toContain('<TrumpLadder rules={rules} n={5} style="long" />');
     expect(table).not.toContain("join('›')");
     expect(table).not.toContain("join(' › ')");
   });

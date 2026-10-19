@@ -111,7 +111,7 @@ export function tipsFor(c: CoachCtx): Tip[] {
       when: (x) => !!x.hand && x.hand.length > 0 && (x.st.phase === 'bidding' || x.st.phase === 'playing'),
     },
     {
-      id: 'trumps', title: 'Spades beat everything', anchor: '.trump-strip, .bug-trumps', max: 2,
+      id: 'trumps', title: 'Spades beat everything', anchor: '.bug-trumps', max: 2,
       text: `Any spade ♠ beats any heart, diamond or club (spades are the {trumps|trump}).${tw.extra ? ` ${tw.extra}` : ''} Strongest first: ${top}…`,
       marks: myTrumps.length ? { hand: myTrumps.slice(0, 4).map((x) => ({ card: x, tag: 'TRUMP', kind: 'trump' as const })) } : undefined,
       when: (x) => x.st.phase === 'bidding' || x.st.phase === 'playing',

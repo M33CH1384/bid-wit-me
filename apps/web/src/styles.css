@@ -210,6 +210,11 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .center-note.win { background: linear-gradient(90deg, var(--gold), #ffe08a); color: #1d1204; font-weight: 800; box-shadow: 0 0 22px rgba(245,197,66,.8); transform: translateY(40px); }
 .center-note.dealer-popup { display: inline-flex; align-items: baseline; gap: 6px; font-size: 18px; white-space: nowrap; }
 .center-note.dealer-popup b { color: var(--gold); font-weight: 800; }
+/* One-time trump-order popup (Joker modes): centered, tap or 4s to dismiss. */
+.trump-popup { position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%); z-index: 30; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px 24px; cursor: pointer; pointer-events: auto; text-align: center; }
+.trump-popup .ts-label { font-size: 13px; }
+.trump-popup .trump-ladder { font-size: 15px; font-weight: 700; }
+.trump-popup-hint { font-size: 10px; letter-spacing: .12em; opacity: .55; text-transform: uppercase; }
 
 /* toasts */
 .toasts { position: absolute; top: 128px; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 40; pointer-events: none; }
