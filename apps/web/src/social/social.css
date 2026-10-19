@@ -376,3 +376,6 @@ div.ranks-row { cursor: default; }
 /* Tappable player names */
 button.soc-pl-name.link, button.soc-frow-name.link { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
 button.soc-pl-name.link:hover, button.soc-frow-name.link:hover { text-decoration: underline; }
+
+/* Local game indicator (Demetrius 2026-10-19): replaces dead Spectate/Join buttons */
+.soc-pl-local { display: inline-block; padding: 4px 10px; font-size: 12px; font-weight: 700; color: var(--muted); background: rgba(255,255,255,.06); border-radius: 999px; }

@@ -272,17 +272,19 @@ function goTable(code: string, query: string) {
 }
 
 function TableActs({ name, act }: { name: string; act: PlayerTableAction }) {
-  const reason = act.local ? act.joinReason : act.spectateReason;
+  // Local vs-bots game: no dead buttons. Show a clear indicator instead (Demetrius 2026-10-19).
+  if (act.local) {
+    return <span className="soc-pl-local" data-testid={`pl-local-${name}`} title="Playing on their own device — not an online table">🎮 Local game</span>;
+  }
+  const reason = act.spectateReason;
   return (
     <>
-      <button type="button" disabled={act.local || !!act.spectateReason} title={act.spectateReason}
+      <button type="button" disabled={!!act.spectateReason} title={act.spectateReason}
         data-testid={`pl-spectate-${name}`}
         onClick={() => { if (act.code && !act.spectateReason) goTable(act.code, '?watch=1'); }}>👁 Spectate</button>
       {act.join && act.code ? (
         <button type="button" className="primary" data-testid={`pl-join-${name}`}
           onClick={() => goTable(act.code!, act.seat !== undefined ? `?seat=${act.seat}` : '')}>{act.joinLabel}</button>
-      ) : act.local ? (
-        <button type="button" disabled title={act.joinReason} data-testid={`pl-join-${name}`}>Join</button>
       ) : null}
       {reason && <span className="soc-pl-why" data-testid={`pl-why-${name}`}>{reason}</span>}
     </>
