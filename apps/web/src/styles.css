@@ -339,7 +339,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .sf-note { color: var(--muted); font-size: 12px; }
 
 /* last trick readout (bottom-right, opposite your name plate) */
-.last-trick, .last-trick.glass.slant { position: absolute; right: calc(8px + env(safe-area-inset-right)); bottom: calc(23vh + env(safe-area-inset-bottom)); z-index: 9; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 4px; max-width: 46vw; padding: 4px 10px 5px; --slant: 8px; pointer-events: auto; cursor: pointer; font-family: var(--display); } /* pointer-events: auto so it can be closed (Demetrius 2026-10-19) */
+.last-trick, .last-trick.glass.slant { position: absolute; right: calc(8px + env(safe-area-inset-right)); bottom: calc(23vh + env(safe-area-inset-bottom)); z-index: 9; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 4px; max-width: 46vw; padding: 4px 10px 5px; --slant: 8px; pointer-events: none; font-family: var(--display); }
 .lt-label { width: 100%; text-align: right; font-size: 10px; letter-spacing: .14em; color: var(--purple-hot); font-weight: 700; }
 .lt-card { display: flex; flex-direction: column; align-items: center; line-height: 1; min-width: 26px; padding: 3px 3px; border-radius: 4px; background: #f6f1e6; color: #16121c; font-weight: 800; font-size: 15px; }
 .lt-card.red { color: #c8102e; }
@@ -395,7 +395,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 
 .table-screen.short .plate-avatar { width: 30px; height: 30px; font-size: 15px; }
 .table-screen.short .plate { --ring-d: 30px; }
-.table-screen.short .plate-body { margin-left: -4px; padding: 2px 12px 3px 20px; } /* breathing room between avatar and name (Demetrius 2026-10-19) */
+.table-screen.short .plate-body { margin-left: -10px; padding: 2px 12px 3px 16px; }
 .table-screen.short .plate-name { font-size: 14px; gap: 4px; }
 .table-screen.short .plate .chip { font-size: 10px; padding: 0 5px; }
 .table-screen.short .plate .chip.dealer, .table-screen.short .plate .chip.notice { font-size: 9px; padding: 1px 4px; }
@@ -405,10 +405,10 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .table-screen.short .plate:has(> .vbubble) .plate-body { margin-left: 10px; }
 .table-screen.short .vb-icon { font-size: 20px; }
 .table-screen.short .turn-clock { top: -13px; left: auto; right: 0; font-size: 11px; }
-.seat-anchor.side-topc > .plate { transform: translate(0, 0); }
+.seat-anchor.side-topc > .plate { transform: translate(0, -14px); } /* above partner cards — Demetrius 2026-10-19 */
 
 .table-screen.short .me { bottom: calc(27vh + env(safe-area-inset-bottom)); }
-.table-screen.short .me-plate { position: fixed; left: calc(8px + env(safe-area-inset-left)); bottom: calc(10px + env(safe-area-inset-bottom)); } /* lower-left in landscape; the hand fan is inset clear of it */
+.table-screen.short .me-plate { position: fixed; left: calc(8px + env(safe-area-inset-left)); bottom: calc(10px + env(safe-area-inset-bottom)); }
 .table-screen.short .bid-panel { width: min(480px, 58vw); padding: 6px 10px 8px; gap: 5px; }
 .table-screen.short .bid-grid { gap: 4px; }
 .table-screen.short .bid-grid button { padding: 4px 0; font-size: 16px; }
@@ -418,10 +418,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .table-screen.short .ctl-cluster .av-btn, .table-screen.short .chat-toggle { width: 40px; height: 38px; }
 .table-screen.short .ctl-cluster .av-btn { border-radius: 0; clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
 .table-screen.short .ctl-cluster .av-hint, .table-screen.short .ctl-cluster .av-err { top: auto; bottom: calc(100% + 54px); right: 0; }
-.table-screen.short .last-trick, .table-screen.short .last-trick.glass.slant { bottom: calc(54px + env(safe-area-inset-bottom)); max-width: 130px; padding: 2px 6px 3px; gap: 2px; }
-/* landscape: side plates stay in the edge strips, never over the felt. Demetrius 2026-10-19. */
-.table-screen.short .seat-anchor.side-left > .plate, .table-screen.short .seat-anchor.side-right > .plate { max-width: 132px; }
-.table-screen.short .seat-anchor.side-left .plate-body, .table-screen.short .seat-anchor.side-right .plate-body { padding: 2px 8px 3px 18px; }
+.table-screen.short .last-trick, .table-screen.short .last-trick.glass.slant { bottom: calc(54px + env(safe-area-inset-bottom)); max-width: 170px; padding: 2px 7px 4px; gap: 3px; }
 .table-screen.short .lt-label { font-size: 9px; }
 .table-screen.short .lt-card { min-width: 24px; font-size: 13px; padding: 2px; }
 .table-screen.short .lt-card small { font-size: 8px; }
@@ -594,38 +591,12 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
   .mode-cards { grid-template-columns: repeat(4, 1fr); gap: 10px; }
   .mode-card { min-height: 150px; padding: 14px 12px; }
   .mode-card .mc-title { font-size: 21px; }
-  .ess { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; align-items: start; }
+  .ess { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .ess .go, .ess .join-row, .ess .err { grid-column: 1 / -1; }
-  .ess-row { min-height: 0; padding: 6px 10px; background: rgba(255,255,255,.04); border-radius: 10px; }
-  .ess-label { font-size: 14px; }
-  .ess-label small { font-size: 11px; }
-  .ess .seg { flex-wrap: wrap; gap: 4px; }
-  .ess .seg button { padding: 6px 8px; font-size: 13px; }
+  .ess-row { min-height: 54px; padding: 8px 12px; }
+  .ess-label { font-size: 16px; }
+  .ess .seg button { padding: 7px 10px; font-size: 15px; }
   .ess .go { padding: 12px; margin-top: 0; }
-  .ess .sticky-primary { grid-column: 1 / -1; position: sticky; bottom: 0; background: linear-gradient(180deg, transparent, rgba(12,7,18,.95) 40%); padding: 8px 0 calc(4px + env(safe-area-inset-bottom)); margin-top: 2px; }
-  /* deck thumbs and venue select stay compact in the grid */
-  .ess .deck-thumbs { gap: 6px; padding: 2px; }
-  .ess .deck-thumbs .dt { width: 64px; padding: 4px 4px 6px; }
-  .ess .deck-thumbs .dt span { font-size: 11px; }
-  .ess-row.stack > select[data-testid="venue-select-setup"] { min-height: 38px; font-size: 14px; }
-}
-/* landscape: victory/game-over screen must fit 390px height — compact everything */
-@media (orientation: landscape) and (max-height: 540px) {
-  .victory-screen { padding: calc(12px + env(safe-area-inset-top)) 12px calc(8px + env(safe-area-inset-bottom)); gap: 6px; }
-  .vic-head { font-size: 16px; }
-  .vs-title { font-size: clamp(28px, 6vw, 40px); }
-  .vs-sub { font-size: clamp(14px, 2.8vw, 18px); }
-  .victory-spot { gap: 6px; }
-  .vs-winners { gap: 6px; }
-  .vs-card { min-height: 0; padding: 8px; gap: 2px; }
-  .vs-initial { width: 40px; height: 40px; font-size: 22px; }
-  .vs-name { font-size: clamp(16px, 3.4vw, 20px); }
-  .vs-losers { gap: 4px; }
-  .vs-loser-row { gap: 6px; }
-  .vic-foot { padding: 8px 10px; gap: 4px; font-size: 13px; }
-  .shot-out-banner { font-size: clamp(24px, 6vw, 36px); margin: 4px 0; }
-  .confirm-actions { gap: 6px; }
-  .confirm-actions .primary.big { padding: 10px 16px; font-size: 15px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .slide-fwd, .slide-back, .splash-logo, .splash .tagline, .wiz-actions, .sheet, .trick-banner-wrap .center-note.win { animation: none !important; }
@@ -675,14 +646,6 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .table-screen:has(.me > .bid-panel) .chat-ticker { visibility: hidden; }
 /* larger video bubbles: keep the partner's (top-centre) clear of the one-line scorebug */
 .table-screen.short .seat-anchor.side-topc > .plate:has(> .vbubble) { margin-top: 9px; }
-/* landscape: partner plate is top-left under the scorebug — ultra-compact so it never dominates. Demetrius 2026-10-19. */
-.table-screen.short .seat-anchor.side-topc > .plate { max-width: 140px; }
-.table-screen.short .seat-anchor.side-topc .plate-avatar { width: 24px; height: 24px; font-size: 12px; }
-.table-screen.short .seat-anchor.side-topc .plate-body { padding: 1px 8px 2px 14px; }
-.table-screen.short .seat-anchor.side-topc .plate-name { font-size: 11px; }
-.table-screen.short .seat-anchor.side-topc .plate .chip.partner { display: none; } /* partner chip redundant in landscape */
-.table-screen.short .seat-anchor.side-topc .plate .chip.dealer { font-size: 8px; padding: 0 3px; }
-.table-screen.short .seat-anchor.side-topc .plate .book-counter { font-size: 9px; }
 /* cramped portrait phones with a partner video bubble: the trump order folds into the scorebug's second line */
 @media (orientation: portrait) and (max-height: 760px) {
   .table-screen:not(.short):has(.side-top .vbubble) .trump-strip,
@@ -2045,7 +2008,7 @@ button.mode-pick::after, button.quiet-row::after { content: ''; position: absolu
 .ghost-btn { min-height: 44px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.18); border-radius: 10px; color: #f3ead2; font: 700 14px 'Barlow Condensed', sans-serif; cursor: pointer; }
 .quiet-continue { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.18); color: #f3ead2; }
 
-/* ---------- Rep profile page ---------- */
+/* ---------- Street Cred profile page ---------- */
 .profile-page { min-height: 100dvh; padding: calc(12px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom)); max-width: 720px; margin: 0 auto; }
 .prof-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .prof-season { font-family: var(--display); font-weight: 700; letter-spacing: .08em; color: var(--muted); font-size: 13px; text-transform: uppercase; }
