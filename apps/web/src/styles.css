@@ -395,7 +395,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 
 .table-screen.short .plate-avatar { width: 30px; height: 30px; font-size: 15px; }
 .table-screen.short .plate { --ring-d: 30px; }
-.table-screen.short .plate-body { margin-left: -10px; padding: 2px 12px 3px 16px; }
+.table-screen.short .plate-body { margin-left: -4px; padding: 2px 12px 3px 20px; } /* breathing room between avatar and name (Demetrius 2026-10-19) */
 .table-screen.short .plate-name { font-size: 14px; gap: 4px; }
 .table-screen.short .plate .chip { font-size: 10px; padding: 0 5px; }
 .table-screen.short .plate .chip.dealer, .table-screen.short .plate .chip.notice { font-size: 9px; padding: 1px 4px; }
@@ -421,7 +421,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .table-screen.short .last-trick, .table-screen.short .last-trick.glass.slant { bottom: calc(54px + env(safe-area-inset-bottom)); max-width: 130px; padding: 2px 6px 3px; gap: 2px; }
 /* landscape: side plates stay in the edge strips, never over the felt. Demetrius 2026-10-19. */
 .table-screen.short .seat-anchor.side-left > .plate, .table-screen.short .seat-anchor.side-right > .plate { max-width: 132px; }
-.table-screen.short .seat-anchor.side-left .plate-body, .table-screen.short .seat-anchor.side-right .plate-body { padding: 2px 8px 3px 12px; }
+.table-screen.short .seat-anchor.side-left .plate-body, .table-screen.short .seat-anchor.side-right .plate-body { padding: 2px 8px 3px 18px; }
 .table-screen.short .lt-label { font-size: 9px; }
 .table-screen.short .lt-card { min-width: 24px; font-size: 13px; padding: 2px; }
 .table-screen.short .lt-card small { font-size: 8px; }
@@ -651,7 +651,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .table-screen.short .seat-anchor.side-topc > .plate:has(> .vbubble) { margin-top: 9px; }
 /* landscape: partner plate is top-left under the scorebug — compact so it never reaches the felt. Demetrius 2026-10-19. */
 .table-screen.short .seat-anchor.side-topc > .plate { max-width: 170px; }
-.table-screen.short .seat-anchor.side-topc .plate-body { padding: 2px 10px 3px 12px; }
+.table-screen.short .seat-anchor.side-topc .plate-body { padding: 2px 10px 3px 18px; }
 .table-screen.short .seat-anchor.side-topc .plate-name { font-size: 12px; }
 .table-screen.short .seat-anchor.side-topc .plate .chip { font-size: 9px; padding: 0 4px; }
 /* cramped portrait phones with a partner video bubble: the trump order folds into the scorebug's second line */
