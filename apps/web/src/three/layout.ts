@@ -114,7 +114,7 @@ export function trickSpot(pos: SeatPos, n: number, order: number, jitter: number
 }
 
 /** Felt height a landed card rests at, and the per-card step that keeps overlapping cards from z-fighting. */
-export const FELT_REST_Y = 0.012; // raised from 0.006 — card corners were clipping through the felt (Demetrius 2026-10-19)
+export const FELT_REST_Y = 0.02; // raised from 0.012 — card corners still clipped during throw landing; needs more clearance for tilt (Demetrius 2026-10-19)
 export const STACK_DY = 0.003;
 /**
  * A card lying flat on the felt, face up: zero pitch and roll, only a spin about the vertical axis
