@@ -157,8 +157,8 @@ export const PILE_TANGENT = 0.12; // along the rim toward the seat's right-hand 
  * little -- the woven railroad-tie read. 13 books span ~2.3m this way,
  * inside the 3.0m felt width; 17-book (3-player) rows tighten to 0.135
  * (~1.7m, inside the same edge). A tighter step is also what keeps the\n * far slots of side-seat rows inside the phone frame (layout.test guards it). */
-export const BOOK_STEP = 0.10;
-export const BOOK_STEP_3P = 0.075;
+export const BOOK_STEP = 0.14; // increased from 0.10 — books were overlapping and blending (Demetrius 2026-10-19)
+export const BOOK_STEP_3P = 0.11; // increased from 0.075
 export const BOOKS_PER_HAND = 13;
 
 /** Compressed pile height for the (0-based) card index WITHIN one book. */
