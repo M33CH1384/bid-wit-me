@@ -246,7 +246,9 @@ function PlayerRow({ u, me, friend, pending, signedIn, myTable, tables }: {
       <div className="soc-pl-main">
         <span className={`soc-av ${u.guest ? 'guest' : ''}`} aria-hidden>{u.name.slice(0, 1).toUpperCase()}</span>
         <span className="soc-pl-txt">
-          <span className="soc-pl-name">{u.name}{me && <em> (you)</em>}{u.guest && <i className="soc-tag">Guest</i>}{friend && <i className="soc-tag friend" title="Friend">★ Friend</i>}</span>
+          {!u.guest
+            ? <button type="button" className="soc-pl-name link" onClick={() => social.showProfile(u.name)} data-testid={`pl-name-${u.name}`}>{u.name}{me && <em> (you)</em>}{u.guest && <i className="soc-tag">Guest</i>}{friend && <i className="soc-tag friend" title="Friend">★ Friend</i>}</button>
+            : <span className="soc-pl-name">{u.name}{me && <em> (you)</em>}{u.guest && <i className="soc-tag">Guest</i>}{friend && <i className="soc-tag friend" title="Friend">★ Friend</i>}</span>}
           <span className={`soc-pl-status ${u.status.kind}`}>{statusLabel(u.status, modeName)}</span>
         </span>
         <Rating r={u.rating} />
@@ -428,7 +430,7 @@ function Friends({ signedIn }: { signedIn: boolean }) {
       <Section title={`Friends${f?.friends.length ? ` (${f.friends.length})` : ''}`} testid="friends-list">
         {f?.friends.map((r) => (
           <div key={r.id} className="soc-frow" data-testid={`friend-${r.name}`}>
-            <span className="soc-frow-name">{online(r.id) && <i className="soc-online" title="Online" />}{r.name}<small>{online(r.id) ? statusLabel(s.users[r.id]!.status, modeName) : 'Offline'}</small></span>
+            <button type="button" className="soc-frow-name link" onClick={() => social.showProfile(r.name)} data-testid={`friend-name-${r.name}`}>{online(r.id) && <i className="soc-online" title="Online" />}{r.name}<small>{online(r.id) ? statusLabel(s.users[r.id]!.status, modeName) : 'Offline'}</small></button>
             <button type="button" onClick={() => social.openDm(r.id)}>💬</button>
             {online(r.id) && <button type="button" onClick={() => void inviteTo(r.id, s.myTable)} data-testid={`finvite-${r.name}`}>➕</button>}
             <button type="button" onClick={() => social.showProfile(r.name)}>👤</button>
@@ -490,7 +492,10 @@ function Profile({ name }: { name: string }) {
             <span className="soc-av big" aria-hidden>{p.username.slice(0, 1).toUpperCase()}</span>
             <div>
               <h3 data-testid="profile-name">{p.username}{p.champion > 0 && <span className="soc-champ" title="Tournament champion">🏆×{p.champion}</span>}</h3>
-              <p className="soc-muted">Member since {new Date(p.memberSince).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}{s.users[pid ?? ''] ? ' · online' : ''}</p>
+              <p className="soc-muted">Member since {new Date(p.memberSince).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</p>
+              <p className={`soc-online-status ${s.users[pid ?? ''] ? 'on' : 'off'}`} data-testid="profile-online">
+                <i className="soc-dot" aria-hidden />{s.users[pid ?? ''] ? `Online — ${statusLabel(s.users[pid ?? '']!.status, modeName)}` : 'Offline'}
+              </p>
             </div>
           </div>
           <div className="soc-stats">

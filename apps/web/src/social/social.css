@@ -365,3 +365,14 @@ div.ranks-row { cursor: default; }
 @media (prefers-reduced-motion: reduce) {
   .ranks-sheet-back { -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
+
+/* Profile online status (Demetrius 2026-10-19): prominent online/offline indicator */
+.soc-online-status { display: flex; align-items: center; gap: 6px; margin: 4px 0 0; font-size: 13px; font-weight: 700; }
+.soc-online-status .soc-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+.soc-online-status.on { color: var(--green); }
+.soc-online-status.on .soc-dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.soc-online-status.off { color: var(--muted); }
+.soc-online-status.off .soc-dot { background: #555; }
+/* Tappable player names */
+button.soc-pl-name.link, button.soc-frow-name.link { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+button.soc-pl-name.link:hover, button.soc-frow-name.link:hover { text-decoration: underline; }
