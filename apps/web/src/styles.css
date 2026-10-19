@@ -594,12 +594,38 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
   .mode-cards { grid-template-columns: repeat(4, 1fr); gap: 10px; }
   .mode-card { min-height: 150px; padding: 14px 12px; }
   .mode-card .mc-title { font-size: 21px; }
-  .ess { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .ess { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; align-items: start; }
   .ess .go, .ess .join-row, .ess .err { grid-column: 1 / -1; }
-  .ess-row { min-height: 54px; padding: 8px 12px; }
-  .ess-label { font-size: 16px; }
-  .ess .seg button { padding: 7px 10px; font-size: 15px; }
+  .ess-row { min-height: 0; padding: 6px 10px; background: rgba(255,255,255,.04); border-radius: 10px; }
+  .ess-label { font-size: 14px; }
+  .ess-label small { font-size: 11px; }
+  .ess .seg { flex-wrap: wrap; gap: 4px; }
+  .ess .seg button { padding: 6px 8px; font-size: 13px; }
   .ess .go { padding: 12px; margin-top: 0; }
+  .ess .sticky-primary { grid-column: 1 / -1; position: sticky; bottom: 0; background: linear-gradient(180deg, transparent, rgba(12,7,18,.95) 40%); padding: 8px 0 calc(4px + env(safe-area-inset-bottom)); margin-top: 2px; }
+  /* deck thumbs and venue select stay compact in the grid */
+  .ess .deck-thumbs { gap: 6px; padding: 2px; }
+  .ess .deck-thumbs .dt { width: 64px; padding: 4px 4px 6px; }
+  .ess .deck-thumbs .dt span { font-size: 11px; }
+  .ess-row.stack > select[data-testid="venue-select-setup"] { min-height: 38px; font-size: 14px; }
+}
+/* landscape: victory/game-over screen must fit 390px height — compact everything */
+@media (orientation: landscape) and (max-height: 540px) {
+  .victory-screen { padding: calc(12px + env(safe-area-inset-top)) 12px calc(8px + env(safe-area-inset-bottom)); gap: 6px; }
+  .vic-head { font-size: 16px; }
+  .vs-title { font-size: clamp(28px, 6vw, 40px); }
+  .vs-sub { font-size: clamp(14px, 2.8vw, 18px); }
+  .victory-spot { gap: 6px; }
+  .vs-winners { gap: 6px; }
+  .vs-card { min-height: 0; padding: 8px; gap: 2px; }
+  .vs-initial { width: 40px; height: 40px; font-size: 22px; }
+  .vs-name { font-size: clamp(16px, 3.4vw, 20px); }
+  .vs-losers { gap: 4px; }
+  .vs-loser-row { gap: 6px; }
+  .vic-foot { padding: 8px 10px; gap: 4px; font-size: 13px; }
+  .shot-out-banner { font-size: clamp(24px, 6vw, 36px); margin: 4px 0; }
+  .confirm-actions { gap: 6px; }
+  .confirm-actions .primary.big { padding: 10px 16px; font-size: 15px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .slide-fwd, .slide-back, .splash-logo, .splash .tagline, .wiz-actions, .sheet, .trick-banner-wrap .center-note.win { animation: none !important; }
