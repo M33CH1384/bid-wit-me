@@ -21,12 +21,12 @@ export function levelForXp(xp: number): number {
 
 /** Milestone titles: the highest milestone at or below the level. */
 const TITLES: [number, string][] = [
-  [50, 'The Mayor'],
-  [40, 'Hood Legend'],
+  [50, 'King of the Block'],
+  [40, 'OG'],
   [30, 'Shot Caller'],
   [20, 'Block Captain'],
-  [10, 'Block Member'],
-  [5, 'On the Rise'], // was 'Corner Regular' — Demetrius didn't like it (2026-10-19)
+  [10, 'Certified'],
+  [5, 'Prospect'],
   [1, 'New Jack'],
 ];
 export const titleForLevel = (level: number): string => TITLES.find(([m]) => level >= m)?.[1] ?? 'New Jack';
