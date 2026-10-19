@@ -1484,8 +1484,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         const t = piles[piles.length - 1]!;
         const short = (c: Card) => (c === 'BJ' ? 'BJ' : c === 'LJ' ? 'LJ' : cardLabel(c));
         return (
-          <div className={`last-trick glass slant ${ltOpen ? 'open' : 'chip'}`} data-testid="last-trick" aria-label="Last trick" role="button" tabIndex={0} aria-expanded={ltOpen} onClick={() => setLtOpen(!ltOpen)}>
-            <span className="lt-label">LAST TRICK{!ltOpen && t.winner !== null && <> · {face(t.winner).slice(0, 8)}</>}</span>
+          <div className={`last-trick glass slant ${ltOpen ? 'open' : 'chip'}`} data-testid="last-trick" aria-label="Last trick" role="button" tabIndex={0} aria-expanded={ltOpen} onClick={() => setLtOpen(!ltOpen)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setLtOpen(!ltOpen); } }}>
+            <span className="lt-label">LAST TRICK{!ltOpen && t.winner !== null && <> · {face(t.winner).slice(0, 8)}</>}{ltOpen && <span className="lt-close" aria-hidden> ✕</span>}</span>
             {ltOpen && t.plays.map((pl) => (
               <span key={pl.card} className={`lt-card ${pl.seat === t.winner ? 'win' : ''} ${pl.card[1] === 'H' || pl.card[1] === 'D' || pl.card === 'BJ' ? 'red' : ''}`}>
                 <small>{face(pl.seat).slice(0, 3)}</small>{short(pl.card)}

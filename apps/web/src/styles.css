@@ -339,7 +339,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .sf-note { color: var(--muted); font-size: 12px; }
 
 /* last trick readout (bottom-right, opposite your name plate) */
-.last-trick, .last-trick.glass.slant { position: absolute; right: calc(8px + env(safe-area-inset-right)); bottom: calc(23vh + env(safe-area-inset-bottom)); z-index: 9; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 4px; max-width: 46vw; padding: 4px 10px 5px; --slant: 8px; pointer-events: none; font-family: var(--display); }
+.last-trick, .last-trick.glass.slant { position: absolute; right: calc(8px + env(safe-area-inset-right)); bottom: calc(23vh + env(safe-area-inset-bottom)); z-index: 9; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 4px; max-width: 46vw; padding: 4px 10px 5px; --slant: 8px; pointer-events: auto; cursor: pointer; font-family: var(--display); } /* pointer-events: auto so it can be closed (Demetrius 2026-10-19) */
 .lt-label { width: 100%; text-align: right; font-size: 10px; letter-spacing: .14em; color: var(--purple-hot); font-weight: 700; }
 .lt-card { display: flex; flex-direction: column; align-items: center; line-height: 1; min-width: 26px; padding: 3px 3px; border-radius: 4px; background: #f6f1e6; color: #16121c; font-weight: 800; font-size: 15px; }
 .lt-card.red { color: #c8102e; }
