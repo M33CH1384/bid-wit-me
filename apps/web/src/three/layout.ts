@@ -114,7 +114,7 @@ export function trickSpot(pos: SeatPos, n: number, order: number, jitter: number
 }
 
 /** Felt height a landed card rests at, and the per-card step that keeps overlapping cards from z-fighting. */
-export const FELT_REST_Y = 0.006;
+export const FELT_REST_Y = 0.012; // raised from 0.006 — card corners were clipping through the felt (Demetrius 2026-10-19)
 export const STACK_DY = 0.003;
 /**
  * A card lying flat on the felt, face up: zero pitch and roll, only a spin about the vertical axis
@@ -179,8 +179,8 @@ export function pileEdgePoint(pos: SeatPos, n: number): Vector3 {
   return edge.add(tangent.multiplyScalar(PILE_TANGENT));
 }
 
-/** All books face the same way (uniform row). The alternating weave looked chaotic. Demetrius 2026-10-19. */
-export const bookIsVertical = (_trickIdx: number): boolean => true;
+/** Odd books (1st, 3rd, ...): vertical (long edge front-to-back). Even books: horizontal (rotated 90°). The alternating weave. Demetrius 2026-10-19. */
+export const bookIsVertical = (trickIdx: number): boolean => trickIdx % 2 === 0;
 
 export function pileSpot(pos: SeatPos, n: number, trickIdx: number, cardIdx: number, jitter: number): Xform {
   const d = seatDir(pos, n);
