@@ -1,14 +1,20 @@
+import { winHeadline } from '../headline';
 import { fx } from '../fx';
+import { victoryHeadline, victoryIdentity } from './victory';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { sideOf } from '@spades/rules';
 import { TurnCountdown } from '../TurnRing';
 import Table from '../Table';
+import { TableLoading } from '../TableLoading';
 import { type Settings, loadSettings, saveSettings } from '../settings';
 import type { ConnState, TableConnection } from './connection';
 import { type KickInfo, MediaBar, SeatMedia, TalkTile, VictorySpotlight } from './Media';
 import { MusicLinkCard } from './HostMusic';
-import { loadHideSpectatorChat, localNames, saveHideSpectatorChat, useCountdown, useOnlineChat, useOnlineSource, useVideo } from './useOnline';
+import { clientDeadline, loadHideSpectatorChat, localNames, saveHideSpectatorChat, useCountdown, useOnlineChat, useOnlineSource, useVideo } from './useOnline';
+import { dealerFromServer } from '../dealerName';
+import { localSeatOfServerTurn } from '../turnState';
 import { SpectatorOverlay } from './Spectators';
+import { orientRun } from '../runPlayback';
 import type { VideoMesh } from './video';
 
 /** The 3D table, driven by the server: rotated per-seat view, real chat, video bubbles, turn clock. */
@@ -18,24 +24,48 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
   const [settings, setSettings] = useState<Settings>(() => ({ ...loadSettings(), speed: 'normal' }));
   const room = cs.room!;
   const rot = source?.rot ?? null;
-  // Release 10: watching (no seat): seat 0 is a real player, so it shows their name instead of "You"
+  // Watching (no seat): every plate, including the bottom one, is the occupant — a person or a bot — never "You".
   const spectator = !!cs.spectator && cs.seat === null;
-  const names = useMemo(() => {
-    if (!rot) return [];
-    const ns = localNames(room, rot);
-    if (spectator) { const s0 = room.seats[rot.R(0)]; ns[0] = !s0 || s0.kind === 'empty' ? 'Seat 1' : s0.name; }
-    return ns;
-  }, [room, rot, spectator]);
+  const names = useMemo(() => (rot ? localNames(room, rot, spectator) : []), [room, rot, spectator]);
   const send = useCallback((text: string) => conn.send({ t: 'chat', text }), [conn]);
+  // Engine dealer seat (unrotated view) and its current occupant. The chip and the popup both use this.
+  const dealer = useMemo(() => {
+    if (!cs.view) return null;
+    const n = room.rules.playerCount;
+    const occupants = room.seats.slice(0, n).map((s) => (
+      !s || s.kind === 'empty' ? { name: '', kind: 'empty' as const } : { name: s.name, kind: s.kind }
+    ));
+    return dealerFromServer({
+      serverDealer: cs.view.dealer,
+      occupants,
+      viewerSeat: spectator || cs.seat === null ? null : cs.seat,
+    });
+  }, [cs.view, room.seats, room.rules.playerCount, spectator, cs.seat]);
+  const dealerName = dealer?.name ?? '';
   const [hideSpec, setHideSpec] = useState(loadHideSpectatorChat);
-  const chat = useOnlineChat(cs, source?.st ?? null, names, send, hideSpec && !spectator);
-  // Capture skew once per server timestamp. Recomputing it on every render (the
-  // countdown ticks twice a second) would slide the deadline forward and the ring would never drain.
-  const skew = useMemo(() => room.now - Date.now(), [room.now]);
-  const secs = useCountdown(room.deadline ? room.deadline - skew : null);
-  // Local epochs of the server turn window. The ring reads these, not a client-side timer.
-  const turnDeadline = room.deadline != null && room.turnClockStart != null ? room.deadline - skew : null;
-  const turnStart = room.turnClockStart != null ? room.turnClockStart - skew : null;
+  const chat = useOnlineChat(cs, source?.st ?? null, names, send, hideSpec && !spectator, dealerName);
+  // One absolute client time for this server snapshot. Rebuilding it from Date.now()
+  // on every render froze the number at whatever the last state said (a stuck "12s"
+  // while the server clock kept running).
+  const clockAt = useMemo(
+    () => clientDeadline(room.deadline, room.now, Date.now()),
+    [room.deadline, room.now],
+  );
+  const secs = useCountdown(clockAt);
+  // Local epochs of the server turn window for the countdown ring. Memoized per
+  // server snapshot like clockAt above (recomputing on every render would slide the
+  // window forward and the ring would never drain). The ring itself ticks on rAF.
+  const turnStart = useMemo(
+    () => (room.turnClockStart != null ? clientDeadline(room.turnClockStart, room.now, Date.now()) : null),
+    [room.turnClockStart, room.now],
+  );
+  const turnDeadline = useMemo(
+    () => (room.turnClockStart != null && room.deadline != null ? clientDeadline(room.deadline, room.now, Date.now()) : null),
+    [room.turnClockStart, room.deadline, room.now],
+  );
+  const socketGen = cs.socketGen;
+  // A new socket has to say again whether the table is drawn. The server holds the clock until then.
+  const onInteractive = useCallback((on: boolean) => conn.send({ t: 'interactive', on }), [conn, socketGen]);
 
   // Voice anti-cheat (host option): during TRICK PLAY my mic isn't sent to my partner and theirs isn't played here.
   // Partners may talk books during bidding (vaguely: "I got about 3"), so mics stay open while bidding, between hands
@@ -67,9 +97,11 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
     }
   }, [limitedNow]);
 
-  if (!source || !rot) return <div className="online-wait">Joining the table…</div>;
+  const drawn = !!source && !!rot;
+  useEffect(() => { if (!drawn) conn.send({ t: 'interactive', on: false }); }, [drawn, conn, socketGen]);
+  if (!drawn || !source || !rot) return <TableLoading progress={0.24} />;
   const r = room.rules;
-  const turnLocal = source.st.turn;
+  const turnLocal = localSeatOfServerTurn(cs.view?.turn ?? null, spectator || cs.seat === null ? null : cs.seat, r.playerCount);
   const onClock = turnDeadline != null && turnStart != null && (gp === 'bidding' || gp === 'playing' || gp === 'exchange');
 
   // host: Kick (with confirm); seated non-hosts: Vote to kick (majority of the other humans)
@@ -85,9 +117,9 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
     const offline = seat?.kind === 'human' && !seat.connected;
     return (
       <>
-        <SeatMedia seat={seat} isMe={local === 0 && !spectator} mesh={mesh} vs={vs} limited={!!seat && seat.kind === 'human' && vs.limited.includes(seat.playerId)} kick={kickFor(real)} />
+        <SeatMedia seat={seat} seatPos={(rot.n === 4 ? ['bottom', 'left', 'top', 'right'] : ['bottom', 'left', 'right'])[local] as import('../spatial').SeatPos} playerCount={rot.n} isMe={local === 0 && !spectator} mesh={mesh} vs={vs} limited={!!seat && seat.kind === 'human' && vs.limited.includes(seat.playerId)} kick={kickFor(real)} />
         {offline && <span className="chip bad seat-offline">OFFLINE</span>}
-        {turnLocal === local && secs !== null && secs <= 15 && !source.pause && <span className={`turn-clock ${secs <= 5 ? 'hot' : ''}`} data-testid={`clock-${local}`}>{secs}s</span>}
+        {turnLocal === local && secs !== null && !source.pause && <span className={`turn-clock ${secs <= 5 ? 'hot' : ''}`} data-testid={`clock-${local}`} data-turn-sec={room.turnSec ?? ''}>{secs}s</span>}
         {onClock && turnLocal === local && turnStart != null && turnDeadline != null && <TurnCountdown start={turnStart} deadline={turnDeadline} mine={local === 0 && !spectator} />}
       </>
     );
@@ -100,13 +132,14 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
   const teamNames = r.partnerships ? [0, 1].map((L) => room.teamNames?.[sideOf(rot.R(L), r)] ?? null) : undefined;
   const localSeats = Array.from({ length: rot.n }, (_, i) => i);
   const botSeats = localSeats.filter((L) => room.seats[rot.R(L)]?.kind === 'bot');
-  const revealed = localSeats.filter((L) => (room.revealed ?? []).includes(rot.R(L)));
   const seriesMine = cs.seat === null ? 0 : sideOf(cs.seat, r);
 
   return (
     <>
+      {/* Seat is not part of the key. A spectator frame used to remount the 3D table and hold
+          the full-screen "Shuffling the deck…" loader for several seconds. */}
       <Table
-        key={`${room.code}:${room.game}:${cs.seat ?? 'watch'}`}
+        key={`${room.code}:${room.game}`}
         rules={r}
         seed={`${room.code}:${room.game}`}
         settings={settings}
@@ -114,23 +147,40 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
         onMainMenu={onMainMenu}
         onRematch={() => conn.send({ t: 'rematch' })}
         onQuality={(quality) => { const s = { ...settings, quality }; setSettings(s); saveSettings({ ...loadSettings(), quality }); }}
+        onView={(view) => { const s = { ...settings, view }; setSettings(s); saveSettings({ ...loadSettings(), view }); }}
+        onTurnUp={(turnUp) => { const s = { ...settings, turnUp }; setSettings(s); saveSettings({ ...loadSettings(), turnUp }); }}
         online={{
-          source, names, chat, seatExtra, sideLabel, teamNames, botSeats, revealed, talkIntensity: room.talkIntensity,
+          source, names, chat, seatExtra, sideLabel, teamNames, botSeats, talkIntensity: room.talkIntensity,
           setTeamName: cs.seat !== null && r.partnerships ? (name) => conn.send({ t: 'teamName', name }) : undefined,
           series: { series: room.series ?? null, mine: seriesMine },
           setLearning: (on) => conn.send({ t: 'learning', on }),
+          onInteractive,
           venue: room.venueNow ?? (room.venue && room.venue !== 'random' ? room.venue : 'classic'),
           victory: (winners, losers, title, sub) => {
             const sp = (L: number) => {
               const seat = room.seats[rot.R(L)];
+              const id = victoryIdentity(seat, names[L] ?? '?');
               // your own card shows your display name ("Demetrius (you)"), not just "You"
-              const own = L === 0 && seat && 'name' in seat && typeof seat.name === 'string' && seat.name.trim() ? seat.name.trim() : undefined;
-              return { key: String(rot.R(L)), name: (spectator ? undefined : own) ?? names[L] ?? '?', seat, isMe: L === 0 && !spectator };
+              const own = L === 0 && !spectator && seat?.kind === 'human' && seat.name.trim() ? seat.name.trim() : undefined;
+              return { key: String(rot.R(L)), name: own ?? id.name, seat, isMe: L === 0 && !spectator };
             };
-            return <VictorySpotlight winners={winners.map(sp)} losers={losers.map(sp)} title={title} sub={sub} mesh={mesh} vs={vs} />;
+            const win = winners.map(sp);
+            const lose = losers.map(sp);
+            // No team name: the headline is the people (a replaced human, not the bot who finished).
+            // A named team ("Shot Callers win") is not the seats' display names, so it stays.
+            const seatHeadline = winHeadline(winners.map((L) => names[L] ?? '?'), r.partnerships);
+            const nextTitle = victoryHeadline(r.partnerships, title, seatHeadline, win);
+            const who = r.partnerships ? win.map((p) => p.name).join(' & ') : undefined;
+            const nextSub = who && !nextTitle.toLowerCase().startsWith(who.toLowerCase()) ? who : sub;
+            return <VictorySpotlight winners={win} losers={lose} title={nextTitle} sub={nextSub} mesh={mesh} vs={vs} />;
           },
           controls: spectator ? undefined : <MediaBar mesh={mesh} vs={vs} seated limited={limitedNow} />,
           spectator,
+          dealerName,
+          dealerSeat: dealer?.localSeat,
+          serverTurn: cs.view?.turn ?? null,
+          viewerSeat: spectator || cs.seat === null ? null : cs.seat,
+          run: cs.run ? orientRun(cs.run, spectator ? null : cs.seat, rot.n) : null,
           overlay: <SpectatorOverlay room={room} cs={cs} spectator={spectator} names={names} hideChat={hideSpec}
             onHideChat={(on) => { setHideSpec(on); saveHideSpectatorChat(on); }}
             onTake={(seat) => conn.send({ t: 'sit', seat })} onLeave={onMainMenu} />,

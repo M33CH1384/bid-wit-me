@@ -3,7 +3,7 @@
  * Plain TS types + small hand-written guards (no runtime schema lib, to keep the Worker bundle and CPU tiny).
  * Every client message is validated on the server with `parseClientMsg`; anything malformed is dropped.
  */
-import type { Card, PlayerView, Series, TableRules } from '@spades/rules';
+import type { Card, PlayerView, RunPlayout, Series, TableRules } from '@spades/rules';
 export * from './filter';
 export * from './social';
 
@@ -99,14 +99,15 @@ export type GameAction =
   | { type: 'reveal' }
   | { type: 'bid'; bid: number | 'nil' | 'blindNil' }
   | { type: 'exchange'; cards: Card[] }
-  | { type: 'play'; card: Card }
-  | { type: 'runIt' };
+  | { type: 'play'; card: Card; slam?: number; rel?: [number, number] }
+  | { type: 'runIt' }
+  | { type: 'misdeal' };
 
 export interface MediaState { cam: boolean; mic: boolean }
 
 /** Between-hands "Table Talk" countdown choices (seconds). */
 export const TALK_SECS = [15, 20, 30, 45] as const;
-/** consecutive turn timeouts before a player is replaced by a bot (0 = never) */
+/** Older clients still send this. A timeout plays the turn; it does not give the seat to a bot. */
 export const AFK_LIMITS = [0, 2, 3, 5] as const;
 export const DEFAULT_AFK_LIMIT = 3;
 export const DEFAULT_TALK_SEC = 20;
@@ -132,14 +133,14 @@ export function isMusicLink(url: string): boolean {
 }
 
 export type ClientMsg =
-  | { t: 'hello'; name: string; token?: string; v?: number; /** Release 9: signed account ticket (links the seat to an account for stats) */ ticket?: string }
+  | { t: 'hello'; name: string; token?: string; v?: number; /** stable browser guest id, so a new seat token on reload is still this player */ gid?: string; /** Release 9: signed account ticket (links the seat to an account for stats) */ ticket?: string }
   | { t: 'sit'; seat: number }
   | { t: 'stand' }
   | { t: 'addBot'; seat: number }
   | { t: 'removeBot'; seat: number }
   /** host: the table's venue (lobby / between games); everyone sees the same one */
   | { t: 'venue'; venue: VenueChoice }
-  | { t: 'config'; rules: TableRules; botLevel?: BotLevel; talkSec?: number; afkLimit?: number; partnerMicMute?: boolean; nukeIntensity?: NukeIntensity; botTalk?: boolean; talkIntensity?: TalkIntensity }
+  | { t: 'config'; rules: TableRules; botLevel?: BotLevel; talkSec?: number; afkLimit?: number; partnerMicMute?: boolean; nukeIntensity?: NukeIntensity; botTalk?: boolean; talkIntensity?: TalkIntensity; aiTalk?: boolean }
   /** rename your own team (team modes); '' resets to the partner names */
   | { t: 'teamName'; name: string }
   /** host only: what plays for the whole table (the server stamps `startAt` for beats) */
@@ -159,6 +160,8 @@ export type ClientMsg =
   | { t: 'media'; media: MediaState }
   /** "Learning mode" (tips on): this player's own turn timers run 50% longer */
   | { t: 'learning'; on: boolean }
+  /** This client's table is drawn and can take a bid or a play. False while the loader is up. */
+  | { t: 'interactive'; on: boolean }
   /** host: kick the player in `seat` now (a bot takes over, no rejoin this game). Anyone else: vote to kick (toggles). */
   | { t: 'kick'; seat: number }
   | { t: 'rtc'; to: string; data: unknown }
@@ -171,7 +174,7 @@ export type ClientMsg =
 /* ------------------------------------------------------------ server → client */
 export type SeatInfo =
   | { kind: 'empty' }
-  | { kind: 'bot'; name: string; level: BotLevel }
+  | { kind: 'bot'; name: string; level: BotLevel; /** human this bot replaced mid-game; the game-over screen still names them */ was?: string }
   | { kind: 'human'; playerId: string; name: string; connected: boolean; media: MediaState; autoplay?: boolean };
 
 export interface MemberInfo { playerId: string; name: string; connected: boolean; seat: number | null }
@@ -194,6 +197,13 @@ export interface RoomInfo {
    * The HUD ring is `(deadline − now) / (deadline − turnClockStart)`.
    */
   turnClockStart: number | null;
+  /**
+   * Seconds on the clock for the current human turn: the table's bid or play setting
+   * (longer while that player has learning mode on). The countdown is `deadline`; this
+   * is the length it was given, so the client does not invent a shorter one. Null when
+   * no human is on the clock.
+   */
+  turnSec?: number | null;
   /** players (ids) who have pressed "next hand" */
   ready: string[];
   /** monotonically increasing broadcast counter (any change: seats, media, timers, game) */
@@ -217,13 +227,15 @@ export interface RoomInfo {
   talkIntensity?: TalkIntensity;
   /** host option: bots chat (trash talk) at the table; default on */
   botTalk?: boolean;
+  /** host option: pre-voiced AI catalog lines + Voice (c) writer; default off */
+  aiTalk?: boolean;
   /** the host's venue pick (default classic) */
   venue?: VenueChoice;
   /** the venue this game is played in ('random' resolved at the start; absent before the first game = venue) */
   venueNow?: VenueId;
   /** per side: a custom team name, or null = default (partner names) */
   teamNames?: (string | null)[];
-  /** bot seats whose Hustler act is over (plate tag shows the real persona) */
+  /** bot seats whose Hustler act is over (their lines drop the newbie cover; the plate tag does not) */
   revealed?: number[];
   /** rematch series at this table (survives reconnects; resets when the teams change) */
   series?: Series | null;
@@ -264,10 +276,18 @@ export function rollVenue(r: number, not?: VenueId): VenueId {
   return pool[Math.min(pool.length - 1, Math.floor(r * pool.length))]!;
 }
 
+/**
+ * Public play-out of a resolved 'Run it!', real seats, kept until the next hand.
+ * `seq` is the room version of the claim so each client starts the show once.
+ */
+export interface RunPlayback extends RunPlayout {
+  seq: number;
+}
+
 export type ServerMsg =
   | { t: 'welcome'; you: string; token: string; code: string; chat: ChatLine[]; v: number }
   /** `view.history` is null when unchanged since the last state sent on this connection (keep the previous one) */
-  | { t: 'state'; room: RoomInfo; seat: number | null; view: PlayerView | null; /** Release 10: you're watching (view = a redacted table view from seat 0: no hand, no legal moves) */ spectator?: boolean }
+  | { t: 'state'; room: RoomInfo; seat: number | null; view: PlayerView | null; /** Release 10: you're watching (view = a redacted table view from seat 0: no hand, no legal moves) */ spectator?: boolean; /** remaining tricks of a resolved Run it!, so every client can play them out */ run?: RunPlayback }
   | { t: 'chat'; line: ChatLine }
   | { t: 'rtc'; from: string; data: unknown }
   /**
@@ -294,8 +314,16 @@ function parseAction(a: unknown): GameAction | null {
     case 'exchange':
       return Array.isArray(a.cards) && a.cards.length <= 2 && a.cards.every((c) => isStr(c, 2)) ? { type: 'exchange', cards: a.cards as Card[] } : null;
     case 'play':
-      return isStr(a.card, 2) ? { type: 'play', card: a.card as Card } : null;
+      if (!isStr(a.card, 2)) return null;
+      {
+        const out: { type: 'play'; card: Card; slam?: number; rel?: [number, number] } = { type: 'play', card: a.card as Card };
+        if (typeof a.slam === 'number' && Number.isFinite(a.slam)) out.slam = Math.max(0, Math.min(1, a.slam));
+        const r = a.rel;
+        if (Array.isArray(r) && r.length === 2 && r.every((x) => typeof x === 'number' && Number.isFinite(x))) out.rel = [Math.max(-20, Math.min(20, r[0] as number)), Math.max(-20, Math.min(20, r[1] as number))];
+        return out;
+      }
     case 'runIt': return { type: 'runIt' };
+    case 'misdeal': return { type: 'misdeal' };
     default: return null;
   }
 }
@@ -311,7 +339,7 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
   switch (m.t) {
     case 'hello':
       if (!isStr(m.name, 100)) return null;
-      return { t: 'hello', name: m.name, token: isStr(m.token, 100) ? m.token : undefined, v: isInt(m.v) ? m.v : undefined, ...(isStr(m.ticket, 400) ? { ticket: m.ticket } : {}) };
+      return { t: 'hello', name: m.name, token: isStr(m.token, 100) ? m.token : undefined, v: isInt(m.v) ? m.v : undefined, ...(isStr(m.gid, 64) ? { gid: m.gid } : {}), ...(isStr(m.ticket, 400) ? { ticket: m.ticket } : {}) };
     case 'sit': case 'addBot': case 'removeBot': case 'kick':
       return isInt(m.seat) && m.seat >= 0 && m.seat < 4 ? { t: m.t, seat: m.seat } : null;
     case 'stand': case 'start': case 'next': case 'rematch': case 'leave':
@@ -329,6 +357,7 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       if (isInt(m.afkLimit) && (AFK_LIMITS as readonly number[]).includes(m.afkLimit)) out.afkLimit = m.afkLimit;
       if (typeof m.partnerMicMute === 'boolean') out.partnerMicMute = m.partnerMicMute;
       if (typeof m.botTalk === 'boolean') out.botTalk = m.botTalk;
+      if (typeof m.aiTalk === 'boolean') out.aiTalk = m.aiTalk;
       if (typeof m.talkIntensity === 'string' && (TALK_INTENSITIES as readonly string[]).includes(m.talkIntensity)) out.talkIntensity = m.talkIntensity as TalkIntensity;
       if (typeof m.nukeIntensity === 'string' && (NUKE_INTENSITIES as readonly string[]).includes(m.nukeIntensity)) out.nukeIntensity = m.nukeIntensity as NukeIntensity;
       return out;
@@ -356,6 +385,8 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return isObj(m.media) ? { t: 'media', media: { cam: m.media.cam === true, mic: m.media.mic === true } } : null;
     case 'learning':
       return { t: 'learning', on: m.on === true };
+    case 'interactive':
+      return { t: 'interactive', on: m.on === true };
     case 'tableOpts': {
       const out: Extract<ClientMsg, { t: 'tableOpts' }> = { t: 'tableOpts' };
       if (typeof m.private === 'boolean') out.private = m.private;
