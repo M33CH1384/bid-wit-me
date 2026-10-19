@@ -145,7 +145,7 @@ export function defaultRemovedCards(deck: DeckKind, playerCount: 3 | 4): Card[] 
 export const JOKER_TRUMP_TOP: Card[] = ['BJ', 'LJ', '2D', '2S'];
 
 /** Classic joker variant (2♥ + 2♦ removed, jokers then A♠ … 2♠) kept as a house-rule option. */
-export const CLASSIC_JOKER: { removedCards: Card[]; trumpOrderTop: Card[] } = { removedCards: ['2H', '2D'], trumpOrderTop: ['BJ', 'LJ'] };
+export const CLASSIC_JOKER: { removedCards: Card[]; trumpOrderTop: Card[] } = { removedCards: ['2H', '2C'], trumpOrderTop: ['BJ', 'LJ'] };
 
 const BASE: Omit<TableRules, 'mode' | 'partnerships' | 'playerCount' | 'deck' | 'removedCards' | 'trumpOrderTop' | 'targetScore'> = {
   deuceOfSpadesHigh: false,

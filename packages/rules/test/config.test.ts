@@ -152,7 +152,7 @@ describe('acceptRules', () => {
         ...CLASSIC_JOKER, deuceOfSpadesHigh: true, targetScore: 250, minTeamBid: 4, nil: { allowed: false },
         blindNil: { allowed: true, onlyWhenBehindBy: null, exchangeCards: 2, value: 150 }, bagsPerPenalty: 5, bagPenalty: 50,
         tenForTwoHundred: true, losingFloor: null, firstHandMin: 3, shotOut: false, bagsOn: false, firstHandBidsItself: false,
-        spadesMustBeBroken: false, firstLead: 'twoOfClubs', partnerMayAlsoNil: false, nilTricksCountForPartner: true,
+        spadesMustBeBroken: false, firstLead: 'leftOfDealer', partnerMayAlsoNil: false, nilTricksCountForPartner: true,
         turnTimerSec: { bid: 45, play: 15 },
       }),
     ];
