@@ -675,11 +675,14 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .table-screen:has(.me > .bid-panel) .chat-ticker { visibility: hidden; }
 /* larger video bubbles: keep the partner's (top-centre) clear of the one-line scorebug */
 .table-screen.short .seat-anchor.side-topc > .plate:has(> .vbubble) { margin-top: 9px; }
-/* landscape: partner plate is top-left under the scorebug — compact so it never reaches the felt. Demetrius 2026-10-19. */
-.table-screen.short .seat-anchor.side-topc > .plate { max-width: 170px; }
-.table-screen.short .seat-anchor.side-topc .plate-body { padding: 2px 10px 3px 18px; }
-.table-screen.short .seat-anchor.side-topc .plate-name { font-size: 12px; }
-.table-screen.short .seat-anchor.side-topc .plate .chip { font-size: 9px; padding: 0 4px; }
+/* landscape: partner plate is top-left under the scorebug — ultra-compact so it never dominates. Demetrius 2026-10-19. */
+.table-screen.short .seat-anchor.side-topc > .plate { max-width: 140px; }
+.table-screen.short .seat-anchor.side-topc .plate-avatar { width: 24px; height: 24px; font-size: 12px; }
+.table-screen.short .seat-anchor.side-topc .plate-body { padding: 1px 8px 2px 14px; }
+.table-screen.short .seat-anchor.side-topc .plate-name { font-size: 11px; }
+.table-screen.short .seat-anchor.side-topc .plate .chip.partner { display: none; } /* partner chip redundant in landscape */
+.table-screen.short .seat-anchor.side-topc .plate .chip.dealer { font-size: 8px; padding: 0 3px; }
+.table-screen.short .seat-anchor.side-topc .plate .book-counter { font-size: 9px; }
 /* cramped portrait phones with a partner video bubble: the trump order folds into the scorebug's second line */
 @media (orientation: portrait) and (max-height: 760px) {
   .table-screen:not(.short):has(.side-top .vbubble) .trump-strip,
