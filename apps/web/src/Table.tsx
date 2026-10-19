@@ -22,7 +22,8 @@ import { useMyTeamName } from './TeamName';
 import { offlineTalk } from './offlineTalk';
 import { BidOrder, BidSummary, showCenterBidOrder } from './PartnerTalk';
 import { guardTouches, lockBody } from './antiPan';
-import { TrumpLadder, trumpStripShown } from './trumpLadder';
+import { TrumpLadder } from './trumpLadder';
+import { TrumpPopup, ackTrumpPopup, trumpPopupSeen, trumpSeenKey } from './TrumpPopup';
 import { landingMode } from './three/landing';
 import { SocialButton } from './social/Social';
 import { recordOfflineGame } from './offlineStats';
@@ -97,7 +98,7 @@ function TrickBanner({ text }: { text: string }) {
       const top = Math.min(...L.trick.map((t) => t.y)), bottom = Math.max(...L.trick.map((t) => t.y + t.h));
       const bh = el.offsetHeight || 28, bw = el.offsetWidth || 160;
       const x0 = (window.innerWidth - bw) / 2;
-      const obstacles = [...document.querySelectorAll('.scorebug > :not(.dock-slot), .trump-strip, .badge-layer .plate, .me-plate, .last-trick, .ctl-cluster, .bid-panel')]
+      const obstacles = [...document.querySelectorAll('.scorebug > :not(.dock-slot), .badge-layer .plate, .me-plate, .last-trick, .ctl-cluster, .bid-panel')]
         .map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0 && r.height > 0)
         .concat((L.hand ?? []).map((c) => ({ left: c.x, right: c.x + c.w, top: c.y, bottom: c.y + c.h }) as DOMRect));
       const free = (y: number) => y >= 0 && y + bh <= window.innerHeight && obstacles.every((r) => r.right <= x0 || r.left >= x0 + bw || r.bottom <= y || r.top >= y + bh);
@@ -546,6 +547,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [ltOpen, setLtOpen] = useState(false);
   const [clearedOpen, setClearedOpen] = useState(false);
   useEffect(() => { setClearedOpen(false); }, [st.handNo]);
+  // One-time trump-order popup for Joker modes (replaces the old persistent strip).
+  const trumpKey = trumpSeenKey(r);
+  const [trumpAcked, setTrumpAcked] = useState<boolean>(() => trumpPopupSeen(trumpKey));
+  const dismissTrumpPopup = useCallback(() => { ackTrumpPopup(trumpKey); setTrumpAcked(true); }, [trumpKey]);
+  const showTrumpPopup = trumpKey !== null && st.handNo === 1 && !trumpAcked;
   const [chatOpen, setChatOpen] = useState(() => window.innerWidth >= 900 && window.innerHeight > 600);
   const [seenMsgs, setSeenMsgs] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -933,7 +939,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // between its (bottom-anchored) bottom edge and the scorebug / trump strip; the coach body scrolls inside.
   useLayoutEffect(() => {
     const fit = () => {
-      const tops = [...document.querySelectorAll('.scorebug, .trump-strip')].map((e) => e.getBoundingClientRect()).filter((r) => r.height > 0 && r.top < window.innerHeight / 2);
+      const tops = [...document.querySelectorAll('.scorebug')].map((e) => e.getBoundingClientRect()).filter((r) => r.height > 0 && r.top < window.innerHeight / 2);
       const limit = Math.max(0, ...tops.map((r) => r.bottom)) + 6;
       for (const el of document.querySelectorAll<HTMLElement>('.me > .bid-panel, .bid-coach-float')) {
         const r = el.getBoundingClientRect();
@@ -1501,10 +1507,6 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         <span className="bug-btn dock-slot" aria-hidden />
       </header>
 
-      {trumpStripShown(st) && <div className="trump-strip glass slant" data-testid="trump-strip">
-        <span className="ts-label">TRUMPS</span> <TrumpLadder rules={r} n={5} style="long" />{st.spadesBroken && tips.on && <span className="ts-broken">SPADES BROKEN</span>}
-      </div>}
-
       {/* last-trick readout. After a resolved 'Run it!' the same chip opens every hand the tornado cleared. */}
       {(piles.length > 0 || !!runHands) && (() => {
         const seatLabel = (seat: number) => face(seat);
@@ -1529,8 +1531,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         const t = piles[piles.length - 1]!;
         const short = (c: Card) => (c === 'BJ' ? 'BJ' : c === 'LJ' ? 'LJ' : cardLabel(c));
         return (
-          <div className={`last-trick glass slant ${ltOpen ? 'open' : 'chip'}`} data-testid="last-trick" aria-label="Last trick" role="button" tabIndex={0} aria-expanded={ltOpen} onClick={() => setLtOpen(!ltOpen)}>
-            <span className="lt-label">LAST TRICK{!ltOpen && t.winner !== null && <> · {face(t.winner).slice(0, 8)}</>}</span>
+          <div className={`last-trick glass slant ${ltOpen ? 'open' : 'chip'}`} data-testid="last-trick" aria-label="Last trick" role="button" tabIndex={0} aria-expanded={ltOpen} onClick={() => setLtOpen(!ltOpen)} onTouchEnd={(e) => { e.preventDefault(); setLtOpen(!ltOpen); }}>
+            <span className="lt-label">LAST TRICK{ltOpen ? ' ✕' : t.winner !== null && <> · {face(t.winner).slice(0, 8)}</>}</span>
             {ltOpen && t.plays.map((pl) => (
               <span key={pl.card} className={`lt-card ${pl.seat === t.winner ? 'win' : ''} ${pl.card[1] === 'H' || pl.card[1] === 'D' || pl.card === 'BJ' ? 'red' : ''}`}>
                 <small>{face(pl.seat).slice(0, 3)}</small>{short(pl.card)}
@@ -1548,6 +1550,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         {isBooks && st.phase === 'playing' && !pause && !dealing && st.tricks.length === 0 && st.trick.plays.length === 0 && <div className="center-note books-note" data-testid="books-note">{booksBanner(hostMinimum(r), r.partnerships)}</div>}
         {st.phase === 'exchange' && !humanExchanging && <div className="center-note">{names[exchangeStep!.from]} passes {exchangeStep!.count} to {names[exchangeStep!.to]}…</div>}
       </div>
+      {showTrumpPopup && <TrumpPopup rules={r} onDone={dismissTrumpPopup} />}
       {winnerSeat !== null && <TrickBanner key={`${st.handNo}-${st.tricks.length}`} text={trickTakenLine(face(winnerSeat))} />}
 
       {/* toasts */}
