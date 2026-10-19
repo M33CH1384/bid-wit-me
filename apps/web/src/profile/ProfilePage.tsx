@@ -14,7 +14,7 @@ const DIVISION_CLASS: Record<Division, string> = {
 
 interface SeasonRank { division: Division; elo: number; games: number; wins: number; losses: number; peak: number; rank: number; of: number }
 interface Challenge { id: string; title: string; metric: string; target: number; progress: number; xp: number; coins: number; claimed: boolean }
-interface Achievement { id: string; title: string; hint: string; xp: number; unlockedAt: number | null }
+interface Achievement { id: string; title: string; hint: string; xp: number; coins: number; unlockedAt: number | null }
 interface Unlock { itemId: string; source: string; unlockedAt: number; slot: string | null; equipped: boolean }
 interface Profile {
   user: { id: string; name: string };
@@ -161,15 +161,23 @@ export default function ProfilePage() {
             <RankCard title="Cutthroat" rank={profile.rank.cutthroat} />
           </div>
         )}
-        {tab === 'challenges' && (
+        {tab === 'challenges' && (() => {
+          const all = [...profile.challenges.daily, ...profile.challenges.weekly];
+          const earnedXp = all.filter(c => c.claimed).reduce((s, c) => s + c.xp, 0);
+          const earnedCoins = all.filter(c => c.claimed).reduce((s, c) => s + (c.coins ?? 0), 0);
+          return (
           <>
+            {(earnedXp > 0 || earnedCoins > 0) && (
+              <p className="ch-earned" data-testid="challenges-earned">Earned: <b>{earnedXp} XP</b>{earnedCoins > 0 && <> · <b>{earnedCoins} coins</b></>}</p>
+            )}
             <h3>Daily</h3>
             {profile.challenges.daily.map((c) => <ChallengeRow key={c.id} c={c} onClaim={claim} />)}
             <h3>Weekly</h3>
             {profile.challenges.weekly.map((c) => <ChallengeRow key={c.id} c={c} onClaim={claim} />)}
             {claiming && <p className="ch-claiming">Claiming…</p>}
           </>
-        )}
+          );
+        })()}
         {tab === 'stats' && (
           <>
             <h3>Partnership</h3><StatsGrid stats={profile.stats.team} />
@@ -180,7 +188,7 @@ export default function ProfilePage() {
           <div className="ach-grid">
             {profile.achievements.map((a) => (
               <div key={a.id} className={`ach ${a.unlockedAt ? 'unlocked' : 'locked'}`}>
-                <b>{a.title}</b><small>{a.unlockedAt ? 'Unlocked' : a.hint}</small><span>+{a.xp} XP</span>
+                <b>{a.title}</b><small>{a.unlockedAt ? 'Unlocked' : a.hint}</small><span>+{a.xp} XP{a.coins ? ` · +${a.coins} coins` : ''}</span>
               </div>
             ))}
           </div>

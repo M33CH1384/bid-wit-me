@@ -1,0 +1,4 @@
+
+/* Challenges earned summary (Demetrius 2026-10-19) */
+.ch-earned { font-size: 14px; color: var(--muted); margin: 0 0 12px; }
+.ch-earned b { color: var(--gold); }
