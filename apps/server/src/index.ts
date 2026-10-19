@@ -30,6 +30,7 @@ import { type Bucket, LIMITS, type LimitEnv, hit, limited } from './limits';
 import { type AuthEnv, handleAuth } from './auth/routes';
 import { handleLocalStats } from './stats/local';
 import { type SocialEnv, handleSocialHttp, isAdmin } from './social/routes';
+import { type CredEnv, handleCredHttp } from './cred/routes';
 import { verifyTicket } from './social/ticket';
 import { type ConnAtt, type GlobalLog, Hub, type TableLog } from './social/hub';
 import { saveRecord } from './stats/record';
@@ -225,6 +226,12 @@ export default {
         return json(await r.json(), {}, origin);
       }
       return handleSocialHttp(req as Request & { cf?: unknown }, env, url, parts, Date.now());
+    }
+
+    if (parts[1] === 'profile' || parts[1] === 'challenges') {
+      const slow = await limited(req, env, 'info', origin);
+      if (slow) return slow;
+      return handleCredHttp(req, env as CredEnv, url, parts, Date.now());
     }
 
     if (parts[1] === 'tournaments') {
