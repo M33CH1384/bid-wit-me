@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
-import { serverUrl } from '../online/config';
 
-/** Street Cred profile page: Rank / Challenges / Stats / Achievements / Unlocks tabs. */
+/** Rep profile page: Rank / Challenges / Stats / Achievements / Unlocks tabs. */
 
 type Division = 'stoop' | 'corner' | 'block' | 'avenue' | 'boulevard' | 'legend';
 const DIVISION_LABEL: Record<Division, string> = {
@@ -38,7 +37,9 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const r = await fetch(`${serverUrl()}${path}`, { credentials: 'include', ...init });
+  // Same-origin via the Pages Function /api proxy (first-party cookies work in Safari).
+  // Do NOT use serverUrl() here — cross-site fetch to workers.dev gets third-party-cookie blocked.
+  const r = await fetch(path, { credentials: 'include', ...init });
   if (!r.ok) throw new Error((await r.json().catch(() => ({})) as { error?: string }).error ?? `HTTP ${r.status}`);
   return r.json() as Promise<T>;
 }
@@ -120,11 +121,11 @@ export default function ProfilePage() {
     return (
       <div className="profile-page">
         <header className="prof-bar"><button type="button" className="back-chip" onClick={() => history.back()}>← BACK</button></header>
-        <div className="prof-error"><p>{error}</p>{error.includes('sign') || error.includes('auth') ? <p>Sign in to view your Street Cred profile.</p> : <button type="button" className="primary" onClick={load}>Retry</button>}</div>
+        <div className="prof-error"><p>{error}</p>{error.includes('sign') || error.includes('auth') ? <p>Sign in to view your Rep profile.</p> : <button type="button" className="primary" onClick={load}>Retry</button>}</div>
       </div>
     );
   }
-  if (!profile) return <div className="profile-page"><div className="prof-loading">Loading your Street Cred…</div></div>;
+  if (!profile) return <div className="profile-page"><div className="prof-loading">Loading your Rep…</div></div>;
 
   const xpPct = Math.min(100, Math.round((profile.level.xp / Math.max(1, profile.level.xpForNext)) * 100));
   const pendingClaims = [...profile.challenges.daily, ...profile.challenges.weekly].filter((c) => c.progress >= c.target && !c.claimed).length;
