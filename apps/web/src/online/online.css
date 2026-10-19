@@ -89,7 +89,7 @@
 .plate.me-plate:has(> .vbubble.self) .plate-body { margin-left: 16px; }
 .plate .seat-offline { position: absolute; top: -10px; right: 0; }
 .turn-clock {
-  position: absolute; top: -12px; left: 30px; font-family: var(--display); font-weight: 800; font-size: 13px; padding: 1px 6px;
+  position: absolute; top: -12px; left: 30px; z-index: 6; font-family: var(--display); font-weight: 800; font-size: 13px; padding: 1px 6px;
   background: var(--purple); color: #fff; box-shadow: 0 0 10px rgba(155,92,255,.8);
 }
 .turn-clock.hot { background: var(--red); box-shadow: 0 0 12px rgba(255,77,109,.9); }

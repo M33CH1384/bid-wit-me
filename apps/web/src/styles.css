@@ -149,7 +149,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 
 /* seat name plates (lower thirds) */
 .seat-anchor { pointer-events: none; }
-.plate { position: relative; display: flex; align-items: center; gap: 0; white-space: nowrap; filter: drop-shadow(0 4px 10px rgba(0,0,0,.5)); }
+.plate { --ring-d: 40px; --ring-x: 0px; --ring-pad: 10px; position: relative; display: flex; align-items: center; gap: 0; white-space: nowrap; filter: drop-shadow(0 4px 10px rgba(0,0,0,.5)); }
 .plate-avatar {
   --uc: #fff; width: 40px; height: 40px; border-radius: 50%; flex: none; z-index: 1; display: grid; place-items: center;
   font-family: var(--display); font-weight: 800; font-size: 20px; color: #120a1c;
@@ -183,6 +183,24 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 }
 .plate.turn .plate-avatar { animation: ring 1.1s ease-in-out infinite; }
 .plate.turn .plate-body { border-bottom-color: var(--purple-hot); box-shadow: inset 0 -12px 18px -12px rgba(185,128,255,.9); }
+/* the countdown ring replaces the purple pulse, and it must not sit inside the plate's drop-shadow filter
+   (WebKit would re-filter the whole nameplate on every frame). */
+.plate.turn:has(.turn-ring) .plate-avatar { animation: none; }
+.plate:has(.turn-ring) { filter: none; }
+.plate:has(.turn-ring) .plate-body { filter: drop-shadow(0 4px 10px rgba(0,0,0,.5)); }
+.plate:has(.turn-ring) .plate-turn { filter: drop-shadow(0 3px 6px rgba(0,0,0,.45)); }
+.turn-ring {
+  position: absolute; z-index: 4; pointer-events: none; overflow: visible;
+  left: calc(var(--ring-x) - var(--ring-pad));
+  top: calc(50% - (var(--ring-d) + 2 * var(--ring-pad)) / 2);
+  width: calc(var(--ring-d) + 2 * var(--ring-pad));
+  height: calc(var(--ring-d) + 2 * var(--ring-pad));
+}
+.turn-ring circle { fill: none; }
+.turn-ring-track { stroke: rgba(245, 197, 66, 0.38); stroke-width: 2.4; }
+.turn-ring-glow { stroke: #f5c542; stroke-width: 6.2; opacity: 0.42; }
+.turn-ring-shade { stroke: #140a18; stroke-width: 4.15; }
+.turn-ring-arc { stroke: #f5c542; stroke-width: 2.55; }
 @keyframes pulse { 50% { opacity: .65; } }
 @keyframes ring { 50% { box-shadow: 0 0 0 2px #120a1c, 0 0 0 4px var(--purple-hot), 0 0 26px var(--purple-hot); } }
 
@@ -282,6 +300,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
   .bug-teams.n4 .bug-score { font-size: 19px; }
   .plate-name { font-size: 15px; }
   .plate-avatar { width: 34px; height: 34px; font-size: 17px; }
+  .plate { --ring-d: 34px; }
 }
 .bug-teams.n3 .bug-name, .bug-teams.n4 .bug-name { font-size: 10px; letter-spacing: .03em; }
 .table-screen:has(.toasts .toast) .chat-ticker { visibility: hidden; }
@@ -294,6 +313,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
   .bug-meta { letter-spacing: .06em; font-size: 10px; }
   .plate-name { font-size: 14px; }
   .plate-avatar { width: 30px; height: 30px; font-size: 15px; }
+  .plate { --ring-d: 30px; }
 }
 /* seat plates on the sides are edge-anchored and clamped on screen (see Badges in three/Scene.tsx) */
 .seat-anchor.side-left > .plate, .seat-anchor.side-top > .plate { transform: translate(0, -50%); }
@@ -374,6 +394,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .table-screen.short .trump-strip { display: none; }
 
 .table-screen.short .plate-avatar { width: 30px; height: 30px; font-size: 15px; }
+.table-screen.short .plate { --ring-d: 30px; }
 .table-screen.short .plate-body { margin-left: -10px; padding: 2px 12px 3px 16px; }
 .table-screen.short .plate-name { font-size: 14px; gap: 4px; }
 .table-screen.short .plate .chip { font-size: 10px; padding: 0 5px; }
@@ -1104,6 +1125,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
   .plate .chip { font-size: 9px; padding: 0 4px; letter-spacing: .04em; }
   .plate-name { font-size: 12.5px !important; }
   .plate-avatar { width: 26px !important; height: 26px !important; font-size: 13px !important; }
+  .plate { --ring-d: 26px; --ring-pad: 8px; }
   .plate .vbubble, .plate.me-plate > .vbubble.self { width: 44px !important; height: 44px !important; left: -6px; }
   .plate.me-plate:has(> .vbubble.self) .plate-body { margin-left: 0 !important; }
   .last-trick, .last-trick.glass.slant { max-width: 52vw; padding: 3px 6px 4px; }
@@ -1113,6 +1135,24 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .chat-line.system, .tt-chat .chat-line.system { font-size: 11px; color: rgba(200,190,220,.6); font-style: normal; border-left-width: 1px; padding-left: 5px; line-height: 1.25; }
 /* the turn badge stays readable next to a video bubble, and the YOU plate's bubble never pokes off the left edge */
 .plate-turn { z-index: 5; }
+/* video bubble is the visible circle: the ring wraps that, not the initial hidden under it */
+.plate:has(> .vbubble) { --ring-d: 84px; --ring-x: -18px; --ring-pad: 14px; }
+.plate.me-plate:has(> .vbubble.self) { --ring-d: 66px; --ring-x: -10px; --ring-pad: 12px; }
+.table-screen.short .plate:has(> .vbubble) { --ring-d: 84px; --ring-x: -18px; --ring-pad: 14px; }
+.table-screen.short .plate.me-plate:has(> .vbubble.self) { --ring-d: 66px; --ring-x: -10px; --ring-pad: 12px; }
+@media (max-width: 340px) {
+  .plate:has(> .vbubble), .plate.me-plate:has(> .vbubble.self),
+  .table-screen.short .plate:has(> .vbubble), .table-screen.short .plate.me-plate:has(> .vbubble.self) {
+    --ring-d: 44px; --ring-x: -6px; --ring-pad: 10px;
+  }
+}
+/* countdown-ring preview (?preview=turn-ring): the same plates, on a felt, at phone width */
+.ring-felt { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 46%, #248655 0%, #145236 46%, #0b2418 72%, #070d12 100%); }
+.ring-felt::after { content: ''; position: absolute; left: 7%; right: 7%; top: 16%; bottom: 20%; border-radius: 46%; box-shadow: inset 0 0 0 10px #3b2414, inset 0 0 0 13px #1a0e06, inset 0 0 48px rgba(0,0,0,.5); pointer-events: none; }
+.ring-seat { position: absolute; z-index: 2; }
+.ring-seat.top { left: 50%; top: 22%; transform: translateX(-50%); }
+.ring-seat.side { left: 10px; top: 46%; }
+.ring-seat.bottom { left: 12px; bottom: 18%; }
 .plate:has(.vbubble) .plate-turn { left: 58px; }
 .plate.me-plate:has(> .vbubble.self) { margin-left: 22px; }
 @media (max-width: 340px) { .plate:has(.vbubble) .plate-turn { left: 36px; } .plate.me-plate:has(> .vbubble.self) { margin-left: 8px; } }

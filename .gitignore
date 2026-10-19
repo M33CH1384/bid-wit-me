@@ -10,6 +10,7 @@ screenshots/release-3
 .secrets
 .dev.vars
 screenshots/release-4
+screenshots/turn-ring
 apps/web/dist-prod
 
 # voice bake scratch

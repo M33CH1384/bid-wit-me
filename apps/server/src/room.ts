@@ -1380,6 +1380,19 @@ export class Room {
     return 0;
   }
 
+  /**
+   * Start of the acting human's own clock (lead-in already elapsed), or null when `deadline`
+   * belongs to Table Talk / a bot / nobody. Does not change how long the turn lasts.
+   */
+  private turnClockStart(): number | null {
+    const d = this.data;
+    const g = d.game;
+    if (d.deadline === null || d.turnStartedAt === null || !g) return null;
+    const turn = pendingTurn(g);
+    if (!turn || d.seats[turn.seat]?.kind !== 'human') return null;
+    return d.turnStartedAt + this.leadIn(g);
+  }
+
   /** e2e only (TEST_HOOKS): jump the running table to a given game position (same seats), then carry on as normal */
   testLoadGame(game: GameState): void {
     const d = this.data;
@@ -1748,7 +1761,7 @@ export class Room {
     return {
       code: d.code, hostId: d.hostId ?? '', phase: d.phase, rules: d.rules, botLevel: d.botLevel, seats,
       members: Object.entries(d.members).map(([playerId, m]) => ({ playerId, name: m.name, connected: this.isConnected(playerId), seat: m.seat })),
-      deadline: d.deadline, turnSec: this.clockSeconds(), ready: [...d.ready], rev: d.rev, seq: d.seq ?? 0, game: d.gamesPlayed, now: this.io.now(),
+      deadline: d.deadline, turnClockStart: this.turnClockStart(), turnSec: this.clockSeconds(), ready: [...d.ready], rev: d.rev, seq: d.seq ?? 0, game: d.gamesPlayed, now: this.io.now(),
       talkSec: d.talkSec ?? Math.round(this.timing.handOverMs / 1000), afkLimit: d.afkLimit ?? DEFAULT_AFK_LIMIT, partnerMicMute: d.partnerMicMute ?? false, nukeIntensity: d.nukeIntensity ?? 'full', talkIntensity: d.talkIntensity ?? 'cookout', botTalk: d.botTalk ?? true, aiTalk: !!d.aiTalk,
       venue: d.venue ?? 'classic', ...(d.venueNow ? { venueNow: d.venueNow } : {}),
       teamNames: d.rules.partnerships ? [...(d.teamNames ?? [null, null])] : undefined, series: d.series ?? null, revealed: [...(d.talk?.revealed ?? [])],
