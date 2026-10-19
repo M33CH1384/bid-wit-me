@@ -18,7 +18,7 @@ interface Achievement { id: string; title: string; hint: string; xp: number; coi
 interface Unlock { itemId: string; source: string; unlockedAt: number; slot: string | null; equipped: boolean }
 interface Profile {
   user: { id: string; name: string };
-  level: { level: number; xp: number; title: string; xpForNext: number };
+  level: { level: number; xp: number; title: string; xpForNext: number; xpIntoLevel: number };
   season: { id: string; name: string; endsAt: number };
   rank: { team: SeasonRank; cutthroat: SeasonRank };
   stats: { team: Record<string, number | string | null>; cutthroat: Record<string, number | string | null> };
@@ -127,7 +127,7 @@ export default function ProfilePage() {
   }
   if (!profile) return <div className="profile-page"><div className="prof-loading">Loading your Rep…</div></div>;
 
-  const xpPct = Math.min(100, Math.round((profile.level.xp / Math.max(1, profile.level.xpForNext)) * 100));
+  const xpPct = Math.min(100, Math.round((profile.level.xpIntoLevel / Math.max(1, profile.level.xpForNext)) * 100));
   const pendingClaims = [...profile.challenges.daily, ...profile.challenges.weekly].filter((c) => c.progress >= c.target && !c.claimed).length;
 
   return (
@@ -142,7 +142,7 @@ export default function ProfilePage() {
         <div className="prof-id">
           <h2>{profile.user.name}</h2>
           <div className="prof-level"><b>Level {profile.level.level}</b><span>{profile.level.title}</span></div>
-          <div className="xp-bar"><i style={{ width: `${xpPct}%` }} /><small>{profile.level.xp}/{profile.level.xpForNext} XP</small></div>
+          <div className="xp-bar"><i style={{ width: `${xpPct}%` }} /><small>{profile.level.xpIntoLevel}/{profile.level.xpForNext} XP</small></div>
         </div>
       </div>
 
