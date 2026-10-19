@@ -578,7 +578,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   // bottom + a 12px breathing margin), in the LIVE view's camera. Standing keeps its exact framing.
   const sittingBottom = view === 'sitting' ? (safe.b + 12) / Math.max(1, screenH) : 0;
   const fanOpts: FanOpts = short
-    ? { short, view, reserveFrac: (Math.max(safe.l, safe.r) + 186) / size.width, bottomFrac: safe.b / Math.max(1, size.height) + sittingBottom, heightFrac: 0.25, ...strip } // +25% hand (was 0.2)
+    ? { short, view, reserveFrac: (Math.max(safe.l, safe.r) + 186) / size.width, bottomFrac: safe.b / Math.max(1, size.height) + sittingBottom, heightFrac: 0.32, ...strip } // bigger hand in landscape (was 0.25)
     : wide ? { view, reserveFrac: (size.width < 1400 ? 250 : 205) / size.width, bottomFrac: 0.012, heightFrac: 0.256, ...strip } // +25% hand (was 0.205)
     : portraitPhone ? { ...phoneHandFan(), view, bottomFrac: (phoneHandFan().bottomFrac ?? 0) + sittingBottom, ...strip, minStripPx: (handCounts[human] ?? 13) > 13 ? MIN_STRIP_PX : PHONE_HAND_STRIP_PX }
     : { view, ...strip };
