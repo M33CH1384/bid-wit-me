@@ -1,6 +1,5 @@
 import type { OpenTable, PresenceStatus } from '@spades/protocol';
 
-export const LOCAL_TABLE_REASON = 'On their device vs bots. Invite them instead.';
 export const WATCH_FULL_REASON = 'Spectator seats are full';
 
 export interface PlayerTableAction {
@@ -27,10 +26,7 @@ export function playerTableAction(
   myCode: string | null,
 ): PlayerTableAction | null {
   if (status.offline || (status.kind === 'table' && !status.code)) {
-    return {
-      local: true, join: false, joinLabel: 'Join', spectate: true,
-      spectateReason: LOCAL_TABLE_REASON, joinReason: LOCAL_TABLE_REASON,
-    };
+    return { local: true, join: false, joinLabel: 'Join', spectate: false };
   }
   if ((status.kind !== 'table' && status.kind !== 'lobby') || !status.code) return null;
   if (myCode && myCode === status.code) return null;
