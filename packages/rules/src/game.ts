@@ -62,6 +62,11 @@ export interface GameState {
   /** Misdeal redeals taken on the current hand (the hand number does not move). Omitted until one happens. */
   misdeals?: number;
   /**
+   * Seats that successfully claimed "Run it!" this game, in claim order. Powers the
+   * Run It Up achievement (Street Cred). Omitted until the first claim.
+   */
+  runItClaims?: number[];
+  /**
    * The hand a misdeal caller threw face up on the table: the caller's whole hand, public to every seat
    * (it is the proof of no spades). Set by the misdeal action on the redealt state, cleared by the next deal.
    */
@@ -469,7 +474,7 @@ function playOutRun(st: GameState, seat: Seat): GameState {
     s = applyAction(s, { type: 'play', seat: who, card });
   }
   // every play from the claim on is marked `run` (cards already on the table when it was claimed are not)
-  return { ...s, tricks: s.tricks.map((t, i) => (i < fromTricks ? t : { ...t, plays: t.plays.map((p, k) => (i === fromTricks && k < onTable ? p : { ...p, run: true as const })) })) };
+  return { ...s, runItClaims: [...(s.runItClaims ?? []), seat], tricks: s.tricks.map((t, i) => (i < fromTricks ? t : { ...t, plays: t.plays.map((p, k) => (i === fromTricks && k < onTable ? p : { ...p, run: true as const })) })) };
 }
 
 /**

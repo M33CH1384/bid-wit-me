@@ -3,6 +3,7 @@
  * Only seats linked to an account (signed-in players) get stats rows; guests and bots appear in the game's seat list.
  */
 import { type GameState, sideCount, sideOf } from '@spades/rules';
+import { processGameCred } from '../cred/hooks';
 
 export type RatingKind = 'team' | 'cutthroat';
 export const ELO_START = 1200;
@@ -20,8 +21,18 @@ export interface PlayerGameStats {
   /** contracts this player bid a number on: made / set; side bags added on those hands */
   bids: number; bidSum: number; made: number; set: number; bags: number;
   nilBids: number; nilMade: number;
+  /** blind nils made (subset of nilMade) */
+  blindNilMade: number;
   /** books (tricks) this player took */
   books: number;
+  /** most books taken in a single hand (Boston Party achievement) */
+  maxBooksHand: number;
+  /** worst points deficit this player's side overcame, across hands (Comeback Kid) */
+  maxDeficit: number;
+  /** cutthroat: an opponent was eliminated while this player survived (Undertaker) */
+  foeEliminated: boolean;
+  /** successful "Run it!" claims by this seat (Run It Up) */
+  runItClaims: number;
   /** own side got shot (set) / opponents shot while this player was at the table */
   shotsTaken: number; shotsGiven: number;
   wheels: number;
@@ -57,19 +68,28 @@ export function buildRecord(o: { id: string; room: string; game: GameState; seat
     const ref = o.seats[seat];
     if (!ref || ref.kind !== 'user' || !ref.uid) continue;
     const side = sideOf(seat, r);
-    const st: PlayerGameStats = { won: winners.includes(side), hands: g.history.length, bids: 0, bidSum: 0, made: 0, set: 0, bags: 0, nilBids: 0, nilMade: 0, books: 0, shotsTaken: 0, shotsGiven: 0, wheels: 0, bjWins: o.live?.bj[seat] ?? 0, bidMs: o.live?.bidMs[seat] ?? 0, bidN: o.live?.bidN[seat] ?? 0, playMs: o.live?.playMs[seat] ?? 0, playN: o.live?.playN[seat] ?? 0 };
+    const st: PlayerGameStats = { won: winners.includes(side), hands: g.history.length, bids: 0, bidSum: 0, made: 0, set: 0, bags: 0, nilBids: 0, nilMade: 0, blindNilMade: 0, books: 0, maxBooksHand: 0, maxDeficit: 0, foeEliminated: false, runItClaims: 0, shotsTaken: 0, shotsGiven: 0, wheels: 0, bjWins: o.live?.bj[seat] ?? 0, bidMs: o.live?.bidMs[seat] ?? 0, bidN: o.live?.bidN[seat] ?? 0, playMs: o.live?.playMs[seat] ?? 0, playN: o.live?.playN[seat] ?? 0 };
     for (const h of g.history) {
       const b = h.bids[seat];
-      st.books += h.tricksWon[seat] ?? 0;
+      const tw = h.tricksWon[seat] ?? 0;
+      st.books += tw;
+      st.maxBooksHand = Math.max(st.maxBooksHand, tw);
       const mine = h.sides.find((s) => s.side === side);
       if (!mine) continue;
+      // deficit after this hand: best opponent total minus mine (for the comeback check)
+      const bestOpp = Math.max(...h.sides.filter((s) => s.side !== side).map((s) => s.totalScore));
+      st.maxDeficit = Math.max(st.maxDeficit, bestOpp - mine.totalScore);
+      if (!r.partnerships && h.sides.some((s) => s.side !== side && s.out) && !mine.out) st.foeEliminated = true;
       if (typeof b === 'number') {
         st.bids++; st.bidSum += b;
         if (mine.contractMade === true) st.made++;
         else if (mine.contractMade === false) st.set++;
       } else if (b === 'nil' || b === 'blindNil') {
         st.nilBids++;
-        if (mine.nils.find((x) => x.seat === seat)?.made) st.nilMade++;
+        if (mine.nils.find((x) => x.seat === seat)?.made) {
+          st.nilMade++;
+          if (b === 'blindNil') st.blindNilMade++;
+        }
       }
       // Side bags from scoreHand: overtricks on a make, nil tricks on a set, tricks with no contract.
       // Books hands and "bags off" already store bagsAdded 0, so this matches the score pad.
@@ -81,6 +101,7 @@ export function buildRecord(o: { id: string; room: string; game: GameState; seat
     }
     const partnerSeat = r.partnerships ? (seat + 2) % n : -1;
     const p = partnerSeat >= 0 ? o.seats[partnerSeat] : undefined;
+    st.runItClaims = (g.runItClaims ?? []).filter((s) => s === seat).length;
     players.push({ seat, uid: ref.uid, side, won: st.won, partner: p?.kind === 'user' && p.uid ? p.uid : null, teamName: r.partnerships ? (o.teamNames?.[side] ?? null) : null, stats: st });
   }
   return {
@@ -146,10 +167,13 @@ export interface SaveMeta {
   leaverId?: string | null;
   /** shared by the abandoned row and the finished row of the same deal */
   family?: string | null;
+  /** venue actually played (room's rolled venueNow); null when unknown (offline uploads) */
+  venue?: string | null;
 }
 
 const emptyStats = (hands: number): PlayerGameStats => ({
-  won: false, hands, bids: 0, bidSum: 0, made: 0, set: 0, bags: 0, nilBids: 0, nilMade: 0, books: 0,
+  won: false, hands, bids: 0, bidSum: 0, made: 0, set: 0, bags: 0, nilBids: 0, nilMade: 0, blindNilMade: 0,
+  books: 0, maxBooksHand: 0, maxDeficit: 0, foeEliminated: false, runItClaims: 0,
   shotsTaken: 0, shotsGiven: 0, wheels: 0, bjWins: 0, bidMs: 0, bidN: 0, playMs: 0, playN: 0,
 });
 
@@ -218,6 +242,8 @@ export async function saveRecord(db: D1Database, rec: GameRecord, rated: boolean
     }
   }
   await db.batch(stmts);
+  // Street Cred (Phase 3a): best-effort — processGameCred never throws, so recording can't break.
+  await processGameCred(db, { ...rec, players }, { rated, endReason: abandoned ? 'abandoned' : 'finished', leaverId: meta.leaverId ?? null, venue: meta.venue ?? null }, elo);
 }
 
 export { sideCount };

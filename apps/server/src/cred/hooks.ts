@@ -1,0 +1,190 @@
+/**
+ * Street Cred hooks: the single integration point between game recording and cred.
+ * saveRecord calls processGameCred (best-effort, never throws past its own guard) after writing.
+ * Server-authoritative: every number here comes from the recorded game, never the client.
+ */
+import { type GameRecord, type PlayerGameStats, type RatingKind } from '../stats/record';
+import { opponentBucket } from '../stats/boards';
+import { divisionOf, divisionRank, type Division } from './divisions';
+import { ensureSeason } from './seasons';
+import { awardXp } from './xp';
+import { bumpProgress, setStreakProgress } from './challenges';
+import { checkAchievements, NIGHT_VENUES, type CheckCtx } from './achievements';
+
+export interface CredGameCtx {
+  gameId: string;
+  userId: string;
+  kind: RatingKind;
+  won: boolean;
+  stats: PlayerGameStats;
+  rated: boolean;
+  abandoned: boolean;
+  /** this user is the leaver of a rated abandon */
+  leaver: boolean;
+  /** every opponent was a bot */
+  vsBots: boolean;
+  /** Elo after this game, null when it did not move */
+  eloAfter: number | null;
+  venue: string | null;
+  endedAt: number;
+}
+
+interface Totals { games: number; wins: number; shotsGiven: number; curStreak: number; bestStreak: number }
+
+/** Lazy-backfilled lifetime counters from game_players (finished games; rated-abandon losses count for the leaver). */
+async function totalsFor(db: D1Database, userId: string, kind: RatingKind): Promise<Totals> {
+  const row = await db.prepare('SELECT games, wins, shots_given AS shotsGiven, cur_streak AS curStreak, best_streak AS bestStreak FROM cred_totals WHERE user_id = ? AND kind = ?')
+    .bind(userId, kind).first<Totals>();
+  if (row) return row;
+  // backfill once from history
+  const agg = await db.prepare(`SELECT COUNT(*) AS games, COALESCE(SUM(won),0) AS wins,
+      COALESCE(SUM(json_extract(stats,'$.shotsGiven')),0) AS shotsGiven
+    FROM game_players gp JOIN games g ON g.id = gp.game_id
+    WHERE gp.user_id = ? AND gp.kind = ?
+      AND (COALESCE(g.end_reason,'finished') != 'abandoned' OR (g.rated = 1 AND g.leaver_id = gp.user_id))`)
+    .bind(userId, kind).first<{ games: number; wins: number; shotsGiven: number }>();
+  const order = (await db.prepare(`SELECT gp.won AS won FROM game_players gp JOIN games g ON g.id = gp.game_id
+    WHERE gp.user_id = ? AND gp.kind = ? AND COALESCE(g.end_reason,'finished') != 'abandoned'
+    ORDER BY gp.ended_at DESC`).bind(userId, kind).all<{ won: number }>()).results;
+  let cur = 0;
+  for (const r of order) { if (r.won) cur++; else break; } // leading run of wins, most recent first
+  let best = 0, run = 0;
+  for (let i = order.length - 1; i >= 0; i--) { // chronological for the best run
+    if (order[i]!.won) { run++; best = Math.max(best, run); } else run = 0;
+  }
+  const t: Totals = { games: agg?.games ?? 0, wins: agg?.wins ?? 0, shotsGiven: agg?.shotsGiven ?? 0, curStreak: cur, bestStreak: best };
+  await db.prepare('INSERT OR IGNORE INTO cred_totals (user_id, kind, games, wins, shots_given, cur_streak, best_streak) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .bind(userId, kind, t.games, t.wins, t.shotsGiven, t.curStreak, t.bestStreak).run();
+  return t;
+}
+
+async function bumpTotals(db: D1Database, userId: string, kind: RatingKind, won: boolean, shotsGiven: number, abandonedLeaver: boolean): Promise<Totals> {
+  const t = await totalsFor(db, userId, kind);
+  if (abandonedLeaver) {
+    t.games++; t.curStreak = 0;
+  } else {
+    t.games++;
+    if (won) { t.wins++; t.curStreak++; t.bestStreak = Math.max(t.bestStreak, t.curStreak); }
+    else t.curStreak = 0;
+    t.shotsGiven += shotsGiven;
+  }
+  await db.prepare('UPDATE cred_totals SET games = ?, wins = ?, shots_given = ?, cur_streak = ?, best_streak = ? WHERE user_id = ? AND kind = ?')
+    .bind(t.games, t.wins, t.shotsGiven, t.curStreak, t.bestStreak, userId, kind).run();
+  return t;
+}
+
+/** Per-user cred pass for one recorded game. Idempotency is handled by the caller (processGameCred). */
+export async function onGameEnd(db: D1Database, ctx: CredGameCtx): Promise<void> {
+  const now = ctx.endedAt;
+  const season = await ensureSeason(db, now);
+
+  // season_ratings row (lazy): default 1000/Block for players with no carried rating
+  let sr = await db.prepare('SELECT rating, division, games, wins, losses, peak_rating AS peakRating FROM season_ratings WHERE user_id = ? AND season_id = ? AND kind = ?')
+    .bind(ctx.userId, season.id, ctx.kind).first<{ rating: number; division: Division; games: number; wins: number; losses: number; peakRating: number }>();
+  if (!sr) {
+    await db.prepare(`INSERT OR IGNORE INTO season_ratings (user_id, season_id, kind, rating, division, games, wins, losses, peak_rating)
+      VALUES (?, ?, ?, 1000, 'block', 0, 0, 0, 1000)`).bind(ctx.userId, season.id, ctx.kind).run();
+    sr = { rating: 1000, division: 'block', games: 0, wins: 0, losses: 0, peakRating: 1000 };
+  }
+
+  const countsAsGame = !ctx.abandoned || ctx.leaver; // personalStats parity: abandon counts for the leaver only
+  if (countsAsGame) {
+    const rating = ctx.eloAfter ?? sr.rating;
+    const division = divisionOf(Math.round(rating));
+    await db.prepare(`UPDATE season_ratings SET rating = ?, division = ?, games = games + 1,
+        wins = wins + ?, losses = losses + ?, peak_rating = MAX(peak_rating, ?)
+      WHERE user_id = ? AND season_id = ? AND kind = ?`)
+      .bind(Math.round(rating), division, ctx.won ? 1 : 0, ctx.won ? 0 : 1, Math.round(rating), ctx.userId, season.id, ctx.kind).run();
+    sr = { ...sr, rating: Math.round(rating), division };
+  }
+
+  // lifetime totals (drives lifetime achievements + streak challenges)
+  const t = await bumpTotals(db, ctx.userId, ctx.kind, ctx.won, ctx.stats.shotsGiven ?? 0, ctx.abandoned && ctx.leaver);
+
+  // venue history (finished games only)
+  if (!ctx.abandoned && ctx.venue) {
+    await db.prepare(`INSERT INTO cred_venue_stats (user_id, venue, games, wins) VALUES (?, ?, 1, ?)
+      ON CONFLICT (user_id, venue) DO UPDATE SET games = cred_venue_stats.games + 1, wins = cred_venue_stats.wins + excluded.wins`)
+      .bind(ctx.userId, ctx.venue, ctx.won ? 1 : 0).run();
+  }
+
+  // XP: 25 finish + 25 win; bot/unrated games pay half (rounded down); abandoned games pay nothing
+  if (!ctx.abandoned) {
+    const half = !ctx.rated || ctx.vsBots;
+    const finish = half ? 12 : 25;
+    await awardXp(db, ctx.userId, finish + (ctx.won ? (half ? 12 : 25) : 0), now);
+  }
+
+  if (!ctx.abandoned) {
+    // challenge progress
+    await bumpProgress(db, ctx.userId, 'games', 1, ctx.kind, now);
+    if (ctx.won) await bumpProgress(db, ctx.userId, 'wins', 1, ctx.kind, now);
+    if (ctx.stats.books) await bumpProgress(db, ctx.userId, 'books', ctx.stats.books, ctx.kind, now);
+    const nils = (ctx.stats.nilMade ?? 0);
+    if (nils > 0) await bumpProgress(db, ctx.userId, 'nils_made', nils, ctx.kind, now);
+    if (ctx.stats.shotsGiven) await bumpProgress(db, ctx.userId, 'shots_given', ctx.stats.shotsGiven, ctx.kind, now);
+    await setStreakProgress(db, ctx.userId, t.curStreak, ctx.kind, now);
+
+    // achievements
+    const [team, cut] = await Promise.all([
+      totalsFor(db, ctx.userId, 'team'),
+      totalsFor(db, ctx.userId, 'cutthroat'),
+    ]);
+    const venues = (await db.prepare('SELECT venue, wins FROM cred_venue_stats WHERE user_id = ?').bind(ctx.userId).all<{ venue: string; wins: number }>()).results;
+    const nightWins = venues.filter((v) => NIGHT_VENUES.includes(v.venue)).reduce((s, v) => s + v.wins, 0);
+    // best division across both ladders this season (for the After Dark achievement)
+    const divs = (await db.prepare('SELECT division FROM season_ratings WHERE user_id = ? AND season_id = ?').bind(ctx.userId, season.id).all<{ division: Division }>()).results;
+    const bestDivision = divs.reduce<Division>((b, r) => (divisionRank(r.division) > divisionRank(b) ? r.division : b), 'stoop');
+    const checkCtx: CheckCtx = {
+      vsBots: ctx.vsBots,
+      game: {
+        kind: ctx.kind, won: ctx.won,
+        nilMade: (ctx.stats.nilMade ?? 0),
+        blindNilMade: (ctx.stats as { blindNilMade?: number }).blindNilMade ?? 0,
+        bags: ctx.stats.bags ?? 0, wheels: ctx.stats.wheels ?? 0,
+        maxBooksHand: (ctx.stats as { maxBooksHand?: number }).maxBooksHand ?? 0,
+        runItClaims: (ctx.stats as { runItClaims?: number }).runItClaims ?? 0,
+        maxDeficit: (ctx.stats as { maxDeficit?: number }).maxDeficit ?? 0,
+        foeEliminated: !!(ctx.stats as { foeEliminated?: boolean }).foeEliminated,
+      },
+      life: {
+        wins: team.wins + cut.wins, teamWins: team.wins, cutthroatWins: cut.wins,
+        games: team.games + cut.games, shotsGiven: team.shotsGiven + cut.shotsGiven,
+        bestStreak: Math.max(team.bestStreak, cut.bestStreak),
+        venuesPlayed: venues.length, nightVenueWins: nightWins,
+        bestDivision,
+      },
+    };
+    await checkAchievements(db, ctx.userId, checkCtx, now);
+  }
+}
+
+/**
+ * Per-game wrapper: idempotent via cred_processed, then one onGameEnd per signed-in player.
+ * Called from saveRecord; never throws (best-effort so cred can never break recording).
+ */
+export async function processGameCred(
+  db: D1Database,
+  rec: GameRecord,
+  meta: { rated: boolean; endReason?: 'finished' | 'abandoned'; leaverId?: string | null; venue?: string | null },
+  elo: Record<string, { before: number; after: number }>,
+): Promise<void> {
+  try {
+    const ins = await db.prepare('INSERT OR IGNORE INTO cred_processed (game_id, processed_at) VALUES (?, ?)').bind(rec.id, rec.endedAt).run();
+    const changed = (ins as unknown as { meta?: { changes?: number } }).meta?.changes ?? 1;
+    if (!changed) return; // already processed (retry / concurrent waitUntil)
+    for (const p of rec.players) {
+      let seats: { side: number; kind: string }[] = [];
+      try { seats = JSON.parse(rec.seats as unknown as string); } catch { /* ignore */ }
+      const vsBots = opponentBucket(seats, p.side) === 'bots';
+      const abandoned = meta.endReason === 'abandoned';
+      await onGameEnd(db, {
+        gameId: rec.id, userId: p.uid, kind: rec.kind, won: p.won, stats: p.stats,
+        rated: meta.rated, abandoned, leaver: abandoned && !!meta.rated && meta.leaverId === p.uid,
+        vsBots, eloAfter: elo[p.uid]?.after ?? null, venue: meta.venue ?? null, endedAt: rec.endedAt,
+      });
+    }
+  } catch (e) {
+    console.error('cred', e);
+  }
+}

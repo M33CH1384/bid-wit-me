@@ -1302,7 +1302,7 @@ export class Room {
     const family = this.familyId();
     const rec = abandonedRecord({ id: `${family}-abandoned`, room: d.code, game: d.game, seats, names: this.sideNames(), teamNames: d.teamNames, endedAt: this.io.now(), tournamentId: d.tournament?.id });
     const leaverId = leaverPid ? (d.members[leaverPid]?.uid ?? null) : null;
-    this.io.gameOver(rec, d.rated ?? this.ratedTable(), { endReason: 'abandoned', leaverId, family });
+    this.io.gameOver(rec, d.rated ?? this.ratedTable(), { endReason: 'abandoned', leaverId, family, venue: d.venueNow ?? d.venue ?? 'classic' });
   }
 
   /** Idle room is about to be deleted. No leaver: everyone gets a game started, nobody gets a loss. */
@@ -1318,7 +1318,7 @@ export class Room {
     if (!seats.some((x) => x.kind === 'user')) return;
     const family = this.familyId();
     const rec = buildRecord({ id: family, room: d.code, game: d.game, seats, names: this.sideNames(), teamNames: d.teamNames, live: d.live, endedAt: this.io.now(), tournamentId: d.tournament?.id });
-    this.io.gameOver(rec, isRated(rec, d.rules), { endReason: 'finished', family });
+    this.io.gameOver(rec, isRated(rec, d.rules), { endReason: 'finished', family, venue: d.venueNow ?? d.venue ?? 'classic' });
   }
 
   private sideLabel(side: number): string {
