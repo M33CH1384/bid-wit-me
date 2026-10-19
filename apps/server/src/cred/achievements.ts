@@ -3,6 +3,7 @@ import type { RatingKind } from '../stats/record';
 import type { Division } from './divisions';
 import { divisionRank } from './divisions';
 import { awardXp } from './xp';
+import { move } from './coins';
 
 /** Night-themed venues count toward the After Dark achievement. */
 export const NIGHT_VENUES = ['rooftop', 'speakeasy', 'vegas'];
@@ -13,29 +14,29 @@ export type CheckKey =
   | 'game_books_hand' | 'game_run_it' | 'game_comeback' | 'game_foe_eliminated' | 'after_dark';
 
 export interface AchievementDef {
-  id: string; title: string; hint: string; xp: number;
+  id: string; title: string; hint: string; xp: number; coins: number;
   condition: { check: CheckKey; n?: number; night_wins?: number; division?: Division; unlock?: string };
 }
 
 export const ACHIEVEMENTS: AchievementDef[] = [
-  { id: 'first-dub', title: 'First Dub', hint: 'Win your first game', xp: 100, condition: { check: 'wins', n: 1 } },
-  { id: 'ten-toes', title: 'Ten Toes Down', hint: 'Win 10 games', xp: 150, condition: { check: 'wins', n: 10 } },
-  { id: 'dealmaker', title: 'Dealmaker', hint: 'Win 25 partnership games', xp: 250, condition: { check: 'team_wins', n: 25 } },
-  { id: 'lone-wolf', title: 'Lone Wolf', hint: 'Win 10 cutthroat games', xp: 250, condition: { check: 'cutthroat_wins', n: 10 } },
-  { id: 'century', title: 'Century Club', hint: 'Win 100 games', xp: 500, condition: { check: 'wins', n: 100 } },
-  { id: 'clean-nil', title: 'Clean Nil', hint: 'Bid nil and make it', xp: 150, condition: { check: 'game_nil_made' } },
-  { id: 'blind-faith', title: 'Blind Faith', hint: 'Bid blind nil and make it', xp: 300, condition: { check: 'game_blind_nil_made' } },
-  { id: 'no-baggage', title: 'No Baggage', hint: 'Win a game with zero bags', xp: 150, condition: { check: 'game_win_no_bags' } },
-  { id: 'wheels-up', title: 'Wheels Up', hint: 'Call wheels and take the game', xp: 200, condition: { check: 'game_wheels_win' } },
-  { id: 'boston', title: 'Boston Party', hint: 'Take 13+ books in a single hand', xp: 300, condition: { check: 'game_books_hand', n: 13 } },
-  { id: 'run-it-up', title: 'Run It Up', hint: 'Claim "Run it!" and clear the table', xp: 200, condition: { check: 'game_run_it' } },
-  { id: 'sharpshooter', title: 'Sharpshooter', hint: 'Give 25 shots across your career', xp: 200, condition: { check: 'shots_given', n: 25 } },
-  { id: 'comeback-kid', title: 'Comeback Kid', hint: 'Win after trailing by 100+ points', xp: 250, condition: { check: 'game_comeback', n: 100 } },
-  { id: 'undertaker', title: 'Undertaker', hint: 'Outlast an eliminated rival in cutthroat', xp: 200, condition: { check: 'game_foe_eliminated' } },
-  { id: 'untouchable', title: 'Untouchable', hint: 'Reach a 10-game win streak', xp: 400, condition: { check: 'best_streak', n: 10 } },
-  { id: 'world-traveler', title: 'World Traveler', hint: 'Play in 5 different venues', xp: 150, condition: { check: 'venues', n: 5 } },
-  { id: 'iron-man', title: 'Iron Man', hint: 'Play 500 games', xp: 500, condition: { check: 'games', n: 500 } },
-  { id: 'after-dark', title: 'After Dark', hint: 'Win 25 night-venue games and reach the Block division', xp: 0, condition: { check: 'after_dark', night_wins: 25, division: 'block', unlock: 'after-dark' } },
+  { id: 'first-dub', title: 'First Dub', hint: 'Win your first game', xp: 100, coins: 50, condition: { check: 'wins', n: 1 } },
+  { id: 'ten-toes', title: 'Ten Toes Down', hint: 'Win 10 games', xp: 150, coins: 75, condition: { check: 'wins', n: 10 } },
+  { id: 'dealmaker', title: 'Dealmaker', hint: 'Win 25 partnership games', xp: 250, coins: 125, condition: { check: 'team_wins', n: 25 } },
+  { id: 'lone-wolf', title: 'Lone Wolf', hint: 'Win 10 cutthroat games', xp: 250, coins: 125, condition: { check: 'cutthroat_wins', n: 10 } },
+  { id: 'century', title: 'Century Club', hint: 'Win 100 games', xp: 500, coins: 250, condition: { check: 'wins', n: 100 } },
+  { id: 'clean-nil', title: 'Clean Nil', hint: 'Bid nil and make it', xp: 150, coins: 75, condition: { check: 'game_nil_made' } },
+  { id: 'blind-faith', title: 'Blind Faith', hint: 'Bid blind nil and make it', xp: 300, coins: 150, condition: { check: 'game_blind_nil_made' } },
+  { id: 'no-baggage', title: 'No Baggage', hint: 'Win a game with zero bags', xp: 150, coins: 75, condition: { check: 'game_win_no_bags' } },
+  { id: 'wheels-up', title: 'Wheels Up', hint: 'Call wheels and take the game', xp: 200, coins: 100, condition: { check: 'game_wheels_win' } },
+  { id: 'boston', title: 'Boston Party', hint: 'Take 13+ books in a single hand', xp: 300, coins: 150, condition: { check: 'game_books_hand', n: 13 } },
+  { id: 'run-it-up', title: 'Run It Up', hint: 'Claim "Run it!" and clear the table', xp: 200, coins: 100, condition: { check: 'game_run_it' } },
+  { id: 'sharpshooter', title: 'Sharpshooter', hint: 'Give 25 shots across your career', xp: 200, coins: 100, condition: { check: 'shots_given', n: 25 } },
+  { id: 'comeback-kid', title: 'Comeback Kid', hint: 'Win after trailing by 100+ points', xp: 250, coins: 125, condition: { check: 'game_comeback', n: 100 } },
+  { id: 'undertaker', title: 'Undertaker', hint: 'Outlast an eliminated rival in cutthroat', xp: 200, coins: 100, condition: { check: 'game_foe_eliminated' } },
+  { id: 'untouchable', title: 'Untouchable', hint: 'Reach a 10-game win streak', xp: 400, coins: 200, condition: { check: 'best_streak', n: 10 } },
+  { id: 'world-traveler', title: 'World Traveler', hint: 'Play in 5 different venues', xp: 150, coins: 75, condition: { check: 'venues', n: 5 } },
+  { id: 'iron-man', title: 'Iron Man', hint: 'Play 500 games', xp: 500, coins: 250, condition: { check: 'games', n: 500 } },
+  { id: 'after-dark', title: 'After Dark', hint: 'Win 25 night-venue games and reach the Block division', xp: 0, coins: 0, condition: { check: 'after_dark', night_wins: 25, division: 'block', unlock: 'after-dark' } },
 ];
 
 /** Per-game facts from this game's PlayerGameStats (extended fields live in stats/record.ts). */
@@ -107,6 +108,7 @@ export async function checkAchievements(db: D1Database, userId: string, ctx: Che
     if (!checkOne(def, ctx)) continue;
     await db.prepare('INSERT OR IGNORE INTO user_achievements (user_id, achievement_id, unlocked_at) VALUES (?, ?, ?)').bind(userId, def.id, now).run();
     if (def.xp > 0) await awardXp(db, userId, def.xp, now);
+    if (def.coins > 0) await move(db, userId, def.coins, 'achievement', def.id, now); // coins for achievements (Demetrius 2026-10-19)
     const unlockItemId = def.condition.unlock ?? null;
     if (unlockItemId) {
       await db.prepare('INSERT OR IGNORE INTO unlocks (user_id, item_id, source, unlocked_at) VALUES (?, ?, ?, ?)').bind(userId, unlockItemId, `achievement:${def.id}`, now).run();
@@ -117,7 +119,7 @@ export async function checkAchievements(db: D1Database, userId: string, ctx: Che
 }
 
 /** All defs with unlock state for profile payloads. */
-export async function achievementStates(db: D1Database, userId: string): Promise<{ id: string; title: string; hint: string; xp: number; unlockedAt: number | null }[]> {
+export async function achievementStates(db: D1Database, userId: string): Promise<{ id: string; title: string; hint: string; xp: number; coins: number; unlockedAt: number | null }[]> {
   const owned = new Map((await db.prepare('SELECT achievement_id, unlocked_at FROM user_achievements WHERE user_id = ?').bind(userId).all<{ achievement_id: string; unlocked_at: number }>()).results.map((r) => [r.achievement_id, r.unlocked_at] as const));
-  return ACHIEVEMENTS.map((a) => ({ id: a.id, title: a.title, hint: a.hint, xp: a.xp, unlockedAt: owned.get(a.id) ?? null }));
+  return ACHIEVEMENTS.map((a) => ({ id: a.id, title: a.title, hint: a.hint, xp: a.xp, coins: a.coins, unlockedAt: owned.get(a.id) ?? null }));
 }
