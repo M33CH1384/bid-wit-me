@@ -2018,6 +2018,9 @@ button.mode-pick::after, button.quiet-row::after { content: ''; position: absolu
 .prof-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .prof-season { font-family: var(--display); font-weight: 700; letter-spacing: .08em; color: var(--muted); font-size: 13px; text-transform: uppercase; }
 .prof-header { display: flex; gap: 14px; align-items: center; padding: 14px 16px; border-radius: 14px; margin-bottom: 12px; }
+.prof-coins { margin-left: auto; text-align: right; display: flex; flex-direction: column; align-items: flex-end; }
+.prof-coins b { font-family: var(--display); font-size: 28px; font-weight: 800; color: #fff; line-height: 1; }
+.prof-coins span { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
 .prof-avatar { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; font-family: var(--display); font-weight: 800; font-size: 26px; background: linear-gradient(135deg, var(--purple), var(--purple-hot)); color: #fff; flex: none; }
 .prof-id h2 { margin: 0 0 2px; font-size: 22px; }
 .prof-level { display: flex; gap: 8px; align-items: baseline; font-size: 14px; }

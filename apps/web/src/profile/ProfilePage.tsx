@@ -25,6 +25,7 @@ interface Profile {
   challenges: { daily: Challenge[]; weekly: Challenge[] };
   achievements: Achievement[];
   unlocks: Unlock[];
+  coins: { balance: number };
 }
 
 type Tab = 'rank' | 'challenges' | 'stats' | 'achievements' | 'unlocks';
@@ -143,6 +144,10 @@ export default function ProfilePage() {
           <h2>{profile.user.name}</h2>
           <div className="prof-level"><b>Level {profile.level.level}</b><span>{profile.level.title}</span></div>
           <div className="xp-bar"><i style={{ width: `${xpPct}%` }} /><small>{profile.level.xpIntoLevel}/{profile.level.xpForNext} XP</small></div>
+        </div>
+        <div className="prof-coins">
+          <b>{profile.coins.balance.toLocaleString()}</b>
+          <span>Coins</span>
         </div>
       </div>
 
