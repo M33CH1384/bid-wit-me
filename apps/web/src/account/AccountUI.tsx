@@ -11,7 +11,7 @@ import {
   localProgress, passkeyRegister, passkeySignIn, saveProgress, setUsername, signOut, startOAuth, takePendingOpen, unlink, useAccount,
 } from './api';
 import {
-  NOTIF_TYPES, disablePush, enablePush, loadPrefs, permissionState, pushSupported, savePref, sendTestPush,
+  NOTIF_TYPES, disablePush, enablePush, hasSubscription, loadPrefs, permissionState, pushSupported, savePref, sendTestPush,
   type NotifType, type PermState,
 } from '../push/push';
 
@@ -237,19 +237,32 @@ function DeleteConfirm({ user, onClose, onDeleted }: { user: AccountUser; onClos
 }
 
 /* ------------------------------------------------------- notifications */
+/* ------------------------------------------------------- notifications */
 function NotificationsSection() {
   const [perm, setPerm] = useState<PermState>('default');
+  const [subscribed, setSubscribed] = useState(false);
   const [prefs, setPrefs] = useState<Record<NotifType, boolean> | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
-  useEffect(() => { if (pushSupported()) permissionState().then(setPerm); else setPerm('unsupported'); }, []);
+  const [open, setOpen] = useState(false);
   useEffect(() => {
-    if (perm === 'granted') loadPrefs().then(setPrefs).catch(() => setPrefs(null));
+    if (pushSupported()) {
+      permissionState().then(setPerm);
+      hasSubscription().then(setSubscribed);
+    } else {
+      setPerm('unsupported');
+    }
+  }, []);
+  useEffect(() => {
+    if (perm === 'granted' && subscribed) loadPrefs().then(setPrefs).catch(() => setPrefs(null));
     else setPrefs(null);
-  }, [perm]);
+  }, [perm, subscribed]);
 
   if (perm === 'unsupported') return null;
-  const refresh = async () => setPerm(await permissionState());
+  const refresh = async () => {
+    setPerm(await permissionState());
+    setSubscribed(await hasSubscription());
+  };
   const onEnable = async () => {
     setBusy(true); setMsg('');
     const err = await enablePush();
@@ -258,11 +271,12 @@ function NotificationsSection() {
     await refresh();
   };
   const onDisable = async () => {
-    setBusy(true);
+    setBusy(true); setMsg('');
     await disablePush();
     setBusy(false);
     setPrefs(null);
     await refresh();
+    setMsg('Notifications turned off on this device.');
   };
   const toggle = async (t: NotifType, v: boolean) => {
     setPrefs((p) => (p ? { ...p, [t]: v } : p));
@@ -275,45 +289,60 @@ function NotificationsSection() {
     setMsg(err ?? 'Test sent — check your notifications.');
   };
 
+  const isOn = perm === 'granted' && subscribed;
   return (
-    <>
-      <h3 className="sheet-h">Notifications</h3>
-      {perm !== 'granted' ? (
-        <div className="acct-progress">
-          <p className="acct-fine">
-            Get a ping when it&rsquo;s your turn, when friends invite you, and for rank ups and rewards —
-            even with the app closed.
-          </p>
-          <p className="acct-fine">On iPhone: add Bid Wit Me to your Home Screen first (iOS 16.4+), then enable here.</p>
-          <button type="button" className="primary" data-testid="push-enable" disabled={busy} onClick={onEnable}>
-            Enable notifications
-          </button>
-          {perm === 'denied' && <p className="acct-fine">Notifications are blocked for this site — allow them in your browser settings, then come back.</p>}
-        </div>
-      ) : (
-        <div className="acct-notifs" data-testid="push-prefs">
-          {NOTIF_TYPES.map(({ type, label, hint }) => (
-            <button
-              key={type}
-              type="button"
-              role="switch"
-              aria-checked={prefs?.[type] ?? true}
-              data-testid={`push-pref-${type}`}
-              className={`acct-notif-row${prefs && !prefs[type] ? ' off' : ''}`}
-              onClick={() => toggle(type, !(prefs?.[type] ?? true))}
-            >
-              <span className="acct-row-text"><b>{label}</b><small>{hint}</small></span>
-              <span className={`acct-switch${prefs?.[type] ?? true ? ' on' : ''}`} aria-hidden />
-            </button>
-          ))}
-          <div className="acct-notif-acts">
-            <button type="button" className="acct-small" data-testid="push-test" disabled={busy} onClick={onTest}>Send test</button>
-            <button type="button" className="acct-guest" data-testid="push-disable" disabled={busy} onClick={onDisable}>Turn off on this device</button>
-          </div>
+    <div className="acct-dropdown" data-testid="push-dropdown">
+      <button
+        type="button"
+        className={`acct-dropdown-head${open ? ' open' : ''}`}
+        data-testid="push-dropdown-toggle"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className="acct-dropdown-title">Notifications</span>
+        <span className="acct-dropdown-state">{isOn ? 'On' : 'Off'}</span>
+        <span className="acct-dropdown-chev" aria-hidden>{open ? '▾' : '▸'}</span>
+      </button>
+      {open && (
+        <div className="acct-dropdown-body">
+          {!isOn ? (
+            <div className="acct-progress">
+              <p className="acct-fine">
+                Get a ping when it&rsquo;s your turn, when friends invite you, and for rank ups and rewards —
+                even with the app closed.
+              </p>
+              <p className="acct-fine"><b>On iPhone:</b> add Bid Wit Me to your Home Screen first (Safari → Share → Add to Home Screen, iOS 16.4+), then launch the app from the Home Screen icon and enable here. Push will not work from inside Safari.</p>
+              <button type="button" className="primary" data-testid="push-enable" disabled={busy} onClick={onEnable}>
+                Enable notifications
+              </button>
+              {perm === 'denied' && <p className="acct-fine">Notifications are blocked for this site — allow them in your browser settings, then come back.</p>}
+            </div>
+          ) : (
+            <div className="acct-notifs" data-testid="push-prefs">
+              {NOTIF_TYPES.map(({ type, label, hint }) => (
+                <button
+                  key={type}
+                  type="button"
+                  role="switch"
+                  aria-checked={prefs?.[type] ?? true}
+                  data-testid={`push-pref-${type}`}
+                  className={`acct-notif-row${prefs && !prefs[type] ? ' off' : ''}`}
+                  onClick={() => toggle(type, !(prefs?.[type] ?? true))}
+                >
+                  <span className="acct-row-text"><b>{label}</b><small>{hint}</small></span>
+                  <span className={`acct-switch${prefs?.[type] ?? true ? ' on' : ''}`} aria-hidden />
+                </button>
+              ))}
+              <div className="acct-notif-acts">
+                <button type="button" className="acct-small" data-testid="push-test" disabled={busy} onClick={onTest}>Send test</button>
+                <button type="button" className="acct-guest" data-testid="push-disable" disabled={busy} onClick={onDisable}>Turn off on this device</button>
+              </div>
+            </div>
+          )}
+          {msg && <p className="acct-fine" role="status">{msg}</p>}
         </div>
       )}
-      {msg && <p className="acct-fine" role="status">{msg}</p>}
-    </>
+    </div>
   );
 }
 

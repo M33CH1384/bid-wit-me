@@ -561,6 +561,12 @@ class Engine {
     if (kind === 'show' && !this.unlocked) return;
     if (kind === 'gesture' && this.unlocked && this.liveState(this.ctx) === 'running') {
       if (this.needsRestore) this.publishRestore();
+      // Still re-run the syncs: on cold start the first gesture may not have
+      // started music (context not ready), and this is the retry path.
+      // Demetrius 2026-10-19: music must resume on first tap after swipe-kill.
+      this.syncAmbient();
+      this.syncVenue();
+      this.syncMusic();
       return;
     }
     if (kind === 'gesture') this.unlocked = true;
