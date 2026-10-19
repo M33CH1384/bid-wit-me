@@ -602,11 +602,10 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   for (const t of piles) {
     const w = t.winner!;
     const k = pileCount[w]!++;
-    t.plays.forEach((pl, j) => {
-      // Books stack perfectly clean (zero jitter) so the top card's image is
-      // crisp, not a blend. Tiny height steps avoid z-fighting. Demetrius 2026-10-19.
-      items.push({ key: `${handNo}-${pl.card}`, card: pl.card, target: pileSpot(positions[w]!, n, k, j, 0), duration: 0.55, arc: 0.15, motion: 'gather', sfxStart: 'sweep', spatialSeat: positions[w]!, spatialN: n });
-    });
+    // One clean card per book (the top card). Rendering all 4 caused a messy
+    // blend. Demetrius 2026-10-19.
+    const top = t.plays[t.plays.length - 1]!;
+    items.push({ key: `${handNo}-${top.card}`, card: top.card, target: pileSpot(positions[w]!, n, k, 0, 0), duration: 0.55, arc: 0.15, motion: 'gather', sfxStart: 'sweep', spatialSeat: positions[w]!, spatialN: n });
   }
   // cards on the table this trick
   // last-trick nuke: the auto-played final cards fly in one after another, right into the blast
