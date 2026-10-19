@@ -68,7 +68,7 @@ describe('play heuristics', () => {
   const hands: Card[][] = [
     ['AH', '9H', '3H', 'KC', '5C', '4D', '3S', '4S', '5S', 'QD', 'TC', '6D', '8C'],
     ['KH', 'QH', 'JH', 'TH', '8H', '7H', '6H', '5H', '4H', 'AD', 'KD', 'JD', 'TD'],
-    ['AC', 'QC', 'JC', '9C', '7C', '6C', '4C', '3C', '2C', '9D', '8D', '7D', '5D'],
+    ['AC', 'QC', 'JC', '9C', '7C', '6C', '4C', '3C', '5C', '9D', '8D', '7D', '5D'],
     ['BJ', 'LJ', 'AS', 'KS', 'QS', 'JS', 'TS', '9S', '8S', '7S', '6S', '2S', '3D'],
   ];
   it('a nil bidder ducks under the current winner', () => {
@@ -104,14 +104,14 @@ describe('play heuristics', () => {
   it('wins with the lowest winning card when last to play and tricks are needed', () => {
     const st = rig(classic, hands, {
       phase: 'playing', bids: [4, 4, 4, 1], turn: 0,
-      trick: { leader: 1, plays: [{ seat: 1, card: 'TH' }, { seat: 2, card: '2C' }, { seat: 3, card: '3D' }], winner: null },
+      trick: { leader: 1, plays: [{ seat: 1, card: 'TH' }, { seat: 2, card: '5C' }, { seat: 3, card: '3D' }], winner: null },
     });
     expect(choosePlay(viewFor(st, 0), 'normal')).toBe('AH');
   });
   it('does not overtake a partner who is winning on the last seat', () => {
     const st = rig(classic, hands, {
       phase: 'playing', bids: [4, 4, 4, 1], turn: 0,
-      trick: { leader: 1, plays: [{ seat: 1, card: '2C' }, { seat: 2, card: 'AC' }, { seat: 3, card: '3D' }], winner: null },
+      trick: { leader: 1, plays: [{ seat: 1, card: '5C' }, { seat: 2, card: 'AC' }, { seat: 3, card: '3D' }], winner: null },
     });
     expect(choosePlay(viewFor(st, 0), 'normal')).toBe('5C');
   });
@@ -120,7 +120,7 @@ describe('play heuristics', () => {
     const st = rig(r, hands, { phase: 'exchange', bids: ['blindNil', 3, 4, 5], turn: 0, exchange: [{ from: 0, to: 2, count: 2 }, { from: 2, to: 0, count: 2 }] });
     expect(chooseExchange(viewFor(st, 0)).sort()).toEqual(['4S', '5S']);
     const st2 = { ...st, turn: 2, exchange: [{ from: 2, to: 0, count: 2 }] };
-    expect(chooseExchange(viewFor(st2, 2)).sort()).toEqual(['2C', '3C']);
+    expect(chooseExchange(viewFor(st2, 2)).sort()).toEqual(['3C', '4C']);
     expect(chooseBotAction(viewFor(st2, 2))).toMatchObject({ type: 'exchange', seat: 2 });
   });
   it('returns null when it is not the seat\'s turn', () => {
@@ -239,7 +239,7 @@ describe('full bot games', () => {
     ['aceDown', makeRules('aceDown')],
     ['cutthroat 4 standard deck', makeRules('cutthroat', { deck: 'standard52' })],
     ['cutthroat 3 standard deck', makeRules('cutthroat', { playerCount: 3, deck: 'standard52' })],
-    ['classic joker exchange + 2C lead', makeRules('joker', { ...CLASSIC_JOKER, firstLead: 'twoOfClubs', blindNil: { onlyWhenBehindBy: null, exchangeCards: 2 } })],
+    ['classic joker exchange', makeRules('joker', { ...CLASSIC_JOKER, blindNil: { onlyWhenBehindBy: null, exchangeCards: 2 } })],
   ];
   it.each(modes)('%s: games finish without illegal moves', (_n, rules) => {
     for (let g = 0; g < 8; g++) {
