@@ -117,8 +117,13 @@ describe('xp and levels', () => {
   });
   it('titles follow milestones', () => {
     expect(titleForLevel(1)).toBe('New Jack');
-    expect(titleForLevel(7)).toBe('Corner Regular');
-    expect(titleForLevel(50)).toBe('The Mayor');
+    expect(titleForLevel(5)).toBe('Prospect');
+    expect(titleForLevel(7)).toBe('Prospect');
+    expect(titleForLevel(10)).toBe('Certified');
+    expect(titleForLevel(20)).toBe('Block Captain');
+    expect(titleForLevel(30)).toBe('Shot Caller');
+    expect(titleForLevel(40)).toBe('OG');
+    expect(titleForLevel(50)).toBe('King of the Block');
   });
   it('awardXp accumulates and reports level-ups', async () => {
     let r = await awardXp(db, 'a', 100, NOW);
