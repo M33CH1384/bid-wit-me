@@ -47,16 +47,15 @@ describe('exact joker-deck composition on every deck-building path', () => {
     expect(removedForActive(r, 3)).toEqual(['2C', '2H', '3C']);
     expect(removedForActive(r, 2)).toEqual(['2C', '2H']);
   });
-  it('KNOWN EXCEPTION, pinned so it is deliberate and visible: the Classic joker-order variant removes 2♥+2♦ instead, so 2♣ IS in that deck', () => {
-    // This is the only path in the game whose deck matches the live-beta
-    // observation (2♥ gone, 2♣ present). It is an opt-in More Options
-    // variant (Joker trump order = Classic), not the house deck above.
+  it('Classic joker-order variant removes 2♥+2♣ (Demetrius 2026-10-19: no 2s of hearts/clubs in any Joker game)', () => {
+    // Updated 2026-10-19: Classic now removes 2♥+2♣ like all Joker variants.
+    // The 2♦ stays in the deck as a regular diamond (not a trump in Classic).
     const r = makeRules('joker', CLASSIC_JOKER);
     const deck = buildDeck(r);
     expect(deck).toHaveLength(52);
-    expect(deck).toContain('2C');
+    expect(deck).not.toContain('2C');
     expect(deck).not.toContain('2H');
-    expect(deck).not.toContain('2D');
-    expect(deck.filter((c) => c[0] === '2')).toEqual(['2S', '2C']);
+    expect(deck).toContain('2D');
+    expect(deck.filter((c) => c[0] === '2')).toEqual(['2S', '2D']);
   });
 });

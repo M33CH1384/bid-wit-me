@@ -400,7 +400,8 @@ describe('trick resolution', () => {
 
 describe('first lead: two of clubs house rule', () => {
   it('holder of the 2♣ leads it, then normal play', () => {
-    const r = makeRules('joker', { ...CLASSIC_JOKER, firstLead: 'twoOfClubs' });
+    // Note: 2C is removed from all Joker decks (Demetrius 2026-10-19), so this rule only applies to standard52
+    const r = makeRules('aceDown', { firstLead: 'twoOfClubs' });
     const hands = fill(r, [[], [], ['2C'], []]);
     let st = bidAll(rigged(r, hands, 3), [3, 3, 3, 3]);
     expect(st.turn).toBe(2);
