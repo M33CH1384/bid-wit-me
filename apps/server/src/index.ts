@@ -228,7 +228,7 @@ export default {
       return handleSocialHttp(req as Request & { cf?: unknown }, env, url, parts, Date.now());
     }
 
-    if (parts[1] === 'profile' || parts[1] === 'challenges') {
+    if (parts[1] === 'profile' || parts[1] === 'challenges' || parts[1] === 'coins') {
       const slow = await limited(req, env, 'info', origin);
       if (slow) return slow;
       return handleCredHttp(req, env as CredEnv, url, parts, Date.now());

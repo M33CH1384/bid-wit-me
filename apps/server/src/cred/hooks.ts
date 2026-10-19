@@ -10,6 +10,7 @@ import { ensureSeason } from './seasons';
 import { awardXp } from './xp';
 import { bumpProgress, setStreakProgress } from './challenges';
 import { checkAchievements, NIGHT_VENUES, type CheckCtx } from './achievements';
+import { move } from './coins';
 
 export interface CredGameCtx {
   gameId: string;
@@ -112,7 +113,12 @@ export async function onGameEnd(db: D1Database, ctx: CredGameCtx): Promise<void>
   if (!ctx.abandoned) {
     const half = !ctx.rated || ctx.vsBots;
     const finish = half ? 12 : 25;
-    await awardXp(db, ctx.userId, finish + (ctx.won ? (half ? 12 : 25) : 0), now);
+    const awarded = await awardXp(db, ctx.userId, finish + (ctx.won ? (half ? 12 : 25) : 0), now);
+    // coins: level-up bonus only — bot games pay zero coins, and per-game coin
+    // rewards don't exist (stakes settle separately via stakes.ts)
+    if (awarded.leveledUp && !ctx.vsBots) {
+      try { await move(db, ctx.userId, 50 * awarded.level, 'level_up', `game:${ctx.gameId}`, now); } catch { /* best-effort */ }
+    }
   }
 
   if (!ctx.abandoned) {
@@ -160,6 +166,37 @@ export async function onGameEnd(db: D1Database, ctx: CredGameCtx): Promise<void>
 }
 
 /**
+ * Anti-farming tripwires (Phase 3b): structured warnings for manual review, never auto-ban.
+ * - One player winning 90%+ of 10+ head-to-head games in 30 days (chip dumping / farming).
+ * - The same pair appearing together in 10+ games with a lopsided winner is the
+ *   same signal; groups are covered pairwise.
+ */
+async function tripwireCheck(db: D1Database, userIds: string[], gameId: string, now: number): Promise<void> {
+  const since = now - 30 * 86_400_000;
+  for (let i = 0; i < userIds.length; i++) {
+    for (let j = i + 1; j < userIds.length; j++) {
+      const a = userIds[i]!, b = userIds[j]!;
+      const row = await db.prepare(`SELECT COUNT(*) AS games,
+          COALESCE(SUM(CASE WHEN x.won = 1 AND y.won = 0 THEN 1 ELSE 0 END), 0) AS aWins,
+          COALESCE(SUM(CASE WHEN y.won = 1 AND x.won = 0 THEN 1 ELSE 0 END), 0) AS bWins
+        FROM game_players x JOIN game_players y ON x.game_id = y.game_id
+        JOIN games g ON g.id = x.game_id
+        WHERE x.user_id = ? AND y.user_id = ? AND g.ended_at > ? AND COALESCE(g.end_reason,'finished') = 'finished'`)
+        .bind(a, b, since).first<{ games: number; aWins: number; bWins: number }>();
+      const games = row?.games ?? 0;
+      if (games < 10) continue;
+      const top = Math.max(row?.aWins ?? 0, row?.bWins ?? 0);
+      if (top / games >= 0.9) {
+        console.warn('cred', 'collusion_tripwire', {
+          game: gameId, pair: [a, b], games, aWins: row?.aWins ?? 0, bWins: row?.bWins ?? 0,
+          note: 'one side won 90%+ of 10+ head-to-head games in 30d — review for farming/collusion',
+        });
+      }
+    }
+  }
+}
+
+/**
  * Per-game wrapper: idempotent via cred_processed, then one onGameEnd per signed-in player.
  * Called from saveRecord; never throws (best-effort so cred can never break recording).
  */
@@ -173,6 +210,7 @@ export async function processGameCred(
     const ins = await db.prepare('INSERT OR IGNORE INTO cred_processed (game_id, processed_at) VALUES (?, ?)').bind(rec.id, rec.endedAt).run();
     const changed = (ins as unknown as { meta?: { changes?: number } }).meta?.changes ?? 1;
     if (!changed) return; // already processed (retry / concurrent waitUntil)
+    const humanIds = rec.players.map((p) => p.uid).filter(Boolean);
     for (const p of rec.players) {
       let seats: { side: number; kind: string }[] = [];
       try { seats = JSON.parse(rec.seats as unknown as string); } catch { /* ignore */ }
@@ -184,6 +222,8 @@ export async function processGameCred(
         vsBots, eloAfter: elo[p.uid]?.after ?? null, venue: meta.venue ?? null, endedAt: rec.endedAt,
       });
     }
+    // anti-farming tripwires (best-effort, log only)
+    try { await tripwireCheck(db, humanIds, rec.id, rec.endedAt); } catch { /* ignore */ }
   } catch (e) {
     console.error('cred', e);
   }

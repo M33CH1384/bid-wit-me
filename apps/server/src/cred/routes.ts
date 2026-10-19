@@ -1,10 +1,11 @@
 /**
- * Street Cred HTTP routes (Phase 3a):
+ * Street Cred HTTP routes (Phase 3a + 3b):
  *   GET  /api/profile/me            → full profile (signed in)
  *   GET  /api/profile/:id           → public profile subset
  *   GET  /api/challenges            → today's + this week's challenges with progress (signed in)
  *   POST /api/challenges/:id/claim  → claim a completed challenge reward (signed in)
- * Coins are Phase 3b: defs carry coin values, nothing is credited yet.
+ *   GET  /api/coins/balance         → coin balance (signed in)
+ *   GET  /api/coins/ledger          → recent coin movements (signed in)
  */
 import { type AuthEnv, currentUser } from '../auth/routes';
 import { myStats } from '../stats/boards';
@@ -13,6 +14,7 @@ import { ensureSeason } from './seasons';
 import { xpSnapshot, awardXp, xpForLevel } from './xp';
 import { progressFor, dailyChallenges, weeklyChallenges, dailyPeriodId, weeklyPeriodId } from './challenges';
 import { achievementStates } from './achievements';
+import { balance, ledger, move, grantWelcome, dailyLogin, earnMultiplier } from './coins';
 
 export interface CredEnv extends AuthEnv {}
 
@@ -44,13 +46,17 @@ async function unlockList(db: D1Database, userId: string) {
 
 async function fullProfile(db: D1Database, userId: string, username: string, now: number) {
   const season = await ensureSeason(db, now);
-  const [level, team, cutthroat, challenges, achievements, unlocks] = await Promise.all([
+  // idempotent earners: welcome grant + daily login (cheap, safe to run on every profile read)
+  try { await grantWelcome(db, userId, now); } catch { /* best-effort */ }
+  try { await dailyLogin(db, userId, now); } catch { /* best-effort */ }
+  const [level, team, cutthroat, challenges, achievements, unlocks, coins] = await Promise.all([
     xpSnapshot(db, userId),
     seasonRank(db, userId, season.id, 'team'),
     seasonRank(db, userId, season.id, 'cutthroat'),
     progressFor(db, userId, now),
     achievementStates(db, userId),
     unlockList(db, userId),
+    balance(db, userId),
   ]);
   const stats = await myStats(db, userId);
   return {
@@ -62,6 +68,7 @@ async function fullProfile(db: D1Database, userId: string, username: string, now
     challenges,
     achievements,
     unlocks,
+    coins: { balance: coins },
   };
 }
 
@@ -103,9 +110,21 @@ export async function handleCredHttp(req: Request, env: CredEnv, url: URL, parts
     if (row?.claimedAt) return json({ error: 'Already claimed.' }, 400);
     if ((row?.progress ?? 0) < def.target) return json({ error: 'Challenge not complete yet.', progress: row?.progress ?? 0, target: def.target }, 400);
     await db.prepare('UPDATE challenge_progress SET claimed_at = ? WHERE user_id = ? AND challenge_id = ? AND period_id = ?').bind(now, me.id, id, pid).run();
-    await awardXp(db, me.id, def.xp, now);
-    // coins: value only — no ledger until Phase 3b
+    const awarded = await awardXp(db, me.id, def.xp, now);
+    // coins: challenge reward (× earn multiplier) + level-up bonus when the XP leveled them up
+    const mult = await earnMultiplier(db);
+    await move(db, me.id, Math.round(def.coins * mult), 'challenge', id, now);
+    if (awarded.leveledUp) await move(db, me.id, 50 * awarded.level, 'level_up', `challenge:${id}`, now);
     return json({ ok: true, xp: def.xp, coins: def.coins });
+  }
+  if (parts[1] === 'coins' && parts[2] === 'balance' && req.method === 'GET') {
+    if (!me) return json({ error: 'Sign in to see your coins.' }, 401);
+    return json({ balance: await balance(db, me.id) });
+  }
+  if (parts[1] === 'coins' && parts[2] === 'ledger' && req.method === 'GET') {
+    if (!me) return json({ error: 'Sign in to see your ledger.' }, 401);
+    const limit = parseInt(url.searchParams.get('limit') ?? '25', 10);
+    return json({ rows: await ledger(db, me.id, limit) });
   }
   return json({ error: 'not found' }, 404);
 }
