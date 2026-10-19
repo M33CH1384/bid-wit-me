@@ -75,7 +75,7 @@ import { RunItReview, RunZoom, faceUrl, runReviewOverTable } from './RunZoom';
 import { TrashTalkButton } from './TrashTalk';
 import { isWildDeuce } from './cardFaces';
 import { misdealRevealKey, misdealRevealMs } from './misdeal';
-import { QUICK_TRASH_SET } from './quickTrash';
+import { QUICK_TRASH_SET, quickLines } from './quickTrash';
 import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
 import { type TalkIntensity, botSkillFor, partnerBidIntent, personaForName, platePersona, pickBotNames } from '@spades/bots';
 import { preloadVoice } from './voices/voices';
@@ -1102,6 +1102,50 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // until Continue, then open the results. The ack is local; the shot count still comes from synced history.
   const [shotRecapAck, setShotRecapAck] = useState(false);
   useEffect(() => { setShotRecapAck(false); }, [st.phase, st.handNo]);
+  // Post-hand collection (Demetrius 2026-10-19): after a hand ends (not game over), books slide to the
+  // next dealer for 4-6s while bots talk trash. The recap waits until collection finishes.
+  const [collecting, setCollecting] = useState(false);
+  const collectTimer = useRef<number | null>(null);
+  useEffect(() => {
+    if (st.phase === 'handOver' && !st.result && !online) {
+      setCollecting(true);
+      if (collectTimer.current) window.clearTimeout(collectTimer.current);
+      collectTimer.current = window.setTimeout(() => setCollecting(false), 5200);
+    } else {
+      setCollecting(false);
+      if (collectTimer.current) { window.clearTimeout(collectTimer.current); collectTimer.current = null; }
+    }
+    return () => { if (collectTimer.current) { window.clearTimeout(collectTimer.current); collectTimer.current = null; } };
+  }, [st.phase, st.handNo, st.result, online]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Trash talk during collection: 1-2 bots chirp while cards slide to the dealer (Demetrius 2026-10-19).
+  // Winners gloat ('made'/'setThem'), losers cope ('gotSet'/'roast'). Uses the existing TTS + chat pipeline.
+  const banterDone = useRef(0);
+  useEffect(() => {
+    if (!collecting || online) return;
+    if (banterDone.current === st.handNo) return;
+    banterDone.current = st.handNo;
+    const h = st.history.at(-1);
+    const winners = new Set((h?.sides ?? []).filter((s) => s.contractMade).map((s) => s.side));
+    const bots = names.map((nm, i) => ({ nm, i })).filter((b) => b.i !== HUMAN);
+    if (!bots.length) return;
+    const shuffled = [...bots].sort(() => Math.random() - 0.5).slice(0, 2);
+    shuffled.forEach((b, ix) => {
+      const won = winners.has(sideOf(b.i, r));
+      const kinds = won ? (['made', 'setThem', 'roast'] as const) : (['gotSet', 'roast'] as const);
+      const kind = kinds[Math.floor(Math.random() * kinds.length)]!;
+      const lines = quickLines(kind, intensity);
+      if (!lines.length) return;
+      const line = lines[Math.floor(Math.random() * lines.length)]!;
+      const text = showLine(line);
+      window.setTimeout(() => {
+        push(b.nm, text, false, 0, true);
+        if (!sound.voiceMuted(b.nm)) {
+          const seatIx = names.findIndex((nm) => nm === b.nm);
+          speakBot(b.nm, text, undefined, line, undefined, seatIx >= 0 ? pos[seatIx] : undefined, n);
+        }
+      }, 900 + ix * 1800);
+    });
+  }, [collecting]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!scoreOpened(st.phase, pause, !!runFx)) { setTalkOpen(false); return; }
     setTalkOpen(true);
@@ -1148,9 +1192,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   }, [localWin]);
   // any modal up: the table, plates, chat, video bubbles etc. dim + blur behind it and can't paint over it
   const shotOutRecap = st.phase === 'gameOver' && st.result?.endReason === 'shotOut' && !shotRecapAck;
-  const showRecap = !pause && talkOpen && (st.phase === 'handOver' || shotOutRecap);
+  const showRecap = !pause && !collecting && talkOpen && (st.phase === 'handOver' || shotOutRecap);
   const showResults = st.phase === 'gameOver' && !pause && !runFx && talkOpen && !!st.result && !shotOutRecap;
-  const modalOpen = (st.phase === 'handOver' && !pause && talkOpen) || confirmLeave || showPad || (st.phase === 'gameOver' && !pause && !runFx && talkOpen && !!st.result);
+  const modalOpen = (st.phase === 'handOver' && !pause && !collecting && talkOpen) || confirmLeave || showPad || (st.phase === 'gameOver' && !pause && !runFx && talkOpen && !!st.result);
 
   const promoted = useCallback((c: Card) => isWildDeuce(c, r), [r]); // badge BOTH wild deuces (2♦ and 2♠), not just the off-suit one
 
@@ -1405,6 +1449,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           safe={vp.safe}
           hintLegal={hintLegal}
           marked={tipMarked}
+          collecting={collecting}
         />
       </Suspense>
       {!loadGone && <TableLoading progress={loadProgress} leaving={!loading} room={roomName} />}
@@ -1484,8 +1529,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         const t = piles[piles.length - 1]!;
         const short = (c: Card) => (c === 'BJ' ? 'BJ' : c === 'LJ' ? 'LJ' : cardLabel(c));
         return (
-          <div className={`last-trick glass slant ${ltOpen ? 'open' : 'chip'}`} data-testid="last-trick" aria-label="Last trick" role="button" tabIndex={0} aria-expanded={ltOpen} onClick={() => setLtOpen(!ltOpen)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setLtOpen(!ltOpen); } }}>
-            <span className="lt-label">LAST TRICK{!ltOpen && t.winner !== null && <> · {face(t.winner).slice(0, 8)}</>}{ltOpen && <span className="lt-close" aria-hidden> ✕</span>}</span>
+          <div className={`last-trick glass slant ${ltOpen ? 'open' : 'chip'}`} data-testid="last-trick" aria-label="Last trick" role="button" tabIndex={0} aria-expanded={ltOpen} onClick={() => setLtOpen(!ltOpen)}>
+            <span className="lt-label">LAST TRICK{!ltOpen && t.winner !== null && <> · {face(t.winner).slice(0, 8)}</>}</span>
             {ltOpen && t.plays.map((pl) => (
               <span key={pl.card} className={`lt-card ${pl.seat === t.winner ? 'win' : ''} ${pl.card[1] === 'H' || pl.card[1] === 'D' || pl.card === 'BJ' ? 'red' : ''}`}>
                 <small>{face(pl.seat).slice(0, 3)}</small>{short(pl.card)}

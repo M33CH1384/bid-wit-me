@@ -108,6 +108,8 @@ export interface SceneProps {
   slam?: { seat: number; cards: Card[]; others?: { seat: number; card: Card }[] } | null;
   /** the venue (3D arena) around the table; default classic */
   venue?: VenueId;
+  /** Post-hand: books slide to the next dealer for collection (Demetrius 2026-10-19). */
+  collecting?: boolean;
   /** camera view: standing (default) or sitting (lower/closer) */
   view?: 'standing' | 'sitting';
   /** Turn up (slam mode): Standing drags slam at max only when this is on. */
@@ -576,9 +578,9 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   const view = props.view ?? 'standing';
   // Sitting: lift the whole fan above the iPhone home indicator + Safari bottom chrome (safe-area
   // bottom + a 12px breathing margin), in the LIVE view's camera. Standing keeps its exact framing.
-  const sittingBottom = view === 'sitting' ? (safe.b - 62) / Math.max(1, screenH) : 0; // hand much lower in landscape; bottoms cut off by screen edge for clear table view (Demetrius 2026-10-19)
+  const sittingBottom = view === 'sitting' ? (safe.b + 12) / Math.max(1, screenH) : 0;
   const fanOpts: FanOpts = short
-    ? { short, view, reserveFrac: (Math.max(safe.l, safe.r) + 186) / size.width, bottomFrac: safe.b / Math.max(1, size.height) + sittingBottom, heightFrac: 0.32, ...strip } // hand slightly lowered (sittingBottom +2 not +12)
+    ? { short, view, reserveFrac: (Math.max(safe.l, safe.r) + 186) / size.width, bottomFrac: safe.b / Math.max(1, size.height) + sittingBottom, heightFrac: 0.32, ...strip } // bigger hand in landscape (was 0.25)
     : wide ? { view, reserveFrac: (size.width < 1400 ? 250 : 205) / size.width, bottomFrac: 0.012, heightFrac: 0.256, ...strip } // +25% hand (was 0.205)
     : portraitPhone ? { ...phoneHandFan(), view, bottomFrac: (phoneHandFan().bottomFrac ?? 0) + sittingBottom, ...strip, minStripPx: (handCounts[human] ?? 13) > 13 ? MIN_STRIP_PX : PHONE_HAND_STRIP_PX }
     : { view, ...strip };
@@ -599,13 +601,21 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
 
   // completed tricks in piles
   const pileCount = Array(n).fill(0) as number[];
+  // Post-hand collection: books slide to the next dealer's deck spot (Demetrius 2026-10-19).
+  // Stagger by seat so each player's stack goes in turn, ~4s total.
+  const collecting = !!props.collecting;
+  const nextDealer = (dealer + 1) % n;
+  const collectTarget = deckSpot(positions[nextDealer]!, n);
   for (const t of piles) {
     const w = t.winner!;
     const k = pileCount[w]!++;
-    // One clean card per book (the top card). Rendering all 4 caused a messy
-    // blend. Demetrius 2026-10-19.
-    const top = t.plays[t.plays.length - 1]!;
-    items.push({ key: `${handNo}-${top.card}`, card: top.card, target: pileSpot(positions[w]!, n, k, 0, 0), duration: 0.55, arc: 0.15, motion: 'gather', sfxStart: 'sweep', spatialSeat: positions[w]!, spatialN: n });
+    t.plays.forEach((pl, j) => {
+      if (collecting) {
+        items.push({ key: `${handNo}-${pl.card}`, card: pl.card, target: collectTarget, duration: 0.7, arc: 0.25, motion: 'glide', delay: w * 0.5 + k * 0.08, sfxStart: 'sweep', spatialSeat: positions[w]!, spatialN: n });
+      } else {
+        items.push({ key: `${handNo}-${pl.card}`, card: pl.card, target: pileSpot(positions[w]!, n, k, j, jitterOf(pl.card)), duration: 0.55, arc: 0.15, motion: 'gather', sfxStart: 'sweep', spatialSeat: positions[w]!, spatialN: n });
+      }
+    });
   }
   // cards on the table this trick
   // last-trick nuke: the auto-played final cards fly in one after another, right into the blast
@@ -1039,13 +1049,12 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
       {positions.map((p, seat) => {
         if (seat === human) return null;
         const side = p === 'left' || p === 'right' ? p : p === 'top' ? 'top' : null;
-        // phone landscape: side plates pinned to the screen edges at mid-height; the
-        // partner plate goes top-LEFT under the scorebug (never over the felt/cards).
-        // Demetrius 2026-10-19: no plate may cover the table in landscape.
+        // phone landscape: plates pinned to the screen edges at mid-height, partner top-centre under the scorebug
         if (short && side) {
           const cls = side === 'top' ? 'side-topc' : `side-${side}`;
+          // top seat: left edge just right of the fan (badgeSpot sits beside it), so no card peeks out under the plate
           const calcShort = (el: Object3D, camera: Camera, size: { width: number; height: number }) =>
-            side === 'top' ? [8 + safe.l, 46 + safe.t] : side === 'left' ? [8 + safe.l, size.height * (n === 3 ? 0.36 : 0.43)] : [size.width - 8 - safe.r, size.height * (n === 3 ? 0.36 : 0.43)];
+            side === 'top' ? [Math.min(size.width - 200, (new Vector3().setFromMatrixPosition(el.matrixWorld).project(camera).x + 1) * size.width / 2), 50 + safe.t] : side === 'left' ? [8 + safe.l, size.height * (n === 3 ? 0.36 : 0.43)] : [size.width - 8 - safe.r, size.height * (n === 3 ? 0.36 : 0.43)];
           return (
             <Html key={seat} position={badgeSpot(p, n)} calculatePosition={calcShort} zIndexRange={[5, 0]} className={`seat-anchor ${cls}`} portal={portal}>
               {renderSeat(seat)}
