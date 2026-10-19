@@ -3,6 +3,7 @@ import { fx } from '../fx';
 import { victoryHeadline, victoryIdentity } from './victory';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { sideOf } from '@spades/rules';
+import { TurnCountdown } from '../TurnRing';
 import Table from '../Table';
 import { TableLoading } from '../TableLoading';
 import { type Settings, loadSettings, saveSettings } from '../settings';
@@ -51,6 +52,17 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
     [room.deadline, room.now],
   );
   const secs = useCountdown(clockAt);
+  // Local epochs of the server turn window for the countdown ring. Memoized per
+  // server snapshot like clockAt above (recomputing on every render would slide the
+  // window forward and the ring would never drain). The ring itself ticks on rAF.
+  const turnStart = useMemo(
+    () => (room.turnClockStart != null ? clientDeadline(room.turnClockStart, room.now, Date.now()) : null),
+    [room.turnClockStart, room.now],
+  );
+  const turnDeadline = useMemo(
+    () => (room.turnClockStart != null && room.deadline != null ? clientDeadline(room.deadline, room.now, Date.now()) : null),
+    [room.turnClockStart, room.deadline, room.now],
+  );
   const socketGen = cs.socketGen;
   // A new socket has to say again whether the table is drawn. The server holds the clock until then.
   const onInteractive = useCallback((on: boolean) => conn.send({ t: 'interactive', on }), [conn, socketGen]);
@@ -90,6 +102,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
   if (!drawn || !source || !rot) return <TableLoading progress={0.24} />;
   const r = room.rules;
   const turnLocal = localSeatOfServerTurn(cs.view?.turn ?? null, spectator || cs.seat === null ? null : cs.seat, r.playerCount);
+  const onClock = turnDeadline != null && turnStart != null && (gp === 'bidding' || gp === 'playing' || gp === 'exchange');
 
   // host: Kick (with confirm); seated non-hosts: Vote to kick (majority of the other humans)
   const kickFor = (real: number): KickInfo | undefined => {
@@ -107,6 +120,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
         <SeatMedia seat={seat} seatPos={(rot.n === 4 ? ['bottom', 'left', 'top', 'right'] : ['bottom', 'left', 'right'])[local] as import('../spatial').SeatPos} playerCount={rot.n} isMe={local === 0 && !spectator} mesh={mesh} vs={vs} limited={!!seat && seat.kind === 'human' && vs.limited.includes(seat.playerId)} kick={kickFor(real)} />
         {offline && <span className="chip bad seat-offline">OFFLINE</span>}
         {turnLocal === local && secs !== null && !source.pause && <span className={`turn-clock ${secs <= 5 ? 'hot' : ''}`} data-testid={`clock-${local}`} data-turn-sec={room.turnSec ?? ''}>{secs}s</span>}
+        {onClock && turnLocal === local && turnStart != null && turnDeadline != null && <TurnCountdown start={turnStart} deadline={turnDeadline} mine={local === 0 && !spectator} />}
       </>
     );
   };

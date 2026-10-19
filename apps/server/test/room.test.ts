@@ -1086,6 +1086,58 @@ describe('learning mode', () => {
   });
 });
 
+describe('turn clock', () => {
+  it('broadcasts the acting human window and does not change the timer length', () => {
+    const env = new FakeEnv(undefined, FAST);
+    env.join('a', 'Solo');
+    env.send('a', { t: 'sit', seat: 0 });
+    const configured = { bid: 30, play: 20 };
+    env.send('a', { t: 'config', rules: makeRules('joker', { turnTimerSec: configured, firstHandBidsItself: false }) });
+    env.send('a', { t: 'start' });
+    for (let i = 0; i < 80 && env.room.data.game!.turn !== 0; i++) env.advance(40);
+    env.advance(5);
+    const d = env.room.data;
+    expect(d.game!.turn).toBe(0);
+    expect(d.seats[0]!.kind).toBe('human');
+    const room = env.last('a', 'state')!.room;
+    expect(room.rules.turnTimerSec).toEqual(configured);
+    expect(d.rules.turnTimerSec).toEqual(configured);
+    expect(room.turnClockStart).toBeTypeOf('number');
+    expect(room.deadline! - room.turnClockStart!).toBe(configured.bid * 1000);
+  });
+
+  it('stays off for a bot turn and for the Table Talk deadline', () => {
+    const env = new FakeEnv(undefined, FAST);
+    env.join('a', 'Solo');
+    env.send('a', { t: 'sit', seat: 0 });
+    env.send('a', { t: 'config', rules: makeRules('joker', { turnTimerSec: { bid: 30, play: 20 }, firstHandBidsItself: false }) });
+    env.send('a', { t: 'start' });
+    let sawBot = false;
+    for (let i = 0; i < 50 && !sawBot; i++) {
+      const g = env.room.data.game!;
+      if (g.turn !== null && g.phase !== 'handOver' && env.room.data.seats[g.turn]?.kind === 'bot') {
+        const room = env.last('a', 'state')!.room;
+        expect(room.deadline).toBeNull();
+        expect(room.turnClockStart).toBeNull();
+        sawBot = true;
+        break;
+      }
+      playTurn(env, ['a']);
+      env.advance(25);
+    }
+    expect(sawBot).toBe(true);
+    const g = env.room.data.game!;
+    g.phase = 'handOver';
+    g.turn = null;
+    env.room.testLoadGame(g);
+    env.advance(20);
+    const over = env.last('a', 'state')!.room;
+    expect(over.deadline).not.toBeNull();
+    expect(over.turnClockStart).toBeNull();
+    expect(over.rules.turnTimerSec).toEqual({ bid: 30, play: 20 });
+  });
+});
+
 describe('AFK + kicking', () => {
   const soloGame = (afkLimit?: number) => {
     const env = new FakeEnv(undefined, FAST);
