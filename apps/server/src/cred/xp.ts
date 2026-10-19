@@ -26,7 +26,7 @@ const TITLES: [number, string][] = [
   [30, 'Shot Caller'],
   [20, 'Block Captain'],
   [10, 'Block Member'],
-  [5, 'Corner Regular'],
+  [5, 'On the Rise'], // was 'Corner Regular' — Demetrius didn't like it (2026-10-19)
   [1, 'New Jack'],
 ];
 export const titleForLevel = (level: number): string => TITLES.find(([m]) => level >= m)?.[1] ?? 'New Jack';
