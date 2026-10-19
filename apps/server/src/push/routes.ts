@@ -56,8 +56,13 @@ export async function handlePushHttp(req: Request, env: PushEnv, url: URL, parts
   }
 
   if (parts[2] === 'unsubscribe' && req.method === 'POST') {
-    let body: { endpoint?: unknown };
+    let body: { endpoint?: unknown; all?: unknown };
     try { body = await req.json(); } catch { return json({ error: 'bad json' }, 400); }
+    if (body.all === true) {
+      // Clear all subscriptions for this user (iOS sometimes loses the local subscription handle)
+      await db.prepare('DELETE FROM push_subscriptions WHERE user_id = ?').bind(me.id).run();
+      return json({ ok: true });
+    }
     if (typeof body.endpoint !== 'string') return json({ error: 'bad endpoint' }, 400);
     await db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ? AND user_id = ?').bind(body.endpoint, me.id).run();
     return json({ ok: true });

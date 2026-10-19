@@ -88,6 +88,13 @@ export async function disablePush(): Promise<void> {
         body: JSON.stringify({ endpoint: sub.endpoint }),
       }).catch(() => undefined);
       await sub.unsubscribe().catch(() => undefined);
+    } else {
+      // No local subscription found (iOS quirk) — clear all server-side subscriptions for this user
+      await api('/unsubscribe', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ all: true }),
+      }).catch(() => undefined);
     }
   } catch {
     /* best-effort */
