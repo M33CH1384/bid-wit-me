@@ -577,8 +577,11 @@ class Engine {
     }
     const gen = ++this.wakeGen;
     // play() has to happen in this turn. Waiting for the resume promise drops the iOS gesture.
-    if (kind === 'gesture') {
-      if (this.ctx) this.blip(this.ctx);
+    // Run the syncs on 'show' too: if iOS backgrounded the page the beds were torn down by
+    // recreateContext(), and rebuilding the graph now means the next tap (or a granted resume)
+    // restores sound immediately instead of needing the audio options. Demetrius 2026-10-19.
+    if (kind === 'gesture' || kind === 'show') {
+      if (kind === 'gesture' && this.ctx) this.blip(this.ctx);
       this.syncAmbient();
       this.syncVenue();
       this.syncMusic();
