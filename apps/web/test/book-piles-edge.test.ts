@@ -92,6 +92,6 @@ describe('book piles live on the table rim, in a side-by-side row per player', (
     expect(oneBook).toBeLessThan(0.006);
     expect(pileSpot('bottom', 4, 12, 0, 0).p[1]).toBeCloseTo(pileSpot('bottom', 4, 0, 0, 0).p[1], 9); // no steps across the row
     for (let i = 1; i <= 12; i++) expect(pileRise(i)).toBeGreaterThan(pileRise(i - 1));
-    expect(pileSpot('bottom', 4, 0, 0, 0).p[1]).toBeCloseTo(RAIL_TOP_Y + 0.006, 9); // sits on the rail top
+    expect(pileSpot('bottom', 4, 0, 0, 0).p[1]).toBeCloseTo(RAIL_TOP_Y + 0.02, 9); // sits on the rail top (FELT_REST_Y raised to 0.02, Demetrius 2026-10-19)
   });
 });

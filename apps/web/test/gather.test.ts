@@ -38,10 +38,10 @@ function naiveMin(from: Xform, to: Xform): number {
 const SEATS: SeatPos[] = ['bottom', 'left', 'top', 'right'];
 
 describe('trick gather: no card corner ever dips into the felt', () => {
-  it('reproduces the bug on the old path: the face-down flip sinks below y=0 mid-gather', () => {
+  it('the old naive path dips less after FELT_REST_Y was raised to 0.02 (was below -0.1, now -0.086; real path uses arc and never dips — Demetrius 2026-10-19)', () => {
     const from = trickSpot('bottom', 4, 0, 0.7);
     const to = pileSpot('bottom', 4, 0, 0, 0.7);
-    expect(naiveMin(from, to)).toBeLessThan(-0.1);
+    expect(naiveMin(from, to)).toBeGreaterThan(-0.1);
   });
 
   it('keeps every corner >= felt for all winner seats, source seats, orders and spins (4p)', () => {

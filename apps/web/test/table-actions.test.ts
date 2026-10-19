@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { OpenTable, PresenceStatus } from '@spades/protocol';
-import { LOCAL_TABLE_REASON, WATCH_FULL_REASON, playerTableAction } from '../src/social/tableActions';
+import { WATCH_FULL_REASON, playerTableAction } from '../src/social/tableActions';
 
 const local: PresenceStatus = { kind: 'table', mode: 'joker', offline: true };
 const atTable: PresenceStatus = { kind: 'table', mode: 'joker', open: 1, code: 'ABCD', seat: 2 };
@@ -15,9 +15,9 @@ function listed(over: Partial<OpenTable> = {}): OpenTable {
 }
 
 describe('player table actions', () => {
-  it('keeps a local vs-bots game from being joined or watched', () => {
+  it('keeps a local vs-bots game from being joined or watched (shows Local game indicator, no dead buttons — Demetrius 2026-10-19)', () => {
     const act = playerTableAction(local, {}, null);
-    expect(act).toMatchObject({ local: true, join: false, spectate: true, spectateReason: LOCAL_TABLE_REASON, joinReason: LOCAL_TABLE_REASON });
+    expect(act).toMatchObject({ local: true, join: false, spectate: false });
     expect(playerTableAction({ kind: 'table', mode: 'joker' }, {}, null)?.local).toBe(true);
   });
 
