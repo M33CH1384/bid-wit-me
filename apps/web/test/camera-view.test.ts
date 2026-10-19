@@ -40,6 +40,13 @@ describe('camera view', () => {
     const st = cameraFor(844 / 390, true, 'standing'); const si = cameraFor(844 / 390, true, 'sitting');
     expect(si.pos[1]).toBeLessThan(st.pos[1]); expect(si.fov).toBeGreaterThan(st.fov);
   });
+  it('short landscape zooms in on wide phones, keeps the wide fov on narrow landscape', () => {
+    const narrowSit = cameraFor(1.3, true, 'sitting');
+    const wideSit = cameraFor(2.39, true, 'sitting');
+    expect(narrowSit.fov).toBe(52); // unchanged: side plates stay in frame
+    expect(wideSit.fov).toBeLessThan(narrowSit.fov); // closer framing where there is room
+    expect(wideSit.fov).toBeGreaterThan(cameraFor(2.39, true, 'standing').fov); // sitting still wider than standing
+  });
   it('camera tween: 0.7s wall-clock, intermediate poses, never a 1-frame jump from a huge first dt', () => {
     const st = cameraFor(390 / 844, false, 'standing'), si = cameraFor(390 / 844, false, 'sitting');
     expect(CAMERA_VIEW_TWEEN_MS).toBeGreaterThanOrEqual(500); expect(CAMERA_VIEW_TWEEN_MS).toBeLessThanOrEqual(900);

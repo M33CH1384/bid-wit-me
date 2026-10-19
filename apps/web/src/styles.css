@@ -1839,11 +1839,11 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 
 /* ---------- in-game v2: menu, tray, last-trick chip, score pad ---------- */
 .menu-wrap { position: relative; display: flex; flex: none; }
-/* The header stretches its children, so Menu used to be as tall as the scorebug and sat on the card buttons.
-   The control stays 32px; only its top band takes taps, above the card-button row. */
-.scorebug > .menu-wrap { align-self: flex-start; margin-top: -6px; pointer-events: none; }
-.scorebug > .menu-wrap > .bug-btn { align-self: flex-start; position: relative; height: 32px; pointer-events: none; }
-.scorebug > .menu-wrap > .bug-btn::after { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 20px; pointer-events: auto; }
+/* The header stretches its children: Menu matches the sound button's full height so the whole
+   control takes taps and sizes like its neighbour. (The old 20px top-band hit hack left the
+   visible glyph untappable, worst in short landscape.) */
+.scorebug > .menu-wrap { align-self: stretch; margin-top: 0; pointer-events: none; }
+.scorebug > .menu-wrap > .bug-btn { align-self: stretch; height: auto; pointer-events: auto; }
 .menu-scrim, .game-menu { pointer-events: auto; }
 .menu-scrim { position: fixed; inset: 0; z-index: 60; }
 /* WebKit hit-tests a backdrop-filter layer as the element under it, so a tap on Leave landed on the scrim and only closed the menu. The fill is already opaque. */
