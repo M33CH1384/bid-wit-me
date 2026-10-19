@@ -2007,3 +2007,63 @@ button.mode-pick::after, button.quiet-row::after { content: ''; position: absolu
 .stay-primary { min-height: 52px; border: none; border-radius: 12px; background: linear-gradient(135deg, #9b5cff, #7a3cff); color: #fff; font: 800 16px 'Barlow Condensed', sans-serif; letter-spacing: .08em; cursor: pointer; }
 .ghost-btn { min-height: 44px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.18); border-radius: 10px; color: #f3ead2; font: 700 14px 'Barlow Condensed', sans-serif; cursor: pointer; }
 .quiet-continue { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.18); color: #f3ead2; }
+
+/* ---------- Street Cred profile page ---------- */
+.profile-page { min-height: 100dvh; padding: calc(12px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom)); max-width: 720px; margin: 0 auto; }
+.prof-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.prof-season { font-family: var(--display); font-weight: 700; letter-spacing: .08em; color: var(--muted); font-size: 13px; text-transform: uppercase; }
+.prof-header { display: flex; gap: 14px; align-items: center; padding: 14px 16px; border-radius: 14px; margin-bottom: 12px; }
+.prof-avatar { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; font-family: var(--display); font-weight: 800; font-size: 26px; background: linear-gradient(135deg, var(--purple), var(--purple-hot)); color: #fff; flex: none; }
+.prof-id h2 { margin: 0 0 2px; font-size: 22px; }
+.prof-level { display: flex; gap: 8px; align-items: baseline; font-size: 14px; }
+.prof-level b { color: var(--gold); font-family: var(--display); letter-spacing: .04em; }
+.prof-level span { color: var(--muted); }
+.xp-bar { position: relative; height: 10px; border-radius: 6px; background: rgba(255,255,255,.1); margin-top: 6px; overflow: hidden; }
+.xp-bar i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, var(--purple), var(--gold)); border-radius: 6px; }
+.xp-bar small { position: absolute; right: 6px; top: -1px; font-size: 9px; color: #fff; }
+.prof-tabs { display: flex; gap: 4px; margin-bottom: 14px; overflow-x: auto; }
+.prof-tabs button { position: relative; flex: 1; border: 0; background: none; color: var(--muted); font-family: var(--display); font-weight: 700; font-size: 14px; letter-spacing: .05em; text-transform: uppercase; padding: 10px 6px; border-bottom: 2px solid transparent; white-space: nowrap; }
+.prof-tabs button.on { color: var(--gold); border-bottom-color: var(--gold); }
+.tab-dot { position: absolute; top: 2px; right: 2px; min-width: 18px; height: 18px; border-radius: 9px; background: var(--red); color: #fff; font-size: 11px; display: grid; place-items: center; font-style: normal; }
+.prof-body h3 { font-family: var(--display); letter-spacing: .06em; text-transform: uppercase; font-size: 15px; color: var(--muted); margin: 16px 0 8px; }
+.rank-cards { display: grid; gap: 12px; }
+@media (min-width: 560px) { .rank-cards { grid-template-columns: 1fr 1fr; } }
+.rank-card { padding: 14px 16px; border-radius: 14px; }
+.rank-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.rank-head h3 { margin: 0; font-size: 16px; }
+.rank-elo { font-family: var(--display); font-weight: 800; font-size: 34px; }
+.rank-elo small { font-size: 12px; color: var(--muted); margin-left: 6px; letter-spacing: .1em; }
+.rank-rows { margin-top: 8px; display: grid; gap: 4px; }
+.rank-rows div { display: flex; justify-content: space-between; font-size: 14px; }
+.rank-rows span { color: var(--muted); }
+.div-badge { font-family: var(--display); font-weight: 800; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; padding: 3px 10px; border-radius: 20px; }
+.div-stoop { background: #5a5348; color: #fff; } .div-corner { background: #7a5c3a; color: #ffe9c9; }
+.div-block { background: #4a6fa5; color: #fff; } .div-avenue { background: #6a4a9a; color: #fff; }
+.div-boulevard { background: #9a3a5a; color: #fff; } .div-legend { background: linear-gradient(135deg, #f5c542, #ff8a3d); color: #2a1200; }
+.challenge { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 10px; background: rgba(255,255,255,.05); margin-bottom: 8px; }
+.challenge.done { background: rgba(245,197,66,.1); }
+.ch-main { flex: 1; min-width: 0; }
+.ch-main b { font-size: 15px; }
+.ch-bar { height: 6px; border-radius: 3px; background: rgba(255,255,255,.12); margin: 6px 0 4px; overflow: hidden; }
+.ch-bar i { display: block; height: 100%; background: var(--gold); border-radius: 3px; }
+.ch-main small { color: var(--muted); font-size: 12px; }
+.ch-claimed { color: var(--gold); font-size: 13px; font-weight: 700; }
+.stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.stat-cell { background: rgba(255,255,255,.05); border-radius: 10px; padding: 10px 8px; text-align: center; }
+.stat-cell b { display: block; font-family: var(--display); font-size: 20px; }
+.stat-cell span { font-size: 11px; color: var(--muted); }
+.ach-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+@media (min-width: 560px) { .ach-grid { grid-template-columns: repeat(3, 1fr); } }
+.ach { border-radius: 10px; padding: 12px; background: rgba(255,255,255,.05); }
+.ach.unlocked { background: rgba(245,197,66,.12); box-shadow: inset 0 0 0 1px rgba(245,197,66,.4); }
+.ach.locked { opacity: .55; }
+.ach b { display: block; font-size: 14px; margin-bottom: 2px; }
+.ach small { display: block; font-size: 12px; color: var(--muted); min-height: 28px; }
+.ach span { font-size: 11px; color: var(--gold); font-weight: 700; }
+.unlock-list { display: grid; gap: 8px; }
+.unlock-row { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 10px; background: rgba(255,255,255,.05); }
+.unlock-row b { flex: 1; }
+.unlock-row small { color: var(--muted); font-size: 12px; }
+.equipped-tag { font-size: 11px; font-weight: 700; color: var(--gold); text-transform: uppercase; letter-spacing: .06em; }
+.prof-loading, .prof-error { text-align: center; padding: 60px 20px; color: var(--muted); }
+.muted { color: var(--muted); }

@@ -144,6 +144,7 @@ function AccountScreen({ user, onClose, onChangeName, onDelete }: { user: Accoun
         <button type="button" className="acct-small" data-testid="change-username" onClick={onChangeName}>{user.username ? 'Change' : 'Pick'}</button>
       </div>
       <p className="acct-fine">Member since {fmtDate(user.createdAt)}</p>
+      <button type="button" className="hero-btn purple" data-testid="open-profile" onClick={() => { onClose(); location.href = '/profile'; }}><b>STREET CRED PROFILE</b><small>rank · challenges · stats · achievements</small></button>
 
       <h3 className="sheet-h">Sign-in methods</h3>
       <ul className="acct-list" data-testid="linked-logins">

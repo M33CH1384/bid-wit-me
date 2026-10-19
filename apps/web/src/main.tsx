@@ -11,8 +11,9 @@ import '@fontsource/barlow-condensed/800.css';
 import './styles.css';
 
 const OnlineApp = lazy(() => import('./online/OnlineApp'));
+const ProfilePage = lazy(() => import('./profile/ProfilePage'));
 
-/** "/" = offline (vs bots) as before; "/online" and "/t/CODE" = online tables. */
+/** "/" = offline (vs bots) as before; "/online" and "/t/CODE" = online tables; "/profile" = Street Cred profile. */
 function Root() {
   const [path, setPath] = useState(location.pathname);
   useEffect(() => {
@@ -22,7 +23,8 @@ function Root() {
   }, []);
   return (
     <>
-      {isOnlinePath(path) ? <Suspense fallback={null}><OnlineApp path={path} /></Suspense> : <App key={path} />}
+      {path === '/profile' ? <Suspense fallback={null}><ProfilePage /></Suspense>
+        : isOnlinePath(path) ? <Suspense fallback={null}><OnlineApp path={path} /></Suspense> : <App key={path} />}
       <SoundDock />
       <SocialRoot />
       <IdleGuard />
