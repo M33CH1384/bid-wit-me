@@ -272,8 +272,8 @@ export function cameraFor(aspect: number, short = false, view: 'standing' | 'sit
 function shortLandscapeCamera(aspect: number, view: 'standing' | 'sitting' = 'standing'): CamSpec {
   const wide = Math.min(1, Math.max(0, (aspect - 1.3) / (2.4 - 1.3))); // 0 at 1.3, 1 at 2.4+
   const lerp = (a: number, b: number) => a + (b - a) * wide;
-  if (view === 'sitting') { const spec: CamSpec = { pos: [0, 1.95, 3.45], look: [0, 0, 0.5], fov: lerp(52, 38) }; spec.look = pitchAimDown(spec.pos, spec.look); return spec; } // seated: low, across the felt + the +7° tilt, wide enough for the fan
-  return { pos: [0, 3.1, 3.5], look: [0, 0, 0.22], fov: lerp(42, 36) };
+  if (view === 'sitting') { const spec: CamSpec = { pos: [0, 1.95, 3.45], look: [0, 0, 0.5], fov: lerp(52, 44) }; spec.look = pitchAimDown(spec.pos, spec.look); return spec; } // seated: low, across the felt + the +7° tilt, wide enough for the fan
+  return { pos: [0, 3.1, 3.5], look: [0, 0, 0.22], fov: lerp(42, 40) };
 }
 
 export function makeCamera(aspect: number, short = false, view: 'standing' | 'sitting' = 'standing'): PerspectiveCamera {
