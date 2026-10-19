@@ -576,7 +576,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   const view = props.view ?? 'standing';
   // Sitting: lift the whole fan above the iPhone home indicator + Safari bottom chrome (safe-area
   // bottom + a 12px breathing margin), in the LIVE view's camera. Standing keeps its exact framing.
-  const sittingBottom = view === 'sitting' ? (safe.b - 8) / Math.max(1, screenH) : 0; // hand lower in landscape (was +12); incremental to avoid breaking hit-testing
+  const sittingBottom = view === 'sitting' ? (safe.b - 62) / Math.max(1, screenH) : 0; // hand much lower in landscape; bottoms cut off by screen edge for clear table view (Demetrius 2026-10-19)
   const fanOpts: FanOpts = short
     ? { short, view, reserveFrac: (Math.max(safe.l, safe.r) + 186) / size.width, bottomFrac: safe.b / Math.max(1, size.height) + sittingBottom, heightFrac: 0.32, ...strip } // hand slightly lowered (sittingBottom +2 not +12)
     : wide ? { view, reserveFrac: (size.width < 1400 ? 250 : 205) / size.width, bottomFrac: 0.012, heightFrac: 0.256, ...strip } // +25% hand (was 0.205)
