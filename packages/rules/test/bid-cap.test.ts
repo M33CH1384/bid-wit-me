@@ -50,11 +50,11 @@ describe('bid cap: team combined bid never exceeds books in hand', () => {
         const bid = opt.max >= opt.min ? opt.max : 'nil';
         st = applyAction(st, { type: 'bid', seat: st.turn, bid });
       }
-      const sum = (a: number, b: number) => st.bids[a]! as number + (st.bids[b]! as number);
+      const sum = (a: number, b: number) =>
+        (typeof st.bids[a] === 'number' ? (st.bids[a] as number) : 0) +
+        (typeof st.bids[b] === 'number' ? (st.bids[b] as number) : 0);
       for (const [a, b] of [[0, 2], [1, 3]] as const) {
-        const total = (typeof st.bids[a] === 'number' ? (st.bids[a] as number) : 0) + (typeof st.bids[b] === 'number' ? (st.bids[b] as number) : 0);
-        expect(total).toBeLessThanOrEqual(13);
-        void sum;
+        expect(sum(a, b)).toBeLessThanOrEqual(13);
       }
     }
   });

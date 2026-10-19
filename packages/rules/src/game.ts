@@ -255,7 +255,7 @@ export function isFreshDeal(st: Pick<GameState, 'phase' | 'bids' | 'tricks' | 't
 
 /* ----------------------------------------------------------------- bidding */
 
-function blindNilScoreEligible(st: GameState, seat: Seat): boolean {
+function blindNilScoreEligible(st: Pick<GameState, 'rules' | 'scores'>, seat: Seat): boolean {
   const r = st.rules;
   const blind = blindNilRulesOf(r);
   if (!blind.allowed) return false;
@@ -277,7 +277,7 @@ export interface BidOptions {
 }
 
 /** Bids available to `seat` right now (ignores whose turn it is). */
-export function bidOptions(st: GameState, seat: Seat): BidOptions {
+export function bidOptions(st: Pick<GameState, 'rules' | 'trickCount' | 'bids' | 'revealed' | 'scores'>, seat: Seat): BidOptions {
   const r = st.rules;
   const books = booksInHand(st);
   // Hard cap: a team's numeric bids can never add up to more than the books in the hand.

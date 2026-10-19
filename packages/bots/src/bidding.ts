@@ -182,7 +182,7 @@ export function chooseBid(v: PlayerView, level: BotLevel, rng: Rng, hint?: Partn
 /** What this bot would bid for its own hand right now, before its partner's bid caps it (chooseBid on its own view, with bidOptions filled in when it is not this seat's turn). Null while it has not looked at its cards — no estimate is shown for a hand the bot itself has not seen. This is the number a partner-facing "thinks N" may quote: the bot's real intended bid for its own books, nothing else about its hand. */
 export function partnerBidIntent(v: PlayerView, level: BotLevel, rng: Rng = createRng(`${v.seat}:${v.handNo}:${v.tricks.length}`)): number | 'nil' | null {
   if (v.phase !== 'bidding' || !v.hand) return null;
-  const opt = v.bidOptions ?? bidOptions(v as unknown as Parameters<typeof bidOptions>[0], v.seat);
+  const opt = v.bidOptions ?? bidOptions(v, v.seat);
   return chooseBid({ ...v, bidOptions: opt }, level, rng);
 }
 
