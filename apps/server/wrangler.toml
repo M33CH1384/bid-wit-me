@@ -18,6 +18,11 @@ ADMIN_USERNAMES = "M33CH"
 # TURN (optional, later): set these as secrets to hand out Cloudflare Realtime TURN credentials via /api/ice
 #   npx wrangler secret put TURN_KEY_ID
 #   npx wrangler secret put TURN_KEY_API_TOKEN
+# Web Push (Release 13): generate once locally (see your_files/notifications-design.md §7), then
+#   npx wrangler secret put VAPID_PUBLIC_KEY
+#   npx wrangler secret put VAPID_PRIVATE_KEY
+#   npx wrangler secret put VAPID_SUBJECT   (e.g. mailto:you@example.com)
+# Without these, /api/push/vapid-key returns 503 and no pushes are sent.
 
 [[durable_objects.bindings]]
 name = "TABLES"
@@ -42,6 +47,10 @@ new_sqlite_classes = ["FeedbackDO"]
 [[durable_objects.bindings]]
 name = "LIMITER"
 class_name = "RateLimitDO"
+
+# Push notifications (Release 13): daily-bonus + season-ending reminders run hourly.
+[triggers]
+crons = ["5 * * * *"]
 
 [[migrations]]
 tag = "v3"

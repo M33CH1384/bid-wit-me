@@ -4,6 +4,7 @@
  */
 import { type GameState, sideCount, sideOf } from '@spades/rules';
 import { processGameCred } from '../cred/hooks';
+import type { CredPushEvent } from '../push/notify';
 
 export type RatingKind = 'team' | 'cutthroat';
 export const ELO_START = 1200;
@@ -212,10 +213,10 @@ export function leaverLoss(rec: GameRecord, current: Record<string, { elo: numbe
   return { [leaverId]: { before, after } };
 }
 
-/** Write a finished game + Elo to D1 (one batch). */
-export async function saveRecord(db: D1Database, rec: GameRecord, rated: boolean, meta: SaveMeta = {}): Promise<void> {
-  if (!rec.players.length) return;
-  if (await db.prepare('SELECT 1 AS ok FROM games WHERE id = ?').bind(rec.id).first()) return; // already saved (retry)
+/** Write a finished game + Elo to D1 (one batch). Returns push events for the caller to send. */
+export async function saveRecord(db: D1Database, rec: GameRecord, rated: boolean, meta: SaveMeta = {}): Promise<CredPushEvent[]> {
+  if (!rec.players.length) return [];
+  if (await db.prepare('SELECT 1 AS ok FROM games WHERE id = ?').bind(rec.id).first()) return []; // already saved (retry)
   const uids = rec.players.map((p) => p.uid);
   const cur: Record<string, { elo: number; games: number; peak: number }> = {};
   const rows = (await db.prepare(`SELECT user_id, elo, games, peak FROM ratings WHERE kind = ? AND user_id IN (${uids.map(() => '?').join(',')})`).bind(rec.kind, ...uids)
@@ -224,7 +225,7 @@ export async function saveRecord(db: D1Database, rec: GameRecord, rated: boolean
   // only accounts that still exist (a player may have deleted their account mid-game)
   const exist = new Set((await db.prepare(`SELECT id FROM users WHERE id IN (${uids.map(() => '?').join(',')})`).bind(...uids).all<{ id: string }>()).results.map((r) => r.id));
   const players = rec.players.filter((p) => exist.has(p.uid));
-  if (!players.length) return;
+  if (!players.length) return [];
   const abandoned = meta.endReason === 'abandoned';
   const elo = !rated ? {} : abandoned ? leaverLoss({ ...rec, players }, cur, meta.leaverId ?? null) : eloUpdate({ ...rec, players }, placementsOf(rec.final, rec.winners), cur);
   const stmts = [
@@ -243,7 +244,7 @@ export async function saveRecord(db: D1Database, rec: GameRecord, rated: boolean
   }
   await db.batch(stmts);
   // Street Cred (Phase 3a): best-effort — processGameCred never throws, so recording can't break.
-  await processGameCred(db, { ...rec, players }, { rated, endReason: abandoned ? 'abandoned' : 'finished', leaverId: meta.leaverId ?? null, venue: meta.venue ?? null }, elo);
+  return processGameCred(db, { ...rec, players }, { rated, endReason: abandoned ? 'abandoned' : 'finished', leaverId: meta.leaverId ?? null, venue: meta.venue ?? null }, elo);
 }
 
 export { sideCount };

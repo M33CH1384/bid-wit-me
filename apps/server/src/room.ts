@@ -215,6 +215,8 @@ export interface RoomIO {
   listing?(t: OpenTable | null): void;
   /** Voice (c): a persona's catalog bucket for a set/Wheels/win moment is thin; the DO runs the writer in waitUntil */
   voiceMiss?(req: import('./voice/writer').WriterRequest): void;
+  /** Push: a new bid/play turn began for `seat` (the DO notifies the player when they have no live socket). */
+  turnBegan?(seat: number, kind: 'bid' | 'play'): void;
 }
 
 
@@ -1495,6 +1497,9 @@ export class Room {
         d.deadline = null;
         d.botDueAt = null;
         changed = true;
+        // Push: a fresh bid/play turn — the DO pings the player when they're away.
+        const pt = pendingTurn(g);
+        if (pt && (pt.kind === 'bid' || pt.kind === 'play')) this.io.turnBegan?.(pt.seat, pt.kind);
       } else if (d.turnSeq === undefined) d.turnSeq = d.seq ?? 0;
       // Release 10: a bot claims 'Run it!' as soon as it's guaranteed from its own cards, even off-turn.
       // canRunIt is proved at most once per seat per state (and never for a spectator), so this loop stays cheap.

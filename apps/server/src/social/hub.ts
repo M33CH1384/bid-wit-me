@@ -73,6 +73,13 @@ export interface HubIO {
   /** expire invites etc. (in-memory timer) */
   later(ms: number, f: () => void): void;
   randomId(): string;
+  /**
+   * Push hooks (Release 13). The DO implements these with its own ctx.waitUntil.
+   * onOnline: a signed-in user's first socket attached (fresh online transition).
+   * onOfflineInvite: an invite was stored for a user with no live socket.
+   */
+  onOnline?(uid: string, name: string): void;
+  onOfflineInvite?(toUid: string, fromName: string, code: string, mode: string | null): void;
 }
 
 export interface Ident { uid?: string; name: string; admin?: boolean; /** stable guest session suffix */ gid?: string }
@@ -119,7 +126,7 @@ export class Hub {
   private phaseCache = new Map<string, { at: number; phase: 'live' | 'over' | 'gone' }>();
   private store: SocialStore | null;
 
-  constructor(private io: HubIO, db: D1Database | undefined) {
+  constructor(private io: HubIO, private db: D1Database | undefined) {
     this.store = db ? new SocialStore(db) : null;
     for (const code of io.ended?.list() ?? []) this.endedCodes.add(code);
   }
@@ -172,6 +179,32 @@ export class Hub {
     const global = this.io.global.list(SOCIAL_LIMITS.globalSend).filter((l) => !this.hiddenBetween(att.pid, l.from));
     this.io.send(cid, { t: 'hello', you: me, admin: !!att.admin, users, global, friends, settings, unread, tables: this.openTables() });
     if (!wasOnline && !this.quiet.has(att.pid)) this.broadcastEntry(att.pid);
+    // Release 13: fresh online transition — friend-online pushes + pending offline invites.
+    if (who.uid && !wasOnline) {
+      this.io.onOnline?.(who.uid, att.name);
+      await this.deliverOfflineInvites(cid, who.uid);
+    }
+  }
+
+  /** Send any unexpired offline invites as live toasts, then clear them. */
+  private async deliverOfflineInvites(cid: string, uid: string): Promise<void> {
+    const db = this.db;
+    if (!db) return;
+    const now = this.io.now();
+    const rows = await db.prepare(`SELECT id, from_uid AS fromUid, from_name AS fromName, code, mode, seat, expires_at AS expiresAt
+      FROM offline_invites WHERE to_uid = ? AND expires_at > ?`).bind(uid, now)
+      .all<{ id: string; fromUid: string; fromName: string; code: string; mode: string | null; seat: number | null; expiresAt: number }>();
+    for (const r of rows.results) {
+      this.io.send(cid, {
+        t: 'invite',
+        invite: {
+          id: r.id, from: `u:${r.fromUid}`, fromName: r.fromName, code: r.code,
+          ...(r.mode ? { mode: r.mode } : {}), ...(r.seat != null ? { seat: r.seat } : {}), expiresAt: r.expiresAt,
+        },
+      });
+    }
+    if (rows.results.length) await db.prepare('DELETE FROM offline_invites WHERE to_uid = ?').bind(uid).run();
+    await db.prepare('DELETE FROM offline_invites WHERE expires_at <= ?').bind(now).run(); // opportunistic cleanup
   }
 
   /* ------------------------------------------------------------- open tables (Release 10) */
@@ -515,7 +548,20 @@ export class Hub {
       }
       case 'invite': return this.invite(cid, att, msg);
       case 'inviteReply': {
-        const inv = this.invites.get(msg.id);
+        let inv = this.invites.get(msg.id);
+        // Release 13: fall back to a stored offline invite (delivered as a live toast on open()).
+        if (!inv && this.db && uid) {
+          const row = await this.db.prepare(`SELECT id, from_uid AS fromUid, from_name AS fromName, code, mode, seat, expires_at AS expiresAt
+            FROM offline_invites WHERE id = ? AND to_uid = ? AND expires_at > ?`).bind(msg.id, uid, now)
+            .first<{ id: string; fromUid: string; fromName: string; code: string; mode: string | null; seat: number | null; expiresAt: number }>();
+          if (row) {
+            await this.db.prepare('DELETE FROM offline_invites WHERE id = ?').bind(msg.id).run();
+            inv = {
+              id: row.id, from: `u:${row.fromUid}`, fromName: row.fromName, to: att.pid, code: row.code,
+              ...(row.mode ? { mode: row.mode } : {}), ...(row.seat != null ? { seat: row.seat } : {}), expiresAt: row.expiresAt,
+            };
+          }
+        }
         if (!inv || inv.to !== att.pid) return this.err(cid, 'INVITE_GONE', 'That invite expired.');
         this.invites.delete(inv.id);
         for (const c of this.connsOf(inv.from)) this.io.send(c, { t: 'inviteReply', id: inv.id, by: att.pid, byName: att.name, accept: msg.accept });
@@ -574,6 +620,9 @@ export class Hub {
     if (!uid) return this.err(cid, 'SIGN_IN', 'Sign in to invite players.');
     if (msg.to === att.pid) return;
     const target = [...this.conns.values()].find((a) => a.pid === msg.to);
+    // Release 13: inviting a signed-in user with no live socket stores an offline
+    // invite (10 min) and pushes them. Appearing-offline / blocked still look offline.
+    if (!target && uidOf(msg.to)) return this.inviteOffline(cid, att, uid, uidOf(msg.to)!, msg);
     // appearing offline / blocked either way look exactly like offline
     if (!target || target.hidden || this.hiddenBetween(att.pid, msg.to)) return this.err(cid, 'OFFLINE', 'That player is offline.');
     const toUid = uidOf(msg.to);
@@ -592,6 +641,36 @@ export class Hub {
   private dropInvite(inv: Invite, reason: 'expired' | 'cancelled'): void {
     this.invites.delete(inv.id);
     for (const c of [...this.connsOf(inv.to), ...this.connsOf(inv.from)]) this.io.send(c, { t: 'inviteGone', id: inv.id, reason });
+  }
+
+  /**
+   * Release 13: invite a signed-in user who has no live socket. Validates like the
+   * online path (exists, not blocked either way, friends-only setting), stores the
+   * invite for 10 minutes, and fires the push hook. Delivered as a live toast on
+   * their next `open()`; accepted by code from the push itself.
+   */
+  private async inviteOffline(cid: string, att: ConnAtt, uid: string, toUid: string, msg: Extract<SocialClientMsg, { t: 'invite' }>): Promise<void> {
+    const db = this.db;
+    if (!db) return this.err(cid, 'OFFLINE', 'That player is offline.');
+    const target = await db.prepare('SELECT username FROM users WHERE id = ?').bind(toUid).first<{ username: string }>();
+    // unknown users and blocked pairs look exactly like offline
+    if (!target) return this.err(cid, 'OFFLINE', 'That player is offline.');
+    const blocked = await db.prepare('SELECT 1 AS ok FROM blocks WHERE (blocker = ? AND blocked = ?) OR (blocker = ? AND blocked = ?)')
+      .bind(uid, toUid, toUid, uid).first();
+    if (blocked) return this.err(cid, 'OFFLINE', 'That player is offline.');
+    const settings = await db.prepare('SELECT friends_only_invites FROM social_settings WHERE user_id = ?').bind(toUid).first<{ friends_only_invites: number }>();
+    if (settings?.friends_only_invites && !(await this.store!.areFriends(uid, toUid))) {
+      return this.err(cid, 'FRIENDS_ONLY', `${target.username} only takes invites from friends.`);
+    }
+    if (!this.rate(`i:${att.pid}`, SOCIAL_LIMITS.invites)) return this.err(cid, 'SLOW_DOWN', 'Too many invites: wait a minute.');
+    const now = this.io.now();
+    const id = this.io.randomId().slice(0, 16);
+    const expiresAt = now + 10 * 60_000;
+    await db.prepare(`INSERT INTO offline_invites (id, from_uid, from_name, to_uid, code, mode, seat, created_at, expires_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(id, uid, att.name, toUid, msg.code, msg.mode ?? null, msg.seat ?? null, now, expiresAt).run();
+    this.io.send(cid, { t: 'inviteSent', id, to: msg.to, expiresAt });
+    this.io.onOfflineInvite?.(toUid, att.name, msg.code, msg.mode ?? null);
   }
 
   private err(cid: string, code: string, message: string): void {

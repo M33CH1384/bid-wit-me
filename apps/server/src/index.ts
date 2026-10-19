@@ -37,6 +37,8 @@ import { saveRecord } from './stats/record';
 import { backfillHomiesOnce } from './stats/backfill';
 import { handleTournaments } from './tournament/routes';
 import type { TOp } from './tournament/do';
+import { type PushEnv, handlePushHttp } from './push/routes';
+import { notifyFriendsOfOnline, notifyInvite, notifyTurn, pushVapid, runScheduledPushes, sendCredPushEvent } from './push/notify';
 import type { TableRules } from '@spades/rules';
 export { TournamentDO } from './tournament/do';
 import type { TournamentDO } from './tournament/do';
@@ -59,6 +61,10 @@ export interface Env extends LimitEnv, AuthEnv, SocialEnv {
   RESEND_API_KEY?: string;
   /** local test runs only (`wrangler dev --var TEST_HOOKS:1`): lets e2e scripts load a game position. Never set in production. */
   TEST_HOOKS?: string;
+  /** Web Push (Release 13): `npx wrangler secret put VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT` */
+  VAPID_PUBLIC_KEY?: string;
+  VAPID_PRIVATE_KEY?: string;
+  VAPID_SUBJECT?: string;
 }
 
 const voiceBreaker = new WriterBreaker();
@@ -234,6 +240,12 @@ export default {
       return handleCredHttp(req, env as CredEnv, url, parts, Date.now());
     }
 
+    if (parts[1] === 'push') {
+      const slow = await limited(req, env, 'info', origin);
+      if (slow) return slow;
+      return handlePushHttp(req, env as PushEnv, url, parts, Date.now());
+    }
+
     if (parts[1] === 'tournaments') {
       const slow = await limited(req, env, req.method === 'POST' && !parts[2] ? 'create' : 'info');
       if (slow) return slow;
@@ -276,6 +288,19 @@ export default {
       }
     }
     return json({ error: 'not found' }, { status: 404 }, origin);
+  },
+
+  /** Cron (see [triggers] in wrangler.toml): daily-bonus + season-ending pushes. */
+  async scheduled(_controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
+    if (!env.DB) return;
+    const vapid = pushVapid(env);
+    if (!vapid) return; // VAPID secrets not configured yet — nothing to send
+    try {
+      const r = await runScheduledPushes(env.DB, vapid, Date.now());
+      console.log(JSON.stringify({ src: 'bwm.push', event: 'scheduled', ...r }));
+    } catch (e) {
+      console.error(JSON.stringify({ src: 'bwm.push', event: 'scheduled-failed', error: String(e).slice(0, 160) }));
+    }
   },
 } satisfies ExportedHandler<Env>;
 
@@ -325,9 +350,35 @@ export class TableDO extends DurableObject<Env> {
       setAlarm: (at) => this.armAlarm(at),
       persist: () => this.scheduleSave(),
       randomId: () => crypto.randomUUID().replace(/-/g, ''),
-      gameOver: (rec, rated, meta) => { if (this.env.DB) this.ctx.waitUntil(saveRecord(this.env.DB, rec, rated, meta).catch((e) => console.error('saveRecord', e))); },
+      gameOver: (rec, rated, meta) => {
+        if (!this.env.DB) return;
+        const db = this.env.DB;
+        this.ctx.waitUntil((async () => {
+          const events = await saveRecord(db, rec, rated, meta).catch((e) => { console.error('saveRecord', e); return []; });
+          if (!events.length) return;
+          const vapid = pushVapid(this.env);
+          if (!vapid) return; // VAPID secrets not configured yet
+          const now = Date.now();
+          for (const ev of events) await sendCredPushEvent(db, vapid, ev, now);
+        })());
+      },
       // Voice (c): a thin catalog bucket -> one writer call in waitUntil (never on the game path).
       voiceMiss: (req: WriterRequest) => { if (this.env.AI && this.env.DB) this.ctx.waitUntil(writeVoiceLine({ ai: this.env.AI, store: new D1QueueStore(this.env.DB), breaker: voiceBreaker }, req).then(() => undefined).catch((e) => console.error('voiceWriter', e))); },
+      // Push: a fresh turn for an away player. waitUntil — never on the game path.
+      turnBegan: (seat, kind) => {
+        const room = this.room;
+        if (!room || !this.env.DB) return;
+        const slot = room.data.seats[seat];
+        if (slot?.kind !== 'human') return;
+        const pid = slot.playerId;
+        if (room.isConnected(pid)) return; // live socket — they're watching
+        const uid = room.data.members[pid]?.uid;
+        if (!uid) return;
+        const vapid = pushVapid(this.env);
+        if (!vapid) return; // VAPID secrets not configured yet
+        const db = this.env.DB;
+        this.ctx.waitUntil(notifyTurn(db, vapid, uid, room.data.code, kind, Date.now()).catch((e) => console.error('turnPush', e)));
+      },
       listing: (t) => this.reportListing(t),
       tournamentResult: (t, scores, places) => {
         const stub = this.env.TOURNAMENTS.get(this.env.TOURNAMENTS.idFromName(t.id));
@@ -633,6 +684,19 @@ export class SocialDO extends DurableObject<Env> {
       },
       later: (ms, f) => { setTimeout(f, ms); },
       randomId: () => crypto.randomUUID().replace(/-/g, ''),
+      // Release 13 push hooks — waitUntil, never on the socket path.
+      onOnline: (uid, name) => {
+        const db = env.DB; const vapid = pushVapid(env);
+        if (!db || !vapid) return;
+        this.ctx.waitUntil(notifyFriendsOfOnline(db, vapid, uid, name, Date.now())
+          .catch((e) => console.error('onlinePush', e)));
+      },
+      onOfflineInvite: (toUid, fromName, code, mode) => {
+        const db = env.DB; const vapid = pushVapid(env);
+        if (!db || !vapid) return;
+        this.ctx.waitUntil(notifyInvite(db, vapid, toUid, fromName, code, mode, Date.now())
+          .catch((e) => console.error('invitePush', e)));
+      },
     }, env.DB);
     ctx.blockConcurrencyWhile(async () => {
       for (const ws of ctx.getWebSockets()) {

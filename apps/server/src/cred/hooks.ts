@@ -9,8 +9,9 @@ import { divisionOf, divisionRank, type Division } from './divisions';
 import { ensureSeason } from './seasons';
 import { awardXp } from './xp';
 import { bumpProgress, setStreakProgress } from './challenges';
-import { checkAchievements, NIGHT_VENUES, type CheckCtx } from './achievements';
+import { ACHIEVEMENTS, checkAchievements, NIGHT_VENUES, type CheckCtx } from './achievements';
 import { move } from './coins';
+import type { CredPushEvent } from '../push/notify';
 
 export interface CredGameCtx {
   gameId: string;
@@ -75,9 +76,10 @@ async function bumpTotals(db: D1Database, userId: string, kind: RatingKind, won:
 }
 
 /** Per-user cred pass for one recorded game. Idempotency is handled by the caller (processGameCred). */
-export async function onGameEnd(db: D1Database, ctx: CredGameCtx): Promise<void> {
+export async function onGameEnd(db: D1Database, ctx: CredGameCtx): Promise<CredPushEvent[]> {
   const now = ctx.endedAt;
   const season = await ensureSeason(db, now);
+  const events: CredPushEvent[] = [];
 
   // season_ratings row (lazy): default 1000/Block for players with no carried rating
   let sr = await db.prepare('SELECT rating, division, games, wins, losses, peak_rating AS peakRating FROM season_ratings WHERE user_id = ? AND season_id = ? AND kind = ?')
@@ -92,11 +94,16 @@ export async function onGameEnd(db: D1Database, ctx: CredGameCtx): Promise<void>
   if (countsAsGame) {
     const rating = ctx.eloAfter ?? sr.rating;
     const division = divisionOf(Math.round(rating));
+    const oldDivision = sr.division;
     await db.prepare(`UPDATE season_ratings SET rating = ?, division = ?, games = games + 1,
         wins = wins + ?, losses = losses + ?, peak_rating = MAX(peak_rating, ?)
       WHERE user_id = ? AND season_id = ? AND kind = ?`)
       .bind(Math.round(rating), division, ctx.won ? 1 : 0, ctx.won ? 0 : 1, Math.round(rating), ctx.userId, season.id, ctx.kind).run();
     sr = { ...sr, rating: Math.round(rating), division };
+    // push: division went up (rated games only — bot games never change division)
+    if (ctx.rated && !ctx.vsBots && divisionRank(division) > divisionRank(oldDivision)) {
+      events.push({ userId: ctx.userId, type: 'rankup', title: division, kind: ctx.kind });
+    }
   }
 
   // lifetime totals (drives lifetime achievements + streak challenges)
@@ -122,14 +129,16 @@ export async function onGameEnd(db: D1Database, ctx: CredGameCtx): Promise<void>
   }
 
   if (!ctx.abandoned) {
-    // challenge progress
-    await bumpProgress(db, ctx.userId, 'games', 1, ctx.kind, now);
-    if (ctx.won) await bumpProgress(db, ctx.userId, 'wins', 1, ctx.kind, now);
-    if (ctx.stats.books) await bumpProgress(db, ctx.userId, 'books', ctx.stats.books, ctx.kind, now);
+    // challenge progress (completed titles feed the "challenge complete" push)
+    const done: string[] = [];
+    done.push(...await bumpProgress(db, ctx.userId, 'games', 1, ctx.kind, now));
+    if (ctx.won) done.push(...await bumpProgress(db, ctx.userId, 'wins', 1, ctx.kind, now));
+    if (ctx.stats.books) done.push(...await bumpProgress(db, ctx.userId, 'books', ctx.stats.books, ctx.kind, now));
     const nils = (ctx.stats.nilMade ?? 0);
-    if (nils > 0) await bumpProgress(db, ctx.userId, 'nils_made', nils, ctx.kind, now);
-    if (ctx.stats.shotsGiven) await bumpProgress(db, ctx.userId, 'shots_given', ctx.stats.shotsGiven, ctx.kind, now);
+    if (nils > 0) done.push(...await bumpProgress(db, ctx.userId, 'nils_made', nils, ctx.kind, now));
+    if (ctx.stats.shotsGiven) done.push(...await bumpProgress(db, ctx.userId, 'shots_given', ctx.stats.shotsGiven, ctx.kind, now));
     await setStreakProgress(db, ctx.userId, t.curStreak, ctx.kind, now);
+    for (const title of done) events.push({ userId: ctx.userId, type: 'challenge', title });
 
     // achievements
     const [team, cut] = await Promise.all([
@@ -161,8 +170,11 @@ export async function onGameEnd(db: D1Database, ctx: CredGameCtx): Promise<void>
         bestDivision,
       },
     };
-    await checkAchievements(db, ctx.userId, checkCtx, now);
+    const unlocked = await checkAchievements(db, ctx.userId, checkCtx, now);
+    const titles = new Map(ACHIEVEMENTS.map((a) => [a.id, a.title]));
+    for (const u of unlocked) events.push({ userId: ctx.userId, type: 'achievement', title: titles.get(u.id) ?? u.id });
   }
+  return events;
 }
 
 /**
@@ -205,26 +217,28 @@ export async function processGameCred(
   rec: GameRecord,
   meta: { rated: boolean; endReason?: 'finished' | 'abandoned'; leaverId?: string | null; venue?: string | null },
   elo: Record<string, { before: number; after: number }>,
-): Promise<void> {
+): Promise<CredPushEvent[]> {
+  const events: CredPushEvent[] = [];
   try {
     const ins = await db.prepare('INSERT OR IGNORE INTO cred_processed (game_id, processed_at) VALUES (?, ?)').bind(rec.id, rec.endedAt).run();
     const changed = (ins as unknown as { meta?: { changes?: number } }).meta?.changes ?? 1;
-    if (!changed) return; // already processed (retry / concurrent waitUntil)
+    if (!changed) return events; // already processed (retry / concurrent waitUntil)
     const humanIds = rec.players.map((p) => p.uid).filter(Boolean);
     for (const p of rec.players) {
       let seats: { side: number; kind: string }[] = [];
       try { seats = JSON.parse(rec.seats as unknown as string); } catch { /* ignore */ }
       const vsBots = opponentBucket(seats, p.side) === 'bots';
       const abandoned = meta.endReason === 'abandoned';
-      await onGameEnd(db, {
+      events.push(...await onGameEnd(db, {
         gameId: rec.id, userId: p.uid, kind: rec.kind, won: p.won, stats: p.stats,
         rated: meta.rated, abandoned, leaver: abandoned && !!meta.rated && meta.leaverId === p.uid,
         vsBots, eloAfter: elo[p.uid]?.after ?? null, venue: meta.venue ?? null, endedAt: rec.endedAt,
-      });
+      }));
     }
     // anti-farming tripwires (best-effort, log only)
     try { await tripwireCheck(db, humanIds, rec.id, rec.endedAt); } catch { /* ignore */ }
   } catch (e) {
     console.error('cred', e);
   }
+  return events;
 }

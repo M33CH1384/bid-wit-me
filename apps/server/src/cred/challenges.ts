@@ -86,22 +86,28 @@ export async function progressFor(db: D1Database, userId: string, now: number): 
 }
 
 /** Add `amount` to a metric's progress rows for the current period (only active defs of that cadence/metric). */
-export async function bumpProgress(db: D1Database, userId: string, metric: ChallengeMetric, amount: number, kind: RatingKind, now: number): Promise<void> {
-  if (!(amount > 0)) return;
+export async function bumpProgress(db: D1Database, userId: string, metric: ChallengeMetric, amount: number, kind: RatingKind, now: number): Promise<string[]> {
+  if (!(amount > 0)) return [];
   const jobs: { defs: ChallengeDef[]; pid: string }[] = [
     { defs: dailyChallenges(now), pid: dailyPeriodId(now) },
     { defs: weeklyChallenges(now), pid: weeklyPeriodId(now) },
   ];
   const stmts = [];
+  const checks: { def: ChallengeDef; before: number }[] = [];
   for (const { defs, pid } of jobs) {
     for (const c of defs) {
       if (c.metric !== metric) continue;
       if (c.kind && c.kind !== kind) continue;
+      const row = await db.prepare('SELECT progress FROM challenge_progress WHERE user_id = ? AND challenge_id = ? AND period_id = ?')
+        .bind(userId, c.id, pid).first<{ progress: number }>();
+      checks.push({ def: c, before: row?.progress ?? 0 });
       stmts.push(db.prepare(`INSERT INTO challenge_progress (user_id, challenge_id, period_id, progress) VALUES (?, ?, ?, ?)
         ON CONFLICT (user_id, challenge_id, period_id) DO UPDATE SET progress = challenge_progress.progress + excluded.progress`).bind(userId, c.id, pid, amount));
     }
   }
   if (stmts.length) await db.batch(stmts);
+  // titles of challenges that crossed 100% with this bump (push: "challenge complete")
+  return checks.filter(({ def, before }) => before < def.target && before + amount >= def.target).map(({ def }) => def.title);
 }
 
 /** Set (not add) the streak metric: a loss resets the day's/week's streak challenges. */
