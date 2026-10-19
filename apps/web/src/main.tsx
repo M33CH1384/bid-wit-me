@@ -13,7 +13,7 @@ import './styles.css';
 const OnlineApp = lazy(() => import('./online/OnlineApp'));
 const ProfilePage = lazy(() => import('./profile/ProfilePage'));
 
-/** "/" = offline (vs bots) as before; "/online" and "/t/CODE" = online tables; "/profile" = Street Cred profile. */
+/** "/" = offline (vs bots) as before; "/online" and "/t/CODE" = online tables; "/profile" = Rep profile. */
 function Root() {
   const [path, setPath] = useState(location.pathname);
   useEffect(() => {

@@ -2042,7 +2042,7 @@ button.mode-pick::after, button.quiet-row::after { content: ''; position: absolu
 .ghost-btn { min-height: 44px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.18); border-radius: 10px; color: #f3ead2; font: 700 14px 'Barlow Condensed', sans-serif; cursor: pointer; }
 .quiet-continue { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.18); color: #f3ead2; }
 
-/* ---------- Street Cred profile page ---------- */
+/* ---------- Rep profile page ---------- */
 .profile-page { min-height: 100dvh; padding: calc(12px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom)); max-width: 720px; margin: 0 auto; }
 .prof-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .prof-season { font-family: var(--display); font-weight: 700; letter-spacing: .08em; color: var(--muted); font-size: 13px; text-transform: uppercase; }
