@@ -279,8 +279,22 @@ export interface BidOptions {
 /** Bids available to `seat` right now (ignores whose turn it is). */
 export function bidOptions(st: GameState, seat: Seat): BidOptions {
   const r = st.rules;
-  const max = booksInHand(st);
-  const floor = Math.min(Math.max(0, hostMinimum(r)), max);
+  const books = booksInHand(st);
+  // Hard cap: a team's numeric bids can never add up to more than the books in the hand.
+  // Nil / Blind Nil count as 0 toward that total, so a partner on a nil leaves the whole hand
+  // available; a partner still to bid leaves it available too (their own bid gets capped when
+  // they bid second), except that with Nil off they must bid at least 1, so one book is held back.
+  // Solo / Cutthroat bids stand alone and cap at the hand's own book count (trickCount when a
+  // short Cutthroat table is playing 13 of a possible 17, via booksInHand).
+  let max = books;
+  if (r.partnerships) {
+    const partnerSeat = partnerOf(seat, r);
+    const partnerBid = partnerSeat === null ? null : st.bids[partnerSeat];
+    if (typeof partnerBid === 'number') max = books - partnerBid;
+    else if (partnerBid === null && !nilRulesOf(r).allowed) max = books - 1;
+  }
+  max = Math.max(0, max);
+  const floor = Math.min(Math.max(0, hostMinimum(r)), books);
   const partner = partnerOf(seat, r);
   const pBid = partner === null ? null : st.bids[partner];
   let min = 1;
@@ -311,7 +325,8 @@ export function bidOptions(st: GameState, seat: Seat): BidOptions {
     }
     // Partner still to bid: a low number is legal (they can cover it). Nil is legal; they then bid the floor alone.
   }
-  min = Math.min(Math.max(1, min), max);
+  // max 0 means the partner already bid every book: no numeric bid is legal, only Nil (when offered).
+  min = Math.min(Math.max(1, min), Math.max(1, max));
   return {
     min, max, nil, blockReason, nilReason,
     blindNil: nil && blindNilRulesOf(r).allowed && !st.revealed[seat] && blindNilScoreEligible(st, seat),

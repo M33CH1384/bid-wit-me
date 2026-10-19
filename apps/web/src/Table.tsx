@@ -77,7 +77,7 @@ import { isWildDeuce } from './cardFaces';
 import { misdealRevealKey, misdealRevealMs } from './misdeal';
 import { QUICK_TRASH_SET } from './quickTrash';
 import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
-import { type TalkIntensity, botSkillFor, personaForName, platePersona, pickBotNames } from '@spades/bots';
+import { type TalkIntensity, botSkillFor, partnerBidIntent, personaForName, platePersona, pickBotNames } from '@spades/bots';
 import { preloadVoice } from './voices/voices';
 const Scene = lazy(loadScene);
 
@@ -920,6 +920,14 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const bidTurn = myTurn && !dealing && st.phase === 'bidding' && !!view.bidOptions && !!view.hand;
   const coachBid = bidTurn && (coachOn || help);
   const raisedMin = view.bidOptions ? minBidNote(view.bidOptions, r, partnerSeat >= 0 ? st.bids[partnerSeat] ?? null : null) : null;
+  // Bot partner communication (offline only; online views hide other hands, so no estimate is
+  // computed there — an online bot who already bid shows that real bid in the same BIDS row, and
+  // a bot bidding second self-caps in the engine). This is the partner bot's own intended bid
+  // from chooseBid on its own hand (partnerBidIntent), not a read of anything else: "thinks N"
+  // is what it intends to bid for its own books before the human's bid caps it.
+  const partnerEstimate = !online && !spectating && r.partnerships && partnerSeat >= 0 && st.phase === 'bidding' && st.bids[partnerSeat] === null && partnerSeat !== HUMAN
+    ? partnerBidIntent(viewFor(st, partnerSeat), levelFor(partnerSeat))
+    : null;
   const wheelSides = new Set(st.phase === 'bidding' || st.phase === 'playing' ? wheelsFor(r, st.bids).map((w) => w.side) : []);
   // The bid panel (and the floating "count your books" coach) never grows past the top bar: its max height is the room
   // between its (bottom-anchored) bottom edge and the scorebug / trump strip; the coach body scrolls inside.
@@ -1533,7 +1541,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
               <div className="bid-tip-slot" />
               {coachBid && <BidCoach key={bcKey} view={view} startOpen={help || bcOpen} />}
               <div className="panel-title">YOUR BID</div>
-              <BidSummary st={st} names={names} me={HUMAN} />
+              <BidSummary st={st} names={names} me={HUMAN} partnerEstimate={partnerEstimate} />
               {!raisedMin && teamMinNote(hostMinimum(r), r.partnerships) && <p className="team-min-note" data-testid="team-min-note">{teamMinNote(hostMinimum(r), r.partnerships)}</p>}
               {raisedMin ? <MinBidLine note={raisedMin} /> : (view.bidOptions.blockReason || view.bidOptions.nilReason) && (
                 <p className="bid-block" data-testid="bid-block">{[view.bidOptions.blockReason, view.bidOptions.nilReason].filter(Boolean).join(' · ')}</p>

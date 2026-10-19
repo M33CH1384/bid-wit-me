@@ -56,9 +56,31 @@ describe('bid summary at the moment of decision', () => {
     expect(html).not.toContain('PARTNER');
     expect(html).not.toContain('bs-seat partner');
   });
+
+  it('bot partner who has not bid yet shows its intended bid as "thinks N", only for the partner seat', () => {
+    const st = { ...biddingState(), bids: [null, 4, null, 3] as GameState['bids'] };
+    const entries = bidSummaryEntries(st, names, 0, 7);
+    const partner = entries.find((e) => e.isPartner)!;
+    expect(partner.partnerEstimate).toBe(7);
+    expect(partner.bidText).toBe('7');
+    expect(entries.filter((e) => e.partnerEstimate !== null)).toHaveLength(1);
+    const html = renderToStaticMarkup(createElement(BidSummary, { st, names, me: 0, partnerEstimate: 7 }));
+    expect(html).toContain('THINKS');
+    expect(html).toContain('thinks 7, has not bid yet');
+    // no estimate passed (human partner / online): pending partner stays a plain dash
+    const plain = bidSummaryEntries(st, names, 0).find((e) => e.isPartner)!;
+    expect(plain.partnerEstimate).toBeNull();
+    expect(plain.bidText).toBe('—');
+    // once the partner has actually bid, the real bid replaces any estimate
+    const bid = bidSummaryEntries(biddingState(), names, 0, 7).find((e) => e.isPartner)!;
+    expect(bid.partnerEstimate).toBeNull();
+    expect(bid.bidText).toBe('5');
+  });
+
   it('lives inside the bid panel (both bid decisions), not as a new fixed overlay', () => {
     const table = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
-    expect(table.match(/<BidSummary st=\{st\} names=\{names\} me=\{HUMAN\} \/>/g)).toHaveLength(2);
+    expect(table.match(/<BidSummary /g)).toHaveLength(2);
+    expect(table).toContain('partnerEstimate={partnerEstimate}');
     // the panel title no longer carries the old tiny partner text
     expect(table).not.toContain('partner bids right after you');
     const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');

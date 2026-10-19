@@ -42,6 +42,8 @@ export interface BidSummaryEntry {
   isPartner: boolean;
   isMe: boolean;
   isTurn: boolean;
+  /** Bot partner only, before they bid: their own intended bid ("thinks N"). Never a guess for a human partner. */
+  partnerEstimate: number | 'nil' | null;
 }
 
 /**
@@ -50,18 +52,21 @@ export interface BidSummaryEntry {
  * plates and BidOrder read); no parallel source. Partner is the seat across in
  * team games (partnerOf); Cutthroat has no partner, so nobody is highlighted.
  */
-export function bidSummaryEntries(st: GameState, names: string[], me: number): BidSummaryEntry[] {
+export function bidSummaryEntries(st: GameState, names: string[], me: number, partnerEstimate?: number | 'nil' | null): BidSummaryEntry[] {
   const partner = me >= 0 ? partnerOf(me, st.rules) : null;
   return bidOrder(st.rules, st.dealer).map((seat) => {
     const b = st.bids[seat] ?? null;
+    const isPartner = partner !== null && seat === partner;
+    const estimate = isPartner && b === null ? (partnerEstimate ?? null) : null;
     return {
       seat,
       who: (seat === me ? 'You' : names[seat]) || `Seat ${seat + 1}`,
-      bidText: b !== null ? bidLabel(b) : st.turn === seat ? '…' : '—',
+      bidText: b !== null ? bidLabel(b) : estimate !== null ? (estimate === 'nil' ? 'Nil' : `${estimate}`) : st.turn === seat ? '…' : '—',
       hasBid: b !== null,
-      isPartner: partner !== null && seat === partner,
+      isPartner,
       isMe: seat === me,
       isTurn: st.turn === seat,
+      partnerEstimate: estimate,
     };
   });
 }
@@ -72,21 +77,21 @@ export function bidSummaryEntries(st: GameState, names: string[], me: number): B
  * inside the bid panel (which only exists on the human's bid turn), so it can
  * never cover the hand, the YOU plate, the view chips, or the misdeal button.
  */
-export function BidSummary({ st, names, me }: { st: GameState; names: string[]; me: number }) {
+export function BidSummary({ st, names, me, partnerEstimate }: { st: GameState; names: string[]; me: number; partnerEstimate?: number | 'nil' | null }) {
   if (st.phase !== 'bidding') return null;
-  const entries = bidSummaryEntries(st, names, me);
+  const entries = bidSummaryEntries(st, names, me, partnerEstimate);
   return (
     <div className="bid-summary" data-testid="bid-summary" role="list" aria-label="Bids so far this hand">
       <span className="bs-title" aria-hidden="true">BIDS</span>
       {entries.map((e) => (
         <span
           key={e.seat}
-          className={`bs-seat ${e.isPartner ? 'partner' : ''} ${e.isMe ? 'self' : ''} ${e.hasBid ? 'done' : 'pending'}`}
+          className={`bs-seat ${e.isPartner ? 'partner' : ''} ${e.isMe ? 'self' : ''} ${e.hasBid ? 'done' : 'pending'} ${e.partnerEstimate !== null ? 'estimate' : ''}`}
           data-testid={`bid-summary-${e.seat}`}
           role="listitem"
-          aria-label={`${e.isPartner ? 'Partner ' : ''}${e.who}: ${e.hasBid ? `bid ${e.bidText}` : e.isTurn ? 'bidding now' : 'has not bid yet'}`}
+          aria-label={`${e.isPartner ? 'Partner ' : ''}${e.who}: ${e.hasBid ? `bid ${e.bidText}` : e.partnerEstimate !== null ? `thinks ${e.bidText}, has not bid yet` : e.isTurn ? 'bidding now' : 'has not bid yet'}`}
         >
-          <small>{e.isPartner ? `★ PARTNER · ${e.who}` : e.who}</small>
+          <small>{e.isPartner ? `★ PARTNER · ${e.who}${e.partnerEstimate !== null ? ' · THINKS' : ''}` : e.who}</small>
           <b>{e.bidText}</b>
         </span>
       ))}
