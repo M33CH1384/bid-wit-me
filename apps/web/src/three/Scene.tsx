@@ -1041,12 +1041,13 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
       {positions.map((p, seat) => {
         if (seat === human) return null;
         const side = p === 'left' || p === 'right' ? p : p === 'top' ? 'top' : null;
-        // phone landscape: plates pinned to the screen edges at mid-height, partner top-centre under the scorebug
+        // phone landscape: side plates pinned to the screen edges at mid-height; the
+        // partner plate goes top-LEFT under the scorebug (never over the felt/cards).
+        // Demetrius 2026-10-19: no plate may cover the table in landscape.
         if (short && side) {
           const cls = side === 'top' ? 'side-topc' : `side-${side}`;
-          // top seat: left edge just right of the fan (badgeSpot sits beside it), so no card peeks out under the plate
           const calcShort = (el: Object3D, camera: Camera, size: { width: number; height: number }) =>
-            side === 'top' ? [Math.min(size.width - 200, (new Vector3().setFromMatrixPosition(el.matrixWorld).project(camera).x + 1) * size.width / 2), 50 + safe.t] : side === 'left' ? [8 + safe.l, size.height * (n === 3 ? 0.36 : 0.43)] : [size.width - 8 - safe.r, size.height * (n === 3 ? 0.36 : 0.43)];
+            side === 'top' ? [8 + safe.l, 46 + safe.t] : side === 'left' ? [8 + safe.l, size.height * (n === 3 ? 0.36 : 0.43)] : [size.width - 8 - safe.r, size.height * (n === 3 ? 0.36 : 0.43)];
           return (
             <Html key={seat} position={badgeSpot(p, n)} calculatePosition={calcShort} zIndexRange={[5, 0]} className={`seat-anchor ${cls}`} portal={portal}>
               {renderSeat(seat)}
