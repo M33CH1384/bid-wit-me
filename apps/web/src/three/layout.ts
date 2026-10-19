@@ -179,8 +179,8 @@ export function pileEdgePoint(pos: SeatPos, n: number): Vector3 {
   return edge.add(tangent.multiplyScalar(PILE_TANGENT));
 }
 
-/** True for odd books (1st, 3rd, ...): portrait, long edge front-to-back. */
-export const bookIsVertical = (trickIdx: number): boolean => trickIdx % 2 === 0;
+/** All books face the same way (uniform row). The alternating weave looked chaotic. Demetrius 2026-10-19. */
+export const bookIsVertical = (_trickIdx: number): boolean => true;
 
 export function pileSpot(pos: SeatPos, n: number, trickIdx: number, cardIdx: number, jitter: number): Xform {
   const d = seatDir(pos, n);
