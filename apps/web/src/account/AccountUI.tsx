@@ -11,7 +11,7 @@ import {
   localProgress, passkeyRegister, passkeySignIn, saveProgress, setUsername, signOut, startOAuth, takePendingOpen, unlink, useAccount,
 } from './api';
 
-type Sheet = null | 'signin' | 'account' | 'username' | 'passkey-new' | 'delete';
+type Sheet = null | 'signin' | 'account' | 'username' | 'passkey-new' | 'delete' | 'security';
 
 export function ProviderIcon({ p }: { p: ProviderId | 'passkey' }) {
   switch (p) {
@@ -127,26 +127,16 @@ function UsernamePicker({ mode, initial, onDone, onClose }: { mode: 'first' | 'c
 }
 
 /* ------------------------------------------------------------------ account */
-function AccountScreen({ user, onClose, onChangeName, onDelete }: { user: AccountUser; onClose: () => void; onChangeName: () => void; onDelete: () => void }) {
+function SecurityScreen({ user, onBack }: { user: AccountUser; onBack: () => void }) {
   const a = useAccount();
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const methods = user.identities.length + user.passkeys.length;
   const linkable = PROVIDER_ORDER.filter((p) => a.providers.includes(p) && (p === 'mock' || !user.identities.some((i) => i.provider === p))); // (the test-only mock provider can link twice)
   const run = async (f: () => Promise<string | null>) => { setBusy(true); setErr(''); const e = await f(); setBusy(false); if (e) setErr(e); };
-  const local = localProgress();
-  const localBits = [local.badges.length ? `${local.badges.length} badge${local.badges.length > 1 ? 's' : ''}` : '', local.series ? 'your rematch series' : '', local.teamName ? `team name "${local.teamName}"` : ''].filter(Boolean);
   return (
-    <SheetFrame title="ACCOUNT" label="Account" onClose={onClose} testId="account-sheet">
-      <div className="acct-name-row">
-        <span className="acct-avatar" aria-hidden>{(user.username ?? '?').charAt(0).toUpperCase()}</span>
-        <span className="acct-name" data-testid="account-username">{user.username ?? 'No username yet'}</span>
-        <button type="button" className="acct-small" data-testid="change-username" onClick={onChangeName}>{user.username ? 'Change' : 'Pick'}</button>
-      </div>
-      <p className="acct-fine">Member since {fmtDate(user.createdAt)}</p>
-      <button type="button" className="hero-btn purple" data-testid="open-profile" onClick={() => { onClose(); location.href = '/profile'; }}><b>STREET CRED PROFILE</b><small>rank · challenges · stats · achievements</small></button>
-
-      <h3 className="sheet-h">Sign-in methods</h3>
+    <SheetFrame title="SIGN-IN & SECURITY" label="Sign-in and security" onClose={onBack} testId="security-sheet">
+      <p className="acct-lede">Passkeys and linked logins for this account.</p>
       <ul className="acct-list" data-testid="linked-logins">
         {user.identities.map((i) => (
           <li key={`${i.provider}-${i.linkedAt}-${i.name}`} data-testid={`linked-${i.provider}`}>
@@ -177,6 +167,31 @@ function AccountScreen({ user, onClose, onChangeName, onDelete }: { user: Accoun
           )}
         </div>
       )}
+      {err && <p className="err acct-err" role="alert">{err}</p>}
+    </SheetFrame>
+  );
+}
+
+function AccountScreen({ user, onClose, onChangeName, onDelete, onSecurity }: { user: AccountUser; onClose: () => void; onChangeName: () => void; onDelete: () => void; onSecurity: () => void }) {
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const methods = user.identities.length + user.passkeys.length;
+  const run = async (f: () => Promise<string | null>) => { setBusy(true); setErr(''); const e = await f(); setBusy(false); if (e) setErr(e); };
+  const local = localProgress();
+  const localBits = [local.badges.length ? `${local.badges.length} badge${local.badges.length > 1 ? 's' : ''}` : '', local.series ? 'your rematch series' : '', local.teamName ? `team name "${local.teamName}"` : ''].filter(Boolean);
+  return (
+    <SheetFrame title="ACCOUNT" label="Account" onClose={onClose} testId="account-sheet">
+      <div className="acct-name-row">
+        <span className="acct-avatar" aria-hidden>{(user.username ?? '?').charAt(0).toUpperCase()}</span>
+        <span className="acct-name" data-testid="account-username">{user.username ?? 'No username yet'}</span>
+        <button type="button" className="acct-small" data-testid="change-username" onClick={onChangeName}>{user.username ? 'Change' : 'Pick'}</button>
+      </div>
+      <p className="acct-fine">Member since {fmtDate(user.createdAt)}</p>
+      <button type="button" className="hero-btn purple" data-testid="open-profile" onClick={() => { onClose(); location.href = '/profile'; }}><b>REP PROFILE</b><small>rank · challenges · stats · achievements</small></button>
+      <button type="button" className="acct-row-btn" data-testid="open-security" onClick={onSecurity}>
+        <span className="acct-row-text"><b>Sign-in &amp; security</b><small>{methods} method{methods === 1 ? '' : 's'} · passkeys, linked logins</small></span>
+        <span className="acct-row-chev" aria-hidden>›</span>
+      </button>
 
       <h3 className="sheet-h">Progress</h3>
       {user.progressImported ? (
@@ -249,7 +264,8 @@ export function AccountEntry({ showChip }: { showChip: boolean }) {
       {sheet === 'signin' && <SignInSheet onClose={() => setSheet(null)} onPasskeyNew={() => setSheet('passkey-new')} />}
       {sheet === 'passkey-new' && <UsernamePicker mode="passkey-new" initial="" onDone={() => setSheet(null)} onClose={() => setSheet('signin')} />}
       {sheet === 'username' && u && <UsernamePicker mode={u.username ? 'change' : 'first'} initial={u.username ?? u.suggestion ?? ''} onDone={() => setSheet(u.username ? 'account' : null)} onClose={() => setSheet(u.username ? 'account' : null)} />}
-      {sheet === 'account' && u && <AccountScreen user={u} onClose={() => setSheet(null)} onChangeName={() => setSheet('username')} onDelete={() => setSheet('delete')} />}
+      {sheet === 'account' && u && <AccountScreen user={u} onClose={() => setSheet(null)} onChangeName={() => setSheet('username')} onDelete={() => setSheet('delete')} onSecurity={() => setSheet('security')} />}
+      {sheet === 'security' && u && <SecurityScreen user={u} onBack={() => setSheet('account')} />}
       {sheet === 'delete' && u && <DeleteConfirm user={u} onClose={() => setSheet('account')} onDeleted={() => setSheet(null)} />}
     </>
   );
