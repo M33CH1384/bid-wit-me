@@ -543,16 +543,16 @@ export function jokersMet(plays: readonly Play[]): boolean {
 }
 
 /**
- * ☢ Last-trick nuke, ARMED (Demetrius 2026-10-20): both Jokers are in the hand's final trick but the
- * trick is not done. The nuke used to detonate on the spot, auto-playing every remaining seat's last
- * card; now it waits — each seat still to play throws their own last card (the throw-in window is
- * open), and the blast fires only when the trick actually completes (the finished trick then
- * satisfies isNukeTrick). Public information only: both Jokers are face up on the table.
+ * ☢ Nuke, ARMED (Demetrius 2026-10-20): both Jokers are in the trick on the table but the trick is
+ * not done — in ANY trick, first or last; the behavior is uniform. The nuke used to detonate the
+ * moment the second Joker landed (on the final trick it even auto-played every remaining seat's
+ * last card); now it always waits — each seat still to play throws their own card, and the blast
+ * fires only when the trick actually completes (the finished trick then satisfies isNukeTrick).
+ * Public information only: both Jokers are face up on the table.
  * A Run it! trick never arms (the tornado is the show).
  */
 export function nukeArmed(st: Pick<GameState, 'rules' | 'phase' | 'tricks' | 'trick' | 'trickCount' | 'eliminated'>): boolean {
   if (st.rules.deck !== 'joker54' || st.phase !== 'playing') return false;
-  if (st.tricks.length !== booksInHand(st) - 1) return false;
   const plays = st.trick.plays;
   if (plays.some((p) => p.run)) return false;
   return jokersMet(plays) && plays.length < liveSeats(st).length;
@@ -767,10 +767,11 @@ export function applyAction(st: GameState, action: Action): GameState {
       const rel = cleanRel(action.rel);
       if (rel) play.rel = rel;
       const plays: Play[] = [...st.trick.plays, play];
-      // ☢ Last trick, both Jokers down: the nuke is ARMED, not fired (Demetrius 2026-10-20). It used
-      // to auto-play every remaining seat's last card at once; now the trick stays open (see
-      // nukeArmed) and each seat throws their own card — the blast goes off only when the trick
-      // completes below, after every live seat that must play has played.
+      // ☢ Both Jokers down in any trick: the nuke is ARMED, not fired (Demetrius 2026-10-20). It
+      // used to detonate on the second Joker's landing (and, on the final trick, auto-play every
+      // remaining seat's last card at once); now the trick stays open (see nukeArmed) and each
+      // seat throws their own card — the blast goes off only when the trick completes below,
+      // after every live seat that must play has played.
       const spadesBroken = st.spadesBroken || isTrump(action.card, r);
       const liveN = liveSeats(st).length;
       if (plays.length < liveN) {
@@ -946,7 +947,7 @@ export interface PlayerView {
   canRunIt?: boolean;
   /** This seat may call a misdeal right now: spade-less hand, seen, and they have not bid yet. */
   canMisdeal?: boolean;
-  /** ☢ Both Jokers are in the final trick but it isn't done: the nuke is armed — the client glows the trick "ready to blow" until the last card lands and it detonates. */
+  /** ☢ Both Jokers are in the trick on the table (any trick) but it isn't done: the nuke is armed — the client glows the trick "ready to blow" until the last card lands and it detonates. */
   nukeArmed?: boolean;
   /**
    * A misdeal was just called on this hand: the caller's whole hand, face up on the table for every seat

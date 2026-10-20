@@ -1291,6 +1291,37 @@ describe("'Run it!' over the protocol", () => {
   });
 });
 
+describe('nuke over the protocol: armed in any trick, detonated only on completion', () => {
+  it('a mid-hand second Joker announces "armed" once (not the blast); "☢ Nuked" lands only when the trick completes', () => {
+    const { env } = fourHumans();
+    env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: 1000 }) });
+    env.send('a', { t: 'start' });
+    const d = env.room.data;
+    const g = d.game!;
+    const filler = Array.from({ length: 5 }, () => ({ leader: 0, plays: [], winner: 1 }));
+    // trick 6 of 13: the Big Joker is already down from seat 0; seat 1 holds the Little Joker
+    d.game = {
+      ...g, phase: 'playing', bids: [3, 3, 3, 3], tricks: filler as never, tricksWon: [1, 1, 2, 1],
+      hands: [['3C', '4C', '5C'], ['LJ', '6C', '7C', '8C'], ['9C', 'TC', 'JC', 'QC'], ['KC', 'AC', '3D', '4D']] as never,
+      turn: 1, trick: { leader: 0, plays: [{ seat: 0, card: 'BJ' }], winner: null }, spadesBroken: true,
+    } as never;
+    d.seq = (d.seq ?? 0) + 1;
+    const play = (cid: string, card: string) => env.send(cid, { t: 'act', action: { type: 'play', card }, seq: env.room.data.seq });
+    const lines = () => env.room.data.chat.map((l) => l.text);
+    play('b', 'LJ'); // the second Joker lands mid-hand: the nuke ARMS, nothing blows
+    expect(env.last('a', 'state')!.view.nukeArmed).toBe(true);
+    expect(lines().filter((t) => t === '☢ Nuke armed — ready to blow')).toHaveLength(1);
+    expect(lines()).not.toContain('☢ Nuked');
+    play('c', '9C'); // one card still out: still only armed, and no second announcement
+    expect(lines().filter((t) => t === '☢ Nuke armed — ready to blow')).toHaveLength(1);
+    expect(lines()).not.toContain('☢ Nuked');
+    play('d', 'KC'); // the last card of the trick: NOW it detonates
+    expect(lines().filter((t) => t === '☢ Nuked')).toHaveLength(1);
+    expect(env.last('a', 'state')!.view.nukeArmed).toBe(false);
+    expect(env.room.data.game!.nukes).toEqual([1, 0]);
+  });
+});
+
 describe("'Run it!' any time (Release 10)", () => {
   /** a started 4-seat Joker game rewritten to a late spot: 2 cards each, seat `turn` to lead, every card out but these */
   const late = (env: FakeEnv, hands: string[][], turn: number) => {

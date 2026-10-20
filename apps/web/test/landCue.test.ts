@@ -14,18 +14,20 @@ describe('joker landing cues', () => {
     expect(landCueFor(withTrick(['AH', 'LJ']), 'LJ')).toContain('jokerLittle');
     expect(landCueFor(withTrick(['AH', 'BJ']), 'BJ')).toContain('jokerBig');
   });
-  it('Big Joker landing on a Little Joker in the same trick nukes', () => {
-    expect(landCueFor(withTrick(['LJ', '3H', 'BJ']), 'BJ')).toMatch(/,nuke$/);
+  it('Big Joker landing on a Little Joker mid-hand only ARMS the nuke: the landing cues the rumble, never the blast', () => {
+    expect(landCueFor(withTrick(['LJ', '3H', 'BJ']), 'BJ')).toMatch(/jokerBig$/);
+    expect(landCueFor(withTrick(['LJ', '3H', 'BJ']), 'BJ')).not.toContain('nuke');
     // the Little Joker itself (played first) only rumbles
     expect(landCueFor(withTrick(['LJ', '3H', 'BJ']), 'LJ')).toMatch(/jokerLittle$/);
   });
-  it('Little Joker after the Big Joker in the same trick also nukes (BJ still wins)', () => {
-    expect(landCueFor(withTrick(['BJ', 'LJ']), 'LJ')).toMatch(/,nuke$/);
+  it('Little Joker after the Big Joker mid-hand also only arms it (BJ still wins the trick)', () => {
+    expect(landCueFor(withTrick(['BJ', 'LJ']), 'LJ')).toMatch(/jokerLittle$/);
+    expect(landCueFor(withTrick(['BJ', 'LJ']), 'LJ')).not.toContain('nuke');
   });
   it('jokers in different tricks never nuke', () => {
     expect(landCueFor(withTrick(['BJ', '2H'], [['LJ', '3H', '4H', '5H']]), 'BJ')).toMatch(/jokerBig$/);
   });
-  it('the final trick never cues the blast on landing: the second Joker only arms it', () => {
+  it('the final trick never cues the blast on landing either: the second Joker only arms it (same as any trick)', () => {
     const done12: Card[][] = Array.from({ length: 12 }, () => ['2H', '3H', '4H', '5H']);
     const st = withTrick(['LJ', 'BJ'], done12);
     // the second Joker landing on the final trick gets its rumble, not the blast cue

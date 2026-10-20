@@ -1,12 +1,12 @@
-import { type Card, type GameState, type Play, type TableRules, booksInHand, isBooksHand, isTrump, trickWinner } from '@spades/rules';
+import { type Card, type GameState, type Play, type TableRules, isBooksHand, isTrump, trickWinner } from '@spades/rules';
 
 /**
  * Landing cues for a played card: always 'play'; + 'cut' when trumping a non-trump lead; + 'broken' (bigger, wins) for
- * the first trump of the hand; + a joker rumble ('jokerLittle' / 'jokerBig'), or 'nuke' when the second joker of a
- * Big + Little Joker trick lands (the Big Joker beats the Little one).
- * EXCEPTION — the FINAL trick: the second Joker never cues the blast on landing. It only ARMS the
- * nuke (the trick glows — see view.nukeArmed) and the blast fires when the trick completes, once
- * every card is actually played (Demetrius 2026-10-20). Mid-hand nukes still blow on the landing.
+ * the first trump of the hand; + a joker rumble ('jokerLittle' / 'jokerBig').
+ * A nuke is NEVER cued on landing, in any trick: when the second Joker of a Big + Little Joker
+ * trick lands, the nuke only ARMS (the trick glows — see view.nukeArmed) and the blast fires when
+ * the trick completes, once every card is actually played (Demetrius 2026-10-20). The Table's
+ * completion watchdog fires the 'nuke' cue on the finished trick.
  */
 export function landCueFor(st: GameState, card: Card): string {
   const base = baseLandCue(st, card);
@@ -19,14 +19,8 @@ export function landCueFor(st: GameState, card: Card): string {
     if (lvl === 0 && base.endsWith(',cut')) return 'play'; // a lower trump that doesn't take the lead: just a card
     return base;
   }
-  const all = [...st.tricks, st.trick];
-  const ti = all.findIndex((x) => x.plays.some((pl) => pl.card === card));
-  const t = ti >= 0 ? all[ti] : undefined;
-  const i = t ? t.plays.findIndex((pl) => pl.card === card) : -1;
-  const other = card === 'BJ' ? 'LJ' : 'BJ';
-  const finalTrick = ti === booksInHand(st) - 1;
-  const nuke = !!t && !finalTrick && t.plays.slice(0, i).some((pl) => pl.card === other);
-  return `${base},${nuke ? 'nuke' : card === 'BJ' ? 'jokerBig' : 'jokerLittle'}`;
+  // a Joker landing only ever rumbles — even the second Joker of a trick, which arms the nuke
+  return `${base},${card === 'BJ' ? 'jokerBig' : 'jokerLittle'}`;
 }
 
 /**

@@ -16,7 +16,7 @@ import { type VenueId, VENUE_DEFS } from './venues';
 import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, hostMinimum, isFreshDeal, isNukeTrick, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, newlyOneTrickFromShot, nilBustsJustResolved, partnerOf, sideOf, sortHand, liveSeats } from '@spades/rules';
+  type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, hostMinimum, isFreshDeal, isNukeTrick, nukeArmed, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, newlyOneTrickFromShot, nilBustsJustResolved, partnerOf, sideOf, sortHand, liveSeats } from '@spades/rules';
 import { ScorePad, setTeamNames, sideName } from './Modals';
 import { LockedRulesPanel } from './LockedRules';
 import { booksBanner, teamMinNote } from './polishText';
@@ -294,6 +294,8 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
       push('System', `🏎 Wheels! ${who} took 10 books`, true);
       window.setTimeout(() => fx.emit('wheelsCar', { text: `${who} · 10 books` }), 900 + runWait);
     }
+    // ☢ a nuke arming (second Joker down, trick still open — any trick) is announced once, on the way in
+    if (st.handNo === p.handNo && nukeArmed(st) && !nukeArmed(p)) push('System', '☢ Nuke armed — ready to blow', true);
     // tricks
     if (st.tricks.length > p.tricks.length && st.handNo === p.handNo) {
       const t = st.tricks[st.tricks.length - 1]!;
@@ -1299,11 +1301,10 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   useEffect(() => { sound.enterContext('game'); return () => sound.enterContext('menu'); }, []);
   useEffect(() => { const style = sound.applySoundscape(seed, online?.venue, !online && settings.venue !== 'random' ? settings.venue : undefined); setRoomName(style.name); return () => sound.setVenueBed('none'); }, [seed]); // eslint-disable-line react-hooks/exhaustive-deps
   // nuke blast: fires only once a nuked trick is COMPLETE and held on the table (the finished-trick
-  // hold) — never while the final trick is merely armed (both Jokers down, seats still to play):
-  // the nuke doesn't go off until every card is played (Demetrius 2026-10-20). Mid-hand nukes are
-  // also cued by the second Joker's 3D landing; fx dedupes, so it never plays twice. The watchdog
-  // also covers a stalled renderer (Safari compiling shaders, a backgrounded tab), where a landing
-  // cue can come late or never.
+  // hold) — never while a trick is merely armed (both Jokers down, seats still to play): the nuke
+  // doesn't go off until every card is played, in every trick (Demetrius 2026-10-20). No landing
+  // cue fires it anymore — this watchdog is the only detonation path, which also covers a stalled
+  // renderer (Safari compiling shaders, a backgrounded tab).
   const nukeKey = pause && clientSeesNuke(shownTrick.plays, !!display.slam) ? `${st.seed}:${st.handNo}:${shownTrick.plays.map((p) => p.card).join('')}` : null;
   const nukeAtMount = useRef(nukeKey); // a resumed save already showing a nuked trick doesn't re-fire
   useEffect(() => {
