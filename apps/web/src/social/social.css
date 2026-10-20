@@ -168,11 +168,12 @@ button.ghost { background: transparent !important; }
 .soc-prof-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; row-gap: 10px; }
 .soc-prof-head h3 { margin: 0; font-family: var(--display); font-size: 28px; letter-spacing: .03em; }
 .soc-prof-head p { margin: 2px 0 0; }
-/* the action row lives IN the header as a full-width line directly under the
-   presence line (Demetrius 2026-10-20 — it used to sit between Achievements and
-   Stats); on the modal card the blocked note, the quick-send DM box and its Sent
-   confirmation travel with the row so the box still expands in place under its
-   Message button */
+/* the action row lives IN the header as a full-width line UNDER the Rep block
+   (Demetrius 2026-10-20, second placement call — it sat directly under the
+   presence line for one round, and between Achievements and Stats before
+   that); on the modal card the blocked note, the quick-send DM box and its
+   Sent confirmation travel with the row so the box still expands in place
+   under its Message button */
 .soc-prof-head > .soc-prof-acts,
 .soc-prof-head > .soc-note,
 .soc-prof-head > .profile-modal-compose,
@@ -194,7 +195,15 @@ button.ghost { background: transparent !important; }
 .soc-stats b { font-family: var(--display); font-size: 22px; }
 .soc-stats small { font-size: 11px; color: var(--muted); }
 .soc-vs { margin: 0; font-size: 14px; }
-.soc-prof-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.soc-prof-acts { display: flex; flex-wrap: nowrap; gap: 5px; align-items: center; }
+/* ONE line at phone width (Demetrius 2026-10-20): the row never wraps — the
+   chips shrink to fit instead of Report dropping to a second row. The compact
+   sizing is scoped to the profile header so the shared .soc-prof-acts button
+   base rule and the .soc-friend-tag base keep their values; Accept + Decline
+   simply take their places in the same single line when a request is incoming. */
+.soc-prof-acts button, .soc-prof-acts .soc-friend-tag { white-space: nowrap; min-width: 0; }
+.soc-prof-head .soc-prof-acts button { padding: 6px 7px; font-size: 12px; min-height: 40px; display: inline-flex; align-items: center; justify-content: center; }
+.soc-prof-head .soc-prof-acts .soc-friend-tag { padding: 6px 7px; font-size: 12px; min-height: 40px; }
 .soc-badges { display: flex; flex-wrap: wrap; gap: 6px; }
 .soc-badge-chip { font-size: 13px; padding: 4px 9px; border-radius: 999px; background: rgba(var(--gold-rgb),.12); border: 1px solid rgba(var(--gold-rgb),.35); }
 .soc-h2h { width: 100%; border-collapse: collapse; font-size: 14px; }

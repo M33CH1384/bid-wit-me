@@ -113,6 +113,10 @@ function ProfileCard({ target }: { target: ProfileTarget }) {
             <i className="soc-dot" aria-hidden />{onlineEntry ? `Online — ${statusLabel(onlineEntry.status, modeName)}` : 'Offline'}
           </p>
         </div>
+        {cred && p && p !== 'missing' && (
+          <RepBlock testid="profile-modal-rep" coinsTestid="profile-modal-coins"
+            level={cred.level} team={cred.rank.team} cutthroat={cred.rank.cutthroat} coins={cred.coins?.balance} />
+        )}
         {!me && (
           <div className="soc-prof-acts">
             {!blocked && <button type="button" aria-expanded={msgOpen} data-testid="profile-modal-message" onClick={() => setMsgOpen(!msgOpen)}>💬 Message</button>}
@@ -138,10 +142,6 @@ function ProfileCard({ target }: { target: ProfileTarget }) {
           </form>
         )}
         {sent && <p className="profile-modal-sent" role="status" data-testid="profile-modal-dm-sent">✓ Sent to {target.name}</p>}
-        {cred && p && p !== 'missing' && (
-          <RepBlock testid="profile-modal-rep" coinsTestid="profile-modal-coins"
-            level={cred.level} team={cred.rank.team} cutthroat={cred.rank.cutthroat} coins={cred.coins?.balance} />
-        )}
       </div>
       {p === null ? <p className="soc-empty">Loading…</p> : p === 'missing' ? <p className="soc-empty">No profile for {target.name}.</p> : (
         <>

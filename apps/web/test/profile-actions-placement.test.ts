@@ -23,7 +23,16 @@
  *  division chips it was missing; Social/modal gained the XP bar. Content pins
  *  therefore live against RepBlock.tsx, and the surfaces pin their <RepBlock>
  *  call sites. On /profile, the social-links inputs are also hidden behind an
- *  Edit links button unless the owner is actively editing them. */
+ *  Edit links button unless the owner is actively editing them.
+ *
+ *  Reorder (same day, owner's next annotated screenshot): the action row moved
+ *  again — to directly UNDER the Rep block ("Can we move this section down
+ *  under the level / coin section"), superseding the under-presence placement
+ *  above; the whole row must also fit on ONE line ("let's fit it all on one
+ *  line" — it wrapped, Report dropping to a second row), so social.css makes
+ *  the row nowrap with compact header-scoped chips. And the coins chip lost
+ *  its 🪙 emoji ("that emoji you have for coins don't work for me") —
+ *  RepBlock draws a CoinIcon SVG in its place. */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
@@ -35,20 +44,19 @@ const page = readFileSync(new URL('../src/profile/ProfilePage.tsx', import.meta.
 
 const count = (src: string, needle: string) => src.split(needle).length - 1;
 
-describe('Social profile: action row under the presence line', () => {
+describe('Social profile: action row under the Rep block', () => {
   const profile = social.slice(social.indexOf('function Profile('));
   it('exactly one action row — no duplicate left down the page', () => {
     expect(count(profile, 'className="soc-prof-acts"')).toBe(1);
   });
-  it('the row renders after the presence line, before the stats grid; the Rep block follows it, still inside the header', () => {
+  it('the Rep block renders after the presence line, the action row follows it, both still inside the header before the stats grid', () => {
     const presence = profile.indexOf('data-testid="profile-online"');
+    const rep = profile.indexOf('testid="profile-rep"');
     const acts = profile.indexOf('className="soc-prof-acts"');
     expect(presence).toBeGreaterThan(-1);
-    expect(acts).toBeGreaterThan(presence);
+    expect(rep).toBeGreaterThan(presence);
+    expect(acts).toBeGreaterThan(rep);
     expect(profile.indexOf('className="soc-stats"')).toBeGreaterThan(acts);
-    const rep = profile.indexOf('testid="profile-rep"');
-    expect(rep).toBeGreaterThan(acts);
-    expect(rep).toBeLessThan(profile.indexOf('className="soc-stats"'));
   });
   it('the row is inside the header block (before the social-links chips that follow the header)', () => {
     const acts = profile.indexOf('className="soc-prof-acts"');
@@ -65,36 +73,36 @@ describe('Social profile: action row under the presence line', () => {
   });
 });
 
-describe('Profile modal: action row under the presence line', () => {
+describe('Profile modal: action row under the Rep block', () => {
   const card = modal.slice(modal.indexOf('function ProfileCard'));
   it('exactly one action row — no duplicate left under the Rep section', () => {
     expect(count(card, 'className="soc-prof-acts"')).toBe(1);
   });
-  it('the row renders after the presence line, before the stats grid; the Rep block closes the header after it', () => {
+  it('the Rep block renders after the presence line, the action row follows it, both before the stats grid', () => {
     const presence = card.indexOf('soc-online-status');
+    const rep = card.indexOf('testid="profile-modal-rep"');
     const acts = card.indexOf('className="soc-prof-acts"');
     expect(presence).toBeGreaterThan(-1);
-    expect(acts).toBeGreaterThan(presence);
+    expect(rep).toBeGreaterThan(presence);
+    expect(acts).toBeGreaterThan(rep);
     expect(card.indexOf('className="soc-stats"')).toBeGreaterThan(acts);
-    const rep = card.indexOf('testid="profile-modal-rep"');
-    expect(rep).toBeGreaterThan(acts);
-    expect(rep).toBeLessThan(card.indexOf('className="soc-stats"'));
   });
-  it('the quick-send DM box and its Sent confirmation travel with the row, inside the header before the Rep block', () => {
+  it('the quick-send DM box and its Sent confirmation travel with the row, inside the header after the Rep block', () => {
+    const rep = card.indexOf('testid="profile-modal-rep"');
     const acts = card.indexOf('className="soc-prof-acts"');
     const box = card.indexOf('profile-modal-compose');
     const sent = card.indexOf('data-testid="profile-modal-dm-sent"');
-    const rep = card.indexOf('testid="profile-modal-rep"');
     expect(box).toBeGreaterThan(acts);
     expect(sent).toBeGreaterThan(acts);
-    expect(rep).toBeGreaterThan(box);
-    expect(rep).toBeGreaterThan(sent);
+    expect(box).toBeGreaterThan(rep);
+    expect(sent).toBeGreaterThan(rep);
   });
   it('the blocked note travels with the row too', () => {
+    const rep = card.indexOf('testid="profile-modal-rep"');
     const acts = card.indexOf('className="soc-prof-acts"');
     const note = card.indexOf('Unblock them to message.');
     expect(note).toBeGreaterThan(acts);
-    expect(card.indexOf('testid="profile-modal-rep"')).toBeGreaterThan(note);
+    expect(note).toBeGreaterThan(rep);
   });
 });
 
@@ -121,7 +129,8 @@ describe('consolidated header: one profile area at the top (Demetrius 2026-10-20
     expect(repBlock).toContain('Level {level.level}');
     expect(repBlock).toContain('divLabel(team.division)} · {team.elo}');
     expect(repBlock).toContain('divLabel(cutthroat.division)} · {cutthroat.elo}');
-    expect(repBlock).toContain('🪙 {coins.toLocaleString()}');
+    expect(repBlock).toContain('<CoinIcon /> {coins.toLocaleString()}');
+    expect(repBlock).not.toContain('🪙');
     for (const src of [profile, card]) {
       expect(src).toContain('level={cred.level}');
       expect(src).toContain('team={cred.rank.team}');
@@ -170,6 +179,34 @@ describe('unified Rep block: the XP bar rides in the header on every surface', (
     expect(head).toBeGreaterThan(-1);
     expect(rep).toBeGreaterThan(head);
     expect(rep).toBeLessThan(page.indexOf('className="prof-coins"'));
+  });
+});
+
+describe('one line: the action row never wraps (Demetrius 2026-10-20)', () => {
+  it('the row is a nowrap flex line — no wrap rule left on it', () => {
+    expect(css).toContain('.soc-prof-acts { display: flex; flex-wrap: nowrap; gap: 5px; align-items: center; }');
+    expect(css).not.toContain('.soc-prof-acts { display: flex; flex-wrap: wrap;');
+  });
+  it('chips carry compact header-scoped sizing and labels that cannot wrap — they shrink to fit', () => {
+    expect(css).toContain('.soc-prof-acts button, .soc-prof-acts .soc-friend-tag { white-space: nowrap; min-width: 0; }');
+    expect(css).toContain('.soc-prof-head .soc-prof-acts button { padding: 6px 7px; font-size: 12px; min-height: 40px;');
+    expect(css).toContain('.soc-prof-head .soc-prof-acts .soc-friend-tag { padding: 6px 7px; font-size: 12px; min-height: 40px; }');
+  });
+  it('both surfaces render the single row these rules apply to', () => {
+    const profile = social.slice(social.indexOf('function Profile('));
+    const card = modal.slice(modal.indexOf('function ProfileCard'));
+    expect(count(profile, 'className="soc-prof-acts"')).toBe(1);
+    expect(count(card, 'className="soc-prof-acts"')).toBe(1);
+  });
+});
+
+describe('coins chip: a drawn coin, no emoji (Demetrius 2026-10-20)', () => {
+  it('RepBlock renders the CoinIcon SVG in the chip and keeps the number formatting', () => {
+    expect(repBlock).toContain('export function CoinIcon()');
+    expect(repBlock).toContain('<svg width="15" height="15" viewBox="0 0 24 24"');
+    expect(repBlock).toContain('id="bwm-coin-g"');
+    expect(repBlock).toContain('<CoinIcon /> {coins.toLocaleString()}');
+    expect(repBlock).not.toContain('🪙');
   });
 });
 

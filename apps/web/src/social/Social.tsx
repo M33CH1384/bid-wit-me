@@ -868,6 +868,10 @@ function Profile({ name, id }: { name: string; id?: string }) {
                 <i className="soc-dot" aria-hidden />{s.users[pid ?? ''] ? `Online — ${statusLabel(s.users[pid ?? '']!.status, modeName)}` : 'Offline'}
               </p>
             </div>
+            {cred && (
+              <RepBlock testid="profile-rep" coinsTestid="profile-coins"
+                level={cred.level} team={cred.rank.team} cutthroat={cred.rank.cutthroat} coins={cred.coins?.balance} />
+            )}
             {!me && pid && (
               <div className="soc-prof-acts">
                 {!blocked && <button type="button" onClick={() => social.openDm(pid)}>💬 Chat</button>}
@@ -880,10 +884,6 @@ function Profile({ name, id }: { name: string; id?: string }) {
                 {blocked ? <button type="button" onClick={() => social.friend('unblock', pid)}>Unblock</button> : <button type="button" className="ghost" onClick={() => { if (confirm(`Block ${p.username}? They won't see you online, can't message or invite you, and their chat is hidden.`)) social.friend('block', pid); }} data-testid="profile-block">Block</button>}
                 <button type="button" className="ghost" onClick={() => social.report('user', { user: pid })}>Report</button>
               </div>
-            )}
-            {cred && (
-              <RepBlock testid="profile-rep" coinsTestid="profile-coins"
-                level={cred.level} team={cred.rank.team} cutthroat={cred.rank.cutthroat} coins={cred.coins?.balance} />
             )}
           </div>
           <SocialLinksChips links={cred?.user.socialLinks} testid="profile-social-links" />

@@ -18,6 +18,27 @@ export interface RepRankInfo { division: string; elo: number }
 const DIV_LABEL: Record<string, string> = { stoop: 'Stoop', corner: 'Corner', block: 'Block', avenue: 'Avenue', boulevard: 'Boulevard', legend: 'Legend' };
 export const divLabel = (d: string) => DIV_LABEL[d] ?? d;
 
+/** The coins chip's drawn coin (Demetrius 2026-10-20: the coin emoji "don't
+ *  work for me") — a gold-gradient disc with a darker gold rim and a centered spade,
+ *  inline SVG so it sits with the chip text exactly where the emoji did and
+ *  renders the same on every platform (the emoji didn't). */
+export function CoinIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true" focusable="false" style={{ flex: 'none', verticalAlign: '-2px' }}>
+      <defs>
+        <radialGradient id="bwm-coin-g" cx="35%" cy="30%" r="85%">
+          <stop offset="0%" stopColor="#ffedb0" />
+          <stop offset="55%" stopColor="#f5c542" />
+          <stop offset="100%" stopColor="#cf9c2c" />
+        </radialGradient>
+      </defs>
+      <circle cx="12" cy="12" r="10" fill="url(#bwm-coin-g)" stroke="#8a6414" strokeWidth="1.6" />
+      <circle cx="12" cy="12" r="7.3" fill="none" stroke="#a87f1d" strokeWidth="0.9" opacity="0.8" />
+      <path d="M12 5.1c1.8 2.4 6.2 5.6 6.2 8.6a3.25 3.25 0 0 1-5.8 2.1c.3 1.4.9 2.6 1.8 3.5H9.8c.9-.9 1.5-2.1 1.8-3.5a3.25 3.25 0 0 1-5.8-2.1c0-3 4.4-6.2 6.2-8.6z" fill="#8a6414" />
+    </svg>
+  );
+}
+
 export function RepBlock({ level, team, cutthroat, coins, testid, coinsTestid }: {
   level: RepLevelInfo;
   team: RepRankInfo;
@@ -36,7 +57,7 @@ export function RepBlock({ level, team, cutthroat, coins, testid, coinsTestid }:
       <div className="soc-rep-ranks">
         <span className="soc-div-chip" title="Partnership season division">⚔ {divLabel(team.division)} · {team.elo}</span>
         <span className="soc-div-chip" title="Cutthroat season division">🔪 {divLabel(cutthroat.division)} · {cutthroat.elo}</span>
-        {coins !== undefined && <span className="soc-coin-chip" title="Coin balance" data-testid={coinsTestid}>🪙 {coins.toLocaleString()}</span>}
+        {coins !== undefined && <span className="soc-coin-chip" title="Coin balance" data-testid={coinsTestid}><CoinIcon /> {coins.toLocaleString()}</span>}
       </div>
     </div>
   );

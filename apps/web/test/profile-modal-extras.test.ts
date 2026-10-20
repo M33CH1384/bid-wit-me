@@ -25,7 +25,7 @@ describe('profile modal: rank, coins, badges', () => {
     expect(modal).toContain('coins={cred.coins?.balance}');
     expect(repBlock).toContain('{coins !== undefined && <span className="soc-coin-chip"');
     expect(repBlock).toContain('data-testid={coinsTestid}');
-    expect(repBlock).toContain('🪙 {coins.toLocaleString()}');
+    expect(repBlock).toContain('<CoinIcon /> {coins.toLocaleString()}');
   });
   it('badges: unlocked achievements as chips, capped at 10 with a +N more chip', () => {
     expect(modal).toContain('unlocked.slice(0, 10)');
@@ -70,7 +70,7 @@ describe('social profile view: coins + friend states agree with the modal', () =
   it('coins: same chip off the same payload', () => {
     expect(social).toContain('coinsTestid="profile-coins"');
     expect(social).toContain('coins={cred.coins?.balance}');
-    expect(repBlock).toContain('🪙 {coins.toLocaleString()}');
+    expect(repBlock).toContain('<CoinIcon /> {coins.toLocaleString()}');
   });
   it('friend states: Requested / Friends / Accept mirror the modal', () => {
     expect(social).toContain("disabled={pending} onClick={() => social.friend('request', pid)} data-testid=\"profile-add\"");
