@@ -508,6 +508,23 @@ function SeatBadge({ badge }: { badge: TurnBadge }) {
 }
 
 
+/** Cop drive-by light flash: subtle red/blue edge glow when the siren passes (Demetrius 2026-10-19). */
+function DrivebyLights() {
+  const [active, setActive] = useState(false);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onDriveby = () => {
+      setActive(true);
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => setActive(false), 7000); // match the siren sweep
+    };
+    window.addEventListener('pj-driveby', onDriveby);
+    return () => { window.removeEventListener('pj-driveby', onDriveby); if (timer) clearTimeout(timer); };
+  }, []);
+  if (!active) return null;
+  return <div className="driveby-lights" aria-hidden data-testid="driveby-lights" />;
+}
+
 export default function Table({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, onView, onTurnUp, resume, continueSeries, online, onMainMenu, startDealer }: Props) {
   useEffect(() => { setActiveDeck(settings.deck); }, [settings.deck]);
   // `online` never changes for a mounted Table, so this is always the same hook path per instance
@@ -1397,6 +1414,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
   return (
     <div ref={screenRef} className={`table-screen q-${settings.quality}${vp.short ? ' short' : ''}${modalOpen ? ' modal-open' : ''}${showPad ? ' pad-open' : ''}`} inert={loading ? true : undefined} data-dealing={dealing ? 'yes' : 'no'} data-my-turn={myTurn ? 'yes' : 'no'}>
+      <DrivebyLights />
       {/* styled stand-in table, on screen from the first paint until the 3D table has rendered (then it fades) */}
       <div className={`table-placeholder ${tableReady ? 'gone' : ''}`} data-testid="table-placeholder" data-venue={venue} style={placeholderStyle(venue)} aria-hidden>
         <div className="tp-floor" />
