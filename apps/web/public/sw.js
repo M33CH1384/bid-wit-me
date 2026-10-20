@@ -45,9 +45,12 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const raw = (event.notification.data && event.notification.data.url) || '/';
-  let path = '/';
+  // Keep the query string: invite pushes link to /t/CODE?seat=N and the seat
+  // reservation is lost if we open just the pathname.
+  let target = '/';
   try {
-    path = new URL(raw, self.location.origin).pathname;
+    const u = new URL(raw, self.location.origin);
+    target = u.pathname + u.search;
   } catch {
     /* keep default */
   }
@@ -56,7 +59,8 @@ self.addEventListener('notificationclick', (event) => {
       const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
       for (const c of clients) {
         try {
-          if (new URL(c.url).pathname === path) {
+          const cu = new URL(c.url);
+          if (cu.pathname + cu.search === target) {
             await c.focus();
             return;
           }
@@ -64,7 +68,7 @@ self.addEventListener('notificationclick', (event) => {
           /* ignore */
         }
       }
-      await self.clients.openWindow(path);
+      await self.clients.openWindow(target);
     })(),
   );
 });
