@@ -44,8 +44,7 @@ describe('glass v3 — shared panels (styles.css escalation section)', () => {
     expect(fb).toContain('linear-gradient(180deg, #171c42, #0a0d24)');
   });
 
-  it('hero tiles, decision cards, modes and quiet rows share the v3 rim language', () => {
-    expect(sec).toContain('html[data-theme="neon"] .nh-tile');
+  it('decision cards, modes and quiet rows share the v3 rim language', () => {
     expect(sec).toContain('html[data-theme="neon"] .decision-card');
     expect(sec).toContain('html[data-theme="neon"] .mode');
     expect(sec).toContain('html[data-theme="neon"] .quiet-row');
@@ -55,13 +54,13 @@ describe('glass v3 — shared panels (styles.css escalation section)', () => {
   });
 
   it('the table screen resets v3’s new properties — gameplay stays byte-equivalent', () => {
-    expect(sec).toContain('html[data-theme="neon"] .table-screen :is(.glass, .panel, .modal, .sheet, .decision-card, .mode, .nh-tile, .quiet-row) { border: 0; }');
+    expect(sec).toContain('html[data-theme="neon"] .table-screen :is(.glass, .panel, .modal, .sheet, .decision-card, .mode, .quiet-row) { border: 0; }');
   });
 
   it('no escalation rule is left unscoped (Classic cannot see this section’s effects)', () => {
     // A rule for any v3 surface that starts at a line edge WITHOUT the
     // html[data-theme="neon"] prefix would leak into Classic.
-    const unscoped = /\n\.(glass|panel|modal|sheet|decision-card|nh-tile|mode|quiet-row|soc-panel|soc-bubble|soc-player|soc-frow|soc-thread|profile-modal-card|ranks-you)\s*[,{]/;
+    const unscoped = /\n\.(glass|panel|modal|sheet|decision-card|mode|quiet-row|soc-panel|soc-bubble|soc-player|soc-frow|soc-thread|profile-modal-card|ranks-you)\s*[,{]/;
     expect(esc(read('../src/styles.css'))).not.toMatch(unscoped);
     expect(esc(read('../src/social/social.css'))).not.toMatch(unscoped);
   });
@@ -99,12 +98,12 @@ describe('glass v3 — Social floats on the ink (social.css escalation section)'
   });
 });
 
-describe('the Classic logo in the Neon hero (Setup.tsx)', () => {
+describe('the Classic logo on the home (Setup.tsx)', () => {
   const src = read('../src/Setup.tsx');
 
-  it('both themes render the same logo asset in the same splash markup', () => {
+  it('ONE splash renders the shared logo asset — the same markup for both themes', () => {
     const logo = '<img className="logo splash-logo" src="/assets/bwm-wordmark-white.svg" alt="" />';
-    expect(src.split(logo)).toHaveLength(3); // classic splash + neon hero
+    expect(src.split(logo)).toHaveLength(2); // the single shared splash (parity pass)
     expect(src).not.toContain('nh-wordmark');
     expect(src).not.toContain('nh-brand-row');
   });

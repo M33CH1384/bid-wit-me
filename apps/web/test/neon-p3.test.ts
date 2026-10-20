@@ -1,10 +1,12 @@
 /**
  * @vitest-environment happy-dom
  *
- * Neon Royale P3 — the fidelity pass: glass v2, the art hero on the home
- * screen (Neon-only composition; Classic's tree untouched), the rollout
- * (tinted game-select cards, gliding Social tab indicator, holographic
- * Ranks shimmer), reactive borders, and the shipped hero art.
+ * Neon Royale P3 — the fidelity pass: glass v2, the rollout (tinted
+ * game-select cards, gliding Social tab indicator, holographic Ranks
+ * shimmer), reactive borders, and the shipped hero art. (The P3 art hero
+ * itself was retired by the parity pass: the home is ONE composition for
+ * both themes and the art survives as CSS-only decoration — see
+ * theme-parity.test.ts.)
  */
 import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -109,30 +111,33 @@ describe('glass v2 (styles.css P3 section)', () => {
   it('PLAY keeps real glow; press feedback is brief and transform/filter-only', () => {
     expect(sec).toContain('.hero-btn.gold');
     expect(sec).toContain('0 0 46px rgba(var(--gold-rgb), .38)');
-    expect(sec).toContain(':is(.hero-btn, .decision-card, .nh-tile, .mode):active { filter: brightness(1.13); }');
+    expect(sec).toContain(':is(.hero-btn, .decision-card, .mode):active { filter: brightness(1.13); }');
   });
 });
 
-describe('home hero CSS', () => {
+describe('home art dressing CSS (parity pass: decoration is CSS-only)', () => {
   const sec = p3(read('../src/styles.css'));
 
-  it('the art melts into the page via radial masks; the card floats, killed by reduced motion', () => {
-    expect(sec).toContain('.nh-emblem');
+  it('the emblem + card are painted by .wiz-home pseudo-elements under Neon — never DOM', () => {
+    expect(sec).toContain('html[data-theme="neon"] .wiz-home::before');
+    expect(sec).toContain("url('/assets/neon/spade-emblem.webp')");
+    expect(sec).toContain('html[data-theme="neon"] .wiz-home::after');
+    expect(sec).toContain("url('/assets/neon/ace-card.webp')");
+    // the art still melts into the page via the same radial masks, and the
+    // card's idle float is still killed by reduced motion
     expect(sec).toContain('mask-image: radial-gradient(ellipse 74% 74% at 50% 47%, #000 66%, transparent 88%)');
-    expect(sec).toContain('@keyframes nh-float');
-    expect(sec).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*html\[data-theme="neon"\] \.nh-card \{ animation: none; \}/);
+    expect(sec).toContain('@keyframes wiz-art-float');
+    expect(sec).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*html\[data-theme="neon"\] \.wiz-home::after \{ animation: none; \}/);
   });
 
-  it('the gradient-text wordmark is GONE — the hero carries the Classic logo (owner directive)', () => {
+  it('no .nh-* selectors survive — the Neon-only hero DOM is gone', () => {
+    expect(sec).not.toMatch(/\.nh-[a-z]/);
+  });
+
+  it('the gradient-text wordmark is GONE — the home carries the Classic logo (owner directive)', () => {
     expect(sec).not.toContain('.nh-wordmark');
     expect(sec).not.toContain('background-clip: text');
     expect(sec).not.toContain('linear-gradient(94deg, #ffffff 0%');
-  });
-
-  it('tiles are ≥44px glass targets', () => {
-    expect(sec).toContain('.nh-tile {');
-    expect(sec).toContain('min-height: 58px');
-    expect(sec).toContain('.nh-half { min-height: 52px; }');
   });
 });
 
@@ -197,22 +202,14 @@ describe('hero art assets', () => {
 describe('Setup home composition', () => {
   const src = read('../src/Setup.tsx');
 
-  it('the hero is theme-conditional and wired to real destinations only', () => {
-    expect(src).toContain("import { useTheme } from './theme'");
-    expect(src).toContain("theme === 'neon'");
-    expect(src).toContain('className="nh-stage"');
-    expect(src).toContain('src="/assets/neon/spade-emblem.webp"');
-    expect(src).toContain('src="/assets/neon/ace-card.webp"');
-    expect(src).toContain('data-testid="nh-ranked"');
-    expect(src).toContain("social.open('leaders')");
-    expect(src).toContain('data-testid="nh-quick"');
-    expect(src).toContain('data-testid="nh-private"');
-    expect(src).toContain('data-testid="nh-decks"');
-    expect(src).toContain('data-testid="nh-achievements"');
-    expect(src).toContain("navigate('/profile')");
+  it('ONE home composition for both themes — no theme branch, no Neon-only destinations', () => {
+    expect(src).not.toContain('useTheme');
+    expect(src).not.toContain("theme === 'neon'");
+    expect(src).not.toContain('nh-');
+    expect(src).not.toContain("social.open('leaders')");
+    expect(src).not.toContain("navigate('/profile')");
     // beta rule: nothing fabricated — no store, no gems
     expect(src.toLowerCase()).not.toContain('gem');
-    expect(src).not.toContain('nh-store');
   });
 
   it('Classic splash markup and the shared actions keep their exact testids', () => {
@@ -220,7 +217,7 @@ describe('Setup home composition', () => {
     expect(src.match(/data-testid="play"/g)).toHaveLength(2);
     expect(src.match(/data-testid="resume"/g)).toHaveLength(1);
     expect(src.match(/data-testid="resume-online"/g)).toHaveLength(1);
-    expect(src.match(/data-testid="beta-tag"/g)).toHaveLength(2); // classic splash + neon brand row
+    expect(src.match(/data-testid="beta-tag"/g)).toHaveLength(1); // ONE shared splash — parity pass
   });
 });
 
@@ -250,34 +247,34 @@ describe('Setup home renders', () => {
     return el;
   }
 
-  it('Classic: the splash renders, no hero art, no tiles', async () => {
+  it('Classic: the splash renders, no tiles', async () => {
     const c = await renderHome('classic');
     expect(c.querySelector('.splash-logo')).not.toBeNull();
-    expect(c.querySelector('.nh-emblem')).toBeNull();
     expect(c.querySelector('[data-testid="nh-ranked"]')).toBeNull();
     expect(c.querySelector('[data-testid="play"]')).not.toBeNull();
   });
 
-  it('Neon: emblem + floating card + the CLASSIC logo + all five tiles, same PLAY', async () => {
-    const c = await renderHome('neon');
-    // Owner directive: same logo as Classic — the white wordmark asset,
-    // rendered exactly as the Classic splash renders it.
-    expect(c.querySelector('.splash-logo')?.getAttribute('src')).toBe('/assets/bwm-wordmark-white.svg');
-    expect(c.querySelector('.nh-wordmark')).toBeNull();
-    expect(c.querySelector('.nh-emblem')?.getAttribute('src')).toBe('/assets/neon/spade-emblem.webp');
-    expect(c.querySelector('.nh-card')?.getAttribute('src')).toBe('/assets/neon/ace-card.webp');
-    for (const t of ['nh-ranked', 'nh-quick', 'nh-private', 'nh-decks', 'nh-achievements']) {
-      expect(c.querySelector(`[data-testid="${t}"]`), t).not.toBeNull();
-    }
-    expect(c.querySelector('[data-testid="play"]')).not.toBeNull();
-    expect(c.querySelector('[data-testid="beta-tag"]')).not.toBeNull();
-  });
-
-  it('Neon: the Ranked tile opens Social on the Ranks tab', async () => {
-    const c = await renderHome('neon');
-    const btn = c.querySelector<HTMLButtonElement>('[data-testid="nh-ranked"]')!;
-    await act(async () => { btn.click(); });
-    expect(social.get().open).toBe(true);
-    expect(social.get().tab).toBe('leaders');
+  it('Neon: the IDENTICAL interactive inventory as Classic — same buttons, labels, destinations', async () => {
+    const inv = (c: HTMLElement) => [...c.querySelectorAll('button, a[href], input, select, textarea')]
+      .map((n) => {
+        const el = n as HTMLElement;
+        return `${el.tagName}|${el.getAttribute('data-testid') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ')}|${el.getAttribute('href') ?? ''}`;
+      })
+      .sort();
+    const classic = await renderHome('classic');
+    const classicInv = inv(classic);
+    expect(classicInv.length).toBeGreaterThan(0);
+    expect(classicInv.some((x) => x.includes('data-testid="play"') || x.includes('|play|'))).toBe(true);
+    const classicTagline = classic.querySelector('.tagline')?.textContent;
+    if (root) act(() => root!.unmount());
+    root = null;
+    el?.remove();
+    el = null;
+    const neon = await renderHome('neon');
+    expect(inv(neon)).toEqual(classicInv);
+    // the visible story matches too: same logo asset, same tagline
+    expect(neon.querySelector('.splash-logo')?.getAttribute('src')).toBe('/assets/bwm-wordmark-white.svg');
+    expect(neon.querySelector('.tagline')?.textContent).toBe(classicTagline);
+    expect(neon.querySelector('[data-testid="beta-tag"]')).not.toBeNull();
   });
 });

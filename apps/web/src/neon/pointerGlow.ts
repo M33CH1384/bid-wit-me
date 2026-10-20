@@ -13,7 +13,7 @@ import type { ThemeName } from '../theme';
  *  ::after ring rules in styles.css / social.css — bare `.glass` is NOT one:
  *  it is shared with table chrome whose ::after slots are taken (the Run-It
  *  tip tail, the coach arrow), so the ring lives on the named panels. */
-export const GLOW_SELECTOR = '.panel, .modal, .sheet, .decision-card, .mode, .nh-tile, .soc-panel, .ranks-you, .acct-dropdown, .profile-modal-card';
+export const GLOW_SELECTOR = '.panel, .modal, .sheet, .decision-card, .mode, .soc-panel, .ranks-you, .acct-dropdown, .profile-modal-card';
 
 export interface GlowGateState {
   theme: ThemeName;
