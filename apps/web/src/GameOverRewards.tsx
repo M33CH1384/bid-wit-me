@@ -165,17 +165,17 @@ function EloRow({ d, index }: { d: RewardsData; index: number }) {
 
 export default function GameOverRewards({
   data,
-  onMainMenu,
+  onHome,
+  onRematch,
   onProfile,
   onOpenTables,
 }: {
   data: RewardsData;
-  onMainMenu: () => void;
+  onHome: () => void;
+  onRematch: () => void;
   onProfile: () => void;
   onOpenTables: () => void;
 }) {
-  const [visible, setVisible] = useState(false);
-  useEffect(() => { const t = window.setTimeout(() => setVisible(true), 30); return () => window.clearTimeout(t); }, []);
   let row = 0;
   const rows: React.ReactNode[] = [];
   if (data.signedIn) {
@@ -206,8 +206,8 @@ export default function GameOverRewards({
     }
   }
   return (
-    <div className={`rewards-screen${visible ? ' in' : ''}`} role="dialog" aria-label="Match rewards" data-testid="rewards">
-      <div className="rw-card glass">
+    <div className="rewards-page" aria-label="Match rewards" data-testid="rewards">
+      <div className="rw-card">
         <div className="rw-head" style={{ animationDelay: '0ms' }}>
           <div className="rw-trophy">{data.won ? '🏆' : '♠'}</div>
           <h2 className={data.won ? 'win' : 'lose'}>{data.headline}</h2>
@@ -225,7 +225,8 @@ export default function GameOverRewards({
           )}
         </div>
         <div className="rw-actions" style={{ animationDelay: `${(row + 1) * 160}ms` }}>
-          <button type="button" className="primary big" data-testid="rewards-menu" onClick={onMainMenu}>Main Menu</button>
+          <button type="button" className="primary big" data-testid="rewards-home" onClick={onHome}>Home</button>
+          <button type="button" className="ghost-btn rw-rematch-btn" data-testid="rewards-rematch" onClick={onRematch}>Rematch</button>
           <div className="rw-actions-row">
             <button type="button" className="ghost-btn" data-testid="rewards-profile" onClick={onProfile}>Profile</button>
             <button type="button" className="ghost-btn" data-testid="rewards-tables" onClick={onOpenTables}>Open Tables</button>

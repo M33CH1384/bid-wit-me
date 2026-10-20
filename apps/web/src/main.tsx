@@ -12,6 +12,7 @@ import './styles.css';
 
 const OnlineApp = lazy(() => import('./online/OnlineApp'));
 const ProfilePage = lazy(() => import('./profile/ProfilePage'));
+const RewardsPage = lazy(() => import('./RewardsPage'));
 
 /** "/" = offline (vs bots) as before; "/online" and "/t/CODE" = online tables; "/profile" = Rep profile. */
 function Root() {
@@ -23,7 +24,8 @@ function Root() {
   }, []);
   return (
     <>
-      {path === '/profile' ? <Suspense fallback={null}><ProfilePage /></Suspense>
+      {path === '/rewards' ? <Suspense fallback={null}><RewardsPage /></Suspense>
+        : path === '/profile' ? <Suspense fallback={null}><ProfilePage /></Suspense>
         : isOnlinePath(path) ? <Suspense fallback={null}><OnlineApp path={path} /></Suspense> : <App key={path} />}
       <SoundDock />
       <SocialRoot />
