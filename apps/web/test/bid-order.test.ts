@@ -66,6 +66,6 @@ describe('bid order display', () => {
     expect(rule).toContain('border-radius: 12px');
     expect(rule).not.toContain('999px');
     expect(css).toContain('.bo-seat { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; opacity: .75; flex: 0 0 auto; min-width: min-content; }');
-    expect(css).toContain('.center-note-wrap > .bid-order { position: fixed;');
+    expect(css).toContain('.center-note-wrap > .bid-order { position: static;');
   });
 });
