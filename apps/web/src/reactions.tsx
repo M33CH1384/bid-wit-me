@@ -1,12 +1,16 @@
 /**
  * Emoji reaction UI for chat lines (table chat + global chat share these pieces).
- * The emoji set is FIXED (REACT_EMOJIS from the protocol): one small strip, no keyboard.
+ * The picker strip offers the six quick reactions (REACT_EMOJIS from the protocol);
+ * chips render whatever reactions a line actually carries — including palette extras
+ * (REACTION_PALETTE) picked from the Social popover's "+" palette.
  */
-import { REACT_EMOJIS } from '@spades/protocol';
+import { REACT_EMOJIS, REACTION_PALETTE } from '@spades/protocol';
 
 /** Reaction chips under a chat line: emoji + count, highlighted when `myId` reacted. Tapping a chip toggles it. */
 export function ReactionChips({ reactions, myId, onToggle }: { reactions?: Record<string, string[]>; myId: string | null; onToggle: (emoji: string) => void }) {
-  const used = REACT_EMOJIS.filter((e) => (reactions?.[e]?.length ?? 0) > 0);
+  const inPalette = REACTION_PALETTE.filter((e) => (reactions?.[e]?.length ?? 0) > 0);
+  const offPalette = Object.keys(reactions ?? {}).filter((e) => !(REACTION_PALETTE as readonly string[]).includes(e) && (reactions?.[e]?.length ?? 0) > 0);
+  const used = [...inPalette, ...offPalette];
   if (!used.length) return null;
   return (
     <span className="rx-chips">

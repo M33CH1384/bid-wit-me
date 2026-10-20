@@ -4,7 +4,7 @@
  * Every client message is validated on the server with `parseClientMsg`; anything malformed is dropped.
  */
 import type { Card, PlayerView, RunPlayout, Series, TableRules } from '@spades/rules';
-import { REACT_EMOJIS, type ChatReactions } from './filter';
+import { isReactionEmoji, type ChatReactions } from './filter';
 export * from './filter';
 export * from './social';
 
@@ -263,7 +263,7 @@ export interface RoomInfo {
 
 export interface ChatLine {
   id: number; from: string | null; name: string; text: string; at: number; system?: boolean;
-  /** emoji reactions (emoji -> reactor pids); see REACT_EMOJIS */
+  /** emoji reactions (emoji -> reactor pids); see REACTION_PALETTE */
   reactions?: ChatReactions;
   /** a bot's trash talk: its seat, persona, and whether this line is the Hustler's reveal (raw text; clients mask per Clean talk) */
   bot?: { seat: number; persona: string; reveal?: boolean; line?: string; bid?: number };
@@ -394,7 +394,7 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
     case 'chat':
       return isStr(m.text, 1000) ? { t: 'chat', text: m.text } : null;
     case 'react':
-      return isInt(m.id) && m.id > 0 && typeof m.emoji === 'string' && (REACT_EMOJIS as readonly string[]).includes(m.emoji)
+      return isInt(m.id) && m.id > 0 && typeof m.emoji === 'string' && isReactionEmoji(m.emoji)
         ? { t: 'react', id: m.id, emoji: m.emoji }
         : null;
     case 'media':

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CLICK_SWALLOW_MS, LONG_PRESS_MS, POPOVER_H, POPOVER_W, PRESS_SLOP_PX,
+  CLICK_SWALLOW_MS, LONG_PRESS_MS, POPOVER_H, POPOVER_H_PALETTE, POPOVER_H_REPLY, POPOVER_W, PRESS_SLOP_PX,
   beginPress, firePress, movePress, popoverPos, swallowClickAt,
 } from '../src/social/msgPress';
 
@@ -65,5 +65,30 @@ describe('popover placement', () => {
     expect(pos.left).toBe(vw - POPOVER_W - 8);
     const low = popoverPos({ top: 30, left: 8, right: 100, bottom: 795 }, vw, vh, false);
     expect(low.top).toBeLessThanOrEqual(vh - POPOVER_H - 8);
+  });
+
+  it('the expanded palette needs more headroom than the plain menu', () => {
+    expect(POPOVER_H_PALETTE).toBeGreaterThan(POPOVER_H);
+    // a bubble the plain menu fits above (room for 128, not for 378) …
+    const rect = { top: 300, left: 48, right: 240, bottom: 340 };
+    expect(popoverPos(rect, vw, vh, false).below).toBe(false);
+    // … flips below once the palette expands it
+    const tall = popoverPos(rect, vw, vh, false, POPOVER_H_PALETTE);
+    expect(tall.below).toBe(true);
+    expect(tall.top).toBe(350);
+    // and with real headroom the tall popover still anchors above by its own height
+    const high = popoverPos({ top: 500, left: 48, right: 240, bottom: 540 }, vw, vh, false, POPOVER_H_PALETTE);
+    expect(high.below).toBe(false);
+    expect(high.top).toBe(500 - POPOVER_H_PALETTE - 10);
+  });
+
+  it('a tall popover below a top bubble still clamps inside the viewport', () => {
+    const low = popoverPos({ top: 30, left: 8, right: 100, bottom: 795 }, vw, vh, false, POPOVER_H_PALETTE);
+    expect(low.top).toBeLessThanOrEqual(vh - POPOVER_H_PALETTE - 8);
+  });
+
+  it('the reply editor height sits between menu and palette heights', () => {
+    expect(POPOVER_H_REPLY).toBeGreaterThan(POPOVER_H);
+    expect(POPOVER_H_REPLY).toBeLessThan(POPOVER_H_PALETTE);
   });
 });

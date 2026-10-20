@@ -3,7 +3,7 @@
  * Identity comes from the connection (a short-lived signed account ticket, or none = guest), never from messages.
  */
 
-import { REACT_EMOJIS, type ChatReactions } from './filter';
+import { isReactionEmoji, type ChatReactions } from './filter';
 
 export const SOCIAL_LIMITS = {
   chatMax: 300,          // characters per global/DM message
@@ -111,8 +111,8 @@ export function dmReplySnapshot(line: { id: number; from: string; text: string }
   return { id: line.id, from: fromName, fromId: line.from, text: line.text.slice(0, SOCIAL_LIMITS.replySnippet) };
 }
 
-export interface SocialChatLine { id: number; from: string; name: string; text: string; at: number; admin?: boolean; /** emoji reactions (emoji -> reactor pids); see REACT_EMOJIS */ reactions?: ChatReactions; /** the line this one replies to, as a post-time snapshot */ reply?: ReplyRef }
-export interface DmLine { id: number; from: string; to: string; text: string; at: number; read?: boolean; /** emoji reactions (emoji -> reactor pids); see REACT_EMOJIS */ reactions?: ChatReactions; /** the DM line this one replies to, as a post-time snapshot (same shape as global chat) */ reply?: ReplyRef }
+export interface SocialChatLine { id: number; from: string; name: string; text: string; at: number; admin?: boolean; /** emoji reactions (emoji -> reactor pids); see REACTION_PALETTE */ reactions?: ChatReactions; /** the line this one replies to, as a post-time snapshot */ reply?: ReplyRef }
+export interface DmLine { id: number; from: string; to: string; text: string; at: number; read?: boolean; /** emoji reactions (emoji -> reactor pids); see REACTION_PALETTE */ reactions?: ChatReactions; /** the DM line this one replies to, as a post-time snapshot (same shape as global chat) */ reply?: ReplyRef }
 export interface FriendRef { id: string; name: string; since?: number }
 export interface FriendsState { friends: FriendRef[]; incoming: FriendRef[]; outgoing: FriendRef[]; blocked: FriendRef[] }
 export interface SocialSettings { appearOffline: boolean; friendsOnlyInvites: boolean; hideLocation: boolean }
@@ -232,11 +232,11 @@ export function parseSocialMsg(raw: unknown): SocialClientMsg | null {
       // a malformed replyTo drops the reference, never the message
       return isInt(m.replyTo) && m.replyTo > 0 ? { t: 'chat', text: m.text, replyTo: m.replyTo } : { t: 'chat', text: m.text };
     case 'react':
-      return isInt(m.id) && m.id > 0 && typeof m.emoji === 'string' && (REACT_EMOJIS as readonly string[]).includes(m.emoji)
+      return isInt(m.id) && m.id > 0 && typeof m.emoji === 'string' && isReactionEmoji(m.emoji)
         ? { t: 'react', id: m.id, emoji: m.emoji }
         : null;
     case 'dmReact':
-      return isInt(m.id) && m.id > 0 && typeof m.emoji === 'string' && (REACT_EMOJIS as readonly string[]).includes(m.emoji)
+      return isInt(m.id) && m.id > 0 && typeof m.emoji === 'string' && isReactionEmoji(m.emoji)
         ? { t: 'dmReact', id: m.id, emoji: m.emoji }
         : null;
     case 'dm':

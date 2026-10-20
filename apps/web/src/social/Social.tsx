@@ -2,8 +2,8 @@
  * Release 9 social UI: the Social button (with unread badge), the Social panel (players online, global chat, DMs,
  * friends, profiles, settings), invite toasts and notices. Mounted once at the root so invites reach you anywhere.
  */
-import { Fragment, type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { type DmLine, type InviteMsg, type OpenTable, type PresenceEntry, type PresenceStatus, type SocialChatLine, SOCIAL_LIMITS, statusLabel } from '@spades/protocol';
+import { Fragment, type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type DmLine, type InviteMsg, type OpenTable, type PresenceEntry, type PresenceStatus, REACT_PALETTE_EXTRA, SOCIAL_LIMITS, statusLabel } from '@spades/protocol';
 import { useAccount } from '../account/api';
 import { accountUidOf, AvatarCircle, socialUidOf, useAvatar } from '../avatar';
 import { BADGES } from '../badges';
@@ -18,7 +18,7 @@ import { Leaderboards, Tournaments } from './Compete';
 import { offlineStats } from '../offlineStats';
 import { chatStickToBottom } from '../chatScroll';
 import { chatGroupInfo, chatTimeLabel } from './chatTime';
-import { popoverPos, useMsgPress, type AnchorRect } from './msgPress';
+import { POPOVER_H, POPOVER_H_PALETTE, POPOVER_H_REPLY, popoverPos, useMsgPress, type AnchorRect } from './msgPress';
 import { ReactionChips, ReactionPicker } from '../reactions';
 import { TaglineText } from '../tagline';
 import { SocialLinksChips, type SocialLinks } from '../socialLinks';
@@ -391,38 +391,91 @@ function Composer({ onSend, placeholder, disabled, testid }: { onSend: (t: strin
 
 /**
  * The iMessage-style action popover for a long-pressed message (see msgPress.ts):
- * a fixed backdrop that eats outside taps, the six-emoji reaction strip on top and
- * a Reply row below, anchored to the pressed bubble. Picking an emoji or Reply
- * acts and closes; a backdrop tap just closes (and arms the click swallow, since
- * the tap's click lands on the lines once the backdrop is gone).
+ * a fixed backdrop that eats outside taps, the six-emoji reaction strip on top (with
+ * a "+" that expands a palette of extra reaction emojis) and a plain Reply row below,
+ * anchored to the pressed bubble. Picking an emoji acts and closes; a backdrop tap
+ * just closes (and arms the click swallow, since the tap's click lands on the lines
+ * once the backdrop is gone). Reply expands the popover IN PLACE into a mini composer
+ * — quote snippet on top, autofocused input + Send below — and sends through the
+ * chat's normal reply path; dismissing it discards the draft.
  */
-function MsgPopover({ rect, mine, onReact, onReply, onClose, onBackdrop }: {
+function MsgPopover({ rect, mine, quote, onReact, onSendReply, onClose, onBackdrop, onEditingChange }: {
   rect: AnchorRect; mine: boolean;
-  onReact: (emoji: string) => void; onReply: () => void; onClose: () => void; onBackdrop: () => void;
+  /** the pressed line as a quote (author + text) for the in-popover reply editor */
+  quote: { from: string; text: string };
+  onReact: (emoji: string) => void;
+  /** post the reply text through the chat's normal reply send path */
+  onSendReply: (text: string) => void;
+  onClose: () => void; onBackdrop: () => void;
+  /** reports whether the reply editor is open — while it is, the parent suspends
+   *  scroll/resize dismissal (the iOS keyboard opening must not kill the editor) */
+  onEditingChange: (editing: boolean) => void;
 }) {
-  const pos = popoverPos(rect, window.innerWidth, window.innerHeight, mine);
+  const [mode, setMode] = useState<'menu' | 'palette' | 'reply'>('menu');
+  const [draft, setDraft] = useState('');
+  useEffect(() => { onEditingChange(mode === 'reply'); }, [mode, onEditingChange]);
+  useEffect(() => () => onEditingChange(false), [onEditingChange]);
+  const h = mode === 'palette' ? POPOVER_H_PALETTE : mode === 'reply' ? POPOVER_H_REPLY : POPOVER_H;
+  const pos = popoverPos(rect, window.innerWidth, window.innerHeight, mine, h);
+  const sendReply = (e: FormEvent) => {
+    e.preventDefault();
+    const t = draft.trim();
+    if (!t) return;
+    onSendReply(t);
+    onClose();
+  };
   return (
     <>
       <div className="soc-pop-backdrop" data-testid="msg-pop-backdrop" onPointerDown={onBackdrop}
         onContextMenu={(e) => { e.preventDefault(); onBackdrop(); }} />
       <div className="soc-pop" data-testid="msg-actions" role="menu" aria-label="Message actions" style={{ left: pos.left, top: pos.top }}>
-        <ReactionPicker onPick={(e) => { onReact(e); onClose(); }} />
-        <button type="button" className="soc-pop-reply" data-testid="msg-pop-reply" onClick={() => { onReply(); onClose(); }}>↩ Reply</button>
+        {mode === 'reply' ? (
+          <form className="soc-pop-replybox" onSubmit={sendReply}>
+            <div className="soc-pop-quote">
+              <span className="soc-pop-quote-txt"><b>{quote.from}</b> {quote.text}</span>
+              <button type="button" className="soc-pop-x" aria-label="Cancel reply" data-testid="msg-pop-reply-cancel" onClick={onClose}>✕</button>
+            </div>
+            <div className="soc-pop-replyrow">
+              <input ref={(el) => { if (el && document.activeElement !== el) el.focus({ preventScroll: true }); }}
+                value={draft} onChange={(e) => setDraft(e.target.value)} maxLength={SOCIAL_LIMITS.chatMax}
+                placeholder={`Reply to ${quote.from}…`} aria-label={`Reply to ${quote.from}`} data-testid="msg-pop-reply-input" />
+              <button type="submit" className="primary" disabled={!draft.trim()} data-testid="msg-pop-reply-send">Send</button>
+            </div>
+          </form>
+        ) : (
+          <>
+            <div className="soc-pop-strip">
+              <ReactionPicker onPick={(e) => { onReact(e); onClose(); }} />
+              <button type="button" className="rx-pick soc-pop-more" aria-label="More reactions" aria-expanded={mode === 'palette'}
+                data-testid="msg-pop-more" onClick={() => setMode(mode === 'palette' ? 'menu' : 'palette')}>+</button>
+            </div>
+            {mode === 'palette' && (
+              <div className="soc-pop-palette" role="group" aria-label="More reactions">
+                {REACT_PALETTE_EXTRA.map((e) => (
+                  <button key={e} type="button" className="rx-pick soc-pop-pal" aria-label={`React with ${e}`} data-testid="msg-pop-palette-pick" onClick={() => { onReact(e); onClose(); }}>{e}</button>
+                ))}
+              </div>
+            )}
+            <button type="button" className="soc-pop-reply" data-testid="msg-pop-reply" onClick={() => setMode('reply')}>Reply</button>
+          </>
+        )}
       </div>
     </>
   );
 }
 
-/** scroll (or a viewport resize) dismisses an open message popover — nothing stays armed */
-function usePopoverDismiss(open: unknown, ref: React.RefObject<HTMLDivElement | null>, close: () => void) {
+/** scroll (or a viewport resize) dismisses an open message popover — nothing stays armed.
+ *  Suspended while the popover's reply editor is open: the on-screen keyboard resizes
+ *  the viewport (and can nudge scroll) and must not dismiss the editor mid-type. */
+function usePopoverDismiss(open: unknown, ref: React.RefObject<HTMLDivElement | null>, close: () => void, suspendRef?: { current: boolean }) {
   useEffect(() => {
     if (!open) return;
     const el = ref.current;
-    const onScroll = () => close();
+    const onScroll = () => { if (!suspendRef?.current) close(); };
     el?.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', onScroll);
     return () => { el?.removeEventListener('scroll', onScroll); window.removeEventListener('resize', onScroll); };
-  }, [open, ref, close]);
+  }, [open, ref, close, suspendRef]);
 }
 
 function GlobalChat({ signedIn }: { signedIn: boolean }) {
@@ -431,10 +484,11 @@ function GlobalChat({ signedIn }: { signedIn: boolean }) {
   const [menu, setMenu] = useState<number | null>(null);
   /** long-press / right-click message actions (reaction strip + Reply popover) */
   const press = useMsgPress();
-  usePopoverDismiss(press.open, ref, press.close);
+  /** true while the popover's in-place reply editor is open (suspends its dismissal) */
+  const popEditingRef = useRef(false);
+  const setPopEditing = useCallback((b: boolean) => { popEditingRef.current = b; }, []);
+  usePopoverDismiss(press.open, ref, press.close, popEditingRef);
   useEffect(() => { if (press.open) setMenu(null); }, [press.open]);
-  /** the line the composer is replying to (its snapshot ships with the sent message) */
-  const [replyTo, setReplyTo] = useState<SocialChatLine | null>(null);
   /** a line briefly highlighted after tapping a quote that points at it */
   const [flashId, setFlashId] = useState<number | null>(null);
   const flashTimer = useRef<number | null>(null);
@@ -496,17 +550,11 @@ function GlobalChat({ signedIn }: { signedIn: boolean }) {
         })}
       </div>
       {press.open && (() => { const l = s.global.find((x) => x.id === press.open!.id); return l ? (
-        <MsgPopover rect={press.open.rect} mine={l.from === s.you?.id}
-          onReact={(e) => social.react(l.id, e)} onReply={() => setReplyTo(l)}
-          onClose={press.close} onBackdrop={press.backdropDown} />
+        <MsgPopover rect={press.open.rect} mine={l.from === s.you?.id} quote={{ from: l.name, text: l.text }}
+          onReact={(e) => social.react(l.id, e)} onSendReply={(t) => social.chat(t, l.id)}
+          onClose={press.close} onBackdrop={press.backdropDown} onEditingChange={setPopEditing} />
       ) : null; })()}
-      {signedIn && replyTo && (
-        <div className="soc-replybar" data-testid="reply-bar">
-          <span className="soc-replybar-txt">Replying to <b>{replyTo.name}</b>: {replyTo.text}</span>
-          <button type="button" className="soc-replybar-x" aria-label="Cancel reply" data-testid="reply-cancel" onClick={() => setReplyTo(null)}>✕</button>
-        </div>
-      )}
-      {signedIn ? <Composer onSend={(t) => { social.chat(t, replyTo?.id); setReplyTo(null); }} placeholder={replyTo ? `Reply to ${replyTo.name}…` : 'Message everyone…'} testid="global" /> : <SignInNote what="post in the global chat" />}
+      {signedIn ? <Composer onSend={(t) => social.chat(t)} placeholder="Message everyone…" testid="global" /> : <SignInNote what="post in the global chat" />}
     </div>
   );
 }
@@ -547,15 +595,16 @@ function DmThread({ pid }: { pid: string }) {
   const blocked = (s.friends?.blocked ?? []).some((b) => b.id === pid);
   /** long-press / right-click message actions (reaction strip + Reply popover) */
   const press = useMsgPress();
-  usePopoverDismiss(press.open, ref, press.close);
-  /** the line the composer is replying to (its snapshot ships with the sent DM) */
-  const [replyTo, setReplyTo] = useState<DmLine | null>(null);
+  /** true while the popover's in-place reply editor is open (suspends its dismissal) */
+  const popEditingRef = useRef(false);
+  const setPopEditing = useCallback((b: boolean) => { popEditingRef.current = b; }, []);
+  usePopoverDismiss(press.open, ref, press.close, popEditingRef);
   /** a line briefly highlighted after tapping a quote that points at it */
   const [flashId, setFlashId] = useState<number | null>(null);
   const flashTimer = useRef<number | null>(null);
   useEffect(() => () => { if (flashTimer.current) window.clearTimeout(flashTimer.current); }, []);
-  // switching threads drops any pending reply (it belongs to the other conversation)
-  useEffect(() => { setReplyTo(null); press.close(); }, [pid, press.close]);
+  // switching threads closes the popover (it belongs to the other conversation)
+  useEffect(() => { press.close(); }, [pid, press.close]);
   /** tap a quote: scroll to the original (when it's rendered) and flash it */
   const jumpTo = (id: number) => {
     const el = ref.current?.querySelector(`[data-line-id="${id}"]`);
@@ -614,20 +663,12 @@ function DmThread({ pid }: { pid: string }) {
         {!lines.length && <p className="soc-empty">Start the conversation with {name}.</p>}
       </div>
       {press.open && (() => { const l = lines.find((x) => x.id === press.open!.id); return l ? (
-        <MsgPopover rect={press.open.rect} mine={l.from === s.you?.id}
-          onReact={(e) => social.dmReact(l.id, e)} onReply={() => setReplyTo(l)}
-          onClose={press.close} onBackdrop={press.backdropDown} />
+        <MsgPopover rect={press.open.rect} mine={l.from === s.you?.id} quote={{ from: authorOf(l), text: l.text }}
+          onReact={(e) => social.dmReact(l.id, e)} onSendReply={(t) => social.dm(pid, t, l.id)}
+          onClose={press.close} onBackdrop={press.backdropDown} onEditingChange={setPopEditing} />
       ) : null; })()}
       {blocked ? <p className="soc-note">You blocked {name}. Unblock them in Friends to message.</p> : (
-        <>
-          {replyTo && (
-            <div className="soc-replybar" data-testid="dm-reply-bar">
-              <span className="soc-replybar-txt">Replying to <b>{authorOf(replyTo)}</b>: {replyTo.text}</span>
-              <button type="button" className="soc-replybar-x" aria-label="Cancel reply" data-testid="dm-reply-cancel" onClick={() => setReplyTo(null)}>✕</button>
-            </div>
-          )}
-          <Composer onSend={(t) => { social.dm(pid, t, replyTo?.id); setReplyTo(null); }} placeholder={replyTo ? `Reply to ${authorOf(replyTo)}…` : `Message ${name}…`} testid="dm" />
-        </>
+        <Composer onSend={(t) => social.dm(pid, t)} placeholder={`Message ${name}…`} testid="dm" />
       )}
     </div>
   );

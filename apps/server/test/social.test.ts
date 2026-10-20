@@ -330,13 +330,16 @@ describe('chat reactions', () => {
     await h.send('b', { t: 'react', id: line.id, emoji: '🔥' });
     expect(h.last('a', 'chatReact')!.reactions).toEqual({ '🔥': ['u:ua'], '😂': ['u:ua'] });
     const n = h.all('a', 'chatReact').length;
-    // unknown line: silent no-op; unknown emoji: dropped at validation
+    // unknown line: silent no-op; non-palette emoji: dropped at validation
     await h.send('b', { t: 'react', id: 99999, emoji: '🔥' });
-    await h.send('b', { t: 'react', id: line.id, emoji: '💩' });
+    await h.send('b', { t: 'react', id: line.id, emoji: '🖕' });
     expect(h.all('a', 'chatReact').length).toBe(n);
+    // a palette extra (from the popover's "+" grid) reacts and persists like the six
+    await h.send('b', { t: 'react', id: line.id, emoji: '💯' });
+    expect(h.last('a', 'chatReact')!.reactions).toEqual({ '🔥': ['u:ua'], '😂': ['u:ua'], '💯': ['u:ub'] });
     // persisted in the log: a late joiner's hello snapshot carries the map
     await h.hub.open('late', { name: 'Late' });
-    expect(h.last('late', 'hello')!.global.find((l) => l.id === line.id)?.reactions).toEqual({ '🔥': ['u:ua'], '😂': ['u:ua'] });
+    expect(h.last('late', 'hello')!.global.find((l) => l.id === line.id)?.reactions).toEqual({ '🔥': ['u:ua'], '😂': ['u:ua'], '💯': ['u:ub'] });
   });
 
   it('reactions are rate limited', async () => {
@@ -451,16 +454,20 @@ describe('DM reactions', () => {
     expect(h.last('c', 'error')).toBeUndefined();
     expect(h.all('a', 'dmReact').length).toBe(n);
     expect(h.all('b', 'dmReact').length).toBe(n);
-    // unknown line: silent no-op; unknown emoji: dropped at validation
+    // unknown line: silent no-op; non-palette emoji: dropped at validation
     await h.send('b', { t: 'dmReact', id: 99999, emoji: '🔥' });
-    await h.send('b', { t: 'dmReact', id: line.id, emoji: '💩' });
+    await h.send('b', { t: 'dmReact', id: line.id, emoji: '🖕' });
     expect(h.all('a', 'dmReact').length).toBe(n);
+    // a palette extra reacts in DMs too, delivered to both participants only
+    await h.send('b', { t: 'dmReact', id: line.id, emoji: '🫡' });
+    expect(h.last('a', 'dmReact')!.reactions).toEqual({ '🔥': ['u:ub', 'u:ua'], '😂': ['u:ua'], '🫡': ['u:ub'] });
+    expect(h.all('c', 'dmReact').length).toBe(0);
     // b toggles off: empty slot drops out of the map
     await h.send('b', { t: 'dmReact', id: line.id, emoji: '🔥' });
-    expect(h.last('a', 'dmReact')!.reactions).toEqual({ '🔥': ['u:ua'], '😂': ['u:ua'] });
+    expect(h.last('a', 'dmReact')!.reactions).toEqual({ '🔥': ['u:ua'], '😂': ['u:ua'], '🫡': ['u:ub'] });
     // persisted in D1: history carries the map (refresh / late load sees it)
     await h.send('b', { t: 'dmHistory', with: 'u:ua' });
-    expect(h.last('b', 'dmHistory')!.lines.find((l) => l.id === line.id)?.reactions).toEqual({ '🔥': ['u:ua'], '😂': ['u:ua'] });
+    expect(h.last('b', 'dmHistory')!.lines.find((l) => l.id === line.id)?.reactions).toEqual({ '🔥': ['u:ua'], '😂': ['u:ua'], '🫡': ['u:ub'] });
   });
 
   it('DM reactions are rate limited (shared reaction budget)', async () => {

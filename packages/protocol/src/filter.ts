@@ -49,19 +49,32 @@ export function pickTeamName(seed: number, taken: readonly string[] = []): strin
 
 /* ------------------------------------------------- emoji reactions (chat) */
 /**
- * Emoji reactions on chat lines. The set is FIXED (no free emoji): nothing to moderate,
- * nothing to validate beyond membership, and the picker stays one small strip on iPhone.
+ * Emoji reactions on chat lines. The set is CURATED (no free emoji): nothing to moderate,
+ * nothing to validate beyond membership. REACT_EMOJIS are the six quick reactions every
+ * picker strip shows; REACTION_PALETTE is the full allowed set — the six plus the extras
+ * behind the Social popover's "+" palette. Validation everywhere (toggleReaction and both
+ * wire parsers, table chat included) accepts exactly REACTION_PALETTE.
  * emoji -> reactor ids (table: connection pid; global chat: `u:<uid>` / `g:<gid>`).
  */
 export const REACT_EMOJIS = ['👍', '❤️', '😂', '🔥', '👏', '😮'] as const;
 export type ReactEmoji = (typeof REACT_EMOJIS)[number];
+/** the extra reaction emojis behind the Social popover's "+" palette (the six quick ones are NOT repeated here) */
+export const REACT_PALETTE_EXTRA = ['🙏', '💯', '🎉', '🤣', '😭', '😅', '😢', '😡', '🤔', '👎', '💀', '👀', '🙌', '💪', '🫡', '🥰', '😴', '🥳', '🤯', '🫶', '💩', '🤷', '😍', '🙄', '😳', '🥺', '😈', '🤫', '😏', '🥱'] as const;
+/** every emoji a reaction may use: the six quick reactions + the palette extras */
+export const REACTION_PALETTE = [...REACT_EMOJIS, ...REACT_PALETTE_EXTRA] as const;
+export type ReactionPaletteEmoji = (typeof REACTION_PALETTE)[number];
 export type ChatReactions = Record<string, string[]>;
 
-/** Pure toggle: pid reacts with `emoji` (idempotent), or removes it if already reacted. Unknown emoji are ignored. */
+/** is `emoji` an allowed reaction? (exactly one palette entry — no text, no multi-emoji strings) */
+export function isReactionEmoji(emoji: string): boolean {
+  return (REACTION_PALETTE as readonly string[]).includes(emoji);
+}
+
+/** Pure toggle: pid reacts with `emoji` (idempotent), or removes it if already reacted. Non-palette emoji are ignored. */
 export function toggleReaction(reactions: ChatReactions | undefined, emoji: string, pid: string): ChatReactions {
   const next: ChatReactions = {};
   for (const [e, by] of Object.entries(reactions ?? {})) if (by.length) next[e] = [...by];
-  if ((REACT_EMOJIS as readonly string[]).includes(emoji)) {
+  if (isReactionEmoji(emoji)) {
     const arr = next[emoji] ?? [];
     const i = arr.indexOf(pid);
     if (i >= 0) arr.splice(i, 1);

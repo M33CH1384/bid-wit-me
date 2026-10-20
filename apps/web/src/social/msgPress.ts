@@ -60,6 +60,10 @@ export interface AnchorRect { top: number; left: number; right: number; bottom: 
 
 export const POPOVER_W = 292;
 export const POPOVER_H = 128;
+/** estimated height with the "+" emoji palette expanded under the strip */
+export const POPOVER_H_PALETTE = 378;
+/** estimated height with the in-popover reply editor (quote + input row) shown */
+export const POPOVER_H_REPLY = 132;
 /** viewport margin the popover never crosses */
 const POP_EDGE = 8;
 /** gap between the pressed bubble and the popover */
@@ -68,15 +72,16 @@ const POP_GAP = 10;
 /**
  * Where the popover goes: above the pressed bubble when there's room, below it when
  * there isn't; horizontally it hugs the bubble's own side (left for other people's
- * messages, right edge for mine), clamped inside the viewport.
+ * messages, right edge for mine), clamped inside the viewport. `h` is the popover's
+ * (estimated) height — it grows when the palette or the reply editor expands it.
  */
-export function popoverPos(rect: AnchorRect, vw: number, vh: number, mine: boolean): { left: number; top: number; below: boolean } {
+export function popoverPos(rect: AnchorRect, vw: number, vh: number, mine: boolean, h: number = POPOVER_H): { left: number; top: number; below: boolean } {
   const maxLeft = Math.max(POP_EDGE, vw - POPOVER_W - POP_EDGE);
   const rawLeft = mine ? rect.right - POPOVER_W : rect.left;
   const left = Math.min(Math.max(rawLeft, POP_EDGE), maxLeft);
-  const aboveTop = rect.top - POPOVER_H - POP_GAP;
+  const aboveTop = rect.top - h - POP_GAP;
   if (aboveTop >= POP_EDGE) return { left, top: aboveTop, below: false };
-  const maxTop = Math.max(POP_EDGE, vh - POPOVER_H - POP_EDGE);
+  const maxTop = Math.max(POP_EDGE, vh - h - POP_EDGE);
   return { left, top: Math.min(rect.bottom + POP_GAP, maxTop), below: true };
 }
 
