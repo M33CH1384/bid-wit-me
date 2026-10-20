@@ -67,43 +67,42 @@ export interface SoundSettings { on: boolean; volume: number; ambient: boolean; 
 
 /** Where the player is: menus (setup/home/lobby) or in a game. */
 export type SoundContext = 'menu' | 'game';
-/** The mutually-exclusive background scene: music, ambience (lounge and/or venue bed), or neither. */
-export type SoundScene = 'music' | 'ambience' | 'none';
+/** The background scene: music, ambience (lounge and/or venue bed), both, or neither.
+ *  Music and ambience are INDEPENDENT (Demetrius 2026-10-19): a room's soundscape
+ *  bed plays whether or not music is on. */
+export type SoundScene = 'music' | 'ambience' | 'both' | 'none';
 const KEY = 'bwm.sound.v1';
 const DEFAULTS: SoundSettings = { on: true, volume: 0.7, ambient: false, music: true, musicVolume: 0.5, venueSound: true };
 
-/* Music and ambience are MUTUALLY EXCLUSIVE: game music never plays together with either
- * ambience bed (the lounge pad or the venue soundscape bed). Turning music on turns both
- * ambience sources off; turning either ambience source on turns music off. Whichever was
- * chosen last wins, the result is persisted, and the engine gates below re-check the rule
- * on every sync, so no saved state, room change or soundscape change can make them overlap. */
+/* Music and ambience are INDEPENDENT (Demetrius 2026-10-19): game music and either
+ * ambience bed (the lounge pad or the venue soundscape bed) may all sound together.
+ * Each switch only controls its own source; the engine gates below check each source
+ * on its own, so a venue bed (e.g. The Pj's street sounds) plays whether music is on
+ * or off. */
 /** Either ambience source switched on? (venueSound defaults on when unset.) */
 export const ambienceOn = (s: SoundSettings): boolean => !!(s.ambient || s.venueSound !== false);
-/** Engine gate: music may only sound when no ambience source is on. */
-export const wantsMusic = (s: SoundSettings): boolean => !!s.music && !ambienceOn(s);
-/** Engine gate: ambience may only sound when music is off. */
-export const wantsAmbience = (s: SoundSettings): boolean => !s.music;
-/** Reconcile a (possibly legacy both-on) state: music wins, ambience goes off. */
-export function exclusiveMusicAmbience(s: SoundSettings): SoundSettings {
-  return s.music && ambienceOn(s) ? { ...s, ambient: false, venueSound: false } : s;
-}
+/** Engine gate: music sounds whenever the music switch is on. */
+export const wantsMusic = (s: SoundSettings): boolean => !!s.music;
+/** Engine gate: ambience sounds whenever an ambience source is on. */
+export const wantsAmbience = (s: SoundSettings): boolean => ambienceOn(s);
 
 /** The scene the live switches currently describe. */
 export function sceneOf(s: SoundSettings): SoundScene {
-  return s.music ? 'music' : ambienceOn(s) ? 'ambience' : 'none';
+  const m = !!s.music, a = ambienceOn(s);
+  return m && a ? 'both' : m ? 'music' : a ? 'ambience' : 'none';
 }
 const SCENE_PATCH: Record<SoundScene, Partial<SoundSettings>> = {
   music: { music: true, ambient: false, venueSound: false },
   ambience: { music: false, ambient: true, venueSound: true },
+  both: { music: true, ambient: true, venueSound: true },
   none: { music: false, ambient: false, venueSound: false },
 };
 /** Context default when the player has not made an explicit choice in that context. */
 export const contextDefault = (ctx: SoundContext): SoundScene => (ctx === 'menu' ? 'none' : 'music');
 /**
  * The settings a context should run with: the player's explicit choice for that context if
- * they made one, otherwise the context default. This is also how a legacy both-on save
- * reconciles PER CONTEXT — menus run no background scene by default (music only if
- * explicitly picked there), games default to music until the player picks in person.
+ * they made one, otherwise the context default. Music and ambience are independent, so a
+ * recorded 'both' scene applies both switches; defaults never write anything.
  */
 export function settingsForContext(s: SoundSettings, ctx: SoundContext): SoundSettings {
   const recorded = s.scenes?.[ctx] ?? contextDefault(ctx);
@@ -112,7 +111,7 @@ export function settingsForContext(s: SoundSettings, ctx: SoundContext): SoundSe
   // still stands). In game, an ambience choice still means the venue's own bed.
   const scene: SoundScene = ctx === 'menu' && recorded === 'ambience' ? 'none' : recorded;
   const patched: SoundSettings = { ...s, ...SCENE_PATCH[scene] };
-  return exclusiveMusicAmbience(patched);
+  return patched;
 }
 /** venue ambience beds (see venues.ts → bed) */
 export type VenueBed = 'none' | 'cookout' | 'mansion' | 'barbershop' | 'basement' | 'rooftop' | 'jazz' | 'casino' | 'beach' | 'kitchen' | 'yacht' | 'street';
@@ -244,20 +243,17 @@ class Engine {
   get loaded(): number { return this.buffers.size; }
   set(patch: Partial<SoundSettings>) {
     const clamp = (v: number) => Math.min(1, Math.max(0, v));
-    let next: SoundSettings = { ...this.settings, ...patch, volume: clamp(patch.volume ?? this.settings.volume), musicVolume: clamp(patch.musicVolume ?? this.settings.musicVolume) };
-    // Mutual exclusivity, last choice wins: explicitly turning music on kills both ambience
-    // sources; explicitly turning either ambience source on kills music. Any other patch
-    // still passes through the reconciliation, so a legacy both-on state can never persist.
-    if (patch.music) { next = { ...next, ambient: false, venueSound: false }; }
-    else if (patch.ambient || patch.venueSound) { next = { ...next, music: false }; }
-    next = exclusiveMusicAmbience(next);
+    const next: SoundSettings = { ...this.settings, ...patch, volume: clamp(patch.volume ?? this.settings.volume), musicVolume: clamp(patch.musicVolume ?? this.settings.musicVolume) };
+    // Music and ambience are independent (Demetrius 2026-10-19): each switch only
+    // controls its own source, so no reconciliation is needed here.
     // A deliberate toggle in this context is that context's explicit choice: remember the
     // resulting scene for this context only (the other context keeps its own choice/default).
     if (this.captureScene && !('scenes' in patch) && ('music' in patch || 'ambient' in patch || 'venueSound' in patch)) {
-      const sc: SoundScene = next.music ? 'music' : ambienceOn(next) ? 'ambience' : 'none';
-      next = { ...next, scenes: { ...next.scenes, [this.context]: sc } };
+      const sc: SoundScene = sceneOf(next);
+      this.settings = { ...next, scenes: { ...next.scenes, [this.context]: sc } };
+    } else {
+      this.settings = next;
     }
-    this.settings = next;
     try { localStorage.setItem(KEY, JSON.stringify(this.settings)); } catch { /* ignore */ }
     this.applyGain();
     this.syncAmbient();

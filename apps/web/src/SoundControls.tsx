@@ -186,7 +186,7 @@ export function SoundFields({ compact = false }: { compact?: boolean }) {
       <VolumeRow label="Volume" value={s.volume} disabled={!s.on} onChange={(v) => sound.set({ volume: v })} onRelease={() => sound.play('bid')} />
       <VibrationSwitch />
       <label className="sf-row">
-        <span>Venue sounds<small className="sf-note"> · music or ambience, never both</small></span>
+        <span>Venue sounds<small className="sf-note"> · plays with or without music</small></span>
         <button type="button" role="switch" aria-checked={s.venueSound !== false} aria-label="Venue sounds" data-testid="venue-sound-switch" className={`switch ${s.venueSound !== false ? 'on' : ''}`} disabled={!s.on} onClick={() => sound.set({ venueSound: s.venueSound === false })}>
           <i />
         </button>
@@ -203,7 +203,7 @@ export function SoundFields({ compact = false }: { compact?: boolean }) {
       {s.music && s.nowPlaying && <p className="hint np-inline">♫ {s.nowPlaying.track.title} — {s.nowPlaying.track.artist}</p>}
       <SpatialFields />
       <BotTalkFields />
-      <p className="hint">Menus run no venue-ambience scene. Games default to music; a room's own soundscape follows the venue you're in — never both. Change it here and this kind of screen remembers your choice.</p>
+      <p className="hint">Menus run no venue-ambience scene. Games default to music; a room's own soundscape follows the venue you're in and plays whether music is on or off. Change it here and this kind of screen remembers your choice.</p>
       {!compact && <p className="hint">On iPhone, the silent switch also mutes game sound.</p>}
     </div>
   );
