@@ -6,6 +6,7 @@
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { useEscapeClose } from '../useEscapeClose';
 import { AvatarCircle } from '../avatar';
+import ThemeToggle from '../ThemeToggle';
 import './account.css';
 import {
   type AccountUser, type ProviderId, PROVIDER_LABEL, PROVIDER_ORDER, account, checkUsername, deleteAccount, hasLocalProgress, loadAccount,
@@ -199,6 +200,12 @@ function AccountScreen({ user, onClose, onChangeName, onDelete, onSecurity }: { 
       </button>
 
       <NotificationsSection />
+
+      <h3 className="sheet-h">Appearance</h3>
+      <div className="acct-appearance" data-testid="appearance-section">
+        <ThemeToggle />
+        <p className="acct-fine">Classic is the original purple + gold. Neon Royale is the midnight-navy look. Saved on this device.</p>
+      </div>
 
       <h3 className="sheet-h">Progress</h3>
       {user.progressImported ? (

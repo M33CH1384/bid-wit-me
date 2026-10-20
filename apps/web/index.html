@@ -4,6 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0c0712" />
+    <script>
+      // Pre-paint theme: apply the stored theme before first paint so a Neon Royale
+      // user never flashes Classic. Keep in sync with src/theme.ts (key bwm.theme.v1).
+      try {
+        var t = JSON.parse(localStorage.getItem('bwm.theme.v1') || 'null');
+        if (t && t.theme === 'neon') {
+          document.documentElement.dataset.theme = 'neon';
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#070914');
+        }
+      } catch (e) { /* absent/corrupt → Classic (no attribute) */ }
+    </script>
     <title>Bid Wit Me — Spades (Beta)</title>
     <meta name="application-name" content="Bid Wit Me" />
     <meta name="apple-mobile-web-app-title" content="Bid Wit Me" />

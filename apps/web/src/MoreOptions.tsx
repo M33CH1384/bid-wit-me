@@ -4,6 +4,7 @@ import Credits from './Credits';
 import Feedback, { AboutRow } from './Feedback';
 import { BotTrashTalkRow, NukeIntensityRow, ReduceEffectsRow, SoundFields } from './SoundControls';
 import { TeamNameField, myTeamName, useMyTeamName } from './TeamName';
+import ThemeToggle from './ThemeToggle';
 import { CLASSIC_JOKER, makeRules } from '@spades/rules';
 import { type Settings, settingsToRules } from './settings';
 import { TRUMP_SEP, trumpLadder, trumpLadderText } from './trumpLadder';
@@ -86,6 +87,9 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
           <NukeIntensityRow />
           <BotTrashTalkRow />
           <h3 className="sheet-h">Look</h3>
+          <Row label="Appearance" hint="Neon Royale is the midnight-navy theme">
+            <ThemeToggle />
+          </Row>
           <Row label="Venue" hint={s.venue === 'random' ? 'A different spot every game' : VENUE_DEFS[s.venue ?? 'classic'].blurb}>
             <VenueSelect value={s.venue ?? 'classic'} onChange={(v) => set('venue', v)} testId="venue-select" />
           </Row>

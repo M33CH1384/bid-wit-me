@@ -5,6 +5,7 @@ import { isOnlinePath } from './online/nav';
 import { importChunk } from './chunkLoad';
 import { SoundDock } from './SoundControls';
 import { SocialRoot } from './social/Social';
+import { initTheme } from './theme';
 import IdleGuard from './IdleGuard';
 import '@fontsource/barlow-condensed/600.css';
 import '@fontsource/barlow-condensed/700.css';
@@ -66,6 +67,8 @@ function Root() {
     </>
   );
 }
+
+initTheme();
 
 const rootEl = document.getElementById('root')!;
 if (new URLSearchParams(location.search).get('preview') === 'turn-ring') {
