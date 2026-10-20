@@ -23,7 +23,7 @@ const RewardsPage = lazy(() => importChunk(() => import('./RewardsPage')));
 /** Last line of defence for a failed route chunk: a visible way back, never a blank page. */
 class RouteGuard extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
-  static getDerivedStateFromError(): { failed: boolean } { return { failed: true }; }
+  static override getDerivedStateFromError(): { failed: boolean } { return { failed: true }; }
   override componentDidCatch(err: unknown) { console.warn('[bwm] route chunk failed to load', err); }
   override render() {
     if (!this.state.failed) return this.props.children;
