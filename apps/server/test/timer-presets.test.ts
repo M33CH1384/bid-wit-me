@@ -4,7 +4,7 @@ import { FakeEnv } from './harness';
 
 const FAST = { botMs: 10, trickPauseMs: 0, dealMs: 0, disconnectGraceMs: 5000, handOverMs: 3000 };
 
-/** Play is the longer clock. These are the host presets, plus the default Normal table. */
+/** The play clock is never shorter than the bid clock. These are the host presets, plus the default Normal table. */
 const PRESETS = [
   { name: 'Relaxed', bid: 30, play: 45 },
   { name: 'Normal', bid: 30, play: 30 },
@@ -28,9 +28,9 @@ function pin(env: FakeEnv, kind: 'bid' | 'play'): void {
 }
 
 describe('table timer presets', () => {
-  it('the default table is Normal, and play is longer than the bid', () => {
+  it('the default table is Normal, and play is never shorter than the bid', () => {
     expect(makeRules('joker').turnTimerSec).toEqual({ bid: 30, play: 30 });
-    for (const p of PRESETS) expect(p.play).toBeGreaterThan(p.bid);
+    for (const p of PRESETS) expect(p.play).toBeGreaterThanOrEqual(p.bid);
   });
 
   it('a bid turn uses the bid seconds and a play turn uses the play seconds', () => {

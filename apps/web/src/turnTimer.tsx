@@ -1,7 +1,7 @@
 import type { TableRules } from '@spades/rules';
 
 /**
- * Host presets. Play is the longer clock in every setting: a trick takes longer
+ * Host presets. The play clock is never shorter than the bid clock: a trick takes longer
  * to read than a bid. The default table (Normal) is bid 30s / play 30s.
  */
 export const TURN_TIMERS = {

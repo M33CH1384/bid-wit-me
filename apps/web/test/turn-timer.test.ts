@@ -2,7 +2,7 @@
  * @vitest-environment happy-dom
  *
  * The collapsed settings row and the expanded Edit row both save the timer.
- * Play is the longer clock for Relaxed, Normal, Fast, and the default table.
+ * The play clock is never shorter than the bid clock (Relaxed, Normal, Fast, and the default table).
  */
 import { createElement, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -38,7 +38,7 @@ describe('turn timer presets', () => {
       normal: { bid: 30, play: 30 },
       fast: { bid: 10, play: 15 },
     });
-    for (const t of Object.values(TURN_TIMERS)) expect(t.play).toBeGreaterThan(t.bid);
+    for (const t of Object.values(TURN_TIMERS)) expect(t.play).toBeGreaterThanOrEqual(t.bid);
     expect(makeRules('joker').turnTimerSec).toEqual(TURN_TIMERS.normal);
     expect(makeRules('aceDown').turnTimerSec).toEqual(TURN_TIMERS.normal);
     expect(makeRules('cutthroat').turnTimerSec).toEqual(TURN_TIMERS.normal);

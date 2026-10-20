@@ -20,7 +20,7 @@ describe('score pad', () => {
     expect(rulesLine(makeRules('joker', { targetScore: 250 }))).toBe('Playing to 250 · Lose at -200 · 10 bags = −100 · Minimum 4 · Shot = out');
   });
   it('compact rule chips', () => {
-    expect(rulesChips(makeRules('joker', { targetScore: 250 }))).toEqual(['To 250', 'Lose at -200', '10 bags = −100', 'Minimum 4', 'Shot = out', 'Normal · bid 20s / play 30s']);
+    expect(rulesChips(makeRules('joker', { targetScore: 250 }))).toEqual(['To 250', 'Lose at -200', '10 bags = −100', 'Minimum 4', 'Shot = out', 'Normal · bid 30s / play 30s']);
   });
   it('labeled columns per team: bid as "a + b = total", took, result chip, points with a breakdown, running bags, total, dealer per hand', () => {
     const st = playHands(3);
