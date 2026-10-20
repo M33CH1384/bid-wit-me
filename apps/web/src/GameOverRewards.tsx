@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { CoinIcon } from './RepBlock';
 
 /** Minimal profile shape (mirrors /api/profile/me) for reward deltas. */
 export interface RewardsProfile {
@@ -227,7 +228,7 @@ function CoinsRow({ d, index }: { d: RewardsData; index: number }) {
   const coins = useCountUp(d.coinsGained, 1000, 200 + index * 160);
   return (
     <div className="rw-row" style={{ animationDelay: `${index * 160}ms` }}>
-      <div className="rw-icon">🪙</div>
+      <div className="rw-icon"><CoinIcon size={22} /></div>
       <div className="rw-body">
         <div className="rw-top"><span>Coins earned</span><b className="rw-num gold">+{coins.toLocaleString()}</b></div>
         <div className="rw-sub">Spend them at the stake tables</div>

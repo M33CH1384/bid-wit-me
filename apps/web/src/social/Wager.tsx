@@ -6,6 +6,7 @@
  */
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { useAccount } from '../account/api';
+import { CoinIcon } from '../RepBlock';
 import { navigate } from '../online/nav';
 import { onNotice, social, useSocial } from './store';
 import { createWager, fetchMyCred, fetchWager, fetchWagerEnabled, fetchWagerList, wagerAct, type MyCred, type WagerRow, type WagerView } from './wagerApi';
@@ -75,11 +76,11 @@ function RowCard({ r, myUid, now }: { r: WagerRow; myUid: string | null; now: nu
   return (
     <li>
       <button type="button" className="soc-tour-item wg-card" onClick={() => social.showChallenge(r.id)} data-testid={`wg-row-${r.id}`}>
-        <b>🏦 {gameLabel(r.format, r.mode)} · {r.wager.toLocaleString()} 🪙 each <span className="soc-muted">pot {r.pot.toLocaleString()} 🪙</span></b>
+        <b>🏦 {gameLabel(r.format, r.mode)} · {r.wager.toLocaleString()} <CoinIcon /> each <span className="soc-muted">pot {r.pot.toLocaleString()} <CoinIcon /></span></b>
         <small>{playersLine(r)}</small>
         <small className="soc-muted">
           {r.status === 'live' ? `Live now${r.tableCode ? ` · table ${r.tableCode}` : ''}`
-            : finished ? `${STATUS_WORD[r.status]}${r.endReason === 'no_show' ? ' (no-show)' : r.endReason === 'abandoned' ? ' (left mid-match)' : ''}${me?.net != null ? ` · you ${netText(me.net)}` : ''}`
+            : finished ? <>{STATUS_WORD[r.status]}{r.endReason === 'no_show' ? ' (no-show)' : r.endReason === 'abandoned' ? ' (left mid-match)' : ''}{me?.net != null && <> · you {netText(me.net)}{me.net !== 0 && <> <CoinIcon /></>}</>}</>
             : now >= r.checkinOpensAt && r.status !== 'pending' ? `Check-in open · starts ${whenText(r.startAt, now)}`
             : `Starts ${whenText(r.startAt, now)}`}
         </small>
@@ -213,11 +214,11 @@ function CreateWager({ presetOpponent, onDone }: { presetOpponent?: string; onDo
           ))}
         </>
       )}
-      <span className="wg-field-label">Wager (each player){cred ? ` · your balance ${cred.coins.toLocaleString()} 🪙` : ''}</span>
+      <span className="wg-field-label">Wager (each player){cred && <> · your balance {cred.coins.toLocaleString()} <CoinIcon /></>}</span>
       <div className="wg-chips" role="group" aria-label="Wager" data-testid="wg-wager">
         {WAGER_LADDER.map((w) => (
           <button type="button" key={w} className={f.wager === w ? 'on' : ''} disabled={!!cred && w > cred.coins}
-            onClick={() => upd({ wager: w })} data-testid={`wg-wager-${w}`}>{w.toLocaleString()} 🪙</button>
+            onClick={() => upd({ wager: w })} data-testid={`wg-wager-${w}`}>{w.toLocaleString()} <CoinIcon /></button>
         ))}
       </div>
       {f.format === 'partnership' && (
@@ -249,12 +250,12 @@ function CreateWager({ presetOpponent, onDone }: { presetOpponent?: string; onDo
           onChange={(e) => { setStartTxt(e.target.value); const at = new Date(e.target.value).getTime(); if (Number.isFinite(at)) upd({ startAt: at }); }} />
       </label>
       <p className="wg-terms" data-testid="wg-terms">
-        You escrow <b>{f.wager.toLocaleString()} 🪙</b> now; each player escrows {f.wager.toLocaleString()} 🪙 when they accept.
-        Pot: <b>{(f.wager * 4).toLocaleString()} 🪙</b> — winners take it, no fee. Check-in opens 10 minutes before the start;
+        You escrow <b>{f.wager.toLocaleString()} <CoinIcon /></b> now; each player escrows {f.wager.toLocaleString()} <CoinIcon /> when they accept.
+        Pot: <b>{(f.wager * 4).toLocaleString()} <CoinIcon /></b> — winners take it, no fee. Check-in opens 10 minutes before the start;
         a player who doesn't show loses their wager. If nobody shows, everyone is refunded.
       </p>
       {(err ?? hint) && <p className="soc-err" data-testid="wg-err">{err ?? hint}</p>}
-      <button type="submit" className="primary" disabled={busy || !!hint} data-testid="wg-submit">{busy ? 'Sending…' : `Send challenge · escrow ${f.wager.toLocaleString()} 🪙`}</button>
+      <button type="submit" className="primary" disabled={busy || !!hint} data-testid="wg-submit">{busy ? 'Sending…' : <>Send challenge · escrow {f.wager.toLocaleString()} <CoinIcon /></>}</button>
     </form>
   );
 }
@@ -306,8 +307,8 @@ function WagerDetail({ id }: { id: string }) {
       <h3>🏦 Big Bank — {gameLabel(v.format, v.mode)}</h3>
       <p className="soc-tour-status" data-testid="wg-status">{statusLine}</p>
       <div className="wg-terms-grid">
-        <div><b>{v.wager.toLocaleString()} 🪙</b><small>each player</small></div>
-        <div><b>{v.pot.toLocaleString()} 🪙</b><small>pot</small></div>
+        <div><b>{v.wager.toLocaleString()} <CoinIcon /></b><small>each player</small></div>
+        <div><b>{v.pot.toLocaleString()} <CoinIcon /></b><small>pot</small></div>
         <div><b>{v.rules.targetScore}</b><small>game to</small></div>
         <div><b>{timerLabel(v.rules.turnTimerSec)}</b><small>timers</small></div>
       </div>
@@ -325,7 +326,7 @@ function WagerDetail({ id }: { id: string }) {
                 : p.status === 'invited' ? <i className="soc-tag">invited</i>
                 : p.status === 'declined' ? <i className="soc-tag">declined</i>
                 : <i className="soc-tag">accepted{p.escrowed ? ' · 🔒 escrowed' : ''}</i>}
-              {p.net != null && <i className={`wg-net ${p.net > 0 ? 'up' : p.net < 0 ? 'down' : ''}`}>{netText(p.net)}</i>}
+              {p.net != null && <i className={`wg-net ${p.net > 0 ? 'up' : p.net < 0 ? 'down' : ''}`}>{netText(p.net)}{p.net !== 0 && <> <CoinIcon /></>}</i>}
             </span>
           </li>
         ))}
@@ -342,7 +343,7 @@ function WagerDetail({ id }: { id: string }) {
                   exclude={v.players.map((p) => p.name)} />
               )}
               <button type="button" className="primary" disabled={busy || (needsPartner && !partner.trim())} data-testid="wg-accept"
-                onClick={() => void act('accept', needsPartner ? { partner: partner.trim() } : {})}>Accept · escrow {v.wager.toLocaleString()} 🪙</button>
+                onClick={() => void act('accept', needsPartner ? { partner: partner.trim() } : {})}>Accept · escrow {v.wager.toLocaleString()} <CoinIcon /></button>
               <button type="button" className="ghost" disabled={busy} data-testid="wg-decline" onClick={() => void act('decline')}>Decline</button>
             </>
           )}

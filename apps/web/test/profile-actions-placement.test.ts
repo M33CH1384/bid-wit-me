@@ -202,8 +202,8 @@ describe('one line: the action row never wraps (Demetrius 2026-10-20)', () => {
 
 describe('coins chip: a drawn coin, no emoji (Demetrius 2026-10-20)', () => {
   it('RepBlock renders the CoinIcon SVG in the chip and keeps the number formatting', () => {
-    expect(repBlock).toContain('export function CoinIcon()');
-    expect(repBlock).toContain('<svg width="15" height="15" viewBox="0 0 24 24"');
+    expect(repBlock).toContain('export function CoinIcon({ size = 15 }');
+    expect(repBlock).toContain('<svg width={size} height={size} viewBox="0 0 24 24"');
     expect(repBlock).toContain('id="bwm-coin-g"');
     expect(repBlock).toContain('<CoinIcon /> {coins.toLocaleString()}');
     expect(repBlock).not.toContain('🪙');

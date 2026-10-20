@@ -58,11 +58,12 @@ export function groupChallenges(rows: WagerRow[], myUid: string | null, now: num
   return g;
 }
 
-/** One-line per-player outcome for a resolved challenge. */
+/** One-line per-player outcome for a resolved challenge. Amount only — call
+ *  sites render the drawn CoinIcon beside it (no coin emoji anywhere). */
 export function netText(net: number | null): string | null {
   if (net === null) return null;
-  if (net > 0) return `+${net.toLocaleString()} 🪙`;
-  if (net < 0) return `−${Math.abs(net).toLocaleString()} 🪙`;
+  if (net > 0) return `+${net.toLocaleString()}`;
+  if (net < 0) return `−${Math.abs(net).toLocaleString()}`;
   return 'refunded';
 }
 
@@ -101,7 +102,7 @@ const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().t
 /** First validation problem with the form, or null. Mirrors the server's create contract. */
 export function validateCreate(f: CreateFormState, o: { myName: string; balance: number; now: number }): string | null {
   if (!WAGER_LADDER.includes(f.wager)) return 'Pick a wager: 100, 250, 1,000 or 5,000 coins.';
-  if (f.wager > o.balance) return `Your balance is ${o.balance.toLocaleString()} 🪙 — pick a smaller wager.`;
+  if (f.wager > o.balance) return `Your balance is ${o.balance.toLocaleString()} — pick a smaller wager.`;
   if (f.startAt < o.now + MIN_LEAD_MS) return 'Start at least 15 minutes from now — players need time to accept before check-in opens.';
   if (f.startAt > o.now + HORIZON_MS) return 'Start within 7 days.';
   if (f.format === 'partnership') {

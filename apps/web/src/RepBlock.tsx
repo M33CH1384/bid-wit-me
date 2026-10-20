@@ -22,9 +22,9 @@ export const divLabel = (d: string) => DIV_LABEL[d] ?? d;
  *  work for me") — a gold-gradient disc with a darker gold rim and a centered spade,
  *  inline SVG so it sits with the chip text exactly where the emoji did and
  *  renders the same on every platform (the emoji didn't). */
-export function CoinIcon() {
+export function CoinIcon({ size = 15 }: { size?: number } = {}) {
   return (
-    <svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true" focusable="false" style={{ flex: 'none', verticalAlign: '-2px' }}>
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false" style={{ flex: 'none', verticalAlign: '-2px' }}>
       <defs>
         <radialGradient id="bwm-coin-g" cx="35%" cy="30%" r="85%">
           <stop offset="0%" stopColor="#ffedb0" />

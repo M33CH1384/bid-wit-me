@@ -51,8 +51,9 @@ describe('groupChallenges', () => {
 
 describe('netText', () => {
   it('formats wins, losses, refunds, and the unresolved null', () => {
-    expect(netText(250)).toBe('+250 🪙');
-    expect(netText(-100)).toBe('−100 🪙');
+    expect(netText(250)).toBe('+250');
+    expect(netText(-100)).toBe('−100');
+    expect(netText(250)).not.toContain('🪙');
     expect(netText(0)).toBe('refunded');
     expect(netText(null)).toBeNull();
   });
