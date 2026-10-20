@@ -18,6 +18,15 @@ describe('reactions on the wire', () => {
     expect(parseSocialMsg({ t: 'react', id: -1, emoji: '👍' })).toBeNull();
   });
 
+  it('social dmReact messages validate the same way (own message type, D1 id namespace)', () => {
+    expect(parseSocialMsg({ t: 'dmReact', id: 3, emoji: '❤️' })).toEqual({ t: 'dmReact', id: 3, emoji: '❤️' });
+    expect(parseSocialMsg({ t: 'dmReact', id: 3, emoji: '🖕' })).toBeNull();
+    expect(parseSocialMsg({ t: 'dmReact', id: -1, emoji: '👍' })).toBeNull();
+    expect(parseSocialMsg({ t: 'dmReact', id: 0, emoji: '👍' })).toBeNull();
+    expect(parseSocialMsg({ t: 'dmReact', id: 1.5, emoji: '👍' })).toBeNull();
+    expect(parseSocialMsg({ t: 'dmReact', emoji: '👍' })).toBeNull();
+  });
+
   it('the curated set is the six quick reactions', () => {
     expect([...REACT_EMOJIS]).toEqual(['👍', '❤️', '😂', '🔥', '👏', '😮']);
   });

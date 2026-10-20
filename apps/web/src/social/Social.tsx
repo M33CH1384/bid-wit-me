@@ -455,6 +455,8 @@ function DmThread({ pid }: { pid: string }) {
   const ref = useStickToBottom(lines.length);
   const name = nameOf(s, pid);
   const blocked = (s.friends?.blocked ?? []).some((b) => b.id === pid);
+  /** which line's emoji picker is open (one at a time) */
+  const [pickFor, setPickFor] = useState<number | null>(null);
   return (
     <div className="soc-chat">
       <div className="soc-dm-head">
@@ -468,6 +470,9 @@ function DmThread({ pid }: { pid: string }) {
             <span className="soc-line-text">{l.text}</span>
             <span className="soc-line-time">{timeAgo(l.at)}</span>
             {l.from !== s.you?.id && <button type="button" className="soc-more" aria-label="Report message" title="Report" onClick={() => social.report('dm', { id: l.id })}>⚑</button>}
+            <button type="button" className="soc-rx-add" aria-label={l.from === s.you?.id ? 'React to your message' : `React to ${name}'s message`} aria-expanded={pickFor === l.id} data-testid={`dm-rx-add-${l.id}`} onClick={() => setPickFor(pickFor === l.id ? null : l.id)}>☺</button>
+            {pickFor === l.id && <ReactionPicker onPick={(e) => { social.dmReact(l.id, e); setPickFor(null); }} />}
+            <ReactionChips reactions={l.reactions} myId={s.you?.id ?? null} onToggle={(e) => social.dmReact(l.id, e)} />
           </div>
         ))}
         {!lines.length && <p className="soc-empty">Start the conversation with {name}.</p>}

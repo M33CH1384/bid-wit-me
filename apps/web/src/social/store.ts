@@ -255,6 +255,13 @@ function onMessage(m: SocialServerMsg) {
     case 'dmHistory':
       set((s) => ({ dms: { ...s.dms, [m.with]: mergeLines(m.lines, s.dms[m.with] ?? []) } }));
       break;
+    case 'dmReact':
+      set((s) => {
+        const cur = s.dms[m.with];
+        if (!cur) return {};
+        return { dms: { ...s.dms, [m.with]: cur.map((l) => (l.id === m.id ? { ...l, reactions: m.reactions } : l)) } };
+      });
+      break;
     case 'invite':
       set((s) => ({ invites: [...s.invites.filter((i) => i.id !== m.invite.id), m.invite] }));
       break;
@@ -303,7 +310,9 @@ function onMessage(m: SocialServerMsg) {
 
 function mergeLines(a: DmLine[], b: DmLine[]): DmLine[] {
   const byId = new Map<number, DmLine>();
-  for (const l of [...a, ...b]) byId.set(l.id, l);
+  // the fresh server page (`a`) wins on id conflict: line content is server-authoritative, and a
+  // reaction that landed while this socket was down only shows up through the refetched history.
+  for (const l of [...b, ...a]) byId.set(l.id, l);
   return [...byId.values()].sort((x, y) => x.id - y.id);
 }
 function saveSeen(id: number) { try { localStorage.setItem(GLOBAL_SEEN_KEY, String(id)); } catch { /* ignore */ } }
@@ -352,6 +361,8 @@ export const social = {
   chat(text: string) { if (!send({ t: 'chat', text })) toast("Not connected: try again in a moment.", 'error'); },
   /** emoji reaction to a global chat line (toggle; the hub broadcasts the new map) */
   react(id: number, emoji: string) { send({ t: 'react', id, emoji }); },
+  /** emoji reaction to a DM line (toggle; the hub sends both participants the new map) */
+  dmReact(id: number, emoji: string) { send({ t: 'dmReact', id, emoji }); },
   dm(to: string, text: string) { if (!send({ t: 'dm', to, text })) toast("Not connected: try again in a moment.", 'error'); },
   invite(to: string, t: MyTable) { send({ t: 'invite', to, code: t.code, ...(t.mode ? { mode: t.mode } : {}), ...(t.seat !== undefined ? { seat: t.seat } : {}) }); },
   replyInvite(inv: InviteMsg, accept: boolean) {

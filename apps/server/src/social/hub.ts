@@ -545,6 +545,21 @@ export class Hub {
         for (const c of this.connsOf(att.pid)) this.io.send(c, { t: 'dm', line, name: toName });
         return;
       }
+      case 'dmReact': {
+        if (!needUser()) return;
+        if (!this.rate(`re:${att.pid}`, SOCIAL_LIMITS.react)) return this.err(cid, 'SLOW_DOWN', 'Slow down.');
+        // participant-scoped fetch: a DM nobody sent you is indistinguishable from one that doesn't exist
+        const d = await s!.dmLineFor(uid!, msg.id);
+        if (!d) return;
+        const otherPid = `u:${d.sender === uid ? d.recipient : d.sender}`;
+        if (this.hiddenBetween(att.pid, otherPid)) return; // a blocked pair can't interact, reactions included
+        const reactions = toggleReaction(d.reactions, msg.emoji, att.pid);
+        await s!.setDmReactions(msg.id, reactions);
+        // both participants, live; `with` names the thread from each side's perspective
+        for (const c of this.connsOf(otherPid)) this.io.send(c, { t: 'dmReact', id: msg.id, with: att.pid, reactions });
+        for (const c of this.connsOf(att.pid)) this.io.send(c, { t: 'dmReact', id: msg.id, with: otherPid, reactions });
+        return;
+      }
       case 'dmHistory': {
         if (!needUser()) return;
         const other = uidOf(msg.with);

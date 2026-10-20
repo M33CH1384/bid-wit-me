@@ -349,6 +349,56 @@ describe('chat reactions', () => {
   });
 });
 
+describe('DM reactions', () => {
+  it('toggle, live to both participants only, guests rejected, non-participants get nothing, persisted in history', async () => {
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    await h.hub.open('c', { uid: 'uc', name: 'Cee' });
+    await h.hub.open('g', { name: 'Kev' });
+    await h.send('a', { t: 'dm', to: 'u:ub', text: 'spades tonight' });
+    const line = h.last('b', 'dm')!.line;
+    // guests can't react (same rule as posting)
+    await h.send('g', { t: 'dmReact', id: line.id, emoji: '🔥' });
+    expect(h.last('g', 'error')!.code).toBe('SIGN_IN');
+    expect(h.all('a', 'dmReact').length).toBe(0);
+    // b reacts: both participants get the new map, each with their own thread key; nobody else sees anything
+    await h.send('b', { t: 'dmReact', id: line.id, emoji: '🔥' });
+    expect(h.last('a', 'dmReact')).toEqual({ t: 'dmReact', id: line.id, with: 'u:ub', reactions: { '🔥': ['u:ub'] } });
+    expect(h.last('b', 'dmReact')).toEqual({ t: 'dmReact', id: line.id, with: 'u:ua', reactions: { '🔥': ['u:ub'] } });
+    expect(h.all('c', 'dmReact').length).toBe(0);
+    expect(h.all('g', 'dmReact').length).toBe(0);
+    // a joins the 🔥 chip and adds a 😂 one
+    await h.send('a', { t: 'dmReact', id: line.id, emoji: '🔥' });
+    await h.send('a', { t: 'dmReact', id: line.id, emoji: '😂' });
+    expect(h.last('b', 'dmReact')!.reactions).toEqual({ '🔥': ['u:ub', 'u:ua'], '😂': ['u:ua'] });
+    // a third party reacting to the id is a silent no-op (indistinguishable from a nonexistent line)
+    const n = h.all('a', 'dmReact').length;
+    await h.send('c', { t: 'dmReact', id: line.id, emoji: '👏' });
+    expect(h.last('c', 'error')).toBeUndefined();
+    expect(h.all('a', 'dmReact').length).toBe(n);
+    expect(h.all('b', 'dmReact').length).toBe(n);
+    // unknown line: silent no-op; unknown emoji: dropped at validation
+    await h.send('b', { t: 'dmReact', id: 99999, emoji: '🔥' });
+    await h.send('b', { t: 'dmReact', id: line.id, emoji: '💩' });
+    expect(h.all('a', 'dmReact').length).toBe(n);
+    // b toggles off: empty slot drops out of the map
+    await h.send('b', { t: 'dmReact', id: line.id, emoji: '🔥' });
+    expect(h.last('a', 'dmReact')!.reactions).toEqual({ '🔥': ['u:ua'], '😂': ['u:ua'] });
+    // persisted in D1: history carries the map (refresh / late load sees it)
+    await h.send('b', { t: 'dmHistory', with: 'u:ua' });
+    expect(h.last('b', 'dmHistory')!.lines.find((l) => l.id === line.id)?.reactions).toEqual({ '🔥': ['u:ua'], '😂': ['u:ua'] });
+  });
+
+  it('DM reactions are rate limited (shared reaction budget)', async () => {
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    await h.send('a', { t: 'dm', to: 'u:ub', text: 'hi' });
+    const line = h.last('b', 'dm')!.line;
+    for (let i = 0; i < 31; i++) await h.send('b', { t: 'dmReact', id: line.id, emoji: '👍' });
+    expect(h.last('b', 'error')!.code).toBe('SLOW_DOWN');
+  });
+});
+
 describe('profiles + recent players (from game records)', () => {
   it('h2h, totals, team names, recent', async () => {
     const { saveRecord } = await import('../src/stats/record');

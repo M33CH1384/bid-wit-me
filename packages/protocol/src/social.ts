@@ -87,7 +87,7 @@ export function stalePresence(
 }
 
 export interface SocialChatLine { id: number; from: string; name: string; text: string; at: number; admin?: boolean; /** emoji reactions (emoji -> reactor pids); see REACT_EMOJIS */ reactions?: ChatReactions }
-export interface DmLine { id: number; from: string; to: string; text: string; at: number; read?: boolean }
+export interface DmLine { id: number; from: string; to: string; text: string; at: number; read?: boolean; /** emoji reactions (emoji -> reactor pids); see REACT_EMOJIS */ reactions?: ChatReactions }
 export interface FriendRef { id: string; name: string; since?: number }
 export interface FriendsState { friends: FriendRef[]; incoming: FriendRef[]; outgoing: FriendRef[]; blocked: FriendRef[] }
 export interface SocialSettings { appearOffline: boolean; friendsOnlyInvites: boolean; hideLocation: boolean }
@@ -100,6 +100,8 @@ export type SocialClientMsg =
   | { t: 'chat'; text: string }
   /** emoji reaction to a global chat line (toggle): the hub applies it and broadcasts the new reaction map */
   | { t: 'react'; id: number; emoji: string }
+  /** emoji reaction to a DM line (toggle): DM ids live in D1, a different namespace than global ids, so it has its own message */
+  | { t: 'dmReact'; id: number; emoji: string }
   | { t: 'dm'; to: string; text: string }
   | { t: 'dmHistory'; with: string; before?: number }
   | { t: 'read'; with: string }
@@ -146,6 +148,11 @@ export type SocialServerMsg =
   | { t: 'chat'; line: SocialChatLine }
   /** a global chat line's reactions changed (toggle): `id` names the line, the client upserts the map (not a new line) */
   | { t: 'chatReact'; id: number; reactions: ChatReactions }
+  /**
+   * a DM line's reactions changed (toggle). `with` names the other participant's pid from this
+   * connection's perspective, so the client can find the right thread.
+   */
+  | { t: 'dmReact'; id: number; with: string; reactions: ChatReactions }
   | { t: 'deleted'; id: number }
   | { t: 'dm'; line: DmLine; name: string }
   | { t: 'dmHistory'; with: string; lines: DmLine[] }
@@ -199,6 +206,10 @@ export function parseSocialMsg(raw: unknown): SocialClientMsg | null {
     case 'react':
       return isInt(m.id) && m.id > 0 && typeof m.emoji === 'string' && (REACT_EMOJIS as readonly string[]).includes(m.emoji)
         ? { t: 'react', id: m.id, emoji: m.emoji }
+        : null;
+    case 'dmReact':
+      return isInt(m.id) && m.id > 0 && typeof m.emoji === 'string' && (REACT_EMOJIS as readonly string[]).includes(m.emoji)
+        ? { t: 'dmReact', id: m.id, emoji: m.emoji }
         : null;
     case 'dm': return isId(m.to) && isStr(m.text, 2000) ? { t: 'dm', to: m.to, text: m.text } : null;
     case 'dmHistory': return isId(m.with) ? { t: 'dmHistory', with: m.with, ...(isInt(m.before) ? { before: m.before } : {}) } : null;

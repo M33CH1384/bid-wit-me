@@ -1,5 +1,5 @@
 /** D1 access for the Social hub (friends, blocks, DMs, reports, settings, ratings). Pure async functions over D1. */
-import type { DmLine, FriendRef, FriendsState, SocialSettings } from '@spades/protocol';
+import type { ChatReactions, DmLine, FriendRef, FriendsState, SocialSettings } from '@spades/protocol';
 
 export const pair = (x: string, y: string): [string, string] => (x < y ? [x, y] : [y, x]);
 const uidOf = (pid: string) => (pid.startsWith('u:') ? pid.slice(2) : null);
@@ -120,9 +120,29 @@ export class SocialStore {
 
   async dmHistory(uid: string, other: string, before: number | undefined, limit: number): Promise<DmLine[]> {
     const [a, b] = pair(uid, other);
-    const rows = (await this.db.prepare(`SELECT id, sender, recipient, text, at, read_at FROM dms WHERE a = ? AND b = ? AND deleted = 0 AND id < ? ORDER BY id DESC LIMIT ?`)
-      .bind(a, b, before ?? Number.MAX_SAFE_INTEGER, limit).all<{ id: number; sender: string; recipient: string; text: string; at: number; read_at: number | null }>()).results;
-    return rows.reverse().map((r) => ({ id: r.id, from: `u:${r.sender}`, to: `u:${r.recipient}`, text: r.text, at: r.at, ...(r.read_at ? { read: true } : {}) }));
+    const rows = (await this.db.prepare(`SELECT id, sender, recipient, text, at, read_at, reactions FROM dms WHERE a = ? AND b = ? AND deleted = 0 AND id < ? ORDER BY id DESC LIMIT ?`)
+      .bind(a, b, before ?? Number.MAX_SAFE_INTEGER, limit).all<{ id: number; sender: string; recipient: string; text: string; at: number; read_at: number | null; reactions: string | null }>()).results;
+    return rows.reverse().map((r) => ({ id: r.id, from: `u:${r.sender}`, to: `u:${r.recipient}`, text: r.text, at: r.at, ...(r.read_at ? { read: true } : {}), ...(r.reactions ? { reactions: JSON.parse(r.reactions) as ChatReactions } : {}) }));
+  }
+
+  /**
+   * One DM line for reactions — only when `uid` is a participant (sender or recipient).
+   * Anyone else gets null, indistinguishable from a nonexistent line: reactions can never
+   * leak a DM to a third party.
+   */
+  async dmLineFor(uid: string, id: number): Promise<{ sender: string; recipient: string; reactions: ChatReactions } | null> {
+    const r = await this.db.prepare('SELECT sender, recipient, reactions FROM dms WHERE id = ? AND deleted = 0 AND (sender = ? OR recipient = ?)').bind(id, uid, uid)
+      .first<{ sender: string; recipient: string; reactions: string | null }>();
+    if (!r) return null;
+    let reactions: ChatReactions = {};
+    try { reactions = r.reactions ? (JSON.parse(r.reactions) as ChatReactions) : {}; } catch { reactions = {}; }
+    return { sender: r.sender, recipient: r.recipient, reactions };
+  }
+
+  /** replace a DM line's reaction map (persisted, so both participants see it on history load) */
+  async setDmReactions(id: number, reactions: ChatReactions): Promise<boolean> {
+    const r = await this.db.prepare('UPDATE dms SET reactions = ? WHERE id = ?').bind(Object.keys(reactions).length ? JSON.stringify(reactions) : null, id).run();
+    return (r.meta?.changes ?? 0) > 0;
   }
 
   async markRead(uid: string, other: string, now: number): Promise<void> {
