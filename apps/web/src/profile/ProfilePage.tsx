@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AvatarCircle, compressAvatarFile, forgetAvatar, validateAvatarDataUrl } from '../avatar';
 import { TaglineText } from '../tagline';
+import { SOCIAL_PLATFORMS, SocialLinksChips, type SocialLinks } from '../socialLinks';
 
 /** Rep profile page: Rank / Challenges / Stats / Achievements / Unlocks tabs. */
 
@@ -19,7 +20,7 @@ interface Challenge { id: string; title: string; metric: string; target: number;
 interface Achievement { id: string; title: string; hint: string; xp: number; coins: number; unlockedAt: number | null }
 interface Unlock { itemId: string; source: string; unlockedAt: number; slot: string | null; equipped: boolean }
 interface Profile {
-  user: { id: string; name: string; avatar: string | null; avatarUpdatedAt: number | null; tagline: string | null };
+  user: { id: string; name: string; avatar: string | null; avatarUpdatedAt: number | null; tagline: string | null; socialLinks: SocialLinks };
   level: { level: number; xp: number; title: string; xpForNext: number; xpIntoLevel: number };
   season: { id: string; name: string; endsAt: number };
   rank: { team: SeasonRank; cutthroat: SeasonRank };
@@ -88,6 +89,54 @@ const STAT_LABELS: Record<string, string> = {
   shotsGiven: 'Shots given', shotsTaken: 'Shots taken', wheels: 'Wheels', bjWins: 'Blackjack wins',
   winsVsPlayers: 'Wins vs players', winsVsBots: 'Wins vs bots',
 };
+
+/** Social-links editor: one row per platform; the server normalizes handles to
+ *  canonical profile URLs and rejects anything that isn't really on the platform. */
+function SocialLinksEditor({ initial, onSaved }: { initial: SocialLinks; onSaved: () => void }) {
+  const [draft, setDraft] = useState<Record<string, string>>(() => {
+    const d: Record<string, string> = {};
+    for (const p of SOCIAL_PLATFORMS) d[p.id] = initial[p.id] ?? '';
+    return d;
+  });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const dirty = SOCIAL_PLATFORMS.some((p) => (draft[p.id] ?? '') !== (initial[p.id] ?? ''));
+
+  const save = async () => {
+    setErr(null); setSaved(false); setBusy(true);
+    try {
+      await api<{ ok: boolean; socialLinks: SocialLinks }>('/api/profile/me/social-links', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ links: draft }),
+      });
+      setSaved(true);
+      onSaved();
+    } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="prof-links-edit">
+      <span className="prof-pic-note">Social links — these link to your public profiles and show on your profile for other players.</span>
+      {SOCIAL_PLATFORMS.map((p) => (
+        <label key={p.id} className="prof-link-row">
+          <span className="prof-link-name"><span aria-hidden>{p.glyph}</span> {p.label}</span>
+          <input type="text" inputMode="url" autoComplete="off" autoCapitalize="off" spellCheck={false}
+            data-testid={`social-input-${p.id}`} placeholder={p.hint} value={draft[p.id] ?? ''}
+            onChange={(e) => { setDraft((d) => ({ ...d, [p.id]: e.target.value })); setSaved(false); }} />
+        </label>
+      ))}
+      <div className="prof-link-actions">
+        <button type="button" className="prof-pic-btn" data-testid="social-save" disabled={busy || !dirty} onClick={() => void save()}>
+          {busy ? 'Saving…' : 'Save links'}
+        </button>
+        {saved && !dirty && <span className="prof-link-saved">Saved ✓</span>}
+        {err && <span className="prof-pic-err" role="alert">{err}</span>}
+      </div>
+    </div>
+  );
+}
 
 function StatsGrid({ stats }: { stats: Record<string, number | string | null> }) {
   const rows = Object.entries(STAT_LABELS).filter(([k]) => stats[k] !== undefined && stats[k] !== null);
@@ -205,6 +254,8 @@ export default function ProfilePage() {
         </div>
       </div>
 
+      <SocialLinksChips links={profile.user.socialLinks} testid="profile-social-links" />
+
       {/* Profile picture: shows at the table when your camera is off (Demetrius 2026-10-19). */}
       <div className="prof-pic-row">
         <span className="prof-pic-note">Profile picture — other players see it when your camera is off.</span>
@@ -235,6 +286,9 @@ export default function ProfilePage() {
         <small className="prof-tag-count">{tagValue.length}/140 · clear it and save to remove</small>
         {tagErr && <span className="prof-pic-err" role="alert">{tagErr}</span>}
       </div>
+
+      {/* Social links: public profile links on fixed platforms, server-normalized (Demetrius 2026-10-20). */}
+      <SocialLinksEditor key={JSON.stringify(profile.user.socialLinks)} initial={profile.user.socialLinks} onSaved={load} />
 
       <nav className="prof-tabs" role="tablist">
         {TABS.map((t) => (

@@ -9,6 +9,7 @@
  *   POST /api/profile/me/avatar     → upload profile picture (signed in, JSON { dataUrl })
  *   DELETE /api/profile/me/avatar   → remove profile picture (signed in)
  *   POST /api/profile/me/tagline    → set profile tagline (signed in, JSON { tagline }; blank clears)
+ *   POST /api/profile/me/social-links → set social links (signed in, JSON { links: { platform: urlOrHandle } })
  *
  * The profile picture (users.avatar, migration 0011) is a small data URL the client
  * compresses before upload. It is included in both profile responses so other players
@@ -19,6 +20,7 @@ import { isAdmin } from '../social/routes';
 import { myStats } from '../stats/boards';
 import { avatarOf, parseAvatarDataUrl } from './avatar';
 import { cleanTagline, taglineOf } from './tagline';
+import { applySocialLinksPatch, parseSocialLinks, socialLinksOf, validateSocialLinksPatch } from './socialLinks';
 import { divisionOf, type Division } from './divisions';
 import { ensureSeason } from './seasons';
 import { xpSnapshot, awardXp, xpForLevel } from './xp';
@@ -59,7 +61,7 @@ async function fullProfile(db: D1Database, userId: string, username: string, now
   // idempotent earners: welcome grant + daily login (cheap, safe to run on every profile read)
   try { await grantWelcome(db, userId, now); } catch { /* best-effort */ }
   try { await dailyLogin(db, userId, now); } catch { /* best-effort */ }
-  const [level, team, cutthroat, challenges, achievements, unlocks, coins, pic, tagline] = await Promise.all([
+  const [level, team, cutthroat, challenges, achievements, unlocks, coins, pic, tagline, links] = await Promise.all([
     xpSnapshot(db, userId),
     seasonRank(db, userId, season.id, 'team'),
     seasonRank(db, userId, season.id, 'cutthroat'),
@@ -69,10 +71,11 @@ async function fullProfile(db: D1Database, userId: string, username: string, now
     balance(db, userId),
     avatarOf(db, userId),
     taglineOf(db, userId),
+    socialLinksOf(db, userId),
   ]);
   const stats = await myStats(db, userId);
   return {
-    user: { id: userId, name: username, avatar: pic.avatar, avatarUpdatedAt: pic.avatarUpdatedAt, tagline },
+    user: { id: userId, name: username, avatar: pic.avatar, avatarUpdatedAt: pic.avatarUpdatedAt, tagline, socialLinks: links },
     /** developer (owner) accounts bypass unlock gates, e.g. The Pj's */
     dev,
     level: { ...level, xpForNext: xpForLevel(level.level) },
@@ -117,8 +120,19 @@ export async function handleCredHttp(req: Request, env: CredEnv, url: URL, parts
     await db.prepare('UPDATE users SET tagline = ? WHERE id = ?').bind(cleaned.tagline, me.id).run();
     return json({ ok: true, tagline: cleaned.tagline });
   }
+  if (parts[1] === 'profile' && parts[2] === 'me' && parts[3] === 'social-links' && req.method === 'POST') {
+    if (!me) return json({ error: 'Sign in to edit your links.' }, 401);
+    let body: { links?: unknown };
+    try { body = (await req.json()) as { links?: unknown }; } catch { return json({ error: 'Send your links as JSON.' }, 400); }
+    const checked = validateSocialLinksPatch(body?.links);
+    if (!checked.ok) return json({ error: checked.error }, 400);
+    const merged = applySocialLinksPatch(await socialLinksOf(db, me.id), checked.patch);
+    await db.prepare('UPDATE users SET social_links = ? WHERE id = ?')
+      .bind(Object.keys(merged).length ? JSON.stringify(merged) : null, me.id).run();
+    return json({ ok: true, socialLinks: merged });
+  }
   if (parts[1] === 'profile' && parts[2] && parts.length === 3 && req.method === 'GET') {
-    const u = await db.prepare('SELECT id, username, avatar, avatar_updated_at AS avatarUpdatedAt, tagline FROM users WHERE id = ?').bind(parts[2].slice(0, 64)).first<{ id: string; username: string | null; avatar: string | null; avatarUpdatedAt: number | null; tagline: string | null }>();
+    const u = await db.prepare('SELECT id, username, avatar, avatar_updated_at AS avatarUpdatedAt, tagline, social_links AS socialLinks FROM users WHERE id = ?').bind(parts[2].slice(0, 64)).first<{ id: string; username: string | null; avatar: string | null; avatarUpdatedAt: number | null; tagline: string | null; socialLinks: string | null }>();
     if (!u) return json({ error: 'not found' }, 404);
     const season = await ensureSeason(db, now);
     const [level, team, cutthroat, achievements] = await Promise.all([
@@ -128,7 +142,7 @@ export async function handleCredHttp(req: Request, env: CredEnv, url: URL, parts
       achievementStates(db, u.id),
     ]);
     const stats = await myStats(db, u.id);
-    return json({ user: { id: u.id, name: u.username ?? 'Player', avatar: u.avatar, avatarUpdatedAt: u.avatarUpdatedAt, tagline: u.tagline }, level, season: { id: season.id, name: season.name, endsAt: season.endsAt }, rank: { team, cutthroat }, stats, achievements });
+    return json({ user: { id: u.id, name: u.username ?? 'Player', avatar: u.avatar, avatarUpdatedAt: u.avatarUpdatedAt, tagline: u.tagline, socialLinks: parseSocialLinks(u.socialLinks) }, level, season: { id: season.id, name: season.name, endsAt: season.endsAt }, rank: { team, cutthroat }, stats, achievements });
   }
   if (parts[1] === 'challenges' && parts.length === 2 && req.method === 'GET') {
     if (!me) return json({ error: 'Sign in to see your challenges.' }, 401);

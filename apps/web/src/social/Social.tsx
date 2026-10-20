@@ -19,6 +19,7 @@ import { offlineStats } from '../offlineStats';
 import { chatStickToBottom } from '../chatScroll';
 import { ReactionChips, ReactionPicker } from '../reactions';
 import { TaglineText } from '../tagline';
+import { SocialLinksChips, type SocialLinks } from '../socialLinks';
 import './social.css';
 
 export const MODE_NAME: Record<string, string> = { joker: 'Joker Spades', aceDown: 'Ace Down', cutthroat: 'Cutthroat' };
@@ -611,7 +612,7 @@ interface ProfileData {
 }
 
 interface CredPublic {
-  user: { id: string; name: string; avatar: string | null; tagline?: string | null };
+  user: { id: string; name: string; avatar: string | null; tagline?: string | null; socialLinks?: SocialLinks };
   level: { level: number; xp: number; xpForNext: number; xpIntoLevel: number; title: string };
   rank: { team: { division: string; elo: number }; cutthroat: { division: string; elo: number } };
   achievements: { id: string; title: string; hint: string; xp: number; coins: number; unlockedAt: number | null }[];
@@ -659,6 +660,7 @@ function Profile({ name, id }: { name: string; id?: string }) {
               </p>
             </div>
           </div>
+          <SocialLinksChips links={cred?.user.socialLinks} testid="profile-social-links" />
           <div className="soc-stats">
             <div><b>{p.totals.games}</b><small>online games</small></div>
             <div><b>{p.totals.games ? Math.round((p.totals.wins / p.totals.games) * 100) : 0}%</b><small>wins</small></div>
