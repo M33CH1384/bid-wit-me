@@ -2098,11 +2098,12 @@ button.mode-pick::after, button.quiet-row::after { content: ''; position: absolu
 .profile-page { min-height: 100dvh; padding: calc(12px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom)); max-width: 720px; margin: 0 auto; }
 .prof-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .prof-season { font-family: var(--display); font-weight: 700; letter-spacing: .08em; color: var(--muted); font-size: 13px; text-transform: uppercase; }
-.prof-header { display: flex; gap: 14px; align-items: center; padding: 14px 16px; border-radius: 14px; margin-bottom: 12px; }
+.prof-header { display: flex; gap: 16px; align-items: center; padding: 16px; border-radius: 14px; margin-bottom: 12px; }
+.prof-id { flex: 1; min-width: 0; }
 .prof-coins { margin-left: auto; text-align: right; display: flex; flex-direction: column; align-items: flex-end; }
 .prof-coins b { font-family: var(--display); font-size: 28px; font-weight: 800; color: #fff; line-height: 1; }
 .prof-coins span { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
-.prof-avatar { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; font-family: var(--display); font-weight: 800; font-size: 26px; background: linear-gradient(135deg, var(--purple), var(--purple-hot)); color: #fff; flex: none; }
+.prof-avatar { width: 120px; height: 120px; border-radius: 50%; display: grid; place-items: center; font-family: var(--display); font-weight: 800; font-size: 54px; background: linear-gradient(135deg, var(--purple), var(--purple-hot)); color: #fff; flex: none; }
 .prof-id h2 { margin: 0 0 2px; font-size: 22px; }
 .prof-level { display: flex; gap: 8px; align-items: baseline; font-size: 14px; }
 .prof-level b { color: var(--gold); font-family: var(--display); letter-spacing: .04em; }
@@ -2166,14 +2167,19 @@ button.mode-pick::after, button.quiet-row::after { content: ''; position: absolu
 }
 
 /* ---- Uploaded profile pictures (Demetrius 2026-10-19): stand in for the camera when it's off ---- */
-.has-pic { overflow: hidden; }
-.has-pic img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: inherit; }
+/* The img must ABSOLUTELY fill its circle (Demetrius 2026-10-20: pics rendered as a tiny
+   thumbnail centered in the disc). As a plain grid item sized by width/height:100%, the img
+   resolves its percentages against the circle's auto-sized grid track instead of the circle
+   itself, and WebKit shrinks it to ~half the disc. Absolute inset:0 — the same pattern the
+   video-bubble pic (.vb-pic) already uses — takes it out of item sizing entirely. */
+.has-pic { overflow: hidden; position: relative; }
+.has-pic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; border-radius: inherit; }
 /* table name plates: the pic replaces the initial letter */
 .plate-avatar.has-pic { padding: 0; }
 /* lobby seat rings: the pic fills the ring */
 .seat-ring .av-initial.has-pic { position: absolute; inset: 0; }
 /* profile + account + social circles: generic .has-pic rules do the work; friend-row size */
-.soc-av.frow { width: 28px; height: 28px; font-size: 15px; }
+.soc-av.frow { width: 40px; height: 40px; font-size: 20px; }
 /* video bubble: the pic fills the bubble like a camera would (camera off / connecting) */
 .vbubble .vb-pic { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; z-index: 1; }
 /* Table Talk tiles: the pic replaces the letter */
