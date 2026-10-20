@@ -28,6 +28,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
   const spectator = !!cs.spectator && cs.seat === null;
   const names = useMemo(() => (rot ? localNames(room, rot, spectator) : []), [room, rot, spectator]);
   const send = useCallback((text: string) => conn.send({ t: 'chat', text }), [conn]);
+  const sendReact = useCallback((id: number, emoji: string) => conn.send({ t: 'react', id, emoji }), [conn]);
   // Engine dealer seat (unrotated view) and its current occupant. The chip and the popup both use this.
   const dealer = useMemo(() => {
     if (!cs.view) return null;
@@ -43,7 +44,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
   }, [cs.view, room.seats, room.rules.playerCount, spectator, cs.seat]);
   const dealerName = dealer?.name ?? '';
   const [hideSpec, setHideSpec] = useState(loadHideSpectatorChat);
-  const chat = useOnlineChat(cs, source?.st ?? null, names, send, hideSpec && !spectator, dealerName);
+  const chat = useOnlineChat(cs, source?.st ?? null, names, send, hideSpec && !spectator, dealerName, sendReact);
   // One absolute client time for this server snapshot. Rebuilding it from Date.now()
   // on every render froze the number at whatever the last state said (a stuck "12s"
   // while the server clock kept running).

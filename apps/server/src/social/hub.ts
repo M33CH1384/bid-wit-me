@@ -7,8 +7,8 @@
  *  - friends / blocks / DMs / reports / settings: D1 (SocialStore)
  */
 import {
-  type FriendsState, type InviteMsg, type OpenTable, type PresenceEntry, type PresenceStatus, type SocialChatLine, type SocialClientMsg, type SocialServerMsg, type SocialSettings,
-  GUEST_SESSION, PRESENCE_TTL_MS, SOCIAL_LIMITS, blockLinks, cleanName, cleanText, maskProfanity, parseSocialMsg, stalePresence,
+  type ChatReactions, type FriendsState, type InviteMsg, type OpenTable, type PresenceEntry, type PresenceStatus, type SocialChatLine, type SocialClientMsg, type SocialServerMsg, type SocialSettings,
+  GUEST_SESSION, PRESENCE_TTL_MS, SOCIAL_LIMITS, blockLinks, cleanName, cleanText, maskProfanity, parseSocialMsg, stalePresence, toggleReaction,
 } from '@spades/protocol';
 import { isProfane } from '../auth/username';
 import { DEFAULT_SETTINGS, SocialStore, uidOf } from './store';
@@ -31,6 +31,8 @@ export interface GlobalLog {
   add(line: Omit<SocialChatLine, 'id'>): SocialChatLine;
   list(n: number): SocialChatLine[];
   get(id: number): SocialChatLine | null;
+  /** replace a line's reaction map (persisted, so late joiners see it) */
+  setReactions(id: number, reactions: ChatReactions): boolean;
   del(id: number): boolean;
 }
 
@@ -516,6 +518,16 @@ export class Hub {
       case 'del': {
         if (!att.admin) return this.err(cid, 'FORBIDDEN', 'Admins only.');
         if (this.io.global.del(msg.id)) for (const c of this.conns.keys()) this.io.send(c, { t: 'deleted', id: msg.id });
+        return;
+      }
+      case 'react': {
+        if (!needUser()) return;
+        if (!this.rate(`re:${att.pid}`, SOCIAL_LIMITS.react)) return this.err(cid, 'SLOW_DOWN', 'Slow down.');
+        const line = this.io.global.get(msg.id);
+        if (!line) return;
+        const reactions = toggleReaction(line.reactions, msg.emoji, att.pid);
+        this.io.global.setReactions(msg.id, reactions);
+        for (const [c, v] of this.conns) if (!this.hiddenBetween(v.pid, att.pid)) this.io.send(c, { t: 'chatReact', id: msg.id, reactions });
         return;
       }
       case 'dm': {

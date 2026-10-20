@@ -60,6 +60,8 @@ button.ghost { background: transparent !important; }
 .soc-line-text { flex: 1 1 auto; word-break: break-word; }
 .soc-line-time { font-size: 11px; color: var(--muted); }
 .soc-more { background: none; border: 0; color: var(--muted); padding: 0 4px; font-size: 14px; }
+.soc-rx-add { background: none; border: 0; color: var(--muted); font-size: 13px; line-height: 1; padding: 10px 8px; margin: -8px -4px -8px 0; opacity: .7; }
+.soc-rx-add:active { background: rgba(255,255,255,.08); border-radius: 8px; opacity: 1; }
 .soc-line-menu { flex-basis: 100%; display: flex; gap: 6px; }
 .soc-line-menu button { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.2); color: var(--ink); border-radius: 6px; padding: 4px 8px; font-size: 12px; }
 .soc-line-menu button.danger { border-color: rgba(255,77,109,.6); color: #ff9db0; }

@@ -3,6 +3,8 @@
  * Identity comes from the connection (a short-lived signed account ticket, or none = guest), never from messages.
  */
 
+import { REACT_EMOJIS, type ChatReactions } from './filter';
+
 export const SOCIAL_LIMITS = {
   chatMax: 300,          // characters per global/DM message
   globalKeep: 200,       // global chat lines kept
@@ -12,6 +14,8 @@ export const SOCIAL_LIMITS = {
   /** per user: messages (global + DMs) in a sliding window */
   chatBurst: { n: 5, windowMs: 10_000 },
   chatMinute: { n: 20, windowMs: 60_000 },
+  /** per user: emoji reactions in a sliding window */
+  react: { n: 30, windowMs: 60_000 },
   invites: { n: 6, windowMs: 60_000 },
   friendOps: { n: 20, windowMs: 60_000 },
   reportReason: 200,
@@ -82,7 +86,7 @@ export function stalePresence(
   return false;
 }
 
-export interface SocialChatLine { id: number; from: string; name: string; text: string; at: number; admin?: boolean }
+export interface SocialChatLine { id: number; from: string; name: string; text: string; at: number; admin?: boolean; /** emoji reactions (emoji -> reactor pids); see REACT_EMOJIS */ reactions?: ChatReactions }
 export interface DmLine { id: number; from: string; to: string; text: string; at: number; read?: boolean }
 export interface FriendRef { id: string; name: string; since?: number }
 export interface FriendsState { friends: FriendRef[]; incoming: FriendRef[]; outgoing: FriendRef[]; blocked: FriendRef[] }
@@ -94,6 +98,8 @@ export type SocialClientMsg =
   | { t: 'heartbeat' }
   | { t: 'settings'; settings: Partial<SocialSettings> }
   | { t: 'chat'; text: string }
+  /** emoji reaction to a global chat line (toggle): the hub applies it and broadcasts the new reaction map */
+  | { t: 'react'; id: number; emoji: string }
   | { t: 'dm'; to: string; text: string }
   | { t: 'dmHistory'; with: string; before?: number }
   | { t: 'read'; with: string }
@@ -138,6 +144,8 @@ export type SocialServerMsg =
   | { t: 'tables'; up?: OpenTable[]; gone?: string[] }
   | { t: 'pres'; up?: PresenceEntry[]; gone?: string[] }
   | { t: 'chat'; line: SocialChatLine }
+  /** a global chat line's reactions changed (toggle): `id` names the line, the client upserts the map (not a new line) */
+  | { t: 'chatReact'; id: number; reactions: ChatReactions }
   | { t: 'deleted'; id: number }
   | { t: 'dm'; line: DmLine; name: string }
   | { t: 'dmHistory'; with: string; lines: DmLine[] }
@@ -188,6 +196,10 @@ export function parseSocialMsg(raw: unknown): SocialClientMsg | null {
       return { t: 'settings', settings: out };
     }
     case 'chat': return isStr(m.text, 2000) ? { t: 'chat', text: m.text } : null;
+    case 'react':
+      return isInt(m.id) && m.id > 0 && typeof m.emoji === 'string' && (REACT_EMOJIS as readonly string[]).includes(m.emoji)
+        ? { t: 'react', id: m.id, emoji: m.emoji }
+        : null;
     case 'dm': return isId(m.to) && isStr(m.text, 2000) ? { t: 'dm', to: m.to, text: m.text } : null;
     case 'dmHistory': return isId(m.with) ? { t: 'dmHistory', with: m.with, ...(isInt(m.before) ? { before: m.before } : {}) } : null;
     case 'read': return isId(m.with) ? { t: 'read', with: m.with } : null;

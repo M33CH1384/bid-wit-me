@@ -25,6 +25,7 @@ class Harness {
       add: (l) => { const line = { id: this.seq++, ...l }; this.lines.push(line); if (this.lines.length > 200) this.lines.shift(); return line; },
       list: (n) => this.lines.slice(-n),
       get: (id) => this.lines.find((l) => l.id === id) ?? null,
+      setReactions: (id, reactions) => { const l = this.lines.find((x) => x.id === id); if (!l) return false; l.reactions = reactions; return true; },
       del: (id) => { const i = this.lines.findIndex((l) => l.id === id); if (i < 0) return false; this.lines.splice(i, 1); return true; },
     };
     this.hub = new Hub({
@@ -303,6 +304,48 @@ describe('global chat + DMs', () => {
     expect(h.last('g', 'error')!.code).toBe('SIGN_IN');
     await h.send('b', { t: 'report', kind: 'dm', id: h.last('b', 'dm')!.line.id });
     expect(await db.prepare("SELECT text FROM reports WHERE kind = 'dm'").first<{ text: string }>()).toEqual({ text: 'spades tonight' });
+  });
+});
+
+describe('chat reactions', () => {
+  it('toggle, broadcast to everyone, guests rejected, bad input dropped, persisted for late joiners', async () => {
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    await h.hub.open('g', { name: 'Kev' });
+    await h.send('a', { t: 'chat', text: 'nice hand' });
+    const line = h.last('b', 'chat')!.line;
+    // guests can read global chat but (like posting) can't react
+    await h.send('g', { t: 'react', id: line.id, emoji: '🔥' });
+    expect(h.last('g', 'error')!.code).toBe('SIGN_IN');
+    expect(h.all('b', 'chatReact').length).toBe(0);
+    // b reacts: everyone (incl. sender and guests) gets the new map
+    await h.send('b', { t: 'react', id: line.id, emoji: '🔥' });
+    expect(h.last('a', 'chatReact')).toEqual({ t: 'chatReact', id: line.id, reactions: { '🔥': ['u:ub'] } });
+    expect(h.last('g', 'chatReact')).toEqual({ t: 'chatReact', id: line.id, reactions: { '🔥': ['u:ub'] } });
+    // a joins the 🔥 chip and adds a 😂 one
+    await h.send('a', { t: 'react', id: line.id, emoji: '🔥' });
+    await h.send('a', { t: 'react', id: line.id, emoji: '😂' });
+    expect(h.last('b', 'chatReact')!.reactions).toEqual({ '🔥': ['u:ub', 'u:ua'], '😂': ['u:ua'] });
+    // b toggles off: empty slot drops out of the map
+    await h.send('b', { t: 'react', id: line.id, emoji: '🔥' });
+    expect(h.last('a', 'chatReact')!.reactions).toEqual({ '🔥': ['u:ua'], '😂': ['u:ua'] });
+    const n = h.all('a', 'chatReact').length;
+    // unknown line: silent no-op; unknown emoji: dropped at validation
+    await h.send('b', { t: 'react', id: 99999, emoji: '🔥' });
+    await h.send('b', { t: 'react', id: line.id, emoji: '💩' });
+    expect(h.all('a', 'chatReact').length).toBe(n);
+    // persisted in the log: a late joiner's hello snapshot carries the map
+    await h.hub.open('late', { name: 'Late' });
+    expect(h.last('late', 'hello')!.global.find((l) => l.id === line.id)?.reactions).toEqual({ '🔥': ['u:ua'], '😂': ['u:ua'] });
+  });
+
+  it('reactions are rate limited', async () => {
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    await h.send('a', { t: 'chat', text: 'hi' });
+    const line = h.last('b', 'chat')!.line;
+    for (let i = 0; i < 31; i++) await h.send('b', { t: 'react', id: line.id, emoji: '👍' });
+    expect(h.last('b', 'error')!.code).toBe('SLOW_DOWN');
   });
 });
 

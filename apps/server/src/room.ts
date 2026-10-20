@@ -15,7 +15,7 @@ import { BUCKET_THIN } from './voice/writer';
 import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, chooseBotAction, loudLoser, parseHint, leanBid, botSkillFor, personaSkillFloor, seatSkill, leanNil, momentsFor, newTalkState, pickBotNames, platePersona, prePlayLine, activeCatalog, bucketFor } from '@spades/bots';
 import {
   type BotLevel, type ChatLine, type ClientMsg, type HostMusic, type MediaState, type RoomInfo, type RoomPhase, type RunPlayback, type SeatInfo, type ServerMsg,
-  DEFAULT_AFK_LIMIT, LIMITS, PROTOCOL_VERSION, parseClientMsg,
+  DEFAULT_AFK_LIMIT, LIMITS, PROTOCOL_VERSION, parseClientMsg, toggleReaction,
   HAND_END_HOLD_MS, NUKE_ALLOWANCE_MS, handEndLeadMs, type NukeIntensity, type TalkIntensity, cleanTeamName, pickTeamName, type VenueChoice, type VenueId, rollVenue,
 } from '@spades/protocol';
 import type { OpenTable } from '@spades/protocol';
@@ -244,6 +244,8 @@ export class Room {
   /** connection id → player id (null until `hello`) */
   private conns = new Map<string, string | null>();
   private chatWindow = new Map<string, number[]>();
+  /** emoji-reaction rate limiter: pid → timestamps (10 s window) */
+  private reactWindow = new Map<string, number[]>();
   /**
    * Tests only. The next N times a bot is due, the brain is skipped so the turn stays put
    * and the watchdog has to play a legal card or bid.
@@ -819,6 +821,21 @@ export class Room {
         if (ev && d.phase === 'playing') this.talk(ev);
         this.io.persist();
         return; // chat doesn't change the table state
+      }
+      case 'react': {
+        // emoji reaction to a chat line: toggle, persist, broadcast the new reaction map.
+        // not an error to rate-limit or to react to a missing line: silently drop it.
+        const line = d.chat.find((l) => l.id === msg.id);
+        if (!line || line.system || !line.from) return;
+        const now = this.io.now();
+        const w = (this.reactWindow.get(pid) ?? []).filter((t) => now - t < 10_000);
+        if (w.length >= LIMITS.reactBurst) { this.reactWindow.set(pid, w); return; }
+        w.push(now);
+        this.reactWindow.set(pid, w);
+        line.reactions = toggleReaction(line.reactions, msg.emoji, pid);
+        for (const [cid, p] of this.conns) if (p) this.io.send(cid, { t: 'chatReact', id: line.id, reactions: line.reactions });
+        this.io.persist();
+        return; // reactions don't change the table state
       }
       case 'media': {
         // spectators never transmit (they watch and listen)

@@ -232,6 +232,9 @@ function onMessage(m: SocialServerMsg) {
         return { global, globalSeen: seenNow };
       });
       break;
+    case 'chatReact':
+      set((s) => ({ global: s.global.map((l) => (l.id === m.id ? { ...l, reactions: m.reactions } : l)) }));
+      break;
     case 'deleted':
       set((s) => ({ global: s.global.filter((l) => l.id !== m.id) }));
       break;
@@ -347,6 +350,8 @@ export const social = {
   closeDm() { set({ dmWith: null }); },
   showProfile(name: string | null, id?: string) { set({ profile: name, profileId: name ? id ?? null : null }); },
   chat(text: string) { if (!send({ t: 'chat', text })) toast("Not connected: try again in a moment.", 'error'); },
+  /** emoji reaction to a global chat line (toggle; the hub broadcasts the new map) */
+  react(id: number, emoji: string) { send({ t: 'react', id, emoji }); },
   dm(to: string, text: string) { if (!send({ t: 'dm', to, text })) toast("Not connected: try again in a moment.", 'error'); },
   invite(to: string, t: MyTable) { send({ t: 'invite', to, code: t.code, ...(t.mode ? { mode: t.mode } : {}), ...(t.seat !== undefined ? { seat: t.seat } : {}) }); },
   replyInvite(inv: InviteMsg, accept: boolean) {

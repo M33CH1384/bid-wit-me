@@ -313,6 +313,9 @@ export class TableConnection {
         case 'chat':
           this.set({ chat: [...this.state.chat.slice(-99), m.line] });
           break;
+        case 'chatReact':
+          this.set({ chat: this.state.chat.map((l) => (l.id === m.id ? { ...l, reactions: m.reactions } : l)) });
+          break;
         case 'rtc':
           this.rtcHandlers.forEach((h) => h(m.from, m.data));
           break;

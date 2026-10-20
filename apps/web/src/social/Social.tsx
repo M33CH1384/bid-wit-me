@@ -17,6 +17,7 @@ import { type MyTable, type SocialTab, type Toast, badgeCount, globalUnread, soc
 import { Leaderboards, Tournaments } from './Compete';
 import { offlineStats } from '../offlineStats';
 import { chatStickToBottom } from '../chatScroll';
+import { ReactionChips, ReactionPicker } from '../reactions';
 import './social.css';
 
 export const MODE_NAME: Record<string, string> = { joker: 'Joker Spades', aceDown: 'Ace Down', cutthroat: 'Cutthroat' };
@@ -388,6 +389,8 @@ function GlobalChat({ signedIn }: { signedIn: boolean }) {
   const s = useSocial();
   const ref = useStickToBottom(s.global.length);
   const [menu, setMenu] = useState<number | null>(null);
+  /** which line's emoji picker is open (one at a time) */
+  const [pickFor, setPickFor] = useState<number | null>(null);
   useEffect(() => { social.markGlobalSeen(); }, [s.global.length]);
   return (
     <div className="soc-chat">
@@ -399,6 +402,7 @@ function GlobalChat({ signedIn }: { signedIn: boolean }) {
             <span className="soc-line-text">{l.text}</span>
             <span className="soc-line-time">{timeAgo(l.at)}</span>
             {l.from !== s.you?.id && (signedIn || s.admin) && <button type="button" className="soc-more" aria-label="Message actions" data-testid={`line-more-${l.id}`} onClick={() => setMenu(menu === l.id ? null : l.id)}>⋯</button>}
+            {signedIn && <button type="button" className="soc-rx-add" aria-label={`React to ${l.name}'s message`} aria-expanded={pickFor === l.id} data-testid={`soc-rx-add-${l.id}`} onClick={() => setPickFor(pickFor === l.id ? null : l.id)}>☺</button>}
             {menu === l.id && (
               <span className="soc-line-menu">
                 <button type="button" data-testid="line-report" onClick={() => { social.report('global', { id: l.id }); setMenu(null); }}>Report</button>
@@ -407,6 +411,8 @@ function GlobalChat({ signedIn }: { signedIn: boolean }) {
               </span>
             )}
             {s.admin && l.from === s.you?.id && <button type="button" className="soc-more" aria-label="Delete" data-testid={`line-del-${l.id}`} onClick={() => social.del(l.id)}>🗑</button>}
+            {pickFor === l.id && <ReactionPicker onPick={(e) => { social.react(l.id, e); setPickFor(null); }} />}
+            <ReactionChips reactions={l.reactions} myId={s.you?.id ?? null} onToggle={(e) => { if (signedIn) social.react(l.id, e); }} />
           </div>
         ))}
       </div>

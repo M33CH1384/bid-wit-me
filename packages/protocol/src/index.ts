@@ -4,6 +4,7 @@
  * Every client message is validated on the server with `parseClientMsg`; anything malformed is dropped.
  */
 import type { Card, PlayerView, RunPlayout, Series, TableRules } from '@spades/rules';
+import { REACT_EMOJIS, type ChatReactions } from './filter';
 export * from './filter';
 export * from './social';
 
@@ -86,6 +87,8 @@ export const LIMITS = {
   spectators: 20,
   /** spectator chat lines per 10 s (players get chatBurst) */
   spectatorChatBurst: 3,
+  /** reactions per player per 10 s window */
+  reactBurst: 10,
   /** max size of a relayed WebRTC signaling payload (SDP ~ 3–8 KB) */
   rtcMax: 16_000,
 } as const;
@@ -157,6 +160,8 @@ export type ClientMsg =
   | { t: 'rematch' }
   /** all typed chat is public to the whole table (partners talk books out loud on their mics during bidding) */
   | { t: 'chat'; text: string }
+  /** emoji reaction to a chat line (toggle): the server applies it and broadcasts the new reaction map */
+  | { t: 'react'; id: number; emoji: string }
   | { t: 'media'; media: MediaState }
   /** "Learning mode" (tips on): this player's own turn timers run 50% longer */
   | { t: 'learning'; on: boolean }
@@ -258,6 +263,8 @@ export interface RoomInfo {
 
 export interface ChatLine {
   id: number; from: string | null; name: string; text: string; at: number; system?: boolean;
+  /** emoji reactions (emoji -> reactor pids); see REACT_EMOJIS */
+  reactions?: ChatReactions;
   /** a bot's trash talk: its seat, persona, and whether this line is the Hustler's reveal (raw text; clients mask per Clean talk) */
   bot?: { seat: number; persona: string; reveal?: boolean; line?: string; bid?: number };
   /** a bot partner's bidding hint ("I got about 3"): public like every line; clients may voice it */
@@ -292,6 +299,8 @@ export type ServerMsg =
   /** `view.history` is null when unchanged since the last state sent on this connection (keep the previous one) */
   | { t: 'state'; room: RoomInfo; seat: number | null; view: PlayerView | null; /** Release 10: you're watching (view = a redacted table view from seat 0: no hand, no legal moves) */ spectator?: boolean; /** remaining tricks of a resolved Run it!, so every client can play them out */ run?: RunPlayback }
   | { t: 'chat'; line: ChatLine }
+  /** a chat line's reactions changed (toggle): `id` names the line, the client upserts the map (not a new line) */
+  | { t: 'chatReact'; id: number; reactions: ChatReactions }
   | { t: 'rtc'; from: string; data: unknown }
   /**
    * Reply to an `act` that carried an `id`. ok = applied (dup = it had already been applied earlier).
@@ -384,6 +393,10 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
     }
     case 'chat':
       return isStr(m.text, 1000) ? { t: 'chat', text: m.text } : null;
+    case 'react':
+      return isInt(m.id) && m.id > 0 && typeof m.emoji === 'string' && (REACT_EMOJIS as readonly string[]).includes(m.emoji)
+        ? { t: 'react', id: m.id, emoji: m.emoji }
+        : null;
     case 'media':
       return isObj(m.media) ? { t: 'media', media: { cam: m.media.cam === true, mic: m.media.mic === true } } : null;
     case 'learning':

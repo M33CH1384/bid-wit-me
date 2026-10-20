@@ -175,8 +175,13 @@ export function colorFor(id: string): string {
   return PALETTE[h % PALETTE.length]!;
 }
 
+/** emoji reaction maps on raw lines vs rendered msgs (plain JSON, cheap to compare) */
+export function sameReactions(a: Record<string, string[]> | undefined, b: Record<string, string[]> | undefined): boolean {
+  return JSON.stringify(a ?? {}) === JSON.stringify(b ?? {});
+}
+
 /** Real table chat (server) + local system lines for bids/hand results, in arrival order, in the overlay's format. */
-export function useOnlineChat(cs: ConnState, st: GameState | null, names: string[], send: (text: string) => void, hideSpectators = false, dealerName = '') {
+export function useOnlineChat(cs: ConnState, st: GameState | null, names: string[], send: (text: string) => void, hideSpectators = false, dealerName = '', sendReact?: (id: number, emoji: string) => void) {
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
   const seen = useRef(new Set<number>());
   const localId = useRef(1_000_000);
@@ -238,10 +243,26 @@ export function useOnlineChat(cs: ConnState, st: GameState | null, names: string
     });
   }, [st, dealerName]);
 
+  // reaction maps live on the raw lines (the server broadcasts them per line); mirror them onto the rendered msgs
+  useEffect(() => {
+    const byId = new Map(cs.chat.map((l) => [l.id, l.reactions]));
+    setMsgs((xs) => {
+      let changed = false;
+      const out = xs.map((m) => {
+        const r = byId.get(m.id);
+        if (r === undefined || sameReactions(m.reactions, r)) return m;
+        changed = true;
+        return { ...m, reactions: r };
+      });
+      return changed ? out : xs;
+    });
+  }, [cs.chat]);
+
   const push = useCallback((_user: string, text: string) => send(text), [send]);
+  const react = useCallback((id: number, emoji: string) => sendReact?.(id, emoji), [sendReact]);
   // Release 10: a player may hide spectator chat (their own setting)
   const shown = useMemo(() => (hideSpectators ? msgs.filter((m) => m.badge !== SPECTATOR_TAG) : msgs), [msgs, hideSpectators]);
-  return { msgs: shown, push };
+  return { msgs: shown, push, react, youId: cs.you };
 }
 
 export const SPECTATOR_TAG = 'Spectator';
@@ -258,7 +279,7 @@ export function chatUserLabel(lineName: string, from: string | null | undefined,
 function lineToMsg(l: ChatLine, you: string | null, spectating = false): ChatMsg {
   if (l.system || !l.from) return { id: l.id, user: 'System', text: l.text, system: true, color: '#b892ff' };
   const mine = !spectating && l.from === you;
-  return { id: l.id, user: chatUserLabel(l.name, l.from, you, spectating), text: l.text, color: mine ? '#f5c542' : colorFor(l.from), ...(l.bot ? { bot: true } : {}), ...(l.hint ? { hint: true } : {}), ...(l.spectator ? { badge: SPECTATOR_TAG } : {}) };
+  return { id: l.id, user: chatUserLabel(l.name, l.from, you, spectating), text: l.text, color: mine ? '#f5c542' : colorFor(l.from), ...(l.bot ? { bot: true } : {}), ...(l.hint ? { hint: true } : {}), ...(l.spectator ? { badge: SPECTATOR_TAG } : {}), ...(l.reactions ? { reactions: l.reactions } : {}) };
 }
 
 /** Local-seat names. Seat 0 is "You" for a seated viewer; a spectator gets the occupant (person or bot). */

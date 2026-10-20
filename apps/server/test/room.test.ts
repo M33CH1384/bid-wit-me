@@ -868,6 +868,37 @@ describe('chat + signaling', () => {
     expect(env.msgs('b').filter((m) => m.t === 'chat').length).toBe(6);
   });
 
+  it('chat reactions: toggle + broadcast, persisted on the line, unknown id dropped, rate limited', () => {
+    const env = new FakeEnv();
+    const ja = env.join('a', 'A'); const jb = env.join('b', 'B');
+    env.clear();
+    env.send('a', { t: 'chat', text: 'big hand coming' });
+    const line = env.last('b', 'chat')!.line;
+    const aPid = ja.pid; const bPid = jb.pid;
+    expect(line.from).toBe(aPid);
+    // b reacts: everyone gets the map, and it is persisted on the stored line (welcome backfill sees it)
+    env.send('b', { t: 'react', id: line.id, emoji: '🔥' });
+    expect(env.last('a', 'chatReact')).toEqual({ t: 'chatReact', id: line.id, reactions: { '🔥': [bPid] } });
+    expect(env.room.data.chat.find((l) => l.id === line.id)?.reactions).toEqual({ '🔥': [bPid] });
+    // a joins the chip, then b toggles off
+    env.send('a', { t: 'react', id: line.id, emoji: '🔥' });
+    env.send('b', { t: 'react', id: line.id, emoji: '🔥' });
+    expect(env.last('a', 'chatReact')!.reactions).toEqual({ '🔥': [aPid] });
+    // unknown line id: no broadcast
+    const before = env.msgs('a').filter((m) => m.t === 'chatReact').length;
+    env.send('b', { t: 'react', id: 424242, emoji: '🔥' });
+    expect(env.msgs('a').filter((m) => m.t === 'chatReact').length).toBe(before);
+    // rate limit: 10 reactions per 10 s (a has already used 1 in this window)
+    for (let i = 0; i < 11; i++) env.send('a', { t: 'react', id: line.id, emoji: '👍' });
+    const settled = env.msgs('b').filter((m) => m.t === 'chatReact').length;
+    env.send('a', { t: 'react', id: line.id, emoji: '😂' });
+    expect(env.msgs('b').filter((m) => m.t === 'chatReact').length).toBe(settled);
+    // after the window passes, reacting works again
+    env.advance(10_001);
+    env.send('a', { t: 'react', id: line.id, emoji: '😂' });
+    expect(env.msgs('b').filter((m) => m.t === 'chatReact').length).toBe(settled + 1);
+  });
+
   it('relays WebRTC signaling only to the addressed seated player', () => {
     const env = new FakeEnv();
     const a = env.join('a', 'A'); const b = env.join('b', 'B'); env.join('c', 'C');

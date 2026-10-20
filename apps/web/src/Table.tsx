@@ -34,7 +34,7 @@ import { recordOfflineGame } from './offlineStats';
 import { setTableIntensity, showLine, speakBot, talkPrefs as talkStore, useTalkPrefs } from './talkPrefs';
 import { chatStickToBottom } from './chatScroll';
 import { setActiveDeck } from './decks';
-import { pickTeamName } from '@spades/protocol';
+import { pickTeamName, toggleReaction } from '@spades/protocol';
 import { Intermission, calloutsFor } from './Intermission';
 import Hype from './Hype';
 import { landCueFor, wheelsFor, wheelsMade, wheelsTenth, wheelsTenthBooks } from './landCue';
@@ -58,6 +58,7 @@ import { type Sfx, sound } from './audio';
 import { sessionRoom } from './spatial';
 import { HAPTIC, haptic } from './haptics';
 import { type ChatMsg, LINES, SEAT_COLORS, TALK_LINES, type Toast, TickNumber, USER_COLORS, pick, toastsFor } from './overlay';
+import { ReactionChips, ReactionPicker } from './reactions';
 import { type Settings, modeTitle } from './settings';
 import type { SeatPos } from './three/layout';
 import { HUMAN, useGame } from './useGame';
@@ -133,7 +134,7 @@ export interface OnlineBinding {
   source: ReturnType<typeof useGame> & { locked?: boolean; playGate?: number };
   /** local-seat names (0 = you) */
   names: string[];
-  chat: { msgs: ChatMsg[]; push: (user: string, text: string) => void };
+  chat: { msgs: ChatMsg[]; push: (user: string, text: string) => void; /** emoji reaction to a line (online: sent to the server; offline: local) */ react?: (id: number, emoji: string) => void; /** reactor id for highlighting your own reactions (server pid / 'you' offline) */ youId?: string | null };
   /** video bubble / timer chip etc. inside a seat's name plate (local seat index) */
   seatExtra: (seat: number) => ReactNode;
   /** scorebug label for a (local) side */
@@ -242,6 +243,10 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
     if (delay) timers.current.push(window.setTimeout(add, delay));
     else add();
   }, []);
+  /** offline reactions are local only (bots don't react): toggle under the 'you' id */
+  const react = useCallback((id: number, emoji: string) => {
+    setMsgs((xs) => xs.map((m) => (m.id === id ? { ...m, reactions: toggleReaction(m.reactions, emoji, 'you') } : m)));
+  }, []);
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
   const bots = names.slice(1);
   const n = names.length;
@@ -335,7 +340,7 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
     });
   }, [st.handNo, st.dealer, names]);
 
-  return { msgs, push };
+  return { msgs, push, react, youId: 'you' };
 }
 
 /** Offline: the viewer is engine seat 0, so that seat's dealer name is "You" and every other seat is its current name. */
@@ -348,10 +353,12 @@ function offlineDealerLine(st: GameState, names: readonly string[]): string {
   return dealerAnnouncement(st.handNo, name);
 }
 
-function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only', extra, trash, overRecap = false }: { msgs: ChatMsg[]; open: boolean; onToggle: () => void; onSend: (t: string) => void; unread: number; scope?: string; extra?: ReactNode; trash?: ReactNode; /** hand recap: the log is a sheet, opened from the corner button on that screen */ overRecap?: boolean }) {
+function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only', extra, trash, overRecap = false, onReact, myId = null }: { msgs: ChatMsg[]; open: boolean; onToggle: () => void; onSend: (t: string) => void; unread: number; scope?: string; extra?: ReactNode; trash?: ReactNode; /** hand recap: the log is a sheet, opened from the corner button on that screen */ overRecap?: boolean; /** emoji reaction to a line (undefined = reactions unavailable here) */ onReact?: (id: number, emoji: string) => void; /** my reactor id (server pid / 'you'), for chip highlighting */ myId?: string | null }) {
   const listRef = useRef<HTMLDivElement>(null);
   const [text, setText] = useState('');
   const [tray, setTray] = useState(false);
+  /** which message's emoji picker is open (one at a time) */
+  const [pickFor, setPickFor] = useState<number | null>(null);
   // Auto-scroll: stick to the bottom while the user is at/near it (opening always re-sticks);
   // scrolling up to read history releases the stick. Direct scrollTop assignment — the old
   // scrollTo({behavior:'smooth'}) got perpetually restarted by streaming lines on iOS
@@ -399,7 +406,11 @@ function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only',
         <div className="chat-list" ref={listRef} onScroll={(e) => { stickRef.current = chatStickToBottom(e.currentTarget); }}>
           {msgs.map((m) => (
             <div key={m.id} className={`chat-line ${m.system ? 'system' : ''}`}>
-              {m.system ? <span>{m.text}</span> : <><b style={{ color: m.color }}>{m.user}</b>{m.badge && <em className="chat-tag" data-testid="chat-tag">{m.badge}</em>}<span>{m.text}</span></>}
+              {m.system ? <span>{m.text}</span> : <><b style={{ color: m.color }}>{m.user}</b>{m.badge && <em className="chat-tag" data-testid="chat-tag">{m.badge}</em>}<span>{m.text}</span>
+                {onReact && <button type="button" className="rx-add" aria-label={`React to ${m.user}'s message`} aria-expanded={pickFor === m.id} data-testid="rx-add" onClick={() => setPickFor(pickFor === m.id ? null : m.id)}>☺</button>}
+                {onReact && pickFor === m.id && <ReactionPicker onPick={(e) => { onReact(m.id, e); setPickFor(null); }} />}
+                {onReact && <ReactionChips reactions={m.reactions} myId={myId} onToggle={(e) => onReact(m.id, e)} />}
+              </>}
             </div>
           ))}
         </div>
@@ -1681,6 +1692,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
       <ChatPanel msgs={msgs} open={chatOpen} onToggle={() => setChatOpen(!chatOpen)} onSend={(t) => (st.phase === 'handOver' ? talkSend(t) : push('You', t))} unread={unread} scope={online ? 'table' : undefined} extra={online ? online.controls : <OfflineMediaBar />}
         overRecap={showRecap && !showPad}
+        onReact={(online ? online.chat : localChat).react} myId={(online ? online.chat : localChat).youId ?? null}
         trash={!runFx && !modalOpen && !spectating ? <TrashTalkButton st={st} me={HUMAN} intensity={intensity} onSend={(t) => push('You', t)} /> : null} />
       {help && !bidTurn && view.hand && view.hand.length > 0 && st.phase !== 'handOver' && st.phase !== 'gameOver' && (
         <div className="bid-coach-float glass slant"><BidCoach view={view} startOpen title="COUNT YOUR BOOKS" onClose={() => setHelp(false)} /></div>

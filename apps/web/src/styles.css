@@ -264,6 +264,18 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .chat-input button { border: 0; background: var(--purple); width: 36px; }
 .emotes { display: flex; gap: 4px; padding: 0 10px 10px; }
 .emotes button { flex: 1; border: 0; background: rgba(255,255,255,.07); padding: 4px 0; font-size: 15px; }
+/* emoji reactions on chat lines (shared pieces in src/reactions.tsx) */
+.rx-add { border: 0; background: none; color: var(--muted); font-size: 13px; line-height: 1; padding: 8px 6px; margin: -6px -4px -6px 2px; opacity: .65; vertical-align: baseline; }
+.rx-add:active { opacity: 1; background: rgba(255,255,255,.08); border-radius: 8px; }
+.rx-chips { display: inline-flex; flex-wrap: wrap; gap: 3px; margin: 3px 0 1px; }
+.soc-line .rx-chips { flex-basis: 100%; }
+.rx-chip { border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.05); border-radius: 999px; padding: 3px 7px; font-size: 12.5px; line-height: 1.1; color: var(--ink); }
+.rx-chip b { font-weight: 700; margin-left: 2px; }
+.rx-chip.mine { border-color: var(--gold); background: rgba(245,197,66,.16); }
+.rx-picker { display: flex; gap: 2px; margin-top: 4px; padding: 2px; background: rgba(20,12,38,.9); border: 1px solid var(--edge); border-radius: 999px; width: fit-content; max-width: 100%; }
+.soc-line .rx-picker { flex-basis: 100%; }
+.rx-pick { border: 0; background: none; width: 44px; height: 44px; font-size: 20px; border-radius: 50%; }
+.rx-pick:active { background: rgba(255,255,255,.12); }
 
 /* the human's area: lower third + bid panel, above the 3D hand */
 .me { position: absolute; left: 0; right: 0; bottom: calc(23vh + env(safe-area-inset-bottom)); display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 0 10px; z-index: 9; pointer-events: none; }

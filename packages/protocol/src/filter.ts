@@ -46,3 +46,28 @@ export function pickTeamName(seed: number, taken: readonly string[] = []): strin
   const list = pool.length ? pool : TEAM_NAME_POOL;
   return list[Math.abs(Math.floor(seed)) % list.length]!;
 }
+
+/* ------------------------------------------------- emoji reactions (chat) */
+/**
+ * Emoji reactions on chat lines. The set is FIXED (no free emoji): nothing to moderate,
+ * nothing to validate beyond membership, and the picker stays one small strip on iPhone.
+ * emoji -> reactor ids (table: connection pid; global chat: `u:<uid>` / `g:<gid>`).
+ */
+export const REACT_EMOJIS = ['👍', '❤️', '😂', '🔥', '👏', '😮'] as const;
+export type ReactEmoji = (typeof REACT_EMOJIS)[number];
+export type ChatReactions = Record<string, string[]>;
+
+/** Pure toggle: pid reacts with `emoji` (idempotent), or removes it if already reacted. Unknown emoji are ignored. */
+export function toggleReaction(reactions: ChatReactions | undefined, emoji: string, pid: string): ChatReactions {
+  const next: ChatReactions = {};
+  for (const [e, by] of Object.entries(reactions ?? {})) if (by.length) next[e] = [...by];
+  if ((REACT_EMOJIS as readonly string[]).includes(emoji)) {
+    const arr = next[emoji] ?? [];
+    const i = arr.indexOf(pid);
+    if (i >= 0) arr.splice(i, 1);
+    else arr.push(pid);
+    if (arr.length) next[emoji] = arr;
+    else delete next[emoji];
+  }
+  return next;
+}
