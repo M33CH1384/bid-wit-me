@@ -43,6 +43,8 @@ interface Props {
   order?: number;
   dim?: boolean;
   glow?: boolean;
+  /** ☢ armed nuke: this trick card pulses hot red/orange — the nuke is ready to blow but waits for the last cards. */
+  armed?: boolean;
   castShadow?: boolean;
   quality: 'high' | 'low';
   /** undefined = not a button (trick cards). null = a hand card you can't play: the tap is swallowed.
@@ -95,7 +97,7 @@ export function createLitCardMaterial(map: Texture, quality: 'high' | 'low', sat
   return saturate ? withSaturation(m) : m;
 }
 
-function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, raise = 0, roll = 0, order = 0, dim, glow, castShadow = true, quality, onTap, cardId = null, name, sfxStart, sfxLand, spatialSeat, spatialN = 4, blast = 'table', holdUntilMove = false, lit = true, slam }: Props) {
+function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, raise = 0, roll = 0, order = 0, dim, glow, armed, castShadow = true, quality, onTap, cardId = null, name, sfxStart, sfxLand, spatialSeat, spatialN = 4, blast = 'table', holdUntilMove = false, lit = true, slam }: Props) {
   const slamNow = useRef(slam);
   const postLand = useRef(0);
   slamNow.current = slam;
@@ -139,6 +141,8 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   // cards becomes one outline. The hole in the ring leaves the pips showing. A selected
   // card's face still draws after those peer rings, and its own ring draws after that.
   const glowMat = useMemo(() => new MeshBasicMaterial({ color: '#f5c542', transparent: false, opacity: 1, depthWrite: false, toneMapped: false }), []);
+  // Armed nuke outline: hot red/orange, opacity pulsed every frame while armed (see useFrame).
+  const armedMat = useMemo(() => new MeshBasicMaterial({ color: '#ff7a1a', transparent: true, opacity: 0, depthWrite: false, toneMapped: false }), []);
   const edge = useMemo(() => edgeMat.clone(), []);
   // The root group keeps `order` for taps. Child groups reset Three.js groupOrder, so each mesh
   // carries its own: body at `order`, face and back half a step later, the gold ring after
@@ -159,13 +163,13 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       const list = mat ? (Array.isArray(mat) ? mat : [mat]) : [];
       const onFace = list.includes(frontMat);
       const onBack = list.includes(backMat);
-      const onGlow = list.includes(glowMat);
+      const onGlow = list.includes(glowMat) || list.includes(armedMat);
       const paint = cardMeshPaint(order, onGlow ? 'glow' : onFace ? 'face' : onBack ? 'back' : 'edge');
       mesh.renderOrder = paint.renderOrder;
       for (const m of list) m.depthTest = paint.depthTest;
     });
     invalidate();
-  }, [order, cardId, face, glow, frontMat, backMat, glowMat, invalidate]);
+  }, [order, cardId, face, glow, armed, frontMat, backMat, glowMat, armedMat, invalidate]);
   const look = useRef({ target: new Color(1, 1, 1), sat: 1 });
   useLayoutEffect(() => {
     const lookAt = faceLook(!!dim);
@@ -334,6 +338,21 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   useFrame((_, rawDt) => {
     const g = ref.current;
     if (!g) return;
+    // ☢ Armed nuke: the trick cards pulse hot — "ready to blow" — until the last card lands and
+    // the trick detonates (the outline hides again then). demand loop: keep frames coming.
+    const am = armedMat;
+    if (armed) {
+      if (fx.reduced || fx.osReducedMotion) {
+        am.opacity = 0.8;
+        am.color.set('#ff7a1a');
+      } else {
+        const u = (performance.now() % 1000) / 1000; // 1 Hz breathing pulse, building heat
+        const pulse = 0.5 + 0.5 * Math.sin(u * Math.PI * 2);
+        am.opacity = 0.3 + 0.65 * pulse;
+        am.color.setHSL(0.055 + 0.035 * pulse, 1, 0.48 + 0.14 * pulse);
+      }
+      invalidate();
+    } else if (am.opacity !== 0) am.opacity = 0;
     // The deal is over but this card never left the deck: the mount-time hold is a ref and
     // the tween wait runs in frame time, which can crawl on a starved canvas long after the
     // wall-clock deal expired. Release it, or the fan can sit at a few cards all hand.
@@ -579,7 +598,8 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
         <mesh geometry={geo.body} material={edge} castShadow={castShadow} />
         <mesh geometry={geo.front} material={frontMat} />
         <mesh geometry={geo.back} material={backMat} />
-        {frontTex && <mesh geometry={cardOutlineGeometry()} material={glowMat} visible={!!glow} renderOrder={-1} />}
+        {frontTex && <mesh geometry={cardOutlineGeometry()} material={glowMat} visible={!!glow && !armed} renderOrder={-1} />}
+        {frontTex && <mesh geometry={cardOutlineGeometry()} material={armedMat} visible={!!armed} renderOrder={-1} />}
       </group>
       </group>
     </group>

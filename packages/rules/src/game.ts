@@ -10,7 +10,7 @@ import {
 export type Seat = number;
 export type Phase = 'bidding' | 'exchange' | 'playing' | 'handOver' | 'gameOver';
 
-/** `auto`: played automatically when both Jokers landed in the trick (the nuke auto-finish); counts as that seat's play. */
+/** `auto`: legacy flag from the old last-trick nuke auto-finish. The engine no longer sets it — an armed nuke waits for every seat to throw their own card (see nukeArmed). Kept so tricks recorded by older builds keep their meaning. */
 export interface Play { seat: Seat; card: Card; /** drag-to-play slam strength 0..1 (optional, cosmetic) */ slam?: number; /** drag release velocity px/ms [x, y] (optional, cosmetic: landing spot) */ rel?: [number, number]; auto?: true; /** played out by a 'Run it!' claim */ run?: true }
 export interface Trick { leader: Seat; plays: Play[]; winner: Seat | null }
 export interface ExchangeStep { from: Seat; to: Seat; count: number }
@@ -373,9 +373,9 @@ export function legalPlaysFor(
 }
 
 /**
- * Nuke auto-finish (last trick only): the card a seat plays automatically once both Jokers are in the trick — its LOWEST LEGAL card
- * (follow the led suit if it can; otherwise its lowest non-trump; otherwise its lowest trump). Renege rules hold
- * because the pick always comes from legalPlaysFor.
+ * The card picked when a seat has no real choice to make — a 'Run it!' play-out opponent, a bot or
+ * turn-timer fallback: its LOWEST LEGAL card (follow the led suit if it can; otherwise its lowest
+ * non-trump; otherwise its lowest trump). Renege rules hold because the pick always comes from legalPlaysFor.
  */
 export function lowestLegal(r: TableRules, hand: readonly Card[], trickPlays: readonly Play[], spadesBroken: boolean): Card {
   const legal = legalPlaysFor(r, hand, trickPlays, spadesBroken);
@@ -540,6 +540,22 @@ export function runPlayout(before: GameState, after: GameState, claimer: Seat): 
 /** Both Jokers are in this (partial) trick: the nuke. */
 export function jokersMet(plays: readonly Play[]): boolean {
   return plays.some((p) => p.card === 'BJ') && plays.some((p) => p.card === 'LJ');
+}
+
+/**
+ * ☢ Last-trick nuke, ARMED (Demetrius 2026-10-20): both Jokers are in the hand's final trick but the
+ * trick is not done. The nuke used to detonate on the spot, auto-playing every remaining seat's last
+ * card; now it waits — each seat still to play throws their own last card (the throw-in window is
+ * open), and the blast fires only when the trick actually completes (the finished trick then
+ * satisfies isNukeTrick). Public information only: both Jokers are face up on the table.
+ * A Run it! trick never arms (the tornado is the show).
+ */
+export function nukeArmed(st: Pick<GameState, 'rules' | 'phase' | 'tricks' | 'trick' | 'trickCount' | 'eliminated'>): boolean {
+  if (st.rules.deck !== 'joker54' || st.phase !== 'playing') return false;
+  if (st.tricks.length !== booksInHand(st) - 1) return false;
+  const plays = st.trick.plays;
+  if (plays.some((p) => p.run)) return false;
+  return jokersMet(plays) && plays.length < liveSeats(st).length;
 }
 
 /**
@@ -751,26 +767,12 @@ export function applyAction(st: GameState, action: Action): GameState {
       const rel = cleanRel(action.rel);
       if (rel) play.rel = rel;
       const plays: Play[] = [...st.trick.plays, play];
-      let spadesBroken = st.spadesBroken || isTrump(action.card, r);
-      // ☢ last-trick nuke: once both Jokers are in the hand's final trick, everyone still to play auto-plays their last
-      // card at once (one card each, so no choice is made for them); other tricks play out normally.
-      // (With the last-card throw-in the final trick can land out of order, so seats that already
-      // threw are skipped here — auto-playing them again would double-play the seat.)
+      // ☢ Last trick, both Jokers down: the nuke is ARMED, not fired (Demetrius 2026-10-20). It used
+      // to auto-play every remaining seat's last card at once; now the trick stays open (see
+      // nukeArmed) and each seat throws their own card — the blast goes off only when the trick
+      // completes below, after every live seat that must play has played.
+      const spadesBroken = st.spadesBroken || isTrump(action.card, r);
       const liveN = liveSeats(st).length;
-      if (st.tricks.length === booksInHand(st) - 1 && jokersMet(plays)) {
-        const thrown = new Set(plays.map((p) => p.seat));
-        let s2 = nextLive(st, seat);
-        while (plays.length < liveN) {
-          if (!thrown.has(s2)) {
-            const card = lowestLegal(r, hands[s2]!, plays, spadesBroken);
-            hands[s2] = hands[s2]!.filter((c) => c !== card);
-            plays.push({ seat: s2, card, auto: true });
-            spadesBroken = spadesBroken || isTrump(card, r);
-            thrown.add(s2);
-          }
-          s2 = nextLive(st, s2);
-        }
-      }
       if (plays.length < liveN) {
         // The turn pointer names the next seat that hasn't thrown yet, so bots and the UI
         // stay in sync even when the final trick's cards land out of order.
@@ -944,6 +946,8 @@ export interface PlayerView {
   canRunIt?: boolean;
   /** This seat may call a misdeal right now: spade-less hand, seen, and they have not bid yet. */
   canMisdeal?: boolean;
+  /** ☢ Both Jokers are in the final trick but it isn't done: the nuke is armed — the client glows the trick "ready to blow" until the last card lands and it detonates. */
+  nukeArmed?: boolean;
   /**
    * A misdeal was just called on this hand: the caller's whole hand, face up on the table for every seat
    * to verify (the proof of no spades), on the redealt state until the next deal. Absent otherwise.
@@ -973,6 +977,8 @@ function project(st: GameState, seat: Seat, spectate: boolean): PlayerView {
     // Spectators never learn whether a seat can run it, and we don't search to find out.
     canRunIt: spectate ? false : canRunIt(st, seat),
     canMisdeal: spectate ? false : canMisdeal(st, seat),
+    // Public (the Jokers are face up): spectators glow too.
+    nukeArmed: nukeArmed(st),
     // The thrown hand is public by design: every seat (spectators included) gets the same face-up cards.
     ...(st.misdealReveal ? { misdealReveal: { seat: st.misdealReveal.seat, cards: [...st.misdealReveal.cards] } } : {}),
     // Cleared hands ride along only once the claim has resolved (the plays are public then). Never before.

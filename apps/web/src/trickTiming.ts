@@ -1,8 +1,9 @@
 /**
  * Timing shared by the table and the 3D cards for a trick that just resolved.
  * The last-trick nuke is the sharp case: the server finishes the trick (and the hand) in one
- * state, including every auto-played card. The client has to hold that trick on the first paint
- * and let those cards wait out their stagger, or the blast starts over a table that already swept.
+ * state. The client has to hold that trick on the first paint, or the blast starts over a table
+ * that already swept. (The old auto-play stagger — every auto-played card flying in together —
+ * is gone: an armed nuke waits for every seat to throw, then detonates on the completed trick.)
  *
  * Hand end (the score screen) is a different clock from the mid-hand sweep:
  *  - normal: HAND_END_REVEAL_MS from the play (700 ms after the 500 ms flight, at normal speed)

@@ -25,6 +25,19 @@ describe('joker landing cues', () => {
   it('jokers in different tricks never nuke', () => {
     expect(landCueFor(withTrick(['BJ', '2H'], [['LJ', '3H', '4H', '5H']]), 'BJ')).toMatch(/jokerBig$/);
   });
+  it('the final trick never cues the blast on landing: the second Joker only arms it', () => {
+    const done12: Card[][] = Array.from({ length: 12 }, () => ['2H', '3H', '4H', '5H']);
+    const st = withTrick(['LJ', 'BJ'], done12);
+    // the second Joker landing on the final trick gets its rumble, not the blast cue
+    expect(landCueFor(st, 'BJ')).toMatch(/jokerBig$/);
+    expect(landCueFor(st, 'BJ')).not.toContain('nuke');
+    expect(landCueFor(st, 'LJ')).toMatch(/jokerLittle$/);
+  });
+  it('a completed final nuke trick cues no blast on any card (the completion watchdog fires it)', () => {
+    const done12: Card[][] = Array.from({ length: 12 }, () => ['2H', '3H', '4H', '5H']);
+    const st = withTrick([], [...done12, ['LJ', 'BJ', '4C', '5C']]);
+    for (const c of ['LJ', 'BJ', '4C', '5C'] as Card[]) expect(landCueFor(st, c)).not.toContain('nuke');
+  });
 });
 
 describe('streaks', () => {

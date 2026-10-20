@@ -1212,7 +1212,7 @@ export class Room {
       if (m && !(m.badges ?? []).some((b) => b.id === 'storm-chaser')) {
         m.badges = [...(m.badges ?? []), { id: 'storm-chaser', earnedAt: this.io.now(), context: { room: d.code, hand: before.handNo, books } }];
       }
-    } else if (fresh.some((t) => t.plays.some((p) => p.auto))) this.system('☢ Nuked — remaining cards auto-played');
+    } else if (fresh.some((t) => isNukeTrick(t.plays))) this.system('☢ Nuked');
     if (d.game.phase === 'gameOver') {
       d.phase = 'over';
       const res = d.game.result!;

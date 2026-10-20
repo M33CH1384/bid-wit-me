@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   makeRules, newGame as realNewGame, applyAction, RuleError,
-  legalPlays, playableCards, throwInOpen, liveSeats,
+  legalPlays, playableCards, throwInOpen, liveSeats, nukeArmed,
   type TableRules, type Card,
 } from '../src';
 
@@ -115,7 +115,7 @@ describe('last-card throw-in', () => {
     }
   });
 
-  it('nuke stays order-safe when both jokers are thrown out of turn on the final trick', () => {
+  it('armed nuke stays order-safe when both jokers are thrown out of turn on the final trick', () => {
     const r = makeRules('joker');
     // find a deal whose final trick has the jokers in two different live hands
     let found: any = null;
@@ -131,11 +131,23 @@ describe('last-card throw-in', () => {
     // throw both jokers out of turn (neither is the leader if possible)
     st = applyAction(st, { type: 'play', seat: bj, card: 'BJ' as Card });
     st = applyAction(st, { type: 'play', seat: lj, card: 'LJ' as Card });
-    // the nuke auto-played the rest: the trick completed with exactly one card per seat
+    // the nuke is ARMED, not fired: nothing auto-plays, the trick stays open for the rest
+    expect(st.phase).toBe('playing');
+    expect(st.tricks.length).toBe(12);
+    expect(st.trick.plays).toHaveLength(2);
+    expect(nukeArmed(st)).toBe(true);
+    expect(st.nukes).toBeUndefined();
+    // the remaining seats throw their own last cards (out of turn, either order)
+    const rest = [0, 1, 2, 3].filter((s) => s !== bj && s !== lj).reverse();
+    for (const s of rest) st = applyAction(st, { type: 'play', seat: s, card: lastCard(st, s) });
+    // now the trick completes with exactly one card per seat, leader first
     expect(st.tricks.length).toBe(13);
     const done = st.tricks[st.tricks.length - 1];
     expect(done.plays.map((p: any) => p.seat).sort()).toEqual([0, 1, 2, 3]);
+    expect(done.plays.some((p: any) => p.auto)).toBe(false);
     expect(done.plays[0].seat).toBe(leader);
+    expect(done.winner).toBe(bj);
     expect(st.nukes).toBeDefined();
+    expect(st.phase === 'handOver' || st.phase === 'gameOver').toBe(true);
   });
 });

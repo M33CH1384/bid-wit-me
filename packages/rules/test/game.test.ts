@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CLASSIC_JOKER, type Card, type GameState, type TableRules, scoreHand, bidOrder, isFreshDeal, RuleError, applyAction, bidOptions, buildDeck, deckForHand, legalPlays, legalPlaysFor, effectiveSuit,
-  makeRules, newGame as realNewGame, pendingTurn, trickWinner, viewFor, spectatorView, viewMustLeadTwoOfClubs, RulesConfigError, lowestLegal, radioactiveBigJoker, canRunIt, type Play, type Trick,
+  makeRules, newGame as realNewGame, pendingTurn, trickWinner, viewFor, spectatorView, viewMustLeadTwoOfClubs, RulesConfigError, lowestLegal, radioactiveBigJoker, nukeArmed, canRunIt, type Play, type Trick,
 } from '../src';
 import { bidAll, fill, play, rigged } from './helpers';
 
@@ -523,34 +523,87 @@ describe('first hand: books bid themselves', () => {
   });
 });
 
-describe('last-trick nuke auto-finish (Joker Spades)', () => {
+describe('last-trick nuke: armed, then detonated (Joker Spades)', () => {
   // a hand on its final trick: every seat holds one card; seat 0 leads
   const lastTrick = (cards: Card[]): GameState => {
     const st = rigged(joker, cards.map((c) => [c]));
     const filler: Trick = { leader: 0, plays: [], winner: 0 };
     return { ...st, phase: 'playing', bids: [3, 3, 3, 3], tricks: Array(12).fill(filler), tricksWon: [3, 3, 3, 3], turn: 0, trick: { leader: 0, plays: [], winner: null }, spadesBroken: true };
   };
-  it('Big Joker leads, Little Joker lands: the rest auto-play their last card and the Big Joker wins', () => {
-    const after = play(lastTrick(['BJ', 'LJ', '4H', '5C']), 'BJ', 'LJ');
-    const t = after.tricks[after.tricks.length - 1]!;
-    expect(t.plays).toEqual([{ seat: 0, card: 'BJ' }, { seat: 1, card: 'LJ' }, { seat: 2, card: '4H', auto: true }, { seat: 3, card: '5C', auto: true }]);
-    expect(t.winner).toBe(0);
-    expect(after.hands.every((h) => h.length === 0)).toBe(true);
-    expect(after.phase === 'handOver' || after.phase === 'gameOver').toBe(true);
-    expect(after.history[after.history.length - 1]!.tricksWon).toEqual([4, 3, 3, 3]);
+  it('both Jokers in the final trick ARM the nuke: nothing auto-plays, every seat still throws their own card', () => {
+    const armed = play(lastTrick(['BJ', 'LJ', '4H', '5C']), 'BJ', 'LJ');
+    // the trick stays open: the two remaining seats still hold their last card
+    expect(armed.phase).toBe('playing');
+    expect(armed.tricks).toHaveLength(12);
+    expect(armed.trick.plays).toEqual([{ seat: 0, card: 'BJ' }, { seat: 1, card: 'LJ' }]);
+    expect(armed.hands[2]).toEqual(['4H']);
+    expect(armed.hands[3]).toEqual(['5C']);
+    expect(armed.nukes).toBeUndefined(); // not detonated
+    expect(nukeArmed(armed)).toBe(true);
+    // the turn names a seat that still has to throw (a turn-timer auto-play resolves it from here)
+    expect(armed.turn).toBe(2);
   });
-  it('Little Joker first, Big Joker over it: same auto-finish, the Big Joker wins (and counts the nuke)', () => {
-    const after = play(lastTrick(['LJ', 'BJ', '7S', '9D']), 'LJ', 'BJ');
-    const t = after.tricks[after.tricks.length - 1]!;
-    expect(t.plays.slice(2)).toEqual([{ seat: 2, card: '7S', auto: true }, { seat: 3, card: '9D', auto: true }]);
+  it('detonation only when the final trick completes: the last card finishes it and the Big Joker wins', () => {
+    let st = play(lastTrick(['BJ', 'LJ', '4H', '5C']), 'BJ', 'LJ');
+    st = play(st, '4H'); // seat 2 throws: still armed, nothing fires
+    expect(st.tricks).toHaveLength(12);
+    expect(nukeArmed(st)).toBe(true);
+    expect(st.nukes).toBeUndefined();
+    st = play(st, '5C'); // seat 3's last card: the trick completes and the nuke goes off
+    expect(st.tricks).toHaveLength(13);
+    const t = st.tricks[st.tricks.length - 1]!;
+    expect(t.plays).toEqual([{ seat: 0, card: 'BJ' }, { seat: 1, card: 'LJ' }, { seat: 2, card: '4H' }, { seat: 3, card: '5C' }]);
+    expect(t.plays.some((p) => p.auto)).toBe(false);
+    expect(t.winner).toBe(0); // the Big Joker takes it
+    expect(st.nukes).toEqual([1, 0]);
+    expect(nukeArmed(st)).toBe(false);
+    expect(st.hands.every((h) => h.length === 0)).toBe(true);
+    expect(st.phase === 'handOver' || st.phase === 'gameOver').toBe(true);
+    expect(st.history[st.history.length - 1]!.tricksWon).toEqual([4, 3, 3, 3]);
+  });
+  it('Little Joker first, Big Joker over it: arms on the second Joker, Big Joker still wins (and counts the nuke)', () => {
+    let st = play(lastTrick(['LJ', 'BJ', '7S', '9D']), 'LJ');
+    expect(nukeArmed(st)).toBe(false); // one Joker alone is not armed
+    st = play(st, 'BJ');
+    expect(nukeArmed(st)).toBe(true);
+    st = play(st, '7S', '9D');
+    const t = st.tricks[st.tricks.length - 1]!;
     expect(t.winner).toBe(1);
-    expect(after.nukes).toEqual([0, 1]);
+    expect(st.nukes).toEqual([0, 1]);
   });
-  it('Jokers meeting as the last two cards: nothing left to auto-play', () => {
-    let st = play(lastTrick(['4H', '5H', 'BJ', 'LJ']), '4H', '5H', 'BJ', 'LJ');
+  it('a seat that never plays is resolved by the normal turn timer: the fallback card still detonates the armed nuke', () => {
+    let st = play(lastTrick(['BJ', 'LJ', '4H', '5C']), 'BJ', 'LJ');
+    // the timer/fallback path plays the turn seat's first legal card (see Room.autoAct/fallbackAction)
+    for (const seat of [2, 3]) {
+      const v = viewFor(st, seat);
+      expect(st.turn).toBe(seat);
+      st = applyAction(st, { type: 'play', seat, card: v.legal[0]! });
+    }
+    const t = st.tricks[st.tricks.length - 1]!;
+    expect(t.plays.map((p) => p.seat).sort()).toEqual([0, 1, 2, 3]);
+    expect(st.nukes).toEqual([1, 0]);
+    expect(st.phase === 'handOver' || st.phase === 'gameOver').toBe(true);
+  });
+  it('an armed nuke cannot be claimed through: no seat can Run it! while the final trick is armed', () => {
+    const armed = play(lastTrick(['BJ', 'LJ', '4H', '5C']), 'BJ', 'LJ');
+    for (const seat of [0, 1, 2, 3]) expect(canRunIt(armed, seat)).toBe(false);
+  });
+  it('the armed state is public: every seat view (and spectators) see nukeArmed while the trick is open', () => {
+    const before = lastTrick(['BJ', 'LJ', '4H', '5C']);
+    expect(viewFor(before, 2).nukeArmed).toBe(false);
+    const armed = play(before, 'BJ', 'LJ');
+    for (const seat of [0, 1, 2, 3]) expect(viewFor(armed, seat).nukeArmed).toBe(true);
+    expect(spectatorView(armed).nukeArmed).toBe(true);
+    const done = play(armed, '4H', '5C');
+    expect(viewFor(done, 0).nukeArmed).toBe(false);
+    expect(spectatorView(done).nukeArmed).toBe(false);
+  });
+  it('Jokers meeting as the last two cards: the trick completes on the last card as usual', () => {
+    const st = play(lastTrick(['4H', '5H', 'BJ', 'LJ']), '4H', '5H', 'BJ', 'LJ');
     const t = st.tricks[st.tricks.length - 1]!;
     expect(t.plays.some((p) => p.auto)).toBe(false);
     expect(t.winner).toBe(2);
+    expect(st.nukes).toBeDefined();
   });
   it('radioactive Big Joker: only on the last trick, Big Joker down, Little Joker not seen yet this hand', () => {
     const st = lastTrick(['BJ', '3H', '4H', 'LJ']);
@@ -570,6 +623,7 @@ describe('last-trick nuke auto-finish (Joker Spades)', () => {
     st = play(st, 'BJ', 'LJ');
     expect(st.trick.plays).toHaveLength(2);
     expect(st.turn).toBe(2);
+    expect(nukeArmed(st)).toBe(false); // both Jokers met, but not on the final trick: nothing arms
   });
   it('lowestLegal: follows suit with its lowest card, else lowest non-trump, else lowest trump (never a renege)', () => {
     const led: Play[] = [{ seat: 0, card: 'BJ' }]; // a Joker lead counts as spades

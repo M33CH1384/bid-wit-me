@@ -103,6 +103,8 @@ export interface SceneProps {
   hintLegal?: boolean;
   /** cards an open tip points at: they glow (on the table and in your hand) */
   marked?: Card[];
+  /** ☢ the final trick is armed (both Jokers down, trick not done): the trick cards pulse "ready to blow" until the last card lands and it detonates. */
+  trickArmed?: boolean;
   /** Reduce effects: the venue stays calm and the nuke plays its calm version. */
   reduceFx?: boolean;
   /** 'Run it!': the claimer's remaining cards slam down face up in a row at the table centre ALL AT ONCE, then
@@ -594,7 +596,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   if (held.current.handNo !== handNo) held.current = { handNo, cards: new Set(), slots: new Map(), count: 0, seen: new Set() };
   const pendingHold = useRef<Held>(held.current);
 
-  type Item = { spatialSeat?: SeatPos; spatialN?: number; slam?: import('../slam').SlamFeel; key: string; card: Card | null; cardId?: string | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; tap?: ((cardId: string) => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide' | 'glide' | 'gather'; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; public?: boolean; holdUntilMove?: boolean };
+  type Item = { spatialSeat?: SeatPos; spatialN?: number; slam?: import('../slam').SlamFeel; key: string; card: Card | null; cardId?: string | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; armed?: boolean; tap?: ((cardId: string) => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide' | 'glide' | 'gather'; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; public?: boolean; holdUntilMove?: boolean };
   const items: Item[] = [];
   // Seats still in this hand (a Cutthroat ejection leaves a seat with no cards): the deal
   // schedule goes around these only, or late cards are timed past the end of the deal.
@@ -620,7 +622,8 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     });
   }
   // cards on the table this trick
-  // last-trick nuke: the auto-played final cards fly in one after another, right into the blast
+  // legacy last-trick nuke stagger (the engine no longer auto-plays: an armed nuke waits for every
+  // seat to throw): auto-played cards from older games still fly in one after another
   const firstAuto = shownTrick.findIndex((pl) => pl.auto);
   if (playShown.current.hand !== handNo) playShown.current = { hand: handNo, keys: new Set() };
   if (openingTrick.current === null) openingTrick.current = openingTrickKeys(resume, shownTrick.map((pl) => `${handNo}-${pl.card}`));
@@ -665,7 +668,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     // Two-tap / bot tosses vary a little per play (same seed → same toss on every client); reduced motion slides.
     const toss = land && !dragged ? 0.8 + ((playSeed(props.gameSeed ?? '', handNo, trickNo, pl.card) % 1000) / 1000) * 0.5 : 1;
     const flight = props.landCue(pl.card).includes(',overcut') ? { duration: 0.34, arc: 0.7 } : dragged ? { duration: feel.duration, arc: feel.arc } : { duration: 0.5, arc: 0.35 * toss };
-    items.push({ key: playKey, card: pl.card, public: true, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale, land), from, origin, slam: dragged ? feel : { ...feel, intensity: -1 }, ...flight, ...(land && reduced ? { motion: 'slide' as const, arc: 0 } : land && !props.landCue(pl.card).includes(',overcut') ? { motion: 'glide' as const, arc: Math.min(0.3, flight.arc) } : {}), sfxLand: props.landCue(pl.card), spatialSeat: positions[pl.seat]!, spatialN: n, glow: !!props.marked?.includes(pl.card), ...autoDelay });
+    items.push({ key: playKey, card: pl.card, public: true, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale, land), from, origin, slam: dragged ? feel : { ...feel, intensity: -1 }, ...flight, ...(land && reduced ? { motion: 'slide' as const, arc: 0 } : land && !props.landCue(pl.card).includes(',overcut') ? { motion: 'glide' as const, arc: Math.min(0.3, flight.arc) } : {}), sfxLand: props.landCue(pl.card), spatialSeat: positions[pl.seat]!, spatialN: n, glow: !!props.marked?.includes(pl.card), armed: !!props.trickArmed, ...autoDelay });
   });
   // 'Run it!': the claimer's cards slam down in sequence (then the tornado takes everything)
   if (props.slam) {
@@ -910,6 +913,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
           order={it.order}
           dim={it.dim}
           glow={it.glow}
+          armed={it.armed}
           castShadow={it.shadow !== false && quality === 'high'}
           quality={quality}
           cardId={it.cardId ?? it.card}

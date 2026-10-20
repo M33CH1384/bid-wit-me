@@ -16,7 +16,7 @@ import { type VenueId, VENUE_DEFS } from './venues';
 import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, hostMinimum, isFreshDeal, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, newlyOneTrickFromShot, nilBustsJustResolved, partnerOf, sideOf, sortHand, liveSeats } from '@spades/rules';
+  type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, hostMinimum, isFreshDeal, isNukeTrick, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, newlyOneTrickFromShot, nilBustsJustResolved, partnerOf, sideOf, sortHand, liveSeats } from '@spades/rules';
 import { ScorePad, setTeamNames, sideName } from './Modals';
 import { LockedRulesPanel } from './LockedRules';
 import { booksBanner, teamMinNote } from './polishText';
@@ -297,7 +297,7 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
       void winCard; void led; // bot reactions to plays come from the trash-talk engine (offlineTalk)
       const ran = st.tricks.slice(p.tricks.length).filter((x) => x.plays.some((q) => q.run));
       if (ran.length) push('System', `🌪 ${names[ran.at(-1)!.winner!]} ran the board (+${ran.length} books)`, true);
-      else if (t.plays.some((x) => x.auto)) push('System', '☢ Nuked — remaining cards auto-played', true);
+      else if (isNukeTrick(t.plays)) push('System', '☢ Nuked', true);
     }
     // hand scored
     if (st.history.length > p.history.length) {
@@ -1287,10 +1287,13 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // (ambience by default) — explicit per-context choices are kept inside the engine.
   useEffect(() => { sound.enterContext('game'); return () => sound.enterContext('menu'); }, []);
   useEffect(() => { const style = sound.applySoundscape(seed, online?.venue, !online && settings.venue !== 'random' ? settings.venue : undefined); setRoomName(style.name); return () => sound.setVenueBed('none'); }, [seed]); // eslint-disable-line react-hooks/exhaustive-deps
-  // nuke watchdog: the blast is normally cued by the second Joker's 3D landing; on a stalled renderer (Safari compiling
-  // shaders, a backgrounded tab, very slow frames) that landing can come late or never — so once a nuked trick is on
-  // the table, make sure the nuke fires anyway (fx dedupes, so it never plays twice).
-  const nukeKey = clientSeesNuke(shownTrick.plays, !!display.slam) ? `${st.seed}:${st.handNo}:${shownTrick.plays.map((p) => p.card).join('')}` : null;
+  // nuke blast: fires only once a nuked trick is COMPLETE and held on the table (the finished-trick
+  // hold) — never while the final trick is merely armed (both Jokers down, seats still to play):
+  // the nuke doesn't go off until every card is played (Demetrius 2026-10-20). Mid-hand nukes are
+  // also cued by the second Joker's 3D landing; fx dedupes, so it never plays twice. The watchdog
+  // also covers a stalled renderer (Safari compiling shaders, a backgrounded tab), where a landing
+  // cue can come late or never.
+  const nukeKey = pause && clientSeesNuke(shownTrick.plays, !!display.slam) ? `${st.seed}:${st.handNo}:${shownTrick.plays.map((p) => p.card).join('')}` : null;
   const nukeAtMount = useRef(nukeKey); // a resumed save already showing a nuked trick doesn't re-fire
   useEffect(() => {
     if (!nukeKey || nukeKey === nukeAtMount.current) return;
@@ -1541,6 +1544,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           myHand={display.hand}
           handCounts={display.counts}
           shownTrick={display.trick}
+          trickArmed={!!view.nukeArmed}
           slam={display.slam}
           reduceFx={reduceFx}
           venue={venue}
