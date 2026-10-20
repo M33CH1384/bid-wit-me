@@ -243,6 +243,14 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 @keyframes ticker { 0% { opacity: 0; transform: translateX(20px); } 8%, 80% { opacity: 1; transform: none; } 100% { opacity: 0; } }
 .chat { position: absolute; right: calc(8px + env(safe-area-inset-right)); bottom: calc(23vh + 112px + env(safe-area-inset-bottom)); width: min(300px, 82vw); height: min(40vh, 380px); z-index: 11; display: none; flex-direction: column; --slant: 14px; }
 .chat.open { display: flex; }
+/* Tap-outside-to-close backdrop for the chat popup (Demetrius 2026-10-19).
+   Transparent tap-catcher below the chat (z 11) but above the table; the
+   chat toggle (z 12) stays tappable. Only on touch/small screens — on desktop
+   the chat is a persistent side panel, not a modal. */
+.chat-backdrop { position: fixed; inset: 0; z-index: 10; background: transparent; display: none; }
+@media (max-width: 900px), (pointer: coarse) { .chat-backdrop { display: block; } }
+/* Recap bottom-sheet variant is a true modal: backdrop on all screens. */
+.chat-backdrop.recap { z-index: 1044; display: block; background: rgba(0,0,0,.35); }
 .chat header { font-family: var(--display); font-weight: 800; letter-spacing: .14em; font-size: 14px; padding: 8px 12px 6px; display: flex; align-items: center; gap: 6px; border-bottom: 1px solid rgba(185,128,255,.25); }
 .chat header small { margin-left: auto; font-weight: 600; color: var(--muted); letter-spacing: .06em; font-size: 11px; }
 .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); box-shadow: 0 0 8px var(--red); animation: pulse 1.2s infinite; }

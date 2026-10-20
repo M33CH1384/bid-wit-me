@@ -340,6 +340,14 @@ function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only',
   };
   return (
     <>
+      {open && (
+        <div
+          className={`chat-backdrop${overRecap ? ' recap' : ''}`}
+          onClick={onToggle}
+          aria-hidden
+          data-testid="chat-backdrop"
+        />
+      )}
       {!overRecap && (
         <div className={`ctl-cluster ctl-tray ${tray ? 'expanded' : 'collapsed'}`} role="group" aria-label="Table controls" data-testid="ctl-tray">
           {tray && <>
