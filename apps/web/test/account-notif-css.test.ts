@@ -60,3 +60,35 @@ describe('account.css covers every class the notifications markup renders', () =
     expect(rule('.acct-row-chev')).toContain('color: var(--gold)');
   });
 });
+
+/** Second failure mode, same section (owner, later on 2026-10-20: "I don't
+ *  have an option to turn notifications on"). The restored rules above were
+ *  all present, yet the expanded dropdown showed ONLY the blurb — the
+ *  Enable button and iPhone note were clipped at the box's bottom edge.
+ *  Root cause is a flexbox trap, not a missing rule: the sheet body
+ *  (.acct-body in styles.css's .sheet-body) is a scrolling COLUMN FLEX
+ *  container, and a flex item whose overflow is not visible gets an
+ *  automatic minimum size of 0. .acct-dropdown (overflow: hidden for its
+ *  rounded corners) was the only child allowed to shrink, so whenever the
+ *  open sheet's content exceeded the sheet's 86dvh cap, the dropdown
+ *  absorbed the overflow by shrinking and its own overflow: hidden clipped
+ *  everything past the squeezed height — instead of the sheet scrolling.
+ *  These pins keep the dropdown un-shrinkable and its body uncapped. */
+describe('account.css cannot clip the expanded notifications dropdown', () => {
+  it('the dropdown is flex: none — the scrolling sheet body may not shrink it', () => {
+    const dd = rule('.acct-dropdown');
+    expect(dd).toContain('flex: none');
+    expect(dd).toContain('overflow: hidden'); // corner clipping stays; shrinking goes
+  });
+  it('the dropdown body carries no height cap, fixed height, or overflow clip', () => {
+    const body = rule('.acct-dropdown-body');
+    expect(body).not.toContain('max-height');
+    expect(body).not.toContain('overflow');
+    expect(body).not.toMatch(/[{;]\s*height:/);
+  });
+  it('the OFF branch markup keeps its turn-on control wired to enablePush', () => {
+    expect(ui).toContain('data-testid="push-enable"');
+    expect(ui).toContain('onClick={onEnable}');
+    expect(ui).toContain('await enablePush()');
+  });
+});

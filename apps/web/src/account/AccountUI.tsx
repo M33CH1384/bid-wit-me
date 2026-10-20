@@ -246,7 +246,7 @@ function DeleteConfirm({ user, onClose, onDeleted }: { user: AccountUser; onClos
 
 /* ------------------------------------------------------- notifications */
 /* ------------------------------------------------------- notifications */
-function NotificationsSection() {
+export function NotificationsSection() {
   const [perm, setPerm] = useState<PermState>('default');
   const [subscribed, setSubscribed] = useState(false);
   const [prefs, setPrefs] = useState<Record<NotifType, boolean> | null>(null);
@@ -320,10 +320,13 @@ function NotificationsSection() {
                 even with the app closed.
               </p>
               <p className="acct-fine"><b>On iPhone:</b> add Bid Wit Me to your Home Screen first (Safari → Share → Add to Home Screen, iOS 16.4+), then launch the app from the Home Screen icon and enable here. Push will not work from inside Safari.</p>
-              <button type="button" className="primary" data-testid="push-enable" disabled={busy} onClick={onEnable}>
-                Enable notifications
-              </button>
-              {perm === 'denied' && <p className="acct-fine">Notifications are blocked for this site — allow them in your browser settings, then come back.</p>}
+              {perm === 'denied' ? (
+                <p className="acct-fine">Notifications are blocked for this site — allow them in your browser settings, then come back.</p>
+              ) : (
+                <button type="button" className="primary" data-testid="push-enable" disabled={busy} onClick={onEnable}>
+                  Enable notifications
+                </button>
+              )}
             </div>
           ) : (
             <div className="acct-notifs" data-testid="push-prefs">

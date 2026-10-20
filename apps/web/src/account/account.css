@@ -62,7 +62,16 @@
 .acct-toast.ok { box-shadow: inset 0 0 0 1px rgba(92,255,176,.6), 0 8px 30px rgba(0,0,0,.5); }
 .acct-toast.error { box-shadow: inset 0 0 0 1px rgba(255,77,109,.7), 0 8px 30px rgba(0,0,0,.5); }
 @media (max-width: 560px) { .acct-sheet { width: 100%; } }
-.acct-dropdown { border: 1px solid rgba(var(--edge-rgb),.25); border-radius: 10px; margin: 8px 0; overflow: hidden; }
+/* flex: none is load-bearing (owner report 2026-10-20: expanded Notifications
+   showed only the blurb — no Enable button, last line clipped). The sheet
+   body (.acct-body) is a scrolling COLUMN FLEX container, and a flex item
+   whose overflow is not visible gets an automatic minimum size of 0 — so
+   this dropdown, alone among the sheet's children, absorbed any overflow by
+   SHRINKING instead of letting the sheet scroll, and its own
+   overflow: hidden clipped everything past the squeezed height (the iPhone
+   note and the Enable notifications button). Never let it shrink; the sheet
+   scrolls instead. Pinned in test/account-notif-css.test.ts. */
+.acct-dropdown { flex: none; border: 1px solid rgba(var(--edge-rgb),.25); border-radius: 10px; margin: 8px 0; overflow: hidden; }
 .acct-dropdown-head { width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: rgba(var(--edge-rgb),.08); border: none; color: var(--ink); font-size: 16px; cursor: pointer; text-align: left; }
 .acct-dropdown-head:active { background: rgba(var(--edge-rgb),.14); }
 .acct-dropdown-title { flex: 1; font-weight: 600; }
