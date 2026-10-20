@@ -369,7 +369,7 @@ export const social = {
   react(id: number, emoji: string) { send({ t: 'react', id, emoji }); },
   /** emoji reaction to a DM line (toggle; the hub sends both participants the new map) */
   dmReact(id: number, emoji: string) { send({ t: 'dmReact', id, emoji }); },
-  dm(to: string, text: string) { if (!send({ t: 'dm', to, text })) toast("Not connected: try again in a moment.", 'error'); },
+  dm(to: string, text: string, replyTo?: number) { if (!send({ t: 'dm', to, text, ...(replyTo ? { replyTo } : {}) })) toast("Not connected: try again in a moment.", 'error'); },
   invite(to: string, t: MyTable) { send({ t: 'invite', to, code: t.code, ...(t.mode ? { mode: t.mode } : {}), ...(t.seat !== undefined ? { seat: t.seat } : {}) }); },
   replyInvite(inv: InviteMsg, accept: boolean) {
     send({ t: 'inviteReply', id: inv.id, accept });
