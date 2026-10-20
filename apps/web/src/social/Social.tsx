@@ -2,7 +2,7 @@
  * Release 9 social UI: the Social button (with unread badge), the Social panel (players online, global chat, DMs,
  * friends, profiles, settings), invite toasts and notices. Mounted once at the root so invites reach you anywhere.
  */
-import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { type InviteMsg, type OpenTable, type PresenceEntry, type PresenceStatus, type SocialChatLine, SOCIAL_LIMITS, statusLabel } from '@spades/protocol';
 import { useAccount } from '../account/api';
 import { AvatarCircle, socialUidOf, useAvatar } from '../avatar';
@@ -17,9 +17,9 @@ import { type MyTable, type SocialTab, type Toast, badgeCount, globalUnread, soc
 import { Leaderboards, Tournaments } from './Compete';
 import { offlineStats } from '../offlineStats';
 import { chatStickToBottom } from '../chatScroll';
+import { chatGroupInfo, chatTimeLabel } from './chatTime';
 import { ReactionChips, ReactionPicker } from '../reactions';
 import { TaglineText } from '../tagline';
-import { SocialLinksChips, type SocialLinks } from '../socialLinks';
 import './social.css';
 
 export const MODE_NAME: Record<string, string> = { joker: 'Joker Spades', aceDown: 'Ace Down', cutthroat: 'Cutthroat' };
@@ -413,31 +413,50 @@ function GlobalChat({ signedIn }: { signedIn: boolean }) {
     <div className="soc-chat">
       <div className="soc-lines" ref={ref} data-testid="global-lines">
         {!s.global.length && <p className="soc-empty">No messages yet. Say hi 👋</p>}
-        {s.global.map((l) => (
-          <div key={l.id} data-line-id={l.id} className={`soc-line ${l.from === s.you?.id ? 'mine' : ''}${flashId === l.id ? ' flash' : ''}`} data-testid="global-line">
-            {l.reply && (
-              <button type="button" className="soc-quote" data-testid={`quote-${l.id}`} onClick={() => jumpTo(l.reply!.id)} aria-label={`Quoted message by ${l.reply.from}: ${l.reply.text}`}>
-                <b>{l.reply.from}</b> {l.reply.text}
-              </button>
-            )}
-            <button type="button" className="soc-line-name" onClick={() => !l.from.startsWith('g:') && social.showProfile(l.name, l.from.startsWith('u:') ? l.from.slice(2) : undefined)}>{l.name}{l.admin && <i className="soc-tag mod">MOD</i>}</button>
-            <span className="soc-line-text">{l.text}</span>
-            <span className="soc-line-time">{timeAgo(l.at)}</span>
-            {l.from !== s.you?.id && (signedIn || s.admin) && <button type="button" className="soc-more" aria-label="Message actions" data-testid={`line-more-${l.id}`} onClick={() => setMenu(menu === l.id ? null : l.id)}>⋯</button>}
-            {signedIn && <button type="button" className="soc-reply-add" aria-label={`Reply to ${l.name}'s message`} data-testid={`soc-reply-${l.id}`} onClick={() => setReplyTo(replyTo?.id === l.id ? null : l)}>↩</button>}
-            {signedIn && <button type="button" className="soc-rx-add" aria-label={`React to ${l.name}'s message`} aria-expanded={pickFor === l.id} data-testid={`soc-rx-add-${l.id}`} onClick={() => setPickFor(pickFor === l.id ? null : l.id)}>☺</button>}
-            {menu === l.id && (
-              <span className="soc-line-menu">
-                <button type="button" data-testid="line-report" onClick={() => { social.report('global', { id: l.id }); setMenu(null); }}>Report</button>
-                {l.from.startsWith('u:') && <button type="button" data-testid="line-block" onClick={() => { social.friend('block', l.from); setMenu(null); }}>Block {l.name}</button>}
-                {s.admin && <button type="button" className="danger" data-testid="line-delete" onClick={() => { social.del(l.id); setMenu(null); }}>Delete</button>}
-              </span>
-            )}
-            {s.admin && l.from === s.you?.id && <button type="button" className="soc-more" aria-label="Delete" data-testid={`line-del-${l.id}`} onClick={() => social.del(l.id)}>🗑</button>}
-            {pickFor === l.id && <ReactionPicker onPick={(e) => { social.react(l.id, e); setPickFor(null); }} />}
-            <ReactionChips reactions={l.reactions} myId={s.you?.id ?? null} onToggle={(e) => { if (signedIn) social.react(l.id, e); }} />
-          </div>
-        ))}
+        {s.global.map((l, i) => {
+          const mine = l.from === s.you?.id;
+          const g = chatGroupInfo(s.global, i);
+          return (
+            <Fragment key={l.id}>
+              {g.separator && <div className="soc-time-sep">{chatTimeLabel(l.at)}</div>}
+              <div data-line-id={l.id} className={`soc-line ${mine ? 'mine' : ''} ${g.groupStart ? 'g-start' : 'cont'}${flashId === l.id ? ' flash' : ''}`} data-testid="global-line">
+                {!mine && (g.groupEnd
+                  ? <SocFace id={l.from} name={l.name} className={`soc-av msg ${l.from.startsWith('g:') ? 'guest' : ''}`} />
+                  : <span className="soc-av msg blank" aria-hidden="true" />)}
+                <div className="soc-msg-col">
+                  {!mine && g.groupStart && (
+                    <button type="button" className="soc-line-name" onClick={() => !l.from.startsWith('g:') && social.showProfile(l.name, l.from.startsWith('u:') ? l.from.slice(2) : undefined)}>{l.name}{l.admin && <i className="soc-tag mod">MOD</i>}</button>
+                  )}
+                  <div className="soc-bubble-row">
+                    <div className={`soc-bubble ${g.groupEnd ? 'tail' : ''}`}>
+                      {l.reply && (
+                        <button type="button" className="soc-quote" data-testid={`quote-${l.id}`} onClick={() => jumpTo(l.reply!.id)} aria-label={`Quoted message by ${l.reply.from}: ${l.reply.text}`}>
+                          <b>{l.reply.from}</b> {l.reply.text}
+                        </button>
+                      )}
+                      <span className="soc-line-text">{l.text}</span>
+                    </div>
+                    <span className="soc-line-acts">
+                      {!mine && (signedIn || s.admin) && <button type="button" className="soc-more" aria-label="Message actions" data-testid={`line-more-${l.id}`} onClick={() => setMenu(menu === l.id ? null : l.id)}>⋯</button>}
+                      {s.admin && mine && <button type="button" className="soc-more" aria-label="Delete" data-testid={`line-del-${l.id}`} onClick={() => social.del(l.id)}>🗑</button>}
+                      {signedIn && <button type="button" className="soc-reply-add" aria-label={`Reply to ${l.name}'s message`} data-testid={`soc-reply-${l.id}`} onClick={() => setReplyTo(replyTo?.id === l.id ? null : l)}>↩</button>}
+                      {signedIn && <button type="button" className="soc-rx-add" aria-label={`React to ${l.name}'s message`} aria-expanded={pickFor === l.id} data-testid={`soc-rx-add-${l.id}`} onClick={() => setPickFor(pickFor === l.id ? null : l.id)}>☺</button>}
+                    </span>
+                  </div>
+                  {menu === l.id && (
+                    <span className="soc-line-menu">
+                      <button type="button" data-testid="line-report" onClick={() => { social.report('global', { id: l.id }); setMenu(null); }}>Report</button>
+                      {l.from.startsWith('u:') && <button type="button" data-testid="line-block" onClick={() => { social.friend('block', l.from); setMenu(null); }}>Block {l.name}</button>}
+                      {s.admin && <button type="button" className="danger" data-testid="line-delete" onClick={() => { social.del(l.id); setMenu(null); }}>Delete</button>}
+                    </span>
+                  )}
+                  {pickFor === l.id && <ReactionPicker onPick={(e) => { social.react(l.id, e); setPickFor(null); }} />}
+                  <ReactionChips reactions={l.reactions} myId={s.you?.id ?? null} onToggle={(e) => { if (signedIn) social.react(l.id, e); }} />
+                </div>
+              </div>
+            </Fragment>
+          );
+        })}
       </div>
       {signedIn && replyTo && (
         <div className="soc-replybar" data-testid="reply-bar">
@@ -490,20 +509,43 @@ function DmThread({ pid }: { pid: string }) {
     <div className="soc-chat">
       <div className="soc-dm-head">
         <button type="button" className="link" onClick={() => social.closeDm()} data-testid="dm-back">← All messages</button>
-        <button type="button" className="soc-dm-name" onClick={() => social.showProfile(name, pid)}>{name}{s.users[pid] && <i className="soc-online" title="Online" />}</button>
+        <button type="button" className="soc-dm-name" onClick={() => social.showProfile(name, pid)}>
+          <SocFace id={pid} name={name} className="soc-av dm-head" />
+          <span className="soc-dm-who">
+            <span className="soc-dm-title">{name}</span>
+            <span className={`soc-dm-pres ${s.users[pid] ? 'on' : ''}`}>{s.users[pid] ? <><i className="soc-online" title="Online" />Online</> : 'Offline'}</span>
+          </span>
+        </button>
         {s.users[pid] && <button type="button" onClick={() => void inviteTo(pid, s.myTable)} data-testid="dm-invite">➕ Invite</button>}
       </div>
       <div className="soc-lines" ref={ref} data-testid="dm-lines">
-        {lines.map((l) => (
-          <div key={l.id} className={`soc-line dm ${l.from === s.you?.id ? 'mine' : ''}`} data-testid="dm-line">
-            <span className="soc-line-text">{l.text}</span>
-            <span className="soc-line-time">{timeAgo(l.at)}</span>
-            {l.from !== s.you?.id && <button type="button" className="soc-more" aria-label="Report message" title="Report" onClick={() => social.report('dm', { id: l.id })}>⚑</button>}
-            <button type="button" className="soc-rx-add" aria-label={l.from === s.you?.id ? 'React to your message' : `React to ${name}'s message`} aria-expanded={pickFor === l.id} data-testid={`dm-rx-add-${l.id}`} onClick={() => setPickFor(pickFor === l.id ? null : l.id)}>☺</button>
-            {pickFor === l.id && <ReactionPicker onPick={(e) => { social.dmReact(l.id, e); setPickFor(null); }} />}
-            <ReactionChips reactions={l.reactions} myId={s.you?.id ?? null} onToggle={(e) => social.dmReact(l.id, e)} />
-          </div>
-        ))}
+        {lines.map((l, i) => {
+          const mine = l.from === s.you?.id;
+          const g = chatGroupInfo(lines, i);
+          return (
+            <Fragment key={l.id}>
+              {g.separator && <div className="soc-time-sep">{chatTimeLabel(l.at)}</div>}
+              <div className={`soc-line dm ${mine ? 'mine' : ''} ${g.groupStart ? 'g-start' : 'cont'}`} data-testid="dm-line">
+                {!mine && (g.groupEnd
+                  ? <SocFace id={pid} name={name} className="soc-av msg" />
+                  : <span className="soc-av msg blank" aria-hidden="true" />)}
+                <div className="soc-msg-col">
+                  <div className="soc-bubble-row">
+                    <div className={`soc-bubble ${g.groupEnd ? 'tail' : ''}`}>
+                      <span className="soc-line-text">{l.text}</span>
+                    </div>
+                    <span className="soc-line-acts">
+                      {!mine && <button type="button" className="soc-more" aria-label="Report message" title="Report" onClick={() => social.report('dm', { id: l.id })}>⚑</button>}
+                      <button type="button" className="soc-rx-add" aria-label={mine ? 'React to your message' : `React to ${name}'s message`} aria-expanded={pickFor === l.id} data-testid={`dm-rx-add-${l.id}`} onClick={() => setPickFor(pickFor === l.id ? null : l.id)}>☺</button>
+                    </span>
+                  </div>
+                  {pickFor === l.id && <ReactionPicker onPick={(e) => { social.dmReact(l.id, e); setPickFor(null); }} />}
+                  <ReactionChips reactions={l.reactions} myId={s.you?.id ?? null} onToggle={(e) => social.dmReact(l.id, e)} />
+                </div>
+              </div>
+            </Fragment>
+          );
+        })}
         {!lines.length && <p className="soc-empty">Start the conversation with {name}.</p>}
       </div>
       {blocked ? <p className="soc-note">You blocked {name}. Unblock them in Friends to message.</p> : <Composer onSend={(t) => social.dm(pid, t)} placeholder={`Message ${name}…`} testid="dm" />}
@@ -612,7 +654,7 @@ interface ProfileData {
 }
 
 interface CredPublic {
-  user: { id: string; name: string; avatar: string | null; tagline?: string | null; socialLinks?: SocialLinks };
+  user: { id: string; name: string; avatar: string | null; tagline?: string | null };
   level: { level: number; xp: number; xpForNext: number; xpIntoLevel: number; title: string };
   rank: { team: { division: string; elo: number }; cutthroat: { division: string; elo: number } };
   achievements: { id: string; title: string; hint: string; xp: number; coins: number; unlockedAt: number | null }[];
@@ -660,7 +702,6 @@ function Profile({ name, id }: { name: string; id?: string }) {
               </p>
             </div>
           </div>
-          <SocialLinksChips links={cred?.user.socialLinks} testid="profile-social-links" />
           <div className="soc-stats">
             <div><b>{p.totals.games}</b><small>online games</small></div>
             <div><b>{p.totals.games ? Math.round((p.totals.wins / p.totals.games) * 100) : 0}%</b><small>wins</small></div>

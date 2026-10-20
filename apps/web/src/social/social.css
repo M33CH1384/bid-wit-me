@@ -29,9 +29,9 @@
 .soc-player { background: rgba(255,255,255,.04); border: 1px solid rgba(185,128,255,.18); border-radius: 10px; padding: 8px 10px; }
 .soc-player.friend { border-color: rgba(245,197,66,.45); }
 .soc-pl-main { display: flex; align-items: center; gap: 10px; }
-.soc-av { width: 44px; height: 44px; border-radius: 50%; flex: none; display: inline-grid; place-items: center; font-family: var(--display); font-weight: 800; font-size: 22px; color: #1d1204; background: linear-gradient(180deg, #ffd969, var(--gold-deep)); }
+.soc-av { width: 34px; height: 34px; border-radius: 50%; flex: none; display: inline-grid; place-items: center; font-family: var(--display); font-weight: 800; font-size: 18px; color: #1d1204; background: linear-gradient(180deg, #ffd969, var(--gold-deep)); }
 .soc-av.guest { background: #3a2f52; color: var(--muted); }
-.soc-av.big { width: 120px; height: 120px; font-size: 56px; }
+.soc-av.big { width: 56px; height: 56px; font-size: 28px; }
 .soc-pl-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; text-align: left; }
 .soc-pl-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .soc-pl-name em { font-weight: 400; color: var(--muted); font-style: normal; }
@@ -50,40 +50,65 @@
 button.ghost { background: transparent !important; }
 .soc-online { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--green); margin: 0 6px 1px; vertical-align: middle; }
 
+/* ---------- chat v3: iMessage-style bubbles (global chat + DM threads) ---------- */
 .soc-chat { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
-.soc-lines { flex: 1; min-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; padding-right: 2px; }
-.soc-line { position: relative; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; padding: 5px 8px; border-radius: 8px; background: rgba(255,255,255,.03); font-size: 14px; }
-.soc-line.mine { background: rgba(155,92,255,.14); }
-.soc-line.dm { max-width: 85%; align-self: flex-start; }
-.soc-line.dm.mine { align-self: flex-end; }
-.soc-line-name { background: none; border: 0; padding: 0; font-weight: 700; color: var(--gold); font-size: 14px; }
-.soc-line-text { flex: 1 1 auto; word-break: break-word; }
-.soc-line-time { font-size: 11px; color: var(--muted); }
-.soc-more { background: none; border: 0; color: var(--muted); padding: 0 4px; font-size: 14px; }
-.soc-rx-add { background: none; border: 0; color: var(--muted); font-size: 13px; line-height: 1; padding: 10px 8px; margin: -8px -4px -8px 0; opacity: .7; }
-.soc-rx-add:active { background: rgba(255,255,255,.08); border-radius: 8px; opacity: 1; }
-.soc-reply-add { background: none; border: 0; color: var(--muted); font-size: 14px; line-height: 1; padding: 10px 8px; margin: -8px -4px -8px 0; opacity: .7; }
-.soc-reply-add:active { background: rgba(255,255,255,.08); border-radius: 8px; opacity: 1; }
-/* the quoted snapshot above a reply's body: name + snippet, muted, gold rule */
-.soc-quote { flex-basis: 100%; min-width: 0; text-align: left; background: rgba(255,255,255,.05); border: 0; border-left: 3px solid var(--gold); border-radius: 4px; padding: 4px 8px; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
-.soc-quote b { color: var(--ink); }
-/* brief highlight on the original line after tapping a quote */
-.soc-line.flash { animation: soc-flash 1.6s ease-out; }
-@keyframes soc-flash { 0% { background: rgba(255,213,109,.4); } 100% { background: rgba(255,255,255,.03); } }
-/* slim "Replying to …" bar above the composer while reply mode is on */
-.soc-replybar { display: flex; align-items: center; gap: 8px; flex: none; background: rgba(255,255,255,.05); border-left: 3px solid var(--gold); border-radius: 6px; padding: 4px 4px 4px 10px; font-size: 12px; color: var(--muted); }
+.soc-lines { flex: 1; min-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 0; padding: 2px 2px 6px; }
+/* centered, muted segment stamps (derived at render from message times — see chatTime.ts) */
+.soc-time-sep { text-align: center; font-size: 11.5px; font-weight: 600; letter-spacing: .02em; color: var(--muted); padding: 12px 0 2px; }
+.soc-line { position: relative; display: flex; align-items: flex-end; gap: 8px; margin-top: 12px; }
+.soc-line.cont { margin-top: 3px; }
+.soc-line.mine { justify-content: flex-end; }
+.soc-av.msg { width: 32px; height: 32px; font-size: 15px; }
+.soc-av.msg.blank { background: transparent; }
+.soc-msg-col { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; max-width: calc(100% - 40px); }
+.soc-line.mine .soc-msg-col { align-items: flex-end; max-width: 85%; }
+.soc-line-name { background: none; border: 0; padding: 0 0 0 12px; font-weight: 700; color: var(--gold); font-size: 12.5px; }
+.soc-bubble-row { display: flex; align-items: center; gap: 2px; max-width: 100%; }
+.soc-line.mine .soc-bubble-row { flex-direction: row-reverse; }
+.soc-bubble { padding: 9px 13px; border-radius: 18px; background: #2b1c47; border: 1px solid rgba(185,128,255,.16); box-shadow: 0 1px 2px rgba(0,0,0,.3); min-width: 0; }
+.soc-bubble.tail { border-bottom-left-radius: 6px; }
+.soc-line.mine .soc-bubble { background: linear-gradient(180deg, rgba(245,197,66,.30), rgba(201,150,42,.20)); border-color: rgba(245,197,66,.38); }
+.soc-line.mine .soc-bubble.tail { border-bottom-left-radius: 18px; border-bottom-right-radius: 6px; }
+.soc-line-text { font-size: 14.5px; line-height: 1.35; word-break: break-word; overflow-wrap: anywhere; }
+/* the quoted snapshot at the top of a reply's bubble: name + snippet, muted, gold rule */
+.soc-quote { display: block; width: 100%; min-width: 0; margin: 0 0 6px; text-align: left; background: rgba(0,0,0,.28); border: 0; border-left: 3px solid var(--gold); border-radius: 8px; padding: 6px 9px; font-size: 12.5px; line-height: 1.3; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.soc-quote b { color: var(--gold); font-weight: 700; }
+.soc-line.mine .soc-quote { border-left-color: #ffe9a8; }
+/* brief highlight on the original bubble after tapping a quote */
+.soc-line.flash .soc-bubble { animation: soc-flash 1.6s ease-out; }
+@keyframes soc-flash { 0% { box-shadow: 0 0 0 3px rgba(255,213,109,.9); } 100% { box-shadow: 0 0 0 0 rgba(255,213,109,0); } }
+.soc-line-acts { display: inline-flex; align-items: center; flex: none; }
+.soc-more { background: none; border: 0; color: var(--muted); min-width: 30px; min-height: 36px; padding: 4px; font-size: 14px; }
+.soc-rx-add, .soc-reply-add { background: none; border: 0; color: var(--muted); font-size: 15px; line-height: 1; width: 44px; height: 44px; margin: -4px -6px -4px 0; display: grid; place-items: center; border-radius: 50%; opacity: .55; }
+.soc-rx-add:active, .soc-rx-add[aria-expanded="true"], .soc-reply-add:active { background: rgba(255,255,255,.08); opacity: 1; }
+.soc-line-menu { display: flex; gap: 6px; }
+.soc-line-menu button { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.2); color: var(--ink); border-radius: 999px; padding: 5px 11px; font-size: 12px; }
+.soc-line-menu button.danger { border-color: rgba(255,77,109,.6); color: #ff9db0; }
+/* reaction chips + picker inside a bubble's column (base rules live in styles.css; these win on specificity) */
+.soc-lines .soc-line .rx-chips { flex-basis: auto; margin: 0; gap: 4px; }
+.soc-lines .rx-chip { background: #241539; border-color: rgba(185,128,255,.4); box-shadow: 0 1px 3px rgba(0,0,0,.35); }
+.soc-lines .rx-chip.mine { background: rgba(245,197,66,.22); border-color: var(--gold); }
+.soc-lines .soc-line .rx-picker { flex-basis: auto; width: fit-content; margin-top: 2px; padding: 4px; background: #241539; border-color: rgba(185,128,255,.4); box-shadow: 0 10px 28px rgba(0,0,0,.55); }
+/* slim "Replying to …" bar above the composer while reply mode is on — same surface as the composer bar */
+.soc-replybar { display: flex; align-items: center; gap: 8px; flex: none; background: rgba(185,128,255,.10); border: 1px solid rgba(185,128,255,.28); border-left: 3px solid var(--gold); border-radius: 12px; padding: 4px 4px 4px 12px; font-size: 13px; color: var(--muted); }
 .soc-replybar-txt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .soc-replybar-txt b { color: var(--ink); }
 .soc-replybar-x { background: none; border: 0; color: var(--muted); font-size: 14px; line-height: 1; padding: 12px; margin: -6px 0; }
 .soc-replybar-x:active { color: var(--ink); }
-.soc-line-menu { flex-basis: 100%; display: flex; gap: 6px; }
-.soc-line-menu button { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.2); color: var(--ink); border-radius: 6px; padding: 4px 8px; font-size: 12px; }
-.soc-line-menu button.danger { border-color: rgba(255,77,109,.6); color: #ff9db0; }
-.soc-compose { display: flex; gap: 6px; flex: none; }
-.soc-compose input { flex: 1; min-width: 0; font-size: 16px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--edge); background: rgba(0,0,0,.35); color: var(--ink); }
-.soc-compose button { border-radius: 10px; padding: 0 14px; }
-.soc-dm-head { display: flex; align-items: center; gap: 10px; flex: none; }
-.soc-dm-name { flex: 1; background: none; border: 0; font-family: var(--display); font-weight: 800; font-size: 20px; text-align: left; color: var(--ink); }
+/* composer: floating pill bar pinned under the scrolling lines (panel already pads the safe-area inset) */
+.soc-compose { display: flex; gap: 8px; flex: none; align-items: center; padding-top: 8px; border-top: 1px solid rgba(185,128,255,.18); }
+.soc-compose input { flex: 1; min-width: 0; font-size: 16px; padding: 11px 16px; border-radius: 999px; border: 1px solid rgba(185,128,255,.35); background: rgba(255,255,255,.06); color: var(--ink); }
+.soc-compose input:focus { outline: none; border-color: rgba(245,197,66,.65); }
+.soc-compose button { border-radius: 999px; padding: 0 18px; min-height: 42px; }
+/* DM thread header: avatar + name + presence, roomy */
+.soc-dm-head { display: flex; align-items: center; gap: 8px; flex: none; padding-bottom: 8px; border-bottom: 1px solid rgba(185,128,255,.18); }
+.soc-dm-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; background: none; border: 0; padding: 0; text-align: left; color: var(--ink); }
+.soc-av.dm-head { width: 38px; height: 38px; font-size: 17px; }
+.soc-dm-who { display: flex; flex-direction: column; min-width: 0; }
+.soc-dm-title { font-family: var(--display); font-weight: 800; font-size: 19px; letter-spacing: .02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.soc-dm-pres { display: flex; align-items: center; font-size: 12px; font-weight: 600; color: var(--muted); }
+.soc-dm-pres.on { color: var(--green); }
+.soc-dm-pres .soc-online { margin: 0 5px 0 0; }
 .soc-thread { width: 100%; display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,.04); border: 1px solid rgba(185,128,255,.18); border-radius: 10px; padding: 8px 10px; color: var(--ink); }
 
 .soc-friends { display: flex; flex-direction: column; gap: 14px; }
@@ -103,7 +128,7 @@ button.ghost { background: transparent !important; }
 
 .soc-profile { display: flex; flex-direction: column; gap: 10px; }
 .soc-profile .link { align-self: flex-start; }
-.soc-prof-head { display: flex; align-items: center; gap: 16px; }
+.soc-prof-head { display: flex; align-items: center; gap: 12px; }
 .soc-prof-head h3 { margin: 0; font-family: var(--display); font-size: 28px; letter-spacing: .03em; }
 .soc-prof-head p { margin: 2px 0 0; }
 .soc-tagline { font-size: 13.5px; color: #ece5cf; overflow-wrap: anywhere; }
@@ -348,8 +373,8 @@ div.ranks-row { cursor: default; }
 .ranks-row.soc-me { background: rgba(245,194,66,.12); }
 .ranks-rk { width: 26px; flex: none; text-align: center; font-family: var(--display); font-weight: 800; font-size: 16px; font-variant-numeric: tabular-nums; color: var(--muted); }
 .ranks-rk.top { color: var(--gold); }
-.ranks-row .soc-av { width: 44px; height: 44px; font-size: 20px; }
-.ranks-row .soc-av.duo { font-size: 15px; letter-spacing: .02em; }
+.ranks-row .soc-av { width: 36px; height: 36px; font-size: 16px; }
+.ranks-row .soc-av.duo { font-size: 13px; letter-spacing: .02em; }
 .ranks-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; font-size: 15px; }
 .ranks-val { flex: none; font-family: var(--display); font-weight: 800; font-size: 18px; letter-spacing: .02em; font-variant-numeric: tabular-nums; color: var(--ink); }
 .ranks-val.up { color: var(--green); }
