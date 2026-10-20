@@ -8,19 +8,24 @@ import { describe, expect, it } from 'vitest';
 
 const modal = readFileSync(new URL('../src/social/ProfileModal.tsx', import.meta.url), 'utf8');
 const social = readFileSync(new URL('../src/social/Social.tsx', import.meta.url), 'utf8');
+const repBlock = readFileSync(new URL('../src/RepBlock.tsx', import.meta.url), 'utf8');
 
 describe('profile modal: rank, coins, badges', () => {
-  it('rank: Rep section carries level/title and BOTH division · Elo chips', () => {
-    expect(modal).toContain('data-testid="profile-modal-rep"');
-    expect(modal).toContain('Level {cred.level.level}');
-    expect(modal).toContain('divLabel(cred.rank.team.division)} · {cred.rank.team.elo}');
-    expect(modal).toContain('divLabel(cred.rank.cutthroat.division)} · {cred.rank.cutthroat.elo}');
+  it('rank: the shared RepBlock carries level/title, the XP bar and BOTH division · Elo chips; the modal feeds it the cred payload', () => {
+    expect(modal).toContain('testid="profile-modal-rep"');
+    expect(modal).toContain('level={cred.level}');
+    expect(repBlock).toContain('Level {level.level}');
+    expect(repBlock).toContain('className="xp-bar"');
+    expect(repBlock).toContain('divLabel(team.division)} · {team.elo}');
+    expect(repBlock).toContain('divLabel(cutthroat.division)} · {cutthroat.elo}');
   });
   it('coins: renders the public balance from the cred payload, formatted like the profile page', () => {
     expect(modal).toContain('coins?: { balance: number }');
-    expect(modal).toContain('data-testid="profile-modal-coins"');
-    expect(modal).toContain('{cred.coins && <span className="soc-coin-chip"');
-    expect(modal).toContain('🪙 {cred.coins.balance.toLocaleString()}');
+    expect(modal).toContain('coinsTestid="profile-modal-coins"');
+    expect(modal).toContain('coins={cred.coins?.balance}');
+    expect(repBlock).toContain('{coins !== undefined && <span className="soc-coin-chip"');
+    expect(repBlock).toContain('data-testid={coinsTestid}');
+    expect(repBlock).toContain('🪙 {coins.toLocaleString()}');
   });
   it('badges: unlocked achievements as chips, capped at 10 with a +N more chip', () => {
     expect(modal).toContain('unlocked.slice(0, 10)');
@@ -63,8 +68,9 @@ describe('profile modal: friend request states', () => {
 
 describe('social profile view: coins + friend states agree with the modal', () => {
   it('coins: same chip off the same payload', () => {
-    expect(social).toContain('data-testid="profile-coins"');
-    expect(social).toContain('🪙 {cred.coins.balance.toLocaleString()}');
+    expect(social).toContain('coinsTestid="profile-coins"');
+    expect(social).toContain('coins={cred.coins?.balance}');
+    expect(repBlock).toContain('🪙 {coins.toLocaleString()}');
   });
   it('friend states: Requested / Friends / Accept mirror the modal', () => {
     expect(social).toContain("disabled={pending} onClick={() => social.friend('request', pid)} data-testid=\"profile-add\"");

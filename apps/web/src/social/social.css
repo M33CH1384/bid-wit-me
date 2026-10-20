@@ -155,13 +155,8 @@ button.ghost { background: transparent !important; }
 .soc-frow-name small { font-weight: 400; font-size: 12px; color: var(--muted); }
 .soc-frow.tappable { cursor: pointer; border-radius: 6px; }
 .soc-frow.tappable:active { background: rgba(var(--edge-rgb),.08); }
-.soc-rep { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
-.soc-rep-level { display: flex; align-items: baseline; gap: 8px; }
-.soc-rep-level b { font-family: var(--display); font-size: 20px; }
-.soc-rep-level span { color: var(--gold); font-weight: 600; }
-.soc-rep-ranks { display: flex; flex-wrap: wrap; gap: 6px; }
-.soc-div-chip { font-size: 13px; padding: 4px 9px; border-radius: 999px; background: rgba(var(--edge-rgb),.12); border: 1px solid rgba(var(--edge-rgb),.35); }
-.soc-coin-chip { font-size: 13px; padding: 4px 9px; border-radius: 999px; background: rgba(var(--gold-rgb),.12); border: 1px solid rgba(var(--gold-rgb),.45); color: var(--gold); font-weight: 600; }
+/* The .soc-rep base rules live in styles.css: the block is rendered by the shared
+   RepBlock component on the /profile page too, which does not load this file. */
 /* the Friends state sits IN the action row, so it wears the row's chip chrome
    (same fill/border/radius/padding as .soc-prof-acts button) — bare gold text
    among boxed buttons was an eye sore (Demetrius 2026-10-20) */

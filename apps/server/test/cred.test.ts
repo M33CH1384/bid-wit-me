@@ -318,6 +318,24 @@ describe('profile routes', () => {
     expect(pubB.status).toBe(200);
     expect((await pubB.json() as any).coins).toEqual({ balance: 0 });
   });
+  it('public profile exposes XP progress for the shared header bar (owner: XP bar on every profile)', async () => {
+    // 130 XP: level 2 starts at xpForLevel(1) = 125, so 5 into the level, xpForLevel(2) to go
+    await awardXp(db, 'a', 130, NOW);
+    const pub = await handleCredHttp(new Request(new URL('/api/profile/a', ORIGIN)), { DB: db, PUBLIC_ORIGIN: ORIGIN }, new URL('/api/profile/a', ORIGIN), ['api', 'profile', 'a'], NOW);
+    expect(pub.status).toBe(200);
+    const body = await pub.json() as any;
+    expect(body.level.level).toBe(2);
+    expect(body.level.xp).toBe(130);
+    expect(body.level.xpIntoLevel).toBe(5);
+    expect(body.level.xpForNext).toBe(xpForLevel(2));
+    // the pair the web RepBlock renders must always agree with the raw totals
+    expect(body.level.xpIntoLevel).toBe(body.level.xp - xpAtLevel(body.level.level));
+    // and /api/profile/me shapes the same fields the same way
+    const tok = await session('a');
+    const me = await (await authed(tok, '/api/profile/me')).json() as any;
+    expect(me.level.xpIntoLevel).toBe(body.level.xpIntoLevel);
+    expect(me.level.xpForNext).toBe(body.level.xpForNext);
+  });
   it('404s unknown users', async () => {
     const res = await handleCredHttp(new Request(new URL('/api/profile/zzz', ORIGIN)), { DB: db, PUBLIC_ORIGIN: ORIGIN }, new URL('/api/profile/zzz', ORIGIN), ['api', 'profile', 'zzz'], NOW);
     expect(res.status).toBe(404);

@@ -19,6 +19,7 @@ import { AvatarCircle, useAvatar } from '../avatar';
 import { closeTableProfile, useTableProfileTarget, type ProfileTarget } from '../profileTap';
 import { TaglineText } from '../tagline';
 import { SocialLinksChips, type SocialLinks } from '../socialLinks';
+import { RepBlock } from '../RepBlock';
 import { useEscapeClose } from '../useEscapeClose';
 import { MODE_NAME, } from './Social';
 import { social, useSocial } from './store';
@@ -33,13 +34,11 @@ interface ProfileData {
 }
 interface CredPublic {
   user: { id: string; name: string; avatar: string | null; avatarUpdatedAt?: number | null; tagline?: string | null; socialLinks?: SocialLinks };
-  level: { level: number; title: string };
+  level: { level: number; xp: number; xpForNext: number; xpIntoLevel: number; title: string };
   rank: { team: { division: string; elo: number }; cutthroat: { division: string; elo: number } };
   achievements: { id: string; title: string; unlockedAt: number | null }[];
   coins?: { balance: number };
 }
-const DIV_LABEL: Record<string, string> = { stoop: 'Stoop', corner: 'Corner', block: 'Block', avenue: 'Avenue', boulevard: 'Boulevard', legend: 'Legend' };
-const divLabel = (d: string) => DIV_LABEL[d] ?? d;
 const modeName = (m: string) => MODE_NAME[m] ?? m;
 
 /** Mounted once inside the Table screen; renders nothing until a face tap opens it. */
@@ -140,14 +139,8 @@ function ProfileCard({ target }: { target: ProfileTarget }) {
         )}
         {sent && <p className="profile-modal-sent" role="status" data-testid="profile-modal-dm-sent">✓ Sent to {target.name}</p>}
         {cred && p && p !== 'missing' && (
-          <div className="soc-rep soc-prof-rep" data-testid="profile-modal-rep">
-            <div className="soc-rep-level"><b>Level {cred.level.level}</b><span>{cred.level.title}</span></div>
-            <div className="soc-rep-ranks">
-              <span className="soc-div-chip" title="Partnership season division">⚔ {divLabel(cred.rank.team.division)} · {cred.rank.team.elo}</span>
-              <span className="soc-div-chip" title="Cutthroat season division">🔪 {divLabel(cred.rank.cutthroat.division)} · {cred.rank.cutthroat.elo}</span>
-              {cred.coins && <span className="soc-coin-chip" title="Coin balance" data-testid="profile-modal-coins">🪙 {cred.coins.balance.toLocaleString()}</span>}
-            </div>
-          </div>
+          <RepBlock testid="profile-modal-rep" coinsTestid="profile-modal-coins"
+            level={cred.level} team={cred.rank.team} cutthroat={cred.rank.cutthroat} coins={cred.coins?.balance} />
         )}
       </div>
       {p === null ? <p className="soc-empty">Loading…</p> : p === 'missing' ? <p className="soc-empty">No profile for {target.name}.</p> : (

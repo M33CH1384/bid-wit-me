@@ -25,6 +25,7 @@ import { POPOVER_H, POPOVER_H_PALETTE, POPOVER_H_REPLY, popoverPos, useMsgPress,
 import { ReactionChips, ReactionPicker } from '../reactions';
 import { TaglineText } from '../tagline';
 import { SocialLinksChips, type SocialLinks } from '../socialLinks';
+import { RepBlock } from '../RepBlock';
 import './social.css';
 
 export const MODE_NAME: Record<string, string> = { joker: 'Joker Spades', aceDown: 'Ace Down', cutthroat: 'Cutthroat' };
@@ -816,9 +817,6 @@ interface CredPublic {
   achievements: { id: string; title: string; hint: string; xp: number; coins: number; unlockedAt: number | null }[];
   coins?: { balance: number };
 }
-const DIV_LABEL: Record<string, string> = { stoop: 'Stoop', corner: 'Corner', block: 'Block', avenue: 'Avenue', boulevard: 'Boulevard', legend: 'Legend' };
-const divLabel = (d: string) => DIV_LABEL[d] ?? d;
-
 function Profile({ name, id }: { name: string; id?: string }) {
   const s = useSocial();
   const acct = useAccount();
@@ -884,14 +882,8 @@ function Profile({ name, id }: { name: string; id?: string }) {
               </div>
             )}
             {cred && (
-              <div className="soc-rep soc-prof-rep" data-testid="profile-rep">
-                <div className="soc-rep-level"><b>Level {cred.level.level}</b><span>{cred.level.title}</span></div>
-                <div className="soc-rep-ranks">
-                  <span className="soc-div-chip" title="Partnership season division">⚔ {divLabel(cred.rank.team.division)} · {cred.rank.team.elo}</span>
-                  <span className="soc-div-chip" title="Cutthroat season division">🔪 {divLabel(cred.rank.cutthroat.division)} · {cred.rank.cutthroat.elo}</span>
-                  {cred.coins && <span className="soc-coin-chip" title="Coin balance" data-testid="profile-coins">🪙 {cred.coins.balance.toLocaleString()}</span>}
-                </div>
-              </div>
+              <RepBlock testid="profile-rep" coinsTestid="profile-coins"
+                level={cred.level} team={cred.rank.team} cutthroat={cred.rank.cutthroat} coins={cred.coins?.balance} />
             )}
           </div>
           <SocialLinksChips links={cred?.user.socialLinks} testid="profile-social-links" />

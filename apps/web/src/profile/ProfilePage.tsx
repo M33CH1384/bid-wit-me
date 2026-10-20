@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AvatarCircle, compressAvatarFile, forgetAvatar, validateAvatarDataUrl } from '../avatar';
 import { TaglineText } from '../tagline';
 import { SOCIAL_PLATFORMS, SocialLinksChips, type SocialLinks } from '../socialLinks';
+import { RepBlock } from '../RepBlock';
 
 /** Rep profile page: Rank / Challenges / Stats / Achievements / Unlocks tabs. */
 
@@ -91,30 +92,52 @@ const STAT_LABELS: Record<string, string> = {
 };
 
 /** Social-links editor: one row per platform; the server normalizes handles to
- *  canonical profile URLs and rejects anything that isn't really on the platform. */
+ *  canonical profile URLs and rejects anything that isn't really on the platform.
+ *  Collapsed by default (Demetrius 2026-10-20: "If I'm not actively setting my
+ *  social links those text inputs should be hidden") — the saved links already
+ *  render as gold chips under the header, so until Edit links is tapped this
+ *  section is just the Edit button (plus a muted "No links yet" when empty).
+ *  Saving collapses back to that view; Cancel discards the draft. */
 function SocialLinksEditor({ initial, onSaved }: { initial: SocialLinks; onSaved: () => void }) {
-  const [draft, setDraft] = useState<Record<string, string>>(() => {
+  const blank = () => {
     const d: Record<string, string> = {};
     for (const p of SOCIAL_PLATFORMS) d[p.id] = initial[p.id] ?? '';
     return d;
-  });
+  };
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<Record<string, string>>(blank);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
   const dirty = SOCIAL_PLATFORMS.some((p) => (draft[p.id] ?? '') !== (initial[p.id] ?? ''));
+  const hasLinks = SOCIAL_PLATFORMS.some((p) => (initial[p.id] ?? '') !== '');
+
+  const startEdit = () => { setDraft(blank()); setErr(null); setEditing(true); };
+  const cancel = () => { setDraft(blank()); setErr(null); setEditing(false); };
 
   const save = async () => {
-    setErr(null); setSaved(false); setBusy(true);
+    setErr(null); setBusy(true);
     try {
       await api<{ ok: boolean; socialLinks: SocialLinks }>('/api/profile/me/social-links', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ links: draft }),
       });
-      setSaved(true);
+      setEditing(false);
       onSaved();
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
+
+  if (!editing) {
+    return (
+      <div className="prof-links-edit">
+        <span className="prof-pic-note">Social links — these link to your public profiles and show on your profile for other players.</span>
+        {!hasLinks && <span className="prof-links-none">No links yet</span>}
+        <div className="prof-link-actions">
+          <button type="button" className="prof-pic-btn" data-testid="social-edit" onClick={startEdit}>Edit links</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="prof-links-edit">
@@ -124,14 +147,14 @@ function SocialLinksEditor({ initial, onSaved }: { initial: SocialLinks; onSaved
           <span className="prof-link-name"><span aria-hidden>{p.glyph}</span> {p.label}</span>
           <input type="text" inputMode="url" autoComplete="off" autoCapitalize="off" spellCheck={false}
             data-testid={`social-input-${p.id}`} placeholder={p.hint} value={draft[p.id] ?? ''}
-            onChange={(e) => { setDraft((d) => ({ ...d, [p.id]: e.target.value })); setSaved(false); }} />
+            onChange={(e) => setDraft((d) => ({ ...d, [p.id]: e.target.value }))} />
         </label>
       ))}
       <div className="prof-link-actions">
         <button type="button" className="prof-pic-btn" data-testid="social-save" disabled={busy || !dirty} onClick={() => void save()}>
           {busy ? 'Saving…' : 'Save links'}
         </button>
-        {saved && !dirty && <span className="prof-link-saved">Saved ✓</span>}
+        <button type="button" className="prof-pic-btn ghost" data-testid="social-cancel" disabled={busy} onClick={cancel}>Cancel</button>
         {err && <span className="prof-pic-err" role="alert">{err}</span>}
       </div>
     </div>
@@ -229,7 +252,6 @@ export default function ProfilePage() {
   }
   if (!profile) return <div className="profile-page"><div className="prof-loading">Loading your Rep…</div></div>;
 
-  const xpPct = Math.min(100, Math.round((profile.level.xpIntoLevel / Math.max(1, profile.level.xpForNext)) * 100));
   const pendingClaims = [...profile.challenges.daily, ...profile.challenges.weekly].filter((c) => c.progress >= c.target && !c.claimed).length;
   const tagValue = tagDraft ?? profile.user.tagline ?? '';
 
@@ -244,9 +266,8 @@ export default function ProfilePage() {
         <AvatarCircle pic={profile.user.avatar} name={profile.user.name} className="prof-avatar" />
         <div className="prof-id">
           <h2>{profile.user.name}</h2>
-          <div className="prof-level"><b>Level {profile.level.level}</b><span>{profile.level.title}</span></div>
+          <RepBlock testid="prof-rep" level={profile.level} team={profile.rank.team} cutthroat={profile.rank.cutthroat} />
           <TaglineText text={profile.user.tagline} className="prof-tagline" />
-          <div className="xp-bar"><i style={{ width: `${xpPct}%` }} /><small>{profile.level.xpIntoLevel}/{profile.level.xpForNext} XP</small></div>
         </div>
         <div className="prof-coins">
           <b>{profile.coins.balance.toLocaleString()}</b>

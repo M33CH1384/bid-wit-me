@@ -13,13 +13,25 @@
  *  was deleted; the summary stats grid lost its 2v2 rating / Cutthroat tiles
  *  (they duplicated the division chips). One combined profile area at the top,
  *  like the /profile header card. The ★ Friends state also stopped being bare
- *  gold text in the row: it wears the row's chip chrome in social.css. */
+ *  gold text in the row: it wears the row's chip chrome in social.css.
+ *
+ *  Unification (same day, owner's third pass at this): the Rep block itself —
+ *  Level/title, XP progress bar, both division chips, coins — is now ONE shared
+ *  component (src/RepBlock.tsx) rendered by all three profile surfaces, so the
+ *  Social view, the modal and the /profile header card carry the identical
+ *  combined block and can't drift apart again. The /profile header gained the
+ *  division chips it was missing; Social/modal gained the XP bar. Content pins
+ *  therefore live against RepBlock.tsx, and the surfaces pin their <RepBlock>
+ *  call sites. On /profile, the social-links inputs are also hidden behind an
+ *  Edit links button unless the owner is actively editing them. */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const social = readFileSync(new URL('../src/social/Social.tsx', import.meta.url), 'utf8');
 const modal = readFileSync(new URL('../src/social/ProfileModal.tsx', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../src/social/social.css', import.meta.url), 'utf8');
+const repBlock = readFileSync(new URL('../src/RepBlock.tsx', import.meta.url), 'utf8');
+const page = readFileSync(new URL('../src/profile/ProfilePage.tsx', import.meta.url), 'utf8');
 
 const count = (src: string, needle: string) => src.split(needle).length - 1;
 
@@ -34,7 +46,7 @@ describe('Social profile: action row under the presence line', () => {
     expect(presence).toBeGreaterThan(-1);
     expect(acts).toBeGreaterThan(presence);
     expect(profile.indexOf('className="soc-stats"')).toBeGreaterThan(acts);
-    const rep = profile.indexOf('data-testid="profile-rep"');
+    const rep = profile.indexOf('testid="profile-rep"');
     expect(rep).toBeGreaterThan(acts);
     expect(rep).toBeLessThan(profile.indexOf('className="soc-stats"'));
   });
@@ -42,7 +54,7 @@ describe('Social profile: action row under the presence line', () => {
     const acts = profile.indexOf('className="soc-prof-acts"');
     expect(acts).toBeGreaterThan(-1);
     expect(profile.indexOf('<SocialLinksChips')).toBeGreaterThan(acts);
-    expect(profile.indexOf('<SocialLinksChips')).toBeGreaterThan(profile.indexOf('data-testid="profile-rep"'));
+    expect(profile.indexOf('<SocialLinksChips')).toBeGreaterThan(profile.indexOf('testid="profile-rep"'));
   });
   it('the row keeps every action and handler (Chat, Invite, friend states, Block, Report)', () => {
     expect(profile).toContain('social.openDm(pid)');
@@ -64,7 +76,7 @@ describe('Profile modal: action row under the presence line', () => {
     expect(presence).toBeGreaterThan(-1);
     expect(acts).toBeGreaterThan(presence);
     expect(card.indexOf('className="soc-stats"')).toBeGreaterThan(acts);
-    const rep = card.indexOf('data-testid="profile-modal-rep"');
+    const rep = card.indexOf('testid="profile-modal-rep"');
     expect(rep).toBeGreaterThan(acts);
     expect(rep).toBeLessThan(card.indexOf('className="soc-stats"'));
   });
@@ -72,7 +84,7 @@ describe('Profile modal: action row under the presence line', () => {
     const acts = card.indexOf('className="soc-prof-acts"');
     const box = card.indexOf('profile-modal-compose');
     const sent = card.indexOf('data-testid="profile-modal-dm-sent"');
-    const rep = card.indexOf('data-testid="profile-modal-rep"');
+    const rep = card.indexOf('testid="profile-modal-rep"');
     expect(box).toBeGreaterThan(acts);
     expect(sent).toBeGreaterThan(acts);
     expect(rep).toBeGreaterThan(box);
@@ -82,7 +94,7 @@ describe('Profile modal: action row under the presence line', () => {
     const acts = card.indexOf('className="soc-prof-acts"');
     const note = card.indexOf('Unblock them to message.');
     expect(note).toBeGreaterThan(acts);
-    expect(card.indexOf('data-testid="profile-modal-rep"')).toBeGreaterThan(note);
+    expect(card.indexOf('testid="profile-modal-rep"')).toBeGreaterThan(note);
   });
 });
 
@@ -100,17 +112,21 @@ describe('consolidated header: one profile area at the top (Demetrius 2026-10-20
   const profile = social.slice(social.indexOf('function Profile('));
   const card = modal.slice(modal.indexOf('function ProfileCard'));
   it('exactly one Rep block per surface — the standalone REP section is gone', () => {
-    expect(count(profile, 'data-testid="profile-rep"')).toBe(1);
-    expect(count(card, 'data-testid="profile-modal-rep"')).toBe(1);
+    expect(count(profile, 'testid="profile-rep"')).toBe(1);
+    expect(count(card, 'testid="profile-modal-rep"')).toBe(1);
     expect(profile).not.toContain('<h4>Rep</h4>');
     expect(card).not.toContain('<h4>Rep</h4>');
   });
-  it('the header Rep block carries level/title, both division chips and coins', () => {
+  it('the shared Rep block carries level/title, both division chips and coins; both surfaces feed it the cred payload', () => {
+    expect(repBlock).toContain('Level {level.level}');
+    expect(repBlock).toContain('divLabel(team.division)} · {team.elo}');
+    expect(repBlock).toContain('divLabel(cutthroat.division)} · {cutthroat.elo}');
+    expect(repBlock).toContain('🪙 {coins.toLocaleString()}');
     for (const src of [profile, card]) {
-      expect(src).toContain('Level {cred.level.level}');
-      expect(src).toContain('divLabel(cred.rank.team.division)} · {cred.rank.team.elo}');
-      expect(src).toContain('divLabel(cred.rank.cutthroat.division)} · {cred.rank.cutthroat.elo}');
-      expect(src).toContain('🪙 {cred.coins.balance.toLocaleString()}');
+      expect(src).toContain('level={cred.level}');
+      expect(src).toContain('team={cred.rank.team}');
+      expect(src).toContain('cutthroat={cred.rank.cutthroat}');
+      expect(src).toContain('coins={cred.coins?.balance}');
     }
   });
   it('the summary stats keep games + wins only — the rating tiles that duplicated the chips are gone', () => {
@@ -127,6 +143,67 @@ describe('consolidated header: one profile area at the top (Demetrius 2026-10-20
   });
   it('the summary stats grids get two columns for their two tiles', () => {
     expect(css).toContain('.soc-profile > .soc-stats:not(.small), .profile-modal-body > .soc-stats { grid-template-columns: repeat(2, 1fr); }');
+  });
+});
+
+describe('unified Rep block: the XP bar rides in the header on every surface', () => {
+  it('RepBlock renders the bar with the /profile semantics (into-level / for-level)', () => {
+    expect(repBlock).toContain('className="xp-bar"');
+    expect(repBlock).toContain('{level.xpIntoLevel}/{level.xpForNext} XP');
+    expect(repBlock).toContain('data-testid={testid}');
+    expect(repBlock).toContain('data-testid={`${testid}-xp`}');
+  });
+  it('all three surfaces render the one shared component — no per-surface Rep markup left', () => {
+    expect(social).toContain("import { RepBlock } from '../RepBlock';");
+    expect(modal).toContain("import { RepBlock } from '../RepBlock';");
+    expect(page).toContain("import { RepBlock } from '../RepBlock';");
+    expect(page).toContain('testid="prof-rep"');
+    expect(page).toContain('team={profile.rank.team}');
+    expect(page).toContain('cutthroat={profile.rank.cutthroat}');
+    // the /profile header's hand-rolled level line + bar are gone (RepBlock owns them now)
+    expect(page).not.toContain('className="prof-level"');
+    expect(page).not.toContain('className="xp-bar"');
+  });
+  it('on /profile the block sits inside the header card, before the coins block', () => {
+    const head = page.indexOf('className="prof-header glass"');
+    const rep = page.indexOf('<RepBlock');
+    expect(head).toBeGreaterThan(-1);
+    expect(rep).toBeGreaterThan(head);
+    expect(rep).toBeLessThan(page.indexOf('className="prof-coins"'));
+  });
+});
+
+describe('theme parity: the profile is the same profile in Classic and Neon', () => {
+  it('no profile component branches on the theme — Neon only styles via CSS', () => {
+    const profile = social.slice(social.indexOf('function Profile('));
+    const card = modal.slice(modal.indexOf('function ProfileCard'));
+    for (const src of [profile, card, page, repBlock]) {
+      expect(src).not.toContain('data-theme');
+      expect(src).not.toContain('useTheme');
+      expect(src).not.toContain("theme === 'neon'");
+      expect(src).not.toContain('theme === "neon"');
+    }
+  });
+});
+
+describe('social-links editor: inputs hidden unless actively editing (own /profile)', () => {
+  it('starts collapsed, with an Edit links button and a muted empty state', () => {
+    expect(page).toContain('const [editing, setEditing] = useState(false);');
+    expect(page).toContain('data-testid="social-edit"');
+    expect(page).toContain('>Edit links</button>');
+    expect(page).toContain('No links yet');
+  });
+  it('the text inputs render only inside the editing branch, after the collapsed return', () => {
+    const collapsed = page.indexOf('if (!editing) {');
+    expect(collapsed).toBeGreaterThan(-1);
+    expect(page.indexOf('data-testid={`social-input-${p.id}`}')).toBeGreaterThan(collapsed);
+    expect(page.indexOf('data-testid="social-edit"')).toBeLessThan(page.indexOf('data-testid={`social-input-${p.id}`}'));
+  });
+  it('edit mode keeps the server save flow and gains a Cancel that discards', () => {
+    expect(page).toContain('data-testid="social-save"');
+    expect(page).toContain("'/api/profile/me/social-links'");
+    expect(page).toContain('data-testid="social-cancel"');
+    expect(page).toContain('setEditing(false);');
   });
 });
 
