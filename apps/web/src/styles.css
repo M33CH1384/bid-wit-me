@@ -1087,7 +1087,7 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .tt-backdrop ~ .modal-backdrop { z-index: 1010; }
 .hype-layer { z-index: 1100; }
 .sound-dock { z-index: 1050; }
-.table-screen.modal-open > :not(.modal-backdrop):not(.tt-backdrop):not(.hype-layer):not(.toasts):not(.badge-unlock):not(.victory-screen):not(.recap-chat) {
+.table-screen.modal-open > :not(.modal-backdrop):not(.tt-backdrop):not(.hype-layer):not(.toasts):not(.badge-unlock):not(.victory-screen):not(.recap-chat):not(.rewards-screen) {
   filter: blur(3px) brightness(.55) saturate(.8); pointer-events: none; transition: filter .25s ease;
 }
 .table-screen.modal-open .modal-backdrop { background: rgba(6,3,12,.35); }
