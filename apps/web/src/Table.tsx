@@ -51,7 +51,7 @@ import { feltHandVisible } from './three/cardFace';
 import { clientSeesNuke } from './three/blastSweep';
 import { loadScene } from './three/preload';
 import { TableLoading } from './TableLoading';
-import { computeRewards, fetchRewardsProfile, type RewardsProfile } from './GameOverRewards';
+import { clearPinnedBefore, computeRewardsSettled, resolveBeforeSnapshot, type RewardsProfile } from './GameOverRewards';
 import { stashRewards } from './RewardsPage';
 import { flushLocalGames } from './localStats';
 import { tableStillLoading, warmTableEffects } from './effects/warm';
@@ -1122,24 +1122,35 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // the dedicated opaque /rewards screen — no modal overlay (it kept rendering blurry on iOS).
   const profileBefore = useRef<RewardsProfile | null>(null);
   const gameStartAt = useRef<number>(Date.now());
-  useEffect(() => { void fetchRewardsProfile().then((p) => { profileBefore.current = p; }); }, []);
+  // Capture the "before" snapshot ONCE per match, pinned by the game seed: a
+  // mid-game remount (inactivity bounce, refresh-resume) reuses the pinned
+  // snapshot instead of retaking it after the server's credit may have landed
+  // (a retake made earned XP/coins read as +0 — LovleyT714, 2026-10-20).
+  const matchSeed = String(st.seed ?? '');
+  useEffect(() => {
+    let live = true;
+    void resolveBeforeSnapshot(matchSeed).then((p) => { if (live) profileBefore.current = p; });
+    return () => { live = false; };
+  }, [matchSeed]);
   const [rewardsBusy, setRewardsBusy] = useState(false);
   const openRewards = useCallback((where: 'home' | 'leave') => {
     if (rewardsBusy) return;
     setRewardsBusy(true);
     (async () => {
       try { await flushLocalGames(); } catch { /* best-effort */ }
-      const after = await fetchRewardsProfile();
       const won = !!st.result?.winners.includes(mySide);
       const head = won
         ? (st.result!.winners.length > 1 ? 'YOU TIED FOR FIRST!' : 'VICTORY!')
         : winHeadline(st.result!.winners.map((w) => sideName(r, w, names)), r.partnerships).toUpperCase();
-      const data = computeRewards(profileBefore.current, after, {
+      // Online credits land asynchronously server-side: if the first "after"
+      // snapshot still diffs to zero, retry briefly (~2s) before believing it.
+      const data = await computeRewardsSettled(profileBefore.current, {
         won,
         headline: head,
         sub: `${st.history.length} hand${st.history.length === 1 ? '' : 's'} played`,
         kind: r.partnerships ? 'team' : 'cutthroat',
-      });
+      }, { online: !!online });
+      clearPinnedBefore(); // the pinned "before" is consumed — the next match captures fresh
       if (!online) quitGame();
       stashRewards({ data, online: !!online, homePath: online && where === 'leave' ? '/online' : '/' });
       clearTableChatOpen(); // the match is over: the next table must not inherit this chat state

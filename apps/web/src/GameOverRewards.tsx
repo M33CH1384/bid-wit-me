@@ -93,6 +93,97 @@ export function fetchRewardsProfile(): Promise<RewardsProfile | null> {
   return api<RewardsProfile>('/api/profile/me').catch(() => null);
 }
 
+// ── Before-snapshot pinning (owner-approved fix, 2026-10-20) ───────────────
+// The rewards breakdown is a diff of two profile snapshots (before/after), so
+// the "before" MUST be the profile as it was when the match started. Table used
+// to capture it in a mount-only effect: a mid-game remount (e.g. the 30-minute
+// inactivity sign-out bounce, which never sends a room leave) silently retook
+// it — and once the server's game-end credit landed, before == after and the
+// player saw +0 for a game they had actually earned in (LovleyT714's 24 XP).
+// Pin the FIRST snapshot per match (keyed by the game seed) in sessionStorage
+// — same storage family as the bwm.rewards.v1 breakdown stash — and reuse it
+// across remounts. openRewards clears the pin after consuming it.
+const BEFORE_KEY = 'bwm.rewards.before.v1';
+
+interface PinnedBefore { seed: string; profile: RewardsProfile }
+
+/** The pinned before-snapshot for `seed`, or undefined if none was pinned for this match. */
+export function loadPinnedBefore(seed: string): RewardsProfile | null | undefined {
+  if (!seed) return undefined;
+  try {
+    const raw = sessionStorage.getItem(BEFORE_KEY);
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw) as PinnedBefore;
+    if (!parsed || parsed.seed !== seed || !parsed.profile) return undefined;
+    return parsed.profile;
+  } catch { return undefined; }
+}
+
+export function pinBefore(seed: string, profile: RewardsProfile): void {
+  if (!seed) return;
+  try {
+    sessionStorage.setItem(BEFORE_KEY, JSON.stringify({ seed, profile } satisfies PinnedBefore));
+  } catch { /* storage full/blocked — pinning is best-effort */ }
+}
+
+export function clearPinnedBefore(): void {
+  try { sessionStorage.removeItem(BEFORE_KEY); } catch { /* ignore */ }
+}
+
+/**
+ * Resolve the "before" snapshot for a match: the pinned snapshot for this seed
+ * if one exists (remount-safe — never retaken), otherwise fetch the profile
+ * now and pin it. A failed fetch (null — guest or transient error) is NOT
+ * pinned, so a later remount can retry the capture.
+ */
+export async function resolveBeforeSnapshot(
+  seed: string,
+  fetchProfile: () => Promise<RewardsProfile | null> = fetchRewardsProfile,
+): Promise<RewardsProfile | null> {
+  const pinned = loadPinnedBefore(seed);
+  if (pinned !== undefined) return pinned;
+  const profile = await fetchProfile();
+  if (profile) pinBefore(seed, profile);
+  return profile;
+}
+
+// ── After-snapshot bounded retry ────────────────────────────────────────────
+// Game-end credits are written asynchronously on the server (ctx.waitUntil),
+// so the first "after" fetch in openRewards can beat them and diff to +0. For
+// a signed-in ONLINE match whose computed XP/coins delta is exactly zero,
+// re-fetch a few times over ~2s and keep the first diff that moves; proceed
+// with whatever we have once retries run out — the leave flow never hangs.
+export const AFTER_RETRY_DELAYS_MS = [400, 600, 1000];
+
+const sleepMs = (ms: number) => new Promise<void>((resolve) => { setTimeout(resolve, ms); });
+
+export async function computeRewardsSettled(
+  before: RewardsProfile | null,
+  opts: { won: boolean; headline: string; sub: string; kind: 'team' | 'cutthroat' },
+  cfg: {
+    online: boolean;
+    fetchProfile?: () => Promise<RewardsProfile | null>;
+    sleep?: (ms: number) => Promise<void>;
+    delaysMs?: number[];
+  },
+): Promise<RewardsData> {
+  const fetchProfile = cfg.fetchProfile ?? fetchRewardsProfile;
+  const sleep = cfg.sleep ?? sleepMs;
+  const delays = cfg.delaysMs ?? AFTER_RETRY_DELAYS_MS;
+  let after = await fetchProfile();
+  let data = computeRewards(before, after, opts);
+  // Only a signed-in online match can be owed an async credit; guests and
+  // offline games keep the old single-fetch behavior.
+  if (!cfg.online || !before) return data;
+  for (const delay of delays) {
+    if (data.xpGained > 0 || data.coinsGained > 0) break;
+    await sleep(delay);
+    after = await fetchProfile();
+    data = computeRewards(before, after, opts);
+  }
+  return data;
+}
+
 /** Ease-out cubic count-up. */
 function useCountUp(target: number, duration = 900, delay = 0): number {
   const [val, setVal] = useState(0);
