@@ -18,6 +18,7 @@ import { Leaderboards, Tournaments } from './Compete';
 import { offlineStats } from '../offlineStats';
 import { chatStickToBottom } from '../chatScroll';
 import { ReactionChips, ReactionPicker } from '../reactions';
+import { TaglineText } from '../tagline';
 import './social.css';
 
 export const MODE_NAME: Record<string, string> = { joker: 'Joker Spades', aceDown: 'Ace Down', cutthroat: 'Cutthroat' };
@@ -602,7 +603,7 @@ function Friends({ signedIn }: { signedIn: boolean }) {
 }
 
 interface ProfileData {
-  username: string; memberSince: number; badges: { id: string; earnedAt: number }[]; teamNames: string[];
+  username: string; memberSince: number; tagline?: string | null; badges: { id: string; earnedAt: number }[]; teamNames: string[];
   ratings: { team?: number; cutthroat?: number }; totals: { games: number; wins: number };
   h2h: { id: string; name: string; games: number; wins: number; losses: number }[]; vsYou?: { games: number; wins: number; losses: number }; champion: number;
   stats?: { games: number; wins: number; streak: number; bestStreak: number; accuracy: number | null; booksPerHand: number | null; nil: string; shotsGiven: number; shotsTaken: number; wheels: number; bjWins: number; bidSec: number | null; playSec: number | null };
@@ -610,7 +611,7 @@ interface ProfileData {
 }
 
 interface CredPublic {
-  user: { id: string; name: string; avatar: string | null };
+  user: { id: string; name: string; avatar: string | null; tagline?: string | null };
   level: { level: number; xp: number; xpForNext: number; xpIntoLevel: number; title: string };
   rank: { team: { division: string; elo: number }; cutthroat: { division: string; elo: number } };
   achievements: { id: string; title: string; hint: string; xp: number; coins: number; unlockedAt: number | null }[];
@@ -652,6 +653,7 @@ function Profile({ name, id }: { name: string; id?: string }) {
             <div>
               <h3 data-testid="profile-name">{p.username}{p.champion > 0 && <span className="soc-champ" title="Tournament champion">🏆×{p.champion}</span>}</h3>
               <p className="soc-muted">Member since {new Date(p.memberSince).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</p>
+              <TaglineText text={p.tagline ?? cred?.user.tagline} className="soc-tagline" />
               <p className={`soc-online-status ${s.users[pid ?? ''] ? 'on' : 'off'}`} data-testid="profile-online">
                 <i className="soc-dot" aria-hidden />{s.users[pid ?? ''] ? `Online — ${statusLabel(s.users[pid ?? '']!.status, modeName)}` : 'Offline'}
               </p>

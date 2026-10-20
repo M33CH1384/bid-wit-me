@@ -2187,3 +2187,11 @@ button.mode-pick::after, button.quiet-row::after { content: ''; position: absolu
 .prof-pic-btn:disabled { opacity: .5; cursor: default; }
 .prof-pic-btn.ghost { background: none; }
 .prof-pic-err { color: #ff9d9d; font-size: 13px; }
+
+/* ---- Profile taglines (Demetrius 2026-10-20): under the name on profiles; links work ---- */
+.prof-tagline { margin: 4px 0 0; font-size: 14px; color: #ece5cf; overflow-wrap: anywhere; }
+.prof-tagline a { color: var(--gold); text-decoration: underline; }
+.prof-tag-row { display: grid; gap: 6px; margin: 0 0 12px; }
+.prof-tag-edit { display: flex; gap: 8px; align-items: center; }
+.prof-tag-edit input { flex: 1; min-width: 0; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.18); border-radius: 10px; color: #fff; padding: 9px 12px; font: inherit; font-size: 14px; }
+.prof-tag-count { color: var(--muted); font-size: 11px; }

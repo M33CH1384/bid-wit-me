@@ -106,6 +106,8 @@ button.ghost { background: transparent !important; }
 .soc-prof-head { display: flex; align-items: center; gap: 12px; }
 .soc-prof-head h3 { margin: 0; font-family: var(--display); font-size: 28px; letter-spacing: .03em; }
 .soc-prof-head p { margin: 2px 0 0; }
+.soc-tagline { font-size: 13.5px; color: #ece5cf; overflow-wrap: anywhere; }
+.soc-tagline a { color: var(--gold); text-decoration: underline; }
 .soc-champ { margin-left: 8px; font-size: 18px; }
 .soc-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .soc-stats div { background: rgba(255,255,255,.05); border-radius: 8px; padding: 8px 4px; text-align: center; display: flex; flex-direction: column; }

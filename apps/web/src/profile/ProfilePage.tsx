@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AvatarCircle, compressAvatarFile, forgetAvatar, validateAvatarDataUrl } from '../avatar';
+import { TaglineText } from '../tagline';
 
 /** Rep profile page: Rank / Challenges / Stats / Achievements / Unlocks tabs. */
 
@@ -18,7 +19,7 @@ interface Challenge { id: string; title: string; metric: string; target: number;
 interface Achievement { id: string; title: string; hint: string; xp: number; coins: number; unlockedAt: number | null }
 interface Unlock { itemId: string; source: string; unlockedAt: number; slot: string | null; equipped: boolean }
 interface Profile {
-  user: { id: string; name: string; avatar: string | null; avatarUpdatedAt: number | null };
+  user: { id: string; name: string; avatar: string | null; avatarUpdatedAt: number | null; tagline: string | null };
   level: { level: number; xp: number; title: string; xpForNext: number; xpIntoLevel: number };
   season: { id: string; name: string; endsAt: number };
   rank: { team: SeasonRank; cutthroat: SeasonRank };
@@ -109,6 +110,10 @@ export default function ProfilePage() {
   const [picBusy, setPicBusy] = useState(false);
   const [picErr, setPicErr] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  // Tagline (Demetrius 2026-10-20): null draft = untouched, showing the saved line.
+  const [tagDraft, setTagDraft] = useState<string | null>(null);
+  const [tagBusy, setTagBusy] = useState(false);
+  const [tagErr, setTagErr] = useState<string | null>(null);
 
   const load = () => {
     setError(null);
@@ -143,6 +148,20 @@ export default function ProfilePage() {
     } catch (e) { setPicErr((e as Error).message); } finally { setPicBusy(false); }
   };
 
+  const onSaveTagline = async () => {
+    if (tagDraft === null) return;
+    setTagErr(null); setTagBusy(true);
+    try {
+      await api<{ ok: boolean; tagline: string | null }>('/api/profile/me/tagline', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ tagline: tagDraft }),
+      });
+      setTagDraft(null);
+      load();
+    } catch (e) { setTagErr((e as Error).message); } finally { setTagBusy(false); }
+  };
+
   const claim = async (id: string) => {
     setClaiming(id);
     try {
@@ -163,6 +182,7 @@ export default function ProfilePage() {
 
   const xpPct = Math.min(100, Math.round((profile.level.xpIntoLevel / Math.max(1, profile.level.xpForNext)) * 100));
   const pendingClaims = [...profile.challenges.daily, ...profile.challenges.weekly].filter((c) => c.progress >= c.target && !c.claimed).length;
+  const tagValue = tagDraft ?? profile.user.tagline ?? '';
 
   return (
     <div className="profile-page">
@@ -176,6 +196,7 @@ export default function ProfilePage() {
         <div className="prof-id">
           <h2>{profile.user.name}</h2>
           <div className="prof-level"><b>Level {profile.level.level}</b><span>{profile.level.title}</span></div>
+          <TaglineText text={profile.user.tagline} className="prof-tagline" />
           <div className="xp-bar"><i style={{ width: `${xpPct}%` }} /><small>{profile.level.xpIntoLevel}/{profile.level.xpForNext} XP</small></div>
         </div>
         <div className="prof-coins">
@@ -196,6 +217,23 @@ export default function ProfilePage() {
           <button type="button" className="prof-pic-btn ghost" data-testid="avatar-remove" disabled={picBusy} onClick={() => void onRemovePic()}>Remove</button>
         )}
         {picErr && <span className="prof-pic-err" role="alert">{picErr}</span>}
+      </div>
+
+      {/* Tagline: a short line on your profile — links in it work (Demetrius 2026-10-20). */}
+      <div className="prof-tag-row">
+        <label className="prof-pic-note" htmlFor="prof-tagline-input">Tagline — shown on your profile. Links work.</label>
+        <div className="prof-tag-edit">
+          <input id="prof-tagline-input" data-testid="tagline-input" type="text" maxLength={140}
+            placeholder="Say something about yourself…" value={tagValue}
+            onChange={(e) => { setTagDraft(e.target.value); setTagErr(null); }} />
+          <button type="button" className="prof-pic-btn" data-testid="tagline-save"
+            disabled={tagBusy || tagDraft === null || tagValue === (profile.user.tagline ?? '')}
+            onClick={() => void onSaveTagline()}>
+            {tagBusy ? 'Saving…' : 'Save tagline'}
+          </button>
+        </div>
+        <small className="prof-tag-count">{tagValue.length}/140 · clear it and save to remove</small>
+        {tagErr && <span className="prof-pic-err" role="alert">{tagErr}</span>}
       </div>
 
       <nav className="prof-tabs" role="tablist">
