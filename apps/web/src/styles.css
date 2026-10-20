@@ -1452,6 +1452,9 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
   background: linear-gradient(180deg, #ffd75e, #f59e0b); box-shadow: 0 6px 22px rgba(0,0,0,.55), 0 0 18px rgba(245,158,11,.5); animation: runit-in .35s cubic-bezier(.2,1.4,.4,1) both; }
 .misdeal-btn:hover { filter: brightness(1.08); }
 .misdeal-btn:active { transform: scale(.97); }
+/* In-panel misdeal call: sits inside the bid panel under the number grid, full width, gently pulsing so it's impossible to miss. */
+.misdeal-in-panel { width: 100%; margin-top: 4px; animation: runit-in .35s cubic-bezier(.2,1.4,.4,1) both, misdeal-pulse 1.6s ease-in-out 1s infinite; }
+@keyframes misdeal-pulse { 0%, 100% { box-shadow: 0 6px 22px rgba(0,0,0,.55), 0 0 18px rgba(245,158,11,.5); } 50% { box-shadow: 0 6px 22px rgba(0,0,0,.55), 0 0 32px rgba(245,158,11,.9); } }
 .misdeal-reveal { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; padding: 14px; pointer-events: none; animation: rz-in .25s ease both; }
 .misdeal-panel { max-width: min(96vw, 620px); padding: 16px 18px 13px; text-align: center; border-radius: 18px; }
 .misdeal-head { font-family: var(--display); font-weight: 900; font-style: italic; text-transform: uppercase; letter-spacing: .05em; font-size: clamp(22px, 5vw, 32px); color: #ffd75e; text-shadow: 0 2px 10px rgba(0,0,0,.6); }
@@ -1764,15 +1767,15 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .rewards-screen { position: fixed; inset: 0; z-index: 1100; display: flex; align-items: center; justify-content: center;
   padding: calc(20px + env(safe-area-inset-top)) 14px calc(20px + env(safe-area-inset-bottom));
   background: radial-gradient(90% 60% at 50% 30%, rgba(90,50,140,.5), rgba(10,6,16,.96) 70%);
-  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
   opacity: 0; transition: opacity .35s ease; overflow-y: auto; }
 .rewards-screen.in { opacity: 1; }
 .rw-card { width: min(100%, 480px); border-radius: 20px; padding: 22px 18px 18px; display: flex; flex-direction: column; gap: 14px;
+  -webkit-backdrop-filter: none; backdrop-filter: none;
   transform: translateY(14px) scale(.98); transition: transform .4s cubic-bezier(.2,.9,.3,1.2); }
 .rewards-screen.in .rw-card { transform: none; }
 .rw-head { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
 .rw-trophy { font-size: 44px; line-height: 1; animation: rw-pop .5s cubic-bezier(.2,.9,.3,1.4) both; }
-@keyframes rw-pop { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes rw-pop { from { transform: scale(.4); opacity: 0; } to { transform: none; opacity: 1; } }
 .rw-head h2 { margin: 0; font-family: var(--display); font-weight: 900; letter-spacing: .06em; text-transform: uppercase;
   font-size: clamp(34px, 9vw, 52px); line-height: 1; }
 .rw-head h2.win { color: var(--gold); text-shadow: 0 0 28px rgba(255,200,60,.6), 0 3px 0 rgba(90,50,0,.7); }
