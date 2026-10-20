@@ -39,3 +39,30 @@ echo "▶ deploying Pages (bid-wit-me)…"
 # run from apps/web so wrangler picks up its wrangler.toml (the API service binding) and functions/ (the /api proxy)
 (cd apps/web && $W pages deploy dist --project-name=bid-wit-me --branch=main --commit-dirty=true)
 echo "✓ done: https://bid-wit-me.pages.dev  ·  server $url"
+
+# TEMPORARY one-time bootstrap — remove once /api/push/vapid-key answers 200.
+# The Worker needs VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT secrets
+# for Web Push and the owner cannot set them by hand, so set them here, inside
+# the one pipeline that already holds Cloudflare credentials.
+# Idempotency guard: if the key endpoint already answers 200, do nothing —
+# rotating keys after browsers have subscribed would orphan every existing
+# subscription. The private key is generated in this shell, piped straight to
+# `wrangler secret put`, and never echoed.
+echo "▶ checking Web Push (VAPID) configuration…"
+vapid_code=$(curl -s -o /dev/null -w '%{http_code}' https://bid-wit-me.pages.dev/api/push/vapid-key || echo 000)
+if [[ "$vapid_code" == "200" ]]; then
+  echo "✓ VAPID already configured, skipping bootstrap"
+elif [[ "$vapid_code" == "000" ]]; then
+  echo "⚠ could not reach the vapid-key endpoint — skipping VAPID bootstrap this run"
+else
+  echo "VAPID endpoint returned HTTP $vapid_code — generating a fresh key pair"
+  vapid_keys=$(npx -y web-push generate-vapid-keys 2>/dev/null)
+  vapid_pub=$(printf '%s' "$vapid_keys" | grep -oE '\b[A-Za-z0-9_-]{87}\b' | head -1 || true)
+  vapid_priv=$(printf '%s' "$vapid_keys" | grep -oE '\b[A-Za-z0-9_-]{43}\b' | head -1 || true)
+  if [[ -z "$vapid_pub" || -z "$vapid_priv" ]]; then echo "✘ failed to generate a VAPID key pair" >&2; exit 1; fi
+  echo "Public key: $vapid_pub"
+  (cd apps/server && printf '%s' "$vapid_pub" | $W secret put VAPID_PUBLIC_KEY)
+  (cd apps/server && printf '%s' "$vapid_priv" | $W secret put VAPID_PRIVATE_KEY)
+  (cd apps/server && printf '%s' 'mailto:demetrius@bidwitme.com' | $W secret put VAPID_SUBJECT)
+  echo "✓ VAPID secrets set on bid-wit-me-server"
+fi
