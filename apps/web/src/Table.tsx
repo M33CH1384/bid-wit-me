@@ -3,6 +3,7 @@ import { musicTension } from './musicTension';
 import { enterTable, quitGame, silenceGame, suspendGame } from './gameSession';
 import { cardControlLabel } from './cardA11y';
 import type { HandHitCard } from './three/handHit';
+import { FIRST_FRAME_FALLBACK_MS, dealGateOpen } from './three/dealFlight';
 import { useEscapeClose } from './useEscapeClose';
 import { type FlyingPlay, confirmPlay, feltClearsSelection, flyPlay, flyingCard, ignorePlayTap, playTrickOf, type PlayTrick } from './online/playGuard';
 import { actingSeat, localSeatOfServerTurn, turnView, type TurnBadge } from './turnState';
@@ -561,6 +562,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [dealReady, setDealReady] = useState(false);
   const [sceneDealt, setSceneDealt] = useState<number | null>(null);
   const onDealDone = useCallback((h: number) => setSceneDealt(h), []);
+  // The deal also waits for the scene's first presented frame, so the intro flight is seen
+  // instead of expiring behind shader compile on a heavy first load.
+  const [sceneFirstFrame, setSceneFirstFrame] = useState(false);
+  const [gateMountedAt] = useState(() => Date.now());
+  const onSceneFirstFrame = useCallback(() => setSceneFirstFrame(true), []);
   const { st, view, pause, error, apply, introHand, dealing, k } = online ? online.source : useGame(initialRules, seed, levelFor, speed, resume?.state, learning && tipOpen, startDealer, partnerHint, localReport, dealReady, sceneDealt);
   useEffect(() => { online?.setLearning?.(learning); }, [learning]); // eslint-disable-line react-hooks/exhaustive-deps
   const r = st.rules;
@@ -774,7 +780,15 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   }, []);
   useEffect(() => { if (dressed && effectsWarm) setLoadProgress(1); }, [dressed, effectsWarm]);
   const loading = tableStillLoading(dressed, effectsWarm, loadGiveUp);
-  useEffect(() => { if (tableReady && !loading) setDealReady(true); }, [tableReady, loading]);
+  useEffect(() => {
+    if (dealReady) return;
+    if (dealGateOpen({ tableReady, loading, firstFrame: sceneFirstFrame, mountedAt: gateMountedAt, now: Date.now() })) { setDealReady(true); return; }
+    if (tableReady && !loading && !sceneFirstFrame) {
+      // No frame yet: lift the gate at the fallback so a starved canvas cannot hold the deal.
+      const t = window.setTimeout(() => setDealReady(true), Math.max(0, gateMountedAt + FIRST_FRAME_FALLBACK_MS - Date.now()));
+      return () => window.clearTimeout(t);
+    }
+  }, [tableReady, loading, sceneFirstFrame, dealReady, gateMountedAt]);
   const loadShownAt = useRef(performance.now());
   useEffect(() => { (window as unknown as { __bwmLoading?: unknown }).__bwmLoading = { shownAt: loadShownAt.current, room: sound.roomStyle?.name ?? null }; }, []);
   useEffect(() => {
@@ -1484,6 +1498,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       <Suspense fallback={null}>
         <Scene
           onTableReady={onTableReady}
+          onFirstFrame={onSceneFirstFrame}
           onTableDressed={onTableDressed}
           onHandLive={onHandLive}
           onDealDone={onDealDone}

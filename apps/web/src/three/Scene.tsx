@@ -51,6 +51,8 @@ export interface SceneProps {
   quality: 'high' | 'low';
   /** the 3D table has rendered its first frame (the placeholder fades out). Textures and the hall light stream in after this. */
   onTableReady?: () => void;
+  /** The canvas has presented a frame and the frame loop is past it (the second frame on the loop): the first frame's shader compiles are behind it. */
+  onFirstFrame?: () => void;
   /** Felt and rail maps have settled (each one applied, or that download failed), so the cloth is no longer a flat stand-in. */
   onTableDressed?: () => void;
   /** True once the 3D hand is the fan on screen. False returns the flat fan; it must not stay true across a hand the 3D scene has stopped drawing. */
@@ -1461,6 +1463,8 @@ export default function Scene(props: SceneProps) {
   const [dragCard, setDragCard] = useState<Card | null>(null);
   const onTableReady = props.onTableReady;
   const tableReady = useCallback(() => { onTableReady?.(); }, [onTableReady]);
+  const onFirstFrameProp = props.onFirstFrame;
+  const firstFrame = useCallback(() => { onFirstFrameProp?.(); }, [onFirstFrameProp]);
   const onShow = useCallback(() => setShowTable(true), []);
   const onLit = useCallback(() => setLit(true), []);
   const onDressed = props.onTableDressed;
@@ -1502,6 +1506,7 @@ export default function Scene(props: SceneProps) {
       <AspectWatcher onAspect={setAspect} />
       <EffectWarmup quality={props.quality} />
       <SnapHook />
+      <FirstFrameSignal onFirstFrame={firstFrame} />
       <CameraRig view={props.view} />
       <FxShake table={tableGroup} />
       <color attach="background" args={[def.clear]} />
@@ -1673,6 +1678,32 @@ function SnapHook() {
     w.__bwmSnap = () => { gl.render(scene, camera); return gl.domElement.toDataURL('image/png'); };
     return () => { delete w.__bwmSnap; };
   }, [gl, scene, camera]);
+  return null;
+}
+
+/**
+ * Reports when the canvas is really rendering: compiles the scene's shaders up front, then
+ * fires on the second frame on the loop — by then the first frame, with its compile stalls,
+ * has presented, so whatever the frame clock drives next (the intro deal) is on screen.
+ * Fires once per mount; it never gates interactivity, only the deal intro's release.
+ */
+function FirstFrameSignal({ onFirstFrame }: { onFirstFrame?: () => void }) {
+  const gl = useThree((s) => s.gl);
+  const scene = useThree((s) => s.scene);
+  const camera = useThree((s) => s.camera);
+  const invalidate = useThree((s) => s.invalidate);
+  const frames = useRef(0);
+  const fired = useRef(false);
+  useEffect(() => {
+    try { gl.compile(scene, camera); } catch { /* a failed warmup must never hold the deal */ }
+    invalidate();
+  }, [gl, scene, camera, invalidate]);
+  useFrame(() => {
+    if (fired.current) return;
+    frames.current += 1;
+    if (frames.current >= 2) { fired.current = true; onFirstFrame?.(); return; }
+    invalidate(); // demand loop: make sure the confirming frame is scheduled
+  });
   return null;
 }
 

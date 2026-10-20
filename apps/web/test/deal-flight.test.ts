@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Xform } from '../src/three/layout';
-import { dealHoldReleased, handNeedsDeal, handOnFan, handSlotKey, openingFlight } from '../src/three/dealFlight';
+import { FIRST_FRAME_FALLBACK_MS, dealGateOpen, dealHoldReleased, handNeedsDeal, handOnFan, handSlotKey, openingFlight } from '../src/three/dealFlight';
 import { dealTimeline, dealtSlotCount, seatDealDelay } from '../src/three/dealTimeline';
 
 const deck: Xform = { p: [1, 2, 3], q: [0, 0, 0, 1], s: 1 };
@@ -88,5 +88,30 @@ describe('deal hold release', () => {
 
   it('is a no-op for a card that was never held', () => {
     expect(dealHoldReleased({ held: false, liveHold: false, started: false })).toBe(false);
+  });
+});
+
+describe('deal gate waits for the scene first rendered frame', () => {
+  // Demetrius 2026-10-19 (polish): on a heavy first load the deal window expired behind
+  // WebGL/shader compile, so cards appeared instead of flying. The gate holds the intro
+  // until the canvas has presented a frame — and never holds it forever.
+  const at = { mountedAt: 10_000 };
+
+  it('stays shut while the loader is up or the table is not ready, even with a frame', () => {
+    expect(dealGateOpen({ tableReady: false, loading: false, firstFrame: true, ...at, now: 10_000 })).toBe(false);
+    expect(dealGateOpen({ tableReady: true, loading: true, firstFrame: true, ...at, now: 10_000 })).toBe(false);
+  });
+
+  it('opens once the table is up and the scene has presented a frame', () => {
+    expect(dealGateOpen({ tableReady: true, loading: false, firstFrame: true, ...at, now: 10_001 })).toBe(true);
+  });
+
+  it('stays shut before the fallback when no frame has rendered', () => {
+    expect(dealGateOpen({ tableReady: true, loading: false, firstFrame: false, ...at, now: 10_000 + FIRST_FRAME_FALLBACK_MS - 1 })).toBe(false);
+  });
+
+  it('lifts at the fallback even if the canvas never renders, so the deal is never held forever', () => {
+    expect(dealGateOpen({ tableReady: true, loading: false, firstFrame: false, ...at, now: 10_000 + FIRST_FRAME_FALLBACK_MS })).toBe(true);
+    expect(dealGateOpen({ tableReady: true, loading: false, firstFrame: false, ...at, now: 10_000 + FIRST_FRAME_FALLBACK_MS + 5_000 })).toBe(true);
   });
 });
