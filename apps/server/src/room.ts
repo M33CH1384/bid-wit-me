@@ -8,7 +8,7 @@
  *  - all durable state lives in one plain-JSON `RoomData` object that the DO saves as a single row.
  */
 import {
-  type Action, type GameState, type Series, addSeriesGame, emptySeries, seriesForGameStart, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, RulesConfigError, acceptRules, applyAction, canRunIt, runPlayout, type Seat, spectatorView, isFreshDeal, isNukeTrick, nextDealer, makeRules, newGame, pendingTurn, secureSeed, throwInOpen, viewFor, withCompleteNil,
+  type Action, type GameHandLog, type GameState, type Series, addSeriesGame, emptySeries, seriesForGameStart, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, RulesConfigError, acceptRules, applyAction, canRunIt, runPlayout, type Seat, spectatorView, HandLogBuilder, isFreshDeal, isNukeTrick, nextDealer, makeRules, newGame, pendingTurn, secureSeed, throwInOpen, viewFor, withCompleteNil,
 } from '@spades/rules';
 import { voiceGender } from '@spades/bots';
 import { BUCKET_THIN } from './voice/writer';
@@ -144,6 +144,13 @@ export interface RoomData {
    * so a client that missed the claim frame can still play the remaining tricks.
    */
   runPlayback?: RunPlayback;
+  /**
+   * Hand-history log for testing (Demetrius 2026-10-19): the ground truth of the current
+   * game — every hand's deal, actions, tricks and run-claim detail. Served at
+   * GET /api/tables/<code>/handlog to admins and account holders at the table.
+   * Reset when a new game starts.
+   */
+  handLog?: GameHandLog;
 }
 
 /** Release 9b: this table plays one tournament match (rules locked, seats reserved for the entrants, autostart). */
@@ -242,6 +249,8 @@ export class Room {
    * and the watchdog has to play a legal card or bid.
    */
   stallsLeft = 0;
+  /** Wraps `data.handLog`; rebuilt lazily after hibernation. */
+  private logBuilder: HandLogBuilder | null = null;
 
   constructor(public data: RoomData, private io: RoomIO, private timing: RoomTiming = DEFAULT_TIMING) {
     data.seq ??= 0;
@@ -1130,6 +1139,9 @@ export class Room {
       if (e instanceof RulesConfigError) throw new RoomError('BAD_RULES', e.problems.join('; ') || 'Invalid rules');
       throw e;
     }
+    // Hand-history log (Demetrius 2026-10-19): a fresh ground-truth log per game, first hand dealt.
+    this.logBuilder = HandLogBuilder.start(d.game, this.io.now(), d.code);
+    d.handLog = this.logBuilder.log;
     // venue: a 'random' pick is rolled per game (so a rematch can land somewhere new); everyone gets the same one
     d.venueNow = (d.venue ?? 'classic') === 'random' ? rollVenue(parseInt(secureSeed().slice(0, 8), 16) / 4294967296, d.venueNow) : (d.venue ?? 'classic') as VenueId;
     d.seq = (d.seq ?? 0) + 1;
@@ -1155,6 +1167,27 @@ export class Room {
 
   /* ---------------------------------------------------------------- game */
 
+  /* ------------------------------------------------------------ hand log */
+
+  /**
+   * The hand log for the current game (Demetrius 2026-10-19). Lazily wraps `data.handLog`
+   * so a hibernated Durable Object rebuilds the builder on wake. A game already running when
+   * logging arrived gets an empty log whose first recorded action opens the current hand.
+   */
+  private handLog(): HandLogBuilder | null {
+    const d = this.data;
+    if (!d.game) { this.logBuilder = null; return null; }
+    if (this.logBuilder && this.logBuilder.log === d.handLog) return this.logBuilder;
+    if (!d.handLog) d.handLog = { v: 1, seed: d.game.seed, rules: d.game.rules, startedAt: this.io.now(), room: d.code, hands: [] };
+    this.logBuilder = HandLogBuilder.wrap(d.handLog);
+    return this.logBuilder;
+  }
+
+  /** The hand log as plain JSON for GET /api/tables/<code>/handlog (testing). */
+  handLogJson(): GameHandLog | null {
+    return this.data.handLog ?? null;
+  }
+
   private apply(action: Action): void {
     const d = this.data;
     const before = d.game!;
@@ -1163,6 +1196,7 @@ export class Room {
     if (next === before) return;
     d.game = next;
     d.seq = (d.seq ?? 0) + 1;
+    this.handLog()?.record(before, next, action, d.seq);
     this.parkEliminated();
     for (const ev of momentsFor(before, action, d.game)) this.talk(ev);
     d.lastActive = this.io.now();
@@ -1713,8 +1747,11 @@ export class Room {
 
   private nextHand(): void {
     const d = this.data;
-    d.game = applyAction(d.game!, { type: 'nextHand' });
+    const before = d.game!;
+    d.game = applyAction(before, { type: 'nextHand' });
     d.seq = (d.seq ?? 0) + 1;
+    // Hand-log: open the new hand's entry from the dealt state.
+    this.handLog()?.record(before, d.game, { type: 'nextHand' }, d.seq);
     d.runPlayback = undefined;
     d.ready = [];
     d.deadline = null;

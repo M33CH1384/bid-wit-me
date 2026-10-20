@@ -280,6 +280,21 @@ export default {
         const r = await stub.fetch(new Request(`https://table/test-state?code=${code}`, { method: 'POST', body: await req.text() }));
         return json({ ok: r.ok }, { status: r.status }, origin);
       }
+      if (parts[3] === 'handlog' && req.method === 'GET') {
+        // Hand-history log for testing (Demetrius 2026-10-19): the ground truth of the current
+        // game — deals, actions, tricks, run-claim detail. Admins and seated account holders only;
+        // the table's Durable Object makes the final call on the requester's identity.
+        const slow = await limited(req, env, 'info', origin);
+        if (slow) return slow;
+        const t = await verifyTicket(env.DB, url.searchParams.get('ticket'), Date.now());
+        if (!t) return json({ error: 'ticket required' }, { status: 401 }, origin);
+        const h = new Headers();
+        h.set('x-uid', t.uid);
+        if (isAdmin(env, t.uid, t.name)) h.set('x-admin', '1');
+        const r = await stub.fetch(new Request(`https://table/handlog?code=${code}`, { headers: h }));
+        const body = await r.json().catch(() => ({ error: 'unavailable' }));
+        return json(body, { status: r.status }, origin);
+      }
       if (parts.length === 3 && req.method === 'GET') {
         const slow = await limited(req, env, 'info', origin);
         if (slow) return slow;
@@ -493,6 +508,20 @@ export class TableDO extends DurableObject<Env> {
     if (url.pathname === '/info') {
       if (!this.room) return Response.json({ exists: false }, { status: 404 });
       return Response.json({ exists: true, ...this.room.summary() });
+    }
+    if (url.pathname === '/handlog') {
+      // Hand-history log for testing (Demetrius 2026-10-19): ground truth of the current game.
+      // The outer Worker forwards the verified ticket as x-uid and marks x-admin for admins.
+      if (!this.room) return Response.json({ error: 'no such table' }, { status: 404 });
+      if (req.headers.get('x-admin') !== '1') {
+        const uid = req.headers.get('x-uid');
+        const d = this.room.data;
+        const participant = !!uid && Object.values(d.members).some((m) => m.uid === uid);
+        if (!participant) return Response.json({ error: 'not found' }, { status: 404 });
+      }
+      const log = this.room.handLogJson();
+      if (!log) return Response.json({ error: 'no game yet' }, { status: 404 });
+      return Response.json(log, { headers: { 'cache-control': 'no-store' } });
     }
     if (url.pathname === '/ws') {
       if (!this.room) return new Response('no such table', { status: 404 });

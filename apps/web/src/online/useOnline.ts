@@ -33,6 +33,9 @@ export interface GameSource {
   /** Bumps when a sent play is released, so a tap held locally can open again. */
   playGate?: number;
   restart: () => void;
+  /** testing aid: the game's hand log. Offline games keep one locally; online games log on the
+   *  server instead (GET /api/tables/<code>/handlog), so this returns null here. */
+  handLog: () => null;
   introHand: number | null;
   dealing: boolean;
   k: 1;
@@ -132,6 +135,7 @@ export function useOnlineSource(cs: ConnState, conn: TableConnection): (GameSour
   if (!shown) return null;
   return {
     st: shown.st, view: shown.view, rot: shown.rot, pause, error: err, apply, restart: () => {},
+    handLog: () => null,
     introHand: intro && intro.hand === shown.st.handNo ? intro.hand : null, dealing, k: 1, locked: cs.pending,
     playGate: cs.playGate ?? 0,
   };

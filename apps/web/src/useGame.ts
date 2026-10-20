@@ -3,7 +3,7 @@ import { noteLocalGame } from './localStats';
 import { HAPTIC, haptic } from './haptics';
 import { offlineTalk } from './offlineTalk';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { type Action, type GameState, type TableRules, applyAction, canRunIt, isNukeTrick, newGame, pendingTurn, secureSeed, viewFor } from '@spades/rules';
+import { type Action, type GameHandLog, type GameState, type TableRules, HandLogBuilder, applyAction, canRunIt, isNukeTrick, newGame, pendingTurn, secureSeed, viewFor } from '@spades/rules';
 import { type BotLevel, type PartnerHint, chooseBotAction, parseHint } from '@spades/bots';
 import { dealTimeline } from './three/dealTimeline';
 import { misdealRevealMs } from './misdeal';
@@ -77,11 +77,37 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
     return () => { clearTimeout(t); clearTimeout(f); };
   }, [introHand, k, dealReady]);
 
+  // Hand-history log for testing (Demetrius 2026-10-19): the offline mirror of the server
+  // log. Every applied action is recorded; the latest log is kept in localStorage under
+  // 'bwm.handlog' (written when a hand completes or the game ends) so a suspect hand can be
+  // pulled and diffed after the fact.
+  const logRef = useRef<HandLogBuilder | null>(null);
+  const logSeq = useRef(0);
+  const logOf = (): HandLogBuilder => {
+    if (!logRef.current) {
+      const init = stRef.current;
+      logRef.current = resume && init.tricks.length > 0
+        ? HandLogBuilder.wrap({ v: 1, seed: init.seed, rules: init.rules, startedAt: Date.now(), room: 'offline', hands: [] })
+        : HandLogBuilder.start(init, Date.now(), 'offline');
+    }
+    return logRef.current;
+  };
+  const recordLog = (prev: GameState, next: GameState, action: Action) => {
+    try {
+      const b = logOf();
+      b.record(prev, next, action, ++logSeq.current);
+      if (next.history.length > prev.history.length || next.phase === 'gameOver') {
+        try { localStorage.setItem('bwm.handlog', JSON.stringify(b.snapshot())); } catch { /* storage off — the log still lives in the hook */ }
+      }
+    } catch { /* logging never breaks the game */ }
+  };
+
   const apply = useCallback((action: Action): boolean => {
     const prev = stRef.current;
     try {
       const next = applyAction(prev, action);
       setError(null);
+      if (next !== prev) recordLog(prev, next, action);
       try { offlineTalk.step(prev, action, next); } catch { /* talk never breaks the game */ }
       if (next.tricks.length > prev.tricks.length) setPause(true);
       stRef.current = next;
@@ -156,10 +182,14 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
   const restart = useCallback((r: TableRules = rules) => {
     const next = newGame(r, secureSeed());
     stRef.current = next;
+    logRef.current = HandLogBuilder.start(next, Date.now(), 'offline');
+    logSeq.current = 0;
     setSt(next);
     setPause(false);
     setError(null);
   }, [rules]);
 
-  return { st, view: viewFor(st, HUMAN), pause, error, apply, restart, introHand, dealing: busy, k };
+  return { st, view: viewFor(st, HUMAN), pause, error, apply, restart, introHand, dealing: busy, k,
+    /** the hand log for the current offline game (testing) */
+    handLog: (): GameHandLog | null => logRef.current?.snapshot() ?? null };
 }
