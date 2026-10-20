@@ -35,6 +35,8 @@ export interface SocialState {
   tab: SocialTab;
   dmWith: string | null;
   profile: string | null;
+  /** user id for the open profile when the caller knew it (rows carry ids; names alone resolve in the view) */
+  profileId: string | null;
   globalSeen: number;
   myTable: MyTable | null;
   /** Release 9b: tournament notices (check-in open, match ready, champion) */
@@ -52,7 +54,7 @@ const seen0 = (() => { try { return Number(localStorage.getItem(GLOBAL_SEEN_KEY)
 
 let state: SocialState = {
   status: 'off', you: null, admin: false, users: {}, global: [], friends: null, settings: null, unread: {}, dms: {}, names: {}, invites: [], sent: {}, toasts: [],
-  open: false, tab: 'players', dmWith: null, profile: null, globalSeen: seen0, myTable: null, notices: [], tour: null, tables: {}, ended: {},
+  open: false, tab: 'players', dmWith: null, profile: null, profileId: null, globalSeen: seen0, myTable: null, notices: [], tour: null, tables: {}, ended: {},
 };
 const subs = new Set<() => void>();
 function set(p: Partial<SocialState> | ((s: SocialState) => Partial<SocialState>)) {
@@ -293,18 +295,18 @@ export const social = {
     if ((tab ?? state.tab) === 'chat') social.markGlobalSeen();
     if (extra.dmWith) social.openDm(extra.dmWith);
   },
-  close() { set({ open: false, profile: null }); },
-  showTour(id: string | null) { set({ open: true, tab: 'tournaments', profile: null, tour: id }); },
+  close() { set({ open: false, profile: null, profileId: null }); },
+  showTour(id: string | null) { set({ open: true, tab: 'tournaments', profile: null, profileId: null, tour: id }); },
   dismissNotice(id: string) { set((s) => ({ notices: s.notices.filter((n) => n.id !== id) })); },
-  tab(tab: SocialTab) { set({ tab, profile: null, ...(tab === 'tournaments' ? { tour: null } : {}) }); if (tab === 'chat') social.markGlobalSeen(); },
+  tab(tab: SocialTab) { set({ tab, profile: null, profileId: null, ...(tab === 'tournaments' ? { tour: null } : {}) }); if (tab === 'chat') social.markGlobalSeen(); },
   markGlobalSeen() { const last = state.global[state.global.length - 1]?.id ?? state.globalSeen; saveSeen(last); set({ globalSeen: last }); },
   openDm(pid: string) {
-    set((s) => ({ tab: 'messages', dmWith: pid, profile: null, unread: { ...s.unread, [pid]: 0 } }));
+    set((s) => ({ tab: 'messages', dmWith: pid, profile: null, profileId: null, unread: { ...s.unread, [pid]: 0 } }));
     send({ t: 'dmHistory', with: pid });
     send({ t: 'read', with: pid });
   },
   closeDm() { set({ dmWith: null }); },
-  showProfile(name: string | null) { set({ profile: name }); },
+  showProfile(name: string | null, id?: string) { set({ profile: name, profileId: name ? id ?? null : null }); },
   chat(text: string) { if (!send({ t: 'chat', text })) toast("Not connected: try again in a moment.", 'error'); },
   dm(to: string, text: string) { if (!send({ t: 'dm', to, text })) toast("Not connected: try again in a moment.", 'error'); },
   invite(to: string, t: MyTable) { send({ t: 'invite', to, code: t.code, ...(t.mode ? { mode: t.mode } : {}), ...(t.seat !== undefined ? { seat: t.seat } : {}) }); },

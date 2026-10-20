@@ -160,7 +160,7 @@ function SocialPanel() {
           </div>
         )}
         <div className="soc-body">
-          {s.profile ? <Profile name={s.profile} /> :
+          {s.profile ? <Profile name={s.profile} id={s.profileId ?? undefined} /> :
             s.tab === 'players' ? <Players signedIn={signedIn} /> :
             s.tab === 'chat' ? <GlobalChat signedIn={signedIn} /> :
             s.tab === 'messages' ? <Messages signedIn={signedIn} /> :
@@ -247,7 +247,7 @@ function PlayerRow({ u, me, friend, pending, signedIn, myTable, tables }: {
         <span className={`soc-av ${u.guest ? 'guest' : ''}`} aria-hidden>{u.name.slice(0, 1).toUpperCase()}</span>
         <span className="soc-pl-txt">
           {!u.guest
-            ? <button type="button" className="soc-pl-name link" onClick={() => social.showProfile(u.name)} data-testid={`pl-name-${u.name}`}>{u.name}{me && <em> (you)</em>}{u.guest && <i className="soc-tag">Guest</i>}{friend && <i className="soc-tag friend" title="Friend">★ Friend</i>}</button>
+            ? <button type="button" className="soc-pl-name link" onClick={() => social.showProfile(u.name, u.id)} data-testid={`pl-name-${u.name}`}>{u.name}{me && <em> (you)</em>}{u.guest && <i className="soc-tag">Guest</i>}{friend && <i className="soc-tag friend" title="Friend">★ Friend</i>}</button>
             : <span className="soc-pl-name">{u.name}{me && <em> (you)</em>}{u.guest && <i className="soc-tag">Guest</i>}{friend && <i className="soc-tag friend" title="Friend">★ Friend</i>}</span>}
           <span className={`soc-pl-status ${u.status.kind}`}>{statusLabel(u.status, modeName)}</span>
         </span>
@@ -259,7 +259,7 @@ function PlayerRow({ u, me, friend, pending, signedIn, myTable, tables }: {
           {!u.guest && <button type="button" disabled={!signedIn} onClick={() => social.openDm(u.id)} data-testid={`pl-chat-${u.name}`}>💬 Chat</button>}
           <button type="button" disabled={!canInvite} onClick={() => void inviteTo(u.id, myTable)} data-testid={`pl-invite-${u.name}`}>➕ Invite{myTable ? '' : ' (new table)'}</button>
           {!u.guest && !friend && <button type="button" disabled={!signedIn || pending} onClick={() => social.friend('request', u.id)} data-testid={`pl-add-${u.name}`}>{pending ? 'Requested' : '👋 Add friend'}</button>}
-          {!u.guest && <button type="button" onClick={() => social.showProfile(u.name)} data-testid={`pl-profile-${u.name}`}>👤 Profile</button>}
+          {!u.guest && <button type="button" onClick={() => social.showProfile(u.name, u.id)} data-testid={`pl-profile-${u.name}`}>👤 Profile</button>}
         </div>
       )}
     </li>
@@ -327,7 +327,7 @@ function GlobalChat({ signedIn }: { signedIn: boolean }) {
         {!s.global.length && <p className="soc-empty">No messages yet. Say hi 👋</p>}
         {s.global.map((l) => (
           <div key={l.id} className={`soc-line ${l.from === s.you?.id ? 'mine' : ''}`} data-testid="global-line">
-            <button type="button" className="soc-line-name" onClick={() => !l.from.startsWith('g:') && social.showProfile(l.name)}>{l.name}{l.admin && <i className="soc-tag mod">MOD</i>}</button>
+            <button type="button" className="soc-line-name" onClick={() => !l.from.startsWith('g:') && social.showProfile(l.name, l.from.startsWith('u:') ? l.from.slice(2) : undefined)}>{l.name}{l.admin && <i className="soc-tag mod">MOD</i>}</button>
             <span className="soc-line-text">{l.text}</span>
             <span className="soc-line-time">{timeAgo(l.at)}</span>
             {l.from !== s.you?.id && (signedIn || s.admin) && <button type="button" className="soc-more" aria-label="Message actions" data-testid={`line-more-${l.id}`} onClick={() => setMenu(menu === l.id ? null : l.id)}>⋯</button>}
@@ -385,7 +385,7 @@ function DmThread({ pid }: { pid: string }) {
     <div className="soc-chat">
       <div className="soc-dm-head">
         <button type="button" className="link" onClick={() => social.closeDm()} data-testid="dm-back">← All messages</button>
-        <button type="button" className="soc-dm-name" onClick={() => social.showProfile(name)}>{name}{s.users[pid] && <i className="soc-online" title="Online" />}</button>
+        <button type="button" className="soc-dm-name" onClick={() => social.showProfile(name, pid)}>{name}{s.users[pid] && <i className="soc-online" title="Online" />}</button>
         {s.users[pid] && <button type="button" onClick={() => void inviteTo(pid, s.myTable)} data-testid="dm-invite">➕ Invite</button>}
       </div>
       <div className="soc-lines" ref={ref} data-testid="dm-lines">
@@ -399,6 +399,23 @@ function DmThread({ pid }: { pid: string }) {
         {!lines.length && <p className="soc-empty">Start the conversation with {name}.</p>}
       </div>
       {blocked ? <p className="soc-note">You blocked {name}. Unblock them in Friends to message.</p> : <Composer onSend={(t) => social.dm(pid, t)} placeholder={`Message ${name}…`} testid="dm" />}
+    </div>
+  );
+}
+
+/**
+ * A Friends-tab player row that opens the player's profile on tap (Demetrius 2026-10-19:
+ * rows under Sent requests / Recent players etc. weren't tappable). The profile comes from
+ * the server DB, so this works whether or not the player is online. Action buttons inside
+ * the row must stopPropagation so they don't also open the profile.
+ */
+function ProfRow({ id, name, testid, lead, actions }: { id: string; name: string; testid: string; lead: ReactNode; actions?: ReactNode }) {
+  const open = () => social.showProfile(name, id);
+  return (
+    <div className="soc-frow tappable" role="button" tabIndex={0} aria-label={`View ${name}'s profile`} data-testid={testid} onClick={open}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } }}>
+      <span className="soc-frow-name">{lead}</span>
+      {actions}
     </div>
   );
 }
@@ -421,21 +438,22 @@ function Friends({ signedIn }: { signedIn: boolean }) {
       {!!f?.incoming.length && (
         <Section title="Friend requests" testid="friend-requests">
           {f.incoming.map((r) => (
-            <div key={r.id} className="soc-frow" data-testid={`req-${r.name}`}>
-              <span className="soc-frow-name">{r.name}</span>
-              <button type="button" className="primary" onClick={() => social.friend('accept', r.id)} data-testid={`accept-${r.name}`}>Accept</button>
-              <button type="button" onClick={() => social.friend('decline', r.id)} data-testid={`decline-${r.name}`}>Decline</button>
-            </div>
+            <ProfRow key={r.id} id={r.id} name={r.name} testid={`req-${r.name}`} lead={r.name} actions={
+              <>
+                <button type="button" className="primary" onClick={(e) => { e.stopPropagation(); social.friend('accept', r.id); }} data-testid={`accept-${r.name}`}>Accept</button>
+                <button type="button" onClick={(e) => { e.stopPropagation(); social.friend('decline', r.id); }} data-testid={`decline-${r.name}`}>Decline</button>
+              </>
+            } />
           ))}
         </Section>
       )}
       <Section title={`Friends${f?.friends.length ? ` (${f.friends.length})` : ''}`} testid="friends-list">
         {f?.friends.map((r) => (
           <div key={r.id} className="soc-frow" data-testid={`friend-${r.name}`}>
-            <button type="button" className="soc-frow-name link" onClick={() => social.showProfile(r.name)} data-testid={`friend-name-${r.name}`}>{online(r.id) && <i className="soc-online" title="Online" />}{r.name}<small>{online(r.id) ? statusLabel(s.users[r.id]!.status, modeName) : 'Offline'}</small></button>
+            <button type="button" className="soc-frow-name link" onClick={() => social.showProfile(r.name, r.id)} data-testid={`friend-name-${r.name}`}>{online(r.id) && <i className="soc-online" title="Online" />}{r.name}<small>{online(r.id) ? statusLabel(s.users[r.id]!.status, modeName) : 'Offline'}</small></button>
             <button type="button" onClick={() => social.openDm(r.id)}>💬</button>
             {online(r.id) && <button type="button" onClick={() => void inviteTo(r.id, s.myTable)} data-testid={`finvite-${r.name}`}>➕</button>}
-            <button type="button" onClick={() => social.showProfile(r.name)}>👤</button>
+            <button type="button" onClick={() => social.showProfile(r.name, r.id)}>👤</button>
             <button type="button" className="ghost" onClick={() => { if (confirm(`Remove ${r.name} from friends?`)) social.friend('remove', r.id); }} data-testid={`remove-${r.name}`}>Remove</button>
           </div>
         ))}
@@ -443,22 +461,33 @@ function Friends({ signedIn }: { signedIn: boolean }) {
       </Section>
       {!!f?.outgoing.length && (
         <Section title="Sent requests" testid="friend-outgoing">
-          {f.outgoing.map((r) => <div key={r.id} className="soc-frow"><span className="soc-frow-name">{r.name}<small>waiting</small></span><button type="button" className="ghost" onClick={() => social.friend('remove', r.id)}>Cancel</button></div>)}
+          {f.outgoing.map((r) => (
+            <ProfRow key={r.id} id={r.id} name={r.name} testid={`sent-${r.name}`} lead={<>{r.name}<small>waiting</small></>} actions={
+              <button type="button" className="ghost" onClick={(e) => { e.stopPropagation(); social.friend('remove', r.id); }} data-testid={`cancel-${r.name}`}>Cancel</button>
+            } />
+          ))}
         </Section>
       )}
       <Section title="Recent players" testid="recent-players">
         {recent === null ? <p className="soc-empty">Loading…</p> : !recent.length ? <p className="soc-empty">Play an online game while signed in and the people you played with show up here.</p> :
           recent.map((r) => (
-            <div key={r.id} className="soc-frow" data-testid={`recent-${r.name}`}>
-              <span className="soc-frow-name">{online(r.id) && <i className="soc-online" />}{r.name}<small>{r.games} game{r.games === 1 ? '' : 's'}{r.partner ? ' · partner' : ''} · {timeAgo(r.last)}</small></span>
-              <button type="button" className="primary" disabled={!online(r.id)} title={online(r.id) ? 'Invite to a table' : 'Offline'} onClick={() => void inviteTo(r.id, s.myTable)} data-testid={`again-${r.name}`}>Play again</button>
-              {!f?.friends.some((x) => x.id === r.id) && <button type="button" onClick={() => social.friend('request', r.id)}>👋</button>}
-            </div>
+            <ProfRow key={r.id} id={r.id} name={r.name} testid={`recent-${r.name}`}
+              lead={<>{online(r.id) && <i className="soc-online" />}{r.name}<small>{r.games} game{r.games === 1 ? '' : 's'}{r.partner ? ' · partner' : ''} · {timeAgo(r.last)}</small></>}
+              actions={
+                <>
+                  <button type="button" className="primary" disabled={!online(r.id)} title={online(r.id) ? 'Invite to a table' : 'Offline'} onClick={(e) => { e.stopPropagation(); void inviteTo(r.id, s.myTable); }} data-testid={`again-${r.name}`}>Play again</button>
+                  {!f?.friends.some((x) => x.id === r.id) && <button type="button" onClick={(e) => { e.stopPropagation(); social.friend('request', r.id); }}>👋</button>}
+                </>
+              } />
           ))}
       </Section>
       {!!f?.blocked.length && (
         <Section title="Blocked" testid="blocked-list">
-          {f.blocked.map((r) => <div key={r.id} className="soc-frow"><span className="soc-frow-name">{r.name}</span><button type="button" onClick={() => social.friend('unblock', r.id)} data-testid={`unblock-${r.name}`}>Unblock</button></div>)}
+          {f.blocked.map((r) => (
+            <ProfRow key={r.id} id={r.id} name={r.name} testid={`blocked-${r.name}`} lead={r.name} actions={
+              <button type="button" onClick={(e) => { e.stopPropagation(); social.friend('unblock', r.id); }} data-testid={`unblock-${r.name}`}>Unblock</button>
+            } />
+          ))}
         </Section>
       )}
     </div>
@@ -473,15 +502,36 @@ interface ProfileData {
   awards?: { label: string; ref: string; at: number }[];
 }
 
-function Profile({ name }: { name: string }) {
+interface CredPublic {
+  user: { id: string; name: string };
+  level: { level: number; xp: number; xpForNext: number; xpIntoLevel: number; title: string };
+  rank: { team: { division: string; elo: number }; cutthroat: { division: string; elo: number } };
+  achievements: { id: string; title: string; hint: string; xp: number; coins: number; unlockedAt: number | null }[];
+}
+const DIV_LABEL: Record<string, string> = { stoop: 'Stoop', corner: 'Corner', block: 'Block', avenue: 'Avenue', boulevard: 'Boulevard', legend: 'Legend' };
+const divLabel = (d: string) => DIV_LABEL[d] ?? d;
+
+function Profile({ name, id }: { name: string; id?: string }) {
   const s = useSocial();
   const acct = useAccount();
   const [p, setP] = useState<ProfileData | null | 'missing'>(null);
+  const [cred, setCred] = useState<CredPublic | null>(null);
   useEffect(() => {
     setP(null);
     fetch(`/api/social/profile/${encodeURIComponent(name)}`, { credentials: 'same-origin' }).then((r) => (r.ok ? r.json() : 'missing')).then(setP).catch(() => setP('missing'));
   }, [name]);
-  const pid = p && p !== 'missing' ? Object.values(s.users).find((u) => !u.guest && u.name === p.username)?.id ?? [...(s.friends?.friends ?? []), ...(s.friends?.blocked ?? [])].find((f) => f.name === p.username)?.id : undefined;
+  const pid = id ?? (p && p !== 'missing'
+    ? Object.values(s.users).find((u) => !u.guest && u.name === p.username)?.id
+      ?? [...(s.friends?.friends ?? []), ...(s.friends?.incoming ?? []), ...(s.friends?.outgoing ?? []), ...(s.friends?.blocked ?? [])].find((f) => f.name === p.username)?.id
+    : undefined);
+  // Rep data (level/title, season divisions, unlocked achievements) comes straight from the
+  // server DB via /api/profile/:id — no presence involved, so offline players show it too.
+  useEffect(() => {
+    setCred(null);
+    if (!pid) return;
+    fetch(`/api/profile/${encodeURIComponent(pid)}`, { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null)).then((j) => setCred(j as CredPublic)).catch(() => setCred(null));
+  }, [pid]);
   const me = acct.user?.username === name;
   const friend = !!pid && (s.friends?.friends ?? []).some((f) => f.id === pid);
   const blocked = !!pid && (s.friends?.blocked ?? []).some((f) => f.id === pid);
@@ -506,6 +556,24 @@ function Profile({ name }: { name: string }) {
             <div><b>{p.ratings.team ?? '—'}</b><small>2v2 rating</small></div>
             <div><b>{p.ratings.cutthroat ?? '—'}</b><small>Cutthroat</small></div>
           </div>
+          {cred && (
+            <div data-testid="profile-rep">
+              <h4>Rep</h4>
+              <div className="soc-rep">
+                <div className="soc-rep-level"><b>Level {cred.level.level}</b><span>{cred.level.title}</span></div>
+                <div className="soc-rep-ranks">
+                  <span className="soc-div-chip" title="Partnership season division">⚔ {divLabel(cred.rank.team.division)} · {cred.rank.team.elo}</span>
+                  <span className="soc-div-chip" title="Cutthroat season division">🔪 {divLabel(cred.rank.cutthroat.division)} · {cred.rank.cutthroat.elo}</span>
+                </div>
+              </div>
+              {cred.achievements.some((a) => a.unlockedAt) && (
+                <>
+                  <h4>Achievements</h4>
+                  <div className="soc-badges">{cred.achievements.filter((a) => a.unlockedAt).map((a) => <span key={a.id} className="soc-badge-chip" title={`+${a.xp} XP${a.coins ? ` · +${a.coins} coins` : ''}`}>🏅 {a.title}</span>)}</div>
+                </>
+              )}
+            </div>
+          )}
           {p.vsYou && <p className="soc-vs" data-testid="profile-vs">You vs {p.username}: <b>{p.vsYou.wins}–{p.vsYou.losses}</b> in {p.vsYou.games} game{p.vsYou.games === 1 ? '' : 's'}</p>}
           {!me && pid && (
             <div className="soc-prof-acts">
@@ -542,7 +610,7 @@ function Profile({ name }: { name: string }) {
           <h4>Head-to-head</h4>
           {p.h2h.length ? (
             <table className="soc-h2h" data-testid="profile-h2h"><tbody>
-              {p.h2h.map((r) => <tr key={r.id}><td><button type="button" className="link" onClick={() => social.showProfile(r.name)}>{r.name}</button></td><td>{r.wins}–{r.losses}</td><td className="soc-muted">{r.games} game{r.games === 1 ? '' : 's'}</td></tr>)}
+              {p.h2h.map((r) => <tr key={r.id}><td><button type="button" className="link" onClick={() => social.showProfile(r.name, r.id)}>{r.name}</button></td><td>{r.wins}–{r.losses}</td><td className="soc-muted">{r.games} game{r.games === 1 ? '' : 's'}</td></tr>)}
             </tbody></table>
           ) : <p className="soc-muted">No series against signed-in players yet.</p>}
         </>
