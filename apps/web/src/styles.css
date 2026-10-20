@@ -189,6 +189,8 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .plate:has(.turn-ring) { filter: none; }
 .plate:has(.turn-ring) .plate-body { filter: drop-shadow(0 4px 10px rgba(0,0,0,.5)); }
 .plate:has(.turn-ring) .plate-turn { filter: drop-shadow(0 3px 6px rgba(0,0,0,.45)); }
+/* the countdown ring extends 10px past the avatar: give the name breathing room (Demetrius 2026-10-19) */
+.plate:has(.turn-ring) .plate-body { padding-left: 32px; }
 .turn-ring {
   position: absolute; z-index: 4; pointer-events: none; overflow: visible;
   left: calc(var(--ring-x) - var(--ring-pad));
@@ -1545,8 +1547,8 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
    Parked under the trump line so the bid panel cannot cover it, and wrapped inside the viewport:
    a 999px pill plus min-width:auto clipped the last name (and the whole strip, once it was your bid). */
 .bid-order { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; align-content: center; gap: 4px 6px; box-sizing: border-box; width: min(560px, calc(100vw - 16px)); max-width: min(560px, calc(100vw - 16px)); min-width: 0; overflow: visible; font-size: 12px; padding: 4px 10px; background: rgba(10,6,20,.92); border-radius: 12px; box-shadow: 0 0 0 1px var(--edge); }
-.center-note-wrap > .bid-order { position: fixed; z-index: 7; top: calc(124px + env(safe-area-inset-top)); left: 0; right: 0; margin-inline: auto; }
-.table-screen.short .center-note-wrap > .bid-order { top: calc(50px + env(safe-area-inset-top)); }
+/* bid order renders in the centered note flow, over the felt (Demetrius 2026-10-19) */
+.center-note-wrap > .bid-order { position: static; z-index: 7; }
 .bid-panel .bid-order { position: static; width: 100%; max-width: 100%; background: transparent; box-shadow: none; padding: 0; }
 /* decision-moment bid summary (inside the bid panel only, so it inherits the panel's
    hand-clear placement and collides with nothing): every bid so far, partner largest. */

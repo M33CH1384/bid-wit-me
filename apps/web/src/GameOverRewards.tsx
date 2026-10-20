@@ -148,16 +148,33 @@ function CoinsRow({ d, index }: { d: RewardsData; index: number }) {
 function EloRow({ d, index }: { d: RewardsData; index: number }) {
   if (d.eloBefore == null || d.eloAfter == null) return null;
   const delta = d.eloAfter - d.eloBefore;
-  const up = delta >= 0;
+  // Plain-language labels (Demetrius 2026-10-19): "Partnership rating / 1,000 → 1,000 Elo"
+  // meant nothing to players. Say what it is and what happened, in words.
+  const label = d.eloKindLabel === 'Partnership' ? 'Team rating' : 'Cutthroat rating';
+  if (delta === 0) {
+    return (
+      <div className="rw-row" style={{ animationDelay: `${index * 160}ms` }}>
+        <div className="rw-icon">➖</div>
+        <div className="rw-body">
+          <div className="rw-top">
+            <span>{label}</span>
+            <b className="rw-num">{d.eloAfter.toLocaleString()}</b>
+          </div>
+          <div className="rw-sub">No change — ratings only move in rated games vs. real opponents</div>
+        </div>
+      </div>
+    );
+  }
+  const up = delta > 0;
   return (
     <div className="rw-row" style={{ animationDelay: `${index * 160}ms` }}>
       <div className="rw-icon">{up ? '📈' : '📉'}</div>
       <div className="rw-body">
         <div className="rw-top">
-          <span>{d.eloKindLabel} rating</span>
+          <span>{label}</span>
           <b className={`rw-num ${up ? 'up' : 'down'}`}>{up ? '▲' : '▼'} {Math.abs(delta)}</b>
         </div>
-        <div className="rw-sub">{d.eloBefore.toLocaleString()} → {d.eloAfter.toLocaleString()} Elo</div>
+        <div className="rw-sub">{d.eloBefore.toLocaleString()} → {d.eloAfter.toLocaleString()} · Went {up ? 'up' : 'down'} {Math.abs(delta)} after this {d.won ? 'win' : 'loss'}</div>
       </div>
     </div>
   );
