@@ -44,6 +44,9 @@ export type Sfx =
   | 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak1' | 'streak2' | 'streak3' | 'shot' | 'gotShot' | 'shotgun' | 'pump' | 'siren' | 'docSting' | 'wheels' | 'wheelsCar' | 'overcut' | 'overcut3' | 'tornado'
   // 'Run it!': the claimer's cards all slam at once / everyone else's cards hit in a quick cascade
   | 'runSlam' | 'runThud'
+  // chat notifications (synthesized): a DM two-note chime and a soft global-chat blip.
+  // Both are UI_SFX, so they sound anywhere in the app, not just at a table.
+  | 'dmChime' | 'chatBlip'
   // the white sheet unrolling over a scorecard: soft fabric rustle (synthesized, no sample)
   | 'cloth';
 
@@ -51,6 +54,7 @@ export type Sfx =
 const DUCK_MS: Partial<Record<Sfx, number>> = { runSlam: 700, nuke: 3600, tornado: 2600, wheelsCar: 3000, jokerBig: 1100, shot: 1200, shotgun: 700, pump: 500, siren: 2700, docSting: 2400, streak2: 1400, streak3: 1800, overcut3: 1000, win: 2000, lose: 1600, set: 1200, nil: 1600 };
 
 export interface SoundSettings { on: boolean; volume: number; ambient: boolean; music: boolean; musicVolume: number; /** the venue's quiet ambient sound bed (Release 7), default on */ venueSound: boolean;
+  /** Chat notification sounds (DM chime / global-chat blip). Absent = on. */ chatSounds?: boolean;
   /** Spatial Phase 2 (all optional; defaults reproduce today's sound): per-category volumes, audio quality, spatial on/off, separate soundscape room ('auto' = seeded random per game), per-player voice mutes. */
   volumes?: import('./spatial').CategoryVolumes; quality?: import('./spatial').AudioQuality; spatial?: boolean; soundscape?: string; mutedVoices?: Record<string, true>;
   /** Per-context EXPLICIT sound scene (menus vs in-game) chosen by the player in that context.
@@ -85,6 +89,29 @@ export const ambienceOn = (s: SoundSettings): boolean => !!(s.ambient || s.venue
 export const wantsMusic = (s: SoundSettings): boolean => !!s.music;
 /** Engine gate: ambience sounds whenever an ambience source is on. */
 export const wantsAmbience = (s: SoundSettings): boolean => ambienceOn(s);
+/** Chat notification sounds: on unless the player turned them off; master sound off silences them too. */
+export const chatSoundsOn = (s: SoundSettings): boolean => !!s.on && s.chatSounds !== false;
+
+/** One synthesized tone of a chat notification sound (times in seconds from the start). */
+export interface ChatTone { at: number; freq: number; dur: number; type: OscillatorType; gain: number; glideTo?: number }
+/**
+ * DM notification: a bright two-note bell — F6 (1396.91 Hz) then C7 (2093 Hz), triangle wave with a
+ * faint sine shimmer an octave up. Deliberately unlike the turn chime (E6→B6, plain sine, quieter):
+ * different pitches, different order of intervals, richer timbre — reads as "you got a message".
+ */
+export const DM_CHIME_TONES: ChatTone[] = [
+  { at: 0, freq: 1396.91, dur: 0.42, type: 'triangle', gain: 0.2 },
+  { at: 0, freq: 2793.83, dur: 0.22, type: 'sine', gain: 0.035 },
+  { at: 0.13, freq: 2093, dur: 0.55, type: 'triangle', gain: 0.17 },
+  { at: 0.13, freq: 4186.01, dur: 0.28, type: 'sine', gain: 0.025 },
+];
+/**
+ * Global-chat notification: one soft, low, short blip — E5 (659.25 Hz) gliding down to D5, plain
+ * sine, well under half the DM chime's peak gain and a third of its length.
+ */
+export const CHAT_BLIP_TONES: ChatTone[] = [
+  { at: 0, freq: 659.25, dur: 0.16, type: 'sine', gain: 0.085, glideTo: 587.33 },
+];
 
 /** The scene the live switches currently describe. */
 export function sceneOf(s: SoundSettings): SoundScene {
@@ -826,8 +853,9 @@ class Engine {
     }
     this.applyGain();
   }
-  /** Settings previews that may sound on Home. */
-  private static readonly UI_SFX: ReadonlySet<string> = new Set(['tap', 'bid']);
+  /** Settings previews that may sound on Home. Chat notifications live here too: a DM must
+   *  ding no matter where in the app you are, not only at a table. */
+  private static readonly UI_SFX: ReadonlySet<string> = new Set(['tap', 'bid', 'dmChime', 'chatBlip']);
   stopVoice() {
     const v = this.voiceSrc; this.voiceSrc = null;
     if (!v || !this.ctx) return;
@@ -966,6 +994,7 @@ class Engine {
 
   play(name: Sfx, opts: { delay?: number; gain?: number; dur?: number; seat?: SeatPos; playerCount?: number } = {}) {
     if (!this.settings.on || !this.unlocked) return;
+    if ((name === 'dmChime' || name === 'chatBlip') && this.settings.chatSounds === false) return;
     if (!this.atTable && !Engine.UI_SFX.has(name)) { this.blocked[name] = (this.blocked[name] ?? 0) + 1; return; }
     this.ensure();
     const c = this.ctx;
@@ -1010,6 +1039,8 @@ class Engine {
       case 'pump': return this.shotgunPump(t, g);
       case 'siren': return this.siren(t, g);
       case 'cloth': return this.clothRustle(t, g);
+      case 'dmChime': return this.chatTones(t, g, DM_CHIME_TONES);
+      case 'chatBlip': return this.chatTones(t, g, CHAT_BLIP_TONES);
       case 'docSting': return this.docSting(t, g);
       // wheels: a quick rising two-step + hit (short, not a fanfare)
       case 'wheelsCar': return this.peelOut(t, g);
@@ -1113,6 +1144,11 @@ class Engine {
     this.tone(t, 1318.5, 0.5, 'sine', 0.16 * g);
     this.tone(t + 0.09, 1975.5, 0.65, 'sine', 0.12 * g);
     this.tone(t, 2637, 0.25, 'sine', 0.03 * g);
+  }
+
+  /** Chat notification sounds: play a tone spec (DM_CHIME_TONES / CHAT_BLIP_TONES) on the sfx bus. */
+  private chatTones(t: number, g: number, tones: ChatTone[]) {
+    for (const n of tones) this.tone(t + n.at, n.freq, n.dur, n.type, n.gain * g, n.glideTo ? { glideTo: n.glideTo } : {});
   }
 
   private arp(t: number, notes: number[], step: number, type: OscillatorType, gain: number, tail: number) {

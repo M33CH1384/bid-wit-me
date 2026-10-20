@@ -9,6 +9,7 @@ import { account, loadAccount } from '../account/api';
 import { serverUrl } from '../online/config';
 import { guestSessionId, loadName } from '../online/identity';
 import { keepUsers } from './presence';
+import { playChatSound } from './chatSounds';
 
 export type SocialTab = 'players' | 'chat' | 'messages' | 'friends' | 'leaders' | 'tournaments' | 'settings';
 export interface ToastAction { label: string; tab: SocialTab; /** friend-request toast: the requester's id, so the popup can Accept/Decline inline */ friendId?: string }
@@ -231,6 +232,9 @@ function onMessage(m: SocialServerMsg) {
         if (seenNow !== s.globalSeen) saveSeen(seenNow);
         return { global, globalSeen: seenNow };
       });
+      // live arrivals only reach this case (history rides 'hello'); blip only while the
+      // chat view is actually on screen — the gating lives in chatSounds.ts
+      playChatSound('global', { own: m.line.from === state.you?.id, chatViewOpen: state.open && state.tab === 'chat' });
       break;
     case 'chatReact':
       set((s) => ({ global: s.global.map((l) => (l.id === m.id ? { ...l, reactions: m.reactions } : l)) }));
@@ -247,6 +251,8 @@ function onMessage(m: SocialServerMsg) {
         return { dms: { ...s.dms, [other]: [...(s.dms[other] ?? []), m.line].slice(-200) }, names: { ...s.names, [other]: m.name }, unread };
       });
       if (m.line.from !== me) {
+        // a DM dings no matter where you are in the app (chatSounds.ts gates hidden/muted/throttle)
+        playChatSound('dm', { own: false });
         if (state.open && state.tab === 'messages' && state.dmWith === other) send({ t: 'read', with: other });
         else toast(`💬 ${m.name}: ${m.line.text.slice(0, 80)}`);
       }
@@ -363,7 +369,7 @@ export const social = {
   react(id: number, emoji: string) { send({ t: 'react', id, emoji }); },
   /** emoji reaction to a DM line (toggle; the hub sends both participants the new map) */
   dmReact(id: number, emoji: string) { send({ t: 'dmReact', id, emoji }); },
-  dm(to: string, text: string, replyTo?: number) { if (!send({ t: 'dm', to, text, ...(replyTo ? { replyTo } : {}) })) toast("Not connected: try again in a moment.", 'error'); },
+  dm(to: string, text: string) { if (!send({ t: 'dm', to, text })) toast("Not connected: try again in a moment.", 'error'); },
   invite(to: string, t: MyTable) { send({ t: 'invite', to, code: t.code, ...(t.mode ? { mode: t.mode } : {}), ...(t.seat !== undefined ? { seat: t.seat } : {}) }); },
   replyInvite(inv: InviteMsg, accept: boolean) {
     send({ t: 'inviteReply', id: inv.id, accept });

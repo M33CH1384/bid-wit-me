@@ -127,6 +127,8 @@ export function SoundSheet({ allOff, onMuteAll, onClose }: { allOff: boolean; on
         <h4>Effects</h4>
         <label className="sf-row"><span>Reduce effects <InfoNote short="no shake / flash" long="Keeps the hype sounds and pop-ups; drops camera shake, flashes and the shockwave, and the nuke stays calm. Your device's Reduce motion setting only drops the shake." /></span>
           <button type="button" role="switch" aria-checked={reduced} aria-label="Reduce effects" data-testid="reduce-fx" className={`switch ${reduced ? 'on' : ''}`} onClick={() => fx.setReduce(!reduced)}><i /></button></label>
+        <label className="sf-row"><span>Chat sounds<small className="sf-note"> · DM ding anywhere, chat blip while you read</small></span>
+          <button type="button" role="switch" aria-checked={s.chatSounds !== false} aria-label="Chat sounds" data-testid="chat-sounds-switch" className={`switch ${s.chatSounds !== false ? 'on' : ''}`} onClick={() => { const on = s.chatSounds === false; sound.set({ chatSounds: on }); if (on) setTimeout(() => sound.play('dmChime'), 30); }}><i /></button></label>
         <VibrationSwitch />
       </section>
 
