@@ -44,6 +44,8 @@ import { feltHandVisible } from './three/cardFace';
 import { clientSeesNuke } from './three/blastSweep';
 import { loadScene } from './three/preload';
 import { TableLoading } from './TableLoading';
+import GameOverRewards, { computeRewards, fetchRewardsProfile, type RewardsData, type RewardsProfile } from './GameOverRewards';
+import { flushLocalGames } from './localStats';
 import { tableStillLoading, warmTableEffects } from './effects/warm';
 import { endReasonText, onNoticeSides, shotChatLines } from './shotOut';
 import { type Sfx, sound } from './audio';
@@ -1039,6 +1041,36 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   };
   // game over: no confirmation — the game is finished
   const mainMenu = () => { if (!online) quitGame(); (onMainMenu ?? onExit)(); };
+  // Game-over rewards screen (Demetrius 2026-10-19): after the player chooses to leave
+  // the match, show an animated XP/coins/Elo/achievement breakdown before navigating away.
+  const profileBefore = useRef<RewardsProfile | null>(null);
+  const gameStartAt = useRef<number>(Date.now());
+  useEffect(() => { void fetchRewardsProfile().then((p) => { profileBefore.current = p; }); }, []);
+  const [rewardsOpen, setRewardsOpen] = useState(false);
+  const [rewardsData, setRewardsData] = useState<RewardsData | null>(null);
+  const [rewardsBusy, setRewardsBusy] = useState(false);
+  const pendingLeave = useRef<(() => void) | null>(null);
+  const openRewards = useCallback((finish: () => void) => {
+    if (rewardsBusy) return;
+    setRewardsBusy(true);
+    pendingLeave.current = finish;
+    (async () => {
+      try { await flushLocalGames(); } catch { /* best-effort */ }
+      const after = await fetchRewardsProfile();
+      const won = !!st.result?.winners.includes(mySide);
+      const head = won
+        ? (st.result!.winners.length > 1 ? 'YOU TIED FOR FIRST!' : 'VICTORY!')
+        : winHeadline(st.result!.winners.map((w) => sideName(r, w, names)), r.partnerships).toUpperCase();
+      setRewardsData(computeRewards(profileBefore.current, after, {
+        won,
+        headline: head,
+        sub: `${st.history.length} hand${st.history.length === 1 ? '' : 's'} played`,
+        kind: r.partnerships ? 'team' : 'cutthroat',
+      }));
+      setRewardsOpen(true);
+    })().finally(() => setRewardsBusy(false));
+  }, [rewardsBusy, st.result, st.history.length, mySide, r, names]);
+  const closeRewardsToMenu = useCallback(() => { setRewardsOpen(false); pendingLeave.current?.(); pendingLeave.current = null; }, []);
   const isBooks = booksHand(st);
   // "First hand: books bid themselves" — announce it once the deal lands
   const booksAnnounced = useRef<string | null>(null);
@@ -1758,7 +1790,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         return (
           <div className="victory-screen" role="dialog" aria-label="Game over" data-testid="victory">
             <div className="vic-confetti" aria-hidden>{Array.from({ length: 18 }, (_, i) => <i key={i} style={{ left: `${(i % 2 ? 91 : 1) + ((i * 13) % 7)}%`, background: `hsl(${i * 47} 90% 60%)`, animationDuration: `${3.2 + (i % 5) * 0.5}s`, animationDelay: `${-i * 0.37}s` }} />)}</div>
-            <button type="button" className="modal-x" aria-label="Close and go to the main menu" data-testid="gameover-x" onClick={mainMenu}>✕</button>
+            <button type="button" className="modal-x" aria-label="Close and go to the main menu" data-testid="gameover-x" onClick={() => openRewards(mainMenu)}>✕</button>
             <h2 className="vic-head">{iWon ? (res.winners.length > 1 ? 'YOU TIED FOR FIRST!' : 'VICTORY!') : 'GAME OVER'}<small>{iWon ? '🏆' : '♠'}</small></h2>
             {(() => {
               // the players' names under the team name (skipped when the team has no name of its own: it'd repeat the title)
@@ -1780,7 +1812,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
               <div className="confirm-actions">
                 <button type="button" className="quiet-row-btn" onClick={() => setShowPad(true)}>Score pad</button>
                 {!spectating && <button type="button" className="primary big" data-testid="rematch" onClick={() => onRematch(nextDealer(st))}>Play again — Rematch</button>}
-                <button type="button" className="ghost-btn" data-testid="main-menu" onClick={mainMenu}>Back to home</button>
+                <button type="button" className="ghost-btn" data-testid="main-menu" onClick={() => openRewards(mainMenu)}>Back to home</button>
               </div>
             </div>
           </div>
@@ -1789,7 +1821,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       {showResults && st.result && !online?.victory && (
         <div className="modal-backdrop">
           <div className="modal glass slant gameover" role="dialog" aria-label="Game over">
-            <button type="button" className="modal-x" aria-label="Close and go to the main menu" data-testid="gameover-x" onClick={mainMenu}>✕</button>
+            <button type="button" className="modal-x" aria-label="Close and go to the main menu" data-testid="gameover-x" onClick={() => openRewards(mainMenu)}>✕</button>
             <div className="trophy">{st.result.winners.includes(mySide) ? '🏆' : '♠'}</div>
             <h2>{st.result.winners.includes(mySide) ? (st.result.winners.length > 1 ? 'YOU TIED FOR FIRST!' : 'VICTORY!') : winHeadline(st.result.winners.map((w) => sideName(r, w, names)), r.partnerships).toUpperCase()}</h2>
             {seriesChip()}
@@ -1816,12 +1848,21 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             <div className="confirm-actions">
               <button type="button" className="quiet-row-btn" onClick={() => setShowPad(true)}>Score pad</button>
               <button type="button" className="primary big" onClick={() => onRematch(nextDealer(st))}>Play again — Rematch</button>
-              <button type="button" className="ghost-btn" data-testid="main-menu" onClick={mainMenu}>Back to home</button>
+              <button type="button" className="ghost-btn" data-testid="main-menu" onClick={() => openRewards(mainMenu)}>Back to home</button>
               <div className="exit-divider" aria-hidden="true" />
-              <button type="button" className="leave-red" onClick={leave}>Change mode</button>
+              <button type="button" className="leave-red" onClick={() => openRewards(leave)}>Change mode</button>
             </div>
           </div>
         </div>
+      )}
+
+      {rewardsOpen && rewardsData && (
+        <GameOverRewards
+          data={rewardsData}
+          onMainMenu={closeRewardsToMenu}
+          onProfile={() => { setRewardsOpen(false); pendingLeave.current = null; location.href = '/profile'; }}
+          onOpenTables={() => { setRewardsOpen(false); pendingLeave.current = null; location.href = '/online'; }}
+        />
       )}
 
       {(coachOn || help) && !modalOpen && (

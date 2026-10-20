@@ -1760,6 +1760,52 @@ select { background: #170d27; color: var(--ink); border: 1px solid rgba(185,128,
 .vs-bot { display: block; font-family: var(--display); letter-spacing: .14em; font-size: 11px; color: var(--muted); }
 .vs-tile.lose { width: 100%; min-width: 0; }
 .vs-tile.lose figcaption { width: 100%; text-align: center; }
+/* Game-over rewards screen (Demetrius 2026-10-19): animated XP/coins/Elo/achievement breakdown after leaving a match. */
+.rewards-screen { position: fixed; inset: 0; z-index: 1100; display: flex; align-items: center; justify-content: center;
+  padding: calc(20px + env(safe-area-inset-top)) 14px calc(20px + env(safe-area-inset-bottom));
+  background: radial-gradient(90% 60% at 50% 30%, rgba(90,50,140,.5), rgba(10,6,16,.96) 70%);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  opacity: 0; transition: opacity .35s ease; overflow-y: auto; }
+.rewards-screen.in { opacity: 1; }
+.rw-card { width: min(100%, 480px); border-radius: 20px; padding: 22px 18px 18px; display: flex; flex-direction: column; gap: 14px;
+  transform: translateY(14px) scale(.98); transition: transform .4s cubic-bezier(.2,.9,.3,1.2); }
+.rewards-screen.in .rw-card { transform: none; }
+.rw-head { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
+.rw-trophy { font-size: 44px; line-height: 1; animation: rw-pop .5s cubic-bezier(.2,.9,.3,1.4) both; }
+@keyframes rw-pop { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.rw-head h2 { margin: 0; font-family: var(--display); font-weight: 900; letter-spacing: .06em; text-transform: uppercase;
+  font-size: clamp(34px, 9vw, 52px); line-height: 1; }
+.rw-head h2.win { color: var(--gold); text-shadow: 0 0 28px rgba(255,200,60,.6), 0 3px 0 rgba(90,50,0,.7); }
+.rw-head h2.lose { color: #cfd6e4; text-shadow: 0 0 22px rgba(160,180,220,.35); }
+.rw-sub0 { margin: 0; font-family: var(--display); font-size: 14px; letter-spacing: .08em; color: var(--muted); }
+.rw-rows { display: flex; flex-direction: column; gap: 8px; }
+.rw-row { display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px; border-radius: 12px;
+  background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.09);
+  opacity: 0; transform: translateX(26px); animation: rw-in .45s cubic-bezier(.2,.9,.3,1.1) forwards; }
+@keyframes rw-in { to { opacity: 1; transform: none; } }
+.rw-icon { font-size: 22px; line-height: 1.2; flex: none; }
+.rw-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.rw-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+  font-family: var(--display); font-weight: 700; font-size: 16px; letter-spacing: .04em; color: #f3ead2; }
+.rw-num { font-size: 20px; color: #fff; font-variant-numeric: tabular-nums; }
+.rw-num.gold { color: var(--gold); }
+.rw-num.up { color: #7dff9a; }
+.rw-num.down { color: #ff8a8a; }
+.rw-num.small { font-size: 15px; color: var(--muted); }
+.rw-sub { font-family: var(--display); font-size: 12.5px; letter-spacing: .06em; color: var(--muted); }
+.rw-levelup { color: var(--gold); font-weight: 800; animation: rw-pop .5s .3s cubic-bezier(.2,.9,.3,1.4) both; }
+.rw-levelbar { height: 8px; border-radius: 4px; background: rgba(255,255,255,.1); overflow: hidden; }
+.rw-levelbar-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--purple-hot), var(--gold));
+  transition: width 1.1s cubic-bezier(.2,.8,.3,1); }
+.rw-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 4px;
+  opacity: 0; animation: rw-in .45s ease forwards; }
+.rw-actions .primary.big { min-height: 52px; font-size: 20px; }
+.rw-actions-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-height: 700px) {
+  .rw-card { gap: 10px; padding: 16px 14px 14px; }
+  .rw-trophy { font-size: 34px; }
+  .rw-head h2 { font-size: clamp(28px, 7vw, 40px); }
+}
 .vs-tile.lose .vs-frame { border-radius: 10px; border: 1px solid rgba(185,128,255,.35); }
 .vs-tile.lose .vs-avatar span { font-size: 28px; }
 .vs-tile.lose figcaption { font-size: 12px; font-weight: 700; color: var(--muted); }
