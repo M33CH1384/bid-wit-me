@@ -35,7 +35,7 @@ describe('turn timer presets', () => {
   it('pins bid and play for Relaxed, Normal, Fast, and the default', () => {
     expect(TURN_TIMERS).toEqual({
       relaxed: { bid: 30, play: 45 },
-      normal: { bid: 20, play: 30 },
+      normal: { bid: 30, play: 30 },
       fast: { bid: 10, play: 15 },
     });
     for (const t of Object.values(TURN_TIMERS)) expect(t.play).toBeGreaterThan(t.bid);

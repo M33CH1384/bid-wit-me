@@ -7,7 +7,7 @@ const FAST = { botMs: 10, trickPauseMs: 0, dealMs: 0, disconnectGraceMs: 5000, h
 /** Play is the longer clock. These are the host presets, plus the default Normal table. */
 const PRESETS = [
   { name: 'Relaxed', bid: 30, play: 45 },
-  { name: 'Normal', bid: 20, play: 30 },
+  { name: 'Normal', bid: 30, play: 30 },
   { name: 'Fast', bid: 10, play: 15 },
 ] as const;
 
@@ -29,7 +29,7 @@ function pin(env: FakeEnv, kind: 'bid' | 'play'): void {
 
 describe('table timer presets', () => {
   it('the default table is Normal, and play is longer than the bid', () => {
-    expect(makeRules('joker').turnTimerSec).toEqual({ bid: 20, play: 30 });
+    expect(makeRules('joker').turnTimerSec).toEqual({ bid: 30, play: 30 });
     for (const p of PRESETS) expect(p.play).toBeGreaterThan(p.bid);
   });
 

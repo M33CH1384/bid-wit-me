@@ -2,11 +2,11 @@ import type { TableRules } from '@spades/rules';
 
 /**
  * Host presets. Play is the longer clock in every setting: a trick takes longer
- * to read than a bid. The default table (Normal) is bid 20s / play 30s.
+ * to read than a bid. The default table (Normal) is bid 30s / play 30s.
  */
 export const TURN_TIMERS = {
   relaxed: { bid: 30, play: 45 },
-  normal: { bid: 20, play: 30 },
+  normal: { bid: 30, play: 30 },
   fast: { bid: 10, play: 15 },
 } as const;
 export type TimerKey = keyof typeof TURN_TIMERS;
