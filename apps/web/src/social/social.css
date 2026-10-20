@@ -65,7 +65,10 @@ button.ghost { background: transparent !important; }
 .soc-line-name { background: none; border: 0; padding: 0 0 0 12px; font-weight: 700; color: var(--gold); font-size: 12.5px; }
 .soc-bubble-row { display: flex; align-items: center; gap: 2px; max-width: 100%; }
 .soc-line.mine .soc-bubble-row { flex-direction: row-reverse; }
-.soc-bubble { padding: 9px 13px; border-radius: 18px; background: #2b1c47; border: 1px solid rgba(185,128,255,.16); box-shadow: 0 1px 2px rgba(0,0,0,.3); min-width: 0; }
+/* bubbles are long-press targets (msgPress.ts): no iOS callout, no text selection */
+.soc-bubble { padding: 9px 13px; border-radius: 18px; background: #2b1c47; border: 1px solid rgba(185,128,255,.16); box-shadow: 0 1px 2px rgba(0,0,0,.3); min-width: 0; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; transition: transform .15s ease, box-shadow .15s ease; }
+/* the pressed message while its action popover is open: gold ring + a slight lift */
+.soc-line.armed .soc-bubble { transform: scale(1.02); box-shadow: 0 0 0 2px rgba(255,213,109,.85), 0 6px 18px rgba(0,0,0,.45); }
 .soc-bubble.tail { border-bottom-left-radius: 6px; }
 .soc-line.mine .soc-bubble { background: linear-gradient(180deg, rgba(245,197,66,.30), rgba(201,150,42,.20)); border-color: rgba(245,197,66,.38); }
 .soc-line.mine .soc-bubble.tail { border-bottom-left-radius: 18px; border-bottom-right-radius: 6px; }
@@ -79,16 +82,23 @@ button.ghost { background: transparent !important; }
 @keyframes soc-flash { 0% { box-shadow: 0 0 0 3px rgba(255,213,109,.9); } 100% { box-shadow: 0 0 0 0 rgba(255,213,109,0); } }
 .soc-line-acts { display: inline-flex; align-items: center; flex: none; }
 .soc-more { background: none; border: 0; color: var(--muted); min-width: 30px; min-height: 36px; padding: 4px; font-size: 14px; }
-.soc-rx-add, .soc-reply-add { background: none; border: 0; color: var(--muted); font-size: 15px; line-height: 1; width: 44px; height: 44px; margin: -4px -6px -4px 0; display: grid; place-items: center; border-radius: 50%; opacity: .55; }
-.soc-rx-add:active, .soc-rx-add[aria-expanded="true"], .soc-reply-add:active { background: rgba(255,255,255,.08); opacity: 1; }
 .soc-line-menu { display: flex; gap: 6px; }
 .soc-line-menu button { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.2); color: var(--ink); border-radius: 999px; padding: 5px 11px; font-size: 12px; }
 .soc-line-menu button.danger { border-color: rgba(255,77,109,.6); color: #ff9db0; }
-/* reaction chips + picker inside a bubble's column (base rules live in styles.css; these win on specificity) */
+/* reaction chips inside a bubble's column (base rules live in styles.css; these win on specificity) */
 .soc-lines .soc-line .rx-chips { flex-basis: auto; margin: 0; gap: 4px; }
 .soc-lines .rx-chip { background: #241539; border-color: rgba(185,128,255,.4); box-shadow: 0 1px 3px rgba(0,0,0,.35); }
 .soc-lines .rx-chip.mine { background: rgba(245,197,66,.22); border-color: var(--gold); }
-.soc-lines .soc-line .rx-picker { flex-basis: auto; width: fit-content; margin-top: 2px; padding: 4px; background: #241539; border-color: rgba(185,128,255,.4); box-shadow: 0 10px 28px rgba(0,0,0,.55); }
+/* long-press action popover: transparent tap-eating backdrop + the card itself
+   (reaction strip on top, Reply row under a divider — iMessage's shape) */
+.soc-pop-backdrop { position: fixed; inset: 0; z-index: 30; }
+.soc-pop { position: fixed; z-index: 31; width: 292px; max-width: calc(100vw - 16px); box-sizing: border-box; display: flex; flex-direction: column; padding: 6px; background: #241539; border: 1px solid rgba(185,128,255,.45); border-radius: 18px; box-shadow: 0 16px 44px rgba(0,0,0,.65); animation: soc-pop-in .16s ease-out; }
+@keyframes soc-pop-in { from { transform: scale(.92); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .soc-pop { animation: none; } }
+.soc-pop .rx-picker { margin: 0; padding: 2px; width: 100%; box-sizing: border-box; justify-content: space-between; background: transparent; border: 0; }
+.soc-pop .rx-pick { width: 46px; height: 46px; font-size: 25px; }
+.soc-pop-reply { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; margin-top: 4px; padding: 10px 12px; background: rgba(255,255,255,.05); border: 0; border-top: 1px solid rgba(185,128,255,.22); border-radius: 12px; color: var(--ink); font-size: 15px; font-weight: 600; text-align: left; }
+.soc-pop-reply:active { background: rgba(255,255,255,.12); }
 /* slim "Replying to …" bar above the composer while reply mode is on — same surface as the composer bar */
 .soc-replybar { display: flex; align-items: center; gap: 8px; flex: none; background: rgba(185,128,255,.10); border: 1px solid rgba(185,128,255,.28); border-left: 3px solid var(--gold); border-radius: 12px; padding: 4px 4px 4px 12px; font-size: 13px; color: var(--muted); }
 .soc-replybar-txt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

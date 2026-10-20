@@ -18,6 +18,7 @@ import { Leaderboards, Tournaments } from './Compete';
 import { offlineStats } from '../offlineStats';
 import { chatStickToBottom } from '../chatScroll';
 import { chatGroupInfo, chatTimeLabel } from './chatTime';
+import { popoverPos, useMsgPress, type AnchorRect } from './msgPress';
 import { ReactionChips, ReactionPicker } from '../reactions';
 import { TaglineText } from '../tagline';
 import { SocialLinksChips, type SocialLinks } from '../socialLinks';
@@ -388,12 +389,50 @@ function Composer({ onSend, placeholder, disabled, testid }: { onSend: (t: strin
   );
 }
 
+/**
+ * The iMessage-style action popover for a long-pressed message (see msgPress.ts):
+ * a fixed backdrop that eats outside taps, the six-emoji reaction strip on top and
+ * a Reply row below, anchored to the pressed bubble. Picking an emoji or Reply
+ * acts and closes; a backdrop tap just closes (and arms the click swallow, since
+ * the tap's click lands on the lines once the backdrop is gone).
+ */
+function MsgPopover({ rect, mine, onReact, onReply, onClose, onBackdrop }: {
+  rect: AnchorRect; mine: boolean;
+  onReact: (emoji: string) => void; onReply: () => void; onClose: () => void; onBackdrop: () => void;
+}) {
+  const pos = popoverPos(rect, window.innerWidth, window.innerHeight, mine);
+  return (
+    <>
+      <div className="soc-pop-backdrop" data-testid="msg-pop-backdrop" onPointerDown={onBackdrop}
+        onContextMenu={(e) => { e.preventDefault(); onBackdrop(); }} />
+      <div className="soc-pop" data-testid="msg-actions" role="menu" aria-label="Message actions" style={{ left: pos.left, top: pos.top }}>
+        <ReactionPicker onPick={(e) => { onReact(e); onClose(); }} />
+        <button type="button" className="soc-pop-reply" data-testid="msg-pop-reply" onClick={() => { onReply(); onClose(); }}>↩ Reply</button>
+      </div>
+    </>
+  );
+}
+
+/** scroll (or a viewport resize) dismisses an open message popover — nothing stays armed */
+function usePopoverDismiss(open: unknown, ref: React.RefObject<HTMLDivElement | null>, close: () => void) {
+  useEffect(() => {
+    if (!open) return;
+    const el = ref.current;
+    const onScroll = () => close();
+    el?.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    return () => { el?.removeEventListener('scroll', onScroll); window.removeEventListener('resize', onScroll); };
+  }, [open, ref, close]);
+}
+
 function GlobalChat({ signedIn }: { signedIn: boolean }) {
   const s = useSocial();
   const ref = useStickToBottom(s.global.length);
   const [menu, setMenu] = useState<number | null>(null);
-  /** which line's emoji picker is open (one at a time) */
-  const [pickFor, setPickFor] = useState<number | null>(null);
+  /** long-press / right-click message actions (reaction strip + Reply popover) */
+  const press = useMsgPress();
+  usePopoverDismiss(press.open, ref, press.close);
+  useEffect(() => { if (press.open) setMenu(null); }, [press.open]);
   /** the line the composer is replying to (its snapshot ships with the sent message) */
   const [replyTo, setReplyTo] = useState<SocialChatLine | null>(null);
   /** a line briefly highlighted after tapping a quote that points at it */
@@ -420,7 +459,7 @@ function GlobalChat({ signedIn }: { signedIn: boolean }) {
           return (
             <Fragment key={l.id}>
               {g.separator && <div className="soc-time-sep">{chatTimeLabel(l.at)}</div>}
-              <div data-line-id={l.id} className={`soc-line ${mine ? 'mine' : ''} ${g.groupStart ? 'g-start' : 'cont'}${flashId === l.id ? ' flash' : ''}`} data-testid="global-line">
+              <div data-line-id={l.id} onClickCapture={press.onClickCapture} className={`soc-line ${mine ? 'mine' : ''} ${g.groupStart ? 'g-start' : 'cont'}${flashId === l.id ? ' flash' : ''}${press.open?.id === l.id ? ' armed' : ''}`} data-testid="global-line">
                 {!mine && (g.groupEnd
                   ? <SocFace id={l.from} name={l.name} className={`soc-av msg ${l.from.startsWith('g:') ? 'guest' : ''}`} />
                   : <span className="soc-av msg blank" aria-hidden="true" />)}
@@ -429,7 +468,7 @@ function GlobalChat({ signedIn }: { signedIn: boolean }) {
                     <button type="button" className="soc-line-name" onClick={() => !l.from.startsWith('g:') && social.showProfile(l.name, l.from.startsWith('u:') ? l.from.slice(2) : undefined)}>{l.name}{l.admin && <i className="soc-tag mod">MOD</i>}</button>
                   )}
                   <div className="soc-bubble-row">
-                    <div className={`soc-bubble ${g.groupEnd ? 'tail' : ''}`}>
+                    <div className={`soc-bubble ${g.groupEnd ? 'tail' : ''}`} {...(signedIn ? press.bind(l.id) : {})}>
                       {l.reply && (
                         <button type="button" className="soc-quote" data-testid={`quote-${l.id}`} onClick={() => jumpTo(l.reply!.id)} aria-label={`Quoted message by ${l.reply.from}: ${l.reply.text}`}>
                           <b>{l.reply.from}</b> {l.reply.text}
@@ -440,8 +479,6 @@ function GlobalChat({ signedIn }: { signedIn: boolean }) {
                     <span className="soc-line-acts">
                       {!mine && (signedIn || s.admin) && <button type="button" className="soc-more" aria-label="Message actions" data-testid={`line-more-${l.id}`} onClick={() => setMenu(menu === l.id ? null : l.id)}>⋯</button>}
                       {s.admin && mine && <button type="button" className="soc-more" aria-label="Delete" data-testid={`line-del-${l.id}`} onClick={() => social.del(l.id)}>🗑</button>}
-                      {signedIn && <button type="button" className="soc-reply-add" aria-label={`Reply to ${l.name}'s message`} data-testid={`soc-reply-${l.id}`} onClick={() => setReplyTo(replyTo?.id === l.id ? null : l)}>↩</button>}
-                      {signedIn && <button type="button" className="soc-rx-add" aria-label={`React to ${l.name}'s message`} aria-expanded={pickFor === l.id} data-testid={`soc-rx-add-${l.id}`} onClick={() => setPickFor(pickFor === l.id ? null : l.id)}>☺</button>}
                     </span>
                   </div>
                   {menu === l.id && (
@@ -451,7 +488,6 @@ function GlobalChat({ signedIn }: { signedIn: boolean }) {
                       {s.admin && <button type="button" className="danger" data-testid="line-delete" onClick={() => { social.del(l.id); setMenu(null); }}>Delete</button>}
                     </span>
                   )}
-                  {pickFor === l.id && <ReactionPicker onPick={(e) => { social.react(l.id, e); setPickFor(null); }} />}
                   <ReactionChips reactions={l.reactions} myId={s.you?.id ?? null} onToggle={(e) => { if (signedIn) social.react(l.id, e); }} />
                 </div>
               </div>
@@ -459,6 +495,11 @@ function GlobalChat({ signedIn }: { signedIn: boolean }) {
           );
         })}
       </div>
+      {press.open && (() => { const l = s.global.find((x) => x.id === press.open!.id); return l ? (
+        <MsgPopover rect={press.open.rect} mine={l.from === s.you?.id}
+          onReact={(e) => social.react(l.id, e)} onReply={() => setReplyTo(l)}
+          onClose={press.close} onBackdrop={press.backdropDown} />
+      ) : null; })()}
       {signedIn && replyTo && (
         <div className="soc-replybar" data-testid="reply-bar">
           <span className="soc-replybar-txt">Replying to <b>{replyTo.name}</b>: {replyTo.text}</span>
@@ -504,8 +545,9 @@ function DmThread({ pid }: { pid: string }) {
   const ref = useStickToBottom(lines.length);
   const name = nameOf(s, pid);
   const blocked = (s.friends?.blocked ?? []).some((b) => b.id === pid);
-  /** which line's emoji picker is open (one at a time) */
-  const [pickFor, setPickFor] = useState<number | null>(null);
+  /** long-press / right-click message actions (reaction strip + Reply popover) */
+  const press = useMsgPress();
+  usePopoverDismiss(press.open, ref, press.close);
   /** the line the composer is replying to (its snapshot ships with the sent DM) */
   const [replyTo, setReplyTo] = useState<DmLine | null>(null);
   /** a line briefly highlighted after tapping a quote that points at it */
@@ -513,7 +555,7 @@ function DmThread({ pid }: { pid: string }) {
   const flashTimer = useRef<number | null>(null);
   useEffect(() => () => { if (flashTimer.current) window.clearTimeout(flashTimer.current); }, []);
   // switching threads drops any pending reply (it belongs to the other conversation)
-  useEffect(() => { setReplyTo(null); setPickFor(null); }, [pid]);
+  useEffect(() => { setReplyTo(null); press.close(); }, [pid, press.close]);
   /** tap a quote: scroll to the original (when it's rendered) and flash it */
   const jumpTo = (id: number) => {
     const el = ref.current?.querySelector(`[data-line-id="${id}"]`);
@@ -545,13 +587,13 @@ function DmThread({ pid }: { pid: string }) {
           return (
             <Fragment key={l.id}>
               {g.separator && <div className="soc-time-sep">{chatTimeLabel(l.at)}</div>}
-              <div data-line-id={l.id} className={`soc-line dm ${mine ? 'mine' : ''} ${g.groupStart ? 'g-start' : 'cont'}${flashId === l.id ? ' flash' : ''}`} data-testid="dm-line">
+              <div data-line-id={l.id} onClickCapture={press.onClickCapture} className={`soc-line dm ${mine ? 'mine' : ''} ${g.groupStart ? 'g-start' : 'cont'}${flashId === l.id ? ' flash' : ''}${press.open?.id === l.id ? ' armed' : ''}`} data-testid="dm-line">
                 {!mine && (g.groupEnd
                   ? <SocFace id={pid} name={name} className="soc-av msg" />
                   : <span className="soc-av msg blank" aria-hidden="true" />)}
                 <div className="soc-msg-col">
                   <div className="soc-bubble-row">
-                    <div className={`soc-bubble ${g.groupEnd ? 'tail' : ''}`}>
+                    <div className={`soc-bubble ${g.groupEnd ? 'tail' : ''}`} {...press.bind(l.id)}>
                       {l.reply && (
                         <button type="button" className="soc-quote" data-testid={`dm-quote-${l.id}`} onClick={() => jumpTo(l.reply!.id)} aria-label={`Quoted message by ${l.reply.from}: ${l.reply.text}`}>
                           <b>{l.reply.from}</b> {l.reply.text}
@@ -561,11 +603,8 @@ function DmThread({ pid }: { pid: string }) {
                     </div>
                     <span className="soc-line-acts">
                       {!mine && <button type="button" className="soc-more" aria-label="Report message" title="Report" onClick={() => social.report('dm', { id: l.id })}>⚑</button>}
-                      <button type="button" className="soc-reply-add" aria-label={mine ? 'Reply to your message' : `Reply to ${name}'s message`} data-testid={`dm-reply-${l.id}`} onClick={() => setReplyTo(replyTo?.id === l.id ? null : l)}>↩</button>
-                      <button type="button" className="soc-rx-add" aria-label={mine ? 'React to your message' : `React to ${name}'s message`} aria-expanded={pickFor === l.id} data-testid={`dm-rx-add-${l.id}`} onClick={() => setPickFor(pickFor === l.id ? null : l.id)}>☺</button>
                     </span>
                   </div>
-                  {pickFor === l.id && <ReactionPicker onPick={(e) => { social.dmReact(l.id, e); setPickFor(null); }} />}
                   <ReactionChips reactions={l.reactions} myId={s.you?.id ?? null} onToggle={(e) => social.dmReact(l.id, e)} />
                 </div>
               </div>
@@ -574,6 +613,11 @@ function DmThread({ pid }: { pid: string }) {
         })}
         {!lines.length && <p className="soc-empty">Start the conversation with {name}.</p>}
       </div>
+      {press.open && (() => { const l = lines.find((x) => x.id === press.open!.id); return l ? (
+        <MsgPopover rect={press.open.rect} mine={l.from === s.you?.id}
+          onReact={(e) => social.dmReact(l.id, e)} onReply={() => setReplyTo(l)}
+          onClose={press.close} onBackdrop={press.backdropDown} />
+      ) : null; })()}
       {blocked ? <p className="soc-note">You blocked {name}. Unblock them in Friends to message.</p> : (
         <>
           {replyTo && (
