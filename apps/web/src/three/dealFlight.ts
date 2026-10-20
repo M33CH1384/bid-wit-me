@@ -82,3 +82,20 @@ export function dealClockArmed(introHand: number | null, dealReady: boolean): bo
 export function dealHoldReleased(o: { held: boolean; liveHold: boolean; started: boolean }): boolean {
   return o.held && !o.liveHold && !o.started;
 }
+
+/** How long the deal gate waits for the scene's first rendered frame before it lifts anyway. */
+export const FIRST_FRAME_FALLBACK_MS = 2500;
+
+/**
+ * The intro deal holds until the 3D scene has really rendered a frame. `tableReady` alone is
+ * two DOM animation frames after the table model mounts, which says nothing about the WebGL
+ * loop: under frameloop="demand" the canvas can still be compiling shaders while the deal
+ * window burns, so cards pop in instead of flying. Once the scene's first frame has
+ * presented, the flight is visible. If no frame arrives within the fallback, lift anyway —
+ * a deal is never held forever, and the deal-hold release still shows the cards when the
+ * server's deal window has passed.
+ */
+export function dealGateOpen(o: { tableReady: boolean; loading: boolean; firstFrame: boolean; mountedAt: number; now: number }): boolean {
+  if (!o.tableReady || o.loading) return false;
+  return o.firstFrame || o.now - o.mountedAt >= FIRST_FRAME_FALLBACK_MS;
+}
