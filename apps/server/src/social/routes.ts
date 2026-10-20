@@ -36,9 +36,13 @@ export function coarseRegion(cf: unknown): string | null {
 }
 
 export interface ProfileOut {
+  /** raw account id (no 'u:' prefix) — the client needs it to resolve the cred profile/avatar */
+  id: string;
   username: string;
   memberSince: number;
   tagline: string | null;
+  /** uploaded profile picture (data URL) or null — the Social profile header renders it directly */
+  avatar: string | null;
   badges: { id: string; earnedAt: number }[];
   teamNames: string[];
   ratings: { team?: number; cutthroat?: number };
@@ -51,7 +55,7 @@ export interface ProfileOut {
 }
 
 export async function profileFor(db: D1Database, username: string, viewer: string | null): Promise<ProfileOut | null> {
-  const u = await db.prepare('SELECT id, username, created_at, tagline FROM users WHERE username_key = ?').bind(usernameKey(username)).first<{ id: string; username: string; created_at: number; tagline: string | null }>();
+  const u = await db.prepare('SELECT id, username, created_at, tagline, avatar FROM users WHERE username_key = ?').bind(usernameKey(username)).first<{ id: string; username: string; created_at: number; tagline: string | null; avatar: string | null }>();
   if (!u) return null;
   const prog = await db.prepare('SELECT data FROM progress WHERE user_id = ?').bind(u.id).first<{ data: string }>();
   let badges: { id: string; earnedAt: number }[] = [];
@@ -67,6 +71,7 @@ export async function profileFor(db: D1Database, username: string, viewer: strin
     WHERE me.user_id = ? GROUP BY o.user_id ORDER BY games DESC LIMIT 8`).bind(u.id).all<{ id: string; name: string | null; games: number; wins: number; losses: number }>()).results;
   const store = new SocialStore(db);
   const out: ProfileOut = {
+    id: u.id, avatar: u.avatar,
     username: u.username, memberSince: u.created_at, tagline: u.tagline, badges, teamNames: teams.slice(0, 6), ratings: await store.ratings(u.id),
     totals: { games: stats.games, wins: stats.wins },
     h2h: h2h.map((r) => ({ id: `u:${r.id}`, name: r.name ?? 'Player', games: r.games, wins: r.wins, losses: r.losses })),

@@ -5,7 +5,7 @@
 import { Fragment, type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { type DmLine, type InviteMsg, type OpenTable, type PresenceEntry, type PresenceStatus, type SocialChatLine, SOCIAL_LIMITS, statusLabel } from '@spades/protocol';
 import { useAccount } from '../account/api';
-import { AvatarCircle, socialUidOf, useAvatar } from '../avatar';
+import { accountUidOf, AvatarCircle, socialUidOf, useAvatar } from '../avatar';
 import { BADGES } from '../badges';
 import { createTable } from '../online/connection';
 import { inviteLink, serverUrl } from '../online/config';
@@ -726,6 +726,7 @@ function Friends({ signedIn }: { signedIn: boolean }) {
 }
 
 interface ProfileData {
+  id?: string; avatar?: string | null;
   username: string; memberSince: number; tagline?: string | null; badges: { id: string; earnedAt: number }[]; teamNames: string[];
   ratings: { team?: number; cutthroat?: number }; totals: { games: number; wins: number };
   h2h: { id: string; name: string; games: number; wins: number; losses: number }[]; vsYou?: { games: number; wins: number; losses: number }; champion: number;
@@ -734,7 +735,7 @@ interface ProfileData {
 }
 
 interface CredPublic {
-  user: { id: string; name: string; avatar: string | null; tagline?: string | null; socialLinks?: SocialLinks };
+  user: { id: string; name: string; avatar: string | null; avatarUpdatedAt?: number | null; tagline?: string | null; socialLinks?: SocialLinks };
   level: { level: number; xp: number; xpForNext: number; xpIntoLevel: number; title: string };
   rank: { team: { division: string; elo: number }; cutthroat: { division: string; elo: number } };
   achievements: { id: string; title: string; hint: string; xp: number; coins: number; unlockedAt: number | null }[];
@@ -755,14 +756,24 @@ function Profile({ name, id }: { name: string; id?: string }) {
     ? Object.values(s.users).find((u) => !u.guest && u.name === p.username)?.id
       ?? [...(s.friends?.friends ?? []), ...(s.friends?.incoming ?? []), ...(s.friends?.outgoing ?? []), ...(s.friends?.blocked ?? [])].find((f) => f.name === p.username)?.id
     : undefined);
+  // pid is a SOCIAL id ('u:<uid>', or raw '<uid>' from the chat name tap) — hub actions
+  // (DMs, invites, presence) speak that form, but /api/profile/:id looks the user up by
+  // the RAW account id. Fetching with a 'u:'-prefixed pid 404s, which silently cost this
+  // view its picture, Rep and achievements (2026-10-20). Always normalize first; the
+  // social profile payload's own id covers name-only opens (offline, not a friend).
+  const uid = accountUidOf(pid) ?? (p && p !== 'missing' ? p.id : undefined);
   // Rep data (level/title, season divisions, unlocked achievements) comes straight from the
   // server DB via /api/profile/:id — no presence involved, so offline players show it too.
   useEffect(() => {
     setCred(null);
-    if (!pid) return;
-    fetch(`/api/profile/${encodeURIComponent(pid)}`, { credentials: 'same-origin' })
+    if (!uid) return;
+    fetch(`/api/profile/${encodeURIComponent(uid)}`, { credentials: 'same-origin' })
       .then((r) => (r.ok ? r.json() : null)).then((j) => setCred(j as CredPublic)).catch(() => setCred(null));
-  }, [pid]);
+  }, [uid]);
+  // The header picture resolves the same way chat faces do (useAvatar → /api/profile/:id,
+  // cached), seeded by whichever payload already carries it — so the photo shows even if
+  // one of the two fetches fails.
+  const pic = useAvatar(uid, cred?.user.avatar ?? (p && p !== 'missing' ? p.avatar : undefined), cred?.user.avatarUpdatedAt ?? undefined);
   const me = acct.user?.username === name;
   const friend = !!pid && (s.friends?.friends ?? []).some((f) => f.id === pid);
   const blocked = !!pid && (s.friends?.blocked ?? []).some((f) => f.id === pid);
@@ -772,7 +783,7 @@ function Profile({ name, id }: { name: string; id?: string }) {
       {p === null ? <p className="soc-empty">Loading…</p> : p === 'missing' ? <p className="soc-empty">No profile for {name}.</p> : (
         <>
           <div className="soc-prof-head">
-            <AvatarCircle pic={cred?.user.avatar} name={p.username} className="soc-av big" />
+            <AvatarCircle pic={pic} name={p.username} className="soc-av big" />
             <div>
               <h3 data-testid="profile-name">{p.username}{p.champion > 0 && <span className="soc-champ" title="Tournament champion">🏆×{p.champion}</span>}</h3>
               <p className="soc-muted">Member since {new Date(p.memberSince).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</p>

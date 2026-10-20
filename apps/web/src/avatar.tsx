@@ -123,9 +123,12 @@ async function loadAvatar(uid: string, knownUpdatedAt?: number): Promise<CacheEn
       mem.set(uid, entry); lsSet(uid, entry);
       return entry;
     } catch {
-      // offline / not an account: keep whatever we had (null the first time)
+      // offline / not an account: keep whatever we had (null the first time). Only pin the
+      // fallback in the session cache when there WAS a cached entry — pinning a first-fetch
+      // failure would stick the initial-letter fallback for the whole session even after a
+      // transient error (e.g. a deploy in flight) clears; without a pin, the next mount retries.
       const fallback: CacheEntry = cached ?? { src: null, at: 0 };
-      mem.set(uid, fallback);
+      if (cached) mem.set(uid, fallback);
       return fallback;
     } finally { inflight.delete(uid); }
   })();
@@ -174,4 +177,17 @@ export function AvatarCircle({ pic, name, className, style, testId }: { pic: str
 export function socialUidOf(id: string | null | undefined): string | undefined {
   if (!id) return undefined;
   return id.startsWith('u:') ? id.slice(2) : undefined;
+}
+
+/**
+ * The raw account id behind an id that may arrive either as a social pid ('u:<uid>')
+ * or already raw ('<uid>' — e.g. the global-chat name tap strips the prefix itself).
+ * Guests and empty values resolve to undefined. /api/profile/:id looks users up by the
+ * RAW id, so anything fetching it must go through this (or socialUidOf) first — passing
+ * a 'u:'-prefixed pid 404s and the profile silently loses its picture/Rep (2026-10-20).
+ */
+export function accountUidOf(id: string | null | undefined): string | undefined {
+  if (!id) return undefined;
+  if (id.startsWith('g:')) return undefined;
+  return id.startsWith('u:') ? id.slice(2) : id;
 }

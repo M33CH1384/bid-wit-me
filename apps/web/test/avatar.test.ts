@@ -1,6 +1,6 @@
 /** Profile pictures (Demetrius 2026-10-19): the pic beats the initial, camera off included. */
 import { describe, expect, it } from 'vitest';
-import { avatarSrcFor, faceOf, socialUidOf, validateAvatarDataUrl } from '../src/avatar';
+import { accountUidOf, avatarSrcFor, faceOf, socialUidOf, validateAvatarDataUrl } from '../src/avatar';
 
 const PIC = 'data:image/png;base64,' + btoa('\x89PNG' + 'x'.repeat(100));
 
@@ -32,6 +32,17 @@ describe('socialUidOf', () => {
     expect(socialUidOf('g:xyz')).toBeUndefined();
     expect(socialUidOf(null)).toBeUndefined();
     expect(socialUidOf(undefined)).toBeUndefined();
+  });
+});
+
+describe('accountUidOf', () => {
+  it('accepts social pids and raw account ids alike; guests resolve to nothing', () => {
+    expect(accountUidOf('u:abc123')).toBe('abc123');
+    expect(accountUidOf('abc123')).toBe('abc123'); // the chat name tap passes it already stripped
+    expect(accountUidOf('g:xyz')).toBeUndefined();
+    expect(accountUidOf(null)).toBeUndefined();
+    expect(accountUidOf(undefined)).toBeUndefined();
+    expect(accountUidOf('')).toBeUndefined();
   });
 });
 
