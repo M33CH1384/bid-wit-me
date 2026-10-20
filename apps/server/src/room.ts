@@ -8,7 +8,7 @@
  *  - all durable state lives in one plain-JSON `RoomData` object that the DO saves as a single row.
  */
 import {
-  type Action, type GameState, type Series, addSeriesGame, emptySeries, seriesForGameStart, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, RulesConfigError, acceptRules, applyAction, canRunIt, runPlayout, type Seat, spectatorView, isFreshDeal, isNukeTrick, nextDealer, makeRules, newGame, pendingTurn, secureSeed, viewFor, withCompleteNil,
+  type Action, type GameState, type Series, addSeriesGame, emptySeries, seriesForGameStart, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, RulesConfigError, acceptRules, applyAction, canRunIt, runPlayout, type Seat, spectatorView, isFreshDeal, isNukeTrick, nextDealer, makeRules, newGame, pendingTurn, secureSeed, throwInOpen, viewFor, withCompleteNil,
 } from '@spades/rules';
 import { voiceGender } from '@spades/bots';
 import { BUCKET_THIN } from './voice/writer';
@@ -945,6 +945,7 @@ export class Room {
   /**
    * A card play that is still legal for the turn in progress. `seq` has to be from this turn
    * (`turnSeq`), not from the previous trick, or a late tap would lead the next one.
+   * The last-card throw-in window is also honored (out-of-turn final-trick throws are legal).
    */
   private sameTurnCard(me: Member, card: string, seq: number | undefined): boolean {
     const d = this.data;
@@ -952,7 +953,8 @@ export class Room {
     if (!g || d.phase !== 'playing' || me.seat === null || seq === undefined) return false;
     if (seq < (d.turnSeq ?? 0)) return false;
     const turn = pendingTurn(g);
-    if (!turn || turn.kind !== 'play' || turn.seat !== me.seat) return false;
+    if (!turn || turn.kind !== 'play') return false;
+    if (turn.seat !== me.seat && !throwInOpen(g)) return false;
     if (g.trick.plays.some((p) => p.seat === me.seat)) return false;
     return viewFor(g, me.seat).legal.some((c) => c === card);
   }

@@ -716,7 +716,14 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // cards stay face-down only while Blind Nil is actually on offer; otherwise just turn them over (no button)
   const autoReveal = myTurn && !dealing && st.phase === 'bidding' && view.hand === null && !!view.bidOptions && !view.bidOptions.blindNil;
   useEffect(() => { if (autoReveal) apply({ type: 'reveal', seat: HUMAN }); }, [autoReveal]); // eslint-disable-line react-hooks/exhaustive-deps
-  const legal = myTurn && st.phase === 'playing' ? view.legal.filter((c) => (hand ?? []).includes(c)) : [];
+  // 🃏 Last-card throw-in (Demetrius 2026-10-19): on the hand's final trick every live seat
+  // holds exactly one card, so the player can throw theirs in out of turn — mirroring the
+  // engine's throwInOpen window (hand counts are public). Until then, only the turn seat plays.
+  const throwInOpenView = st.phase === 'playing' && !spectating
+    && (hand ?? []).length === 1
+    && view.handCounts.every((c) => c <= 1)
+    && view.trick.plays.every((p) => p.seat !== HUMAN);
+  const legal = (myTurn || throwInOpenView) && st.phase === 'playing' ? view.legal.filter((c) => (hand ?? []).includes(c)) : [];
   const exchangeStep = st.phase === 'exchange' ? st.exchange[0] : undefined;
   const humanExchanging = myTurn && exchangeStep?.from === HUMAN;
   const mySide = sideOf(HUMAN, r);

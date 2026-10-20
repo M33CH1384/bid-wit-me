@@ -542,12 +542,54 @@ export function jokersMet(plays: readonly Play[]): boolean {
   return plays.some((p) => p.card === 'BJ') && plays.some((p) => p.card === 'LJ');
 }
 
+/**
+ * 🃏 Last-card throw-in (Demetrius 2026-10-19): the hand's final trick, when every live
+ * seat holds exactly one card, is played turn-free — anyone may throw their last card in
+ * without waiting for the turn pointer, like real casual table play ("in real games this
+ * happens a lot"). Nobody has a choice of card left, so order can't change what anyone
+ * holds; the trick leader still sets the led suit because the completed trick's plays
+ * are reordered leader-first before the winner is decided (see the 'play' handler).
+ * Outside this window turn order is enforced exactly as before.
+ */
+export function throwInOpen(st: GameState): boolean {
+  if (st.phase !== 'playing') return false;
+  if (st.tricks.length !== booksInHand(st) - 1) return false;
+  // ≤ 1 (not exactly 1): the window stays open while the final trick's cards land,
+  // as the seats that already threw drop to zero.
+  return liveSeats(st).every((s) => st.hands[s]!.length <= 1);
+}
+
+/** Order a completed trick leader-first: the rotation from the trick's leader through every live seat. */
+function leaderFirstPlays(st: GameState, plays: readonly Play[]): Play[] {
+  const bySeat = new Map(plays.map((p) => [p.seat, p] as const));
+  const out: Play[] = [];
+  const liveN = liveSeats(st).length;
+  for (let s = st.trick.leader, i = 0; i < liveN; s = nextLive(st, s), i++) {
+    const p = bySeat.get(s);
+    if (p) out.push(p);
+  }
+  return out.length === plays.length ? out : [...plays];
+}
+
 function mustLead2C(st: GameState): boolean {
   return st.rules.firstLead === 'twoOfClubs' && st.tricks.length === 0;
 }
 
 export function legalPlays(st: GameState, seat: Seat): Card[] {
   if (st.phase !== 'playing' || st.turn !== seat) return [];
+  return legalPlaysFor(rulesForLive(st), st.hands[seat]!, st.trick.plays, st.spadesBroken, mustLead2C(st));
+}
+
+/**
+ * The cards `seat` may actually send right now: the turn seat's legal plays — plus, during the
+ * last-card throw-in (see throwInOpen), this seat's single remaining card even out of turn.
+ * Used by the play handler's validation and by the player view, so the engine, the server and
+ * the client's tappable cards never disagree about the throw-in window.
+ */
+export function playableCards(st: GameState, seat: Seat): Card[] {
+  if (st.phase !== 'playing') return [];
+  if (st.turn === seat) return legalPlays(st, seat);
+  if (!throwInOpen(st)) return [];
   return legalPlaysFor(rulesForLive(st), st.hands[seat]!, st.trick.plays, st.spadesBroken, mustLead2C(st));
 }
 
@@ -699,8 +741,8 @@ export function applyAction(st: GameState, action: Action): GameState {
         if (mine.card === action.card) return st;
         throw new RuleError('ALREADY_PLAYED', 'You already played in this trick');
       }
-      if (st.turn !== seat) throw new RuleError('NOT_YOUR_TURN', 'Not your turn to play');
-      const legal = legalPlays(st, seat);
+      if (st.turn !== seat && !throwInOpen(st)) throw new RuleError('NOT_YOUR_TURN', 'Not your turn to play');
+      const legal = playableCards(st, seat);
       if (!legal.includes(action.card)) throw explainIllegal(st, seat, action.card);
       const hands = [...st.hands];
       hands[seat] = hands[seat]!.filter((c) => c !== action.card);
@@ -711,29 +753,43 @@ export function applyAction(st: GameState, action: Action): GameState {
       const plays: Play[] = [...st.trick.plays, play];
       let spadesBroken = st.spadesBroken || isTrump(action.card, r);
       // ☢ last-trick nuke: once both Jokers are in the hand's final trick, everyone still to play auto-plays their last
-      // card at once (one card each, so no choice is made for them); other tricks play out normally
+      // card at once (one card each, so no choice is made for them); other tricks play out normally.
+      // (With the last-card throw-in the final trick can land out of order, so seats that already
+      // threw are skipped here — auto-playing them again would double-play the seat.)
       const liveN = liveSeats(st).length;
       if (st.tricks.length === booksInHand(st) - 1 && jokersMet(plays)) {
+        const thrown = new Set(plays.map((p) => p.seat));
         let s2 = nextLive(st, seat);
         while (plays.length < liveN) {
-          const card = lowestLegal(r, hands[s2]!, plays, spadesBroken);
-          hands[s2] = hands[s2]!.filter((c) => c !== card);
-          plays.push({ seat: s2, card, auto: true });
-          spadesBroken = spadesBroken || isTrump(card, r);
+          if (!thrown.has(s2)) {
+            const card = lowestLegal(r, hands[s2]!, plays, spadesBroken);
+            hands[s2] = hands[s2]!.filter((c) => c !== card);
+            plays.push({ seat: s2, card, auto: true });
+            spadesBroken = spadesBroken || isTrump(card, r);
+            thrown.add(s2);
+          }
           s2 = nextLive(st, s2);
         }
       }
       if (plays.length < liveN) {
-        return { ...st, hands, spadesBroken, trick: { ...st.trick, plays }, turn: nextLive(st, seat) };
+        // The turn pointer names the next seat that hasn't thrown yet, so bots and the UI
+        // stay in sync even when the final trick's cards land out of order.
+        const thrown = new Set(plays.map((p) => p.seat));
+        let t = nextLive(st, seat);
+        while (thrown.has(t)) t = nextLive(st, t);
+        return { ...st, hands, spadesBroken, trick: { ...st.trick, plays }, turn: t };
       }
-      const winner = trickWinner(plays, r);
-      const done: Trick = { leader: st.trick.leader, plays, winner };
+      // 🃏 Throw-in reorder: the led suit (plays[0]) is always the trick leader's card,
+      // even when the final trick's cards landed out of turn.
+      const ordered = leaderFirstPlays(st, plays);
+      const winner = trickWinner(ordered, r);
+      const done: Trick = { leader: st.trick.leader, plays: ordered, winner };
       const tricksWon = [...st.tricksWon];
       tricksWon[winner]!++;
       const tricks = [...st.tricks, done];
-      const bi = plays.findIndex((p) => p.card === 'BJ');
+      const bi = ordered.findIndex((p) => p.card === 'BJ');
       let nukes = st.nukes;
-      if (isNukeTrick(plays)) { nukes = [...(st.nukes ?? Array(sideCount(r)).fill(0))]; nukes[sideOf(plays[bi]!.seat, r)]!++; }
+      if (isNukeTrick(ordered)) { nukes = [...(st.nukes ?? Array(sideCount(r)).fill(0))]; nukes[sideOf(ordered[bi]!.seat, r)]!++; }
       let next: GameState = {
         ...st, hands, spadesBroken, tricks, tricksWon, ...(nukes ? { nukes } : {}),
         trick: { leader: winner, plays: [], winner: null }, turn: winner,
@@ -913,7 +969,7 @@ function project(st: GameState, seat: Seat, spectate: boolean): PlayerView {
     scores: [...st.scores], bags: [...st.bags], history: st.history, result: st.result,
     failStreak: [...(st.failStreak ?? [])], eliminated: [...(st.eliminated ?? [])], ...(st.trickCount !== undefined ? { trickCount: st.trickCount } : {}),
     bidOptions: spectate ? null : st.phase === 'bidding' && st.turn === seat ? bidOptions(st, seat) : null,
-    legal: spectate ? [] : legalPlays(st, seat),
+    legal: spectate ? [] : playableCards(st, seat),
     // Spectators never learn whether a seat can run it, and we don't search to find out.
     canRunIt: spectate ? false : canRunIt(st, seat),
     canMisdeal: spectate ? false : canMisdeal(st, seat),
