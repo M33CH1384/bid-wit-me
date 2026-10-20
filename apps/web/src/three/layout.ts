@@ -220,8 +220,9 @@ export function badgeSpot(pos: SeatPos, n: number): [number, number, number] {
   const d = seatDir(pos, n);
   const p = edgePoint(d, 0).add(d.clone().multiplyScalar(0.12));
   if (pos === 'left' || pos === 'right') return [p.x * 0.78, 0.62, p.z - 0.55];
-  // top seat: plate beside (right of) the fan so it never hides under the HUD strips
-  return [p.x + 0.42, 0.42, p.z];
+  // top seat: centered over the partner's cards — Demetrius 2026-10-19 (plate must sit above and
+  // centered over the cards in portrait, never overlapping them)
+  return [p.x, 0.42, p.z];
 }
 
 /* ------------------------------------------------------------- camera */

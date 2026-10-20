@@ -1055,9 +1055,9 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
         // phone landscape: plates pinned to the screen edges at mid-height, partner top-centre under the scorebug
         if (short && side) {
           const cls = side === 'top' ? 'side-topc' : `side-${side}`;
-          // top seat: plate sits just left of the partner's cards (not in the corner) — Demetrius 2026-10-19
+          // top seat: plate sits just left of the partner's cards (not in the corner), lowered a touch — Demetrius 2026-10-19
           const calcShort = (el: Object3D, camera: Camera, size: { width: number; height: number }) =>
-            side === 'top' ? [(size.width / 2) - 170, 50 + safe.t] : side === 'left' ? [8 + safe.l, size.height * (n === 3 ? 0.36 : 0.43)] : [size.width - 8 - safe.r, size.height * (n === 3 ? 0.36 : 0.43)];
+            side === 'top' ? [(size.width / 2) - 170, 68 + safe.t] : side === 'left' ? [8 + safe.l, size.height * (n === 3 ? 0.36 : 0.43)] : [size.width - 8 - safe.r, size.height * (n === 3 ? 0.36 : 0.43)];
           return (
             <Html key={seat} position={badgeSpot(p, n)} calculatePosition={calcShort} zIndexRange={[5, 0]} className={`seat-anchor ${cls}`} portal={portal}>
               {renderSeat(seat)}
@@ -1093,7 +1093,8 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
               // a side plate had to move out of the trick zone (small phones): the top plate stays as high as it can, so the two
               // don't chase each other (the side plate may be tucked right under this one)
               if (sideEls.some((e) => e.dataset.moved === '1')) cy = minY;
-              return [Math.max(pad + left, Math.min(x, size.width - pad - pw + left)), cy];
+              // the plate is horizontally centered on the anchor (CSS translate(-50%)), so clamp the center point
+              return [Math.max(pad + pw / 2 + left / 2, Math.min(x, size.width - pad - pw / 2 + left / 2)), cy];
             }
             const ax = side === 'left' ? Math.max(pad, x - 72) : Math.min(size.width - pad, x + 72);
             // never cover a trick slot (phones in portrait: the side plates sit right beside the trick cards).
