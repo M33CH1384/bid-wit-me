@@ -20,8 +20,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTheme } from '../theme';
 import { fx, useReduceEffects } from '../fx';
-import { loadSettings } from '../settings';
-import { inkGradientAnimated, inkMode, type InkGateState } from './mode';
+import { defaultQuality, loadSettings } from '../settings';
+import { inkGradientAnimated, inkLowQuality, inkMode, type InkGateState } from './mode';
 import { pressSplat, segmentSplats, type InkSplat } from './splat';
 import { InkEngine } from './engine';
 
@@ -58,10 +58,23 @@ export default function InkLayer() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<InkEngine | null>(null);
 
-  /** Device quality (heuristic-backed, from game settings): 'low' ⇒ gradient. */
+  /**
+   * Low-end classification for the ink (see inkLowQuality for the full
+   * story): the persisted graphics quality is NOT read at face value — its
+   * heuristic default answers 'low' on every iPhone (WebKit clamps the core
+   * count it reads, and Safari reports no deviceMemory), which used to send
+   * every iPhone to the gradient fallback. Only an explicit user Low pick
+   * (stored 'low' where the heuristic itself says 'high') or a genuinely
+   * reported ≤2 GB memory figure gates the engine off here.
+   */
   const lowQuality = useMemo(() => {
     try {
-      return loadSettings().quality === 'low';
+      const nav = navigator as Navigator & { deviceMemory?: number };
+      return inkLowQuality({
+        deviceMemory: nav.deviceMemory,
+        hardwareConcurrency: nav.hardwareConcurrency,
+        userSetLow: loadSettings().quality === 'low' && defaultQuality() === 'high',
+      });
     } catch {
       return false;
     }

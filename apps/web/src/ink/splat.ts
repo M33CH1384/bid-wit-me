@@ -40,26 +40,32 @@ export interface InkSplat {
 /** Pointer speed (field-units/sec) at which strength/color/velocity top out. */
 export const SPLAT_MAX_SPEED = 2.4;
 /** Fraction of the pointer's velocity handed to the field on a drag. */
-export const SPLAT_PULL = 0.38;
+export const SPLAT_PULL = 0.55;
 
-export const PRESS_RADIUS = 0.085;
-export const PRESS_STRENGTH = 0.6;
-export const DRAG_MIN_RADIUS = 0.045;
-export const DRAG_MAX_RADIUS = 0.11;
+export const PRESS_RADIUS = 0.13;
+export const PRESS_STRENGTH = 0.85;
+export const DRAG_MIN_RADIUS = 0.06;
+export const DRAG_MAX_RADIUS = 0.16;
 
-/** Idle ambient currents: faint, wide, slow injections the engine adds on a timer. */
-export const AMBIENT_STRENGTH = 0.13;
-export const AMBIENT_MIN_RADIUS = 0.18;
-export const AMBIENT_MAX_RADIUS = 0.32;
+/**
+ * Idle ambient currents: wide, clearly visible injections the engine adds on
+ * a timer. Escalation pass (owner: P2 "doesn't feel active"): strength more
+ * than doubled from the original 0.13 whisper and radii widened, so an
+ * untouched screen is obviously alive within seconds.
+ */
+export const AMBIENT_STRENGTH = 0.3;
+export const AMBIENT_MIN_RADIUS = 0.22;
+export const AMBIENT_MAX_RADIUS = 0.45;
 
 /**
  * Field decay, exponential with a per-second rate. Dye fades slowly (a trail
- * stays visible for seconds, drifting); velocity dies faster, so motion
- * settles before the color is gone. The engine turns these into per-frame
- * factors with decayFactor() so the feel is frame-rate independent.
+ * stays visible for seconds, drifting — half-life ≈ 3.2 s at the escalation
+ * rate); velocity dies faster, so motion settles before the color is gone.
+ * The engine turns these into per-frame factors with decayFactor() so the
+ * feel is frame-rate independent.
  */
-export const DYE_DECAY_RATE = 0.5;
-export const VEL_DECAY_RATE = 1.5;
+export const DYE_DECAY_RATE = 0.22;
+export const VEL_DECAY_RATE = 0.9;
 
 export function decayFactor(ratePerSec: number, dtSec: number): number {
   if (!(ratePerSec > 0) || !(dtSec > 0)) return 1;
@@ -118,7 +124,9 @@ export function dragSplat(x0: number, y0: number, x1: number, y1: number, dtSec:
     vx: dist > 0 ? (dx / dist) * capped * SPLAT_PULL : 0,
     vy: dist > 0 ? (dy / dist) * capped * SPLAT_PULL : 0,
     radius: DRAG_MIN_RADIUS + (DRAG_MAX_RADIUS - DRAG_MIN_RADIUS) * t,
-    strength: 0.3 + 0.7 * t,
+    // Even a slow drag lays clearly visible dye (floor raised 0.3 → 0.45 in
+    // the escalation pass); speed still tops the splat out at 1.
+    strength: 0.45 + 0.55 * t,
     r,
     g,
     b,

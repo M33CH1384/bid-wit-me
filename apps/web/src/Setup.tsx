@@ -197,7 +197,10 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
           <img className="nh-card" src="/assets/neon/ace-card.webp" alt="" />
         </div>
         <div className="nh-brand">
-          <span className="nh-brand-row"><span className="nh-wordmark">BID WIT ME</span><span className="beta-tag" data-testid="beta-tag">BETA</span></span>
+          {/* Owner directive: the SAME logo as Classic — the white wordmark
+              asset in the splash's own markup, not a theme-specific
+              treatment. One logo, both themes. */}
+          <div className="splash-logo-wrap"><img className="logo splash-logo" src="/assets/bwm-wordmark-white.svg" alt="" /><span className="beta-tag" data-testid="beta-tag">BETA</span></div>
           <h1 className="sr-only">Bid Wit Me</h1>
           <p className="tagline">Spades with the crew</p>
         </div>

@@ -54,7 +54,16 @@ export interface Settings {
   deck: string;
 }
 
-function defaultQuality(): 'high' | 'low' {
+/**
+ * The load-time graphics-quality heuristic. Exported for the ink layer
+ * (src/ink/mode.ts `inkLowQuality`), which compares a stored quality
+ * against a fresh heuristic read to tell an explicit user pick apart from
+ * this default. NOTE: its signals are weak on WebKit — Safari has no
+ * `deviceMemory`, and iOS clamps `hardwareConcurrency` to 2 — so it answers
+ * 'low' on every iPhone; consumers that can adapt at runtime (the ink
+ * governor) should not take its word for low-end hardware.
+ */
+export function defaultQuality(): 'high' | 'low' {
   if (typeof navigator === 'undefined') return 'high';
   const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
   return (mem !== undefined && mem <= 3) || (navigator.hardwareConcurrency ?? 8) <= 3 ? 'low' : 'high';

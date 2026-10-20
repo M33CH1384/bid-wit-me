@@ -2,8 +2,11 @@
  *  and the source pins that keep the ink observed-only and unmount-at-table. */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { inkGradientAnimated, inkMode, type InkGateState } from '../src/ink/mode';
+import { inkGradientAnimated, inkLowQuality, inkMode, type InkGateState } from '../src/ink/mode';
 import {
+  AMBIENT_MAX_RADIUS,
+  AMBIENT_MIN_RADIUS,
+  AMBIENT_STRENGTH,
   DRAG_MAX_RADIUS,
   DRAG_MIN_RADIUS,
   DYE_DECAY_RATE,
@@ -69,6 +72,45 @@ describe('ink mode decision', () => {
   });
 });
 
+describe('ink device classification (escalation: the iPhone misclassification fix)', () => {
+  it('an iPhone in Safari is NOT low-end: no deviceMemory, core count clamped to 2 by WebKit', () => {
+    // The exact signal pair every iPhone presents. The settings heuristic
+    // (deviceMemory ≤ 3 || cores ≤ 3) reads this as 'low', which used to
+    // send every iPhone to the gradient fallback — the engine never ran.
+    expect(inkLowQuality({ deviceMemory: undefined, hardwareConcurrency: 2, userSetLow: false })).toBe(false);
+  });
+
+  it('absent signals are unknown, never weak', () => {
+    expect(inkLowQuality({ userSetLow: false })).toBe(false);
+    expect(inkLowQuality({ deviceMemory: undefined, hardwareConcurrency: undefined, userSetLow: false })).toBe(false);
+  });
+
+  it('core counts never classify a device low on their own (clamped where it matters)', () => {
+    expect(inkLowQuality({ hardwareConcurrency: 1, userSetLow: false })).toBe(false);
+    expect(inkLowQuality({ hardwareConcurrency: 2, userSetLow: false })).toBe(false);
+    expect(inkLowQuality({ deviceMemory: 8, hardwareConcurrency: 2, userSetLow: false })).toBe(false);
+  });
+
+  it('a memory figure the browser actually reports at ≤2 GB is positive low-end evidence', () => {
+    expect(inkLowQuality({ deviceMemory: 2, hardwareConcurrency: 8, userSetLow: false })).toBe(true);
+    expect(inkLowQuality({ deviceMemory: 1, userSetLow: false })).toBe(true);
+    expect(inkLowQuality({ deviceMemory: 4, hardwareConcurrency: 8, userSetLow: false })).toBe(false);
+    expect(inkLowQuality({ deviceMemory: 8, hardwareConcurrency: 16, userSetLow: false })).toBe(false);
+  });
+
+  it('an explicit user pick of Low graphics is always honored', () => {
+    expect(inkLowQuality({ deviceMemory: 8, hardwareConcurrency: 16, userSetLow: true })).toBe(true);
+    expect(inkLowQuality({ userSetLow: true })).toBe(true);
+  });
+
+  it('InkLayer derives userSetLow by comparing the stored quality to a fresh heuristic read', () => {
+    const layer = readFileSync(new URL('../src/ink/InkLayer.tsx', import.meta.url), 'utf8');
+    expect(layer).toContain('inkLowQuality({');
+    expect(layer).toContain("loadSettings().quality === 'low' && defaultQuality() === 'high'");
+    expect(layer).not.toContain("return loadSettings().quality === 'low';");
+  });
+});
+
 describe('splat math', () => {
   it('the color ramp runs violet → electric blue → cyan and clamps outside', () => {
     expect(inkColor(0)).toEqual([128 / 255, 84 / 255, 1]);
@@ -96,7 +138,7 @@ describe('splat math', () => {
     // 0.12 field-units in 0.1 s → speed 1.2 (t = 0.5)
     const s = dragSplat(0, 0, 0.12, 0, 0.1)!;
     expect(s).not.toBeNull();
-    expect(s.strength).toBeCloseTo(0.3 + 0.7 * 0.5);
+    expect(s.strength).toBeCloseTo(0.45 + 0.55 * 0.5);
     expect(s.vx).toBeCloseTo(1.2 * SPLAT_PULL);
     expect(s.vy).toBeCloseTo(0);
     expect(s.x).toBe(0.12);
@@ -122,7 +164,7 @@ describe('splat math', () => {
 
   it('a stationary drag deposits the minimum and imparts no velocity', () => {
     const s = dragSplat(0.3, 0.3, 0.3, 0.3, 0.016)!;
-    expect(s.strength).toBeCloseTo(0.3);
+    expect(s.strength).toBeCloseTo(0.45);
     expect(s.vx).toBe(0);
     expect(s.vy).toBe(0);
     expect(s.radius).toBe(DRAG_MIN_RADIUS);
@@ -136,13 +178,34 @@ describe('splat math', () => {
 
   it('decay is exponential: dye lingers, velocity settles first', () => {
     const dye = decayFactor(DYE_DECAY_RATE, 1 / 60);
-    expect(dye).toBeGreaterThan(0.985);
-    expect(dye).toBeLessThan(0.996);
+    expect(dye).toBeGreaterThan(0.99);
+    expect(dye).toBeLessThan(0.998);
     expect(dye).toBeCloseTo(Math.exp(-DYE_DECAY_RATE / 60));
     expect(decayFactor(VEL_DECAY_RATE, 1 / 60)).toBeLessThan(dye);
     expect(decayFactor(DYE_DECAY_RATE, 0)).toBe(1);
     expect(decayFactor(0, 1)).toBe(1);
     expect(decayFactor(DYE_DECAY_RATE, 2)).toBeLessThan(decayFactor(DYE_DECAY_RATE, 1));
+  });
+
+  it('escalation levels: the engine is turned UP, not whispering (owner-directed values)', () => {
+    // P2 shipped a whisper (press .6/.085, ambient .13, dye decay .5/s,
+    // pull .38) and the owner read it as "a nice gradient". These floors
+    // pin the escalation so a future "perf tidy-up" can't quietly revert
+    // the feel; changing them is a design decision, not a refactor.
+    expect(PRESS_STRENGTH).toBeGreaterThanOrEqual(0.85);
+    expect(PRESS_RADIUS).toBeGreaterThanOrEqual(0.13);
+    expect(SPLAT_PULL).toBeGreaterThanOrEqual(0.55);
+    expect(AMBIENT_STRENGTH).toBeGreaterThanOrEqual(0.3);
+    expect(AMBIENT_MIN_RADIUS).toBeGreaterThanOrEqual(0.22);
+    expect(AMBIENT_MAX_RADIUS).toBeGreaterThanOrEqual(0.45);
+    expect(DYE_DECAY_RATE).toBeLessThanOrEqual(0.22);
+    expect(VEL_DECAY_RATE).toBeLessThanOrEqual(0.9);
+    const engine = readFileSync(new URL('../src/ink/engine.ts', import.meta.url), 'utf8');
+    expect(engine).toContain('const FLOW_AMP = 0.11');
+    expect(engine).toContain('col += dye * 1.3;');
+    expect(engine).toContain('(e * e) * 0.7');
+    // ambient cadence ~1.0–1.9 s (was 2.6–4.5 s): the field never sits still
+    expect(engine).toContain('this.nextAmbient = now + 1000 + Math.random() * 900;');
   });
 
   it('segment stamping lays a continuous, capped trail that ends on the pointer', () => {

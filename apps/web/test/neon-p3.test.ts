@@ -123,9 +123,10 @@ describe('home hero CSS', () => {
     expect(sec).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*html\[data-theme="neon"\] \.nh-card \{ animation: none; \}/);
   });
 
-  it('the wordmark is a violet→blue gradient treatment', () => {
-    expect(sec).toContain('linear-gradient(94deg, #ffffff 0%, #d9c8ff 26%, #8054ff 52%, #269cff 78%, #5bdfff 100%)');
-    expect(sec).toContain('background-clip: text');
+  it('the gradient-text wordmark is GONE — the hero carries the Classic logo (owner directive)', () => {
+    expect(sec).not.toContain('.nh-wordmark');
+    expect(sec).not.toContain('background-clip: text');
+    expect(sec).not.toContain('linear-gradient(94deg, #ffffff 0%');
   });
 
   it('tiles are ≥44px glass targets', () => {
@@ -257,12 +258,14 @@ describe('Setup home renders', () => {
     expect(c.querySelector('[data-testid="play"]')).not.toBeNull();
   });
 
-  it('Neon: emblem + floating card + gradient wordmark + all five tiles, same PLAY', async () => {
+  it('Neon: emblem + floating card + the CLASSIC logo + all five tiles, same PLAY', async () => {
     const c = await renderHome('neon');
-    expect(c.querySelector('.splash-logo')).toBeNull();
+    // Owner directive: same logo as Classic — the white wordmark asset,
+    // rendered exactly as the Classic splash renders it.
+    expect(c.querySelector('.splash-logo')?.getAttribute('src')).toBe('/assets/bwm-wordmark-white.svg');
+    expect(c.querySelector('.nh-wordmark')).toBeNull();
     expect(c.querySelector('.nh-emblem')?.getAttribute('src')).toBe('/assets/neon/spade-emblem.webp');
     expect(c.querySelector('.nh-card')?.getAttribute('src')).toBe('/assets/neon/ace-card.webp');
-    expect(c.querySelector('.nh-wordmark')?.textContent).toBe('BID WIT ME');
     for (const t of ['nh-ranked', 'nh-quick', 'nh-private', 'nh-decks', 'nh-achievements']) {
       expect(c.querySelector(`[data-testid="${t}"]`), t).not.toBeNull();
     }

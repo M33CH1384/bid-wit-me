@@ -43,8 +43,13 @@ const SPLAT_BATCH = 8;
 const QUEUE_CAP = 64;
 /** Byte-encoded velocity fields store world velocity in ±this range. */
 const VEL_BYTE_RANGE = 3.0;
-/** Ambient curl-flow strength in the dye pass (field-units/sec at peak). */
-const FLOW_AMP = 0.05;
+/**
+ * Ambient curl-flow strength in the dye pass (multiplies the analytic flow
+ * field, whose peak magnitude is ~2–4 field-units/sec). Escalation pass:
+ * 0.05 → 0.11 — at 0.05 the idle drift was ~0.1 u/s at best and read as a
+ * static gradient; at 0.11 dye visibly travels across the whole field.
+ */
+const FLOW_AMP = 0.11;
 
 const VERT = `
 attribute vec2 aPos;
@@ -114,7 +119,11 @@ void main() {
 }
 `;
 
-/** Palette shaping: dye over the midnight-navy base, hot-core glow, vignette, dither. */
+/** Palette shaping: dye over the midnight-navy base, hot-core glow, vignette, dither.
+ *  Escalation pass: dye gain 0.85 → 1.3 and hot-core gain 0.4 → 0.7 (P2's
+ *  levels rendered a strong splat at well under half brightness — a major
+ *  reason the live engine read as "a nice gradient"); vignette eased so the
+ *  ink stays bright toward the edges, where the mockups carry it. */
 const DISPLAY_FRAG = `
 precision highp float;
 varying vec2 vUv;
@@ -122,11 +131,11 @@ uniform sampler2D uDye;
 void main() {
   vec3 dye = texture2D(uDye, vUv).rgb;
   vec3 col = vec3(0.0275, 0.0353, 0.0784);
-  col += dye * 0.85;
+  col += dye * 1.3;
   float e = max(dye.r, max(dye.g, dye.b));
-  col += vec3(0.35, 0.55, 1.0) * (e * e) * 0.4;
+  col += vec3(0.35, 0.55, 1.0) * (e * e) * 0.7;
   float d = distance(vUv, vec2(0.5, 0.42));
-  col *= 1.0 - 0.32 * smoothstep(0.55, 1.05, d);
+  col *= 1.0 - 0.26 * smoothstep(0.55, 1.05, d);
   float n = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
   col += (n - 0.5) * 0.0078;
   gl_FragColor = vec4(col, 1.0);
@@ -273,7 +282,9 @@ export class InkEngine {
     window.addEventListener('resize', this.onResize);
     document.addEventListener('visibilitychange', this.onVis);
     this.resizeIfNeeded(true);
-    // Seed a little life so the first frame isn't a flat field.
+    // Seed real life so the first frame isn't a flat field.
+    this.pushAmbient();
+    this.pushAmbient();
     this.pushAmbient();
     this.pushAmbient();
   }
@@ -308,7 +319,7 @@ export class InkEngine {
     if (this.destroyed || this.running) return;
     this.running = true;
     this.lastNow = performance.now();
-    this.nextAmbient = this.lastNow + 1400;
+    this.nextAmbient = this.lastNow + 500;
     if (!document.hidden) this.kick();
   }
 
@@ -389,7 +400,10 @@ export class InkEngine {
     this.time += dt;
     if (now >= this.nextAmbient) {
       this.pushAmbient();
-      this.nextAmbient = now + 2600 + Math.random() * 1900;
+      // Escalation cadence: a fresh ambient bloom every ~1.0–1.9 s (was
+      // 2.6–4.5 s) — with the stronger splats and slower dye decay, the
+      // field is in constant visible motion instead of near-stillness.
+      this.nextAmbient = now + 1000 + Math.random() * 900;
     }
     this.drainSplats();
     this.velRead = this.advect(this.velFields!, this.velRead, this.velRead, 0, dt, VEL_DECAY_RATE);
@@ -402,12 +416,15 @@ export class InkEngine {
     s.x = (0.12 + Math.random() * 0.76) * this.aspect;
     s.y = 0.12 + Math.random() * 0.76;
     const ang = Math.random() * Math.PI * 2;
-    const sp = 0.02 + Math.random() * 0.03;
+    // Escalation: ambient dye is born already moving (0.05–0.11 u/s, was
+    // 0.02–0.05) so a bloom reads as a traveling current, not a fading dot.
+    const sp = 0.05 + Math.random() * 0.06;
     s.vx = Math.cos(ang) * sp;
     s.vy = Math.sin(ang) * sp;
     s.radius = AMBIENT_MIN_RADIUS + Math.random() * (AMBIENT_MAX_RADIUS - AMBIENT_MIN_RADIUS);
     s.strength = AMBIENT_STRENGTH;
-    const c = inkColor(Math.random() * 0.5);
+    // Wider palette sweep than P2's violet-blue-only 0–0.5: occasional cyan.
+    const c = inkColor(Math.random() * 0.75);
     s.r = c[0];
     s.g = c[1];
     s.b = c[2];
