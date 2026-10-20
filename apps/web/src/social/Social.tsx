@@ -181,6 +181,22 @@ function SocialPanel() {
   }, []);
   const unreadDm = Object.values(s.unread).reduce((a, b) => a + b, 0);
   const counts: Partial<Record<SocialTab, number>> = { chat: globalUnread(s) + unreadDm, friends: s.friends?.incoming.length ?? 0 };
+  // Neon Royale: the tab indicator glides — measure the active tab button and
+  // park --tab-x/--tab-w on the nav; CSS (Neon-scoped) animates the move.
+  // Classic never reads the vars, and the glide span is display:none there.
+  const tabsRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const measure = () => {
+      const nav = tabsRef.current;
+      if (!nav) return;
+      const on = nav.querySelector<HTMLElement>('button.on');
+      nav.style.setProperty('--tab-x', `${on?.offsetLeft ?? 0}px`);
+      nav.style.setProperty('--tab-w', `${on?.offsetWidth ?? 0}px`);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  });
   const [gear, setGear] = useState(false);
   const [drag, setDrag] = useState(0);
   const start = useRef<number | null>(null);
@@ -211,7 +227,8 @@ function SocialPanel() {
           </span>
           <button type="button" className="sheet-close" aria-label="Close" data-testid="social-close" onClick={() => social.close()}>CLOSE</button>
         </header>
-        <nav className="soc-tabs" role="tablist">
+        <nav className="soc-tabs" role="tablist" ref={tabsRef}>
+          <span className="soc-tab-glide" aria-hidden="true" />
           {TABS.map(([k, label]) => (
             <button key={k} type="button" role="tab" aria-selected={tabOn(k)} className={tabOn(k) ? 'on' : ''} data-testid={`soc-tab-${k}`} onClick={() => social.tab(k)}>
               {label}{!!counts[k] && <i className="soc-count">{counts[k]}</i>}

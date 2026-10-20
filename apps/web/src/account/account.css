@@ -69,3 +69,16 @@
 
 /* Neon Royale (P1): the account chip trades Classic's cut corner for a radius. */
 html[data-theme="neon"] .acct-chip { clip-path: none; border-radius: 10px; }
+
+/* ================= Neon Royale P3 — Account consistency (append-only) =================
+   The account sheet itself is .sheet.glass.slant, so it takes the glass v2
+   recipe from styles.css; its inner cards join the same family here. */
+html[data-theme="neon"] .acct-dropdown {
+  background: linear-gradient(180deg, rgba(var(--glass-strong-rgb), .66), rgba(var(--glass-rgb), .5));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 0 0 1px rgba(var(--edge-rgb), .22);
+}
+html[data-theme="neon"] .acct-dropdown-head { background: rgba(var(--edge-rgb), .1); }
+html[data-theme="neon"] .acct-list li {
+  background: rgba(var(--glass-rgb), .45);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.07), inset 0 0 0 1px rgba(var(--edge-rgb), .16);
+}

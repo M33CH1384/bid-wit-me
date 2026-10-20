@@ -15,6 +15,8 @@ import { VENUE_DEFS, savePendingVenue, type VenueChoice } from './venues';
 import { VenueSelect } from './VenueSelect';
 import { AccountEntry } from './account/AccountUI';
 import { SocialButton } from './social/Social';
+import { social } from './social/store';
+import { useTheme } from './theme';
 import { OpenTables } from './social/OpenTables';
 
 /**
@@ -120,6 +122,7 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
   const [tips, setTips] = useState<TipsPref>(loadTips);
   const [ask, setAsk] = useState(isFirstVisit);
   const onlineSeat = useOnlineSeat();
+  const theme = useTheme();
   const touchAt = useRef(0);
   const choose = (fn: () => void) => ({
     onPointerUp: (e: ReactPointerEvent) => {
@@ -171,24 +174,70 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
 
   let body: ReactNode;
   if (step === 'home') {
-    body = (
+    // The primary actions are shared verbatim by both themes — same buttons,
+    // same testids, same splash-tap guard; only the composition around them
+    // differs (Neon Royale gets the art hero, Classic keeps its splash).
+    const actions = (
+      <div className="wiz-actions">
+        {onResume ? (
+          <>
+            <button type="button" className="hero-btn gold" data-testid="resume" onClick={onResume}><b>RESUME GAME</b><small>{resumeLabel ?? 'your game in progress'}</small></button>
+            <button type="button" className="hero-btn purple" data-testid="play" {...choose(() => go('door'))}><b>PLAY</b><small>start a new game</small></button>
+          </>
+        ) : (
+          <button type="button" className="hero-btn gold" data-testid="play" {...choose(() => go('door'))}><b>PLAY</b><small>Team Game or Cutthroat</small></button>
+        )}
+        {onlineSeat && <button type="button" className="quiet-row" data-testid="resume-online" onClick={() => navigate(`/t/${onlineSeat}`)}><span>Rejoin your online table</span><span className="value-chip">{onlineSeat}</span></button>}
+      </div>
+    );
+    body = theme === 'neon' ? (
+      <div className="wiz-home nh-home">
+        <div className="nh-stage" aria-hidden="true">
+          <img className="nh-emblem" src="/assets/neon/spade-emblem.webp" alt="" />
+          <img className="nh-card" src="/assets/neon/ace-card.webp" alt="" />
+        </div>
+        <div className="nh-brand">
+          <span className="nh-brand-row"><span className="nh-wordmark">BID WIT ME</span><span className="beta-tag" data-testid="beta-tag">BETA</span></span>
+          <h1 className="sr-only">Bid Wit Me</h1>
+          <p className="tagline">Spades with the crew</p>
+        </div>
+        {actions}
+        <nav className="nh-tiles" aria-label="More ways in">
+          <button type="button" className="nh-tile" data-testid="nh-ranked" onClick={() => social.open('leaders')}>
+            <span className="nh-tile-ic" aria-hidden="true">🏆</span>
+            <span className="nh-tile-main"><b>Ranked</b><small>Compete · climb the ranks</small></span>
+            <span className="nh-chev" aria-hidden="true">›</span>
+          </button>
+          <button type="button" className="nh-tile" data-testid="nh-quick" onClick={() => go('table', 'bots')}>
+            <span className="nh-tile-ic" aria-hidden="true">⚡</span>
+            <span className="nh-tile-main"><b>Quick play</b><small>Straight to a table vs bots</small></span>
+            <span className="nh-chev" aria-hidden="true">›</span>
+          </button>
+          <button type="button" className="nh-tile" data-testid="nh-private" onClick={() => go('table', 'online')}>
+            <span className="nh-tile-ic" aria-hidden="true">🔒</span>
+            <span className="nh-tile-main"><b>Private table</b><small>Create a table or join with a code</small></span>
+            <span className="nh-chev" aria-hidden="true">›</span>
+          </button>
+          <span className="nh-row2">
+            <button type="button" className="nh-tile nh-half" data-testid="nh-decks" onClick={() => go('table', 'bots')}>
+              <span className="nh-tile-ic" aria-hidden="true">♠</span>
+              <span className="nh-tile-main"><b>Card styles</b><small>Pick your deck</small></span>
+            </button>
+            <button type="button" className="nh-tile nh-half" data-testid="nh-achievements" onClick={() => navigate('/profile')}>
+              <span className="nh-tile-ic" aria-hidden="true">🏅</span>
+              <span className="nh-tile-main"><b>Achievements</b><small>Your Rep &amp; badges</small></span>
+            </button>
+          </span>
+        </nav>
+      </div>
+    ) : (
       <div className="wiz-home">
         <div className="splash">
           <div className="splash-logo-wrap"><img className="logo splash-logo" src="/assets/bwm-wordmark-white.svg" alt="" /><span className="beta-tag" data-testid="beta-tag">BETA</span></div>
           <h1 className="sr-only">Bid Wit Me</h1>
           <p className="tagline">Spades with the crew</p>
         </div>
-        <div className="wiz-actions">
-          {onResume ? (
-            <>
-              <button type="button" className="hero-btn gold" data-testid="resume" onClick={onResume}><b>RESUME GAME</b><small>{resumeLabel ?? 'your game in progress'}</small></button>
-              <button type="button" className="hero-btn purple" data-testid="play" {...choose(() => go('door'))}><b>PLAY</b><small>start a new game</small></button>
-            </>
-          ) : (
-            <button type="button" className="hero-btn gold" data-testid="play" {...choose(() => go('door'))}><b>PLAY</b><small>Team Game or Cutthroat</small></button>
-          )}
-          {onlineSeat && <button type="button" className="quiet-row" data-testid="resume-online" onClick={() => navigate(`/t/${onlineSeat}`)}><span>Rejoin your online table</span><span className="value-chip">{onlineSeat}</span></button>}
-        </div>
+        {actions}
       </div>
     );
   } else if (step === 'door') {

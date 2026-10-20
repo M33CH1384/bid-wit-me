@@ -6,6 +6,7 @@ import { importChunk } from './chunkLoad';
 import { SoundDock } from './SoundControls';
 import { SocialRoot } from './social/Social';
 import InkLayer from './ink/InkLayer';
+import ReactiveGlow from './neon/ReactiveGlow';
 import { initTheme } from './theme';
 import IdleGuard from './IdleGuard';
 import '@fontsource/barlow-condensed/600.css';
@@ -63,6 +64,7 @@ function Root() {
           : isOnlinePath(path) ? <Suspense fallback={<RouteLoading />}><OnlineApp path={path} /></Suspense> : <App key={path} />}
       </RouteGuard>
       <InkLayer />
+      <ReactiveGlow />
       <SoundDock />
       <SocialRoot />
       <IdleGuard />

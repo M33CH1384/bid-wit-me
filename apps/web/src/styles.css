@@ -2331,3 +2331,303 @@ html[data-theme="neon"] .setup {
 html[data-theme="neon"] .rewards-page {
   background: radial-gradient(90% 60% at 50% 30%, rgba(var(--purple-rgb), .16), rgba(4, 5, 12, .5) 70%);
 }
+
+/* ================= Neon Royale P3 — fidelity pass (append-only) =================
+   Owner verdict on P1: "the glass hardly gives glass" — Neon has to POP. This
+   pass is all under html[data-theme="neon"]; Classic's rules above are not
+   edited, and the table screen is counter-overridden back to its P2 state at
+   the end (gameplay chrome is P4's job).
+
+   GLASS V2 RECIPE (shared panel surfaces): a layered face — diagonal sheen
+   (white .13 → clear by 56%) over a vertical fill that is lighter at the top
+   (glass-strong .92 → glass .82 → .88) — lit by a bright 1px top edge-light
+   (inset white .24), a violet rim (inset edge .34), bottom inner depth, a deep
+   drop shadow and a faint violet outer glow, over backdrop blur 18px +
+   saturate 165% + brightness 1.06 so the ink glows THROUGH the panel while
+   the panel's own content stays sharp (only the backdrop is ever filtered).
+   Fill floor: body text (--ink #f5f4ff) over the lightest stack (fill .82 over
+   a full-brightness ink bloom) still holds ≈7:1; the Social panel (chat text)
+   uses a deeper .90+ variant in social.css. Where backdrop-filter is missing
+   entirely, an @supports fallback swaps in a solid navy gradient. */
+html[data-theme="neon"] .glass,
+html[data-theme="neon"] .panel,
+html[data-theme="neon"] .modal,
+html[data-theme="neon"] .sheet {
+  background:
+    linear-gradient(168deg, rgba(255,255,255,.13) 0%, rgba(255,255,255,.045) 34%, rgba(255,255,255,0) 56%),
+    linear-gradient(180deg, rgba(var(--glass-strong-rgb), .92) 0%, rgba(var(--glass-rgb), .82) 52%, rgba(var(--glass-rgb), .88) 100%);
+  -webkit-backdrop-filter: blur(18px) saturate(165%) brightness(1.06);
+  backdrop-filter: blur(18px) saturate(165%) brightness(1.06);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.24),
+    inset 0 0 0 1px rgba(var(--edge-rgb), .34),
+    inset 0 -18px 30px -22px rgba(0,0,0,.65),
+    0 22px 44px -14px rgba(2,3,10,.8),
+    0 0 24px rgba(var(--purple-rgb), .16);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  html[data-theme="neon"] .glass,
+  html[data-theme="neon"] .panel,
+  html[data-theme="neon"] .modal,
+  html[data-theme="neon"] .sheet {
+    background:
+      linear-gradient(168deg, rgba(255,255,255,.10) 0%, rgba(255,255,255,.02) 40%, rgba(255,255,255,0) 60%),
+      linear-gradient(180deg, #171c42, #0a0d24);
+  }
+}
+
+/* ---- Game-select cards: glass + glow, tinted per mode (violet = partners /
+   Joker side of the family, electric blue = cutthroat / Ace Down). ---- */
+html[data-theme="neon"] .decision-card {
+  clip-path: none;
+  border-radius: 18px;
+  background:
+    linear-gradient(168deg, rgba(255,255,255,.10), rgba(255,255,255,.03) 38%, rgba(255,255,255,0) 58%),
+    linear-gradient(160deg, rgba(var(--glass-strong-rgb), .9), rgba(var(--glass-rgb), .84));
+  -webkit-backdrop-filter: blur(16px) saturate(160%) brightness(1.05);
+  backdrop-filter: blur(16px) saturate(160%) brightness(1.05);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.2),
+    inset 0 0 0 1px rgba(var(--edge-rgb), .3),
+    0 16px 34px -12px rgba(2,3,10,.75),
+    0 0 20px rgba(var(--purple-rgb), .14);
+}
+html[data-theme="neon"] .decision-card[data-testid="door-team"],
+html[data-theme="neon"] .decision-card[data-testid="mode-joker"],
+html[data-theme="neon"] .decision-card[data-testid="play-bots"] {
+  background:
+    linear-gradient(168deg, rgba(255,255,255,.12), rgba(255,255,255,.03) 38%, rgba(255,255,255,0) 58%),
+    radial-gradient(120% 130% at 88% 0%, rgba(var(--purple-rgb), .38), transparent 55%),
+    linear-gradient(160deg, rgba(var(--glass-strong-rgb), .9), rgba(var(--glass-rgb), .84));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.22),
+    inset 0 0 0 1px rgba(var(--edge-rgb), .38),
+    0 16px 34px -12px rgba(2,3,10,.75),
+    0 0 26px rgba(var(--purple-rgb), .28);
+}
+html[data-theme="neon"] .decision-card[data-testid="door-cutthroat"],
+html[data-theme="neon"] .decision-card[data-testid="mode-aceDown"],
+html[data-theme="neon"] .decision-card[data-testid="play-online"] {
+  background:
+    linear-gradient(168deg, rgba(255,255,255,.12), rgba(255,255,255,.03) 38%, rgba(255,255,255,0) 58%),
+    radial-gradient(120% 130% at 88% 0%, rgba(var(--blue-rgb), .34), transparent 55%),
+    linear-gradient(160deg, rgba(var(--glass-strong-rgb), .9), rgba(var(--glass-rgb), .84));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.22),
+    inset 0 0 0 1px rgba(var(--blue-rgb), .38),
+    0 16px 34px -12px rgba(2,3,10,.75),
+    0 0 26px rgba(var(--blue-rgb), .26);
+}
+html[data-theme="neon"] .dc-emblem {
+  border-color: rgba(var(--cyan-rgb), .5);
+  color: var(--lav);
+  text-shadow: 0 0 10px rgba(var(--cyan-rgb), .35);
+}
+
+/* ---- Settings mode cards + segmented controls join the glass family. ---- */
+html[data-theme="neon"] .mode {
+  background:
+    linear-gradient(168deg, rgba(255,255,255,.09), rgba(255,255,255,0) 55%),
+    linear-gradient(180deg, rgba(var(--glass-strong-rgb), .88), rgba(var(--glass-rgb), .8));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.18),
+    inset 0 0 0 1px rgba(var(--edge-rgb), .28),
+    0 10px 24px -10px rgba(2,3,10,.7);
+}
+html[data-theme="neon"] .mode.selected {
+  background:
+    linear-gradient(168deg, rgba(255,255,255,.12), rgba(255,255,255,0) 55%),
+    linear-gradient(160deg, rgba(var(--purple-rgb), .42), rgba(var(--blue-rgb), .16));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.22),
+    inset 0 0 0 2px var(--purple-hot),
+    0 0 24px rgba(var(--blue-rgb), .3);
+}
+html[data-theme="neon"] .seg {
+  background: rgba(var(--glass-rgb), .6);
+  box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb), .3), inset 0 1px 0 rgba(255,255,255,.12);
+}
+/* Setup list rows: the Classic gold corner-fold retires under Neon — rounded
+   glass instead (the fold ::after is display:none'd, its slot unused here). */
+html[data-theme="neon"] .quiet-row {
+  clip-path: none;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(var(--glass-strong-rgb), .72), rgba(var(--glass-rgb), .62));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.14), inset 0 0 0 1px rgba(var(--edge-rgb), .22);
+}
+html[data-theme="neon"] button.quiet-row::after,
+html[data-theme="neon"] button.mode-pick::after { display: none; }
+html[data-theme="neon"] button.mode-pick { clip-path: none; border-radius: 12px; }
+
+/* ---- Primary actions get real glow presence (menu scopes only — the table
+   keeps its own button language until P4). ---- */
+html[data-theme="neon"] .hero-btn.gold {
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.55),
+    inset 0 0 0 1px rgba(255,233,168,.5),
+    0 12px 34px -8px rgba(var(--gold-rgb), .55),
+    0 0 46px rgba(var(--gold-rgb), .38);
+}
+html[data-theme="neon"] .hero-btn.purple {
+  background: linear-gradient(160deg, rgba(var(--purple-rgb), .62), rgba(var(--purple-deep-rgb), .72));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.28),
+    inset 0 0 0 1.5px rgba(var(--edge-rgb), .85),
+    0 0 34px rgba(var(--purple-rgb), .4);
+}
+html[data-theme="neon"] :where(.setup, .wizard, .rewards-page) .primary {
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.5),
+    0 8px 26px -6px rgba(var(--gold-rgb), .5),
+    0 0 30px rgba(var(--gold-rgb), .3);
+}
+
+/* ---- Microinteractions: brief press feedback (scale + brightness + glow),
+   short transitions, no pulsing, no layout shift. ---- */
+html[data-theme="neon"] :is(.hero-btn, .decision-card, .nh-tile, .mode) {
+  transition: transform .12s ease, filter .15s ease, box-shadow .2s ease;
+}
+html[data-theme="neon"] :where(.setup, .wizard, .rewards-page) .primary { transition: transform .12s ease, filter .15s ease, box-shadow .2s ease; }
+html[data-theme="neon"] :is(.hero-btn, .decision-card, .nh-tile, .mode):active { filter: brightness(1.13); }
+html[data-theme="neon"] :where(.setup, .wizard, .rewards-page) .primary:active { filter: brightness(1.1); }
+html[data-theme="neon"] .decision-card:active {
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.22),
+    inset 0 0 0 1.5px rgba(var(--gold-rgb), .65),
+    0 16px 34px -12px rgba(2,3,10,.75),
+    0 0 30px rgba(var(--gold-rgb), .3);
+}
+
+/* ---- Reactive borders: a masked ::after ring whose radial light follows
+   --mx/--my (written by ONE delegated pointer listener, src/neon/) and fades
+   with --glow-a. The ring is border-only (mask-composite cuts the face out),
+   so it never washes content. Surfaces are positioned here so the ring can
+   anchor; the table screen opts out entirely. ---- */
+html[data-theme="neon"] :is(.panel, .modal, .sheet, .decision-card, .mode, .nh-tile, .soc-panel, .ranks-you, .acct-dropdown, .profile-modal-card) { position: relative; }
+html[data-theme="neon"] :is(.panel, .modal, .sheet, .decision-card, .mode, .nh-tile, .soc-panel, .ranks-you, .acct-dropdown, .profile-modal-card)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: radial-gradient(190px circle at var(--mx, 50%) var(--my, 50%), rgba(var(--cyan-rgb), .85), rgba(var(--purple-rgb), .4) 46%, transparent 72%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  opacity: var(--glow-a, 0);
+  transition: opacity .35s ease;
+  pointer-events: none;
+}
+html[data-theme="neon"] .table-screen :is(.panel, .modal, .sheet, .decision-card, .mode, .nh-tile, .soc-panel, .ranks-you, .acct-dropdown, .profile-modal-card)::after { content: none; }
+
+/* ---- Home hero (Neon only; Setup.tsx renders .nh-* solely under Neon).
+   The art's navy backgrounds are baked in, so radial masks melt the square
+   edges into the page/ink — emblem dead-center, the ornate card floating off
+   its lower right with a slow idle drift (killed under reduced motion). ---- */
+html[data-theme="neon"] .nh-home { display: flex; flex-direction: column; gap: 14px; }
+html[data-theme="neon"] .nh-stage { position: relative; display: grid; place-items: center; margin-bottom: 26px; }
+html[data-theme="neon"] .nh-emblem {
+  width: min(60vw, 252px);
+  height: auto;
+  -webkit-mask-image: radial-gradient(ellipse 74% 74% at 50% 47%, #000 66%, transparent 88%);
+  mask-image: radial-gradient(ellipse 74% 74% at 50% 47%, #000 66%, transparent 88%);
+  filter: drop-shadow(0 14px 30px rgba(var(--purple-rgb), .35));
+}
+html[data-theme="neon"] .nh-card {
+  position: absolute;
+  z-index: 2;
+  right: 1%;
+  bottom: -16px;
+  width: min(36vw, 150px);
+  height: auto;
+  -webkit-mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, #000 62%, transparent 85%);
+  mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, #000 62%, transparent 85%);
+  filter: drop-shadow(0 18px 26px rgba(2,3,10,.6));
+  animation: nh-float 6.5s ease-in-out infinite alternate;
+}
+@keyframes nh-float {
+  from { transform: rotate(3deg) translateY(0); }
+  to { transform: rotate(1deg) translateY(-9px); }
+}
+html[data-theme="neon"] .nh-brand { display: grid; justify-items: center; gap: 2px; text-align: center; }
+html[data-theme="neon"] .nh-brand-row { display: inline-flex; align-items: center; gap: 10px; }
+html[data-theme="neon"] .nh-wordmark {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: clamp(40px, 12.5vw, 58px);
+  letter-spacing: .03em;
+  line-height: 1;
+  background: linear-gradient(94deg, #ffffff 0%, #d9c8ff 26%, #8054ff 52%, #269cff 78%, #5bdfff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 3px 16px rgba(var(--purple-rgb), .45));
+}
+html[data-theme="neon"] .nh-tiles { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+html[data-theme="neon"] .nh-tile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 58px;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 16px;
+  text-align: left;
+  color: var(--ink);
+  cursor: pointer;
+  background:
+    linear-gradient(168deg, rgba(255,255,255,.10), rgba(255,255,255,.02) 45%, rgba(255,255,255,0) 60%),
+    linear-gradient(180deg, rgba(var(--glass-strong-rgb), .85), rgba(var(--glass-rgb), .72));
+  -webkit-backdrop-filter: blur(14px) saturate(155%) brightness(1.05);
+  backdrop-filter: blur(14px) saturate(155%) brightness(1.05);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.18),
+    inset 0 0 0 1px rgba(var(--edge-rgb), .3),
+    0 12px 26px -12px rgba(2,3,10,.7);
+}
+html[data-theme="neon"] .nh-tile:active { transform: scale(.98); }
+html[data-theme="neon"] .nh-tile-ic { width: 30px; text-align: center; font-size: 21px; filter: drop-shadow(0 0 8px rgba(var(--cyan-rgb), .35)); }
+html[data-theme="neon"] .nh-tile-main { flex: 1; display: grid; gap: 1px; }
+html[data-theme="neon"] .nh-tile-main b { font-family: var(--display); font-size: 19px; font-weight: 700; letter-spacing: .05em; }
+html[data-theme="neon"] .nh-tile-main small { color: var(--muted); font-size: 12.5px; }
+html[data-theme="neon"] .nh-chev { color: var(--lav); font-size: 22px; opacity: .8; }
+html[data-theme="neon"] .nh-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+html[data-theme="neon"] .nh-half { min-height: 52px; }
+html[data-theme="neon"] .nh-half .nh-tile-main b { font-size: 17px; }
+html[data-theme="neon"] .nh-half .nh-tile-main small { font-size: 11.5px; }
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme="neon"] .nh-card { animation: none; }
+}
+@media (orientation: landscape) and (max-height: 520px) {
+  html[data-theme="neon"] .nh-emblem { width: 148px; }
+  html[data-theme="neon"] .nh-card { width: 96px; bottom: -8px; }
+  html[data-theme="neon"] .nh-stage { margin-bottom: 14px; }
+  html[data-theme="neon"] .nh-wordmark { font-size: 36px; }
+}
+
+/* ---- Table screen: restore the exact P2-state chrome. Glass v2 is a menu
+   treatment; the playfield (HUD glass, panels, in-table sheets/modals) keeps
+   the values P1/P2 shipped until P4 re-grades it. Specificity ties are
+   deliberate: the .glass rule comes LAST so an element carrying both .glass
+   and .modal/.sheet lands on the glass recipe, exactly as before. ---- */
+html[data-theme="neon"] .table-screen .modal,
+html[data-theme="neon"] .table-screen .sheet {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+html[data-theme="neon"] .table-screen .panel {
+  background: var(--glass);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb), .2);
+}
+html[data-theme="neon"] .table-screen .glass {
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  backdrop-filter: blur(14px) saturate(140%);
+  box-shadow: 0 0 0 1px var(--edge), 0 0 18px rgba(var(--purple-rgb), .35), inset 0 1px 0 rgba(255,255,255,.08);
+}

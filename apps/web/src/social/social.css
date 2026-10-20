@@ -534,3 +534,94 @@ button.soc-pl-name.link:hover, button.soc-frow-name.link:hover { text-decoration
 /* Neon Royale (P1): the profile modal card's Classic fill is pinned in its base
    rule above; under Neon it takes the navy panel token instead. */
 html[data-theme="neon"] .profile-modal-card { background: var(--panel); }
+
+/* ================= Neon Royale P3 — Social (append-only) =================
+   The panel takes the strong variant of the glass v2 recipe (styles.css):
+   chat text lives here, so the fill floor is deeper (.90+) while the ink
+   still glows through at the edges. The glide span exists in the DOM at all
+   times but is display:none outside Neon — Classic's tab bar is untouched. */
+.soc-tab-glide { display: none; }
+html[data-theme="neon"] .soc-panel {
+  background:
+    linear-gradient(168deg, rgba(255,255,255,.11), rgba(255,255,255,.03) 34%, rgba(255,255,255,0) 55%),
+    linear-gradient(180deg, rgba(var(--glass-strong-rgb), .94), rgba(var(--glass-rgb), .9) 55%, rgba(var(--glass-rgb), .93));
+  -webkit-backdrop-filter: blur(20px) saturate(160%) brightness(1.05);
+  backdrop-filter: blur(20px) saturate(160%) brightness(1.05);
+  border-left: 1px solid rgba(var(--edge-rgb), .45);
+  box-shadow:
+    -24px 0 60px rgba(2,3,10,.7),
+    inset 0 1px 0 rgba(255,255,255,.16),
+    0 0 34px rgba(var(--purple-rgb), .14);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  html[data-theme="neon"] .soc-panel { background: linear-gradient(180deg, #141a3e, #0a0d24); }
+}
+/* Gliding tab indicator: SocialPanel measures the active tab button into
+   --tab-x/--tab-w on the nav (tabs are variable-width); the gradient bar
+   animates between them. The active tab keeps its label glow, not the old
+   gold underline. */
+html[data-theme="neon"] .soc-tabs { position: relative; }
+html[data-theme="neon"] .soc-tab-glide {
+  display: block;
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  height: 2px;
+  width: var(--tab-w, 0px);
+  transform: translateX(var(--tab-x, 0px));
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--purple), var(--purple-hot), rgba(var(--cyan-rgb), 1));
+  box-shadow: 0 0 10px rgba(var(--purple-rgb), .55);
+  transition: transform .3s cubic-bezier(.2,.8,.2,1), width .3s cubic-bezier(.2,.8,.2,1);
+  pointer-events: none;
+}
+html[data-theme="neon"] .soc-tabs button { transition: color .15s ease, transform .1s ease, filter .15s ease; }
+html[data-theme="neon"] .soc-tabs button.on {
+  border-bottom-color: transparent;
+  text-shadow: 0 0 12px rgba(var(--cyan-rgb), .35);
+}
+html[data-theme="neon"] .soc-tabs button:active { transform: scale(.94); filter: brightness(1.2); }
+/* The in-game profile card is a sheet/modal surface: same glass v2 recipe. */
+html[data-theme="neon"] .profile-modal-card {
+  background:
+    linear-gradient(168deg, rgba(255,255,255,.12), rgba(255,255,255,.03) 36%, rgba(255,255,255,0) 56%),
+    linear-gradient(180deg, rgba(var(--glass-strong-rgb), .94), rgba(var(--glass-rgb), .9));
+  -webkit-backdrop-filter: blur(18px) saturate(160%) brightness(1.05);
+  backdrop-filter: blur(18px) saturate(160%) brightness(1.05);
+  box-shadow:
+    0 24px 60px rgba(2,3,10,.75),
+    inset 0 1px 0 rgba(255,255,255,.22),
+    inset 0 0 0 1px rgba(var(--edge-rgb), .42),
+    0 0 26px rgba(var(--purple-rgb), .16);
+}
+/* Ranks: your-rank card joins the glass family and earns a restrained
+   holographic shimmer — a slow sheen sweep across the face every ~7s,
+   off under reduced motion. */
+html[data-theme="neon"] .ranks-you {
+  overflow: hidden;
+  background:
+    linear-gradient(168deg, rgba(255,255,255,.09), rgba(255,255,255,0) 55%),
+    linear-gradient(180deg, rgba(var(--glass-strong-rgb), .8), rgba(var(--glass-rgb), .66));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.16),
+    inset 0 0 0 1px rgba(var(--edge-rgb), .3),
+    0 0 20px rgba(var(--purple-rgb), .13);
+}
+html[data-theme="neon"] .ranks-you::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(115deg, transparent 32%, rgba(var(--cyan-rgb), .13) 45%, rgba(255,255,255,.15) 50%, rgba(var(--purple-rgb), .13) 55%, transparent 68%);
+  background-size: 260% 100%;
+  background-position: 110% 0;
+  animation: ranks-sheen 7s ease-in-out infinite;
+}
+@keyframes ranks-sheen {
+  0%, 55% { background-position: 110% 0; }
+  85%, 100% { background-position: -60% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme="neon"] .ranks-you::before { animation: none; }
+}
