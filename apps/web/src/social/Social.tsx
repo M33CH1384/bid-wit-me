@@ -847,6 +847,18 @@ function Profile({ name, id }: { name: string; id?: string }) {
                 <i className="soc-dot" aria-hidden />{s.users[pid ?? ''] ? `Online — ${statusLabel(s.users[pid ?? '']!.status, modeName)}` : 'Offline'}
               </p>
             </div>
+            {!me && pid && (
+              <div className="soc-prof-acts">
+                {!blocked && <button type="button" onClick={() => social.openDm(pid)}>💬 Chat</button>}
+                {!blocked && s.users[pid] && <button type="button" onClick={() => void inviteTo(pid, s.myTable)}>➕ Invite</button>}
+                {friend && <span className="soc-friend-tag" data-testid="profile-friends">★ Friends</span>}
+                {incoming && !friend && !blocked && <button type="button" className="primary" onClick={() => social.friend('accept', pid)} data-testid="profile-accept">Accept request</button>}
+                {incoming && !friend && !blocked && <button type="button" className="ghost" onClick={() => social.friend('decline', pid)} data-testid="profile-decline">Decline</button>}
+                {!friend && !incoming && !blocked && <button type="button" disabled={pending} onClick={() => social.friend('request', pid)} data-testid="profile-add">{pending ? 'Requested' : '👋 Add friend'}</button>}
+                {blocked ? <button type="button" onClick={() => social.friend('unblock', pid)}>Unblock</button> : <button type="button" className="ghost" onClick={() => { if (confirm(`Block ${p.username}? They won't see you online, can't message or invite you, and their chat is hidden.`)) social.friend('block', pid); }} data-testid="profile-block">Block</button>}
+                <button type="button" className="ghost" onClick={() => social.report('user', { user: pid })}>Report</button>
+              </div>
+            )}
           </div>
           <SocialLinksChips links={cred?.user.socialLinks} testid="profile-social-links" />
           <div className="soc-stats">
@@ -875,18 +887,6 @@ function Profile({ name, id }: { name: string; id?: string }) {
             </div>
           )}
           {p.vsYou && <p className="soc-vs" data-testid="profile-vs">You vs {p.username}: <b>{p.vsYou.wins}–{p.vsYou.losses}</b> in {p.vsYou.games} game{p.vsYou.games === 1 ? '' : 's'}</p>}
-          {!me && pid && (
-            <div className="soc-prof-acts">
-              {!blocked && <button type="button" onClick={() => social.openDm(pid)}>💬 Chat</button>}
-              {!blocked && s.users[pid] && <button type="button" onClick={() => void inviteTo(pid, s.myTable)}>➕ Invite</button>}
-              {friend && <span className="soc-friend-tag" data-testid="profile-friends">★ Friends</span>}
-              {incoming && !friend && !blocked && <button type="button" className="primary" onClick={() => social.friend('accept', pid)} data-testid="profile-accept">Accept request</button>}
-              {incoming && !friend && !blocked && <button type="button" className="ghost" onClick={() => social.friend('decline', pid)} data-testid="profile-decline">Decline</button>}
-              {!friend && !incoming && !blocked && <button type="button" disabled={pending} onClick={() => social.friend('request', pid)} data-testid="profile-add">{pending ? 'Requested' : '👋 Add friend'}</button>}
-              {blocked ? <button type="button" onClick={() => social.friend('unblock', pid)}>Unblock</button> : <button type="button" className="ghost" onClick={() => { if (confirm(`Block ${p.username}? They won't see you online, can't message or invite you, and their chat is hidden.`)) social.friend('block', pid); }} data-testid="profile-block">Block</button>}
-              <button type="button" className="ghost" onClick={() => social.report('user', { user: pid })}>Report</button>
-            </div>
-          )}
           {p.awards && p.awards.length > 0 && <><h4>Champion</h4><div className="soc-badges" data-testid="profile-awards">{p.awards.map((a) => <button type="button" key={a.ref} className="soc-badge-chip champ" onClick={() => social.showTour(a.ref)}>🏆 {a.label}</button>)}</div></>}
           {p.stats && p.stats.games > 0 && (
             <>

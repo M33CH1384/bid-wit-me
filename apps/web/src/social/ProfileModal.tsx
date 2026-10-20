@@ -113,6 +113,30 @@ function ProfileCard({ target }: { target: ProfileTarget }) {
             <i className="soc-dot" aria-hidden />{onlineEntry ? `Online — ${statusLabel(onlineEntry.status, modeName)}` : 'Offline'}
           </p>
         </div>
+        {!me && (
+          <div className="soc-prof-acts">
+            {!blocked && <button type="button" aria-expanded={msgOpen} data-testid="profile-modal-message" onClick={() => setMsgOpen(!msgOpen)}>💬 Message</button>}
+            {!blocked && onlineEntry && s.myTable && <button type="button" data-testid="profile-modal-invite" onClick={() => { social.invite(pid, s.myTable!); closeTableProfile(); }}>➕ Invite</button>}
+            {friend && <span className="soc-friend-tag" data-testid="profile-modal-friends">★ Friends</span>}
+            {incoming && !friend && !blocked && <button type="button" className="primary" data-testid="profile-modal-accept" onClick={() => social.friend('accept', pid)}>Accept request</button>}
+            {incoming && !friend && !blocked && <button type="button" className="ghost" data-testid="profile-modal-decline" onClick={() => social.friend('decline', pid)}>Decline</button>}
+            {!friend && !incoming && !blocked && <button type="button" disabled={pending} data-testid="profile-modal-add" onClick={() => social.friend('request', pid)}>{pending ? 'Requested' : '👋 Add friend'}</button>}
+            {blocked
+              ? <button type="button" onClick={() => social.friend('unblock', pid)}>Unblock</button>
+              : <button type="button" className="ghost" data-testid="profile-modal-block" onClick={() => { if (confirm(`Block ${target.name}? They won't see you online, can't message or invite you, and their chat is hidden.`)) { social.friend('block', pid); closeTableProfile(); } }}>Block</button>}
+            <button type="button" className="ghost" data-testid="profile-modal-report" onClick={() => social.report('user', { user: pid })}>Report</button>
+          </div>
+        )}
+        {!me && blocked && <p className="soc-note">You blocked {target.name}. Unblock them to message.</p>}
+        {!me && !blocked && msgOpen && (
+          <form className="soc-compose profile-modal-compose" onSubmit={sendDm}>
+            <input ref={(el) => { if (el && document.activeElement !== el) el.focus({ preventScroll: true }); }}
+              value={draft} onChange={(e) => setDraft(e.target.value)} maxLength={SOCIAL_LIMITS.chatMax}
+              placeholder={`Message ${target.name}…`} aria-label={`Message ${target.name}`} data-testid="profile-modal-dm-input" />
+            <button type="submit" className="primary" disabled={!draft.trim()} data-testid="profile-modal-dm-send">Send</button>
+          </form>
+        )}
+        {sent && <p className="profile-modal-sent" role="status" data-testid="profile-modal-dm-sent">✓ Sent to {target.name}</p>}
       </div>
       {p === null ? <p className="soc-empty">Loading…</p> : p === 'missing' ? <p className="soc-empty">No profile for {target.name}.</p> : (
         <>
@@ -142,30 +166,6 @@ function ProfileCard({ target }: { target: ProfileTarget }) {
               )}
             </div>
           )}
-          {!me && (
-            <div className="soc-prof-acts">
-              {!blocked && <button type="button" aria-expanded={msgOpen} data-testid="profile-modal-message" onClick={() => setMsgOpen(!msgOpen)}>💬 Message</button>}
-              {!blocked && onlineEntry && s.myTable && <button type="button" data-testid="profile-modal-invite" onClick={() => { social.invite(pid, s.myTable!); closeTableProfile(); }}>➕ Invite</button>}
-              {friend && <span className="soc-friend-tag" data-testid="profile-modal-friends">★ Friends</span>}
-              {incoming && !friend && !blocked && <button type="button" className="primary" data-testid="profile-modal-accept" onClick={() => social.friend('accept', pid)}>Accept request</button>}
-              {incoming && !friend && !blocked && <button type="button" className="ghost" data-testid="profile-modal-decline" onClick={() => social.friend('decline', pid)}>Decline</button>}
-              {!friend && !incoming && !blocked && <button type="button" disabled={pending} data-testid="profile-modal-add" onClick={() => social.friend('request', pid)}>{pending ? 'Requested' : '👋 Add friend'}</button>}
-              {blocked
-                ? <button type="button" onClick={() => social.friend('unblock', pid)}>Unblock</button>
-                : <button type="button" className="ghost" data-testid="profile-modal-block" onClick={() => { if (confirm(`Block ${target.name}? They won't see you online, can't message or invite you, and their chat is hidden.`)) { social.friend('block', pid); closeTableProfile(); } }}>Block</button>}
-              <button type="button" className="ghost" data-testid="profile-modal-report" onClick={() => social.report('user', { user: pid })}>Report</button>
-            </div>
-          )}
-          {!me && blocked && <p className="soc-note">You blocked {target.name}. Unblock them to message.</p>}
-          {!me && !blocked && msgOpen && (
-            <form className="soc-compose profile-modal-compose" onSubmit={sendDm}>
-              <input ref={(el) => { if (el && document.activeElement !== el) el.focus({ preventScroll: true }); }}
-                value={draft} onChange={(e) => setDraft(e.target.value)} maxLength={SOCIAL_LIMITS.chatMax}
-                placeholder={`Message ${target.name}…`} aria-label={`Message ${target.name}`} data-testid="profile-modal-dm-input" />
-              <button type="submit" className="primary" disabled={!draft.trim()} data-testid="profile-modal-dm-send">Send</button>
-            </form>
-          )}
-          {sent && <p className="profile-modal-sent" role="status" data-testid="profile-modal-dm-sent">✓ Sent to {target.name}</p>}
           {me && <p className="soc-muted">This is you.</p>}
         </>
       )}

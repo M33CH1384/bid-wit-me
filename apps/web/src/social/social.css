@@ -167,9 +167,19 @@ button.ghost { background: transparent !important; }
 
 .soc-profile { display: flex; flex-direction: column; gap: 10px; }
 .soc-profile .link { align-self: flex-start; }
-.soc-prof-head { display: flex; align-items: center; gap: 16px; }
+.soc-prof-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; row-gap: 10px; }
 .soc-prof-head h3 { margin: 0; font-family: var(--display); font-size: 28px; letter-spacing: .03em; }
 .soc-prof-head p { margin: 2px 0 0; }
+/* the action row lives IN the header as a full-width line directly under the
+   presence line (Demetrius 2026-10-20 — it used to sit between Achievements and
+   Stats); on the modal card the blocked note, the quick-send DM box and its Sent
+   confirmation travel with the row so the box still expands in place under its
+   Message button */
+.soc-prof-head > .soc-prof-acts,
+.soc-prof-head > .soc-note,
+.soc-prof-head > .profile-modal-compose,
+.soc-prof-head > .profile-modal-sent { flex: 1 1 100%; min-width: 0; }
+.soc-prof-head > .soc-note { margin: 0; }
 .soc-tagline { font-size: 13.5px; color: #ece5cf; overflow-wrap: anywhere; }
 .soc-tagline a { color: var(--gold); text-decoration: underline; }
 .soc-champ { margin-left: 8px; font-size: 18px; }
