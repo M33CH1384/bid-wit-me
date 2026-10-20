@@ -7,8 +7,8 @@
  * Content mirrors the Social profile view (same two endpoints: /api/social/profile/:name
  * for the public record + /api/profile/:id for Rep — fetched by the RAW account id, see
  * profileTap.ts / the ea064aa normalization fix), in a compact card: big picture, name,
- * tagline, Rep level/title, division/Elo chips, record, social links, achievements and
- * the standard actions. Messaging is a QUICK-SEND box on the card itself (owner's
+ * tagline, Rep level/title, division/Elo chips, coin balance, record, social links,
+ * achievements/badges and the standard actions (incl. friend request with its states). Messaging is a QUICK-SEND box on the card itself (owner's
  * correction, 2026-10-20): tap Message, type, Send — one DM through the normal
  * social.dm path (it lands in the real DM thread for later, like any DM). The modal
  * never shows a thread and nothing navigates away from the table.
@@ -35,6 +35,7 @@ interface CredPublic {
   level: { level: number; title: string };
   rank: { team: { division: string; elo: number }; cutthroat: { division: string; elo: number } };
   achievements: { id: string; title: string; unlockedAt: number | null }[];
+  coins?: { balance: number };
 }
 const DIV_LABEL: Record<string, string> = { stoop: 'Stoop', corner: 'Corner', block: 'Block', avenue: 'Avenue', boulevard: 'Boulevard', legend: 'Legend' };
 const divLabel = (d: string) => DIV_LABEL[d] ?? d;
@@ -81,6 +82,7 @@ function ProfileCard({ target }: { target: ProfileTarget }) {
   const me = s.you?.id === pid;
   const friend = (s.friends?.friends ?? []).some((f) => f.id === pid);
   const pending = (s.friends?.outgoing ?? []).some((f) => f.id === pid);
+  const incoming = (s.friends?.incoming ?? []).some((f) => f.id === pid);
   const blocked = (s.friends?.blocked ?? []).some((f) => f.id === pid);
   const onlineEntry = s.users[pid];
   const unlocked = (cred?.achievements ?? []).filter((a) => a.unlockedAt);
@@ -129,6 +131,7 @@ function ProfileCard({ target }: { target: ProfileTarget }) {
                 <div className="soc-rep-ranks">
                   <span className="soc-div-chip" title="Partnership season division">⚔ {divLabel(cred.rank.team.division)} · {cred.rank.team.elo}</span>
                   <span className="soc-div-chip" title="Cutthroat season division">🔪 {divLabel(cred.rank.cutthroat.division)} · {cred.rank.cutthroat.elo}</span>
+                  {cred.coins && <span className="soc-coin-chip" title="Coin balance" data-testid="profile-modal-coins">🪙 {cred.coins.balance.toLocaleString()}</span>}
                 </div>
               </div>
               {unlocked.length > 0 && (
@@ -143,7 +146,10 @@ function ProfileCard({ target }: { target: ProfileTarget }) {
             <div className="soc-prof-acts">
               {!blocked && <button type="button" aria-expanded={msgOpen} data-testid="profile-modal-message" onClick={() => setMsgOpen(!msgOpen)}>💬 Message</button>}
               {!blocked && onlineEntry && s.myTable && <button type="button" data-testid="profile-modal-invite" onClick={() => { social.invite(pid, s.myTable!); closeTableProfile(); }}>➕ Invite</button>}
-              {!friend && !blocked && <button type="button" disabled={pending} data-testid="profile-modal-add" onClick={() => social.friend('request', pid)}>{pending ? 'Requested' : '👋 Add friend'}</button>}
+              {friend && <span className="soc-friend-tag" data-testid="profile-modal-friends">★ Friends</span>}
+              {incoming && !friend && !blocked && <button type="button" className="primary" data-testid="profile-modal-accept" onClick={() => social.friend('accept', pid)}>Accept request</button>}
+              {incoming && !friend && !blocked && <button type="button" className="ghost" data-testid="profile-modal-decline" onClick={() => social.friend('decline', pid)}>Decline</button>}
+              {!friend && !incoming && !blocked && <button type="button" disabled={pending} data-testid="profile-modal-add" onClick={() => social.friend('request', pid)}>{pending ? 'Requested' : '👋 Add friend'}</button>}
               {blocked
                 ? <button type="button" onClick={() => social.friend('unblock', pid)}>Unblock</button>
                 : <button type="button" className="ghost" data-testid="profile-modal-block" onClick={() => { if (confirm(`Block ${target.name}? They won't see you online, can't message or invite you, and their chat is hidden.`)) { social.friend('block', pid); closeTableProfile(); } }}>Block</button>}

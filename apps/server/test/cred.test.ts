@@ -305,6 +305,19 @@ describe('profile routes', () => {
     expect(body.unlocks).toBeUndefined();
     expect(body.rank.team).toBeDefined();
   });
+  it('public profile carries the coin balance (owner: balances show on profiles)', async () => {
+    const tok = await session('a');
+    const me = await (await authed(tok, '/api/profile/me')).json() as any;
+    expect(me.coins.balance).toBeGreaterThan(0); // welcome grant (1000) + first daily login
+    const pub = await handleCredHttp(new Request(new URL('/api/profile/a', ORIGIN)), { DB: db, PUBLIC_ORIGIN: ORIGIN }, new URL('/api/profile/a', ORIGIN), ['api', 'profile', 'a'], NOW);
+    expect(pub.status).toBe(200);
+    const body = await pub.json() as any;
+    expect(body.coins).toEqual({ balance: me.coins.balance });
+    // a user who never loaded their own profile has no coin row yet: genuine 0, not an error
+    const pubB = await handleCredHttp(new Request(new URL('/api/profile/b', ORIGIN)), { DB: db, PUBLIC_ORIGIN: ORIGIN }, new URL('/api/profile/b', ORIGIN), ['api', 'profile', 'b'], NOW);
+    expect(pubB.status).toBe(200);
+    expect((await pubB.json() as any).coins).toEqual({ balance: 0 });
+  });
   it('404s unknown users', async () => {
     const res = await handleCredHttp(new Request(new URL('/api/profile/zzz', ORIGIN)), { DB: db, PUBLIC_ORIGIN: ORIGIN }, new URL('/api/profile/zzz', ORIGIN), ['api', 'profile', 'zzz'], NOW);
     expect(res.status).toBe(404);

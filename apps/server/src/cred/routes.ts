@@ -135,14 +135,18 @@ export async function handleCredHttp(req: Request, env: CredEnv, url: URL, parts
     const u = await db.prepare('SELECT id, username, avatar, avatar_updated_at AS avatarUpdatedAt, tagline, social_links AS socialLinks FROM users WHERE id = ?').bind(parts[2].slice(0, 64)).first<{ id: string; username: string | null; avatar: string | null; avatarUpdatedAt: number | null; tagline: string | null; socialLinks: string | null }>();
     if (!u) return json({ error: 'not found' }, 404);
     const season = await ensureSeason(db, now);
-    const [level, team, cutthroat, achievements] = await Promise.all([
+    const [level, team, cutthroat, achievements, coinBalance] = await Promise.all([
       xpSnapshot(db, u.id),
       seasonRank(db, u.id, season.id, 'team'),
       seasonRank(db, u.id, season.id, 'cutthroat'),
       achievementStates(db, u.id),
+      balance(db, u.id),
     ]);
     const stats = await myStats(db, u.id);
-    return json({ user: { id: u.id, name: u.username ?? 'Player', avatar: u.avatar, avatarUpdatedAt: u.avatarUpdatedAt, tagline: u.tagline, socialLinks: parseSocialLinks(u.socialLinks) }, level, season: { id: season.id, name: season.name, endsAt: season.endsAt }, rank: { team, cutthroat }, stats, achievements });
+    // coins: the public balance is part of the profile by the owner's call (players see
+    // each other's balance on profile cards, 2026-10-20). Read-only: no grants fire here —
+    // a user with no coin row yet genuinely sits at 0 until their own profile read grants.
+    return json({ user: { id: u.id, name: u.username ?? 'Player', avatar: u.avatar, avatarUpdatedAt: u.avatarUpdatedAt, tagline: u.tagline, socialLinks: parseSocialLinks(u.socialLinks) }, level, season: { id: season.id, name: season.name, endsAt: season.endsAt }, rank: { team, cutthroat }, stats, achievements, coins: { balance: coinBalance } });
   }
   if (parts[1] === 'challenges' && parts.length === 2 && req.method === 'GET') {
     if (!me) return json({ error: 'Sign in to see your challenges.' }, 401);

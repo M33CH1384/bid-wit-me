@@ -791,6 +791,7 @@ interface CredPublic {
   level: { level: number; xp: number; xpForNext: number; xpIntoLevel: number; title: string };
   rank: { team: { division: string; elo: number }; cutthroat: { division: string; elo: number } };
   achievements: { id: string; title: string; hint: string; xp: number; coins: number; unlockedAt: number | null }[];
+  coins?: { balance: number };
 }
 const DIV_LABEL: Record<string, string> = { stoop: 'Stoop', corner: 'Corner', block: 'Block', avenue: 'Avenue', boulevard: 'Boulevard', legend: 'Legend' };
 const divLabel = (d: string) => DIV_LABEL[d] ?? d;
@@ -828,6 +829,8 @@ function Profile({ name, id }: { name: string; id?: string }) {
   const pic = useAvatar(uid, cred?.user.avatar ?? (p && p !== 'missing' ? p.avatar : undefined), cred?.user.avatarUpdatedAt ?? undefined);
   const me = acct.user?.username === name;
   const friend = !!pid && (s.friends?.friends ?? []).some((f) => f.id === pid);
+  const pending = !!pid && (s.friends?.outgoing ?? []).some((f) => f.id === pid);
+  const incoming = !!pid && (s.friends?.incoming ?? []).some((f) => f.id === pid);
   const blocked = !!pid && (s.friends?.blocked ?? []).some((f) => f.id === pid);
   return (
     <div className="soc-profile" data-testid="profile">
@@ -860,6 +863,7 @@ function Profile({ name, id }: { name: string; id?: string }) {
                 <div className="soc-rep-ranks">
                   <span className="soc-div-chip" title="Partnership season division">⚔ {divLabel(cred.rank.team.division)} · {cred.rank.team.elo}</span>
                   <span className="soc-div-chip" title="Cutthroat season division">🔪 {divLabel(cred.rank.cutthroat.division)} · {cred.rank.cutthroat.elo}</span>
+                  {cred.coins && <span className="soc-coin-chip" title="Coin balance" data-testid="profile-coins">🪙 {cred.coins.balance.toLocaleString()}</span>}
                 </div>
               </div>
               {cred.achievements.some((a) => a.unlockedAt) && (
@@ -875,7 +879,10 @@ function Profile({ name, id }: { name: string; id?: string }) {
             <div className="soc-prof-acts">
               {!blocked && <button type="button" onClick={() => social.openDm(pid)}>💬 Chat</button>}
               {!blocked && s.users[pid] && <button type="button" onClick={() => void inviteTo(pid, s.myTable)}>➕ Invite</button>}
-              {!friend && !blocked && <button type="button" onClick={() => social.friend('request', pid)} data-testid="profile-add">👋 Add friend</button>}
+              {friend && <span className="soc-friend-tag" data-testid="profile-friends">★ Friends</span>}
+              {incoming && !friend && !blocked && <button type="button" className="primary" onClick={() => social.friend('accept', pid)} data-testid="profile-accept">Accept request</button>}
+              {incoming && !friend && !blocked && <button type="button" className="ghost" onClick={() => social.friend('decline', pid)} data-testid="profile-decline">Decline</button>}
+              {!friend && !incoming && !blocked && <button type="button" disabled={pending} onClick={() => social.friend('request', pid)} data-testid="profile-add">{pending ? 'Requested' : '👋 Add friend'}</button>}
               {blocked ? <button type="button" onClick={() => social.friend('unblock', pid)}>Unblock</button> : <button type="button" className="ghost" onClick={() => { if (confirm(`Block ${p.username}? They won't see you online, can't message or invite you, and their chat is hidden.`)) social.friend('block', pid); }} data-testid="profile-block">Block</button>}
               <button type="button" className="ghost" onClick={() => social.report('user', { user: pid })}>Report</button>
             </div>
