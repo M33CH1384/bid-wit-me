@@ -1177,10 +1177,12 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   useEffect(() => { setShotRecapAck(false); }, [st.phase, st.handNo]);
   // Post-hand collection (Demetrius 2026-10-19): after a hand ends (not game over), books slide to the
   // next dealer for 4-6s while bots talk trash. The recap waits until collection finishes.
+  // The pass waits out the finished-trick hold (pause): every card must have landed and the final
+  // trick must have had its on-table beat before anything slides to the dealer (Demetrius 2026-10-19).
   const [collecting, setCollecting] = useState(false);
   const collectTimer = useRef<number | null>(null);
   useEffect(() => {
-    if (st.phase === 'handOver' && !st.result && !online) {
+    if (st.phase === 'handOver' && !st.result && !online && !pause) {
       setCollecting(true);
       if (collectTimer.current) window.clearTimeout(collectTimer.current);
       collectTimer.current = window.setTimeout(() => setCollecting(false), 5200);
@@ -1189,7 +1191,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       if (collectTimer.current) { window.clearTimeout(collectTimer.current); collectTimer.current = null; }
     }
     return () => { if (collectTimer.current) { window.clearTimeout(collectTimer.current); collectTimer.current = null; } };
-  }, [st.phase, st.handNo, st.result, online]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [st.phase, st.handNo, st.result, online, pause]); // eslint-disable-line react-hooks/exhaustive-deps
   // Trash talk during collection: 1-2 bots chirp while cards slide to the dealer (Demetrius 2026-10-19).
   // Winners gloat ('made'/'setThem'), losers cope ('gotSet'/'roast'). Uses the existing TTS + chat pipeline.
   const banterDone = useRef(0);
