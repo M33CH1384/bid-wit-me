@@ -491,3 +491,42 @@ button.soc-pl-name.link:hover, button.soc-frow-name.link:hover { text-decoration
 
 /* Local game indicator (Demetrius 2026-10-19): replaces dead Spectate/Join buttons */
 .soc-pl-local { display: inline-block; padding: 4px 10px; font-size: 12px; font-weight: 700; color: var(--muted); background: rgba(255,255,255,.06); border-radius: 999px; }
+
+/* Big Bank Take Lil Bank (Phase 2): challenges tab, create sheet, detail, unlock popup */
+.wg-title { font-family: var(--display); font-size: 17px; letter-spacing: .03em; }
+.wg-group h4 { margin: 14px 0 6px; font-family: var(--display); letter-spacing: .05em; color: var(--muted); }
+.wg-card { min-height: 56px; }
+.wg-field-label { font-size: 13px; margin-top: 4px; }
+.wg-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.wg-chips button { min-height: 44px; padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.05); color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
+.wg-chips button.on { background: linear-gradient(180deg, #ffd969, var(--gold-deep)); color: #1d1204; border-color: transparent; }
+.wg-chips button:disabled { opacity: .35; cursor: default; }
+.wg-form .soc-seg button { min-height: 44px; }
+.wg-sugg { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.wg-sugg button { min-height: 36px; padding: 6px 12px; border-radius: 999px; border: 1px solid rgba(245,197,66,.5); background: rgba(245,197,66,.1); color: var(--gold); font: inherit; font-size: 13px; cursor: pointer; }
+.wg-terms { margin: 6px 0; font-size: 13px; line-height: 1.45; color: var(--ink); background: rgba(245,197,66,.08); border: 1px solid rgba(245,197,66,.35); border-radius: 8px; padding: 10px 12px; }
+.wg-terms-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 8px 0; }
+.wg-terms-grid div { background: rgba(255,255,255,.05); border-radius: 10px; padding: 8px 6px; text-align: center; }
+.wg-terms-grid b { display: block; font-size: 15px; }
+.wg-terms-grid small { color: var(--muted); font-size: 11px; }
+.wg-players { list-style: none; margin: 0 0 10px; padding: 0; }
+.wg-players li { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.06); }
+.wg-pstate { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.wg-pstate .soc-tag { margin-left: 0; }
+.wg-net { font-style: normal; font-weight: 700; font-size: 13px; }
+.wg-net.up { color: #7fe3a0; }
+.wg-net.down { color: #ff9db0; }
+.wg-acts { align-items: stretch; }
+.wg-acts button { min-height: 44px; padding: 10px 16px; }
+.wg-acts label { display: grid; gap: 4px; font-size: 13px; flex: 1 1 100%; }
+.wg-acts label input { padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,.2); background: #0e0718; color: inherit; font: inherit; min-height: 44px; }
+
+/* Unlock celebration: a solid card (never glass), queued until the player is in menus */
+.unlock-pop { position: fixed; top: calc(env(safe-area-inset-top) + 12px); left: 50%; transform: translateX(-50%); width: min(430px, calc(100vw - 24px)); z-index: 1300;
+  background: #1b1030; border: 1px solid rgba(245,197,66,.75); border-radius: 14px; box-shadow: 0 14px 40px rgba(0,0,0,.55);
+  padding: 14px; display: grid; gap: 10px; animation: soc-drop .25s ease-out; }
+.unlock-pop-txt b { display: block; font-family: var(--display); font-size: 19px; letter-spacing: .02em; margin-bottom: 4px; }
+.unlock-pop-txt span { font-size: 13.5px; line-height: 1.45; color: var(--muted); }
+.unlock-pop-acts { display: flex; gap: 8px; justify-content: flex-end; }
+.unlock-pop-acts button { min-height: 44px; padding: 10px 16px; border-radius: 10px; border: 1px solid rgba(185,128,255,.45); background: rgba(185,128,255,.14); color: var(--ink); font: inherit; font-weight: 600; cursor: pointer; }
+.unlock-pop-acts button.primary { background: linear-gradient(180deg, #ffd969, var(--gold-deep)); color: #1d1204; border: 0; font-weight: 700; }

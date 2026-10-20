@@ -22,6 +22,7 @@ import { SocialLinksChips, type SocialLinks } from '../socialLinks';
 import { useEscapeClose } from '../useEscapeClose';
 import { MODE_NAME, } from './Social';
 import { social, useSocial } from './store';
+import { ChallengeButton } from './Wager';
 import './social.css';
 
 interface ProfileData {
@@ -117,6 +118,7 @@ function ProfileCard({ target }: { target: ProfileTarget }) {
           <div className="soc-prof-acts">
             {!blocked && <button type="button" aria-expanded={msgOpen} data-testid="profile-modal-message" onClick={() => setMsgOpen(!msgOpen)}>💬 Message</button>}
             {!blocked && onlineEntry && s.myTable && <button type="button" data-testid="profile-modal-invite" onClick={() => { social.invite(pid, s.myTable!); closeTableProfile(); }}>➕ Invite</button>}
+            {!blocked && <ChallengeButton name={target.name} testid="profile-modal-challenge" onChallenge={() => { closeTableProfile(); social.startChallenge(target.name); }} />}
             {friend && <span className="soc-friend-tag" data-testid="profile-modal-friends">★ Friends</span>}
             {incoming && !friend && !blocked && <button type="button" className="primary" data-testid="profile-modal-accept" onClick={() => social.friend('accept', pid)}>Accept request</button>}
             {incoming && !friend && !blocked && <button type="button" className="ghost" data-testid="profile-modal-decline" onClick={() => social.friend('decline', pid)}>Decline</button>}

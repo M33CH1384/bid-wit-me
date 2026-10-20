@@ -33,13 +33,13 @@ describe('ladder + flag', () => {
     expect(isWagerAmount(NaN)).toBe(false);
   });
 
-  it('ships dark: the flag defaults off and turns on explicitly', async () => {
+  it('Phase 2 opened the gates: migrations seed the flag on; it still turns off explicitly', async () => {
     const db = await makeD1();
+    expect(await wagerEnabled(db)).toBe(true); // 0016 seeded '0' (dark); 0017 flipped it when the client shipped
+    await setFlag(db, 'wager_challenges_enabled', false);
     expect(await wagerEnabled(db)).toBe(false);
     await setFlag(db, 'wager_challenges_enabled', true);
     expect(await wagerEnabled(db)).toBe(true);
-    await setFlag(db, 'wager_challenges_enabled', false);
-    expect(await wagerEnabled(db)).toBe(false);
   });
 });
 

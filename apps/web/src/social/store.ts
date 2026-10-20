@@ -11,10 +11,10 @@ import { guestSessionId, loadName } from '../online/identity';
 import { keepUsers } from './presence';
 import { playChatSound } from './chatSounds';
 
-export type SocialTab = 'players' | 'chat' | 'messages' | 'friends' | 'leaders' | 'tournaments' | 'settings';
+export type SocialTab = 'players' | 'chat' | 'messages' | 'friends' | 'leaders' | 'tournaments' | 'challenges' | 'settings';
 export interface ToastAction { label: string; tab: SocialTab; /** friend-request toast: the requester's id, so the popup can Accept/Decline inline */ friendId?: string }
 export interface Toast { id: string; kind: 'info' | 'error' | 'ok'; text: string; at: number; action?: ToastAction }
-export interface Notice { id: string; text: string; code?: string; seat?: number; tid?: string; at: number }
+export interface Notice { id: string; text: string; code?: string; seat?: number; tid?: string; /** Big Bank: the wager challenge this notice is about */ cid?: string; at: number }
 export interface MyTable { code: string; mode?: string; seat?: number; open: number }
 
 export interface SocialState {
@@ -45,6 +45,10 @@ export interface SocialState {
   notices: Notice[];
   /** open tournament detail (id) */
   tour: string | null;
+  /** Big Bank: open wager-challenge detail (id) */
+  wager: string | null;
+  /** Big Bank: create-flow intent (opponent pre-named from a profile Challenge tap) */
+  wagerCreate: { opponent?: string } | null;
   /** Release 10: public tables (Open tables list), by code */
   tables: Record<string, OpenTable>;
   /** public table codes that ended or left the open list */
@@ -60,7 +64,7 @@ const seen0 = (() => { try { return Number(localStorage.getItem(GLOBAL_SEEN_KEY)
  * Session-scoped: a refresh in this tab restores it; a new tab starts clean.
  */
 export const SOCIAL_VIEW_KEY = 'bwm.social.view';
-const SOCIAL_TABS: SocialTab[] = ['players', 'chat', 'messages', 'friends', 'leaders', 'tournaments', 'settings'];
+const SOCIAL_TABS: SocialTab[] = ['players', 'chat', 'messages', 'friends', 'leaders', 'tournaments', 'challenges', 'settings'];
 export interface SocialView { open: boolean; tab: SocialTab; dmWith: string | null; names: Record<string, string> }
 export function serializeSocialView(s: Pick<SocialState, 'open' | 'tab' | 'dmWith' | 'names'>): string {
   return JSON.stringify({ open: s.open, tab: s.tab, dmWith: s.dmWith, names: s.names });
@@ -88,7 +92,7 @@ function persistView(): void {
 
 let state: SocialState = {
   status: 'off', you: null, admin: false, users: {}, global: [], friends: null, settings: null, unread: {}, dms: {}, names: view0.names ?? {}, invites: [], sent: {}, toasts: [],
-  open: view0.open ?? false, tab: view0.tab ?? 'players', dmWith: view0.dmWith ?? null, profile: null, profileId: null, globalSeen: seen0, myTable: null, notices: [], tour: null, tables: {}, ended: {},
+  open: view0.open ?? false, tab: view0.tab ?? 'players', dmWith: view0.dmWith ?? null, profile: null, profileId: null, globalSeen: seen0, myTable: null, notices: [], tour: null, wager: null, wagerCreate: null, tables: {}, ended: {},
 };
 const subs = new Set<() => void>();
 function set(p: Partial<SocialState> | ((s: SocialState) => Partial<SocialState>)) {
@@ -304,7 +308,7 @@ function onMessage(m: SocialServerMsg) {
       toast(m.message, 'error');
       break;
     case 'notice': {
-      const n: Notice = { id: Math.random().toString(36).slice(2), text: m.text, code: m.code, seat: m.seat, tid: m.tid, at: Date.now() };
+      const n: Notice = { id: Math.random().toString(36).slice(2), text: m.text, code: m.code, seat: m.seat, tid: m.tid, cid: m.cid, at: Date.now() };
       set((st) => ({ notices: [...st.notices.slice(-2), n] }));
       // a match-ready notice stays up longer (you need to get there)
       setTimeout(() => set((st) => ({ notices: st.notices.filter((x) => x.id !== n.id) })), m.code ? 120_000 : 15_000);
@@ -354,8 +358,13 @@ export const social = {
   },
   close() { set({ open: false, profile: null, profileId: null }); },
   showTour(id: string | null) { set({ open: true, tab: 'tournaments', profile: null, profileId: null, tour: id }); },
+  /** open the Big Bank tab; with an id, straight to that challenge's detail */
+  showChallenge(id: string | null) { set({ open: true, tab: 'challenges', profile: null, profileId: null, wager: id }); },
+  /** open the Big Bank create flow (optionally with the opponent pre-named from a profile) */
+  startChallenge(opponent?: string) { social.start(); set({ open: true, tab: 'challenges', profile: null, profileId: null, wager: null, wagerCreate: opponent ? { opponent } : {} }); },
+  clearWagerCreate() { set({ wagerCreate: null }); },
   dismissNotice(id: string) { set((s) => ({ notices: s.notices.filter((n) => n.id !== id) })); },
-  tab(tab: SocialTab) { set({ tab, profile: null, profileId: null, ...(tab === 'tournaments' ? { tour: null } : {}) }); if (tab === 'chat') social.markGlobalSeen(); },
+  tab(tab: SocialTab) { set({ tab, profile: null, profileId: null, ...(tab === 'tournaments' ? { tour: null } : {}), ...(tab === 'challenges' ? { wager: null } : {}) }); if (tab === 'chat') social.markGlobalSeen(); },
   markGlobalSeen() { const last = state.global[state.global.length - 1]?.id ?? state.globalSeen; saveSeen(last); set({ globalSeen: last }); },
   openDm(pid: string) {
     set((s) => ({ tab: 'messages', dmWith: pid, profile: null, profileId: null, unread: { ...s.unread, [pid]: 0 } }));

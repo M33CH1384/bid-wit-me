@@ -377,6 +377,42 @@ describe('view', () => {
   });
 });
 
+describe('net outcome (Phase 2 display field)', () => {
+  const nets = (d: WData) => Object.fromEntries(view(d, null, now).players.map((p) => [p.uid, p.net]));
+  const projNets = async (id: string) => {
+    const rows = (await db.prepare('SELECT user_id AS uid, net FROM wager_challenge_players WHERE challenge_id = ?').bind(id).all<{ uid: string; net: number | null }>()).results;
+    return Object.fromEntries(rows.map((r) => [r.uid, r.net]));
+  };
+
+  it('is null while the challenge is unresolved', async () => {
+    const d = await fullPartnership(100);
+    expect(Object.values(nets(d)).every((n) => n === null)).toBe(true);
+  });
+
+  it('played partnership: winners +wager, losers -wager — in the view and the D1 projection', async () => {
+    const d = await livePartnership(100);
+    const after = await result(io(), d, { kind: 'played', scores: [500, 320], places: [1, 2], gameId: 'game-net' });
+    expect(nets(after)).toEqual({ a: 100, b: -100, c: 100, d: -100 });
+    expect(await projNets(after.id)).toEqual({ a: 100, b: -100, c: 100, d: -100 });
+  });
+
+  it('no-show partnership: present pair gains the split, the partner who showed breaks even, the no-show loses', async () => {
+    const d = await livePartnership(100);
+    const after = await result(io(), d, { kind: 'noshow', shown: ['a', 'b', 'c'] });
+    expect(nets(after)).toEqual({ a: 50, b: 0, c: 50, d: -100 });
+    expect(await projNets(after.id)).toEqual({ a: 50, b: 0, c: 50, d: -100 });
+  });
+
+  it('void and early exits leave everyone at 0', async () => {
+    const d = await livePartnership(100);
+    const voided = await result(io(), d, { kind: 'noshow', shown: [] });
+    expect(Object.values(nets(voided)).every((n) => n === 0)).toBe(true);
+    const d2 = await mkPartnership(100);
+    const declined = await decline(io(), d2, 'b');
+    expect(nets(declined)).toEqual({ a: 0, b: 0, c: 0 });
+  });
+});
+
 describe('parseCreate (routes)', () => {
   const H = 7 * 24 * 3600_000;
   it('accepts the partnership menu and freezes rules', () => {

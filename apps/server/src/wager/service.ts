@@ -34,6 +34,9 @@ export interface WPlayer {
   status: 'invited' | 'accepted' | 'declined';
   escrowed: boolean;
   checkedIn: boolean;
+  /** Net coin outcome at resolution (coins returned − coins escrowed): +won, 0 refunded/made whole, −wager lost.
+   *  Null until the challenge reaches a terminal state. Display-only — the ledger is the money truth. */
+  net?: number | null;
   acceptedAt: number | null;
   /** seat at the match table, assigned when the table is created */
   seat: number | null;
@@ -101,10 +104,10 @@ export async function syncRow(io: WIO, d: WData): Promise<void> {
     ON CONFLICT (id) DO UPDATE SET status = excluded.status, table_code = excluded.table_code, game_id = excluded.game_id, settled_at = excluded.settled_at, end_reason = excluded.end_reason`)
     .bind(d.id, d.challengerId, d.format, d.mode, JSON.stringify(d.rules), d.wager, d.startAt, checkinOpensAt(d), d.status, d.tableCode, d.gameId, d.createdAt, d.settledAt, d.endReason).run();
   if (d.players.length) {
-    await db.batch(d.players.map((p) => db.prepare(`INSERT INTO wager_challenge_players (challenge_id, user_id, side, seat, role, status, escrowed, checked_in)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT (challenge_id, user_id) DO UPDATE SET side = excluded.side, seat = excluded.seat, status = excluded.status, escrowed = excluded.escrowed, checked_in = excluded.checked_in`)
-      .bind(d.id, p.uid, p.side, p.seat, p.role, p.status, p.escrowed ? 1 : 0, p.checkedIn ? 1 : 0)));
+    await db.batch(d.players.map((p) => db.prepare(`INSERT INTO wager_challenge_players (challenge_id, user_id, side, seat, role, status, escrowed, checked_in, net)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (challenge_id, user_id) DO UPDATE SET side = excluded.side, seat = excluded.seat, status = excluded.status, escrowed = excluded.escrowed, checked_in = excluded.checked_in, net = excluded.net`)
+      .bind(d.id, p.uid, p.side, p.seat, p.role, p.status, p.escrowed ? 1 : 0, p.checkedIn ? 1 : 0, p.net ?? null)));
   }
 }
 
@@ -245,6 +248,7 @@ async function finishEarly(io: WIO, d: WData, status: 'declined' | 'expired' | '
       await wagerRefund(io.db, p.uid, d.id, d.wager, now);
       p.escrowed = false;
     }
+    p.net = 0; // refunded in full (or never escrowed): nobody gains or loses
   }
   d.status = status;
   d.endReason = reason;
@@ -370,6 +374,7 @@ async function voidAll(io: WIO, d: WData, reason: WagerEndReason, text: string):
       await wagerRefund(io.db, p.uid, d.id, d.wager, now);
       p.escrowed = false;
     }
+    p.net = 0; // void: every escrow comes back, nobody gains or loses
   }
   d.status = 'void';
   d.endReason = reason;
@@ -393,13 +398,15 @@ async function settlePlayed(io: WIO, d: WData, r: Extract<WResult, { kind: 'play
   const remainder = pot - share * winners.length;
   const ordered = [...winners].sort(bySeat);
   for (let i = 0; i < ordered.length; i++) {
-    await wagerPayWin(io.db, ordered[i]!.uid, d.id, d.wager, share + (i === 0 ? remainder : 0), now);
+    const paid = share + (i === 0 ? remainder : 0);
+    await wagerPayWin(io.db, ordered[i]!.uid, d.id, d.wager, paid, now);
+    ordered[i]!.net = paid - d.wager; // paid includes their escrow back; the rest is winnings
   }
   d.status = 'settled';
   d.endReason = 'played';
   d.gameId = r.gameId;
   d.settledAt = now;
-  for (const p of d.players) p.escrowed = false; // winners refunded via wagerPayWin; losers' escrows are spent
+  for (const p of d.players) { p.escrowed = false; if (p.net == null) p.net = -d.wager; } // losers' escrows are spent
   await io.save(d);
   await syncRow(io, d);
   // settlement pairing log for manual collusion review (matches the cred tripwire culture)
@@ -432,14 +439,15 @@ async function settleNoshow(io: WIO, d: WData, shown: Set<string>, now: number):
     for (let i = 0; i < presentPair.length; i++) {
       await wagerRefund(io.db, presentPair[i]!.uid, d.id, w, now);
       await wagerForfeit(io.db, presentPair[i]!.uid, d.id, share + (i === 0 ? remainder : 0), now);
+      presentPair[i]!.net = share + (i === 0 ? remainder : 0); // escrow refunded + their cut of the forfeit
     }
     // the partner who showed is made whole; only the no-show's escrow is lost
-    for (const p of showedPartner) await wagerRefund(io.db, p.uid, d.id, w, now);
+    for (const p of showedPartner) { await wagerRefund(io.db, p.uid, d.id, w, now); p.net = 0; }
     for (const p of noShows) strike(p);
     d.status = 'forfeited';
     d.endReason = 'no_show';
     d.settledAt = now;
-    for (const p of d.players) p.escrowed = false;
+    for (const p of d.players) { p.escrowed = false; if (p.net == null) p.net = -w; } // the no-shows lose their wager
     await io.save(d);
     await syncRow(io, d);
     await outcome(io, d, `🏦 Big Bank no-show: ${noShows.map((p) => p.name).join(' + ')} didn't show — ${presentPair.map((p) => p.name).join(' + ')} take their wager.`);
@@ -458,12 +466,13 @@ async function settleNoshow(io: WIO, d: WData, shown: Set<string>, now: number):
   for (let i = 0; i < showers.length; i++) {
     await wagerRefund(io.db, showers[i]!.uid, d.id, w, now);
     await wagerForfeit(io.db, showers[i]!.uid, d.id, share + (i === 0 ? remainder : 0), now);
+    showers[i]!.net = share + (i === 0 ? remainder : 0); // escrow refunded + their cut of the forfeits
   }
   for (const p of noShows) strike(p);
   d.status = 'forfeited';
   d.endReason = 'no_show';
   d.settledAt = now;
-  for (const p of d.players) p.escrowed = false;
+  for (const p of d.players) { p.escrowed = false; if (p.net == null) p.net = -w; } // the no-shows lose their wager
   await io.save(d);
   await syncRow(io, d);
   await outcome(io, d, `🏦 Big Bank no-show: ${noShows.map((p) => p.name).join(' + ')} didn't show — the match is void and their wager is split by the players who showed.`);
@@ -483,11 +492,12 @@ async function settleAbandoned(io: WIO, d: WData, leaverUid: string | null, now:
   for (let i = 0; i < others.length; i++) {
     await wagerRefund(io.db, others[i]!.uid, d.id, w, now);
     await wagerForfeit(io.db, others[i]!.uid, d.id, share + (i === 0 ? remainder : 0), now);
+    others[i]!.net = share + (i === 0 ? remainder : 0); // escrow refunded + their cut of the leaver's wager
   }
   d.status = 'forfeited';
   d.endReason = 'abandoned';
   d.settledAt = now;
-  for (const p of d.players) p.escrowed = false;
+  for (const p of d.players) { p.escrowed = false; if (p.net == null) p.net = -w; } // the leaver loses their wager
   await io.save(d);
   await syncRow(io, d);
   console.warn('wager', 'abandoned', { challenge: d.id, leaver: leaver.uid, wager: w });
@@ -523,7 +533,7 @@ export function view(d: WData, viewer: string | null, now: number) {
     tableCode: d.tableCode,
     gameId: d.gameId,
     settledAt: d.settledAt,
-    players: d.players.map((p) => ({ uid: p.uid, name: p.name, role: p.role, side: p.side, seat: p.seat, status: p.status, escrowed: p.escrowed, checkedIn: p.checkedIn })),
+    players: d.players.map((p) => ({ uid: p.uid, name: p.name, role: p.role, side: p.side, seat: p.seat, status: p.status, escrowed: p.escrowed, checkedIn: p.checkedIn, net: p.net ?? null })),
     you: me ? {
       role: me.role, status: me.status, escrowed: me.escrowed, checkedIn: me.checkedIn,
       canAccept: d.status === 'pending' && me.status === 'invited' && now < opens,

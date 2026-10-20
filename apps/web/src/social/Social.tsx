@@ -16,6 +16,8 @@ import { type PlayerTableAction, playerTableAction } from './tableActions';
 import { type MyTable, type SocialTab, type Toast, badgeCount, globalUnread, social, useSocial } from './store';
 import { openPlayerProfile, profileTargetOf } from '../profileTap';
 import { Leaderboards, Tournaments } from './Compete';
+import { ChallengeButton, WagerChallenges } from './Wager';
+import { UnlockPopups } from './UnlockPopups';
 import { offlineStats } from '../offlineStats';
 import { chatStickToBottom } from '../chatScroll';
 import { chatGroupInfo, chatTimeLabel } from './chatTime';
@@ -58,6 +60,7 @@ export function SocialRoot() {
   return (
     <>
       {s.open && <SocialPanel />}
+      <UnlockPopups />
       <div className={`soc-toasts${s.open ? ' over-panel' : ''}`} aria-live="polite">
         {s.invites.map((inv) => <InviteToast key={inv.id} inv={inv} />)}
         {s.notices.map((n) => (
@@ -65,7 +68,8 @@ export function SocialRoot() {
             <div className="soc-invite-txt">🏆 {n.text}</div>
             <div className="soc-invite-acts">
               {n.code ? <button type="button" className="primary" data-testid="notice-go" onClick={() => { social.dismissNotice(n.id); social.close(); navigate(`/t/${n.code}${n.seat !== undefined ? `?seat=${n.seat}` : ''}`); }}>Go</button>
-                : n.tid ? <button type="button" className="primary" onClick={() => { social.dismissNotice(n.id); social.showTour(n.tid!); }}>View</button> : null}
+                : n.tid ? <button type="button" className="primary" onClick={() => { social.dismissNotice(n.id); social.showTour(n.tid!); }}>View</button>
+                : n.cid ? <button type="button" className="primary" data-testid="notice-challenge" onClick={() => { social.dismissNotice(n.id); social.showChallenge(n.cid!); }}>View</button> : null}
               <button type="button" onClick={() => social.dismissNotice(n.id)} aria-label="Dismiss">✕</button>
             </div>
           </div>
@@ -196,10 +200,11 @@ function SocialPanel() {
           <span className="panel-title">SOCIAL</span>
           <span className={`soc-conn ${s.status}`} title={s.status}>{s.status === 'open' ? `${Object.keys(s.users).length} online` : s.status === 'off' ? '' : 'connecting…'}</span>
           <span className="soc-gear-wrap">
-            <button type="button" className={`icon-btn ${s.tab === 'tournaments' || s.tab === 'settings' ? 'on' : ''}`} aria-label="Events and settings" aria-expanded={gear} data-testid="social-gear" onClick={() => setGear(!gear)}>⚙</button>
+            <button type="button" className={`icon-btn ${s.tab === 'tournaments' || s.tab === 'challenges' || s.tab === 'settings' ? 'on' : ''}`} aria-label="Events and settings" aria-expanded={gear} data-testid="social-gear" onClick={() => setGear(!gear)}>⚙</button>
             {gear && (
               <span className="soc-gear-menu" role="menu">
                 <button type="button" role="menuitem" data-testid="soc-tab-tournaments" onClick={() => { social.tab('tournaments'); setGear(false); }}>🏆 Events &amp; tournaments</button>
+                <button type="button" role="menuitem" data-testid="soc-tab-challenges" onClick={() => { social.tab('challenges'); setGear(false); }}>🏦 Big Bank challenges</button>
                 <button type="button" role="menuitem" data-testid="soc-tab-settings" onClick={() => { social.tab('settings'); setGear(false); }}>⚙ Social settings</button>
               </span>
             )}
@@ -227,6 +232,7 @@ function SocialPanel() {
             s.tab === 'friends' ? <Friends signedIn={signedIn} /> :
             s.tab === 'leaders' ? <Leaderboards /> :
             s.tab === 'tournaments' ? <Tournaments signedIn={signedIn} /> :
+            s.tab === 'challenges' ? <WagerChallenges signedIn={signedIn} /> :
             <SettingsTab signedIn={signedIn} />}
         </div>
       </aside>
@@ -851,6 +857,7 @@ function Profile({ name, id }: { name: string; id?: string }) {
               <div className="soc-prof-acts">
                 {!blocked && <button type="button" onClick={() => social.openDm(pid)}>💬 Chat</button>}
                 {!blocked && s.users[pid] && <button type="button" onClick={() => void inviteTo(pid, s.myTable)}>➕ Invite</button>}
+                {!blocked && <ChallengeButton name={p.username} blocked={blocked} />}
                 {friend && <span className="soc-friend-tag" data-testid="profile-friends">★ Friends</span>}
                 {incoming && !friend && !blocked && <button type="button" className="primary" onClick={() => social.friend('accept', pid)} data-testid="profile-accept">Accept request</button>}
                 {incoming && !friend && !blocked && <button type="button" className="ghost" onClick={() => social.friend('decline', pid)} data-testid="profile-decline">Decline</button>}

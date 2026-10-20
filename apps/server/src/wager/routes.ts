@@ -75,27 +75,28 @@ export async function handleWagerChallenges(req: Request, env: WagerEnv, url: UR
 
   if (!id && req.method === 'GET') {
     if (!me) return json({ error: 'Sign in to see your challenges.' }, 401);
-    if (!(await wagerEnabled(db))) return json({ challenges: [], now }); // ships dark
+    if (!(await wagerEnabled(db))) return json({ challenges: [], now, enabled: false }); // ships dark; `enabled` lets the client hide the UI entirely
     const rows = (await db.prepare(`SELECT c.id, c.format, c.mode, c.wager, c.start_at AS startAt, c.checkin_opens_at AS checkinOpensAt,
         c.status, c.table_code AS tableCode, c.end_reason AS endReason, c.created_at AS createdAt
       FROM wager_challenges c JOIN wager_challenge_players p ON p.challenge_id = c.id
       WHERE p.user_id = ? ORDER BY c.start_at ASC LIMIT 100`).bind(me.id).all<{
       id: string; format: string; mode: string; wager: number; startAt: number; checkinOpensAt: number; status: string; tableCode: string | null; endReason: string | null; createdAt: number;
     }>()).results;
-    const players = rows.length ? (await db.prepare(`SELECT p.challenge_id AS cid, p.user_id AS uid, u.username AS name, p.side, p.seat, p.role, p.status, p.escrowed, p.checked_in AS checkedIn
+    const players = rows.length ? (await db.prepare(`SELECT p.challenge_id AS cid, p.user_id AS uid, u.username AS name, p.side, p.seat, p.role, p.status, p.escrowed, p.checked_in AS checkedIn, p.net
       FROM wager_challenge_players p JOIN users u ON u.id = p.user_id
       WHERE p.challenge_id IN (${rows.map(() => '?').join(',')}) ORDER BY p.seat`).bind(...rows.map((r) => r.id)).all<{
-      cid: string; uid: string; name: string; side: number | null; seat: number | null; role: string; status: string; escrowed: number; checkedIn: number;
+      cid: string; uid: string; name: string; side: number | null; seat: number | null; role: string; status: string; escrowed: number; checkedIn: number; net: number | null;
     }>()).results : [];
     const byChallenge = new Map<string, unknown[]>();
     for (const p of players) {
       const list = byChallenge.get(p.cid) ?? [];
-      list.push({ uid: p.uid, name: p.name, role: p.role, side: p.side, seat: p.seat, status: p.status, escrowed: !!p.escrowed, checkedIn: !!p.checkedIn });
+      list.push({ uid: p.uid, name: p.name, role: p.role, side: p.side, seat: p.seat, status: p.status, escrowed: !!p.escrowed, checkedIn: !!p.checkedIn, net: p.net ?? null });
       byChallenge.set(p.cid, list);
     }
     return json({
       challenges: rows.map((r) => ({ ...r, pot: r.wager * 4, players: byChallenge.get(r.id) ?? [] })),
       now,
+      enabled: true,
     });
   }
 
