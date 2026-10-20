@@ -115,7 +115,7 @@ export function settingsForContext(s: SoundSettings, ctx: SoundContext): SoundSe
   return exclusiveMusicAmbience(patched);
 }
 /** venue ambience beds (see venues.ts → bed) */
-export type VenueBed = 'none' | 'cookout' | 'mansion' | 'barbershop' | 'basement' | 'rooftop' | 'jazz' | 'casino' | 'beach' | 'kitchen' | 'yacht';
+export type VenueBed = 'none' | 'cookout' | 'mansion' | 'barbershop' | 'basement' | 'rooftop' | 'jazz' | 'casino' | 'beach' | 'kitchen' | 'yacht' | 'street';
 export type MusicStatus = 'off' | 'loading' | 'playing' | 'error';
 
 export interface Track { file: string; title: string; artist: string; license: string; source: string; /** exact attribution line (CC BY) */ credit?: string }
@@ -1685,6 +1685,12 @@ class Engine {
         this.vNoise('lowpass', 500, 0.6, 0.035, 0.06, 0.6); // sea breeze
         this.vEvery(10, 22, (t) => this.tone(t, 90, 0.9, 'triangle', 0.01, { glideTo: 70, filter: 300, dest: B })); // a creak
         this.vEvery(16, 30, (t) => this.tone(t, 1800, 0.4, 'sine', 0.006, { glideTo: 1200, dest: B })); // gull
+        break;
+      case 'street':
+        this.vNoise('lowpass', 140, 0.5, 0.05, 0.05, 0.3); // distant traffic rumble
+        this.vNoise('highpass', 3500, 0.5, 0.006, 0.35, 0.5); // grill sizzle
+        this.vEvery(1.5, 4, (t) => { for (let i = 0; i < 3; i++) this.tone(t + i * 0.07, 4600, 0.04, 'sine', 0.01, { dest: B }); }); // crickets
+        this.vEvery(18, 40, (t) => { this.tone(t, 660, 0.7, 'sine', 0.006, { glideTo: 880, dest: B }); this.tone(t + 0.8, 660, 0.7, 'sine', 0.006, { glideTo: 880, dest: B }); }); // distant siren
         break;
       default:
     }

@@ -8,6 +8,7 @@
  *   GET  /api/coins/ledger          → recent coin movements (signed in)
  */
 import { type AuthEnv, currentUser } from '../auth/routes';
+import { isAdmin } from '../social/routes';
 import { myStats } from '../stats/boards';
 import { divisionOf, type Division } from './divisions';
 import { ensureSeason } from './seasons';
@@ -44,7 +45,7 @@ async function unlockList(db: D1Database, userId: string) {
   return owned.results.map((u) => ({ itemId: u.itemId, source: u.source, unlockedAt: u.unlockedAt, slot: byItem.get(u.itemId) ?? null, equipped: byItem.has(u.itemId) }));
 }
 
-async function fullProfile(db: D1Database, userId: string, username: string, now: number) {
+async function fullProfile(db: D1Database, userId: string, username: string, now: number, dev: boolean) {
   const season = await ensureSeason(db, now);
   // idempotent earners: welcome grant + daily login (cheap, safe to run on every profile read)
   try { await grantWelcome(db, userId, now); } catch { /* best-effort */ }
@@ -61,6 +62,8 @@ async function fullProfile(db: D1Database, userId: string, username: string, now
   const stats = await myStats(db, userId);
   return {
     user: { id: userId, name: username },
+    /** developer (owner) accounts bypass unlock gates, e.g. The Pj's */
+    dev,
     level: { ...level, xpForNext: xpForLevel(level.level) },
     season: { id: season.id, name: season.name, endsAt: season.endsAt },
     rank: { team, cutthroat },
@@ -79,7 +82,7 @@ export async function handleCredHttp(req: Request, env: CredEnv, url: URL, parts
 
   if (parts[1] === 'profile' && parts[2] === 'me' && req.method === 'GET') {
     if (!me) return json({ error: 'Sign in to see your profile.' }, 401);
-    return json(await fullProfile(db, me.id, me.username ?? 'Player', now));
+    return json(await fullProfile(db, me.id, me.username ?? 'Player', now, isAdmin(env, me.id, me.username ?? null)));
   }
   if (parts[1] === 'profile' && parts[2] && req.method === 'GET') {
     const u = await db.prepare('SELECT id, username FROM users WHERE id = ?').bind(parts[2].slice(0, 64)).first<{ id: string; username: string | null }>();

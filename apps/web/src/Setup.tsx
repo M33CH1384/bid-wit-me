@@ -11,7 +11,8 @@ import { isMusicLink } from '@spades/protocol';
 import { loadName, saveName } from './online/identity';
 import { navigate } from './online/nav';
 import { DECKS } from './decks';
-import { VENUE_DEFS, VENUE_LIST, savePendingVenue, type VenueChoice } from './venues';
+import { VENUE_DEFS, savePendingVenue, type VenueChoice } from './venues';
+import { VenueSelect } from './VenueSelect';
 import { AccountEntry } from './account/AccountUI';
 import { SocialButton } from './social/Social';
 import { OpenTables } from './social/OpenTables';
@@ -107,10 +108,7 @@ export function VenueSetupRow({ value, onChange }: { value: VenueChoice; onChang
   return (
     <div className="ess-row stack" data-testid="venue-row">
       <span className="ess-label">Venue<small>{value === 'random' ? 'A different spot every game' : VENUE_DEFS[value].blurb}</small></span>
-      <select data-testid="venue-select-setup" aria-label="Venue" value={value} onChange={(e) => onChange(e.target.value as VenueChoice)}>
-        {VENUE_LIST.map((v) => <option key={v.id} value={v.id}>{v.emoji} {v.name}{v.id === 'classic' ? ' (default)' : ''}</option>)}
-        <option value="random">🎲 Random — a different spot every game</option>
-      </select>
+      <VenueSelect value={value} onChange={onChange} testId="venue-select-setup" randomLabel="🎲 Random — a different spot every game" />
     </div>
   );
 }

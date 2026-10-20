@@ -9,7 +9,8 @@ import { type Settings, settingsToRules } from './settings';
 import { TRUMP_SEP, trumpLadder, trumpLadderText } from './trumpLadder';
 import { type TipsPref, saveTips } from './tips';
 import { BADGES, useBadges } from './badges';
-import { VENUE_DEFS, VENUE_LIST, type VenueChoice } from './venues';
+import { VENUE_DEFS, type VenueChoice } from './venues';
+import { VenueSelect } from './VenueSelect';
 
 export function Row({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
@@ -86,10 +87,7 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
           <BotTrashTalkRow />
           <h3 className="sheet-h">Look</h3>
           <Row label="Venue" hint={s.venue === 'random' ? 'A different spot every game' : VENUE_DEFS[s.venue ?? 'classic'].blurb}>
-            <select data-testid="venue-select" aria-label="Venue" value={s.venue ?? 'classic'} onChange={(e) => set('venue', e.target.value as VenueChoice)}>
-              {VENUE_LIST.map((v) => <option key={v.id} value={v.id}>{v.emoji} {v.name}{v.id === 'classic' ? ' (default)' : ''}</option>)}
-              <option value="random">🎲 Random</option>
-            </select>
+            <VenueSelect value={s.venue ?? 'classic'} onChange={(v) => set('venue', v)} testId="venue-select" />
           </Row>
           <Row label="Graphics" hint="Low saves battery">
             <Seg label="Graphics" value={s.quality} options={[['high', 'High'], ['low', 'Low']]} onChange={(v) => set('quality', v)} />

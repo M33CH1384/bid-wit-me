@@ -264,7 +264,7 @@ export interface ChatLine {
 }
 
 /** Venues (3D arenas). 'classic' = the original studio table; 'random' is a pick resolved when a game starts. */
-export const VENUES = ['classic', 'backyard', 'mansion', 'barbershop', 'church', 'rooftop', 'speakeasy', 'vegas', 'beach', 'grandma', 'yacht'] as const;
+export const VENUES = ['classic', 'backyard', 'mansion', 'barbershop', 'church', 'rooftop', 'speakeasy', 'vegas', 'beach', 'grandma', 'yacht', 'blockAfterDark'] as const;
 export type VenueId = (typeof VENUES)[number];
 export type VenueChoice = VenueId | 'random';
 export function isVenueChoice(v: unknown): v is VenueChoice {

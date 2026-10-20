@@ -9,7 +9,7 @@ import { divisionOf, divisionRank, type Division } from './divisions';
 import { ensureSeason } from './seasons';
 import { awardXp } from './xp';
 import { bumpProgress, setStreakProgress } from './challenges';
-import { ACHIEVEMENTS, checkAchievements, NIGHT_VENUES, type CheckCtx } from './achievements';
+import { ACHIEVEMENTS, checkAchievements, grantUnlock, NIGHT_VENUES, type CheckCtx } from './achievements';
 import { move } from './coins';
 import type { CredPushEvent } from '../push/notify';
 
@@ -125,6 +125,11 @@ export async function onGameEnd(db: D1Database, ctx: CredGameCtx): Promise<CredP
     // rewards don't exist (stakes settle separately via stakes.ts)
     if (awarded.leveledUp && !ctx.vsBots) {
       try { await move(db, ctx.userId, 50 * awarded.level, 'level_up', `game:${ctx.gameId}`, now); } catch { /* best-effort */ }
+    }
+    // Phase 4: Rep level 20 ("Block Captain") unlocks The Pj's. Idempotent,
+    // so it also grandfathers players who were already 20+ before this shipped.
+    if (awarded.level >= 20) {
+      await grantUnlock(db, ctx.userId, 'after-dark', 'level:20', now);
     }
   }
 

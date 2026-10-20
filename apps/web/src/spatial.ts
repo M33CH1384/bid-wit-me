@@ -100,6 +100,7 @@ export const ROOM_STYLES: RoomStyle[] = [
   { venue: 'beach', name: 'Beach Cabana', bed: 'beach', surface: 'wood', reverb: 'dry-outdoor', crowd: 'low' },
   { venue: 'grandma', name: "Grandma's Kitchen", bed: 'kitchen', surface: 'laminate', reverb: 'tight', crowd: 'none' },
   { venue: 'yacht', name: 'Yacht Deck', bed: 'yacht', surface: 'wood', reverb: 'dry-outdoor', crowd: 'low' },
+  { venue: 'blockAfterDark', name: "The Pj's", bed: 'street', surface: 'felt', reverb: 'dry-outdoor', crowd: 'low' },
 ];
 export function styleForVenue(venue: string): RoomStyle | undefined { return ROOM_STYLES.find((r) => r.venue === venue); }
 /** Competitive Tournament (Demetrius's named room): a tournament-hall soundscape riding the casino
@@ -108,7 +109,7 @@ export const TOURNAMENT_ROOM: RoomStyle = { venue: 'vegas', name: 'Competitive T
 /** Unified session room (Phase 4): what you SEE is what you HEAR is what the loading screen NAMES.
  *  Online: the shared room venue decides (every client same). Explicit soundscape: that room.
  *  Auto (no explicit soundscape): a seeded roll per game — and that rolled room becomes the
- *  visual venue for the game too. One style per room, all 11 venues covered by ROOM_STYLES. */
+ *  visual venue for the game too. One style per room, all 12 venues covered by ROOM_STYLES. */
 export function sessionRoom(o: { explicit?: string; visualVenue?: string; storyRoom?: string; seed?: string; onlineVenue?: string }): RoomStyle {
   if (o.onlineVenue) return styleForVenue(o.onlineVenue) ?? ROOM_STYLES[0]!;
   // 1) An explicit venue picked in settings wins (seen = heard = named, still unified).

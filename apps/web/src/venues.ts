@@ -12,7 +12,7 @@ export type { VenueChoice, VenueId };
 export { VENUES };
 
 export type RailKind = 'wood' | 'marble' | 'crystal' | 'teak' | 'bamboo' | 'leather' | 'chrome' | 'metal';
-export type BedId = 'none' | 'cookout' | 'mansion' | 'barbershop' | 'basement' | 'rooftop' | 'jazz' | 'casino' | 'beach' | 'kitchen' | 'yacht';
+export type BedId = 'none' | 'cookout' | 'mansion' | 'barbershop' | 'basement' | 'rooftop' | 'jazz' | 'casino' | 'beach' | 'kitchen' | 'yacht' | 'street';
 
 export interface VenueDef {
   id: VenueId;
@@ -62,9 +62,48 @@ export const VENUE_DEFS: Record<VenueId, VenueDef> = {
   beach: V({ id: 'beach', name: 'Beach Cabana', emoji: '🏝️', blurb: 'Tiki table on the sand at sunset, torches lit.', felt: '#176660', rail: 'bamboo', railTint: '#e0b878', apron: '#7a5530', floorTex: 'coast_sand_01', floorTint: '#e8cfa6', floorRepeat: 6, floorRadius: 8, bgBlur: 0.06, bgIntensity: 0.85, envIntensity: 0.6, key: '#ffc58a', sky: '#ffbf80', ground: '#5a4430', rim: '#ff7a3d', clear: '#3a2a2a', bed: 'beach' }),
   grandma: V({ id: 'grandma', name: "Grandma's Kitchen", emoji: '🥧', blurb: 'Vinyl tablecloth, plastic on the couch, the clock ticking.', felt: '#9e1b24', feltPattern: 'gingham', rail: 'chrome', railTint: '#d8dde2', apron: '#9aa0a6', floorTex: 'linoleum_brown', floorTint: '#d6c6a8', floorRepeat: 6, floorRadius: 8, floorRough: 0.5, bgBlur: 0.25, bgIntensity: 0.5, envIntensity: 0.5, key: '#fff0d6', sky: '#fff2dc', ground: '#4a3a28', rim: '#ffd9a0', clear: '#1e1812', bed: 'kitchen' }),
   yacht: V({ id: 'yacht', name: 'Yacht Deck', emoji: '🛥️', blurb: 'Teak table on deck, nothing but open water.', felt: '#14365e', rail: 'teak', railTint: '#c08a5a', apron: '#6a4428', floorTex: 'wood_floor_deck', floorTint: '#d9b48a', floorRepeat: 4, floorRadius: null, floorRough: 0.6, bgBlur: 0.04, bgIntensity: 0.9, envIntensity: 0.85, key: '#fff4e0', sky: '#cfe6ff', ground: '#2a4a6a', rim: '#7fd0ff', clear: '#6a8aa8', bed: 'yacht' }),
+  blockAfterDark: V({ id: 'blockAfterDark', name: "The Pj's", emoji: '🌆', blurb: 'The block at night: folding table under the streetlight, grill smoke in the air. The game don\'t stop.', felt: '#122b22', rail: 'metal', railTint: '#8a8f94', apron: '#3a3d40', floorTex: 'brushed_concrete', floorTint: '#4a4a50', floorRepeat: 6, floorRadius: 10, floorRough: 0.95, bgBlur: 0.08, bgIntensity: 0.85, envIntensity: 0.35, key: '#ffb45c', keyK: 1.1, sky: '#2a3a5c', ground: '#0a0c10', rim: '#7fa8ff', clear: '#05070c', bed: 'street' }),
 };
 
 export const VENUE_LIST: VenueDef[] = VENUES.map((v) => VENUE_DEFS[v]);
+
+/** Phase 4: The Pj's is a premium unlockable venue. The unlock item id
+ *  granted by the 'after-dark' achievement (or reaching Rep level 20). */
+export const AFTER_DARK_VENUE: VenueId = 'blockAfterDark';
+export const AFTER_DARK_UNLOCK_ITEM = 'after-dark';
+/** Rep level that auto-unlocks The Pj's ("Block Captain"). */
+export const AFTER_DARK_UNLOCK_LEVEL = 20;
+
+/** Venues gated behind unlocks. Everything else is always available. */
+const LOCKED_VENUES: Partial<Record<VenueId, string>> = {
+  [AFTER_DARK_VENUE]: AFTER_DARK_UNLOCK_ITEM,
+};
+
+/** True if the player may pick this venue: unlocked, or a developer (owner) account. */
+export function venueUnlocked(id: VenueId, unlockItemIds: readonly string[], isDev: boolean): boolean {
+  if (isDev) return true;
+  const need = LOCKED_VENUES[id];
+  return !need || unlockItemIds.includes(need);
+}
+
+/** Label for a venue option in pickers: locked venues show a lock until unlocked. */
+export function venueOptionLabel(v: VenueDef, unlocked: boolean): string {
+  return unlocked ? `${v.emoji} ${v.name}` : `🔒 ${v.name} — unlock via Rep`;
+}
+
+/** Minimal unlock state for gating venue pickers. Fetched once per page load;
+ *  null when signed out or the fetch fails (locked venues stay locked). */
+export interface VenueUnlockState { unlocks: string[]; dev: boolean }
+let unlockCache: Promise<VenueUnlockState | null> | null = null;
+export function fetchVenueUnlocks(): Promise<VenueUnlockState | null> {
+  if (!unlockCache) {
+    unlockCache = fetch('/api/profile/me', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((p) => (p ? { unlocks: (p.unlocks ?? []).map((u: { itemId: string }) => u.itemId), dev: !!p.dev } : null))
+      .catch(() => null);
+  }
+  return unlockCache;
+}
 
 export function venueLabel(v: VenueChoice): string {
   return v === 'random' ? '🎲 Random' : `${VENUE_DEFS[v].emoji} ${VENUE_DEFS[v].name}`;
@@ -82,6 +121,15 @@ export function venueAssetUrls(id: VenueId, quality: 'high' | 'low'): { bg: stri
   const d = VENUE_DEFS[id];
   const railTex: Partial<Record<RailKind, string>> = { marble: 'marble_01', teak: 'teak_veneer', bamboo: 'bamboo_veneer', leather: 'brown_leather' };
   const rt = railTex[d.rail];
+  // Phase 4: The Pj's photorealistic backdrop (Demetrius 2026-10-19).
+  if (id === 'blockAfterDark') {
+    return {
+      bg: `/assets/venues/blockAfterDark/bg.jpg`,
+      env: null,
+      floor: d.floorTex ? `/assets/venues/tex/${d.floorTex}_512.jpg` : null,
+      rail: rt ? `/assets/venues/tex/${rt}_512.jpg` : null,
+    };
+  }
   return {
     bg: `/assets/venues/${id}/bg.jpg`,
     env: quality === 'high' ? `/assets/venues/${id}/env.hdr` : null,

@@ -2,15 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseClientMsg, rollVenue, VENUES } from '@spades/protocol';
-import { VENUE_DEFS, VENUE_LIST, resolveVenue, venueAssetUrls, venueLabel } from '../src/venues';
+import { VENUE_DEFS, VENUE_LIST, resolveVenue, venueAssetUrls, venueLabel, venueUnlocked, AFTER_DARK_VENUE, AFTER_DARK_UNLOCK_ITEM, AFTER_DARK_UNLOCK_LEVEL } from '../src/venues';
 import { DEFAULT_SETTINGS, normalizeSettings } from '../src/settings';
 
 const pub = resolve(__dirname, '../public');
 
 describe('venues', () => {
-  it('ten venues plus the classic table, each fully described', () => {
-    expect(VENUES.length).toBe(11);
-    expect(VENUE_LIST.filter((v) => v.id !== 'classic').length).toBeGreaterThanOrEqual(10);
+  it('eleven venues plus the classic table, each fully described', () => {
+    expect(VENUES.length).toBe(12);
+    expect(VENUE_LIST.filter((v) => v.id !== 'classic').length).toBeGreaterThanOrEqual(11);
     for (const v of VENUE_LIST) {
       expect(v.name.length).toBeGreaterThan(2);
       expect(v.felt).toMatch(/^#[0-9a-f]{6}$/i);
@@ -22,6 +22,8 @@ describe('venues', () => {
       for (const q of ['high', 'low'] as const) {
         const u = venueAssetUrls(v, q);
         if (v === 'classic') { expect(u.bg).toBeNull(); continue; }
+        // Phase 4: Block After Dark's photorealistic backdrop is still being produced.
+        if (v === 'blockAfterDark') { expect(u.bg).toBe('/assets/venues/blockAfterDark/bg.jpg'); expect(u.env).toBeNull(); }
         const files = [u.bg, u.env, u.floor, u.rail].filter((x): x is string => !!x);
         if (q === 'low') expect(u.env).toBeNull(); // no HDRI on Low
         for (const f of files) {
@@ -55,5 +57,22 @@ describe('venues', () => {
     expect(parseClientMsg(JSON.stringify({ t: 'venue', venue: 'vegas' }))).toEqual({ t: 'venue', venue: 'vegas' });
     expect(parseClientMsg(JSON.stringify({ t: 'venue', venue: 'random' }))).toEqual({ t: 'venue', venue: 'random' });
     expect(parseClientMsg(JSON.stringify({ t: 'venue', venue: 'mars' }))).toBeNull();
+  });
+  it('Phase 4: Block After Dark is locked by default, devs bypass', () => {
+    expect(AFTER_DARK_VENUE).toBe('blockAfterDark');
+    expect(AFTER_DARK_UNLOCK_ITEM).toBe('after-dark');
+    expect(AFTER_DARK_UNLOCK_LEVEL).toBe(20);
+    // locked for regular players without the unlock item
+    expect(venueUnlocked('blockAfterDark', [], false)).toBe(false);
+    expect(venueUnlocked('blockAfterDark', ['some-other-item'], false)).toBe(false);
+    // unlocked via the after-dark item (achievement or Rep level 20)
+    expect(venueUnlocked('blockAfterDark', ['after-dark'], false)).toBe(true);
+    // developer (owner) accounts always have access
+    expect(venueUnlocked('blockAfterDark', [], true)).toBe(true);
+    // every other venue is always open
+    for (const v of VENUES) {
+      if (v === 'blockAfterDark') continue;
+      expect(venueUnlocked(v, [], false)).toBe(true);
+    }
   });
 });

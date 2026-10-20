@@ -6,7 +6,7 @@ import { awardXp } from './xp';
 import { move } from './coins';
 
 /** Night-themed venues count toward the After Dark achievement. */
-export const NIGHT_VENUES = ['rooftop', 'speakeasy', 'vegas'];
+export const NIGHT_VENUES = ['rooftop', 'speakeasy', 'vegas', 'blockAfterDark'];
 
 export type CheckKey =
   | 'wins' | 'team_wins' | 'cutthroat_wins' | 'games' | 'shots_given' | 'best_streak' | 'venues'
@@ -111,7 +111,7 @@ export async function checkAchievements(db: D1Database, userId: string, ctx: Che
     if (def.coins > 0) await move(db, userId, def.coins, 'achievement', def.id, now); // coins for achievements (Demetrius 2026-10-19)
     const unlockItemId = def.condition.unlock ?? null;
     if (unlockItemId) {
-      await db.prepare('INSERT OR IGNORE INTO unlocks (user_id, item_id, source, unlocked_at) VALUES (?, ?, ?, ?)').bind(userId, unlockItemId, `achievement:${def.id}`, now).run();
+      await grantUnlock(db, userId, unlockItemId, `achievement:${def.id}`, now);
     }
     out.push({ id: def.id, xp: def.xp, unlockItemId });
   }
@@ -122,4 +122,12 @@ export async function checkAchievements(db: D1Database, userId: string, ctx: Che
 export async function achievementStates(db: D1Database, userId: string): Promise<{ id: string; title: string; hint: string; xp: number; coins: number; unlockedAt: number | null }[]> {
   const owned = new Map((await db.prepare('SELECT achievement_id, unlocked_at FROM user_achievements WHERE user_id = ?').bind(userId).all<{ achievement_id: string; unlocked_at: number }>()).results.map((r) => [r.achievement_id, r.unlocked_at] as const));
   return ACHIEVEMENTS.map((a) => ({ id: a.id, title: a.title, hint: a.hint, xp: a.xp, coins: a.coins, unlockedAt: owned.get(a.id) ?? null }));
+}
+
+/**
+ * Grant an unlock item idempotently (e.g. the 'after-dark' venue from Rep level 20).
+ * Source is a free-form tag like 'level:20' or 'achievement:after-dark'.
+ */
+export async function grantUnlock(db: D1Database, userId: string, itemId: string, source: string, now: number): Promise<void> {
+  await db.prepare('INSERT OR IGNORE INTO unlocks (user_id, item_id, source, unlocked_at) VALUES (?, ?, ?, ?)').bind(userId, itemId, source, now).run();
 }
