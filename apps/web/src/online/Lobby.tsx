@@ -16,6 +16,7 @@ import { inviteLink } from './config';
 import { navigate } from './nav';
 import { MediaBar, SeatMedia } from './Media';
 import { AvatarCircle, useAvatar } from '../avatar';
+import { openPlayerProfile, profileTargetOf } from '../profileTap';
 import { colorFor, useVideo } from './useOnline';
 import type { VideoMesh } from './video';
 import { TURN_TIMERS, TurnTimerSelect, type TimerKey, timerKeyOf } from '../turnTimer';
@@ -369,11 +370,14 @@ function TeamChip({ t, name, editable, onSave }: { t: number; name: string; edit
   );
 }
 
-/** Lobby seat face: a human's uploaded picture (Demetrius 2026-10-19), 🤖 for bots, else the initial. */
+/** Lobby seat face: a human's uploaded picture (Demetrius 2026-10-19), 🤖 for bots, else the initial.
+ *  A signed-in human's face is tappable and opens their profile (Demetrius 2026-10-20);
+ *  bots and account-less guests stay plain. */
 function SeatFace({ info, name }: { info: SeatInfo; name: string }) {
   const pic = useAvatar(info.kind === 'human' ? info.uid : undefined);
   if (info.kind === 'bot') return <span className="av-initial">🤖</span>;
-  return <AvatarCircle pic={pic} name={name} className="av-initial" />;
+  const target = profileTargetOf({ id: info.kind === 'human' ? info.uid : undefined, name });
+  return <AvatarCircle pic={pic} name={name} className="av-initial" onTap={target ? () => openPlayerProfile({ id: info.kind === 'human' ? info.uid : undefined, name }) : undefined} />;
 }
 
 function SeatCard({ seat, info, spot, team, mine, isHost, playing, hostId, onSit, onBot, onRemoveBot, media }: {

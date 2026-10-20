@@ -6,6 +6,7 @@ import type { VideoMesh, VideoState } from './video';
 import { sound, useSoundSettings } from '../audio';
 import type { SeatPos } from '../spatial';
 import { AvatarCircle, useAvatar } from '../avatar';
+import { openPlayerProfile, profileTargetOf } from '../profileTap';
 
 /** A <video> bound to a MediaStream (iOS: playsInline + muted autoplay; unmuted after the first tap). */
 function StreamVideo({ stream, muted, mirror, onFrames, volume = 1 }: { stream: MediaStream; muted: boolean; mirror?: boolean; onFrames?: (on: boolean) => void; volume?: number }) {
@@ -146,6 +147,7 @@ export function SeatMedia({ seat, isMe, mesh, vs, limited = false, kick, seatPos
       </button>
     )}
     {menu && <VbMenu onClose={() => setMenu(false)} label={`Options for ${seat.name}`}>
+      {seat.uid && <button type="button" data-testid={`vb-profile-${id}`} onClick={() => { setMenu(false); openPlayerProfile({ id: seat.uid, name: seat.name }); }}>👤 Profile</button>}
       {hasMedia && <button type="button" onClick={() => { sound.setVoiceMuted(id, !peerMuted); setMenu(false); }}>{peerMuted ? 'Unmute' : 'Mute'}</button>}
       {camOn && <button type="button" onClick={() => { mesh.toggleHidden(id); setMenu(false); }}>{hidden ? 'Show video' : 'Hide video'}</button>}
       {kickItems}
@@ -184,17 +186,22 @@ export function OfflineMediaBar() {
   );
 }
 
-/** Table Talk: the enlarged "everyone on cam" tile — live video when the camera's on, otherwise an avatar. */
+/** Table Talk: the enlarged "everyone on cam" tile — live video when the camera's on, otherwise an avatar.
+ *  A signed-in human's avatar tile is tappable and opens their profile (Demetrius 2026-10-20). */
 export function TalkTile({ seat, isMe, mesh, vs }: { seat: SeatInfo | undefined; isMe: boolean; mesh: VideoMesh | null; vs: VideoState }) {
   const name = seat && seat.kind !== 'empty' ? seat.name : '?';
   const pic = useAvatar(seat?.kind === 'human' ? seat.uid : undefined);
   const avatar = <AvatarCircle pic={pic} name={name} className="tt-avatar" />;
-  if (!seat || seat.kind !== 'human' || !mesh) return <>{avatar}{seat?.kind === 'bot' && <span className="tt-tag">BOT</span>}</>;
-  if (isMe) return vs.cam && vs.local ? <StreamVideo stream={vs.local} muted mirror /> : avatar;
+  const target = profileTargetOf({ id: seat?.kind === 'human' ? seat.uid : undefined, name, bot: seat?.kind === 'bot' });
+  const face = target
+    ? <button type="button" className="tt-face-tap" data-testid="tt-face-tap" aria-label={`View ${name}'s profile`} onClick={() => openPlayerProfile({ id: seat?.kind === 'human' ? seat.uid : undefined, name })}>{avatar}</button>
+    : avatar;
+  if (!seat || seat.kind !== 'human' || !mesh) return <>{face}{seat?.kind === 'bot' && <span className="tt-tag">BOT</span>}</>;
+  if (isMe) return vs.cam && vs.local ? <StreamVideo stream={vs.local} muted mirror /> : face;
   const stream = vs.remote[seat.playerId];
   const live = seat.media.cam && !vs.hidden.includes(seat.playerId) && hasLive(stream, 'video');
   // video only here (muted): the seat's own bubble keeps playing the audio
-  return <>{live && stream ? <StreamVideo stream={stream} muted /> : avatar}{seat.media.mic && <span className="tt-tag mic">🎙</span>}</>;
+  return <>{live && stream ? <StreamVideo stream={stream} muted /> : face}{seat.media.mic && <span className="tt-tag mic">🎙</span>}</>;
 }
 
 /** Small popover beside a video bubble (above the plates); closes on outside click / tap or Esc. */
@@ -288,13 +295,15 @@ export function VictorySpotlight({ winners, losers, title, sub, mesh, vs }: { wi
   );
 }
 
-/** Victory name card when there's no live video: the player's picture stands in for the camera. */
+/** Victory name card when there's no live video: the player's picture stands in for the camera.
+ *  A signed-in human's face is tappable and opens their profile modal (Demetrius 2026-10-20). */
 function VsCard({ p, name, bot }: { p: SpotPlayer; name: string; bot: boolean }) {
   const pic = useAvatar(p.seat?.kind === 'human' ? p.seat.uid : undefined);
+  const target = profileTargetOf({ id: p.seat?.kind === 'human' ? p.seat.uid : undefined, name: p.name, bot });
   return (
     <figure className="vs-tile win card" data-testid={`vs-win-${p.key}`}>
       <div className="vs-card" data-testid={`vs-avatar-${p.key}`}>
-        <AvatarCircle pic={pic} name={name} className="vs-initial" />
+        <AvatarCircle pic={pic} name={name} className="vs-initial" onTap={target ? () => openPlayerProfile({ id: p.seat?.kind === 'human' ? p.seat.uid : undefined, name: p.name }) : undefined} />
         <b className="vs-name" data-testid={`vs-name-${p.key}`}>{name}</b>
         {bot && <small className="vs-bot" data-testid={`vs-bot-${p.key}`}>BOT</small>}
       </div>
@@ -304,9 +313,10 @@ function VsCard({ p, name, bot }: { p: SpotPlayer; name: string; bot: boolean })
 
 function Avatar({ p, name, bot }: { p: SpotPlayer; name: string; bot: boolean }) {
   const pic = useAvatar(p.seat?.kind === 'human' ? p.seat.uid : undefined);
+  const target = profileTargetOf({ id: p.seat?.kind === 'human' ? p.seat.uid : undefined, name: p.name, bot });
   return (
     <div className="vs-avatar" data-testid={`vs-avatar-${p.key}`}>
-      <AvatarCircle pic={pic} name={name} className="vs-face" />
+      <AvatarCircle pic={pic} name={name} className="vs-face" onTap={target ? () => openPlayerProfile({ id: p.seat?.kind === 'human' ? p.seat.uid : undefined, name: p.name }) : undefined} />
       {bot && <small className="vs-bot">BOT</small>}
     </div>
   );

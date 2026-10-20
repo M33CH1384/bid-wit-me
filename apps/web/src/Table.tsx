@@ -30,6 +30,8 @@ import { TrumpLadder } from './trumpLadder';
 import { TrumpPopup, ackTrumpPopup, trumpPopupSeen, trumpSeenKey } from './TrumpPopup';
 import { landingMode } from './three/landing';
 import { SocialButton } from './social/Social';
+import { TableProfileModal } from './social/ProfileModal';
+import { closeTableProfile, openPlayerProfile, profileTargetOf, setTableProfileHost, useTableProfileTarget } from './profileTap';
 import { recordOfflineGame } from './offlineStats';
 import { setTableIntensity, showLine, speakBot, talkPrefs as talkStore, useTalkPrefs } from './talkPrefs';
 import { chatStickToBottom } from './chatScroll';
@@ -579,6 +581,15 @@ function DrivebyLights() {
 
 export default function Table({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, onView, onTurnUp, resume, continueSeries, online, onMainMenu, startDealer }: Props) {
   useEffect(() => { setActiveDeck(settings.deck); }, [settings.deck]);
+  // Tappable faces (Demetrius 2026-10-20): while a table is mounted, avatar taps anywhere
+  // open the over-table profile modal instead of the Social panel. Leaving the table
+  // restores panel mode and never leaves a modal behind.
+  const profileTarget = useTableProfileTarget();
+  const { user: acctUser } = useAccount();
+  useEffect(() => {
+    setTableProfileHost(true);
+    return () => { setTableProfileHost(false); closeTableProfile(); };
+  }, []);
   // `online` never changes for a mounted Table, so this is always the same hook path per instance
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const vp = useViewport();
@@ -1325,7 +1336,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const shotOutRecap = st.phase === 'gameOver' && st.result?.endReason === 'shotOut' && !shotRecapAck;
   const showRecap = !pause && !collecting && talkOpen && (st.phase === 'handOver' || shotOutRecap);
   const showResults = st.phase === 'gameOver' && !pause && !runFx && talkOpen && !!st.result && !shotOutRecap;
-  const modalOpen = (st.phase === 'handOver' && !pause && !collecting && talkOpen) || confirmLeave || showPad || (st.phase === 'gameOver' && !pause && !runFx && talkOpen && !!st.result);
+  const modalOpen = (st.phase === 'handOver' && !pause && !collecting && talkOpen) || confirmLeave || showPad || (st.phase === 'gameOver' && !pause && !runFx && talkOpen && !!st.result) || !!profileTarget;
 
   const promoted = useCallback((c: Card) => isWildDeuce(c, r), [r]); // badge BOTH wild deuces (2♦ and 2♠), not just the off-suit one
 
@@ -1472,9 +1483,18 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const partner = !spectating && r.partnerships && seat === partnerOf(HUMAN, r);
     const b = plates.bids[seat];
     const took = plates.books[seat] ?? 0;
+    const seatUid = online?.seatUid?.(seat);
+    // Tappable faces (Demetrius 2026-10-20): a seated human with an account gets a profile
+    // tap on their plate face — bots and account-less guests keep a plain face (no-op).
+    const seatProfile = profileTargetOf({ id: seatUid, name: names[seat] ?? '', bot: isBotSeat(seat) });
     return (
       <div className={`plate ${isTurn ? 'turn' : ''} ${partner ? 'ally' : 'foe'}`} data-testid={`seat-${seat}`} title={isBotSeat(seat) ? `${names[seat]} · ${platePersona(names[seat]!)}` : undefined} data-persona={isBotSeat(seat) ? platePersona(names[seat]!) : undefined}>
-        <PlateFace uid={online?.seatUid?.(seat)} name={names[seat] ?? ''} color={SEAT_COLORS[seat]} />
+        {seatProfile ? (
+          <button type="button" className="plate-face-tap" data-testid={`plate-profile-${seat}`} aria-label={`View ${names[seat]}'s profile`}
+            onClick={() => openPlayerProfile({ id: seatUid, name: names[seat] ?? '' }, { atTable: true })}>
+            <PlateFace uid={seatUid} name={names[seat] ?? ''} color={SEAT_COLORS[seat]} />
+          </button>
+        ) : <PlateFace uid={seatUid} name={names[seat] ?? ''} color={SEAT_COLORS[seat]} />}
         <div className="plate-body">
           <div className="plate-name">{names[seat]}{dealerSeat === seat && <span className="chip dealer" data-testid={`dealer-${seat}`}>DEALER</span>}{partner && <span className="chip ally">PARTNER</span>}{notice.includes(sideOf(seat, r)) && <span className="chip notice" data-testid={`notice-${seat}`} title="Got shot last hand: one more shot and they're out">ON NOTICE</span>}</div>
           <div className="plate-stats" key={st.handNo}>
@@ -1486,6 +1506,12 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       </div>
     );
   };
+
+  // Your own plate face is tappable too — it opens your profile modal. Spectating, seat 0
+  // is the player being watched (their account, their name), not you. Account-less guests
+  // and bot-held seats resolve to no target and keep a plain face.
+  const mySeatUid = spectating ? online?.seatUid?.(HUMAN) : (acctUser?.username ? acctUser.id : undefined);
+  const mySeatProfile = profileTargetOf({ id: mySeatUid, name: spectating ? (names[HUMAN] ?? '') : (acctUser?.username ?? ''), bot: spectating ? isBotSeat(HUMAN) : false });
 
   const unread = Math.max(0, msgs.length - seenMsgs);
 
@@ -1743,7 +1769,12 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         )}
 
         <div className={`plate me-plate ${actor === HUMAN && !spectating ? 'turn' : ''}`} data-testid="seat-0">
-          <MyPlateFace name={seatInitial(face(HUMAN))} color={spectating ? SEAT_COLORS[HUMAN] : USER_COLORS.You} />
+          {mySeatProfile ? (
+            <button type="button" className="plate-face-tap" data-testid="plate-profile-0" aria-label={`View ${mySeatProfile.name}'s profile`}
+              onClick={() => openPlayerProfile({ id: mySeatUid, name: mySeatProfile.name }, { atTable: true })}>
+              <MyPlateFace name={seatInitial(face(HUMAN))} color={spectating ? SEAT_COLORS[HUMAN] : USER_COLORS.You} />
+            </button>
+          ) : <MyPlateFace name={seatInitial(face(HUMAN))} color={spectating ? SEAT_COLORS[HUMAN] : USER_COLORS.You} />}
           <div className="plate-body">
             <div className="plate-name">{face(HUMAN).toUpperCase()}{dealerSeat === HUMAN && <span className="chip dealer" data-testid="dealer-0">DEALER</span>}{notice.includes(sideOf(HUMAN, r)) && <span className="chip notice" data-testid="notice-0" title={noticeTip(spectating)}>ON NOTICE</span>}{!spectating && myBadges.map((b) => BADGES[b.id] && <span key={b.id} className="chip badge" title={`${BADGES[b.id]!.name}: ${BADGES[b.id]!.desc}`} data-testid={`plate-badge-${b.id}`}>{BADGES[b.id]!.icon}</span>)}</div>
             <div className="plate-stats" key={st.handNo}>
@@ -1945,6 +1976,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       {coachOn && !modalOpen && st.phase === 'playing' && !pause && <LedSuitChip st={st} />}
       <Hype reduced={reduceFx} low={settings.quality === 'low'} />
       {showPad && <ScorePad st={st} names={names} dealerName={dealerLabel} onClose={() => setShowPad(false)} onContinue={st.phase === 'handOver' && talkOpen && !online?.talk?.ready?.mine ? () => { setShowPad(false); apply({ type: 'nextHand' }); } : undefined} onLeave={st.phase === 'handOver' ? () => { setShowPad(false); if (online) leave(); else setConfirmLeave(true); } : undefined} locked={online ? undefined : <LockedRulesPanel rules={r} nuke={fx.tableNuke ?? fx.prefs.nuke} skill={settings.botLevel} intensity={settings.talkIntensity} />} />}
+      {/* profile modal over the table (face taps): a direct child so the .modal-open
+          blur rule exempts its .modal-backdrop like every other table modal */}
+      <TableProfileModal />
     </div>
   );
 }

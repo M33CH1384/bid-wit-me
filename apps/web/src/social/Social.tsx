@@ -14,6 +14,7 @@ import { loadSettings } from '../settings';
 import { shownPlayers } from './presence';
 import { type PlayerTableAction, playerTableAction } from './tableActions';
 import { type MyTable, type SocialTab, type Toast, badgeCount, globalUnread, social, useSocial } from './store';
+import { openPlayerProfile, profileTargetOf } from '../profileTap';
 import { Leaderboards, Tournaments } from './Compete';
 import { offlineStats } from '../offlineStats';
 import { chatStickToBottom } from '../chatScroll';
@@ -294,10 +295,17 @@ function Rating({ r }: { r?: PresenceEntry['rating'] }) {
   return <span className="soc-rating" title="Rating (2v2 / Cutthroat)">{r.team ? `⚔ ${r.team}` : ''}{r.team && r.cutthroat ? ' · ' : ''}{r.cutthroat ? `🔪 ${r.cutthroat}` : ''}</span>;
 }
 
-/** A social face circle: the player's uploaded picture when they have one, else the initial. */
-function SocFace({ id, name, className }: { id?: string; name: string; className?: string }) {
+/**
+ * A social face circle: the player's uploaded picture when they have one, else the initial.
+ * Faces are tappable (Demetrius 2026-10-20): a tap opens that player's profile — the panel
+ * view here, the over-table modal when a game is up (profileTap decides). Guests and
+ * id-less faces stay plain. `tap={false}` for faces already inside a profile-opening
+ * control (the DM header), where a nested button would be invalid.
+ */
+function SocFace({ id, name, className, tap = true }: { id?: string; name: string; className?: string; tap?: boolean }) {
   const pic = useAvatar(socialUidOf(id));
-  return <AvatarCircle pic={pic} name={name} className={className} />;
+  const target = tap ? profileTargetOf({ id, name }) : null;
+  return <AvatarCircle pic={pic} name={name} className={className} onTap={target ? () => openPlayerProfile({ id, name }) : undefined} />;
 }
 
 function PlayerRow({ u, me, friend, pending, signedIn, myTable, tables }: {
@@ -574,12 +582,15 @@ function Messages({ signedIn }: { signedIn: boolean }) {
     <ul className="soc-list" data-testid="dm-threads">
       {rows.map((r) => (
         <li key={r.pid}>
-          <button type="button" className="soc-thread" onClick={() => social.openDm(r.pid)} data-testid={`thread-${nameOf(s, r.pid)}`}>
+          {/* a div (ProfRow pattern), not a <button>: the face inside is itself a
+              profile-opening button, and buttons can't nest in buttons */}
+          <div className="soc-thread" role="button" tabIndex={0} onClick={() => social.openDm(r.pid)} data-testid={`thread-${nameOf(s, r.pid)}`}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); social.openDm(r.pid); } }}>
             <SocFace id={r.pid} name={nameOf(s, r.pid)} className="soc-av" />
             <span className="soc-pl-txt"><span className="soc-pl-name">{nameOf(s, r.pid)}{s.users[r.pid] && <i className="soc-online" title="Online" />}</span>
               <span className="soc-pl-status">{r.last ? r.last.text : 'Say hi'}</span></span>
             {r.unread > 0 && <i className="soc-count">{r.unread}</i>}
-          </button>
+          </div>
         </li>
       ))}
       {!rows.length && <li className="soc-empty">No conversations yet. Open a player and tap 💬 Chat.</li>}
@@ -621,7 +632,7 @@ function DmThread({ pid }: { pid: string }) {
       <div className="soc-dm-head">
         <button type="button" className="link" onClick={() => social.closeDm()} data-testid="dm-back">← All messages</button>
         <button type="button" className="soc-dm-name" onClick={() => social.showProfile(name, pid)}>
-          <SocFace id={pid} name={name} className="soc-av dm-head" />
+          <SocFace id={pid} name={name} className="soc-av dm-head" tap={false} />
           <span className="soc-dm-who">
             <span className="soc-dm-title">{name}</span>
             <span className={`soc-dm-pres ${s.users[pid] ? 'on' : ''}`}>{s.users[pid] ? <><i className="soc-online" title="Online" />Online</> : 'Offline'}</span>

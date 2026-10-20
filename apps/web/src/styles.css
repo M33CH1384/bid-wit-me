@@ -2186,6 +2186,22 @@ button.mode-pick::after, button.quiet-row::after { content: ''; position: absolu
 .tt-avatar.has-pic { padding: 0; }
 /* victory spotlight: the pic fills the tile the way live video would */
 .vs-avatar .vs-face.has-pic { position: absolute; inset: 0; }
+/* ---- Tappable profile pictures (Demetrius 2026-10-20): a face that opens a profile is a
+   real <button> wearing the face's own classes — strip the UA button chrome so it looks
+   (and measures) exactly like the plain circle it replaces. ---- */
+button.avatar-tap { -webkit-appearance: none; appearance: none; border: 0; padding: 0; margin: 0; cursor: pointer; color: inherit; text-decoration: none; }
+button.avatar-tap:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+/* name-plate face tap: the plate layers sit in pointer-events:none anchors, so the tap
+   target opts back in. The invisible ::after grows the hit area to ~40px on the small
+   phone plates without moving the plate itself (plates never cover the felt). */
+.plate-face-tap { pointer-events: auto; position: relative; flex: none; display: grid; place-items: center; background: none; border: 0; padding: 0; margin: 0; border-radius: 50%; cursor: pointer; z-index: 1; }
+.plate-face-tap::after { content: ''; position: absolute; inset: -7px; border-radius: 50%; }
+.plate-face-tap:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+/* Table Talk tile face tap: the button takes the avatar's slot (46% of the tile) and the
+   avatar fills the button, so the tile looks unchanged. */
+.tt-face-tap { width: 46%; display: block; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; border-radius: 50%; }
+.tt-face-tap .tt-avatar { width: 100%; }
+.tt-face-tap:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 /* profile page: upload / remove controls */
 .prof-pic-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 12px; }
 .prof-pic-note { font-size: 13px; color: var(--muted); }

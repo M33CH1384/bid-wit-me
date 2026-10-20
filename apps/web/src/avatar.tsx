@@ -165,9 +165,22 @@ export function useAvatar(uid: string | null | undefined, direct?: string | null
  * A round face circle: the uploaded picture when the player has one, else their initial.
  * The picture replaces the bare initial everywhere it shows — including the table's name
  * plates and the camera-off state of the video bubbles (Demetrius 2026-10-19).
+ *
+ * With `onTap` the circle becomes a real button that opens the player's profile
+ * (Demetrius 2026-10-20: pictures are tappable everywhere). The tap is swallowed
+ * (stopPropagation) so a face inside a row/card never double-fires the row's own action.
  */
-export function AvatarCircle({ pic, name, className, style, testId }: { pic: string | null | undefined; name: string; className?: string; style?: CSSProperties; testId?: string }) {
+export function AvatarCircle({ pic, name, className, style, testId, onTap }: { pic: string | null | undefined; name: string; className?: string; style?: CSSProperties; testId?: string; onTap?: () => void }) {
   const face = faceOf(pic, name);
+  if (onTap) {
+    return (
+      <button type="button" className={`avatar-tap ${className ?? ''}${face.kind === 'pic' ? ' has-pic' : ''}`.trim()} style={style} data-testid={testId}
+        aria-label={`View ${name}'s profile`}
+        onClick={(e) => { e.stopPropagation(); onTap(); }}>
+        {face.kind === 'pic' ? <img src={face.src} alt="" /> : face.letter}
+      </button>
+    );
+  }
   return face.kind === 'pic'
     ? <span className={`${className ?? ''} has-pic`.trim()} style={style} aria-hidden={true} data-testid={testId}><img src={face.src} alt="" /></span>
     : <span className={className} style={style} aria-hidden={true} data-testid={testId}>{face.letter}</span>;
