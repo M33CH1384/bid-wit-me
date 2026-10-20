@@ -162,7 +162,10 @@ button.ghost { background: transparent !important; }
 .soc-rep-ranks { display: flex; flex-wrap: wrap; gap: 6px; }
 .soc-div-chip { font-size: 13px; padding: 4px 9px; border-radius: 999px; background: rgba(var(--edge-rgb),.12); border: 1px solid rgba(var(--edge-rgb),.35); }
 .soc-coin-chip { font-size: 13px; padding: 4px 9px; border-radius: 999px; background: rgba(var(--gold-rgb),.12); border: 1px solid rgba(var(--gold-rgb),.45); color: var(--gold); font-weight: 600; }
-.soc-friend-tag { align-self: center; font-size: 13px; font-weight: 600; color: var(--gold); padding: 6px 2px; }
+/* the Friends state sits IN the action row, so it wears the row's chip chrome
+   (same fill/border/radius/padding as .soc-prof-acts button) — bare gold text
+   among boxed buttons was an eye sore (Demetrius 2026-10-20) */
+.soc-friend-tag { align-self: center; display: inline-flex; align-items: center; font-size: 13px; font-weight: 600; color: var(--gold); background: rgba(var(--edge-rgb),.14); border: 1px solid rgba(var(--edge-rgb),.45); border-radius: 8px; padding: 6px 10px; }
 .soc-frow-name .soc-online { position: absolute; margin-left: -12px; margin-top: 7px; }
 
 .soc-profile { display: flex; flex-direction: column; gap: 10px; }
@@ -178,12 +181,20 @@ button.ghost { background: transparent !important; }
 .soc-prof-head > .soc-prof-acts,
 .soc-prof-head > .soc-note,
 .soc-prof-head > .profile-modal-compose,
-.soc-prof-head > .profile-modal-sent { flex: 1 1 100%; min-width: 0; }
+.soc-prof-head > .profile-modal-sent,
+.soc-prof-head > .soc-prof-rep { flex: 1 1 100%; min-width: 0; }
 .soc-prof-head > .soc-note { margin: 0; }
+/* the Rep block (Level/title, division chips, coins) lives IN the header now —
+   one combined profile area at the top, like the /profile header card; there is
+   no second REP section further down (Demetrius 2026-10-20) */
+.soc-prof-rep { margin-bottom: 0; }
 .soc-tagline { font-size: 13.5px; color: #ece5cf; overflow-wrap: anywhere; }
 .soc-tagline a { color: var(--gold); text-decoration: underline; }
 .soc-champ { margin-left: 8px; font-size: 18px; }
 .soc-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+/* the profile summary grids keep only games + wins now (the 2v2 / Cutthroat
+   rating tiles duplicated the header's division chips) — two tiles, two columns */
+.soc-profile > .soc-stats:not(.small), .profile-modal-body > .soc-stats { grid-template-columns: repeat(2, 1fr); }
 .soc-stats div { background: rgba(255,255,255,.05); border-radius: 8px; padding: 8px 4px; text-align: center; display: flex; flex-direction: column; }
 .soc-stats b { font-family: var(--display); font-size: 22px; }
 .soc-stats small { font-size: 11px; color: var(--muted); }

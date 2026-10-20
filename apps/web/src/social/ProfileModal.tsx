@@ -139,6 +139,16 @@ function ProfileCard({ target }: { target: ProfileTarget }) {
           </form>
         )}
         {sent && <p className="profile-modal-sent" role="status" data-testid="profile-modal-dm-sent">✓ Sent to {target.name}</p>}
+        {cred && p && p !== 'missing' && (
+          <div className="soc-rep soc-prof-rep" data-testid="profile-modal-rep">
+            <div className="soc-rep-level"><b>Level {cred.level.level}</b><span>{cred.level.title}</span></div>
+            <div className="soc-rep-ranks">
+              <span className="soc-div-chip" title="Partnership season division">⚔ {divLabel(cred.rank.team.division)} · {cred.rank.team.elo}</span>
+              <span className="soc-div-chip" title="Cutthroat season division">🔪 {divLabel(cred.rank.cutthroat.division)} · {cred.rank.cutthroat.elo}</span>
+              {cred.coins && <span className="soc-coin-chip" title="Coin balance" data-testid="profile-modal-coins">🪙 {cred.coins.balance.toLocaleString()}</span>}
+            </div>
+          </div>
+        )}
       </div>
       {p === null ? <p className="soc-empty">Loading…</p> : p === 'missing' ? <p className="soc-empty">No profile for {target.name}.</p> : (
         <>
@@ -146,27 +156,12 @@ function ProfileCard({ target }: { target: ProfileTarget }) {
           <div className="soc-stats">
             <div><b>{p.totals.games}</b><small>online games</small></div>
             <div><b>{p.totals.games ? Math.round((p.totals.wins / p.totals.games) * 100) : 0}%</b><small>wins</small></div>
-            <div><b>{p.ratings.team ?? '—'}</b><small>2v2 rating</small></div>
-            <div><b>{p.ratings.cutthroat ?? '—'}</b><small>Cutthroat</small></div>
           </div>
-          {cred && (
-            <div data-testid="profile-modal-rep">
-              <h4>Rep</h4>
-              <div className="soc-rep">
-                <div className="soc-rep-level"><b>Level {cred.level.level}</b><span>{cred.level.title}</span></div>
-                <div className="soc-rep-ranks">
-                  <span className="soc-div-chip" title="Partnership season division">⚔ {divLabel(cred.rank.team.division)} · {cred.rank.team.elo}</span>
-                  <span className="soc-div-chip" title="Cutthroat season division">🔪 {divLabel(cred.rank.cutthroat.division)} · {cred.rank.cutthroat.elo}</span>
-                  {cred.coins && <span className="soc-coin-chip" title="Coin balance" data-testid="profile-modal-coins">🪙 {cred.coins.balance.toLocaleString()}</span>}
-                </div>
-              </div>
-              {unlocked.length > 0 && (
-                <>
-                  <h4>Achievements</h4>
-                  <div className="soc-badges">{unlocked.slice(0, 10).map((a) => <span key={a.id} className="soc-badge-chip">🏅 {a.title}</span>)}{unlocked.length > 10 && <span className="soc-badge-chip">+{unlocked.length - 10} more</span>}</div>
-                </>
-              )}
-            </div>
+          {cred && unlocked.length > 0 && (
+            <>
+              <h4>Achievements</h4>
+              <div className="soc-badges">{unlocked.slice(0, 10).map((a) => <span key={a.id} className="soc-badge-chip">🏅 {a.title}</span>)}{unlocked.length > 10 && <span className="soc-badge-chip">+{unlocked.length - 10} more</span>}</div>
+            </>
           )}
           {me && <p className="soc-muted">This is you.</p>}
         </>

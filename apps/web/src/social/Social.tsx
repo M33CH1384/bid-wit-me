@@ -883,18 +883,8 @@ function Profile({ name, id }: { name: string; id?: string }) {
                 <button type="button" className="ghost" onClick={() => social.report('user', { user: pid })}>Report</button>
               </div>
             )}
-          </div>
-          <SocialLinksChips links={cred?.user.socialLinks} testid="profile-social-links" />
-          <div className="soc-stats">
-            <div><b>{p.totals.games}</b><small>online games</small></div>
-            <div><b>{p.totals.games ? Math.round((p.totals.wins / p.totals.games) * 100) : 0}%</b><small>wins</small></div>
-            <div><b>{p.ratings.team ?? '—'}</b><small>2v2 rating</small></div>
-            <div><b>{p.ratings.cutthroat ?? '—'}</b><small>Cutthroat</small></div>
-          </div>
-          {cred && (
-            <div data-testid="profile-rep">
-              <h4>Rep</h4>
-              <div className="soc-rep">
+            {cred && (
+              <div className="soc-rep soc-prof-rep" data-testid="profile-rep">
                 <div className="soc-rep-level"><b>Level {cred.level.level}</b><span>{cred.level.title}</span></div>
                 <div className="soc-rep-ranks">
                   <span className="soc-div-chip" title="Partnership season division">⚔ {divLabel(cred.rank.team.division)} · {cred.rank.team.elo}</span>
@@ -902,13 +892,18 @@ function Profile({ name, id }: { name: string; id?: string }) {
                   {cred.coins && <span className="soc-coin-chip" title="Coin balance" data-testid="profile-coins">🪙 {cred.coins.balance.toLocaleString()}</span>}
                 </div>
               </div>
-              {cred.achievements.some((a) => a.unlockedAt) && (
-                <>
-                  <h4>Achievements</h4>
-                  <div className="soc-badges">{cred.achievements.filter((a) => a.unlockedAt).map((a) => <span key={a.id} className="soc-badge-chip" title={`+${a.xp} XP${a.coins ? ` · +${a.coins} coins` : ''}`}>🏅 {a.title}</span>)}</div>
-                </>
-              )}
-            </div>
+            )}
+          </div>
+          <SocialLinksChips links={cred?.user.socialLinks} testid="profile-social-links" />
+          <div className="soc-stats">
+            <div><b>{p.totals.games}</b><small>online games</small></div>
+            <div><b>{p.totals.games ? Math.round((p.totals.wins / p.totals.games) * 100) : 0}%</b><small>wins</small></div>
+          </div>
+          {cred && cred.achievements.some((a) => a.unlockedAt) && (
+            <>
+              <h4>Achievements</h4>
+              <div className="soc-badges">{cred.achievements.filter((a) => a.unlockedAt).map((a) => <span key={a.id} className="soc-badge-chip" title={`+${a.xp} XP${a.coins ? ` · +${a.coins} coins` : ''}`}>🏅 {a.title}</span>)}</div>
+            </>
           )}
           {p.vsYou && <p className="soc-vs" data-testid="profile-vs">You vs {p.username}: <b>{p.vsYou.wins}–{p.vsYou.losses}</b> in {p.vsYou.games} game{p.vsYou.games === 1 ? '' : 's'}</p>}
           {p.awards && p.awards.length > 0 && <><h4>Champion</h4><div className="soc-badges" data-testid="profile-awards">{p.awards.map((a) => <button type="button" key={a.ref} className="soc-badge-chip champ" onClick={() => social.showTour(a.ref)}>🏆 {a.label}</button>)}</div></>}

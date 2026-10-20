@@ -5,7 +5,15 @@
  *  INSIDE the profile header, directly under the presence line, on both the
  *  Social profile view and the in-game profile modal (where the quick-send DM
  *  box + Sent confirmation travel with it). These source pins keep a future
- *  edit from drifting the row back down the page. */
+ *  edit from drifting the row back down the page.
+ *
+ *  Consolidation (same day, owner screenshot of LovleyT714's profile): the Rep
+ *  block — Level/title, both division · Elo chips, coins — moved INTO the same
+ *  header, under the action row, and the standalone REP section further down
+ *  was deleted; the summary stats grid lost its 2v2 rating / Cutthroat tiles
+ *  (they duplicated the division chips). One combined profile area at the top,
+ *  like the /profile header card. The ★ Friends state also stopped being bare
+ *  gold text in the row: it wears the row's chip chrome in social.css. */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
@@ -20,18 +28,21 @@ describe('Social profile: action row under the presence line', () => {
   it('exactly one action row — no duplicate left down the page', () => {
     expect(count(profile, 'className="soc-prof-acts"')).toBe(1);
   });
-  it('the row renders after the presence line, before the stats grid and the Rep section', () => {
+  it('the row renders after the presence line, before the stats grid; the Rep block follows it, still inside the header', () => {
     const presence = profile.indexOf('data-testid="profile-online"');
     const acts = profile.indexOf('className="soc-prof-acts"');
     expect(presence).toBeGreaterThan(-1);
     expect(acts).toBeGreaterThan(presence);
     expect(profile.indexOf('className="soc-stats"')).toBeGreaterThan(acts);
-    expect(profile.indexOf('data-testid="profile-rep"')).toBeGreaterThan(acts);
+    const rep = profile.indexOf('data-testid="profile-rep"');
+    expect(rep).toBeGreaterThan(acts);
+    expect(rep).toBeLessThan(profile.indexOf('className="soc-stats"'));
   });
   it('the row is inside the header block (before the social-links chips that follow the header)', () => {
     const acts = profile.indexOf('className="soc-prof-acts"');
     expect(acts).toBeGreaterThan(-1);
     expect(profile.indexOf('<SocialLinksChips')).toBeGreaterThan(acts);
+    expect(profile.indexOf('<SocialLinksChips')).toBeGreaterThan(profile.indexOf('data-testid="profile-rep"'));
   });
   it('the row keeps every action and handler (Chat, Invite, friend states, Block, Report)', () => {
     expect(profile).toContain('social.openDm(pid)');
@@ -47,15 +58,17 @@ describe('Profile modal: action row under the presence line', () => {
   it('exactly one action row — no duplicate left under the Rep section', () => {
     expect(count(card, 'className="soc-prof-acts"')).toBe(1);
   });
-  it('the row renders after the presence line, before the stats grid and the Rep section', () => {
+  it('the row renders after the presence line, before the stats grid; the Rep block closes the header after it', () => {
     const presence = card.indexOf('soc-online-status');
     const acts = card.indexOf('className="soc-prof-acts"');
     expect(presence).toBeGreaterThan(-1);
     expect(acts).toBeGreaterThan(presence);
     expect(card.indexOf('className="soc-stats"')).toBeGreaterThan(acts);
-    expect(card.indexOf('data-testid="profile-modal-rep"')).toBeGreaterThan(acts);
+    const rep = card.indexOf('data-testid="profile-modal-rep"');
+    expect(rep).toBeGreaterThan(acts);
+    expect(rep).toBeLessThan(card.indexOf('className="soc-stats"'));
   });
-  it('the quick-send DM box and its Sent confirmation travel with the row, above the Rep section', () => {
+  it('the quick-send DM box and its Sent confirmation travel with the row, inside the header before the Rep block', () => {
     const acts = card.indexOf('className="soc-prof-acts"');
     const box = card.indexOf('profile-modal-compose');
     const sent = card.indexOf('data-testid="profile-modal-dm-sent"');
@@ -78,6 +91,60 @@ describe('header CSS: the row wraps as a full-width line under the header text',
     expect(css).toContain('.soc-prof-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap;');
     expect(css).toContain('.soc-prof-head > .soc-prof-acts,');
     expect(css).toContain('.soc-prof-head > .profile-modal-compose,');
+    expect(css).toContain('.soc-prof-head > .soc-prof-rep { flex: 1 1 100%');
     expect(css).toContain('flex: 1 1 100%');
+  });
+});
+
+describe('consolidated header: one profile area at the top (Demetrius 2026-10-20)', () => {
+  const profile = social.slice(social.indexOf('function Profile('));
+  const card = modal.slice(modal.indexOf('function ProfileCard'));
+  it('exactly one Rep block per surface — the standalone REP section is gone', () => {
+    expect(count(profile, 'data-testid="profile-rep"')).toBe(1);
+    expect(count(card, 'data-testid="profile-modal-rep"')).toBe(1);
+    expect(profile).not.toContain('<h4>Rep</h4>');
+    expect(card).not.toContain('<h4>Rep</h4>');
+  });
+  it('the header Rep block carries level/title, both division chips and coins', () => {
+    for (const src of [profile, card]) {
+      expect(src).toContain('Level {cred.level.level}');
+      expect(src).toContain('divLabel(cred.rank.team.division)} · {cred.rank.team.elo}');
+      expect(src).toContain('divLabel(cred.rank.cutthroat.division)} · {cred.rank.cutthroat.elo}');
+      expect(src).toContain('🪙 {cred.coins.balance.toLocaleString()}');
+    }
+  });
+  it('the summary stats keep games + wins only — the rating tiles that duplicated the chips are gone', () => {
+    for (const src of [profile, card]) {
+      expect(src).not.toContain('<small>2v2 rating</small>');
+      expect(src).not.toContain('<small>Cutthroat</small>');
+      expect(src).toContain('<small>online games</small>');
+      expect(src).toContain('<small>wins</small>');
+    }
+  });
+  it('achievements still render below, as their own section', () => {
+    expect(profile).toContain('<h4>Achievements</h4>');
+    expect(card).toContain('<h4>Achievements</h4>');
+  });
+  it('the summary stats grids get two columns for their two tiles', () => {
+    expect(css).toContain('.soc-profile > .soc-stats:not(.small), .profile-modal-body > .soc-stats { grid-template-columns: repeat(2, 1fr); }');
+  });
+});
+
+describe('friend-status chrome: no bare text among the boxed buttons', () => {
+  it('the ★ Friends tag wears the same fill/border/radius as the row buttons', () => {
+    const tag = css.slice(css.indexOf('.soc-friend-tag {'), css.indexOf('}', css.indexOf('.soc-friend-tag {')));
+    expect(tag).toContain('background: rgba(var(--edge-rgb),.14)');
+    expect(tag).toContain('border: 1px solid rgba(var(--edge-rgb),.45)');
+    expect(tag).toContain('border-radius: 8px');
+    expect(tag).toContain('padding: 6px 10px');
+  });
+  it('both surfaces render the tag inside the action row', () => {
+    const profile = social.slice(social.indexOf('function Profile('));
+    const card = modal.slice(modal.indexOf('function ProfileCard'));
+    for (const src of [profile, card]) {
+      const acts = src.indexOf('className="soc-prof-acts"');
+      const tag = src.indexOf('soc-friend-tag');
+      expect(tag).toBeGreaterThan(acts);
+    }
   });
 });
