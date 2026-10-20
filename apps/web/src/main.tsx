@@ -5,6 +5,7 @@ import { isOnlinePath } from './online/nav';
 import { importChunk } from './chunkLoad';
 import { SoundDock } from './SoundControls';
 import { SocialRoot } from './social/Social';
+import InkLayer from './ink/InkLayer';
 import { initTheme } from './theme';
 import IdleGuard from './IdleGuard';
 import '@fontsource/barlow-condensed/600.css';
@@ -61,6 +62,7 @@ function Root() {
           : path === '/profile' ? <Suspense fallback={<RouteLoading />}><ProfilePage /></Suspense>
           : isOnlinePath(path) ? <Suspense fallback={<RouteLoading />}><OnlineApp path={path} /></Suspense> : <App key={path} />}
       </RouteGuard>
+      <InkLayer />
       <SoundDock />
       <SocialRoot />
       <IdleGuard />

@@ -2292,3 +2292,42 @@ html[data-theme="neon"] .mode { clip-path: none; border-radius: 14px; }
 /* Recap sheet: its Classic gradient is pinned in the base rules; Neon re-grades it here. */
 html[data-theme="neon"] .tt-backdrop { background: #04050c; }
 html[data-theme="neon"] .tt, html[data-theme="neon"] .tt.glass.slant { background: linear-gradient(160deg, #171a3d, #070914); }
+
+/* ================= Neon Royale — P2 ink layer =================
+   The touch-reactive ink (src/ink/) and its gradient fallback live on fixed
+   layers behind everything (z-index -1, pointer-events none — the ink is
+   observed, never touched). Under Neon the page's own opaque backgrounds get
+   out of the way so the ink shows through menu surfaces; the base rules are
+   untouched, so Classic (which never mounts the layer) is pixel-identical. */
+.ink-canvas, .ink-fallback { position: fixed; inset: 0; z-index: -1; pointer-events: none; }
+.ink-canvas { display: block; width: 100%; height: 100%; }
+.ink-fallback {
+  background:
+    radial-gradient(ellipse 90% 60% at 18% 0%, rgba(var(--purple-rgb), .34), transparent 60%),
+    radial-gradient(ellipse 80% 55% at 85% 100%, rgba(var(--blue-rgb), .28), transparent 60%),
+    radial-gradient(ellipse 50% 35% at 70% 22%, rgba(var(--cyan-rgb), .12), transparent 70%),
+    var(--bg);
+  background-size: 160% 160%, 150% 150%, 140% 140%, 100% 100%;
+  background-position: 0% 0%, 100% 100%, 60% 0%, 0 0;
+}
+.ink-fallback.anim { animation: ink-drift 26s ease-in-out infinite alternate; }
+@keyframes ink-drift {
+  from { background-position: 0% 0%, 100% 100%, 60% 0%, 0 0; }
+  to { background-position: 30% 20%, 70% 80%, 40% 30%, 0 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ink-fallback.anim { animation: none; }
+}
+/* Body's own background would paint over the -1 layer; html keeps --bg as the base. */
+html[data-theme="neon"] body { background: transparent; }
+/* The setup column (home wizard, online entry, lobby) drops its solid base so
+   the ink reads through it, keeping only the soft radial glows. */
+html[data-theme="neon"] .setup {
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(var(--purple-rgb), .26) 0%, transparent 55%),
+    radial-gradient(ellipse at 50% 110%, rgba(var(--gold-rgb), .10), transparent 50%);
+}
+/* The rewards screen's Classic literal gradient becomes a translucent navy wash. */
+html[data-theme="neon"] .rewards-page {
+  background: radial-gradient(90% 60% at 50% 30%, rgba(var(--purple-rgb), .16), rgba(4, 5, 12, .5) 70%);
+}
