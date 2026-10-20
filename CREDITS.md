@@ -65,7 +65,7 @@ synthesized at runtime with Web Audio (`apps/web/src/audio.ts`) — no files.
 | `new-hip-hop-beat.mp3` | New Hip Hop Beat | Vandalorum (Primal Light) — https://opengameart.org/content/hiphop-old-school-chill-themes | CC BY 4.0 |
 | `pyro-flow.mp3` | Pyro Flow | Kevin MacLeod — https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1500039 | CC BY 4.0 |
 | `slow-grind.mp3` | Slow Grind | Ron Gelinas Chillout Lounge — https://www.chosic.com/download-audio/27292/ | CC BY 3.0 |
-| `breaktime.mp3` | Breaktime | Kevin MacLeod — https://incompetech.com/music/royalty-free/mp3-royaltyfree/Breaktime.mp3 | CC BY 3.0 |
+| `marty-gots-a-plan.mp3` | Marty Gots a Plan | Kevin MacLeod — https://incompetech.com/music/royalty-free/mp3-royaltyfree/Marty%20Gots%20a%20Plan.mp3 | CC BY 4.0 |
 
 Holizna tracks are CC0 (no credit required); courtesy credit: Music by Holizna.
 
@@ -91,7 +91,7 @@ Lo-Fi Lounge Chill Hip Hop CITY by Alex-Productions | https://onsound.eu/ Music 
 
 Slow Grind by Ron Gelinas Chillout Lounge | https://soundcloud.com/atmospheric-music-portal Creative Commons Attribution 3.0 Unported License https://creativecommons.org/licenses/by/3.0/deed.en_US Music promoted by https://www.chosic.com/free-music/all/
 
-"Breaktime" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 3.0 License http://creativecommons.org/licenses/by/3.0/
+"Marty Gots a Plan" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/
 
 Changes: every track loudness-normalized to −16 LUFS (two-pass ffmpeg loudnorm, −1.5 dBTP, `scripts/normalize-music.sh`) and
 encoded to 128 kbps stereo MP3 (44.1 kHz), metadata/cover art stripped. At playback a gentle mid/side stereo widening
