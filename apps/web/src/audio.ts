@@ -138,6 +138,7 @@ export const TRACKS: Track[] = [
   { file: 'new-hip-hop-beat', title: 'New Hip Hop Beat', artist: 'Vandalorum (Primal Light)', license: 'CC BY 4.0', source: 'https://opengameart.org/content/hiphop-old-school-chill-themes', credit: '"New Hip Hop Beat" by Vandalorum (Primal Light), https://opengameart.org/content/hiphop-old-school-chill-themes, licensed under CC BY 4.0 https://creativecommons.org/licenses/by/4.0/' },
   { file: 'pyro-flow', title: 'Pyro Flow', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1500039', credit: '"Pyro Flow" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
   { file: 'slow-grind', title: 'Slow Grind', artist: 'Ron Gelinas Chillout Lounge', license: 'CC BY 3.0', source: 'https://www.chosic.com/download-audio/27292/', credit: 'Slow Grind by Ron Gelinas Chillout Lounge | https://soundcloud.com/atmospheric-music-portal Creative Commons Attribution 3.0 Unported License https://creativecommons.org/licenses/by/3.0/deed.en_US Music promoted by https://www.chosic.com/free-music/all/' },
+  { file: 'breaktime', title: 'Breaktime', artist: 'Kevin MacLeod', license: 'CC BY 3.0', source: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Breaktime.mp3', credit: '"Breaktime" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 3.0 License http://creativecommons.org/licenses/by/3.0/' },
 ];
 /** Exact attribution lines for the CC BY tracks (CREDITS.md + in-game Credits). */
 export const CC_BY_LINES = TRACKS.filter((t) => t.credit).map((t) => t.credit!);
@@ -443,6 +444,11 @@ class Engine {
   }
 
   private pickNext(): number {
+    // Phase 4: The Pj's always plays Breaktime (Demetrius 2026-10-19)
+    if (this.roomStyle?.venue === 'blockAfterDark') {
+      const idx = TRACKS.findIndex((t) => t.file === 'breaktime');
+      if (idx >= 0) return idx;
+    }
     const { pick, bag } = nextShuffle(this.lastTrack, this.bag, TRACKS.length);
     this.bag = bag; this.lastTrack = pick;
     return pick;
