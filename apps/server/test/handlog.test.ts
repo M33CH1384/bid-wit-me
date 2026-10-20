@@ -1,16 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { chooseBotAction } from '@spades/bots';
-import { makeRules, type Card } from '@spades/rules';
+import type { Card } from '@spades/rules';
 import type { GameAction } from '@spades/protocol';
-import { newRoomData } from '../src/room';
 import { FakeEnv } from './harness';
 
 const FAST = { botMs: 10, trickPauseMs: 0, dealMs: 0, disconnectGraceMs: 5000, handOverMs: 3000 };
 
-// The room deals from a crypto-random seed, so with the default house rules a side can be
-// "shot out" on hand 1 (or hit the -200 floor) and the game ends before a next hand exists —
-// these tests need hand 2 to be reachable, so pin rules that always deal one.
-function fourHumans(env = new FakeEnv(newRoomData('ABCDE', 1_000_000, makeRules('joker', { shotOut: false, losingFloor: null })), FAST)) {
+function fourHumans(env = new FakeEnv(undefined, FAST)) {
   const ps = ['a', 'b', 'c', 'd'].map((cid, i) => {
     const p = env.join(cid, ['Dee', 'Ray', 'Kim', 'Jo'][i]!);
     env.send(cid, { t: 'sit', seat: i });
@@ -87,6 +83,13 @@ describe('hand log (room)', () => {
   it('survives a room restart and opens a fresh entry on the next hand', () => {
     const { env, ps } = fourHumans();
     const cids = ps.map((p) => p.cid);
+    // Pin the rules so hand 1 cannot end the game before the flow under test runs: under the
+    // default shot-out rule, the random opening books hand can legitimately shoot a side out
+    // on hand 1 (fewer books than the host minimum), which ends the game — the room phase
+    // becomes 'over', 'next' votes are ignored, and the log correctly keeps exactly one hand
+    // (there is no hand 2). Shot-outs are not what this test exercises, so turn them off;
+    // every other rule stays at the room's defaults.
+    env.send('a', { t: 'config', rules: { ...env.room.data.rules, shotOut: false } });
     env.send('a', { t: 'start' });
     playHandToEnd(env, cids);
     const before = JSON.parse(JSON.stringify(env.room.handLogJson()));
