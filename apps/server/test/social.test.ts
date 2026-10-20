@@ -473,6 +473,58 @@ describe('DM reactions', () => {
   });
 });
 
+describe('DM replies', () => {
+  it('a reply carries a post-time snapshot, delivered to both participants only, persisted in history', async () => {
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    await h.hub.open('c', { uid: 'uc', name: 'Cee' });
+    await h.send('a', { t: 'dm', to: 'u:ub', text: 'spades tonight' });
+    const orig = h.last('b', 'dm')!.line;
+    const want = { id: orig.id, from: 'Alice', fromId: 'u:ua', text: 'spades tonight' };
+    // b replies: the snapshot rides the delivered line to BOTH participants, identically
+    await h.send('b', { t: 'dm', to: 'u:ua', text: 'deal', replyTo: orig.id });
+    expect(h.last('a', 'dm')!.line).toMatchObject({ text: 'deal', reply: want });
+    expect(h.last('b', 'dm')!.line).toMatchObject({ text: 'deal', reply: want });
+    // a third party never sees DM traffic at all, replies included
+    expect(h.all('c', 'dm').length).toBe(0);
+    // replying to your own line works too (snapshot names yourself)
+    await h.send('a', { t: 'dm', to: 'u:ub', text: 'bring cards', replyTo: orig.id });
+    expect(h.last('b', 'dm')!.line.reply).toEqual(want);
+    // persisted in D1: history carries the snapshot (refresh / restore sees the quote)
+    await h.send('b', { t: 'dmHistory', with: 'u:ua' });
+    const hist = h.last('b', 'dmHistory')!.lines;
+    expect(hist.find((l) => l.text === 'deal')?.reply).toEqual(want);
+    expect(hist.find((l) => l.text === 'spades tonight')?.reply).toBeUndefined();
+  });
+
+  it('the quoted snippet is truncated at the reply limit', async () => {
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    await h.send('a', { t: 'dm', to: 'u:ub', text: 'y'.repeat(200) });
+    const orig = h.last('b', 'dm')!.line;
+    await h.send('b', { t: 'dm', to: 'u:ua', text: 'tl;dr', replyTo: orig.id });
+    const reply = h.last('a', 'dm')!.line.reply!;
+    expect(reply.text).toHaveLength(80);
+    expect(reply.text).toBe('y'.repeat(80));
+  });
+
+  it('an unresolved or foreign-conversation replyTo posts the DM clean, without a reference', async () => {
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    await h.hub.open('c', { uid: 'uc', name: 'Cee' });
+    // a line in the a↔c conversation...
+    await h.send('a', { t: 'dm', to: 'u:uc', text: 'different thread' });
+    const foreign = h.last('c', 'dm')!.line;
+    // ...is not quotable from the a↔b conversation (the pair must match)
+    await h.send('b', { t: 'dm', to: 'u:ua', text: 'quoting across threads', replyTo: foreign.id });
+    expect(h.last('a', 'dm')!.line.text).toBe('quoting across threads');
+    expect(h.last('a', 'dm')!.line.reply).toBeUndefined();
+    // a nonexistent id posts clean too
+    await h.send('a', { t: 'dm', to: 'u:ub', text: 'still lands', replyTo: 99999 });
+    expect(h.last('b', 'dm')!.line.reply).toBeUndefined();
+  });
+});
+
 describe('profiles + recent players (from game records)', () => {
   it('h2h, totals, team names, recent', async () => {
     const { saveRecord } = await import('../src/stats/record');

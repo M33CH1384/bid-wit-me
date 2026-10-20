@@ -8,7 +8,7 @@
  */
 import {
   type ChatReactions, type FriendsState, type InviteMsg, type OpenTable, type PresenceEntry, type PresenceStatus, type ReplyRef, type SocialChatLine, type SocialClientMsg, type SocialServerMsg, type SocialSettings,
-  GUEST_SESSION, PRESENCE_TTL_MS, SOCIAL_LIMITS, blockLinks, cleanName, cleanText, maskProfanity, parseSocialMsg, replySnapshot, stalePresence, toggleReaction,
+  GUEST_SESSION, PRESENCE_TTL_MS, SOCIAL_LIMITS, blockLinks, cleanName, cleanText, dmReplySnapshot, maskProfanity, parseSocialMsg, replySnapshot, stalePresence, toggleReaction,
 } from '@spades/protocol';
 import { isProfane } from '../auth/username';
 import { DEFAULT_SETTINGS, SocialStore, uidOf } from './store';
@@ -556,7 +556,16 @@ export class Hub {
         if (!this.chatOk(cid, att.pid)) return;
         const text = this.clean(msg.text);
         if (!text) return;
-        const line = await s!.sendDm(uid!, to, text, now);
+        // Resolve the reply reference inside this conversation only: the snapshot is
+        // stored on the new line, so the quote renders after a refresh and even if the
+        // original is pruned. An id that doesn't resolve (another conversation, deleted,
+        // never existed) posts the DM without a reference.
+        let reply: ReplyRef | undefined;
+        if (msg.replyTo !== undefined) {
+          const q = await s!.dmReplyTarget(uid!, to, msg.replyTo);
+          if (q) reply = dmReplySnapshot({ id: q.id, from: `u:${q.sender}`, text: q.text }, q.sender === uid ? att.name : toName);
+        }
+        const line = await s!.sendDm(uid!, to, text, now, reply);
         for (const c of this.connsOf(msg.to)) this.io.send(c, { t: 'dm', line, name: att.name });
         for (const c of this.connsOf(att.pid)) this.io.send(c, { t: 'dm', line, name: toName });
         return;

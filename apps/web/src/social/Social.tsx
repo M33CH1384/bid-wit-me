@@ -3,7 +3,7 @@
  * friends, profiles, settings), invite toasts and notices. Mounted once at the root so invites reach you anywhere.
  */
 import { Fragment, type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { type InviteMsg, type OpenTable, type PresenceEntry, type PresenceStatus, type SocialChatLine, SOCIAL_LIMITS, statusLabel } from '@spades/protocol';
+import { type DmLine, type InviteMsg, type OpenTable, type PresenceEntry, type PresenceStatus, type SocialChatLine, SOCIAL_LIMITS, statusLabel } from '@spades/protocol';
 import { useAccount } from '../account/api';
 import { AvatarCircle, socialUidOf, useAvatar } from '../avatar';
 import { BADGES } from '../badges';
@@ -506,6 +506,25 @@ function DmThread({ pid }: { pid: string }) {
   const blocked = (s.friends?.blocked ?? []).some((b) => b.id === pid);
   /** which line's emoji picker is open (one at a time) */
   const [pickFor, setPickFor] = useState<number | null>(null);
+  /** the line the composer is replying to (its snapshot ships with the sent DM) */
+  const [replyTo, setReplyTo] = useState<DmLine | null>(null);
+  /** a line briefly highlighted after tapping a quote that points at it */
+  const [flashId, setFlashId] = useState<number | null>(null);
+  const flashTimer = useRef<number | null>(null);
+  useEffect(() => () => { if (flashTimer.current) window.clearTimeout(flashTimer.current); }, []);
+  // switching threads drops any pending reply (it belongs to the other conversation)
+  useEffect(() => { setReplyTo(null); setPickFor(null); }, [pid]);
+  /** tap a quote: scroll to the original (when it's rendered) and flash it */
+  const jumpTo = (id: number) => {
+    const el = ref.current?.querySelector(`[data-line-id="${id}"]`);
+    if (!el) return;
+    el.scrollIntoView({ block: 'center' });
+    setFlashId(id);
+    if (flashTimer.current) window.clearTimeout(flashTimer.current);
+    flashTimer.current = window.setTimeout(() => setFlashId(null), 1600);
+  };
+  /** display name for a line in this thread: the other player, or "yourself" for your own lines */
+  const authorOf = (l: DmLine) => (l.from === s.you?.id ? 'yourself' : name);
   return (
     <div className="soc-chat">
       <div className="soc-dm-head">
@@ -526,17 +545,23 @@ function DmThread({ pid }: { pid: string }) {
           return (
             <Fragment key={l.id}>
               {g.separator && <div className="soc-time-sep">{chatTimeLabel(l.at)}</div>}
-              <div className={`soc-line dm ${mine ? 'mine' : ''} ${g.groupStart ? 'g-start' : 'cont'}`} data-testid="dm-line">
+              <div data-line-id={l.id} className={`soc-line dm ${mine ? 'mine' : ''} ${g.groupStart ? 'g-start' : 'cont'}${flashId === l.id ? ' flash' : ''}`} data-testid="dm-line">
                 {!mine && (g.groupEnd
                   ? <SocFace id={pid} name={name} className="soc-av msg" />
                   : <span className="soc-av msg blank" aria-hidden="true" />)}
                 <div className="soc-msg-col">
                   <div className="soc-bubble-row">
                     <div className={`soc-bubble ${g.groupEnd ? 'tail' : ''}`}>
+                      {l.reply && (
+                        <button type="button" className="soc-quote" data-testid={`dm-quote-${l.id}`} onClick={() => jumpTo(l.reply!.id)} aria-label={`Quoted message by ${l.reply.from}: ${l.reply.text}`}>
+                          <b>{l.reply.from}</b> {l.reply.text}
+                        </button>
+                      )}
                       <span className="soc-line-text">{l.text}</span>
                     </div>
                     <span className="soc-line-acts">
                       {!mine && <button type="button" className="soc-more" aria-label="Report message" title="Report" onClick={() => social.report('dm', { id: l.id })}>⚑</button>}
+                      <button type="button" className="soc-reply-add" aria-label={mine ? 'Reply to your message' : `Reply to ${name}'s message`} data-testid={`dm-reply-${l.id}`} onClick={() => setReplyTo(replyTo?.id === l.id ? null : l)}>↩</button>
                       <button type="button" className="soc-rx-add" aria-label={mine ? 'React to your message' : `React to ${name}'s message`} aria-expanded={pickFor === l.id} data-testid={`dm-rx-add-${l.id}`} onClick={() => setPickFor(pickFor === l.id ? null : l.id)}>☺</button>
                     </span>
                   </div>
@@ -549,7 +574,17 @@ function DmThread({ pid }: { pid: string }) {
         })}
         {!lines.length && <p className="soc-empty">Start the conversation with {name}.</p>}
       </div>
-      {blocked ? <p className="soc-note">You blocked {name}. Unblock them in Friends to message.</p> : <Composer onSend={(t) => social.dm(pid, t)} placeholder={`Message ${name}…`} testid="dm" />}
+      {blocked ? <p className="soc-note">You blocked {name}. Unblock them in Friends to message.</p> : (
+        <>
+          {replyTo && (
+            <div className="soc-replybar" data-testid="dm-reply-bar">
+              <span className="soc-replybar-txt">Replying to <b>{authorOf(replyTo)}</b>: {replyTo.text}</span>
+              <button type="button" className="soc-replybar-x" aria-label="Cancel reply" data-testid="dm-reply-cancel" onClick={() => setReplyTo(null)}>✕</button>
+            </div>
+          )}
+          <Composer onSend={(t) => { social.dm(pid, t, replyTo?.id); setReplyTo(null); }} placeholder={replyTo ? `Reply to ${authorOf(replyTo)}…` : `Message ${name}…`} testid="dm" />
+        </>
+      )}
     </div>
   );
 }

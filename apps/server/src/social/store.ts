@@ -1,5 +1,5 @@
 /** D1 access for the Social hub (friends, blocks, DMs, reports, settings, ratings). Pure async functions over D1. */
-import type { ChatReactions, DmLine, FriendRef, FriendsState, SocialSettings } from '@spades/protocol';
+import type { ChatReactions, DmLine, FriendRef, FriendsState, ReplyRef, SocialSettings } from '@spades/protocol';
 
 export const pair = (x: string, y: string): [string, string] => (x < y ? [x, y] : [y, x]);
 const uidOf = (pid: string) => (pid.startsWith('u:') ? pid.slice(2) : null);
@@ -110,19 +110,33 @@ export class SocialStore {
     }
   }
 
-  async sendDm(from: string, to: string, text: string, now: number): Promise<DmLine> {
+  async sendDm(from: string, to: string, text: string, now: number, reply?: ReplyRef): Promise<DmLine> {
     const [a, b] = pair(from, to);
-    const r = await this.db.prepare('INSERT INTO dms (a, b, sender, recipient, text, at) VALUES (?, ?, ?, ?, ?, ?) RETURNING id').bind(a, b, from, to, text, now).first<{ id: number }>();
+    const r = await this.db.prepare('INSERT INTO dms (a, b, sender, recipient, text, at, reply) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id')
+      .bind(a, b, from, to, text, now, reply ? JSON.stringify(reply) : null).first<{ id: number }>();
     // keep each conversation bounded (last 500)
     await this.db.prepare('DELETE FROM dms WHERE a = ? AND b = ? AND id <= (SELECT id FROM dms WHERE a = ? AND b = ? ORDER BY id DESC LIMIT 1 OFFSET 500)').bind(a, b, a, b).run();
-    return { id: r!.id, from: `u:${from}`, to: `u:${to}`, text, at: now };
+    return { id: r!.id, from: `u:${from}`, to: `u:${to}`, text, at: now, ...(reply ? { reply } : {}) };
+  }
+
+  /**
+   * Resolve a reply target inside ONE conversation: the line must sit between exactly
+   * `uid` and `other` (the pair columns), so a reply can only ever quote a line both
+   * participants already share — an id from another conversation (or a third party's
+   * DM) resolves to null and the message posts without a reference.
+   */
+  async dmReplyTarget(uid: string, other: string, id: number): Promise<{ id: number; sender: string; text: string } | null> {
+    const [a, b] = pair(uid, other);
+    const r = await this.db.prepare('SELECT id, sender, text FROM dms WHERE id = ? AND a = ? AND b = ? AND deleted = 0').bind(id, a, b)
+      .first<{ id: number; sender: string; text: string }>();
+    return r ?? null;
   }
 
   async dmHistory(uid: string, other: string, before: number | undefined, limit: number): Promise<DmLine[]> {
     const [a, b] = pair(uid, other);
-    const rows = (await this.db.prepare(`SELECT id, sender, recipient, text, at, read_at, reactions FROM dms WHERE a = ? AND b = ? AND deleted = 0 AND id < ? ORDER BY id DESC LIMIT ?`)
-      .bind(a, b, before ?? Number.MAX_SAFE_INTEGER, limit).all<{ id: number; sender: string; recipient: string; text: string; at: number; read_at: number | null; reactions: string | null }>()).results;
-    return rows.reverse().map((r) => ({ id: r.id, from: `u:${r.sender}`, to: `u:${r.recipient}`, text: r.text, at: r.at, ...(r.read_at ? { read: true } : {}), ...(r.reactions ? { reactions: JSON.parse(r.reactions) as ChatReactions } : {}) }));
+    const rows = (await this.db.prepare(`SELECT id, sender, recipient, text, at, read_at, reactions, reply FROM dms WHERE a = ? AND b = ? AND deleted = 0 AND id < ? ORDER BY id DESC LIMIT ?`)
+      .bind(a, b, before ?? Number.MAX_SAFE_INTEGER, limit).all<{ id: number; sender: string; recipient: string; text: string; at: number; read_at: number | null; reactions: string | null; reply: string | null }>()).results;
+    return rows.reverse().map((r) => ({ id: r.id, from: `u:${r.sender}`, to: `u:${r.recipient}`, text: r.text, at: r.at, ...(r.read_at ? { read: true } : {}), ...(r.reactions ? { reactions: JSON.parse(r.reactions) as ChatReactions } : {}), ...(r.reply ? { reply: JSON.parse(r.reply) as ReplyRef } : {}) }));
   }
 
   /**

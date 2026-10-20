@@ -102,8 +102,17 @@ export function replySnapshot(line: SocialChatLine): ReplyRef {
   return { id: line.id, from: line.name, fromId: line.from, text: line.text.slice(0, SOCIAL_LIMITS.replySnippet) };
 }
 
+/**
+ * Same snapshot for a reply to a DM line. A DmLine carries no display name of its own
+ * (the other participant's name travels beside the line), so the hub supplies the quoted
+ * author's current name; shape and truncation are identical to replySnapshot.
+ */
+export function dmReplySnapshot(line: { id: number; from: string; text: string }, fromName: string): ReplyRef {
+  return { id: line.id, from: fromName, fromId: line.from, text: line.text.slice(0, SOCIAL_LIMITS.replySnippet) };
+}
+
 export interface SocialChatLine { id: number; from: string; name: string; text: string; at: number; admin?: boolean; /** emoji reactions (emoji -> reactor pids); see REACT_EMOJIS */ reactions?: ChatReactions; /** the line this one replies to, as a post-time snapshot */ reply?: ReplyRef }
-export interface DmLine { id: number; from: string; to: string; text: string; at: number; read?: boolean; /** emoji reactions (emoji -> reactor pids); see REACT_EMOJIS */ reactions?: ChatReactions }
+export interface DmLine { id: number; from: string; to: string; text: string; at: number; read?: boolean; /** emoji reactions (emoji -> reactor pids); see REACT_EMOJIS */ reactions?: ChatReactions; /** the DM line this one replies to, as a post-time snapshot (same shape as global chat) */ reply?: ReplyRef }
 export interface FriendRef { id: string; name: string; since?: number }
 export interface FriendsState { friends: FriendRef[]; incoming: FriendRef[]; outgoing: FriendRef[]; blocked: FriendRef[] }
 export interface SocialSettings { appearOffline: boolean; friendsOnlyInvites: boolean; hideLocation: boolean }
@@ -118,7 +127,7 @@ export type SocialClientMsg =
   | { t: 'react'; id: number; emoji: string }
   /** emoji reaction to a DM line (toggle): DM ids live in D1, a different namespace than global ids, so it has its own message */
   | { t: 'dmReact'; id: number; emoji: string }
-  | { t: 'dm'; to: string; text: string }
+  | { t: 'dm'; to: string; text: string; /** reply to this DM line id (same conversation); the hub resolves it to a snapshot, or posts without one */ replyTo?: number }
   | { t: 'dmHistory'; with: string; before?: number }
   | { t: 'read'; with: string }
   | { t: 'invite'; to: string; code: string; mode?: string; seat?: number }
@@ -230,7 +239,10 @@ export function parseSocialMsg(raw: unknown): SocialClientMsg | null {
       return isInt(m.id) && m.id > 0 && typeof m.emoji === 'string' && (REACT_EMOJIS as readonly string[]).includes(m.emoji)
         ? { t: 'dmReact', id: m.id, emoji: m.emoji }
         : null;
-    case 'dm': return isId(m.to) && isStr(m.text, 2000) ? { t: 'dm', to: m.to, text: m.text } : null;
+    case 'dm':
+      if (!isId(m.to) || !isStr(m.text, 2000)) return null;
+      // a malformed replyTo drops the reference, never the message
+      return isInt(m.replyTo) && m.replyTo > 0 ? { t: 'dm', to: m.to, text: m.text, replyTo: m.replyTo } : { t: 'dm', to: m.to, text: m.text };
     case 'dmHistory': return isId(m.with) ? { t: 'dmHistory', with: m.with, ...(isInt(m.before) ? { before: m.before } : {}) } : null;
     case 'read': return isId(m.with) ? { t: 'read', with: m.with } : null;
     case 'invite':
