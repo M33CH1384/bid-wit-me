@@ -41,6 +41,19 @@ export async function notifyInvite(db: D1Database, vapid: VapidKeys, userId: str
   }, { ttl: 300, urgency: 'high' }, now);
 }
 
+/** Big Bank wager-challenge events (invite / check-in open / table ready / outcome). */
+export type WagerPushKind = 'invite' | 'checkin' | 'ready' | 'outcome';
+export async function notifyWager(db: D1Database, vapid: VapidKeys, userId: string, kind: WagerPushKind, title: string, body: string, challengeId: string, now: number): Promise<number> {
+  const urgent = kind === 'checkin' || kind === 'ready';
+  return guarded(db, vapid, userId, { kind: `wager_${kind}`, key: challengeId, ms: 60_000 }, {
+    title,
+    body,
+    url: '/social',
+    tag: `wager-${challengeId}`,
+    type: 'wager',
+  }, { ttl: urgent ? 1800 : DAY, urgency: urgent ? 'high' : 'normal' }, now);
+}
+
 /** A friend just came online. Max 1/hour per friend. */
 export async function notifyFriendOnline(db: D1Database, vapid: VapidKeys, userId: string, friendName: string, now: number): Promise<number> {
   return guarded(db, vapid, userId, { kind: 'friend_online', key: friendName.toLowerCase(), ms: 60 * 60_000 }, {

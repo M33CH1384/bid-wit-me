@@ -73,11 +73,15 @@ export async function dailyLogin(db: D1Database, userId: string, now: number): P
   return { granted, amount, streak };
 }
 
-/** Sum of today's positive stake winnings (stake_win reason, UTC day). */
+/**
+ * Sum of today's positive stake + wager winnings (UTC day). Big Bank payouts
+ * (wager_win) deliberately count toward the same daily cap as stake_win —
+ * otherwise challenges would be a cap-free farming lane.
+ */
 export async function todayStakeWinnings(db: D1Database, userId: string, now: number): Promise<number> {
   const start = Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth(), new Date(now).getUTCDate());
   const row = await db.prepare(`SELECT COALESCE(SUM(delta),0) AS s FROM coin_ledger
-    WHERE user_id = ? AND reason = 'stake_win' AND created_at >= ?`).bind(userId, start).first<{ s: number }>();
+    WHERE user_id = ? AND reason IN ('stake_win', 'wager_win') AND created_at >= ?`).bind(userId, start).first<{ s: number }>();
   return row?.s ?? 0;
 }
 

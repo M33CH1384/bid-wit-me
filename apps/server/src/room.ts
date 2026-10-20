@@ -120,6 +120,8 @@ export interface RoomData {
   live?: LiveStats;
   /** Release 9b: this table runs a tournament match */
   tournament?: TournamentSeat;
+  /** Big Bank Take Lil Bank: this table runs a wager match */
+  challenge?: ChallengeSeat;
   /** Release 10: hidden from Open tables (invite / code only) */
   private?: boolean;
   /**
@@ -170,6 +172,21 @@ export interface TournamentSeat {
   emptySince?: number;
 }
 
+/** Big Bank Take Lil Bank: this table plays one wager match (rules locked, seats reserved for the four players, NO bot fill — coins are escrowed). */
+export interface ChallengeSeat {
+  id: string;
+  /** per seat: the account that owns it (challenge tables always reserve all four seats) */
+  reserved: ({ uid: string; name: string } | null)[];
+  autostartAt: number | null;
+  reported?: boolean;
+}
+
+/** Big Bank: how a wager match ended, reported exactly once to the Challenge DO, which settles the escrow. */
+export type ChallengeResult =
+  | { kind: 'played'; scores: number[]; places: number[]; gameId: string }
+  | { kind: 'noshow'; shown: string[] }
+  | { kind: 'abandoned'; leaverUid: string | null };
+
 export interface RoomTiming {
   /** delay before a bot moves */
   botMs: number;
@@ -218,6 +235,8 @@ export interface RoomIO {
   gameOver?(rec: GameRecord, rated: boolean, meta?: SaveMeta): void;
   /** Release 9b: a tournament match finished (per side: final score and placement, 1 = won) */
   tournamentResult?(t: TournamentSeat, scores: number[], places: number[]): void;
+  /** Big Bank: a wager match resolved (played out, a no-show at the start deadline, or abandoned mid-match) */
+  challengeResult?(c: ChallengeSeat, r: ChallengeResult): void;
   /** Release 10: this table's Open tables entry (null = unlisted); called after every broadcast, the DO dedups */
   listing?(t: OpenTable | null): void;
   /** Voice (c): a persona's catalog bucket for a set/Wheels/win moment is thin; the DO runs the writer in waitUntil */
@@ -351,10 +370,24 @@ export class Room {
     this.io.persist();
   }
 
+  /** Big Bank: turn a fresh table into a wager match. Private, rules locked, no bots ever. */
+  setupChallenge(c: ChallengeSeat, rules: TableRules): void {
+    const d = this.data;
+    d.rules = clampRules(rules);
+    d.challenge = { ...c, reported: false };
+    d.private = true;
+    d.botLevel = 'mixed';
+    d.seats = Array.from({ length: 4 }, () => ({ kind: 'empty' as const }));
+    d.teamNames = undefined;
+    if (c.autostartAt) this.io.setAlarm(c.autostartAt);
+    this.system('Big Bank match: seats are reserved for the four players; the game starts automatically');
+    this.io.persist();
+  }
+
   /** a member whose account owns a reserved seat sits there */
   private seatReserved(pid: string): void {
     const d = this.data;
-    const t = d.tournament;
+    const t = d.tournament ?? d.challenge;
     const m = d.members[pid];
     if (!t || !m?.uid || m.seat !== null) return;
     const seat = t.reserved.findIndex((r) => r?.uid === m.uid);
@@ -367,13 +400,51 @@ export class Room {
       m.seat = seat;
       m.timeouts = 0;
     }
-    if (d.phase === 'lobby' && this.allReservedSeated()) this.autostart();
+    if (d.phase === 'lobby' && this.allReservedSeated()) {
+      if (d.challenge) this.challengeBegin();
+      else this.autostart();
+    }
   }
 
   private allReservedSeated(): boolean {
     const d = this.data;
-    const t = d.tournament!;
+    const t = (d.tournament ?? d.challenge)!;
     return t.reserved.slice(0, d.rules.playerCount).every((r, i) => !r || (d.seats[i]?.kind === 'human' && this.isConnected((d.seats[i] as { playerId: string }).playerId)));
+  }
+
+  /** Big Bank: all four players are seated — start now, ahead of the grace deadline. */
+  private challengeBegin(): void {
+    const d = this.data;
+    const c = d.challenge!;
+    if (d.phase !== 'lobby') return;
+    c.autostartAt = null;
+    this.startGame();
+  }
+
+  /**
+   * Big Bank: the seat grace deadline passed. All four present → the match starts.
+   * Anyone missing → the match is called off and the Challenge DO settles the escrow
+   * from exactly who showed. A wager match is never bot-filled.
+   */
+  private challengeDeadline(): void {
+    const d = this.data;
+    const c = d.challenge!;
+    if (d.phase !== 'lobby') return;
+    c.autostartAt = null;
+    const shown: string[] = [];
+    let all = true;
+    for (let i = 0; i < d.rules.playerCount; i++) {
+      const r = c.reserved[i];
+      if (!r) continue;
+      const s = d.seats[i];
+      if (s?.kind === 'human' && this.isConnected(s.playerId) && d.members[s.playerId]?.uid === r.uid) shown.push(r.uid);
+      else all = false;
+    }
+    if (all) { this.startGame(); return; }
+    d.phase = 'over';
+    c.reported = true;
+    this.system(shown.length ? 'No-show: the Big Bank match is called off' : 'Nobody showed up: the Big Bank match is called off');
+    this.io.challengeResult?.(c, { kind: 'noshow', shown });
   }
 
   /** start the match now (deadline passed, or everyone is here); no-shows → bots, or a forfeit when bots are off */
@@ -648,6 +719,12 @@ export class Room {
           this.seatReserved(pid);
           break;
         }
+        if (d.challenge) {
+          const r = d.challenge.reserved[msg.seat];
+          if (!r || r.uid !== me.uid) throw new RoomError('RESERVED', 'Seats at a Big Bank table are reserved for the players in the challenge');
+          this.seatReserved(pid);
+          break;
+        }
         const slot = d.seats[msg.seat]!;
         if (me.seat === msg.seat) return;
         if (me.uid && Object.entries(d.members).some(([id, o]) => id !== pid && o.uid === me.uid && o.seat !== null)) {
@@ -682,6 +759,7 @@ export class Room {
       case 'addBot': {
         this.requireHost(isHost);
         if (d.tournament) throw new RoomError('LOCKED', 'Tournament tables are locked');
+        if (d.challenge) throw new RoomError('LOCKED', 'Big Bank tables are locked');
         if (d.phase === 'playing') throw new RoomError('IN_GAME', 'Game in progress');
         if (msg.seat >= n) throw new RoomError('BAD_SEAT', 'No such seat');
         const slot = d.seats[msg.seat]!;
@@ -696,6 +774,7 @@ export class Room {
       case 'removeBot': {
         this.requireHost(isHost);
         if (d.tournament) throw new RoomError('LOCKED', 'Tournament tables are locked');
+        if (d.challenge) throw new RoomError('LOCKED', 'Big Bank tables are locked');
         if (d.phase === 'playing') throw new RoomError('IN_GAME', 'Game in progress');
         if (d.seats[msg.seat]?.kind !== 'bot') throw new RoomError('BAD_SEAT', 'No bot there');
         d.seats[msg.seat] = { kind: 'empty' };
@@ -704,6 +783,7 @@ export class Room {
       case 'config': {
         this.requireHost(isHost);
         if (d.tournament) throw new RoomError('LOCKED', 'Tournament tables are locked');
+        if (d.challenge) throw new RoomError('LOCKED', 'Big Bank tables are locked');
         if (d.phase === 'playing') {
           // Rule lock: anything that affects scoring / the outcome is locked until the game ends (rematch / new game
           // unlocks it). Social + pace settings (Table Talk timer, AFK kick, bot chat on/off) stay adjustable.
@@ -781,6 +861,12 @@ export class Room {
           this.autostart();
           break;
         }
+        if (d.challenge) {
+          if (d.phase !== 'lobby') throw new RoomError('IN_GAME', 'Game in progress');
+          if (!this.allReservedSeated()) throw new RoomError('WAITING', 'Waiting for every player (the match starts automatically)');
+          this.challengeBegin();
+          break;
+        }
         this.requireHost(isHost);
         if (d.phase === 'playing') throw new RoomError('IN_GAME', 'Game in progress');
         this.startGame();
@@ -789,6 +875,7 @@ export class Room {
       case 'rematch': {
         this.requireHost(isHost);
         if (d.tournament) throw new RoomError('LOCKED', 'Tournament matches have no rematch: check the bracket');
+        if (d.challenge) throw new RoomError('LOCKED', 'Big Bank matches have no rematch: send a new challenge');
         if (d.phase !== 'over') throw new RoomError('WRONG_PHASE', 'The game is not over');
         this.startGame(true);
         this.talk({ kind: 'rematch' });
@@ -844,6 +931,7 @@ export class Room {
       }
       case 'kick': {
         if (d.tournament) throw new RoomError('LOCKED', 'No kicking at tournament tables');
+        if (d.challenge) throw new RoomError('LOCKED', 'No kicking at Big Bank tables');
         const slot = d.seats[msg.seat];
         if (!slot || slot.kind !== 'human') throw new RoomError('BAD_SEAT', 'No player there');
         const target = slot.playerId;
@@ -891,6 +979,7 @@ export class Room {
       case 'tableOpts': {
         this.requireHost(isHost);
         if (d.tournament) throw new RoomError('LOCKED', 'Tournament tables are locked');
+        if (d.challenge) throw new RoomError('LOCKED', 'Big Bank tables are locked');
         if (msg.private !== undefined) d.private = msg.private;
         if (msg.replaceBots !== undefined) d.replaceBots = msg.replaceBots;
         break;
@@ -1242,6 +1331,10 @@ export class Room {
         d.tournament.reported = true;
         this.io.tournamentResult?.(d.tournament, [...res.finalScores], d.game.result ? placementsOf([...res.finalScores], [...res.winners]) : []);
       }
+      if (d.challenge && !d.challenge.reported) {
+        d.challenge.reported = true;
+        this.io.challengeResult?.(d.challenge, { kind: 'played', scores: [...res.finalScores], places: placementsOf([...res.finalScores], [...res.winners]), gameId: this.familyId() });
+      }
       this.system(`Game over: ${res.winners.map((w) => this.sideLabel(w)).join(' & ')} win${res.winners.length > 1 || d.rules.partnerships ? '' : 's'}`);
     }
   }
@@ -1354,12 +1447,17 @@ export class Room {
     const d = this.data;
     if (d.abandonReported || d.phase !== 'playing' || !d.game || d.game.phase === 'gameOver') return;
     d.abandonReported = true;
+    const leaverId = leaverPid ? (d.members[leaverPid]?.uid ?? null) : null;
+    // Big Bank settles at the abandon (leaver-forfeit), even though the deal plays out with a bot.
+    if (d.challenge && !d.challenge.reported) {
+      d.challenge.reported = true;
+      this.io.challengeResult?.(d.challenge, { kind: 'abandoned', leaverUid: leaverId });
+    }
     if (!this.io.gameOver) return;
     const seats = this.seatRefs();
     if (!seats.some((x) => x.kind === 'user')) return;
     const family = this.familyId();
     const rec = abandonedRecord({ id: `${family}-abandoned`, room: d.code, game: d.game, seats, names: this.sideNames(), teamNames: d.teamNames, endedAt: this.io.now(), tournamentId: d.tournament?.id });
-    const leaverId = leaverPid ? (d.members[leaverPid]?.uid ?? null) : null;
     this.io.gameOver(rec, d.rated ?? this.ratedTable(), { endReason: 'abandoned', leaverId, family, venue: d.venueNow ?? d.venue ?? 'classic' });
   }
 
@@ -1521,6 +1619,12 @@ export class Room {
       const t = this.data.tournament;
       if (t?.autostartAt && this.data.phase === 'lobby' && this.io.now() >= t.autostartAt - 50) {
         this.autostart();
+        this.after();
+        return;
+      }
+      const ch = this.data.challenge;
+      if (ch?.autostartAt && this.data.phase === 'lobby' && this.io.now() >= ch.autostartAt - 50) {
+        this.challengeDeadline();
         this.after();
         return;
       }
@@ -1830,6 +1934,7 @@ export class Room {
       venue: d.venue ?? 'classic', ...(d.venueNow ? { venueNow: d.venueNow } : {}),
       teamNames: d.rules.partnerships ? [...(d.teamNames ?? [null, null])] : undefined, series: d.series ?? null, revealed: [...(d.talk?.revealed ?? [])],
       ...(d.tournament ? { tournament: { id: d.tournament.id, name: d.tournament.name, match: d.tournament.match, autostartAt: d.tournament.autostartAt, reserved: d.tournament.reserved.map((r) => r?.name ?? null) } } : {}),
+      ...(d.challenge ? { challenge: { id: d.challenge.id, autostartAt: d.challenge.autostartAt, reserved: d.challenge.reserved.map((r) => r?.name ?? null) } } : {}),
       private: !!d.private, replaceBots: this.replaceBotsOn(), takeable: this.takeable(),
       spectators: d.phase === 'lobby' ? [] : Object.entries(d.members).filter(([id, m]) => m.seat === null && this.isConnected(id)).map(([playerId, m]) => ({ playerId, name: m.name })),
       ...(d.votes && Object.keys(d.votes).length ? { votes: Object.entries(d.votes).map(([target, by]) => ({ target, by: [...by], need: this.votesNeeded(target) })) } : {}), ...(d.music && d.music.mode !== 'off' ? { music: d.music } : {}),
@@ -1850,7 +1955,7 @@ export class Room {
   /** Release 10: seats a spectator may take right now (mid-game, not at a tournament table) */
   takeable(): number[] {
     const d = this.data;
-    if (d.phase !== 'playing' || d.tournament || !d.game) return [];
+    if (d.phase !== 'playing' || d.tournament || d.challenge || !d.game) return [];
     const bots = this.replaceBotsOn();
     return d.seats.slice(0, d.rules.playerCount).flatMap((s, i) => (s.kind === 'bot' && (s.vacated || bots) && !d.game?.eliminated?.[i] ? [i] : []));
   }

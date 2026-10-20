@@ -75,6 +75,15 @@ class_name = "TournamentDO"
 tag = "v5"
 new_sqlite_classes = ["TournamentDO"]
 
+# Big Bank Take Lil Bank (Phase 1): one Durable Object per wager challenge (accept/escrow choreography, check-in + start alarms)
+[[durable_objects.bindings]]
+name = "CHALLENGES"
+class_name = "ChallengeDO"
+
+[[migrations]]
+tag = "v6"
+new_sqlite_classes = ["ChallengeDO"]
+
 # Voice (c) line writer (docs/voice-phase2-design.md): Workers AI on the free daily allowance.
 # Code hard-stops at 8,000 neurons/day (src/voice/writer.ts). Needs "Workers AI" permission on the deploy token.
 [ai]

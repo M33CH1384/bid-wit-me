@@ -128,8 +128,10 @@ export async function onGameEnd(db: D1Database, ctx: CredGameCtx): Promise<CredP
     }
     // Phase 4: Rep level 20 ("Block Captain") unlocks The Pj's. Idempotent,
     // so it also grandfathers players who were already 20+ before this shipped.
+    // Big Bank Take Lil Bank unlocks at the same tier (see cred/wager.ts).
     if (awarded.level >= 20) {
       await grantUnlock(db, ctx.userId, 'after-dark', 'level:20', now);
+      await grantUnlock(db, ctx.userId, 'big-bank', 'level:20', now);
     }
   }
 

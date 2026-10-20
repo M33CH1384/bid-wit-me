@@ -15,6 +15,7 @@ export class FakeEnv {
   rng = createRng('test-ids');
   room: Room;
   tourResults: { match: string; scores: number[]; places: number[] }[] = [];
+  challengeResults: import('../src/room').ChallengeResult[] = [];
   records: { rec: import('../src/stats/record').GameRecord; rated: boolean; meta?: import('../src/stats/record').SaveMeta }[] = [];
   /** The DO's socket close can re-enter the room. Tests set this to simulate that. */
   onClose?: (cid: string) => void;
@@ -40,6 +41,7 @@ export class FakeEnv {
       persist: () => { this.persists++; },
       gameOver: (rec, rated, meta) => { this.records.push({ rec, rated, meta }); },
       tournamentResult: (t, scores, places) => { this.tourResults.push({ match: t.match, scores, places }); },
+      challengeResult: (_c, r) => { this.challengeResults.push(r); },
       randomId: () => Array.from({ length: 4 }, () => this.rng.nextUint32().toString(16).padStart(8, '0')).join(''),
     };
   }

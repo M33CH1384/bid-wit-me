@@ -252,7 +252,7 @@ export class Hub {
   }
 
   /** Release 9b: server-side notice to accounts (tournament check-in / match ready); returns how many tabs got it */
-  notify(uids: string[], n: { text: string; code?: string; seat?: number; tid?: string }): number {
+  notify(uids: string[], n: { text: string; code?: string; seat?: number; tid?: string; cid?: string }): number {
     let sent = 0;
     for (const uid of new Set(uids)) for (const c of this.connsOf(`u:${uid}`)) { this.io.send(c, { t: 'notice', ...n }); sent++; }
     return sent;

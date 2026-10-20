@@ -37,11 +37,15 @@ import { saveRecord } from './stats/record';
 import { backfillHomiesOnce } from './stats/backfill';
 import { handleTournaments } from './tournament/routes';
 import type { TOp } from './tournament/do';
+import { handleWagerChallenges } from './wager/routes';
+import type { WOp } from './wager/do';
 import { type PushEnv, handlePushHttp } from './push/routes';
 import { notifyFriendsOfOnline, notifyInvite, notifyTurn, pushVapid, runScheduledPushes, sendCredPushEvent } from './push/notify';
 import type { TableRules } from '@spades/rules';
 export { TournamentDO } from './tournament/do';
 import type { TournamentDO } from './tournament/do';
+export { ChallengeDO } from './wager/do';
+import type { ChallengeDO } from './wager/do';
 import type { ChatReactions, OpenTable, ReplyRef, SocialChatLine, SocialServerMsg } from '@spades/protocol';
 
 import { D1QueueStore, WriterBreaker, writeVoiceLine, type WorkersAiLike, type WriterRequest } from './voice/writer';
@@ -51,6 +55,7 @@ export interface Env extends LimitEnv, AuthEnv, SocialEnv {
   TABLES: DurableObjectNamespace<TableDO>;
   SOCIAL: DurableObjectNamespace<SocialDO>;
   TOURNAMENTS: DurableObjectNamespace<TournamentDO>;
+  CHALLENGES: DurableObjectNamespace<ChallengeDO>;
   ALLOWED_ORIGINS?: string;
   TURN_KEY_ID?: string;
   TURN_KEY_API_TOKEN?: string;
@@ -253,6 +258,13 @@ export default {
         env.TOURNAMENTS.get(env.TOURNAMENTS.idFromName(id)).fetch('https://tournament/op', { method: 'POST', body: JSON.stringify(op) }));
     }
 
+    if (parts[1] === 'wager-challenges') {
+      const slow = await limited(req, env, req.method === 'POST' && !parts[2] ? 'create' : 'info');
+      if (slow) return slow;
+      return handleWagerChallenges(req, env, url, parts, Date.now(), (id, op: WOp) =>
+        env.CHALLENGES.get(env.CHALLENGES.idFromName(id)).fetch('https://challenge/op', { method: 'POST', body: JSON.stringify(op) }));
+    }
+
     if (parts[1] === 'tables' && parts.length === 2 && req.method === 'POST') {
       const slow = await limited(req, env, 'create', origin);
       if (slow) return slow;
@@ -400,6 +412,11 @@ export class TableDO extends DurableObject<Env> {
         const op: TOp = { op: 'result', match: t.match, scores, places };
         this.ctx.waitUntil(stub.fetch('https://tournament/op', { method: 'POST', body: JSON.stringify(op) }).then(() => undefined).catch((e) => console.error('tournamentResult', e)));
       },
+      challengeResult: (c, r) => {
+        const stub = this.env.CHALLENGES.get(this.env.CHALLENGES.idFromName(c.id));
+        const op: WOp = { op: 'result', result: r };
+        this.ctx.waitUntil(stub.fetch('https://challenge/op', { method: 'POST', body: JSON.stringify(op) }).then(() => undefined).catch((e) => console.error('challengeResult', e)));
+      },
     }, data.tournament?.fast && this.env.TEST_HOOKS === '1' ? FAST_TIMING : undefined);
   }
 
@@ -496,6 +513,17 @@ export class TableDO extends DurableObject<Env> {
       data.tournament = { id: b.tid, match: b.match, name: b.name, reserved: b.reserved, autostartAt: b.autostartAt, bots: b.bots, ...(b.fast ? { fast: true } : {}) };
       this.attach(data);
       this.room!.setupTournament(data.tournament, b.rules);
+      this.flush();
+      return new Response('created', { status: 201 });
+    }
+    if (url.pathname === '/challenge-setup' && req.method === 'POST') {
+      // internal only (ChallengeDO → table); not routed from the public Worker
+      if (this.room) return new Response('exists', { status: 409 });
+      const b = await req.json() as { cid: string; rules: TableRules; reserved: ({ uid: string; name: string } | null)[]; autostartAt: number };
+      const data = newRoomData(code, Date.now());
+      data.challenge = { id: b.cid, reserved: b.reserved, autostartAt: b.autostartAt };
+      this.attach(data);
+      this.room!.setupChallenge(data.challenge, b.rules);
       this.flush();
       return new Response('created', { status: 201 });
     }
@@ -762,7 +790,7 @@ export class SocialDO extends DurableObject<Env> {
   override async fetch(req: Request): Promise<Response> {
     const path = new URL(req.url).pathname;
     if (path === '/notify' && req.method === 'POST') {
-      const b = await req.json() as { uids: string[]; notice: { text: string; code?: string; seat?: number; tid?: string } };
+      const b = await req.json() as { uids: string[]; notice: { text: string; code?: string; seat?: number; tid?: string; cid?: string } };
       return Response.json({ sent: this.hub.notify(b.uids ?? [], b.notice) });
     }
     if (path === '/tables') return Response.json({ tables: this.hub.openTables() });
