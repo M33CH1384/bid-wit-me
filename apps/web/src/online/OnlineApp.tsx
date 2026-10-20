@@ -14,6 +14,7 @@ import OnlineTable from './OnlineTable';
 import { preloadTable } from '../three/preload';
 import { takePendingVenue } from '../venues';
 import { TableLoading } from '../TableLoading';
+import { clearTableChatOpen } from '../chatView';
 import { useConn } from './useOnline';
 import { STATS_OFF_LABEL, social } from '../social/store';
 import { usePresence } from '../social/Social';
@@ -238,7 +239,7 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
       <div className="setup online-entry" data-testid="kicked">
         <h2>Removed from table {code}</h2>
         <p className="muted">{cs.error.message}. You can join again when the next game starts.</p>
-        <button type="button" className="btn primary" onClick={() => navigate('/', true, { wiz: 'home', d: 0 })}>Main menu</button>
+        <button type="button" className="btn primary" onClick={() => { clearTableChatOpen(); navigate('/', true, { wiz: 'home', d: 0 }); }}>Main menu</button>
       </div>
     );
   }
@@ -247,7 +248,7 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
       <div className="setup online-entry" data-testid="idle-logout">
         <h2>Signed out for inactivity</h2>
         <p className="muted">No activity for a while, so we left the table and freed your seat. Jump back in any time.</p>
-        <button type="button" className="btn primary" onClick={() => navigate('/', true, { wiz: 'home', d: 0 })}>Main menu</button>
+        <button type="button" className="btn primary" onClick={() => { clearTableChatOpen(); navigate('/', true, { wiz: 'home', d: 0 }); }}>Main menu</button>
       </div>
     );
   }
@@ -267,6 +268,7 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
   const leave = (to = '/online') => {
     conn.send({ t: 'leave' });
     forgetToken(code);
+    clearTableChatOpen(); // leaving for good: no chat-view restore in the next table
     // replace (not push) the table's entry, so the back button never re-enters a table you left
     setTimeout(() => navigate(to, true, to === '/' ? { wiz: 'home', d: 0 } : null), 50);
   };

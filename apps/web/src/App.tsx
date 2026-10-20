@@ -1,4 +1,5 @@
 import { saveSeries } from './Series';
+import { clearTableChatOpen } from './chatView';
 import { useEffect, useState } from 'react';
 import { preloadTable } from './three/preload';
 import { secureSeed } from '@spades/rules';
@@ -72,8 +73,8 @@ export default function App() {
       resume={game.resume}
       continueSeries={game.continueSeries}
       settings={game.settings}
-      onExit={() => { history.replaceState({ wiz: 'home', d: 0 }, '', '/'); setGame(null); }}
-      onSuspend={() => { history.replaceState({ wiz: 'home', d: 0 }, '', '/'); setGame(null); }}
+      onExit={() => { clearTableChatOpen(); history.replaceState({ wiz: 'home', d: 0 }, '', '/'); setGame(null); }}
+      onSuspend={() => { clearTableChatOpen(); history.replaceState({ wiz: 'home', d: 0 }, '', '/'); setGame(null); }}
       onRematch={(dealer) => setGame({ seed: secureSeed(), settings: game.settings, dealer, continueSeries: true })}
       startDealer={game.dealer}
       onQuality={(quality) => { const s = { ...game.settings, quality }; setGame({ ...game, settings: s }); setSettings(s); saveSettings(s); }}

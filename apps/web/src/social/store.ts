@@ -53,13 +53,48 @@ export interface SocialState {
 const GLOBAL_SEEN_KEY = 'bwm.social.globalSeen';
 const seen0 = (() => { try { return Number(localStorage.getItem(GLOBAL_SEEN_KEY) ?? '0') || 0; } catch { return 0; } })();
 
+/**
+ * "Chat is a stable place" (owner, 2026-10-20): which chat view the player was in (panel open,
+ * tab, open DM thread) persists in sessionStorage so a refresh comes back to the same view.
+ * Session-scoped: a refresh in this tab restores it; a new tab starts clean.
+ */
+export const SOCIAL_VIEW_KEY = 'bwm.social.view';
+const SOCIAL_TABS: SocialTab[] = ['players', 'chat', 'messages', 'friends', 'leaders', 'tournaments', 'settings'];
+export interface SocialView { open: boolean; tab: SocialTab; dmWith: string | null; names: Record<string, string> }
+export function serializeSocialView(s: Pick<SocialState, 'open' | 'tab' | 'dmWith' | 'names'>): string {
+  return JSON.stringify({ open: s.open, tab: s.tab, dmWith: s.dmWith, names: s.names });
+}
+export interface ParsedSocialView { open?: boolean; tab?: SocialTab; dmWith?: string | null; names?: Record<string, string> }
+export function parseSocialView(raw: string | null): ParsedSocialView {
+  if (!raw) return {};
+  try {
+    const v = JSON.parse(raw) as Partial<SocialView>;
+    const out: ParsedSocialView = {};
+    if (typeof v.open === 'boolean') out.open = v.open;
+    if (typeof v.tab === 'string' && (SOCIAL_TABS as string[]).includes(v.tab)) out.tab = v.tab;
+    if (typeof v.dmWith === 'string' || v.dmWith === null) out.dmWith = v.dmWith ?? null;
+    if (v.names && typeof v.names === 'object') {
+      const names = Object.fromEntries(Object.entries(v.names).filter(([, x]) => typeof x === 'string'));
+      if (Object.keys(names).length) out.names = names;
+    }
+    return out;
+  } catch { return {}; }
+}
+const view0: ParsedSocialView = (() => { try { return parseSocialView(sessionStorage.getItem(SOCIAL_VIEW_KEY)); } catch { return {}; } })();
+function persistView(): void {
+  try { sessionStorage.setItem(SOCIAL_VIEW_KEY, serializeSocialView(state)); } catch { /* private mode */ }
+}
+
 let state: SocialState = {
-  status: 'off', you: null, admin: false, users: {}, global: [], friends: null, settings: null, unread: {}, dms: {}, names: {}, invites: [], sent: {}, toasts: [],
-  open: false, tab: 'players', dmWith: null, profile: null, profileId: null, globalSeen: seen0, myTable: null, notices: [], tour: null, tables: {}, ended: {},
+  status: 'off', you: null, admin: false, users: {}, global: [], friends: null, settings: null, unread: {}, dms: {}, names: view0.names ?? {}, invites: [], sent: {}, toasts: [],
+  open: view0.open ?? false, tab: view0.tab ?? 'players', dmWith: view0.dmWith ?? null, profile: null, profileId: null, globalSeen: seen0, myTable: null, notices: [], tour: null, tables: {}, ended: {},
 };
 const subs = new Set<() => void>();
 function set(p: Partial<SocialState> | ((s: SocialState) => Partial<SocialState>)) {
-  state = { ...state, ...(typeof p === 'function' ? p(state) : p) };
+  const partial = typeof p === 'function' ? p(state) : p;
+  state = { ...state, ...partial };
+  // Any chat-view change is worth surviving a refresh; everything else is transient data.
+  if ('open' in partial || 'tab' in partial || 'dmWith' in partial || 'names' in partial) persistView();
   subs.forEach((f) => f());
 }
 export function useSocial(): SocialState { return useSyncExternalStore(social.subscribe, social.get, social.get); }
@@ -151,6 +186,9 @@ function onMessage(m: SocialServerMsg) {
       const now = Date.now();
       set({ status: 'open', you: m.you, admin: m.admin, users: keepUsers(users, tables, Object.keys(ended), now), global: m.global, friends: m.friends, settings: m.settings, unread: m.unread, tables, ended });
       send({ t: 'status', status });
+      // A refresh restored an open DM thread (session persistence): refill it, as openDm would on tap.
+      // Also refreshes the thread on reconnect, so a dropped socket doesn't leave a stale thread.
+      if (state.dmWith) { send({ t: 'dmHistory', with: state.dmWith }); send({ t: 'read', with: state.dmWith }); }
       break;
     }
     case 'tables':

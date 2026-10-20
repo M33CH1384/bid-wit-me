@@ -1,5 +1,6 @@
 import { deliverBotLine } from './voices/aiVoice';
 import { musicTension } from './musicTension';
+import { clearTableChatOpen, loadTableChatOpen, saveTableChatOpen } from './chatView';
 import { enterTable, quitGame, silenceGame, suspendGame } from './gameSession';
 import { cardControlLabel } from './cardA11y';
 import type { HandHitCard } from './three/handHit';
@@ -612,7 +613,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [trumpAcked, setTrumpAcked] = useState<boolean>(() => trumpPopupSeen(trumpKey));
   const dismissTrumpPopup = useCallback(() => { ackTrumpPopup(trumpKey); setTrumpAcked(true); }, [trumpKey]);
   const showTrumpPopup = trumpKey !== null && st.handNo === 1 && !trumpAcked;
-  const [chatOpen, setChatOpen] = useState(() => window.innerWidth >= 900 && window.innerHeight > 600);
+  // Refresh restores the chat as it was (session-scoped; leaving the table clears it — see chatView.ts).
+  const [chatOpen, setChatOpen] = useState(() => loadTableChatOpen(window.innerWidth >= 900 && window.innerHeight > 600));
+  useEffect(() => { saveTableChatOpen(chatOpen); }, [chatOpen]);
   const [seenMsgs, setSeenMsgs] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const localChat = useChat(st, names, resume?.chat);
@@ -1115,6 +1118,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       });
       if (!online) quitGame();
       stashRewards({ data, online: !!online, homePath: online && where === 'leave' ? '/online' : '/' });
+      clearTableChatOpen(); // the match is over: the next table must not inherit this chat state
       location.href = '/rewards';
     })().finally(() => setRewardsBusy(false));
   }, [rewardsBusy, st.result, st.history.length, mySide, r, names, online]);
