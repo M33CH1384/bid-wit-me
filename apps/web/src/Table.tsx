@@ -902,6 +902,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // Misdeal: offered only while the engine allows it; the thrown hand then sits face up for a beat
   // (both sources fold the same beat into `dealing`, so nothing moves underneath it).
   const canMisdeal = !spectating && !dealing && st.phase === 'bidding' && !!view.canMisdeal;
+  // When the human's bid panel is up, the misdeal call lives INSIDE that panel (impossible to miss);
+  // the floating button only covers the window while other seats are still bidding.
+  const bidPanelShowing = myTurn && !dealing && st.phase === 'bidding' && !!view.bidOptions && !autoReveal;
   const revealKey = misdealRevealKey(view.handNo, view.misdealReveal);
   const [seenReveal, setSeenReveal] = useState<string | null>(null);
   const revealShowing = !!revealKey && seenReveal !== revealKey;
@@ -1665,6 +1668,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
                 ))}
                 {view.bidOptions.nil && <button type="button" className="nil" onClick={() => apply({ type: 'bid', seat: HUMAN, bid: 'nil' })}>NIL</button>}
               </div>
+              {canMisdeal && (
+                <button type="button" className="misdeal-btn misdeal-in-panel" data-testid="misdeal" onClick={() => { setSelected(null); apply({ type: 'misdeal', seat: HUMAN }); }}>Call misdeal — no spades</button>
+              )}
             </div>
           )
         )}
@@ -1698,7 +1704,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       </section>
       {online?.overlay}
       {canRun && <RunItButton tip={runTip} onDismissTip={() => setRunTip(false)} onRun={() => { setRunTip(false); setSelected(null); apply({ type: 'runIt', seat: HUMAN }); }} />}
-      {canMisdeal && <MisdealButton onCall={() => { setSelected(null); apply({ type: 'misdeal', seat: HUMAN }); }} />}
+      {canMisdeal && !bidPanelShowing && <MisdealButton onCall={() => { setSelected(null); apply({ type: 'misdeal', seat: HUMAN }); }} />}
       {revealShowing && view.misdealReveal && (
         <MisdealReveal
           title={view.misdealReveal.seat === HUMAN && !spectating ? 'You threw your hand face up' : `${names[view.misdealReveal.seat] ?? 'A player'} threw their hand face up`}
