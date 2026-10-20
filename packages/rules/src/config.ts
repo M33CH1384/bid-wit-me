@@ -160,7 +160,7 @@ const BASE: Omit<TableRules, 'mode' | 'partnerships' | 'playerCount' | 'deck' | 
   bagPenalty: 100,
   tenForTwoHundred: false,
   losingFloor: -200,
-  turnTimerSec: { bid: 20, play: 30 },
+  turnTimerSec: { bid: 30, play: 30 },
   firstHandBidsItself: true,
   shotOut: true,
 };
