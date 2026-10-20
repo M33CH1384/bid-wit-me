@@ -1800,7 +1800,7 @@ export class Room {
       if (s.kind === 'empty') return { kind: 'empty' };
       if (s.kind === 'bot') return { kind: 'bot', name: s.name, level: s.level, ...(s.was ? { was: s.was } : {}) };
       const m = d.members[s.playerId];
-      return { kind: 'human', playerId: s.playerId, name: m?.name ?? 'Player', connected: this.isConnected(s.playerId), media: m?.media ?? { cam: false, mic: false } };
+      return { kind: 'human', playerId: s.playerId, name: m?.name ?? 'Player', connected: this.isConnected(s.playerId), media: m?.media ?? { cam: false, mic: false }, ...(m?.uid ? { uid: m.uid } : {}) };
     });
     return {
       code: d.code, hostId: d.hostId ?? '', phase: d.phase, rules: d.rules, botLevel: d.botLevel, seats,

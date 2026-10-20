@@ -4,6 +4,8 @@ import { enterTable, quitGame, silenceGame, suspendGame } from './gameSession';
 import { cardControlLabel } from './cardA11y';
 import type { HandHitCard } from './three/handHit';
 import { useEscapeClose } from './useEscapeClose';
+import { AvatarCircle, useAvatar } from './avatar';
+import { useAccount } from './account/api';
 import { type FlyingPlay, confirmPlay, feltClearsSelection, flyPlay, flyingCard, ignorePlayTap, playTrickOf, type PlayTrick } from './online/playGuard';
 import { actingSeat, localSeatOfServerTurn, turnView, type TurnBadge } from './turnState';
 import { retainHandOrder } from './handOrder';
@@ -153,6 +155,8 @@ export interface OnlineBinding {
   victory?: (winners: number[], losers: number[], title: string, sub?: string) => ReactNode;
   /** the venue this online game is played in (everyone sees the same) */
   venue?: VenueId;
+  /** uid of the human holding a local seat (Demetrius 2026-10-19: profile pics on name plates) */
+  seatUid?: (local: number) => string | undefined;
   /** Release 10: watching, not playing. Seat 0 is a real player (names[0] is their name): no hand, no controls. */
   spectator?: boolean;
   /**
@@ -173,6 +177,18 @@ export interface OnlineBinding {
   overlay?: ReactNode;
   /** True once this client's loader is gone and the table can take a bid or a play. */
   onInteractive?: (on: boolean) => void;
+}
+
+/** Name-plate face (Demetrius 2026-10-19): a human seat's uploaded picture, else the initial. */
+function PlateFace({ uid, name, color }: { uid?: string; name: string; color: string }) {
+  const pic = useAvatar(uid);
+  return <AvatarCircle pic={pic} name={name} className="plate-avatar" style={{ ['--uc' as string]: color }} />;
+}
+
+/** Own name-plate face: the signed-in player's own uploaded picture, else the initial. */
+function MyPlateFace({ name, color }: { name: string; color: string }) {
+  const { user } = useAccount();
+  return <AvatarCircle pic={user?.avatar} name={name} className="plate-avatar" style={{ ['--uc' as string]: color }} />;
 }
 
 interface Props {
@@ -1415,7 +1431,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const took = plates.books[seat] ?? 0;
     return (
       <div className={`plate ${isTurn ? 'turn' : ''} ${partner ? 'ally' : 'foe'}`} data-testid={`seat-${seat}`} title={isBotSeat(seat) ? `${names[seat]} · ${platePersona(names[seat]!)}` : undefined} data-persona={isBotSeat(seat) ? platePersona(names[seat]!) : undefined}>
-        <div className="plate-avatar" style={{ ['--uc' as string]: SEAT_COLORS[seat] }}>{names[seat]![0]}</div>
+        <PlateFace uid={online?.seatUid?.(seat)} name={names[seat] ?? ''} color={SEAT_COLORS[seat]} />
         <div className="plate-body">
           <div className="plate-name">{names[seat]}{dealerSeat === seat && <span className="chip dealer" data-testid={`dealer-${seat}`}>DEALER</span>}{partner && <span className="chip ally">PARTNER</span>}{notice.includes(sideOf(seat, r)) && <span className="chip notice" data-testid={`notice-${seat}`} title="Got shot last hand: one more shot and they're out">ON NOTICE</span>}</div>
           <div className="plate-stats" key={st.handNo}>
@@ -1681,7 +1697,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         )}
 
         <div className={`plate me-plate ${actor === HUMAN && !spectating ? 'turn' : ''}`} data-testid="seat-0">
-          <div className="plate-avatar" style={{ ['--uc' as string]: spectating ? SEAT_COLORS[HUMAN] : USER_COLORS.You }}>{seatInitial(face(HUMAN))}</div>
+          <MyPlateFace name={seatInitial(face(HUMAN))} color={spectating ? SEAT_COLORS[HUMAN] : USER_COLORS.You} />
           <div className="plate-body">
             <div className="plate-name">{face(HUMAN).toUpperCase()}{dealerSeat === HUMAN && <span className="chip dealer" data-testid="dealer-0">DEALER</span>}{notice.includes(sideOf(HUMAN, r)) && <span className="chip notice" data-testid="notice-0" title={noticeTip(spectating)}>ON NOTICE</span>}{!spectating && myBadges.map((b) => BADGES[b.id] && <span key={b.id} className="chip badge" title={`${BADGES[b.id]!.name}: ${BADGES[b.id]!.desc}`} data-testid={`plate-badge-${b.id}`}>{BADGES[b.id]!.icon}</span>)}</div>
             <div className="plate-stats" key={st.handNo}>

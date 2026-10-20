@@ -175,7 +175,10 @@ export type ClientMsg =
 export type SeatInfo =
   | { kind: 'empty' }
   | { kind: 'bot'; name: string; level: BotLevel; /** human this bot replaced mid-game; the game-over screen still names them */ was?: string }
-  | { kind: 'human'; playerId: string; name: string; connected: boolean; media: MediaState; autoplay?: boolean };
+  | { kind: 'human'; playerId: string; name: string; connected: boolean; media: MediaState; autoplay?: boolean;
+      /** account id (Demetrius 2026-10-19): lets clients show the player's uploaded profile
+       *  picture. Present for signed-in accounts, absent for guests (no account, no picture). */
+      uid?: string };
 
 export interface MemberInfo { playerId: string; name: string; connected: boolean; seat: number | null }
 

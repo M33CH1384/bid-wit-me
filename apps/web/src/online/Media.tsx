@@ -5,6 +5,7 @@ import type { SeatInfo } from '@spades/protocol';
 import type { VideoMesh, VideoState } from './video';
 import { sound, useSoundSettings } from '../audio';
 import type { SeatPos } from '../spatial';
+import { AvatarCircle, useAvatar } from '../avatar';
 
 /** A <video> bound to a MediaStream (iOS: playsInline + muted autoplay; unmuted after the first tap). */
 function StreamVideo({ stream, muted, mirror, onFrames, volume = 1 }: { stream: MediaStream; muted: boolean; mirror?: boolean; onFrames?: (on: boolean) => void; volume?: number }) {
@@ -61,6 +62,8 @@ export function SeatMedia({ seat, isMe, mesh, vs, limited = false, kick, seatPos
   const [confirm, setConfirm] = useState(false);
   const [frames, setFrames] = useState(false);
   const myId = seat?.kind === 'human' ? seat.playerId : '';
+  // profile pic for the camera-off state (Demetrius 2026-10-19): stands in for the camera
+  const pic = useAvatar(seat?.kind === 'human' ? seat.uid : undefined);
   useEffect(() => {
     const on = (e: Event) => { if ((e as CustomEvent<string>).detail !== myId) { setMenuState(false); setConfirm(false); } };
     window.addEventListener(MENU_EVT, on);
@@ -124,16 +127,22 @@ export function SeatMedia({ seat, isMe, mesh, vs, limited = false, kick, seatPos
       <div className={`vbubble ${camOn && !hidden ? '' : 'audio-only'}`} data-testid={`video-${id}`} data-live={live ? 'true' : 'false'}>
         {/* the clip layer keeps video circular everywhere (Safari ignores overflow+radius on <video> without its own layer) */}
         <div className={`vb-clip ${frames ? '' : 'no-frames'}`}>{stream && <StreamVideo stream={stream} muted={routed ? true : muted} onFrames={setFrames} volume={vs.ducked?.includes(id) ? 0.4 : 1} />}</div>
-        {(!camOn || hidden) && <span className="vb-icon">{hidden ? '🙈' : '🎙'}</span>}
-        {/* camera on but no frames yet (connecting / stalled): their initial, never a black circle */}
-        {camOn && !hidden && !frames && <span className="vb-icon initial" data-testid={`vb-initial-${id}`}>{seat.name.trim().charAt(0).toUpperCase() || '?'}</span>}
+        {/* camera off (or hidden): their uploaded picture, else the icon — the pic stands in for the camera */}
+        {hidden && <span className="vb-icon">🙈</span>}
+        {!camOn && !hidden && (pic
+          ? <img className="vb-pic" src={pic} alt="" data-testid={`vb-pic-${id}`} />
+          : <span className="vb-icon">🎙</span>)}
+        {/* camera on but no frames yet (connecting / stalled): their picture, never a black circle */}
+        {camOn && !hidden && !frames && (pic
+          ? <img className="vb-pic" src={pic} alt="" data-testid={`vb-pic-${id}`} />
+          : <span className="vb-icon initial" data-testid={`vb-initial-${id}`}>{seat.name.trim().charAt(0).toUpperCase() || '?'}</span>)}
         <button type="button" className="vb-hit" aria-label={`Options for ${seat.name}`} aria-expanded={menu} onClick={(e) => { e.stopPropagation(); setMenu(!menu); }} />
         {micOn && limited ? <span className="vb-badge limited" title="Partners can't hear each other during bids and play">🤐</span>
           : micOn && muted && <span className="vb-badge" title="Muted on your side">🔇</span>}
       </div>
     ) : (
       <button type="button" className={`vb-initial ${offline ? 'offline' : ''}`} data-testid={`initial-${id}`} aria-label={`Options for ${seat.name}`} aria-expanded={menu} onClick={(e) => { e.stopPropagation(); setMenu(!menu); }}>
-        <span>{seat.name.trim().charAt(0).toUpperCase() || '?'}</span>
+        <AvatarCircle pic={pic} name={seat.name} className="vb-face" />
       </button>
     )}
     {menu && <VbMenu onClose={() => setMenu(false)} label={`Options for ${seat.name}`}>
@@ -178,7 +187,8 @@ export function OfflineMediaBar() {
 /** Table Talk: the enlarged "everyone on cam" tile — live video when the camera's on, otherwise an avatar. */
 export function TalkTile({ seat, isMe, mesh, vs }: { seat: SeatInfo | undefined; isMe: boolean; mesh: VideoMesh | null; vs: VideoState }) {
   const name = seat && seat.kind !== 'empty' ? seat.name : '?';
-  const avatar = <div className="tt-avatar"><span>{name.slice(0, 1).toUpperCase()}</span></div>;
+  const pic = useAvatar(seat?.kind === 'human' ? seat.uid : undefined);
+  const avatar = <AvatarCircle pic={pic} name={name} className="tt-avatar" />;
   if (!seat || seat.kind !== 'human' || !mesh) return <>{avatar}{seat?.kind === 'bot' && <span className="tt-tag">BOT</span>}</>;
   if (isMe) return vs.cam && vs.local ? <StreamVideo stream={vs.local} muted mirror /> : avatar;
   const stream = vs.remote[seat.playerId];
@@ -254,14 +264,8 @@ export function VictorySpotlight({ winners, losers, title, sub, mesh, vs }: { wi
             <figcaption>{label(p, id.name)}{id.bot && <small className="vs-bot" data-testid={`vs-bot-${p.key}`}>BOT</small>}</figcaption>
           </figure>
         ) : (
-          // no live video: a compact name card, the full name the star (not a giant empty tile with an initial)
-          <figure key={p.key} className="vs-tile win card" data-testid={`vs-win-${p.key}`}>
-            <div className="vs-card" data-testid={`vs-avatar-${p.key}`}>
-              <span className="vs-initial" aria-hidden>{id.name.trim().charAt(0).toUpperCase() || '?'}</span>
-              <b className="vs-name" data-testid={`vs-name-${p.key}`}>{label(p, id.name)}</b>
-              {id.bot && <small className="vs-bot" data-testid={`vs-bot-${p.key}`}>BOT</small>}
-            </div>
-          </figure>
+          // no live video: a compact name card — their uploaded picture stands in for the camera
+          <VsCard key={p.key} p={p} name={label(p, id.name)} bot={id.bot} />
         ))}
       </div>
       {lost && (
@@ -284,8 +288,28 @@ export function VictorySpotlight({ winners, losers, title, sub, mesh, vs }: { wi
   );
 }
 
+/** Victory name card when there's no live video: the player's picture stands in for the camera. */
+function VsCard({ p, name, bot }: { p: SpotPlayer; name: string; bot: boolean }) {
+  const pic = useAvatar(p.seat?.kind === 'human' ? p.seat.uid : undefined);
+  return (
+    <figure className="vs-tile win card" data-testid={`vs-win-${p.key}`}>
+      <div className="vs-card" data-testid={`vs-avatar-${p.key}`}>
+        <AvatarCircle pic={pic} name={name} className="vs-initial" />
+        <b className="vs-name" data-testid={`vs-name-${p.key}`}>{name}</b>
+        {bot && <small className="vs-bot" data-testid={`vs-bot-${p.key}`}>BOT</small>}
+      </div>
+    </figure>
+  );
+}
+
 function Avatar({ p, name, bot }: { p: SpotPlayer; name: string; bot: boolean }) {
-  return <div className="vs-avatar" data-testid={`vs-avatar-${p.key}`}><span>{name.trim().charAt(0).toUpperCase() || '?'}</span>{bot && <small className="vs-bot">BOT</small>}</div>;
+  const pic = useAvatar(p.seat?.kind === 'human' ? p.seat.uid : undefined);
+  return (
+    <div className="vs-avatar" data-testid={`vs-avatar-${p.key}`}>
+      <AvatarCircle pic={pic} name={name} className="vs-face" />
+      {bot && <small className="vs-bot">BOT</small>}
+    </div>
+  );
 }
 
 /** the player's live camera as a muted video element, or null (bot, camera off, not connected, hidden) */

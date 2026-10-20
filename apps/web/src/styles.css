@@ -2152,3 +2152,26 @@ button.mode-pick::after, button.quiet-row::after { content: ''; position: absolu
   50% { box-shadow: inset 0 0 60px 18px rgba(30, 90, 255, 0.28); }
   100% { box-shadow: inset 0 0 60px 18px rgba(255, 30, 30, 0.28); }
 }
+
+/* ---- Uploaded profile pictures (Demetrius 2026-10-19): stand in for the camera when it's off ---- */
+.has-pic { overflow: hidden; }
+.has-pic img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: inherit; }
+/* table name plates: the pic replaces the initial letter */
+.plate-avatar.has-pic { padding: 0; }
+/* lobby seat rings: the pic fills the ring */
+.seat-ring .av-initial.has-pic { position: absolute; inset: 0; }
+/* profile + account + social circles: generic .has-pic rules do the work; friend-row size */
+.soc-av.frow { width: 28px; height: 28px; font-size: 15px; }
+/* video bubble: the pic fills the bubble like a camera would (camera off / connecting) */
+.vbubble .vb-pic { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; z-index: 1; }
+/* Table Talk tiles: the pic replaces the letter */
+.tt-avatar.has-pic { padding: 0; }
+/* victory spotlight: the pic fills the tile the way live video would */
+.vs-avatar .vs-face.has-pic { position: absolute; inset: 0; }
+/* profile page: upload / remove controls */
+.prof-pic-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 12px; }
+.prof-pic-note { font-size: 13px; color: var(--muted); }
+.prof-pic-btn { border: 1px solid rgba(255,255,255,.25); background: var(--glass-strong); color: #fff; border-radius: 10px; padding: 8px 12px; font: 700 13px/1 var(--display); letter-spacing: .04em; cursor: pointer; }
+.prof-pic-btn:disabled { opacity: .5; cursor: default; }
+.prof-pic-btn.ghost { background: none; }
+.prof-pic-err { color: #ff9d9d; font-size: 13px; }

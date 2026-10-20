@@ -5,6 +5,7 @@
  */
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { useEscapeClose } from '../useEscapeClose';
+import { AvatarCircle } from '../avatar';
 import './account.css';
 import {
   type AccountUser, type ProviderId, PROVIDER_LABEL, PROVIDER_ORDER, account, checkUsername, deleteAccount, hasLocalProgress, loadAccount,
@@ -186,7 +187,7 @@ function AccountScreen({ user, onClose, onChangeName, onDelete, onSecurity }: { 
   return (
     <SheetFrame title="ACCOUNT" label="Account" onClose={onClose} testId="account-sheet">
       <div className="acct-name-row">
-        <span className="acct-avatar" aria-hidden>{(user.username ?? '?').charAt(0).toUpperCase()}</span>
+        <AvatarCircle pic={user.avatar} name={user.username ?? '?'} className="acct-avatar" />
         <span className="acct-name" data-testid="account-username">{user.username ?? 'No username yet'}</span>
         <button type="button" className="acct-small" data-testid="change-username" onClick={onChangeName}>{user.username ? 'Change' : 'Pick'}</button>
       </div>
@@ -369,7 +370,7 @@ export function AccountEntry({ showChip }: { showChip: boolean }) {
     <>
       {showChip && (u ? (
         <button type="button" className="acct-chip signed-in" data-testid="account-btn" onClick={() => setSheet(u.needsUsername ? 'username' : 'account')}>
-          <span className="acct-avatar small" aria-hidden>{(u.username ?? '?').charAt(0).toUpperCase()}</span>
+          <AvatarCircle pic={u.avatar} name={u.username ?? '?'} className="acct-avatar small" />
           <span className="acct-chip-name">{u.username ?? 'Pick a name'}</span>
         </button>
       ) : (

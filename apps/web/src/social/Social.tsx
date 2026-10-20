@@ -5,6 +5,7 @@
 import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { type InviteMsg, type OpenTable, type PresenceEntry, type PresenceStatus, SOCIAL_LIMITS, statusLabel } from '@spades/protocol';
 import { useAccount } from '../account/api';
+import { AvatarCircle, socialUidOf, useAvatar } from '../avatar';
 import { BADGES } from '../badges';
 import { createTable } from '../online/connection';
 import { inviteLink, serverUrl } from '../online/config';
@@ -260,6 +261,12 @@ function Rating({ r }: { r?: PresenceEntry['rating'] }) {
   return <span className="soc-rating" title="Rating (2v2 / Cutthroat)">{r.team ? `⚔ ${r.team}` : ''}{r.team && r.cutthroat ? ' · ' : ''}{r.cutthroat ? `🔪 ${r.cutthroat}` : ''}</span>;
 }
 
+/** A social face circle: the player's uploaded picture when they have one, else the initial. */
+function SocFace({ id, name, className }: { id?: string; name: string; className?: string }) {
+  const pic = useAvatar(socialUidOf(id));
+  return <AvatarCircle pic={pic} name={name} className={className} />;
+}
+
 function PlayerRow({ u, me, friend, pending, signedIn, myTable, tables }: {
   u: PresenceEntry; me: boolean; friend: boolean; pending: boolean; signedIn: boolean; myTable: MyTable | null;
   tables: Record<string, OpenTable>;
@@ -269,7 +276,7 @@ function PlayerRow({ u, me, friend, pending, signedIn, myTable, tables }: {
   return (
     <li className={`soc-player ${friend ? 'friend' : ''}`} data-testid={`player-${u.name}`}>
       <div className="soc-pl-main">
-        <span className={`soc-av ${u.guest ? 'guest' : ''}`} aria-hidden>{u.name.slice(0, 1).toUpperCase()}</span>
+        <SocFace id={u.id} name={u.name} className={`soc-av ${u.guest ? 'guest' : ''}`} />
         <span className="soc-pl-txt">
           {!u.guest
             ? <button type="button" className="soc-pl-name link" onClick={() => social.showProfile(u.name, u.id)} data-testid={`pl-name-${u.name}`}>{u.name}{me && <em> (you)</em>}{u.guest && <i className="soc-tag">Guest</i>}{friend && <i className="soc-tag friend" title="Friend">★ Friend</i>}</button>
@@ -388,7 +395,7 @@ function Messages({ signedIn }: { signedIn: boolean }) {
       {rows.map((r) => (
         <li key={r.pid}>
           <button type="button" className="soc-thread" onClick={() => social.openDm(r.pid)} data-testid={`thread-${nameOf(s, r.pid)}`}>
-            <span className="soc-av" aria-hidden>{nameOf(s, r.pid).slice(0, 1).toUpperCase()}</span>
+            <SocFace id={r.pid} name={nameOf(s, r.pid)} className="soc-av" />
             <span className="soc-pl-txt"><span className="soc-pl-name">{nameOf(s, r.pid)}{s.users[r.pid] && <i className="soc-online" title="Online" />}</span>
               <span className="soc-pl-status">{r.last ? r.last.text : 'Say hi'}</span></span>
             {r.unread > 0 && <i className="soc-count">{r.unread}</i>}
@@ -439,6 +446,7 @@ function ProfRow({ id, name, testid, lead, actions }: { id: string; name: string
   return (
     <div className="soc-frow tappable" role="button" tabIndex={0} aria-label={`View ${name}'s profile`} data-testid={testid} onClick={open}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } }}>
+      <SocFace id={id} name={name} className="soc-av frow" />
       <span className="soc-frow-name">{lead}</span>
       {actions}
     </div>
@@ -528,7 +536,7 @@ interface ProfileData {
 }
 
 interface CredPublic {
-  user: { id: string; name: string };
+  user: { id: string; name: string; avatar: string | null };
   level: { level: number; xp: number; xpForNext: number; xpIntoLevel: number; title: string };
   rank: { team: { division: string; elo: number }; cutthroat: { division: string; elo: number } };
   achievements: { id: string; title: string; hint: string; xp: number; coins: number; unlockedAt: number | null }[];
@@ -566,7 +574,7 @@ function Profile({ name, id }: { name: string; id?: string }) {
       {p === null ? <p className="soc-empty">Loading…</p> : p === 'missing' ? <p className="soc-empty">No profile for {name}.</p> : (
         <>
           <div className="soc-prof-head">
-            <span className="soc-av big" aria-hidden>{p.username.slice(0, 1).toUpperCase()}</span>
+            <AvatarCircle pic={cred?.user.avatar} name={p.username} className="soc-av big" />
             <div>
               <h3 data-testid="profile-name">{p.username}{p.champion > 0 && <span className="soc-champ" title="Tournament champion">🏆×{p.champion}</span>}</h3>
               <p className="soc-muted">Member since {new Date(p.memberSince).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</p>

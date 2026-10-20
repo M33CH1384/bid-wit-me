@@ -156,6 +156,8 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
           setLearning: (on) => conn.send({ t: 'learning', on }),
           onInteractive,
           venue: room.venueNow ?? (room.venue && room.venue !== 'random' ? room.venue : 'classic'),
+          // uid per local seat, so name plates can show each human's uploaded picture
+          seatUid: (local) => { const s = room.seats[rot.R(local)]; return s?.kind === 'human' ? s.uid : undefined },
           victory: (winners, losers, title, sub) => {
             const sp = (L: number) => {
               const seat = room.seats[rot.R(L)];

@@ -15,6 +15,7 @@ import type { ConnState, TableConnection } from './connection';
 import { inviteLink } from './config';
 import { navigate } from './nav';
 import { MediaBar, SeatMedia } from './Media';
+import { AvatarCircle, useAvatar } from '../avatar';
 import { colorFor, useVideo } from './useOnline';
 import type { VideoMesh } from './video';
 import { TURN_TIMERS, TurnTimerSelect, type TimerKey, timerKeyOf } from '../turnTimer';
@@ -368,6 +369,13 @@ function TeamChip({ t, name, editable, onSave }: { t: number; name: string; edit
   );
 }
 
+/** Lobby seat face: a human's uploaded picture (Demetrius 2026-10-19), 🤖 for bots, else the initial. */
+function SeatFace({ info, name }: { info: SeatInfo; name: string }) {
+  const pic = useAvatar(info.kind === 'human' ? info.uid : undefined);
+  if (info.kind === 'bot') return <span className="av-initial">🤖</span>;
+  return <AvatarCircle pic={pic} name={name} className="av-initial" />;
+}
+
 function SeatCard({ seat, info, spot, team, mine, isHost, playing, hostId, onSit, onBot, onRemoveBot, media }: {
   seat: number; info: SeatInfo; spot: string; team: string | null; mine: boolean; isHost: boolean; playing: boolean; hostId: string; you: string | null;
   onSit: () => void; onBot: () => void; onRemoveBot: () => void; media: React.ReactNode;
@@ -386,13 +394,12 @@ function SeatCard({ seat, info, spot, team, mine, isHost, playing, hostId, onSit
     );
   }
   const name = info.kind === 'bot' ? info.name : info.name;
-  const initial = info.kind === 'bot' ? '🤖' : name.trim().charAt(0).toUpperCase() || '?';
   const ready = info.kind === 'bot' || info.connected;
   return (
     <div className={cls} data-testid={`lobby-seat-${seat}`}>
       {top}
       <div className={`seat-ring occupied ${mine ? 'mine' : ''}`} style={info.kind === 'human' && !mine ? { ['--av' as string]: colorFor(info.playerId) } : undefined}>
-        <span className="av-initial">{initial}</span>
+        <SeatFace info={info} name={name} />
         {info.kind === 'human' && media}
         {ready && <span className="ready-check" title="Ready" aria-label="ready">✓</span>}
       </div>

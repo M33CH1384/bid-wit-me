@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { AvatarCircle, compressAvatarFile, forgetAvatar, validateAvatarDataUrl } from '../avatar';
 
 /** Rep profile page: Rank / Challenges / Stats / Achievements / Unlocks tabs. */
 
@@ -17,7 +18,7 @@ interface Challenge { id: string; title: string; metric: string; target: number;
 interface Achievement { id: string; title: string; hint: string; xp: number; coins: number; unlockedAt: number | null }
 interface Unlock { itemId: string; source: string; unlockedAt: number; slot: string | null; equipped: boolean }
 interface Profile {
-  user: { id: string; name: string };
+  user: { id: string; name: string; avatar: string | null; avatarUpdatedAt: number | null };
   level: { level: number; xp: number; title: string; xpForNext: number; xpIntoLevel: number };
   season: { id: string; name: string; endsAt: number };
   rank: { team: SeasonRank; cutthroat: SeasonRank };
@@ -103,12 +104,44 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [claiming, setClaiming] = useState<string | null>(null);
+  // Profile picture (Demetrius 2026-10-19): upload stands in for the camera at the table.
+  const [uploading, setUploading] = useState(false);
+  const [picBusy, setPicBusy] = useState(false);
+  const [picErr, setPicErr] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
 
   const load = () => {
     setError(null);
     api<Profile>('/api/profile/me').then(setProfile).catch((e: Error) => setError(e.message));
   };
   useEffect(load, []);
+
+  const onPickFile = async (file: File | undefined) => {
+    if (!file) return;
+    setPicErr(null); setUploading(true);
+    try {
+      const dataUrl = await compressAvatarFile(file);
+      const v = validateAvatarDataUrl(dataUrl);
+      if (!v.ok) throw new Error(v.error);
+      setPicBusy(true);
+      await api<{ ok: boolean }>('/api/profile/me/avatar', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ dataUrl }),
+      });
+      load();
+    } catch (e) { setPicErr((e as Error).message); } finally { setUploading(false); setPicBusy(false); }
+  };
+
+  const onRemovePic = async () => {
+    if (!confirm('Remove your profile picture?')) return;
+    setPicErr(null); setPicBusy(true);
+    try {
+      await api<{ ok: boolean }>('/api/profile/me/avatar', { method: 'DELETE' });
+      if (profile) forgetAvatar(profile.user.id);
+      load();
+    } catch (e) { setPicErr((e as Error).message); } finally { setPicBusy(false); }
+  };
 
   const claim = async (id: string) => {
     setClaiming(id);
@@ -139,7 +172,7 @@ export default function ProfilePage() {
       </header>
 
       <div className="prof-header glass">
-        <div className="prof-avatar">{profile.user.name.charAt(0).toUpperCase()}</div>
+        <AvatarCircle pic={profile.user.avatar} name={profile.user.name} className="prof-avatar" />
         <div className="prof-id">
           <h2>{profile.user.name}</h2>
           <div className="prof-level"><b>Level {profile.level.level}</b><span>{profile.level.title}</span></div>
@@ -149,6 +182,20 @@ export default function ProfilePage() {
           <b>{profile.coins.balance.toLocaleString()}</b>
           <span>Coins</span>
         </div>
+      </div>
+
+      {/* Profile picture: shows at the table when your camera is off (Demetrius 2026-10-19). */}
+      <div className="prof-pic-row">
+        <span className="prof-pic-note">Profile picture — other players see it when your camera is off.</span>
+        <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/*" hidden
+          data-testid="avatar-file" onChange={(e) => { void onPickFile(e.target.files?.[0]); e.target.value = ''; }} />
+        <button type="button" className="prof-pic-btn" data-testid="avatar-upload" disabled={uploading || picBusy} onClick={() => fileRef.current?.click()}>
+          {uploading ? 'Working…' : profile.user.avatar ? 'Change picture' : 'Add a picture'}
+        </button>
+        {profile.user.avatar && (
+          <button type="button" className="prof-pic-btn ghost" data-testid="avatar-remove" disabled={picBusy} onClick={() => void onRemovePic()}>Remove</button>
+        )}
+        {picErr && <span className="prof-pic-err" role="alert">{picErr}</span>}
       </div>
 
       <nav className="prof-tabs" role="tablist">

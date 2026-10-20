@@ -12,6 +12,8 @@ import { loadName, saveName } from '../online/identity';
 export type ProviderId = 'google' | 'discord' | 'x' | 'facebook' | 'mock';
 export interface AccountUser {
   id: string; username: string | null; needsUsername: boolean; suggestion: string | null; createdAt: number; progressImported: boolean;
+  /** profile picture data URL (Demetrius 2026-10-19), null when none */
+  avatar: string | null;
   identities: { provider: string; name: string | null; linkedAt: number }[];
   passkeys: { id: string; synced: boolean; createdAt: number; lastUsedAt: number | null }[];
 }

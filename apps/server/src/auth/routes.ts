@@ -113,10 +113,14 @@ async function userView(env: AuthEnv, u: UserRow) {
     db.prepare('SELECT provider, display_name, created_at FROM identities WHERE user_id = ? ORDER BY created_at').bind(u.id).all<{ provider: string; display_name: string | null; created_at: number }>(),
     db.prepare('SELECT id, device_type, backed_up, created_at, last_used_at FROM passkeys WHERE user_id = ? ORDER BY created_at').bind(u.id).all<{ id: string; device_type: string | null; backed_up: number; created_at: number; last_used_at: number | null }>(),
   ]);
+  // profile picture lives on the user row; fetched here (not in currentUser) so session
+  // resolution on every request stays light.
+  const pic = await db.prepare('SELECT avatar FROM users WHERE id = ?').bind(u.id).first<{ avatar: string | null }>();
   const suggestion = u.username ? null : suggestUsername(ids.results.find((i) => i.display_name)?.display_name);
   return {
     id: u.id,
     username: u.username,
+    avatar: pic?.avatar ?? null,
     needsUsername: !u.username,
     suggestion,
     createdAt: u.created_at,
