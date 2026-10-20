@@ -3,7 +3,7 @@
  * friends, profiles, settings), invite toasts and notices. Mounted once at the root so invites reach you anywhere.
  */
 import { Fragment, type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { type DmLine, type InviteMsg, type OpenTable, type PresenceEntry, type PresenceStatus, REACT_PALETTE_EXTRA, SOCIAL_LIMITS, statusLabel } from '@spades/protocol';
+import { type DmLine, type InviteMsg, type OpenTable, type PresenceEntry, type PresenceStatus, presenceLine, REACT_PALETTE_EXTRA, SOCIAL_LIMITS, statusLabel } from '@spades/protocol';
 import { useAccount } from '../account/api';
 import { accountUidOf, AvatarCircle, socialUidOf, useAvatar } from '../avatar';
 import { BADGES } from '../badges';
@@ -865,7 +865,7 @@ function Profile({ name, id }: { name: string; id?: string }) {
               <p className="soc-muted">Member since {new Date(p.memberSince).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</p>
               <TaglineText text={p.tagline ?? cred?.user.tagline} className="soc-tagline" />
               <p className={`soc-online-status ${s.users[pid ?? ''] ? 'on' : 'off'}`} data-testid="profile-online">
-                <i className="soc-dot" aria-hidden />{s.users[pid ?? ''] ? `Online — ${statusLabel(s.users[pid ?? '']!.status, modeName)}` : 'Offline'}
+                <i className="soc-dot" aria-hidden />{s.users[pid ?? ''] ? presenceLine(s.users[pid ?? '']!.status, modeName) : 'Offline'}
               </p>
             </div>
             {cred && (

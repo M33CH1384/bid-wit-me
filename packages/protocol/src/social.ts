@@ -273,3 +273,20 @@ export function statusLabel(s: PresenceStatus, modeName: (m: string) => string =
     }
   }
 }
+
+/**
+ * Join a presence base with its activity detail ("Online" + "At a table · Joker").
+ * When the detail just repeats the base — statusLabel returns "Online" for a plain
+ * online status — the base renders once, never "Online — Online".
+ */
+export function joinPresence(base: string, detail: string): string {
+  const b = base.trim();
+  const d = detail.trim();
+  if (!d || d.toLowerCase() === b.toLowerCase()) return b;
+  return `${b} — ${d}`;
+}
+
+/** Full presence line for profile headers: "Online", "Online — In lobby", … */
+export function presenceLine(s: PresenceStatus, modeName: (m: string) => string = (m) => m): string {
+  return joinPresence('Online', statusLabel(s, modeName));
+}

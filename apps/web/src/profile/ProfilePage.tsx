@@ -206,6 +206,10 @@ export default function ProfilePage() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ dataUrl }),
       });
+      // Drop this device's cached "no picture" for me (same as onRemovePic):
+      // list faces resolve through the avatar cache, and a null cached before
+      // this upload would otherwise keep the initial on my own rows.
+      if (profile) forgetAvatar(profile.user.id);
       load();
     } catch (e) { setPicErr((e as Error).message); } finally { setUploading(false); setPicBusy(false); }
   };

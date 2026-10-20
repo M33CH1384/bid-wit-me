@@ -14,7 +14,7 @@
  * never shows a thread and nothing navigates away from the table.
  */
 import { type FormEvent, useEffect, useState } from 'react';
-import { SOCIAL_LIMITS, statusLabel } from '@spades/protocol';
+import { presenceLine, SOCIAL_LIMITS } from '@spades/protocol';
 import { AvatarCircle, useAvatar } from '../avatar';
 import { closeTableProfile, useTableProfileTarget, type ProfileTarget } from '../profileTap';
 import { TaglineText } from '../tagline';
@@ -110,7 +110,7 @@ function ProfileCard({ target }: { target: ProfileTarget }) {
           {p && p !== 'missing' && <p className="soc-muted">Member since {new Date(p.memberSince).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</p>}
           <TaglineText text={(p && p !== 'missing' ? p.tagline : undefined) ?? cred?.user.tagline} className="soc-tagline" />
           <p className={`soc-online-status ${onlineEntry ? 'on' : 'off'}`}>
-            <i className="soc-dot" aria-hidden />{onlineEntry ? `Online — ${statusLabel(onlineEntry.status, modeName)}` : 'Offline'}
+            <i className="soc-dot" aria-hidden />{onlineEntry ? presenceLine(onlineEntry.status, modeName) : 'Offline'}
           </p>
         </div>
         {cred && p && p !== 'missing' && (

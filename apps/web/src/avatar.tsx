@@ -110,10 +110,26 @@ function lsSet(uid: string, e: CacheEntry): void {
   try { localStorage.setItem(LS_PREFIX + uid, JSON.stringify(e)); } catch { /* quota: memory cache still serves this session */ }
 }
 
-async function loadAvatar(uid: string, knownUpdatedAt?: number): Promise<CacheEntry> {
+/**
+ * How long a "this player has no picture" answer stays trusted. Most callers
+ * (every list face) pass no avatarUpdatedAt, so a cached null would otherwise be
+ * final forever — and a null cached before the player ever uploaded a photo
+ * then stuck even after the upload: uploading invalidated nothing on the
+ * uploader's own device, so the owner's self row in the Players list kept his
+ * initial while his profile (fed the picture directly) showed the photo
+ * (2026-10-20). A real picture entry is versioned by avatarUpdatedAt and does
+ * not expire this way.
+ */
+export const AVATAR_NULL_TTL_MS = 60_000;
+
+export async function loadAvatar(uid: string, knownUpdatedAt?: number): Promise<CacheEntry> {
   const cached = mem.get(uid) ?? lsGet(uid);
-  if (cached && (knownUpdatedAt === undefined || cached.at >= knownUpdatedAt)) return cached;
-  if (cached && inflight.has(uid)) return inflight.get(uid)!;
+  if (cached) {
+    const versionOk = knownUpdatedAt === undefined || cached.at >= knownUpdatedAt;
+    const nullFresh = cached.src !== null || Date.now() - cached.at < AVATAR_NULL_TTL_MS;
+    if (versionOk && nullFresh) return cached;
+    if (inflight.has(uid)) return inflight.get(uid)!;
+  }
   const p = (async (): Promise<CacheEntry> => {
     try {
       const r = await fetch(`/api/profile/${encodeURIComponent(uid)}`, { credentials: 'same-origin' });
