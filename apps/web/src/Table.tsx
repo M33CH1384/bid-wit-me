@@ -31,6 +31,7 @@ import { landingMode } from './three/landing';
 import { SocialButton } from './social/Social';
 import { recordOfflineGame } from './offlineStats';
 import { setTableIntensity, showLine, speakBot, talkPrefs as talkStore, useTalkPrefs } from './talkPrefs';
+import { chatStickToBottom } from './chatScroll';
 import { setActiveDeck } from './decks';
 import { pickTeamName } from '@spades/protocol';
 import { Intermission, calloutsFor } from './Intermission';
@@ -350,7 +351,16 @@ function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only',
   const listRef = useRef<HTMLDivElement>(null);
   const [text, setText] = useState('');
   const [tray, setTray] = useState(false);
-  useEffect(() => { listRef.current?.scrollTo({ top: 1e6, behavior: 'smooth' }); }, [msgs, open]);
+  // Auto-scroll: stick to the bottom while the user is at/near it (opening always re-sticks);
+  // scrolling up to read history releases the stick. Direct scrollTop assignment — the old
+  // scrollTo({behavior:'smooth'}) got perpetually restarted by streaming lines on iOS
+  // Safari, so an open chat sat frozen on old messages until it was closed and reopened.
+  const stickRef = useRef(true);
+  useEffect(() => { if (open) stickRef.current = true; }, [open ]);
+  useEffect(() => {
+    const el = listRef.current;
+    if (el && open && stickRef.current) el.scrollTop = el.scrollHeight;
+  }, [msgs, open]);
   const last = msgs.filter((m) => !m.system).slice(-1)[0];
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -385,7 +395,7 @@ function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only',
       {!overRecap && !open && last && <div key={last.id} className="chat-ticker"><b style={{ color: last.color }}>{last.user}</b> {last.text}</div>}
       <aside className={`chat glass slant ${open ? 'open' : ''}${overRecap ? ' recap-chat' : ''}`} aria-label="Table chat">
         <header><span className="live-dot" /> {overRecap ? 'TABLE TALK' : 'LIVE CHAT'} <small>{scope}</small>{overRecap && <button type="button" className="sheet-x" aria-label="Close chat" onClick={onToggle}>✕</button>}</header>
-        <div className="chat-list" ref={listRef}>
+        <div className="chat-list" ref={listRef} onScroll={(e) => { stickRef.current = chatStickToBottom(e.currentTarget); }}>
           {msgs.map((m) => (
             <div key={m.id} className={`chat-line ${m.system ? 'system' : ''}`}>
               {m.system ? <span>{m.text}</span> : <><b style={{ color: m.color }}>{m.user}</b>{m.badge && <em className="chat-tag" data-testid="chat-tag">{m.badge}</em>}<span>{m.text}</span></>}

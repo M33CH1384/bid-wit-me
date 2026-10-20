@@ -16,6 +16,7 @@ import { type PlayerTableAction, playerTableAction } from './tableActions';
 import { type MyTable, type SocialTab, type Toast, badgeCount, globalUnread, social, useSocial } from './store';
 import { Leaderboards, Tournaments } from './Compete';
 import { offlineStats } from '../offlineStats';
+import { chatStickToBottom } from '../chatScroll';
 import './social.css';
 
 export const MODE_NAME: Record<string, string> = { joker: 'Joker Spades', aceDown: 'Ace Down', cutthroat: 'Cutthroat' };
@@ -360,7 +361,15 @@ function timeAgo(at: number, now = Date.now()): string {
 
 function useStickToBottom(dep: unknown) {
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => { const el = ref.current; if (el) el.scrollTop = el.scrollHeight; }, [dep]);
+  const stick = useRef(true);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const onScroll = () => { stick.current = chatStickToBottom(el); };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
+  useEffect(() => { const el = ref.current; if (el && stick.current) el.scrollTop = el.scrollHeight; }, [dep]);
   return ref;
 }
 
