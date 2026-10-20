@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Xform } from '../src/three/layout';
-import { handNeedsDeal, handOnFan, handSlotKey, openingFlight } from '../src/three/dealFlight';
+import { dealHoldReleased, handNeedsDeal, handOnFan, handSlotKey, openingFlight } from '../src/three/dealFlight';
 import { dealTimeline, dealtSlotCount, seatDealDelay } from '../src/three/dealTimeline';
 
 const deck: Xform = { p: [1, 2, 3], q: [0, 0, 0, 1], s: 1 };
@@ -67,5 +67,26 @@ describe('cards dealt so far', () => {
     expect(left).toBeCloseTo(tl.shuffle);
     expect(mine).toBeGreaterThan(left);
     expect(dealtSlotCount(left, tl, 4, 0, 0, 13)).toBe(0);
+  });
+});
+
+describe('deal hold release', () => {
+  it('releases a still-held card once the deal is over and its tween never started', () => {
+    // Demetrius 2026-10-19: 4 cards visible at game start, refresh needed for the full hand.
+    // The card mounted during the deal (held), the deal window expired (liveHold gone),
+    // but the frame-clock tween never got it off the deck.
+    expect(dealHoldReleased({ held: true, liveHold: false, started: false })).toBe(true);
+  });
+
+  it('keeps the hold while the deal is still running', () => {
+    expect(dealHoldReleased({ held: true, liveHold: true, started: false })).toBe(false);
+  });
+
+  it('never re-holds a card whose tween already started', () => {
+    expect(dealHoldReleased({ held: true, liveHold: false, started: true })).toBe(false);
+  });
+
+  it('is a no-op for a card that was never held', () => {
+    expect(dealHoldReleased({ held: false, liveHold: false, started: false })).toBe(false);
   });
 });

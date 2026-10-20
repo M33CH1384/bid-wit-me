@@ -68,3 +68,17 @@ export function dealHeld(o: { intro: boolean; dealReady: boolean }): boolean {
 export function dealClockArmed(introHand: number | null, dealReady: boolean): boolean {
   return introHand !== null && dealReady;
 }
+
+/**
+ * A deal-held card whose tween never started must not stay invisible once the deal is over.
+ * The hold is captured at mount (Card3D's `hideUntilStart` ref), but the deal clock that
+ * clears `holdUntilMove` is wall-clock while the tween's wait advances in frame time —
+ * capped at 50ms a frame. If the table loads late into the deal window (heavy first-load
+ * on a phone: WebGL, shaders, venue), most of the hand can still be waiting when the
+ * deal window expires; on a starved canvas those waits then crawl and the fan sits at
+ * a few visible cards for the rest of the hand. The live prop says the deck beat is
+ * done: deal the card in now.
+ */
+export function dealHoldReleased(o: { held: boolean; liveHold: boolean; started: boolean }): boolean {
+  return o.held && !o.liveHold && !o.started;
+}

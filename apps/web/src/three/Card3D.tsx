@@ -10,7 +10,7 @@ import { blastPose } from './blastSweep';
 import { releaseTornadoCard, tornadoCardLeft } from './tornadoSweep';
 import { fireCue, fx } from '../fx';
 import { restingFlightWait } from '../trickTiming';
-import { openingFlight } from './dealFlight';
+import { dealHoldReleased, openingFlight } from './dealFlight';
 import { retainFrontTexture } from './cardFace';
 import { restingFacing, trickFacingArrived } from './trickFacing';
 import { gatherPose } from './gather';
@@ -334,6 +334,14 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   useFrame((_, rawDt) => {
     const g = ref.current;
     if (!g) return;
+    // The deal is over but this card never left the deck: the mount-time hold is a ref and
+    // the tween wait runs in frame time, which can crawl on a starved canvas long after the
+    // wall-clock deal expired. Release it, or the fan can sit at a few cards all hand.
+    if (dealHoldReleased({ held: hideUntilStart.current, liveHold: holdUntilMove, started: tw.current.started })) {
+      hideUntilStart.current = false;
+      tw.current.wait = 0;
+      g.visible = true;
+    }
     if (hideUntilStart.current && !tw.current.started) g.visible = false;
     // A resume hitch must not fast-forward the fan. One frame advances at most 50ms, same as a slow paint.
     const dt = Math.min(Math.max(rawDt, 0), 0.05);
