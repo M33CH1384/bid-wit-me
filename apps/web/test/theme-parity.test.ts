@@ -136,6 +136,9 @@ describe('settings sheet parity (MoreOptions)', () => {
     expect(classicInv.some((x) => x.includes('|theme-classic|'))).toBe(true);
     expect(classicInv.some((x) => x.includes('|theme-neon|'))).toBe(true);
     expect(classicInv.some((x) => x.includes('|bot-skill|'))).toBe(true);
+    // the settings overhaul's placements are part of the shared inventory:
+    // chat sounds lives in the sheet (Sound & music group) under both themes
+    expect(classicInv.some((x) => x.includes('|chat-sounds-switch|'))).toBe(true);
     const neon = await renderThemed('neon', node());
     expect(inventory(neon)).toEqual(classicInv);
   });

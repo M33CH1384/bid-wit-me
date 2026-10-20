@@ -2,7 +2,7 @@ import { type ReactNode, useState } from 'react';
 import { useEscapeClose } from './useEscapeClose';
 import Credits from './Credits';
 import Feedback, { AboutRow } from './Feedback';
-import { BotTrashTalkRow, NukeIntensityRow, ReduceEffectsRow, SoundFields } from './SoundControls';
+import { BotTrashTalkRow, ChatSoundsRow, NukeIntensityRow, ReduceEffectsRow, SoundFields } from './SoundControls';
 import { TeamNameField, myTeamName, useMyTeamName } from './TeamName';
 import ThemeToggle from './ThemeToggle';
 import { CLASSIC_JOKER, makeRules } from '@spades/rules';
@@ -66,6 +66,7 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
           <button type="button" className="sheet-close" aria-label="Close" onClick={onClose}>CLOSE</button>
         </header>
         <div className="scroll sheet-body">
+          <section className="set-group" aria-label="Play">
           <h3 className="sheet-h">Play</h3>
           <Row label="Tips while you play" hint="Coach marks + bid coach, until you turn them off">
             <Toggle label="Tips" value={tips.on} onChange={(on) => { const t = { on, asked: true }; saveTips(t); onTips(t); }} />
@@ -81,12 +82,15 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
           <Row label="Trash talk" hint={TALK_HINT[s.talkIntensity ?? 'cookout']}>
             <Seg label="Trash talk intensity" value={s.talkIntensity ?? 'cookout'} options={[['family', 'Family'], ['cookout', 'Cookout'], ['nomercy', 'No Mercy']]} onChange={(v) => set('talkIntensity', v)} />
           </Row>
+          </section>
+          <section className="set-group" aria-label="Sound & music">
           <h3 className="sheet-h">Sound &amp; music</h3>
           <SoundFields />
-          <ReduceEffectsRow />
-          <NukeIntensityRow />
+          <ChatSoundsRow />
           <BotTrashTalkRow />
-          <h3 className="sheet-h">Look</h3>
+          </section>
+          <section className="set-group" aria-label="Look & effects">
+          <h3 className="sheet-h">Look &amp; effects</h3>
           <Row label="Appearance" hint="Neon Royale is the midnight-navy theme">
             <ThemeToggle />
           </Row>
@@ -99,6 +103,10 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
           <Row label="Turn up (slam mode)" hint="On: Standing plays slam hard. Off (default): Standing plays are gentle. Sitting's V-gesture slam always works.">
             <Toggle label="Turn up (slam mode)" value={s.turnUp === true} onChange={(v) => set('turnUp', v)} />
           </Row>
+          <ReduceEffectsRow />
+          <NukeIntensityRow />
+          </section>
+          <section className="set-group" aria-label="You">
           <h3 className="sheet-h">You</h3>
           <TeamNameRow />
           <BadgesRow />
@@ -174,9 +182,12 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
               <Row label="10 for 200"><Toggle value={s.tenForTwoHundred} onChange={(v) => set('tenForTwoHundred', v)} /></Row>
             </div>
           )}
+          </section>
+          <section className="set-group" aria-label="Beta feedback & support">
           <h3 className="sheet-h">Beta feedback &amp; support</h3>
           <AboutRow onFeedback={() => setFeedback(true)} />
           <button type="button" className="link sheet-h gold-tab-row" onClick={() => setCredits(true)}>Credits &amp; licenses</button>
+          </section>
         </div>
       </div>
     </div>

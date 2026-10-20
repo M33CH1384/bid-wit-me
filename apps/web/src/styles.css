@@ -2755,3 +2755,67 @@ html[data-theme="neon"] .wiz-home::after {
   html[data-theme="neon"] .wiz-home::before { width: 148px; }
   html[data-theme="neon"] .wiz-home::after { width: 92px; top: 74px; }
 }
+
+/* ================= Settings overhaul (2026-10-20) =================
+   Owner: the Settings sheet was "way too jumbled", and its Audio quality
+   buttons "aren't readable". Presentation only — no setting, control,
+   testid, default, or persistence changes, and the control inventory is
+   identical in Classic and Neon (the theme paints; it never restructures).
+   The base rules above stay byte-stable (several are string-pinned);
+   everything in this section is an additive override.
+
+   1. GROUPED CARDS. The Settings sheet's sections (Play / Sound & music /
+      Look & effects / You / Beta feedback & support) render as .set-group
+      cards instead of one long ruled list, and the sound sheet's
+      .sheet-sec sections take the same card treatment, so both settings
+      surfaces group the same way. Inside a card, the last row drops its
+      hairline and every row gets the same minimum height.
+   2. ONE SWITCH, ONE SEGMENTED CONTROL. .toggle (MoreOptions) and
+      .switch (SoundControls) were the same switch with drifted metrics
+      (28 vs 26px tall, 22 vs 20px knobs, 21 vs 20px travels, plain vs
+      gold knob) — unified below to one treatment: 46x28 track, 22px knob,
+      18px travel, inset edge ring, white knob off / gold knob on purple.
+      Every segmented control uses the shared .seg — Audio quality was
+      the last holdout, and the reason it was unreadable: its .sf-seg
+      class had NO rule in any stylesheet, so the buttons fell back to
+      the platform's default light pill appearance (pale pills, the
+      selected state invisible) and the row's flex-wrap spilled them
+      past the sheet's edge. It renders with .seg markup now.
+   3. SHEET CHROME. Under Neon the glass recipes left the Settings sheet
+      translucent over the live home/ink, which bled through at the
+      sheet's edges; the sheet takes the design's solid navy face (the
+      same gradient as the no-backdrop-filter fallback) under Neon too.
+      (Classic already forced a 0.98-opaque face for this one sheet.) */
+.set-group { margin-top: 14px; padding: 4px 14px 12px; border-radius: 14px; background: rgba(255,255,255,.03); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.14); }
+.sheet-body > .set-group:first-child { margin-top: 2px; }
+.set-group > .sheet-h { margin: 8px 0 2px; }
+.set-group .row:last-child { border-bottom: 0; }
+.set-group .sound-fields { border-bottom: 0; padding: 6px 0 2px; }
+.set-group .sf-row { min-height: 44px; }
+.sheet-sec { border-top: 0; border-radius: 14px; background: rgba(255,255,255,.03); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.14); padding: 12px 14px; }
+/* one switch treatment (overrides the drifted base metrics) */
+.toggle { background: rgba(255,255,255,.16); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.4); }
+.toggle.on { box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.4), 0 0 10px rgba(var(--purple-rgb),.7); }
+.toggle.on span { background: var(--gold); }
+.switch { height: 28px; border-radius: 14px; background: rgba(255,255,255,.16); }
+.switch i { width: 22px; height: 22px; background: #fff; }
+.switch.on i { transform: translateX(18px); }
+/* Neon: the group cards join the glass family (a quiet rim — these are
+   sub-cards inside a sheet, not hero surfaces), and the Settings sheet
+   goes solid so the home can't bleed through it. */
+html[data-theme="neon"] .set-group,
+html[data-theme="neon"] .sheet-sec {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(168deg, rgba(255,255,255,.07), rgba(255,255,255,0) 55%) padding-box,
+    linear-gradient(180deg, rgba(var(--glass-strong-rgb), .5), rgba(var(--glass-rgb), .42)) padding-box,
+    linear-gradient(135deg, rgba(196,160,255,.4) 0%, rgba(var(--purple-rgb), .28) 35%, rgba(var(--blue-rgb), .25) 70%, rgba(var(--cyan-rgb), .35) 100%) border-box;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12);
+}
+html[data-theme="neon"] [data-testid="more-options"].sheet {
+  background:
+    linear-gradient(168deg, rgba(255,255,255,.10) 0%, rgba(255,255,255,.02) 40%, rgba(255,255,255,0) 60%),
+    linear-gradient(180deg, #171c42, #0a0d24);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
