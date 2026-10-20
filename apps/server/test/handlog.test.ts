@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { chooseBotAction } from '@spades/bots';
-import type { Card } from '@spades/rules';
+import { makeRules, type Card } from '@spades/rules';
 import type { GameAction } from '@spades/protocol';
+import { newRoomData } from '../src/room';
 import { FakeEnv } from './harness';
 
 const FAST = { botMs: 10, trickPauseMs: 0, dealMs: 0, disconnectGraceMs: 5000, handOverMs: 3000 };
 
-function fourHumans(env = new FakeEnv(undefined, FAST)) {
+// The room deals from a crypto-random seed, so with the default house rules a side can be
+// "shot out" on hand 1 (or hit the -200 floor) and the game ends before a next hand exists —
+// these tests need hand 2 to be reachable, so pin rules that always deal one.
+function fourHumans(env = new FakeEnv(newRoomData('ABCDE', 1_000_000, makeRules('joker', { shotOut: false, losingFloor: null })), FAST)) {
   const ps = ['a', 'b', 'c', 'd'].map((cid, i) => {
     const p = env.join(cid, ['Dee', 'Ray', 'Kim', 'Jo'][i]!);
     env.send(cid, { t: 'sit', seat: i });
