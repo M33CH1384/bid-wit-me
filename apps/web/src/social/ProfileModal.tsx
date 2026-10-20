@@ -8,11 +8,13 @@
  * for the public record + /api/profile/:id for Rep — fetched by the RAW account id, see
  * profileTap.ts / the ea064aa normalization fix), in a compact card: big picture, name,
  * tagline, Rep level/title, division/Elo chips, record, social links, achievements and
- * the standard actions. Chat leaves the modal for the Social panel's DM thread (an
- * overlay swap — still at the table, no route navigation).
+ * the standard actions. Messaging is a QUICK-SEND box on the card itself (owner's
+ * correction, 2026-10-20): tap Message, type, Send — one DM through the normal
+ * social.dm path (it lands in the real DM thread for later, like any DM). The modal
+ * never shows a thread and nothing navigates away from the table.
  */
-import { useEffect, useState } from 'react';
-import { statusLabel } from '@spades/protocol';
+import { type FormEvent, useEffect, useState } from 'react';
+import { SOCIAL_LIMITS, statusLabel } from '@spades/protocol';
 import { AvatarCircle, useAvatar } from '../avatar';
 import { closeTableProfile, useTableProfileTarget, type ProfileTarget } from '../profileTap';
 import { TaglineText } from '../tagline';
@@ -59,6 +61,11 @@ function ProfileCard({ target }: { target: ProfileTarget }) {
   const s = useSocial();
   const [p, setP] = useState<ProfileData | null | 'missing'>(null);
   const [cred, setCred] = useState<CredPublic | null>(null);
+  /** quick-send DM box: open state, draft, and the brief "Sent" confirmation */
+  const [msgOpen, setMsgOpen] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [sent, setSent] = useState(false);
+  useEffect(() => { if (!sent) return; const t = window.setTimeout(() => setSent(false), 2200); return () => window.clearTimeout(t); }, [sent]);
   useEffect(() => {
     let alive = true;
     fetch(`/api/social/profile/${encodeURIComponent(target.name)}`, { credentials: 'same-origin' })
@@ -77,6 +84,21 @@ function ProfileCard({ target }: { target: ProfileTarget }) {
   const blocked = (s.friends?.blocked ?? []).some((f) => f.id === pid);
   const onlineEntry = s.users[pid];
   const unlocked = (cred?.achievements ?? []).filter((a) => a.unlockedAt);
+  /** quick-send one DM through the normal store path — same thread, same delivery,
+   *  same recipient toast/unread behavior as a DM sent from the Social panel. A dead
+   *  socket makes social.dm raise its "Not connected" toast instead: keep the draft
+   *  and the box open then, and only claim "Sent" when the hub is actually open.
+   *  Server-side rejections (e.g. they blocked you) come back as store error toasts. */
+  const sendDm = (e: FormEvent) => {
+    e.preventDefault();
+    const t = draft.trim();
+    if (!t) return;
+    if (s.status !== 'open') { social.dm(pid, t); return; }
+    social.dm(pid, t);
+    setDraft('');
+    setMsgOpen(false);
+    setSent(true);
+  };
   return (
     <div className="profile-modal-body">
       <div className="soc-prof-head">
@@ -119,7 +141,7 @@ function ProfileCard({ target }: { target: ProfileTarget }) {
           )}
           {!me && (
             <div className="soc-prof-acts">
-              {!blocked && <button type="button" data-testid="profile-modal-chat" onClick={() => { closeTableProfile(); social.open('messages', { dmWith: pid }); }}>💬 Chat</button>}
+              {!blocked && <button type="button" aria-expanded={msgOpen} data-testid="profile-modal-message" onClick={() => setMsgOpen(!msgOpen)}>💬 Message</button>}
               {!blocked && onlineEntry && s.myTable && <button type="button" data-testid="profile-modal-invite" onClick={() => { social.invite(pid, s.myTable!); closeTableProfile(); }}>➕ Invite</button>}
               {!friend && !blocked && <button type="button" disabled={pending} data-testid="profile-modal-add" onClick={() => social.friend('request', pid)}>{pending ? 'Requested' : '👋 Add friend'}</button>}
               {blocked
@@ -128,6 +150,16 @@ function ProfileCard({ target }: { target: ProfileTarget }) {
               <button type="button" className="ghost" data-testid="profile-modal-report" onClick={() => social.report('user', { user: pid })}>Report</button>
             </div>
           )}
+          {!me && blocked && <p className="soc-note">You blocked {target.name}. Unblock them to message.</p>}
+          {!me && !blocked && msgOpen && (
+            <form className="soc-compose profile-modal-compose" onSubmit={sendDm}>
+              <input ref={(el) => { if (el && document.activeElement !== el) el.focus({ preventScroll: true }); }}
+                value={draft} onChange={(e) => setDraft(e.target.value)} maxLength={SOCIAL_LIMITS.chatMax}
+                placeholder={`Message ${target.name}…`} aria-label={`Message ${target.name}`} data-testid="profile-modal-dm-input" />
+              <button type="submit" className="primary" disabled={!draft.trim()} data-testid="profile-modal-dm-send">Send</button>
+            </form>
+          )}
+          {sent && <p className="profile-modal-sent" role="status" data-testid="profile-modal-dm-sent">✓ Sent to {target.name}</p>}
           {me && <p className="soc-muted">This is you.</p>}
         </>
       )}
