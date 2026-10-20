@@ -349,6 +349,80 @@ describe('chat reactions', () => {
   });
 });
 
+describe('global chat replies', () => {
+  it('a reply carries a post-time snapshot and is broadcast to everyone, guests included', async () => {
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    await h.hub.open('g', { name: 'Kev' });
+    await h.send('a', { t: 'chat', text: 'bid 4 and pray' });
+    const orig = h.last('b', 'chat')!.line;
+    h.advance(11_000);
+    await h.send('b', { t: 'chat', text: 'pray harder', replyTo: orig.id });
+    const want = { id: orig.id, from: 'Alice', fromId: 'u:ua', text: 'bid 4 and pray' };
+    expect(h.last('a', 'chat')!.line).toMatchObject({ text: 'pray harder', reply: want });
+    expect(h.last('g', 'chat')!.line.reply).toEqual(want);
+    expect(h.last('b', 'chat')!.line.reply).toEqual(want);
+    // the snapshot is stored on the line, so a late joiner's hello carries it too
+    await h.hub.open('late', { name: 'Late' });
+    expect(h.last('late', 'hello')!.global.find((l) => l.text === 'pray harder')?.reply).toEqual(want);
+  });
+
+  it('the snapshot truncates the quoted text at 80 characters', async () => {
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    await h.send('a', { t: 'chat', text: 'y'.repeat(200) });
+    const orig = h.last('b', 'chat')!.line;
+    h.advance(11_000);
+    await h.send('b', { t: 'chat', text: 'tl;dr', replyTo: orig.id });
+    const reply = h.last('a', 'chat')!.line.reply!;
+    expect(reply.text).toHaveLength(80);
+    expect(reply.text).toBe('y'.repeat(80));
+  });
+
+  it('an unresolved replyTo posts the message clean, without a reference', async () => {
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    await h.send('a', { t: 'chat', text: 'still lands', replyTo: 99999 });
+    const line = h.last('b', 'chat')!.line;
+    expect(line.text).toBe('still lands');
+    expect(line.reply).toBeUndefined();
+  });
+
+  it('guests cannot reply (same rule as posting)', async () => {
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    await h.hub.open('g', { name: 'Kev' });
+    await h.send('a', { t: 'chat', text: 'hello room' });
+    const orig = h.last('g', 'chat')!.line;
+    await h.send('g', { t: 'chat', text: 'me too', replyTo: orig.id });
+    expect(h.last('g', 'error')!.code).toBe('SIGN_IN');
+    expect(h.all('a', 'chat').filter((m) => m.line.text === 'me too')).toEqual([]);
+  });
+
+  it("a blocked author's quote is stripped, live and in history; everyone else keeps it", async () => {
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    await h.hub.open('c', { uid: 'uc', name: 'Cee' });
+    await h.hub.open('g', { name: 'Kev' });
+    await h.send('a', { t: 'chat', text: 'hot take' });
+    const orig = h.last('c', 'chat')!.line;
+    await h.send('b', { t: 'friend', op: 'block', to: 'u:ua' });
+    h.advance(11_000);
+    await h.send('c', { t: 'chat', text: 'quoting you', replyTo: orig.id });
+    // b blocked Alice: Cee's reply arrives, but the quote (Alice's words) does not
+    const forB = h.last('b', 'chat')!.line;
+    expect(forB.text).toBe('quoting you');
+    expect(forB.reply).toBeUndefined();
+    // a guest still sees the full quote
+    expect(h.last('g', 'chat')!.line.reply).toEqual({ id: orig.id, from: 'Alice', fromId: 'u:ua', text: 'hot take' });
+    // and on reconnect, history applies the same rule: Alice's line is gone entirely,
+    // Cee's reply is there with the quote stripped
+    await h.hub.open('b2', { uid: 'ub', name: 'Bobby' });
+    const hist = h.last('b2', 'hello')!.global;
+    expect(hist.some((l) => l.id === orig.id)).toBe(false);
+    expect(hist.find((l) => l.text === 'quoting you')?.reply).toBeUndefined();
+  });
+});
+
 describe('DM reactions', () => {
   it('toggle, live to both participants only, guests rejected, non-participants get nothing, persisted in history', async () => {
     await h.hub.open('a', { uid: 'ua', name: 'Alice' });

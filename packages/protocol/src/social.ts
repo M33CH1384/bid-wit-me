@@ -16,6 +16,7 @@ export const SOCIAL_LIMITS = {
   chatMinute: { n: 20, windowMs: 60_000 },
   /** per user: emoji reactions in a sliding window */
   react: { n: 30, windowMs: 60_000 },
+  replySnippet: 80,      // characters of the quoted line kept in a reply snapshot
   invites: { n: 6, windowMs: 60_000 },
   friendOps: { n: 20, windowMs: 60_000 },
   reportReason: 200,
@@ -86,7 +87,22 @@ export function stalePresence(
   return false;
 }
 
-export interface SocialChatLine { id: number; from: string; name: string; text: string; at: number; admin?: boolean; /** emoji reactions (emoji -> reactor pids); see REACT_EMOJIS */ reactions?: ChatReactions }
+/**
+ * A reply snapshot stored ON the replying line: the quoted line's id, its author's display
+ * name and a text snippet, all captured server-side at post time. Rendering from the snapshot
+ * (not a lookup) keeps the quote correct after the original scrolls out of the kept history
+ * or its author renames. `fromId` (the quoted author's pid) is carried so the hub can strip
+ * the quote for viewers blocked from that author — the quote gets the same visibility the
+ * original line itself gets, nothing more.
+ */
+export interface ReplyRef { id: number; from: string; fromId: string; text: string }
+
+/** Build the snapshot for a reply to `line` (the snippet is server-truncated). */
+export function replySnapshot(line: SocialChatLine): ReplyRef {
+  return { id: line.id, from: line.name, fromId: line.from, text: line.text.slice(0, SOCIAL_LIMITS.replySnippet) };
+}
+
+export interface SocialChatLine { id: number; from: string; name: string; text: string; at: number; admin?: boolean; /** emoji reactions (emoji -> reactor pids); see REACT_EMOJIS */ reactions?: ChatReactions; /** the line this one replies to, as a post-time snapshot */ reply?: ReplyRef }
 export interface DmLine { id: number; from: string; to: string; text: string; at: number; read?: boolean; /** emoji reactions (emoji -> reactor pids); see REACT_EMOJIS */ reactions?: ChatReactions }
 export interface FriendRef { id: string; name: string; since?: number }
 export interface FriendsState { friends: FriendRef[]; incoming: FriendRef[]; outgoing: FriendRef[]; blocked: FriendRef[] }
@@ -97,7 +113,7 @@ export type SocialClientMsg =
   | { t: 'status'; status: PresenceStatus }
   | { t: 'heartbeat' }
   | { t: 'settings'; settings: Partial<SocialSettings> }
-  | { t: 'chat'; text: string }
+  | { t: 'chat'; text: string; /** reply to this global line id; the hub resolves it to a snapshot, or posts without one */ replyTo?: number }
   /** emoji reaction to a global chat line (toggle): the hub applies it and broadcasts the new reaction map */
   | { t: 'react'; id: number; emoji: string }
   /** emoji reaction to a DM line (toggle): DM ids live in D1, a different namespace than global ids, so it has its own message */
@@ -202,7 +218,10 @@ export function parseSocialMsg(raw: unknown): SocialClientMsg | null {
       for (const k of ['appearOffline', 'friendsOnlyInvites', 'hideLocation'] as const) if (typeof s[k] === 'boolean') out[k] = s[k] as boolean;
       return { t: 'settings', settings: out };
     }
-    case 'chat': return isStr(m.text, 2000) ? { t: 'chat', text: m.text } : null;
+    case 'chat':
+      if (!isStr(m.text, 2000)) return null;
+      // a malformed replyTo drops the reference, never the message
+      return isInt(m.replyTo) && m.replyTo > 0 ? { t: 'chat', text: m.text, replyTo: m.replyTo } : { t: 'chat', text: m.text };
     case 'react':
       return isInt(m.id) && m.id > 0 && typeof m.emoji === 'string' && (REACT_EMOJIS as readonly string[]).includes(m.emoji)
         ? { t: 'react', id: m.id, emoji: m.emoji }

@@ -3,7 +3,7 @@
  * friends, profiles, settings), invite toasts and notices. Mounted once at the root so invites reach you anywhere.
  */
 import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { type InviteMsg, type OpenTable, type PresenceEntry, type PresenceStatus, SOCIAL_LIMITS, statusLabel } from '@spades/protocol';
+import { type InviteMsg, type OpenTable, type PresenceEntry, type PresenceStatus, type SocialChatLine, SOCIAL_LIMITS, statusLabel } from '@spades/protocol';
 import { useAccount } from '../account/api';
 import { AvatarCircle, socialUidOf, useAvatar } from '../avatar';
 import { BADGES } from '../badges';
@@ -391,17 +391,38 @@ function GlobalChat({ signedIn }: { signedIn: boolean }) {
   const [menu, setMenu] = useState<number | null>(null);
   /** which line's emoji picker is open (one at a time) */
   const [pickFor, setPickFor] = useState<number | null>(null);
+  /** the line the composer is replying to (its snapshot ships with the sent message) */
+  const [replyTo, setReplyTo] = useState<SocialChatLine | null>(null);
+  /** a line briefly highlighted after tapping a quote that points at it */
+  const [flashId, setFlashId] = useState<number | null>(null);
+  const flashTimer = useRef<number | null>(null);
   useEffect(() => { social.markGlobalSeen(); }, [s.global.length]);
+  useEffect(() => () => { if (flashTimer.current) window.clearTimeout(flashTimer.current); }, []);
+  /** tap a quote: scroll to the original (when it's rendered) and flash it */
+  const jumpTo = (id: number) => {
+    const el = ref.current?.querySelector(`[data-line-id="${id}"]`);
+    if (!el) return;
+    el.scrollIntoView({ block: 'center' });
+    setFlashId(id);
+    if (flashTimer.current) window.clearTimeout(flashTimer.current);
+    flashTimer.current = window.setTimeout(() => setFlashId(null), 1600);
+  };
   return (
     <div className="soc-chat">
       <div className="soc-lines" ref={ref} data-testid="global-lines">
         {!s.global.length && <p className="soc-empty">No messages yet. Say hi 👋</p>}
         {s.global.map((l) => (
-          <div key={l.id} className={`soc-line ${l.from === s.you?.id ? 'mine' : ''}`} data-testid="global-line">
+          <div key={l.id} data-line-id={l.id} className={`soc-line ${l.from === s.you?.id ? 'mine' : ''}${flashId === l.id ? ' flash' : ''}`} data-testid="global-line">
+            {l.reply && (
+              <button type="button" className="soc-quote" data-testid={`quote-${l.id}`} onClick={() => jumpTo(l.reply!.id)} aria-label={`Quoted message by ${l.reply.from}: ${l.reply.text}`}>
+                <b>{l.reply.from}</b> {l.reply.text}
+              </button>
+            )}
             <button type="button" className="soc-line-name" onClick={() => !l.from.startsWith('g:') && social.showProfile(l.name, l.from.startsWith('u:') ? l.from.slice(2) : undefined)}>{l.name}{l.admin && <i className="soc-tag mod">MOD</i>}</button>
             <span className="soc-line-text">{l.text}</span>
             <span className="soc-line-time">{timeAgo(l.at)}</span>
             {l.from !== s.you?.id && (signedIn || s.admin) && <button type="button" className="soc-more" aria-label="Message actions" data-testid={`line-more-${l.id}`} onClick={() => setMenu(menu === l.id ? null : l.id)}>⋯</button>}
+            {signedIn && <button type="button" className="soc-reply-add" aria-label={`Reply to ${l.name}'s message`} data-testid={`soc-reply-${l.id}`} onClick={() => setReplyTo(replyTo?.id === l.id ? null : l)}>↩</button>}
             {signedIn && <button type="button" className="soc-rx-add" aria-label={`React to ${l.name}'s message`} aria-expanded={pickFor === l.id} data-testid={`soc-rx-add-${l.id}`} onClick={() => setPickFor(pickFor === l.id ? null : l.id)}>☺</button>}
             {menu === l.id && (
               <span className="soc-line-menu">
@@ -416,7 +437,13 @@ function GlobalChat({ signedIn }: { signedIn: boolean }) {
           </div>
         ))}
       </div>
-      {signedIn ? <Composer onSend={(t) => social.chat(t)} placeholder="Message everyone…" testid="global" /> : <SignInNote what="post in the global chat" />}
+      {signedIn && replyTo && (
+        <div className="soc-replybar" data-testid="reply-bar">
+          <span className="soc-replybar-txt">Replying to <b>{replyTo.name}</b>: {replyTo.text}</span>
+          <button type="button" className="soc-replybar-x" aria-label="Cancel reply" data-testid="reply-cancel" onClick={() => setReplyTo(null)}>✕</button>
+        </div>
+      )}
+      {signedIn ? <Composer onSend={(t) => { social.chat(t, replyTo?.id); setReplyTo(null); }} placeholder={replyTo ? `Reply to ${replyTo.name}…` : 'Message everyone…'} testid="global" /> : <SignInNote what="post in the global chat" />}
     </div>
   );
 }

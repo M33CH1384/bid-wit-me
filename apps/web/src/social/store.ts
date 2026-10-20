@@ -358,7 +358,7 @@ export const social = {
   },
   closeDm() { set({ dmWith: null }); },
   showProfile(name: string | null, id?: string) { set({ profile: name, profileId: name ? id ?? null : null }); },
-  chat(text: string) { if (!send({ t: 'chat', text })) toast("Not connected: try again in a moment.", 'error'); },
+  chat(text: string, replyTo?: number) { if (!send({ t: 'chat', text, ...(replyTo ? { replyTo } : {}) })) toast("Not connected: try again in a moment.", 'error'); },
   /** emoji reaction to a global chat line (toggle; the hub broadcasts the new map) */
   react(id: number, emoji: string) { send({ t: 'react', id, emoji }); },
   /** emoji reaction to a DM line (toggle; the hub sends both participants the new map) */

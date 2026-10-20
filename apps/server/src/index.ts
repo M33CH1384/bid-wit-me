@@ -42,7 +42,7 @@ import { notifyFriendsOfOnline, notifyInvite, notifyTurn, pushVapid, runSchedule
 import type { TableRules } from '@spades/rules';
 export { TournamentDO } from './tournament/do';
 import type { TournamentDO } from './tournament/do';
-import type { ChatReactions, OpenTable, SocialChatLine, SocialServerMsg } from '@spades/protocol';
+import type { ChatReactions, OpenTable, ReplyRef, SocialChatLine, SocialServerMsg } from '@spades/protocol';
 
 import { D1QueueStore, WriterBreaker, writeVoiceLine, type WorkersAiLike, type WriterRequest } from './voice/writer';
 export interface Env extends LimitEnv, AuthEnv, SocialEnv {
@@ -659,6 +659,7 @@ export class SocialDO extends DurableObject<Env> {
     this.sql = ctx.storage.sql;
     this.sql.exec(`CREATE TABLE IF NOT EXISTS global (id INTEGER PRIMARY KEY AUTOINCREMENT, from_id TEXT, name TEXT, text TEXT, at INTEGER, admin INTEGER DEFAULT 0)`);
     try { this.sql.exec(`ALTER TABLE global ADD COLUMN reactions TEXT`); } catch { /* column already there */ }
+    try { this.sql.exec(`ALTER TABLE global ADD COLUMN reply TEXT`); } catch { /* column already there */ }
     this.sql.exec(`CREATE TABLE IF NOT EXISTS open_tables (code TEXT PRIMARY KEY, json TEXT, at INTEGER)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS ended_tables (code TEXT PRIMARY KEY)`);
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
@@ -673,15 +674,16 @@ export class SocialDO extends DurableObject<Env> {
       del: (code: string) => { sql.exec('DELETE FROM ended_tables WHERE code = ?', code); },
       list: () => sql.exec<{ code: string }>('SELECT code FROM ended_tables').toArray().map((r) => r.code),
     };
-    type GlobalRow = { id: number; from_id: string; name: string; text: string; at: number; admin: number; reactions: string | null };
+    type GlobalRow = { id: number; from_id: string; name: string; text: string; at: number; admin: number; reactions: string | null; reply: string | null };
     const rowToLine = (r: GlobalRow): SocialChatLine => ({
       id: r.id, from: r.from_id, name: r.name, text: r.text, at: r.at,
       ...(r.admin ? { admin: true as const } : {}),
       ...(r.reactions ? { reactions: JSON.parse(r.reactions) as ChatReactions } : {}),
+      ...(r.reply ? { reply: JSON.parse(r.reply) as ReplyRef } : {}),
     });
     const global: GlobalLog = {
       add: (l) => {
-        const id = sql.exec<{ id: number }>('INSERT INTO global (from_id, name, text, at, admin) VALUES (?, ?, ?, ?, ?) RETURNING id', l.from, l.name, l.text, l.at, l.admin ? 1 : 0).one().id;
+        const id = sql.exec<{ id: number }>('INSERT INTO global (from_id, name, text, at, admin, reply) VALUES (?, ?, ?, ?, ?, ?) RETURNING id', l.from, l.name, l.text, l.at, l.admin ? 1 : 0, l.reply ? JSON.stringify(l.reply) : null).one().id;
         sql.exec('DELETE FROM global WHERE id <= ?', id - 200);
         return { id, ...l };
       },

@@ -7,8 +7,8 @@
  *  - friends / blocks / DMs / reports / settings: D1 (SocialStore)
  */
 import {
-  type ChatReactions, type FriendsState, type InviteMsg, type OpenTable, type PresenceEntry, type PresenceStatus, type SocialChatLine, type SocialClientMsg, type SocialServerMsg, type SocialSettings,
-  GUEST_SESSION, PRESENCE_TTL_MS, SOCIAL_LIMITS, blockLinks, cleanName, cleanText, maskProfanity, parseSocialMsg, stalePresence, toggleReaction,
+  type ChatReactions, type FriendsState, type InviteMsg, type OpenTable, type PresenceEntry, type PresenceStatus, type ReplyRef, type SocialChatLine, type SocialClientMsg, type SocialServerMsg, type SocialSettings,
+  GUEST_SESSION, PRESENCE_TTL_MS, SOCIAL_LIMITS, blockLinks, cleanName, cleanText, maskProfanity, parseSocialMsg, replySnapshot, stalePresence, toggleReaction,
 } from '@spades/protocol';
 import { isProfane } from '../auth/username';
 import { DEFAULT_SETTINGS, SocialStore, uidOf } from './store';
@@ -178,7 +178,10 @@ export class Hub {
     await this.prune(true);
     const me = this.entry(att.pid)!;
     const users = this.visibleList(att.pid);
-    const global = this.io.global.list(SOCIAL_LIMITS.globalSend).filter((l) => !this.hiddenBetween(att.pid, l.from));
+    const global = this.io.global.list(SOCIAL_LIMITS.globalSend)
+      .filter((l) => !this.hiddenBetween(att.pid, l.from))
+      // same rule for quotes inside kept lines: hidden from the quoted author → no quote
+      .map((l) => (l.reply && this.hiddenBetween(att.pid, l.reply.fromId) ? { ...l, reply: undefined } : l));
     this.io.send(cid, { t: 'hello', you: me, admin: !!att.admin, users, global, friends, settings, unread, tables: this.openTables() });
     if (!wasOnline && !this.quiet.has(att.pid)) this.broadcastEntry(att.pid);
     // Release 13: fresh online transition — friend-online pushes + pending offline invites.
@@ -511,8 +514,21 @@ export class Hub {
         if (!needUser() || !this.chatOk(cid, att.pid)) return;
         const text = this.clean(msg.text);
         if (!text) return;
-        const line = this.io.global.add({ from: att.pid, name: att.name, text, at: now, ...(att.admin ? { admin: true } : {}) });
-        for (const [c, v] of this.conns) if (!this.hiddenBetween(v.pid, att.pid)) this.io.send(c, { t: 'chat', line });
+        // Resolve the reply reference now: the stored line carries a snapshot of the quoted
+        // line, so the quote still renders if the original later scrolls out of the kept
+        // history. An id that no longer resolves posts the message without a reference.
+        let reply: ReplyRef | undefined;
+        if (msg.replyTo !== undefined) {
+          const orig = this.io.global.get(msg.replyTo);
+          if (orig) reply = replySnapshot(orig);
+        }
+        const line = this.io.global.add({ from: att.pid, name: att.name, text, at: now, ...(att.admin ? { admin: true } : {}), ...(reply ? { reply } : {}) });
+        for (const [c, v] of this.conns) {
+          if (this.hiddenBetween(v.pid, att.pid)) continue;
+          // a viewer blocked from the quoted author sees the reply, but not the quote
+          const wire = line.reply && this.hiddenBetween(v.pid, line.reply.fromId) ? { ...line, reply: undefined } : line;
+          this.io.send(c, { t: 'chat', line: wire });
+        }
         return;
       }
       case 'del': {
