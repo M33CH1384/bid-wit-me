@@ -75,6 +75,8 @@ export function SocialRoot() {
  * A toast with somewhere to go (friend request → Friends tab): the whole card is the tap
  * target; the ✕ only dismisses (stopPropagation, so the two never double-fire). Stays up
  * longer than a plain toast (see store.ts) so there's time to actually tap it.
+ * Friend-request toasts (action.friendId set) also get inline Accept/Decline buttons,
+ * like the game InviteToast: answer the request right in the popup, no Social trip needed.
  */
 function ActionToast({ t }: { t: Toast }) {
   const action = t.action;
@@ -84,14 +86,39 @@ function ActionToast({ t }: { t: Toast }) {
     social.open(action.tab);
     social.dismissToast(t.id);
   };
+  // Only the card itself is keyboard-activatable: Enter/Space on a button inside must
+  // run that button, not also navigate (keydown bubbles up from the focused button).
+  const onCardKey = (e: React.KeyboardEvent) => {
+    if (e.target !== e.currentTarget) return;
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); }
+  };
+  const dismiss = (e: React.SyntheticEvent) => { e.stopPropagation(); social.dismissToast(t.id); };
+  if (action.friendId) {
+    const reply = (accept: boolean) => (e: React.SyntheticEvent) => {
+      e.stopPropagation();
+      social.friend(accept ? 'accept' : 'decline', action.friendId!);
+      social.dismissToast(t.id);
+    };
+    return (
+      <div className={`soc-toast action friend ${t.kind}`} role="button" tabIndex={0} data-testid="soc-toast-action"
+        aria-label={`${t.text} Accept or decline this friend request, or tap to view requests.`} onClick={go} onKeyDown={onCardKey}>
+        <div className="fr-head">
+          <span className="fr-txt">{t.text}</span>
+          <button type="button" className="fr-x" aria-label="Dismiss" data-testid="soc-toast-x" onClick={dismiss}>✕</button>
+        </div>
+        <div className="fr-btns">
+          <button type="button" data-testid="soc-toast-decline" onClick={reply(false)}>Decline</button>
+          <button type="button" className="primary" data-testid="soc-toast-accept" onClick={reply(true)}>Accept</button>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className={`soc-toast action ${t.kind}`} role="button" tabIndex={0} data-testid="soc-toast-action"
-      aria-label={`${t.text} ${action.label}.`} onClick={go}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } }}>
+      aria-label={`${t.text} ${action.label}.`} onClick={go} onKeyDown={onCardKey}>
       <span className="fr-txt">{t.text}</span>
       <span className="fr-view" aria-hidden>{action.label} →</span>
-      <button type="button" className="fr-x" aria-label="Dismiss" data-testid="soc-toast-x"
-        onClick={(e) => { e.stopPropagation(); social.dismissToast(t.id); }}>✕</button>
+      <button type="button" className="fr-x" aria-label="Dismiss" data-testid="soc-toast-x" onClick={dismiss}>✕</button>
     </div>
   );
 }

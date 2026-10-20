@@ -11,7 +11,7 @@ import { guestSessionId, loadName } from '../online/identity';
 import { keepUsers } from './presence';
 
 export type SocialTab = 'players' | 'chat' | 'messages' | 'friends' | 'leaders' | 'tournaments' | 'settings';
-export interface ToastAction { label: string; tab: SocialTab }
+export interface ToastAction { label: string; tab: SocialTab; /** friend-request toast: the requester's id, so the popup can Accept/Decline inline */ friendId?: string }
 export interface Toast { id: string; kind: 'info' | 'error' | 'ok'; text: string; at: number; action?: ToastAction }
 export interface Notice { id: string; text: string; code?: string; seat?: number; tid?: string; at: number }
 export interface MyTable { code: string; mode?: string; seat?: number; open: number }
@@ -237,7 +237,7 @@ function onMessage(m: SocialServerMsg) {
     case 'friends': {
       const before = new Set((state.friends?.incoming ?? []).map((f) => f.id));
       set({ friends: m.friends });
-      for (const f of m.friends.incoming) if (!before.has(f.id)) toast(`👋 ${f.name} sent you a friend request.`, 'info', { ms: 10_000, action: { label: 'View requests', tab: 'friends' } });
+      for (const f of m.friends.incoming) if (!before.has(f.id)) toast(`👋 ${f.name} sent you a friend request.`, 'info', { ms: 10_000, action: { label: 'View requests', tab: 'friends', friendId: f.id } });
       break;
     }
     case 'settings':
