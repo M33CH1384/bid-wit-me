@@ -11,7 +11,8 @@ import { guestSessionId, loadName } from '../online/identity';
 import { keepUsers } from './presence';
 
 export type SocialTab = 'players' | 'chat' | 'messages' | 'friends' | 'leaders' | 'tournaments' | 'settings';
-export interface Toast { id: string; kind: 'info' | 'error' | 'ok'; text: string; at: number }
+export interface ToastAction { label: string; tab: SocialTab }
+export interface Toast { id: string; kind: 'info' | 'error' | 'ok'; text: string; at: number; action?: ToastAction }
 export interface Notice { id: string; text: string; code?: string; seat?: number; tid?: string; at: number }
 export interface MyTable { code: string; mode?: string; seat?: number; open: number }
 
@@ -81,10 +82,10 @@ function idKey(): string | null {
 const noticeHooks = new Set<(n: Notice) => void>();
 export function onNotice(f: (n: Notice) => void): () => void { noticeHooks.add(f); return () => noticeHooks.delete(f); }
 
-function toast(text: string, kind: Toast['kind'] = 'info') {
-  const t: Toast = { id: Math.random().toString(36).slice(2), kind, text, at: Date.now() };
+function toast(text: string, kind: Toast['kind'] = 'info', opts?: { ms?: number; action?: ToastAction }) {
+  const t: Toast = { id: Math.random().toString(36).slice(2), kind, text, at: Date.now(), ...(opts?.action ? { action: opts.action } : {}) };
   set((s) => ({ toasts: [...s.toasts.slice(-3), t] }));
-  setTimeout(() => set((s) => ({ toasts: s.toasts.filter((x) => x.id !== t.id) })), 5000);
+  setTimeout(() => set((s) => ({ toasts: s.toasts.filter((x) => x.id !== t.id) })), opts?.ms ?? 5000);
 }
 
 function send(m: SocialClientMsg): boolean {
@@ -236,7 +237,7 @@ function onMessage(m: SocialServerMsg) {
     case 'friends': {
       const before = new Set((state.friends?.incoming ?? []).map((f) => f.id));
       set({ friends: m.friends });
-      for (const f of m.friends.incoming) if (!before.has(f.id)) toast(`👋 ${f.name} sent you a friend request.`);
+      for (const f of m.friends.incoming) if (!before.has(f.id)) toast(`👋 ${f.name} sent you a friend request.`, 'info', { ms: 10_000, action: { label: 'View requests', tab: 'friends' } });
       break;
     }
     case 'settings':

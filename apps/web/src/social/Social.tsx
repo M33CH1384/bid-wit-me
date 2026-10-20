@@ -12,7 +12,7 @@ import { navigate } from '../online/nav';
 import { loadSettings } from '../settings';
 import { shownPlayers } from './presence';
 import { type PlayerTableAction, playerTableAction } from './tableActions';
-import { type MyTable, type SocialTab, badgeCount, globalUnread, social, useSocial } from './store';
+import { type MyTable, type SocialTab, type Toast, badgeCount, globalUnread, social, useSocial } from './store';
 import { Leaderboards, Tournaments } from './Compete';
 import { offlineStats } from '../offlineStats';
 import './social.css';
@@ -62,11 +62,36 @@ export function SocialRoot() {
             </div>
           </div>
         ))}
-        {s.toasts.map((t) => (
-          <div key={t.id} className={`soc-toast ${t.kind}`} data-testid="soc-toast" onClick={() => social.dismissToast(t.id)}>{t.text}</div>
-        ))}
+        {s.toasts.map((t) => (t.action
+          ? <ActionToast key={t.id} t={t} />
+          : <div key={t.id} className={`soc-toast ${t.kind}`} data-testid="soc-toast" onClick={() => social.dismissToast(t.id)}>{t.text}</div>))}
       </div>
     </>
+  );
+}
+
+/**
+ * A toast with somewhere to go (friend request → Friends tab): the whole card is the tap
+ * target; the ✕ only dismisses (stopPropagation, so the two never double-fire). Stays up
+ * longer than a plain toast (see store.ts) so there's time to actually tap it.
+ */
+function ActionToast({ t }: { t: Toast }) {
+  const action = t.action;
+  if (!action) return null;
+  const go = () => {
+    social.showProfile(null);
+    social.open(action.tab);
+    social.dismissToast(t.id);
+  };
+  return (
+    <div className={`soc-toast action ${t.kind}`} role="button" tabIndex={0} data-testid="soc-toast-action"
+      aria-label={`${t.text} ${action.label}.`} onClick={go}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } }}>
+      <span className="fr-txt">{t.text}</span>
+      <span className="fr-view" aria-hidden>{action.label} →</span>
+      <button type="button" className="fr-x" aria-label="Dismiss" data-testid="soc-toast-x"
+        onClick={(e) => { e.stopPropagation(); social.dismissToast(t.id); }}>✕</button>
+    </div>
   );
 }
 
