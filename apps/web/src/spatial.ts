@@ -104,22 +104,20 @@ export const ROOM_STYLES: RoomStyle[] = [
 ];
 export function styleForVenue(venue: string): RoomStyle | undefined { return ROOM_STYLES.find((r) => r.venue === venue); }
 /** Competitive Tournament (Demetrius's named room): a tournament-hall soundscape riding the casino
- *  bed/arena crowd — distinct name, hall reverb, felt surface. In the picker as its own choice. */
+ *  bed/arena crowd — distinct name, hall reverb, felt surface. (It was a pickable soundscape
+ *  until 2026-10-20; the venue decides the sounds now, so it stays as a named style only.) */
 export const TOURNAMENT_ROOM: RoomStyle = { venue: 'vegas', name: 'Competitive Tournament', bed: 'casino', surface: 'felt', reverb: 'hall', crowd: 'arena' };
 /** Unified session room (Phase 4): what you SEE is what you HEAR is what the loading screen NAMES.
- *  Online: the shared room venue decides (every client same). Explicit soundscape: that room.
- *  Auto (no explicit soundscape): a seeded roll per game — and that rolled room becomes the
- *  visual venue for the game too. One style per room, all 12 venues covered by ROOM_STYLES. */
-export function sessionRoom(o: { explicit?: string; visualVenue?: string; storyRoom?: string; seed?: string; onlineVenue?: string }): RoomStyle {
+ *  The VENUE decides the sounds, always (owner, 2026-10-20 — the soundscape picker is gone):
+ *  online, the shared room venue decides (every client same); offline, the venue picked in
+ *  setup/settings decides; on Random, a seeded roll per game picks the room — and that rolled
+ *  room becomes the visual venue for the game too, so the sound still follows the venue.
+ *  One style per room, all 12 venues covered by ROOM_STYLES. */
+export function sessionRoom(o: { visualVenue?: string; seed?: string; onlineVenue?: string }): RoomStyle {
   if (o.onlineVenue) return styleForVenue(o.onlineVenue) ?? ROOM_STYLES[0]!;
-  // 1) An explicit venue picked in settings wins (seen = heard = named, still unified).
+  // 1) The venue picked for this game wins (seen = heard = named, still unified).
   if (o.visualVenue) return styleForVenue(o.visualVenue) ?? ROOM_STYLES[0]!;
-  // 2) A Story stop's room (the explicit soundscape carries it until Story data lands).
-  const story = o.storyRoom ?? o.explicit;
-  if (story === 'tournament') return TOURNAMENT_ROOM;
-  if (story === 'classic') return ROOM_STYLES[0]!;
-  if (story && story !== 'auto' && (SOUNDSCAPE_ROOMS as string[]).includes(story)) return styleForBed(story as VenueBed) ?? ROOM_STYLES[0]!;
-  // 3) Auto: roll over ALL 11 rooms — Classic included (its bed is 'none': a quiet studio game).
+  // 2) Random venue: roll over ALL 12 rooms — Classic included (its bed is 'none': a quiet studio game).
   if (o.seed !== undefined) return ROOM_STYLES[seedHash(o.seed) % ROOM_STYLES.length]!;
   return ROOM_STYLES[0]!;
 }
@@ -135,12 +133,12 @@ export function surfaceHz(style: RoomStyle): number { return SURFACE_HZ[style.su
 export function styleForBed(bed: VenueBed): RoomStyle | undefined { return ROOM_STYLES.find((r) => r.bed === bed && r.bed !== 'none') ?? ROOM_STYLES[0]; }
 export function roomName(room: VenueBed): string { return room === 'none' ? 'Classic Studio' : styleForBed(room)?.name ?? room; }
 function seedHash(seed: string): number { let h = 2166136261; for (let i = 0; i < seed.length; i++) { h ^= seed.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
-/** Room resolver. Explicit room wins and persists; then a Story stop's mapped room; then Auto =
- *  a seeded random room per game/session (host/session seed, so online clients agree).
- *  Auto is never follow-venue. */
-export function resolveSoundscape(o: { explicit?: string; storyRoom?: string; seed?: string; auto?: boolean }): VenueBed {
-  if (o.explicit && o.explicit !== 'auto' && (SOUNDSCAPE_ROOMS as string[]).includes(o.explicit)) return o.explicit as VenueBed;
-  if (o.storyRoom && (SOUNDSCAPE_ROOMS as string[]).includes(o.storyRoom)) return o.storyRoom as VenueBed;
+/** Soundscape bed resolver. The venue's signature bed wins (owner, 2026-10-20: each room
+ *  has its own signature sounds, set automatically — there is no user soundscape pick).
+ *  No venue (Random): a seeded roll per game/session (host/session seed, so online clients
+ *  agree on the room the roll picked). */
+export function resolveSoundscape(o: { venue?: string; seed?: string }): VenueBed {
+  if (o.venue && o.venue !== 'random') { const st = styleForVenue(o.venue); if (st) return st.bed; }
   if (o.seed !== undefined) return SOUNDSCAPE_ROOMS[seedHash(o.seed) % SOUNDSCAPE_ROOMS.length]!;
   return 'none';
 }

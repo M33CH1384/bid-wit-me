@@ -21,11 +21,18 @@ describe('menu ambience scenes removed', () => {
       expect(audio).not.toContain(gone);
     }
   });
-  it('kept controls stay: Music, Venue sounds (room bed gate), Spatial, Room soundscape', () => {
+  it('kept controls stay: Music, Venue sounds (room bed gate), Spatial', () => {
     expect(controls).toContain('data-testid="music-switch"');
     expect(controls).toContain('data-testid="venue-sound-switch"');
     expect(controls).toContain('data-testid="spatial-switch"');
-    expect(controls).toContain('data-testid="soundscape-select"');
+  });
+  it('the Room soundscape picker is retired (owner, 2026-10-20): each venue\'s signature sounds are automatic', () => {
+    expect(controls).not.toContain('data-testid="soundscape-select"');
+    expect(controls).not.toContain('Room (soundscape)');
+    // the engine never reads a saved pick anymore, and load() strips it, so an old
+    // stored choice simply stops affecting playback (no crash, no orphan override)
+    expect(audio).not.toContain('this.settings.soundscape');
+    expect(audio).toContain("delete saved['soundscape']");
   });
   it("in-venue soundscape beds are untouched, including Grandma's 'kitchen' bed", () => {
     expect(audio).toContain("case 'kitchen':");

@@ -23,11 +23,13 @@ describe('spatial phase 2 plumbing', () => {
     expect(top.z).toBeLessThan(0); expect(bottom.z).toBeGreaterThan(0);
     expect(listenerPose(cameraFor(390 / 844, false, 'sitting')).position.y).toBeLessThan(listenerPose(cameraFor(390 / 844, false, 'standing')).position.y);
   });
-  it('soundscape resolver: explicit > story > seeded Auto roll (never venue)', () => {
-    expect(resolveSoundscape({ explicit: 'barbershop', storyRoom: 'basement', seed: 'g1' })).toBe('barbershop');
-    expect(resolveSoundscape({ explicit: 'auto', storyRoom: 'basement', seed: 'g1' })).toBe('basement');
-    const roll = resolveSoundscape({ explicit: 'auto', seed: 'game-42' });
-    expect(roll).not.toBe('none'); expect(resolveSoundscape({ explicit: 'auto', seed: 'game-42' })).toBe(roll); // deterministic: online agrees
+  it('soundscape resolver: the venue\'s signature bed wins; no venue = seeded roll', () => {
+    expect(resolveSoundscape({ venue: 'barbershop', seed: 'g1' })).toBe('barbershop');
+    expect(resolveSoundscape({ venue: 'church', seed: 'g1' })).toBe('basement'); // Church's room IS Basement Spades Night, bed included
+    expect(resolveSoundscape({ venue: 'classic' })).toBe('none'); // Classic Studio's signature is quiet
+    const roll = resolveSoundscape({ seed: 'game-42' });
+    expect(roll).not.toBe('none'); expect(resolveSoundscape({ seed: 'game-42' })).toBe(roll); // deterministic: online agrees
+    expect(resolveSoundscape({ venue: 'random', seed: 'game-42' })).toBe(roll); // Random: the roll picks the room
   });
   it('one style per room: every repo venue has its own distinct soundscape', () => {
     expect(ROOM_STYLES.map((r) => r.venue).sort()).toEqual([...VENUES].sort());
@@ -35,7 +37,7 @@ describe('spatial phase 2 plumbing', () => {
     for (const r of ROOM_STYLES) { expect(r.reverb).toBeTruthy(); expect(r.surface).toBeTruthy(); }
     expect(styleForVenue('vegas')?.crowd).toBe('arena'); expect(styleForVenue('classic')?.reverb).toBe('studio');
     expect(roomName('barbershop')).toBe('Barbershop'); expect(roomName('basement')).toBe('Basement Spades Night');
-    for (const seed of ['a', 'game-1', 'xyz-9']) { const r = resolveSoundscape({ explicit: 'auto', seed }); expect(roomName(r).length).toBeGreaterThan(2); }
+    for (const seed of ['a', 'game-1', 'xyz-9']) { const r = resolveSoundscape({ seed }); expect(roomName(r).length).toBeGreaterThan(2); }
   });
   it('per-player voice mute is local and reversible', () => {
     const m = withVoiceMuted(undefined, 'p2', true);

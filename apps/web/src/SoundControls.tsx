@@ -8,7 +8,7 @@ import { tableIntensity, talkPrefs, useTalkPrefs } from './talkPrefs';
 import { TALK_INTENSITY_LABEL } from '@spades/bots';
 import { type NukeIntensity, fx, useNukeIntensity, useReduceEffects, useTableNuke } from './fx';
 import { setVibration, useVibration } from './haptics';
-import { ROOM_STYLES, normalizeCategoryVolumes } from './spatial';
+import { normalizeCategoryVolumes } from './spatial';
 
 const icon = (on: boolean, v: number) => (!on || v === 0 ? '🔇' : v < 0.4 ? '🔈' : v < 0.75 ? '🔉' : '🔊');
 
@@ -147,8 +147,13 @@ export function SoundSheet({ allOff, onMuteAll, onClose }: { allOff: boolean; on
   );
 }
 
-/** Spatial controls: spatial toggle, audio quality, room picker, category volumes.
- *  Phase 7 adds the human Voice chat volume (playerVoice category, applied once on the voice-chat bus). */
+/** Spatial controls: spatial toggle, audio quality, category volumes.
+ *  Phase 7 adds the human Voice chat volume (playerVoice category, applied once on the voice-chat bus).
+ *  There is NO room/soundscape picker (owner, 2026-10-20): each venue has its own signature
+ *  sounds, set automatically from the venue — see sessionRoom in spatial.ts.
+ *  Audio quality stacks (label line, then the seg full-width) so low / balanced / high
+ *  always fit on ONE line at phone width — side-by-side, the seg wrapped 'high' onto a
+ *  second row inside its half-width box. */
 export function SpatialFields() {
   const s = useSoundSettings();
   const cats = normalizeCategoryVolumes(s.volumes);
@@ -156,16 +161,10 @@ export function SpatialFields() {
     <>
       <label className="sf-row"><span>Spatial audio</span>
         <button type="button" role="switch" aria-checked={s.spatial !== false} aria-label="Spatial audio" data-testid="spatial-switch" className={`switch ${s.spatial !== false ? 'on' : ''}`} disabled={!s.on} onClick={() => sound.set({ spatial: s.spatial === false })}><i /></button></label>
-      <label className="sf-row"><span>Audio quality</span>
+      <div className="sf-row seg-stack"><span>Audio quality</span>
         <span className="seg" role="radiogroup" aria-label="Audio quality" data-testid="quality-seg">
           {(['low', 'balanced', 'high'] as const).map((q) => <button key={q} type="button" role="radio" aria-label={q} aria-checked={(s.quality ?? 'balanced') === q} className={(s.quality ?? 'balanced') === q ? 'on' : ''} onClick={() => sound.set({ quality: q })}>{q}</button>)}
-        </span></label>
-      <label className="sf-row"><span>Room (soundscape)</span>
-        <select aria-label="Room soundscape" data-testid="soundscape-select" value={s.soundscape ?? 'auto'} onChange={(e) => sound.set({ soundscape: e.target.value })}>
-          <option value="auto">Auto (new room each game)</option>
-          {ROOM_STYLES.map((r) => <option key={r.venue} value={r.venue === 'classic' ? 'classic' : r.bed}>{r.name}</option>)}
-          <option value="tournament">Competitive Tournament</option>
-        </select></label>
+        </span></div>
       <VolumeRow label="Effects volume" value={cats.sfx} disabled={!s.on} onChange={(v) => sound.set({ volumes: { ...cats, sfx: v } })} />
       <VolumeRow label="Ambience volume" value={cats.ambience} disabled={!s.on} onChange={(v) => sound.set({ volumes: { ...cats, ambience: v } })} />
       <VolumeRow label="Voice chat volume" value={cats.playerVoice} testId="voice-chat-volume" onChange={(v) => sound.set({ volumes: { ...cats, playerVoice: v } })} />
@@ -204,7 +203,7 @@ export function SoundFields({ compact = false }: { compact?: boolean }) {
       {s.music && s.nowPlaying && <p className="hint np-inline">♫ {s.nowPlaying.track.title} — {s.nowPlaying.track.artist}</p>}
       <SpatialFields />
       <BotTalkFields />
-      <p className="hint">Menus run no venue-ambience scene. Games default to music; a room's own soundscape follows the venue you're in and plays whether music is on or off. Change it here and this kind of screen remembers your choice.</p>
+      <p className="hint">Menus run no venue-ambience scene. Games default to music; every venue has its own signature sounds, set automatically from the venue you're in, and they play whether music is on or off. Your switch choices here are remembered per kind of screen.</p>
       {!compact && <p className="hint">On iPhone, the silent switch also mutes game sound.</p>}
     </div>
   );

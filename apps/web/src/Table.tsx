@@ -1311,7 +1311,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const reduceFx = useReduceEffects();
   // Unified session room (Phase 4): seen = heard = named. Online the shared room venue decides;
   // Auto rolls a room from the game seed and that room IS the visual venue for this game.
-  const roomStyle = sessionRoom({ explicit: sound.get().soundscape, visualVenue: !online && settings.venue !== 'random' ? settings.venue : undefined, seed, onlineVenue: online?.venue });
+  const roomStyle = sessionRoom({ visualVenue: !online && settings.venue !== 'random' ? settings.venue : undefined, seed, onlineVenue: online?.venue });
   const venue: VenueId = roomStyle.venue as VenueId;
   const [roomName, setRoomName] = useState<string | undefined>(undefined);
   // Phase 6: the music tension layer follows how close the game feels; calm again off the table.

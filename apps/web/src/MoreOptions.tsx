@@ -9,7 +9,6 @@ import { CLASSIC_JOKER, makeRules } from '@spades/rules';
 import { type Settings, settingsToRules } from './settings';
 import { TRUMP_SEP, trumpLadder, trumpLadderText } from './trumpLadder';
 import { type TipsPref, saveTips } from './tips';
-import { BADGES, useBadges } from './badges';
 import { VENUE_DEFS, type VenueChoice } from './venues';
 import { VenueSelect } from './VenueSelect';
 
@@ -109,7 +108,6 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
           <section className="set-group" aria-label="You">
           <h3 className="sheet-h">You</h3>
           <TeamNameRow />
-          <BadgesRow />
           <button type="button" className="link sheet-h gold-tab-row" aria-expanded={house} onClick={() => setHouse(!house)}>House rules <span className="value-chip">{house ? 'Hide' : 'Show'}</span></button>
           {house && (
             <div className="house">
@@ -204,22 +202,6 @@ function TeamNameRow() {
     <div className="sf-row team-row">
       <span>Your team name<small className="sf-note"> · team modes, offline</small></span>
       <TeamNameField value={v} placeholder="You & your partner" onSave={(x) => myTeamName.set(x)} testId="offline-team-name" />
-    </div>
-  );
-}
-
-/** Earned badges (local for now). */
-export function BadgesRow() {
-  const list = useBadges();
-  return (
-    <div className="sf-row badges-row" data-testid="badges-row">
-      <span>Badges</span>
-      <span className="badge-list">
-        {list.length === 0 ? <small className="sf-note">None yet. Keep playing.</small> : list.map((b) => {
-          const d = BADGES[b.id];
-          return <span key={b.id} className="badge-chip" title={`${d?.desc ?? b.id} · ${new Date(b.earnedAt).toLocaleDateString()}`} data-testid={`badge-${b.id}`}>{d?.icon ?? '★'} {d?.name ?? b.id}</span>;
-        })}
-      </span>
     </div>
   );
 }

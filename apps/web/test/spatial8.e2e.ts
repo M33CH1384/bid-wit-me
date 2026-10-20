@@ -1,4 +1,6 @@
-/** Phase 8: sound settings expose spatial toggle, quality, room picker (persisted). */
+/** Phase 8: sound settings expose spatial toggle + quality (persisted). The room
+ *  soundscape picker was retired 2026-10-20 — each venue's signature sounds are
+ *  automatic — so this also asserts the picker stays gone. */
 import { makeRules, newGame, type GameState } from '@spades/rules';
 import { webkit } from 'playwright-core';
 import { DEFAULT_SETTINGS } from '../src/settings';
@@ -17,12 +19,12 @@ const save = JSON.stringify({ v: 1, savedAt: Date.now(), seed: st.seed, settings
     await page.getByTestId('sound-button').click();
     await page.getByTestId('spatial-switch').waitFor({ timeout: 20000 });
     await page.getByTestId('spatial-switch').click();
-    await page.getByTestId('soundscape-select').selectOption('barbershop');
+    if (await page.getByTestId('soundscape-select').count()) throw new Error('soundscape picker should be retired (the venue decides the sounds)');
     await page.waitForTimeout(300);
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('bwm.sound.v1') ?? '{}'));
     console.log('stored:', { spatial: stored.spatial, soundscape: stored.soundscape });
     if (stored.spatial !== false) throw new Error('spatial toggle not persisted');
-    if (stored.soundscape !== 'barbershop') throw new Error('soundscape not persisted');
+    if (stored.soundscape !== undefined) throw new Error('a saved soundscape pick must be stripped on load (venue decides)');
     await page.screenshot({ path: `${process.env.BWM_SHOTS ?? '/opt/cursor/artifacts'}/sound-spatial-settings-390.png` });
     console.log('spatial8 OK');
   } finally { await b.close(); }

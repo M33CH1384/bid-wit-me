@@ -2101,7 +2101,10 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .sheet-close { min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,.22); background: rgba(255,255,255,.06); color: #f3ead2; font: 800 12px/1 'Barlow Condensed', sans-serif; letter-spacing: .12em; cursor: pointer; }
 .value-chip { display: inline-block; margin-left: 8px; padding: 3px 10px; border-radius: 999px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.16); color: #f3ead2; font: 700 12px/1 'Barlow Condensed', sans-serif; letter-spacing: .06em; }
 .gold-tab-row { position: relative; overflow: hidden; }
-.gold-tab-row::after { content: ''; position: absolute; top: 0; right: 0; width: 22px; height: 22px; background: linear-gradient(135deg, transparent 50%, #d9a521 50%); pointer-events: none; }
+/* (The 22px gold corner-fold that used to ride this row's top-right via ::after is
+   REMOVED — owner, 2026-10-20: on the Settings sheet's full-width disclosure rows
+   (House rules, Credits & licenses) it landed on top of the Show chip / heading
+   text. The rows render clean now, in both themes.) */
 button.mode-pick, button.quiet-row { position: relative; overflow: hidden; }
 button.mode-pick::after, button.quiet-row::after { content: ''; position: absolute; top: 0; right: 0; width: 20px; height: 20px; background: linear-gradient(135deg, transparent 50%, rgba(217,165,33,.85) 50%); pointer-events: none; }
 .tt-foot.stack { flex-direction: column; align-items: stretch; gap: 8px; }
@@ -2819,3 +2822,29 @@ html[data-theme="neon"] [data-testid="more-options"].sheet {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
+
+/* Settings follow-ups (owner, 2026-10-20, from the overhauled sheet on his iPhone):
+   1. ONE-LINE SEGMENTED CONTROLS. The base .seg wraps (release-6 rule), so any seg
+      squeezed into a half-width row box broke onto two rows — Audio quality shipped
+      'low / balanced' over 'high'. Audio quality now stacks: its label takes its own
+      line and the seg goes full-width beneath it (the .seg-stack row), with the seg
+      nowrap and its three buttons sharing the width equally. Every other seg on the
+      settings surfaces (Settings sheet groups, the sound sheet / popover sections)
+      is nowrap too, with shrinkable buttons — a row may still stack its label above
+      the control (the sheet's established narrow-phone pattern), but a segmented
+      control itself never wraps again.
+   2. NEON SLIDER ACCENT. The volume sliders' fill rides --purple-hot, which under
+      Neon is the electric blue #269cff — a bright blue track in a violet/gold sheet,
+      matching no ink on screen. Under Neon only, the settings/sound sheets' slider
+      fills take the violet family instead (the switch on-state violet, var(--purple)
+      = #8054FF under Neon). Classic keeps its exact colors. */
+.sf-row.seg-stack { flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 8px; }
+.sf-row.seg-stack > span { flex: none; }
+.sf-row.seg-stack > .seg { display: flex; flex-wrap: nowrap; width: 100%; }
+.sf-row.seg-stack > .seg button { flex: 1 1 0; min-width: 0; }
+.set-group .seg, .sheet-sec .seg, .sound-pop .seg { flex-wrap: nowrap; }
+.set-group .seg button, .sheet-sec .seg button, .sound-pop .seg button { min-width: 0; }
+html[data-theme="neon"] .sheet .vol-slider::-webkit-slider-runnable-track,
+html[data-theme="neon"] .sound-pop .vol-slider::-webkit-slider-runnable-track { background: linear-gradient(90deg, var(--purple) var(--pct, 50%), rgba(255,255,255,.14) var(--pct, 50%)); }
+html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress,
+html[data-theme="neon"] .sound-pop .vol-slider::-moz-range-progress { background: var(--purple); }

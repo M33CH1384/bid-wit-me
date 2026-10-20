@@ -55,8 +55,14 @@ const DUCK_MS: Partial<Record<Sfx, number>> = { runSlam: 700, nuke: 3600, tornad
 
 export interface SoundSettings { on: boolean; volume: number; ambient: boolean; music: boolean; musicVolume: number; /** the venue's quiet ambient sound bed (Release 7), default on */ venueSound: boolean;
   /** Chat notification sounds (DM chime / global-chat blip). Absent = on. */ chatSounds?: boolean;
-  /** Spatial Phase 2 (all optional; defaults reproduce today's sound): per-category volumes, audio quality, spatial on/off, separate soundscape room ('auto' = seeded random per game), per-player voice mutes. */
-  volumes?: import('./spatial').CategoryVolumes; quality?: import('./spatial').AudioQuality; spatial?: boolean; soundscape?: string; mutedVoices?: Record<string, true>;
+  /** Spatial Phase 2 (all optional; defaults reproduce today's sound): per-category volumes, audio quality, spatial on/off, per-player voice mutes. */
+  volumes?: import('./spatial').CategoryVolumes; quality?: import('./spatial').AudioQuality; spatial?: boolean; mutedVoices?: Record<string, true>;
+  /** RETIRED soundscape pick: until 2026-10-20 the player could override the room's sound
+   *  here. The owner killed the picker — each venue has its own signature sounds, set
+   *  automatically from the venue — so nothing reads this anymore and load() strips a
+   *  saved value, which simply stops affecting playback. Kept on the type only so old
+   *  saved JSON still parses. */
+  soundscape?: string;
   /** Per-context EXPLICIT sound scene (menus vs in-game) chosen by the player in that context.
    *  Absent = use the context default (menus: none, game: music). Live flags always mirror
    *  the active scene, so this only records deliberate choices — defaults never write it. */
@@ -193,6 +199,9 @@ function load(): SoundSettings {
       // falls back gracefully — menus get no background scene (or the player's
       // explicit menu music choice), in-venue sound still follows the room.
       for (const k of ['kitchenTable', 'blockParty', 'frontPorch', 'beautySalon', 'parkDominoes', 'menuAmbience']) delete saved[k];
+      // Retired soundscape pick (see SoundSettings note): a saved room override simply
+      // stops affecting playback — the venue's signature sounds now decide, always.
+      delete saved['soundscape'];
       if (saved.scenes && (saved.scenes as { menu?: string }).menu === 'ambience') saved.scenes = { ...(saved.scenes as object), menu: undefined };
       return settingsForContext(saved as SoundSettings, 'menu');
     }
@@ -1680,7 +1689,7 @@ class Engine {
    *  The bed starts through setVenueBed/syncVenue, which only sounds once unlocked — on iPhone the
    *  first tap's wake() re-runs syncVenue, so the fade begins at first unlock, never before it can. */
   applySoundscape(seed: string, onlineVenue?: string, visualVenue?: string): RoomStyle {
-    const style = sessionRoom({ explicit: this.settings.soundscape, storyRoom: this.settings.soundscape, visualVenue, seed, onlineVenue });
+    const style = sessionRoom({ visualVenue, seed, onlineVenue });
     this.roomStyle = style;
     if (this.convolver && this.ctx) {
       const spec = irSpec(style);

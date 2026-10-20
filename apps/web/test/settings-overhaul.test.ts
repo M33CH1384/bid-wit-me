@@ -16,6 +16,20 @@
  * so the home can't bleed through it. Presentation only — no setting,
  * testid, default, or persistence changed (the parity suite next door
  * pins the identical control inventory under both themes).
+ *
+ * FOLLOW-UPS (owner, same day, from the shipped sheet on his iPhone):
+ *  - Audio quality wrapped anyway ('low / balanced' over 'high'): it now
+ *    stacks — label on its own line, the seg full-width on ONE line — and
+ *    every seg on the settings surfaces is nowrap.
+ *  - The Room (soundscape) picker is REMOVED: each venue has its own
+ *    signature sounds, set automatically from the venue.
+ *  - The Badges row is REMOVED from the You group (badges live on
+ *    profiles, not in Settings).
+ *  - Under Neon the volume sliders' electric-blue fill (#269cff via
+ *    --purple-hot) clashed with the violet sheet: Neon slider fills take
+ *    the violet family; Classic is unchanged.
+ *  - The gold corner-fold on the sheet's disclosure rows (.gold-tab-row
+ *    ::after) covered the House rules Show chip / Credits heading: gone.
  */
 import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -82,7 +96,15 @@ describe('settings sheet — grouped cards', () => {
     expect(groupOf(c, 'venue-select')).toBe('Look & effects');
     expect(groupOf(c, 'reduce-fx')).toBe('Look & effects');
     expect(groupOf(c, 'nuke-intensity')).toBe('Look & effects');
-    expect(groupOf(c, 'badges-row')).toBe('You');
+    expect(groupOf(c, 'offline-team-name')).toBe('You');
+  });
+
+  it('retired rows are gone: no Badges row in You, no soundscape picker anywhere in the sheet', async () => {
+    const c = await renderSheet();
+    // owner: "Badges don't belong here" — badges live on profiles now, not in Settings
+    expect(c.querySelector('[data-testid="badges-row"]')).toBeNull();
+    // owner: no soundscape picker — each venue's signature sounds are automatic
+    expect(c.querySelector('[data-testid="soundscape-select"]')).toBeNull();
   });
 });
 
@@ -102,6 +124,36 @@ describe('audio quality — the shared segmented control', () => {
   it('no .sf-seg remains in the sound controls markup or as a stylesheet rule', () => {
     expect(read('../src/SoundControls.tsx')).not.toContain('className="sf-seg"');
     expect(css).not.toMatch(/\.sf-seg\s*[,{]/);
+  });
+
+  it('fits on ONE line: the quality row stacks and its seg is full-width nowrap', async () => {
+    const c = await renderSheet();
+    const seg = c.querySelector('[data-testid="quality-seg"]')!;
+    // label on its own line, seg full-width beneath (the .seg-stack row pattern)
+    expect(seg.closest('.sf-row')!.classList.contains('seg-stack')).toBe(true);
+    const tail = css.slice(css.indexOf('Settings follow-ups'));
+    expect(tail).toContain('.sf-row.seg-stack > .seg { display: flex; flex-wrap: nowrap; width: 100%; }');
+    expect(tail).toContain('.sf-row.seg-stack > .seg button { flex: 1 1 0; min-width: 0; }');
+    // and no segmented control on the settings surfaces wraps at all
+    expect(tail).toContain('.set-group .seg, .sheet-sec .seg, .sound-pop .seg { flex-wrap: nowrap; }');
+  });
+});
+
+describe('settings follow-ups CSS (owner, 2026-10-20)', () => {
+  const tail = css.slice(css.indexOf('Settings follow-ups'));
+
+  it('Neon volume sliders take the violet family — no electric-blue track in the sheets', () => {
+    const webkit = tail.slice(tail.indexOf('html[data-theme="neon"] .sheet .vol-slider::-webkit-slider-runnable-track'));
+    expect(webkit).toContain('var(--purple)');
+    expect(webkit).not.toContain('#269cff');
+    expect(webkit).not.toContain('--purple-hot'); // --purple-hot IS #269cff under Neon: the clash
+    expect(tail).toContain('html[data-theme="neon"] .sound-pop .vol-slider::-moz-range-progress');
+    // scoped to the sheets: no global .vol-slider recolor (Classic untouched)
+    expect(tail).not.toMatch(/(^|\n)\.vol-slider::-webkit-slider-runnable-track/);
+  });
+
+  it('the gold corner-fold no longer rides the disclosure rows', () => {
+    expect(css).not.toMatch(/\.gold-tab-row::after\s*\{[^}]*linear-gradient\(135deg/);
   });
 });
 

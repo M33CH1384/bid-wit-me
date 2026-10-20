@@ -16,11 +16,12 @@ describe('spatial phase 4: unified room (seen = heard = named)', () => {
     expect(a.name.length).toBeGreaterThan(2);
     expect(ROOM_STYLES).toContain(a); // venue field on the style is what Table renders
   });
-  it('resolver order: online > explicit settings venue > Story room > Auto roll', () => {
+  it('resolver order: online venue > picked venue > Auto roll (the venue decides the sounds)', () => {
     expect(sessionRoom({ seed: 'game-42', onlineVenue: 'barbershop', visualVenue: 'yacht' }).venue).toBe('barbershop');
-    expect(sessionRoom({ seed: 'game-42', visualVenue: 'mansion', storyRoom: 'basement' }).venue).toBe('mansion'); // explicit venue wins
-    expect(sessionRoom({ seed: 'game-42', storyRoom: 'basement' }).name).toBe('Basement Spades Night'); // then Story room
-    expect(sessionRoom({ seed: 'game-42', explicit: 'basement', onlineVenue: 'yacht' }).venue).toBe('yacht');
+    expect(sessionRoom({ seed: 'game-42', visualVenue: 'mansion' }).venue).toBe('mansion'); // picked venue wins over the roll
+    // the picked venue brings its whole signature: name, bed, reverb, surface
+    const church = sessionRoom({ seed: 'game-42', visualVenue: 'church' });
+    expect(church.name).toBe('Basement Spades Night'); expect(church.bed).toBe('basement');
   });
   it('Auto can roll Classic (all 11 rooms in the pool)', () => {
     const seen = new Set<string>();
