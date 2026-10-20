@@ -13,6 +13,7 @@ import { navigate } from './online/nav';
 import { DECKS } from './decks';
 import { VENUE_DEFS, savePendingVenue, type VenueChoice } from './venues';
 import { VenueSelect } from './VenueSelect';
+import GearIcon from './GearIcon';
 import { AccountEntry } from './account/AccountUI';
 import { SocialButton } from './social/Social';
 import { OpenTables } from './social/OpenTables';
@@ -308,7 +309,7 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
         <div className="wiz-dots" aria-hidden>{ORDER.map((x) => <i key={x} className={x === step ? 'on' : ''} />)}</div>
         <span className="wiz-right">
           <SocialButton className="wiz-social" />
-          <button type="button" className="icon-btn gear" aria-label="More options" data-testid="more" onClick={() => setMore(true)}>⚙</button>
+          <button type="button" className="icon-btn gear" aria-label="More options" data-testid="more" onClick={() => setMore(true)}><GearIcon /></button>
           <span className="dock-slot" aria-hidden />
         </span>
       </header>

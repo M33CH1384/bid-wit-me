@@ -26,6 +26,7 @@ import { ReactionChips, ReactionPicker } from '../reactions';
 import { TaglineText } from '../tagline';
 import { SocialLinksChips, type SocialLinks } from '../socialLinks';
 import { RepBlock } from '../RepBlock';
+import GearIcon from '../GearIcon';
 import './social.css';
 
 export const MODE_NAME: Record<string, string> = { joker: 'Joker Spades', aceDown: 'Ace Down', cutthroat: 'Cutthroat' };
@@ -217,12 +218,12 @@ function SocialPanel() {
           <span className="panel-title">SOCIAL</span>
           <span className={`soc-conn ${s.status}`} title={s.status}>{s.status === 'open' ? `${Object.keys(s.users).length} online` : s.status === 'off' ? '' : 'connecting…'}</span>
           <span className="soc-gear-wrap">
-            <button type="button" className={`icon-btn ${s.tab === 'tournaments' || s.tab === 'challenges' || s.tab === 'settings' ? 'on' : ''}`} aria-label="Events and settings" aria-expanded={gear} data-testid="social-gear" onClick={() => setGear(!gear)}>⚙</button>
+            <button type="button" className={`icon-btn ${s.tab === 'tournaments' || s.tab === 'challenges' || s.tab === 'settings' ? 'on' : ''}`} aria-label="Events and settings" aria-expanded={gear} data-testid="social-gear" onClick={() => setGear(!gear)}><GearIcon /></button>
             {gear && (
               <span className="soc-gear-menu" role="menu">
                 <button type="button" role="menuitem" data-testid="soc-tab-tournaments" onClick={() => { social.tab('tournaments'); setGear(false); }}>🏆 Events &amp; tournaments</button>
                 <button type="button" role="menuitem" data-testid="soc-tab-challenges" onClick={() => { social.tab('challenges'); setGear(false); }}>🏦 Big Bank challenges</button>
-                <button type="button" role="menuitem" data-testid="soc-tab-settings" onClick={() => { social.tab('settings'); setGear(false); }}>⚙ Social settings</button>
+                <button type="button" role="menuitem" data-testid="soc-tab-settings" onClick={() => { social.tab('settings'); setGear(false); }}><GearIcon size={15} /> Social settings</button>
               </span>
             )}
           </span>
