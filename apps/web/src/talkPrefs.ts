@@ -69,7 +69,15 @@ export function speakBot(name: string, text: string, persona?: string, line?: st
   const per = (persona && persona in PERSONAS ? persona : personaForName(name)) as PersonaId;
   // recorded clips go through the game's audio graph (master volume / mute already applied there)
   if (sound.voiceMuted(name)) return; // per-player mute: the chat text still shows, the voice stays silent
-  void playClip(per, name, rawLine(line), prefs.voiceVolume * 0.9, bid, seat, playerCount).then((played) => { if (!played) webSpeech(name, text, per); });
+  // Story lines (scene player, story table channel, rail) arrive with no
+  // catalog line id: their recorded clips are keyed by the line text itself
+  // in the character's cast sprite (storyVoice.ts — the story bake). Hand
+  // playClip the text as the raw key, but only for a story character called
+  // with its own cast/card persona — the same guard keyFor applies in
+  // voices.ts, so a same-named normal bot is never rerouted.
+  const cast = storyCastForName(name);
+  const raw = rawLine(line) ?? (cast && (per === cast.persona || per === cast.cardPersona) ? text : undefined);
+  void playClip(per, name, raw, prefs.voiceVolume * 0.9, bid, seat, playerCount).then((played) => { if (!played) webSpeech(name, text, per); });
 }
 
 /**

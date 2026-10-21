@@ -193,11 +193,11 @@
   "barber-m": {
    "voice": "am_liam",
    "speed": 1.05,
-   "count": 259,
-   "durationSec": 511.6,
+   "count": 290,
+   "durationSec": 690.6,
    "bytes": {
-    "webm": 1552903,
-    "m4a": 2606673
+    "webm": 2053608,
+    "m4a": 3436781
    }
   },
   "gambler-f": {
@@ -263,11 +263,11 @@
   "lilcuz-f": {
    "voice": "af_nova",
    "speed": 1.15,
-   "count": 224,
-   "durationSec": 421.8,
+   "count": 262,
+   "durationSec": 572.5,
    "bytes": {
-    "webm": 1195313,
-    "m4a": 1945847
+    "webm": 1631800,
+    "m4a": 2661090
    }
   },
   "lilcuz-m": {
@@ -323,21 +323,21 @@
   "storyteller-f": {
    "voice": "af_sarah",
    "speed": 1.02,
-   "count": 249,
-   "durationSec": 487.6,
+   "count": 282,
+   "durationSec": 658.2,
    "bytes": {
-    "webm": 1391523,
-    "m4a": 2462446
+    "webm": 1883637,
+    "m4a": 3350917
    }
   },
   "storyteller-m": {
    "voice": "am_fenrir",
    "speed": 0.98,
-   "count": 249,
-   "durationSec": 462.0,
+   "count": 296,
+   "durationSec": 705.4,
    "bytes": {
-    "webm": 1316003,
-    "m4a": 2161380
+    "webm": 2021151,
+    "m4a": 3358003
    }
   },
   "influencer-f": {

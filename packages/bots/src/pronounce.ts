@@ -19,6 +19,11 @@
  *   mm     → spelled "em em". As a standalone token it's a hum: "hmm" (həm).
  *   nil    → already nɪl in espeak, but some browser voices read the country ("Nile").
  *            "nill" is nɪl everywhere; IPA-identical here, so it forces no re-bakes.
+ *   hmph   → spelled out letter by letter (eɪtʃ ɛm piː eɪtʃ). "humph" phonemizes to
+ *            hʌmf: the grunt itself. (Found in the story corpus, 2026-10-21 story bake.)
+ *   Mae    → miː ("mee") in espeak — Sister Mae's name said wrong in 13 story lines.
+ *            "May" phonemizes to meɪ, how the name is actually said. The modal verb is
+ *            spelled "may", never "mae", so the respelling can only touch the name.
  *
  * To add an entry: add a rule, check its IPA (kokoro_onnx Tokenizer.phonemize), and let the
  * corpus pin in test/pronounce.test.ts prove no speakable line's spoken form still carries
@@ -35,6 +40,8 @@ export const PRONUNCIATION_RULES: PronunciationRule[] = [
   { match: /\bmm\b/gi, spoken: 'hmm', note: 'standalone hum (storyteller\'s "mm.")' },
   { match: /'em\b|\bem\b/gi, spoken: 'um', note: 'reduced "them", not the letter M' },
   { match: /\bnil\b/gi, spoken: 'nill', note: 'zero, not the river; IPA-identical in espeak' },
+  { match: /\bhmph\b/gi, spoken: 'humph', note: 'a grunt (hʌmf), never spelled H-M-P-H' },
+  { match: /\bMae\b/g, spoken: 'May', note: 'Sister Mae’s name: meɪ, not espeak’s miː ("mee")' },
 ];
 
 /** The spoken form of a line's text: dictionary respellings applied, display text untouched. */

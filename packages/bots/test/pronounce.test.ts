@@ -9,6 +9,9 @@ describe('pronunciation dictionary (shared by the bake and the Web Speech fallba
     expect(applyPronunciation('lay em down, youngblood.')).toBe('lay um down, youngblood.');
     expect(applyPronunciation("mm. I'm telling the whole family.")).toBe("hmm. I'm telling the whole family.");
     expect(applyPronunciation('a nil? bold.')).toBe('a nill? bold.');
+    expect(applyPronunciation('Hmph. Clean work.')).toBe('humph. Clean work.');
+    expect(applyPronunciation('Sister Mae runs the basement.')).toBe('Sister May runs the basement.');
+    expect(applyPronunciation('may I? in May, you may.')).toBe('may I? in May, you may.');
   });
   it('is word-boundary safe: lookalike words are untouched', () => {
     const s = 'them problem dilemma anthem chiles nill nils emblem';
