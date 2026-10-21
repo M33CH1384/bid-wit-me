@@ -111,13 +111,14 @@ export class RuleError extends Error {
  * (`nextDealer(previous game)`). The deal then moves clockwise one seat per hand (seat + 1 = the next seat clockwise
  * on screen: you at the bottom, then left, top, right), and the player to the dealer's left bids and leads first.
  */
-export function newGame(rules: TableRules, seed: string | number, opts: { dealer?: number } = {}): GameState {
+/** The pre-deal shell both game constructors share: scores zeroed, no hand dealt yet (handNo 0). */
+function baseGame(rules: TableRules, seed: string | number, opts: { dealer?: number } = {}): GameState {
   const problems = validateRules(rules);
   if (problems.length) throw new RulesConfigError(problems);
   const n = rules.playerCount;
   const s = String(seed);
   const dealer = opts.dealer !== undefined && opts.dealer >= 0 && opts.dealer < n ? opts.dealer : createRng(`${s}:dealer`).int(n);
-  const base: GameState = {
+  return {
     rules, seed: s, phase: 'bidding', handNo: 0, dealer, turn: null,
     hands: [], bids: [], revealed: [], exchange: [],
     trick: { leader: 0, plays: [], winner: null }, tricks: [], tricksWon: [], spadesBroken: false,
@@ -125,7 +126,36 @@ export function newGame(rules: TableRules, seed: string | number, opts: { dealer
     history: [], result: null,
     failStreak: Array(n).fill(0), eliminated: Array(n).fill(false),
   };
-  return dealHand(base, 1, dealer);
+}
+
+export function newGame(rules: TableRules, seed: string | number, opts: { dealer?: number } = {}): GameState {
+  const base = baseGame(rules, seed, opts);
+  return dealHand(base, 1, base.dealer);
+}
+
+/**
+ * A new game whose first hand is NOT dealt yet (handNo 0, every hand empty, no turn).
+ * The online room creates games this way so it can hold the first deal behind the
+ * pre-deal setup window (players setting cameras/mics on a fully loaded table);
+ * `dealFirstHand` then deals exactly the hand `newGame` would have dealt — the deck
+ * is seeded from the game seed + hand number, so the cards are identical either way.
+ */
+export function newGameUndealt(rules: TableRules, seed: string | number, opts: { dealer?: number } = {}): GameState {
+  const base = baseGame(rules, seed, opts);
+  const n = rules.playerCount;
+  return {
+    ...base,
+    hands: Array.from({ length: n }, () => []),
+    bids: Array(n).fill(null),
+    revealed: Array(n).fill(true),
+    tricksWon: Array(n).fill(0),
+  };
+}
+
+/** Deal hand 1 into an undealt game (see newGameUndealt). A no-op on a game already dealt. */
+export function dealFirstHand(st: GameState): GameState {
+  if (st.handNo !== 0) return st;
+  return dealHand(st, 1, st.dealer);
 }
 
 /** The dealer for a rematch: one seat clockwise from whoever dealt the last hand of `prev`. */

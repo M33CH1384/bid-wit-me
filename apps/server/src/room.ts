@@ -8,7 +8,7 @@
  *  - all durable state lives in one plain-JSON `RoomData` object that the DO saves as a single row.
  */
 import {
-  type Action, type GameHandLog, type GameState, type Series, addSeriesGame, emptySeries, seriesForGameStart, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, RulesConfigError, acceptRules, applyAction, canRunIt, runPlayout, type Seat, spectatorView, HandLogBuilder, isFreshDeal, isNukeTrick, nukeArmed, nextDealer, makeRules, newGame, pendingTurn, secureSeed, throwInOpen, viewFor, withCompleteNil,
+  type Action, type GameHandLog, type GameState, type Series, addSeriesGame, emptySeries, seriesForGameStart, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, RulesConfigError, acceptRules, applyAction, canRunIt, runPlayout, type Seat, spectatorView, HandLogBuilder, isFreshDeal, isNukeTrick, nukeArmed, nextDealer, makeRules, newGameUndealt, dealFirstHand, pendingTurn, secureSeed, throwInOpen, viewFor, withCompleteNil,
 } from '@spades/rules';
 import { voiceGender } from '@spades/bots';
 import { BUCKET_THIN } from './voice/writer';
@@ -77,6 +77,9 @@ export interface RoomData {
   /** `seq` when this turn began. A play from earlier than this belongs to a previous turn. */
   turnSeq?: number;
   deadline: number | null;
+  /** Pre-deal setup window: epoch ms when the current game's first hand deals.
+   *  Set by startGame (the game is created undealt); cleared when the deal lands. */
+  dealAt?: number | null;
   ready: string[];
   chat: ChatLine[];
   chatSeq: number;
@@ -201,6 +204,8 @@ export interface RoomTiming {
   handOverMs: number;
   /** extra Table Talk lead-in so the countdown starts as the score screen opens (default HAND_END_HOLD_MS; tests use 0) */
   handEndHoldMs?: number;
+  /** pre-deal setup window before a game's first hand (default PRE_DEAL_MS; tests use 0 for instant deals) */
+  preDealMs?: number;
 }
 
 /** learning mode (a player with tips on): their own turn timer runs this much longer */
@@ -212,6 +217,14 @@ export const HOST_DISCONNECT_GRACE_MS = 30_000;
 export const DEFAULT_TIMING: RoomTiming = { botMs: 750, trickPauseMs: 1300, dealMs: 3200, disconnectGraceMs: 10_000, handOverMs: 20_000 };
 /** A loader that never reports ready must not freeze the table. Matches the client's give-up. */
 export const LOADER_HOLD_MAX_MS = 45_000;
+/**
+ * Pre-deal setup window (owner, 2026-10-20): cards do NOT deal the instant a game
+ * starts. The room creates the game undealt and holds the first deal this long —
+ * the versus intro dismisses, the table is fully loaded and visible, and players
+ * get a real window to set cameras/mics before anyone sees a card. Server-held so
+ * every seat's deal (and the 30s bid clock behind it) starts at the same moment.
+ */
+export const PRE_DEAL_MS = 8000;
 /**
  * After a bot's scheduled delay, this much longer with the turn still unmoved means the brain
  * did not resolve it. The server then plays a legal bid or card itself.
@@ -1243,14 +1256,20 @@ export class Room {
     // a rematch continues the deal rotation (one seat clockwise from the last dealer); a new game deals from a random seat
     const dealer = rematch && prevGame && prevGame.rules.playerCount === n ? nextDealer(prevGame) : undefined;
     try {
-      d.game = newGame(d.rules, secureSeed(), { dealer });
+      // Created UNDEALT: the first hand deals only when the pre-deal setup window
+      // ends (see PRE_DEAL_MS / dealFirstHand below), so no seat can be on the bid
+      // clock while their table is still loading or their camera is off.
+      d.game = newGameUndealt(d.rules, secureSeed(), { dealer });
     } catch (e) {
       if (e instanceof RulesConfigError) throw new RoomError('BAD_RULES', e.problems.join('; ') || 'Invalid rules');
       throw e;
     }
-    // Hand-history log (Demetrius 2026-10-19): a fresh ground-truth log per game, first hand dealt.
-    this.logBuilder = HandLogBuilder.start(d.game, this.io.now(), d.code);
-    d.handLog = this.logBuilder.log;
+    d.dealAt = this.io.now() + (this.timing.preDealMs ?? PRE_DEAL_MS);
+    // Hand-history log (Demetrius 2026-10-19): a fresh ground-truth log per game.
+    // It opens at the deal (dealFirstHand below) so hand 1's entry carries the
+    // dealt cards, not the undealt shell.
+    this.logBuilder = null;
+    d.handLog = undefined;
     // venue: a 'random' pick is rolled per game (so a rematch can land somewhere new); everyone gets the same one
     d.venueNow = (d.venue ?? 'classic') === 'random' ? rollVenue(parseInt(secureSeed().slice(0, 8), 16) / 4294967296, d.venueNow) : (d.venue ?? 'classic') as VenueId;
     d.seq = (d.seq ?? 0) + 1;
@@ -1272,6 +1291,25 @@ export class Room {
     d.votes = {};
     for (const m of Object.values(d.members)) m.timeouts = 0;
     this.system(`Game ${d.gamesPlayed} started`);
+  }
+
+  /**
+   * The pre-deal window ended: deal hand 1 to everyone at once. The deck is the
+   * seeded one `newGame` would have dealt at startGame time — the window changes
+   * WHEN the cards land, never WHICH cards. Opens the hand log on the dealt
+   * state (startGame deliberately leaves it closed on the undealt shell).
+   */
+  private dealFirstHand(): void {
+    const d = this.data;
+    if (!d.game || d.game.handNo !== 0) { d.dealAt = null; return; }
+    d.game = dealFirstHand(d.game);
+    d.dealAt = null;
+    d.seq = (d.seq ?? 0) + 1;
+    d.turnKey = null; // the turn machinery keys the first bidder fresh next drive
+    const b = HandLogBuilder.start(d.game, this.io.now(), d.code);
+    this.logBuilder = b;
+    d.handLog = b.log;
+    this.trace('deal', { cause: 'pre-deal-window', game: d.gamesPlayed, hand: d.game.handNo });
   }
 
   /* ---------------------------------------------------------------- game */
@@ -1700,6 +1738,8 @@ export class Room {
           // nobody came back: bots play the match out instantly (the bracket must keep moving)
           paused = false;
           if (g.phase === 'handOver') { this.nextHand(); changed = true; continue; }
+          // the pre-deal window never blocks a bracket: an empty room deals at once
+          if (g.handNo === 0 && d.dealAt != null) { this.dealFirstHand(); changed = true; continue; }
           const tt = pendingTurn(g);
           if (!tt) return changed;
           const sl = d.seats[tt.seat]!;
@@ -1708,6 +1748,17 @@ export class Room {
           if (guard === 399) this.io.wake(10);
           continue;
         }
+      }
+
+      // Pre-deal setup window: the game exists but hand 1 is not dealt yet. Hold
+      // here — no turn, no clock — until the window ends, then deal to everyone
+      // at once. Nobody connected: stay frozen (the deal waits for an audience,
+      // like every other timer at this table).
+      if (g.handNo === 0 && d.dealAt != null) {
+        if (paused) { this.io.setAlarm(null); return changed; }
+        if (now >= d.dealAt) { this.dealFirstHand(); changed = true; continue; }
+        this.io.setAlarm(d.dealAt);
+        return changed;
       }
 
       if (g.phase === 'handOver') {
@@ -1944,7 +1995,7 @@ export class Room {
     return {
       code: d.code, hostId: d.hostId ?? '', phase: d.phase, rules: d.rules, botLevel: d.botLevel, seats,
       members: Object.entries(d.members).map(([playerId, m]) => ({ playerId, name: m.name, connected: this.isConnected(playerId), seat: m.seat })),
-      deadline: d.deadline, turnClockStart: this.turnClockStart(), turnSec: this.clockSeconds(), ready: [...d.ready], rev: d.rev, seq: d.seq ?? 0, game: d.gamesPlayed, now: this.io.now(),
+      deadline: d.deadline, turnClockStart: this.turnClockStart(), turnSec: this.clockSeconds(), ready: [...d.ready], rev: d.rev, seq: d.seq ?? 0, game: d.gamesPlayed, dealAt: d.dealAt ?? null, now: this.io.now(),
       talkSec: d.talkSec ?? Math.round(this.timing.handOverMs / 1000), afkLimit: d.afkLimit ?? DEFAULT_AFK_LIMIT, partnerMicMute: d.partnerMicMute ?? false, nukeIntensity: d.nukeIntensity ?? 'full', talkIntensity: d.talkIntensity ?? 'cookout', botTalk: d.botTalk ?? true, aiTalk: !!d.aiTalk,
       venue: d.venue ?? 'classic', ...(d.venueNow ? { venueNow: d.venueNow } : {}),
       teamNames: d.rules.partnerships ? [...(d.teamNames ?? [null, null])] : undefined, series: d.series ?? null, revealed: [...(d.talk?.revealed ?? [])],

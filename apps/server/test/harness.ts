@@ -20,9 +20,13 @@ export class FakeEnv {
   highlights: import('../src/stats/highlights').HighlightEvent[] = [];
   /** The DO's socket close can re-enter the room. Tests set this to simulate that. */
   onClose?: (cid: string) => void;
+  timing: RoomTiming;
 
-  constructor(data?: RoomData, public timing: RoomTiming = DEFAULT_TIMING) {
-    this.room = new Room(data ?? newRoomData('ABCDE', this.t), this.io(), timing);
+  constructor(data?: RoomData, timing: RoomTiming = DEFAULT_TIMING) {
+    // The suite was written against instant first deals: the pre-deal setup window
+    // defaults OFF here and is exercised explicitly by pre-deal.test.ts.
+    this.timing = { preDealMs: 0, ...timing };
+    this.room = new Room(data ?? newRoomData('ABCDE', this.t), this.io(), this.timing);
   }
 
   io(): RoomIO {

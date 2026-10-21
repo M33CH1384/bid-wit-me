@@ -220,6 +220,10 @@ export interface RoomInfo {
   seq: number;
   /** games started at this table (1 = first game); changes on rematch */
   game: number;
+  /** Pre-deal setup window: epoch ms when the FIRST hand of the current game deals.
+   *  Set only while the room holds that deal (players are on the loaded table setting
+   *  cameras/mics); null/absent once dealt or when no window is running. */
+  dealAt?: number | null;
   /** server clock (epoch ms) when this was sent, so clients can correct the deadline for clock skew */
   now: number;
   /** between-hands Table Talk countdown (s) */
@@ -251,6 +255,8 @@ export interface RoomInfo {
   votes?: { target: string; by: string[]; need: number }[];
   /** Release 9b: this table plays a tournament match */
   tournament?: { id: string; name?: string; match: string; autostartAt: number | null; reserved: (string | null)[] };
+  /** Big Bank wager table: the challenge this room plays (sent by the room; absent elsewhere). */
+  challenge?: { id: string; autostartAt: number | null; reserved: (string | null)[] };
   /** Release 10: hidden from the Open tables list (default public) */
   private?: boolean;
   /** Release 10: spectators may take bot seats mid-game (default on; off by default when the table is rated) */
