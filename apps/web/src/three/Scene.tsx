@@ -1103,12 +1103,25 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
               return [Math.max(pad + pw / 2 + left / 2, Math.min(x, size.width - pad - pw / 2 + left / 2)), cy];
             }
             const ax = side === 'left' ? Math.max(pad, x - 72) : Math.min(size.width - pad, x + 72);
+            // The top bar paints ABOVE the badge layer (scorebug z 8 / trump strip z 6 over the badge
+            // layer's z 2), and on wide screens the sitting camera projects the side anchors up into
+            // it — at 1440x900 sitting the left/right anchors land at y~66, dead centre of the bug, so
+            // both opponent plates rendered hidden behind it (owner 2026-10-21, Mac). The partner
+            // plate's branch has always floored itself under the bar; the side plates get the same
+            // floor: their working centre never starts above bar + 8.
+            const stripR = document.querySelector('.trump-strip')?.getBoundingClientRect();
+            const bugR = document.querySelector('.scorebug .bug')?.getBoundingClientRect();
+            const barFloor = stripR && stripR.height > 0 ? stripR.bottom : bugR ? bugR.bottom : size.width >= 900 ? 106 : 122;
             // never cover a trick slot (phones in portrait: the side plates sit right beside the trick cards).
             // 1) if the plate would reach into a slot beside it, it goes narrow (chips wrap under the name);
             // 2) if it still touches one, it moves up, clear of the trick zone (never above the top bar).
             const plate = portal.current?.querySelector<HTMLElement>(`.seat-anchor.side-${side} > .plate`);
             const pr = plate?.getBoundingClientRect();
-            if (!plate || !pr || !pr.width) return [ax, y];
+            if (!plate || !pr || !pr.width) return [ax, Math.max(y, barFloor + 8 + 28)]; // 28 = half the 56px fallback plate height, as in the top branch
+            // how far above the plate's centre anything reaches (the TO PLAY tag pokes over the top)
+            const tagR = plate.querySelector('.plate-turn')?.getBoundingClientRect();
+            const up = Math.max(pr.height / 2, tagR && tagR.height ? (pr.top + pr.bottom) / 2 - tagR.top : 0);
+            const cy0 = Math.max(y, barFloor + 8 + up);
             const slots = trickRects(camera, size, positions, n);
             const narrow = plate.classList.contains('narrow');
             if (!narrow) plate.dataset.wideW = String(pr.width);
@@ -1117,7 +1130,7 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
               const l = side === 'left' ? ax : ax - w, r = l + w;
               return slots.filter((t) => r + 6 > t.left && l - 6 < t.right && cy + h / 2 + 6 > t.top && cy - h / 2 - 6 < t.bottom);
             };
-            const wantNarrow = hits(wideW, pr.height, y).length > 0;
+            const wantNarrow = hits(wideW, pr.height, cy0).length > 0;
             if (wantNarrow !== narrow) { plate.classList.toggle('narrow', wantNarrow); invalidate(); } // re-measured next frame
             const pw = pr.width, ph = pr.height;
             // The partner's plate is a hard obstacle too, not just the trick slots: in portrait
@@ -1135,12 +1148,11 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
             let topHit = false;
             if (tp) {
               const l = side === 'left' ? ax : ax - pw, r = l + pw;
-              topHit = r + 6 > tp.left && l - 6 < tp.right && y + ph / 2 + 6 > tp.top && y - ph / 2 - 6 < tp.bottom;
+              topHit = r + 6 > tp.left && l - 6 < tp.right && cy0 + ph / 2 + 6 > tp.top && cy0 - ph / 2 - 6 < tp.bottom;
             }
-            if (!hits(pw, ph, y).length && !topHit) { delete plate.dataset.moved; return [ax, y]; }
+            if (!hits(pw, ph, cy0).length && !topHit) { delete plate.dataset.moved; return [ax, cy0]; }
             plate.dataset.moved = '1';
-            const sr = document.querySelector('.trump-strip')?.getBoundingClientRect();
-            const bar = sr && sr.height > 0 ? sr.bottom : document.querySelector('.scorebug .bug')?.getBoundingClientRect().bottom ?? 0;
+            const bar = barFloor;
             // everything else the plate must not cover. The other plates weigh like trick slots
             // (a plate may never sit on another plate); the rest of the HUD keeps its old weight.
             const plateRects = [...document.querySelectorAll<HTMLElement>(`.seat-anchor:not(.side-${side}) > .plate, .seat-anchor:not(.side-${side}) > .plate .vbubble`)]
@@ -1167,8 +1179,8 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
             };
             // candidates: the natural spot, then — when a trick slot is in the way — just above the
             // trick zone, just below it, and below it but slid in from the edge (clear of the controls)
-            const hit = hits(pw, ph, y);
-            const cands: [number, number][] = [[ax, y]];
+            const hit = hits(pw, ph, cy0);
+            const cands: [number, number][] = [[ax, cy0]];
             if (hit.length) {
               const up = Math.min(...hit.map((t) => t.top)) - 6 - ph / 2;
               let down = Math.max(...hit.map((t) => t.bottom)) + 6 + ph / 2;
@@ -1187,7 +1199,7 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
             for (const c of cands) { const k = cost(c[0], c[1]); if (k < bc) { bc = k; best = c; } }
             const w = window as unknown as { __bwmPlateDbg?: Record<string, unknown>; __bwmLayout?: unknown };
             const dbg = w.__bwmLayout ? (w.__bwmPlateDbg ??= {}) : undefined;
-            if (dbg) dbg[side] = { y, pw, ph, tp: tp && [tp.top, tp.bottom], cands: cands.map((c) => [...c.map(Math.round), Math.round(cost(c[0], c[1]))]), slots: slots.map((t) => [t.left, t.top, t.right, t.bottom].map(Math.round)) };
+            if (dbg) dbg[side] = { y, cy: cy0, pw, ph, tp: tp && [tp.top, tp.bottom], cands: cands.map((c) => [...c.map(Math.round), Math.round(cost(c[0], c[1]))]), slots: slots.map((t) => [t.left, t.top, t.right, t.bottom].map(Math.round)) };
             return best;
           }
           : undefined;
