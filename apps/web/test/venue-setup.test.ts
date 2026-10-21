@@ -72,6 +72,10 @@ describe('venue choice in setup', () => {
   it('online setup: same picker before Create Table; untouched stays classic, Random stays Random (Auto)', async () => {
     await act(async () => { root.render(createElement(Harness)); });
     await toTable('play-online');
+    // lobby restructure (2026-10-20): the create form is its own step behind
+    // the lobby's one Create entry — the picker lives there now
+    expect(document.querySelector('[data-testid="create-table"]')).toBeNull();
+    await click('create-open');
     expect(document.querySelector('[data-testid="venue-select-setup"]')).not.toBeNull();
     expect(document.querySelector('[data-testid="create-table"]')).not.toBeNull();
     expect(current.venue).toBe('classic');

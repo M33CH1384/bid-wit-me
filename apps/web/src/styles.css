@@ -601,6 +601,25 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .ess .join-row button { padding: 10px 20px; }
 .ess .err { text-align: center; font-size: 14px; }
 
+/* setup cards (lobby restructure, 2026-10-20): the table-setup forms — online
+   lobby, create form, bots essentials — group their rows into headed cards in
+   the league surfaces' language: one titled panel per decision, rows inside
+   go flat (dividers, not nested glass), nothing overlaps, generous spacing. */
+.setup-card { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px 10px; background: rgba(255,255,255,.03);
+  box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.18); clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px); }
+.setup-card-h { margin: 0 0 6px; font-family: var(--display); font-weight: 800; font-size: 14px; letter-spacing: .16em; text-transform: uppercase; color: var(--gold); }
+.setup-card .ess-row { background: transparent; box-shadow: none; clip-path: none; padding: 9px 0; min-height: 48px; }
+.setup-card .ess-row + .ess-row, .setup-card .quiet-row + .ess-row, .setup-card .ess-row + .quiet-row { border-top: 1px solid rgba(var(--edge-rgb),.14); }
+.setup-card .quiet-row { background: transparent; box-shadow: none; padding: 11px 0; min-height: 48px; }
+.setup-card .rules-summary { margin: 2px 0 6px; }
+.setup-card .join-row { padding: 2px 0 4px; }
+.lobby-create { width: 100%; }
+/* the rules stat line: strong numerals over small caps labels, striped cells */
+.rules-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: rgba(var(--edge-rgb),.16); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.16); margin: 2px 0 8px; }
+.rules-stat { background: rgba(12,7,18,.55); padding: 8px 6px 7px; display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 0; }
+.rules-stat b { font-family: var(--display); font-weight: 800; font-size: 16.5px; letter-spacing: .02em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.rules-stat small { font-size: 10.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+
 /* gear sheet */
 .sheet-backdrop { align-items: end; padding: 0; }
 .sheet { width: min(560px, 100%); max-height: 86dvh; display: flex; flex-direction: column; padding: 12px 16px calc(14px + env(safe-area-inset-bottom)); --slant: 16px; animation: sheet-up .32s cubic-bezier(.2,.8,.2,1) both; }
@@ -1449,6 +1468,8 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .sg-hands th, .sg-hands td { padding: 2px 6px; text-align: right; border-bottom: 1px solid rgba(255,255,255,.08); }
 .sg-hands th:first-child, .sg-hands td:first-child { text-align: left; }
 .gameover .series-chip, .tt-head .series-chip { margin: 2px auto 6px; }
+.team-name-input { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+.team-name-input input { background: rgba(255,255,255,.07); border: 1px solid rgba(var(--edge-rgb),.35); border-radius: 6px; color: var(--ink); padding: 7px 9px; font: inherit; font-size: 16px; width: 100%; box-sizing: border-box; }
 .team-name-edit { display: flex; gap: 6px; align-items: center; }
 .team-name-edit input { flex: 1; min-width: 0; background: rgba(255,255,255,.07); border: 1px solid rgba(var(--edge-rgb),.35); border-radius: 6px; color: var(--ink); padding: 7px 9px; font: inherit; font-size: 16px; }
 .team-name-edit input::placeholder { color: var(--muted); opacity: .8; }

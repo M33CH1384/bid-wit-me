@@ -2,7 +2,7 @@ import { type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode,
 import { CODE_LENGTH, isRoomCode, normalizeRoomCode } from '@spades/protocol';
 import { Seg, Toggle } from './MoreOptions';
 import { requestSettingsSheet } from './settingsSheet';
-import { type ModeKey, type Settings, MODES, rulesSummary, settingsToRules } from './settings';
+import { type ModeKey, type Settings, MODES, modeTitle, rulesSummary, settingsToRules } from './settings';
 import { type TipsPref, isFirstVisit, saveTips } from './tips';
 import { splashAction } from './splashTap';
 import { serverUrl } from './online/config';
@@ -18,6 +18,7 @@ import GearIcon from './GearIcon';
 import { AccountEntry } from './account/AccountUI';
 import { SocialButton } from './social/Social';
 import { OpenTables } from './social/OpenTables';
+import { OFFLINE_PAIR_KEY, TeamNameField, pairTeamNames, useTeamNameFor } from './TeamName';
 
 /**
  * Start flow as a wizard: splash (logo + Play Online / Play vs Bots + Resume) → mode → essentials → go.
@@ -27,6 +28,11 @@ import { OpenTables } from './social/OpenTables';
 type Step = 'home' | 'door' | 'branch' | 'opponent' | 'table';
 type Path = 'bots' | 'online';
 type Kind = 'team' | 'cut';
+/** The online 'table' step has two screens (owner, 2026-10-20 lobby restructure):
+ *  the lobby (join + open tables + one Create entry) and the create form as its
+ *  own step. Kept in history.state next to the wizard step so the back gesture
+ *  walks create → lobby → opponent like any other wizard transition. */
+type TableView = 'lobby' | 'create';
 const ORDER: Step[] = ['home', 'door', 'branch', 'opponent', 'table'];
 /** Founder menu rework (Concept A): one decision per screen — format (Door 1), then the
  *  branch choice, then opponent, then table essentials. Mode payloads are the same
@@ -52,12 +58,12 @@ const ONE_LINERS: Record<ModeKey, string> = {
 };
 const MODE_TAG: Record<ModeKey, string> = { joker: '2 v 2', cutthroat4: '4 players', cutthroat3: '3 players', aceDown: '2 v 2' };
 
-function readWiz(): { step: Step; path: Path; kind: Kind } {
-  const w = (history.state ?? {}) as { wiz?: string; path?: Path; kind?: Kind };
+function readWiz(): { step: Step; path: Path; kind: Kind; view: TableView } {
+  const w = (history.state ?? {}) as { wiz?: string; path?: Path; kind?: Kind; view?: TableView };
   // legacy wizard steps from before the rework land on their nearest new screen
   const legacy: Record<string, Step> = { mode: 'door', setup: 'table' };
   const step = (w.wiz && (ORDER.includes(w.wiz as Step) ? (w.wiz as Step) : legacy[w.wiz])) || 'home';
-  return { step, path: w.path ?? 'bots', kind: w.kind ?? 'team' };
+  return { step, path: w.path ?? 'bots', kind: w.kind ?? 'team', view: w.view === 'create' ? 'create' : 'lobby' };
 }
 
 /** Most recent online seat (token saved in the last 12 h) → offer to rejoin it if the table still exists. */
@@ -119,7 +125,8 @@ export function VenueSetupRow({ value, onChange }: { value: VenueChoice; onChang
 }
 
 export default function Setup({ settings: s, onChange, tips, onTips, onStart, onResume, resumeLabel }: Props) {
-  const [{ step, path, kind }, setWiz] = useState(readWiz);
+  const [{ step, path, kind, view }, setWiz] = useState(readWiz);
+  const offlineTeamName = useTeamNameFor(OFFLINE_PAIR_KEY);
   const [dir, setDir] = useState<'fwd' | 'back'>('fwd');
   const [ask, setAsk] = useState(isFirstVisit);
   const onlineSeat = useOnlineSeat();
@@ -141,7 +148,7 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
     if (!(history.state as { wiz?: Step } | null)?.wiz) history.replaceState({ ...(history.state ?? {}), wiz: 'home' }, '');
     const on = () => {
       const w = readWiz();
-      setWiz((cur) => { setDir(ORDER.indexOf(w.step) < ORDER.indexOf(cur.step) ? 'back' : 'fwd'); return w; });
+      setWiz((cur) => { setDir(ORDER.indexOf(w.step) < ORDER.indexOf(cur.step) || (w.step === cur.step && cur.view === 'create' && w.view === 'lobby') ? 'back' : 'fwd'); return w; });
     };
     window.addEventListener('popstate', on);
     return () => window.removeEventListener('popstate', on);
@@ -150,25 +157,33 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
   // Wizard history: steps pushed by the wizard carry a depth `d`. The back arrow only uses history.back() when the
   // entry before is one of ours (d > 0); otherwise (we arrived from a finished / left game, or a deep link) it steps
   // to the previous wizard step in place — it can never land back on a table.
-  const go = (next: Step, p: Path = path, k: Kind = kind) => {
+  const go = (next: Step, p: Path = path, k: Kind = kind, v: TableView = 'lobby') => {
     const d = ((history.state as { d?: number } | null)?.d ?? 0) + 1;
-    history.pushState({ wiz: next, path: p, kind: k, d }, '');
+    history.pushState({ wiz: next, path: p, kind: k, view: v, d }, '');
     setDir('fwd');
-    setWiz({ step: next, path: p, kind: k });
+    setWiz({ step: next, path: p, kind: k, view: v });
   };
   const back = () => {
     const d = (history.state as { d?: number } | null)?.d ?? 0;
     if (d > 0) { history.back(); return; }
+    // Deep-linked straight into the create form (no wizard history under it):
+    // back lands on the lobby, never out of the wizard.
+    if (step === 'table' && view === 'create') {
+      history.replaceState({ wiz: 'table', path, kind, view: 'lobby', d: 0 }, '', '/');
+      setDir('back');
+      setWiz({ step: 'table', path, kind, view: 'lobby' });
+      return;
+    }
     // Cutthroat has no branch step (Door 1 goes straight to Opponent): skip it on the in-place fallback.
     const prev = step === 'opponent' && kind === 'cut' ? 'door' : ORDER[Math.max(0, ORDER.indexOf(step) - 1)]!;
-    history.replaceState({ wiz: prev, path, kind, d: 0 }, '', '/');
+    history.replaceState({ wiz: prev, path, kind, view: 'lobby', d: 0 }, '', '/');
     setDir('back');
-    setWiz({ step: prev, path, kind });
+    setWiz({ step: prev, path, kind, view: 'lobby' });
   };
   const home = () => {
-    history.replaceState({ wiz: 'home', path, kind, d: 0 }, '', '/');
+    history.replaceState({ wiz: 'home', path, kind, view: 'lobby', d: 0 }, '', '/');
     setDir('back');
-    setWiz({ step: 'home', path, kind });
+    setWiz({ step: 'home', path, kind, view: 'lobby' });
   };
   const setTipsPref = (on: boolean) => { const t = { on, asked: true }; saveTips(t); onTips(t); };
 
@@ -272,28 +287,47 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
     body = (
       <>
         <p className="wiz-crumb">{MODE_CRUMB[s.mode]} · {path === 'online' ? 'Play Online' : 'Vs Bots'}</p>
-        <h2 className="wiz-title">Your Table<small>{mode.title}</small></h2>
+        <h2 className="wiz-title">{path === 'online' ? (view === 'create' ? 'Create a table' : 'Find a table') : 'Your Table'}<small>{mode.title}</small></h2>
         {path === 'bots' ? (
           <div className="ess">
-            <div className="ess-row stack" data-testid="bots-row">
-              <span className="ess-label">Bots</span>
-              <Seg label="Bot skill" value={s.botLevel} options={[['mixed', 'Mixed'], ['novice', 'Novice'], ['regular', 'Regular'], ['pro', 'Pro'], ['shark', 'Shark']]} onChange={(v) => set('botLevel', v)} />
-            </div>
-            <div className="ess-row">
-              <span className="ess-label">Play to</span>
-              <Seg label="Target score" value={s.targetScore} options={[250, 300, 500].map((x) => (x === (cut ? 300 : 500) ? ['default', String(x)] : [x, String(x)])) as [number | 'default', string][]} onChange={(v) => set('targetScore', v)} />
-            </div>
-            {deck}
-            <div className="ess-row stack"><span className="ess-label">Pick your deck — tap for the full card</span><DeckThumbs value={s.deck} onChange={(v) => set('deck', v)} /></div>
-            <VenueSetupRow value={s.venue ?? 'classic'} onChange={(v) => set('venue', v)} />
-            <button type="button" className="quiet-row" data-testid="house-rules" onClick={() => requestSettingsSheet()}><span>HOUSE RULES</span><span className="value-chip">Standard</span><i className="corner-tab" aria-hidden /></button>
-            {cutRules}
-            {summary}
-            {tipsRow}
+            {!cut && (
+              <section className="setup-card" aria-label="Your team">
+                <h3 className="setup-card-h">Your team</h3>
+                <div className="ess-row stack">
+                  <span className="ess-label">Team name<small>for you + your bot partner — saved for this pairing</small></span>
+                  <TeamNameField value={offlineTeamName} placeholder="You & your partner" onSave={(v) => pairTeamNames.set(OFFLINE_PAIR_KEY, v)} testId="setup-team-name" />
+                </div>
+              </section>
+            )}
+            <section className="setup-card" aria-label="Bots & score">
+              <h3 className="setup-card-h">Bots &amp; score</h3>
+              <div className="ess-row stack" data-testid="bots-row">
+                <span className="ess-label">Bots</span>
+                <Seg label="Bot skill" value={s.botLevel} options={[['mixed', 'Mixed'], ['novice', 'Novice'], ['regular', 'Regular'], ['pro', 'Pro'], ['shark', 'Shark']]} onChange={(v) => set('botLevel', v)} />
+              </div>
+              <div className="ess-row">
+                <span className="ess-label">Play to</span>
+                <Seg label="Target score" value={s.targetScore} options={[250, 300, 500].map((x) => (x === (cut ? 300 : 500) ? ['default', String(x)] : [x, String(x)])) as [number | 'default', string][]} onChange={(v) => set('targetScore', v)} />
+              </div>
+            </section>
+            <section className="setup-card" aria-label="Deck & venue">
+              <h3 className="setup-card-h">Deck &amp; venue</h3>
+              {deck}
+              <div className="ess-row stack"><span className="ess-label">Pick your deck — tap for the full card</span><DeckThumbs value={s.deck} onChange={(v) => set('deck', v)} /></div>
+              <VenueSetupRow value={s.venue ?? 'classic'} onChange={(v) => set('venue', v)} />
+            </section>
+            <section className="setup-card" aria-label="Rules">
+              <h3 className="setup-card-h">Rules</h3>
+              <button type="button" className="quiet-row" data-testid="house-rules" onClick={() => requestSettingsSheet()}><span>HOUSE RULES</span><span className="value-chip">Standard</span><i className="corner-tab" aria-hidden /></button>
+              {cutRules}
+              <RulesStatLine settings={s} />
+              {summary}
+              {tipsRow}
+            </section>
             <div className="sticky-primary"><button type="button" className="primary big go" data-testid="start-bots" onClick={onStart}>DEAL ME IN</button><p className="sticky-note">No seating step vs bots — bots fill the table</p></div>
           </div>
         ) : (
-          <OnlineEssentials settings={s} venue={s.venue ?? 'classic'} onVenue={(v) => set('venue', v)} deck={deck} deckThumbs={<DeckThumbs value={s.deck} onChange={(v) => set('deck', v)} />} onHouseRules={() => requestSettingsSheet()} tipsRow={<>{summary}{tipsRow}</>} />
+          <OnlineStep settings={s} venue={s.venue ?? 'classic'} onVenue={(v) => set('venue', v)} deck={deck} deckThumbs={<DeckThumbs value={s.deck} onChange={(v) => set('deck', v)} />} onHouseRules={() => requestSettingsSheet()} summary={summary} tipsRow={tipsRow} view={view} onOpenCreate={() => go('table', 'online', kind, 'create')} />
         )}
       </>
     );
@@ -334,14 +368,45 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
   );
 }
 
-function OnlineEssentials({ settings, venue, onVenue, deck, deckThumbs, onHouseRules, tipsRow }: { settings: Settings; venue: VenueChoice; onVenue: (v: VenueChoice) => void; deck: ReactNode; deckThumbs: ReactNode; onHouseRules: () => void; tipsRow: ReactNode }) {
+/**
+ * The house-rules stat line (ESPN pattern, owner 2026-10-20): the numbers that
+ * define the table at a glance — mode, target, players, timers — as strong
+ * cells over the full rules summary's fine print.
+ */
+export function RulesStatLine({ settings }: { settings: Settings }) {
+  const r = settingsToRules(settings);
+  const cells: [string, string][] = [
+    ['Mode', modeTitle(r)],
+    ['Play to', String(r.targetScore)],
+    ['Players', String(r.playerCount)],
+    ['Timers', `${r.turnTimerSec.bid}s bid · ${r.turnTimerSec.play}s play`],
+  ];
+  return (
+    <div className="rules-stats" data-testid="rules-stats" role="list" aria-label="Table rules at a glance">
+      {cells.map(([k, v]) => (
+        <div key={k} className="rules-stat" role="listitem"><b>{v}</b><small>{k}</small></div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The online 'table' step (owner, 2026-10-20 lobby restructure): TWO screens.
+ * The lobby comes first — your name, join with a code, the open tables, and
+ * exactly ONE "Create a table" entry. The create form is its own step (the
+ * wizard's Back returns here), regrouped ESPN-style into cards. Name and music
+ * state live here so moving between the two screens keeps what you typed.
+ */
+function OnlineStep({ settings, venue, onVenue, deck, deckThumbs, onHouseRules, summary, tipsRow, view, onOpenCreate }: {
+  settings: Settings; venue: VenueChoice; onVenue: (v: VenueChoice) => void; deck: ReactNode; deckThumbs: ReactNode;
+  onHouseRules: () => void; summary: ReactNode; tipsRow: ReactNode; view: TableView; onOpenCreate: () => void;
+}) {
   const [name, setName] = useState(loadName);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [music, setMusic] = useState<PendingMusic | null>(null);
   const nameOk = name.trim().length > 0;
-  void settings;
   const create = async () => {
     if (!nameOk) { setErr('Enter your name first'); return; }
     if (music?.mode === 'link' && !isMusicLink(music.url.trim())) { setErr('Paste an open.spotify.com or music.apple.com link (or set Table music to Off)'); return; }
@@ -368,26 +433,56 @@ function OnlineEssentials({ settings, venue, onVenue, deck, deckThumbs, onHouseR
       navigate(`/t/${c}`);
     } catch { setErr("Can't reach the game server."); } finally { setBusy(false); }
   };
+  const nameRow = (
+    <label className="ess-row">
+      <span className="ess-label">Your name</span>
+      <input className="name-input" value={name} maxLength={20} autoComplete="nickname" placeholder="e.g. Meech" onChange={(e) => setName(e.target.value)} aria-label="Your name" />
+    </label>
+  );
+  if (view === 'create') {
+    return (
+      <div className="ess" key="create">
+        <section className="setup-card" aria-label="Table">
+          <h3 className="setup-card-h">Table</h3>
+          {nameRow}
+        </section>
+        <section className="setup-card" aria-label="Deck & venue">
+          <h3 className="setup-card-h">Deck &amp; venue</h3>
+          {deck}
+          <div className="ess-row stack"><span className="ess-label">Pick your deck — tap for the full card</span>{deckThumbs}</div>
+          <VenueSetupRow value={venue} onChange={onVenue} />
+        </section>
+        <section className="setup-card" aria-label="Rules">
+          <h3 className="setup-card-h">Rules</h3>
+          <RulesStatLine settings={settings} />
+          {summary}
+          <button type="button" className="quiet-row" data-testid="house-rules" onClick={onHouseRules}><span>HOUSE RULES</span><span className="value-chip">Standard</span><i className="corner-tab" aria-hidden /></button>
+          {tipsRow}
+        </section>
+        <section className="setup-card" aria-label="Sound">
+          <h3 className="setup-card-h">Sound</h3>
+          <SetupMusicPicker value={music} onChange={setMusic} />
+        </section>
+        {err && <div className="err" role="alert">{err}</div>}
+        <div className="sticky-primary"><button type="button" className="primary big go" disabled={busy} onClick={create} data-testid="create-table">CREATE TABLE</button></div>
+      </div>
+    );
+  }
   return (
-    <div className="ess">
-      <label className="ess-row">
-        <span className="ess-label">Your name</span>
-        <input className="name-input" value={name} maxLength={20} autoComplete="nickname" placeholder="e.g. Meech" onChange={(e) => setName(e.target.value)} aria-label="Your name" />
-      </label>
-      {deck}
-      <div className="ess-row stack"><span className="ess-label">Pick your deck — tap for the full card</span>{deckThumbs}</div>
-      <VenueSetupRow value={venue} onChange={onVenue} />
-      {tipsRow}
-      <SetupMusicPicker value={music} onChange={setMusic} />
-      <button type="button" className="quiet-row" data-testid="house-rules" onClick={onHouseRules}><span>HOUSE RULES</span><span className="value-chip">Standard</span><i className="corner-tab" aria-hidden /></button>
-      <div className="sticky-primary"><button type="button" className="primary big go" disabled={busy} onClick={create} data-testid="create-table">CREATE TABLE</button></div>
-      <div className="exit-divider" aria-hidden />
-      <form className="join-row quiet-join" onSubmit={join}>
-        <span className="ess-label">JOIN WITH A CODE</span>
-        <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="TABLE CODE" maxLength={8} aria-label="Table code" autoCapitalize="characters" />
-        <button type="submit" className="micro-action" disabled={busy} data-testid="join-code">JOIN</button>
-      </form>
-      <div className="quiet-open"><span className="ess-label">OPEN TABLES</span><OpenTables selected={settings.mode} onCreate={() => document.querySelector('[data-testid="create-table"]')?.scrollIntoView({ block: 'center' })} /></div>
+    <div className="ess" key="lobby">
+      <section className="setup-card" aria-label="You">
+        <h3 className="setup-card-h">You</h3>
+        {nameRow}
+      </section>
+      <section className="setup-card" aria-label="Join with a code">
+        <h3 className="setup-card-h">Join with a code</h3>
+        <form className="join-row quiet-join" onSubmit={join}>
+          <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="TABLE CODE" maxLength={8} aria-label="Table code" autoCapitalize="characters" />
+          <button type="submit" className="micro-action" disabled={busy} data-testid="join-code">JOIN</button>
+        </form>
+      </section>
+      <button type="button" className="primary big go lobby-create" data-testid="create-open" onClick={onOpenCreate}>CREATE A TABLE</button>
+      <OpenTables selected={settings.mode} />
       {err && <div className="err" role="alert">{err}</div>}
     </div>
   );
