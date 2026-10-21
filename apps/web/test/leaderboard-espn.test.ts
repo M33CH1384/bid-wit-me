@@ -19,7 +19,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildTickerLines, RanksTicker } from '../src/social/Compete';
+import { buildTickerLines, ranksFilterSummary, RanksTicker, viewRowsFor } from '../src/social/Compete';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -77,6 +77,40 @@ describe('ticker lines: real payloads only', () => {
   it('says nothing when there is nothing real to say', () => {
     expect(buildTickerLines({ kind: 'cutthroat', top: [], online: [], mine: null })).toEqual([]);
     expect(buildTickerLines({ kind: 'cutthroat', top: [], online: [], mine })).toEqual([]);
+  });
+});
+
+describe('scope rotation + Friends / Online-now views (P-A)', () => {
+  const rows = [
+    { rank: 1, id: 'u:a', name: 'Alpha', value: 1500, games: 40 },
+    { rank: 2, id: 'u:b', name: 'Bravo', value: 1420, games: 31 },
+    { rank: 3, id: 'u:c', name: 'Charlie', value: 1390, games: 22 },
+    { rank: 4, id: 'a:c', name: 'Alpha + Charlie', value: 9, games: 12 },
+  ];
+  it('the rotation cycles Global → Friends → Online now on an 8s tick', () => {
+    expect(compete).toContain("const ROTATION: Scope[] = ['global', 'friends', 'online'];");
+    expect(compete).toContain('}, 8000);');
+    expect(compete).toContain('Date.now() - interactRef.current < 12_000');
+  });
+  it('the summary line labels every scope plainly', () => {
+    expect(ranksFilterSummary('rating', 'friends', 'week')).toBe('Rating · Friends · This week');
+    expect(ranksFilterSummary('rating', 'online', 'week')).toBe('Rating · Online now · This week');
+    expect(ranksFilterSummary('rating', 'global', 'week')).toBe('Rating · Global · This week');
+  });
+  it('friends view: friends + you, renumbered; duos kept when either partner is a friend', () => {
+    const v = viewRowsFor(rows, 'friends', { friendIds: ['u:b'], onlineIds: [], youId: 'u:c' });
+    expect(v.map((r) => r.name)).toEqual(['Bravo', 'Charlie', 'Alpha + Charlie']);
+    expect(v.map((r) => r.rank)).toEqual([1, 2, 3]);
+  });
+  it('online view: presence ids in either spelling; global/local pass through untouched', () => {
+    const v = viewRowsFor(rows, 'online', { friendIds: [], onlineIds: ['a'], youId: undefined });
+    expect(v.map((r) => r.name)).toEqual(['Alpha', 'Alpha + Charlie']);
+    expect(viewRowsFor(rows, 'global', { friendIds: [], onlineIds: [] })).toBe(rows);
+    expect(viewRowsFor(rows, 'local', { friendIds: [], onlineIds: [] })).toBe(rows);
+  });
+  it('only the server scopes hit the endpoint — friends/online fetch global', () => {
+    expect(compete).toContain("const fetchScope = scope === 'local' ? 'local' : 'global';");
+    expect(compete).toContain('scope=${fetchScope}');
   });
 });
 

@@ -22,7 +22,15 @@ function when(at: number, now = Date.now()): string {
 
 type Board = 'rating' | 'wins' | 'accuracy' | 'duos';
 type Kind = 'team' | 'cutthroat';
-type Scope = 'global' | 'local';
+/** Board scopes. The server serves 'global' and 'local' (IP region); 'friends'
+ *  and 'online' are honest client-side views over the global board — filtered
+ *  to the viewer's friends (social store) or to players online right now
+ *  (presence), renumbered inside the view. The scope label always says which
+ *  one you're looking at. */
+type Scope = 'global' | 'friends' | 'online' | 'local';
+/** The auto-rotation cycle (owner, 2026-10-20): Global → Friends → Online
+ *  now. 'local' is a manual Filters pick, not part of the cycle. */
+const ROTATION: Scope[] = ['global', 'friends', 'online'];
 type Period = 'all' | 'month' | 'week';
 interface Row { rank: number; id: string; name: string; value: number; games: number; extra?: string; vsPlayers?: number; vsBots?: number }
 interface ModeStats {
@@ -40,7 +48,7 @@ const num = (n: number | null) => (n === null ? '—' : String(n));
 const UNRATED_HINT = 'Play a signed-in player to get rated';
 
 const BOARD_LABEL: Record<Board, string> = { rating: 'Rating', wins: 'Wins', accuracy: 'Bid accuracy', duos: 'Best duos' };
-const SCOPE_LABEL: Record<Scope, string> = { global: 'Global', local: 'Local' };
+const SCOPE_LABEL: Record<Scope, string> = { global: 'Global', friends: 'Friends', online: 'Online now', local: 'Local' };
 const PERIOD_LABEL: Record<Period, string> = { week: 'This week', month: 'This month', all: 'All-time' };
 
 /** Server-wide count. Kept for callers; the Ranks tab no longer prints it. */
@@ -130,6 +138,21 @@ function RankRow({ r, board, period, mine, onOpen, rowRef, testId }: {
   return (
     <button type="button" className={cls} ref={rowRef} role="listitem" data-testid={testId} onClick={onOpen}>{body}</button>
   );
+}
+
+/**
+ * The Friends / Online-now views over a fetched board. Ids are matched in
+ * both spellings ('u:<uid>' presence/friend ids and raw '<uid>'); duos rows
+ * are '<uid>:<uid>' and stay when either partner is in the set. The viewer
+ * is always in their own filtered board. Ranks renumber inside the view.
+ */
+export function viewRowsFor(rows: Row[], scope: Scope, o: { friendIds: string[]; onlineIds: string[]; youId?: string }): Row[] {
+  if (scope === 'global' || scope === 'local') return rows;
+  const set = new Set<string>();
+  for (const id of scope === 'friends' ? o.friendIds : o.onlineIds) { set.add(id); set.add(`u:${id.replace(/^u:/, '')}`); }
+  if (o.youId) { set.add(o.youId); set.add(`u:${o.youId.replace(/^u:/, '')}`); }
+  const keep = (r: Row) => set.has(r.id) || r.id.split(':').some((part) => set.has(part) || set.has(`u:${part.replace(/^u:/, '')}`));
+  return rows.filter(keep).map((r, i) => ({ ...r, rank: i + 1 }));
 }
 
 function useOffscreen(el: HTMLElement | null, root: HTMLElement | null, active: boolean): boolean {
@@ -238,7 +261,7 @@ function FilterSheet({ scope, period, onScope, onPeriod, onClose }: {
         </div>
         {/* The metric itself is picked on the visible category tabs above
             the list (ESPN leaders pattern) — this sheet keeps scope/period. */}
-        {pills('lb-scope', 'Scope', scope, onScope, [['global', 'Global'], ['local', 'Local']])}
+        {pills('lb-scope', 'Scope', scope, onScope, [['global', 'Global'], ['friends', 'Friends'], ['online', 'Online now'], ['local', 'Local']])}
         {pills('lb-period', 'Period', period, onPeriod, [['week', 'Week'], ['month', 'Month'], ['all', 'All-time']])}
       </div>
     </div>
@@ -274,13 +297,33 @@ export function Leaderboards() {
     }).catch(() => { if (!stop) setReady(true); });
     return () => { stop = true; };
   }, [acct.ready, signedIn]);
+  // Friends / Online now filter the GLOBAL board client-side, so only the
+  // server-backed scopes ('global' | 'local') ever hit the endpoint.
+  const fetchScope = scope === 'local' ? 'local' : 'global';
   useEffect(() => {
     if (!ready) return;
     setRows(null); setNote(null);
-    get(`/api/social/leaderboard?board=${board}&kind=${board === 'duos' ? 'team' : kind}&scope=${scope}&period=${period}`)
-      .then((j) => { setRows(j.rows); setNote(j.note ?? (scope === 'local' && j.region ? `Region: ${j.region}` : null)); })
+    get(`/api/social/leaderboard?board=${board}&kind=${board === 'duos' ? 'team' : kind}&scope=${fetchScope}&period=${period}`)
+      .then((j) => { setRows(j.rows); setNote(j.note ?? (fetchScope === 'local' && j.region ? `Region: ${j.region}` : null)); })
       .catch((e) => { setRows([]); setNote(String(e.message)); });
-  }, [board, kind, scope, period, ready]);
+  }, [board, kind, fetchScope, period, ready]);
+
+  /* Auto-rotation (owner, 2026-10-20): the board cycles Global → Friends →
+   * Online now every ~8s and the summary line labels the active scope. Any
+   * interaction — tap, click, hover, holding a row — pauses the cycle for a
+   * good while; an open Filters/Stats sheet pauses it outright. */
+  const interactRef = useRef(0);
+  const hoverRef = useRef(false);
+  const markInteract = () => { interactRef.current = Date.now(); };
+  useEffect(() => {
+    const iv = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      if (filters || statsOpen || hoverRef.current) return;
+      if (Date.now() - interactRef.current < 12_000) return;
+      setScope((cur) => ROTATION[(ROTATION.indexOf(cur) + 1) % ROTATION.length] ?? 'global');
+    }, 8000);
+    return () => clearInterval(iv);
+  }, [filters, statsOpen]);
   useEffect(() => {
     if (!filters && !statsOpen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -305,14 +348,25 @@ export function Leaderboards() {
   const mode = mine?.[kind];
   const myName = acct.user?.username ?? undefined;
   const youId = s.you?.id;
-  const mineIdx = rows?.findIndex((r) => isMineRow(r, youId, myName)) ?? -1;
+  /* The rows on screen: the fetched board, or its Friends / Online-now
+   * filter (ranks renumber inside the filtered view; the summary line names
+   * the scope so the context is never a mystery). */
+  const viewRows = useMemo(() => {
+    if (!rows) return rows;
+    const friendIds = (s.friends?.friends ?? []).map((f) => f.id);
+    const onlineIds = Object.entries(s.users).filter(([, u]) => !u.guest).flatMap(([pid, u]) => [pid, u.id]);
+    return viewRowsFor(rows, scope, { friendIds, onlineIds, youId });
+  }, [rows, scope, s.friends, s.users, youId]);
+  const mineIdx = viewRows?.findIndex((r) => isMineRow(r, youId, myName)) ?? -1;
   const onBoard = mineIdx >= 0;
   const ownAcc = board === 'accuracy' && mode && mode.accuracy !== null && mode.bids < accMin && !onBoard ? mode : null;
   const unknownRegion = !!note && /no local board/i.test(note);
-  const mineRow = mineIdx >= 0 ? rows![mineIdx]! : null;
+  const mineRow = mineIdx >= 0 ? viewRows![mineIdx]! : null;
   const offscreen = useOffscreen(mineEl, scrollEl, !!mineRow);
   return (
-    <div className="soc-lb ranks" data-testid="leaderboard">
+    <div className="soc-lb ranks" data-testid="leaderboard"
+      onPointerDown={markInteract} onClick={markInteract}
+      onPointerEnter={() => { hoverRef.current = true; }} onPointerLeave={() => { hoverRef.current = false; }}>
       <div className="ranks-scroll" ref={setScrollEl}>
         {signedIn && mine && <YouCard mine={mine} kind={kind} rank={onBoard ? mineRow!.rank : null} onMore={() => setStatsOpen(true)} />}
         {signedIn && !ready && <p className="soc-empty">Loading your stats…</p>}
@@ -340,10 +394,14 @@ export function Leaderboards() {
         {rows === null ? <p className="soc-empty">Loading…</p> : !rows.length ? (
           unknownRegion ? null : (
             <div className="ranks-empty" data-testid="lb-empty">
-              <p>{ownAcc ? `Your bid accuracy shows after ${accMin} bids.` : ranksEmptyLine(board, period, scope)}</p>
+              <p>{ownAcc ? `Your bid accuracy shows after ${accMin} bids.` : ranksEmptyLine(board, period, fetchScope)}</p>
               <button type="button" className="primary" data-testid="ranks-find-game" onClick={findGame}>Find a game</button>
             </div>
           )
+        ) : !viewRows!.length ? (
+          <div className="ranks-empty" data-testid="lb-empty-filtered">
+            <p>{scope === 'friends' ? 'None of your friends are on this board yet.' : 'Nobody on this board is online right now.'}</p>
+          </div>
         ) : (
           <>
             <div className="ranks-head" aria-hidden="true">
@@ -355,7 +413,7 @@ export function Leaderboards() {
               <span className="ranks-trend" />
             </div>
             <div className="ranks-list" role="list" data-testid={board === 'wins' ? 'lb-wins' : 'lb-rows'}>
-              {rows.map((r, i) => (
+              {viewRows!.map((r, i) => (
                 <RankRow key={r.id} r={r} board={board} period={period} mine={i === mineIdx} rowRef={i === mineIdx ? setMineEl : undefined} testId={`lb-row-${r.rank}`} onOpen={board === 'duos' ? undefined : () => social.showProfile(r.name)} />
               ))}
             </div>
