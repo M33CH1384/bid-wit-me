@@ -172,6 +172,14 @@ export const STORY_FINAL_STOP: StoryStop = STORY_STOPS[STORY_STOPS.length - 1]!;
 export const STORY_REWARD_BASE = { xp: 25, coins: 20 } as const;
 export const STORY_REPLAY_REWARD = { xp: 10, coins: 5 } as const;
 
+/**
+ * A finished story LOSS pays a small consolation: flat 5 XP, no coins
+ * (owner, 2026-10-21 — "there should be small xp for losses"). It marks
+ * the effort of seeing a match through; clear rewards stay win-only,
+ * and it pays once per finished game like every story reward.
+ */
+export const STORY_LOSS_REWARD = { xp: 5, coins: 0 } as const;
+
 export function storyReward(stopNumber: number, firstClear: boolean): { xp: number; coins: number } {
   if (!firstClear) return { ...STORY_REPLAY_REWARD };
   return { xp: STORY_REWARD_BASE.xp * stopNumber, coins: STORY_REWARD_BASE.coins * stopNumber };

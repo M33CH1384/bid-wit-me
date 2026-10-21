@@ -429,10 +429,16 @@ export default function StoryHome() {
         {r && r.won && r.firstClear && setAnimUnlockNotice(r.stopId) && (
           <p className="story-deck-line" data-testid="story-setanim-notice">{setAnimUnlockNotice(r.stopId)}</p>
         )}
-        {r && !r.won && !dblLost && <p className="story-reward-line">No rewards on a loss — and no penalty. The retry is free.</p>}
+        {r && !r.won && !dblLost && (
+          <p className="story-reward-line" data-testid="story-reward-line">
+            {r.rewards.xp > 0
+              ? <>The effort counts — <b>+{r.rewards.xp} XP</b> for seeing it through. No coins on a loss, and no penalty. The retry is free.</>
+              : <>No clear — and no penalty. The retry is free.</>}
+          </p>
+        )}
         {dblLost && (
           <p className="story-reward-line" data-testid="story-double-lost-line">
-            Double or nothing — and it came up nothing. The first win is wiped with it: no clear, no rewards for either leg. The King stays current.
+            Double or nothing — and it came up nothing. The first win is wiped with it: no clear, nothing banked for either leg.{r && r.rewards.xp > 0 ? <> The effort still counts: <b>+{r.rewards.xp} XP</b>.</> : ''} The King stays current.
           </p>
         )}
         {r && (r.newFinds?.length ?? 0) > 0 && (

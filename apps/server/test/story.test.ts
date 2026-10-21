@@ -94,13 +94,35 @@ describe('story progress + results', () => {
     expect((await progress()).stops[2]!.attempts).toBe(0);
   });
 
-  it('a loss records the attempt only — no rewards, no progress lost, free retry', async () => {
+  it('a loss records the attempt and pays the small consolation — 5 XP, no coins, no progress lost, free retry', async () => {
     const r = await (await result('a', 'porch', false, 'g2')).json() as { won: boolean; rewards: { xp: number; coins: number } };
     expect(r.won).toBe(false);
-    expect(r.rewards).toEqual({ xp: 0, coins: 0 });
+    expect(r.rewards).toEqual({ xp: 5, coins: 0 });
+    expect(await xpOf('a')).toBe(5);
+    expect(await coinsOf('a')).toBe(0);
     const p = await progress();
     expect(p.stops[0]).toMatchObject({ state: 'current', attempts: 1, clears: 0 });
     expect(p.currentStop).toBe(1);
+  });
+
+  it('a loss pays once: re-posting the same finished loss returns the stored award without re-crediting', async () => {
+    await result('a', 'porch', false, 'g2');
+    const again = await (await result('a', 'porch', false, 'g2')).json() as { replayed: boolean; rewards: { xp: number; coins: number } };
+    expect(again.replayed).toBe(true);
+    expect(again.rewards).toEqual({ xp: 5, coins: 0 });
+    expect(await xpOf('a')).toBe(5);
+    expect(await coinsOf('a')).toBe(0);
+    expect((await progress()).stops[0]!.attempts).toBe(1);
+  });
+
+  it('a replay loss pays the same consolation — the clear stays cleared', async () => {
+    await result('a', 'porch', true, 'g1');
+    const r = await (await result('a', 'porch', false, 'g2')).json() as { firstClear: boolean; rewards: { xp: number; coins: number } };
+    expect(r.firstClear).toBe(false);
+    expect(r.rewards).toEqual({ xp: 5, coins: 0 });
+    expect(await xpOf('a')).toBe(30);
+    expect(await coinsOf('a')).toBe(20);
+    expect((await progress()).stops[0]).toMatchObject({ attempts: 2, clears: 1 });
   });
 
   it('a replay win pays upkeep only, never the clear reward twice', async () => {

@@ -8,7 +8,9 @@
  *        → record a finished solo stop game: attempt always recorded; a win
  *          clears the stop (server-validated sequential unlock), pays the
  *          first-clear reward once (or the small replay upkeep), and the
- *          King clear stamps the track's completion mark.
+ *          King clear stamps the track's completion mark. A loss pays the
+ *          small consolation (STORY_LOSS_REWARD — flat 5 XP, no coins),
+ *          once per gameId like every reward here.
  *          THE KING'S DOUBLE (doubleOrNothing): a first King win records
  *          the attempt + sets a pending mark (migration 0024) and pays
  *          NOTHING; only a win posted while the mark stands clears — for
@@ -40,7 +42,7 @@
 import { type AuthEnv, currentUser } from '../auth/routes';
 import { type SocialEnv, isAdmin } from '../social/routes';
 import {
-  STORY_SECRETS, STORY_STOPS, STORY_SOLO_TRACK, storyClearReward, storyCurrentStop, storyEggById, storyEggEventMet,
+  STORY_LOSS_REWARD, STORY_SECRETS, STORY_STOPS, STORY_SOLO_TRACK, storyClearReward, storyCurrentStop, storyEggById, storyEggEventMet,
   storyFeatMet, storyReward, storyStopById, storyStopState, storyTrackKeyValid,
   type StoryGameFacts, type StoryMatchEvent,
 } from '@spades/bots';
@@ -325,15 +327,21 @@ export async function handleStoryHttp(req: Request, env: StoryEnv, url: URL, par
     const before = facts.get(stop.id) ?? { attempts: 0, clears: 0, firstClearedAt: null, doublePending: false, doubleLegFacts: null };
     const gameFacts = gameFactsOf(body.facts);
     let firstClear = won && before.clears === 0;
-    let rewards = won ? storyReward(stop.n, firstClear) : { xp: 0, coins: 0 };
+    // A finished loss pays the small consolation (STORY_LOSS_REWARD:
+    // 5 XP, no coins) — recorded on the claim like any reward, so a
+    // repost returns it without paying twice. The King's double below
+    // overrides rewards only on its win branches; a leg loss keeps it.
+    let rewards = won ? storyReward(stop.n, firstClear) : { ...STORY_LOSS_REWARD };
     // THE KING'S DOUBLE OR NOTHING — first-clear gate only: once the crown
     // is taken (clears > 0) every King game is an ordinary single match.
     //   win, no mark  → 'started': attempt recorded, mark set, leg facts
     //     banked; NO clear, NO rewards.
     //   win, mark set → 'cleared': the clear posts for DOUBLE the
     //     first-clear reward; the mark is consumed.
-    //   loss, mark set → 'lost': both legs void — no clear, no rewards,
-    //     the mark clears, the stop stays current. Attempts still count:
+    //   loss, mark set → 'lost': both legs void — no clear and no clear
+    //     rewards (the leg-1 win banked nothing to lose); the loss itself
+    //     posts the standard loss consolation like any story loss, the
+    //     mark clears, the stop stays current. Attempts still count:
     //     attempts count finished matches, and both legs finished.
     // A King clear post is honored ONLY while the mark stands server-side —
     // there is no client path around the second win.

@@ -71,7 +71,7 @@ beforeEach(async () => {
 });
 
 describe("the King's double or nothing", () => {
-  it('lose leg 1: an ordinary loss — attempt recorded, no pending, no rewards', async () => {
+  it('lose leg 1: an ordinary loss — attempt recorded, no pending set, the standard 5 XP loss consolation', async () => {
     await reachKing();
     const xp0 = await xpOf('a'); const coins0 = await coinsOf('a');
     const { status, body } = await result('a', 'king', false, 'k-lose1');
@@ -79,8 +79,8 @@ describe("the King's double or nothing", () => {
     expect(body.won).toBe(false);
     expect(body.doubleOutcome).toBeNull();
     expect(body.doublePending).toBe(false);
-    expect(body.rewards).toEqual({ xp: 0, coins: 0 });
-    expect(await xpOf('a')).toBe(xp0);
+    expect(body.rewards).toEqual({ xp: 5, coins: 0 });
+    expect(await xpOf('a')).toBe(xp0 + 5);
     expect(await coinsOf('a')).toBe(coins0);
     const p = await progress();
     expect(kingOf(p)).toMatchObject({ attempts: 1, clears: 0, doublePending: false, state: 'current' });
@@ -140,15 +140,15 @@ describe("the King's double or nothing", () => {
     expect(p.currentStop).toBeNull();
   });
 
-  it('lose leg 2: NOTHING — both legs void, pending gone, stop stays current, and the double restarts from the top', async () => {
+  it('lose leg 2: both legs void — no clear, nothing banked, pending gone, stop stays current; the loss pays its 5 XP consolation and the double restarts from the top', async () => {
     await reachKing();
     const xp0 = await xpOf('a'); const coins0 = await coinsOf('a');
     await result('a', 'king', true, 'k-win1', CLEAN);
     const { body } = await result('a', 'king', false, 'k-lose2');
     expect(body.doubleOutcome).toBe('lost');
     expect(body.doublePending).toBe(false);
-    expect(body.rewards).toEqual({ xp: 0, coins: 0 });
-    expect(await xpOf('a')).toBe(xp0);
+    expect(body.rewards).toEqual({ xp: 5, coins: 0 });
+    expect(await xpOf('a')).toBe(xp0 + 5);
     expect(await coinsOf('a')).toBe(coins0);
     const p = await progress();
     expect(kingOf(p)).toMatchObject({ attempts: 2, clears: 0, doublePending: false, state: 'current' });

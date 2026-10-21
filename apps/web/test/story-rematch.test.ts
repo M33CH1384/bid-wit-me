@@ -225,7 +225,7 @@ const resultFixture = (won: boolean) => ({
   stopId: 'porch',
   won,
   firstClear: won,
-  rewards: won ? { xp: 25, coins: 20 } : { xp: 0, coins: 0 },
+  rewards: won ? { xp: 25, coins: 20 } : { xp: 5, coins: 0 },
   newFinds: [],
   track: 'solo',
   stops: STORY_STOPS.map((s) => ({
@@ -343,12 +343,14 @@ describe('finished story match → outro, never /rewards', () => {
     expect(c.querySelector('[data-testid="story-stop-porch"]')?.textContent).toContain('CLEARED');
   });
 
-  it('a LOSS shows the outro-lose with its free Retry', async () => {
+  it('a LOSS shows the outro-lose with its free Retry — and the consolation the server paid', async () => {
     const c = await finishResumedPorch(false);
     expect(c.querySelector('[data-testid="mock-table"]')).toBeNull();
-    const reward = c.querySelector('.story-reward-line');
+    const reward = c.querySelector('[data-testid="story-reward-line"]');
     expect(reward).toBeTruthy();
-    expect(reward!.textContent).toContain('No rewards on a loss');
+    expect(reward!.textContent).toContain('+5 XP');
+    expect(reward!.textContent).toContain('seeing it through');
+    expect(reward!.textContent).not.toContain('No rewards on a loss');
     const retry = c.querySelector('[data-testid="story-retry"]');
     expect(retry, 'outro Retry this stop').toBeTruthy();
     expect(retry!.textContent).toContain('Retry this stop');
