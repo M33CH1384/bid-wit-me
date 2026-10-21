@@ -8,7 +8,7 @@ import { type WData, type WIO, type WPerson, type WResult, WError, accept, alarm
 export type WOp =
   | { op: 'create'; c: WCreate }
   | { op: 'view'; viewer: string | null }
-  | { op: 'accept'; me: WPerson; partner: WPerson | null }
+  | { op: 'accept'; me: WPerson; partner: WPerson | null; teamName?: string | null }
   | { op: 'decline'; uid: string }
   | { op: 'cancel'; uid: string; admin: boolean }
   | { op: 'checkin'; uid: string }
@@ -86,7 +86,7 @@ export class ChallengeDO extends DurableObject<Env> {
     if (!d) throw new WError(404, 'No such challenge.');
     switch (op.op) {
       case 'view': return view(d, op.viewer, io.now());
-      case 'accept': return view(await accept(io, d, op.me, op.partner), op.me.uid, io.now());
+      case 'accept': return view(await accept(io, d, op.me, op.partner, op.teamName), op.me.uid, io.now());
       case 'decline': return view(await decline(io, d, op.uid), op.uid, io.now());
       case 'cancel': return view(await cancel(io, d, op.uid, op.admin), op.uid, io.now());
       case 'checkin': return view(await checkin(io, d, op.uid), op.uid, io.now());

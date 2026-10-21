@@ -2,6 +2,7 @@
  * (Not /api/challenges — that path already belongs to the daily/weekly cred challenges.)
  * Ships dark: while the wager_challenges_enabled flag is off, creates 404 and lists read empty. */
 import { makeRules, type TableRules } from '@spades/rules';
+import { cleanTeamName } from '@spades/protocol';
 import { type AuthEnv, currentUser } from '../auth/routes';
 import { type SocialEnv, isAdmin } from '../social/routes';
 import { isWagerAmount, wagerEnabled, wagerHorizonMs } from '../cred/wager';
@@ -22,8 +23,18 @@ export type TimerPreset = keyof typeof TIMER_PRESETS;
 
 const name = (v: unknown): string => (typeof v === 'string' ? v.trim().slice(0, 40) : '');
 
+/** A team name from a request body: cleaned (''/absent → null = no name);
+ *  a name the filter rejects is a 400, never a silent drop. */
+export function parseTeamName(v: unknown): { ok: true; name: string | null } | { ok: false; error: string } {
+  if (v === undefined || v === null) return { ok: true, name: null };
+  if (typeof v !== 'string') return { ok: false, error: 'Team name must be text.' };
+  const cleaned = cleanTeamName(v);
+  if (cleaned === null) return { ok: false, error: "That team name isn't allowed." };
+  return { ok: true, name: cleaned || null };
+}
+
 export function parseCreate(b: Record<string, unknown>, now: number, horizonMs: number):
-  | { ok: true; v: { format: 'partnership' | 'cutthroat'; rules: TableRules; wager: number; startAt: number; opponentName: string; partnerName: string | null; inviteeNames: string[] } }
+  | { ok: true; v: { format: 'partnership' | 'cutthroat'; rules: TableRules; wager: number; startAt: number; opponentName: string; partnerName: string | null; inviteeNames: string[]; teamName: string | null } }
   | { ok: false; error: string } {
   const format = b.format;
   if (format !== 'partnership' && format !== 'cutthroat') return { ok: false, error: 'Format: partnership or cutthroat.' };
@@ -39,6 +50,7 @@ export function parseCreate(b: Record<string, unknown>, now: number, horizonMs: 
   let rules: TableRules;
   let partnerName: string | null = null;
   let inviteeNames: string[] = [];
+  let teamName: string | null = null;
   try {
     if (format === 'partnership') {
       const deck = b.deck === 'aceDown' ? 'aceDown' : b.deck === undefined || b.deck === 'joker' ? 'joker' : null;
@@ -47,6 +59,9 @@ export function parseCreate(b: Record<string, unknown>, now: number, horizonMs: 
       if (![300, 500, 750].includes(target)) return { ok: false, error: 'Target score: 300, 500 or 750.' };
       partnerName = name(b.partner);
       if (!partnerName) return { ok: false, error: 'Name your partner.' };
+      const tn = parseTeamName(b.teamName);
+      if (!tn.ok) return tn;
+      teamName = tn.name;
       rules = makeRules(deck, { targetScore: target, turnTimerSec: { ...timers } });
     } else {
       if (b.deck !== undefined && b.deck !== 'joker') return { ok: false, error: 'Cutthroat plays the Joker deck.' };
@@ -58,7 +73,7 @@ export function parseCreate(b: Record<string, unknown>, now: number, horizonMs: 
       rules = makeRules('cutthroat', { playerCount: 4, targetScore: target, turnTimerSec: { ...timers } });
     }
   } catch { return { ok: false, error: 'Bad rules.' }; }
-  return { ok: true, v: { format, rules, wager, startAt, opponentName, partnerName, inviteeNames } };
+  return { ok: true, v: { format, rules, wager, startAt, opponentName, partnerName, inviteeNames, teamName } };
 }
 
 async function resolveUser(db: D1Database, env: WagerEnv, username: string): Promise<WPerson | null> {
@@ -124,7 +139,7 @@ export async function handleWagerChallenges(req: Request, env: WagerEnv, url: UR
     }
     const cid = crypto.randomUUID().replace(/-/g, '').slice(0, 12);
     const c: WCreate = {
-      id: cid, format: p.v.format, rules: p.v.rules, wager: p.v.wager, startAt: p.v.startAt,
+      id: cid, format: p.v.format, rules: p.v.rules, wager: p.v.wager, startAt: p.v.startAt, teamName: p.v.teamName,
       challenger: { uid: me.id, name: me.username, admin: isAdmin(env, me.id, me.username) },
       opponent, partner, invitees,
     };
@@ -147,13 +162,17 @@ export async function handleWagerChallenges(req: Request, env: WagerEnv, url: UR
   const meRef: WPerson = { uid: me.id, name: me.username, admin };
   switch (parts[3]) {
     case 'accept': {
-      const b = await req.json().catch(() => ({})) as { partner?: string };
+      const b = await req.json().catch(() => ({})) as { partner?: string; teamName?: unknown };
       let partner: WPerson | null = null;
       if (b.partner) {
         partner = await resolveUser(db, env, String(b.partner));
         if (!partner) return json({ error: `No player named ${String(b.partner).slice(0, 40)}.` }, 404);
       }
-      return call(id, { op: 'accept', me: meRef, partner });
+      const tn = parseTeamName(b.teamName);
+      if (!tn.ok) return json({ error: tn.error }, 400);
+      // an absent field means "no name given" (leave the side's name alone);
+      // a present-but-empty one clears it — the service tells them apart
+      return call(id, { op: 'accept', me: meRef, partner, ...('teamName' in b ? { teamName: tn.name } : {}) });
     }
     case 'decline': return call(id, { op: 'decline', uid: me.id });
     case 'cancel': return call(id, { op: 'cancel', uid: me.id, admin });

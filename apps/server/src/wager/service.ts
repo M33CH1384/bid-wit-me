@@ -51,6 +51,11 @@ export interface WData {
   wager: number;
   startAt: number;
   status: WagerStatus;
+  /** partnership: each side's team name for this match, [side 0, side 1] — set
+   *  by the side's captain at challenge setup (challenger at send, opponent at
+   *  accept), seeded into the match table's room names. Absent on challenges
+   *  stored before team names existed. */
+  teamNames?: [string | null, string | null];
   players: WPlayer[];
   tableCode: string | null;
   gameId: string | null;
@@ -68,7 +73,7 @@ export interface WIO {
   now(): number;
   db: D1Database;
   /** create a table DO set up for this match; returns its code */
-  createMatchTable(setup: { cid: string; rules: TableRules; reserved: ({ uid: string; name: string } | null)[]; autostartAt: number }): Promise<string>;
+  createMatchTable(setup: { cid: string; rules: TableRules; reserved: ({ uid: string; name: string } | null)[]; autostartAt: number; teamNames: [string | null, string | null] }): Promise<string>;
   /** in-app notice to these accounts (Social hub) */
   notify(uids: string[], n: WNotice): Promise<void>;
   /** League Wire (item 7): post a marquee result to global chat. Optional —
@@ -90,6 +95,8 @@ export type WResult =
 
 export const checkinOpensAt = (d: Pick<WData, 'startAt'>): number => d.startAt - CHECKIN_MS;
 const player = (d: WData, uid: string): WPlayer | undefined => d.players.find((p) => p.uid === uid);
+/** The match's side team names, tolerating challenges stored before they existed. */
+export const teamNamesOf = (d: WData): [string | null, string | null] => [d.teamNames?.[0] ?? null, d.teamNames?.[1] ?? null];
 const allUids = (d: WData): string[] => d.players.map((p) => p.uid);
 const fmtStart = (at: number): string => `${new Date(at).toLocaleString('en-US', { timeZone: 'UTC', weekday: 'short', hour: 'numeric', minute: '2-digit' })} UTC`;
 const terms = (d: WData): string => `${d.format === 'partnership' ? 'Partnership 2v2' : 'Cutthroat'} · ${d.wager} 🪙 a player · pot ${d.wager * 4} 🪙 · starts ${fmtStart(d.startAt)}`;
@@ -133,6 +140,8 @@ export interface WCreate {
   rules: TableRules;
   wager: number;
   startAt: number;
+  /** partnership: the challenger's side team name (already cleaned), or null */
+  teamName?: string | null;
   challenger: WPerson;
   /** partnership only: the named rival (the fourth seat's owner names their partner at accept) */
   opponent: WPerson | null;
@@ -177,6 +186,7 @@ export async function create(io: WIO, c: WCreate): Promise<WData> {
     id: c.id, challengerId: c.challenger.uid, format: c.format, mode: c.rules.mode, rules: c.rules, wager: c.wager,
     startAt: c.startAt, status: 'pending', players, tableCode: null, gameId: null, endReason: null,
     createdAt: now, settledAt: null, remindedCheckin: false, beginAttempts: 0,
+    teamNames: [c.format === 'partnership' ? (c.teamName || null) : null, null],
   };
   // the send is only real once the challenger's coins are down (anti-spam)
   if (!(await wagerEscrow(io.db, c.challenger.uid, d.id, c.wager, now))) throw new WError(400, 'Not enough coins for that wager.');
@@ -192,7 +202,7 @@ export async function create(io: WIO, c: WCreate): Promise<WData> {
   return d;
 }
 
-export async function accept(io: WIO, d: WData, me: WPerson, partnerPick: WPerson | null): Promise<WData> {
+export async function accept(io: WIO, d: WData, me: WPerson, partnerPick: WPerson | null, teamName?: string | null): Promise<WData> {
   const now = io.now();
   if (d.status !== 'pending') throw new WError(409, 'This challenge is no longer collecting players.');
   if (now >= checkinOpensAt(d)) throw new WError(409, 'The accept window has closed.');
@@ -224,7 +234,11 @@ export async function accept(io: WIO, d: WData, me: WPerson, partnerPick: WPerso
   mine.status = 'accepted';
   mine.escrowed = true;
   mine.acceptedAt = now;
-  if (newPartner) d.players.push(newPartner);
+  if (newPartner) {
+    d.players.push(newPartner);
+    // the opponent captains side 1: their accept carries the side's team name
+    if (teamName !== undefined) d.teamNames = [teamNamesOf(d)[0], teamName || null];
+  }
 
   if (d.players.length === 4 && d.players.every((p) => p.status === 'accepted')) {
     d.status = 'scheduled';
@@ -305,7 +319,7 @@ async function begin(io: WIO, d: WData): Promise<WData> {
   ordered.forEach((p, i) => { p.seat = i; });
   let code: string;
   try {
-    code = await io.createMatchTable({ cid: d.id, rules: d.rules, reserved: ordered.map((p) => ({ uid: p.uid, name: p.name })), autostartAt: io.now() + SEAT_GRACE_MS });
+    code = await io.createMatchTable({ cid: d.id, rules: d.rules, reserved: ordered.map((p) => ({ uid: p.uid, name: p.name })), autostartAt: io.now() + SEAT_GRACE_MS, teamNames: teamNamesOf(d) });
   } catch (e) {
     d.beginAttempts++;
     if (d.beginAttempts >= 5) {
@@ -540,6 +554,7 @@ export function view(d: WData, viewer: string | null, now: number) {
     tableCode: d.tableCode,
     gameId: d.gameId,
     settledAt: d.settledAt,
+    teamNames: teamNamesOf(d),
     players: d.players.map((p) => ({ uid: p.uid, name: p.name, role: p.role, side: p.side, seat: p.seat, status: p.status, escrowed: p.escrowed, checkedIn: p.checkedIn, net: p.net ?? null })),
     you: me ? {
       role: me.role, status: me.status, escrowed: me.escrowed, checkedIn: me.checkedIn,

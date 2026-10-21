@@ -534,9 +534,9 @@ export class TableDO extends DurableObject<Env> {
     if (url.pathname === '/challenge-setup' && req.method === 'POST') {
       // internal only (ChallengeDO → table); not routed from the public Worker
       if (this.room) return new Response('exists', { status: 409 });
-      const b = await req.json() as { cid: string; rules: TableRules; reserved: ({ uid: string; name: string } | null)[]; autostartAt: number };
+      const b = await req.json() as { cid: string; rules: TableRules; reserved: ({ uid: string; name: string } | null)[]; autostartAt: number; teamNames?: [string | null, string | null] };
       const data = newRoomData(code, Date.now());
-      data.challenge = { id: b.cid, reserved: b.reserved, autostartAt: b.autostartAt };
+      data.challenge = { id: b.cid, reserved: b.reserved, autostartAt: b.autostartAt, ...(b.teamNames ? { teamNames: b.teamNames } : {}) };
       this.attach(data);
       this.room!.setupChallenge(data.challenge, b.rules);
       this.flush();

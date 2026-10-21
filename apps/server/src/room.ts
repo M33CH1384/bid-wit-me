@@ -183,6 +183,8 @@ export interface ChallengeSeat {
   reserved: ({ uid: string; name: string } | null)[];
   autostartAt: number | null;
   reported?: boolean;
+  /** each side's team name from challenge setup ([side 0, side 1]); seeds the room's team names */
+  teamNames?: [string | null, string | null];
 }
 
 /** Big Bank: how a wager match ended, reported exactly once to the Challenge DO, which settles the escrow. */
@@ -394,7 +396,9 @@ export class Room {
     d.private = true;
     d.botLevel = 'mixed';
     d.seats = Array.from({ length: 4 }, () => ({ kind: 'empty' as const }));
-    d.teamNames = undefined;
+    // the captains named their sides at challenge setup — seed the room with
+    // those names (players can still rename from the table lobby)
+    d.teamNames = c.teamNames ? [cleanTeamName(c.teamNames[0] ?? '') || null, cleanTeamName(c.teamNames[1] ?? '') || null] : undefined;
     if (c.autostartAt) this.io.setAlarm(c.autostartAt);
     this.system('Big Bank match: seats are reserved for the four players; the game starts automatically');
     this.io.persist();
