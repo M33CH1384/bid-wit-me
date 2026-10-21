@@ -36,6 +36,11 @@ export interface GlobalLog {
   del(id: number): boolean;
 }
 
+/** The League Wire byline: wire lines are from the league, never a player. */
+export const WIRE_BYLINE = 'BWM LEAGUE WIRE';
+/** Cadence cap for wire lines in global chat (see Hub.postWire). */
+export const WIRE_MIN_GAP_MS = 10_000;
+
 /** Release 10: Open tables, persisted so they survive the hub's hibernation */
 export interface TableLog {
   put(t: OpenTable): void;
@@ -256,6 +261,37 @@ export class Hub {
     let sent = 0;
     for (const uid of new Set(uids)) for (const c of this.connsOf(`u:${uid}`)) { this.io.send(c, { t: 'notice', ...n }); sent++; }
     return sent;
+  }
+
+  /* ------------------------------------------------------------ league wire */
+
+  private wireSeen = new Set<string>();
+  private wireQueue: string[] = [];
+  private lastWireAt = Number.NEGATIVE_INFINITY;
+
+  /**
+   * Post a BWM League Wire line to global chat (league data wave, item 7):
+   * a stored system line (from 'wire', byline name, wire flag) broadcast
+   * like a chat line, so it persists and loads in history the same way.
+   * Spam control: deduped by event id, and at most one wire line per
+   * WIRE_MIN_GAP_MS — events landing inside the gap are DROPPED (the
+   * ticker still carries them; chat is the interruptive surface, so it
+   * keeps the higher bar). Returns true when the line was posted.
+   */
+  postWire(eventId: string, text: string): boolean {
+    const now = this.io.now();
+    if (this.wireSeen.has(eventId)) return false;
+    if (now - this.lastWireAt < WIRE_MIN_GAP_MS) return false;
+    this.lastWireAt = now;
+    this.wireSeen.add(eventId);
+    this.wireQueue.push(eventId);
+    if (this.wireQueue.length > 500) {
+      const drop = this.wireQueue.splice(0, this.wireQueue.length - 500);
+      for (const id of drop) this.wireSeen.delete(id);
+    }
+    const line = this.io.global.add({ from: 'wire', name: WIRE_BYLINE, text, at: now, wire: true });
+    for (const c of this.conns.keys()) this.io.send(c, { t: 'chat', line });
+    return true;
   }
 
   /* ---------------------------------------------------------------- presence */
@@ -520,7 +556,8 @@ export class Hub {
         let reply: ReplyRef | undefined;
         if (msg.replyTo !== undefined) {
           const orig = this.io.global.get(msg.replyTo);
-          if (orig) reply = replySnapshot(orig);
+          // wire lines have no reply semantics — a reply to one posts plain
+          if (orig && !orig.wire) reply = replySnapshot(orig);
         }
         const line = this.io.global.add({ from: att.pid, name: att.name, text, at: now, ...(att.admin ? { admin: true } : {}), ...(reply ? { reply } : {}) });
         for (const [c, v] of this.conns) {
@@ -541,6 +578,7 @@ export class Hub {
         if (!this.rate(`re:${att.pid}`, SOCIAL_LIMITS.react)) return this.err(cid, 'SLOW_DOWN', 'Slow down.');
         const line = this.io.global.get(msg.id);
         if (!line) return;
+        if (line.wire) return; // wire lines take no reactions (they're the league talking, not a player)
         const reactions = toggleReaction(line.reactions, msg.emoji, att.pid);
         this.io.global.setReactions(msg.id, reactions);
         for (const [c, v] of this.conns) if (!this.hiddenBetween(v.pid, att.pid)) this.io.send(c, { t: 'chatReact', id: msg.id, reactions });

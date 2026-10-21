@@ -33,6 +33,11 @@ export class ChallengeDO extends DurableObject<Env> {
         if (!uids.length) return;
         try { await env.SOCIAL.get(env.SOCIAL.idFromName('hub')).fetch('https://social/notify', { method: 'POST', body: JSON.stringify({ uids, notice: n }) }); } catch (e) { console.error('notify', e); }
       },
+      wire: async (id, text) => {
+        // League Wire (item 7): settled Big Bank results post to global chat
+        // via the Social hub (which dedupes + cadence-caps).
+        try { await env.SOCIAL.get(env.SOCIAL.idFromName('hub')).fetch('https://social/wire', { method: 'POST', body: JSON.stringify({ id, text }) }); } catch (e) { console.error('wire', e); }
+      },
       push: async (cid, uid, kind, title, body) => {
         // pushes ride waitUntil (never on the op's critical path) and are always
         // paired with the in-app notice + the challenge card state

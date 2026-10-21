@@ -547,6 +547,20 @@ function GlobalChat({ signedIn }: { signedIn: boolean }) {
         {s.global.map((l, i) => {
           const mine = l.from === s.you?.id;
           const g = chatGroupInfo(s.global, i);
+          // League Wire (item 7): a system line, rendered as a wire block —
+          // no avatar, no profile, no press menu, no reactions. The byline
+          // is the stored line name ("BWM LEAGUE WIRE").
+          if (l.wire) {
+            return (
+              <Fragment key={l.id}>
+                {g.separator && <div className="soc-time-sep">{chatTimeLabel(l.at)}</div>}
+                <div className="soc-wire" data-testid="wire-line" data-line-id={l.id} role="note">
+                  <span className="soc-wire-byline">🚨 {l.name}</span>
+                  <span className="soc-wire-text">{l.text}</span>
+                </div>
+              </Fragment>
+            );
+          }
           return (
             <Fragment key={l.id}>
               {g.separator && <div className="soc-time-sep">{chatTimeLabel(l.at)}</div>}

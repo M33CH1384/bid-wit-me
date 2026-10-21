@@ -237,8 +237,10 @@ function onMessage(m: SocialServerMsg) {
         return { global, globalSeen: seenNow };
       });
       // live arrivals only reach this case (history rides 'hello'); blip only while the
-      // chat view is actually on screen — the gating lives in chatSounds.ts
-      playChatSound('global', { own: m.line.from === state.you?.id, chatViewOpen: state.open && state.tab === 'chat' });
+      // chat view is actually on screen — the gating lives in chatSounds.ts.
+      // League Wire lines (item 7) never blip: they're the league talking,
+      // not a player message, and must not impersonate one.
+      if (!m.line.wire) playChatSound('global', { own: m.line.from === state.you?.id, chatViewOpen: state.open && state.tab === 'chat' });
       break;
     case 'chatReact':
       set((s) => ({ global: s.global.map((l) => (l.id === m.id ? { ...l, reactions: m.reactions } : l)) }));

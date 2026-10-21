@@ -13,6 +13,7 @@ let now = T0;
 const tablesSeen: { cid: string; reserved: { uid: string; name: string }[]; autostartAt: number }[] = [];
 const notices: { uids: string[]; text: string; code?: string; seat?: number; cid?: string }[] = [];
 const pushes: { cid: string; uid: string; kind: string }[] = [];
+const wires: { id: string; text: string }[] = [];
 let alarmAt: number | null = null;
 let tableFails = false;
 
@@ -21,6 +22,7 @@ const io = (): WIO => ({
   save: async () => undefined,
   setAlarm: async (at) => { alarmAt = at; },
   notify: async (uids, n) => { notices.push({ uids, ...n }); },
+  wire: async (id, text) => { wires.push({ id, text }); },
   push: async (cid, uid, kind) => { pushes.push({ cid, uid, kind }); },
   createMatchTable: async (s) => { if (tableFails) throw new Error('no table'); tablesSeen.push(s); return `TBL${tablesSeen.length}`; },
 });
@@ -34,7 +36,7 @@ const setFlag = (key: string, on: boolean) =>
 beforeEach(async () => {
   db = await makeD1();
   now = T0;
-  tablesSeen.length = 0; notices.length = 0; pushes.length = 0; alarmAt = null; tableFails = false;
+  tablesSeen.length = 0; notices.length = 0; pushes.length = 0; wires.length = 0; alarmAt = null; tableFails = false;
   for (const u of USERS) {
     await db.prepare('INSERT INTO users (id, username, username_key, created_at) VALUES (?, ?, ?, ?)').bind(u, u.toUpperCase(), u, 1).run();
     await awardXp(db, u, xpAtLevel(20), now); // everyone starts at Rep Level 20 unless a test demotes them
@@ -263,6 +265,17 @@ describe('settlement: played', () => {
     const again = await result(io(), after, { kind: 'played', scores: [500, 320], places: [1, 2], gameId: 'game-1' });
     expect(again.status).toBe('settled');
     expect(await bal('a')).toBe(10_100); // unchanged — settled once
+  });
+
+  it('a settled match posts ONE League Wire line (item 7); the duplicate result wires nothing', async () => {
+    const d = await livePartnership(100);
+    const after = await result(io(), d, { kind: 'played', scores: [500, 320], places: [1, 2], gameId: 'game-1' });
+    expect(wires).toHaveLength(1);
+    expect(wires[0]!.id).toBe(`wager:${d.id}:played`);
+    expect(wires[0]!.text).toContain('🚨 BREAKING —');
+    expect(wires[0]!.text).toContain('took the Big Bank pot of 400 coins');
+    await result(io(), after, { kind: 'played', scores: [500, 320], places: [1, 2], gameId: 'game-1' });
+    expect(wires).toHaveLength(1);
   });
 
   it('cutthroat seats follow accept order and the winner takes the whole 4x pot (net +3x wager)', async () => {

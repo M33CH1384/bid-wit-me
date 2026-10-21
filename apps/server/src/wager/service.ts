@@ -71,6 +71,9 @@ export interface WIO {
   createMatchTable(setup: { cid: string; rules: TableRules; reserved: ({ uid: string; name: string } | null)[]; autostartAt: number }): Promise<string>;
   /** in-app notice to these accounts (Social hub) */
   notify(uids: string[], n: WNotice): Promise<void>;
+  /** League Wire (item 7): post a marquee result to global chat. Optional —
+   *  test doubles and older hosts simply don't wire. Best-effort. */
+  wire?(id: string, text: string): Promise<void>;
   /** Web Push to one account (paired with the in-app state, never push-only) */
   push(cid: string, uid: string, kind: WPushKind, title: string, body: string): Promise<void>;
   setAlarm(at: number): Promise<void>;
@@ -413,6 +416,8 @@ async function settlePlayed(io: WIO, d: WData, r: Extract<WResult, { kind: 'play
   console.warn('wager', 'settled', { challenge: d.id, format: d.format, wager: d.wager, winners: winners.map((w) => w.uid), losers: d.players.filter((p) => !winners.includes(p)).map((p) => p.uid), game: r.gameId });
   const names = ordered.map((w) => w.name).join(' + ');
   await outcome(io, d, `🏦 Big Bank settled: ${names} took the ${pot} 🪙 pot.`);
+  // League Wire (item 7): a settled Big Bank match is league news.
+  if (io.wire) await io.wire(`wager:${d.id}:played`, `🚨 BREAKING — ${names} took the Big Bank pot of ${pot} coins${d.tableCode ? ` at Table ${d.tableCode}` : ''}`).catch(() => undefined);
   return d;
 }
 
@@ -451,6 +456,7 @@ async function settleNoshow(io: WIO, d: WData, shown: Set<string>, now: number):
     await io.save(d);
     await syncRow(io, d);
     await outcome(io, d, `🏦 Big Bank no-show: ${noShows.map((p) => p.name).join(' + ')} didn't show — ${presentPair.map((p) => p.name).join(' + ')} take their wager.`);
+    if (io.wire) await io.wire(`wager:${d.id}:noshow`, `🚨 BREAKING — ${presentPair.map((p) => p.name).join(' + ')} won Big Bank by forfeit — ${noShows.map((p) => p.name).join(' + ')} never showed${d.tableCode ? ` at Table ${d.tableCode}` : ''}`).catch(() => undefined);
     return d;
   }
 
@@ -476,6 +482,7 @@ async function settleNoshow(io: WIO, d: WData, shown: Set<string>, now: number):
   await io.save(d);
   await syncRow(io, d);
   await outcome(io, d, `🏦 Big Bank no-show: ${noShows.map((p) => p.name).join(' + ')} didn't show — the match is void and their wager is split by the players who showed.`);
+  if (io.wire) await io.wire(`wager:${d.id}:noshow`, `🚨 BREAKING — Big Bank forfeit${d.tableCode ? ` at Table ${d.tableCode}` : ''}: ${noShows.map((p) => p.name).join(' + ')} never showed — ${showers.map((p) => p.name).join(' + ')} split the pot`).catch(() => undefined);
   return d;
 }
 

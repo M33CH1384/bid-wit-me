@@ -111,7 +111,7 @@ export function dmReplySnapshot(line: { id: number; from: string; text: string }
   return { id: line.id, from: fromName, fromId: line.from, text: line.text.slice(0, SOCIAL_LIMITS.replySnippet) };
 }
 
-export interface SocialChatLine { id: number; from: string; name: string; text: string; at: number; admin?: boolean; /** emoji reactions (emoji -> reactor pids); see REACTION_PALETTE */ reactions?: ChatReactions; /** the line this one replies to, as a post-time snapshot */ reply?: ReplyRef }
+export interface SocialChatLine { id: number; from: string; name: string; text: string; at: number; admin?: boolean; /** emoji reactions (emoji -> reactor pids); see REACTION_PALETTE */ reactions?: ChatReactions; /** the line this one replies to, as a post-time snapshot */ reply?: ReplyRef; /** a BWM League Wire system line (league data wave, item 7): posted by the server for marquee moments, not by a player — no author profile, no reply/reactions */ wire?: boolean }
 export interface DmLine { id: number; from: string; to: string; text: string; at: number; read?: boolean; /** emoji reactions (emoji -> reactor pids); see REACTION_PALETTE */ reactions?: ChatReactions; /** the DM line this one replies to, as a post-time snapshot (same shape as global chat) */ reply?: ReplyRef }
 export interface FriendRef { id: string; name: string; since?: number }
 export interface FriendsState { friends: FriendRef[]; incoming: FriendRef[]; outgoing: FriendRef[]; blocked: FriendRef[] }

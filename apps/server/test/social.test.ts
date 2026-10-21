@@ -684,3 +684,39 @@ describe('presence heartbeat expiry (~60s)', () => {
     expect(parseSocialMsg('{"t":"nope"}')).toBeNull();
   });
 });
+
+describe('league wire (item 7)', () => {
+  it('posts a stored system line and broadcasts it to everyone; late joiners see it in history', async () => {
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    expect(h.hub.postWire('TBL1:7:boston:0', '🚨 BREAKING — Dee + Kim just ran a Boston in Hand 7 at Table TBL1')).toBe(true);
+    const line = h.lines.at(-1)!;
+    expect(line).toMatchObject({ from: 'wire', name: 'BWM LEAGUE WIRE', wire: true });
+    expect(h.last('a', 'chat')!.line.id).toBe(line.id);
+    expect(h.last('b', 'chat')!.line.text).toContain('BREAKING');
+    await h.hub.open('c', { uid: 'uc', name: 'Cee' });
+    expect(h.last('c', 'hello')!.global.some((l) => l.wire)).toBe(true);
+  });
+
+  it('dedupes by event id and caps the cadence at one wire line per 10s (drops, never queues)', async () => {
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    expect(h.hub.postWire('e1', 'one')).toBe(true);
+    expect(h.hub.postWire('e1', 'one again')).toBe(false); // the same event twice
+    expect(h.hub.postWire('e2', 'two')).toBe(false); // a new event inside the gap is dropped
+    h.advance(10_001);
+    expect(h.hub.postWire('e2', 'two')).toBe(true);
+    expect(h.lines.filter((l) => l.wire)).toHaveLength(2);
+  });
+
+  it('wire lines take no reactions and carry no reply snapshot when replied to', async () => {
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    h.hub.postWire('e1', 'news');
+    const wire = h.lines.at(-1)!;
+    await h.send('a', { t: 'react', id: wire.id, emoji: '🔥' });
+    expect(h.lines.find((l) => l.id === wire.id)!.reactions).toBeUndefined();
+    await h.send('a', { t: 'chat', text: 'replying to the wire', replyTo: wire.id });
+    const reply = h.lines.at(-1)!;
+    expect(reply.text).toBe('replying to the wire');
+    expect(reply.reply).toBeUndefined();
+  });
+});

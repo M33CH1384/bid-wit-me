@@ -34,7 +34,7 @@ import { type CredEnv, handleCredHttp } from './cred/routes';
 import { verifyTicket } from './social/ticket';
 import { type ConnAtt, type GlobalLog, Hub, type TableLog } from './social/hub';
 import { saveRecord } from './stats/record';
-import { recordHighlight } from './stats/highlights';
+import { recordHighlight, wireText } from './stats/highlights';
 import { backfillHomiesOnce } from './stats/backfill';
 import { handleTournaments } from './tournament/routes';
 import type { TOp } from './tournament/do';
@@ -391,11 +391,18 @@ export class TableDO extends DurableObject<Env> {
         })());
       },
       // Live highlights (league data wave 6b): store for the ticker in
-      // waitUntil — never on the game path.
+      // waitUntil — never on the game path. Marquee events (item 7) ALSO go
+      // to global chat as a League Wire line via the Social hub, which
+      // dedupes by event id and caps the cadence.
       highlight: (ev) => {
-        if (!this.env.DB) return;
-        const db = this.env.DB;
-        this.ctx.waitUntil(recordHighlight(db, ev).catch((e) => console.error('highlight', e)));
+        if (this.env.DB) {
+          const db = this.env.DB;
+          this.ctx.waitUntil(recordHighlight(db, ev).catch((e) => console.error('highlight', e)));
+        }
+        if (ev.marquee && this.env.SOCIAL) {
+          const stub = this.env.SOCIAL.get(this.env.SOCIAL.idFromName('hub'));
+          this.ctx.waitUntil(stub.fetch('https://social/wire', { method: 'POST', body: JSON.stringify({ id: ev.id, text: wireText(ev) }) }).then(() => undefined).catch((e) => console.error('wire', e)));
+        }
       },
       // Voice (c): a thin catalog bucket -> one writer call in waitUntil (never on the game path).
       voiceMiss: (req: WriterRequest) => { if (this.env.AI && this.env.DB) this.ctx.waitUntil(writeVoiceLine({ ai: this.env.AI, store: new D1QueueStore(this.env.DB), breaker: voiceBreaker }, req).then(() => undefined).catch((e) => console.error('voiceWriter', e))); },
@@ -696,6 +703,7 @@ export class SocialDO extends DurableObject<Env> {
     this.sql.exec(`CREATE TABLE IF NOT EXISTS global (id INTEGER PRIMARY KEY AUTOINCREMENT, from_id TEXT, name TEXT, text TEXT, at INTEGER, admin INTEGER DEFAULT 0)`);
     try { this.sql.exec(`ALTER TABLE global ADD COLUMN reactions TEXT`); } catch { /* column already there */ }
     try { this.sql.exec(`ALTER TABLE global ADD COLUMN reply TEXT`); } catch { /* column already there */ }
+    try { this.sql.exec(`ALTER TABLE global ADD COLUMN wire INTEGER DEFAULT 0`); } catch { /* column already there */ }
     this.sql.exec(`CREATE TABLE IF NOT EXISTS open_tables (code TEXT PRIMARY KEY, json TEXT, at INTEGER)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS ended_tables (code TEXT PRIMARY KEY)`);
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
@@ -710,16 +718,17 @@ export class SocialDO extends DurableObject<Env> {
       del: (code: string) => { sql.exec('DELETE FROM ended_tables WHERE code = ?', code); },
       list: () => sql.exec<{ code: string }>('SELECT code FROM ended_tables').toArray().map((r) => r.code),
     };
-    type GlobalRow = { id: number; from_id: string; name: string; text: string; at: number; admin: number; reactions: string | null; reply: string | null };
+    type GlobalRow = { id: number; from_id: string; name: string; text: string; at: number; admin: number; reactions: string | null; reply: string | null; wire: number | null };
     const rowToLine = (r: GlobalRow): SocialChatLine => ({
       id: r.id, from: r.from_id, name: r.name, text: r.text, at: r.at,
       ...(r.admin ? { admin: true as const } : {}),
       ...(r.reactions ? { reactions: JSON.parse(r.reactions) as ChatReactions } : {}),
       ...(r.reply ? { reply: JSON.parse(r.reply) as ReplyRef } : {}),
+      ...(r.wire ? { wire: true as const } : {}),
     });
     const global: GlobalLog = {
       add: (l) => {
-        const id = sql.exec<{ id: number }>('INSERT INTO global (from_id, name, text, at, admin, reply) VALUES (?, ?, ?, ?, ?, ?) RETURNING id', l.from, l.name, l.text, l.at, l.admin ? 1 : 0, l.reply ? JSON.stringify(l.reply) : null).one().id;
+        const id = sql.exec<{ id: number }>('INSERT INTO global (from_id, name, text, at, admin, reply, wire) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id', l.from, l.name, l.text, l.at, l.admin ? 1 : 0, l.reply ? JSON.stringify(l.reply) : null, l.wire ? 1 : 0).one().id;
         sql.exec('DELETE FROM global WHERE id <= ?', id - 200);
         return { id, ...l };
       },
@@ -806,6 +815,14 @@ export class SocialDO extends DurableObject<Env> {
       const b = await req.json() as { code: string; table: OpenTable | null };
       if (typeof b.code === 'string' && /^[A-Z0-9]{3,12}$/.test(b.code)) this.hub.tableUpdate(b.code, b.table ?? null);
       return Response.json({ ok: true });
+    }
+    if (path === '/wire' && req.method === 'POST') {
+      // League Wire intake (item 7): table / challenge DOs report marquee
+      // moments here; the hub dedupes + cadence-caps before broadcasting.
+      const b = await req.json() as { id?: unknown; text?: unknown };
+      const posted = typeof b.id === 'string' && typeof b.text === 'string' && b.text.length > 0 && b.text.length <= 300
+        ? this.hub.postWire(b.id, b.text) : false;
+      return Response.json({ ok: true, posted });
     }
     if (path !== '/ws') return new Response('not found', { status: 404 });
     if (this.sockets.size >= 5000) return new Response('busy', { status: 503 });

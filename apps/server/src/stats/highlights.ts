@@ -124,6 +124,15 @@ export function handHighlights(o: {
   return out;
 }
 
+/**
+ * The League Wire copy for a marquee event (item 7): the ticker's
+ * description, breaking-news framing, and the table it happened at —
+ * "🚨 BREAKING — Dee + Kim just ran a Boston in Hand 7 at Table TBL9".
+ */
+export function wireText(ev: HighlightEvent): string {
+  return `🚨 BREAKING — ${ev.text} at Table ${ev.code}`;
+}
+
 /** Store one event and prune: older than an hour out, newest ~30 kept. */
 export async function recordHighlight(db: D1Database, ev: HighlightEvent): Promise<void> {
   await db.prepare('INSERT OR REPLACE INTO live_highlights (id, at, type, name, text, code, hand) VALUES (?, ?, ?, ?, ?, ?, ?)')
