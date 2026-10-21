@@ -383,9 +383,10 @@ html[data-theme="neon"] .soc-wire-byline { color: #5BDFFF; }
 @keyframes soc-up { from { transform: translateY(100%); } to { transform: none; } }
 @media (prefers-reduced-motion: reduce) { .soc-panel { animation: none !important; } }
 
-/* open tables: big Create button on empty, edge fade on the filter chips */
+/* open tables: text hint on empty (the lobby's one Create button lives above
+   the list since the 2026-10-20 restructure), edge fade on the filter chips */
 .ot-empty { border: 0; padding: 6px 0 0; }
-.ot-empty .ot-create { width: 100%; }
+.ot-empty .ot-hint { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
 .ot-filters-wrap { position: relative; }
 .ot-filters { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent); padding-right: 30px; }
 

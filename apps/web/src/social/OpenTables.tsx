@@ -1,28 +1,32 @@
 /**
- * Release 10: "Open tables" under the game cards on the online "Pick a game" step. Live from the Social hub (every
+ * Release 10: "Open tables" in the online lobby (wizard 'table' step). Live from the Social hub (every
  * public table reports itself on each change): host, mode, venue, target, seats, status, spectators, Join / Watch.
+ * Filters + mode names derive from the modes the wizard actually offers (offeredModes.ts) — the engine's
+ * legacy 3-player cutthroat has no chip here (owner, 2026-10-20 lobby restructure).
  */
 import { useEffect, useState } from 'react';
 import type { OpenTable } from '@spades/protocol';
 import { social, useSocial } from './store';
 import { navigate } from '../online/nav';
 import { type VenueChoice, venueLabel } from '../venues';
+import { OFFERED_MODES, OFFERED_MODE_NAME, type OfferedMode, offeredKindOf, openTableModeName } from '../offeredModes';
 
-type Filter = 'all' | 'joker' | 'cutthroat4' | 'cutthroat3' | 'aceDown';
-const FILTERS: [Filter, string][] = [['all', 'All'], ['joker', 'Joker'], ['cutthroat4', 'Cutthroat'], ['cutthroat3', 'Cutthroat 3'], ['aceDown', 'Ace Down']];
-export const tableKind = (t: Pick<OpenTable, 'mode' | 'playerCount'>): Filter => (t.mode === 'cutthroat' ? (t.playerCount === 3 ? 'cutthroat3' : 'cutthroat4') : (t.mode as Filter));
-const MODE_NAME: Record<string, string> = { joker: 'Joker Spades', cutthroat4: 'Cutthroat', cutthroat3: 'Cutthroat 3', aceDown: 'Ace Down' };
+type Filter = 'all' | OfferedMode;
+const FILTERS: [Filter, string][] = [['all', 'All'], ...OFFERED_MODES.map((o) => [o.key, o.label] as [Filter, string])];
+/** Back-compat for older imports: the offered kind of a table, or 'cutthroat3' for a legacy 3-player table. */
+export const tableKind = (t: Pick<OpenTable, 'mode' | 'playerCount'>): Filter | 'cutthroat3' => offeredKindOf(t) ?? 'cutthroat3';
+export const MODE_NAME: Record<string, string> = { ...OFFERED_MODE_NAME };
 
 function venueName(id: string): string {
   try { return venueLabel(id as VenueChoice) || id; } catch { return id; }
 }
 
-export function OpenTables({ selected, onCreate }: { selected: string; onCreate: () => void }) {
+export function OpenTables({ selected }: { selected: string }) {
   const s = useSocial();
   useEffect(() => { social.start(); }, []);
   const [filter, setFilter] = useState<Filter>(() => (FILTERS.some(([k]) => k === selected) ? (selected as Filter) : 'all'));
   const all = Object.values(s.tables);
-  const list = all.filter((t) => filter === 'all' || tableKind(t) === filter)
+  const list = all.filter((t) => filter === 'all' || offeredKindOf(t) === filter)
     .sort((a, b) => (a.status === 'waiting' ? 0 : 1) - (b.status === 'waiting' ? 0 : 1) || b.open - a.open || b.at - a.at);
   return (
     <section className="open-tables" data-testid="open-tables" aria-label="Open tables">
@@ -38,8 +42,8 @@ export function OpenTables({ selected, onCreate }: { selected: string; onCreate:
         <p className="ot-empty muted">Looking for tables…</p>
       ) : !list.length ? (
         <div className="ot-empty" data-testid="ot-empty">
-          <p>No open {filter === 'all' ? '' : `${MODE_NAME[filter]} `}tables right now.</p>
-          <button type="button" className="primary big ot-create" data-testid="ot-create" onClick={onCreate}>Create a Table</button>
+          <p>No open {filter === 'all' ? '' : `${OFFERED_MODE_NAME[filter]} `}tables right now.</p>
+          <p className="ot-hint">Tap “Create a table” above to start one.</p>
         </div>
       ) : (
         <ul className="ot-list">
@@ -57,7 +61,7 @@ function TableRow({ t }: { t: OpenTable }) {
   return (
     <li className={`ot-row ${t.status}`} data-testid={`ot-row-${t.code}`}>
       <div className="ot-main">
-        <div className="ot-title"><b>{MODE_NAME[tableKind(t)] ?? t.mode}</b><span className={`ot-status ${t.status}`}>{status}</span></div>
+        <div className="ot-title"><b>{openTableModeName(t)}</b><span className={`ot-status ${t.status}`}>{status}</span></div>
         <div className="ot-meta">
           <span>Host <b>{t.host || '—'}</b></span>
           <span>to {t.target}</span>
