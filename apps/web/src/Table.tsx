@@ -39,6 +39,7 @@ import { setActiveDeck } from './decks';
 import { pickTeamName, toggleReaction } from '@spades/protocol';
 import { Intermission, calloutsFor } from './Intermission';
 import Hype from './Hype';
+import AnimFxLayer from './animfx/AnimFxLayer';
 import { landCueFor, wheelsFor, wheelsMade, wheelsTenth, wheelsTenthBooks } from './landCue';
 import Feedback from './Feedback';
 import { setFeedbackGame } from './feedbackContext';
@@ -1996,6 +1997,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
       {coachOn && !modalOpen && st.phase === 'playing' && !pause && <LedSuitChip st={st} />}
       <Hype reduced={reduceFx} low={settings.quality === 'low'} />
+      <AnimFxLayer st={st} online={!!online} />
       {showPad && <ScorePad st={st} names={names} dealerName={dealerLabel} onClose={() => setShowPad(false)} onContinue={st.phase === 'handOver' && talkOpen && !online?.talk?.ready?.mine ? () => { setShowPad(false); apply({ type: 'nextHand' }); } : undefined} onLeave={st.phase === 'handOver' ? () => { setShowPad(false); if (online) leave(); else setConfirmLeave(true); } : undefined} locked={online ? undefined : <LockedRulesPanel rules={r} nuke={fx.tableNuke ?? fx.prefs.nuke} skill={settings.botLevel} intensity={settings.talkIntensity} />} />}
       {/* profile modal over the table (face taps): a direct child so the .modal-open
           blur rule exempts its .modal-backdrop like every other table modal */}
