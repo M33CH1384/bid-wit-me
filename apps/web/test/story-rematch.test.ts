@@ -161,7 +161,7 @@ async function renderStoryHome(search: string, progressStatus: number) {
   history.replaceState(null, '', `/story${search}`);
   vi.stubGlobal('fetch', async (input: unknown) => {
     const url = String(input);
-    if (url.includes('/api/profile/me')) return { ok: true, status: 200, json: async () => ({ dev: true, unlocks: [] }) };
+    if (url.includes('/api/profile/me')) return { ok: true, status: 200, json: async () => ({ dev: true, storyAccess: true, unlocks: [] }) };
     if (url.includes('/api/story/progress')) {
       return progressStatus === 200
         ? { ok: true, status: 200, json: async () => progressPayload(1) }
@@ -288,7 +288,7 @@ async function finishResumedPorch(won: boolean) {
   let posted = false;
   vi.stubGlobal('fetch', async (input: unknown, init?: { method?: string }) => {
     const url = String(input);
-    if (url.includes('/api/profile/me')) return { ok: true, status: 200, json: async () => ({ dev: true, unlocks: [] }) };
+    if (url.includes('/api/profile/me')) return { ok: true, status: 200, json: async () => ({ dev: true, storyAccess: true, unlocks: [] }) };
     if (url.includes('/api/story/result')) { posted = true; return { ok: true, status: 200, json: async () => resultFixture(won) }; }
     // like the real server: once the result is recorded, progress shows it
     if (url.includes('/api/story/progress')) return { ok: true, status: 200, json: async () => (posted ? resultFixture(won) : progressPayload(0)) };

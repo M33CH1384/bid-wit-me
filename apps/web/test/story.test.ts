@@ -24,7 +24,7 @@ import StoryHome from '../src/story/StoryHome';
 beforeAll(() => {
   vi.stubGlobal('fetch', async (input: unknown) => {
     const url = String(input);
-    if (url.includes('/api/profile/me')) return { ok: true, status: 200, json: async () => ({ dev: true, unlocks: [] }) };
+    if (url.includes('/api/profile/me')) return { ok: true, status: 200, json: async () => ({ dev: true, storyAccess: true, unlocks: [] }) };
     if (url.includes('/api/story/progress')) return { ok: false, status: 401, json: async () => ({}) };
     throw new Error(`no network in tests: ${url}`);
   });

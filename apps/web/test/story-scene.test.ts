@@ -414,7 +414,7 @@ describe('map resume', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', async (input: unknown) => {
       const url = String(input);
-      if (url.includes('/api/profile/me')) return { ok: true, status: 200, json: async () => ({ dev: true, unlocks: [] }) };
+      if (url.includes('/api/profile/me')) return { ok: true, status: 200, json: async () => ({ dev: true, storyAccess: true, unlocks: [] }) };
       if (url.includes('/api/story/progress')) return {
         ok: true, status: 200,
         json: async () => ({

@@ -99,13 +99,13 @@ export function venueOptionLabel(v: VenueDef, unlocked: boolean): string {
 
 /** Minimal unlock state for gating venue pickers. Fetched once per page load;
  *  null when signed out or the fetch fails (locked venues stay locked). */
-export interface VenueUnlockState { unlocks: string[]; dev: boolean }
+export interface VenueUnlockState { unlocks: string[]; dev: boolean; storyAccess: boolean }
 let unlockCache: Promise<VenueUnlockState | null> | null = null;
 export function fetchVenueUnlocks(): Promise<VenueUnlockState | null> {
   if (!unlockCache) {
     unlockCache = fetch('/api/profile/me', { credentials: 'include' })
       .then((r) => (r.ok ? r.json() : null))
-      .then((p) => (p ? { unlocks: (p.unlocks ?? []).map((u: { itemId: string }) => u.itemId), dev: !!p.dev } : null))
+      .then((p) => (p ? { unlocks: (p.unlocks ?? []).map((u: { itemId: string }) => u.itemId), dev: !!p.dev, storyAccess: !!p.storyAccess } : null))
       .catch(() => null);
   }
   return unlockCache;

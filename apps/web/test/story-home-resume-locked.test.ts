@@ -49,7 +49,7 @@ beforeEach(() => {
   // a regular player: signed in, NOT a dev account; the story API 403s.
   vi.stubGlobal('fetch', async (input: unknown) => {
     const url = String(input);
-    if (url.includes('/api/profile/me')) return { ok: true, status: 200, json: async () => ({ dev: false, unlocks: [] }) };
+    if (url.includes('/api/profile/me')) return { ok: true, status: 200, json: async () => ({ dev: false, storyAccess: false, unlocks: [] }) };
     if (url.includes('/api/story/progress')) return { ok: false, status: 403, json: async () => ({ error: 'locked' }) };
     return { ok: false, status: 404, json: async () => ({}) };
   });

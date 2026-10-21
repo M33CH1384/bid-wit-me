@@ -17,6 +17,7 @@
  */
 import { type AuthEnv, currentUser } from '../auth/routes';
 import { isAdmin } from '../social/routes';
+import { hasStoryAccess } from '../story/access';
 import { myStats } from '../stats/boards';
 import { avatarOf, parseAvatarDataUrl } from './avatar';
 import { cleanTagline, taglineOf } from './tagline';
@@ -57,7 +58,7 @@ async function unlockList(db: D1Database, userId: string) {
   return owned.results.map((u) => ({ itemId: u.itemId, source: u.source, unlockedAt: u.unlockedAt, slot: byItem.get(u.itemId) ?? null, equipped: byItem.has(u.itemId) }));
 }
 
-async function fullProfile(db: D1Database, userId: string, username: string, now: number, dev: boolean) {
+async function fullProfile(db: D1Database, userId: string, username: string, now: number, dev: boolean, storyAccess: boolean) {
   const season = await ensureSeason(db, now);
   // idempotent earners: welcome grant + daily login (cheap, safe to run on every profile read)
   try { await grantWelcome(db, userId, now); } catch { /* best-effort */ }
@@ -80,6 +81,11 @@ async function fullProfile(db: D1Database, userId: string, username: string, now
     user: { id: userId, name: username, avatar: pic.avatar, avatarUpdatedAt: pic.avatarUpdatedAt, tagline, socialLinks: links, region },
     /** developer (owner) accounts bypass unlock gates, e.g. The Pj's */
     dev,
+    /** story-mode access (see story/access): admins, the named player
+     *  allowlist while story mode is owner-only, everyone once the lock
+     *  is off. The client keys the story lock off this — never off dev —
+     *  so an allowlisted player plays without holding any dev surface. */
+    storyAccess,
     level: { ...level, xpForNext: xpForLevel(level.level) },
     season: { id: season.id, name: season.name, endsAt: season.endsAt },
     rank: { team, cutthroat },
@@ -98,7 +104,7 @@ export async function handleCredHttp(req: Request, env: CredEnv, url: URL, parts
 
   if (parts[1] === 'profile' && parts[2] === 'me' && req.method === 'GET') {
     if (!me) return json({ error: 'Sign in to see your profile.' }, 401);
-    return json(await fullProfile(db, me.id, me.username ?? 'Player', now, isAdmin(env, me.id, me.username ?? null)));
+    return json(await fullProfile(db, me.id, me.username ?? 'Player', now, isAdmin(env, me.id, me.username ?? null), hasStoryAccess(env, me.id, me.username ?? null)));
   }
   if (parts[1] === 'profile' && parts[2] === 'me' && parts[3] === 'avatar' && (req.method === 'POST' || req.method === 'DELETE')) {
     if (!me) return json({ error: 'Sign in to change your picture.' }, 401);

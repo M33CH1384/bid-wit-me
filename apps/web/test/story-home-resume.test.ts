@@ -99,7 +99,7 @@ const progressPayload = (barberAttempts: number) => ({
 function stubFetch(dev: boolean, barberAttempts = 1) {
   vi.stubGlobal('fetch', async (input: unknown) => {
     const url = String(input);
-    if (url.includes('/api/profile/me')) return { ok: true, status: 200, json: async () => ({ dev, unlocks: [] }) };
+    if (url.includes('/api/profile/me')) return { ok: true, status: 200, json: async () => ({ dev, storyAccess: dev, unlocks: [] }) };
     if (url.includes('/api/story/progress')) return { ok: true, status: 200, json: async () => progressPayload(barberAttempts) };
     return { ok: false, status: 404, json: async () => ({}) };
   });

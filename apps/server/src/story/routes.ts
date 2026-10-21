@@ -48,19 +48,16 @@ import { awardXp } from '../cred/xp';
 import { move } from '../cred/coins';
 import { grantUnlock } from '../cred/achievements';
 import { closeStorySession, openStorySession } from './callback';
+import { hasStoryAccess } from './access';
 
 export interface StoryEnv extends AuthEnv, SocialEnv {}
 
 /**
- * STORY_OWNER_ONLY — the one switch for the story-mode lock (owner,
- * 2026-10-21): story mode stays admin-only while it is being finished.
- * While true, every story endpoint answers 403 to non-admin accounts
- * (the same isAdmin machinery as The Pj's dev bypass) and the client
- * shows the locked state to non-dev players. TO OPEN STORY MODE TO
- * EVERYONE: set this to false here AND STORY_OWNER_ONLY to false in
- * apps/web/src/story/storyApi.ts — nothing else changes.
+ * The story-mode lock switch lives with the access check in ./access
+ * (STORY_OWNER_ONLY + STORY_ACCESS_USERNAMES + hasStoryAccess). The
+ * switch is re-exported here because this file has been its home.
  */
-export const STORY_OWNER_ONLY = true;
+export { STORY_OWNER_ONLY } from './access';
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
 
@@ -178,8 +175,11 @@ export async function handleStoryHttp(req: Request, env: StoryEnv, url: URL, par
   const db = env.DB;
   const me = await currentUser(req, env, url, now);
   if (!me) return json({ error: 'Sign in to run the route.' }, 401);
-  // Owner-only while story mode is being finished (see STORY_OWNER_ONLY).
-  if (STORY_OWNER_ONLY && !isAdmin(env, me.id, me.username)) {
+  // Owner-only while story mode is being finished (see ./access):
+  // admins and the named player allowlist get in; everyone else 403s.
+  // (reset-stop below re-checks isAdmin on its own — the allowlist is
+  // a player admit, never an owner tool.)
+  if (!hasStoryAccess(env, me.id, me.username)) {
     return json({ error: 'Story mode is locked while it is being finished.' }, 403);
   }
 
@@ -254,7 +254,8 @@ export async function handleStoryHttp(req: Request, env: StoryEnv, url: URL, par
   // `unlocks` row a feat granted stays on the profile, and every other
   // stop, track and user is untouched. Admin-only in its own right: even
   // if STORY_OWNER_ONLY is ever flipped off, this stays an owner tool
-  // (the client renders the control only for dev accounts).
+  // (the client renders the control only for dev accounts), and the
+  // STORY_ACCESS_USERNAMES player allowlist never admits anyone here.
   if (parts[1] === 'story' && parts[2] === 'reset-stop' && req.method === 'POST') {
     if (!isAdmin(env, me.id, me.username)) return json({ error: 'Stop reset is an owner tool.' }, 403);
     let body: { track?: unknown; stopId?: unknown };

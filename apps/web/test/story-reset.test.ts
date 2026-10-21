@@ -51,7 +51,7 @@ const resetCalls: { method?: string; body: { track?: string; stopId?: string } }
 beforeAll(() => {
   vi.stubGlobal('fetch', async (input: unknown, init?: { method?: string; body?: string }) => {
     const url = String(input);
-    if (url.includes('/api/profile/me')) return { ok: true, status: 200, json: async () => ({ dev: true, unlocks: [] }) };
+    if (url.includes('/api/profile/me')) return { ok: true, status: 200, json: async () => ({ dev: true, storyAccess: true, unlocks: [] }) };
     if (url.includes('/api/story/reset-stop')) {
       resetCalls.push({ method: init?.method, body: JSON.parse(String(init?.body ?? '{}')) as never });
       resetDone = true;

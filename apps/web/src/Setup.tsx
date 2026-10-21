@@ -20,7 +20,7 @@ import { AccountEntry } from './account/AccountUI';
 import { SocialButton } from './social/Social';
 import { OpenTables } from './social/OpenTables';
 import { OFFLINE_PAIR_KEY, TeamNameField, pairTeamNames, useTeamNameFor } from './TeamName';
-import { STORY_OWNER_ONLY, fetchStoryDev, storyLockedFor } from './story/storyApi';
+import { STORY_OWNER_ONLY, fetchStoryAccess, storyLockedFor } from './story/storyApi';
 import { loadStoryGame, storySaveSummary, type StorySaveSummary } from './story/storySave';
 import { storyPairLabel } from './story/storySettings';
 
@@ -144,11 +144,14 @@ export function VenueSetupRow({ value, onChange }: { value: VenueChoice; onChang
 
 export default function Setup({ settings: s, onChange, tips, onTips, onStart, onResume, resumeLabel }: Props) {
   const [{ step, path, kind, view }, setWiz] = useState(readWiz);
-  // Story-mode owner lock: the home row is locked until the dev flag says otherwise.
-  const [storyDev, setStoryDev] = useState<boolean | null | undefined>(undefined);
+  // Story-mode owner lock: the home row is locked until the story-access
+  // flag says otherwise (admins + the server's named player allowlist —
+  // keyed off storyAccess, never dev, so an allowlisted player gets the
+  // player row with no dev surface anywhere).
+  const [storyAccess, setStoryAccess] = useState<boolean | null | undefined>(undefined);
   useEffect(() => {
     let live = true;
-    void fetchStoryDev().then((d) => { if (live) setStoryDev(d); });
+    void fetchStoryAccess().then((a) => { if (live) setStoryAccess(a); });
     return () => { live = false; };
   }, []);
   // A story match in progress on this device (owner, 2026-10-21): the home
@@ -251,7 +254,7 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
           <button type="button" className="hero-btn gold" data-testid="play" {...choose(() => go('door'))}><b>PLAY</b><small>Team Game or Cutthroat</small></button>
         )}
         {onlineSeat && <button type="button" className="quiet-row" data-testid="resume-online" onClick={() => navigate(`/t/${onlineSeat}`)}><span>Rejoin your online table</span><span className="value-chip">{onlineSeat}</span></button>}
-        {STORY_OWNER_ONLY && storyLockedFor(storyDev === undefined ? null : storyDev) ? (
+        {STORY_OWNER_ONLY && storyLockedFor(storyAccess === undefined ? null : storyAccess) ? (
           <button type="button" className="quiet-row" data-testid="story-mode-locked" disabled aria-disabled="true"><span>🔒 Story mode</span><span className="value-chip">Coming soon</span></button>
         ) : storySave ? (
           <button type="button" className="quiet-row story-resume-row" data-testid="story-mode" data-resume-stop={storySave.stop.id} onClick={() => navigate(`/story?resume=${storySave.stop.id}`)}><span>Resume — {storySave.stop.name}</span><span className="value-chip">{storyPairLabel(storySave.stop)} · Hand {storySave.handNo}</span></button>

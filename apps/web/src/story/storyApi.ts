@@ -7,24 +7,37 @@ import { fetchVenueUnlocks } from '../venues';
 
 /**
  * STORY_OWNER_ONLY — the client half of the story-mode lock (owner,
- * 2026-10-21): while true, story mode is open only to dev (owner)
- * accounts — the server enforces the same gate with its own
- * STORY_OWNER_ONLY in apps/server/src/story/routes.ts (403 for
- * non-admins). TO OPEN STORY MODE TO EVERYONE: set both flags false.
+ * 2026-10-21): while true, story mode is open only to accounts with
+ * story access — admins, plus the named players the server admits
+ * early (STORY_ACCESS_USERNAMES in apps/server/src/story/access.ts).
+ * The server enforces the same gate with its own STORY_OWNER_ONLY
+ * (403 for everyone else) and reports the outcome per account as the
+ * profile's storyAccess flag, which is what the lock below keys off —
+ * never the dev flag: an allowlisted player plays story mode without
+ * holding any owner surface. TO OPEN STORY MODE TO EVERYONE: set both
+ * flags false.
  */
 export const STORY_OWNER_ONLY = true;
 
-/** Locked = the owner-only switch is on and this player is not a dev account.
- *  Unknown dev state (signed out / fetch failed) counts as locked — the same
- *  safe default as the locked-venue picker. */
-export function storyLockedFor(dev: boolean | null | undefined): boolean {
-  return STORY_OWNER_ONLY && dev !== true;
+/** Locked = the owner-only switch is on and this player has no story
+ *  access. Unknown access state (signed out / fetch failed) counts as
+ *  locked — the same safe default as the locked-venue picker. */
+export function storyLockedFor(access: boolean | null | undefined): boolean {
+  return STORY_OWNER_ONLY && access !== true;
 }
 
 /** The caller's dev flag from /api/profile/me (cached, shared with the venue picker). */
 export async function fetchStoryDev(): Promise<boolean | null> {
   const s = await fetchVenueUnlocks();
   return s ? s.dev : null;
+}
+
+/** The caller's story-access flag from /api/profile/me (same cached fetch).
+ *  True for admins and — while the owner-only lock is on — the server's
+ *  named player allowlist; true for everyone once the lock is off. */
+export async function fetchStoryAccess(): Promise<boolean | null> {
+  const s = await fetchVenueUnlocks();
+  return s ? s.storyAccess : null;
 }
 
 export interface StoryStopProgress {

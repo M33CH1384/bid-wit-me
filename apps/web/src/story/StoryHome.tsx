@@ -24,7 +24,7 @@ import { type Settings, loadSettings, saveSettings } from '../settings';
 import { navigate } from '../online/nav';
 import { storyRulesFor, storySettingsFor } from './storySettings';
 import { storyBackdropUrl } from './storyBackdrop';
-import { STORY_OWNER_ONLY, fetchStoryDev, fetchStoryProgress, postStoryFound, postStoryResetStop, postStoryResult, storyLockedFor, type StoryProgress, type StoryResult } from './storyApi';
+import { STORY_OWNER_ONLY, fetchStoryAccess, fetchStoryDev, fetchStoryProgress, postStoryFound, postStoryResetStop, postStoryResult, storyLockedFor, type StoryProgress, type StoryResult } from './storyApi';
 import { deckUnlockNotice, invalidateStoryProgress } from '../storyDecks';
 import { setAnimUnlockNotice } from '../setAnims';
 import { clearStoryGame, loadStoryGame, storySaveSummary, storySaveValidFor, type StorySavedGame } from './storySave';
@@ -81,12 +81,18 @@ export default function StoryHome() {
   const [progress, setProgress] = useState<StoryProgress | null>(null);
   const [signedOut, setSignedOut] = useState(false);
   const [loadError, setLoadError] = useState(false);
-  // Owner-only lock (STORY_OWNER_ONLY): undefined = dev flag still loading.
+  // Owner-only lock (STORY_OWNER_ONLY): undefined = access flag still
+  // loading. The lock keys off storyAccess (admins + the server's named
+  // player allowlist) — dev is fetched separately and now gates ONLY
+  // the owner reset tool below, so an allowlisted player gets the full
+  // player experience with no dev surface.
   const [dev, setDev] = useState<boolean | null | undefined>(undefined);
+  const [storyAccess, setStoryAccess] = useState<boolean | null | undefined>(undefined);
   const [lockedByServer, setLockedByServer] = useState(false);
   useEffect(() => {
     let live = true;
     void fetchStoryDev().then((d) => { if (live) setDev(d); });
+    void fetchStoryAccess().then((a) => { if (live) setStoryAccess(a); });
     return () => { live = false; };
   }, []);
   const [lastResult, setLastResult] = useState<StoryResult | null>(null);
@@ -241,14 +247,14 @@ export default function StoryHome() {
   }, [rematchStopId]);
   useEffect(() => {
     if (!rematchStopId || rematchFired.current || !progress) return;
-    if (STORY_OWNER_ONLY && (lockedByServer || dev === undefined || storyLockedFor(dev))) return;
+    if (STORY_OWNER_ONLY && (lockedByServer || storyAccess === undefined || storyLockedFor(storyAccess))) return;
     rematchFired.current = true;
     const stop = STORY_STOPS.find((s) => s.id === rematchStopId);
     if (!stop) return;
     const row = progress.stops.find((s) => s.stopId === rematchStopId);
     if (row?.state === 'locked') return; // a stop just played is never locked — belt and braces
     startGame(stop);
-  }, [rematchStopId, progress, dev, lockedByServer]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rematchStopId, progress, storyAccess, lockedByServer]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Resume directive (?resume=<stopId>, from the Home screen's story row):
   // the player tapped Resume on Home because a story save exists on this
@@ -266,7 +272,7 @@ export default function StoryHome() {
   }, [resumeStopId]);
   useEffect(() => {
     if (!resumeStopId || resumeFired.current || !progress) return;
-    if (STORY_OWNER_ONLY && (lockedByServer || dev === undefined || storyLockedFor(dev))) return;
+    if (STORY_OWNER_ONLY && (lockedByServer || storyAccess === undefined || storyLockedFor(storyAccess))) return;
     resumeFired.current = true;
     const s = loadStoryGame();
     if (!s || s.story.stopId !== resumeStopId) return;
@@ -274,12 +280,13 @@ export default function StoryHome() {
     const stop = STORY_STOPS.find((x) => x.id === resumeStopId);
     if (!stop) return;
     resumeStop(stop, s);
-  }, [resumeStopId, progress, dev, lockedByServer]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [resumeStopId, progress, storyAccess, lockedByServer]); // eslint-disable-line react-hooks/exhaustive-deps
 
   let body: React.ReactNode;
-  if (STORY_OWNER_ONLY && (lockedByServer || (dev !== undefined && storyLockedFor(dev)))) {
-    // Locked for everyone but the owner while story mode is being finished.
-    // Same screen in both themes; the server enforces the same gate (403).
+  if (STORY_OWNER_ONLY && (lockedByServer || (storyAccess !== undefined && storyLockedFor(storyAccess)))) {
+    // Locked while story mode is being finished — everyone except admins
+    // and the server's named player allowlist. Same screen in both
+    // themes; the server enforces the same gate (403).
     body = (
       <div className="story-shell" data-testid="story-locked">
         <div className="story-topbar">
@@ -297,7 +304,7 @@ export default function StoryHome() {
         </div>
       </div>
     );
-  } else if (STORY_OWNER_ONLY && dev === undefined) {
+  } else if (STORY_OWNER_ONLY && storyAccess === undefined) {
     body = (
       <div className="story-shell" data-testid="story-checking">
         <div className="story-title-block">

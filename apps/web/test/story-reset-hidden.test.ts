@@ -20,7 +20,7 @@ const resetCalls: string[] = [];
 beforeAll(() => {
   vi.stubGlobal('fetch', async (input: unknown) => {
     const url = String(input);
-    if (url.includes('/api/profile/me')) return { ok: true, status: 200, json: async () => ({ dev: false, unlocks: [] }) };
+    if (url.includes('/api/profile/me')) return { ok: true, status: 200, json: async () => ({ dev: false, storyAccess: false, unlocks: [] }) };
     if (url.includes('/api/story/reset-stop')) { resetCalls.push(url); return { ok: false, status: 403, json: async () => ({}) }; }
     if (url.includes('/api/story/progress')) return { ok: false, status: 403, json: async () => ({}) };
     throw new Error(`no network in tests: ${url}`);

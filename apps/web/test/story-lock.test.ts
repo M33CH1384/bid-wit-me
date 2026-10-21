@@ -2,9 +2,12 @@
  * @vitest-environment happy-dom
  *
  * Story-mode owner lock (owner, 2026-10-21): while STORY_OWNER_ONLY is on,
- * non-dev players see the locked screen instead of the map, and the lock
- * helper treats unknown dev state as locked. The server half (403s) is
- * pinned in apps/server/test/story.test.ts.
+ * players without story access see the locked screen instead of the map,
+ * and the lock helper treats unknown access state as locked. The lock
+ * keys off the profile's storyAccess flag (admins + the server's named
+ * player allowlist) — never dev. The server half (403s) is pinned in
+ * apps/server/test/story.test.ts + story-access.test.ts; the allowlisted
+ * player's client half lives in story-access.test.ts (web).
  */
 import { createElement, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -16,10 +19,10 @@ import StoryHome from '../src/story/StoryHome';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 beforeAll(() => {
-  // a regular player: signed in, but NOT a dev account; story API says 403.
+  // a regular player: signed in, no story access; story API says 403.
   vi.stubGlobal('fetch', async (input: unknown) => {
     const url = String(input);
-    if (url.includes('/api/profile/me')) return { ok: true, status: 200, json: async () => ({ dev: false, unlocks: [] }) };
+    if (url.includes('/api/profile/me')) return { ok: true, status: 200, json: async () => ({ dev: false, storyAccess: false, unlocks: [] }) };
     if (url.includes('/api/story/progress')) return { ok: false, status: 403, json: async () => ({ error: 'locked' }) };
     throw new Error(`no network in tests: ${url}`);
   });
@@ -44,7 +47,7 @@ async function render(node: ReactNode) {
 }
 
 describe('story owner lock (client)', () => {
-  it('the switch is on and the helper locks anyone who is not dev', () => {
+  it('the switch is on and the helper locks anyone without story access', () => {
     expect(STORY_OWNER_ONLY).toBe(true);
     expect(storyLockedFor(true)).toBe(false);
     expect(storyLockedFor(false)).toBe(true);
@@ -52,7 +55,7 @@ describe('story owner lock (client)', () => {
     expect(storyLockedFor(undefined)).toBe(true);
   });
 
-  it('a non-dev player gets the locked screen, never the map', async () => {
+  it('a player without story access gets the locked screen, never the map', async () => {
     const c = await render(createElement(StoryHome));
     expect(c.querySelector('[data-testid="story-locked"]')).toBeTruthy();
     expect(c.querySelector('[data-testid="story-map"]')).toBeNull();
