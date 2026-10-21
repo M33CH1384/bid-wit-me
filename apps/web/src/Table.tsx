@@ -360,7 +360,6 @@ function offlineDealerLine(st: GameState, names: readonly string[]): string {
 function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only', extra, trash, overRecap = false, onReact, myId = null }: { msgs: ChatMsg[]; open: boolean; onToggle: () => void; onSend: (t: string) => void; unread: number; scope?: string; extra?: ReactNode; trash?: ReactNode; /** hand recap: the log is a sheet, opened from the corner button on that screen */ overRecap?: boolean; /** emoji reaction to a line (undefined = reactions unavailable here) */ onReact?: (id: number, emoji: string) => void; /** my reactor id (server pid / 'you'), for chip highlighting */ myId?: string | null }) {
   const listRef = useRef<HTMLDivElement>(null);
   const [text, setText] = useState('');
-  const [tray, setTray] = useState(false);
   /** which message's emoji picker is open (one at a time) */
   const [pickFor, setPickFor] = useState<number | null>(null);
   // Auto-scroll: stick to the bottom while the user is at/near it (opening always re-sticks);
@@ -391,17 +390,16 @@ function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only',
         />
       )}
       {!overRecap && (
-        <div className={`ctl-cluster ctl-tray ${tray ? 'expanded' : 'collapsed'}`} role="group" aria-label="Table controls" data-testid="ctl-tray">
-          {tray && <>
-            {extra}
-            {trash}
-            <button type="button" className={`chat-toggle ${open ? 'open' : ''}`} onClick={onToggle} aria-label={open ? 'Hide chat' : 'Show chat'}>
-              💬{!open && unread > 0 && <span className="unread">{unread}</span>}
-            </button>
-          </>}
-          <button type="button" className={`tray-toggle ${tray ? 'on' : ''}`} data-testid="tray-toggle" aria-label={tray ? 'Close controls' : 'Open controls: camera, mic, voice, chat'} onClick={() => setTray(!tray)}>
-            {tray ? '✕' : <>💬<small>⋯</small></>}{!tray && unread > 0 && <span className="unread" data-testid="tray-unread">{unread}</span>}
+        /* The table-controls rail: chat, camera and mic are separate, always-visible
+           controls stacked on the right edge — a new player can see what lives here
+           without opening anything (owner 2026-10-20: the old single 💬⋯ tray toggle
+           hid the camera/mic behind a chat-looking button). */
+        <div className="ctl-cluster ctl-rail" role="group" aria-label="Table controls: chat, camera, mic" data-testid="ctl-rail">
+          <button type="button" className={`chat-toggle ${open ? 'open' : ''}`} onClick={onToggle} aria-label={open ? 'Hide chat' : 'Show chat'}>
+            💬<small>CHAT</small>{!open && unread > 0 && <span className="unread" data-testid="rail-unread">{unread}</span>}
           </button>
+          {extra}
+          {trash}
         </div>
       )}
       {!overRecap && !open && last && <div key={last.id} className="chat-ticker"><b style={{ color: last.color }}>{last.user}</b> {last.text}</div>}

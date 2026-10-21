@@ -1936,14 +1936,21 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .menu-social .social-btn { width: 100%; justify-content: flex-start; }
 .scorebug .help-btn, .scorebug .bug-btn.q { display: none; }
 
-/* one collapsible tray, bottom-right, off the felt (above the hand, right of your plate) */
-.ctl-tray, .table-screen.short .ctl-tray { top: auto; bottom: calc(23vh + 8px + env(safe-area-inset-bottom)); right: calc(8px + env(safe-area-inset-right)); flex-direction: column-reverse; align-items: flex-end; gap: 6px; }
-.ctl-tray.expanded { padding: 6px; border-radius: 16px; background: rgba(var(--glass-strong-rgb),.88); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.35), 0 8px 22px rgba(0,0,0,.5); pointer-events: auto; }
-.ctl-tray .av-bar { flex-direction: column; }
-.tray-toggle { position: relative; width: 46px; height: 46px; border: 0; border-radius: 14px; font-size: 18px; color: #fff; background: rgba(var(--purple-rgb),.85); box-shadow: 0 6px 16px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.25); display: grid; place-items: center; line-height: 1; pointer-events: auto; }
-.tray-toggle small { position: absolute; bottom: 3px; right: 6px; font-size: 12px; }
-.tray-toggle.on { background: rgba(40,24,64,.95); }
-.tray-toggle .unread { position: absolute; top: -5px; right: -5px; }
+/* The table-controls rail (owner 2026-10-20): a slim VERTICAL stack on the right edge,
+   in the same off-the-felt pocket the old collapsible tray anchored to (bottom-right,
+   above the hand, right of your plate). Chat, camera and mic are separate always-visible
+   controls — nothing hides behind one mystery icon. The rail keeps the .ctl-cluster class,
+   so the layout engine keeps treating its rect as an obstacle the plates avoid, and its
+   glass width is exactly one button wide (42px + the 8px edge offset = 50px), so it also
+   clears the chat ticker whose right edge sits 56px in. Short landscape keeps the same
+   anchor with the compact button sizing the short cluster rules already define. */
+.ctl-rail, .table-screen.short .ctl-rail { top: auto; bottom: calc(23vh + 8px + env(safe-area-inset-bottom)); right: calc(8px + env(safe-area-inset-right)); flex-direction: column; align-items: center; gap: 6px; padding: 6px 0; border-radius: 16px; background: rgba(var(--glass-strong-rgb),.88); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.35), 0 8px 22px rgba(0,0,0,.5); }
+.ctl-rail .av-bar { flex-direction: column; }
+.ctl-rail .chat-toggle { width: 42px; height: 46px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 17px; line-height: 1; clip-path: none; border-radius: 10px; pointer-events: auto; }
+.ctl-rail .chat-toggle small { font-family: var(--display); font-weight: 800; font-size: 8px; letter-spacing: .1em; color: var(--muted); margin-top: 2px; }
+.ctl-rail .chat-toggle.open small { color: #fff; }
+.ctl-rail .chat-toggle .unread { top: -5px; right: -5px; }
+.table-screen.short .ctl-rail { gap: 4px; padding: 4px 0; }
 
 /* last trick: a small chip; tap to expand */
 .last-trick.chip, .last-trick.chip.glass.slant { pointer-events: auto; cursor: pointer; padding: 4px 9px; max-width: none; }
