@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { type GameState, bidLabel, isNilBid, isShot, shotCovers, sideOf } from '@spades/rules';
 import { resultChips, sideColor, signed } from './ScorePad';
 import { wheelsMade } from './landCue';
@@ -149,8 +149,23 @@ export function Intermission({
     }
     return () => { for (const t of timers) window.clearTimeout(t); };
   }, [handKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Presentation gate (owner, 2026-10-21): a fresh set cover's CSS clock used
+  // to start at MOUNT — while the sheet was still fading in (.tt-backdrop's
+  // fade-up, .35s) and, in the single-column layout, while the set side's
+  // card sat below the fold of the sheet's scrollport — so the animation
+  // finished before the player ever saw the card ("the animation happened
+  // before we got to the screen"). `presented` flips when the entrance has
+  // completed; until then CSS holds every fresh cover (and the tape-in
+  // jolt) paused at its first frame (animfx.css), and each SetCover ALSO
+  // waits for its own card to be in view (its sc-wait gate). The finale's
+  // hard-way delay counts from here, so flash → finale order is preserved.
+  const [presented, setPresented] = useState(false);
+  useEffect(() => {
+    const t = window.setTimeout(() => setPresented(true), 350);
+    return () => window.clearTimeout(t);
+  }, []);
   return (
-    <div className="tt-backdrop" data-testid="table-talk" data-decided={decided ? 'yes' : 'no'} role="dialog" aria-label="Hand recap">
+    <div className={`tt-backdrop${presented ? ' presented' : ''}`} data-testid="table-talk" data-decided={decided ? 'yes' : 'no'} data-presented={presented ? 'yes' : 'no'} role="dialog" aria-label="Hand recap">
       {/* 3 THE HARD WAY — the third-set ending's title card (the rule's own
           callout, game-wide, NOT an unlock). Held ~3s, then the game-over
           flow proceeds; in a story match the stop's finale set animation is

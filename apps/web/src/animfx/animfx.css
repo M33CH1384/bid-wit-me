@@ -524,6 +524,20 @@
 .setcover.fresh { animation: sc-appear .01s linear var(--sc-delay, 0ms) both; }
 @keyframes sc-appear { from { opacity: 0; } to { opacity: 1; } }
 .setcover .sc-tag { position: absolute; left: 10px; bottom: 8px; z-index: 6; padding: 2px 8px; border-radius: 999px; background: rgba(0, 0, 0, .58); color: #ffe9a8; font-family: var(--display, sans-serif); font-weight: 700; font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; }
+/* Presentation gates (owner, 2026-10-21): a fresh cover's clock must not run
+ * before the recap is actually presented and the card in view — it used to
+ * start at mount, under the sheet's fade-up entrance and below the fold of
+ * the sheet's scrollport, and finish unseen. Two holds, both keep the
+ * animation at its first frame (fill backwards) without shortening it:
+ * (1) .sc-wait — SetCover's own in-view gate, lifted when its card is
+ * observed in view; (2) the recap backdrop carries .presented only once
+ * its entrance completes (Intermission) — until then every fresh cover in
+ * it, and the notice card's tape-in jolt (same mount-start mechanism), is
+ * held too. The finale's --sc-delay (e.g. 2300ms behind the 3 THE HARD
+ * WAY flash) counts from the lift, so the designed order is preserved. */
+.setcover.sc-wait, .setcover.sc-wait *,
+.tt-backdrop:not(.presented) .setcover.fresh, .tt-backdrop:not(.presented) .setcover.fresh *,
+.tt-backdrop:not(.presented) .tt-team.tape-in { animation-play-state: paused; }
 /* finale dim/haze layer, above the scene, below the lit hero elements */
 .setcover::after { content: ""; position: absolute; inset: 0; z-index: 4; opacity: 0; pointer-events: none; }
 

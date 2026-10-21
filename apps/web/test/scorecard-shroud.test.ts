@@ -437,7 +437,7 @@ describe('scorecard shot covers (tape/sheet facts; the visuals retired 2026-10-2
     const dim = blocks.find((b) => b.includes('police-lights') || b.includes('police-red'));
     expect(dim).toBeUndefined();
     const table = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
-    expect(table).toContain("endReason === 'shotOut' && !shotRecapAck");
+    expect(table).toContain("(st.result?.endReason === 'shotOut' || st.result?.endReason === 'third-set') && !shotRecapAck");
     expect(table).toContain('setShotRecapAck(true)');
     expect(table).toContain('Review last trick');
     expect(table).not.toContain('Run it — cleared hands');

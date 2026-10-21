@@ -3195,3 +3195,38 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
 .setanim-opt.locked { opacity: .55; cursor: not-allowed; }
 .setanim-opt.locked .setanim-name { filter: grayscale(.6); }
 .setanim-opt.locked small { color: var(--gold); opacity: 1; }
+
+/* Hand recap on large screens (owner, 2026-10-21): the ≥900px tablet-rail
+ * pin further up (justify-content: flex-start; .tt at 452px) left the recap
+ * as a phone-width column pinned to the left of a desktop window with most
+ * of the screen empty black beside it. At ≥1024px the sheet centers and
+ * opens into two regions in the same register — TOP SCORES + HANDS (and
+ * any callouts) in a left rail, the side cards in the main region, the Run
+ * It review full-width below, header/footer spanning as today. This is a
+ * large-screen layer only: below 1024px every recap rule above is
+ * untouched, phone layout and behavior exactly as they were. The decided
+ * (final) recap is the same Intermission sheet, so it gets the same
+ * treatment; the game-over RESULTS modals are a different shell
+ * (.modal.gameover / .victory-screen, already centered) and are not
+ * affected. Theme-agnostic on purpose: identical structure in Classic and
+ * Neon (parity law). */
+@media (min-width: 1024px) {
+  .tt-backdrop { justify-content: center; }
+  .tt { width: min(1040px, 100%); }
+  .tt-body {
+    display: grid;
+    grid-template-columns: minmax(290px, 370px) minmax(0, 1fr);
+    grid-template-areas: "scores recap" "strip recap" "callouts recap" "run run";
+    grid-template-rows: auto auto 1fr auto;
+    align-content: start;
+    align-items: start;
+    justify-items: stretch;
+    column-gap: 28px;
+  }
+  .tt-top-scores { grid-area: scores; width: 100%; }
+  .tt-strip { grid-area: strip; width: 100%; }
+  .tt-callouts { grid-area: callouts; }
+  .tt-recap { grid-area: recap; width: 100%; }
+  .tt-run { grid-area: run; width: 100%; }
+  .tt-run-show { grid-area: run; justify-self: center; }
+}

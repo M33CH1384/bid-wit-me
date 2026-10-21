@@ -76,7 +76,7 @@ describe('hand recap: top scores, spacing, and the decided-game flow', () => {
     // Table routes that button to the results (ack), not to nextHand — source wiring, not a hidden button
     const table = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
     expect(table).toContain("if (st.phase === 'gameOver') setShotRecapAck(true); else apply({ type: 'nextHand' })");
-    expect(table).toContain("endReason === 'shotOut' && !shotRecapAck");
+    expect(table).toContain("(st.result?.endReason === 'shotOut' || st.result?.endReason === 'third-set') && !shotRecapAck");
   });
 
   it('an undecided hand still offers Continue to Hand N', () => {

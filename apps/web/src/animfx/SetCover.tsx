@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react';
+import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react';
 import './animfx.css';
 import { setAnimForStop } from '../setAnims';
 
@@ -131,15 +131,39 @@ export function SetCover({ animId, tier, mode, reduced, side, delayMs = 0 }: {
 }) {
   const def = setAnimForStop(animId);
   const art = ART[animId];
-  if (!def || !art) return null;
+  // In-view gate (owner, 2026-10-21): a fresh cover's CSS clock starts when
+  // the element mounts, but the set side's card can sit below the fold of
+  // the recap sheet's scrollport — the animation then played unseen and
+  // was over by the time the player scrolled to the card. The cover now
+  // waits (held at its first frame by .sc-wait in animfx.css) until its
+  // own card is actually in view, then plays in full. Latched: scrolling
+  // away mid-play never rewinds it. No IntersectionObserver (old browser,
+  // test DOM) = treat as in view, the pre-gate behavior. Static/reduced
+  // covers never wait — their end state IS the presentation.
+  const [seen, setSeen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
   const still = reduced || mode === 'static';
+  useEffect(() => {
+    if (still || seen) return;
+    const el = rootRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') { setSeen(true); return; }
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) { setSeen(true); io.disconnect(); }
+    }, { threshold: 0.25 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [still, seen]);
+  if (!def || !art) return null;
+  const waiting = !still && !seen;
   return (
     <div
-      className={`setcover tier-${tier} ${still ? 'static' : 'fresh'}`}
+      ref={rootRef}
+      className={`setcover tier-${tier} ${still ? 'static' : 'fresh'}${waiting ? ' sc-wait' : ''}`}
       data-anim={animId}
       data-testid={`recap-setanim-${side}`}
       data-tier={tier}
       data-mode={still ? 'static' : 'fresh'}
+      data-wait={waiting ? 'yes' : undefined}
       style={{ '--sc-delay': `${delayMs}ms` } as CSSProperties}
       aria-hidden="true"
     >
