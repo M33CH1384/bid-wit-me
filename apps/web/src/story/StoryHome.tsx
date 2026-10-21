@@ -24,6 +24,7 @@ import { type Settings, loadSettings, saveSettings } from '../settings';
 import { navigate } from '../online/nav';
 import { storyRulesFor, storySettingsFor } from './storySettings';
 import { STORY_OWNER_ONLY, fetchStoryDev, fetchStoryProgress, postStoryFound, postStoryResult, storyLockedFor, type StoryProgress, type StoryResult } from './storyApi';
+import { deckUnlockNotice, invalidateStoryProgress } from '../storyDecks';
 import { clearStoryGame, loadStoryGame, storySaveValidFor, type StorySavedGame } from './storySave';
 import { railFor, storyBadgesFor } from '@spades/bots';
 import ScriptPlayer, { type SceneEgg } from './ScriptPlayer';
@@ -148,6 +149,9 @@ export default function StoryHome() {
     finishedRef.current = { seed, won };
     void postStoryResult(stop.id, won, `story-${seed}`, facts).then((r) => {
       if (r) {
+        // A fresh clear unlocks the stop's deck — drop the deck picker's
+        // cached progress so the new deck shows up without a reload.
+        invalidateStoryProgress();
         setLastResult(r); setProgress(r);
         // The motif answers the moment: cleared → the clear bloom; any new
         // egg/collectible from this game → the unlock rise.
@@ -268,6 +272,9 @@ export default function StoryHome() {
             {r.firstClear ? <>First clear! <b>+{r.rewards.xp} XP</b> · <b>+{r.rewards.coins}</b> <CoinIcon size={14} /></> : <>Replay upkeep: <b>+{r.rewards.xp} XP</b> · <b>+{r.rewards.coins}</b> <CoinIcon size={14} /></>}
             {r.completed ? ' · Route complete — the solo mark is yours.' : ''}
           </p>
+        )}
+        {r && r.won && r.firstClear && deckUnlockNotice(r.stopId) && (
+          <p className="story-deck-line" data-testid="story-deck-notice">{deckUnlockNotice(r.stopId)}</p>
         )}
         {r && !r.won && <p className="story-reward-line">No rewards on a loss — and no penalty. The retry is free.</p>}
         {r && (r.newFinds?.length ?? 0) > 0 && (

@@ -392,3 +392,12 @@ html[data-theme="neon"] .story-dee-card {
 }
 html[data-theme="neon"] .story-stop.state-current .story-card { border-color: #8054ff; }
 html[data-theme="neon"] .story-stop.is-king .story-card { background: rgba(7, 6, 18, 0.92); border-color: rgba(128, 84, 255, 0.6); }
+
+/* ---- deck unlock notice on the outro (deck-unlocks integration) ---- */
+.story-deck-line {
+  border: 1px solid #c9a227;
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin: 0 0 12px;
+  font-weight: 700;
+}

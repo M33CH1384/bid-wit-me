@@ -28,6 +28,18 @@ describe('/story header: sharp, safe-area clear, dock slotted', () => {
     expect(css).not.toMatch(/filter:\s*blur/);
   });
 
+  it('deck-unlock integration: a posted result invalidates the picker cache and a first clear names its deck', () => {
+    expect(home).toContain("from '../storyDecks'");
+    // the postStoryResult handler drops the cached story progress so the
+    // Setup deck picker sees the fresh clear without a reload
+    const handler = home.match(/postStoryResult\([\s\S]*?\.then\(\(r\) => \{[\s\S]*?\}\)/)![0];
+    expect(handler).toContain('invalidateStoryProgress()');
+    // the outro renders the deck notice beside the first-clear reward line
+    expect(home).toContain('data-testid="story-deck-notice"');
+    expect(home).toContain('deckUnlockNotice(r.stopId)');
+    expect(css).toContain('.story-deck-line');
+  });
+
   it('every story topbar offers the sound dock a real in-flow slot (no corner float, no stray box)', () => {
     expect((home.match(/className="dock-slot"/g) ?? []).length).toBeGreaterThanOrEqual(3);
     const topbar = css.match(/\.story-topbar \{[^}]*\}/)![0];
