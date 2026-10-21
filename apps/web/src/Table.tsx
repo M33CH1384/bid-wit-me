@@ -94,7 +94,7 @@ import type { RunPlayback } from '@spades/protocol';
 import { RunItReview, RunZoom, faceUrl, runReviewOverTable } from './RunZoom';
 import { TrashTalkButton } from './TrashTalk';
 import { isWildDeuce } from './cardFaces';
-import { MISDEAL_DEAL_SPEED, misdealDealMs, misdealRevealKey, misdealRevealMs } from './misdeal';
+import { MISDEAL_DEAL_SPEED, heldHandForThrowIn, misdealDealMs, misdealFanHand, misdealRevealKey, misdealRevealMs } from './misdeal';
 import { QUICK_TRASH_SET } from './quickTrash';
 import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
 import { STORY_CHARACTERS, STORY_STOPS, type BotLevel, type StoryBeat, type StoryBeatFacts, type StoryGameFacts, type StoryStop, type TalkIntensity, botSkillFor, buildStoryTape, callbackFor, midSceneFor, partnerBidIntent, personaForName, platePersona, pickBotNames, playBeatFor, railCastForAttempt, railMomentFor, resumeLineFor, tableExchangeFor } from '@spades/bots';
@@ -1061,7 +1061,12 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const revealKey = misdealRevealKey(view.handNo, view.misdealReveal);
   const bidsBeforeCall = useRef<typeof st.bids>([]);
   useEffect(() => { bidsBeforeCall.current = st.bids; }, [st.bids]);
-  const [redeal, setRedeal] = useState<{ key: string; phase: 'gather' | 'deal'; bidsVoided: boolean } | null>(null);
+  // The fan's hand as last committed (kept in step below, once `display` exists). The render
+  // that first carries a reveal reads it BEFORE that commit's update lands, so it still holds
+  // the hand being thrown in — the state itself has already swapped to the redealt hand, and
+  // the fan must not show that hand until the deal flight deals it (see misdeal.ts).
+  const fanHandCommitted = useRef<{ handNo: number; cards: Card[] } | null>(null);
+  const [redeal, setRedeal] = useState<{ key: string; phase: 'gather' | 'deal'; bidsVoided: boolean; heldHand: Card[] | null } | null>(null);
   const [dealEpoch, setDealEpoch] = useState(0);
   // Detection runs in the render pass itself (the derived-state pattern): a new thrown-hand key
   // starts the sequence on the very render that presents it — no effect ordering to lose it —
@@ -1069,7 +1074,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [redealKeySeen, setRedealKeySeen] = useState<string | null>(null);
   if (revealKey !== redealKeySeen) {
     setRedealKeySeen(revealKey);
-    if (revealKey) setRedeal({ key: revealKey, phase: 'gather', bidsVoided: bidsBeforeCall.current.some((b) => b !== null) });
+    if (revealKey) setRedeal({ key: revealKey, phase: 'gather', bidsVoided: bidsBeforeCall.current.some((b) => b !== null), heldHand: heldHandForThrowIn(fanHandCommitted.current, view.handNo) });
   }
   useEffect(() => {
     if (!redeal) return;
@@ -1124,6 +1129,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (ranHand) return { hand: flown.hand, counts: view.handCounts, trick, piles: [] as typeof piles, slam: null };
     return { hand: flown.hand, counts: view.handCounts, trick, piles, slam: null };
   })();
+  // Keep the fan's committed hand in step (see fanHandCommitted above): after every commit
+  // this holds the hand the fan is actually showing, ready for a misdeal call to throw in.
+  useEffect(() => {
+    if (display.hand) fanHandCommitted.current = { handNo: st.handNo, cards: [...display.hand] };
+  });
   useGameSounds(st, myTurn, mySide, msgs);
   const landCue = useCallback((c: Card) => landCueFor(st, c), [st]);
   // "Learn as you play": coach marks across hands until the player turns tips off (local to this player, online too)
@@ -1915,6 +1925,12 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   }, [preDeal]);
   const preDealSecs = preDeal ? Math.max(1, Math.ceil(((dealAtMs as number) - preDealNow) / 1000)) : 0;
 
+  // The fan during a redeal (owner, 2026-10-21: "I shouldn't have cards until they are dealt
+  // to me as per the usual deal"): through the gather beat every fan surface — the 3D fan, the
+  // felt stand-in, the accessible hand — holds the thrown-in hand, never the redealt one.
+  // The deal beat hands the fan back to the live hand, which the deal flight deals out.
+  const gathering = redeal?.phase === 'gather';
+  const fanHand = misdealFanHand(gathering, redeal?.heldHand ?? null, display.hand);
   // The quick-load hand is on screen before WebGL. During a deal it may only show the cards that have left the deck.
   const feltShown = useDealtSlots(dealing, {
     speedK: k,
@@ -1937,8 +1953,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       </div>
       {feltHandVisible(display.hand?.length ?? 0, introHand !== st.handNo, webglHand) && display.hand && (
         <FeltHand
-          cards={display.hand}
-          visibleCount={feltShown}
+          cards={gathering && redeal?.heldHand ? redeal.heldHand : display.hand}
+          visibleCount={gathering ? (redeal?.heldHand ? redeal.heldHand.length : 0) : feltShown}
           trick={display.trick.map((p) => p.card)}
           legal={runFx ? [] : humanExchanging && hand ? hand : legal}
           selected={runFx ? null : selected}
@@ -1959,7 +1975,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           dealer={st.dealer}
           positions={pos}
           human={HUMAN}
-          myHand={display.hand}
+          myHand={fanHand}
           handCounts={display.counts}
           shownTrick={display.trick}
           trickArmed={!!view.nukeArmed}
@@ -1986,6 +2002,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           animK={redeal?.phase === 'deal' ? k * MISDEAL_DEAL_SPEED : k}
           gatherHands={redeal?.phase === 'gather' && !fx.osReducedMotion}
           dealEpoch={dealEpoch}
+          dealFlight={redeal?.phase === 'deal'}
           landCue={landCue}
           short={vp.short}
           safe={vp.safe}
@@ -2206,7 +2223,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
       {/* accessible / automation controls for the 3D hand */}
       <div className="sr-only" role="group" aria-label="Your hand" data-testid="hand" data-trick-count={shownTrick.plays.length}>
-        {((flying ? flyPlay(hand, shownTrick.plays, flying).hand : hand) ?? []).map((c) => (
+        {((gathering ? (redeal?.heldHand ?? []) : flying ? flyPlay(hand, shownTrick.plays, flying).hand : hand) ?? []).map((c) => (
           <button
             key={c}
             type="button"

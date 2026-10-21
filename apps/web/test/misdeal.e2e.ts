@@ -5,6 +5,11 @@
  * (~1.2s beat), then the hand is shuffled and redealt out of that seat on the normal deal
  * flight (still bidding, fresh cards, no bid placed). The save deals from seat 3, so the
  * human's call passes the deal TO the human: the announcement reads "Deal passes to you".
+ * Fan ruling (owner, 2026-10-21): "I shouldn't have cards until they are dealt to me as per
+ * the usual deal" — through the whole announcement beat the player's fan (the accessible
+ * hand group here) still holds the THROWN-IN hand; the redealt hand appears only as the
+ * deal flight deals it. This save is a resumed hand, so it also covers the redeal flight
+ * replaying on a hand with no intro.
  * Saves docs/misdeal-button-390.png and docs/misdeal-reveal-390.png when BWM_SHOTS=docs.
  */
 import { isTrump, makeRules, newGame, type GameState } from '@spades/rules';
@@ -53,6 +58,11 @@ function save(): string {
     if (!announce.includes('You called it · no spades')) throw new Error(`announcement did not name the call: ${announce.slice(0, 120)}`);
     if (!announce.includes('Deal passes to you')) throw new Error(`announcement did not name the dealer pass: ${announce.slice(0, 120)}`);
     console.log('✓ the call is announced: who + why (no spades) + who the deal passes to, thrown hand face up as proof');
+    // the fan ruling: mid-beat, the player's hand is still the thrown-in hand — the redealt
+    // hand must not be in the fan (here: the accessible hand group) before it is dealt
+    const during = await page.getByTestId('hand').locator('button').allTextContents();
+    if (JSON.stringify(during) !== JSON.stringify(before)) throw new Error(`fan changed during the gather beat: was ${before.join(' ')} — now ${during.join(' ')}`);
+    console.log('✓ through the beat the fan still holds the thrown-in hand — no cards before they are dealt');
     await page.waitForTimeout(500);
     await page.screenshot({ path: `${SHOTS}/misdeal-reveal-390.png` });
     await reveal.waitFor({ state: 'hidden', timeout: 6000 });

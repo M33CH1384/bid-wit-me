@@ -122,6 +122,11 @@ export interface SceneProps {
   /** Misdeal redeal, beat 2: bumped when the redeal should deal out — remounts the card layer
    *  so this hand's normal shuffle + deal flight replays under the same hand number. */
   dealEpoch?: number;
+  /** Misdeal redeal, beat 2 is running: the redeal's deal flight deals the hand out of the
+   *  deck on the normal per-card timeline. This matters on a hand the intro machinery treats
+   *  as already placed (a resumed hand has no intro): the flight still gates every fan —
+   *  a player holds no cards until the flight deals them, never from the state swap. */
+  dealFlight?: boolean;
   /** camera view: standing (default) or sitting (lower/closer) */
   view?: 'standing' | 'sitting';
   /** Turn up (slam mode): Standing drags slam at max only when this is on. */
@@ -536,6 +541,10 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   useEffect(() => (props.fontsReady ? refreshFacesGradually(() => invalidate()) : undefined), [props.fontsReady, invalidate]);
   const deck = deckSpot(positions[dealer]!, n);
   const intro = props.introHand === handNo;
+  // A deal flight is running for this hand: the intro deal, or a misdeal redeal dealing out.
+  // The redeal replays under the same hand number, and on a resumed hand the intro flag is
+  // off — but its cards still leave the deck on the deal timeline like any fresh deal.
+  const flight = intro || !!props.dealFlight;
   // Misdeal gather: while the call is announced, every hand rides the collection glide into the
   // deck spot — which belongs to the incoming dealer, the deal having passed on the call — and
   // the redeal's shuffle + deal flight then run out of that same deck (see Table's sequence).
@@ -727,7 +736,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
       if (gather) {
         items.push({ key: `${handNo}-b${seat}-${i}`, card: null, target: deck, duration: 0.7, arc: 0.25, motion: 'glide', delay: seat * 0.07 + i * 0.015, sfxStart: 'sweep', spatialSeat: positions[seat]!, spatialN: n });
       } else {
-        items.push({ key: `${handNo}-b${seat}-${i}`, card: null, target: opponentFan(positions[seat]!, n, i, c), from: intro ? deck : undefined, delay: intro ? dealDelay(i, seat) : 0, holdUntilMove: intro, duration: tl.fly, arc: 0.3, sfxStart: 'deal', spatialSeat: positions[seat]!, spatialN: n });
+        items.push({ key: `${handNo}-b${seat}-${i}`, card: null, target: opponentFan(positions[seat]!, n, i, c), from: flight ? deck : undefined, delay: flight ? dealDelay(i, seat) : 0, holdUntilMove: flight, duration: tl.fly, arc: 0.3, sfxStart: 'deal', spatialSeat: positions[seat]!, spatialN: n });
       }
     }
   }
@@ -786,7 +795,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     const slotKey = handSlotKey(id, i);
     // Already in the hand: sit in the fan this frame. Flying in from the deck is what left
     // cards missing after the state had moved on, and those hidden meshes ignore taps.
-    const dealIn = handDealsIn({ intro, dealing: !!props.dealing, flip });
+    const dealIn = handDealsIn({ intro: flight, dealing: !!props.dealing, flip });
     if (dealIn) dealtIn++;
     const move = fanMotion({ flip, fresh: dealIn, closing });
     const plane = handCardPlane(aspect, fanCards.length, i, 0, safeFrac, opts, gaps[i] ?? 0, screenH);
@@ -842,7 +851,8 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   // The quads are the cards on screen this render. A tap reads them, not a mesh that
   // is still at the origin after a remount or still sitting in the un-raised slot.
   // A card still flying in is not a tap target.
-  const dealingNow = intro && !!props.dealing;
+  // While cards are being thrown in (gather) or dealt out (flight), the fan is not a tap target.
+  const dealingNow = (flight || gather) && !!props.dealing;
   publishHandHits(hand3D && !dealingNow ? handQuads : []);
   useEffect(() => {
     const w = window as unknown as { __bwmDeal?: { handNo: number; held: boolean; dealing: boolean; hand: number; flying: number; hits: number } };
@@ -945,7 +955,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
         />
       ))}
       {wide && mine.length > 0 && <HandGlow aspect={aspect} count={mine.length} safeFrac={safeFrac} opts={fanOpts} />}
-      {intro && <ShuffleDeck key={`shuffle-${handNo}`} at={deck} back={back} tl={tl} quality={quality} />}
+      {flight && <ShuffleDeck key={`shuffle-${handNo}`} at={deck} back={back} tl={tl} quality={quality} />}
     </group>
   );
 }
