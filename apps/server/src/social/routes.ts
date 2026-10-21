@@ -10,6 +10,7 @@
 import { type AuthEnv, currentUser } from '../auth/routes';
 import { regionOf } from '../cred/region';
 import { leaderboard, myStats, personalStats, serverStats, type PersonalStats } from '../stats/boards';
+import { ensurePowerSnapshot, powerRankings } from '../stats/power';
 import { usernameKey } from '../auth/username';
 import { TICKET_TTL_MS, signTicket } from './ticket';
 import { SocialStore } from './store';
@@ -113,7 +114,14 @@ export async function handleSocialHttp(req: Request & { cf?: unknown }, env: Soc
     const p = await profileFor(db, decodeURIComponent(parts[3]).slice(0, 40), me?.id ?? null);
     return p ? json(p) : json({ error: 'not found' }, 404);
   }
+  if (a === 'power' && req.method === 'GET') {
+    const kind = url.searchParams.get('kind') === 'cutthroat' ? 'cutthroat' : 'team';
+    return json(await powerRankings(db, kind, now));
+  }
   if (a === 'leaderboard' && req.method === 'GET') {
+    // League P-E: the first leaderboard read of an ISO week captures the
+    // Power Rankings snapshot (best-effort — never block the board on it).
+    await ensurePowerSnapshot(db, now).catch(() => undefined);
     const q = url.searchParams;
     const board = (['rating', 'wins', 'accuracy', 'duos'] as const).find((b) => b === q.get('board')) ?? 'rating';
     const kind = q.get('kind') === 'cutthroat' ? 'cutthroat' : 'team';

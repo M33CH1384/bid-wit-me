@@ -432,6 +432,7 @@ export function Leaderboards() {
           </>
         )}
         <p className="soc-note">Ratings and Best duos count signed-in opponents. Wins split into vs players and vs bots.</p>
+        <PowerRankings kind={board === 'duos' ? 'team' : kind} onOpen={(name) => social.showProfile(name)} />
       </div>
       <RanksTicker kind={kind} mine={mine} />
       {offscreen && mineRow && (
@@ -444,6 +445,53 @@ export function Leaderboards() {
       )}
       {statsOpen && mine && <StatsSheet mine={mine} kind={kind} onClose={() => setStatsOpen(false)} />}
     </div>
+  );
+}
+
+/* -------------------------------------------------- Power Rankings (P-E) */
+
+interface PowerRowT { rank: number; id: string; name: string; power: number; rating: number; movement: number | 'new' }
+
+/**
+ * Weekly Power Rankings: this week's Top 10 from the server snapshot
+ * (GET /api/social/power), with movement vs last week's snapshot — ▲ up,
+ * ▼ down, — same, NEW for first-timers. The first week ever has no previous
+ * snapshot and says so instead of inventing movement.
+ */
+function PowerRankings({ kind, onOpen }: { kind: Kind; onOpen: (name: string) => void }) {
+  const [data, setData] = useState<{ week: string; hasPrev: boolean; rows: PowerRowT[] } | null>(null);
+  useEffect(() => {
+    let live = true;
+    get(`/api/social/power?kind=${kind}`)
+      .then((j) => { if (live) setData(j as { week: string; hasPrev: boolean; rows: PowerRowT[] }); })
+      .catch(() => { if (live) setData(null); });
+    return () => { live = false; };
+  }, [kind]);
+  if (!data || !data.rows.length) return null;
+  return (
+    <section className="power-rank" data-testid="power-rankings">
+      <div className="power-head">
+        <h3>⚡ Power Rankings</h3>
+        <span className="soc-muted">{kind === 'team' ? 'Partnership' : 'Cutthroat'} · week of {data.week}</span>
+      </div>
+      {!data.hasPrev && <p className="soc-muted power-note">First week — no movement yet, everyone starts new.</p>}
+      <div className="ranks-list">
+        {data.rows.map((r) => (
+          <button key={r.id} type="button" className="ranks-row power-row" onClick={() => onOpen(r.name)}>
+            <span className="ranks-rk">{r.rank}</span>
+            <span className="ranks-name"><span className="ranks-name-txt">{r.name}</span></span>
+            <span className="power-move">
+              {r.movement === 'new' ? <i className="power-new">NEW</i>
+                : r.movement > 0 ? <i className="trend up">▲{r.movement}</i>
+                : r.movement < 0 ? <i className="trend down">▼{-r.movement}</i>
+                : <i className="trend flat">—</i>}
+            </span>
+            <span className="ranks-val">{r.power}</span>
+          </button>
+        ))}
+      </div>
+      <p className="soc-muted power-note">Power = rating + recent form (last 14 days). Updates weekly.</p>
+    </section>
   );
 }
 
@@ -462,11 +510,14 @@ export interface TickerOnline { name: string; detail: string }
  * games / Bostons / streaks" across players), so the ticker carries no
  * results line rather than an invented one — the gap is reported, not filled.
  */
-export function buildTickerLines(o: { kind: Kind; top: Row[]; online: TickerOnline[]; mine: MyStats | null }): string[] {
+export function buildTickerLines(o: { kind: Kind; top: Row[]; online: TickerOnline[]; mine: MyStats | null; power?: { name: string; power: number }[] }): string[] {
   const lines: string[] = [];
   const kindLabel = o.kind === 'team' ? 'Partnership' : 'Cutthroat';
   if (o.top.length) {
     lines.push(`Top rated · ${kindLabel} — ${o.top.slice(0, 3).map((r) => `${r.name} ${r.value}`).join(' · ')}`);
+  }
+  if (o.power?.length) {
+    lines.push(`Power Rankings — ${o.power.slice(0, 3).map((r, i) => `#${i + 1} ${r.name} (${r.power})`).join(' · ')}`);
   }
   if (o.online.length) {
     lines.push(`Online now — ${o.online.slice(0, 6).map((p) => (p.detail && p.detail !== 'Online' ? `${p.name} (${p.detail.toLowerCase()})` : p.name)).join(' · ')}`);
@@ -493,6 +544,7 @@ export function RanksTicker({ kind, mine }: { kind: Kind; mine: MyStats | null }
   const reduceFx = useReduceEffects();
   const [osReduced, setOsReduced] = useState<boolean>(() => fx.osReducedMotion);
   const [top, setTop] = useState<Row[]>([]);
+  const [powerTop, setPowerTop] = useState<{ name: string; power: number }[]>([]);
   const [held, setHeld] = useState(false);
   const [step, setStep] = useState(0);
 
@@ -503,6 +555,9 @@ export function RanksTicker({ kind, mine }: { kind: Kind; mine: MyStats | null }
       get(`/api/social/leaderboard?board=rating&kind=${kind}&scope=global&period=all`)
         .then((j) => { if (!stop) setTop((j.rows ?? []) as Row[]); })
         .catch(() => { /* ticker is garnish — a failed poll just keeps the last lines */ });
+      get(`/api/social/power?kind=${kind}`)
+        .then((j) => { if (!stop) setPowerTop(((j.rows ?? []) as { name: string; power: number }[]).map((r) => ({ name: r.name, power: r.power }))); })
+        .catch(() => { /* same */ });
     };
     load();
     const iv = setInterval(load, 60_000);
@@ -521,7 +576,7 @@ export function RanksTicker({ kind, mine }: { kind: Kind; mine: MyStats | null }
     .filter((u) => !u.guest)
     .map((u) => ({ name: u.name, detail: statusLabel(u.status) }))
     .sort((a, b) => Number(a.detail === 'Online') - Number(b.detail === 'Online') || a.name.localeCompare(b.name)), [s.users]);
-  const lines = useMemo(() => buildTickerLines({ kind, top, online, mine }), [kind, top, online, mine]);
+  const lines = useMemo(() => buildTickerLines({ kind, top, online, mine, power: powerTop }), [kind, top, online, mine, powerTop]);
   const reduced = reduceFx || osReduced;
 
   useEffect(() => {

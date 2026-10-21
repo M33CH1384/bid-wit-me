@@ -803,3 +803,11 @@ html[data-theme="neon"] .ranks-you {
 .wg-tape .cmp-table th, .wg-tape .cmp-table td { text-align: center; }
 .wg-tape .cmp-table thead th { text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--ink); }
 .wg-tape .soc-muted { margin-top: 6px; font-size: 12px; }
+
+/* Power Rankings (league P-E). */
+.power-rank { margin: 16px 0 4px; }
+.power-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.power-head h3 { margin: 0; font-size: 15px; }
+.power-move { min-width: 38px; text-align: right; font-style: normal; }
+.power-new { font-style: normal; font-size: 10px; font-weight: 800; letter-spacing: .06em; color: var(--gold, #e8b64c); }
+.power-note { font-size: 12px; margin-top: 6px; }
