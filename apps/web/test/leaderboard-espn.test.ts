@@ -19,7 +19,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildTickerLines, ranksFilterSummary, RanksTicker, viewRowsFor } from '../src/social/Compete';
+import { buildTickerLines, ranksFilterSummary, RanksTicker, resultTickerLine, viewRowsFor, type RecentResult } from '../src/social/Compete';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -77,6 +77,42 @@ describe('ticker lines: real payloads only', () => {
   it('says nothing when there is nothing real to say', () => {
     expect(buildTickerLines({ kind: 'cutthroat', top: [], online: [], mine: null })).toEqual([]);
     expect(buildTickerLines({ kind: 'cutthroat', top: [], online: [], mine })).toEqual([]);
+  });
+});
+
+describe('results feed lines (league data wave, item 1)', () => {
+  const team: RecentResult = {
+    id: 'g1', at: 1, kind: 'team', mode: 'joker', code: 'TBL1', wheels: false,
+    sides: [
+      { names: ['Alpha', 'Bravo'], score: 500, won: true },
+      { names: ['Char', 'Delta'], score: 320, won: false },
+    ],
+  };
+  const cut: RecentResult = {
+    id: 'g2', at: 2, kind: 'cutthroat', mode: 'cutthroat', code: 'TBL2', wheels: true,
+    sides: [
+      { names: ['Alpha'], score: 210, won: false },
+      { names: ['Bravo'], score: 500, won: true },
+      { names: ['Botty'], score: 150, won: false },
+      { names: ['Delta'], score: 320, won: false },
+    ],
+  };
+  it('formats team, cutthroat, wheels and tie lines from the feed shape', () => {
+    expect(resultTickerLine(team)).toBe('Alpha + Bravo def. Char + Delta 500–320 · Joker');
+    expect(resultTickerLine(cut)).toBe('Bravo won Cutthroat 500–320–210–150 · Wheels');
+    const tie: RecentResult = { ...team, sides: team.sides.map((s) => ({ ...s, won: true })) };
+    expect(resultTickerLine(tie)).toContain('tied');
+  });
+  it('results lead the ticker, capped at three, ahead of the rating line', () => {
+    const topRows = [{ rank: 1, id: 'u:a', name: 'Alpha', value: 1500, games: 40 }];
+    const lines = buildTickerLines({ kind: 'team', top: topRows, online: [], mine: null, results: [team, cut, team, cut] });
+    expect(lines[0]).toBe(resultTickerLine(team));
+    expect(lines[1]).toBe(resultTickerLine(cut));
+    expect(lines[3]).toContain('Top rated');
+    expect(lines).toHaveLength(4);
+  });
+  it('an empty feed adds no line (the feed accumulates from real games)', () => {
+    expect(buildTickerLines({ kind: 'team', top: [], online: [], mine: null, results: [] })).toEqual([]);
   });
 });
 

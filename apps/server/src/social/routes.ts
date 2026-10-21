@@ -11,6 +11,7 @@ import { type AuthEnv, currentUser } from '../auth/routes';
 import { regionOf } from '../cred/region';
 import { leaderboard, myStats, personalStats, serverStats, type PersonalStats } from '../stats/boards';
 import { ensurePowerSnapshot, powerRankings } from '../stats/power';
+import { recentResults } from '../stats/results';
 import { leagueHonors } from '../stats/honors';
 import { usernameKey } from '../auth/username';
 import { TICKET_TTL_MS, signTicket } from './ticket';
@@ -121,6 +122,12 @@ export async function handleSocialHttp(req: Request & { cf?: unknown }, env: Soc
   if (a === 'power' && req.method === 'GET') {
     const kind = url.searchParams.get('kind') === 'cutthroat' ? 'cutthroat' : 'team';
     return json(await powerRankings(db, kind, now));
+  }
+  if (a === 'results' && req.method === 'GET') {
+    // Recent-results feed (league data wave): public display names only,
+    // same as the boards — no sign-in needed to read the ticker's fuel.
+    const limit = Math.min(25, Math.max(1, Number(url.searchParams.get('limit')) || 10));
+    return json({ results: await recentResults(db, limit) });
   }
   if (a === 'leaderboard' && req.method === 'GET') {
     // League P-E: the first leaderboard read of an ISO week captures the

@@ -646,18 +646,49 @@ function RecordBook({ onOpen }: { onOpen: (name: string) => void }) {
 /** One online player for the ticker: a name plus what they're doing. */
 export interface TickerOnline { name: string; detail: string }
 
+/** One finished match from GET /api/social/results (league data wave). */
+export interface RecentResult {
+  id: string; at: number; kind: Kind; mode: string; code: string;
+  sides: { names: string[]; score: number; won: boolean }[];
+  wheels: boolean;
+}
+
+const RESULT_MODE: Record<string, string> = { joker: 'Joker', aceDown: 'Ace Down', cutthroat: 'Cutthroat', cutthroat4: 'Cutthroat' };
+
+/**
+ * One results line for the ticker, from the feed's stored facts only:
+ * "Alpha + Bravo def. Char + Delta 500–320 · Joker". Cutthroat names the
+ * winner and the full score line; a tie (more than one winning side) is
+ * called a tie rather than inventing a loser.
+ */
+export function resultTickerLine(r: RecentResult): string {
+  const mode = RESULT_MODE[r.mode] ?? r.mode;
+  const won = r.sides.filter((s) => s.won);
+  const lost = r.sides.filter((s) => !s.won);
+  const names = (s: RecentResult['sides'][number]) => s.names.join(' + ');
+  const flags = r.wheels ? ' · Wheels' : '';
+  const scoresDesc = [...r.sides].sort((a, b) => b.score - a.score).map((s) => s.score).join('–');
+  if (won.length !== 1) return `${won.map(names).join(' & ')} tied · ${mode} ${scoresDesc}${flags}`;
+  if (r.kind === 'cutthroat') return `${names(won[0]!)} won ${mode} ${scoresDesc}${flags}`;
+  if (!lost.length) return '';
+  return `${names(won[0]!)} def. ${names(lost[0]!)} ${won[0]!.score}–${lost[0]!.score} · ${mode}${flags}`;
+}
+
 /**
  * The ticker's lines, built STRICTLY from payloads that already exist
  * (owner's data rule, 2026-10-20 — never fabricate a result):
+ *  - the recent-results feed (GET /api/social/results — finished online
+ *    matches the server recorded; empty until real games finish),
  *  - the all-time Rating board for the current kind (top 3, with numbers),
  *  - the live presence list (who's online / at a table right now),
  *  - the signed-in viewer's own stat line (/api/social/me/stats).
- * There is NO recent-results feed in the app (no endpoint returns "latest
- * games / Bostons / streaks" across players), so the ticker carries no
- * results line rather than an invented one — the gap is reported, not filled.
  */
-export function buildTickerLines(o: { kind: Kind; top: Row[]; online: TickerOnline[]; mine: MyStats | null; power?: { name: string; power: number }[] }): string[] {
+export function buildTickerLines(o: { kind: Kind; top: Row[]; online: TickerOnline[]; mine: MyStats | null; power?: { name: string; power: number }[]; results?: RecentResult[] }): string[] {
   const lines: string[] = [];
+  for (const r of (o.results ?? []).slice(0, 3)) {
+    const line = resultTickerLine(r);
+    if (line) lines.push(line);
+  }
   const kindLabel = o.kind === 'team' ? 'Partnership' : 'Cutthroat';
   if (o.top.length) {
     lines.push(`Top rated · ${kindLabel} — ${o.top.slice(0, 3).map((r) => `${r.name} ${r.value}`).join(' · ')}`);
@@ -691,6 +722,7 @@ export function RanksTicker({ kind, mine }: { kind: Kind; mine: MyStats | null }
   const [osReduced, setOsReduced] = useState<boolean>(() => fx.osReducedMotion);
   const [top, setTop] = useState<Row[]>([]);
   const [powerTop, setPowerTop] = useState<{ name: string; power: number }[]>([]);
+  const [results, setResults] = useState<RecentResult[]>([]);
   const [held, setHeld] = useState(false);
   const [step, setStep] = useState(0);
 
@@ -703,6 +735,9 @@ export function RanksTicker({ kind, mine }: { kind: Kind; mine: MyStats | null }
         .catch(() => { /* ticker is garnish — a failed poll just keeps the last lines */ });
       get(`/api/social/power?kind=${kind}`)
         .then((j) => { if (!stop) setPowerTop(((j.rows ?? []) as { name: string; power: number }[]).map((r) => ({ name: r.name, power: r.power }))); })
+        .catch(() => { /* same */ });
+      get('/api/social/results?limit=10')
+        .then((j) => { if (!stop) setResults((j.results ?? []) as RecentResult[]); })
         .catch(() => { /* same */ });
     };
     load();
@@ -722,7 +757,7 @@ export function RanksTicker({ kind, mine }: { kind: Kind; mine: MyStats | null }
     .filter((u) => !u.guest)
     .map((u) => ({ name: u.name, detail: statusLabel(u.status) }))
     .sort((a, b) => Number(a.detail === 'Online') - Number(b.detail === 'Online') || a.name.localeCompare(b.name)), [s.users]);
-  const lines = useMemo(() => buildTickerLines({ kind, top, online, mine, power: powerTop }), [kind, top, online, mine, powerTop]);
+  const lines = useMemo(() => buildTickerLines({ kind, top, online, mine, power: powerTop, results }), [kind, top, online, mine, powerTop, results]);
   const reduced = reduceFx || osReduced;
 
   useEffect(() => {
