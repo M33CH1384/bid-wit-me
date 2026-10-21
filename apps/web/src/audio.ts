@@ -1519,6 +1519,35 @@ class Engine {
     return p;
   }
 
+  /**
+   * Calm drive-by (animation package, 2026-10-20): a car just passes — a soft
+   * tyre/engine swell panning across, no gunfire, and a 'pj-headlights' event
+   * so the UI can sweep the headlights across the fence in time with it.
+   */
+  private headlightPass(t: number) {
+    const c = this.ctx!;
+    const B = this.venueBus!;
+    const pan = this.drivebyPanner(-55, 13);
+    if (pan) {
+      pan.connect(B);
+      pan.positionX.setValueAtTime(-11, t);
+      pan.positionX.linearRampToValueAtTime(11, t + 4.4);
+      window.setTimeout(() => { try { pan.disconnect(); } catch { /* already gone */ } }, (t - c.currentTime + 6) * 1000);
+    }
+    const out = pan ?? B;
+    const src = c.createBufferSource();
+    src.buffer = this.noise(5);
+    const f = c.createBiquadFilter();
+    f.type = 'lowpass'; f.frequency.setValueAtTime(320, t); f.frequency.linearRampToValueAtTime(520, t + 2.2); f.frequency.linearRampToValueAtTime(300, t + 4.4);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.05, t + 1.8);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 4.6);
+    src.connect(f).connect(g).connect(out);
+    src.start(t); src.stop(t + 4.8);
+    window.dispatchEvent(new CustomEvent('pj-headlights'));
+  }
+
   /** 4 gunfire variants: 0 = close pistol, 1 = distant pop, 2 = alley echo, 3 = heavy rifle. */
   private drivebyGunshot(t: number, variant: number, pan: PannerNode | null, dest: AudioNode) {
     const out = pan ?? dest;
@@ -1876,6 +1905,8 @@ class Engine {
           // Tell the UI to flash the cop lights
           window.dispatchEvent(new CustomEvent('pj-driveby'));
         });
+        // Calm drive-by: headlights sweep the fence, no gunfire — rarer and softer than the barrage above
+        this.vEvery(300, 620, (t) => this.headlightPass(t));
         break;
       default:
     }
