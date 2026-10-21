@@ -3,12 +3,13 @@
  * - botTalk: offline table setting "Bot trash talk" (online the host decides; default on)
  * - trash-talk intensity is a TABLE setting (offline: More options; online: the host), see setTableIntensity()
  * - hideBotTalk: hide bot lines from your chat (default off)
- * - voices / voiceVolume: bot voices (default on: recorded clips, Web Speech for lines without one) at this volume
+ * - voices / voiceVolume: bot voices (default on: recorded clips; Web Speech for lines without one, fenced off during live play) at this volume
  *   (× master volume; silent when sound is off)
  */
 import { useSyncExternalStore } from 'react';
 import { PERSONAS, type PersonaId, type TalkIntensity, applyPronunciation, maskMild, personaForName, storyCastForName, voiceGender } from '@spades/bots';
 import { sound } from './audio';
+import { cancelActiveSpeech } from './audioSession';
 import { playClip, rawLine } from './voices/voices';
 
 export interface TalkPrefs { botTalk: boolean; hideBotTalk: boolean; voices: boolean; voiceVolume: number; /** Voice Phase 3, on this device: play pre-voiced AI lines when the table offers them (default on; the host flag decides whether any are offered) */ aiVoices: boolean }
@@ -39,7 +40,7 @@ export const talkPrefs = {
       const old = JSON.parse(localStorage.getItem(KEY) ?? 'null');
       localStorage.setItem(KEY, JSON.stringify({ ...(!old ? {} : old.v === 3 ? old : prefs), ...chosen, v: 3 }));
     } catch { /* ignore */ }
-    if (!prefs.voices) { sound.stopVoice(); if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel(); }
+    if (!prefs.voices) { sound.stopVoice(); cancelActiveSpeech(typeof speechSynthesis !== 'undefined' ? speechSynthesis : undefined); }
     subs.forEach((f) => f());
   },
   subscribe(f: () => void) { subs.add(f); return () => { subs.delete(f); }; },
@@ -60,7 +61,8 @@ if (typeof speechSynthesis !== 'undefined') { loadVoices(); speechSynthesis.addE
 
 /**
  * Speak a bot line: its recorded clip (persona + line id → manifest), else the browser's Web Speech voice with the
- * persona's pitch/rate. No-op unless Bot voices is on and sound is on.
+ * persona's pitch/rate. No-op unless Bot voices is on and sound is on. The Web Speech fallback is fenced off
+ * during live play (see webSpeech), so at a table a line without a clip is text-only.
  */
 export function speakBot(name: string, text: string, persona?: string, line?: string, bid?: number, seat?: import('./spatial').SeatPos, playerCount = 4): void {
   if (!prefs.voices) return;
@@ -122,8 +124,33 @@ function voiceNameFitsGender(voiceName: string, g: 'f' | 'm'): boolean {
   return g === 'f' ? FEMALE.test(voiceName) && !MALE.test(voiceName.replace(/google us english/i, '')) : MALE.test(voiceName) && !FEMALE.test(voiceName);
 }
 
+/**
+ * Whether the Web Speech fallback is fenced off right now (prevention pass,
+ * Demetrius 2026-10-21). The fence is exactly the live-play presence the audio
+ * engine already tracks: `sound.atTable` is set by every Table mount (offline,
+ * online and story tables all mount the same Table) and by story-scene
+ * mounting (StoryHome's SceneAudio), and cleared when they leave. Off the
+ * table the fence releases — it is presence-keyed, not a global kill switch.
+ */
+export function speechFallbackFenced(): boolean { return sound.atTable; }
+
 function webSpeech(name: string, text: string, persona: PersonaId = personaForName(name)): void {
   if (typeof speechSynthesis === 'undefined' || !sound.atTable) return; // never talk behind Home
+  // PREVENTION (Demetrius 2026-10-21): at a live table or story scene the game
+  // never touches the speech engine — no utterance AND no cancel() (this
+  // return sits above the cancel() below on purpose: the contact itself is
+  // the problem). On iOS an utterance seizes the system audio session, and
+  // when it ends the game's AudioContext can be left 'interrupted' — music,
+  // beds and voices all share that context, so every fallback line stuttered
+  // the whole table. A bot/story line with no recorded clip now renders as
+  // TEXT ONLY: the chat/dialogue channel already shows every line, and the
+  // robot voice it replaces is one the owner rejected outright ("robot
+  // voice", "these voices suck"). Every speakBot call site in the app is a
+  // live-play surface (Table, the online table via Table, ScriptPlayer), so
+  // in practice the fallback never sounds during a game at all. The heal in
+  // audio.ts is untouched — it remains the net for interruptions the game did
+  // NOT cause (a phone call, Siri); this fence removes the self-inflicted ones.
+  if (speechFallbackFenced()) return;
   const snd = sound.settings;
   // A story character speaks as its CAST persona (storyVoice.ts) — the same
   // family the recorded key resolves — never its card persona's house voice
@@ -155,7 +182,7 @@ function webSpeech(name: string, text: string, persona: PersonaId = personaForNa
   const recover = () => { try { sound.wake('show'); } catch { /* ignore */ } };
   u.onend = recover;
   u.onerror = recover;
-  try { if (speechSynthesis.speaking) speechSynthesis.cancel(); speechSynthesis.speak(u); } catch { /* ignore */ }
+  try { cancelActiveSpeech(speechSynthesis); speechSynthesis.speak(u); } catch { /* ignore */ }
 }
 
 /** Known system / browser voice names by gender (macOS, iOS, Windows, Chrome, Android). */

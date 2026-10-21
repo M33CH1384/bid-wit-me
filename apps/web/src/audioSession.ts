@@ -57,3 +57,46 @@ export const RESTORE_HEAL_MS = 1500;
 export function settleAudio(p: Promise<unknown> | void | undefined | null): Promise<void> {
   return Promise.resolve(p).then(() => undefined, () => undefined);
 }
+
+/** The slice of the Audio Session API this app uses (`navigator.audioSession`, Safari on iOS 17+). */
+export interface AudioSessionLike { type: string }
+
+/**
+ * Claim the system audio session for playback (Demetrius 2026-10-21, the prevention pass).
+ * Where the Audio Session API exists, setting `navigator.audioSession.type = 'playback'`
+ * tells iOS the game's Web Audio is first-class media playback — the category music and
+ * ambience apps get — instead of an ambient afterthought other audio can push around.
+ * It is a claim, not a shield: a phone call or Siri still interrupts, which is why the heal
+ * above stays. Feature-detected and silent: browsers without the API keep the old behavior
+ * exactly, and a host object that refuses the write just reports false. Returns true when
+ * the session now reads 'playback'.
+ */
+export function claimPlaybackSession(nav: { audioSession?: AudioSessionLike } | null | undefined): boolean {
+  try {
+    const s = nav?.audioSession;
+    if (!s) return false;
+    if (s.type !== 'playback') s.type = 'playback';
+    return s.type === 'playback';
+  } catch { return false; }
+}
+
+/** The slice of the speech engine the cancel guard needs (the real `speechSynthesis` satisfies it). */
+export interface SpeechEngineLike { speaking: boolean; pending: boolean; cancel(): void }
+
+/**
+ * Stop speech ONLY when an utterance is actually active (Demetrius 2026-10-21, the
+ * prevention pass). On iOS, touching `speechSynthesis` at all — even an idle `cancel()`
+ * with nothing speaking — pokes the system audio session the game's AudioContext lives
+ * on, so table/scene exits and the voices-off toggle must not call it out of habit. With
+ * the Web Speech fallback fenced off during live play (talkPrefs), no utterance can be
+ * active at a table, so in practice this never fires there; the guard keeps the
+ * stop-anything-speaking intent for any path that does have one. Returns true when a
+ * cancel was actually issued.
+ */
+export function cancelActiveSpeech(synth: SpeechEngineLike | null | undefined): boolean {
+  try {
+    if (!synth || !(synth.speaking || synth.pending)) return false;
+    synth.cancel();
+    return true;
+  } catch { return false; }
+}

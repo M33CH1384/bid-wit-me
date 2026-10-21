@@ -13,7 +13,7 @@
 import { useSyncExternalStore } from 'react';
 import { Spatializer, STORY_STOP_AUDIO, irSpec, isVoiceMuted, normalizeCategoryVolumes, pickPanningModel, pickVariant, seatCompensation, seatPoint, sessionRoom, surfaceHz, voiceLineGain, withVoiceMuted, type RoomStyle, type SeatPos, type StoryMood, type VenueEvent } from './spatial';
 import { audioElementPool } from './audioPool';
-import { RESTORE_HEAL_MS, audioContextAction, recreateDue, settleAudio, soundRestorePending } from './audioSession';
+import { RESTORE_HEAL_MS, audioContextAction, cancelActiveSpeech, claimPlaybackSession, recreateDue, settleAudio, soundRestorePending } from './audioSession';
 
 /**
  * decodeAudioData completion runs on the main thread. Decoding every stinger and voice sprite in
@@ -672,6 +672,10 @@ class Engine {
    * is shown again. `resume()` is invoked synchronously so iOS still counts it as the user gesture.
    */
   wake(kind: 'gesture' | 'show') {
+    // Re-assert the playback-session claim on every wake: an iOS interruption can
+    // renegotiate the session while the game was down (prevention pass — the claim
+    // lives in claimPlaybackSession, feature-detected, silent where unsupported).
+    this.claimSession();
     if (kind === 'show' && !this.unlocked) return;
     if (kind === 'gesture' && this.unlocked && this.liveState(this.ctx) === 'running') {
       if (this.needsRestore) this.publishRestore();
@@ -946,7 +950,10 @@ class Engine {
     this.atTable = false;
     this.stopVoice();
     this.stopTornado();
-    try { if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel(); } catch { /* ignore */ }
+    // Only stop speech that is actually speaking: an idle cancel() still pokes the iOS
+    // audio session (prevention pass — see cancelActiveSpeech), and with the fallback
+    // fenced during live play there is never an utterance to stop here.
+    cancelActiveSpeech(typeof speechSynthesis !== 'undefined' ? speechSynthesis : undefined);
     const c = this.ctx, old = this.sfxBus, duck = this.sfxDuck;
     if (c && old && duck) {
       // every scheduled node hangs off the sfx bus: detach it and start a fresh one
@@ -977,10 +984,19 @@ class Engine {
     d.gain.setTargetAtTime(1, t + ms / 1000, 0.25);
   }
 
+  /** Claim the iOS playback session (Audio Session API, iOS 17+) for the game's audio. */
+  private claimSession(): void {
+    claimPlaybackSession(typeof navigator !== 'undefined' ? (navigator as { audioSession?: { type: string } }) : undefined);
+  }
+
   private ensure(opts?: { skipLoad?: boolean }): AudioContext | null {
     if (this.ctx || !AC) return this.ctx;
     const c = new AC({ latencyHint: 'interactive' });
     this.ctx = c;
+    // A fresh context (first build, or a rebuild via recreateContext) re-claims the
+    // playback session alongside it — the claim is per-session, not per-context,
+    // but asserting it here keeps the two from ever drifting apart.
+    this.claimSession();
     this.watchContext(c);
     this.master = c.createGain();
     const comp = c.createDynamicsCompressor();

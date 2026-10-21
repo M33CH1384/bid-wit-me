@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { AUDIO_ELEMENT_CAP, AudioElementPool } from '../src/audioPool';
-import { RECREATE_COOLDOWN_MS, RESTORE_HEAL_MS, audioContextAction, recreateDue, settleAudio, soundRestorePending, speakerAriaLabel } from '../src/audioSession';
+import { RECREATE_COOLDOWN_MS, RESTORE_HEAL_MS, audioContextAction, cancelActiveSpeech, claimPlaybackSession, recreateDue, settleAudio, soundRestorePending, speakerAriaLabel } from '../src/audioSession';
 
 function fakeAudio() {
   return {
@@ -77,6 +77,52 @@ describe('iOS audio session', () => {
     // the self-heal retry is prompt (seconds, not a settings visit) but not a busy loop
     expect(RESTORE_HEAL_MS).toBeGreaterThan(0);
     expect(RESTORE_HEAL_MS).toBeLessThanOrEqual(5000);
+  });
+
+  it('claims the playback session where the Audio Session API exists, and stays silent where it does not', () => {
+    const nav: { audioSession: { type: string } } = { audioSession: { type: 'auto' } };
+    expect(claimPlaybackSession(nav)).toBe(true);
+    expect(nav.audioSession.type).toBe('playback');
+    expect(claimPlaybackSession({ audioSession: { type: 'playback' } })).toBe(true); // already claimed: no rewrite needed
+    expect(claimPlaybackSession({})).toBe(false); // no API on this browser
+    expect(claimPlaybackSession(undefined)).toBe(false);
+    expect(claimPlaybackSession(null)).toBe(false);
+    const hostile = { get audioSession(): { type: string } { throw new Error('nope'); } };
+    expect(claimPlaybackSession(hostile)).toBe(false); // a throwing host never breaks audio init
+    const readOnly = { audioSession: { get type() { return 'auto'; }, set type(_v: string) { /* ignored by host */ } } };
+    expect(claimPlaybackSession(readOnly)).toBe(false); // reports honestly when the write does not stick
+  });
+
+  it('cancels speech only when an utterance is actually active (an idle cancel pokes the iOS session)', () => {
+    let cancels = 0;
+    const idle = { speaking: false, pending: false, cancel() { cancels++; } };
+    expect(cancelActiveSpeech(idle)).toBe(false);
+    expect(cancels).toBe(0);
+    const speaking = { speaking: true, pending: false, cancel() { cancels++; } };
+    expect(cancelActiveSpeech(speaking)).toBe(true);
+    const queued = { speaking: false, pending: true, cancel() { cancels++; } };
+    expect(cancelActiveSpeech(queued)).toBe(true);
+    expect(cancels).toBe(2);
+    expect(cancelActiveSpeech(undefined)).toBe(false);
+    expect(cancelActiveSpeech(null)).toBe(false);
+    expect(cancelActiveSpeech({ speaking: true, pending: false, cancel() { throw new Error('x'); } })).toBe(false);
+  });
+
+  it('wires prevention into the engine: session claimed at build and on wake, speech fenced during live play', () => {
+    const audio = readFileSync(new URL('../src/audio.ts', import.meta.url), 'utf8');
+    const talk = readFileSync(new URL('../src/talkPrefs.ts', import.meta.url), 'utf8');
+    const scene = readFileSync(new URL('../src/story/ScriptPlayer.tsx', import.meta.url), 'utf8');
+    // the playback-session claim is asserted when a context is built and on every wake
+    expect(audio).toContain('claimPlaybackSession');
+    expect(audio).toContain('this.claimSession();');
+    // leaving a table never cancels idle speech — only actually-active speech is stopped
+    expect(audio).toContain('cancelActiveSpeech');
+    expect(audio).not.toContain('speechSynthesis.cancel()');
+    expect(scene).not.toContain('speechSynthesis.cancel()');
+    // the fallback returns before any speech-engine contact while a table/scene is live
+    expect(talk).toContain('speechFallbackFenced');
+    expect(talk).toContain('if (speechFallbackFenced()) return;');
+    expect(talk).not.toContain('speechSynthesis.cancel()');
   });
 
   it('wires self-recovery into the engine: statechange re-syncs, a heal timer retries, utterances hand recovery back', () => {

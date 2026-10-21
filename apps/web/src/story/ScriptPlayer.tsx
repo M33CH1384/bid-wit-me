@@ -16,6 +16,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { STORY_CHARACTERS, personaForName, type StoryBeat } from '@spades/bots';
 import { sound } from '../audio';
+import { cancelActiveSpeech } from '../audioSession';
 import { speakBot } from '../talkPrefs';
 import StoryFace from './StoryFace';
 import { useReduceEffects } from '../fx';
@@ -114,10 +115,12 @@ export default function ScriptPlayer({ beats, cta, onDone, venueId, cast = [], e
     return () => window.clearInterval(t);
   }, [i, lines]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // leaving the scene stops its voices
+  // leaving the scene stops its voices — recorded ones via the engine; speech only
+  // if an utterance is actually active (an idle cancel() still pokes the iOS audio
+  // session, and the fallback is fenced during scenes — see cancelActiveSpeech)
   useEffect(() => () => {
     try { sound.stopVoice(); } catch { /* ignore */ }
-    try { speechSynthesis.cancel(); } catch { /* ignore */ }
+    cancelActiveSpeech(typeof speechSynthesis !== 'undefined' ? speechSynthesis : undefined);
   }, []);
 
   if (!beat) { onDone(); return null; }
