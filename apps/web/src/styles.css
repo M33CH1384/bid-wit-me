@@ -2347,6 +2347,23 @@ html[data-theme="neon"] .setup {
 html[data-theme="neon"] .rewards-page {
   background: radial-gradient(90% 60% at 50% 30%, rgba(var(--purple-rgb), .16), rgba(4, 5, 12, .5) 70%);
 }
+/* The profile page keeps the ink too (owner, 2026-10-20: "I'd like it if the
+   profile still had the ink or some variation of it" — the unified page read
+   as one flat dark surface in Neon). Same treatment family as .setup /
+   .rewards-page: a translucent wash over the page field so the fixed ink
+   canvas reads through it, plus an ink-toned glow pooled behind the header
+   zone. The cards and sections below keep their glass — readable contrast
+   stays theirs; this is a variation of the ink, not ink over content.
+   Page host only: the Social panel host is a solid sheet by design (P3). */
+html[data-theme="neon"] .profile-page {
+  background: radial-gradient(90% 60% at 50% 30%, rgba(var(--purple-rgb), .16), rgba(4, 5, 12, .5) 70%);
+}
+html[data-theme="neon"] .profile-page .soc-prof-head {
+  background:
+    radial-gradient(120% 150% at 15% 0%, rgba(var(--purple-rgb), .22), transparent 60%),
+    radial-gradient(90% 120% at 90% 10%, rgba(38, 156, 255, .14), transparent 55%);
+  border-radius: 16px;
+}
 
 /* ================= Neon Royale P3 — fidelity pass (append-only) =================
    Owner verdict on P1: "the glass hardly gives glass" — Neon has to POP. This
