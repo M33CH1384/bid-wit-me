@@ -7,7 +7,7 @@
  */
 import { type ReactNode, useEffect, useRef } from 'react';
 import { useEscapeClose } from './useEscapeClose';
-import { type GameState, type HandRecord, type SideHandResult, type TableRules, bidLabel, hostMinimum, shotOutOn } from '@spades/rules';
+import { type GameState, type HandRecord, type SideHandResult, type TableRules, bidLabel, hostMinimum, shotCounts, shotOutOn } from '@spades/rules';
 import { SEAT_COLORS } from './overlay';
 import { hudSeatName } from './dealerName';
 import { holeMarks, punchedLabel, rememberHoles } from './shotMarks';
@@ -29,6 +29,7 @@ export function rulesLine(r: TableRules): string {
   const min = hostMinimum(r);
   if (min > 0) parts.push(`Minimum ${min}`);
   if (shotOutOn(r)) parts.push('Shot = out');
+  parts.push('3 sets = out');
   return parts.join(' · ');
 }
 
@@ -40,6 +41,7 @@ export function rulesChips(r: TableRules): string[] {
   const min = hostMinimum(r);
   if (min > 0) out.push(`Minimum ${min}`);
   if (shotOutOn(r)) out.push('Shot = out');
+  out.push('3 sets = out');
   out.push(timerSettingLabel(r.turnTimerSec));
   return out;
 }
@@ -61,10 +63,12 @@ export function resultChips(r: TableRules, h: HandRecord, s: SideHandResult, st:
   else if (s.contractMade === true) out.push({ text: 'Made', kind: 'made' });
   else if (s.contractMade === false) out.push({ text: 'SET', kind: 'set' });
   for (const n of s.nils) out.push({ text: `${n.kind === 'blindNil' ? 'Blind Nil' : 'Nil'} ${n.made ? 'made' : 'busted'}`, kind: n.made ? 'nil-ok' : 'nil-bust' });
-  if (s.shot) {
-    const lastHand = st.history[st.history.length - 1]?.handNo === h.handNo;
-    const isOut = lastHand && st.result?.endReason === 'shotOut' && (st.result.shotOut ?? []).includes(s.side);
-    out.push(isOut ? { text: 'SHOT OUT', kind: 'out' } : { text: `SHOT${lastHand && !st.result ? ' · ON NOTICE' : ''}`, kind: 'shot' });
+  const lastHand = st.history[st.history.length - 1]?.handNo === h.handNo;
+  const endOut = lastHand && (st.result?.endReason === 'shotOut' || st.result?.endReason === 'third-set') && (st.result.shotOut ?? []).includes(s.side);
+  if (s.shot || endOut) {
+    out.push(endOut
+      ? { text: st.result?.endReason === 'third-set' ? 'OUT · 3RD SET' : 'SHOT OUT', kind: 'out' }
+      : { text: `SHOT${lastHand && !st.result ? ' · ON NOTICE' : ''}`, kind: 'shot' });
   }
   void r;
   return out;
@@ -100,6 +104,9 @@ export function ScorePad({ st, names, onClose, onContinue, locked, sideName, dea
   const r = st.rules;
   const sides = Array.from({ length: st.scores.length }, (_, i) => i);
   const streaks = holeMarks(r, st.history);
+  // the running set tally (shotCounts — the same count the third-set rule reads), shown as a
+  // number next to the bullet holes so a side at two can see the third one coming
+  const sets = shotCounts(r, st.history);
   const lastNo = st.history[st.history.length - 1]?.handNo;
   const inProgress = st.phase !== 'gameOver' && st.phase !== 'handOver' && !st.history.some((h) => h.handNo === st.handNo);
   const seatName = (s: number) => hudSeatName(s, names);
@@ -121,11 +128,12 @@ export function ScorePad({ st, names, onClose, onContinue, locked, sideName, dea
                 const info = streaks[side] ?? { count: 0, visible: 0, fresh: -1 };
                 const marks = rememberHoles(st.seed, side, info.count, info.fresh);
                 return (
-                <div key={side} className="pad-board-side" style={{ ['--side' as string]: sideColor(r, side) }} data-testid="pad-board-side" data-holes={info.count} data-punched={punchedLabel(marks)}>
+                <div key={side} className="pad-board-side" style={{ ['--side' as string]: sideColor(r, side) }} data-testid="pad-board-side" data-holes={info.count} data-punched={punchedLabel(marks)} data-sets={sets[side] ?? 0}>
                   <i className="pad-bar" aria-hidden />
                   <span className="pad-board-name">{sideName(side)}</span>
                   <b className="pad-board-total">{st.scores[side]}</b>
                   <small className="pad-board-bags">{st.bags[side]} bag{st.bags[side] === 1 ? '' : 's'}</small>
+                  <small className="pad-board-sets">{sets[side] ?? 0} set{sets[side] === 1 ? '' : 's'}{sets[side] === 2 ? (r.partnerships ? ' · one more ends it' : ' · one more and out') : ''}</small>
                 </div>
                 );
               })}

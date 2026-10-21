@@ -4,7 +4,7 @@ import { evaluateRunIt } from './runIt';
 import { createRng, shuffle } from './rng';
 import {
   type Bid, type GameResult, type SideHandResult,
-  checkGameEnd, isBooksHand, isNilBid, isShot, partnerOf, scoreHand, shotOutResult, shotOutSides, sideCount, sideOf,
+  checkGameEnd, isBooksHand, isNilBid, isShot, partnerOf, scoreHand, shotCounts, shotOutResult, shotOutSides, sideCount, sideOf, thirdSetResult,
 } from './scoring';
 
 export type Seat = number;
@@ -866,7 +866,14 @@ function finishHand(st: GameState): GameState {
     break;
   }
   if (!r.partnerships) return finishCutthroat(st, sides, scores, bags, record);
-  const result = shotOutResult(scores, shotOutSides(r, st.handNo, shot, prevShot)) ?? checkGameEnd(r, scores);
+  // Third set ends it (game-wide, always on): checked before Shot = out and the score endings so
+  // the ending is named for the set even when this hand also crosses the target — the winner is
+  // the same either way. The count derives from the hand records via shotCounts, so a resumed
+  // game (offline or story save — both serialize the history) keeps its count exactly, and an
+  // older save's records carry the same bids/sides the count is derived from.
+  const result = thirdSetResult(scores, shotCounts(r, [...st.history, record]), shotCounts(r, st.history))
+    ?? shotOutResult(scores, shotOutSides(r, st.handNo, shot, prevShot))
+    ?? checkGameEnd(r, scores);
   return {
     ...st, scores, bags, history: [...st.history, record], result, turn: null,
     phase: result ? 'gameOver' : 'handOver',
@@ -905,6 +912,14 @@ function finishCutthroat(st: GameState, sides: SideHandResult[], scores: number[
     for (let i = 0; i < n; i++) if (wasOut[i]) sides[i] = rescored[i]!;
   }
   const eliminated = [...wasOut];
+  // Cumulative failed bids per player over the whole game, counted from the records' shot
+  // stamps (every active player's hand is stamped below, and was in past hands too — including
+  // in older saves, whose cutthroat records carry the same stamps). The third-set rule maps to
+  // cutthroat per player: a third failed bid eliminates even when the failures weren't in a row.
+  const cumFails = Array(n).fill(0) as number[];
+  for (const h of st.history) for (const s of h.sides) if (s.shot) cumFails[s.side] = (cumFails[s.side] ?? 0) + 1;
+  /** players eliminated by THIS hand whose only cause was the third failed bid */
+  const thirdOut: number[] = [];
   for (let i = 0; i < n; i++) {
     if (wasOut[i]) {
       scores[i] = st.scores[i]!;
@@ -914,7 +929,9 @@ function finishCutthroat(st: GameState, sides: SideHandResult[], scores: number[
     }
     const failed = cutthroatFailed(r, st.bids[i] ?? null, sides[i]!, books);
     streak[i] = failed ? (streak[i] ?? 0) + 1 : 0;
-    const out = failed && (st.handNo === 1 || (streak[i] ?? 0) >= 2);
+    const cum = (cumFails[i] ?? 0) + (failed ? 1 : 0);
+    const out = failed && (st.handNo === 1 || (streak[i] ?? 0) >= 2 || cum >= 3);
+    if (out && st.handNo !== 1 && (streak[i] ?? 0) < 2) thirdOut.push(i);
     if (out) eliminated[i] = true;
     sides[i] = { ...sides[i]!, shot: failed, out };
   }
@@ -923,13 +940,16 @@ function finishCutthroat(st: GameState, sides: SideHandResult[], scores: number[
   let result: GameResult | null = null;
   if (active.length === 1) {
     const winner = active[0]!;
-    result = rankedResult(r, scores, eliminated, [winner], scores[winner]! >= r.targetScore ? 'target' : 'shotOut', justOut);
+    // a game ended by a third-fail elimination is named for it, ahead of the target check —
+    // same precedence as team games (the winner is the same either way). Its shotOut list names
+    // the third-fail eliminations themselves, as in team games, not everyone ever eliminated.
+    result = rankedResult(r, scores, eliminated, [winner], thirdOut.length ? 'third-set' : scores[winner]! >= r.targetScore ? 'target' : 'shotOut', thirdOut.length ? thirdOut : justOut);
   } else if (active.length === 0) {
     const pool = wasOut.flatMap((out, i) => (out ? [] : [i]));
     const top = Math.max(...pool.map((i) => scores[i]!));
     const leaders = pool.filter((i) => scores[i] === top);
     if (leaders.length === 1) {
-      result = rankedResult(r, scores, eliminated, leaders, 'shotOut', justOut);
+      result = rankedResult(r, scores, eliminated, leaders, thirdOut.length ? 'third-set' : 'shotOut', thirdOut.length ? thirdOut : justOut);
     } else {
       // Tied for the win: those players stay in and play a tiebreaker hand. The rest stay out.
       for (const i of leaders) {

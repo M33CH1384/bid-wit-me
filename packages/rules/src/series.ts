@@ -45,8 +45,8 @@ export interface SeriesGame {
   /** per side: hands shot (house rule Shot = out; optional in older records) */
   shots?: number[];
   /** how the game ended ('shotOut' = a side was shot out) */
-  endReason?: 'target' | 'floor' | 'shotOut';
-  /** sides shot out (endReason 'shotOut') */
+  endReason?: 'target' | 'floor' | 'shotOut' | 'third-set';
+  /** sides shot out (endReason 'shotOut') or knocked out by the third set (endReason 'third-set') */
   shotOut?: number[];
 }
 

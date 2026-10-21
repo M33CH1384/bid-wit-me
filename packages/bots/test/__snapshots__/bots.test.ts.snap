@@ -2,7 +2,7 @@
 
 exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`] = `
 {
-  "hands": 20,
+  "hands": 10,
   "perHand": [
     {
       "bags": [
@@ -224,236 +224,19 @@ exports[`full bot games > golden: a seeded Joker game is fully deterministic 1`]
         5,
       ],
     },
-    {
-      "bags": [
-        5,
-        5,
-      ],
-      "bids": [
-        3,
-        2,
-        2,
-        4,
-      ],
-      "totals": [
-        205,
-        285,
-      ],
-      "tricks": [
-        3,
-        4,
-        2,
-        4,
-      ],
-    },
-    {
-      "bags": [
-        8,
-        5,
-      ],
-      "bids": [
-        2,
-        6,
-        2,
-        1,
-      ],
-      "totals": [
-        248,
-        215,
-      ],
-      "tricks": [
-        4,
-        5,
-        3,
-        1,
-      ],
-    },
-    {
-      "bags": [
-        8,
-        5,
-      ],
-      "bids": [
-        2,
-        2,
-        7,
-        3,
-      ],
-      "totals": [
-        158,
-        265,
-      ],
-      "tricks": [
-        3,
-        1,
-        5,
-        4,
-      ],
-    },
-    {
-      "bags": [
-        8,
-        6,
-      ],
-      "bids": [
-        2,
-        1,
-        5,
-        4,
-      ],
-      "totals": [
-        228,
-        316,
-      ],
-      "tricks": [
-        0,
-        2,
-        7,
-        4,
-      ],
-    },
-    {
-      "bags": [
-        8,
-        8,
-      ],
-      "bids": [
-        1,
-        6,
-        3,
-        1,
-      ],
-      "totals": [
-        268,
-        388,
-      ],
-      "tricks": [
-        1,
-        5,
-        3,
-        4,
-      ],
-    },
-    {
-      "bags": [
-        9,
-        9,
-      ],
-      "bids": [
-        1,
-        5,
-        3,
-        2,
-      ],
-      "totals": [
-        309,
-        459,
-      ],
-      "tricks": [
-        0,
-        4,
-        5,
-        4,
-      ],
-    },
-    {
-      "bags": [
-        1,
-        0,
-      ],
-      "bids": [
-        5,
-        2,
-        1,
-        2,
-      ],
-      "totals": [
-        271,
-        400,
-      ],
-      "tricks": [
-        4,
-        3,
-        4,
-        2,
-      ],
-    },
-    {
-      "bags": [
-        1,
-        1,
-      ],
-      "bids": [
-        4,
-        2,
-        4,
-        2,
-      ],
-      "totals": [
-        351,
-        441,
-      ],
-      "tricks": [
-        4,
-        3,
-        4,
-        2,
-      ],
-    },
-    {
-      "bags": [
-        3,
-        2,
-      ],
-      "bids": [
-        2,
-        1,
-        4,
-        3,
-      ],
-      "totals": [
-        413,
-        482,
-      ],
-      "tricks": [
-        3,
-        2,
-        5,
-        3,
-      ],
-    },
-    {
-      "bags": [
-        4,
-        2,
-      ],
-      "bids": [
-        2,
-        3,
-        4,
-        3,
-      ],
-      "totals": [
-        474,
-        542,
-      ],
-      "tricks": [
-        3,
-        2,
-        4,
-        4,
-      ],
-    },
   ],
   "result": {
-    "endReason": "target",
+    "endReason": "third-set",
     "finalScores": [
-      474,
-      542,
+      155,
+      223,
     ],
     "placements": [
       2,
       1,
+    ],
+    "shotOut": [
+      0,
     ],
     "winners": [
       1,

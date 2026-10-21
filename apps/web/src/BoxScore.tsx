@@ -16,7 +16,7 @@
  *   side's numbers, so no fact is hidden, the loser just doesn't get the
  *   headline on the winner's screen.
  */
-import { type GameState, type HandRecord, shotCovers } from '@spades/rules';
+import { type GameState, type HandRecord, shotCounts, shotCovers } from '@spades/rules';
 import { handWinner } from './fx';
 
 const sgn = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0');
@@ -78,6 +78,8 @@ export interface GameHeadlines {
   books: { side: number; n: number }[];
   /** nils made per side across the whole game */
   nilsMade: { side: number; n: number }[];
+  /** sets per side across the whole game (shotCounts — the tally the third-set rule reads) */
+  sets: { side: number; n: number }[];
   /** the winning side's biggest hand (null when no winning side ever scored positive) */
   bestHand: { side: number; points: number; handNo: number } | null;
   /** eliminations: the hand each side went out on (shotCovers' outHand — the recap's Time of death) */
@@ -96,6 +98,8 @@ export function gameHeadlines(st: GameState, winnersArg?: number[]): GameHeadlin
     sideIdx.map((side) => ({ side, n: st.history.reduce((a, h) => a + pick(h, side), 0) }));
   const books = winFirst(per((h, side) => h.sides.find((s) => s.side === side)?.tricks ?? 0));
   const nilsMade = winFirst(per((h, side) => h.sides.find((s) => s.side === side)?.nils.filter((n) => n.made).length ?? 0));
+  const counts = shotCounts(st.rules, st.history);
+  const sets = winFirst(sideIdx.map((side) => ({ side, n: counts[side] ?? 0 })));
   // Best hand spotlights a WINNING side only; before a result exists (no
   // winners known) it falls back to the best hand by any side
   const bestOf = winners.length ? winners : sideIdx;
@@ -109,7 +113,7 @@ export function gameHeadlines(st: GameState, winnersArg?: number[]): GameHeadlin
   if (bestHand && bestHand.points <= 0) bestHand = null;
   const covers = shotCovers(st.rules, st.history, st.result);
   const outs = covers.flatMap((c, side) => (c.outHand != null ? [{ side, handNo: c.outHand }] : []));
-  return { books, nilsMade, bestHand, outs };
+  return { books, nilsMade, sets, bestHand, outs };
 }
 
 /**
@@ -163,6 +167,7 @@ export function BoxScore({ st, label, mySide, winners }: {
       <div className="box-lines">
         <div className="box-line"><span>Total books</span><b>{line(head.books)}</b></div>
         {head.nilsMade.some((x) => x.n > 0) && <div className="box-line"><span>Nils made</span><b>{line(head.nilsMade)}</b></div>}
+        {head.sets.some((x) => x.n > 0) && <div className="box-line"><span>Sets</span><b>{line(head.sets)}</b></div>}
         {head.bestHand && <div className="box-line"><span>Best hand</span><b>{label(head.bestHand.side)} {sgn(head.bestHand.points)} · Hand {head.bestHand.handNo}</b></div>}
         {head.outs.map((o) => (
           <div className="box-line" key={o.side}><span>Out</span><b>{label(o.side)} · Hand {o.handNo}</b></div>

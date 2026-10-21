@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { type GameState, applyAction, makeRules, newGame, pendingTurn, viewFor } from '@spades/rules';
+import { type GameState, type HandRecord, applyAction, makeRules, newGame, pendingTurn, scoreHand, viewFor } from '@spades/rules';
 import { chooseBotAction } from '@spades/bots';
 import { ScorePad, rulesChips, rulesLine } from '../src/ScorePad';
 
@@ -17,10 +17,10 @@ function playHands(n: number, rules = makeRules('joker', { targetScore: 250 })):
 
 describe('score pad', () => {
   it('readable rules line', () => {
-    expect(rulesLine(makeRules('joker', { targetScore: 250 }))).toBe('Playing to 250 · Lose at -200 · 10 bags = −100 · Minimum 4 · Shot = out');
+    expect(rulesLine(makeRules('joker', { targetScore: 250 }))).toBe('Playing to 250 · Lose at -200 · 10 bags = −100 · Minimum 4 · Shot = out · 3 sets = out');
   });
   it('compact rule chips', () => {
-    expect(rulesChips(makeRules('joker', { targetScore: 250 }))).toEqual(['To 250', 'Lose at -200', '10 bags = −100', 'Minimum 4', 'Shot = out', 'Normal · bid 30s / play 30s']);
+    expect(rulesChips(makeRules('joker', { targetScore: 250 }))).toEqual(['To 250', 'Lose at -200', '10 bags = −100', 'Minimum 4', 'Shot = out', '3 sets = out', 'Normal · bid 30s / play 30s']);
   });
   it('labeled columns per team: bid as "a + b = total", took, result chip, points with a breakdown, running bags, total, dealer per hand', () => {
     const st = playHands(3);
@@ -50,5 +50,34 @@ describe('score pad', () => {
     expect(html.match(/data-testid="pad-board-side"/g)).toHaveLength(3);
     for (const name of names) expect(html).toContain(name);
     expect(html.slice(0, html.indexOf('locked-rules-details'))).not.toContain('rule-chip');
+  });
+});
+
+describe('score pad — the running set tally (third-set rule)', () => {
+  const rules = makeRules('joker', { targetScore: 250 });
+  const SET0: HandRecord[] = [1, 2, 3].map((handNo) => ({
+    handNo, dealer: 3, bids: [4, 3, 2, 3], tricksWon: [3, 3, 1, 6],
+    sides: scoreHand(rules, [4, 3, 2, 3], [3, 3, 1, 6], [0, 0], [0, 0]), // side 0 bids 6, takes 4: a set
+  }));
+  const names = ['You', 'Hana', 'Mei', 'Jamal'];
+  const render = (st: GameState) => renderToStaticMarkup(createElement(ScorePad, { st, names, onClose: () => {}, sideName: (i: number) => (i ? 'Them' : 'Us') }));
+
+  it('the board shows the count per side, with the warning when one more ends it', () => {
+    const st = { ...newGame(rules, 'pad-sets'), history: SET0.slice(0, 2), scores: [-120, 126], bags: [0, 6] } as GameState;
+    const html = render(st);
+    expect(html).toContain('data-sets="2"');
+    expect(html).toContain('data-sets="0"');
+    expect(html).toContain('2 sets · one more ends it');
+    expect(html).toContain('0 sets');
+  });
+
+  it('a game ended by the third set chips the final hand OUT · 3RD SET', () => {
+    const st = {
+      ...newGame(rules, 'pad-sets-over'), history: SET0, scores: [-180, 189], bags: [0, 9], phase: 'gameOver',
+      result: { endReason: 'third-set', shotOut: [0], finalScores: [-180, 189], placements: [2, 1], winners: [1] },
+    } as unknown as GameState;
+    const html = render(st);
+    expect(html).toContain('data-sets="3"');
+    expect(html).toContain('OUT · 3RD SET');
   });
 });

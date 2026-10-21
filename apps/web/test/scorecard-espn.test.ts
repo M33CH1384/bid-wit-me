@@ -7,7 +7,7 @@ import { chooseBotAction } from '@spades/bots';
 import { Intermission, calloutsFor } from '../src/Intermission';
 import { ScorePad } from '../src/ScorePad';
 import { BoxScore, bostonSides, boxScoreRows, gameHeadlines } from '../src/BoxScore';
-import { endReasonText } from '../src/shotOut';
+import { THIRD_SET_HEADLINE, endReasonText } from '../src/shotOut';
 
 /* ------------------------------------------------------------ fixtures */
 
@@ -272,6 +272,38 @@ describe('end-reason sentence never repeats the stamp', () => {
     expect(endReasonText(teamRules, floor, label)).toBe('Ended by the losing floor.');
     const target = { history: [{ handNo: 1 }], result: { endReason: 'target', finalScores: [250, 90], placements: [1, 2], winners: [0] } } as unknown as GameState;
     expect(endReasonText(teamRules, target, label)).toBe('First to 250.');
+  });
+  it('third set: the headline is the stamp, the sentence carries the plain detail', () => {
+    expect(THIRD_SET_HEADLINE).toBe('3 the Hard Way');
+    const st = {
+      history: [{ handNo: 1 }, { handNo: 2 }, { handNo: 3 }, { handNo: 4 }, { handNo: 5 }],
+      result: { endReason: 'third-set', shotOut: [1], finalScores: [120, -90], placements: [1, 2], winners: [0] },
+    } as unknown as GameState;
+    const text = endReasonText(teamRules, st, label);
+    expect(text).toBe("Them got set for the third time — that's the ballgame.");
+    expect(text).not.toContain('3 the Hard Way');
+  });
+});
+
+/* --------------------------- third set: tally + banner */
+
+describe('third set surfaces', () => {
+  it('gameHeadlines counts sets per side from the records (a busted nil counts, per the engine)', () => {
+    // teamHistory: hand 1 side 1 busts a nil (set), hand 2 side 1 misses (set), hand 3 side 0 misses (set)
+    expect(gameHeadlines(teamState()).sets).toEqual([{ side: 0, n: 1 }, { side: 1, n: 2 }]);
+  });
+  it('the box score renders the Sets line', () => {
+    const out = renderToStaticMarkup(createElement(BoxScore, { st: teamState(), label: (s: number) => (s ? 'Them' : 'Us'), mySide: 0, winners: [0] }));
+    expect(out).toContain('>Sets<');
+    expect(out).toContain('Us 1 · Them 2');
+  });
+  it('both game-over views stamp the headline banner for a third-set ending', () => {
+    const tableSrc = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
+    const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    expect(tableSrc).toContain("res.endReason === 'third-set'");
+    expect(tableSrc).toContain("st.result.endReason === 'third-set'");
+    expect(tableSrc).toContain('data-testid="third-set"');
+    expect(css).toContain('.shot-out-banner.third-set');
   });
 });
 

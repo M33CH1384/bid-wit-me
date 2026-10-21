@@ -161,9 +161,14 @@ export function scoreHand(
 }
 
 export interface GameResult {
-  /** shotOut: a side was shot on hand 1 or two hands in a row (house rule "Shot = out") */
-  endReason: 'target' | 'floor' | 'shotOut';
-  /** sides knocked out by Shot = out (endReason 'shotOut') */
+  /**
+   * How the game ended. shotOut: a side was shot on hand 1 or two hands in a row (house rule
+   * "Shot = out"). third-set: a side's third set of the game (game-wide rule, always on — the
+   * cumulative count, not in a row). The presentation layer keys the "3 the Hard Way" headline
+   * and the finale set animation off endReason === 'third-set'.
+   */
+  endReason: 'target' | 'floor' | 'shotOut' | 'third-set';
+  /** sides knocked out by Shot = out (endReason 'shotOut') or by the third set (endReason 'third-set') */
   shotOut?: number[];
   finalScores: number[];
   /** 1-based placement per side; ties share a place (1,1,3). */
@@ -259,7 +264,8 @@ export interface ShotCover {
  * What covers each side's scorecard. History and `result` are synced, so every client and a reconnect agree.
  * Tape marks a shot that did not lose the game, and comes off when a later hand makes its books.
  * A hand-1 elimination shows the tape and the sheet together.
- * The sheet follows the recorded loss (`result.endReason === 'shotOut'`). When `result` is omitted, the same
+ * The sheet follows the recorded loss (`result.endReason === 'shotOut'`, or 'third-set' — a game-ending
+ * set either way). When `result` is omitted, the same
  * shot-out functions the engine uses decide it, so a rules change shows up here without a second copy of the rule.
  */
 export function shotCovers(
@@ -287,7 +293,7 @@ export function shotCovers(
     }
     const last = h === history.length - 1;
     const lost = last && result !== undefined
-      ? new Set(result?.endReason === 'shotOut' ? result.shotOut ?? [] : [])
+      ? new Set(result?.endReason === 'shotOut' || result?.endReason === 'third-set' ? result.shotOut ?? [] : [])
       : new Set(shotOutResult(scores, shotOutSides(r, hand.handNo, shot, prevShot))?.shotOut ?? []);
     for (let side = 0; side < n; side++) {
       const isOut = lost.has(side) || markedOut.has(side);
@@ -444,4 +450,19 @@ export function shotOutResult(scores: readonly number[], out: readonly number[])
   const keys = scores.map((_, i) => key(i));
   const placements = keys.map((k) => 1 + keys.filter((o) => o > k).length);
   return { endReason: 'shotOut', shotOut: [...out], finalScores: [...scores], placements, winners: placements.flatMap((p, i) => (p === 1 ? [i] : [])) };
+}
+
+/**
+ * Third set ends the game (game-wide rule, always on — separate from the Shot = out house rule):
+ * a side whose cumulative set count (shotCounts) reaches 3 on THIS hand is knocked out. `prev` is
+ * the count before this hand, `counts` after it; only a side crossing to 3 right now is fresh-out.
+ * Placements follow shotOutResult (sides still in rank ahead by score, then the knocked-out sides);
+ * when every side crossed on the same hand and the scores tie exactly for first, returns null and
+ * the game plays on — the same tie rule as a shot-out.
+ */
+export function thirdSetResult(scores: readonly number[], counts: readonly number[], prev: readonly number[]): GameResult | null {
+  const out = counts.flatMap((c, i) => (c >= 3 && (prev[i] ?? 0) < 3 ? [i] : []));
+  if (!out.length) return null;
+  const base = shotOutResult(scores, out);
+  return base ? { ...base, endReason: 'third-set' } : null;
 }
