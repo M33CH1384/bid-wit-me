@@ -606,3 +606,18 @@ html[data-theme="neon"] .story-you-face {
 }
 .story-prop-strip.down .story-prop-gun { opacity: 1; transform: none; }
 .story-scene.reduce .story-prop-gun { transition: none; }
+
+/* Outro and intro exit rows (owner, 2026-10-21): the outro's actions sit
+   in ONE row under the scene — the primary (Retry / Run it back / To the
+   map on a win) a touch wider, the "To the map" secondary beside it in
+   the hairline voice — so a way off the screen is always on the screen.
+   The base .story-retry rule keeps its full-width solo meaning; inside
+   the row it takes its flex share instead. The intro's exit row is a
+   single quiet hairline button under the tape or the scene: leaving is
+   always possible, starting the game stays the loud act. */
+.story-outro-actions { display: flex; gap: 10px; margin-top: 12px; align-items: stretch; }
+.story-outro-actions .btn { flex: 1 1 0; min-width: 0; }
+.story-outro-actions .btn.primary { flex-grow: 1.4; }
+.story-outro-actions .story-retry { margin-top: 0; width: auto; }
+.story-intro-actions { display: flex; margin-top: 12px; }
+.story-intro-actions .btn { flex: 1 1 0; }

@@ -391,6 +391,15 @@ export default function StoryHome() {
             onEggFound={() => handleEggFound(stop)}
           />
         )}
+        {/* The way OUT of the intro (owner, 2026-10-21): both forward
+            paths here start the game — the tape's "Play the scene" and
+            the scene's Skip/"To the table" — so without this row the
+            only way off the intro was to start a match. Back to map
+            abandons to the map: it posts no result, starts no game and
+            consumes no attempt (attempts count finished matches only). */}
+        <div className="story-intro-actions">
+          <button type="button" className="btn ghost" data-testid="story-intro-map" onClick={() => setScreen({ k: 'map' })}>Back to map</button>
+        </div>
       </div>
     );
   } else if (screen.k === 'game') {
@@ -498,12 +507,27 @@ export default function StoryHome() {
             ? [...attemptRailRef.current.cast]
             : railCastForAttempt(stop.id, (progressBeforeRef.current?.stops.find((s) => s.stopId === stop.id)?.attempts ?? 0) + 1)}
         />
-        {dblStarted && (
-          <button type="button" className="btn primary story-retry" data-testid="story-double-runback" onClick={() => startGame(stop)}>Run it back — leg 2</button>
-        )}
-        {!screen.won && (
-          <button type="button" className="btn primary story-retry" data-testid="story-retry" onClick={() => setScreen({ k: 'intro', stop })}>Retry this stop</button>
-        )}
+        {/* The outro's own exits, on the screen from first paint (owner,
+            2026-10-21): the loss outro used to show only "Retry this
+            stop" under the scene — the scene's Skip reached the map but
+            nothing SAID so, so the screen read as a trap whose only door
+            was the rematch. Now every outro carries a labeled map exit
+            beside its primary, visible while the scene plays and after:
+            a loss pairs "To the map" with Retry, the King's between-legs
+            moment pairs it with the run-it-back, and a win terminates at
+            the map, so "To the map" IS its primary. The exit is the same
+            setScreen the scene's own onDone makes — the result already
+            posted once at game over, so leaving can neither re-post it
+            nor lose it, and a pending double stays pending on the map,
+            where its card and Resume already carry it. */}
+        <div className="story-outro-actions">
+          {dblStarted ? (
+            <button type="button" className="btn primary story-retry" data-testid="story-double-runback" onClick={() => startGame(stop)}>Run it back — leg 2</button>
+          ) : !screen.won ? (
+            <button type="button" className="btn primary story-retry" data-testid="story-retry" onClick={() => setScreen({ k: 'intro', stop })}>Retry this stop</button>
+          ) : null}
+          <button type="button" className={`btn ${screen.won && !dblStarted ? 'primary' : 'ghost'}`} data-testid="story-outro-map" onClick={() => setScreen({ k: 'map' })}>To the map</button>
+        </div>
       </div>
     );
   } else {
