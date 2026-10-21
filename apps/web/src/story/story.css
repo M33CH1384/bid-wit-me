@@ -180,10 +180,32 @@
   font-weight: 800;
   background: rgba(127, 127, 160, 0.25);
 }
-.story-script-body { flex: 1; min-width: 0; }
+.story-script-body {
+  flex: 1; min-width: 0;
+  position: relative;
+  /* Layout reservation (owner, 2026-10-21: "as text is added the divs
+     just keep jumping in size rather than growing smoothly"):
+     ScriptPlayer measures the current beat's FULL text on the hidden
+     .story-script-sizer and pins this body's height to it before typing
+     starts — so while a line reveals, the box's height does not change
+     at all, and the Skip/Next row under the card never shifts. The
+     height may only change BETWEEN beats (a line that needs a taller
+     or shorter box), and then it glides on this transition instead of
+     snapping. Reduced motion keeps the same reservation, no glide. */
+  transition: height 0.2s ease;
+}
+.story-scene.reduce .story-script-body { transition: none; }
 .story-script-name { margin: 0; font-weight: 800; letter-spacing: 0.02em; }
 .story-script-line { margin: 6px 0 0; font-size: 17px; line-height: 1.45; }
 .story-script-hint { margin: 8px 0 0; font-size: 12px; opacity: 0.6; min-height: 1em; }
+/* The sizer: the whole beat (header + full line + hint slot) rendered
+   invisibly at the body's real width — its rendered height IS the
+   reservation. It never paints, never takes clicks, never enters flow. */
+.story-script-sizer {
+  position: absolute; left: 0; right: 0; top: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
 .story-script-actions { display: flex; justify-content: space-between; gap: 12px; }
 
 /* ---- owner-only lock screen ---- */
@@ -267,6 +289,17 @@
   text-align: center;
   cursor: pointer;
   transition: opacity 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+  /* ONE uniform size for every cast card at every stop (layout-jump
+     fix, owner 2026-10-21): the height is a spec, never whichever card
+     is tallest today — padding 18 + border 2 + face 40 + gaps 6 +
+     name up to 2 lines (2 × 13 × 1.15 ≈ 30) + role up to 3 lines
+     (3 × 10.5 × 1.25 ≈ 39) = 135 → 136. Names and roles clamp to the
+     spec (below), so the strip is the same height at the Porch as at
+     the King, and the active treatment — border/glow/opacity only,
+     no geometry — moves nothing when the speaker changes. */
+  box-sizing: border-box;
+  height: 136px;
+  overflow: hidden;
 }
 .story-cast-one.dim { opacity: 0.45; }
 .story-cast-one.active {
@@ -282,8 +315,16 @@
   color: #f5f4ff;
 }
 .story-cast-one.active .story-cast-face { background: #c9a227; color: #191204; }
-.story-cast-name { font-size: 13px; font-weight: 800; line-height: 1.15; }
-.story-cast-role { font-size: 10.5px; line-height: 1.25; opacity: 0.75; }
+.story-cast-name {
+  font-size: 13px; font-weight: 800; line-height: 1.15;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden; max-width: 100%;
+}
+.story-cast-role {
+  font-size: 10.5px; line-height: 1.25; opacity: 0.75;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3;
+  overflow: hidden; max-width: 100%;
+}
 .story-script-role { font-weight: 400; opacity: 0.7; font-size: 13px; }
 .story-hotspot {
   position: absolute; z-index: 4;

@@ -16,6 +16,7 @@ import { describe, expect, it } from 'vitest';
 
 const css = readFileSync(new URL('../src/story/story.css', import.meta.url), 'utf8');
 const home = readFileSync(new URL('../src/story/StoryHome.tsx', import.meta.url), 'utf8');
+const scene = readFileSync(new URL('../src/story/ScriptPlayer.tsx', import.meta.url), 'utf8');
 
 describe('/story header: sharp, safe-area clear, dock slotted', () => {
   it('the shell pads the top safe area, so the header never sits in the frosted status-bar zone', () => {
@@ -188,5 +189,72 @@ describe('tale of the tape: grid rows, even scrim, one type system', () => {
     expect(side).toContain('gap: 8px');
     const entry = tapeCss.match(/\.story-tape-entry \{[^}]*\}/)![0];
     expect(entry).not.toContain('margin-bottom');
+  });
+});
+
+/**
+ * Scene player layout reservation (owner screenshot, 2026-10-21: "As
+ * text is added the divs on this screen just keep jumping in size
+ * rather than growing smoothly"). The old dialogue card sized to the
+ * REVEALED prefix, so every newly wrapped line grew the box a step
+ * and shoved the Skip/Next row; the cast cards sized to their own
+ * wrapping text, so the strip's height depended on the stop's cast.
+ * The fix reserves space: the dialogue body is pinned to the height
+ * of the FULL beat (measured on a hidden sizer rendering the whole
+ * line), height changes only ever happen between beats and glide on
+ * a transition, and every cast card shares one spec height with the
+ * name/role clamped to it. happy-dom paints nothing — these pins
+ * guard the mechanisms; the render-level pins live in
+ * story-scene.test.ts and the owner's iPhone is the pixel verdict.
+ */
+describe('scene player: reserved layout — only the words move', () => {
+  it('the dialogue body glides between reserved heights (~200ms) and anchors the sizer', () => {
+    const body = css.match(/\.story-script-body \{[^}]*\}/)![0];
+    expect(body).toContain('transition: height 0.2s ease');
+    expect(body).toContain('position: relative'); // the sizer anchors to the body
+    // reduced motion: the reservation still applies, the glide does not
+    const reduced = css.match(/\.story-scene\.reduce \.story-script-body \{[^}]*\}/)![0];
+    expect(reduced).toContain('transition: none');
+  });
+
+  it('a hidden sizer renders the full beat to measure the reservation', () => {
+    const sizer = css.match(/\.story-script-sizer \{[^}]*\}/)![0];
+    expect(sizer).toContain('position: absolute');
+    expect(sizer).toContain('visibility: hidden');
+    expect(sizer).toContain('pointer-events: none');
+    // the component renders the sizer inside the body and measures it
+    expect(scene).toContain('data-testid="story-script-sizer"');
+    expect(scene).toContain('reservedBodyHeight');
+    expect(scene).toContain('useLayoutEffect');
+  });
+
+  it('cast cards share ONE spec height; name and role clamp to the spec', () => {
+    const card = css.match(/\.story-cast-one \{[^}]*\}/)![0];
+    expect(card).toContain('box-sizing: border-box');
+    expect(card).toContain('height: 136px');
+    expect(card).toContain('overflow: hidden');
+    const name = css.match(/\.story-cast-name \{[^}]*\}/)![0];
+    expect(name).toContain('-webkit-line-clamp: 2');
+    const role = css.match(/\.story-cast-role \{[^}]*\}/)![0];
+    expect(role).toContain('-webkit-line-clamp: 3');
+  });
+
+  it('the active-speaker treatment changes no geometry — border, glow, opacity only', () => {
+    const active = css.match(/\.story-cast-one\.active \{[^}]*\}/)![0];
+    for (const prop of ['height:', 'padding:', 'margin:', 'font-size:', 'line-height:', 'width:']) {
+      expect(active).not.toContain(prop);
+    }
+    expect(active).toContain('border-color');
+    expect(active).toContain('box-shadow');
+    const dim = css.match(/\.story-cast-one\.dim \{[^}]*\}/)![0];
+    expect(dim).toContain('opacity');
+    expect(dim).not.toContain('height:');
+  });
+
+  it('the hint lives inside the reservation: always mounted, one reserved line', () => {
+    const hint = css.match(/\.story-script-hint \{[^}]*\}/)![0];
+    expect(hint).toContain('min-height: 1em');
+    // the sizer carries the hint slot too, so it is part of the measured height
+    expect(scene).toContain('story-script-sizer');
   });
 });

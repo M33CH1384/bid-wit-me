@@ -7,13 +7,19 @@
  * character's pinned voice through the existing voice system while the
  * venue's audio identity plays underneath.
  *
+ * The layout never breathes (owner, 2026-10-21): the dialogue body's
+ * height is RESERVED for the current beat's full text before typing
+ * starts — measured off a hidden sizer that renders the whole beat at
+ * the body's real width — so a revealing line changes nothing but the
+ * words, and the box only ever changes height BETWEEN beats, smoothly.
+ *
  * Hidden things live here too (storySecrets): a sceneTap egg is a quiet
  * hotspot in the backdrop; a deeTap egg fires after three taps on Dee's
  * medallion; a chain egg prepends its beats when the parent says the
  * carried fact is in hand. Found eggs insert their secret beats into the
  * scene in place — discovery feels like the scene opening a side door.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { STORY_CHARACTERS, personaForName, type StoryBeat } from '@spades/bots';
 import { sound } from '../audio';
 import { cancelActiveSpeech } from '../audioSession';
@@ -35,6 +41,17 @@ export function speakerRole(speaker: string): string {
 export function speakerBlurb(speaker: string): string {
   if (speaker === 'you') return 'That’s you. The one running the route.';
   return STORY_CHARACTERS[speaker]?.blurb ?? '';
+}
+
+/**
+ * The reserved dialogue-body height for the current beat: the hidden
+ * sizer's fully-rendered height (header + FULL line + hint slot at the
+ * body's real width, in the real typography). Zero means unmeasurable
+ * (no layout yet — prerender, tests): reserve nothing and let the body
+ * take its natural height rather than pinning a wrong number.
+ */
+export function reservedBodyHeight(sizer: { offsetHeight: number } | null | undefined): number {
+  return sizer && sizer.offsetHeight > 0 ? sizer.offsetHeight : 0;
 }
 
 export interface SceneEgg {
@@ -116,6 +133,29 @@ export default function ScriptPlayer({ beats, cta, onDone, bgUrl, cast = [], egg
     return () => window.clearInterval(t);
   }, [i, lines]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const sizerRef = useRef<HTMLDivElement | null>(null);
+  const [reservedH, setReservedH] = useState<number | null>(null);
+
+  // Reserve the dialogue body's height for the CURRENT beat's full text
+  // before the typewriter starts (the sizer below renders the whole
+  // beat; see reservedBodyHeight). Measured in a layout effect so the
+  // reservation lands before paint, and re-measured when the beat
+  // changes, on resize (rotation), and when webfonts land. Typing never
+  // re-measures — while a line reveals, the box cannot change height at
+  // all; between beats the new reservation glides in via the CSS height
+  // transition on .story-script-body.
+  useLayoutEffect(() => {
+    const measure = () => {
+      const h = reservedBodyHeight(sizerRef.current);
+      if (h > 0) setReservedH((prev) => (prev === h ? prev : h));
+    };
+    measure();
+    let live = true;
+    document.fonts?.ready.then(() => { if (live) measure(); }).catch(() => { /* no Font Loading API */ });
+    window.addEventListener('resize', measure);
+    return () => { live = false; window.removeEventListener('resize', measure); };
+  }, [i, lines]);
+
   // Story voice scope (one-timbre rule, 2026-10-21): while a scene is on
   // screen, story characters speak ONLY their cast recordings — generic
   // persona talk is text-only and the robot is refused by identity
@@ -137,6 +177,8 @@ export default function ScriptPlayer({ beats, cta, onDone, bgUrl, cast = [], egg
   const last = i >= lines.length - 1;
   const revealing = shown < beat.line.length;
   const name = speakerName(beat.speaker);
+  const role = speakerRole(beat.speaker);
+  const hintText = last ? '' : revealing ? 'Tap for the full line' : 'Tap to continue';
   const advance = () => {
     if (revealing) { setShown(Number.MAX_SAFE_INTEGER); return; }
     if (!last) setI(i + 1);
@@ -189,10 +231,20 @@ export default function ScriptPlayer({ beats, cta, onDone, bgUrl, cast = [], egg
           {beat.speaker !== 'you' && STORY_CHARACTERS[beat.speaker]
             ? <StoryFace characterId={beat.speaker} name={name} className="speaker-face" />
             : <div className="story-script-face" aria-hidden>{name.slice(0, 1)}</div>}
-          <div className="story-script-body">
-            <p className="story-script-name">{name}{speakerRole(beat.speaker) ? <span className="story-script-role"> · {speakerRole(beat.speaker)}</span> : null}</p>
+          <div className="story-script-body" style={reservedH !== null ? { height: reservedH } : undefined}>
+            <p className="story-script-name">{name}{role ? <span className="story-script-role"> · {role}</span> : null}</p>
             <p className="story-script-line">{revealing ? beat.line.slice(0, shown) : beat.line}</p>
-            <p className="story-script-hint">{last ? '' : revealing ? 'Tap for the full line' : 'Tap to continue'}</p>
+            <p className="story-script-hint">{hintText}</p>
+            {/* The sizer: the WHOLE beat — header, the full unrevealed
+                line, the hint slot — rendered invisibly at the body's
+                real width. Its height is the reservation the layout
+                effect pins on the body, so the visible card is exactly
+                as tall with zero characters shown as with all of them. */}
+            <div className="story-script-sizer" ref={sizerRef} aria-hidden="true" data-testid="story-script-sizer">
+              <p className="story-script-name">{name}{role ? <span className="story-script-role"> · {role}</span> : null}</p>
+              <p className="story-script-line">{beat.line}</p>
+              <p className="story-script-hint">{hintText}</p>
+            </div>
           </div>
         </div>
         <div className="story-script-actions">

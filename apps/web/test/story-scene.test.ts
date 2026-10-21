@@ -17,7 +17,7 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { STORY_STOPS, buildStoryTape } from '@spades/bots';
 import { makeRules, newGame, type GameState } from '@spades/rules';
-import ScriptPlayer from '../src/story/ScriptPlayer';
+import ScriptPlayer, { reservedBodyHeight } from '../src/story/ScriptPlayer';
 import StoryTape from '../src/story/StoryTape';
 import StoryFace from '../src/story/StoryFace';
 import StoryBadges, { badgeFactsOf } from '../src/story/StoryBadges';
@@ -99,6 +99,57 @@ describe('scene player', () => {
     expect(spot).toBeTruthy();
     await click(spot);
     expect(onEggFound).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('scene player layout reservation (owner: the divs jumped as text typed)', () => {
+  // June's Barbershop line from the owner's screenshot — long enough to
+  // wrap several rows at phone width, so an unreserved box would grow
+  // in steps for its whole reveal.
+  const LONG = 'What he’s not saying: half those men are gone now, and the shops on either side of us are nail salons. This table is the last classroom on the block. So we don’t waste lessons.';
+  const RES_BEATS = [
+    { speaker: 'june', line: LONG },
+    { speaker: 'mrColeman', line: 'Short one.' },
+  ];
+  const renderScene = () => renderEl(createElement(ScriptPlayer, {
+    beats: RES_BEATS, cta: 'To the table', onDone: () => {}, cast: ['mrColeman', 'dee', 'june'],
+  }));
+  // happy-dom has no layout: give the sizer a deterministic rendered
+  // height, the way a real browser would lay out the full beat.
+  const stubSizerHeight = (c: HTMLElement, h: number) => {
+    const sizer = c.querySelector('[data-testid="story-script-sizer"]')!;
+    Object.defineProperty(sizer, 'offsetHeight', { value: h, configurable: true });
+  };
+
+  it('reservedBodyHeight: the sizer’s fully-rendered height, or 0 when unmeasurable', () => {
+    expect(reservedBodyHeight({ offsetHeight: 137 })).toBe(137);
+    expect(reservedBodyHeight({ offsetHeight: 0 })).toBe(0);
+    expect(reservedBodyHeight(null)).toBe(0);
+    expect(reservedBodyHeight(undefined)).toBe(0);
+  });
+
+  it('the sizer always renders the FULL line while the visible line is still typing', async () => {
+    const c = await renderScene();
+    const sizer = c.querySelector('[data-testid="story-script-sizer"]')!;
+    expect(sizer.textContent).toContain(LONG); // the whole beat, from the first frame
+    const visible = c.querySelector<HTMLElement>('.story-script-body > .story-script-line')!;
+    expect(LONG.startsWith(visible.textContent ?? '')).toBe(true); // visible is a prefix (or done)
+  });
+
+  it('the body height is the reservation while typing, and changes only when the beat changes', async () => {
+    const c = await renderScene();
+    const body = () => c.querySelector<HTMLElement>('.story-script-body')!;
+    stubSizerHeight(c, 137);
+    await act(async () => { window.dispatchEvent(new Event('resize')); });
+    expect(body().style.height).toBe('137px'); // reserved for the full line before it finishes typing
+    // completing the reveal changes the words only — the box does not move
+    await click(c.querySelector('[data-testid="story-script-next"]')!);
+    expect(c.querySelector('.story-script-body > .story-script-line')!.textContent).toBe(LONG);
+    expect(body().style.height).toBe('137px');
+    // advancing reserves the NEXT beat's height (the glide itself is the CSS transition)
+    stubSizerHeight(c, 88);
+    await click(c.querySelector('[data-testid="story-script-next"]')!);
+    expect(body().style.height).toBe('88px');
   });
 });
 
