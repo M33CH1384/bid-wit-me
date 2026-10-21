@@ -1,4 +1,5 @@
 import { minimumChip } from './polishText';
+import { DECK_IDS } from './decks';
 import { type VenueChoice, isVenueChoice } from '@spades/protocol';
 import { CLASSIC_JOKER, cardLabel, hostMinimum, type Mode, type RulesOverrides, type TableRules, makeRules } from '@spades/rules';
 import { type BotSkillSetting, skillSettingOf } from '@spades/bots';
@@ -143,7 +144,7 @@ export function normalizeSettings(j: Omit<Partial<Settings>, 'botLevel'> & { bot
   if (!isVenueChoice(s.venue)) s.venue = 'classic';
   if (s.view !== 'sitting' && s.view !== 'standing') s.view = 'sitting'; // no saved preference (or junk) -> Sitting
   if (typeof s.turnUp !== 'boolean') s.turnUp = false; // slam mode is opt-in; old saves start OFF
-  if (!['classic', 'afrofuturist', 'harlem', 'hiphop', 'mali', 'egypt', 'greek'].includes(s.deck)) s.deck = 'classic';
+  if (!DECK_IDS.includes(s.deck) || s.deck === 'base') s.deck = 'classic';
   return s;
 }
 export function saveSettings(s: Settings): void {

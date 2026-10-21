@@ -11,7 +11,8 @@ import { type PendingMusic, SetupMusicPicker, savePendingMusic } from './online/
 import { isMusicLink } from '@spades/protocol';
 import { loadName, saveName } from './online/identity';
 import { navigate } from './online/nav';
-import { DECKS } from './decks';
+import { DECKS, deckThumbUrl } from './decks';
+import { deckUnlockLine, deckUnlocked, useClearedStoryStops } from './storyDecks';
 import { VENUE_DEFS, savePendingVenue, type VenueChoice } from './venues';
 import { VenueSelect } from './VenueSelect';
 import GearIcon from './GearIcon';
@@ -90,13 +91,27 @@ const MODE_CRUMB: Record<ModeKey, string> = { joker: 'Team Game · Jokers', aceD
 
 /** Deck picker as real card thumbnails (founder menu rework): King of each deck, gold outline when picked. */
 export function DeckThumbs({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  // Story decks unlock from the player's own story progress (cleared stops);
+  // while progress is loading they render locked, then open up if earned.
+  const { cleared, loaded } = useClearedStoryStops();
+  const selected = DECKS.find((d) => d.id === value);
+  useEffect(() => {
+    // A saved deck that is story-locked for this player (e.g. signed out, or a
+    // different account on this phone) falls back to Classic once progress is known.
+    if (loaded && selected && !deckUnlocked(selected, cleared)) onChange('classic');
+  }, [loaded, selected, cleared, onChange]);
   return (
     <div className="deck-thumbs" role="radiogroup" aria-label="Card deck">
-      {DECKS.map((d) => (
-        <button key={d.id} type="button" role="radio" aria-checked={value === d.id} className={`dt ${value === d.id ? 'on' : ''}`} aria-label={d.name} data-testid={`deck-${d.id}`} onClick={() => onChange(d.id)}>
-          <img src={`/assets/decks/${d.id}/KS.jpg`} alt="" loading="lazy" /><span>{d.name}</span>
-        </button>
-      ))}
+      {DECKS.map((d) => {
+        const unlocked = deckUnlocked(d, cleared);
+        const line = unlocked ? null : deckUnlockLine(d);
+        return (
+          <button key={d.id} type="button" role="radio" aria-checked={value === d.id} disabled={!unlocked} className={`dt ${value === d.id ? 'on' : ''} ${unlocked ? '' : 'locked'}`} aria-label={unlocked ? d.name : `${d.name} — locked. ${line ?? ''}`} data-testid={`deck-${d.id}`} onClick={() => { if (unlocked) onChange(d.id); }}>
+            <img src={deckThumbUrl(d.id)} alt="" loading="lazy" /><span>{d.name}</span>
+            {line && <span className="dt-lock">🔒 {line}</span>}
+          </button>
+        );
+      })}
     </div>
   );
 }

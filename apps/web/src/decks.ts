@@ -2,11 +2,27 @@
  *  The founder-approved set has the corner index BAKED INTO the art (gold frame, Barlow
  *  corners), so a loaded deck image is the whole face: drawFace draws it as-is and never
  *  paints its own corners over it (the painted corners below are only the pre-load fallback).
- *  All decks unlocked for now — `locked` is the Story/purchase hook for later. */
+ *  The original eight decks are free for everyone. The Story decks are progression
+ *  rewards: each is matched to a Story Mode stop and unlocks when the player CLEARS
+ *  that stop (derived from story progress — see storyDecks.ts). `locked` on a story
+ *  deck means "gated by a stop", never purchasable (beta rule: no real-money sales). */
 import type { Card } from '@spades/rules';
 import { noteDiag } from './diagnostics';
 
-export interface DeckDef { id: string; name: string; locked?: boolean }
+export interface DeckDef {
+  id: string;
+  name: string;
+  /** Gated behind a story stop (see storyStopId); free decks omit this. */
+  locked?: boolean;
+  /** Story stop whose clear unlocks this deck (story decks only). */
+  storyStopId?: string;
+  /** Display name of that stop for the picker unlock line (story decks only). */
+  storyStopName?: string;
+  /** This deck also ships Ace art (the Pj's Iron deck); other decks' aces stay painted. */
+  acesArt?: boolean;
+  /** Art file extension for this deck's faces (legacy packs are jpg, story packs webp). */
+  artExt?: 'jpg' | 'webp';
+}
 export const DECKS: DeckDef[] = [
   { id: 'base', name: 'Base' },
   { id: 'classic', name: 'Classic' },
@@ -16,9 +32,26 @@ export const DECKS: DeckDef[] = [
   { id: 'mali', name: 'Mali' },
   { id: 'egypt', name: 'Egypt' },
   { id: 'greek', name: 'Greek' },
+  // Story Mode progression decks — one per stop, in route order.
+  { id: 'porchlight', name: 'Porch Light', locked: true, storyStopId: 'porch', storyStopName: 'The Porch', artExt: 'webp' },
+  { id: 'revolutionaries', name: 'Revolutionaries', locked: true, storyStopId: 'barbershop', storyStopName: 'The Barbershop', artExt: 'webp' },
+  { id: 'blacktop', name: 'Blacktop', locked: true, storyStopId: 'rec-center', storyStopName: 'The Rec Center', artExt: 'webp' },
+  { id: 'cookout', name: 'The Cookout', locked: true, storyStopId: 'cookout', storyStopName: 'The Cookout', artExt: 'webp' },
+  { id: 'corner', name: 'The Corner', locked: true, storyStopId: 'corner', storyStopName: 'The Corner', artExt: 'webp' },
+  { id: 'stainedglass', name: 'Stained Glass', locked: true, storyStopId: 'church-basement', storyStopName: 'The Church Basement', artExt: 'webp' },
+  { id: 'rooftopdusk', name: 'Rooftop Dusk', locked: true, storyStopId: 'rooftop', storyStopName: 'The Rooftop', artExt: 'webp' },
+  { id: 'penthouse', name: 'Penthouse', locked: true, storyStopId: 'high-rise', storyStopName: 'The High-Rise', artExt: 'webp' },
+  { id: 'pjs', name: "Pj's Iron", locked: true, storyStopId: 'the-pjs', storyStopName: "The Pj's", acesArt: true, artExt: 'webp' },
+  { id: 'legends', name: 'Legends', locked: true, storyStopId: 'legends', storyStopName: "The Legends' Table", artExt: 'webp' },
+  { id: 'madeitout', name: 'Made It Out', locked: true, storyStopId: 'king', storyStopName: 'The King of the Block', artExt: 'webp' },
 ];
 export const DECK_IDS = DECKS.map((d) => d.id);
-export function deckName(id: string): string { return DECKS.find((d) => d.id === id)?.name ?? 'Classic'; }
+export function deckById(id: string): DeckDef | undefined { return DECKS.find((d) => d.id === id); }
+export function deckName(id: string): string { return deckById(id)?.name ?? 'Classic'; }
+/** The story decks, in route order. */
+export const STORY_DECKS: DeckDef[] = DECKS.filter((d) => d.storyStopId);
+/** The deck a story stop unlocks, if any. */
+export function deckForStop(stopId: string): DeckDef | undefined { return DECKS.find((d) => d.storyStopId === stopId); }
 
 /** Art file for a card in a deck, or null (number cards / aces keep painted faces). */
 export function deckArtFile(card: Card | string): string | null {
@@ -27,9 +60,18 @@ export function deckArtFile(card: Card | string): string | null {
   const r = card[0];
   return r === 'J' || r === 'Q' || r === 'K' ? `${card}` : null;
 }
+/** Deck-aware art file: decks with acesArt (Pj's Iron) also ship the four Aces. */
+export function deckArtFileFor(deck: string, card: Card | string): string | null {
+  if (card[0] === 'A' && deckById(deck)?.acesArt) return `${card}`;
+  return deckArtFile(card);
+}
 export function deckArtUrl(deck: string, card: Card | string): string | null {
-  const f = deckArtFile(card);
-  return f ? `/assets/decks/${deck}/${f}.jpg` : null;
+  const f = deckArtFileFor(deck, card);
+  return f ? `/assets/decks/${deck}/${f}.${deckById(deck)?.artExt ?? 'jpg'}` : null;
+}
+/** Picker thumbnail (the deck's King of Spades) in the deck's own art format. */
+export function deckThumbUrl(deck: string): string {
+  return `/assets/decks/${deck}/KS.${deckById(deck)?.artExt ?? 'jpg'}`;
 }
 
 let active = 'classic';
@@ -46,6 +88,7 @@ export function setActiveDeck(id: string): void {
   (typeof window !== 'undefined' ? (window as unknown as { __bwmDeck?: string }) : undefined) && ((window as unknown as { __bwmDeck?: string }).__bwmDeck = id);
   // warm the court's art so the first court card does not flash the painted face
   for (const r of ['J', 'Q', 'K']) for (const s of ['S', 'H', 'D', 'C']) void getDeckImage(`${r}${s}`);
+  if (deckById(id)?.acesArt) for (const s of ['S', 'H', 'D', 'C']) void getDeckImage(`A${s}`);
   void getDeckImage('BJ'); void getDeckImage('LJ');
 }
 

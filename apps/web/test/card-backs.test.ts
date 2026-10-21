@@ -11,6 +11,13 @@ describe('per-deck card backs (founder-approved set)', () => {
       expect(existsSync(new URL(`../public/assets/card-backs/${name}-back.png`, import.meta.url))).toBe(true);
     }
   });
+  it('story decks map to their shipped WebP backs', () => {
+    const want: Record<string, string> = { porchlight: 'PorchLight', revolutionaries: 'Revolutionaries', blacktop: 'Blacktop', cookout: 'Cookout', corner: 'Corner', stainedglass: 'StainedGlass', rooftopdusk: 'RooftopDusk', penthouse: 'Penthouse', pjs: 'Pjs', legends: 'Legends', madeitout: 'MadeItOut' };
+    for (const [id, name] of Object.entries(want)) {
+      expect(deckBackUrl(id)).toBe(`/assets/card-backs/${name}-back.webp`);
+      expect(existsSync(new URL(`../public/assets/card-backs/${name}-back.webp`, import.meta.url))).toBe(true);
+    }
+  });
   it('an unknown deck falls back to the Base back', () => {
     expect(deckBackUrl('nope')).toBe('/assets/card-backs/Base-back.png');
   });

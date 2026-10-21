@@ -3160,3 +3160,10 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
    the file, so it wins over the base + compact padding shorthands above). The dock
    itself — position, z-index, gestures — is untouched. */
 .tt-head { padding-right: calc(54px + env(safe-area-inset-right)); }
+
+/* Story deck locks (story deck unlocks pass, appended): a locked story deck's
+   thumb is dimmed + grayscaled with its unlock line under the name; the base
+   .deck-thumbs rules above stay byte-stable for the pinned CSS tests. */
+.deck-thumbs .dt.locked { opacity: .6; cursor: not-allowed; }
+.deck-thumbs .dt.locked img { filter: grayscale(.9); }
+.deck-thumbs .dt .dt-lock { font-family: var(--body, inherit); font-weight: 600; font-size: 10.5px; letter-spacing: 0; text-transform: none; line-height: 1.3; color: var(--gold); }
