@@ -30,6 +30,14 @@
  *    the violet family; Classic is unchanged.
  *  - The gold corner-fold on the sheet's disclosure rows (.gold-tab-row
  *    ::after) covered the House rules Show chip / Credits heading: gone.
+ *
+ * CONSOLIDATION (owner, 2026-10-20, later the same day): the separate speaker
+ * Sound sheet is RETIRED — it duplicated Music, Spatial audio, Audio quality,
+ * the per-channel volumes, Bot voices and Chat sounds from this sheet. There
+ * is now ONE sheet: the speaker opens this sheet landed on the Sound & music
+ * group, and the old sheet's only unique controls — the Mute bots / Mute all
+ * quick actions — live at the top of that group. The pins below hold the
+ * merged inventory (sound-consolidation.test.ts pins the retired surface).
  */
 import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -92,6 +100,9 @@ describe('settings sheet — grouped cards', () => {
     expect(groupOf(c, 'quality-seg')).toBe('Sound & music');
     expect(groupOf(c, 'chat-sounds-switch')).toBe('Sound & music');
     expect(groupOf(c, 'bot-trash-talk')).toBe('Sound & music');
+    // the retired Sound sheet's quick actions moved into this group (consolidation)
+    expect(groupOf(c, 'mute-all')).toBe('Sound & music');
+    expect(groupOf(c, 'bot-voice-quick')).toBe('Sound & music');
     expect(groupOf(c, 'theme-seg')).toBe('Look & effects');
     expect(groupOf(c, 'venue-select')).toBe('Look & effects');
     expect(groupOf(c, 'reduce-fx')).toBe('Look & effects');
@@ -135,7 +146,7 @@ describe('audio quality — the shared segmented control', () => {
     expect(tail).toContain('.sf-row.seg-stack > .seg { display: flex; flex-wrap: nowrap; width: 100%; }');
     expect(tail).toContain('.sf-row.seg-stack > .seg button { flex: 1 1 0; min-width: 0; }');
     // and no segmented control on the settings surfaces wraps at all
-    expect(tail).toContain('.set-group .seg, .sheet-sec .seg, .sound-pop .seg { flex-wrap: nowrap; }');
+    expect(tail).toContain('.set-group .seg { flex-wrap: nowrap; }');
   });
 });
 
@@ -147,7 +158,9 @@ describe('settings follow-ups CSS (owner, 2026-10-20)', () => {
     expect(webkit).toContain('var(--purple)');
     expect(webkit).not.toContain('#269cff');
     expect(webkit).not.toContain('--purple-hot'); // --purple-hot IS #269cff under Neon: the clash
-    expect(tail).toContain('html[data-theme="neon"] .sound-pop .vol-slider::-moz-range-progress');
+    expect(tail).toContain('html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress');
+    // the retired sound popover's copies of these rules are gone with it
+    expect(tail).not.toContain('.sound-pop');
     // scoped to the sheets: no global .vol-slider recolor (Classic untouched)
     expect(tail).not.toMatch(/(^|\n)\.vol-slider::-webkit-slider-runnable-track/);
   });
@@ -158,25 +171,30 @@ describe('settings follow-ups CSS (owner, 2026-10-20)', () => {
 });
 
 describe('chat sounds — one shared row', () => {
-  it('is exported once and used by the Settings sheet and the sound sheet', () => {
+  it('is exported once and used exactly once — by the Settings sheet', () => {
     const sc = read('../src/SoundControls.tsx');
     expect(sc).toContain('export function ChatSoundsRow()');
-    expect(read('../src/MoreOptions.tsx')).toContain('<ChatSoundsRow />');
-    // in the sound sheet it sits with the sound controls (Volume section),
-    // before Spatial, and no longer lives in the Effects section
-    const sheet = sc.slice(sc.indexOf('export function SoundSheet'), sc.indexOf('/** Spatial controls'));
-    expect(sheet.indexOf('<ChatSoundsRow />')).toBeGreaterThan(-1);
-    expect(sheet.indexOf('<ChatSoundsRow />')).toBeLessThan(sheet.indexOf('aria-label="Spatial"'));
-    expect(sheet.slice(sheet.indexOf('aria-label="Effects"'))).not.toContain('ChatSoundsRow');
+    const mo = read('../src/MoreOptions.tsx');
+    expect(mo.split('<ChatSoundsRow />').length - 1).toBe(1);
+    // the second surface that used to render it (the speaker's Sound sheet) is retired
+    expect(sc).not.toContain('export function SoundSheet');
+  });
+
+  it('the merged sheet renders each sound control exactly once', async () => {
+    const c = await renderSheet();
+    for (const tid of ['chat-sounds-switch', 'quality-seg', 'spatial-switch', 'music-switch', 'bot-voices', 'bot-voice-quick', 'mute-all', 'venue-sound-switch']) {
+      expect(c.querySelectorAll(`[data-testid="${tid}"]`).length, tid).toBe(1);
+    }
   });
 });
 
 describe('settings overhaul CSS', () => {
   const tail = css.slice(css.indexOf('Settings overhaul'));
 
-  it('group cards take the shared card treatment on both settings surfaces', () => {
+  it('group cards take the shared card treatment', () => {
     expect(tail).toMatch(/\.set-group \{[^}]*border-radius: 14px/);
-    expect(tail).toMatch(/\.sheet-sec \{[^}]*border-radius: 14px/);
+    // the retired sound sheet's section class went with it (consolidation)
+    expect(tail).not.toContain('.sheet-sec');
   });
 
   it('one switch treatment: the unified .toggle/.switch overrides are present', () => {

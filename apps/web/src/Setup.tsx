@@ -1,8 +1,9 @@
 import { type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { CODE_LENGTH, isRoomCode, normalizeRoomCode } from '@spades/protocol';
-import MoreOptions, { Seg, Toggle } from './MoreOptions';
+import { Seg, Toggle } from './MoreOptions';
+import { requestSettingsSheet } from './settingsSheet';
 import { type ModeKey, type Settings, MODES, rulesSummary, settingsToRules } from './settings';
-import { type TipsPref, isFirstVisit, loadTips, saveTips } from './tips';
+import { type TipsPref, isFirstVisit, saveTips } from './tips';
 import { splashAction } from './splashTap';
 import { serverUrl } from './online/config';
 import { createTable, tableInfo } from './online/connection';
@@ -34,6 +35,9 @@ const ORDER: Step[] = ['home', 'door', 'branch', 'opponent', 'table'];
 interface Props {
   settings: Settings;
   onChange: (s: Settings) => void;
+  /** Tips prefs live in App so the Settings sheet host and the wizard share one copy. */
+  tips: TipsPref;
+  onTips: (t: TipsPref) => void;
   onStart: () => void;
   /** Offline game in progress (save in localStorage). */
   onResume?: (() => void) | null;
@@ -114,11 +118,9 @@ export function VenueSetupRow({ value, onChange }: { value: VenueChoice; onChang
   );
 }
 
-export default function Setup({ settings: s, onChange, onStart, onResume, resumeLabel }: Props) {
+export default function Setup({ settings: s, onChange, tips, onTips, onStart, onResume, resumeLabel }: Props) {
   const [{ step, path, kind }, setWiz] = useState(readWiz);
   const [dir, setDir] = useState<'fwd' | 'back'>('fwd');
-  const [more, setMore] = useState(false);
-  const [tips, setTips] = useState<TipsPref>(loadTips);
   const [ask, setAsk] = useState(isFirstVisit);
   const onlineSeat = useOnlineSeat();
   const touchAt = useRef(0);
@@ -168,7 +170,7 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
     setDir('back');
     setWiz({ step: 'home', path, kind });
   };
-  const setTipsPref = (on: boolean) => { const t = { on, asked: true }; saveTips(t); setTips(t); };
+  const setTipsPref = (on: boolean) => { const t = { on, asked: true }; saveTips(t); onTips(t); };
 
   let body: ReactNode;
   if (step === 'home') {
@@ -284,14 +286,14 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
             {deck}
             <div className="ess-row stack"><span className="ess-label">Pick your deck — tap for the full card</span><DeckThumbs value={s.deck} onChange={(v) => set('deck', v)} /></div>
             <VenueSetupRow value={s.venue ?? 'classic'} onChange={(v) => set('venue', v)} />
-            <button type="button" className="quiet-row" data-testid="house-rules" onClick={() => setMore(true)}><span>HOUSE RULES</span><span className="value-chip">Standard</span><i className="corner-tab" aria-hidden /></button>
+            <button type="button" className="quiet-row" data-testid="house-rules" onClick={() => requestSettingsSheet()}><span>HOUSE RULES</span><span className="value-chip">Standard</span><i className="corner-tab" aria-hidden /></button>
             {cutRules}
             {summary}
             {tipsRow}
             <div className="sticky-primary"><button type="button" className="primary big go" data-testid="start-bots" onClick={onStart}>DEAL ME IN</button><p className="sticky-note">No seating step vs bots — bots fill the table</p></div>
           </div>
         ) : (
-          <OnlineEssentials settings={s} venue={s.venue ?? 'classic'} onVenue={(v) => set('venue', v)} deck={deck} deckThumbs={<DeckThumbs value={s.deck} onChange={(v) => set('deck', v)} />} onHouseRules={() => setMore(true)} tipsRow={<>{summary}{tipsRow}</>} />
+          <OnlineEssentials settings={s} venue={s.venue ?? 'classic'} onVenue={(v) => set('venue', v)} deck={deck} deckThumbs={<DeckThumbs value={s.deck} onChange={(v) => set('deck', v)} />} onHouseRules={() => requestSettingsSheet()} tipsRow={<>{summary}{tipsRow}</>} />
         )}
       </>
     );
@@ -309,12 +311,13 @@ export default function Setup({ settings: s, onChange, onStart, onResume, resume
         <div className="wiz-dots" aria-hidden>{ORDER.map((x) => <i key={x} className={x === step ? 'on' : ''} />)}</div>
         <span className="wiz-right">
           <SocialButton className="wiz-social" />
-          <button type="button" className="icon-btn gear" aria-label="More options" data-testid="more" onClick={() => setMore(true)}><GearIcon /></button>
+          <button type="button" className="icon-btn gear" aria-label="More options" data-testid="more" onClick={() => requestSettingsSheet()}><GearIcon /></button>
           <span className="dock-slot" aria-hidden />
         </span>
       </header>
       <main key={step} className={`wiz-step slide-${dir}`}>{body}</main>
-      {more && <MoreOptions settings={s} onChange={onChange} tips={tips} onTips={setTips} onClose={() => setMore(false)} />}
+      {/* the Settings sheet itself is rendered by App's SettingsSheetHost (one sheet for
+          the whole app); the gear + House Rules buttons above file the request */}
       {ask && (
         <div className="modal-backdrop">
           <div className="modal glass slant tips-ask" role="dialog" aria-label="New to Spades?">

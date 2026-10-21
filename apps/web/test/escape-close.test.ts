@@ -92,9 +92,12 @@ describe('Escape closes dismissible dialogs', () => {
   });
 
   it('the other click-away sheets use the same Escape close', () => {
+    // SoundControls.tsx left this list in the 2026-10-20 consolidation: its
+    // Escape-closed surfaces (the speaker's Sound sheet / popover) are retired,
+    // and the sheet the speaker now opens is MoreOptions — pinned right here.
     const files = [
       'ScorePad.tsx', 'Series.tsx', 'Credits.tsx', 'Feedback.tsx', 'MoreOptions.tsx',
-      'account/AccountUI.tsx', 'RunZoom.tsx', 'SoundControls.tsx', 'TrashTalk.tsx', 'Table.tsx',
+      'account/AccountUI.tsx', 'RunZoom.tsx', 'TrashTalk.tsx', 'Table.tsx',
     ];
     for (const file of files) {
       const src = readFileSync(`apps/web/src/${file}`, 'utf8');

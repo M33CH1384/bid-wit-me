@@ -1,9 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { useEscapeClose } from './useEscapeClose';
 import { sound, useSoundSettings } from './audio';
 import { speakerAriaLabel } from './audioSession';
-import { HostMusicFields } from './online/HostMusic';
-import { useHostMusic } from './hostMusic';
+import { requestSettingsSheet } from './settingsSheet';
 import { tableIntensity, talkPrefs, useTalkPrefs } from './talkPrefs';
 import { TALK_INTENSITY_LABEL } from '@spades/bots';
 import { type NukeIntensity, fx, useNukeIntensity, useReduceEffects, useTableNuke } from './fx';
@@ -64,89 +62,6 @@ export function VolumeRow({ label, value, onChange, onRelease, disabled, testId,
   );
 }
 
-/** A short note with an (i) that reveals the longer explanation on tap. */
-function InfoNote({ short, long }: { short: string; long: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <span className="info-note">
-      <small className="sf-note">{short}</small>
-      <button type="button" className="info-i" aria-label="More info" aria-expanded={open} onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen((o) => !o); }}>i</button>
-      {open && <small className="info-more" role="note">{long}</small>}
-    </span>
-  );
-}
-
-/**
- * The sound panel behind the speaker button. Phones (<600 px): a full-width sheet under the top bar (safe-area aware,
- * scrolls within the viewport); desktop: the popover. Sections: Volume (every slider full width), Bots, Effects,
- * Host music (online), then the table's locked settings as read-only info.
- */
-export function SoundSheet({ allOff, onMuteAll, onClose }: { allOff: boolean; onMuteAll: () => void; onClose: () => void }) {
-  const s = useSoundSettings();
-  const t = useTalkPrefs();
-  const hm = useHostMusic();
-  const reduced = useReduceEffects();
-  const voiceOk = typeof window !== 'undefined' && ('AudioContext' in window || 'webkitAudioContext' in window || 'speechSynthesis' in window);
-  const esc = useEscapeClose(onClose);
-  return (
-    <div ref={esc} className="sound-pop sound-sheet glass" role="dialog" aria-label="Sound" data-testid="sound-sheet">
-      <div className="sheet-head">
-        <span className="panel-title">SOUND</span>
-        <button type="button" className="sheet-close" aria-label="Close sound settings" onClick={onClose}>CLOSE</button>
-      </div>
-      <NowPlayingLine />
-      <div className="sheet-actions">
-        <button type="button" className={`mute-all bot-mute big ${t.voices ? '' : 'off'}`} data-testid="bot-voice-quick" aria-pressed={!t.voices} onClick={() => talkPrefs.set({ voices: !t.voices })}>🤖 {t.voices ? 'Mute bots' : 'Bots muted'}</button>
-        <button type="button" className="mute-all big" data-testid="mute-all" onClick={onMuteAll}>{allOff ? '🔊 Unmute' : '🔇 Mute all'}</button>
-      </div>
-
-      <section className="sheet-sec" aria-label="Volume">
-        <h4>Volume</h4>
-        <VolumeRow label="Master / effects" value={s.volume} disabled={!s.on} onChange={(v) => sound.set({ volume: v })} onRelease={() => sound.play('bid')}
-          toggle={{ on: s.on, label: 'Sound effects', set: (on) => { sound.set({ on }); if (on) setTimeout(() => sound.play('tap'), 30); } }} />
-        <VolumeRow label="Music" value={s.musicVolume} disabled={!s.music} onChange={(v) => sound.set({ musicVolume: v })}
-          toggle={{ on: s.music, label: 'Music', testId: 'music-switch', set: (on) => sound.set({ music: on }) }} />
-        {s.music && s.musicStatus === 'error' && <small className="sf-note">Can't load the track</small>}
-        <VolumeRow label="Bot voices" value={t.voiceVolume} disabled={!t.voices || !voiceOk} testId="bot-voice-volume" onChange={(v) => talkPrefs.set({ voiceVolume: v })} />
-        <ChatSoundsRow />
-      </section>
-
-      <section className="sheet-sec" aria-label="Spatial">
-        <h4>Spatial</h4>
-        <SpatialFields />
-      </section>
-
-      <section className="sheet-sec" aria-label="Bots">
-        <h4>Bots</h4>
-        <label className="sf-row"><span>Bot voices{!voiceOk && <small className="sf-note"> · not supported here</small>}</span>
-          <button type="button" role="switch" aria-checked={t.voices} aria-label="Bot voices" data-testid="bot-voices" className={`switch ${t.voices ? 'on' : ''}`} disabled={!voiceOk} onClick={() => talkPrefs.set({ voices: !t.voices })}><i /></button></label>
-        <label className="sf-row"><span>Hide bot trash talk<small className="sf-note"> · in your chat</small></span>
-          <button type="button" role="switch" aria-checked={t.hideBotTalk} aria-label="Hide bot trash talk" data-testid="hide-bot-talk" className={`switch ${t.hideBotTalk ? 'on' : ''}`} onClick={() => talkPrefs.set({ hideBotTalk: !t.hideBotTalk })}><i /></button></label>
-      </section>
-
-      <section className="sheet-sec" aria-label="Effects">
-        <h4>Effects</h4>
-        <label className="sf-row"><span>Reduce effects <InfoNote short="no shake / flash" long="Keeps the hype sounds and pop-ups; drops camera shake, flashes and the shockwave, and the nuke stays calm. Your device's Reduce motion setting only drops the shake." /></span>
-          <button type="button" role="switch" aria-checked={reduced} aria-label="Reduce effects" data-testid="reduce-fx" className={`switch ${reduced ? 'on' : ''}`} onClick={() => fx.setReduce(!reduced)}><i /></button></label>
-        <VibrationSwitch />
-      </section>
-
-      {hm.room && (
-        <section className="sheet-sec" aria-label="Host music">
-          <h4>Host music</h4>
-          <HostMusicFields />
-        </section>
-      )}
-
-      <section className="sheet-sec locked" aria-label="Table settings">
-        <h4>Table settings <small>🔒 read-only</small></h4>
-        <div className="sf-row" data-testid="talk-intensity-info"><span>Trash talk</span><b className="sf-val">{TALK_INTENSITY_LABEL[tableIntensity()]}</b></div>
-        <TableNukeInfo short />
-      </section>
-    </div>
-  );
-}
-
 /** Spatial controls: spatial toggle, audio quality, category volumes.
  *  Phase 7 adds the human Voice chat volume (playerVoice category, applied once on the voice-chat bus).
  *  There is NO room/soundscape picker (owner, 2026-10-20): each venue has its own signature
@@ -172,7 +87,7 @@ export function SpatialFields() {
   );
 }
 
-/** Volume / on-off / ambience controls (shared by the setup screen and the scorebug popover). */
+/** Volume / on-off / ambience controls — the Settings sheet's Sound & music group body. */
 export function SoundFields({ compact = false }: { compact?: boolean }) {
   const s = useSoundSettings();
   return (
@@ -210,14 +125,17 @@ export function SoundFields({ compact = false }: { compact?: boolean }) {
 }
 
 /**
- * Always-visible speaker (every screen, top-right corner, safe-area aware). Tap: popover with music + SFX controls.
- * The same tap resumes or rebuilds a suspended AudioContext and primes music inside the gesture.
- * Long-press or double-tap: mute everything instantly (again to restore). Shows a muted icon when all is off,
- * a needs-tap ring while the context is suspended, and animated bars while music is playing.
+ * Always-visible speaker: it parks on the screen's .dock-slot (the home top bar, the
+ * in-game scorebug) and floats at the top-right corner where a screen has no slot.
+ * Tap: opens the ONE Settings sheet (settingsSheet.ts), landed on the Sound & music
+ * group — the speaker has no settings surface of its own anymore (owner, 2026-10-20).
+ * The same tap resumes or rebuilds a suspended AudioContext and primes music inside
+ * the gesture. Long-press or double-tap: mute everything instantly (again to
+ * restore). Shows a muted icon when all is off, a needs-tap ring while the context
+ * is suspended, and animated bars while music is playing.
  */
 export function SoundDock() {
   const s = useSoundSettings();
-  const [open, setOpen] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const press = useRef<{ timer: number | null; long: boolean; lastTap: number; down: number }>({ timer: null, long: false, lastTap: -Infinity, down: 0 });
@@ -254,22 +172,16 @@ export function SoundDock() {
     const iv = window.setInterval(kick, 1000); // late layout shifts (fonts, safe areas)
     return () => { mo.disconnect(); window.removeEventListener('resize', kick); clearInterval(iv); if (raf) cancelAnimationFrame(raf); };
   }, []);
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: PointerEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    window.addEventListener('pointerdown', close);
-    return () => window.removeEventListener('pointerdown', close);
-  }, [open]);
   useEffect(() => { if (!flash) return; const t = setTimeout(() => setFlash(null), 1300); return () => clearTimeout(t); }, [flash]);
-  const muteAll = () => { const muted = sound.toggleMuteAll(); setOpen(false); setFlash(muted ? 'MUTED' : 'SOUND ON'); };
+  const muteAll = () => { const muted = sound.toggleMuteAll(); setFlash(muted ? 'MUTED' : 'SOUND ON'); };
   const allOff = !s.on && !s.music;
   const playing = s.music && s.musicStatus === 'playing';
   const needsTap = s.needsRestore;
   return (
-    <div className={`sound-dock ${open ? 'open' : ''}`} ref={ref}>
+    <div className="sound-dock" ref={ref}>
       <button
         type="button" className={`dock-btn ${allOff ? 'muted' : ''} ${playing ? 'playing' : ''} ${needsTap ? 'needs-tap' : ''}`}
-        aria-label={speakerAriaLabel(needsTap, allOff)} aria-expanded={open} data-testid="sound-button" data-needs-tap={needsTap ? 'true' : 'false'}
+        aria-label={speakerAriaLabel(needsTap, allOff)} data-testid="sound-button" data-needs-tap={needsTap ? 'true' : 'false'}
         onPointerDown={(e) => {
           // Inside the user gesture: resume or rebuild, and prime the music elements before the sheet opens.
           sound.wake('gesture');
@@ -289,60 +201,17 @@ export function SoundDock() {
           const now = performance.now();
           if (now - press.current.lastTap < 320) { press.current.lastTap = -Infinity; muteAll(); return; }
           press.current.lastTap = now;
-          setOpen((o) => !o);
+          // ONE sheet total (owner, 2026-10-20): the speaker opens the same Settings
+          // sheet as the gear, landed on the Sound & music group — no second surface.
+          requestSettingsSheet('sound');
         }}
       >
         <span className="dock-icon">{allOff ? '🔇' : icon(s.on || s.music, s.on ? s.volume : s.musicVolume)}</span>
         {playing && <span className="np-eq dock-eq" aria-hidden><i /><i /><i /></span>}
       </button>
       {flash && <div className="dock-flash" role="status">{flash}</div>}
-      {open && (
-        <SoundSheet allOff={allOff} onMuteAll={muteAll} onClose={() => setOpen(false)} />
-      )}
     </div>
   );
-}
-
-/** Speaker icon for the scorebug; opens a small glass popover with the sound controls. */
-export default function SoundButton() {
-  const s = useSoundSettings();
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const esc = useEscapeClose(() => setOpen(false));
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: PointerEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    window.addEventListener('pointerdown', close);
-    return () => window.removeEventListener('pointerdown', close);
-  }, [open]);
-  return (
-    <div className="sound-btn-wrap" ref={ref}>
-      <button type="button" className="bug-btn" aria-label="Sound settings" aria-expanded={open} data-testid="sound-button" onClick={() => setOpen((o) => !o)}>
-        {icon(s.on, s.volume)}
-      </button>
-      {open && (
-        <div ref={esc} className="sound-pop glass slant" role="dialog" aria-label="Sound">
-          <div className="panel-title">SOUND</div>
-          <NowPlayingLine />
-          <SoundFields compact />
-          <HostMusicPopSection />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function HostMusicPopSection() {
-  const hm = useHostMusic();
-  if (!hm.room) return null;
-  return <div className="sheet-sec" aria-label="Host music"><HostMusicFields /></div>;
-}
-
-/** Track info line for the speaker menus (the only persistent place it shows). */
-export function NowPlayingLine() {
-  const s = useSoundSettings();
-  if (!s.music || !s.nowPlaying) return null;
-  return <div className="np-line" data-testid="np-line">♫ <b>{s.nowPlaying.track.title}</b> <small>by {s.nowPlaying.track.artist}</small></div>;
 }
 
 let npShown = false; // once per page load, ever
@@ -366,7 +235,7 @@ export function NowPlaying() {
   );
 }
 
-/** Chat sounds: a DM chime anywhere in the app, a soft blip in chat while you read. Shared by the sound sheet and the Settings sheet's Sound & music group. */
+/** Chat sounds: a DM chime anywhere in the app, a soft blip in chat while you read. Lives in the Settings sheet's Sound & music group. */
 export function ChatSoundsRow() {
   const s = useSoundSettings();
   return (
@@ -447,13 +316,21 @@ export function BotTalkFields() {
   );
 }
 
-/** Quick mute for bot voices in the sound dock popover. */
-export function BotVoiceQuickMute() {
+/**
+ * The retired Sound sheet's two quick actions, now at the top of the Settings
+ * sheet's Sound & music group (owner consolidation, 2026-10-20): mute the bot
+ * voices, or mute everything, without hunting through the individual switches.
+ * These were the old sheet's only controls that didn't already live in Settings.
+ */
+export function SoundQuickActions() {
+  const s = useSoundSettings();
   const t = useTalkPrefs();
+  const allOff = !s.on && !s.music;
   return (
-    <button type="button" className={`mute-all bot-mute ${t.voices ? '' : 'off'}`} data-testid="bot-voice-quick" aria-pressed={!t.voices} title={t.voices ? 'Mute bot voices' : 'Bot voices are off (tap to turn on)'} onClick={() => talkPrefs.set({ voices: !t.voices })}>
-      🤖 {t.voices ? 'Mute bots' : 'Bots muted'}
-    </button>
+    <div className="sheet-actions">
+      <button type="button" className={`mute-all bot-mute big ${t.voices ? '' : 'off'}`} data-testid="bot-voice-quick" aria-pressed={!t.voices} onClick={() => talkPrefs.set({ voices: !t.voices })}>🤖 {t.voices ? 'Mute bots' : 'Bots muted'}</button>
+      <button type="button" className="mute-all big" data-testid="mute-all" onClick={() => sound.toggleMuteAll()}>{allOff ? '🔊 Unmute' : '🔇 Mute all'}</button>
+    </div>
   );
 }
 

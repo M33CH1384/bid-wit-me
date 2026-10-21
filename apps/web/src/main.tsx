@@ -65,7 +65,11 @@ function Root() {
       </RouteGuard>
       <InkLayer />
       <ReactiveGlow />
-      <SoundDock />
+      {/* The floating speaker parks on a designed slot (home top bar, table scorebug).
+          The full-screen /profile and /rewards routes have no slot, so the dock fell
+          back to its fixed corner position and sat ON the page header (it covered the
+          profile's season label — owner, 2026-10-20): no floating dock on those routes. */}
+      {path !== '/profile' && path !== '/rewards' && <SoundDock />}
       <SocialRoot />
       <IdleGuard />
     </>

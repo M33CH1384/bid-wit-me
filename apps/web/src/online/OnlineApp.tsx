@@ -1,6 +1,8 @@
 import { type FormEvent, useEffect, useState } from 'react';
 import { CODE_LENGTH, isRoomCode, normalizeRoomCode } from '@spades/protocol';
 import { NowPlaying } from '../SoundControls';
+import SettingsSheetHost from '../SettingsSheetHost';
+import { type TipsPref, loadTips } from '../tips';
 import { HostMusicBridge } from './HostMusic';
 import { type Settings, loadSettings, saveSettings, settingsToRules } from '../settings';
 import { serverUrl } from './config';
@@ -32,11 +34,20 @@ export default function OnlineApp({ path }: { path: string }) {
   useEffect(() => { if (!code) navigate('/', true, { wiz: 'setup', path: 'online' }); }, [code]);
   const [name, setName] = useState(loadName);
   const [ready, setReady] = useState(() => canEnterTable(code, loadName(), location.search));
+  // The entry screen has no table room to host the one Settings sheet, so it hosts
+  // it here — the floating speaker must never be a dead tap (owner, 2026-10-20).
+  const [settings, setSettings] = useState<Settings>(loadSettings);
+  const [tips, setTips] = useState<TipsPref>(loadTips);
   // A later Spectate link can land on this same screen. ?watch=1 must not wait on the name form.
   const enter = ready || canEnterTable(code, loadName(), location.search);
   if (!code) return null;
   if (!enter) {
-    return <Entry code={code} name={name} onName={setName} onGo={(c) => { saveName(name.trim()); setReady(true); if (c !== code) navigate(`/t/${c}`); }} />;
+    return (
+      <>
+        <Entry code={code} name={name} onName={setName} onGo={(c) => { saveName(name.trim()); setReady(true); if (c !== code) navigate(`/t/${c}`); }} />
+        <SettingsSheetHost settings={settings} onChange={(s) => { setSettings(s); saveSettings(s); }} tips={tips} onTips={setTips} />
+      </>
+    );
   }
   return <TableRoom key={code} code={code} name={tableEntryName(name, location.search)} />;
 }
@@ -122,6 +133,7 @@ function TableRoom({ code, name }: { code: string; name: string }) {
 function TableRoomInner({ conn, code }: { conn: TableConnection; code: string }) {
   const cs = useConn(conn);
   const [settings, setSettings] = useState<Settings>(loadSettings);
+  const [tips, setTips] = useState<TipsPref>(loadTips);
   useEffect(() => { preloadTable(settings.quality); }, [settings.quality]); // lobby: the 3D table loads while you wait
   const [lobbyOpen, setLobbyOpen] = useState(false);
   const [mesh, setMesh] = useState<VideoMesh | null>(null);
@@ -289,6 +301,9 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
         />
       )}
       <StatsOff conn={conn} on={cs.statsOff} />
+      {/* one Settings sheet for the online side too: the lobby and the live table
+          both reach it through the speaker (sound landing) via this host */}
+      <SettingsSheetHost settings={settings} onChange={(s) => { setSettings(s); saveSettings(s); }} tips={tips} onTips={setTips} />
     </>
   );
 }

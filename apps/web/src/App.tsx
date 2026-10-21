@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { preloadTable } from './three/preload';
 import { secureSeed } from '@spades/rules';
 import Setup from './Setup';
+import SettingsSheetHost from './SettingsSheetHost';
+import { type TipsPref, loadTips } from './tips';
 import { usePresence } from './social/Social';
 import { NowPlaying } from './SoundControls';
 import { sound } from './audio';
@@ -15,6 +17,10 @@ import { holdIdleExemption } from './inactivity';
 
 export default function App() {
   const [settings, setSettings] = useState<Settings>(loadSettings);
+  // Tips prefs live here (not in Setup) so the one Settings sheet — hosted below for
+  // both the wizard and the table — and the wizard's own tips toggle share one copy.
+  const [tips, setTips] = useState<TipsPref>(loadTips);
+  const applySettings = (s: Settings) => { setSettings(s); saveSettings(s); };
   const [game, setGame] = useState<{ seed: string; settings: Settings; resume?: SavedGame; dealer?: number; continueSeries?: boolean } | null>(() => {
     const p = new URLSearchParams(location.search);
     if (p.get('autostart')) {
@@ -55,11 +61,14 @@ export default function App() {
       <NowPlaying />
       <Setup
         settings={settings}
-        onChange={(s) => { setSettings(s); saveSettings(s); }}
+        onChange={applySettings}
+        tips={tips}
+        onTips={setTips}
         onStart={() => { if (!confirmReplaceSave(saved, (m) => window.confirm(m))) return; history.replaceState({ wiz: 'home', d: 0 }, '', location.pathname); saveSettings(settings); saveSeries(null); setGame({ seed: secureSeed(), settings, continueSeries: false }); }}
         onResume={saved ? () => { history.replaceState({ wiz: 'home', d: 0 }, '', location.pathname); setGame({ seed: saved.seed, settings: saved.settings, resume: saved, continueSeries: true }); } : null}
         resumeLabel={saved ? `${MODES.find((m) => m.key === saved.settings.mode)?.title ?? 'game'} · hand ${saved.state.handNo}` : undefined}
       />
+      <SettingsSheetHost settings={settings} onChange={applySettings} tips={tips} onTips={setTips} />
       </>
     );
   }
@@ -81,6 +90,10 @@ export default function App() {
       onView={(view) => { const s = { ...game.settings, view }; setGame({ ...game, settings: s }); setSettings(s); saveSettings(s); }}
       onTurnUp={(turnUp) => { const s = { ...game.settings, turnUp }; setGame({ ...game, settings: s }); setSettings(s); saveSettings(s); }}
     />
+    {/* the speaker at the table opens the same one Settings sheet (sound landing);
+        edits land on the saved settings — the live hand keeps its snapshot, exactly
+        like the rules it was dealt under */}
+    <SettingsSheetHost settings={settings} onChange={applySettings} tips={tips} onTips={setTips} />
     </>
   );
 }

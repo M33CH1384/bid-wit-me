@@ -1,8 +1,8 @@
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useEscapeClose } from './useEscapeClose';
 import Credits from './Credits';
 import Feedback, { AboutRow } from './Feedback';
-import { BotTrashTalkRow, ChatSoundsRow, NukeIntensityRow, ReduceEffectsRow, SoundFields } from './SoundControls';
+import { BotTrashTalkRow, ChatSoundsRow, NukeIntensityRow, ReduceEffectsRow, SoundFields, SoundQuickActions } from './SoundControls';
 import { TeamNameField, myTeamName, useMyTeamName } from './TeamName';
 import ThemeToggle from './ThemeToggle';
 import { CLASSIC_JOKER, makeRules } from '@spades/rules';
@@ -45,9 +45,16 @@ export const TALK_HINT: Record<Settings['talkIntensity'], string> = {
   nomercy: 'No Mercy: the full roast',
 };
 
-/** Every less-common option lives here (one gear sheet): game speed, graphics, tips, sound + music, house rules, credits. */
-export default function MoreOptions({ settings: s, onChange, tips, onTips, onClose }: {
+/** Every less-common option lives here — THE one settings sheet (owner, 2026-10-20):
+ *  game speed, graphics, tips, sound + music, house rules, credits. The old separate
+ *  speaker Sound sheet is retired; the speaker button opens THIS sheet, landed on the
+ *  Sound & music group via initialSection="sound" (see settingsSheet.ts). */
+export default function MoreOptions({ settings: s, onChange, tips, onTips, onClose, initialSection, anchorSeq }: {
   settings: Settings; onChange: (s: Settings) => void; tips: TipsPref; onTips: (t: TipsPref) => void; onClose: () => void;
+  /** Open landed on a group instead of the top (the speaker's sound landing). */
+  initialSection?: 'sound';
+  /** Bumped per open request so a repeat request while open re-lands the anchor. */
+  anchorSeq?: number;
 }) {
   const [house, setHouse] = useState(false);
   const [credits, setCredits] = useState(false);
@@ -56,6 +63,13 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
   const rules = settingsToRules(s);
   const isJokerDeck = rules.deck === 'joker54';
   const esc = useEscapeClose(onClose);
+  const soundGroupRef = useRef<HTMLElement>(null);
+  // The speaker's landing: scroll the Sound & music group to the top of the sheet body.
+  useEffect(() => {
+    if (initialSection !== 'sound') return;
+    const el = soundGroupRef.current;
+    if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'start' });
+  }, [initialSection, anchorSeq]);
   return (
     <>
     <div className="modal-backdrop sheet-backdrop" ref={esc} onClick={onClose}>
@@ -82,8 +96,9 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
             <Seg label="Trash talk intensity" value={s.talkIntensity ?? 'cookout'} options={[['family', 'Family'], ['cookout', 'Cookout'], ['nomercy', 'No Mercy']]} onChange={(v) => set('talkIntensity', v)} />
           </Row>
           </section>
-          <section className="set-group" aria-label="Sound & music">
+          <section className="set-group" aria-label="Sound & music" ref={soundGroupRef} data-testid="settings-sound-group">
           <h3 className="sheet-h">Sound &amp; music</h3>
+          <SoundQuickActions />
           <SoundFields />
           <ChatSoundsRow />
           <BotTrashTalkRow />

@@ -369,9 +369,6 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .seat-anchor.side-right > .plate { transform: translate(-100%, -50%); }
 
 /* ---------- sound controls ---------- */
-.sound-btn-wrap { position: relative; display: flex; flex: none; }
-.sound-btn-wrap > .bug-btn { height: 100%; }
-.sound-pop, .sound-pop.glass.slant { position: absolute; right: 0; top: calc(100% + 8px); width: 250px; padding: 12px 14px; z-index: 50; --slant: 12px; }
 .sound-fields { display: flex; flex-direction: column; gap: 10px; padding: 10px 0; border-bottom: 1px solid rgba(var(--edge-rgb),.15); }
 .sound-fields.compact { border: 0; padding: 6px 0 0; }
 .sf-row { display: flex; align-items: center; gap: 10px; justify-content: space-between; font-size: 15px; }
@@ -666,7 +663,6 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .dock-btn.needs-tap .dock-icon { opacity: .8; }
 .dock-eq { position: absolute; right: 5px; bottom: 5px; height: 9px; }
 .dock-eq i { width: 2px; background: var(--gold); }
-.sound-dock .sound-pop, .sound-dock .sound-pop.glass.slant { position: absolute; right: 0; top: calc(100% + 8px); width: min(270px, calc(100vw - 24px)); max-height: calc(100dvh - 70px); overflow: auto; }
 .pop-head { display: flex; align-items: center; justify-content: space-between; }
 .mute-all { border: 0; background: rgba(255,77,109,.22); color: #ffd1da; font-family: var(--display); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; font-size: 13px; padding: 5px 10px; clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); }
 .dock-flash { position: absolute; right: 0; top: calc(100% + 6px); white-space: nowrap; font-family: var(--display); font-weight: 800; letter-spacing: .12em; font-size: 13px; padding: 4px 10px; background: var(--purple); color: #fff; box-shadow: 0 0 14px rgba(var(--purple-rgb),.8); animation: fade-up .2s ease both; }
@@ -1883,32 +1879,13 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .vol-slider::-moz-range-thumb { width: 22px; height: 22px; border-radius: 50%; background: #fff; border: 3px solid var(--purple); box-shadow: 0 2px 8px rgba(0,0,0,.5); }
 .sound-fields .vol-row { margin: -2px 0; }
 
-.sound-dock .sound-pop.sound-sheet { width: 340px; max-height: calc(100dvh - var(--dock-top, 10px) - var(--dock-h, 40px) - 24px); overflow-y: auto; overscroll-behavior: contain; padding: 12px 16px 14px; border-radius: 14px; display: flex; flex-direction: column; gap: 10px; }
 .sheet-head { display: flex; align-items: center; justify-content: space-between; }
 .sheet-x { border: 0; background: rgba(255,255,255,.08); color: #fff; width: 36px; height: 36px; border-radius: 50%; font-size: 16px; }
 .sheet-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .mute-all.big { min-height: 44px; font-size: 14px; padding: 8px 10px; }
-.sheet-sec { display: flex; flex-direction: column; gap: 8px; padding-top: 10px; border-top: 1px solid rgba(var(--edge-rgb),.18); }
-.sheet-sec h4 { margin: 0; font-family: var(--display); font-weight: 800; font-size: 12px; letter-spacing: .16em; text-transform: uppercase; color: var(--purple-hot); }
-.sheet-sec h4 small { letter-spacing: .04em; text-transform: none; color: var(--muted); font-weight: 600; margin-left: 6px; }
-.sheet-sec .sf-row { min-height: 40px; }
-.sheet-sec.locked { opacity: .85; }
-.sheet-sec.locked .sf-row { min-height: 30px; font-size: 14px; }
-.sheet-sec .host-music .hm-head { display: none; }
-.sheet-sec .hm-tabs button, .sheet-sec .hm-beats button, .sheet-sec .hm-btn { min-height: 40px; font-size: 13px; }
-.sheet-sec .hm-link input { min-height: 40px; font-size: 15px; }
 .info-note { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-left: 4px; }
 .info-i { border: 1px solid rgba(var(--edge-rgb),.6); background: transparent; color: var(--purple-hot); width: 22px; height: 22px; border-radius: 50%; font: italic 700 12px/1 Georgia, serif; padding: 0; }
 .info-more { flex-basis: 100%; color: var(--muted); font-size: 12px; line-height: 1.35; }
-/* phones: an edge-to-edge sheet under the top bar, safe-area aware, scrolling inside the viewport */
-@media (max-width: 599px) {
-  .sound-dock .sound-pop.sound-sheet, .sound-dock .sound-pop.sound-sheet.glass {
-    position: fixed; left: 0; right: 0; width: auto; top: calc(var(--dock-top, 10px) + var(--dock-h, 40px) + 6px);
-    max-height: calc(100dvh - var(--dock-top, 10px) - var(--dock-h, 40px) - 6px); border-radius: 16px 16px 0 0;
-    padding: 12px calc(16px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
-    background: rgba(18,9,32,.97); clip-path: none;
-  }
-}
 /* the lobby: table music panel */
 .lobby-music { display: flex; flex-direction: column; gap: 8px; }
 .lobby-music .panel-title small { color: var(--muted); font-weight: 600; letter-spacing: .04em; }
@@ -1936,8 +1913,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .hm-host { display: grid; gap: 8px; margin-top: 6px; }
 .hm-tabs { flex-wrap: wrap; position: relative; z-index: 1; }
 .hm-tabs button { flex: 1 1 auto; }
-.hm-beats, .sheet-sec .hm-beats, .sound-pop .hm-beats { max-height: none; overflow: visible; margin-top: 0; }
-.sound-pop { max-height: calc(100dvh - 80px); overflow-y: auto; overscroll-behavior: contain; }
+.hm-beats { max-height: none; overflow: visible; margin-top: 0; }
 
 /* ---------- in-game v2: menu, tray, last-trick chip, score pad ---------- */
 .menu-wrap { position: relative; display: flex; flex: none; }
@@ -2791,10 +2767,8 @@ html[data-theme="neon"] .wiz-home::after {
 
    1. GROUPED CARDS. The Settings sheet's sections (Play / Sound & music /
       Look & effects / You / Beta feedback & support) render as .set-group
-      cards instead of one long ruled list, and the sound sheet's
-      .sheet-sec sections take the same card treatment, so both settings
-      surfaces group the same way. Inside a card, the last row drops its
-      hairline and every row gets the same minimum height.
+      cards instead of one long ruled list. Inside a card, the last row
+      drops its hairline and every row gets the same minimum height.
    2. ONE SWITCH, ONE SEGMENTED CONTROL. .toggle (MoreOptions) and
       .switch (SoundControls) were the same switch with drifted metrics
       (28 vs 26px tall, 22 vs 20px knobs, 21 vs 20px travels, plain vs
@@ -2817,7 +2791,6 @@ html[data-theme="neon"] .wiz-home::after {
 .set-group .row:last-child { border-bottom: 0; }
 .set-group .sound-fields { border-bottom: 0; padding: 6px 0 2px; }
 .set-group .sf-row { min-height: 44px; }
-.sheet-sec { border-top: 0; border-radius: 14px; background: rgba(255,255,255,.03); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.14); padding: 12px 14px; }
 /* one switch treatment (overrides the drifted base metrics) */
 .toggle { background: rgba(255,255,255,.16); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.4); }
 .toggle.on { box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.4), 0 0 10px rgba(var(--purple-rgb),.7); }
@@ -2828,8 +2801,7 @@ html[data-theme="neon"] .wiz-home::after {
 /* Neon: the group cards join the glass family (a quiet rim — these are
    sub-cards inside a sheet, not hero surfaces), and the Settings sheet
    goes solid so the home can't bleed through it. */
-html[data-theme="neon"] .set-group,
-html[data-theme="neon"] .sheet-sec {
+html[data-theme="neon"] .set-group {
   border: 1px solid transparent;
   background:
     linear-gradient(168deg, rgba(255,255,255,.07), rgba(255,255,255,0) 55%) padding-box,
@@ -2854,7 +2826,10 @@ html[data-theme="neon"] [data-testid="more-options"].sheet {
       settings surfaces (Settings sheet groups, the sound sheet / popover sections)
       is nowrap too, with shrinkable buttons — a row may still stack its label above
       the control (the sheet's established narrow-phone pattern), but a segmented
-      control itself never wraps again.
+      control itself never wraps again. (Selectors for the speaker's
+      separate sound sheet shared some of these overrides until that sheet
+      was retired in the same day's consolidation — one sheet total; its
+      rules were deleted, not re-scoped.)
    2. NEON SLIDER ACCENT. The volume sliders' fill rides --purple-hot, which under
       Neon is the electric blue #269cff — a bright blue track in a violet/gold sheet,
       matching no ink on screen. Under Neon only, the settings/sound sheets' slider
@@ -2864,9 +2839,7 @@ html[data-theme="neon"] [data-testid="more-options"].sheet {
 .sf-row.seg-stack > span { flex: none; }
 .sf-row.seg-stack > .seg { display: flex; flex-wrap: nowrap; width: 100%; }
 .sf-row.seg-stack > .seg button { flex: 1 1 0; min-width: 0; }
-.set-group .seg, .sheet-sec .seg, .sound-pop .seg { flex-wrap: nowrap; }
-.set-group .seg button, .sheet-sec .seg button, .sound-pop .seg button { min-width: 0; }
-html[data-theme="neon"] .sheet .vol-slider::-webkit-slider-runnable-track,
-html[data-theme="neon"] .sound-pop .vol-slider::-webkit-slider-runnable-track { background: linear-gradient(90deg, var(--purple) var(--pct, 50%), rgba(255,255,255,.14) var(--pct, 50%)); }
-html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress,
-html[data-theme="neon"] .sound-pop .vol-slider::-moz-range-progress { background: var(--purple); }
+.set-group .seg { flex-wrap: nowrap; }
+.set-group .seg button { min-width: 0; }
+html[data-theme="neon"] .sheet .vol-slider::-webkit-slider-runnable-track { background: linear-gradient(90deg, var(--purple) var(--pct, 50%), rgba(255,255,255,.14) var(--pct, 50%)); }
+html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: var(--purple); }

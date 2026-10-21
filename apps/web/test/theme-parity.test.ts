@@ -80,6 +80,8 @@ describe('Setup home parity', () => {
     return renderThemed(theme, createElement(Setup, {
       settings: DEFAULT_SETTINGS,
       onChange: () => {},
+      tips: { on: false, asked: true },
+      onTips: () => {},
       onStart: () => {},
       ...extra,
     }));

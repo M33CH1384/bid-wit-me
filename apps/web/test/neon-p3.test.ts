@@ -242,7 +242,7 @@ describe('Setup home renders', () => {
     root = createRoot(el);
     await act(async () => {
       themeStore.set(theme);
-      root!.render(createElement(Setup, { settings: DEFAULT_SETTINGS, onChange: () => {}, onStart: () => {} }));
+      root!.render(createElement(Setup, { settings: DEFAULT_SETTINGS, onChange: () => {}, tips: { on: false, asked: true }, onTips: () => {}, onStart: () => {} }));
     });
     return el;
   }

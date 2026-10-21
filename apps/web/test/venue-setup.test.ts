@@ -11,6 +11,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Setup from '../src/Setup';
+import SettingsSheetHost from '../src/SettingsSheetHost';
 import { DEFAULT_SETTINGS, type Settings } from '../src/settings';
 import { VENUE_LIST, resolveVenue, savePendingVenue, takePendingVenue } from '../src/venues';
 import { sessionRoom } from '../src/spatial';
@@ -20,8 +21,13 @@ import { sessionRoom } from '../src/spatial';
 let root: Root; let el: HTMLDivElement; let current: Settings;
 function Harness() {
   const [s, setS] = useState<Settings>(DEFAULT_SETTINGS);
+  const [tips, setTips] = useState({ on: false, asked: true });
   current = s;
-  return createElement(Setup, { settings: s, onChange: setS, onStart: () => {} });
+  // App's composition: the wizard plus the one Settings sheet's host — the gear
+  // files a request (settingsSheet.ts) and the host renders the sheet.
+  return createElement('div', null,
+    createElement(Setup, { settings: s, onChange: setS, tips, onTips: setTips, onStart: () => {} }),
+    createElement(SettingsSheetHost, { settings: s, onChange: setS, tips, onTips: setTips }));
 }
 const click = async (testid: string) => { await act(async () => { document.querySelector<HTMLButtonElement>(`[data-testid="${testid}"]`)!.click(); }); };
 async function toTable(path: 'play-bots' | 'play-online') {
