@@ -220,6 +220,15 @@ describe('progress import', () => {
     expect(m.series).toEqual({ v: 1, n: 'acct' });
     expect(m.teamName).toBe('X Team');
   });
+  it('per-pairing team names: sanitize cleans values and drops bad keys; merge is account-wins per key', () => {
+    const acct = sanitizeProgress({ teamNames: { offline: 'Acct Crew', 'user:pal': '  Spaced  ', 'BAD KEY!': 'Nope', 'user:bad': 42, 'user:empty': '   ' } });
+    expect(acct.teamNames).toEqual({ offline: 'Acct Crew', 'user:pal': 'Spaced' });
+    const dev = sanitizeProgress({ teamNames: { offline: 'Device Crew', 'user:other': 'Fill Ins' } });
+    const m = mergeProgress(acct, dev);
+    expect(m.teamNames).toEqual({ offline: 'Acct Crew', 'user:pal': 'Spaced', 'user:other': 'Fill Ins' });
+    // an account with no map at all imports the device's whole map
+    expect(mergeProgress(null, dev).teamNames).toEqual(dev.teamNames);
+  });
 });
 
 describe('passkeys', () => {

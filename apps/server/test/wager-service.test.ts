@@ -390,6 +390,38 @@ describe('view', () => {
   });
 });
 
+describe('team names (per pairing, set at challenge setup)', () => {
+  it('create carries the challenger side name; the opponent accept names side 1; begin seeds the match table', async () => {
+    let d = await create(io(), { id: cid(), format: 'partnership', rules: makeRules('joker'), wager: 100, startAt: now + 3600_000, teamName: 'Alpha Dogs', challenger: P('a'), opponent: P('b'), partner: P('c'), invitees: [] });
+    expect(view(d, 'a', now).teamNames).toEqual(['Alpha Dogs', null]);
+    d = await accept(io(), d, P('b'), P('d'), 'Bravo Team');
+    d = await accept(io(), d, P('c'), null);
+    d = await accept(io(), d, P('d'), null);
+    expect(view(d, null, now).teamNames).toEqual(['Alpha Dogs', 'Bravo Team']);
+    now = d.startAt - 600_000;
+    d = await alarm(io(), d);
+    now = d.startAt;
+    d = await alarm(io(), d);
+    expect(d.status).toBe('live');
+    expect((tablesSeen[0] as { teamNames?: unknown }).teamNames).toEqual(['Alpha Dogs', 'Bravo Team']);
+  });
+
+  it('an accept without a partner pick never touches the side names', async () => {
+    let d = await mkPartnership(100);
+    d = await accept(io(), d, P('c'), null, 'Should Not Stick');
+    expect(view(d, null, now).teamNames).toEqual([null, null]);
+  });
+
+  it('parseCreate reads and cleans the team name, rejects a filtered one', () => {
+    const H = 7 * 24 * 3600_000;
+    const base = { format: 'partnership', wager: 100, deck: 'joker', target: 500, timers: 'normal', startAt: now + 3600_000, opponent: 'B', partner: 'C' };
+    const ok = parseCreate({ ...base, teamName: '  Book Bandits  ' }, now, H);
+    expect(ok.ok && ok.v.teamName).toBe('Book Bandits');
+    const none = parseCreate(base, now, H);
+    expect(none.ok && none.v.teamName).toBeNull();
+  });
+});
+
 describe('net outcome (Phase 2 display field)', () => {
   const nets = (d: WData) => Object.fromEntries(view(d, null, now).players.map((p) => [p.uid, p.net]));
   const projNets = async (id: string) => {
