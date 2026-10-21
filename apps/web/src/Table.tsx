@@ -22,8 +22,10 @@ import { LockedRulesPanel } from './LockedRules';
 import { booksBanner, teamMinNote } from './polishText';
 import { type Series, addSeriesGame, seriesForGameStart, seriesSides, summarizeGame } from '@spades/rules';
 import { SeriesChip, SeriesSheet, loadSeries, saveSeries } from './Series';
+import StoryFace from './story/StoryFace';
 import { useMyTeamName } from './TeamName';
 import { offlineTalk } from './offlineTalk';
+import { storyEvents, storyFactsOf, storyMilestones, storySnap, type StorySnap } from './story/storyScene';
 import { BidOrder, BidSummary, showCenterBidOrder } from './PartnerTalk';
 import { guardTouches, lockBody } from './antiPan';
 import { TrumpLadder } from './trumpLadder';
@@ -75,6 +77,7 @@ import { leaveChoice, leaveMenuAction, type LeaveGesture } from './leaveMenu';
 import { biddingNote, noticeTip, seatFacingName, seatInitial, trickTakenLine } from './seatLabel';
 import { MinBidLine, bidChoices, minBidNote } from './minBid';
 import { type SavedGame, clearGame, saveGame } from './save';
+import { clearStoryGame, saveStoryGame } from './story/storySave';
 
 import { useViewport } from './viewport';
 import { tapPlaySlamIntensity } from './slam';
@@ -92,7 +95,7 @@ import { isWildDeuce } from './cardFaces';
 import { misdealRevealKey, misdealRevealMs } from './misdeal';
 import { QUICK_TRASH_SET } from './quickTrash';
 import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
-import { type BotLevel, type TalkIntensity, botSkillFor, partnerBidIntent, personaForName, platePersona, pickBotNames } from '@spades/bots';
+import { STORY_CHARACTERS, type BotLevel, type StoryBeat, type StoryBeatFacts, type StoryGameFacts, type StoryStop, type TalkIntensity, botSkillFor, callbackFor, midSceneFor, partnerBidIntent, personaForName, platePersona, pickBotNames, playBeatFor, railLineFor, resumeLineFor, tableExchangeFor } from '@spades/bots';
 import { preloadVoice } from './voices/voices';
 const Scene = lazy(loadScene);
 
@@ -194,9 +197,12 @@ export interface OnlineBinding {
   pot?: number | null;
 }
 
-/** Name-plate face (Demetrius 2026-10-19): a human seat's uploaded picture, else the initial. */
-function PlateFace({ uid, name, color }: { uid?: string; name: string; color: string }) {
+/** Name-plate face (Demetrius 2026-10-19): a human seat's uploaded picture, else the initial.
+ *  Story seats (art pass, 2026-10-21) show the character's portrait, with the
+ *  initial medallion as its built-in fallback. */
+function PlateFace({ uid, name, color, storyId }: { uid?: string; name: string; color: string; storyId?: string }) {
   const pic = useAvatar(uid);
+  if (storyId) return <StoryFace characterId={storyId} name={name} className="plate-avatar" />;
   return <AvatarCircle pic={pic} name={name} className="plate-avatar" style={{ ['--uc' as string]: color }} />;
 }
 
@@ -233,7 +239,19 @@ interface Props {
   story?: {
     names: string[];
     levelFor: (seat: number) => BotLevel;
-    onGameOver: (won: boolean) => void;
+    onGameOver: (won: boolean, facts: StoryGameFacts) => void;
+    /** Scene pass: the stop + stored facts, so the scene runs continuously
+     *  through the game (sit-down, bid/play reactions, milestone beats,
+     *  between-hands exchanges, recorded-event callbacks). Story games only. */
+    scene?: { stop: StoryStop; facts: StoryBeatFacts };
+    /** Story save slot (own key, never the normal save): the attempt context
+     *  this match started under + the dialogue session restored on resume. */
+    saveCtx?: {
+      attemptsAtStart: number;
+      clearsAtStart: number;
+      resumed: boolean;
+      initialSession?: { fired: string[]; memory: string[]; satDown: boolean; railFired?: number; lastRailHand?: number };
+    };
   };
 }
 
@@ -1125,12 +1143,139 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   useEffect(() => {
     if (!story || online || st.phase !== 'gameOver' || !st.result || storyFired.current) return;
     storyFired.current = true;
-    story.onGameOver(st.result.winners.includes(sideOf(HUMAN, r)));
+    story.onGameOver(st.result.winners.includes(sideOf(HUMAN, r)), storyFactsOf(st));
   }, [st.phase]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Story Mode scene channel (scene pass): the conversation runs from the
+  // deal to the final whistle. Beats surface through the table chat (never
+  // over the felt, never blocking a decision), each milestone/event fires
+  // at most once per game, and endgame callbacks reference only events
+  // recorded earlier in THIS match. Story games only — every other game
+  // takes the exact same code path as before (this effect no-ops).
+  const storySceneRef = useRef<{ prev: StorySnap | null; fired: Set<string>; memory: Set<string>; satDown: boolean; welcomed: boolean; railFired: number; lastRailHand: number }>(
+    {
+      prev: null,
+      fired: new Set(story?.saveCtx?.initialSession?.fired ?? []),
+      memory: new Set(story?.saveCtx?.initialSession?.memory ?? []),
+      satDown: story?.saveCtx?.initialSession?.satDown ?? false,
+      welcomed: false,
+      railFired: story?.saveCtx?.initialSession?.railFired ?? 0,
+      lastRailHand: story?.saveCtx?.initialSession?.lastRailHand ?? 0,
+    });
+  useEffect(() => {
+    const scene = story?.scene;
+    if (!scene || online) return;
+    const { stop, facts } = scene;
+    const S = storySceneRef.current;
+    const snap = storySnap(st);
+    const deliver = (beats: StoryBeat[], baseMs = 500, gapMs = 1500) => {
+      beats.forEach((bt, ix) => {
+        const name = bt.speaker === 'you' ? 'You' : (STORY_CHARACTERS[bt.speaker]?.name ?? bt.speaker);
+        const seatIx = names.indexOf(name);
+        window.setTimeout(() => {
+          push(name, showLine(bt.line), false, 0, true);
+          if (bt.speaker !== 'you' && seatIx >= 0 && !sound.voiceMuted(name)) {
+            speakBot(name, bt.line, undefined, undefined, undefined, pos[seatIx], n);
+          }
+        }, baseMs + ix * gapMs);
+      });
+    };
+    if (story?.saveCtx?.resumed && !S.welcomed) {
+      // A resumed match skips the intro and the sit-down beat — one line
+      // puts the table back in the room, then the thread continues.
+      S.welcomed = true;
+      deliver(resumeLineFor(stop), 900, 1500);
+    }
+    if (!S.satDown && snap.historyLen === 0 && snap.phase !== 'gameOver') {
+      S.satDown = true;
+      deliver(playBeatFor(stop, 'sitDown'), 900, 1700);
+    }
+    if (S.prev) {
+      let beatFired = false;
+      const evs = storyEvents(S.prev, snap);
+      for (const ev of evs) {
+        if (S.memory.has(ev)) continue;
+        S.memory.add(ev);
+        if (ev === 'bigBid') { deliver(playBeatFor(stop, 'bigBid'), 400, 1400); beatFired = true; }
+        else if (ev === 'jokerDropped') { deliver(playBeatFor(stop, 'joker'), 400, 1400); beatFired = true; }
+        else if (ev === 'cutMade') { deliver(playBeatFor(stop, 'cut'), 400, 1400); beatFired = true; }
+        // nilMade / nilBusted are memory for the endgame callbacks, not lines of their own
+      }
+      let finalHandNow = false;
+      if (snap.historyLen > S.prev.historyLen && snap.lastHand) {
+        const handNo = snap.historyLen;
+        // living level between hands: the stop's own exchange, early hands
+        // always, later hands every other — short, and never over a decision
+        if (handNo <= 3 || handNo % 2 === 1) {
+          deliver(tableExchangeFor(stop, snap.lastHand.myPoints >= snap.lastHand.theirPoints), 700, 1400);
+          beatFired = true;
+        }
+        for (const m of storyMilestones(S.prev, snap)) {
+          if (S.fired.has(m.milestone)) continue;
+          S.fired.add(m.milestone);
+          let beats = midSceneFor(stop, m.milestone, m.ahead, facts);
+          if (m.milestone === 'finalHand') {
+            finalHandNow = true;
+            if (S.memory.has('nilBusted')) beats = [...beats, ...callbackFor(stop, 'nilBusted')];
+            if (S.memory.has('bigSwing')) beats = [...beats, ...callbackFor(stop, 'bigSwing')];
+          }
+          deliver(beats, 3400, 1700);
+          beatFired = true;
+        }
+      }
+      // RAILBIRDS: background cast chiming in from the rail — sparse,
+      // event-keyed, rate-capped (storyRail.ts), and NEVER stacked on a
+      // scripted beat from this same state change. One exception: at the
+      // King, the rail's finalHand witness line lands after the scene
+      // beat — the whole neighborhood watching is the point of the finale.
+      const railEvent = (['jokerDropped', 'cutMade', 'nilMade', 'nilBusted', 'bigSwing'] as const).find((e) => evs.includes(e));
+      const wantRail = finalHandNow && stop.id === 'king' ? 'finalHand' as const : (!beatFired ? railEvent : undefined);
+      if (wantRail && snap.handNo > S.lastRailHand) {
+        const line = railLineFor(stop.id, wantRail, {
+          fired: S.railFired,
+          handNo: snap.handNo,
+          stopsCleared: facts.clearedStopIds?.length ?? 0,
+          attemptsAtOwnStop: (facts as { attemptsAtPorch?: number }).attemptsAtPorch ?? 0,
+        });
+        if (line) {
+          S.railFired++;
+          S.lastRailHand = snap.handNo;
+          const railName = STORY_CHARACTERS[line.speaker]?.name ?? line.speaker;
+          const delay = finalHandNow && stop.id === 'king' ? 7200 : 1100;
+          window.setTimeout(() => {
+            push(`${railName} · rail`, showLine(line.line), false, 0, true);
+            if (!sound.voiceMuted(railName)) speakBot(railName, line.line, undefined, undefined, undefined, undefined, n);
+          }, delay);
+        }
+      }
+    }
+    S.prev = snap;
+  }, [st]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // persist after every action (and chat line); a finished game clears the save
   useEffect(() => {
-    if (online || story) return; // online games live on the server; story games must not clobber the player's saved bot game
+    if (online) return; // online games live on the server
+    if (story) {
+      // Story games save to their OWN slot (storySave.ts) — the normal
+      // offline save is never touched, and this slot carries the story
+      // wrapper + dialogue session so a swipe-away resumes the exact match
+      // AND its conversation thread. Written on every state change, like
+      // the normal save (iOS may never deliver a polite exit event).
+      if (!story.scene || !story.saveCtx) return;
+      if (st.phase === 'gameOver') clearStoryGame();
+      else {
+        const S = storySceneRef.current;
+        saveStoryGame(
+          { seed, settings, state: st, chat: rawMsgs, names, teamNames: [null, botTeam], nuke: fx.tableNuke ?? fx.prefs.nuke },
+          {
+            stopId: story.scene.stop.id, track: 'solo',
+            attemptsAtStart: story.saveCtx.attemptsAtStart, clearsAtStart: story.saveCtx.clearsAtStart,
+            session: { fired: [...S.fired], memory: [...S.memory], satDown: S.satDown, railFired: S.railFired, lastRailHand: S.lastRailHand },
+          },
+        );
+      }
+      return;
+    }
     if (st.phase === 'gameOver') clearGame();
     else saveGame({ seed, settings, state: st, chat: rawMsgs, names, teamNames: [null, botTeam], nuke: fx.tableNuke ?? fx.prefs.nuke });
   }, [st, rawMsgs, seed, settings, online]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1369,6 +1514,14 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // (ambience by default) — explicit per-context choices are kept inside the engine.
   useEffect(() => { sound.enterContext('game'); return () => sound.enterContext('menu'); }, []);
   useEffect(() => { const style = sound.applySoundscape(seed, online?.venue, !online && settings.venue !== 'random' ? settings.venue : undefined); setRoomName(style.name); return () => sound.setVenueBed('none'); }, [seed]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Story games: the stop's score mood + bed identity ride the whole match
+  // (audio-pass contract); cleared on unmount. Normal games never call this.
+  const storyStopId = story?.scene?.stop.id;
+  useEffect(() => {
+    if (!storyStopId) return;
+    sound.setStoryStop(storyStopId);
+    return () => { sound.setStoryStop(null); };
+  }, [storyStopId]);
   // nuke blast: fires only once a nuked trick is COMPLETE and held on the table (the finished-trick
   // hold) — never while a trick is merely armed (both Jokers down, seats still to play): the nuke
   // doesn't go off until every card is played, in every trick (Demetrius 2026-10-20). No landing
@@ -1550,9 +1703,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         {seatProfile ? (
           <button type="button" className="plate-face-tap" data-testid={`plate-profile-${seat}`} aria-label={`View ${names[seat]}'s profile`}
             onClick={() => openPlayerProfile({ id: seatUid, name: names[seat] ?? '' }, { atTable: true })}>
-            <PlateFace uid={seatUid} name={names[seat] ?? ''} color={SEAT_COLORS[seat]} />
+            <PlateFace uid={seatUid} name={names[seat] ?? ''} color={SEAT_COLORS[seat]} storyId={storySeatIds?.[seat]} />
           </button>
-        ) : <PlateFace uid={seatUid} name={names[seat] ?? ''} color={SEAT_COLORS[seat]} />}
+        ) : <PlateFace uid={seatUid} name={names[seat] ?? ''} color={SEAT_COLORS[seat]} storyId={storySeatIds?.[seat]} />}
         <div className="plate-body">
           <div className="plate-name">{names[seat]}{dealerSeat === seat && <span className="chip dealer" data-testid={`dealer-${seat}`}>DEALER</span>}{partner && <span className="chip ally">PARTNER</span>}{notice.includes(sideOf(seat, r)) && <span className="chip notice" data-testid={`notice-${seat}`} title="Got shot last hand: one more shot and they're out">ON NOTICE</span>}</div>
           <div className="plate-stats" key={st.handNo}>
@@ -1595,6 +1748,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
   // Versus intro model (boxing match card): sides from the seats at this table.
   // Partnership = two duo units under their team names; cutthroat = one side each.
+  // Story seats carry their character id for portrait faces (art pass):
+  // seat 1 = pair[0], seat 2 = Dee, seat 3 = pair[1]; the player keeps their photo.
+  const storySeatIds: Record<number, string> | null = story?.scene
+    ? { 1: story.scene.stop.pair[0], 2: 'dee', 3: story.scene.stop.pair[1] }
+    : null;
   const versusModel: VersusModel | null = useMemo(() => {
     if (!versusActive) return null;
     const member = (seat: number): VersusMember => ({
@@ -1602,6 +1760,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       uid: online ? (online.seatUid?.(seat) ?? null) : seat === HUMAN ? (acctUser?.id ?? null) : null,
       isBot: isBotSeat(seat),
       direct: !online && seat === HUMAN ? (acctUser?.avatar ?? null) : null,
+      storyId: storySeatIds?.[seat] ?? null,
     });
     if (r.partnerships) {
       return {

@@ -11,25 +11,32 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { secureSeed } from '@spades/rules';
 import {
-  STORY_STOPS, STORY_CHARACTERS, STORY_TIER_LABEL, STORY_TIER_SKILL, beatsFor, deeSkillForStop,
-  storyReward, type StoryStop,
+  STORY_SECRETS, STORY_STOPS, STORY_CHARACTERS, STORY_TIER_LABEL, STORY_TIER_SKILL, beatsFor, deeSkillForStop,
+  storyReward, type StoryBeatFacts, type StoryGameFacts, type StoryStop,
 } from '@spades/bots';
 import Table from '../Table';
 import SettingsSheetHost from '../SettingsSheetHost';
 import { NowPlaying } from '../SoundControls';
 import { CoinIcon } from '../RepBlock';
+import { sound } from '../audio';
 import { type TipsPref, loadTips } from '../tips';
 import { type Settings, loadSettings, saveSettings } from '../settings';
 import { navigate } from '../online/nav';
 import { storyRulesFor, storySettingsFor } from './storySettings';
-import { STORY_OWNER_ONLY, fetchStoryDev, fetchStoryProgress, postStoryResult, storyLockedFor, type StoryProgress, type StoryResult } from './storyApi';
-import ScriptPlayer from './ScriptPlayer';
+import { STORY_OWNER_ONLY, fetchStoryDev, fetchStoryProgress, postStoryFound, postStoryResult, storyLockedFor, type StoryProgress, type StoryResult } from './storyApi';
+import { clearStoryGame, loadStoryGame, storySaveValidFor, type StorySavedGame } from './storySave';
+import { railFor, storyBadgesFor } from '@spades/bots';
+import ScriptPlayer, { type SceneEgg } from './ScriptPlayer';
+import StoryTape from './StoryTape';
+import StoryFace from './StoryFace';
+import StoryBadges, { badgeFactsOf } from './StoryBadges';
 import './story.css';
 
 type Screen =
   | { k: 'map' }
+  | { k: 'tape'; stop: StoryStop }
   | { k: 'intro'; stop: StoryStop }
-  | { k: 'game'; stop: StoryStop; seed: string }
+  | { k: 'game'; stop: StoryStop; seed: string; resumeSave?: StorySavedGame }
   | { k: 'outro'; stop: StoryStop; won: boolean };
 
 export default function StoryHome() {
@@ -37,6 +44,9 @@ export default function StoryHome() {
   const [tips, setTips] = useState<TipsPref>(loadTips);
   const applySettings = (s: Settings) => { setSettings(s); saveSettings(s); };
   const [screen, setScreen] = useState<Screen>({ k: 'map' });
+  // The sit-down opens on the Tale of the Tape, then the scene plays.
+  const [introStep, setIntroStep] = useState<'tape' | 'scene'>('tape');
+  useEffect(() => { if (screen.k === 'intro') setIntroStep('tape'); }, [screen]);
   const [progress, setProgress] = useState<StoryProgress | null>(null);
   const [signedOut, setSignedOut] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -50,19 +60,59 @@ export default function StoryHome() {
   }, []);
   const [lastResult, setLastResult] = useState<StoryResult | null>(null);
   const finishedRef = useRef<{ seed: string; won: boolean } | null>(null);
+  // Story save slot: a match in progress (own key; the normal save is untouched).
+  const [saved, setSaved] = useState<StorySavedGame | null>(() => loadStoryGame());
+  // Progress as it stood when the current game started — the outro diffs
+  // badges against it to light the ones THIS win unlocked.
+  const progressBeforeRef = useRef<StoryProgress | null>(null);
 
   const refresh = useCallback(async () => {
     const r = await fetchStoryProgress();
-    if (r.status === 'ok') { setProgress(r.progress); setSignedOut(false); setLoadError(false); }
+    if (r.status === 'ok') {
+      setProgress(r.progress); setSignedOut(false); setLoadError(false);
+      // Stale-save validation: a save whose stop moved on without it
+      // (cleared/attempted elsewhere, or the stop locked) drops silently.
+      setSaved((cur) => {
+        const s = cur ?? loadStoryGame();
+        if (s && !storySaveValidFor(s, r.progress)) { clearStoryGame(); return null; }
+        return s;
+      });
+    }
     else if (r.status === 'signedOut') { setSignedOut(true); setProgress(null); }
     else if (r.status === 'locked') { setLockedByServer(true); }
     else setLoadError(true);
   }, []);
   useEffect(() => { void refresh(); }, [refresh, screen.k === 'map']);
 
-  const factsFor = (stop: StoryStop) => {
+  const factsFor = (stop: StoryStop): StoryBeatFacts & { clears: number; attemptsAtPorch: number } => {
     const row = progress?.stops.find((s) => s.stopId === stop.id);
-    return { attempts: row?.attempts ?? 0, clears: row?.clears ?? 0, cleared: (row?.clears ?? 0) > 0 };
+    return {
+      attempts: row?.attempts ?? 0,
+      clears: row?.clears ?? 0,
+      cleared: (row?.clears ?? 0) > 0,
+      clearedStopIds: progress?.stops.filter((s) => s.clears > 0).map((s) => s.stopId) ?? [],
+      // Railbird Ray's memory is keyed to HIS stop — the Porch (stored fact).
+      attemptsAtPorch: progress?.stops.find((s) => s.stopId === 'porch')?.attempts ?? 0,
+    };
+  };
+  /** The scene's egg prop for a stop's intro (null when found or match-earned). */
+  const eggFor = (stop: StoryStop): SceneEgg | null => {
+    const secret = STORY_SECRETS[stop.id];
+    if (!secret || (progress?.finds?.eggs ?? []).includes(secret.egg.id)) return null;
+    const t = secret.egg.trigger;
+    if (t.type === 'matchEvent') return null; // earned in the game, granted by the server from result facts
+    const beats = (secret.egg.beat ?? []).map((x) => ({ speaker: x.speaker, line: x.line }));
+    if (t.type === 'chain') {
+      const fromEgg = STORY_SECRETS[t.fromStopId]?.egg;
+      return { trigger: 'chain', ready: !!fromEgg && (progress?.finds?.eggs ?? []).includes(fromEgg.id), beats };
+    }
+    return { trigger: t.type, ready: false, beats };
+  };
+  const handleEggFound = (stop: StoryStop) => {
+    const secret = STORY_SECRETS[stop.id];
+    if (!secret) return;
+    sound.storySting('unlock');
+    void postStoryFound(secret.egg.id).then((p) => { if (p) setProgress(p); });
   };
   const stateFor = (stop: StoryStop): 'cleared' | 'current' | 'locked' => {
     const row = progress?.stops.find((s) => s.stopId === stop.id);
@@ -73,13 +123,37 @@ export default function StoryHome() {
   const startGame = (stop: StoryStop) => {
     finishedRef.current = null;
     setLastResult(null);
+    progressBeforeRef.current = progress;
     setScreen({ k: 'game', stop, seed: secureSeed() });
   };
 
-  const handleGameOver = (stop: StoryStop, seed: string) => (won: boolean) => {
+  /** Resume the saved match: straight to the table — no tape, no intro. */
+  const resumeStop = (stop: StoryStop, save: StorySavedGame) => {
+    finishedRef.current = null;
+    setLastResult(null);
+    progressBeforeRef.current = progress;
+    setScreen({ k: 'game', stop, seed: save.seed, resumeSave: save });
+  };
+
+  /** Abandon the saved match and start the stop fresh. No result is posted
+   *  and no attempt is counted for a discarded save — attempts only ever
+   *  count finished matches. */
+  const restartStop = (stop: StoryStop) => {
+    clearStoryGame();
+    setSaved(null);
+    setScreen({ k: 'intro', stop });
+  };
+
+  const handleGameOver = (stop: StoryStop, seed: string) => (won: boolean, facts: StoryGameFacts) => {
     finishedRef.current = { seed, won };
-    void postStoryResult(stop.id, won, `story-${seed}`).then((r) => {
-      if (r) { setLastResult(r); setProgress(r); }
+    void postStoryResult(stop.id, won, `story-${seed}`, facts).then((r) => {
+      if (r) {
+        setLastResult(r); setProgress(r);
+        // The motif answers the moment: cleared → the clear bloom; any new
+        // egg/collectible from this game → the unlock rise.
+        if (won) sound.storySting('clear');
+        if (r.newFinds.length) sound.storySting('unlock');
+      }
     });
   };
 
@@ -95,6 +169,7 @@ export default function StoryHome() {
             <h1 className="story-title">Story Mode</h1>
             <p className="story-sub">Run the block — porch to the King.</p>
           </div>
+          <span className="dock-slot" aria-hidden />
         </div>
         <div className="story-lock-card">
           <p className="story-lock-icon" aria-hidden>🔒</p>
@@ -112,16 +187,34 @@ export default function StoryHome() {
         </div>
       </div>
     );
+  } else if (screen.k === 'tape') {
+    const stop = screen.stop;
+    body = (
+      <div className="story-shell">
+        <StoryHeader stop={stop} />
+        <StoryTape stop={stop} facts={factsFor(stop)} cta="Back to the map" onDone={() => setScreen({ k: 'map' })} />
+      </div>
+    );
   } else if (screen.k === 'intro') {
     const stop = screen.stop;
     body = (
       <div className="story-shell">
         <StoryHeader stop={stop} />
-        <ScriptPlayer
-          beats={beatsFor(stop, 'intro', factsFor(stop))}
-          cta="To the table"
-          onDone={() => startGame(stop)}
-        />
+        <SceneAudio stop={stop} />
+        {introStep === 'tape' ? (
+          <StoryTape stop={stop} facts={factsFor(stop)} cta="Play the scene" onDone={() => setIntroStep('scene')} />
+        ) : (
+          <ScriptPlayer
+            beats={beatsFor(stop, 'intro', factsFor(stop))}
+            cta="To the table"
+            onDone={() => startGame(stop)}
+            venueId={stop.venueId}
+            cast={[stop.pair[0], 'dee', stop.pair[1]]}
+            rail={railFor(stop.id)}
+            egg={eggFor(stop)}
+            onEggFound={() => handleEggFound(stop)}
+          />
+        )}
       </div>
     );
   } else if (screen.k === 'game') {
@@ -135,10 +228,24 @@ export default function StoryHome() {
         rules={storyRulesFor(stop, settings)}
         seed={screen.seed}
         settings={gameSettings}
+        resume={screen.resumeSave}
         story={{
           names: ['You', pair[0].name, 'Dee', pair[1].name],
           levelFor: (seat) => (seat === 2 ? deeSkillForStop(stop.n) : tierSkill),
           onGameOver: handleGameOver(stop, screen.seed),
+          scene: { stop, facts: factsFor(stop) },
+          saveCtx: screen.resumeSave
+            ? {
+              attemptsAtStart: screen.resumeSave.story.attemptsAtStart,
+              clearsAtStart: screen.resumeSave.story.clearsAtStart,
+              resumed: true,
+              initialSession: screen.resumeSave.story.session,
+            }
+            : {
+              attemptsAtStart: factsFor(stop).attempts,
+              clearsAtStart: factsFor(stop).clears,
+              resumed: false,
+            },
         }}
         onExit={() => setScreen(finishedRef.current?.seed === screen.seed ? { k: 'outro', stop, won: finishedRef.current.won } : { k: 'map' })}
         onMainMenu={() => setScreen(finishedRef.current?.seed === screen.seed ? { k: 'outro', stop, won: finishedRef.current.won } : { k: 'map' })}
@@ -155,6 +262,7 @@ export default function StoryHome() {
     body = (
       <div className="story-shell">
         <StoryHeader stop={stop} />
+        <SceneAudio stop={stop} />
         {r && r.won && (
           <p className="story-reward-line" data-testid="story-reward-line">
             {r.firstClear ? <>First clear! <b>+{r.rewards.xp} XP</b> · <b>+{r.rewards.coins}</b> <CoinIcon size={14} /></> : <>Replay upkeep: <b>+{r.rewards.xp} XP</b> · <b>+{r.rewards.coins}</b> <CoinIcon size={14} /></>}
@@ -162,10 +270,24 @@ export default function StoryHome() {
           </p>
         )}
         {r && !r.won && <p className="story-reward-line">No rewards on a loss — and no penalty. The retry is free.</p>}
+        {r && (r.newFinds?.length ?? 0) > 0 && (
+          <p className="story-find-line" data-testid="story-new-finds">
+            {r.newFinds.map((f) => <span key={f.id} className="story-find-chip">{f.kind === 'feat' ? '🏆' : '🥚'} {f.kind === 'feat' ? 'Unlocked' : 'Found'}: {f.name}</span>)}
+          </p>
+        )}
+        {screen.won && (() => {
+          const before = new Set(storyBadgesFor(badgeFactsOf(progressBeforeRef.current)).filter((b) => b.earned).map((b) => b.id));
+          const after = storyBadgesFor(badgeFactsOf(r ?? progress));
+          const fresh = new Set(after.filter((b) => b.earned && !before.has(b.id)).map((b) => b.id));
+          return <StoryBadges facts={badgeFactsOf(r ?? progress)} highlight={fresh} title="Badges" />;
+        })()}
         <ScriptPlayer
           beats={beatsFor(stop, screen.won ? 'outroWin' : 'outroLose', factsFor(stop))}
           cta="Back to the map"
           onDone={() => setScreen({ k: 'map' })}
+          venueId={stop.venueId}
+          cast={[stop.pair[0], 'dee', stop.pair[1]]}
+          rail={railFor(stop.id)}
         />
         {!screen.won && (
           <button type="button" className="btn primary story-retry" data-testid="story-retry" onClick={() => setScreen({ k: 'intro', stop })}>Retry this stop</button>
@@ -173,50 +295,100 @@ export default function StoryHome() {
       </div>
     );
   } else {
+    const currentStop = STORY_STOPS.find((s) => s.n === (progress?.currentStop ?? 1)) ?? STORY_STOPS[0]!;
+    const clearedCount = progress?.stops.filter((s) => s.clears > 0).length ?? 0;
     body = (
       <div className="story-shell" data-testid="story-map">
-        <div className="story-topbar">
-          <button type="button" className="btn ghost" data-testid="story-home" onClick={() => navigate('/')}>← Home</button>
-          <div className="story-title-block">
-            <h1 className="story-title">Story Mode</h1>
-            <p className="story-sub">Run the block — porch to the King. Solo, with Dee riding shotgun.</p>
+        <div className="story-hero">
+          <div className="story-hero-bg" style={{ backgroundImage: `url(/assets/venues/${currentStop.venueId}/bg.jpg)` }} aria-hidden />
+          <div className="story-topbar">
+            <button type="button" className="btn ghost" data-testid="story-home" onClick={() => navigate('/')}>← Home</button>
+            <div className="story-title-block">
+              <h1 className="story-title">Story Mode</h1>
+              <p className="story-sub">The come-up — porch to the King. Solo, with Dee riding shotgun. You&apos;re making it out, together.</p>
+              <p className="story-hero-progress">{progress?.completed ? 'Route complete — you made it out.' : `${clearedCount} of ${STORY_STOPS.length} stops cleared`}</p>
+            </div>
+            <span className="dock-slot" aria-hidden />
           </div>
         </div>
         {signedOut && <p className="story-note" data-testid="story-signed-out">Sign in to run the route — your stops, rewards and the solo completion mark live on your account. The map below is a preview.</p>}
         {loadError && !signedOut && <p className="story-note">Couldn&apos;t load your progress just now. <button type="button" className="link" onClick={() => void refresh()}>Retry</button></p>}
-        {progress?.completed && <p className="story-note story-done" data-testid="story-complete">ROUTE COMPLETE — you ran it solo, porch to King. ✓ Replays stay open for upkeep.</p>}
+        {progress?.completed && <p className="story-note story-done" data-testid="story-complete">YOU MADE IT OUT — porch to King, the whole route. ✓ The block is behind you; the league is ahead. Replays stay open for upkeep.</p>}
         <div className="story-dee-card">
-          <div className="story-script-face" aria-hidden>D</div>
+          <StoryFace characterId="dee" name="Dee" className="dee-face" />
           <div>
             <p className="story-dee-name">Running with Dee</p>
-            <p className="story-dee-line">Your partner for the whole route. She starts green and levels up stop to stop — by the Pj&apos;s, she calls shots.</p>
+            <p className="story-dee-line">Your partner for the whole route. She starts green and levels up stop to stop — by the Pj&apos;s, she calls shots. You&apos;re not just running a route. You&apos;re making it out — together.</p>
           </div>
         </div>
+        <StoryBadges facts={badgeFactsOf(progress)} />
         <ol className="story-route">
           {STORY_STOPS.map((stop) => {
             const state = stateFor(stop);
             const pair = stop.pair.map((id) => STORY_CHARACTERS[id]!);
             const reward = storyReward(stop.n, true);
             const facts = factsFor(stop);
+            const stopSave = saved && saved.story.stopId === stop.id ? saved : null;
             return (
-              <li key={stop.id} className={`story-stop state-${state}`} data-testid={`story-stop-${stop.id}`}>
-                <div className="story-stop-badge" aria-hidden>{state === 'cleared' ? '✓' : state === 'locked' ? '🔒' : stop.n}</div>
-                <div className="story-stop-body">
-                  <p className="story-stop-name">{stop.name} <span className="story-tier">{STORY_TIER_LABEL[stop.tier]}</span></p>
-                  <p className="story-stop-pair">{pair[0].name} &amp; {pair[1].name}</p>
-                  <p className="story-stop-flavor">{stop.flavor}</p>
-                  <p className="story-stop-twist">{stop.twist.label} · First clear: +{reward.xp} XP · +{reward.coins} coins</p>
-                  {facts.attempts > 0 && <p className="story-stop-facts">{facts.clears > 0 ? `Cleared ${facts.clears}×` : `${facts.attempts} attempt${facts.attempts === 1 ? '' : 's'} — not cleared yet`}</p>}
+              <li key={stop.id} className={`story-stop state-${state}${stop.id === 'king' ? ' is-king' : ''}`} data-testid={`story-stop-${stop.id}`}>
+                <span className="story-node" aria-hidden>{state === 'cleared' ? '✓' : state === 'locked' ? '🔒' : stop.n}</span>
+                <div className="story-card">
+                  <div className="story-card-art" style={{ backgroundImage: `url(/assets/venues/${stop.venueId}/bg.jpg)` }} aria-hidden>
+                    <span className="story-card-faces">
+                      <StoryFace characterId={stop.pair[0]} name={pair[0].name} className="card-face" />
+                      <StoryFace characterId={stop.pair[1]} name={pair[1].name} className="card-face" />
+                    </span>
+                    {state === 'cleared' && <span className="story-card-state">✓ CLEARED</span>}
+                    {state === 'current' && !stopSave && <span className="story-card-state here">YOU ARE HERE</span>}
+                    {stopSave && <span className="story-card-state here">MATCH IN PROGRESS</span>}
+                  </div>
+                  <div className="story-stop-body">
+                    <p className="story-stop-name">{stop.name} <span className="story-tier">{STORY_TIER_LABEL[stop.tier]}</span></p>
+                    <p className="story-stop-pair">{pair[0].name} &amp; {pair[1].name}</p>
+                    <p className="story-stop-flavor">{stop.flavor}</p>
+                    <p className="story-stop-twist">{stop.twist.label} · First clear: +{reward.xp} XP · +{reward.coins} coins</p>
+                    {facts.attempts > 0 && <p className="story-stop-facts">{facts.clears > 0 ? `Cleared ${facts.clears}×` : `${facts.attempts} attempt${facts.attempts === 1 ? '' : 's'} — not cleared yet`}</p>}
+                    {stopSave && <p className="story-stop-facts" data-testid={`story-inprogress-${stop.id}`}>Match in progress — hand {stopSave.state.handNo}. Pick it up right where you left it.</p>}
+                    <StopSecrets stop={stop} cleared={facts.clears > 0} finds={progress?.finds} />
+                  </div>
+                  {state !== 'locked' && (
+                    <div className="story-stop-actions">
+                      <button
+                        type="button"
+                        className="btn ghost story-meet"
+                        data-testid={`story-meet-${stop.id}`}
+                        disabled={signedOut}
+                        onClick={() => setScreen({ k: 'tape', stop })}
+                      >Meet them</button>
+                      {stopSave ? (
+                        <>
+                          <button
+                            type="button"
+                            className="btn primary story-play"
+                            data-testid={`story-resume-${stop.id}`}
+                            disabled={signedOut}
+                            onClick={() => resumeStop(stop, stopSave)}
+                          >Resume</button>
+                          <button
+                            type="button"
+                            className="btn ghost story-restart"
+                            data-testid={`story-restart-${stop.id}`}
+                            disabled={signedOut}
+                            onClick={() => restartStop(stop)}
+                          >Restart</button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn primary story-play"
+                          data-testid={`story-play-${stop.id}`}
+                          disabled={signedOut}
+                          onClick={() => setScreen({ k: 'intro', stop })}
+                        >{state === 'cleared' ? 'Replay' : 'Play'}</button>
+                      )}
+                    </div>
+                  )}
                 </div>
-                {state !== 'locked' && (
-                  <button
-                    type="button"
-                    className="btn primary story-play"
-                    data-testid={`story-play-${stop.id}`}
-                    disabled={signedOut}
-                    onClick={() => setScreen({ k: 'intro', stop })}
-                  >{state === 'cleared' ? 'Replay' : 'Play'}</button>
-                )}
               </li>
             );
           })}
@@ -243,6 +415,55 @@ function StoryHeader({ stop }: { stop: StoryStop }) {
         <h1 className="story-title">{stop.name}</h1>
         <p className="story-sub">{pair[0].name} &amp; {pair[1].name} · {stop.twist.label}</p>
       </div>
+      <span className="dock-slot" aria-hidden />
     </div>
+  );
+}
+
+/**
+ * Scene audio (audio-pass contract, 2026-10-21): the stop's venue bed +
+ * original score mood start WITH the scene — you hear the place before
+ * the first line — via sound.setStoryStop(stop.id) (theme / sparse /
+ * danger / king per stop, plus the Rec Center's gym bed), and the story
+ * motif stings the scene in. On unmount the stop clears (setStoryStop
+ * null + the menu context, which also clears it) so nothing bleeds onto
+ * other screens; the table mounts the same venue when play begins.
+ */
+function SceneAudio({ stop }: { stop: StoryStop }) {
+  useEffect(() => {
+    sound.enterContext('game');
+    sound.enterTable();
+    sound.setStoryStop(stop.id);
+    sound.storySting('scene');
+    return () => {
+      sound.setStoryStop(null);
+      sound.leaveTable();
+      sound.enterContext('menu');
+    };
+  }, [stop.id]);
+  return null;
+}
+
+/**
+ * A stop's secrets on its map card — strictly post-discovery. Before a stop
+ * is cleared the card shows nothing about the egg at all; after clearing,
+ * an unfound egg shows only its subtle hint. The feat is the public chase:
+ * its text and the collectible's name show from the start, the earned
+ * state once the server records it.
+ */
+function StopSecrets({ stop, cleared, finds }: { stop: StoryStop; cleared: boolean; finds?: { eggs: string[]; feats: string[] } }) {
+  const secret = STORY_SECRETS[stop.id];
+  if (!secret) return null;
+  const eggFound = (finds?.eggs ?? []).includes(secret.egg.id);
+  const featEarned = (finds?.feats ?? []).includes(secret.unlockable.itemId);
+  return (
+    <>
+      {eggFound
+        ? <p className="story-stop-secret" data-testid={`story-egg-${stop.id}`}>🥚 {secret.egg.name} — {secret.egg.tale}</p>
+        : cleared ? <p className="story-stop-hint" data-testid={`story-egg-hint-${stop.id}`}>{secret.egg.hint}</p> : null}
+      <p className={`story-stop-feat${featEarned ? ' earned' : ''}`} data-testid={`story-feat-${stop.id}`}>
+        {featEarned ? '🏆 ' : ''}Feat: {secret.unlockable.featText} → <b>{secret.unlockable.name}</b>{featEarned ? ' ✓' : ''}
+      </p>
+    </>
   );
 }

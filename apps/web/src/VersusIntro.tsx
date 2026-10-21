@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AvatarCircle, useAvatar } from './avatar';
+import StoryFace from './story/StoryFace';
 import { CoinIcon } from './RepBlock';
 import { sound, type Sfx } from './audio';
 
@@ -141,7 +142,7 @@ export function bestIndex(values: readonly (number | null)[]): number {
 }
 
 /* ------------------------------------------------------------ model */
-export interface VersusMember { name: string; uid: string | null; isBot: boolean; direct?: string | null }
+export interface VersusMember { name: string; uid: string | null; isBot: boolean; direct?: string | null; /** story character id — renders the story portrait (art pass) with medallion fallback */ storyId?: string | null }
 export interface VersusSideInput { label: string; members: VersusMember[] }
 export interface VersusModel {
   /** team = partnership (two duo sides); solo = cutthroat (four one-player sides) */
@@ -199,7 +200,9 @@ function VersusFace({ member, size }: { member: VersusMember; size: number }) {
   const pic = useAvatar(member.uid, member.direct ?? null);
   return (
     <span className="versus-face" style={{ width: size, height: size }}>
-      <AvatarCircle pic={pic} name={member.name} style={{ width: size, height: size, fontSize: Math.round(size * 0.42) }} />
+      {member.storyId
+        ? <StoryFace characterId={member.storyId} name={member.name} className="versus-story-face" />
+        : <AvatarCircle pic={pic} name={member.name} style={{ width: size, height: size, fontSize: Math.round(size * 0.42) }} />}
     </span>
   );
 }

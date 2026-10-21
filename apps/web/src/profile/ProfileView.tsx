@@ -45,6 +45,12 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { presenceLine } from '@spades/protocol';
+import { STORY_SECRETS } from '@spades/bots';
+
+/** Story Mode collectibles (storySecrets) read by name here, not raw id. */
+const COLLECTIBLE_NAMES: Record<string, string> = Object.fromEntries(
+  Object.values(STORY_SECRETS).map((s) => [s.unlockable.itemId, s.unlockable.name]),
+);
 import { useAccount } from '../account/api';
 import { accountUidOf, AvatarCircle, compressAvatarFile, forgetAvatar, useAvatar, validateAvatarDataUrl } from '../avatar';
 import { BADGES } from '../badges';
@@ -773,7 +779,7 @@ export function ProfileView({ host, name, id }: {
             {cred.unlocks.length === 0 && <p className="muted">No unlocks yet — level up and earn achievements to unlock card backs, venues, and more.</p>}
             {cred.unlocks.map((u) => (
               <div key={u.itemId} className="unlock-row">
-                <b>{u.itemId}</b><small>from {u.source}</small>{u.equipped && <span className="equipped-tag">Equipped</span>}
+                <b>{COLLECTIBLE_NAMES[u.itemId] ?? u.itemId}</b><small>from {u.source}</small>{u.equipped && <span className="equipped-tag">Equipped</span>}
               </div>
             ))}
           </div>

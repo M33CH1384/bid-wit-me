@@ -1,0 +1,31 @@
+/* Story portrait faces (art pass wiring): the portrait image covers the
+   medallion; the initial sits underneath as the fallback/loading state, so
+   a missing image changes nothing visually. Imported by StoryFace itself so
+   every surface that renders one (table plates, versus, scenes, tape, map)
+   carries the styles. */
+.story-face {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  overflow: hidden;
+  background: rgba(127, 127, 160, 0.3);
+  font-weight: 800;
+  flex: none;
+}
+.story-face-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.story-face-initial { line-height: 1; }
+.versus-story-face { width: 100%; height: 100%; font-size: 20px; }
+/* .plate-avatar sizing comes from the plate stylesheet itself (40px/34px) */
+.story-face.cast-face { width: 40px; height: 40px; font-size: 19px; }
+.story-face.speaker-face { width: 54px; height: 54px; font-size: 24px; }
+.story-face.tape-face { width: 44px; height: 44px; font-size: 20px; }
+.story-face.dee-face { width: 54px; height: 54px; font-size: 24px; }
+.story-face.card-face { width: 38px; height: 38px; font-size: 17px; }
+.story-face.rail-face { width: 26px; height: 26px; font-size: 12px; }

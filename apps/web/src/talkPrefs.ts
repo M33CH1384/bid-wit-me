@@ -7,7 +7,7 @@
  *   (× master volume; silent when sound is off)
  */
 import { useSyncExternalStore } from 'react';
-import { PERSONAS, type PersonaId, type TalkIntensity, applyPronunciation, maskMild, personaForName, voiceGender } from '@spades/bots';
+import { PERSONAS, type PersonaId, type TalkIntensity, applyPronunciation, maskMild, personaForName, storyCastForName, voiceGender } from '@spades/bots';
 import { sound } from './audio';
 import { playClip, rawLine } from './voices/voices';
 
@@ -80,7 +80,27 @@ export function speakBot(name: string, text: string, persona?: string, line?: st
  * (browserVoiceFor) stands. Deterministic per (persona, name): a character sounds like
  * itself on every line, at every venue, on every visit.
  */
-export function personaVoiceFor(persona: PersonaId, name: string, list: Pick<SpeechSynthesisVoice, 'name'>[]): SpeechSynthesisVoice | null {
+export function personaVoiceFor(persona: PersonaId, name: string, list: Pick<SpeechSynthesisVoice, 'name' | 'lang'>[]): SpeechSynthesisVoice | null {
+  // Story characters resolve by CHARACTER (storyVoice.ts): the card's
+  // gender, American voices only — the name-hash pick that landed Uncle
+  // Ray on an en-GB voice ("old Englishman") can never happen to a story
+  // seat. Normal bots take the path below, unchanged.
+  const cast = storyCastForName(name);
+  // The cast branch fires only for the character's OWN voice calls (the
+  // persona the caller passes is the character's card or cast persona).
+  // A same-named normal bot probed with a different persona — e.g. the
+  // gambler preference test using 'Queenie' as a female name — keeps the
+  // normal resolution below, byte-for-byte.
+  if (cast && (persona === cast.persona || persona === cast.cardPersona)) {
+    const us = list.filter((v) => !v.lang || /^en[-_]us/i.test(v.lang));
+    const fits = us.filter((v) => voiceNameFitsGender(v.name, cast.gender));
+    for (const want of PERSONAS[cast.persona]?.voice.prefer ?? []) {
+      const hit = fits.find((v) => v.name.toLowerCase().includes(want.toLowerCase()));
+      if (hit) return hit as SpeechSynthesisVoice;
+    }
+    if (fits.length) return fits[hash(name) % fits.length] as SpeechSynthesisVoice;
+    return null; // no American voice of the right gender: the default beats a British or wrong-gender one
+  }
   const g = voiceGender(name);
   for (const want of PERSONAS[persona]?.voice.prefer ?? []) {
     const hit = list.find((v) => v.name.toLowerCase().includes(want.toLowerCase()) && voiceNameFitsGender(v.name, g));
@@ -97,7 +117,10 @@ function voiceNameFitsGender(voiceName: string, g: 'f' | 'm'): boolean {
 function webSpeech(name: string, text: string, persona: PersonaId = personaForName(name)): void {
   if (typeof speechSynthesis === 'undefined' || !sound.atTable) return; // never talk behind Home
   const snd = sound.settings;
-  const p = PERSONAS[persona];
+  // A story character speaks as its CAST persona (storyVoice.ts) — the same
+  // family the recorded key resolves — never its card persona's house voice
+  // when the two differ (Uncle Ray is cast storyteller, not comedian).
+  const p = PERSONAS[storyCastForName(name)?.persona ?? persona];
   const clean = maskMild(text).replace(/\*+/g, ''); // never read the asterisks out; masked words just drop
   // Pronunciation: the shared dictionary (packages/bots/src/pronounce.ts) — the same respellings the
   // recorded bake uses, so a line sounds the same on both paths. It used to be a hand-coded mm-hm fix
@@ -106,9 +129,12 @@ function webSpeech(name: string, text: string, persona: PersonaId = personaForNa
   if (!spoken) return;
   const u = new SpeechSynthesisUtterance(p.caps ? spoken.toLowerCase() : spoken);
   const jitter = (hash(name) % 100) / 100 - 0.5;
-  const female = voiceGender(name) === 'f';
-  u.pitch = Math.min(2, Math.max(0.1, p.voice.pitch * (female ? 1.12 : 0.92) + jitter * 0.2));
-  u.rate = Math.min(1.6, Math.max(0.6, p.voice.rate + jitter * 0.1));
+  // Story characters: gender + register come from the cast (storyVoice.ts),
+  // not the name hash — Pat's storyteller drawl stays a woman's drawl.
+  const cast = storyCastForName(name);
+  const female = cast ? cast.gender === 'f' : voiceGender(name) === 'f';
+  u.pitch = Math.min(2, Math.max(0.1, p.voice.pitch * (female ? 1.12 : 0.92) * (cast?.pitch ?? 1) + jitter * 0.2));
+  u.rate = Math.min(1.6, Math.max(0.6, (p.voice.rate + jitter * 0.1) * (cast?.rate ?? 1)));
   // sits under the game SFX: a bit below the master level
   u.volume = Math.min(1, prefs.voiceVolume * snd.volume * 0.85);
   u.voice = personaVoiceFor(persona, name, voices);

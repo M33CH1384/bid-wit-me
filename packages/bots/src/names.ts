@@ -24,8 +24,15 @@ export const NAME_GENDER: Record<string, NameGender> = {
   Priya: 'f', Arjun: 'm', Anjali: 'f', Ravi: 'm', Mei: 'f', Kenji: 'm', Hana: 'f', Jin: 'n', Minh: 'n', Linh: 'f',
   Kofi: 'm', Amara: 'f', Tunde: 'm', Zuri: 'f', Kwame: 'm', Ayo: 'n', Fatima: 'f', Omar: 'm', Layla: 'f', Yusuf: 'm',
   Siobhan: 'f', Liam: 'm', Ingrid: 'f', Sven: 'm', Nikos: 'm', Elena: 'f', Dmitri: 'm', Olga: 'f', Tomás: 'm', Bea: 'f',
-  'Auntie Pat': 'f', Unc: 'm', Cuz: 'n', 'Lil Ray': 'm', Peaches: 'f', Smoke: 'n', Boo: 'n', Sunny: 'n', Ace: 'n', Queenie: 'f',
+  'Auntie Pat': 'f', Unc: 'm', Cuz: 'n', 'Lil Ray': 'm', Peaches: 'f', Smoke: 'm', Boo: 'n', Sunny: 'n', Ace: 'm', Queenie: 'f',
   Moe: 'm', Cookie: 'f', Kai: 'n', Noa: 'n', Leilani: 'f', Rocco: 'm', Gigi: 'f', Bubba: 'm', Skye: 'f', Jojo: 'n',
+  // Story Mode characters (packages/bots/src/story.ts): voiceGender() drives BOTH the recorded-sprite
+  // voice key (voices.ts personaVoice) and the Web Speech fallback (talkPrefs personaVoiceFor). A story
+  // name missing here hashes to an arbitrary gender — Pat was resolving MALE — so every character is
+  // tagged explicitly to match story.ts, and the tests pin story name → story gender 1:1.
+  'Dee': 'f', 'Uncle Ray': 'm', 'Pat': 'f', 'Mr. Coleman': 'm', 'June': 'f', "Lil' Man": 'm', 'Trey': 'm',
+  'Teisha': 'f', 'Redd': 'm', 'Deacon Ford': 'm', 'Sister Mae': 'f', 'Poet': 'm', 'Seven': 'm',
+  'Velvet': 'f', 'The Accountant': 'm', 'Captain Block': 'm', 'Brick': 'f', 'The King': 'm', 'The Ringer': 'm',
 };
 const hashName = (s: string) => { let h = 2166136261; for (const ch of s) { h ^= ch.codePointAt(0)!; h = Math.imul(h, 16777619); } return h >>> 0; };
 /** The gender a bot name is tagged with (unknown names, e.g. "Bot 5", are neutral). */

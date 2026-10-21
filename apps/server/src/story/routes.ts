@@ -27,11 +27,13 @@
 import { type AuthEnv, currentUser } from '../auth/routes';
 import { type SocialEnv, isAdmin } from '../social/routes';
 import {
-  STORY_STOPS, STORY_SOLO_TRACK, storyCurrentStop, storyReward, storyStopById,
-  storyStopState, storyTrackKeyValid,
+  STORY_SECRETS, STORY_STOPS, STORY_SOLO_TRACK, storyCurrentStop, storyEggById, storyEggEventMet,
+  storyFeatMet, storyReward, storyStopById, storyStopState, storyTrackKeyValid,
+  type StoryGameFacts, type StoryMatchEvent,
 } from '@spades/bots';
 import { awardXp } from '../cred/xp';
 import { move } from '../cred/coins';
+import { grantUnlock } from '../cred/achievements';
 
 export interface StoryEnv extends AuthEnv, SocialEnv {}
 
@@ -56,12 +58,53 @@ async function factsFor(db: D1Database, userId: string, track: string): Promise<
   return new Map(rows.results.map((r) => [r.stopId, { attempts: r.attempts, clears: r.clears, firstClearedAt: r.firstClearedAt }]));
 }
 
+/** Found eggs + earned feats on a track (story_finds, migration 0022). */
+export async function findsFor(db: D1Database, userId: string, track: string): Promise<{ eggs: string[]; feats: string[] }> {
+  const rows = await db.prepare('SELECT kind, find_id AS findId FROM story_finds WHERE user_id = ? AND track_key = ?')
+    .bind(userId, track).all<{ kind: string; findId: string }>();
+  return {
+    eggs: rows.results.filter((r) => r.kind === 'egg').map((r) => r.findId),
+    feats: rows.results.filter((r) => r.kind === 'feat').map((r) => r.findId),
+  };
+}
+
+/** Record a find idempotently; returns true when it is genuinely new. */
+async function recordFind(db: D1Database, userId: string, track: string, kind: 'egg' | 'feat', findId: string, now: number): Promise<boolean> {
+  const prior = await db.prepare('SELECT find_id AS findId FROM story_finds WHERE user_id = ? AND track_key = ? AND kind = ? AND find_id = ?')
+    .bind(userId, track, kind, findId).first();
+  if (prior) return false;
+  await db.prepare('INSERT OR IGNORE INTO story_finds (user_id, track_key, kind, find_id, created_at) VALUES (?, ?, ?, ?, ?)')
+    .bind(userId, track, kind, findId, now).run();
+  return true;
+}
+
+/** Loose validation of the client-computed game facts (offline trust level — the same
+ *  level as the result itself; every field is clamped to its honest range). */
+function gameFactsOf(raw: unknown): StoryGameFacts | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const f = raw as Record<string, unknown>;
+  const num = (v: unknown, lo: number, hi: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, Math.round(v))) : 0);
+  return {
+    margin: num(f.margin, -2000, 2000),
+    handsPlayed: num(f.handsPlayed, 0, 200),
+    setsAgainstUs: num(f.setsAgainstUs, 0, 200),
+    setsAgainstThem: num(f.setsAgainstThem, 0, 200),
+    ourNilsMade: num(f.ourNilsMade, 0, 50),
+    ourBlindNilsMade: num(f.ourBlindNilsMade, 0, 50),
+    deeNilsMade: num(f.deeNilsMade, 0, 50),
+    deeSteady: f.deeSteady === true,
+    setOnFirstHand: f.setOnFirstHand === true,
+    oppSetTwice: f.oppSetTwice === true,
+  };
+}
+
 export async function storyProgressPayload(db: D1Database, userId: string, track: string) {
   const facts = await factsFor(db, userId, track);
   const cleared = new Set<number>();
   for (const s of STORY_STOPS) if ((facts.get(s.id)?.clears ?? 0) > 0) cleared.add(s.n);
   const trackRow = await db.prepare('SELECT completed_at AS completedAt FROM story_tracks WHERE user_id = ? AND track_key = ?')
     .bind(userId, track).first<{ completedAt: number | null }>();
+  const finds = await findsFor(db, userId, track);
   return {
     track,
     stops: STORY_STOPS.map((s) => {
@@ -74,6 +117,8 @@ export async function storyProgressPayload(db: D1Database, userId: string, track
     currentStop: storyCurrentStop(cleared),
     completed: trackRow?.completedAt != null,
     completedAt: trackRow?.completedAt ?? null,
+    /** found Easter eggs (egg ids) + earned feats (unlockable itemIds) on this track */
+    finds,
     /** the solo completion mark (Phase 3 displays it on profiles; the fact is stored now) */
     completionMark: track === STORY_SOLO_TRACK && trackRow?.completedAt != null ? 'story-solo-complete' : null,
   };
@@ -95,8 +140,33 @@ export async function handleStoryHttp(req: Request, env: StoryEnv, url: URL, par
     return json(await storyProgressPayload(db, me.id, track));
   }
 
+  // A scene-side Easter egg was found (sceneTap / deeTap / chain). Match-event
+  // eggs are NOT accepted here — they are granted from result facts only.
+  if (parts[1] === 'story' && parts[2] === 'found' && req.method === 'POST') {
+    let body: { track?: unknown; eggId?: unknown };
+    try { body = (await req.json()) as typeof body; } catch { return json({ error: 'Send the find as JSON.' }, 400); }
+    const track = typeof body.track === 'string' ? body.track : STORY_SOLO_TRACK;
+    if (!storyTrackKeyValid(track) || track !== STORY_SOLO_TRACK) return json({ error: 'bad track' }, 400);
+    const found = typeof body.eggId === 'string' ? storyEggById(body.eggId) : undefined;
+    if (!found) return json({ error: 'unknown egg' }, 400);
+    if (found.egg.trigger.type === 'matchEvent') return json({ error: 'that one is earned in the game, not reported' }, 400);
+    const stop = storyStopById(found.stopId)!;
+    const facts = await factsFor(db, me.id, track);
+    const cleared = new Set<number>();
+    for (const s of STORY_STOPS) if ((facts.get(s.id)?.clears ?? 0) > 0) cleared.add(s.n);
+    if (storyStopState(stop.n, cleared) === 'locked') return json({ error: 'That stop is locked — clear the route in order.' }, 409);
+    if (found.egg.trigger.type === 'chain') {
+      const fromEgg = STORY_SECRETS[found.egg.trigger.fromStopId]?.egg;
+      const finds = await findsFor(db, me.id, track);
+      if (!fromEgg || !finds.eggs.includes(fromEgg.id)) return json({ error: 'the chain fact is not in hand' }, 409);
+    }
+    const isNew = await recordFind(db, me.id, track, 'egg', found.egg.id, now);
+    const progress = await storyProgressPayload(db, me.id, track);
+    return json({ ok: true, eggId: found.egg.id, new: isNew, ...progress });
+  }
+
   if (parts[1] === 'story' && parts[2] === 'result' && req.method === 'POST') {
-    let body: { track?: unknown; stopId?: unknown; won?: unknown; gameId?: unknown };
+    let body: { track?: unknown; stopId?: unknown; won?: unknown; gameId?: unknown; facts?: unknown };
     try { body = (await req.json()) as typeof body; } catch { return json({ error: 'Send the result as JSON.' }, 400); }
     const track = typeof body.track === 'string' ? body.track : STORY_SOLO_TRACK;
     if (!storyTrackKeyValid(track)) return json({ error: 'bad track' }, 400);
@@ -152,8 +222,33 @@ export async function handleStoryHttp(req: Request, env: StoryEnv, url: URL, par
     if (rewards.xp > 0) { try { await awardXp(db, me.id, rewards.xp, now); } catch { /* rewards never break progress */ } }
     if (rewards.coins > 0) { try { await move(db, me.id, rewards.coins, firstClear ? 'story_clear' : 'story_replay', `${track}:${stop.id}`, now); } catch { /* best-effort */ } }
 
+    // Secrets (scene pass): feats + match-event eggs, evaluated from the
+    // finished game's honestly-computed facts. Idempotent by primary key —
+    // doing the feat twice grants once. Never gates progress.
+    const newFinds: { kind: 'egg' | 'feat'; id: string; name: string }[] = [];
+    const gameFacts = gameFactsOf(body.facts);
+    if (gameFacts) {
+      try {
+        const secret = STORY_SECRETS[stop.id];
+        if (secret && storyFeatMet(stop.id, gameFacts, won)) {
+          if (await recordFind(db, me.id, track, 'feat', secret.unlockable.itemId, now)) {
+            await grantUnlock(db, me.id, secret.unlockable.itemId, `story-feat:${stop.id}`, now);
+            newFinds.push({ kind: 'feat', id: secret.unlockable.itemId, name: secret.unlockable.name });
+          }
+        }
+        if (secret?.egg.trigger.type === 'matchEvent') {
+          const events: StoryMatchEvent[] = ['deeNilMade', 'setOnFirstHand', 'ourNilMade', 'oppSetTwice'];
+          for (const ev of events) {
+            if (storyEggEventMet(stop.id, ev, gameFacts) && await recordFind(db, me.id, track, 'egg', secret.egg.id, now)) {
+              newFinds.push({ kind: 'egg', id: secret.egg.id, name: secret.egg.name });
+            }
+          }
+        }
+      } catch { /* secrets never break a recorded result */ }
+    }
+
     const progress = await storyProgressPayload(db, me.id, track);
-    return json({ ok: true, replayed: false, stopId: stop.id, won, firstClear, rewards, ...progress, completed: completed || progress.completed });
+    return json({ ok: true, replayed: false, stopId: stop.id, won, firstClear, rewards, newFinds, ...progress, completed: completed || progress.completed });
   }
 
   return json({ error: 'not found' }, 404);

@@ -43,7 +43,11 @@ export interface StoryProgress {
   completed: boolean;
   completedAt: number | null;
   completionMark: string | null;
+  /** found Easter egg ids + earned feat itemIds on this track */
+  finds: { eggs: string[]; feats: string[] };
 }
+
+export interface StoryNewFind { kind: 'egg' | 'feat'; id: string; name: string }
 
 export interface StoryResult extends StoryProgress {
   ok: boolean;
@@ -52,6 +56,8 @@ export interface StoryResult extends StoryProgress {
   won: boolean;
   firstClear: boolean;
   rewards: { xp: number; coins: number };
+  /** secrets granted by this result (feats / match-event eggs) */
+  newFinds: StoryNewFind[];
   completed: boolean;
 }
 
@@ -74,15 +80,32 @@ export async function fetchStoryProgress(track = 'solo'): Promise<ProgressFetch>
 }
 
 /** Record a finished stop game. Returns null when the write failed (offline, signed out, server error). */
-export async function postStoryResult(stopId: string, won: boolean, gameId: string): Promise<StoryResult | null> {
+export async function postStoryResult(stopId: string, won: boolean, gameId: string, facts?: import('@spades/bots').StoryGameFacts): Promise<StoryResult | null> {
   try {
     const r = await fetch('/api/story/result', {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify({ track: 'solo', stopId, won, gameId }),
+      body: JSON.stringify({ track: 'solo', stopId, won, gameId, facts }),
     });
     if (!r.ok) return null;
     return (await r.json()) as StoryResult;
+  } catch {
+    return null;
+  }
+}
+
+/** Report a scene-side Easter egg find (sceneTap / deeTap / chain). The
+ *  server validates the trigger type and any chain fact; match-event eggs
+ *  are only ever granted from result facts. Returns the fresh progress. */
+export async function postStoryFound(eggId: string): Promise<StoryProgress | null> {
+  try {
+    const r = await fetch('/api/story/found', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({ track: 'solo', eggId }),
+    });
+    if (!r.ok) return null;
+    return (await r.json()) as StoryProgress;
   } catch {
     return null;
   }

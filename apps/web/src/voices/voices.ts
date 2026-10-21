@@ -7,9 +7,25 @@
  * "You bid {bid} for THAT?!" lines have one take per number. Lines without a clip → Web Speech (right gender).
  * Opus/WebM where the browser can play it, else AAC/M4A (Safari).
  */
-import { type PersonaId, lineById, voiceFor } from '@spades/bots';
+import { type PersonaId, lineById, storyCastForName, storyVoiceKey, voiceFor } from '@spades/bots';
 import { decodeAudioBuffer, sound } from '../audio';
 import { audioElementPool } from '../audioPool';
+
+/**
+ * The sprite key for a speaker. Story characters resolve by CHARACTER
+ * (storyVoice.ts): the card's gender is authoritative and the cast persona
+ * may be recast (American register) — never the generic name-table hash
+ * that sent Pat to the male sprite. Normal bots resolve exactly as before.
+ */
+function keyFor(persona: PersonaId, name: string): string {
+  const cast = storyCastForName(name);
+  // Only the character's own voice calls (card or cast persona) take the
+  // story key; a same-named normal bot probed with another persona keeps
+  // the classic voiceFor resolution.
+  return cast && (persona === cast.persona || persona === cast.cardPersona)
+    ? storyVoiceKey(cast.characterId)
+    : voiceFor(persona, name).key;
+}
 
 let ext: 'webm' | 'm4a' | null = null;
 function format(): 'webm' | 'm4a' {
@@ -55,7 +71,7 @@ export function rawLine(lineId: string | undefined): string | undefined { return
 
 /** A bot sat down: fetch + decode its persona-gender sprite in the background (only seated bots are ever fetched). */
 export function preloadVoice(persona: PersonaId, name: string): void {
-  const key = voiceFor(persona, name).key;
+  const key = keyFor(persona, name);
   if (cache.has(key)) return;
   const go = () => { void load(key); };
   const ric = (window as unknown as { requestIdleCallback?: (f: () => void) => void }).requestIdleCallback;
@@ -69,7 +85,7 @@ export function preloadVoice(persona: PersonaId, name: string): void {
 export async function playClip(persona: PersonaId, name: string, raw: string | undefined, gain: number, bid?: number, seat?: import('../spatial').SeatPos, playerCount = 4): Promise<boolean> {
   if (!raw) return false;
   const t0 = performance.now();
-  const sp = await load(voiceFor(persona, name).key);
+  const sp = await load(keyFor(persona, name));
   const at = sp && ((bid !== undefined ? sp.clips[`${raw}#${bid}`] : undefined) ?? sp.clips[raw]);
   if (!sp?.buf || !at) return false;
   if (performance.now() - t0 > 1500) return true; // too late to still fit the moment: stay quiet

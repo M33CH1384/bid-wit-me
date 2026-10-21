@@ -150,3 +150,77 @@ describe('story progress + results', () => {
     expect(p.currentStop).toBeNull();
   });
 });
+
+/* ================= Scene pass: eggs + feats (2026-10-21) ================= */
+
+const found = (uid: string, eggId: string) =>
+  call(uid, '/api/story/found', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ eggId }) });
+const resultF = (uid: string, stopId: string, won: boolean, gameId: string, facts?: unknown) =>
+  call(uid, '/api/story/result', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ stopId, won, gameId, facts }) });
+const progressF = async (uid = 'a') => (await (await call(uid, '/api/story/progress')).json()) as {
+  stops: { stopId: string; state: string; attempts: number; clears: number }[];
+  finds: { eggs: string[]; feats: string[] };
+};
+const CLEAN = { margin: 40, handsPlayed: 5, setsAgainstUs: 0, setsAgainstThem: 1, ourNilsMade: 0, ourBlindNilsMade: 0, deeNilsMade: 0, deeSteady: false, setOnFirstHand: false, oppSetTwice: false };
+
+describe('story secrets: found endpoint + feat grants', () => {
+  it('a scene egg find is recorded once (idempotent) and shows in progress', async () => {
+    const r1 = await (await found('a', 'porch-radio')).json() as { ok: boolean; new: boolean; finds: { eggs: string[] } };
+    expect(r1.ok).toBe(true);
+    expect(r1.new).toBe(true);
+    expect(r1.finds.eggs).toContain('porch-radio');
+    const r2 = await (await found('a', 'porch-radio')).json() as { new: boolean };
+    expect(r2.new).toBe(false);
+    expect((await progressF()).finds.eggs.filter((e) => e === 'porch-radio').length).toBe(1);
+  });
+
+  it('the lock covers the found endpoint too (non-admin 403)', async () => {
+    expect((await found('b', 'porch-radio')).status).toBe(403);
+  });
+
+  it('match-event eggs cannot be reported — they are earned in the game', async () => {
+    expect((await found('a', 'rec-dee-nil')).status).toBe(400);
+    expect((await found('a', 'nope-not-an-egg')).status).toBe(400);
+  });
+
+  it('a chain egg requires the carried fact and an unlocked stop', async () => {
+    // cookout is locked at the start of the route
+    expect((await found('a', 'cookout-chain')).status).toBe(409);
+    // unlock through the cookout by clearing 1-3, still without the porch egg
+    for (const [i, id] of ['porch', 'barbershop', 'rec-center'].entries()) {
+      expect((await result('a', id, true, `chain-pre-${i}`)).status).toBe(200);
+    }
+    expect((await found('a', 'cookout-chain')).status).toBe(409); // porch egg not in hand
+    await found('a', 'porch-radio');
+    const ok = await (await found('a', 'cookout-chain')).json() as { ok: boolean; new: boolean };
+    expect(ok.ok).toBe(true);
+    expect(ok.new).toBe(true);
+  });
+
+  it('a clean Porch clear with honest facts grants the feat collectible — once', async () => {
+    const r1 = await (await resultF('a', 'porch', true, 'feat-1', CLEAN)).json() as { newFinds: { kind: string; id: string; name: string }[] };
+    expect(r1.newFinds).toEqual([{ kind: 'feat', id: 'story-porch-cap', name: "Ray's Lucky Bottle Cap" }]);
+    // the collectible is in the Rep unlocks table (profile Unlocks surface)
+    const rows = await db.prepare('SELECT item_id AS itemId, source FROM unlocks WHERE user_id = ?').bind('a').all<{ itemId: string; source: string }>();
+    expect(rows.results).toContainEqual({ itemId: 'story-porch-cap', source: 'story-feat:porch' });
+    // replay the feat in another game: granted once, reported never again
+    const r2 = await (await resultF('a', 'porch', true, 'feat-2', CLEAN)).json() as { newFinds: unknown[] };
+    expect(r2.newFinds).toEqual([]);
+    expect((await progressF()).finds.feats).toEqual(['story-porch-cap']);
+  });
+
+  it('no feat without the fact: a set against you, or a missing facts payload, grants nothing', async () => {
+    const dirty = await (await resultF('a', 'porch', true, 'feat-dirty', { ...CLEAN, setsAgainstUs: 2 })).json() as { newFinds: unknown[] };
+    expect(dirty.newFinds).toEqual([]);
+    const bare = await (await resultF('a', 'porch', true, 'feat-bare')).json() as { newFinds: unknown[] };
+    expect(bare.newFinds).toEqual([]);
+    expect((await progressF()).finds.feats).toEqual([]);
+  });
+
+  it('a match-event egg is granted from result facts (Rec Center: Dee makes a nil)', async () => {
+    for (const [i, id] of ['porch', 'barbershop'].entries()) await result('a', id, true, `egg-pre-${i}`);
+    const r = await (await resultF('a', 'rec-center', false, 'egg-1', { ...CLEAN, deeNilsMade: 1 })).json() as { newFinds: { kind: string; id: string }[] };
+    expect(r.newFinds).toContainEqual({ kind: 'egg', id: 'rec-dee-nil', name: "Dee's Rec Center Nil" });
+    expect((await progressF()).finds.eggs).toContain('rec-dee-nil');
+  });
+});
