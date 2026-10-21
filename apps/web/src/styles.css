@@ -2866,3 +2866,26 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
 .rw-pg-title { font-size: 15px; margin: 0 0 4px; letter-spacing: .02em; }
 .rw-moments { margin: 8px 0 0; padding-left: 18px; font-size: 13px; color: var(--ink-dim); }
 .rw-moments li { margin: 2px 0; }
+
+/* Rewards reveal gate (owner, 2026-10-20): the reveal animations on the
+   /rewards screen are held until the page has painted — GameOverRewards adds
+   .rw-play (via useRewardsReveal) only after the first frames are on screen,
+   so a slow first paint can no longer spend the whole show before the screen
+   is visible. Until then the animated pieces sit in their pre-reveal state
+   with the animation held OFF (a running timeline would already be spent).
+   .rw-reduced (Reduce effects / OS reduce-motion) renders the final state
+   instantly. Scoped to .rw-armed so the no-match fallback card is untouched. */
+.rewards-page.rw-armed:not(.rw-play) .rw-card,
+.rewards-page.rw-armed:not(.rw-play) .rw-row,
+.rewards-page.rw-armed:not(.rw-play) .rw-actions { animation: none; }
+.rewards-page.rw-armed:not(.rw-play) .rw-trophy,
+.rewards-page.rw-armed:not(.rw-play) .rw-levelup { animation: none; opacity: 0; }
+.rewards-page.rw-reduced .rw-card,
+.rewards-page.rw-reduced .rw-row,
+.rewards-page.rw-reduced .rw-actions { animation: none; opacity: 1; transform: none; }
+.rewards-page.rw-reduced .rw-trophy,
+.rewards-page.rw-reduced .rw-levelup { animation: none; opacity: 1; transform: none; }
+/* level-bar legs: .instant snaps (the level-up reset to empty), .fast shortens
+   the fill so a level-up's two legs stay inside the reveal's rhythm */
+.rw-levelbar-fill.instant { transition: none; }
+.rw-levelbar-fill.fast { transition-duration: .55s; }

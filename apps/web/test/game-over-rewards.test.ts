@@ -67,3 +67,23 @@ describe('computeRewards', () => {
     expect(d.xpGained).toBe(0);
   });
 });
+
+describe('computeRewards level-bar before progress', () => {
+  it('carries the pre-game bar progress from the before snapshot', () => {
+    const before = profile();
+    const after = profile({
+      level: { level: 9, xp: 1150, title: 'Certified', xpForNext: 375, xpIntoLevel: 25 },
+    });
+    const d = computeRewards(before, after, { won: true, headline: 'VICTORY!', sub: '', kind: 'team' });
+    expect(d.xpIntoLevelBefore).toBe(83);
+    expect(d.xpForNextBefore).toBe(300);
+    expect(d.levelBefore).toBe(8);
+    expect(d.levelAfter).toBe(9);
+  });
+
+  it('defaults the before progress when snapshots are missing', () => {
+    const d = computeRewards(null, null, { won: false, headline: 'DEFEAT', sub: '', kind: 'team' });
+    expect(d.xpIntoLevelBefore).toBe(0);
+    expect(d.xpForNextBefore).toBe(1);
+  });
+});
