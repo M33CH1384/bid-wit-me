@@ -540,18 +540,20 @@ function MisdealButton({ onCall }: { onCall: () => void }) {
 }
 
 /**
- * The announcement: a misdeal is CALLED, out loud — who called it and why (no spades) — with the
- * caller's whole hand face up as the whole table's proof. It rides the gather beat while every
- * hand slides to the deck; the shuffle + deal flight then take over (see misdeal.ts).
+ * The announcement: a misdeal is CALLED, out loud — who called it and why (no spades), and who
+ * the deal passes to — with the caller's whole hand face up as the whole table's proof. It rides
+ * the gather beat while every hand slides across to the incoming dealer's deck spot; the shuffle
+ * + deal flight then take over from that seat (see misdeal.ts).
  */
-function MisdealReveal({ title, bidsVoided, cards, rules }: { title: string; bidsVoided: boolean; cards: Card[]; rules: TableRules }) {
+function MisdealReveal({ title, passTo, bidsVoided, cards, rules }: { title: string; passTo: string; bidsVoided: boolean; cards: Card[]; rules: TableRules }) {
   const spread = sortHand(cards, rules);
   const perRow = Math.ceil(spread.length / 2);
   return (
-    <div className="misdeal-reveal" data-testid="misdeal-reveal" role="status" aria-label={`Misdeal — ${title}`}>
+    <div className="misdeal-reveal" data-testid="misdeal-reveal" role="status" aria-label={`Misdeal — ${title}. Deal passes to ${passTo}`}>
       <div className="misdeal-panel glass">
         <div className="misdeal-head">Misdeal</div>
         <div className="misdeal-sub">{title}</div>
+        <div className="misdeal-pass">Deal passes to {passTo}</div>
         <div className="misdeal-spread" style={{ '--per-row': perRow } as React.CSSProperties}>
           {spread.map((c, i) => (
             <img key={c} src={faceUrl(c, isWildDeuce(c, rules))} alt={c} className="misdeal-card" style={{ '--i': i } as React.CSSProperties} />
@@ -1046,8 +1048,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // the floating button only covers the window while other seats are still bidding.
   const bidPanelShowing = myTurn && !dealing && st.phase === 'bidding' && !!view.bidOptions && !autoReveal;
   // The redeal sequence (see misdeal.ts): a fresh thrown-hand key runs announce + gather — the
-  // announcement names the caller, every hand glides to the deck — then the redeal deals out
-  // (the card layer remounts on a new deal epoch) and bidding opens. The sources hold play for
+  // announcement names the caller and who the deal passes to, every hand glides across to the
+  // incoming dealer's deck spot (the state already carries the new dealer) — then the redeal
+  // deals out of that seat (the card layer remounts on a new deal epoch) and bidding opens. The sources hold play for
   // the whole sequence; this machine only drives what the table shows. Reduced motion collapses
   // it to the announcement, then the hand simply swaps. Bids placed before the call are captured
   // from the previous state, so the announcement can say they died with the hand.
@@ -2181,6 +2184,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       {redeal?.phase === 'gather' && view.misdealReveal && (
         <MisdealReveal
           title={view.misdealReveal.seat === HUMAN && !spectating ? 'You called it · no spades' : `${names[view.misdealReveal.seat] ?? 'A player'} called it · no spades`}
+          passTo={view.dealer === HUMAN && !spectating ? 'you' : names[view.dealer] ?? 'the next dealer'}
           bidsVoided={redeal.bidsVoided}
           cards={view.misdealReveal.cards}
           rules={r}

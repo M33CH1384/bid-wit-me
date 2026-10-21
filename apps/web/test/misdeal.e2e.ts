@@ -1,8 +1,10 @@
 /**
  * Misdeal, browser-level (WebKit 390): a spade-less human hand gets the 'Call misdeal' button;
- * calling it announces the call ("You called it · no spades") with the whole hand face up as the
- * table's proof while the hands gather to the deck (~1.2s beat), then the same hand is shuffled
- * and redealt on the normal deal flight (still bidding, fresh cards, no bid placed).
+ * calling it announces the call ("You called it · no spades") and the dealer pass with the whole
+ * hand face up as the table's proof while the hands gather across to the incoming dealer
+ * (~1.2s beat), then the hand is shuffled and redealt out of that seat on the normal deal
+ * flight (still bidding, fresh cards, no bid placed). The save deals from seat 3, so the
+ * human's call passes the deal TO the human: the announcement reads "Deal passes to you".
  * Saves docs/misdeal-button-390.png and docs/misdeal-reveal-390.png when BWM_SHOTS=docs.
  */
 import { isTrump, makeRules, newGame, type GameState } from '@spades/rules';
@@ -49,7 +51,8 @@ function save(): string {
     if (cards !== 13) throw new Error(`reveal showed ${cards} cards, want 13`);
     const announce = (await reveal.textContent()) ?? '';
     if (!announce.includes('You called it · no spades')) throw new Error(`announcement did not name the call: ${announce.slice(0, 120)}`);
-    console.log('✓ the call is announced: who + why (no spades), thrown hand face up as proof');
+    if (!announce.includes('Deal passes to you')) throw new Error(`announcement did not name the dealer pass: ${announce.slice(0, 120)}`);
+    console.log('✓ the call is announced: who + why (no spades) + who the deal passes to, thrown hand face up as proof');
     await page.waitForTimeout(500);
     await page.screenshot({ path: `${SHOTS}/misdeal-reveal-390.png` });
     await reveal.waitFor({ state: 'hidden', timeout: 6000 });

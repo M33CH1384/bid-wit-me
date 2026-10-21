@@ -699,8 +699,9 @@ function exchangeSteps(st: GameState): ExchangeStep[] {
  * first card played is far too late). Other seats bidding does not decline for you — in a live game the
  * first accepted call wins and the redeal resets the window for everyone. Cutthroat's eliminated seats
  * hold no cards and are out regardless. On the call, the caller's whole hand goes face up on the table
- * (`misdealReveal`, public in every view) and the same hand — same number, dealer, scores, series — is
- * reshuffled and redealt. A fresh deal can itself be spade-less: the rule simply applies again.
+ * (`misdealReveal`, public in every view) and the same hand — same number, scores, series — is
+ * reshuffled and redealt, with the deal passing to the next dealer like a normal end of hand.
+ * A fresh deal can itself be spade-less: the rule simply applies again (and the deal passes again).
  */
 export function canMisdeal(st: GameState, seat: Seat): boolean {
   if (st.phase !== 'bidding' || isEliminated(st, seat)) return false;
@@ -775,9 +776,11 @@ export function applyAction(st: GameState, action: Action): GameState {
     }
     case 'misdeal': {
       if (!canMisdeal(st, seat)) throw new RuleError('NO_MISDEAL', 'A misdeal needs a spade-less hand you have seen, before you have bid');
-      // Same hand, same dealer, same scores and series: only the deck is reshuffled. The thrown hand
-      // rides on the new state face up, so the whole table (every client's view) sees the proof.
-      const next = dealHand(st, st.handNo, st.dealer, (st.misdeals ?? 0) + 1);
+      // Same hand, same scores and series: only the deck is reshuffled — and the deal passes to
+      // the next dealer, exactly as if the hand had ended (owner, 2026-10-21), so a redeal deals
+      // out of the incoming dealer's hands. The thrown hand rides on the new state face up, so
+      // the whole table (every client's view) sees the proof.
+      const next = dealHand(st, st.handNo, nextDealer(st), (st.misdeals ?? 0) + 1);
       return { ...next, misdealReveal: { seat, cards: [...st.hands[seat]!] } };
     }
     case 'runIt': {

@@ -115,7 +115,9 @@ export interface SceneProps {
   /** Post-hand: books slide to the next dealer for collection (Demetrius 2026-10-19). */
   collecting?: boolean;
   /** Misdeal redeal, beat 1: every hand on the table glides to the deck spot (the collection
-   *  glide) while the call is announced, before the redeal deals out. */
+   *  glide) while the call is announced, before the redeal deals out. The deck spot sits in
+   *  front of the CURRENT dealer — and a misdeal passes the deal, so on the redealt state this
+   *  is the incoming dealer's spot: the pile travels to them. */
   gatherHands?: boolean;
   /** Misdeal redeal, beat 2: bumped when the redeal should deal out — remounts the card layer
    *  so this hand's normal shuffle + deal flight replays under the same hand number. */
@@ -535,7 +537,8 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   const deck = deckSpot(positions[dealer]!, n);
   const intro = props.introHand === handNo;
   // Misdeal gather: while the call is announced, every hand rides the collection glide into the
-  // deck spot; the redeal then deals out of that same deck (see Table's redeal sequence).
+  // deck spot — which belongs to the incoming dealer, the deal having passed on the call — and
+  // the redeal's shuffle + deal flight then run out of that same deck (see Table's sequence).
   const gather = !!props.gatherHands;
   const held0 = dealHeld({ intro, dealReady: props.dealReady !== false });
   // Blind Nil: cards that were dealt face-down flip over in place on reveal — never re-dealt from the deck

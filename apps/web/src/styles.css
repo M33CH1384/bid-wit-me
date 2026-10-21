@@ -1514,6 +1514,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .misdeal-panel { max-width: min(96vw, 620px); padding: 16px 18px 13px; text-align: center; border-radius: 18px; }
 .misdeal-head { font-family: var(--display); font-weight: 900; font-style: italic; text-transform: uppercase; letter-spacing: .05em; font-size: clamp(22px, 5vw, 32px); color: #ffd75e; text-shadow: 0 2px 10px rgba(0,0,0,.6); }
 .misdeal-sub { margin: 2px 0 10px; font-weight: 700; color: #fff; text-shadow: 0 1px 6px rgba(0,0,0,.7); }
+.misdeal-pass { margin: -4px 0 10px; font-family: var(--display); font-weight: 800; font-style: italic; letter-spacing: .03em; font-size: 15.5px; color: #ffd75e; text-shadow: 0 1px 6px rgba(0,0,0,.7); }
 .misdeal-spread { display: grid; grid-template-columns: repeat(var(--per-row), auto); gap: clamp(4px, 1vw, 8px); justify-content: center; }
 .misdeal-card { width: min(calc(92vw / var(--per-row) - 8px), 104px, 13vh); aspect-ratio: 240 / 336; border-radius: 8px; box-shadow: 0 10px 26px rgba(0,0,0,.6), 0 0 0 2px rgba(255,255,255,.85);
   animation: rz-card .4s cubic-bezier(.2,1.5,.4,1) both; animation-delay: calc(var(--i) * 40ms); }

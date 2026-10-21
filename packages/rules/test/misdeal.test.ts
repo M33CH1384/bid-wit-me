@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  type Card, type GameState, RuleError, applyAction, canMisdeal, isTrump, makeRules, newGame, spectatorView, viewFor,
+  type Card, type GameState, RuleError, applyAction, bidOrder, canMisdeal, isTrump, makeRules, newGame, nextDealer, spectatorView, viewFor,
 } from '../src/index';
 
 function expectRuleError(fn: () => unknown, code: string) {
@@ -104,11 +104,18 @@ describe('Call misdeal — eligibility', () => {
     expect(next.bids.every((b) => b === null)).toBe(true); // the placed bids die with the hand
     expect(next.handNo).toBe(cur.handNo);
     expect(next.misdealReveal?.seat).toBe(0);
+    // he dealt (seat 0), so the redeal passes the deal on: seat 1 deals, and bidding opens
+    // with the first bidder of the NEW dealer's order
+    expect(next.dealer).toBe(1);
+    expect(next.turn).toBe(bidOrder(next.rules, next.dealer)[0]);
   });
 });
 
 describe('Call misdeal — the redeal', () => {
-  it('same hand, same dealer, same scores and series: only the deck moves', () => {
+  // Owner-ordered rule change (2026-10-21): a misdeal redeal now PASSES the deal to the next
+  // dealer, like a normal end of hand. The previous pin asserted the same dealer stayed; that
+  // was the old rule, not a regression guard.
+  it('same hand, same scores and series — but the deal passes to the next dealer', () => {
     const base = spadeLessGame();
     const st: GameState = {
       ...base,
@@ -119,7 +126,8 @@ describe('Call misdeal — the redeal', () => {
     const thrown = [...st.hands[0]!];
     const next = applyAction(st, { type: 'misdeal', seat: 0 });
     expect(next.handNo).toBe(st.handNo);
-    expect(next.dealer).toBe(st.dealer);
+    expect(next.dealer).toBe(nextDealer(st));
+    expect(next.dealer).not.toBe(st.dealer);
     expect(next.scores).toEqual([140, -60]);
     expect(next.bags).toEqual([3, 7]);
     expect(next.history).toEqual(st.history);
@@ -163,6 +171,62 @@ describe('Call misdeal — the redeal', () => {
     const twice = applyAction(rigged, { type: 'misdeal', seat: 0 });
     expect(twice.misdeals).toBe(2);
     expect(twice.handNo).toBe(st.handNo);
+    // and the deal passed on BOTH calls — two seats on from where the hand started
+    expect(next.dealer).toBe((st.dealer + 1) % 4);
+    expect(twice.dealer).toBe((st.dealer + 2) % 4);
+  });
+
+  it('the deal advances exactly one seat per misdeal, from every starting dealer (wrap-around included)', () => {
+    for (let d = 0; d < 4; d++) {
+      let cur: GameState | null = null;
+      let caller = -1;
+      for (let i = 0; i < 500 && !cur; i++) {
+        const st = newGame(joker, `misdeal-pass-${d}-${i}`, { dealer: d });
+        if (st.phase !== 'bidding') continue;
+        const s = st.hands.findIndex((h, seat) => h.length > 0 && noTrump(st, seat));
+        if (s >= 0) { cur = st; caller = s; }
+      }
+      if (!cur) throw new Error(`no spade-less deal found for dealer ${d}`);
+      expect(cur.dealer).toBe(d);
+      const next = applyAction(cur, { type: 'misdeal', seat: caller });
+      expect(next.dealer).toBe((d + 1) % 4); // seat 3 wraps to seat 0
+      expect(next.handNo).toBe(cur.handNo);
+      // bidding opens with the new dealer's first bidder, exactly like a fresh hand
+      expect(next.turn).toBe(bidOrder(next.rules, next.dealer)[0]);
+    }
+  });
+
+  it('whoever calls it, the deal passes the same one seat', () => {
+    const st = spadeLessGame();
+    // rig a second eligible caller (seat 2 holds the same spade-less cards — eligibility
+    // is a pure read, and the redeal deals a fresh deck from the seed either way)
+    const rigged: GameState = { ...st, hands: st.hands.map((h, i) => (i === 2 ? [...st.hands[0]!] : h)) };
+    expect(canMisdeal(rigged, 2)).toBe(true);
+    expect(applyAction(st, { type: 'misdeal', seat: 0 }).dealer).toBe((st.dealer + 1) % 4);
+    expect(applyAction(rigged, { type: 'misdeal', seat: 2 }).dealer).toBe((st.dealer + 1) % 4);
+  });
+
+  it('Cutthroat: the pass is the normal hand-end rotation — the button can land on an eliminated seat', () => {
+    const cut = makeRules('cutthroat', { playerCount: 4, firstHandBidsItself: false });
+    const st = spadeLessGame(cut, 0);
+    // the same rotation a normal next hand takes from this exact state
+    const viaNextHand = applyAction({ ...st, phase: 'handOver' as const }, { type: 'nextHand' });
+    const viaMisdeal = applyAction(st, { type: 'misdeal', seat: 0 });
+    expect(viaMisdeal.dealer).toBe(viaNextHand.dealer);
+    expect(viaMisdeal.dealer).toBe((st.dealer + 1) % 4);
+    // and when the incoming dealer is already out, the button still sits on them by design;
+    // the cards just deal around them (nobody new is dealt in or out by the pass)
+    let base: GameState | null = null;
+    for (let i = 0; i < 500 && !base; i++) {
+      const g = newGame(cut, `misdeal-cut-out-${i}`, { dealer: 1 });
+      if (g.phase === 'bidding' && noTrump(g, 0)) base = g;
+    }
+    if (!base) throw new Error('no spade-less cutthroat deal found');
+    const withOut: GameState = { ...base, eliminated: [false, false, true, false] }; // seat 2 = the incoming dealer
+    const next = applyAction(withOut, { type: 'misdeal', seat: 0 });
+    expect(next.dealer).toBe(2);
+    expect(next.hands[2]).toHaveLength(0);
+    expect(next.hands.filter((h) => h.length > 0)).toHaveLength(3);
   });
 
   it('view.canMisdeal tracks the engine exactly', () => {

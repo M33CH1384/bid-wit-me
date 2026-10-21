@@ -3,13 +3,16 @@ import { dealTimeline } from './three/dealTimeline';
 
 /**
  * A called misdeal gets a real moment, in the game's own motion language — never a silent swap:
- *  1. ANNOUNCE + GATHER (`MISDEAL_REVEAL_MS`): the call is announced — who called it, and why
- *     (no spades) — with the thrown hand face up as the table's proof, while every hand glides
- *     to the deck on the same glide the end-of-hand collection uses. Bids already placed die
- *     with the hand, and the announcement says so.
+ *  1. ANNOUNCE + GATHER (`MISDEAL_REVEAL_MS`): the call is announced — who called it, why
+ *     (no spades), and who the deal passes to — with the thrown hand face up as the table's
+ *     proof, while every hand glides across to the INCOMING dealer's deck spot on the same
+ *     glide the end-of-hand collection uses (a misdeal passes the deal like a normal end of
+ *     hand, so the pile travels to the seat about to deal). Bids already placed die with the
+ *     hand, and the announcement says so.
  *  2. SHUFFLE + DEAL OUT: the card layer restarts the hand's deal (same hand number, fresh deal
- *     epoch), so the normal shuffle + deal flight replays, a touch brisker than a fresh hand
- *     (`MISDEAL_DEAL_SPEED`) to keep the whole moment near three seconds.
+ *     epoch), so the normal shuffle + deal flight replays — shuffled and dealt out of the new
+ *     dealer's hands, since the deck spot sits in front of whoever holds the deal — a touch
+ *     brisker than a fresh hand (`MISDEAL_DEAL_SPEED`) to keep the moment near three seconds.
  *  3. Bidding opens when the last card lands.
  * The sequence rides each source's `dealing` flag for its FULL length (bots, input and dealt
  * slots all wait), online and solo alike, because the reveal rides the synced view

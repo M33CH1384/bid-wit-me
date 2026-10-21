@@ -53,4 +53,17 @@ describe('misdeal redeal sequence', () => {
       expect(view.misdealReveal).toEqual({ seat: (0 - viewer + 4) % 4, cards: thrown });
     }
   });
+
+  it('the deal passes on the redeal — in every viewer’s frame, whoever called it', () => {
+    const st = spadeLessGame();
+    const next = applyAction(st, { type: 'misdeal', seat: 0 });
+    // the announcement + gather + shuffle + deal flight all key off the view's dealer, so
+    // every client's view must carry the INCOMING dealer (one seat on) from the same state
+    expect(next.dealer).toBe((st.dealer + 1) % 4);
+    for (let viewer = 0; viewer < 4; viewer++) {
+      expect(viewFor(next, viewer).dealer).toBe((st.dealer + 1) % 4);
+      const { view } = rotateView(viewFor(next, viewer));
+      expect(view.dealer).toBe(((st.dealer + 1 - viewer) % 4 + 4) % 4);
+    }
+  });
 });
