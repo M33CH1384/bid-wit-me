@@ -487,6 +487,16 @@ div.ranks-row { cursor: default; }
 .ticker-bug img { height: 25px; width: auto; display: block; }
 .ticker-beta { position: absolute; right: 4px; bottom: 3px; font-family: var(--display); font-weight: 800; font-size: 8px; letter-spacing: .08em; line-height: 1; color: #1d1204; background: var(--gold); padding: 1.5px 3px; border-radius: 2px; }
 .ticker-viewport { flex: 1; min-width: 0; overflow: hidden; display: flex; align-items: stretch; }
+/* App-wide root bar (league data wave 6a): the same bar fixed at the foot
+   of the page. While it is on screen with lines, <html> carries
+   bwm-ticker-on and the body reserves exactly the bar's height, so page
+   content scrolls clear of it — the bar overlays nothing. It is not
+   rendered at all at a live table (no safe bottom slot there). */
+.ranks-ticker.league-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; height: calc(38px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom); box-sizing: border-box; }
+html.bwm-ticker-on body { padding-bottom: calc(38px + env(safe-area-inset-bottom)); }
+/* LIVE highlight lines: the red dot + a warm tint, same in both themes. */
+.ticker-live-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #ff4d5e; margin-right: 7px; vertical-align: 1px; }
+.ticker-line.live, .ticker-still.live { color: #ffb3ba; }
 .ticker-track { display: flex; align-items: center; white-space: nowrap; animation-name: ticker-scroll; animation-timing-function: linear; animation-iteration-count: infinite; will-change: transform; }
 .ticker-copy { display: inline-flex; align-items: center; }
 .ticker-line { font-family: var(--display); font-weight: 700; font-size: 13px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink); }

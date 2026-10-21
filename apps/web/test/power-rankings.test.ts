@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { isoWeekKey, powerScore, prevWeekKey } from '../../server/src/stats/power';
-import { buildTickerLines } from '../src/social/Compete';
+import { buildTickerLines } from '../src/social/LeagueTicker';
 
 const read = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf8');
 
@@ -35,6 +35,6 @@ describe('power wiring', () => {
     expect(c).toContain('data-testid="power-rankings"');
     expect(c).toContain('First week — no movement yet');
     expect(buildTickerLines({ kind: 'team', top: [], online: [], mine: null, power: [{ name: 'Ace', power: 1310 }] }))
-      .toEqual(['Power Rankings — #1 Ace (1310)']);
+      .toEqual([{ text: 'Power Rankings — #1 Ace (1310)' }]);
   });
 });

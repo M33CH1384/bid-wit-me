@@ -1,10 +1,9 @@
 /** Release 9b: Leaderboards and Tournaments tabs of the Social panel. */
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { statusLabel, type OpenTable, type PresenceEntry } from '@spades/protocol';
+import { type OpenTable, type PresenceEntry } from '@spades/protocol';
 import { CoinIcon } from '../RepBlock';
 import { fetchWagerList, type WagerRow } from './wagerApi';
 import { useAccount } from '../account/api';
-import { fx, useReduceEffects } from '../fx';
 import { navigate } from '../online/nav';
 import { social, useSocial } from './store';
 
@@ -441,7 +440,6 @@ export function Leaderboards() {
         <PowerRankings kind={board === 'duos' ? 'team' : kind} onOpen={(name) => social.showProfile(name)} />
         <RecordBook onOpen={(name) => social.showProfile(name)} />
       </div>
-      <RanksTicker kind={kind} mine={mine} />
       {offscreen && mineRow && (
         <div className="ranks-pin" data-testid="ranks-pin">
           <RankRow r={mineRow} board={board} period={period} mine onOpen={() => mineEl?.scrollIntoView({ block: 'nearest' })} />
@@ -645,164 +643,8 @@ function RecordBook({ onOpen }: { onOpen: (name: string) => void }) {
   );
 }
 
-/* ------------------------------------------------- ESPN bottom ticker */
-
-/** One online player for the ticker: a name plus what they're doing. */
-export interface TickerOnline { name: string; detail: string }
-
-/** One finished match from GET /api/social/results (league data wave). */
-export interface RecentResult {
-  id: string; at: number; kind: Kind; mode: string; code: string;
-  sides: { names: string[]; score: number; won: boolean }[];
-  wheels: boolean;
-}
-
-const RESULT_MODE: Record<string, string> = { joker: 'Joker', aceDown: 'Ace Down', cutthroat: 'Cutthroat', cutthroat4: 'Cutthroat' };
-
-/**
- * One results line for the ticker, from the feed's stored facts only:
- * "Alpha + Bravo def. Char + Delta 500–320 · Joker". Cutthroat names the
- * winner and the full score line; a tie (more than one winning side) is
- * called a tie rather than inventing a loser.
- */
-export function resultTickerLine(r: RecentResult): string {
-  const mode = RESULT_MODE[r.mode] ?? r.mode;
-  const won = r.sides.filter((s) => s.won);
-  const lost = r.sides.filter((s) => !s.won);
-  const names = (s: RecentResult['sides'][number]) => s.names.join(' + ');
-  const flags = r.wheels ? ' · Wheels' : '';
-  const scoresDesc = [...r.sides].sort((a, b) => b.score - a.score).map((s) => s.score).join('–');
-  if (won.length !== 1) return `${won.map(names).join(' & ')} tied · ${mode} ${scoresDesc}${flags}`;
-  if (r.kind === 'cutthroat') return `${names(won[0]!)} won ${mode} ${scoresDesc}${flags}`;
-  if (!lost.length) return '';
-  return `${names(won[0]!)} def. ${names(lost[0]!)} ${won[0]!.score}–${lost[0]!.score} · ${mode}${flags}`;
-}
-
-/**
- * The ticker's lines, built STRICTLY from payloads that already exist
- * (owner's data rule, 2026-10-20 — never fabricate a result):
- *  - the recent-results feed (GET /api/social/results — finished online
- *    matches the server recorded; empty until real games finish),
- *  - the all-time Rating board for the current kind (top 3, with numbers),
- *  - the live presence list (who's online / at a table right now),
- *  - the signed-in viewer's own stat line (/api/social/me/stats).
- */
-export function buildTickerLines(o: { kind: Kind; top: Row[]; online: TickerOnline[]; mine: MyStats | null; power?: { name: string; power: number }[]; results?: RecentResult[] }): string[] {
-  const lines: string[] = [];
-  for (const r of (o.results ?? []).slice(0, 3)) {
-    const line = resultTickerLine(r);
-    if (line) lines.push(line);
-  }
-  const kindLabel = o.kind === 'team' ? 'Partnership' : 'Cutthroat';
-  if (o.top.length) {
-    lines.push(`Top rated · ${kindLabel} — ${o.top.slice(0, 3).map((r) => `${r.name} ${r.value}`).join(' · ')}`);
-  }
-  if (o.power?.length) {
-    lines.push(`Power Rankings — ${o.power.slice(0, 3).map((r, i) => `#${i + 1} ${r.name} (${r.power})`).join(' · ')}`);
-  }
-  if (o.online.length) {
-    lines.push(`Online now — ${o.online.slice(0, 6).map((p) => (p.detail && p.detail !== 'Online' ? `${p.name} (${p.detail.toLowerCase()})` : p.name)).join(' · ')}`);
-  }
-  const m = o.mine?.[o.kind];
-  if (m && m.games > 0) {
-    lines.push(`You — ${m.elo == null ? 'Unrated' : `Rating ${m.elo}`} · ${m.games} games · Win ${pct(m.winPct)}${m.accuracy !== null ? ` · Bid accuracy ${pct(m.accuracy)}` : ''}`);
-  }
-  return lines;
-}
-
-/**
- * The BottomLine: a fixed bar at the foot of the leaderboard view — the BWM
- * WORDMARK bug at its head (the full lockup: block "BWM" with the spade cut
- * into the W, plus the gold BETA tag — owner spec, league data wave), stat
- * lines scrolling to its right inside a clipped viewport, so text starts
- * after the bug block and can never roll behind it. It sits IN the layout
- * flow (a flex footer under the scroll area), so it reserves its own
- * height and never covers rows. Leaderboard surface only (the app-wide
- * promotion is the data wave's next step). Auto-scrolls in a seamless
- * loop; holding it pauses; reduced motion (OS or the app's Reduce effects)
- * swaps the marquee for lines that step every few seconds. The rating
- * board refetches on a 60s poll while the view is open; presence is live
- * from the social store.
- */
-export function RanksTicker({ kind, mine }: { kind: Kind; mine: MyStats | null }) {
-  const s = useSocial();
-  const reduceFx = useReduceEffects();
-  const [osReduced, setOsReduced] = useState<boolean>(() => fx.osReducedMotion);
-  const [top, setTop] = useState<Row[]>([]);
-  const [powerTop, setPowerTop] = useState<{ name: string; power: number }[]>([]);
-  const [results, setResults] = useState<RecentResult[]>([]);
-  const [held, setHeld] = useState(false);
-  const [step, setStep] = useState(0);
-
-  useEffect(() => {
-    let stop = false;
-    const load = () => {
-      if (typeof document !== 'undefined' && document.hidden) return;
-      get(`/api/social/leaderboard?board=rating&kind=${kind}&scope=global&period=all`)
-        .then((j) => { if (!stop) setTop((j.rows ?? []) as Row[]); })
-        .catch(() => { /* ticker is garnish — a failed poll just keeps the last lines */ });
-      get(`/api/social/power?kind=${kind}`)
-        .then((j) => { if (!stop) setPowerTop(((j.rows ?? []) as { name: string; power: number }[]).map((r) => ({ name: r.name, power: r.power }))); })
-        .catch(() => { /* same */ });
-      get('/api/social/results?limit=10')
-        .then((j) => { if (!stop) setResults((j.results ?? []) as RecentResult[]); })
-        .catch(() => { /* same */ });
-    };
-    load();
-    const iv = setInterval(load, 60_000);
-    return () => { stop = true; clearInterval(iv); };
-  }, [kind]);
-
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const on = () => setOsReduced(mq.matches);
-    on();
-    mq.addEventListener('change', on);
-    return () => mq.removeEventListener('change', on);
-  }, []);
-
-  const online = useMemo<TickerOnline[]>(() => Object.values(s.users)
-    .filter((u) => !u.guest)
-    .map((u) => ({ name: u.name, detail: statusLabel(u.status) }))
-    .sort((a, b) => Number(a.detail === 'Online') - Number(b.detail === 'Online') || a.name.localeCompare(b.name)), [s.users]);
-  const lines = useMemo(() => buildTickerLines({ kind, top, online, mine, power: powerTop, results }), [kind, top, online, mine, powerTop, results]);
-  const reduced = reduceFx || osReduced;
-
-  useEffect(() => {
-    if (!reduced || lines.length < 2) return;
-    const iv = setInterval(() => setStep((x) => x + 1), 4000);
-    return () => clearInterval(iv);
-  }, [reduced, lines.length]);
-
-  if (!lines.length) return null;
-  // Owner tweak (2026-10-20): ~25% faster than the original 0.32 s/char
-  // loop — the duration is cut to 0.8× (0.256 s/char, 13s floor vs 16s).
-  const duration = Math.max(13, Math.round(lines.join(' ').length * 0.256));
-  return (
-    <div className={`ranks-ticker${held ? ' held' : ''}`} data-testid="ranks-ticker"
-      onPointerDown={() => setHeld(true)} onPointerUp={() => setHeld(false)}
-      onPointerLeave={() => setHeld(false)} onPointerCancel={() => setHeld(false)}>
-      <span className="ticker-bug" aria-hidden="true">
-        <img src="/assets/bwm-wordmark-white.svg" alt="" />
-        <span className="ticker-beta">BETA</span>
-      </span>
-      <span className="sr-only" role="status">{lines.join(' ')}</span>
-      <div className="ticker-viewport">
-        {reduced
-          ? <div className="ticker-still" aria-hidden="true">{lines[step % lines.length]}</div>
-          : (
-            <div className="ticker-track" aria-hidden="true" style={{ animationDuration: `${duration}s` }}>
-              {[0, 1].map((copy) => (
-                <span key={copy} className="ticker-copy">
-                  {lines.map((l, i) => <span key={i} className="ticker-line">{l}<i className="ticker-sep">♠</i></span>)}
-                </span>
-              ))}
-            </div>
-          )}
-      </div>
-    </div>
-  );
-}
+/* The BottomLine ticker moved to LeagueTicker.tsx (league data wave 6a):
+   it is ONE shared component mounted app-wide, not a leaderboard footer. */
 
 /* ------------------------------------------------------------- tournaments */
 

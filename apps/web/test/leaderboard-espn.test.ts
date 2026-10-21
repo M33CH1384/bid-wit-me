@@ -19,12 +19,16 @@ import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildTickerLines, ranksFilterSummary, RanksTicker, resultTickerLine, viewRowsFor, type RecentResult } from '../src/social/Compete';
+import { ranksFilterSummary, viewRowsFor } from '../src/social/Compete';
+import { buildTickerLines, LeagueTicker, resultTickerLine, tickerRootVisible, type RecentResult } from '../src/social/LeagueTicker';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const readSrc = (p: string) => readFileSync(new URL(p, import.meta.url), 'utf8');
 const compete = readSrc('../src/social/Compete.tsx');
+const ticker = readSrc('../src/social/LeagueTicker.tsx');
+const socialSrc = readSrc('../src/social/Social.tsx');
+const mainSrc = readSrc('../src/main.tsx');
 const css = readSrc('../src/social/social.css');
 
 const DIVISION_NAMES = ['Stoop', 'Corner', 'Avenue', 'Boulevard', 'Legend'];
@@ -75,10 +79,12 @@ describe('ticker lines: real payloads only', () => {
       online: [{ name: 'M33CH', detail: 'At a table' }, { name: 'LovleyT714', detail: 'Online' }],
       mine,
     });
-    expect(lines[0]).toBe('Top rated · Partnership — Alpha 1500 · Bravo 1420 · Charlie 1390');
-    expect(lines[1]).toBe('Online now — M33CH (at a table) · LovleyT714');
-    expect(lines[2]).toBe('You — Rating 1000 · 19 games · Win 32% · Bid accuracy 61%');
-    for (const l of lines) for (const n of DIVISION_NAMES) expect(l).not.toContain(n);
+    expect(lines.map((l) => l.text)).toEqual([
+      'Top rated · Partnership — Alpha 1500 · Bravo 1420 · Charlie 1390',
+      'Online now — M33CH (at a table) · LovleyT714',
+      'You — Rating 1000 · 19 games · Win 32% · Bid accuracy 61%',
+    ]);
+    for (const l of lines) for (const n of DIVISION_NAMES) expect(l.text).not.toContain(n);
   });
   it('says nothing when there is nothing real to say', () => {
     expect(buildTickerLines({ kind: 'cutthroat', top: [], online: [], mine: null })).toEqual([]);
@@ -112,9 +118,9 @@ describe('results feed lines (league data wave, item 1)', () => {
   it('results lead the ticker, capped at three, ahead of the rating line', () => {
     const topRows = [{ rank: 1, id: 'u:a', name: 'Alpha', value: 1500, games: 40 }];
     const lines = buildTickerLines({ kind: 'team', top: topRows, online: [], mine: null, results: [team, cut, team, cut] });
-    expect(lines[0]).toBe(resultTickerLine(team));
-    expect(lines[1]).toBe(resultTickerLine(cut));
-    expect(lines[3]).toContain('Top rated');
+    expect(lines[0]!.text).toBe(resultTickerLine(team));
+    expect(lines[1]!.text).toBe(resultTickerLine(cut));
+    expect(lines[3]!.text).toContain('Top rated');
     expect(lines).toHaveLength(4);
   });
   it('an empty feed adds no line (the feed accumulates from real games)', () => {
@@ -180,7 +186,7 @@ describe('the BottomLine renders: bug + lines from the rating board fetch', () =
     el = document.createElement('div');
     document.body.appendChild(el);
     root = createRoot(el);
-    await act(async () => { root!.render(createElement(RanksTicker, { kind: 'team', mine: null })); });
+    await act(async () => { root!.render(createElement(LeagueTicker, { variant: 'panel' })); });
     for (let i = 0; i < 4; i++) await act(async () => { await new Promise((r) => setTimeout(r, 5)); });
     const bar = el.querySelector('[data-testid="ranks-ticker"]');
     expect(bar).not.toBeNull();
@@ -192,7 +198,7 @@ describe('the BottomLine renders: bug + lines from the rating board fetch', () =
   });
   it('the bug is the full wordmark lockup: opaque block, gold BETA tag, marquee clipped after it (owner spec, item 5)', () => {
     // gold BETA chip in the lockup
-    expect(compete).toContain('<span className="ticker-beta">BETA</span>');
+    expect(ticker).toContain('<span className="ticker-beta">BETA</span>');
     expect(css).toContain('.ticker-beta {');
     // the block is fully opaque in BOTH themes — a solid hex fill, and the
     // old translucent gold / neon-tinted bug backgrounds are gone
@@ -200,17 +206,27 @@ describe('the BottomLine renders: bug + lines from the rating board fetch', () =
     expect(css).not.toContain('.ticker-bug { flex: none; display: grid; place-items: center; width: 44px; background: rgba');
     expect(css).not.toContain('html[data-theme="neon"] .ticker-bug { background: rgba');
     // the marquee track lives inside its own clipped viewport beside the bug
-    expect(compete).toContain('<div className="ticker-viewport">');
+    expect(ticker).toContain('<div className="ticker-viewport">');
     expect(css).toContain('.ticker-viewport { flex: 1; min-width: 0; overflow: hidden;');
   });
   it('the marquee runs ~25% faster than the original loop (owner tweak)', () => {
     // was: max(16, chars * 0.32); now the duration is cut to 0.8×
-    expect(compete).toContain('Math.max(13, Math.round(lines.join(\' \').length * 0.256))');
-    expect(compete).not.toContain('* 0.32)');
+    expect(ticker).toContain('Math.max(13, Math.round(lines.map((l) => l.text).join(\' \').length * 0.256))');
+    expect(ticker).not.toContain('* 0.32)');
   });
-  it('the ticker is leaderboard-only — Tournaments never renders it', () => {
+  it('the ticker is app-wide now (item 6a): one shared component, root + panel mounts, none inside the leaderboard', () => {
     const tours = compete.slice(compete.indexOf('export function Tournaments'));
-    expect(tours).not.toContain('RanksTicker');
-    expect(compete).toContain('<RanksTicker kind={kind} mine={mine} />');
+    expect(tours).not.toContain('<LeagueTicker');
+    // the leaderboard no longer carries a local ticker — the shared mounts serve it
+    expect(compete).not.toContain('<LeagueTicker');
+    // root mount in main.tsx, panel footer in Social.tsx (hidden on composer tabs)
+    expect(mainSrc).toContain('<LeagueTickerRoot />');
+    expect(socialSrc).toContain('<LeagueTicker variant="panel" />');
+    expect(socialSrc).toContain("s.tab !== 'chat' && s.tab !== 'messages'");
+    // the surface rule: never at a live table, never under the open panel
+    expect(tickerRootVisible({ inGame: false, panelOpen: false })).toBe(true);
+    expect(tickerRootVisible({ inGame: true, panelOpen: false })).toBe(false);
+    expect(tickerRootVisible({ inGame: false, panelOpen: true })).toBe(false);
+    expect(ticker).toContain("classList.toggle('bwm-ticker-on'");
   });
 });

@@ -15,6 +15,7 @@ import { type PlayerTableAction, playerTableAction } from './tableActions';
 import { type MyTable, type SocialTab, type Toast, badgeCount, globalUnread, social, useSocial } from './store';
 import { openPlayerProfile, profileTargetOf } from '../profileTap';
 import { Leaderboards, Tournaments } from './Compete';
+import { LeagueTicker } from './LeagueTicker';
 import { WagerChallenges } from './Wager';
 import { UnlockPopups } from './UnlockPopups';
 import { chatStickToBottom } from '../chatScroll';
@@ -250,6 +251,11 @@ function SocialPanel() {
             s.tab === 'challenges' ? <WagerChallenges signedIn={signedIn} /> :
             <SettingsTab signedIn={signedIn} />}
         </div>
+        {/* The BottomLine as the panel's own footer (league data wave 6a):
+            the same shared component as the app-wide root bar, in flow so
+            it reserves its height. Hidden while a composer owns the panel's
+            bottom (global chat / DM tabs) — the one surface rule. */}
+        {(s.profile || (s.tab !== 'chat' && s.tab !== 'messages')) && <LeagueTicker variant="panel" />}
       </aside>
     </div>
   );

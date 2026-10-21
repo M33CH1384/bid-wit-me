@@ -5,6 +5,7 @@ import { isOnlinePath } from './online/nav';
 import { importChunk } from './chunkLoad';
 import { SoundDock } from './SoundControls';
 import { SocialRoot } from './social/Social';
+import { LeagueTickerRoot } from './social/LeagueTicker';
 import InkLayer from './ink/InkLayer';
 import ReactiveGlow from './neon/ReactiveGlow';
 import { initTheme } from './theme';
@@ -71,6 +72,11 @@ function Root() {
           profile's season label — owner, 2026-10-20): no floating dock on those routes. */}
       {path !== '/profile' && path !== '/rewards' && <SoundDock />}
       <SocialRoot />
+      {/* The BottomLine, app-wide (league data wave 6a): a fixed bottom bar
+          on the main surfaces with its height reserved via bwm-ticker-on.
+          It hides itself at a live table and while the Social panel is
+          open (the panel carries its own in-flow instance). */}
+      <LeagueTickerRoot />
       <IdleGuard />
     </>
   );
