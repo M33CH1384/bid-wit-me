@@ -24,7 +24,7 @@ import { type Settings, loadSettings, saveSettings } from '../settings';
 import { navigate } from '../online/nav';
 import { storyRulesFor, storySettingsFor } from './storySettings';
 import { storyBackdropUrl } from './storyBackdrop';
-import { STORY_OWNER_ONLY, fetchStoryDev, fetchStoryProgress, postStoryFound, postStoryResult, storyLockedFor, type StoryProgress, type StoryResult } from './storyApi';
+import { STORY_OWNER_ONLY, fetchStoryDev, fetchStoryProgress, postStoryFound, postStoryResetStop, postStoryResult, storyLockedFor, type StoryProgress, type StoryResult } from './storyApi';
 import { deckUnlockNotice, invalidateStoryProgress } from '../storyDecks';
 import { setAnimUnlockNotice } from '../setAnims';
 import { clearStoryGame, loadStoryGame, storySaveValidFor, type StorySavedGame } from './storySave';
@@ -158,6 +158,38 @@ export default function StoryHome() {
     clearStoryGame();
     setSaved(null);
     setScreen({ k: 'intro', stop });
+  };
+
+  // Owner-only stop reset (dev tool): which stop's confirm is armed, and
+  // whether a reset call is in flight. Rendered only for dev accounts and
+  // only on stops that have anything recorded to wipe.
+  const [armedReset, setArmedReset] = useState<string | null>(null);
+  const [resetBusy, setResetBusy] = useState(false);
+  const stopHasFacts = (stop: StoryStop): boolean => {
+    const row = progress?.stops.find((s) => s.stopId === stop.id);
+    const secret = STORY_SECRETS[stop.id];
+    return (row?.attempts ?? 0) > 0 || (row?.clears ?? 0) > 0
+      || (!!secret && (progress?.finds?.eggs ?? []).includes(secret.egg.id))
+      || (!!secret && (progress?.finds?.feats ?? []).includes(secret.unlockable.itemId));
+  };
+  /** Wipe one stop server-side so its next win presents as a first clear
+   *  again (see postStoryResetStop). Mirrors the wipe locally: the cached
+   *  cleared-set behind the deck / set-animation pickers is dropped, and a
+   *  local save for this stop belongs to the wiped run, so it goes too.
+   *  XP and coins already earned stay (no clawback, server-side either). */
+  const doReset = async (stop: StoryStop) => {
+    setResetBusy(true);
+    const p = await postStoryResetStop(stop.id);
+    setResetBusy(false);
+    setArmedReset(null);
+    if (!p) return;
+    invalidateStoryProgress();
+    setProgress(p);
+    setSaved((cur) => {
+      const s = cur ?? loadStoryGame();
+      if (s && s.story.stopId === stop.id) { clearStoryGame(); return null; }
+      return s ?? cur;
+    });
   };
 
   const handleGameOver = (stop: StoryStop, seed: string) => (won: boolean, facts: StoryGameFacts) => {
@@ -435,6 +467,23 @@ export default function StoryHome() {
                           disabled={signedOut}
                           onClick={() => setScreen({ k: 'intro', stop })}
                         >{state === 'cleared' ? 'Replay' : 'Play'}</button>
+                      )}
+                    </div>
+                  )}
+                  {dev === true && stopHasFacts(stop) && (
+                    <div className="story-reset" data-testid={`story-reset-${stop.id}`}>
+                      {armedReset === stop.id ? (
+                        <>
+                          <p className="story-reset-copy">
+                            Reset {stop.name}? This wipes its attempts and clear, plus this stop&apos;s egg and feat finds — the next win presents as a first clear again. XP and coins already earned stay.
+                          </p>
+                          <div className="story-reset-actions">
+                            <button type="button" className="btn ghost" data-testid={`story-reset-confirm-${stop.id}`} disabled={resetBusy} onClick={() => void doReset(stop)}>Reset it</button>
+                            <button type="button" className="btn ghost" data-testid={`story-reset-cancel-${stop.id}`} disabled={resetBusy} onClick={() => setArmedReset(null)}>Keep it</button>
+                          </div>
+                        </>
+                      ) : (
+                        <button type="button" className="btn ghost story-reset-arm" data-testid={`story-reset-arm-${stop.id}`} onClick={() => setArmedReset(stop.id)}>Reset stop (owner)</button>
                       )}
                     </div>
                   )}

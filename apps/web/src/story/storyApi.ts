@@ -131,6 +131,26 @@ export function resetStorySessionPings(): void {
   lastOpenPing = null;
 }
 
+/** Owner-only dev tool: reset ONE stop on the caller's solo track (the
+ *  server wipes its progress/claims/finds/session rows; XP and coins
+ *  already earned are NOT clawed back) so its next win presents as a
+ *  first clear again. The server answers 403 to non-admins; the control
+ *  that calls this renders only for dev accounts. Returns the fresh
+ *  progress, or null when the reset failed. */
+export async function postStoryResetStop(stopId: string): Promise<StoryProgress | null> {
+  try {
+    const r = await fetch('/api/story/reset-stop', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({ track: 'solo', stopId }),
+    });
+    if (!r.ok) return null;
+    return (await r.json()) as StoryProgress;
+  } catch {
+    return null;
+  }
+}
+
 /** Report a scene-side Easter egg find (sceneTap / deeTap / chain). The
  *  server validates the trigger type and any chain fact; match-event eggs
  *  are only ever granted from result facts. Returns the fresh progress. */

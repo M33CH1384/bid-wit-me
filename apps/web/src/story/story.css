@@ -474,3 +474,11 @@ html[data-theme="neon"] .story-stop.is-king .story-card { background: rgba(7, 6,
   border-color: rgba(238, 201, 106, 0.38);
   background: linear-gradient(180deg, rgba(238, 201, 106, 0.06), rgba(127, 127, 160, 0.05));
 }
+
+/* Owner-only stop reset (dev tool, rendered for dev accounts only): a
+   quiet row under the stop card's actions, same hairline family at a
+   smaller voice — it is a wrench, not a feature, and reads like one. */
+.story-reset { padding: 0 12px 12px; }
+.story-reset .btn { min-height: 36px; padding: 6px 12px; font-size: 13px; }
+.story-reset-copy { margin: 0 0 8px; font-size: 13px; line-height: 1.45; }
+.story-reset-actions { display: flex; gap: 8px; flex-wrap: wrap; }

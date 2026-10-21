@@ -9,6 +9,10 @@
  *          clears the stop (server-validated sequential unlock), pays the
  *          first-clear reward once (or the small replay upkeep), and the
  *          King clear stamps the track's completion mark.
+ *   POST /api/story/reset-stop { track?, stopId }
+ *        → owner-only dev tool: wipe ONE stop's progress/claims/finds/
+ *          session on the caller's own solo track so its next win presents
+ *          as a first clear again. No XP/coin clawback (see the branch).
  *
  * Server-authoritative, like the rest of Rep: the client reports only which
  * stop it finished and whether its side won (the same trust level as the
@@ -191,6 +195,60 @@ export async function handleStoryHttp(req: Request, env: StoryEnv, url: URL, par
     if (!stop) return json({ error: 'unknown stop' }, 400);
     await openStorySession(db, me.id, track, stop.id, now);
     return json({ ok: true, state: 'open', stopId: stop.id });
+  }
+
+  // Owner-only dev tool (owner, 2026-10-21): reset ONE stop on the caller's
+  // own solo track so a win can be re-run end to end and present as a first
+  // clear again — the owner cleared the Porch once without ever seeing the
+  // win presentation and wants to watch the whole ceremony fire. Wipes the
+  // stop's story_progress row (attempts + clears back to zero), its
+  // story_claims rows (claims are the per-game idempotency record; with the
+  // progress row gone the re-win is classified firstClear from clears === 0
+  // and pays the first-clear reward again), its story_finds rows (the
+  // stop's egg + feat from STORY_SECRETS, so both can be found/earned — and
+  // presented — again), and its story_sessions row when the open session
+  // belongs to this stop. Deliberately NOT a clawback: XP and coins
+  // already granted stay granted (no negative ledger entries — the
+  // re-win re-paying first-clear is intended test behavior), the Rep
+  // `unlocks` row a feat granted stays on the profile, and every other
+  // stop, track and user is untouched. Admin-only in its own right: even
+  // if STORY_OWNER_ONLY is ever flipped off, this stays an owner tool
+  // (the client renders the control only for dev accounts).
+  if (parts[1] === 'story' && parts[2] === 'reset-stop' && req.method === 'POST') {
+    if (!isAdmin(env, me.id, me.username)) return json({ error: 'Stop reset is an owner tool.' }, 403);
+    let body: { track?: unknown; stopId?: unknown };
+    try { body = (await req.json()) as typeof body; } catch { return json({ error: 'Send the reset as JSON.' }, 400); }
+    const track = typeof body.track === 'string' ? body.track : STORY_SOLO_TRACK;
+    if (!storyTrackKeyValid(track) || track !== STORY_SOLO_TRACK) return json({ error: 'bad track' }, 400);
+    const stop = typeof body.stopId === 'string' ? storyStopById(body.stopId) : undefined;
+    if (!stop) return json({ error: 'unknown stop' }, 400);
+    const secret = STORY_SECRETS[stop.id];
+    const wiped: Record<string, number> = {};
+    const rp = await db.prepare('DELETE FROM story_progress WHERE user_id = ? AND track_key = ? AND stop_id = ?')
+      .bind(me.id, track, stop.id).run();
+    wiped.progress = rp.meta?.changes ?? 0;
+    const rc = await db.prepare('DELETE FROM story_claims WHERE user_id = ? AND track_key = ? AND stop_id = ?')
+      .bind(me.id, track, stop.id).run();
+    wiped.claims = rc.meta?.changes ?? 0;
+    if (secret) {
+      const rf = await db.prepare("DELETE FROM story_finds WHERE user_id = ? AND track_key = ? AND ((kind = 'egg' AND find_id = ?) OR (kind = 'feat' AND find_id = ?))")
+        .bind(me.id, track, secret.egg.id, secret.unlockable.itemId).run();
+      wiped.finds = rf.meta?.changes ?? 0;
+    }
+    const rs = await db.prepare('DELETE FROM story_sessions WHERE user_id = ? AND track_key = ? AND stop_id = ?')
+      .bind(me.id, track, stop.id).run();
+    wiped.sessions = rs.meta?.changes ?? 0;
+    // The track completion mark is the final stop's own fact: resetting the
+    // King un-completes the track. Resetting any other stop leaves a mark
+    // the King's clear genuinely earned standing.
+    let completionCleared = false;
+    if (stop.id === STORY_STOPS[STORY_STOPS.length - 1]!.id) {
+      const rt = await db.prepare('UPDATE story_tracks SET completed_at = NULL, updated_at = ? WHERE user_id = ? AND track_key = ? AND completed_at IS NOT NULL')
+        .bind(now, me.id, track).run();
+      completionCleared = (rt.meta?.changes ?? 0) > 0;
+    }
+    const progress = await storyProgressPayload(db, me.id, track);
+    return json({ ok: true, stopId: stop.id, wiped, completionCleared, ...progress });
   }
 
   if (parts[1] === 'story' && parts[2] === 'result' && req.method === 'POST') {
