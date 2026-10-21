@@ -2843,3 +2843,13 @@ html[data-theme="neon"] [data-testid="more-options"].sheet {
 .set-group .seg button { min-width: 0; }
 html[data-theme="neon"] .sheet .vol-slider::-webkit-slider-runnable-track { background: linear-gradient(90deg, var(--purple) var(--pct, 50%), rgba(255,255,255,.14) var(--pct, 50%)); }
 html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: var(--purple); }
+
+/* Compare (league P-C): your line vs theirs, better number in gold. */
+.cmp-wrap { margin: 0 0 12px; }
+.cmp-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
+.cmp-table th, .cmp-table td { padding: 5px 8px; text-align: right; font-variant-numeric: tabular-nums; }
+.cmp-table thead th { color: var(--ink-dim); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+.cmp-table tbody th { text-align: left; font-weight: 600; color: var(--ink-dim); }
+.cmp-table tbody td:first-child { text-align: left; }
+.cmp-table tbody tr:nth-child(even) { background: rgba(127, 127, 160, .07); }
+.cmp-table .cmp-win { color: var(--gold, #e8b64c); font-weight: 800; }

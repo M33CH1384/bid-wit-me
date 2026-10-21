@@ -797,3 +797,9 @@ html[data-theme="neon"] .ranks-you {
     inset 0 3px 3px -2px rgba(190,215,255,.32),
     0 0 24px rgba(var(--purple-rgb), .17);
 }
+
+/* Tale of the Tape (league P-C) on the wager detail. */
+.wg-tape { margin: 14px 0; }
+.wg-tape .cmp-table th, .wg-tape .cmp-table td { text-align: center; }
+.wg-tape .cmp-table thead th { text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--ink); }
+.wg-tape .soc-muted { margin-top: 6px; font-size: 12px; }

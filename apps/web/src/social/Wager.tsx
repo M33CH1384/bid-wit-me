@@ -9,8 +9,8 @@ import { useAccount } from '../account/api';
 import { CoinIcon } from '../RepBlock';
 import { navigate } from '../online/nav';
 import { onNotice, social, useSocial } from './store';
-import { createWager, fetchMyCred, fetchWager, fetchWagerEnabled, fetchWagerList, wagerAct, type MyCred, type WagerRow, type WagerView } from './wagerApi';
-import { TIMER_PRESETS, WAGER_LADDER, challengeButtonState, createBody, gameLabel, groupChallenges, netText, startPresets, timerLabel, toLocalInput, validateCreate, whenText, type CreateFormState } from './wagerLogic';
+import { createWager, fetchMyCred, fetchWager, fetchWagerEnabled, fetchWagerList, wagerAct, type MyCred, type WagerPlayer, type WagerRow, type WagerView } from './wagerApi';
+import { TIMER_PRESETS, WAGER_LADDER, avgRating, blendH2h, challengeButtonState, createBody, expectancy, ffaShares, gameLabel, groupChallenges, netText, startPresets, timerLabel, toLocalInput, validateCreate, whenText, type CreateFormState } from './wagerLogic';
 
 function useNow(ms = 1000): number {
   const [now, setNow] = useState(() => Date.now());
@@ -272,6 +272,130 @@ const END_TEXT: Record<string, string> = {
   cancelled: 'Cancelled — all wagers refunded.',
 };
 
+/* ------------------------------------------------------- Tale of the Tape */
+
+/** One player's public line for the tape, from the social profile payload. */
+interface TapeLine {
+  rating: number | null;
+  games: number; wins: number; streak: number;
+  h2h: { name: string; games: number; wins: number }[];
+}
+
+/**
+ * Tale of the Tape (league P-C): a matchup preview for an upcoming Big Bank
+ * challenge, built ONLY from the named players' public profile payloads
+ * (the wager payload itself carries no stats). Record / win % / streak are
+ * career all-mode lines from that payload; the Rating row is THIS format's
+ * rating, and a side's rating is the average of its players'. Prediction:
+ * the standard rating expectancy on the side averages, blended 25% with the
+ * cross-side head-to-head record when the profiles actually carry one
+ * (≥3 meetings) — labeled "Stat-based prediction". Nothing rated → no
+ * prediction, said plainly.
+ */
+function TaleOfTape({ v }: { v: WagerView }) {
+  const [lines, setLines] = useState<Record<string, TapeLine> | null>(null);
+  const namesKey = v.players.map((p) => p.name).join('|');
+  useEffect(() => {
+    let alive = true;
+    const names = [...new Set(namesKey.split('|').filter(Boolean))];
+    Promise.all(names.map(async (name) => {
+      try {
+        const r = await fetch(`/api/social/profile/${encodeURIComponent(name)}`, { credentials: 'same-origin' });
+        if (!r.ok) return null;
+        const j = await r.json() as { ratings?: { team?: number; cutthroat?: number }; stats?: { games: number; wins: number; streak: number }; h2h?: { name: string; games: number; wins: number }[] };
+        const line: TapeLine = {
+          rating: (v.format === 'partnership' ? j.ratings?.team : j.ratings?.cutthroat) ?? null,
+          games: j.stats?.games ?? 0, wins: j.stats?.wins ?? 0, streak: j.stats?.streak ?? 0,
+          h2h: (j.h2h ?? []).map((h) => ({ name: h.name, games: h.games, wins: h.wins })),
+        };
+        return [name, line] as const;
+      } catch { return null; }
+    })).then((pairs) => {
+      if (!alive) return;
+      const out: Record<string, TapeLine> = {};
+      for (const p of pairs) if (p) out[p[0]] = p[1];
+      setLines(out);
+    });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [namesKey, v.format]);
+
+  if (!lines) return null;
+  const lineOf = (name: string): TapeLine => lines[name] ?? { rating: null, games: 0, wins: 0, streak: 0, h2h: [] };
+  const sum = (ls: TapeLine[], k: 'games' | 'wins') => ls.reduce((a, l) => a + l[k], 0);
+  const record = (ls: TapeLine[]) => `${sum(ls, 'wins')}–${sum(ls, 'games') - sum(ls, 'wins')}`;
+  const winPct = (ls: TapeLine[]) => (sum(ls, 'games') ? `${Math.round((sum(ls, 'wins') / sum(ls, 'games')) * 100)}%` : '—');
+  const streak = (ls: TapeLine[]) => Math.max(0, ...ls.map((l) => l.streak));
+
+  if (v.format === 'cutthroat') {
+    const ps = v.players.map((p) => ({ name: p.name, line: lineOf(p.name) }));
+    const rated = ps.filter((p) => p.line.rating !== null);
+    const shares = rated.length >= 2 ? ffaShares(rated.map((p) => p.line.rating!)) : null;
+    const shareOf = (name: string) => { const i = rated.findIndex((p) => p.name === name); return shares && i >= 0 ? shares[i]! : null; };
+    return (
+      <div className="wg-tape" data-testid="wg-tape">
+        <h4>Tale of the Tape</h4>
+        <table className="cmp-table">
+          <thead><tr><th>Player</th><th>Rating</th><th>Record</th><th>Win %</th><th>Streak</th>{shares && <th>Win chance</th>}</tr></thead>
+          <tbody>
+            {ps.map((p) => (
+              <tr key={p.name}>
+                <th>{p.name}</th>
+                <td>{p.line.rating ?? '—'}</td>
+                <td>{p.line.games ? `${p.line.wins}–${p.line.games - p.line.wins}` : '—'}</td>
+                <td>{p.line.games ? `${Math.round((p.line.wins / p.line.games) * 100)}%` : '—'}</td>
+                <td>{p.line.streak > 0 ? `W${p.line.streak}` : '—'}</td>
+                {shares && <td>{shareOf(p.name) !== null ? `${Math.round(shareOf(p.name)! * 100)}%` : '—'}</td>}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="soc-muted">{shares ? 'Stat-based prediction — from ratings. Records are career lines, all modes.' : 'Records are career lines, all modes. Not enough rated players for a prediction.'}</p>
+      </div>
+    );
+  }
+
+  const sideA = v.players.filter((p) => p.side === 0);
+  const sideB = v.players.filter((p) => p.side === 1);
+  if (!sideA.length || !sideB.length) return null;
+  const la = sideA.map((p) => lineOf(p.name));
+  const lb = sideB.map((p) => lineOf(p.name));
+  const ra = avgRating(la.map((l) => l.rating));
+  const rb = avgRating(lb.map((l) => l.rating));
+  // cross-side head-to-head, when the fetched profiles carry it
+  let h2h: { games: number; wins: number } | null = null;
+  {
+    let games = 0; let wins = 0;
+    for (const l of la) for (const h of l.h2h) if (sideB.some((p) => p.name === h.name)) { games += h.games; wins += h.wins; }
+    if (games > 0) h2h = { games, wins };
+  }
+  const pa = ra !== null && rb !== null ? blendH2h(expectancy(ra, rb), h2h) : null;
+  const names = (ps: WagerPlayer[]) => ps.map((p) => p.name).join(' + ');
+  const rows: [string, string, string][] = [
+    ['Rating', ra !== null ? String(Math.round(ra)) : '—', rb !== null ? String(Math.round(rb)) : '—'],
+    ['Record', record(la), record(lb)],
+    ['Win %', winPct(la), winPct(lb)],
+    ['Streak', streak(la) > 0 ? `W${streak(la)}` : '—', streak(lb) > 0 ? `W${streak(lb)}` : '—'],
+  ];
+  return (
+    <div className="wg-tape" data-testid="wg-tape">
+      <h4>Tale of the Tape</h4>
+      <table className="cmp-table">
+        <thead><tr><th>{names(sideA)}</th><th></th><th>{names(sideB)}</th></tr></thead>
+        <tbody>
+          {rows.map(([label, a, b]) => (
+            <tr key={label}><td>{a}</td><th>{label}</th><td>{b}</td></tr>
+          ))}
+          {pa !== null && (
+            <tr><td><b>{Math.round(pa * 100)}%</b></td><th>Win chance</th><td><b>{Math.round((1 - pa) * 100)}%</b></td></tr>
+          )}
+        </tbody>
+      </table>
+      <p className="soc-muted">{pa !== null ? `Stat-based prediction — from ratings${h2h && h2h.games >= 3 ? ' and head-to-head' : ''}. Records are career lines, all modes.` : 'Records are career lines, all modes. Not enough rated players for a prediction.'}</p>
+    </div>
+  );
+}
+
 function WagerDetail({ id }: { id: string }) {
   const acct = useAccount();
   const myUid = acct.user?.id;
@@ -332,6 +456,7 @@ function WagerDetail({ id }: { id: string }) {
         ))}
         {v.format === 'partnership' && v.players.length < 4 && <li className="soc-muted">+ the opponent's partner (named when they accept)</li>}
       </ul>
+      {!finished && <TaleOfTape v={v} />}
       {finished && v.endReason && <p className="soc-note" data-testid="wg-outcome">{END_TEXT[v.endReason] ?? v.endReason}</p>}
       {err && <p className="soc-err" data-testid="wg-detail-err">{err}</p>}
       {you && (

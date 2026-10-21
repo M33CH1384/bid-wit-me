@@ -177,3 +177,37 @@ export function withSeen(seen: string[], itemId: string): string[] {
 export function popupDeferred(pathname: string, inGame: boolean): boolean {
   return inGame || /^\/t\/[^/]+\/?$/.test(pathname);
 }
+
+/* ------------------------------------------------ Tale of the Tape (P-C) */
+
+/**
+ * Win expectancy from a rating gap — the standard Elo expectancy the whole
+ * Rep system is built on: P(a beats b) = 1 / (1 + 10^(−(ra−rb)/400)).
+ * Ratings are the mode ratings from the public profile payload; a side's
+ * rating is the average of its named players' ratings.
+ */
+export function expectancy(ra: number, rb: number): number {
+  return 1 / (1 + Math.pow(10, -(ra - rb) / 400));
+}
+
+/** Free-for-all win shares: each player's expectancy weight normalized —
+ *  the multiway extension of the same formula (cutthroat tape). */
+export function ffaShares(ratings: number[]): number[] {
+  const w = ratings.map((r) => Math.pow(10, r / 400));
+  const sum = w.reduce((a, b) => a + b, 0);
+  return sum > 0 ? w.map((x) => x / sum) : ratings.map(() => (ratings.length ? 1 / ratings.length : 0));
+}
+
+/** Blend a rating-based probability with a head-to-head record when one
+ *  actually exists (≥3 meetings): 75% expectancy, 25% the h2h win share.
+ *  No record → the expectancy stands alone; nothing is invented. */
+export function blendH2h(p: number, h2h: { games: number; wins: number } | null): number {
+  if (!h2h || h2h.games < 3) return p;
+  return 0.75 * p + 0.25 * (h2h.wins / h2h.games);
+}
+
+/** Average of the ratings that exist; null when a side has no rated player. */
+export function avgRating(xs: (number | null | undefined)[]): number | null {
+  const v = xs.filter((x): x is number => typeof x === 'number' && Number.isFinite(x));
+  return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+}

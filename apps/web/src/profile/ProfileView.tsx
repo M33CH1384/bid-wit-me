@@ -110,6 +110,78 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 /** A rating card — ESPN player-header vitals, plain language only (owner,
  *  2026-10-20: "no one knows what elo is including me", and no named tiers):
  *  the big number is the Rating, the rows are metrics anyone can read. */
+/**
+ * Profile compare (league P-C): your public line vs theirs, category by
+ * category, the better number marked. Both sides come from the SAME payload
+ * shape — their social profile and yours — so every row is apples-to-apples.
+ * Only categories both payloads honestly carry; a missing value shows '—'
+ * and never wins a row.
+ */
+function CompareBlock({ them, myName }: { them: SocialProfileData; myName: string }) {
+  const [open, setOpen] = useState(false);
+  const [mine, setMine] = useState<SocialProfileData | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    if (!open || mine || failed) return;
+    let alive = true;
+    fetch(`/api/social/profile/${encodeURIComponent(myName)}`, { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('missing'))))
+      .then((j) => { if (alive) setMine(j as SocialProfileData); })
+      .catch(() => { if (alive) setFailed(true); });
+    return () => { alive = false; };
+  }, [open, mine, failed, myName]);
+
+  const pct = (w: number, g: number) => (g ? Math.round((w / g) * 1000) / 10 : null);
+  const nilMade = (s?: string) => { const n = Number(String(s ?? '').split('/')[0]); return Number.isFinite(n) ? n : null; };
+  const rows: { label: string; a: number | null; b: number | null; fmt: (n: number) => string }[] = [];
+  if (mine?.stats && them.stats) {
+    const ms = mine.stats; const ts = them.stats;
+    const whole = (n: number) => String(Math.round(n));
+    rows.push(
+      { label: 'Partnership rating', a: mine.ratings.team ?? null, b: them.ratings.team ?? null, fmt: whole },
+      { label: 'Cutthroat rating', a: mine.ratings.cutthroat ?? null, b: them.ratings.cutthroat ?? null, fmt: whole },
+      { label: 'Games', a: ms.games, b: ts.games, fmt: whole },
+      { label: 'Wins', a: ms.wins, b: ts.wins, fmt: whole },
+      { label: 'Win %', a: pct(ms.wins, ms.games), b: pct(ts.wins, ts.games), fmt: (n) => `${n}%` },
+      { label: 'Current streak', a: ms.streak, b: ts.streak, fmt: (n) => (n > 0 ? `W${n}` : '—') },
+      { label: 'Best streak', a: ms.bestStreak, b: ts.bestStreak, fmt: whole },
+      { label: 'Bid accuracy', a: ms.accuracy, b: ts.accuracy, fmt: (n) => `${n}%` },
+      { label: 'Books / hand', a: ms.booksPerHand, b: ts.booksPerHand, fmt: (n) => n.toFixed(2) },
+      { label: 'Nils made', a: nilMade(ms.nil), b: nilMade(ts.nil), fmt: whole },
+      { label: 'Wheels', a: ms.wheels, b: ts.wheels, fmt: whole },
+      { label: 'Bostons', a: ms.bjWins, b: ts.bjWins, fmt: whole },
+    );
+  }
+  return (
+    <div className="cmp-wrap">
+      <button type="button" className="prof-pic-btn" data-testid="compare-toggle" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        {open ? 'Hide compare' : 'Compare with you'}
+      </button>
+      {open && (failed ? <p className="soc-empty">Couldn’t load your stats to compare.</p>
+        : !mine ? <p className="soc-empty">Loading…</p>
+        : !rows.length ? <p className="soc-empty">Not enough stats on both sides to compare yet.</p>
+        : (
+          <table className="cmp-table" data-testid="compare-table">
+            <thead><tr><th></th><th>You</th><th>{them.username}</th></tr></thead>
+            <tbody>
+              {rows.map((r) => {
+                const winA = r.a !== null && r.b !== null && r.a > r.b;
+                const winB = r.a !== null && r.b !== null && r.b > r.a;
+                return (
+                  <tr key={r.label}>
+                    <th>{r.label}</th>
+                    <td className={winA ? 'cmp-win' : ''}>{r.a === null ? '—' : r.fmt(r.a)}</td>
+                    <td className={winB ? 'cmp-win' : ''}>{r.b === null ? '—' : r.fmt(r.b)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        ))}
+    </div>
+  );
+}
+
 function RankCard({ title, rank }: { title: string; rank: SeasonRank }) {
   return (
     <div className="rank-card glass">
@@ -576,6 +648,7 @@ export function ProfileView({ host, name, id }: {
         })()}
         {activeTab === 'stats' && (
           <>
+            {!me && socialP && acct.user?.username && <CompareBlock them={socialP} myName={acct.user.username} />}
             {cred && (
               <>
                 <p className="rank-explainer" data-testid="rating-explainer">Rating starts at 1,000. Win rated games to raise it, lose and it drops — beating stronger players moves it more.</p>
