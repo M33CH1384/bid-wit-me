@@ -53,6 +53,14 @@ export interface SocialState {
   tables: Record<string, OpenTable>;
   /** public table codes that ended or left the open list */
   ended: Record<string, true>;
+  /**
+   * Last hub activity (epoch ms) seen for a player this session, by pid.
+   * Survives the 'gone' that removes them from `users`: the Friends view
+   * takes the max of this and the server's persisted FriendRef.lastSeen,
+   * so a friend who logs off mid-session shows when they were actually
+   * last active, not a stamp from before you connected. Session-only.
+   */
+  lastAt: Record<string, number>;
 }
 
 const GLOBAL_SEEN_KEY = 'bwm.social.globalSeen';
@@ -91,7 +99,7 @@ function persistView(): void {
 }
 
 let state: SocialState = {
-  status: 'off', you: null, admin: false, users: {}, global: [], friends: null, settings: null, unread: {}, dms: {}, names: view0.names ?? {}, invites: [], sent: {}, toasts: [],
+  status: 'off', you: null, admin: false, users: {}, lastAt: {}, global: [], friends: null, settings: null, unread: {}, dms: {}, names: view0.names ?? {}, invites: [], sent: {}, toasts: [],
   open: view0.open ?? false, tab: view0.tab ?? 'players', dmWith: view0.dmWith ?? null, profile: null, profileId: null, globalSeen: seen0, myTable: null, notices: [], tour: null, wager: null, wagerCreate: null, tables: {}, ended: {},
 };
 const subs = new Set<() => void>();
@@ -188,8 +196,10 @@ function onMessage(m: SocialServerMsg) {
       }
       const users: Record<string, PresenceEntry> = {};
       for (const u of m.users) users[u.id] = u;
+      const lastAt: Record<string, number> = { ...state.lastAt };
+      for (const u of m.users) if (typeof u.at === 'number') lastAt[u.id] = Math.max(lastAt[u.id] ?? 0, u.at);
       const now = Date.now();
-      set({ status: 'open', you: m.you, admin: m.admin, users: keepUsers(users, tables, Object.keys(ended), now), global: m.global, friends: m.friends, settings: m.settings, unread: m.unread, tables, ended });
+      set({ status: 'open', you: m.you, admin: m.admin, users: keepUsers(users, tables, Object.keys(ended), now), lastAt, global: m.global, friends: m.friends, settings: m.settings, unread: m.unread, tables, ended });
       send({ t: 'status', status });
       // A refresh restored an open DM thread (session persistence): refill it, as openDm would on tap.
       // Also refreshes the thread on reconnect, so a dropped socket doesn't leave a stale thread.
@@ -216,16 +226,20 @@ function onMessage(m: SocialServerMsg) {
     case 'pres':
       set((s) => {
         const users = { ...s.users };
+        const lastAt = { ...s.lastAt };
         const listed = Object.values(s.tables);
         const codes = Object.keys(s.ended);
         const now = Date.now();
         for (const u of m.up ?? []) {
+          // remember the activity time even for rows about to be filtered:
+          // it is the honest "last seen" if this player then goes offline
+          if (typeof u.at === 'number') lastAt[u.id] = Math.max(lastAt[u.id] ?? 0, u.at);
           if (stalePresence(u, listed, codes, now)) { delete users[u.id]; continue; }
           users[u.id] = u;
         }
         for (const g of m.gone ?? []) delete users[g];
         const you = s.you && users[s.you.id] ? users[s.you.id]! : s.you;
-        return { users, you };
+        return { users, you, lastAt };
       });
       break;
     case 'chat':

@@ -720,3 +720,76 @@ describe('league wire (item 7)', () => {
     expect(reply.reply).toBeUndefined();
   });
 });
+
+describe('last seen (friends-only last online)', () => {
+  const seenRow = async (uid: string) =>
+    (await db.prepare('SELECT at FROM last_seen WHERE user_id = ?').bind(uid).first<{ at: number }>())?.at;
+
+  const befriend = async () => {
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    await h.send('a', { t: 'friend', op: 'request', to: 'u:ub' });
+    await h.send('b', { t: 'friend', op: 'accept', to: 'u:ua' });
+  };
+
+  it('connecting stamps last_seen, and a confirmed friend receives it on their friends payload', async () => {
+    await befriend();
+    expect(await seenRow('ub')).toBe(h.t);
+    const st = h.last('a', 'friends')!.friends;
+    expect(st.friends).toHaveLength(1);
+    expect(st.friends[0]).toMatchObject({ id: 'u:ub', name: 'Bobby', lastSeen: h.t });
+  });
+
+  it('writes are throttled to ~one a minute; later traffic refreshes the stamp', async () => {
+    await befriend();
+    const t0 = h.t;
+    h.t += 30_000;
+    await h.send('b', { t: 'heartbeat' });
+    expect(await seenRow('ub')).toBe(t0); // inside the window: no new write
+    h.t += 31_000;
+    await h.send('b', { t: 'heartbeat' });
+    expect(await seenRow('ub')).toBe(t0 + 61_000); // traffic past the window stamps again
+  });
+
+  it('appear-offline users are never stamped (the stamp freezes at their last visible activity)', async () => {
+    await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    expect(await seenRow('ub')).toBe(h.t);
+    await h.send('b', { t: 'settings', settings: { appearOffline: true } });
+    const frozen = await seenRow('ub');
+    h.t += 10 * 60_000;
+    await h.send('b', { t: 'heartbeat' });
+    await h.send('b', { t: 'status', status: { kind: 'table', mode: 'joker' } });
+    await h.send('b', { t: 'chat', text: 'still here, quietly' });
+    expect(await seenRow('ub')).toBe(frozen);
+  });
+
+  it('pending refs never carry lastSeen, and a non-friend receives nothing', async () => {
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    expect(await seenRow('ub')).toBe(h.t); // Bobby IS stamped server-side…
+    await h.send('a', { t: 'friend', op: 'request', to: 'u:ub' });
+    // …but while the request is only pending, neither side's ref carries it
+    const bIn = h.last('b', 'friends')!.friends.incoming[0]!;
+    expect(bIn.id).toBe('u:ua');
+    expect(bIn.lastSeen).toBeUndefined();
+    const aOut = h.last('a', 'friends')!.friends.outgoing[0]!;
+    expect(aOut.id).toBe('u:ub');
+    expect(aOut.lastSeen).toBeUndefined();
+    // a third user with no relation at all: no ref, no stamp, anywhere in their payload
+    await h.hub.open('c', { uid: 'uc', name: 'Cee' });
+    const cHello = h.last('c', 'hello')!;
+    expect(cHello.friends!.friends).toEqual([]);
+    expect(JSON.stringify(cHello.friends)).not.toContain('lastSeen');
+    expect(JSON.stringify(cHello.users)).not.toContain('lastSeen');
+  });
+
+  it('cold start: a friend never seen since tracking began carries no lastSeen (never fabricated)', async () => {
+    await db.prepare("INSERT INTO friends (a, b, status, requested_by, created_at) VALUES ('ua', 'ud', 'friends', 'ua', 1)").run();
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    const st = h.last('a', 'hello')!.friends!;
+    expect(st.friends).toHaveLength(1);
+    expect(st.friends[0]!.name).toBe('Demetrius');
+    expect(st.friends[0]!.lastSeen).toBeUndefined();
+    expect(await seenRow('ud')).toBeUndefined();
+  });
+});

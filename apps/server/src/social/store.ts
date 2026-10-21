@@ -41,16 +41,28 @@ export class SocialStore {
     return r?.username ?? null;
   }
 
+  /**
+   * Record hub-seen activity for the last-online line (migration 0025).
+   * The hub calls this throttled (~1/min/user); the upsert keeps the newest.
+   */
+  async stampLastSeen(uid: string, at: number): Promise<void> {
+    await this.db.prepare(`INSERT INTO last_seen (user_id, at) VALUES (?, ?)
+      ON CONFLICT (user_id) DO UPDATE SET at = excluded.at WHERE excluded.at > last_seen.at`)
+      .bind(uid, at).run();
+  }
+
   async friendsState(uid: string): Promise<FriendsState> {
-    const rows = (await this.db.prepare(`SELECT f.a, f.b, f.status, f.requested_by, f.created_at, u.id AS oid, u.username FROM friends f
-      JOIN users u ON u.id = CASE WHEN f.a = ? THEN f.b ELSE f.a END WHERE f.a = ? OR f.b = ?`).bind(uid, uid, uid)
-      .all<{ status: string; requested_by: string; created_at: number; oid: string; username: string | null }>()).results;
+    const rows = (await this.db.prepare(`SELECT f.a, f.b, f.status, f.requested_by, f.created_at, u.id AS oid, u.username, ls.at AS last_seen FROM friends f
+      JOIN users u ON u.id = CASE WHEN f.a = ? THEN f.b ELSE f.a END LEFT JOIN last_seen ls ON ls.user_id = u.id WHERE f.a = ? OR f.b = ?`).bind(uid, uid, uid)
+      .all<{ status: string; requested_by: string; created_at: number; oid: string; username: string | null; last_seen: number | null }>()).results;
     const blocked = (await this.db.prepare('SELECT u.id, u.username, b.created_at FROM blocks b JOIN users u ON u.id = b.blocked WHERE b.blocker = ?').bind(uid)
       .all<{ id: string; username: string | null; created_at: number }>()).results;
     const ref = (id: string, name: string | null, since?: number): FriendRef => ({ id: `u:${id}`, name: name ?? 'Player', ...(since ? { since } : {}) });
     const byName = (a: FriendRef, b: FriendRef) => a.name.localeCompare(b.name);
     return {
-      friends: rows.filter((r) => r.status === 'friends').map((r) => ref(r.oid, r.username, r.created_at)).sort(byName),
+      // lastSeen rides ONLY confirmed-friend refs, in the owner's own state:
+      // pending (either direction) and blocked refs never carry it.
+      friends: rows.filter((r) => r.status === 'friends').map((r) => ({ ...ref(r.oid, r.username, r.created_at), ...(r.last_seen ? { lastSeen: r.last_seen } : {}) })).sort(byName),
       incoming: rows.filter((r) => r.status === 'pending' && r.requested_by !== uid).map((r) => ref(r.oid, r.username, r.created_at)).sort(byName),
       outgoing: rows.filter((r) => r.status === 'pending' && r.requested_by === uid).map((r) => ref(r.oid, r.username, r.created_at)).sort(byName),
       blocked: blocked.map((r) => ref(r.id, r.username, r.created_at)).sort(byName),

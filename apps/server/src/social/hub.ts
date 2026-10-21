@@ -41,6 +41,12 @@ export const WIRE_BYLINE = 'BWM LEAGUE WIRE';
 /** Cadence cap for wire lines in global chat (see Hub.postWire). */
 export const WIRE_MIN_GAP_MS = 10_000;
 
+/**
+ * last_seen writes are throttled to the presence heartbeat cadence: one D1 row
+ * update per user per minute at most, however chatty the socket gets.
+ */
+export const SEEN_STAMP_MS = 60_000;
+
 /** Release 10: Open tables, persisted so they survive the hub's hibernation */
 export interface TableLog {
   put(t: OpenTable): void;
@@ -127,6 +133,8 @@ export class Hub {
   private blocks = new Map<string, Set<string>>(); // uid → uids blocking/blocked
   private invites = new Map<string, Invite>();
   private windows = new Map<string, number[]>();
+  /** uid → when last_seen was last written (the stamp throttle; see stampSeen) */
+  private seenStamped = new Map<string, number>();
   /** hidden from the players list until they send a status that is not an ended table */
   private quiet = new Set<string>();
   private endedCodes = new Set<string>();
@@ -180,6 +188,8 @@ export class Hub {
     this.quiet.delete(att.pid);
     this.conns.set(cid, att);
     this.io.save(cid, att);
+    // connecting is being seen: stamp last_seen (throttled; never when hidden)
+    if (who.uid) await this.stampSeen(who.uid, !!att.hidden, now);
     await this.prune(true);
     const me = this.entry(att.pid)!;
     const users = this.visibleList(att.pid);
@@ -292,6 +302,22 @@ export class Hub {
     const line = this.io.global.add({ from: 'wire', name: WIRE_BYLINE, text, at: now, wire: true });
     for (const c of this.conns.keys()) this.io.send(c, { t: 'chat', line });
     return true;
+  }
+
+  /* ------------------------------------------------------------- last seen */
+
+  /**
+   * Stamp last_seen for a signed-in user (migration 0025), throttled to one
+   * write per SEEN_STAMP_MS. Appear-offline users are NEVER stamped: their
+   * friends must not learn they were on, so a hidden user's stamp freezes at
+   * their last visible activity. Called from open() and every handled
+   * message, so connect + traffic keep it honest without a write per message.
+   */
+  private async stampSeen(uid: string, hidden: boolean, now: number): Promise<void> {
+    if (!this.store || hidden) return;
+    if (now - (this.seenStamped.get(uid) ?? 0) < SEEN_STAMP_MS) return;
+    this.seenStamped.set(uid, now);
+    await this.store.stampLastSeen(uid, now);
   }
 
   /* ---------------------------------------------------------------- presence */
@@ -512,6 +538,8 @@ export class Hub {
     }
     const uid = uidOf(att.pid);
     const s = this.store;
+    // ongoing traffic keeps last_seen current (throttled inside stampSeen)
+    if (uid) await this.stampSeen(uid, !!att.hidden, now);
     const needUser = (): boolean => {
       if (uid && s) return true;
       this.err(cid, 'SIGN_IN', 'Sign in to do that.');
