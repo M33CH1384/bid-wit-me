@@ -12,7 +12,7 @@ import { type FlyingPlay, confirmPlay, feltClearsSelection, flyPlay, flyingCard,
 import { actingSeat, localSeatOfServerTurn, turnView, type TurnBadge } from './turnState';
 import { retainHandOrder } from './handOrder';
 import { winHeadline } from './headline';
-import { type VenueId, VENUE_DEFS } from './venues';
+import { type VenueId, VENUE_DEFS, AFTER_DARK_VENUE, fetchVenueUnlocks, venueUnlocked } from './venues';
 import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -1511,9 +1511,18 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (!online && replies) { const bots = names.slice(1); push(pick(bots), pick(replies), false, 900 + Math.random() * 700); }
   };
   const reduceFx = useReduceEffects();
+  // The Pj's is a locked venue: the offline Random roll may only land there for a player
+  // entitled to it (Rep 20 / After Dark / dev). Starts locked — the cached unlock fetch
+  // resolves it a beat later and the room re-rolls consistently (seen = heard = named).
+  const [pjsAccess, setPjsAccess] = useState(false);
+  useEffect(() => {
+    let on = true;
+    fetchVenueUnlocks().then((s) => { if (on) setPjsAccess(!!s && venueUnlocked(AFTER_DARK_VENUE, s.unlocks, s.dev)); });
+    return () => { on = false; };
+  }, []);
   // Unified session room (Phase 4): seen = heard = named. Online the shared room venue decides;
   // Auto rolls a room from the game seed and that room IS the visual venue for this game.
-  const roomStyle = sessionRoom({ visualVenue: !online && settings.venue !== 'random' ? settings.venue : undefined, seed, onlineVenue: online?.venue });
+  const roomStyle = sessionRoom({ visualVenue: !online && settings.venue !== 'random' ? settings.venue : undefined, seed, onlineVenue: online?.venue, lockedVenues: pjsAccess });
   const venue: VenueId = roomStyle.venue as VenueId;
   const [roomName, setRoomName] = useState<string | undefined>(undefined);
   // Phase 6: the music tension layer follows how close the game feels; calm again off the table.
@@ -1523,7 +1532,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // Sound context: a table is 'game' (music by default), leaving returns to 'menu'
   // (ambience by default) — explicit per-context choices are kept inside the engine.
   useEffect(() => { sound.enterContext('game'); return () => sound.enterContext('menu'); }, []);
-  useEffect(() => { const style = sound.applySoundscape(seed, online?.venue, !online && settings.venue !== 'random' ? settings.venue : undefined); setRoomName(style.name); return () => sound.setVenueBed('none'); }, [seed]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { const style = sound.applySoundscape(seed, online?.venue, !online && settings.venue !== 'random' ? settings.venue : undefined, pjsAccess); setRoomName(style.name); return () => sound.setVenueBed('none'); }, [seed, pjsAccess]); // eslint-disable-line react-hooks/exhaustive-deps
   // Story games: the stop's score mood + bed identity ride the whole match
   // (audio-pass contract); cleared on unmount. Normal games never call this.
   const storyStopId = story?.scene?.stop.id;

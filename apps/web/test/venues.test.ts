@@ -47,6 +47,23 @@ describe('venues', () => {
     expect(venueLabel('random')).toMatch(/Random/);
     expect(venueLabel('barbershop')).toBe(`${VENUE_DEFS.barbershop.emoji} Barbershop`);
   });
+  it("The Pj's stays out of Random rolls unless the roller is entitled to it", () => {
+    // locked (the default): a full sweep of the roll space never lands on The Pj's
+    for (let i = 0; i < 1000; i++) {
+      const r = i / 1000;
+      expect(rollVenue(r)).not.toBe(AFTER_DARK_VENUE);
+      expect(resolveVenue('random', r)).not.toBe(AFTER_DARK_VENUE);
+    }
+    // entitled: The Pj's joins the pool and does come up, in both roll paths
+    const seen = new Set<string>();
+    for (let i = 0; i < 1000; i++) {
+      seen.add(rollVenue(i / 1000, undefined, true));
+      seen.add(resolveVenue('random', i / 1000, true));
+    }
+    expect(seen.has(AFTER_DARK_VENUE)).toBe(true);
+    // the not-the-last-one exclusion still applies on top of the entitlement
+    expect(rollVenue(0.999, AFTER_DARK_VENUE, true)).not.toBe(AFTER_DARK_VENUE);
+  });
   it('settings default to the classic table and drop unknown venues', () => {
     expect(DEFAULT_SETTINGS.venue).toBe('classic');
     expect(normalizeSettings({ venue: 'random' } as never).venue).toBe('random');

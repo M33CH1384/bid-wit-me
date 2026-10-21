@@ -286,9 +286,17 @@ export type VenueChoice = VenueId | 'random';
 export function isVenueChoice(v: unknown): v is VenueChoice {
   return v === 'random' || (typeof v === 'string' && (VENUES as readonly string[]).includes(v));
 }
-/** a concrete venue for 'random' (never 'classic', and not the one just played when possible) */
-export function rollVenue(r: number, not?: VenueId): VenueId {
-  const pool = VENUES.filter((v) => v !== 'classic' && v !== not);
+/** Venues behind an unlock (The Pj's: Rep Level 20 / the After Dark achievement, or a dev account).
+ *  A locked venue may only be picked or rolled by a player entitled to it — every roll and every
+ *  room venue pick must go through this gate, never just the picker UI. */
+export const LOCKED_VENUES: readonly VenueId[] = ['blockAfterDark'];
+export function isLockedVenue(v: VenueId): boolean {
+  return (LOCKED_VENUES as readonly string[]).includes(v);
+}
+/** a concrete venue for 'random' (never 'classic', and not the one just played when possible).
+ *  Locked venues stay out of the pool unless the roller is entitled to them (`includeLocked`). */
+export function rollVenue(r: number, not?: VenueId, includeLocked = false): VenueId {
+  const pool = VENUES.filter((v) => v !== 'classic' && v !== not && (includeLocked || !isLockedVenue(v)));
   return pool[Math.min(pool.length - 1, Math.floor(r * pool.length))]!;
 }
 

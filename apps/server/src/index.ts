@@ -31,6 +31,7 @@ import { type AuthEnv, handleAuth } from './auth/routes';
 import { handleLocalStats } from './stats/local';
 import { type SocialEnv, handleSocialHttp, isAdmin } from './social/routes';
 import { type CredEnv, handleCredHttp } from './cred/routes';
+import { pjsVenueAccess } from './cred/venueAccess';
 import { verifyTicket } from './social/ticket';
 import { type ConnAtt, type GlobalLog, Hub, type TableLog } from './social/hub';
 import { saveRecord } from './stats/record';
@@ -604,7 +605,13 @@ export class TableDO extends DurableObject<Env> {
   override async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
     const cid = this.cidOf(ws);
     if (!cid || !this.room || typeof message !== 'string') return;
-    await dispatchTableMessage(this.room, cid, message, (ticket) => verifyTicket(this.env.DB, ticket, Date.now()));
+    await dispatchTableMessage(this.room, cid, message, async (ticket) => {
+      const t = await verifyTicket(this.env.DB, ticket, Date.now());
+      if (!t) return null;
+      // The Pj's gate: entitlement is computed here, where D1 lives, and stamped on the
+      // member by dispatch — the room itself stays synchronous and storage-free.
+      return { uid: t.uid, venueAccess: await pjsVenueAccess(this.env, this.env.DB, t.uid, t.name) };
+    });
   }
 
   override async webSocketClose(ws: WebSocket, code: number, reason = '', wasClean = false): Promise<void> {

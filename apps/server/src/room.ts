@@ -16,7 +16,7 @@ import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk,
 import {
   type BotLevel, type ChatLine, type ClientMsg, type HostMusic, type MediaState, type RoomInfo, type RoomPhase, type RunPlayback, type SeatInfo, type ServerMsg,
   DEFAULT_AFK_LIMIT, LIMITS, PROTOCOL_VERSION, parseClientMsg, toggleReaction,
-  HAND_END_HOLD_MS, NUKE_ALLOWANCE_MS, handEndLeadMs, type NukeIntensity, type TalkIntensity, cleanTeamName, pickTeamName, type VenueChoice, type VenueId, rollVenue,
+  HAND_END_HOLD_MS, NUKE_ALLOWANCE_MS, handEndLeadMs, type NukeIntensity, type TalkIntensity, cleanTeamName, pickTeamName, type VenueChoice, type VenueId, isLockedVenue, rollVenue,
 } from '@spades/protocol';
 import type { OpenTable } from '@spades/protocol';
 import { blockLinks, cleanName, cleanText, maskProfanity } from './filter';
@@ -48,6 +48,9 @@ export interface Member {
   badges?: { id: string; earnedAt: number; context?: Record<string, unknown> }[];
   /** Release 9: signed-in account behind this seat (from a verified account ticket) → stats, ratings, recent players */
   uid?: string;
+  /** Entitled to locked venues (The Pj's): stamped by the DO when the account ticket verifies
+   *  (After Dark unlock row, Rep level 20+, or an admin account). Absent = not entitled. */
+  venueAccess?: boolean;
   /** Browser guest id. A reload that minted a new seat token is still this member. */
   gid?: string;
   /** Epoch ms of the last socket drop. The disconnect grace is measured from here, not from each tick. */
@@ -376,6 +379,21 @@ export class Room {
     }
     this.after();
     this.io.persist();
+  }
+
+  /** The DO stamps locked-venue entitlement (The Pj's) on the member whose account ticket
+   *  verified with access — see dispatchTableMessage. Re-stamped on every verified hello,
+   *  so a fresh unlock (or a lost one) lands on the next reconnect. */
+  setVenueAccess(connId: string, ok: boolean): void {
+    const pid = this.conns.get(connId);
+    const m = pid ? this.data.members[pid] : undefined;
+    if (m) m.venueAccess = ok;
+  }
+
+  /** Locked venues are the HOST's privilege: only their entitlement counts at this table. */
+  private hostVenueAccess(): boolean {
+    const h = this.data.hostId;
+    return !!h && this.data.members[h]?.venueAccess === true;
   }
 
   /** Release 9b: turn a fresh table into a tournament match. */
@@ -860,6 +878,10 @@ export class Room {
         this.requireHost(isHost);
         if (d.phase === 'playing') throw new RoomError('IN_GAME', 'Pick the venue before the game starts');
         if ((d.venue ?? 'classic') === msg.venue) return;
+        // The Pj's is earned, not picked: a locked venue from a host who hasn't unlocked it
+        // (Rep 20 / After Dark / admin — stamped on their member at hello) is ignored, so a
+        // crafted client can't walk past the picker's gate. The room keeps its current venue.
+        if (msg.venue !== 'random' && isLockedVenue(msg.venue) && !this.hostVenueAccess()) return;
         d.venue = msg.venue;
         d.venueNow = msg.venue === 'random' ? undefined : msg.venue;
         break;
@@ -1277,8 +1299,14 @@ export class Room {
     // dealt cards, not the undealt shell.
     this.logBuilder = null;
     d.handLog = undefined;
-    // venue: a 'random' pick is rolled per game (so a rematch can land somewhere new); everyone gets the same one
-    d.venueNow = (d.venue ?? 'classic') === 'random' ? rollVenue(parseInt(secureSeed().slice(0, 8), 16) / 4294967296, d.venueNow) : (d.venue ?? 'classic') as VenueId;
+    // venue: a 'random' pick is rolled per game (so a rematch can land somewhere new); everyone gets the same one.
+    // Locked venues (The Pj's) roll — and a concrete locked pick stands — only for an entitled host;
+    // anyone else's roll excludes them and a stale locked pick falls back to the classic table.
+    const hostAccess = this.hostVenueAccess();
+    const picked = (d.venue ?? 'classic') as VenueChoice;
+    d.venueNow = picked === 'random'
+      ? rollVenue(parseInt(secureSeed().slice(0, 8), 16) / 4294967296, d.venueNow, hostAccess)
+      : isLockedVenue(picked) && !hostAccess ? 'classic' : picked;
     d.seq = (d.seq ?? 0) + 1;
     d.phase = 'playing';
     d.ready = [];

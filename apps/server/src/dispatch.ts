@@ -11,7 +11,7 @@ export async function dispatchTableMessage(
   room: Room,
   cid: string,
   message: string,
-  verifyTicket: (ticket: string) => Promise<{ uid: string } | null>,
+  verifyTicket: (ticket: string) => Promise<{ uid: string; venueAccess?: boolean } | null>,
 ): Promise<void> {
   let hello = false;
   let ticket: string | undefined;
@@ -26,11 +26,17 @@ export async function dispatchTableMessage(
     } catch { /* the room rejects a body it cannot parse */ }
   }
   let uid: string | null = null;
+  let venueAccess: boolean | undefined;
   if (ticket) {
-    try { uid = (await verifyTicket(ticket))?.uid ?? null; } catch { uid = null; }
+    try { const t = await verifyTicket(ticket); uid = t?.uid ?? null; venueAccess = t?.venueAccess; } catch { uid = null; }
   }
   if (hello) {
-    if (uid) room.linkUser(cid, uid);
+    if (uid) {
+      room.linkUser(cid, uid);
+      // Locked-venue entitlement (The Pj's) rides the same verified ticket: stamp it on the
+      // member so the room's venue gate and Random roll can decide synchronously.
+      if (venueAccess !== undefined) room.setVenueAccess(cid, venueAccess);
+    }
     return;
   }
   room.message(cid, message, uid);

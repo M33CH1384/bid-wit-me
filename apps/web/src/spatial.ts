@@ -2,6 +2,7 @@
  *  engine in audio.ts. No second engine, and trigger timing is untouched — spatial nodes only route
  *  gain/pan downstream of the existing impact-frame triggers (#169). */
 import type { VenueBed } from './audio';
+import { isLockedVenue, type VenueId } from '@spades/protocol';
 
 /** Seat directions mirrored from three/layout.ts seatDir (kept import-free: audio.ts loads on the
  *  first script, which must never statically pull in three). Keep in sync with layout.seatDir. */
@@ -164,12 +165,17 @@ export const TOURNAMENT_ROOM: RoomStyle = { venue: 'vegas', name: 'Competitive T
  *  setup/settings decides; on Random, a seeded roll per game picks the room — and that rolled
  *  room becomes the visual venue for the game too, so the sound still follows the venue.
  *  One style per room, all 12 venues covered by ROOM_STYLES. */
-export function sessionRoom(o: { visualVenue?: string; seed?: string; onlineVenue?: string }): RoomStyle {
+export function sessionRoom(o: { visualVenue?: string; seed?: string; onlineVenue?: string; lockedVenues?: boolean }): RoomStyle {
   if (o.onlineVenue) return styleForVenue(o.onlineVenue) ?? ROOM_STYLES[0]!;
   // 1) The venue picked for this game wins (seen = heard = named, still unified).
   if (o.visualVenue) return styleForVenue(o.visualVenue) ?? ROOM_STYLES[0]!;
   // 2) Random venue: roll over ALL 12 rooms — Classic included (its bed is 'none': a quiet studio game).
-  if (o.seed !== undefined) return ROOM_STYLES[seedHash(o.seed) % ROOM_STYLES.length]!;
+  //    Locked venues (The Pj's) join the roll only when the player is entitled to them
+  //    (`lockedVenues`, from the venue unlock state); the default keeps them out.
+  if (o.seed !== undefined) {
+    const pool = o.lockedVenues ? ROOM_STYLES : ROOM_STYLES.filter((s) => !isLockedVenue(s.venue as VenueId));
+    return pool[seedHash(o.seed) % pool.length]!;
+  }
   return ROOM_STYLES[0]!;
 }
 /** Convolver character per room (pre-baked/generated IRs only — no assets): length + wet level. */

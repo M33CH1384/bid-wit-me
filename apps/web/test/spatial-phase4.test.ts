@@ -23,6 +23,18 @@ describe('spatial phase 4: unified room (seen = heard = named)', () => {
     const church = sessionRoom({ seed: 'game-42', visualVenue: 'church' });
     expect(church.name).toBe('Basement Spades Night'); expect(church.bed).toBe('basement');
   });
+  it("Auto roll keeps The Pj's out unless the player has venue access", () => {
+    const locked = new Set<string>();
+    const open = new Set<string>();
+    for (let i = 0; i < 400; i++) {
+      locked.add(sessionRoom({ seed: `g${i}` }).venue);
+      open.add(sessionRoom({ seed: `g${i}`, lockedVenues: true }).venue);
+    }
+    expect(locked.has('blockAfterDark')).toBe(false);
+    expect(open.has('blockAfterDark')).toBe(true);
+    // a picked venue is not a roll — the story stop's house venue (The Pj's) still wins outright
+    expect(sessionRoom({ seed: 'g1', visualVenue: 'blockAfterDark' }).venue).toBe('blockAfterDark');
+  });
   it('Auto can roll Classic (all 11 rooms in the pool)', () => {
     const seen = new Set<string>();
     for (let i = 0; i < 300; i++) seen.add(sessionRoom({ seed: `g${i}` }).venue);

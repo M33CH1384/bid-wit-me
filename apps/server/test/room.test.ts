@@ -1754,6 +1754,61 @@ describe('venues (Release 7)', () => {
     expect(v).not.toBe('classic');
     for (const cid of ['b', 'c', 'd']) expect(room(env, cid).venueNow).toBe(v);
   });
+
+  /* The Pj's lock: the picker gate is a courtesy — the room itself enforces it. */
+  function hostTable() {
+    const env = new FakeEnv(undefined, FAST);
+    env.join('a', 'Dee');
+    env.send('a', { t: 'sit', seat: 0 });
+    for (const s of [1, 2, 3]) env.send('a', { t: 'addBot', seat: s });
+    return env;
+  }
+  it("a direct venue message can't walk a locked host into The Pj's (venue unchanged, no error)", () => {
+    const env = hostTable(); // no entitlement stamp at all (guest / unverified)
+    env.send('a', { t: 'venue', venue: 'blockAfterDark' });
+    expect(env.room.data.venue ?? 'classic').toBe('classic');
+    expect(env.room.data.venueNow).toBeUndefined();
+    expect(env.errors('a')).toEqual([]);
+    env.room.setVenueAccess('a', false); // verified account, still not entitled
+    env.send('a', { t: 'venue', venue: 'blockAfterDark' });
+    expect(env.room.data.venue ?? 'classic').toBe('classic');
+    // normal venues are never gated
+    env.send('a', { t: 'venue', venue: 'beach' });
+    expect(env.room.data.venue).toBe('beach');
+    expect(env.room.data.venueNow).toBe('beach');
+  });
+  it("an entitled host picks The Pj's directly and plays there", () => {
+    const env = hostTable();
+    env.room.setVenueAccess('a', true); // the DO's stamp: unlock row / Rep 20+ / admin
+    env.send('a', { t: 'venue', venue: 'blockAfterDark' });
+    expect(room(env, 'a').venue).toBe('blockAfterDark');
+    env.send('a', { t: 'start' });
+    expect(room(env, 'a').venueNow).toBe('blockAfterDark');
+  });
+  it("the server Random roll excludes The Pj's for a locked host, and includes it for an entitled one", () => {
+    for (let i = 0; i < 40; i++) {
+      const env = hostTable();
+      env.room.setVenueAccess('a', false);
+      env.send('a', { t: 'venue', venue: 'random' });
+      env.send('a', { t: 'start' });
+      expect(env.room.data.venueNow).not.toBe('blockAfterDark');
+    }
+    let rolled = false;
+    for (let i = 0; i < 200 && !rolled; i++) {
+      const env = hostTable();
+      env.room.setVenueAccess('a', true);
+      env.send('a', { t: 'venue', venue: 'random' });
+      env.send('a', { t: 'start' });
+      rolled = env.room.data.venueNow === 'blockAfterDark';
+    }
+    expect(rolled).toBe(true);
+  });
+  it('a stale locked pick in saved room data falls back to classic when an unentitled host starts', () => {
+    const env = hostTable();
+    env.room.data.venue = 'blockAfterDark'; // a room saved before the gate existed
+    env.send('a', { t: 'start' });
+    expect(env.room.data.venueNow).toBe('classic');
+  });
 });
 
 /* ------------------------------------------------------------ Release 10: spectators */

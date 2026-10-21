@@ -136,6 +136,29 @@ describe('reconnect keeps the seat and the name', () => {
     expect(env.room.data.seats[0]).toMatchObject({ kind: 'human', playerId: a.pid });
   });
 
+  it("stamps locked-venue entitlement from the verified ticket onto the member (The Pj's gate)", async () => {
+    const env = new FakeEnv(undefined, FAST);
+    env.room.open('a');
+    await dispatchTableMessage(
+      env.room,
+      'a',
+      JSON.stringify({ t: 'hello', name: 'Dee', ticket: 'tk' }),
+      async () => ({ uid: 'u:dee', venueAccess: true }),
+    );
+    const pid = env.last('a', 'welcome')!.you;
+    expect(env.room.data.members[pid]!.venueAccess).toBe(true);
+    // a later verified hello without access re-stamps it off — no stale entitlement
+    env.room.open('a2');
+    const tok = env.last('a', 'welcome')!.token;
+    await dispatchTableMessage(
+      env.room,
+      'a2',
+      JSON.stringify({ t: 'hello', name: 'Dee', token: tok, ticket: 'tk' }),
+      async () => ({ uid: 'u:dee', venueAccess: false }),
+    );
+    expect(env.room.data.members[pid]!.venueAccess).toBe(false);
+  });
+
   it('holds the turn clock while the table is drawing, then starts a full timer without giving up the seat', () => {
     const { env, a } = seated();
     const seq = env.room.data.seq!;

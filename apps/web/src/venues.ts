@@ -115,10 +115,12 @@ export function venueLabel(v: VenueChoice): string {
   return v === 'random' ? '🎲 Random' : `${VENUE_DEFS[v].emoji} ${VENUE_DEFS[v].name}`;
 }
 
-/** offline: 'random' → a concrete venue for this game */
-export function resolveVenue(v: VenueChoice | undefined, r = Math.random()): VenueId {
+/** offline: 'random' → a concrete venue for this game. Locked venues (The Pj's) roll only
+ *  for a player entitled to them — pass the unlock state (see fetchVenueUnlocks/venueUnlocked);
+ *  the default is locked, so an unknown/signed-out state can never roll into The Pj's. */
+export function resolveVenue(v: VenueChoice | undefined, r = Math.random(), includeLocked = false): VenueId {
   if (!v) return 'classic';
-  return v === 'random' ? rollVenue(r) : v;
+  return v === 'random' ? rollVenue(r, undefined, includeLocked) : v;
 }
 
 /** asset URLs for one venue (lazy: only the venue in play is fetched) */
