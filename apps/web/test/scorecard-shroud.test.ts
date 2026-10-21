@@ -417,8 +417,10 @@ describe('scorecard caution tape and shroud', () => {
     expect(cloth).toContain('-4.0');
     expect(cloth).toContain('0.92');
     expect(cloth).not.toContain('max-width');
-    expect(css).toContain('top: calc(54px + env(safe-area-inset-top))');
-    expect(css).toContain('.tt-chat-btn { position: fixed; z-index: 1025; top: calc(54px + env(safe-area-inset-top)); right: calc(8px + env(safe-area-inset-right));');
+    // Owner 2026-10-20: the recap chat button no longer floats fixed over the
+    // TOP SCORES card — it sits in-flow in the recap header (.tt-head).
+    expect(css).toContain('.tt-chat-btn { position: relative; flex: none; margin-left: auto;');
+    expect(css).not.toContain('.tt-chat-btn { position: fixed');
     const blocks = [...css.matchAll(/@media \(prefers-reduced-motion: reduce\) \{[^}]*\}/g)].map((m) => m[0]);
     const entrance = blocks.find((b) => b.includes('.caution-x') && b.includes('.shroud'));
     expect(entrance).toContain('animation: none');

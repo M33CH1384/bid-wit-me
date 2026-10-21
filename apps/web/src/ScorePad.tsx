@@ -12,6 +12,8 @@ import { SEAT_COLORS } from './overlay';
 import { hudSeatName } from './dealerName';
 import { holeMarks, punchedLabel, rememberHoles } from './shotMarks';
 import { timerSettingLabel } from './turnTimer';
+import { wheelsMade } from './landCue';
+import { HandsStrip, bostonSides } from './BoxScore';
 
 export const signed = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0');
 
@@ -108,7 +110,7 @@ export function ScorePad({ st, names, onClose, onContinue, locked, sideName, dea
   const esc = useEscapeClose(onClose);
   return (
     <div className="modal-backdrop pad-backdrop" ref={esc} onClick={onClose}>
-      <div className="modal glass slant score-pad v2" onClick={(e) => e.stopPropagation()} data-testid="score-pad" role="dialog" aria-label="Score pad">
+      <div className="modal glass slant score-pad v2 espn" onClick={(e) => e.stopPropagation()} data-testid="score-pad" role="dialog" aria-label="Score pad">
         <div className="scroll pad2">
           <header className="pad-sticky">
             <button type="button" className="sheet-close pad-close-btn" aria-label="Close score pad" data-testid="pad-close" onClick={onClose}>CLOSE</button>
@@ -129,13 +131,21 @@ export function ScorePad({ st, names, onClose, onContinue, locked, sideName, dea
               })}
             </div>
           </header>
+          <HandsStrip history={st.history} sides={sides} label={sideName} color={(s) => sideColor(r, s)} testId="pad-strip" />
           <div className="pad-cols v2" aria-hidden>
             <span>{r.partnerships ? 'Team' : 'Player'}</span><span>Bid</span><span>Took</span><span>Points</span><span>Total</span>
           </div>
           {st.history.length === 0 && !inProgress && <p className="muted">No hands scored yet.</p>}
           {st.history.map((h) => (
             <section key={h.handNo} ref={h.handNo === lastNo && !inProgress ? lastRef : undefined} className={`pad-hand ${h.handNo === lastNo ? 'last' : ''}`} data-testid={`pad-hand-${h.handNo}`}>
-              <header className="pad-hand-head"><b>Hand {h.handNo}</b><span>{seatName(h.dealer)} dealt</span>{h.handNo === lastNo && <span className="pad-last">{st.phase === 'gameOver' ? 'FINAL' : 'LAST HAND'}</span>}</header>
+              <header className="pad-hand-head"><b>Hand {h.handNo}</b><span>{seatName(h.dealer)} dealt</span>{(() => {
+                const moments = [
+                  ...bostonSides(h).map((s) => <em key={`b${s}`} className="rchip boston">BOSTON</em>),
+                  ...wheelsMade(r, h).map((w) => <em key={`w${w.side}`} className="rchip wheels">WHEELS</em>),
+                  ...(h.nuke ? [<em key="n" className="rchip nuke">☢ NUKE</em>] : []),
+                ];
+                return moments.length ? <span className="pad-moments" data-testid={`pad-moment-${h.handNo}`}>{moments}</span> : null;
+              })()}{h.handNo === lastNo && <span className="pad-last">{st.phase === 'gameOver' ? 'FINAL' : 'LAST HAND'}</span>}</header>
               {h.sides.map((s) => (
                 <Row key={s.side} color={sideColor(r, s.side)} name={sideName(s.side)} bid={bidText(h, s)} took={s.tricks}
                   points={signed(s.points)} details={breakdown(r, s)} chips={resultChips(r, h, s, st).filter((c) => c.kind !== 'books' && c.kind !== 'made')}

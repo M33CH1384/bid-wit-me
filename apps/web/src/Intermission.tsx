@@ -1,6 +1,8 @@
 import { type ReactNode, useEffect, useRef } from 'react';
-import { type GameState, bidLabel, isNilBid, isShot, shotCovers } from '@spades/rules';
-import { resultChips, signed } from './ScorePad';
+import { type GameState, bidLabel, isNilBid, isShot, shotCovers, sideOf } from '@spades/rules';
+import { resultChips, sideColor, signed } from './ScorePad';
+import { wheelsMade } from './landCue';
+import { HandsStrip, bostonSides } from './BoxScore';
 import { sideName } from './Modals';
 import { handWinner, streakLabel, streakOf } from './fx';
 import { sound } from './audio';
@@ -14,7 +16,7 @@ import { HOLE_CAP, claimHoleBuzz, holeMarks, holeSlots, markHolePunched, markShe
  * then Score pad and Continue. Chat, the avatar strip, the shuffle animation, and the team-name editor
  * are not part of this screen. Chat opens from the corner button.
  */
-export interface Callout { kind: 'shot' | 'gotShot' | 'streak' | 'nil' | 'bust'; text: string; side?: number; level?: number; /** shot pop-up: big headline + detail line */ title?: string; sub?: string }
+export interface Callout { kind: 'shot' | 'gotShot' | 'streak' | 'nil' | 'bust' | 'boston' | 'wheels' | 'nuke'; text: string; side?: number; level?: number; /** shot pop-up: big headline + detail line */ title?: string; sub?: string }
 
 /** What to shout about for the latest scored hand (also drives the fx pop-ups). */
 export function calloutsFor(st: GameState, mySide: number, names: string[]): Callout[] {
@@ -37,6 +39,12 @@ export function calloutsFor(st: GameState, mySide: number, names: string[]): Cal
     }
     for (const nl of s.nils) out.push({ kind: nl.made ? 'nil' : 'bust', side: s.side, text: `${names[nl.seat]} ${nl.made ? 'made' : 'busted'} ${rec.bids[nl.seat] === 'blindNil' ? 'Blind Nil' : 'Nil'}` });
   }
+  // The hand's headline moments, from the record itself (league box-score pass):
+  // the stamped nuke, a Boston (every book), and Wheels made (the same
+  // wheelsMade that drives the celebration fx — no second definition).
+  if (rec.nuke) out.push({ kind: 'nuke', side: sideOf(rec.nuke.seat, r), text: `☢ ${names[rec.nuke.seat]} blew the nuke` });
+  for (const side of bostonSides(rec)) out.push({ kind: 'boston', side, text: `Boston — ${sideName(r, side, names)} took every book` });
+  for (const wm of wheelsMade(r, rec)) out.push({ kind: 'wheels', side: wm.side, text: `Wheels — ${sideName(r, wm.side, names)} bid ${wm.bid} and took ${wm.books}` });
   const w = handWinner(rec.sides.map((s) => s.points));
   if (w !== null) {
     const n = streakOf(st.history, w);
@@ -145,23 +153,27 @@ export function Intermission({
   return (
     <div className="tt-backdrop" data-testid="table-talk" data-decided={decided ? 'yes' : 'no'} role="dialog" aria-label="Hand recap">
       {sheetOn && <div className={`police-rim${anim.current?.waitSheet.size ? ' wait' : ''}`} data-testid="police-rim" aria-hidden="true" />}
-      <div className="tt glass slant">
+      <div className="tt glass slant espn">
         <header className="tt-head">
           <span className="tt-title">HAND {rec.handNo} RECAP</span>
           {series}
           {secs !== null && !decided && <span className={`tt-count ${secs <= 5 ? 'hot' : ''}`} data-testid="talk-count">Next deal {secs}s</span>}
+          {/* Chat lives IN the header row (owner 2026-10-20: the old fixed
+              corner button floated over the TOP SCORES card — "out of place
+              and an eye sore"). In-flow, right end of the header: it can
+              never cover a score, in either orientation. */}
+          <button
+            type="button"
+            className={`tt-chat-btn ${chatOpen ? 'on' : ''}`}
+            data-testid="recap-chat"
+            aria-expanded={chatOpen}
+            aria-label={chatOpen ? 'Close chat' : 'Open chat'}
+            onClick={onChat}
+          >
+            {chatOpen ? '✕' : '💬'}
+            {!chatOpen && unread > 0 && <span className="unread" data-testid="recap-unread">{unread}</span>}
+          </button>
         </header>
-        <button
-          type="button"
-          className={`tt-chat-btn ${chatOpen ? 'on' : ''}`}
-          data-testid="recap-chat"
-          aria-expanded={chatOpen}
-          aria-label={chatOpen ? 'Close chat' : 'Open chat'}
-          onClick={onChat}
-        >
-          {chatOpen ? '✕' : '💬'}
-          {!chatOpen && unread > 0 && <span className="unread" data-testid="recap-unread">{unread}</span>}
-        </button>
 
         <div className="tt-body">
           <section className="tt-top-scores" data-testid="recap-top-scores" aria-label="Top scores">
@@ -176,6 +188,10 @@ export function Intermission({
                 </li>
               ))}
             </ol>
+          </section>
+          <section className="tt-strip" aria-label="Hands so far">
+            <h3>HANDS</h3>
+            <HandsStrip history={st.history} sides={sides.map((s) => s.side)} label={(s) => sideName(r, s, names)} color={(s) => sideColor(r, s)} testId="recap-strip" />
           </section>
           {notes.length > 0 && (
             <div className="tt-callouts">

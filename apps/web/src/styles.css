@@ -843,11 +843,11 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 /* .slant.glass would paint var(--glass) plus a backdrop blur, so the table chat showed through the recap. */
 .tt.glass.slant { background: linear-gradient(160deg, #2a1250, #0e071a); -webkit-backdrop-filter: none; backdrop-filter: none; }
 .tt * { box-sizing: border-box; min-width: 0; }
-.tt-head { display: flex; align-items: center; gap: 10px; padding: 12px 56px 10px 16px; border-bottom: 1px solid rgba(var(--edge-rgb),.25); font-family: var(--display); font-weight: 800; letter-spacing: .1em; flex: none; }
+.tt-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px 10px; border-bottom: 1px solid rgba(var(--edge-rgb),.25); font-family: var(--display); font-weight: 800; letter-spacing: .1em; flex: none; }
 .tt-live { display: flex; align-items: center; gap: 6px; color: #fff; background: var(--red); padding: 2px 10px 2px 8px; font-size: 13px; clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%); }
 .tt-live .live-dot { background: #fff; box-shadow: 0 0 6px #fff; }
 .tt-title { color: var(--gold); font-size: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tt-chat-btn { position: fixed; z-index: 1025; top: calc(54px + env(safe-area-inset-top)); right: calc(8px + env(safe-area-inset-right)); width: 40px; height: 40px; border: 0; border-radius: 12px; font-size: 18px; line-height: 1; color: #fff; background: rgba(var(--purple-rgb),.92); box-shadow: 0 6px 16px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.25); display: grid; place-items: center; pointer-events: auto; }
+.tt-chat-btn { position: relative; flex: none; margin-left: auto; width: 38px; height: 38px; border: 0; border-radius: 12px; font-size: 17px; line-height: 1; color: #fff; background: rgba(var(--purple-rgb),.92); box-shadow: 0 4px 10px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.25); display: grid; place-items: center; pointer-events: auto; cursor: pointer; }
 .tt-chat-btn.on { background: rgba(40,24,64,.95); }
 .tt-chat-btn .unread { top: -6px; right: -6px; }
 .tt-count { margin-left: auto; font-size: 14px; color: var(--muted); white-space: nowrap; }
@@ -1057,7 +1057,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 /* landscape phones: two columns but compact */
 @media (max-height: 520px) and (min-width: 600px) {
   .tt-body { gap: 10px; padding: 52px 12px 8px; justify-content: safe center; }
-  .tt-head { padding: 6px 52px 6px 12px; } .tt-foot { padding: 6px 12px; }
+  .tt-head { padding: 6px 12px; } .tt-foot { padding: 6px 12px; }
   .tt-deal { display: none; }
   .tt-grid { grid-template-columns: repeat(4, 1fr); }
   .tt-tile { aspect-ratio: 1; }
@@ -1080,7 +1080,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
   .tt-top-scores h3 { margin-bottom: 6px; }
   .tt-top-scores ol { gap: 6px; }
   .tt-foot.stack .exit-divider { margin: 0; }
-  .tt-head { padding: 10px 52px 8px 12px; gap: 8px; } .tt-title { font-size: 17px; }
+  .tt-head { padding: 10px 12px 8px; gap: 8px; } .tt-title { font-size: 17px; }
   .tt-foot { padding: 8px 10px; } .tt-foot .primary { min-width: 0; flex: 1; }
   .tt-recap.crowded .tt-stat.bags-stat b { font-size: 20px; }
   .tt-recap.crowded .tt-team { padding: 10px 12px; }
@@ -3032,3 +3032,66 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
    chip's box now ends left of the rail's 50px footprint (8px edge + 42px button), the
    same clearance convention the chat ticker already uses. */
 .last-trick, .last-trick.glass.slant { right: calc(58px + env(safe-area-inset-right)); }
+/* ESPN scorecards (owner, 2026-10-20): the between-hands recap / score pad and
+   the end-of-game scorecard in the league's box-score language — striped rows,
+   tabular numerals, gold reserved for winners and headline moments. Additive
+   only: base rules above are byte-stable; the new language rides the `.espn`
+   scope class on the recap / pad / game-over roots plus the new components
+   (HandsStrip, BoxScore) from BoxScore.tsx. */
+.hands-strip { display: flex; flex-direction: column; gap: 5px; }
+.hs-row { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.hs-name { flex: 0 1 34%; min-width: 0; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hs-dots { display: flex; flex-wrap: wrap; gap: 4px; flex: 1; min-width: 0; }
+.hs-dot { width: 9px; height: 9px; border-radius: 50%; background: transparent; box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.35); flex: none; }
+.hs-dot.win { background: var(--side); box-shadow: 0 0 6px 0 var(--side); }
+.hs-dot.tie { background: rgba(255,255,255,.35); box-shadow: none; }
+.hs-rec { font-family: var(--display); font-weight: 800; font-variant-numeric: tabular-nums; color: var(--muted); }
+.tt-strip { width: min(520px, 100%); padding: 2px 16px 0; }
+.tt-strip h3 { margin: 0 0 8px; font-family: var(--display); font-size: 13px; font-weight: 800; letter-spacing: .14em; color: var(--gold); }
+.score-pad .hands-strip { padding: 2px 2px 0; }
+.tt-callout.boston { background: linear-gradient(90deg, #c9962a, #f5c542); color: #241a00; }
+.tt-callout.wheels { background: rgba(128, 84, 255, .35); color: #d9ccff; }
+.tt-callout.nuke { background: rgba(255, 90, 40, .3); color: #ffc4a3; }
+.rchip.boston { background: rgba(var(--gold-rgb),.25); color: var(--gold-hi); }
+.rchip.wheels { background: rgba(128, 84, 255, .3); color: #d9ccff; }
+.rchip.nuke { background: rgba(255, 90, 40, .28); color: #ffc4a3; }
+.pad-moments { display: inline-flex; gap: 4px; }
+
+/* The box score itself (cmp-table's sibling): dense striped rows, micro
+   uppercase headers, the final row in big display numerals. */
+.box-score { width: 100%; text-align: left; }
+.box-title { margin: 10px 0 2px; font-family: var(--display); font-size: 14px; font-weight: 800; letter-spacing: .14em; color: var(--gold); }
+.box-scroll { overflow-x: auto; }
+.box-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 6px; }
+.box-table th, .box-table td { padding: 5px 8px; text-align: right; font-variant-numeric: tabular-nums; }
+.box-table thead th { color: var(--ink-dim); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; max-width: 92px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.box-table thead th.win { color: var(--gold); }
+.box-table tbody th { text-align: left; font-weight: 600; color: var(--ink-dim); }
+.box-table tbody tr:nth-child(even) { background: rgba(127, 127, 160, .07); }
+.box-table td b { display: block; font-family: var(--display); font-size: 16px; font-weight: 800; }
+.box-table td b.neg { color: #ff9db0; }
+.box-table td small { display: block; font-size: 11px; color: var(--muted); }
+.box-table td.mine { background: rgba(var(--gold-rgb),.08); }
+.box-table .box-final th { font-family: var(--display); text-transform: uppercase; letter-spacing: .08em; color: var(--gold); }
+.box-table .box-final td b { font-size: 22px; }
+.box-table .box-final td.win b { color: var(--gold); }
+.box-lines { margin-top: 8px; border: 1px solid rgba(255,255,255,.08); border-radius: 10px; overflow: hidden; }
+.box-line { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 7px 12px; font-size: 13px; }
+.box-line:nth-child(even) { background: rgba(255,255,255,.04); }
+.box-line span { color: var(--muted); flex: none; }
+.box-line b { font-variant-numeric: tabular-nums; text-align: right; min-width: 0; }
+
+/* `.espn` refinements on the existing surfaces: the recap's top scores become
+   a striped stat table with bigger totals; the pad's board totals grow; the
+   winning placement row takes the gold. */
+.tt.espn .tt-top-scores { border: 1px solid rgba(255,255,255,.08); border-radius: 10px; background: rgba(255,255,255,.03); box-shadow: none; padding: 12px 14px 10px; }
+.tt.espn .tt-top-scores li { padding: 5px 8px; border-radius: 6px; }
+.tt.espn .tt-top-scores li:nth-child(even) { background: rgba(255,255,255,.04); }
+.tt.espn .tt-top-scores li b { font-size: 26px; }
+.score-pad.espn .pad-board-total { font-size: 34px; }
+.score-pad.espn .pad-hand { padding: 6px 8px; border-radius: 10px; }
+.score-pad.espn .pad-hand:nth-of-type(even) { background: rgba(255,255,255,.03); }
+.espn .placements li.win { background: rgba(var(--gold-rgb),.22); box-shadow: inset 0 0 0 1px rgba(var(--gold-rgb),.55); }
+.espn .placements li.win b { color: var(--gold); }
+.vic-foot .box-score { margin-top: 4px; }
+.gameover .box-score { margin: 6px auto 2px; max-width: 520px; }
