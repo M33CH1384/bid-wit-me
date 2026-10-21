@@ -7,7 +7,7 @@
  *   (× master volume; silent when sound is off)
  */
 import { useSyncExternalStore } from 'react';
-import { PERSONAS, type PersonaId, type TalkIntensity, maskMild, personaForName, voiceGender } from '@spades/bots';
+import { PERSONAS, type PersonaId, type TalkIntensity, applyPronunciation, maskMild, personaForName, voiceGender } from '@spades/bots';
 import { sound } from './audio';
 import { playClip, rawLine } from './voices/voices';
 
@@ -99,9 +99,10 @@ function webSpeech(name: string, text: string, persona: PersonaId = personaForNa
   const snd = sound.settings;
   const p = PERSONAS[persona];
   const clean = maskMild(text).replace(/\*+/g, ''); // never read the asterisks out; masked words just drop
-  // Pronunciation fixes: TTS spells out "mm-hm" letter-by-letter; "mm-hmm" is spoken correctly (Demetrius 2026-10-19)
-  const pronounced = clean.replace(/\bmm-hm\b/gi, 'mm-hmm');
-  const spoken = (intensity === 'family' ? pronounced : text).replace(/[^\p{L}\p{N}\s'?!.,…-]/gu, ' ').trim();
+  // Pronunciation: the shared dictionary (packages/bots/src/pronounce.ts) — the same respellings the
+  // recorded bake uses, so a line sounds the same on both paths. It used to be a hand-coded mm-hm fix
+  // here, and only on the family branch (Demetrius: mm-hm spelled out, "chile" as chee-lay, 2026-10-21).
+  const spoken = (intensity === 'family' ? applyPronunciation(clean) : applyPronunciation(text)).replace(/[^\p{L}\p{N}\s'?!.,…-]/gu, ' ').trim();
   if (!spoken) return;
   const u = new SpeechSynthesisUtterance(p.caps ? spoken.toLowerCase() : spoken);
   const jitter = (hash(name) % 100) / 100 - 0.5;

@@ -1,20 +1,21 @@
-# Trash-talk pack — wave 2 (written 2026-10-21, BAKE-PENDING)
+# Trash-talk pack — wave 2 (written 2026-10-21, BAKED + SHIPPED 2026-10-21)
 
-New bot-commentary lines written for the 2026-10-21 commentary overhaul. They are **not in
-any pool yet**, on purpose: this project's voice invariant (apps/web/test/voices.test.ts)
-requires every line a persona can say to have a recorded clip in that persona's sprite, and
-sprites are baked in the external `bwm-voices` workspace, then installed with
-`scripts/voices-install.mjs`. Until that bake happens, these lines wait here.
+New bot-commentary lines written for the 2026-10-21 commentary overhaul. They waited here
+until the voice bake existed on this VM; it does now, and **this pack is baked, wired and
+live**: `PACK2` lives in `packages/bots/src/pack2.ts` (spread after the POOLS2
+redistribution in personas.ts — a deliberate deviation from the original instruction
+below, so the redistribution's line indices, which are line ids, never move; PACK2 lines
+mint only fresh indices), and `COMMON_EXTRA` is append-merged into COMMON the same way.
 
-**To ship them:** bake the lines below for their owner personas (pack markup rules are in
-docs/trash-talk-pack.md: `!`/`!!` intensity floors, `[persona]` restricts owners, templates
-{them} {opp} {team} {bid}), install the sprites, then wire the data back in:
-
-1. `PACK2` (below) → `packages/bots/src/pack2.ts`, spread after PACK in personas.ts
-   (`for (const sec of [...PACK, ...PACK2])`).
-2. `COMMON_EXTRA` (below) → append-merge into COMMON in personas.ts.
-3. Run the bots + voices suites; the anti-repeat rotation and pool floors in
-   packages/bots/test/talk-overhaul.test.ts are written to keep them honest.
+The bake pipeline (in-repo, reproducible): `scripts/voice-bake/dump-lines.ts` dumps every
+speakable line with its spoken take (`packages/bots/src/takes.ts`), and
+`scripts/voice-bake/bake-sprites.py` synthesizes with Kokoro-82M v1.0 (kokoro-onnx) in
+each persona-gender's official voice, processes to the corpus norms (5 ms-window trim at
+−35 dB, −16 LUFS, −1 dBFS limiter, 10 ms fades) and rebuilds the sprites append-only:
+existing clips keep their decoded audio and durations, pronunciation re-bakes replace
+their segment in place, new clips append. Pronunciation respellings live in
+`packages/bots/src/pronounce.ts`, shared with the Web Speech fallback. The pack data
+below is kept verbatim as the historical record of what was written.
 
 What shipped WITHOUT waiting for the bake (same overhaul): the rotation fix in talk.ts
 `pick()` (fact/Ace-preferred slices no longer reset the anti-repeat memory), the

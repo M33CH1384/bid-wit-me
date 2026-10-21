@@ -63,5 +63,8 @@ export * from './talk';
 export * from './moments';
 export * from './voices';
 export { PACK, STYLE } from './pack';
+export { PACK2, COMMON_EXTRA } from './pack2';
+export * from './pronounce';
+export * from './takes';
 export * from './partnerTalk';
 export * from './catalog';

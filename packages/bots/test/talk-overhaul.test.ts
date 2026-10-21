@@ -12,7 +12,7 @@
 import { describe, expect, it } from 'vitest';
 import { type GameState, type HandRecord, type SideHandResult, makeRules, newGame } from '@spades/rules';
 import {
-  BOT_NAMES, COMMON, LINE_META, PERSONAS, banterContextFor, botTalk, collectionBanter, gapBiasOf, lineById,
+  BOT_NAMES, COMMON, LINE_META, PERSONAS, applyPronunciation, banterContextFor, botTalk, collectionBanter, gapBiasOf, lineById,
   maskMild, momentsFor, newTalkState, personaForName, poolFor,
   type PersonaId, type TalkKind, type TalkTable,
 } from '../src';
@@ -236,10 +236,10 @@ describe('moments: match point and bags trouble are real events now', () => {
 });
 
 describe('TTS safety of the redistributed lines', () => {
-  // talkPrefs.webSpeech cleanup: mask mild cursing, fix mm-hm, then strip everything
-  // that is not a letter / number / space / light punctuation (emoji are display-only)
-  const spokenForm = (raw: string) => maskMild(raw)
-    .replace(/\bmm-hm\b/gi, 'mm-hmm')
+  // talkPrefs.webSpeech cleanup: mask mild cursing, apply the shared pronunciation
+  // dictionary, then strip everything that is not a letter / number / space / light
+  // punctuation (emoji are display-only)
+  const spokenForm = (raw: string) => applyPronunciation(maskMild(raw))
     .replace(/[^\p{L}\p{N}\s'?!.,…-]/gu, '')
     .replace(/\s+/g, ' ')
     .trim();

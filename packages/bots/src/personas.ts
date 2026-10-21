@@ -8,8 +8,9 @@
  * Rules for writers: competitive and funny, never about race, gender, sexuality, religion or looks; no threats; no slurs.
  */
 
-import { PACK, STYLE } from './pack';
+import { PACK, STYLE, type PackSection } from './pack';
 import { POOLS2 } from './pools2';
+import { PACK2, COMMON_EXTRA } from './pack2';
 
 export type TalkKind =
   | 'prePlay'      // before the bot plays (generic or bluff; never an honest tell)
@@ -151,6 +152,13 @@ export const COMMON: Partial<Record<TalkKind, string[]>> = {
   // break the recorded-voice invariant (voices.test.ts). Persona banks live in pools2.ts.
   matchPoint: ["we're on a heater 🔥", 'someone stop us. anyone.', 'back to back. get used to it.'],
 };
+
+// ---- wave-2 COMMON additions (docs/trash-talk-pack-wave2.md): appended AFTER the base
+// COMMON lines so every existing common line keeps its index (line ids are index-based).
+for (const [kind, extra] of Object.entries(COMMON_EXTRA) as [TalkKind, string[]][]) {
+  const pool = (COMMON[kind] ??= []);
+  for (const raw of extra) if (!pool.includes(raw)) pool.push(raw);
+}
 
 export const PERSONAS: Record<PersonaId, Persona> = {
   professor: {
@@ -578,7 +586,7 @@ const MILD = /\b(shit|ass|damn|hell)\b/i;
 function packHash(s: string): number { let h = 2166136261; for (const ch of s) { h ^= ch.codePointAt(0)!; h = Math.imul(h, 16777619); } return h >>> 0; }
 /** which personas say a pack line (exported for tests / docs) */
 export const PACK_OWNERS: Record<string, PersonaId[]> = {};
-for (const sec of PACK) {
+function spreadPackSection(sec: PackSection): void {
   const groups = Array.isArray(sec.group) ? sec.group : [sec.group];
   for (const [li, raw0] of sec.lines.entries()) {
     let raw = raw0.trim();
@@ -609,6 +617,7 @@ for (const sec of PACK) {
     }
   }
 }
+for (const sec of PACK) spreadPackSection(sec);
 // ---- recorded-corpus redistribution: re-home lines each persona already says (and has
 // recorded) into the starved hand-end kinds. Append-only + deduped: no existing line in
 // any pool changes index, so every recorded-clip id stays put. See pools2.ts. ----
@@ -618,6 +627,10 @@ for (const [id, kinds] of Object.entries(POOLS2) as [PersonaId, Partial<Record<T
     for (const raw of raws) if (!pool.includes(raw)) pool.push(raw);
   }
 }
+// ---- wave-2 pack (docs/trash-talk-pack-wave2.md): spread AFTER the base pack and the
+// pools2 redistribution, so every pre-existing pool entry keeps its index and only fresh
+// indices are minted. Clips for all of these were baked in the voice-bake build. ----
+for (const sec of PACK2) spreadPackSection(sec);
 // mild cursing in the base pools needs Cookout (Family Friendly never says it, even masked)
 for (const list of [COMMON, ...Object.values(PERSONAS).map((p) => p.lines)]) {
   for (const arr of Object.values(list)) for (const l of arr ?? []) if (MILD.test(l) && !LINE_META[l]?.min) LINE_META[l] = { ...LINE_META[l], min: 'cookout' };
