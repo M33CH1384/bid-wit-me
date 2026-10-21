@@ -12,7 +12,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { secureSeed } from '@spades/rules';
 import {
   STORY_SECRETS, STORY_STOPS, STORY_CHARACTERS, STORY_TIER_LABEL, STORY_TIER_SKILL, beatsFor, deeSkillForStop,
-  storyReward, type StoryBeatFacts, type StoryGameFacts, type StoryStop,
+  kingDoubleBeats, storyClearReward, type StoryBeatFacts, type StoryGameFacts, type StoryStop,
 } from '@spades/bots';
 import Table from '../Table';
 import SettingsSheetHost from '../SettingsSheetHost';
@@ -100,12 +100,14 @@ export default function StoryHome() {
   }, []);
   useEffect(() => { void refresh(); }, [refresh, screen.k === 'map']);
 
-  const factsFor = (stop: StoryStop): StoryBeatFacts & { clears: number; attemptsAtPorch: number } => {
+  const factsFor = (stop: StoryStop): StoryBeatFacts & { clears: number; attemptsAtPorch: number; doublePending: boolean } => {
     const row = progress?.stops.find((s) => s.stopId === stop.id);
     return {
       attempts: row?.attempts ?? 0,
       clears: row?.clears ?? 0,
       cleared: (row?.clears ?? 0) > 0,
+      // The King's double or nothing, live from the server's progress row.
+      doublePending: row?.doublePending ?? false,
       clearedStopIds: progress?.stops.filter((s) => s.clears > 0).map((s) => s.stopId) ?? [],
       // Railbird Ray's memory is keyed to HIS stop — the Porch (stored fact).
       attemptsAtPorch: progress?.stops.find((s) => s.stopId === 'porch')?.attempts ?? 0,
@@ -168,7 +170,7 @@ export default function StoryHome() {
   const stopHasFacts = (stop: StoryStop): boolean => {
     const row = progress?.stops.find((s) => s.stopId === stop.id);
     const secret = STORY_SECRETS[stop.id];
-    return (row?.attempts ?? 0) > 0 || (row?.clears ?? 0) > 0
+    return (row?.attempts ?? 0) > 0 || (row?.clears ?? 0) > 0 || (row?.doublePending ?? false)
       || (!!secret && (progress?.finds?.eggs ?? []).includes(secret.egg.id))
       || (!!secret && (progress?.finds?.feats ?? []).includes(secret.unlockable.itemId));
   };
@@ -335,14 +337,25 @@ export default function StoryHome() {
   } else if (screen.k === 'outro') {
     const stop = screen.stop;
     const r = lastResult && lastResult.stopId === stop.id ? lastResult : null;
+    // The King's double or nothing lands here twice: a leg-1 win is NOT an
+    // outro — it is the between-legs moment (nothing banked, run it back);
+    // a leg-2 loss is an outro with the double's own honest accounting.
+    const dblStarted = !!r && stop.doubleOrNothing === true && r.won && !r.firstClear
+      && (r.doubleOutcome === 'started' || r.doublePending === true);
+    const dblLost = !!r && stop.doubleOrNothing === true && !r.won && r.doubleOutcome === 'lost';
     body = (
       <div className="story-shell">
         <StoryHeader stop={stop} />
         <SceneAudio stop={stop} />
-        {r && r.won && (
+        {r && r.won && !dblStarted && (
           <p className="story-reward-line" data-testid="story-reward-line">
             {r.firstClear ? <>First clear! <b>+{r.rewards.xp} XP</b> · <b>+{r.rewards.coins}</b> <CoinIcon size={14} /></> : <>Replay upkeep: <b>+{r.rewards.xp} XP</b> · <b>+{r.rewards.coins}</b> <CoinIcon size={14} /></>}
             {r.completed ? ' · Route complete — the solo mark is yours.' : ''}
+          </p>
+        )}
+        {dblStarted && (
+          <p className="story-reward-line" data-testid="story-double-line">
+            You beat the King once — and banked <b>nothing</b>. Double or nothing: one more win takes the crown and double the clear. Lose, and both wins are gone.
           </p>
         )}
         {r && r.won && r.firstClear && deckUnlockNotice(r.stopId) && (
@@ -351,26 +364,34 @@ export default function StoryHome() {
         {r && r.won && r.firstClear && setAnimUnlockNotice(r.stopId) && (
           <p className="story-deck-line" data-testid="story-setanim-notice">{setAnimUnlockNotice(r.stopId)}</p>
         )}
-        {r && !r.won && <p className="story-reward-line">No rewards on a loss — and no penalty. The retry is free.</p>}
+        {r && !r.won && !dblLost && <p className="story-reward-line">No rewards on a loss — and no penalty. The retry is free.</p>}
+        {dblLost && (
+          <p className="story-reward-line" data-testid="story-double-lost-line">
+            Double or nothing — and it came up nothing. The first win is wiped with it: no clear, no rewards for either leg. The King stays current.
+          </p>
+        )}
         {r && (r.newFinds?.length ?? 0) > 0 && (
           <p className="story-find-line" data-testid="story-new-finds">
             {r.newFinds.map((f) => <span key={f.id} className="story-find-chip">{f.kind === 'feat' ? '🏆' : '🥚'} {f.kind === 'feat' ? 'Unlocked' : 'Found'}: {f.name}</span>)}
           </p>
         )}
-        {screen.won && (() => {
+        {screen.won && !dblStarted && (() => {
           const before = new Set(storyBadgesFor(badgeFactsOf(progressBeforeRef.current)).filter((b) => b.earned).map((b) => b.id));
           const after = storyBadgesFor(badgeFactsOf(r ?? progress));
           const fresh = new Set(after.filter((b) => b.earned && !before.has(b.id)).map((b) => b.id));
           return <StoryBadges facts={badgeFactsOf(r ?? progress)} highlight={fresh} title="Badges" />;
         })()}
         <ScriptPlayer
-          beats={beatsFor(stop, screen.won ? 'outroWin' : 'outroLose', factsFor(stop))}
+          beats={dblStarted ? kingDoubleBeats('started') : dblLost ? kingDoubleBeats('lost') : beatsFor(stop, screen.won ? 'outroWin' : 'outroLose', factsFor(stop))}
           cta="Back to the map"
           onDone={() => setScreen({ k: 'map' })}
           bgUrl={storyBackdropUrl(stop)}
           cast={[stop.pair[0], 'dee', stop.pair[1]]}
           rail={railFor(stop.id)}
         />
+        {dblStarted && (
+          <button type="button" className="btn primary story-retry" data-testid="story-double-runback" onClick={() => startGame(stop)}>Run it back — leg 2</button>
+        )}
         {!screen.won && (
           <button type="button" className="btn primary story-retry" data-testid="story-retry" onClick={() => setScreen({ k: 'intro', stop })}>Retry this stop</button>
         )}
@@ -408,7 +429,7 @@ export default function StoryHome() {
           {STORY_STOPS.map((stop) => {
             const state = stateFor(stop);
             const pair = stop.pair.map((id) => STORY_CHARACTERS[id]!);
-            const reward = storyReward(stop.n, true);
+            const reward = storyClearReward(stop);
             const facts = factsFor(stop);
             const stopSave = saved && saved.story.stopId === stop.id ? saved : null;
             return (
@@ -421,7 +442,7 @@ export default function StoryHome() {
                       <StoryFace characterId={stop.pair[1]} name={pair[1].name} className="card-face" />
                     </span>
                     {state === 'cleared' && <span className="story-card-state">✓ CLEARED</span>}
-                    {state === 'current' && !stopSave && <span className="story-card-state here">YOU ARE HERE</span>}
+                    {state === 'current' && !stopSave && <span className="story-card-state here">{facts.doublePending ? 'DOUBLE OR NOTHING' : 'YOU ARE HERE'}</span>}
                     {stopSave && <span className="story-card-state here">MATCH IN PROGRESS</span>}
                   </div>
                   <div className="story-stop-body">
@@ -430,6 +451,7 @@ export default function StoryHome() {
                     <p className="story-stop-flavor">{stop.flavor}</p>
                     <p className="story-stop-twist">{stop.twist.label} · First clear: +{reward.xp} XP · +{reward.coins} coins</p>
                     {facts.attempts > 0 && <p className="story-stop-facts">{facts.clears > 0 ? `Cleared ${facts.clears}×` : `${facts.attempts} attempt${facts.attempts === 1 ? '' : 's'} — not cleared yet`}</p>}
+                    {facts.doublePending && <p className="story-stop-facts" data-testid="story-double-pending">You beat him once — double or nothing: one more win takes the crown.</p>}
                     {stopSave && <p className="story-stop-facts" data-testid={`story-inprogress-${stop.id}`}>Match in progress — hand {stopSave.state.handNo}. Pick it up right where you left it.</p>}
                     <StopSecrets stop={stop} cleared={facts.clears > 0} finds={progress?.finds} />
                   </div>
@@ -466,7 +488,7 @@ export default function StoryHome() {
                           data-testid={`story-play-${stop.id}`}
                           disabled={signedOut}
                           onClick={() => setScreen({ k: 'intro', stop })}
-                        >{state === 'cleared' ? 'Replay' : 'Play'}</button>
+                        >{state === 'cleared' ? 'Replay' : facts.doublePending ? 'Finish the double' : 'Play'}</button>
                       )}
                     </div>
                   )}

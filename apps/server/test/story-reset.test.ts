@@ -139,6 +139,9 @@ describe('story reset-stop (owner tool)', () => {
 
   it('resetting the King un-completes the track; resetting any other stop does not', async () => {
     for (const s of STORY_STOPS) await result('c', s.id, true, `route-${s.id}`);
+    // The King is a double or nothing — the loop's single King win only
+    // opened the double; the second consecutive win completes the route.
+    await result('c', 'king', true, 'route-king-2');
     let p = await progress('c');
     expect(p.completed).toBe(true);
     expect(p.completionMark).toBe('story-solo-complete');

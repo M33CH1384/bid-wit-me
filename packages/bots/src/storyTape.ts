@@ -28,6 +28,8 @@ export interface StoryTape {
   threat: string;
   /** present ONLY when a stored fact supports it */
   history?: string;
+  /** the stop's special clear terms, when it has any (the King's double or nothing) — stated BEFORE leg 1 so the rule is never a surprise */
+  terms?: string;
   you: StoryTapeEntry;
   dee: StoryTapeEntry;
   pair: [StoryTapeEntry, StoryTapeEntry];
@@ -61,7 +63,7 @@ const entryFor = (id: string): StoryTapeEntry => {
   return { id, name: c.name, role: c.role, who: c.tape.who, knownFor: c.tape.knownFor, style: c.tape.style, bond: c.tape.bond };
 };
 
-export function buildStoryTape(stop: StoryStop, facts: StoryBeatFacts): StoryTape {
+export function buildStoryTape(stop: StoryStop, facts: StoryBeatFacts & { doublePending?: boolean }): StoryTape {
   const dee = entryFor('dee');
   const band = deeTapeFor(stop.n);
   dee.knownFor = band.knownFor;
@@ -69,14 +71,23 @@ export function buildStoryTape(stop: StoryStop, facts: StoryBeatFacts): StoryTap
   let history: string | undefined;
   if (facts.cleared) {
     history = `You hold this table — cleared ${facts.clears ?? 1}×. They remember it too.`;
+  } else if (facts.doublePending) {
+    history = 'You beat him once — the double is live. One more win takes the crown; a loss takes everything.';
   } else if (facts.attempts > 0) {
     history = `Last meeting: they turned you back. This is attempt ${facts.attempts + 1}.`;
+  }
+  let terms: string | undefined;
+  if (stop.doubleOrNothing && !facts.cleared) {
+    terms = facts.doublePending
+      ? 'The terms: double or nothing. The first win is already banked — win the run-back and the crown, plus double the clear, is yours. Lose, and both wins are gone.'
+      : 'The terms: beat the King twice in a row — double or nothing. The first win banks nothing; the second takes the crown and double the first-clear reward. Win the first and lose the second, and you leave with nothing.';
   }
   return {
     stopId: stop.id,
     stakes: stop.stakes,
     threat: `${STORY_TIER_LABEL[stop.tier]} table · Threat: ${THREAT_BY_SKILL[STORY_TIER_SKILL[stop.tier]] ?? ''}`,
     history,
+    terms,
     you: {
       id: 'you', name: 'You', role: 'The one running the route',
       who: 'Nobody on the block knows your ceiling yet. That is the only fact anyone here agrees on.',

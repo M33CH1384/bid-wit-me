@@ -135,6 +135,13 @@ export interface StoryStop {
   flavor: string;
   twist: StoryTwist;
   tier: StoryTier;
+  /**
+   * The clear must be earned twice in a row (the King's double or
+   * nothing): a first win banks nothing and opens a pending second leg;
+   * only the second consecutive win clears — for double the first-clear
+   * reward. Losing the second leg voids both legs.
+   */
+  doubleOrNothing?: boolean;
 }
 
 export const STORY_STOPS: StoryStop[] = [
@@ -148,7 +155,7 @@ export const STORY_STOPS: StoryStop[] = [
   { id: 'high-rise', n: 8, name: 'The High-Rise', venueId: 'mansion', pair: ['velvet', 'accountant'], stakes: 'Velvet left Dee’s street with forty dollars. The Accountant has priced what Dee became instead.', flavor: 'Dangerous — a card sharp and a human calculator, playing for money energy.', twist: { label: 'Race to 500', targetScore: 500 }, tier: 'hardPlus' },
   { id: 'the-pjs', n: 9, name: "The Pj's", venueId: 'blockAfterDark', pair: ['captainBlock', 'brick'], stakes: 'The Captain holds this door because the Legends closed his. Under this light, names get made — or unmade.', flavor: 'Home turf\u2019s finest — the venue\u2019s own all-stars, under the streetlight.', twist: { label: "The Pj's venue rules — standard Joker to 500", targetScore: 500 }, tier: 'eliteMinus' },
   { id: 'legends', n: 10, name: "The Legends' Table", venueId: 'vegas', pair: ['queenie', 'ace'], stakes: 'In ’03 they sent an unready kid to the King. Queenie and Ace are the guardrail now: pass, or be protected from what’s next.', flavor: 'The retired legends. Nobody sits with the King until Queenie and Ace say so.', twist: { label: 'Race to 500 — legends\u2019 rules', targetScore: 500 }, tier: 'eliteMinus' },
-  { id: 'king', n: 11, name: 'The King of the Block', venueId: 'blockAfterDark', pair: ['king', 'ringer'], stakes: 'Twenty-two years undefeated. The King isn’t defending a crown — he’s waiting to hand it to someone who beats him right.', flavor: 'The legend the Level 50 title is named for. Undefeated since \u201903.', twist: { label: 'Full game to 750', targetScore: 750 }, tier: 'elite' },
+  { id: 'king', n: 11, name: 'The King of the Block', venueId: 'blockAfterDark', pair: ['king', 'ringer'], stakes: 'Twenty-two years undefeated. The King isn’t defending a crown — he’s waiting to hand it to someone who beats him right.', flavor: 'The legend the Level 50 title is named for. Undefeated since \u201903.', twist: { label: 'Full game to 750 · Double or nothing', targetScore: 750 }, tier: 'elite', doubleOrNothing: true },
 ];
 
 export const storyStopById = (id: string): StoryStop | undefined => STORY_STOPS.find((s) => s.id === id);
@@ -168,6 +175,17 @@ export const STORY_REPLAY_REWARD = { xp: 10, coins: 5 } as const;
 export function storyReward(stopNumber: number, firstClear: boolean): { xp: number; coins: number } {
   if (!firstClear) return { ...STORY_REPLAY_REWARD };
   return { xp: STORY_REWARD_BASE.xp * stopNumber, coins: STORY_REWARD_BASE.coins * stopNumber };
+}
+
+/**
+ * What a first clear actually pays at a stop. The King's double or
+ * nothing doubles the standard first-clear reward — and pays it only
+ * when the second consecutive win lands (server-enforced; see
+ * apps/server/src/story/routes.ts).
+ */
+export function storyClearReward(stop: StoryStop): { xp: number; coins: number } {
+  const base = storyReward(stop.n, true);
+  return stop.doubleOrNothing ? { xp: base.xp * 2, coins: base.coins * 2 } : base;
 }
 
 /** Sequential unlock: stop n is unlocked on a track when every earlier stop is cleared there. */

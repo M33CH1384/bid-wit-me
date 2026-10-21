@@ -135,15 +135,25 @@ describe('story progress + results', () => {
   });
 
   it('clearing the whole route in order completes the track and stores the solo mark', async () => {
-    let last: { rewards: { xp: number; coins: number }; completed: boolean } | null = null;
+    let last: { rewards: { xp: number; coins: number }; completed: boolean; doubleOutcome: string | null } | null = null;
     for (const [i, s] of STORY_STOPS.entries()) {
       const res = await result('a', s.id, true, `route-${s.id}`);
       expect(res.status, s.id).toBe(200);
       last = (await res.json()) as never;
       if (i < STORY_STOPS.length - 1) expect(last!.completed).toBe(false);
     }
+    // The King is a double or nothing: that single win only STARTED the
+    // double — no completion, no rewards yet (covered fully in
+    // story-double.test.ts). The second consecutive win takes the crown.
+    expect(last!.completed).toBe(false);
+    expect(last!.doubleOutcome).toBe('started');
+    expect(last!.rewards).toEqual({ xp: 0, coins: 0 });
+    const res2 = await result('a', 'king', true, 'route-king-2');
+    expect(res2.status).toBe(200);
+    last = (await res2.json()) as never;
     expect(last!.completed).toBe(true);
-    expect(last!.rewards).toEqual({ xp: 275, coins: 220 });
+    expect(last!.doubleOutcome).toBe('cleared');
+    expect(last!.rewards).toEqual({ xp: 550, coins: 440 });
     const p = await progress();
     expect(p.completed).toBe(true);
     expect(p.completionMark).toBe('story-solo-complete');

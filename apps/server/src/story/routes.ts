@@ -9,6 +9,12 @@
  *          clears the stop (server-validated sequential unlock), pays the
  *          first-clear reward once (or the small replay upkeep), and the
  *          King clear stamps the track's completion mark.
+ *          THE KING'S DOUBLE (doubleOrNothing): a first King win records
+ *          the attempt + sets a pending mark (migration 0024) and pays
+ *          NOTHING; only a win posted while the mark stands clears — for
+ *          double the first-clear reward. A loss while pending voids both
+ *          legs. The mark lives on the stop's story_progress row, so the
+ *          reset-stop DELETE wipes a live double with the row.
  *   POST /api/story/reset-stop { track?, stopId }
  *        → owner-only dev tool: wipe ONE stop's progress/claims/finds/
  *          session on the caller's own solo track so its next win presents
@@ -34,7 +40,7 @@
 import { type AuthEnv, currentUser } from '../auth/routes';
 import { type SocialEnv, isAdmin } from '../social/routes';
 import {
-  STORY_SECRETS, STORY_STOPS, STORY_SOLO_TRACK, storyCurrentStop, storyEggById, storyEggEventMet,
+  STORY_SECRETS, STORY_STOPS, STORY_SOLO_TRACK, storyClearReward, storyCurrentStop, storyEggById, storyEggEventMet,
   storyFeatMet, storyReward, storyStopById, storyStopState, storyTrackKeyValid,
   type StoryGameFacts, type StoryMatchEvent,
 } from '@spades/bots';
@@ -58,12 +64,21 @@ export const STORY_OWNER_ONLY = true;
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
 
-interface StopFacts { attempts: number; clears: number; firstClearedAt: number | null }
+interface StopFacts {
+  attempts: number; clears: number; firstClearedAt: number | null;
+  /** the King's double is live at this stop: he has been beaten once, nothing banked (migration 0024) */
+  doublePending: boolean;
+  /** JSON StoryGameFacts of the banked first leg — the deciding post merges them into the run's facts */
+  doubleLegFacts: string | null;
+}
 
 async function factsFor(db: D1Database, userId: string, track: string): Promise<Map<string, StopFacts>> {
-  const rows = await db.prepare('SELECT stop_id AS stopId, attempts, clears, first_cleared_at AS firstClearedAt FROM story_progress WHERE user_id = ? AND track_key = ?')
-    .bind(userId, track).all<{ stopId: string; attempts: number; clears: number; firstClearedAt: number | null }>();
-  return new Map(rows.results.map((r) => [r.stopId, { attempts: r.attempts, clears: r.clears, firstClearedAt: r.firstClearedAt }]));
+  const rows = await db.prepare('SELECT stop_id AS stopId, attempts, clears, first_cleared_at AS firstClearedAt, double_pending AS doublePending, double_leg_facts AS doubleLegFacts FROM story_progress WHERE user_id = ? AND track_key = ?')
+    .bind(userId, track).all<{ stopId: string; attempts: number; clears: number; firstClearedAt: number | null; doublePending: number; doubleLegFacts: string | null }>();
+  return new Map(rows.results.map((r) => [r.stopId, {
+    attempts: r.attempts, clears: r.clears, firstClearedAt: r.firstClearedAt,
+    doublePending: !!r.doublePending, doubleLegFacts: r.doubleLegFacts ?? null,
+  }]));
 }
 
 /** Found eggs + earned feats on a track (story_finds, migration 0022). */
@@ -106,6 +121,30 @@ function gameFactsOf(raw: unknown): StoryGameFacts | null {
   };
 }
 
+/** Parse the banked first-leg facts of a live double (stored as JSON by the
+ *  leg-1 post; re-clamped through gameFactsOf so a corrupt value fails as null). */
+function legFactsOf(raw: string | null): StoryGameFacts | null {
+  if (!raw) return null;
+  try { return gameFactsOf(JSON.parse(raw)); } catch { return null; }
+}
+
+/** The double's run facts = leg 1 + leg 2, field by field: set counts and
+ *  scoring accumulate, steady must hold in BOTH legs, one-leg events stick. */
+function mergeLegFacts(a: StoryGameFacts, b: StoryGameFacts): StoryGameFacts {
+  return {
+    margin: a.margin + b.margin,
+    handsPlayed: a.handsPlayed + b.handsPlayed,
+    setsAgainstUs: a.setsAgainstUs + b.setsAgainstUs,
+    setsAgainstThem: a.setsAgainstThem + b.setsAgainstThem,
+    ourNilsMade: a.ourNilsMade + b.ourNilsMade,
+    ourBlindNilsMade: a.ourBlindNilsMade + b.ourBlindNilsMade,
+    deeNilsMade: a.deeNilsMade + b.deeNilsMade,
+    deeSteady: a.deeSteady && b.deeSteady,
+    setOnFirstHand: a.setOnFirstHand || b.setOnFirstHand,
+    oppSetTwice: a.oppSetTwice || b.oppSetTwice,
+  };
+}
+
 export async function storyProgressPayload(db: D1Database, userId: string, track: string) {
   const facts = await factsFor(db, userId, track);
   const cleared = new Set<number>();
@@ -120,6 +159,8 @@ export async function storyProgressPayload(db: D1Database, userId: string, track
       return {
         stopId: s.id, n: s.n, state: storyStopState(s.n, cleared),
         attempts: f?.attempts ?? 0, clears: f?.clears ?? 0, firstClearedAt: f?.firstClearedAt ?? null,
+        /** the King's double or nothing is live at this stop (server truth — any device sees it) */
+        doublePending: f?.doublePending ?? false,
       };
     }),
     currentStop: storyCurrentStop(cleared),
@@ -271,7 +312,7 @@ export async function handleStoryHttp(req: Request, env: StoryEnv, url: URL, par
       // The game this session was about already finished — no call-backs owed.
       try { await closeStorySession(db, me.id, track, now); } catch { /* sessions never break results */ }
       const progress = await storyProgressPayload(db, me.id, track);
-      return json({ ok: true, replayed: true, stopId: stop.id, won: !!prior.won, firstClear: !!prior.firstClear, rewards: { xp: prior.xp, coins: prior.coins }, ...progress });
+      return json({ ok: true, replayed: true, stopId: stop.id, won: !!prior.won, firstClear: !!prior.firstClear, rewards: { xp: prior.xp, coins: prior.coins }, doubleOutcome: null, doublePending: progress.stops.find((s) => s.stopId === stop.id)?.doublePending ?? false, ...progress });
     }
 
     const facts = await factsFor(db, me.id, track);
@@ -280,9 +321,39 @@ export async function handleStoryHttp(req: Request, env: StoryEnv, url: URL, par
     // Sequential unlock, server-side: a locked stop can never be recorded.
     if (storyStopState(stop.n, cleared) === 'locked') return json({ error: 'That stop is locked — clear the route in order.' }, 409);
 
-    const before = facts.get(stop.id) ?? { attempts: 0, clears: 0, firstClearedAt: null };
-    const firstClear = won && before.clears === 0;
-    const rewards = won ? storyReward(stop.n, firstClear) : { xp: 0, coins: 0 };
+    const before = facts.get(stop.id) ?? { attempts: 0, clears: 0, firstClearedAt: null, doublePending: false, doubleLegFacts: null };
+    const gameFacts = gameFactsOf(body.facts);
+    let firstClear = won && before.clears === 0;
+    let rewards = won ? storyReward(stop.n, firstClear) : { xp: 0, coins: 0 };
+    // THE KING'S DOUBLE OR NOTHING — first-clear gate only: once the crown
+    // is taken (clears > 0) every King game is an ordinary single match.
+    //   win, no mark  → 'started': attempt recorded, mark set, leg facts
+    //     banked; NO clear, NO rewards.
+    //   win, mark set → 'cleared': the clear posts for DOUBLE the
+    //     first-clear reward; the mark is consumed.
+    //   loss, mark set → 'lost': both legs void — no clear, no rewards,
+    //     the mark clears, the stop stays current. Attempts still count:
+    //     attempts count finished matches, and both legs finished.
+    // A King clear post is honored ONLY while the mark stands server-side —
+    // there is no client path around the second win.
+    const inDouble = stop.doubleOrNothing === true && before.clears === 0;
+    let doubleOutcome: 'started' | 'cleared' | 'lost' | null = null;
+    if (inDouble) {
+      if (won && !before.doublePending) {
+        doubleOutcome = 'started';
+        firstClear = false;
+        rewards = { xp: 0, coins: 0 };
+      } else if (won && before.doublePending) {
+        doubleOutcome = 'cleared';
+        firstClear = true;
+        rewards = storyClearReward(stop);
+      } else if (!won && before.doublePending) {
+        doubleOutcome = 'lost';
+      }
+    }
+    // A leg-1 win is a win the player earned and a clear they have NOT:
+    // the claims row records won=1 with first_clear=0 and zero rewards.
+    const countsAsClear = won && doubleOutcome !== 'started';
 
     await db.prepare(`INSERT INTO story_progress (user_id, track_key, stop_id, attempts, clears, first_cleared_at, last_played_at)
       VALUES (?, ?, ?, 1, ?, ?, ?)
@@ -291,9 +362,19 @@ export async function handleStoryHttp(req: Request, env: StoryEnv, url: URL, par
         clears = story_progress.clears + excluded.clears,
         first_cleared_at = COALESCE(story_progress.first_cleared_at, excluded.first_cleared_at),
         last_played_at = excluded.last_played_at`)
-      .bind(me.id, track, stop.id, won ? 1 : 0, firstClear ? now : null, now).run();
+      .bind(me.id, track, stop.id, countsAsClear ? 1 : 0, firstClear ? now : null, now).run();
     await db.prepare('INSERT INTO story_claims (user_id, game_id, track_key, stop_id, won, first_clear, xp, coins, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
       .bind(me.id, gameId, track, stop.id, won ? 1 : 0, firstClear ? 1 : 0, rewards.xp, rewards.coins, now).run();
+
+    // Pending-mark transitions (the mark lives on the progress row the
+    // upsert just wrote, so a stop reset deleting that row wipes it too).
+    if (doubleOutcome === 'started') {
+      await db.prepare('UPDATE story_progress SET double_pending = 1, double_leg_facts = ? WHERE user_id = ? AND track_key = ? AND stop_id = ?')
+        .bind(gameFacts ? JSON.stringify(gameFacts) : null, me.id, track, stop.id).run();
+    } else if (doubleOutcome === 'cleared' || doubleOutcome === 'lost') {
+      await db.prepare('UPDATE story_progress SET double_pending = 0, double_leg_facts = NULL WHERE user_id = ? AND track_key = ? AND stop_id = ?')
+        .bind(me.id, track, stop.id).run();
+    }
 
     let completed = false;
     if (firstClear && stop.id === STORY_STOPS[STORY_STOPS.length - 1]!.id) {
@@ -314,17 +395,29 @@ export async function handleStoryHttp(req: Request, env: StoryEnv, url: URL, par
     // finished game's honestly-computed facts. Idempotent by primary key —
     // doing the feat twice grants once. Never gates progress.
     const newFinds: { kind: 'egg' | 'feat'; id: string; name: string }[] = [];
-    const gameFacts = gameFactsOf(body.facts);
     if (gameFacts) {
       try {
         const secret = STORY_SECRETS[stop.id];
-        if (secret && storyFeatMet(stop.id, gameFacts, won)) {
-          if (await recordFind(db, me.id, track, 'feat', secret.unlockable.itemId, now)) {
-            await grantUnlock(db, me.id, secret.unlockable.itemId, `story-feat:${stop.id}`, now);
-            newFinds.push({ kind: 'feat', id: secret.unlockable.itemId, name: secret.unlockable.name });
+        // An unresolved first leg earns NOTHING yet — no feat, no egg: the
+        // run is not a clear, so nothing that hangs off a clear may fire.
+        // The deciding post evaluates the feat on the MERGED run facts
+        // (banked leg 1 + this leg), never on the last leg alone — and
+        // fails closed: a deciding post whose banked leg facts are missing
+        // grants no feat rather than judging half a run.
+        if (secret && doubleOutcome !== 'started') {
+          let featFacts: StoryGameFacts | null = gameFacts;
+          if (doubleOutcome === 'cleared') {
+            const leg = legFactsOf(before.doubleLegFacts);
+            featFacts = leg ? mergeLegFacts(leg, gameFacts) : null;
+          }
+          if (featFacts && storyFeatMet(stop.id, featFacts, won)) {
+            if (await recordFind(db, me.id, track, 'feat', secret.unlockable.itemId, now)) {
+              await grantUnlock(db, me.id, secret.unlockable.itemId, `story-feat:${stop.id}`, now);
+              newFinds.push({ kind: 'feat', id: secret.unlockable.itemId, name: secret.unlockable.name });
+            }
           }
         }
-        if (secret?.egg.trigger.type === 'matchEvent') {
+        if (secret?.egg.trigger.type === 'matchEvent' && doubleOutcome !== 'started') {
           const events: StoryMatchEvent[] = ['deeNilMade', 'setOnFirstHand', 'ourNilMade', 'oppSetTwice'];
           for (const ev of events) {
             if (storyEggEventMet(stop.id, ev, gameFacts) && await recordFind(db, me.id, track, 'egg', secret.egg.id, now)) {
@@ -339,8 +432,15 @@ export async function handleStoryHttp(req: Request, env: StoryEnv, url: URL, par
     try { await closeStorySession(db, me.id, track, now); } catch { /* sessions never break results */ }
 
     const progress = await storyProgressPayload(db, me.id, track);
-    return json({ ok: true, replayed: false, stopId: stop.id, won, firstClear, rewards, newFinds, ...progress, completed: completed || progress.completed });
+    return json({
+      ok: true, replayed: false, stopId: stop.id, won, firstClear, rewards, newFinds, ...progress,
+      completed: completed || progress.completed,
+      /** the King's double, when this post moved it: 'started' | 'cleared' | 'lost' (null elsewhere) */
+      doubleOutcome,
+      doublePending: progress.stops.find((s) => s.stopId === stop.id)?.doublePending ?? false,
+    });
   }
 
   return json({ error: 'not found' }, 404);
 }
+

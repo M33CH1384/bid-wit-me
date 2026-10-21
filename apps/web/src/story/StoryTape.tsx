@@ -65,6 +65,7 @@ export default function StoryTape({ stop, facts, cta, onDone }: {
         <p className="story-tape-title">TALE OF THE TAPE</p>
         <p className="story-tape-stakes" data-testid="story-tape-stakes">{tape.stakes}</p>
         <TapeRow label="The threat">{tape.threat}</TapeRow>
+        {tape.terms && <TapeRow label="The terms">{tape.terms}</TapeRow>}
         {tape.history && <p className="story-tape-history" data-testid="story-tape-history">{tape.history}</p>}
         <div className="story-tape-cols">
           <TapeSide title="You & Dee" entries={[tape.you, tape.dee]} />

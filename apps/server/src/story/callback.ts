@@ -51,6 +51,9 @@ export interface StoryCallbackStop {
   first: StoryCallbackLine;
   /** last call (~24h away) — then silence */
   last: StoryCallbackLine;
+  /** open-double variant (the King): used when the stop's double or
+   *  nothing is live — the call-back is about FINISHING it */
+  double?: { first: StoryCallbackLine; last: StoryCallbackLine };
 }
 
 /**
@@ -120,14 +123,21 @@ export const STORY_CALLBACK_LINES: Record<string, StoryCallbackStop> = {
     place: "The King's Table",
     first: { fromId: 'king', body: 'Twenty-two years undefeated, and you keep me waiting mid-game? Bold. The crown is patient, but it is not entertained. Come back and finish what you started.' },
     last: { fromId: 'king', body: 'Last summons. Kings don\u2019t call twice \u2014 I have already called once. Return to my table, or the story ends with you walking away from it.' },
+    double: {
+      first: { fromId: 'king', body: 'You beat me once and left the crown sitting on my table. Double or nothing does not wait forever — come finish what you started, or be the story of the one who almost did.' },
+      last: { fromId: 'dee', body: 'Last call, partner. The double is still live and so is he. One more win and we made it out — don\u2019t leave the biggest hand of the route unplayed.' },
+    },
   },
 };
 
-/** The push payload for a stop's call-back at a stage (1 = first, 2 = last). */
-export function storyCallbackPayload(stopId: string, stage: 1 | 2): PushPayload | null {
+/** The push payload for a stop's call-back at a stage (1 = first, 2 = last).
+ *  With doublePending set (the King's open double), the double variant
+ *  speaks instead — the call-back is about finishing the double. */
+export function storyCallbackPayload(stopId: string, stage: 1 | 2, doublePending = false): PushPayload | null {
   const stop = STORY_CALLBACK_LINES[stopId];
   if (!stop) return null;
-  const line = stage === 1 ? stop.first : stop.last;
+  const lines = doublePending && stop.double ? stop.double : stop;
+  const line = stage === 1 ? lines.first : lines.last;
   const from = STORY_CHARACTERS[line.fromId]?.name ?? line.fromId;
   return {
     title: `${from} \u00B7 ${stop.place}`,
@@ -194,7 +204,15 @@ export async function runStoryCallbacks(
     const stage: 1 | 2 | 0 = row.nudgesSent === 0 && away >= STORY_CALLBACK_FIRST_MS ? 1
       : row.nudgesSent === 1 && away >= STORY_CALLBACK_LAST_MS ? 2 : 0;
     if (!stage) continue;
-    const payload = storyCallbackPayload(row.stopId, stage);
+    // An open double at the King changes what the table calls about: the
+    // pending mark is server truth on the stop's progress row.
+    let doublePending = false;
+    if (STORY_STOPS.find((s) => s.id === row.stopId)?.doubleOrNothing) {
+      const dp = await db.prepare('SELECT double_pending AS dp FROM story_progress WHERE user_id = ? AND track_key = ? AND stop_id = ?')
+        .bind(row.userId, row.track, row.stopId).first<{ dp: number }>();
+      doublePending = !!dp?.dp;
+    }
+    const payload = storyCallbackPayload(row.stopId, stage, doublePending);
     if (!payload) continue;
     let sent = 0;
     try {

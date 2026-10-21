@@ -34,6 +34,8 @@ export interface StoryStopProgress {
   attempts: number;
   clears: number;
   firstClearedAt: number | null;
+  /** the King's double or nothing is live at this stop: beaten once, nothing banked (server truth) */
+  doublePending?: boolean;
 }
 
 export interface StoryProgress {
@@ -59,6 +61,10 @@ export interface StoryResult extends StoryProgress {
   /** secrets granted by this result (feats / match-event eggs) */
   newFinds: StoryNewFind[];
   completed: boolean;
+  /** the King's double, when this post moved it: 'started' | 'cleared' | 'lost' */
+  doubleOutcome?: 'started' | 'cleared' | 'lost' | null;
+  /** the King's double is live after this post (leg 1 banked, leg 2 owed) */
+  doublePending?: boolean;
 }
 
 export type ProgressFetch =
@@ -167,3 +173,4 @@ export async function postStoryFound(eggId: string): Promise<StoryProgress | nul
     return null;
   }
 }
+

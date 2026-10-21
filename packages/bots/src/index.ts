@@ -69,6 +69,7 @@ export * from './story';
 export * from './storyScripts';
 export * from './storySecrets';
 export * from './storyTape';
+export * from './storyKingDouble';
 export * from './storyVoice';
 export * from './storyBadges';
 export * from './storyRail';
