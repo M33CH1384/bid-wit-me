@@ -1,6 +1,9 @@
-/** White sheet roll-down at 390px WebKit + desktop Chromium viewport: the sheet must unfurl
- * DOWN from its own scorecard's top edge (top anchored, height growing), never slide from
- * the top of the screen. Screenshots: sheet-roll-{before,mid,after} in BWM_SHOTS. */
+/** Elimination recap after the white-sheet retirement (owner, 2026-10-21):
+ * a side that is OUT still gets its cover FACTS (data-sheet, time of death,
+ * bullet holes) but NO shroud, NO caution tape, and NO set animation for a
+ * player with no unlocks in a plain offline game — the retired pair never
+ * renders again, and earned animations are the only covers. Runs at 390px
+ * WebKit + desktop Chromium. Screenshots: set-cover-{390,desktop} in BWM_SHOTS. */
 import { makeRules, newGame, applyAction, pendingTurn, viewFor, type GameState } from '@spades/rules';
 import { chooseBotAction } from '@spades/bots';
 import { webkit, chromium, type Browser, type Page } from 'playwright-core';
@@ -24,74 +27,62 @@ function stamped(): GameState {
     bids: last.bids.map(() => 4),
     sides: last.sides.map((s) => ({ ...s, contract: 4, contractMade: shotSides.includes(s.side) ? (false as const) : (true as const), contractTricks: shotSides.includes(s.side) ? 1 : 4 })),
   });
-  // Shot on hands 2 and 3 in a row -> side 1 is OUT on hand 3; its sheet covers the scorecard.
+  // Shot on hands 2 and 3 in a row -> side 1 is OUT on hand 3 (cover: sheet).
   const history = [mk(1, []), mk(2, [1]), mk(3, [1])].map((h) => ({ ...h, sides: h.sides.map((s) => ({ ...s, totalScore: s.side === 0 ? 200 : 90 })) }));
   return { ...st, history, handNo: 3, phase: 'handOver', scores: [200, 90], result: undefined };
 }
 const save = () => JSON.stringify({ v: 1, savedAt: Date.now(), seed: 'sheet-roll', settings: { ...DEFAULT_SETTINGS, speed: 'slow', quality: 'low', botLevel: 'novice' }, state: stamped(), chat: [], names: ['You', 'Big Mike', 'Omar', 'Sven'], teamNames: null });
 
-async function open(b: Browser, width: number, height: number, tag: string): Promise<Page> {
+async function open(b: Browser, width: number, height: number): Promise<Page> {
   const page = await b.newPage({ viewport: { width, height }, deviceScaleFactor: 2 });
   page.setDefaultTimeout(30000);
   await page.addInitScript((raw) => { localStorage.setItem('bwm.game', raw); localStorage.setItem('bwm.tips', JSON.stringify({ on: false, asked: true, counts: {} })); }, save());
   await page.goto(process.env.BWM_URL ?? 'http://127.0.0.1:5186');
   await page.getByTestId('resume').click();
   try {
-    await page.waitForSelector('[data-testid="recap-shroud-1"]', { state: 'attached', timeout: 45000 });
+    await page.waitForSelector('[data-testid="recap-side-1"][data-sheet="yes"]', { state: 'attached', timeout: 45000 });
   } catch (e) {
     console.log('debug testids:', await page.evaluate(() => [...document.querySelectorAll('[data-testid]')].map((x) => x.getAttribute('data-testid')).join(',')));
-    await page.screenshot({ path: `${SHOTS}/sheet-dbg2.png` });
+    await page.screenshot({ path: `${SHOTS}/set-cover-dbg.png` });
     throw e;
   }
   return page;
 }
-type Box = { top: number; height: number; cardTop: number };
-async function sample(page: Page, ms: number): Promise<Box[]> {
-  return page.evaluate(async (dur) => {
-    const out: { top: number; height: number; cardTop: number }[] = [];
-    const t0 = performance.now();
-    while (performance.now() - t0 < dur) {
-      const el = document.querySelector('[data-testid="recap-shroud-1"]');
-      const card = document.querySelector('[data-testid="recap-side-1"]');
-      if (el && card) { const r = el.getBoundingClientRect(); const cr = card.getBoundingClientRect(); out.push({ top: r.top, height: r.height, cardTop: cr.top }); }
-      await new Promise((r) => setTimeout(r, 60));
-    }
-    return out;
-  }, ms);
+
+async function check(page: Page, tag: string) {
+  const facts = await page.evaluate(() => {
+    const side = document.querySelector('[data-testid="recap-side-1"]');
+    return {
+      sheet: side?.getAttribute('data-sheet'),
+      tod: document.querySelector('[data-testid="time-of-death"]')?.textContent ?? null,
+      shrouds: document.querySelectorAll('[data-testid^="recap-shroud-"]').length,
+      tapes: document.querySelectorAll('[data-testid^="recap-tape-"]').length,
+      setanims: document.querySelectorAll('[data-testid^="recap-setanim-"]').length,
+      rims: document.querySelectorAll('[data-testid="police-rim"]').length,
+    };
+  });
+  console.log(tag, facts);
+  if (facts.sheet !== 'yes') throw new Error(`${tag}: side 1 should carry the sheet cover fact`);
+  if (!facts.tod?.includes('Time of death')) throw new Error(`${tag}: time of death missing`);
+  if (facts.shrouds || facts.tapes || facts.setanims || facts.rims) {
+    throw new Error(`${tag}: retired/default visuals rendered (shroud ${facts.shrouds}, tape ${facts.tapes}, setanim ${facts.setanims}, rim ${facts.rims}) — no unlocks means NO set animation`);
+  }
 }
-function checkRoll(boxes: Box[], tag: string) {
-  if (boxes.length < 8) throw new Error(`${tag}: too few samples ${boxes.length}`);
-  const hs = boxes.map((b) => b.height);
-  const grown = Math.max(...hs) - Math.min(...hs);
-  const tops = boxes.map((b) => b.top - b.cardTop);
-  const topDrift = Math.max(...tops) - Math.min(...tops);
-  console.log(`${tag}: heights ${hs.map((h) => h.toFixed(0)).join('->')} topOffset drift ${topDrift.toFixed(1)}px`);
-  if (grown < 60) throw new Error(`${tag}: sheet did not unfurl downward (height growth ${grown.toFixed(0)}px)`);
-  if (topDrift > 6) throw new Error(`${tag}: sheet top not anchored to its scorecard (drift ${topDrift.toFixed(1)}px)`);
-}
+
 (async () => {
   const wk = await webkit.launch({ headless: true });
   try {
-    const page = await open(wk, 390, 844, '390');
-    const style = await page.evaluate(() => { const el = document.querySelector('[data-testid="recap-shroud-1"]')!; const cs = getComputedStyle(el); return { origin: cs.transformOrigin, anim: cs.animationName }; });
-    console.log('390 shroud style', style);
-    if (style.anim !== 'sheet-roll') throw new Error(`expected sheet-roll animation, got ${style.anim}`);
-    const boxes = await sample(page, 1500); // sample FIRST: the 620ms roll waits for nobody
-    checkRoll(boxes, '390');
-    await page.screenshot({ path: `${SHOTS}/sheet-roll-after-390.png` });
+    const page = await open(wk, 390, 844);
+    await check(page, '390');
+    await page.screenshot({ path: `${SHOTS}/set-cover-390.png` });
     await page.close();
-    const mid = await open(wk, 390, 844, '390-mid');
-    await mid.waitForTimeout(720); // inside the roll (400ms wait + ~320ms of unfurl)
-    await mid.screenshot({ path: `${SHOTS}/sheet-roll-mid-390.png` });
-    await mid.close();
   } finally { await wk.close(); }
   const ch = await chromium.launch({ headless: true });
   try {
-    const page = await open(ch, 1280, 800, 'desktop');
-    const boxes = await sample(page, 1500);
-    checkRoll(boxes, 'desktop');
-    await page.screenshot({ path: `${SHOTS}/sheet-roll-after-desktop.png` });
+    const page = await open(ch, 1280, 800);
+    await check(page, 'desktop');
+    await page.screenshot({ path: `${SHOTS}/set-cover-desktop.png` });
     await page.close();
   } finally { await ch.close(); }
-  console.log('sheet-roll OK');
+  console.log('set-cover (sheet retirement) OK');
 })();

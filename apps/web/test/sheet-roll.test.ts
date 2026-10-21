@@ -33,8 +33,13 @@ describe('white sheet rolls down from its own scorecard', () => {
     expect(rustle).toContain('this.sfxBus!'); // routed through the normal sfx path
     expect(rustle).not.toMatch(/\.mp3|\.wav|fetch\(/);
   });
-  it('the rustle is timed to the roll and only plays when a roll actually animates', () => {
-    expect(intermission).toContain("if (anim.current?.waitSheet.size) sound.play('cloth', { delay });");
-    expect(css).toContain('animation: sheet-roll 620ms'); // CSS and sound share the 620ms roll
+  it('the rustle no longer fires from the recap — the sheet retired from rotation (2026-10-21)', () => {
+    // The white sheet is unselected by anything now (no free defaults; the
+    // earned per-stop finales took its slot). Its CSS and cloth synth stay in
+    // the tree above, but the recap never mounts the shroud or plays the cue.
+    expect(intermission).not.toContain("sound.play('cloth'");
+    expect(intermission).not.toContain('SheetCloth');
+    expect(intermission).not.toContain('recap-shroud');
+    expect(css).toContain('animation: sheet-roll 620ms');
   });
 });

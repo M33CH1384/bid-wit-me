@@ -82,7 +82,8 @@ describe('scorecard shotgun blast', () => {
     const html = recap(st, ['You', 'Hana', 'Mei', 'Jamal']);
     expect(html).toContain('data-testid="recap-side-0" data-blast="yes"');
     expect(html).toContain('data-testid="recap-holes-0"');
-    expect(html).toContain('data-testid="recap-tape-0"');
+    // the tape visual retired 2026-10-21 — the cover FACT remains
+    expect(html).not.toContain('recap-tape-');
     expect(html).toContain('data-tape="yes"');
     expect(html).not.toContain('data-testid="recap-shroud-0"');
     expect(html).toContain('data-testid="recap-side-1" data-blast="no"');

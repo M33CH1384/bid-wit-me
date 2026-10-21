@@ -73,7 +73,7 @@ function caption(html: string): string {
   return (m?.[0] ?? '').replace(/<[^>]+>/g, '').replace(/\u00a0|&nbsp;|&#160;/g, ' ');
 }
 
-describe('scorecard caution tape and shroud', () => {
+describe('scorecard shot covers (tape/sheet facts; the visuals retired 2026-10-21)', () => {
   const names = ['You', 'Hana', 'Mei', 'Jamal'];
   beforeEach(() => clearTeamHoles());
 
@@ -81,11 +81,11 @@ describe('scorecard caution tape and shroud', () => {
     const html = recap(stamp(toHandOver('joker'), [[], [1]]), names);
     expect(html).toContain('data-testid="recap-side-1" data-blast="yes" data-tape="yes" data-sheet="no" data-siren="no"');
     expect(html).toContain('class="tt-team blast taped tape-in notice"');
-    expect(html).toContain('data-testid="recap-tape-1"');
-    expect(html).toContain('src="/shot/tape.webp"');
-    expect(html.match(/src="\/shot\/tape.webp"/g)).toHaveLength(2);
-    expect(html).toContain('class="tape a"');
-    expect(html).toContain('class="tape b"');
+    // Retired 2026-10-21 (no free defaults): the caution-tape VISUAL never
+    // renders anymore — the cover facts (stamp, notice, holes) are the feedback.
+    expect(html).not.toContain('recap-tape-');
+    expect(html).not.toContain('/shot/tape.webp');
+    expect(html).not.toContain('recap-setanim-');
     expect(html).toContain('data-testid="recap-holes-1"');
     expect(html).toContain('data-holes="1"');
     expect(html).toContain('data-punched="0"');
@@ -124,7 +124,7 @@ describe('scorecard caution tape and shroud', () => {
     expect(html).toContain('data-testid="recap-line-1"');
   });
 
-  it('drapes the sheet, RIP, and the siren when the recorded result is a shot-out', () => {
+  it('marks the sheet cover facts on a shot-out — the sheet visual itself is retired', () => {
     const html = recap(stamp(toHandOver('joker'), [[], [1], [1]], { lost: [1] }), names);
     expect(html).toContain('data-testid="recap-side-1" data-blast="yes" data-tape="no" data-sheet="yes" data-siren="yes"');
     expect(html).toContain('class="tt-team blast shrouded sheet-in sheet-wait"');
@@ -138,17 +138,17 @@ describe('scorecard caution tape and shroud', () => {
     expect(holes[1]).toContain('top:calc(100% - 36px)');
     expect(holes[1]).toContain('class="hole-in"');
     expect(html).not.toContain('left:42%');
-    expect(html).toContain('data-testid="recap-shroud-1"');
-    expect(html).toContain('data-testid="recap-rip-1"');
-    expect(html).toContain('alt="RIP"');
-    expect(html).toContain('src="/shot/rip.webp"');
-    expect(html).toContain('data-testid="sheet-cloth"');
+    // Retired 2026-10-21: no shroud, no RIP, no police rim, no tape — and no
+    // set animation either without an unlock or a story house (none here).
+    expect(html).not.toContain('recap-shroud-');
+    expect(html).not.toContain('recap-rip-');
+    expect(html).not.toContain('/shot/rip.webp');
+    expect(html).not.toContain('sheet-cloth');
     expect(html).not.toContain('>RIP<');
     expect(html).not.toContain('police-lights');
-    expect(html).toContain('data-testid="police-rim"');
-    expect(html).toContain('data-testid="recap-tape-1"');
-    expect(html).toContain('class="tape a"');
-    expect(html).toContain('class="tape b"');
+    expect(html).not.toContain('police-rim');
+    expect(html).not.toContain('recap-tape-');
+    expect(html).not.toContain('recap-setanim-');
     expect(html).toContain('data-testid="recap-line-1"');
     expect(html).not.toContain('recap-shroud-0');
     expect(html).toContain('data-testid="time-of-death"');
@@ -257,20 +257,20 @@ describe('scorecard caution tape and shroud', () => {
     expect(eliminated).not.toContain('>ON NOTICE<');
   });
 
-  it('a hand-1 shot-out shows the tape and the sheet, and a non-loss stays tape', () => {
+  it('a hand-1 shot-out marks tape and sheet covers, and a non-loss stays tape', () => {
     const html = recap(stamp(toHandOver('joker'), [[1]], { lost: [1] }), names);
     expect(html).toContain('data-testid="recap-side-1" data-blast="yes" data-tape="yes" data-sheet="yes" data-siren="yes"');
     expect(html).toContain('class="tt-team blast taped tape-in shrouded sheet-in sheet-wait"');
-    expect(html).toContain('data-testid="recap-tape-1"');
-    expect(html).toContain('src="/shot/tape.webp"');
+    expect(html).not.toContain('recap-tape-');
+    expect(html).not.toContain('/shot/tape.webp');
     expect(html).toContain('data-testid="recap-holes-1"');
     expect(holeImgs(html)).toHaveLength(1);
     expect(html).toContain('data-holes="1"');
     expect(html).not.toContain('left:28%');
     expect(html).not.toContain('recap-notice-');
     expect(html).not.toContain('>ON NOTICE<');
-    expect(html).toContain('data-testid="recap-rip-1"');
-    expect(html).toContain('data-testid="sheet-cloth"');
+    expect(html).not.toContain('recap-rip-');
+    expect(html).not.toContain('sheet-cloth');
     expect(html).toContain('data-testid="recap-line-1"');
     expect(html).toContain('data-hand="1"');
     expect(caption(html)).toBe('Time of death: Hand 1');
@@ -289,24 +289,24 @@ describe('scorecard caution tape and shroud', () => {
     expect(audio).toContain('no third-party license');
     expect(audio).toContain('Not based on any show theme');
     const recapSrc = readFileSync(new URL('../src/Intermission.tsx', import.meta.url), 'utf8');
-    expect(recapSrc).toContain("sound.play('siren'");
-    expect(recapSrc).toContain("sound.play('docSting'");
-    expect(recapSrc).toContain('if (!sheetOn || sirened.current === sirenKey) return');
+    // The sheet's siren/docSting/cloth cues retired with the sheet visual
+    // (2026-10-21): the recap no longer fires any of them.
+    expect(recapSrc).not.toContain("sound.play('siren'");
+    expect(recapSrc).not.toContain("sound.play('docSting'");
+    expect(recapSrc).not.toContain("sound.play('cloth'");
     expect(recapSrc).toContain('shotCovers(r, st.history, st.result)');
     expect(recapSrc).not.toContain('shotCounts');
-    expect(recapSrc).toContain('covers.some((c) => c.sheet)');
+    expect(recapSrc).toContain('resolveSetAnim');
     expect(recapSrc).toContain('Time of death: Hand ${cover.outHand ?? rec.handNo}');
   });
 
-  it('a Cutthroat hand-1 elimination shows tape and the sheet on that player', () => {
+  it('a Cutthroat hand-1 elimination marks tape and sheet covers on that player', () => {
     const html = recap(stamp(toHandOver('cutthroat'), [[2]], { lost: [2] }), ['You', 'Ace', 'Bea']);
     expect(html).toContain('data-testid="recap-side-2" data-blast="yes" data-tape="yes" data-sheet="yes" data-siren="yes"');
     expect(html).toContain('class="tt-team blast taped tape-in shrouded sheet-in sheet-wait"');
-    expect(html).toContain('data-testid="recap-tape-2"');
+    expect(html).not.toContain('recap-tape-');
     expect(holeImgs(html)).toHaveLength(1);
-    expect(html).toContain('data-testid="recap-shroud-2"');
-    expect(html).not.toContain('recap-shroud-0');
-    expect(html).not.toContain('recap-tape-0');
+    expect(html).not.toContain('recap-shroud-');
     expect(caption(html)).toBe('Time of death: Hand 1');
   });
 
@@ -319,7 +319,7 @@ describe('scorecard caution tape and shroud', () => {
       sides: h.sides.map((s) => (s.side === 2 ? { ...s, out: true } : s)),
     }));
     const html = recap({ ...st, history }, ['You', 'Ace', 'Bea']);
-    expect(html).toContain('data-testid="recap-shroud-2"');
+    expect(html).not.toContain('recap-shroud-');
     expect(html).toContain('data-sheet="yes"');
     expect(caption(html)).toBe('Time of death: Hand 2');
   });
@@ -329,7 +329,7 @@ describe('scorecard caution tape and shroud', () => {
     expect(html).toContain('tt-recap crowded');
     expect(html).toContain('data-testid="recap-side-2" data-blast="yes" data-tape="yes" data-sheet="no" data-siren="no"');
     expect(html).toContain('class="tt-team blast taped tape-in notice"');
-    expect(html).toContain('data-testid="recap-tape-2"');
+    expect(html).not.toContain('recap-tape-');
     expect(html).toContain('data-testid="recap-holes-2"');
     expect(html).toContain('data-testid="recap-shot-stamp-2"');
     expect(html).not.toContain('recap-holes-0');
@@ -338,18 +338,20 @@ describe('scorecard caution tape and shroud', () => {
     expect(html).toContain('data-testid="recap-line-2"');
   });
 
-  it('elimination triggers the siren cue, and a shot that is not a loss does not', () => {
+  it('cover facts stay synced (data-siren), but the siren cue no longer fires from the recap', () => {
     const lost = recap(stamp(toHandOver('joker'), [[], [1], [1]], { lost: [1] }), names);
     expect(lost).toContain('data-sheet="yes" data-siren="yes"');
-    expect(lost).toContain('data-testid="police-rim"');
+    expect(lost).not.toContain('police-rim');
     const notice = recap(stamp(toHandOver('joker'), [[], [1]], { shotOut: false }), names);
     expect(notice).toContain('data-sheet="no" data-siren="no"');
-    expect(notice).not.toContain('data-testid="police-rim"');
+    expect(notice).not.toContain('police-rim');
     const src = readFileSync(new URL('../src/Intermission.tsx', import.meta.url), 'utf8');
-    const cue = src.slice(src.indexOf('const sheetOn'), src.indexOf('data-testid="table-talk"'));
-    expect(cue).toContain('if (!sheetOn || sirened.current === sirenKey) return');
-    expect(cue).toContain("sound.play('siren'");
-    expect(cue).toContain('waitSheet.size ? 0.4 : 0.05');
+    // Retired with the white sheet (2026-10-21): no siren, sting, or cloth
+    // cue is fired by the recap anymore; the sounds remain in the audio
+    // engine (below) for whatever owns them next.
+    expect(src).not.toContain("sound.play('siren'");
+    expect(src).not.toContain("sound.play('docSting'");
+    expect(src).not.toContain("sound.play('cloth'");
     const audio = readFileSync(new URL('../src/audio.ts', import.meta.url), 'utf8');
     const play = audio.slice(audio.indexOf('play(name: Sfx'), audio.indexOf('private sample'));
     expect(play.startsWith('play(name: Sfx')).toBe(true);

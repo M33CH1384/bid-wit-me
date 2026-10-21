@@ -25,6 +25,7 @@ import { navigate } from '../online/nav';
 import { storyRulesFor, storySettingsFor } from './storySettings';
 import { STORY_OWNER_ONLY, fetchStoryDev, fetchStoryProgress, postStoryFound, postStoryResult, storyLockedFor, type StoryProgress, type StoryResult } from './storyApi';
 import { deckUnlockNotice, invalidateStoryProgress } from '../storyDecks';
+import { setAnimUnlockNotice } from '../setAnims';
 import { clearStoryGame, loadStoryGame, storySaveValidFor, type StorySavedGame } from './storySave';
 import { railFor, storyBadgesFor } from '@spades/bots';
 import ScriptPlayer, { type SceneEgg } from './ScriptPlayer';
@@ -275,6 +276,9 @@ export default function StoryHome() {
         )}
         {r && r.won && r.firstClear && deckUnlockNotice(r.stopId) && (
           <p className="story-deck-line" data-testid="story-deck-notice">{deckUnlockNotice(r.stopId)}</p>
+        )}
+        {r && r.won && r.firstClear && setAnimUnlockNotice(r.stopId) && (
+          <p className="story-deck-line" data-testid="story-setanim-notice">{setAnimUnlockNotice(r.stopId)}</p>
         )}
         {r && !r.won && <p className="story-reward-line">No rewards on a loss — and no penalty. The retry is free.</p>}
         {r && (r.newFinds?.length ?? 0) > 0 && (

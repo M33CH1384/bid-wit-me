@@ -3180,3 +3180,16 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
 .deck-thumbs .dt.locked { opacity: .6; cursor: not-allowed; }
 .deck-thumbs .dt.locked img { filter: grayscale(.9); }
 .deck-thumbs .dt .dt-lock { font-family: var(--body, inherit); font-weight: 600; font-size: 10.5px; letter-spacing: 0; text-transform: none; line-height: 1.3; color: var(--gold); }
+
+/* Set animation picker (per-stop set animations, appended): the Settings →
+   Look & effects roster. Full roster visible; locked rows grayed with their
+   unlock line (the deck-picker pattern above); equipped row gold-ringed. */
+.setanim-list { display: grid; gap: 6px; padding: 4px 0 8px; }
+.setanim-opt { display: grid; gap: 1px; text-align: left; padding: 8px 11px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, .14); background: rgba(255, 255, 255, .05); color: inherit; cursor: pointer; }
+.setanim-opt .setanim-name { font-family: var(--display); font-weight: 700; font-size: 14.5px; letter-spacing: .04em; }
+.setanim-opt .setanim-name i { font-style: normal; font-weight: 600; opacity: .65; font-size: 12.5px; }
+.setanim-opt small { font-size: 11.5px; line-height: 1.35; opacity: .72; }
+.setanim-opt.on { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); background: rgba(var(--gold-rgb), .1); }
+.setanim-opt.locked { opacity: .55; cursor: not-allowed; }
+.setanim-opt.locked .setanim-name { filter: grayscale(.6); }
+.setanim-opt.locked small { color: var(--gold); opacity: 1; }

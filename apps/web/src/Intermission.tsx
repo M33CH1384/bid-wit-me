@@ -4,10 +4,12 @@ import { resultChips, sideColor, signed } from './ScorePad';
 import { wheelsMade } from './landCue';
 import { HandsStrip, bostonSides } from './BoxScore';
 import { sideName } from './Modals';
-import { handWinner, streakLabel, streakOf } from './fx';
+import { handWinner, streakLabel, streakOf, useReduceEffects } from './fx';
 import { sound } from './audio';
 import { haptic } from './haptics';
-import { SheetCloth } from './SheetCloth';
+import { SetCover } from './animfx/SetCover';
+import { isThirdSetEnd, resolveSetAnim, setTierForCover } from './setAnims';
+import { useClearedStoryStops } from './storyDecks';
 import { HOLE_CAP, claimHoleBuzz, holeMarks, holeSlots, markHolePunched, markSheetPlayed, punchedLabel, rememberHoles } from './shotMarks';
 
 /**
@@ -55,12 +57,17 @@ export function calloutsFor(st: GameState, mySide: number, names: string[]): Cal
 }
 
 export function Intermission({
-  st, names, mySide, secs, ready, onReady, online, onScorePad, onLeave, series, chatOpen, unread, onChat, runReview,
+  st, names, mySide, secs, ready, onReady, online, onScorePad, onLeave, series, chatOpen, unread, onChat, runReview, setAnimCtx,
 }: {
   /** rematch series chip */
   series?: ReactNode;
   /** cleared hands from a Run it!, in the scroll — never a full-screen scrim over the recap */
   runReview?: ReactNode;
+  /** Set-animation context (owner, 2026-10-21): the story stop this match is
+   *  played at (the house — its animation plays here earned or not), the
+   *  room's venue for "Match the room", and the player's picker choice.
+   *  Absent (older callers/tests) = a plain non-story room on auto. */
+  setAnimCtx?: { storyStopId?: string | null; venueId?: string | null; setting?: string };
   st: GameState;
   names: string[];
   mySide: number;
@@ -101,9 +108,14 @@ export function Intermission({
     boomed.current = boomKey;
     boomSides.forEach((_, i) => sound.play('shotgun', i ? { delay: i * 0.12 } : {}));
   }, [boomKey, boomSides.length]); // eslint-disable-line react-hooks/exhaustive-deps
-  const sheetOn = covers.some((c) => c.sheet);
-  const sirenKey = `${st.seed}:${rec.handNo}`;
-  const sirened = useRef('');
+  // Set animations (owner, 2026-10-21): the earned per-stop treatments from
+  // setAnims.ts resolve per set side below. The retired caution tape / white
+  // sheet pair is never selected anymore — no unlocks, no animation.
+  const { cleared } = useClearedStoryStops();
+  const reduceFx = useReduceEffects();
+  // The third-set ending's signature moment: this recap is the final hand
+  // and the engine says the game ended BY the third set.
+  const thirdSetEnd = decided && isThirdSetEnd(st.result);
   // Hole count is the team's shot count. A new hole buzzes [30] once.
   // The sheet is the engine's elimination. It waits ~400ms after a new punch.
   const streaks = holeMarks(r, st.history);
@@ -137,22 +149,18 @@ export function Intermission({
     }
     return () => { for (const t of timers) window.clearTimeout(t); };
   }, [handKey]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    // Sheet and siren both come from shotCovers (synced history + result), so online clients agree.
-    // Mute and the volume slider are the sfx bus inside sound.play. The yelp starts as the cloth drops.
-    if (!sheetOn || sirened.current === sirenKey) return;
-    sirened.current = sirenKey;
-    const delay = anim.current?.waitSheet.size ? 0.4 : 0.05;
-    sound.play('docSting', { delay });
-    sound.play('siren', { delay: delay + 0.04 });
-    // The sheet now ROLLS down from the scorecard's top edge: a soft fabric rustle timed to
-    // the 620ms roll (same wait delay as the animation), only when a roll will actually play.
-    if (anim.current?.waitSheet.size) sound.play('cloth', { delay });
-  }, [sirenKey, sheetOn]); // eslint-disable-line react-hooks/exhaustive-deps
-
   return (
     <div className="tt-backdrop" data-testid="table-talk" data-decided={decided ? 'yes' : 'no'} role="dialog" aria-label="Hand recap">
-      {sheetOn && <div className={`police-rim${anim.current?.waitSheet.size ? ' wait' : ''}`} data-testid="police-rim" aria-hidden="true" />}
+      {/* 3 THE HARD WAY — the third-set ending's title card (the rule's own
+          callout, game-wide, NOT an unlock). Held ~3s, then the game-over
+          flow proceeds; in a story match the stop's finale set animation is
+          delayed behind it (see SetCover delayMs) so both land in sequence. */}
+      {thirdSetEnd && (
+        <div className={`hardway-flash${reduceFx ? ' still' : ''}`} data-testid="hardway-flash" aria-hidden="true">
+          <span className="hw-big">3 THE HARD WAY</span>
+          <small>THIRD SET — GAME OVER</small>
+        </div>
+      )}
       <div className="tt glass slant espn">
         <header className="tt-head">
           <span className="tt-title">HAND {rec.handNo} RECAP</span>
@@ -210,12 +218,26 @@ export function Intermission({
               const cover = covers[s.side] ?? { tape: false, sheet: false, siren: false, outHand: null };
               const justShot = isShot(r, rec.bids, s);
               const notice = cover.tape && !cover.sheet;
-              const showTape = cover.tape || !!cover.sheet;
               const info = streaks[s.side] ?? { count: 0, visible: 0, fresh: -1 };
               const marks = rememberHoles(st.seed, s.side, info.count, info.fresh);
               const sheetAnim = !!cover.sheet && anim.current!.waitSheet.has(s.side);
               const tod = `Time of death: Hand ${cover.outHand ?? rec.handNo}`;
               const showHoles = info.visible > 0 && (notice || !!cover.sheet);
+              // The set animation for THIS side's cover: tier from the cover
+              // fact (sheet = a set that ended the game → finale), fresh only
+              // on the hand it happened. Resolution is the setAnims model:
+              // the story house plays its own; elsewhere only earned ones,
+              // and only for sets the viewer caused. Null = no animation —
+              // the retired tape/sheet never stand in.
+              const setTier = setTierForCover(cover);
+              const setFresh = setTier === 'finale' ? sheetAnim : setTier === 'regular' ? justShot : false;
+              const setAnimId = setTier ? resolveSetAnim({
+                storyStopId: setAnimCtx?.storyStopId ?? null,
+                venueId: setAnimCtx?.venueId ?? null,
+                setting: setAnimCtx?.setting ?? 'auto',
+                cleared,
+                causedByViewer: s.side !== mySide,
+              }) : null;
               return (
                 <div key={s.side} className={`tt-team${s.side === mySide ? ' mine' : ''}${shot ? ' blast' : ''}${cover.tape ? ' taped' : ''}${cover.tape && justShot ? ' tape-in' : ''}${notice ? ' notice' : ''}${cover.sheet ? ' shrouded' : ''}${sheetAnim ? ' sheet-in sheet-wait' : ''}`} data-testid={`recap-side-${s.side}`} data-blast={shot ? 'yes' : 'no'} data-tape={cover.tape ? 'yes' : 'no'} data-sheet={cover.sheet ? 'yes' : 'no'} data-siren={cover.siren ? 'yes' : 'no'} data-holes={info.count} data-punched={punchedLabel(marks)}>
                   {showHoles && (
@@ -226,21 +248,19 @@ export function Intermission({
                     </div>
                   )}
                   {cover.sheet && (
-                    <div className="shroud" data-testid={`recap-shroud-${s.side}`}>
-                      <SheetCloth wait={sheetAnim} />
-                      <img className="rip-src" src="/shot/rip.webp" alt="RIP" data-testid={`recap-rip-${s.side}`} />
-                    </div>
-                  )}
-                  {showTape && (
-                    <div className="caution-x" data-testid={`recap-tape-${s.side}`} aria-hidden="true">
-                      <img className="tape a" src="/shot/tape.webp" alt="" />
-                      <img className="tape b" src="/shot/tape.webp" alt="" />
-                    </div>
-                  )}
-                  {cover.sheet && (
                     <p className="tod" data-testid="time-of-death" data-hand={rec.handNo}>{tod}</p>
                   )}
                   <div className="tt-face">
+                  {setAnimId && setTier && (setFresh || setTier === 'finale') && (
+                    <SetCover
+                      animId={setAnimId}
+                      tier={setTier}
+                      mode={setFresh ? 'fresh' : 'static'}
+                      reduced={reduceFx}
+                      side={s.side}
+                      delayMs={setTier === 'finale' && thirdSetEnd ? 2300 : 0}
+                    />
+                  )}
                   <div className="tt-team-name">
                     <b>{sideName(r, s.side, names)}</b>
                     <span className="tt-badges chips">

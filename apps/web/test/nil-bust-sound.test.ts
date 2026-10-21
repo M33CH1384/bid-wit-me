@@ -17,6 +17,7 @@ describe('Nil bust shotgun', () => {
     const recap = readFileSync(new URL('../src/Intermission.tsx', import.meta.url), 'utf8');
     expect(recap).toContain('!s.nils.some((n) => !n.made)');
     expect(recap).toContain('data-blast');
-    expect(recap).toContain('recap-tape-');
+    // the recap's set slot is the earned SetCover now (tape retired 2026-10-21)
+    expect(recap).toContain('SetCover');
   });
 });

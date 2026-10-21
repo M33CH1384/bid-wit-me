@@ -3,6 +3,7 @@ import { useEscapeClose } from './useEscapeClose';
 import Credits from './Credits';
 import Feedback, { AboutRow } from './Feedback';
 import { BotTrashTalkRow, ChatSoundsRow, NukeIntensityRow, ReduceEffectsRow, SoundFields, SoundQuickActions } from './SoundControls';
+import { SetAnimRow } from './SetAnimPicker';
 import ThemeToggle from './ThemeToggle';
 import { CLASSIC_JOKER, makeRules } from '@spades/rules';
 import { type Settings, settingsToRules } from './settings';
@@ -118,6 +119,7 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
           </Row>
           <ReduceEffectsRow />
           <NukeIntensityRow />
+          <SetAnimRow value={s.setAnim ?? 'auto'} onChange={(v) => set('setAnim', v)} />
           </section>
           <section className="set-group" aria-label="You">
           <h3 className="sheet-h">You</h3>

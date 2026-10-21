@@ -2114,6 +2114,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           st={st}
           names={names}
           mySide={mySide}
+          setAnimCtx={{ storyStopId: story?.scene?.stop.id ?? null, venueId: venue, setting: settings.setAnim ?? 'auto' }}
           secs={shotOutRecap ? null : (online?.talk?.secs ?? null)}
           ready={shotOutRecap ? undefined : online?.talk?.ready}
           online={shotOutRecap ? false : !!online}

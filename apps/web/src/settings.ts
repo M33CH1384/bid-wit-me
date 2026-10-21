@@ -1,5 +1,6 @@
 import { minimumChip } from './polishText';
 import { DECK_IDS } from './decks';
+import { isValidSetAnimSetting } from './setAnims';
 import { type VenueChoice, isVenueChoice } from '@spades/protocol';
 import { CLASSIC_JOKER, cardLabel, hostMinimum, type Mode, type RulesOverrides, type TableRules, makeRules } from '@spades/rules';
 import { type BotSkillSetting, skillSettingOf } from '@spades/bots';
@@ -53,6 +54,10 @@ export interface Settings {
   turnUp: boolean;
   /** Card deck art pack (Desi decks; all unlocked for now, Story/purchase lock later). */
   deck: string;
+  /** Set animation (owner, 2026-10-21): 'auto' = Match the room, or a story
+   *  stop id whose earned set animation is equipped. There is NO free default:
+   *  an unearned or unknown choice simply never plays (see setAnims.ts). */
+  setAnim: string;
 }
 
 /**
@@ -74,7 +79,7 @@ export const DEFAULT_SETTINGS: Settings = {
   mode: 'joker', targetScore: 'default', losingFloor: 'on', deuceOfSpadesHigh: false, jokerOrder: 'house',
   cutthroatDeck: 'joker54', spadesMustBeBroken: true, firstLead: 'leftOfDealer', minTeamBid: 0, nilAllowed: true,
   blindNil: 'behind100', blindNilExchange: 0, nilTricksCountForPartner: false, bags: '10/100', tenForTwoHundred: false,
-  firstHandBidsItself: true, botLevel: 'mixed', shotOut: true, firstHandMin: 'default', cutMinBid: 1, cutBlindNil: false, bagsOn: true, talkIntensity: 'cookout', speed: 'normal', quality: defaultQuality(), venue: 'classic', view: 'sitting', turnUp: false, deck: 'classic',
+  firstHandBidsItself: true, botLevel: 'mixed', shotOut: true, firstHandMin: 'default', cutMinBid: 1, cutBlindNil: false, bagsOn: true, talkIntensity: 'cookout', speed: 'normal', quality: defaultQuality(), venue: 'classic', view: 'sitting', turnUp: false, deck: 'classic', setAnim: 'auto',
 };
 
 export const MODES: { key: ModeKey; title: string; blurb: string; players: string }[] = [
@@ -145,6 +150,7 @@ export function normalizeSettings(j: Omit<Partial<Settings>, 'botLevel'> & { bot
   if (s.view !== 'sitting' && s.view !== 'standing') s.view = 'sitting'; // no saved preference (or junk) -> Sitting
   if (typeof s.turnUp !== 'boolean') s.turnUp = false; // slam mode is opt-in; old saves start OFF
   if (!DECK_IDS.includes(s.deck) || s.deck === 'base') s.deck = 'classic';
+  if (!isValidSetAnimSetting(s.setAnim)) s.setAnim = 'auto';
   return s;
 }
 export function saveSettings(s: Settings): void {
