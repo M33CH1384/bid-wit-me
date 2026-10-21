@@ -42,6 +42,19 @@ type Screen =
   | { k: 'game'; stop: StoryStop; seed: string; resumeSave?: StorySavedGame }
   | { k: 'outro'; stop: StoryStop; won: boolean };
 
+/**
+ * The rewards screen's Rematch button lands a finished story match back
+ * here with ?rematch=<stopId> (Table stashes the stop's identity in the
+ * rewards payload — see RewardsPage.rematchPathFor). Parse + validate the
+ * directive: an id that names no stop is not a directive, just the map.
+ */
+export function storyRematchStopId(search: string): string | null {
+  try {
+    const id = new URLSearchParams(search).get('rematch');
+    return id && STORY_STOPS.some((s) => s.id === id) ? id : null;
+  } catch { return null; }
+}
+
 export default function StoryHome() {
   const [settings, setSettings] = useState<Settings>(loadSettings);
   const [tips, setTips] = useState<TipsPref>(loadTips);
@@ -162,6 +175,31 @@ export default function StoryHome() {
       }
     });
   };
+
+  // Rematch directive (?rematch=<stopId>, from the rewards screen): start
+  // the SAME stop again — story-scoped via startGame, exactly like the
+  // in-table Play again. The attempt context comes from the progress this
+  // mount just fetched, which already counts the finished match, so the
+  // new attempt's bands advance the same as a map-initiated retry. The
+  // finished game's save was cleared at game over and its session closed;
+  // the new Table opens a fresh save + session for the new attempt.
+  // Consumed exactly once, and the param is stripped on sight so a
+  // refresh or a later return to the map can never re-fire it.
+  const [rematchStopId] = useState<string | null>(() => storyRematchStopId(typeof location !== 'undefined' ? location.search : ''));
+  const rematchFired = useRef(false);
+  useEffect(() => {
+    if (rematchStopId) history.replaceState(null, '', location.pathname);
+  }, [rematchStopId]);
+  useEffect(() => {
+    if (!rematchStopId || rematchFired.current || !progress) return;
+    if (STORY_OWNER_ONLY && (lockedByServer || dev === undefined || storyLockedFor(dev))) return;
+    rematchFired.current = true;
+    const stop = STORY_STOPS.find((s) => s.id === rematchStopId);
+    if (!stop) return;
+    const row = progress.stops.find((s) => s.stopId === rematchStopId);
+    if (row?.state === 'locked') return; // a stop just played is never locked — belt and braces
+    startGame(stop);
+  }, [rematchStopId, progress, dev, lockedByServer]); // eslint-disable-line react-hooks/exhaustive-deps
 
   let body: React.ReactNode;
   if (STORY_OWNER_ONLY && (lockedByServer || (dev !== undefined && storyLockedFor(dev)))) {

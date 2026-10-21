@@ -14,6 +14,22 @@ export interface RewardsPayload {
   online: boolean;
   /** where the Home button lands ('/' normally, '/online' after Change mode online) */
   homePath: string;
+  /** the finished match was a Story Mode stop game: its stop id. A rematch
+   *  returns to THAT stop (story-scoped) — never to a generic autostart game
+   *  built from the player's saved settings. Absent for non-story matches. */
+  storyStopId?: string;
+}
+
+/**
+ * Where the rewards screen's Rematch button goes. A story match rematches
+ * its own stop: the story route consumes ?rematch=<stopId> and starts that
+ * stop again from the story snapshot (venue, twist, house deck, names,
+ * attempt context). Every other match keeps the long-standing targets:
+ * online back to the lobby, offline to a generic autostart game.
+ */
+export function rematchPathFor(p: RewardsPayload): string {
+  if (p.storyStopId) return `/story?rematch=${encodeURIComponent(p.storyStopId)}`;
+  return p.online ? '/online' : '/?autostart=1';
 }
 
 const KEY = 'bwm.rewards.v1';
@@ -49,12 +65,12 @@ export default function RewardsPage() {
       </div>
     );
   }
-  const { data, online, homePath } = payload;
+  const { data, homePath } = payload;
   return (
     <GameOverRewards
       data={data}
       onHome={() => { location.href = homePath; }}
-      onRematch={() => { location.href = online ? '/online' : '/?autostart=1'; }}
+      onRematch={() => { location.href = rematchPathFor(payload); }}
       onProfile={() => { location.href = '/profile'; }}
       onOpenTables={() => { location.href = '/online'; }}
     />

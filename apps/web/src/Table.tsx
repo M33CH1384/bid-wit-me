@@ -1364,11 +1364,14 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       }
       clearPinnedBefore(); // the pinned "before" is consumed — the next match captures fresh
       if (!online) quitGame();
-      stashRewards({ data, online: !!online, homePath: online && where === 'leave' ? '/online' : '/' });
+      // A story match carries its stop identity into the rewards stash, so
+      // the rewards screen's Rematch returns to the same stop (story-scoped)
+      // instead of a generic autostart game from the saved settings.
+      stashRewards({ data, online: !!online, homePath: online && where === 'leave' ? '/online' : '/', storyStopId: story?.scene?.stop.id });
       clearTableChatOpen(); // the match is over: the next table must not inherit this chat state
       location.href = '/rewards';
     })().finally(() => setRewardsBusy(false));
-  }, [rewardsBusy, st.result, st.history.length, mySide, r, names, online]);
+  }, [rewardsBusy, st.result, st.history.length, mySide, r, names, online, story]);
   const isBooks = booksHand(st);
   // "First hand: books bid themselves" — announce it once the deal lands
   const booksAnnounced = useRef<string | null>(null);
@@ -1554,6 +1557,16 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const shotOutRecap = st.phase === 'gameOver' && st.result?.endReason === 'shotOut' && !shotRecapAck;
   const showRecap = !pause && !collecting && talkOpen && (st.phase === 'handOver' || shotOutRecap);
   const showResults = st.phase === 'gameOver' && !pause && !runFx && talkOpen && !!st.result && !shotOutRecap;
+  // Story Mode: a finished story match NEVER takes the generic /rewards
+  // detour — every exit from this modal routes through the host's exit
+  // into StoryHome's outro (win: reward line, deck/set-anim unlock
+  // notices, badge strip, outro-win scene → map; loss: outro-lose +
+  // Retry). A story WIN also demotes Play again — Rematch: you don't
+  // rematch a stop you just cleared from its victory screen; the primary
+  // action is the onward one and replay lives on the map card. A story
+  // LOSS keeps its rematch (same stop, story-scoped via the host).
+  const storyGame = !!story;
+  const storyWon = storyGame && !!st.result && st.result.winners.includes(mySide);
   const modalOpen = (st.phase === 'handOver' && !pause && !collecting && talkOpen) || confirmLeave || showPad || (st.phase === 'gameOver' && !pause && !runFx && talkOpen && !!st.result) || !!profileTarget;
 
   const promoted = useCallback((c: Card) => isWildDeuce(c, r), [r]); // badge BOTH wild deuces (2♦ and 2♠), not just the off-suit one
@@ -2213,7 +2226,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       {showResults && st.result && !online?.victory && (
         <div className="modal-backdrop">
           <div className="modal glass slant gameover espn" role="dialog" aria-label="Game over">
-            <button type="button" className="modal-x" aria-label="Close and go to the main menu" data-testid="gameover-x" onClick={() => openRewards('home')}>✕</button>
+            <button type="button" className="modal-x" aria-label={storyGame ? 'Close and continue to the story map' : 'Close and go to the main menu'} data-testid="gameover-x" onClick={() => (storyGame ? leave() : openRewards('home'))}>✕</button>
             <div className="trophy">{st.result.winners.includes(mySide) ? '🏆' : '♠'}</div>
             <h2>{st.result.winners.includes(mySide) ? (st.result.winners.length > 1 ? 'YOU TIED FOR FIRST!' : 'VICTORY!') : winHeadline(st.result.winners.map((w) => sideName(r, w, names)), r.partnerships).toUpperCase()}</h2>
             {seriesChip()}
@@ -2246,10 +2259,23 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             </div>
             <div className="confirm-actions">
               <button type="button" className="quiet-row-btn" onClick={() => setShowPad(true)}>Score pad</button>
-              <button type="button" className="primary big" onClick={() => onRematch(nextDealer(st))}>Play again — Rematch</button>
-              <button type="button" className="ghost-btn" data-testid="main-menu" onClick={() => openRewards('home')}>Back to home</button>
-              <div className="exit-divider" aria-hidden="true" />
-              <button type="button" className="leave-red" onClick={() => openRewards('leave')}>Change mode</button>
+              {storyGame ? (
+                storyWon ? (
+                  <button type="button" className="primary big" data-testid="story-to-map" onClick={() => leave()}>To the map</button>
+                ) : (
+                  <>
+                    <button type="button" className="primary big" onClick={() => onRematch(nextDealer(st))}>Play again — Rematch</button>
+                    <button type="button" className="ghost-btn" data-testid="story-to-map" onClick={() => leave()}>To the map</button>
+                  </>
+                )
+              ) : (
+                <>
+                  <button type="button" className="primary big" onClick={() => onRematch(nextDealer(st))}>Play again — Rematch</button>
+                  <button type="button" className="ghost-btn" data-testid="main-menu" onClick={() => openRewards('home')}>Back to home</button>
+                  <div className="exit-divider" aria-hidden="true" />
+                  <button type="button" className="leave-red" onClick={() => openRewards('leave')}>Change mode</button>
+                </>
+              )}
             </div>
           </div>
         </div>
