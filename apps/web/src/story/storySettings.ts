@@ -14,7 +14,7 @@
  * deck home in the picker; playing AT the stop never required owning it.
  */
 import { makeRules, type RulesOverrides, type TableRules } from '@spades/rules';
-import type { StoryStop } from '@spades/bots';
+import { DEE, STORY_CHARACTERS, type StoryStop } from '@spades/bots';
 import { deckForStop } from '../decks';
 import { type Settings, settingsToRules } from '../settings';
 import type { VenueChoice } from '../venues';
@@ -48,4 +48,29 @@ export function storyRulesFor(stop: StoryStop, base: Settings): TableRules {
 /** Seat names for a solo stop game: you, adversary 1, Dee (your partner, seat 2), adversary 2. */
 export function storySeatNames(stop: StoryStop, pairNames: [string, string]): string[] {
   return ['You', pairNames[0], 'Dee', pairNames[1]];
+}
+
+/** A character's team-label name: the short form where the story data defines
+ *  one (the full name would overflow the team-name width), else the name. */
+const labelName = (id: string): string => {
+  const c = STORY_CHARACTERS[id];
+  return c ? (c.shortName ?? c.name) : id;
+};
+
+/** The seated pair's team label at a stop ("Uncle Ray & Pat") — the pair's own
+ *  names from the story data, for all 11 stops. Never a generic pool name:
+ *  story tables are billed as the people actually sitting at them. */
+export function storyPairLabel(stop: StoryStop): string {
+  return `${labelName(stop.pair[0])} & ${labelName(stop.pair[1])}`;
+}
+
+/**
+ * Team names for a story match: [your side, the stop's side]. Your side is
+ * "You & Dee" — the same pairing the seat names and versus labels already
+ * render (the player's seat is honestly "You" on every story surface).
+ * Derived from the stop alone, so a resumed story game re-derives the exact
+ * same names — nothing is stored, nothing can drift.
+ */
+export function storyTeamNames(stop: StoryStop): [string, string] {
+  return [`You & ${DEE.name}`, storyPairLabel(stop)];
 }

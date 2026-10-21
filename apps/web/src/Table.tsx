@@ -26,6 +26,7 @@ import StoryFace from './story/StoryFace';
 import { useMyTeamName } from './TeamName';
 import { offlineTalk } from './offlineTalk';
 import { storyEvents, storyFactsOf, storyMilestones, storySnap, type StorySnap } from './story/storyScene';
+import { storyTeamNames } from './story/storySettings';
 import { BidOrder, BidSummary, showCenterBidOrder } from './PartnerTalk';
 import { guardTouches, lockBody } from './antiPan';
 import { TrumpLadder } from './trumpLadder';
@@ -95,7 +96,7 @@ import { isWildDeuce } from './cardFaces';
 import { misdealRevealKey, misdealRevealMs } from './misdeal';
 import { QUICK_TRASH_SET } from './quickTrash';
 import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
-import { STORY_CHARACTERS, type BotLevel, type StoryBeat, type StoryBeatFacts, type StoryGameFacts, type StoryStop, type TalkIntensity, botSkillFor, callbackFor, midSceneFor, partnerBidIntent, personaForName, platePersona, pickBotNames, playBeatFor, railLineFor, resumeLineFor, tableExchangeFor } from '@spades/bots';
+import { STORY_CHARACTERS, STORY_STOPS, type BotLevel, type StoryBeat, type StoryBeatFacts, type StoryGameFacts, type StoryStop, type TalkIntensity, botSkillFor, buildStoryTape, callbackFor, midSceneFor, partnerBidIntent, personaForName, platePersona, pickBotNames, playBeatFor, railLineFor, resumeLineFor, tableExchangeFor } from '@spades/bots';
 import { preloadVoice } from './voices/voices';
 const Scene = lazy(loadScene);
 
@@ -688,10 +689,13 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // bot trash talk: hidden entirely with 'Hide bot trash talk' (local preference)
   const msgs = useMemo(() => (talkPrefs.hideBotTalk ? rawMsgs.filter((m) => !m.bot) : rawMsgs.map((m) => (m.bot ? { ...m, text: showLine(m.text) } : m))), [rawMsgs, talkPrefs.hideBotTalk, intensity]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // team names (team modes): yours from More options offline, the bots' a random fun one (kept in the save)
+  // team names (team modes): yours from More options offline, the bots' a random fun one (kept in the save).
+  // Story games override BOTH sides with the stop's own names — you & Dee against the seated pair —
+  // so the generic defaults (the retired global name, a seeded pool pick) never bill a story table.
   const myName = useMyTeamName();
   const [botTeam] = useState(() => resume?.teamNames?.[1] ?? pickTeamName(Math.abs([...seed].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7))));
-  const teamNames: (string | null)[] | null = !r.partnerships ? null : online ? (online.teamNames ?? [null, null]) : [myName || null, botTeam];
+  const storyTeams = story?.scene ? storyTeamNames(story.scene.stop) : null;
+  const teamNames: (string | null)[] | null = !r.partnerships ? null : online ? (online.teamNames ?? [null, null]) : storyTeams ?? [myName || null, botTeam];
   localReport.current = { names, teamNames };
   setTeamNames(teamNames); // sideName() everywhere (scorebug, results, Table Talk, Victory, score pad) uses these
   useEffect(() => () => setTeamNames(null), []);
@@ -1753,6 +1757,14 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const storySeatIds: Record<number, string> | null = story?.scene
     ? { 1: story.scene.stop.pair[0], 2: 'dee', 3: story.scene.stop.pair[1] }
     : null;
+  // Story versus: the narrative tape for this stop, from the same builder the
+  // sit-down StoryTape renders — one content source, never a second copy.
+  const storyTape = story?.scene ? buildStoryTape(story.scene.stop, story.scene.facts) : null;
+  // Story tables load under the STOP's name ("The Porch · Stop 1 of 11"), never
+  // the venue asset's room name ("Grandma's Kitchen") — the loader's room line
+  // is the versus header. (The venue assignment itself is the story data's:
+  // the Porch plays at the grandma venue by design; only the label was wrong.)
+  const storyRoomLabel = story?.scene ? `${story.scene.stop.name} · Stop ${story.scene.stop.n} of ${STORY_STOPS.length}` : undefined;
   const versusModel: VersusModel | null = useMemo(() => {
     if (!versusActive) return null;
     const member = (seat: number): VersusMember => ({
@@ -1765,6 +1777,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (r.partnerships) {
       return {
         mode: 'team', kind: 'team', pot: online?.pot ?? null,
+        ...(storyTape ? { story: { tape: storyTape } } : {}),
         sides: [0, 1].map((side) => {
           const seats = Array.from({ length: n }, (_, seat) => seat).filter((seat) => sideOf(seat, r) === side);
           return {
@@ -1870,7 +1883,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           collecting={collecting}
         />
       </Suspense>
-      {!loadGone && <TableLoading progress={loadProgress} leaving={!loading && (!versusActive || versusStoryDone)} room={roomName} versus={versusModel ? <VersusIntro model={versusModel} reduced={reduceFx || fx.osReducedMotion} ready={!loading} onStoryComplete={() => setVersusStoryDone(true)} /> : undefined} />}
+      {!loadGone && <TableLoading progress={loadProgress} leaving={!loading && (!versusActive || versusStoryDone)} room={storyRoomLabel ?? roomName} versus={versusModel ? <VersusIntro model={versusModel} reduced={reduceFx || fx.osReducedMotion} ready={!loading} onStoryComplete={() => setVersusStoryDone(true)} /> : undefined} />}
       {preDeal && loadGone && (
         <div className="predeal-note" data-testid="predeal-note" role="status">
           <span className="predeal-title">First hand in {preDealSecs}s</span>

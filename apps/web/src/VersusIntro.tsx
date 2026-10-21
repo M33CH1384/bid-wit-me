@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { StoryTape } from '@spades/bots';
 import { AvatarCircle, useAvatar } from './avatar';
 import StoryFace from './story/StoryFace';
 import { CoinIcon } from './RepBlock';
@@ -151,6 +152,14 @@ export interface VersusModel {
   kind: VersusStatKind;
   /** Big Bank pot, only when the client actually knows it (wager row for this table). */
   pot?: number | null;
+  /**
+   * Story mode: the stop's narrative Tale of the Tape (built by buildStoryTape —
+   * the same content source the sit-down tape renders). When present the intro
+   * is a story card: the narrative tape replaces the league stat rows, no
+   * profiles are fetched, and the gold team-name headers are dropped — the
+   * pairing names under the portraits already carry the sides.
+   */
+  story?: { tape: StoryTape };
 }
 
 export interface VersusSideView extends VersusSideInput { stats: VersusSideStats | null }
@@ -195,6 +204,34 @@ export function VersusTape({ mode, sides, pot }: { mode: 'team' | 'solo'; sides:
   );
 }
 const pctText = (s: VersusSideStats | null): string => { const p = winPctOf(s); return p === null ? '—' : `${p}%`; };
+
+/**
+ * The story Tale of the Tape: a faithful condensed form of the sit-down
+ * narrative tape — the stop's stakes up top, then the seated pair and Dee
+ * (her entry banded by route progress, exactly as buildStoryTape built it),
+ * the threat line, and the history row when a stored fact supports one.
+ * Every string comes from the StoryTape the builder produced: no league
+ * rows, no invented numbers, no second copy of the content.
+ */
+export function VersusStoryTape({ tape }: { tape: StoryTape }) {
+  const rows = [...tape.pair, tape.dee];
+  return (
+    <div className="versus-tape story" data-testid="versus-story-tape">
+      <div className="versus-tape-title">TALE OF THE TAPE</div>
+      <p className="versus-story-line stakes" style={{ animationDelay: `${VERSUS_TAPE_MS + 120}ms` }}>{tape.stakes}</p>
+      {rows.map((e, i) => (
+        <div key={e.id} className="versus-story-row" style={{ animationDelay: `${VERSUS_TAPE_MS + 120 + (i + 1) * VERSUS_ROW_STAGGER_MS}ms` }}>
+          <span className="versus-story-name">{e.name}</span>
+          <span className="versus-story-text">{e.knownFor} {e.style}</span>
+        </div>
+      ))}
+      <p className="versus-story-line threat" style={{ animationDelay: `${VERSUS_TAPE_MS + 120 + (rows.length + 1) * VERSUS_ROW_STAGGER_MS}ms` }}>{tape.threat}</p>
+      {tape.history && (
+        <p className="versus-story-line history" style={{ animationDelay: `${VERSUS_TAPE_MS + 120 + (rows.length + 2) * VERSUS_ROW_STAGGER_MS}ms` }}>{tape.history}</p>
+      )}
+    </div>
+  );
+}
 
 function VersusFace({ member, size }: { member: VersusMember; size: number }) {
   const pic = useAvatar(member.uid, member.direct ?? null);
@@ -284,7 +321,10 @@ export function VersusIntro({ model, reduced, ready, onStoryComplete }: {
 
   // Real stats only: fetch the public payload per human member (bots/guest seats
   // without an account uid are never fetched and never shown numbers).
+  // Story mode never fetches: its tape is narrative, and league numbers at a
+  // story table would be the player's overall stats against bots — meaningless.
   const uids = useMemo(() => {
+    if (model.story) return [];
     const set = new Set<string>();
     for (const s of model.sides) for (const m of s.members) if (!m.isBot && m.uid) set.add(m.uid);
     return [...set];
@@ -317,7 +357,7 @@ export function VersusIntro({ model, reduced, ready, onStoryComplete }: {
           <div className="versus-stage">
             {sides.map((s, i) => (
               <div key={i} className={`versus-side ${i === 0 ? 'left' : 'right'}`}>
-                <div className="versus-team-name">{s.label}</div>
+                {!model.story && <div className="versus-team-name">{s.label}</div>}
                 <div className="versus-faces">
                   {s.members.map((m, j) => <VersusFace key={j} member={m} size={74} />)}
                 </div>
@@ -340,7 +380,9 @@ export function VersusIntro({ model, reduced, ready, onStoryComplete }: {
           </div>
         )}
 
-        <VersusTape mode={model.mode} sides={sides} pot={model.pot} />
+        {model.story
+          ? <VersusStoryTape tape={model.story.tape} />
+          : <VersusTape mode={model.mode} sides={sides} pot={model.pot} />}
 
         {done && !ready
           ? <div className="versus-wait" data-testid="versus-wait">Getting the table ready…</div>

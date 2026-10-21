@@ -1796,6 +1796,15 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .versus-row.solo .versus-cell { text-align: center; font-size: 15px; }
 .versus-wait { font-size: 13px; font-weight: 600; letter-spacing: .06em; color: var(--muted); animation: tp-pulse 1.4s ease-in-out infinite; }
 .versus-skip { font-size: 11.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); opacity: .75; animation: versus-row-in .4s ease-out both; }
+/* Story tape: the narrative card (stakes, the pair + Dee, threat, history) in
+   the same shell as the league tape — one card family, story content. */
+.versus-story-line { margin: 0; animation: versus-row-in .35s ease-out both; }
+.versus-story-line.stakes { font-size: 13.5px; font-weight: 600; line-height: 1.35; color: var(--ink); text-align: center; padding: 2px 2px 6px; }
+.versus-story-line.threat { font: 700 10.5px/1.3 var(--display); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); text-align: center; padding-top: 7px; }
+.versus-story-line.history { font-size: 12.5px; font-weight: 700; line-height: 1.35; color: var(--gold); text-align: center; padding-top: 5px; }
+.versus-story-row { display: flex; flex-direction: column; gap: 1px; padding: 5px 2px; border-top: 1px solid rgba(var(--edge-rgb), .16); animation: versus-row-in .35s ease-out both; }
+.versus-story-name { font: 800 12px/1.1 var(--display); letter-spacing: .12em; text-transform: uppercase; color: var(--gold); }
+.versus-story-text { font-size: 12.5px; line-height: 1.35; color: var(--ink); opacity: .92; }
 
 /* Paint gate: until VersusIntro's gate opens (.play), every beat holds at its
    first frame — the CSS timelines and the JS story clock start together, on
@@ -1807,6 +1816,8 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .versus:not(.play) .versus-flash,
 .versus:not(.play) .versus-tape,
 .versus:not(.play) .versus-row,
+.versus:not(.play) .versus-story-row,
+.versus:not(.play) .versus-story-line,
 .versus:not(.play) .versus-pot.only,
 .versus:not(.play) .versus-skip { animation-play-state: paused; }
 /* finished card (skip) + static card (reduced motion): everything at rest, no animation */
@@ -1816,6 +1827,8 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .versus.done .versus-vs, .versus.reduced .versus-vs,
 .versus.done .versus-tape, .versus.reduced .versus-tape,
 .versus.done .versus-row, .versus.reduced .versus-row,
+.versus.done .versus-story-row, .versus.reduced .versus-story-row,
+.versus.done .versus-story-line, .versus.reduced .versus-story-line,
 .versus.done .versus-pot.only, .versus.reduced .versus-pot.only,
 .versus.done .versus-skip, .versus.reduced .versus-skip { animation: none; }
 .versus.done .versus-flash, .versus.reduced .versus-flash { animation: none; opacity: 0; }
@@ -1827,7 +1840,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .versus.done .versus-quad.q3, .versus.reduced .versus-quad.q3 { transform: translate(-9%, -7%); }
 .versus.done .versus-vs, .versus.reduced .versus-vs { transform: translate(-50%, -50%) scale(1); opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
-  .versus-shake, .versus-side, .versus-quad, .versus-vs, .versus-flash, .versus-tape, .versus-row, .versus-pot.only, .versus-skip { animation: none !important; }
+  .versus-shake, .versus-side, .versus-quad, .versus-vs, .versus-flash, .versus-tape, .versus-row, .versus-story-row, .versus-story-line, .versus-pot.only, .versus-skip { animation: none !important; }
   .versus-flash { opacity: 0 !important; }
 }
 /* Pre-deal setup window (online): the table is live, the first deal is held by the room */

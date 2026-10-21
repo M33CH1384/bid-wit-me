@@ -6,10 +6,11 @@ import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { buildStoryTape, storyStopById } from '@spades/bots';
 import {
   VERSUS_CUES, VERSUS_HOLD_MS, VERSUS_IMPACT_MS, VERSUS_RESOLVE_CUE, VERSUS_ROW_STAGGER_MS,
   VERSUS_STORY_MS, VERSUS_TAPE_MS,
-  VersusIntro, VersusTape, bestIndex, markVersusShown, rowWinner, statLineFromCredProfile,
+  VersusIntro, VersusStoryTape, VersusTape, bestIndex, markVersusShown, rowWinner, statLineFromCredProfile,
   summarizeSide, versusAlreadyShown, versusCueSchedule, versusDismissReady, versusEligible,
   winPctOf, type VersusModel, type VersusSideView,
 } from '../src/VersusIntro';
@@ -236,6 +237,100 @@ describe('versus tape rendering (resolved stats)', () => {
     expect(html).toContain('1,300');
     expect(html).toContain('gold');
     expect(html).toContain('—');
+  });
+});
+
+/* ------------------------------------------ story mode: narrative card
+ * Owner, 2026-10-21: the Porch versus intro leaked the stock layer three
+ * ways — the loader's room line named the venue asset ("GRANDMA'S KITCHEN"),
+ * gold headers billed generic team names ("HOMIES" / "SMOOTH OPERATORS")
+ * over the already-correct pairing labels, and the tape was the LEAGUE tape
+ * (his overall profile stats against an all-"—" bot column). In story mode
+ * the intro is a story card: stop name up top (Table wiring, pinned in
+ * story-team-names.test.ts), no gold team-name headers, and the tape is the
+ * narrative one from buildStoryTape — the same content source as the
+ * sit-down tape. The side labels below deliberately carry the OLD generic
+ * names to prove story mode never renders them as headers. */
+const porch = storyStopById('porch')!;
+const storyModel: VersusModel = {
+  mode: 'team', kind: 'team',
+  story: { tape: buildStoryTape(porch, { attempts: 0, cleared: false }) },
+  sides: [
+    { label: 'Homies', members: [{ name: 'You', uid: 'u1', isBot: false }, { name: 'Dee', uid: null, isBot: true, storyId: 'dee' }] },
+    { label: 'Smooth Operators', members: [{ name: 'Uncle Ray', uid: null, isBot: true, storyId: 'uncleRay' }, { name: 'Pat', uid: null, isBot: true, storyId: 'pat' }] },
+  ],
+};
+
+describe('versus in story mode: the narrative card, no stock leaks', () => {
+  it('renders the story tape: stakes, the pair’s context, Dee’s current entry, the threat line', () => {
+    const html = renderToStaticMarkup(createElement(VersusIntro, { model: storyModel, reduced: false, ready: false, onStoryComplete: () => {} }));
+    expect(html).toContain('versus-story-tape');
+    expect(html).toContain('TALE OF THE TAPE');
+    expect(html).toContain(porch.stakes); // the stop's own stakes line
+    // the pair, from the character cards (buildStoryTape's pair entries)
+    expect(html).toContain('Never hurrying, never losing the thread of a hand');
+    expect(html).toContain('Remembering exactly what you bid three hands ago');
+    // Dee's entry, banded for stop 1 (green)
+    expect(html).toContain('Being the kid from Ray’s porch with something to prove.');
+    expect(html).toContain('Gentle table'); // the threat line, in plain language
+  });
+
+  it('no gold team-name headers and no generic names anywhere on the card', () => {
+    const html = renderToStaticMarkup(createElement(VersusIntro, { model: storyModel, reduced: false, ready: false, onStoryComplete: () => {} }));
+    expect(html).not.toContain('versus-team-name');
+    expect(html).not.toContain('Homies');
+    expect(html).not.toContain('Smooth Operators');
+    // the pairing labels under the portraits — already right — still carry the sides
+    expect(html).toContain('You &amp; Dee');
+    expect(html).toContain('Uncle Ray &amp; Pat');
+  });
+
+  it('no league stat rows in story mode — the league tape never renders', () => {
+    const html = renderToStaticMarkup(createElement(VersusIntro, { model: storyModel, reduced: false, ready: false, onStoryComplete: () => {} }));
+    expect(html).not.toContain('Season record');
+    expect(html).not.toContain('Win streak');
+    expect(html).not.toContain('Win %');
+    expect(html).not.toContain('versus-row'); // league rows are .versus-row; story rows are .versus-story-row
+  });
+
+  it('story mode never fetches profiles (the uids gate)', () => {
+    const src = read('../src/VersusIntro.tsx');
+    expect(src).toContain('if (model.story) return [];');
+  });
+
+  it('the history row appears only when a stored fact supports it', () => {
+    const fresh = renderToStaticMarkup(createElement(VersusStoryTape, { tape: buildStoryTape(porch, { attempts: 0, cleared: false }) }));
+    expect(fresh).not.toContain('Last meeting');
+    const rematch = renderToStaticMarkup(createElement(VersusStoryTape, { tape: buildStoryTape(porch, { attempts: 2, cleared: false }) }));
+    expect(rematch).toContain('Last meeting: they turned you back. This is attempt 3.');
+    const held = renderToStaticMarkup(createElement(VersusStoryTape, { tape: buildStoryTape(porch, { attempts: 3, clears: 2, cleared: true }) }));
+    expect(held).toContain('You hold this table — cleared 2×.');
+  });
+
+  it('the story tape is the same content the sit-down tape renders (one builder)', () => {
+    const tape = buildStoryTape(porch, { attempts: 0, cleared: false });
+    const html = renderToStaticMarkup(createElement(VersusStoryTape, { tape }));
+    for (const e of [...tape.pair, tape.dee]) {
+      expect(html).toContain(e.name);
+      expect(html).toContain(e.knownFor);
+      expect(html).toContain(e.style);
+    }
+    expect(html).toContain(tape.threat);
+    expect(html).toContain(tape.stakes);
+  });
+
+  it('Dee’s versus entry evolves with the route (the King stop reads belonging, not green)', () => {
+    const king = storyStopById('king')!;
+    const html = renderToStaticMarkup(createElement(VersusStoryTape, { tape: buildStoryTape(king, { attempts: 0, cleared: false }) }));
+    expect(html).toContain('Being the reason pairs warn each other about the quiet seat.');
+    expect(html).not.toContain('something to prove');
+  });
+
+  it('normal games are unchanged: gold team-name headers still render', () => {
+    const html = renderToStaticMarkup(createElement(VersusIntro, { model: teamModel, reduced: false, ready: false, onStoryComplete: () => {} }));
+    expect(html).toContain('versus-team-name');
+    expect(html).toContain('Shot Callers');
+    expect(html).not.toContain('versus-story-tape');
   });
 });
 
