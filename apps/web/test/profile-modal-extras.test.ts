@@ -13,13 +13,13 @@ const social = readFileSync(new URL('../src/profile/ProfileView.tsx', import.met
 const repBlock = readFileSync(new URL('../src/RepBlock.tsx', import.meta.url), 'utf8');
 
 describe('profile modal: rank, coins, badges', () => {
-  it('rank: the shared RepBlock carries level/title, the XP bar and BOTH division · Elo chips; the modal feeds it the cred payload', () => {
+  it('rank: the shared RepBlock carries level/title, the XP bar and BOTH plain-rating chips; the modal feeds it the cred payload', () => {
     expect(modal).toContain('testid="profile-modal-rep"');
     expect(modal).toContain('level={cred.level}');
     expect(repBlock).toContain('Level {level.level}');
     expect(repBlock).toContain('className="xp-bar"');
-    expect(repBlock).toContain('divLabel(team.division)} · {team.elo}');
-    expect(repBlock).toContain('divLabel(cutthroat.division)} · {cutthroat.elo}');
+    expect(repBlock).toContain('⚔ Rating {team.elo}');
+    expect(repBlock).toContain('🔪 Rating {cutthroat.elo}');
   });
   it('coins: renders the public balance from the cred payload, formatted like the profile page', () => {
     expect(modal).toContain('coins?: { balance: number }');

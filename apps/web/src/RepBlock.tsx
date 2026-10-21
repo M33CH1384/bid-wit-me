@@ -1,6 +1,6 @@
 /**
- * The combined Rep block — Level + title, the XP progress bar, both division ·
- * Elo chips and (on surfaces that show it inline) the coin chip. ONE
+ * The combined Rep block — Level + title, the XP progress bar, both rating
+ * chips and (on surfaces that show it inline) the coin chip. ONE
  * implementation shared by the /profile header card, the Social profile header
  * and the in-game profile modal, so the three can never drift apart again
  * (Demetrius 2026-10-20: "combine the rep profile with the regular profile and
@@ -13,10 +13,12 @@
  */
 
 export interface RepLevelInfo { level: number; title: string; xpIntoLevel: number; xpForNext: number }
+/** The payload still carries the division id (internal band logic), but no
+ *  user-facing surface renders a division NAME anymore (owner, 2026-10-20:
+ *  rankings are metric-based — "not some corny names"). The chips below show
+ *  the plain rating number, and the LEVEL title is the only named title on a
+ *  profile (the one-title rule). */
 export interface RepRankInfo { division: string; elo: number }
-
-const DIV_LABEL: Record<string, string> = { stoop: 'Stoop', corner: 'Corner', block: 'Block', avenue: 'Avenue', boulevard: 'Boulevard', legend: 'Legend' };
-export const divLabel = (d: string) => DIV_LABEL[d] ?? d;
 
 /** The coins chip's drawn coin (Demetrius 2026-10-20: the coin emoji "don't
  *  work for me") — a gold-gradient disc with a darker gold rim and a centered spade,
@@ -55,8 +57,8 @@ export function RepBlock({ level, team, cutthroat, coins, testid, coinsTestid }:
       <div className="soc-rep-level"><b>Level {level.level}</b><span>{level.title}</span></div>
       <div className="xp-bar" data-testid={`${testid}-xp`}><i style={{ width: `${xpPct}%` }} /><small>{level.xpIntoLevel}/{level.xpForNext} XP</small></div>
       <div className="soc-rep-ranks">
-        <span className="soc-div-chip" title="Partnership season division">⚔ {divLabel(team.division)} · {team.elo}</span>
-        <span className="soc-div-chip" title="Cutthroat season division">🔪 {divLabel(cutthroat.division)} · {cutthroat.elo}</span>
+        <span className="soc-div-chip" title="Partnership rating">⚔ Rating {team.elo}</span>
+        <span className="soc-div-chip" title="Cutthroat rating">🔪 Rating {cutthroat.elo}</span>
         {coins !== undefined && <span className="soc-coin-chip" title="Coin balance" data-testid={coinsTestid}><CoinIcon /> {coins.toLocaleString()}</span>}
       </div>
     </div>

@@ -16,10 +16,10 @@
  *  - /api/social/profile/:name — the social record: member-since, totals,
  *    social-record stats, badges, team names, head-to-head, champion awards.
  *    Public for any named player.
- *  - /api/profile/:id (public) — Rep: level/XP, full season rank (division,
- *    Elo, record, peak, leaderboard place), cred stats, achievements, coins,
- *    social links. Full rank/stats ARE public; the Rank and Stats tabs work
- *    for other players unchanged.
+ *  - /api/profile/:id (public) — Rep: level/XP, full season rating (number,
+ *    record, peak, leaderboard place), cred stats, achievements, coins,
+ *    social links. Full ratings/stats ARE public; the Stats tab works for
+ *    other players unchanged.
  *  - /api/profile/me (self only) — the same payload PLUS challenges and
  *    unlocks, which the server keeps private. The Challenges and Unlocks tabs
  *    therefore exist for your own profile only — a data difference, not a
@@ -33,7 +33,8 @@
  * Edit profile button (Demetrius 2026-10-20: "All of this should be hidden.
  * There should be an edit profile button to change any of this if a user so
  * chooses"), so the profile's face is display-only. Body: the tabbed
- * structure (Rank / Challenges / Stats / Achievements / Unlocks) with the
+ * structure (Challenges / Stats / Achievements / Unlocks — the old Rank tab
+ * folded into the top of Stats, owner 2026-10-20) with the
  * social record folded in — the
  * games/wins summary and social stats live in Stats, badges and champion
  * awards in Achievements. Zero content lost, zero duplicated.
@@ -59,15 +60,11 @@ const modeName = (m: string) => MODE_NAME[m] ?? m;
 
 /* ------------------------------------------------------------ data shapes */
 
+/** The payload's division id — internal band logic only. No user-facing
+ *  surface renders a division name anymore (owner, 2026-10-20: rankings are
+ *  metric-based, "not some corny names"), so there is deliberately no label
+ *  map here. */
 type Division = 'stoop' | 'corner' | 'block' | 'avenue' | 'boulevard' | 'legend';
-const DIVISION_LABEL: Record<Division, string> = {
-  stoop: 'Stoop', corner: 'Corner', block: 'Block',
-  avenue: 'Avenue', boulevard: 'Boulevard', legend: 'Legend',
-};
-const DIVISION_CLASS: Record<Division, string> = {
-  stoop: 'div-stoop', corner: 'div-corner', block: 'div-block',
-  avenue: 'div-avenue', boulevard: 'div-boulevard', legend: 'div-legend',
-};
 
 interface SeasonRank { division: Division; elo: number; games: number; wins: number; losses: number; peak: number; rank: number; of: number }
 interface Challenge { id: string; title: string; metric: string; target: number; progress: number; xp: number; coins: number; claimed: boolean }
@@ -98,7 +95,7 @@ interface SocialProfileData {
   awards?: { label: string; ref: string; at: number }[];
 }
 
-type Tab = 'rank' | 'challenges' | 'stats' | 'achievements' | 'unlocks';
+type Tab = 'challenges' | 'stats' | 'achievements' | 'unlocks';
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   // Same-origin via the Pages Function /api proxy (first-party cookies work in Safari).
@@ -110,20 +107,19 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 
 /* --------------------------------------------------------- body fragments */
 
-function DivisionBadge({ division, size }: { division: Division; size?: 'sm' | 'lg' }) {
-  return <span className={`div-badge ${DIVISION_CLASS[division]} ${size === 'lg' ? 'lg' : ''}`}>{DIVISION_LABEL[division]}</span>;
-}
-
+/** A rating card — ESPN player-header vitals, plain language only (owner,
+ *  2026-10-20: "no one knows what elo is including me", and no named tiers):
+ *  the big number is the Rating, the rows are metrics anyone can read. */
 function RankCard({ title, rank }: { title: string; rank: SeasonRank }) {
   return (
     <div className="rank-card glass">
-      <div className="rank-head"><h3>{title}</h3><DivisionBadge division={rank.division} /></div>
-      <div className="rank-elo">{rank.elo}<small>ELO</small></div>
+      <div className="rank-head"><h3>{title}</h3></div>
+      <div className="rank-elo">{rank.elo}<small>Rating</small></div>
       <div className="rank-rows">
-        <div><span>Season record</span><b>{rank.wins}W – {rank.losses}L</b></div>
-        <div><span>Leaderboard</span><b>#{rank.rank} of {rank.of}</b></div>
-        <div><span>Peak rating</span><b>{rank.peak}</b></div>
-        <div><span>Games</span><b>{rank.games}</b></div>
+        <div><span>This season</span><b>{rank.wins} win{rank.wins === 1 ? '' : 's'} – {rank.losses} loss{rank.losses === 1 ? '' : 'es'}</b></div>
+        <div><span>Leaderboard</span><b>#{rank.rank} of {rank.of} players</b></div>
+        <div><span>Best rating</span><b>{rank.peak}</b></div>
+        <div><span>Rated games</span><b>{rank.games}</b></div>
       </div>
     </div>
   );
@@ -152,12 +148,26 @@ const STAT_LABELS: Record<string, string> = {
   winsVsPlayers: 'Wins vs players', winsVsBots: 'Wins vs bots',
 };
 
+/** ESPN-style stat table (owner, 2026-10-20: stats should look "like looking
+ *  at ESPN but for Spades players") — label left, number right, striped rows,
+ *  no tiles, no fluff. Every stat the payload carries keeps its row. */
 function StatsGrid({ stats }: { stats: Record<string, number | string | null> }) {
   const rows = Object.entries(STAT_LABELS).filter(([k]) => stats[k] !== undefined && stats[k] !== null);
   return (
-    <div className="stats-grid">
+    <div className="stat-table">
       {rows.map(([k, label]) => (
-        <div key={k} className="stat-cell"><b>{String(stats[k])}</b><span>{label}</span></div>
+        <div key={k} className="stat-row"><span>{label}</span><b>{String(stats[k])}</b></div>
+      ))}
+    </div>
+  );
+}
+
+/** One stat-table row set for the online record — same table language. */
+function StatRows({ rows }: { rows: [string, string][] }) {
+  return (
+    <div className="stat-table">
+      {rows.map(([label, value]) => (
+        <div key={label} className="stat-row"><span>{label}</span><b>{value}</b></div>
       ))}
     </div>
   );
@@ -231,7 +241,7 @@ export function ProfileView({ host, name, id }: {
   const s = useSocial();
   const acct = useAccount();
   const selfRoute = host === 'page' && !name;
-  const [tab, setTab] = useState<Tab>('rank');
+  const [tab, setTab] = useState<Tab>('stats');
   const [p, setP] = useState<SocialProfileData | null | 'missing'>(null);
   const [cred, setCred] = useState<CredData | null>(null);
   const [credErr, setCredErr] = useState<string | null>(null);
@@ -405,11 +415,11 @@ export function ProfileView({ host, name, id }: {
 
   const socialP = p && p !== 'missing' ? p : null;
 
-  /* Tabs derive from the payload, never from the host or the subject: Rank
-   *  needs the Rep payload, Challenges/Unlocks ride only on the self payload
-   *  (the server keeps them private), Stats/Achievements merge both payloads. */
+  /* Tabs derive from the payload, never from the host or the subject:
+   *  Challenges/Unlocks ride only on the self payload (the server keeps them
+   *  private), Stats/Achievements merge both payloads. There is no Rank tab
+   *  anymore (owner, 2026-10-20) — the rating cards live at the top of Stats. */
   const tabs: { id: Tab; label: string }[] = [];
-  if (cred) tabs.push({ id: 'rank', label: 'Rank' });
   if (cred?.challenges) tabs.push({ id: 'challenges', label: 'Challenges' });
   if (cred || socialP) { tabs.push({ id: 'stats', label: 'Stats' }); tabs.push({ id: 'achievements', label: 'Achievements' }); }
   if (cred?.unlocks) tabs.push({ id: 'unlocks', label: 'Unlocks' });
@@ -507,12 +517,6 @@ export function ProfileView({ host, name, id }: {
       </nav>
 
       <main className="prof-body">
-        {activeTab === 'rank' && cred && (
-          <div className="rank-cards">
-            <RankCard title="Partnership" rank={cred.rank.team} />
-            <RankCard title="Cutthroat" rank={cred.rank.cutthroat} />
-          </div>
-        )}
         {activeTab === 'challenges' && cred?.challenges && (() => {
           const all = [...cred.challenges.daily, ...cred.challenges.weekly];
           const earnedXp = all.filter((c) => c.claimed).reduce((sum, c) => sum + c.xp, 0);
@@ -533,6 +537,15 @@ export function ProfileView({ host, name, id }: {
         })()}
         {activeTab === 'stats' && (
           <>
+            {cred && (
+              <>
+                <p className="rank-explainer" data-testid="rating-explainer">Rating starts at 1,000. Win rated games to raise it, lose and it drops — beating stronger players moves it more.</p>
+                <div className="rank-cards">
+                  <RankCard title="Partnership" rank={cred.rank.team} />
+                  <RankCard title="Cutthroat" rank={cred.rank.cutthroat} />
+                </div>
+              </>
+            )}
             {socialP && (
               <div className="soc-stats wins-summary">
                 <div><b>{socialP.totals.games}</b><small>online games</small></div>
@@ -548,17 +561,19 @@ export function ProfileView({ host, name, id }: {
             {socialP?.stats && socialP.stats.games > 0 && (
               <>
                 <h4>Online record</h4>
-                <div className="soc-stats small" data-testid="profile-stats">
-                  <div><b>{socialP.stats.streak}</b><small>win streak (best {socialP.stats.bestStreak})</small></div>
-                  <div><b>{socialP.stats.accuracy ?? '—'}{socialP.stats.accuracy !== null ? '%' : ''}</b><small>bid accuracy</small></div>
-                  <div><b>{socialP.stats.booksPerHand ?? '—'}</b><small>books / hand</small></div>
-                  <div><b>{socialP.stats.nil}</b><small>nils made</small></div>
-                  <div><b>{socialP.stats.shotsGiven}</b><small>shots given</small></div>
-                  <div><b>{socialP.stats.shotsTaken}</b><small>shot</small></div>
-                  <div><b>{socialP.stats.wheels}</b><small>Wheels</small></div>
-                  <div><b>{socialP.stats.bjWins}</b><small>Big Joker wins</small></div>
-                  <div><b>{socialP.stats.bidSec ?? '—'}s</b><small>avg bid</small></div>
-                  <div><b>{socialP.stats.playSec ?? '—'}s</b><small>avg play</small></div>
+                <div data-testid="profile-stats">
+                  <StatRows rows={[
+                    ['Win streak', `${socialP.stats.streak} (best ${socialP.stats.bestStreak})`],
+                    ['Bid accuracy', `${socialP.stats.accuracy ?? '—'}${socialP.stats.accuracy !== null ? '%' : ''}`],
+                    ['Books / hand', String(socialP.stats.booksPerHand ?? '—')],
+                    ['Nils made', socialP.stats.nil],
+                    ['Shots given', String(socialP.stats.shotsGiven)],
+                    ['Shots taken', String(socialP.stats.shotsTaken)],
+                    ['Wheels', String(socialP.stats.wheels)],
+                    ['Big Joker wins', String(socialP.stats.bjWins)],
+                    ['Avg bid', `${socialP.stats.bidSec ?? '—'}s`],
+                    ['Avg play', `${socialP.stats.playSec ?? '—'}s`],
+                  ]} />
                 </div>
               </>
             )}

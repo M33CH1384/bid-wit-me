@@ -149,7 +149,7 @@ function YouCard({ mine, kind, rank, onMore }: { mine: MyStats; kind: Kind; rank
       </div>
       <div className="ranks-you-rating">
         {rated
-          ? <b data-testid="your-stats-elo">{mode.elo}<span>Elo</span></b>
+          ? <b data-testid="your-stats-elo">{mode.elo}<span>Rating</span></b>
           : <><b className="unrated" data-testid="your-stats-unrated">Unrated</b><small>{UNRATED_HINT}</small></>}
       </div>
       <div className="ranks-you-stats">
@@ -171,7 +171,7 @@ function StatsSheet({ mine, kind, onClose }: { mine: MyStats; kind: Kind; onClos
       <div className={k === kind ? 'on' : ''}>
         <small>{name}</small>
         <b>{m.games ? `${m.wins}–${m.games - m.wins}` : '—'}</b>
-        <small>{m.elo == null ? 'Unrated' : `Elo ${m.elo}`}</small>
+        <small>{m.elo == null ? 'Unrated' : `Rating ${m.elo}`}</small>
       </div>
     );
   };
@@ -328,7 +328,7 @@ export function Leaderboards() {
             ))}
           </div>
         )}
-        <p className="soc-note">Elo and Best duos count signed-in opponents. Wins split into vs players and vs bots.</p>
+        <p className="soc-note">Ratings and Best duos count signed-in opponents. Wins split into vs players and vs bots.</p>
       </div>
       {offscreen && mineRow && (
         <div className="ranks-pin" data-testid="ranks-pin">

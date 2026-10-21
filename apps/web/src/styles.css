@@ -2150,20 +2150,21 @@ button.mode-pick::after, button.quiet-row::after { content: ''; position: absolu
 .prof-tabs button.on { color: var(--gold); border-bottom-color: var(--gold); }
 .tab-dot { position: absolute; top: 2px; right: 2px; min-width: 18px; height: 18px; border-radius: 9px; background: var(--red); color: #fff; font-size: 11px; display: grid; place-items: center; font-style: normal; }
 .prof-body h3 { font-family: var(--display); letter-spacing: .06em; text-transform: uppercase; font-size: 15px; color: var(--muted); margin: 16px 0 8px; }
-.rank-cards { display: grid; gap: 12px; }
-@media (min-width: 560px) { .rank-cards { grid-template-columns: 1fr 1fr; } }
-.rank-card { padding: 14px 16px; border-radius: 14px; }
+/* Rating cards sit side by side on one row at the top of Stats (owner,
+   2026-10-20: "partner and cutthroat living on the same line side by side
+   with stats under it") — two equal columns at phone width too, so the
+   numeral shrinks to fit. No division badges: rankings are metric-based. */
+.rank-explainer { color: var(--muted); font-size: 13px; line-height: 1.45; margin: 0 0 10px; }
+.rank-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.rank-card { padding: 12px; border-radius: 14px; }
 .rank-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
-.rank-head h3 { margin: 0; font-size: 16px; }
-.rank-elo { font-family: var(--display); font-weight: 800; font-size: 34px; }
-.rank-elo small { font-size: 12px; color: var(--muted); margin-left: 6px; letter-spacing: .1em; }
+.rank-head h3 { margin: 0; font-size: 15px; }
+.rank-elo { font-family: var(--display); font-weight: 800; font-size: 27px; }
+.rank-elo small { font-size: 11px; color: var(--muted); margin-left: 5px; letter-spacing: .08em; }
 .rank-rows { margin-top: 8px; display: grid; gap: 4px; }
-.rank-rows div { display: flex; justify-content: space-between; font-size: 14px; }
+.rank-rows div { display: flex; justify-content: space-between; gap: 6px; font-size: 13px; }
 .rank-rows span { color: var(--muted); }
-.div-badge { font-family: var(--display); font-weight: 800; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; padding: 3px 10px; border-radius: 20px; }
-.div-stoop { background: #5a5348; color: #fff; } .div-corner { background: #7a5c3a; color: #ffe9c9; }
-.div-block { background: #4a6fa5; color: #fff; } .div-avenue { background: #6a4a9a; color: #fff; }
-.div-boulevard { background: #9a3a5a; color: #fff; } .div-legend { background: linear-gradient(135deg, var(--gold), #ff8a3d); color: #2a1200; }
+.rank-rows b { text-align: right; font-variant-numeric: tabular-nums; }
 .challenge { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 10px; background: rgba(255,255,255,.05); margin-bottom: 8px; }
 .challenge.done { background: rgba(var(--gold-rgb),.1); }
 .ch-main { flex: 1; min-width: 0; }
@@ -2172,10 +2173,13 @@ button.mode-pick::after, button.quiet-row::after { content: ''; position: absolu
 .ch-bar i { display: block; height: 100%; background: var(--gold); border-radius: 3px; }
 .ch-main small { color: var(--muted); font-size: 12px; }
 .ch-claimed { color: var(--gold); font-size: 13px; font-weight: 700; }
-.stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.stat-cell { background: rgba(255,255,255,.05); border-radius: 10px; padding: 10px 8px; text-align: center; }
-.stat-cell b { display: block; font-family: var(--display); font-size: 20px; }
-.stat-cell span { font-size: 11px; color: var(--muted); }
+/* ESPN-style stat table (owner, 2026-10-20): dense label/value rows, subtle
+   striping, numbers right-aligned and tabular. Replaces the tile grids. */
+.stat-table { border: 1px solid rgba(255,255,255,.08); border-radius: 10px; overflow: hidden; margin-bottom: 6px; }
+.stat-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 7px 12px; font-size: 14px; }
+.stat-row:nth-child(even) { background: rgba(255,255,255,.04); }
+.stat-row span { color: var(--muted); }
+.stat-row b { font-family: var(--display); font-size: 16px; font-variant-numeric: tabular-nums; text-align: right; }
 .ach-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 @media (min-width: 560px) { .ach-grid { grid-template-columns: repeat(3, 1fr); } }
 .ach { border-radius: 10px; padding: 12px; background: rgba(255,255,255,.05); }

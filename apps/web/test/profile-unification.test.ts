@@ -122,7 +122,11 @@ describe('one profile, both hosts', () => {
     expect(panelInv).toContain('testid:profile-rep');
     expect(panelInv).toContain('testid:profile-coins');
     expect(panelInv).toContain('testid:profile-add');
-    expect(panelInv).toContain('tab:Rank');
+    // no Rank tab anymore (owner, 2026-10-20): the rating cards + metric
+    // explainer ride at the top of Stats, which is the default tab now
+    expect(panelInv).not.toContain('tab:Rank');
+    expect(panelInv).toContain('tab:Stats');
+    expect(panelInv).toContain('testid:rating-explainer');
     // …and none of the self-only content leaks into another player's profile
     expect(panelInv).not.toContain('tab:Challenges');
     expect(panelInv).not.toContain('tab:Unlocks');
@@ -136,6 +140,20 @@ describe('one profile, both hosts', () => {
     const panelInv = inventory(panel);
     const page = await renderView(createElement(ProfileView, { host: 'page' }));
     expect(inventory(page)).toEqual(panelInv);
+    // plain language only (owner, 2026-10-20: "no one knows what elo is
+    // including me") and no named tiers anywhere on the profile: the chips
+    // are plain ratings, the cards are metrics, the explainer is numbers.
+    const text = page.textContent ?? '';
+    expect(text).not.toContain('ELO');
+    expect(text).not.toContain('Elo');
+    expect(text).toContain('Rating starts at 1,000.');
+    expect(text).toContain('This season');
+    expect(text).toContain('4 wins – 6 losses');
+    expect(text).toContain('#3 of 9 players');
+    expect(text).toContain('Best rating');
+    const chips = page.querySelector('[data-testid="profile-rep"]')?.textContent ?? '';
+    expect(chips).toContain('Rating 1000');
+    expect(chips).not.toContain('Block');
     // self-only affordances ride along in BOTH hosts now — same page, same
     // person. The editors themselves stay HIDDEN behind the one Edit profile
     // button (owner, 2026-10-20): the initial render is display-only, in

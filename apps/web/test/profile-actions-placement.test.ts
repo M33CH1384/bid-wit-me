@@ -8,7 +8,7 @@
  *  edit from drifting the row back down the page.
  *
  *  Consolidation (same day, owner screenshot of LovleyT714's profile): the Rep
- *  block — Level/title, both division · Elo chips, coins — moved INTO the same
+ *  block — Level/title, both plain-rating chips, coins — moved INTO the same
  *  header, under the action row, and the standalone REP section further down
  *  was deleted; the summary stats grid lost its 2v2 rating / Cutthroat tiles
  *  (they duplicated the division chips). One combined profile area at the top,
@@ -16,7 +16,7 @@
  *  gold text in the row: it wears the row's chip chrome in social.css.
  *
  *  Unification (same day, owner's third pass at this): the Rep block itself —
- *  Level/title, XP progress bar, both division chips, coins — is now ONE shared
+ *  Level/title, XP progress bar, both rating chips, coins — is now ONE shared
  *  component (src/RepBlock.tsx) rendered by all three profile surfaces, so the
  *  Social view, the modal and the /profile header card carry the identical
  *  combined block and can't drift apart again. The /profile header gained the
@@ -138,10 +138,14 @@ describe('consolidated header: one profile area at the top (Demetrius 2026-10-20
     expect(profile).not.toContain('<h4>Rep</h4>');
     expect(card).not.toContain('<h4>Rep</h4>');
   });
-  it('the shared Rep block carries level/title, both division chips and coins; both surfaces feed it the cred payload', () => {
+  it('the shared Rep block carries level/title, both rating chips and coins; both surfaces feed it the cred payload', () => {
     expect(repBlock).toContain('Level {level.level}');
-    expect(repBlock).toContain('divLabel(team.division)} · {team.elo}');
-    expect(repBlock).toContain('divLabel(cutthroat.division)} · {cutthroat.elo}');
+    expect(repBlock).toContain('⚔ Rating {team.elo}');
+    expect(repBlock).toContain('🔪 Rating {cutthroat.elo}');
+    // one-title rule (owner, 2026-10-20): the LEVEL title is the only named
+    // title — the chips carry NO division name, just the plain rating
+    expect(repBlock).not.toContain('divLabel(');
+    expect(repBlock).not.toContain('DIV_LABEL');
     expect(repBlock).toContain('<CoinIcon /> {coins.toLocaleString()}');
     expect(repBlock).not.toContain('🪙');
     for (const src of [profile, card]) {
