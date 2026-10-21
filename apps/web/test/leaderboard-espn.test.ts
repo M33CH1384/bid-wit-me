@@ -10,9 +10,9 @@
  *    metric / games-played;
  *  - no division names and no "Elo" anywhere in the Compete surface — plain
  *    "Rating" language only;
- *  - the BottomLine ticker + spade logo bug: lines built strictly from real
- *    payloads (rating board, presence, my-stats) — no fabricated results,
- *    no division names in the ticker either.
+ *  - the BottomLine ticker + BWM wordmark bug: lines built strictly from
+ *    real payloads (results feed, rating board, presence, my-stats) — no
+ *    fabricated results, no division names in the ticker either.
  */
 import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -170,7 +170,7 @@ afterEach(() => {
 });
 
 describe('the BottomLine renders: bug + lines from the rating board fetch', () => {
-  it('shows the spade bug and the top-rated line; no division names', async () => {
+  it('shows the wordmark bug and the top-rated line; no division names', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
       ok: true, status: 200,
       json: async () => (String(url).includes('board=rating')
@@ -186,9 +186,27 @@ describe('the BottomLine renders: bug + lines from the rating board fetch', () =
     expect(bar).not.toBeNull();
     const bug = el.querySelector('.ticker-bug img') as HTMLImageElement | null;
     expect(bug).not.toBeNull();
-    expect(bug!.getAttribute('src')).toBe('/favicon.svg');
+    expect(bug!.getAttribute('src')).toBe('/assets/bwm-wordmark-white.svg');
     expect(el.textContent).toContain('Top rated · Partnership — Alpha 1500 · Bravo 1420');
     for (const n of DIVISION_NAMES) expect(el.textContent ?? '').not.toContain(n);
+  });
+  it('the bug is the full wordmark lockup: opaque block, gold BETA tag, marquee clipped after it (owner spec, item 5)', () => {
+    // gold BETA chip in the lockup
+    expect(compete).toContain('<span className="ticker-beta">BETA</span>');
+    expect(css).toContain('.ticker-beta {');
+    // the block is fully opaque in BOTH themes — a solid hex fill, and the
+    // old translucent gold / neon-tinted bug backgrounds are gone
+    expect(css).toContain('background: #1d0b38');
+    expect(css).not.toContain('.ticker-bug { flex: none; display: grid; place-items: center; width: 44px; background: rgba');
+    expect(css).not.toContain('html[data-theme="neon"] .ticker-bug { background: rgba');
+    // the marquee track lives inside its own clipped viewport beside the bug
+    expect(compete).toContain('<div className="ticker-viewport">');
+    expect(css).toContain('.ticker-viewport { flex: 1; min-width: 0; overflow: hidden;');
+  });
+  it('the marquee runs ~25% faster than the original loop (owner tweak)', () => {
+    // was: max(16, chars * 0.32); now the duration is cut to 0.8×
+    expect(compete).toContain('Math.max(13, Math.round(lines.join(\' \').length * 0.256))');
+    expect(compete).not.toContain('* 0.32)');
   });
   it('the ticker is leaderboard-only — Tournaments never renders it', () => {
     const tours = compete.slice(compete.indexOf('export function Tournaments'));

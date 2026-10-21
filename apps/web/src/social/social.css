@@ -474,13 +474,19 @@ div.ranks-row { cursor: default; }
 .ranks-empty button { min-height: 44px; padding: 0 22px; border-radius: 12px; font-family: var(--display); font-weight: 800; letter-spacing: .04em; font-size: 17px; }
 .ranks-pin { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; background: #1a0e2c; border-top: 1px solid rgba(var(--gold-rgb),.55); box-shadow: 0 -10px 24px rgba(0,0,0,.4); padding: 0 12px; }
 /* ESPN BottomLine ticker (leaderboard only): a flex footer under the scroll
-   area, so it reserves its own 38px and never covers a row. The spade bug
-   (favicon.svg — the Home Screen icon mark) heads the bar; lines scroll to
-   its right in a seamless two-copy loop. Holding the bar pauses it; reduced
-   motion swaps the marquee for stepping lines (.ticker-still, JS-driven). */
+   area, so it reserves its own 38px and never covers a row. The bug is the
+   full BWM WORDMARK lockup (bwm-wordmark-white.svg: block BWM, spade cut
+   into the W) + a gold BETA tag at its lower right, on a fully OPAQUE deep
+   purple block — identical in both themes. The marquee lives in its own
+   clipped viewport beside the bug, so scrolling text physically starts to
+   the right of the block and can never roll behind it. Holding the bar
+   pauses it; reduced motion swaps the marquee for stepping lines
+   (.ticker-still, JS-driven). */
 .ranks-ticker { flex: none; display: flex; align-items: stretch; height: 38px; overflow: hidden; background: #12081f; border-top: 1px solid rgba(var(--gold-rgb),.4); }
-.ticker-bug { flex: none; display: grid; place-items: center; width: 44px; background: rgba(var(--gold-rgb),.12); border-right: 1px solid rgba(var(--gold-rgb),.35); pointer-events: none; }
-.ticker-bug img { width: 30px; height: 30px; display: block; }
+.ticker-bug { flex: none; position: relative; display: flex; align-items: center; padding: 3px 12px 3px 9px; background: #1d0b38; border-right: 1px solid rgba(var(--gold-rgb),.35); pointer-events: none; }
+.ticker-bug img { height: 25px; width: auto; display: block; }
+.ticker-beta { position: absolute; right: 4px; bottom: 3px; font-family: var(--display); font-weight: 800; font-size: 8px; letter-spacing: .08em; line-height: 1; color: #1d1204; background: var(--gold); padding: 1.5px 3px; border-radius: 2px; }
+.ticker-viewport { flex: 1; min-width: 0; overflow: hidden; display: flex; align-items: stretch; }
 .ticker-track { display: flex; align-items: center; white-space: nowrap; animation-name: ticker-scroll; animation-timing-function: linear; animation-iteration-count: infinite; will-change: transform; }
 .ticker-copy { display: inline-flex; align-items: center; }
 .ticker-line { font-family: var(--display); font-weight: 700; font-size: 13px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink); }
@@ -490,7 +496,8 @@ div.ranks-row { cursor: default; }
 .ticker-still { display: flex; align-items: center; padding: 0 12px; font-family: var(--display); font-weight: 700; font-size: 13px; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (prefers-reduced-motion: reduce) { .ticker-track { animation: none; } }
 html[data-theme="neon"] .ranks-ticker { background: #0a0d24; border-top-color: rgba(128, 84, 255, .55); }
-html[data-theme="neon"] .ticker-bug { background: rgba(128, 84, 255, .16); border-right-color: rgba(128, 84, 255, .4); }
+/* No neon override for .ticker-bug: the wordmark block is the identical
+   opaque lockup in both themes (owner spec, league data wave). */
 .ranks-pin .ranks-row { border-bottom: 0; }
 .ranks-sheet-back {
   position: absolute; inset: 0; z-index: 6; display: flex; align-items: flex-end;

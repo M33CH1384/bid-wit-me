@@ -712,13 +712,17 @@ export function buildTickerLines(o: { kind: Kind; top: Row[]; online: TickerOnli
 
 /**
  * The BottomLine: a fixed bar at the foot of the leaderboard view — the BWM
- * spade bug at its head (the Home Screen icon mark, favicon.svg), stat lines
- * scrolling to its right. It sits IN the layout flow (a flex footer under
- * the scroll area), so it reserves its own height and never covers rows.
- * Leaderboard surface only. Auto-scrolls in a seamless loop; holding it
- * pauses; reduced motion (OS or the app's Reduce effects) swaps the marquee
- * for lines that step every few seconds. The rating board refetches on a
- * 60s poll while the view is open; presence is live from the social store.
+ * WORDMARK bug at its head (the full lockup: block "BWM" with the spade cut
+ * into the W, plus the gold BETA tag — owner spec, league data wave), stat
+ * lines scrolling to its right inside a clipped viewport, so text starts
+ * after the bug block and can never roll behind it. It sits IN the layout
+ * flow (a flex footer under the scroll area), so it reserves its own
+ * height and never covers rows. Leaderboard surface only (the app-wide
+ * promotion is the data wave's next step). Auto-scrolls in a seamless
+ * loop; holding it pauses; reduced motion (OS or the app's Reduce effects)
+ * swaps the marquee for lines that step every few seconds. The rating
+ * board refetches on a 60s poll while the view is open; presence is live
+ * from the social store.
  */
 export function RanksTicker({ kind, mine }: { kind: Kind; mine: MyStats | null }) {
   const s = useSocial();
@@ -771,24 +775,31 @@ export function RanksTicker({ kind, mine }: { kind: Kind; mine: MyStats | null }
   }, [reduced, lines.length]);
 
   if (!lines.length) return null;
-  const duration = Math.max(16, Math.round(lines.join(' ').length * 0.32));
+  // Owner tweak (2026-10-20): ~25% faster than the original 0.32 s/char
+  // loop — the duration is cut to 0.8× (0.256 s/char, 13s floor vs 16s).
+  const duration = Math.max(13, Math.round(lines.join(' ').length * 0.256));
   return (
     <div className={`ranks-ticker${held ? ' held' : ''}`} data-testid="ranks-ticker"
       onPointerDown={() => setHeld(true)} onPointerUp={() => setHeld(false)}
       onPointerLeave={() => setHeld(false)} onPointerCancel={() => setHeld(false)}>
-      <span className="ticker-bug" aria-hidden="true"><img src="/favicon.svg" alt="" width={30} height={30} /></span>
+      <span className="ticker-bug" aria-hidden="true">
+        <img src="/assets/bwm-wordmark-white.svg" alt="" />
+        <span className="ticker-beta">BETA</span>
+      </span>
       <span className="sr-only" role="status">{lines.join(' ')}</span>
-      {reduced
-        ? <div className="ticker-still" aria-hidden="true">{lines[step % lines.length]}</div>
-        : (
-          <div className="ticker-track" aria-hidden="true" style={{ animationDuration: `${duration}s` }}>
-            {[0, 1].map((copy) => (
-              <span key={copy} className="ticker-copy">
-                {lines.map((l, i) => <span key={i} className="ticker-line">{l}<i className="ticker-sep">♠</i></span>)}
-              </span>
-            ))}
-          </div>
-        )}
+      <div className="ticker-viewport">
+        {reduced
+          ? <div className="ticker-still" aria-hidden="true">{lines[step % lines.length]}</div>
+          : (
+            <div className="ticker-track" aria-hidden="true" style={{ animationDuration: `${duration}s` }}>
+              {[0, 1].map((copy) => (
+                <span key={copy} className="ticker-copy">
+                  {lines.map((l, i) => <span key={i} className="ticker-line">{l}<i className="ticker-sep">♠</i></span>)}
+                </span>
+              ))}
+            </div>
+          )}
+      </div>
     </div>
   );
 }
