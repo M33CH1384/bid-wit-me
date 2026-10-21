@@ -74,7 +74,7 @@ interface Unlock { itemId: string; source: string; unlockedAt: number; slot: str
 /** The cred payload, normalized: /api/profile/me and /api/profile/:id share the
  *  shape; challenges/unlocks only exist on the /me payload. */
 interface CredData {
-  user: { id: string; name: string; avatar: string | null; avatarUpdatedAt: number | null; tagline: string | null; socialLinks: SocialLinks };
+  user: { id: string; name: string; avatar: string | null; avatarUpdatedAt: number | null; tagline: string | null; socialLinks: SocialLinks; region: string | null };
   level: { level: number; xp: number; title: string; xpForNext: number; xpIntoLevel: number };
   season?: { id: string; name: string; endsAt: number };
   rank: { team: SeasonRank; cutthroat: SeasonRank };
@@ -88,7 +88,7 @@ interface CredData {
 /** The social-record payload (/api/social/profile/:name). */
 interface SocialProfileData {
   id?: string; avatar?: string | null;
-  username: string; memberSince: number; tagline?: string | null; badges: { id: string; earnedAt: number }[]; teamNames: string[];
+  username: string; memberSince: number; tagline?: string | null; region?: string | null; badges: { id: string; earnedAt: number }[]; teamNames: string[];
   ratings: { team?: number; cutthroat?: number }; totals: { games: number; wins: number };
   h2h: { id: string; name: string; games: number; wins: number; losses: number }[]; vsYou?: { games: number; wins: number; losses: number }; champion: number;
   stats?: { games: number; wins: number; streak: number; bestStreak: number; accuracy: number | null; booksPerHand: number | null; nil: string; shotsGiven: number; shotsTaken: number; wheels: number; bjWins: number; bidSec: number | null; playSec: number | null };
@@ -262,6 +262,9 @@ export function ProfileView({ host, name, id }: {
   const [tagDraft, setTagDraft] = useState<string | null>(null);
   const [tagBusy, setTagBusy] = useState(false);
   const [tagErr, setTagErr] = useState<string | null>(null);
+  const [regionDraft, setRegionDraft] = useState<string | null>(null);
+  const [regionBusy, setRegionBusy] = useState(false);
+  const [regionErr, setRegionErr] = useState<string | null>(null);
 
   const subjectName = name ?? (selfRoute ? cred?.user.name : undefined);
 
@@ -381,6 +384,20 @@ export function ProfileView({ host, name, id }: {
     } catch (e) { setTagErr((e as Error).message); } finally { setTagBusy(false); }
   };
 
+  const onSaveRegion = async () => {
+    if (regionDraft === null) return;
+    setRegionErr(null); setRegionBusy(true);
+    try {
+      await api<{ ok: boolean; region: string | null }>('/api/profile/me/region', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ region: regionDraft }),
+      });
+      setRegionDraft(null);
+      reload();
+    } catch (e) { setRegionErr((e as Error).message); } finally { setRegionBusy(false); }
+  };
+
   const claim = async (cid: string) => {
     setClaiming(cid); setClaimErr(null);
     try {
@@ -428,6 +445,10 @@ export function ProfileView({ host, name, id }: {
     ? [...cred.challenges.daily, ...cred.challenges.weekly].filter((c) => c.progress >= c.target && !c.claimed).length
     : 0;
   const tagValue = tagDraft ?? cred?.user.tagline ?? '';
+  const regionValue = regionDraft ?? cred?.user.region ?? '';
+  /** Plain display region (league P-B): the social payload's, falling back to
+   *  the cred payload on the self view. Unset = nothing shown, no fanfare. */
+  const regionText = socialP?.region ?? (me ? cred?.user.region : undefined) ?? undefined;
 
   const content = (
     <>
@@ -440,6 +461,7 @@ export function ProfileView({ host, name, id }: {
           <p className={`soc-online-status ${presenceEntry ? 'on' : 'off'}`} data-testid="profile-online">
             <i className="soc-dot" aria-hidden />{presenceEntry ? presenceLine(presenceEntry.status, modeName) : 'Offline'}
           </p>
+          {regionText && <p className="soc-muted" data-testid="profile-region">Region: {regionText}</p>}
         </div>
         {cred && (
           <RepBlock testid="profile-rep" coinsTestid="profile-coins"
@@ -502,6 +524,23 @@ export function ProfileView({ host, name, id }: {
             </div>
             <small className="prof-tag-count">{tagValue.length}/140 · clear it and save to remove</small>
             {tagErr && <span className="prof-pic-err" role="alert">{tagErr}</span>}
+          </div>
+
+          {/* Region: self-declared, powers the regional leaderboard (league P-B). */}
+          <div className="prof-tag-row">
+            <label className="prof-pic-note" htmlFor="prof-region-input">Region — your city or block. It powers your regional leaderboard.</label>
+            <div className="prof-tag-edit">
+              <input id="prof-region-input" data-testid="region-input" type="text" maxLength={24}
+                placeholder="e.g. Harlem" value={regionValue}
+                onChange={(e) => { setRegionDraft(e.target.value); setRegionErr(null); }} />
+              <button type="button" className="prof-pic-btn" data-testid="region-save"
+                disabled={regionBusy || regionDraft === null || regionValue === (cred.user.region ?? '')}
+                onClick={() => void onSaveRegion()}>
+                {regionBusy ? 'Saving…' : 'Save region'}
+              </button>
+            </div>
+            <small className="prof-tag-count">{regionValue.length}/24 · clear it and save to remove</small>
+            {regionErr && <span className="prof-pic-err" role="alert">{regionErr}</span>}
           </div>
 
           {/* Social links: public profile links on fixed platforms, server-normalized (Demetrius 2026-10-20). */}

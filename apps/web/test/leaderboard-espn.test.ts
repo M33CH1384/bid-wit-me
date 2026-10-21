@@ -109,7 +109,7 @@ describe('scope rotation + Friends / Online-now views (P-A)', () => {
     expect(viewRowsFor(rows, 'local', { friendIds: [], onlineIds: [] })).toBe(rows);
   });
   it('only the server scopes hit the endpoint — friends/online fetch global', () => {
-    expect(compete).toContain("const fetchScope = scope === 'local' ? 'local' : 'global';");
+    expect(compete).toContain("const fetchScope = scope === 'local' ? 'local' : scope === 'regions' ? 'regions' : 'global';");
     expect(compete).toContain('scope=${fetchScope}');
   });
 });

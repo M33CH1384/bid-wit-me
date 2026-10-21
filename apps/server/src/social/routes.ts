@@ -8,6 +8,7 @@
  * The websocket (/api/social/ws) is routed in index.ts to the Social Durable Object.
  */
 import { type AuthEnv, currentUser } from '../auth/routes';
+import { regionOf } from '../cred/region';
 import { leaderboard, myStats, personalStats, serverStats, type PersonalStats } from '../stats/boards';
 import { usernameKey } from '../auth/username';
 import { TICKET_TTL_MS, signTicket } from './ticket';
@@ -41,6 +42,8 @@ export interface ProfileOut {
   username: string;
   memberSince: number;
   tagline: string | null;
+  /** self-declared region (league P-B) — plain display text, null when unset */
+  region: string | null;
   /** uploaded profile picture (data URL) or null — the Social profile header renders it directly */
   avatar: string | null;
   badges: { id: string; earnedAt: number }[];
@@ -55,7 +58,7 @@ export interface ProfileOut {
 }
 
 export async function profileFor(db: D1Database, username: string, viewer: string | null): Promise<ProfileOut | null> {
-  const u = await db.prepare('SELECT id, username, created_at, tagline, avatar FROM users WHERE username_key = ?').bind(usernameKey(username)).first<{ id: string; username: string; created_at: number; tagline: string | null; avatar: string | null }>();
+  const u = await db.prepare('SELECT id, username, created_at, tagline, region, avatar FROM users WHERE username_key = ?').bind(usernameKey(username)).first<{ id: string; username: string; created_at: number; tagline: string | null; region: string | null; avatar: string | null }>();
   if (!u) return null;
   const prog = await db.prepare('SELECT data FROM progress WHERE user_id = ?').bind(u.id).first<{ data: string }>();
   let badges: { id: string; earnedAt: number }[] = [];
@@ -72,7 +75,7 @@ export async function profileFor(db: D1Database, username: string, viewer: strin
   const store = new SocialStore(db);
   const out: ProfileOut = {
     id: u.id, avatar: u.avatar,
-    username: u.username, memberSince: u.created_at, tagline: u.tagline, badges, teamNames: teams.slice(0, 6), ratings: await store.ratings(u.id),
+    username: u.username, memberSince: u.created_at, tagline: u.tagline, region: u.region, badges, teamNames: teams.slice(0, 6), ratings: await store.ratings(u.id),
     totals: { games: stats.games, wins: stats.wins },
     h2h: h2h.map((r) => ({ id: `u:${r.id}`, name: r.name ?? 'Player', games: r.games, wins: r.wins, losses: r.losses })),
     champion: champ?.n ?? 0,
@@ -120,6 +123,13 @@ export async function handleSocialHttp(req: Request & { cf?: unknown }, env: Soc
       const mine = me ? await db.prepare('SELECT region FROM social_settings WHERE user_id = ?').bind(me.id).first<{ region: string | null }>() : null;
       region = mine?.region ?? coarseRegion(req.cf);
       if (!region) return json({ rows: [], region: null, note: 'Your region is unknown, so there is no local board.' });
+    }
+    if (q.get('scope') === 'regions') {
+      // League P-B: the regional board = players who declared the SAME
+      // region as the viewer. Unset viewers get an honest empty board.
+      const declared = me ? await regionOf(db, me.id) : null;
+      if (!declared) return json({ rows: [], region: null, note: 'Set your region on your profile to see your regional board.' });
+      return json({ rows: await leaderboard(db, { board, kind, period, region: null, declaredRegion: declared, now }), region: declared });
     }
     return json({ rows: await leaderboard(db, { board, kind, period, region, now }), region });
   }

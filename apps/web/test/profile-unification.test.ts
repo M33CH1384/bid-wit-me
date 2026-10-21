@@ -184,6 +184,8 @@ describe('one profile, both hosts', () => {
     expect(testids()).toContain('avatar-upload');
     expect(testids()).toContain('tagline-input');
     expect(testids()).toContain('tagline-save');
+    expect(testids()).toContain('region-input');
+    expect(testids()).toContain('region-save');
     expect(testids()).toContain('social-input-instagram');
     expect(testids()).toContain('social-save');
     expect(testids()).toContain('social-cancel');
@@ -193,6 +195,7 @@ describe('one profile, both hosts', () => {
     await act(async () => { done.click(); });
     expect(testids()).not.toContain('avatar-upload');
     expect(testids()).not.toContain('tagline-input');
+    expect(testids()).not.toContain('region-input');
     expect(testids()).not.toContain('social-input-instagram');
   });
 });

@@ -27,9 +27,10 @@ type Kind = 'team' | 'cutthroat';
  *  to the viewer's friends (social store) or to players online right now
  *  (presence), renumbered inside the view. The scope label always says which
  *  one you're looking at. */
-type Scope = 'global' | 'friends' | 'online' | 'local';
+type Scope = 'global' | 'friends' | 'online' | 'regions' | 'local';
 /** The auto-rotation cycle (owner, 2026-10-20): Global → Friends → Online
- *  now. 'local' is a manual Filters pick, not part of the cycle. */
+ *  now, plus Regions when the viewer declared one (league P-B). 'local' is
+ *  a manual Filters pick, not part of the cycle. */
 const ROTATION: Scope[] = ['global', 'friends', 'online'];
 type Period = 'all' | 'month' | 'week';
 interface Row { rank: number; id: string; name: string; value: number; games: number; extra?: string; vsPlayers?: number; vsBots?: number }
@@ -48,7 +49,7 @@ const num = (n: number | null) => (n === null ? '—' : String(n));
 const UNRATED_HINT = 'Play a signed-in player to get rated';
 
 const BOARD_LABEL: Record<Board, string> = { rating: 'Rating', wins: 'Wins', accuracy: 'Bid accuracy', duos: 'Best duos' };
-const SCOPE_LABEL: Record<Scope, string> = { global: 'Global', friends: 'Friends', online: 'Online now', local: 'Local' };
+const SCOPE_LABEL: Record<Scope, string> = { global: 'Global', friends: 'Friends', online: 'Online now', regions: 'Regions', local: 'Local' };
 const PERIOD_LABEL: Record<Period, string> = { week: 'This week', month: 'This month', all: 'All-time' };
 
 /** Server-wide count. Kept for callers; the Ranks tab no longer prints it. */
@@ -147,7 +148,7 @@ function RankRow({ r, board, period, mine, onOpen, rowRef, testId }: {
  * is always in their own filtered board. Ranks renumber inside the view.
  */
 export function viewRowsFor(rows: Row[], scope: Scope, o: { friendIds: string[]; onlineIds: string[]; youId?: string }): Row[] {
-  if (scope === 'global' || scope === 'local') return rows;
+  if (scope === 'global' || scope === 'local' || scope === 'regions') return rows;
   const set = new Set<string>();
   for (const id of scope === 'friends' ? o.friendIds : o.onlineIds) { set.add(id); set.add(`u:${id.replace(/^u:/, '')}`); }
   if (o.youId) { set.add(o.youId); set.add(`u:${o.youId.replace(/^u:/, '')}`); }
@@ -261,7 +262,7 @@ function FilterSheet({ scope, period, onScope, onPeriod, onClose }: {
         </div>
         {/* The metric itself is picked on the visible category tabs above
             the list (ESPN leaders pattern) — this sheet keeps scope/period. */}
-        {pills('lb-scope', 'Scope', scope, onScope, [['global', 'Global'], ['friends', 'Friends'], ['online', 'Online now'], ['local', 'Local']])}
+        {pills('lb-scope', 'Scope', scope, onScope, [['global', 'Global'], ['friends', 'Friends'], ['online', 'Online now'], ['regions', 'Regions'], ['local', 'Local']])}
         {pills('lb-period', 'Period', period, onPeriod, [['week', 'Week'], ['month', 'Month'], ['all', 'All-time']])}
       </div>
     </div>
@@ -297,16 +298,26 @@ export function Leaderboards() {
     }).catch(() => { if (!stop) setReady(true); });
     return () => { stop = true; };
   }, [acct.ready, signedIn]);
-  // Friends / Online now filter the GLOBAL board client-side, so only the
-  // server-backed scopes ('global' | 'local') ever hit the endpoint.
-  const fetchScope = scope === 'local' ? 'local' : 'global';
+  // Friends / Online now filter the GLOBAL board client-side; global, local
+  // and regions (league P-B) are server-backed scopes.
+  const fetchScope = scope === 'local' ? 'local' : scope === 'regions' ? 'regions' : 'global';
   useEffect(() => {
     if (!ready) return;
     setRows(null); setNote(null);
     get(`/api/social/leaderboard?board=${board}&kind=${board === 'duos' ? 'team' : kind}&scope=${fetchScope}&period=${period}`)
-      .then((j) => { setRows(j.rows); setNote(j.note ?? (fetchScope === 'local' && j.region ? `Region: ${j.region}` : null)); })
+      .then((j) => { setRows(j.rows); setNote(j.note ?? ((fetchScope === 'local' || fetchScope === 'regions') && j.region ? `Region: ${j.region}` : null)); })
       .catch((e) => { setRows([]); setNote(String(e.message)); });
   }, [board, kind, fetchScope, period, ready]);
+
+  /* The viewer's declared region (one /api/profile/me read on mount): gates
+   * Regions joining the rotation. Unset viewers simply never rotate into it. */
+  const [myRegion, setMyRegion] = useState<string | null>(null);
+  useEffect(() => {
+    if (!acct.user) return;
+    let live = true;
+    get('/api/profile/me').then((j) => { if (live) setMyRegion(j?.user?.region ?? null); }).catch(() => undefined);
+    return () => { live = false; };
+  }, [acct.user]);
 
   /* Auto-rotation (owner, 2026-10-20): the board cycles Global → Friends →
    * Online now every ~8s and the summary line labels the active scope. Any
@@ -316,14 +327,15 @@ export function Leaderboards() {
   const hoverRef = useRef(false);
   const markInteract = () => { interactRef.current = Date.now(); };
   useEffect(() => {
+    const cycle: Scope[] = myRegion ? [...ROTATION, 'regions'] : ROTATION;
     const iv = setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden) return;
       if (filters || statsOpen || hoverRef.current) return;
       if (Date.now() - interactRef.current < 12_000) return;
-      setScope((cur) => ROTATION[(ROTATION.indexOf(cur) + 1) % ROTATION.length] ?? 'global');
+      setScope((cur) => cycle[(cycle.indexOf(cur) + 1) % cycle.length] ?? 'global');
     }, 8000);
     return () => clearInterval(iv);
-  }, [filters, statsOpen]);
+  }, [filters, statsOpen, myRegion]);
   useEffect(() => {
     if (!filters && !statsOpen) return;
     const onKey = (e: KeyboardEvent) => {

@@ -20,6 +20,7 @@ import { isAdmin } from '../social/routes';
 import { myStats } from '../stats/boards';
 import { avatarOf, parseAvatarDataUrl } from './avatar';
 import { cleanTagline, taglineOf } from './tagline';
+import { cleanRegion, regionOf } from './region';
 import { applySocialLinksPatch, parseSocialLinks, socialLinksOf, validateSocialLinksPatch } from './socialLinks';
 import { divisionOf, type Division } from './divisions';
 import { ensureSeason } from './seasons';
@@ -61,7 +62,7 @@ async function fullProfile(db: D1Database, userId: string, username: string, now
   // idempotent earners: welcome grant + daily login (cheap, safe to run on every profile read)
   try { await grantWelcome(db, userId, now); } catch { /* best-effort */ }
   try { await dailyLogin(db, userId, now); } catch { /* best-effort */ }
-  const [level, team, cutthroat, challenges, achievements, unlocks, coins, pic, tagline, links] = await Promise.all([
+  const [level, team, cutthroat, challenges, achievements, unlocks, coins, pic, tagline, links, region] = await Promise.all([
     xpSnapshot(db, userId),
     seasonRank(db, userId, season.id, 'team'),
     seasonRank(db, userId, season.id, 'cutthroat'),
@@ -72,10 +73,11 @@ async function fullProfile(db: D1Database, userId: string, username: string, now
     avatarOf(db, userId),
     taglineOf(db, userId),
     socialLinksOf(db, userId),
+    regionOf(db, userId),
   ]);
   const stats = await myStats(db, userId);
   return {
-    user: { id: userId, name: username, avatar: pic.avatar, avatarUpdatedAt: pic.avatarUpdatedAt, tagline, socialLinks: links },
+    user: { id: userId, name: username, avatar: pic.avatar, avatarUpdatedAt: pic.avatarUpdatedAt, tagline, socialLinks: links, region },
     /** developer (owner) accounts bypass unlock gates, e.g. The Pj's */
     dev,
     level: { ...level, xpForNext: xpForLevel(level.level) },
@@ -119,6 +121,15 @@ export async function handleCredHttp(req: Request, env: CredEnv, url: URL, parts
     if (!cleaned.ok) return json({ error: cleaned.error }, 400);
     await db.prepare('UPDATE users SET tagline = ? WHERE id = ?').bind(cleaned.tagline, me.id).run();
     return json({ ok: true, tagline: cleaned.tagline });
+  }
+  if (parts[1] === 'profile' && parts[2] === 'me' && parts[3] === 'region' && req.method === 'POST') {
+    if (!me) return json({ error: 'Sign in to set your region.' }, 401);
+    let body: { region?: unknown };
+    try { body = (await req.json()) as { region?: unknown }; } catch { return json({ error: 'Send the region as JSON.' }, 400); }
+    const cleaned = cleanRegion(body?.region);
+    if (!cleaned.ok) return json({ error: cleaned.error }, 400);
+    await db.prepare('UPDATE users SET region = ? WHERE id = ?').bind(cleaned.region, me.id).run();
+    return json({ ok: true, region: cleaned.region });
   }
   if (parts[1] === 'profile' && parts[2] === 'me' && parts[3] === 'social-links' && req.method === 'POST') {
     if (!me) return json({ error: 'Sign in to edit your links.' }, 401);

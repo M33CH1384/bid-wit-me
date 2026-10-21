@@ -18,19 +18,23 @@ const VS_BOTS = `EXISTS (SELECT 1 FROM json_each(g.seats) je WHERE json_extract(
 const DAY = 86400_000;
 export const since = (p: Period, now: number) => (p === 'week' ? now - 7 * DAY : p === 'month' ? now - 30 * DAY : 0);
 
-export async function leaderboard(db: D1Database, o: { board: Board; kind: 'team' | 'cutthroat'; period: Period; region: string | null; now: number }): Promise<BoardRow[]> {
+export async function leaderboard(db: D1Database, o: { board: Board; kind: 'team' | 'cutthroat'; period: Period; region: string | null; declaredRegion?: string | null; now: number }): Promise<BoardRow[]> {
   const from = since(o.period, o.now);
   // local = same coarse region, and never anyone who hid their location
   const loc = o.region ? 'AND x.user_id IN (SELECT user_id FROM social_settings WHERE region = ? AND hide_location = 0)' : '';
   const locArgs = o.region ? [o.region] : [];
+  // regions (league P-B) = same SELF-DECLARED region (users.region); duos keep
+  // a pair when either partner declared it
+  const decl = o.declaredRegion ? 'AND u.region = ?' : '';
+  const declArgs = o.declaredRegion ? [o.declaredRegion] : [];
   let rows: { id: string; name: string | null; value: number; games: number; extra?: string }[] = [];
   if (o.board === 'rating' && o.period === 'all') {
     rows = (await db.prepare(`SELECT x.user_id AS id, u.username AS name, ROUND(x.elo) AS value, x.games AS games FROM ratings x JOIN users u ON u.id = x.user_id
-      WHERE x.kind = ? AND x.games > 0 ${loc} ORDER BY x.elo DESC LIMIT 50`).bind(o.kind, ...locArgs).all<typeof rows[number]>()).results;
+      WHERE x.kind = ? AND x.games > 0 ${loc} ${decl} ORDER BY x.elo DESC LIMIT 50`).bind(o.kind, ...locArgs, ...declArgs).all<typeof rows[number]>()).results;
   } else if (o.board === 'rating') {
     // a period's rating board = Elo gained in it
     rows = (await db.prepare(`SELECT x.user_id AS id, u.username AS name, ROUND(SUM(x.elo_after - x.elo_before)) AS value, COUNT(*) AS games FROM game_players x JOIN users u ON u.id = x.user_id
-      WHERE x.kind = ? AND x.ended_at >= ? AND x.elo_after IS NOT NULL ${loc} GROUP BY x.user_id ORDER BY value DESC LIMIT 50`).bind(o.kind, from, ...locArgs).all<typeof rows[number]>()).results;
+      WHERE x.kind = ? AND x.ended_at >= ? AND x.elo_after IS NOT NULL ${loc} ${decl} GROUP BY x.user_id ORDER BY value DESC LIMIT 50`).bind(o.kind, from, ...locArgs, ...declArgs).all<typeof rows[number]>()).results;
   } else if (o.board === 'wins') {
     // vs players: at least one opponent was signed in. vs bots: every opponent was a bot. Guest wins are neither.
     rows = (await db.prepare(`SELECT x.user_id AS id, u.username AS name,
@@ -38,23 +42,24 @@ export async function leaderboard(db: D1Database, o: { board: Board; kind: 'team
         SUM(CASE WHEN x.won = 1 AND ${VS_BOTS} THEN 1 ELSE 0 END) AS vs_bots,
         COUNT(*) AS games
       FROM game_players x JOIN users u ON u.id = x.user_id JOIN games g ON g.id = x.game_id
-      WHERE x.kind = ? AND x.ended_at >= ? AND COALESCE(g.end_reason, 'finished') != 'abandoned' ${loc} GROUP BY x.user_id HAVING value > 0 OR vs_bots > 0 ORDER BY value DESC, vs_bots DESC, games ASC LIMIT 50`).bind(o.kind, from, ...locArgs).all<typeof rows[number] & { vs_bots?: number }>()).results;
+      WHERE x.kind = ? AND x.ended_at >= ? AND COALESCE(g.end_reason, 'finished') != 'abandoned' ${loc} ${decl} GROUP BY x.user_id HAVING value > 0 OR vs_bots > 0 ORDER BY value DESC, vs_bots DESC, games ASC LIMIT 50`).bind(o.kind, from, ...locArgs, ...declArgs).all<typeof rows[number] & { vs_bots?: number }>()).results;
   } else if (o.board === 'accuracy') {
     const min = o.period === 'all' ? 20 : 8;
     rows = (await db.prepare(`SELECT x.user_id AS id, u.username AS name,
         ROUND(100.0 * SUM(json_extract(x.stats, '$.made')) / SUM(json_extract(x.stats, '$.bids')), 1) AS value, COUNT(*) AS games, SUM(json_extract(x.stats, '$.bids')) AS extra
       FROM game_players x JOIN users u ON u.id = x.user_id JOIN games g ON g.id = x.game_id
-      WHERE x.kind = ? AND x.ended_at >= ? AND COALESCE(g.end_reason, 'finished') != 'abandoned' ${loc} GROUP BY x.user_id HAVING SUM(json_extract(x.stats, '$.bids')) >= ${min} ORDER BY value DESC, extra DESC LIMIT 50`).bind(o.kind, from, ...locArgs).all<typeof rows[number]>()).results
+      WHERE x.kind = ? AND x.ended_at >= ? AND COALESCE(g.end_reason, 'finished') != 'abandoned' ${loc} ${decl} GROUP BY x.user_id HAVING SUM(json_extract(x.stats, '$.bids')) >= ${min} ORDER BY value DESC, extra DESC LIMIT 50`).bind(o.kind, from, ...locArgs, ...declArgs).all<typeof rows[number]>()).results
       .map((r) => ({ ...r, extra: `${r.extra} bids` }));
   } else {
     // best duos: signed-in partners, by wins together (team games only)
     const locD = o.region ? 'AND x.user_id IN (SELECT user_id FROM social_settings WHERE region = ? AND hide_location = 0) AND x.partner_id IN (SELECT user_id FROM social_settings WHERE region = ? AND hide_location = 0)' : '';
+    const declD = o.declaredRegion ? 'AND (u.region = ? OR p.region = ?)' : '';
     rows = (await db.prepare(`SELECT x.user_id || ':' || x.partner_id AS id, u.username || ' + ' || p.username AS name, SUM(x.won) AS value, COUNT(*) AS games,
         ROUND(100.0 * SUM(x.won) / COUNT(*)) || '%' AS extra
       FROM game_players x JOIN users u ON u.id = x.user_id JOIN users p ON p.id = x.partner_id
-      WHERE x.kind = 'team' AND x.partner_id IS NOT NULL AND x.user_id < x.partner_id AND x.ended_at >= ? ${locD}
+      WHERE x.kind = 'team' AND x.partner_id IS NOT NULL AND x.user_id < x.partner_id AND x.ended_at >= ? ${locD} ${declD}
         AND EXISTS (SELECT 1 FROM games g, json_each(g.seats) je WHERE g.id = x.game_id AND COALESCE(g.end_reason, 'finished') != 'abandoned' AND json_extract(je.value, '$.kind') = 'user' AND json_extract(je.value, '$.side') != x.side)
-      GROUP BY x.user_id, x.partner_id HAVING games >= 2 ORDER BY value DESC, games ASC LIMIT 50`).bind(from, ...locArgs, ...locArgs).all<typeof rows[number]>()).results;
+      GROUP BY x.user_id, x.partner_id HAVING games >= 2 ORDER BY value DESC, games ASC LIMIT 50`).bind(from, ...locArgs, ...locArgs, ...declArgs, ...declArgs).all<typeof rows[number]>()).results;
   }
   return rows.map((r, i) => {
     const row: BoardRow = { rank: i + 1, id: o.board === 'duos' ? r.id : `u:${r.id}`, name: r.name ?? 'Player', value: Number(r.value) || 0, games: r.games, ...(r.extra ? { extra: String(r.extra) } : {}) };
