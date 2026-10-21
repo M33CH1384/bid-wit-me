@@ -3144,3 +3144,19 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
 .vic-foot { flex: 0 1 auto; min-height: 0; }
 .vic-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; width: 100%; display: flex; flex-direction: column; gap: 6px; align-items: center; }
 .vic-foot .confirm-actions { flex: none; width: 100%; }
+
+/* ---------- recap header vs the sound dock (owner 2026-10-21: "The chat button is
+   hiding behind audio setting button") ----------
+   The speaker dock paints over the recap's top-right corner (fixed/slotted,
+   z-index 1050 — see .sound-dock): slotted onto the scorebug it renders 40px wide,
+   unslotted it is the 46px portrait button, both at right: calc(8px +
+   env(safe-area-inset-right)) — so its left edge sits at most 54px + safe-area from
+   the screen's right edge, squarely on the header row. Reserve that whole footprint
+   on the header: padding-right = the dock's widest reach (8px offset + 46px button,
+   tracked with the same safe-area term the dock itself uses). With the sheet's own
+   8px backdrop inset (.tt-backdrop) the in-flow chat button's right edge then lands
+   at least 62px from the screen edge — fully visible immediately LEFT of the
+   speaker, unread badge and all, in every header variant (this longhand is last in
+   the file, so it wins over the base + compact padding shorthands above). The dock
+   itself — position, z-index, gestures — is untouched. */
+.tt-head { padding-right: calc(54px + env(safe-area-inset-right)); }

@@ -433,6 +433,28 @@ describe('recap chat affordance (owner: no floating button over the scores)', ()
     expect(css).not.toContain('.tt-head { display: flex; align-items: center; gap: 10px; padding: 12px 56px');
     expect(css).toContain('.tt-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px 10px;');
   });
+  it('the header reserves the sound dock corner so chat sits fully left of the speaker', () => {
+    // The speaker dock paints OVER the recap's top-right corner (z 1050): right
+    // offset 8px + safe-area, button 46px wide in portrait (40px slotted in the
+    // scorebug) — its left edge reaches at most 54px + safe-area from the screen's
+    // right edge, which is exactly where the in-flow chat button used to slide
+    // under it (owner 2026-10-21). The header's right padding must reserve that
+    // whole footprint, tracked with the dock's own safe-area term.
+    const reserve = css.match(/\.tt-head \{ padding-right: calc\((\d+)px \+ env\(safe-area-inset-right\)\); \}/);
+    expect(reserve).not.toBeNull();
+    expect(Number(reserve![1])).toBeGreaterThanOrEqual(54); // 8px dock offset + 46px widest dock button
+    // …and the reservation must WIN the cascade over every header padding
+    // shorthand (base rule + both compact variants), or phones re-collide.
+    const at = css.indexOf(reserve![0]);
+    expect(at).toBeGreaterThan(css.indexOf('.tt-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px 10px;'));
+    expect(at).toBeGreaterThan(css.indexOf('.tt-head { padding: 6px 12px; }'));
+    expect(at).toBeGreaterThan(css.indexOf('.tt-head { padding: 10px 12px 8px; gap: 8px; }'));
+  });
+  it('the speaker dock itself is untouched: fixed at the corner, above the recap', () => {
+    expect(css).toContain('.sound-dock { position: fixed; z-index: 70; top: calc(6px + env(safe-area-inset-top)); right: calc(8px + env(safe-area-inset-right)); }');
+    expect(css).toContain('.sound-dock { z-index: 1050; }');
+    expect(css).toContain('.tt-backdrop { position: fixed; inset: 0;');
+  });
 });
 
 describe('theme parity + CSS pins', () => {
