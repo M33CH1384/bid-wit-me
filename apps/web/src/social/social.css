@@ -496,12 +496,32 @@ div.ranks-row { cursor: default; }
 .ticker-beta { position: absolute; right: 4px; bottom: 3px; font-family: var(--display); font-weight: 800; font-size: 8px; letter-spacing: .08em; line-height: 1; color: #1d1204; background: var(--gold); padding: 1.5px 3px; border-radius: 2px; }
 .ticker-viewport { flex: 1; min-width: 0; overflow: hidden; display: flex; align-items: stretch; }
 /* App-wide root bar (league data wave 6a): the same bar fixed at the foot
-   of the page. While it is on screen with lines, <html> carries
-   bwm-ticker-on and the body reserves exactly the bar's height, so page
-   content scrolls clear of it — the bar overlays nothing. It is not
-   rendered at all at a live table (no safe bottom slot there). */
-.ranks-ticker.league-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; height: calc(38px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom); box-sizing: border-box; }
-html.bwm-ticker-on body { padding-bottom: calc(38px + env(safe-area-inset-bottom)); }
+   of the page. The component renders its variant as the bare class `bar`
+   — this rule must name `.bar`: the first version targeted `.league-bar`,
+   matched nothing, and the bar rendered in flow at the very end of the
+   document, so home had to scroll to reveal it (owner, 2026-10-20).
+   While the bar shows lines, <html> carries bwm-ticker-on and each
+   surface gives the bar's height back out of its OWN box — extra bottom
+   padding inside its existing full-height frame (the old body padding
+   only shrank #root, which the 100dvh-sized surfaces ignore, so the
+   document still grew). No document grows a pixel: home stays exactly
+   one viewport tall with the bar pinned over its reserved strip, and
+   scrolling pages end with their last content clear of the bar. The bar
+   is not rendered at all at a live table (no safe bottom slot there). */
+.ranks-ticker.bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; height: calc(38px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom); box-sizing: border-box; }
+html.bwm-ticker-on .wizard { padding-bottom: calc(38px + env(safe-area-inset-bottom)); }
+html.bwm-ticker-on .setup { padding-bottom: calc(78px + env(safe-area-inset-bottom)); }
+html.bwm-ticker-on .profile-page { padding-bottom: calc(62px + env(safe-area-inset-bottom)); }
+html.bwm-ticker-on .rewards-page { padding-bottom: calc(58px + env(safe-area-inset-bottom)); }
+/* Panel footer: the sheet pads its own bottom by the safe area, which
+   left the in-panel ticker floating that far above the sheet's bottom
+   edge (owner, 2026-10-20: "ticker is too high on the rank tab"). When
+   the ticker is the panel's footer it absorbs the safe area itself —
+   its background runs flush to the sheet's bottom edge — and the panel
+   drops the doubled padding. Chat/DM tabs render no ticker, so the
+   composer's sheet keeps its padding untouched. */
+.ranks-ticker.panel { height: calc(38px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom); }
+.soc-panel:has(> .ranks-ticker.panel) { padding-bottom: 0; }
 /* LIVE highlight lines: the red dot + a warm tint, same in both themes. */
 .ticker-live-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #ff4d5e; margin-right: 7px; vertical-align: 1px; }
 .ticker-line.live, .ticker-still.live { color: #ffb3ba; }

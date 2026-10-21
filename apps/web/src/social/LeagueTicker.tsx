@@ -5,13 +5,16 @@
  *
  *  - LeagueTickerRoot mounts it at the app root as a fixed bottom bar on
  *    the main surfaces: home/wizard, the online entry + lobby screens,
- *    /profile and /rewards. The page reserves the bar's height (the
- *    `bwm-ticker-on` class on <html> pads the body), so the bar never
- *    covers content.
+ *    /profile and /rewards. While it shows lines, <html> carries
+ *    `bwm-ticker-on` and each surface gives the bar's height back out of
+ *    its own box (extra bottom padding inside its full-height frame —
+ *    see social.css), so no document grows and the bar never covers
+ *    content: home stays exactly one viewport tall.
  *  - While the Social panel is open, the root bar steps aside and the
- *    panel renders the same component as an in-flow footer (variant
- *    "panel") — one visible instance at a time. The panel footer hides on
- *    the chat / messages tabs, where the composer owns the bottom.
+ *    panel renders the same component as its footer (variant "panel"),
+ *    pinned flush to the sheet's bottom edge — one visible instance at
+ *    a time. The panel footer hides on the chat / messages tabs, where
+ *    the composer owns the bottom.
  *  - At a live table (html.bwm-in-game, set while a Table is mounted) the
  *    ticker does NOT render: the table's cards and action bar own the
  *    bottom edge and there is no safe slot. It returns the moment the
@@ -241,8 +244,9 @@ export function LeagueTicker({ variant, onHasLines }: { variant: 'bar' | 'panel'
  * The root mount: a fixed bottom bar across the app's main surfaces.
  * Hidden at a live table (no safe bottom slot — the cards and action bar
  * own it) and while the Social panel is open (the panel carries its own
- * in-flow instance). While it shows lines, <html> carries bwm-ticker-on
- * so the page reserves the bar's height instead of being covered by it.
+ * footer instance). While it shows lines, <html> carries bwm-ticker-on
+ * so each surface reserves the bar's height inside its own box instead
+ * of being covered by it.
  */
 export function LeagueTickerRoot() {
   const s = useSocial();

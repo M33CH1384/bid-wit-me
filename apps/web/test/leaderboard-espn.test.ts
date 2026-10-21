@@ -229,4 +229,33 @@ describe('the BottomLine renders: bug + lines from the rating board fetch', () =
     expect(tickerRootVisible({ inGame: false, panelOpen: true })).toBe(false);
     expect(ticker).toContain("classList.toggle('bwm-ticker-on'");
   });
+  it('placement (owner, 2026-10-20): the root bar is FIXED via the class the component actually renders', () => {
+    // the component renders the variant as the bare class `bar`; the fixed
+    // rule must name it. The shipped `.league-bar` selector matched nothing
+    // and the bar rendered in flow at the document's end — home scrolled
+    // and the ticker sat below the fold.
+    expect(ticker).toContain("league-ticker ${variant}");
+    expect(css).toContain('.ranks-ticker.bar { position: fixed; left: 0; right: 0; bottom: 0;');
+    expect(css).not.toContain('.ranks-ticker.league-bar');
+    // no body-padding reservation: it shrank #root, which the 100dvh-sized
+    // surfaces ignore, so the document grew anyway. Each surface instead
+    // gives the bar's height back out of its own full-height box.
+    expect(css).not.toContain('html.bwm-ticker-on body');
+    expect(css).toContain('html.bwm-ticker-on .wizard { padding-bottom: calc(38px + env(safe-area-inset-bottom)); }');
+    expect(css).toContain('html.bwm-ticker-on .setup { padding-bottom: calc(78px + env(safe-area-inset-bottom)); }');
+    expect(css).toContain('html.bwm-ticker-on .profile-page { padding-bottom: calc(62px + env(safe-area-inset-bottom)); }');
+    expect(css).toContain('html.bwm-ticker-on .rewards-page { padding-bottom: calc(58px + env(safe-area-inset-bottom)); }');
+  });
+  it('placement (owner, 2026-10-20): the panel ticker sits flush on the sheet bottom edge, not floating on its safe-area padding', () => {
+    // the panel sheet pads its bottom by the safe area; the footer ticker
+    // absorbs that strip itself and the panel drops the doubled padding
+    expect(css).toContain('.ranks-ticker.panel { height: calc(38px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom); }');
+    expect(css).toContain('.soc-panel:has(> .ranks-ticker.panel) { padding-bottom: 0; }');
+    // the mount is the panel's LAST child (after the flex:1 scroll body),
+    // so the flex column pins it under all scroll content on every tab
+    const bodyAt = socialSrc.indexOf('<div className="soc-body">');
+    const tickerAt = socialSrc.indexOf('<LeagueTicker variant="panel" />');
+    expect(bodyAt).toBeGreaterThan(-1);
+    expect(tickerAt).toBeGreaterThan(bodyAt);
+  });
 });
