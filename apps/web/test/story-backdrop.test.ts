@@ -107,11 +107,13 @@ describe('story surfaces paint the stop art, not the borrowed venue', () => {
   });
 
   it('tale of the tape: porch shows porch art; the King keeps the block panorama', async () => {
+    // the tape paints its art on its OWN backdrop layer (.story-tape-bg,
+    // flat scrim) — it no longer borrows the scene player's .story-scene-bg
     const facts = { attempts: 0, cleared: false };
     const c = await renderEl(createElement(StoryTape, { stop: storyStopById('porch')!, facts, cta: 'x', onDone: () => {} }));
-    expect(c.querySelector<HTMLElement>('.story-scene-bg')!.style.backgroundImage).toContain('/assets/story/venues/porch.jpg');
+    expect(c.querySelector<HTMLElement>('.story-tape-bg')!.style.backgroundImage).toContain('/assets/story/venues/porch.jpg');
     const c2 = await renderEl(createElement(StoryTape, { stop: storyStopById('king')!, facts, cta: 'x', onDone: () => {} }));
-    expect(c2.querySelector<HTMLElement>('.story-scene-bg')!.style.backgroundImage).toContain('/assets/venues/blockAfterDark/bg.jpg');
+    expect(c2.querySelector<HTMLElement>('.story-tape-bg')!.style.backgroundImage).toContain('/assets/venues/blockAfterDark/bg.jpg');
   });
 });
 

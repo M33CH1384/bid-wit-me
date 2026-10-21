@@ -110,3 +110,83 @@ describe('story design language: one warm button family, no broadcast chrome', (
     expect(here).toContain('rgba(238, 201, 106'); // warm amber hairline instead
   });
 });
+
+/**
+ * Tale of the Tape rework (owner screenshot, 2026-10-21: "that intro page
+ * really needs to be reworked — it's odd and the typography is off, there's
+ * weird spacing in it as well"). The old detail rows were one flowing
+ * paragraph each — an inline-block label with a min-width but NO gap — so
+ * "KNOWN FOR" (wider than the min) ran straight into its value while
+ * "WHO" left a hanging gap, wrapped lines ran back under the label, and
+ * the backdrop photo's diagonal edges cut across the translucent card.
+ * Content is frozen; these pins guard the new structure: a two-column
+ * grid with one constant gap, an even scrim, the history line as a
+ * hairline caption, and a designed medallion for the player. happy-dom
+ * paints nothing — the owner's iPhone remains the visual verdict.
+ */
+describe('tale of the tape: grid rows, even scrim, one type system', () => {
+  const tapeCss = css.slice(css.indexOf('Tale of the Tape'), css.indexOf('story badges'));
+  const tapeSrc = readFileSync(new URL('../src/story/StoryTape.tsx', import.meta.url), 'utf8');
+
+  it('detail rows are a two-column grid — fixed label column, one constant gap', () => {
+    const root = tapeCss.match(/\.story-tape \{[^}]*\}/)![0];
+    expect(root).toContain('--tape-label-w:');
+    const row = tapeCss.match(/\.story-tape-row \{[^}]*\}/)![0];
+    expect(row).toContain('display: grid');
+    expect(row).toContain('grid-template-columns: var(--tape-label-w)');
+    expect(row).toContain('column-gap: 12px');
+    // the old inline-label mechanism is gone for good
+    expect(tapeCss).not.toContain('.story-tape-row span');
+    expect(tapeCss).not.toContain('min-width: 74px');
+  });
+
+  it('no justified text anywhere in story CSS; tape values are left-aligned', () => {
+    expect(css).not.toMatch(/text-align:\s*justify/);
+    const value = tapeCss.match(/\.story-tape-value \{[^}]*\}/)![0];
+    expect(value).toContain('text-align: left');
+    const label = tapeCss.match(/\.story-tape-label \{[^}]*\}/)![0];
+    expect(label).toContain('text-transform: uppercase');
+  });
+
+  it('rows are built from label + value spans, and the threat is a labeled row', () => {
+    expect(tapeSrc).toContain('story-tape-label');
+    expect(tapeSrc).toContain('story-tape-value');
+    expect(tapeSrc).toContain('label="The threat"');
+    for (const l of ['Who', 'Known for', 'The tell', 'The bond']) expect(tapeSrc).toContain(`label="${l}"`);
+  });
+
+  it('the card sits on an even scrim — its own backdrop layer, no gradient, near-opaque entries', () => {
+    const scrim = tapeCss.match(/\.story-tape-bg::after \{[^}]*\}/)![0];
+    expect(scrim).toContain('background: rgba(');
+    expect(scrim).not.toContain('gradient');
+    const entry = tapeCss.match(/\.story-tape-entry \{[^}]*\}/)![0];
+    expect(entry).toContain('rgba(9, 9, 18, 0.9)');
+    // the tape never borrows the scene player's background layer
+    expect(tapeSrc).toContain('story-tape-bg');
+    expect(tapeSrc).not.toContain('story-scene-bg');
+  });
+
+  it('the history line is a hairline caption in the story family, not the heavy gold box', () => {
+    const hist = tapeCss.match(/\.story-tape-history \{[^}]*\}/)![0];
+    expect(hist).toContain('rgba(238, 201, 106'); // warm amber hairline, like the map chips
+    expect(hist).not.toContain('border: 1px solid #c9a227');
+  });
+
+  it('You wears a designed monogram medallion in the cast family', () => {
+    expect(tapeSrc).toContain('story-you-face');
+    const face = tapeCss.match(/\.story-you-face \{[^}]*\}/)![0];
+    expect(face).toContain('radial-gradient');
+    expect(face).toContain('box-shadow'); // the medallion ring
+  });
+
+  it('one spacing scale: the shell gap carries the rhythm, entries carry no margins', () => {
+    const inner = tapeCss.match(/\.story-tape-inner \{[^}]*\}/)![0];
+    expect(inner).toContain('padding: 16px');
+    expect(inner).toContain('gap: 14px');
+    const side = tapeCss.match(/\.story-tape-side \{[^}]*\}/)![0];
+    expect(side).toContain('display: flex');
+    expect(side).toContain('gap: 8px');
+    const entry = tapeCss.match(/\.story-tape-entry \{[^}]*\}/)![0];
+    expect(entry).not.toContain('margin-bottom');
+  });
+});

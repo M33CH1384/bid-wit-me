@@ -76,8 +76,9 @@ function Root() {
       <SocialRoot />
       {/* The BottomLine, app-wide (league data wave 6a): a fixed bottom bar
           on the main surfaces with its height reserved via bwm-ticker-on.
-          It hides itself at a live table and while the Social panel is
-          open (the panel carries its own in-flow instance). */}
+          It hides itself at a live table, while the Social panel is
+          open (the panel carries its own in-flow instance), and on
+          /story (story surfaces never carry broadcast chrome). */}
       <LeagueTickerRoot />
       <IdleGuard />
     </>

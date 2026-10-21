@@ -19,6 +19,11 @@
  *    ticker does NOT render: the table's cards and action bar own the
  *    bottom edge and there is no safe slot. It returns the moment the
  *    table screen unmounts.
+ *  - On /story the ticker does NOT render either (owner guardrail,
+ *    2026-10-21): story mode is the come-up — its surfaces keep the warm
+ *    neighborhood register and never carry the professional chapter's
+ *    broadcast chrome. The fixed bar sliced across the Tale of the Tape
+ *    mid-card; the story shell reserves no ticker height, in any phase.
  *
  * The bug is the full BWM wordmark lockup on an opaque block (item 5) and
  * the marquee runs ~25% faster than the original loop (owner tweak).
@@ -115,8 +120,8 @@ export function buildTickerLines(o: {
 }
 
 /** Surface rule for the root mount, kept pure for tests. */
-export function tickerRootVisible(s: { inGame: boolean; panelOpen: boolean }): boolean {
-  return !s.inGame && !s.panelOpen;
+export function tickerRootVisible(s: { inGame: boolean; panelOpen: boolean; storyRoute?: boolean }): boolean {
+  return !s.inGame && !s.panelOpen && !s.storyRoute;
 }
 
 /** True while a Table is mounted (html.bwm-in-game, set by antiPan.lockBody). */
@@ -131,6 +136,17 @@ export function useInGame(): boolean {
     return () => mo.disconnect();
   }, []);
   return on;
+}
+
+/** The current route path, tracked across the app's popstate navigation. */
+export function useLocationPath(): string {
+  const [path, setPath] = useState<string>(() => (typeof location !== 'undefined' ? location.pathname : '/'));
+  useEffect(() => {
+    const on = () => setPath(location.pathname);
+    window.addEventListener('popstate', on);
+    return () => window.removeEventListener('popstate', on);
+  }, []);
+  return path;
 }
 
 /**
@@ -243,16 +259,18 @@ export function LeagueTicker({ variant, onHasLines }: { variant: 'bar' | 'panel'
 /**
  * The root mount: a fixed bottom bar across the app's main surfaces.
  * Hidden at a live table (no safe bottom slot — the cards and action bar
- * own it) and while the Social panel is open (the panel carries its own
- * footer instance). While it shows lines, <html> carries bwm-ticker-on
- * so each surface reserves the bar's height inside its own box instead
- * of being covered by it.
+ * own it), while the Social panel is open (the panel carries its own
+ * footer instance), and on /story (story surfaces never carry broadcast
+ * chrome — the bar sliced across the Tale of the Tape). While it shows
+ * lines, <html> carries bwm-ticker-on so each surface reserves the bar's
+ * height inside its own box instead of being covered by it.
  */
 export function LeagueTickerRoot() {
   const s = useSocial();
   const inGame = useInGame();
+  const storyRoute = useLocationPath() === '/story';
   const [hasLines, setHasLines] = useState(false);
-  const show = tickerRootVisible({ inGame, panelOpen: s.open });
+  const show = tickerRootVisible({ inGame, panelOpen: s.open, storyRoute });
   useEffect(() => {
     document.documentElement.classList.toggle('bwm-ticker-on', show && hasLines);
     return () => { document.documentElement.classList.remove('bwm-ticker-on'); };

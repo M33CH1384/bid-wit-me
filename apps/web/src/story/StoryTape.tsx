@@ -2,12 +2,27 @@
  * The story Tale of the Tape — narrative context, not stats (owner,
  * 2026-10-21). Shown as the sit-down's opening frame (before the intro
  * scene) and readable from the map ("Meet them"). Same content in both
- * themes; the scene's venue backdrop and letterbox family carry over so
- * tape → scene → table reads as one continuous arrival.
+ * themes; the stop's backdrop sits under an even scrim so tape → scene →
+ * table reads as one continuous arrival.
+ *
+ * Layout (tape rework, owner 2026-10-21): every detail row is a fixed
+ * two-column grid — a small-caps label column and a left-aligned value
+ * column — never a flowing paragraph with an inline label. The threat
+ * rides the same labeled-row system; the history line is a quiet
+ * hairline caption in the story design family.
  */
 import { buildStoryTape, type StoryBeatFacts, type StoryStop, type StoryTapeEntry } from '@spades/bots';
 import StoryFace from './StoryFace';
 import { storyBackdropUrl } from './storyBackdrop';
+
+function TapeRow({ label, children }: { label: string; children: string }) {
+  return (
+    <p className="story-tape-row">
+      <span className="story-tape-label">{label}</span>
+      <span className="story-tape-value">{children}</span>
+    </p>
+  );
+}
 
 function TapeSide({ title, entries }: { title: string; entries: StoryTapeEntry[] }) {
   return (
@@ -17,17 +32,19 @@ function TapeSide({ title, entries }: { title: string; entries: StoryTapeEntry[]
         <div key={e.id} className="story-tape-entry" data-testid={`story-tape-${e.id}`}>
           <div className="story-tape-head">
             {e.id === 'you'
-              ? <span className="story-face tape-face" aria-hidden><span className="story-face-initial">Y</span></span>
+              ? <span className="story-face tape-face story-you-face" aria-hidden><span className="story-face-initial">{e.name.slice(0, 1)}</span></span>
               : <StoryFace characterId={e.id} name={e.name} className="tape-face" />}
             <div>
               <p className="story-tape-name">{e.name}</p>
               <p className="story-tape-role">{e.role}</p>
             </div>
           </div>
-          <p className="story-tape-row"><span>Who</span>{e.who}</p>
-          <p className="story-tape-row"><span>Known for</span>{e.knownFor}</p>
-          <p className="story-tape-row"><span>The tell</span>{e.style}</p>
-          <p className="story-tape-row"><span>The bond</span>{e.bond}</p>
+          <div className="story-tape-rows">
+            <TapeRow label="Who">{e.who}</TapeRow>
+            <TapeRow label="Known for">{e.knownFor}</TapeRow>
+            <TapeRow label="The tell">{e.style}</TapeRow>
+            <TapeRow label="The bond">{e.bond}</TapeRow>
+          </div>
         </div>
       ))}
     </div>
@@ -43,11 +60,11 @@ export default function StoryTape({ stop, facts, cta, onDone }: {
   const tape = buildStoryTape(stop, facts);
   return (
     <div className="story-tape" data-testid="story-tape">
-      {stop.venueId && <div className="story-scene-bg" style={{ backgroundImage: `url(${storyBackdropUrl(stop)})` }} aria-hidden />}
+      {stop.venueId && <div className="story-tape-bg" style={{ backgroundImage: `url(${storyBackdropUrl(stop)})` }} aria-hidden />}
       <div className="story-tape-inner">
         <p className="story-tape-title">TALE OF THE TAPE</p>
         <p className="story-tape-stakes" data-testid="story-tape-stakes">{tape.stakes}</p>
-        <p className="story-tape-threat">{tape.threat}</p>
+        <TapeRow label="The threat">{tape.threat}</TapeRow>
         {tape.history && <p className="story-tape-history" data-testid="story-tape-history">{tape.history}</p>}
         <div className="story-tape-cols">
           <TapeSide title="You & Dee" entries={[tape.you, tape.dee]} />

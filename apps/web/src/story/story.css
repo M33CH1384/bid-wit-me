@@ -298,7 +298,21 @@ html[data-theme="neon"] .story-scene { border-color: rgba(128, 84, 255, 0.55); }
 html[data-theme="neon"] .story-cast-one.active { border-color: #5bdfff; box-shadow: 0 0 0 1px #5bdfff, 0 6px 18px rgba(0, 0, 0, 0.45); }
 html[data-theme="neon"] .story-cast-one.active .story-cast-face { background: #5bdfff; color: #06121a; }
 
-/* ---- Tale of the Tape (narrative) ---- */
+/* ---- Tale of the Tape (narrative) ----
+   One type + spacing system (rework, owner 2026-10-21). The old rows were
+   a flowing paragraph per row: an inline-block label with a min-width but
+   NO gap between it and the value — so a label wider than the min
+   ("KNOWN FOR") collided with its value ("KNOWN FORShowing up."), narrower
+   labels left a hanging gap, and wrapped value lines ran back under the
+   label; on the owner's screen the lines rendered stretched flush-right.
+   Rows are now a fixed two-column grid (label column + left-aligned value
+   column, one constant gap). No justified text anywhere on this screen.
+   The card sits on an EVEN scrim over the stop's backdrop: the old build
+   reused the scene player's bg (opacity .4 under an uneven 3-stop
+   gradient) beneath translucent entries, so the backdrop photo's own
+   diagonal edges cut across the card as a visible band. The tape owns its
+   backdrop layer now (faint photo + one flat scrim) and the entries are
+   near-opaque. */
 .story-tape {
   position: relative;
   border-radius: 16px;
@@ -306,33 +320,69 @@ html[data-theme="neon"] .story-cast-one.active .story-cast-face { background: #5
   border: 1px solid rgba(127, 127, 160, 0.4);
   background: #0b0b14;
   color: #f5f4ff;
+  /* label column width: fits the longest label ("KNOWN FOR") at spec */
+  --tape-label-w: 86px;
 }
-.story-tape-inner { position: relative; z-index: 2; padding: 18px 14px; display: flex; flex-direction: column; gap: 10px; }
-.story-tape-title { margin: 0; text-align: center; font-weight: 800; letter-spacing: 0.22em; font-size: 13px; opacity: 0.9; }
-.story-tape-stakes { margin: 0; text-align: center; font-size: 16px; line-height: 1.45; font-style: italic; }
-.story-tape-threat { margin: 0; text-align: center; font-size: 12.5px; letter-spacing: 0.04em; opacity: 0.8; }
+.story-tape-bg {
+  position: absolute; inset: 0;
+  background-size: cover; background-position: center;
+  opacity: 0.32;
+}
+.story-tape-bg::after {
+  content: ''; position: absolute; inset: 0;
+  background: rgba(5, 5, 11, 0.78);
+}
+.story-tape-inner {
+  position: relative; z-index: 2;
+  padding: 16px;
+  display: flex; flex-direction: column; gap: 14px;
+  text-align: left;
+}
+.story-tape-title { margin: 0; font-size: 12px; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; opacity: 0.8; }
+.story-tape-stakes { margin: 0; font-size: 16px; line-height: 1.5; font-style: italic; }
 .story-tape-history {
-  margin: 0; text-align: center; font-size: 13.5px; font-weight: 700;
-  border: 1px solid #c9a227; border-radius: 10px; padding: 7px 10px;
+  margin: 0; font-size: 13px; font-weight: 600; line-height: 1.45;
+  color: #eec96a;
+  background: rgba(18, 13, 4, 0.76);
+  border: 1px solid rgba(238, 201, 106, 0.55);
+  border-radius: 10px;
+  padding: 8px 12px;
 }
-.story-tape-cols { display: flex; flex-direction: column; gap: 14px; }
-.story-tape-side-title { margin: 0 0 6px; font-size: 12px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.75; }
+.story-tape-cols { display: flex; flex-direction: column; gap: 18px; }
+.story-tape-side { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.story-tape-side-title { margin: 0; font-size: 12px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.75; }
 .story-tape-entry {
   border: 1px solid rgba(245, 244, 255, 0.22);
   border-radius: 12px;
-  background: rgba(10, 10, 20, 0.66);
-  padding: 10px 12px;
-  margin-bottom: 8px;
+  background: rgba(9, 9, 18, 0.9);
+  padding: 12px 14px;
 }
-.story-tape-head { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; }
+.story-tape-head { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
 .story-tape-name { margin: 0; font-weight: 800; font-size: 16px; }
 .story-tape-role { margin: 1px 0 0; font-size: 12px; opacity: 0.75; }
-.story-tape-row { margin: 3px 0 0; font-size: 13.5px; line-height: 1.4; }
-.story-tape-row span { display: inline-block; min-width: 74px; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.65; }
+.story-tape-rows { display: flex; flex-direction: column; gap: 6px; }
+.story-tape-row {
+  margin: 0;
+  display: grid;
+  grid-template-columns: var(--tape-label-w) minmax(0, 1fr);
+  column-gap: 12px;
+  align-items: baseline;
+  font-size: 13.5px; line-height: 1.45;
+  text-align: left;
+}
+.story-tape-label { font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.65; }
+.story-tape-value { text-align: left; }
+/* The player has no character portrait: a designed monogram medallion in
+   the cast medallion family (warm gold, dark ink), not a flat gray disc. */
+.story-you-face {
+  background: radial-gradient(circle at 32% 28%, #f0d089, #c39a3c 82%);
+  color: #241a05;
+  box-shadow: inset 0 0 0 2px rgba(255, 248, 222, 0.55), 0 0 0 1px rgba(201, 162, 39, 0.7);
+}
 .story-stop-actions { display: flex; flex-direction: row; gap: 8px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
 @media (min-width: 520px) {
   .story-tape-cols { flex-direction: row; }
-  .story-tape-side { flex: 1 1 0; min-width: 0; }
+  .story-tape-side { flex: 1 1 0; }
 }
 
 /* ---- story badges ---- */
@@ -392,6 +442,12 @@ html[data-theme="neon"] .story-dee-card {
 }
 html[data-theme="neon"] .story-stop.state-current .story-card { border-color: #8054ff; }
 html[data-theme="neon"] .story-stop.is-king .story-card { background: rgba(7, 6, 18, 0.92); border-color: rgba(128, 84, 255, 0.6); }
+/* Color dressing only: the player's medallion takes the Neon cyan family. */
+html[data-theme="neon"] .story-you-face {
+  background: radial-gradient(circle at 32% 28%, #bfeffb, #3fa9cf 82%);
+  color: #06121a;
+  box-shadow: inset 0 0 0 2px rgba(233, 251, 255, 0.55), 0 0 0 1px rgba(91, 223, 255, 0.6);
+}
 
 /* ---- deck unlock notice on the outro (deck-unlocks integration) ---- */
 .story-deck-line {

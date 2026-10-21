@@ -227,6 +227,11 @@ describe('the BottomLine renders: bug + lines from the rating board fetch', () =
     expect(tickerRootVisible({ inGame: false, panelOpen: false })).toBe(true);
     expect(tickerRootVisible({ inGame: true, panelOpen: false })).toBe(false);
     expect(tickerRootVisible({ inGame: false, panelOpen: true })).toBe(false);
+    // and never on /story (owner guardrail, 2026-10-21): story surfaces keep
+    // the warm neighborhood register — the fixed bar sliced across the Tale
+    // of the Tape. Other routes keep the bar exactly as before.
+    expect(tickerRootVisible({ inGame: false, panelOpen: false, storyRoute: true })).toBe(false);
+    expect(tickerRootVisible({ inGame: false, panelOpen: false, storyRoute: false })).toBe(true);
     expect(ticker).toContain("classList.toggle('bwm-ticker-on'");
   });
   it('placement (owner, 2026-10-20): the root bar is FIXED via the class the component actually renders', () => {

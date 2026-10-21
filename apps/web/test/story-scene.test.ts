@@ -15,7 +15,7 @@ import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { STORY_STOPS } from '@spades/bots';
+import { STORY_STOPS, buildStoryTape } from '@spades/bots';
 import { makeRules, newGame, type GameState } from '@spades/rules';
 import ScriptPlayer from '../src/story/ScriptPlayer';
 import StoryTape from '../src/story/StoryTape';
@@ -112,6 +112,29 @@ describe('tale of the tape (narrative)', () => {
     expect(c.querySelector('[data-testid="story-tape-history"]')).toBeNull();
     const c2 = await renderEl(createElement(StoryTape, { stop: porch, facts: { attempts: 2, cleared: false }, cta: 'x', onDone: () => {} }));
     expect(c2.querySelector('[data-testid="story-tape-history"]')!.textContent).toContain('attempt 3');
+  });
+
+  it('rows are label/value grid rows (tape rework): four per entry, threat in the same system, You medallioned', async () => {
+    const facts = { attempts: 0, cleared: false };
+    const c = await renderEl(createElement(StoryTape, { stop: porch, facts, cta: 'Play the scene', onDone: () => {} }));
+    // every entry: exactly four detail rows, each one label span + value span
+    for (const id of ['you', 'dee', 'uncleRay', 'pat']) {
+      const entry = c.querySelector(`[data-testid="story-tape-${id}"]`)!;
+      const rows = entry.querySelectorAll('.story-tape-row');
+      expect(rows.length).toBe(4);
+      expect([...rows].map((r) => r.querySelector('.story-tape-label')!.textContent)).toEqual(['Who', 'Known for', 'The tell', 'The bond']);
+      for (const r of rows) expect(r.querySelector('.story-tape-value')!.textContent.length).toBeGreaterThan(0);
+    }
+    // the threat line rides the same labeled-row system, copy verbatim
+    const threatRow = [...c.querySelectorAll('.story-tape-inner > .story-tape-row')]
+      .find((r) => r.querySelector('.story-tape-label')!.textContent === 'The threat')!;
+    expect(threatRow).toBeTruthy();
+    expect(threatRow.querySelector('.story-tape-value')!.textContent).toBe(buildStoryTape(porch, facts).threat);
+    // You wears the designed monogram medallion — not the bare initial disc
+    expect(c.querySelector('[data-testid="story-tape-you"] .story-you-face')).toBeTruthy();
+    // the tape's backdrop is its own layer now, never the scene player's
+    expect(c.querySelector('.story-tape-bg')).toBeTruthy();
+    expect(c.querySelector('.story-scene-bg')).toBeNull();
   });
 });
 
