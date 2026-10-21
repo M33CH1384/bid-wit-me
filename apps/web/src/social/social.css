@@ -811,3 +811,8 @@ html[data-theme="neon"] .ranks-you {
 .power-move { min-width: 38px; text-align: right; font-style: normal; }
 .power-new { font-style: normal; font-size: 10px; font-weight: 800; letter-spacing: .06em; color: var(--gold, #e8b64c); }
 .power-note { font-size: 12px; margin-top: 6px; }
+
+/* Record Book (league P-F). */
+.record-book { margin: 16px 0 4px; }
+.record-book .cmp-table th { text-align: left; }
+.record-book .cmp-table td { text-align: right; }

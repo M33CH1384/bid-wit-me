@@ -433,6 +433,7 @@ export function Leaderboards() {
         )}
         <p className="soc-note">Ratings and Best duos count signed-in opponents. Wins split into vs players and vs bots.</p>
         <PowerRankings kind={board === 'duos' ? 'team' : kind} onOpen={(name) => social.showProfile(name)} />
+        <RecordBook onOpen={(name) => social.showProfile(name)} />
       </div>
       <RanksTicker kind={kind} mine={mine} />
       {offscreen && mineRow && (
@@ -491,6 +492,44 @@ function PowerRankings({ kind, onOpen }: { kind: Kind; onOpen: (name: string) =>
         ))}
       </div>
       <p className="soc-muted power-note">Power = rating + recent form (last 14 days). Updates weekly.</p>
+    </section>
+  );
+}
+
+/* ---------------------------------------------------- Record Book (P-F) */
+
+interface HonorT { id: string; label: string; userId: string; name: string; value: string }
+
+/**
+ * The Record Book: all-time marks from stored stats (highest peak rating,
+ * most wins / Wheels / Bostons, best win % with a games minimum), from
+ * /api/social/honors. No streak record — streaks aren't stored anywhere
+ * (see honors.ts), so none is shown rather than an approximated one.
+ */
+function RecordBook({ onOpen }: { onOpen: (name: string) => void }) {
+  const [records, setRecords] = useState<HonorT[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    get('/api/social/honors')
+      .then((j) => { if (live) setRecords((j as { records: HonorT[] }).records); })
+      .catch(() => { if (live) setRecords([]); });
+    return () => { live = false; };
+  }, []);
+  if (!records?.length) return null;
+  return (
+    <section className="record-book" data-testid="record-book">
+      <div className="power-head"><h3>📖 Record Book</h3><span className="soc-muted">All-time</span></div>
+      <table className="cmp-table">
+        <tbody>
+          {records.map((r) => (
+            <tr key={r.id}>
+              <th>{r.label}</th>
+              <td><button type="button" className="link" onClick={() => onOpen(r.name)}>{r.name}</button></td>
+              <td>{r.value}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </section>
   );
 }

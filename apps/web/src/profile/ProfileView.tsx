@@ -111,6 +111,41 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
  *  2026-10-20: "no one knows what elo is including me", and no named tiers):
  *  the big number is the Rating, the rows are metrics anyone can read. */
 /**
+ * The profile's Rivalry (league P-F): the most-played opponent from the
+ * head-to-head payload; ties go to the closest series (smallest |W−L|).
+ * The record reads from the profile subject's side, like the h2h table.
+ */
+export function topRivalry(h2h: { name: string; games: number; wins: number; losses: number }[]): { name: string; games: number; wins: number; losses: number } | null {
+  if (!h2h.length) return null;
+  return [...h2h].sort((a, b) => b.games - a.games || Math.abs(a.wins - a.losses) - Math.abs(b.wins - b.losses))[0]!;
+}
+
+interface HonorT { id: string; label: string; userId: string; name: string; value: string }
+
+/** League awards this player currently holds (league P-F), from
+ *  /api/social/honors — season honors computed server-side from real stats. */
+function LeagueAwards({ userId }: { userId: string }) {
+  const [held, setHeld] = useState<HonorT[] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/social/honors', { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('no'))))
+      .then((j: { awards: HonorT[] }) => { if (alive) setHeld(j.awards.filter((a) => a.userId === userId)); })
+      .catch(() => { if (alive) setHeld([]); });
+    return () => { alive = false; };
+  }, [userId]);
+  if (!held?.length) return null;
+  return (
+    <>
+      <h4>League awards</h4>
+      <div className="soc-badges" data-testid="league-awards">
+        {held.map((a) => <span key={a.id} className="soc-badge-chip" title={a.value}>🏅 {a.label} — {a.value}</span>)}
+      </div>
+    </>
+  );
+}
+
+/**
  * Profile compare (league P-C): your public line vs theirs, category by
  * category, the better number marked. Both sides come from the SAME payload
  * shape — their social profile and yours — so every row is apples-to-apples.
@@ -521,6 +556,7 @@ export function ProfileView({ host, name, id }: {
   /** Plain display region (league P-B): the social payload's, falling back to
    *  the cred payload on the self view. Unset = nothing shown, no fanfare. */
   const regionText = socialP?.region ?? (me ? cred?.user.region : undefined) ?? undefined;
+  const rivalry = socialP ? topRivalry(socialP.h2h) : null;
 
   const content = (
     <>
@@ -694,6 +730,7 @@ export function ProfileView({ host, name, id }: {
               <>
                 <h4>Team names</h4>
                 <div className="soc-badges">{socialP.teamNames.length ? socialP.teamNames.map((t) => <span key={t} className="soc-badge-chip">{t}</span>) : <span className="soc-muted">None yet</span>}</div>
+                {rivalry && <p className="soc-vs" data-testid="profile-rivalry">🔥 Rivalry — {rivalry.name}: <b>{rivalry.wins}–{rivalry.losses}</b> in {rivalry.games} game{rivalry.games === 1 ? '' : 's'}</p>}
                 <h4>Head-to-head</h4>
                 {socialP.h2h.length ? (
                   <table className="soc-h2h" data-testid="profile-h2h"><tbody>
@@ -728,6 +765,7 @@ export function ProfileView({ host, name, id }: {
                 <div className="soc-badges" data-testid="profile-awards">{socialP.awards.map((a) => <button type="button" key={a.ref} className="soc-badge-chip champ" onClick={() => social.showTour(a.ref)}>🏆 {a.label}</button>)}</div>
               </>
             )}
+            {uid && <LeagueAwards userId={uid} />}
           </>
         )}
         {activeTab === 'unlocks' && cred?.unlocks && (

@@ -11,6 +11,7 @@ import { type AuthEnv, currentUser } from '../auth/routes';
 import { regionOf } from '../cred/region';
 import { leaderboard, myStats, personalStats, serverStats, type PersonalStats } from '../stats/boards';
 import { ensurePowerSnapshot, powerRankings } from '../stats/power';
+import { leagueHonors } from '../stats/honors';
 import { usernameKey } from '../auth/username';
 import { TICKET_TTL_MS, signTicket } from './ticket';
 import { SocialStore } from './store';
@@ -113,6 +114,9 @@ export async function handleSocialHttp(req: Request & { cf?: unknown }, env: Soc
   if (a === 'profile' && parts[3] && req.method === 'GET') {
     const p = await profileFor(db, decodeURIComponent(parts[3]).slice(0, 40), me?.id ?? null);
     return p ? json(p) : json({ error: 'not found' }, 404);
+  }
+  if (a === 'honors' && req.method === 'GET') {
+    return json(await leagueHonors(db, now));
   }
   if (a === 'power' && req.method === 'GET') {
     const kind = url.searchParams.get('kind') === 'cutthroat' ? 'cutthroat' : 'team';
