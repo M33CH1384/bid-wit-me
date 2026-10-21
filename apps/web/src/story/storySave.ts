@@ -29,6 +29,18 @@ export interface StorySessionState {
   railFired: number;
   /** last hand a railbird spoke in (rate discipline survives resume) */
   lastRailHand: number;
+  /** this attempt's drawn rail cast (railCastForAttempt) — a resumed
+   *  match restores the exact faces it started with, never a re-draw.
+   *  Absent on saves written before the draw existed; the table then
+   *  derives the cast from the attempt it belongs to. */
+  railCast?: string[];
+  /** eligible rail moments already evaluated this match — the seeded
+   *  outcome-roll cursor, so a resume continues the same stream */
+  railChecks?: number;
+  /** rail exchanges already delivered this match (their cap survives resume) */
+  railExchanges?: number;
+  /** rail line texts already spoken this match — never repeated */
+  railSaid?: string[];
 }
 
 export interface StorySavedGame extends SavedGame {
@@ -92,6 +104,10 @@ export function loadStoryGame(): StorySavedGame | null {
           satDown: session?.satDown === true,
           railFired: typeof session?.railFired === 'number' ? session.railFired : 0,
           lastRailHand: typeof session?.lastRailHand === 'number' ? session.lastRailHand : 0,
+          railCast: Array.isArray(session?.railCast) ? session.railCast.filter((x) => typeof x === 'string') : undefined,
+          railChecks: typeof session?.railChecks === 'number' ? session.railChecks : 0,
+          railExchanges: typeof session?.railExchanges === 'number' ? session.railExchanges : 0,
+          railSaid: Array.isArray(session?.railSaid) ? session.railSaid.filter((x) => typeof x === 'string') : [],
         },
       },
     };

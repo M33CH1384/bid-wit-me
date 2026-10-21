@@ -33,7 +33,7 @@
  * King's win keeps 5 — the graduation). Caps are pinned in the bots tests.
  */
 import type { StoryStop } from './story';
-import { STORY_KING_RAIL_OUTRO, STORY_RAIL_INTRO } from './storyRail';
+import { RAIL_INTRO_SUBJECTS, STORY_KING_RAIL_OUTRO, STORY_RAIL_INTRO } from './storyRail';
 
 export interface StoryBeat {
   /** a STORY_CHARACTERS id, or 'you' (the player) */
@@ -608,6 +608,10 @@ export interface StoryBeatFacts {
   cleared: boolean;
   /** ids of stops cleared on this track (continuity gating) */
   clearedStopIds?: readonly string[];
+  /** this attempt's drawn rail cast (storyRail.railCastForAttempt) —
+   *  the intro scene acknowledges only railbirds who actually showed up
+   *  this attempt; absent = the stop's full rail (legacy callers) */
+  railCast?: readonly string[];
 }
 
 /** Dee's arc stage by route position: green → believing → belonging. */
@@ -651,6 +655,14 @@ export function beatsFor(stop: StoryStop, kind: StoryBeatKind, facts: StoryBeatF
     // The rail is acknowledged early in the scene — they're simply AROUND.
     const intro = STORY_RAIL_INTRO[stop.id];
     if (!intro?.length || facts.cleared) return beats;
+    // Per-attempt draw: the acknowledgment names specific faces — it
+    // only plays when every face it names actually showed up this
+    // attempt. Nobody introduces an empty chair.
+    if (facts.railCast !== undefined) {
+      const subjects = RAIL_INTRO_SUBJECTS[stop.id] ?? [];
+      const shown = subjects.length ? subjects.every((id) => facts.railCast!.includes(id)) : facts.railCast.length > 0;
+      if (!shown) return beats;
+    }
     const at = Math.min(2, beats.length);
     return [...beats.slice(0, at), ...intro, ...beats.slice(at)];
   };

@@ -97,7 +97,7 @@ import { isWildDeuce } from './cardFaces';
 import { MISDEAL_DEAL_SPEED, misdealDealMs, misdealRevealKey, misdealRevealMs } from './misdeal';
 import { QUICK_TRASH_SET } from './quickTrash';
 import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
-import { STORY_CHARACTERS, STORY_STOPS, type BotLevel, type StoryBeat, type StoryBeatFacts, type StoryGameFacts, type StoryStop, type TalkIntensity, botSkillFor, buildStoryTape, callbackFor, midSceneFor, partnerBidIntent, personaForName, platePersona, pickBotNames, playBeatFor, railLineFor, resumeLineFor, tableExchangeFor } from '@spades/bots';
+import { STORY_CHARACTERS, STORY_STOPS, type BotLevel, type StoryBeat, type StoryBeatFacts, type StoryGameFacts, type StoryStop, type TalkIntensity, botSkillFor, buildStoryTape, callbackFor, midSceneFor, partnerBidIntent, personaForName, platePersona, pickBotNames, playBeatFor, railCastForAttempt, railMomentFor, resumeLineFor, tableExchangeFor } from '@spades/bots';
 import { preloadVoice } from './voices/voices';
 const Scene = lazy(loadScene);
 
@@ -252,7 +252,9 @@ interface Props {
       attemptsAtStart: number;
       clearsAtStart: number;
       resumed: boolean;
-      initialSession?: { fired: string[]; memory: string[]; satDown: boolean; railFired?: number; lastRailHand?: number };
+      /** fresh games: this attempt's drawn rail cast (railCastForAttempt) */
+      railCast?: string[];
+      initialSession?: { fired: string[]; memory: string[]; satDown: boolean; railFired?: number; lastRailHand?: number; railCast?: string[]; railChecks?: number; railExchanges?: number; railSaid?: string[] };
     };
   };
 }
@@ -1190,7 +1192,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // at most once per game, and endgame callbacks reference only events
   // recorded earlier in THIS match. Story games only — every other game
   // takes the exact same code path as before (this effect no-ops).
-  const storySceneRef = useRef<{ prev: StorySnap | null; fired: Set<string>; memory: Set<string>; satDown: boolean; welcomed: boolean; railFired: number; lastRailHand: number }>(
+  const storySceneRef = useRef<{ prev: StorySnap | null; fired: Set<string>; memory: Set<string>; satDown: boolean; welcomed: boolean; railFired: number; lastRailHand: number; railCast: string[]; railChecks: number; railExchanges: number; railSaid: string[] }>(
     {
       prev: null,
       fired: new Set(story?.saveCtx?.initialSession?.fired ?? []),
@@ -1199,6 +1201,15 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       welcomed: false,
       railFired: story?.saveCtx?.initialSession?.railFired ?? 0,
       lastRailHand: story?.saveCtx?.initialSession?.lastRailHand ?? 0,
+      // The attempt's drawn rail cast: a resumed match's saved cast wins
+      // (the exact faces it started with); a fresh game takes the cast
+      // StoryHome drew for this attempt; the local draw is the fallback
+      // for saves written before the draw existed.
+      railCast: story?.saveCtx?.initialSession?.railCast ?? story?.saveCtx?.railCast
+        ?? (story?.scene ? railCastForAttempt(story.scene.stop.id, (story.saveCtx?.attemptsAtStart ?? story.scene.facts.attempts) + 1) : []),
+      railChecks: story?.saveCtx?.initialSession?.railChecks ?? 0,
+      railExchanges: story?.saveCtx?.initialSession?.railExchanges ?? 0,
+      railSaid: [...(story?.saveCtx?.initialSession?.railSaid ?? [])],
     });
   useEffect(() => {
     const scene = story?.scene;
@@ -1262,29 +1273,55 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           beatFired = true;
         }
       }
-      // RAILBIRDS: background cast chiming in from the rail — sparse,
-      // event-keyed, rate-capped (storyRail.ts), and NEVER stacked on a
-      // scripted beat from this same state change. One exception: at the
-      // King, the rail's finalHand witness line lands after the scene
+      // RAILBIRDS: this attempt's drawn background cast, chiming in from
+      // the rail — sparse, event-keyed, rate-capped (storyRail.ts), and
+      // NEVER stacked on a scripted beat from this same state change.
+      // Each eligible moment is ONE seeded evaluation (railMomentFor):
+      // it may pass in silence, land as a solo chime-in, or open a short
+      // exchange with the table (rail speaks, a seated player answers,
+      // the rail may get one comeback — then it dies). One exception: at
+      // the King, the rail's finalHand witness line lands after the scene
       // beat — the whole neighborhood watching is the point of the finale.
       const railEvent = (['jokerDropped', 'cutMade', 'nilMade', 'nilBusted', 'bigSwing'] as const).find((e) => evs.includes(e));
       const wantRail = finalHandNow && stop.id === 'king' ? 'finalHand' as const : (!beatFired ? railEvent : undefined);
       if (wantRail && snap.handNo > S.lastRailHand) {
-        const line = railLineFor(stop.id, wantRail, {
+        const checks = S.railChecks;
+        S.railChecks++;
+        const moment = railMomentFor(stop.id, wantRail, {
+          cast: S.railCast,
+          attemptNo: (story?.saveCtx?.attemptsAtStart ?? facts.attempts) + 1,
+          checks,
           fired: S.railFired,
+          exchangesFired: S.railExchanges,
+          said: S.railSaid,
           handNo: snap.handNo,
           stopsCleared: facts.clearedStopIds?.length ?? 0,
           attemptsAtOwnStop: (facts as { attemptsAtPorch?: number }).attemptsAtPorch ?? 0,
         });
-        if (line) {
+        if (moment) {
           S.railFired++;
+          if (moment.kind === 'exchange') S.railExchanges++;
           S.lastRailHand = snap.handNo;
-          const railName = STORY_CHARACTERS[line.speaker]?.name ?? line.speaker;
-          const delay = finalHandNow && stop.id === 'king' ? 7200 : 1100;
-          window.setTimeout(() => {
-            push(`${railName} · rail`, showLine(line.line), false, 0, true);
-            if (!sound.voiceMuted(railName)) speakBot(railName, line.line, undefined, undefined, undefined, undefined, n);
-          }, delay);
+          const lines = moment.kind === 'solo' ? [moment.line] : moment.lines;
+          for (const l of lines) S.railSaid.push(l.line);
+          const baseDelay = finalHandNow && stop.id === 'king' ? 7200 : 1100;
+          lines.forEach((l, ix) => {
+            // Attribution: a solo line is the rail's; in an exchange the
+            // opener and the comeback are the rail's, the middle line is
+            // the seated player's answer (their own name, their seat).
+            const railSide = moment.kind === 'solo' || ix !== 1;
+            const name = STORY_CHARACTERS[l.speaker]?.name ?? l.speaker;
+            window.setTimeout(() => {
+              if (railSide) {
+                push(`${name} · rail`, showLine(l.line), false, 0, true);
+                if (!sound.voiceMuted(name)) speakBot(name, l.line, undefined, undefined, undefined, undefined, n);
+              } else {
+                push(name, showLine(l.line), false, 0, true);
+                const seatIx = names.indexOf(name);
+                if (seatIx >= 0 && !sound.voiceMuted(name)) speakBot(name, l.line, undefined, undefined, undefined, pos[seatIx], n);
+              }
+            }, baseDelay + ix * 1700);
+          });
         }
       }
     }
@@ -1309,7 +1346,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           {
             stopId: story.scene.stop.id, track: 'solo',
             attemptsAtStart: story.saveCtx.attemptsAtStart, clearsAtStart: story.saveCtx.clearsAtStart,
-            session: { fired: [...S.fired], memory: [...S.memory], satDown: S.satDown, railFired: S.railFired, lastRailHand: S.lastRailHand },
+            session: { fired: [...S.fired], memory: [...S.memory], satDown: S.satDown, railFired: S.railFired, lastRailHand: S.lastRailHand, railCast: [...S.railCast], railChecks: S.railChecks, railExchanges: S.railExchanges, railSaid: [...S.railSaid] },
           },
         );
       }

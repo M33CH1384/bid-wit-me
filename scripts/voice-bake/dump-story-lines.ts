@@ -3,7 +3,8 @@
  * every story line from the scene pass's final text — storyScripts (scenes,
  * variants, mid-scenes, exchanges, play beats, callbacks, resume lines),
  * storySecrets (egg beats) and storyRail (rail lines incl. the fact variants
- * railLineFor returns and the King finalHand witness) — cast BY CHARACTER from
+ * railLineFor returns, the King finalHand witness, and the rail EXCHANGE
+ * threads — openers, seated replies, comebacks) — cast BY CHARACTER from
  * STORY_VOICE_CAST (storyVoice.ts), never by persona default: the sprite each
  * clip lands in is storyVoiceKey(character), the voice/speed are the cast's.
  *
@@ -18,8 +19,8 @@ import { join } from 'node:path';
 import {
   STORY_BID_REACT, STORY_CALLBACKS, STORY_INTRO_VARIANTS, STORY_MID_SCENES, STORY_PLAY_REACTS,
   STORY_RESUME_LINES, STORY_RETRY_FIRST, STORY_SCRIPTS, STORY_SECRETS, STORY_SIT_DOWN,
-  STORY_TABLE_EXCHANGES, STORY_KING_RAIL_OUTRO, STORY_RAIL_INTRO, STORY_RAIL_LINES,
-  STORY_VOICE_CAST, railLineFor, spokenTake, storyVoiceKey, type StoryBeat,
+  STORY_TABLE_EXCHANGES, STORY_KING_RAIL_OUTRO, STORY_RAIL_EXCHANGES, STORY_RAIL_INTRO, STORY_RAIL_LINES,
+  RAIL_NEEDLE_REPLY, STORY_VOICE_CAST, railLineFor, spokenTake, storyVoiceKey, type StoryBeat,
 } from '@spades/bots';
 
 const ROOT = join(import.meta.dirname, '../..');
@@ -65,6 +66,16 @@ export function storyCorpus(): { speaker: string; line: string; source: string }
   for (const [stop, beats] of Object.entries(STORY_RAIL_INTRO)) push(beats, `rail:${stop}:intro`);
   push(STORY_KING_RAIL_OUTRO.win, 'rail:king:outroWin');
   push(STORY_KING_RAIL_OUTRO.lose, 'rail:king:outroLose');
+  // Rail EXCHANGE threads (call-and-response): openers + seated replies
+  // + comebacks are spoken lines like any other — they join the corpus.
+  for (const [stop, threads] of Object.entries(STORY_RAIL_EXCHANGES)) {
+    for (const t of threads ?? []) {
+      out.push({ speaker: t.opener.speaker, line: t.opener.line, source: `rail:${stop}:exchange:open` });
+      for (const r of t.replies) out.push({ speaker: r.speaker, line: r.line, source: `rail:${stop}:exchange:reply` });
+      if (t.comeback) out.push({ speaker: t.opener.speaker, line: t.comeback, source: `rail:${stop}:exchange:comeback` });
+    }
+  }
+  out.push({ speaker: 'dee', line: RAIL_NEEDLE_REPLY, source: 'rail:fact:porchNeedleReply' });
   // railLineFor's fact variants are string literals inside the selector —
   // pull them out through the function itself so they can never drift.
   const facts = { fired: 0, handNo: 1, stopsCleared: 0, attemptsAtOwnStop: 0 };

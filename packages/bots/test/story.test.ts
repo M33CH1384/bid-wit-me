@@ -401,7 +401,7 @@ describe('tale of the tape (narrative)', () => {
 });
 
 
-import { RAIL_CAPS, STORY_RAIL, STORY_RAIL_INTRO, STORY_RAIL_LINES, railCapFor, railFor, railIssues, railLineFor } from '../src/storyRail';
+import { RAIL_CAPS, STORY_RAIL, STORY_RAIL_EXCHANGES, STORY_RAIL_INTRO, STORY_RAIL_LINES, railCapFor, railCastForAttempt, railExchangeCapFor, railFor, railIssues, railLineFor, railMomentFor } from '../src/storyRail';
 
 describe('railbirds: the neighborhood on the rail', () => {
   it('the rail map is honest: known characters, never seated, never Dee, never met early', () => {
@@ -456,6 +456,194 @@ describe('railbirds: the neighborhood on the rail', () => {
     expect(growth?.line).toContain('Look at Dee now');
     const plain = railLineFor('church-basement', 'bigSwing', { fired: 0, handNo: 2, stopsCleared: 2, attemptsAtOwnStop: 1 });
     expect(plain?.line).toContain('fellowship-hall');
+  });
+
+  it('the per-attempt draw is deterministic and never leaves the eligible pool', () => {
+    for (const stop of STORY_STOPS) {
+      for (let n = 1; n <= 30; n++) {
+        const cast = railCastForAttempt(stop.id, n);
+        expect(cast, `${stop.id}#${n}`).toEqual(railCastForAttempt(stop.id, n)); // same attempt, same faces
+        for (const id of cast) {
+          expect(railFor(stop.id), `${stop.id}#${n}:${id}`).toContain(id); // only the familiar pool
+          expect(stop.pair).not.toContain(id); // never seated
+          expect(id).not.toBe('dee'); // never Dee
+        }
+      }
+    }
+  });
+
+  it('the draw holds its exceptions: King full every attempt, Porch + High-Rise empty every attempt', () => {
+    for (let n = 1; n <= 10; n++) {
+      expect(railCastForAttempt('king', n)).toEqual(railFor('king'));
+      expect(railCastForAttempt('porch', n)).toEqual([]);
+      expect(railCastForAttempt('high-rise', n)).toEqual([]);
+    }
+  });
+
+  it('consecutive retries never field the same cast twice (pool permitting)', () => {
+    for (const stopId of ['barbershop', 'rec-center', 'cookout', 'corner', 'church-basement', 'rooftop', 'the-pjs', 'legends']) {
+      for (let n = 1; n < 24; n++) {
+        const a = [...railCastForAttempt(stopId, n)].sort().join(',');
+        const b = [...railCastForAttempt(stopId, n + 1)].sort().join(',');
+        expect(a, `${stopId} attempts ${n}/${n + 1}`).not.toBe(b);
+      }
+    }
+  });
+
+  it('the draw actually varies: every cookout room shows up across attempts', () => {
+    const buckets = new Map<string, number>();
+    for (let n = 1; n <= 80; n++) {
+      const key = railCastForAttempt('cookout', n).join('+') || '(empty)';
+      buckets.set(key, (buckets.get(key) ?? 0) + 1);
+    }
+    expect(buckets.get('lilMan+trey') ?? 0).toBeGreaterThanOrEqual(2);
+    expect(buckets.get('lilMan') ?? 0).toBeGreaterThanOrEqual(2);
+    expect(buckets.get('trey') ?? 0).toBeGreaterThanOrEqual(2);
+    expect(buckets.get('(empty)') ?? 0).toBeGreaterThanOrEqual(2); // some attempts run no rail at all
+  });
+
+  it('only the drawn cast can speak: an undrawn railbird has no lines', () => {
+    const facts = { fired: 0, handNo: 2, stopsCleared: 3, attemptNo: 1 };
+    expect(railLineFor('cookout', 'jokerDropped', { ...facts, cast: [] })).toBeNull();
+    for (const ev of ['jokerDropped', 'cutMade', 'nilMade', 'bigSwing'] as const) {
+      for (let fired = 0; fired < 3; fired++) {
+        const line = railLineFor('cookout', ev, { ...facts, cast: ['trey'], fired });
+        if (line) expect(line.speaker).toBe('trey');
+      }
+    }
+    // Ray's fact variants need Ray actually drawn
+    const rayFacts = { fired: 0, handNo: 2, stopsCleared: 5, attemptsAtOwnStop: 3, attemptNo: 1 };
+    expect(railLineFor('church-basement', 'bigSwing', { ...rayFacts, cast: [] })).toBeNull();
+    expect(railLineFor('church-basement', 'bigSwing', { ...rayFacts, cast: ['uncleRay'] })?.line).toContain('get off my porch');
+  });
+
+  it('a said line never repeats within a match', () => {
+    const facts = { fired: 0, handNo: 2, stopsCleared: 3, attemptNo: 2, cast: ['lilMan', 'trey'] };
+    const first = railLineFor('cookout', 'jokerDropped', facts)!;
+    const second = railLineFor('cookout', 'jokerDropped', { ...facts, fired: 1, said: [first.line] })!;
+    expect(second.line).not.toBe(first.line);
+    const both = railLineFor('cookout', 'jokerDropped', { ...facts, fired: 2, said: [first.line, second.line] });
+    expect(both).toBeNull(); // the event's whole pool is spent
+  });
+
+  it('rail moments roll three outcomes: silence, solo, exchange', () => {
+    const kinds = { null: 0, solo: 0, exchange: 0 };
+    for (let k = 0; k < 60; k++) {
+      const m = railMomentFor('cookout', 'bigSwing', {
+        cast: ['lilMan', 'trey'], attemptNo: 3, checks: k, fired: 0, exchangesFired: 0,
+        said: [], handNo: 2, stopsCleared: 3,
+      });
+      if (!m) kinds.null++;
+      else kinds[m.kind]++;
+    }
+    expect(kinds.null).toBeGreaterThan(0); // some moments pass unpicked
+    expect(kinds.solo).toBeGreaterThan(0);
+    expect(kinds.exchange).toBeGreaterThan(0);
+    expect(kinds.exchange).toBeLessThan(kinds.solo); // exchanges are the rarer beat
+  });
+
+  it('exchanges are shaped right: rail opens, a seated player answers, only the rail comebacks', () => {
+    const stop = STORY_STOPS.find((s) => s.id === 'legends')!;
+    const seated = [...stop.pair, 'dee'];
+    let seen = 0;
+    for (let k = 0; k < 60 && seen < 6; k++) {
+      const m = railMomentFor('legends', 'jokerDropped', {
+        cast: ['captainBlock', 'brick'], attemptNo: 4, checks: k, fired: 0, exchangesFired: 0,
+        said: [], handNo: 2, stopsCleared: 9,
+      });
+      if (m?.kind !== 'exchange') continue;
+      seen++;
+      expect(m.lines.length).toBeGreaterThanOrEqual(2);
+      expect(m.lines.length).toBeLessThanOrEqual(3); // hard shape cap, then it dies
+      expect(['captainBlock', 'brick']).toContain(m.lines[0]!.speaker); // drawn railbird opens
+      expect(seated).toContain(m.lines[1]!.speaker); // a seated player answers
+      if (m.lines.length === 3) expect(m.lines[2]!.speaker).toBe(m.lines[0]!.speaker); // comeback is the opener's
+    }
+    expect(seen).toBeGreaterThan(0);
+  });
+
+  it('exchanges have their own stricter cap, inside the moment cap', () => {
+    for (let k = 0; k < 60; k++) {
+      const m = railMomentFor('cookout', 'bigSwing', {
+        cast: ['lilMan', 'trey'], attemptNo: 3, checks: k, fired: 0,
+        exchangesFired: railExchangeCapFor('cookout'), said: [], handNo: 2, stopsCleared: 3,
+      });
+      expect(m?.kind).not.toBe('exchange');
+    }
+    expect(railExchangeCapFor('corner')).toBe(1); // grit stops: one, ever
+    expect(railExchangeCapFor('cookout')).toBe(2);
+  });
+
+  it('grit stays gritty: the Corner mostly passes, and its exchanges are one reply, no comeback', () => {
+    const kinds = { null: 0, solo: 0, exchange: 0 };
+    for (let k = 0; k < 60; k++) {
+      const m = railMomentFor('corner', 'bigSwing', {
+        cast: ['june'], attemptNo: 2, checks: k, fired: 0, exchangesFired: 0,
+        said: [], handNo: 2, stopsCleared: 4,
+      });
+      if (!m) kinds.null++;
+      else {
+        kinds[m.kind]++;
+        if (m.kind === 'exchange') expect(m.lines.length).toBe(2); // reply, no comeback
+      }
+    }
+    expect(kinds.null).toBeGreaterThan(kinds.solo + kinds.exchange); // the roll usually comes up empty
+    expect(kinds.exchange).toBeLessThan(6); // and exchanges are rare down here
+  });
+
+  it("the King's witness line bypasses the rolls; his rail still quiets for the endgame", () => {
+    for (let k = 0; k < 4; k++) {
+      const m = railMomentFor('king', 'finalHand', {
+        cast: railFor('king'), attemptNo: 1, checks: k, fired: 1, exchangesFired: 0,
+        said: [], handNo: 9, stopsCleared: 10,
+      });
+      expect(m?.kind).toBe('solo');
+      expect(m?.kind === 'solo' && m.line.speaker).toBe('mrColeman');
+    }
+    expect(railMomentFor('king', 'jokerDropped', {
+      cast: railFor('king'), attemptNo: 1, checks: 0, fired: 0, exchangesFired: 0,
+      said: [], handNo: 6, stopsCleared: 10,
+    })).toBeNull();
+  });
+
+  it('a threaded match never repeats a rail line and respects the cap', () => {
+    // Simulate the table's bookkeeping: checks advance per evaluation,
+    // fired per delivered moment, said accumulates every delivered line.
+    const said: string[] = [];
+    let fired = 0; let exchanges = 0;
+    const events = ['jokerDropped', 'cutMade', 'nilMade', 'nilBusted', 'bigSwing'] as const;
+    for (let k = 0; k < 40 && fired < railCapFor('legends'); k++) {
+      const m = railMomentFor('legends', events[k % events.length]!, {
+        cast: railCastForAttempt('legends', 2), attemptNo: 2, checks: k, fired,
+        exchangesFired: exchanges, said, handNo: 2 + k, stopsCleared: 9,
+      });
+      if (!m) continue;
+      const lines = m.kind === 'solo' ? [m.line] : m.lines;
+      for (const l of lines) {
+        expect(said).not.toContain(l.line);
+        said.push(l.line);
+      }
+      fired++;
+      if (m.kind === 'exchange') exchanges++;
+    }
+    expect(fired).toBeGreaterThan(0);
+    expect(exchanges).toBeLessThanOrEqual(railExchangeCapFor('legends'));
+  });
+
+  it('every stop with a rail carries exchange threads, opener on the rail', () => {
+    for (const [stopId, rail] of Object.entries(STORY_RAIL)) {
+      if (!rail.length) continue;
+      expect(STORY_RAIL_EXCHANGES[stopId]?.length, stopId).toBeGreaterThan(0);
+    }
+  });
+
+  it('the intro scene acknowledges only the faces this attempt drew', async () => {
+    const { beatsFor } = await import('../src/storyScripts');
+    const church = STORY_STOPS.find((s) => s.id === 'church-basement')!;
+    const rayAck = (beats: { speaker: string; line: string }[]) => beats.some((b) => b.line.includes('Raymond don’t miss a Sunday'));
+    expect(rayAck(beatsFor(church, 'intro', { attempts: 0, cleared: false }))).toBe(true); // no cast given: full rail
+    expect(rayAck(beatsFor(church, 'intro', { attempts: 0, cleared: false, railCast: ['uncleRay'] }))).toBe(true);
+    expect(rayAck(beatsFor(church, 'intro', { attempts: 0, cleared: false, railCast: [] }))).toBe(false); // Ray didn't show: no introduction of an empty chair
   });
 
   it("the King's outro rail answers both endings", async () => {

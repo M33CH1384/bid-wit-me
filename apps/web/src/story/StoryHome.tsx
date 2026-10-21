@@ -28,7 +28,7 @@ import { STORY_OWNER_ONLY, fetchStoryAccess, fetchStoryDev, fetchStoryProgress, 
 import { deckUnlockNotice, invalidateStoryProgress } from '../storyDecks';
 import { setAnimUnlockNotice } from '../setAnims';
 import { clearStoryGame, loadStoryGame, storySaveSummary, storySaveValidFor, type StorySavedGame } from './storySave';
-import { railFor, storyBadgesFor } from '@spades/bots';
+import { railCastForAttempt, storyBadgesFor } from '@spades/bots';
 import ScriptPlayer, { type SceneEgg } from './ScriptPlayer';
 import StoryTape from './StoryTape';
 import StoryFace from './StoryFace';
@@ -132,6 +132,9 @@ export default function StoryHome() {
       clearedStopIds: progress?.stops.filter((s) => s.clears > 0).map((s) => s.stopId) ?? [],
       // Railbird Ray's memory is keyed to HIS stop — the Porch (stored fact).
       attemptsAtPorch: progress?.stops.find((s) => s.stopId === 'porch')?.attempts ?? 0,
+      // This attempt's drawn rail cast (per-attempt, seeded — storyRail):
+      // the intro scene acknowledges only the faces that showed up.
+      railCast: railCastForAttempt(stop.id, (row?.attempts ?? 0) + 1),
     };
   };
   /** The scene's egg prop for a stop's intro (null when found or match-earned). */
@@ -159,10 +162,17 @@ export default function StoryHome() {
     return stop.n === 1 ? 'current' : 'locked'; // signed-out preview: nothing is recorded, nothing is promised
   };
 
+  // The rail cast drawn for the attempt in flight: the intro, the table
+  // session and the outro all show the SAME faces. Set when an attempt
+  // starts (fresh draw from the attempt number) or resumes (the save's
+  // own cast — a resumed match never re-draws its room).
+  const attemptRailRef = useRef<{ stopId: string; cast: readonly string[] } | null>(null);
+
   const startGame = (stop: StoryStop) => {
     finishedRef.current = null;
     setLastResult(null);
     progressBeforeRef.current = progress;
+    attemptRailRef.current = { stopId: stop.id, cast: factsFor(stop).railCast ?? [] };
     setScreen({ k: 'game', stop, seed: secureSeed() });
   };
 
@@ -171,6 +181,10 @@ export default function StoryHome() {
     finishedRef.current = null;
     setLastResult(null);
     progressBeforeRef.current = progress;
+    attemptRailRef.current = {
+      stopId: stop.id,
+      cast: save.story.session.railCast ?? railCastForAttempt(stop.id, save.story.attemptsAtStart + 1),
+    };
     setScreen({ k: 'game', stop, seed: save.seed, resumeSave: save });
   };
 
@@ -336,7 +350,7 @@ export default function StoryHome() {
             onDone={() => startGame(stop)}
             bgUrl={storyBackdropUrl(stop)}
             cast={[stop.pair[0], 'dee', stop.pair[1]]}
-            rail={railFor(stop.id)}
+            rail={railCastForAttempt(stop.id, factsFor(stop).attempts + 1)}
             egg={eggFor(stop)}
             onEggFound={() => handleEggFound(stop)}
           />
@@ -371,6 +385,9 @@ export default function StoryHome() {
               attemptsAtStart: factsFor(stop).attempts,
               clearsAtStart: factsFor(stop).clears,
               resumed: false,
+              railCast: attemptRailRef.current?.stopId === stop.id
+                ? [...attemptRailRef.current.cast]
+                : railCastForAttempt(stop.id, factsFor(stop).attempts + 1),
             },
         }}
         onExit={() => setScreen(finishedRef.current?.seed === screen.seed ? { k: 'outro', stop, won: finishedRef.current.won } : { k: 'map' })}
@@ -435,7 +452,9 @@ export default function StoryHome() {
           onDone={() => setScreen({ k: 'map' })}
           bgUrl={storyBackdropUrl(stop)}
           cast={[stop.pair[0], 'dee', stop.pair[1]]}
-          rail={railFor(stop.id)}
+          rail={attemptRailRef.current?.stopId === stop.id
+            ? [...attemptRailRef.current.cast]
+            : railCastForAttempt(stop.id, (progressBeforeRef.current?.stops.find((s) => s.stopId === stop.id)?.attempts ?? 0) + 1)}
         />
         {dblStarted && (
           <button type="button" className="btn primary story-retry" data-testid="story-double-runback" onClick={() => startGame(stop)}>Run it back — leg 2</button>

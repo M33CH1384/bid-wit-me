@@ -109,3 +109,40 @@ describe('story session pings', () => {
     await new Promise((r) => setTimeout(r, 0));
   });
 });
+
+describe('story rail session state (per-attempt cast + roll cursors)', () => {
+  it('the drawn cast, roll cursors and said-lines survive a save/load round trip', () => {
+    const s = mkSave('church-basement');
+    s.story.session.railCast = ['uncleRay'];
+    s.story.session.railChecks = 3;
+    s.story.session.railExchanges = 1;
+    s.story.session.railSaid = ['Took you a few tries to get off my porch, baby.'];
+    saveStoryGame(s, s.story);
+    const back = loadStoryGame();
+    expect(back?.story.session.railCast).toEqual(['uncleRay']); // resume restores THIS attempt's faces
+    expect(back?.story.session.railChecks).toBe(3); // the outcome stream resumes where it left off
+    expect(back?.story.session.railExchanges).toBe(1);
+    expect(back?.story.session.railSaid).toEqual(['Took you a few tries to get off my porch, baby.']);
+  });
+
+  it('a legacy save (written before the draw) loads with an underived cast and zeroed cursors', () => {
+    const s = mkSave('barbershop'); // mkSave's session carries none of the rail-draw fields
+    saveStoryGame(s, s.story);
+    const back = loadStoryGame();
+    expect(back?.story.session.railCast).toBeUndefined(); // the table derives it from the attempt instead
+    expect(back?.story.session.railChecks).toBe(0);
+    expect(back?.story.session.railExchanges).toBe(0);
+    expect(back?.story.session.railSaid).toEqual([]);
+  });
+
+  it('no pending exchange is ever persisted — the session holds counters and history only', () => {
+    const s = mkSave('cookout');
+    s.story.session.railCast = ['trey'];
+    s.story.session.railSaid = ['That joker just got GRILLED. Extra char.'];
+    saveStoryGame(s, s.story);
+    const keys = Object.keys(loadStoryGame()?.story.session ?? {}).sort();
+    expect(keys).toEqual([
+      'fired', 'lastRailHand', 'memory', 'railCast', 'railChecks', 'railExchanges', 'railFired', 'railSaid', 'satDown',
+    ]);
+  });
+});
