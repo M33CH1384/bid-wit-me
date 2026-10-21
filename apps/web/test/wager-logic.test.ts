@@ -164,7 +164,9 @@ describe('wiring pins', () => {
     expect(social).toContain('<UnlockPopups />');
   });
   it('challenge buttons sit in both profile action rows', () => {
-    expect(social).toContain('<ChallengeButton name={p.username}');
+    // ONE PROFILE (2026-10-20): the panel/page action row lives in the unified view
+    const view = readFileSync(new URL('../src/profile/ProfileView.tsx', import.meta.url), 'utf8');
+    expect(view).toContain('<ChallengeButton name={displayName}');
     expect(modal).toContain('testid="profile-modal-challenge"');
     expect(modal).toContain("social.startChallenge(target.name)");
   });

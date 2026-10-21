@@ -3,10 +3,9 @@
  * friends, profiles, settings), invite toasts and notices. Mounted once at the root so invites reach you anywhere.
  */
 import { Fragment, type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { type DmLine, type InviteMsg, type OpenTable, type PresenceEntry, type PresenceStatus, presenceLine, REACT_PALETTE_EXTRA, SOCIAL_LIMITS, statusLabel } from '@spades/protocol';
+import { type DmLine, type InviteMsg, type OpenTable, type PresenceEntry, type PresenceStatus, REACT_PALETTE_EXTRA, SOCIAL_LIMITS, statusLabel } from '@spades/protocol';
 import { useAccount } from '../account/api';
-import { accountUidOf, AvatarCircle, socialUidOf, useAvatar } from '../avatar';
-import { BADGES } from '../badges';
+import { AvatarCircle, socialUidOf, useAvatar } from '../avatar';
 import { createTable } from '../online/connection';
 import { inviteLink, serverUrl } from '../online/config';
 import { navigate } from '../online/nav';
@@ -16,17 +15,14 @@ import { type PlayerTableAction, playerTableAction } from './tableActions';
 import { type MyTable, type SocialTab, type Toast, badgeCount, globalUnread, social, useSocial } from './store';
 import { openPlayerProfile, profileTargetOf } from '../profileTap';
 import { Leaderboards, Tournaments } from './Compete';
-import { ChallengeButton, WagerChallenges } from './Wager';
+import { WagerChallenges } from './Wager';
 import { UnlockPopups } from './UnlockPopups';
-import { offlineStats } from '../offlineStats';
 import { chatStickToBottom } from '../chatScroll';
 import { chatGroupInfo, chatTimeLabel } from './chatTime';
 import { POPOVER_H, POPOVER_H_PALETTE, POPOVER_H_REPLY, popoverPos, useMsgPress, type AnchorRect } from './msgPress';
 import { ReactionChips, ReactionPicker } from '../reactions';
-import { TaglineText } from '../tagline';
-import { SocialLinksChips, type SocialLinks } from '../socialLinks';
-import { RepBlock } from '../RepBlock';
 import GearIcon from '../GearIcon';
+import { ProfileView } from '../profile/ProfileView';
 import './social.css';
 
 export const MODE_NAME: Record<string, string> = { joker: 'Joker Spades', aceDown: 'Ace Down', cutthroat: 'Cutthroat' };
@@ -244,7 +240,7 @@ function SocialPanel() {
           </div>
         )}
         <div className="soc-body">
-          {s.profile ? <Profile name={s.profile} id={s.profileId ?? undefined} /> :
+          {s.profile ? <ProfileView host="panel" name={s.profile} id={s.profileId ?? undefined} /> :
             s.tab === 'players' ? <Players signedIn={signedIn} /> :
             s.tab === 'chat' ? <GlobalChat signedIn={signedIn} /> :
             s.tab === 'messages' ? <Messages signedIn={signedIn} /> :
@@ -279,8 +275,10 @@ function SignInNote({ what }: { what: string }) {
   return <p className="soc-note" data-testid="soc-signin-note">Sign in (top-left on the start screen) to {what}. Guests can watch the players list and read the global chat.</p>;
 }
 
-/** invite: to the table you're at, or a new table with your current settings */
-async function inviteTo(pid: string, mine: MyTable | null) {
+/** invite: to the table you're at, or a new table with your current settings.
+ *  Exported for the unified profile view (profile/ProfileView.tsx), whose
+ *  action row offers the same Invite as the player rows here. */
+export async function inviteTo(pid: string, mine: MyTable | null) {
   if (mine) { social.invite(pid, mine); return; }
   try {
     const st = loadSettings();
@@ -797,138 +795,6 @@ function Friends({ signedIn }: { signedIn: boolean }) {
             } />
           ))}
         </Section>
-      )}
-    </div>
-  );
-}
-
-interface ProfileData {
-  id?: string; avatar?: string | null;
-  username: string; memberSince: number; tagline?: string | null; badges: { id: string; earnedAt: number }[]; teamNames: string[];
-  ratings: { team?: number; cutthroat?: number }; totals: { games: number; wins: number };
-  h2h: { id: string; name: string; games: number; wins: number; losses: number }[]; vsYou?: { games: number; wins: number; losses: number }; champion: number;
-  stats?: { games: number; wins: number; streak: number; bestStreak: number; accuracy: number | null; booksPerHand: number | null; nil: string; shotsGiven: number; shotsTaken: number; wheels: number; bjWins: number; bidSec: number | null; playSec: number | null };
-  awards?: { label: string; ref: string; at: number }[];
-}
-
-interface CredPublic {
-  user: { id: string; name: string; avatar: string | null; avatarUpdatedAt?: number | null; tagline?: string | null; socialLinks?: SocialLinks };
-  level: { level: number; xp: number; xpForNext: number; xpIntoLevel: number; title: string };
-  rank: { team: { division: string; elo: number }; cutthroat: { division: string; elo: number } };
-  achievements: { id: string; title: string; hint: string; xp: number; coins: number; unlockedAt: number | null }[];
-  coins?: { balance: number };
-}
-function Profile({ name, id }: { name: string; id?: string }) {
-  const s = useSocial();
-  const acct = useAccount();
-  const [p, setP] = useState<ProfileData | null | 'missing'>(null);
-  const [cred, setCred] = useState<CredPublic | null>(null);
-  useEffect(() => {
-    setP(null);
-    fetch(`/api/social/profile/${encodeURIComponent(name)}`, { credentials: 'same-origin' }).then((r) => (r.ok ? r.json() : 'missing')).then(setP).catch(() => setP('missing'));
-  }, [name]);
-  const pid = id ?? (p && p !== 'missing'
-    ? Object.values(s.users).find((u) => !u.guest && u.name === p.username)?.id
-      ?? [...(s.friends?.friends ?? []), ...(s.friends?.incoming ?? []), ...(s.friends?.outgoing ?? []), ...(s.friends?.blocked ?? [])].find((f) => f.name === p.username)?.id
-    : undefined);
-  // pid is a SOCIAL id ('u:<uid>', or raw '<uid>' from the chat name tap) — hub actions
-  // (DMs, invites, presence) speak that form, but /api/profile/:id looks the user up by
-  // the RAW account id. Fetching with a 'u:'-prefixed pid 404s, which silently cost this
-  // view its picture, Rep and achievements (2026-10-20). Always normalize first; the
-  // social profile payload's own id covers name-only opens (offline, not a friend).
-  const uid = accountUidOf(pid) ?? (p && p !== 'missing' ? p.id : undefined);
-  // Rep data (level/title, season divisions, unlocked achievements) comes straight from the
-  // server DB via /api/profile/:id — no presence involved, so offline players show it too.
-  useEffect(() => {
-    setCred(null);
-    if (!uid) return;
-    fetch(`/api/profile/${encodeURIComponent(uid)}`, { credentials: 'same-origin' })
-      .then((r) => (r.ok ? r.json() : null)).then((j) => setCred(j as CredPublic)).catch(() => setCred(null));
-  }, [uid]);
-  // The header picture resolves the same way chat faces do (useAvatar → /api/profile/:id,
-  // cached), seeded by whichever payload already carries it — so the photo shows even if
-  // one of the two fetches fails.
-  const pic = useAvatar(uid, cred?.user.avatar ?? (p && p !== 'missing' ? p.avatar : undefined), cred?.user.avatarUpdatedAt ?? undefined);
-  const me = acct.user?.username === name;
-  const friend = !!pid && (s.friends?.friends ?? []).some((f) => f.id === pid);
-  const pending = !!pid && (s.friends?.outgoing ?? []).some((f) => f.id === pid);
-  const incoming = !!pid && (s.friends?.incoming ?? []).some((f) => f.id === pid);
-  const blocked = !!pid && (s.friends?.blocked ?? []).some((f) => f.id === pid);
-  return (
-    <div className="soc-profile" data-testid="profile">
-      <button type="button" className="link" onClick={() => social.showProfile(null)} data-testid="profile-back">← Back</button>
-      {p === null ? <p className="soc-empty">Loading…</p> : p === 'missing' ? <p className="soc-empty">No profile for {name}.</p> : (
-        <>
-          <div className="soc-prof-head">
-            <AvatarCircle pic={pic} name={p.username} className="soc-av big" />
-            <div>
-              <h3 data-testid="profile-name">{p.username}{p.champion > 0 && <span className="soc-champ" title="Tournament champion">🏆×{p.champion}</span>}</h3>
-              <p className="soc-muted">Member since {new Date(p.memberSince).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</p>
-              <TaglineText text={p.tagline ?? cred?.user.tagline} className="soc-tagline" />
-              <p className={`soc-online-status ${s.users[pid ?? ''] ? 'on' : 'off'}`} data-testid="profile-online">
-                <i className="soc-dot" aria-hidden />{s.users[pid ?? ''] ? presenceLine(s.users[pid ?? '']!.status, modeName) : 'Offline'}
-              </p>
-            </div>
-            {cred && (
-              <RepBlock testid="profile-rep" coinsTestid="profile-coins"
-                level={cred.level} team={cred.rank.team} cutthroat={cred.rank.cutthroat} coins={cred.coins?.balance} />
-            )}
-            {!me && pid && (
-              <div className="soc-prof-acts">
-                {!blocked && <button type="button" onClick={() => social.openDm(pid)}>💬 Chat</button>}
-                {!blocked && s.users[pid] && <button type="button" onClick={() => void inviteTo(pid, s.myTable)}>➕ Invite</button>}
-                {!blocked && <ChallengeButton name={p.username} blocked={blocked} />}
-                {friend && <span className="soc-friend-tag" data-testid="profile-friends">★ Friends</span>}
-                {incoming && !friend && !blocked && <button type="button" className="primary" onClick={() => social.friend('accept', pid)} data-testid="profile-accept">Accept request</button>}
-                {incoming && !friend && !blocked && <button type="button" className="ghost" onClick={() => social.friend('decline', pid)} data-testid="profile-decline">Decline</button>}
-                {!friend && !incoming && !blocked && <button type="button" disabled={pending} onClick={() => social.friend('request', pid)} data-testid="profile-add">{pending ? 'Requested' : '👋 Add friend'}</button>}
-                {blocked ? <button type="button" onClick={() => social.friend('unblock', pid)}>Unblock</button> : <button type="button" className="ghost" onClick={() => { if (confirm(`Block ${p.username}? They won't see you online, can't message or invite you, and their chat is hidden.`)) social.friend('block', pid); }} data-testid="profile-block">Block</button>}
-                <button type="button" className="ghost" onClick={() => social.report('user', { user: pid })}>Report</button>
-              </div>
-            )}
-          </div>
-          <SocialLinksChips links={cred?.user.socialLinks} testid="profile-social-links" />
-          <div className="soc-stats">
-            <div><b>{p.totals.games}</b><small>online games</small></div>
-            <div><b>{p.totals.games ? Math.round((p.totals.wins / p.totals.games) * 100) : 0}%</b><small>wins</small></div>
-          </div>
-          {cred && cred.achievements.some((a) => a.unlockedAt) && (
-            <>
-              <h4>Achievements</h4>
-              <div className="soc-badges">{cred.achievements.filter((a) => a.unlockedAt).map((a) => <span key={a.id} className="soc-badge-chip" title={`+${a.xp} XP${a.coins ? ` · +${a.coins} coins` : ''}`}>🏅 {a.title}</span>)}</div>
-            </>
-          )}
-          {p.vsYou && <p className="soc-vs" data-testid="profile-vs">You vs {p.username}: <b>{p.vsYou.wins}–{p.vsYou.losses}</b> in {p.vsYou.games} game{p.vsYou.games === 1 ? '' : 's'}</p>}
-          {p.awards && p.awards.length > 0 && <><h4>Champion</h4><div className="soc-badges" data-testid="profile-awards">{p.awards.map((a) => <button type="button" key={a.ref} className="soc-badge-chip champ" onClick={() => social.showTour(a.ref)}>🏆 {a.label}</button>)}</div></>}
-          {p.stats && p.stats.games > 0 && (
-            <>
-              <h4>Stats</h4>
-              <div className="soc-stats small" data-testid="profile-stats">
-                <div><b>{p.stats.streak}</b><small>win streak (best {p.stats.bestStreak})</small></div>
-                <div><b>{p.stats.accuracy ?? '—'}{p.stats.accuracy !== null ? '%' : ''}</b><small>bid accuracy</small></div>
-                <div><b>{p.stats.booksPerHand ?? '—'}</b><small>books / hand</small></div>
-                <div><b>{p.stats.nil}</b><small>nils made</small></div>
-                <div><b>{p.stats.shotsGiven}</b><small>shots given</small></div>
-                <div><b>{p.stats.shotsTaken}</b><small>shot</small></div>
-                <div><b>{p.stats.wheels}</b><small>Wheels</small></div>
-                <div><b>{p.stats.bjWins}</b><small>Big Joker wins</small></div>
-                <div><b>{p.stats.bidSec ?? '—'}s</b><small>avg bid</small></div>
-                <div><b>{p.stats.playSec ?? '—'}s</b><small>avg play</small></div>
-              </div>
-            </>
-          )}
-          {me && (() => { const o = offlineStats(); return o.games > 0 ? <p className="soc-muted" data-testid="profile-offline">On this device vs bots: {o.wins}/{o.games} wins · streak {o.streak} (best {o.bestStreak})</p> : null; })()}
-          <h4>Badges</h4>
-          <div className="soc-badges">{p.badges.length ? p.badges.map((b) => <span key={b.id} className="soc-badge-chip" title={BADGES[b.id]?.desc}>{BADGES[b.id]?.icon ?? '🏅'} {BADGES[b.id]?.name ?? b.id}</span>) : <span className="soc-muted">None yet</span>}</div>
-          <h4>Team names</h4>
-          <div className="soc-badges">{p.teamNames.length ? p.teamNames.map((t) => <span key={t} className="soc-badge-chip">{t}</span>) : <span className="soc-muted">None yet</span>}</div>
-          <h4>Head-to-head</h4>
-          {p.h2h.length ? (
-            <table className="soc-h2h" data-testid="profile-h2h"><tbody>
-              {p.h2h.map((r) => <tr key={r.id}><td><button type="button" className="link" onClick={() => social.showProfile(r.name, r.id)}>{r.name}</button></td><td>{r.wins}–{r.losses}</td><td className="soc-muted">{r.games} game{r.games === 1 ? '' : 's'}</td></tr>)}
-            </tbody></table>
-          ) : <p className="soc-muted">No series against signed-in players yet.</p>}
-        </>
       )}
     </div>
   );

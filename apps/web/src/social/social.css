@@ -190,7 +190,7 @@ button.ghost { background: transparent !important; }
 .soc-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 /* the profile summary grids keep only games + wins now (the 2v2 / Cutthroat
    rating tiles duplicated the header's division chips) — two tiles, two columns */
-.soc-profile > .soc-stats:not(.small), .profile-modal-body > .soc-stats { grid-template-columns: repeat(2, 1fr); }
+.profile-view .soc-stats.wins-summary, .profile-modal-body > .soc-stats { grid-template-columns: repeat(2, 1fr); }
 .soc-stats div { background: rgba(255,255,255,.05); border-radius: 8px; padding: 8px 4px; text-align: center; display: flex; flex-direction: column; }
 .soc-stats b { font-family: var(--display); font-size: 22px; }
 .soc-stats small { font-size: 11px; color: var(--muted); }

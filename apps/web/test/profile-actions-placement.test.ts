@@ -32,7 +32,19 @@
  *  line" — it wrapped, Report dropping to a second row), so social.css makes
  *  the row nowrap with compact header-scoped chips. And the coins chip lost
  *  its 🪙 emoji ("that emoji you have for coins don't work for me") —
- *  RepBlock draws a CoinIcon SVG in its place. */
+ *  RepBlock draws a CoinIcon SVG in its place.
+ *
+ *  ONE PROFILE (same day, owner's verdict on the whole structure): "I really
+ *  don't get why we have a rep profile and then a completely separate profile
+ *  page if I tap on my name from the players menu — it's confusing and bad
+ *  user experience." The two full-profile implementations (ProfilePage's
+ *  tabbed page and Social.tsx's Profile) are now ONE component —
+ *  src/profile/ProfileView.tsx — rendered by both hosts (the /profile route
+ *  and the Social panel) for self and others alike. The pins below that used
+ *  to read Social.tsx's Profile or ProfilePage's internals now read
+ *  ProfileView: same order, same content, one home. The tabbed body means
+ *  achievements live behind the Achievements tab (their own section, below
+ *  the header, as before — one tap away instead of a scroll). */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
@@ -40,23 +52,24 @@ const social = readFileSync(new URL('../src/social/Social.tsx', import.meta.url)
 const modal = readFileSync(new URL('../src/social/ProfileModal.tsx', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../src/social/social.css', import.meta.url), 'utf8');
 const repBlock = readFileSync(new URL('../src/RepBlock.tsx', import.meta.url), 'utf8');
+const view = readFileSync(new URL('../src/profile/ProfileView.tsx', import.meta.url), 'utf8');
 const page = readFileSync(new URL('../src/profile/ProfilePage.tsx', import.meta.url), 'utf8');
 
 const count = (src: string, needle: string) => src.split(needle).length - 1;
 
-describe('Social profile: action row under the Rep block', () => {
-  const profile = social.slice(social.indexOf('function Profile('));
+describe('Unified profile: action row under the Rep block', () => {
+  const profile = view.slice(view.indexOf('export function ProfileView('));
   it('exactly one action row — no duplicate left down the page', () => {
     expect(count(profile, 'className="soc-prof-acts"')).toBe(1);
   });
-  it('the Rep block renders after the presence line, the action row follows it, both still inside the header before the stats grid', () => {
+  it('the Rep block renders after the presence line, the action row follows it, both still inside the header before the stats summary', () => {
     const presence = profile.indexOf('data-testid="profile-online"');
     const rep = profile.indexOf('testid="profile-rep"');
     const acts = profile.indexOf('className="soc-prof-acts"');
     expect(presence).toBeGreaterThan(-1);
     expect(rep).toBeGreaterThan(presence);
     expect(acts).toBeGreaterThan(rep);
-    expect(profile.indexOf('className="soc-stats"')).toBeGreaterThan(acts);
+    expect(profile.indexOf('className="soc-stats wins-summary"')).toBeGreaterThan(acts);
   });
   it('the row is inside the header block (before the social-links chips that follow the header)', () => {
     const acts = profile.indexOf('className="soc-prof-acts"');
@@ -117,7 +130,7 @@ describe('header CSS: the row wraps as a full-width line under the header text',
 });
 
 describe('consolidated header: one profile area at the top (Demetrius 2026-10-20)', () => {
-  const profile = social.slice(social.indexOf('function Profile('));
+  const profile = view.slice(view.indexOf('export function ProfileView('));
   const card = modal.slice(modal.indexOf('function ProfileCard'));
   it('exactly one Rep block per surface — the standalone REP section is gone', () => {
     expect(count(profile, 'testid="profile-rep"')).toBe(1);
@@ -146,12 +159,13 @@ describe('consolidated header: one profile area at the top (Demetrius 2026-10-20
       expect(src).toContain('<small>wins</small>');
     }
   });
-  it('achievements still render below, as their own section', () => {
-    expect(profile).toContain('<h4>Achievements</h4>');
+  it('achievements render as their own section below the header (the Achievements tab in the full view, a section in the modal)', () => {
+    expect(profile).toContain("{ id: 'achievements', label: 'Achievements' }");
+    expect(profile).toContain('className="ach-grid"');
     expect(card).toContain('<h4>Achievements</h4>');
   });
   it('the summary stats grids get two columns for their two tiles', () => {
-    expect(css).toContain('.soc-profile > .soc-stats:not(.small), .profile-modal-body > .soc-stats { grid-template-columns: repeat(2, 1fr); }');
+    expect(css).toContain('.profile-view .soc-stats.wins-summary, .profile-modal-body > .soc-stats { grid-template-columns: repeat(2, 1fr); }');
   });
 });
 
@@ -162,23 +176,25 @@ describe('unified Rep block: the XP bar rides in the header on every surface', (
     expect(repBlock).toContain('data-testid={testid}');
     expect(repBlock).toContain('data-testid={`${testid}-xp`}');
   });
-  it('all three surfaces render the one shared component — no per-surface Rep markup left', () => {
-    expect(social).toContain("import { RepBlock } from '../RepBlock';");
+  it('both hosts render the one shared ProfileView, which renders the one shared RepBlock — no per-surface Rep markup left', () => {
+    expect(view).toContain("import { RepBlock } from '../RepBlock';");
     expect(modal).toContain("import { RepBlock } from '../RepBlock';");
-    expect(page).toContain("import { RepBlock } from '../RepBlock';");
-    expect(page).toContain('testid="prof-rep"');
-    expect(page).toContain('team={profile.rank.team}');
-    expect(page).toContain('cutthroat={profile.rank.cutthroat}');
-    // the /profile header's hand-rolled level line + bar are gone (RepBlock owns them now)
+    expect(view).toContain('testid="profile-rep"');
+    expect(social).toContain("import { ProfileView } from '../profile/ProfileView';");
+    expect(social).toContain('<ProfileView host="panel"');
+    expect(page).toContain("import { ProfileView } from './ProfileView';");
+    expect(page).toContain('<ProfileView host="page" />');
+    // the old /profile header's hand-rolled level line, bar and coins block are gone (RepBlock owns them now)
     expect(page).not.toContain('className="prof-level"');
     expect(page).not.toContain('className="xp-bar"');
+    expect(view).not.toContain('className="prof-coins"');
   });
-  it('on /profile the block sits inside the header card, before the coins block', () => {
-    const head = page.indexOf('className="prof-header glass"');
-    const rep = page.indexOf('<RepBlock');
+  it('in the unified view the block sits inside the one header, before the tabs', () => {
+    const head = view.indexOf('className="soc-prof-head"');
+    const rep = view.indexOf('<RepBlock');
     expect(head).toBeGreaterThan(-1);
     expect(rep).toBeGreaterThan(head);
-    expect(rep).toBeLessThan(page.indexOf('className="prof-coins"'));
+    expect(rep).toBeLessThan(view.indexOf('className="prof-tabs"'));
   });
 });
 
@@ -193,7 +209,7 @@ describe('one line: the action row never wraps (Demetrius 2026-10-20)', () => {
     expect(css).toContain('.soc-prof-head .soc-prof-acts .soc-friend-tag { padding: 6px 7px; font-size: 12px; min-height: 40px; }');
   });
   it('both surfaces render the single row these rules apply to', () => {
-    const profile = social.slice(social.indexOf('function Profile('));
+    const profile = view.slice(view.indexOf('export function ProfileView('));
     const card = modal.slice(modal.indexOf('function ProfileCard'));
     expect(count(profile, 'className="soc-prof-acts"')).toBe(1);
     expect(count(card, 'className="soc-prof-acts"')).toBe(1);
@@ -212,7 +228,7 @@ describe('coins chip: a drawn coin, no emoji (Demetrius 2026-10-20)', () => {
 
 describe('theme parity: the profile is the same profile in Classic and Neon', () => {
   it('no profile component branches on the theme — Neon only styles via CSS', () => {
-    const profile = social.slice(social.indexOf('function Profile('));
+    const profile = view.slice(view.indexOf('export function ProfileView('));
     const card = modal.slice(modal.indexOf('function ProfileCard'));
     for (const src of [profile, card, page, repBlock]) {
       expect(src).not.toContain('data-theme');
@@ -223,24 +239,24 @@ describe('theme parity: the profile is the same profile in Classic and Neon', ()
   });
 });
 
-describe('social-links editor: inputs hidden unless actively editing (own /profile)', () => {
+describe('social-links editor: inputs hidden unless actively editing (own profile)', () => {
   it('starts collapsed, with an Edit links button and a muted empty state', () => {
-    expect(page).toContain('const [editing, setEditing] = useState(false);');
-    expect(page).toContain('data-testid="social-edit"');
-    expect(page).toContain('>Edit links</button>');
-    expect(page).toContain('No links yet');
+    expect(view).toContain('const [editing, setEditing] = useState(false);');
+    expect(view).toContain('data-testid="social-edit"');
+    expect(view).toContain('>Edit links</button>');
+    expect(view).toContain('No links yet');
   });
   it('the text inputs render only inside the editing branch, after the collapsed return', () => {
-    const collapsed = page.indexOf('if (!editing) {');
+    const collapsed = view.indexOf('if (!editing) {');
     expect(collapsed).toBeGreaterThan(-1);
-    expect(page.indexOf('data-testid={`social-input-${p.id}`}')).toBeGreaterThan(collapsed);
-    expect(page.indexOf('data-testid="social-edit"')).toBeLessThan(page.indexOf('data-testid={`social-input-${p.id}`}'));
+    expect(view.indexOf('data-testid={`social-input-${p.id}`}')).toBeGreaterThan(collapsed);
+    expect(view.indexOf('data-testid="social-edit"')).toBeLessThan(view.indexOf('data-testid={`social-input-${p.id}`}'));
   });
   it('edit mode keeps the server save flow and gains a Cancel that discards', () => {
-    expect(page).toContain('data-testid="social-save"');
-    expect(page).toContain("'/api/profile/me/social-links'");
-    expect(page).toContain('data-testid="social-cancel"');
-    expect(page).toContain('setEditing(false);');
+    expect(view).toContain('data-testid="social-save"');
+    expect(view).toContain("'/api/profile/me/social-links'");
+    expect(view).toContain('data-testid="social-cancel"');
+    expect(view).toContain('setEditing(false);');
   });
 });
 
@@ -253,7 +269,7 @@ describe('friend-status chrome: no bare text among the boxed buttons', () => {
     expect(tag).toContain('padding: 6px 10px');
   });
   it('both surfaces render the tag inside the action row', () => {
-    const profile = social.slice(social.indexOf('function Profile('));
+    const profile = view.slice(view.indexOf('export function ProfileView('));
     const card = modal.slice(modal.indexOf('function ProfileCard'));
     for (const src of [profile, card]) {
       const acts = src.indexOf('className="soc-prof-acts"');

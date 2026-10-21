@@ -7,7 +7,9 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const modal = readFileSync(new URL('../src/social/ProfileModal.tsx', import.meta.url), 'utf8');
-const social = readFileSync(new URL('../src/social/Social.tsx', import.meta.url), 'utf8');
+// ONE PROFILE (2026-10-20): the "social profile view" these pins check is the
+// unified ProfileView now — the same component the /profile route renders.
+const social = readFileSync(new URL('../src/profile/ProfileView.tsx', import.meta.url), 'utf8');
 const repBlock = readFileSync(new URL('../src/RepBlock.tsx', import.meta.url), 'utf8');
 
 describe('profile modal: rank, coins, badges', () => {
@@ -66,7 +68,7 @@ describe('profile modal: friend request states', () => {
   });
 });
 
-describe('social profile view: coins + friend states agree with the modal', () => {
+describe('unified profile view: coins + friend states agree with the modal', () => {
   it('coins: same chip off the same payload', () => {
     expect(social).toContain('coinsTestid="profile-coins"');
     expect(social).toContain('coins={cred.coins?.balance}');

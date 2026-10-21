@@ -10,14 +10,16 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const social = readFileSync(new URL('../src/social/Social.tsx', import.meta.url), 'utf8');
+// ONE PROFILE (2026-10-20): the Social profile IS the unified ProfileView now.
+const profile = readFileSync(new URL('../src/profile/ProfileView.tsx', import.meta.url), 'utf8');
 const modal = readFileSync(new URL('../src/social/ProfileModal.tsx', import.meta.url), 'utf8');
 
 const count = (src: string, needle: string) => src.split(needle).length - 1;
 
 describe('profile presence line: no "Online — Online"', () => {
-  it('Social profile composes its presence line via presenceLine()', () => {
-    expect(count(social, 'presenceLine(')).toBe(1);
-    expect(social).not.toContain('`Online — ${statusLabel');
+  it('the unified profile composes its presence line via presenceLine()', () => {
+    expect(count(profile, 'presenceLine(')).toBe(1);
+    expect(profile).not.toContain('`Online — ${statusLabel');
   });
 
   it('profile modal composes its presence line via presenceLine()', () => {
@@ -27,6 +29,7 @@ describe('profile presence line: no "Online — Online"', () => {
 
   it('neither surface hand-joins an "Online —" literal anymore', () => {
     expect(social).not.toContain('Online —');
+    expect(profile).not.toContain('Online —');
     expect(modal).not.toContain('Online —');
   });
 });

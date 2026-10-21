@@ -5,23 +5,28 @@
  *  fell back to the initial letter, Rep and achievements vanishing with it. The CSS-only
  *  avatar tests could not see this. These source assertions pin the repaired wiring:
  *  normalize the pid before the fetch, and resolve the header picture through useAvatar
- *  (the same path chat faces use), seeded by the payloads. */
+ *  (the same path chat faces use), seeded by the payloads.
+ *
+ *  ONE PROFILE (2026-10-20): the wiring now lives in the unified profile view
+ *  (src/profile/ProfileView.tsx) — the one component both the Social panel and
+ *  the /profile route render — so the pins read that file. The self-row and
+ *  SocFace pins still read Social.tsx, where the player rows live. */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const social = readFileSync(new URL('../src/social/Social.tsx', import.meta.url), 'utf8');
-const page = readFileSync(new URL('../src/profile/ProfilePage.tsx', import.meta.url), 'utf8');
+const view = readFileSync(new URL('../src/profile/ProfileView.tsx', import.meta.url), 'utf8');
 
-describe('Social profile avatar wiring', () => {
+describe('Unified profile avatar wiring', () => {
   it('normalizes the social pid to a raw account uid for the cred fetch', () => {
-    expect(social).toContain('accountUidOf(pid)');
-    expect(social).toContain('fetch(`/api/profile/${encodeURIComponent(uid)}`');
-    expect(social).not.toContain('fetch(`/api/profile/${encodeURIComponent(pid)}`');
+    expect(view).toContain('accountUidOf(pid)');
+    expect(view).toContain('`/api/profile/${encodeURIComponent(uid)}`');
+    expect(view).not.toContain('api/profile/${encodeURIComponent(pid)}');
   });
   it('the header picture comes from useAvatar, not from the cred payload alone', () => {
-    expect(social).toContain('const pic = useAvatar(uid,');
-    expect(social).toContain('<AvatarCircle pic={pic} name={p.username} className="soc-av big" />');
-    expect(social).not.toContain('pic={cred?.user.avatar}');
+    expect(view).toContain('const pic = useAvatar(uid,');
+    expect(view).toContain('<AvatarCircle pic={pic} name={displayName} className="soc-av big" />');
+    expect(view).not.toContain('pic={cred?.user.avatar}');
   });
 });
 
@@ -45,12 +50,15 @@ describe('self row avatar resolution', () => {
   it('SocFace is the one resolution path for list faces (social id → account uid)', () => {
     const face = social.slice(social.indexOf('function SocFace('), social.indexOf('function PlayerRow('));
     expect(face).toContain('useAvatar(socialUidOf(id))');
-    expect(social.split('useAvatar(').length - 1).toBe(2); // SocFace + the seeded profile header only
+    // exactly two useAvatar call sites serve the social/profile family: SocFace
+    // for list faces (in Social.tsx) and the unified profile header (ProfileView)
+    expect(social.split('useAvatar(').length - 1).toBe(1);
+    expect(view).toContain('const pic = useAvatar(uid,');
   });
   it('uploading a photo forgets the cached avatar, exactly like removing one', () => {
-    expect(page.split('forgetAvatar(profile.user.id)').length - 1).toBe(2);
-    const post = page.indexOf("method: 'POST'");
-    const forget = page.indexOf('forgetAvatar(profile.user.id)');
+    expect(view.split('forgetAvatar(cred.user.id)').length - 1).toBe(2);
+    const post = view.indexOf("'/api/profile/me/avatar'");
+    const forget = view.indexOf('forgetAvatar(cred.user.id)');
     expect(forget).toBeGreaterThan(post);
   });
 });
