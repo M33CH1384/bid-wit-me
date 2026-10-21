@@ -1,6 +1,8 @@
 /** Release 9b: Leaderboards and Tournaments tabs of the Social panel. */
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { statusLabel } from '@spades/protocol';
+import { statusLabel, type OpenTable, type PresenceEntry } from '@spades/protocol';
+import { CoinIcon } from '../RepBlock';
+import { fetchWagerList, type WagerRow } from './wagerApi';
 import { useAccount } from '../account/api';
 import { fx, useReduceEffects } from '../fx';
 import { navigate } from '../online/nav';
@@ -380,6 +382,7 @@ export function Leaderboards() {
       onPointerDown={markInteract} onClick={markInteract}
       onPointerEnter={() => { hoverRef.current = true; }} onPointerLeave={() => { hoverRef.current = false; }}>
       <div className="ranks-scroll" ref={setScrollEl}>
+        <FeaturedTable />
         {signedIn && mine && <YouCard mine={mine} kind={kind} rank={onBoard ? mineRow!.rank : null} onMore={() => setStatsOpen(true)} />}
         {signedIn && !ready && <p className="soc-empty">Loading your stats…</p>}
         <div className="ranks-controls">
@@ -446,6 +449,110 @@ export function Leaderboards() {
       )}
       {statsOpen && mine && <StatsSheet mine={mine} kind={kind} onClose={() => setStatsOpen(false)} />}
     </div>
+  );
+}
+
+/* ------------------------------------------------- Featured Table (P-G) */
+
+export interface FeaturedPick {
+  code: string; names: string[]; combined: number; mode?: string;
+  open: number; playing: boolean; seat?: number; watchFull?: boolean;
+}
+
+/**
+ * The featured table: the open online table with the highest COMBINED
+ * player ratings. Seated players come from presence (status carries the
+ * table code and each account's per-pool rating) — a table qualifies when
+ * at least two seated players carry a rating for its pool, so the number
+ * is real, never padded with invented ratings. Offline vs-bots tables and
+ * finished tables never qualify.
+ */
+export function pickFeaturedTable(users: PresenceEntry[], tables: Record<string, OpenTable>): FeaturedPick | null {
+  const byCode = new Map<string, { names: string[]; combined: number; rated: number; mode?: string; open: number; seat?: number; watchFull?: boolean }>();
+  for (const u of users) {
+    if (u.guest || !u.rating) continue;
+    const st = u.status;
+    if (st.kind !== 'table' || st.offline || !st.code) continue;
+    const t = tables[st.code];
+    if (t && t.status === 'over') continue;
+    const cut = (t?.mode ?? st.mode ?? '').includes('cutthroat');
+    const r = cut ? u.rating.cutthroat : u.rating.team;
+    if (r == null) continue;
+    const cur = byCode.get(st.code) ?? { names: [], combined: 0, rated: 0, mode: t?.mode ?? st.mode, open: t?.open ?? st.open ?? 0, seat: st.seat, watchFull: st.watchFull };
+    cur.names.push(u.name);
+    cur.combined += r;
+    cur.rated += 1;
+    byCode.set(st.code, cur);
+  }
+  let best: FeaturedPick | null = null;
+  for (const [code, v] of byCode) {
+    if (v.rated < 2) continue;
+    if (!best || v.combined > best.combined) {
+      best = { code, names: v.names, combined: v.combined, mode: v.mode, open: v.open, playing: tables[code]?.status === 'playing', seat: v.seat, watchFull: v.watchFull };
+    }
+  }
+  return best;
+}
+
+const FEATURE_MODE: Record<string, string> = { joker: 'Joker', aceDown: 'Ace Down', cutthroat: 'Cutthroat', cutthroat4: 'Cutthroat' };
+
+/**
+ * League-surface spotlight (league P-G): the featured table above; else
+ * the biggest upcoming Big Bank match (largest pot, via the existing wager
+ * list); else an honest empty state. Join/Watch ride the same flows as the
+ * Open Tables list; the wager card opens the challenge's own detail.
+ */
+function FeaturedTable() {
+  const s = useSocial();
+  const pick = useMemo(() => pickFeaturedTable(Object.values(s.users), s.tables), [s.users, s.tables]);
+  const [wager, setWager] = useState<WagerRow | null>(null);
+  useEffect(() => {
+    if (pick) { setWager(null); return; }
+    let live = true;
+    fetchWagerList()
+      .then((j) => {
+        if (!live) return;
+        const upcoming = (j.challenges ?? []).filter((c) => ['pending', 'scheduled', 'checkin', 'live'].includes(c.status));
+        upcoming.sort((a, b) => b.pot - a.pot);
+        setWager(upcoming[0] ?? null);
+      })
+      .catch(() => { if (live) setWager(null); });
+    return () => { live = false; };
+  }, [pick]);
+
+  if (pick) {
+    return (
+      <section className="featured" data-testid="featured-table">
+        <div className="power-head"><h3>⭐ Featured Table</h3><span className="soc-muted">{pick.playing ? 'Live now' : 'In the lobby'} · {FEATURE_MODE[pick.mode ?? ''] ?? pick.mode ?? ''}</span></div>
+        <p className="featured-names">{pick.names.join(' · ')}</p>
+        <p className="soc-muted">Combined rating {pick.combined.toLocaleString()}</p>
+        <div className="featured-acts">
+          {pick.open > 0 && <button type="button" className="primary" data-testid="featured-join" onClick={() => navigate(`/t/${pick.code}${pick.seat !== undefined ? `?seat=${pick.seat}` : ''}`)}>Join</button>}
+          <button type="button" data-testid="featured-watch" disabled={pick.watchFull} onClick={() => navigate(`/t/${pick.code}?watch=1`)}>{pick.watchFull ? 'Full' : 'Watch'}</button>
+        </div>
+      </section>
+    );
+  }
+  if (wager) {
+    const names = wager.format === 'partnership'
+      ? `${wager.players.filter((p) => p.side === 0).map((p) => p.name).join(' + ')} vs ${wager.players.filter((p) => p.side === 1).map((p) => p.name).join(' + ')}`
+      : wager.players.map((p) => p.name).join(' · ');
+    return (
+      <section className="featured" data-testid="featured-table">
+        <div className="power-head"><h3>⭐ Featured Match</h3><span className="soc-muted">Big Bank · starts {new Date(wager.startAt).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}</span></div>
+        <p className="featured-names">{names}</p>
+        <p className="soc-muted">Pot {wager.pot.toLocaleString()} <CoinIcon size={13} /></p>
+        <div className="featured-acts">
+          <button type="button" className="primary" data-testid="featured-wager" onClick={() => social.showChallenge(wager.id)}>View challenge</button>
+        </div>
+      </section>
+    );
+  }
+  return (
+    <section className="featured" data-testid="featured-table">
+      <div className="power-head"><h3>⭐ Featured Table</h3></div>
+      <p className="soc-muted" data-testid="featured-empty">No featured table right now — open a table or set up a Big Bank match and it can be spotlighted here.</p>
+    </section>
   );
 }
 

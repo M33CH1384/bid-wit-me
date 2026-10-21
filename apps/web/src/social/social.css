@@ -816,3 +816,9 @@ html[data-theme="neon"] .ranks-you {
 .record-book { margin: 16px 0 4px; }
 .record-book .cmp-table th { text-align: left; }
 .record-book .cmp-table td { text-align: right; }
+
+/* Featured Table / Match spotlight (league P-G). */
+.featured { margin: 0 0 14px; padding: 10px 12px; border: 1px solid rgba(232, 182, 76, .35); border-radius: 12px; }
+.featured-names { margin: 6px 0 2px; font-weight: 700; }
+.featured-acts { display: flex; gap: 8px; margin-top: 8px; }
+html[data-theme="neon"] .featured { border-color: rgba(128, 84, 255, .45); }
