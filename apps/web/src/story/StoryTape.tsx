@@ -7,6 +7,7 @@
  */
 import { buildStoryTape, type StoryBeatFacts, type StoryStop, type StoryTapeEntry } from '@spades/bots';
 import StoryFace from './StoryFace';
+import { storyBackdropUrl } from './storyBackdrop';
 
 function TapeSide({ title, entries }: { title: string; entries: StoryTapeEntry[] }) {
   return (
@@ -42,7 +43,7 @@ export default function StoryTape({ stop, facts, cta, onDone }: {
   const tape = buildStoryTape(stop, facts);
   return (
     <div className="story-tape" data-testid="story-tape">
-      {stop.venueId && <div className="story-scene-bg" style={{ backgroundImage: `url(/assets/venues/${stop.venueId}/bg.jpg)` }} aria-hidden />}
+      {stop.venueId && <div className="story-scene-bg" style={{ backgroundImage: `url(${storyBackdropUrl(stop)})` }} aria-hidden />}
       <div className="story-tape-inner">
         <p className="story-tape-title">TALE OF THE TAPE</p>
         <p className="story-tape-stakes" data-testid="story-tape-stakes">{tape.stakes}</p>

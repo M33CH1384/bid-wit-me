@@ -58,7 +58,7 @@ describe('scene player', () => {
   it('letterbox + cast focus: the current speaker is lit, the rest dimmed; focus moves on advance; skip works', async () => {
     const onDone = vi.fn();
     const c = await renderEl(createElement(ScriptPlayer, {
-      beats: BEATS, cta: 'To the table', onDone, venueId: 'grandma',
+      beats: BEATS, cta: 'To the table', onDone, bgUrl: '/assets/venues/grandma/bg.jpg',
       cast: ['uncleRay', 'dee', 'pat'],
     }));
     expect(c.querySelectorAll('.story-bar').length).toBe(2); // letterbox bars
@@ -78,7 +78,7 @@ describe('scene player', () => {
 
   it('railbirds stand on the rail in the scene frame (portraits, set back from the cast)', async () => {
     const c = await renderEl(createElement(ScriptPlayer, {
-      beats: BEATS, cta: 'Go', onDone: () => {}, venueId: 'church',
+      beats: BEATS, cta: 'Go', onDone: () => {}, bgUrl: '/assets/venues/church/bg.jpg',
       cast: ['deaconFord', 'dee', 'sisterMae'], rail: ['uncleRay'],
     }));
     const railEl = c.querySelector('[data-testid="story-rail"]')!;

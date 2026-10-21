@@ -27,6 +27,7 @@ import { useMyTeamName } from './TeamName';
 import { offlineTalk } from './offlineTalk';
 import { storyEvents, storyFactsOf, storyMilestones, storySnap, type StorySnap } from './story/storyScene';
 import { storyTeamNames } from './story/storySettings';
+import { storyBackdropUrl } from './story/storyBackdrop';
 import { BidOrder, BidSummary, showCenterBidOrder } from './PartnerTalk';
 import { guardTouches, lockBody } from './antiPan';
 import { TrumpLadder } from './trumpLadder';
@@ -559,12 +560,14 @@ function MisdealReveal({ title, cards, rules }: { title: string; cards: Card[]; 
   );
 }
 
-/** the stand-in table wears the chosen venue's colours (felt, rail, floor, backdrop) so loading never flashes classic green */
-export function placeholderStyle(venue: VenueId): React.CSSProperties {
+/** the stand-in table wears the chosen venue's colours (felt, rail, floor, backdrop) so loading never flashes classic green.
+ *  A story table passes its stop's own backdrop (storyBackdropUrl) as bgUrl — the borrowed venue's panorama
+ *  depicts the venue's place, not the stop's; without an override this is exactly the venue behaviour. */
+export function placeholderStyle(venue: VenueId, bgUrl?: string): React.CSSProperties {
   const d = VENUE_DEFS[venue];
   const vars: Record<string, string> = {
     '--tp-felt': d.felt, '--tp-rail': d.railTint, '--tp-apron': d.apron, '--tp-clear': d.clear, '--tp-floor': d.floorTint, '--tp-rim': d.rim,
-    '--tp-bg': venue === 'classic' ? 'none' : `url(/assets/venues/${venue}/bg.jpg)`,
+    '--tp-bg': bgUrl ? `url(${bgUrl})` : venue === 'classic' ? 'none' : `url(/assets/venues/${venue}/bg.jpg)`,
     '--tp-floor-tex': d.floorTex ? `url(/assets/venues/tex/${d.floorTex}_512.jpg)` : 'none',
   };
   return vars as React.CSSProperties;
@@ -1821,7 +1824,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     <div ref={screenRef} className={`table-screen q-${settings.quality}${vp.short ? ' short' : ''}${modalOpen ? ' modal-open' : ''}${showPad ? ' pad-open' : ''}`} inert={loading ? true : undefined} data-dealing={dealing ? 'yes' : 'no'} data-my-turn={myTurn ? 'yes' : 'no'}>
       <DrivebyLights />
       {/* styled stand-in table, on screen from the first paint until the 3D table has rendered (then it fades) */}
-      <div className={`table-placeholder ${tableReady ? 'gone' : ''}`} data-testid="table-placeholder" data-venue={venue} style={placeholderStyle(venue)} aria-hidden>
+      <div className={`table-placeholder ${tableReady ? 'gone' : ''}`} data-testid="table-placeholder" data-venue={venue} style={placeholderStyle(venue, story?.scene ? storyBackdropUrl(story.scene.stop) : undefined)} aria-hidden>
         <div className="tp-floor" />
         <div className="tp-table"><div className={`tp-felt${VENUE_DEFS[venue].feltPattern ? ` ${VENUE_DEFS[venue].feltPattern}` : ''}`}><img src="/assets/bwm-wordmark-white.svg" alt="" /></div></div>
         {!tableReady && !feltHandVisible(display.hand?.length ?? 0, introHand !== st.handNo, webglHand) && <div className="tp-note">Setting the table…</div>}

@@ -23,6 +23,7 @@ import { type TipsPref, loadTips } from '../tips';
 import { type Settings, loadSettings, saveSettings } from '../settings';
 import { navigate } from '../online/nav';
 import { storyRulesFor, storySettingsFor } from './storySettings';
+import { storyBackdropUrl } from './storyBackdrop';
 import { STORY_OWNER_ONLY, fetchStoryDev, fetchStoryProgress, postStoryFound, postStoryResult, storyLockedFor, type StoryProgress, type StoryResult } from './storyApi';
 import { deckUnlockNotice, invalidateStoryProgress } from '../storyDecks';
 import { setAnimUnlockNotice } from '../setAnims';
@@ -213,7 +214,7 @@ export default function StoryHome() {
             beats={beatsFor(stop, 'intro', factsFor(stop))}
             cta="To the table"
             onDone={() => startGame(stop)}
-            venueId={stop.venueId}
+            bgUrl={storyBackdropUrl(stop)}
             cast={[stop.pair[0], 'dee', stop.pair[1]]}
             rail={railFor(stop.id)}
             egg={eggFor(stop)}
@@ -296,7 +297,7 @@ export default function StoryHome() {
           beats={beatsFor(stop, screen.won ? 'outroWin' : 'outroLose', factsFor(stop))}
           cta="Back to the map"
           onDone={() => setScreen({ k: 'map' })}
-          venueId={stop.venueId}
+          bgUrl={storyBackdropUrl(stop)}
           cast={[stop.pair[0], 'dee', stop.pair[1]]}
           rail={railFor(stop.id)}
         />
@@ -311,7 +312,7 @@ export default function StoryHome() {
     body = (
       <div className="story-shell" data-testid="story-map">
         <div className="story-hero">
-          <div className="story-hero-bg" style={{ backgroundImage: `url(/assets/venues/${currentStop.venueId}/bg.jpg)` }} aria-hidden />
+          <div className="story-hero-bg" style={{ backgroundImage: `url(${storyBackdropUrl(currentStop)})` }} aria-hidden />
           <div className="story-topbar">
             <button type="button" className="btn ghost" data-testid="story-home" onClick={() => navigate('/')}>← Home</button>
             <div className="story-title-block">
@@ -344,7 +345,7 @@ export default function StoryHome() {
               <li key={stop.id} className={`story-stop state-${state}${stop.id === 'king' ? ' is-king' : ''}`} data-testid={`story-stop-${stop.id}`}>
                 <span className="story-node" aria-hidden>{state === 'cleared' ? '✓' : state === 'locked' ? '🔒' : stop.n}</span>
                 <div className="story-card">
-                  <div className="story-card-art" style={{ backgroundImage: `url(/assets/venues/${stop.venueId}/bg.jpg)` }} aria-hidden>
+                  <div className="story-card-art" style={{ backgroundImage: `url(${storyBackdropUrl(stop)})` }} aria-hidden>
                     <span className="story-card-faces">
                       <StoryFace characterId={stop.pair[0]} name={pair[0].name} className="card-face" />
                       <StoryFace characterId={stop.pair[1]} name={pair[1].name} className="card-face" />

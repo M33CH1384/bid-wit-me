@@ -50,12 +50,13 @@ function seatPosFor(speaker: string, cast: string[]): SeatPos | undefined {
   return (['left', 'top', 'right'] as SeatPos[])[ix];
 }
 
-export default function ScriptPlayer({ beats, cta, onDone, venueId, cast = [], egg, onEggFound, rail = [] }: {
+export default function ScriptPlayer({ beats, cta, onDone, bgUrl, cast = [], egg, onEggFound, rail = [] }: {
   beats: StoryBeat[];
   /** label of the final advance button */
   cta: string;
   onDone: () => void;
-  venueId?: string;
+  /** the stop's own backdrop art (storyBackdropUrl) — never a raw venue bg */
+  bgUrl?: string;
   /** character ids in cast order (pair, Dee, pair) for the cast strip */
   cast?: string[];
   egg?: SceneEgg | null;
@@ -139,7 +140,7 @@ export default function ScriptPlayer({ beats, cta, onDone, venueId, cast = [], e
 
   return (
     <div className={`story-scene${reduceFx ? ' reduce' : ''}`} data-testid="story-script">
-      {venueId && <div className="story-scene-bg" style={{ backgroundImage: `url(/assets/venues/${venueId}/bg.jpg)` }} aria-hidden />}
+      {bgUrl && <div className="story-scene-bg" style={{ backgroundImage: `url(${bgUrl})` }} aria-hidden />}
       <div className="story-bar top" aria-hidden />
       <div className="story-bar bottom" aria-hidden />
       <div className="story-scene-inner">
