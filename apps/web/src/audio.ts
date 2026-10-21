@@ -44,6 +44,11 @@ export type Sfx =
   | 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak1' | 'streak2' | 'streak3' | 'shot' | 'gotShot' | 'shotgun' | 'pump' | 'siren' | 'docSting' | 'wheels' | 'wheelsCar' | 'overcut' | 'overcut3' | 'tornado'
   // 'Run it!': the claimer's cards all slam at once / everyone else's cards hit in a quick cascade
   | 'runSlam' | 'runThud'
+  // Versus intro (boxing-style match card on the loading screen): entrances travel
+  // in 3D from each side, the collision lands center-front, a stinger marks the
+  // tale-of-the-tape reveal, a wide crowd bed sits under the hold, a soft resolve
+  // hands off to the table. All synthesized through the spatial pipeline.
+  | 'versusWhoosh' | 'versusImpact' | 'versusSting' | 'versusCrowd' | 'versusResolve'
   // chat notifications (synthesized): a DM two-note chime and a soft global-chat blip.
   // Both are UI_SFX, so they sound anywhere in the app, not just at a table.
   | 'dmChime' | 'chatBlip'
@@ -1001,7 +1006,7 @@ class Engine {
   }
   lastSmack: SmackSound | null = null;
 
-  play(name: Sfx, opts: { delay?: number; gain?: number; dur?: number; seat?: SeatPos; playerCount?: number } = {}) {
+  play(name: Sfx, opts: { delay?: number; gain?: number; dur?: number; seat?: SeatPos; playerCount?: number; versusSide?: -1 | 0 | 1 } = {}) {
     if (!this.settings.on || !this.unlocked) return;
     if ((name === 'dmChime' || name === 'chatBlip') && this.settings.chatSounds === false) return;
     if (!this.atTable && !Engine.UI_SFX.has(name)) { this.blocked[name] = (this.blocked[name] ?? 0) + 1; return; }
@@ -1048,6 +1053,11 @@ class Engine {
       case 'pump': return this.shotgunPump(t, g);
       case 'siren': return this.siren(t, g);
       case 'cloth': return this.clothRustle(t, g);
+      case 'versusWhoosh': return this.versusWhoosh(t, g, opts.versusSide ?? -1);
+      case 'versusImpact': return this.versusImpact(t, g);
+      case 'versusSting': return this.versusSting(t, g);
+      case 'versusCrowd': return this.versusCrowd(t, g);
+      case 'versusResolve': return this.versusResolve(t, g);
       case 'dmChime': return this.chatTones(t, g, DM_CHIME_TONES);
       case 'chatBlip': return this.chatTones(t, g, CHAT_BLIP_TONES);
       case 'docSting': return this.docSting(t, g);
@@ -1622,6 +1632,124 @@ class Engine {
     gain.gain.exponentialRampToValueAtTime(0.0001, t + 2.7);
     src.connect(gain).connect(this.venueBus);
     src.start(t);
+  }
+
+  /* ---------- Versus intro cues (boxing match card) ----------
+   * Layered synthesis through the spatial pipeline, same recipe family as the
+   * cop drive-by: HRTF panners in the shared world space (azimuth/distance,
+   * y = 1.5) when Spatial audio is on, plain StereoPanner positions when it is
+   * off — never a missing sound. Everything lands on the sfx bus, so the SFX
+   * channel volume and mute-all apply. Test probe: versusProbe. */
+  versusProbe: { cue: string; mode: 'spatial' | 'stereo' | 'bus'; from: number; to: number }[] = [];
+
+  /**
+   * Route a versus cue. `azimuthDeg`/`distanceM` place it (0 = dead ahead);
+   * `travelTo` ramps the position over `travelSec` (entrances flying to center).
+   * Returns the node the cue's layers connect into.
+   */
+  private versusRoute(cue: string, azimuthDeg: number, distanceM: number, travelTo?: { azimuthDeg: number; distanceM: number; travelSec: number }): AudioNode {
+    const c = this.ctx!;
+    const bus = this.sfxBus!;
+    const push = (mode: 'spatial' | 'stereo' | 'bus') => {
+      this.versusProbe.push({ cue, mode, from: azimuthDeg, to: travelTo?.azimuthDeg ?? azimuthDeg });
+      if (this.versusProbe.length > 32) this.versusProbe.shift();
+    };
+    if (this.settings.spatial !== false && typeof PannerNode !== 'undefined') {
+      const p = c.createPanner();
+      p.panningModel = this.spatializerModel ?? 'equalpower';
+      p.distanceModel = 'inverse';
+      p.refDistance = 2.2;
+      p.rolloffFactor = 0.7;
+      const at = (azDeg: number, distM: number) => {
+        const az = (azDeg * Math.PI) / 180;
+        return { x: Math.sin(az) * distM, z: -Math.cos(az) * distM };
+      };
+      const from = at(azimuthDeg, distanceM);
+      const t = c.currentTime;
+      p.positionX.setValueAtTime(from.x, t);
+      p.positionY.setValueAtTime(1.5, t);
+      p.positionZ.setValueAtTime(from.z, t);
+      if (travelTo) {
+        const dest = at(travelTo.azimuthDeg, travelTo.distanceM);
+        p.positionX.linearRampToValueAtTime(dest.x, t + travelTo.travelSec);
+        p.positionZ.linearRampToValueAtTime(dest.z, t + travelTo.travelSec);
+      }
+      p.connect(bus);
+      push('spatial');
+      return p;
+    }
+    if (typeof StereoPannerNode !== 'undefined') {
+      const p = c.createStereoPanner();
+      const t = c.currentTime;
+      p.pan.setValueAtTime(Math.max(-0.85, Math.min(0.85, azimuthDeg / 70)), t);
+      if (travelTo) p.pan.linearRampToValueAtTime(Math.max(-0.85, Math.min(0.85, travelTo.azimuthDeg / 70)), t + travelTo.travelSec);
+      p.connect(bus);
+      push('stereo');
+      return p;
+    }
+    push('bus');
+    return bus;
+  }
+
+  /** Entrance: a filtered noise sweep that TRAVELS from the side's edge to center as the pics fly in. */
+  private versusWhoosh(t: number, g: number, side: -1 | 0 | 1) {
+    const c = this.ctx!;
+    const out = this.versusRoute('whoosh', side * 58, 9.5, { azimuthDeg: side * 6, distanceM: 3.0, travelSec: 0.95 });
+    const s = c.createBufferSource(); s.buffer = this.noise(1.2);
+    const f = c.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 1.1;
+    f.frequency.setValueAtTime(420, t); f.frequency.exponentialRampToValueAtTime(2500, t + 0.55); f.frequency.exponentialRampToValueAtTime(800, t + 0.95);
+    const gn = c.createGain();
+    gn.gain.setValueAtTime(0.0001, t);
+    gn.gain.exponentialRampToValueAtTime(0.34 * g, t + 0.5);
+    gn.gain.exponentialRampToValueAtTime(0.0001, t + 1.0);
+    s.connect(f).connect(gn).connect(out); s.start(t); s.stop(t + 1.05);
+    // a low air-push under the sweep so it has body, not just hiss
+    this.tone(t, 170, 0.9, 'sine', 0.07 * g, { glideTo: 82, dest: out });
+  }
+
+  /** The collision: crack + chest thump + sub drop + two room reflections, center-front with depth. */
+  private versusImpact(t: number, g: number) {
+    const out = this.versusRoute('impact', 0, 2.4);
+    this.vBurst(t, 0.09, 'highpass', 1700, 0.5 * g, out);                    // the crack
+    this.vBurst(t, 0.16, 'lowpass', 620, 0.4 * g, out);                     // body of the hit
+    this.tone(t, 155, 0.5, 'sine', 0.5 * g, { glideTo: 42, dest: out });    // chest thump dropping to sub
+    this.tone(t, 92, 0.22, 'square', 0.1 * g, { filter: 640, dest: out });  // knock
+    this.vBurst(t + 0.09, 0.07, 'lowpass', 900, 0.15 * g, out);             // room reflection 1
+    this.vBurst(t + 0.18, 0.06, 'lowpass', 680, 0.08 * g, out);             // room reflection 2
+    this.thud(t + 0.01, 0.7 * g);                                           // the table itself takes it too (centered)
+  }
+
+  /** Tale-of-the-tape stinger: a close, present announcer-desk hit as the card lands. */
+  private versusSting(t: number, g: number) {
+    const out = this.versusRoute('sting', 0, 1.6);
+    this.tone(t, 196, 0.5, 'sawtooth', 0.13 * g, { filter: 2300, dest: out });
+    this.tone(t + 0.02, 293.66, 0.46, 'sawtooth', 0.1 * g, { filter: 2300, dest: out });
+    this.tone(t + 0.02, 587.33, 0.4, 'triangle', 0.09 * g, { dest: out });
+    this.tone(t, 98, 0.3, 'sine', 0.2 * g, { glideTo: 58, dest: out });
+    this.vBurst(t, 0.05, 'highpass', 3200, 0.12 * g, out); // snap on the attack
+  }
+
+  /** Crowd bed under the readable hold: wide, low, tasteful — two enveloping noise washes. */
+  private versusCrowd(t: number, g: number) {
+    const c = this.ctx!;
+    for (const az of [-68, 68]) {
+      const out = this.versusRoute('crowd', az, 11);
+      const s = c.createBufferSource(); s.buffer = this.noise(3.2); s.loop = true;
+      const f = c.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 0.55; f.frequency.value = az < 0 ? 480 : 540;
+      const gn = c.createGain();
+      gn.gain.setValueAtTime(0.0001, t);
+      gn.gain.exponentialRampToValueAtTime(0.05 * g, t + 0.9);
+      gn.gain.setValueAtTime(0.05 * g, t + 1.9);
+      gn.gain.exponentialRampToValueAtTime(0.0001, t + 3.0);
+      s.connect(f).connect(gn).connect(out); s.start(t); s.stop(t + 3.1);
+    }
+  }
+
+  /** Soft resolve as the card hands off to the table: two warm notes, close and centered. */
+  private versusResolve(t: number, g: number) {
+    const out = this.versusRoute('resolve', 0, 1.8);
+    this.tone(t, 523.25, 0.5, 'triangle', 0.08 * g, { attack: 0.02, dest: out });
+    this.tone(t + 0.09, 783.99, 0.65, 'triangle', 0.07 * g, { attack: 0.02, dest: out });
   }
 
   /**

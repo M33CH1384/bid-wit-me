@@ -1,4 +1,5 @@
 import { winHeadline } from '../headline';
+import { fetchWagerList } from '../social/wagerApi';
 import { fx } from '../fx';
 import { victoryHeadline, victoryIdentity } from './victory';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -44,6 +45,23 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
   }, [cs.view, room.seats, room.rules.playerCount, spectator, cs.seat]);
   const dealerName = dealer?.name ?? '';
   const [hideSpec, setHideSpec] = useState(loadHideSpectatorChat);
+  // Big Bank pot for THIS table, read off its wager row (the versus tape shows a
+  // Pot line only when the client actually knows it). Non-wager tables never fetch.
+  const [pot, setPot] = useState<number | null>(null);
+  const roomCode = room.code;
+  const isWagerTable = !!room.challenge;
+  useEffect(() => {
+    if (!isWagerTable) return;
+    let alive = true;
+    fetchWagerList()
+      .then((list) => {
+        if (!alive) return;
+        const row = list.challenges.find((c) => c.tableCode === roomCode && (c.status === 'live' || c.status === 'scheduled'));
+        setPot(row ? row.pot : null);
+      })
+      .catch(() => { /* unknown pot: the tape just omits the line */ });
+    return () => { alive = false; };
+  }, [isWagerTable, roomCode]);
   const chat = useOnlineChat(cs, source?.st ?? null, names, send, hideSpec && !spectator, dealerName, sendReact);
   // One absolute client time for this server snapshot. Rebuilding it from Date.now()
   // on every render froze the number at whatever the last state said (a stuck "12s"
@@ -156,6 +174,9 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
           series: { series: room.series ?? null, mine: seriesMine },
           setLearning: (on) => conn.send({ t: 'learning', on }),
           onInteractive,
+          // Pre-deal setup window, skew-corrected onto the client clock like the turn deadline.
+          dealAt: room.dealAt != null ? clientDeadline(room.dealAt, room.now, Date.now()) : null,
+          pot,
           venue: room.venueNow ?? (room.venue && room.venue !== 'random' ? room.venue : 'classic'),
           // uid per local seat, so name plates can show each human's uploaded picture
           seatUid: (local) => { const s = room.seats[rot.R(local)]; return s?.kind === 'human' ? s.uid : undefined },

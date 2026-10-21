@@ -22,7 +22,7 @@ import { LockedRulesPanel } from './LockedRules';
 import { booksBanner, teamMinNote } from './polishText';
 import { type Series, addSeriesGame, seriesForGameStart, seriesSides, summarizeGame } from '@spades/rules';
 import { SeriesChip, SeriesSheet, loadSeries, saveSeries } from './Series';
-import { OFFLINE_PAIR_KEY, useTeamNameFor } from './TeamName';
+import { useMyTeamName } from './TeamName';
 import { offlineTalk } from './offlineTalk';
 import { BidOrder, BidSummary, showCenterBidOrder } from './PartnerTalk';
 import { guardTouches, lockBody } from './antiPan';
@@ -52,6 +52,7 @@ import { feltHandVisible } from './three/cardFace';
 import { clientSeesNuke } from './three/blastSweep';
 import { loadScene } from './three/preload';
 import { TableLoading } from './TableLoading';
+import { VersusIntro, markVersusShown, versusDismissReady, versusEligible, type VersusMember, type VersusModel } from './VersusIntro';
 import { buildPostgame, clearPinnedBefore, computeRewardsSettled, resolveBeforeSnapshot, type RewardsProfile } from './GameOverRewards';
 import { stashRewards } from './RewardsPage';
 import { flushLocalGames } from './localStats';
@@ -184,6 +185,12 @@ export interface OnlineBinding {
   overlay?: ReactNode;
   /** True once this client's loader is gone and the table can take a bid or a play. */
   onInteractive?: (on: boolean) => void;
+  /** Pre-deal setup window: client-epoch ms when the room deals this game's first
+   *  hand (skew-corrected like the turn deadline); null once dealt / not applicable. */
+  dealAt?: number | null;
+  /** Big Bank pot for this table when the client knows it (its wager row); the
+   *  versus tape shows a Pot line only when this is set. */
+  pot?: number | null;
 }
 
 /** Name-plate face (Demetrius 2026-10-19): a human seat's uploaded picture, else the initial. */
@@ -653,9 +660,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // bot trash talk: hidden entirely with 'Hide bot trash talk' (local preference)
   const msgs = useMemo(() => (talkPrefs.hideBotTalk ? rawMsgs.filter((m) => !m.bot) : rawMsgs.map((m) => (m.bot ? { ...m, text: showLine(m.text) } : m))), [rawMsgs, talkPrefs.hideBotTalk, intensity]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // team names (team modes): yours from the offline pairing's name (set at table
-  // setup; falls back to the retired global name), the bots' a random fun one (kept in the save)
-  const myName = useTeamNameFor(OFFLINE_PAIR_KEY);
+  // team names (team modes): yours from More options offline, the bots' a random fun one (kept in the save)
+  const myName = useMyTeamName();
   const [botTeam] = useState(() => resume?.teamNames?.[1] ?? pickTeamName(Math.abs([...seed].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7))));
   const teamNames: (string | null)[] | null = !r.partnerships ? null : online ? (online.teamNames ?? [null, null]) : [myName || null, botTeam];
   localReport.current = { names, teamNames };
@@ -809,6 +815,18 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [loadProgress, setLoadProgress] = useState(0.08);
   const [loadGiveUp, setLoadGiveUp] = useState(false);
   const [loadGone, setLoadGone] = useState(false);
+  // Versus intro (boxing match card on the loader): eligibility is decided once, at
+  // mount — a fresh game start that hasn't shown the intro for this match seed yet.
+  // A mid-game refresh reuses the seed (and `resume` offline / a started game online),
+  // so the intro never replays; a rematch is a new seed and plays again.
+  const [versusActive] = useState(() => {
+    // Online, the game must be untouched (undealt in the pre-deal window, or a fresh
+    // first hand): joining or taking a seat mid-hand never triggers the intro.
+    const ok = versusEligible({ seed, resume: !!resume }) && !(online && !isFreshDeal(st));
+    if (ok) markVersusShown(seed);
+    return ok;
+  });
+  const [versusStoryDone, setVersusStoryDone] = useState(false);
   const [webglHand, setWebglHand] = useState(false);
   const onTableReady = useCallback(() => { setTableReady(true); setLoadProgress((p) => Math.max(p, 0.72)); }, []);
   const onTableDressed = useCallback(() => { setDressed(true); setLoadProgress((p) => Math.max(p, 0.86)); }, []);
@@ -835,22 +853,34 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const loading = tableStillLoading(dressed, effectsWarm, loadGiveUp);
   useEffect(() => {
     if (dealReady) return;
+    // Cards never deal behind the versus intro: the deal waits for the story to
+    // finish AND the loader to lift (online, the room's pre-deal window is the
+    // real gate — the first hand doesn't exist until it ends).
+    if (versusActive && !versusStoryDone) return;
     if (dealGateOpen({ tableReady, loading, firstFrame: sceneFirstFrame, mountedAt: gateMountedAt, now: Date.now() })) { setDealReady(true); return; }
     if (tableReady && !loading && !sceneFirstFrame) {
       // No frame yet: lift the gate at the fallback so a starved canvas cannot hold the deal.
       const t = window.setTimeout(() => setDealReady(true), Math.max(0, gateMountedAt + FIRST_FRAME_FALLBACK_MS - Date.now()));
       return () => window.clearTimeout(t);
     }
-  }, [tableReady, loading, sceneFirstFrame, dealReady, gateMountedAt]);
+  }, [tableReady, loading, sceneFirstFrame, dealReady, gateMountedAt, versusActive, versusStoryDone]);
   const loadShownAt = useRef(performance.now());
   useEffect(() => { (window as unknown as { __bwmLoading?: unknown }).__bwmLoading = { shownAt: loadShownAt.current, room: sound.roomStyle?.name ?? null }; }, []);
   useEffect(() => {
     if (loading) return;
+    const markGone = () => { (window as unknown as { __bwmLoading?: { goneAt?: number } }).__bwmLoading && ((window as unknown as { __bwmLoading: { goneAt?: number } }).__bwmLoading.goneAt = performance.now()); setLoadGone(true); };
+    if (versusActive) {
+      // Versus intro: dismissal = story fully played AND table ready — never on
+      // assets-loaded alone (the story floor). Story done → the short fade out.
+      if (!versusDismissReady({ storyComplete: versusStoryDone, tableReady: !loading })) return;
+      const t = window.setTimeout(markGone, 380);
+      return () => window.clearTimeout(t);
+    }
     // Loading screen minimum 3.0s: long enough to read the room name while its ambience fades in.
     const wait = Math.max(380, 3000 - (performance.now() - loadShownAt.current));
-    const t = window.setTimeout(() => { (window as unknown as { __bwmLoading?: { goneAt?: number } }).__bwmLoading && ((window as unknown as { __bwmLoading: { goneAt?: number } }).__bwmLoading.goneAt = performance.now()); setLoadGone(true); }, wait);
+    const t = window.setTimeout(markGone, wait);
     return () => window.clearTimeout(t);
-  }, [loading]);
+  }, [loading, versusActive, versusStoryDone]);
   const reportInteractive = online?.onInteractive;
   useEffect(() => {
     reportInteractive?.(loadGone && !loading);
@@ -1558,6 +1588,47 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     return () => clearInterval(t);
   }, [measureHand, vp.short]);
 
+  // Versus intro model (boxing match card): sides from the seats at this table.
+  // Partnership = two duo units under their team names; cutthroat = one side each.
+  const versusModel: VersusModel | null = useMemo(() => {
+    if (!versusActive) return null;
+    const member = (seat: number): VersusMember => ({
+      name: names[seat] ?? 'Player',
+      uid: online ? (online.seatUid?.(seat) ?? null) : seat === HUMAN ? (acctUser?.id ?? null) : null,
+      isBot: isBotSeat(seat),
+      direct: !online && seat === HUMAN ? (acctUser?.avatar ?? null) : null,
+    });
+    if (r.partnerships) {
+      return {
+        mode: 'team', kind: 'team', pot: online?.pot ?? null,
+        sides: [0, 1].map((side) => {
+          const seats = Array.from({ length: n }, (_, seat) => seat).filter((seat) => sideOf(seat, r) === side);
+          return {
+            label: teamNames?.[side] ?? (online ? online.sideLabel(side) : seats.map((s) => names[s]).join(' & ')),
+            members: seats.map(member),
+          };
+        }),
+      };
+    }
+    return {
+      mode: 'solo', kind: 'cutthroat', pot: online?.pot ?? null,
+      sides: Array.from({ length: n }, (_, seat) => ({ label: names[seat] ?? 'Player', members: [member(seat)] })),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [versusActive, online, acctUser, names, teamNames, r, n]);
+  // Pre-deal setup window (online): the room holds the first deal; show the table
+  // with a countdown so the pause reads as intentional while players set cam/mic.
+  const dealAtMs = online?.dealAt ?? null;
+  const preDeal = !!online && st.handNo === 0 && dealAtMs !== null;
+  const [preDealNow, setPreDealNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!preDeal) return;
+    setPreDealNow(Date.now());
+    const id = window.setInterval(() => setPreDealNow(Date.now()), 250);
+    return () => window.clearInterval(id);
+  }, [preDeal]);
+  const preDealSecs = preDeal ? Math.max(1, Math.ceil(((dealAtMs as number) - preDealNow) / 1000)) : 0;
+
   // The quick-load hand is on screen before WebGL. During a deal it may only show the cards that have left the deck.
   const feltShown = useDealtSlots(dealing, {
     speedK: k,
@@ -1635,7 +1706,13 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           collecting={collecting}
         />
       </Suspense>
-      {!loadGone && <TableLoading progress={loadProgress} leaving={!loading} room={roomName} />}
+      {!loadGone && <TableLoading progress={loadProgress} leaving={!loading && (!versusActive || versusStoryDone)} room={roomName} versus={versusModel ? <VersusIntro model={versusModel} reduced={reduceFx || fx.osReducedMotion} ready={!loading} onStoryComplete={() => setVersusStoryDone(true)} /> : undefined} />}
+      {preDeal && loadGone && (
+        <div className="predeal-note" data-testid="predeal-note" role="status">
+          <span className="predeal-title">First hand in {preDealSecs}s</span>
+          <span className="predeal-sub">Table&apos;s yours — set your camera &amp; mic</span>
+        </div>
+      )}
       {badge && badge.seat !== HUMAN && <SeatBadge badge={badge} />}
 
       {/* scorebug */}

@@ -1,0 +1,260 @@
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { readFileSync } from 'node:fs';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  VERSUS_CUES, VERSUS_IMPACT_MS, VERSUS_RESOLVE_CUE, VERSUS_STORY_MS, VERSUS_TAPE_MS,
+  VersusIntro, VersusTape, bestIndex, markVersusShown, rowWinner, statLineFromCredProfile,
+  summarizeSide, versusAlreadyShown, versusCueSchedule, versusDismissReady, versusEligible,
+  winPctOf, type VersusModel, type VersusSideView,
+} from '../src/VersusIntro';
+
+const read = (p: string) => readFileSync(new URL(p, import.meta.url), 'utf8');
+
+/* ------------------------------------------------ stats honesty */
+describe('versus tape: stat lines come from the public cred payload, honestly', () => {
+  const payload = {
+    rank: { team: { division: 'x', elo: 1000, games: 20, wins: 12, losses: 8, peak: 1300, rank: 1, of: 2 } },
+    stats: { team: { elo: 1214, wins: 12, games: 20, winPct: 60, streak: 3 } },
+  };
+  it('rating is the real ratings-table value (stats.elo), never the 1000 season display seed', () => {
+    const line = statLineFromCredProfile(payload as never, 'team');
+    expect(line?.rating).toBe(1214);
+    expect(line?.wins).toBe(12);
+    expect(line?.losses).toBe(8);
+    expect(line?.streak).toBe(3);
+  });
+  it('an unrated human (no rated game yet) has rating null, not the seed', () => {
+    const line = statLineFromCredProfile({ rank: { team: { wins: 0, losses: 0, games: 0 } }, stats: { team: { elo: null, wins: 0, games: 0, streak: 0 } } }, 'team');
+    expect(line?.rating).toBeNull();
+  });
+  it('a missing payload is a missing line (guest / fetch failed)', () => {
+    expect(statLineFromCredProfile(null, 'team')).toBeNull();
+    expect(statLineFromCredProfile({}, 'cutthroat')).toBeNull();
+  });
+  it('a bot side gets NO stats object at all — no invented numbers', () => {
+    expect(summarizeSide([null, null], false)).toBeNull();
+    expect(summarizeSide([{ rating: 1500, wins: 9, losses: 1, streak: 4 }], false)).toBeNull(); // even a stray line is dropped for bots
+  });
+  it('a human side combines: average rating of those rated, summed record, best streak', () => {
+    const s = summarizeSide([
+      { rating: 1200, wins: 10, losses: 5, streak: 2 },
+      { rating: 1300, wins: 4, losses: 6, streak: 5 },
+    ], true);
+    expect(s).toEqual({ rating: 1250, wins: 14, losses: 11, streak: 5 });
+  });
+  it('a human side whose payloads carried nothing degrades to all-null (renders —)', () => {
+    expect(summarizeSide([null], true)).toEqual({ rating: null, wins: null, losses: null, streak: null });
+  });
+  it('win % derives from the season record only', () => {
+    expect(winPctOf({ rating: null, wins: 12, losses: 8, streak: 0 })).toBe(60);
+    expect(winPctOf({ rating: null, wins: 0, losses: 0, streak: 0 })).toBeNull();
+    expect(winPctOf(null)).toBeNull();
+  });
+  it('gold goes to the better number; ties and missing values get none', () => {
+    expect(rowWinner(1300, 1200)).toBe('a');
+    expect(rowWinner(1100, 1200)).toBe('b');
+    expect(rowWinner(1200, 1200)).toBeNull();
+    expect(rowWinner(null, 1200)).toBeNull();
+    expect(bestIndex([null, 5, 9, 9])).toBe(-1);
+    expect(bestIndex([null, 5, 9, 2])).toBe(2);
+  });
+});
+
+/* ------------------------------------------------ dismissal: the story floor */
+describe('versus dismissal: story floor + table ready, never assets alone', () => {
+  it('a table ready instantly still waits for the full story', () => {
+    expect(versusDismissReady({ storyComplete: false, tableReady: true })).toBe(false);
+  });
+  it('story done but table not ready holds the finished card', () => {
+    expect(versusDismissReady({ storyComplete: true, tableReady: false })).toBe(false);
+  });
+  it('only story-complete AND ready dismisses', () => {
+    expect(versusDismissReady({ storyComplete: true, tableReady: true })).toBe(true);
+  });
+  it('the beat sheet sums to the ~4.5s floor: smash ~1s, settle, staggered tape, readable hold', () => {
+    expect(VERSUS_IMPACT_MS).toBe(1000);
+    expect(VERSUS_TAPE_MS).toBe(1500);
+    expect(VERSUS_STORY_MS).toBe(4500);
+    expect(VERSUS_STORY_MS - VERSUS_TAPE_MS).toBeGreaterThanOrEqual(2500); // reveal + hold after the card lands
+  });
+});
+
+/* ------------------------------------------------ one-shot per match */
+describe('versus eligibility: one-shot per match, never on resume', () => {
+  const store = new Map<string, string>();
+  vi.stubGlobal('sessionStorage', {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => { store.set(k, v); },
+    removeItem: (k: string) => { store.delete(k); },
+  });
+  it('a fresh match seed is eligible; after showing, the same seed never replays', () => {
+    expect(versusEligible({ seed: 'room42:1' })).toBe(true);
+    markVersusShown('room42:1');
+    expect(versusAlreadyShown('room42:1')).toBe(true);
+    expect(versusEligible({ seed: 'room42:1' })).toBe(false); // refresh mid-game: no replay
+  });
+  it('a rematch (new seed) plays again', () => {
+    expect(versusEligible({ seed: 'room42:2' })).toBe(true);
+  });
+  it('a resumed save never plays it, and a missing seed never plays it', () => {
+    expect(versusEligible({ seed: 'offline-seed-9', resume: true })).toBe(false);
+    expect(versusEligible({ seed: null })).toBe(false);
+    expect(versusEligible({})).toBe(false);
+  });
+});
+
+/* ------------------------------------------------ sound cues */
+describe('versus sound: cues on the beats, spatial plumbing, reduced silence', () => {
+  it('the schedule rides the beat sheet: whooshes in, impact on the collision frame, sting + crowd at the tape', () => {
+    const cues = versusCueSchedule(false);
+    const whooshes = cues.filter((c) => c.cue === 'versusWhoosh');
+    expect(whooshes.map((c) => c.side)).toEqual([-1, 1]); // left side, then right
+    expect(cues.find((c) => c.cue === 'versusImpact')?.at).toBe(VERSUS_IMPACT_MS);
+    expect(cues.find((c) => c.cue === 'versusSting')?.at).toBeGreaterThanOrEqual(VERSUS_TAPE_MS);
+    expect(cues.find((c) => c.cue === 'versusCrowd')?.at).toBeGreaterThanOrEqual(VERSUS_TAPE_MS);
+    expect(VERSUS_RESOLVE_CUE).toBe('versusResolve');
+  });
+  it('reduced motion drops every dramatic cue', () => {
+    expect(versusCueSchedule(true)).toEqual([]);
+  });
+  it('audio engine: versus cues route through the HRTF pipeline with a stereo fallback when spatial is off', () => {
+    const audio = read('../src/audio.ts');
+    expect(audio).toContain('versusRoute');
+    expect(audio).toContain("this.settings.spatial !== false");
+    expect(audio).toContain('StereoPannerNode'); // spatial OFF = plain stereo mix, never silence
+    expect(audio).toContain('linearRampToValueAtTime'); // entrances travel toward center
+    for (const kind of ['versusWhoosh', 'versusImpact', 'versusSting', 'versusCrowd', 'versusResolve']) {
+      expect(audio).toContain(`'${kind}'`);
+    }
+    // layered, not a single beep: the impact stacks crack + thump + reflections
+    expect(audio).toContain('versusImpact');
+    expect(audio).toContain('room reflection 1');
+  });
+  it('the component schedules cues through sound.play (SFX channel: mute/volume apply) and silences them when reduced', () => {
+    const src = read('../src/VersusIntro.tsx');
+    expect(src).toContain('versusCueSchedule(false)');
+    expect(src).toContain('sound.play(c.cue');
+    expect(src).toContain('sound.play(VERSUS_RESOLVE_CUE');
+  });
+});
+
+/* ------------------------------------------------ composition */
+const teamModel: VersusModel = {
+  mode: 'team', kind: 'team',
+  sides: [
+    { label: 'Shot Callers', members: [{ name: 'Meech', uid: 'u1', isBot: false }, { name: 'LovleyT714', uid: 'u2', isBot: false }] },
+    { label: 'Table Bots', members: [{ name: 'Tunde', uid: null, isBot: true }, { name: 'Skye', uid: null, isBot: true }] },
+  ],
+};
+const soloModel: VersusModel = {
+  mode: 'solo', kind: 'cutthroat',
+  sides: ['Meech', 'Tunde', 'Skye', 'Boo'].map((name, i) => ({
+    label: name,
+    members: [{ name, uid: i === 0 ? 'u1' : null, isBot: i !== 0 }],
+  })),
+};
+
+describe('versus composition', () => {
+  it('partnership: duo clusters under their team names, VS at center', () => {
+    const html = renderToStaticMarkup(createElement(VersusIntro, { model: teamModel, reduced: false, ready: false, onStoryComplete: () => {} }));
+    expect(html).toContain('versus-intro');
+    expect(html).toContain('Shot Callers');
+    expect(html).toContain('Meech &amp; LovleyT714');
+    expect(html).toContain('Tunde &amp; Skye');
+    expect(html).toContain('>VS<');
+    expect(html).toContain('Tap to skip');
+  });
+  it('cutthroat: a four-way 2×2 convergence, one face per player', () => {
+    const html = renderToStaticMarkup(createElement(VersusIntro, { model: soloModel, reduced: false, ready: false, onStoryComplete: () => {} }));
+    expect(html).toContain('versus-stage solo');
+    for (const q of ['q0', 'q1', 'q2', 'q3']) expect(html).toContain(`versus-quad ${q}`);
+    for (const name of ['Meech', 'Tunde', 'Skye', 'Boo']) expect(html).toContain(name);
+  });
+  it('reduced motion renders the finished static card (done + reduced, no skip prompt)', () => {
+    const html = renderToStaticMarkup(createElement(VersusIntro, { model: teamModel, reduced: true, ready: true, onStoryComplete: () => {} }));
+    expect(html).toContain('versus team done reduced');
+    expect(html).not.toContain('Tap to skip');
+  });
+  it('with no stats anywhere the tape drops entirely — nothing fabricated to fill it', () => {
+    const html = renderToStaticMarkup(createElement(VersusIntro, { model: teamModel, reduced: false, ready: false, onStoryComplete: () => {} }));
+    expect(html).not.toContain('versus-tape');
+    expect(html).not.toContain('TALE OF THE TAPE');
+  });
+});
+
+describe('versus tape rendering (resolved stats)', () => {
+  const sides: VersusSideView[] = [
+    { label: 'Shot Callers', members: [], stats: { rating: 1250, wins: 14, losses: 11, streak: 5 } },
+    { label: 'Bots', members: [], stats: null },
+  ];
+  it('real numbers on the human side, — everywhere for the bot side, and NO gold (no honest comparison exists)', () => {
+    const html = renderToStaticMarkup(createElement(VersusTape, { mode: 'team', sides }));
+    expect(html).toContain('TALE OF THE TAPE');
+    expect(html).toContain('1,250');
+    expect(html).toContain('14–11');
+    expect(html).toContain('56%');
+    expect(html).not.toContain('gold'); // gold means "won the comparison" — a missing number can't lose one
+    expect(html).toContain('versus-cell b">—<');  // bot side: the absence marker, never a number
+    expect(html).not.toMatch(/versus-cell b[^<]*\d/); // no digit in any bot cell
+  });
+  it('both sides real: the better number per row goes gold', () => {
+    const both: VersusSideView[] = [
+      { label: 'A', members: [], stats: { rating: 1250, wins: 14, losses: 11, streak: 5 } },
+      { label: 'B', members: [], stats: { rating: 1310, wins: 9, losses: 16, streak: 2 } },
+    ];
+    const html = renderToStaticMarkup(createElement(VersusTape, { mode: 'team', sides: both }));
+    expect(html).toContain('versus-cell b gold">1,310'); // rating: B higher
+    expect(html).toContain('versus-cell a gold">14–11'); // record (by win %): A better
+    expect(html).toContain('versus-cell a gold">5');     // streak: A longer
+  });
+  it('the pot line shows only when the pot is known', () => {
+    const withPot = renderToStaticMarkup(createElement(VersusTape, { mode: 'team', sides, pot: 2000 }));
+    expect(withPot).toContain('Pot 2,000');
+    const without = renderToStaticMarkup(createElement(VersusTape, { mode: 'team', sides }));
+    expect(without).not.toContain('Pot');
+  });
+  it('solo tape: four columns, the best value in each row goes gold', () => {
+    const solo: VersusSideView[] = [1250, null, 1100, 1300].map((rating, i) => ({
+      label: `P${i}`, members: [],
+      stats: rating === null ? null : { rating, wins: 3, losses: 1, streak: 1 },
+    }));
+    const html = renderToStaticMarkup(createElement(VersusTape, { mode: 'solo', sides: solo }));
+    expect(html).toContain('1,300');
+    expect(html).toContain('gold');
+    expect(html).toContain('—');
+  });
+});
+
+/* ------------------------------------------------ wiring */
+describe('versus wiring: load flow, deal gate, table handoff', () => {
+  it('Table renders the intro inside the loader and dismisses on story AND ready', () => {
+    const table = read('../src/Table.tsx');
+    expect(table).toContain('<VersusIntro');
+    expect(table).toContain('versusDismissReady({ storyComplete: versusStoryDone, tableReady: !loading })');
+    expect(table).toContain('versusEligible({ seed, resume: !!resume })');
+    expect(table).toContain('markVersusShown(seed)');
+  });
+  it('cards never deal behind the intro: the deal gate holds while the story runs', () => {
+    const table = read('../src/Table.tsx');
+    expect(table).toContain('if (versusActive && !versusStoryDone) return;');
+  });
+  it('the pre-deal countdown shows on the loaded table (online first deal only)', () => {
+    const table = read('../src/Table.tsx');
+    expect(table).toContain('data-testid="predeal-note"');
+    expect(table).toContain('st.handNo === 0 && dealAtMs !== null');
+    const online = read('../src/online/OnlineTable.tsx');
+    expect(online).toContain('dealAt: room.dealAt != null ? clientDeadline(room.dealAt, room.now, Date.now()) : null');
+    expect(online).toContain('fetchWagerList'); // pot source for the tape
+  });
+  it('CSS: smash keyframes exist, finished/reduced states are static, parity is structural (no theme fork)', () => {
+    const css = read('../src/styles.css');
+    expect(css).toContain('@keyframes versus-shake');
+    expect(css).toContain('@keyframes versus-in-left');
+    expect(css).toContain('@keyframes versus-flash-pop');
+    expect(css).toContain('.versus.done .versus-side');
+    expect(css).toContain('.versus.reduced .versus-side');
+    expect(css).toContain('@media (prefers-reduced-motion: reduce)');
+    expect(css).not.toContain('html[data-theme="neon"] .versus'); // same card both themes
+  });
+});

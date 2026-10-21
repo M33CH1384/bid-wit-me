@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import tips from './data/loading-tips.json';
 
@@ -56,8 +56,11 @@ function LoadingTips() {
  * Full-screen Bid Wit Me hold, from the moment a table is joined or started until the 3D scene
  * and the first game state are both ready. The half-drawn table stays underneath and cannot be tapped.
  */
-export function TableLoading({ progress, leaving, onBack, onRetry, fault, room }: {
+export function TableLoading({ progress, leaving, onBack, onRetry, fault, room, versus }: {
   progress?: number; leaving?: boolean; onBack?: () => void; onRetry?: () => void; fault?: string | null; room?: string;
+  /** The versus intro (boxing match card) replaces the standard line/tips while it plays;
+   *  a slim progress track stays under it so table readiness is still visible. */
+  versus?: ReactNode;
 }) {
   const [line, setLine] = useState(0);
   useEffect(() => {
@@ -80,6 +83,20 @@ export function TableLoading({ progress, leaving, onBack, onRetry, fault, room }
             <div className="bwm-loading-actions">
               {onRetry && <button type="button" className="primary" data-testid="join-retry" onClick={onRetry}>Retry</button>}
               {onBack && <button type="button" className="link bwm-loading-back" data-testid="join-back" onClick={onBack}>← Back</button>}
+            </div>
+          </>
+        ) : versus ? (
+          <>
+            {versus}
+            <div
+              className={`bwm-loading-track versus-track${known ? '' : ' indeterminate'}`}
+              role="progressbar"
+              aria-label="Loading the table"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={pct}
+            >
+              <span style={pct !== undefined ? { width: `${pct}%` } : undefined} />
             </div>
           </>
         ) : (
