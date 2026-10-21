@@ -85,6 +85,10 @@ export interface Persona {
   freq: number;
   /** ALL CAPS speaker */
   caps?: boolean;
+  /** Web Speech character: pitch/rate plus the persona's preferred system-voice names (tried in
+   *  order, gender-filtered by the speaker's name — see personaVoiceFor in the web client).
+   *  The recorded voice is separate: PERSONA_VOICES in voices.ts. Both are keyed by persona id,
+   *  so a character sounds like itself on every path. Every persona needs a non-empty prefer. */
   voice: { pitch: number; rate: number; prefer: string[] };
   /** play-style lean: bid nudge (±1 at most, applied sometimes, kept legal and sane) and Nil willingness (-1..1) */
   lean: { bid: -1 | 0 | 1; nil: number };
@@ -136,7 +140,7 @@ export const COMMON: Partial<Record<TalkKind, string[]>> = {
 export const PERSONAS: Record<PersonaId, Persona> = {
   professor: {
     id: 'professor', tag: 'The Professor', weight: 8, freq: 1,
-    voice: { pitch: 0.95, rate: 0.95, prefer: ['Daniel', 'Google UK English Male', 'Arthur', 'Alex'] },
+    voice: { pitch: 0.95, rate: 0.95, prefer: ['Daniel', 'Kate', 'Google UK English Male', 'Google UK English Female', 'Arthur', 'Serena'] },
     lean: { bid: 0, nil: -0.3 },
     lines: {
       runIt: ['the remaining tricks are a formality. observe.', 'I have counted every card. lay them down.', 'QED. the rest are mine.', 'class dismissed.'],
@@ -154,7 +158,7 @@ export const PERSONAS: Record<PersonaId, Persona> = {
   },
   mama: {
     id: 'mama', tag: 'Big Mama', tagF: 'Big Mama', tagM: 'Big Papa', weight: 8, freq: 1.1,
-    voice: { pitch: 1.05, rate: 0.9, prefer: ['Samantha', 'Google US English', 'Victoria', 'Karen'] },
+    voice: { pitch: 1.05, rate: 0.9, prefer: ['Samantha', 'Google US English', 'Victoria', 'Karen', 'David'] },
     lean: { bid: 0, nil: 0 },
     lines: {
       runIt: ['put your cards down, baby. mama\'s taking all of these.', 'go fix you a plate, y\'all done.', 'sit down, sugar. every last one is mine.', 'put your cards down, baby. papa\'s taking all of these.'],
@@ -187,7 +191,7 @@ export const PERSONAS: Record<PersonaId, Persona> = {
   },
   petty: {
     id: 'petty', tag: 'The Petty One', weight: 8, freq: 1.2,
-    voice: { pitch: 1.1, rate: 1.05, prefer: ['Tessa', 'Moira', 'Google UK English Female', 'Serena'] },
+    voice: { pitch: 1.1, rate: 1.05, prefer: ['Tessa', 'Moira', 'Google UK English Female', 'Serena', 'Gordon'] },
     lean: { bid: 0, nil: -0.2 },
     lines: {
       runIt: ['I\'ll take those. and I\'ll remember this.', 'lay them down. slowly. I want to enjoy it.', 'every single one. screenshot it.'],
@@ -203,7 +207,7 @@ export const PERSONAS: Record<PersonaId, Persona> = {
   },
   og: {
     id: 'og', tag: 'The OG', weight: 8, freq: 0.9,
-    voice: { pitch: 0.8, rate: 0.88, prefer: ['Ralph', 'Google US English', 'Bruce', 'Fred'] },
+    voice: { pitch: 0.8, rate: 0.88, prefer: ['Ralph', 'Hazel', 'Google US English', 'Bruce', 'Fred'] },
     lean: { bid: 0, nil: -0.4 },
     lines: {
       runIt: ['lay em down, youngblood. I seen this movie.', 'grown folks don\'t play it out. the rest are mine.', 'school\'s out. put em on the table.'],
@@ -234,7 +238,7 @@ export const PERSONAS: Record<PersonaId, Persona> = {
   },
   silent: {
     id: 'silent', tag: 'Silent Assassin', weight: 8, freq: 0.25,
-    voice: { pitch: 0.7, rate: 0.85, prefer: ['Google UK English Male', 'Daniel', 'Bruce'] },
+    voice: { pitch: 0.7, rate: 0.85, prefer: ['Google UK English Male', 'Fiona', 'Daniel', 'Bruce'] },
     lean: { bid: 0, nil: -0.5 },
     lines: {
       runIt: ['mine.', 'all of them.', 'done.'],
@@ -247,7 +251,7 @@ export const PERSONAS: Record<PersonaId, Persona> = {
   },
   deacon: {
     id: 'deacon', tag: 'The Deacon', tagF: 'Church Mother', tagM: 'The Deacon', weight: 8, freq: 0.9,
-    voice: { pitch: 0.95, rate: 0.9, prefer: [] },
+    voice: { pitch: 0.95, rate: 0.9, prefer: ['David', 'Susan', 'Google US English', 'Alex'] },
     lean: { bid: 0, nil: -0.3 },
     lines: {
       prePlay: ['let the church say amen.', 'patience is a virtue. this card is a lesson.', 'hold on, let me fan myself.', 'I been praying over this hand.'],
@@ -270,7 +274,7 @@ export const PERSONAS: Record<PersonaId, Persona> = {
   },
   conspiracy: {
     id: 'conspiracy', tag: 'Conspiracy Theorist', weight: 8, freq: 1.1,
-    voice: { pitch: 1.05, rate: 1.08, prefer: [] },
+    voice: { pitch: 1.05, rate: 1.08, prefer: ['Tom', 'Ava', 'Google US English', 'Fred'] },
     lean: { bid: 0, nil: 0.3 },
     lines: {
       prePlay: ['this deck is shuffled by the government.', 'they don\'t want you to know about this card.', 'connect the dots, people.', 'I\'m not paranoid, the deck is watching me.'],
@@ -293,7 +297,7 @@ export const PERSONAS: Record<PersonaId, Persona> = {
   },
   barber: {
     id: 'barber', tag: 'The Barber', weight: 8, freq: 1.2,
-    voice: { pitch: 1, rate: 1.05, prefer: [] },
+    voice: { pitch: 1, rate: 1.05, prefer: ['Lee', 'Allison', 'Google US English', 'Daniel'] },
     lean: { bid: 0, nil: 0 },
     lines: {
       prePlay: ['next! who\'s in the chair?', 'hold still. this won\'t take long.', 'line-up coming right up.', 'I take walk-ins.'],
@@ -315,7 +319,7 @@ export const PERSONAS: Record<PersonaId, Persona> = {
   },
   gambler: {
     id: 'gambler', tag: 'The Gambler', weight: 8, freq: 1,
-    voice: { pitch: 1, rate: 1, prefer: [] },
+    voice: { pitch: 0.92, rate: 0.97, prefer: ['George', 'Catherine', 'Google UK English Male', 'Google UK English Female'] },
     lean: { bid: 1, nil: 0.6 },
     lines: {
       prePlay: ['let it ride.', 'I like these odds.', 'all in. always all in.', 'scared money don\'t move.'],
@@ -339,7 +343,7 @@ export const PERSONAS: Record<PersonaId, Persona> = {
   },
   hothead: {
     id: 'hothead', tag: 'The Hothead', weight: 8, freq: 1.3,
-    voice: { pitch: 1, rate: 1.15, prefer: [] },
+    voice: { pitch: 1, rate: 1.15, prefer: ['Aaron', 'Jenny', 'Google US English', 'Fred'] },
     lean: { bid: 1, nil: -0.3 },
     lines: {
       prePlay: ['don\'t test me right now.', 'I\'m already heated.', 'somebody gonna pay for that last hand.', 'watch your mouth AND your cards.'],
@@ -363,7 +367,7 @@ export const PERSONAS: Record<PersonaId, Persona> = {
   },
   comedian: {
     id: 'comedian', tag: 'The Comedian', weight: 8, freq: 1.2,
-    voice: { pitch: 1, rate: 1.05, prefer: [] },
+    voice: { pitch: 1.08, rate: 1.12, prefer: ['Joey', 'Amy', 'Google US English', 'Matthew'] },
     lean: { bid: 0, nil: 0.1 },
     lines: {
       prePlay: ['y\'all ever notice the two of clubs never gets invited to nothing?', 'this card walks into a bar…', 'tough crowd tonight.', 'I\'ll be here all night. try the cut.'],
@@ -385,7 +389,7 @@ export const PERSONAS: Record<PersonaId, Persona> = {
   },
   lilcuz: {
     id: 'lilcuz', tag: 'Lil Cuz', weight: 8, freq: 1.3, skillJitter: true,
-    voice: { pitch: 1.1, rate: 1.15, prefer: [] },
+    voice: { pitch: 1.1, rate: 1.15, prefer: ['Justin', 'Ivy', 'Google US English', 'Aaron'] },
     lean: { bid: 1, nil: 0.3 },
     lines: {
       prePlay: ['bet.', 'watch me, unc.', 'I got this, no cap.', 'lowkey I\'m cooking.', 'it\'s giving winner.'],
@@ -409,7 +413,7 @@ export const PERSONAS: Record<PersonaId, Persona> = {
   },
   coach: {
     id: 'coach', tag: 'Coach', weight: 8, freq: 1.1,
-    voice: { pitch: 1, rate: 1.1, prefer: [] },
+    voice: { pitch: 1, rate: 1.1, prefer: ['Brian', 'Michelle', 'Google US English', 'Eric'] },
     lean: { bid: 0, nil: -0.1 },
     lines: {
       prePlay: ['fundamentals, people.', 'eyes up, heads in the game.', 'run the play we practiced.', 'execute!'],
@@ -432,7 +436,7 @@ export const PERSONAS: Record<PersonaId, Persona> = {
   },
   smooth: {
     id: 'smooth', tag: 'Smooth Operator', weight: 8, freq: 0.7,
-    voice: { pitch: 0.95, rate: 0.92, prefer: [] },
+    voice: { pitch: 0.95, rate: 0.92, prefer: ['Oliver', 'Serena', 'Google UK English Male', 'Google UK English Female'] },
     lean: { bid: 0, nil: 0 },
     lines: {
       prePlay: ['relax. I got this.', 'easy now.', 'no rush. never a rush.'],
@@ -453,7 +457,7 @@ export const PERSONAS: Record<PersonaId, Persona> = {
   },
   storyteller: {
     id: 'storyteller', tag: 'Uncle Storyteller', tagF: 'Auntie Gossip', tagM: 'Uncle Storyteller', weight: 8, freq: 1,
-    voice: { pitch: 1, rate: 1, prefer: [] },
+    voice: { pitch: 0.9, rate: 0.88, prefer: ['James', 'Hazel', 'Google US English', 'Ralph'] },
     lean: { bid: 0, nil: -0.2 },
     lines: {
       prePlay: ['this reminds me of the reunion in ninety-eight.', 'let me tell you something about this card.', 'chile, you won\'t believe what I heard.', 'back in the day…'],
@@ -474,7 +478,7 @@ export const PERSONAS: Record<PersonaId, Persona> = {
   },
   influencer: {
     id: 'influencer', tag: 'The Influencer', weight: 8, freq: 1.2,
-    voice: { pitch: 1.05, rate: 1.1, prefer: [] },
+    voice: { pitch: 1.05, rate: 1.1, prefer: ['Ryan', 'Aria', 'Google US English', 'Guy'] },
     lean: { bid: 1, nil: 0.2 },
     lines: {
       prePlay: ['chat, are we seeing this?', 'clip it. clip it now.', 'hold on, let me get my angles.', 'this is going viral.'],
@@ -496,7 +500,7 @@ export const PERSONAS: Record<PersonaId, Persona> = {
   },
   sorelose: {
     id: 'sorelose', tag: 'The Sore Loser', weight: 8, freq: 1.1,
-    voice: { pitch: 1, rate: 1.02, prefer: [] },
+    voice: { pitch: 1, rate: 1.02, prefer: ['Eric', 'Zira', 'Google US English', 'Mark'] },
     lean: { bid: -1, nil: -0.2 },
     lines: {
       prePlay: ['I\'m not even trying right now.', 'this game is so random.', 'whatever happens, it\'s luck.'],

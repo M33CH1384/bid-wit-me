@@ -69,13 +69,35 @@ export function speakBot(name: string, text: string, persona?: string, line?: st
   const per = (persona && persona in PERSONAS ? persona : personaForName(name)) as PersonaId;
   // recorded clips go through the game's audio graph (master volume / mute already applied there)
   if (sound.voiceMuted(name)) return; // per-player mute: the chat text still shows, the voice stays silent
-  void playClip(per, name, rawLine(line), prefs.voiceVolume * 0.9, bid, seat, playerCount).then((played) => { if (!played) webSpeech(name, text); });
+  void playClip(per, name, rawLine(line), prefs.voiceVolume * 0.9, bid, seat, playerCount).then((played) => { if (!played) webSpeech(name, text, per); });
 }
 
-function webSpeech(name: string, text: string): void {
+/**
+ * The Web Speech voice for a bot line: the SAME persona the recorded clip would have used
+ * (character consistency — the fallback must never be a different character than the clip).
+ * The persona's preferred system voices (PERSONAS[id].voice.prefer) are tried in order,
+ * filtered to the name's gender; if none is on this device, the name-stable gender pick
+ * (browserVoiceFor) stands. Deterministic per (persona, name): a character sounds like
+ * itself on every line, at every venue, on every visit.
+ */
+export function personaVoiceFor(persona: PersonaId, name: string, list: Pick<SpeechSynthesisVoice, 'name'>[]): SpeechSynthesisVoice | null {
+  const g = voiceGender(name);
+  for (const want of PERSONAS[persona]?.voice.prefer ?? []) {
+    const hit = list.find((v) => v.name.toLowerCase().includes(want.toLowerCase()) && voiceNameFitsGender(v.name, g));
+    if (hit) return hit as SpeechSynthesisVoice;
+  }
+  return browserVoiceFor(name, list);
+}
+
+/** Does a system voice's name read as the wanted gender? (Mirrors browserVoiceFor's filter.) */
+function voiceNameFitsGender(voiceName: string, g: 'f' | 'm'): boolean {
+  return g === 'f' ? FEMALE.test(voiceName) && !MALE.test(voiceName.replace(/google us english/i, '')) : MALE.test(voiceName) && !FEMALE.test(voiceName);
+}
+
+function webSpeech(name: string, text: string, persona: PersonaId = personaForName(name)): void {
   if (typeof speechSynthesis === 'undefined' || !sound.atTable) return; // never talk behind Home
   const snd = sound.settings;
-  const p = PERSONAS[personaForName(name)];
+  const p = PERSONAS[persona];
   const clean = maskMild(text).replace(/\*+/g, ''); // never read the asterisks out; masked words just drop
   // Pronunciation fixes: TTS spells out "mm-hm" letter-by-letter; "mm-hmm" is spoken correctly (Demetrius 2026-10-19)
   const pronounced = clean.replace(/\bmm-hm\b/gi, 'mm-hmm');
@@ -88,7 +110,7 @@ function webSpeech(name: string, text: string): void {
   u.rate = Math.min(1.6, Math.max(0.6, p.voice.rate + jitter * 0.1));
   // sits under the game SFX: a bit below the master level
   u.volume = Math.min(1, prefs.voiceVolume * snd.volume * 0.85);
-  u.voice = browserVoiceFor(name, voices);
+  u.voice = personaVoiceFor(persona, name, voices);
   try { if (speechSynthesis.speaking) speechSynthesis.cancel(); speechSynthesis.speak(u); } catch { /* ignore */ }
 }
 
@@ -98,7 +120,7 @@ const MALE = /\b(daniel|alex|fred|aaron|arthur|ralph|bruce|tom|oliver|gordon|lee
 /** The browser fallback voice for a bot: same gender as the name (never a male voice for a female name), stable per name. */
 export function browserVoiceFor(name: string, list: Pick<SpeechSynthesisVoice, 'name'>[]): SpeechSynthesisVoice | null {
   const g = voiceGender(name);
-  const ok = list.filter((v) => (g === 'f' ? FEMALE.test(v.name) && !MALE.test(v.name.replace(/google us english/i, '')) : MALE.test(v.name) && !FEMALE.test(v.name)));
+  const ok = list.filter((v) => voiceNameFitsGender(v.name, g));
   // no voice of the right gender known on this device: the default voice beats a wrong-gender one (pitch hints the rest)
   return (ok[hash(name) % Math.max(1, ok.length)] as SpeechSynthesisVoice | undefined) ?? null;
 }

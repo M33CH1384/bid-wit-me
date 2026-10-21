@@ -11,7 +11,7 @@
  * - Settings (on/off, volume, ambience) persist in localStorage.
  */
 import { useSyncExternalStore } from 'react';
-import { Spatializer, irSpec, isVoiceMuted, normalizeCategoryVolumes, pickPanningModel, pickVariant, seatCompensation, seatPoint, sessionRoom, surfaceHz, voiceLineGain, withVoiceMuted, type RoomStyle, type SeatPos } from './spatial';
+import { Spatializer, irSpec, isVoiceMuted, normalizeCategoryVolumes, pickPanningModel, pickVariant, seatCompensation, seatPoint, sessionRoom, surfaceHz, voiceLineGain, withVoiceMuted, type RoomStyle, type SeatPos, type VenueEvent } from './spatial';
 import { audioElementPool } from './audioPool';
 import { audioContextAction, settleAudio, soundRestorePending } from './audioSession';
 
@@ -273,6 +273,10 @@ class Engine {
    */
   enterContext(ctx: SoundContext) {
     this.context = ctx;
+    // Leaving the table for the menus clears the venue audio identity with it: the last
+    // venue's music pin / lean must not bleed into menu music (the bed already stops via
+    // the table's own cleanup). The next table applies its identity fresh.
+    if (ctx === 'menu') { this.roomStyle = null; this.leanArmed = false; }
     const t = settingsForContext(this.settings, ctx);
     this.captureScene = false;
     try { this.set({ music: t.music, ambient: t.ambient, venueSound: t.venueSound }); } finally { this.captureScene = true; }
@@ -370,6 +374,8 @@ class Engine {
   private active = 0;
   private bag: number[] = [];
   private lastTrack: number | null = null;
+  /** the current venue's music lean is armed: the next pick is one of its signature tracks */
+  private leanArmed = false;
   private musicBus: GainNode | null = null;
   /** ducking stages (the nuke's tinnitus moment): music and regular SFX dip, the nuke itself rides on nukeBus */
   private musicDuck: GainNode | null = null;
@@ -481,10 +487,21 @@ class Engine {
   }
 
   private pickNext(): number {
-    // Phase 4: The Pj's always plays Breaktime (Demetrius 2026-10-19)
-    if (this.roomStyle?.venue === 'blockAfterDark') {
-      const idx = TRACKS.findIndex((t) => t.file === 'marty-gots-a-plan');
+    // Venue audio identity (spatial.ts ROOM_STYLES — the one definition of how a venue
+    // sounds): a venue may PIN its music (Phase 4: The Pj's always plays "Marty Gots a
+    // Plan", Demetrius 2026-10-19 — the pin now lives in the identity, not a hardcoded
+    // venue check here).
+    const music = this.roomStyle?.music;
+    if (music?.pin) {
+      const idx = TRACKS.findIndex((t) => t.file === music.pin);
       if (idx >= 0) return idx;
+    }
+    // …or LEAN: the first pick after a venue is applied comes from its signature tracks,
+    // so walking into a venue sounds like that venue; the global shuffle resumes after.
+    if (this.leanArmed && music && music.lean.length) {
+      this.leanArmed = false;
+      const idxs = music.lean.map((f) => TRACKS.findIndex((t) => t.file === f)).filter((i) => i >= 0 && i !== this.lastTrack);
+      if (idxs.length) { const pick = idxs[Math.floor(Math.random() * idxs.length)]!; this.lastTrack = pick; return pick; }
     }
     const { pick, bag } = nextShuffle(this.lastTrack, this.bag, TRACKS.length);
     this.bag = bag; this.lastTrack = pick;
@@ -1848,6 +1865,7 @@ class Engine {
   applySoundscape(seed: string, onlineVenue?: string, visualVenue?: string): RoomStyle {
     const style = sessionRoom({ visualVenue, seed, onlineVenue });
     this.roomStyle = style;
+    this.leanArmed = style.music.lean.length > 0; // the venue's signature track opens the session
     if (this.convolver && this.ctx) {
       const spec = irSpec(style);
       try { this.convolver.buffer = this.makeIR(spec.seconds); } catch { /* keep previous IR */ }
@@ -1991,14 +2009,18 @@ class Engine {
         this.vEvery(10, 22, (t) => this.tone(t, 90, 0.9, 'triangle', 0.01, { glideTo: 70, filter: 300, dest: B })); // a creak
         this.vEvery(16, 30, (t) => this.tone(t, 1800, 0.4, 'sine', 0.006, { glideTo: 1200, dest: B })); // gull
         break;
-      case 'street':
+      case 'street': {
+        // Ambient events come from the venue's audio identity (spatial.ts): only The Pj's
+        // carries 'driveby' + 'headlights'. A bare bed start with no room applied keeps the
+        // legacy set, so the street bed always sounds like The Pj's.
+        const streetEvents: readonly VenueEvent[] = this.roomStyle?.bed === 'street' ? this.roomStyle.events : ['driveby', 'headlights'];
         this.vNoise('lowpass', 140, 0.5, 0.05, 0.05, 0.3); // distant traffic rumble
         this.vNoise('highpass', 3500, 0.5, 0.006, 0.35, 0.5); // grill sizzle
         this.vEvery(1.5, 4, (t) => { for (let i = 0; i < 3; i++) this.tone(t + i * 0.07, 4600, 0.04, 'sine', 0.01, { dest: B }); }); // crickets
         this.vEvery(18, 40, (t) => { this.tone(t, 660, 0.7, 'sine', 0.006, { glideTo: 880, dest: B }); this.tone(t + 0.8, 660, 0.7, 'sine', 0.006, { glideTo: 880, dest: B }); }); // distant siren
         // Cop drive-by: semi-auto gunfire barrage, then a siren wail fading as the cruiser passes (Demetrius 2026-10-19)
         // Variants rotate (never the same twice); gunfire is positioned in 3D, siren pans across.
-        this.vEvery(180, 420, (t) => {
+        if (streetEvents.includes('driveby')) this.vEvery(180, 420, (t) => {
           const B = this.venueBus!;
           // Gunfire from a random direction (not where the player is looking)
           const gunAz = 40 + Math.random() * 280; // 40°–320°: off to the side/behind
@@ -2034,8 +2056,9 @@ class Engine {
           window.dispatchEvent(new CustomEvent('pj-driveby'));
         });
         // Calm drive-by: headlights sweep the fence, no gunfire — rarer and softer than the barrage above
-        this.vEvery(300, 620, (t) => this.headlightPass(t));
+        if (streetEvents.includes('headlights')) this.vEvery(300, 620, (t) => this.headlightPass(t));
         break;
+      }
       default:
     }
   }

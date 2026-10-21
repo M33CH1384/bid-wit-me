@@ -85,28 +85,48 @@ export function withVoiceMuted(muted: Record<string, true> | undefined, playerId
 }
 
 export const SOUNDSCAPE_ROOMS: Exclude<VenueBed, 'none'>[] = ['cookout', 'basement', 'barbershop', 'casino', 'jazz', 'beach', 'kitchen', 'mansion', 'rooftop', 'yacht'];
-export interface RoomStyle { venue: string; name: string; bed: VenueBed; surface: 'felt' | 'wood' | 'laminate' | 'glass'; reverb: 'dry-outdoor' | 'tight' | 'lively' | 'hall' | 'studio'; crowd: 'none' | 'low' | 'party' | 'arena' }
+/** Ambient one-shot event sets a venue's bed can schedule (audio.ts buildBed gates on these). */
+export type VenueEvent = 'driveby' | 'headlights';
+/** A venue's music character: `pin` = this track file always (The Pj's); `lean` = signature
+ *  track files the shuffle opens with when the venue is applied (first pick only, then the
+ *  global no-repeat shuffle resumes). Track files must exist in audio.ts TRACKS. */
+export interface RoomMusic { pin?: string; lean: readonly string[] }
+/**
+ * VENUE AUDIO IDENTITY — the single source of truth for how a venue SOUNDS (owner, 2026-10-21:
+ * "each venue should have its own feel audibly … and should be consistent"). One entry per
+ * venue carrying its whole audible signature: ambience bed, card surface, reverb, crowd,
+ * music character and ambient events. Every consumer reads from here — the bed player and
+ * IR/surface in audio.ts (via applySoundscape → sessionRoom), the music picker, the bed
+ * event schedulers, and venues.ts derives its `bed` field from this table — so a venue's
+ * feel cannot drift between screens or visits. There is no user soundscape picker: the
+ * venue decides, always.
+ */
+export interface RoomStyle { venue: string; name: string; bed: VenueBed; surface: 'felt' | 'wood' | 'laminate' | 'glass'; reverb: 'dry-outdoor' | 'tight' | 'lively' | 'hall' | 'studio'; crowd: 'none' | 'low' | 'party' | 'arena'; music: RoomMusic; events: readonly VenueEvent[] }
 /** One sound style PER ROOM (Demetrius, supersedes shared families). Every repo venue gets its own
  *  ambience bed, reverb character, table surface and crowd. Pool/picker enumerate exactly these. */
 export const ROOM_STYLES: RoomStyle[] = [
-  { venue: 'classic', name: 'Classic Studio', bed: 'none', surface: 'felt', reverb: 'studio', crowd: 'none' },
-  { venue: 'backyard', name: 'Backyard Cookout', bed: 'cookout', surface: 'wood', reverb: 'dry-outdoor', crowd: 'party' },
-  { venue: 'mansion', name: 'Mansion', bed: 'mansion', surface: 'glass', reverb: 'hall', crowd: 'low' },
-  { venue: 'barbershop', name: 'Barbershop', bed: 'barbershop', surface: 'wood', reverb: 'lively', crowd: 'low' },
-  { venue: 'church', name: 'Basement Spades Night', bed: 'basement', surface: 'laminate', reverb: 'tight', crowd: 'low' },
-  { venue: 'rooftop', name: 'Rooftop', bed: 'rooftop', surface: 'wood', reverb: 'dry-outdoor', crowd: 'low' },
-  { venue: 'speakeasy', name: 'Speakeasy Lounge', bed: 'jazz', surface: 'felt', reverb: 'lively', crowd: 'low' },
-  { venue: 'vegas', name: 'Vegas High Roller', bed: 'casino', surface: 'felt', reverb: 'hall', crowd: 'arena' },
-  { venue: 'beach', name: 'Beach Cabana', bed: 'beach', surface: 'wood', reverb: 'dry-outdoor', crowd: 'low' },
-  { venue: 'grandma', name: "Grandma's Kitchen", bed: 'kitchen', surface: 'laminate', reverb: 'tight', crowd: 'none' },
-  { venue: 'yacht', name: 'Yacht Deck', bed: 'yacht', surface: 'wood', reverb: 'dry-outdoor', crowd: 'low' },
-  { venue: 'blockAfterDark', name: "The Pj's", bed: 'street', surface: 'felt', reverb: 'dry-outdoor', crowd: 'low' },
+  { venue: 'classic', name: 'Classic Studio', bed: 'none', surface: 'felt', reverb: 'studio', crowd: 'none', music: { lean: ['windows-down', 'chillin-hard', 'glad-to-be-stuck-inside'] }, events: [] },
+  { venue: 'backyard', name: 'Backyard Cookout', bed: 'cookout', surface: 'wood', reverb: 'dry-outdoor', crowd: 'party', music: { lean: ['sunset-drive', 'windows-down', 'coins'] }, events: [] },
+  { venue: 'mansion', name: 'Mansion', bed: 'mansion', surface: 'glass', reverb: 'hall', crowd: 'low', music: { lean: ['slowly', 'memories-of-spring', 'chillin-hard'] }, events: [] },
+  { venue: 'barbershop', name: 'Barbershop', bed: 'barbershop', surface: 'wood', reverb: 'lively', crowd: 'low', music: { lean: ['city', 'new-hip-hop-beat', 'slow-grind'] }, events: [] },
+  { venue: 'church', name: 'Basement Spades Night', bed: 'basement', surface: 'laminate', reverb: 'tight', crowd: 'low', music: { lean: ['glad-to-be-stuck-inside', 'slowly', 'snow-drift'] }, events: [] },
+  { venue: 'rooftop', name: 'Rooftop', bed: 'rooftop', surface: 'wood', reverb: 'dry-outdoor', crowd: 'low', music: { lean: ['nighttime-stroll', 'late-at-night', 'city'] }, events: [] },
+  { venue: 'speakeasy', name: 'Speakeasy Lounge', bed: 'jazz', surface: 'felt', reverb: 'lively', crowd: 'low', music: { lean: ['slow-grind', 'pyro-flow', 'late-at-night'] }, events: [] },
+  { venue: 'vegas', name: 'Vegas High Roller', bed: 'casino', surface: 'felt', reverb: 'hall', crowd: 'arena', music: { lean: ['coins', 'final-level', 'pyro-flow'] }, events: [] },
+  { venue: 'beach', name: 'Beach Cabana', bed: 'beach', surface: 'wood', reverb: 'dry-outdoor', crowd: 'low', music: { lean: ['sunset-drive', '2-hour-delay', 'pretty-little-lies'] }, events: [] },
+  { venue: 'grandma', name: "Grandma's Kitchen", bed: 'kitchen', surface: 'laminate', reverb: 'tight', crowd: 'none', music: { lean: ['memories-of-spring', 'glad-to-be-stuck-inside', 'snow-drift'] }, events: [] },
+  { venue: 'yacht', name: 'Yacht Deck', bed: 'yacht', surface: 'wood', reverb: 'dry-outdoor', crowd: 'low', music: { lean: ['slowly', 'sunset-drive', '2-hour-delay'] }, events: [] },
+  { venue: 'blockAfterDark', name: "The Pj's", bed: 'street', surface: 'felt', reverb: 'dry-outdoor', crowd: 'low', music: { pin: 'marty-gots-a-plan', lean: [] }, events: ['driveby', 'headlights'] },
 ];
 export function styleForVenue(venue: string): RoomStyle | undefined { return ROOM_STYLES.find((r) => r.venue === venue); }
+/** The venue audio identity for a venue id (alias of styleForVenue — the one resolver every
+ *  audio consumer goes through). */
+export type VenueAudioIdentity = RoomStyle;
+export function audioIdentityForVenue(venue: string): VenueAudioIdentity | undefined { return styleForVenue(venue); }
 /** Competitive Tournament (Demetrius's named room): a tournament-hall soundscape riding the casino
  *  bed/arena crowd — distinct name, hall reverb, felt surface. (It was a pickable soundscape
  *  until 2026-10-20; the venue decides the sounds now, so it stays as a named style only.) */
-export const TOURNAMENT_ROOM: RoomStyle = { venue: 'vegas', name: 'Competitive Tournament', bed: 'casino', surface: 'felt', reverb: 'hall', crowd: 'arena' };
+export const TOURNAMENT_ROOM: RoomStyle = { venue: 'vegas', name: 'Competitive Tournament', bed: 'casino', surface: 'felt', reverb: 'hall', crowd: 'arena', music: { lean: ['final-level', 'coins'] }, events: [] };
 /** Unified session room (Phase 4): what you SEE is what you HEAR is what the loading screen NAMES.
  *  The VENUE decides the sounds, always (owner, 2026-10-20 — the soundscape picker is gone):
  *  online, the shared room venue decides (every client same); offline, the venue picked in
