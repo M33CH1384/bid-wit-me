@@ -3237,3 +3237,48 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
    row on narrow phones. */
 .quiet-row.story-resume-row > span:first-child { min-width: 0; }
 .quiet-row.story-resume-row .value-chip { flex: none; white-space: nowrap; }
+
+/* Last trick on phones (owner 2026-10-21): the chip used to hover at
+   bottom: 23vh + 64px — squarely ON the fanned hand (it covered the K♦ in
+   his Barbershop shot) — an offset designed to clear the old tray, then the
+   rail. On phone screens the pill now lives in the lower RIGHT corner,
+   below the hand: portrait bottom: 10px, short landscape bottom: 8px, both
+   plus the safe-area insets, right: 10px + the right inset — clear of the
+   controls rail (its bottom edge sits at 23vh + 8px, far above the corner)
+   and right of the me-plate, which owns the same strip on the left (fixed,
+   bottom: 8px, max-width: 62vw). The chip sizes to its content under the
+   caps below so the winner's name shows in full ("LAST TRICK · Mr.
+   Coleman" — Table no longer hard-slices it to 8 chars); the label
+   ellipsizes only past a cap. Portrait cap: min(60vw, 100vw - 212px) — the
+   second term keeps the chip's left edge right of a 194px plate, so the two
+   corner tenants can only touch if a near-cap plate meets a near-cap name.
+   Landscape cap 170px: Scene's fan solver reserves (safe + 186px) on each
+   side, so the fan's right edge stops at width - safe - 186 and a 170px
+   chip in the corner clears it at every landscape size. Open state: the
+   box stays anchored to the same corner and grows up/left from it — label
+   row on top, the four cards under it — capped at min(74vw, 320px)
+   portrait / 190px landscape.
+   Fan clearance, by the game's own layout math (three/layout handFan +
+   cardScreenQuad, pinned in plate-fit.test.ts): in Sitting view — the
+   owner's — and in landscape the chip clears every fan card outright. The
+   pivot fan's end cards dip lowest (about 6.5% of height standing, 12%
+   sitting); in Standing portrait that dip plus a notched phone's 34px
+   safe inset leaves a ~21px strip, a few px short of the chip, so the last
+   card's rounded bottom corner can kiss the chip's top edge by up to ~15px
+   of quad (less of real card — the quad ignores the corner radius). The
+   open box likewise reaches the end cards' bottom corners, never their
+   index/strip zone — strictly less fan coverage than the old mid-fan open
+   box. Desktop / large screens keep the 23vh + 64px spot (owner: "at
+   least in phone screens") — there the fan is narrower and centred and
+   that spot already reads clear of it. Tap behaviour is untouched: the
+   open state's ≥44px height and tap-anywhere-to-close stay as they were. */
+@media (max-width: 480px) {
+  .table-screen:not(.short) .last-trick, .table-screen:not(.short) .last-trick.glass.slant { right: calc(10px + env(safe-area-inset-right)); bottom: calc(10px + env(safe-area-inset-bottom)) !important; }
+  .table-screen:not(.short) .last-trick.chip, .table-screen:not(.short) .last-trick.chip.glass.slant { max-width: min(60vw, calc(100vw - 212px)); }
+  .table-screen:not(.short) .last-trick.chip .lt-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .table-screen:not(.short) .last-trick.open, .table-screen:not(.short) .last-trick.open.glass.slant { max-width: min(74vw, 320px); }
+}
+.table-screen.short .last-trick, .table-screen.short .last-trick.glass.slant { right: calc(10px + env(safe-area-inset-right)); bottom: calc(8px + env(safe-area-inset-bottom)) !important; }
+.table-screen.short .last-trick.chip, .table-screen.short .last-trick.chip.glass.slant { max-width: 170px; }
+.table-screen.short .last-trick.chip .lt-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.table-screen.short .last-trick.open, .table-screen.short .last-trick.open.glass.slant { max-width: 190px; }
