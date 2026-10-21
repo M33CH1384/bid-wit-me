@@ -9,6 +9,7 @@
  */
 
 import { PACK, STYLE } from './pack';
+import { POOLS2 } from './pools2';
 
 export type TalkKind =
   | 'prePlay'      // before the bot plays (generic or bluff; never an honest tell)
@@ -45,7 +46,8 @@ export type TalkKind =
   | 'badHand'      // speaker's own hand at bid time (bluff-safe: sometimes said with good hands too)
   | 'roast'        // general petty one-liners (opponent blunder, winning big)
   | 'onNotice'     // the other side got shot (Shot = out) and is on notice
-  | 'shotOut';     // the other side got shot out of the game
+  | 'shotOut'      // the other side got shot out of the game
+  | 'matchPoint';  // speaker's side is one hand from winning (leading, within 100 of the target)
 
 export type PersonaId = 'professor' | 'mama' | 'hype' | 'petty' | 'og' | 'hustler' | 'silent'
   | 'deacon' | 'conspiracy' | 'barber' | 'gambler' | 'hothead' | 'comedian' | 'lilcuz' | 'coach' | 'smooth' | 'storyteller' | 'influencer' | 'sorelose';
@@ -58,6 +60,13 @@ export type LineCond = 'ace' | 'neg' | 'big' | 'little' | 'jk';
  * A fact is a PREFERENCE, never a gate: when no tagged line fits, the untagged pool speaks.
  */
 export type LineFact = 'close' | 'aheadBig' | 'behindBig' | 'lateHand' | 'deciding' | 'bidderSelf' | 'bidderPartner' | 'bidderOpp';
+/**
+ * Per-persona mood: how much more (or less) this persona talks depending on the score gap
+ * FOR ITS OWN SIDE (keys mirror the GapBucket names in talk.ts). Missing = 1 (steady).
+ * This is what makes personalities audible in the rotation: the Hype Man runs his mouth
+ * when winning and goes quiet when buried; the Sore Loser is the reverse.
+ */
+export type GapBias = Partial<Record<'close' | 'aheadBig' | 'behindBig', number>>;
 /** per raw line: minimum intensity and an event condition (lines without an entry are Family Friendly, unconditional) */
 export interface LineMeta {
   min?: 'cookout' | 'nomercy'; cond?: LineCond;
@@ -83,6 +92,8 @@ export interface Persona {
   weight: number;
   /** how chatty: multiplies every trigger's chance */
   freq: number;
+  /** score-gap mood: multiplies talk chance by the bucket for the speaker's own side (see GapBias) */
+  gapBias?: GapBias;
   /** ALL CAPS speaker */
   caps?: boolean;
   /** Web Speech character: pitch/rate plus the persona's preferred system-voice names (tried in
@@ -135,6 +146,10 @@ export const COMMON: Partial<Record<TalkKind, string[]>> = {
   onNotice: ["y'all on notice now. one more and it's over.", 'shot. one more hand like that and y\'all go home.', 'on notice! the clock is ticking, {opp}.'],
   shotOut: ['SHOT OUT! go home!', 'shot twice. that\'s the door, {opp}.', 'shot out! table\'s ours.'],
   hypePartner: ["THAT'S MY PARTNER! {them}!", 'yes {them}! carry us!', '{them} cooking 🔥', 'I taught {them} that.', 'partner of the year: {them}.', '{them} with the big brain play.'],
+  // matchPoint (2026-10-21): only lines already recorded in EVERY non-silent persona's
+  // sprite may live in COMMON for a kind most personas barely own — anything else would
+  // break the recorded-voice invariant (voices.test.ts). Persona banks live in pools2.ts.
+  matchPoint: ["we're on a heater 🔥", 'someone stop us. anyone.', 'back to back. get used to it.'],
 };
 
 export const PERSONAS: Record<PersonaId, Persona> = {
@@ -539,6 +554,24 @@ export function personaForName(name: string): PersonaId {
   return ids[0]!;
 }
 
+// ---- persona mood (2026-10-21): score-gap talkativeness, applied by talk.ts's chance roll ----
+// Frontrunners run their mouths when ahead and go quiet when buried; the Sore Loser and the
+// Conspiracy Theorist are the reverse; the Coach rallies when behind. Missing bucket = 1.
+const GAP_BIAS: Partial<Record<PersonaId, GapBias>> = {
+  hype: { aheadBig: 1.5, behindBig: 0.4 },
+  petty: { aheadBig: 1.4, behindBig: 0.6 },
+  influencer: { aheadBig: 1.4, behindBig: 0.5 },
+  lilcuz: { aheadBig: 1.3 },
+  sorelose: { behindBig: 1.6, aheadBig: 0.5 },
+  hothead: { behindBig: 1.4, close: 1.2 },
+  conspiracy: { behindBig: 1.3 },
+  coach: { behindBig: 1.2 },
+  deacon: { behindBig: 1.2, aheadBig: 0.9 },
+  gambler: { close: 1.3 },
+  smooth: { aheadBig: 1.2, behindBig: 0.8 },
+};
+for (const [id, bias] of Object.entries(GAP_BIAS) as [PersonaId, GapBias][]) PERSONAS[id].gapBias = bias;
+
 // ---- the trash-talk pack: spread each line onto 2-3 personas of its style group, and record line metadata ----
 export const LINE_META: Record<string, LineMeta> = {};
 const MILD = /\b(shit|ass|damn|hell)\b/i;
@@ -574,6 +607,15 @@ for (const sec of PACK) {
       const pool = (PERSONAS[o].lines[sec.kind] ??= []);
       if (!pool.includes(raw)) pool.push(raw);
     }
+  }
+}
+// ---- recorded-corpus redistribution: re-home lines each persona already says (and has
+// recorded) into the starved hand-end kinds. Append-only + deduped: no existing line in
+// any pool changes index, so every recorded-clip id stays put. See pools2.ts. ----
+for (const [id, kinds] of Object.entries(POOLS2) as [PersonaId, Partial<Record<TalkKind, string[]>>][]) {
+  for (const [kind, raws] of Object.entries(kinds) as [TalkKind, string[]][]) {
+    const pool = (PERSONAS[id].lines[kind] ??= []);
+    for (const raw of raws) if (!pool.includes(raw)) pool.push(raw);
   }
 }
 // mild cursing in the base pools needs Cookout (Family Friendly never says it, even masked)

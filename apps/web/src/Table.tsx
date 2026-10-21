@@ -90,7 +90,7 @@ import { RunItReview, RunZoom, faceUrl, runReviewOverTable } from './RunZoom';
 import { TrashTalkButton } from './TrashTalk';
 import { isWildDeuce } from './cardFaces';
 import { misdealRevealKey, misdealRevealMs } from './misdeal';
-import { QUICK_TRASH_SET, quickLines } from './quickTrash';
+import { QUICK_TRASH_SET } from './quickTrash';
 import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
 import { type TalkIntensity, botSkillFor, partnerBidIntent, personaForName, platePersona, pickBotNames } from '@spades/bots';
 import { preloadVoice } from './voices/voices';
@@ -1312,31 +1312,18 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     return () => { if (collectTimer.current) { window.clearTimeout(collectTimer.current); collectTimer.current = null; } };
   }, [st.phase, st.handNo, st.result, online, pause]); // eslint-disable-line react-hooks/exhaustive-deps
   // Trash talk during collection: 1-2 bots chirp while cards slide to the dealer (Demetrius 2026-10-19).
-  // Winners gloat ('made'/'setThem'), losers cope ('gotSet'/'roast'). Uses the existing TTS + chat pipeline.
+  // Routed through the talk engine (collectionBanter): persona pools, per-game anti-repeat memory and
+  // hand context (set / made / nil / bags / match point…) — the old raw-pack random draw repeated the
+  // same handful of lines and silently skipped kinds the pack had no section for (2026-10-21 overhaul).
   const banterDone = useRef(0);
   useEffect(() => {
     if (!collecting || online) return;
     if (banterDone.current === st.handNo) return;
     banterDone.current = st.handNo;
-    const h = st.history.at(-1);
-    const winners = new Set((h?.sides ?? []).filter((s) => s.contractMade).map((s) => s.side));
-    const bots = names.map((nm, i) => ({ nm, i })).filter((b) => b.i !== HUMAN);
-    if (!bots.length) return;
-    const shuffled = [...bots].sort(() => Math.random() - 0.5).slice(0, 2);
-    shuffled.forEach((b, ix) => {
-      const won = winners.has(sideOf(b.i, r));
-      const kinds = won ? (['made', 'setThem', 'roast'] as const) : (['gotSet', 'roast'] as const);
-      const kind = kinds[Math.floor(Math.random() * kinds.length)]!;
-      const lines = quickLines(kind, intensity);
-      if (!lines.length) return;
-      const line = lines[Math.floor(Math.random() * lines.length)]!;
-      const text = showLine(line);
+    offlineTalk.banter(st).forEach((l, ix) => {
       window.setTimeout(() => {
-        push(b.nm, text, false, 0, true);
-        if (!sound.voiceMuted(b.nm)) {
-          const seatIx = names.findIndex((nm) => nm === b.nm);
-          speakBot(b.nm, text, undefined, line, undefined, seatIx >= 0 ? pos[seatIx] : undefined, n);
-        }
+        push(l.name, showLine(l.text), false, 0, true);
+        if (!sound.voiceMuted(l.name)) speakBot(l.name, l.text, l.persona, l.line, l.bid, pos[l.seat], n);
       }, 900 + ix * 1800);
     });
   }, [collecting]); // eslint-disable-line react-hooks/exhaustive-deps

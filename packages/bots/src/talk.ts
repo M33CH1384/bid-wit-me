@@ -6,6 +6,8 @@
  * - Hustler persona plays dumb ('newbie' pool) until it pulls off a cut / lead-taking spade / set, then reveals once.
  */
 import { COMMON, LINE_META, PACK_OWNERS, PERSONAS, type LineFact, type LineMeta, type PersonaId, type TalkIntensity, type TalkKind, lineAllowed, lineFitsGender, personaForName, personaSkillFloor } from './personas';
+import type { GameState } from '@spades/rules';
+import { banterContextFor } from './moments';
 import { possessive, voiceGender } from './names';
 import { type CatalogMemory, type VoiceMoment, bucketFor, pickCatalog } from './catalog';
 import { BOT_SKILLS, type BotSkill, seatSkill } from './bidding';
@@ -27,11 +29,11 @@ export const TALK = {
     made: 0.3, bigBid: 0.5, roastBid: 0.35, wheels: 0.95, nilMade: 0.7, nilBust: 0.8, bags: 0.6, duck: 0.18, slow: 0.6,
     streak: 0.5, runIt: 1, gotRan: 0.6, win: 1, lose: 0.9, rematch: 0.8, hypePartner: 0.55, newbie: 0.3, reveal: 1,
     slam: 0.3, partnerBlunder: 0.7, bidTooHigh: 0.5, nilBid: 0.6, blindNil: 0.9, boston: 1, loudLoser: 0.8, badHand: 0.35, roast: 0.5,
-    onNotice: 0.8, shotOut: 1,
+    onNotice: 0.8, shotOut: 1, matchPoint: 0.8,
   } as Record<TalkKind, number>,
   recentMax: 14,
 };
-const BIG: TalkKind[] = ['nuke', 'gotNuked', 'wheels', 'runIt', 'win', 'lose', 'reveal', 'rematch', 'boston', 'shotOut', 'blindNil'];
+const BIG: TalkKind[] = ['nuke', 'gotNuked', 'wheels', 'runIt', 'win', 'lose', 'reveal', 'rematch', 'boston', 'shotOut', 'blindNil', 'matchPoint'];
 /** the Silent Assassin only speaks for these */
 const SILENT_KINDS: TalkKind[] = ['cut', 'setThem', 'overcut', 'runIt', 'win', 'slam'];
 /** the losing side's take on a moment */
@@ -62,6 +64,8 @@ export interface TalkState {
   last?: string;
   /** catalog ids already said this game (Voice Phase 3) */
   ai?: CatalogMemory;
+  /** cutthroat seats already seen eliminated (collection banter comments on a NEW elimination once) */
+  elimSeen?: boolean[];
 }
 export interface TalkEvent {
   kind: TalkKind;
@@ -247,6 +251,14 @@ function pick(st: TalkState, t: TalkTable, persona: PersonaId, kind: TalkKind, e
   const key = `${persona}:${kind}`;
   const used = ((st.used ??= {})[key] ??= []);
   let fresh = base.filter((l) => !used.includes(l) && l !== st.last && !st.recent.includes(l));
+  if (!fresh.length && base !== all) {
+    // The preferred slice (Ace lines / fact fits) is often only 1–2 lines. The old code
+    // reset `used` here, so in a persistent context (a side ahead big all game, the same
+    // bidder making contracts) those same 1–2 "preferred" lines cycled every couple of
+    // fires — the loudest repetition at the table. Widen to the full pool first; only
+    // reset when the WHOLE pool has been heard.
+    fresh = all.filter((l) => !used.includes(l) && l !== st.last && !st.recent.includes(l));
+  }
   if (!fresh.length) {
     // the pool is spent: forget it (keep the last line out so it never repeats back to back)
     st.used[key] = [];
@@ -321,7 +333,7 @@ export function botTalk(st: TalkState, t: TalkTable, ev: TalkEvent, now: number,
   // a human on a bot's team did something good → the bot partner hypes them
   if (t.partnerships && actor !== undefined && !t.seats[actor]?.bot && HYPE_ON.includes(ev.kind)) {
     const p = (actor + 2) % t.seats.length;
-    if (t.seats[p]?.bot && ready(st, p, now, big) && rnd() < TALK.chance.hypePartner * freqOf(st, t, p)) return speak(st, t, p, 'hypePartner', ev, actor, now, rnd);
+    if (t.seats[p]?.bot && ready(st, p, now, big) && rnd() < TALK.chance.hypePartner * freqOf(st, t, p) * gapBiasOf(personaOf(t, p), speakerBucket(ev, t, p))) return speak(st, t, p, 'hypePartner', ev, actor, now, rnd);
   }
 
   // who talks: the actor (if a bot), else a bot on the benefiting side; for MIRROR kinds sometimes the other side answers
@@ -347,11 +359,17 @@ export function botTalk(st: TalkState, t: TalkTable, ev: TalkEvent, now: number,
   cands = cands.filter((c) => ready(st, c, now, big) && (personaOf(t, c) !== 'silent' || SILENT_KINDS.includes(kind)));
   if (!cands.length) return null;
   const seat = cands[Math.floor(rnd() * cands.length)]!;
-  if (rnd() >= (TALK.chance[kind] ?? 0.3) * freqOf(st, t, seat)) return null;
+  if (rnd() >= (TALK.chance[kind] ?? 0.3) * freqOf(st, t, seat) * gapBiasOf(personaOf(t, seat), speakerBucket(ev, t, seat))) return null;
   const them = kind === 'slow' || kind === 'partnerBlunder' ? ev.them ?? actor : otherThem(seat);
   // a set can come back as a petty one-liner
   if (kind === 'setThem' && rnd() < 0.15) kind = 'roast';
   return speak(st, t, seat, kind, ev, them === -1 ? undefined : them, now, rnd);
+}
+
+/** how chatty a persona is right now: base freq × its score-gap mood for the speaker's own side */
+export function gapBiasOf(persona: PersonaId, bucket: GapBucket | undefined): number {
+  if (!bucket) return 1;
+  return PERSONAS[persona].gapBias?.[bucket] ?? 1;
 }
 
 function freqOf(_st: TalkState, t: TalkTable, seat: number): number { return PERSONAS[personaOf(t, seat)].freq; }
@@ -360,6 +378,121 @@ function freqOf(_st: TalkState, t: TalkTable, seat: number): number { return PER
 function speak(st: TalkState, t: TalkTable, seat: number, kind: TalkKind, ev: TalkEvent, them: number | undefined, now: number, rnd: () => number): TalkLine | null {
   const acting = personaOf(t, seat) === 'hustler' && !st.revealed.includes(seat);
   return say(st, t, seat, acting ? 'newbie' : kind, ev, them, now, rnd);
+}
+
+interface BanterSlot {
+  kind: TalkKind; side: number; loser: boolean;
+  them?: number; bid?: number; books?: number; preferSeat?: number; bidderSeat?: number; bidderSide?: number;
+}
+
+/**
+ * The card-collection banter (offline): up to two lines about the hand that just ended —
+ * one from the winning perspective, one from the losing side when there is one.
+ *
+ * This used to be drawn in the client from the raw pack with pure Math.random(): no
+ * persona, no memory, and two of its three winner kinds ('made' / 'gotSet') had no pack
+ * section at all, so those slots silently fired nothing. It now routes through the same
+ * engine as every other line — persona pools, the per-game anti-repeat memory, fact
+ * preference, persona chattiness × score-gap mood for speaker choice — and the context
+ * comes from `banterContextFor` (the same hand-record predicates as momentsFor).
+ * Cooldowns are the caller's business: the collection window owns the schedule.
+ */
+export function collectionBanter(st: TalkState, t: TalkTable, after: GameState, now: number, rnd: () => number): TalkLine[] {
+  const ctx = banterContextFor(after);
+  if (!ctx) return [];
+  const alive = (seat: number) => !(after.eliminated?.[seat]);
+  const botsOn = (side: number) => t.seats.map((s, i) => (s.bot && sideOfSeat(t, i) === side && alive(i) ? i : -1)).filter((i) => i >= 0);
+  /** who profits when `side` suffers: the other team, or (cutthroat) the side that scored most this hand */
+  const beneficiaryOf = (side: number): number | undefined => {
+    if (t.partnerships) return 1 - side;
+    let best: number | undefined; let bestPts = -Infinity;
+    ctx.handPoints.forEach((pts, s) => { if (s !== side && pts > bestPts) { bestPts = pts; best = s; } });
+    return best;
+  };
+  const winners: BanterSlot[] = [];
+  const losers: BanterSlot[] = [];
+  for (const side of ctx.bostonSides) winners.push({ kind: 'boston', side, loser: false, bid: ctx.contractBid[side], bidderSeat: ctx.contractSeat[side], bidderSide: side });
+  for (const side of ctx.setSides) {
+    const ben = beneficiaryOf(side);
+    if (ben === undefined) continue;
+    winners.push({ kind: 'setThem', side: ben, loser: false, them: ctx.contractSeat[side], bid: ctx.contractBid[side], books: ctx.handTricks[side], bidderSeat: ctx.contractSeat[side], bidderSide: side });
+    losers.push({ kind: 'gotSet', side, loser: true, them: ctx.contractSeat[ben], bidderSeat: ctx.contractSeat[side], bidderSide: side });
+  }
+  for (const side of ctx.wheelsSides) winners.push({ kind: 'wheels', side, loser: false, bid: ctx.contractBid[side], books: ctx.handTricks[side], bidderSeat: ctx.contractSeat[side], bidderSide: side });
+  for (const seat of ctx.nilBustSeats) {
+    const ben = beneficiaryOf(sideOfSeat(t, seat));
+    if (ben !== undefined) winners.push({ kind: 'nilBust', side: ben, loser: false, them: seat, bidderSeat: seat, bidderSide: sideOfSeat(t, seat) });
+  }
+  // a NEW elimination (cutthroat): survivors mark it, once per seat per game
+  const elimNow = after.eliminated ?? [];
+  const seen = st.elimSeen ?? [];
+  elimNow.forEach((out, seat) => {
+    if (out && !seen[seat]) {
+      const ben = beneficiaryOf(seat) ?? ctx.handPoints.indexOf(Math.max(...ctx.handPoints));
+      winners.push({ kind: 'shotOut', side: ben, loser: false, them: seat });
+    }
+  });
+  st.elimSeen = [...elimNow];
+  for (const side of ctx.matchPointSides) winners.push({ kind: 'matchPoint', side, loser: false });
+  for (const side of [...ctx.bagsSides, ...ctx.bagsHotSides]) {
+    const ben = beneficiaryOf(side);
+    if (ben !== undefined) winners.push({ kind: 'bags', side: ben, loser: false, them: ctx.contractSeat[side], bidderSeat: ctx.contractSeat[side], bidderSide: side });
+  }
+  for (const seat of ctx.nilMadeSeats) winners.push({ kind: 'nilMade', side: sideOfSeat(t, seat), loser: false, preferSeat: seat, bidderSeat: seat, bidderSide: sideOfSeat(t, seat) });
+  for (const side of ctx.madeSides) winners.push({ kind: 'made', side, loser: false, bid: ctx.contractBid[side], preferSeat: ctx.contractSeat[side], bidderSeat: ctx.contractSeat[side], bidderSide: side });
+  if (ctx.streakSide !== undefined) winners.push({ kind: 'streak', side: ctx.streakSide, loser: false });
+  for (const side of ctx.shotSides) {
+    const ben = beneficiaryOf(side);
+    if (ben !== undefined) winners.push({ kind: 'onNotice', side: ben, loser: false, them: ctx.contractSeat[side], bidderSeat: ctx.contractSeat[side], bidderSide: side });
+  }
+  if (!losers.length) {
+    // no set: the hand's low scorer cops a roast from their own side of the table talk
+    const winSide = ctx.handPoints.indexOf(Math.max(...ctx.handPoints));
+    let lowSide: number | undefined; let low = Infinity;
+    ctx.handPoints.forEach((pts, s) => { if (s !== winSide && pts < low) { low = pts; lowSide = s; } });
+    if (lowSide !== undefined && low < (ctx.handPoints[winSide] ?? 0)) losers.push({ kind: 'roast', side: lowSide, loser: true, them: ctx.contractSeat[winSide] });
+  }
+
+  const spoken = new Set<number>();
+  const usedKinds = new Set<TalkKind>();
+  const speakSlot = (slot: BanterSlot): TalkLine | null => {
+    const pool = botsOn(slot.side).filter((s) => !spoken.has(s) && (personaOf(t, s) !== 'silent' || SILENT_KINDS.includes(slot.kind)));
+    while (pool.length) {
+      // speaker draw weighted by persona chattiness × mood; the contract holder is favoured for made/nil lines
+      const weights = pool.map((s) => PERSONAS[personaOf(t, s)].freq * gapBiasOf(personaOf(t, s), ctx.buckets[slot.side]) * (s === slot.preferSeat ? 3 : 1));
+      let x = rnd() * weights.reduce((a, b) => a + b, 0);
+      let ix = 0;
+      while (ix < pool.length - 1 && (x -= weights[ix]!) >= 0) ix++;
+      const seat = pool.splice(ix, 1)[0]!;
+      const ev: TalkEvent = {
+        kind: slot.kind, side: slot.side,
+        ...(slot.them !== undefined ? { them: slot.them } : {}),
+        ...(slot.bid !== undefined ? { bid: slot.bid } : {}),
+        ...(slot.books !== undefined ? { books: slot.books } : {}),
+        ...(ctx.buckets[slot.side] ? { gapBucket: ctx.buckets[slot.side] } : {}),
+        tricksLeft: 'late',
+        ...(slot.kind === 'matchPoint' ? { pressure: true } : {}),
+        ...(slot.bidderSeat !== undefined ? { bidderSeat: slot.bidderSeat } : {}),
+        ...(slot.bidderSide !== undefined ? { bidderSide: slot.bidderSide } : {}),
+      };
+      const line = speak(st, t, seat, slot.kind, ev, slot.them, now, rnd);
+      if (line) { spoken.add(seat); usedKinds.add(slot.kind); return line; }
+    }
+    return null;
+  };
+  const out: TalkLine[] = [];
+  const take = (slots: BanterSlot[]) => {
+    for (const slot of slots) {
+      if (usedKinds.has(slot.kind)) continue;
+      const line = speakSlot(slot);
+      if (line) { out.push(line); return true; }
+    }
+    return false;
+  };
+  take(winners);
+  take(losers);
+  if (out.length < 2) take(winners);
+  return out.slice(0, 2);
 }
 
 /**

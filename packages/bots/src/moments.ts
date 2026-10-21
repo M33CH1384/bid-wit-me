@@ -16,12 +16,7 @@ export function momentsFor(before: GameState, action: Action, after: GameState):
   };
 
   // ---- contextual facts for bot speech (additive: kinds/speakers/cooldowns unchanged) ----
-  // score-gap bucket for a side, scaled to the target (500: big = 125+, close = within 50)
-  const gapBucketFor = (side: number, scores: number[]): GapBucket | undefined => {
-    const gap = (scores[side] ?? 0) - Math.max(...scores.filter((_, i) => i !== side), -Infinity);
-    const big = Math.max(75, r.targetScore * 0.25), close = Math.max(25, r.targetScore * 0.1);
-    return gap >= big ? 'aheadBig' : gap <= -big ? 'behindBig' : Math.abs(gap) <= close ? 'close' : undefined;
-  };
+  const gapBucketFor = (side: number, scores: number[]): GapBucket | undefined => gapBucketForScores(scores, r.targetScore, side);
   const tricksBucket = (st: GameState): TricksLeftBucket => {
     const left = tricksStillRemaining(st);
     return left <= 3 ? 'late' : left <= 6 ? 'mid' : 'early';
@@ -113,6 +108,22 @@ export function momentsFor(before: GameState, action: Action, after: GameState):
       const b0 = best(last[0]!);
       if (last.every((x) => best(x) === b0)) out.push({ kind: 'streak', side: b0, ...factsFor(b0) });
     }
+    // bags trouble: a side is 7–9 bags deep, one or two books from the 10-bag penalty
+    if (r.partnerships && !after.result) {
+      for (const s of h.sides) {
+        const other = 1 - s.side;
+        const already = out.some((e) => e.kind === 'bags' && e.them === s.seats[0]);
+        if (!already && (after.bags[s.side] ?? 0) >= 7) out.push({ kind: 'bags', side: other, them: s.seats[0], ...factsFor(other, { seat: s.seats[0]!, side: s.side }) });
+      }
+    }
+    // match point: the leading side sits within one big hand (100) of the target
+    if (!after.result) {
+      const lead = Math.max(...after.scores);
+      after.scores.forEach((score, side) => {
+        const left = r.targetScore - score;
+        if (score === lead && left > 0 && left <= 100) out.push({ kind: 'matchPoint', side, ...factsFor(side), pressure: true });
+      });
+    }
   }
   if (after.result && !before.result) {
     const w = after.result.winners[0]!;
@@ -121,6 +132,85 @@ export function momentsFor(before: GameState, action: Action, after: GameState):
   }
   void sideCount;
   return out;
+}
+
+/** score-gap bucket for a side, scaled to the target (500: big = 125+, close = within 50) */
+export function gapBucketForScores(scores: number[], target: number, side: number): GapBucket | undefined {
+  const gap = (scores[side] ?? 0) - Math.max(...scores.filter((_, i) => i !== side), -Infinity);
+  const big = Math.max(75, target * 0.25), close = Math.max(25, target * 0.1);
+  return gap >= big ? 'aheadBig' : gap <= -big ? 'behindBig' : Math.abs(gap) <= close ? 'close' : undefined;
+}
+
+/**
+ * What just happened in the last completed hand, in banter terms — the context the
+ * card-collection banter routes on (talk.ts `collectionBanter`). Computed from the
+ * hand record + totals with the SAME predicates momentsFor uses for its hand-end
+ * events, so the two never disagree about what happened.
+ */
+export interface BanterContext {
+  setSides: number[];
+  madeSides: number[];
+  bostonSides: number[];
+  wheelsSides: number[];
+  nilMadeSeats: number[];
+  nilBustSeats: number[];
+  /** sides that ate a bag penalty this hand */
+  bagsSides: number[];
+  /** sides whose running bags are 7–9: a penalty is one or two books away */
+  bagsHotSides: number[];
+  shotSides: number[];
+  streakSide?: number;
+  matchPointSides: number[];
+  /** per-side score-gap bucket after the hand */
+  buckets: (GapBucket | undefined)[];
+  /** per side: points scored in the last hand */
+  handPoints: number[];
+  /** per side: tricks taken in the last hand */
+  handTricks: number[];
+  /** per side: the seat that held the side's contract in the last hand */
+  contractSeat: (number | undefined)[];
+  /** per side: that contract, when numeric */
+  contractBid: (number | undefined)[];
+}
+
+export function banterContextFor(after: GameState): BanterContext | null {
+  const h = after.history[after.history.length - 1];
+  if (!h) return null;
+  const r = rulesForLive(after);
+  const ctx: BanterContext = {
+    setSides: [], madeSides: [], bostonSides: [], wheelsSides: [], nilMadeSeats: [], nilBustSeats: [],
+    bagsSides: [], bagsHotSides: [], shotSides: [], matchPointSides: [],
+    buckets: after.scores.map((_, side) => gapBucketForScores(after.scores, r.targetScore, side)),
+    handPoints: [], handTricks: [], contractSeat: [], contractBid: [],
+  };
+  for (const s of h.sides) {
+    ctx.handPoints[s.side] = s.points;
+    ctx.handTricks[s.side] = s.tricks;
+    ctx.contractSeat[s.side] = s.seats[0];
+    ctx.contractBid[s.side] = typeof s.contract === 'number' ? s.contract : undefined;
+    if (s.contractMade === false) ctx.setSides.push(s.side);
+    if (s.contractMade) ctx.madeSides.push(s.side);
+    if (r.partnerships ? (s.contract >= 10 && s.contractMade) || (h.bids.every((b) => b === 'books') && s.tricks >= 10) : s.tricks >= 10) ctx.wheelsSides.push(s.side);
+    for (const n of s.nils) (n.made ? ctx.nilMadeSeats : ctx.nilBustSeats).push(n.seat);
+    if (s.bagPenaltyCount > 0) ctx.bagsSides.push(s.side);
+    else if ((after.bags[s.side] ?? 0) >= 7) ctx.bagsHotSides.push(s.side);
+    if (s.tricks >= 13 && typeof s.contract === 'number') ctx.bostonSides.push(s.side);
+    if (s.shot && !after.result) ctx.shotSides.push(s.side);
+  }
+  const last = after.history.slice(-3);
+  if (last.length === 3 && !after.result) {
+    const best = (x: typeof h) => x.sides.reduce((a, b) => (b.points > a.points ? b : a)).side;
+    const b0 = best(last[0]!);
+    if (last.every((x) => best(x) === b0)) ctx.streakSide = b0;
+  }
+  if (!after.result) {
+    const lead = Math.max(...after.scores);
+    after.scores.forEach((score, side) => {
+      const left = r.targetScore - score;
+      if (score === lead && left > 0 && left <= 100) ctx.matchPointSides.push(side);
+    });
+  }
+  return ctx;
 }
 
 function isNilSeat(st: GameState, seat: number): boolean { const b = st.bids[seat]; return b === 'nil' || b === 'blindNil'; }
