@@ -23,10 +23,11 @@ function started() {
 }
 
 describe('pre-deal setup window', () => {
-  it('is 8 seconds — inside the owner\'s 5–10s range', () => {
-    expect(PRE_DEAL_MS).toBe(8000);
-    expect(PRE_DEAL_MS).toBeGreaterThanOrEqual(5000);
-    expect(PRE_DEAL_MS).toBeLessThanOrEqual(10_000);
+  it('is 14 seconds — the ~10s versus story plays inside the window, ~4s of visible countdown remains', () => {
+    expect(PRE_DEAL_MS).toBe(14_000);
+    // the intro's visible story floor (10s) plus at least ~4s the players
+    // actually see counting down on the table before the deal (owner 2026-10-21)
+    expect(PRE_DEAL_MS).toBeGreaterThanOrEqual(10_000 + 4000);
   });
 
   it('the game starts UNDEALT: no cards, no turn, no clock — and the state says when the deal lands', () => {

@@ -16,23 +16,34 @@ import { sound, type Sfx } from './audio';
  * STORY FLOOR: the intro never auto-dismisses before the story has fully played
  * (VERSUS_STORY_MS), no matter how fast the table loads. Dismissal = story complete
  * AND table ready (the parent owns the actual dismissal; see versusDismissReady).
- * Tap anywhere to skip to the finished card. If the table still isn't ready when
- * the story ends, the finished card holds with a "getting the table ready…" line.
+ * If the table still isn't ready when the story ends, the finished card holds
+ * with a "getting the table ready…" line.
+ *
+ * PAINT-GATED START (owner report 2026-10-21: "Game loading screen is not long
+ * enough"): the story clock, the cues, and the CSS beats all arm only after the
+ * card has actually painted — two animation frames after mount, and only while
+ * the document is visible (the useRewardsReveal pattern from the /rewards fix,
+ * 3fc0e1cb). Mount-keyed timing let the story burn while the phone still showed
+ * the previous screen, so the owner only ever caught the tail of it.
+ *
+ * DELIBERATE SKIP: taps are ignored until the tape card is up (VERSUS_TAPE_MS);
+ * only then does the "Tap to skip" hint show and a tap finish the story. A prod
+ * at the loading screen can't kill the intro by accident anymore.
  */
 
 /* ------------------------------------------------------------ beat sheet */
-export const VERSUS_IMPACT_MS = 1000;   // the collision frame
-export const VERSUS_TAPE_MS = 1500;     // the tape card lands / rows start revealing
-export const VERSUS_HOLD_MS = 3000;     // last row is in; clean readable hold begins
-export const VERSUS_STORY_MS = 4500;    // guaranteed minimum story duration
-export const VERSUS_ROW_STAGGER_MS = 180;
+export const VERSUS_IMPACT_MS = 1500;   // the collision frame
+export const VERSUS_TAPE_MS = 2200;     // the tape card lands / rows start revealing
+export const VERSUS_HOLD_MS = 4800;     // last row is in; clean readable hold begins
+export const VERSUS_STORY_MS = 10_000;  // guaranteed minimum story duration, from first paint
+export const VERSUS_ROW_STAGGER_MS = 700;
 
 /* ------------------------------------------------------------ sound cues */
 /** One cue on the beat sheet. `side` pans/travels the entrance whooshes in 3D. */
 export interface VersusCue { at: number; cue: Sfx; side?: -1 | 0 | 1; gain?: number }
 export const VERSUS_CUES: readonly VersusCue[] = [
-  { at: 60, cue: 'versusWhoosh', side: -1 },              // left side flies in
-  { at: 200, cue: 'versusWhoosh', side: 1 },              // right side flies in
+  { at: 100, cue: 'versusWhoosh', side: -1 },             // left side flies in
+  { at: 400, cue: 'versusWhoosh', side: 1 },              // right side flies in
   { at: VERSUS_IMPACT_MS, cue: 'versusImpact' },         // the collision frame
   { at: VERSUS_TAPE_MS + 20, cue: 'versusSting' },       // the tape card lands
   { at: VERSUS_TAPE_MS + 60, cue: 'versusCrowd', gain: 0.9 }, // crowd bed under the hold
@@ -204,10 +215,13 @@ export function VersusIntro({ model, reduced, ready, onStoryComplete }: {
   onStoryComplete: () => void;
 }) {
   const [done, setDone] = useState(reduced);
+  const [play, setPlay] = useState(false);
+  const [canSkip, setCanSkip] = useState(false);
   const [profiles, setProfiles] = useState<ReadonlyMap<string, CredProfileSlice | null>>(new Map());
   const timers = useRef<number[]>([]);
   const finished = useRef(false);
   const doneRef = useRef(reduced);
+  const canSkipRef = useRef(false);
   const completeRef = useRef(onStoryComplete);
   completeRef.current = onStoryComplete;
 
@@ -222,19 +236,48 @@ export function VersusIntro({ model, reduced, ready, onStoryComplete }: {
     completeRef.current();
   };
 
-  // Beat sheet: cues + story completion. Reduced motion: no cues, and the static
-  // card is complete immediately (dismissal then rides on table readiness alone).
+  // Paint gate: the story starts only once the card has actually painted —
+  // two animation frames after mount, and only while the document is visible
+  // (the useRewardsReveal arming from GameOverRewards). Until it opens, the CSS
+  // holds every beat at its first frame (the .versus:not(.play) pause rules in
+  // styles.css) and no beat timer runs — VERSUS_STORY_MS measures visible time.
+  useEffect(() => {
+    if (reduced || play) return;
+    let raf1 = 0;
+    let raf2 = 0;
+    let offVis: (() => void) | null = null;
+    const arm = () => {
+      raf1 = requestAnimationFrame(() => {
+        raf2 = requestAnimationFrame(() => setPlay(true));
+      });
+    };
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      const onVis = () => { if (document.visibilityState === 'visible') arm(); };
+      document.addEventListener('visibilitychange', onVis);
+      offVis = () => document.removeEventListener('visibilitychange', onVis);
+    } else {
+      arm();
+    }
+    return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); offVis?.(); };
+  }, [reduced, play]);
+
+  // Beat sheet: cues, the skip window, and story completion — all armed by the
+  // paint gate. Reduced motion: no cues, and the static card is complete
+  // immediately (dismissal then rides on table readiness alone).
   useEffect(() => {
     if (reduced) { finish(false); return; }
+    if (!play) return;
     for (const c of versusCueSchedule(false)) {
       timers.current.push(window.setTimeout(() => {
         try { sound.play(c.cue, { versusSide: c.side, ...(c.gain !== undefined ? { gain: c.gain } : {}) }); } catch { /* locked context: fail silent */ }
       }, c.at));
     }
+    // Skipping is deliberate: a tap counts only once the tape card is up.
+    timers.current.push(window.setTimeout(() => { canSkipRef.current = true; setCanSkip(true); }, VERSUS_TAPE_MS));
     timers.current.push(window.setTimeout(() => finish(true), VERSUS_STORY_MS));
     return () => { for (const id of timers.current) window.clearTimeout(id); timers.current = []; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reduced]);
+  }, [reduced, play]);
 
   // Real stats only: fetch the public payload per human member (bots/guest seats
   // without an account uid are never fetched and never shown numbers).
@@ -261,11 +304,11 @@ export function VersusIntro({ model, reduced, ready, onStoryComplete }: {
     return { ...s, stats: summarizeSide(lines, hasHuman) };
   }), [model, profiles]);
 
-  const skip = () => { if (!doneRef.current) finish(true); };
-  const cls = `versus ${model.mode}${done ? ' done' : ''}${reduced ? ' reduced' : ''}`;
+  const skip = () => { if (!doneRef.current && canSkipRef.current) finish(true); };
+  const cls = `versus ${model.mode}${play ? ' play' : ''}${done ? ' done' : ''}${reduced ? ' reduced' : ''}`;
 
   return (
-    <div className={cls} data-testid="versus-intro" onPointerDown={skip} role="button" aria-label="Match intro — tap to skip">
+    <div className={cls} data-testid="versus-intro" onPointerDown={skip} role="button" aria-label={canSkip ? 'Match intro — tap to skip' : 'Match intro'}>
       <div className="versus-shake">
         {model.mode === 'team' ? (
           <div className="versus-stage">
@@ -298,7 +341,7 @@ export function VersusIntro({ model, reduced, ready, onStoryComplete }: {
 
         {done && !ready
           ? <div className="versus-wait" data-testid="versus-wait">Getting the table ready…</div>
-          : !done ? <div className="versus-skip">Tap to skip</div> : null}
+          : !done && canSkip ? <div className="versus-skip">Tap to skip</div> : null}
       </div>
     </div>
   );

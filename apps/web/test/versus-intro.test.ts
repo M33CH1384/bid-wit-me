@@ -1,9 +1,14 @@
-import { createElement } from 'react';
+/**
+ * @vitest-environment happy-dom
+ */
+import { act, createElement } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { readFileSync } from 'node:fs';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  VERSUS_CUES, VERSUS_IMPACT_MS, VERSUS_RESOLVE_CUE, VERSUS_STORY_MS, VERSUS_TAPE_MS,
+  VERSUS_CUES, VERSUS_HOLD_MS, VERSUS_IMPACT_MS, VERSUS_RESOLVE_CUE, VERSUS_ROW_STAGGER_MS,
+  VERSUS_STORY_MS, VERSUS_TAPE_MS,
   VersusIntro, VersusTape, bestIndex, markVersusShown, rowWinner, statLineFromCredProfile,
   summarizeSide, versusAlreadyShown, versusCueSchedule, versusDismissReady, versusEligible,
   winPctOf, type VersusModel, type VersusSideView,
@@ -72,11 +77,16 @@ describe('versus dismissal: story floor + table ready, never assets alone', () =
   it('only story-complete AND ready dismisses', () => {
     expect(versusDismissReady({ storyComplete: true, tableReady: true })).toBe(true);
   });
-  it('the beat sheet sums to the ~4.5s floor: smash ~1s, settle, staggered tape, readable hold', () => {
-    expect(VERSUS_IMPACT_MS).toBe(1000);
-    expect(VERSUS_TAPE_MS).toBe(1500);
-    expect(VERSUS_STORY_MS).toBe(4500);
-    expect(VERSUS_STORY_MS - VERSUS_TAPE_MS).toBeGreaterThanOrEqual(2500); // reveal + hold after the card lands
+  it('the beat sheet sums to the ~10s floor: smash ~1.5s, settle, ~2.5s stagger, ~5s readable hold', () => {
+    expect(VERSUS_IMPACT_MS).toBe(1500);
+    expect(VERSUS_TAPE_MS).toBe(2200);
+    expect(VERSUS_STORY_MS).toBe(10_000);
+    expect(VERSUS_ROW_STAGGER_MS).toBe(700);
+    // rows stagger in over ~2.5s: first row at TAPE+120, four rows at the stagger, .35s row reveal
+    expect(3 * VERSUS_ROW_STAGGER_MS + 350).toBeGreaterThanOrEqual(2400);
+    // the last row is fully in by HOLD, and the clean hold after it runs ~5s+
+    expect(VERSUS_TAPE_MS + 120 + 3 * VERSUS_ROW_STAGGER_MS + 350).toBeLessThanOrEqual(VERSUS_HOLD_MS);
+    expect(VERSUS_STORY_MS - VERSUS_HOLD_MS).toBeGreaterThanOrEqual(5000);
   });
 });
 
@@ -163,7 +173,10 @@ describe('versus composition', () => {
     expect(html).toContain('Meech &amp; LovleyT714');
     expect(html).toContain('Tunde &amp; Skye');
     expect(html).toContain('>VS<');
-    expect(html).toContain('Tap to skip');
+    // pre-paint (the static render): the story has not started — gate closed,
+    // and no skip affordance exists yet (skipping unlocks when the tape lands)
+    expect(html).toContain('class="versus team"');
+    expect(html).not.toContain('Tap to skip');
   });
   it('cutthroat: a four-way 2×2 convergence, one face per player', () => {
     const html = renderToStaticMarkup(createElement(VersusIntro, { model: soloModel, reduced: false, ready: false, onStoryComplete: () => {} }));
@@ -256,5 +269,104 @@ describe('versus wiring: load flow, deal gate, table handoff', () => {
     expect(css).toContain('.versus.reduced .versus-side');
     expect(css).toContain('@media (prefers-reduced-motion: reduce)');
     expect(css).not.toContain('html[data-theme="neon"] .versus'); // same card both themes
+  });
+  it('CSS: beats ride the new sheet, and every beat holds at frame one until the paint gate opens', () => {
+    const css = read('../src/styles.css');
+    expect(css).toContain('versus-shake .38s ease-out 1.5s both'); // shake on the 1.5s collision frame
+    expect(css).toContain('versus-tape-in .45s cubic-bezier(.2,1.3,.4,1) 2.2s both'); // tape lands at 2.2s
+    expect(css).toContain('.versus:not(.play) .versus-side'); // pre-paint hold
+    expect(css).toContain('animation-play-state: paused');
+    expect(css).not.toContain('versus-row-in .4s ease-out 2.2s both'); // the skip hint is state-gated now, not CSS-delayed
+  });
+});
+
+/* ------------------------------------------ playback: paint gate + skip window
+ * Owner report 2026-10-21: "Game loading screen is not long enough." Two of the
+ * three causes live in the component's runtime behavior (the third was the
+ * floor itself, pinned above): the story clock armed at MOUNT — burning while
+ * the phone still showed the previous screen — and the tap-to-skip handler was
+ * live from the first frame, so a prod at the loader killed the intro. RAF is
+ * a manual queue and timers are vitest fakes, so frames and beats are exact. */
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+describe('versus playback: paint-gated start, deliberate skip (DOM)', () => {
+  let rafQ: { id: number; cb: FrameRequestCallback }[] = [];
+  let rafSeq = 0;
+  let container: HTMLDivElement;
+  let root: Root | null = null;
+
+  const pumpFrame = (ts: number) => {
+    const q = rafQ;
+    rafQ = [];
+    act(() => { for (const f of q) f.cb(ts); });
+  };
+  const advance = (ms: number) => { act(() => { vi.advanceTimersByTime(ms); }); };
+  const mountIntro = (props: { reduced: boolean; ready: boolean; onStoryComplete: () => void }) => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    act(() => { root!.render(createElement(VersusIntro, { model: teamModel, ...props })); });
+    return container.querySelector('[data-testid="versus-intro"]')!;
+  };
+  const tap = (el: Element) => { act(() => { el.dispatchEvent(new window.Event('pointerdown', { bubbles: true })); }); };
+
+  beforeEach(() => {
+    rafQ = [];
+    rafSeq = 0;
+    vi.useFakeTimers();
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => { const id = ++rafSeq; rafQ.push({ id, cb }); return id; });
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => { rafQ = rafQ.filter((f) => f.id !== id); });
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {}))); // profile payloads never land here; not what these tests measure
+  });
+  afterEach(() => {
+    act(() => { root?.unmount(); });
+    root = null;
+    container?.remove();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('the story clock does not run before first paint — it measures from the gate, not from mount', () => {
+    const done = vi.fn();
+    const el = mountIntro({ reduced: false, ready: true, onStoryComplete: done });
+    // mount + a full story's worth of wall time, but no painted frame yet:
+    advance(VERSUS_STORY_MS + 5000);
+    expect(done).not.toHaveBeenCalled();
+    expect(el.className).not.toContain('play');
+    expect(el.className).not.toContain('done');
+    // two painted frames open the gate; the beats (and CSS) start now
+    pumpFrame(16);
+    pumpFrame(32);
+    expect(el.className).toContain('play');
+    advance(VERSUS_STORY_MS - 1);
+    expect(done).not.toHaveBeenCalled();
+    advance(1);
+    expect(done).toHaveBeenCalledTimes(1);
+    expect(el.className).toContain('done');
+  });
+
+  it('a tap during the entrance/smash does NOT skip; once the tape is up, a tap finishes the card', () => {
+    const done = vi.fn();
+    const el = mountIntro({ reduced: false, ready: true, onStoryComplete: done });
+    pumpFrame(16);
+    pumpFrame(32);
+    advance(VERSUS_TAPE_MS - 1); // entrances + smash have played; tape not up yet
+    expect(container.textContent).not.toContain('Tap to skip');
+    tap(el); // the accidental prod
+    expect(done).not.toHaveBeenCalled();
+    expect(el.className).not.toContain('done');
+    advance(1); // tape lands — skipping unlocks and the hint shows
+    expect(container.textContent).toContain('Tap to skip');
+    tap(el);
+    expect(done).toHaveBeenCalledTimes(1);
+    expect(el.className).toContain('done');
+  });
+
+  it('reduced motion skips the gate entirely: the static card completes on mount', () => {
+    const done = vi.fn();
+    const el = mountIntro({ reduced: true, ready: true, onStoryComplete: done });
+    expect(done).toHaveBeenCalledTimes(1);
+    expect(el.className).toContain('done');
+    expect(el.className).toContain('reduced');
   });
 });

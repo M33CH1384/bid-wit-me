@@ -225,8 +225,11 @@ export const LOADER_HOLD_MAX_MS = 45_000;
  * the versus intro dismisses, the table is fully loaded and visible, and players
  * get a real window to set cameras/mics before anyone sees a card. Server-held so
  * every seat's deal (and the 30s bid clock behind it) starts at the same moment.
+ * Length (owner, 2026-10-21): the window runs WHILE the versus intro plays, and
+ * the intro is ~10s of visible story — so the window is those ~10s plus ~4s of
+ * on-table countdown the players actually see before the deal lands.
  */
-export const PRE_DEAL_MS = 8000;
+export const PRE_DEAL_MS = 14_000;
 /**
  * After a bot's scheduled delay, this much longer with the turn still unmoved means the brain
  * did not resolve it. The server then plays a legal bid or card itself.
