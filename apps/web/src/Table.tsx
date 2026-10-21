@@ -38,6 +38,7 @@ import { chatStickToBottom } from './chatScroll';
 import { setActiveDeck } from './decks';
 import { pickTeamName, toggleReaction } from '@spades/protocol';
 import { Intermission, calloutsFor } from './Intermission';
+import { BoxScore } from './BoxScore';
 import Hype from './Hype';
 import AnimFxLayer from './animfx/AnimFxLayer';
 import { landCueFor, wheelsFor, wheelsMade, wheelsTenth, wheelsTenthBooks } from './landCue';
@@ -1993,7 +1994,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         const title = winHeadline(res.winners.map((w) => sideName(r, w, names)), r.partnerships);
         const iWon = !spectating && res.winners.includes(mySide);
         return (
-          <div className="victory-screen" role="dialog" aria-label="Game over" data-testid="victory">
+          <div className="victory-screen espn" role="dialog" aria-label="Game over" data-testid="victory">
             <div className="vic-confetti" aria-hidden>{Array.from({ length: 18 }, (_, i) => <i key={i} style={{ left: `${(i % 2 ? 91 : 1) + ((i * 13) % 7)}%`, background: `hsl(${i * 47} 90% 60%)`, animationDuration: `${3.2 + (i % 5) * 0.5}s`, animationDelay: `${-i * 0.37}s` }} />)}</div>
             <button type="button" className="modal-x" aria-label="Close and go to the main menu" data-testid="gameover-x" onClick={() => openRewards('home')}>✕</button>
             <h2 className="vic-head">{iWon ? (res.winners.length > 1 ? 'YOU TIED FOR FIRST!' : 'VICTORY!') : 'GAME OVER'}<small>{iWon ? '🏆' : '♠'}</small></h2>
@@ -2009,9 +2010,10 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
                   .map((score, side) => ({ side, score, place: res.placements[side]! }))
                   .sort((a, b) => a.place - b.place)
                   .map((x) => (
-                    <li key={x.side} className={x.side === mySide ? 'mine' : ''}><span className="place">#{x.place}</span><span>{sideName(r, x.side, names)}</span><b>{x.score}</b></li>
+                    <li key={x.side} className={`${x.side === mySide ? 'mine' : ''}${res.winners.includes(x.side) ? ' win' : ''}`}><span className="place">#{x.place}</span><span>{sideName(r, x.side, names)}</span><b>{x.score}</b></li>
                   ))}
               </ol>
+              <BoxScore st={st} label={(s) => sideName(r, s, names)} mySide={mySide} winners={res.winners} />
               {seriesChip()}
               <p className="muted small" data-testid="end-reason">{endReasonText(r, st, (side) => sideName(r, side, names))} {st.history.length} hand{st.history.length === 1 ? '' : 's'} played.</p>
               <div className="confirm-actions">
@@ -2025,7 +2027,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       })()}
       {showResults && st.result && !online?.victory && (
         <div className="modal-backdrop">
-          <div className="modal glass slant gameover" role="dialog" aria-label="Game over">
+          <div className="modal glass slant gameover espn" role="dialog" aria-label="Game over">
             <button type="button" className="modal-x" aria-label="Close and go to the main menu" data-testid="gameover-x" onClick={() => openRewards('home')}>✕</button>
             <div className="trophy">{st.result.winners.includes(mySide) ? '🏆' : '♠'}</div>
             <h2>{st.result.winners.includes(mySide) ? (st.result.winners.length > 1 ? 'YOU TIED FOR FIRST!' : 'VICTORY!') : winHeadline(st.result.winners.map((w) => sideName(r, w, names)), r.partnerships).toUpperCase()}</h2>
@@ -2037,13 +2039,14 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
                 .map((score, side) => ({ side, score, place: st.result!.placements[side]! }))
                 .sort((a, b) => a.place - b.place)
                 .map((x) => (
-                  <li key={x.side} className={x.side === mySide ? 'mine' : ''}>
+                  <li key={x.side} className={`${x.side === mySide ? 'mine' : ''}${st.result!.winners.includes(x.side) ? ' win' : ''}`}>
                     <span className="place">#{x.place}</span>
                     <span>{sideName(r, x.side, names)}</span>
                     <b>{x.score}</b>
                   </li>
                 ))}
             </ol>
+            <BoxScore st={st} label={(s) => sideName(r, s, names)} mySide={mySide} winners={st.result.winners} />
             {tipNudge && (
               <p className="tip-nudge" data-testid="tip-nudge">
                 Enjoying BWM? <button type="button" className="link" onClick={openTip}>Tip the devs ♥</button> <small>(a donation, not a prize)</small>
