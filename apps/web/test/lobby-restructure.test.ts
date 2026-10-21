@@ -9,6 +9,9 @@
  * cutthroat4) — the retired 3-player cutthroat keeps engine support but gets
  * no filter chip. Team names are per pairing, set at table setup.
  */
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createElement, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
@@ -170,5 +173,20 @@ describe('per-pairing team names (offline setup)', () => {
     pairTeamNames.merge({ 'user:merge-pal': 'Block Stars', [OFFLINE_PAIR_KEY]: 'Account Crew' });
     expect(teamNameFor(pairKeyForUser('Merge Pal'))).toBe('Block Stars');
     expect(teamNameFor(OFFLINE_PAIR_KEY)).toBe('Account Crew');
+  });
+});
+
+const stylesCss = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../src/styles.css'), 'utf8');
+
+describe('setup card rows', () => {
+  it('the HOUSE RULES row carries its own horizontal padding (owner, 2026-10-21: "this box needs some padding")', () => {
+    const styles = stylesCss;
+    // in-card quiet rows are flat rows, but the row's own label/chip must
+    // not kiss its edges: 11px vertical / 16px horizontal, both themes
+    // (the neon .quiet-row overrides set no padding, so this carries).
+    expect(styles).toContain('.setup-card .quiet-row { background: transparent; box-shadow: none; padding: 11px 16px; min-height: 48px; }');
+    // the deliberate gold corner fold on the row is design language —
+    // the padding fix must not retire it
+    expect(styles).toContain('button.mode-pick::after, button.quiet-row::after');
   });
 });

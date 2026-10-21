@@ -610,7 +610,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .setup-card-h { margin: 0 0 6px; font-family: var(--display); font-weight: 800; font-size: 14px; letter-spacing: .16em; text-transform: uppercase; color: var(--gold); }
 .setup-card .ess-row { background: transparent; box-shadow: none; clip-path: none; padding: 9px 0; min-height: 48px; }
 .setup-card .ess-row + .ess-row, .setup-card .quiet-row + .ess-row, .setup-card .ess-row + .quiet-row { border-top: 1px solid rgba(var(--edge-rgb),.14); }
-.setup-card .quiet-row { background: transparent; box-shadow: none; padding: 11px 0; min-height: 48px; }
+.setup-card .quiet-row { background: transparent; box-shadow: none; padding: 11px 16px; min-height: 48px; }
 .setup-card .rules-summary { margin: 2px 0 6px; }
 .setup-card .join-row { padding: 2px 0 4px; }
 .lobby-create { width: 100%; }

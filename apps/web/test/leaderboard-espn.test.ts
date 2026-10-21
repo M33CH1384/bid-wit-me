@@ -248,8 +248,11 @@ describe('the BottomLine renders: bug + lines from the rating board fetch', () =
   });
   it('placement (owner, 2026-10-20): the panel ticker sits flush on the sheet bottom edge, not floating on its safe-area padding', () => {
     // the panel sheet pads its bottom by the safe area; the footer ticker
-    // absorbs that strip itself and the panel drops the doubled padding
-    expect(css).toContain('.ranks-ticker.panel { height: calc(38px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom); }');
+    // absorbs that strip inside its own height and the panel drops the
+    // doubled padding. (The ticker's own bottom padding is gone since the
+    // 2026-10-21 proportions pass — it shrank the content box to the top
+    // 38px and read as a dead band; see the proportions test below.)
+    expect(css).toContain('.ranks-ticker.panel { height: calc(38px + env(safe-area-inset-bottom)); }');
     expect(css).toContain('.soc-panel:has(> .ranks-ticker.panel) { padding-bottom: 0; }');
     // the mount is the panel's LAST child (after the flex:1 scroll body),
     // so the flex column pins it under all scroll content on every tab
@@ -257,5 +260,30 @@ describe('the BottomLine renders: bug + lines from the rating board fetch', () =
     const tickerAt = socialSrc.indexOf('<LeagueTicker variant="panel" />');
     expect(bodyAt).toBeGreaterThan(-1);
     expect(tickerAt).toBeGreaterThan(bodyAt);
+  });
+  it('proportions (owner, 2026-10-21): content centers in the FULL bar height, scaled up — no dead band under the line', () => {
+    // The safe area lives inside the height on both variants and neither
+    // variant pads its bottom: the padded version shrank the content box
+    // to the top 38px, so the bug + line hugged the top of a ~72px bar
+    // and the safe-area strip below the text read as an empty box.
+    const rule = (sel: string) => { const i = css.indexOf(sel); expect(i).toBeGreaterThan(-1); return css.slice(i, css.indexOf('}', i) + 1); };
+    expect(rule('.ranks-ticker.bar')).toContain('height: calc(38px + env(safe-area-inset-bottom))');
+    expect(rule('.ranks-ticker.bar')).not.toContain('padding-bottom');
+    expect(rule('.ranks-ticker.panel')).toContain('height: calc(38px + env(safe-area-inset-bottom))');
+    expect(rule('.ranks-ticker.panel')).not.toContain('padding-bottom');
+    // Centering is structural — the bug centers its lockup, the marquee
+    // track centers the lines, the still line centers — now across the
+    // whole content box instead of a 38px slice at its top.
+    expect(css).toContain('.ticker-bug { flex: none; position: relative; display: flex; align-items: center;');
+    expect(css).toContain('.ticker-track { display: flex; align-items: center;');
+    // Scaled up to fill the box, BottomLine-style: 32px lockup (was
+    // 25px), 15px type (was 13px), LIVE dot + separators to match.
+    expect(css).toContain('.ticker-bug img { height: 32px; width: auto; display: block; }');
+    expect(css).toContain('.ticker-line { font-family: var(--display); font-weight: 700; font-size: 15px; line-height: 1.2;');
+    expect(css).toContain('.ticker-still { display: flex; align-items: center; padding: 0 12px; font-family: var(--display); font-weight: 700; font-size: 15px; line-height: 1.2;');
+    expect(css).toContain('.ticker-live-dot { display: inline-block; width: 9px; height: 9px;');
+    expect(css).toContain('.ticker-sep { font-style: normal; color: var(--gold); margin: 0 16px; }');
+    // The BETA chip stays glued to the centered lockup at any bar height.
+    expect(css).toContain('bottom: calc(50% - 12px)');
   });
 });

@@ -493,8 +493,13 @@ div.ranks-row { cursor: default; }
    (.ticker-still, JS-driven). */
 .ranks-ticker { flex: none; display: flex; align-items: stretch; height: 38px; overflow: hidden; background: #12081f; border-top: 1px solid rgba(var(--gold-rgb),.4); }
 .ticker-bug { flex: none; position: relative; display: flex; align-items: center; padding: 3px 12px 3px 9px; background: #1d0b38; border-right: 1px solid rgba(var(--gold-rgb),.35); pointer-events: none; }
-.ticker-bug img { height: 25px; width: auto; display: block; }
-.ticker-beta { position: absolute; right: 4px; bottom: 3px; font-family: var(--display); font-weight: 800; font-size: 8px; letter-spacing: .08em; line-height: 1; color: #1d1204; background: var(--gold); padding: 1.5px 3px; border-radius: 2px; }
+.ticker-bug img { height: 32px; width: auto; display: block; }
+/* The BETA chip hugs the wordmark's lower-right corner. The bug stretches
+   to the bar's FULL height (content box included — see .bar/.panel), and
+   the 32px lockup centers inside it, so the chip anchors to the lockup:
+   its bottom edge sits 4px above the lockup's bottom edge at any bar
+   height (calc(50% - 12px) = half the bar − half the lockup + 4px). */
+.ticker-beta { position: absolute; right: 4px; bottom: calc(50% - 12px); font-family: var(--display); font-weight: 800; font-size: 8px; letter-spacing: .08em; line-height: 1; color: #1d1204; background: var(--gold); padding: 1.5px 3px; border-radius: 2px; }
 .ticker-viewport { flex: 1; min-width: 0; overflow: hidden; display: flex; align-items: stretch; }
 /* App-wide root bar (league data wave 6a): the same bar fixed at the foot
    of the page. The component renders its variant as the bare class `bar`
@@ -509,7 +514,7 @@ div.ranks-row { cursor: default; }
    one viewport tall with the bar pinned over its reserved strip, and
    scrolling pages end with their last content clear of the bar. The bar
    is not rendered at all at a live table (no safe bottom slot there). */
-.ranks-ticker.bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; height: calc(38px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom); box-sizing: border-box; }
+.ranks-ticker.bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; height: calc(38px + env(safe-area-inset-bottom)); box-sizing: border-box; }
 html.bwm-ticker-on .wizard { padding-bottom: calc(38px + env(safe-area-inset-bottom)); }
 html.bwm-ticker-on .setup { padding-bottom: calc(78px + env(safe-area-inset-bottom)); }
 html.bwm-ticker-on .profile-page { padding-bottom: calc(62px + env(safe-area-inset-bottom)); }
@@ -520,19 +525,29 @@ html.bwm-ticker-on .rewards-page { padding-bottom: calc(58px + env(safe-area-ins
    the ticker is the panel's footer it absorbs the safe area itself —
    its background runs flush to the sheet's bottom edge — and the panel
    drops the doubled padding. Chat/DM tabs render no ticker, so the
-   composer's sheet keeps its padding untouched. */
-.ranks-ticker.panel { height: calc(38px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom); }
+   composer's sheet keeps its padding untouched.
+   Proportions (owner, 2026-10-21: "the bounding box is too big or the
+   font is too small"): the safe area lives INSIDE the bar's height with
+   NO bottom padding on either variant — the earlier padding version
+   shrank the content box to the top 38px, so the bug + line hugged the
+   top and the safe-area strip read as a dead empty band. With the full
+   box as the content box, the bug block, the centered marquee track and
+   the still line all center vertically across bar + safe area as one
+   proportioned unit, scaled up BottomLine-style (32px lockup, 15px
+   type). Total heights are unchanged, so every surface reservation
+   below/above stays exact. */
+.ranks-ticker.panel { height: calc(38px + env(safe-area-inset-bottom)); }
 .soc-panel:has(> .ranks-ticker.panel) { padding-bottom: 0; }
 /* LIVE highlight lines: the red dot + a warm tint, same in both themes. */
-.ticker-live-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #ff4d5e; margin-right: 7px; vertical-align: 1px; }
+.ticker-live-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #ff4d5e; margin-right: 8px; vertical-align: 1px; }
 .ticker-line.live, .ticker-still.live { color: #ffb3ba; }
 .ticker-track { display: flex; align-items: center; white-space: nowrap; animation-name: ticker-scroll; animation-timing-function: linear; animation-iteration-count: infinite; will-change: transform; }
 .ticker-copy { display: inline-flex; align-items: center; }
-.ticker-line { font-family: var(--display); font-weight: 700; font-size: 13px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink); }
-.ticker-sep { font-style: normal; color: var(--gold); margin: 0 14px; }
+.ticker-line { font-family: var(--display); font-weight: 700; font-size: 15px; line-height: 1.2; letter-spacing: .05em; text-transform: uppercase; color: var(--ink); }
+.ticker-sep { font-style: normal; color: var(--gold); margin: 0 16px; }
 @keyframes ticker-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 .ranks-ticker.held .ticker-track { animation-play-state: paused; }
-.ticker-still { display: flex; align-items: center; padding: 0 12px; font-family: var(--display); font-weight: 700; font-size: 13px; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ticker-still { display: flex; align-items: center; padding: 0 12px; font-family: var(--display); font-weight: 700; font-size: 15px; line-height: 1.2; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (prefers-reduced-motion: reduce) { .ticker-track { animation: none; } }
 html[data-theme="neon"] .ranks-ticker { background: #0a0d24; border-top-color: rgba(128, 84, 255, .55); }
 /* No neon override for .ticker-bug: the wordmark block is the identical
