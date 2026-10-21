@@ -47,3 +47,66 @@ describe('/story header: sharp, safe-area clear, dock slotted', () => {
     expect(css).toContain('.story-topbar .dock-slot');
   });
 });
+
+/**
+ * Story design language (owner screenshot, 2026-10-21: the Porch card's
+ * action row circled — the Restart ghost button clipped by the card's
+ * right edge, two plain-HTML-look ghost buttons beside a big chamfered
+ * ESPN-gold RESUME block, and a broadcast-gold MATCH IN PROGRESS chip).
+ *
+ * Root causes, all structural: the story buttons had no family of their
+ * own — `.btn`/`.ghost` are unstyled globally, so the secondaries fell
+ * back to UA buttons while `.primary` pulled the global broadcast look
+ * (clip-path chamfer, condensed all-caps) — and the row sized buttons by
+ * content at the right edge, so three of them overflowed the card.
+ * These pins guard the fix: one warm rounded family inside .story-shell,
+ * hierarchy by fill only, and an action row laid out on flex fractions
+ * of the card (with one designed wrap), so overflow is not possible.
+ * happy-dom paints nothing, so these pin the structure, not pixels.
+ */
+describe('story design language: one warm button family, no broadcast chrome', () => {
+  const design = css.slice(css.indexOf('story design language'));
+
+  it('the ESPN chamfer never enters story CSS', () => {
+    expect(css).not.toContain('clip-path: polygon');
+  });
+
+  it('story buttons are one rounded family in the reading font, sentence case, 44px targets', () => {
+    const base = design.match(/\.story-shell \.btn \{[^}]*\}/)![0];
+    expect(base).toContain('clip-path: none');
+    expect(base).toContain('min-height: 44px');
+    expect(base).toContain('border-radius: 12px');
+    expect(base).toContain('text-transform: none');
+    expect(base).toContain('font-family: inherit');
+  });
+
+  it('primary and secondary are the same shape — hierarchy by fill, not by form', () => {
+    const primary = design.match(/\.story-shell \.btn\.primary \{[^}]*\}/)![0];
+    const ghost = design.match(/\.story-shell \.btn\.ghost \{[^}]*\}/)![0];
+    expect(primary).toContain('#241a05'); // dark ink on warm amber
+    expect(primary).not.toContain('clip-path');
+    expect(ghost).toContain('border-color: rgba(238, 201, 106'); // amber hairline, not a UA outline
+    expect(ghost).not.toContain('clip-path');
+  });
+
+  it('the stop action row distributes by flex fractions, so no button can overflow the card', () => {
+    const btns = design.match(/\.story-stop-actions \.btn \{[^}]*\}/)![0];
+    expect(btns).toContain('flex: 1 1 0');
+    expect(btns).toContain('min-width: 0');
+    // the three-action (in-progress) row wraps BY DESIGN at phone widths:
+    // the primary takes its own line, the secondaries split the next
+    expect(design).toContain('.story-stop-actions:has(.story-restart) .btn.primary');
+    expect(design).toContain('flex: 1 1 100%');
+    // no story action button carries a fixed pixel width
+    expect(design).not.toMatch(/\.story-(meet|play|restart) \{[^}]*width:/);
+  });
+
+  it('state chips are quiet captions over the art, not solid broadcast blocks', () => {
+    const chip = design.match(/\.story-card-state \{[^}]*\}/)![0];
+    expect(chip).toContain('border: 1px solid rgba(');
+    expect(chip).toContain('background: rgba('); // translucent shade, not a solid block
+    const here = design.match(/\.story-card-state\.here \{[^}]*\}/)![0];
+    expect(here).not.toContain('background: #c9a227'); // the old solid ESPN gold
+    expect(here).toContain('rgba(238, 201, 106'); // warm amber hairline instead
+  });
+});

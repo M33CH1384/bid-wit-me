@@ -401,3 +401,76 @@ html[data-theme="neon"] .story-stop.is-king .story-card { background: rgba(7, 6,
   margin: 0 0 12px;
   font-weight: 700;
 }
+
+/* ---- story design language (owner, 2026-10-21) ----
+   Story mode is the come-up: its surfaces speak the warm neighborhood
+   register, never the broadcast kit. The global button look (the chamfered
+   gold .primary block, condensed all-caps) belongs to the professional
+   chapter — inside .story-shell every button is ONE family instead:
+   rounded, sentence case, the reading font, 44px targets, and hierarchy
+   carried by fill alone (warm amber solid = go; quiet amber outline =
+   secondary), never by shape. Same family in both themes (parity law);
+   only color dressing may differ per theme, per the blocks above. */
+.story-shell .btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 44px; padding: 10px 16px;
+  border: 1px solid transparent; border-radius: 12px;
+  clip-path: none;
+  background: none; box-shadow: none;
+  font-family: inherit; font-size: 15px; font-weight: 700;
+  letter-spacing: 0.01em; text-transform: none;
+  white-space: nowrap; touch-action: manipulation;
+}
+.story-shell .btn.primary {
+  background: linear-gradient(180deg, #eec96a, #cf9c2e);
+  border-color: rgba(120, 84, 10, 0.55);
+  color: #241a05;
+  box-shadow: 0 2px 12px rgba(201, 162, 39, 0.22), inset 0 1px 0 rgba(255, 248, 220, 0.5);
+}
+.story-shell .btn.ghost {
+  background: rgba(238, 201, 106, 0.06);
+  border-color: rgba(238, 201, 106, 0.38);
+  color: #f3ead2;
+}
+.story-shell .btn:disabled { opacity: 0.45; }
+
+/* The stop card's action row, rebuilt on fractions of the card: each
+   button takes its share (flex-basis 0, min-width 0, primary a touch
+   wider), so Meet them / Resume / Restart always fit inside the card at
+   phone widths — no content-sized button can be pushed past the edge
+   and clipped the way Restart was (owner screenshot, 2026-10-21). The
+   one designed wrap: when all three actions are present (a match in
+   progress — the only row with a Restart), the primary takes its own
+   full line at phone widths and the secondaries split the line below. */
+.story-stop-actions { justify-content: flex-start; flex-wrap: wrap; gap: 10px; align-items: stretch; }
+.story-stop-actions .btn { flex: 1 1 0; min-width: 0; padding: 10px 8px; }
+.story-stop-actions .btn.primary { flex-grow: 1.4; }
+.story-stop-actions .story-play { align-self: stretch; }
+@media (max-width: 430px) {
+  .story-stop-actions:has(.story-restart) .btn.primary { flex: 1 1 100%; order: -1; }
+}
+
+/* Scene and tape action rows keep their left/right staging, in the family. */
+.story-script-actions .btn { min-width: 104px; }
+
+/* State chips over the card art: a quiet caption, not a broadcast bug —
+   translucent shade, a hairline in the state color, letterspaced small
+   caps. Cleared reads soft green; you-are-here / in-progress warm amber. */
+.story-card-state {
+  background: rgba(10, 12, 9, 0.74);
+  color: #a9d6ae;
+  border: 1px solid rgba(130, 195, 140, 0.5);
+  font-weight: 700; letter-spacing: 0.08em;
+}
+.story-card-state.here {
+  background: rgba(18, 13, 4, 0.76);
+  color: #eec96a;
+  border-color: rgba(238, 201, 106, 0.55);
+}
+
+/* The Running-with-Dee card wears the same warm paper as the route:
+   a soft amber wash and hairline instead of the neutral gray border. */
+.story-dee-card {
+  border-color: rgba(238, 201, 106, 0.38);
+  background: linear-gradient(180deg, rgba(238, 201, 106, 0.06), rgba(127, 127, 160, 0.05));
+}
