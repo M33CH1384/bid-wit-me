@@ -2180,3 +2180,31 @@ describe('room lifecycle', () => {
     expect(env.room.data.game!.hands[0]).toContain('KS');
   });
 });
+
+describe('live highlights (league data wave 6b)', () => {
+  it('a completed nuke trick reaches the highlight hook with table, hand and the Big Joker seat', () => {
+    const env = new FakeEnv(undefined, FAST);
+    const cids = ['a', 'b', 'c', 'd'];
+    ['Dee', 'Ray', 'Kim', 'Jo'].forEach((name, i) => { env.join(cids[i]!, name); env.send(cids[i]!, { t: 'sit', seat: i }); });
+    env.send('a', { t: 'config', rules: makeRules('joker', { playerCount: 4, targetScore: 5000 }) });
+    env.send('a', { t: 'start' });
+    // Plant a late trick: BJ + LJ already down from seats 0/1, QS from seat 2,
+    // seat 3 to finish it with JS. Hands hold only their unplayed cards.
+    const d = env.room.data;
+    const g = d.game!;
+    d.game = {
+      ...g, phase: 'playing', hands: [['AS'], ['KS'], ['2S'], ['JS']] as never, bids: [2, 2, 2, 2],
+      tricks: Array.from({ length: 9 }, () => ({ leader: 0, plays: [], winner: 1 })), tricksWon: [2, 2, 2, 2],
+      turn: 3, trick: { leader: 0, plays: [{ seat: 0, card: 'BJ' }, { seat: 1, card: 'LJ' }, { seat: 2, card: 'QS' }], winner: null }, spadesBroken: true,
+    } as never;
+    d.seq = (d.seq ?? 0) + 1;
+    env.send('a', { t: 'media', media: { cam: false, mic: false } });
+    env.send('d', { t: 'act', action: { type: 'play', card: 'JS' }, seq: env.room.data.seq });
+    const nukes = env.highlights.filter((h) => h.type === 'nuke');
+    expect(nukes).toHaveLength(1);
+    expect(nukes[0]).toMatchObject({ name: 'Dee', code: 'ABCDE', hand: 1, marquee: true });
+    expect(nukes[0]!.text).toBe("☢ Dee's nuke blew in Hand 1");
+    // the hand is not over (10 of 13 tricks), so no hand-end events fired
+    expect(env.highlights).toHaveLength(1);
+  });
+});

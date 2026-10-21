@@ -34,6 +34,7 @@ import { type CredEnv, handleCredHttp } from './cred/routes';
 import { verifyTicket } from './social/ticket';
 import { type ConnAtt, type GlobalLog, Hub, type TableLog } from './social/hub';
 import { saveRecord } from './stats/record';
+import { recordHighlight } from './stats/highlights';
 import { backfillHomiesOnce } from './stats/backfill';
 import { handleTournaments } from './tournament/routes';
 import type { TOp } from './tournament/do';
@@ -388,6 +389,13 @@ export class TableDO extends DurableObject<Env> {
           const now = Date.now();
           for (const ev of events) await sendCredPushEvent(db, vapid, ev, now);
         })());
+      },
+      // Live highlights (league data wave 6b): store for the ticker in
+      // waitUntil — never on the game path.
+      highlight: (ev) => {
+        if (!this.env.DB) return;
+        const db = this.env.DB;
+        this.ctx.waitUntil(recordHighlight(db, ev).catch((e) => console.error('highlight', e)));
       },
       // Voice (c): a thin catalog bucket -> one writer call in waitUntil (never on the game path).
       voiceMiss: (req: WriterRequest) => { if (this.env.AI && this.env.DB) this.ctx.waitUntil(writeVoiceLine({ ai: this.env.AI, store: new D1QueueStore(this.env.DB), breaker: voiceBreaker }, req).then(() => undefined).catch((e) => console.error('voiceWriter', e))); },

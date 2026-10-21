@@ -17,6 +17,7 @@ export class FakeEnv {
   tourResults: { match: string; scores: number[]; places: number[] }[] = [];
   challengeResults: import('../src/room').ChallengeResult[] = [];
   records: { rec: import('../src/stats/record').GameRecord; rated: boolean; meta?: import('../src/stats/record').SaveMeta }[] = [];
+  highlights: import('../src/stats/highlights').HighlightEvent[] = [];
   /** The DO's socket close can re-enter the room. Tests set this to simulate that. */
   onClose?: (cid: string) => void;
 
@@ -40,6 +41,7 @@ export class FakeEnv {
       setAlarm: (at) => { if (at === null || (this.alarm !== null && this.alarm <= at)) return; this.alarm = at; this.alarmSets++; },
       persist: () => { this.persists++; },
       gameOver: (rec, rated, meta) => { this.records.push({ rec, rated, meta }); },
+      highlight: (ev) => { this.highlights.push(ev); },
       tournamentResult: (t, scores, places) => { this.tourResults.push({ match: t.match, scores, places }); },
       challengeResult: (_c, r) => { this.challengeResults.push(r); },
       randomId: () => Array.from({ length: 4 }, () => this.rng.nextUint32().toString(16).padStart(8, '0')).join(''),

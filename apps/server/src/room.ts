@@ -21,6 +21,7 @@ import {
 import type { OpenTable } from '@spades/protocol';
 import { blockLinks, cleanName, cleanText, maskProfanity } from './filter';
 import { type GameRecord, type LiveStats, type SaveMeta, type SeatRef, abandonedRecord, buildRecord, isRated, newLiveStats, placementsOf } from './stats/record';
+import { type HighlightEvent, handHighlights, trickHighlights } from './stats/highlights';
 
 export const ROOM_DATA_VERSION = 1;
 
@@ -233,6 +234,8 @@ export interface RoomIO {
   randomId(): string;
   /** Release 9: a finished game with at least one signed-in player (DO: write stats/Elo to D1). meta marks an abandon. */
   gameOver?(rec: GameRecord, rated: boolean, meta?: SaveMeta): void;
+  /** League data wave (6b): a live highlight resolved at this table (nuke / Boston / made nil / Wheels). The DO stores it for the ticker (and wires marquee ones to global chat). */
+  highlight?(ev: HighlightEvent): void;
   /** Release 9b: a tournament match finished (per side: final score and placement, 1 = won) */
   tournamentResult?(t: TournamentSeat, scores: number[], places: number[]): void;
   /** Big Bank: a wager match resolved (played out, a no-show at the start deadline, or abandoned mid-match) */
@@ -1322,6 +1325,18 @@ export class Room {
     // ☢ a nuke arming (second Joker down, trick still open — any trick) is announced once, on the way in;
     // the blast itself is announced above, when the trick completes
     if (nukeArmed(d.game) && !nukeArmed(before)) this.system('☢ Nuke armed — ready to blow');
+    // Live highlights (league data wave 6b): the same resolution points,
+    // reported out for the ticker / League Wire. Fresh tricks may carry a
+    // detonation; a grown history means the hand just ended.
+    if (this.io.highlight) {
+      const seats = this.seatRefs();
+      const at = this.io.now();
+      for (const ev of trickHighlights({ tricks: fresh, seats, code: d.code, handNo: before.handNo, at })) this.io.highlight(ev);
+      if (d.game.history.length > before.history.length) {
+        const rec = d.game.history[d.game.history.length - 1]!;
+        for (const ev of handHighlights({ rec, seats, partnerships: d.rules.partnerships, code: d.code, at })) this.io.highlight(ev);
+      }
+    }
     if (d.game.phase === 'gameOver') {
       d.phase = 'over';
       const res = d.game.result!;
