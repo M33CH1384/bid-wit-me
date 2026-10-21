@@ -146,7 +146,7 @@ describe('one profile, both hosts', () => {
     const text = page.textContent ?? '';
     expect(text).not.toContain('ELO');
     expect(text).not.toContain('Elo');
-    expect(text).toContain('Rating starts at 1,000.');
+    expect(text).toContain('Rating starts at 1,200.');
     expect(text).toContain('This season');
     expect(text).toContain('4 wins – 6 losses');
     expect(text).toContain('#3 of 9 players');

@@ -5,7 +5,7 @@
  * server decides every debit/credit; the client never supplies amounts.
  */
 import { balance, move, coinsEnabled, flag, stakeCapCheck } from './coins';
-import { divisionRank, type Division } from './divisions';
+import { DIVISIONS, divisionRank, type Division } from './divisions';
 import { ensureSeason } from './seasons';
 
 export interface StakeTable { id: string; buyIn: number; minGames: number; minDivision: Division | null }
@@ -46,7 +46,10 @@ export async function canEnter(db: D1Database, userId: string, tableId: string, 
   const games = await ratedGames(db, userId);
   if (games < table.minGames) return { ok: false, reason: `Play ${table.minGames} rated games to unlock this table.` };
   if (table.minDivision && divisionRank(await bestDivision(db, userId, now)) < divisionRank(table.minDivision)) {
-    return { ok: false, reason: `Reach the ${table.minDivision} division to unlock this table.` };
+    // Metric copy only (owner, 2026-10-20: no division names in user-facing text) —
+    // the gate itself still compares internal bands; the player hears the rating bar.
+    const min = DIVISIONS.find((d) => d.id === table.minDivision)?.min;
+    return { ok: false, reason: min != null ? `Reach a ${min.toLocaleString('en-US')} rating to unlock this table.` : 'Reach a higher rating to unlock this table.' };
   }
   if ((await balance(db, userId)) < table.buyIn) return { ok: false, reason: 'Not enough coins for the buy-in.' };
   return { ok: true };

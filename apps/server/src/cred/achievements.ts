@@ -36,7 +36,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: 'untouchable', title: 'Untouchable', hint: 'Reach a 10-game win streak', xp: 400, coins: 200, condition: { check: 'best_streak', n: 10 } },
   { id: 'world-traveler', title: 'World Traveler', hint: 'Play in 5 different venues', xp: 150, coins: 75, condition: { check: 'venues', n: 5 } },
   { id: 'iron-man', title: 'Iron Man', hint: 'Play 500 games', xp: 500, coins: 250, condition: { check: 'games', n: 500 } },
-  { id: 'after-dark', title: 'After Dark', hint: 'Win 25 night-venue games and reach the Block division', xp: 0, coins: 0, condition: { check: 'after_dark', night_wins: 25, division: 'block', unlock: 'after-dark' } },
+  { id: 'after-dark', title: 'After Dark', hint: 'Win 25 night-venue games and reach a 1,000 rating', xp: 0, coins: 0, condition: { check: 'after_dark', night_wins: 25, division: 'block', unlock: 'after-dark' } },
 ];
 
 /** Per-game facts from this game's PlayerGameStats (extended fields live in stats/record.ts). */

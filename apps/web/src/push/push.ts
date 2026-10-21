@@ -12,7 +12,7 @@ export const NOTIF_TYPES: { type: NotifType; label: string; hint: string }[] = [
   { type: 'friend_online', label: 'Friend online', hint: 'When a friend comes on the block (max hourly)' },
   { type: 'achievement', label: 'Achievements', hint: 'When you unlock an achievement' },
   { type: 'daily', label: 'Daily bonus', hint: 'When your daily coins are ready' },
-  { type: 'rankup', label: 'Rank ups', hint: 'When your division goes up' },
+  { type: 'rankup', label: 'Rating up', hint: 'When your rating climbs' },
   { type: 'challenge', label: 'Challenges', hint: 'When a challenge hits 100%' },
   { type: 'season', label: 'Season ending', hint: 'One reminder before the season ends' },
 ];

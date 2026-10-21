@@ -687,7 +687,7 @@ export function ProfileView({ host, name, id }: {
             {!me && socialP && acct.user?.username && <CompareBlock them={socialP} myName={acct.user.username} />}
             {cred && (
               <>
-                <p className="rank-explainer" data-testid="rating-explainer">Rating starts at 1,000. Win rated games to raise it, lose and it drops — beating stronger players moves it more.</p>
+                <p className="rank-explainer" data-testid="rating-explainer">Rating starts at 1,200. Win rated games to raise it, lose and it drops — beating stronger players moves it more.</p>
                 <div className="rank-cards">
                   <RankCard title="Partnership" rank={cred.rank.team} />
                   <RankCard title="Cutthroat" rank={cred.rank.cutthroat} />

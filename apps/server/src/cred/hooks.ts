@@ -100,9 +100,10 @@ export async function onGameEnd(db: D1Database, ctx: CredGameCtx): Promise<CredP
       WHERE user_id = ? AND season_id = ? AND kind = ?`)
       .bind(Math.round(rating), division, ctx.won ? 1 : 0, ctx.won ? 0 : 1, Math.round(rating), ctx.userId, season.id, ctx.kind).run();
     sr = { ...sr, rating: Math.round(rating), division };
-    // push: division went up (rated games only — bot games never change division)
+    // push: rating crossed into a higher band (rated games only — bot games never move it).
+    // The event carries the new rating so the push copy can speak in metrics, not band names.
     if (ctx.rated && !ctx.vsBots && divisionRank(division) > divisionRank(oldDivision)) {
-      events.push({ userId: ctx.userId, type: 'rankup', title: division, kind: ctx.kind });
+      events.push({ userId: ctx.userId, type: 'rankup', title: division, kind: ctx.kind, rating: sr.rating });
     }
   }
 

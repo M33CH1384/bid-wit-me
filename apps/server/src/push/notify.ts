@@ -91,12 +91,17 @@ export async function notifyAchievement(db: D1Database, vapid: VapidKeys, userId
   }, { ttl: DAY, urgency: 'normal' }, now);
 }
 
-/** Division went up after a rated game. */
-export async function notifyRankup(db: D1Database, vapid: VapidKeys, userId: string, division: string, kind: string, now: number): Promise<number> {
-  const label = division.charAt(0).toUpperCase() + division.slice(1);
+/**
+ * Rating crossed into a higher band after a rated game. Copy is metric-only
+ * (owner, 2026-10-20: no division names in user-facing text) — it reports the
+ * player's actual new rating, carried on the event. The division id survives
+ * only in the internal cooldown key / tag (one push per band per day).
+ */
+export async function notifyRankup(db: D1Database, vapid: VapidKeys, userId: string, division: string, kind: string, rating: number | undefined, now: number): Promise<number> {
+  const mode = kind === 'team' ? 'Partnership' : 'Cutthroat';
   return guarded(db, vapid, userId, { kind: 'rankup', key: `${kind}:${division}`, ms: 24 * 60_60_000 }, {
-    title: 'Rank up ⬆️',
-    body: `You reached ${label} division (${kind === 'team' ? 'Partnership' : 'Cutthroat'})`,
+    title: 'Rating up ⬆️',
+    body: rating != null ? `Your ${mode} rating climbed to ${rating.toLocaleString('en-US')}` : `Your ${mode} rating just went up`,
     url: '/profile',
     tag: `rank-${kind}-${division}`,
     type: 'rankup',
@@ -183,13 +188,15 @@ export interface CredPushEvent {
   title: string;
   /** 'team' | 'cutthroat' for rankup */
   kind?: string;
+  /** rankup only: the player's new rating after the game (drives the push copy) */
+  rating?: number;
 }
 
 /** Dispatch one cred push event to its notify helper. Never throws. */
 export async function sendCredPushEvent(db: D1Database, vapid: VapidKeys, ev: CredPushEvent, now: number): Promise<number> {
   try {
     if (ev.type === 'achievement') return notifyAchievement(db, vapid, ev.userId, ev.title, now);
-    if (ev.type === 'rankup') return notifyRankup(db, vapid, ev.userId, ev.title, ev.kind ?? 'team', now);
+    if (ev.type === 'rankup') return notifyRankup(db, vapid, ev.userId, ev.title, ev.kind ?? 'team', ev.rating, now);
     return notifyChallenge(db, vapid, ev.userId, ev.title, now);
   } catch (e) {
     console.error(JSON.stringify({ src: 'bwm.push', event: 'cred-push-failed', error: String(e).slice(0, 120) }));
