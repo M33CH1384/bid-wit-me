@@ -92,7 +92,7 @@ import { isWildDeuce } from './cardFaces';
 import { misdealRevealKey, misdealRevealMs } from './misdeal';
 import { QUICK_TRASH_SET } from './quickTrash';
 import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
-import { type TalkIntensity, botSkillFor, partnerBidIntent, personaForName, platePersona, pickBotNames } from '@spades/bots';
+import { type BotLevel, type TalkIntensity, botSkillFor, partnerBidIntent, personaForName, platePersona, pickBotNames } from '@spades/bots';
 import { preloadVoice } from './voices/voices';
 const Scene = lazy(loadScene);
 
@@ -227,6 +227,14 @@ interface Props {
   onMainMenu?: () => void;
   /** Offline: back to the menu keeping the save (Resume on the start screen). */
   onSuspend?: () => void;
+  /** Story Mode (solo): fixed seat names + per-seat bot skill + a game-over hook.
+   *  Story games never write the offline save, the series tally, or the local
+   *  game upload — the story result endpoint is their only record. */
+  story?: {
+    names: string[];
+    levelFor: (seat: number) => BotLevel;
+    onGameOver: (won: boolean) => void;
+  };
 }
 
 /** Offline bot names: random per game (derived from the game seed), never your own online name; kept in the save. */
@@ -586,7 +594,7 @@ function DrivebyLights() {
   return <div className="driveby-lights" aria-hidden data-testid="driveby-lights" />;
 }
 
-export default function Table({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, onView, onTurnUp, resume, continueSeries, online, onMainMenu, startDealer }: Props) {
+export default function Table({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, onView, onTurnUp, resume, continueSeries, online, onMainMenu, startDealer, story }: Props) {
   useEffect(() => { setActiveDeck(settings.deck); }, [settings.deck]);
   // Tappable faces (Demetrius 2026-10-20): while a table is mounted, avatar taps anywhere
   // open the over-table profile modal instead of the Social panel. Leaving the table
@@ -611,9 +619,10 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [tipOpen, setTipOpen] = useState(false);
   const speed = learning && settings.speed !== 'turbo' ? 'slow' : settings.speed;
   const n0 = (resume?.state.rules ?? initialRules).playerCount;
-  const [botNames] = useState(() => (resume?.names?.length === n0 ? resume.names : offlineNames(n0, seed)));
-  // bot skill per seat: the table setting (Mixed = a hidden, seeded roll per seat) + persona floors (the Hustler is Pro+)
-  const levelFor = useCallback((seat: number) => botSkillFor(settings.botLevel, seed, seat, botNames[seat] ?? ''), [settings.botLevel, seed, botNames]);
+  const [botNames] = useState(() => (story?.names.length === n0 ? story.names : resume?.names?.length === n0 ? resume.names : offlineNames(n0, seed)));
+  // bot skill per seat: the table setting (Mixed = a hidden, seeded roll per seat) + persona floors (the Hustler is Pro+).
+  // Story games override per seat instead: Dee scales with the stop, the pair plays the stop's tier.
+  const levelFor = useCallback((seat: number) => (story ? story.levelFor(seat) : botSkillFor(settings.botLevel, seed, seat, botNames[seat] ?? '')), [story, settings.botLevel, seed, botNames]);
   const partnerHint = useRef<{ hand: number; text: string } | null>(null);
   const localReport = useRef<{ names: string[]; teamNames: (string | null)[] | null }>({ names: botNames, teamNames: null });
   // The deal starts once the loader is gone. Behind it, hand 1 was already dealt when the felt showed.
@@ -625,7 +634,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [sceneFirstFrame, setSceneFirstFrame] = useState(false);
   const [gateMountedAt] = useState(() => Date.now());
   const onSceneFirstFrame = useCallback(() => setSceneFirstFrame(true), []);
-  const { st, view, pause, error, apply, introHand, dealing, k } = online ? online.source : useGame(initialRules, seed, levelFor, speed, resume?.state, learning && tipOpen, startDealer, partnerHint, localReport, dealReady, sceneDealt);
+  const { st, view, pause, error, apply, introHand, dealing, k } = online ? online.source : useGame(initialRules, seed, levelFor, speed, resume?.state, learning && tipOpen, startDealer, partnerHint, localReport, dealReady, sceneDealt, !!story);
   useEffect(() => { online?.setLearning?.(learning); }, [learning]); // eslint-disable-line react-hooks/exhaustive-deps
   const r = st.rules;
   const n = r.playerCount;
@@ -712,7 +721,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [seriesOpen, setSeriesOpen] = useState(false);
   const seriesRecorded = useRef(false);
   useEffect(() => {
-    if (online || st.phase !== 'gameOver' || !st.result || seriesRecorded.current) return;
+    if (online || story || st.phase !== 'gameOver' || !st.result || seriesRecorded.current) return;
     seriesRecorded.current = true;
     recordOfflineGame(r.mode, st.result.winners.includes(sideOf(HUMAN, r)));
     const ids = names.map((_, i) => (i === HUMAN ? 'you' : `bot:${i}`));
@@ -1111,9 +1120,17 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const bcCounted = useRef<string | null>(null);
   useEffect(() => { if (coachBid && coachOn && bcCounted.current !== bcKey) { bcCounted.current = bcKey; bumpTip('bidcoach'); } }, [coachBid, coachOn, bcKey]);
 
+  // Story Mode: tell the story host the result, exactly once per game.
+  const storyFired = useRef(false);
+  useEffect(() => {
+    if (!story || online || st.phase !== 'gameOver' || !st.result || storyFired.current) return;
+    storyFired.current = true;
+    story.onGameOver(st.result.winners.includes(sideOf(HUMAN, r)));
+  }, [st.phase]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // persist after every action (and chat line); a finished game clears the save
   useEffect(() => {
-    if (online) return; // online games live on the server (seat token in localStorage), not in the offline save
+    if (online || story) return; // online games live on the server; story games must not clobber the player's saved bot game
     if (st.phase === 'gameOver') clearGame();
     else saveGame({ seed, settings, state: st, chat: rawMsgs, names, teamNames: [null, botTeam], nuke: fx.tableNuke ?? fx.prefs.nuke });
   }, [st, rawMsgs, seed, settings, online]); // eslint-disable-line react-hooks/exhaustive-deps

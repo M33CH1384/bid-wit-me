@@ -550,7 +550,13 @@ export const PERSONAS: Record<PersonaId, Persona> = {
 /** Persona of a bot name: deterministic (same name → same persona, so players learn who's who). Every persona has a
  * female and a male voice, so the persona never fights the name's gender (see voiceGender in names.ts). */
 /** hand-picked personas for names that clearly call for one */
-export const NAME_PERSONA: Record<string, PersonaId> = { 'Auntie Pat': 'storyteller', Unc: 'og', Cuz: 'lilcuz', 'Lil Ray': 'lilcuz', Queenie: 'mama', Ace: 'gambler', Smoke: 'smooth', 'Big Mike': 'hothead' };
+export const NAME_PERSONA: Record<string, PersonaId> = { 'Auntie Pat': 'storyteller', Unc: 'og', Cuz: 'lilcuz', 'Lil Ray': 'lilcuz', Queenie: 'mama', Ace: 'gambler', Smoke: 'smooth', 'Big Mike': 'hothead',
+  // Story Mode characters (story.ts): a character's name always speaks with the same persona —
+  // same recorded voice, talkativeness and lean, at their stop and anywhere else they appear.
+  Dee: 'lilcuz', 'Uncle Ray': 'comedian', Pat: 'storyteller', 'Mr. Coleman': 'barber', June: 'og',
+  "Lil' Man": 'lilcuz', Trey: 'hype', Keisha: 'influencer', Teisha: 'petty', Redd: 'hothead',
+  'Deacon Ford': 'deacon', 'Sister Mae': 'coach', Poet: 'conspiracy', Seven: 'silent', Velvet: 'hustler',
+  'The Accountant': 'professor', 'Captain Block': 'coach', Brick: 'silent', 'The King': 'og', 'The Ringer': 'silent' };
 export function personaForName(name: string): PersonaId {
   if (NAME_PERSONA[name]) return NAME_PERSONA[name]!;
   let h = 2166136261;

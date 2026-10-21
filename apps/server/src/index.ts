@@ -39,6 +39,7 @@ import { backfillHomiesOnce } from './stats/backfill';
 import { handleTournaments } from './tournament/routes';
 import type { TOp } from './tournament/do';
 import { handleWagerChallenges } from './wager/routes';
+import { handleStoryHttp } from './story/routes';
 import type { WOp } from './wager/do';
 import { type PushEnv, handlePushHttp } from './push/routes';
 import { notifyFriendsOfOnline, notifyInvite, notifyTurn, pushVapid, runScheduledPushes, sendCredPushEvent } from './push/notify';
@@ -238,6 +239,12 @@ export default {
         return json(await r.json(), {}, origin);
       }
       return handleSocialHttp(req as Request & { cf?: unknown }, env, url, parts, Date.now());
+    }
+
+    if (parts[1] === 'story') {
+      const slow = await limited(req, env, 'info', origin);
+      if (slow) return slow;
+      return handleStoryHttp(req, env as CredEnv, url, parts, Date.now());
     }
 
     if (parts[1] === 'profile' || parts[1] === 'challenges' || parts[1] === 'coins') {

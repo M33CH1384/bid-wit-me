@@ -20,7 +20,7 @@ export const SPEEDS = { slow: 2.2, relaxed: 1.5, normal: 1, fast: 0.5, turbo: 0.
 
 /** `hold`: a tip is open — bots wait and a finished trick stays on the table until it's dismissed. */
 /** `botLevel`: one level for every bot, or a per-seat resolver (Mixed skill / persona floors). `dealer`: a rematch continues the deal rotation. */
-export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((seat: number) => BotLevel), speed: keyof typeof SPEEDS, resume?: GameState, hold = false, dealer?: number, partnerHint?: { current: { hand: number; text: string } | null }, localReport?: { current: { names: string[]; teamNames: (string | null)[] | null } }, dealReady = true, sceneDealt: number | null = null) {
+export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((seat: number) => BotLevel), speed: keyof typeof SPEEDS, resume?: GameState, hold = false, dealer?: number, partnerHint?: { current: { hand: number; text: string } | null }, localReport?: { current: { names: string[]; teamNames: (string | null)[] | null } }, dealReady = true, sceneDealt: number | null = null, suppressReport = false) {
   const [st, setSt] = useState<GameState>(() => resume ?? newGame(rules, seed, { dealer }));
   const levelRef = useRef(botLevel);
   levelRef.current = botLevel;
@@ -36,6 +36,10 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
   const reportRef = useRef(localReport);
   reportRef.current = localReport;
   useEffect(() => {
+    // Story Mode games report through /api/story/result instead: the normal offline
+    // upload would credit them as ordinary bot games (double-counted Rep, and a
+    // rated-adjacent path story games must never touch).
+    if (suppressReport) return;
     if (st.phase !== 'gameOver' || !st.result || reported.current) return;
     reported.current = true;
     const meta = reportRef.current?.current;

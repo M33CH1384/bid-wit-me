@@ -208,6 +208,7 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
           <button type="button" className="hero-btn gold" data-testid="play" {...choose(() => go('door'))}><b>PLAY</b><small>Team Game or Cutthroat</small></button>
         )}
         {onlineSeat && <button type="button" className="quiet-row" data-testid="resume-online" onClick={() => navigate(`/t/${onlineSeat}`)}><span>Rejoin your online table</span><span className="value-chip">{onlineSeat}</span></button>}
+        <button type="button" className="quiet-row" data-testid="story-mode" onClick={() => navigate('/story')}><span>Story mode</span><span className="value-chip">Run the block</span></button>
       </div>
     );
     body = (

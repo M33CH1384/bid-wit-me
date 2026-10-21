@@ -22,6 +22,7 @@ import './styles.css';
 // importChunk retries cache-busted and reloads once onto the new build instead.
 const OnlineApp = lazy(() => importChunk(() => import('./online/OnlineApp')));
 const ProfilePage = lazy(() => importChunk(() => import('./profile/ProfilePage')));
+const StoryHome = lazy(() => importChunk(() => import('./story/StoryHome')));
 const RewardsPage = lazy(() => importChunk(() => import('./RewardsPage')));
 
 /** Last line of defence for a failed route chunk: a visible way back, never a blank page. */
@@ -61,6 +62,7 @@ function Root() {
     <>
       <RouteGuard key={path}>
         {path === '/rewards' ? <Suspense fallback={<RouteLoading />}><RewardsPage /></Suspense>
+          : path === '/story' ? <Suspense fallback={<RouteLoading />}><StoryHome /></Suspense>
           : path === '/profile' ? <Suspense fallback={<RouteLoading />}><ProfilePage /></Suspense>
           : isOnlinePath(path) ? <Suspense fallback={<RouteLoading />}><OnlineApp path={path} /></Suspense> : <App key={path} />}
       </RouteGuard>
