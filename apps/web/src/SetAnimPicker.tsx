@@ -18,7 +18,7 @@ export function SetAnimPicker({ value, onChange, cleared }: {
   return (
     <div className="setanim-list" role="radiogroup" aria-label="Set animation" data-testid="setanim-picker">
       <button
-        type="button" role="radio" aria-checked={value === 'auto'}
+        type="button" role="radio" aria-checked={value === 'auto'} aria-label="Match the room"
         className={`setanim-opt ${value === 'auto' ? 'on' : ''}`}
         data-testid="setanim-opt-auto"
         onClick={() => onChange('auto')}
