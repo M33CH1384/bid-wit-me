@@ -2,7 +2,8 @@
  * Dump the STORY recorded-voice worklist for the sprite bake (bake-sprites.py):
  * every story line from the scene pass's final text — storyScripts (scenes,
  * variants, mid-scenes, exchanges, play beats, callbacks, resume lines),
- * storySecrets (egg beats) and storyRail (rail lines incl. the fact variants
+ * storySecrets (egg beats), storyKingDouble (the between-legs set-pieces —
+ * the gun beat included) and storyRail (rail lines incl. the fact variants
  * railLineFor returns, the King finalHand witness, and the rail EXCHANGE
  * threads — openers, seated replies, comebacks) — cast BY CHARACTER from
  * STORY_VOICE_CAST (storyVoice.ts), never by persona default: the sprite each
@@ -21,7 +22,7 @@ import {
   STORY_BID_REACT, STORY_CALLBACKS, STORY_INTRO_VARIANTS, STORY_MID_SCENES, STORY_PLAY_REACTS,
   STORY_RESUME_LINES, STORY_RETRY_FIRST, STORY_SCRIPTS, STORY_SECRETS, STORY_SIT_DOWN,
   STORY_TABLE_EXCHANGES, STORY_KING_RAIL_OUTRO, STORY_RAIL_EXCHANGES, STORY_RAIL_INTRO, STORY_RAIL_LINES,
-  RAIL_NEEDLE_REPLY, STORY_VOICE_CAST, railLineFor, spokenTake, storyVoiceKey, type StoryBeat,
+  RAIL_NEEDLE_REPLY, STORY_VOICE_CAST, kingDoubleBeats, railLineFor, spokenTake, storyVoiceKey, type StoryBeat,
 } from '@spades/bots';
 
 const ROOT = join(import.meta.dirname, '../..');
@@ -77,6 +78,11 @@ export function storyCorpus(): { speaker: string; line: string; source: string }
     }
   }
   out.push({ speaker: 'dee', line: RAIL_NEEDLE_REPLY, source: 'rail:fact:porchNeedleReply' });
+  // The King's double or nothing — the between-legs set-pieces
+  // (storyKingDouble): both moments are spoken at the table the player
+  // is about to sit at, the 'started' gun beat included.
+  push(kingDoubleBeats('started'), 'kingDouble:started');
+  push(kingDoubleBeats('lost'), 'kingDouble:lost');
   // Revolutionaries deck tributes (revTributes.ts): at the Barbershop the
   // seated historians speak them — Coleman's twelve + his two Malcolm-cut
   // lines into his cast sprite, June's alternates into hers.

@@ -39,6 +39,13 @@ export interface StoryBeat {
   /** a STORY_CHARACTERS id, or 'you' (the player) */
   speaker: string;
   line: string;
+  /** A physical prop the scene player stages on the table as this beat
+   *  lands (it stays for the rest of that scene). Only the King's double
+   *  or nothing uses it: 'kingGun' — the revolver he lays on the felt when
+   *  he states the double's terms (storyKingDouble). The matching prop
+   *  then lies on the 3D table for the whole of leg 2, keyed to the
+   *  double-pending state (Table/Scene), never to this marker. */
+  prop?: 'kingGun';
 }
 
 /** A beat that only exists when a stored fact is true (data honesty). */

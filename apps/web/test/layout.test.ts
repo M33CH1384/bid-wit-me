@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { Vector3 } from 'three';
-import { type SeatPos, type Xform, HAND_EXPOSED_PX, fanCssPx, fanLayout, handFan, makeCamera, ndcCorners, ndcExtentX, opponentFan, phoneHandFan, pileSpot, trickSpot } from '../src/three/layout';
+import { Quaternion, Vector3 } from 'three';
+import { type SeatPos, type Xform, CH, CW, FELT, HAND_EXPOSED_PX, KING_GUN_FOOTPRINT, TRICK_SCALE, deckSpot, fanCssPx, fanLayout, handFan, kingGunSpot, makeCamera, ndcCorners, ndcExtentX, opponentFan, phoneHandFan, pileSpot, trickSpot } from '../src/three/layout';
 
 // CSS-pixel viewports: iPhone SE, 12/13/14, 14 Pro Max, small Android, desktop, and iPhone landscape
 const VIEWPORTS: [number, number][] = [[320, 568], [375, 667], [390, 844], [393, 852], [430, 932], [360, 740], [1280, 800], [1920, 1080], [844, 390]];
@@ -151,6 +151,63 @@ describe('hand fan shape', () => {
         const roll = -((i - halfN) / halfN) * L.maxRoll;
         expect(Math.abs(Math.atan(2 * L.curveK * x) + roll)).toBeLessThan(0.03); // arc slope ≈ card tilt
       }
+    }
+  });
+});
+
+describe("the King's gun spot (double or nothing, leg 2)", () => {
+  // Plan-view rects on the felt. Cards lie in their local XY plane; the gun
+  // is modelled in plan (local XZ). SAT overlap on both rects' axes.
+  interface Rect2 { c: Vector3; ax: [Vector3, Vector3]; half: [number, number] }
+  const rectOf = (x: Xform, w: number, h: number, plane: 'xy' | 'xz'): Rect2 => {
+    const q = new Quaternion(...x.q);
+    const a0 = new Vector3(1, 0, 0).applyQuaternion(q);
+    const a1 = (plane === 'xy' ? new Vector3(0, 1, 0) : new Vector3(0, 0, 1)).applyQuaternion(q);
+    for (const a of [a0, a1]) { a.y = 0; a.normalize(); }
+    return { c: new Vector3(x.p[0], 0, x.p[2]), ax: [a0, a1], half: [w / 2, h / 2] };
+  };
+  const cornersOf = (r: Rect2): Vector3[] => {
+    const out: Vector3[] = [];
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+      out.push(r.c.clone().add(r.ax[0].clone().multiplyScalar(sx * r.half[0])).add(r.ax[1].clone().multiplyScalar(sz * r.half[1])));
+    }
+    return out;
+  };
+  const overlaps = (a: Rect2, b: Rect2): boolean => {
+    const ca = cornersOf(a);
+    const cb = cornersOf(b);
+    for (const axis of [...a.ax, ...b.ax]) {
+      const pa = ca.map((p) => p.dot(axis));
+      const pb = cb.map((p) => p.dot(axis));
+      if (Math.max(...pa) < Math.min(...pb) || Math.max(...pb) < Math.min(...pa)) return false;
+    }
+    return true;
+  };
+  const gunRect = (pos: SeatPos) => rectOf(kingGunSpot(pos, 4), KING_GUN_FOOTPRINT.len, KING_GUN_FOOTPRINT.wid, 'xz');
+  const seats: SeatPos[] = ['bottom', 'left', 'top', 'right'];
+
+  it('lies inside the felt from every seat', () => {
+    for (const pos of seats) {
+      for (const c of cornersOf(gunRect(pos))) {
+        expect(Math.abs(c.x)).toBeLessThanOrEqual(FELT.hx + 1e-9);
+        expect(Math.abs(c.z)).toBeLessThanOrEqual(FELT.hz + 1e-9);
+      }
+    }
+  });
+
+  it("clears every trick landing, deck spot and book at the King's seat (left)", () => {
+    const gun = gunRect('left');
+    for (const seat of seats) {
+      for (let order = 0; order < 4; order++) {
+        // the resting card: flat, with a generous physics slide + spin
+        const landed = trickSpot(seat, 4, order, 0.5, TRICK_SCALE, { dx: 0.04, dz: 0.03, spin: 0.3 });
+        expect(overlaps(gun, rectOf(landed, TRICK_SCALE * CW, TRICK_SCALE * CH, 'xy'))).toBe(false);
+      }
+      expect(overlaps(gun, rectOf(deckSpot(seat, 4), CW, CH, 'xy'))).toBe(false);
+    }
+    // every book the King could win in a hand (13 tricks, full-size rects)
+    for (let book = 0; book < 13; book++) {
+      expect(overlaps(gun, rectOf(pileSpot('left', 4, book, 0, 0), CW, CH, 'xy'))).toBe(false);
     }
   });
 });

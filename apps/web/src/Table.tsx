@@ -244,8 +244,10 @@ interface Props {
     onGameOver: (won: boolean, facts: StoryGameFacts) => void;
     /** Scene pass: the stop + stored facts, so the scene runs continuously
      *  through the game (sit-down, bid/play reactions, milestone beats,
-     *  between-hands exchanges, recorded-event callbacks). Story games only. */
-    scene?: { stop: StoryStop; facts: StoryBeatFacts };
+     *  between-hands exchanges, recorded-event callbacks). Story games only.
+     *  doublePending rides along (buildStoryTape's facts shape): the live
+     *  King double-or-nothing state, read by kingGunSeatFor below. */
+    scene?: { stop: StoryStop; facts: StoryBeatFacts & { doublePending?: boolean } };
     /** Story save slot (own key, never the normal save): the attempt context
      *  this match started under + the dialogue session restored on resume. */
     saveCtx?: {
@@ -619,6 +621,21 @@ function DrivebyLights() {
   }, []);
   if (!active) return null;
   return <div className="driveby-lights" aria-hidden data-testid="driveby-lights" />;
+}
+
+/**
+ * The King's double or nothing — the gun on the table. While a leg-2 match
+ * is live, the King's revolver (set down in the between-legs beat) lies on
+ * the felt beside his seat: seat 1, the first opponent seat, where the
+ * stop's pair leads. The gate is the LIVE double-pending fact the scene
+ * facts carry from the server's progress row — true for a fresh leg 2, the
+ * between-legs run-back, and a resume into the decider alike (the spoken
+ * beat need not replay for the gun to be there), and false in leg 1, at
+ * every other stop, and in post-completion replays, when the double is
+ * resolved and gone. Null = no gun.
+ */
+export function kingGunSeatFor(story: Props['story']): number | null {
+  return story?.scene?.stop.id === 'king' && story.scene.facts.doublePending ? 1 : null;
 }
 
 export default function Table({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, onView, onTurnUp, resume, continueSeries, online, onMainMenu, startDealer, story }: Props) {
@@ -2003,6 +2020,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           gatherHands={redeal?.phase === 'gather' && !fx.osReducedMotion}
           dealEpoch={dealEpoch}
           dealFlight={redeal?.phase === 'deal'}
+          kingGunSeat={kingGunSeatFor(story)}
           landCue={landCue}
           short={vp.short}
           safe={vp.safe}

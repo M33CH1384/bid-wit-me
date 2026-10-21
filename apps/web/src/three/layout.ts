@@ -210,6 +210,30 @@ export function deckSpot(pos: SeatPos, n: number): Xform {
   return xf([p.x, 0.02, p.z], [Math.PI / 2, yawOf(d), 0], 1);
 }
 
+/** The King's gun (double or nothing, leg 2): the revolver he set down in
+ *  the between-legs beat lies on the felt in front of his seat for the
+ *  whole decider — beside the play, never on it. The spot sits inboard of
+ *  his book row and his deck spot, shifted along the rim toward the
+ *  corner on his left hand, muzzle pointing along the felt toward that
+ *  corner and the grip back toward the play. KING_GUN_FOOTPRINT is the
+ *  model's bounding rect (length along the muzzle, width across), centred
+ *  on the spot — the layout tests SAT-check that rect against every trick
+ *  landing, deck spot and book row, and inside the felt. */
+export const KING_GUN_FOOTPRINT = { len: 0.62, wid: 0.23 };
+
+export function kingGunSpot(pos: SeatPos, n: number): Xform {
+  const d = seatDir(pos, n);
+  // toward the corner on the seat's left hand (for the King's left seat,
+  // the top corner — away from his book row's centre)
+  const t = new Vector3(-d.z, 0, d.x);
+  const c = edgePoint(d, 0.58).add(t.clone().multiplyScalar(0.72));
+  const muzzle = d.clone().multiplyScalar(0.83).add(t.clone().multiplyScalar(0.56)).normalize();
+  // the model is built muzzle-along-+X: world yaw that takes +X onto the
+  // muzzle direction (a Y rotation maps +X to (cos yaw, 0, -sin yaw))
+  const yaw = Math.atan2(-muzzle.z, muzzle.x);
+  return xf([c.x, FELT_REST_Y, c.z], [0, yaw, 0], 1);
+}
+
 /** Turn-ring location on the felt. */
 export function ringSpot(pos: SeatPos, n: number): Vector3 {
   return edgePoint(seatDir(pos, n), 0.36);

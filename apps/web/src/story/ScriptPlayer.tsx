@@ -25,6 +25,7 @@ import { sound } from '../audio';
 import { cancelActiveSpeech } from '../audioSession';
 import { setStoryVoiceScope, speakBot } from '../talkPrefs';
 import StoryFace from './StoryFace';
+import KingGunArt from './KingGunArt';
 import { useReduceEffects } from '../fx';
 import type { SeatPos } from '../spatial';
 
@@ -99,6 +100,12 @@ export default function ScriptPlayer({ beats, cta, onDone, bgUrl, cast = [], egg
   const [i, setI] = useState(0);
   const [shown, setShown] = useState(reduceFx ? Number.MAX_SAFE_INTEGER : 0);
   const beat = lines[Math.min(i, lines.length - 1)];
+  // A beat may stage a physical prop on the table (the King's gun — see
+  // StoryBeat.prop). The prop's strip is rendered from the FIRST beat
+  // whenever any beat in this scene carries one, its height reserved
+  // like everything else on this screen, so the piece being set down on
+  // its beat moves nothing: it only appears, and stays for the scene.
+  const gunAt = lines.findIndex((b) => b.prop === 'kingGun');
   const eggFired = useRef(false);
   const deeTaps = useRef(0);
 
@@ -225,6 +232,11 @@ export default function ScriptPlayer({ beats, cta, onDone, bgUrl, cast = [], egg
                 return c ? <StoryFace key={id} characterId={id} name={c.name} className="rail-face" /> : null;
               })}
             </span>
+          </div>
+        )}
+        {gunAt >= 0 && (
+          <div className={`story-prop-strip${i >= gunAt ? ' down' : ''}`} data-testid="story-king-gun" aria-hidden>
+            <KingGunArt className="story-prop-gun" />
           </div>
         )}
         <div className="story-script-card" onClick={advance} role={last ? undefined : 'button'} aria-label={last ? undefined : 'Next line'}>

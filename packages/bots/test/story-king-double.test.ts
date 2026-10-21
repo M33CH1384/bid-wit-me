@@ -58,4 +58,16 @@ describe("the King's double or nothing (bots data)", () => {
     expect(lost[0]!.speaker).toBe('king');
     expect(lost.some((b) => b.speaker === 'dee')).toBe(true);
   });
+
+  it('the gun staging (owner, 2026-10-21): exactly one beat carries the prop, and it is the King’s opener', () => {
+    const started = kingDoubleBeats('started');
+    const marked = started.filter((b) => b.prop === 'kingGun');
+    expect(marked).toHaveLength(1);
+    expect(started[0]!.prop).toBe('kingGun');
+    expect(started[0]!.speaker).toBe('king');
+    // the sentiment the owner ordered, in the King’s own words
+    expect(started[0]!.line.toLowerCase()).toContain('you ain’t won yet');
+    // the loss set-piece stages no prop — the run is over, the table is clear
+    expect(kingDoubleBeats('lost').some((b) => b.prop)).toBe(false);
+  });
 });

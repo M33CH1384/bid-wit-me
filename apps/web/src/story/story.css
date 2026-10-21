@@ -579,3 +579,30 @@ html[data-theme="neon"] .story-you-face {
 .story-reset .btn { min-height: 36px; padding: 6px 12px; font-size: 13px; }
 .story-reset-copy { margin: 0 0 8px; font-size: 13px; line-height: 1.45; }
 .story-reset-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* The King's gun (double or nothing, between-legs scene): a table strip
+   under the cast, reserved from the scene's first beat whenever the scene
+   can stage the piece, so the piece being set down on its beat moves
+   nothing — it only appears, and stays for the scene. The strip is felt:
+   a dark green-black run with a gold hairline, the table surface in
+   miniature. The gun fades and settles in over about half a second; under
+   reduced motion it is simply there. Decorative only (aria-hidden). */
+.story-prop-strip {
+  flex: 0 0 auto;
+  height: 92px;
+  margin: 2px 0 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(238, 201, 106, 0.22);
+  background: linear-gradient(180deg, rgba(16, 26, 18, 0.88), rgba(7, 12, 8, 0.94));
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+.story-prop-gun {
+  width: min(300px, 78%);
+  height: auto;
+  opacity: 0;
+  transform: translateY(-10px) rotate(-2deg);
+  transition: opacity 0.45s ease, transform 0.45s ease;
+}
+.story-prop-strip.down .story-prop-gun { opacity: 1; transform: none; }
+.story-scene.reduce .story-prop-gun { transition: none; }

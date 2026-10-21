@@ -5,6 +5,7 @@ import { type ReactNode, type RefObject, Suspense, useCallback, useEffect, useLa
 import { type BufferGeometry, type Camera, type Group, type Material, type Mesh, type Object3D, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, DataTexture, Matrix4, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, PCFSoftShadowMap, Quaternion, RepeatWrapping, Scene as ThreeScene, SRGBColorSpace, Texture, Vector2, Vector3 } from 'three';
 import { type Card, type Play, type Trick } from '@spades/rules';
 import Card3D, { createLitCardMaterial } from './Card3D';
+import KingGun from './KingGun';
 import { departureSlot, handCardKey, handReactKey } from '../handOrder';
 import { GAP_S, spreadSeconds, cardIdFromHit, echoTap, fanGapPx, fanMotion, handCardChrome, handDepthOpts, handRenderOrder, hitsInPaintOrder, noteTapUp, pointerNdc, posePx, raiseLocalY, raiseSpreadPx, spreadFitScale } from './handLift';
 import { type HandHitCard, pickHandCard, publishHandHits, publishedHandHits } from './handHit';
@@ -42,7 +43,7 @@ import MansionRoom, { preloadMansionRoom } from './MansionRoom';
 import { type VenueDef, type VenueId, VENUE_DEFS, venueAssetUrls } from '../venues';
 import { bodyGeometry, cardGeometry, feltGeometry, railGeometry } from './geometry';
 import {
-  CH, CW, MIN_STRIP_PX, TRICK_SCALE, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, cameraPoseAt, CAMERA_VIEW_TWEEN_MS, cardScreenQuad, deckSpot, fanCssPx, fanLayout, handCardPlane, handFan, makeCamera, jitterOf, opponentFan, phoneHandFan, PHONE_HAND_STRIP_PX, pileSpot, ringSpot, trickSpot,
+  CH, CW, MIN_STRIP_PX, TRICK_SCALE, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, cameraPoseAt, CAMERA_VIEW_TWEEN_MS, cardScreenQuad, deckSpot, fanCssPx, fanLayout, handCardPlane, handFan, kingGunSpot, makeCamera, jitterOf, opponentFan, phoneHandFan, PHONE_HAND_STRIP_PX, pileSpot, ringSpot, trickSpot,
   flatRest,
   xf,
 } from './layout';
@@ -127,6 +128,11 @@ export interface SceneProps {
    *  as already placed (a resumed hand has no intro): the flight still gates every fan —
    *  a player holds no cards until the flight deals them, never from the state swap. */
   dealFlight?: boolean;
+  /** The King's double or nothing, leg 2: the seat beside which his revolver
+   *  lies on the felt for the whole match (set down in the between-legs beat;
+   *  Table keys it to the live double-pending state, so a resume into the
+   *  decider shows it too). Null/absent = no gun, ever. */
+  kingGunSeat?: number | null;
   /** camera view: standing (default) or sitting (lower/closer) */
   view?: 'standing' | 'sitting';
   /** Turn up (slam mode): Standing drags slam at max only when this is on. */
@@ -956,6 +962,9 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
       ))}
       {wide && mine.length > 0 && <HandGlow aspect={aspect} count={mine.length} safeFrac={safeFrac} opts={fanOpts} />}
       {flight && <ShuffleDeck key={`shuffle-${handNo}`} at={deck} back={back} tl={tl} quality={quality} />}
+      {props.kingGunSeat != null && positions[props.kingGunSeat] && (
+        <KingGun spot={kingGunSpot(positions[props.kingGunSeat]!, n)} quality={quality} />
+      )}
     </group>
   );
 }
