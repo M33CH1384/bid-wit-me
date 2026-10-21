@@ -37,7 +37,7 @@ import { SocialButton } from './social/Social';
 import { TableProfileModal } from './social/ProfileModal';
 import { closeTableProfile, openPlayerProfile, profileTargetOf, setTableProfileHost, useTableProfileTarget } from './profileTap';
 import { recordOfflineGame } from './offlineStats';
-import { setTableIntensity, showLine, speakBot, talkPrefs as talkStore, useTalkPrefs } from './talkPrefs';
+import { setStoryVoiceScope, setTableIntensity, showLine, speakBot, talkPrefs as talkStore, useTalkPrefs } from './talkPrefs';
 import { chatStickToBottom } from './chatScroll';
 import { setActiveDeck } from './decks';
 import { pickTeamName, toggleReaction } from '@spades/protocol';
@@ -724,7 +724,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       const seatIx = names.findIndex((nm) => nm === l.name);
       const seatPos = seatIx >= 0 ? pos[seatIx] : undefined;
       const muted = sound.voiceMuted(l.name);
-      void deliverBotLine(l, { aiVoices: tp.aiVoices && !muted, voices: tp.voices, soundOn: sound.settings.on && sound.settings.volume > 0, gain: tp.voiceVolume * 0.9 },
+      // Story tables never take the AI catalog voice for a seat (one-timbre
+      // rule, 2026-10-21): catalog clips are persona-bucket recordings, a
+      // second voice for a story character. Story seats get the canned path,
+      // which speakBot then renders as cast recording or text only.
+      void deliverBotLine(l, { aiVoices: tp.aiVoices && !muted && !story?.scene, voices: tp.voices, soundOn: sound.settings.on && sound.settings.volume > 0, gain: tp.voiceVolume * 0.9 },
         (text) => localChat.push(l.name, text, false, 0, true),
         muted ? () => {} : () => speakBot(l.name, l.text, l.persona, l.line, l.bid, seatPos, n),
         undefined,
@@ -1539,7 +1543,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   useEffect(() => {
     if (!storyStopId) return;
     sound.setStoryStop(storyStopId);
-    return () => { sound.setStoryStop(null); };
+    // Story voice scope (one-timbre rule, 2026-10-21): for the whole match,
+    // story seats speak only their cast recordings — generic persona talk
+    // and the speech fallback are text-only for them (talkPrefs).
+    setStoryVoiceScope(true);
+    return () => { sound.setStoryStop(null); setStoryVoiceScope(false); };
   }, [storyStopId]);
   // nuke blast: fires only once a nuked trick is COMPLETE and held on the table (the finished-trick
   // hold) — never while a trick is merely armed (both Jokers down, seats still to play): the nuke

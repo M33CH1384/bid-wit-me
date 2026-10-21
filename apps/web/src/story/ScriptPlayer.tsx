@@ -17,7 +17,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { STORY_CHARACTERS, personaForName, type StoryBeat } from '@spades/bots';
 import { sound } from '../audio';
 import { cancelActiveSpeech } from '../audioSession';
-import { speakBot } from '../talkPrefs';
+import { setStoryVoiceScope, speakBot } from '../talkPrefs';
 import StoryFace from './StoryFace';
 import { useReduceEffects } from '../fx';
 import type { SeatPos } from '../spatial';
@@ -115,6 +115,15 @@ export default function ScriptPlayer({ beats, cta, onDone, bgUrl, cast = [], egg
     }), stepMs);
     return () => window.clearInterval(t);
   }, [i, lines]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Story voice scope (one-timbre rule, 2026-10-21): while a scene is on
+  // screen, story characters speak ONLY their cast recordings — generic
+  // persona talk is text-only and the robot is refused by identity
+  // (talkPrefs). Cleared on unmount; Table sets it again for the match.
+  useEffect(() => {
+    setStoryVoiceScope(true);
+    return () => { setStoryVoiceScope(false); };
+  }, []);
 
   // leaving the scene stops its voices — recorded ones via the engine; speech only
   // if an utterance is actually active (an idle cancel() still pokes the iOS audio

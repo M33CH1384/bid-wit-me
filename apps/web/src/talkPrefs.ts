@@ -60,6 +60,19 @@ function loadVoices() { try { voices = speechSynthesis.getVoices().filter((v) =>
 if (typeof speechSynthesis !== 'undefined') { loadVoices(); speechSynthesis.addEventListener?.('voiceschanged', loadVoices); }
 
 /**
+ * Story-mode voice scope (one-timbre pass, Demetrius 2026-10-21): true while a
+ * story surface is live — set by ScriptPlayer (intro/outro scenes) and by
+ * Table for story games, cleared when they unmount. While it is on, a story
+ * character's lines resolve ONLY through their cast recording path
+ * (storyVoiceKey sprites): catalog table talk is text-only for story seats,
+ * and webSpeech refuses story characters outright (see the fence there).
+ * Normal games never set it, so nothing outside story mode changes.
+ */
+let storyScope = false;
+export function setStoryVoiceScope(on: boolean): void { storyScope = on; }
+export function storyVoiceScope(): boolean { return storyScope; }
+
+/**
  * Speak a bot line: its recorded clip (persona + line id → manifest), else the browser's Web Speech voice with the
  * persona's pitch/rate. No-op unless Bot voices is on and sound is on. The Web Speech fallback is fenced off
  * during live play (see webSpeech), so at a table a line without a clip is text-only.
@@ -78,6 +91,15 @@ export function speakBot(name: string, text: string, persona?: string, line?: st
   // with its own cast/card persona — the same guard keyFor applies in
   // voices.ts, so a same-named normal bot is never rerouted.
   const cast = storyCastForName(name);
+  // One-timbre rule (2026-10-21): in story mode, a catalog line id means
+  // generic persona talk — for a story character it renders TEXT ONLY (the
+  // chat/dialogue line is already on screen). The cast sprite also holds
+  // generic clips keyed by template, and serving one here would give the
+  // character a second, persona-baked voice next to their cast recordings —
+  // in the worst case a literally different singer (Ray's generic clips are
+  // am_fenrir; his cast lines are am_onyx). Text-keyed story lines (no id)
+  // fall through to the cast lookup below, unchanged.
+  if (cast && storyScope && line) return;
   const raw = rawLine(line) ?? (cast && (per === cast.persona || per === cast.cardPersona) ? text : undefined);
   void playClip(per, name, raw, prefs.voiceVolume * 0.9, bid, seat, playerCount).then((played) => { if (!played) webSpeech(name, text, per); });
 }
@@ -151,6 +173,16 @@ function webSpeech(name: string, text: string, persona: PersonaId = personaForNa
   // audio.ts is untouched — it remains the net for interruptions the game did
   // NOT cause (a phone call, Siri); this fence removes the self-inflicted ones.
   if (speechFallbackFenced()) return;
+  // Story characters NEVER take the robot (identity fence, 2026-10-21): a
+  // cast name resolved on its own cast/card persona — or any cast name while
+  // story scope is on — is cast-recording-or-text only, whatever seam the
+  // call arrived through (table unmount, scene swap, a presence flag dropped
+  // mid-transition). The presence fence above covers live play; this one
+  // makes story mode robot-proof by identity rather than by timing. In a
+  // normal game nothing audible changes: live play is presence-fenced for
+  // everyone already, and the game never talks behind Home.
+  const castGate = storyCastForName(name);
+  if (castGate && (storyScope || persona === castGate.persona || persona === castGate.cardPersona)) return;
   const snd = sound.settings;
   // A story character speaks as its CAST persona (storyVoice.ts) — the same
   // family the recorded key resolves — never its card persona's house voice
