@@ -1,1 +1,57 @@
-{"key":"silent-f","persona":"silent","gender":"f","voice":"bf_alice","speed":0.85,"clips":{"mine.":[7150,1320],"all of them.":[1820,1130],"done.":[3200,1100],"quiet.":[4550,890],"sit.":[5690,1210],"Cut {their} head off!":[8720,1500],"set.":[10470,1050],"down you go.":[11770,1290],"counted.":[13310,1130],"gg.":[14690,1220],"I wish you WOULD!":[16160,1460]}}
+{
+ "key": "silent-f",
+ "persona": "silent",
+ "gender": "f",
+ "voice": "bf_alice",
+ "speed": 0.85,
+ "clips": {
+  "mine.": [
+   250,
+   1320
+  ],
+  "all of them.": [
+   1820,
+   1130
+  ],
+  "done.": [
+   3200,
+   1100
+  ],
+  "quiet.": [
+   4550,
+   890
+  ],
+  "sit.": [
+   5690,
+   1210
+  ],
+  "Cut {their} head off!": [
+   7150,
+   1500
+  ],
+  "set.": [
+   8900,
+   1050
+  ],
+  "down you go.": [
+   10200,
+   1290
+  ],
+  "counted.": [
+   11740,
+   1130
+  ],
+  "gg.": [
+   13120,
+   1220
+  ],
+  "I wish you WOULD!": [
+   14590,
+   1460
+  ],
+  "A run. On us. I'm ill.": [
+   16300,
+   1905
+  ]
+ }
+}
