@@ -7,9 +7,9 @@
 import { describe, expect, it } from 'vitest';
 import { makeRules, type HandRecord, type Trick } from '@spades/rules';
 import {
-  bagPenaltySides, bagsCrossed, bigJokerSeat, blindNilSeats, bostonSides,
-  comebackSides, matchPointSides, newlyEliminated, nilLiveSeats,
-  runClaimerSeat, trickWasCut, wheelsSides,
+  UPSET_GAP, bagPenaltySides, bagsCrossed, bigJokerSeat, blindNilSeats, bostonSides,
+  comebackSides, matchPointSides, newlyEliminated, nilLiveSeats, ratingGap,
+  runClaimerSeat, setSides, syncSides, trickWasCut, wheelsSides,
 } from '../src/animfx/detect';
 
 const joker = makeRules('joker');
@@ -90,6 +90,30 @@ describe('hand-end record reads', () => {
     expect(comebackSides(mild)).toEqual([]); // was only down 95
     const stillBuried = rec({ sides: [side({ side: 0, points: 40, totalScore: 90 }), side({ side: 1, points: 10, totalScore: 205 })] });
     expect(comebackSides(stillBuried)).toEqual([]); // closed to 115, not 25
+  });
+});
+
+describe('wave 2 record reads', () => {
+  it('the set: a failed real contract, never a nil-only side', () => {
+    const r = rec({ sides: [side({ side: 0, contract: 11, contractMade: false }), side({ side: 1, contract: 7, contractMade: true })] });
+    expect(setSides(r)).toEqual([0]);
+    const nilOnly = rec({ sides: [side({ side: 0, contract: 0, contractMade: false }), side({ side: 1, contract: 8, contractMade: true })] });
+    expect(setSides(nilOnly)).toEqual([]);
+    const nobody = rec({ sides: [side({ side: 0, contract: 5, contractMade: true }), side({ side: 1, contract: 5, contractMade: true })] });
+    expect(setSides(nobody)).toEqual([]);
+  });
+  it('in sync: contract made with BOTH partners on real bids', () => {
+    const both = rec({ bids: [6, 3, 5, 4], sides: [side({ side: 0, seats: [0, 2], contractMade: true }), side({ side: 1, seats: [1, 3], contractMade: true })] });
+    expect(syncSides(both, joker)).toEqual([0, 1]);
+    const nilRide = rec({ bids: [11, 3, 'nil', 4], sides: [side({ side: 0, seats: [0, 2], contractMade: true }), side({ side: 1, seats: [1, 3], contractMade: false })] });
+    expect(syncSides(nilRide, joker)).toEqual([]); // seat 2 rode a nil; side 1 was set
+    expect(syncSides(both, cutRules)).toEqual([]); // no partners in cutthroat
+  });
+  it('upset gap: winners average vs losers average, 150 is the bar', () => {
+    expect(ratingGap([1000, 1020], [1200, 1180])).toBe(180);
+    expect(ratingGap([1200], [1000])).toBe(-200);
+    expect(ratingGap([], [1000])).toBe(0);
+    expect(UPSET_GAP).toBe(150);
   });
 });
 

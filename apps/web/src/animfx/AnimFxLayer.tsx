@@ -22,6 +22,7 @@
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { type Bid, type GameResult, type HandRecord, type Phase, type TableRules, type Trick } from '@spades/rules';
+import { useSocial } from '../social/store';
 
 /**
  * The slice of table state the layer reads. Both the offline GameState and
@@ -32,14 +33,15 @@ export interface AnimFxView {
   bids: (Bid | null)[]; trick: Trick; tricks: Trick[];
   tricksWon: number[]; scores: number[]; bags: number[];
   history: HandRecord[]; result: GameResult | null; eliminated?: boolean[];
+  misdealReveal?: { seat: number } | null;
 }
 import { fx, useReduceEffects } from '../fx';
 import { CoinIcon } from '../RepBlock';
 import { fetchWagerList } from '../social/wagerApi';
 import {
-  bagPenaltySides, bigJokerSeat, blindNilSeats, bostonSides, comebackSides,
-  matchPointSides, newlyEliminated, nilLiveSeats, runClaimerSeat,
-  seatsOfSide, trickWasCut, wheelsSides,
+  UPSET_GAP, bagPenaltySides, bigJokerSeat, blindNilSeats, bostonSides, comebackSides,
+  matchPointSides, newlyEliminated, nilLiveSeats, ratingGap, runClaimerSeat,
+  seatsOfSide, setSides, sideIndexOf, syncSides, trickWasCut, wheelsSides,
 } from './detect';
 import './animfx.css';
 
@@ -70,9 +72,10 @@ const slotPt = (seat: number): Pt | null => { const s = layoutWin()?.slots?.[sea
 
 /* ------------------------------------------------------------------ shots */
 
-type ShotKind = 'bjring' | 'glint' | 'coinflip' | 'shock' | 'broom' | 'wheel' | 'bag' | 'crack' | 'potin' | 'potout';
+type ShotKind = 'bjring' | 'glint' | 'coinflip' | 'shock' | 'broom' | 'wheel' | 'bag' | 'crack' | 'potin' | 'potout'
+  | 'boardedge' | 'setbrick' | 'syncbeam' | 'firstbook' | 'misdeal' | 'ripple' | 'payback' | 'upset';
 interface CoinFlight { x: number; y: number; tx: number; ty: number; d: number }
-interface Shot { id: number; kind: ShotKind; x: number; y: number; w?: number; h?: number; still?: boolean; label?: string; coins?: CoinFlight[] }
+interface Shot { id: number; kind: ShotKind; x: number; y: number; w?: number; h?: number; still?: boolean; label?: string; coins?: CoinFlight[]; rects?: Rect[]; x2?: number; y2?: number }
 
 interface SeatSpot { seat: number; x: number; y: number; w: number; h: number; sx: number | null; sy: number | null }
 
@@ -116,7 +119,7 @@ function HeadlightSweep({ calm }: { calm: boolean }) {
 
 /* -------------------------------------------------------------------- main */
 
-export default function AnimFxLayer({ st, online = false }: { st: AnimFxView; online?: boolean }) {
+export default function AnimFxLayer({ st, online = false, names }: { st: AnimFxView; online?: boolean; names?: string[] }) {
   const reduceFx = useReduceEffects();
   const reduced = reduceFx || fx.osReducedMotion;
   const reducedRef = useRef(reduced);
@@ -132,6 +135,16 @@ export default function AnimFxLayer({ st, online = false }: { st: AnimFxView; on
   const seenRef = useRef(new Set<string>());
   const wagerRef = useRef<{ id: string; pot: number } | null>(null);
   const potArmed = useRef(true);
+  const firstBookRef = useRef(false);
+  const mountedRef = useRef(true);
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
+  // presence ratings (UPSET) + names ride the social store; read via a ref so
+  // social ticks never re-run the transition diffing below
+  const social = useSocial();
+  const socialRef = useRef(social);
+  socialRef.current = social;
+  const namesRef = useRef(names);
+  namesRef.current = names;
 
   const later = (fn: () => void, ms: number) => {
     const t = window.setTimeout(() => { timers.current.delete(t); fn(); }, ms);
@@ -222,24 +235,40 @@ export default function AnimFxLayer({ st, online = false }: { st: AnimFxView; on
   }, [wager, st]);
 
   /* -------------------------------------------------- transition triggers */
-  interface Snap { handNo: number; bids: (Bid | null)[]; hist: number; eliminated?: boolean[]; hasResult: boolean }
+  interface Snap { handNo: number; bids: (Bid | null)[]; hist: number; eliminated?: boolean[]; hasResult: boolean; hasMisdeal: boolean }
   const prevRef = useRef<Snap | null>(null);
   useEffect(() => {
     const snap: Snap = {
       handNo: st.handNo, bids: [...st.bids], hist: st.history.length,
       eliminated: st.eliminated ? [...st.eliminated] : undefined,
-      hasResult: !!st.result,
+      hasResult: !!st.result, hasMisdeal: !!st.misdealReveal,
     };
     const p = prevRef.current;
     prevRef.current = snap;
     if (!p) return;
     // a new game at the same table (rematch): history/hand counts rewind — resync silently
-    if (snap.hist < p.hist || snap.handNo < p.handNo) { seenRef.current = new Set(); return; }
+    if (snap.hist < p.hist || snap.handNo < p.handNo) { seenRef.current = new Set(); firstBookRef.current = false; return; }
 
-    // blind nil: the bid chip flips like a coin toss when the bid lands
-    st.bids.forEach((b, seat) => {
-      if (b === 'blindNil' && p.bids[seat] !== 'blindNil' && !calm()) fireAtPlate('coinflip', seat, 1000);
-    });
+    // bids landing inside THIS hand's bidding (a new hand's opening snapshot
+    // is a resync, not a bid — books hands start at 'books' without a slam)
+    if (snap.handNo === p.handNo) {
+      st.bids.forEach((b, seat) => {
+        // blind nil: the bid chip flips like a coin toss when the bid lands
+        if (b === 'blindNil' && p.bids[seat] !== 'blindNil' && !calm()) fireAtPlate('coinflip', seat, 1000);
+        // BOARD BID: every card edge on the table lights gold and the bid slams home
+        if (b === 'books' && p.bids[seat] !== 'books') {
+          if (!calm()) {
+            const rects = (layoutWin()?.slots ?? []).filter(Boolean);
+            if (rects.length) addShot({ kind: 'boardedge', x: 0, y: 0, rects }, 1000);
+            plateEl(seat)?.classList.add('animfx-slam');
+            later(() => plateEl(seat)?.classList.remove('animfx-slam'), 560);
+          } else {
+            plateEl(seat)?.classList.add('animfx-slam-still');
+            later(() => plateEl(seat)?.classList.remove('animfx-slam-still'), 950);
+          }
+        }
+      });
+    }
 
     // tricks: Big Joker slam + spade-cut glint
     const seen = seenRef.current;
@@ -264,6 +293,12 @@ export default function AnimFxLayer({ st, online = false }: { st: AnimFxView; on
     st.tricks.forEach((t, i) => scan(t, i, true));
     scan(st.trick, st.tricks.length, false);
 
+    // FIRST BOOK of the match: hand 1's first completed trick stamps the lower third, once per game
+    if (st.handNo === 1 && !firstBookRef.current && st.tricks.length > 0 && st.tricks[0]!.winner !== null) {
+      firstBookRef.current = true;
+      addShot({ kind: 'firstbook', x: 0, y: 0, still: calm() }, calm() ? 1500 : 2300);
+    }
+
     // hand end: bag drop (+ wobble), Boston broom, Wheels spin, comeback surge
     if (snap.hist > p.hist) {
       const rec = st.history[st.history.length - 1]!;
@@ -284,6 +319,27 @@ export default function AnimFxLayer({ st, online = false }: { st: AnimFxView; on
         const el = bugTeamEl(side);
         if (el) { el.classList.add(calm() ? 'animfx-surge-still' : 'animfx-surge'); later(() => el.classList.remove('animfx-surge', 'animfx-surge-still'), 1500); }
       }
+      // THE SET: the set side's contract chip cracks and drops like a brick;
+      // every side that shot them stomps its books down on the scorebug
+      const set = setSides(rec);
+      for (const side of set) {
+        const pt = bugTeamPt(side) ?? platePt(seatsOfSide(st.rules, side)[0] ?? 0);
+        if (pt) addShot({ kind: 'setbrick', x: pt.x, y: pt.y, still: calm() }, calm() ? 1300 : 1500);
+      }
+      if (set.length) {
+        for (const sRec of rec.sides) {
+          if (set.includes(sRec.side)) continue;
+          const el = bugTeamEl(sRec.side);
+          if (el) { el.classList.add('animfx-stomp'); later(() => el.classList.remove('animfx-stomp'), 680); }
+        }
+      }
+      // IN SYNC: partners who made the contract with both bids real get a flash of light between their plates
+      for (const side of syncSides(rec, st.rules)) {
+        const [a, b] = seatsOfSide(st.rules, side);
+        const pa = a !== undefined ? platePt(a) : null;
+        const pb = b !== undefined ? platePt(b) : null;
+        if (pa && pb) addShot({ kind: 'syncbeam', x: pa.x, y: pa.y, x2: pb.x, y2: pb.y, still: calm() }, calm() ? 700 : 1000);
+      }
     }
 
     // cutthroat elimination moment: the crack flash (the dead look itself is persistent, below)
@@ -291,6 +347,62 @@ export default function AnimFxLayer({ st, online = false }: { st: AnimFxView; on
       if (calm()) continue;
       const r = plateRectOf(seat);
       if (r) addShot({ kind: 'crack', x: r.x + r.w / 2, y: r.y + r.h / 2, w: r.w, h: r.h }, 850);
+    }
+
+    // MISDEAL: the dealt cards scatter and swirl back into the deck before the re-deal
+    if (snap.hasMisdeal && !p.hasMisdeal && !calm()) addShot({ kind: 'misdeal', x: 0, y: 0 }, 1050);
+
+    // game over: THE WINNING BOOK ripples out of the final trick with a brief
+    // time-stretch beat (presentational only — the victory handoff is untouched)
+    if (snap.hasResult && !p.hasResult && st.result) {
+      const c = trickCenterPt();
+      addShot({ kind: 'ripple', x: c.x, y: c.y, still: calm() }, calm() ? 1100 : 1000);
+      if (!calm()) {
+        const scr = document.querySelector('.table-screen');
+        scr?.classList.add('animfx-slowmo');
+        later(() => scr?.classList.remove('animfx-slowmo'), 1000);
+      }
+      const nm = namesRef.current;
+      if (online && nm) {
+        // UPSET: every seat's rating must resolve from presence — one missing
+        // rating and there is no stamp, never an invented number
+        const users = Object.values(socialRef.current.users ?? {});
+        const ratingOf = (seat: number): number | null => {
+          const name = nm[seat];
+          if (!name) return null;
+          const u = users.find((x) => x.name === name);
+          const r = st.rules.partnerships ? u?.rating?.team : u?.rating?.cutthroat;
+          return typeof r === 'number' ? r : null;
+        };
+        const winnerSeats = st.result.winners.flatMap((side) => seatsOfSide(st.rules, side));
+        const loserSeats = [...Array(st.rules.playerCount).keys()].filter((s) => !winnerSeats.includes(s));
+        const wr = winnerSeats.map(ratingOf);
+        const lr = loserSeats.map(ratingOf);
+        if (wr.length && lr.length && wr.every((r) => r !== null) && lr.every((r) => r !== null)
+          && ratingGap(wr as number[], lr as number[]) >= UPSET_GAP) {
+          addShot({ kind: 'upset', x: 0, y: 0 }, 3000);
+        }
+        // PAYBACK: the viewer lost, and a winner's own profile payload says
+        // they've been losing this head-to-head (vsYou reads from the viewer's
+        // side: wins = times the viewer beat them) — today they got one back
+        if (!st.result.winners.includes(sideIndexOf(st.rules, 0))) {
+          let stamped = false;
+          for (const seat of winnerSeats) {
+            const name = nm[seat];
+            if (!name) continue;
+            fetch(`/api/social/profile/${encodeURIComponent(name)}`, { credentials: 'same-origin' })
+              .then((r) => (r.ok ? r.json() : null))
+              .then((j) => {
+                const vy = (j as { vsYou?: { games: number; wins: number; losses: number } } | null)?.vsYou;
+                if (!stamped && mountedRef.current && vy && vy.games >= 1 && vy.wins > vy.losses) {
+                  stamped = true;
+                  addShot({ kind: 'payback', x: 0, y: 0 }, 3200);
+                }
+              })
+              .catch(() => { /* no reachable profile: no stamp, never invented */ });
+          }
+        }
+      }
     }
 
     // Big Bank: the pot pours to the winners when the match settles
@@ -312,6 +424,50 @@ export default function AnimFxLayer({ st, online = false }: { st: AnimFxView; on
   useEffect(() => () => {
     document.querySelectorAll('.animfx-dead').forEach((el) => el.classList.remove('animfx-dead'));
     document.querySelectorAll('.animfx-mp, .animfx-mp-still').forEach((el) => el.classList.remove('animfx-mp', 'animfx-mp-still'));
+  }, []);
+
+  /* TRASH-TALK POP: the table's banter bubble (Table's .trash-callout, keyed
+     per line) pops comic-style when a line lands, and the speaker's plate —
+     the one nearest the bubble — bounces once. The callout is Table's own
+     element; the layer only decorates it, via a mutation observer. */
+  useEffect(() => {
+    const seenText = new WeakMap<Element, string>();
+    const pop = (el: Element) => {
+      if (reducedRef.current) return;
+      el.classList.add('animfx-pop');
+      const r = el.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      let best: Element | null = null;
+      let bd = Infinity;
+      document.querySelectorAll('.plate[data-testid]').forEach((pl) => {
+        const pr = pl.getBoundingClientRect();
+        const d = Math.hypot(pr.left + pr.width / 2 - cx, pr.top + pr.height / 2 - cy);
+        if (d < bd) { bd = d; best = pl; }
+      });
+      if (best) {
+        const plate = best as Element;
+        plate.classList.add('animfx-bounce');
+        window.setTimeout(() => plate.classList.remove('animfx-bounce'), 580);
+      }
+    };
+    const check = (el: Element) => {
+      const t = el.textContent ?? '';
+      if (seenText.get(el) !== t) { seenText.set(el, t); pop(el); }
+    };
+    const mo = new MutationObserver((muts) => {
+      for (const m of muts) {
+        m.addedNodes.forEach((n) => {
+          if (n instanceof Element) {
+            if (n.classList.contains('trash-callout')) check(n);
+            n.querySelectorAll?.('.trash-callout').forEach(check);
+          }
+        });
+        if (m.target instanceof Element && m.target.classList.contains('trash-callout')) check(m.target);
+      }
+    });
+    mo.observe(document.body, { childList: true, subtree: true, characterData: true });
+    return () => mo.disconnect();
   }, []);
 
   /* ------------------------------------------- measured persistent overlays */
@@ -358,6 +514,51 @@ export default function AnimFxLayer({ st, online = false }: { st: AnimFxView; on
         return <div key={s.id} data-testid="animfx-bag" className={`animfx-bag${s.still ? ' still' : ''}`} style={{ left: s.x, top: s.y }}><span className="sack" /></div>;
       case 'crack':
         return <div key={s.id} data-testid="animfx-crack" className="animfx-crack" style={{ left: s.x - (s.w ?? 0) / 2, top: s.y - (s.h ?? 0) / 2, width: s.w, height: s.h }}><CrackSvg /></div>;
+      case 'boardedge':
+        return (
+          <div key={s.id} data-testid="animfx-boardedge" className="animfx-boardwrap">
+            {(s.rects ?? []).map((r, i) => (
+              <div key={i} className="animfx-boardedge" style={{ left: r.x - 3, top: r.y - 3, width: r.w + 6, height: r.h + 6 }} />
+            ))}
+          </div>
+        );
+      case 'setbrick':
+        return (
+          <div key={s.id} data-testid="animfx-setbrick" className={`animfx-setbrick${s.still ? ' still' : ''}`} style={{ left: s.x, top: s.y }}>
+            <span className="brick-label">SET</span>
+            <CrackSvg />
+          </div>
+        );
+      case 'syncbeam':
+        return (
+          <svg key={s.id} data-testid="animfx-syncbeam" className={`animfx-beamsvg${s.still ? ' still' : ''}`}>
+            <line x1={s.x} y1={s.y} x2={s.x2} y2={s.y2} className="animfx-beamline" />
+          </svg>
+        );
+      case 'firstbook':
+        return (
+          <div key={s.id} data-testid="animfx-firstbook" className={`animfx-firstbook${s.still ? ' still' : ''}`}>
+            <span className="fb-kicker">BID WIT ME</span>
+            <span className="fb-title">FIRST BOOK</span>
+            <span className="fb-sub">of the match</span>
+          </div>
+        );
+      case 'misdeal':
+        return (
+          <div key={s.id} data-testid="animfx-misdeal" className="animfx-misdeal">
+            {Array.from({ length: 9 }, (_, i) => {
+              const a = (i / 9) * Math.PI * 2;
+              const dist = 120 + (i % 3) * 46;
+              return <span key={i} className="md-card" style={{ ['--sx' as string]: `${Math.cos(a) * dist}px`, ['--sy' as string]: `${Math.sin(a) * dist * 0.62}px`, ['--sr' as string]: `${(i * 47) % 160 - 80}deg`, animationDelay: `${i * 24}ms` }} />;
+            })}
+          </div>
+        );
+      case 'ripple':
+        return <div key={s.id} data-testid="animfx-ripple" className={`animfx-ripple${s.still ? ' still' : ''}`} style={{ left: s.x, top: s.y }} />;
+      case 'payback':
+        return <div key={s.id} data-testid="animfx-payback" className="animfx-stamp payback">PAYBACK</div>;
+      case 'upset':
+        return <div key={s.id} data-testid="animfx-upset" className="animfx-stamp upset">UPSET</div>;
       case 'potin':
       case 'potout':
         return (
@@ -376,21 +577,29 @@ export default function AnimFxLayer({ st, online = false }: { st: AnimFxView; on
     }
   };
 
+  const isStamp = (s: Shot) => s.kind === 'ripple' || s.kind === 'payback' || s.kind === 'upset';
   return (
-    <div className="animfx-layer" aria-hidden="true" data-testid="animfx">
-      {narrow && <div className="animfx-narrow" style={{ background: narrow }} />}
-      {dimBg && <div className="animfx-dim" data-testid="animfx-spotlight" style={{ background: dimBg }} />}
-      {spots.map((s) => (
-        <div key={`sp${s.seat}`} className={`animfx-spotring${reduced ? ' calm' : ''}`} style={{ left: s.x - s.w / 2 - 6, top: s.y - s.h / 2 - 6, width: s.w + 12, height: s.h + 12 }} />
-      ))}
-      {moons.map((s) => (
-        <div key={`mn${s.seat}`}>
-          <div className="animfx-moonring" style={{ left: s.x - s.w / 2 - 5, top: s.y - s.h / 2 - 5, width: s.w + 10, height: s.h + 10 }} />
-          {s.sx !== null && <div className="animfx-moonedge" style={{ left: s.sx - 34, top: (s.sy ?? 0) - 48, width: 68, height: 96 }} />}
-        </div>
-      ))}
-      {shots.map(renderShot)}
-      <HeadlightSweep calm={reduced} />
-    </div>
+    <>
+      <div className="animfx-layer" aria-hidden="true" data-testid="animfx">
+        {narrow && <div className="animfx-narrow" style={{ background: narrow }} />}
+        {dimBg && <div className="animfx-dim" data-testid="animfx-spotlight" style={{ background: dimBg }} />}
+        {spots.map((s) => (
+          <div key={`sp${s.seat}`} className={`animfx-spotring${reduced ? ' calm' : ''}`} style={{ left: s.x - s.w / 2 - 6, top: s.y - s.h / 2 - 6, width: s.w + 12, height: s.h + 12 }} />
+        ))}
+        {moons.map((s) => (
+          <div key={`mn${s.seat}`}>
+            <div className="animfx-moonring" style={{ left: s.x - s.w / 2 - 5, top: s.y - s.h / 2 - 5, width: s.w + 10, height: s.h + 10 }} />
+            {s.sx !== null && <div className="animfx-moonedge" style={{ left: s.sx - 34, top: (s.sy ?? 0) - 48, width: 68, height: 96 }} />}
+          </div>
+        ))}
+        {shots.filter((s) => !isStamp(s)).map(renderShot)}
+        <HeadlightSweep calm={reduced} />
+      </div>
+      {/* game-over graphics ride ABOVE the victory screen (z 1000): the
+          winning-book ripple and the PAYBACK / UPSET stamps */}
+      <div className="animfx-stamps" aria-hidden="true">
+        {shots.filter(isStamp).map(renderShot)}
+      </div>
+    </>
   );
 }

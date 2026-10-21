@@ -37,17 +37,19 @@ const bostonRec: HandRecord = {
 };
 
 let root: Root | null = null;
-function mount(v: PlayerView) {
+let layerProps: { online?: boolean; names?: string[] } = {};
+function mount(v: PlayerView, opts: { online?: boolean; names?: string[] } = {}) {
+  layerProps = opts;
   document.body.innerHTML = `
     <div class="badge-layer">${[0, 1, 2, 3].map((s) => `<div class="plate" data-testid="seat-${s}"></div>`).join('')}</div>
     <div class="bug-teams"><div class="bug-team"></div><div class="bug-team"></div></div>`;
   const host = document.createElement('div');
   document.body.appendChild(host);
   root = createRoot(host);
-  act(() => root!.render(createElement(AnimFxLayer, { st: v })));
+  act(() => root!.render(createElement(AnimFxLayer, { st: v, ...layerProps })));
   return host;
 }
-function rerender(v: PlayerView) { act(() => root!.render(createElement(AnimFxLayer, { st: v }))); }
+function rerender(v: PlayerView) { act(() => root!.render(createElement(AnimFxLayer, { st: v, ...layerProps }))); }
 
 afterEach(() => {
   if (root) act(() => root!.unmount());
@@ -88,6 +90,55 @@ describe('animfx layer', () => {
     expect(document.querySelector('[data-testid="animfx-broom"]')).toBeNull();
     rerender(view({ phase: 'handOver', history: [bostonRec] }));
     expect(document.querySelector('[data-testid="animfx-broom"]')).not.toBeNull();
+  });
+
+  it('wave 2: a board bid lights every card edge and slams the bidder plate', () => {
+    (window as unknown as { __bwmLayout: unknown }).__bwmLayout = { slots: [0, 1, 2, 3].map((i) => ({ x: i * 90, y: 200, w: 60, h: 84 })) };
+    mount(view({ phase: 'bidding', bids: [null, null, null, null] }));
+    rerender(view({ phase: 'bidding', bids: ['books', null, null, null] }));
+    expect(document.querySelectorAll('.animfx-boardedge').length).toBe(4);
+    expect(document.querySelector('[data-testid="seat-0"]')!.classList.contains('animfx-slam')).toBe(true);
+    delete (window as unknown as { __bwmLayout?: unknown }).__bwmLayout;
+  });
+
+  it('wave 2: the set cracks the set side chip and the shooters stomp', () => {
+    const setRec: HandRecord = {
+      handNo: 1, dealer: 0, bids: [6, 3, 5, 4], tricksWon: [4, 3, 3, 3],
+      sides: [
+        { side: 0, seats: [0, 2], contract: 11, contractTricks: 7, tricks: 7, contractMade: false, nils: [], bagsAdded: 0, bagPenaltyCount: 0, bagPenaltyPoints: 0, bookPoints: 0, points: -110, totalScore: -110, totalBags: 0 },
+        { side: 1, seats: [1, 3], contract: 7, contractTricks: 6, tricks: 6, contractMade: true, nils: [], bagsAdded: 0, bagPenaltyCount: 0, bagPenaltyPoints: 0, bookPoints: 0, points: 70, totalScore: 70, totalBags: 0 },
+      ],
+    };
+    mount(view({ phase: 'playing' }));
+    rerender(view({ phase: 'handOver', history: [setRec] }));
+    expect(document.querySelector('[data-testid="animfx-setbrick"]')).not.toBeNull();
+    expect(document.querySelectorAll('.bug-team')[1]!.classList.contains('animfx-stomp')).toBe(true);
+    // both partners bid real and side 1 made it: the sync beam fires too
+    expect(document.querySelector('[data-testid="animfx-syncbeam"]')).not.toBeNull();
+  });
+
+  it('wave 2: first book stamps once per match; a misdeal swirls the cards back', () => {
+    const t1 = { leader: 0, plays: [{ seat: 2, card: 'AS' }], winner: 2 } as unknown as PlayerView['tricks'][number];
+    mount(view({ phase: 'playing', tricks: [] }));
+    rerender(view({ phase: 'playing', tricks: [t1] }));
+    expect(document.querySelectorAll('[data-testid="animfx-firstbook"]').length).toBe(1);
+    rerender(view({ phase: 'playing', tricks: [t1], misdealReveal: { seat: 1 } as never }));
+    expect(document.querySelector('[data-testid="animfx-misdeal"]')).not.toBeNull();
+  });
+
+  it('wave 2: no UPSET without real ratings; PAYBACK stamps off the winner profile h2h', async () => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () => ({ ok: true, json: async () => ({ vsYou: { games: 3, wins: 2, losses: 1 } }) })) as never;
+    try {
+      mount(view({ phase: 'playing' }), { online: true, names: ['Me', 'Wendy', 'Part', 'Foe'] });
+      rerender(view({ phase: 'gameOver', result: { winners: [1] } as never }));
+      await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+      expect(document.querySelector('[data-testid="animfx-upset"]')).toBeNull(); // no presence ratings in the store: nothing invented
+      expect(document.querySelector('[data-testid="animfx-payback"]')).not.toBeNull(); // winner's vsYou: viewer leads the matchup 2-1
+      expect(document.querySelector('[data-testid="animfx-ripple"]')).not.toBeNull(); // the winning book beat
+    } finally {
+      globalThis.fetch = realFetch;
+    }
   });
 
   it('Reduce effects: no broom, but the dead look and match-point outline stay', () => {

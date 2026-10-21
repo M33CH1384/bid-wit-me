@@ -1,6 +1,8 @@
 import { useLayoutEffect, useRef } from 'react';
 import { vibrationOn } from './haptics';
+import { fx } from './fx';
 import { applyTurnRing, ownTurnBuzz, turnBuzzMarks, turnRingSample } from './turnRing';
+import './animfx/animfx.css';
 
 /**
  * Countdown ring for the seat that is on the clock. Paint runs on one
@@ -25,10 +27,43 @@ export function TurnCountdown({ start, deadline, mine, now }: {
     const clock = now ?? (() => Date.now());
     let prev = deadline - clock();
     let raf = 0;
+    // FUSE CLOCK (animation package wave 2): the local player's own plate
+    // edge burns down like a fuse through the final 5 seconds of their
+    // clock. Visual only — the deadline, the buzz marks and every timer are
+    // untouched. Driven by this same rAF sampler (direct DOM writes, no
+    // React state), removed with the turn.
+    let fuse: HTMLDivElement | null = null;
+    let fuseBar: HTMLDivElement | null = null;
+    if (mine) {
+      const plate = root.current?.closest('.plate');
+      if (plate) {
+        fuse = document.createElement('div');
+        fuse.className = 'animfx-fuse';
+        fuse.dataset.testid = 'animfx-fuse';
+        fuseBar = document.createElement('div');
+        fuseBar.className = 'animfx-fuse-bar';
+        const spark = document.createElement('div');
+        spark.className = 'animfx-fuse-spark';
+        fuseBar.appendChild(spark);
+        fuse.appendChild(fuseBar);
+        plate.appendChild(fuse);
+      }
+    }
     const frame = () => {
       const t = clock();
       const sample = turnRingSample(t, start, deadline);
       applyTurnRing(root.current, track.current, glow.current, shade.current, arc.current, sample);
+      if (fuse && fuseBar) {
+        const rem = sample.remaining;
+        if (rem <= 5000 && rem > 0) {
+          const calmFuse = fx.reduced || fx.osReducedMotion;
+          fuse.style.opacity = '1';
+          fuse.classList.toggle('calm', calmFuse);
+          fuseBar.style.width = calmFuse ? '100%' : `${Math.max(0, rem / 50)}%`;
+        } else {
+          fuse.style.opacity = '0';
+        }
+      }
       if (mine && turnBuzzMarks(prev, sample.remaining).length) {
         ownTurnBuzz(vibrationOn() && !document.hidden);
       }
@@ -46,6 +81,7 @@ export function TurnCountdown({ start, deadline, mine, now }: {
     return () => {
       cancelAnimationFrame(raf);
       document.removeEventListener('visibilitychange', resume);
+      fuse?.remove();
     };
   }, [start, deadline, mine, now]);
 

@@ -245,6 +245,161 @@
 }
 @keyframes animfx-headlights-calm { 0%, 100% { opacity: 0; } 35%, 65% { opacity: 1; } }
 
+/* ================= wave 2 (owner addendum, 2026-10-20) ================= */
+
+/* game-over graphics root: above the victory screen (z 1000) + hype (1100) */
+.animfx-stamps { position: fixed; inset: 0; z-index: 1150; pointer-events: none; overflow: hidden; }
+
+/* ---- board bid: plate slam + gold card edges ---- */
+.plate.animfx-slam { animation: animfx-slam .55s cubic-bezier(.3, 1.3, .4, 1); }
+@keyframes animfx-slam {
+  0% { scale: 1; } 30% { scale: .93; } 55% { scale: 1.045; } 78% { scale: .99; } 100% { scale: 1; }
+}
+.plate.animfx-slam-still { box-shadow: 0 0 0 2.5px rgba(255, 205, 64, .95), 0 0 16px 3px rgba(255, 190, 40, .5); }
+.animfx-boardwrap { position: fixed; inset: 0; pointer-events: none; }
+.animfx-boardedge {
+  position: fixed; border-radius: 9px; pointer-events: none;
+  border: 2px solid rgba(255, 205, 64, .95);
+  box-shadow: 0 0 15px 3px rgba(255, 190, 40, .55), inset 0 0 12px rgba(255, 205, 64, .4);
+  animation: animfx-fadeout .95s ease forwards;
+}
+
+/* ---- the set: contract chip cracks + drops, shooters stomp ---- */
+.animfx-setbrick {
+  position: fixed; width: 74px; height: 38px; margin: -19px 0 0 -37px; border-radius: 8px; pointer-events: none;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(160deg, #4a3b22, #2c2110);
+  box-shadow: inset 0 0 0 2px rgba(255, 205, 64, .8), 0 4px 10px rgba(0, 0, 0, .5);
+  animation: animfx-setbrick 1.45s cubic-bezier(.4, .6, .5, 1) forwards;
+}
+.animfx-setbrick .brick-label { font-family: var(--display, sans-serif); font-weight: 800; font-size: 15px; letter-spacing: .14em; color: #ffd940; }
+.animfx-setbrick .crack-svg { position: absolute; inset: 0; width: 100%; height: 100%; fill: none; stroke: rgba(245, 248, 255, .9); stroke-width: 2; }
+.animfx-setbrick::after {
+  content: ''; position: absolute; left: 50%; bottom: -7px; width: 64px; height: 13px; margin-left: -32px; border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(216, 196, 150, .55), transparent 70%);
+  opacity: 0; animation: animfx-dust 1.45s ease forwards;
+}
+.animfx-setbrick.still { animation: animfx-fadeout 1.25s ease forwards; }
+@keyframes animfx-setbrick {
+  0% { transform: translateY(-14px); opacity: 0; }
+  16% { transform: translateY(-12px); opacity: 1; }
+  46% { transform: translateY(-10px); }
+  62% { transform: translateY(15px); }
+  74% { transform: translateY(10px); }
+  100% { transform: translateY(13px); opacity: 0; }
+}
+@keyframes animfx-dust { 0%, 52% { opacity: 0; transform: scaleX(.5); } 68% { opacity: 1; } 100% { opacity: 0; transform: scaleX(1.5); } }
+.bug-team.animfx-stomp { animation: animfx-stomp .65s ease; }
+@keyframes animfx-stomp {
+  0%, 100% { translate: 0 0; } 26% { translate: 0 5px; } 48% { translate: 0 -1.5px; } 70% { translate: 0 1px; }
+}
+
+/* ---- in sync: light link between partners' plates ---- */
+.animfx-beamsvg { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.animfx-beamline {
+  stroke: rgba(255, 215, 110, .95); stroke-width: 3; stroke-linecap: round;
+  filter: drop-shadow(0 0 7px rgba(255, 195, 60, .9));
+  animation: animfx-beam .95s ease forwards;
+}
+.animfx-beamsvg.still .animfx-beamline { animation: animfx-fadeout .65s ease forwards; }
+@keyframes animfx-beam { 0% { opacity: 0; } 22% { opacity: 1; } 68% { opacity: .9; } 100% { opacity: 0; } }
+
+/* ---- first book lower third ---- */
+.animfx-firstbook {
+  position: fixed; left: 50%; bottom: 17%; translate: -50% 0; pointer-events: none;
+  display: flex; align-items: baseline; gap: 10px; padding: 9px 18px 10px;
+  background: linear-gradient(100deg, rgba(8, 8, 22, .94), rgba(23, 16, 46, .94));
+  border-left: 4px solid #ffd940; border-radius: 4px 12px 12px 4px;
+  box-shadow: 0 8px 26px rgba(0, 0, 0, .55);
+  animation: animfx-firstbook 2.25s cubic-bezier(.2, .8, .3, 1) forwards;
+}
+.animfx-firstbook .fb-kicker { font-size: 10px; font-weight: 700; letter-spacing: .22em; color: rgba(245, 244, 255, .55); }
+.animfx-firstbook .fb-title { font-family: var(--display, sans-serif); font-size: 21px; font-weight: 800; letter-spacing: .1em; color: #ffd940; }
+.animfx-firstbook .fb-sub { font-size: 11px; letter-spacing: .08em; color: rgba(245, 244, 255, .75); }
+.animfx-firstbook.still { animation: animfx-fadeout 1.45s ease forwards; }
+@keyframes animfx-firstbook {
+  0% { transform: translateX(-26px); opacity: 0; }
+  13% { transform: translateX(0); opacity: 1; }
+  84% { opacity: 1; }
+  100% { transform: translateX(10px); opacity: 0; }
+}
+
+/* ---- misdeal scatter-swirl ---- */
+.animfx-misdeal { position: fixed; left: 50%; top: 45%; width: 0; height: 0; pointer-events: none; }
+.animfx-misdeal .md-card {
+  position: absolute; left: -14px; top: -20px; width: 28px; height: 40px; border-radius: 4px;
+  background: repeating-linear-gradient(45deg, #1b1440 0 4px, #241a58 4px 8px);
+  box-shadow: inset 0 0 0 2px rgba(255, 205, 64, .75), 0 3px 8px rgba(0, 0, 0, .5);
+  animation: animfx-misdeal 1s cubic-bezier(.4, .1, .5, 1) forwards;
+}
+@keyframes animfx-misdeal {
+  0% { transform: translate(0, 0) rotate(0deg) scale(.55); opacity: 0; }
+  18% { transform: translate(var(--sx), var(--sy)) rotate(var(--sr)) scale(1); opacity: 1; }
+  62% { transform: translate(calc(var(--sx) * .45), calc(var(--sy) * .45)) rotate(calc(var(--sr) * -0.6 + 130deg)) scale(.85); opacity: 1; }
+  100% { transform: translate(0, 0) rotate(300deg) scale(.3); opacity: 0; }
+}
+
+/* ---- the winning book: ripple + time-stretch beat ---- */
+.animfx-ripple {
+  position: fixed; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%;
+  border: 3px solid rgba(255, 240, 200, .95);
+  box-shadow: 0 0 30px 8px rgba(255, 205, 64, .5), inset 0 0 20px rgba(255, 215, 110, .55);
+  animation: animfx-ripple .95s ease-out forwards;
+}
+.animfx-ripple.still { animation: animfx-fadeout 1.05s ease forwards; }
+@keyframes animfx-ripple { 0% { transform: scale(.5); opacity: 1; } 100% { transform: scale(6); opacity: 0; } }
+.table-screen.animfx-slowmo { animation: animfx-slowmo .95s ease; }
+@keyframes animfx-slowmo { 0% { scale: 1; filter: saturate(1); } 38% { scale: 1.018; filter: saturate(1.14); } 100% { scale: 1; filter: saturate(1); } }
+
+/* ---- game-over stamps ---- */
+.animfx-stamp {
+  position: fixed; left: 50%; top: 29%; translate: -50% -50%; rotate: -8deg; pointer-events: none;
+  font-family: var(--display, sans-serif); font-weight: 800; font-size: clamp(30px, 8vw, 54px); letter-spacing: .14em;
+  padding: 6px 22px 9px; border: 4px solid currentColor; border-radius: 12px;
+  background: rgba(10, 5, 16, .55);
+  animation: animfx-stamp 3s cubic-bezier(.2, 1.3, .35, 1) forwards;
+}
+.animfx-stamp.payback { color: #ff7a5c; }
+.animfx-stamp.upset { color: #ffd940; }
+@keyframes animfx-stamp {
+  0% { scale: 2.3; opacity: 0; }
+  13% { scale: 1; opacity: 1; }
+  20% { scale: 1.06; }
+  26% { scale: 1; }
+  84% { opacity: 1; }
+  100% { scale: 1; opacity: 0; }
+}
+
+/* ---- trash-talk pop + plate bounce ---- */
+.trash-callout.animfx-pop { animation: animfx-pop .45s cubic-bezier(.2, 1.5, .4, 1); }
+@keyframes animfx-pop {
+  0% { scale: .55; rotate: -2.5deg; } 55% { scale: 1.13; rotate: 1.2deg; } 100% { scale: 1; rotate: 0deg; }
+}
+.plate.animfx-bounce { animation: animfx-bounce .55s ease; }
+@keyframes animfx-bounce {
+  0%, 100% { translate: 0 0; } 30% { translate: 0 -7px; } 55% { translate: 0 0; } 75% { translate: 0 -3px; }
+}
+
+/* ---- fuse clock (driven by TurnCountdown's own rAF sampler) ---- */
+.animfx-fuse {
+  position: absolute; top: -4px; left: 8px; right: 8px; height: 5px; border-radius: 3px;
+  background: rgba(18, 11, 5, .7); opacity: 0; transition: opacity .25s ease; pointer-events: none; z-index: 6;
+}
+.animfx-fuse-bar {
+  position: relative; height: 100%; border-radius: 3px;
+  background: linear-gradient(90deg, #3a2a18, #b35c1e 55%, #ff9a3c);
+  box-shadow: 0 0 6px rgba(255, 140, 50, .55);
+}
+.animfx-fuse-spark {
+  position: absolute; right: -4px; top: 50%; width: 9px; height: 9px; margin-top: -4.5px; border-radius: 50%;
+  background: radial-gradient(circle, #fff6d8 0 22%, #ffb347 45%, rgba(255, 120, 30, 0) 72%);
+  animation: animfx-flicker .16s ease-in-out infinite alternate;
+}
+.animfx-fuse.calm .animfx-fuse-spark { animation: none; opacity: .5; }
+@keyframes animfx-flicker { from { transform: scale(.8); opacity: .8; } to { transform: scale(1.25); opacity: 1; } }
+
 @media (prefers-reduced-motion: reduce) {
-  .animfx-layer *, .plate.animfx-dead, .bug-team.animfx-mp { animation: none !important; transition: none !important; }
+  .animfx-layer *, .animfx-stamps *, .animfx-fuse *, .trash-callout.animfx-pop,
+  .plate.animfx-dead, .plate.animfx-slam, .plate.animfx-bounce, .bug-team.animfx-mp,
+  .bug-team.animfx-stomp, .table-screen.animfx-slowmo { animation: none !important; transition: none !important; }
 }

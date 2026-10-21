@@ -8,7 +8,7 @@
  */
 import {
   type GameState, type HandRecord, type TableRules, type Trick,
-  isNilBid, isTrump, sideSeats,
+  isNilBid, isTrump, sideOf, sideSeats,
 } from '@spades/rules';
 import { wheelsMade } from '../landCue';
 
@@ -144,6 +144,48 @@ export function newlyEliminated(prev: readonly boolean[] | undefined, next: read
 /** The seats belonging to a side (re-exported for the layer's convenience). */
 export function seatsOfSide(rules: TableRules, side: number): number[] {
   return sideSeats(side, rules);
+}
+
+/** The side index a seat plays for. */
+export function sideIndexOf(rules: TableRules, seat: number): number {
+  return sideOf(seat, rules);
+}
+
+/* --------------------------------------------------------- wave 2 (owner addendum) */
+
+/**
+ * THE SET: sides whose real contract (contract > 0 — a nil-only side has no
+ * contract to lose) was set (shot) this hand: contractMade === false in the
+ * scored record. The shooting sides are simply the sides NOT in this list.
+ */
+export function setSides(rec: HandRecord): number[] {
+  return rec.sides.filter((s) => s.contractMade === false && s.contract > 0).map((s) => s.side);
+}
+
+/**
+ * IN SYNC: partnership sides that made their contract with BOTH partners
+ * bidding real (numeric) bids — nobody rode a nil or a board to the number.
+ */
+export function syncSides(rec: HandRecord, rules: TableRules): number[] {
+  if (!rules.partnerships) return [];
+  return rec.sides
+    .filter((s) => s.contractMade === true && s.seats.length === 2 && s.seats.every((seat) => typeof rec.bids[seat] === 'number'))
+    .map((s) => s.side);
+}
+
+/** An underdog gap (points of average rating) that earns the UPSET stamp. */
+export const UPSET_GAP = 150;
+
+/**
+ * UPSET math (pure): how far the winners' average rating sits BELOW the
+ * losers' average. Positive = the winners were the underdogs. The layer only
+ * calls this when every seat at the table resolved to a real (presence)
+ * rating — a missing rating means no stamp, never an invented one.
+ */
+export function ratingGap(winnerRatings: number[], loserRatings: number[]): number {
+  if (!winnerRatings.length || !loserRatings.length) return 0;
+  const avg = (a: number[]) => a.reduce((x, y) => x + y, 0) / a.length;
+  return avg(loserRatings) - avg(winnerRatings);
 }
 
 /**
