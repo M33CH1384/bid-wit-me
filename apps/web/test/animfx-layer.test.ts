@@ -13,7 +13,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { makeRules, type HandRecord, type PlayerView } from '@spades/rules';
-import AnimFxLayer from '../src/animfx/AnimFxLayer';
+import AnimFxLayer, { buildSpotlightShade, SPOT_PEAK, SPOT_PEAK_MINE } from '../src/animfx/AnimFxLayer';
 import { fx } from '../src/fx';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -148,5 +148,111 @@ describe('animfx layer', () => {
     expect(document.querySelector('[data-testid="animfx-broom"]')).toBeNull();
     expect(document.querySelector('[data-testid="seat-1"]')!.classList.contains('animfx-dead')).toBe(true);
     expect(document.querySelectorAll('.bug-team')[0]!.classList.contains('animfx-mp-still')).toBe(true);
+  });
+});
+
+/**
+ * Nil spotlight rebalance (owner, 2026-10-21: the wave-1 cut "makes it hard
+ * to see anything"). The readability contract, pinned as numbers: the shade
+ * peak is capped (never the old 0.55 blackout), the essential zones are
+ * punched fully clear, and the viewer-bidder case is the lightest of all.
+ */
+describe('nil spotlight shade — composition', () => {
+  const zone = { x: 100, y: 100, w: 120, h: 60 };
+
+  it('caps the vignette peak: gentle for others, lightest for the viewer-bidder, halved under reduce', () => {
+    const base = { seats: [{ plate: zone, slot: null }], trick: null, hand: null, scorebug: null };
+    expect(buildSpotlightShade({ ...base, mine: false, reduced: false }).peak).toBe(SPOT_PEAK);
+    expect(SPOT_PEAK).toBe(0.3);
+    expect(SPOT_PEAK).toBeLessThanOrEqual(0.35);
+    expect(buildSpotlightShade({ ...base, mine: true, reduced: false }).peak).toBe(SPOT_PEAK_MINE);
+    expect(SPOT_PEAK_MINE).toBeLessThan(SPOT_PEAK);
+    expect(buildSpotlightShade({ ...base, mine: false, reduced: true }).peak).toBeCloseTo(SPOT_PEAK / 2);
+  });
+
+  it('punches a clear hole for every guaranteed zone: plate, slot, trick, hand, scorebug', () => {
+    const spec = buildSpotlightShade({
+      seats: [{ plate: { x: 100, y: 100, w: 120, h: 60 }, slot: { x: 150, y: 300, w: 62, h: 88 } }],
+      trick: { x: 80, y: 260, w: 240, h: 160 }, hand: { x: 30, y: 620, w: 240, h: 150 }, scorebug: { x: 8, y: 44, w: 374, h: 64 },
+      mine: false, reduced: false,
+    });
+    const centers = spec.holes.map((h) => [h.cx, h.cy]);
+    expect(centers).toContainEqual([160, 130]); // bidder plate
+    expect(centers).toContainEqual([181, 344]); // bidder slot
+    expect(centers).toContainEqual([200, 340]); // whole trick area
+    expect(centers).toContainEqual([150, 695]); // viewer's hand
+    expect(centers).toContainEqual([195, 76]); // scorebug
+    expect(spec.holes).toHaveLength(5);
+  });
+
+  it('omits zones that were never measured — no invented clearance', () => {
+    const spec = buildSpotlightShade({ seats: [{ plate: zone, slot: null }], trick: null, hand: null, scorebug: null, mine: false, reduced: false });
+    expect(spec.holes).toHaveLength(1);
+  });
+
+  it('the light pool sits between the bidder plate and their slot', () => {
+    const spec = buildSpotlightShade({
+      seats: [{ plate: { x: 100, y: 100, w: 120, h: 60 }, slot: { x: 150, y: 300, w: 62, h: 88 } }],
+      trick: null, hand: null, scorebug: null, mine: false, reduced: false,
+    });
+    expect(spec.pools).toEqual([{ cx: 170.5, cy: 237, r: 195 }]);
+  });
+});
+
+describe('nil spotlight shade — mounted geometry', () => {
+  const rect = (x: number, y: number, w: number, h: number) => ({
+    left: x, top: y, width: w, height: h, right: x + w, bottom: y + h, x, y, toJSON: () => ({}),
+  }) as DOMRect;
+
+  function mountGeo(v: PlayerView) {
+    document.body.innerHTML = `
+      <header class="scorebug"></header>
+      <div class="badge-layer">${[0, 1, 2, 3].map((s) => `<div class="plate" data-testid="seat-${s}"></div>`).join('')}</div>
+      <div class="bug-teams"><div class="bug-team"></div><div class="bug-team"></div></div>`;
+    document.querySelectorAll('.plate').forEach((el, i) => { (el as HTMLElement).getBoundingClientRect = () => rect(40 + i * 90, 130, 80, 50); });
+    (document.querySelector('.scorebug') as HTMLElement).getBoundingClientRect = () => rect(8, 44, 374, 64);
+    (window as unknown as { __bwmLayout: unknown }).__bwmLayout = {
+      slots: [0, 1, 2, 3].map((i) => ({ x: 60 + i * 80, y: 300, w: 62, h: 88 })),
+      trick: [{ x: 100, y: 280, w: 200, h: 140 }],
+      hand: [{ x: 40, y: 640, w: 90, h: 130 }, { x: 180, y: 640, w: 90, h: 130 }],
+    };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    root = createRoot(host);
+    act(() => root!.render(createElement(AnimFxLayer, { st: v })));
+    return host;
+  }
+
+  const vigPeak = () => {
+    const svg = document.querySelector('[data-testid="animfx-spotlight"]')!;
+    const vig = Array.from(svg.querySelectorAll('radialGradient')).find((g) => (g.getAttribute('id') ?? '').endsWith('-vig'))!;
+    return Math.max(...Array.from(vig.querySelectorAll('stop')).map((s) => Number(s.getAttribute('stop-opacity'))));
+  };
+
+  afterEach(() => { delete (window as unknown as { __bwmLayout?: unknown }).__bwmLayout; });
+
+  it('renders the capped vignette with clear holes over the hand, trick and scorebug — never the old 0.55 blackout', () => {
+    mountGeo(view({ bids: [4, 'nil', 4, 4] }));
+    const svg = document.querySelector('[data-testid="animfx-spotlight"]')!;
+    expect(svg).not.toBeNull();
+    expect(vigPeak()).toBe(SPOT_PEAK);
+    expect(document.body.innerHTML).not.toContain('0.55');
+    const circles = Array.from(svg.querySelectorAll('mask circle')).map((c) => [Number(c.getAttribute('cx')), Number(c.getAttribute('cy'))]);
+    expect(circles).toContainEqual([155, 705]); // viewer's hand bbox centre
+    expect(circles).toContainEqual([200, 350]); // whole trick area centre
+    expect(circles).toContainEqual([195, 76]); // scorebug centre
+    expect(document.querySelector('[data-testid="animfx-spotpool"]')).not.toBeNull();
+  });
+
+  it('the viewer’s own nil gets the lightest shade', () => {
+    mountGeo(view({ bids: ['nil', 4, 4, 4] }));
+    expect(vigPeak()).toBe(SPOT_PEAK_MINE);
+  });
+
+  it('reduce effects: the shade halves and the light pool holds still', () => {
+    fx.setReduce(true);
+    mountGeo(view({ bids: [4, 'nil', 4, 4] }));
+    expect(vigPeak()).toBeCloseTo(SPOT_PEAK / 2);
+    expect(document.querySelector('[data-testid="animfx-spotpool"]')!.classList.contains('calm')).toBe(true);
   });
 });

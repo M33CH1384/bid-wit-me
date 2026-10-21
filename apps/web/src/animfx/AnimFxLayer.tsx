@@ -20,7 +20,7 @@
  *    cut cues, bag toast cue, collection sweeps, tornado) — this layer is
  *    silent except the ambience scheduler's own headlight pass (audio.ts).
  */
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { type Bid, type GameResult, type HandRecord, type Phase, type TableRules, type Trick } from '@spades/rules';
 import { useSocial } from '../social/store';
 
@@ -34,6 +34,8 @@ export interface AnimFxView {
   tricksWon: number[]; scores: number[]; bags: number[];
   history: HandRecord[]; result: GameResult | null; eliminated?: boolean[];
   misdealReveal?: { seat: number } | null;
+  /** the viewing seat (online seat views carry it; the offline human is 0) */
+  seat?: number;
 }
 import { fx, useReduceEffects } from '../fx';
 import { CoinIcon } from '../RepBlock';
@@ -57,7 +59,7 @@ const plateRectOf = (seat: number): Rect | null => { const el = plateEl(seat); i
 const bugTeamEl = (side: number): Element | null => document.querySelectorAll('.bug-teams .bug-team')[side] ?? null;
 const bugTeamPt = (side: number): Pt | null => { const el = bugTeamEl(side); return el ? centerOf(el.getBoundingClientRect()) : null; };
 
-interface BwmLayout { trick?: Rect[]; slots?: Rect[]; trickCards?: (Rect & { card: string })[] }
+interface BwmLayout { trick?: Rect[]; hand?: Rect[]; slots?: Rect[]; trickCards?: (Rect & { card: string })[] }
 const layoutWin = (): BwmLayout | null => (window as unknown as { __bwmLayout?: BwmLayout }).__bwmLayout ?? null;
 
 function trickCenterPt(): Pt {
@@ -77,7 +79,65 @@ type ShotKind = 'bjring' | 'glint' | 'coinflip' | 'shock' | 'broom' | 'wheel' | 
 interface CoinFlight { x: number; y: number; tx: number; ty: number; d: number }
 interface Shot { id: number; kind: ShotKind; x: number; y: number; w?: number; h?: number; still?: boolean; label?: string; coins?: CoinFlight[]; rects?: Rect[]; x2?: number; y2?: number }
 
-interface SeatSpot { seat: number; x: number; y: number; w: number; h: number; sx: number | null; sy: number | null }
+interface SeatSpot { seat: number; x: number; y: number; w: number; h: number; sx: number | null; sy: number | null; sw: number; sh: number }
+
+/* ------------------------------------------------------- nil spotlight ----
+ * Rebalanced 2026-10-21 (owner: the first cut "makes it hard to see
+ * anything"). The emphasis moved from darkness to light:
+ *  - the shade is ONE vignette whose peak alpha is a hard cap (SPOT_PEAK),
+ *    reached only at the far corners — the felt, plates and trick stay
+ *    readable everywhere, always;
+ *  - guaranteed-clear zones are punched out of it as feathered mask holes:
+ *    the bidder's plate + trick slot, the WHOLE trick area, the viewer's
+ *    own hand, and the scorebug — those pixels get zero shade, ever;
+ *  - a warm pool of light around the bidder's plate + slot does the
+ *    pointing, on top of the gold ring;
+ *  - when the viewer IS the nil bidder the treatment is the lightest of
+ *    all (SPOT_PEAK_MINE); under Reduce effects the shade halves again and
+ *    the pool holds still.
+ */
+export const SPOT_PEAK = 0.3;
+export const SPOT_PEAK_MINE = 0.18;
+export const SPOT_REDUCED_SCALE = 0.5;
+
+export interface ShadeZone { x: number; y: number; w: number; h: number }
+export interface ShadeHole { cx: number; cy: number; r: number; feather: number }
+export interface ShadePool { cx: number; cy: number; r: number }
+export interface ShadeSpec { peak: number; holes: ShadeHole[]; pools: ShadePool[] }
+
+const circleHole = (z: ShadeZone, inflate: number, feather = 46): ShadeHole => ({
+  cx: z.x + z.w / 2, cy: z.y + z.h / 2, r: Math.max(z.w, z.h) / 2 + inflate, feather,
+});
+
+/** Compose the spotlight shade from measured geometry. Pure: the numbers ARE the readability contract. */
+export function buildSpotlightShade(input: {
+  seats: { plate: ShadeZone; slot: ShadeZone | null }[];
+  trick: ShadeZone | null; hand: ShadeZone | null; scorebug: ShadeZone | null;
+  mine: boolean; reduced: boolean;
+}): ShadeSpec {
+  const holes: ShadeHole[] = [];
+  for (const s of input.seats) {
+    holes.push(circleHole(s.plate, 24));
+    if (s.slot) holes.push(circleHole(s.slot, 18));
+  }
+  if (input.trick) holes.push(circleHole(input.trick, 20));
+  if (input.hand) holes.push(circleHole(input.hand, 16));
+  if (input.scorebug) holes.push(circleHole(input.scorebug, 14));
+  const pools: ShadePool[] = input.seats.map((s) => {
+    const pc = { x: s.plate.x + s.plate.w / 2, y: s.plate.y + s.plate.h / 2 };
+    const sc = s.slot ? { x: s.slot.x + s.slot.w / 2, y: s.slot.y + s.slot.h / 2 } : pc;
+    return { cx: (pc.x + sc.x) / 2, cy: (pc.y + sc.y) / 2, r: 195 };
+  });
+  const peak = Number(((input.mine ? SPOT_PEAK_MINE : SPOT_PEAK) * (input.reduced ? SPOT_REDUCED_SCALE : 1)).toFixed(3));
+  return { peak, holes, pools };
+}
+
+const bboxOf = (rs: Rect[]): ShadeZone | null => {
+  if (!rs.length) return null;
+  const x0 = Math.min(...rs.map((r) => r.x)), y0 = Math.min(...rs.map((r) => r.y));
+  const x1 = Math.max(...rs.map((r) => r.x + r.w)), y1 = Math.max(...rs.map((r) => r.y + r.h));
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+};
 
 /* ------------------------------------------------------------------- svgs */
 
@@ -127,7 +187,9 @@ export default function AnimFxLayer({ st, online = false, names }: { st: AnimFxV
 
   const [shots, setShots] = useState<Shot[]>([]);
   const [spots, setSpots] = useState<SeatSpot[]>([]);
+  const [shade, setShade] = useState<ShadeSpec | null>(null);
   const [moons, setMoons] = useState<SeatSpot[]>([]);
+  const uid = useId().replace(/[^a-zA-Z0-9]/g, '');
   const [, setTick] = useState(0);
 
   const timers = useRef(new Set<number>());
@@ -477,20 +539,32 @@ export default function AnimFxLayer({ st, online = false, names }: { st: AnimFxV
       if (!el) return [];
       const r = el.getBoundingClientRect();
       const slot = layoutWin()?.slots?.[seat];
-      return [{ seat, x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height, sx: slot ? slot.x + slot.w / 2 : null, sy: slot ? slot.y + slot.h / 2 : null }];
+      return [{ seat, x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height, sx: slot ? slot.x + slot.w / 2 : null, sy: slot ? slot.y + slot.h / 2 : null, sw: slot?.w ?? 0, sh: slot?.h ?? 0 }];
     });
     const ns = st.phase === 'playing' ? measure(nilLiveSeats(st)) : [];
     const nm = st.phase === 'playing' ? measure(blindNilSeats(st)) : [];
     setSpots((prev) => (JSON.stringify(prev) === JSON.stringify(ns) ? prev : ns));
     setMoons((prev) => (JSON.stringify(prev) === JSON.stringify(nm) ? prev : nm));
+    // the spotlight shade: composed from the same measurements, plus the
+    // clear zones the readability contract guarantees (trick, hand, scorebug)
+    let shadeNext: ShadeSpec | null = null;
+    if (ns.length) {
+      const L = layoutWin();
+      const bug = document.querySelector('.scorebug')?.getBoundingClientRect();
+      shadeNext = buildSpotlightShade({
+        seats: ns.map((s) => ({
+          plate: { x: s.x - s.w / 2, y: s.y - s.h / 2, w: s.w, h: s.h },
+          slot: s.sx !== null ? { x: s.sx - s.sw / 2, y: (s.sy ?? 0) - s.sh / 2, w: s.sw, h: s.sh } : null,
+        })),
+        trick: bboxOf([...(L?.trick ?? []), ...(L?.trickCards ?? []).map((t) => ({ x: t.x, y: t.y, w: t.w, h: t.h }))]),
+        hand: bboxOf(L?.hand ?? []),
+        scorebug: bug && bug.height > 0 ? { x: bug.left, y: bug.top, w: bug.width, h: bug.height } : null,
+        mine: ns.some((s) => s.seat === (st.seat ?? 0)),
+        reduced,
+      });
+    }
+    setShade((prev) => (JSON.stringify(prev) === JSON.stringify(shadeNext) ? prev : shadeNext));
   });
-
-  const dimBg = spots.length
-    ? spots.flatMap((s) => [
-      `radial-gradient(circle 205px at ${s.x}px ${s.y}px, rgba(2,4,12,0) 32%, rgba(2,4,12,0.55) 80%)`,
-      `radial-gradient(circle 135px at ${s.sx ?? s.x}px ${s.sy ?? s.y}px, rgba(2,4,12,0) 32%, rgba(2,4,12,0.55) 80%)`,
-    ]).join(', ')
-    : null;
   const deadCount = (st.eliminated ?? []).filter(Boolean).length;
   const narrow = deadCount > 0 && st.phase !== 'gameOver'
     ? `radial-gradient(ellipse at center, rgba(0,0,0,0) 50%, rgba(0,0,0,${Math.min(0.32, 0.1 + deadCount * 0.09).toFixed(2)}) 100%)`
@@ -582,7 +656,34 @@ export default function AnimFxLayer({ st, online = false, names }: { st: AnimFxV
     <>
       <div className="animfx-layer" aria-hidden="true" data-testid="animfx">
         {narrow && <div className="animfx-narrow" style={{ background: narrow }} />}
-        {dimBg && <div className="animfx-dim" data-testid="animfx-spotlight" style={{ background: dimBg }} />}
+        {shade && (
+          <svg className="animfx-dim" data-testid="animfx-spotlight" width={window.innerWidth} height={window.innerHeight} aria-hidden="true">
+            <defs>
+              <radialGradient id={`${uid}-vig`} cx="50%" cy="42%" r="78%">
+                <stop offset="0%" stopColor="#03050e" stopOpacity={0} />
+                <stop offset="55%" stopColor="#03050e" stopOpacity={0} />
+                <stop offset="80%" stopColor="#03050e" stopOpacity={Number((shade.peak * 0.4).toFixed(3))} />
+                <stop offset="100%" stopColor="#03050e" stopOpacity={shade.peak} />
+              </radialGradient>
+              <mask id={`${uid}-holes`} maskUnits="userSpaceOnUse" x={0} y={0} width={window.innerWidth} height={window.innerHeight}>
+                <rect x={0} y={0} width={window.innerWidth} height={window.innerHeight} fill="#fff" />
+                {shade.holes.map((h, i) => (
+                  <Fragment key={i}>
+                    <radialGradient id={`${uid}-h${i}`} gradientUnits="userSpaceOnUse" cx={h.cx} cy={h.cy} r={h.r + h.feather}>
+                      <stop offset={`${Math.round((h.r / (h.r + h.feather)) * 100)}%`} stopColor="#000" />
+                      <stop offset="100%" stopColor="#fff" />
+                    </radialGradient>
+                    <circle cx={h.cx} cy={h.cy} r={h.r + h.feather} fill={`url(#${uid}-h${i})`} />
+                  </Fragment>
+                ))}
+              </mask>
+            </defs>
+            <rect x={0} y={0} width={window.innerWidth} height={window.innerHeight} fill={`url(#${uid}-vig)`} mask={`url(#${uid}-holes)`} />
+          </svg>
+        )}
+        {shade?.pools.map((p, i) => (
+          <div key={`pool${i}`} data-testid="animfx-spotpool" className={`animfx-spotpool${reduced ? ' calm' : ''}`} style={{ left: p.cx - p.r, top: p.cy - p.r, width: p.r * 2, height: p.r * 2 }} />
+        ))}
         {spots.map((s) => (
           <div key={`sp${s.seat}`} className={`animfx-spotring${reduced ? ' calm' : ''}`} style={{ left: s.x - s.w / 2 - 6, top: s.y - s.h / 2 - 6, width: s.w + 12, height: s.h + 12 }} />
         ))}

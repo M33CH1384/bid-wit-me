@@ -10,8 +10,19 @@
 /* ---- cutthroat: the light narrows to the survivors ---- */
 .animfx-narrow { position: absolute; inset: 0; }
 
-/* ---- 1. nil spotlight ---- */
-.animfx-dim { position: absolute; inset: 0; transition: opacity .5s ease; }
+/* ---- 1. nil spotlight ----
+ * Rebalanced 2026-10-21: the shade is a single masked SVG vignette (peak
+ * alpha capped in AnimFxLayer's SPOT_PEAK) with feathered clear holes over
+ * the bidder, the trick, the viewer's hand and the scorebug — and the warm
+ * pool below is what actually points at the bidder. */
+.animfx-dim { position: absolute; inset: 0; display: block; transition: opacity .5s ease; }
+.animfx-spotpool {
+  position: fixed; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, rgba(255, 216, 130, .30) 0%, rgba(255, 196, 90, .12) 52%, rgba(255, 196, 90, 0) 72%);
+  animation: animfx-pool-pulse 3.4s ease-in-out infinite;
+}
+.animfx-spotpool.calm { animation: none; }
+@keyframes animfx-pool-pulse { 0%, 100% { opacity: .82; } 50% { opacity: 1; } }
 .animfx-spotring {
   position: fixed; border-radius: 16px; pointer-events: none;
   border: 2px solid rgba(255, 240, 196, .85);
