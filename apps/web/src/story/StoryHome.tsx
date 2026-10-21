@@ -27,7 +27,7 @@ import { storyBackdropUrl } from './storyBackdrop';
 import { STORY_OWNER_ONLY, fetchStoryDev, fetchStoryProgress, postStoryFound, postStoryResetStop, postStoryResult, storyLockedFor, type StoryProgress, type StoryResult } from './storyApi';
 import { deckUnlockNotice, invalidateStoryProgress } from '../storyDecks';
 import { setAnimUnlockNotice } from '../setAnims';
-import { clearStoryGame, loadStoryGame, storySaveValidFor, type StorySavedGame } from './storySave';
+import { clearStoryGame, loadStoryGame, storySaveSummary, storySaveValidFor, type StorySavedGame } from './storySave';
 import { railFor, storyBadgesFor } from '@spades/bots';
 import ScriptPlayer, { type SceneEgg } from './ScriptPlayer';
 import StoryTape from './StoryTape';
@@ -51,6 +51,21 @@ type Screen =
 export function storyRematchStopId(search: string): string | null {
   try {
     const id = new URLSearchParams(search).get('rematch');
+    return id && STORY_STOPS.some((s) => s.id === id) ? id : null;
+  } catch { return null; }
+}
+
+/**
+ * The Home screen's story row deep-links a player with a match in progress
+ * here with ?resume=<stopId> (the save's own stop — see Setup). Same
+ * discipline as the rematch directive: an id that names no stop is not a
+ * directive, just the map. Consuming it never trusts the param alone —
+ * the local save must exist, name the same stop, and still validate
+ * against server progress (storySaveValidFor) before anything resumes.
+ */
+export function storyResumeStopId(search: string): string | null {
+  try {
+    const id = new URLSearchParams(search).get('resume');
     return id && STORY_STOPS.some((s) => s.id === id) ? id : null;
   } catch { return null; }
 }
@@ -235,6 +250,32 @@ export default function StoryHome() {
     startGame(stop);
   }, [rematchStopId, progress, dev, lockedByServer]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Resume directive (?resume=<stopId>, from the Home screen's story row):
+  // the player tapped Resume on Home because a story save exists on this
+  // device. Home is only the signpost — the resume itself is THIS screen's
+  // own machinery (resumeStop, the same one the map card's Resume button
+  // calls), fired once the progress this mount fetched proves the save is
+  // still live: the save must exist, name the directive's stop, and pass
+  // storySaveValidFor. Anything else — no save, a different stop's save, a
+  // stale save refresh() is dropping — is not an error and not a dead end:
+  // the directive is simply spent and the map renders as usual.
+  const [resumeStopId] = useState<string | null>(() => storyResumeStopId(typeof location !== 'undefined' ? location.search : ''));
+  const resumeFired = useRef(false);
+  useEffect(() => {
+    if (resumeStopId) history.replaceState(null, '', location.pathname);
+  }, [resumeStopId]);
+  useEffect(() => {
+    if (!resumeStopId || resumeFired.current || !progress) return;
+    if (STORY_OWNER_ONLY && (lockedByServer || dev === undefined || storyLockedFor(dev))) return;
+    resumeFired.current = true;
+    const s = loadStoryGame();
+    if (!s || s.story.stopId !== resumeStopId) return;
+    if (!storySaveValidFor(s, progress)) return;
+    const stop = STORY_STOPS.find((x) => x.id === resumeStopId);
+    if (!stop) return;
+    resumeStop(stop, s);
+  }, [resumeStopId, progress, dev, lockedByServer]); // eslint-disable-line react-hooks/exhaustive-deps
+
   let body: React.ReactNode;
   if (STORY_OWNER_ONLY && (lockedByServer || (dev !== undefined && storyLockedFor(dev)))) {
     // Locked for everyone but the owner while story mode is being finished.
@@ -400,6 +441,9 @@ export default function StoryHome() {
   } else {
     const currentStop = STORY_STOPS.find((s) => s.n === (progress?.currentStop ?? 1)) ?? STORY_STOPS[0]!;
     const clearedCount = progress?.stops.filter((s) => s.clears > 0).length ?? 0;
+    // The in-progress facts come from the ONE shared derivation (the Home
+    // screen's resume row renders the same summary from the same save).
+    const savedSummary = storySaveSummary(saved);
     body = (
       <div className="story-shell" data-testid="story-map">
         <div className="story-hero">
@@ -431,7 +475,7 @@ export default function StoryHome() {
             const pair = stop.pair.map((id) => STORY_CHARACTERS[id]!);
             const reward = storyClearReward(stop);
             const facts = factsFor(stop);
-            const stopSave = saved && saved.story.stopId === stop.id ? saved : null;
+            const stopSave = savedSummary && savedSummary.stop.id === stop.id ? savedSummary : null;
             return (
               <li key={stop.id} className={`story-stop state-${state}${stop.id === 'king' ? ' is-king' : ''}`} data-testid={`story-stop-${stop.id}`}>
                 <span className="story-node" aria-hidden>{state === 'cleared' ? '✓' : state === 'locked' ? '🔒' : stop.n}</span>
@@ -452,7 +496,7 @@ export default function StoryHome() {
                     <p className="story-stop-twist">{stop.twist.label} · First clear: +{reward.xp} XP · +{reward.coins} coins</p>
                     {facts.attempts > 0 && <p className="story-stop-facts">{facts.clears > 0 ? `Cleared ${facts.clears}×` : `${facts.attempts} attempt${facts.attempts === 1 ? '' : 's'} — not cleared yet`}</p>}
                     {facts.doublePending && <p className="story-stop-facts" data-testid="story-double-pending">You beat him once — double or nothing: one more win takes the crown.</p>}
-                    {stopSave && <p className="story-stop-facts" data-testid={`story-inprogress-${stop.id}`}>Match in progress — hand {stopSave.state.handNo}. Pick it up right where you left it.</p>}
+                    {stopSave && <p className="story-stop-facts" data-testid={`story-inprogress-${stop.id}`}>Match in progress — hand {stopSave.handNo}. Pick it up right where you left it.</p>}
                     <StopSecrets stop={stop} cleared={facts.clears > 0} finds={progress?.finds} />
                   </div>
                   {state !== 'locked' && (
@@ -471,7 +515,7 @@ export default function StoryHome() {
                             className="btn primary story-play"
                             data-testid={`story-resume-${stop.id}`}
                             disabled={signedOut}
-                            onClick={() => resumeStop(stop, stopSave)}
+                            onClick={() => resumeStop(stop, stopSave.save)}
                           >Resume</button>
                           <button
                             type="button"

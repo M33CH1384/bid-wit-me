@@ -12,6 +12,7 @@
  * continuous conversation resumes its thread instead of replaying beats
  * or forgetting the events its callbacks reference.
  */
+import { STORY_CHARACTERS, storyStopById, type StoryStop } from '@spades/bots';
 import { parseSave, type SavedGame } from '../save';
 import { reportStorySession, type StoryProgress } from './storyApi';
 
@@ -111,4 +112,33 @@ export function storySaveValidFor(save: StorySavedGame, progress: StoryProgress)
   const row = progress.stops.find((s) => s.stopId === save.story.stopId);
   if (!row || row.state === 'locked') return false;
   return row.attempts === save.story.attemptsAtStart && row.clears === save.story.clearsAtStart;
+}
+
+/**
+ * The display facts of an in-progress story match, derived from the save
+ * alone: which stop, the pair seated there, and the hand the match is on.
+ * THE one derivation — the /story map card and the Home screen's resume
+ * row both render from this, so the two surfaces can never disagree about
+ * what game is waiting. Null when there is no save or the save names a
+ * stop/character the story data no longer knows (a corrupt or future save
+ * is simply not resumable display copy — validation against server
+ * progress stays storySaveValidFor's job, at resume time).
+ */
+export interface StorySaveSummary {
+  save: StorySavedGame;
+  stop: StoryStop;
+  /** the seated pair's names, full form — exactly as the map card shows them */
+  pairNames: [string, string];
+  /** the hand the saved match is on (from the saved game state) */
+  handNo: number;
+}
+
+export function storySaveSummary(save: StorySavedGame | null): StorySaveSummary | null {
+  if (!save) return null;
+  const stop = storyStopById(save.story.stopId);
+  if (!stop) return null;
+  const a = STORY_CHARACTERS[stop.pair[0]];
+  const b = STORY_CHARACTERS[stop.pair[1]];
+  if (!a || !b) return null;
+  return { save, stop, pairNames: [a.name, b.name], handNo: save.state.handNo };
 }

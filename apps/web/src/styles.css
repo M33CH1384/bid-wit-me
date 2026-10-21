@@ -3230,3 +3230,10 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
   .tt-run { grid-area: run; width: 100%; }
   .tt-run-show { grid-area: run; justify-self: center; }
 }
+
+/* Home story-resume row (2026-10-21): the row swaps its content, never its
+   footprint — the facts chip holds one line at the right edge and the stop
+   name shrinks inside its own space instead of pushing the chip off the
+   row on narrow phones. */
+.quiet-row.story-resume-row > span:first-child { min-width: 0; }
+.quiet-row.story-resume-row .value-chip { flex: none; white-space: nowrap; }

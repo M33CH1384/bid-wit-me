@@ -21,6 +21,8 @@ import { SocialButton } from './social/Social';
 import { OpenTables } from './social/OpenTables';
 import { OFFLINE_PAIR_KEY, TeamNameField, pairTeamNames, useTeamNameFor } from './TeamName';
 import { STORY_OWNER_ONLY, fetchStoryDev, storyLockedFor } from './story/storyApi';
+import { loadStoryGame, storySaveSummary, type StorySaveSummary } from './story/storySave';
+import { storyPairLabel } from './story/storySettings';
 
 /**
  * Start flow as a wizard: splash (logo + Play Online / Play vs Bots + Resume) → mode → essentials → go.
@@ -149,6 +151,24 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
     void fetchStoryDev().then((d) => { if (live) setStoryDev(d); });
     return () => { live = false; };
   }, []);
+  // A story match in progress on this device (owner, 2026-10-21): the home
+  // story row becomes its resume signpost. The facts come from the SAME
+  // summary derivation the /story map card renders (storySaveSummary over
+  // the story save slot) so Home and the map can never disagree about the
+  // game that's waiting. Re-read on mount and whenever the app returns to
+  // the front — finishing, discarding, or resetting the match (the reset
+  // tool clears this same slot) must never leave a ghost resume behind.
+  const [storySave, setStorySave] = useState<StorySaveSummary | null>(() => storySaveSummary(loadStoryGame()));
+  useEffect(() => {
+    const reread = () => setStorySave(storySaveSummary(loadStoryGame()));
+    const onVisibility = () => { if (document.visibilityState === 'visible') reread(); };
+    window.addEventListener('focus', reread);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('focus', reread);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
   const offlineTeamName = useTeamNameFor(OFFLINE_PAIR_KEY);
   const [dir, setDir] = useState<'fwd' | 'back'>('fwd');
   const [ask, setAsk] = useState(isFirstVisit);
@@ -233,6 +253,8 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
         {onlineSeat && <button type="button" className="quiet-row" data-testid="resume-online" onClick={() => navigate(`/t/${onlineSeat}`)}><span>Rejoin your online table</span><span className="value-chip">{onlineSeat}</span></button>}
         {STORY_OWNER_ONLY && storyLockedFor(storyDev === undefined ? null : storyDev) ? (
           <button type="button" className="quiet-row" data-testid="story-mode-locked" disabled aria-disabled="true"><span>🔒 Story mode</span><span className="value-chip">Coming soon</span></button>
+        ) : storySave ? (
+          <button type="button" className="quiet-row story-resume-row" data-testid="story-mode" data-resume-stop={storySave.stop.id} onClick={() => navigate(`/story?resume=${storySave.stop.id}`)}><span>Resume — {storySave.stop.name}</span><span className="value-chip">{storyPairLabel(storySave.stop)} · Hand {storySave.handNo}</span></button>
         ) : (
           <button type="button" className="quiet-row" data-testid="story-mode" onClick={() => navigate('/story')}><span>Story mode</span><span className="value-chip">Run the block</span></button>
         )}
