@@ -8,6 +8,7 @@
 import { COMMON, LINE_META, PACK_OWNERS, PERSONAS, type LineFact, type LineMeta, type PersonaId, type TalkIntensity, type TalkKind, lineAllowed, lineFitsGender, personaForName, personaSkillFloor } from './personas';
 import type { GameState } from '@spades/rules';
 import { banterContextFor } from './moments';
+import { REV_MALCOLM_CUT_LINES, REV_TRIBUTE_TEXTS } from './revTributes';
 import { possessive, voiceGender } from './names';
 import { type CatalogMemory, type VoiceMoment, bucketFor, pickCatalog } from './catalog';
 import { BOT_SKILLS, type BotSkill, seatSkill } from './bidding';
@@ -112,6 +113,9 @@ export function lineIdOf(persona: PersonaId, kind: TalkKind, raw: string): strin
 export function lineById(id: string): string | undefined {
   const [pool, kind, idx] = id.split('.');
   if (!pool || !kind || idx === undefined) return undefined;
+  // Revolutionaries tributes live outside the persona pools (figure-keyed, not
+  // moment-keyed): 'rev.tribute.<n>' / 'rev.malcolm.<n>' resolve into revTributes.
+  if (pool === 'rev') return kind === 'malcolm' ? REV_MALCOLM_CUT_LINES[Number(idx)] : REV_TRIBUTE_TEXTS[Number(idx)];
   const list = pool === 'common' ? COMMON[kind as TalkKind] : PERSONAS[pool as PersonaId]?.lines[kind as TalkKind];
   return list?.[Number(idx)];
 }

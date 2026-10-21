@@ -7,7 +7,7 @@
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { HUSTLER_NEWBIE_SPEED, PERSONAS, PERSONA_VOICES, type PersonaId, speakableLines, spokenBidTake, spokenTake } from '@spades/bots';
+import { HUSTLER_NEWBIE_SPEED, PERSONAS, PERSONA_VOICES, type PersonaId, REV_MALCOLM_CUT_LINES, REV_TRIBUTE_TEXTS, speakableLines, spokenBidTake, spokenTake } from '@spades/bots';
 
 const ROOT = join(import.meta.dirname, '../..');
 const PUB = join(ROOT, 'apps/web/public/voices/v2');
@@ -42,6 +42,16 @@ for (const id of Object.keys(PERSONAS) as PersonaId[]) {
         counts[state]++;
         clips.push({ key: t.key, raw: l.raw, kind: l.kind, text: t.text, voice: v.voice, lang: v.lang, speed, state });
       }
+    }
+    // Revolutionaries tributes (revTributes.ts): outside the story mode any
+    // seated bot may speak one, so every persona-gender sprite carries the
+    // set, keyed by the raw text like every other clip (ids: rev.tribute.N).
+    for (const raw of [...REV_TRIBUTE_TEXTS, ...REV_MALCOLM_CUT_LINES]) {
+      if (seen.has(raw)) continue;
+      seen.add(raw);
+      const state = !(raw in manifest) ? 'new' : REBAKE_RE.test(raw) ? 'rebake' : 'have';
+      counts[state]++;
+      clips.push({ key: raw, raw, kind: 'tribute', text: spokenTake(raw, id) ?? raw, voice: v.voice, lang: v.lang, speed: v.speed, state });
     }
     out.push({ key, persona: id, gender: g, voice: v.voice, speed: v.speed, clips });
   }

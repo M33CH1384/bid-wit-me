@@ -42,6 +42,7 @@ export const PRONUNCIATION_RULES: PronunciationRule[] = [
   { match: /\bnil\b/gi, spoken: 'nill', note: 'zero, not the river; IPA-identical in espeak' },
   { match: /\bhmph\b/gi, spoken: 'humph', note: 'a grunt (hʌmf), never spelled H-M-P-H' },
   { match: /\bMae\b/g, spoken: 'May', note: 'Sister Mae’s name: meɪ, not espeak’s miː ("mee")' },
+  { match: /\bDu Bois\b/g, spoken: 'Du Boyce', note: 'W.E.B. Du Bois said his own name doo-BOYSS, rhyming with "voice" — a dictionary reader defaults to the French reading' },
 ];
 
 /** The spoken form of a line's text: dictionary respellings applied, display text untouched. */

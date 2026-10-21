@@ -719,6 +719,10 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   useEffect(() => {
     if (online) return;
     offlineTalk.table = { seats: names.map((nm, i) => ({ name: nm, bot: i !== HUMAN })), partnerships: r.partnerships, teamNames: Array.from({ length: st.scores.length }, (_, i) => sideName(r, i, names)), intensity, jokers: r.deck === 'joker54', aiTalk: !!settings.aiTalk };
+    // Revolutionaries tributes: at the Barbershop story table Coleman & June
+    // carry them (Coleman is the stop's historian); anywhere else the bot who
+    // threw the honoured card speaks.
+    offlineTalk.revShop = !!story?.scene && story.scene.stop.id === 'barbershop';
   });
   useEffect(() => {
     if (online) return;

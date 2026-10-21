@@ -17,6 +17,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  REV_FIGURES, REV_MALCOLM_CUT_LINES,
   STORY_BID_REACT, STORY_CALLBACKS, STORY_INTRO_VARIANTS, STORY_MID_SCENES, STORY_PLAY_REACTS,
   STORY_RESUME_LINES, STORY_RETRY_FIRST, STORY_SCRIPTS, STORY_SECRETS, STORY_SIT_DOWN,
   STORY_TABLE_EXCHANGES, STORY_KING_RAIL_OUTRO, STORY_RAIL_EXCHANGES, STORY_RAIL_INTRO, STORY_RAIL_LINES,
@@ -76,6 +77,14 @@ export function storyCorpus(): { speaker: string; line: string; source: string }
     }
   }
   out.push({ speaker: 'dee', line: RAIL_NEEDLE_REPLY, source: 'rail:fact:porchNeedleReply' });
+  // Revolutionaries deck tributes (revTributes.ts): at the Barbershop the
+  // seated historians speak them — Coleman's twelve + his two Malcolm-cut
+  // lines into his cast sprite, June's alternates into hers.
+  for (const f of REV_FIGURES) {
+    out.push({ speaker: 'mrColeman', line: f.tribute, source: `rev:${f.card}` });
+    if (f.june) out.push({ speaker: 'june', line: f.june, source: `rev:${f.card}:june` });
+  }
+  REV_MALCOLM_CUT_LINES.forEach((line, i) => out.push({ speaker: 'mrColeman', line, source: `rev:KC:cut${i + 1}` }));
   // railLineFor's fact variants are string literals inside the selector —
   // pull them out through the function itself so they can never drift.
   const facts = { fired: 0, handNo: 1, stopsCleared: 0, attemptsAtOwnStop: 0 };

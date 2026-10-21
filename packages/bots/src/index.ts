@@ -61,6 +61,7 @@ export function simulateGame(rules: TableRules, seed: string, opts: SimOptions =
 export * from './names';
 export * from './talk';
 export * from './moments';
+export * from './revTributes';
 export * from './voices';
 export { PACK, STYLE } from './pack';
 export { PACK2, COMMON_EXTRA } from './pack2';
