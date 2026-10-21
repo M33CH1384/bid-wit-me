@@ -104,6 +104,63 @@ export function setTierForCover(cover: Pick<ShotCover, 'tape' | 'sheet'>): 'regu
   return null;
 }
 
+/**
+ * The FINALE HEADLINE (owner, 2026-10-21): a game-ending set's cover must
+ * say, in words that HOLD in its end state, that the game is over and this
+ * side lost — the scenario art alone (a draped cape, a stopped pole, one
+ * tilted word: CLOSED) "doesn't convey any real message by itself" next to
+ * the retired white sheet, which slid over the whole card. The headline is
+ * keyed to the ENDING FACT (the engine's endReason / the cover fact),
+ * never to a per-stop string: the same ending reads the same at every
+ * stop, and the sub names the losing side as the recap itself bills it —
+ * correct from both seats (the cover sits on the losing side's card
+ * whether that side is the viewer's or the opponents').
+ */
+export interface FinaleHeadline {
+  headline: string;
+  sub: string;
+}
+
+export function finaleHeadlineFor(input: {
+  /** the finished game's endReason, when the recap is the decided one */
+  endReason?: string | null;
+  /** this recap is the decided (game-over) one */
+  decided: boolean;
+  /** the sheeted side's name, exactly as the recap card bills it */
+  sideName: string;
+  /** the sheeted side is the viewer's own side */
+  mine: boolean;
+}): FinaleHeadline {
+  if (input.decided && input.endReason === THIRD_SET_END_REASON) {
+    return {
+      headline: '3 THE HARD WAY',
+      sub: input.mine ? 'Your third set of the game — game over.' : `${input.sideName}’s third set — game over.`,
+    };
+  }
+  if (input.decided && input.endReason === 'shotOut') {
+    return {
+      headline: 'SHOT OUT',
+      sub: input.mine ? 'Shot with the game on the line — game over.' : `${input.sideName} got shot — game over.`,
+    };
+  }
+  if (input.decided) {
+    // A sheet on a decided recap is a game-ending set by construction
+    // (shotCovers sheets a decided side only via the shotOut/third-set
+    // result); this is the belt-and-braces wording if a future ending
+    // reason ever sheets a side another way.
+    return {
+      headline: 'GAME OVER',
+      sub: input.mine ? 'Your side is out.' : `${input.sideName} is out.`,
+    };
+  }
+  // Not the decided recap: a sheet mid-game is a Cutthroat elimination —
+  // that player's game is over even though the match plays on.
+  return {
+    headline: 'OUT',
+    sub: input.mine ? 'You’re out of the game.' : `${input.sideName} is out of the game.`,
+  };
+}
+
 /** The third-set ending's reason id, as exposed by the rules engine
  *  (the "3 the Hard Way" game-over). Compared as a plain string so this
  *  stays correct the moment the rules union grows the member. */

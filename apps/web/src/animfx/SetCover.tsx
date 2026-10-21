@@ -1,6 +1,6 @@
 import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react';
 import './animfx.css';
-import { setAnimForStop } from '../setAnims';
+import { setAnimForStop, type FinaleHeadline } from '../setAnims';
 
 /**
  * The per-stop SET cover on a recap scorecard (owner, 2026-10-21): replaces
@@ -119,7 +119,7 @@ const ART: Record<string, (finale: boolean) => ReactNode> = {
   ),
 };
 
-export function SetCover({ animId, tier, mode, reduced, side, delayMs = 0 }: {
+export function SetCover({ animId, tier, mode, reduced, side, delayMs = 0, finaleHeadline = null, waitFallbackMs = 0 }: {
   animId: string;
   tier: 'regular' | 'finale';
   /** fresh = this hand's set, play it; static = end state on later recaps */
@@ -128,6 +128,17 @@ export function SetCover({ animId, tier, mode, reduced, side, delayMs = 0 }: {
   side: number;
   /** Finale sequencing (e.g. after the 3 THE HARD WAY title card). */
   delayMs?: number;
+  /** Finale tier only: the words that close the game (finaleHeadlineFor).
+   *  Rendered in EVERY mode — fresh, static, reduced — as part of the end
+   *  state, so the card reads "game over" even for a player who arrives
+   *  after the scenario art has played (owner, 2026-10-21). */
+  finaleHeadline?: FinaleHeadline | null;
+  /** Bounded wait for the in-view gate: if no IntersectionObserver report
+   *  arrives within this long, the wait lifts anyway. The decided recap's
+   *  finale is the most important card on the screen — it must never be
+   *  gate-starved by an observer quirk (the useGame bounded-wait pattern).
+   *  0 = wait indefinitely (regular covers keep the pure gate). */
+  waitFallbackMs?: number;
 }) {
   const def = setAnimForStop(animId);
   const art = ART[animId];
@@ -153,6 +164,16 @@ export function SetCover({ animId, tier, mode, reduced, side, delayMs = 0 }: {
     io.observe(el);
     return () => io.disconnect();
   }, [still, seen]);
+  // Bounded wait (finale covers): the observer normally lifts the gate the
+  // moment the card scrolls into view; if it never reports (browser quirk,
+  // an off-viewport layout the observer can't see), the finale still plays
+  // rather than sitting paused at frame one forever — its end state (art +
+  // headline) is the presentation either way.
+  useEffect(() => {
+    if (still || seen || !waitFallbackMs) return;
+    const t = window.setTimeout(() => setSeen(true), waitFallbackMs);
+    return () => window.clearTimeout(t);
+  }, [still, seen, waitFallbackMs]);
   if (!def || !art) return null;
   const waiting = !still && !seen;
   return (
@@ -168,6 +189,12 @@ export function SetCover({ animId, tier, mode, reduced, side, delayMs = 0 }: {
       aria-hidden="true"
     >
       {art(tier === 'finale')}
+      {tier === 'finale' && finaleHeadline && (
+        <div className="sc-headline" data-testid={`recap-finale-headline-${side}`}>
+          <b>{finaleHeadline.headline}</b>
+          <span>{finaleHeadline.sub}</span>
+        </div>
+      )}
       {still && <span className="sc-tag">{def.name}{tier === 'finale' ? ' · Finale' : ''}</span>}
     </div>
   );

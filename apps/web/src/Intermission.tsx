@@ -8,7 +8,7 @@ import { handWinner, streakLabel, streakOf, useReduceEffects } from './fx';
 import { sound } from './audio';
 import { haptic } from './haptics';
 import { SetCover } from './animfx/SetCover';
-import { isThirdSetEnd, resolveSetAnim, setTierForCover } from './setAnims';
+import { finaleHeadlineFor, isThirdSetEnd, resolveSetAnim, setTierForCover } from './setAnims';
 import { useClearedStoryStops } from './storyDecks';
 import { HOLE_CAP, claimHoleBuzz, holeMarks, holeSlots, markHolePunched, markSheetPlayed, punchedLabel, rememberHoles } from './shotMarks';
 
@@ -253,6 +253,15 @@ export function Intermission({
                 cleared,
                 causedByViewer: s.side !== mySide,
               }) : null;
+              // The finale's words (owner, 2026-10-21): keyed to the ending
+              // fact, naming this side — they ride the cover's end state so
+              // the card says the game is over even after the art played.
+              const finaleHeadline = setTier === 'finale' ? finaleHeadlineFor({
+                endReason: st.result?.endReason,
+                decided,
+                sideName: sideName(r, s.side, names),
+                mine: s.side === mySide,
+              }) : null;
               return (
                 <div key={s.side} className={`tt-team${s.side === mySide ? ' mine' : ''}${shot ? ' blast' : ''}${cover.tape ? ' taped' : ''}${cover.tape && justShot ? ' tape-in' : ''}${notice ? ' notice' : ''}${cover.sheet ? ' shrouded' : ''}${sheetAnim ? ' sheet-in sheet-wait' : ''}`} data-testid={`recap-side-${s.side}`} data-blast={shot ? 'yes' : 'no'} data-tape={cover.tape ? 'yes' : 'no'} data-sheet={cover.sheet ? 'yes' : 'no'} data-siren={cover.siren ? 'yes' : 'no'} data-holes={info.count} data-punched={punchedLabel(marks)}>
                   {showHoles && (
@@ -274,6 +283,8 @@ export function Intermission({
                       reduced={reduceFx}
                       side={s.side}
                       delayMs={setTier === 'finale' && thirdSetEnd ? 2300 : 0}
+                      finaleHeadline={finaleHeadline}
+                      waitFallbackMs={setTier === 'finale' ? 2500 : 0}
                     />
                   )}
                   <div className="tt-team-name">

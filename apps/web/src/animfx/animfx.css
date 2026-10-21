@@ -524,6 +524,19 @@
 .setcover.fresh { animation: sc-appear .01s linear var(--sc-delay, 0ms) both; }
 @keyframes sc-appear { from { opacity: 0; } to { opacity: 1; } }
 .setcover .sc-tag { position: absolute; left: 10px; bottom: 8px; z-index: 6; padding: 2px 8px; border-radius: 999px; background: rgba(0, 0, 0, .58); color: #ffe9a8; font-family: var(--display, sans-serif); font-weight: 700; font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; }
+/* Finale headline (owner, 2026-10-21): the words that close the game,
+ * carried by the finale cover's END STATE — fresh, static and reduced
+ * alike — on a dark plaque in the game's display type (the 3 THE HARD WAY
+ * flash's language, at card scale). The scenario art plays first; fresh,
+ * the headline stamps in over it and HOLDS. The stamp's clock rides the
+ * same presentation gates as the rest of the cover (paused at frame one
+ * while waiting — where opacity 0 is the correct waiting state — and the
+ * gate latch means it can never freeze half-stamped). */
+.setcover .sc-headline { position: absolute; left: 8px; right: 8px; bottom: 42px; z-index: 6; display: flex; flex-direction: column; align-items: center; gap: 3px; text-align: center; padding: 9px 12px 8px; border-radius: 10px; background: rgba(6, 5, 12, .8); box-shadow: inset 0 0 0 1px rgba(255, 213, 120, .55), 0 6px 18px rgba(0, 0, 0, .35); transform: rotate(-1.5deg); pointer-events: none; }
+.setcover .sc-headline b { font-family: var(--display, sans-serif); font-weight: 800; font-size: 27px; letter-spacing: .1em; line-height: 1; color: #ffe9a8; text-shadow: 0 2px 0 rgba(0, 0, 0, .45); }
+.setcover .sc-headline span { font-size: 12.5px; font-weight: 600; letter-spacing: .02em; line-height: 1.25; color: rgba(255, 244, 214, .94); }
+.setcover.fresh .sc-headline { animation: sc-headline-in .45s cubic-bezier(.2, 1.4, .4, 1) calc(var(--sc-delay, 0ms) + 1100ms) both; }
+@keyframes sc-headline-in { 0% { opacity: 0; transform: scale(1.6) rotate(-6deg); } 100% { opacity: 1; transform: scale(1) rotate(-1.5deg); } }
 /* Presentation gates (owner, 2026-10-21): a fresh cover's clock must not run
  * before the recap is actually presented and the card in view — it used to
  * start at mount, under the sheet's fade-up entrance and below the fold of
