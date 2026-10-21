@@ -18,6 +18,73 @@ export interface RewardsProfile {
 
 export interface UnlockedItem { id: string; title: string; xp: number; coins: number }
 
+/* ------------------------------------------------------ Postgame Report */
+
+/** One side's line from the finished match (league P-D). */
+export interface PostgameSide { label: string; score: number; books: number; nilsMade: number }
+export interface PostgameData {
+  sides: PostgameSide[];
+  /** the viewer's own seat totals */
+  myBooks: number;
+  myNilsMade: number;
+  /** plain-language best moments, in hand order (max 4) */
+  moments: string[];
+}
+
+/** The structural slice of the engine's HandRecord the report needs. */
+export interface PostgameHand {
+  handNo: number;
+  tricksWon: number[];
+  sides: { side: number; tricks: number; points: number; nils: { seat: number; kind: 'nil' | 'blindNil'; made: boolean }[] }[];
+}
+
+/**
+ * Postgame Report (league P-D): your line vs your opponents' + the match's
+ * best moments, computed from the finished game's hand history — the same
+ * records the recap shows. HONEST SCOPE: final scores, books and nils are
+ * all in the hand records; a nuked trick is NOT (the hand record keeps only
+ * trick counts), so nuke moments can't be called out here — reported as a
+ * gap rather than reconstructed.
+ */
+export function buildPostgame(input: {
+  history: PostgameHand[];
+  finalScores: number[];
+  sideLabels: string[];
+  seatLabels: string[];
+  mySeat: number;
+  mySide: number;
+}): PostgameData {
+  const { history, finalScores, sideLabels, seatLabels, mySeat, mySide } = input;
+  const sides: PostgameSide[] = finalScores.map((score, side) => ({
+    label: sideLabels[side] ?? `Side ${side + 1}`,
+    score,
+    books: history.reduce((a, h) => a + (h.sides.find((s) => s.side === side)?.tricks ?? 0), 0),
+    nilsMade: history.reduce((a, h) => a + (h.sides.find((s) => s.side === side)?.nils.filter((n) => n.made).length ?? 0), 0),
+  }));
+  const moments: string[] = [];
+  let bestHand = 0;
+  let bestHandNo = 0;
+  for (const h of history) {
+    const totalTricks = h.sides.reduce((a, s) => a + s.tricks, 0);
+    for (const s of h.sides) {
+      if (totalTricks >= 13 && s.tricks === totalTricks) {
+        moments.push(`Boston — ${sideLabels[s.side] ?? `Side ${s.side + 1}`} took every book in hand ${h.handNo}`);
+      }
+      for (const n of s.nils) {
+        if (n.made) moments.push(`${n.seat === mySeat ? 'You' : (seatLabels[n.seat] ?? 'A player')} made a ${n.kind === 'blindNil' ? 'blind nil' : 'nil'} in hand ${h.handNo}`);
+      }
+      if (s.side === mySide && s.points > bestHand) { bestHand = s.points; bestHandNo = h.handNo; }
+    }
+  }
+  if (bestHand > 0) moments.push(`Your best hand: +${bestHand} points in hand ${bestHandNo}`);
+  return {
+    sides,
+    myBooks: history.reduce((a, h) => a + (h.tricksWon[mySeat] ?? 0), 0),
+    myNilsMade: history.reduce((a, h) => a + h.sides.reduce((x, s) => x + s.nils.filter((n) => n.seat === mySeat && n.made).length, 0), 0),
+    moments: moments.slice(0, 4),
+  };
+}
+
 export interface RewardsData {
   won: boolean;
   headline: string;
@@ -35,6 +102,8 @@ export interface RewardsData {
   eloKindLabel: string;
   achievements: UnlockedItem[];
   challenges: UnlockedItem[];
+  /** Postgame Report (league P-D) — attached by Table from the hand history */
+  postgame?: PostgameData | null;
 }
 
 /** Diff two profile snapshots into a RewardsData. `kind` is 'team' | 'cutthroat'. */
@@ -322,6 +391,25 @@ export default function GameOverRewards({
           <h2 className={data.won ? 'win' : 'lose'}>{data.headline}</h2>
           <p className="rw-sub0">{data.sub}</p>
         </div>
+        {data.postgame && (
+          <div className="rw-postgame" data-testid="postgame-report">
+            <h3 className="rw-pg-title">Postgame Report</h3>
+            <table className="cmp-table">
+              <thead><tr><th></th><th>Final</th><th>Books</th><th>Nils made</th></tr></thead>
+              <tbody>
+                {data.postgame.sides.map((s) => (
+                  <tr key={s.label}><th>{s.label}</th><td>{s.score}</td><td>{s.books}</td><td>{s.nilsMade}</td></tr>
+                ))}
+                <tr><th>Your books</th><td colSpan={3}>{data.postgame.myBooks} books{data.postgame.myNilsMade > 0 ? ` · ${data.postgame.myNilsMade} nil${data.postgame.myNilsMade === 1 ? '' : 's'} made` : ''}</td></tr>
+              </tbody>
+            </table>
+            {data.postgame.moments.length > 0 && (
+              <ul className="rw-moments">
+                {data.postgame.moments.map((m) => <li key={m}>{m}</li>)}
+              </ul>
+            )}
+          </div>
+        )}
         <div className="rw-rows">
           {data.signedIn ? rows : (
             <div className="rw-row" style={{ animationDelay: '160ms' }}>

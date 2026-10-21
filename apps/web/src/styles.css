@@ -2853,3 +2853,9 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
 .cmp-table tbody td:first-child { text-align: left; }
 .cmp-table tbody tr:nth-child(even) { background: rgba(127, 127, 160, .07); }
 .cmp-table .cmp-win { color: var(--gold, #e8b64c); font-weight: 800; }
+
+/* Postgame Report (league P-D) on the rewards screen. */
+.rw-postgame { margin: 4px 0 14px; text-align: left; }
+.rw-pg-title { font-size: 15px; margin: 0 0 4px; letter-spacing: .02em; }
+.rw-moments { margin: 8px 0 0; padding-left: 18px; font-size: 13px; color: var(--ink-dim); }
+.rw-moments li { margin: 2px 0; }

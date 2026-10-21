@@ -51,7 +51,7 @@ import { feltHandVisible } from './three/cardFace';
 import { clientSeesNuke } from './three/blastSweep';
 import { loadScene } from './three/preload';
 import { TableLoading } from './TableLoading';
-import { clearPinnedBefore, computeRewardsSettled, resolveBeforeSnapshot, type RewardsProfile } from './GameOverRewards';
+import { buildPostgame, clearPinnedBefore, computeRewardsSettled, resolveBeforeSnapshot, type RewardsProfile } from './GameOverRewards';
 import { stashRewards } from './RewardsPage';
 import { flushLocalGames } from './localStats';
 import { tableStillLoading, warmTableEffects } from './effects/warm';
@@ -1150,6 +1150,18 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         sub: `${st.history.length} hand${st.history.length === 1 ? '' : 's'} played`,
         kind: r.partnerships ? 'team' : 'cutthroat',
       }, { online: !!online });
+      // Postgame Report (league P-D): your line vs the other sides + best
+      // moments, from the finished game's hand history.
+      if (st.result) {
+        data.postgame = buildPostgame({
+          history: st.history,
+          finalScores: st.result.finalScores,
+          sideLabels: st.result.finalScores.map((_, side) => sideName(r, side, names)),
+          seatLabels: names,
+          mySeat: HUMAN,
+          mySide,
+        });
+      }
       clearPinnedBefore(); // the pinned "before" is consumed — the next match captures fresh
       if (!online) quitGame();
       stashRewards({ data, online: !!online, homePath: online && where === 'leave' ? '/online' : '/' });
