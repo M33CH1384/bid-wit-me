@@ -22,7 +22,7 @@ import { LockedRulesPanel } from './LockedRules';
 import { booksBanner, teamMinNote } from './polishText';
 import { type Series, addSeriesGame, seriesForGameStart, seriesSides, summarizeGame } from '@spades/rules';
 import { SeriesChip, SeriesSheet, loadSeries, saveSeries } from './Series';
-import { useMyTeamName } from './TeamName';
+import { OFFLINE_PAIR_KEY, useTeamNameFor } from './TeamName';
 import { offlineTalk } from './offlineTalk';
 import { BidOrder, BidSummary, showCenterBidOrder } from './PartnerTalk';
 import { guardTouches, lockBody } from './antiPan';
@@ -653,8 +653,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // bot trash talk: hidden entirely with 'Hide bot trash talk' (local preference)
   const msgs = useMemo(() => (talkPrefs.hideBotTalk ? rawMsgs.filter((m) => !m.bot) : rawMsgs.map((m) => (m.bot ? { ...m, text: showLine(m.text) } : m))), [rawMsgs, talkPrefs.hideBotTalk, intensity]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // team names (team modes): yours from More options offline, the bots' a random fun one (kept in the save)
-  const myName = useMyTeamName();
+  // team names (team modes): yours from the offline pairing's name (set at table
+  // setup; falls back to the retired global name), the bots' a random fun one (kept in the save)
+  const myName = useTeamNameFor(OFFLINE_PAIR_KEY);
   const [botTeam] = useState(() => resume?.teamNames?.[1] ?? pickTeamName(Math.abs([...seed].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7))));
   const teamNames: (string | null)[] | null = !r.partnerships ? null : online ? (online.teamNames ?? [null, null]) : [myName || null, botTeam];
   localReport.current = { names, teamNames };

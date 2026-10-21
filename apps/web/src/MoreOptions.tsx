@@ -3,7 +3,6 @@ import { useEscapeClose } from './useEscapeClose';
 import Credits from './Credits';
 import Feedback, { AboutRow } from './Feedback';
 import { BotTrashTalkRow, ChatSoundsRow, NukeIntensityRow, ReduceEffectsRow, SoundFields, SoundQuickActions } from './SoundControls';
-import { TeamNameField, myTeamName, useMyTeamName } from './TeamName';
 import ThemeToggle from './ThemeToggle';
 import { CLASSIC_JOKER, makeRules } from '@spades/rules';
 import { type Settings, settingsToRules } from './settings';
@@ -122,7 +121,6 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
           </section>
           <section className="set-group" aria-label="You">
           <h3 className="sheet-h">You</h3>
-          <TeamNameRow />
           <button type="button" className="link sheet-h gold-tab-row" aria-expanded={house} onClick={() => setHouse(!house)}>House rules <span className="value-chip">{house ? 'Hide' : 'Show'}</span></button>
           {house && (
             <div className="house">
@@ -207,16 +205,5 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
     {credits && <Credits onClose={() => setCredits(false)} />}
     {feedback && <Feedback onClose={() => setFeedback(false)} />}
     </>
-  );
-}
-
-/** Offline: name your team (team modes). Empty = "You & <partner>". */
-function TeamNameRow() {
-  const v = useMyTeamName();
-  return (
-    <div className="sf-row team-row">
-      <span>Your team name<small className="sf-note"> · team modes, offline</small></span>
-      <TeamNameField value={v} placeholder="You & your partner" onSave={(x) => myTeamName.set(x)} testId="offline-team-name" />
-    </div>
   );
 }

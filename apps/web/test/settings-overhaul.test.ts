@@ -107,13 +107,15 @@ describe('settings sheet — grouped cards', () => {
     expect(groupOf(c, 'venue-select')).toBe('Look & effects');
     expect(groupOf(c, 'reduce-fx')).toBe('Look & effects');
     expect(groupOf(c, 'nuke-intensity')).toBe('Look & effects');
-    expect(groupOf(c, 'offline-team-name')).toBe('You');
   });
 
   it('retired rows are gone: no Badges row in You, no soundscape picker anywhere in the sheet', async () => {
     const c = await renderSheet();
     // owner: "Badges don't belong here" — badges live on profiles now, not in Settings
     expect(c.querySelector('[data-testid="badges-row"]')).toBeNull();
+    // owner (2026-10-20): team names are per pairing, set at table setup — the
+    // global "Your team name" field leaves Settings once setup naming exists
+    expect(c.querySelector('[data-testid="offline-team-name"]')).toBeNull();
     // owner: no soundscape picker — each venue's signature sounds are automatic
     expect(c.querySelector('[data-testid="soundscape-select"]')).toBeNull();
   });

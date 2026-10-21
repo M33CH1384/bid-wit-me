@@ -6,7 +6,7 @@
 import { useSyncExternalStore } from 'react';
 import { badges, mergeBadges } from '../badges';
 import { loadSeries } from '../Series';
-import { myTeamName } from '../TeamName';
+import { myTeamName, pairTeamNames } from '../TeamName';
 import { loadName, saveName } from '../online/identity';
 
 export type ProviderId = 'google' | 'discord' | 'x' | 'facebook' | 'mock';
@@ -86,9 +86,11 @@ export function takePendingOpen(): 'account' | null { const p = pendingOpen; pen
 async function afterSignIn(u: AccountUser, fresh: boolean) {
   if (u.username && !loadName()) saveName(u.username);
   if (fresh && u.progressImported) {
-    const r = await call<{ progress?: { badges?: { id: string; earnedAt: number }[]; teamName?: string | null } }>('progress', {});
+    const r = await call<{ progress?: { badges?: { id: string; earnedAt: number }[]; teamName?: string | null; teamNames?: Record<string, string> } }>('progress', {});
     mergeDownBadges(r.progress?.badges ?? []);
     if (r.progress?.teamName && !myTeamName.get()) myTeamName.set(r.progress.teamName);
+    // per-pairing team names follow the account (account wins per pairing)
+    if (r.progress?.teamNames) pairTeamNames.merge(r.progress.teamNames);
   }
 }
 function mergeDownBadges(list: { id: string; earnedAt: number; context?: Record<string, unknown> }[]) { mergeBadges(list); }
@@ -158,9 +160,9 @@ function passkeyError(e: unknown): string {
 
 /* ---- "Save my progress" */
 export function localProgress() {
-  return { badges: badges(), series: loadSeries(), teamName: myTeamName.get() || null };
+  return { badges: badges(), series: loadSeries(), teamName: myTeamName.get() || null, teamNames: pairTeamNames.all() };
 }
-export function hasLocalProgress(): boolean { const p = localProgress(); return p.badges.length > 0 || !!p.series || !!p.teamName; }
+export function hasLocalProgress(): boolean { const p = localProgress(); return p.badges.length > 0 || !!p.series || !!p.teamName || Object.keys(p.teamNames).length > 0; }
 export async function saveProgress(): Promise<string | null> {
   const r = await call<{ progress?: { badges: { id: string; earnedAt: number }[] } }>('progress', { import: localProgress() });
   if (r.ok === false && !r.progress) return r.reason ?? r.error ?? 'Could not save progress.';
