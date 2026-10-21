@@ -146,6 +146,15 @@ function webSpeech(name: string, text: string, persona: PersonaId = personaForNa
   // sits under the game SFX: a bit below the master level
   u.volume = Math.min(1, prefs.voiceVolume * snd.volume * 0.85);
   u.voice = personaVoiceFor(persona, name, voices);
+  // iOS: an utterance seizes the system audio session, and when it ends the game's
+  // AudioContext can be left 'interrupted'/'suspended' — music, beds and voices all
+  // share that context, so the whole game goes quiet. Drive the engine's recovery the
+  // moment the utterance finishes or fails instead of leaving the return to the
+  // player's next tap. (The engine's heal retry covers utterances whose end event
+  // iOS drops after a cancel().) Demetrius 2026-10-21.
+  const recover = () => { try { sound.wake('show'); } catch { /* ignore */ } };
+  u.onend = recover;
+  u.onerror = recover;
   try { if (speechSynthesis.speaking) speechSynthesis.cancel(); speechSynthesis.speak(u); } catch { /* ignore */ }
 }
 

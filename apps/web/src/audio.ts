@@ -13,7 +13,7 @@
 import { useSyncExternalStore } from 'react';
 import { Spatializer, STORY_STOP_AUDIO, irSpec, isVoiceMuted, normalizeCategoryVolumes, pickPanningModel, pickVariant, seatCompensation, seatPoint, sessionRoom, surfaceHz, voiceLineGain, withVoiceMuted, type RoomStyle, type SeatPos, type StoryMood, type VenueEvent } from './spatial';
 import { audioElementPool } from './audioPool';
-import { audioContextAction, settleAudio, soundRestorePending } from './audioSession';
+import { RESTORE_HEAL_MS, audioContextAction, recreateDue, settleAudio, soundRestorePending } from './audioSession';
 
 /**
  * decodeAudioData completion runs on the main thread. Decoding every stinger and voice sprite in
@@ -268,6 +268,10 @@ class Engine {
   private unlockInstalled = false;
   private recreating = false;
   private wakeGen = 0;
+  /** Last context rebuild (performance.now ms): rebuilds are rate-limited while an interruption persists. */
+  private lastRecreateAt = 0;
+  /** Self-heal retry timer: runs only while a restore is pending (see publishRestore). */
+  private healTimer: number | null = null;
   private loadGen = 0;
   /** cue counter (exposed for automated checks) */
   played: Record<string, number> = {};
@@ -655,6 +659,14 @@ class Engine {
     window.addEventListener('pageshow', show);
   }
 
+  /** Re-run every stem's sync (lounge pad, venue bed, music). All three are idempotent:
+   *  a stem that is already sounding early-returns, a torn-down one rebuilds. */
+  private resyncAll() {
+    this.syncAmbient();
+    this.syncVenue();
+    this.syncMusic();
+  }
+
   /**
    * Resume, or rebuild, the context. Called inside the gesture (touch/pointer) and when the page
    * is shown again. `resume()` is invoked synchronously so iOS still counts it as the user gesture.
@@ -666,9 +678,7 @@ class Engine {
       // Still re-run the syncs: on cold start the first gesture may not have
       // started music (context not ready), and this is the retry path.
       // Demetrius 2026-10-19: music must resume on first tap after swipe-kill.
-      this.syncAmbient();
-      this.syncVenue();
-      this.syncMusic();
+      this.resyncAll();
       return;
     }
     if (kind === 'gesture') this.unlocked = true;
@@ -676,12 +686,11 @@ class Engine {
     const c = this.ctx;
     if (!c) { this.publishRestore(); return; }
     const action = audioContextAction(this.liveState(c));
-    if (action === 'recreate') {
+    if (action === 'recreate' && !this.recreating && recreateDue(this.lastRecreateAt, performance.now())) {
       this.testState = null;
-      if (!this.recreating) {
-        this.recreating = true;
-        try { this.recreateContext(); } finally { this.recreating = false; }
-      }
+      this.lastRecreateAt = performance.now();
+      this.recreating = true;
+      try { this.recreateContext(); } finally { this.recreating = false; }
     }
     const gen = ++this.wakeGen;
     // play() has to happen in this turn. Waiting for the resume promise drops the iOS gesture.
@@ -690,9 +699,7 @@ class Engine {
     // restores sound immediately instead of needing the audio options. Demetrius 2026-10-19.
     if (kind === 'gesture' || kind === 'show') {
       if (kind === 'gesture' && this.ctx) this.blip(this.ctx);
-      this.syncAmbient();
-      this.syncVenue();
-      this.syncMusic();
+      this.resyncAll();
     }
     // Start resume() now, inside the gesture. A simulated stuck state must not actually resume,
     // or the test hook could never leave the speaker in its needs-tap state. Publish that state
@@ -701,11 +708,7 @@ class Engine {
     this.publishRestore();
     void resumePromise.then(() => {
       if (gen !== this.wakeGen) return;
-      if (this.liveState(this.ctx) === 'running') {
-        this.syncAmbient();
-        this.syncVenue();
-        this.syncMusic();
-      }
+      if (this.liveState(this.ctx) === 'running') this.resyncAll();
       this.publishRestore();
     });
   }
@@ -718,19 +721,49 @@ class Engine {
 
   private publishRestore() {
     const next = soundRestorePending(this.liveState(this.ctx), this.unlocked, !!(this.settings.on || this.settings.music));
-    if (next === this.needsRestore) return;
-    this.needsRestore = next;
-    this.emit();
+    if (next !== this.needsRestore) {
+      this.needsRestore = next;
+      this.emit();
+    }
+    this.syncHealTimer();
+  }
+
+  /**
+   * While a restore is pending, retry recovery on a timer instead of waiting for the player's
+   * next tap. iOS ends most interruptions by itself (a call ends, a speech utterance finishes),
+   * but the context does not resume itself — and a rebuild torn down by recreateContext() only
+   * sounds again once a sync runs. The retry drives wake('show'): rebuild if the state still
+   * demands it (rate-limited), resume, and re-sync every stem. It stops the moment the context
+   * is running again. Demetrius 2026-10-21: sound "goes out and comes back when it feels like
+   * it" — the return must not depend on an arbitrary tap.
+   */
+  private syncHealTimer() {
+    if (typeof window === 'undefined') return;
+    if (this.needsRestore && this.healTimer === null) {
+      this.healTimer = window.setInterval(() => {
+        if (!this.needsRestore) { this.syncHealTimer(); return; }
+        this.wake('show');
+      }, RESTORE_HEAL_MS);
+    } else if (!this.needsRestore && this.healTimer !== null) {
+      window.clearInterval(this.healTimer);
+      this.healTimer = null;
+    }
   }
 
   private watchContext(c: AudioContext) {
     c.onstatechange = () => {
       if (c !== this.ctx || !this.unlocked || this.recreating) return;
-      if (audioContextAction(this.liveState(c)) === 'recreate') {
+      if (audioContextAction(this.liveState(c)) === 'recreate' && recreateDue(this.lastRecreateAt, performance.now())) {
         this.testState = null;
+        this.lastRecreateAt = performance.now();
         this.recreating = true;
         try { this.recreateContext(); } finally { this.recreating = false; }
       }
+      // A context that returns to 'running' on its own (an interruption ended, a rebuild's
+      // resume landed) must bring back the stems recreateContext() tore down — the music
+      // decks were released and both beds stopped, and without this re-sync they stayed
+      // silent until the player's next tap happened to fire wake().
+      if (this.liveState(c) === 'running') this.resyncAll();
       this.publishRestore();
     };
   }

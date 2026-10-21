@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { AUDIO_ELEMENT_CAP, AudioElementPool } from '../src/audioPool';
-import { audioContextAction, settleAudio, soundRestorePending, speakerAriaLabel } from '../src/audioSession';
+import { RECREATE_COOLDOWN_MS, RESTORE_HEAL_MS, audioContextAction, recreateDue, settleAudio, soundRestorePending, speakerAriaLabel } from '../src/audioSession';
 
 function fakeAudio() {
   return {
@@ -66,6 +66,34 @@ describe('iOS audio session', () => {
     expect(fresh).not.toBe(bound);
     expect(pool.acquire()).not.toBeNull();
     expect(pool.acquire()).toBeNull();
+  });
+
+  it('rate-limits context rebuilds while an interruption persists, and heals on a short cadence', () => {
+    // first rebuild is always due; the next one waits out the cooldown so a stuck
+    // 'interrupted' state cannot churn rebuilds (each copies every decoded buffer)
+    expect(recreateDue(0, RECREATE_COOLDOWN_MS)).toBe(true);
+    expect(recreateDue(10_000, 10_000 + RECREATE_COOLDOWN_MS - 1)).toBe(false);
+    expect(recreateDue(10_000, 10_000 + RECREATE_COOLDOWN_MS)).toBe(true);
+    // the self-heal retry is prompt (seconds, not a settings visit) but not a busy loop
+    expect(RESTORE_HEAL_MS).toBeGreaterThan(0);
+    expect(RESTORE_HEAL_MS).toBeLessThanOrEqual(5000);
+  });
+
+  it('wires self-recovery into the engine: statechange re-syncs, a heal timer retries, utterances hand recovery back', () => {
+    const audio = readFileSync(new URL('../src/audio.ts', import.meta.url), 'utf8');
+    const talk = readFileSync(new URL('../src/talkPrefs.ts', import.meta.url), 'utf8');
+    // a context returning to 'running' on its own re-syncs the stems its rebuild tore down
+    expect(audio).toContain('resyncAll');
+    expect(audio).toContain("if (this.liveState(c) === 'running') this.resyncAll();");
+    // while a restore is pending the engine retries wake('show') on the heal cadence
+    expect(audio).toContain('syncHealTimer');
+    expect(audio).toContain('RESTORE_HEAL_MS');
+    // rebuilds from both wake and the state watcher respect the same cooldown
+    expect(audio).toContain('recreateDue');
+    // a Web Speech utterance (iOS seizes the audio session for it) drives recovery when it ends
+    expect(talk).toContain('u.onend');
+    expect(talk).toContain('u.onerror');
+    expect(talk).toContain("sound.wake('show')");
   });
 
   it('names the existing speaker as the restore control and adds no second button', () => {
