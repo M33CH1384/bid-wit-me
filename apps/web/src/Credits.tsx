@@ -21,7 +21,7 @@ export default function Credits({ onClose }: { onClose: () => void }) {
           <ul className="music-credits">
             {TRACKS.map((t) => (
               <li key={t.file}>
-                <b>“{t.title}”</b> — {t.artist} · {t.license === 'CC0' ? <>CC0 (public domain) via <a href={t.source} target="_blank" rel="noreferrer">OpenGameArt</a> · Music by {t.artist}</> : <a href={t.source} target="_blank" rel="noreferrer">{t.license}</a>}
+                <b>“{t.title}”</b> — {t.artist} · {t.license === 'Original' ? <>Original score, composed &amp; produced for Bid Wit Me</> : t.license === 'CC0' ? <>CC0 (public domain) via <a href={t.source} target="_blank" rel="noreferrer">OpenGameArt</a> · Music by {t.artist}</> : <a href={t.source} target="_blank" rel="noreferrer">{t.license}</a>}
                 {t.credit && <p className="cc-by"><Linked text={t.credit} /></p>}
               </li>
             ))}

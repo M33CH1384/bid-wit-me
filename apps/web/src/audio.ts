@@ -11,7 +11,7 @@
  * - Settings (on/off, volume, ambience) persist in localStorage.
  */
 import { useSyncExternalStore } from 'react';
-import { Spatializer, irSpec, isVoiceMuted, normalizeCategoryVolumes, pickPanningModel, pickVariant, seatCompensation, seatPoint, sessionRoom, surfaceHz, voiceLineGain, withVoiceMuted, type RoomStyle, type SeatPos, type VenueEvent } from './spatial';
+import { Spatializer, STORY_STOP_AUDIO, irSpec, isVoiceMuted, normalizeCategoryVolumes, pickPanningModel, pickVariant, seatCompensation, seatPoint, sessionRoom, surfaceHz, voiceLineGain, withVoiceMuted, type RoomStyle, type SeatPos, type StoryMood, type VenueEvent } from './spatial';
 import { audioElementPool } from './audioPool';
 import { audioContextAction, settleAudio, soundRestorePending } from './audioSession';
 
@@ -152,10 +152,10 @@ export function settingsForContext(s: SoundSettings, ctx: SoundContext): SoundSe
   return patched;
 }
 /** venue ambience beds (see venues.ts → bed) */
-export type VenueBed = 'none' | 'cookout' | 'mansion' | 'barbershop' | 'basement' | 'rooftop' | 'jazz' | 'casino' | 'beach' | 'kitchen' | 'yacht' | 'street';
+export type VenueBed = 'none' | 'cookout' | 'mansion' | 'barbershop' | 'basement' | 'rooftop' | 'jazz' | 'casino' | 'beach' | 'kitchen' | 'yacht' | 'street' | 'rec';
 export type MusicStatus = 'off' | 'loading' | 'playing' | 'error';
 
-export interface Track { file: string; title: string; artist: string; license: string; source: string; /** exact attribution line (CC BY) */ credit?: string }
+export interface Track { file: string; title: string; artist: string; license: string; source: string; /** exact attribution line (CC BY) */ credit?: string; /** story-score tracks: excluded from the general shuffle, reached only via the story mood (setStoryStop) */ storyOnly?: boolean }
 /** Background playlist (lazy-loaded, 128 kbps MP3). Credits: see CREDITS.md and the in-game Credits screen. */
 export const TRACKS: Track[] = [
   { file: 'windows-down', title: 'Windows Down', artist: 'Holizna', license: 'CC0', source: 'https://opengameart.org/content/lo-fi-and-chill-collection' },
@@ -176,11 +176,25 @@ export const TRACKS: Track[] = [
   { file: 'pyro-flow', title: 'Pyro Flow', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1500039', credit: '"Pyro Flow" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
   { file: 'slow-grind', title: 'Slow Grind', artist: 'Ron Gelinas Chillout Lounge', license: 'CC BY 3.0', source: 'https://www.chosic.com/download-audio/27292/', credit: 'Slow Grind by Ron Gelinas Chillout Lounge | https://soundcloud.com/atmospheric-music-portal Creative Commons Attribution 3.0 Unported License https://creativecommons.org/licenses/by/3.0/deed.en_US Music promoted by https://www.chosic.com/free-music/all/' },
   { file: 'marty-gots-a-plan', title: 'Marty Gots a Plan', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Marty%20Gots%20a%20Plan.mp3', credit: '"Marty Gots a Plan" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
+  // The game's own score (Story Mode pass, 2026-10-21): composed and rendered for Bid Wit Me —
+  // original music, no samples, not CC material, so no attribution line. Story-only: the general
+  // shuffle never picks them; story stops reach them via setStoryStop → storyMood.
+  { file: 'story-theme', title: 'Riding Shotgun (Story Theme)', artist: 'Bid Wit Me', license: 'Original', source: '', storyOnly: true },
+  { file: 'story-danger', title: 'The Corner (Danger Bed)', artist: 'Bid Wit Me', license: 'Original', source: '', storyOnly: true },
+  { file: 'story-king', title: 'The King of the Block', artist: 'Bid Wit Me', license: 'Original', source: '', storyOnly: true },
 ];
+/** Story mood → the score track that carries it (spatial.ts STORY_STOP_AUDIO picks the mood per stop). */
+export const STORY_TRACK_FILE: Record<'theme' | 'danger' | 'king', string> = { theme: 'story-theme', danger: 'story-danger', king: 'story-king' };
+/** The story signature motif (D–F–A–C over Dm): the same four notes open the theme track and
+ *  this sting; played at scene-in / stop clear / unlock so story mode sounds like one production. */
+export const STORY_MOTIF_HZ = [587.33, 698.46, 880, 1046.5];
 /** Exact attribution lines for the CC BY tracks (CREDITS.md + in-game Credits). */
 export const CC_BY_LINES = TRACKS.filter((t) => t.credit).map((t) => t.credit!);
 export const CC_BY_LINE = CC_BY_LINES[0]!;
 const XFADE = 4; // seconds of crossfade between tracks
+
+/** Indices of the tracks the general shuffle may play — every track except the storyOnly score. */
+export function generalPool(): number[] { return TRACKS.map((t, i) => i).filter((i) => !TRACKS[i]!.storyOnly); }
 
 /** Shuffle order with no immediate repeat across bag boundaries. */
 export function nextShuffle(prev: number | null, bag: number[], count: number, rnd = Math.random): { pick: number; bag: number[] } {
@@ -277,6 +291,7 @@ class Engine {
     // venue's music pin / lean must not bleed into menu music (the bed already stops via
     // the table's own cleanup). The next table applies its identity fresh.
     if (ctx === 'menu') { this.roomStyle = null; this.leanArmed = false; }
+    if (ctx === 'menu') { this.storyMood = null; this.storyBedOverride = null; } // story score never bleeds into menus either
     const t = settingsForContext(this.settings, ctx);
     this.captureScene = false;
     try { this.set({ music: t.music, ambient: t.ambient, venueSound: t.venueSound }); } finally { this.captureScene = true; }
@@ -372,8 +387,14 @@ class Engine {
   nowPlaying: { track: Track; at: number } | null = null;
   private decks: Deck[] = [];
   private active = 0;
+  /** shuffle bag of POSITIONS in the general pool (see generalPool) */
   private bag: number[] = [];
+  private poolPos: number | null = null;
   private lastTrack: number | null = null;
+  /** Story score state (setStoryStop): the active stop's mood + its bed override, if any. */
+  storyMood: StoryMood | null = null;
+  private storyBedOverride: VenueBed | null = null;
+  private themeTurn = false;
   /** the current venue's music lean is armed: the next pick is one of its signature tracks */
   private leanArmed = false;
   private musicBus: GainNode | null = null;
@@ -487,6 +508,21 @@ class Engine {
   }
 
   private pickNext(): number {
+    // Story score first (Story Mode pass): a story stop's mood outranks the venue identity —
+    // danger stops loop the danger bed, the King loops his arrangement, and everywhere else in
+    // story mode the theme alternates with the normal rotation so the mode has a signature
+    // sound without playing one track to death.
+    if (this.storyMood === 'danger' || this.storyMood === 'king') {
+      const idx = TRACKS.findIndex((t) => t.file === STORY_TRACK_FILE[this.storyMood!]);
+      if (idx >= 0) return idx;
+    }
+    if (this.storyMood === 'theme') {
+      this.themeTurn = !this.themeTurn;
+      if (this.themeTurn) {
+        const idx = TRACKS.findIndex((t) => t.file === STORY_TRACK_FILE.theme);
+        if (idx >= 0 && idx !== this.lastTrack) { this.lastTrack = idx; return idx; }
+      }
+    }
     // Venue audio identity (spatial.ts ROOM_STYLES — the one definition of how a venue
     // sounds): a venue may PIN its music (Phase 4: The Pj's always plays "Marty Gots a
     // Plan", Demetrius 2026-10-19 — the pin now lives in the identity, not a hardcoded
@@ -503,9 +539,14 @@ class Engine {
       const idxs = music.lean.map((f) => TRACKS.findIndex((t) => t.file === f)).filter((i) => i >= 0 && i !== this.lastTrack);
       if (idxs.length) { const pick = idxs[Math.floor(Math.random() * idxs.length)]!; this.lastTrack = pick; return pick; }
     }
-    const { pick, bag } = nextShuffle(this.lastTrack, this.bag, TRACKS.length);
-    this.bag = bag; this.lastTrack = pick;
-    return pick;
+    // General shuffle — over the general pool only: story-score tracks are storyOnly and
+    // never drift into menus or normal games. The bag holds positions in the pool.
+    const pool = generalPool();
+    const { pick, bag } = nextShuffle(this.poolPos, this.bag, pool.length);
+    this.bag = bag; this.poolPos = pick;
+    const idx = pool[pick]!;
+    this.lastTrack = idx;
+    return idx;
   }
 
   /** Crossfade to the pre-loaded deck, then queue the following track on the deck that just faded out. */
@@ -1890,8 +1931,58 @@ class Engine {
   }
   voiceMuted(playerId: string): boolean { return isVoiceMuted(this.settings.mutedVoices, playerId); }
   setVenueBed(id: VenueBed) { this.venueBedId = id; this.syncVenue(); }
+  /**
+   * STORY MODE AUDIO API (the scene/story UI calls exactly this; Story Audio Pass 2026-10-21):
+   * entering a stop applies its whole audio identity from spatial.ts STORY_STOP_AUDIO — the
+   * score mood (theme / danger / king) and, where the stop's venue has no bed of its own
+   * (the Rec Center plays in the silent Classic Studio), a bed override (the gym 'rec' bed).
+   * Pass null when leaving story mode; enterContext('menu') also clears both. The venue bed
+   * itself still comes from applySoundscape — the override only fills a silent venue.
+   * Call it BEFORE the first scene line: the bed fades in under the scene and the score
+   * crossfades promptly (retargetMusic), so the first 60 seconds land as one production.
+   */
+  setStoryStop(stopId: string | null) {
+    const def = stopId ? STORY_STOP_AUDIO[stopId] : undefined;
+    const mood: StoryMood | null = def?.mood ?? null;
+    const bed: VenueBed | null = def?.bed ?? null;
+    const moodChanged = mood !== this.storyMood;
+    this.storyMood = mood;
+    if (bed !== this.storyBedOverride) { this.storyBedOverride = bed; this.syncVenue(); }
+    if (moodChanged) this.retargetMusic();
+    if (typeof window !== 'undefined') (window as unknown as { __bwmStoryAudio?: unknown }).__bwmStoryAudio = { stop: stopId, mood, bed };
+  }
+  /** The story mood changed mid-playback: crossfade to the mood's track now instead of
+   *  waiting out the current song — clear the standby deck so advance() loads the new pick. */
+  private retargetMusic() {
+    if (!this.ctx || !this.decks.length || !wantsMusic(this.settings)) return;
+    const wantFile = this.storyMood ? STORY_TRACK_FILE[this.storyMood] : null;
+    const cur = this.decks[this.active]!;
+    if (wantFile && cur.track !== null && TRACKS[cur.track]?.file === wantFile) return;
+    const other = this.decks[1 - this.active]!;
+    try { other.el.pause(); } catch { /* not playing */ }
+    other.track = null; other.ready = null;
+    if (cur.track !== null && !cur.el.paused) void this.advance();
+  }
+  /**
+   * The story signature sting: the theme's motif (STORY_MOTIF_HZ) as a short cue.
+   * kind 'scene' = the four notes plain (scene-in); 'clear' = notes + a warm fifth bloom
+   * (stop cleared); 'unlock' = notes rising one more step (an unlockable / egg found).
+   * Synthesized on the SFX bus like every other cue; story UI calls it, normal games never do.
+   */
+  storySting(kind: 'scene' | 'clear' | 'unlock' = 'scene') {
+    if (!this.settings.on || !this.unlocked) return;
+    this.ensure();
+    const c = this.ctx;
+    if (!c || c.state !== 'running') return;
+    const t = c.currentTime + 0.03;
+    const notes = kind === 'unlock' ? [...STORY_MOTIF_HZ, 1318.5] : STORY_MOTIF_HZ;
+    this.arp(t, notes, 0.11, 'triangle', 0.16, 0.7);
+    this.tone(t, 146.83, 1.4, 'sine', 0.10, { attack: 0.05 }); // the D under it all
+    if (kind === 'clear') { this.tone(t + 0.44, 220, 1.6, 'sine', 0.08, { attack: 0.08 }); this.tone(t + 0.44, 293.66, 1.6, 'sine', 0.06, { attack: 0.08 }); }
+  }
   private syncVenue() {
-    const want = this.settings.on && this.settings.venueSound !== false && wantsAmbience(this.settings) && this.unlocked && this.venueBedId !== 'none' ? this.venueBedId : 'none';
+    const bedId = this.storyBedOverride ?? this.venueBedId;
+    const want = this.settings.on && this.settings.venueSound !== false && wantsAmbience(this.settings) && this.unlocked && bedId !== 'none' ? bedId : 'none';
     if (want === this.venuePlaying) return;
     // stop what's playing (fade), then build the new bed
     if (this.venuePlaying !== 'none') {
@@ -1964,34 +2055,65 @@ class Engine {
         murmur(0.8); this.vNoise('highpass', 3500, 0.5, 0.008, 0.4, 0.6); // grill sizzle
         this.vEvery(1.5, 4, (t) => { for (let i = 0; i < 3; i++) this.tone(t + i * 0.07, 4600, 0.04, 'sine', 0.012, { dest: B }); }); // crickets
         crackle(0.6, 1.8, 0.7);
+        // Story Audio Pass: the yard is alive — kids a yard over (bright little arcs of noise,
+        // never words), a screen door slapping now and then, the cooler lid and ice.
+        this.vEvery(16, 38, (t) => { const n = 2 + Math.floor(Math.random() * 3); for (let i = 0; i < n; i++) this.tone(t + i * (0.14 + Math.random() * 0.1), 1250 + Math.random() * 750, 0.1, 'sine', 0.006, { dest: B }); });
+        this.vEvery(34, 80, (t) => { this.tone(t, 300, 0.28, 'sine', 0.008, { glideTo: 620, dest: B }); this.vBurst(t + 0.3, 0.05, 'lowpass', 500, 0.05); }); // screen door creak + slap
+        this.vEvery(11, 26, (t) => { for (let i = 0; i < 3; i++) this.vBurst(t + Math.random() * 0.3, 0.02, 'bandpass', 3400 + Math.random() * 900, 0.02); }); // ice settling in the cooler
         break;
       case 'mansion':
         room(0.8);
         this.vEvery(6, 9, (t) => { const ch = [[392, 493.88, 587.33], [349.23, 440, 523.25], [329.63, 415.3, 493.88]][Math.floor(Math.random() * 3)]!; ch.forEach((f, i) => this.tone(t + i * 0.35, f, 3.2, 'sine', 0.012, { attack: 0.6, dest: B })); }); // distant piano-ish
+        // Story Audio Pass (the High-Rise stop lives here): money-quiet — ice in a glass,
+        // a far-off elevator chime, the fireplace working under the piano.
+        crackle(1.4, 3.4, 0.35);
+        this.vEvery(13, 29, (t) => { for (let i = 0; i < 2; i++) this.vBurst(t + Math.random() * 0.22, 0.018, 'bandpass', 3600 + Math.random() * 800, 0.022); }); // ice in glasses
+        this.vEvery(47, 95, (t) => { this.tone(t, 1318.5, 0.7, 'sine', 0.006, { dest: B }); this.tone(t + 0.28, 987.77, 0.9, 'sine', 0.005, { dest: B }); }); // elevator ding, two floors away
         break;
       case 'barbershop':
         murmur(0.7); this.vHum(120, 0.004);
         this.vEvery(9, 18, (t) => this.tone(t, 118, 1.4, 'sawtooth', 0.01, { attack: 0.08, filter: 900, dest: B })); // clippers
+        // Story Audio Pass: the shop works around the game — scissors between cuts, the door
+        // bell when somebody comes in off the street, a razor strop's slow leather swipes.
+        this.vEvery(6, 15, (t) => { for (let i = 0; i < 2; i++) this.vBurst(t + i * 0.13, 0.016, 'highpass', 4200, 0.035); }); // scissors snip-snip
+        this.vEvery(41, 90, (t) => { this.tone(t, 1567.98, 0.32, 'triangle', 0.012, { dest: B }); this.tone(t + 0.16, 2093, 0.42, 'triangle', 0.01, { dest: B }); }); // door bell
+        this.vEvery(19, 40, (t) => { for (let i = 0; i < 3; i++) this.vBurst(t + i * 0.4, 0.3, 'bandpass', 700 + i * 130, 0.014); }); // strop swipes
         break;
       case 'basement':
         this.vHum(120, 0.006); murmur(0.6); room(0.6);
         this.vEvery(7, 14, (t) => { for (let i = 0; i < 5; i++) this.tone(t + i * 0.09, 220 + Math.random() * 120, 0.06, 'sine', 0.012, { dest: B }); }); // coffee percolator
+        // Story Audio Pass: a hymn through the wall from the sanctuary upstairs — slow organ
+        // chords, felt more than heard — and folding chairs shifting on the linoleum.
+        this.vEvery(13, 21, (t) => { const hymn = [[174.61, 220, 261.63], [146.83, 220, 293.66], [130.81, 196, 261.63], [164.81, 220, 329.63]]; const ch = hymn[Math.floor(Math.random() * hymn.length)]!; ch.forEach((f) => { this.tone(t, f, 5.2, 'sine', 0.009, { attack: 1.1, dest: B }); this.tone(t, f * 2, 5.2, 'sine', 0.003, { attack: 1.1, dest: B }); }); });
+        this.vEvery(17, 36, (t) => this.vBurst(t, 0.22, 'lowpass', 420, 0.028)); // a chair scrape
         break;
       case 'rooftop':
         this.vNoise('lowpass', 520, 0.6, 0.06, 0.07, 0.7); // wind
         this.vNoise('lowpass', 140, 0.5, 0.06, 0.05, 0.3); // traffic rumble
         this.vEvery(14, 32, (t) => { this.tone(t, 392, 0.35, 'sawtooth', 0.008, { filter: 600, dest: B }); this.tone(t + 0.45, 349.23, 0.5, 'sawtooth', 0.008, { filter: 600, dest: B }); }); // distant horn
+        // Story Audio Pass: gusts that lean on the mic a little, a wind chime two roofs over,
+        // and the city breathing far below (a siren that never gets close).
+        this.vNoise('bandpass', 300, 0.6, 0.02, 0.045, 0.9); // gust layer
+        this.vEvery(15, 34, (t) => { const penta = [1318.5, 1567.98, 1760, 2093, 2349.3]; const n = 2 + Math.floor(Math.random() * 3); for (let i = 0; i < n; i++) this.tone(t + i * (0.2 + Math.random() * 0.22), penta[Math.floor(Math.random() * penta.length)]!, 0.8, 'sine', 0.004, { dest: B }); }); // wind chime
+        this.vEvery(38, 85, (t) => { this.tone(t, 622, 1.1, 'sine', 0.004, { glideTo: 830, dest: B }); this.tone(t + 1.2, 622, 1.1, 'sine', 0.0035, { glideTo: 830, dest: B }); }); // far siren
         break;
       case 'jazz': {
         room(0.7); crackle(0.4, 1.3, 0.5);
         const chords = [[146.83, 174.61, 220, 261.63], [98, 174.61, 246.94, 329.63], [130.81, 164.81, 246.94, 293.66], [110, 196, 233.08, 277.18]];
         let i = 0;
         this.vEvery(4, 4, (t) => { const ch = chords[i++ % 4]!; ch.forEach((f) => this.tone(t, f, 4.2, 'sine', 0.014, { attack: 0.8, dest: B })); this.tone(t, ch[0]! / 2, 1.4, 'sine', 0.03, { dest: B }); this.tone(t + 2, ch[0]! / 2 * 1.5, 1.2, 'sine', 0.022, { dest: B }); });
+        // Story Audio Pass: the Corner stop plays here — glasses and low talk under the chords.
+        this.vEvery(9, 22, (t) => { for (let i = 0; i < 2; i++) this.vBurst(t + Math.random() * 0.25, 0.016, 'bandpass', 3300 + Math.random() * 900, 0.02); }); // ice / glass
+        murmur(0.35);
         break;
       }
       case 'casino':
         murmur(1);
         this.vEvery(2, 6, (t) => { const base = [1046.5, 1174.66, 1318.5, 1567.98]; for (let i = 0; i < 4; i++) this.tone(t + i * 0.09, base[Math.floor(Math.random() * 4)]!, 0.25, 'triangle', 0.008, { dest: B }); }); // slots
+        // Story Audio Pass (the Legends' Table plays here): a payout somewhere behind you,
+        // chips being stacked between hands at the next table.
+        this.vEvery(23, 55, (t) => { const seq = [1567.98, 1318.5, 1567.98, 2093, 1567.98, 2637]; seq.forEach((f, i) => this.tone(t + i * 0.11, f, 0.22, 'triangle', 0.007, { dest: B })); }); // slot payout arpeggio
+        this.vEvery(8, 19, (t) => { for (let i = 0; i < 4; i++) this.vBurst(t + i * 0.07, 0.014, 'bandpass', 2100 + Math.random() * 500, 0.02); }); // chips clicking
         break;
       case 'beach':
         this.vNoise('lowpass', 700, 0.4, 0.07, 0.085, 0.85); // waves
@@ -2002,6 +2124,22 @@ class Engine {
       case 'kitchen':
         room(0.6); this.vHum(60, 0.006);
         this.vEvery(1, 1, (t) => this.vBurst(t, 0.015, 'bandpass', 2600, 0.04)); // the clock
+        // Story Audio Pass (the Porch stop lives in Grandma's Kitchen): the house breathes —
+        // somebody's TV murmuring two rooms off, a dish set down, and the screen door to the
+        // porch, where the game actually is, working on its hinge.
+        this.vEvery(7, 16, (t) => { for (let i = 0; i < 2; i++) this.vBurst(t + Math.random() * 0.3, 0.02, 'bandpass', 2900 + Math.random() * 700, 0.024); }); // dishes / silverware
+        this.vEvery(29, 65, (t) => { this.tone(t, 280, 0.3, 'sine', 0.007, { glideTo: 560, dest: B }); this.vBurst(t + 0.32, 0.05, 'lowpass', 480, 0.045); }); // screen door creak + slap
+        this.vEvery(21, 47, (t) => { for (let i = 0; i < 3; i++) this.tone(t + i * 0.07, 4400, 0.04, 'sine', 0.009, { dest: B }); }); // sparrows outside the window
+        break;
+      case 'rec':
+        // The Rec Center (Story stop 3) — a gym that never fully empties: ball on hardwood,
+        // shoes on the court, a buzzer's ghost. Reached only via the story bed override
+        // (STORY_STOP_AUDIO) since the stop's venue (Classic Studio) is silent by design.
+        murmur(0.9); room(1.1); this.vHum(120, 0.005);
+        this.vNoise('bandpass', 800, 0.4, 0.025, 0.11, 0.5); // hall air, big-room wash
+        this.vEvery(5, 13, (t) => { this.tone(t, 95, 0.16, 'sine', 0.05, { glideTo: 55, dest: B }); this.tone(t + 0.42, 95, 0.14, 'sine', 0.035, { glideTo: 58, dest: B }); this.tone(t + 0.78, 95, 0.12, 'sine', 0.022, { glideTo: 60, dest: B }); }); // basketball dribble, slowing
+        this.vEvery(4, 11, (t) => this.tone(t, 1050 + Math.random() * 300, 0.07, 'sine', 0.006, { glideTo: 1500 + Math.random() * 400, dest: B })); // shoe squeak
+        this.vEvery(55, 110, (t) => { this.tone(t, 233, 0.5, 'square', 0.006, { filter: 900, dest: B }); }); // a buzzer, court over
         break;
       case 'yacht':
         this.vNoise('bandpass', 420, 0.8, 0.06, 0.3, 0.7); // water lapping on the hull
@@ -2057,6 +2195,20 @@ class Engine {
         });
         // Calm drive-by: headlights sweep the fence, no gunfire — rarer and softer than the barrage above
         if (streetEvents.includes('headlights')) this.vEvery(300, 620, (t) => this.headlightPass(t));
+        // Story Audio Pass: a car rolls past slow with the bass up — you feel it in the
+        // folding table before you hear it. Thumps sweep with the car, then it's gone.
+        this.vEvery(55, 130, (t) => {
+          const c = this.ctx!;
+          const pan = this.drivebyPanner(-50, 11);
+          if (pan) {
+            pan.connect(B);
+            pan.positionX.setValueAtTime(-11, t);
+            pan.positionX.linearRampToValueAtTime(11, t + 7);
+            window.setTimeout(() => { try { pan.disconnect(); } catch { /* already gone */ } }, (t - c.currentTime + 9) * 1000);
+          }
+          const out = pan ?? B;
+          for (let i = 0; i < 7; i++) { this.tone(t + 1 + i * 0.82, 56, 0.34, 'sine', 0.055, { dest: out }); this.tone(t + 1.4 + i * 0.82, 49, 0.3, 'sine', 0.04, { dest: out }); }
+        });
         break;
       }
       default:

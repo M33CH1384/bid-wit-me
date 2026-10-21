@@ -119,6 +119,35 @@ export const ROOM_STYLES: RoomStyle[] = [
   { venue: 'blockAfterDark', name: "The Pj's", bed: 'street', surface: 'felt', reverb: 'dry-outdoor', crowd: 'low', music: { pin: 'marty-gots-a-plan', lean: [] }, events: ['driveby', 'headlights'] },
 ];
 export function styleForVenue(venue: string): RoomStyle | undefined { return ROOM_STYLES.find((r) => r.venue === venue); }
+
+/**
+ * STORY MODE AUDIO (Story Audio Pass, 2026-10-21) — how a story STOP sounds, layered over its
+ * venue's identity. Each stop (ids from packages/bots story.ts) gets a score mood; the engine
+ * (audio.ts setStoryStop → pickNext) resolves the mood to the game's original score:
+ * 'theme' = the story theme in rotation, 'danger' = the tension bed looped, 'king' = the
+ * boss arrangement looped. A stop may also name a bed override for when its VENUE is silent
+ * by design — the Rec Center plays in the Classic Studio (bed 'none'), so the stop supplies
+ * the gym's 'rec' bed. Everywhere else the venue's own bed (upgraded in buildBed) carries the
+ * place. In story context the mood outranks the venue's music character (the Pj's stop plays
+ * the danger bed, not the venue's Marty pin — the pin still rules normal Pj's games), and the
+ * King gets his own music, full stop.
+ */
+export type StoryMood = 'theme' | 'danger' | 'king';
+export interface StoryStopAudio { mood: StoryMood; bed?: VenueBed }
+export const STORY_STOP_AUDIO: Record<string, StoryStopAudio> = {
+  'porch': { mood: 'theme' },
+  'barbershop': { mood: 'theme' },
+  'rec-center': { mood: 'theme', bed: 'rec' },
+  'cookout': { mood: 'theme' },
+  'corner': { mood: 'danger' },
+  'church-basement': { mood: 'theme' },
+  'rooftop': { mood: 'theme' },
+  'high-rise': { mood: 'danger' },
+  'the-pjs': { mood: 'danger' },
+  'legends': { mood: 'theme' },
+  'king': { mood: 'king' },
+};
+export function storyAudioForStop(stopId: string): StoryStopAudio | undefined { return STORY_STOP_AUDIO[stopId]; }
 /** The venue audio identity for a venue id (alias of styleForVenue — the one resolver every
  *  audio consumer goes through). */
 export type VenueAudioIdentity = RoomStyle;
