@@ -79,12 +79,13 @@ describe('challengeButtonState', () => {
 describe('validateCreate + createBody', () => {
   const form: CreateFormState = {
     format: 'partnership', wager: 250, deck: 'joker', target: 500, timers: 'normal',
-    startAt: NOW + 3600_000, opponent: 'Rival', partner: 'Buddy', invitees: ['', '', ''],
+    startAt: NOW + 3600_000, opponent: 'Rival', partner: 'Buddy', invitees: ['', '', ''], teamName: ' Book Bandits ',
   };
   const ctx = { myName: 'Me', balance: 1000, now: NOW };
   it('a complete partnership form validates and posts the contract shape', () => {
     expect(validateCreate(form, ctx)).toBeNull();
-    expect(createBody(form)).toEqual({ format: 'partnership', wager: 250, timers: 'normal', startAt: NOW + 3600_000, deck: 'joker', target: 500, opponent: 'Rival', partner: 'Buddy' });
+    // the pairing's team name rides the create body (trimmed; the server cleans it)
+    expect(createBody(form)).toEqual({ format: 'partnership', wager: 250, timers: 'normal', startAt: NOW + 3600_000, deck: 'joker', target: 500, opponent: 'Rival', partner: 'Buddy', teamName: 'Book Bandits' });
   });
   it('catches people problems', () => {
     expect(validateCreate({ ...form, partner: '' }, ctx)).toMatch(/partner/i);

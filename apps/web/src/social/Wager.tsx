@@ -7,6 +7,7 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { useAccount } from '../account/api';
 import { CoinIcon } from '../RepBlock';
+import { TeamNameInput, pairKeyForUser, pairTeamNames, teamNameFor } from '../TeamName';
 import { navigate } from '../online/nav';
 import { onNotice, social, useSocial } from './store';
 import { createWager, fetchMyCred, fetchWager, fetchWagerEnabled, fetchWagerList, wagerAct, type MyCred, type WagerPlayer, type WagerRow, type WagerView } from './wagerApi';
@@ -172,14 +173,22 @@ function CreateWager({ presetOpponent, onDone }: { presetOpponent?: string; onDo
   const presets = useMemo(() => startPresets(Date.now()), []);
   const [f, setF] = useState<CreateFormState>({
     format: 'partnership', wager: 250, deck: 'joker', target: 500, timers: 'normal',
-    startAt: presets[0]!.at, opponent: presetOpponent ?? '', partner: '', invitees: ['', '', ''],
+    startAt: presets[0]!.at, opponent: presetOpponent ?? '', partner: '', invitees: ['', '', ''], teamName: '',
   });
   const [startTxt, setStartTxt] = useState(() => toLocalInput(presets[0]!.at));
   const [cred, setCred] = useState<MyCred | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // the team name belongs to the pairing: prefill it from the pairing's saved
+  // name whenever the partner pick changes, until the user edits it themselves
+  const [teamNameDirty, setTeamNameDirty] = useState(false);
   useEffect(() => { void fetchMyCred(0).then(setCred); }, []);
   const upd = (p: Partial<CreateFormState>) => setF((x) => ({ ...x, ...p }));
+  useEffect(() => {
+    if (teamNameDirty) return;
+    upd({ teamName: f.partner.trim() ? teamNameFor(pairKeyForUser(f.partner)) : '' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [f.partner, teamNameDirty]);
   const pickFormat = (format: 'partnership' | 'cutthroat') => upd({ format, target: format === 'partnership' ? 500 : 300 });
   const hint = validateCreate(f, { myName, balance: cred?.coins ?? Number.MAX_SAFE_INTEGER, now: Date.now() });
   const submit = async (e: FormEvent) => {
@@ -188,6 +197,8 @@ function CreateWager({ presetOpponent, onDone }: { presetOpponent?: string; onDo
     setBusy(true); setErr(null);
     try {
       const v = await createWager(createBody(f));
+      // the name used becomes the pairing's saved name for next time
+      if (f.format === 'partnership' && f.partner.trim()) pairTeamNames.set(pairKeyForUser(f.partner), f.teamName);
       onDone(v.id);
     } catch (x) { setErr((x as Error).message); } finally { setBusy(false); }
   };
@@ -204,6 +215,10 @@ function CreateWager({ presetOpponent, onDone }: { presetOpponent?: string; onDo
         <>
           <PlayerPicker label="Opponent" value={f.opponent} onChange={(v) => upd({ opponent: v })} exclude={[myName, f.partner]} testid="wg-opponent" />
           <PlayerPicker label="Your partner" value={f.partner} onChange={(v) => upd({ partner: v })} exclude={[myName, f.opponent]} testid="wg-partner" />
+          <label>Your team name
+            <TeamNameInput value={f.teamName} placeholder="You + your partner" testId="wg-team-name"
+              onChange={(v) => { setTeamNameDirty(true); upd({ teamName: v }); }} />
+          </label>
         </>
       ) : (
         <>
@@ -404,12 +419,24 @@ function WagerDetail({ id }: { id: string }) {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [partner, setPartner] = useState('');
+  // your side's team name for the pairing you're forming at accept (opponent
+  // naming their partner): prefilled from the pairing's saved name
+  const [acceptTeam, setAcceptTeam] = useState('');
+  const [acceptTeamDirty, setAcceptTeamDirty] = useState(false);
+  useEffect(() => {
+    if (acceptTeamDirty) return;
+    setAcceptTeam(partner.trim() ? teamNameFor(pairKeyForUser(partner)) : '');
+  }, [partner, acceptTeamDirty]);
   const load = useCallback(() => { fetchWager(id).then((j) => { setV(j); setErr(null); }).catch((e) => setErr((e as Error).message)); }, [id]);
   useEffect(() => { load(); const t = window.setInterval(load, 10_000); return () => window.clearInterval(t); }, [load]);
   useEffect(() => onNotice((n) => { if (n.cid === id) load(); }), [id, load]);
   const act = async (a: 'accept' | 'decline' | 'cancel' | 'checkin', body?: Record<string, unknown>) => {
     setBusy(true);
     try { setV(await wagerAct(id, a, body)); setErr(null); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  };
+  const acceptWithTeam = async () => {
+    await act('accept', { partner: partner.trim(), teamName: acceptTeam.trim() });
+    if (partner.trim()) pairTeamNames.set(pairKeyForUser(partner), acceptTeam);
   };
   if (!v) return (
     <div className="wg-detail">
@@ -440,6 +467,9 @@ function WagerDetail({ id }: { id: string }) {
         {v.format === 'partnership' ? (v.rules.deck === 'standard52' ? 'Ace Down deck' : 'Joker deck') : 'Joker deck'} · starts {whenText(v.startAt, now)} · check-in opens {whenText(v.checkinOpensAt, now)}
       </p>
       <h4>Players</h4>
+      {v.format === 'partnership' && v.teamNames && (v.teamNames[0] || v.teamNames[1]) && (
+        <p className="soc-muted" data-testid="wg-team-names">🏷 Side 1 — {v.teamNames[0] ?? 'no team name'} · Side 2 — {v.teamNames[1] ?? 'no team name'}</p>
+      )}
       <ul className="wg-players" data-testid="wg-players">
         {v.players.map((p) => (
           <li key={p.uid}>
@@ -464,11 +494,17 @@ function WagerDetail({ id }: { id: string }) {
           {you.canAccept && (
             <>
               {needsPartner && (
-                <PlayerPicker label="Your partner" value={partner} onChange={setPartner} testid="wg-accept-partner"
-                  exclude={v.players.map((p) => p.name)} />
+                <>
+                  <PlayerPicker label="Your partner" value={partner} onChange={setPartner} testid="wg-accept-partner"
+                    exclude={v.players.map((p) => p.name)} />
+                  <label>Your team name
+                    <TeamNameInput value={acceptTeam} placeholder="You + your partner" testId="wg-accept-team-name"
+                      onChange={(v2) => { setAcceptTeamDirty(true); setAcceptTeam(v2); }} />
+                  </label>
+                </>
               )}
               <button type="button" className="primary" disabled={busy || (needsPartner && !partner.trim())} data-testid="wg-accept"
-                onClick={() => void act('accept', needsPartner ? { partner: partner.trim() } : {})}>Accept · escrow {v.wager.toLocaleString()} <CoinIcon /></button>
+                onClick={() => void (needsPartner ? acceptWithTeam() : act('accept'))}>Accept · escrow {v.wager.toLocaleString()} <CoinIcon /></button>
               <button type="button" className="ghost" disabled={busy} data-testid="wg-decline" onClick={() => void act('decline')}>Decline</button>
             </>
           )}

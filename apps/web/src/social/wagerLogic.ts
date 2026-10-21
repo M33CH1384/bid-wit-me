@@ -94,6 +94,10 @@ export interface CreateFormState {
   wager: number; deck: 'joker' | 'aceDown'; target: number;
   timers: 'chill' | 'normal' | 'fast'; startAt: number;
   opponent: string; partner: string; invitees: string[];
+  /** partnership: YOUR side's team name for the pairing (you + partner), set at
+   *  setup — prefilled from the pairing's saved name, carried on the challenge
+   *  so the match table is seeded with it (owner, 2026-10-20). */
+  teamName: string;
 }
 
 const cleanName = (n: string) => n.trim();
@@ -123,7 +127,7 @@ export function validateCreate(f: CreateFormState, o: { myName: string; balance:
 /** The POST body for a validated form (shape per the Phase 1 API contract). */
 export function createBody(f: CreateFormState): Record<string, unknown> {
   const base = { format: f.format, wager: f.wager, timers: f.timers, startAt: f.startAt };
-  if (f.format === 'partnership') return { ...base, deck: f.deck, target: f.target, opponent: cleanName(f.opponent), partner: cleanName(f.partner) };
+  if (f.format === 'partnership') return { ...base, deck: f.deck, target: f.target, opponent: cleanName(f.opponent), partner: cleanName(f.partner), teamName: cleanName(f.teamName) };
   return { ...base, target: f.target, invitees: f.invitees.map(cleanName) };
 }
 

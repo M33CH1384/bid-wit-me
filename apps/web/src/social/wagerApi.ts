@@ -29,6 +29,9 @@ export interface WagerView {
   id: string; format: 'partnership' | 'cutthroat'; mode: string; rules: WagerRules;
   wager: number; pot: number; startAt: number; checkinOpensAt: number; createdAt: number;
   status: string; endReason: string | null; tableCode: string | null; gameId: string | null; settledAt: number | null;
+  /** partnership: each side's team name for the match, [side 0, side 1] (set by
+   *  each side's captain at challenge setup; seeds the match table). */
+  teamNames?: [string | null, string | null];
   players: WagerPlayer[]; you: WagerYou | null; now: number;
 }
 
