@@ -1,6 +1,9 @@
 /**
  * Story Mode HTTP routes (Phase 1 — solo route):
  *   GET  /api/story/progress?track=solo   → the caller's progress on a track
+ *   POST /api/story/session { state: 'open'|'closed', stopId?, track? }
+ *        → a story match opened/closed on this device (call-back nudges,
+ *          see callback.ts; server-stamped, never a progress write)
  *   POST /api/story/result { track?, stopId, won, gameId }
  *        → record a finished solo stop game: attempt always recorded; a win
  *          clears the stop (server-validated sequential unlock), pays the
@@ -34,6 +37,7 @@ import {
 import { awardXp } from '../cred/xp';
 import { move } from '../cred/coins';
 import { grantUnlock } from '../cred/achievements';
+import { closeStorySession, openStorySession } from './callback';
 
 export interface StoryEnv extends AuthEnv, SocialEnv {}
 
@@ -165,6 +169,30 @@ export async function handleStoryHttp(req: Request, env: StoryEnv, url: URL, par
     return json({ ok: true, eggId: found.egg.id, new: isNew, ...progress });
   }
 
+  // A story session ping (call-backs, 2026-10-21): the story save is
+  // device-local, so the client reports when a story match is open and
+  // when it closes (finish / discard / resume-completion). The server
+  // stamps its own receive time — the body's savedAt is accepted for
+  // debugging and never trusted for the nudge schedule. Sessions drive
+  // the character call-back sweep in callback.ts; they are NOT progress
+  // writes (no unlock check, no rewards) — the worst a forged ping can
+  // do is nudge the caller themselves.
+  if (parts[1] === 'story' && parts[2] === 'session' && req.method === 'POST') {
+    let body: { state?: unknown; stopId?: unknown; track?: unknown };
+    try { body = (await req.json()) as typeof body; } catch { return json({ error: 'Send the session as JSON.' }, 400); }
+    const track = typeof body.track === 'string' ? body.track : STORY_SOLO_TRACK;
+    if (!storyTrackKeyValid(track) || track !== STORY_SOLO_TRACK) return json({ error: 'bad track' }, 400);
+    if (body.state === 'closed') {
+      await closeStorySession(db, me.id, track, now);
+      return json({ ok: true, state: 'closed' });
+    }
+    if (body.state !== 'open') return json({ error: 'bad state' }, 400);
+    const stop = typeof body.stopId === 'string' ? storyStopById(body.stopId) : undefined;
+    if (!stop) return json({ error: 'unknown stop' }, 400);
+    await openStorySession(db, me.id, track, stop.id, now);
+    return json({ ok: true, state: 'open', stopId: stop.id });
+  }
+
   if (parts[1] === 'story' && parts[2] === 'result' && req.method === 'POST') {
     let body: { track?: unknown; stopId?: unknown; won?: unknown; gameId?: unknown; facts?: unknown };
     try { body = (await req.json()) as typeof body; } catch { return json({ error: 'Send the result as JSON.' }, 400); }
@@ -182,6 +210,8 @@ export async function handleStoryHttp(req: Request, env: StoryEnv, url: URL, par
       .bind(me.id, gameId).first<{ stopId: string; won: number; firstClear: number; xp: number; coins: number }>();
     if (prior) {
       if (prior.stopId !== stop.id) return json({ error: 'gameId already recorded for another stop' }, 409);
+      // The game this session was about already finished — no call-backs owed.
+      try { await closeStorySession(db, me.id, track, now); } catch { /* sessions never break results */ }
       const progress = await storyProgressPayload(db, me.id, track);
       return json({ ok: true, replayed: true, stopId: stop.id, won: !!prior.won, firstClear: !!prior.firstClear, rewards: { xp: prior.xp, coins: prior.coins }, ...progress });
     }
@@ -246,6 +276,9 @@ export async function handleStoryHttp(req: Request, env: StoryEnv, url: URL, par
         }
       } catch { /* secrets never break a recorded result */ }
     }
+
+    // A recorded finish closes the open session: the table stops calling.
+    try { await closeStorySession(db, me.id, track, now); } catch { /* sessions never break results */ }
 
     const progress = await storyProgressPayload(db, me.id, track);
     return json({ ok: true, replayed: false, stopId: stop.id, won, firstClear, rewards, newFinds, ...progress, completed: completed || progress.completed });

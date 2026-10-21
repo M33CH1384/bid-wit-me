@@ -40,6 +40,7 @@ import { handleTournaments } from './tournament/routes';
 import type { TOp } from './tournament/do';
 import { handleWagerChallenges } from './wager/routes';
 import { handleStoryHttp } from './story/routes';
+import { runStoryCallbacks } from './story/callback';
 import type { WOp } from './wager/do';
 import { type PushEnv, handlePushHttp } from './push/routes';
 import { notifyFriendsOfOnline, notifyInvite, notifyTurn, pushVapid, runScheduledPushes, sendCredPushEvent } from './push/notify';
@@ -325,14 +326,20 @@ export default {
     return json({ error: 'not found' }, { status: 404 }, origin);
   },
 
-  /** Cron (see [triggers] in wrangler.toml): daily-bonus + season-ending pushes. */
+  /** Cron (see [triggers] in wrangler.toml): daily-bonus + season-ending pushes,
+   *  plus story call-backs (open story tables summoning their players back). */
   async scheduled(_controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
     if (!env.DB) return;
     const vapid = pushVapid(env);
     if (!vapid) return; // VAPID secrets not configured yet — nothing to send
     try {
-      const r = await runScheduledPushes(env.DB, vapid, Date.now());
-      console.log(JSON.stringify({ src: 'bwm.push', event: 'scheduled', ...r }));
+      const now = Date.now();
+      const r = await runScheduledPushes(env.DB, vapid, now);
+      const story = await runStoryCallbacks(env.DB, vapid, now).catch((e) => {
+        console.error(JSON.stringify({ src: 'bwm.push', event: 'story-callback-failed', error: String(e).slice(0, 160) }));
+        return { first: 0, last: 0 };
+      });
+      console.log(JSON.stringify({ src: 'bwm.push', event: 'scheduled', ...r, storyCallbacks: story }));
     } catch (e) {
       console.error(JSON.stringify({ src: 'bwm.push', event: 'scheduled-failed', error: String(e).slice(0, 160) }));
     }

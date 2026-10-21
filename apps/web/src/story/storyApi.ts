@@ -94,6 +94,43 @@ export async function postStoryResult(stopId: string, won: boolean, gameId: stri
   }
 }
 
+/**
+ * Story session pings (call-backs): the story save is device-local, so the
+ * server can only know a story match is open if the client says so. The
+ * story save slot reports 'open' when a match is saved (throttled — the
+ * save fires on every state change) and 'closed' when the slot clears.
+ * The server stamps its own receive time for the nudge schedule; savedAt
+ * rides along for debugging only. Fire-and-forget: a failed ping costs a
+ * call-back, never a game.
+ */
+const SESSION_PING_MIN_MS = 10 * 60_000;
+let lastOpenPing: { key: string; at: number } | null = null;
+
+export function reportStorySession(state: 'open' | 'closed', stopId: string, track = 'solo'): void {
+  try {
+    if (typeof fetch !== 'function') return;
+    const key = `${track}:${stopId}`;
+    const now = Date.now();
+    if (state === 'open') {
+      if (lastOpenPing && lastOpenPing.key === key && now - lastOpenPing.at < SESSION_PING_MIN_MS) return;
+      lastOpenPing = { key, at: now };
+    } else if (lastOpenPing?.key === key) {
+      lastOpenPing = null; // a new sitting at this stop gets its first ping immediately
+    }
+    void fetch('/api/story/session', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({ state, stopId, track, savedAt: now }),
+      keepalive: true,
+    }).catch(() => undefined);
+  } catch { /* offline / private mode: no ping, no problem */ }
+}
+
+/** Test seam: forget the open-ping throttle (module state is per page load). */
+export function resetStorySessionPings(): void {
+  lastOpenPing = null;
+}
+
 /** Report a scene-side Easter egg find (sceneTap / deeTap / chain). The
  *  server validates the trigger type and any chain fact; match-event eggs
  *  are only ever granted from result facts. Returns the fresh progress. */

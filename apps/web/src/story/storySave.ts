@@ -13,7 +13,7 @@
  * or forgetting the events its callbacks reference.
  */
 import { parseSave, type SavedGame } from '../save';
-import type { StoryProgress } from './storyApi';
+import { reportStorySession, type StoryProgress } from './storyApi';
 
 export const STORY_SAVE_KEY = 'bwm.storySave.v1';
 
@@ -46,10 +46,27 @@ export function saveStoryGame(g: Omit<SavedGame, 'v' | 'savedAt'>, story: StoryS
     const data: StorySavedGame = { v: 1, savedAt: Date.now(), ...g, chat: g.chat.slice(-60), story };
     localStorage.setItem(STORY_SAVE_KEY, JSON.stringify(data));
   } catch { /* quota / private mode: resume just won't be available */ }
+  // An open story match exists on this device — the server hears about it
+  // (throttled in reportStorySession) so the table can call the player back.
+  reportStorySession('open', story.stopId, story.track);
 }
 
 export function clearStoryGame(): void {
+  // Read the doomed save's story context first: the server session closes
+  // for the same stop/track, whichever flow cleared the slot (finish,
+  // discard/restart, stale-save drop).
+  let ctx: { stopId: string; track: string } | null = null;
+  try {
+    const raw = localStorage.getItem(STORY_SAVE_KEY);
+    if (raw) {
+      const d = JSON.parse(raw) as Partial<StorySavedGame>;
+      if (typeof d.story?.stopId === 'string' && typeof d.story?.track === 'string') {
+        ctx = { stopId: d.story.stopId, track: d.story.track };
+      }
+    }
+  } catch { /* unreadable save: nothing to attribute the close to */ }
   try { localStorage.removeItem(STORY_SAVE_KEY); } catch { /* ignore */ }
+  if (ctx) reportStorySession('closed', ctx.stopId, ctx.track);
 }
 
 export function loadStoryGame(): StorySavedGame | null {

@@ -4,7 +4,7 @@
  */
 export type NotifType =
   | 'turn' | 'invite' | 'friend_online' | 'achievement'
-  | 'daily' | 'rankup' | 'challenge' | 'season';
+  | 'daily' | 'rankup' | 'challenge' | 'season' | 'story_callback';
 
 export const NOTIF_TYPES: { type: NotifType; label: string; hint: string }[] = [
   { type: 'turn', label: 'Your turn', hint: 'When your bid or play is up and the app is closed' },
@@ -15,6 +15,7 @@ export const NOTIF_TYPES: { type: NotifType; label: string; hint: string }[] = [
   { type: 'rankup', label: 'Rating up', hint: 'When your rating climbs' },
   { type: 'challenge', label: 'Challenges', hint: 'When a challenge hits 100%' },
   { type: 'season', label: 'Season ending', hint: 'One reminder before the season ends' },
+  { type: 'story_callback', label: 'Story table calls', hint: 'When a story game sits unfinished, the table calls you back' },
 ];
 
 export function pushSupported(): boolean {

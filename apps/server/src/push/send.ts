@@ -6,10 +6,10 @@ import { encryptPushPayload, vapidAuthorization, type VapidKeys } from './crypto
 
 export type NotifType =
   | 'turn' | 'invite' | 'friend_online' | 'achievement'
-  | 'daily' | 'rankup' | 'challenge' | 'season' | 'wager';
+  | 'daily' | 'rankup' | 'challenge' | 'season' | 'wager' | 'story_callback';
 
 export const NOTIF_TYPES: NotifType[] = [
-  'turn', 'invite', 'friend_online', 'achievement', 'daily', 'rankup', 'challenge', 'season', 'wager',
+  'turn', 'invite', 'friend_online', 'achievement', 'daily', 'rankup', 'challenge', 'season', 'wager', 'story_callback',
 ];
 
 export const NOTIF_LABELS: Record<NotifType, string> = {
@@ -22,6 +22,7 @@ export const NOTIF_LABELS: Record<NotifType, string> = {
   challenge: 'Challenge complete',
   season: 'Season ending',
   wager: 'Big Bank challenges',
+  story_callback: 'Story table calls',
 };
 
 export interface PushPayload {
