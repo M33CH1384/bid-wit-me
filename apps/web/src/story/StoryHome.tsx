@@ -8,7 +8,7 @@
  * stored facts, a finished game posts its result once (idempotent per game),
  * and a loss is a free retry with nothing lost.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { secureSeed } from '@spades/rules';
 import {
   STORY_SECRETS, STORY_STOPS, STORY_CHARACTERS, STORY_TIER_LABEL, STORY_TIER_SKILL, beatsFor, deeSkillForStop,
@@ -89,6 +89,42 @@ export default function StoryHome() {
   const [dev, setDev] = useState<boolean | null | undefined>(undefined);
   const [storyAccess, setStoryAccess] = useState<boolean | null | undefined>(undefined);
   const [lockedByServer, setLockedByServer] = useState(false);
+
+  // ---- Screen scroll discipline (owner, 2026-10-21) ----
+  // StoryHome swaps its screens inside ONE document: the window is the
+  // scroll container and a state swap moves nothing, so a sub-screen
+  // opened from a scrolled map inherited the map's offset — the Tale of
+  // the Tape "opened already scrolled down". The discipline, applied in
+  // layout effects (before paint — never a delayed scrollTo the eye can
+  // catch): every sub-screen — the stand-alone tape, the intro (its
+  // tape → scene step included), the table, the outro — opens at the
+  // very top. The MAP is the one exception: it opens positioned at the
+  // player's current stop, on first load and on every return to it.
+  // Only the OPENING position is governed: the positioning is armed
+  // once per map arrival and spent by the positioning itself, so once a
+  // screen is open the player's own scrolling is never touched.
+  // Positioning is instant (behavior 'auto') everywhere, so reduced
+  // motion needs no separate branch — there is never an animated
+  // scroll to suppress.
+  const mapScrollPending = useRef(true); // the mount itself is a map arrival
+  useLayoutEffect(() => {
+    if (screen.k !== 'map') window.scrollTo(0, 0);
+  }, [screen.k, introStep]);
+  useLayoutEffect(() => {
+    if (screen.k === 'map') mapScrollPending.current = true;
+  }, [screen.k]);
+  useLayoutEffect(() => {
+    if (screen.k !== 'map' || !mapScrollPending.current) return;
+    if (!progress && !signedOut && !loadError) return; // facts still loading — position when they land
+    const mapEl = document.querySelector('[data-testid="story-map"]');
+    if (!mapEl) return; // the locked / checking screens stand in for the map — wait for the real one
+    mapScrollPending.current = false;
+    if (progress?.completed) { window.scrollTo(0, 0); return; } // route complete: the top of the map is the view
+    const current = STORY_STOPS.find((s) => s.n === (progress?.currentStop ?? 1)) ?? STORY_STOPS[0]!;
+    const el = mapEl.querySelector(`[data-testid="story-stop-${current.id}"]`);
+    if (el) el.scrollIntoView({ block: 'center', behavior: 'auto' });
+    else window.scrollTo(0, 0);
+  }, [screen.k, progress, signedOut, loadError]);
   useEffect(() => {
     let live = true;
     void fetchStoryDev().then((d) => { if (live) setDev(d); });
