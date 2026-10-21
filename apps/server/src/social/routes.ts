@@ -134,7 +134,7 @@ export async function handleSocialHttp(req: Request & { cf?: unknown }, env: Soc
     // Power Rankings snapshot (best-effort — never block the board on it).
     await ensurePowerSnapshot(db, now).catch(() => undefined);
     const q = url.searchParams;
-    const board = (['rating', 'wins', 'accuracy', 'duos'] as const).find((b) => b === q.get('board')) ?? 'rating';
+    const board = (['rating', 'wins', 'accuracy', 'duos', 'winpct', 'books', 'nils'] as const).find((b) => b === q.get('board')) ?? 'rating';
     const kind = q.get('kind') === 'cutthroat' ? 'cutthroat' : 'team';
     const period = (['all', 'month', 'week'] as const).find((p) => p === q.get('period')) ?? 'all';
     let region: string | null = null;

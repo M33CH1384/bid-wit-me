@@ -43,6 +43,12 @@ describe('metric-based leaderboard: no named tiers, no Elo', () => {
     // …and the metric picker is gone from the Filters sheet (one control)
     expect(compete).not.toContain("pills('lb-board'");
   });
+  it('the data-wave boards are tabs too: Win %, Books/hand, Nils made (league data wave, item 2)', () => {
+    expect(compete).toContain("'rating', 'wins', 'winpct', 'accuracy', 'books', 'nils', 'duos'");
+    expect(compete).toContain("winpct: 'Win %'");
+    expect(compete).toContain("books: 'Books/hand'");
+    expect(compete).toContain("nils: 'Nils made'");
+  });
   it('the list is a stat table: column header, GP column, striped rows', () => {
     expect(compete).toContain('className="ranks-head"');
     expect(compete).toContain('className="ranks-gp"');

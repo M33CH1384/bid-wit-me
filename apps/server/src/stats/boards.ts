@@ -1,5 +1,5 @@
 /** Release 9b: leaderboards, server stats, personal stat lines (D1 aggregates over game_players). */
-export type Board = 'rating' | 'wins' | 'accuracy' | 'duos';
+export type Board = 'rating' | 'wins' | 'accuracy' | 'duos' | 'winpct' | 'books' | 'nils';
 export type Period = 'all' | 'month' | 'week';
 export interface BoardRow { rank: number; id: string; name: string; value: number; games: number; extra?: string; vsPlayers?: number; vsBots?: number }
 
@@ -43,6 +43,30 @@ export async function leaderboard(db: D1Database, o: { board: Board; kind: 'team
         COUNT(*) AS games
       FROM game_players x JOIN users u ON u.id = x.user_id JOIN games g ON g.id = x.game_id
       WHERE x.kind = ? AND x.ended_at >= ? AND COALESCE(g.end_reason, 'finished') != 'abandoned' ${loc} ${decl} GROUP BY x.user_id HAVING value > 0 OR vs_bots > 0 ORDER BY value DESC, vs_bots DESC, games ASC LIMIT 50`).bind(o.kind, from, ...locArgs, ...declArgs).all<typeof rows[number] & { vs_bots?: number }>()).results;
+  } else if (o.board === 'winpct') {
+    // Win % (league data wave): the honors precedent — a rate board only
+    // means anything over a real sample, so the same 10-game minimum.
+    // Like Wins/Accuracy it counts recorded finished games (abandons out).
+    rows = (await db.prepare(`SELECT x.user_id AS id, u.username AS name,
+        ROUND(100.0 * SUM(x.won) / COUNT(*)) AS value, COUNT(*) AS games,
+        SUM(x.won) || '–' || (COUNT(*) - SUM(x.won)) AS extra
+      FROM game_players x JOIN users u ON u.id = x.user_id JOIN games g ON g.id = x.game_id
+      WHERE x.kind = ? AND x.ended_at >= ? AND COALESCE(g.end_reason, 'finished') != 'abandoned' ${loc} ${decl} GROUP BY x.user_id HAVING COUNT(*) >= 10 ORDER BY value DESC, games DESC LIMIT 50`).bind(o.kind, from, ...locArgs, ...declArgs).all<typeof rows[number]>()).results;
+  } else if (o.board === 'books') {
+    // Books per hand from the stored per-game books/hands counters. A
+    // 5-game minimum keeps one hot night off a rate board.
+    rows = (await db.prepare(`SELECT x.user_id AS id, u.username AS name,
+        ROUND(1.0 * SUM(json_extract(x.stats, '$.books')) / SUM(json_extract(x.stats, '$.hands')), 1) AS value, COUNT(*) AS games,
+        SUM(json_extract(x.stats, '$.books')) || ' books · ' || SUM(json_extract(x.stats, '$.hands')) || ' hands' AS extra
+      FROM game_players x JOIN users u ON u.id = x.user_id JOIN games g ON g.id = x.game_id
+      WHERE x.kind = ? AND x.ended_at >= ? AND COALESCE(g.end_reason, 'finished') != 'abandoned' ${loc} ${decl} GROUP BY x.user_id HAVING COUNT(*) >= 5 AND SUM(json_extract(x.stats, '$.hands')) > 0 ORDER BY value DESC, games DESC LIMIT 50`).bind(o.kind, from, ...locArgs, ...declArgs).all<typeof rows[number]>()).results;
+  } else if (o.board === 'nils') {
+    // Nils made (career/period totals from the stored nilMade counter).
+    rows = (await db.prepare(`SELECT x.user_id AS id, u.username AS name,
+        SUM(json_extract(x.stats, '$.nilMade')) AS value, COUNT(*) AS games,
+        'made ' || SUM(json_extract(x.stats, '$.nilMade')) || ' of ' || SUM(json_extract(x.stats, '$.nilBids')) || ' bid' AS extra
+      FROM game_players x JOIN users u ON u.id = x.user_id JOIN games g ON g.id = x.game_id
+      WHERE x.kind = ? AND x.ended_at >= ? AND COALESCE(g.end_reason, 'finished') != 'abandoned' ${loc} ${decl} GROUP BY x.user_id HAVING COUNT(*) >= 5 AND SUM(json_extract(x.stats, '$.nilMade')) > 0 ORDER BY value DESC, games DESC LIMIT 50`).bind(o.kind, from, ...locArgs, ...declArgs).all<typeof rows[number]>()).results;
   } else if (o.board === 'accuracy') {
     const min = o.period === 'all' ? 20 : 8;
     rows = (await db.prepare(`SELECT x.user_id AS id, u.username AS name,

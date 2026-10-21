@@ -22,7 +22,7 @@ function when(at: number, now = Date.now()): string {
 
 /* ------------------------------------------------------------ leaderboards */
 
-type Board = 'rating' | 'wins' | 'accuracy' | 'duos';
+type Board = 'rating' | 'wins' | 'accuracy' | 'duos' | 'winpct' | 'books' | 'nils';
 type Kind = 'team' | 'cutthroat';
 /** Board scopes. The server serves 'global' and 'local' (IP region); 'friends'
  *  and 'online' are honest client-side views over the global board — filtered
@@ -50,7 +50,7 @@ const pct = (n: number | null) => (n === null ? '—' : `${n}%`);
 const num = (n: number | null) => (n === null ? '—' : String(n));
 const UNRATED_HINT = 'Play a signed-in player to get rated';
 
-const BOARD_LABEL: Record<Board, string> = { rating: 'Rating', wins: 'Wins', accuracy: 'Bid accuracy', duos: 'Best duos' };
+const BOARD_LABEL: Record<Board, string> = { rating: 'Rating', wins: 'Wins', accuracy: 'Bid accuracy', duos: 'Best duos', winpct: 'Win %', books: 'Books/hand', nils: 'Nils made' };
 const SCOPE_LABEL: Record<Scope, string> = { global: 'Global', friends: 'Friends', online: 'Online now', regions: 'Regions', local: 'Local' };
 const PERIOD_LABEL: Record<Period, string> = { week: 'This week', month: 'This month', all: 'All-time' };
 
@@ -72,6 +72,9 @@ export function ranksEmptyLine(board: Board, period: Period, scope: Scope): stri
   if (board === 'rating') return `No rated players${near} yet.`;
   if (board === 'wins') return `No wins${near} on this board yet.`;
   if (board === 'accuracy') return `Not enough bids${near} for this board yet.`;
+  if (board === 'winpct') return `No one has 10 games${near} on this board yet — Win % opens at 10 games.`;
+  if (board === 'books') return `No books${near} on this board yet.`;
+  if (board === 'nils') return `No nils made${near} on this board yet.`;
   return `No duos${near} on this board yet.`;
 }
 
@@ -90,7 +93,8 @@ function isMineRow(r: Row, youId: string | undefined, myName: string | undefined
 }
 
 function metricText(board: Board, period: Period, r: Row): string {
-  if (board === 'accuracy') return `${r.value}%`;
+  if (board === 'accuracy' || board === 'winpct') return `${r.value}%`;
+  if (board === 'books') return r.value.toFixed(1);
   if (board === 'rating' && period !== 'all') return `${r.value > 0 ? '+' : ''}${r.value}`;
   return String(r.value);
 }
@@ -124,8 +128,7 @@ function RankRow({ r, board, period, mine, onOpen, rowRef, testId }: {
   const dir = trendDir(board, period, r.value);
   const sub = board === 'wins' && r.vsPlayers !== undefined
     ? `${r.vsPlayers} vs players · ${r.vsBots ?? 0} vs bots`
-    : (board === 'duos' || board === 'accuracy') ? (r.extra ?? null)
-    : null;
+    : (r.extra ?? null);
   const body = (
     <>
       <span className={`ranks-rk${r.rank <= 3 ? ' top' : ''}`}>{r.rank}</span>
@@ -394,11 +397,11 @@ export function Leaderboards() {
         </div>
         {/* Category leaders (ESPN pattern): the ranking metric switches on
             visible tabs, not buried in Filters. Only boards the server
-            actually serves exist here — Rating, Wins, Bid accuracy, Best
-            duos. (Win %, Books/hand and Nils boards don't exist server-side;
-            see the phase report.) */}
+            actually serves exist here — Rating, Wins, Win %, Bid accuracy,
+            Books/hand, Nils made, Best duos (league data wave added the
+            middle three from the same stored stat JSON). */}
         <div className="ranks-cat" role="group" aria-label="Category" data-testid="lb-cats">
-          {(['rating', 'wins', 'accuracy', 'duos'] as Board[]).map((b) => (
+          {(['rating', 'wins', 'winpct', 'accuracy', 'books', 'nils', 'duos'] as Board[]).map((b) => (
             <button key={b} type="button" className={board === b ? 'on' : ''} data-testid={`lb-board-${b}`}
               disabled={b === 'duos' && kind === 'cutthroat'} onClick={() => pickBoard(b)}>{BOARD_LABEL[b]}</button>
           ))}
@@ -423,7 +426,7 @@ export function Leaderboards() {
               <span className="ranks-rk">#</span>
               <span className="ranks-av-sp" />
               <span className="ranks-name">{board === 'duos' ? 'Duo' : 'Player'}</span>
-              <span className="ranks-val-h">{board === 'accuracy' ? 'Accuracy' : board === 'rating' ? 'Rating' : 'Wins'}</span>
+              <span className="ranks-val-h">{board === 'accuracy' ? 'Accuracy' : board === 'rating' ? 'Rating' : board === 'winpct' ? 'Win %' : board === 'books' ? 'Books/hand' : board === 'nils' ? 'Nils' : 'Wins'}</span>
               <span className="ranks-gp-h">GP</span>
               <span className="ranks-trend" />
             </div>

@@ -141,3 +141,66 @@ describe('opponent buckets', () => {
     expect(opponentBucket([{ side: 0, kind: 'user' }, { side: 0, kind: 'user' }, { side: 1, kind: 'bot' }], 0)).toBe('bots');
   });
 });
+
+describe('extra metric boards (league data wave, item 2)', () => {
+  beforeEach(async () => {
+    for (const [u, name] of [['e', 'E'], ['f', 'F'], ['g', 'G']] as const) {
+      await db.prepare('INSERT INTO users (id, username, username_key, created_at) VALUES (?, ?, ?, 1)').bind(u, name, u).run();
+    }
+    // e: 12 games, 9–3 (75%), 3.0 books/hand, 5 nils made of 5 bid
+    for (let i = 0; i < 12; i++) {
+      await game(`we${i}`, NOW - i * 1000, [['e', 0, i < 9 ? 1 : 0, 'f', 0, 0]],
+        { stats: { books: 27, hands: 9, nilMade: i < 5 ? 1 : 0, nilBids: i < 5 ? 1 : 0 } });
+    }
+    // f: 12 games, 6–6 (50%), 2.0 books/hand, 3 nils made of 4 bid
+    for (let i = 0; i < 12; i++) {
+      await game(`wf${i}`, NOW - i * 1000, [['f', 0, i < 6 ? 1 : 0, 'e', 0, 0]],
+        { stats: { books: 18, hands: 9, nilMade: i < 3 ? 1 : 0, nilBids: i < 4 ? 1 : 0 } });
+    }
+    // g: 4 games, all wins — under every minimum, must appear nowhere
+    for (let i = 0; i < 4; i++) {
+      await game(`wg${i}`, NOW - i * 1000, [['g', 0, 1, null, 0, 0]], { stats: { books: 36, hands: 9, nilMade: 2, nilBids: 2 } });
+    }
+  });
+
+  const names = (rows: { name: string }[]) => rows.map((r) => r.name);
+
+  it('winpct: 10-game minimum (honors precedent), value in %, extra is the W–L', async () => {
+    const rows = await leaderboard(db, { board: 'winpct', kind: 'team', period: 'all', region: null, now: NOW });
+    expect(rows.slice(0, 2).map((r) => [r.name, r.value, r.games, r.extra])).toEqual([
+      ['E', 75, 12, '9–3'],
+      ['F', 50, 12, '6–6'],
+    ]);
+    expect(names(rows)).not.toContain('G');
+    expect(names(rows)).not.toContain('A'); // 3 games < 10
+  });
+
+  it('books: books per hand, 5-game minimum, extra names the counters', async () => {
+    const rows = await leaderboard(db, { board: 'books', kind: 'team', period: 'all', region: null, now: NOW });
+    expect(rows.slice(0, 2).map((r) => [r.name, r.value, r.games, r.extra])).toEqual([
+      ['E', 3, 12, '324 books · 108 hands'],
+      ['F', 2, 12, '216 books · 108 hands'],
+    ]);
+    expect(names(rows)).not.toContain('G');
+  });
+
+  it('nils: nils made totals, 5-game minimum, no nils no board', async () => {
+    const rows = await leaderboard(db, { board: 'nils', kind: 'team', period: 'all', region: null, now: NOW });
+    expect(rows.map((r) => [r.name, r.value, r.extra])).toEqual([
+      ['E', 5, 'made 5 of 5 bid'],
+      ['F', 3, 'made 3 of 4 bid'],
+    ]);
+  });
+
+  it('the new boards respect kind and route through /api/social/leaderboard', async () => {
+    expect(await leaderboard(db, { board: 'books', kind: 'cutthroat', period: 'all', region: null, now: NOW })).toEqual([]);
+    const tok = 'm33-session-2';
+    const ORIGIN = 'https://bid-wit-me.pages.dev';
+    await db.prepare('INSERT INTO sessions (id_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)').bind(await sha256b64(tok), 'e', 1, NOW + 10_000_000).run();
+    const url = new URL('/api/social/leaderboard?board=winpct&kind=team&scope=global&period=all', ORIGIN);
+    const res = await handleSocialHttp(new Request(url, { headers: { cookie: `__Host-bwm_sid=${tok}` } }), { DB: db, PUBLIC_ORIGIN: ORIGIN }, url, ['api', 'social', 'leaderboard'], NOW);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { rows: { name: string; value: number }[] };
+    expect(body.rows[0]).toMatchObject({ name: 'E', value: 75 });
+  });
+});
