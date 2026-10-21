@@ -2237,6 +2237,7 @@ button.avatar-tap:focus-visible { outline: 2px solid var(--gold); outline-offset
 .tt-face-tap .tt-avatar { width: 100%; }
 .tt-face-tap:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 /* profile page: upload / remove controls */
+.prof-edit-toggle { margin: 0 0 12px; }
 .prof-pic-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 12px; }
 .prof-pic-note { font-size: 13px; color: var(--muted); }
 .prof-pic-btn { border: 1px solid rgba(255,255,255,.25); background: var(--glass-strong); color: #fff; border-radius: 10px; padding: 8px 12px; font: 700 13px/1 var(--display); letter-spacing: .04em; cursor: pointer; }

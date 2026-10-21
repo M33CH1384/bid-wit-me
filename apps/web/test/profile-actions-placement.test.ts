@@ -22,8 +22,8 @@
  *  combined block and can't drift apart again. The /profile header gained the
  *  division chips it was missing; Social/modal gained the XP bar. Content pins
  *  therefore live against RepBlock.tsx, and the surfaces pin their <RepBlock>
- *  call sites. On /profile, the social-links inputs are also hidden behind an
- *  Edit links button unless the owner is actively editing them.
+ *  call sites. The self-view editors (picture, tagline, social links) are
+ *  hidden behind a single Edit profile button unless the owner taps it.
  *
  *  Reorder (same day, owner's next annotated screenshot): the action row moved
  *  again — to directly UNDER the Rep block ("Can we move this section down
@@ -239,24 +239,28 @@ describe('theme parity: the profile is the same profile in Classic and Neon', ()
   });
 });
 
-describe('social-links editor: inputs hidden unless actively editing (own profile)', () => {
-  it('starts collapsed, with an Edit links button and a muted empty state', () => {
+describe('profile editors: hidden behind one Edit profile button (Demetrius 2026-10-20)', () => {
+  it('one gate for the whole stack: an Edit profile button that flips to Done', () => {
     expect(view).toContain('const [editing, setEditing] = useState(false);');
-    expect(view).toContain('data-testid="social-edit"');
-    expect(view).toContain('>Edit links</button>');
-    expect(view).toContain('No links yet');
+    expect(view).toContain('data-testid="profile-edit"');
+    expect(view).toContain("{editing ? 'Done' : 'Edit profile'}");
+    // the whole editor stack (picture, tagline, links) renders only in edit mode
+    expect(view).toContain('{me && cred && editing && (');
+    expect(view.indexOf('data-testid="avatar-upload"')).toBeGreaterThan(view.indexOf('{me && cred && editing && ('));
+    expect(view.indexOf('data-testid="tagline-input"')).toBeGreaterThan(view.indexOf('{me && cred && editing && ('));
+    expect(view.indexOf('<SocialLinksEditor')).toBeGreaterThan(view.indexOf('{me && cred && editing && ('));
   });
-  it('the text inputs render only inside the editing branch, after the collapsed return', () => {
-    const collapsed = view.indexOf('if (!editing) {');
-    expect(collapsed).toBeGreaterThan(-1);
-    expect(view.indexOf('data-testid={`social-input-${p.id}`}')).toBeGreaterThan(collapsed);
-    expect(view.indexOf('data-testid="social-edit"')).toBeLessThan(view.indexOf('data-testid={`social-input-${p.id}`}'));
+  it('the links editor lost its own collapse — one gate, not two', () => {
+    expect(view).not.toContain('data-testid="social-edit"');
+    expect(view).not.toContain('>Edit links</button>');
+    expect(view).not.toContain('No links yet');
+    expect(view).toContain('data-testid={`social-input-${p.id}`}');
   });
-  it('edit mode keeps the server save flow and gains a Cancel that discards', () => {
+  it('edit mode keeps the server save flow and a Cancel that discards the draft', () => {
     expect(view).toContain('data-testid="social-save"');
     expect(view).toContain("'/api/profile/me/social-links'");
     expect(view).toContain('data-testid="social-cancel"');
-    expect(view).toContain('setEditing(false);');
+    expect(view).toContain('const cancel = () => { setDraft(blank()); setErr(null); };');
   });
 });
 

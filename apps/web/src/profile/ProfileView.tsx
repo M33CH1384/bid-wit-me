@@ -29,8 +29,12 @@
  * member-since, tagline, presence line, the shared RepBlock (Level + title,
  * XP bar, both division chips, drawn-coin balance) — then the one-line action
  * row for other players, or the edit affordances (picture, tagline, social
- * links) for your own profile. Body: the tabbed structure (Rank / Challenges /
- * Stats / Achievements / Unlocks) with the social record folded in — the
+ * links) for your own profile — and even those stay hidden behind a single
+ * Edit profile button (Demetrius 2026-10-20: "All of this should be hidden.
+ * There should be an edit profile button to change any of this if a user so
+ * chooses"), so the profile's face is display-only. Body: the tabbed
+ * structure (Rank / Challenges / Stats / Achievements / Unlocks) with the
+ * social record folded in — the
  * games/wins summary and social stats live in Stats, badges and champion
  * awards in Achievements. Zero content lost, zero duplicated.
  *
@@ -161,26 +165,24 @@ function StatsGrid({ stats }: { stats: Record<string, number | string | null> })
 
 /** Social-links editor: one row per platform; the server normalizes handles to
  *  canonical profile URLs and rejects anything that isn't really on the platform.
- *  Collapsed by default (Demetrius 2026-10-20: "If I'm not actively setting my
- *  social links those text inputs should be hidden") — the saved links already
- *  render as gold chips under the header, so until Edit links is tapped this
- *  section is just the Edit button (plus a muted "No links yet" when empty).
- *  Saving collapses back to that view; Cancel discards the draft. */
+ *  It renders only inside Edit profile mode (Demetrius 2026-10-20: the whole
+ *  editor stack — picture, tagline, links — hides behind the one Edit profile
+ *  button; the old separate Edit-links collapse is subsumed by that gate), so
+ *  the inputs + Save show directly here. The saved links render as gold chips
+ *  under the header in display mode. Cancel discards the draft back to the
+ *  saved links. */
 function SocialLinksEditor({ initial, onSaved }: { initial: SocialLinks; onSaved: () => void }) {
   const blank = () => {
     const d: Record<string, string> = {};
     for (const p of SOCIAL_PLATFORMS) d[p.id] = initial[p.id] ?? '';
     return d;
   };
-  const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Record<string, string>>(blank);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const dirty = SOCIAL_PLATFORMS.some((p) => (draft[p.id] ?? '') !== (initial[p.id] ?? ''));
-  const hasLinks = SOCIAL_PLATFORMS.some((p) => (initial[p.id] ?? '') !== '');
 
-  const startEdit = () => { setDraft(blank()); setErr(null); setEditing(true); };
-  const cancel = () => { setDraft(blank()); setErr(null); setEditing(false); };
+  const cancel = () => { setDraft(blank()); setErr(null); };
 
   const save = async () => {
     setErr(null); setBusy(true);
@@ -190,22 +192,9 @@ function SocialLinksEditor({ initial, onSaved }: { initial: SocialLinks; onSaved
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ links: draft }),
       });
-      setEditing(false);
       onSaved();
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
-
-  if (!editing) {
-    return (
-      <div className="prof-links-edit">
-        <span className="prof-pic-note">Social links — these link to your public profiles and show on your profile for other players.</span>
-        {!hasLinks && <span className="prof-links-none">No links yet</span>}
-        <div className="prof-link-actions">
-          <button type="button" className="prof-pic-btn" data-testid="social-edit" onClick={startEdit}>Edit links</button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="prof-links-edit">
@@ -255,6 +244,10 @@ export function ProfileView({ host, name, id }: {
   const [picBusy, setPicBusy] = useState(false);
   const [picErr, setPicErr] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  // Edit profile gate (Demetrius 2026-10-20): false = the profile is a
+  // profile — header + tabs, zero editor UI. True = the full editor stack
+  // (picture, tagline, social links) shows under the header.
+  const [editing, setEditing] = useState(false);
   // Tagline (Demetrius 2026-10-20): null draft = untouched, showing the saved line.
   const [tagDraft, setTagDraft] = useState<string | null>(null);
   const [tagBusy, setTagBusy] = useState(false);
@@ -460,6 +453,15 @@ export function ProfileView({ host, name, id }: {
       <SocialLinksChips links={cred?.user.socialLinks} testid="profile-social-links" />
 
       {me && cred && (
+        <div className="prof-edit-toggle">
+          <button type="button" className="prof-pic-btn" data-testid="profile-edit" aria-expanded={editing}
+            onClick={() => setEditing((v) => !v)}>
+            {editing ? 'Done' : 'Edit profile'}
+          </button>
+        </div>
+      )}
+
+      {me && cred && editing && (
         <>
           {/* Profile picture: shows at the table when your camera is off (Demetrius 2026-10-19). */}
           <div className="prof-pic-row">

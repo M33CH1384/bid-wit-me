@@ -127,6 +127,7 @@ describe('one profile, both hosts', () => {
     expect(panelInv).not.toContain('tab:Challenges');
     expect(panelInv).not.toContain('tab:Unlocks');
     expect(panelInv).not.toContain('testid:avatar-upload');
+    expect(panelInv).not.toContain('testid:profile-edit');
   });
 
   it('your own profile: the panel view and the /profile route are the same profile', async () => {
@@ -135,15 +136,46 @@ describe('one profile, both hosts', () => {
     const panelInv = inventory(panel);
     const page = await renderView(createElement(ProfileView, { host: 'page' }));
     expect(inventory(page)).toEqual(panelInv);
-    // self-only affordances ride along in BOTH hosts now — same page, same person
-    expect(panelInv).toContain('testid:avatar-upload');
-    expect(panelInv).toContain('testid:tagline-input');
-    expect(panelInv).toContain('testid:social-edit');
+    // self-only affordances ride along in BOTH hosts now — same page, same
+    // person. The editors themselves stay HIDDEN behind the one Edit profile
+    // button (owner, 2026-10-20): the initial render is display-only, in
+    // both hosts alike, so the inventories still match exactly.
+    expect(panelInv).toContain('testid:profile-edit');
     expect(panelInv).toContain('tab:Challenges');
     expect(panelInv).toContain('tab:Unlocks');
+    expect(panelInv).not.toContain('testid:avatar-upload');
+    expect(panelInv).not.toContain('testid:tagline-input');
+    expect(panelInv).not.toContain('testid:social-input-instagram');
+    expect(panelInv).not.toContain('testid:social-save');
     // …and the other-player action row never renders on your own profile
     expect(panelInv).not.toContain('testid:profile-add');
     expect(panelInv).not.toContain('testid:profile-block');
+  });
+
+  it('Edit profile reveals the whole editor stack; Done hides it again', async () => {
+    await act(async () => { await loadAccount(true); });
+    const page = await renderView(createElement(ProfileView, { host: 'page' }));
+    const testids = () => [...page.querySelectorAll('[data-testid]')].map((n) => n.getAttribute('data-testid'));
+    expect(testids()).toContain('profile-edit');
+    expect(testids()).not.toContain('avatar-upload');
+    const btn = page.querySelector('[data-testid="profile-edit"]') as HTMLButtonElement;
+    expect(btn.textContent).toContain('Edit profile');
+    await act(async () => { btn.click(); });
+    // picture, tagline and links editors all show — the links inputs directly
+    // (the old separate Edit-links collapse is subsumed by this one gate)
+    expect(testids()).toContain('avatar-upload');
+    expect(testids()).toContain('tagline-input');
+    expect(testids()).toContain('tagline-save');
+    expect(testids()).toContain('social-input-instagram');
+    expect(testids()).toContain('social-save');
+    expect(testids()).toContain('social-cancel');
+    expect(testids()).not.toContain('social-edit');
+    const done = page.querySelector('[data-testid="profile-edit"]') as HTMLButtonElement;
+    expect(done.textContent).toContain('Done');
+    await act(async () => { done.click(); });
+    expect(testids()).not.toContain('avatar-upload');
+    expect(testids()).not.toContain('tagline-input');
+    expect(testids()).not.toContain('social-input-instagram');
   });
 });
 
