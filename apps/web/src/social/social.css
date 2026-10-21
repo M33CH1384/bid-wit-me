@@ -208,6 +208,8 @@ button.ghost { background: transparent !important; }
 .soc-badge-chip { font-size: 13px; padding: 4px 9px; border-radius: 999px; background: rgba(var(--gold-rgb),.12); border: 1px solid rgba(var(--gold-rgb),.35); }
 .soc-h2h { width: 100%; border-collapse: collapse; font-size: 14px; }
 .soc-h2h td { padding: 4px 2px; border-bottom: 1px solid rgba(255,255,255,.06); }
+.soc-h2h tr:nth-child(even) td { background: rgba(255,255,255,.03); }
+.soc-h2h td:nth-child(2) { text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; }
 .soc-settings .row { padding: 10px 0; }
 
 .soc-toasts { position: fixed; z-index: 1300; top: calc(8px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: min(440px, calc(100vw - 16px)); display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
@@ -425,7 +427,25 @@ button.ghost { background: transparent !important; }
 .ranks-filters-btn.on, .ranks-filters-btn:active { background: rgba(var(--gold-rgb),.22); }
 .ranks-summary { margin: 2px 2px 4px; font-size: 13px; color: var(--muted); }
 .ranks-note { margin: 0 2px 6px; font-size: 12px; color: var(--gold); }
+/* Category leaders tabs (ESPN pattern): the ranking metric, always visible. */
+.ranks-cat { display: flex; gap: 4px; margin: 4px 0 2px; }
+.ranks-cat button {
+  flex: 1; min-width: 0; min-height: 34px; padding: 4px 2px; border-radius: 9px; cursor: pointer;
+  border: 1px solid rgba(var(--edge-rgb),.3); background: rgba(255,255,255,.04); color: var(--muted);
+  font-family: var(--display); font-weight: 700; font-size: 13px; letter-spacing: .03em; white-space: nowrap;
+  -webkit-appearance: none; appearance: none; -webkit-tap-highlight-color: transparent;
+}
+.ranks-cat button.on { background: var(--gold); border-color: var(--gold); color: #1d1204; }
+.ranks-cat button:disabled { opacity: .35; }
+.ranks-cat button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+/* Stat-table column header (mirrors the row flex exactly). */
+.ranks-head { display: flex; align-items: center; gap: 10px; padding: 4px 2px 5px; border-bottom: 1px solid rgba(255,255,255,.14); font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.ranks-head .ranks-name { font-size: 10px; font-weight: 800; }
+.ranks-av-sp { width: 44px; flex: none; }
+.ranks-val-h { flex: none; }
+.ranks-gp-h { width: 30px; flex: none; text-align: right; }
 .ranks-list { display: flex; flex-direction: column; margin: 2px 0 4px; }
+.ranks-list .ranks-row:nth-child(even):not(.soc-me) { background: rgba(255,255,255,.03); }
 .ranks-row {
   height: 56px; min-height: 56px; max-height: 56px; box-sizing: border-box; scroll-margin-bottom: 64px;
   display: flex; align-items: center; gap: 10px; width: 100%; padding: 0 2px;
@@ -439,7 +459,10 @@ div.ranks-row { cursor: default; }
 .ranks-rk.top { color: var(--gold); }
 .ranks-row .soc-av { width: 44px; height: 44px; font-size: 20px; }
 .ranks-row .soc-av.duo { font-size: 15px; letter-spacing: .02em; }
-.ranks-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; font-size: 15px; }
+.ranks-name { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; font-weight: 700; font-size: 15px; }
+.ranks-name-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ranks-sub { font-size: 11px; font-weight: 600; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ranks-gp { width: 30px; flex: none; text-align: right; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--muted); }
 .ranks-val { flex: none; font-family: var(--display); font-weight: 800; font-size: 18px; letter-spacing: .02em; font-variant-numeric: tabular-nums; color: var(--ink); }
 .ranks-val.up { color: var(--green); }
 .ranks-val.down { color: #ff8aa0; }
@@ -450,6 +473,24 @@ div.ranks-row { cursor: default; }
 .ranks-empty p { margin: 0; color: var(--ink); font-size: 15px; line-height: 1.35; }
 .ranks-empty button { min-height: 44px; padding: 0 22px; border-radius: 12px; font-family: var(--display); font-weight: 800; letter-spacing: .04em; font-size: 17px; }
 .ranks-pin { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; background: #1a0e2c; border-top: 1px solid rgba(var(--gold-rgb),.55); box-shadow: 0 -10px 24px rgba(0,0,0,.4); padding: 0 12px; }
+/* ESPN BottomLine ticker (leaderboard only): a flex footer under the scroll
+   area, so it reserves its own 38px and never covers a row. The spade bug
+   (favicon.svg — the Home Screen icon mark) heads the bar; lines scroll to
+   its right in a seamless two-copy loop. Holding the bar pauses it; reduced
+   motion swaps the marquee for stepping lines (.ticker-still, JS-driven). */
+.ranks-ticker { flex: none; display: flex; align-items: stretch; height: 38px; overflow: hidden; background: #12081f; border-top: 1px solid rgba(var(--gold-rgb),.4); }
+.ticker-bug { flex: none; display: grid; place-items: center; width: 44px; background: rgba(var(--gold-rgb),.12); border-right: 1px solid rgba(var(--gold-rgb),.35); pointer-events: none; }
+.ticker-bug img { width: 30px; height: 30px; display: block; }
+.ticker-track { display: flex; align-items: center; white-space: nowrap; animation-name: ticker-scroll; animation-timing-function: linear; animation-iteration-count: infinite; will-change: transform; }
+.ticker-copy { display: inline-flex; align-items: center; }
+.ticker-line { font-family: var(--display); font-weight: 700; font-size: 13px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink); }
+.ticker-sep { font-style: normal; color: var(--gold); margin: 0 14px; }
+@keyframes ticker-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.ranks-ticker.held .ticker-track { animation-play-state: paused; }
+.ticker-still { display: flex; align-items: center; padding: 0 12px; font-family: var(--display); font-weight: 700; font-size: 13px; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (prefers-reduced-motion: reduce) { .ticker-track { animation: none; } }
+html[data-theme="neon"] .ranks-ticker { background: #0a0d24; border-top-color: rgba(128, 84, 255, .55); }
+html[data-theme="neon"] .ticker-bug { background: rgba(128, 84, 255, .16); border-right-color: rgba(128, 84, 255, .4); }
 .ranks-pin .ranks-row { border-bottom: 0; }
 .ranks-sheet-back {
   position: absolute; inset: 0; z-index: 6; display: flex; align-items: flex-end;

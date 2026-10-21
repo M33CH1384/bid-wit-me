@@ -1,6 +1,8 @@
 /** Release 9b: Leaderboards and Tournaments tabs of the Social panel. */
-import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { statusLabel } from '@spades/protocol';
 import { useAccount } from '../account/api';
+import { fx, useReduceEffects } from '../fx';
 import { navigate } from '../online/nav';
 import { social, useSocial } from './store';
 
@@ -100,17 +102,26 @@ function Trend({ dir }: { dir: 'up' | 'down' | 'flat' }) {
   );
 }
 
+/** ESPN-style row (owner, 2026-10-20: stats should look "like looking at
+ *  ESPN but for Spades players"): rank, face + name, the board's metric
+ *  right-aligned, games played, trend. The row's secondary line carries only
+ *  what the payload actually has: the wins split on the Wins board, the win %
+ *  on Best duos (the payload's `extra`), the bid count on Bid accuracy. */
 function RankRow({ r, board, period, mine, onOpen, rowRef, testId }: {
   r: Row; board: Board; period: Period; mine: boolean; onOpen?: () => void; rowRef?: (el: HTMLElement | null) => void; testId?: string;
 }) {
   const dir = trendDir(board, period, r.value);
-  const tip = board === 'wins' ? `${r.vsPlayers ?? r.value} vs players, ${r.vsBots ?? 0} vs bots` : undefined;
+  const sub = board === 'wins' && r.vsPlayers !== undefined
+    ? `${r.vsPlayers} vs players · ${r.vsBots ?? 0} vs bots`
+    : (board === 'duos' || board === 'accuracy') ? (r.extra ?? null)
+    : null;
   const body = (
     <>
       <span className={`ranks-rk${r.rank <= 3 ? ' top' : ''}`}>{r.rank}</span>
       <span className={`soc-av${initials(r.name).length > 1 ? ' duo' : ''}`} aria-hidden>{initials(r.name)}</span>
-      <span className="ranks-name">{r.name}</span>
-      <span className={`ranks-val ${dir}`} title={tip}>{metricText(board, period, r)}</span>
+      <span className="ranks-name"><span className="ranks-name-txt">{r.name}</span>{sub && <small className="ranks-sub">{sub}</small>}</span>
+      <span className={`ranks-val ${dir}`}>{metricText(board, period, r)}</span>
+      <span className="ranks-gp">{r.games}</span>
       <Trend dir={dir} />
     </>
   );
@@ -203,9 +214,9 @@ function StatsSheet({ mine, kind, onClose }: { mine: MyStats; kind: Kind; onClos
   );
 }
 
-function FilterSheet({ board, scope, period, kind, onBoard, onScope, onPeriod, onClose }: {
-  board: Board; scope: Scope; period: Period; kind: Kind;
-  onBoard: (b: Board) => void; onScope: (s: Scope) => void; onPeriod: (p: Period) => void; onClose: () => void;
+function FilterSheet({ scope, period, onScope, onPeriod, onClose }: {
+  scope: Scope; period: Period;
+  onScope: (s: Scope) => void; onPeriod: (p: Period) => void; onClose: () => void;
 }) {
   const pills = <T extends string>(id: string, label: string, value: T, set: (v: T) => void, opts: [T, string, boolean?][]) => (
     <>
@@ -225,7 +236,8 @@ function FilterSheet({ board, scope, period, kind, onBoard, onScope, onPeriod, o
           <h3>Filters</h3>
           <button type="button" className="ranks-done" onClick={onClose} data-testid="ranks-filters-done">Done</button>
         </div>
-        {pills('lb-board', 'Metric', board, onBoard, [['rating', 'Rating'], ['wins', 'Wins'], ['accuracy', 'Bid accuracy'], ['duos', 'Best duos', kind === 'cutthroat']])}
+        {/* The metric itself is picked on the visible category tabs above
+            the list (ESPN leaders pattern) — this sheet keeps scope/period. */}
         {pills('lb-scope', 'Scope', scope, onScope, [['global', 'Global'], ['local', 'Local']])}
         {pills('lb-period', 'Period', period, onPeriod, [['week', 'Week'], ['month', 'Month'], ['all', 'All-time']])}
       </div>
@@ -311,6 +323,17 @@ export function Leaderboards() {
           </div>
           <button type="button" className={`ranks-filters-btn${filters ? ' on' : ''}`} aria-expanded={filters} data-testid="ranks-filters" onClick={() => setFilters(true)}>Filters</button>
         </div>
+        {/* Category leaders (ESPN pattern): the ranking metric switches on
+            visible tabs, not buried in Filters. Only boards the server
+            actually serves exist here — Rating, Wins, Bid accuracy, Best
+            duos. (Win %, Books/hand and Nils boards don't exist server-side;
+            see the phase report.) */}
+        <div className="ranks-cat" role="group" aria-label="Category" data-testid="lb-cats">
+          {(['rating', 'wins', 'accuracy', 'duos'] as Board[]).map((b) => (
+            <button key={b} type="button" className={board === b ? 'on' : ''} data-testid={`lb-board-${b}`}
+              disabled={b === 'duos' && kind === 'cutthroat'} onClick={() => pickBoard(b)}>{BOARD_LABEL[b]}</button>
+          ))}
+        </div>
         <p className="ranks-summary" data-testid="ranks-summary">{ranksFilterSummary(board, scope, period)}</p>
         {note && <p className="ranks-note" data-testid="lb-note">{note}</p>}
         {ownAcc && <p className="ranks-note" data-testid="lb-own-accuracy">Your bid accuracy shows after {accMin} bids.</p>}
@@ -322,23 +345,140 @@ export function Leaderboards() {
             </div>
           )
         ) : (
-          <div className="ranks-list" role="list" data-testid={board === 'wins' ? 'lb-wins' : 'lb-rows'}>
-            {rows.map((r, i) => (
-              <RankRow key={r.id} r={r} board={board} period={period} mine={i === mineIdx} rowRef={i === mineIdx ? setMineEl : undefined} testId={`lb-row-${r.rank}`} onOpen={board === 'duos' ? undefined : () => social.showProfile(r.name)} />
-            ))}
-          </div>
+          <>
+            <div className="ranks-head" aria-hidden="true">
+              <span className="ranks-rk">#</span>
+              <span className="ranks-av-sp" />
+              <span className="ranks-name">{board === 'duos' ? 'Duo' : 'Player'}</span>
+              <span className="ranks-val-h">{board === 'accuracy' ? 'Accuracy' : board === 'rating' ? 'Rating' : 'Wins'}</span>
+              <span className="ranks-gp-h">GP</span>
+              <span className="ranks-trend" />
+            </div>
+            <div className="ranks-list" role="list" data-testid={board === 'wins' ? 'lb-wins' : 'lb-rows'}>
+              {rows.map((r, i) => (
+                <RankRow key={r.id} r={r} board={board} period={period} mine={i === mineIdx} rowRef={i === mineIdx ? setMineEl : undefined} testId={`lb-row-${r.rank}`} onOpen={board === 'duos' ? undefined : () => social.showProfile(r.name)} />
+              ))}
+            </div>
+          </>
         )}
         <p className="soc-note">Ratings and Best duos count signed-in opponents. Wins split into vs players and vs bots.</p>
       </div>
+      <RanksTicker kind={kind} mine={mine} />
       {offscreen && mineRow && (
         <div className="ranks-pin" data-testid="ranks-pin">
           <RankRow r={mineRow} board={board} period={period} mine onOpen={() => mineEl?.scrollIntoView({ block: 'nearest' })} />
         </div>
       )}
       {filters && (
-        <FilterSheet board={board} scope={scope} period={period} kind={kind} onBoard={pickBoard} onScope={setScope} onPeriod={setPeriod} onClose={() => setFilters(false)} />
+        <FilterSheet scope={scope} period={period} onScope={setScope} onPeriod={setPeriod} onClose={() => setFilters(false)} />
       )}
       {statsOpen && mine && <StatsSheet mine={mine} kind={kind} onClose={() => setStatsOpen(false)} />}
+    </div>
+  );
+}
+
+/* ------------------------------------------------- ESPN bottom ticker */
+
+/** One online player for the ticker: a name plus what they're doing. */
+export interface TickerOnline { name: string; detail: string }
+
+/**
+ * The ticker's lines, built STRICTLY from payloads that already exist
+ * (owner's data rule, 2026-10-20 — never fabricate a result):
+ *  - the all-time Rating board for the current kind (top 3, with numbers),
+ *  - the live presence list (who's online / at a table right now),
+ *  - the signed-in viewer's own stat line (/api/social/me/stats).
+ * There is NO recent-results feed in the app (no endpoint returns "latest
+ * games / Bostons / streaks" across players), so the ticker carries no
+ * results line rather than an invented one — the gap is reported, not filled.
+ */
+export function buildTickerLines(o: { kind: Kind; top: Row[]; online: TickerOnline[]; mine: MyStats | null }): string[] {
+  const lines: string[] = [];
+  const kindLabel = o.kind === 'team' ? 'Partnership' : 'Cutthroat';
+  if (o.top.length) {
+    lines.push(`Top rated · ${kindLabel} — ${o.top.slice(0, 3).map((r) => `${r.name} ${r.value}`).join(' · ')}`);
+  }
+  if (o.online.length) {
+    lines.push(`Online now — ${o.online.slice(0, 6).map((p) => (p.detail && p.detail !== 'Online' ? `${p.name} (${p.detail.toLowerCase()})` : p.name)).join(' · ')}`);
+  }
+  const m = o.mine?.[o.kind];
+  if (m && m.games > 0) {
+    lines.push(`You — ${m.elo == null ? 'Unrated' : `Rating ${m.elo}`} · ${m.games} games · Win ${pct(m.winPct)}${m.accuracy !== null ? ` · Bid accuracy ${pct(m.accuracy)}` : ''}`);
+  }
+  return lines;
+}
+
+/**
+ * The BottomLine: a fixed bar at the foot of the leaderboard view — the BWM
+ * spade bug at its head (the Home Screen icon mark, favicon.svg), stat lines
+ * scrolling to its right. It sits IN the layout flow (a flex footer under
+ * the scroll area), so it reserves its own height and never covers rows.
+ * Leaderboard surface only. Auto-scrolls in a seamless loop; holding it
+ * pauses; reduced motion (OS or the app's Reduce effects) swaps the marquee
+ * for lines that step every few seconds. The rating board refetches on a
+ * 60s poll while the view is open; presence is live from the social store.
+ */
+export function RanksTicker({ kind, mine }: { kind: Kind; mine: MyStats | null }) {
+  const s = useSocial();
+  const reduceFx = useReduceEffects();
+  const [osReduced, setOsReduced] = useState<boolean>(() => fx.osReducedMotion);
+  const [top, setTop] = useState<Row[]>([]);
+  const [held, setHeld] = useState(false);
+  const [step, setStep] = useState(0);
+
+  useEffect(() => {
+    let stop = false;
+    const load = () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      get(`/api/social/leaderboard?board=rating&kind=${kind}&scope=global&period=all`)
+        .then((j) => { if (!stop) setTop((j.rows ?? []) as Row[]); })
+        .catch(() => { /* ticker is garnish — a failed poll just keeps the last lines */ });
+    };
+    load();
+    const iv = setInterval(load, 60_000);
+    return () => { stop = true; clearInterval(iv); };
+  }, [kind]);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const on = () => setOsReduced(mq.matches);
+    on();
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+
+  const online = useMemo<TickerOnline[]>(() => Object.values(s.users)
+    .filter((u) => !u.guest)
+    .map((u) => ({ name: u.name, detail: statusLabel(u.status) }))
+    .sort((a, b) => Number(a.detail === 'Online') - Number(b.detail === 'Online') || a.name.localeCompare(b.name)), [s.users]);
+  const lines = useMemo(() => buildTickerLines({ kind, top, online, mine }), [kind, top, online, mine]);
+  const reduced = reduceFx || osReduced;
+
+  useEffect(() => {
+    if (!reduced || lines.length < 2) return;
+    const iv = setInterval(() => setStep((x) => x + 1), 4000);
+    return () => clearInterval(iv);
+  }, [reduced, lines.length]);
+
+  if (!lines.length) return null;
+  const duration = Math.max(16, Math.round(lines.join(' ').length * 0.32));
+  return (
+    <div className={`ranks-ticker${held ? ' held' : ''}`} data-testid="ranks-ticker"
+      onPointerDown={() => setHeld(true)} onPointerUp={() => setHeld(false)}
+      onPointerLeave={() => setHeld(false)} onPointerCancel={() => setHeld(false)}>
+      <span className="ticker-bug" aria-hidden="true"><img src="/favicon.svg" alt="" width={30} height={30} /></span>
+      <span className="sr-only" role="status">{lines.join(' ')}</span>
+      {reduced
+        ? <div className="ticker-still" aria-hidden="true">{lines[step % lines.length]}</div>
+        : (
+          <div className="ticker-track" aria-hidden="true" style={{ animationDuration: `${duration}s` }}>
+            {[0, 1].map((copy) => (
+              <span key={copy} className="ticker-copy">
+                {lines.map((l, i) => <span key={i} className="ticker-line">{l}<i className="ticker-sep">♠</i></span>)}
+              </span>
+            ))}
+          </div>
+        )}
     </div>
   );
 }
