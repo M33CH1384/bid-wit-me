@@ -67,11 +67,12 @@ synthesized at runtime with Web Audio (`apps/web/src/audio.ts`) — no files.
 | `slow-grind.mp3` | Slow Grind | Ron Gelinas Chillout Lounge — https://www.chosic.com/download-audio/27292/ | CC BY 3.0 |
 | `marty-gots-a-plan.mp3` | Marty Gots a Plan | Kevin MacLeod — https://incompetech.com/music/royalty-free/mp3-royaltyfree/Marty%20Gots%20a%20Plan.mp3 | CC BY 4.0 |
 | `story-theme.mp3` | Riding Shotgun (Story Theme) | Bid Wit Me — original score, composed & rendered for this game (no samples) | Original |
+| `story-theme-sparse.mp3` | Riding Shotgun — Slow (Sparse Theme) | Bid Wit Me — original score, sparse arrangement of the story theme for the slow stops | Original |
 | `story-danger.mp3` | The Corner (Danger Bed) | Bid Wit Me — original score, composed & rendered for this game (no samples) | Original |
 | `story-king.mp3` | The King of the Block | Bid Wit Me — original score, composed & rendered for this game (no samples) | Original |
 
 Holizna tracks are CC0 (no credit required); courtesy credit: Music by Holizna.
-The three story tracks are the game's own music (Story Mode original score, 2026-10-21) — they are not Creative Commons material and carry no attribution requirement.
+The four story tracks are the game's own music (Story Mode original score, 2026-10-21) — they are not Creative Commons material and carry no attribution requirement.
 
 Required attributions (also shown on the in-game Credits screen):
 

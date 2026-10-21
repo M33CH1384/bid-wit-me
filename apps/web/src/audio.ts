@@ -180,11 +180,12 @@ export const TRACKS: Track[] = [
   // original music, no samples, not CC material, so no attribution line. Story-only: the general
   // shuffle never picks them; story stops reach them via setStoryStop → storyMood.
   { file: 'story-theme', title: 'Riding Shotgun (Story Theme)', artist: 'Bid Wit Me', license: 'Original', source: '', storyOnly: true },
+  { file: 'story-theme-sparse', title: 'Riding Shotgun — Slow (Sparse Theme)', artist: 'Bid Wit Me', license: 'Original', source: '', storyOnly: true },
   { file: 'story-danger', title: 'The Corner (Danger Bed)', artist: 'Bid Wit Me', license: 'Original', source: '', storyOnly: true },
   { file: 'story-king', title: 'The King of the Block', artist: 'Bid Wit Me', license: 'Original', source: '', storyOnly: true },
 ];
 /** Story mood → the score track that carries it (spatial.ts STORY_STOP_AUDIO picks the mood per stop). */
-export const STORY_TRACK_FILE: Record<'theme' | 'danger' | 'king', string> = { theme: 'story-theme', danger: 'story-danger', king: 'story-king' };
+export const STORY_TRACK_FILE: Record<'theme' | 'sparse' | 'danger' | 'king', string> = { theme: 'story-theme', sparse: 'story-theme-sparse', danger: 'story-danger', king: 'story-king' };
 /** The story signature motif (D–F–A–C over Dm): the same four notes open the theme track and
  *  this sting; played at scene-in / stop clear / unlock so story mode sounds like one production. */
 export const STORY_MOTIF_HZ = [587.33, 698.46, 880, 1046.5];
@@ -512,7 +513,7 @@ class Engine {
     // danger stops loop the danger bed, the King loops his arrangement, and everywhere else in
     // story mode the theme alternates with the normal rotation so the mode has a signature
     // sound without playing one track to death.
-    if (this.storyMood === 'danger' || this.storyMood === 'king') {
+    if (this.storyMood === 'danger' || this.storyMood === 'king' || this.storyMood === 'sparse') {
       const idx = TRACKS.findIndex((t) => t.file === STORY_TRACK_FILE[this.storyMood!]);
       if (idx >= 0) return idx;
     }

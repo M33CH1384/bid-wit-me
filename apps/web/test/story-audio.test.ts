@@ -19,9 +19,14 @@ describe('story score wiring', () => {
   it('danger stops loop the danger bed, the King gets his arrangement, the rest ride the theme', () => {
     for (const id of ['corner', 'high-rise', 'the-pjs']) expect(STORY_STOP_AUDIO[id]!.mood, id).toBe('danger');
     expect(STORY_STOP_AUDIO['king']!.mood).toBe('king');
-    for (const id of ['porch', 'barbershop', 'rec-center', 'cookout', 'church-basement', 'rooftop', 'legends']) {
+    for (const id of ['barbershop', 'rec-center', 'cookout', 'legends']) {
       expect(STORY_STOP_AUDIO[id]!.mood, id).toBe('theme');
     }
+  });
+
+  it('the slow stops carry the sparse theme — the score can go quiet, not just big', () => {
+    for (const id of ['porch', 'church-basement', 'rooftop']) expect(STORY_STOP_AUDIO[id]!.mood, id).toBe('sparse');
+    expect(STORY_TRACK_FILE.sparse).toBe('story-theme-sparse');
   });
 
   it('only the Rec Center overrides its (silent-by-design) venue bed, with the gym bed', () => {
@@ -31,7 +36,7 @@ describe('story score wiring', () => {
 
   it('every mood resolves to an original score track that exists in the playlist', () => {
     const files = new Map(TRACKS.map((t) => [t.file, t]));
-    for (const mood of ['theme', 'danger', 'king'] as const) {
+    for (const mood of ['theme', 'sparse', 'danger', 'king'] as const) {
       const t = files.get(STORY_TRACK_FILE[mood]);
       expect(t, mood).toBeTruthy();
       expect(t!.license, mood).toBe('Original');
@@ -50,6 +55,8 @@ describe('story score wiring', () => {
     sound.setStoryStop('corner');
     expect(sound.storyMood).toBe('danger');
     sound.setStoryStop('porch');
+    expect(sound.storyMood).toBe('sparse');
+    sound.setStoryStop('cookout');
     expect(sound.storyMood).toBe('theme');
     sound.setStoryStop('no-such-stop');
     expect(sound.storyMood).toBeNull();

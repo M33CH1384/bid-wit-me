@@ -124,24 +124,26 @@ export function styleForVenue(venue: string): RoomStyle | undefined { return ROO
  * STORY MODE AUDIO (Story Audio Pass, 2026-10-21) — how a story STOP sounds, layered over its
  * venue's identity. Each stop (ids from packages/bots story.ts) gets a score mood; the engine
  * (audio.ts setStoryStop → pickNext) resolves the mood to the game's original score:
- * 'theme' = the story theme in rotation, 'danger' = the tension bed looped, 'king' = the
- * boss arrangement looped. A stop may also name a bed override for when its VENUE is silent
+ * 'theme' = the story theme in rotation, 'sparse' = the theme stripped down and looped for
+ * the slow stops (Porch evening, Church Basement, Rooftop — the score breathes, per the
+ * owner's range note), 'danger' = the tension bed looped, 'king' = the boss arrangement
+ * looped. A stop may also name a bed override for when its VENUE is silent
  * by design — the Rec Center plays in the Classic Studio (bed 'none'), so the stop supplies
  * the gym's 'rec' bed. Everywhere else the venue's own bed (upgraded in buildBed) carries the
  * place. In story context the mood outranks the venue's music character (the Pj's stop plays
  * the danger bed, not the venue's Marty pin — the pin still rules normal Pj's games), and the
  * King gets his own music, full stop.
  */
-export type StoryMood = 'theme' | 'danger' | 'king';
+export type StoryMood = 'theme' | 'sparse' | 'danger' | 'king';
 export interface StoryStopAudio { mood: StoryMood; bed?: VenueBed }
 export const STORY_STOP_AUDIO: Record<string, StoryStopAudio> = {
-  'porch': { mood: 'theme' },
+  'porch': { mood: 'sparse' },
   'barbershop': { mood: 'theme' },
   'rec-center': { mood: 'theme', bed: 'rec' },
   'cookout': { mood: 'theme' },
   'corner': { mood: 'danger' },
-  'church-basement': { mood: 'theme' },
-  'rooftop': { mood: 'theme' },
+  'church-basement': { mood: 'sparse' },
+  'rooftop': { mood: 'sparse' },
   'high-rise': { mood: 'danger' },
   'the-pjs': { mood: 'danger' },
   'legends': { mood: 'theme' },
