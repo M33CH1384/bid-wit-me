@@ -1237,7 +1237,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         if (ev === 'bigBid') { deliver(playBeatFor(stop, 'bigBid'), 400, 1400); beatFired = true; }
         else if (ev === 'jokerDropped') { deliver(playBeatFor(stop, 'joker'), 400, 1400); beatFired = true; }
         else if (ev === 'cutMade') { deliver(playBeatFor(stop, 'cut'), 400, 1400); beatFired = true; }
-        // nilMade / nilBusted are memory for the endgame callbacks, not lines of their own
+        // nilMade / nilBusted / deeNilMade are memory for the endgame callbacks, not lines of their own
       }
       let finalHandNow = false;
       if (snap.historyLen > S.prev.historyLen && snap.lastHand) {
@@ -1256,6 +1256,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             finalHandNow = true;
             if (S.memory.has('nilBusted')) beats = [...beats, ...callbackFor(stop, 'nilBusted')];
             if (S.memory.has('bigSwing')) beats = [...beats, ...callbackFor(stop, 'bigSwing')];
+            if (S.memory.has('deeNilMade')) beats = [...beats, ...callbackFor(stop, 'deeNilMade')];
           }
           deliver(beats, 3400, 1700);
           beatFired = true;

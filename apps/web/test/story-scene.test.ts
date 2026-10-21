@@ -15,7 +15,7 @@ import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { STORY_STOPS, buildStoryTape } from '@spades/bots';
+import { STORY_SCRIPTS, STORY_STOPS, buildStoryTape } from '@spades/bots';
 import { makeRules, newGame, type GameState } from '@spades/rules';
 import ScriptPlayer, { reservedBodyHeight } from '../src/story/ScriptPlayer';
 import StoryTape from '../src/story/StoryTape';
@@ -98,6 +98,37 @@ describe('scene player', () => {
     const spot = c.querySelector('[data-testid="story-egg-hotspot"]')!;
     expect(spot).toBeTruthy();
     await click(spot);
+    expect(onEggFound).toHaveBeenCalledTimes(1);
+  });
+
+  it('eggs stay reachable in the SHORT rebalance intros: the hotspot is live on the last beat too', async () => {
+    const onEggFound = vi.fn();
+    const beats = STORY_SCRIPTS.porch!.intro; // the trimmed 5-beat sit-down
+    const c = await renderEl(createElement(ScriptPlayer, {
+      beats, cta: 'Go', onDone: () => {}, cast: ['uncleRay', 'dee', 'pat'],
+      egg: { trigger: 'sceneTap' as const, ready: false, beats: [{ speaker: 'pat', line: 'A secret.' }] },
+      onEggFound,
+    }));
+    expect(c.querySelector('[data-testid="story-egg-hotspot"]')).toBeTruthy();
+    // walk to the final beat (one click completes the reveal, the next advances)
+    for (let n = 0; n < (beats.length - 1) * 2; n++) await click(c.querySelector('[data-testid="story-script-next"]')!);
+    expect(c.querySelector('[data-testid="story-egg-hotspot"]')).toBeTruthy();
+    await click(c.querySelector('[data-testid="story-egg-hotspot"]')!);
+    expect(onEggFound).toHaveBeenCalledTimes(1);
+  });
+
+  it('the deeTap egg fires on the third medallion tap inside a short scene', async () => {
+    const onEggFound = vi.fn();
+    const c = await renderEl(createElement(ScriptPlayer, {
+      beats: STORY_SCRIPTS['church-basement']!.intro, cta: 'Go', onDone: () => {}, cast: ['deaconFord', 'dee', 'sisterMae'],
+      egg: { trigger: 'deeTap' as const, ready: false, beats: [{ speaker: 'dee', line: 'A secret.' }] },
+      onEggFound,
+    }));
+    const medallion = c.querySelector('[data-testid="story-cast-dee"]')!;
+    await click(medallion);
+    await click(medallion);
+    expect(onEggFound).not.toHaveBeenCalled();
+    await click(medallion);
     expect(onEggFound).toHaveBeenCalledTimes(1);
   });
 });
@@ -267,6 +298,40 @@ describe('milestone + event detection (deterministic from state)', () => {
     expect(f.deeSteady).toBe(true); // Dee took a trick and her side made it, both hands
     expect(f.margin).toBe(170);
     expect(f.setOnFirstHand).toBe(true);
+  });
+  it('midgame (the signature beat’s moment) fires exactly once: on the transition to two completed hands', () => {
+    const st = base();
+    const hand = (handNo: number, p0: number, p1: number) => ({
+      handNo, bids: [3, 4, 3, 3], tricksWon: [4, 5, 3, 1], sides: [
+        { side: 0, seats: [0, 2], points: p0, contractMade: true, nils: [] },
+        { side: 1, seats: [1, 3], points: p1, contractMade: true, nils: [] }],
+    });
+    const s0 = storySnap(st);
+    const s1 = storySnap({ ...st, scores: [60, 40], history: [hand(1, 60, 40)] } as unknown as GameState);
+    const s2 = storySnap({ ...st, scores: [130, 80], history: [hand(1, 60, 40), hand(2, 70, 40)] } as unknown as GameState);
+    const s3 = storySnap({ ...st, scores: [200, 120], history: [hand(1, 60, 40), hand(2, 70, 40), hand(3, 70, 40)] } as unknown as GameState);
+    expect(storyMilestones(s0, s1).map((m) => m.milestone)).toContain('firstHand');
+    expect(storyMilestones(s0, s1).map((m) => m.milestone)).not.toContain('midgame');
+    expect(storyMilestones(s1, s2).map((m) => m.milestone)).toEqual(['midgame']);
+    expect(storyMilestones(s2, s3).map((m) => m.milestone)).not.toContain('midgame');
+  });
+  it("Dee's own made nil is its own memory event (her arc), distinct from any nil", () => {
+    const st = base();
+    const withDeeNil = (made: boolean) => ({
+      ...st, scores: [made ? 160 : -60, 0],
+      history: [{ handNo: 1, bids: [3, 4, 'nil', 4], tricksWon: [4, 5, 0, 4], sides: [
+        { side: 0, seats: [0, 2], points: made ? 160 : -60, contractMade: true, nils: [{ seat: 2, kind: 'nil', tricks: made ? 0 : 2, made, points: made ? 100 : -100 }] },
+        { side: 1, seats: [1, 3], points: 0, contractMade: true, nils: [] }] }],
+    }) as unknown as GameState;
+    const s0 = storySnap(st);
+    const madeSnap = storySnap(withDeeNil(true));
+    expect(madeSnap.lastHand?.deeNilMade).toBe(true);
+    expect(storyEvents(s0, madeSnap)).toContain('deeNilMade');
+    const bustedSnap = storySnap(withDeeNil(false));
+    expect(bustedSnap.lastHand?.deeNilMade).toBe(false);
+    expect(bustedSnap.lastHand?.deeNilBusted).toBe(true);
+    expect(storyEvents(s0, bustedSnap)).toContain('nilBusted');
+    expect(storyEvents(s0, bustedSnap)).not.toContain('deeNilMade');
   });
 });
 

@@ -143,18 +143,38 @@ const FACTS0 = { margin: 0, handsPlayed: 0, setsAgainstUs: 0, setsAgainstThem: 0
 const facts = (over: Partial<StoryGameFacts>): StoryGameFacts => ({ ...FACTS0, ...over });
 
 describe('scene pass: scenes are scenes', () => {
-  it('every intro is a real scene: 10+ exchanges (King 8+), at least 3 speakers, Dee and BOTH adversaries speak', () => {
+  it('intros are SHORT sit-downs — the rebalance caps (the match tells the story now)', () => {
+    const routeBefore = (id: string) => STORY_STOPS.slice(0, STORY_STOPS.findIndex((s) => s.id === id)).map((s) => s.id);
     for (const stop of STORY_STOPS) {
       const intro = STORY_SCRIPTS[stop.id]!.intro;
-      expect(intro.length, `${stop.id} intro length`).toBeGreaterThanOrEqual(stop.id === 'king' ? 8 : 10);
+      const isKing = stop.id === 'king';
+      // raw sit-down cap: ~5 exchanges (King 6 — the double-or-nothing terms beat + one ceremony beat)
+      expect(intro.length, `${stop.id} intro length`).toBeLessThanOrEqual(isKing ? 6 : 5);
+      // as composed for a first visit (gated lines merged, rail woven in)
+      const shown = beatsFor(stop, 'intro', { attempts: 0, cleared: false, clearedStopIds: routeBefore(stop.id) });
+      expect(shown.length, `${stop.id} intro shown`).toBeLessThanOrEqual(isKing ? 7 : 6);
       const speakers = new Set(intro.map((b) => b.speaker));
       expect(speakers.size, `${stop.id} intro speakers`).toBeGreaterThanOrEqual(3);
       expect(speakers.has('dee'), `${stop.id} intro: Dee speaks`).toBe(true);
       for (const cid of stop.pair) expect(speakers.has(cid), `${stop.id} intro: ${cid} speaks`).toBe(true);
-      // the pair talk to EACH OTHER, not just to the player
+      // the pair still talk to EACH OTHER in the short sit-down, not just to the player
       const pairLines = intro.filter((b) => stop.pair.includes(b.speaker)).length;
-      expect(pairLines, `${stop.id} intro pair presence`).toBeGreaterThanOrEqual(4);
+      expect(pairLines, `${stop.id} intro pair presence`).toBeGreaterThanOrEqual(2);
+      // return / cleared bands are miniatures (raw ≤3), and stay small once composed
+      expect(STORY_SCRIPTS[stop.id]!.introReturn.length, `${stop.id} introReturn`).toBeLessThanOrEqual(3);
+      const v = STORY_INTRO_VARIANTS[stop.id]!;
+      expect(v.second.length, `${stop.id} second`).toBeLessThanOrEqual(3);
+      expect(v.grind.length, `${stop.id} grind`).toBeLessThanOrEqual(3);
+      expect(v.champion.length, `${stop.id} champion`).toBeLessThanOrEqual(3);
+      expect(beatsFor(stop, 'intro', { attempts: 1, cleared: false }).length, `${stop.id} second shown`).toBeLessThanOrEqual(5);
+      expect(beatsFor(stop, 'intro', { attempts: 2, cleared: false }).length, `${stop.id} grind shown`).toBeLessThanOrEqual(5);
+      expect(beatsFor(stop, 'intro', { attempts: 0, cleared: true }).length, `${stop.id} champion shown`).toBeLessThanOrEqual(4);
+      // outros are closers now: win ≤4 (King ≤5 — the graduation), loss ≤3
+      expect(STORY_SCRIPTS[stop.id]!.outroWin.length, `${stop.id} outroWin`).toBeLessThanOrEqual(isKing ? 5 : 4);
+      expect(STORY_SCRIPTS[stop.id]!.outroLose.length, `${stop.id} outroLose`).toBeLessThanOrEqual(3);
     }
+    // the King states the double-or-nothing terms inside his intro cap
+    expect(STORY_SCRIPTS.king!.intro.map((b) => b.line).join(' ')).toContain('Two in a row');
   });
 
   it('win scenes resolve forward: stops 1–10 name the next table (stop name or its pair)', () => {
@@ -207,7 +227,7 @@ describe('scene pass: scenes are scenes', () => {
 
   it('mid-scenes, exchanges, threaded beats and callbacks are complete for every stop', () => {
     for (const stop of STORY_STOPS) {
-      for (const m of ['firstHand', 'pullAwayUs', 'pullAwayThem', 'nilAttempt', 'matchPoint', 'finalHand'] as const) {
+      for (const m of ['firstHand', 'signature', 'pullAwayUs', 'pullAwayThem', 'nilAttempt', 'matchPoint', 'finalHand'] as const) {
         expect(STORY_MID_SCENES[stop.id]![m].length, `${stop.id}.${m}`).toBeGreaterThan(0);
       }
       for (const m of ['firstHand', 'nilAttempt', 'matchPoint', 'finalHand'] as const) {
@@ -225,11 +245,14 @@ describe('scene pass: scenes are scenes', () => {
       expect(STORY_PLAY_REACTS[stop.id]!.cut.length).toBeGreaterThan(0);
       expect(STORY_CALLBACKS[stop.id]!.nilBusted.length).toBeGreaterThan(0);
       expect(STORY_CALLBACKS[stop.id]!.bigSwing.length).toBeGreaterThan(0);
+      expect(STORY_CALLBACKS[stop.id]!.deeNilMade.length).toBeGreaterThan(0);
       expect(callbackFor(stop, 'nilBusted').length).toBeGreaterThan(0);
+      expect(callbackFor(stop, 'deeNilMade').length).toBeGreaterThan(0);
+      expect(midSceneFor(stop, 'midgame', null, { attempts: 0, cleared: false })).toBe(STORY_MID_SCENES[stop.id]!.signature);
       expect(playBeatFor(stop, 'sitDown').length).toBeGreaterThan(0);
       // all speakers in the threaded records are this table's cast
       const allowed = new Set([...stop.pair, 'dee', 'you']);
-      for (const rec of [STORY_MID_SCENES[stop.id]!.firstHand, STORY_SIT_DOWN[stop.id]!, STORY_CALLBACKS[stop.id]!.bigSwing]) {
+      for (const rec of [STORY_MID_SCENES[stop.id]!.firstHand, STORY_MID_SCENES[stop.id]!.signature, STORY_SIT_DOWN[stop.id]!, STORY_CALLBACKS[stop.id]!.bigSwing, STORY_CALLBACKS[stop.id]!.deeNilMade]) {
         for (const b of rec) expect(allowed.has(b.speaker), `${stop.id}: ${b.speaker}`).toBe(true);
       }
     }
@@ -237,6 +260,19 @@ describe('scene pass: scenes are scenes', () => {
     const porch = STORY_STOPS[0]!;
     expect(midSceneFor(porch, 'firstHand', null, { attempts: 1, cleared: false })).toBe(STORY_RETRY_FIRST.porch);
     expect(midSceneFor(porch, 'firstHand', null, { attempts: 0, cleared: false })).toBe(STORY_MID_SCENES.porch!.firstHand);
+  });
+
+  it('the match carries the story: a signature beat + a full progression spine at every stop', () => {
+    for (const stop of STORY_STOPS) {
+      const set = STORY_MID_SCENES[stop.id]!;
+      const spine = [set.firstHand, set.signature, set.pullAwayUs, set.pullAwayThem, set.nilAttempt, set.matchPoint, set.finalHand];
+      // at least three progression-keyed story sets fire across a match
+      expect(spine.filter((x) => x.length > 0).length, `${stop.id} progression sets`).toBeGreaterThanOrEqual(3);
+      // the signature beat is a real beat, not a one-liner — the displaced intro arc lives here
+      expect(set.signature.length, `${stop.id} signature`).toBeGreaterThanOrEqual(3);
+      // Dee's own made nil earns an endgame callback at every stop (memory-gated in Table)
+      expect(STORY_CALLBACKS[stop.id]!.deeNilMade.length, `${stop.id} deeNilMade`).toBeGreaterThanOrEqual(1);
+    }
   });
 });
 

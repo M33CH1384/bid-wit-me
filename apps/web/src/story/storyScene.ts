@@ -26,6 +26,7 @@ export interface StorySnap {
     myPoints: number; theirPoints: number;
     nilBidSides: boolean[]; // a nil/blindNil was bid by this side this hand
     nilMade: boolean; nilBusted: boolean; // from the hand's actual nil results
+    deeNilMade: boolean; deeNilBusted: boolean; // Dee's OWN nil result (seat 2, side 0) — her arc beats key to it
     mySet: boolean; theirSet: boolean;
   } | null;
 }
@@ -61,6 +62,8 @@ export function storySnap(st: GameState): StorySnap {
       nilBidSides: [0, 1].map((side) => last.bids.some((b, seat) => seat % 2 === side && isNilBid(b))),
       nilMade: last.sides.some((s) => s.nils.some((n) => n.made)),
       nilBusted: last.sides.some((s) => s.nils.some((n) => !n.made)),
+      deeNilMade: last.sides[0]?.nils.some((n) => n.seat === 2 && n.made) ?? false,
+      deeNilBusted: last.sides[0]?.nils.some((n) => n.seat === 2 && !n.made) ?? false,
       mySet: last.sides[0]?.contractMade === false,
       theirSet: last.sides[1]?.contractMade === false,
     } : null,
@@ -76,6 +79,7 @@ export function storyMilestones(prev: StorySnap, next: StorySnap): { milestone: 
   if (next.historyLen <= prev.historyLen) return out;
   const lh = next.lastHand!;
   if (next.historyLen === 1) out.push({ milestone: 'firstHand', ahead: null });
+  if (next.historyLen === 2) out.push({ milestone: 'midgame', ahead: null });
   if (lh.nilBidSides.some(Boolean)) out.push({ milestone: 'nilAttempt', ahead: null });
   const gap = Math.abs(next.scores[0]! - next.scores[1]!);
   const prevGap = Math.abs(prev.scores[0]! - prev.scores[1]!);
@@ -87,7 +91,7 @@ export function storyMilestones(prev: StorySnap, next: StorySnap): { milestone: 
 }
 
 /** In-match events that really happened when moving prev → next (recorded in session memory). */
-export type StoryEventId = 'nilBusted' | 'bigSwing' | 'nilMade' | 'jokerDropped' | 'cutMade' | 'bigBid';
+export type StoryEventId = 'nilBusted' | 'bigSwing' | 'nilMade' | 'deeNilMade' | 'jokerDropped' | 'cutMade' | 'bigBid';
 export function storyEvents(prev: StorySnap, next: StorySnap): StoryEventId[] {
   const out: StoryEventId[] = [];
   // bids appearing during bidding
@@ -101,6 +105,7 @@ export function storyEvents(prev: StorySnap, next: StorySnap): StoryEventId[] {
     const lh = next.lastHand;
     if (lh.nilBusted) out.push('nilBusted');
     if (lh.nilMade) out.push('nilMade');
+    if (lh.deeNilMade) out.push('deeNilMade');
     if (Math.abs(lh.myPoints - lh.theirPoints) >= 100) out.push('bigSwing');
   }
   return out;
