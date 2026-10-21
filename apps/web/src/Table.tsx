@@ -94,7 +94,7 @@ import type { RunPlayback } from '@spades/protocol';
 import { RunItReview, RunZoom, faceUrl, runReviewOverTable } from './RunZoom';
 import { TrashTalkButton } from './TrashTalk';
 import { isWildDeuce } from './cardFaces';
-import { misdealRevealKey, misdealRevealMs } from './misdeal';
+import { MISDEAL_DEAL_SPEED, misdealDealMs, misdealRevealKey, misdealRevealMs } from './misdeal';
 import { QUICK_TRASH_SET } from './quickTrash';
 import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
 import { STORY_CHARACTERS, STORY_STOPS, type BotLevel, type StoryBeat, type StoryBeatFacts, type StoryGameFacts, type StoryStop, type TalkIntensity, botSkillFor, buildStoryTape, callbackFor, midSceneFor, partnerBidIntent, personaForName, platePersona, pickBotNames, playBeatFor, railLineFor, resumeLineFor, tableExchangeFor } from '@spades/bots';
@@ -538,23 +538,24 @@ function MisdealButton({ onCall }: { onCall: () => void }) {
 }
 
 /**
- * The proof moment: the caller's whole hand lies face up on the table for the whole table to read,
- * then the reshuffle/redeal takes over (the sources hold the deal for the same beat).
+ * The announcement: a misdeal is CALLED, out loud — who called it and why (no spades) — with the
+ * caller's whole hand face up as the whole table's proof. It rides the gather beat while every
+ * hand slides to the deck; the shuffle + deal flight then take over (see misdeal.ts).
  */
-function MisdealReveal({ title, cards, rules }: { title: string; cards: Card[]; rules: TableRules }) {
+function MisdealReveal({ title, bidsVoided, cards, rules }: { title: string; bidsVoided: boolean; cards: Card[]; rules: TableRules }) {
   const spread = sortHand(cards, rules);
   const perRow = Math.ceil(spread.length / 2);
   return (
-    <div className="misdeal-reveal" data-testid="misdeal-reveal" role="status" aria-label={title}>
+    <div className="misdeal-reveal" data-testid="misdeal-reveal" role="status" aria-label={`Misdeal — ${title}`}>
       <div className="misdeal-panel glass">
-        <div className="misdeal-head">Misdeal called</div>
+        <div className="misdeal-head">Misdeal</div>
         <div className="misdeal-sub">{title}</div>
         <div className="misdeal-spread" style={{ '--per-row': perRow } as React.CSSProperties}>
           {spread.map((c, i) => (
             <img key={c} src={faceUrl(c, isWildDeuce(c, rules))} alt={c} className="misdeal-card" style={{ '--i': i } as React.CSSProperties} />
           ))}
         </div>
-        <div className="misdeal-foot">No spades in the hand — shuffling a fresh deal…</div>
+        <div className="misdeal-foot">{bidsVoided ? 'Bids are off — gathering the cards for a fresh deal…' : 'Gathering the cards for a fresh deal…'}</div>
       </div>
     </div>
   );
@@ -1036,20 +1037,46 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const winnerSeat = pause && !ranHand ? shownTrick.winner : null;
   // the Run it! button + its one-time spotlight tip
   const canRun = !spectating && !dealing && st.phase === 'playing' && !!view.canRunIt && !runFx;
-  // Misdeal: offered only while the engine allows it; the thrown hand then sits face up for a beat
-  // (both sources fold the same beat into `dealing`, so nothing moves underneath it).
+  // Misdeal: offered only while the engine allows it (this seat has not bid yet — other seats
+  // bidding never closes the call). A landed call runs the redeal sequence below.
   const canMisdeal = !spectating && !dealing && st.phase === 'bidding' && !!view.canMisdeal;
   // When the human's bid panel is up, the misdeal call lives INSIDE that panel (impossible to miss);
   // the floating button only covers the window while other seats are still bidding.
   const bidPanelShowing = myTurn && !dealing && st.phase === 'bidding' && !!view.bidOptions && !autoReveal;
+  // The redeal sequence (see misdeal.ts): a fresh thrown-hand key runs announce + gather — the
+  // announcement names the caller, every hand glides to the deck — then the redeal deals out
+  // (the card layer remounts on a new deal epoch) and bidding opens. The sources hold play for
+  // the whole sequence; this machine only drives what the table shows. Reduced motion collapses
+  // it to the announcement, then the hand simply swaps. Bids placed before the call are captured
+  // from the previous state, so the announcement can say they died with the hand.
   const revealKey = misdealRevealKey(view.handNo, view.misdealReveal);
-  const [seenReveal, setSeenReveal] = useState<string | null>(null);
-  const revealShowing = !!revealKey && seenReveal !== revealKey;
+  const bidsBeforeCall = useRef<typeof st.bids>([]);
+  useEffect(() => { bidsBeforeCall.current = st.bids; }, [st.bids]);
+  const [redeal, setRedeal] = useState<{ key: string; phase: 'gather' | 'deal'; bidsVoided: boolean } | null>(null);
+  const [dealEpoch, setDealEpoch] = useState(0);
+  // Detection runs in the render pass itself (the derived-state pattern): a new thrown-hand key
+  // starts the sequence on the very render that presents it — no effect ordering to lose it —
+  // and the seen key resets when the reveal clears, so a later call always replays the moment.
+  const [redealKeySeen, setRedealKeySeen] = useState<string | null>(null);
+  if (revealKey !== redealKeySeen) {
+    setRedealKeySeen(revealKey);
+    if (revealKey) setRedeal({ key: revealKey, phase: 'gather', bidsVoided: bidsBeforeCall.current.some((b) => b !== null) });
+  }
   useEffect(() => {
-    if (!revealKey || seenReveal === revealKey) return;
-    const tm = setTimeout(() => setSeenReveal(revealKey), misdealRevealMs());
+    if (!redeal) return;
+    if (redeal.phase === 'gather') {
+      const tm = setTimeout(() => {
+        if (fx.osReducedMotion) { setRedeal((cur) => (cur?.key === redeal.key ? null : cur)); return; }
+        setDealEpoch((e) => e + 1);
+        setRedeal((cur) => (cur?.key === redeal.key ? { ...cur, phase: 'deal' } : cur));
+      }, misdealRevealMs());
+      return () => clearTimeout(tm);
+    }
+    const cards = st.hands.reduce((a, h) => a + h.length, 0);
+    const tm = setTimeout(() => setRedeal((cur) => (cur?.key === redeal.key ? null : cur)), misdealDealMs(k, r.playerCount, cards));
     return () => clearTimeout(tm);
-  }, [revealKey, seenReveal]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [redeal?.key, redeal?.phase]);
   const [runTip, setRunTip] = useState(false);
   const runTipKey = useRef<string | null>(null);
   useEffect(() => {
@@ -1909,9 +1936,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           onFeltTap={() => { if (feltClearsSelection(selected)) { playArmed.current = false; setSelected(null); } }}
           renderSeat={renderSeat}
           introHand={introHand}
-          dealing={dealing}
+          dealing={dealing || redeal?.phase === 'deal'}
           dealReady={dealReady}
-          animK={k}
+          animK={redeal?.phase === 'deal' ? k * MISDEAL_DEAL_SPEED : k}
+          gatherHands={redeal?.phase === 'gather' && !fx.osReducedMotion}
+          dealEpoch={dealEpoch}
           landCue={landCue}
           short={vp.short}
           safe={vp.safe}
@@ -2111,9 +2140,10 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       {online?.overlay}
       {canRun && <RunItButton tip={runTip} onDismissTip={() => setRunTip(false)} onRun={() => { setRunTip(false); setSelected(null); apply({ type: 'runIt', seat: HUMAN }); }} />}
       {canMisdeal && !bidPanelShowing && <MisdealButton onCall={() => { setSelected(null); apply({ type: 'misdeal', seat: HUMAN }); }} />}
-      {revealShowing && view.misdealReveal && (
+      {redeal?.phase === 'gather' && view.misdealReveal && (
         <MisdealReveal
-          title={view.misdealReveal.seat === HUMAN && !spectating ? 'You threw your hand face up' : `${names[view.misdealReveal.seat] ?? 'A player'} threw their hand face up`}
+          title={view.misdealReveal.seat === HUMAN && !spectating ? 'You called it · no spades' : `${names[view.misdealReveal.seat] ?? 'A player'} called it · no spades`}
+          bidsVoided={redeal.bidsVoided}
           cards={view.misdealReveal.cards}
           rules={r}
         />

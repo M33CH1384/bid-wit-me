@@ -72,6 +72,39 @@ describe('Call misdeal — eligibility', () => {
     const withTrump: GameState = { ...st, hands: st.hands.map((h, i) => (i === 0 ? [...h.slice(1), 'AS'] : h)) };
     expectRuleError(() => applyAction(withTrump, { type: 'misdeal', seat: 0 }), 'NO_MISDEAL');
   });
+
+  it('applyAction refuses the call once your own bid is in, even mid-round', () => {
+    const st = spadeLessGame();
+    const iBid: GameState = { ...st, bids: st.bids.map((b, i) => (i === 0 ? 3 : b)) };
+    expectRuleError(() => applyAction(iBid, { type: 'misdeal', seat: 0 }), 'NO_MISDEAL');
+  });
+
+  it('the last bidder can still call with three bids in — and the redeal voids those bids', () => {
+    // Real bidding through applyAction: everyone ahead of the spade-less seat bids in turn.
+    // This is the owner's seat — he dealt, so he bids last — where the call must stay reachable.
+    let cur: GameState | null = null;
+    for (let i = 0; i < 500 && !cur; i++) {
+      const st = newGame(joker, `misdeal-last-${i}`, { dealer: 0 });
+      if (st.phase === 'bidding' && noTrump(st, 0)) cur = st;
+    }
+    if (!cur) throw new Error('no spade-less dealer deal found');
+    let guard = 0;
+    while (cur.turn !== 0 && guard++ < 8) {
+      const turn = cur.turn;
+      if (turn === null) break;
+      const v = viewFor(cur, turn);
+      cur = applyAction(cur, { type: 'bid', seat: turn, bid: Math.max(1, v.bidOptions!.min) });
+    }
+    expect(cur.bids.filter((b) => b !== null)).toHaveLength(3);
+    expect(cur.phase).toBe('bidding');
+    expect(canMisdeal(cur, 0)).toBe(true);
+    expect(viewFor(cur, 0).canMisdeal).toBe(true);
+    const next = applyAction(cur, { type: 'misdeal', seat: 0 });
+    expect(next.phase).toBe('bidding');
+    expect(next.bids.every((b) => b === null)).toBe(true); // the placed bids die with the hand
+    expect(next.handNo).toBe(cur.handNo);
+    expect(next.misdealReveal?.seat).toBe(0);
+  });
 });
 
 describe('Call misdeal — the redeal', () => {

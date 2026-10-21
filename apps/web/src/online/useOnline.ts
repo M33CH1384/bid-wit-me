@@ -4,7 +4,7 @@ import { shotChatLines } from '../shotOut';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { Action, GameState, PlayerView } from '@spades/rules';
 import { bidLabel, isFreshDeal, isNukeTrick } from '@spades/rules';
-import { misdealRevealKey, misdealRevealMs } from '../misdeal';
+import { misdealRevealKey, misdealSequenceMs } from '../misdeal';
 import type { ChatLine, RoomInfo } from '@spades/protocol';
 import type { ChatMsg } from '../overlay';
 import type { ConnState, TableConnection } from './connection';
@@ -78,12 +78,13 @@ export function useOnlineSource(cs: ConnState, conn: TableConnection): (GameSour
     if (p && p.handNo === st.handNo && st.tricks.length > p.tricks.length) setPause(true);
     const fresh = isFreshDeal(st) && st.tricks.length === 0;
     if ((p && st.handNo !== p.handNo) || (!p && fresh)) { setPause(false); setIntro({ hand: st.handNo, until: Date.now() + dealMs(st) }); }
-    // A called misdeal keeps the same hand number, so the fresh-deal branch above misses it: hold the
-    // thrown hand's reveal beat first, then let the redeal fly inside the same intro window.
+    // A called misdeal keeps the same hand number, so the fresh-deal branch above misses it: hold
+    // the table for the full redeal sequence (announcement + gather, then the redeal flies inside
+    // the same intro window — see misdeal.ts). Every client runs the sequence off this same event.
     const rk = misdealRevealKey(st.handNo, rotated.view.misdealReveal);
     if (rk && rk !== revealRef.current) {
       revealRef.current = rk;
-      setIntro({ hand: st.handNo, until: Date.now() + misdealRevealMs() + dealMs(st) });
+      setIntro({ hand: st.handNo, until: Date.now() + misdealSequenceMs(1, st.rules.playerCount, st.hands.reduce((a, h) => a + h.length, 0)) });
     }
     setShown(rotated);
   }, [rotated]);

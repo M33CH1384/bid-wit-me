@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyAction, makeRules, newGame, viewFor, type GameState } from '@spades/rules';
-import { MISDEAL_REVEAL_MS, MISDEAL_REVEAL_REDUCED_MS, misdealRevealKey, misdealRevealMs } from '../src/misdeal';
+import { MISDEAL_DEAL_SPEED, MISDEAL_REVEAL_MS, MISDEAL_REVEAL_REDUCED_MS, misdealDealMs, misdealRevealKey, misdealRevealMs, misdealSequenceMs } from '../src/misdeal';
+import { dealTimeline } from '../src/three/dealTimeline';
 import { rotateView } from '../src/online/rotate';
 
 /** A game where seat 0 was dealt no spades at all (scanning seeds). */
@@ -13,12 +14,26 @@ function spadeLessGame(): GameState {
   throw new Error('no spade-less deal found');
 }
 
-describe('misdeal reveal beat', () => {
-  it('holds 1.8s for the table to read, 0.6s snap under reduced motion', () => {
-    expect(MISDEAL_REVEAL_MS).toBe(1800);
+describe('misdeal redeal sequence', () => {
+  it('announces + gathers for 1.2s, 0.6s snap under reduced motion', () => {
+    expect(MISDEAL_REVEAL_MS).toBe(1200);
     expect(MISDEAL_REVEAL_REDUCED_MS).toBe(600);
-    expect(misdealRevealMs(false)).toBe(1800);
+    expect(misdealRevealMs(false)).toBe(1200);
     expect(misdealRevealMs(true)).toBe(600);
+  });
+
+  it('the redeal deals out on the normal deal timeline, a touch brisker', () => {
+    expect(MISDEAL_DEAL_SPEED).toBe(0.7);
+    expect(misdealDealMs(1, 4, 52)).toBe(dealTimeline(0.7, 4, 52).total * 1000 + 150);
+    expect(misdealDealMs(1, 4, 52)).toBeLessThan(dealTimeline(1, 4, 52).total * 1000 + 150);
+  });
+
+  it('the full moment lands near three seconds; reduced motion is announcement + swap only', () => {
+    const total = misdealSequenceMs(1, 4, 52, false);
+    expect(total).toBe(MISDEAL_REVEAL_MS + misdealDealMs(1, 4, 52));
+    expect(total).toBeGreaterThan(2500);
+    expect(total).toBeLessThan(3500);
+    expect(misdealSequenceMs(1, 4, 52, true)).toBe(MISDEAL_REVEAL_REDUCED_MS);
   });
 
   it('keys each thrown hand once', () => {

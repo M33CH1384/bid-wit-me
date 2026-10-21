@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { type Action, type GameHandLog, type GameState, type TableRules, HandLogBuilder, applyAction, canRunIt, isNukeTrick, newGame, pendingTurn, secureSeed, viewFor } from '@spades/rules';
 import { type BotLevel, type PartnerHint, chooseBotAction, parseHint } from '@spades/bots';
 import { dealTimeline } from './three/dealTimeline';
-import { misdealRevealMs } from './misdeal';
+import { misdealSequenceMs } from './misdeal';
 import { dealClockArmed } from './three/dealFlight';
 import { finishedTrickHoldMs } from './trickTiming';
 
@@ -59,16 +59,19 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
   // Bounded wait for a scene that never reports (no WebGL): the game is never stuck on a deal.
   const [forcedHand, setForcedHand] = useState<number | null>(null);
   const dealing = introHand !== null && forcedHand !== introHand && !(dealtHand === introHand && sceneDealt === introHand);
-  // A called misdeal: the thrown hand sits face up on the table for a beat (see misdeal.ts) before the
-  // redeal lands. The beat rides the dealing flag, so bots wait, input waits and no new cards show early.
+  // A called misdeal: the whole redeal sequence (announcement + gather, then the shuffle + deal
+  // flight — see misdeal.ts) rides the dealing flag, so bots wait, input waits and bidding only
+  // opens once the fresh hand has actually been dealt out on screen.
   const revealKey = st.misdealReveal ? `${st.handNo}:${st.misdeals ?? 0}:${st.misdealReveal.seat}` : null;
   const [revealDone, setRevealDone] = useState<string | null>(null);
   const misdealShowing = !!revealKey && revealDone !== revealKey;
   useEffect(() => {
     if (!revealKey || revealDone === revealKey) return;
-    const tm = setTimeout(() => setRevealDone(revealKey), misdealRevealMs());
+    const s = stRef.current;
+    const cards = s.hands.reduce((a, h) => a + h.length, 0);
+    const tm = setTimeout(() => setRevealDone(revealKey), misdealSequenceMs(k, s.rules.playerCount, cards));
     return () => clearTimeout(tm);
-  }, [revealKey, revealDone]);
+  }, [revealKey, revealDone, k]);
   const busy = dealing || misdealShowing;
   useEffect(() => {
     // The clock starts with the table on screen. Started behind the loader, the deal was over

@@ -1,7 +1,8 @@
 /**
  * Misdeal, browser-level (WebKit 390): a spade-less human hand gets the 'Call misdeal' button;
- * calling it throws the whole hand face up on the table for the ~1.8s beat (everyone's proof of no
- * spades), then the same hand is reshuffled and redealt (still bidding, fresh cards, no bid placed).
+ * calling it announces the call ("You called it · no spades") with the whole hand face up as the
+ * table's proof while the hands gather to the deck (~1.2s beat), then the same hand is shuffled
+ * and redealt on the normal deal flight (still bidding, fresh cards, no bid placed).
  * Saves docs/misdeal-button-390.png and docs/misdeal-reveal-390.png when BWM_SHOTS=docs.
  */
 import { isTrump, makeRules, newGame, type GameState } from '@spades/rules';
@@ -46,16 +47,19 @@ function save(): string {
     const shownAt = Date.now() - t0;
     const cards = await reveal.locator('img').count();
     if (cards !== 13) throw new Error(`reveal showed ${cards} cards, want 13`);
+    const announce = (await reveal.textContent()) ?? '';
+    if (!announce.includes('You called it · no spades')) throw new Error(`announcement did not name the call: ${announce.slice(0, 120)}`);
+    console.log('✓ the call is announced: who + why (no spades), thrown hand face up as proof');
     await page.waitForTimeout(500);
     await page.screenshot({ path: `${SHOTS}/misdeal-reveal-390.png` });
     await reveal.waitFor({ state: 'hidden', timeout: 6000 });
     const beatMs = Date.now() - t0;
     if (shownAt > 1200) throw new Error(`reveal took ${shownAt}ms to appear`);
-    if (beatMs < 1400 || beatMs > 4500) throw new Error(`reveal beat was ${beatMs}ms, want ~1800`);
-    console.log(`✓ whole hand face up for a ${beatMs}ms beat (13 cards)`);
+    if (beatMs < 900 || beatMs > 3000) throw new Error(`announce+gather beat was ${beatMs}ms, want ~1200`);
+    console.log(`✓ announcement + gather held for a ${beatMs}ms beat (13 cards)`);
 
-    // redealt: still bidding on the same hand with 13 fresh cards
-    await page.waitForTimeout(800);
+    // redealt: the deal flight deals the same hand back out — still bidding, 13 fresh cards
+    await page.waitForFunction(() => document.querySelectorAll('[data-testid="hand"] button').length === 13, undefined, { timeout: 8000 });
     const after = await page.getByTestId('hand').locator('button').allTextContents();
     if (after.length !== 13) throw new Error(`redealt hand has ${after.length} cards`);
     console.log('✓ reshuffled and redealt (13 cards, bidding again)');

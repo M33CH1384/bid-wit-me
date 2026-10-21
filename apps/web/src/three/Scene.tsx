@@ -114,6 +114,12 @@ export interface SceneProps {
   venue?: VenueId;
   /** Post-hand: books slide to the next dealer for collection (Demetrius 2026-10-19). */
   collecting?: boolean;
+  /** Misdeal redeal, beat 1: every hand on the table glides to the deck spot (the collection
+   *  glide) while the call is announced, before the redeal deals out. */
+  gatherHands?: boolean;
+  /** Misdeal redeal, beat 2: bumped when the redeal should deal out — remounts the card layer
+   *  so this hand's normal shuffle + deal flight replays under the same hand number. */
+  dealEpoch?: number;
   /** camera view: standing (default) or sitting (lower/closer) */
   view?: 'standing' | 'sitting';
   /** Turn up (slam mode): Standing drags slam at max only when this is on. */
@@ -528,6 +534,9 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   useEffect(() => (props.fontsReady ? refreshFacesGradually(() => invalidate()) : undefined), [props.fontsReady, invalidate]);
   const deck = deckSpot(positions[dealer]!, n);
   const intro = props.introHand === handNo;
+  // Misdeal gather: while the call is announced, every hand rides the collection glide into the
+  // deck spot; the redeal then deals out of that same deck (see Table's redeal sequence).
+  const gather = !!props.gatherHands;
   const held0 = dealHeld({ intro, dealReady: props.dealReady !== false });
   // Blind Nil: cards that were dealt face-down flip over in place on reveal — never re-dealt from the deck
   const hiddenHand = useRef<number | null>(null);
@@ -712,7 +721,11 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     if (seat === human) continue;
     const c = handCounts[seat]!;
     for (let i = 0; i < c; i++) {
-      items.push({ key: `${handNo}-b${seat}-${i}`, card: null, target: opponentFan(positions[seat]!, n, i, c), from: intro ? deck : undefined, delay: intro ? dealDelay(i, seat) : 0, holdUntilMove: intro, duration: tl.fly, arc: 0.3, sfxStart: 'deal', spatialSeat: positions[seat]!, spatialN: n });
+      if (gather) {
+        items.push({ key: `${handNo}-b${seat}-${i}`, card: null, target: deck, duration: 0.7, arc: 0.25, motion: 'glide', delay: seat * 0.07 + i * 0.015, sfxStart: 'sweep', spatialSeat: positions[seat]!, spatialN: n });
+      } else {
+        items.push({ key: `${handNo}-b${seat}-${i}`, card: null, target: opponentFan(positions[seat]!, n, i, c), from: intro ? deck : undefined, delay: intro ? dealDelay(i, seat) : 0, holdUntilMove: intro, duration: tl.fly, arc: 0.3, sfxStart: 'deal', spatialSeat: positions[seat]!, spatialN: n });
+      }
     }
   }
   // the human hand
@@ -809,6 +822,8 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
       raise: c ? raiseLocalY(pose, fan.viewH, screenH, fan.ch) : 0,
       roll: plane.roll,
       order,
+      // Misdeal gather: my fan rides the same collection glide into the deck as every other hand.
+      ...(gather ? { target: deck, from: undefined, delay: i * 0.02, holdUntilMove: false, sfxStart: 'sweep' as const, dim: false, tap: null, duration: 0.7, motion: 'glide' as const, arc: 0.25, raise: 0 } : {}),
     });
   });
   pendingHold.current = { handNo, cards: nextCards, slots: nextSlots, count: faceCount, seen: nextSeen };
@@ -1579,7 +1594,7 @@ export default function Scene(props: SceneProps) {
         </group>
       )}
       {showTable && props.positions.map((p, seat) => <TurnRing key={seat} pos={p} n={props.n} active={props.turnSeat === seat} />)}
-      {showTable && <Cards {...props} dragCard={dragCard} aspect={aspect} fontsReady={fontsReady} safeFrac={safeFrac} lit={lit} />}
+      {showTable && <Cards key={props.dealEpoch ?? 0} {...props} dragCard={dragCard} aspect={aspect} fontsReady={fontsReady} safeFrac={safeFrac} lit={lit} />}
       {showTable && <HandPointer onTap={props.onCardTap} onDrop={props.onCardDrop} legal={props.legal} onDragging={setDragCard} view={props.view} turnUp={props.turnUp} />}
       <AfterTable quality={props.quality} tableUp={textured} />
       {layerReady && <Badges positions={props.positions} n={props.n} human={props.human} renderSeat={props.renderSeat} portal={badgeLayer} safeFrac={safeFrac} short={!!props.short} safe={props.safe ?? { l: 0, r: 0, t: 0, b: 0 }} />}
