@@ -8,7 +8,7 @@
 import { createElement, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { STORY_STOPS, storyStopById } from '@spades/bots';
 import { VENUES } from '@spades/protocol';
 import { DEFAULT_SETTINGS, type Settings } from '../src/settings';
@@ -17,6 +17,18 @@ import { themeStore } from '../src/theme';
 import StoryHome from '../src/story/StoryHome';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+// Story mode is owner-only while it is being finished (STORY_OWNER_ONLY):
+// these map tests run as the dev (owner) account — profile/me says dev:true,
+// and the story progress endpoint answers 401 (signed-out preview) as before.
+beforeAll(() => {
+  vi.stubGlobal('fetch', async (input: unknown) => {
+    const url = String(input);
+    if (url.includes('/api/profile/me')) return { ok: true, status: 200, json: async () => ({ dev: true, unlocks: [] }) };
+    if (url.includes('/api/story/progress')) return { ok: false, status: 401, json: async () => ({}) };
+    throw new Error(`no network in tests: ${url}`);
+  });
+});
 
 const base: Settings = { ...DEFAULT_SETTINGS };
 

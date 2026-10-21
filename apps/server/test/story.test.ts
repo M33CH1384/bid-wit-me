@@ -18,7 +18,8 @@ const call = (uid: string | null, path: string, init?: RequestInit) => {
   if (uid) headers.set('cookie', `__Host-bwm_sid=${uid}-tok`);
   return handleStoryHttp(
     new Request(new URL(path, ORIGIN), { ...init, headers }),
-    { DB: db, PUBLIC_ORIGIN: ORIGIN } as never,
+    // 'a' and 'c' are admin (owner-class) accounts here; 'b' is a regular player.
+    { DB: db, PUBLIC_ORIGIN: ORIGIN, ADMIN_USERNAMES: 'A,C' } as never,
     new URL(path, ORIGIN), path.split('?')[0]!.split('/').filter(Boolean), NOW,
   );
 };
@@ -35,6 +36,7 @@ beforeEach(async () => {
   db = await makeD1();
   await user('a');
   await user('b');
+  await user('c');
 });
 
 describe('story progress + results', () => {
@@ -50,7 +52,17 @@ describe('story progress + results', () => {
 
   it('requires sign-in', async () => {
     expect((await call(null, '/api/story/progress')).status).toBe(401);
-    expect((await result('a', 'porch', true, 'g0')).status).toBe(200); // sanity: signed-in works
+    expect((await result('a', 'porch', true, 'g0')).status).toBe(200); // sanity: signed-in admin works
+  });
+
+  it('owner-only lock: non-admin players get 403 on both endpoints, and record nothing', async () => {
+    expect((await call('b', '/api/story/progress')).status).toBe(403);
+    expect((await result('b', 'porch', true, 'gb1')).status).toBe(403);
+    expect(await xpOf('b')).toBe(0);
+    expect(await coinsOf('b')).toBe(0);
+    // the admin's own progress is untouched by the lock
+    const p = await progress('a');
+    expect(p.stops[0]).toMatchObject({ stopId: 'porch', state: 'current', attempts: 0, clears: 0 });
   });
 
   it('a win clears the stop, pays the scaled first-clear reward, and unlocks the next stop', async () => {
@@ -103,7 +115,7 @@ describe('story progress + results', () => {
 
   it('tracks are per-player; pair-track writes wait for Phase 2', async () => {
     await result('a', 'porch', true, 'g1');
-    expect((await progress('b')).currentStop).toBe(1);
+    expect((await progress('c')).currentStop).toBe(1);
     const pairWrite = await call('a', '/api/story/result', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ track: 'pair:a:b', stopId: 'porch', won: true, gameId: 'gp1' }),

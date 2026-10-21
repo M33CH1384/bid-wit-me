@@ -19,6 +19,7 @@ import { AccountEntry } from './account/AccountUI';
 import { SocialButton } from './social/Social';
 import { OpenTables } from './social/OpenTables';
 import { OFFLINE_PAIR_KEY, TeamNameField, pairTeamNames, useTeamNameFor } from './TeamName';
+import { STORY_OWNER_ONLY, fetchStoryDev, storyLockedFor } from './story/storyApi';
 
 /**
  * Start flow as a wizard: splash (logo + Play Online / Play vs Bots + Resume) → mode → essentials → go.
@@ -126,6 +127,13 @@ export function VenueSetupRow({ value, onChange }: { value: VenueChoice; onChang
 
 export default function Setup({ settings: s, onChange, tips, onTips, onStart, onResume, resumeLabel }: Props) {
   const [{ step, path, kind, view }, setWiz] = useState(readWiz);
+  // Story-mode owner lock: the home row is locked until the dev flag says otherwise.
+  const [storyDev, setStoryDev] = useState<boolean | null | undefined>(undefined);
+  useEffect(() => {
+    let live = true;
+    void fetchStoryDev().then((d) => { if (live) setStoryDev(d); });
+    return () => { live = false; };
+  }, []);
   const offlineTeamName = useTeamNameFor(OFFLINE_PAIR_KEY);
   const [dir, setDir] = useState<'fwd' | 'back'>('fwd');
   const [ask, setAsk] = useState(isFirstVisit);
@@ -208,7 +216,11 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
           <button type="button" className="hero-btn gold" data-testid="play" {...choose(() => go('door'))}><b>PLAY</b><small>Team Game or Cutthroat</small></button>
         )}
         {onlineSeat && <button type="button" className="quiet-row" data-testid="resume-online" onClick={() => navigate(`/t/${onlineSeat}`)}><span>Rejoin your online table</span><span className="value-chip">{onlineSeat}</span></button>}
-        <button type="button" className="quiet-row" data-testid="story-mode" onClick={() => navigate('/story')}><span>Story mode</span><span className="value-chip">Run the block</span></button>
+        {STORY_OWNER_ONLY && storyLockedFor(storyDev === undefined ? null : storyDev) ? (
+          <button type="button" className="quiet-row" data-testid="story-mode-locked" disabled aria-disabled="true"><span>🔒 Story mode</span><span className="value-chip">Coming soon</span></button>
+        ) : (
+          <button type="button" className="quiet-row" data-testid="story-mode" onClick={() => navigate('/story')}><span>Story mode</span><span className="value-chip">Run the block</span></button>
+        )}
       </div>
     );
     body = (

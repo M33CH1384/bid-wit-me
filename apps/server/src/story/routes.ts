@@ -25,6 +25,7 @@
  * now so Phase 2 co-op writes land in the same tables unchanged.
  */
 import { type AuthEnv, currentUser } from '../auth/routes';
+import { type SocialEnv, isAdmin } from '../social/routes';
 import {
   STORY_STOPS, STORY_SOLO_TRACK, storyCurrentStop, storyReward, storyStopById,
   storyStopState, storyTrackKeyValid,
@@ -32,7 +33,18 @@ import {
 import { awardXp } from '../cred/xp';
 import { move } from '../cred/coins';
 
-export interface StoryEnv extends AuthEnv {}
+export interface StoryEnv extends AuthEnv, SocialEnv {}
+
+/**
+ * STORY_OWNER_ONLY — the one switch for the story-mode lock (owner,
+ * 2026-10-21): story mode stays admin-only while it is being finished.
+ * While true, every story endpoint answers 403 to non-admin accounts
+ * (the same isAdmin machinery as The Pj's dev bypass) and the client
+ * shows the locked state to non-dev players. TO OPEN STORY MODE TO
+ * EVERYONE: set this to false here AND STORY_OWNER_ONLY to false in
+ * apps/web/src/story/storyApi.ts — nothing else changes.
+ */
+export const STORY_OWNER_ONLY = true;
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
 
@@ -72,6 +84,10 @@ export async function handleStoryHttp(req: Request, env: StoryEnv, url: URL, par
   const db = env.DB;
   const me = await currentUser(req, env, url, now);
   if (!me) return json({ error: 'Sign in to run the route.' }, 401);
+  // Owner-only while story mode is being finished (see STORY_OWNER_ONLY).
+  if (STORY_OWNER_ONLY && !isAdmin(env, me.id, me.username)) {
+    return json({ error: 'Story mode is locked while it is being finished.' }, 403);
+  }
 
   if (parts[1] === 'story' && parts[2] === 'progress' && req.method === 'GET') {
     const track = url.searchParams.get('track') ?? STORY_SOLO_TRACK;

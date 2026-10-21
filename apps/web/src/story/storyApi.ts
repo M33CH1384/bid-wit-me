@@ -3,6 +3,29 @@
  * session — the same pattern as the rest of the account APIs).
  */
 import type { StoryStopState } from '@spades/bots';
+import { fetchVenueUnlocks } from '../venues';
+
+/**
+ * STORY_OWNER_ONLY — the client half of the story-mode lock (owner,
+ * 2026-10-21): while true, story mode is open only to dev (owner)
+ * accounts — the server enforces the same gate with its own
+ * STORY_OWNER_ONLY in apps/server/src/story/routes.ts (403 for
+ * non-admins). TO OPEN STORY MODE TO EVERYONE: set both flags false.
+ */
+export const STORY_OWNER_ONLY = true;
+
+/** Locked = the owner-only switch is on and this player is not a dev account.
+ *  Unknown dev state (signed out / fetch failed) counts as locked — the same
+ *  safe default as the locked-venue picker. */
+export function storyLockedFor(dev: boolean | null | undefined): boolean {
+  return STORY_OWNER_ONLY && dev !== true;
+}
+
+/** The caller's dev flag from /api/profile/me (cached, shared with the venue picker). */
+export async function fetchStoryDev(): Promise<boolean | null> {
+  const s = await fetchVenueUnlocks();
+  return s ? s.dev : null;
+}
 
 export interface StoryStopProgress {
   stopId: string;
@@ -35,12 +58,14 @@ export interface StoryResult extends StoryProgress {
 export type ProgressFetch =
   | { status: 'ok'; progress: StoryProgress }
   | { status: 'signedOut' }
+  | { status: 'locked' }
   | { status: 'error' };
 
 export async function fetchStoryProgress(track = 'solo'): Promise<ProgressFetch> {
   try {
     const r = await fetch(`/api/story/progress?track=${encodeURIComponent(track)}`, { headers: { accept: 'application/json' } });
     if (r.status === 401) return { status: 'signedOut' };
+    if (r.status === 403) return { status: 'locked' };
     if (!r.ok) return { status: 'error' };
     return { status: 'ok', progress: (await r.json()) as StoryProgress };
   } catch {

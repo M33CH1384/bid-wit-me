@@ -22,7 +22,7 @@ import { type TipsPref, loadTips } from '../tips';
 import { type Settings, loadSettings, saveSettings } from '../settings';
 import { navigate } from '../online/nav';
 import { storyRulesFor, storySettingsFor } from './storySettings';
-import { fetchStoryProgress, postStoryResult, type StoryProgress, type StoryResult } from './storyApi';
+import { STORY_OWNER_ONLY, fetchStoryDev, fetchStoryProgress, postStoryResult, storyLockedFor, type StoryProgress, type StoryResult } from './storyApi';
 import ScriptPlayer from './ScriptPlayer';
 import './story.css';
 
@@ -40,6 +40,14 @@ export default function StoryHome() {
   const [progress, setProgress] = useState<StoryProgress | null>(null);
   const [signedOut, setSignedOut] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  // Owner-only lock (STORY_OWNER_ONLY): undefined = dev flag still loading.
+  const [dev, setDev] = useState<boolean | null | undefined>(undefined);
+  const [lockedByServer, setLockedByServer] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void fetchStoryDev().then((d) => { if (live) setDev(d); });
+    return () => { live = false; };
+  }, []);
   const [lastResult, setLastResult] = useState<StoryResult | null>(null);
   const finishedRef = useRef<{ seed: string; won: boolean } | null>(null);
 
@@ -47,6 +55,7 @@ export default function StoryHome() {
     const r = await fetchStoryProgress();
     if (r.status === 'ok') { setProgress(r.progress); setSignedOut(false); setLoadError(false); }
     else if (r.status === 'signedOut') { setSignedOut(true); setProgress(null); }
+    else if (r.status === 'locked') { setLockedByServer(true); }
     else setLoadError(true);
   }, []);
   useEffect(() => { void refresh(); }, [refresh, screen.k === 'map']);
@@ -75,7 +84,35 @@ export default function StoryHome() {
   };
 
   let body: React.ReactNode;
-  if (screen.k === 'intro') {
+  if (STORY_OWNER_ONLY && (lockedByServer || (dev !== undefined && storyLockedFor(dev)))) {
+    // Locked for everyone but the owner while story mode is being finished.
+    // Same screen in both themes; the server enforces the same gate (403).
+    body = (
+      <div className="story-shell" data-testid="story-locked">
+        <div className="story-topbar">
+          <button type="button" className="btn ghost" data-testid="story-home" onClick={() => navigate('/')}>← Home</button>
+          <div className="story-title-block">
+            <h1 className="story-title">Story Mode</h1>
+            <p className="story-sub">Run the block — porch to the King.</p>
+          </div>
+        </div>
+        <div className="story-lock-card">
+          <p className="story-lock-icon" aria-hidden>🔒</p>
+          <p className="story-lock-title">Story mode is being finished</p>
+          <p className="story-lock-line">The route is built, but it is not ready for the whole block yet. It unlocks here the moment it is done — no update needed.</p>
+        </div>
+      </div>
+    );
+  } else if (STORY_OWNER_ONLY && dev === undefined) {
+    body = (
+      <div className="story-shell" data-testid="story-checking">
+        <div className="story-title-block">
+          <h1 className="story-title">Story Mode</h1>
+          <p className="story-sub">One moment…</p>
+        </div>
+      </div>
+    );
+  } else if (screen.k === 'intro') {
     const stop = screen.stop;
     body = (
       <div className="story-shell">
