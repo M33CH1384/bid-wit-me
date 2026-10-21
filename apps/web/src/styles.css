@@ -3108,3 +3108,39 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
 .espn .placements li.win b { color: var(--gold); }
 .vic-foot .box-score { margin-top: 4px; }
 .gameover .box-score { margin: 6px auto 2px; max-width: 520px; }
+
+/* Game-over fit pass (owner, 2026-10-21): the victory screen's box score ran
+   past the sheet's bottom edge and clipped the last headline lines with the
+   buttons below the fold. Both game-over views are now a fixed hero + an
+   internal scroll region + pinned action buttons, designed for the tall
+   case (10+ hands, cutthroat's extra Out lines): nothing on this screen may
+   ever be clipped. Additive overrides only — the base rules above are
+   untouched, and the animfx stamps root (z 1150) still lands above both
+   views (victory-screen z 1000, modal-backdrop z 1000/1010). */
+
+/* compact hero: celebratory, but the box score gets the room */
+.modal.gameover { gap: 8px; }
+.gameover .trophy { font-size: 40px; line-height: 1.05; }
+.gameover h2 { font-size: 30px; }
+.gameover .series-chip { margin: 0 auto 2px; }
+.espn .shot-out-banner { font-size: clamp(24px, 6vw, 42px); margin: 2px 0 4px; }
+.gameover [data-testid="end-reason"] { margin: 0; }
+.vic-foot .shot-out-banner { margin-top: 0; }
+
+/* offline modal: placements + box score scroll inside the sheet; the
+   .modal > .scroll contract (flex 1 1 auto, min-height 0, overflow auto)
+   bounds the region, the pinned actions never scroll away */
+.gameover .go-scroll { display: flex; flex-direction: column; gap: 10px; padding-right: 2px; }
+.gameover .go-scroll .box-score { margin: 0 auto; width: 100%; }
+.modal.gameover .confirm-actions { flex: none; }
+
+/* online victory screen: full-height column — head and spotlight keep their
+   natural size (the spotlight scrolls internally only when the screen runs
+   short); when the whole column runs tall the foot panel yields, its middle
+   scrolls, and its buttons stay pinned at the panel's bottom */
+.victory-screen { overflow: hidden; }
+.victory-screen .vic-head { flex: none; }
+.victory-screen .victory-spot { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.vic-foot { flex: 0 1 auto; min-height: 0; }
+.vic-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; width: 100%; display: flex; flex-direction: column; gap: 6px; align-items: center; }
+.vic-foot .confirm-actions { flex: none; width: 100%; }

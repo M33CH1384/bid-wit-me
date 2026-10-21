@@ -2004,18 +2004,22 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
               return online.victory!(winSeats, loseSeats, title, who && !title.toLowerCase().startsWith(who.toLowerCase()) ? who : undefined);
             })()}
             <div className="vic-foot glass">
-              {res.endReason === 'shotOut' && <div className="shot-out-banner" data-testid="shot-out">SHOT OUT</div>}
-              <ol className="placements compact">
-                {res.finalScores
-                  .map((score, side) => ({ side, score, place: res.placements[side]! }))
-                  .sort((a, b) => a.place - b.place)
-                  .map((x) => (
-                    <li key={x.side} className={`${x.side === mySide ? 'mine' : ''}${res.winners.includes(x.side) ? ' win' : ''}`}><span className="place">#{x.place}</span><span>{sideName(r, x.side, names)}</span><b>{x.score}</b></li>
-                  ))}
-              </ol>
-              <BoxScore st={st} label={(s) => sideName(r, s, names)} mySide={mySide} winners={res.winners} />
-              {seriesChip()}
-              <p className="muted small" data-testid="end-reason">{endReasonText(r, st, (side) => sideName(r, side, names))} {st.history.length} hand{st.history.length === 1 ? '' : 's'} played.</p>
+              {/* the middle of the foot scrolls inside the panel (long games run
+                  tall); the action buttons stay pinned below it, always reachable */}
+              <div className="vic-scroll" data-testid="victory-scroll">
+                {res.endReason === 'shotOut' && <div className="shot-out-banner" data-testid="shot-out">SHOT OUT</div>}
+                <ol className="placements compact">
+                  {res.finalScores
+                    .map((score, side) => ({ side, score, place: res.placements[side]! }))
+                    .sort((a, b) => a.place - b.place)
+                    .map((x) => (
+                      <li key={x.side} className={`${x.side === mySide ? 'mine' : ''}${res.winners.includes(x.side) ? ' win' : ''}`}><span className="place">#{x.place}</span><span>{sideName(r, x.side, names)}</span><b>{x.score}</b></li>
+                    ))}
+                </ol>
+                <BoxScore st={st} label={(s) => sideName(r, s, names)} mySide={mySide} winners={res.winners} />
+                {seriesChip()}
+                <p className="muted small" data-testid="end-reason">{endReasonText(r, st, (side) => sideName(r, side, names))} {st.history.length} hand{st.history.length === 1 ? '' : 's'} played.</p>
+              </div>
               <div className="confirm-actions">
                 <button type="button" className="quiet-row-btn" onClick={() => setShowPad(true)}>Score pad</button>
                 {!spectating && <button type="button" className="primary big" data-testid="rematch" onClick={() => onRematch(nextDealer(st))}>Play again — Rematch</button>}
@@ -2034,25 +2038,30 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             {seriesChip()}
             {st.result.endReason === 'shotOut' && <div className="shot-out-banner" data-testid="shot-out">SHOT OUT</div>}
             <p className="muted" data-testid="end-reason">{endReasonText(r, st, (side) => sideName(r, side, names))} {st.history.length} hand{st.history.length === 1 ? '' : 's'} played.</p>
-            <ol className="placements">
-              {st.result.finalScores
-                .map((score, side) => ({ side, score, place: st.result!.placements[side]! }))
-                .sort((a, b) => a.place - b.place)
-                .map((x) => (
-                  <li key={x.side} className={`${x.side === mySide ? 'mine' : ''}${st.result!.winners.includes(x.side) ? ' win' : ''}`}>
-                    <span className="place">#{x.place}</span>
-                    <span>{sideName(r, x.side, names)}</span>
-                    <b>{x.score}</b>
-                  </li>
-                ))}
-            </ol>
-            <BoxScore st={st} label={(s) => sideName(r, s, names)} mySide={mySide} winners={st.result.winners} />
-            {tipNudge && (
-              <p className="tip-nudge" data-testid="tip-nudge">
-                Enjoying BWM? <button type="button" className="link" onClick={openTip}>Tip the devs ♥</button> <small>(a donation, not a prize)</small>
-                <button type="button" className="link muted" onClick={() => { const s = loadTipJar(); saveTipJar({ ...s, never: true }); setTipNudge(false); }}>Don't show again</button>
-              </p>
-            )}
+            {/* placements + box score + headlines scroll inside the sheet (the
+                .modal > .scroll flex contract); hero stays fixed above and the
+                action buttons stay pinned below — nothing is ever clipped */}
+            <div className="scroll go-scroll" data-testid="gameover-scroll">
+              <ol className="placements">
+                {st.result.finalScores
+                  .map((score, side) => ({ side, score, place: st.result!.placements[side]! }))
+                  .sort((a, b) => a.place - b.place)
+                  .map((x) => (
+                    <li key={x.side} className={`${x.side === mySide ? 'mine' : ''}${st.result!.winners.includes(x.side) ? ' win' : ''}`}>
+                      <span className="place">#{x.place}</span>
+                      <span>{sideName(r, x.side, names)}</span>
+                      <b>{x.score}</b>
+                    </li>
+                  ))}
+              </ol>
+              <BoxScore st={st} label={(s) => sideName(r, s, names)} mySide={mySide} winners={st.result.winners} />
+              {tipNudge && (
+                <p className="tip-nudge" data-testid="tip-nudge">
+                  Enjoying BWM? <button type="button" className="link" onClick={openTip}>Tip the devs ♥</button> <small>(a donation, not a prize)</small>
+                  <button type="button" className="link muted" onClick={() => { const s = loadTipJar(); saveTipJar({ ...s, never: true }); setTipNudge(false); }}>Don't show again</button>
+                </p>
+              )}
+            </div>
             <div className="confirm-actions">
               <button type="button" className="quiet-row-btn" onClick={() => setShowPad(true)}>Score pad</button>
               <button type="button" className="primary big" onClick={() => onRematch(nextDealer(st))}>Play again — Rematch</button>

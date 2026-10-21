@@ -23,8 +23,10 @@ export function endReasonText(r: TableRules, st: Pick<GameState, 'result' | 'his
   const res = st.result;
   if (!res) return '';
   if (res.endReason === 'shotOut') {
+    // both game-over views stamp the big SHOT OUT banner directly above this
+    // sentence, so the sentence carries only the detail — never the stamp again
     const who = (res.shotOut ?? []).map(label).join(' & ');
-    return `SHOT OUT · ${who} ${st.history.length === 1 ? 'got shot on the first hand' : 'got shot two hands in a row'}.`;
+    return `${who} ${st.history.length === 1 ? 'got shot on the first hand' : 'got shot two hands in a row'}.`;
   }
   if (res.endReason === 'floor') return 'Ended by the losing floor.';
   return `First to ${r.targetScore}.`;

@@ -7,6 +7,7 @@ import { chooseBotAction } from '@spades/bots';
 import { Intermission, calloutsFor } from '../src/Intermission';
 import { ScorePad } from '../src/ScorePad';
 import { BoxScore, bostonSides, boxScoreRows, gameHeadlines } from '../src/BoxScore';
+import { endReasonText } from '../src/shotOut';
 
 /* ------------------------------------------------------------ fixtures */
 
@@ -102,12 +103,27 @@ describe('box score helpers', () => {
     ]);
   });
 
-  it('headlines come only from the records: books, nils made, best hand', () => {
+  it('headlines come only from the records: books, nils made, the winner’s best hand', () => {
     const head = gameHeadlines(teamState());
     expect(head.books).toEqual([{ side: 0, n: 25 }, { side: 1, n: 14 }]);
     expect(head.nilsMade).toEqual([{ side: 0, n: 0 }, { side: 1, n: 1 }]);
-    expect(head.bestHand).toEqual({ side: 1, points: 150, handNo: 3 });
+    // side 1's +150 (hand 3) is the biggest hand of the game, but side 1 LOST —
+    // the headline belongs to the winning side's best hand (side 0, +130, hand 2)
+    expect(head.bestHand).toEqual({ side: 0, points: 130, handNo: 2 });
     expect(head.outs).toEqual([]);
+  });
+
+  it('best hand follows the winners passed in, and lines list the winner first', () => {
+    // same game, but call it for side 1 as the winner: framing flips, data doesn't
+    const head = gameHeadlines(teamState(), [1]);
+    expect(head.bestHand).toEqual({ side: 1, points: 150, handNo: 3 });
+    expect(head.books).toEqual([{ side: 1, n: 14 }, { side: 0, n: 25 }]);
+    expect(head.nilsMade).toEqual([{ side: 1, n: 1 }, { side: 0, n: 0 }]);
+  });
+
+  it('with no result yet, best hand falls back to the best hand by any side', () => {
+    const st = { ...teamState(), result: null } as unknown as GameState;
+    expect(gameHeadlines(st).bestHand).toEqual({ side: 1, points: 150, handNo: 3 });
   });
 
   it('eliminations read the hand a side went out on (Time of death)', () => {
@@ -147,10 +163,11 @@ describe('end-of-game box score', () => {
     const final = html.slice(html.indexOf('data-testid="box-final"'));
     expect(final).toContain('class="win"');
     expect(html).toContain('Total books');
-    expect(html).toContain('Us 25 · Them 14');
+    expect(html).toContain('Us 25 · Them 14'); // both sides, winner (Us) first
     expect(html).toContain('Nils made');
     expect(html).toContain('Best hand');
-    expect(html).toContain('Them +150 · Hand 3');
+    expect(html).toContain('Us +130 · Hand 2'); // the WINNER's best hand, not the loser's +150
+    expect(html).not.toContain('Them +150 · Hand 3');
     expect(html).not.toContain('>Out<'); // nobody was eliminated in this fixture
   });
 
@@ -170,6 +187,147 @@ describe('end-of-game box score', () => {
     expect(out).toContain('Total books');
     expect(out).not.toContain('Nils made');
     expect(out).not.toContain('Best hand');
+  });
+});
+
+/* --------------------------------- tall games: the card keeps every row */
+
+describe('box score on long games (the victory sheet must fit these)', () => {
+  it('a 12-hand game renders all 12 rows and its headlines', () => {
+    let t0 = 0; let t1 = 0;
+    const history = Array.from({ length: 12 }, (_, i) => {
+      const p0 = i % 2 ? -40 : 60; const p1 = -p0;
+      t0 += p0; t1 += p1;
+      return handRec({
+        handNo: i + 1, bids: [5, 5, 4, 5], tricksWon: [7, 6, 0, 0],
+        sides: [
+          sideRes({ side: 0, seats: [0, 2], tricks: 7, points: p0, totalScore: t0, contractMade: p0 > 0 }),
+          sideRes({ side: 1, seats: [1, 3], tricks: 6, points: p1, totalScore: t1, contractMade: p1 > 0 }),
+        ],
+      });
+    });
+    const st = {
+      rules: teamRules, history, scores: [t0, t1], phase: 'gameOver',
+      result: { endReason: 'target', finalScores: [t0, t1], placements: [1, 2], winners: [0] },
+    } as unknown as GameState;
+    const out = renderToStaticMarkup(createElement(BoxScore, { st, label: (s: number) => (s ? 'Them' : 'Us'), mySide: 0, winners: [0] }));
+    for (let n = 1; n <= 12; n++) expect(out).toContain(`data-testid="box-row-${n}"`);
+    expect(out).toContain('Total books');
+    expect(out).toContain('Us 84 · Them 72');
+  });
+
+  it('a 4-side cutthroat game renders an Out line per elimination', () => {
+    const rules = makeRules('cutthroat', { playerCount: 4, targetScore: 300 });
+    // an eliminated side stays flagged out on every later hand record (the
+    // engine's shape) — that's what keeps its Time of death pinned
+    const mk = (handNo: number, pts: number[], totals: number[], outSides: number[] = []) => handRec({
+      handNo, bids: [3, 3, 3, 3], tricksWon: [4, 3, 3, 3],
+      sides: [0, 1, 2, 3].map((side) => sideRes({
+        side, seats: [side], tricks: [4, 3, 3, 3][side]!, points: pts[side]!, contractMade: true,
+        totalScore: totals[side]!, out: outSides.includes(side),
+      })),
+    });
+    const history = [
+      mk(1, [50, 40, 30, 20], [50, 40, 30, 20]),
+      mk(2, [60, -40, 30, 20], [110, 0, 60, 40], [1]),
+      mk(3, [60, 0, -40, 20], [170, 0, 20, 60], [1, 2]),
+    ];
+    const st = {
+      rules, history, scores: [170, 0, 20, 60], phase: 'gameOver',
+      result: { endReason: 'target', finalScores: [170, 0, 20, 60], placements: [1, 4, 3, 2], winners: [0] },
+    } as unknown as GameState;
+    const head = gameHeadlines(st);
+    expect(head.outs).toEqual([{ side: 1, handNo: 2 }, { side: 2, handNo: 3 }]);
+    const out = renderToStaticMarkup(createElement(BoxScore, {
+      st, label: (s: number) => ['Ana', 'Bo', 'Cy', 'Di'][s]!, mySide: 0, winners: [0],
+    }));
+    expect(out.split('>Out<').length - 1).toBe(2);
+    expect(out).toContain('Bo · Hand 2');
+    expect(out).toContain('Cy · Hand 3');
+  });
+});
+
+/* --------------------------- stamp/sentence dedupe (owner, 2026-10-21) */
+
+describe('end-reason sentence never repeats the stamp', () => {
+  const label = (s: number) => (s ? 'Them' : 'Us');
+  it('shot out: the sentence carries the detail, not the SHOT OUT lead', () => {
+    const st = {
+      history: [{ handNo: 1 }, { handNo: 2 }, { handNo: 3 }],
+      result: { endReason: 'shotOut', shotOut: [1], finalScores: [154, -40], placements: [1, 2], winners: [0] },
+    } as unknown as GameState;
+    const text = endReasonText(teamRules, st, label);
+    expect(text).toBe('Them got shot two hands in a row.');
+    expect(text).not.toContain('SHOT OUT');
+  });
+  it('shot out on hand 1 keeps its own wording, still without the stamp', () => {
+    const st = {
+      history: [{ handNo: 1 }],
+      result: { endReason: 'shotOut', shotOut: [0, 1], finalScores: [10, -20], placements: [1, 2], winners: [0] },
+    } as unknown as GameState;
+    expect(endReasonText(teamRules, st, label)).toBe('Us & Them got shot on the first hand.');
+  });
+  it('other end reasons are untouched', () => {
+    const floor = { history: [{ handNo: 1 }], result: { endReason: 'floor', finalScores: [10, -510], placements: [1, 2], winners: [0] } } as unknown as GameState;
+    expect(endReasonText(teamRules, floor, label)).toBe('Ended by the losing floor.');
+    const target = { history: [{ handNo: 1 }], result: { endReason: 'target', finalScores: [250, 90], placements: [1, 2], winners: [0] } } as unknown as GameState;
+    expect(endReasonText(teamRules, target, label)).toBe('First to 250.');
+  });
+});
+
+/* ---------------- game-over layout: scroll region + pinned buttons (CSS) */
+
+describe('game-over fit: hero fixed, middle scrolls, buttons pinned', () => {
+  const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+  const tableSrc = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
+  const animCss = readFileSync(new URL('../src/animfx/animfx.css', import.meta.url), 'utf8');
+
+  it('the offline modal wraps placements + box score in the .scroll region, actions outside it', () => {
+    const modalAt = tableSrc.indexOf('modal glass slant gameover espn');
+    const scrollAt = tableSrc.indexOf('data-testid="gameover-scroll"', modalAt);
+    const boxAt = tableSrc.indexOf('<BoxScore', scrollAt);
+    const actionsAt = tableSrc.indexOf('confirm-actions', scrollAt);
+    expect(modalAt).toBeGreaterThan(-1);
+    expect(scrollAt).toBeGreaterThan(modalAt);
+    expect(boxAt).toBeGreaterThan(scrollAt); // the box score lives INSIDE the scroll region
+    expect(actionsAt).toBeGreaterThan(boxAt); // buttons come after — pinned below, not scrolled
+    expect(tableSrc).toContain('className="scroll go-scroll"');
+  });
+
+  it('the online foot wraps its middle in .vic-scroll with the actions as a sibling below', () => {
+    const footAt = tableSrc.indexOf('vic-foot glass');
+    const scrollAt = tableSrc.indexOf('data-testid="victory-scroll"', footAt);
+    const boxAt = tableSrc.indexOf('<BoxScore', scrollAt);
+    const actionsAt = tableSrc.indexOf('confirm-actions', scrollAt);
+    expect(footAt).toBeGreaterThan(-1);
+    expect(scrollAt).toBeGreaterThan(footAt);
+    expect(boxAt).toBeGreaterThan(scrollAt);
+    expect(actionsAt).toBeGreaterThan(boxAt);
+  });
+
+  it('both scroll regions are real overflow regions with the actions flex-pinned', () => {
+    expect(css).toContain('.vic-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto;');
+    expect(css).toContain('.vic-foot .confirm-actions { flex: none;');
+    expect(css).toContain('.modal.gameover .confirm-actions { flex: none; }');
+    expect(css).toContain('.gameover .go-scroll { display: flex; flex-direction: column;');
+    // the modal's own .scroll contract is what bounds the offline region
+    expect(css).toContain('.modal > .scroll { flex: 1 1 auto; min-height: 0; overflow: auto;');
+    // the victory screen no longer page-scrolls its whole column away
+    expect(css).toContain('.victory-screen { overflow: hidden; }');
+  });
+
+  it('the hero is tightened in the fit pass (trophy, title, stamp)', () => {
+    expect(css).toContain('.gameover .trophy { font-size: 40px;');
+    expect(css).toContain('.gameover h2 { font-size: 30px; }');
+    expect(css).toContain('.espn .shot-out-banner { font-size: clamp(24px, 6vw, 42px);');
+  });
+
+  it('the animfx stamps (PAYBACK / UPSET) still land above both game-over views', () => {
+    expect(animCss).toContain('.animfx-stamps { position: fixed; inset: 0; z-index: 1150;');
+    expect(css).toContain('.victory-screen { position: fixed; inset: 0; z-index: 1000;');
+    // stamps root (1150) > victory screen / modal backdrop (1000–1200 range is
+    // reserved for sheets; the game-over roots themselves stay at 1000/1010)
+    expect(css).toContain('.modal-backdrop, .tt-backdrop { z-index: 1000; }');
   });
 });
 

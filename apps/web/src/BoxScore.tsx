@@ -7,9 +7,14 @@
  * - BoxScore: the full end-of-game card — hand-by-hand rows (points for the
  *   hand + running total), a FINAL row in big numerals with the winner in
  *   gold, and headline lines computed ONLY from what the hand records carry:
- *   total books, nils made, the best hand, and eliminations (Time of death,
- *   from the same shotCovers the recap uses). Nothing estimated, nothing
- *   invented: a line whose data isn't in the records simply doesn't render.
+ *   total books, nils made, the winning side's best hand, and eliminations
+ *   (Time of death, from the same shotCovers the recap uses). Nothing
+ *   estimated, nothing invented: a line whose data isn't in the records
+ *   simply doesn't render. Framing (owner, 2026-10-21): on the final screen
+ *   the shared lines list the winner first, and Best hand spotlights the
+ *   WINNING side's best hand — the full table above already shows every
+ *   side's numbers, so no fact is hidden, the loser just doesn't get the
+ *   headline on the winner's screen.
  */
 import { type GameState, type HandRecord, shotCovers } from '@spades/rules';
 import { handWinner } from './fx';
@@ -73,21 +78,31 @@ export interface GameHeadlines {
   books: { side: number; n: number }[];
   /** nils made per side across the whole game */
   nilsMade: { side: number; n: number }[];
-  /** the single biggest hand by any side (null when no side ever scored positive) */
+  /** the winning side's biggest hand (null when no winning side ever scored positive) */
   bestHand: { side: number; points: number; handNo: number } | null;
   /** eliminations: the hand each side went out on (shotCovers' outHand — the recap's Time of death) */
   outs: { side: number; handNo: number }[];
 }
 
-export function gameHeadlines(st: GameState): GameHeadlines {
+export function gameHeadlines(st: GameState, winnersArg?: number[]): GameHeadlines {
   const sideIdx = st.scores.map((_, i) => i);
+  const winners = winnersArg ?? st.result?.winners ?? [];
+  // shared lines read winner first, then the rest in side order (same data,
+  // presentation order only); with no result yet this is plain side order
+  const winRank = (side: number) => (winners.indexOf(side) === -1 ? sideIdx.length : winners.indexOf(side));
+  const winFirst = (items: { side: number; n: number }[]) =>
+    [...items].sort((a, b) => winRank(a.side) - winRank(b.side) || a.side - b.side);
   const per = (pick: (h: HandRecord, side: number) => number) =>
     sideIdx.map((side) => ({ side, n: st.history.reduce((a, h) => a + pick(h, side), 0) }));
-  const books = per((h, side) => h.sides.find((s) => s.side === side)?.tricks ?? 0);
-  const nilsMade = per((h, side) => h.sides.find((s) => s.side === side)?.nils.filter((n) => n.made).length ?? 0);
+  const books = winFirst(per((h, side) => h.sides.find((s) => s.side === side)?.tricks ?? 0));
+  const nilsMade = winFirst(per((h, side) => h.sides.find((s) => s.side === side)?.nils.filter((n) => n.made).length ?? 0));
+  // Best hand spotlights a WINNING side only; before a result exists (no
+  // winners known) it falls back to the best hand by any side
+  const bestOf = winners.length ? winners : sideIdx;
   let bestHand: GameHeadlines['bestHand'] = null;
   for (const h of st.history) {
     for (const s of h.sides) {
+      if (!bestOf.includes(s.side)) continue;
       if (!bestHand || s.points > bestHand.points) bestHand = { side: s.side, points: s.points, handNo: h.handNo };
     }
   }
@@ -109,7 +124,7 @@ export function BoxScore({ st, label, mySide, winners }: {
   winners: number[];
 }) {
   const rows = boxScoreRows(st.history);
-  const head = gameHeadlines(st);
+  const head = gameHeadlines(st, winners);
   const finals = st.result?.finalScores ?? st.scores;
   const sides = finals.map((_, i) => i);
   const line = (items: { side: number; n: number }[]) => items.map((x) => `${label(x.side)} ${x.n}`).join(' · ');
