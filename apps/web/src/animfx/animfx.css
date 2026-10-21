@@ -735,3 +735,55 @@
   /* the flash still appears and leaves on schedule — a fade, no slam */
   .hardway-flash { animation: hw-life 3.1s ease both !important; }
 }
+
+/* ---- 13. Finale composition (owner, 2026-10-21, from his Rec Center
+ * shotOut screenshot): one card used to carry the finale THREE times at
+ * once — the badges row's SHOT OUT chip, the cover's scenario words, and
+ * the headline plaque as an absolutely-positioned overlay across the
+ * card's middle — burying the points behind the plaque, its sub-line
+ * across the per-player line, the Rec banner's giant SET and its red
+ * 0.0 / GAME fragments draped half-hidden over the team name, and the
+ * whole cover bleeding 10–12px past the card face (through BAGS at the
+ * right edge). The composed stack now:
+ * (a) the cover is CLIPPED to the card face (inset 0 — no bleed, nothing
+ *     spills outside the card or across its edge stats);
+ * (b) the headline plaque is a FLOW element — the face grid's "verdict"
+ *     row, below the players, above the progress bar — so it owns real
+ *     layout space and can never cover a bid, a point value, or a
+ *     per-player line, in the animated state or the settled end state;
+ * (c) the duplicate verdict chip is suppressed on plaque cards (see
+ *     Intermission: the SET chip stays, the SHOT OUT / OUT chip goes —
+ *     the plaque is the card's one verdict voice);
+ * (d) the two opaque word panels docked at the top of a cover (the Rec
+ *     banner, the Cookout lid) shrink to a compact strip in the finale
+ *     tier, and finale cards reserve that strip's band at the top of the
+ *     face (.fv-band) so the strip never drapes the team name; the Rec
+ *     banner's GAME — a verdict word the plaque now owns — does not
+ *     render in the finale tier (the strip reads SET · 0.0: the shot
+ *     clock at zero). Every other stop's finale art is atmosphere or an
+ *     edge tag behind the text by design and composes against the flow
+ *     plaque unchanged. Appended overrides only — the base rules above
+ *     (and their test pins) stand. */
+.setcover { inset: 0; }
+.tt-face.has-verdict { grid-template-areas: "name bags" "line bags" "players bags" "verdict verdict" "bar bar"; }
+.finale-verdict { grid-area: verdict; justify-self: stretch; margin: 2px 2px 0; display: flex; flex-direction: column; align-items: center; gap: 3px; text-align: center; padding: 9px 12px 8px; border-radius: 10px; background: rgba(6, 5, 12, .8); box-shadow: inset 0 0 0 1px rgba(255, 213, 120, .55), 0 6px 18px rgba(0, 0, 0, .35); transform: rotate(-1.5deg); }
+.finale-verdict b { font-family: var(--display, sans-serif); font-weight: 800; font-size: 27px; letter-spacing: .1em; line-height: 1; color: #ffe9a8; text-shadow: 0 2px 0 rgba(0, 0, 0, .45); }
+.finale-verdict span { font-size: 12.5px; font-weight: 600; letter-spacing: .02em; line-height: 1.25; color: rgba(255, 244, 214, .94); }
+/* the stamp: same clock and gates as the cover it rode in on — it waits
+ * for the recap's presentation and for its own card to be in view (the
+ * .waiting class mirrors the cover's sc-wait state), stamps in at the
+ * same +1100ms beat (plus any finale delay, e.g. behind the 3 THE HARD
+ * WAY flash), then HOLDS. Static/reduced verdicts carry no animation:
+ * the end state is simply there. */
+.finale-verdict.fresh { animation: sc-headline-in .45s cubic-bezier(.2, 1.4, .4, 1) calc(var(--sc-delay, 0ms) + 1100ms) both; }
+.finale-verdict.waiting, .tt-backdrop:not(.presented) .finale-verdict.fresh { animation-play-state: paused; }
+/* the reserved band for the finale top strips */
+.tt-team.fv-band .tt-face { padding-top: 52px; }
+.setcover[data-anim="rec-center"].tier-finale .sc-banner { height: 44px; }
+.setcover[data-anim="rec-center"].tier-finale .sc-banner b { font-size: 24px; letter-spacing: .14em; }
+.setcover[data-anim="rec-center"].tier-finale .sc-banner em { display: none; }
+.setcover[data-anim="rec-center"].tier-finale .sc-buzz { top: 48px; }
+.setcover[data-anim="cookout"].tier-finale .sc-lid { height: 40px; }
+@media (prefers-reduced-motion: reduce) {
+  .finale-verdict { animation: none !important; }
+}

@@ -164,6 +164,17 @@ export function Intermission({
     const t = window.setTimeout(() => setPresented(true), 350);
     return () => window.clearTimeout(t);
   }, []);
+  // The recap opens at the TOP of its scrollport, every hand (owner,
+  // 2026-10-21): the sheet's scroll position could survive into the next
+  // recap (same scrollport node across the decided hold), opening the
+  // sheet mid-scroll with the HANDS strip's label sliced behind the
+  // header. Reset on mount and on every hand change — never on re-render,
+  // so scrolling DURING a recap is never fought.
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (el) el.scrollTop = 0;
+  }, [handKey]);
   return (
     <div className={`tt-backdrop${presented ? ' presented' : ''}`} data-testid="table-talk" data-decided={decided ? 'yes' : 'no'} data-presented={presented ? 'yes' : 'no'} role="dialog" aria-label="Hand recap">
       {/* 3 THE HARD WAY — the third-set ending's title card (the rule's own
@@ -198,7 +209,7 @@ export function Intermission({
           </button>
         </header>
 
-        <div className="tt-body">
+        <div className="tt-body" ref={bodyRef}>
           <section className="tt-top-scores" data-testid="recap-top-scores" aria-label="Top scores">
             <h3>TOP SCORES</h3>
             <ol>
@@ -262,8 +273,21 @@ export function Intermission({
                 sideName: sideName(r, s.side, names),
                 mine: s.side === mySide,
               }) : null;
+              // The finale verdict plaque (owner, 2026-10-21): when the
+              // cover mounts with its headline, the plaque is the card's
+              // ONE verdict voice — it renders in the face's flow (the
+              // "verdict" grid row), and the duplicate SHOT OUT / OUT chip
+              // in the badges row is suppressed so no verdict word renders
+              // twice on the card. The SET chip (scoring info) stays.
+              const verdictHere = setTier === 'finale' && !!finaleHeadline && !!setAnimId;
+              // The Rec banner and the Cookout lid are opaque word panels
+              // docked at the top of the cover; on finale cards they get a
+              // reserved band at the top of the face (fv-band) so they
+              // never drape the team name (animfx.css composition block).
+              const bandHere = verdictHere && (setAnimId === 'rec-center' || setAnimId === 'cookout');
+              const badgeChips = verdictHere ? chips.filter((c) => c.kind !== 'out') : chips;
               return (
-                <div key={s.side} className={`tt-team${s.side === mySide ? ' mine' : ''}${shot ? ' blast' : ''}${cover.tape ? ' taped' : ''}${cover.tape && justShot ? ' tape-in' : ''}${notice ? ' notice' : ''}${cover.sheet ? ' shrouded' : ''}${sheetAnim ? ' sheet-in sheet-wait' : ''}`} data-testid={`recap-side-${s.side}`} data-blast={shot ? 'yes' : 'no'} data-tape={cover.tape ? 'yes' : 'no'} data-sheet={cover.sheet ? 'yes' : 'no'} data-siren={cover.siren ? 'yes' : 'no'} data-holes={info.count} data-punched={punchedLabel(marks)}>
+                <div key={s.side} className={`tt-team${s.side === mySide ? ' mine' : ''}${shot ? ' blast' : ''}${cover.tape ? ' taped' : ''}${cover.tape && justShot ? ' tape-in' : ''}${notice ? ' notice' : ''}${cover.sheet ? ' shrouded' : ''}${sheetAnim ? ' sheet-in sheet-wait' : ''}${bandHere ? ' fv-band' : ''}`} data-testid={`recap-side-${s.side}`} data-blast={shot ? 'yes' : 'no'} data-tape={cover.tape ? 'yes' : 'no'} data-sheet={cover.sheet ? 'yes' : 'no'} data-siren={cover.siren ? 'yes' : 'no'} data-holes={info.count} data-punched={punchedLabel(marks)}>
                   {showHoles && (
                     <div className="shot-holes" data-testid={`recap-holes-${s.side}`} aria-hidden="true">
                       {holeSlots(!!cover.sheet).slice(0, info.visible).map((h, i) => (
@@ -274,7 +298,7 @@ export function Intermission({
                   {cover.sheet && (
                     <p className="tod" data-testid="time-of-death" data-hand={rec.handNo}>{tod}</p>
                   )}
-                  <div className="tt-face">
+                  <div className={`tt-face${verdictHere ? ' has-verdict' : ''}`}>
                   {setAnimId && setTier && (setFresh || setTier === 'finale') && (
                     <SetCover
                       animId={setAnimId}
@@ -296,7 +320,7 @@ export function Intermission({
                           {info.count > HOLE_CAP && <em className="shot-tally" data-testid={`recap-shot-tally-${s.side}`}>x{info.count}</em>}
                           <em className="notice-pill" data-testid={`recap-notice-${s.side}`}>ON NOTICE</em>
                         </>
-                      ) : chips.map((c) => <em key={c.text} className={`rchip ${c.kind}`}>{c.text}</em>)}
+                      ) : badgeChips.map((c) => <em key={c.text} className={`rchip ${c.kind}`}>{c.text}</em>)}
                       {!books && s.bagsAdded > 0 && <em className="rchip bags">+{s.bagsAdded} bag{s.bagsAdded === 1 ? '' : 's'}</em>}
                       {s.bagPenaltyCount > 0 && <em className="rchip set">Bag penalty {signed(s.bagPenaltyPoints)}</em>}
                     </span>

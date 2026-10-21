@@ -11,6 +11,15 @@ import { setAnimForStop, type FinaleHeadline } from '../setAnims';
  * (an eliminated side's card keeps wearing its finale on later recaps).
  * Reduced effects (Settings / OS) collapse fresh to the static end state
  * plus the name tag, the same bargain the other animfx moments make.
+ *
+ * The component returns a FRAGMENT: the cover art (an absolutely
+ * positioned layer clipped to the card face) plus, on the finale tier,
+ * the verdict plaque as a FLOW sibling. The plaque used to be an
+ * absolutely-positioned child of the cover, where it landed across the
+ * card's score line and buried the points (owner's Rec Center shotOut
+ * screenshot, 2026-10-21: SET watermark + SHOT OUT chip + SHOT OUT plaque
+ * stacked on one card). As a grid row of the face it owns real layout
+ * space — the card's one verdict voice, never an overlay.
  */
 
 const Bird = ({ i }: { i: number }) => (
@@ -131,7 +140,9 @@ export function SetCover({ animId, tier, mode, reduced, side, delayMs = 0, final
   /** Finale tier only: the words that close the game (finaleHeadlineFor).
    *  Rendered in EVERY mode — fresh, static, reduced — as part of the end
    *  state, so the card reads "game over" even for a player who arrives
-   *  after the scenario art has played (owner, 2026-10-21). */
+   *  after the scenario art has played (owner, 2026-10-21). Rendered as a
+   *  flow sibling of the cover art (the face's "verdict" grid row), NOT
+   *  inside the cover layer — see the header comment. */
   finaleHeadline?: FinaleHeadline | null;
   /** Bounded wait for the in-view gate: if no IntersectionObserver report
    *  arrives within this long, the wait lifts anyway. The decided recap's
@@ -177,25 +188,31 @@ export function SetCover({ animId, tier, mode, reduced, side, delayMs = 0, final
   if (!def || !art) return null;
   const waiting = !still && !seen;
   return (
-    <div
-      ref={rootRef}
-      className={`setcover tier-${tier} ${still ? 'static' : 'fresh'}${waiting ? ' sc-wait' : ''}`}
-      data-anim={animId}
-      data-testid={`recap-setanim-${side}`}
-      data-tier={tier}
-      data-mode={still ? 'static' : 'fresh'}
-      data-wait={waiting ? 'yes' : undefined}
-      style={{ '--sc-delay': `${delayMs}ms` } as CSSProperties}
-      aria-hidden="true"
-    >
-      {art(tier === 'finale')}
+    <>
+      <div
+        ref={rootRef}
+        className={`setcover tier-${tier} ${still ? 'static' : 'fresh'}${waiting ? ' sc-wait' : ''}`}
+        data-anim={animId}
+        data-testid={`recap-setanim-${side}`}
+        data-tier={tier}
+        data-mode={still ? 'static' : 'fresh'}
+        data-wait={waiting ? 'yes' : undefined}
+        style={{ '--sc-delay': `${delayMs}ms` } as CSSProperties}
+        aria-hidden="true"
+      >
+        {art(tier === 'finale')}
+        {still && <span className="sc-tag">{def.name}{tier === 'finale' ? ' · Finale' : ''}</span>}
+      </div>
       {tier === 'finale' && finaleHeadline && (
-        <div className="sc-headline" data-testid={`recap-finale-headline-${side}`}>
+        <div
+          className={`finale-verdict${still ? '' : ' fresh'}${waiting ? ' waiting' : ''}`}
+          data-testid={`recap-finale-headline-${side}`}
+          style={{ '--sc-delay': `${delayMs}ms` } as CSSProperties}
+        >
           <b>{finaleHeadline.headline}</b>
           <span>{finaleHeadline.sub}</span>
         </div>
       )}
-      {still && <span className="sc-tag">{def.name}{tier === 'finale' ? ' · Finale' : ''}</span>}
-    </div>
+    </>
   );
 }
