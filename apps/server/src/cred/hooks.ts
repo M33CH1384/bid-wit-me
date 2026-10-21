@@ -34,7 +34,15 @@ export interface CredGameCtx {
 interface Totals { games: number; wins: number; shotsGiven: number; curStreak: number; bestStreak: number }
 
 /** Lazy-backfilled lifetime counters from game_players (finished games; rated-abandon losses count for the leaver). */
-async function totalsFor(db: D1Database, userId: string, kind: RatingKind): Promise<Totals> {
+/**
+ * The stored per-player per-kind totals (cred_totals): games/wins/shots and
+ * the current + best win streaks. bumpTotals keeps the row current at every
+ * game credit; a missing row is backfilled ONCE here by replaying the
+ * player's stored game history in order (the same semantics personalStats
+ * derives on the fly), then stored. Exported for the league honors read,
+ * which backfills any player the cred path hasn't touched yet.
+ */
+export async function totalsFor(db: D1Database, userId: string, kind: RatingKind): Promise<Totals> {
   const row = await db.prepare('SELECT games, wins, shots_given AS shotsGiven, cur_streak AS curStreak, best_streak AS bestStreak FROM cred_totals WHERE user_id = ? AND kind = ?')
     .bind(userId, kind).first<Totals>();
   if (row) return row;

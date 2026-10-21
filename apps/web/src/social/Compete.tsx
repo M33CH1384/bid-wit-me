@@ -612,9 +612,10 @@ interface HonorT { id: string; label: string; userId: string; name: string; valu
 
 /**
  * The Record Book: all-time marks from stored stats (highest peak rating,
- * most wins / Wheels / Bostons, best win % with a games minimum), from
- * /api/social/honors. No streak record — streaks aren't stored anywhere
- * (see honors.ts), so none is shown rather than an approximated one.
+ * most wins / Wheels / Bostons, best win % with a games minimum, and the
+ * streak records off the stored cred_totals), from /api/social/honors.
+ * Records render generically from the payload — a record the server omits
+ * (nobody qualifies yet) simply doesn't appear.
  */
 function RecordBook({ onOpen }: { onOpen: (name: string) => void }) {
   const [records, setRecords] = useState<HonorT[] | null>(null);
