@@ -256,3 +256,144 @@ describe('nil spotlight shade — mounted geometry', () => {
     expect(document.querySelector('[data-testid="animfx-spotpool"]')!.classList.contains('calm')).toBe(true);
   });
 });
+
+/* ================= wave 3 (owner addendum 2, 2026-10-21) ================= */
+
+describe('wave 3 layer', () => {
+  const Q = (t: string) => document.querySelector(`[data-testid="${t}"]`);
+
+  it('THE SAVE: a gold beam snaps saver → bidder when the partner covers a standing nil card', () => {
+    const saveTrick = {
+      leader: 3,
+      plays: [
+        { seat: 3, card: 'KH' }, { seat: 0, card: 'AH' }, { seat: 1, card: '4H' }, { seat: 2, card: '3S' },
+      ],
+      winner: 2,
+    } as unknown as PlayerView['tricks'][number];
+    mount(view({ bids: ['nil', 4, 5, 4] }));
+    rerender(view({ bids: ['nil', 4, 5, 4], tricks: [saveTrick], tricksWon: [0, 0, 1, 0] }));
+    expect(Q('animfx-savebeam')).not.toBeNull();
+    // a plain trick with no nil at risk never draws the thread
+    remount();
+    mount(view({ bids: [5, 4, 5, 4] }));
+    rerender(view({ bids: [5, 4, 5, 4], tricks: [saveTrick], tricksWon: [0, 0, 1, 0] }));
+    expect(Q('animfx-savebeam')).toBeNull();
+  });
+
+  it('NIL, BUSTED: the plate cracks on the exact render the nil takes its first trick', () => {
+    mount(view({ bids: [4, 'nil', 4, 4] }));
+    expect(Q('animfx-spotlight')).not.toBeNull();
+    rerender(view({ bids: [4, 'nil', 4, 4], tricksWon: [0, 1, 0, 0] }));
+    expect(Q('animfx-crack')).not.toBeNull();
+    expect(Q('animfx-spotlight')).toBeNull();
+  });
+
+  it('NIL, SEALED: a made nil blooms at hand end', () => {
+    const sealRec = {
+      handNo: 1, dealer: 0, bids: [4, 'nil', 4, 4], tricksWon: [5, 0, 4, 4],
+      sides: [
+        { side: 0, seats: [0, 2], contract: 8, contractTricks: 8, tricks: 9, contractMade: false, nils: [{ seat: 1, kind: 'nil', tricks: 0, made: true, points: 100 }], bagsAdded: 1, bagPenaltyCount: 0, bagPenaltyPoints: 0, bookPoints: 80, points: 10, totalScore: 10, totalBags: 1 },
+        { side: 1, seats: [1, 3], contract: 8, contractTricks: 8, tricks: 4, contractMade: false, nils: [], bagsAdded: 0, bagPenaltyCount: 0, bagPenaltyPoints: 0, bookPoints: 40, points: 140, totalScore: 140, totalBags: 0 },
+      ],
+    } as unknown as HandRecord;
+    mount(view({ phase: 'playing', bids: [4, 'nil', 4, 4] }));
+    rerender(view({ phase: 'handOver', bids: [4, 'nil', 4, 4], history: [sealRec] }));
+    expect(Q('animfx-nilseal')).not.toBeNull();
+  });
+
+  it('SPADES BROKEN: the ember fires on the first spade, once — and a resume past it stays silent', () => {
+    const spadeTrick = {
+      leader: 0, plays: [{ seat: 0, card: '5H' }, { seat: 1, card: '3S' }], winner: 1,
+    } as unknown as PlayerView['tricks'][number];
+    mount(view({ phase: 'playing' }));
+    rerender(view({ phase: 'playing', tricks: [spadeTrick], tricksWon: [0, 1, 0, 0] }));
+    expect(Q('animfx-ember')).not.toBeNull();
+    remount();
+    // first observed view already contains a spade → seeded silently, no replay
+    mount(view({ phase: 'playing', tricks: [spadeTrick], tricksWon: [0, 1, 0, 0] }));
+    rerender(view({ phase: 'playing', tricks: [spadeTrick], tricksWon: [0, 1, 0, 0], trick: { leader: 2, plays: [{ seat: 2, card: '9H' }], winner: null } as unknown as PlayerView['trick'] }));
+    expect(Q('animfx-ember')).toBeNull();
+  });
+
+  it('ON FIRE: the rim lives while the streak lives and dies with it', () => {
+    const wt = (winner: number) => ({
+      leader: 0, plays: [{ seat: winner, card: 'AS' }], winner,
+    }) as unknown as PlayerView['tricks'][number];
+    mount(view({ tricks: [wt(2), wt(2), wt(2)] }));
+    expect(Q('animfx-firering')).not.toBeNull();
+    rerender(view({ tricks: [wt(2), wt(2), wt(2), wt(0)] }));
+    expect(Q('animfx-firering')).toBeNull();
+  });
+
+  it('STREAK HEAT + BAG BRINK: the scorebug cell carries both while they hold', () => {
+    const hand = (handNo: number, p0: number, p1: number) => ({
+      handNo, dealer: 0, bids: [4, 4, 4, 4], tricksWon: [4, 3, 3, 3],
+      sides: [
+        { side: 0, seats: [0, 2], contract: 8, contractTricks: 7, tricks: 7, contractMade: false, nils: [], bagsAdded: 0, bagPenaltyCount: 0, bagPenaltyPoints: 0, bookPoints: 70, points: p0, totalScore: p0, totalBags: 0 },
+        { side: 1, seats: [1, 3], contract: 8, contractTricks: 6, tricks: 6, contractMade: false, nils: [], bagsAdded: 0, bagPenaltyCount: 0, bagPenaltyPoints: 0, bookPoints: 60, points: p1, totalScore: p1, totalBags: 0 },
+      ],
+    }) as unknown as HandRecord;
+    mount(view({ history: [hand(1, 80, -40), hand(2, 60, 10), hand(3, 90, -90)], bags: [8, 3] }));
+    expect(Q('animfx-cellheat')).not.toBeNull();
+    expect(Q('animfx-cellbrink')).not.toBeNull();
+    // two straight hand wins is not heat; 7 bags is not the brink
+    rerender(view({ history: [hand(1, 80, -40), hand(2, 60, 10)], bags: [7, 3] }));
+    expect(Q('animfx-cellheat')).toBeNull();
+    expect(Q('animfx-cellbrink')).toBeNull();
+  });
+
+  it('HIGH CONTRACT: the center ring holds while both sides carry >= 6', () => {
+    mount(view({ bids: [5, 6, 5, 6] }));
+    expect(Q('animfx-hotring')).not.toBeNull();
+    rerender(view({ bids: [5, 2, 5, 2] }));
+    expect(Q('animfx-hotring')).toBeNull();
+  });
+
+  it('DOWN TO THE WIRE: entering the final trick one book short pulses the table edges', () => {
+    const dt = (i: number) => ({
+      leader: 0, plays: [{ seat: i % 4, card: '9H' }], winner: i % 4,
+    }) as unknown as PlayerView['tricks'][number];
+    mount(view({ bids: [5, 4, 4, 3], tricks: [], tricksWon: [0, 0, 0, 0] }));
+    rerender(view({
+      bids: [5, 4, 4, 3],
+      tricks: Array.from({ length: 12 }, (_, i) => dt(i)),
+      tricksWon: [5, 2, 3, 2],
+    }));
+    expect(Q('animfx-wire')).not.toBeNull();
+  });
+
+  it('PHOTO FINISH + CONFETTI: a 9-point win stamps and rains 24 gold spades for the viewer', () => {
+    mount(view({ phase: 'playing' }));
+    rerender(view({ phase: 'gameOver', result: { winners: [0], finalScores: [500, 491] } as unknown as PlayerView['result'] }));
+    expect(Q('animfx-photofinish')).not.toBeNull();
+    const cf = Q('animfx-confetti');
+    expect(cf).not.toBeNull();
+    expect(cf!.querySelectorAll('.cf-piece')).toHaveLength(24);
+  });
+
+  it('a blowout loss gets neither the stamp nor the confetti', () => {
+    mount(view({ phase: 'playing' }));
+    rerender(view({ phase: 'gameOver', result: { winners: [1], finalScores: [320, 500] } as unknown as PlayerView['result'] }));
+    expect(Q('animfx-photofinish')).toBeNull();
+    expect(Q('animfx-confetti')).toBeNull();
+  });
+
+  it('reduced motion: confetti collapses to a few static spades; the photo stamp still lands', () => {
+    fx.setReduce(true);
+    mount(view({ phase: 'playing' }));
+    rerender(view({ phase: 'gameOver', result: { winners: [0], finalScores: [500, 499] } as unknown as PlayerView['result'] }));
+    const cf = Q('animfx-confetti');
+    expect(cf).not.toBeNull();
+    expect(cf!.classList.contains('still')).toBe(true);
+    expect(cf!.querySelectorAll('.cf-piece')).toHaveLength(8);
+    expect(Q('animfx-photofinish')).not.toBeNull();
+  });
+});
+
+function remount() {
+  // the module afterEach only unmounts the LAST root — multi-mount
+  // scenarios unmount the previous one explicitly before mounting again
+  if (root) act(() => root!.unmount());
+  root = null;
+  document.body.innerHTML = '';
+}

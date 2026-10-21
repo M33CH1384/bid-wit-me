@@ -409,6 +409,104 @@
 .animfx-fuse.calm .animfx-fuse-spark { animation: none; opacity: .5; }
 @keyframes animfx-flicker { from { transform: scale(.8); opacity: .8; } to { transform: scale(1.25); opacity: 1; } }
 
+/* ================= wave 3 (owner addendum 2, 2026-10-21) =================
+ * Every element below renders inside .animfx-layer or .animfx-stamps, so the
+ * OS reduced-motion backstop at the bottom of this file already covers them. */
+
+/* ---- 1. the save: the partner's rescue thread (gold, snaps twice) ---- */
+.animfx-beamsvg.save .animfx-beamline { stroke: #ffe9a8; stroke-width: 3.5; animation: animfx-savebeam .9s ease forwards; }
+.animfx-beamsvg.save.still .animfx-beamline { animation: animfx-fadeout .65s ease forwards; }
+.animfx-savedot { fill: #ffd940; filter: drop-shadow(0 0 6px rgba(255, 200, 60, .95)); animation: animfx-savebeam .9s ease forwards; }
+@keyframes animfx-savebeam { 0% { opacity: 0; } 14% { opacity: 1; } 30% { opacity: .45; } 46% { opacity: 1; } 100% { opacity: 0; } }
+
+/* ---- 2. nil, sealed: warm bloom + a small NIL seal at the bidder's plate ---- */
+.animfx-nilseal { position: fixed; width: 0; height: 0; pointer-events: none; z-index: 2; }
+.animfx-nilseal .seal-ring {
+  position: absolute; left: -46px; top: -46px; width: 92px; height: 92px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 214, 110, .5) 0%, rgba(255, 196, 90, .18) 55%, rgba(255, 196, 90, 0) 72%);
+  box-shadow: 0 0 26px 6px rgba(255, 196, 90, .35), inset 0 0 0 2px rgba(255, 224, 150, .8);
+  animation: animfx-nilseal 1.3s ease-out forwards;
+}
+.animfx-nilseal .seal-label {
+  position: absolute; left: 0; top: 32px; translate: -50% 0;
+  font-family: var(--display, sans-serif); font-weight: 800; font-size: 12px; letter-spacing: .22em; color: #ffe9a8;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, .7);
+  animation: animfx-nilseal-label 1.3s ease-out forwards;
+}
+.animfx-nilseal.still .seal-ring, .animfx-nilseal.still .seal-label { animation: animfx-fadeout 1s ease forwards; }
+@keyframes animfx-nilseal { 0% { transform: scale(.55); opacity: 0; } 22% { opacity: 1; } 70% { opacity: 1; } 100% { transform: scale(1.18); opacity: 0; } }
+@keyframes animfx-nilseal-label { 0% { opacity: 0; transform: translateY(4px); } 25% { opacity: 1; transform: translateY(0); } 74% { opacity: 1; } 100% { opacity: 0; } }
+
+/* ---- 4. spades broken: an ember streak sweeps the table at trick height ---- */
+.animfx-ember { position: fixed; left: 0; right: 0; height: 0; pointer-events: none; z-index: 2; }
+.animfx-ember .ember-streak {
+  position: absolute; top: -2px; left: 0; width: 46vw; height: 4px; border-radius: 2px;
+  background: linear-gradient(90deg, rgba(255, 120, 30, 0), rgba(255, 120, 30, .55) 30%, #ffd9a0 50%, rgba(255, 90, 10, .85) 72%, rgba(255, 90, 10, 0));
+  box-shadow: 0 0 18px 4px rgba(255, 110, 25, .5);
+  animation: animfx-ember .88s cubic-bezier(.3, .6, .4, 1) forwards;
+}
+@keyframes animfx-ember { 0% { transform: translateX(-52vw); opacity: 0; } 12% { opacity: 1; } 82% { opacity: 1; } 100% { transform: translateX(112vw); opacity: 0; } }
+
+/* ---- 9. down to the wire: the table edges pulse once ---- */
+.animfx-wire { position: fixed; inset: 0; pointer-events: none; animation: animfx-wire .88s ease-out forwards; }
+.animfx-wire.still { animation: animfx-wire-still .72s ease forwards; }
+@keyframes animfx-wire { 0% { box-shadow: inset 0 0 0 0 rgba(255, 170, 60, 0), inset 0 0 22px rgba(255, 120, 40, 0); } 30% { box-shadow: inset 0 0 0 3px rgba(255, 190, 90, .75), inset 0 0 46px rgba(255, 120, 40, .4); } 100% { box-shadow: inset 0 0 0 0 rgba(255, 170, 60, 0), inset 0 0 22px rgba(255, 120, 40, 0); } }
+@keyframes animfx-wire-still { 0% { box-shadow: inset 0 0 0 2px rgba(255, 190, 90, 0); } 30% { box-shadow: inset 0 0 0 2px rgba(255, 190, 90, .7); } 100% { box-shadow: inset 0 0 0 2px rgba(255, 190, 90, 0); } }
+
+/* ---- 5. on fire: a hot rim on the streaking seat's plate ---- */
+.animfx-firering {
+  position: fixed; border-radius: 16px; pointer-events: none;
+  border: 2px solid rgba(255, 150, 60, .9);
+  box-shadow: 0 0 20px 4px rgba(255, 110, 30, .5), inset 0 0 16px rgba(255, 150, 60, .4);
+  animation: animfx-fire-flicker .85s ease-in-out infinite alternate;
+}
+.animfx-firering.calm { animation: none; }
+@keyframes animfx-fire-flicker { from { opacity: .76; } to { opacity: 1; } }
+
+/* ---- 6+7. streak heat / bag brink: scorebug cell overlays (capped, quiet) ---- */
+.animfx-cellheat {
+  position: fixed; border-radius: 10px; pointer-events: none;
+  background: linear-gradient(0deg, rgba(255, 110, 30, .34), rgba(255, 150, 50, .1) 52%, rgba(255, 150, 50, 0) 78%);
+  box-shadow: inset 0 -10px 18px rgba(255, 100, 25, .35);
+  animation: animfx-fire-flicker 1.15s ease-in-out infinite alternate;
+}
+.animfx-cellheat.calm { animation: none; opacity: .85; }
+.animfx-cellbrink {
+  position: fixed; border-radius: 10px; pointer-events: none;
+  box-shadow: inset 0 0 0 1.5px rgba(255, 130, 45, .5), inset 0 -9px 15px rgba(255, 95, 20, .32);
+  animation: animfx-brink-smolder 2.8s ease-in-out infinite;
+}
+.animfx-cellbrink.calm { animation: none; }
+@keyframes animfx-brink-smolder { 0%, 100% { opacity: .55; } 50% { opacity: .92; } }
+
+/* ---- 8. high contract: the table's center ring holds a hot glow ---- */
+.animfx-hotring {
+  position: fixed; width: 196px; height: 196px; margin: -98px 0 0 -98px; border-radius: 50%; pointer-events: none;
+  border: 2px solid rgba(255, 150, 60, .5);
+  box-shadow: 0 0 36px 8px rgba(255, 100, 30, .3), inset 0 0 34px rgba(255, 140, 50, .28);
+  animation: animfx-hotring 2.4s ease-in-out infinite;
+}
+.animfx-hotring.calm { animation: none; }
+@keyframes animfx-hotring { 0%, 100% { opacity: .62; } 50% { opacity: 1; } }
+
+/* ---- 10. photo finish stamp: second row, clear of PAYBACK / UPSET ---- */
+.animfx-stamp.photofinish { top: 41%; color: #bfe3ff; }
+
+/* ---- 10. victory confetti: gold spades rain for the winning side only ---- */
+.animfx-confetti { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+.animfx-confetti .cf-piece {
+  position: absolute; top: -6vh; line-height: 1; pointer-events: none;
+  text-shadow: 0 0 8px rgba(255, 200, 60, .55);
+  animation: animfx-confetti-fall 2.15s cubic-bezier(.25, .5, .45, 1) forwards;
+}
+.animfx-confetti.still .cf-piece { top: 4%; animation: animfx-fadeout 1.25s ease forwards; }
+@keyframes animfx-confetti-fall {
+  0% { transform: translate3d(0, 0, 0) rotate(0deg); opacity: 0; }
+  8% { opacity: 1; }
+  86% { opacity: 1; }
+  100% { transform: translate3d(var(--dx), 112vh, 0) rotate(var(--rot)); opacity: 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animfx-layer *, .animfx-stamps *, .animfx-fuse *, .trash-callout.animfx-pop,
   .plate.animfx-dead, .plate.animfx-slam, .plate.animfx-bounce, .bug-team.animfx-mp,
