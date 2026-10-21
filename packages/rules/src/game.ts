@@ -21,6 +21,14 @@ export interface HandRecord {
   bids: Bid[];
   tricksWon: number[];
   sides: SideHandResult[];
+  /**
+   * The nuked trick of this hand, when both Jokers fell in one completed
+   * trick (league data wave): the seat who played the Big Joker — the seat
+   * the blast is credited to everywhere else (see `nukes` in applyAction).
+   * Stamped by finishHand, the one place the hand's tricks still exist;
+   * absent on records written before this field existed.
+   */
+  nuke?: { seat: Seat };
 }
 
 export interface GameState {
@@ -815,6 +823,18 @@ function finishHand(st: GameState): GameState {
   const prev = st.history[st.history.length - 1];
   const prevShot = sides.map((_, i) => !!prev?.sides[i]?.shot);
   const record: HandRecord = { handNo: st.handNo, dealer: st.dealer, bids: [...bids], tricksWon: [...st.tricksWon], sides };
+  // Stamp the nuke while the hand's tricks are still here — the record
+  // itself keeps only counts, so without this the moment is unrecoverable
+  // (the Postgame Report's gap). isNukeTrick already excludes Run it!
+  // tricks, and one deck holds one Big Joker, so at most one trick in the
+  // hand can qualify. Both history producers (the server room and the
+  // offline engine) build records here, so both get the stamp.
+  for (const t of st.tricks) {
+    if (!isNukeTrick(t.plays)) continue;
+    const seat = t.plays.find((p) => p.card === 'BJ')?.seat;
+    if (seat !== undefined) record.nuke = { seat };
+    break;
+  }
   if (!r.partnerships) return finishCutthroat(st, sides, scores, bags, record);
   const result = shotOutResult(scores, shotOutSides(r, st.handNo, shot, prevShot)) ?? checkGameEnd(r, scores);
   return {

@@ -36,15 +36,17 @@ export interface PostgameHand {
   handNo: number;
   tricksWon: number[];
   sides: { side: number; tricks: number; points: number; nils: { seat: number; kind: 'nil' | 'blindNil'; made: boolean }[] }[];
+  /** the hand's nuked trick (both Jokers in one trick), stamped by the
+   *  engine at record time — absent on histories saved before it existed */
+  nuke?: { seat: number };
 }
 
 /**
  * Postgame Report (league P-D): your line vs your opponents' + the match's
  * best moments, computed from the finished game's hand history — the same
- * records the recap shows. HONEST SCOPE: final scores, books and nils are
- * all in the hand records; a nuked trick is NOT (the hand record keeps only
- * trick counts), so nuke moments can't be called out here — reported as a
- * gap rather than reconstructed.
+ * records the recap shows. The engine stamps the nuked trick into the hand
+ * record at finish time (league data wave), so the nuke gets its callout
+ * too; histories saved before the stamp existed simply omit the moment.
  */
 export function buildPostgame(input: {
   history: PostgameHand[];
@@ -65,6 +67,9 @@ export function buildPostgame(input: {
   let bestHand = 0;
   let bestHandNo = 0;
   for (const h of history) {
+    if (h.nuke) {
+      moments.push(`☢ ${h.nuke.seat === mySeat ? 'You' : (seatLabels[h.nuke.seat] ?? 'A player')} blew the nuke in hand ${h.handNo}`);
+    }
     const totalTricks = h.sides.reduce((a, s) => a + s.tricks, 0);
     for (const s of h.sides) {
       if (totalTricks >= 13 && s.tricks === totalTricks) {
