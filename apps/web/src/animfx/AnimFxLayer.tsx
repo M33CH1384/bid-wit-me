@@ -20,7 +20,7 @@
  *    cut cues, bag toast cue, collection sweeps, tornado) — this layer is
  *    silent except the ambience scheduler's own headlight pass (audio.ts).
  */
-import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { type Bid, type GameResult, type HandRecord, type Phase, type TableRules, type Trick } from '@spades/rules';
 import { useSocial } from '../social/store';
 
@@ -116,7 +116,7 @@ interface SeatSpot { seat: number; x: number; y: number; w: number; h: number; s
  *  - the shade is ONE vignette whose peak alpha is a hard cap (SPOT_PEAK),
  *    reached only at the far corners — the felt, plates and trick stay
  *    readable everywhere, always;
- *  - guaranteed-clear zones are punched out of it as feathered mask holes:
+ *  - guaranteed-clear zones are punched out of it as feathered holes:
  *    the bidder's plate + trick slot, the WHOLE trick area, the viewer's
  *    own hand, and the scorebug — those pixels get zero shade, ever;
  *  - a warm pool of light around the bidder's plate + slot does the
@@ -124,6 +124,20 @@ interface SeatSpot { seat: number; x: number; y: number; w: number; h: number; s
  *  - when the viewer IS the nil bidder the treatment is the lightest of
  *    all (SPOT_PEAK_MINE); under Reduce effects the shade halves again and
  *    the pool holds still.
+ *
+ * RENDERING (regression fix, 2026-10-21): the shade is rasterized on a
+ * <canvas> by paintSpotlightShade() — source-over for the vignette,
+ * destination-out for the holes. The rebalance above first shipped the
+ * holes as gradient-filled circles inside an SVG <mask>, and on the
+ * owner's iPhone (iOS WebKit) the mask rendered ALL-OPAQUE: the lighter
+ * vignette showed, the cutouts never punched. That is a documented
+ * WebKit failure class — an SVG mask whose luminance comes from url()
+ * paint-server (gradient) content can composite as solid white in the
+ * offscreen mask buffer (and a mask WebKit drops fails open the same
+ * way: element visible, mask ignored); the in-DOM pins could not see it
+ * because happy-dom rasterizes nothing. Canvas 2D compositing has no
+ * mask machinery and no paint-server references — it is the same plain
+ * raster op on every engine, iOS included — so the whole class is gone.
  */
 export const SPOT_PEAK = 0.3;
 export const SPOT_PEAK_MINE = 0.18;
@@ -167,6 +181,48 @@ const bboxOf = (rs: Rect[]): ShadeZone | null => {
   const x1 = Math.max(...rs.map((r) => r.x + r.w)), y1 = Math.max(...rs.map((r) => r.y + r.h));
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 };
+
+/* -------------------------------------------- the shade, rasterized ----
+ * Paints a ShadeSpec into a 2D context at CSS-pixel scale (the caller sets
+ * the canvas backing store to viewport × dpr and passes that dpr here).
+ * A pure function of (spec, w, h, dpr) against the standard Canvas2D API,
+ * so tests can run it against a software rasterizer and assert actual
+ * PIXELS — zone centers at 0 alpha, far corners at the cap — instead of
+ * pinning DOM structure that says nothing about what a screen shows. */
+const SHADE_INK = '3, 5, 14'; // #03050e — the vignette ink the SVG stops used
+export function paintSpotlightShade(ctx: CanvasRenderingContext2D, spec: ShadeSpec, w: number, h: number, dpr = 1): void {
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  // the vignette: the same radial profile the SVG gradient encoded —
+  // centred at (50%, 42%), radius 78% of the normalized diagonal (so the
+  // peak lands on the far corners and nowhere else), clear until 55% of
+  // the radius, 40% of peak at 80%, peak at the rim.
+  const cx = w / 2, cy = h * 0.42;
+  const radius = 0.78 * (Math.hypot(w, h) / Math.SQRT2);
+  const vig = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+  vig.addColorStop(0, `rgba(${SHADE_INK}, 0)`);
+  vig.addColorStop(0.55, `rgba(${SHADE_INK}, 0)`);
+  vig.addColorStop(0.8, `rgba(${SHADE_INK}, ${Number((spec.peak * 0.4).toFixed(3))})`);
+  vig.addColorStop(1, `rgba(${SHADE_INK}, ${spec.peak})`);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = vig;
+  ctx.fillRect(0, 0, w, h);
+  // the guaranteed-clear zones, erased: destination-out scales the painted
+  // alpha by (1 − source alpha), so a radial gradient that is fully opaque
+  // out to the hole radius and eases to transparent across the feather
+  // band punches a hole that is FULLY clear inside the radius and feathers
+  // back into the vignette — identically on every canvas implementation.
+  ctx.globalCompositeOperation = 'destination-out';
+  for (const hole of spec.holes) {
+    const outer = hole.r + hole.feather;
+    const g = ctx.createRadialGradient(hole.cx, hole.cy, hole.r, hole.cx, hole.cy, outer);
+    g.addColorStop(0, 'rgba(0, 0, 0, 1)');
+    g.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(hole.cx - outer, hole.cy - outer, outer * 2, outer * 2);
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
 
 /* ------------------------------------------------------------------- svgs */
 
@@ -221,7 +277,31 @@ export default function AnimFxLayer({ st, online = false, names }: { st: AnimFxV
   const [fireSpots, setFireSpots] = useState<SeatSpot[]>([]);
   const [cells, setCells] = useState<CellFx[]>([]);
   const [hotRing, setHotRing] = useState<Pt | null>(null);
-  const uid = useId().replace(/[^a-zA-Z0-9]/g, '');
+  /* the spotlight shade canvas: painted imperatively (see
+   * paintSpotlightShade) whenever the composed spec changes, and repainted
+   * on viewport resize — the canvas element itself carries no React props
+   * that change, so a spec change is the only repaint trigger */
+  const shadeCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const shadeSpecRef = useRef<ShadeSpec | null>(null);
+  shadeSpecRef.current = shade;
+  const paintShade = useCallback(() => {
+    const canvas = shadeCanvasRef.current;
+    const spec = shadeSpecRef.current;
+    if (!canvas || !spec) return;
+    const w = window.innerWidth, h = window.innerHeight;
+    const dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
+    const bw = Math.round(w * dpr), bh = Math.round(h * dpr);
+    if (canvas.width !== bw) canvas.width = bw;
+    if (canvas.height !== bh) canvas.height = bh;
+    const ctx = canvas.getContext('2d');
+    if (ctx) paintSpotlightShade(ctx, spec, w, h, dpr);
+  }, []);
+  useLayoutEffect(() => { paintShade(); }, [shade, paintShade]);
+  useEffect(() => {
+    const onResize = () => paintShade();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [paintShade]);
   const [, setTick] = useState(0);
 
   const timers = useRef(new Set<number>());
@@ -799,29 +879,13 @@ export default function AnimFxLayer({ st, online = false, names }: { st: AnimFxV
       <div className="animfx-layer" aria-hidden="true" data-testid="animfx">
         {narrow && <div className="animfx-narrow" style={{ background: narrow }} />}
         {shade && (
-          <svg className="animfx-dim" data-testid="animfx-spotlight" width={window.innerWidth} height={window.innerHeight} aria-hidden="true">
-            <defs>
-              <radialGradient id={`${uid}-vig`} cx="50%" cy="42%" r="78%">
-                <stop offset="0%" stopColor="#03050e" stopOpacity={0} />
-                <stop offset="55%" stopColor="#03050e" stopOpacity={0} />
-                <stop offset="80%" stopColor="#03050e" stopOpacity={Number((shade.peak * 0.4).toFixed(3))} />
-                <stop offset="100%" stopColor="#03050e" stopOpacity={shade.peak} />
-              </radialGradient>
-              <mask id={`${uid}-holes`} maskUnits="userSpaceOnUse" x={0} y={0} width={window.innerWidth} height={window.innerHeight}>
-                <rect x={0} y={0} width={window.innerWidth} height={window.innerHeight} fill="#fff" />
-                {shade.holes.map((h, i) => (
-                  <Fragment key={i}>
-                    <radialGradient id={`${uid}-h${i}`} gradientUnits="userSpaceOnUse" cx={h.cx} cy={h.cy} r={h.r + h.feather}>
-                      <stop offset={`${Math.round((h.r / (h.r + h.feather)) * 100)}%`} stopColor="#000" />
-                      <stop offset="100%" stopColor="#fff" />
-                    </radialGradient>
-                    <circle cx={h.cx} cy={h.cy} r={h.r + h.feather} fill={`url(#${uid}-h${i})`} />
-                  </Fragment>
-                ))}
-              </mask>
-            </defs>
-            <rect x={0} y={0} width={window.innerWidth} height={window.innerHeight} fill={`url(#${uid}-vig)`} mask={`url(#${uid}-holes)`} />
-          </svg>
+          <canvas
+            ref={shadeCanvasRef}
+            className="animfx-dim"
+            data-testid="animfx-spotlight"
+            style={{ width: '100%', height: '100%' }}
+            aria-hidden="true"
+          />
         )}
         {shade?.pools.map((p, i) => (
           <div key={`pool${i}`} data-testid="animfx-spotpool" className={`animfx-spotpool${reduced ? ' calm' : ''}`} style={{ left: p.cx - p.r, top: p.cy - p.r, width: p.r * 2, height: p.r * 2 }} />

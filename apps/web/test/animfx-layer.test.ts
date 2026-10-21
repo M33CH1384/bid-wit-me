@@ -11,9 +11,9 @@
 import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { makeRules, type HandRecord, type PlayerView } from '@spades/rules';
-import AnimFxLayer, { buildSpotlightShade, SPOT_PEAK, SPOT_PEAK_MINE } from '../src/animfx/AnimFxLayer';
+import AnimFxLayer, { buildSpotlightShade, paintSpotlightShade, SPOT_PEAK, SPOT_PEAK_MINE } from '../src/animfx/AnimFxLayer';
 import { fx } from '../src/fx';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -56,7 +56,154 @@ afterEach(() => {
   root = null;
   document.body.innerHTML = '';
   fx.setReduce(false);
+  uninstallRasterCanvas();
 });
+
+/* ------------------------------------------- software canvas rasterizer --
+ * happy-dom's canvas paints NOTHING — its getContext('2d') returns null —
+ * so DOM-level pins can never say what a screen actually shows. That blind
+ * spot is how the SVG-mask spotlight shipped green and rendered un-punched
+ * on iOS WebKit. These tests instead run the REAL painter
+ * (paintSpotlightShade) against a faithful software implementation of the
+ * Canvas2D ops it uses — radial gradients interpolated in premultiplied
+ * space, source-over, destination-out — and assert actual PIXELS.
+ *
+ * The painter only ever uses concentric radial gradients, fillRect,
+ * clearRect, setTransform and the two composite ops; the fake implements
+ * exactly those, per the canvas spec's math. */
+type Premul = [number, number, number, number]; // premultiplied rgba, 0..1
+
+function parsePremul(color: string): Premul {
+  const m = /rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)/.exec(color);
+  if (!m) throw new Error(`rasterizer: unparseable color "${color}"`);
+  const a = m[4] === undefined ? 1 : Number(m[4]);
+  return [(Number(m[1]) / 255) * a, (Number(m[2]) / 255) * a, (Number(m[3]) / 255) * a, a];
+}
+
+class FakeGradient {
+  readonly stops: { offset: number; c: Premul }[] = [];
+  constructor(
+    readonly x0: number, readonly y0: number, readonly r0: number,
+    readonly x1: number, readonly y1: number, readonly r1: number,
+  ) {}
+  addColorStop(offset: number, color: string): void {
+    this.stops.push({ offset, c: parsePremul(color) });
+    this.stops.sort((p, q) => p.offset - q.offset);
+  }
+  /** premultiplied color at a CSS-space point */
+  at(x: number, y: number): Premul {
+    const d = Math.hypot(x - this.x0, y - this.y0);
+    let t = this.r1 > this.r0 ? (d - this.r0) / (this.r1 - this.r0) : 1;
+    t = Math.min(1, Math.max(0, t));
+    const s = this.stops;
+    if (!s.length) return [0, 0, 0, 0];
+    if (t <= s[0]!.offset) return s[0]!.c;
+    for (let i = 1; i < s.length; i++) {
+      if (t <= s[i]!.offset) {
+        const a = s[i - 1]!, b = s[i]!;
+        const span = b.offset - a.offset;
+        const f = span === 0 ? 0 : (t - a.offset) / span;
+        return [0, 1, 2, 3].map((k) => a.c[k]! + (b.c[k]! - a.c[k]!) * f) as Premul;
+      }
+    }
+    return s[s.length - 1]!.c;
+  }
+}
+
+interface PaintOp { kind: 'fillRect' | 'clearRect'; comp: string; x: number; y: number; w: number; h: number; gradient: FakeGradient | null }
+
+class FakeCtx2D {
+  readonly ops: PaintOp[] = [];
+  px: Float32Array;
+  scale = 1;
+  fillStyle: string | FakeGradient = '#000000';
+  globalCompositeOperation = 'source-over';
+  constructor(public w: number, public h: number) { this.px = new Float32Array(w * h * 4); }
+  setTransform(a: number): void { this.scale = a; }
+  clearRect(x: number, y: number, w: number, h: number): void {
+    this.ops.push({ kind: 'clearRect', comp: this.globalCompositeOperation, x, y, w, h, gradient: null });
+    const [x0, y0, x1, y1] = this.region(x, y, w, h);
+    for (let j = y0; j < y1; j++) for (let i = x0; i < x1; i++) {
+      const idx = (j * this.w + i) * 4;
+      this.px[idx] = 0; this.px[idx + 1] = 0; this.px[idx + 2] = 0; this.px[idx + 3] = 0;
+    }
+  }
+  createRadialGradient(x0: number, y0: number, r0: number, x1: number, y1: number, r1: number): FakeGradient {
+    return new FakeGradient(x0, y0, r0, x1, y1, r1);
+  }
+  fillRect(x: number, y: number, w: number, h: number): void {
+    const g = typeof this.fillStyle === 'string' ? null : this.fillStyle;
+    const solid: Premul | null = typeof this.fillStyle === 'string' ? parsePremul(this.fillStyle) : null;
+    this.ops.push({ kind: 'fillRect', comp: this.globalCompositeOperation, x, y, w, h, gradient: g });
+    const erase = this.globalCompositeOperation === 'destination-out';
+    const [x0, y0, x1, y1] = this.region(x, y, w, h);
+    for (let j = y0; j < y1; j++) {
+      for (let i = x0; i < x1; i++) {
+        const src = g ? g.at((i + 0.5) / this.scale, (j + 0.5) / this.scale) : solid!;
+        if (src[3] === 0) continue; // a fully transparent source changes nothing, in either composite mode
+        const idx = (j * this.w + i) * 4;
+        const keep = 1 - src[3];
+        if (erase) {
+          this.px[idx] = this.px[idx]! * keep;
+          this.px[idx + 1] = this.px[idx + 1]! * keep;
+          this.px[idx + 2] = this.px[idx + 2]! * keep;
+          this.px[idx + 3] = this.px[idx + 3]! * keep;
+        } else {
+          this.px[idx] = src[0] + this.px[idx]! * keep;
+          this.px[idx + 1] = src[1] + this.px[idx + 1]! * keep;
+          this.px[idx + 2] = src[2] + this.px[idx + 2]! * keep;
+          this.px[idx + 3] = src[3] + this.px[idx + 3]! * keep;
+        }
+      }
+    }
+  }
+  private region(x: number, y: number, w: number, h: number): [number, number, number, number] {
+    const s = this.scale;
+    return [
+      Math.max(0, Math.floor(x * s)), Math.max(0, Math.floor(y * s)),
+      Math.min(this.w, Math.ceil((x + w) * s)), Math.min(this.h, Math.ceil((y + h) * s)),
+    ];
+  }
+  /** alpha (0..1) of the device pixel at (x, y) */
+  alphaAt(x: number, y: number): number {
+    return this.px[(Math.floor(y) * this.w + Math.floor(x)) * 4 + 3]!;
+  }
+}
+
+const rasterByCanvas = new WeakMap<HTMLCanvasElement, FakeCtx2D>();
+let realGetContext: HTMLCanvasElement['getContext'] | null = null;
+function installRasterCanvas(): void {
+  realGetContext = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string) {
+    if (type !== '2d') return null;
+    let fake = rasterByCanvas.get(this);
+    if (!fake) {
+      fake = new FakeCtx2D(this.width || 300, this.height || 150);
+      rasterByCanvas.set(this, fake);
+    } else if (fake.w !== this.width || fake.h !== this.height) {
+      // a real canvas clears its bitmap when its size is (re)assigned
+      fake = new FakeCtx2D(this.width, this.height);
+      rasterByCanvas.set(this, fake);
+    }
+    return fake;
+  } as HTMLCanvasElement['getContext'];
+}
+function uninstallRasterCanvas(): void {
+  if (realGetContext) HTMLCanvasElement.prototype.getContext = realGetContext;
+  realGetContext = null;
+}
+beforeEach(() => { installRasterCanvas(); });
+
+/** the vignette's alpha at a CSS point, computed from the DESIGN numbers —
+ * centre (50%, 42%), radius 78% of the normalized diagonal, stops: clear to
+ * 55%, 40% of peak at 80%, peak at the rim. Written independently of the
+ * painter so the pixel pins check the painter instead of mirroring it. */
+function expectedVignetteAlpha(cx: number, cy: number, peak: number, w: number, h: number): number {
+  const t = Math.min(1, Math.hypot(cx - w / 2, cy - h * 0.42) / (0.78 * (Math.hypot(w, h) / Math.SQRT2)));
+  if (t <= 0.55) return 0;
+  if (t <= 0.8) return peak * 0.4 * ((t - 0.55) / 0.25);
+  return peak * (0.4 + 0.6 * ((t - 0.8) / 0.2));
+}
 
 describe('animfx layer', () => {
   it('nil spotlight lights the nil seat while the nil is live, and dies with it', () => {
@@ -199,7 +346,7 @@ describe('nil spotlight shade — composition', () => {
   });
 });
 
-describe('nil spotlight shade — mounted geometry', () => {
+describe('nil spotlight shade — mounted pixels', () => {
   const rect = (x: number, y: number, w: number, h: number) => ({
     left: x, top: y, width: w, height: h, right: x + w, bottom: y + h, x, y, toJSON: () => ({}),
   }) as DOMRect;
@@ -223,37 +370,129 @@ describe('nil spotlight shade — mounted geometry', () => {
     return host;
   }
 
-  const vigPeak = () => {
-    const svg = document.querySelector('[data-testid="animfx-spotlight"]')!;
-    const vig = Array.from(svg.querySelectorAll('radialGradient')).find((g) => (g.getAttribute('id') ?? '').endsWith('-vig'))!;
-    return Math.max(...Array.from(vig.querySelectorAll('stop')).map((s) => Number(s.getAttribute('stop-opacity'))));
-  };
+  const spotCanvas = () => document.querySelector<HTMLCanvasElement>('[data-testid="animfx-spotlight"]');
+  const spotCtx = () => spotCanvas()!.getContext('2d') as unknown as FakeCtx2D;
+  /** the alpha the design says a CSS point should carry, sampled at its pixel centre */
+  const designAlpha = (x: number, y: number, peak: number) =>
+    expectedVignetteAlpha(x + 0.5, y + 0.5, peak, window.innerWidth, window.innerHeight);
 
   afterEach(() => { delete (window as unknown as { __bwmLayout?: unknown }).__bwmLayout; });
 
-  it('renders the capped vignette with clear holes over the hand, trick and scorebug — never the old 0.55 blackout', () => {
+  it('the spotlight is a painted CANVAS — no SVG, no <mask> anywhere (the iOS WebKit failure class is gone)', () => {
     mountGeo(view({ bids: [4, 'nil', 4, 4] }));
-    const svg = document.querySelector('[data-testid="animfx-spotlight"]')!;
-    expect(svg).not.toBeNull();
-    expect(vigPeak()).toBe(SPOT_PEAK);
+    expect(spotCanvas()).not.toBeNull();
+    expect(spotCanvas()!.tagName).toBe('CANVAS');
+    expect(document.querySelector('[data-testid="animfx"] svg')).toBeNull();
+    expect(document.querySelector('mask')).toBeNull();
+  });
+
+  it('paints the capped vignette with the zones ACTUALLY clear — sampled pixels, not structure', () => {
+    mountGeo(view({ bids: [4, 'nil', 4, 4] }));
+    const ctx = spotCtx();
+    // the guaranteed zones carry ZERO shade at their centres
+    expect(ctx.alphaAt(155, 705)).toBe(0); // viewer's hand bbox centre
+    expect(ctx.alphaAt(200, 350)).toBe(0); // whole trick area centre
+    expect(ctx.alphaAt(195, 76)).toBe(0); // scorebug centre
+    // outside every hole the vignette is present, at exactly the designed level
+    expect(ctx.alphaAt(1000, 740)).toBeCloseTo(designAlpha(1000, 740, SPOT_PEAK), 2);
+    const corner = ctx.alphaAt(window.innerWidth - 1, window.innerHeight - 1);
+    expect(corner).toBeCloseTo(designAlpha(window.innerWidth - 1, window.innerHeight - 1, SPOT_PEAK), 2);
+    expect(corner).toBeLessThanOrEqual(SPOT_PEAK);
     expect(document.body.innerHTML).not.toContain('0.55');
-    const circles = Array.from(svg.querySelectorAll('mask circle')).map((c) => [Number(c.getAttribute('cx')), Number(c.getAttribute('cy'))]);
-    expect(circles).toContainEqual([155, 705]); // viewer's hand bbox centre
-    expect(circles).toContainEqual([200, 350]); // whole trick area centre
-    expect(circles).toContainEqual([195, 76]); // scorebug centre
     expect(document.querySelector('[data-testid="animfx-spotpool"]')).not.toBeNull();
   });
 
   it('the viewer’s own nil gets the lightest shade', () => {
     mountGeo(view({ bids: ['nil', 4, 4, 4] }));
-    expect(vigPeak()).toBe(SPOT_PEAK_MINE);
+    const ctx = spotCtx();
+    const corner = ctx.alphaAt(window.innerWidth - 1, window.innerHeight - 1);
+    expect(corner).toBeCloseTo(designAlpha(window.innerWidth - 1, window.innerHeight - 1, SPOT_PEAK_MINE), 2);
+    expect(corner).toBeLessThanOrEqual(SPOT_PEAK_MINE);
   });
 
   it('reduce effects: the shade halves and the light pool holds still', () => {
     fx.setReduce(true);
     mountGeo(view({ bids: [4, 'nil', 4, 4] }));
-    expect(vigPeak()).toBeCloseTo(SPOT_PEAK / 2);
+    const ctx = spotCtx();
+    const corner = ctx.alphaAt(window.innerWidth - 1, window.innerHeight - 1);
+    expect(corner).toBeCloseTo(designAlpha(window.innerWidth - 1, window.innerHeight - 1, SPOT_PEAK / 2), 2);
     expect(document.querySelector('[data-testid="animfx-spotpool"]')!.classList.contains('calm')).toBe(true);
+  });
+});
+
+/**
+ * The painter itself, run against the software rasterizer at phone
+ * geometry. This is the test that would have caught the iOS regression:
+ * it samples the pixels a screen would show — a zone the vignette truly
+ * darkens, punched back to zero; a feather band at half strength; the far
+ * corner at exactly the cap.
+ */
+describe('nil spotlight shade — raster (paintSpotlightShade)', () => {
+  const GEO = {
+    seats: [{ plate: { x: 100, y: 100, w: 120, h: 60 }, slot: { x: 150, y: 300, w: 62, h: 88 } }],
+    trick: { x: 80, y: 260, w: 240, h: 160 }, hand: { x: 30, y: 620, w: 240, h: 150 }, scorebug: { x: 8, y: 44, w: 374, h: 64 },
+  };
+  const paint = (spec: ReturnType<typeof buildSpotlightShade>, w: number, h: number, dpr = 1) => {
+    const ctx = new FakeCtx2D(Math.round(w * dpr), Math.round(h * dpr));
+    paintSpotlightShade(ctx as unknown as CanvasRenderingContext2D, spec, w, h, dpr);
+    return ctx;
+  };
+
+  it('punches a clear zone out of a region the vignette genuinely shades — and feathers back to it', () => {
+    const W = 390, H = 844; // the owner's phone class
+    const holed = paint(buildSpotlightShade({ ...GEO, mine: false, reduced: false }), W, H);
+    const bare = paint(buildSpotlightShade({ seats: [], trick: null, hand: null, scorebug: null, mine: false, reduced: false }), W, H);
+    // without holes the vignette really does cover the hand centre…
+    expect(bare.alphaAt(150, 695)).toBeGreaterThan(0.05);
+    // …with holes punched it is EXACTLY clear — hand, trick, scorebug alike
+    expect(holed.alphaAt(150, 695)).toBe(0);
+    expect(holed.alphaAt(200, 340)).toBe(0);
+    expect(holed.alphaAt(195, 76)).toBe(0);
+    // halfway across the hand hole's feather band (r 136 + feather 46/2 from
+    // its centre) the shade is back to roughly half the bare vignette there
+    const ratio = holed.alphaAt(55, 822) / bare.alphaAt(55, 822);
+    expect(ratio).toBeGreaterThan(0.35);
+    expect(ratio).toBeLessThan(0.65);
+  });
+
+  it('far corners reach exactly the cap — the viewer-bidder cap, halved under reduce — and only there', () => {
+    const empty = { seats: [], trick: null, hand: null, scorebug: null };
+    const tall = paint(buildSpotlightShade({ ...empty, mine: false, reduced: false }), 100, 400);
+    expect(tall.alphaAt(99, 399)).toBeCloseTo(SPOT_PEAK, 3); // bottom corner: the cap, exactly
+    expect(tall.alphaAt(50, 168)).toBe(0); // the gradient centre stays clear
+    expect(tall.alphaAt(0, 0)).toBeLessThan(SPOT_PEAK); // nearer corners stay under it
+    const mine = paint(buildSpotlightShade({ ...empty, mine: true, reduced: false }), 100, 400);
+    expect(mine.alphaAt(99, 399)).toBeCloseTo(SPOT_PEAK_MINE, 3);
+    const reduced = paint(buildSpotlightShade({ ...empty, mine: false, reduced: true }), 100, 400);
+    expect(reduced.alphaAt(99, 399)).toBeCloseTo(SPOT_PEAK / 2, 3);
+  });
+
+  it('paints at device-pixel scale: dpr 2 doubles the buffer, the css-space picture is unchanged', () => {
+    const spec = buildSpotlightShade({ ...GEO, mine: false, reduced: false });
+    const ctx = paint(spec, 390, 844, 2);
+    expect([ctx.w, ctx.h]).toEqual([780, 1688]);
+    expect(ctx.alphaAt(300, 1390)).toBe(0); // the hand centre, in device pixels
+    expect(ctx.alphaAt(779, 1687)).toBeCloseTo(
+      expectedVignetteAlpha(779.5 / 2, 1687.5 / 2, SPOT_PEAK, 390, 844), 2);
+  });
+
+  it('the mechanism: source-over vignette, then one destination-out erase per hole at r → r+feather', () => {
+    const spec = buildSpotlightShade({ ...GEO, mine: false, reduced: false });
+    const ctx = paint(spec, 390, 844);
+    const fills = ctx.ops.filter((o) => o.kind === 'fillRect');
+    expect(fills[0]!.comp).toBe('source-over');
+    expect(fills[0]!.gradient!.stops.map((s) => s.offset)).toEqual([0, 0.55, 0.8, 1]);
+    expect(Math.max(...fills[0]!.gradient!.stops.map((s) => s.c[3]))).toBeCloseTo(spec.peak);
+    const erases = fills.slice(1);
+    expect(erases).toHaveLength(spec.holes.length);
+    erases.forEach((op, i) => {
+      const hole = spec.holes[i]!;
+      expect(op.comp).toBe('destination-out');
+      expect([op.gradient!.x0, op.gradient!.y0]).toEqual([hole.cx, hole.cy]);
+      expect(op.gradient!.r0).toBe(hole.r);
+      expect(op.gradient!.r1).toBe(hole.r + hole.feather);
+      expect(Math.max(...op.gradient!.stops.map((s) => s.c[3]))).toBe(1); // fully opaque at the core: the punch is total
+    });
   });
 });
 
