@@ -3283,3 +3283,13 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
 .table-screen.short .last-trick.chip, .table-screen.short .last-trick.chip.glass.slant { max-width: 170px; }
 .table-screen.short .last-trick.chip .lt-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .table-screen.short .last-trick.open, .table-screen.short .last-trick.open.glass.slant { max-width: 190px; }
+
+/* TOOK pop (owner 2026-10-22): when a won trick's cards land in a player's
+   pile, the plate ticks and pops. The scale rides .plate-body and the flash
+   rides the TOOK chip — never .plate itself: the seat anchors position the
+   plate with a transform, and an animation there would fight the anchor and
+   shift the plate. Transforms don't reflow, so nothing moves or overlaps. */
+@keyframes took-pop { 0% { transform: scale(1); } 35% { transform: scale(1.07); } 100% { transform: scale(1); } }
+@keyframes took-chip { 0% { background: rgba(var(--gold-rgb),.55); color: #fff2cf; } 100% { background: rgba(var(--purple-rgb),.25); color: #e9dcff; } }
+.plate.took-pop .plate-body { animation: took-pop .3s ease-out; }
+.plate.took-pop .chip.took { animation: took-chip .3s ease-out; }

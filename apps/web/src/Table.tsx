@@ -74,7 +74,8 @@ import { HUMAN, useGame } from './useGame';
 import { DealerPopup } from './DealerPopup';
 import { dealerAnnouncement, dealerFromServer, withCurrentDealerLine } from './dealerName';
 import { plateTally, rememberHandTally, type HandTally } from './plateStats';
-import { bidChipText, dealerChipMatches, plateTookText, syncPlateFacts, type SeatFact } from './plateFacts';
+import { BOOK_GATHER_MS, landedTook, shownTook } from './tookDisplay';
+import { bidChipText, dealerChipMatches, plateTookText, popPlateTook, syncPlateFacts, type SeatFact } from './plateFacts';
 import { leaveChoice, leaveMenuAction, type LeaveGesture } from './leaveMenu';
 import { biddingNote, noticeTip, seatFacingName, seatInitial, trickTakenLine } from './seatLabel';
 import { MinBidLine, bidChoices, minBidNote } from './minBid';
@@ -1060,6 +1061,67 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const platePrev = useRef<HandTally | null>(null);
   const plates = plateTally(sb, platePrev.current, dealing && sb.handNo === st.handNo);
   platePrev.current = rememberHandTally(platePrev.current, st);
+  // TOOK display timing (owner 2026-10-22): a plate's number ticks only when the
+  // won cards have landed in that player's pile — the gather flight that starts
+  // when the finished trick leaves the felt (`piles` grows) and runs
+  // BOOK_GATHER_MS. `landedBooks` counts this hand's piled tricks whose flight
+  // has finished; the plates render shownTook (landed tally, capped by the true
+  // tally). A hand that arrives whole — first mount, refresh/resume, a swapped-in
+  // save — starts with every piled trick already stacked, so it shows the true
+  // count at once and never replays flights.
+  const [landedBooks, setLandedBooks] = useState(() => piles.length);
+  const pilesLenRef = useRef(piles.length);
+  pilesLenRef.current = piles.length;
+  const landTimers = useRef<number[]>([]);
+  const landSync = useRef({ handNo: st.handNo, scheduled: piles.length });
+  const clearLandTimers = () => {
+    landTimers.current.forEach((t) => window.clearTimeout(t));
+    landTimers.current = [];
+  };
+  useEffect(() => {
+    const sync = landSync.current;
+    if (sync.handNo !== st.handNo || piles.length < landedBooks) {
+      // New hand, or the piles shrank under the count (misdeal redeal): resync
+      // to what is actually stacked, instantly, and drop any pending landings.
+      sync.handNo = st.handNo;
+      sync.scheduled = piles.length;
+      clearLandTimers();
+      if (landedBooks !== piles.length) setLandedBooks(piles.length);
+      return;
+    }
+    for (let i = sync.scheduled; i < piles.length; i++) {
+      const t = window.setTimeout(() => {
+        landTimers.current = landTimers.current.filter((x) => x !== t);
+        setLandedBooks((c) => Math.min(c + 1, pilesLenRef.current));
+      }, BOOK_GATHER_MS);
+      landTimers.current.push(t);
+    }
+    sync.scheduled = Math.max(sync.scheduled, piles.length);
+  }, [piles.length, landedBooks, st.handNo]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => clearLandTimers, []);
+  const tookShown = shownTook(landedTook(st.tricks, landedBooks, plates.books.length), plates.books);
+  // The plate pop rides the tick itself: when a seat's shown count rises through
+  // a landing, pop every copy of that plate. Hand changes never pop — a swapped-in
+  // hand shows its true count silently.
+  const shownKey = tookShown.join('.');
+  const prevShown = useRef(tookShown);
+  const prevPopHand = useRef(st.handNo);
+  useEffect(() => {
+    if (prevPopHand.current !== st.handNo) {
+      prevPopHand.current = st.handNo;
+      prevShown.current = tookShown;
+      return;
+    }
+    if (!fx.osReducedMotion && typeof document !== 'undefined') {
+      const screen = document.querySelector('.table-screen');
+      if (screen) {
+        tookShown.forEach((v, s) => {
+          if (v > (prevShown.current[s] ?? 0)) popPlateTook(screen, s);
+        });
+      }
+    }
+    prevShown.current = tookShown;
+  }, [shownKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const winnerSeat = pause && !ranHand ? shownTrick.winner : null;
   // the Run it! button + its one-time spotlight tip
   const canRun = !spectating && !dealing && st.phase === 'playing' && !!view.canRunIt && !runFx;
@@ -1819,7 +1881,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   }, [actor, spectating]);
   // Canvas plates keep the previous hand's dealer chip and bid/took until their own root
   // paints. Correct them before the browser paints, and only then show "X deals".
-  const plateKey = `${st.handNo}:${st.phase}:${dealerSeat}:${actor}:${plates.bids.map((b) => (b == null ? '' : String(b))).join('.')}:${plates.books.join('.')}`;
+  const plateKey = `${st.handNo}:${st.phase}:${dealerSeat}:${actor}:${plates.bids.map((b) => (b == null ? '' : String(b))).join('.')}:${tookShown.join('.')}`;
   const [dealerLive, setDealerLive] = useState(false);
   useLayoutEffect(() => {
     const facts: SeatFact[] = [];
@@ -1827,7 +1889,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       facts.push({
         seat,
         bid: bidChipText(plates.bids[seat] ?? null, actor === seat && st.phase === 'bidding'),
-        took: plateTookText(plates.books[seat] ?? 0, st.phase),
+        took: plateTookText(tookShown[seat] ?? 0, st.phase),
         dealer: dealerSeat === seat,
       });
     }
@@ -1853,7 +1915,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const isTurn = actor === seat;
     const partner = !spectating && r.partnerships && seat === partnerOf(HUMAN, r);
     const b = plates.bids[seat];
-    const took = plates.books[seat] ?? 0;
+    const took = tookShown[seat] ?? 0;
     const seatUid = online?.seatUid?.(seat);
     // Tappable faces (Demetrius 2026-10-20): a seated human with an account gets a profile
     // tap on their plate face — bots and account-less guests keep a plain face (no-op).
@@ -1870,7 +1932,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           <div className="plate-name">{names[seat]}{dealerSeat === seat && <span className="chip dealer" data-testid={`dealer-${seat}`}>DEALER</span>}{partner && <span className="chip ally">PARTNER</span>}{notice.includes(sideOf(seat, r)) && <span className="chip notice" data-testid={`notice-${seat}`} title="Got shot last hand: one more shot and they're out">ON NOTICE</span>}</div>
           <div className="plate-stats" key={st.handNo}>
             <span className="chip" data-testid={`bid-${seat}`}>{bidChipText(b ?? null, isTurn && st.phase === 'bidding')}</span>
-            <span className="chip" data-testid={`books-${seat}`}>{plateTookText(took, st.phase)}</span>
+            <span className="chip took" data-testid={`books-${seat}`}>{plateTookText(took, st.phase)}</span>
           </div>
         </div>
         {online?.seatExtra(seat)}
@@ -2222,8 +2284,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             <div className="plate-name">{face(HUMAN).toUpperCase()}{dealerSeat === HUMAN && <span className="chip dealer" data-testid="dealer-0">DEALER</span>}{notice.includes(sideOf(HUMAN, r)) && <span className="chip notice" data-testid="notice-0" title={noticeTip(spectating)}>ON NOTICE</span>}{!spectating && myBadges.map((b) => BADGES[b.id] && <span key={b.id} className="chip badge" title={`${BADGES[b.id]!.name}: ${BADGES[b.id]!.desc}`} data-testid={`plate-badge-${b.id}`}>{BADGES[b.id]!.icon}</span>)}</div>
             <div className="plate-stats" key={st.handNo}>
               <span className="chip" data-testid="bid-0">{bidChipText(plates.bids[HUMAN] ?? null, actor === HUMAN && st.phase === 'bidding')}</span>
-              <span className="chip" data-testid="books-0">{plateTookText(plates.books[HUMAN] ?? 0, st.phase)}</span>
-              {isNilBid(plates.bids[HUMAN]) && (plates.books[HUMAN] ?? 0) > 0 && <span className="chip bad">NIL BUSTED</span>}
+              <span className="chip took" data-testid="books-0">{plateTookText(tookShown[HUMAN] ?? 0, st.phase)}</span>
+              {isNilBid(plates.bids[HUMAN]) && (tookShown[HUMAN] ?? 0) > 0 && <span className="chip bad">NIL BUSTED</span>}
             </div>
             {!spectating && (
               <span className="plate-toggles">

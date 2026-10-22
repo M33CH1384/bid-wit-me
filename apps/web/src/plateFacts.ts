@@ -100,3 +100,31 @@ export function dealerChipMatches(screen: ParentNode, dealerSeat: number): boole
   if (chips.length !== 1) return false;
   return chips[0]?.closest('.plate')?.getAttribute('data-testid') === `seat-${dealerSeat}`;
 }
+
+/**
+ * Restart the TOOK pop on every copy of a seat's plate (the plate layer and
+ * the canvas copy share the testid). The pop itself is pure CSS
+ * (`.plate.took-pop`, appended in styles.css); removing the class and
+ * forcing a reflow restarts it when books land back-to-back. A per-pop
+ * token keeps an older pop's cleanup timer from ending a newer pop early.
+ * Returns false when no plate for the seat is on screen.
+ */
+export function popPlateTook(screen: ParentNode, seat: number): boolean {
+  let popped = false;
+  const token = `${Date.now()}:${seat}`;
+  screen.querySelectorAll(`[data-testid="seat-${seat}"]`).forEach((plate) => {
+    if (!(plate instanceof HTMLElement)) return;
+    plate.classList.remove('took-pop');
+    void plate.offsetWidth; // restart the animation, don't resume it
+    plate.dataset.tookPop = token;
+    plate.classList.add('took-pop');
+    popped = true;
+    plate.ownerDocument.defaultView?.setTimeout(() => {
+      if (plate.dataset.tookPop === token) {
+        plate.classList.remove('took-pop');
+        delete plate.dataset.tookPop;
+      }
+    }, 400);
+  });
+  return popped;
+}
