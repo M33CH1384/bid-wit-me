@@ -80,6 +80,7 @@ import { biddingNote, noticeTip, seatFacingName, seatInitial, trickTakenLine } f
 import { MinBidLine, bidChoices, minBidNote } from './minBid';
 import { type SavedGame, clearGame, saveGame } from './save';
 import { clearStoryGame, saveStoryGame } from './story/storySave';
+import { scheduleStoryBeats } from './story/beatPacing';
 
 import { useViewport } from './viewport';
 import { tapPlaySlamIntensity } from './slam';
@@ -1251,16 +1252,26 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const { stop, facts } = scene;
     const S = storySceneRef.current;
     const snap = storySnap(st);
+    // Paced by each line's real clip duration (story/beatPacing.ts): the
+    // old fixed stagger (base + ix · gap) started later beats while an
+    // earlier line's voice was still mid-sentence, and the engine cut
+    // it — story lines ran 3.3–8.2 s against 1.4–1.7 s staggers (owner:
+    // lines "cut short", 2026-10-22). A beat with no clip keeps its
+    // legacy stagger slot, so text-only sequences pace as they always did.
     const deliver = (beats: StoryBeat[], baseMs = 500, gapMs = 1500) => {
-      beats.forEach((bt, ix) => {
-        const name = bt.speaker === 'you' ? 'You' : (STORY_CHARACTERS[bt.speaker]?.name ?? bt.speaker);
+      const nameOf = (bt: StoryBeat) => (bt.speaker === 'you' ? 'You' : (STORY_CHARACTERS[bt.speaker]?.name ?? bt.speaker));
+      void scheduleStoryBeats(beats, {
+        baseMs, gapMs, nameOf,
+        audible: (bt) => bt.speaker !== 'you' && names.indexOf(nameOf(bt)) >= 0 && !sound.voiceMuted(nameOf(bt)),
+      }, (bt, delayMs) => {
+        const name = nameOf(bt);
         const seatIx = names.indexOf(name);
         window.setTimeout(() => {
           push(name, showLine(bt.line), false, 0, true);
           if (bt.speaker !== 'you' && seatIx >= 0 && !sound.voiceMuted(name)) {
             speakBot(name, bt.line, undefined, undefined, undefined, pos[seatIx], n);
           }
-        }, baseMs + ix * gapMs);
+        }, delayMs);
       });
     };
     if (story?.saveCtx?.resumed && !S.welcomed) {
@@ -1339,7 +1350,16 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           const lines = moment.kind === 'solo' ? [moment.line] : moment.lines;
           for (const l of lines) S.railSaid.push(l.line);
           const baseDelay = finalHandNow && stop.id === 'king' ? 7200 : 1100;
-          lines.forEach((l, ix) => {
+          // Same pacing rule as deliver() (story/beatPacing.ts): an
+          // exchange's reply used to land a fixed 1700 ms after the
+          // opener — mid-sentence for any opener over ~1.7 s of voice,
+          // and the engine cut it. Paced by real durations now; a
+          // text-only line keeps its legacy 1700 ms slot.
+          void scheduleStoryBeats(lines, {
+            baseMs: baseDelay, gapMs: 1700,
+            nameOf: (l) => STORY_CHARACTERS[l.speaker]?.name ?? l.speaker,
+            audible: (l) => !sound.voiceMuted(STORY_CHARACTERS[l.speaker]?.name ?? l.speaker),
+          }, (l, delayMs, ix) => {
             // Attribution: a solo line is the rail's; in an exchange the
             // opener and the comeback are the rail's, the middle line is
             // the seated player's answer (their own name, their seat).
@@ -1354,7 +1374,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
                 const seatIx = names.indexOf(name);
                 if (seatIx >= 0 && !sound.voiceMuted(name)) speakBot(name, l.line, undefined, undefined, undefined, pos[seatIx], n);
               }
-            }, baseDelay + ix * 1700);
+            }, delayMs);
           });
         }
       }

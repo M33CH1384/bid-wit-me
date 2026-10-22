@@ -38,14 +38,40 @@ const SECURITY = (server: string) => ({
 });
 const prodServer = (process.env.VITE_SERVER_URL || 'https://bid-wit-me-server.demetrius-robinson31.workers.dev').trim().replace(/\/$/, '');
 const localServer = 'http://127.0.0.1:8787';
+/**
+ * The generated `_headers` body (extracted so tests can pin it). The
+ * global security block applies to every path; the voice sprites get
+ * their own rule. Voice sprite files are replaced IN PLACE under stable
+ * /voices/* paths by each voice assembly, and their manifest + audio
+ * are fetched as a pair — so the pair is versioned by URL instead
+ * (voices.ts carries the build token on every sprite fetch) and the
+ * rule here makes the caching explicit and coherent with that scheme:
+ * every /voices/* response is bounded to a day. For a tokened URL that
+ * is always safe — the token changes with every build, so the content
+ * behind a given URL never changes — and for the bare un-tokened path
+ * (only ever requested by a pre-token build) the day bound is what
+ * retires a stale cached pair instead of letting it sit indefinitely.
+ * (Cloudflare Pages:
+ * for a given path, only the FIRST matching block's headers apply, so
+ * this block stands alone — the security headers above deliberately
+ * do not repeat here, and none of them set caching.)
+ */
+export function pagesHeadersSource(server: string): string {
+  const h = SECURITY(server);
+  const lines = [
+    '/*', ...Object.entries(h).map(([k, v]) => `  ${k}: ${v}`), '',
+    '/voices/*',
+    '  Cache-Control: public, max-age=86400',
+    '',
+  ];
+  return lines.join('\n');
+}
 function pagesHeaders(): Plugin {
   return {
     name: 'bwm-pages-headers',
     apply: 'build',
     generateBundle() {
-      const h = SECURITY(prodServer);
-      const lines = ['/*', ...Object.entries(h).map(([k, v]) => `  ${k}: ${v}`), ''];
-      this.emitFile({ type: 'asset', fileName: '_headers', source: lines.join('\n') });
+      this.emitFile({ type: 'asset', fileName: '_headers', source: pagesHeadersSource(prodServer) });
     },
   };
 }

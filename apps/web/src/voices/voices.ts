@@ -11,6 +11,7 @@
 import { type PersonaId, lineById, storyCastForName, storyVoiceKey, voiceFor } from '@spades/bots';
 import { decodeAudioBuffer, sound } from '../audio';
 import { audioElementPool } from '../audioPool';
+import { VERSION } from '../version';
 
 /**
  * The sprite key for a speaker. Story characters resolve by CHARACTER
@@ -47,15 +48,33 @@ interface Sprite { clips: Record<string, [number, number]>; buf: AudioBuffer | n
 /** sprite key ("og-f") → its clip map + decoded audio (or the pending fetch) */
 const cache = new Map<string, Promise<Sprite | null>>();
 export const VOICE_BASE = '/voices/v2';
+/**
+ * Build token carried on EVERY sprite URL (manifest and audio
+ * alike): `v<APP_VERSION>-<build sha>`, from version.ts — the
+ * same stamp the app shows in More options. Sprite files are replaced
+ * IN PLACE under stable paths by each voice assembly, and nothing set
+ * a Cache-Control for them, so a device's heuristic HTTP cache could
+ * hold a manifest from one build and pair it with audio from another:
+ * offsets moved in the 2026-10-22 voice re-bake, and old keys sliced
+ * the new audio at the old offsets — segments of the previous takes,
+ * the owner's "robot voice" on a fully current bundle (force-close
+ * does not purge the HTTP cache; only a new URL does). With the token,
+ * the first load after a deploy fetches a matched pair under URLs no
+ * earlier build ever used, and no later build can cross-pair them:
+ * the sha moves with every commit, which is every deploy.
+ */
+export const VOICE_BUILD_TOKEN = `v${VERSION.version}-${VERSION.sha}`;
+/** The sprite URL for a file under VOICE_BASE, build-tokened. */
+export const voiceUrl = (file: string) => `${VOICE_BASE}/${file}?v=${VOICE_BUILD_TOKEN}`;
 function load(key: string): Promise<Sprite | null> {
   let p = cache.get(key);
   if (!p) {
     p = (async () => {
       try {
-        const meta = await fetch(`${VOICE_BASE}/${key}.json`);
+        const meta = await fetch(voiceUrl(`${key}.json`));
         if (!meta.ok) return null;
         const { clips } = (await meta.json()) as { clips: Record<string, [number, number]> };
-        const res = await fetch(`${VOICE_BASE}/${key}.${format()}`);
+        const res = await fetch(voiceUrl(`${key}.${format()}`));
         if (!res.ok) return { clips, buf: null };
         const data = await res.arrayBuffer();
         const ctx = sound.audioContext();
