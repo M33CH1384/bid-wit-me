@@ -209,6 +209,70 @@ export function nextShuffle(prev: number | null, bag: number[], count: number, r
   return { pick, bag: b };
 }
 
+/* ---------- story cross-talk: two voices may share a moment (story surfaces only) ---------- */
+/**
+ * The recorded-voice channel was strictly serial: a new line cut the line
+ * that was playing, every time. At a story table, where scripted beats and
+ * chime-ins arrive on fixed 1.4–1.7 s staggers, anyone whose clip ran long
+ * was cut mid-sentence by the next arrival. The owner's ask (the Porch,
+ * 2026-10-22): "if Pat says something, Unc can start before she finishes
+ * and they both continue at times." So on story surfaces a conversational
+ * line may START over the tail of a different speaker's line: at most two
+ * voices at once, the first ducked ≈ −6 dB while overlapped and restored
+ * if it outlives the second. This pure function is the whole policy — who
+ * may overlap whom, and how often — so the bounds pin in tests without an
+ * AudioContext; the engine's startVoice only applies the plan. Callers
+ * that never opt in (every non-story surface) keep the serial behaviour
+ * exactly.
+ */
+/** A playing line may be talked over only while this much of it (seconds) is left — the overlap is its tail, never its body. */
+export const VOICE_MAX_OVERLAP_REMAINING_S = 3;
+/** Deeper than this into the tail, an overlap is the natural read (people answer as a line lands). */
+export const VOICE_TAIL_S = 1.2;
+/** The ducked line's gain multiplier while overlapped: 0.5 ≈ −6 dB. */
+export const VOICE_DUCK_FACTOR = 0.5;
+
+export interface ActiveVoiceInfo { speaker: string | null; remainingS: number; elapsedS: number }
+export type VoiceArrivalPlan = { kind: 'play' } | { kind: 'replace' } | { kind: 'overlap'; keepIndex: number };
+
+/**
+ * Decide what an arriving cross-talk-eligible line does to the voices
+ * already playing. `roll` is the caller's die (0..1) so the choice varies
+ * like people do instead of landing metronomically; most arrivals still
+ * play solo (an empty room, a same-speaker cut, or a lost roll all leave
+ * exactly one voice talking).
+ */
+export function planVoiceArrival(active: ActiveVoiceInfo[], speaker: string, roll: number): VoiceArrivalPlan {
+  if (!active.length) return { kind: 'play' };
+  // Never overlap a speaker with their own next line: it cuts, as always.
+  if (active.some((a) => a.speaker !== null && a.speaker === speaker)) return { kind: 'replace' };
+  const newest = active[active.length - 1]!;
+  // Only over the tail: little left, and the line genuinely under way (two
+  // arrivals in the same breath are a cut, not a chord). With two voices
+  // already up, an approved overlap keeps the newest and lets the oldest
+  // go — the count never reaches three.
+  if (newest.elapsedS >= 0.4 && newest.remainingS <= VOICE_MAX_OVERLAP_REMAINING_S) {
+    const p = newest.remainingS <= VOICE_TAIL_S ? 0.85 : 0.5;
+    if (roll < p) return { kind: 'overlap', keepIndex: active.length - 1 };
+  }
+  return { kind: 'replace' };
+}
+
+/** One live recorded-voice line in the engine (see the voice section of SoundEngine). */
+interface VoiceSlot {
+  src: AudioBufferSourceNode;
+  gain: GainNode;
+  speaker: string | null;
+  /** The gain the line started at (post category volume); a duck returns here. */
+  baseGain: number;
+  startedAt: number;
+  endsAt: number;
+  /** The slot this line ducked when it overlapped in (restored when this line ends). */
+  ducked: VoiceSlot | null;
+  /** The slot currently ducking this one — the identity guard on the restore. */
+  duckedBy: VoiceSlot | null;
+}
+
 function load(): SoundSettings {
   try {
     const raw = localStorage.getItem(KEY);
@@ -842,21 +906,52 @@ class Engine {
   private voiceChatOut: GainNode | null = null;
   voiceChatGeneration = 0;
   voiceChatProbe: { id: string; seat: string; muted: boolean; model: string }[] = [];
-  private voiceSrc: { src: AudioBufferSourceNode; gain: GainNode } | null = null;
+  /** Live recorded-voice slots, oldest first: one in serial play, two while a story cross-talk overlap runs. */
+  private voiceSlots: VoiceSlot[] = [];
   /** The (possibly still locked) context, for decoding voice clips ahead of time. */
   audioContext(): AudioContext | null { this.ensure(); return this.ctx; }
   /** Play one bot line (cuts off the previous one, like one person talking). Silent when sound is off / not unlocked yet. */
   /** play a voice clip (optionally a [offsetSec, durationSec] slice of a sprite) */
   playVoice(buf: AudioBuffer, gain: number, slice?: [number, number], seat?: SeatPos, playerCount = 4): boolean {
+    return this.startVoice(buf, gain, slice, seat, playerCount, null);
+  }
+  /**
+   * Story cross-talk entry (the policy is planVoiceArrival, above): a
+   * conversational story line may start over the tail of a DIFFERENT
+   * speaker's line — both continue briefly, the first ducked ≈ −6 dB —
+   * instead of cutting it. A same-speaker line, a third arrival, or a lost
+   * roll still cuts in alone, exactly as the serial channel behaves. Only
+   * story surfaces opt in (speakBot under story scope); every other
+   * caller keeps playVoice and is untouched.
+   */
+  playVoiceCrossTalk(buf: AudioBuffer, gain: number, slice: [number, number], seat: SeatPos | undefined, playerCount: number, speaker: string): boolean {
+    return this.startVoice(buf, gain, slice, seat, playerCount, { speaker, roll: Math.random() });
+  }
+  private startVoice(buf: AudioBuffer, gain: number, slice: [number, number] | undefined, seat: SeatPos | undefined, playerCount: number, cross: { speaker: string; roll: number } | null): boolean {
     if (!this.settings.on || !this.unlocked) return false;
     if (!this.atTable) { this.blocked.voice = (this.blocked.voice ?? 0) + 1; return false; }
     this.ensure();
     const c = this.ctx;
     if (!c || c.state !== 'running' || !this.voiceDuck) return false;
-    this.stopVoice();
+    const now = c.currentTime;
+    let ducked: VoiceSlot | null = null;
+    if (cross) {
+      // Slots past their end are finished, onended or not — they don't hold the room.
+      const live = this.voiceSlots.filter((s) => s.endsAt > now);
+      const plan = planVoiceArrival(live.map((s) => ({ speaker: s.speaker, remainingS: s.endsAt - now, elapsedS: now - s.startedAt })), cross.speaker, cross.roll);
+      if (plan.kind === 'overlap') {
+        const keep = live[plan.keepIndex]!;
+        for (const s of [...this.voiceSlots]) if (s !== keep) this.stopSlot(s);
+        keep.gain.gain.setTargetAtTime(keep.baseGain * VOICE_DUCK_FACTOR, now, 0.06);
+        ducked = keep;
+      } else if (plan.kind === 'replace') this.stopVoice();
+      // 'play': the room is empty — nothing to cut or duck.
+    } else this.stopVoice();
     const src = c.createBufferSource(); src.buffer = buf;
     // Category volume applied once, here (voiceLineGain); callers pass only their own gain.
     const g = c.createGain(); g.gain.value = voiceLineGain(gain, this.settings.volumes);
+    const slot: VoiceSlot = { src, gain: g, speaker: cross?.speaker ?? null, baseGain: g.gain.value, startedAt: now, endsAt: now + (slice ? slice[1] : buf.duration), ducked, duckedBy: null };
+    if (ducked) ducked.duckedBy = slot;
     let release: (() => void) | undefined;
     if (seat && this.settings.spatial !== false) {
       // Voices: direction ONLY — full distance compensation, so a far character is never quieter.
@@ -872,9 +967,20 @@ class Engine {
         release = () => sp.release();
       } else src.connect(g).connect(this.voiceDuck);
     } else src.connect(g).connect(this.voiceDuck);
-    src.onended = () => { release?.(); if (this.voiceSrc?.src === src) this.voiceSrc = null; };
+    src.onended = () => {
+      release?.();
+      const ix = this.voiceSlots.indexOf(slot); if (ix >= 0) this.voiceSlots.splice(ix, 1);
+      // If this line was talking over another, hand the ducked line its
+      // level back — but only when it is still up and still ducked by us
+      // (a later line may have taken over the duck in the meantime).
+      const d = slot.ducked;
+      if (d && d.duckedBy === slot && this.voiceSlots.includes(d)) {
+        d.duckedBy = null;
+        try { d.gain.gain.setTargetAtTime(d.baseGain, c.currentTime, 0.09); } catch { /* context rebuilt */ }
+      }
+    };
     if (slice) src.start(0, slice[0], slice[1]); else src.start();
-    this.voiceSrc = { src, gain: g };
+    this.voiceSlots.push(slot);
     this.played.voice = (this.played.voice ?? 0) + 1;
     return true;
   }
@@ -969,11 +1075,21 @@ class Engine {
   /** Settings previews that may sound on Home. Chat notifications live here too: a DM must
    *  ding no matter where in the app you are, not only at a table. */
   private static readonly UI_SFX: ReadonlySet<string> = new Set(['tap', 'bid', 'dmChime', 'chatBlip']);
+  /** Cut every live voice line (one in serial play, two while a cross-talk overlap runs). */
   stopVoice() {
-    const v = this.voiceSrc; this.voiceSrc = null;
-    if (!v || !this.ctx) return;
-    v.gain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.03);
-    try { v.src.stop(this.ctx.currentTime + 0.12); } catch { /* already stopped */ }
+    const slots = this.voiceSlots; this.voiceSlots = [];
+    for (const s of slots) this.fadeStopSlot(s);
+  }
+  /** Remove one slot from the room and fade it out (cross-talk keeps the rest). */
+  private stopSlot(slot: VoiceSlot) {
+    const ix = this.voiceSlots.indexOf(slot);
+    if (ix >= 0) this.voiceSlots.splice(ix, 1);
+    this.fadeStopSlot(slot);
+  }
+  private fadeStopSlot(slot: VoiceSlot) {
+    if (!this.ctx) return;
+    slot.gain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.03);
+    try { slot.src.stop(this.ctx.currentTime + 0.12); } catch { /* already stopped */ }
   }
   /** Big moments (nuke, Wheels, tornado, SHOT!…): voices dip under them, then come back. */
   private duckVoice(ms: number, t: number) {

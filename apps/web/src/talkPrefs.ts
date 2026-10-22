@@ -101,7 +101,18 @@ export function speakBot(name: string, text: string, persona?: string, line?: st
   // fall through to the cast lookup below, unchanged.
   if (cast && storyScope && line) return;
   const raw = rawLine(line) ?? (cast && (per === cast.persona || per === cast.cardPersona) ? text : undefined);
-  void playClip(per, name, raw, prefs.voiceVolume * 0.9, bid, seat, playerCount).then((played) => { if (!played) webSpeech(name, text, per); });
+  // Story cross-talk (owner, the Porch 2026-10-22: "if Pat says something,
+  // Unc can start before she finishes"): on story surfaces a conversational
+  // line may start over the tail of another speaker's line instead of
+  // cutting it — the engine decides per arrival (planVoiceArrival in
+  // audio.ts: max two voices, the first ducked, same speaker still cuts).
+  // Every line that reaches here is chatter — scene beats, rail lines,
+  // table talk, end-of-hand banter. The `bid` argument only picks a
+  // numbered take of a commentary template ("You bid {bid} for THAT?!"),
+  // banter included; it is not an announcement, and no announcement-class
+  // line flows through speakBot (bids and big moments are SFX). Off story
+  // surfaces nothing changes: the serial one-at-a-time channel stands.
+  void playClip(per, name, raw, prefs.voiceVolume * 0.9, bid, seat, playerCount, { crossTalk: storyScope }).then((played) => { if (!played) webSpeech(name, text, per); });
 }
 
 /**

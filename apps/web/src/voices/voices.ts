@@ -82,15 +82,18 @@ export function preloadVoice(persona: PersonaId, name: string): void {
 /**
  * Play the recorded clip for this line. Resolves true when a clip played (or is playing), false when there's no clip
  * (the caller falls back to Web Speech). A sprite that isn't decoded yet still plays if it arrives within 1.5 s.
+ * `opts.crossTalk` (story surfaces only, set by speakBot): the clip may start over the tail of a different
+ * speaker's line instead of cutting it — the engine's planVoiceArrival decides, per arrival.
  */
-export async function playClip(persona: PersonaId, name: string, raw: string | undefined, gain: number, bid?: number, seat?: import('../spatial').SeatPos, playerCount = 4): Promise<boolean> {
+export async function playClip(persona: PersonaId, name: string, raw: string | undefined, gain: number, bid?: number, seat?: import('../spatial').SeatPos, playerCount = 4, opts?: { crossTalk?: boolean }): Promise<boolean> {
   if (!raw) return false;
   const t0 = performance.now();
   const sp = await load(keyFor(persona, name));
   const at = sp && ((bid !== undefined ? sp.clips[`${raw}#${bid}`] : undefined) ?? sp.clips[raw]);
   if (!sp?.buf || !at) return false;
   if (performance.now() - t0 > 1500) return true; // too late to still fit the moment: stay quiet
-  sound.playVoice(sp.buf, gain, [at[0] / 1000, at[1] / 1000], seat, playerCount);
+  if (opts?.crossTalk) sound.playVoiceCrossTalk(sp.buf, gain, [at[0] / 1000, at[1] / 1000], seat, playerCount, name);
+  else sound.playVoice(sp.buf, gain, [at[0] / 1000, at[1] / 1000], seat, playerCount);
   return true;
 }
 
