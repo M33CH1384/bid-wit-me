@@ -61,6 +61,13 @@ import { SOCIAL_PLATFORMS, SocialLinksChips, type SocialLinks } from '../socialL
 import { MODE_NAME, inviteTo } from '../social/Social';
 import { social, useSocial } from '../social/store';
 import { ChallengeButton } from '../social/Wager';
+import StoryBadges, { badgeFactsOf } from '../story/StoryBadges';
+import { fetchStoryProgress, type StoryProgress } from '../story/storyApi';
+/* The badge component's styles live in story.css (its home since the map
+ *  and win moment); every selector there is .story-* scoped, so importing
+ *  it here styles the badges on this surface — in both themes, the sheet's
+ *  own neon overrides included — and nothing else on the profile. */
+import '../story/story.css';
 
 const modeName = (m: string) => MODE_NAME[m] ?? m;
 
@@ -426,6 +433,20 @@ export function ProfileView({ host, name, id }: {
     return () => { alive = false; };
   }, [selfRoute, uid, me, reloadTick]);
 
+  /* Story badges (owner, 2026-10-22): the story collection joins the
+   *  Achievements tab — SELF view only, because story progress is the
+   *  account's own private payload (the server serves it for the caller
+   *  alone). Any non-ok fetch — signed out, story mode locked to this
+   *  account, a plain error — renders NOTHING: no zero-count placeholder,
+   *  no invented facts (data honesty). */
+  const [storyProg, setStoryProg] = useState<StoryProgress | null>(null);
+  useEffect(() => {
+    if (!me) return;
+    let alive = true;
+    fetchStoryProgress('solo').then((r) => { if (alive && r.status === 'ok') setStoryProg(r.progress); });
+    return () => { alive = false; };
+  }, [me]);
+
   // The header picture resolves the same way chat faces do (useAvatar → /api/profile/:id,
   // cached), seeded by whichever payload already carries it — so the photo shows even if
   // one of the two fetches fails.
@@ -759,6 +780,7 @@ export function ProfileView({ host, name, id }: {
                 ))}
               </div>
             )}
+            {me && storyProg && <StoryBadges facts={badgeFactsOf(storyProg)} />}
             {socialP && (
               <>
                 <h4>Badges</h4>
