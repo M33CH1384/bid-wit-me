@@ -16,6 +16,7 @@ export class FakeEnv {
   room: Room;
   tourResults: { match: string; scores: number[]; places: number[] }[] = [];
   challengeResults: import('../src/room').ChallengeResult[] = [];
+  storyResults: import('../src/room').StoryRoomResult[] = [];
   records: { rec: import('../src/stats/record').GameRecord; rated: boolean; meta?: import('../src/stats/record').SaveMeta }[] = [];
   highlights: import('../src/stats/highlights').HighlightEvent[] = [];
   /** The DO's socket close can re-enter the room. Tests set this to simulate that. */
@@ -48,6 +49,7 @@ export class FakeEnv {
       highlight: (ev) => { this.highlights.push(ev); },
       tournamentResult: (t, scores, places) => { this.tourResults.push({ match: t.match, scores, places }); },
       challengeResult: (_c, r) => { this.challengeResults.push(r); },
+      storyResult: (r) => { this.storyResults.push(r); },
       randomId: () => Array.from({ length: 4 }, () => this.rng.nextUint32().toString(16).padStart(8, '0')).join(''),
     };
   }

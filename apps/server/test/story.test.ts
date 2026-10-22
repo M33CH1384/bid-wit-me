@@ -135,15 +135,18 @@ describe('story progress + results', () => {
     expect((await progress()).stops[0]).toMatchObject({ attempts: 2, clears: 2 });
   });
 
-  it('tracks are per-player; pair-track writes wait for Phase 2', async () => {
+  it('tracks are per-player; pair-track writes need membership + a room witness (co-op Phase 1)', async () => {
     await result('a', 'porch', true, 'g1');
     expect((await progress('c')).currentStop).toBe(1);
+    // an unwitnessed pair result is refused (409) — credit follows the Room's
+    // witness row, never a client claim (full pair suite: story-coop.test.ts)
     const pairWrite = await call('a', '/api/story/result', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ track: 'pair:a:b', stopId: 'porch', won: true, gameId: 'gp1' }),
     });
-    expect(pairWrite.status).toBe(400);
-    // …but the pair track key is already valid for reads, so Phase 2 needs no storage change
+    expect(pairWrite.status).toBe(409);
+    // a non-member cannot even read the pair track
+    expect((await call('c', '/api/story/progress?track=pair:a:b')).status).toBe(403);
     expect((await call('a', '/api/story/progress?track=pair:a:b')).status).toBe(200);
     expect((await call('a', '/api/story/progress?track=nope')).status).toBe(400);
   });

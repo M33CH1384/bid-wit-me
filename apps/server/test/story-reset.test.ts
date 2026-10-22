@@ -51,12 +51,26 @@ beforeEach(async () => {
 });
 
 describe('story reset-stop (owner tool)', () => {
-  it('auth matrix: 401 signed out, 403 non-admin, 400 unknown stop / pair track', async () => {
+  it('auth matrix: 401 signed out, 403 non-admin, 400 unknown stop', async () => {
     expect((await reset(null, 'porch')).status).toBe(401);
     expect((await reset('b', 'porch')).status).toBe(403); // a regular player can never reset
     expect((await reset('a', 'nope-not-a-stop')).status).toBe(400);
-    expect((await reset('a', 'porch', 'pair:a:c')).status).toBe(400); // solo track only, like found/session
     expect((await reset('a', 'porch')).status).toBe(200); // admin, nothing recorded: a clean no-op
+  });
+
+  it('a pair-track reset wipes BOTH members\u2019 copies of the stop (co-op)', async () => {
+    for (const uid of ['a', 'c']) {
+      await db.prepare('INSERT INTO story_progress (user_id, track_key, stop_id, attempts, clears, first_cleared_at, last_played_at) VALUES (?, ?, ?, 1, 1, ?, ?)')
+        .bind(uid, 'pair:a:c', 'porch', 1, 1).run();
+      await db.prepare('INSERT INTO story_claims (user_id, game_id, track_key, stop_id, won, first_clear, xp, coins, created_at) VALUES (?, ?, ?, ?, 1, 1, 25, 20, ?)')
+        .bind(uid, `g-${uid}`, 'pair:a:c', 'porch', 1).run();
+    }
+    const r = await reset('a', 'porch', 'pair:a:c');
+    expect(r.status).toBe(200);
+    const left = await db.prepare("SELECT COUNT(*) AS n FROM story_progress WHERE track_key = 'pair:a:c' AND stop_id = 'porch'").first<{ n: number }>();
+    expect(left!.n).toBe(0);
+    const claims = await db.prepare("SELECT COUNT(*) AS n FROM story_claims WHERE track_key = 'pair:a:c'").first<{ n: number }>();
+    expect(claims!.n).toBe(0);
   });
 
   it('wipes only the named stop: progress, claims, finds — rewards already paid stay paid', async () => {

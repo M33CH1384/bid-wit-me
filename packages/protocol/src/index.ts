@@ -171,6 +171,14 @@ export type ClientMsg =
   | { t: 'kick'; seat: number }
   | { t: 'rtc'; to: string; data: unknown }
   | { t: 'leave' }
+  /** Story co-op: concede the match for the pair (story rooms only; partnership = shared fate).
+   *  The room ends the game as a pair loss and witnesses it like any story result. */
+  | { t: 'concede' }
+  /** Story co-op: arm this player's ready flag for the room's current story phase
+   *  (lobby sit-down / tape / scene / outro). Both pair members ready = the phase advances.
+   *  `stopId` (host, lobby phase; either player, outro phase) asks to run a different stop next —
+   *  outro: the host's choice wins when both name one. */
+  | { t: 'storyReady'; stopId?: string }
   /** Release 10, host: table options (any phase). private = hidden from Open tables (invite / code only);
    *  replaceBots = spectators may take a bot's seat mid-game (default on, except rated tables where the default is off;
    *  seats a player vacated are always open, and a rated game still requires an account to take one) */
@@ -257,6 +265,17 @@ export interface RoomInfo {
   tournament?: { id: string; name?: string; match: string; autostartAt: number | null; reserved: (string | null)[] };
   /** Big Bank wager table: the challenge this room plays (sent by the room; absent elsewhere). */
   challenge?: { id: string; autostartAt: number | null; reserved: (string | null)[] };
+  /** Story co-op room: the pair's run lives in the descriptor's own phase machine
+   *  (lobby → tape → scene → game → outro), separate from the room phase. `track` is
+   *  the pair track key (null until a share-code partner binds). `gameId` names the
+   *  current/last game — the id both players post their witnessed result under.
+   *  `ready` = pair uids armed for the current story phase. */
+  story?: {
+    track: string | null; stopId: string;
+    phase: 'lobby' | 'tape' | 'scene' | 'game' | 'finale' | 'outro';
+    gameId: string; hostUid: string; partnerUid: string | null;
+    ready: string[]; concededBy?: string;
+  };
   /** Release 10: hidden from the Open tables list (default public) */
   private?: boolean;
   /** Release 10: spectators may take bot seats mid-game (default on; off by default when the table is rated) */
@@ -368,8 +387,10 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return { t: 'hello', name: m.name, token: isStr(m.token, 100) ? m.token : undefined, v: isInt(m.v) ? m.v : undefined, ...(isStr(m.gid, 64) ? { gid: m.gid } : {}), ...(isStr(m.ticket, 400) ? { ticket: m.ticket } : {}) };
     case 'sit': case 'addBot': case 'removeBot': case 'kick':
       return isInt(m.seat) && m.seat >= 0 && m.seat < 4 ? { t: m.t, seat: m.seat } : null;
-    case 'stand': case 'start': case 'next': case 'rematch': case 'leave':
+    case 'stand': case 'start': case 'next': case 'rematch': case 'leave': case 'concede':
       return { t: m.t };
+    case 'storyReady':
+      return { t: 'storyReady', ...(isStr(m.stopId, 40) ? { stopId: m.stopId } : {}) };
     case 'venue':
       return isVenueChoice(m.venue) ? { t: 'venue', venue: m.venue } : null;
     case 'teamName': {

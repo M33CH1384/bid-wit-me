@@ -447,6 +447,18 @@ export class TableDO extends DurableObject<Env> {
         const op: WOp = { op: 'result', result: r };
         this.ctx.waitUntil(stub.fetch('https://challenge/op', { method: 'POST', body: JSON.stringify(op) }).then(() => undefined).catch((e) => console.error('challengeResult', e)));
       },
+      // Story co-op: the room witnessed a finished match — write the one row
+      // both players post their pair result against (migration 0027).
+      storyResult: (r) => {
+        if (!this.env.DB) return;
+        const db = this.env.DB;
+        const [a, b] = [r.uidA, r.uidB].sort();
+        this.ctx.waitUntil(db.prepare(`INSERT OR IGNORE INTO story_room_results
+          (game_id, room_code, track_key, stop_id, uid_a, uid_b, won, facts_json, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+          .bind(r.gameId, r.code, r.track, r.stopId, a, b, r.won ? 1 : 0, JSON.stringify(r.facts), Date.now())
+          .run().then(() => undefined).catch((e) => console.error('storyResult', e)));
+      },
     }, data.tournament?.fast && this.env.TEST_HOOKS === '1' ? FAST_TIMING : undefined);
   }
 
@@ -556,6 +568,33 @@ export class TableDO extends DurableObject<Env> {
       this.room!.setupChallenge(data.challenge, b.rules);
       this.flush();
       return new Response('created', { status: 201 });
+    }
+    if (url.pathname === '/story-setup' && req.method === 'POST') {
+      // internal only (story routes → table); not routed from the public Worker
+      if (this.room) return new Response('exists', { status: 409 });
+      const b = await req.json() as { stopId: string; hostUid: string; partnerUid: string | null };
+      const data = newRoomData(code, Date.now());
+      this.attach(data);
+      this.room!.setupStory(b.stopId, b.hostUid, b.partnerUid ?? null);
+      if (!this.room!.data.story) return new Response('bad stop', { status: 400 });
+      this.flush();
+      return new Response('created', { status: 201 });
+    }
+    if (url.pathname === '/story-bind' && req.method === 'POST') {
+      // internal only (story routes → table): a share-code partner binds their account
+      if (!this.room) return new Response('no such table', { status: 404 });
+      const b = await req.json() as { uid: string };
+      if (!this.room.bindStoryPartner(b.uid)) return Response.json({ error: 'spoken for' }, { status: 409 });
+      this.flush();
+      const s = this.room.data.story!;
+      return Response.json({ ok: true, track: s.track, stopId: s.stopId });
+    }
+    if (url.pathname === '/story-members' && req.method === 'GET') {
+      // internal only (story routes → table): the pair accounts, for pair-context
+      if (!this.room) return new Response('no such table', { status: 404 });
+      const pair = this.room.storyMembers();
+      if (!pair) return new Response('not a story table', { status: 404 });
+      return Response.json({ hostUid: pair[0], partnerUid: pair[1], stopId: this.room.data.story!.stopId, track: this.room.data.story!.track });
     }
     if (url.pathname === '/test-state' && req.method === 'POST') {
       // only reachable through the TEST_HOOKS-gated route above

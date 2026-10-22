@@ -4,6 +4,7 @@
  */
 import { Fragment, type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type DmLine, type InviteMsg, type OpenTable, type PresenceEntry, type PresenceStatus, REACT_PALETTE_EXTRA, SOCIAL_LIMITS, statusLabel } from '@spades/protocol';
+import { storyStopById } from '@spades/bots';
 import { useAccount } from '../account/api';
 import { AvatarCircle, socialUidOf, useAvatar } from '../avatar';
 import { createTable } from '../online/connection';
@@ -143,14 +144,21 @@ function InviteToast({ inv }: { inv: InviteMsg }) {
   const now = useNow();
   const left = Math.max(0, Math.ceil((inv.expiresAt - now) / 1000));
   useEffect(() => { if (left <= 0) social.replyInvite(inv, false); }, [left, inv]);
+  const story = inv.kind === 'story-coop';
   const accept = () => {
     social.replyInvite(inv, true);
     social.close();
-    navigate(`/t/${inv.code}${inv.seat !== undefined ? `?seat=${inv.seat}` : ''}`);
+    // A story invite lands on the story route, which binds the account to
+    // the room (and so fixes the pair track) before showing the table.
+    if (story) navigate(`/story?coop=${inv.code}`);
+    else navigate(`/t/${inv.code}${inv.seat !== undefined ? `?seat=${inv.seat}` : ''}`);
   };
   return (
-    <div className="soc-invite glass slant" role="alertdialog" aria-label={`Invite from ${inv.fromName}`} data-testid="invite-toast">
-      <div className="soc-invite-txt"><b>{inv.fromName}</b> invited you to {inv.mode ? modeName(inv.mode) : 'a table'}<small>Table {inv.code} · {left}s</small></div>
+    <div className="soc-invite glass slant" role="alertdialog" aria-label={`Invite from ${inv.fromName}`} data-testid={story ? 'invite-toast-story' : 'invite-toast'}>
+      <div className="soc-invite-txt"><b>{inv.fromName}</b> {story
+        ? <>invited you to run <b>Story Mode</b> together{inv.stopId ? <> — starting at {storyStopById(inv.stopId)?.name ?? 'the Porch'}</> : ''}<small>Story table {inv.code} · {left}s</small></>
+        : <>invited you to {inv.mode ? modeName(inv.mode) : 'a table'}<small>Table {inv.code} · {left}s</small></>}
+      </div>
       <div className="soc-invite-btns">
         <button type="button" onClick={() => social.replyInvite(inv, false)} data-testid="invite-decline">Decline</button>
         <button type="button" className="primary" onClick={accept} data-testid="invite-accept">Accept</button>

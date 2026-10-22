@@ -25,7 +25,9 @@ import { type Settings, loadSettings, saveSettings } from '../settings';
 import { navigate } from '../online/nav';
 import { storyRulesFor, storySettingsFor } from './storySettings';
 import { storyBackdropUrl } from './storyBackdrop';
-import { STORY_OWNER_ONLY, fetchStoryAccess, fetchStoryDev, fetchStoryProgress, postStoryFound, postStoryResetStop, postStoryResult, storyLockedFor, type StoryProgress, type StoryResult } from './storyApi';
+import { STORY_OWNER_ONLY, createStoryRoom, fetchStoryAccess, fetchStoryDev, fetchStoryProgress, joinStoryRoom, postStoryFound, postStoryResetStop, postStoryResult, storyLockedFor, type StoryProgress, type StoryResult } from './storyApi';
+import CoopPartner from './CoopPartner';
+import StoryRoom from './StoryRoom';
 import { deckUnlockNotice, invalidateStoryProgress } from '../storyDecks';
 import { setAnimForStop, setAnimUnlockNotice } from '../setAnims';
 import { deckForStop } from '../decks';
@@ -82,6 +84,7 @@ export default function StoryHome() {
   // mode · Solo — browsing the map/scenes is story time; the match itself
   // reports as the (offline) story table. activityOf reads `story` first,
   // so friends never see a story run as a plain bot game.
+  const [room, setRoom] = useState<{ code: string; track: string | null } | null>(null);
   usePresence(screen.k === 'game' ? { kind: 'table', offline: true, story: 'solo' } : { kind: 'online', story: 'solo' });
   // The sit-down opens on the Tale of the Tape, then the scene plays.
   const [introStep, setIntroStep] = useState<'tape' | 'scene'>('tape');
@@ -97,6 +100,53 @@ export default function StoryHome() {
   const [dev, setDev] = useState<boolean | null | undefined>(undefined);
   const [storyAccess, setStoryAccess] = useState<boolean | null | undefined>(undefined);
   const [lockedByServer, setLockedByServer] = useState(false);
+
+  // ---- Story co-op (Phases 1–2) ----
+  // The mode gate shows once per visit, after the lock/checking screens and
+  // before the map, for signed-in players with story access. Deep links
+  // (?rematch= / ?resume=) are solo business and bypass it; ?coop=<code> is
+  // an invite landing and goes straight to the room. Solo stays the default
+  // path and renders exactly as before once chosen.
+  const [mode, setMode] = useState<'solo' | 'coop' | null>(null);
+  const [coopSel, setCoopSel] = useState<{ track: string; partnerUid: string; partnerHandle: string | null } | null>(null);
+  const [coopProgress, setCoopProgress] = useState<StoryProgress | null>(null);
+  const [coopMapError, setCoopMapError] = useState<string | null>(null);
+  const [coopBusyStop, setCoopBusyStop] = useState<string | null>(null);
+  const [coopJoinError, setCoopJoinError] = useState<string | null>(null);
+  const [coopCodeParam] = useState<string | null>(() => {
+    try { return new URLSearchParams(typeof location !== 'undefined' ? location.search : '').get('coop'); } catch { return null; }
+  });
+  const coopFired = useRef(false);
+  useEffect(() => {
+    if (coopCodeParam) history.replaceState(null, '', location.pathname);
+  }, [coopCodeParam]);
+  useEffect(() => {
+    if (!coopCodeParam || coopFired.current || !progress || signedOut) return;
+    if (STORY_OWNER_ONLY && (lockedByServer || storyAccess === undefined || storyLockedFor(storyAccess))) return;
+    coopFired.current = true;
+    void joinStoryRoom(coopCodeParam).then((r) => {
+      setMode('coop');
+      if (r.ok) setRoom({ code: r.code || coopCodeParam, track: r.track });
+      else setCoopJoinError(r.error);
+    });
+  }, [coopCodeParam, progress, signedOut, storyAccess, lockedByServer]);
+  // The selected pair run's progress (the co-op map's facts). Refetched when
+  // a room closes, so a finished match shows up on the map.
+  useEffect(() => {
+    if (!coopSel) { setCoopProgress(null); return; }
+    let live = true;
+    void fetchStoryProgress(coopSel.track).then((r) => { if (live && r.status === 'ok') setCoopProgress(r.progress); });
+    return () => { live = false; };
+  }, [coopSel, room]);
+  const playCoopStop = async (stop: StoryStop) => {
+    if (!coopSel || coopBusyStop) return;
+    setCoopBusyStop(stop.id);
+    setCoopMapError(null);
+    const r = await createStoryRoom(stop.id, coopSel.partnerUid);
+    setCoopBusyStop(null);
+    if (r.ok) setRoom({ code: r.code, track: r.track ?? coopSel.track });
+    else setCoopMapError(r.error);
+  };
 
   // ---- Screen scroll discipline (owner, 2026-10-21) ----
   // StoryHome swaps its screens inside ONE document: the window is the
@@ -132,7 +182,11 @@ export default function StoryHome() {
     const el = mapEl.querySelector(`[data-testid="story-stop-${current.id}"]`);
     if (el) el.scrollIntoView({ block: 'center', behavior: 'auto' });
     else window.scrollTo(0, 0);
-  }, [screen.k, progress, signedOut, loadError]);
+    // `mode` rides along: arriving at the solo map THROUGH the co-op mode
+    // gate is still a map arrival — the gate stood in for the map (testid
+    // absent) while the pending flag stayed armed, and choosing Solo is
+    // what finally renders the real map.
+  }, [screen.k, progress, signedOut, loadError, mode]);
   useEffect(() => {
     let live = true;
     void fetchStoryDev().then((d) => { if (live) setDev(d); });
@@ -141,6 +195,7 @@ export default function StoryHome() {
   }, []);
   const [lastResult, setLastResult] = useState<StoryResult | null>(null);
   const finishedRef = useRef<{ seed: string; won: boolean } | null>(null);
+
   // Story save slot: a match in progress (own key; the normal save is untouched).
   const [saved, setSaved] = useState<StorySavedGame | null>(() => loadStoryGame());
   // Progress as it stood when the current game started — the outro diffs
@@ -368,6 +423,65 @@ export default function StoryHome() {
         <div className="story-title-block">
           <h1 className="story-title">Story Mode</h1>
           <p className="story-sub">One moment…</p>
+        </div>
+      </div>
+    );
+  } else if (screen.k === 'map' && room) {
+    body = <StoryRoom code={room.code} track={room.track} onExit={() => setRoom(null)} />;
+  } else if (screen.k === 'map' && mode === null && progress && !signedOut && !rematchStopId && !resumeStopId && !coopCodeParam) {
+    // The mode gate (spec §1.1): once per visit, signed-in and access-cleared,
+    // before the map. Solo is the established run; co-op is the pair run.
+    body = (
+      <div className="story-shell" data-testid="story-mode-gate">
+        <div className="story-topbar">
+          <button type="button" className="btn ghost" data-testid="story-home" onClick={() => navigate('/')}>← Home</button>
+          <div className="story-title-block">
+            <h1 className="story-title">Story Mode</h1>
+            <p className="story-sub">Run the block — porch to the King.</p>
+          </div>
+          <span className="dock-slot" aria-hidden />
+        </div>
+        <p className="story-gate-lede">How are you running it?</p>
+        <div className="story-gate">
+          <button type="button" className="story-gate-card" data-testid="story-gate-solo" onClick={() => setMode('solo')}>
+            <span className="story-gate-name">Solo</span>
+            <span className="story-gate-line">You &amp; Dee against the block — the run as it has always been.</span>
+          </button>
+          <button type="button" className="story-gate-card" data-testid="story-gate-coop" onClick={() => setMode('coop')}>
+            <span className="story-gate-name">Co-op</span>
+            <span className="story-gate-line">Two players, one run. Bring a partner — you take the seats across from each other, and the pair advances together.</span>
+          </button>
+        </div>
+      </div>
+    );
+  } else if (screen.k === 'map' && mode === 'coop') {
+    body = coopSel ? (
+      <CoopMap
+        progress={coopProgress}
+        partnerHandle={coopSel.partnerHandle}
+        busyStop={coopBusyStop}
+        error={coopMapError}
+        onPlay={(stop) => void playCoopStop(stop)}
+        onBack={() => { setCoopSel(null); setCoopMapError(null); }}
+        onSolo={() => setMode('solo')}
+      />
+    ) : (
+      <div className="story-shell" data-testid="story-coop-home">
+        <div className="story-topbar">
+          <button type="button" className="btn ghost" data-testid="story-home" onClick={() => navigate('/')}>← Home</button>
+          <div className="story-title-block">
+            <h1 className="story-title">Story Mode — Co-op</h1>
+            <p className="story-sub">Two players, one run up the block.</p>
+          </div>
+          <span className="dock-slot" aria-hidden />
+        </div>
+        <CoopPartner
+          onSelectRun={(track, partnerUid, partnerHandle) => setCoopSel({ track, partnerUid, partnerHandle })}
+          onEnterRoom={(code, track) => setRoom({ code, track })}
+          joinError={coopJoinError}
+        />
+        <div className="story-mode-toggle">
+          <button type="button" className="btn ghost" data-testid="story-mode-solo" onClick={() => setMode('solo')}>Run it solo instead</button>
         </div>
       </div>
     );
@@ -607,6 +721,12 @@ export default function StoryHome() {
             <span className="dock-slot" aria-hidden />
           </div>
         </div>
+        {!signedOut && (
+          <div className="story-mode-toggle">
+            <span className="story-mode-current">Running solo</span>
+            <button type="button" className="btn ghost" data-testid="story-mode-coop" onClick={() => setMode('coop')}>Run it with a partner</button>
+          </div>
+        )}
         {signedOut && <p className="story-note" data-testid="story-signed-out">Sign in to run the route — your stops, rewards and the solo completion mark live on your account. The map below is a preview.</p>}
         {loadError && !signedOut && <p className="story-note">Couldn&apos;t load your progress just now. <button type="button" className="link" onClick={() => void refresh()}>Retry</button></p>}
         {progress?.completed && <p className="story-note story-done" data-testid="story-complete">YOU MADE IT OUT — porch to King, the whole route. ✓ The block is behind you; the league is ahead. Replays stay open for upkeep.</p>}
@@ -717,6 +837,84 @@ export default function StoryHome() {
       {body}
       <SettingsSheetHost settings={settings} onChange={applySettings} tips={tips} onTips={setTips} />
     </>
+  );
+}
+
+/**
+ * The co-op map: one pair's route. Same stops, same order, facts from the
+ * PAIR track only — a stop shows what the two of you have done together,
+ * never what either did solo or with anyone else. Play opens a story room
+ * at that stop with the partner named; the room takes it from there.
+ */
+function CoopMap({ progress, partnerHandle, busyStop, error, onPlay, onBack, onSolo }: {
+  progress: StoryProgress | null;
+  partnerHandle: string | null;
+  busyStop: string | null;
+  error: string | null;
+  onPlay: (stop: StoryStop) => void;
+  onBack: () => void;
+  onSolo: () => void;
+}) {
+  const clearedCount = progress?.stops.filter((s) => s.clears > 0).length ?? 0;
+  return (
+    <div className="story-shell" data-testid="story-coop-map">
+      <div className="story-topbar">
+        <button type="button" className="btn ghost" data-testid="story-coop-back" onClick={onBack}>← Partners</button>
+        <div className="story-title-block">
+          <h1 className="story-title">Running with {partnerHandle ?? 'your partner'}</h1>
+          <p className="story-sub">One run, together — the pair advances or nobody does.</p>
+          <p className="story-hero-progress">{progress?.completed ? 'Route complete — you made it out, together.' : `${clearedCount} of ${STORY_STOPS.length} stops cleared together`}</p>
+        </div>
+        <span className="dock-slot" aria-hidden />
+      </div>
+      {error && <p className="story-note story-coop-err" role="alert">{error}</p>}
+      {progress?.completed && <p className="story-note story-done" data-testid="story-coop-complete">YOU MADE IT OUT — together. ✓ Replays stay open for upkeep.</p>}
+      <ol className="story-route">
+        {STORY_STOPS.map((stop) => {
+          const row = progress?.stops.find((s) => s.stopId === stop.id);
+          const state = row?.state ?? (stop.n === 1 ? 'current' : 'locked');
+          const pair = stop.pair.map((id) => STORY_CHARACTERS[id]!);
+          const reward = storyClearReward(stop);
+          return (
+            <li key={stop.id} className={`story-stop state-${state}${stop.id === 'king' ? ' is-king' : ''}`} data-testid={`story-coop-stop-${stop.id}`}>
+              <span className="story-node" aria-hidden>{state === 'cleared' ? '✓' : state === 'locked' ? '🔒' : stop.n}</span>
+              <div className="story-card">
+                <div className="story-card-art" style={{ backgroundImage: `url(${storyBackdropUrl(stop)})` }} aria-hidden>
+                  <span className="story-card-faces">
+                    <StoryFace characterId={stop.pair[0]} name={pair[0].name} className="card-face" />
+                    <StoryFace characterId={stop.pair[1]} name={pair[1].name} className="card-face" />
+                  </span>
+                  {state === 'cleared' && <span className="story-card-state">✓ CLEARED TOGETHER</span>}
+                  {state === 'current' && <span className="story-card-state here">{row?.doublePending ? 'DOUBLE OR NOTHING' : 'YOU ARE HERE'}</span>}
+                </div>
+                <div className="story-stop-body">
+                  <p className="story-stop-name">{stop.name} <span className="story-tier">{STORY_TIER_LABEL[stop.tier]}</span></p>
+                  <p className="story-stop-pair">{pair[0].name} &amp; {pair[1].name}</p>
+                  <p className="story-stop-flavor">{stop.flavor}</p>
+                  <p className="story-stop-twist">{stop.twist.label} · First clear: +{reward.xp} XP · +{reward.coins} coins — each</p>
+                  {(row?.attempts ?? 0) > 0 && <p className="story-stop-facts">{(row?.clears ?? 0) > 0 ? `Cleared ${row!.clears}× together` : `${row!.attempts} attempt${row!.attempts === 1 ? '' : 's'} together — not cleared yet`}</p>}
+                  {row?.doublePending && <p className="story-stop-facts" data-testid="story-coop-double-pending">You beat him once, together — double or nothing: one more win takes the crown.</p>}
+                </div>
+                {state !== 'locked' && (
+                  <div className="story-stop-actions">
+                    <button
+                      type="button"
+                      className="btn primary story-play"
+                      data-testid={`story-coop-play-${stop.id}`}
+                      disabled={busyStop !== null}
+                      onClick={() => onPlay(stop)}
+                    >{busyStop === stop.id ? 'Opening…' : state === 'cleared' ? 'Replay together' : row?.doublePending ? 'Finish the double' : 'Play together'}</button>
+                  </div>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+      <div className="story-mode-toggle">
+        <button type="button" className="btn ghost" data-testid="story-mode-solo" onClick={onSolo}>Run it solo instead</button>
+      </div>
+    </div>
   );
 }
 

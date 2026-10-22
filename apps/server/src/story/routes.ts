@@ -43,16 +43,26 @@ import { type AuthEnv, currentUser } from '../auth/routes';
 import { type SocialEnv, isAdmin } from '../social/routes';
 import {
   STORY_LOSS_REWARD, STORY_SECRETS, STORY_STOPS, STORY_SOLO_TRACK, storyClearReward, storyCurrentStop, storyEggById, storyEggEventMet,
-  storyFeatMet, storyReward, storyStopById, storyStopState, storyTrackKeyValid,
-  type StoryGameFacts, type StoryMatchEvent,
+  storyFeatMet, storyPairTrackKey, storyPairUids, storyReward, storyStopById, storyStopState, storyTrackKeyValid,
+  type StoryGameFacts, type StoryMatchEvent, type StoryStop,
 } from '@spades/bots';
+import { CODE_ALPHABET, CODE_LENGTH, isRoomCode, normalizeRoomCode } from '@spades/protocol';
 import { awardXp } from '../cred/xp';
 import { move } from '../cred/coins';
 import { grantUnlock } from '../cred/achievements';
 import { closeStorySession, openStorySession } from './callback';
 import { hasStoryAccess } from './access';
 
-export interface StoryEnv extends AuthEnv, SocialEnv {}
+/** The slice of the TABLES Durable Object namespace the story routes use
+ *  (room creation, share-code bind, pair-context member resolution). */
+export interface StoryTableNamespace {
+  idFromName(name: string): unknown;
+  get(id: unknown): { fetch(url: string, init?: RequestInit): Promise<Response> };
+}
+
+export interface StoryEnv extends AuthEnv, SocialEnv {
+  TABLES?: StoryTableNamespace;
+}
 
 /**
  * The story-mode lock switch lives with the access check in ./access
@@ -167,10 +177,216 @@ export async function storyProgressPayload(db: D1Database, userId: string, track
     completedAt: trackRow?.completedAt ?? null,
     /** found Easter eggs (egg ids) + earned feats (unlockable itemIds) on this track */
     finds,
-    /** the solo completion mark (Phase 3 displays it on profiles; the fact is stored now) */
-    completionMark: track === STORY_SOLO_TRACK && trackRow?.completedAt != null ? 'story-solo-complete' : null,
+    /** the completion mark (Phase 3 displays it on profiles; the fact is stored now):
+     *  solo runs earn 'story-solo-complete'; a pair track earns its own mark,
+     *  'story-pair-complete', when the pair's King clear posts (spec §3.8) */
+    completionMark: trackRow?.completedAt != null
+      ? (track === STORY_SOLO_TRACK ? 'story-solo-complete' : 'story-pair-complete')
+      : null,
   };
 }
+
+/** The cleared stop numbers on a track, from one player's stored copy. */
+async function clearedSetFor(db: D1Database, userId: string, track: string): Promise<Set<number>> {
+  const facts = await factsFor(db, userId, track);
+  const cleared = new Set<number>();
+  for (const s of STORY_STOPS) if ((facts.get(s.id)?.clears ?? 0) > 0) cleared.add(s.n);
+  return cleared;
+}
+
+/** Is this stop reachable on this track (sequential unlock, read from the caller's copy)? */
+async function stopUnlockedFor(db: D1Database, userId: string, track: string, stop: StoryStop): Promise<boolean> {
+  return storyStopState(stop.n, await clearedSetFor(db, userId, track)) !== 'locked';
+}
+
+/**
+ * A player's PERSONAL history at a stop (spec §7.1): their record across ALL
+ * their tracks — solo plus every pair track they belong to. The query is by
+ * user_id only: a player's pair rows exist solely under their own user_id, so
+ * no other player's tracks can ever surface here. Drives the awareness layer
+ * (§7) via the pair-context endpoint — booleans and a count, nothing more.
+ */
+export async function personalHistoryFor(db: D1Database, userId: string, stopId: string): Promise<{ knowsStop: boolean; clearedStop: boolean; clearedStops: number }> {
+  const row = await db.prepare('SELECT COALESCE(SUM(attempts), 0) AS attempts, COALESCE(SUM(clears), 0) AS clears FROM story_progress WHERE user_id = ? AND stop_id = ?')
+    .bind(userId, stopId).first<{ attempts: number; clears: number }>();
+  const cnt = await db.prepare('SELECT COUNT(DISTINCT stop_id) AS n FROM story_progress WHERE user_id = ? AND clears > 0')
+    .bind(userId).first<{ n: number }>();
+  return {
+    knowsStop: (row?.attempts ?? 0) > 0,
+    clearedStop: (row?.clears ?? 0) > 0,
+    clearedStops: cnt?.n ?? 0,
+  };
+}
+
+/** A fresh table code, the same alphabet/length as /api/tables. */
+function randomStoryCode(): string {
+  const b = new Uint8Array(CODE_LENGTH * 2);
+  crypto.getRandomValues(b);
+  let out = '';
+  for (const x of b) {
+    if (x >= 248) continue; // rejection sampling, no modulo bias (as index.ts)
+    out += CODE_ALPHABET[x % CODE_ALPHABET.length];
+    if (out.length === CODE_LENGTH) return out;
+  }
+  return randomStoryCode();
+}
+
+/**
+ * The shipped result pipeline, verbatim, parameterized by the account being
+ * credited: idempotency (story_claims), sequential unlock, rewards, the
+ * King's double state machine, finds, completion mark, session close.
+ * Solo posts run it once for the caller. Pair posts run it for BOTH pair
+ * members with the room-witnessed won/facts (the two-copies rule, §3.6), so
+ * the pair's two stored copies can never diverge and both players are
+ * credited identically, exactly once each.
+ */
+async function recordStoryResult(
+  db: D1Database, userId: string, track: string, stop: StoryStop,
+  won: boolean, gameId: string, rawFacts: unknown, now: number,
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  // Idempotency: one finished game = one recorded result, ever.
+  const prior = await db.prepare('SELECT stop_id AS stopId, won, first_clear AS firstClear, xp, coins FROM story_claims WHERE user_id = ? AND game_id = ?')
+    .bind(userId, gameId).first<{ stopId: string; won: number; firstClear: number; xp: number; coins: number }>();
+  if (prior) {
+    if (prior.stopId !== stop.id) return { status: 409, body: { error: 'gameId already recorded for another stop' } };
+    // The game this session was about already finished — no call-backs owed.
+    try { await closeStorySession(db, userId, track, now); } catch { /* sessions never break results */ }
+    const progress = await storyProgressPayload(db, userId, track);
+    return { status: 200, body: { ok: true, replayed: true, stopId: stop.id, won: !!prior.won, firstClear: !!prior.firstClear, rewards: { xp: prior.xp, coins: prior.coins }, doubleOutcome: null, doublePending: progress.stops.find((s) => s.stopId === stop.id)?.doublePending ?? false, ...progress } };
+  }
+
+  const facts = await factsFor(db, userId, track);
+  const cleared = new Set<number>();
+  for (const s of STORY_STOPS) if ((facts.get(s.id)?.clears ?? 0) > 0) cleared.add(s.n);
+  // Sequential unlock, server-side: a locked stop can never be recorded.
+  if (storyStopState(stop.n, cleared) === 'locked') return { status: 409, body: { error: 'That stop is locked — clear the route in order.' } };
+
+  const before = facts.get(stop.id) ?? { attempts: 0, clears: 0, firstClearedAt: null, doublePending: false, doubleLegFacts: null };
+  const gameFacts = gameFactsOf(rawFacts);
+  let firstClear = won && before.clears === 0;
+  // A finished loss pays the small consolation (STORY_LOSS_REWARD:
+  // 5 XP, no coins) — recorded on the claim like any reward, so a
+  // repost returns it without paying twice. The King's double below
+  // overrides rewards only on its win branches; a leg loss keeps it.
+  let rewards = won ? storyReward(stop.n, firstClear) : { ...STORY_LOSS_REWARD };
+  // THE KING'S DOUBLE OR NOTHING — first-clear gate only: once the crown
+  // is taken (clears > 0) every King game is an ordinary single match.
+  //   win, no mark  → 'started': attempt recorded, mark set, leg facts
+  //     banked; NO clear, NO rewards.
+  //   win, mark set → 'cleared': the clear posts for DOUBLE the
+  //     first-clear reward; the mark is consumed.
+  //   loss, mark set → 'lost': both legs void — no clear and no clear
+  //     rewards (the leg-1 win banked nothing to lose); the loss itself
+  //     posts the standard loss consolation like any story loss, the
+  //     mark clears, the stop stays current. Attempts still count:
+  //     attempts count finished matches, and both legs finished.
+  // A King clear post is honored ONLY while the mark stands server-side —
+  // there is no client path around the second win.
+  const inDouble = stop.doubleOrNothing === true && before.clears === 0;
+  let doubleOutcome: 'started' | 'cleared' | 'lost' | null = null;
+  if (inDouble) {
+    if (won && !before.doublePending) {
+      doubleOutcome = 'started';
+      firstClear = false;
+      rewards = { xp: 0, coins: 0 };
+    } else if (won && before.doublePending) {
+      doubleOutcome = 'cleared';
+      firstClear = true;
+      rewards = storyClearReward(stop);
+    } else if (!won && before.doublePending) {
+      doubleOutcome = 'lost';
+    }
+  }
+  // A leg-1 win is a win the player earned and a clear they have NOT:
+  // the claims row records won=1 with first_clear=0 and zero rewards.
+  const countsAsClear = won && doubleOutcome !== 'started';
+
+  await db.prepare(`INSERT INTO story_progress (user_id, track_key, stop_id, attempts, clears, first_cleared_at, last_played_at)
+    VALUES (?, ?, ?, 1, ?, ?, ?)
+    ON CONFLICT (user_id, track_key, stop_id) DO UPDATE SET
+      attempts = story_progress.attempts + 1,
+      clears = story_progress.clears + excluded.clears,
+      first_cleared_at = COALESCE(story_progress.first_cleared_at, excluded.first_cleared_at),
+      last_played_at = excluded.last_played_at`)
+    .bind(userId, track, stop.id, countsAsClear ? 1 : 0, firstClear ? now : null, now).run();
+  await db.prepare('INSERT INTO story_claims (user_id, game_id, track_key, stop_id, won, first_clear, xp, coins, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .bind(userId, gameId, track, stop.id, won ? 1 : 0, firstClear ? 1 : 0, rewards.xp, rewards.coins, now).run();
+
+  // Pending-mark transitions (the mark lives on the progress row the
+  // upsert just wrote, so a stop reset deleting that row wipes it too).
+  if (doubleOutcome === 'started') {
+    await db.prepare('UPDATE story_progress SET double_pending = 1, double_leg_facts = ? WHERE user_id = ? AND track_key = ? AND stop_id = ?')
+      .bind(gameFacts ? JSON.stringify(gameFacts) : null, userId, track, stop.id).run();
+  } else if (doubleOutcome === 'cleared' || doubleOutcome === 'lost') {
+    await db.prepare('UPDATE story_progress SET double_pending = 0, double_leg_facts = NULL WHERE user_id = ? AND track_key = ? AND stop_id = ?')
+      .bind(userId, track, stop.id).run();
+  }
+
+  let completed = false;
+  if (firstClear && stop.id === STORY_STOPS[STORY_STOPS.length - 1]!.id) {
+    await db.prepare(`INSERT INTO story_tracks (user_id, track_key, completed_at, updated_at) VALUES (?, ?, ?, ?)
+      ON CONFLICT (user_id, track_key) DO UPDATE SET completed_at = COALESCE(story_tracks.completed_at, excluded.completed_at), updated_at = excluded.updated_at`)
+      .bind(userId, track, now, now).run();
+    completed = true;
+  } else {
+    await db.prepare(`INSERT INTO story_tracks (user_id, track_key, completed_at, updated_at) VALUES (?, ?, NULL, ?)
+      ON CONFLICT (user_id, track_key) DO UPDATE SET updated_at = excluded.updated_at`)
+      .bind(userId, track, now).run();
+  }
+
+  if (rewards.xp > 0) { try { await awardXp(db, userId, rewards.xp, now); } catch { /* rewards never break progress */ } }
+  if (rewards.coins > 0) { try { await move(db, userId, rewards.coins, firstClear ? 'story_clear' : 'story_replay', `${track}:${stop.id}`, now); } catch { /* best-effort */ } }
+
+  // Secrets (scene pass): feats + match-event eggs, evaluated from the
+  // finished game's honestly-computed facts. Idempotent by primary key —
+  // doing the feat twice grants once. Never gates progress.
+  const newFinds: { kind: 'egg' | 'feat'; id: string; name: string }[] = [];
+  if (gameFacts) {
+    try {
+      const secret = STORY_SECRETS[stop.id];
+      // An unresolved first leg earns NOTHING yet — no feat, no egg: the
+      // run is not a clear, so nothing that hangs off a clear may fire.
+      // The deciding post evaluates the feat on the MERGED run facts
+      // (banked leg 1 + this leg), never on the last leg alone — and
+      // fails closed: a deciding post whose banked leg facts are missing
+      // grants no feat rather than judging half a run.
+      if (secret && doubleOutcome !== 'started') {
+        let featFacts: StoryGameFacts | null = gameFacts;
+        if (doubleOutcome === 'cleared') {
+          const leg = legFactsOf(before.doubleLegFacts);
+          featFacts = leg ? mergeLegFacts(leg, gameFacts) : null;
+        }
+        if (featFacts && storyFeatMet(stop.id, featFacts, won)) {
+          if (await recordFind(db, userId, track, 'feat', secret.unlockable.itemId, now)) {
+            await grantUnlock(db, userId, secret.unlockable.itemId, `story-feat:${stop.id}`, now);
+            newFinds.push({ kind: 'feat', id: secret.unlockable.itemId, name: secret.unlockable.name });
+          }
+        }
+      }
+      if (secret?.egg.trigger.type === 'matchEvent' && doubleOutcome !== 'started') {
+        const events: StoryMatchEvent[] = ['deeNilMade', 'setOnFirstHand', 'ourNilMade', 'oppSetTwice'];
+        for (const ev of events) {
+          if (storyEggEventMet(stop.id, ev, gameFacts) && await recordFind(db, userId, track, 'egg', secret.egg.id, now)) {
+            newFinds.push({ kind: 'egg', id: secret.egg.id, name: secret.egg.name });
+          }
+        }
+      }
+    } catch { /* secrets never break a recorded result */ }
+  }
+
+  // A recorded finish closes the open session: the table stops calling.
+  try { await closeStorySession(db, userId, track, now); } catch { /* sessions never break results */ }
+
+  const progress = await storyProgressPayload(db, userId, track);
+  return { status: 200, body: {
+    ok: true, replayed: false, stopId: stop.id, won, firstClear, rewards, newFinds, ...progress,
+    completed: completed || progress.completed,
+    /** the King's double, when this post moved it: 'started' | 'cleared' | 'lost' (null elsewhere) */
+    doubleOutcome,
+    doublePending: progress.stops.find((s) => s.stopId === stop.id)?.doublePending ?? false,
+  } };
+}
+
 
 export async function handleStoryHttp(req: Request, env: StoryEnv, url: URL, parts: string[], now: number): Promise<Response> {
   if (!env.DB) return json({ error: 'accounts are not configured' }, 503);
@@ -185,9 +401,19 @@ export async function handleStoryHttp(req: Request, env: StoryEnv, url: URL, par
     return json({ error: 'Story mode is locked while it is being finished.' }, 403);
   }
 
+  // Pair-track membership: a pair track belongs to exactly the two accounts
+  // its key names. Any story surface keyed by a pair track 403s everyone else.
+  const isPairMember = (track: string): boolean => {
+    const pair = storyPairUids(track);
+    return !!pair && pair.includes(me.id);
+  };
+  const trackAllowed = (track: string): boolean =>
+    storyTrackKeyValid(track) && (track === STORY_SOLO_TRACK || isPairMember(track));
+
   if (parts[1] === 'story' && parts[2] === 'progress' && req.method === 'GET') {
     const track = url.searchParams.get('track') ?? STORY_SOLO_TRACK;
     if (!storyTrackKeyValid(track)) return json({ error: 'bad track' }, 400);
+    if (track !== STORY_SOLO_TRACK && !isPairMember(track)) return json({ error: 'That run belongs to another pair.' }, 403);
     return json(await storyProgressPayload(db, me.id, track));
   }
 
@@ -197,7 +423,7 @@ export async function handleStoryHttp(req: Request, env: StoryEnv, url: URL, par
     let body: { track?: unknown; eggId?: unknown };
     try { body = (await req.json()) as typeof body; } catch { return json({ error: 'Send the find as JSON.' }, 400); }
     const track = typeof body.track === 'string' ? body.track : STORY_SOLO_TRACK;
-    if (!storyTrackKeyValid(track) || track !== STORY_SOLO_TRACK) return json({ error: 'bad track' }, 400);
+    if (!trackAllowed(track)) return json({ error: 'bad track' }, 400);
     const found = typeof body.eggId === 'string' ? storyEggById(body.eggId) : undefined;
     if (!found) return json({ error: 'unknown egg' }, 400);
     if (found.egg.trigger.type === 'matchEvent') return json({ error: 'that one is earned in the game, not reported' }, 400);
@@ -228,7 +454,7 @@ export async function handleStoryHttp(req: Request, env: StoryEnv, url: URL, par
     let body: { state?: unknown; stopId?: unknown; track?: unknown };
     try { body = (await req.json()) as typeof body; } catch { return json({ error: 'Send the session as JSON.' }, 400); }
     const track = typeof body.track === 'string' ? body.track : STORY_SOLO_TRACK;
-    if (!storyTrackKeyValid(track) || track !== STORY_SOLO_TRACK) return json({ error: 'bad track' }, 400);
+    if (!trackAllowed(track)) return json({ error: 'bad track' }, 400);
     if (body.state === 'closed') {
       await closeStorySession(db, me.id, track, now);
       return json({ ok: true, state: 'closed' });
@@ -263,33 +489,41 @@ export async function handleStoryHttp(req: Request, env: StoryEnv, url: URL, par
     let body: { track?: unknown; stopId?: unknown };
     try { body = (await req.json()) as typeof body; } catch { return json({ error: 'Send the reset as JSON.' }, 400); }
     const track = typeof body.track === 'string' ? body.track : STORY_SOLO_TRACK;
-    if (!storyTrackKeyValid(track) || track !== STORY_SOLO_TRACK) return json({ error: 'bad track' }, 400);
+    if (!trackAllowed(track)) return json({ error: 'bad track' }, 400);
     const stop = typeof body.stopId === 'string' ? storyStopById(body.stopId) : undefined;
     if (!stop) return json({ error: 'unknown stop' }, 400);
     const secret = STORY_SECRETS[stop.id];
+    // Pair tracks live twice (once per member — §3.6): a reset wipes BOTH
+    // copies, or the pair's two views of the run would diverge.
+    const targets = track === STORY_SOLO_TRACK ? [me.id] : storyPairUids(track)!;
     const wiped: Record<string, number> = {};
-    const rp = await db.prepare('DELETE FROM story_progress WHERE user_id = ? AND track_key = ? AND stop_id = ?')
-      .bind(me.id, track, stop.id).run();
-    wiped.progress = rp.meta?.changes ?? 0;
-    const rc = await db.prepare('DELETE FROM story_claims WHERE user_id = ? AND track_key = ? AND stop_id = ?')
-      .bind(me.id, track, stop.id).run();
-    wiped.claims = rc.meta?.changes ?? 0;
-    if (secret) {
-      const rf = await db.prepare("DELETE FROM story_finds WHERE user_id = ? AND track_key = ? AND ((kind = 'egg' AND find_id = ?) OR (kind = 'feat' AND find_id = ?))")
-        .bind(me.id, track, secret.egg.id, secret.unlockable.itemId).run();
-      wiped.finds = rf.meta?.changes ?? 0;
+    const sum = (k: string, n: number) => { wiped[k] = (wiped[k] ?? 0) + n; };
+    for (const uid of targets) {
+      const rp = await db.prepare('DELETE FROM story_progress WHERE user_id = ? AND track_key = ? AND stop_id = ?')
+        .bind(uid, track, stop.id).run();
+      sum('progress', rp.meta?.changes ?? 0);
+      const rc = await db.prepare('DELETE FROM story_claims WHERE user_id = ? AND track_key = ? AND stop_id = ?')
+        .bind(uid, track, stop.id).run();
+      sum('claims', rc.meta?.changes ?? 0);
+      if (secret) {
+        const rf = await db.prepare("DELETE FROM story_finds WHERE user_id = ? AND track_key = ? AND ((kind = 'egg' AND find_id = ?) OR (kind = 'feat' AND find_id = ?))")
+          .bind(uid, track, secret.egg.id, secret.unlockable.itemId).run();
+        sum('finds', rf.meta?.changes ?? 0);
+      }
+      const rs = await db.prepare('DELETE FROM story_sessions WHERE user_id = ? AND track_key = ? AND stop_id = ?')
+        .bind(uid, track, stop.id).run();
+      sum('sessions', rs.meta?.changes ?? 0);
     }
-    const rs = await db.prepare('DELETE FROM story_sessions WHERE user_id = ? AND track_key = ? AND stop_id = ?')
-      .bind(me.id, track, stop.id).run();
-    wiped.sessions = rs.meta?.changes ?? 0;
     // The track completion mark is the final stop's own fact: resetting the
     // King un-completes the track. Resetting any other stop leaves a mark
     // the King's clear genuinely earned standing.
     let completionCleared = false;
     if (stop.id === STORY_STOPS[STORY_STOPS.length - 1]!.id) {
-      const rt = await db.prepare('UPDATE story_tracks SET completed_at = NULL, updated_at = ? WHERE user_id = ? AND track_key = ? AND completed_at IS NOT NULL')
-        .bind(now, me.id, track).run();
-      completionCleared = (rt.meta?.changes ?? 0) > 0;
+      for (const uid of targets) {
+        const rt = await db.prepare('UPDATE story_tracks SET completed_at = NULL, updated_at = ? WHERE user_id = ? AND track_key = ? AND completed_at IS NOT NULL')
+          .bind(now, uid, track).run();
+        completionCleared = completionCleared || (rt.meta?.changes ?? 0) > 0;
+      }
     }
     const progress = await storyProgressPayload(db, me.id, track);
     return json({ ok: true, stopId: stop.id, wiped, completionCleared, ...progress });
@@ -300,154 +534,184 @@ export async function handleStoryHttp(req: Request, env: StoryEnv, url: URL, par
     try { body = (await req.json()) as typeof body; } catch { return json({ error: 'Send the result as JSON.' }, 400); }
     const track = typeof body.track === 'string' ? body.track : STORY_SOLO_TRACK;
     if (!storyTrackKeyValid(track)) return json({ error: 'bad track' }, 400);
-    if (track !== STORY_SOLO_TRACK) return json({ error: 'Co-op story tracks arrive in Phase 2.' }, 400);
     const stop = typeof body.stopId === 'string' ? storyStopById(body.stopId) : undefined;
     if (!stop) return json({ error: 'unknown stop' }, 400);
-    const won = body.won === true;
     const gameId = typeof body.gameId === 'string' ? body.gameId.slice(0, 80) : '';
     if (!gameId) return json({ error: 'gameId required' }, 400);
 
-    // Idempotency: one finished game = one recorded result, ever.
-    const prior = await db.prepare('SELECT stop_id AS stopId, won, first_clear AS firstClear, xp, coins FROM story_claims WHERE user_id = ? AND game_id = ?')
-      .bind(me.id, gameId).first<{ stopId: string; won: number; firstClear: number; xp: number; coins: number }>();
-    if (prior) {
-      if (prior.stopId !== stop.id) return json({ error: 'gameId already recorded for another stop' }, 409);
-      // The game this session was about already finished — no call-backs owed.
-      try { await closeStorySession(db, me.id, track, now); } catch { /* sessions never break results */ }
-      const progress = await storyProgressPayload(db, me.id, track);
-      return json({ ok: true, replayed: true, stopId: stop.id, won: !!prior.won, firstClear: !!prior.firstClear, rewards: { xp: prior.xp, coins: prior.coins }, doubleOutcome: null, doublePending: progress.stops.find((s) => s.stopId === stop.id)?.doublePending ?? false, ...progress });
+    if (track === STORY_SOLO_TRACK) {
+      // Solo: the game is played locally against bots, so the client's own
+      // report is the record (the shipped trust level) — unchanged.
+      const out = await recordStoryResult(db, me.id, track, stop, body.won === true, gameId, body.facts, now);
+      return json(out.body, out.status);
     }
 
-    const facts = await factsFor(db, me.id, track);
-    const cleared = new Set<number>();
-    for (const s of STORY_STOPS) if ((facts.get(s.id)?.clears ?? 0) > 0) cleared.add(s.n);
-    // Sequential unlock, server-side: a locked stop can never be recorded.
-    if (storyStopState(stop.n, cleared) === 'locked') return json({ error: 'That stop is locked — clear the route in order.' }, 409);
+    // Pair track (spec §3.3): the room witnessed this game — won and facts
+    // come FROM the witness row, never from the request body.
+    const pair = storyPairUids(track);
+    if (!pair || !pair.includes(me.id)) return json({ error: 'That run belongs to another pair.' }, 403);
+    const witness = await db.prepare(`SELECT track_key AS trackKey, stop_id AS stopId, uid_a AS uidA, uid_b AS uidB, won, facts_json AS factsJson
+      FROM story_room_results WHERE game_id = ?`).bind(gameId)
+      .first<{ trackKey: string; stopId: string; uidA: string; uidB: string; won: number; factsJson: string | null }>();
+    const named = witness ? [witness.uidA, witness.uidB] : [];
+    if (!witness || witness.trackKey !== track || witness.stopId !== stop.id
+      || !pair.every((u) => named.includes(u)) || !named.includes(me.id)) {
+      return json({ error: 'No witnessed result for that game.' }, 409);
+    }
+    let witnessedFacts: unknown = null;
+    if (witness.factsJson) { try { witnessedFacts = JSON.parse(witness.factsJson); } catch { witnessedFacts = null; } }
+    const out = await recordStoryResult(db, me.id, track, stop, !!witness.won, gameId, witnessedFacts, now);
+    if (out.status !== 200) return json(out.body, out.status);
+    // Equal credit: the partner's copy receives the identical mutation in
+    // this same request (§3.6). Their outcome is their own claim row — a
+    // later post of theirs returns it as a replay, never a second credit.
+    const other = pair.find((u) => u !== me.id)!;
+    await recordStoryResult(db, other, track, stop, !!witness.won, gameId, witnessedFacts, now).catch(() => null);
+    return json(out.body, out.status);
+  }
 
-    const before = facts.get(stop.id) ?? { attempts: 0, clears: 0, firstClearedAt: null, doublePending: false, doubleLegFacts: null };
-    const gameFacts = gameFactsOf(body.facts);
-    let firstClear = won && before.clears === 0;
-    // A finished loss pays the small consolation (STORY_LOSS_REWARD:
-    // 5 XP, no coins) — recorded on the claim like any reward, so a
-    // repost returns it without paying twice. The King's double below
-    // overrides rewards only on its win branches; a leg loss keeps it.
-    let rewards = won ? storyReward(stop.n, firstClear) : { ...STORY_LOSS_REWARD };
-    // THE KING'S DOUBLE OR NOTHING — first-clear gate only: once the crown
-    // is taken (clears > 0) every King game is an ordinary single match.
-    //   win, no mark  → 'started': attempt recorded, mark set, leg facts
-    //     banked; NO clear, NO rewards.
-    //   win, mark set → 'cleared': the clear posts for DOUBLE the
-    //     first-clear reward; the mark is consumed.
-    //   loss, mark set → 'lost': both legs void — no clear and no clear
-    //     rewards (the leg-1 win banked nothing to lose); the loss itself
-    //     posts the standard loss consolation like any story loss, the
-    //     mark clears, the stop stays current. Attempts still count:
-    //     attempts count finished matches, and both legs finished.
-    // A King clear post is honored ONLY while the mark stands server-side —
-    // there is no client path around the second win.
-    const inDouble = stop.doubleOrNothing === true && before.clears === 0;
-    let doubleOutcome: 'started' | 'cleared' | 'lost' | null = null;
-    if (inDouble) {
-      if (won && !before.doublePending) {
-        doubleOutcome = 'started';
-        firstClear = false;
-        rewards = { xp: 0, coins: 0 };
-      } else if (won && before.doublePending) {
-        doubleOutcome = 'cleared';
-        firstClear = true;
-        rewards = storyClearReward(stop);
-      } else if (!won && before.doublePending) {
-        doubleOutcome = 'lost';
+  // The caller's runs (partner step, §1.2): the solo summary + one row per
+  // pair track — partner handle, the pair's current stop, last played. Reads
+  // only the caller's own rows; a pair track appears here only because the
+  // caller is one of its two members by construction.
+  if (parts[1] === 'story' && parts[2] === 'tracks' && req.method === 'GET') {
+    const soloFacts = await factsFor(db, me.id, STORY_SOLO_TRACK);
+    const soloCleared = new Set<number>();
+    for (const s of STORY_STOPS) if ((soloFacts.get(s.id)?.clears ?? 0) > 0) soloCleared.add(s.n);
+    const soloTrackRow = await db.prepare('SELECT completed_at AS completedAt FROM story_tracks WHERE user_id = ? AND track_key = ?')
+      .bind(me.id, STORY_SOLO_TRACK).first<{ completedAt: number | null }>();
+    const pairRows = await db.prepare('SELECT track_key AS trackKey FROM story_tracks WHERE user_id = ? AND track_key != ?')
+      .bind(me.id, STORY_SOLO_TRACK).all<{ trackKey: string }>();
+    const pairs: { track: string; partnerUid: string; partnerHandle: string | null; currentStop: number | null; completed: boolean; lastPlayedAt: number | null }[] = [];
+    for (const row of pairRows.results) {
+      const uids = storyPairUids(row.trackKey);
+      if (!uids) continue;
+      const partnerUid = uids.find((u) => u !== me.id);
+      if (!partnerUid) continue;
+      const prow = await db.prepare('SELECT username FROM users WHERE id = ?').bind(partnerUid).first<{ username: string }>();
+      const facts = await factsFor(db, me.id, row.trackKey);
+      const cleared = new Set<number>();
+      let lastPlayedAt: number | null = null;
+      for (const s of STORY_STOPS) {
+        const f = facts.get(s.id);
+        if ((f?.clears ?? 0) > 0) cleared.add(s.n);
+      }
+      const lp = await db.prepare('SELECT MAX(last_played_at) AS lp FROM story_progress WHERE user_id = ? AND track_key = ?')
+        .bind(me.id, row.trackKey).first<{ lp: number | null }>();
+      lastPlayedAt = lp?.lp ?? null;
+      const trow = await db.prepare('SELECT completed_at AS completedAt FROM story_tracks WHERE user_id = ? AND track_key = ?')
+        .bind(me.id, row.trackKey).first<{ completedAt: number | null }>();
+      pairs.push({
+        track: row.trackKey, partnerUid, partnerHandle: prow?.username ?? null,
+        currentStop: storyCurrentStop(cleared), completed: trow?.completedAt != null, lastPlayedAt,
+      });
+    }
+    return json({
+      solo: { track: STORY_SOLO_TRACK, currentStop: storyCurrentStop(soloCleared), completed: soloTrackRow?.completedAt != null },
+      pairs,
+    });
+  }
+
+  // Awareness facts for a sit-down (spec §7.3): the caller names the room
+  // code; the room's own member list (from its Durable Object) names the
+  // pair — the caller must be one of them. What crosses the wire about the
+  // OTHER player: their handle, two booleans about THIS stop, and one
+  // count. No track keys, no other partners, no XP/coins, no breakdowns.
+  if (parts[1] === 'story' && parts[2] === 'pair-context' && req.method === 'POST') {
+    if (!env.TABLES) return json({ error: 'tables are not configured' }, 503);
+    let body: { code?: unknown; stopId?: unknown };
+    try { body = (await req.json()) as typeof body; } catch { return json({ error: 'Send the context request as JSON.' }, 400); }
+    const stop = typeof body.stopId === 'string' ? storyStopById(body.stopId) : undefined;
+    if (!stop) return json({ error: 'unknown stop' }, 400);
+    const code = typeof body.code === 'string' ? normalizeRoomCode(body.code) : '';
+    if (!isRoomCode(code)) return json({ error: 'bad code' }, 400);
+    const stub = env.TABLES.get(env.TABLES.idFromName(code));
+    const mr = await stub.fetch(`https://table/story-members?code=${code}`).catch(() => null);
+    if (!mr || !mr.ok) return json({ error: 'no such story table' }, 404);
+    const members = (await mr.json()) as { hostUid: string; partnerUid: string | null; track: string | null };
+    if (!members.partnerUid || !members.track) return json({ error: 'waiting for the pair to bind' }, 409);
+    if (me.id !== members.hostUid && me.id !== members.partnerUid) return json({ error: 'That run belongs to another pair.' }, 403);
+    const players: { handle: string; knowsStop: boolean; clearedStop: boolean; clearedStops: number }[] = [];
+    for (const uid of [members.hostUid, members.partnerUid]) {
+      const u = await db.prepare('SELECT username FROM users WHERE id = ?').bind(uid).first<{ username: string }>();
+      const h = await personalHistoryFor(db, uid, stop.id);
+      players.push({ handle: u?.username ?? 'Player', knowsStop: h.knowsStop, clearedStop: h.clearedStop, clearedStops: h.clearedStops });
+    }
+    const pf = (await factsFor(db, me.id, members.track)).get(stop.id);
+    return json({
+      players,
+      pair: { attempts: pf?.attempts ?? 0, clears: pf?.clears ?? 0, doublePending: pf?.doublePending ?? false },
+    });
+  }
+
+  // Open a story room (spec §2): the host picks the stop and, for an invite,
+  // the partner. Both accounts must pass the story lock (§3.4) and the stop
+  // must be unlocked on the PAIR track (§2.2) — never on anyone's solo run.
+  if (parts[1] === 'story' && parts[2] === 'room' && req.method === 'POST') {
+    if (!env.TABLES) return json({ error: 'tables are not configured' }, 503);
+    let body: { stopId?: unknown; partnerUid?: unknown };
+    try { body = (await req.json()) as typeof body; } catch { return json({ error: 'Send the room request as JSON.' }, 400); }
+    const stop = typeof body.stopId === 'string' ? storyStopById(body.stopId) : undefined;
+    if (!stop) return json({ error: 'unknown stop' }, 400);
+    let partnerUid: string | null = null;
+    let track: string | null = null;
+    if (typeof body.partnerUid === 'string' && body.partnerUid) {
+      if (body.partnerUid === me.id) return json({ error: 'You are your own solo partner — pick someone else for co-op.' }, 400);
+      const prow = await db.prepare('SELECT username FROM users WHERE id = ?').bind(body.partnerUid).first<{ username: string }>();
+      if (!prow) return json({ error: 'unknown partner' }, 400);
+      if (!hasStoryAccess(env, body.partnerUid, prow.username)) {
+        return json({ error: 'Story mode is locked for that player while it is being finished.' }, 403);
+      }
+      partnerUid = body.partnerUid;
+      track = storyPairTrackKey(me.id, partnerUid);
+      if (!(await stopUnlockedFor(db, me.id, track, stop))) {
+        return json({ error: 'That stop is locked for your run together — the pair advances together.' }, 409);
       }
     }
-    // A leg-1 win is a win the player earned and a clear they have NOT:
-    // the claims row records won=1 with first_clear=0 and zero rewards.
-    const countsAsClear = won && doubleOutcome !== 'started';
-
-    await db.prepare(`INSERT INTO story_progress (user_id, track_key, stop_id, attempts, clears, first_cleared_at, last_played_at)
-      VALUES (?, ?, ?, 1, ?, ?, ?)
-      ON CONFLICT (user_id, track_key, stop_id) DO UPDATE SET
-        attempts = story_progress.attempts + 1,
-        clears = story_progress.clears + excluded.clears,
-        first_cleared_at = COALESCE(story_progress.first_cleared_at, excluded.first_cleared_at),
-        last_played_at = excluded.last_played_at`)
-      .bind(me.id, track, stop.id, countsAsClear ? 1 : 0, firstClear ? now : null, now).run();
-    await db.prepare('INSERT INTO story_claims (user_id, game_id, track_key, stop_id, won, first_clear, xp, coins, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(me.id, gameId, track, stop.id, won ? 1 : 0, firstClear ? 1 : 0, rewards.xp, rewards.coins, now).run();
-
-    // Pending-mark transitions (the mark lives on the progress row the
-    // upsert just wrote, so a stop reset deleting that row wipes it too).
-    if (doubleOutcome === 'started') {
-      await db.prepare('UPDATE story_progress SET double_pending = 1, double_leg_facts = ? WHERE user_id = ? AND track_key = ? AND stop_id = ?')
-        .bind(gameFacts ? JSON.stringify(gameFacts) : null, me.id, track, stop.id).run();
-    } else if (doubleOutcome === 'cleared' || doubleOutcome === 'lost') {
-      await db.prepare('UPDATE story_progress SET double_pending = 0, double_leg_facts = NULL WHERE user_id = ? AND track_key = ? AND stop_id = ?')
-        .bind(me.id, track, stop.id).run();
+    for (let i = 0; i < 6; i++) {
+      const code = randomStoryCode();
+      const stub = env.TABLES.get(env.TABLES.idFromName(code));
+      const r = await stub.fetch(`https://table/story-setup?code=${code}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ stopId: stop.id, hostUid: me.id, partnerUid }),
+      }).catch(() => null);
+      if (r && r.status === 201) return json({ ok: true, code, track, stopId: stop.id }, 201);
+      if (r && r.status === 400) return json({ error: 'unknown stop' }, 400);
     }
+    return json({ error: 'could not allocate a table code' }, 503);
+  }
 
-    let completed = false;
-    if (firstClear && stop.id === STORY_STOPS[STORY_STOPS.length - 1]!.id) {
-      await db.prepare(`INSERT INTO story_tracks (user_id, track_key, completed_at, updated_at) VALUES (?, ?, ?, ?)
-        ON CONFLICT (user_id, track_key) DO UPDATE SET completed_at = COALESCE(story_tracks.completed_at, excluded.completed_at), updated_at = excluded.updated_at`)
-        .bind(me.id, track, now, now).run();
-      completed = true;
-    } else {
-      await db.prepare(`INSERT INTO story_tracks (user_id, track_key, completed_at, updated_at) VALUES (?, ?, NULL, ?)
-        ON CONFLICT (user_id, track_key) DO UPDATE SET updated_at = excluded.updated_at`)
-        .bind(me.id, track, now).run();
+  // Share-code join (spec §2.1): whoever opens the link and signs in becomes
+  // the partner — the account binds to the room, which fixes the pair track.
+  // The stop must be unlocked on the pair track (§2.2), checked before binding.
+  if (parts[1] === 'story' && parts[2] === 'room-join' && req.method === 'POST') {
+    if (!env.TABLES) return json({ error: 'tables are not configured' }, 503);
+    let body: { code?: unknown };
+    try { body = (await req.json()) as typeof body; } catch { return json({ error: 'Send the join as JSON.' }, 400); }
+    const code = typeof body.code === 'string' ? normalizeRoomCode(body.code) : '';
+    if (!isRoomCode(code)) return json({ error: 'bad code' }, 400);
+    const stub = env.TABLES.get(env.TABLES.idFromName(code));
+    const mr = await stub.fetch(`https://table/story-members?code=${code}`).catch(() => null);
+    if (!mr || !mr.ok) return json({ error: 'no such story table' }, 404);
+    const members = (await mr.json()) as { hostUid: string; partnerUid: string | null; stopId: string; track: string | null };
+    if (members.hostUid === me.id) return json({ ok: true, code, track: members.track, stopId: members.stopId });
+    if (members.partnerUid) {
+      if (members.partnerUid === me.id) return json({ ok: true, code, track: members.track, stopId: members.stopId });
+      return json({ error: 'This story table is spoken for.' }, 409);
     }
-
-    if (rewards.xp > 0) { try { await awardXp(db, me.id, rewards.xp, now); } catch { /* rewards never break progress */ } }
-    if (rewards.coins > 0) { try { await move(db, me.id, rewards.coins, firstClear ? 'story_clear' : 'story_replay', `${track}:${stop.id}`, now); } catch { /* best-effort */ } }
-
-    // Secrets (scene pass): feats + match-event eggs, evaluated from the
-    // finished game's honestly-computed facts. Idempotent by primary key —
-    // doing the feat twice grants once. Never gates progress.
-    const newFinds: { kind: 'egg' | 'feat'; id: string; name: string }[] = [];
-    if (gameFacts) {
-      try {
-        const secret = STORY_SECRETS[stop.id];
-        // An unresolved first leg earns NOTHING yet — no feat, no egg: the
-        // run is not a clear, so nothing that hangs off a clear may fire.
-        // The deciding post evaluates the feat on the MERGED run facts
-        // (banked leg 1 + this leg), never on the last leg alone — and
-        // fails closed: a deciding post whose banked leg facts are missing
-        // grants no feat rather than judging half a run.
-        if (secret && doubleOutcome !== 'started') {
-          let featFacts: StoryGameFacts | null = gameFacts;
-          if (doubleOutcome === 'cleared') {
-            const leg = legFactsOf(before.doubleLegFacts);
-            featFacts = leg ? mergeLegFacts(leg, gameFacts) : null;
-          }
-          if (featFacts && storyFeatMet(stop.id, featFacts, won)) {
-            if (await recordFind(db, me.id, track, 'feat', secret.unlockable.itemId, now)) {
-              await grantUnlock(db, me.id, secret.unlockable.itemId, `story-feat:${stop.id}`, now);
-              newFinds.push({ kind: 'feat', id: secret.unlockable.itemId, name: secret.unlockable.name });
-            }
-          }
-        }
-        if (secret?.egg.trigger.type === 'matchEvent' && doubleOutcome !== 'started') {
-          const events: StoryMatchEvent[] = ['deeNilMade', 'setOnFirstHand', 'ourNilMade', 'oppSetTwice'];
-          for (const ev of events) {
-            if (storyEggEventMet(stop.id, ev, gameFacts) && await recordFind(db, me.id, track, 'egg', secret.egg.id, now)) {
-              newFinds.push({ kind: 'egg', id: secret.egg.id, name: secret.egg.name });
-            }
-          }
-        }
-      } catch { /* secrets never break a recorded result */ }
+    const stop = storyStopById(members.stopId);
+    if (!stop) return json({ error: 'unknown stop' }, 400);
+    const track = storyPairTrackKey(members.hostUid, me.id);
+    if (!(await stopUnlockedFor(db, me.id, track, stop))) {
+      return json({ error: 'That stop is locked for your run together — the pair advances together.' }, 409);
     }
-
-    // A recorded finish closes the open session: the table stops calling.
-    try { await closeStorySession(db, me.id, track, now); } catch { /* sessions never break results */ }
-
-    const progress = await storyProgressPayload(db, me.id, track);
-    return json({
-      ok: true, replayed: false, stopId: stop.id, won, firstClear, rewards, newFinds, ...progress,
-      completed: completed || progress.completed,
-      /** the King's double, when this post moved it: 'started' | 'cleared' | 'lost' (null elsewhere) */
-      doubleOutcome,
-      doublePending: progress.stops.find((s) => s.stopId === stop.id)?.doublePending ?? false,
-    });
+    const br = await stub.fetch(`https://table/story-bind?code=${code}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ uid: me.id }),
+    }).catch(() => null);
+    if (!br || !br.ok) return json({ error: 'This story table is spoken for.' }, 409);
+    const bound = (await br.json()) as { track: string | null; stopId: string };
+    return json({ ok: true, code, track: bound.track, stopId: bound.stopId });
   }
 
   return json({ error: 'not found' }, 404);

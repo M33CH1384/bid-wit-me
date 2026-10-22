@@ -131,6 +131,9 @@ async function renderStoryHome() {
   root = createRoot(el);
   await act(async () => { root!.render(createElement(StoryHome) as ReactNode); });
   await settle();
+  /* co-op mode gate: these suites walk the solo run — pass the gate as a solo player would */
+  const gate = el!.querySelector('[data-testid="story-gate-solo"]');
+  if (gate) await click(gate);
   return el!;
 }
 

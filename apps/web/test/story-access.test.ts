@@ -70,6 +70,12 @@ async function render(node: ReactNode) {
   await act(async () => { root!.render(node); });
   await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
   await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+  /* co-op mode gate: pass it as a solo player would */
+  const gate = el.querySelector('[data-testid="story-gate-solo"]');
+  if (gate) {
+    await act(async () => { (gate as HTMLElement).click(); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+  }
   return el;
 }
 

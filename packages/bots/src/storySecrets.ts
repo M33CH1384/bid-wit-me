@@ -18,6 +18,7 @@
  * offline result post). `needsWin` feats only grant on a win.
  */
 import type { StoryStop } from './story';
+import type { GameState } from '@spades/rules';
 
 export type StoryEggTrigger =
   | { type: 'sceneTap' }
@@ -190,3 +191,40 @@ export const storyEggById = (eggId: string): { stopId: string; egg: StoryEgg } |
 };
 
 export const storySecretFor = (stop: StoryStop): StorySecret | undefined => STORY_SECRETS[stop.id];
+
+/**
+ * A finished (or conceded) game's honest fact sheet, computed from its own
+ * hand history. Seat-based: "our side" is sides[0] and the seat-2 counters
+ * (deeNilsMade / deeSteady) read seat 2 — Dee in solo; in a co-op story room
+ * seat 2 is the human partner and the room computes the identical sheet
+ * server-side, so feats and match-event eggs evaluate the same way in both
+ * modes (spec §3.3). Lives here, beside StoryGameFacts, so the server room
+ * and the solo client share ONE implementation — the web's storyScene
+ * re-exports it.
+ */
+export function storyFactsOf(st: GameState): StoryGameFacts {
+  const my = (rec: GameState['history'][number]) => rec.sides[0];
+  const their = (rec: GameState['history'][number]) => rec.sides[1];
+  let ourNilsMade = 0; let ourBlindNilsMade = 0; let deeNilsMade = 0;
+  let deeSteady = st.history.length > 0;
+  for (const rec of st.history) {
+    let deeNilMadeHere = false;
+    for (const n of my(rec)?.nils ?? []) {
+      if (n.made) { ourNilsMade++; if (n.kind === 'blindNil') ourBlindNilsMade++; if (n.seat === 2) { deeNilsMade++; deeNilMadeHere = true; } }
+    }
+    // Steady = her side brought the contract home AND Dee delivered her part:
+    // a trick taken — or a nil made (a made nil takes zero tricks by design).
+    const deeTook = (rec.tricksWon[2] ?? 0) >= 1;
+    if ((!deeTook && !deeNilMadeHere) || my(rec)?.contractMade === false) deeSteady = false;
+  }
+  const first = st.history[0];
+  return {
+    margin: (st.scores[0] ?? 0) - (st.scores[1] ?? 0),
+    handsPlayed: st.history.length,
+    setsAgainstUs: st.history.filter((r) => my(r)?.contractMade === false).length,
+    setsAgainstThem: st.history.filter((r) => their(r)?.contractMade === false).length,
+    ourNilsMade, ourBlindNilsMade, deeNilsMade, deeSteady,
+    setOnFirstHand: !!first && (my(first)?.contractMade === false || their(first)?.contractMade === false),
+    oppSetTwice: st.history.filter((r) => their(r)?.contractMade === false).length >= 2,
+  };
+}

@@ -9,7 +9,7 @@
  * and nothing here runs for non-story games.
  */
 import type { GameState } from '@spades/rules';
-import type { StoryGameFacts, StoryMilestone } from '@spades/bots';
+import type { StoryMilestone } from '@spades/bots';
 
 export interface StorySnap {
   phase: GameState['phase'];
@@ -111,30 +111,8 @@ export function storyEvents(prev: StorySnap, next: StorySnap): StoryEventId[] {
   return out;
 }
 
-/** The finished game's honest fact sheet (from its own hand history). */
-export function storyFactsOf(st: GameState): StoryGameFacts {
-  const my = (rec: GameState['history'][number]) => rec.sides[0];
-  const their = (rec: GameState['history'][number]) => rec.sides[1];
-  let ourNilsMade = 0; let ourBlindNilsMade = 0; let deeNilsMade = 0;
-  let deeSteady = st.history.length > 0;
-  for (const rec of st.history) {
-    let deeNilMadeHere = false;
-    for (const n of my(rec)?.nils ?? []) {
-      if (n.made) { ourNilsMade++; if (n.kind === 'blindNil') ourBlindNilsMade++; if (n.seat === 2) { deeNilsMade++; deeNilMadeHere = true; } }
-    }
-    // Steady = her side brought the contract home AND Dee delivered her part:
-    // a trick taken — or a nil made (a made nil takes zero tricks by design).
-    const deeTook = (rec.tricksWon[2] ?? 0) >= 1;
-    if ((!deeTook && !deeNilMadeHere) || my(rec)?.contractMade === false) deeSteady = false;
-  }
-  const first = st.history[0];
-  return {
-    margin: (st.scores[0] ?? 0) - (st.scores[1] ?? 0),
-    handsPlayed: st.history.length,
-    setsAgainstUs: st.history.filter((r) => my(r)?.contractMade === false).length,
-    setsAgainstThem: st.history.filter((r) => their(r)?.contractMade === false).length,
-    ourNilsMade, ourBlindNilsMade, deeNilsMade, deeSteady,
-    setOnFirstHand: !!first && (my(first)?.contractMade === false || their(first)?.contractMade === false),
-    oppSetTwice: st.history.filter((r) => their(r)?.contractMade === false).length >= 2,
-  };
-}
+/** The finished game's honest fact sheet (from its own hand history).
+ *  The implementation lives in @spades/bots (storySecrets) so the co-op
+ *  story room computes the identical sheet server-side; re-exported here
+ *  for this module's existing consumers. */
+export { storyFactsOf } from '@spades/bots';

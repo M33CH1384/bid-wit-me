@@ -96,6 +96,12 @@ async function renderThemed(theme: 'classic' | 'neon', node: ReactNode) {
   });
   // let the progress fetch settle into its error/signed-out state
   await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+  /* co-op mode gate: these suites walk the solo run — pass the gate as a solo player would */
+  const gate = el.querySelector('[data-testid="story-gate-solo"]');
+  if (gate) {
+    await act(async () => { gate.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+  }
   return el;
 }
 

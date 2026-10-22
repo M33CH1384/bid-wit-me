@@ -24,6 +24,12 @@ async function renderEl(el: React.ReactElement): Promise<HTMLElement> {
   roots.push(root);
   await act(async () => { root.render(el); });
   await act(async () => { await new Promise((r) => setTimeout(r, 30)); });
+  /* co-op mode gate: these suites walk the solo run — pass the gate as a solo player would */
+  const gate = c.querySelector('[data-testid="story-gate-solo"]');
+  if (gate) {
+    await act(async () => { gate.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 30)); });
+  }
   return c;
 }
 afterEach(async () => {

@@ -94,6 +94,10 @@ async function render(node: ReactNode) {
   root = createRoot(el);
   await act(async () => { root!.render(node); });
   await settle();
+  await settle();
+  /* co-op mode gate: pass it as a solo player would */
+  const gate = el.querySelector('[data-testid="story-gate-solo"]');
+  if (gate) { await act(async () => { (gate as HTMLElement).click(); }); await settle(); }
   return el;
 }
 function ClearedProbe() {

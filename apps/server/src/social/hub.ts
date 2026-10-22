@@ -214,15 +214,17 @@ export class Hub {
     const db = this.db;
     if (!db) return;
     const now = this.io.now();
-    const rows = await db.prepare(`SELECT id, from_uid AS fromUid, from_name AS fromName, code, mode, seat, expires_at AS expiresAt
+    const rows = await db.prepare(`SELECT id, from_uid AS fromUid, from_name AS fromName, code, mode, seat, kind, stop_id AS stopId, expires_at AS expiresAt
       FROM offline_invites WHERE to_uid = ? AND expires_at > ?`).bind(uid, now)
-      .all<{ id: string; fromUid: string; fromName: string; code: string; mode: string | null; seat: number | null; expiresAt: number }>();
+      .all<{ id: string; fromUid: string; fromName: string; code: string; mode: string | null; seat: number | null; kind: string | null; stopId: string | null; expiresAt: number }>();
     for (const r of rows.results) {
       this.io.send(cid, {
         t: 'invite',
         invite: {
           id: r.id, from: `u:${r.fromUid}`, fromName: r.fromName, code: r.code,
-          ...(r.mode ? { mode: r.mode } : {}), ...(r.seat != null ? { seat: r.seat } : {}), expiresAt: r.expiresAt,
+          ...(r.mode ? { mode: r.mode } : {}), ...(r.seat != null ? { seat: r.seat } : {}),
+          ...(r.kind === 'story-coop' ? { kind: 'story-coop' as const } : {}), ...(r.stopId ? { stopId: r.stopId } : {}),
+          expiresAt: r.expiresAt,
         },
       });
     }
@@ -774,7 +776,7 @@ export class Hub {
     if (!this.rate(`i:${att.pid}`, SOCIAL_LIMITS.invites)) return this.err(cid, 'SLOW_DOWN', 'Too many invites: wait a minute.');
     for (const old of [...this.invites.values()]) if (old.from === att.pid && old.to === msg.to) this.dropInvite(old, 'cancelled');
     const now = this.io.now();
-    const inv: Invite = { id: this.io.randomId().slice(0, 16), from: att.pid, fromName: att.name, to: msg.to, code: msg.code, ...(msg.mode ? { mode: msg.mode } : {}), ...(msg.seat !== undefined ? { seat: msg.seat } : {}), expiresAt: now + SOCIAL_LIMITS.inviteTtlMs };
+    const inv: Invite = { id: this.io.randomId().slice(0, 16), from: att.pid, fromName: att.name, to: msg.to, code: msg.code, ...(msg.mode ? { mode: msg.mode } : {}), ...(msg.seat !== undefined ? { seat: msg.seat } : {}), ...(msg.kind ? { kind: msg.kind } : {}), ...(msg.stopId ? { stopId: msg.stopId } : {}), expiresAt: now + SOCIAL_LIMITS.inviteTtlMs };
     this.invites.set(inv.id, inv);
     const { to: _to, ...wire } = inv;
     for (const c of this.connsOf(msg.to)) this.io.send(c, { t: 'invite', invite: wire });
@@ -810,9 +812,9 @@ export class Hub {
     const now = this.io.now();
     const id = this.io.randomId().slice(0, 16);
     const expiresAt = now + 10 * 60_000;
-    await db.prepare(`INSERT INTO offline_invites (id, from_uid, from_name, to_uid, code, mode, seat, created_at, expires_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(id, uid, att.name, toUid, msg.code, msg.mode ?? null, msg.seat ?? null, now, expiresAt).run();
+    await db.prepare(`INSERT INTO offline_invites (id, from_uid, from_name, to_uid, code, mode, seat, kind, stop_id, created_at, expires_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(id, uid, att.name, toUid, msg.code, msg.mode ?? null, msg.seat ?? null, msg.kind ?? null, msg.stopId ?? null, now, expiresAt).run();
     this.io.send(cid, { t: 'inviteSent', id, to: msg.to, expiresAt });
     this.io.onOfflineInvite?.(toUid, att.name, msg.code, msg.mode ?? null);
   }

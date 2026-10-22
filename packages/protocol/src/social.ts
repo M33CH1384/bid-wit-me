@@ -185,7 +185,10 @@ export interface FriendRef {
 }
 export interface FriendsState { friends: FriendRef[]; incoming: FriendRef[]; outgoing: FriendRef[]; blocked: FriendRef[] }
 export interface SocialSettings { appearOffline: boolean; friendsOnlyInvites: boolean; hideLocation: boolean }
-export interface InviteMsg { id: string; from: string; fromName: string; code: string; mode?: string; seat?: number; expiresAt: number }
+export interface InviteMsg { id: string; from: string; fromName: string; code: string; mode?: string; seat?: number; expiresAt: number;
+  /** Story co-op invite: the accept lands in the story lobby for `code`, not a regular table.
+   *  `stopId` names the stop the run starts at (display only — the room is the truth). */
+  kind?: 'story-coop'; stopId?: string }
 
 export type SocialClientMsg =
   | { t: 'status'; status: PresenceStatus }
@@ -199,7 +202,7 @@ export type SocialClientMsg =
   | { t: 'dm'; to: string; text: string; /** reply to this DM line id (same conversation); the hub resolves it to a snapshot, or posts without one */ replyTo?: number }
   | { t: 'dmHistory'; with: string; before?: number }
   | { t: 'read'; with: string }
-  | { t: 'invite'; to: string; code: string; mode?: string; seat?: number }
+  | { t: 'invite'; to: string; code: string; mode?: string; seat?: number; kind?: 'story-coop'; stopId?: string }
   | { t: 'inviteReply'; id: string; accept: boolean }
   | { t: 'friend'; op: 'request' | 'accept' | 'decline' | 'remove' | 'block' | 'unblock'; to: string }
   | { t: 'report'; kind: 'global' | 'dm' | 'user'; id?: number; user?: string; reason?: string }
@@ -317,7 +320,7 @@ export function parseSocialMsg(raw: unknown): SocialClientMsg | null {
     case 'read': return isId(m.with) ? { t: 'read', with: m.with } : null;
     case 'invite':
       if (!isId(m.to) || !isStr(m.code, 12) || !/^[A-Z0-9]+$/.test(m.code)) return null;
-      return { t: 'invite', to: m.to, code: m.code, ...(isStr(m.mode, 20) ? { mode: m.mode } : {}), ...(isInt(m.seat) && m.seat >= 0 && m.seat < 8 ? { seat: m.seat } : {}) };
+      return { t: 'invite', to: m.to, code: m.code, ...(isStr(m.mode, 20) ? { mode: m.mode } : {}), ...(isInt(m.seat) && m.seat >= 0 && m.seat < 8 ? { seat: m.seat } : {}), ...(m.kind === 'story-coop' ? { kind: 'story-coop' as const } : {}), ...(isStr(m.stopId, 40) ? { stopId: m.stopId } : {}) };
     case 'inviteReply': return isStr(m.id, 40) && typeof m.accept === 'boolean' ? { t: 'inviteReply', id: m.id, accept: m.accept } : null;
     case 'friend': return FRIEND_OPS.includes(m.op as never) && isId(m.to) ? { t: 'friend', op: m.op as (typeof FRIEND_OPS)[number], to: m.to } : null;
     case 'report':

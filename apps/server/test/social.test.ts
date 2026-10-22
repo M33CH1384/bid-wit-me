@@ -252,6 +252,19 @@ describe('invites', () => {
     for (let i = 0; i < 8; i++) await h.send('a', { t: 'invite', to: 'u:ub', code: 'XY7K' });
     expect(h.last('a', 'error')!.code).toBe('SLOW_DOWN');
   });
+
+  it('story-coop invites carry kind + stopId — live, and offline via the stored row', async () => {
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    await h.send('a', { t: 'invite', to: 'u:ub', code: 'STY42', kind: 'story-coop', stopId: 'cookout' });
+    expect(h.last('b', 'invite')!.invite).toMatchObject({ code: 'STY42', kind: 'story-coop', stopId: 'cookout' });
+    // offline: Cee is not connected — the invite is stored and delivered on open, kind intact
+    await h.send('a', { t: 'invite', to: 'u:uc', code: 'STY43', kind: 'story-coop', stopId: 'porch' });
+    const stored = await db.prepare('SELECT kind, stop_id AS stopId FROM offline_invites WHERE to_uid = ?').bind('uc').first<{ kind: string; stopId: string }>();
+    expect(stored).toMatchObject({ kind: 'story-coop', stopId: 'porch' });
+    await h.hub.open('c', { uid: 'uc', name: 'Cee' });
+    expect(h.last('c', 'invite')!.invite).toMatchObject({ code: 'STY43', kind: 'story-coop', stopId: 'porch' });
+  });
 });
 
 describe('global chat + DMs', () => {

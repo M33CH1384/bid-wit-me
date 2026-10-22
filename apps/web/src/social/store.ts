@@ -430,6 +430,9 @@ export const social = {
   dmReact(id: number, emoji: string) { send({ t: 'dmReact', id, emoji }); },
   dm(to: string, text: string, replyTo?: number) { if (!send({ t: 'dm', to, text, ...(replyTo ? { replyTo } : {}) })) toast("Not connected: try again in a moment.", 'error'); },
   invite(to: string, t: MyTable) { send({ t: 'invite', to, code: t.code, ...(t.mode ? { mode: t.mode } : {}), ...(t.seat !== undefined ? { seat: t.seat } : {}) }); },
+  /** Story co-op invite: the code names a story room (created via /api/story/room);
+   *  accepting lands the partner on /story?coop=<code>, which binds them server-side. */
+  inviteStory(to: string, code: string, stopId: string) { send({ t: 'invite', to, code, kind: 'story-coop', stopId }); },
   replyInvite(inv: InviteMsg, accept: boolean) {
     send({ t: 'inviteReply', id: inv.id, accept });
     set((s) => ({ invites: s.invites.filter((i) => i.id !== inv.id) }));

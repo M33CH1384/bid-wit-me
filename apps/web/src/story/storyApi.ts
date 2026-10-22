@@ -98,16 +98,96 @@ export async function fetchStoryProgress(track = 'solo'): Promise<ProgressFetch>
   }
 }
 
-/** Record a finished stop game. Returns null when the write failed (offline, signed out, server error). */
-export async function postStoryResult(stopId: string, won: boolean, gameId: string, facts?: import('@spades/bots').StoryGameFacts): Promise<StoryResult | null> {
+/** Record a finished stop game. Returns null when the write failed (offline, signed out, server error).
+ *  Co-op posts carry the pair track + the room's gameId: the server credits
+ *  from its witness row (the body's won/facts are ignored for pair tracks). */
+export async function postStoryResult(stopId: string, won: boolean, gameId: string, facts?: import('@spades/bots').StoryGameFacts, track = 'solo'): Promise<StoryResult | null> {
   try {
     const r = await fetch('/api/story/result', {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify({ track: 'solo', stopId, won, gameId, facts }),
+      body: JSON.stringify({ track, stopId, won, gameId, facts }),
     });
     if (!r.ok) return null;
     return (await r.json()) as StoryResult;
+  } catch {
+    return null;
+  }
+}
+
+/* ------------------------------------------------------------ co-op (Phase 1–2) */
+
+export interface StoryPairRun {
+  track: string;
+  partnerUid: string;
+  partnerHandle: string | null;
+  currentStop: number | null;
+  completed: boolean;
+  lastPlayedAt: number | null;
+}
+
+export interface StoryTracks {
+  solo: { track: string; currentStop: number | null; completed: boolean };
+  pairs: StoryPairRun[];
+}
+
+/** The caller's runs: solo summary + every pair track (partner step). */
+export async function fetchStoryTracks(): Promise<StoryTracks | null> {
+  try {
+    const r = await fetch('/api/story/tracks', { headers: { accept: 'application/json' } });
+    if (!r.ok) return null;
+    return (await r.json()) as StoryTracks;
+  } catch {
+    return null;
+  }
+}
+
+export type StoryRoomOpen =
+  | { ok: true; code: string; track: string | null; stopId: string }
+  | { ok: false; error: string };
+
+async function roomCall(path: string, body: unknown): Promise<StoryRoomOpen> {
+  try {
+    const r = await fetch(path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const j = (await r.json().catch(() => null)) as { code?: string; track?: string | null; stopId?: string; error?: string } | null;
+    if (!r.ok) return { ok: false, error: j?.error ?? 'Something went wrong — try again.' };
+    return { ok: true, code: j?.code ?? '', track: j?.track ?? null, stopId: j?.stopId ?? '' };
+  } catch {
+    return { ok: false, error: 'Offline — check your connection and try again.' };
+  }
+}
+
+/** Open a story room: with a partner account (invite flow) or bare (share-code flow). */
+export function createStoryRoom(stopId: string, partnerUid?: string): Promise<StoryRoomOpen> {
+  return roomCall('/api/story/room', { stopId, ...(partnerUid ? { partnerUid } : {}) });
+}
+
+/** Bind the caller as the partner of a share-code story room. */
+export function joinStoryRoom(code: string): Promise<StoryRoomOpen> {
+  return roomCall('/api/story/room-join', { code });
+}
+
+export interface PairContext {
+  players: { handle: string; knowsStop: boolean; clearedStop: boolean; clearedStops: number }[];
+  pair: { attempts: number; clears: number; doublePending: boolean };
+}
+
+/** The sanitized pair-context block for a room + stop (spec §7.3): handles,
+ *  per-player knows/cleared booleans + a cleared-stop count, and the pair's
+ *  own facts at the stop. Nothing else about either player crosses the wire. */
+export async function fetchPairContext(code: string, stopId: string): Promise<PairContext | null> {
+  try {
+    const r = await fetch('/api/story/pair-context', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({ code, stopId }),
+    });
+    if (!r.ok) return null;
+    return (await r.json()) as PairContext;
   } catch {
     return null;
   }
@@ -172,13 +252,15 @@ export async function postStoryResetStop(stopId: string): Promise<StoryProgress 
 
 /** Report a scene-side Easter egg find (sceneTap / deeTap / chain). The
  *  server validates the trigger type and any chain fact; match-event eggs
- *  are only ever granted from result facts. Returns the fresh progress. */
-export async function postStoryFound(eggId: string): Promise<StoryProgress | null> {
+ *  are only ever granted from result facts. Returns the fresh progress.
+ *  Finds are per-poster on every track: a co-op find lands on the finder's
+ *  own copy of the pair track, never the partner's. */
+export async function postStoryFound(eggId: string, track = 'solo'): Promise<StoryProgress | null> {
   try {
     const r = await fetch('/api/story/found', {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify({ track: 'solo', eggId }),
+      body: JSON.stringify({ track, eggId }),
     });
     if (!r.ok) return null;
     return (await r.json()) as StoryProgress;

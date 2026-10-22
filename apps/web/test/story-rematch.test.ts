@@ -177,6 +177,12 @@ async function renderStoryHome(search: string, progressStatus: number) {
   // let the dev + progress fetches settle and the directive effect fire
   await act(async () => { await new Promise((r) => setTimeout(r, 25)); });
   await act(async () => { await new Promise((r) => setTimeout(r, 25)); });
+  /* co-op mode gate: pass it as a solo player would */
+  const gate = el.querySelector('[data-testid="story-gate-solo"]');
+  if (gate) {
+    await act(async () => { (gate as HTMLElement).click(); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 25)); });
+  }
   return el;
 }
 
@@ -299,6 +305,12 @@ async function finishResumedPorch(won: boolean) {
   root = createRoot(el);
   await act(async () => { root!.render(createElement(StoryHome)); });
   await act(async () => { await new Promise((r) => setTimeout(r, 25)); });
+  /* co-op mode gate: pass it as a solo player would */
+  const gate = el.querySelector('[data-testid="story-gate-solo"]');
+  if (gate) {
+    await act(async () => { (gate as HTMLElement).click(); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 25)); });
+  }
   const resumeBtn = el.querySelector<HTMLButtonElement>('[data-testid="story-resume-porch"]');
   expect(resumeBtn, 'map offers Resume for the saved Porch match').toBeTruthy();
   await act(async () => { resumeBtn!.click(); });

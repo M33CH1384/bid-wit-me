@@ -21,6 +21,7 @@
 import type { PersonaId } from './personas';
 import type { BotSkill } from './bidding';
 import type { DensityClass } from './talk';
+import { makeRules, type RulesOverrides, type TableRules } from '@spades/rules';
 
 export type StoryTier =
   | 'gentle' | 'easyPlus' | 'mediumMinus' | 'medium' | 'mediumPlus'
@@ -252,4 +253,50 @@ export function storyTrackKeyValid(key: unknown): key is string {
   if (typeof key !== 'string') return false;
   const m = /^pair:([^:]{1,64}):([^:]{1,64})$/.exec(key);
   return !!m && m[1] !== m[2];
+}
+
+/** The two member uids of a pair track key, in key order (sorted), or null
+ *  for the solo track / an invalid key. The pair key is the membership proof:
+ *  a caller belongs to the track iff their uid is one of these two. */
+export function storyPairUids(track: unknown): [string, string] | null {
+  if (typeof track !== 'string' || !storyTrackKeyValid(track) || track === STORY_SOLO_TRACK) return null;
+  const m = /^pair:([^:]{1,64}):([^:]{1,64})$/.exec(track);
+  return m ? [m[1]!, m[2]!] : null;
+}
+
+/**
+ * The rules a stop plays under, built server-side from the stop alone
+ * (co-op story rooms): the same object the solo client builds with
+ * storyRulesFor(stop, DEFAULT_SETTINGS) — the canonical default settings
+ * map onto the mode preset exactly (see apps/web settingsToRules: every
+ * default it sets equals the preset's BASE), and the twist overrides are
+ * applied in the same order storyRulesFor applies them (target and
+ * blind-nil availability via the settings snapshot; nil value, blind-nil
+ * value and per-stop timers as scoped rules overrides). A test pins this
+ * function against the web's storyRulesFor for every stop, so the solo
+ * and co-op tables can never drift apart.
+ */
+export function storyRulesForStop(stop: StoryStop): TableRules {
+  const t = stop.twist;
+  const mode = t.mode ?? 'joker';
+  // bagsOn is explicit so the room's rules are byte-identical to the solo
+  // client's derivation (settingsToRules always writes it; the engine's
+  // bagsOnOf treats undefined as on, but the wire shape should match too).
+  const o: RulesOverrides = { bagsOn: true };
+  if (t.targetScore !== undefined) o.targetScore = t.targetScore;
+  if (t.blindNil) {
+    o.blindNil = {
+      allowed: true,
+      onlyWhenBehindBy: t.blindNil.availability === 'always' ? null : 100,
+      ...(t.blindNil.value !== undefined ? { value: t.blindNil.value } : {}),
+    };
+  }
+  if (t.nilValue !== undefined) o.nil = { value: t.nilValue };
+  if (t.bidTimerSec !== undefined || t.playTimerSec !== undefined) {
+    o.turnTimerSec = {
+      ...(t.bidTimerSec !== undefined ? { bid: t.bidTimerSec } : {}),
+      ...(t.playTimerSec !== undefined ? { play: t.playTimerSec } : {}),
+    };
+  }
+  return makeRules(mode, o);
 }
