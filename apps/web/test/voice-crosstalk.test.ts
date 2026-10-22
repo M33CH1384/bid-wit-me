@@ -13,8 +13,9 @@ import { VOICE_DEFER_MAX_WAIT_S, VOICE_DUCK_FACTOR, VOICE_MAX_OVERLAP_REMAINING_
  * ducked ≈ −6 dB and restored if it outlives the second, same speaker
  * still cuts, and the variation is a roll so it lands like people, not a
  * metronome. These tests pin the pure plan, the speakBot opt-in wiring,
- * and the engine's duck/restore application. Source selection is NOT in
- * scope here: the story fence (cast recording or text only) is untouched.
+ * and the engine's duck/restore application. Source selection keeps the
+ * story fence (cast recording or text only): in scope, catalog lines
+ * attempt the cast route only — see the fence pins below.
  */
 const act = (speaker: string | null, remainingS: number, elapsedS: number): ActiveVoiceInfo => ({ speaker, remainingS, elapsedS });
 
@@ -77,7 +78,7 @@ describe('the cross-talk plan', () => {
 const clip = vi.hoisted(() => ({ played: true, calls: [] as unknown[][] }));
 vi.mock('../src/voices/voices', () => ({
   playClip: (...args: unknown[]) => { clip.calls.push(args); return Promise.resolve(clip.played); },
-  rawLine: (_id?: string) => undefined,
+  rawLine: (id?: string) => (id === 'talk.template.id' ? 'a generic persona template line' : undefined),
   clipDurationMs: () => Promise.resolve(null),
 }));
 
@@ -137,13 +138,20 @@ describe('speakBot cross-talk opt-in', () => {
     expect(clip.calls[1]![7]).toEqual({ crossTalk: true, deferCut: true });
   });
 
-  it('the story fence is untouched: catalog talk for a cast member in scope never reaches the clip layer', async () => {
+  it('the fence, resolved: catalog talk for a cast member in scope attempts the cast route only — never the persona path, never the robot', async () => {
     const { speakBot, setStoryVoiceScope } = await load();
     setStoryVoiceScope(true);
-    speakBot('Uncle Ray', 'generic display text', 'comedian', 'talk.template.id', 4);
-    await flush();
-    expect(clip.calls.length).toBe(0);
-    expect(speech.speak).not.toHaveBeenCalled();
+    for (const played of [true, false]) { // a cast take of the template exists (hit) or not (miss)
+      clip.played = played; clip.calls = []; speech.speak.mockClear();
+      speakBot('Uncle Ray', 'generic display text', 'comedian', 'talk.template.id', 4);
+      await flush();
+      expect(clip.calls.length).toBe(1); // exactly one attempt, hit or miss
+      expect(clip.calls[0]![0]).toBe('storyteller'); // the CAST persona — not the caller's 'comedian' route
+      expect(clip.calls[0]![2]).toBe('a generic persona template line');
+      expect(clip.calls[0]![4]).toBe(4); // the bid-take key form still applies inside the cast sprite
+      expect(clip.calls[0]![7]).toEqual({ crossTalk: true }); // the cross-talk opt-in is preserved on this path
+      expect(speech.speak).not.toHaveBeenCalled(); // a miss is text only — the robot is never the consolation
+    }
     setStoryVoiceScope(false);
   });
 });
@@ -157,23 +165,34 @@ describe('speakBot cross-talk opt-in', () => {
  * card, during collection, before the recap). The audit: Table raises
  * story scope in an effect keyed ONLY on the stop id, so hand end and
  * phase changes cannot drop it mid-match; the banter lines fire inside
- * that scope and hit the same fence as all catalog talk; the recap and
+ * that scope and resolve through the same cast-only route as all catalog
+ * talk (a cast take of the template, or text); the recap and
  * versus surfaces contain no speech calls at all. These pins hold that
  * shut alongside story-voice-consistency.test.ts (which sweeps the
  * scene/session/talk shapes).
  */
 describe('the fence through the end-of-hand window', () => {
-  it('collection banter shape, all 23 cast, in scope: no clip resolution, no robot — cast-or-text only', async () => {
+  it('collection banter shape, all 23 cast, in scope: cast-route attempt or text — no persona, no catalog, no robot', async () => {
     const { speakBot, setStoryVoiceScope } = await load();
     setStoryVoiceScope(true);
-    for (const c of Object.values(STORY_CHARACTERS)) {
-      clip.calls = [];
-      // the exact Table collection-banter call shape (name, text, persona, line id, bid, seat, count)
-      speakBot(c.name, 'generic banter display text', STORY_VOICE_CAST[c.id]!.cardPersona, 'talk.template.id', 4, 'top', 4);
-      await flush();
-      expect(clip.calls.length, c.name).toBe(0);
-      expect(speech.speak, c.name).not.toHaveBeenCalled();
-      expect(speech.cancel, c.name).not.toHaveBeenCalled();
+    for (const played of [false, true]) { // no cast take of the template (miss) / the cast take exists (hit)
+      for (const c of Object.values(STORY_CHARACTERS)) {
+        const cast = STORY_VOICE_CAST[c.id]!;
+        clip.played = played; clip.calls = []; speech.speak.mockClear(); speech.cancel.mockClear();
+        // the exact Table collection-banter call shape (name, text, persona, line id, bid, seat, count)
+        speakBot(c.name, 'generic banter display text', cast.cardPersona, 'talk.template.id', 4, 'top', 4);
+        await flush();
+        // exactly one attempt, via the character's CAST persona (keyFor →
+        // the cast sprite), keyed by the line's template with its bid —
+        // and nothing else, in either mode: a miss stays text, a hit is
+        // that cast-route clip, the robot never fires.
+        expect(clip.calls.length, c.name).toBe(1);
+        expect(clip.calls[0]![0], c.name).toBe(cast.persona);
+        expect(clip.calls[0]![2], c.name).toBe('a generic persona template line');
+        expect(clip.calls[0]![4], c.name).toBe(4);
+        expect(speech.speak, c.name).not.toHaveBeenCalled();
+        expect(speech.cancel, c.name).not.toHaveBeenCalled();
+      }
     }
     setStoryVoiceScope(false);
   });

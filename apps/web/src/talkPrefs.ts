@@ -64,8 +64,9 @@ if (typeof speechSynthesis !== 'undefined') { loadVoices(); speechSynthesis.addE
  * story surface is live — set by ScriptPlayer (intro/outro scenes) and by
  * Table for story games, cleared when they unmount. While it is on, a story
  * character's lines resolve ONLY through their cast recording path
- * (storyVoiceKey sprites): catalog table talk is text-only for story seats,
- * and webSpeech refuses story characters outright (see the fence there).
+ * (storyVoiceKey sprites): catalog table talk attempts the cast sprite's
+ * take of the line's template and is text-only on a miss, and webSpeech
+ * refuses story characters outright (see the fence there).
  * Normal games never set it, so nothing outside story mode changes.
  */
 let storyScope = false;
@@ -91,15 +92,26 @@ export function speakBot(name: string, text: string, persona?: string, line?: st
   // with its own cast/card persona — the same guard keyFor applies in
   // voices.ts, so a same-named normal bot is never rerouted.
   const cast = storyCastForName(name);
-  // One-timbre rule (2026-10-21): in story mode, a catalog line id means
-  // generic persona talk — for a story character it renders TEXT ONLY (the
-  // chat/dialogue line is already on screen). The cast sprite also holds
-  // generic clips keyed by template, and serving one here would give the
-  // character a second, persona-baked voice next to their cast recordings —
-  // in the worst case a literally different singer (Ray's generic clips are
-  // am_fenrir; his cast lines are am_onyx). Text-keyed story lines (no id)
-  // fall through to the cast lookup below, unchanged.
-  if (cast && storyScope && line) return;
+  // One-timbre rule (2026-10-21; fence resolution completed 2026-10-22): in
+  // story scope, a story character's catalog line (generic table talk,
+  // end-of-hand banter — the chat/dialogue text is already on screen)
+  // resolves ONLY through the character's cast sprite: the line's raw
+  // template (the same rawLine mapping the persona path uses), attempted
+  // via the cast persona so keyFor lands on storyVoiceKey, with the
+  // bid-take key form when the line carries a bid. The commentary bake
+  // records those templates in the cast voices into exactly those keys.
+  // A miss is TEXT ONLY: this branch never falls through to the persona
+  // resolution below, the AI catalog, or webSpeech — serving a
+  // persona-baked take here would give the character a second voice next
+  // to their cast recordings, in the worst case a literally different
+  // singer (Ray's generic clips are am_fenrir; his cast lines are
+  // am_onyx). Text-keyed story lines (no id) fall through to the cast
+  // lookup below, unchanged.
+  if (cast && storyScope && line) {
+    const raw = rawLine(line);
+    if (raw !== undefined) void playClip(cast.persona, name, raw, prefs.voiceVolume * 0.9, bid, seat, playerCount, { crossTalk: storyScope });
+    return;
+  }
   const raw = rawLine(line) ?? (cast && (per === cast.persona || per === cast.cardPersona) ? text : undefined);
   // Cross-talk (owner, the Porch 2026-10-22: "if Pat says something,
   // Unc can start before she finishes"; widened to every table the same
@@ -140,7 +152,13 @@ export async function spokenClipDurationMs(name: string, text: string, persona?:
   if (sound.voiceMuted(name)) return null;
   const per = (persona && persona in PERSONAS ? persona : personaForName(name)) as PersonaId;
   const cast = storyCastForName(name);
-  if (cast && storyScope && line) return null;
+  if (cast && storyScope && line) {
+    // Mirror of speakBot's cast-route attempt (see there): the duration of
+    // the cast sprite's take of the line's template, or null when the cast
+    // route has none — the line is text-only, exactly as speakBot leaves it.
+    const raw = rawLine(line);
+    return raw === undefined ? null : clipDurationMs(cast.persona, name, raw, bid);
+  }
   const raw = rawLine(line) ?? (cast && (per === cast.persona || per === cast.cardPersona) ? text : undefined);
   return clipDurationMs(per, name, raw, bid);
 }
