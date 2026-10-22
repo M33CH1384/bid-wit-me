@@ -81,7 +81,7 @@ import { biddingNote, noticeTip, seatFacingName, seatInitial, trickTakenLine } f
 import { MinBidLine, bidChoices, minBidNote } from './minBid';
 import { type SavedGame, clearGame, saveGame } from './save';
 import { clearStoryGame, saveStoryGame } from './story/storySave';
-import { beatStartOffsets, scheduleStoryBeats } from './story/beatPacing';
+import { beatStartOffsets, scheduleStoryBeats, REPLY_TAIL_RIDE_MS } from './story/beatPacing';
 
 import { useViewport } from './viewport';
 import { tapPlaySlamIntensity } from './slam';
@@ -1470,9 +1470,13 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           // exchange's reply used to land a fixed 1700 ms after the
           // opener — mid-sentence for any opener over ~1.7 s of voice,
           // and the engine cut it. Paced by real durations now; a
-          // text-only line keeps its legacy 1700 ms slot.
+          // text-only line keeps its legacy 1700 ms slot. And a reply
+          // RIDES the opener's tail (tailRideMs — owner, 2026-10-22:
+          // the second voice took too long to answer): it starts in
+          // the opener's last second and the cross-talk policy decides
+          // the overlap, instead of waiting out the full clip + gap.
           void scheduleStoryBeats(lines, {
-            baseMs: baseDelay, gapMs: 1700,
+            baseMs: baseDelay, gapMs: 1700, tailRideMs: REPLY_TAIL_RIDE_MS,
             nameOf: (l) => STORY_CHARACTERS[l.speaker]?.name ?? l.speaker,
             audible: (l) => !sound.voiceMuted(STORY_CHARACTERS[l.speaker]?.name ?? l.speaker),
           }, (l, delayMs, ix) => {
@@ -1750,9 +1754,12 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     // old fixed stagger started the second chirp 1.8 s after the first,
     // while the persona clips run 2.5–5 s — at regular tables, where
     // banter is voiced, the second line cut the first mid-sentence
-    // every time (owner, 2026-10-22). A heard line now holds the floor
-    // for its full duration plus a 350 ms reply beat; a line with no
-    // clip (text-only, or a muted seat) keeps its exact legacy 1800 ms
+    // every time (owner, 2026-10-22). A heard line held the floor for
+    // its full duration plus a 350 ms reply beat after that fix; the
+    // reply now RIDES the heard line's last second instead (the tail
+    // ride — the second voice enters as the first lands, and the
+    // cross-talk policy arbitrates the overlap). A line with no clip
+    // (text-only, or a muted seat) keeps its exact legacy 1800 ms
     // slot, so silent tables — and story tables, whose banter is fenced
     // to text — pace exactly as they always did. The timers are this
     // effect's own: a paced line whose start falls past the 5.2 s
@@ -1764,7 +1771,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         if (sound.voiceMuted(l.name)) return null;
         try { return await spokenClipDurationMs(l.name, l.text, l.persona, l.line, l.bid); } catch { return null; }
       }));
-      const offsets = beatStartOffsets(durations, 350, 1800);
+      const offsets = beatStartOffsets(durations, 350, 1800, REPLY_TAIL_RIDE_MS);
       lines.forEach((l, ix) => {
         // The third line (density pass) never leaves the collection
         // window: if its paced start plus its clip would overrun the

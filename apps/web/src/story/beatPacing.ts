@@ -29,6 +29,21 @@ import { spokenClipDurationMs } from '../talkPrefs';
 export interface PacedBeatLine { speaker: string; line: string }
 
 /**
+ * Reply tail ride (owner, 2026-10-22, on the Cookout twins: "it's cool
+ * that the twins finish each others sentences but the second person
+ * takes too long to do it"). A REPLY sequence — rail exchanges, the
+ * end-of-hand banter — opts in with `tailRideMs`: a heard line's slot
+ * shrinks so the next beat starts this far BEFORE the line's voice
+ * ends, and the voice engine's cross-talk policy (planVoiceArrival in
+ * audio.ts: tail only, ≤ 3 s left, max two voices, the first ducked)
+ * decides whether it truly overlaps or lands as the line finishes.
+ * One second targets the policy's deep tail (≤ 1.2 s left), where an
+ * overlap is the natural read. Scripted scene beats do NOT ride: they
+ * keep the full duration + gap handoff this module was built for.
+ */
+export const REPLY_TAIL_RIDE_MS = 1000;
+
+/**
  * The start offset (ms after the caller's base) for each beat: beat 0
  * at 0, beat ix after every earlier beat's spoken duration plus one
  * gap each. `durations[ix]` is that beat's clip duration in ms, or
@@ -36,16 +51,22 @@ export interface PacedBeatLine { speaker: string; line: string }
  * occupies `gapMs`, its legacy stagger slot. A caller may split the
  * two slot sizes with `silentSlotMs` (the end-of-hand banter: a heard
  * line holds duration + a short reply beat, while a silent line keeps
- * the exact legacy slot its fixed stagger always gave it).
+ * the exact legacy slot its fixed stagger always gave it). With
+ * `tailRideMs` (reply sequences only), a heard line's slot is its
+ * duration MINUS the ride — the next beat starts that far before the
+ * voice ends — floored so a short line's reply still starts at least
+ * ~0.6 s in (or at its end, when the line is shorter than that): a
+ * reply never jumps the first line in the same breath.
  */
-export function beatStartOffsets(durations: readonly (number | null)[], gapMs: number, silentSlotMs: number = gapMs): number[] {
+export function beatStartOffsets(durations: readonly (number | null)[], gapMs: number, silentSlotMs: number = gapMs, tailRideMs = 0): number[] {
   const out: number[] = [];
   let t = 0;
   for (let ix = 0; ix < durations.length; ix++) {
     out.push(t);
     const d = durations[ix];
-    // a heard line occupies its real duration + one gap; a silent one its legacy slot
-    t += (d == null ? silentSlotMs : d + gapMs);
+    // a heard line occupies its real duration + one gap; a silent one its legacy slot;
+    // a reply sequence's heard line gives up the ride at its tail instead
+    t += (d == null ? silentSlotMs : tailRideMs > 0 ? Math.max(d - tailRideMs, Math.min(600, d)) : d + gapMs);
   }
   return out;
 }
@@ -61,7 +82,7 @@ export function beatStartOffsets(durations: readonly (number | null)[], gapMs: n
  */
 export async function scheduleStoryBeats<T extends PacedBeatLine>(
   beats: readonly T[],
-  opts: { baseMs: number; gapMs: number; nameOf: (beat: T) => string; audible: (beat: T) => boolean },
+  opts: { baseMs: number; gapMs: number; nameOf: (beat: T) => string; audible: (beat: T) => boolean; tailRideMs?: number },
   fire: (beat: T, delayMs: number, ix: number) => void,
 ): Promise<void> {
   const durations = await Promise.all(beats.map(async (bt) => {
@@ -69,6 +90,6 @@ export async function scheduleStoryBeats<T extends PacedBeatLine>(
     try { return await spokenClipDurationMs(opts.nameOf(bt), bt.line, undefined); }
     catch { return null; }
   }));
-  const offsets = beatStartOffsets(durations, opts.gapMs);
+  const offsets = beatStartOffsets(durations, opts.gapMs, opts.gapMs, opts.tailRideMs ?? 0);
   beats.forEach((bt, ix) => fire(bt, opts.baseMs + offsets[ix]!, ix));
 }

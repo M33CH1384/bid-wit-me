@@ -17,7 +17,7 @@ vi.mock('../src/talkPrefs', () => ({
 }));
 vi.mock('../src/decks', () => ({ getActiveDeck: () => 'classic' }));
 
-const { offlineTalk } = await import('../src/offlineTalk');
+const { offlineTalk, answerWaitMs } = await import('../src/offlineTalk');
 
 const nameFor = (p: string) => BOT_NAMES.find((n) => personaForName(n) === p)!;
 const names = ['You', nameFor('hype'), nameFor('mama'), nameFor('og')];
@@ -130,6 +130,52 @@ describe('answer chains', () => {
     expect(offlineTalk.emit(line(1, 'Opening line.'))).toBe(true);
     await vi.advanceTimersByTimeAsync(30_000);
     expect(got).toHaveLength(1);
+  });
+});
+
+describe('answer timing: the reply rides the tail (owner 2026-10-22 — the twins)', () => {
+  /**
+   * The answer used to fire at clip-end + 300–700 ms: the second
+   * voice arrived after a beat of dead air, every time. Finishing
+   * someone's sentence means entering AS their line lands — a line
+   * with a real tail is answered into its last second (the arrival
+   * goes through the voice engine's tail-only cross-talk policy);
+   * shorter and text-only lines are answered at their end + 0–120 ms.
+   */
+  it('answerWaitMs: a long line is answered into its last second, whatever the roll', () => {
+    expect(answerWaitMs(5000, 0)).toBe(4000);
+    expect(answerWaitMs(5000, 0.99)).toBe(4000); // the ride ignores the roll — no post-end gap at all
+    expect(answerWaitMs(2400, 0)).toBe(1400); // the shortest line with a tail worth riding
+    for (const d of [2400, 4000, 8000]) expect(answerWaitMs(d, 1)).toBeLessThan(d); // rides in BEFORE the end
+  });
+
+  it('answerWaitMs: short and text-only lines land at their end + 0–120 ms — the old +300–700 is gone', () => {
+    expect(answerWaitMs(2399, 0)).toBe(2399);
+    expect(answerWaitMs(2399, 1)).toBe(2399 + 120);
+    expect(answerWaitMs(1000, 1)).toBe(1120);
+    expect(answerWaitMs(null, 0)).toBe(1400); // text-only: the legacy slot stands in for the length
+    expect(answerWaitMs(null, 1)).toBe(1520);
+    for (const d of [800, 1500, 2399]) expect(answerWaitMs(d, 1)).toBeLessThan(d + 300); // below the old minimum gap
+  });
+
+  it('a delivered line’s answer fires on its tail, not after a silent beat', async () => {
+    offlineTalk.table = mkTable('tense'); // maxChain 1; Math.random is 0, so the roll passes
+    dur.value = 5000;
+    expect(offlineTalk.emit(line(1, 'Opening line.'))).toBe(true);
+    await vi.advanceTimersByTimeAsync(3999);
+    expect(got).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(got).toHaveLength(2); // fired at clip-end − 1000 ms, inside the tail
+  });
+
+  it('a short line’s answer lands at its end, without the old 300–700 ms of dead air', async () => {
+    offlineTalk.table = mkTable('tense');
+    dur.value = 2000; // below the ride minimum: end + 0 ms (Math.random is 0)
+    expect(offlineTalk.emit(line(1, 'Opening line.'))).toBe(true);
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(got).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(got).toHaveLength(2); // the old wait (2300–2700 ms) would still be silent here
   });
 });
 

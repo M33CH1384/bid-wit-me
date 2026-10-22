@@ -18,10 +18,13 @@
  *   that would REPLACE such a line (start before busyUntil − 3 s, the
  *   engine's tail-overlap window) is dropped, never queued — density comes
  *   from trigger frequency, not a backlog commenting on old tricks.
- * - ANSWER CHAINS: a delivered generic line may be answered a beat after
- *   its clip ends — an opponent's roast (65%) or the partner's trickPop
- *   co-sign (35%) — rolled per class (answerP, halving per link, maxChain).
- *   Answers are the lowest-priority speech in the room and the first dropped.
+ * - ANSWER CHAINS: a delivered generic line may be answered — an
+ *   opponent's roast (65%) or the partner's trickPop co-sign (35%) —
+ *   rolled per class (answerP, halving per link, maxChain). The answer
+ *   RIDES the first line's tail (answerWaitMs): finishing someone's
+ *   sentence means entering as their line lands, not a beat of dead
+ *   air after it (owner, 2026-10-22, on the twins). Answers are the
+ *   lowest-priority speech in the room and the first dropped.
  * - CONSULTATION RIGHT OF WAY: while a consultation line is playing (or
  *   within 600 ms after), generic bid-event talk is dropped, not queued.
  * - DECISION PROTECTION: no generic line with a clip over 2.5 s starts
@@ -48,6 +51,28 @@ interface EmitMeta {
   murmur?: boolean;
   /** the caller already applied the decision gate against the real clip duration */
   checked?: boolean;
+}
+
+/**
+ * How long after a line is delivered its chain answer fires (owner,
+ * 2026-10-22: the twins "finish each others sentences but the second
+ * person takes too long to do it" — the answer used to wait for the
+ * clip to end, then another 300–700 ms of dead air). A line with a
+ * real tail to ride (≥ 2.4 s — long enough that entering 1 s early
+ * still leaves the line genuinely under way, past even a slow voice
+ * start) is answered INTO its last second: the arrival goes through
+ * the voice engine's cross-talk policy (planVoiceArrival in audio.ts —
+ * tail only, max two voices, the first ducked; at regular tables a
+ * lost overlap roll defers to the line's end instead of cutting it).
+ * A shorter line, or a text-only one (no clip — the 1400 ms legacy
+ * slot stands in for its length), is answered 0–120 ms after its end.
+ * Pure and exported for the pins in density-talk.test.ts.
+ */
+export const ANSWER_TAIL_RIDE_MS = 1000;
+export const ANSWER_RIDE_MIN_MS = 2400;
+export function answerWaitMs(durationMs: number | null, roll: number): number {
+  if (durationMs !== null && durationMs >= ANSWER_RIDE_MIN_MS) return durationMs - ANSWER_TAIL_RIDE_MS;
+  return (durationMs ?? 1400) + roll * 120;
 }
 
 export const offlineTalk = {
@@ -162,8 +187,9 @@ export const offlineTalk = {
       let d: number | null = null;
       try { d = await spokenClipDurationMs(l.name, l.text, l.persona, l.line, l.bid); } catch { d = null; }
       if (!this.on()) return;
-      // the answer lands in the beat AFTER the first voice finishes
-      const wait = (d ?? 1400) + 300 + Math.random() * 400;
+      // the answer rides the first voice's tail (answerWaitMs) — it
+      // enters as the line lands, never a beat of silence after it
+      const wait = answerWaitMs(d, Math.random());
       const timer = window.setTimeout(() => { void this.fireAnswer(l, depth, meta); }, wait);
       this.answerTimers.push(timer);
     })();
