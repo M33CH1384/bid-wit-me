@@ -423,3 +423,75 @@ describe('last trick pill: the phone corner (owner 2026-10-21)', () => {
     }
   });
 });
+
+/**
+ * Short landscape: the right seat plate vs the controls rail (owner 2026-10-22,
+ * iPhone landscape screenshot): Pat's plate read "PAT ON N…" / "BID 4 T…" — its
+ * tail hid under the vertical controls rail. In the short layout Scene.tsx pins
+ * the side plates to fixed edge anchors (no obstacle pass like portrait has),
+ * and the right plate's right edge IS its anchor (styles.css:
+ * .seat-anchor.side-right > .plate { transform: translate(-100%, -50%) }). The
+ * old anchor — width - 8 - safeR — is also the rail's right edge (the rail sits
+ * at right: calc(8px + safe-area) with 42px buttons: a 50px footprint, see the
+ * .ctl-rail note in styles.css), so the plate's last 42px lay under the rail
+ * wherever the vertical bands met — and at the 0.43H (0.36H for 3P) anchor
+ * height they always meet. The anchor now stops 58px in: the rail's footprint
+ * plus the same 8px gap the last-trick chip already uses, so plate and rail
+ * sit side by side in the right edge strip, both fully visible/tappable.
+ * happy-dom paints nothing: these are layout pins from the CSS/anchor numbers,
+ * not pixel proof; the owner's iPhone is the pixel proof.
+ */
+describe('short landscape: the right plate clears the controls rail (owner 2026-10-22)', () => {
+  const scene = src('three/Scene.tsx');
+  const css = src('styles.css');
+
+  // iPhone landscape CSS sizes + side safe-area inset (notch), down to the
+  // smallest landscape phones. safeB is 0 in landscape (the home bar rides the
+  // long edge), which also puts the rail at its lowest — the worst case.
+  const SHORT_LAND: [number, number, number][] = [[932, 430, 44], [844, 390, 44], [780, 360, 44], [740, 360, 44], [667, 375, 0]];
+  const PLATE = { pw: 190, ph: 44 }; // pessimistic short plate: long name + DEALER + ON NOTICE
+  const RAIL_H = 220; // the rail stack (styles.css, on the last-trick fix: "a ~220px stack")
+
+  const railRect = (w: number, h: number, safeR: number): Rect => {
+    const b = h - (0.23 * h + 8); // bottom: calc(23vh + 8px + safeB), safeB = 0 here
+    return { l: w - 50 - safeR, r: w - 8 - safeR, t: b - RAIL_H, b };
+  };
+  const plateRect = (w: number, h: number, safeR: number, anchorInset: number, n: 3 | 4): Rect => {
+    const r = w - anchorInset - safeR; // the anchor is the plate's right edge (translate(-100%))
+    const cy = h * (n === 3 ? 0.36 : 0.43);
+    return { l: r - PLATE.pw, r, t: cy - PLATE.ph / 2, b: cy + PLATE.ph / 2 };
+  };
+
+  it("documents the bug: the old anchor (width - 8) parks the plate's tail under the rail", () => {
+    for (const [w, h, s] of SHORT_LAND) for (const n of [3, 4] as const) {
+      const rail = railRect(w, h, s);
+      const plate = plateRect(w, h, s, 8, n);
+      // the bands genuinely meet (otherwise the overlap claim would be vacuous)…
+      expect(plate.b).toBeGreaterThan(rail.t);
+      expect(plate.t).toBeLessThan(rail.b);
+      // …and the plate's right 42px — the rail's full button width — is under it
+      expect(overlapArea(plate, rail)).toBeGreaterThan(0);
+      expect(plate.r - rail.l).toBe(42);
+    }
+  });
+
+  it('the fixed anchor (width - 58) leaves the whole plate visible and the rail fully exposed', () => {
+    for (const [w, h, s] of SHORT_LAND) for (const n of [3, 4] as const) {
+      const rail = railRect(w, h, s);
+      const plate = plateRect(w, h, s, 58, n);
+      expect(overlapArea(plate, rail)).toBe(0);
+      expect(rail.l - plate.r).toBe(8); // exactly the last-trick chip's gap convention
+      expect(plate.l).toBeGreaterThanOrEqual(0); // still fully on screen at the smallest size
+      expect(plate.r).toBeLessThanOrEqual(w);
+    }
+  });
+
+  it("Scene.tsx carries the 58px anchor; the rail keeps its 42px button in its 50px footprint", () => {
+    expect(scene).toContain('size.width - 58 - safe.r');
+    expect(scene).not.toContain('size.width - 8 - safe.r');
+    const railRule = css.slice(css.indexOf('.ctl-rail,'), css.indexOf('.ctl-rail .av-bar'));
+    expect(railRule).toContain('right: calc(8px + env(safe-area-inset-right))');
+    const toggle = css.slice(css.indexOf('.ctl-rail .chat-toggle'), css.indexOf('.ctl-rail .chat-toggle') + 60);
+    expect(toggle).toContain('width: 42px');
+  });
+});

@@ -1099,8 +1099,13 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
         if (short && side) {
           const cls = side === 'top' ? 'side-topc' : `side-${side}`;
           // top seat: plate sits just left of the partner's cards (not in the corner), lowered a touch — Demetrius 2026-10-19
+          // the right plate's right edge IS its anchor (CSS translate(-100%, -50%)), and the
+          // controls rail owns the right-edge lane: 8px offset + 42px button = a 50px footprint
+          // (see the .ctl-rail note in styles.css). Anchoring at width - 8 put the plate's tail
+          // — the chips and the TOOK stat — under the rail (owner 2026-10-22, iPhone landscape);
+          // stop 58px in: the rail's footprint plus the same 8px gap the last-trick chip uses.
           const calcShort = (el: Object3D, camera: Camera, size: { width: number; height: number }) =>
-            side === 'top' ? [(size.width / 2) - 170, 68 + safe.t] : side === 'left' ? [8 + safe.l, size.height * (n === 3 ? 0.36 : 0.43)] : [size.width - 8 - safe.r, size.height * (n === 3 ? 0.36 : 0.43)];
+            side === 'top' ? [(size.width / 2) - 170, 68 + safe.t] : side === 'left' ? [8 + safe.l, size.height * (n === 3 ? 0.36 : 0.43)] : [size.width - 58 - safe.r, size.height * (n === 3 ? 0.36 : 0.43)];
           return (
             <Html key={seat} position={badgeSpot(p, n)} calculatePosition={calcShort} zIndexRange={[5, 0]} className={`seat-anchor ${cls}`} portal={portal}>
               {renderSeat(seat)}
