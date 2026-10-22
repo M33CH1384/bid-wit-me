@@ -37,7 +37,7 @@ import { SocialButton } from './social/Social';
 import { TableProfileModal } from './social/ProfileModal';
 import { closeTableProfile, openPlayerProfile, profileTargetOf, setTableProfileHost, useTableProfileTarget } from './profileTap';
 import { recordOfflineGame } from './offlineStats';
-import { setStoryVoiceScope, setTableIntensity, showLine, speakBot, talkPrefs as talkStore, useTalkPrefs } from './talkPrefs';
+import { setStoryVoiceScope, setTableIntensity, showLine, speakBot, spokenClipDurationMs, talkPrefs as talkStore, useTalkPrefs } from './talkPrefs';
 import { chatStickToBottom } from './chatScroll';
 import { setActiveDeck } from './decks';
 import { pickTeamName, toggleReaction } from '@spades/protocol';
@@ -81,7 +81,7 @@ import { biddingNote, noticeTip, seatFacingName, seatInitial, trickTakenLine } f
 import { MinBidLine, bidChoices, minBidNote } from './minBid';
 import { type SavedGame, clearGame, saveGame } from './save';
 import { clearStoryGame, saveStoryGame } from './story/storySave';
-import { scheduleStoryBeats } from './story/beatPacing';
+import { beatStartOffsets, scheduleStoryBeats } from './story/beatPacing';
 
 import { useViewport } from './viewport';
 import { tapPlaySlamIntensity } from './slam';
@@ -760,7 +760,13 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         (text) => localChat.push(l.name, text, false, 0, true),
         muted ? () => {} : () => speakBot(l.name, l.text, l.persona, l.line, l.bid, seatPos, n),
         undefined,
-        (b, gain) => sound.playVoice(b, gain, undefined, seatPos, n));
+        // An AI-catalog rendition is the same chatter line in another
+        // voice, so it takes the same no-cut arrival policy as the
+        // canned path (cross-talk over tails; defer or drop rather than
+        // replacing a playing line mid-sentence). A drop reports false
+        // and deliverBotLine falls back to the canned line, which then
+        // arrives under the same policy through speakBot.
+        (b, gain) => sound.playVoiceCrossTalk(b, gain, [0, b.duration], seatPos, n, l.name, { defer: true }));
       if (l.reveal) fx.emit('hustled', { text: `${l.name} was never new` });
     };
     return () => { offlineTalk.sink = null; offlineTalk.table = null; };
@@ -1681,12 +1687,33 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (!collecting || online) return;
     if (banterDone.current === st.handNo) return;
     banterDone.current = st.handNo;
-    offlineTalk.banter(st).forEach((l, ix) => {
-      window.setTimeout(() => {
-        push(l.name, showLine(l.text), false, 0, true);
-        if (!sound.voiceMuted(l.name)) speakBot(l.name, l.text, l.persona, l.line, l.bid, pos[l.seat], n);
-      }, 900 + ix * 1800);
-    });
+    const lines = offlineTalk.banter(st);
+    // Paced by each line's real clip duration (the beatPacing rule): the
+    // old fixed stagger started the second chirp 1.8 s after the first,
+    // while the persona clips run 2.5–5 s — at regular tables, where
+    // banter is voiced, the second line cut the first mid-sentence
+    // every time (owner, 2026-10-22). A heard line now holds the floor
+    // for its full duration plus a 350 ms reply beat; a line with no
+    // clip (text-only, or a muted seat) keeps its exact legacy 1800 ms
+    // slot, so silent tables — and story tables, whose banter is fenced
+    // to text — pace exactly as they always did. The timers are this
+    // effect's own: a paced line whose start falls past the 5.2 s
+    // collection window still fires, landing in the recap's opening
+    // beat (its chat goes to the corner sheet, the recap stays clear)
+    // rather than being cut or dropped.
+    void (async () => {
+      const durations = await Promise.all(lines.map(async (l) => {
+        if (sound.voiceMuted(l.name)) return null;
+        try { return await spokenClipDurationMs(l.name, l.text, l.persona, l.line, l.bid); } catch { return null; }
+      }));
+      const offsets = beatStartOffsets(durations, 350, 1800);
+      lines.forEach((l, ix) => {
+        window.setTimeout(() => {
+          push(l.name, showLine(l.text), false, 0, true);
+          if (!sound.voiceMuted(l.name)) speakBot(l.name, l.text, l.persona, l.line, l.bid, pos[l.seat], n);
+        }, 900 + offsets[ix]!);
+      });
+    })();
   }, [collecting]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!scoreOpened(st.phase, pause, !!runFx)) { setTalkOpen(false); return; }

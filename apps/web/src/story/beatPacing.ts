@@ -33,16 +33,19 @@ export interface PacedBeatLine { speaker: string; line: string }
  * at 0, beat ix after every earlier beat's spoken duration plus one
  * gap each. `durations[ix]` is that beat's clip duration in ms, or
  * null when the beat will not be heard (text-only) — a null beat
- * occupies `gapMs`, its legacy stagger slot.
+ * occupies `gapMs`, its legacy stagger slot. A caller may split the
+ * two slot sizes with `silentSlotMs` (the end-of-hand banter: a heard
+ * line holds duration + a short reply beat, while a silent line keeps
+ * the exact legacy slot its fixed stagger always gave it).
  */
-export function beatStartOffsets(durations: readonly (number | null)[], gapMs: number): number[] {
+export function beatStartOffsets(durations: readonly (number | null)[], gapMs: number, silentSlotMs: number = gapMs): number[] {
   const out: number[] = [];
   let t = 0;
   for (let ix = 0; ix < durations.length; ix++) {
     out.push(t);
     const d = durations[ix];
-    // a heard line occupies its real duration; a silent one its legacy slot — then one gap
-    t += (d == null ? gapMs : d + gapMs);
+    // a heard line occupies its real duration + one gap; a silent one its legacy slot
+    t += (d == null ? silentSlotMs : d + gapMs);
   }
   return out;
 }

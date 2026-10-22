@@ -101,11 +101,46 @@ describe('scheduleStoryBeats: durations drive the timers, text falls back', () =
 describe('Table wiring (source pins)', () => {
   const table = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
   it('the story channel and the rail exchanges both schedule through the paced helper', () => {
-    expect(table).toContain("import { scheduleStoryBeats } from './story/beatPacing';");
+    expect(table).toContain("import { beatStartOffsets, scheduleStoryBeats } from './story/beatPacing';");
     expect(table.split('scheduleStoryBeats(').length - 1).toBeGreaterThanOrEqual(2); // deliver() + rail
   });
   it('no fixed-stagger story scheduling remains', () => {
     expect(table).not.toContain('baseMs + ix * gapMs');
     expect(table).not.toContain('baseDelay + ix * 1700');
+  });
+});
+
+describe('collection banter pacing (regular tables — the same defect, owner 2026-10-22)', () => {
+  /**
+   * End-of-hand banter used a fixed 900 + ix · 1800 stagger: with
+   * persona clips at 2.5–5 s, the second chirp started 1.8 s after the
+   * first and cut it mid-sentence at every regular table (at story
+   * tables banter is fenced to text, so nothing was heard to cut).
+   * The banter scheduler now paces through beatStartOffsets with split
+   * slots: a heard line occupies its real duration + a 350 ms reply
+   * beat; a silent line keeps its exact legacy 1800 ms slot.
+   */
+  it('the banter arithmetic case: a 4 s clip is never started over by the next line', () => {
+    const offs = beatStartOffsets([4000, 2600], 350, 1800);
+    expect(offs).toEqual([0, 4000 + 350]);
+    // with the banter base of 900 ms: line 2 starts only after line 1's voice ended (+ the reply beat)
+    expect(900 + offs[1]!).toBeGreaterThanOrEqual(900 + 4000);
+    // the legacy stagger started it at 900 + 1800 — 2.2 s into the 4 s line
+    expect(1800).toBeLessThan(4000);
+  });
+
+  it('text-only banter keeps exactly the legacy stagger (story tables pace identically)', () => {
+    expect(beatStartOffsets([null, null], 350, 1800)).toEqual([0, 1800]);
+    expect(beatStartOffsets([null, 3000], 350, 1800)).toEqual([0, 1800]); // a silent first line holds its legacy slot
+    expect(beatStartOffsets([null, null, null], 350, 1800)).toEqual([0, 1800, 3600]);
+  });
+
+  it('Table wires the banter through the paced offsets and the fixed stagger is gone', () => {
+    const table = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
+    expect(table).toContain('beatStartOffsets(durations, 350, 1800)');
+    expect(table).toContain('spokenClipDurationMs(l.name, l.text, l.persona, l.line, l.bid)');
+    expect(table).not.toContain('900 + ix * 1800');
+    // the banter speak itself is the pinned catalog shape (the fence tests rely on it)
+    expect(table).toContain('speakBot(l.name, l.text, l.persona, l.line, l.bid, pos[l.seat], n)');
   });
 });

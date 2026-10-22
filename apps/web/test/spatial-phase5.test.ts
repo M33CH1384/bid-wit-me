@@ -29,7 +29,7 @@ describe('spatial phase 5: voices from seat, direction only', () => {
     const talk = readFileSync(new URL('../src/talkPrefs.ts', import.meta.url), 'utf8');
     expect(talk).toContain('if (sound.voiceMuted(name)) return;');
     const table = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
-    expect(table).toContain('sound.playVoice(b, gain, undefined, seatPos, n)');
+    expect(table).toContain('sound.playVoiceCrossTalk(b, gain, [0, b.duration], seatPos, n, l.name, { defer: true })');
     expect(table).toContain('voice-mute-');
   });
 });

@@ -209,21 +209,25 @@ export function nextShuffle(prev: number | null, bag: number[], count: number, r
   return { pick, bag: b };
 }
 
-/* ---------- story cross-talk: two voices may share a moment (story surfaces only) ---------- */
+/* ---------- cross-talk: two voices may share a moment ---------- */
 /**
  * The recorded-voice channel was strictly serial: a new line cut the line
  * that was playing, every time. At a story table, where scripted beats and
  * chime-ins arrive on fixed 1.4–1.7 s staggers, anyone whose clip ran long
  * was cut mid-sentence by the next arrival. The owner's ask (the Porch,
  * 2026-10-22): "if Pat says something, Unc can start before she finishes
- * and they both continue at times." So on story surfaces a conversational
- * line may START over the tail of a different speaker's line: at most two
- * voices at once, the first ducked ≈ −6 dB while overlapped and restored
- * if it outlives the second. This pure function is the whole policy — who
- * may overlap whom, and how often — so the bounds pin in tests without an
- * AudioContext; the engine's startVoice only applies the plan. Callers
- * that never opt in (every non-story surface) keep the serial behaviour
- * exactly.
+ * and they both continue at times." So a conversational line may START
+ * over the tail of a different speaker's line: at most two voices at
+ * once, the first ducked ≈ −6 dB while overlapped and restored if it
+ * outlives the second. This pure function is the whole policy — who may
+ * overlap whom, and how often — so the bounds pin in tests without an
+ * AudioContext; the engine's startVoice only applies the plan. It began
+ * as a story-surfaces opt-in; the owner widened it the same day ("I just
+ * want the dry moments gone and for the game to feel live like a party")
+ * — every conversational caller now opts in, and regular-table chatter
+ * additionally DEFERS rather than cutting when the plan says replace
+ * (see VOICE_DEFER_MAX_WAIT_S). Callers that never opt in (announcement-
+ * class playback through playVoice) keep the serial behaviour exactly.
  */
 /** A playing line may be talked over only while this much of it (seconds) is left — the overlap is its tail, never its body. */
 export const VOICE_MAX_OVERLAP_REMAINING_S = 3;
@@ -256,6 +260,25 @@ export function planVoiceArrival(active: ActiveVoiceInfo[], speaker: string, rol
     if (roll < p) return { kind: 'overlap', keepIndex: active.length - 1 };
   }
   return { kind: 'replace' };
+}
+
+/**
+ * Deferral bound for no-cut chatter (owner, bot games 2026-10-22: lines
+ * "cut off mid sentence" at regular tables too): when the plan says
+ * replace but the caller is deferrable chatter, the arrival WAITS for
+ * the room to clear instead of cutting the playing line — but only
+ * while the wait is short. A line that would land more than this many
+ * seconds after its moment is stale (the trick it answered is gone), so
+ * it drops: chat text already showed it, the voice just never starts.
+ * The bound matches the overlap tail window: a line with more than this
+ * left is all body, no tail — the same line the overlap policy refuses
+ * to talk over is the line a waiter refuses to outwait.
+ */
+export const VOICE_DEFER_MAX_WAIT_S = 3;
+
+/** How long (seconds) until the room is empty: the last live line's end. */
+export function voiceRoomWaitS(active: ActiveVoiceInfo[]): number {
+  return active.reduce((max, a) => Math.max(max, a.remainingS), 0);
 }
 
 /** One live recorded-voice line in the engine (see the voice section of SoundEngine). */
@@ -906,8 +929,17 @@ class Engine {
   private voiceChatOut: GainNode | null = null;
   voiceChatGeneration = 0;
   voiceChatProbe: { id: string; seat: string; muted: boolean; model: string }[] = [];
-  /** Live recorded-voice slots, oldest first: one in serial play, two while a story cross-talk overlap runs. */
+  /** Live recorded-voice slots, oldest first: one in serial play, two while a cross-talk overlap runs. */
   private voiceSlots: VoiceSlot[] = [];
+  /**
+   * One deferrable chatter line waiting for the room to clear rather
+   * than cutting in (regular tables): it starts the moment the last
+   * live slot ends, and only if that moment is still its deadline —
+   * past it, the line is stale and silently discarded. A second waiter
+   * is never queued: it drops on arrival instead. Cleared by stopVoice
+   * (leaving the table, voices off, an announcement taking the room).
+   */
+  private deferredVoice: { buf: AudioBuffer; gain: number; slice?: [number, number]; seat?: SeatPos; playerCount: number; speaker: string; deadline: number } | null = null;
   /** The (possibly still locked) context, for decoding voice clips ahead of time. */
   audioContext(): AudioContext | null { this.ensure(); return this.ctx; }
   /** Play one bot line (cuts off the previous one, like one person talking). Silent when sound is off / not unlocked yet. */
@@ -916,18 +948,23 @@ class Engine {
     return this.startVoice(buf, gain, slice, seat, playerCount, null);
   }
   /**
-   * Story cross-talk entry (the policy is planVoiceArrival, above): a
-   * conversational story line may start over the tail of a DIFFERENT
+   * Cross-talk entry (the policy is planVoiceArrival, above): a
+   * conversational line may start over the tail of a DIFFERENT
    * speaker's line — both continue briefly, the first ducked ≈ −6 dB —
-   * instead of cutting it. A same-speaker line, a third arrival, or a lost
-   * roll still cuts in alone, exactly as the serial channel behaves. Only
-   * story surfaces opt in (speakBot under story scope); every other
-   * caller keeps playVoice and is untouched.
+   * instead of cutting it. With `opts.defer` (regular-table chatter), an
+   * arrival the plan would replace instead WAITS for the room when the
+   * wait is short (VOICE_DEFER_MAX_WAIT_S), or drops when it isn't: a
+   * playing line is never cut mid-sentence by chatter. Without it
+   * (story surfaces — their beats are duration-paced upstream, so a
+   * replace there is the designed handoff), a same-speaker line, a
+   * third arrival, or a lost roll still cuts in alone, exactly as the
+   * serial channel behaves. Returns false only when the line neither
+   * started nor is waiting (dropped, or the channel is unavailable).
    */
-  playVoiceCrossTalk(buf: AudioBuffer, gain: number, slice: [number, number], seat: SeatPos | undefined, playerCount: number, speaker: string): boolean {
-    return this.startVoice(buf, gain, slice, seat, playerCount, { speaker, roll: Math.random() });
+  playVoiceCrossTalk(buf: AudioBuffer, gain: number, slice: [number, number], seat: SeatPos | undefined, playerCount: number, speaker: string, opts?: { defer?: boolean }): boolean {
+    return this.startVoice(buf, gain, slice, seat, playerCount, { speaker, roll: Math.random(), defer: opts?.defer });
   }
-  private startVoice(buf: AudioBuffer, gain: number, slice: [number, number] | undefined, seat: SeatPos | undefined, playerCount: number, cross: { speaker: string; roll: number } | null): boolean {
+  private startVoice(buf: AudioBuffer, gain: number, slice: [number, number] | undefined, seat: SeatPos | undefined, playerCount: number, cross: { speaker: string; roll: number; defer?: boolean } | null): boolean {
     if (!this.settings.on || !this.unlocked) return false;
     if (!this.atTable) { this.blocked.voice = (this.blocked.voice ?? 0) + 1; return false; }
     this.ensure();
@@ -938,13 +975,27 @@ class Engine {
     if (cross) {
       // Slots past their end are finished, onended or not — they don't hold the room.
       const live = this.voiceSlots.filter((s) => s.endsAt > now);
-      const plan = planVoiceArrival(live.map((s) => ({ speaker: s.speaker, remainingS: s.endsAt - now, elapsedS: now - s.startedAt })), cross.speaker, cross.roll);
+      const infos = live.map((s) => ({ speaker: s.speaker, remainingS: s.endsAt - now, elapsedS: now - s.startedAt }));
+      const plan = planVoiceArrival(infos, cross.speaker, cross.roll);
       if (plan.kind === 'overlap') {
         const keep = live[plan.keepIndex]!;
         for (const s of [...this.voiceSlots]) if (s !== keep) this.stopSlot(s);
         keep.gain.gain.setTargetAtTime(keep.baseGain * VOICE_DUCK_FACTOR, now, 0.06);
         ducked = keep;
-      } else if (plan.kind === 'replace') this.stopVoice();
+      } else if (plan.kind === 'replace') {
+        if (cross.defer && live.length) {
+          // No mid-sentence cuts for deferrable chatter: wait for the
+          // room instead of replacing the playing line — while the wait
+          // is short and nobody is already waiting. Past the bound (or
+          // behind another waiter) the line drops: its moment is gone
+          // either way, and cutting is the one outcome that's banned.
+          const waitS = voiceRoomWaitS(infos);
+          if (this.deferredVoice || waitS > VOICE_DEFER_MAX_WAIT_S) return false;
+          this.deferredVoice = { buf, gain, slice, seat, playerCount, speaker: cross.speaker, deadline: now + waitS };
+          return true;
+        }
+        this.stopVoice();
+      }
       // 'play': the room is empty — nothing to cut or duck.
     } else this.stopVoice();
     const src = c.createBufferSource(); src.buffer = buf;
@@ -978,6 +1029,9 @@ class Engine {
         d.duckedBy = null;
         try { d.gain.gain.setTargetAtTime(d.baseGain, c.currentTime, 0.09); } catch { /* context rebuilt */ }
       }
+      // The room is empty: a deferred chatter line (regular tables)
+      // takes it now, if its moment hasn't passed while it waited.
+      if (!this.voiceSlots.length) this.startDeferredVoice();
     };
     if (slice) src.start(0, slice[0], slice[1]); else src.start();
     this.voiceSlots.push(slot);
@@ -1078,7 +1132,21 @@ class Engine {
   /** Cut every live voice line (one in serial play, two while a cross-talk overlap runs). */
   stopVoice() {
     const slots = this.voiceSlots; this.voiceSlots = [];
+    this.deferredVoice = null; // a waiting line never survives the room being cleared
     for (const s of slots) this.fadeStopSlot(s);
+  }
+  /**
+   * Start the deferred chatter line now that the room has cleared —
+   * unless its deadline passed while the room stayed busy (an overlap
+   * outlived it), in which case the stale line is silently discarded.
+   */
+  private startDeferredVoice(): void {
+    const dv = this.deferredVoice;
+    if (!dv) return;
+    this.deferredVoice = null;
+    const c = this.ctx;
+    if (!c || c.currentTime > dv.deadline + 0.25) return;
+    this.startVoice(dv.buf, dv.gain, dv.slice, dv.seat, dv.playerCount, { speaker: dv.speaker, roll: Math.random(), defer: true });
   }
   /** Remove one slot from the room and fade it out (cross-talk keeps the rest). */
   private stopSlot(slot: VoiceSlot) {
