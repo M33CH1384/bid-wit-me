@@ -60,7 +60,7 @@ import { TableLoading } from './TableLoading';
 import { VersusIntro, markVersusShown, versusDismissReady, versusEligible, type VersusMember, type VersusModel } from './VersusIntro';
 import { buildPostgame, clearPinnedBefore, computeRewardsSettled, resolveBeforeSnapshot, type RewardsProfile } from './GameOverRewards';
 import { stashRewards } from './RewardsPage';
-import { flushLocalGames } from './localStats';
+import { flushLocalGames, localGameId } from './localStats';
 import { tableStillLoading, warmTableEffects } from './effects/warm';
 import { THIRD_SET_HEADLINE, endReasonText, onNoticeSides, shotChatLines } from './shotOut';
 import { type Sfx, sound } from './audio';
@@ -1558,7 +1558,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       // A story match carries its stop identity into the rewards stash, so
       // the rewards screen's Rematch returns to the same stop (story-scoped)
       // instead of a generic autostart game from the saved settings.
-      stashRewards({ data, online: !!online, homePath: online && where === 'leave' ? '/online' : '/', storyStopId: story?.scene?.stop.id });
+      stashRewards({ data, online: !!online, homePath: online && where === 'leave' ? '/online' : '/', storyStopId: story?.scene?.stop.id, gameId: online ? undefined : localGameId(matchSeed) });
       clearTableChatOpen(); // the match is over: the next table must not inherit this chat state
       location.href = '/rewards';
     })().finally(() => setRewardsBusy(false));

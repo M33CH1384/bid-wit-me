@@ -1,5 +1,6 @@
 import { fx } from './fx';
-import { noteLocalGame } from './localStats';
+import { localGameId, noteLocalGame } from './localStats';
+import { holdIfGuest } from './pendingClaim';
 import { HAPTIC, haptic } from './haptics';
 import { offlineTalk } from './offlineTalk';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -43,15 +44,19 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
     if (st.phase !== 'gameOver' || !st.result || reported.current) return;
     reported.current = true;
     const meta = reportRef.current?.current;
-    const id = `local-${seed}`.padEnd(8, '0').slice(0, 80);
-    noteLocalGame({
-      clientGameId: id,
+    const item = {
+      clientGameId: localGameId(seed),
       startedAt: startedAt.current,
       endedAt: Date.now(),
       names: meta?.names ?? [],
       teamNames: meta?.teamNames ?? null,
       game: st,
-    });
+    };
+    noteLocalGame(item);
+    // Signed OUT for the whole game: nothing was queued (there is no account
+    // to credit), so hold the result as a pending claim instead — sign-in
+    // later credits it through the same server path (retroactive claim).
+    holdIfGuest(item);
   }, [st.phase, seed, st]);
   const k = SPEEDS[speed];
   // while a fresh hand's shuffle + deal animation runs, nobody bids (bots wait, the bid panel stays hidden)

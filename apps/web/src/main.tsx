@@ -7,6 +7,7 @@ import { SoundDock } from './SoundControls';
 import { SocialRoot } from './social/Social';
 import { LeagueTickerRoot } from './social/LeagueTicker';
 import InkLayer from './ink/InkLayer';
+import { watchPendingClaim } from './pendingClaim';
 import ReactiveGlow from './neon/ReactiveGlow';
 import { initTheme } from './theme';
 import IdleGuard from './IdleGuard';
@@ -58,6 +59,10 @@ function Root() {
     window.addEventListener('popstate', on);
     return () => window.removeEventListener('popstate', on);
   }, []);
+  // A guest game's held rewards claim submits itself on the next signed-in
+  // app load, whichever screen the sign-in lands on (/rewards defers to its
+  // own in-place claim so the breakdown can render the delta).
+  useEffect(() => { watchPendingClaim(); }, []);
   return (
     <>
       <RouteGuard key={path}>

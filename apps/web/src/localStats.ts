@@ -17,6 +17,11 @@ export interface LocalGamePost {
   game: GameState;
 }
 
+/** The client game id for an offline match seed — one derivation shared by the game report, the rewards stash, and the pending-claim slot. */
+export function localGameId(seed: string): string {
+  return `local-${seed}`.padEnd(8, '0').slice(0, 80);
+}
+
 interface Store { getItem(k: string): string | null; setItem(k: string, v: string): void }
 
 export function shouldQueue(ready: boolean, userId: string | null | undefined): boolean {

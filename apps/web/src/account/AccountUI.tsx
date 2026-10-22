@@ -50,7 +50,9 @@ function SheetFrame({ title, label, onClose, children, testId }: { title: string
 const fmtDate = (t: number) => new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
 /* ------------------------------------------------------------------ sign in */
-function SignInSheet({ onClose, onPasskeyNew }: { onClose: () => void; onPasskeyNew: () => void }) {
+/** Exported for the /rewards claim panel: its sign-in returns to /rewards
+ *  (returnTo) so the held game's rewards can be claimed and shown in place. */
+export function SignInSheet({ onClose, onPasskeyNew, returnTo }: { onClose: () => void; onPasskeyNew: () => void; returnTo?: string }) {
   const a = useAccount();
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
@@ -66,7 +68,7 @@ function SignInSheet({ onClose, onPasskeyNew }: { onClose: () => void; onPasskey
       <p className="acct-lede">Keep your badges, series and name on every device. Optional: guests can play everything.</p>
       <div className="acct-providers">
         {providers.map((p) => (
-          <button key={p} type="button" className={`brand-btn brand-${p}`} data-testid={`signin-${p}`} disabled={busy} onClick={() => startOAuth(p, 'login')}>
+          <button key={p} type="button" className={`brand-btn brand-${p}`} data-testid={`signin-${p}`} disabled={busy} onClick={() => startOAuth(p, 'login', returnTo)}>
             <ProviderIcon p={p} /><span>Continue with {PROVIDER_LABEL[p]}</span>
           </button>
         ))}
@@ -94,7 +96,7 @@ function SignInSheet({ onClose, onPasskeyNew }: { onClose: () => void; onPasskey
 }
 
 /* ------------------------------------------------------------------ username */
-function UsernamePicker({ mode, initial, onDone, onClose }: { mode: 'first' | 'change' | 'passkey-new'; initial: string; onDone: () => void; onClose?: () => void }) {
+export function UsernamePicker({ mode, initial, onDone, onClose }: { mode: 'first' | 'change' | 'passkey-new'; initial: string; onDone: () => void; onClose?: () => void }) {
   const [u, setU] = useState(initial);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);

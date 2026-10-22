@@ -28,6 +28,12 @@ describe('rewards page payload', () => {
     expect(loaded!.data.signedIn).toBe(false);
   });
 
+  it('round-trips the claim game id with the payload', () => {
+    const data = computeRewards(null, null, { won: false, headline: 'BOOK WORMS WIN', sub: '5 hands played', kind: 'team' });
+    stashRewards({ data, online: false, homePath: '/', gameId: 'local-seed42' });
+    expect(loadRewards()!.gameId).toBe('local-seed42');
+  });
+
   it('returns null when nothing was stashed', () => {
     expect(loadRewards()).toBeNull();
   });

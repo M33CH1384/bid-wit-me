@@ -95,12 +95,12 @@ async function afterSignIn(u: AccountUser, fresh: boolean) {
 }
 function mergeDownBadges(list: { id: string; earnedAt: number; context?: Record<string, unknown> }[]) { mergeBadges(list); }
 
-/** Full-page redirect to the provider; it comes back to the start screen with ?signin=… */
-export function startOAuth(p: ProviderId, mode: 'login' | 'link' = 'login') {
+/** Full-page redirect to the provider; it comes back to `ret` (the start screen by default) with ?signin=… */
+export function startOAuth(p: ProviderId, mode: 'login' | 'link' = 'login', ret = '/') {
   // the test-only mock provider signs in whoever localStorage 'bwm.mockAs' names
   let as = '';
   if (p === 'mock') { try { as = `&as=${encodeURIComponent(localStorage.getItem('bwm.mockAs') ?? 'tester')}`; } catch { /* ignore */ } }
-  location.assign(`/api/auth/${p}/start?mode=${mode}&return=%2F${as}`);
+  location.assign(`/api/auth/${p}/start?mode=${mode}&return=${encodeURIComponent(ret)}${as}`);
 }
 
 export async function checkUsername(u: string): Promise<{ ok: boolean; reason?: string }> {

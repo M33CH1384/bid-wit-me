@@ -3293,3 +3293,7 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
 @keyframes took-chip { 0% { background: rgba(var(--gold-rgb),.55); color: #fff2cf; } 100% { background: rgba(var(--purple-rgb),.25); color: #e9dcff; } }
 .plate.took-pop .plate-body { animation: took-pop .3s ease-out; }
 .plate.took-pop .chip.took { animation: took-chip .3s ease-out; }
+
+/* Retroactive claim (2026-10-22): the held-rewards panel's sign-in button on
+   /rewards sits inside the row body, under its copy — spacing only. */
+.rw-claim-btn { margin-top: 10px; }

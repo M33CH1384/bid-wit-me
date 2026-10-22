@@ -460,18 +460,30 @@ function EloRow({ d, index, play, reduced }: { d: RewardsData; index: number; pl
   );
 }
 
+/** Guest-claim panel state (retroactive claim, 2026-10-22): the finished
+ *  match was played signed-out and its result is held as a pending claim. */
+export interface GuestClaimUi {
+  /** a claim for this match is being held on this device */
+  held: boolean;
+  /** the claim post is in flight */
+  claiming: boolean;
+  onSignIn: () => void;
+}
+
 export default function GameOverRewards({
   data,
   onHome,
   onRematch,
   onProfile,
   onOpenTables,
+  guestClaim,
 }: {
   data: RewardsData;
   onHome: () => void;
   onRematch: () => void;
   onProfile: () => void;
   onOpenTables: () => void;
+  guestClaim?: GuestClaimUi;
 }) {
   const { play, reduced } = useRewardsReveal();
   let row = 0;
@@ -531,7 +543,18 @@ export default function GameOverRewards({
           </div>
         )}
         <div className="rw-rows">
-          {data.signedIn ? rows : (
+          {data.signedIn ? rows : guestClaim && (guestClaim.held || guestClaim.claiming) ? (
+            <div className="rw-row" style={{ animationDelay: '160ms' }} aria-busy={guestClaim.claiming || undefined}>
+              <div className="rw-icon">👤</div>
+              <div className="rw-body">
+                <div className="rw-top"><span>{guestClaim.claiming ? 'Claiming your rewards…' : 'This game’s rewards are held for you'}</span></div>
+                <div className="rw-sub">{guestClaim.claiming ? 'Putting this match on your account.' : 'Sign in to claim the XP, coins, and achievements from this match.'}</div>
+                {!guestClaim.claiming && (
+                  <button type="button" className="primary rw-claim-btn" data-testid="rewards-claim-signin" onClick={guestClaim.onSignIn}>Sign in &amp; claim</button>
+                )}
+              </div>
+            </div>
+          ) : (
             <div className="rw-row" style={{ animationDelay: '160ms' }}>
               <div className="rw-icon">👤</div>
               <div className="rw-body">

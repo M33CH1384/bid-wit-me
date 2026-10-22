@@ -2,6 +2,8 @@
  * POST /api/stats/local — a finished offline game for a signed-in player.
  * The client sends the game (and a client id). Stats are rebuilt here; the body's own totals are not trusted.
  * Bots are kind:'bot', the row is unrated, source='offline'. The client id is the idempotency key.
+ * A body with claim: true is a retroactive claim of a guest game (see game_claims): same rebuild,
+ * same validation, same rates — plus the one-account-ever registry for that game id.
  */
 import type { GameState } from '@spades/rules';
 import { sideCount } from '@spades/rules';
@@ -70,11 +72,29 @@ export async function recordOfflineGame(db: D1Database, user: { id: string; user
   const startedAt = Number(b.startedAt);
   const endedAt = Number(b.endedAt);
   if (!durationOk(game.history.length, startedAt, endedAt, now)) return { status: 400, body: { error: 'implausible duration' } };
+  // Retroactive claim (owner, 2026-10-22): a game held from guest play posts
+  // with claim: true once the player signs in. Crediting is IDENTICAL to the
+  // live path below; the flag only adds the game_claims registry so one guest
+  // game can be claimed by exactly one account, ever (validation failures and
+  // rate limits return before any registry write, so a claim is never burned
+  // by a post that credited nothing).
+  const isClaim = b.claim === true;
+  if (isClaim) {
+    const prior = await db.prepare('SELECT user_id FROM game_claims WHERE client_game_id = ?').bind(b.clientGameId).first<{ user_id: string }>();
+    if (prior && prior.user_id !== user.id) return { status: 200, body: { ok: true, duplicate: true, claimed: true } };
+  }
   const key = `${user.id}:${b.clientGameId}`;
   const dup = await db.prepare('SELECT 1 AS ok FROM games WHERE client_game_id = ?').bind(key).first();
-  if (dup) return { status: 200, body: { ok: true, duplicate: true } };
+  if (dup) {
+    if (isClaim) await db.prepare('INSERT OR IGNORE INTO game_claims (client_game_id, user_id, claimed_at) VALUES (?, ?, ?)').bind(b.clientGameId, user.id, now).run();
+    return { status: 200, body: { ok: true, duplicate: true } };
+  }
   const recent = await db.prepare(`SELECT COUNT(*) AS n FROM games g JOIN game_players p ON p.game_id = g.id WHERE g.source = 'offline' AND p.user_id = ? AND g.ended_at > ?`).bind(user.id, now - HOUR).first<{ n: number }>();
   if ((recent?.n ?? 0) >= OFFLINE_PER_HOUR) return { status: 429, body: { error: 'Too many offline games. Try again in an hour.' } };
+  if (isClaim) {
+    const reg = await db.prepare('INSERT INTO game_claims (client_game_id, user_id, claimed_at) VALUES (?, ?, ?)').bind(b.clientGameId, user.id, now).run();
+    if ((reg.meta?.changes ?? 0) === 0) return { status: 200, body: { ok: true, duplicate: true, claimed: true } };
+  }
 
   const n = game.rules.playerCount;
   const namesIn = Array.isArray(b.names) ? b.names : [];
@@ -99,6 +119,8 @@ export async function recordOfflineGame(db: D1Database, user: { id: string; user
   try {
     rec = buildRecord({ id: `offline:${key}`, room: 'offline', game, seats, names: sideNames, teamNames, endedAt });
   } catch {
+    // a claim that credited nothing must not hold its registry row
+    if (isClaim) await db.prepare('DELETE FROM game_claims WHERE client_game_id = ? AND user_id = ?').bind(b.clientGameId, user.id).run();
     return { status: 400, body: { error: 'could not read that game' } };
   }
   await saveRecord(db, rec, false, { source: 'offline', partial: false, clientGameId: key });
