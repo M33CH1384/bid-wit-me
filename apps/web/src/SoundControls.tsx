@@ -169,8 +169,17 @@ export function SoundDock() {
     const mo = new MutationObserver(kick);
     mo.observe(document.body, { childList: true, subtree: true });
     window.addEventListener('resize', kick);
+    // The dock is position:fixed parked on VIEWPORT coordinates measured
+    // from its in-flow slot, so scrolling moves the slot without any
+    // mutation or resize — on the long document-flow screens (the story
+    // map/tape/outros above all) the parked speaker lagged up to a second
+    // behind the scroll, then snapped to wherever the slot had gone,
+    // including off the top edge. Track scroll itself (capture: scroll
+    // does not bubble out of nested scrollers, but it does pass through
+    // window in the capture phase), rAF-throttled by the same kick.
+    window.addEventListener('scroll', kick, { passive: true, capture: true });
     const iv = window.setInterval(kick, 1000); // late layout shifts (fonts, safe areas)
-    return () => { mo.disconnect(); window.removeEventListener('resize', kick); clearInterval(iv); if (raf) cancelAnimationFrame(raf); };
+    return () => { mo.disconnect(); window.removeEventListener('resize', kick); window.removeEventListener('scroll', kick, true); clearInterval(iv); if (raf) cancelAnimationFrame(raf); };
   }, []);
   useEffect(() => { if (!flash) return; const t = setTimeout(() => setFlash(null), 1300); return () => clearTimeout(t); }, [flash]);
   const muteAll = () => { const muted = sound.toggleMuteAll(); setFlash(muted ? 'MUTED' : 'SOUND ON'); };

@@ -621,3 +621,89 @@ html[data-theme="neon"] .story-you-face {
 .story-outro-actions .story-retry { margin-top: 0; width: auto; }
 .story-intro-actions { display: flex; margin-top: 12px; }
 .story-intro-actions .btn { flex: 1 1 0; }
+
+/* ---- responsive tiers (owner, 2026-10-21: "we need to look at every
+   screen and make sure its optimized for mobile as well as large
+   screens") ----
+   The shell capped every story screen at 560px, so on a desktop the
+   map, tape, scenes and outros huddled in a phone column between wide
+   dead margins — and the tape's two sides engaged their row at 520px
+   of shell, leaving each entry a ~130px value column that wrapped a
+   dozen words into cards hundreds of pixels tall (the owner's Rec
+   Center screenshot). The tiers below step the shell up with the
+   viewport (760 at tablet width, 1120 on desktop) and give the tape,
+   scene and map room to match, while the 520–719 band (landscape
+   phones, small tablets) stacks the tape's sides full-width instead of
+   pinching them. Base rules above are untouched; everything here is
+   appended scope, exactly like the recap's ≥1024 pass. Same rules in
+   both themes (parity law). */
+
+/* The dock slot is designed as a 46px square (see .story-topbar
+   .dock-slot above), but the global .dock-slot rule forces
+   width: 40px !important outside portrait — so on landscape screens
+   the slot measured 40 wide × 46 tall and the parked speaker squared
+   itself down to 40px while portrait got 46 (the small boxed control
+   in the owner's screenshot). One size on story, every orientation. */
+.story-topbar .dock-slot { width: 46px !important; }
+
+/* Badge chips are buttons — a tap opens the badge's story — and at
+   ~29px tall they were the one story control under the family's 44px
+   target floor. The owner-only reset tool joins the same floor. */
+.story-badge { min-height: 44px; }
+.story-reset .btn { min-height: 44px; }
+
+/* The lock card is a notice, not a banner: when the shell runs wide it
+   caps at the old shell width and centers instead of stretching. */
+.story-lock-card { max-width: 560px; margin-left: auto; margin-right: auto; }
+
+/* The pinch band: the base tape rule engages its two-side row at
+   520px of shell, but until the shell steps up at 720 there is not
+   room for two honest value columns — stack the sides full-width. */
+@media (min-width: 520px) and (max-width: 719.98px) {
+  .story-tape-cols { flex-direction: column; }
+}
+
+/* Tablet step: a wider shell, a slightly wider tape label column,
+   and card art that keeps its proportion across the wider card. */
+@media (min-width: 720px) {
+  .story-shell { max-width: 760px; }
+  .story-tape { --tape-label-w: 96px; }
+  .story-card-art { height: 120px; }
+}
+
+/* Desktop step: the shell runs 1120 wide; the tape's sides finally
+   hold full value columns (~340px at 1440), the scene's cast and
+   dialogue step up one size as a UNIFORM tier (every cast card still
+   shares one spec height, so speaker changes still move nothing),
+   the map art keeps proportion, and the action rows stop stretching
+   their buttons across a thousand pixels — they cap and align to
+   the staging edge instead. */
+@media (min-width: 1100px) {
+  .story-shell { max-width: 1120px; padding-left: 32px; padding-right: 32px; }
+  .story-title { font-size: 34px; }
+  .story-hero { padding: 20px 22px 16px; }
+  .story-card-art { height: 152px; }
+  .story-route .story-card-faces .story-face { width: 46px; height: 46px; font-size: 20px; }
+  .story-stop-name { font-size: 19px; }
+  .story-tape { --tape-label-w: 104px; }
+  .story-tape-inner { padding: 22px 24px; }
+  .story-tape-stakes { font-size: 17.5px; }
+  .story-tape-entry { padding: 16px 18px; }
+  .story-tape-row { font-size: 14.5px; }
+  .story-scene-inner { padding: 52px 26px 54px; }
+  .story-cast-one { height: 152px; }
+  .story-cast-one .story-face.cast-face { width: 48px; height: 48px; font-size: 22px; }
+  .story-cast-name { font-size: 14.5px; }
+  .story-cast-role { font-size: 11.5px; }
+  .story-script-card { padding: 22px; }
+  .story-script-card .story-face.speaker-face { width: 64px; height: 64px; font-size: 28px; }
+  .story-script-face { width: 64px; height: 64px; font-size: 28px; }
+  .story-script-line { font-size: 18.5px; }
+  .story-dee-card .story-face.dee-face { width: 64px; height: 64px; font-size: 28px; }
+  .story-stop-actions { justify-content: flex-end; }
+  .story-stop-actions .btn { flex: 0 1 260px; }
+  .story-outro-actions { justify-content: center; }
+  .story-outro-actions .btn { flex: 0 1 360px; }
+  .story-intro-actions { justify-content: center; }
+  .story-intro-actions .btn { flex: 0 1 420px; }
+}
