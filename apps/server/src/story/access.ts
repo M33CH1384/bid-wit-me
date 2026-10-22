@@ -16,8 +16,9 @@ export const STORY_OWNER_ONLY = true;
 
 /**
  * Named players admitted to story mode while the owner-only lock is on
- * (owner order, 2026-10-21: LovleyT714 — the owner's regular online
- * partnership partner — gets the full player experience early). This is
+ * (owner orders: LovleyT714, 2026-10-21 — the owner's regular online
+ * partnership partner; mommaniese, 2026-10-22 — both get the full player
+ * experience early). This is
  * a PLAYER allowlist only: it opens the player story endpoints
  * (progress / result / session / found) and nothing else — reset-stop
  * and every other dev surface stay isAdmin-only, and /api/profile/me
@@ -28,7 +29,7 @@ export const STORY_OWNER_ONLY = true;
  * username. To admit another player later, add their username here —
  * one line.
  */
-export const STORY_ACCESS_USERNAMES: readonly string[] = ['LovleyT714'];
+export const STORY_ACCESS_USERNAMES: readonly string[] = ['LovleyT714', 'mommaniese'];
 
 /** May this account use the player story endpoints right now? Admins
  *  always; everyone once the lock is off; the named allowlist while

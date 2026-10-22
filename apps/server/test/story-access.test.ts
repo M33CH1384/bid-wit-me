@@ -54,9 +54,9 @@ beforeEach(async () => {
 });
 
 describe('story access gate', () => {
-  it('the switch is on and the allowlist names exactly LovleyT714', () => {
+  it('the switch is on and the allowlist names exactly LovleyT714 and mommaniese', () => {
     expect(STORY_OWNER_ONLY).toBe(true);
-    expect(STORY_ACCESS_USERNAMES).toEqual(['LovleyT714']);
+    expect(STORY_ACCESS_USERNAMES).toEqual(['LovleyT714', 'mommaniese']);
   });
 
   it('hasStoryAccess: admin always, allowlist case-insensitive, everyone else no', () => {
@@ -66,6 +66,8 @@ describe('story access gate', () => {
     expect(hasStoryAccess(env, 'x', 'LovleyT714')).toBe(true); // the stored spelling
     expect(hasStoryAccess(env, 'x', 'lovleyt714')).toBe(true); // mirrors isAdmin's case handling
     expect(hasStoryAccess(env, 'x', 'LOVLEYT714')).toBe(true);
+    expect(hasStoryAccess(env, 'x', 'mommaniese')).toBe(true); // admitted 2026-10-22, stored spelling
+    expect(hasStoryAccess(env, 'x', 'Mommaniese')).toBe(true); // case-insensitive like the rest
     expect(hasStoryAccess(env, 'x', 'Lovley')).toBe(false); // a prefix is not the name
     expect(hasStoryAccess(env, 'x', 'LovleyT715')).toBe(false);
     expect(hasStoryAccess(env, 'x', 'B')).toBe(false);
