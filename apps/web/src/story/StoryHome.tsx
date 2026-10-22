@@ -15,6 +15,7 @@ import {
   kingDoubleBeats, storyClearReward, type StoryBeatFacts, type StoryGameFacts, type StoryStop,
 } from '@spades/bots';
 import Table from '../Table';
+import { usePresence } from '../social/Social';
 import SettingsSheetHost from '../SettingsSheetHost';
 import { NowPlaying } from '../SoundControls';
 import { CoinIcon } from '../RepBlock';
@@ -77,6 +78,11 @@ export default function StoryHome() {
   const [tips, setTips] = useState<TipsPref>(loadTips);
   const applySettings = (s: Settings) => { setSettings(s); saveSettings(s); };
   const [screen, setScreen] = useState<Screen>({ k: 'map' });
+  // Friend presence (owner, 2026-10-22): the story surfaces report Story
+  // mode · Solo — browsing the map/scenes is story time; the match itself
+  // reports as the (offline) story table. activityOf reads `story` first,
+  // so friends never see a story run as a plain bot game.
+  usePresence(screen.k === 'game' ? { kind: 'table', offline: true, story: 'solo' } : { kind: 'online', story: 'solo' });
   // The sit-down opens on the Tale of the Tape, then the scene plays.
   const [introStep, setIntroStep] = useState<'tape' | 'scene'>('tape');
   useEffect(() => { if (screen.k === 'intro') setIntroStep('tape'); }, [screen]);

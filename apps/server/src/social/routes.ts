@@ -4,9 +4,11 @@
  *   GET /api/social/profile/:username → public profile (member since, badges, team names, ratings, head-to-head)
  *   GET /api/social/me/stats          → signed-in personal stats, split by 2v2 and Cutthroat
  *   GET /api/social/recent            → players you recently played with (signed in)
+ *   POST /api/social/presence         → report your own friend-activity presence (signed in; body { activity })
  *   GET /api/social/reports           → admin only: latest reports
  * The websocket (/api/social/ws) is routed in index.ts to the Social Durable Object.
  */
+import { isFriendActivity } from '@spades/protocol';
 import { type AuthEnv, currentUser } from '../auth/routes';
 import { regionOf } from '../cred/region';
 import { leaderboard, myStats, personalStats, serverStats, type PersonalStats } from '../stats/boards';
@@ -166,6 +168,23 @@ export async function handleSocialHttp(req: Request & { cf?: unknown }, env: Soc
   if (a === 'recent' && req.method === 'GET') {
     if (!me) return json({ players: [] });
     return json({ players: await recentPlayers(db, me.id) });
+  }
+  if (a === 'presence' && req.method === 'POST') {
+    // Friend-activity presence (migration 0028): a signed-in user reports
+    // their OWN current activity — the session names the row, so there is
+    // no target to spoof (any id in the body is ignored). The hub stamps
+    // the same row from the socket's live status; this endpoint is the
+    // client's direct report (activity change + ~30 s heartbeat).
+    if (!me) return json({ error: 'Sign in to report presence.' }, 401);
+    const body = (await req.json().catch(() => null)) as { activity?: unknown } | null;
+    if (!isFriendActivity(body?.activity)) return json({ error: 'Unknown activity.' }, 400);
+    const store = new SocialStore(db);
+    // Appear-offline is a promise: a hidden user's activity never lands in
+    // the friends-visible store (the hub stamps under the same rule). The
+    // report still succeeds — appearing offline must look like nothing.
+    const settings = await store.settings(me.id);
+    if (!settings.appearOffline) await store.stampPresence(me.id, body.activity, now);
+    return json({ ok: true });
   }
   if (a === 'reports' && req.method === 'GET') {
     if (!me || !isAdmin(env, me.id, me.username)) return json({ error: 'not found' }, 404);

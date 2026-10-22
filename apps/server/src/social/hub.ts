@@ -7,8 +7,8 @@
  *  - friends / blocks / DMs / reports / settings: D1 (SocialStore)
  */
 import {
-  type ChatReactions, type FriendsState, type InviteMsg, type OpenTable, type PresenceEntry, type PresenceStatus, type ReplyRef, type SocialChatLine, type SocialClientMsg, type SocialServerMsg, type SocialSettings,
-  GUEST_SESSION, PRESENCE_TTL_MS, SOCIAL_LIMITS, blockLinks, cleanName, cleanText, dmReplySnapshot, maskProfanity, parseSocialMsg, replySnapshot, stalePresence, toggleReaction,
+  type ChatReactions, type FriendActivity, type FriendsState, type InviteMsg, type OpenTable, type PresenceEntry, type PresenceStatus, type ReplyRef, type SocialChatLine, type SocialClientMsg, type SocialServerMsg, type SocialSettings,
+  GUEST_SESSION, PRESENCE_TTL_MS, SOCIAL_LIMITS, activityOf, blockLinks, cleanName, cleanText, dmReplySnapshot, maskProfanity, parseSocialMsg, replySnapshot, stalePresence, toggleReaction,
 } from '@spades/protocol';
 import { isProfane } from '../auth/username';
 import { DEFAULT_SETTINGS, SocialStore, uidOf } from './store';
@@ -135,6 +135,8 @@ export class Hub {
   private windows = new Map<string, number[]>();
   /** uid → when last_seen was last written (the stamp throttle; see stampSeen) */
   private seenStamped = new Map<string, number>();
+  /** uid → the last persisted presence stamp {at, activity} (see stampPresence) */
+  private presenceStamped = new Map<string, { at: number; activity: FriendActivity }>();
   /** hidden from the players list until they send a status that is not an ended table */
   private quiet = new Set<string>();
   private endedCodes = new Set<string>();
@@ -190,6 +192,7 @@ export class Hub {
     this.io.save(cid, att);
     // connecting is being seen: stamp last_seen (throttled; never when hidden)
     if (who.uid) await this.stampSeen(who.uid, !!att.hidden, now);
+    if (who.uid) await this.stampPresence(who.uid, !!att.hidden, att.status, now);
     await this.prune(true);
     const me = this.entry(att.pid)!;
     const users = this.visibleList(att.pid);
@@ -318,6 +321,24 @@ export class Hub {
     if (now - (this.seenStamped.get(uid) ?? 0) < SEEN_STAMP_MS) return;
     this.seenStamped.set(uid, now);
     await this.store.stampLastSeen(uid, now);
+  }
+
+  /**
+   * Persist the friend-activity presence row (migration 0028), derived from
+   * the socket's live status via activityOf. Writes on an activity CHANGE
+   * right away; otherwise on the SEEN_STAMP_MS cadence, so a long game
+   * keeps the row fresh without a write per message. Appear-offline users
+   * are NEVER stamped — the same rule as last_seen (their activity must
+   * not leak to friends). The client also reports to POST
+   * /api/social/presence; both writers share the one upsert.
+   */
+  private async stampPresence(uid: string, hidden: boolean, status: PresenceStatus, now: number): Promise<void> {
+    if (!this.store || hidden) return;
+    const activity = activityOf(status);
+    const prev = this.presenceStamped.get(uid);
+    if (prev && prev.activity === activity && now - prev.at < SEEN_STAMP_MS) return;
+    this.presenceStamped.set(uid, { at: now, activity });
+    await this.store.stampPresence(uid, activity, now);
   }
 
   /* ---------------------------------------------------------------- presence */
@@ -540,6 +561,9 @@ export class Hub {
     const s = this.store;
     // ongoing traffic keeps last_seen current (throttled inside stampSeen)
     if (uid) await this.stampSeen(uid, !!att.hidden, now);
+    // …and the persisted activity row (a 'status' message re-stamps below,
+    // once its new status is in place, so changes land immediately)
+    if (uid) await this.stampPresence(uid, !!att.hidden, att.status, now);
     const needUser = (): boolean => {
       if (uid && s) return true;
       this.err(cid, 'SIGN_IN', 'Sign in to do that.');
@@ -556,6 +580,7 @@ export class Hub {
           this.io.save(cid, att);
           this.quiet.add(att.pid);
           this.broadcastGone(att.pid);
+          if (uid) await this.stampPresence(uid, !!att.hidden, att.status, now);
           return;
         }
         att.status = msg.status;
@@ -563,6 +588,7 @@ export class Hub {
         this.io.save(cid, att);
         if (!att.hidden) this.broadcastEntry(att.pid);
         else for (const c of this.connsOf(att.pid)) this.io.send(c, { t: 'pres', up: [this.entry(att.pid)!] });
+        if (uid) await this.stampPresence(uid, !!att.hidden, att.status, now);
         return;
       }
       case 'settings': {

@@ -25,6 +25,14 @@ export const SOCIAL_LIMITS = {
 export type PresenceKind = 'online' | 'lobby' | 'table' | 'tournament';
 export interface PresenceStatus {
   kind: PresenceKind;
+  /**
+   * Story mode surface (owner, 2026-10-22: friends see story play in the
+   * Friends tab). 'solo' = the story screens / solo story table (reported by
+   * StoryHome); 'coop' = inside a story room with a partner (reported by the
+   * online room client when the room snapshot carries a story descriptor).
+   * Read before `kind` by activityOf: a story table is not a bot game.
+   */
+  story?: 'solo' | 'coop';
   /** rules mode at the table / lobby (joker, aceDown, cutthroat) */
   mode?: string;
   /** seats a new player could take (empty in the lobby; bot seats mid-game) */
@@ -54,6 +62,47 @@ export const GUEST_SESSION = /^[A-Za-z0-9_-]{8,32}$/;
 /** Presence expires ~60 s after the last heartbeat: closed tabs / dead sockets fall off the Online list. */
 export const PRESENCE_TTL_MS = 60_000;
 export const PRESENCE_HEARTBEAT_MS = PRESENCE_TTL_MS;
+
+/**
+ * Friend activity presence (owner, 2026-10-22): what a friend is doing,
+ * coarse enough to say in the Friends tab. Reported by the client (its live
+ * PresenceStatus, derived by activityOf) and persisted server-side in the
+ * presence table (migration 0028) so the Friends tab can show it even when
+ * this client holds no live hub row for that friend.
+ */
+export type FriendActivity = 'online' | 'bot-game' | 'online-match' | 'story-solo' | 'story-coop';
+export const FRIEND_ACTIVITIES: readonly FriendActivity[] = ['online', 'bot-game', 'online-match', 'story-solo', 'story-coop'];
+export function isFriendActivity(v: unknown): v is FriendActivity {
+  return typeof v === 'string' && (FRIEND_ACTIVITIES as readonly string[]).includes(v);
+}
+
+/**
+ * A persisted presence row is believable this long after its last report.
+ * Reports land on activity change plus a ~30 s client heartbeat (and the
+ * hub's ~60 s stamp cadence), so 150 s is ~2.5 missed beats of margin: a
+ * live app never falls out, a closed one falls back to last-seen quickly.
+ */
+export const PRESENCE_STALE_MS = 150_000;
+
+/** The activity a live presence status amounts to (story reads before kind). */
+export function activityOf(s: PresenceStatus): FriendActivity {
+  if (s.story === 'coop') return 'story-coop';
+  if (s.story === 'solo') return 'story-solo';
+  if (s.kind === 'table') return s.offline ? 'bot-game' : 'online-match';
+  if (s.kind === 'tournament') return 'online-match';
+  return 'online'; // 'online' and 'lobby': menus/lobby in the owner's grouping
+}
+
+/** The Friends-tab line for an activity, in the game's language. */
+export function activityLabel(a: FriendActivity): string {
+  switch (a) {
+    case 'online': return 'Online';
+    case 'bot-game': return 'In a bot game';
+    case 'online-match': return 'In a match';
+    case 'story-solo': return 'Story mode · Solo';
+    case 'story-coop': return 'Story mode · Co-op';
+  }
+}
 
 export interface PresenceEntry {
   /** 'u:<userId>' for accounts, 'g:<random>' for guests */
@@ -124,6 +173,15 @@ export interface FriendRef {
    * after tracking began; the client renders nothing extra without it.
    */
   lastSeen?: number;
+  /**
+   * Persisted friend-activity presence (migration 0028): the activity the
+   * friend last reported and when (epoch ms). Same friends-only rule as
+   * lastSeen — confirmed-friend refs in the owner's own FriendsState only.
+   * The client renders it only while fresh (PRESENCE_STALE_MS); past that,
+   * lastSeen carries the row. Absent until the player next reports after
+   * tracking began; never fabricated.
+   */
+  presence?: { activity: FriendActivity; at: number };
 }
 export interface FriendsState { friends: FriendRef[]; incoming: FriendRef[]; outgoing: FriendRef[]; blocked: FriendRef[] }
 export interface SocialSettings { appearOffline: boolean; friendsOnlyInvites: boolean; hideLocation: boolean }
@@ -214,6 +272,7 @@ function parseStatus(v: unknown): PresenceStatus | null {
   const s = v as Record<string, unknown>;
   if (!KINDS.includes(s.kind as PresenceKind)) return null;
   const out: PresenceStatus = { kind: s.kind as PresenceKind };
+  if (s.story === 'solo' || s.story === 'coop') out.story = s.story;
   if (isStr(s.mode, 20)) out.mode = s.mode;
   if (isInt(s.open) && s.open >= 0 && s.open <= 8) out.open = s.open;
   if (isStr(s.code, 12) && /^[A-Z0-9]+$/.test(s.code)) out.code = s.code;
@@ -271,6 +330,9 @@ export function parseSocialMsg(raw: unknown): SocialClientMsg | null {
 
 /** Short status line for the players list ("At a table · Cutthroat · 1 seat open"). */
 export function statusLabel(s: PresenceStatus, modeName: (m: string) => string = (m) => m): string {
+  // Story surfaces name themselves in every list: a story table is story
+  // mode, not "At a table · vs bots" (owner, 2026-10-22).
+  if (s.story) return activityLabel(activityOf(s));
   switch (s.kind) {
     case 'online': return 'Online';
     case 'lobby': return `In lobby${s.open ? ` · ${s.open} seat${s.open > 1 ? 's' : ''} open` : ''}`;

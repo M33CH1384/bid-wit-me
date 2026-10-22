@@ -1,5 +1,5 @@
 /** D1 access for the Social hub (friends, blocks, DMs, reports, settings, ratings). Pure async functions over D1. */
-import type { ChatReactions, DmLine, FriendRef, FriendsState, ReplyRef, SocialSettings } from '@spades/protocol';
+import { isFriendActivity, type ChatReactions, type DmLine, type FriendActivity, type FriendRef, type FriendsState, type ReplyRef, type SocialSettings } from '@spades/protocol';
 
 export const pair = (x: string, y: string): [string, string] => (x < y ? [x, y] : [y, x]);
 const uidOf = (pid: string) => (pid.startsWith('u:') ? pid.slice(2) : null);
@@ -51,18 +51,38 @@ export class SocialStore {
       .bind(uid, at).run();
   }
 
+  /**
+   * Record a friend-activity report (migration 0028). Written by the hub
+   * (derived from the socket's live status) and by POST /api/social/presence
+   * (the client's own report) — one upsert: the latest report wins (>= so a
+   * same-millisecond activity change is never swallowed; a genuinely older
+   * report still can't overwrite a newer one). Callers validate the value.
+   */
+  async stampPresence(uid: string, activity: FriendActivity, at: number): Promise<void> {
+    await this.db.prepare(`INSERT INTO presence (user_id, activity, at) VALUES (?, ?, ?)
+      ON CONFLICT (user_id) DO UPDATE SET activity = excluded.activity, at = excluded.at WHERE excluded.at >= presence.at`)
+      .bind(uid, activity, at).run();
+  }
+
   async friendsState(uid: string): Promise<FriendsState> {
-    const rows = (await this.db.prepare(`SELECT f.a, f.b, f.status, f.requested_by, f.created_at, u.id AS oid, u.username, ls.at AS last_seen FROM friends f
-      JOIN users u ON u.id = CASE WHEN f.a = ? THEN f.b ELSE f.a END LEFT JOIN last_seen ls ON ls.user_id = u.id WHERE f.a = ? OR f.b = ?`).bind(uid, uid, uid)
-      .all<{ status: string; requested_by: string; created_at: number; oid: string; username: string | null; last_seen: number | null }>()).results;
+    const rows = (await this.db.prepare(`SELECT f.a, f.b, f.status, f.requested_by, f.created_at, u.id AS oid, u.username, ls.at AS last_seen, p.activity AS p_activity, p.at AS p_at FROM friends f
+      JOIN users u ON u.id = CASE WHEN f.a = ? THEN f.b ELSE f.a END LEFT JOIN last_seen ls ON ls.user_id = u.id LEFT JOIN presence p ON p.user_id = u.id WHERE f.a = ? OR f.b = ?`).bind(uid, uid, uid)
+      .all<{ status: string; requested_by: string; created_at: number; oid: string; username: string | null; last_seen: number | null; p_activity: string | null; p_at: number | null }>()).results;
     const blocked = (await this.db.prepare('SELECT u.id, u.username, b.created_at FROM blocks b JOIN users u ON u.id = b.blocked WHERE b.blocker = ?').bind(uid)
       .all<{ id: string; username: string | null; created_at: number }>()).results;
     const ref = (id: string, name: string | null, since?: number): FriendRef => ({ id: `u:${id}`, name: name ?? 'Player', ...(since ? { since } : {}) });
     const byName = (a: FriendRef, b: FriendRef) => a.name.localeCompare(b.name);
     return {
-      // lastSeen rides ONLY confirmed-friend refs, in the owner's own state:
-      // pending (either direction) and blocked refs never carry it.
-      friends: rows.filter((r) => r.status === 'friends').map((r) => ({ ...ref(r.oid, r.username, r.created_at), ...(r.last_seen ? { lastSeen: r.last_seen } : {}) })).sort(byName),
+      // lastSeen + presence ride ONLY confirmed-friend refs, in the owner's
+      // own state: pending (either direction) and blocked refs never carry
+      // them. A presence row whose stored activity doesn't parse (written
+      // by nothing current — the writers validate) attaches nothing rather
+      // than junk; freshness is the client's call (PRESENCE_STALE_MS).
+      friends: rows.filter((r) => r.status === 'friends').map((r) => ({
+        ...ref(r.oid, r.username, r.created_at),
+        ...(r.last_seen ? { lastSeen: r.last_seen } : {}),
+        ...(isFriendActivity(r.p_activity) && r.p_at ? { presence: { activity: r.p_activity, at: r.p_at } } : {}),
+      })).sort(byName),
       incoming: rows.filter((r) => r.status === 'pending' && r.requested_by !== uid).map((r) => ref(r.oid, r.username, r.created_at)).sort(byName),
       outgoing: rows.filter((r) => r.status === 'pending' && r.requested_by === uid).map((r) => ref(r.oid, r.username, r.created_at)).sort(byName),
       blocked: blocked.map((r) => ref(r.id, r.username, r.created_at)).sort(byName),

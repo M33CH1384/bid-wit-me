@@ -4,7 +4,7 @@
  * without one (they show up as "Guest", can read global chat and receive invites).
  */
 import { useSyncExternalStore } from 'react';
-import { type DmLine, type FriendsState, type InviteMsg, type OpenTable, type PresenceEntry, type PresenceStatus, type SocialChatLine, type SocialClientMsg, type SocialServerMsg, type SocialSettings, stalePresence } from '@spades/protocol';
+import { activityOf, type DmLine, type FriendActivity, type FriendsState, type InviteMsg, type OpenTable, type PresenceEntry, type PresenceStatus, type SocialChatLine, type SocialClientMsg, type SocialServerMsg, type SocialSettings, stalePresence } from '@spades/protocol';
 import { account, loadAccount } from '../account/api';
 import { serverUrl } from '../online/config';
 import { guestSessionId, loadName } from '../online/identity';
@@ -140,6 +140,34 @@ function send(m: SocialClientMsg): boolean {
   if (ws?.readyState !== WebSocket.OPEN) return false;
   ws.send(JSON.stringify(m));
   return true;
+}
+
+/* ---- friend-activity presence reporting (migration 0028) ---- */
+
+let lastReported: { uid: string; activity: FriendActivity } | null = null;
+
+/**
+ * Report this client's current activity to POST /api/social/presence —
+ * the persisted half of friend presence. The hub stamps the same row from
+ * the socket's live status; both writers share one server upsert, so a
+ * missed report self-heals. Fires on activity change (via setStatus) and
+ * on a 30 s heartbeat while the app is visible (see start). Signed-in
+ * only, settings loaded only, and never while appearing offline — a
+ * hidden player's activity is not their friends' business (the server
+ * enforces the same rule). Fire-and-forget: a failed report retries on
+ * the next heartbeat.
+ */
+function reportPresence(force = false): void {
+  const u = account.get().user;
+  if (!account.get().ready || !u || !state.settings || state.settings.appearOffline) return;
+  const activity = activityOf(status);
+  if (!force && lastReported?.uid === u.id && lastReported.activity === activity) return;
+  lastReported = { uid: u.id, activity };
+  void fetch('/api/social/presence', {
+    method: 'POST', credentials: 'same-origin',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ activity }),
+  }).then((r) => { if (!r.ok) lastReported = null; }).catch(() => { lastReported = null; });
 }
 
 async function connect() {
@@ -351,6 +379,11 @@ export const social = {
     if (started) return;
     started = true;
     void connect();
+    // Friend-presence heartbeat: keep the persisted activity fresh while
+    // the app is open and visible. A hidden tab reports nothing, so its
+    // row goes stale and friends fall back to last-seen — the clean stop.
+    window.setInterval(() => { if (document.visibilityState === 'visible') reportPresence(true); }, 30_000);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reportPresence(true); });
     account.subscribe(() => {
       if (account.get().ready && identity !== undefined && idKey() !== identity) void connect();
     });
@@ -364,6 +397,7 @@ export const social = {
   setStatus(s: PresenceStatus) {
     status = s;
     send({ t: 'status', status: s });
+    reportPresence();
   },
   setMyTable(t: MyTable | null) { set({ myTable: t }); },
   open(tab?: SocialTab, extra: Partial<Pick<SocialState, 'dmWith' | 'profile'>> = {}) {

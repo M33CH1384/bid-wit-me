@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { parseSocialMsg, PRESENCE_TTL_MS, type SocialChatLine, type SocialServerMsg } from '@spades/protocol';
 import { type ConnAtt, type GlobalLog, Hub, maskChat, uniqueGuestName } from '../src/social/hub';
+import { SocialStore } from '../src/social/store';
 import { resetTicketKey, signTicket, verifyTicket } from '../src/social/ticket';
 import { coarseRegion, isAdmin, profileFor, recentPlayers } from '../src/social/routes';
 import { makeD1 } from './d1';
@@ -791,5 +792,84 @@ describe('last seen (friends-only last online)', () => {
     expect(st.friends[0]!.name).toBe('Demetrius');
     expect(st.friends[0]!.lastSeen).toBeUndefined();
     expect(await seenRow('ud')).toBeUndefined();
+  });
+});
+
+describe('friend activity presence (migration 0028)', () => {
+  const presenceRow = async (uid: string) =>
+    await db.prepare('SELECT activity, at FROM presence WHERE user_id = ?').bind(uid).first<{ activity: string; at: number }>();
+
+  const befriend = async () => {
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    await h.send('a', { t: 'friend', op: 'request', to: 'u:ub' });
+    await h.send('b', { t: 'friend', op: 'accept', to: 'u:ua' });
+  };
+
+  it('connecting stamps the presence row, and a confirmed friend receives it on their friends payload', async () => {
+    await befriend();
+    expect(await presenceRow('ub')).toEqual({ activity: 'online', at: h.t });
+    const st = h.last('a', 'friends')!.friends;
+    expect(st.friends).toHaveLength(1);
+    expect(st.friends[0]).toMatchObject({ id: 'u:ub', name: 'Bobby', presence: { activity: 'online', at: h.t } });
+  });
+
+  it('a status change re-stamps immediately with the derived activity (bot game, story solo/co-op, match)', async () => {
+    await befriend();
+    await h.send('b', { t: 'status', status: { kind: 'table', mode: 'joker', offline: true } });
+    expect(await presenceRow('ub')).toMatchObject({ activity: 'bot-game' });
+    await h.send('b', { t: 'status', status: { kind: 'table', offline: true, story: 'solo' } });
+    expect(await presenceRow('ub')).toMatchObject({ activity: 'story-solo' });
+    await h.send('b', { t: 'status', status: { kind: 'table', story: 'coop' } });
+    expect(await presenceRow('ub')).toMatchObject({ activity: 'story-coop' });
+    await h.send('b', { t: 'status', status: { kind: 'table', mode: 'joker', open: 1, code: 'ABCD' } });
+    expect(await presenceRow('ub')).toMatchObject({ activity: 'online-match' });
+    await h.send('b', { t: 'status', status: { kind: 'online' } });
+    expect(await presenceRow('ub')).toMatchObject({ activity: 'online' });
+  });
+
+  it('same-activity traffic inside the stamp window does not rewrite; past it, the row refreshes', async () => {
+    await befriend();
+    const t0 = h.t;
+    h.t += 30_000;
+    await h.send('b', { t: 'heartbeat' });
+    expect((await presenceRow('ub'))!.at).toBe(t0);
+    h.t += 31_000;
+    await h.send('b', { t: 'heartbeat' });
+    expect((await presenceRow('ub'))!.at).toBe(t0 + 61_000);
+  });
+
+  it('appear-offline users are never presence-stamped (their activity must not leak to friends)', async () => {
+    await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    expect(await presenceRow('ub')).toEqual({ activity: 'online', at: h.t });
+    await h.send('b', { t: 'settings', settings: { appearOffline: true } });
+    h.t += 10 * 60_000;
+    await h.send('b', { t: 'status', status: { kind: 'table', offline: true } });
+    await h.send('b', { t: 'heartbeat' });
+    expect((await presenceRow('ub'))!.activity).toBe('online');
+  });
+
+  it('pending refs never carry presence, and a non-friend receives nothing', async () => {
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    expect((await presenceRow('ub'))!.activity).toBe('online'); // stamped server-side…
+    await h.send('a', { t: 'friend', op: 'request', to: 'u:ub' });
+    // …but while the request is only pending, neither side's ref carries it
+    const bIn = h.last('b', 'friends')!.friends.incoming[0]!;
+    expect(bIn.presence).toBeUndefined();
+    const aOut = h.last('a', 'friends')!.friends.outgoing[0]!;
+    expect(aOut.presence).toBeUndefined();
+    // a third user with no relation at all: no presence anywhere in their payload
+    await h.hub.open('c', { uid: 'uc', name: 'Cee' });
+    const cHello = h.last('c', 'hello')!;
+    expect(JSON.stringify(cHello.friends)).not.toContain('presence');
+    expect(JSON.stringify(cHello.users)).not.toContain('presence');
+  });
+
+  it('a presence row with an unparseable activity attaches nothing (never rendered as junk)', async () => {
+    await befriend();
+    await db.prepare("UPDATE presence SET activity = 'bogus' WHERE user_id = 'ub'").run();
+    const st = await new SocialStore(db).friendsState('ua');
+    expect(st.friends[0]!.presence).toBeUndefined();
   });
 });

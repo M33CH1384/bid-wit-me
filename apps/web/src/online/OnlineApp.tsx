@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useState } from 'react';
-import { CODE_LENGTH, isRoomCode, normalizeRoomCode } from '@spades/protocol';
+import { CODE_LENGTH, isRoomCode, normalizeRoomCode, type PresenceStatus } from '@spades/protocol';
 import { NowPlaying } from '../SoundControls';
 import SettingsSheetHost from '../SettingsSheetHost';
 import { type TipsPref, loadTips } from '../tips';
@@ -20,6 +20,7 @@ import { clearTableChatOpen } from '../chatView';
 import { useConn } from './useOnline';
 import { STATS_OFF_LABEL, social } from '../social/store';
 import { usePresence } from '../social/Social';
+import { roomHasStory } from '../social/presence';
 import { VideoMesh } from './video';
 import { IdleWatch, idlePolicyFrom } from '../inactivity';
 import './online.css';
@@ -214,11 +215,22 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
   const pmode = room0 ? (room0.rules.mode === 'joker' || room0.rules.mode === 'aceDown' ? room0.rules.mode : 'cutthroat') : undefined;
   const watchFull = room0 ? spectatorsFull(room0) : false;
   // A finished game is not a table anyone can spectate. Reporting it kept a guest row up after the room ended.
-  usePresence(!room0 ? null : room0.phase === 'over' ? { kind: 'online' } : {
-    kind: room0.phase === 'lobby' ? 'lobby' : 'table', mode: pmode, open: openCount, code,
-    ...(openSeat >= 0 ? { seat: openSeat } : {}),
-    ...(watchFull ? { watchFull: true } : {}),
-  });
+  // Story rooms (co-op spec §2.3) carry a story descriptor on the room
+  // snapshot: inside one, presence reports Story mode · Co-op and nothing
+  // joinable — no code or open seats, since a story room is entered only
+  // through its own invite flow, never the players list. The descriptor is
+  // read defensively (roomHasStory) until the co-op build's RoomInfo field
+  // lands; every non-story room reports byte-identically to before.
+  const presenceStatus: PresenceStatus | null = !room0 ? null
+    : roomHasStory(room0)
+      ? { kind: room0.phase === 'lobby' ? 'lobby' : room0.phase === 'over' ? 'online' : 'table', story: 'coop' }
+      : room0.phase === 'over' ? { kind: 'online' }
+        : {
+          kind: room0.phase === 'lobby' ? 'lobby' : 'table', mode: pmode, open: openCount, code,
+          ...(openSeat >= 0 ? { seat: openSeat } : {}),
+          ...(watchFull ? { watchFull: true } : {}),
+        };
+  usePresence(presenceStatus);
   useEffect(() => {
     if (!room0) return;
     social.setMyTable({ code, mode: pmode, open: openCount, ...(openSeat >= 0 ? { seat: openSeat } : {}) });

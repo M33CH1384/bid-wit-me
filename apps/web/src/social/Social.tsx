@@ -10,7 +10,7 @@ import { createTable } from '../online/connection';
 import { inviteLink, serverUrl } from '../online/config';
 import { navigate } from '../online/nav';
 import { loadSettings } from '../settings';
-import { shownPlayers, lastOnlineLabel } from './presence';
+import { shownPlayers, friendPresenceView } from './presence';
 import { type PlayerTableAction, playerTableAction } from './tableActions';
 import { type MyTable, type SocialTab, type Toast, badgeCount, globalUnread, social, useSocial } from './store';
 import { openPlayerProfile, profileTargetOf } from '../profileTap';
@@ -758,10 +758,11 @@ function Friends({ signedIn }: { signedIn: boolean }) {
   if (!signedIn) return <SignInNote what="add friends" />;
   const f = s.friends;
   const online = (pid: string) => !!s.users[pid];
-  /** Freshest honest last-seen for a friend: the server stamp carried on the
-   *  ref, or the last presence activity this session saw (a friend who logged
-   *  off mid-session was last active then, not at the older persisted stamp). */
-  const seenAt = (r: { id: string; lastSeen?: number }) => Math.max(r.lastSeen ?? 0, s.lastAt[r.id] ?? 0);
+  /** A friend's row presence (live activity → fresh persisted activity →
+   *  last online / Offline) is composed by friendPresenceView in
+   *  ./presence, from the ref's stamps + this session's remembered
+   *  activity (s.lastAt: a friend who logged off mid-session was last
+   *  active then, not at the older persisted stamp). */
   const Section = ({ title, children, testid }: { title: string; children: ReactNode; testid: string }) => <section className="soc-sec" data-testid={testid}><h4>{title}</h4>{children}</section>;
   return (
     <div className="soc-friends">
@@ -778,15 +779,18 @@ function Friends({ signedIn }: { signedIn: boolean }) {
         </Section>
       )}
       <Section title={`Friends${f?.friends.length ? ` (${f.friends.length})` : ''}`} testid="friends-list">
-        {f?.friends.map((r) => (
-          <div key={r.id} className="soc-frow" data-testid={`friend-${r.name}`}>
-            <button type="button" className="soc-frow-name link" onClick={() => social.showProfile(r.name, r.id)} data-testid={`friend-name-${r.name}`}>{online(r.id) && <i className="soc-online" title="Online" />}{r.name}<small>{online(r.id) ? statusLabel(s.users[r.id]!.status, modeName) : seenAt(r) ? `Last online ${lastOnlineLabel(seenAt(r))}` : 'Offline'}</small></button>
-            <button type="button" onClick={() => social.openDm(r.id)}>💬</button>
-            {online(r.id) && <button type="button" onClick={() => void inviteTo(r.id, s.myTable)} data-testid={`finvite-${r.name}`}>➕</button>}
-            <button type="button" onClick={() => social.showProfile(r.name, r.id)}>👤</button>
-            <button type="button" className="ghost" onClick={() => { if (confirm(`Remove ${r.name} from friends?`)) social.friend('remove', r.id); }} data-testid={`remove-${r.name}`}>Remove</button>
-          </div>
-        ))}
+        {f?.friends.map((r) => {
+          const pv = friendPresenceView(r, s.users[r.id], s.lastAt[r.id] ?? 0, modeName);
+          return (
+            <div key={r.id} className="soc-frow" data-testid={`friend-${r.name}`}>
+              <button type="button" className="soc-frow-name link" onClick={() => social.showProfile(r.name, r.id)} data-testid={`friend-name-${r.name}`}>{pv.online && <i className="soc-online" title="Online" />}{r.name}<small>{pv.label}</small></button>
+              <button type="button" onClick={() => social.openDm(r.id)}>💬</button>
+              {online(r.id) && <button type="button" onClick={() => void inviteTo(r.id, s.myTable)} data-testid={`finvite-${r.name}`}>➕</button>}
+              <button type="button" onClick={() => social.showProfile(r.name, r.id)}>👤</button>
+              <button type="button" className="ghost" onClick={() => { if (confirm(`Remove ${r.name} from friends?`)) social.friend('remove', r.id); }} data-testid={`remove-${r.name}`}>Remove</button>
+            </div>
+          );
+        })}
         {!f?.friends.length && <p className="soc-empty">No friends yet: add players from the Players tab or from Recent below.</p>}
       </Section>
       {!!f?.outgoing.length && (

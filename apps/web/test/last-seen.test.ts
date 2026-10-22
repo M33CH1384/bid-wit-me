@@ -41,21 +41,26 @@ const store = readFileSync(new URL('../src/social/store.ts', import.meta.url), '
 const presence = readFileSync(new URL('../src/social/presence.ts', import.meta.url), 'utf8');
 
 describe('friends view wiring', () => {
+  // Friend-activity presence (2026-10-22) moved the row's composition into
+  // friendPresenceView (./presence): the "Last online …" fallback is its
+  // last resort, below the live status and the fresh persisted activity —
+  // the behavior matrix is pinned in friend-presence.test.ts.
   it('an offline friend with a stamp renders "Last online …" as the row’s secondary line', () => {
-    expect(social).toContain('`Last online ${lastOnlineLabel(seenAt(r))}`');
+    expect(presence).toContain('`Last online ${lastOnlineLabel(seenAt, now)}`');
+    expect(social).toContain('friendPresenceView(r, s.users[r.id], s.lastAt[r.id] ?? 0, modeName)');
   });
-  it('the freshest stamp wins: the server ref stamp vs this session’s last activity', () => {
-    expect(social).toContain('Math.max(r.lastSeen ?? 0, s.lastAt[r.id] ?? 0)');
+  it('the freshest stamp wins: the server ref stamp vs this session’s last activity vs the stale presence row', () => {
+    expect(presence).toContain('Math.max(ref.lastSeen ?? 0, sessionLastAt, p?.at ?? 0)');
     expect(store).toContain('lastAt[u.id] = Math.max(lastAt[u.id] ?? 0, u.at)');
     // 'gone' removes the row from users but must not erase the remembered activity
     expect(store).toContain('for (const g of m.gone ?? []) delete users[g];');
     expect(store).not.toContain('delete lastAt[g]');
   });
-  it('an online friend keeps the presence status line (no regression)', () => {
-    expect(social).toContain('online(r.id) ? statusLabel(s.users[r.id]!.status, modeName)');
+  it('an online friend keeps a presence line with the online dot (now the activity label)', () => {
+    expect(social).toContain('{pv.online && <i className="soc-online" title="Online" />}{r.name}<small>{pv.label}</small>');
   });
   it('no stamp → the plain existing Offline label; no "Unknown"-style placeholder anywhere', () => {
-    expect(social).toContain(": 'Offline'");
+    expect(presence).toContain(": 'Offline'");
     expect(social + presence).not.toContain('Unknown');
   });
 });

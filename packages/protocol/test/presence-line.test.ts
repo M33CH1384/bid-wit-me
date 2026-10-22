@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { joinPresence, presenceLine } from '../src/index';
+import { PRESENCE_STALE_MS, activityLabel, activityOf, isFriendActivity, joinPresence, parseSocialMsg, presenceLine, statusLabel } from '../src/index';
 
 /**
  * Presence line dedupe (owner screenshot 2026-10-20): his own profile header
@@ -44,5 +44,53 @@ describe('presenceLine', () => {
     const modeName = (m: string) => (m === 'joker' ? 'Joker' : m);
     expect(presenceLine({ kind: 'table', mode: 'joker' }, modeName)).toBe('Online — At a table · Joker');
     expect(presenceLine({ kind: 'table', offline: true })).toBe('Online — At a table · vs bots');
+  });
+});
+
+describe('friend activity (owner, 2026-10-22)', () => {
+  it('activityOf maps every live status; story reads before kind', () => {
+    expect(activityOf({ kind: 'online' })).toBe('online');
+    expect(activityOf({ kind: 'lobby' })).toBe('online');
+    expect(activityOf({ kind: 'table', offline: true })).toBe('bot-game');
+    expect(activityOf({ kind: 'table', mode: 'joker', open: 1 })).toBe('online-match');
+    expect(activityOf({ kind: 'tournament', name: 'Friday Night' })).toBe('online-match');
+    // a story table is story mode, never a bot game — whatever the kind says
+    expect(activityOf({ kind: 'table', offline: true, story: 'solo' })).toBe('story-solo');
+    expect(activityOf({ kind: 'online', story: 'solo' })).toBe('story-solo');
+    expect(activityOf({ kind: 'table', story: 'coop' })).toBe('story-coop');
+    expect(activityOf({ kind: 'lobby', story: 'coop' })).toBe('story-coop');
+  });
+
+  it('activityLabel speaks the game’s language', () => {
+    expect(activityLabel('online')).toBe('Online');
+    expect(activityLabel('bot-game')).toBe('In a bot game');
+    expect(activityLabel('online-match')).toBe('In a match');
+    expect(activityLabel('story-solo')).toBe('Story mode · Solo');
+    expect(activityLabel('story-coop')).toBe('Story mode · Co-op');
+  });
+
+  it('statusLabel names story surfaces instead of "At a table"', () => {
+    expect(statusLabel({ kind: 'table', offline: true, story: 'solo' })).toBe('Story mode · Solo');
+    expect(statusLabel({ kind: 'table', story: 'coop' })).toBe('Story mode · Co-op');
+    expect(presenceLine({ kind: 'table', offline: true, story: 'solo' })).toBe('Online — Story mode · Solo');
+    expect(presenceLine({ kind: 'lobby', story: 'coop' })).toBe('Online — Story mode · Co-op');
+  });
+
+  it('parseSocialMsg keeps only the two story values on a status', () => {
+    const solo = parseSocialMsg({ t: 'status', status: { kind: 'table', offline: true, story: 'solo' } });
+    expect(solo).toMatchObject({ t: 'status', status: { story: 'solo' } });
+    const coop = parseSocialMsg({ t: 'status', status: { kind: 'lobby', story: 'coop' } });
+    expect(coop).toMatchObject({ t: 'status', status: { story: 'coop' } });
+    const bogus = parseSocialMsg({ t: 'status', status: { kind: 'online', story: 'everywhere' } });
+    expect(bogus).toMatchObject({ t: 'status', status: { kind: 'online' } });
+    expect(bogus && 'status' in bogus ? bogus.status.story : 'x').toBeUndefined();
+  });
+
+  it('isFriendActivity accepts exactly the owner’s five states; the stale window covers missed heartbeats', () => {
+    for (const a of ['online', 'bot-game', 'online-match', 'story-solo', 'story-coop']) expect(isFriendActivity(a)).toBe(true);
+    for (const a of ['offline', 'in-a-game', '', null, undefined, 42]) expect(isFriendActivity(a)).toBe(false);
+    // reports land on change + a ~30 s heartbeat (+ the hub's ~60 s cadence):
+    // the window must outlast two whole heartbeats with margin
+    expect(PRESENCE_STALE_MS).toBeGreaterThan(2 * 30_000);
   });
 });
