@@ -85,6 +85,11 @@ export const TALK_PROFILES: Record<DensityClass, TalkProfile> = {
 /** The density profile a table runs under (standard when it never opted in). */
 export const profileOf = (t: TalkTable): TalkProfile => TALK_PROFILES[t.profile ?? 'standard'];
 const BIG: TalkKind[] = ['nuke', 'gotNuked', 'wheels', 'runIt', 'win', 'lose', 'reveal', 'rematch', 'boston', 'shotOut', 'blindNil', 'matchPoint'];
+/** moments that matter enough for filler to keep quiet right after them:
+ * the BIG set plus the hand-swinging set/Nil resolutions and a fresh streak */
+const SIGNIFICANT: TalkKind[] = [...BIG, 'setThem', 'gotSet', 'nilMade', 'nilBust', 'streak'];
+/** how long a thinking-time murmur stays suppressed after a significant moment */
+export const MURMUR_QUIET_MS = 6000;
 /** the Silent Assassin only speaks for these */
 const SILENT_KINDS: TalkKind[] = ['cut', 'setThem', 'overcut', 'runIt', 'win', 'slam'];
 /** the losing side's take on a moment */
@@ -121,6 +126,18 @@ export interface TalkState {
   elimSeen?: boolean[];
   /** trickPop pool-source rotation counter: odd picks draw the prePlay pool, even picks the roast pool */
   trickAlt?: number;
+  /** last time a SIGNIFICANT moment (set, Nil resolved, nuke, game decided…)
+   * reached the engine — murmurs keep quiet for a window after one so filler
+   * never steps on a moment that mattered (moment-fit pass) */
+  lastBigAt?: number;
+  /** score-claim memory (moment-fit pass): `${kind}:${fact}:${side}` → the
+   * bucket-sequence at which that claim was last spoken. The same claim from
+   * the same side does not repeat while the facts stand still. */
+  claims?: Record<string, { seq: number }>;
+  /** per-side counter that advances whenever the side's score bucket changes */
+  bucketSeq?: number[];
+  /** per-side last observed score bucket */
+  lastBucket?: (GapBucket | undefined)[];
 }
 export interface TalkEvent {
   kind: TalkKind;
@@ -157,6 +174,9 @@ export interface TalkEvent {
   answerSide?: number;
   /** answer chain: this seat (the original speaker) never answers itself */
   excludeSeat?: number;
+  /** sets so far this match, per side (from the hand history): gates lines
+   * that reference an earlier set ('oppSet' fact) */
+  setsBySide?: number[];
 }
 export type GapBucket = 'close' | 'aheadBig' | 'behindBig';
 export type TricksLeftBucket = 'early' | 'mid' | 'late';
@@ -248,7 +268,36 @@ function factOk(fact: LineFact | undefined, ev: TalkEvent, t: TalkTable, speaker
     case 'bidderSelf': return speaker !== undefined && ev.bidderSeat === speaker;
     case 'bidderPartner': return speaker !== undefined && ev.bidderSide !== undefined && ev.bidderSeat !== speaker && sideOfSeat(t, speaker) === ev.bidderSide;
     case 'bidderOpp': return speaker !== undefined && ev.bidderSide !== undefined && sideOfSeat(t, speaker) !== ev.bidderSide;
+    case 'oppSet': {
+      if (speaker === undefined || !ev.setsBySide) return false;
+      const mine = sideOfSeat(t, speaker);
+      // the OTHER side(s) got set at some earlier point in this match
+      return ev.setsBySide.some((n, s) => s !== mine && n > 0);
+    }
   }
+}
+
+const SCORE_FACTS: LineFact[] = ['close', 'aheadBig', 'behindBig'];
+/**
+ * Track per-side score buckets as events report them: a side's bucketSeq
+ * advances each time its bucket CHANGES, which is what "the facts changed"
+ * means for the claim dedupe. `buckets` is indexed by side.
+ */
+function noteBuckets(st: TalkState, buckets: (GapBucket | undefined)[]): void {
+  for (let side = 0; side < buckets.length; side++) {
+    const b = buckets[side];
+    if (b === undefined) continue;
+    (st.lastBucket ??= []);
+    if (st.lastBucket[side] !== b) {
+      st.lastBucket[side] = b;
+      (st.bucketSeq ??= [])[side] = (st.bucketSeq[side] ?? 0) + 1;
+    }
+  }
+}
+/** the speaker-relative claim key for a score-fact line, or null when the line makes no tracked claim */
+function claimKey(kind: TalkKind, fact: LineFact | undefined, t: TalkTable, speaker: number | undefined): string | null {
+  if (!fact || !SCORE_FACTS.includes(fact) || speaker === undefined) return null;
+  return `${kind}:${fact}:${sideOfSeat(t, speaker)}`;
 }
 
 function condOk(meta: LineMeta | undefined, ev: TalkEvent, t: TalkTable): boolean {
@@ -304,7 +353,31 @@ function botGender(t: TalkTable, seat: number | undefined): 'f' | 'm' | undefine
 }
 
 function pick(st: TalkState, t: TalkTable, persona: PersonaId, kind: TalkKind, ev: TalkEvent, rnd: () => number, self?: 'f' | 'm', target?: 'f' | 'm', speaker?: number): string | null {
-  const all = poolFor(persona, kind, t.intensity ?? 'cookout', self, target, t.partnerships).filter((l) => condOk(LINE_META[l], ev, t));
+  // MOMENT FIT (owner, 2026-10-22: lines "just don't fit the moment"): a line
+  // that ASSERTS a checkable claim only fires when the claim is verifiably
+  // true under this event's fact snapshot. Tagged lines used to be merely
+  // PREFERRED when they fit (85%) and stayed drawable when they didn't — a
+  // "we're on a heater" could land while down 200. Now the tag is a gate:
+  // false or unverifiable (the snapshot doesn't carry the fact) → the line
+  // sits out. Claim-free lines are always eligible, so a pool that gates to
+  // empty falls back to them before it ever falls silent. {bid}/{gap} lines
+  // are claims too: without the number on the event they fill as "that
+  // many"/"0", so they sit out as well.
+  const claimOk = (l: string): boolean => {
+    const meta = LINE_META[l];
+    if (meta?.fact && !factOk(meta.fact, ev, t, speaker)) return false;
+    if (l.includes('{bid}') && typeof ev.bid !== 'number') return false;
+    if (l.includes('{gap}') && typeof ev.gap !== 'number') return false;
+    // topic dedupe: the same score claim from the same side of the same pool
+    // does not repeat while the score facts stand still (bucket unchanged)
+    const key = claimKey(kind, meta?.fact, t, speaker);
+    if (key) {
+      const said = st.claims?.[key];
+      if (said && said.seq === (speaker !== undefined ? (st.bucketSeq?.[sideOfSeat(t, speaker)] ?? 0) : 0)) return false;
+    }
+    return true;
+  };
+  const all = poolFor(persona, kind, t.intensity ?? 'cookout', self, target, t.partnerships).filter((l) => condOk(LINE_META[l], ev, t) && claimOk(l));
   if (!all.length) return null;
   // an Ace got cut: the Ace lines are the point
   const ace = ev.ace ? all.filter((l) => LINE_META[l]?.cond === 'ace') : [];
@@ -345,6 +418,9 @@ function say(st: TalkState, t: TalkTable, seat: number, kind: TalkKind, ev: Talk
   const name = t.seats[seat]?.name ?? '';
   const raw = pick(st, t, persona, kind, ev, rnd, voiceGender(name), botGender(t, them), seat);
   if (!raw) return null;
+  // record the score claim this line just made (topic dedupe in pick)
+  const cKey = claimKey(kind, LINE_META[raw]?.fact, t, seat);
+  if (cKey) (st.claims ??= {})[cKey] = { seq: st.bucketSeq?.[sideOfSeat(t, seat)] ?? 0 };
   st.recent = [...st.recent, raw].slice(-TALK.recentMax);
   st.last = raw;
   st.lastAt = now;
@@ -391,6 +467,9 @@ function trickPopTalk(st: TalkState, t: TalkTable, ev: TalkEvent, now: number, r
   if (ev.murmur) {
     // thinking-time murmur: the caller named the seat; the timer was the gate
     if (ev.seat === undefined || !readyBots.includes(ev.seat)) return null;
+    // …but never on top of a moment that mattered: a set, a busted Nil, a
+    // nuke in the last few seconds owns the table's attention, not filler
+    if (st.lastBigAt !== undefined && now - st.lastBigAt < MURMUR_QUIET_MS) return null;
     return sayTrickPop(st, t, ev.seat, ev, now, rnd);
   }
   if (prof.trickPop <= 0) return null; // standard tables: the trigger is dormant
@@ -427,6 +506,23 @@ function sayTrickPop(st: TalkState, t: TalkTable, seat: number, ev: TalkEvent, n
 export function botTalk(st: TalkState, t: TalkTable, ev: TalkEvent, now: number, rnd: () => number): TalkLine | null {
   const bots = t.seats.map((s, i) => (s.bot ? i : -1)).filter((i) => i >= 0);
   if (!bots.length) return null;
+  // moment-fit bookkeeping runs on EVERY event, spoken or not: a significant
+  // moment stamps the murmur-quiet window, and reported score buckets feed
+  // the claim dedupe's "facts changed" test
+  if (SIGNIFICANT.includes(ev.kind)) st.lastBigAt = now;
+  if (ev.gapBucket && ev.side !== undefined) {
+    if (t.partnerships) {
+      const flip = (b: GapBucket): GapBucket => (b === 'aheadBig' ? 'behindBig' : b === 'behindBig' ? 'aheadBig' : 'close');
+      const buckets: (GapBucket | undefined)[] = [];
+      buckets[ev.side] = ev.gapBucket;
+      buckets[1 - ev.side] = flip(ev.gapBucket);
+      noteBuckets(st, buckets);
+    } else {
+      const buckets: (GapBucket | undefined)[] = [];
+      buckets[ev.side] = ev.gapBucket;
+      noteBuckets(st, buckets);
+    }
+  }
   // no teams (Cutthroat): partner moments don't exist
   if (!t.partnerships && (ev.kind === 'partnerBlunder' || ev.kind === 'hypePartner')) return null;
   const big = BIG.includes(ev.kind);
@@ -480,7 +576,7 @@ export function botTalk(st: TalkState, t: TalkTable, ev: TalkEvent, now: number,
     const others = bots.filter((b) => !onSide(b));
     if (mirror && others.length && (!cands.length || rnd() > 0.7)) { kind = mirror; cands = others; }
   }
-  cands = cands.filter((c) => ready(st, t, c, now, big) && (personaOf(t, c) !== 'silent' || SILENT_KINDS.includes(kind)));
+  cands = cands.filter((c) => c !== ev.excludeSeat && ready(st, t, c, now, big) && (personaOf(t, c) !== 'silent' || SILENT_KINDS.includes(kind)));
   if (!cands.length) return null;
   const seat = cands[Math.floor(rnd() * cands.length)]!;
   if (rnd() >= Math.min(0.97, (TALK.chance[kind] ?? 0.3) * prof.chanceScale) * freqOf(st, t, seat) * gapBiasOf(personaOf(t, seat), speakerBucket(ev, t, seat))) return null;
@@ -521,9 +617,17 @@ interface BanterSlot {
  * comes from `banterContextFor` (the same hand-record predicates as momentsFor).
  * Cooldowns are the caller's business: the collection window owns the schedule.
  */
+/** sets so far this match, per side, from the hand history (the 'oppSet' fact's snapshot) */
+export function setsBySideOf(state: GameState): number[] {
+  const out: number[] = [];
+  for (const h of state.history ?? []) for (const s of h.sides) if (s.contractMade === false) out[s.side] = (out[s.side] ?? 0) + 1;
+  return out;
+}
+
 export function collectionBanter(st: TalkState, t: TalkTable, after: GameState, now: number, rnd: () => number, maxLines = 2): TalkLine[] {
   const ctx = banterContextFor(after);
   if (!ctx) return [];
+  noteBuckets(st, ctx.buckets);
   const alive = (seat: number) => !(after.eliminated?.[seat]);
   const botsOn = (side: number) => t.seats.map((s, i) => (s.bot && sideOfSeat(t, i) === side && alive(i) ? i : -1)).filter((i) => i >= 0);
   /** who profits when `side` suffers: the other team, or (cutthroat) the side that scored most this hand */
@@ -598,6 +702,7 @@ export function collectionBanter(st: TalkState, t: TalkTable, after: GameState, 
         ...(slot.kind === 'matchPoint' ? { pressure: true } : {}),
         ...(slot.bidderSeat !== undefined ? { bidderSeat: slot.bidderSeat } : {}),
         ...(slot.bidderSide !== undefined ? { bidderSide: slot.bidderSide } : {}),
+        setsBySide: setsBySideOf(after),
       };
       const line = speak(st, t, seat, slot.kind, ev, slot.them, now, rnd);
       if (line) { spoken.add(seat); usedKinds.add(slot.kind); return line; }

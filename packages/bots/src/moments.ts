@@ -25,8 +25,10 @@ export function momentsFor(before: GameState, action: Action, after: GameState):
   const factsFor = (side: number, bidder?: { seat: number; side: number }): Partial<TalkEvent> => {
     const gapBucket = gapBucketFor(side, after.scores);
     const tricksLeft = tricksBucket(after);
+    const setsBySide: number[] = [];
+    for (const h of after.history) for (const s of h.sides) if (s.contractMade === false) setsBySide[s.side] = (setsBySide[s.side] ?? 0) + 1;
     return {
-      ...(gapBucket ? { gapBucket } : {}), tricksLeft,
+      ...(gapBucket ? { gapBucket } : {}), tricksLeft, setsBySide,
       // pressure: late in a close game, or a late trick the side still needs for its contract
       ...((tricksLeft === 'late' && gapBucket === 'close') || (tricksStillRemaining(after) <= 2 && needsBooks(before, side)) ? { pressure: true } : {}),
       ...(bidder ? { bidderSeat: bidder.seat, bidderSide: bidder.side } : {}),

@@ -36,8 +36,8 @@
  * - ANTI-REPEAT: the same text from two different speakers inside 60 s is
  *   suppressed (cross-speaker dedupe), on top of the engine's shuffle-bag.
  */
-import type { Action, GameState } from '@spades/rules';
-import { type RevTributeEvent, type TalkLine, type TalkTable, REV_TRIBUTE, botTalk, collectionBanter, leanBid, leanNil, momentsFor, newRevTributeState, newTalkState, personaForName, personaOf, prePlayLine, profileOf, revLineIdForText, revTributeCommit, revTributeDetect, sideOfSeat } from '@spades/bots';
+import { type Action, type GameState, tricksStillRemaining } from '@spades/rules';
+import { type RevTributeEvent, type TalkEvent, type TalkLine, type TalkTable, REV_TRIBUTE, botTalk, collectionBanter, gapBucketForScores, leanBid, leanNil, momentsFor, newRevTributeState, newTalkState, personaForName, personaOf, prePlayLine, profileOf, revLineIdForText, revTributeCommit, revTributeDetect, setsBySideOf, sideOfSeat } from '@spades/bots';
 import { getActiveDeck } from './decks';
 import { spokenClipDurationMs, talkPrefs } from './talkPrefs';
 
@@ -103,8 +103,26 @@ export const offlineTalk = {
    * synchronous view; −1 = known text-only, −2 = lookup in flight) */
   durCache: new Map<string, number>(),
   answerTimers: [] as number[],
+  /** the latest game state step() has seen — the fact snapshot the density
+   * paths (answer chains, murmurs) enrich their events with, so a reply or a
+   * murmur is fact-checked against the table as it stands NOW, not drawn
+   * blind (moment-fit pass) */
+  lastState: null as GameState | null,
+  /** fact snapshot for a side, from the last known state (empty when unknown) */
+  factsNow(side: number): Partial<TalkEvent> {
+    const st = this.lastState;
+    if (!st) return {};
+    const gapBucket = gapBucketForScores(st.scores, st.rules.targetScore, side);
+    const left = tricksStillRemaining(st);
+    return {
+      ...(gapBucket ? { gapBucket } : {}),
+      tricksLeft: left <= 3 ? 'late' : left <= 6 ? 'mid' : 'early',
+      setsBySide: setsBySideOf(st),
+    };
+  },
   newGame() {
     this.state = newTalkState();
+    this.lastState = null;
     this.rev = newRevTributeState();
     this.voiceBusyUntil = 0;
     this.consultBusyUntil = -1e12;
@@ -201,12 +219,23 @@ export const offlineTalk = {
     if (performance.now() < this.voiceBusyUntil + 500) return;
     const originSide = sideOfSeat(t, origin.seat);
     let line: TalkLine | null = null;
-    // who answers: the other side ~65% (a roast back), the partner ~35% (a co-sign pop)
+    // who answers: the other side ~65% (a roast back), the partner ~35% (a co-sign).
+    // Both draws carry the CURRENT fact snapshot (moment-fit pass): a reply is
+    // fact-checked like any other line — no co-signing a play your side lost
+    // with a line that claims you're running the table, no roast that asserts
+    // a score state the board contradicts.
     if (t.partnerships && Math.random() < 0.65) {
-      line = botTalk(this.state, t, { kind: 'roast', side: 1 - originSide, them: origin.seat }, performance.now(), Math.random);
+      line = botTalk(this.state, t, { kind: 'roast', side: 1 - originSide, them: origin.seat, ...this.factsNow(1 - originSide) }, performance.now(), Math.random);
+    }
+    if (!line && t.partnerships) {
+      // the co-sign is a REPLY, so it draws the reply-shaped pool first: the
+      // partner hype lines ("THAT'S MY PARTNER!") answer a partner's line in
+      // a way a random prePlay/roast draw never could. The trickPop pop stays
+      // as the fallback when the hype pool has nothing fresh to say.
+      line = botTalk(this.state, t, { kind: 'hypePartner', side: originSide, them: origin.seat, excludeSeat: origin.seat, ...this.factsNow(originSide) }, performance.now(), Math.random);
     }
     if (!line) {
-      line = botTalk(this.state, t, { kind: 'trickPop', side: originSide, answerSide: originSide, excludeSeat: origin.seat }, performance.now(), Math.random);
+      line = botTalk(this.state, t, { kind: 'trickPop', side: originSide, answerSide: originSide, excludeSeat: origin.seat, ...this.factsNow(originSide) }, performance.now(), Math.random);
     }
     if (!line) return; // cooldown/chance said no — the chain dies, never forced
     let d: number | null = null;
@@ -232,7 +261,10 @@ export const offlineTalk = {
     const seats = t.seats.map((s, i) => (s.bot ? i : -1)).filter((i) => i >= 0 && i !== excludeSeat && personaOf(t, i) !== 'silent');
     for (let i = seats.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [seats[i], seats[j]] = [seats[j]!, seats[i]!]; }
     for (const seat of seats.slice(0, 2)) {
-      const line = botTalk(this.state, t, { kind: 'trickPop', seat, murmur: true }, performance.now(), Math.random);
+      // the murmur's event carries the speaker's facts, so its line is
+      // fact-checked too (and the engine suppresses murmurs outright for a
+      // few seconds after a significant moment)
+      const line = botTalk(this.state, t, { kind: 'trickPop', seat, murmur: true, side: sideOfSeat(t, seat), ...this.factsNow(sideOfSeat(t, seat)) }, performance.now(), Math.random);
       if (!line) continue;
       let d: number | null = null;
       try { d = await spokenClipDurationMs(line.name, line.text, line.persona, line.line, line.bid); } catch { d = null; }
@@ -244,6 +276,7 @@ export const offlineTalk = {
     return false;
   },
   step(before: GameState, action: Action, after: GameState) {
+    this.lastState = after;
     if (!this.on()) return;
     const rev = getActiveDeck() === 'revolutionaries' ? revTributeDetect(this.rev, before, action, after, Math.random) : null;
     if (rev?.kind === 'malcolmCut') { this.revSpeak(rev, after); return; }

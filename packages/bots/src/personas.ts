@@ -61,7 +61,7 @@ export type LineCond = 'ace' | 'neg' | 'big' | 'little' | 'jk';
  * for the speaker's side, `bidder*` says who held the contract relative to the speaker.
  * A fact is a PREFERENCE, never a gate: when no tagged line fits, the untagged pool speaks.
  */
-export type LineFact = 'close' | 'aheadBig' | 'behindBig' | 'lateHand' | 'deciding' | 'bidderSelf' | 'bidderPartner' | 'bidderOpp';
+export type LineFact = 'close' | 'aheadBig' | 'behindBig' | 'lateHand' | 'deciding' | 'bidderSelf' | 'bidderPartner' | 'bidderOpp' | 'oppSet';
 /**
  * Per-persona mood: how much more (or less) this persona talks depending on the score gap
  * FOR ITS OWN SIDE (keys mirror the GapBucket names in talk.ts). Missing = 1 (steady).
@@ -723,6 +723,10 @@ export const FACT_TAGS: Record<string, LineFact> = {
   "I been holding that Joker like a family secret.": 'lateHand',
   "BOOM! I been waiting all night for that!": 'lateHand',
   "now we're even for everything.": 'close',
+  // past-event references (moment-fit pass): the revenge line only makes
+  // sense once the other side has actually been set this match — it used to
+  // fire in the first hand, before any set existed
+  "this one's for that set earlier.": 'oppSet',
 };
 for (const [raw, fact] of Object.entries(FACT_TAGS)) LINE_META[raw] = { ...LINE_META[raw], fact };
 
