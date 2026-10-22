@@ -8,7 +8,7 @@
  * stored facts, a finished game posts its result once (idempotent per game),
  * and a loss is a free retry with nothing lost.
  */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { secureSeed } from '@spades/rules';
 import {
   STORY_SECRETS, STORY_STOPS, STORY_CHARACTERS, STORY_TIER_LABEL, STORY_TIER_SKILL, beatsFor, deeSkillForStop,
@@ -26,7 +26,9 @@ import { storyRulesFor, storySettingsFor } from './storySettings';
 import { storyBackdropUrl } from './storyBackdrop';
 import { STORY_OWNER_ONLY, fetchStoryAccess, fetchStoryDev, fetchStoryProgress, postStoryFound, postStoryResetStop, postStoryResult, storyLockedFor, type StoryProgress, type StoryResult } from './storyApi';
 import { deckUnlockNotice, invalidateStoryProgress } from '../storyDecks';
-import { setAnimUnlockNotice } from '../setAnims';
+import { setAnimForStop, setAnimUnlockNotice } from '../setAnims';
+import { deckForStop } from '../decks';
+import { deckBackUrl } from '../three/cardTextures';
 import { clearStoryGame, loadStoryGame, storySaveSummary, storySaveValidFor, type StorySavedGame } from './storySave';
 import { railCastForAttempt, storyBadgesFor } from '@spades/bots';
 import ScriptPlayer, { type SceneEgg } from './ScriptPlayer';
@@ -457,46 +459,95 @@ export default function StoryHome() {
       <div className="story-shell">
         <StoryHeader stop={stop} />
         <SceneAudio stop={stop} />
+        {/* The reward stack (presentation overhaul, owner 2026-10-21:
+            "these achievements should have a badge or something visible
+            and visually stimulating — this is dry"). The stack used to
+            be a column of near-identical outlined text pills. Now: the
+            reward line is a gold HERO card with the amounts as stats,
+            each unlock is a card carrying its own art (the deck's real
+            back thumbnail, a medallion emblem for the set animation,
+            a trophy medallion for finds), and the badge case reveals
+            as medallions. Every card pops in on a stagger (--i) and
+            HOLDS at its settled state; reduced motion collapses the
+            reveal to settled (story.css). Amounts, copy, posting flow
+            and exits are untouched — this is presentation only. */}
+        <div className="story-rewards">
         {r && r.won && !dblStarted && (
-          <p className="story-reward-line" data-testid="story-reward-line">
-            {r.firstClear ? <>First clear! <b>+{r.rewards.xp} XP</b> · <b>+{r.rewards.coins}</b> <CoinIcon size={14} /></> : <>Replay upkeep: <b>+{r.rewards.xp} XP</b> · <b>+{r.rewards.coins}</b> <CoinIcon size={14} /></>}
-            {r.completed ? ' · Route complete — the solo mark is yours.' : ''}
-          </p>
+          <div className="story-reward-hero story-reward-line story-reveal" data-testid="story-reward-line" style={{ ['--i' as string]: 0 } as CSSProperties}>
+            <p className="story-reward-kicker">{r.firstClear ? 'First clear!' : 'Replay upkeep'}</p>
+            <div className="story-reward-stats">
+              <span className="story-reward-stat"><b>+{r.rewards.xp} XP</b></span>
+              <span className="story-reward-stat"><b>+{r.rewards.coins}</b> <CoinIcon size={17} /></span>
+            </div>
+            {r.completed && <p className="story-reward-note">Route complete — the solo mark is yours.</p>}
+          </div>
         )}
         {dblStarted && (
-          <p className="story-reward-line" data-testid="story-double-line">
-            You beat the King once — and banked <b>nothing</b>. Double or nothing: one more win takes the crown and double the clear. Lose, and both wins are gone.
-          </p>
+          <div className="story-reward-card double story-reward-line story-reveal" data-testid="story-double-line" style={{ ['--i' as string]: 0 } as CSSProperties}>
+            <span className="story-medal emblem" aria-hidden><span className="story-medal-glyph">✦</span></span>
+            <div className="story-reward-card-body">
+              <p className="story-reward-card-title">Double or nothing</p>
+              <p className="story-reward-card-sub">You beat the King once — and banked <b>nothing</b>. Double or nothing: one more win takes the crown and double the clear. Lose, and both wins are gone.</p>
+            </div>
+          </div>
         )}
-        {r && r.won && r.firstClear && deckUnlockNotice(r.stopId) && (
-          <p className="story-deck-line" data-testid="story-deck-notice">{deckUnlockNotice(r.stopId)}</p>
+        {r && r.won && r.firstClear && deckUnlockNotice(r.stopId) && deckForStop(r.stopId) && (
+          <div className="story-reward-card story-deck-line story-reveal" data-testid="story-deck-notice" style={{ ['--i' as string]: 1 } as CSSProperties}>
+            <img className="story-reward-deckart" src={deckBackUrl(deckForStop(r.stopId)!.id)} alt="" aria-hidden />
+            <div className="story-reward-card-body">
+              <p className="story-reward-card-title">{deckUnlockNotice(r.stopId)}</p>
+              <p className="story-reward-card-sub">Yours for good — find it in the deck picker, at any table.</p>
+            </div>
+          </div>
         )}
         {r && r.won && r.firstClear && setAnimUnlockNotice(r.stopId) && (
-          <p className="story-deck-line" data-testid="story-setanim-notice">{setAnimUnlockNotice(r.stopId)}</p>
+          <div className="story-reward-card story-deck-line story-reveal" data-testid="story-setanim-notice" style={{ ['--i' as string]: 2 } as CSSProperties}>
+            <span className="story-medal emblem" aria-hidden><span className="story-medal-glyph">✦</span></span>
+            <div className="story-reward-card-body">
+              <p className="story-reward-card-title">{setAnimUnlockNotice(r.stopId)}</p>
+              {setAnimForStop(r.stopId)?.blurb && <p className="story-reward-card-sub">{setAnimForStop(r.stopId)!.blurb}</p>}
+            </div>
+          </div>
         )}
         {r && !r.won && !dblLost && (
-          <p className="story-reward-line" data-testid="story-reward-line">
+          <div className="story-reward-hero consolation story-reward-line story-reveal" data-testid="story-reward-line" style={{ ['--i' as string]: 0 } as CSSProperties}>
             {r.rewards.xp > 0
-              ? <>The effort counts — <b>+{r.rewards.xp} XP</b> for seeing it through. No coins on a loss, and no penalty. The retry is free.</>
-              : <>No clear — and no penalty. The retry is free.</>}
-          </p>
+              ? <>
+                  <div className="story-reward-stats"><span className="story-reward-stat"><b>+{r.rewards.xp} XP</b></span></div>
+                  <p className="story-reward-note">The effort counts — for seeing it through. No coins on a loss, and no penalty. The retry is free.</p>
+                </>
+              : <p className="story-reward-note">No clear — and no penalty. The retry is free.</p>}
+          </div>
         )}
         {dblLost && (
-          <p className="story-reward-line" data-testid="story-double-lost-line">
-            Double or nothing — and it came up nothing. The first win is wiped with it: no clear, nothing banked for either leg.{r && r.rewards.xp > 0 ? <> The effort still counts: <b>+{r.rewards.xp} XP</b>.</> : ''} The King stays current.
-          </p>
+          <div className="story-reward-card double story-reward-line story-reveal" data-testid="story-double-lost-line" style={{ ['--i' as string]: 0 } as CSSProperties}>
+            <span className="story-medal emblem" aria-hidden><span className="story-medal-glyph">✦</span></span>
+            <div className="story-reward-card-body">
+              <p className="story-reward-card-title">Nothing banked</p>
+              <p className="story-reward-card-sub">Double or nothing — and it came up nothing. The first win is wiped with it: no clear, nothing banked for either leg.{r && r.rewards.xp > 0 ? <> The effort still counts: <b>+{r.rewards.xp} XP</b>.</> : ''} The King stays current.</p>
+            </div>
+          </div>
         )}
         {r && (r.newFinds?.length ?? 0) > 0 && (
-          <p className="story-find-line" data-testid="story-new-finds">
-            {r.newFinds.map((f) => <span key={f.id} className="story-find-chip">{f.kind === 'feat' ? '🏆' : '🥚'} {f.kind === 'feat' ? 'Unlocked' : 'Found'}: {f.name}</span>)}
-          </p>
+          <div className="story-find-line" data-testid="story-new-finds">
+            {r.newFinds.map((f, j) => (
+              <div key={f.id} className="story-reward-card find story-reveal" style={{ ['--i' as string]: 3 + j } as CSSProperties}>
+                <span className="story-medal" aria-hidden><span className="story-medal-glyph">{f.kind === 'feat' ? '🏆' : '🥚'}</span></span>
+                <div className="story-reward-card-body">
+                  <p className="story-reward-card-title">{f.kind === 'feat' ? 'Unlocked' : 'Found'}: {f.name}</p>
+                  <p className="story-reward-card-sub">{f.kind === 'feat' ? 'Feat collectible — recorded on this stop’s map card.' : 'Hidden egg — recorded on this stop’s map card.'}</p>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
         {screen.won && !dblStarted && (() => {
           const before = new Set(storyBadgesFor(badgeFactsOf(progressBeforeRef.current)).filter((b) => b.earned).map((b) => b.id));
           const after = storyBadgesFor(badgeFactsOf(r ?? progress));
           const fresh = new Set(after.filter((b) => b.earned && !before.has(b.id)).map((b) => b.id));
-          return <StoryBadges facts={badgeFactsOf(r ?? progress)} highlight={fresh} title="Badges" />;
+          return <StoryBadges facts={badgeFactsOf(r ?? progress)} highlight={fresh} title="Badges" celebrate />;
         })()}
+        </div>
         <ScriptPlayer
           beats={dblStarted ? kingDoubleBeats('started') : dblLost ? kingDoubleBeats('lost') : beatsFor(stop, screen.won ? 'outroWin' : 'outroLose', factsFor(stop))}
           cta="Back to the map"
