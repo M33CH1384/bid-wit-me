@@ -17,7 +17,7 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { STORY_SCRIPTS, STORY_STOPS, buildStoryTape } from '@spades/bots';
 import { makeRules, newGame, type GameState } from '@spades/rules';
-import ScriptPlayer, { reservedBodyHeight } from '../src/story/ScriptPlayer';
+import ScriptPlayer, { CLIP_REVEAL_FRACTION, fixedRevealMs, reservedBodyHeight, revealDurationMs } from '../src/story/ScriptPlayer';
 import StoryTape from '../src/story/StoryTape';
 import StoryFace from '../src/story/StoryFace';
 import StoryBadges, { badgeFactsOf } from '../src/story/StoryBadges';
@@ -181,6 +181,73 @@ describe('scene player layout reservation (owner: the divs jumped as text typed)
     stubSizerHeight(c, 88);
     await click(c.querySelector('[data-testid="story-script-next"]')!);
     expect(body().style.height).toBe('88px');
+  });
+});
+
+describe('scene player typewriter pacing (owner: the words typed way faster than they were heard)', () => {
+  // ~120 chars: the fixed pace for a line this long runs at the 14 ms/char floor.
+  const LONG_LINE = 'The house remembers every hand ever played under this roof, and it keeps its own ledger of who paid and who still owes.';
+  // Serve sprite manifests (the JSON half of a sprite; the audio half
+  // 404s, which load() tolerates — the duration lookup reads the JSON
+  // alone). Smoke (og-m) and Queenie (mama-f) are used because no other
+  // test in this file loads their sprites (the sprite cache is
+  // module-level and would keep the first answer it got).
+  const stubVoices = (clipsByKey: Record<string, Record<string, [number, number]>>) => {
+    vi.stubGlobal('fetch', async (input: unknown) => {
+      const url = String(input);
+      const m = /\/voices\/v2\/([a-z-]+)\.json/.exec(url);
+      if (m) return { ok: true, status: 200, json: async () => ({ clips: clipsByKey[m[1]!] ?? {} }) };
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+  };
+  afterEach(() => { vi.unstubAllGlobals(); });
+  const visibleLine = (c: HTMLElement) => c.querySelector('.story-script-body > .story-script-line')!.textContent ?? '';
+  const hint = (c: HTMLElement) => c.querySelector('.story-script-body > .story-script-hint')!.textContent;
+  const settle = async (ms: number) => { await act(async () => { await new Promise((r) => setTimeout(r, ms)); }); };
+
+  it('the pacing math: the fixed pace without a clip, ~92% of the clip with one', () => {
+    expect(fixedRevealMs(10)).toBe(300); // short lines linger: 30 ms/char
+    expect(fixedRevealMs(30)).toBe(900);
+    expect(fixedRevealMs(45)).toBe(900); // 20 ms/char
+    expect(fixedRevealMs(100)).toBe(1400); // long lines: the 14 ms/char floor
+    expect(revealDurationMs(100, null)).toBe(fixedRevealMs(100));
+    expect(revealDurationMs(100, 0)).toBe(fixedRevealMs(100));
+    expect(revealDurationMs(100, 4000)).toBe(Math.round(4000 * CLIP_REVEAL_FRACTION));
+    expect(CLIP_REVEAL_FRACTION).toBeGreaterThanOrEqual(0.9);
+    expect(CLIP_REVEAL_FRACTION).toBeLessThanOrEqual(0.95);
+  });
+
+  it('a beat WITH a clip types across the clip, not the fixed pace — and a tap still completes it', async () => {
+    stubVoices({ 'og-m': { [LONG_LINE]: [0, 30000] } }); // Smoke's sprite holds a 30 s take of the line
+    const beats = [
+      { speaker: 'smoke', line: LONG_LINE },
+      { speaker: 'dee', line: 'Short follow-up.' },
+    ];
+    const c = await renderEl(createElement(ScriptPlayer, { beats, cta: 'Go', onDone: () => {}, cast: ['smoke', 'dee', 'redd'] }));
+    // well past the moment the fixed pace would have finished the line…
+    await settle(fixedRevealMs(LONG_LINE.length) + 800);
+    // …the reveal is still early, paced against the voice, and the
+    // continue affordance has NOT arrived early (nothing advances —
+    // by timer or by hint — before the audio is nearly done)
+    expect(visibleLine(c).length).toBeLessThanOrEqual(LONG_LINE.length / 3);
+    expect(LONG_LINE.startsWith(visibleLine(c))).toBe(true);
+    expect(hint(c)).toBe('Tap for the full line');
+    // tap completes the text instantly, exactly as before (the
+    // still-playing voice is untouched — typer and audio are separate)
+    await click(c.querySelector('[data-testid="story-script-next"]')!);
+    expect(visibleLine(c)).toBe(LONG_LINE);
+  });
+
+  it('a beat with NO clip keeps the fixed pacing', async () => {
+    stubVoices({ 'mama-f': {} }); // Queenie's sprite loads, but this line has no take in it
+    const beats = [
+      { speaker: 'queenie', line: LONG_LINE },
+      { speaker: 'dee', line: 'Short follow-up.' },
+    ];
+    const c = await renderEl(createElement(ScriptPlayer, { beats, cta: 'Go', onDone: () => {}, cast: ['queenie', 'dee', 'ace'] }));
+    await settle(fixedRevealMs(LONG_LINE.length) + 800);
+    expect(visibleLine(c)).toBe(LONG_LINE);
+    expect(hint(c)).toBe('Tap to continue');
   });
 });
 

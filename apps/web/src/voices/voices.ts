@@ -93,3 +93,18 @@ export async function playClip(persona: PersonaId, name: string, raw: string | u
   sound.playVoice(sp.buf, gain, [at[0] / 1000, at[1] / 1000], seat, playerCount);
   return true;
 }
+
+/**
+ * The recorded duration (ms) of the clip playClip would play for this
+ * line, or null when there is none. Same sprite, same lookup — the
+ * manifest JSON alone answers (the audio needn't have decoded), so a
+ * caller can pace itself against a line's voice without playing
+ * anything or forking the speech path. The story scene player paces
+ * its typewriter reveal against this (talkPrefs.spokenClipDurationMs).
+ */
+export async function clipDurationMs(persona: PersonaId, name: string, raw: string | undefined, bid?: number): Promise<number | null> {
+  if (!raw) return null;
+  const sp = await load(keyFor(persona, name));
+  const at = sp && ((bid !== undefined ? sp.clips[`${raw}#${bid}`] : undefined) ?? sp.clips[raw]);
+  return at ? at[1] : null;
+}

@@ -10,7 +10,7 @@ import { useSyncExternalStore } from 'react';
 import { PERSONAS, type PersonaId, type TalkIntensity, applyPronunciation, maskMild, personaForName, storyCastForName, voiceGender } from '@spades/bots';
 import { sound } from './audio';
 import { cancelActiveSpeech } from './audioSession';
-import { playClip, rawLine } from './voices/voices';
+import { clipDurationMs, playClip, rawLine } from './voices/voices';
 
 export interface TalkPrefs { botTalk: boolean; hideBotTalk: boolean; voices: boolean; voiceVolume: number; /** Voice Phase 3, on this device: play pre-voiced AI lines when the table offers them (default on; the host flag decides whether any are offered) */ aiVoices: boolean }
 const KEY = 'bwm.talk.v1';
@@ -102,6 +102,29 @@ export function speakBot(name: string, text: string, persona?: string, line?: st
   if (cast && storyScope && line) return;
   const raw = rawLine(line) ?? (cast && (per === cast.persona || per === cast.cardPersona) ? text : undefined);
   void playClip(per, name, raw, prefs.voiceVolume * 0.9, bid, seat, playerCount).then((played) => { if (!played) webSpeech(name, text, per); });
+}
+
+/**
+ * Duration (ms) of the recorded clip the matching speakBot call will
+ * play, or null when that call is text-only — voices or sound off, the
+ * speaker muted, the one-timbre story fence above, or simply no clip
+ * recorded for the line. The guards and the raw-key resolution mirror
+ * speakBot's exactly (kept in step deliberately), and the number itself
+ * comes from the same manifest entry playClip plays — a lookup, never
+ * a second playback path. The story scene player paces its typewriter
+ * reveal against it so the words land as they're heard (owner,
+ * 2026-10-21: the typing finished long before the voice did).
+ */
+export async function spokenClipDurationMs(name: string, text: string, persona?: string, line?: string, bid?: number): Promise<number | null> {
+  if (!prefs.voices) return null;
+  const snd = sound.settings;
+  if (!snd.on || snd.volume <= 0) return null;
+  if (sound.voiceMuted(name)) return null;
+  const per = (persona && persona in PERSONAS ? persona : personaForName(name)) as PersonaId;
+  const cast = storyCastForName(name);
+  if (cast && storyScope && line) return null;
+  const raw = rawLine(line) ?? (cast && (per === cast.persona || per === cast.cardPersona) ? text : undefined);
+  return clipDurationMs(per, name, raw, bid);
 }
 
 /**

@@ -23,7 +23,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { STORY_CHARACTERS, personaForName, type StoryBeat } from '@spades/bots';
 import { sound } from '../audio';
 import { cancelActiveSpeech } from '../audioSession';
-import { setStoryVoiceScope, speakBot } from '../talkPrefs';
+import { setStoryVoiceScope, speakBot, spokenClipDurationMs } from '../talkPrefs';
 import StoryFace from './StoryFace';
 import KingGunArt from './KingGunArt';
 import { useReduceEffects } from '../fx';
@@ -53,6 +53,32 @@ export function speakerBlurb(speaker: string): string {
  */
 export function reservedBodyHeight(sizer: { offsetHeight: number } | null | undefined): number {
   return sizer && sizer.offsetHeight > 0 ? sizer.offsetHeight : 0;
+}
+
+/**
+ * The reveal's target when a beat HAS a recorded clip: the text
+ * completes at ~92% of the clip's length, so the last words land as
+ * they're heard instead of a finished line sitting on screen while
+ * the voice is still mid-sentence (owner, 2026-10-21).
+ */
+export const CLIP_REVEAL_FRACTION = 0.925;
+
+/**
+ * The standing no-clip reveal time for a line of `total` chars: the
+ * long-standing reading pace — a ~900 ms reveal, one char per step,
+ * the step clamped to [14, 30] ms so short lines linger a beat and
+ * long lines don't crawl. Beats with no recorded clip (text-only
+ * under the voice fence) keep exactly this.
+ */
+export function fixedRevealMs(total: number): number {
+  if (total <= 0) return 0;
+  const stepMs = Math.max(14, Math.min(30, Math.floor(900 / Math.max(1, total))));
+  return stepMs * total;
+}
+
+/** The typewriter's total run for a beat: clip-paced when a clip exists, the fixed reading pace when it doesn't. */
+export function revealDurationMs(total: number, clipMs: number | null): number {
+  return clipMs && clipMs > 0 ? Math.round(clipMs * CLIP_REVEAL_FRACTION) : fixedRevealMs(total);
 }
 
 export interface SceneEgg {
@@ -122,22 +148,52 @@ export default function ScriptPlayer({ beats, cta, onDone, bgUrl, cast = [], egg
     onEggFound?.();
   };
 
-  // line reveal pacing + voice for the current beat
+  // line reveal pacing + voice for the current beat. The reveal starts
+  // at the fixed reading pace; when the beat's line HAS a recorded
+  // clip, the duration lookup (the same manifest entry the voice plays
+  // from) re-paces what remains so the text completes at ~92% of the
+  // clip — the words land as they're heard (owner, 2026-10-21: "the
+  // words type way faster than they are heard audibly"). A tap still
+  // completes the line instantly (advance below), and completing the
+  // text never touches the still-playing voice — the typer and the
+  // audio are independent by construction.
   useEffect(() => {
     if (!beat) return;
     setShown(reduceFx ? Number.MAX_SAFE_INTEGER : 0);
+    const name = speakerName(beat.speaker);
+    const persona = beat.speaker !== 'you' ? personaForName(name) : undefined;
     if (beat.speaker !== 'you') {
-      const name = speakerName(beat.speaker);
-      speakBot(name, beat.line, personaForName(name), undefined, undefined, seatPosFor(beat.speaker, cast));
+      speakBot(name, beat.line, persona, undefined, undefined, seatPosFor(beat.speaker, cast));
     }
     if (reduceFx) return;
     const total = beat.line.length;
-    const stepMs = Math.max(14, Math.min(30, Math.floor(900 / Math.max(1, total))));
-    const t = window.setInterval(() => setShown((s) => {
-      if (s >= total) { window.clearInterval(t); return s; }
-      return s + 1;
-    }), stepMs);
-    return () => window.clearInterval(t);
+    let shownCount = 0;
+    let timer: number | undefined;
+    // (Re)pace the REMAINING reveal over targetMs. Chars already shown
+    // stay shown, so a duration that arrives late can only stretch
+    // what's left — the text never jumps backwards.
+    const pace = (targetMs: number) => {
+      window.clearInterval(timer);
+      const remaining = total - shownCount;
+      if (remaining <= 0) return;
+      const stepMs = Math.max(8, Math.round(targetMs / remaining));
+      timer = window.setInterval(() => setShown((s) => {
+        if (s >= total) { window.clearInterval(timer); return s; }
+        shownCount = s + 1;
+        return s + 1;
+      }), stepMs);
+    };
+    pace(fixedRevealMs(total));
+    if (beat.speaker === 'you') return () => window.clearInterval(timer);
+    const t0 = performance.now();
+    let live = true;
+    void spokenClipDurationMs(name, beat.line, persona).then((clipMs) => {
+      if (!live || !clipMs) return;
+      // Aim the rest of the reveal at the clip-paced target, less the
+      // time already spent typing at the fixed pace.
+      pace(Math.max(0, revealDurationMs(total, clipMs) - (performance.now() - t0)));
+    });
+    return () => { live = false; window.clearInterval(timer); };
   }, [i, lines]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sizerRef = useRef<HTMLDivElement | null>(null);
