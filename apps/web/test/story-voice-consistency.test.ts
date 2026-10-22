@@ -84,17 +84,31 @@ describe('story voice consistency: cast recording or text, never a second voice'
     setStoryVoiceScope(false);
   });
 
-  it('in story scope, generic table talk and banter are TEXT ONLY for every story character (no persona sprite)', async () => {
+  it('in story scope, generic table talk and banter resolve ONLY through the cast sprite — a cast take of the template, or text', async () => {
     const { speakBot, setStoryVoiceScope } = await load();
     setStoryVoiceScope(true);
-    for (const { name, cast } of CAST) {
-      for (const persona of [cast.cardPersona, cast.persona] as const) {
-        reset();
-        speakBot(name, 'generic display text', persona, TALK_ID); // talk sink shape
-        speakBot(name, 'generic display text', persona, TALK_ID, 4); // banter shape (with bid)
-        await flush();
-        expect(clip.calls.length, `${name} via ${persona}`).toBe(0); // never resolved to any sprite clip
-        expect(speech.speak, name).not.toHaveBeenCalled();
+    for (const mode of ['miss', 'hit'] as const) {
+      for (const { name, cast } of CAST) {
+        for (const persona of [cast.cardPersona, cast.persona] as const) {
+          reset();
+          clip.played = mode === 'hit'; // a cast take of the template exists (hit) or not (miss)
+          speakBot(name, 'generic display text', persona, TALK_ID); // talk sink shape
+          speakBot(name, 'generic display text', persona, TALK_ID, 4); // banter shape (with bid)
+          await flush();
+          // Exactly one attempt per line, always via the CAST persona
+          // (keyFor → the cast sprite), keyed by the line's raw template —
+          // never the caller's persona route, never the AI catalog, never
+          // the robot. On a miss that attempt is the whole story: text
+          // only. On a hit the clip that plays is that cast-route one.
+          expect(clip.calls.length, `${name} via ${persona} (${mode})`).toBe(2);
+          expect(clip.calls[0]![0], name).toBe(cast.persona);
+          expect(clip.calls[0]![2], name).toBe(TALK_TEMPLATE);
+          expect(clip.calls[1]![0], name).toBe(cast.persona);
+          expect(clip.calls[1]![2], name).toBe(TALK_TEMPLATE);
+          expect(clip.calls[1]![4], name).toBe(4); // the bid still picks its numbered take in the cast sprite
+          expect(speech.speak, name).not.toHaveBeenCalled();
+          expect(speech.cancel, name).not.toHaveBeenCalled();
+        }
       }
     }
     setStoryVoiceScope(false);
@@ -142,7 +156,8 @@ describe('story voice consistency: cast recording or text, never a second voice'
     expect(scene).toContain('setStoryVoiceScope(true)');
     expect(table).toContain('setStoryVoiceScope(true)');
     expect(table).toContain('aiVoices: tp.aiVoices && !muted && !story?.scene');
-    expect(talk).toContain('if (cast && storyScope && line) return;');
+    expect(talk).toContain('if (cast && storyScope && line) {');
+    expect(talk).toContain('playClip(cast.persona, name, raw,');
     expect(talk).toContain('castGate');
   });
 });
