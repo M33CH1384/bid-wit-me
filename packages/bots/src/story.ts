@@ -20,6 +20,7 @@
  */
 import type { PersonaId } from './personas';
 import type { BotSkill } from './bidding';
+import type { DensityClass } from './talk';
 
 export type StoryTier =
   | 'gentle' | 'easyPlus' | 'mediumMinus' | 'medium' | 'mediumPlus'
@@ -160,6 +161,27 @@ export const STORY_STOPS: StoryStop[] = [
 
 export const storyStopById = (id: string): StoryStop | undefined => STORY_STOPS.find((s) => s.id === id);
 export const storyStopByNumber = (n: number): StoryStop | undefined => STORY_STOPS.find((s) => s.n === n);
+
+/**
+ * Speech-density class per stop (density pass; profiles in talk.ts
+ * TALK_PROFILES). The classes ARE the mood canon: the Rec and the Cookout
+ * run loud, the Church and the Rooftop keep their air on purpose (slow —
+ * gaps ~2× the loud stops', speech share capped), the Corner and the Pj's
+ * stay tense and short, and the King runs its own climax gear.
+ */
+export const STOP_DENSITY_CLASS: Record<string, DensityClass> = {
+  'porch': 'lively',
+  'barbershop': 'steady',
+  'rec-center': 'loud',
+  'cookout': 'loud',
+  'corner': 'tense',
+  'church-basement': 'slow',
+  'rooftop': 'slow',
+  'high-rise': 'cold',
+  'the-pjs': 'tense',
+  'legends': 'steady',
+  'king': 'climax',
+};
 
 /** The final stop (the King). Clearing it on a track completes that track. */
 export const STORY_FINAL_STOP: StoryStop = STORY_STOPS[STORY_STOPS.length - 1]!;

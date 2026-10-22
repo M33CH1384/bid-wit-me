@@ -441,7 +441,9 @@ describe('railbirds: the neighborhood on the rail', () => {
     expect(a).toEqual(railLineFor('cookout', 'jokerDropped', facts));
     expect(railLineFor('cookout', 'jokerDropped', { ...facts, fired: 1 })?.speaker).not.toBe(a?.speaker);
     expect(railLineFor('cookout', 'jokerDropped', { ...facts, fired: railCapFor('cookout') })).toBeNull();
-    expect(RAIL_CAPS['corner']).toBe(2); // the grit stops run thin
+    expect(RAIL_CAPS['corner']).toBe(3); // the grit stops run thin (density pass: 2 → 3, still the joint-lowest working cap)
+    expect(RAIL_CAPS['king']).toBe(3); // the King's rail is untouched by the density loosening
+    expect(RAIL_CAPS['cookout']).toBe(8); // loud stops: cap ×1.5, rounded up
   });
 
   it('the King goes quiet after the early hands — except the finalHand witness line', () => {

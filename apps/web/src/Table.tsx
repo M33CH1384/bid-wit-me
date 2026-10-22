@@ -99,7 +99,7 @@ import { isWildDeuce } from './cardFaces';
 import { MISDEAL_DEAL_SPEED, heldHandForThrowIn, misdealDealMs, misdealFanHand, misdealRevealKey, misdealRevealMs } from './misdeal';
 import { QUICK_TRASH_SET } from './quickTrash';
 import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
-import { STORY_CHARACTERS, STORY_STOPS, type BotLevel, type StoryBeat, type StoryBeatFacts, type StoryGameFacts, type StoryStop, type TalkIntensity, botSkillFor, buildStoryTape, callbackFor, midSceneFor, partnerBidIntent, personaForName, platePersona, pickBotNames, playBeatFor, railCastForAttempt, railMomentFor, resumeLineFor, tableExchangeFor } from '@spades/bots';
+import { STORY_CHARACTERS, STORY_STOPS, STOP_DENSITY_CLASS, TALK_PROFILES, type BotLevel, type StoryBeat, type StoryBeatFacts, type StoryGameFacts, type StoryStop, type TalkIntensity, botSkillFor, buildStoryTape, callbackFor, midSceneFor, partnerBidIntent, personaForName, platePersona, pickBotNames, playBeatFor, railCastForAttempt, railMomentFor, resumeLineFor, tableExchangeFor } from '@spades/bots';
 import { preloadVoice } from './voices/voices';
 const Scene = lazy(loadScene);
 
@@ -737,7 +737,14 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // offline trash talk: same engine as the server
   useEffect(() => {
     if (online) return;
-    offlineTalk.table = { seats: names.map((nm, i) => ({ name: nm, bot: i !== HUMAN })), partnerships: r.partnerships, teamNames: Array.from({ length: st.scores.length }, (_, i) => sideName(r, i, names)), intensity, jokers: r.deck === 'joker54', aiTalk: !!settings.aiTalk };
+    // Speech density (2026-10-22): story tables run their stop's class; the
+    // King shifts to its second gear at hand 5 or once a side is within 300
+    // of the 750 target. Regular offline tables run the lively party profile
+    // (owner: "the dry moments gone… live like a party"). Online tables
+    // never reach this effect — the server's talk stays standard.
+    const densityCls = story?.scene ? STOP_DENSITY_CLASS[story.scene.stop.id] : undefined;
+    const kingLate = densityCls === 'climax' && (st.handNo >= 5 || Math.max(...st.scores) >= 450);
+    offlineTalk.table = { seats: names.map((nm, i) => ({ name: nm, bot: i !== HUMAN })), partnerships: r.partnerships, teamNames: Array.from({ length: st.scores.length }, (_, i) => sideName(r, i, names)), intensity, jokers: r.deck === 'joker54', aiTalk: !!settings.aiTalk, profile: densityCls ? (kingLate ? 'climaxLate' : densityCls) : 'lively' };
     // Revolutionaries tributes: at the Barbershop story table Coleman & June
     // carry them (Coleman is the stop's historian); anywhere else the bot who
     // threw the honoured card speaks.
@@ -843,6 +850,39 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // The badge keeps naming this seat while the play is in flight. The hand itself stays locked
   // so a second tap cannot send another card before the server answers.
   const myTurn = actingSeat({ turn: localTurn, phase: st.phase, pause, dealing, locked: false, covered: false }) === HUMAN && !spectating && !turnLocked;
+  // Decision protection (density pass): while the human has a pending bid
+  // or play, the talk layer starts no long generic line on their clock.
+  useEffect(() => {
+    offlineTalk.humanDeciding = !online && myTurn && (st.phase === 'bidding' || st.phase === 'playing');
+    return () => { offlineTalk.humanDeciding = false; };
+  }, [myTurn, st.phase, online]);
+  // Thinking-time murmurs (density pass, story tables): when the room has
+  // been silent for the stop class's threshold on the human's clock, one
+  // bot breathes a short line; a second, from a different seat, only on a
+  // very long deliberation. Never more than two per turn, cancelled the
+  // moment the human acts (the effect's key turns over on any state change
+  // that ends or interrupts the turn).
+  const murmurTurn = useRef<{ key: string; fired: number; seat?: number }>({ key: '', fired: 0 });
+  useEffect(() => {
+    if (online || !story?.scene) return;
+    const prof = TALK_PROFILES[STOP_DENSITY_CLASS[story.scene.stop.id] ?? 'standard'];
+    if (!prof || prof.murmurMs <= 0) return;
+    if (!myTurn || (st.phase !== 'bidding' && st.phase !== 'playing')) return;
+    const key = `${st.handNo}:${st.phase}:${st.tricks.length}:${st.trick.plays.length}:${st.bids.map((b) => String(b)).join(',')}`;
+    if (murmurTurn.current.key !== key) murmurTurn.current = { key, fired: 0 };
+    const M = murmurTurn.current;
+    const arm = (atMs: number, nth: number) => window.setTimeout(() => {
+      if (M.fired >= nth) return;
+      // the room really has been quiet for the class threshold
+      if (performance.now() - offlineTalk.lastSpeechAt < prof.murmurMs - 250) return;
+      void offlineTalk.murmur(nth === 2 ? M.seat : undefined).then((seat) => {
+        if (seat !== false) { M.fired = nth; M.seat = seat; }
+      });
+    }, atMs);
+    const t1 = arm(prof.murmurMs, 1);
+    const t2 = arm(prof.murmurMs * 2 + 4000, 2);
+    return () => { window.clearTimeout(t1); window.clearTimeout(t2); };
+  }, [myTurn, st, online, story]);
   // Sort once when the hand is dealt. A play only removes a card; re-sorting here is what made the fan look shuffled.
   const handOrder = useRef<{ handNo: number; cards: Card[] } | null>(null);
   const hand = useMemo(() => {
@@ -1334,6 +1374,14 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       }, (bt, delayMs) => {
         const name = nameOf(bt);
         const seatIx = names.indexOf(name);
+        // Mix hierarchy (density pass): a scripted line owns the room
+        // while it plays — generic talk may only tail-overlap its last
+        // 3 s, never replace it (offlineTalk's voiceBusyUntil drop rule).
+        if (bt.speaker !== 'you' && seatIx >= 0 && !sound.voiceMuted(name)) {
+          void spokenClipDurationMs(name, bt.line)
+            .then((d) => { if (d) offlineTalk.noteHighPriority(performance.now() + delayMs, d); })
+            .catch(() => { /* a lookup miss just leaves the room unmarked */ });
+        }
         window.setTimeout(() => {
           push(name, showLine(bt.line), false, 0, true);
           if (bt.speaker !== 'you' && seatIx >= 0 && !sound.voiceMuted(name)) {
@@ -1433,6 +1481,13 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             // the seated player's answer (their own name, their seat).
             const railSide = moment.kind === 'solo' || ix !== 1;
             const name = STORY_CHARACTERS[l.speaker]?.name ?? l.speaker;
+            // Rail speech is higher-priority than generic talk (mix
+            // hierarchy): mark its window so chatter can't replace it.
+            if (!sound.voiceMuted(name)) {
+              void spokenClipDurationMs(name, l.line)
+                .then((d) => { if (d) offlineTalk.noteHighPriority(performance.now() + delayMs, d); })
+                .catch(() => { /* a lookup miss just leaves the room unmarked */ });
+            }
             window.setTimeout(() => {
               if (railSide) {
                 push(`${name} · rail`, showLine(l.line), false, 0, true);
@@ -1687,7 +1742,10 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (!collecting || online) return;
     if (banterDone.current === st.handNo) return;
     banterDone.current = st.handNo;
-    const lines = offlineTalk.banter(st);
+    // Density pass: story tables at loud/lively stops take a third banter
+    // line (the next unused context slot). Regular tables keep two.
+    const banterCls = story?.scene ? STOP_DENSITY_CLASS[story.scene.stop.id] : undefined;
+    const lines = offlineTalk.banter(st, banterCls === 'loud' || banterCls === 'lively' ? 3 : 2);
     // Paced by each line's real clip duration (the beatPacing rule): the
     // old fixed stagger started the second chirp 1.8 s after the first,
     // while the persona clips run 2.5–5 s — at regular tables, where
@@ -1708,8 +1766,14 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       }));
       const offsets = beatStartOffsets(durations, 350, 1800);
       lines.forEach((l, ix) => {
+        // The third line (density pass) never leaves the collection
+        // window: if its paced start plus its clip would overrun the
+        // 5.2 s window it is dropped — the recap's timing does not move.
+        if (ix === 2 && durations[2] != null && 900 + offsets[2]! + durations[2]! > 5200) return;
         window.setTimeout(() => {
           push(l.name, showLine(l.text), false, 0, true);
+          offlineTalk.noteDelivered(l);
+          offlineTalk.maybeAnswer(l, {}); // banter is generic-layer speech: the room may answer it
           if (!sound.voiceMuted(l.name)) speakBot(l.name, l.text, l.persona, l.line, l.bid, pos[l.seat], n);
         }, 900 + offsets[ix]!);
       });

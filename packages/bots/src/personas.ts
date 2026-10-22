@@ -48,7 +48,8 @@ export type TalkKind =
   | 'roast'        // general petty one-liners (opponent blunder, winning big)
   | 'onNotice'     // the other side got shot (Shot = out) and is on notice
   | 'shotOut'      // the other side got shot out of the game
-  | 'matchPoint';  // speaker's side is one hand from winning (leading, within 100 of the target)
+  | 'matchPoint'   // speaker's side is one hand from winning (leading, within 100 of the target)
+  | 'trickPop';    // a trick just completed (density pass): NO pool of its own — talk.ts resolves it to the speaker's recorded prePlay/roast pools
 
 export type PersonaId = 'professor' | 'mama' | 'hype' | 'petty' | 'og' | 'hustler' | 'silent'
   | 'deacon' | 'conspiracy' | 'barber' | 'gambler' | 'hothead' | 'comedian' | 'lilcuz' | 'coach' | 'smooth' | 'storyteller' | 'influencer' | 'sorelose';

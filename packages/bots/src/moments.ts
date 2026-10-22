@@ -61,6 +61,16 @@ export function momentsFor(before: GameState, action: Action, after: GameState):
       }
       // a trick taken with a big card by the last player: a slam
       if (takes && all.length === r.playerCount && (card[0] === 'A' || card[0] === 'K' || card === 'BJ' || (isTrump(card, r) && 'AKQ'.includes(card[0]!)))) out.push({ kind: 'slam', seat, side, card, them: prevWin, ...factsFor(side) });
+      // the trick just completed (density pass): the cadence floor — the
+      // talk engine decides whether anyone pops (profile-gated, dormant at
+      // standard tables). `seat`/`side` name the WINNER; `them` is a seat
+      // that lost the book.
+      if (all.length === r.playerCount) {
+        const winner = trickWinner(all, r);
+        const wSide = sideOf(winner, r);
+        const loser = all.find((p) => sideOf(p.seat, r) !== wSide)?.seat;
+        out.push({ kind: 'trickPop', seat: winner, side: wSide, ...(loser !== undefined ? { them: loser } : {}), ...factsFor(wSide) });
+      }
       // a Nil just took its first book
       const nilTaker = trickWinner(all, r);
       if (all.length === r.playerCount && isNilSeat(before, nilTaker) && (before.tricksWon[nilTaker] ?? 0) === 0 && r.partnerships) {

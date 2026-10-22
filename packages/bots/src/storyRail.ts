@@ -57,10 +57,12 @@ export const STORY_RAIL: Record<string, string[]> = {
   'king': ['uncleRay', 'pat', 'mrColeman', 'june', 'lilMan', 'trey', 'keisha', 'teisha', 'smoke', 'redd', 'deaconFord', 'sisterMae', 'poet', 'seven', 'velvet', 'accountant', 'captainBlock', 'brick', 'queenie', 'ace'],
 };
 
-/** Max rail chime-ins per match, per stop. Seasoning, never a meal. */
+/** Max rail chime-ins per match, per stop. Seasoning, never a meal.
+ * (Density pass loosening: loud/steady caps ×1.5 rounded up, tense caps +1;
+ * slow caps and the King's 3 are unchanged — his rail quiets late by canon.) */
 export const RAIL_CAPS: Record<string, number> = {
-  'barbershop': 4, 'rec-center': 4, 'cookout': 5, 'corner': 2, 'church-basement': 4,
-  'rooftop': 3, 'the-pjs': 3, 'legends': 4, 'king': 3,
+  'barbershop': 6, 'rec-center': 6, 'cookout': 8, 'corner': 3, 'church-basement': 4,
+  'rooftop': 3, 'the-pjs': 4, 'legends': 6, 'king': 3,
 };
 
 export const railCapFor = (stopId: string): number => RAIL_CAPS[stopId] ?? 0;
@@ -456,12 +458,21 @@ export const railExchangeCapFor = (stopId: string): number => RAIL_EXCHANGE_CAPS
 /** Stops whose exchanges stay SHORT: one reply, no comeback, ever. */
 export const RAIL_SHORT_STOPS: ReadonlySet<string> = new Set(['corner', 'rooftop', 'the-pjs']);
 
-/** Probability an eligible moment is picked up at all (else it passes in silence). */
-const RAIL_SPEAK_P: Record<string, number> = { 'corner': 0.4, 'the-pjs': 0.5, 'rooftop': 0.5, 'king': 0.6 };
+/** Probability an eligible moment is picked up at all (else it passes in silence).
+ * (Density pass: loud +0.15, steady +0.10, tense Corner/Pj's +0.10, slow +0.05;
+ * the King is unchanged — his crowd goes still while the table leans in.) */
+const RAIL_SPEAK_P: Record<string, number> = {
+  'corner': 0.5, 'the-pjs': 0.6, 'rooftop': 0.55, 'king': 0.6,
+  'barbershop': 0.8, 'legends': 0.8, 'rec-center': 0.85, 'cookout': 0.85, 'church-basement': 0.75,
+};
 const railSpeakP = (stopId: string): number => RAIL_SPEAK_P[stopId] ?? 0.7;
 
-/** Probability a picked-up moment becomes an exchange (vs a solo chime-in). */
-const RAIL_EXCHANGE_P: Record<string, number> = { 'corner': 0.18, 'the-pjs': 0.18, 'rooftop': 0.2, 'church-basement': 0.3, 'king': 0.3 };
+/** Probability a picked-up moment becomes an exchange (vs a solo chime-in).
+ * (Density pass: +0.05 at the loud and steady stops; tense/cold/slow/King unchanged.) */
+const RAIL_EXCHANGE_P: Record<string, number> = {
+  'corner': 0.18, 'the-pjs': 0.18, 'rooftop': 0.2, 'church-basement': 0.3, 'king': 0.3,
+  'barbershop': 0.4, 'legends': 0.4, 'rec-center': 0.4, 'cookout': 0.4,
+};
 const railExchangeP = (stopId: string): number => RAIL_EXCHANGE_P[stopId] ?? 0.35;
 
 /** Probability an exchange earns its comeback (never at the short stops). */

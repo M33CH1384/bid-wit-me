@@ -31,9 +31,59 @@ export const TALK = {
     streak: 0.5, runIt: 1, gotRan: 0.6, win: 1, lose: 0.9, rematch: 0.8, hypePartner: 0.55, newbie: 0.3, reveal: 1,
     slam: 0.3, partnerBlunder: 0.7, bidTooHigh: 0.5, nilBid: 0.6, blindNil: 0.9, boston: 1, loudLoser: 0.8, badHand: 0.35, roast: 0.5,
     onNotice: 0.8, shotOut: 1, matchPoint: 0.8,
+    // trickPop never rolls on this table: its chance lives on the density profile
+    // (TALK_PROFILES.trickPop), so the trigger stays dormant wherever no profile
+    // opts a table in — the server's online tables included.
+    trickPop: 0,
   } as Record<TalkKind, number>,
   recentMax: 14,
 };
+
+/**
+ * Speech-density classes (story density pass, owner directive 2026-10-22:
+ * "rarely a dull moment" — measured spec in STORY_DENSITY_SPEC.md). A table
+ * opts into a class via TalkTable.profile; the story stop → class map is
+ * STOP_DENSITY_CLASS (story.ts). `standard` is today's tuning, bit-for-bit,
+ * and is what every table without a profile gets — the server's online
+ * tables never set one, so online talk is untouched. Slow classes keep
+ * their air on purpose: their gaps run ~2× the loud classes' and their
+ * speech share is capped by the same numbers that floor the loud stops.
+ * The web layer reads answerP/maxChain/murmurMs off the same profile
+ * (answer chains + thinking-time murmurs live client-side).
+ */
+export type DensityClass = 'standard' | 'loud' | 'lively' | 'steady' | 'tense' | 'cold' | 'slow' | 'climax' | 'climaxLate';
+export interface TalkProfile {
+  globalGapMs: number;
+  seatGapMs: number;
+  bigGapMs: number;
+  /** multiplier on every TALK.chance roll (result capped at 0.97) */
+  chanceScale: number;
+  /** prePlayLine's chance, stored directly — it is the cadence knob */
+  prePlay: number;
+  /** trick-completion react chance (before persona freq × gap bias) */
+  trickPop: number;
+  /** probability a generic line earns an answer (each next link halves) */
+  answerP: number;
+  /** max answers after the original line */
+  maxChain: number;
+  /** silence on the human's clock before a murmur may fire (0 = murmurs off) */
+  murmurMs: number;
+}
+export const TALK_PROFILES: Record<DensityClass, TalkProfile> = {
+  standard:   { globalGapMs: 3500, seatGapMs: 9000, bigGapMs: 1200, chanceScale: 1.0,  prePlay: 0.12, trickPop: 0,    answerP: 0,    maxChain: 0, murmurMs: 0 },
+  loud:       { globalGapMs: 1200, seatGapMs: 4000, bigGapMs: 1200, chanceScale: 1.6,  prePlay: 0.30, trickPop: 0.50, answerP: 0.55, maxChain: 2, murmurMs: 7000 },
+  lively:     { globalGapMs: 1500, seatGapMs: 5000, bigGapMs: 1200, chanceScale: 1.45, prePlay: 0.26, trickPop: 0.45, answerP: 0.50, maxChain: 2, murmurMs: 7000 },
+  steady:     { globalGapMs: 2000, seatGapMs: 6000, bigGapMs: 1200, chanceScale: 1.3,  prePlay: 0.20, trickPop: 0.35, answerP: 0.45, maxChain: 2, murmurMs: 8000 },
+  tense:      { globalGapMs: 2200, seatGapMs: 7000, bigGapMs: 1200, chanceScale: 1.25, prePlay: 0.16, trickPop: 0.34, answerP: 0.30, maxChain: 1, murmurMs: 9000 },
+  cold:       { globalGapMs: 2300, seatGapMs: 7000, bigGapMs: 1200, chanceScale: 1.2,  prePlay: 0.18, trickPop: 0.36, answerP: 0.30, maxChain: 1, murmurMs: 9000 },
+  slow:       { globalGapMs: 3200, seatGapMs: 9000, bigGapMs: 1200, chanceScale: 1.1,  prePlay: 0.18, trickPop: 0.34, answerP: 0.30, maxChain: 1, murmurMs: 12000 },
+  climax:     { globalGapMs: 2000, seatGapMs: 6000, bigGapMs: 1200, chanceScale: 1.3,  prePlay: 0.22, trickPop: 0.40, answerP: 0.50, maxChain: 2, murmurMs: 7000 },
+  /** the King's second gear (hand 5+, or a side within 300 of the 750 target):
+   * the seated four lean in while the rail goes still (storyRail is unchanged) */
+  climaxLate: { globalGapMs: 1500, seatGapMs: 4500, bigGapMs: 1200, chanceScale: 1.5,  prePlay: 0.26, trickPop: 0.48, answerP: 0.55, maxChain: 2, murmurMs: 7000 },
+};
+/** The density profile a table runs under (standard when it never opted in). */
+export const profileOf = (t: TalkTable): TalkProfile => TALK_PROFILES[t.profile ?? 'standard'];
 const BIG: TalkKind[] = ['nuke', 'gotNuked', 'wheels', 'runIt', 'win', 'lose', 'reveal', 'rematch', 'boston', 'shotOut', 'blindNil', 'matchPoint'];
 /** the Silent Assassin only speaks for these */
 const SILENT_KINDS: TalkKind[] = ['cut', 'setThem', 'overcut', 'runIt', 'win', 'slam'];
@@ -56,6 +106,8 @@ export interface TalkTable {
   jokers?: boolean;
   /** Voice Phase 3 host flag (default off): Getting set / Wheels / match win may carry a pre-voiced catalog line */
   aiTalk?: boolean;
+  /** speech-density class (story tables by stop; offline regular tables run 'lively' — the party profile) */
+  profile?: DensityClass;
 }
 export interface TalkState {
   lastAt: number; seatAt: number[]; revealed: number[]; recent: string[];
@@ -67,6 +119,8 @@ export interface TalkState {
   ai?: CatalogMemory;
   /** cutthroat seats already seen eliminated (collection banter comments on a NEW elimination once) */
   elimSeen?: boolean[];
+  /** trickPop pool-source rotation counter: odd picks draw the prePlay pool, even picks the roast pool */
+  trickAlt?: number;
 }
 export interface TalkEvent {
   kind: TalkKind;
@@ -95,6 +149,14 @@ export interface TalkEvent {
   bidderSeat?: number;
   /** the side that held that contract */
   bidderSide?: number;
+  /** thinking-time murmur (density pass): `seat` is the REQUIRED speaker, and the
+   * trickPop chance roll is skipped — the murmur timer is itself the gate */
+  murmur?: boolean;
+  /** answer chain (density pass): draw the trickPop speaker from THIS side
+   * (the original speaker's side — the partner's co-sign pop) */
+  answerSide?: number;
+  /** answer chain: this seat (the original speaker) never answers itself */
+  excludeSeat?: number;
 }
 export type GapBucket = 'close' | 'aheadBig' | 'behindBig';
 export type TricksLeftBucket = 'early' | 'mid' | 'late';
@@ -307,7 +369,59 @@ function aiAlternative(st: TalkState, t: TalkTable, persona: PersonaId, g: 'f' |
   return { id: hit.id, text };
 }
 
-const ready = (st: TalkState, seat: number, now: number, big: boolean) => now - (st.seatAt[seat] ?? -1e12) >= (big ? TALK.bigGapMs : TALK.seatGapMs);
+const ready = (st: TalkState, t: TalkTable, seat: number, now: number, big: boolean) => {
+  const prof = profileOf(t);
+  return now - (st.seatAt[seat] ?? -1e12) >= (big ? prof.bigGapMs : prof.seatGapMs);
+};
+
+/**
+ * The trick-completion react (density pass). trickPop has NO recorded lines
+ * of its own and must never get any: the line resolves to the speaker's
+ * recorded `prePlay` pool (odd picks) or `roast` pool (even picks) — the
+ * rotation keeps one small pool from draining 13× a hand — so at story
+ * tables it rides the fence merge's cast-sprite template path exactly like
+ * a prePlay line, and no second voice can appear. The loser chirps more
+ * than the winner gloats (60/40). Silent-persona seats never pop: their
+ * rare lines stay rare.
+ */
+function trickPopTalk(st: TalkState, t: TalkTable, ev: TalkEvent, now: number, rnd: () => number): TalkLine | null {
+  const prof = profileOf(t);
+  const bots = t.seats.map((s, i) => (s.bot ? i : -1)).filter((i) => i >= 0);
+  const readyBots = bots.filter((c) => personaOf(t, c) !== 'silent' && ready(st, t, c, now, false));
+  if (ev.murmur) {
+    // thinking-time murmur: the caller named the seat; the timer was the gate
+    if (ev.seat === undefined || !readyBots.includes(ev.seat)) return null;
+    return sayTrickPop(st, t, ev.seat, ev, now, rnd);
+  }
+  if (prof.trickPop <= 0) return null; // standard tables: the trigger is dormant
+  if (!readyBots.length) return null;
+  let pool: number[];
+  if (ev.answerSide !== undefined) {
+    // an answer chain's partner co-sign: draw from the original speaker's side
+    const same = readyBots.filter((c) => sideOfSeat(t, c) === ev.answerSide && c !== ev.excludeSeat);
+    const other = readyBots.filter((c) => sideOfSeat(t, c) !== ev.answerSide && c !== ev.excludeSeat);
+    pool = same.length ? same : other;
+  } else {
+    const winSide = ev.side;
+    const losers = readyBots.filter((c) => winSide === undefined || sideOfSeat(t, c) !== winSide);
+    const winners = readyBots.filter((c) => winSide !== undefined && sideOfSeat(t, c) === winSide);
+    const preferLosers = rnd() < 0.6;
+    const first = preferLosers ? losers : winners;
+    pool = first.length ? first : (preferLosers ? winners : losers);
+  }
+  if (!pool.length) return null;
+  const seat = pool[Math.floor(rnd() * pool.length)]!;
+  if (rnd() >= prof.trickPop * freqOf(st, t, seat) * gapBiasOf(personaOf(t, seat), speakerBucket(ev, t, seat))) return null;
+  return sayTrickPop(st, t, seat, ev, now, rnd);
+}
+
+/** Say a trickPop line: alternate the recorded pool the pick draws from. */
+function sayTrickPop(st: TalkState, t: TalkTable, seat: number, ev: TalkEvent, now: number, rnd: () => number): TalkLine | null {
+  const alt = (st.trickAlt ?? 0) + 1;
+  st.trickAlt = alt;
+  const kind: TalkKind = alt % 2 === 1 ? 'prePlay' : 'roast';
+  return speak(st, t, seat, kind, ev, ev.them, now, rnd);
+}
 
 /** React to a moment. Returns at most one line (or null), and updates the cooldown state. */
 export function botTalk(st: TalkState, t: TalkTable, ev: TalkEvent, now: number, rnd: () => number): TalkLine | null {
@@ -326,7 +440,8 @@ export function botTalk(st: TalkState, t: TalkTable, ev: TalkEvent, now: number,
     const line = say(st, t, ev.seat!, 'runIt', ev, otherThem(ev.seat!), now, rnd);
     if (line) return line;
   }
-  if (now - st.lastAt < (big ? TALK.bigGapMs : TALK.globalGapMs)) return null;
+  const prof = profileOf(t);
+  if (now - st.lastAt < (big ? prof.bigGapMs : prof.globalGapMs)) return null;
 
   // the Hustler drops the act when it pulls one off itself (once)
   if (actor !== undefined && t.seats[actor]?.bot && personaOf(t, actor) === 'hustler' && !st.revealed.includes(actor) && REVEAL_ON.includes(ev.kind)) {
@@ -337,11 +452,16 @@ export function botTalk(st: TalkState, t: TalkTable, ev: TalkEvent, now: number,
   // a human on a bot's team did something good → the bot partner hypes them
   if (t.partnerships && actor !== undefined && !t.seats[actor]?.bot && HYPE_ON.includes(ev.kind)) {
     const p = (actor + 2) % t.seats.length;
-    if (t.seats[p]?.bot && ready(st, p, now, big) && rnd() < TALK.chance.hypePartner * freqOf(st, t, p) * gapBiasOf(personaOf(t, p), speakerBucket(ev, t, p))) return speak(st, t, p, 'hypePartner', ev, actor, now, rnd);
+    if (t.seats[p]?.bot && ready(st, t, p, now, big) && rnd() < Math.min(0.97, TALK.chance.hypePartner * prof.chanceScale) * freqOf(st, t, p) * gapBiasOf(personaOf(t, p), speakerBucket(ev, t, p))) return speak(st, t, p, 'hypePartner', ev, actor, now, rnd);
   }
 
+  // trick-completion react (density pass): the cadence floor — 13 tricks a
+  // hand and the table notices most of them at loud tables, some everywhere
+  // a profile runs. Dormant at standard tables (profile.trickPop = 0).
+  if (ev.kind === 'trickPop') return trickPopTalk(st, t, ev, now, rnd);
+
   // who talks: the actor (if a bot), else a bot on the benefiting side; for MIRROR kinds sometimes the other side answers
-  let kind = ev.kind;
+  let kind: TalkKind = ev.kind;
   let cands: number[];
   if (kind === 'duck' || kind === 'roastBid' || kind === 'bidTooHigh' || kind === 'nilBid' || kind === 'blindNil' || kind === 'loudLoser') cands = bots.filter((b) => !onSide(b) && b !== ev.them);
   else if (kind === 'slow' || kind === 'rematch' || kind === 'prePlay') cands = bots.filter((b) => b !== ev.them);
@@ -360,10 +480,10 @@ export function botTalk(st: TalkState, t: TalkTable, ev: TalkEvent, now: number,
     const others = bots.filter((b) => !onSide(b));
     if (mirror && others.length && (!cands.length || rnd() > 0.7)) { kind = mirror; cands = others; }
   }
-  cands = cands.filter((c) => ready(st, c, now, big) && (personaOf(t, c) !== 'silent' || SILENT_KINDS.includes(kind)));
+  cands = cands.filter((c) => ready(st, t, c, now, big) && (personaOf(t, c) !== 'silent' || SILENT_KINDS.includes(kind)));
   if (!cands.length) return null;
   const seat = cands[Math.floor(rnd() * cands.length)]!;
-  if (rnd() >= (TALK.chance[kind] ?? 0.3) * freqOf(st, t, seat) * gapBiasOf(personaOf(t, seat), speakerBucket(ev, t, seat))) return null;
+  if (rnd() >= Math.min(0.97, (TALK.chance[kind] ?? 0.3) * prof.chanceScale) * freqOf(st, t, seat) * gapBiasOf(personaOf(t, seat), speakerBucket(ev, t, seat))) return null;
   const them = kind === 'slow' || kind === 'partnerBlunder' ? ev.them ?? actor : otherThem(seat);
   // a set can come back as a petty one-liner
   if (kind === 'setThem' && rnd() < 0.15) kind = 'roast';
@@ -401,7 +521,7 @@ interface BanterSlot {
  * comes from `banterContextFor` (the same hand-record predicates as momentsFor).
  * Cooldowns are the caller's business: the collection window owns the schedule.
  */
-export function collectionBanter(st: TalkState, t: TalkTable, after: GameState, now: number, rnd: () => number): TalkLine[] {
+export function collectionBanter(st: TalkState, t: TalkTable, after: GameState, now: number, rnd: () => number, maxLines = 2): TalkLine[] {
   const ctx = banterContextFor(after);
   if (!ctx) return [];
   const alive = (seat: number) => !(after.eliminated?.[seat]);
@@ -496,7 +616,12 @@ export function collectionBanter(st: TalkState, t: TalkTable, after: GameState, 
   take(winners);
   take(losers);
   if (out.length < 2) take(winners);
-  return out.slice(0, 2);
+  // A third line (density pass: story tables at loud/lively stops pass
+  // maxLines 3) takes the next unused context slot in the function's own
+  // priority order — bags/streak/matchPoint context is already in the
+  // winners list above the plain made/roast fallback.
+  while (maxLines > 2 && out.length < maxLines) { if (!take(winners)) break; }
+  return out.slice(0, Math.max(2, maxLines));
 }
 
 /**
@@ -505,8 +630,9 @@ export function collectionBanter(st: TalkState, t: TalkTable, after: GameState, 
  */
 export function prePlayLine(st: TalkState, t: TalkTable, seat: number, now: number, rnd: () => number): TalkLine | null {
   if (!t.seats[seat]?.bot || personaOf(t, seat) === 'silent') return null;
-  if (now - st.lastAt < TALK.globalGapMs || !ready(st, seat, now, false)) return null;
-  if (rnd() >= TALK.chance.prePlay * freqOf(st, t, seat)) return null;
+  const prof = profileOf(t);
+  if (now - st.lastAt < prof.globalGapMs || !ready(st, t, seat, now, false)) return null;
+  if (rnd() >= prof.prePlay * freqOf(st, t, seat)) return null;
   return speak(st, t, seat, 'prePlay', { kind: 'prePlay' }, undefined, now, rnd);
 }
 
