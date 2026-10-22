@@ -11,8 +11,9 @@
  * rides the same labeled-row system; the history line is a quiet
  * hairline caption in the story design family.
  */
-import { buildStoryTape, type StoryBeatFacts, type StoryStop, type StoryTapeEntry } from '@spades/bots';
+import { buildStoryTape, type CoopRundown, type StoryBeatFacts, type StoryStop, type StoryTapeEntry } from '@spades/bots';
 import StoryFace from './StoryFace';
+import DeeRundownPanel from './DeeRundown';
 import { storyBackdropUrl } from './storyBackdrop';
 
 function TapeRow({ label, children }: { label: string; children: string }) {
@@ -51,11 +52,15 @@ function TapeSide({ title, entries }: { title: string; entries: StoryTapeEntry[]
   );
 }
 
-export default function StoryTape({ stop, facts, cta, onDone }: {
+export default function StoryTape({ stop, facts, cta, onDone, rundown, rundownTrack }: {
   stop: StoryStop;
   facts: StoryBeatFacts;
   cta: string;
   onDone: () => void;
+  /** CO-OP ONLY: Dee's rundown for the pair at this stop (co-op spec
+   *  §5.1). Solo never passes it — the solo tape is byte-identical. */
+  rundown?: CoopRundown | null;
+  rundownTrack?: string;
 }) {
   const tape = buildStoryTape(stop, facts);
   return (
@@ -67,6 +72,7 @@ export default function StoryTape({ stop, facts, cta, onDone }: {
         <TapeRow label="The threat">{tape.threat}</TapeRow>
         {tape.terms && <TapeRow label="The terms">{tape.terms}</TapeRow>}
         {tape.history && <p className="story-tape-history" data-testid="story-tape-history">{tape.history}</p>}
+        {rundown && <DeeRundownPanel rundown={rundown} track={rundownTrack ?? ''} />}
         <div className="story-tape-cols">
           <TapeSide title="You & Dee" entries={[tape.you, tape.dee]} />
           <TapeSide title="The Table" entries={tape.pair} />

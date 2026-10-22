@@ -12,10 +12,11 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import {
-  STORY_CHARACTERS, STORY_SECRETS, STORY_STOPS, beatsFor, railCastForAttempt, storyStopById,
-  type StoryBeatFacts, type StoryStop,
+  STORY_CHARACTERS, STORY_SECRETS, STORY_STOPS, awarenessCaseFor, awarenessFactsFor, beatsFor,
+  coopRundownFor, guideOutroLine, railCastForAttempt, storyStopById,
+  type PairContextFacts, type StoryBeatFacts, type StoryStop,
 } from '@spades/bots';
-import type { ClientMsg } from '@spades/protocol';
+import type { ChatLine, ClientMsg, SeatInfo } from '@spades/protocol';
 import { TableConnection, type ConnState } from '../online/connection';
 import { useConn } from '../online/useOnline';
 import OnlineTable from '../online/OnlineTable';
@@ -25,12 +26,46 @@ import { usePresence } from '../social/Social';
 import { social } from '../social/store';
 import { sound } from '../audio';
 import StoryTape from './StoryTape';
+import StoryFace from './StoryFace';
 import ScriptPlayer, { type SceneEgg } from './ScriptPlayer';
 import { storyBackdropUrl } from './storyBackdrop';
 import {
-  fetchStoryProgress, postStoryFound, postStoryResult, reportStorySession,
-  type StoryProgress, type StoryResult,
+  fetchPairContext, fetchStoryProgress, postStoryFound, postStoryResult, reportStorySession,
+  type PairContext, type StoryProgress, type StoryResult,
 } from './storyApi';
+
+/**
+ * Dee's guide plate (spec §5.5): pinned to the rail edge of the table —
+ * her face, the "Dee · guide" nameplate, and a present state that lifts
+ * while she's speaking (her latest guide line rides under the plate).
+ * She has no cards, no bid chip, no score — visibly not a seat. While
+ * she covers a dropped partner's seat the plate dims and says so; her
+ * guide voice is quiet then (the room enforces it), her seat plate at
+ * the table carries her name instead.
+ */
+export function GuidePlate({ chat, seats }: { chat: ChatLine[]; seats: SeatInfo[] }) {
+  const covering = seats.find((s) => s.kind === 'bot' && s.name === 'Dee' && !!s.was);
+  const coveringWas = covering?.kind === 'bot' ? covering.was : undefined;
+  const lastGuide = [...chat].reverse().find((l) => l.from === 'guide:dee');
+  const [speaking, setSpeaking] = useState(false);
+  useEffect(() => {
+    if (!lastGuide) return;
+    setSpeaking(true);
+    const t = setTimeout(() => setSpeaking(false), 4500);
+    return () => clearTimeout(t);
+  }, [lastGuide?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div className={`guide-plate${speaking && !covering ? ' speaking' : ''}${covering ? ' covering' : ''}`} data-testid="guide-plate">
+      <StoryFace characterId="dee" name="Dee" className="tape-face" />
+      <div className="guide-plate-body">
+        <p className="guide-plate-name">Dee · guide</p>
+        <p className="guide-plate-line">
+          {coveringWas ? `Covering for ${coveringWas}` : speaking && lastGuide ? lastGuide.text : 'Riding along'}
+        </p>
+      </div>
+    </div>
+  );
+}
 
 const UNPOSTED_KEY = 'bwm.storyCoopUnposted';
 
@@ -91,6 +126,18 @@ export function StoryRoomInner({ conn, cs, code, track, myUid, onExit }: {
   // exists only once the partner binds — the room's own word is final.
   const effTrack = track ?? story?.track ?? null;
   const [pairProgress, setPairProgress] = useState<StoryProgress | null>(null);
+  // The awareness facts for this sit-down (spec §7.3): the pair-context
+  // block for the room + stop, fetched once both partners are bound and
+  // the run reaches the tape. Everything awareness — the rundown
+  // variant, the scene's meet beats, the lobby's memory line — reads
+  // from this one sanitized block.
+  const [pairCtx, setPairCtx] = useState<PairContext | null>(null);
+  useEffect(() => {
+    if (!story || !story.partnerUid || (story.phase !== 'tape' && story.phase !== 'scene' && story.phase !== 'lobby')) return;
+    let live = true;
+    void fetchPairContext(code, story.stopId).then((c) => { if (live && c) setPairCtx(c); });
+    return () => { live = false; };
+  }, [code, story?.phase, story?.stopId, story?.partnerUid]); // eslint-disable-line react-hooks/exhaustive-deps
   const [result, setResult] = useState<StoryResult | null>(null);
   const [postState, setPostState] = useState<'idle' | 'posting' | 'posted' | 'failed'>('idle');
   const [armConcede, setArmConcede] = useState(false);
@@ -166,8 +213,27 @@ export function StoryRoomInner({ conn, cs, code, track, myUid, onExit }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effTrack]);
 
+  /** The awareness context for this sit-down: the pair-context block
+   *  when it landed; until then (or if it failed) a pair-facts-only
+   *  fallback in which nobody "knows" anything personally — awareness
+   *  simply doesn't fire, and case (e)/(a) still select correctly. */
+  const awarenessCtxFor = (s: StoryStop): PairContextFacts => {
+    const row = pairProgress?.stops.find((x) => x.stopId === s.id);
+    const pair = {
+      attempts: pairCtx?.pair.attempts ?? row?.attempts ?? 0,
+      clears: pairCtx?.pair.clears ?? row?.clears ?? 0,
+      doublePending: pairCtx?.pair.doublePending ?? row?.doublePending ?? false,
+    };
+    const blank = { handle: '', knowsStop: false, clearedStop: false, clearedStops: 0 };
+    const players = pairCtx && pairCtx.players.length >= 2
+      ? [pairCtx.players[0]!, pairCtx.players[1]!] as PairContextFacts['players']
+      : [blank, blank] as PairContextFacts['players'];
+    return { players, pair };
+  };
+
   const factsFor = (s: StoryStop): StoryBeatFacts & { clears: number; attemptsAtPorch: number; doublePending: boolean } => {
     const row = pairProgress?.stops.find((x) => x.stopId === s.id);
+    const aware = awarenessFactsFor(s.id, awarenessCtxFor(s));
     return {
       attempts: row?.attempts ?? 0,
       clears: row?.clears ?? 0,
@@ -176,6 +242,7 @@ export function StoryRoomInner({ conn, cs, code, track, myUid, onExit }: {
       clearedStopIds: pairProgress?.stops.filter((x) => x.clears > 0).map((x) => x.stopId) ?? [],
       attemptsAtPorch: pairProgress?.stops.find((x) => x.stopId === 'porch')?.attempts ?? 0,
       railCast: railCastForAttempt(s.id, (row?.attempts ?? 0) + 1),
+      ...(aware ? { awareness: aware } : {}),
     };
   };
 
@@ -259,6 +326,12 @@ export function StoryRoomInner({ conn, cs, code, track, myUid, onExit }: {
           ))}
         </ol>
         {!story.partnerUid && <p className="story-note" data-testid="story-room-waiting">Waiting for your partner — send them the code or the invite link. The run starts when you both sit down.</p>}
+        {(() => {
+          const c = awarenessCaseFor(stop.id, awarenessCtxFor(stop));
+          return c === 'b' || c === 'd'
+            ? <p className="story-note" data-testid="story-room-aware">They know one of you here.</p>
+            : null;
+        })()}
         {amHost && pairProgress && (
           <div className="story-room-stops" data-testid="story-room-stops">
             <p className="story-coop-h">The pair’s stop</p>
@@ -289,9 +362,11 @@ export function StoryRoomInner({ conn, cs, code, track, myUid, onExit }: {
   }
 
   if (story.phase === 'tape') {
+    const ctx = awarenessCtxFor(stop);
+    const rundown = coopRundownFor(stop.id, awarenessCaseFor(stop.id, ctx), ctx.pair);
     return (
       <div className="story-shell" data-testid="story-room-tape">
-        <StoryTape stop={stop} facts={factsFor(stop)} cta={meReady ? 'Waiting for your partner…' : 'Ready — play the scene'} onDone={() => ready()} />
+        <StoryTape stop={stop} facts={factsFor(stop)} cta={meReady ? 'Waiting for your partner…' : 'Ready — play the scene'} onDone={() => ready()} rundown={rundown} rundownTrack={effTrack ?? ''} />
         <div className="story-room-actions">
           <button type="button" className="btn ghost" data-testid="story-room-leave" onClick={onExit}>Leave</button>
         </div>
@@ -323,6 +398,7 @@ export function StoryRoomInner({ conn, cs, code, track, myUid, onExit }: {
     return (
       <div className="story-room-game" data-testid="story-room-game">
         <OnlineTable conn={conn as TableConnection} cs={cs} mesh={null} onLobby={onExit} onMainMenu={onExit} />
+        <GuidePlate chat={cs.chat} seats={cs.room!.seats} />
         <div className="story-room-concede">
           {armConcede ? (
             <>
@@ -410,6 +486,12 @@ export function StoryRoomInner({ conn, cs, code, track, myUid, onExit }: {
           )}
         </div>
       ) : null}
+      {r && (
+        <p className="story-guide-outro" data-testid="story-room-guide-outro">
+          <span className="story-guide-byline">Dee · guide</span>
+          {guideOutroLine(dblLost ? 'kingDoubleLost' : r.completed ? 'kingClear' : r.won ? 'win' : 'loss', story.gameId ?? code)}
+        </p>
+      )}
       <div className="story-room-actions">
         {r?.completed ? null : dblStarted ? (
           readyBtn('story-room-next', 'Run it back — leg 2')

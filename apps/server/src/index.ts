@@ -572,10 +572,10 @@ export class TableDO extends DurableObject<Env> {
     if (url.pathname === '/story-setup' && req.method === 'POST') {
       // internal only (story routes → table); not routed from the public Worker
       if (this.room) return new Response('exists', { status: 409 });
-      const b = await req.json() as { stopId: string; hostUid: string; partnerUid: string | null };
+      const b = await req.json() as { stopId: string; hostUid: string; partnerUid: string | null; aware?: Record<string, import('@spades/bots').AwarenessCase> };
       const data = newRoomData(code, Date.now());
       this.attach(data);
-      this.room!.setupStory(b.stopId, b.hostUid, b.partnerUid ?? null);
+      this.room!.setupStory(b.stopId, b.hostUid, b.partnerUid ?? null, b.aware);
       if (!this.room!.data.story) return new Response('bad stop', { status: 400 });
       this.flush();
       return new Response('created', { status: 201 });
@@ -583,8 +583,8 @@ export class TableDO extends DurableObject<Env> {
     if (url.pathname === '/story-bind' && req.method === 'POST') {
       // internal only (story routes → table): a share-code partner binds their account
       if (!this.room) return new Response('no such table', { status: 404 });
-      const b = await req.json() as { uid: string };
-      if (!this.room.bindStoryPartner(b.uid)) return Response.json({ error: 'spoken for' }, { status: 409 });
+      const b = await req.json() as { uid: string; aware?: Record<string, import('@spades/bots').AwarenessCase> };
+      if (!this.room.bindStoryPartner(b.uid, b.aware)) return Response.json({ error: 'spoken for' }, { status: 409 });
       this.flush();
       const s = this.room.data.story!;
       return Response.json({ ok: true, track: s.track, stopId: s.stopId });

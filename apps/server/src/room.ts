@@ -13,7 +13,7 @@ import {
 import { voiceGender } from '@spades/bots';
 import { BUCKET_THIN } from './voice/writer';
 import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, chooseBotAction, loudLoser, parseHint, leanBid, botSkillFor, personaSkillFloor, seatSkill, leanNil, momentsFor, newTalkState, pickBotNames, platePersona, prePlayLine, activeCatalog, bucketFor } from '@spades/bots';
-import { STORY_CHARACTERS, STORY_TIER_SKILL, deeSkillForStop, storyFactsOf, storyPairTrackKey, storyRulesForStop, storyStopById, type StoryGameFacts } from '@spades/bots';
+import { STORY_CHARACTERS, STORY_TIER_SKILL, deeSkillForStop, guideEventLine, guideHandLine, newGuideState, storyFactsOf, storyPairTrackKey, storyRulesForStop, storyStopById, type AwarenessCase, type GuideState, type StoryGameFacts } from '@spades/bots';
 import {
   type BotLevel, type ChatLine, type ClientMsg, type HostMusic, type MediaState, type RoomInfo, type RoomPhase, type RunPlayback, type SeatInfo, type ServerMsg,
   DEFAULT_AFK_LIMIT, LIMITS, PROTOCOL_VERSION, parseClientMsg, toggleReaction,
@@ -223,6 +223,15 @@ export interface StorySeat {
   resultGameId?: string;
   /** display name of the player who conceded the current match (the partner's toast) */
   concededBy?: string;
+  /** Awareness cases per stop (spec §7), computed by the story HTTP layer
+   *  from D1 at room creation / partner bind and refreshed by the room
+   *  itself as the pair plays stops in this room. Server-only: the
+   *  clients read their own copy from the pair-context endpoint. */
+  aware?: Record<string, AwarenessCase>;
+  /** Dee's guide-layer match memory (spec §5.3): said set, spacing,
+   *  once-only flags. Reset when a match starts; hers alone — the guide
+   *  layer's rolls and caps live in @spades/bots storyGuide. */
+  guide?: GuideState;
 }
 
 /** The room's witnessed story result (spec §3.3): written by the DO into story_room_results. */
@@ -470,13 +479,14 @@ export class Room {
   }
 
   /** Story co-op: turn a fresh table into a pair's story room (private, rules from the stop, pair bots seated). */
-  setupStory(stopId: string, hostUid: string, partnerUid: string | null): void {
+  setupStory(stopId: string, hostUid: string, partnerUid: string | null, aware?: Record<string, AwarenessCase>): void {
     const d = this.data;
     const stop = storyStopById(stopId);
     if (!stop) return;
     d.story = {
       track: partnerUid ? storyPairTrackKey(hostUid, partnerUid) : null,
       stopId, pairUids: [hostUid, partnerUid], phase: 'lobby', ready: [],
+      ...(aware ? { aware } : {}),
     };
     d.private = true;
     d.botLevel = 'mixed';
@@ -502,7 +512,7 @@ export class Room {
   }
 
   /** Share-code join: bind the second account to the room (the pair track exists from this moment). */
-  bindStoryPartner(uid: string): boolean {
+  bindStoryPartner(uid: string, aware?: Record<string, AwarenessCase>): boolean {
     const d = this.data;
     const s = d.story;
     if (!s) return false;
@@ -510,6 +520,7 @@ export class Room {
     if (s.pairUids[1] !== null) return false;
     s.pairUids[1] = uid;
     s.track = storyPairTrackKey(s.pairUids[0], uid);
+    if (aware) s.aware = aware;
     this.system('Your partner is bound to this run');
     this.io.persist();
     return true;
@@ -1573,7 +1584,11 @@ export class Room {
     d.seq = (d.seq ?? 0) + 1;
     this.handLog()?.record(before, next, action, d.seq);
     this.parkEliminated();
-    for (const ev of momentsFor(before, action, d.game)) this.talk(ev);
+    const evs = momentsFor(before, action, d.game);
+    for (const ev of evs) this.talk(ev);
+    // Dee the guide (story rooms only, spec §5.3): the one marked
+    // mid-hand reaction — a pair-side human's nuke.
+    if (d.story) this.storyGuideMoments(evs);
     d.lastActive = this.io.now();
     const fresh = d.game.handNo === before.handNo ? d.game.tricks.slice(before.tricks.length) : [];
     if (d.live) for (const t of fresh) if (t.winner !== null && t.plays.some((p) => p.seat === t.winner && p.card === 'BJ')) d.live.bj[t.winner] = (d.live.bj[t.winner] ?? 0) + 1;
@@ -1603,6 +1618,9 @@ export class Room {
         for (const ev of handHighlights({ rec, seats, partnerships: d.rules.partnerships, code: d.code, at })) this.io.highlight(ev);
       }
     }
+    // Dee the guide, hand end (story rooms only, spec §5.3): the hand
+    // just closed — she reads the board and maybe speaks.
+    if (d.story && d.game.history.length > before.history.length) this.storyGuideHandEnd(before);
     if (d.game.phase === 'gameOver') {
       d.phase = 'over';
       const res = d.game.result!;
@@ -1770,6 +1788,7 @@ export class Room {
     const s = d.story!;
     s.phase = 'outro';
     s.ready = [];
+    this.storyMarkPlayed(winners.includes(0));
     this.storyWitness(winners.includes(0));
   }
 
@@ -1781,6 +1800,7 @@ export class Room {
     s.phase = 'outro';
     s.ready = [];
     d.phase = 'over';
+    this.storyMarkPlayed(false);
     this.storyWitness(false);
     this.system(`${byName} conceded the match`);
   }
@@ -1795,6 +1815,93 @@ export class Room {
     const [a, b] = s.pairUids;
     if (!a || !b || !s.track || !d.game) return; // an unbound share-code room never had a pair: nothing to witness
     this.io.storyResult?.({ gameId, code: d.code, track: s.track, stopId: s.stopId, uidA: a, uidB: b, won, facts: storyFactsOf(d.game) });
+  }
+
+  /** Is Dee currently seated, covering a dropped partner? While she
+   *  plays a seat her guide voice goes quiet (spec §2.4/§5.3) — she
+   *  can't narrate and play the hand at the same time. */
+  private storyDeeCovering(): boolean {
+    const d = this.data;
+    return [0, 2].some((seat) => {
+      const s = d.seats[seat];
+      return s?.kind === 'bot' && s.vacated === true && s.name === 'Dee';
+    });
+  }
+
+  /** Dee's guide line joins the table chat under her guide byline —
+   *  deliberately NO bot/persona payload: the line is text-only under
+   *  the voice fence until her cast recordings exist (Phase 4 bake),
+   *  so no client ever voices it from a substitute sprite or synth. */
+  private pushGuideLine(text: string): void {
+    const d = this.data;
+    this.pushChat({ id: d.chatSeq++, from: 'guide:dee', name: 'Dee · guide', text, at: this.io.now() });
+  }
+
+  /** The marked mid-hand guide reaction (spec §5.3): a pair-side nuke
+   *  by the seat's player. Everything else she says waits for hand end. */
+  private storyGuideMoments(evs: TalkEvent[]): void {
+    const d = this.data;
+    const s = d.story!;
+    if (s.phase !== 'game' || !s.guide || !d.game) return;
+    if (this.storyDeeCovering()) return;
+    for (const ev of evs) {
+      if (ev.kind !== 'nuke' || (ev.seat !== 0 && ev.seat !== 2)) continue;
+      const line = guideEventLine(s.stopId, s.guide, d.game.handNo, Math.random);
+      if (line) this.pushGuideLine(line.text);
+    }
+  }
+
+  /**
+   * Hand-end guide evaluation (spec §5.3): build the public board
+   * facts from the hand that just closed and let the guide layer
+   * decide. She reads scores, contracts, nil results and book counts
+   * — the board — never a hand.
+   */
+  private storyGuideHandEnd(before: GameState): void {
+    const d = this.data;
+    const s = d.story!;
+    const g = d.game!;
+    if (s.phase !== 'game' || !s.guide) return;
+    if (this.storyDeeCovering()) return; // she's playing the seat, not narrating it
+    const rec = g.history[g.history.length - 1]!;
+    const us = rec.sides[0]!;
+    const them = rec.sides[1]!;
+    const nil = us.nils.some((n) => n.made) ? 'oursMade' as const
+      : them.nils.some((n) => !n.made) ? 'theirsBusted' as const
+      : us.nils.some((n) => !n.made) ? 'oursBusted' as const
+      : them.nils.some((n) => n.made) ? 'theirsMade' as const
+      : null;
+    const line = guideHandLine(s.stopId, s.guide, {
+      handNo: rec.handNo,
+      us: g.scores[0] ?? 0,
+      them: g.scores[1] ?? 0,
+      prevUs: before.scores[0] ?? 0,
+      prevThem: before.scores[1] ?? 0,
+      target: g.rules.targetScore,
+      usPoints: us.points,
+      themPoints: them.points,
+      setOnUs: us.contractMade === false,
+      setOnThem: them.contractMade === false,
+      nil,
+      // a standout by the pair's side: a made blind nil by a pair seat,
+      // or a 10+ book hand (the nuke form rides storyGuideMoments)
+      partnerMoment: us.nils.some((n) => n.kind === 'blindNil' && n.made) || us.tricks >= 10,
+      awareCase: s.aware?.[s.stopId] ?? 'a',
+    }, Math.random);
+    if (line) this.pushGuideLine(line.text);
+  }
+
+  /**
+   * The pair has now PLAYED this stop in this room: whatever the
+   * precomputed awareness case was, a rematch in this room is a pair
+   * return (case 'e') — except a King leg-1 win, which stands the
+   * double mark up and hands the sit-down to the finale ('finale').
+   */
+  private storyMarkPlayed(won: boolean): void {
+    const s = this.data.story!;
+    if (!s.aware) s.aware = {};
+    if (s.stopId === 'king' && won && s.aware['king'] !== 'finale') s.aware['king'] = 'finale';
+    else s.aware[s.stopId] = 'e';
   }
 
   /**
@@ -1823,6 +1930,9 @@ export class Room {
       s.resultGameId = undefined;
       s.concededBy = undefined;
       this.startGame(d.gamesPlayed > 0);
+      // A fresh match gets a fresh guide memory (spec §5.3): said set,
+      // spacing and once-only flags are per match, seeded by the room.
+      s.guide = newGuideState(s.stopId, `${d.code}:${d.gamesPlayed}:${s.stopId}`);
     } else if (s.phase === 'outro') {
       const next = s.nextStopId && storyStopById(s.nextStopId) ? s.nextStopId : s.stopId;
       s.ready = [];

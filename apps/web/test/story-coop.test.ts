@@ -234,7 +234,9 @@ describe('StoryRoomInner phases', () => {
     await renderRoom(fakeCs({ storyPhase: 'tape' }), (m) => sent.push(m));
     expect(byTestid('story-room-tape')).toBeTruthy();
     expect(byTestid('story-tape')).toBeTruthy();
-    const cta = el!.querySelector('.story-tape .btn, .story-tape button');
+    // The rundown panel adds its own transport button inside the tape
+    // (Phase 3) — the CTA is the actions row's button specifically.
+    const cta = el!.querySelector('[data-testid="story-tape-done"]');
     expect(cta).toBeTruthy();
     await click(cta!);
     expect(sent).toContainEqual({ t: 'storyReady' });

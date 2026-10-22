@@ -23,6 +23,8 @@ import {
   STORY_RESUME_LINES, STORY_RETRY_FIRST, STORY_SCRIPTS, STORY_SECRETS, STORY_SIT_DOWN,
   STORY_TABLE_EXCHANGES, STORY_KING_RAIL_OUTRO, STORY_RAIL_EXCHANGES, STORY_RAIL_INTRO, STORY_RAIL_LINES,
   RAIL_NEEDLE_REPLY, STORY_VOICE_CAST, kingDoubleBeats, railLineFor, spokenTake, storyVoiceKey, type StoryBeat,
+  AWARENESS_NEVER_RECORD, SEATED_AWARENESS_LINES, allGuideLines,
+  PAIR_AWARENESS_RUNDOWNS, PAIR_FIRST_RUNDOWNS, PAIR_RETURN_CLEAR_RUNDOWNS, PAIR_RETURN_LOSS_RUNDOWNS,
 } from '@spades/bots';
 
 const ROOT = join(import.meta.dirname, '../..');
@@ -91,6 +93,22 @@ export function storyCorpus(): { speaker: string; line: string; source: string }
     if (f.june) out.push({ speaker: 'june', line: f.june, source: `rev:${f.card}:june` });
   }
   REV_MALCOLM_CUT_LINES.forEach((line, i) => out.push({ speaker: 'mrColeman', line, source: `rev:KC:cut${i + 1}` }));
+  // STORY CO-OP (Phase 3 text-first; the Phase 4 mini-bake records these):
+  // Dee's pair rundowns (44), her guide banks (47 chatter + 22 depth +
+  // 6 awareness callbacks + 12 finale), and the seated pairs' awareness
+  // meet lines (21 — each character in their OWN cast voice). The
+  // Ringer's awareness "line" is a stage direction: NEVER recorded
+  // (AWARENESS_NEVER_RECORD), in the bake as at the table.
+  for (const [stop, text] of Object.entries(PAIR_FIRST_RUNDOWNS)) out.push({ speaker: 'dee', line: text, source: `coop:rundown:pairFirst:${stop}` });
+  for (const [stop, text] of Object.entries(PAIR_AWARENESS_RUNDOWNS)) out.push({ speaker: 'dee', line: text, source: `coop:rundown:pairAwareness:${stop}` });
+  for (const [stop, text] of Object.entries(PAIR_RETURN_LOSS_RUNDOWNS)) out.push({ speaker: 'dee', line: text, source: `coop:rundown:pairReturnLoss:${stop}` });
+  for (const [stop, text] of Object.entries(PAIR_RETURN_CLEAR_RUNDOWNS)) out.push({ speaker: 'dee', line: text, source: `coop:rundown:pairReturnClear:${stop}` });
+  for (const { pool, line } of allGuideLines()) out.push({ speaker: 'dee', line, source: `coop:${pool}` });
+  for (const [stop, beats] of Object.entries(SEATED_AWARENESS_LINES))
+    for (const b of beats) {
+      if (AWARENESS_NEVER_RECORD.has(b.line)) continue;
+      out.push({ speaker: b.speaker, line: b.line, source: `coop:awareness:${stop}` });
+    }
   // railLineFor's fact variants are string literals inside the selector —
   // pull them out through the function itself so they can never drift.
   const facts = { fired: 0, handNo: 1, stopsCleared: 0, attemptsAtOwnStop: 0 };

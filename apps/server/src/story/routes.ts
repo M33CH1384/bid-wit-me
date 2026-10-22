@@ -42,9 +42,9 @@
 import { type AuthEnv, currentUser } from '../auth/routes';
 import { type SocialEnv, isAdmin } from '../social/routes';
 import {
-  STORY_LOSS_REWARD, STORY_SECRETS, STORY_STOPS, STORY_SOLO_TRACK, storyClearReward, storyCurrentStop, storyEggById, storyEggEventMet,
+  STORY_LOSS_REWARD, STORY_SECRETS, STORY_STOPS, STORY_SOLO_TRACK, awarenessCaseFor, storyClearReward, storyCurrentStop, storyEggById, storyEggEventMet,
   storyFeatMet, storyPairTrackKey, storyPairUids, storyReward, storyStopById, storyStopState, storyTrackKeyValid,
-  type StoryGameFacts, type StoryMatchEvent, type StoryStop,
+  type AwarenessCase, type StoryGameFacts, type StoryMatchEvent, type StoryStop,
 } from '@spades/bots';
 import { CODE_ALPHABET, CODE_LENGTH, isRoomCode, normalizeRoomCode } from '@spades/protocol';
 import { awardXp } from '../cred/xp';
@@ -216,6 +216,40 @@ export async function personalHistoryFor(db: D1Database, userId: string, stopId:
     clearedStop: (row?.clears ?? 0) > 0,
     clearedStops: cnt?.n ?? 0,
   };
+}
+
+/** A player's personal history at EVERY stop in two queries (the
+ *  all-stops sibling of personalHistoryFor, same user_id-only rule). */
+async function personalHistoryMapFor(db: D1Database, userId: string): Promise<Map<string, { knowsStop: boolean; clearedStop: boolean }>> {
+  const rows = await db.prepare('SELECT stop_id AS stopId, COALESCE(SUM(attempts), 0) AS attempts, COALESCE(SUM(clears), 0) AS clears FROM story_progress WHERE user_id = ? GROUP BY stop_id')
+    .bind(userId).all<{ stopId: string; attempts: number; clears: number }>();
+  return new Map(rows.results.map((r) => [r.stopId, { knowsStop: r.attempts > 0, clearedStop: r.clears > 0 }]));
+}
+
+/**
+ * The awareness case at every stop for a pair (spec §7.2), computed
+ * where D1 lives and handed to the story room at creation / partner
+ * bind: the room's guide layer needs the case for Dee's once-per-match
+ * awareness callback, and the room has no database. Inputs are exactly
+ * the pair-context facts — pair attempts/clears/doublePending from the
+ * pair track (either member's identical copy) plus each player's
+ * personal booleans. Handles play no part in case selection.
+ */
+export async function awarenessCasesFor(db: D1Database, uidA: string, uidB: string, track: string): Promise<Record<string, AwarenessCase>> {
+  const [pairFacts, ha, hb] = await Promise.all([factsFor(db, uidA, track), personalHistoryMapFor(db, uidA), personalHistoryMapFor(db, uidB)]);
+  const blank = { knowsStop: false, clearedStop: false };
+  const player = (h: Map<string, { knowsStop: boolean; clearedStop: boolean }>, stopId: string) => ({
+    handle: '', clearedStops: 0, ...(h.get(stopId) ?? blank),
+  });
+  const out: Record<string, AwarenessCase> = {};
+  for (const stop of STORY_STOPS) {
+    const pf = pairFacts.get(stop.id);
+    out[stop.id] = awarenessCaseFor(stop.id, {
+      players: [player(ha, stop.id), player(hb, stop.id)],
+      pair: { attempts: pf?.attempts ?? 0, clears: pf?.clears ?? 0, doublePending: pf?.doublePending ?? false },
+    });
+  }
+  return out;
 }
 
 /** A fresh table code, the same alphabet/length as /api/tables. */
@@ -668,12 +702,16 @@ export async function handleStoryHttp(req: Request, env: StoryEnv, url: URL, par
         return json({ error: 'That stop is locked for your run together — the pair advances together.' }, 409);
       }
     }
+    // The room's awareness cases (spec §7): only computable once the
+    // pair exists — invite rooms know both accounts now; share-code
+    // rooms get theirs at bind (room-join below).
+    const aware = partnerUid && track ? await awarenessCasesFor(db, me.id, partnerUid, track) : undefined;
     for (let i = 0; i < 6; i++) {
       const code = randomStoryCode();
       const stub = env.TABLES.get(env.TABLES.idFromName(code));
       const r = await stub.fetch(`https://table/story-setup?code=${code}`, {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ stopId: stop.id, hostUid: me.id, partnerUid }),
+        body: JSON.stringify({ stopId: stop.id, hostUid: me.id, partnerUid, ...(aware ? { aware } : {}) }),
       }).catch(() => null);
       if (r && r.status === 201) return json({ ok: true, code, track, stopId: stop.id }, 201);
       if (r && r.status === 400) return json({ error: 'unknown stop' }, 400);
@@ -705,9 +743,10 @@ export async function handleStoryHttp(req: Request, env: StoryEnv, url: URL, par
     if (!(await stopUnlockedFor(db, me.id, track, stop))) {
       return json({ error: 'That stop is locked for your run together — the pair advances together.' }, 409);
     }
+    const aware = await awarenessCasesFor(db, members.hostUid, me.id, track);
     const br = await stub.fetch(`https://table/story-bind?code=${code}`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ uid: me.id }),
+      body: JSON.stringify({ uid: me.id, aware }),
     }).catch(() => null);
     if (!br || !br.ok) return json({ error: 'This story table is spoken for.' }, 409);
     const bound = (await br.json()) as { track: string | null; stopId: string };

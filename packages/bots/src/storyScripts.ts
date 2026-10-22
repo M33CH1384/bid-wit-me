@@ -34,6 +34,7 @@
  */
 import type { StoryStop } from './story';
 import { RAIL_INTRO_SUBJECTS, STORY_KING_RAIL_OUTRO, STORY_RAIL_INTRO } from './storyRail';
+import { awarenessMeetBeats, awarenessOpenerLength, type AwarenessFacts } from './storyAwareness';
 
 export interface StoryBeat {
   /** a STORY_CHARACTERS id, or 'you' (the player) */
@@ -619,6 +620,11 @@ export interface StoryBeatFacts {
    *  the intro scene acknowledges only railbirds who actually showed up
    *  this attempt; absent = the stop's full rail (legacy callers) */
   railCast?: readonly string[];
+  /** CO-OP ONLY (awareness layer, spec §7.3): the pair-context facts
+   *  for this sit-down, present only when case (b)/(d) fires. Solo
+   *  NEVER sets this — with it absent every selector below is
+   *  byte-identical to the solo game. */
+  awareness?: AwarenessFacts;
 }
 
 /** Dee's arc stage by route position: green → believing → belonging. */
@@ -673,6 +679,19 @@ export function beatsFor(stop: StoryStop, kind: StoryBeatKind, facts: StoryBeatF
     const at = Math.min(2, beats.length);
     return [...beats.slice(0, at), ...intro, ...beats.slice(at)];
   };
+  // The awareness variant (co-op, spec §7.5): the pair is new at this
+  // stop but the room KNOWS at least one of them — the seated pair's
+  // awareness meet lines REPLACE the pair-first intro's meet opener
+  // (its leading seated-pair beats); the scene's remaining beats are
+  // the pair-first set. Only reachable with facts.awareness set, which
+  // solo never does.
+  if (facts.awareness && !facts.cleared && facts.attempts === 0) {
+    const meet = awarenessMeetBeats(stop.id);
+    if (meet.length) {
+      const first = mergeGated(script.intro, script.introGated, facts);
+      return withRail([...meet, ...first.slice(awarenessOpenerLength(stop.id, first))]);
+    }
+  }
   const variants = STORY_INTRO_VARIANTS[stop.id];
   if (facts.cleared && variants?.champion) return variants.champion;
   if (!facts.cleared && facts.attempts === 1 && variants?.second) return withRail(variants.second);
