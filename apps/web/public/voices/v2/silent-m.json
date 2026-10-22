@@ -7,51 +7,107 @@
  "clips": {
   "mine.": [
    250,
-   1000
+   640
   ],
   "all of them.": [
-   1500,
+   1140,
    920
   ],
   "done.": [
-   2670,
-   910
-  ],
-  "quiet.": [
-   3830,
-   690
-  ],
-  "sit.": [
-   4770,
+   2310,
    920
   ],
+  "quiet.": [
+   3480,
+   1000
+  ],
+  "sit.": [
+   4730,
+   775
+  ],
   "Cut {their} head off!": [
-   5940,
-   1370
+   5755,
+   2450
   ],
   "set.": [
-   7560,
-   810
+   8455,
+   785
   ],
   "down you go.": [
-   8620,
-   1170
+   9490,
+   1055
   ],
   "counted.": [
-   10040,
-   820
+   10795,
+   790
   ],
   "gg.": [
-   11110,
-   950
+   11835,
+   1005
   ],
   "I wish you WOULD!": [
-   12310,
-   1335
+   13090,
+   1470
   ],
   "A run. On us. I'm ill.": [
-   13895,
-   1925
+   14810,
+   3345
+  ],
+  "Frederick Douglass. Taught himself to read when it was forbidden to him, escaped slavery at twenty, and wrote it all down for the world to answer for.": [
+   18405,
+   9485
+  ],
+  "Harriet Tubman. She got herself free — then went back some thirteen times for family and strangers alike, and she brought out every single one.": [
+   28140,
+   10650
+  ],
+  "Nat Turner. In 1831 he rose in Southampton County and led the deadliest slave rebellion in American history.": [
+   39040,
+   8370
+  ],
+  "Dr. Martin Luther King Jr. Twenty-six years old when Montgomery stopped riding the buses — and he led that boycott all 381 days.": [
+   47660,
+   8280
+  ],
+  "Sojourner Truth. Born enslaved — and the first Black woman to win a court case against a white man in this country, bringing her own son home.": [
+   56190,
+   10150
+  ],
+  "Fannie Lou Hamer. A Mississippi sharecropper who stood before a national convention in 1964 and told the truth until the whole country had to listen.": [
+   66590,
+   9885
+  ],
+  "Marcus Garvey. He built the largest Black movement of his age — and put our own ships on the water with the Black Star Line.": [
+   76725,
+   8925
+  ],
+  "Ida B. Wells. A mob wrecked her newspaper office for printing the truth about lynching — so she carried that truth north and printed it louder.": [
+   85900,
+   7870
+  ],
+  "W.E.B. Du Bois. The first Black man to earn a Ph.D. from Harvard, in 1895 — and he spent ninety-five years writing the record straight.": [
+   94020,
+   9395
+  ],
+  "Malcolm X. He remade himself in a prison cell — walked out teaching discipline, dignity, and standing up straight.": [
+   103665,
+   8200
+  ],
+  "Angela Davis. A philosopher they put on trial in 1972 — she walked out acquitted, and she has been teaching ever since.": [
+   112115,
+   9835
+  ],
+  "Huey P. Newton. In 1966, in Oakland, he co-founded the Black Panther Party — and a neighborhood's protection became a movement.": [
+   122200,
+   10110
+  ],
+  "Hold on now. That's Malcolm they just cut. The man told us freedom would come 'by any means necessary' — a spade on a playing card changes none of it.": [
+   132560,
+   9245
+  ],
+  "Malcolm X, cut down on a trick. He taught a whole generation to stand up straight — 'by any means necessary' was never a slogan. It was a promise.": [
+   142055,
+   9290
   ]
  }
 }

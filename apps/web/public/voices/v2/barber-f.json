@@ -7,1039 +7,1095 @@
  "clips": {
   "next! who's in the chair?": [
    250,
-   1620
+   2005
   ],
   "hold still. this won't take long.": [
-   2120,
-   2030
+   2505,
+   2910
   ],
   "line-up coming right up.": [
-   4400,
-   1550
+   5665,
+   2685
   ],
   "I take walk-ins.": [
-   6200,
-   1460
+   8600,
+   2815
   ],
   "fresh cut. no charge, {them}.": [
-   7910,
-   1590
+   11665,
+   3190
   ],
   "lined you up clean.": [
-   9750,
-   1290
+   15105,
+   2995
   ],
   "I been cutting all day, this one's on the house.": [
-   11290,
-   2565
+   18350,
+   2540
   ],
   "taper fade on that trick.": [
-   14105,
-   1740
+   21140,
+   4015
   ],
   "Welcome to the barbershop!": [
-   16095,
-   1770
+   25405,
+   3180
   ],
   "You just got a fresh fade!": [
-   18115,
-   1660
+   28835,
+   2420
   ],
   "Snip, snip!": [
-   20025,
-   1140
+   31505,
+   1840
   ],
   "That's a haircut with no appointment!": [
-   21415,
-   2180
+   33595,
+   2115
   ],
   "Spades is always open for business!": [
-   23845,
-   2260
+   35960,
+   3605
   ],
   "Should've played that yesterday!": [
-   26355,
-   1680
+   39815,
+   1670
   ],
   "who let you behind my chair, {them}?": [
-   28285,
-   1680
+   41735,
+   2270
   ],
   "that cut was crooked and you know it.": [
-   30215,
-   2110
+   44255,
+   5595
   ],
   "oh you cut THAT? petty.": [
-   32575,
-   1570
+   50100,
+   3710
   ],
   "who raised you, {them}?": [
-   34395,
+   54060,
    1150
   ],
   "that's cold. that's real cold.": [
-   35795,
+   55460,
    2020
   ],
   "ok ok, you got that one.": [
-   38065,
+   57730,
    2120
   ],
   "y'all got shaped up and shipped out.": [
-   40435,
-   2100
+   60100,
+   1795
   ],
   "set. and a bald spot to go with it.": [
-   42785,
-   2180
+   62145,
+   2770
   ],
   "That's a whole lotta NOTHING!": [
-   45215,
-   1780
+   65165,
+   1930
   ],
   "bad haircut. it grows back.": [
-   47245,
-   1840
+   67345,
+   3890
   ],
   "we got caught with the clippers off.": [
-   49335,
-   1750
+   71485,
+   1835
   ],
   "that one hurt. noted.": [
-   51335,
+   73570,
    1590
   ],
   "we got set. it happens to legends.": [
-   53175,
+   75410,
    2270
   ],
   "ok {opp}, you live this hand.": [
-   55695,
+   77930,
    1760
   ],
   "clippers out. Joker down.": [
-   57705,
-   1710
+   79940,
+   3935
   ],
   "Joker on the table. respect it.": [
-   59665,
+   84125,
    2230
   ],
   "that joker was waiting for you, {them}.": [
-   62145,
+   86605,
    1940
   ],
   "🃏 hello.": [
-   64335,
+   88795,
    810
   ],
   "shaved that Little Joker clean off.": [
-   65395,
-   2150
+   89855,
+   2625
   ],
   "☢️ BOOM. clean that up, {them}.": [
-   67795,
-   1420
+   92730,
+   2505
   ],
   "Big Joker over Little Joker. history book.": [
-   69465,
-   2760
+   95485,
+   3855
   ],
   "somebody call FEMA for {opp}.": [
-   72475,
-   1960
+   99590,
+   3625
   ],
   "{them}, I got a line out the door.": [
-   74685,
-   1700
+   103465,
+   3010
   ],
   "you taking longer than a kid getting braids, {them}.": [
-   76635,
-   2450
+   106725,
+   2805
   ],
   "It's a card game, not a SAT exam!": [
-   79335,
-   2555
+   109780,
+   2550
   ],
   "partner, you just gave us a bowl cut.": [
-   82140,
-   2195
+   112580,
+   3065
   ],
   "that play needs a lineup, partner.": [
-   84585,
-   2000
+   115895,
+   2875
   ],
   "Are you undercover?!": [
-   86835,
-   1390
+   119020,
+   1440
   ],
   "We need couples counseling after this!": [
-   88475,
-   2210
+   120710,
+   2335
   ],
   "You got the IQ of a parking ticket!": [
-   90935,
-   2220
+   123295,
+   2510
   ],
   "all of y'all in the chair at once. lay it down.": [
-   93405,
-   2880
+   126055,
+   2520
   ],
   "clean sweep. I'm closing up shop.": [
-   96535,
-   2230
+   128825,
+   2935
   ],
   "I don't need to finish, the cut is done.": [
-   99015,
-   2120
+   132010,
+   2505
   ],
   "shop's closed. tip on the way out.": [
-   101385,
-   2140
+   134765,
+   2235
   ],
   "y'all got the full service. GG.": [
-   103775,
-   2480
+   137250,
+   2615
   ],
   "GG. go home and practice, {opp}.": [
-   106505,
+   140115,
    2105
   ],
   "that's game. put some respect on {team}.": [
-   108860,
+   142470,
    2180
   ],
   "we eatin, y'all watchin.": [
-   111290,
+   144900,
    1800
   ],
   "I'll get you next appointment.": [
-   113340,
-   1740
+   146950,
+   2070
   ],
   "my clippers was dull today.": [
-   115330,
-   1930
+   149270,
+   1765
   ],
   "luck. pure luck.": [
-   117510,
-   1240
+   151285,
+   2510
   ],
   "run it back. right now.": [
-   119000,
+   154045,
    1540
   ],
   "enjoy it {opp}, it won't happen again.": [
-   120790,
-   1895
+   155835,
+   2370
   ],
   "{bid}. I said what I said, sit down.": [
-   122935,
-   2690
+   158455,
+   3455
   ],
   "{bid}. you heard me.": [
-   125875,
-   1460
+   162160,
+   2110
   ],
   "we going for {bid}. hold on.": [
-   127585,
-   1580
+   164520,
+   3600
   ],
   "big bid energy. {bid}.": [
-   129415,
-   1330
+   168370,
+   2505
   ],
   "next! sit back down.": [
-   130995,
-   1590
+   171125,
+   2315
   ],
   "run it back 😤": [
-   132835,
-   1040
+   173690,
+   1270
   ],
   "round two. no mercy.": [
-   134125,
-   1550
+   175210,
+   2915
   ],
   "y'all want another one? ok.": [
-   135925,
-   1910
+   178375,
+   3955
   ],
   "{them} with the clean edges!": [
-   138085,
-   1840
+   182580,
+   1875
   ],
   "my partner cutting sharp tonight!": [
-   140175,
-   2030
+   184705,
+   4640
   ],
   "Run that!": [
-   142455,
-   930
+   189595,
+   790
   ],
   "You thought you had something!": [
-   143635,
-   1530
+   190635,
+   4870
   ],
   "That's what happens when you play with professionals!": [
-   145415,
-   2530
+   195755,
+   2735
   ],
   "Walk that dog!": [
-   148195,
-   1240
+   198740,
+   1700
   ],
   "You bid {bid} with WHAT?!#1": [
-   149685,
-   1490
+   200690,
+   3585
   ],
   "You bid {bid} with WHAT?!#2": [
-   151425,
-   1550
+   204525,
+   3435
   ],
   "You bid {bid} with WHAT?!#3": [
-   153225,
-   1640
+   208210,
+   2555
   ],
   "You bid {bid} with WHAT?!#4": [
-   155115,
-   1570
+   211015,
+   3255
   ],
   "You bid {bid} with WHAT?!#5": [
-   156935,
-   1560
+   214520,
+   2625
   ],
   "You bid {bid} with WHAT?!#6": [
-   158745,
-   1570
+   217395,
+   1915
   ],
   "You bid {bid} with WHAT?!#7": [
-   160565,
-   1630
+   219560,
+   4080
   ],
   "You bid {bid} with WHAT?!#8": [
-   162445,
-   1550
+   223890,
+   2810
   ],
   "You bid {bid} with WHAT?!#9": [
-   164245,
-   1620
+   226950,
+   3065
   ],
   "You bid {bid} with WHAT?!#10": [
-   166115,
-   1610
-  ],
-  "You bid {bid} with WHAT?!#11": [
-   167975,
-   1680
-  ],
-  "You bid {bid} with WHAT?!#12": [
-   169905,
-   1680
-  ],
-  "You bid {bid} with WHAT?!#13": [
-   171835,
-   1720
-  ],
-  "{bid}? that's a lot of books.#1": [
-   173805,
-   1560
-  ],
-  "{bid}? that's a lot of books.#2": [
-   175615,
-   1560
-  ],
-  "{bid}? that's a lot of books.#3": [
-   177425,
-   1570
-  ],
-  "{bid}? that's a lot of books.#4": [
-   179245,
-   1580
-  ],
-  "{bid}? that's a lot of books.#5": [
-   181075,
-   1650
-  ],
-  "{bid}? that's a lot of books.#6": [
-   182975,
-   1650
-  ],
-  "{bid}? that's a lot of books.#7": [
-   184875,
-   1650
-  ],
-  "{bid}? that's a lot of books.#8": [
-   186775,
-   1590
-  ],
-  "{bid}? that's a lot of books.#9": [
-   188615,
-   1630
-  ],
-  "{bid}? that's a lot of books.#10": [
-   190495,
-   1610
-  ],
-  "{bid}? that's a lot of books.#11": [
-   192355,
-   1760
-  ],
-  "{bid}? that's a lot of books.#12": [
-   194365,
-   1660
-  ],
-  "{bid}? that's a lot of books.#13": [
-   196275,
-   1770
-  ],
-  "that's a big number. we'll see.": [
-   198295,
-   1670
-  ],
-  "bold bid. real bold.": [
-   200215,
-   1800
-  ],
-  "That's a bold statement for somebody holding garbage!": [
-   202265,
-   3070
-  ],
-  "Y'all about to get a baggage fee!": [
-   205585,
-   1810
-  ],
-  "Your bid got commitment issues!": [
-   207645,
-   1900
-  ],
-  "Congratulations! You just won a trip to bag penalty!": [
-   209795,
+   230265,
    3265
   ],
+  "You bid {bid} with WHAT?!#11": [
+   233780,
+   2230
+  ],
+  "You bid {bid} with WHAT?!#12": [
+   236260,
+   3400
+  ],
+  "You bid {bid} with WHAT?!#13": [
+   239910,
+   2440
+  ],
+  "{bid}? that's a lot of books.#1": [
+   242600,
+   3745
+  ],
+  "{bid}? that's a lot of books.#2": [
+   246595,
+   4175
+  ],
+  "{bid}? that's a lot of books.#3": [
+   251020,
+   2605
+  ],
+  "{bid}? that's a lot of books.#4": [
+   253875,
+   2790
+  ],
+  "{bid}? that's a lot of books.#5": [
+   256915,
+   4090
+  ],
+  "{bid}? that's a lot of books.#6": [
+   261255,
+   4040
+  ],
+  "{bid}? that's a lot of books.#7": [
+   265545,
+   3065
+  ],
+  "{bid}? that's a lot of books.#8": [
+   268860,
+   2840
+  ],
+  "{bid}? that's a lot of books.#9": [
+   271950,
+   3260
+  ],
+  "{bid}? that's a lot of books.#10": [
+   275460,
+   2070
+  ],
+  "{bid}? that's a lot of books.#11": [
+   277780,
+   3445
+  ],
+  "{bid}? that's a lot of books.#12": [
+   281475,
+   3670
+  ],
+  "{bid}? that's a lot of books.#13": [
+   285395,
+   2155
+  ],
+  "that's a big number. we'll see.": [
+   287800,
+   1890
+  ],
+  "bold bid. real bold.": [
+   289940,
+   2755
+  ],
+  "That's a bold statement for somebody holding garbage!": [
+   292945,
+   3230
+  ],
+  "Y'all about to get a baggage fee!": [
+   296425,
+   1930
+  ],
+  "Your bid got commitment issues!": [
+   298605,
+   2335
+  ],
+  "Congratulations! You just won a trip to bag penalty!": [
+   301190,
+   6750
+  ],
   "You better hide them high cards!": [
-   213310,
-   1860
+   308190,
+   1815
   ],
   "You just put a target on your forehead!": [
-   215420,
-   2090
+   310255,
+   2285
   ],
   "nil? we coming for you.": [
-   217760,
-   1390
+   312790,
+   3015
   ],
   "nil, huh? good luck with that.": [
-   219400,
-   1820
+   316055,
+   2240
   ],
   "oh, a nil. this should be fun.": [
-   221470,
-   1805
+   318545,
+   3750
   ],
   "You thought you was invisible?!": [
-   223525,
-   1710
+   322545,
+   1870
   ],
   "You wasn't supposed to take that, huh?": [
-   225485,
-   2040
+   324665,
+   2105
   ],
   "You said NIL. The cards said NOPE!": [
-   227775,
-   2380
+   327020,
+   2945
   ],
   "BOSTON! BOSTON!": [
-   230405,
-   1330
+   330215,
+   1680
   ],
   "all thirteen! that's a Boston!": [
-   231985,
+   332145,
    1790
   ],
   "clean sweep. every book.": [
-   234025,
+   334185,
    1720
   ],
   "thirteen books. write it down.": [
-   235995,
+   336155,
    1870
   ],
   "Your trash talk got more points than your team!": [
-   238115,
-   2630
+   338275,
+   2845
   ],
   "You got all them opinions and no books!": [
-   240995,
-   2360
+   341370,
+   2740
   ],
   "lot of talk from the team that's losing.": [
-   243605,
-   2240
+   344360,
+   3250
   ],
   "the scoreboard is talking louder.": [
-   246095,
-   1870
+   347860,
+   3115
   ],
   "easy there. check the score.": [
-   248215,
-   1660
+   351225,
+   3160
   ],
   "Who gave me the leftovers?!": [
-   250125,
-   1660
+   354635,
+   2040
   ],
   "I couldn't win a book at the library!": [
-   252035,
-   1970
+   356925,
+   2240
   ],
   "these cards… wow.": [
-   254255,
-   1500
+   359415,
+   2355
   ],
   "who dealt this?": [
-   256005,
-   1090
+   362020,
+   3685
   ],
   "not a lot to work with here.": [
-   257345,
-   1660
+   365955,
+   1775
   ],
   "Your confidence is impressive considering the evidence.": [
-   259255,
-   3240
+   367980,
+   3095
   ],
   "You making mistakes in high definition.": [
-   262745,
-   2540
+   371325,
+   3005
   ],
   "that was a choice.": [
-   265535,
-   1290
+   374580,
+   2885
   ],
   "interesting play. very interesting.": [
-   267075,
-   2115
+   377715,
+   5470
   ],
   "we'll pretend we didn't see that.": [
-   269440,
-   1860
+   383435,
+   3375
   ],
   "over the top! sit DOWN.": [
-   271550,
+   387060,
    1715
   ],
   "you cut, I cut harder.": [
-   273515,
+   389025,
    1640
   ],
   "{card} said move.": [
-   275405,
+   390915,
    1390
   ],
   "nah nah nah, not today {them}.": [
-   277045,
+   392555,
    1670
   ],
   "did… did you just nuke me?": [
-   278965,
+   394475,
    1480
   ],
   "I'm reporting this to the table.": [
-   280695,
+   396205,
    1910
   ],
   "my Little Joker had a family, {them}.": [
-   282855,
+   398365,
    1940
   ],
   "bid made. easy work.": [
-   285045,
+   400555,
    1620
   ],
   "we said {bid}, we got {bid}. accountants.": [
-   286915,
+   402425,
    2180
   ],
   "just like we drew it up.": [
-   289345,
+   404855,
    1500
   ],
   "{bid}? y'all scared money.": [
-   291095,
+   406605,
    1710
   ],
   "{bid} is brave. wrong, but brave.": [
-   293055,
+   408565,
    2290
   ],
   "bidding {bid} with that hand? bold.": [
-   295595,
+   411105,
    2090
   ],
   "ran the board on us? rude.": [
-   297935,
+   413445,
    1800
   ],
   "ok ok, show-off.": [
-   299985,
+   415495,
    1870
   ],
   "we'll remember that one.": [
-   302105,
+   417615,
    1510
   ],
   "WHEELS! 🏎️ we outta here.": [
-   303865,
+   419375,
    1440
   ],
   "ten books, top down, wind in my hair.": [
-   305555,
+   421065,
    2430
   ],
   "WHEELS UP, {opp} WHEELS DOWN.": [
-   308235,
+   423745,
    2270
   ],
   "nil made. nothing to see here 😌": [
-   310755,
-   1900
+   426265,
+   3195
   ],
   "zero books, all the points.": [
-   312905,
-   1900
+   429710,
+   2395
   ],
   "that's a reneg-looking play, {them} 👀": [
-   315055,
+   432355,
    1670
   ],
   "hmm. {them} ducked that real quiet.": [
-   316975,
+   434275,
    2320
   ],
   "I'm watching you, {them}.": [
-   319545,
+   436845,
    1155
   ],
   "back to back. get used to it.": [
-   320950,
-   1720
+   438250,
+   3920
   ],
   "we're on a heater 🔥": [
-   322920,
-   1150
+   442420,
+   1290
   ],
   "someone stop us. anyone.": [
-   324320,
-   1870
+   443960,
+   3000
   ],
   "blind nil?! no peeking? wow.": [
-   326440,
-   1970
+   447210,
+   4050
   ],
   "blind nil. that's bold.": [
-   328660,
-   1700
+   451510,
+   3995
   ],
   "didn't even look? respect. kinda.": [
-   330610,
-   2180
+   455755,
+   4450
   ],
   "y'all on notice now. one more and it's over.": [
-   333040,
+   460455,
    2790
   ],
   "shot. one more hand like that and y'all go home.": [
-   336080,
+   463495,
    2680
   ],
   "on notice! the clock is ticking, {opp}.": [
-   339010,
+   466425,
    1940
   ],
   "SHOT OUT! go home!": [
-   341200,
+   468615,
    1400
   ],
   "shot twice. that's the door, {opp}.": [
-   342850,
+   470265,
    1780
   ],
   "shot out! table's ours.": [
-   344880,
+   472295,
    1780
   ],
   "Eyes on me. Briefly.": [
-   346910,
-   1510
+   474325,
+   3150
   ],
   "No spoilers. Just watch.": [
-   348670,
-   1895
+   477725,
+   2285
   ],
   "a clean cut. I do those professionally.": [
-   350815,
-   2345
+   480260,
+   3135
   ],
   "Noted. Revenge is scheduled.": [
-   353410,
-   2035
+   483645,
+   3390
   ],
   "Set. And I still showed up cute.": [
-   355695,
-   1955
+   487285,
+   3910
   ],
   "That hand is under review.": [
-   357900,
-   1700
-  ],
-  "Everybody sit up. The Joker's here.": [
-   359850,
-   2165
-  ],
-  "That Joker had an appointment with this trick.": [
-   362265,
-   2445
-  ],
-  "Big Joker eats Little Joker. every time.": [
-   364960,
-   2915
-  ],
-  "nuked. wipe the table off.": [
-   368125,
-   1800
-  ],
-  "☢️ mushroom cloud over {opp}.": [
-   370175,
-   1490
-  ],
-  "The final score is the whole review.": [
-   371915,
-   2240
-  ],
-  "GG. the shop is closed. we won.": [
-   374405,
-   2400
-  ],
-  "We'll be back. Louder.": [
-   377055,
-   1425
-  ],
-  "{bid}. No hesitation in this voice.": [
-   378730,
-   2150
-  ],
-  "{bid} and I mean every one of them.": [
-   381130,
-   1915
-  ],
-  "big bid, bigger follow-through.": [
-   383295,
-   1880
-  ],
-  "we don't bid scared over here.": [
-   385425,
-   1580
-  ],
-  "{bid}. write it in pen.": [
-   387255,
-   1355
-  ],
-  "that's not hope, that's a plan.": [
-   388860,
-   1755
-  ],
-  "Rematch. My favorite word.": [
-   390865,
-   1785
-  ],
-  "same teams. I like our odds better.": [
-   392900,
-   2245
-  ],
-  "shuffle up. I got a short memory.": [
-   395395,
-   2035
-  ],
-  "again. and this time I'm awake.": [
-   397680,
-   1905
-  ],
-  "deal em. the sequel is better.": [
-   399835,
-   1945
-  ],
-  "one more. for the documentary.": [
-   402030,
-   1855
-  ],
-  "Partner! That's the one!": [
-   404135,
-   1370
-  ],
-  "{bid}? with whose cards?": [
-   405755,
-   1460
-  ],
-  "that bid is doing a lot of talking.": [
-   407465,
-   2045
-  ],
-  "hope is not a strategy, {them}.": [
-   409760,
-   1725
-  ],
-  "{bid} books need {bid} miracles.": [
-   411735,
-   1710
-  ],
-  "bold of you to bid the whole deck.": [
-   413695,
-   2010
-  ],
-  "a nil? bold. we'll be by to collect.": [
-   415955,
-   2325
-  ],
-  "nil on the board. hunt mode: on.": [
-   418530,
-   2200
-  ],
-  "you sure about that, {them}? we are.": [
-   420980,
-   1930
-  ],
-  "everybody sees the target, right?": [
-   423160,
-   2085
-  ],
-  "nil. noted, circled, underlined.": [
-   425495,
-   2295
-  ],
-  "Boston! Somebody check on {opp}.": [
-   428040,
-   1775
-  ],
-  "That hand should be illegal in Boston.": [
-   430065,
-   2150
-  ],
-  "A Boston with our name on it.": [
-   432465,
-   1805
-  ],
-  "all that commentary, no books to match.": [
-   434520,
-   2395
-  ],
-  "the loudest seat has the lightest books.": [
-   437165,
-   2240
-  ],
-  "talking is free. books cost more.": [
-   439655,
-   2130
-  ],
-  "check the score, then check the volume.": [
-   442035,
-   2130
-  ],
-  "your mic is on but your cards are off.": [
-   444415,
-   2260
-  ],
-  "I got a hand full of apologies.": [
-   446925,
-   2080
-  ],
-  "these cards wouldn't win a raffle.": [
-   449255,
-   1955
-  ],
-  "who dealt this, an enemy?": [
-   451460,
-   1620
-  ],
-  "thirteen cards, zero friends.": [
-   453330,
-   2160
-  ],
-  "I've seen better hands on a clock.": [
-   455740,
-   2115
-  ],
-  "that play is going in the group chat.": [
-   458105,
-   2055
-  ],
-  "I'm not mad. I'm taking notes.": [
-   460410,
-   2125
-  ],
-  "interesting. and by interesting I mean wrong.": [
-   462785,
-   2625
-  ],
-  "the confidence is the best part of your game.": [
-   465660,
-   2470
-  ],
-  "we saw it. everybody saw it.": [
-   468380,
-   1895
-  ],
-  "That's not luck, that's arithmetic.": [
-   470525,
-   2015
-  ],
-  "Made it look boring. It wasn't.": [
-   472790,
-   1875
-  ],
-  "clean work. the chair is open for the next hand.": [
-   474915,
-   2765
-  ],
-  "another satisfied customer. made.": [
-   477930,
-   2480
-  ],
-  "WHEELS! Ten books, zero apologies.": [
-   480660,
-   2515
-  ],
-  "Wheels up, windows down.": [
-   483425,
-   1735
-  ],
-  "Ten books and the tank's still full.": [
-   485410,
+   491445,
    2060
   ],
-  "Highway robbery, and we drove off.": [
-   487720,
-   2100
+  "Everybody sit up. The Joker's here.": [
+   493755,
+   4190
   ],
-  "Winning is just our default setting.": [
-   490070,
-   2010
+  "That Joker had an appointment with this trick.": [
+   498195,
+   4300
   ],
-  "The furnace is fed again.": [
-   492330,
-   1650
+  "Big Joker eats Little Joker. every time.": [
+   502745,
+   3730
   ],
-  "On notice! One more and goodnight.": [
-   494230,
+  "nuked. wipe the table off.": [
+   506725,
+   4265
+  ],
+  "☢️ mushroom cloud over {opp}.": [
+   511240,
+   3525
+  ],
+  "The final score is the whole review.": [
+   515015,
+   3265
+  ],
+  "GG. the shop is closed. we won.": [
+   518530,
+   4495
+  ],
+  "We'll be back. Louder.": [
+   523275,
+   2470
+  ],
+  "{bid}. No hesitation in this voice.": [
+   525995,
+   3550
+  ],
+  "{bid} and I mean every one of them.": [
+   529795,
+   2685
+  ],
+  "big bid, bigger follow-through.": [
+   532730,
+   2840
+  ],
+  "we don't bid scared over here.": [
+   535820,
+   4590
+  ],
+  "{bid}. write it in pen.": [
+   540660,
+   2705
+  ],
+  "that's not hope, that's a plan.": [
+   543615,
+   2095
+  ],
+  "Rematch. My favorite word.": [
+   545960,
+   2390
+  ],
+  "same teams. I like our odds better.": [
+   548600,
+   2855
+  ],
+  "shuffle up. I got a short memory.": [
+   551705,
+   2625
+  ],
+  "again. and this time I'm awake.": [
+   554580,
+   3800
+  ],
+  "deal em. the sequel is better.": [
+   558630,
+   4725
+  ],
+  "one more. for the documentary.": [
+   563605,
    2050
   ],
-  "The table has spoken: shot out.": [
-   496530,
-   2125
+  "Partner! That's the one!": [
+   565905,
+   2280
   ],
-  "Shot out and shut down.": [
-   498905,
-   1550
+  "{bid}? with whose cards?": [
+   568435,
+   3415
   ],
-  "That's the whole movie, {opp}.": [
-   500705,
-   1350
+  "that bid is doing a lot of talking.": [
+   572100,
+   3605
   ],
-  "Shot out! Clear the seat.": [
-   502305,
-   1660
+  "hope is not a strategy, {them}.": [
+   575955,
+   3385
   ],
-  "Overcut! Levels, {them}. Levels.": [
-   504215,
-   2145
+  "{bid} books need {bid} miracles.": [
+   579590,
+   2635
   ],
-  "Anything you do, I do bigger.": [
-   506610,
-   1835
+  "bold of you to bid the whole deck.": [
+   582475,
+   2915
   ],
-  "Your cut met its manager.": [
-   508695,
-   1720
+  "a nil? bold. we'll be by to collect.": [
+   585640,
+   3280
   ],
-  "Y'all bid like books grow on trees.": [
-   510665,
-   2335
+  "nil on the board. hunt mode: on.": [
+   589170,
+   3800
   ],
-  "Scared money and loud money. Both lose.": [
-   513250,
-   2650
+  "you sure about that, {them}? we are.": [
+   593220,
+   5005
   ],
-  "Match point and we're smiling.": [
-   516150,
-   1755
+  "everybody sees the target, right?": [
+   598475,
+   2915
   ],
-  "One hand between us and glory.": [
-   518155,
-   2200
+  "nil. noted, circled, underlined.": [
+   601640,
+   3350
   ],
-  "Untouchable all hand long.": [
-   520605,
-   1930
+  "Boston! Somebody check on {opp}.": [
+   605240,
+   3305
   ],
-  "A clean nil is a work of art.": [
-   522785,
-   2105
+  "That hand should be illegal in Boston.": [
+   608795,
+   5475
   ],
-  "zero books. that's called discipline.": [
-   525140,
+  "A Boston with our name on it.": [
+   614520,
+   2365
+  ],
+  "all that commentary, no books to match.": [
+   617135,
+   3515
+  ],
+  "the loudest seat has the lightest books.": [
+   620900,
+   3295
+  ],
+  "talking is free. books cost more.": [
+   624445,
+   5670
+  ],
+  "check the score, then check the volume.": [
+   630365,
+   3125
+  ],
+  "your mic is on but your cards are off.": [
+   633740,
+   3125
+  ],
+  "I got a hand full of apologies.": [
+   637115,
+   2580
+  ],
+  "these cards wouldn't win a raffle.": [
+   639945,
+   3845
+  ],
+  "who dealt this, an enemy?": [
+   644040,
+   2195
+  ],
+  "thirteen cards, zero friends.": [
+   646485,
+   2645
+  ],
+  "I've seen better hands on a clock.": [
+   649380,
+   3435
+  ],
+  "that play is going in the group chat.": [
+   653065,
+   3060
+  ],
+  "I'm not mad. I'm taking notes.": [
+   656375,
+   2450
+  ],
+  "interesting. and by interesting I mean wrong.": [
+   659075,
+   3460
+  ],
+  "the confidence is the best part of your game.": [
+   662785,
+   2940
+  ],
+  "we saw it. everybody saw it.": [
+   665975,
    2120
   ],
+  "That's not luck, that's arithmetic.": [
+   668345,
+   2880
+  ],
+  "Made it look boring. It wasn't.": [
+   671475,
+   2360
+  ],
+  "clean work. the chair is open for the next hand.": [
+   674085,
+   4260
+  ],
+  "another satisfied customer. made.": [
+   678595,
+   3225
+  ],
+  "WHEELS! Ten books, zero apologies.": [
+   682070,
+   5150
+  ],
+  "Wheels up, windows down.": [
+   687470,
+   1895
+  ],
+  "Ten books and the tank's still full.": [
+   689615,
+   2355
+  ],
+  "Highway robbery, and we drove off.": [
+   692220,
+   2130
+  ],
+  "Winning is just our default setting.": [
+   694600,
+   4040
+  ],
+  "The furnace is fed again.": [
+   698890,
+   2705
+  ],
+  "On notice! One more and goodnight.": [
+   701845,
+   2675
+  ],
+  "The table has spoken: shot out.": [
+   704770,
+   2275
+  ],
+  "Shot out and shut down.": [
+   707295,
+   3170
+  ],
+  "That's the whole movie, {opp}.": [
+   710715,
+   1520
+  ],
+  "Shot out! Clear the seat.": [
+   712485,
+   2600
+  ],
+  "Overcut! Levels, {them}. Levels.": [
+   715335,
+   4550
+  ],
+  "Anything you do, I do bigger.": [
+   720135,
+   1980
+  ],
+  "Your cut met its manager.": [
+   722365,
+   1970
+  ],
+  "Y'all bid like books grow on trees.": [
+   724585,
+   3190
+  ],
+  "Scared money and loud money. Both lose.": [
+   728025,
+   3805
+  ],
+  "Match point and we're smiling.": [
+   732080,
+   4060
+  ],
+  "One hand between us and glory.": [
+   736390,
+   2065
+  ],
+  "Untouchable all hand long.": [
+   738705,
+   1935
+  ],
+  "A clean nil is a work of art.": [
+   740890,
+   2590
+  ],
+  "zero books. that's called discipline.": [
+   743730,
+   3240
+  ],
   "nil, sealed. nobody touched me.": [
-   527510,
-   2115
+   747220,
+   3475
   ],
   "I dodged every book like rent day.": [
-   529875,
-   2300
+   750945,
+   2515
   ],
   "nothing. I took NOTHING. beautiful.": [
-   532425,
-   2025
+   753710,
+   4545
   ],
   "the nil stands. frame it.": [
-   534700,
-   1735
+   758505,
+   3405
   ],
   "invisible all hand. that's the job.": [
-   536685,
-   2395
+   762160,
+   4355
   ],
   "no books, no problem. points please.": [
-   539330,
-   2595
+   766765,
+   2285
   ],
   "they hunted me all hand. I'm still here.": [
-   542175,
-   2435
+   769300,
+   2485
   ],
   "Eyes closed, heart full, cards unknown.": [
-   544860,
-   2565
+   772035,
+   3785
   ],
   "blind nil! the table just gasped.": [
-   547675,
-   2290
+   776070,
+   4640
   ],
   "no look? that's either genius or a cry for help.": [
-   550215,
-   3030
+   780960,
+   3610
   ],
   "blind nil. I respect the chaos.": [
-   553495,
-   2260
+   784820,
+   3450
   ],
   "didn't look, didn't flinch. ok then.": [
-   556005,
-   2330
+   788520,
+   4755
   ],
   "thirteen mysteries and a dream.": [
-   558585,
-   1840
+   793525,
+   2680
+  ],
+  "Frederick Douglass. Taught himself to read when it was forbidden to him, escaped slavery at twenty, and wrote it all down for the world to answer for.": [
+   796455,
+   9505
+  ],
+  "Harriet Tubman. She got herself free — then went back some thirteen times for family and strangers alike, and she brought out every single one.": [
+   806210,
+   10370
+  ],
+  "Nat Turner. In 1831 he rose in Southampton County and led the deadliest slave rebellion in American history.": [
+   816830,
+   7280
+  ],
+  "Dr. Martin Luther King Jr. Twenty-six years old when Montgomery stopped riding the buses — and he led that boycott all 381 days.": [
+   824360,
+   10240
+  ],
+  "Sojourner Truth. Born enslaved — and the first Black woman to win a court case against a white man in this country, bringing her own son home.": [
+   834850,
+   10610
+  ],
+  "Fannie Lou Hamer. A Mississippi sharecropper who stood before a national convention in 1964 and told the truth until the whole country had to listen.": [
+   845710,
+   12085
+  ],
+  "Marcus Garvey. He built the largest Black movement of his age — and put our own ships on the water with the Black Star Line.": [
+   858045,
+   8595
+  ],
+  "Ida B. Wells. A mob wrecked her newspaper office for printing the truth about lynching — so she carried that truth north and printed it louder.": [
+   866890,
+   9325
+  ],
+  "W.E.B. Du Bois. The first Black man to earn a Ph.D. from Harvard, in 1895 — and he spent ninety-five years writing the record straight.": [
+   876465,
+   11065
+  ],
+  "Malcolm X. He remade himself in a prison cell — walked out teaching discipline, dignity, and standing up straight.": [
+   887780,
+   8810
+  ],
+  "Angela Davis. A philosopher they put on trial in 1972 — she walked out acquitted, and she has been teaching ever since.": [
+   896840,
+   9905
+  ],
+  "Huey P. Newton. In 1966, in Oakland, he co-founded the Black Panther Party — and a neighborhood's protection became a movement.": [
+   906995,
+   9430
+  ],
+  "Hold on now. That's Malcolm they just cut. The man told us freedom would come 'by any means necessary' — a spade on a playing card changes none of it.": [
+   916675,
+   9000
+  ],
+  "Malcolm X, cut down on a trick. He taught a whole generation to stand up straight — 'by any means necessary' was never a slogan. It was a promise.": [
+   925925,
+   11255
   ]
  }
 }
