@@ -77,14 +77,19 @@ export function storyVoiceScope(): boolean { return storyScope; }
  * Speak a bot line: its recorded clip (persona + line id → manifest), else the browser's Web Speech voice with the
  * persona's pitch/rate. No-op unless Bot voices is on and sound is on. The Web Speech fallback is fenced off
  * during live play (see webSpeech), so at a table a line without a clip is text-only.
+ * Resolves whether the recorded clip actually sounded. Callers that pace
+ * themselves against the voice (the Rundown panel) need the truth: since
+ * 2026-10-22 playClip reports an engine refusal instead of swallowing it,
+ * and a false here means the line stayed silent — the caller must not
+ * mime a performance that never happened.
  */
-export function speakBot(name: string, text: string, persona?: string, line?: string, bid?: number, seat?: import('./spatial').SeatPos, playerCount = 4): void {
-  if (!prefs.voices) return;
+export async function speakBot(name: string, text: string, persona?: string, line?: string, bid?: number, seat?: import('./spatial').SeatPos, playerCount = 4): Promise<boolean> {
+  if (!prefs.voices) return false;
   const snd = sound.settings;
-  if (!snd.on || snd.volume <= 0) return;
+  if (!snd.on || snd.volume <= 0) return false;
   const per = (persona && persona in PERSONAS ? persona : personaForName(name)) as PersonaId;
   // recorded clips go through the game's audio graph (master volume / mute already applied there)
-  if (sound.voiceMuted(name)) return; // per-player mute: the chat text still shows, the voice stays silent
+  if (sound.voiceMuted(name)) return false; // per-player mute: the chat text still shows, the voice stays silent
   // Story lines (scene player, story table channel, rail) arrive with no
   // catalog line id: their recorded clips are keyed by the line text itself
   // in the character's cast sprite (storyVoice.ts — the story bake). Hand
@@ -109,8 +114,8 @@ export function speakBot(name: string, text: string, persona?: string, line?: st
   // lookup below, unchanged.
   if (cast && storyScope && line) {
     const raw = rawLine(line);
-    if (raw !== undefined) void playClip(cast.persona, name, raw, prefs.voiceVolume * 0.9, bid, seat, playerCount, { crossTalk: storyScope });
-    return;
+    if (raw !== undefined) return playClip(cast.persona, name, raw, prefs.voiceVolume * 0.9, bid, seat, playerCount, { crossTalk: storyScope });
+    return false;
   }
   const raw = rawLine(line) ?? (cast && (per === cast.persona || per === cast.cardPersona) ? text : undefined);
   // Cross-talk (owner, the Porch 2026-10-22: "if Pat says something,
@@ -131,7 +136,9 @@ export function speakBot(name: string, text: string, persona?: string, line?: st
   // event talk, and a replace was a mid-sentence cut of a playing line
   // (owner: bot lines "cut off mid sentence"): deferCut makes the
   // arrival wait for the room on short waits, or drop — never cut.
-  void playClip(per, name, raw, prefs.voiceVolume * 0.9, bid, seat, playerCount, { crossTalk: true, deferCut: !storyScope }).then((played) => { if (!played) webSpeech(name, text, per); });
+  const played = await playClip(per, name, raw, prefs.voiceVolume * 0.9, bid, seat, playerCount, { crossTalk: true, deferCut: !storyScope });
+  if (!played) webSpeech(name, text, per);
+  return played;
 }
 
 /**

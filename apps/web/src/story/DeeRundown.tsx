@@ -77,6 +77,11 @@ export default function DeeRundownPanel({ rundown, track, autoplay = true }: {
   const [resolved, setResolved] = useState(false);
   const intervalRef = useRef<number | null>(null);
   const endTimerRef = useRef<number | null>(null);
+  /** Playback session: bumped on every start/skip so a late async
+   *  refusal from an earlier play can never re-pace a newer one. */
+  const sessionRef = useRef(0);
+  /** Mirror of `shown` for the refusal fallback (interval closures). */
+  const shownRef = useRef(0);
 
   const clearTimers = () => {
     if (intervalRef.current !== null) { window.clearInterval(intervalRef.current); intervalRef.current = null; }
@@ -85,42 +90,64 @@ export default function DeeRundownPanel({ rundown, track, autoplay = true }: {
 
   const finish = () => {
     clearTimers();
+    shownRef.current = full.length;
     setShown(full.length);
     setPlaying(false);
     setHeard(true);
     markSeen(seenKey);
   };
 
+  /** Run the text reveal over `paceMs`; `endMs` non-null means a clip is
+   *  sounding and its own end finishes the panel, null means the reveal
+   *  IS the playback and its completion finishes. Starts at `from`. */
+  const runReveal = (paceMs: number, endMs: number | null, from: number) => {
+    if (intervalRef.current !== null) { window.clearInterval(intervalRef.current); intervalRef.current = null; }
+    if (endTimerRef.current !== null) { window.clearTimeout(endTimerRef.current); endTimerRef.current = null; }
+    const total = full.length;
+    const stepMs = Math.max(8, Math.round(paceMs / Math.max(1, total)));
+    let count = from;
+    intervalRef.current = window.setInterval(() => {
+      count += 1;
+      shownRef.current = Math.min(total, count);
+      setShown(shownRef.current);
+      if (count >= total) {
+        if (intervalRef.current !== null) { window.clearInterval(intervalRef.current); intervalRef.current = null; }
+        if (endMs === null) finish(); // text-only: the reveal IS the playback
+      }
+    }, stepMs);
+    if (endMs !== null) endTimerRef.current = window.setTimeout(finish, endMs);
+  };
+
   /** Play (or replay) the rundown: her clip when one resolved, the
    *  reading-pace text reveal when none did. clipMs is the duration
-   *  the reveal paces against; the audio end is the duration itself. */
+   *  the reveal paces against; the audio end is the duration itself.
+   *  If the engine REFUSES the clip (playClip now reports it — the
+   *  2026-10-22 meet-them silence: the clip existed, the text paced
+   *  itself by it, and no sound ever came out), the panel falls back
+   *  to the honest reading pace instead of miming a performance. */
   const startPlayback = (ms: number | null) => {
     clearTimers();
+    const session = ++sessionRef.current;
     setPlaying(true);
-    if (!reduceFx) setShown(0);
-    if (ms) speakBot('Dee', full, personaForName('Dee'));
+    if (!reduceFx) { shownRef.current = 0; setShown(0); }
+    if (ms) {
+      void speakBot('Dee', full, personaForName('Dee')).then((played) => {
+        if (played || sessionRef.current !== session) return;
+        if (reduceFx) { finish(); return; }
+        runReveal(fixedRevealMs(full.length), null, shownRef.current);
+      });
+    }
     if (reduceFx) {
       // Text is already whole; only the audio (if any) runs out the clock.
       if (ms) endTimerRef.current = window.setTimeout(finish, ms);
       else finish();
       return;
     }
-    const total = full.length;
-    const revealMs = ms ? revealDurationMs(total, ms) : fixedRevealMs(total);
-    const stepMs = Math.max(8, Math.round(revealMs / Math.max(1, total)));
-    let count = 0;
-    intervalRef.current = window.setInterval(() => {
-      count += 1;
-      setShown(Math.min(total, count));
-      if (count >= total) {
-        if (intervalRef.current !== null) { window.clearInterval(intervalRef.current); intervalRef.current = null; }
-        if (!ms) finish(); // text-only: the reveal IS the playback
-      }
-    }, stepMs);
-    if (ms) endTimerRef.current = window.setTimeout(finish, ms);
+    runReveal(ms ? revealDurationMs(full.length, ms) : fixedRevealMs(full.length), ms, 0);
   };
 
   const skip = () => {
+    sessionRef.current++;
     try { sound.stopVoice(); } catch { /* ignore */ }
     cancelActiveSpeech(typeof speechSynthesis !== 'undefined' ? speechSynthesis : undefined);
     finish();
@@ -139,6 +166,7 @@ export default function DeeRundownPanel({ rundown, track, autoplay = true }: {
   // active (the fence means there is none for Dee; the call mirrors
   // ScriptPlayer's leave-taking exactly).
   useEffect(() => () => {
+    sessionRef.current++;
     clearTimers();
     try { sound.stopVoice(); } catch { /* ignore */ }
     cancelActiveSpeech(typeof speechSynthesis !== 'undefined' ? speechSynthesis : undefined);

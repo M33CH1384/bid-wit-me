@@ -53,6 +53,13 @@ type Screen =
  * rewards payload — see RewardsPage.rematchPathFor). Parse + validate the
  * directive: an id that names no stop is not a directive, just the map.
  */
+/** How long a story sub-screen gets to settle before its top position is
+ *  re-asserted once (see the settle effect in StoryHome). Long enough for
+ *  portrait/backdrop decode and the Rundown panel's clip resolution on a
+ *  phone; short enough that a displaced opening is corrected before the
+ *  player reaches for the scroll themselves. */
+export const STORY_SCROLL_SETTLE_MS = 900;
+
 export function storyRematchStopId(search: string): string | null {
   try {
     const id = new URLSearchParams(search).get('rematch');
@@ -167,6 +174,37 @@ export default function StoryHome() {
   const mapScrollPending = useRef(true); // the mount itself is a map arrival
   useLayoutEffect(() => {
     if (screen.k !== 'map') window.scrollTo(0, 0);
+  }, [screen.k, introStep]);
+  // Settle re-assertion (owner regression, 2026-10-22): the layout effect
+  // above fires before first paint, but a sub-screen's content keeps
+  // settling AFTER mount — portrait and backdrop decode, the Rundown
+  // panel growing as its reveal ran (its text wrap followed the typed
+  // text until the constant-height fix in story.css) — and on a real
+  // phone that settling left the viewport displaced from the top the
+  // layout effect had just set: the meet-them screen "opened already
+  // scrolled down" again, the day the panel joined it. So once a
+  // sub-screen has had a moment to settle, the top is re-asserted ONCE —
+  // unless the player has already taken the scroll into their own hands
+  // (a touch, a wheel turn, a scroll key), in which case their scroll
+  // is never fought. The map is exempt: its parked position is the
+  // deliberate exception above.
+  useEffect(() => {
+    if (screen.k === 'map') return;
+    let userTookScroll = false;
+    const mark = () => { userTookScroll = true; };
+    const keyMark = (e: KeyboardEvent) => {
+      if (['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', ' ', 'End', 'Home'].includes(e.key)) userTookScroll = true;
+    };
+    window.addEventListener('touchstart', mark, { passive: true });
+    window.addEventListener('wheel', mark, { passive: true });
+    window.addEventListener('keydown', keyMark);
+    const t = window.setTimeout(() => { if (!userTookScroll) window.scrollTo(0, 0); }, STORY_SCROLL_SETTLE_MS);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener('touchstart', mark);
+      window.removeEventListener('wheel', mark);
+      window.removeEventListener('keydown', keyMark);
+    };
   }, [screen.k, introStep]);
   useLayoutEffect(() => {
     if (screen.k === 'map') mapScrollPending.current = true;
@@ -490,6 +528,16 @@ export default function StoryHome() {
     body = (
       <div className="story-shell">
         <StoryHeader stop={stop} />
+        {/* SceneAudio is this surface's audio contract (enterTable +
+            story bed + score): the intro's tape step and the outro mount
+            it, this stand-alone tape did not — until the Rundown panel
+            joined it (2026-10-22) it had nothing to say, so the omission
+            was invisible. With the panel here, the missing mount left
+            every recorded voice refused at the engine's table gate:
+            Dee's words paced themselves by her clip while the clip
+            itself never sounded (owner, the meet-them screen). Same
+            screen, same contract. */}
+        <SceneAudio stop={stop} />
         <StoryTape stop={stop} facts={factsFor(stop)} cta="Back to the map" onDone={() => setScreen({ k: 'map' })} rundown={rundownFor(stop, factsFor(stop))} rundownTrack="solo" rundownAutoplay={false} />
       </div>
     );

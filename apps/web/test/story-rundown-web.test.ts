@@ -27,6 +27,7 @@ import {
   STORY_STOPS, rundownFor, storyStopById,
 } from '@spades/bots';
 import DeeRundownPanel from '../src/story/DeeRundown';
+import { fixedRevealMs } from '../src/story/ScriptPlayer';
 import StoryTape from '../src/story/StoryTape';
 import { talkPrefs } from '../src/talkPrefs';
 
@@ -140,6 +141,33 @@ describe('the sit-down path: her recorded clip auto-plays once', () => {
     expect(textEl().textContent).toBe(firstRundown.text);
     expect(byTestid('dee-rundown-replay')).toBeTruthy();
     expect(byTestid('dee-rundown-skip')).toBeNull();
+  });
+});
+
+describe('a refused clip: the panel stops miming (2026-10-22 meet-them silence)', () => {
+  it('falls back to the reading pace when the engine refuses the clip', async () => {
+    // In this harness the Porch clip IS in the manifest (60 s) but its
+    // audio 404s, so playClip resolves false — the same shape as the
+    // owner's phone, where the clip resolved and the engine's table
+    // gate refused it on the stand-alone tape. The panel used to pace
+    // the whole reveal by the clip anyway: words moving, no sound.
+    // Now the refusal re-paces the reveal to the reading pace.
+    vi.useFakeTimers();
+    try {
+      await mount(createElement(DeeRundownPanel, { rundown: firstRundown, track: 'solo' }));
+      await act(async () => { await vi.advanceTimersByTimeAsync(120); }); // resolution + refusal land
+      expect(byTestid('dee-rundown-skip')).toBeTruthy();
+      const len = firstRundown.text.length;
+      const reading = fixedRevealMs(len);
+      // Half-way through the reading pace, far more text is up than
+      // the 60 s clip pace would have shown by then.
+      await act(async () => { await vi.advanceTimersByTimeAsync(Math.floor(reading / 2)); });
+      expect(textEl().textContent!.length).toBeGreaterThan(len * 0.4);
+      // And it completes at the reading pace — nowhere near 60 s.
+      await act(async () => { await vi.advanceTimersByTimeAsync(Math.ceil(reading / 2) + 500); });
+      expect(textEl().textContent).toBe(firstRundown.text);
+      expect(byTestid('dee-rundown-replay')).toBeTruthy();
+    } finally { vi.useRealTimers(); }
   });
 });
 

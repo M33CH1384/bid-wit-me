@@ -22,8 +22,11 @@ const fetches = vi.hoisted(() => ({ urls: [] as string[] }));
 vi.mock('../src/audio', () => ({
   sound: {
     audioContext: () => ({}),
-    playVoice: vi.fn(),
-    playVoiceCrossTalk: vi.fn(),
+    // The engine's entry points return whether the line started;
+    // playClip reports that verdict to its caller (2026-10-22
+    // honesty fix), so the double honors the boolean contract.
+    playVoice: vi.fn(() => true),
+    playVoiceCrossTalk: vi.fn(() => true),
   },
   decodeAudioBuffer: () => Promise.resolve({}),
 }));

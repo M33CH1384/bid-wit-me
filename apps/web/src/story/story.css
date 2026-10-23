@@ -934,8 +934,16 @@ html[data-theme="neon"] .story-you-face {
 .dee-rundown-head { margin: 0; font-size: 12px; font-weight: 800; letter-spacing: 0.16em; color: #eec96a; }
 .dee-rundown-byline { letter-spacing: 0.02em; text-transform: none; font-weight: 600; opacity: 0.85; }
 .dee-rundown-textwrap { position: relative; }
-.dee-rundown-text { margin: 0; font-size: 15px; line-height: 1.55; }
-.dee-rundown-sizer { margin: 0; font-size: 15px; line-height: 1.55; visibility: hidden; position: absolute; inset: 0; }
+/* The sizer is IN FLOW and the revealed text overlays it: the wrap — and
+   so the panel and the page — is full-height from first paint and never
+   grows while the reveal runs. It was the other way round (revealed
+   text in flow, sizer absolute), so the panel grew by the whole script
+   over the course of a reading — post-mount page growth on a screen the
+   owner had already caught opening displaced once (2026-10-22 scroll
+   regression). A revealed prefix wraps at the same points it takes in
+   the full text at this width, so the overlay lines up line for line. */
+.dee-rundown-text { margin: 0; font-size: 15px; line-height: 1.55; position: absolute; inset: 0; }
+.dee-rundown-sizer { margin: 0; font-size: 15px; line-height: 1.55; visibility: hidden; }
 .dee-rundown-controls { display: flex; gap: 8px; }
 .dee-rundown-controls .btn { min-height: 44px; }
 

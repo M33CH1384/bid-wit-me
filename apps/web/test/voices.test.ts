@@ -1,7 +1,8 @@
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { BOT_NAMES, PERSONAS, PERSONA_VOICES, type PersonaId, botTalk, kokoroGender, lineById, lineIdOf, newTalkState, personaForName, speakableLines, voiceFor } from '@spades/bots';
+import { BOT_NAMES, PERSONAS, PERSONA_VOICES, RUNDOWN_FIRST, RUNDOWN_KING_LEG2, RUNDOWN_RETURN_CLEAR, RUNDOWN_RETURN_LOSS, type PersonaId, botTalk, kokoroGender, lineById, lineIdOf, newTalkState, personaForName, speakableLines, voiceFor } from '@spades/bots';
 import { browserVoiceFor } from '../src/talkPrefs';
 
 const pub = resolve(__dirname, '../public/voices/v2');
@@ -60,5 +61,40 @@ describe('recorded bot voices (v2 sprites)', () => {
     expect(l.line).toBeTruthy();
     const key = voiceFor(l.persona, l.name).key;
     expect(sprite(key).clips[lineById(l.line!)!]).toBeDefined();
+  });
+});
+
+/**
+ * Dee's Rundown scripts resolve in the SHIPPED lilcuz-f sprite — the
+ * runtime lookup playClip actually performs (raw script text as the
+ * manifest key), checked against the artifacts in this repo, not a
+ * fixture. The 2026-10-22 meet-them silence was NOT a missing clip
+ * (the panel paced by the clip's real duration — it resolved), but
+ * this pin keeps it that way: a bake that drops or re-keys a rundown
+ * segment fails here instead of on the owner's phone.
+ */
+describe("Dee's Rundown in the shipped sprite", () => {
+  const dee = sprite('lilcuz-f');
+  const soloScripts = [...Object.values(RUNDOWN_FIRST), ...Object.values(RUNDOWN_RETURN_LOSS), ...Object.values(RUNDOWN_RETURN_CLEAR), RUNDOWN_KING_LEG2];
+
+  it('all 34 solo scripts are manifest keys with in-bounds segments', () => {
+    expect(soloScripts).toHaveLength(34);
+    const idx = JSON.parse(readFileSync(`${pub}/index.json`, 'utf8')) as { sprites: Record<string, { count: number; durationSec: number }> };
+    const meta = idx.sprites['lilcuz-f']!;
+    expect(Object.keys(dee.clips)).toHaveLength(meta.count); // the index and the manifest are one matched pair
+    for (const text of soloScripts) {
+      const seg = dee.clips[text];
+      expect(seg, text.slice(0, 48)).toBeDefined();
+      const [start, dur] = seg!;
+      expect(dur).toBeGreaterThan(0);
+      expect(start + dur).toBeLessThanOrEqual(meta.durationSec * 1000 + 500);
+    }
+  });
+
+  it("the Porch first-meet is the segment the bake recorded (id 872b0ad54292)", () => {
+    const text = RUNDOWN_FIRST['porch']!;
+    const id = createHash('sha1').update(`dee|${text}`).digest('hex').slice(0, 12);
+    expect(id).toBe('872b0ad54292');
+    expect(dee.clips[text]).toEqual([2258710, 30410]);
   });
 });

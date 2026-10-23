@@ -66,6 +66,14 @@ export const VOICE_BASE = '/voices/v2';
 export const VOICE_BUILD_TOKEN = `v${VERSION.version}-${VERSION.sha}`;
 /** The sprite URL for a file under VOICE_BASE, build-tokened. */
 export const voiceUrl = (file: string) => `${VOICE_BASE}/${file}?v=${VOICE_BUILD_TOKEN}`;
+/**
+ * How many times a failed sprite load may be retried per session. A failure
+ * is evicted from the cache so the NEXT play retries it (see load()); past
+ * the budget the dead entry stays put — a device that genuinely cannot
+ * decode the format must not re-download megabytes on every line.
+ */
+const LOAD_RETRY_BUDGET = 3;
+const loadRetries = new Map<string, number>();
 function load(key: string): Promise<Sprite | null> {
   let p = cache.get(key);
   if (!p) {
@@ -82,6 +90,26 @@ function load(key: string): Promise<Sprite | null> {
       } catch { return null; }
     })();
     cache.set(key, p);
+    // A FAILED load must not be a life sentence (owner's intermittent-silence
+    // recurrence, 2026-10-22): sprites are megabytes now, so a fetch+decode
+    // takes seconds on a phone — long enough for an iOS interruption to
+    // rebuild the AudioContext mid-decode. decodeAudioData on the dying
+    // context rejects, the catch above caches `null` (or an undecodable
+    // buf:null), and until now that dead entry was served for the REST OF
+    // THE SESSION: that voice — sometimes every voice loaded in the window —
+    // stayed silent while music and effects (which the engine re-syncs on
+    // rebuild) came back. The heal now covers the cache too: a load that
+    // resolved with no playable buffer is evicted once it settles, so the
+    // next line retries against the live context. Successful loads are
+    // never evicted.
+    void p.then((sp) => {
+      if (sp?.buf) return;
+      if (cache.get(key) !== p) return;
+      const used = loadRetries.get(key) ?? 0;
+      if (used >= LOAD_RETRY_BUDGET) return;
+      loadRetries.set(key, used + 1);
+      cache.delete(key);
+    });
   }
   return p;
 }
@@ -115,9 +143,16 @@ export async function playClip(persona: PersonaId, name: string, raw: string | u
   const at = sp && ((opts?.key !== undefined ? sp.clips[`${raw}#${opts.key}`] : bid !== undefined ? sp.clips[`${raw}#${bid}`] : undefined) ?? sp.clips[raw]);
   if (!sp?.buf || !at) return false;
   if (performance.now() - t0 > 1500) return true; // too late to still fit the moment: stay quiet
-  if (opts?.crossTalk) sound.playVoiceCrossTalk(sp.buf, gain, [at[0] / 1000, at[1] / 1000], seat, playerCount, name, { defer: !!opts.deferCut });
-  else sound.playVoice(sp.buf, gain, [at[0] / 1000, at[1] / 1000], seat, playerCount);
-  return true;
+  // The engine's word is final and is now REPORTED, not swallowed: startVoice
+  // refuses (returns false) off a table surface, while the context is not
+  // running, or when a deferral drops the line. Until 2026-10-22 this wrapper
+  // returned true unconditionally, so a refused line looked "played" to every
+  // caller — on the story meet-them screen (no table surface mounted) Dee's
+  // Rundown paced its text reveal by the clip's real duration while the clip
+  // itself was refused at the gate: words moving, no sound. Callers that pace
+  // or fall back (speakBot, the Rundown panel) need the truth.
+  if (opts?.crossTalk) return sound.playVoiceCrossTalk(sp.buf, gain, [at[0] / 1000, at[1] / 1000], seat, playerCount, name, { defer: !!opts.deferCut });
+  return sound.playVoice(sp.buf, gain, [at[0] / 1000, at[1] / 1000], seat, playerCount);
 }
 
 /**

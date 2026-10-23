@@ -240,8 +240,17 @@ describe('engine application', () => {
   });
 
   it('playClip routes opt-ins to the cross-talk entry and everything else to the serial one', () => {
-    expect(voices).toContain('sound.playVoiceCrossTalk(sp.buf, gain,');
-    expect(voices).toContain('else sound.playVoice(sp.buf, gain,');
+    expect(voices).toContain('return sound.playVoiceCrossTalk(sp.buf, gain,');
+    expect(voices).toContain('return sound.playVoice(sp.buf, gain,');
+  });
+
+  it('playClip reports the engine’s refusal instead of claiming the line played (2026-10-22 meet-them silence)', () => {
+    // The wrapper used to end in an unconditional `return true`, so a line
+    // the engine refused at the table gate (or on a non-running context)
+    // looked played to speakBot and to the Rundown panel, which paced
+    // its text by the clip while no sound came out. The engine's boolean
+    // now flows out of both play paths.
+    expect(voices).not.toMatch(/else sound\.playVoice\(sp\.buf, gain, \[at\[0\] \/ 1000, at\[1\] \/ 1000\], seat, playerCount\);\n {2}return true;/);
   });
 });
 

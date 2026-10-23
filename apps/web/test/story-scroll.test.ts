@@ -25,7 +25,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { STORY_STOPS } from '@spades/bots';
-import StoryHome from '../src/story/StoryHome';
+import StoryHome, { STORY_SCROLL_SETTLE_MS } from '../src/story/StoryHome';
 import { themeStore } from '../src/theme';
 import { clearStoryGame } from '../src/story/storySave';
 
@@ -219,5 +219,50 @@ describe('story sub-screens open at the top', () => {
     expect(c.querySelector('.story-scene')).toBeTruthy(); // the scene player is up
     expect(scrollToCalls).toEqual([[0, 0], [0, 0]]);
     expect(intoViewCalls).toEqual([]);
+  });
+});
+
+/**
+ * The 2026-10-22 regression: the meet-them tape "opened already
+ * scrolled down" AGAIN, the day the Rundown panel joined the surface —
+ * the layout-effect scrollTo fired before paint as pinned above, but
+ * the page kept settling after mount (image decode, the panel's
+ * reveal growing the document — its text wrap followed the typed
+ * text until the constant-height fix) and a real phone's viewport
+ * ended displaced, with nothing left to re-assert the top. The
+ * discipline now re-asserts ONCE after a settle window — and never
+ * against a player who has taken the scroll themselves. The map is
+ * exempt: its parked position is deliberate (pinned above).
+ */
+describe('the settle re-assertion', () => {
+  const wait = async (ms: number) => { await act(async () => { await new Promise((r) => setTimeout(r, ms)); }); };
+
+  it('the tape re-asserts the top once its content has settled', async () => {
+    stubFetch();
+    const c = await renderStoryHome();
+    await click(byTestid(c, 'story-meet-barbershop')!);
+    expect(byTestid(c, 'story-tape-done')).toBeTruthy();
+    scrollToCalls.length = 0;
+    await wait(STORY_SCROLL_SETTLE_MS + 300);
+    expect(scrollToCalls).toEqual([[0, 0]]);
+  });
+
+  it('a player who takes the scroll is never fought', async () => {
+    stubFetch();
+    const c = await renderStoryHome();
+    await click(byTestid(c, 'story-meet-barbershop')!);
+    scrollToCalls.length = 0;
+    window.dispatchEvent(new Event('touchstart'));
+    await wait(STORY_SCROLL_SETTLE_MS + 300);
+    expect(scrollToCalls).toEqual([]);
+  });
+
+  it('the map gets no settle re-assertion', async () => {
+    stubFetch();
+    const c = await renderStoryHome();
+    expect(byTestid(c, 'story-map')).toBeTruthy();
+    scrollToCalls.length = 0;
+    await wait(STORY_SCROLL_SETTLE_MS + 300);
+    expect(scrollToCalls).toEqual([]);
   });
 });

@@ -874,9 +874,23 @@ class Engine {
     const next = this.ensure({ skipLoad: true });
     if (!next) return;
     if (saved.length) this.restoreBuffers(saved);
-    if (this.buffers.size === 0) this.load();
+    // ALWAYS re-run the loader, not just when nothing survived: an SFX
+    // fetch in flight when the old context died has its result discarded
+    // by the generation guard, and a partial buffer copy kept the old
+    // `size === 0` condition from ever refetching the missing names —
+    // those effects stayed silent for the rest of the session (a hole in
+    // the 2026-10-21 heal, found in the 2026-10-22 recurrence audit).
+    // load() skips names the copy already restored.
+    this.load();
     this.voiceChatGeneration++;
     this.rerouteVoiceChat();
+    // The rebuild itself restores the stems: until now they only came
+    // back if a LATER statechange or wake() happened to re-sync — a
+    // rebuild landing on an already-'running' context (the watcher's
+    // 'closed' path) or racing the 'interrupted' report left music,
+    // beds, and tension down until the next tap. The heal contract is
+    // "the rebuild re-syncs", unconditionally.
+    this.resyncAll();
     this.emit();
     if (next.state !== 'running') void settleAudio(next.resume());
   }
@@ -1221,7 +1235,10 @@ class Engine {
     if (this.loading || !this.ctx) return this.loading;
     const c = this.ctx;
     const gen = this.loadGen;
-    const names = Object.values(FILES).flat();
+    // Names a context rebuild already restored from the old context's
+    // samples are skipped: a reload completes the set, it does not
+    // re-download what survived (recreateContext relies on this).
+    const names = Object.values(FILES).flat().filter((n) => !this.buffers.has(n));
     this.loading = Promise.all(names.map(async (n) => {
       try {
         const res = await fetch(`/assets/sfx/${n}.mp3`);
