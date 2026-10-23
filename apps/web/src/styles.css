@@ -3441,3 +3441,20 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
 @media (prefers-reduced-motion: reduce) {
   .setup-card-body, .setup-card-chevron { transition: none; }
 }
+
+/* Collapsible Settings sections (owner, 2026-10-23): House rules leads the
+   sheet and every group header is a toggle. The body folds on the
+   grid-template-rows track (0fr ↔ 1fr) with the inner clipped — content
+   stays MOUNTED, so folding never unmounts a control or loses its state,
+   and a folded group leaves the tab order via visibility. Reduced motion
+   (the OS setting the app already honors) makes the fold instant. */
+.set-group-toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 34px; background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit; text-align: left; cursor: pointer; }
+.set-chev { flex: none; color: var(--gold); font-size: 12px; line-height: 1; transform: rotate(-90deg); transition: transform .25s ease; }
+.set-chev.open { transform: rotate(0deg); }
+.set-group-body { display: grid; grid-template-rows: 0fr; visibility: hidden; transition: grid-template-rows .28s ease, visibility 0s linear .28s; }
+.set-group-body.open { grid-template-rows: 1fr; visibility: visible; transition: grid-template-rows .28s ease, visibility 0s; }
+.set-group-inner { overflow: hidden; min-height: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .set-group-body, .set-group-body.open { transition: none; }
+  .set-chev { transition: none; }
+}

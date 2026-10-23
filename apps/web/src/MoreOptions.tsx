@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { type ReactNode, type Ref, useEffect, useRef, useState } from 'react';
 import { useEscapeClose } from './useEscapeClose';
 import Credits from './Credits';
 import Feedback, { AboutRow } from './Feedback';
@@ -7,6 +7,7 @@ import { SetAnimRow } from './SetAnimPicker';
 import ThemeToggle from './ThemeToggle';
 import { CLASSIC_JOKER, makeRules } from '@spades/rules';
 import { type Settings, settingsToRules } from './settings';
+import { type SectionOpenMap, type SettingsSectionId, loadSectionOpen, saveSectionOpen } from './settingsSections';
 import { TRUMP_SEP, trumpLadder, trumpLadderText } from './trumpLadder';
 import { type TipsPref, saveTips } from './tips';
 import { VENUE_DEFS, type VenueChoice } from './venues';
@@ -39,6 +40,29 @@ export function Seg<T extends string | number>({ value, options, onChange, label
   );
 }
 
+/** One collapsible group card in the Settings sheet (owner, 2026-10-23):
+ *  the header is a toggle (chevron affordance, aria-expanded); the body
+ *  stays MOUNTED and folds on the .set-group-body height track, so folding
+ *  never unmounts a control or loses its state — presentation only. */
+export function SectionGroup({ label, open, onToggle, groupRef, testId, children }: {
+  label: string; open: boolean; onToggle: () => void;
+  groupRef?: Ref<HTMLElement>; testId?: string; children: ReactNode;
+}) {
+  return (
+    <section className="set-group" aria-label={label} ref={groupRef} data-testid={testId}>
+      <h3 className="sheet-h">
+        <button type="button" className="set-group-toggle" aria-expanded={open} onClick={onToggle}>
+          <span>{label}</span>
+          <span className={`set-chev ${open ? 'open' : ''}`} aria-hidden>▾</span>
+        </button>
+      </h3>
+      <div className={`set-group-body ${open ? 'open' : ''}`} aria-hidden={!open}>
+        <div className="set-group-inner">{children}</div>
+      </div>
+    </section>
+  );
+}
+
 export const TALK_HINT: Record<Settings['talkIntensity'], string> = {
   family: 'Family Friendly: clean, light jokes only',
   cookout: 'Cookout: real table talk, nothing too personal (default)',
@@ -48,7 +72,14 @@ export const TALK_HINT: Record<Settings['talkIntensity'], string> = {
 /** Every less-common option lives here — THE one settings sheet (owner, 2026-10-20):
  *  game speed, graphics, tips, sound + music, house rules, credits. The old separate
  *  speaker Sound sheet is retired; the speaker button opens THIS sheet, landed on the
- *  Sound & music group via initialSection="sound" (see settingsSheet.ts). */
+ *  Sound & music group via initialSection="sound" (see settingsSheet.ts).
+ *
+ *  Sections are collapsible and House rules leads (owner, 2026-10-23): the
+ *  house-rules group — formerly a Show/Hide disclosure buried in a "You"
+ *  group that held nothing else — is now the first group, open by default;
+ *  every group's arrangement persists per device (settingsSections.ts). A
+ *  targeted entry (initialSection) forces its group open for that open only
+ *  and never rewrites the stored arrangement. */
 export default function MoreOptions({ settings: s, onChange, tips, onTips, onClose, initialSection, anchorSeq }: {
   settings: Settings; onChange: (s: Settings) => void; tips: TipsPref; onTips: (t: TipsPref) => void; onClose: () => void;
   /** Open landed on a group instead of the top (the speaker's sound landing). */
@@ -56,9 +87,22 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
   /** Bumped per open request so a repeat request while open re-lands the anchor. */
   anchorSeq?: number;
 }) {
-  const [house, setHouse] = useState(false);
   const [credits, setCredits] = useState(false);
   const [feedback, setFeedback] = useState(false);
+  // Section arrangement: the player's stored map (persisted per device),
+  // plus a per-open forced section from a targeted entry (speaker → sound).
+  const [openMap, setOpenMap] = useState<SectionOpenMap>(() => loadSectionOpen());
+  const [forced, setForced] = useState<SettingsSectionId | null>(() => (initialSection === 'sound' ? 'sound' : null));
+  useEffect(() => {
+    if (initialSection === 'sound') setForced('sound');
+  }, [initialSection, anchorSeq]);
+  const isOpen = (id: SettingsSectionId) => forced === id || openMap[id];
+  const toggleSection = (id: SettingsSectionId) => {
+    const next: SectionOpenMap = { ...openMap, [id]: !isOpen(id) };
+    setOpenMap(next);
+    saveSectionOpen(next);
+    if (forced === id) setForced(null);
+  };
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => onChange({ ...s, [k]: v });
   const rules = settingsToRules(s);
   const isJokerDeck = rules.deck === 'joker54';
@@ -79,53 +123,7 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
           <button type="button" className="sheet-close" aria-label="Close" onClick={onClose}>CLOSE</button>
         </header>
         <div className="scroll sheet-body">
-          <section className="set-group" aria-label="Play">
-          <h3 className="sheet-h">Play</h3>
-          <Row label="Tips while you play" hint="Coach marks + bid coach, until you turn them off">
-            <Toggle label="Tips" value={tips.on} onChange={(on) => { const t = { on, asked: true }; saveTips(t); onTips(t); }} />
-          </Row>
-          <Row label="Game speed">
-            <Seg label="Game speed" value={s.speed === 'turbo' ? 'fast' : s.speed} options={[['slow', 'Slow'], ['relaxed', 'Chill'], ['normal', 'Normal'], ['fast', 'Fast']]} onChange={(v) => set('speed', v)} />
-          </Row>
-          <Row label="Bot skill" hint={s.botLevel === 'mixed' ? 'Each bot rolls its own level (hidden): find out by playing' : 'Every bot plays at this level'}>
-            <select data-testid="bot-skill" value={s.botLevel} onChange={(e) => set('botLevel', e.target.value as Settings['botLevel'])}>
-              <option value="mixed">Mixed (default)</option><option value="novice">Novice</option><option value="regular">Regular</option><option value="pro">Pro</option><option value="shark">Shark</option>
-            </select>
-          </Row>
-          <Row label="Trash talk" hint={TALK_HINT[s.talkIntensity ?? 'cookout']}>
-            <Seg label="Trash talk intensity" value={s.talkIntensity ?? 'cookout'} options={[['family', 'Family'], ['cookout', 'Cookout'], ['nomercy', 'No Mercy']]} onChange={(v) => set('talkIntensity', v)} />
-          </Row>
-          </section>
-          <section className="set-group" aria-label="Sound & music" ref={soundGroupRef} data-testid="settings-sound-group">
-          <h3 className="sheet-h">Sound &amp; music</h3>
-          <SoundQuickActions />
-          <SoundFields />
-          <ChatSoundsRow />
-          <BotTrashTalkRow />
-          </section>
-          <section className="set-group" aria-label="Look & effects">
-          <h3 className="sheet-h">Look &amp; effects</h3>
-          <Row label="Appearance" hint="Neon Royale is the midnight-navy theme">
-            <ThemeToggle />
-          </Row>
-          <Row label="Venue" hint={s.venue === 'random' ? 'A different spot every game' : VENUE_DEFS[s.venue ?? 'classic'].blurb}>
-            <VenueSelect value={s.venue ?? 'classic'} onChange={(v) => set('venue', v)} testId="venue-select" />
-          </Row>
-          <Row label="Graphics" hint="Low saves battery">
-            <Seg label="Graphics" value={s.quality} options={[['high', 'High'], ['low', 'Low']]} onChange={(v) => set('quality', v)} />
-          </Row>
-          <Row label="Turn up (slam mode)" hint="On: Standing plays slam hard. Off (default): Standing plays are gentle. Sitting's V-gesture slam always works.">
-            <Toggle label="Turn up (slam mode)" value={s.turnUp === true} onChange={(v) => set('turnUp', v)} />
-          </Row>
-          <ReduceEffectsRow />
-          <NukeIntensityRow />
-          <SetAnimRow value={s.setAnim ?? 'auto'} onChange={(v) => set('setAnim', v)} />
-          </section>
-          <section className="set-group" aria-label="You">
-          <h3 className="sheet-h">You</h3>
-          <button type="button" className="link sheet-h gold-tab-row" aria-expanded={house} onClick={() => setHouse(!house)}>House rules <span className="value-chip">{house ? 'Hide' : 'Show'}</span></button>
-          {house && (
-            <div className="house">
+          <SectionGroup label="House rules" open={isOpen('house')} onToggle={() => toggleSection('house')}>
               <Row label="First hand: books bid themselves" hint="No bidding in hand 1 · 10 points per book">
                 <Toggle label="First hand: books bid themselves" value={s.firstHandBidsItself !== false} onChange={(v) => set('firstHandBidsItself', v)} />
               </Row>
@@ -193,14 +191,50 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
                 </select>
               </Row>}
               <Row label="10 for 200"><Toggle value={s.tenForTwoHundred} onChange={(v) => set('tenForTwoHundred', v)} /></Row>
-            </div>
-          )}
-          </section>
-          <section className="set-group" aria-label="Beta feedback & support">
-          <h3 className="sheet-h">Beta feedback &amp; support</h3>
+          </SectionGroup>
+          <SectionGroup label="Play" open={isOpen('play')} onToggle={() => toggleSection('play')}>
+          <Row label="Tips while you play" hint="Coach marks + bid coach, until you turn them off">
+            <Toggle label="Tips" value={tips.on} onChange={(on) => { const t = { on, asked: true }; saveTips(t); onTips(t); }} />
+          </Row>
+          <Row label="Game speed">
+            <Seg label="Game speed" value={s.speed === 'turbo' ? 'fast' : s.speed} options={[['slow', 'Slow'], ['relaxed', 'Chill'], ['normal', 'Normal'], ['fast', 'Fast']]} onChange={(v) => set('speed', v)} />
+          </Row>
+          <Row label="Bot skill" hint={s.botLevel === 'mixed' ? 'Each bot rolls its own level (hidden): find out by playing' : 'Every bot plays at this level'}>
+            <select data-testid="bot-skill" value={s.botLevel} onChange={(e) => set('botLevel', e.target.value as Settings['botLevel'])}>
+              <option value="mixed">Mixed (default)</option><option value="novice">Novice</option><option value="regular">Regular</option><option value="pro">Pro</option><option value="shark">Shark</option>
+            </select>
+          </Row>
+          <Row label="Trash talk" hint={TALK_HINT[s.talkIntensity ?? 'cookout']}>
+            <Seg label="Trash talk intensity" value={s.talkIntensity ?? 'cookout'} options={[['family', 'Family'], ['cookout', 'Cookout'], ['nomercy', 'No Mercy']]} onChange={(v) => set('talkIntensity', v)} />
+          </Row>
+          </SectionGroup>
+          <SectionGroup label="Sound & music" open={isOpen('sound')} onToggle={() => toggleSection('sound')} groupRef={soundGroupRef} testId="settings-sound-group">
+          <SoundQuickActions />
+          <SoundFields />
+          <ChatSoundsRow />
+          <BotTrashTalkRow />
+          </SectionGroup>
+          <SectionGroup label="Look & effects" open={isOpen('look')} onToggle={() => toggleSection('look')}>
+          <Row label="Appearance" hint="Neon Royale is the midnight-navy theme">
+            <ThemeToggle />
+          </Row>
+          <Row label="Venue" hint={s.venue === 'random' ? 'A different spot every game' : VENUE_DEFS[s.venue ?? 'classic'].blurb}>
+            <VenueSelect value={s.venue ?? 'classic'} onChange={(v) => set('venue', v)} testId="venue-select" />
+          </Row>
+          <Row label="Graphics" hint="Low saves battery">
+            <Seg label="Graphics" value={s.quality} options={[['high', 'High'], ['low', 'Low']]} onChange={(v) => set('quality', v)} />
+          </Row>
+          <Row label="Turn up (slam mode)" hint="On: Standing plays slam hard. Off (default): Standing plays are gentle. Sitting's V-gesture slam always works.">
+            <Toggle label="Turn up (slam mode)" value={s.turnUp === true} onChange={(v) => set('turnUp', v)} />
+          </Row>
+          <ReduceEffectsRow />
+          <NukeIntensityRow />
+          <SetAnimRow value={s.setAnim ?? 'auto'} onChange={(v) => set('setAnim', v)} />
+          </SectionGroup>
+          <SectionGroup label="Beta feedback & support" open={isOpen('beta')} onToggle={() => toggleSection('beta')}>
           <AboutRow onFeedback={() => setFeedback(true)} />
           <button type="button" className="link sheet-h gold-tab-row" onClick={() => setCredits(true)}>Credits &amp; licenses</button>
-          </section>
+          </SectionGroup>
         </div>
       </div>
     </div>

@@ -38,6 +38,14 @@
  * group, and the old sheet's only unique controls — the Mute bots / Mute all
  * quick actions — live at the top of that group. The pins below hold the
  * merged inventory (sound-consolidation.test.ts pins the retired surface).
+ *
+ * COLLAPSIBLE SECTIONS (owner, 2026-10-23): every group header is a toggle
+ * and House rules — formerly a Show/Hide disclosure inside the "You" group,
+ * which held nothing else — is now the FIRST group, open by default on a
+ * fresh device; the arrangement persists per device (settingsSections.ts;
+ * behavior pinned in settings-sections.test.ts). The "You" group is gone
+ * because House rules was its only content. Group membership below is
+ * unchanged: folding keeps every control mounted in its group.
  */
 import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -91,7 +99,7 @@ describe('settings sheet — grouped cards', () => {
   it('renders the five groups in order', async () => {
     const c = await renderSheet();
     const labels = [...c.querySelectorAll('.set-group')].map((g) => g.getAttribute('aria-label'));
-    expect(labels).toEqual(['Play', 'Sound & music', 'Look & effects', 'You', 'Beta feedback & support']);
+    expect(labels).toEqual(['House rules', 'Play', 'Sound & music', 'Look & effects', 'Beta feedback & support']);
   });
 
   it('every control sits in its group', async () => {
