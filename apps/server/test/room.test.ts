@@ -503,10 +503,18 @@ describe('game', () => {
     // That still saves as it plays; the ending is the result, not a fixed save count.
     expect(env.persists).toBeGreaterThan(0);
     expect(result.finalScores).toHaveLength(2);
+    expect(result.winners.length).toBeGreaterThan(0);
+    // Every legal way a completed game can end is GameResult.endReason (@spades/rules
+    // scoring): on the final hand the engine checks third-set, then shot-out, then
+    // target/floor, so a bot-played game may legitimately end by any of the four. The old
+    // else-branch assumed "not target/floor" meant shotOut and flaked whenever a side's
+    // third cumulative set landed first (~1 run in 10 in this configuration).
+    expect(['target', 'floor', 'shotOut', 'third-set']).toContain(result.endReason);
     if (result.endReason === 'target') expect(Math.max(...result.finalScores)).toBeGreaterThanOrEqual(250);
     else if (result.endReason === 'floor') expect(result.finalScores.some((s) => s <= -200)).toBe(true);
     else {
-      expect(result.endReason).toBe('shotOut');
+      // Both knockout endings record the knocked-out sides in result.shotOut
+      // (thirdSetResult reuses the shot-out result shape).
       expect(result.shotOut?.length).toBeGreaterThan(0);
     }
   }, 30000);
@@ -1939,7 +1947,16 @@ describe('spectators', () => {
     env.send('a', { t: 'addBot', seat: 2 }); env.send('a', { t: 'addBot', seat: 3 });
     env.send('a', { t: 'tableOpts', replaceBots: false });
     env.send('a', { t: 'start' });
-    for (let i = 0; i < 30; i++) if (!playTurn(env, ['a', 'b'])) env.advance(100);
+    // Warm up only a few plays. This scenario needs a live mid-game table, and the old
+    // fixed 30-step loop could stochastically play out ALL of hand 1 (each advance(100)
+    // cascades ~10 bot moves): hand 1 is a books hand, a side under the book minimum is
+    // shot out, the game ends on the spot — and the leave below landed on an already-over
+    // table (flake: takeable [] vs [1]). A hand cannot end before all 52 cards are played,
+    // so capping the warm-up at a few plays makes "still mid-game" structural, not lucky.
+    const plays = () => { const g = env.room.data.game!; return g.tricks.length * 4 + g.trick.plays.length; };
+    for (let i = 0; i < 500 && plays() < 4; i++) if (!playTurn(env, ['a', 'b'])) env.advance(10);
+    expect(env.room.data.phase).toBe('playing');
+    expect(env.room.data.game!.result).toBeNull();
     env.join('s', 'Sam'); env.join('t', 'Tia');
     expect(env.last('s', 'state')!.room.takeable).toEqual([]);
     const handBefore = [...env.room.data.game!.hands[1]!];
