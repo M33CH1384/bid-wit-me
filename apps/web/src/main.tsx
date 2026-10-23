@@ -11,6 +11,7 @@ import { watchPendingClaim } from './pendingClaim';
 import ReactiveGlow from './neon/ReactiveGlow';
 import { initTheme } from './theme';
 import IdleGuard from './IdleGuard';
+import EntryFlow from './EntryFlow';
 import '@fontsource/barlow-condensed/600.css';
 import '@fontsource/barlow-condensed/700.css';
 import '@fontsource/barlow-condensed/800.css';
@@ -54,6 +55,10 @@ function RouteLoading() {
 /** "/" = offline (vs bots) as before; "/online" and "/t/CODE" = online tables; "/profile" = Rep profile. */
 function Root() {
   const [path, setPath] = useState(location.pathname);
+  // Bumped when the first-sign-in preferences step finishes: the screens hold
+  // their own Settings snapshots (read at mount), so a remount is how the
+  // step's saved settings become the live ones everywhere at once.
+  const [settingsEpoch, setSettingsEpoch] = useState(0);
   useEffect(() => {
     const on = () => setPath(location.pathname);
     window.addEventListener('popstate', on);
@@ -65,7 +70,7 @@ function Root() {
   useEffect(() => { watchPendingClaim(); }, []);
   return (
     <>
-      <RouteGuard key={path}>
+      <RouteGuard key={`${path}:${settingsEpoch}`}>
         {path === '/rewards' ? <Suspense fallback={<RouteLoading />}><RewardsPage /></Suspense>
           : path === '/story' ? <Suspense fallback={<RouteLoading />}><StoryHome /></Suspense>
           : path === '/profile' ? <Suspense fallback={<RouteLoading />}><ProfilePage /></Suspense>
@@ -86,6 +91,10 @@ function Root() {
           /story (story surfaces never carry broadcast chrome). */}
       <LeagueTickerRoot />
       <IdleGuard />
+      {/* Entry prompt (sign in / guest) + first-sign-in preferences offer.
+          Online paths skip the remount: a live room owns its own state and
+          its settings refresh on the next navigation instead. */}
+      <EntryFlow onPrefsDone={() => { if (!isOnlinePath(location.pathname)) setSettingsEpoch((e) => e + 1); }} />
     </>
   );
 }

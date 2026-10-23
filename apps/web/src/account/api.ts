@@ -18,12 +18,16 @@ export interface AccountUser {
   identities: { provider: string; name: string | null; linkedAt: number }[];
   passkeys: { id: string; synced: boolean; createdAt: number; lastUsedAt: number | null }[];
 }
-export interface AccountState { ready: boolean; accounts: boolean; providers: ProviderId[]; passkeys: boolean; user: AccountUser | null; notice: string | null; noticeKind: 'ok' | 'error' | null }
+export interface AccountState { ready: boolean; accounts: boolean; providers: ProviderId[]; passkeys: boolean; user: AccountUser | null; notice: string | null; noticeKind: 'ok' | 'error' | null;
+  /** The user an INTERACTIVE sign-in just landed for (OAuth return, passkey
+   *  sign-in, passkey account creation) — the entry flow's first-sign-in
+   *  preferences offer keys off this. A silent session restore NEVER sets it. */
+  firstSignIn: AccountUser | null }
 
 export const PROVIDER_LABEL: Record<ProviderId, string> = { google: 'Google', discord: 'Discord', x: 'X', facebook: 'Facebook', mock: 'Test login' };
 export const PROVIDER_ORDER: ProviderId[] = ['google', 'discord', 'x', 'facebook', 'mock'];
 
-let state: AccountState = { ready: false, accounts: false, providers: [], passkeys: false, user: null, notice: null, noticeKind: null };
+let state: AccountState = { ready: false, accounts: false, providers: [], passkeys: false, user: null, notice: null, noticeKind: null, firstSignIn: null };
 const subs = new Set<() => void>();
 function set(p: Partial<AccountState>) {
   state = { ...state, ...p };
@@ -80,6 +84,10 @@ export function loadAccount(force = false): Promise<void> {
       const [cfg, me] = await Promise.all([call<{ providers: ProviderId[]; passkeys: boolean; accounts: boolean }>('config'), call<{ user: AccountUser | null }>('me')]);
       set({ ready: true, accounts: !!cfg.accounts, providers: (cfg.providers ?? []).filter((p) => p in PROVIDER_LABEL), passkeys: !!cfg.passkeys && typeof PublicKeyCredential !== 'undefined', user: me.user ?? null });
       if (me.user) await afterSignIn(me.user, result === 'ok' || result === 'new');
+      // An OAuth RETURN (?signin=ok/new) is an interactive sign-in completing —
+      // unlike the silent restore this same function performs on every other
+      // load, which must never raise the first-sign-in preferences offer.
+      if (me.user && (result === 'ok' || result === 'new')) set({ firstSignIn: me.user });
     } catch {
       set({ ready: true, accounts: false, providers: [], passkeys: false });
     }
@@ -89,6 +97,9 @@ export function loadAccount(force = false): Promise<void> {
 let pendingOpen: 'account' | null = null;
 /** Which sheet the redirect asked to reopen (once). */
 export function takePendingOpen(): 'account' | null { const p = pendingOpen; pendingOpen = null; return p; }
+
+/** The entry flow retires the first-sign-in marker once the preferences step is done/skipped. */
+export function clearFirstSignIn(): void { if (state.firstSignIn) set({ firstSignIn: null }); }
 
 /** After any sign-in: use the username as the online display name if none is set; pull account badges onto this device. */
 async function afterSignIn(u: AccountUser, fresh: boolean) {
@@ -143,11 +154,13 @@ export async function passkeySignIn(): Promise<string | null> {
   const v = await call<{ user?: AccountUser }>('passkey/login/verify', { flow: o.flow, response });
   if (!v.user) return v.error ?? 'Passkey sign-in failed.';
   set({ user: v.user, notice: 'Signed in with your passkey.', noticeKind: 'ok' });
+  set({ firstSignIn: v.user }); // interactive sign-in (never a restore)
   await afterSignIn(v.user, true);
   return null;
 }
 /** Signed in: add a passkey to this account. Signed out: create a new account with `username` + a passkey. */
 export async function passkeyRegister(username?: string): Promise<string | null> {
+  const wasSignedIn = !!state.user; // adding a passkey to a live account is NOT a sign-in
   const { startRegistration } = await import('@simplewebauthn/browser');
   const o = await call<{ flow: string; options: never }>('passkey/register/options', username ? { username } : {});
   if (!o.flow) return o.reason ?? o.error ?? 'Passkeys are unavailable right now.';
@@ -156,6 +169,7 @@ export async function passkeyRegister(username?: string): Promise<string | null>
   const v = await call<{ user?: AccountUser; outcome?: string }>('passkey/register/verify', { flow: o.flow, response });
   if (!v.user) return v.reason ?? v.error ?? 'Could not save the passkey.';
   set({ user: v.user, notice: v.outcome === 'new' ? `Welcome, ${v.user.username}!` : 'Passkey added.', noticeKind: 'ok' });
+  if (!wasSignedIn) set({ firstSignIn: v.user }); // account creation IS the first sign-in
   if (v.user.username && !loadName()) saveName(v.user.username);
   return null;
 }
