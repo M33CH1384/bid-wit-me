@@ -1,6 +1,7 @@
 import { deliverBotLine } from './voices/aiVoice';
 import { musicTension } from './musicTension';
 import { clearTableChatOpen, loadTableChatOpen, saveTableChatOpen } from './chatView';
+import { browsedTrick, stepTrickIndex, trickPositionLabel } from './lastTrickBrowse';
 import { enterTable, quitGame, silenceGame, suspendGame } from './gameSession';
 import { cardControlLabel } from './cardA11y';
 import type { HandHitCard } from './three/handHit';
@@ -776,8 +777,15 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [showPad, setShowPad] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [ltOpen, setLtOpen] = useState(false);
+  // Last-trick browser: an absolute index into this hand's completed tricks,
+  // or null while pinned to the newest (see lastTrickBrowse.ts). The pill
+  // always opens on the newest trick; a new hand clears the selection so the
+  // previous hand's tricks never leak into this hand's browser.
+  const [ltIdx, setLtIdx] = useState<number | null>(null);
+  const toggleLt = useCallback(() => { setLtOpen((v) => !v); setLtIdx(null); }, []);
   const [clearedOpen, setClearedOpen] = useState(false);
   useEffect(() => { setClearedOpen(false); }, [st.handNo]);
+  useEffect(() => { setLtIdx(null); }, [st.handNo]);
   // One-time trump-order popup for Joker modes (replaces the old persistent strip).
   const trumpKey = trumpSeenKey(r);
   const [trumpAcked, setTrumpAcked] = useState<boolean>(() => trumpPopupSeen(trumpKey));
@@ -2443,16 +2451,32 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             </div>
           );
         }
-        const t = piles[piles.length - 1]!;
+        // The open readout is a browser over this hand's completed tricks:
+        // ‹/› step through them (absolute index — a trick landing mid-browse
+        // never moves the one on show), the chip always names the newest.
+        const browsed = browsedTrick(piles, ltOpen ? ltIdx : null)!;
+        const t = browsed.trick;
+        const ltIndex = browsed.index;
         const short = (c: Card) => (c === 'BJ' ? 'BJ' : c === 'LJ' ? 'LJ' : cardLabel(c));
         return (
-          <div className={`last-trick glass slant ${ltOpen ? 'open' : 'chip'}`} data-testid="last-trick" aria-label="Last trick" role="button" tabIndex={0} aria-expanded={ltOpen} onClick={() => setLtOpen((v) => !v)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setLtOpen((v) => !v); } }}>
-            <span className="lt-label">LAST TRICK{ltOpen ? <span className="lt-x" aria-hidden="true">✕</span> : t.winner !== null && <> · {face(t.winner)}</>}</span>
+          <div className={`last-trick glass slant ${ltOpen ? 'open' : 'chip'}`} data-testid="last-trick" aria-label="Last trick" role="button" tabIndex={0} aria-expanded={ltOpen} onClick={toggleLt} onKeyDown={(e) => { if (e.target !== e.currentTarget) return; if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleLt(); } }}>
+            <span className="lt-label">{ltOpen ? trickPositionLabel(ltIndex, piles.length) : 'LAST TRICK'}{ltOpen ? <span className="lt-x" aria-hidden="true">✕</span> : t.winner !== null && <> · {face(t.winner)}</>}</span>
             {ltOpen && t.plays.map((pl) => (
               <span key={pl.card} className={`lt-card ${pl.seat === t.winner ? 'win' : ''} ${pl.card[1] === 'H' || pl.card[1] === 'D' || pl.card === 'BJ' ? 'red' : ''}`}>
                 <small>{face(pl.seat).slice(0, 3)}</small>{short(pl.card)}
               </span>
             ))}
+            {ltOpen && (
+              <span className="lt-navrow">
+                <button type="button" className="lt-nav" data-testid="lt-prev" aria-label="Previous trick" disabled={ltIndex <= 0}
+                  onClick={(e) => { e.stopPropagation(); setLtIdx(stepTrickIndex(ltIndex, -1, piles.length)); }}
+                  onKeyDown={(e) => e.stopPropagation()}>‹</button>
+                <span className="lt-meta" data-testid="lt-meta">{face(t.leader)} led{t.winner !== null && <> · {face(t.winner)} took it</>}</span>
+                <button type="button" className="lt-nav" data-testid="lt-next" aria-label="Next trick" disabled={ltIndex >= piles.length - 1}
+                  onClick={(e) => { e.stopPropagation(); setLtIdx(stepTrickIndex(ltIndex, 1, piles.length)); }}
+                  onKeyDown={(e) => e.stopPropagation()}>›</button>
+              </span>
+            )}
           </div>
         );
       })()}
