@@ -33,7 +33,7 @@ import { setAnimForStop, setAnimUnlockNotice } from '../setAnims';
 import { deckForStop } from '../decks';
 import { deckBackUrl } from '../three/cardTextures';
 import { clearStoryGame, loadStoryGame, storySaveSummary, storySaveValidFor, type StorySavedGame } from './storySave';
-import { railCastForAttempt, storyBadgesFor } from '@spades/bots';
+import { railCastForAttempt, rundownFor, storyBadgesFor } from '@spades/bots';
 import ScriptPlayer, { type SceneEgg } from './ScriptPlayer';
 import StoryTape from './StoryTape';
 import StoryFace from './StoryFace';
@@ -490,7 +490,7 @@ export default function StoryHome() {
     body = (
       <div className="story-shell">
         <StoryHeader stop={stop} />
-        <StoryTape stop={stop} facts={factsFor(stop)} cta="Back to the map" onDone={() => setScreen({ k: 'map' })} />
+        <StoryTape stop={stop} facts={factsFor(stop)} cta="Back to the map" onDone={() => setScreen({ k: 'map' })} rundown={rundownFor(stop, factsFor(stop))} rundownTrack="solo" rundownAutoplay={false} />
       </div>
     );
   } else if (screen.k === 'intro') {
@@ -500,7 +500,7 @@ export default function StoryHome() {
         <StoryHeader stop={stop} />
         <SceneAudio stop={stop} />
         {introStep === 'tape' ? (
-          <StoryTape stop={stop} facts={factsFor(stop)} cta="Play the scene" onDone={() => setIntroStep('scene')} />
+          <StoryTape stop={stop} facts={factsFor(stop)} cta="Play the scene" onDone={() => setIntroStep('scene')} rundown={rundownFor(stop, factsFor(stop))} rundownTrack="solo" />
         ) : (
           <ScriptPlayer
             beats={beatsFor(stop, 'intro', factsFor(stop))}

@@ -11,7 +11,7 @@
  * rides the same labeled-row system; the history line is a quiet
  * hairline caption in the story design family.
  */
-import { buildStoryTape, type CoopRundown, type StoryBeatFacts, type StoryStop, type StoryTapeEntry } from '@spades/bots';
+import { buildStoryTape, type CoopRundown, type StoryBeatFacts, type StoryRundown, type StoryStop, type StoryTapeEntry } from '@spades/bots';
 import StoryFace from './StoryFace';
 import DeeRundownPanel from './DeeRundown';
 import { storyBackdropUrl } from './storyBackdrop';
@@ -52,15 +52,21 @@ function TapeSide({ title, entries }: { title: string; entries: StoryTapeEntry[]
   );
 }
 
-export default function StoryTape({ stop, facts, cta, onDone, rundown, rundownTrack }: {
+export default function StoryTape({ stop, facts, cta, onDone, rundown, rundownTrack, rundownAutoplay }: {
   stop: StoryStop;
   facts: StoryBeatFacts;
   cta: string;
   onDone: () => void;
-  /** CO-OP ONLY: Dee's rundown for the pair at this stop (co-op spec
-   *  §5.1). Solo never passes it — the solo tape is byte-identical. */
-  rundown?: CoopRundown | null;
+  /** Dee's rundown for this sit-down: the SOLO set on the solo route
+   *  (rundownFor, keyed to the player's facts — passed by StoryHome on
+   *  both tape arrivals) or the co-op pair set in a story room
+   *  (coopRundownFor, co-op spec §5.1). No rundown → no panel. */
+  rundown?: CoopRundown | StoryRundown | null;
   rundownTrack?: string;
+  /** Sit-down path only: the panel auto-plays once per (stop,
+   *  variant). The map's "Meet them" arrival passes false — the
+   *  panel opens whole and plays on tap. Default true. */
+  rundownAutoplay?: boolean;
 }) {
   const tape = buildStoryTape(stop, facts);
   return (
@@ -72,7 +78,7 @@ export default function StoryTape({ stop, facts, cta, onDone, rundown, rundownTr
         <TapeRow label="The threat">{tape.threat}</TapeRow>
         {tape.terms && <TapeRow label="The terms">{tape.terms}</TapeRow>}
         {tape.history && <p className="story-tape-history" data-testid="story-tape-history">{tape.history}</p>}
-        {rundown && <DeeRundownPanel rundown={rundown} track={rundownTrack ?? ''} />}
+        {rundown && <DeeRundownPanel rundown={rundown} track={rundownTrack ?? ''} autoplay={rundownAutoplay ?? true} />}
         <div className="story-tape-cols">
           <TapeSide title="You & Dee" entries={[tape.you, tape.dee]} />
           <TapeSide title="The Table" entries={tape.pair} />

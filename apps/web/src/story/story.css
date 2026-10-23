@@ -968,3 +968,9 @@ html[data-theme="neon"] .story-you-face {
   display: block; font-style: normal; font-size: 12px; font-weight: 800;
   letter-spacing: 0.12em; text-transform: uppercase; color: #eec96a; margin-bottom: 2px;
 }
+
+/* Dee's Rundown, static mode (solo rundown spec §4): voices off,
+   sound off, or Dee muted — no clip can sound, so her full words
+   carry it framed as a quote under the header, signed, no controls. */
+.dee-rundown.static .dee-rundown-textwrap { border-left: 2px solid rgba(238, 201, 106, 0.45); padding-left: 10px; }
+.dee-rundown-sign { margin: 2px 0 0; font-size: 13.5px; font-style: italic; opacity: 0.85; }

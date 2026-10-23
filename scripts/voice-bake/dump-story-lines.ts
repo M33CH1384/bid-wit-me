@@ -23,7 +23,7 @@ import {
   STORY_RESUME_LINES, STORY_RETRY_FIRST, STORY_SCRIPTS, STORY_SECRETS, STORY_SIT_DOWN,
   STORY_TABLE_EXCHANGES, STORY_KING_RAIL_OUTRO, STORY_RAIL_EXCHANGES, STORY_RAIL_INTRO, STORY_RAIL_LINES,
   RAIL_NEEDLE_REPLY, STORY_VOICE_CAST, kingDoubleBeats, railLineFor, spokenTake, storyVoiceKey, type StoryBeat,
-  AWARENESS_NEVER_RECORD, SEATED_AWARENESS_LINES, allGuideLines,
+  AWARENESS_NEVER_RECORD, SEATED_AWARENESS_LINES, allGuideLines, allSoloRundowns,
   PAIR_AWARENESS_RUNDOWNS, PAIR_FIRST_RUNDOWNS, PAIR_RETURN_CLEAR_RUNDOWNS, PAIR_RETURN_LOSS_RUNDOWNS,
 } from '@spades/bots';
 
@@ -104,6 +104,10 @@ export function storyCorpus(): { speaker: string; line: string; source: string }
   for (const [stop, text] of Object.entries(PAIR_RETURN_LOSS_RUNDOWNS)) out.push({ speaker: 'dee', line: text, source: `coop:rundown:pairReturnLoss:${stop}` });
   for (const [stop, text] of Object.entries(PAIR_RETURN_CLEAR_RUNDOWNS)) out.push({ speaker: 'dee', line: text, source: `coop:rundown:pairReturnClear:${stop}` });
   for (const { pool, line } of allGuideLines()) out.push({ speaker: 'dee', line, source: `coop:${pool}` });
+  // Dee's SOLO rundowns (34 — the rundown spec's §5 set): the meet-them
+  // briefing on the solo route's tape, keyed by the player's own facts.
+  // Recorded in the 2026-10-22 batch; the worklist shows them 'have'.
+  for (const r of allSoloRundowns()) out.push({ speaker: 'dee', line: r.text, source: `rundown:${r.variant}:${r.stopId}` });
   for (const [stop, beats] of Object.entries(SEATED_AWARENESS_LINES))
     for (const b of beats) {
       if (AWARENESS_NEVER_RECORD.has(b.line)) continue;
