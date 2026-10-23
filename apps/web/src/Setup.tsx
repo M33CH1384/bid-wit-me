@@ -11,8 +11,8 @@ import { type PendingMusic, SetupMusicPicker, savePendingMusic } from './online/
 import { isMusicLink } from '@spades/protocol';
 import { loadName, saveName } from './online/identity';
 import { navigate } from './online/nav';
-import { DECKS, deckThumbUrl } from './decks';
-import { deckUnlockLine, deckUnlocked, useClearedStoryStops } from './storyDecks';
+import { deckName } from './decks';
+import { DeckGallery } from './DeckGallery';
 import { VENUE_DEFS, savePendingVenue, type VenueChoice } from './venues';
 import { VenueSelect } from './VenueSelect';
 import GearIcon from './GearIcon';
@@ -91,31 +91,56 @@ function useOnlineSeat(): string | null {
 
 const MODE_CRUMB: Record<ModeKey, string> = { joker: 'Team Game · Jokers', aceDown: 'Team Game · Ace Down', cutthroat4: 'Cutthroat', cutthroat3: 'Cutthroat · 3 Players' };
 
-/** Deck picker as real card thumbnails (founder menu rework): King of each deck, gold outline when picked. */
-export function DeckThumbs({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  // Story decks unlock from the player's own story progress (cleared stops);
-  // while progress is loading they render locked, then open up if earned.
-  const { cleared, loaded } = useClearedStoryStops();
-  const selected = DECKS.find((d) => d.id === value);
-  useEffect(() => {
-    // A saved deck that is story-locked for this player (e.g. signed out, or a
-    // different account on this phone) falls back to Classic once progress is known.
-    if (loaded && selected && !deckUnlocked(selected, cleared)) onChange('classic');
-  }, [loaded, selected, cleared, onChange]);
+/**
+ * Bottom-anchored commit bar for the table step (owner, 2026-10-23 setup
+ * rework): the step's create action plus a live one-line summary of the
+ * choices, fixed to the bottom of the screen (safe-area aware) while the
+ * section cards scroll under it. Rendered inline with position:fixed — the
+ * wizard step's slide animation settles at transform:none, so the bar
+ * anchors to the viewport like the app's other fixed UI (sound dock, coach).
+ */
+export function SetupBar({ summary, children }: { summary: string; children: ReactNode }) {
   return (
-    <div className="deck-thumbs" role="radiogroup" aria-label="Card deck">
-      {DECKS.map((d) => {
-        const unlocked = deckUnlocked(d, cleared);
-        const line = unlocked ? null : deckUnlockLine(d);
-        return (
-          <button key={d.id} type="button" role="radio" aria-checked={value === d.id} disabled={!unlocked} className={`dt ${value === d.id ? 'on' : ''} ${unlocked ? '' : 'locked'}`} aria-label={unlocked ? d.name : `${d.name} — locked. ${line ?? ''}`} data-testid={`deck-${d.id}`} onClick={() => { if (unlocked) onChange(d.id); }}>
-            <img src={deckThumbUrl(d.id)} alt="" loading="lazy" /><span>{d.name}</span>
-            {line && <span className="dt-lock">🔒 {line}</span>}
-          </button>
-        );
-      })}
+    <div className="setup-bar" data-testid="setup-bar">
+      <p className="setup-bar-summary" data-testid="setup-bar-summary">{summary}</p>
+      <div className="setup-bar-actions">{children}</div>
     </div>
   );
+}
+
+/**
+ * One collapsible section card on the table step (owner, 2026-10-23): the
+ * header is a tap target that folds/unfolds the body (smooth height
+ * transition; instant under reduced motion). Every card folds independently
+ * — no accordion — so the Rules card is always reachable without unfolding
+ * anything else first. All cards start open: same first-visit layout as
+ * before, folding is the player's choice. The chevron is CSS-drawn so the
+ * header's text stays exactly the card title.
+ */
+export function SetupCard({ title, children }: { title: string; children: ReactNode }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <section className={`setup-card${open ? '' : ' is-closed'}`} aria-label={title}>
+      <h3 className="setup-card-h">
+        <button type="button" className="setup-card-toggle" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+          <span>{title}</span>
+          <span className="setup-card-chevron" aria-hidden="true" />
+        </button>
+      </h3>
+      <div className="setup-card-body"><div className="setup-card-body-in">{children}</div></div>
+    </section>
+  );
+}
+
+/** What the bottom bar commits to, from the same settings the form edits:
+ *  "Joker Spades · Harlem · Grandma's Kitchen" (+ "· Play to 500" vs bots,
+ *  where the target is chosen on this step). */
+export function setupBarSummary(s: Settings, withTarget: boolean): string {
+  const r = settingsToRules(s);
+  const venue = !s.venue || s.venue === 'random' ? 'Random venue' : (VENUE_DEFS[s.venue as keyof typeof VENUE_DEFS]?.name ?? 'Random venue');
+  const parts = [modeTitle(r), deckName(s.deck), venue];
+  if (withTarget) parts.push(`Play to ${r.targetScore}`);
+  return parts.join(' · ');
 }
 
 /** One big neutral decision card (gold only once selected — cards navigate on tap, per §8 no pre-selection). */
@@ -342,18 +367,16 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
         <p className="wiz-crumb">{MODE_CRUMB[s.mode]} · {path === 'online' ? 'Play Online' : 'Vs Bots'}</p>
         <h2 className="wiz-title">{path === 'online' ? (view === 'create' ? 'Create a table' : 'Find a table') : 'Your Table'}<small>{mode.title}</small></h2>
         {path === 'bots' ? (
-          <div className="ess">
+          <div className="ess ess-barred">
             {!cut && (
-              <section className="setup-card" aria-label="Your team">
-                <h3 className="setup-card-h">Your team</h3>
+              <SetupCard title="Your team">
                 <div className="ess-row stack">
                   <span className="ess-label">Team name<small>for you + your bot partner — saved for this pairing</small></span>
                   <TeamNameField value={offlineTeamName} placeholder="You & your partner" onSave={(v) => pairTeamNames.set(OFFLINE_PAIR_KEY, v)} testId="setup-team-name" />
                 </div>
-              </section>
+              </SetupCard>
             )}
-            <section className="setup-card" aria-label="Bots & score">
-              <h3 className="setup-card-h">Bots &amp; score</h3>
+            <SetupCard title="Bots & score">
               <div className="ess-row stack" data-testid="bots-row">
                 <span className="ess-label">Bots</span>
                 <Seg label="Bot skill" value={s.botLevel} options={[['mixed', 'Mixed'], ['novice', 'Novice'], ['regular', 'Regular'], ['pro', 'Pro'], ['shark', 'Shark']]} onChange={(v) => set('botLevel', v)} />
@@ -362,25 +385,23 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
                 <span className="ess-label">Play to</span>
                 <Seg label="Target score" value={s.targetScore} options={[250, 300, 500].map((x) => (x === (cut ? 300 : 500) ? ['default', String(x)] : [x, String(x)])) as [number | 'default', string][]} onChange={(v) => set('targetScore', v)} />
               </div>
-            </section>
-            <section className="setup-card" aria-label="Deck & venue">
-              <h3 className="setup-card-h">Deck &amp; venue</h3>
+            </SetupCard>
+            <SetupCard title="Deck & venue">
               {deck}
-              <div className="ess-row stack"><span className="ess-label">Pick your deck — tap for the full card</span><DeckThumbs value={s.deck} onChange={(v) => set('deck', v)} /></div>
+              <div className="ess-row stack"><span className="ess-label">Pick your deck — tap a deck to browse its cards</span><DeckGallery value={s.deck} onChange={(v) => set('deck', v)} /></div>
               <VenueSetupRow value={s.venue ?? 'classic'} onChange={(v) => set('venue', v)} />
-            </section>
-            <section className="setup-card" aria-label="Rules">
-              <h3 className="setup-card-h">Rules</h3>
+            </SetupCard>
+            <SetupCard title="Rules">
               <button type="button" className="quiet-row" data-testid="house-rules" onClick={() => requestSettingsSheet()}><span>HOUSE RULES</span><span className="value-chip">Standard</span><i className="corner-tab" aria-hidden /></button>
               {cutRules}
               <RulesStatLine settings={s} />
               {summary}
               {tipsRow}
-            </section>
-            <div className="sticky-primary"><button type="button" className="primary big go" data-testid="start-bots" onClick={onStart}>DEAL ME IN</button><p className="sticky-note">No seating step vs bots — bots fill the table</p></div>
+            </SetupCard>
+            <SetupBar summary={setupBarSummary(s, true)}><button type="button" className="primary big go" data-testid="start-bots" onClick={onStart}>DEAL ME IN</button><p className="sticky-note">No seating step vs bots — bots fill the table</p></SetupBar>
           </div>
         ) : (
-          <OnlineStep settings={s} venue={s.venue ?? 'classic'} onVenue={(v) => set('venue', v)} deck={deck} deckThumbs={<DeckThumbs value={s.deck} onChange={(v) => set('deck', v)} />} onHouseRules={() => requestSettingsSheet()} summary={summary} tipsRow={tipsRow} view={view} onOpenCreate={() => go('table', 'online', kind, 'create')} />
+          <OnlineStep settings={s} venue={s.venue ?? 'classic'} onVenue={(v) => set('venue', v)} deck={deck} deckGallery={<DeckGallery value={s.deck} onChange={(v) => set('deck', v)} />} barSummary={setupBarSummary(s, false)} onHouseRules={() => requestSettingsSheet()} summary={summary} tipsRow={tipsRow} view={view} onOpenCreate={() => go('table', 'online', kind, 'create')} />
         )}
       </>
     );
@@ -450,9 +471,9 @@ export function RulesStatLine({ settings }: { settings: Settings }) {
  * wizard's Back returns here), regrouped ESPN-style into cards. Name and music
  * state live here so moving between the two screens keeps what you typed.
  */
-function OnlineStep({ settings, venue, onVenue, deck, deckThumbs, onHouseRules, summary, tipsRow, view, onOpenCreate }: {
-  settings: Settings; venue: VenueChoice; onVenue: (v: VenueChoice) => void; deck: ReactNode; deckThumbs: ReactNode;
-  onHouseRules: () => void; summary: ReactNode; tipsRow: ReactNode; view: TableView; onOpenCreate: () => void;
+function OnlineStep({ settings, venue, onVenue, deck, deckGallery, barSummary, onHouseRules, summary, tipsRow, view, onOpenCreate }: {
+  settings: Settings; venue: VenueChoice; onVenue: (v: VenueChoice) => void; deck: ReactNode; deckGallery: ReactNode;
+  barSummary: string; onHouseRules: () => void; summary: ReactNode; tipsRow: ReactNode; view: TableView; onOpenCreate: () => void;
 }) {
   const [name, setName] = useState(loadName);
   const [code, setCode] = useState('');
@@ -494,30 +515,26 @@ function OnlineStep({ settings, venue, onVenue, deck, deckThumbs, onHouseRules, 
   );
   if (view === 'create') {
     return (
-      <div className="ess" key="create">
-        <section className="setup-card" aria-label="Table">
-          <h3 className="setup-card-h">Table</h3>
+      <div className="ess ess-barred" key="create">
+        <SetupCard title="Table">
           {nameRow}
-        </section>
-        <section className="setup-card" aria-label="Deck & venue">
-          <h3 className="setup-card-h">Deck &amp; venue</h3>
+        </SetupCard>
+        <SetupCard title="Deck & venue">
           {deck}
-          <div className="ess-row stack"><span className="ess-label">Pick your deck — tap for the full card</span>{deckThumbs}</div>
+          <div className="ess-row stack"><span className="ess-label">Pick your deck — tap a deck to browse its cards</span>{deckGallery}</div>
           <VenueSetupRow value={venue} onChange={onVenue} />
-        </section>
-        <section className="setup-card" aria-label="Rules">
-          <h3 className="setup-card-h">Rules</h3>
+        </SetupCard>
+        <SetupCard title="Rules">
           <RulesStatLine settings={settings} />
           {summary}
           <button type="button" className="quiet-row" data-testid="house-rules" onClick={onHouseRules}><span>HOUSE RULES</span><span className="value-chip">Standard</span><i className="corner-tab" aria-hidden /></button>
           {tipsRow}
-        </section>
-        <section className="setup-card" aria-label="Sound">
-          <h3 className="setup-card-h">Sound</h3>
+        </SetupCard>
+        <SetupCard title="Sound">
           <SetupMusicPicker value={music} onChange={setMusic} />
-        </section>
+        </SetupCard>
         {err && <div className="err" role="alert">{err}</div>}
-        <div className="sticky-primary"><button type="button" className="primary big go" disabled={busy} onClick={create} data-testid="create-table">CREATE TABLE</button></div>
+        <SetupBar summary={barSummary}><button type="button" className="primary big go" disabled={busy} onClick={create} data-testid="create-table">CREATE TABLE</button></SetupBar>
       </div>
     );
   }

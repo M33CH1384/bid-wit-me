@@ -4,7 +4,7 @@ import { renderToString } from 'react-dom/server';
 import { existsSync, statSync } from 'node:fs';
 import { DECKS, STORY_DECKS, deckById } from '../src/decks';
 import { clearedStopIds, deckUnlockLine, deckUnlockNotice, deckUnlocked } from '../src/storyDecks';
-import { DeckThumbs } from '../src/Setup';
+import { DeckGallery } from '../src/DeckGallery';
 import type { StoryProgress } from '../src/story/storyApi';
 
 const stop = (stopId: string, clears: number) => ({ stopId, n: 1, state: (clears > 0 ? 'cleared' : 'available') as StoryProgress['stops'][number]['state'], attempts: clears + 1, clears, firstClearedAt: clears ? 1 : null });
@@ -46,20 +46,24 @@ describe('unlock lines + notice (picker + outro hook)', () => {
   });
 });
 
-describe('story deck picker rendering (locked state)', () => {
+describe('story deck gallery rendering (locked state)', () => {
   it('story decks render locked with 🔒 + unlock line before progress loads; free decks stay plain', () => {
-    const html = renderToString(createElement(DeckThumbs, { value: 'classic', onChange: () => {} }));
+    const html = renderToString(createElement(DeckGallery, { value: 'classic', onChange: () => {} }));
     expect(html).toContain('data-testid="deck-pjs"');
     expect(html).toContain('🔒');
     expect(html).toContain("Clear The Pj&#x27;s in Story Mode");
     expect(html).toContain('Made It Out');
     expect(html).toContain('Finish the route — clear The King of the Block in Story Mode');
-    // the locked story buttons are disabled (not selectable)
+    // Setup rework: a locked cover is NOT disabled — tapping it opens the deck
+    // browser (looking is free). Selection stays locked inside the browser
+    // (its Use action is disabled; see deck-gallery.test.ts). The cover still
+    // carries the locked styling.
     const pjsBtn = html.match(/<button[^>]*data-testid="deck-pjs"[^>]*>/)?.[0] ?? '';
-    expect(pjsBtn).toContain('disabled');
+    expect(pjsBtn).not.toContain('disabled');
     expect(pjsBtn).toContain('locked');
     const classicBtn = html.match(/<button[^>]*data-testid="deck-classic"[^>]*>/)?.[0] ?? '';
     expect(classicBtn).not.toContain('disabled');
+    expect(classicBtn).not.toContain('locked');
   });
 });
 
