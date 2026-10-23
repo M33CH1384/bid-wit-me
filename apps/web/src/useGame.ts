@@ -172,7 +172,11 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
     const turn = pendingTurn(st);
     if (!turn || turn.seat === HUMAN) return;
     // ~0.6s more per bot card than before: a 3-bot trick used to resolve in 1.5s, too fast to follow.
-    const delay = (turn.kind === 'bid' ? 650 : turn.kind === 'exchange' ? 500 : BOT_PLAY_MS) * k;
+    // Consultation (CONSULT_SPEC §5.4/§6.2): a bid may be held a beat longer —
+    // the partner finishing their spoken count, an opponent pair conferring.
+    // Presentation-only: bot bids only, never the human's clock.
+    const delay = (turn.kind === 'bid' ? 650 : turn.kind === 'exchange' ? 500 : BOT_PLAY_MS) * k
+      + (turn.kind === 'bid' ? offlineTalk.consultBidDelay(turn.seat, st) : 0);
     let t2 = 0;
     const t = setTimeout(() => {
       const lv = levelRef.current;

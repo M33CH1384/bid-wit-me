@@ -94,6 +94,17 @@ export const offlineTalk = {
   consultBusyUntil: -1e12,
   /** the human has a pending bid/play decision right now (Table.tsx) */
   humanDeciding: false,
+  /** consultation driver hook (consultDriver.ts, registered by Table):
+   * extra ms to hold a bot's bid — the partner waiting out their own
+   * consultation clip (§6.2), an opponent's confer beat (§5.4). Consulted
+   * by useGame when a bot bid turn is scheduled; 0 when unregistered.
+   * Deliberately NOT cleared by newGame(): Table owns the registration
+   * for its whole mount, across the games it hosts. */
+  bidDelayHook: null as ((seat: number, st: GameState) => number) | null,
+  consultBidDelay(seat: number, st: GameState): number {
+    if (!this.bidDelayHook) return 0;
+    try { return Math.max(0, this.bidDelayHook(seat, st) || 0); } catch { return 0; }
+  },
   /** last time ANY layer's speech started (or is scheduled to start) —
    * the murmur timer's silence reference */
   lastSpeechAt: -1e12,

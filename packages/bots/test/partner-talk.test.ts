@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { applyAction, createRng, makeRules, newGame, viewFor } from '@spades/rules';
-import { PARTNER_TALK_PRESETS, applyHint, botHint, chooseBid, estimateTricks, parseHint } from '../src';
+import { PARTNER_TALK_PRESETS, applyHint, chooseBid, parseHint } from '../src';
 
 describe('partner talk (bidding)', () => {
   it('every preset parses to a books hint', () => {
-    expect(PARTNER_TALK_PRESETS).toEqual(['I got about 2', '3-ish', '4+', "I'm weak", 'I can go Nil', 'Strong in spades']);
+    // 'Strong in spades' was purged from the presets (CONSULT_SPEC §7.2 —
+    // players aren't offered a line bots may not say); the dead botHint()
+    // and its spade-count branch went with it. parseHint still RECOGNIZES
+    // the phrase in free text for chat/save compatibility (§11.9).
+    expect(PARTNER_TALK_PRESETS).toEqual(['I got about 2', '3-ish', '4+', "I'm weak", 'I can go Nil']);
     expect(parseHint('I got about 2')).toEqual({ low: 1, high: 2 });
     expect(parseHint('3-ish')).toEqual({ low: 2, high: 3 });
     expect(parseHint('4+')).toEqual({ low: 4, high: 6 });
@@ -12,18 +16,6 @@ describe('partner talk (bidding)', () => {
     expect(parseHint('I can go Nil')).toMatchObject({ nil: true });
     expect(parseHint('Strong in spades')).toMatchObject({ spades: true });
     expect(parseHint('gg')).toBeNull();
-  });
-  it("a bot's hint is vague and follows its real estimate", () => {
-    const r = makeRules('joker', { firstHandBidsItself: false });
-    for (let i = 0; i < 60; i++) {
-      const st = newGame(r, `hint-${i}`);
-      const v = viewFor(st, 0);
-      const est = estimateTricks(v.hand!, v);
-      const h = botHint(v.hand!, v);
-      expect(h).toMatch(/^(I got about \d+|I'm weak this hand|I might go Nil|Strong in spades, about \d+|I got \d+ or more)$/);
-      const n = /(\d+)/.exec(h)?.[1];
-      if (n) expect(Math.abs(Number(n) - est)).toBeLessThanOrEqual(1.5);
-    }
   });
   it('a bot bidding while its partner has only hinted keeps the team total on the table', () => {
     const r = makeRules('joker', { firstHandBidsItself: false });

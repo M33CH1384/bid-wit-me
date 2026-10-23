@@ -25,6 +25,7 @@ import { SeriesChip, SeriesSheet, loadSeries, saveSeries } from './Series';
 import StoryFace from './story/StoryFace';
 import { useMyTeamName } from './TeamName';
 import { offlineTalk } from './offlineTalk';
+import { ConsultDriver } from './consultDriver';
 import { storyEvents, storyFactsOf, storyMilestones, storySnap, type StorySnap } from './story/storyScene';
 import { storyTeamNames } from './story/storySettings';
 import { storyBackdropUrl } from './story/storyBackdrop';
@@ -99,7 +100,7 @@ import { isWildDeuce } from './cardFaces';
 import { MISDEAL_DEAL_SPEED, heldHandForThrowIn, misdealDealMs, misdealFanHand, misdealRevealKey, misdealRevealMs } from './misdeal';
 import { QUICK_TRASH_SET } from './quickTrash';
 import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
-import { STORY_CHARACTERS, STORY_STOPS, STOP_DENSITY_CLASS, TALK_PROFILES, type BotLevel, type StoryBeat, type StoryBeatFacts, type StoryGameFacts, type StoryStop, type TalkIntensity, botSkillFor, buildStoryTape, callbackFor, midSceneFor, partnerBidIntent, personaForName, platePersona, pickBotNames, playBeatFor, railCastForAttempt, railMomentFor, resumeLineFor, tableExchangeFor } from '@spades/bots';
+import { STORY_CHARACTERS, STORY_STOPS, STOP_DENSITY_CLASS, TALK_PROFILES, type BotLevel, type StoryBeat, type StoryBeatFacts, type StoryGameFacts, type StoryStop, type TalkIntensity, botSkillFor, buildStoryTape, callbackFor, midSceneFor, parseHint, partnerBidIntent, personaForName, platePersona, pickBotNames, playBeatFor, railCastForAttempt, railMomentFor, resumeLineFor, tableExchangeFor } from '@spades/bots';
 import { preloadVoice } from './voices/voices';
 const Scene = lazy(loadScene);
 
@@ -856,6 +857,41 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     offlineTalk.humanDeciding = !online && myTurn && (st.phase === 'bidding' || st.phase === 'playing');
     return () => { offlineTalk.humanDeciding = false; };
   }, [myTurn, st.phase, online]);
+  // Partner consultation (CONSULT_SPEC): the driver schedules and delivers
+  // the partner's spoken count each hand, the settle line, opponent
+  // conferral, the one-time first-meet introduction, and Dee's post-hand
+  // acknowledgment. Offline tables only — online play is excluded in v1
+  // (§6.4). Presentation-only: it holds BOT bids for its beats through
+  // offlineTalk's bid-delay hook and never touches the human's bid clock.
+  // (`dealing` here is useGame's busy flag — it already includes the
+  // misdeal-reveal window, so no beat fires while a reveal is on screen.)
+  const kRef = useRef(k);
+  kRef.current = k;
+  const consultRef = useRef<ConsultDriver | null>(null);
+  if (!consultRef.current && !online) {
+    consultRef.current = new ConsultDriver({
+      story: !!story?.scene,
+      names,
+      partnerSeat,
+      humanSeat: HUMAN,
+      levelFor,
+      k: () => kRef.current,
+      push: (name, text) => localChat.push(name, text, false, 0, true),
+      seatPos: (seat) => pos[seat],
+      kingLeg2: () => story?.scene?.stop.id === 'king' && !!story.scene.facts.doublePending,
+      humanHinted: (handNo) => partnerHint.current?.hand === handNo,
+      humanNilAnnounced: (handNo) => partnerHint.current?.hand === handNo && !!parseHint(partnerHint.current.text)?.nil,
+    });
+  }
+  useEffect(() => {
+    const d = consultRef.current;
+    if (!d) return;
+    d.attach();
+    return () => d.dispose();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    consultRef.current?.onState(st, { dealing, misdealShowing: false });
+  });
   // Thinking-time murmurs (density pass, story tables): when the room has
   // been silent for the stop class's threshold on the human's clock, one
   // bot breathes a short line; a second, from a different seat, only on a

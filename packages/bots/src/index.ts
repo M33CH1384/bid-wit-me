@@ -79,4 +79,5 @@ export * from './storyRundown';
 export * from './storyGuide';
 export * from './takes';
 export * from './partnerTalk';
+export * from './consultTalk';
 export * from './catalog';

@@ -106,11 +106,13 @@ export function preloadVoice(persona: PersonaId, name: string): void {
  * `opts.deferCut` (regular-table chatter, also set by speakBot): when the plan would replace the
  * playing line, this clip instead waits for the room (short waits) or drops — never a mid-sentence cut.
  */
-export async function playClip(persona: PersonaId, name: string, raw: string | undefined, gain: number, bid?: number, seat?: import('../spatial').SeatPos, playerCount = 4, opts?: { crossTalk?: boolean; deferCut?: boolean }): Promise<boolean> {
+export async function playClip(persona: PersonaId, name: string, raw: string | undefined, gain: number, bid?: number, seat?: import('../spatial').SeatPos, playerCount = 4, opts?: { crossTalk?: boolean; deferCut?: boolean; key?: string }): Promise<boolean> {
   if (!raw) return false;
   const t0 = performance.now();
   const sp = await load(keyFor(persona, name));
-  const at = sp && ((bid !== undefined ? sp.clips[`${raw}#${bid}`] : undefined) ?? sp.clips[raw]);
+  // `opts.key` is a string take suffix (consultation grid "3.1", settle
+  // "T7") — the string-keyed sibling of the numeric `bid` take.
+  const at = sp && ((opts?.key !== undefined ? sp.clips[`${raw}#${opts.key}`] : bid !== undefined ? sp.clips[`${raw}#${bid}`] : undefined) ?? sp.clips[raw]);
   if (!sp?.buf || !at) return false;
   if (performance.now() - t0 > 1500) return true; // too late to still fit the moment: stay quiet
   if (opts?.crossTalk) sound.playVoiceCrossTalk(sp.buf, gain, [at[0] / 1000, at[1] / 1000], seat, playerCount, name, { defer: !!opts.deferCut });
@@ -126,9 +128,9 @@ export async function playClip(persona: PersonaId, name: string, raw: string | u
  * anything or forking the speech path. The story scene player paces
  * its typewriter reveal against this (talkPrefs.spokenClipDurationMs).
  */
-export async function clipDurationMs(persona: PersonaId, name: string, raw: string | undefined, bid?: number): Promise<number | null> {
+export async function clipDurationMs(persona: PersonaId, name: string, raw: string | undefined, bid?: number, key?: string): Promise<number | null> {
   if (!raw) return null;
   const sp = await load(keyFor(persona, name));
-  const at = sp && ((bid !== undefined ? sp.clips[`${raw}#${bid}`] : undefined) ?? sp.clips[raw]);
+  const at = sp && ((key !== undefined ? sp.clips[`${raw}#${key}`] : bid !== undefined ? sp.clips[`${raw}#${bid}`] : undefined) ?? sp.clips[raw]);
   return at ? at[1] : null;
 }

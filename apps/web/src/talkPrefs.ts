@@ -164,6 +164,49 @@ export async function spokenClipDurationMs(name: string, text: string, persona?:
 }
 
 /**
+ * Speak a CONSULTATION line (partner consultation, CONSULT_SPEC §5/§8):
+ * the line's raw template + optional take key ("3.1" grid cell, "T7"
+ * settle) resolve in the speaker's sprite. Consultation speech NEVER
+ * falls back to Web Speech or the AI catalog — a missing take is text
+ * only (the chat line is already on screen), because a robot voice
+ * stating a count is worse than silence and the one-timbre fence forbids
+ * substitute voices outright. In story scope a cast character (Dee)
+ * resolves ONLY through the cast sprite, exactly like speakBot's fence
+ * branch; a non-cast speaker in story scope is text only.
+ */
+export function speakConsult(name: string, raw: string, key: string | undefined, persona: PersonaId, seat?: import('./spatial').SeatPos, playerCount = 4): void {
+  if (!prefs.voices) return;
+  const snd = sound.settings;
+  if (!snd.on || snd.volume <= 0) return;
+  if (sound.voiceMuted(name)) return; // per-player mute: chat text still shows
+  const cast = storyCastForName(name);
+  if (storyScope) {
+    if (cast) void playClip(cast.persona, name, raw, prefs.voiceVolume * 0.9, undefined, seat, playerCount, { key, crossTalk: true });
+    return; // fence absolute: no persona sprite, no AI catalog, no webSpeech
+  }
+  void playClip(persona, name, raw, prefs.voiceVolume * 0.9, undefined, seat, playerCount, { key, crossTalk: true, deferCut: true });
+}
+
+/**
+ * Duration (ms) of the take speakConsult will play for this line, or
+ * null when the line is text-only under the same guards/routing. The
+ * consultation driver paces the partner's bid and stamps the talk
+ * layer's right-of-way from this number — a lookup, never a second
+ * playback path (mirrors spokenClipDurationMs).
+ */
+export async function consultClipDurationMs(name: string, raw: string, key: string | undefined, persona: PersonaId): Promise<number | null> {
+  if (!prefs.voices) return null;
+  const snd = sound.settings;
+  if (!snd.on || snd.volume <= 0) return null;
+  if (sound.voiceMuted(name)) return null;
+  const cast = storyCastForName(name);
+  if (storyScope) {
+    return cast ? clipDurationMs(cast.persona, name, raw, undefined, key) : null;
+  }
+  return clipDurationMs(persona, name, raw, undefined, key);
+}
+
+/**
  * The Web Speech voice for a bot line: the SAME persona the recorded clip would have used
  * (character consistency — the fallback must never be a different character than the clip).
  * The persona's preferred system voices (PERSONAS[id].voice.prefer) are tried in order,

@@ -4,14 +4,19 @@
  *
  * - PARTNER_TALK_PRESETS: the human's one-tap hints.
  * - parseHint: what a hint says about the speaker's hand (presets + simple free text like "I got 3" / "weak").
- * - botHint: a bot partner's vague hint from its REAL estimate (a range, never an exact promise).
  * - applyHint: how a bot that bids after (or while) its partner hinted adjusts its own number.
+ *
+ * The bot partner's own spoken estimate now lives in consultTalk.ts (the
+ * consultation feature, CONSULT_SPEC §3): botHint() — dead, never called by
+ * the app — and its "Strong in spades" line are PURGED under §7's
+ * no-card-disclosure rule, and the 'Strong in spades' preset went with it
+ * (a player is no longer offered a line the bots may not say). parseHint
+ * keeps recognizing the phrase in free text for chat/save compatibility
+ * (§11.9): we stopped GENERATING suit talk, not hearing it.
  */
-import type { Card, PlayerView } from '@spades/rules';
-import { isTrump, nilRulesOf } from '@spades/rules';
-import { estimateTricks, nilWorthy } from './bidding';
+import type { PlayerView } from '@spades/rules';
 
-export const PARTNER_TALK_PRESETS = ['I got about 2', '3-ish', '4+', "I'm weak", 'I can go Nil', 'Strong in spades'] as const;
+export const PARTNER_TALK_PRESETS = ['I got about 2', '3-ish', '4+', "I'm weak", 'I can go Nil'] as const;
 
 export interface PartnerHint {
   /** expected books range for the speaker */
@@ -36,18 +41,6 @@ export function parseHint(text: string): PartnerHint | null {
     return { low: Math.max(0, n - (/(ish|about|maybe|like)/.test(t) ? 1 : 0)), high: n };
   }
   return null;
-}
-
-/** A bot partner's vague hint from its real count (stable per hand: no rng, so a re-render never changes the story). */
-export function botHint(hand: readonly Card[], v: PlayerView): string {
-  const est = estimateTricks(hand, v);
-  const spades = hand.filter((c) => isTrump(c, v.rules)).length;
-  if (v.bidOptions?.nil !== false && nilRulesOf(v.rules).allowed && est < 1.4 && nilWorthy(hand, v)) return 'I might go Nil';
-  if (est < 1.5) return "I'm weak this hand";
-  const n = Math.round(est);
-  if (spades >= 5 && n >= 3) return `Strong in spades, about ${n}`;
-  if (n >= 5) return `I got ${n - 1} or more`;
-  return n === 2 ? 'I got about 2' : `I got about ${n}`;
 }
 
 /**
