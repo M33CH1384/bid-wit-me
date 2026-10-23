@@ -708,19 +708,28 @@ function Messages({ signedIn }: { signedIn: boolean }) {
     .sort((a, b) => (+b.friend - +a.friend) || (b.unread - a.unread) || ((b.last?.at ?? 0) - (a.last?.at ?? 0)));
   return (
     <ul className="soc-list" data-testid="dm-threads">
-      {rows.map((r) => (
-        <li key={r.pid}>
-          {/* a div (ProfRow pattern), not a <button>: the face inside is itself a
-              profile-opening button, and buttons can't nest in buttons */}
-          <div className={`soc-thread${r.friend ? '' : ' legacy'}`} role="button" tabIndex={0} onClick={() => social.openDm(r.pid)} data-testid={`thread-${nameOf(s, r.pid)}`}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); social.openDm(r.pid); } }}>
+      {rows.map((r) => {
+        // a div (ProfRow pattern), not a <button>: the face inside is itself a
+        // profile-opening button, and buttons can't nest in buttons. Legacy
+        // (non-friend) threads render the same row dimmed.
+        const inner = (
+          <>
             <SocFace id={r.pid} name={nameOf(s, r.pid)} className="soc-av" />
             <span className="soc-pl-txt"><span className="soc-pl-name">{nameOf(s, r.pid)}{s.users[r.pid] && <i className="soc-online" title="Online" />}{!r.friend && <i className="soc-tag">Not friends</i>}{isMuted(s, r.pid) && <i className="soc-tag muted">Muted</i>}</span>
               <span className="soc-pl-status">{r.last ? r.last.text : 'Say hi'}</span></span>
             {r.unread > 0 && <i className="soc-count">{r.unread}</i>}
-          </div>
-        </li>
-      ))}
+          </>
+        );
+        const open = () => social.openDm(r.pid);
+        const onKey = (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } };
+        return (
+          <li key={r.pid}>
+            {r.friend
+              ? <div className="soc-thread" role="button" tabIndex={0} onClick={open} data-testid={`thread-${nameOf(s, r.pid)}`} onKeyDown={onKey}>{inner}</div>
+              : <div className="soc-thread legacy" role="button" tabIndex={0} onClick={open} data-testid={`thread-${nameOf(s, r.pid)}`} onKeyDown={onKey}>{inner}</div>}
+          </li>
+        );
+      })}
       {!rows.length && <li className="soc-empty">No conversations yet. Open a player and tap 💬 Chat.</li>}
     </ul>
   );
@@ -881,7 +890,7 @@ function Friends({ signedIn }: { signedIn: boolean }) {
           const muted = isMuted(s, r.id);
           return (
             <div key={r.id} className="soc-frow" data-testid={`friend-${r.name}`}>
-              <button type="button" className="soc-frow-name link" onClick={() => social.showProfile(r.name, r.id)} data-testid={`friend-name-${r.name}`}>{pv.online && <i className="soc-online" title="Online" />}{r.name}{muted && <i className="soc-tag muted" title="You muted this player (they don't know)">Muted</i>}<small>{pv.label}</small></button>
+              <button type="button" className="soc-frow-name link" onClick={() => social.showProfile(r.name, r.id)} data-testid={`friend-name-${r.name}`}>{pv.online && <i className="soc-online" title="Online" />}{r.name}<small>{pv.label}</small>{muted && <i className="soc-tag muted" title="You muted this player (they don't know)">Muted</i>}</button>
               <button type="button" onClick={() => social.openDm(r.id)}>💬</button>
               {online(r.id) && <button type="button" onClick={() => void inviteTo(r.id, s.myTable)} data-testid={`finvite-${r.name}`}>➕</button>}
               <button type="button" onClick={() => social.mute(r.id, !muted)} data-testid={`fmute-${r.name}`} aria-label={muted ? `Unmute ${r.name}` : `Mute ${r.name}`} title={muted ? `Unmute ${r.name}` : `Mute ${r.name} (they won't know)`}>{muted ? '🔊' : '🔇'}</button>
