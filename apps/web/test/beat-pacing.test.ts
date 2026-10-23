@@ -164,8 +164,9 @@ describe('reply tail ride (rail exchanges — owner 2026-10-22: the second voice
    * stagger that cut long openers). The reply — and the comeback
    * after it — now starts in the previous line's last second; the
    * cross-talk policy in the voice engine arbitrates the overlap.
-   * Scripted scene beats do NOT ride: without tailRideMs the offsets
-   * are the shipped duration + gap arithmetic, pinned above.
+   * The ride is an opt-in per sequence: without tailRideMs the offsets
+   * are the shipped duration + gap arithmetic, pinned above — that
+   * serial handoff is what ScriptPlayer scene dialogue keeps.
    */
   it('the exchange arithmetic: reply and comeback each ride the previous line’s tail', () => {
     const offs = beatStartOffsets([5000, 4000, 3000], 1700, 1700, REPLY_TAIL_RIDE_MS);
@@ -200,5 +201,52 @@ describe('reply tail ride (rail exchanges — owner 2026-10-22: the second voice
   it('Table wires the rail exchange with the ride', () => {
     const table = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
     expect(table).toContain('tailRideMs: REPLY_TAIL_RIDE_MS');
+  });
+});
+
+describe('reply tail ride at the table (deliver() — owner 2026-10-22 21:59: the twins STILL slow)', () => {
+  /**
+   * The first ride covered rail exchanges, answer chains, and the
+   * end-of-hand banter — but the twins' in-match exchanges at the
+   * Cookout table travel NONE of those: they are the scripted story
+   * beats (sit-downs, play reacts, between-hands exchanges, milestone
+   * and signature sets) delivered by Table's deliver(), which never
+   * opted in. Measured against the shipped sprite durations, every
+   * one of the Cookout's 14 voiced beat-to-beat replies waited the
+   * full call-site gap after the opener's voice ended — p50 = p90 =
+   * max = 1700 ms of dead air (1400 ms at the 1400-gap call sites) —
+   * on lines the twins author as split sentences ("Even the grill
+   * went—" / "—quiet."). deliver() rides now; ScriptPlayer scenes
+   * (intros/outros/meet-them) are a different channel and keep the
+   * serial handoff pinned above.
+   */
+  it('the Cookout matchPoint case: the reply starts in the opener’s last second, not 1700 ms after it', () => {
+    // shipped durations: Keisha's matchPoint opener 4650 ms, Teisha's reply 4270 ms
+    const offs = beatStartOffsets([4650, 4270], 1700, 1700, REPLY_TAIL_RIDE_MS);
+    expect(offs).toEqual([0, 4650 - REPLY_TAIL_RIDE_MS]);
+    // the reply gap after the opener's voice ends is the ride itself (an overlap), never dead air
+    expect(offs[1]! - 4650).toBe(-REPLY_TAIL_RIDE_MS);
+    // the serial handoff it replaces waited the full gap past the end
+    expect(beatStartOffsets([4650, 4270], 1700)[1]! - 4650).toBe(1700);
+  });
+
+  it('a short Cookout opener (the 1400 ms cut react) still floors its reply inside the tail', () => {
+    const offs = beatStartOffsets([1400, 3950], 1400, 1400, REPLY_TAIL_RIDE_MS);
+    expect(offs).toEqual([0, 600]); // max(1400 − ride, 600 ms floor)
+    expect(offs[1]! - 1400).toBe(-800); // 800 ms of tail left at the reply's start — the deep tail
+  });
+
+  it('text-only beats inside a ridden table sequence keep their legacy slot (the reading-time rule)', () => {
+    // the Cookout signature set resolves text-only today: its slots must not move
+    expect(beatStartOffsets([null, null, null, null], 1700, 1700, REPLY_TAIL_RIDE_MS)).toEqual([0, 1700, 3400, 5100]);
+    // a voiced reply after a text-only opener likewise waits out the legacy slot
+    expect(beatStartOffsets([null, 3000], 1700, 1700, REPLY_TAIL_RIDE_MS)).toEqual([0, 1700]);
+  });
+
+  it('Table wires deliver() — the story table channel — with the ride', () => {
+    const table = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
+    expect(table).toContain('baseMs, gapMs, nameOf, tailRideMs: REPLY_TAIL_RIDE_MS,');
+    // rail + deliver: the ride now appears at both story scheduling sites
+    expect(table.split('tailRideMs: REPLY_TAIL_RIDE_MS').length - 1).toBeGreaterThanOrEqual(2);
   });
 });

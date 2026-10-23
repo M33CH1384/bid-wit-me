@@ -32,14 +32,21 @@ export interface PacedBeatLine { speaker: string; line: string }
  * Reply tail ride (owner, 2026-10-22, on the Cookout twins: "it's cool
  * that the twins finish each others sentences but the second person
  * takes too long to do it"). A REPLY sequence — rail exchanges, the
- * end-of-hand banter — opts in with `tailRideMs`: a heard line's slot
- * shrinks so the next beat starts this far BEFORE the line's voice
- * ends, and the voice engine's cross-talk policy (planVoiceArrival in
- * audio.ts: tail only, ≤ 3 s left, max two voices, the first ducked)
- * decides whether it truly overlaps or lands as the line finishes.
- * One second targets the policy's deep tail (≤ 1.2 s left), where an
- * overlap is the natural read. Scripted scene beats do NOT ride: they
- * keep the full duration + gap handoff this module was built for.
+ * end-of-hand banter, and the Table story channel (deliver(): sit-downs,
+ * play reacts, between-hands exchanges, milestone/signature sets) —
+ * opts in with `tailRideMs`: a heard line's slot shrinks so the next
+ * beat starts this far BEFORE the line's voice ends, and the voice
+ * engine's cross-talk policy (planVoiceArrival in audio.ts: tail only,
+ * ≤ 3 s left, max two voices, the first ducked) decides whether it
+ * truly overlaps or lands as the line finishes. One second targets
+ * the policy's deep tail (≤ 1.2 s left), where an overlap is the
+ * natural read. ScriptPlayer SCENE dialogue (intros, outros,
+ * meet-them scenes) does NOT ride: it keeps the full duration + gap
+ * handoff this module was built for — cinematic conversation, not
+ * table banter. (The Table channel was initially left unridden too;
+ * the owner reported the twins still slow at the Cookout table that
+ * evening — measured: every voiced reply there waited the full
+ * 1400/1700 ms gap after the opener ended — so deliver() rides now.)
  */
 export const REPLY_TAIL_RIDE_MS = 1000;
 

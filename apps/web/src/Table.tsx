@@ -1402,10 +1402,22 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     // it — story lines ran 3.3–8.2 s against 1.4–1.7 s staggers (owner:
     // lines "cut short", 2026-10-22). A beat with no clip keeps its
     // legacy stagger slot, so text-only sequences pace as they always did.
+    // And a REPLY rides the opener's tail (tailRideMs — owner, 2026-10-22
+    // 21:59, the Cookout twins STILL slow after the rail/chain/banter
+    // rides shipped): this channel IS the twins' in-match exchange
+    // channel — sit-downs, play reacts, the between-hands exchanges, the
+    // milestone/signature sets are authored as call-and-response (the
+    // twins literally split sentences at an em-dash), and measured on
+    // the shipped durations every voiced reply here landed the full
+    // gapMs — 1400/1700 ms of dead air — after the opener's voice ended.
+    // The reply now starts in the opener's last second and the
+    // cross-talk policy arbitrates, exactly as rail exchanges already
+    // do. ScriptPlayer scene dialogue (intros/outros/meet-them) is a
+    // different channel and keeps the full duration + gap handoff.
     const deliver = (beats: StoryBeat[], baseMs = 500, gapMs = 1500) => {
       const nameOf = (bt: StoryBeat) => (bt.speaker === 'you' ? 'You' : (STORY_CHARACTERS[bt.speaker]?.name ?? bt.speaker));
       void scheduleStoryBeats(beats, {
-        baseMs, gapMs, nameOf,
+        baseMs, gapMs, nameOf, tailRideMs: REPLY_TAIL_RIDE_MS,
         audible: (bt) => bt.speaker !== 'you' && names.indexOf(nameOf(bt)) >= 0 && !sound.voiceMuted(nameOf(bt)),
       }, (bt, delayMs) => {
         const name = nameOf(bt);
