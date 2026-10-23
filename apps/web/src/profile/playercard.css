@@ -1,0 +1,230 @@
+/* The Player Card (owner-approved 2026-10-23): the flippable profile card.
+ * Self-contained sheet (the story.css precedent) — every selector is
+ * .pcard-scoped, in both themes, so it styles the card on the profile and,
+ * later, in the Partner Finder deck, and nothing else anywhere.
+ * Theme parity: structure and layout are theme-shared; Neon only re-tints
+ * the frame (visual-only difference, per the parity law).
+ *
+ * The FRONT is a playing-card face for the player's rank card (owner
+ * steering, 2026-10-23): corner indices, the avatar as the card's figure,
+ * a nameplate strip, and the flair band. Suit palettes are per-tier color
+ * stories told with one accent variable; the three summit cards — the
+ * Deuce, the Little Joker, and the Big Joker (rarest of all) — get the
+ * most distinct treatments. */
+
+/* Placement inside the profile header (a flex-wrap row): the card and its
+ * satellites take the full line; RepBlock + the action row keep following. */
+.soc-prof-head > .pcard { flex: 1 1 100%; min-width: 0; }
+.prof-under-card { flex: 1 1 100%; min-width: 0; }
+.soc-prof-head > .pcard-editor { flex: 1 1 100%; min-width: 0; }
+
+/* Suit accents: hearts burn rose, clubs run emerald, diamonds cut sky,
+ * spades wear the house violet; the Joker stands in gold. */
+.pcard[data-suit="hearts"] { --suit: #ff647c; --suit-soft: rgba(255, 77, 109, .13); }
+.pcard[data-suit="clubs"] { --suit: #57d992; --suit-soft: rgba(87, 217, 146, .12); }
+.pcard[data-suit="diamonds"] { --suit: #5bdfff; --suit-soft: rgba(91, 223, 255, .12); }
+.pcard[data-suit="spades"] { --suit: #b980ff; --suit-soft: rgba(155, 92, 255, .15); }
+.pcard[data-suit="joker"] { --suit: var(--gold); --suit-soft: rgba(var(--gold-rgb), .14); }
+
+.pcard { perspective: 1400px; cursor: pointer; }
+.pcard-inner {
+  display: grid;
+  transform-style: preserve-3d;
+  transition: transform .55s cubic-bezier(.2, .7, .3, 1);
+}
+.pcard-inner.flipped { transform: rotateY(180deg); }
+.pcard-face {
+  grid-area: 1 / 1;
+  min-width: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(var(--gold-rgb), .45);
+  background: linear-gradient(155deg, var(--panel-hi), var(--panel) 62%);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .5), inset 0 1px 0 rgba(var(--gold-rgb), .18);
+}
+.pcard-back { transform: rotateY(180deg); }
+@media (prefers-reduced-motion: reduce) {
+  .pcard-inner { transition: none; }
+}
+html[data-theme="neon"] .pcard-face {
+  border-color: rgba(var(--purple-rgb), .65);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .5), inset 0 1px 0 rgba(var(--cyan-rgb), .25);
+}
+
+/* ------------------------------------------------- front: the card face */
+.pcard-front {
+  position: relative;
+  background:
+    radial-gradient(120% 85% at 50% 0%, var(--suit-soft), transparent 58%),
+    linear-gradient(155deg, var(--panel-hi), var(--panel) 62%);
+}
+.pcard[data-treatment="little-joker"] .pcard-front {
+  background:
+    radial-gradient(120% 85% at 50% 0%, var(--suit-soft), transparent 55%),
+    linear-gradient(160deg, #17141f, #0d0b16 62%);
+  border-color: rgba(var(--gold-rgb), .75);
+}
+/* The Big Joker: the rarest front of all — black-and-gold, double-framed. */
+.pcard[data-treatment="big-joker"] .pcard-front {
+  background:
+    radial-gradient(120% 85% at 50% 0%, rgba(var(--gold-rgb), .22), transparent 55%),
+    linear-gradient(160deg, #1a1206, #0a0714 62%);
+  border: 2px solid var(--gold);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .55), 0 0 26px rgba(var(--gold-rgb), .28), inset 0 0 0 3px rgba(0, 0, 0, .55), inset 0 0 0 4px rgba(var(--gold-rgb), .5);
+}
+.pcard[data-treatment="deuce"] .pcard-front { border-color: rgba(var(--gold-rgb), .8); }
+
+.pcard-corner {
+  position: absolute; z-index: 2;
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  line-height: 1; color: var(--suit); pointer-events: none;
+}
+.pcard-corner.tl { top: 11px; left: 13px; }
+.pcard-corner.br { bottom: 11px; right: 13px; transform: rotate(180deg); }
+.pcard-crank { font-size: 23px; font-weight: 800; }
+.pcard-csuit { font-size: 17px; }
+.pcard[data-treatment="little-joker"] .pcard-csuit,
+.pcard[data-treatment="big-joker"] .pcard-csuit { font-size: 8px; font-weight: 800; letter-spacing: .14em; }
+.pcard[data-treatment="big-joker"] .pcard-crank { font-size: 27px; }
+
+.pcard-figure {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 9px;
+  padding-top: 8px;
+}
+.pcard-watermark {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -58%);
+  font-size: 158px; line-height: 1; color: var(--suit); opacity: .13;
+  pointer-events: none;
+}
+.pcard-av {
+  position: relative; z-index: 1;
+  width: 92px; height: 92px; flex: none;
+  border-radius: 50%; overflow: hidden;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 36px; font-weight: 700; color: var(--ink-deep);
+  background: linear-gradient(150deg, var(--gold-hi), var(--gold-deep));
+  border: 2px solid rgba(var(--gold-rgb), .8);
+  box-shadow: 0 0 0 3px var(--panel), 0 0 0 5px var(--suit);
+}
+/* Court energy: J/Q/K wear the double gold frame; the summit cards more. */
+.pcard[data-treatment="court"] .pcard-av,
+.pcard[data-treatment="ace"] .pcard-av {
+  border: 3px double var(--gold);
+  box-shadow: 0 0 0 3px var(--panel), 0 0 0 5px var(--suit), 0 0 22px var(--suit-soft);
+}
+.pcard[data-treatment="deuce"] .pcard-av {
+  border: 3px double var(--gold);
+  box-shadow: 0 0 0 3px var(--panel), 0 0 0 6px var(--gold), 0 0 26px rgba(var(--gold-rgb), .35);
+}
+.pcard[data-treatment="little-joker"] .pcard-av {
+  border: 3px double var(--gold);
+  box-shadow: 0 0 0 3px #0d0b16, 0 0 0 5px var(--gold), 0 0 22px rgba(var(--gold-rgb), .3);
+}
+.pcard[data-treatment="big-joker"] .pcard-av {
+  width: 100px; height: 100px;
+  border: 4px double var(--gold);
+  box-shadow: 0 0 0 3px #0a0714, 0 0 0 7px var(--gold), 0 0 34px rgba(var(--gold-rgb), .55);
+}
+.pcard-av img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pcard-pips {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 5px;
+  max-width: 170px; color: var(--suit); font-size: 13px; opacity: .85; line-height: 1;
+}
+.pcard-pips.deuce { gap: 30px; font-size: 21px; opacity: 1; }
+
+.pcard-nameplate {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 26px 0; border-top: 1px solid rgba(var(--edge-rgb), .25);
+}
+.pcard-id { min-width: 0; flex: 1; text-align: center; }
+.pcard-name { margin: 0; font-size: 24px; line-height: 1.15; overflow-wrap: anywhere; }
+.pcard-handle { margin: 2px 0 0; color: var(--muted); font-size: 13.5px; }
+.pcard-rankline { margin: 4px 0 0; color: var(--suit); font-weight: 700; font-size: 14.5px; }
+.pcard-edit {
+  flex: none; align-self: flex-start;
+  min-height: 36px; padding: 6px 11px; border-radius: 999px;
+  background: transparent; color: var(--gold);
+  border: 1px solid rgba(var(--gold-rgb), .55); font-size: 12.5px; font-weight: 600;
+  cursor: pointer;
+}
+
+/* The flair band: status, tags, showcase, story ribbon — designed onto
+ * the card's lower field, anchored to the card's foot. */
+.pcard-band { margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
+.pcard-status { margin: 0; font-style: italic; color: var(--lav); font-size: 15px; overflow-wrap: anywhere; }
+.pcard-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.pcard-tag {
+  padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  color: var(--lav); border: 1px solid rgba(var(--purple-rgb), .65);
+  background: rgba(var(--purple-rgb), .14);
+}
+.pcard-showcase { display: flex; flex-wrap: wrap; gap: 6px; }
+.pcard-badge {
+  padding: 4px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
+  color: var(--gold-hi); border: 1px solid rgba(var(--gold-rgb), .5);
+  background: rgba(var(--gold-rgb), .1);
+}
+.pcard-ribbon {
+  margin: 0; padding-top: 9px; font-size: 13px; color: var(--muted);
+  border-top: 1px dashed rgba(var(--gold-rgb), .35);
+}
+.pcard-upkeep { margin: 0; font-size: 12.5px; font-weight: 700; color: var(--gold); }
+.pcard-flipbtn {
+  align-self: flex-end; min-height: 32px; padding: 5px 6px;
+  background: none; border: none; cursor: pointer;
+  color: var(--gold); font-size: 12.5px; font-weight: 700; letter-spacing: .02em;
+}
+
+/* -------------------------------------------------------------- back */
+.pcard-back-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.pcard-back-head b { font-size: 17px; overflow-wrap: anywhere; }
+.pcard-back-head span { color: var(--muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: .09em; }
+.pcard-record { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; text-align: center; }
+.pcard-record b { display: block; font-size: 20px; }
+.pcard-record small { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+.pcard-split {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: 7px 0 0; border-top: 1px solid rgba(var(--edge-rgb), .22); font-size: 14px;
+}
+.pcard-split-label { color: var(--muted); }
+.pcard-split b small { color: var(--muted); font-weight: 400; }
+.pcard-split-none { color: var(--muted); font-weight: 400; font-style: italic; }
+.pcard-vs { margin: 2px 0 0; font-size: 14px; }
+.pcard-vs b { color: var(--gold-hi); }
+.pcard-nogames { margin: 10px 0; text-align: center; color: var(--muted); font-style: italic; font-size: 15px; }
+.pcard-back-story { margin: auto 0 0; padding-top: 9px; font-size: 13px; color: var(--muted); border-top: 1px dashed rgba(var(--gold-rgb), .35); }
+.pcard-since { margin: 0; color: var(--muted); font-size: 12.5px; }
+
+/* -------------------------------------------------------- deck size */
+.pcard[data-variant="deck"] { aspect-ratio: 5 / 7; }
+.pcard[data-variant="deck"] .pcard-inner { height: 100%; }
+.pcard[data-variant="deck"] .pcard-face { padding: 20px; }
+.pcard[data-variant="deck"] .pcard-av { width: 108px; height: 108px; font-size: 42px; }
+.pcard[data-variant="deck"] .pcard-name { font-size: 27px; }
+.pcard[data-variant="deck"] .pcard-crank { font-size: 27px; }
+.pcard[data-variant="deck"] .pcard-csuit { font-size: 20px; }
+.pcard[data-variant="deck"] .pcard-status { font-size: 16.5px; }
+.pcard[data-variant="deck"] .pcard-record b { font-size: 23px; }
+
+/* ------------------------------------------------------------ editor */
+.pcard-editor {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 14px; border-radius: 14px;
+  background: var(--panel); border: 1px solid rgba(var(--edge-rgb), .35);
+}
+.pcard-editor-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.pcard-pickrow { display: flex; flex-wrap: wrap; gap: 6px; }
+.pcard-pick {
+  min-height: 38px; padding: 7px 12px; border-radius: 999px; cursor: pointer;
+  background: var(--field); color: var(--ink); font-size: 13px; font-weight: 600;
+  border: 1px solid rgba(var(--edge-rgb), .4);
+}
+.pcard-pick.on {
+  background: rgba(var(--gold-rgb), .16); color: var(--gold-hi);
+  border-color: var(--gold);
+}
+.pcard-pool-label { color: var(--muted); text-transform: uppercase; letter-spacing: .07em; font-size: 11px; }

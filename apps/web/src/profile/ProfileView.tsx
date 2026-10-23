@@ -42,6 +42,17 @@
  * The in-game profile modal (ProfileModal.tsx) is NOT this component: it
  * stays the compact quick-peek card the owner approved, sharing the header
  * components (RepBlock, AvatarCircle, presenceLine) with this view.
+ *
+ * Player Card (2026-10-23): the header's identity block is now the
+ * flippable Player Card (profile/PlayerCard.tsx) whenever the cred payload
+ * carries it — which both cred endpoints do. The card is a playing-card
+ * face for the player's rank card (front) with their stats on the back;
+ * the profile's tagline, presence and region ride in a slim row under it,
+ * and the RepBlock + action row keep their established order below that.
+ * A payload without a card (stale cache) falls back to the legacy identity
+ * header above — same lines, unflipped. The card's own fields (status,
+ * partner tags, showcased badges) edit through the card's Edit card
+ * button (profile/CardEditor.tsx), separate from the Edit profile stack.
  */
 import { useEffect, useRef, useState } from 'react';
 import { presenceLine } from '@spades/protocol';
@@ -56,6 +67,8 @@ import { accountUidOf, AvatarCircle, compressAvatarFile, forgetAvatar, useAvatar
 import { BADGES } from '../badges';
 import { offlineStats } from '../offlineStats';
 import { RepBlock } from '../RepBlock';
+import { PlayerCard, type PlayerCardData } from './PlayerCard';
+import { CardEditor } from './CardEditor';
 import { TaglineText } from '../tagline';
 import { SOCIAL_PLATFORMS, SocialLinksChips, type SocialLinks } from '../socialLinks';
 import { MODE_NAME, inviteTo } from '../social/Social';
@@ -88,6 +101,10 @@ interface Unlock { itemId: string; source: string; unlockedAt: number; slot: str
  *  shape; challenges/unlocks only exist on the /me payload. */
 interface CredData {
   user: { id: string; name: string; avatar: string | null; avatarUpdatedAt: number | null; tagline: string | null; socialLinks: SocialLinks; region: string | null };
+  /** the Player Card payload (2026-10-23): both cred endpoints carry it;
+   *  optional here only so a stale cached payload degrades to the legacy
+   *  identity header instead of breaking the profile */
+  card?: PlayerCardData;
   level: { level: number; xp: number; title: string; xpForNext: number; xpIntoLevel: number };
   season?: { id: string; name: string; endsAt: number };
   rank: { team: SeasonRank; cutthroat: SeasonRank };
@@ -378,6 +395,10 @@ export function ProfileView({ host, name, id }: {
   // profile — header + tabs, zero editor UI. True = the full editor stack
   // (picture, tagline, social links) shows under the header.
   const [editing, setEditing] = useState(false);
+  // Player Card editor (2026-10-23): the card's own Edit card button opens
+  // its editor (status / tags / showcase) directly under the card — a
+  // separate gate from Edit profile, which keeps the older editor stack.
+  const [cardEditorOpen, setCardEditorOpen] = useState(false);
   // Tagline (Demetrius 2026-10-20): null draft = untouched, showing the saved line.
   const [tagDraft, setTagDraft] = useState<string | null>(null);
   const [tagBusy, setTagBusy] = useState(false);
@@ -578,6 +599,11 @@ export function ProfileView({ host, name, id }: {
   const pendingClaims = cred?.challenges
     ? [...cred.challenges.daily, ...cred.challenges.weekly].filter((c) => c.progress >= c.target && !c.claimed).length
     : 0;
+  const cardData = cred?.card ?? null;
+  /** The presence line, composed ONCE via the shared presence helper and
+   *  rendered by both header shapes (card + legacy fallback) — never
+   *  hand-joined. */
+  const presenceText = presenceEntry ? presenceLine(presenceEntry.status, modeName) : 'Offline';
   const tagValue = tagDraft ?? cred?.user.tagline ?? '';
   const regionValue = regionDraft ?? cred?.user.region ?? '';
   /** Plain display region (league P-B): the social payload's, falling back to
@@ -588,16 +614,41 @@ export function ProfileView({ host, name, id }: {
   const content = (
     <>
       <div className="soc-prof-head">
-        <AvatarCircle pic={pic} name={displayName} className="soc-av big" />
-        <div>
-          <h3 data-testid="profile-name">{displayName}{socialP && socialP.champion > 0 && <span className="soc-champ" title="Tournament champion">🏆×{socialP.champion}</span>}</h3>
-          {memberSince !== undefined && <p className="soc-muted">Member since {new Date(memberSince).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</p>}
-          <TaglineText text={tagline} className="soc-tagline" />
-          <p className={`soc-online-status ${presenceEntry ? 'on' : 'off'}`} data-testid="profile-online">
-            <i className="soc-dot" aria-hidden />{presenceEntry ? presenceLine(presenceEntry.status, modeName) : 'Offline'}
-          </p>
-          {regionText && <p className="soc-muted" data-testid="profile-region">Region: {regionText}</p>}
-        </div>
+        {cardData ? (
+          <>
+            {/* The Player Card IS the header now (2026-10-23): the playing-
+                card face for the player's rank card up top, the profile's
+                own lines (tagline, presence, region) in a slim row under
+                it, then the shared RepBlock and the action row as before. */}
+            <PlayerCard data={cardData} pic={pic} champion={socialP?.champion} self={me}
+              onEditCard={me ? () => setCardEditorOpen((v) => !v) : undefined} />
+            {me && cardEditorOpen && (
+              <CardEditor card={cardData}
+                onClose={() => setCardEditorOpen(false)}
+                onSaved={(card) => { setCred((prev) => (prev ? { ...prev, card } : prev)); setCardEditorOpen(false); }} />
+            )}
+            <div className="prof-under-card">
+              <TaglineText text={tagline} className="soc-tagline" />
+              <p className={`soc-online-status ${presenceEntry ? 'on' : 'off'}`} data-testid="profile-online">
+                <i className="soc-dot" aria-hidden />{presenceText}
+              </p>
+              {regionText && <p className="soc-muted" data-testid="profile-region">Region: {regionText}</p>}
+            </div>
+          </>
+        ) : (
+          <>
+            <AvatarCircle pic={pic} name={displayName} className="soc-av big" />
+            <div>
+              <h3 data-testid="profile-name">{displayName}{socialP && socialP.champion > 0 && <span className="soc-champ" title="Tournament champion">🏆×{socialP.champion}</span>}</h3>
+              {memberSince !== undefined && <p className="soc-muted">Member since {new Date(memberSince).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</p>}
+              <TaglineText text={tagline} className="soc-tagline" />
+              <p className={`soc-online-status ${presenceEntry ? 'on' : 'off'}`} data-testid="profile-online">
+                <i className="soc-dot" aria-hidden />{presenceText}
+              </p>
+              {regionText && <p className="soc-muted" data-testid="profile-region">Region: {regionText}</p>}
+            </div>
+          </>
+        )}
         {cred && (
           <RepBlock testid="profile-rep" coinsTestid="profile-coins"
             level={cred.level} team={cred.rank.team} cutthroat={cred.rank.cutthroat} coins={cred.coins?.balance} />

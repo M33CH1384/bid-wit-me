@@ -11,6 +11,14 @@
  *   DELETE /api/profile/me/avatar   → remove profile picture (signed in)
  *   POST /api/profile/me/tagline    → set profile tagline (signed in, JSON { tagline }; blank clears)
  *   POST /api/profile/me/social-links → set social links (signed in, JSON { links: { platform: urlOrHandle } })
+ *   POST /api/profile/me/card       → set the Player Card's own fields (signed in,
+ *                                     JSON { status, tags, showcase } → { ok, card })
+ *
+ * Both profile reads carry the Player Card payload (`card`, cred/card.ts):
+ * the same self-contained card object for self and public views — the
+ * public one additionally answers vsViewer when the caller has met the
+ * subject across a table. The card carries ONLY public facts in both
+ * shapes (the self payload's private extras stay challenges/unlocks).
  *
  * The profile picture (users.avatar, migration 0011) is a small data URL the client
  * compresses before upload. It is included in both profile responses so other players
@@ -22,6 +30,7 @@ import { hasStoryAccess } from '../story/access';
 import { myStats } from '../stats/boards';
 import { avatarOf, parseAvatarDataUrl } from './avatar';
 import { cleanTagline, taglineOf } from './tagline';
+import { badgeKey, cardFor, cleanCardShowcase, cleanCardStatus, cleanCardTags, earnedBadgesFor } from './card';
 import { cleanRegion, regionOf } from './region';
 import { applySocialLinksPatch, parseSocialLinks, socialLinksOf, validateSocialLinksPatch } from './socialLinks';
 import { divisionOf, type Division } from './divisions';
@@ -78,8 +87,10 @@ async function fullProfile(db: D1Database, userId: string, username: string, now
     regionOf(db, userId),
   ]);
   const stats = await myStats(db, userId);
+  const card = await cardFor(db, userId, userId, now, { level, stats });
   return {
     user: { id: userId, name: username, avatar: pic.avatar, avatarUpdatedAt: pic.avatarUpdatedAt, tagline, socialLinks: links, region },
+    card,
     /** developer (owner) accounts bypass unlock gates, e.g. The Pj's */
     dev,
     /** story-mode access (see story/access): admins, the named player
@@ -128,6 +139,23 @@ export async function handleCredHttp(req: Request, env: CredEnv, url: URL, parts
     if (!cleaned.ok) return json({ error: cleaned.error }, 400);
     await db.prepare('UPDATE users SET tagline = ? WHERE id = ?').bind(cleaned.tagline, me.id).run();
     return json({ ok: true, tagline: cleaned.tagline });
+  }
+  if (parts[1] === 'profile' && parts[2] === 'me' && parts[3] === 'card' && req.method === 'POST') {
+    if (!me) return json({ error: 'Sign in to edit your card.' }, 401);
+    let body: { status?: unknown; tags?: unknown; showcase?: unknown };
+    try { body = (await req.json()) as { status?: unknown; tags?: unknown; showcase?: unknown }; } catch { return json({ error: 'Send your card as JSON.' }, 400); }
+    const status = cleanCardStatus(body?.status);
+    if (!status.ok) return json({ error: status.error }, 400);
+    const tags = cleanCardTags(body?.tags);
+    if (!tags.ok) return json({ error: tags.error }, 400);
+    // Showcase membership is judged against a freshly computed earned set —
+    // never against anything the client claims to have earned.
+    const earned = await earnedBadgesFor(db, me.id);
+    const showcase = cleanCardShowcase(body?.showcase, new Set(earned.map(badgeKey)));
+    if (!showcase.ok) return json({ error: showcase.error }, 400);
+    await db.prepare('UPDATE users SET card_status = ?, card_tags = ?, card_showcase = ? WHERE id = ?')
+      .bind(status.value, tags.value.length ? JSON.stringify(tags.value) : null, showcase.value.length ? JSON.stringify(showcase.value) : null, me.id).run();
+    return json({ ok: true, card: await cardFor(db, me.id, me.id, now) });
   }
   if (parts[1] === 'profile' && parts[2] === 'me' && parts[3] === 'region' && req.method === 'POST') {
     if (!me) return json({ error: 'Sign in to set your region.' }, 401);
@@ -190,10 +218,11 @@ export async function handleCredHttp(req: Request, env: CredEnv, url: URL, parts
       balance(db, u.id),
     ]);
     const stats = await myStats(db, u.id);
+    const card = await cardFor(db, u.id, me?.id ?? null, now, { level, stats });
     // coins: the public balance is part of the profile by the owner's call (players see
     // each other's balance on profile cards, 2026-10-20). Read-only: no grants fire here —
     // a user with no coin row yet genuinely sits at 0 until their own profile read grants.
-    return json({ user: { id: u.id, name: u.username ?? 'Player', avatar: u.avatar, avatarUpdatedAt: u.avatarUpdatedAt, tagline: u.tagline, socialLinks: parseSocialLinks(u.socialLinks) }, level, season: { id: season.id, name: season.name, endsAt: season.endsAt }, rank: { team, cutthroat }, stats, achievements, coins: { balance: coinBalance } });
+    return json({ user: { id: u.id, name: u.username ?? 'Player', avatar: u.avatar, avatarUpdatedAt: u.avatarUpdatedAt, tagline: u.tagline, socialLinks: parseSocialLinks(u.socialLinks) }, card, level, season: { id: season.id, name: season.name, endsAt: season.endsAt }, rank: { team, cutthroat }, stats, achievements, coins: { balance: coinBalance } });
   }
   if (parts[1] === 'challenges' && parts.length === 2 && req.method === 'GET') {
     if (!me) return json({ error: 'Sign in to see your challenges.' }, 401);
