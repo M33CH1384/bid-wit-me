@@ -239,7 +239,23 @@ describe('the engine and CSS carry the fix', () => {
  * the same transforms Scene.tsx hit-tests with) — happy-dom paints nothing, so
  * these are layout pins, not pixel proof; the owner's iPhone is the pixel proof.
  * Modelled pill boxes are deliberately pessimistic: chip 26px tall (real ~24),
- * open 72px tall, widths at their CSS caps.
+ * open 124px tall in portrait (label row + the ~30%-larger browser cards +
+ * the 44px nav row, open padding trimmed to 5px), 108px in landscape, widths
+ * at their CSS caps.
+ *
+ * The open browser's portrait placement (owner 2026-10-23, "needs not to
+ * cover or go under my plate ... a bit larger for quick glance"): the cards
+ * grew ~30% and the open box re-anchors — bottom edge 112px over the safe
+ * inset (the me-plate's own 8px offset + its tallest 82px body + the 14px
+ * turn badge + 8px of air) and right edge 66px in (the controls rail's 50px
+ * footprint + 8px gap + 8px), clear of BOTH lower-corner tenants in either
+ * view. The fan cost is real and pinned below, not hidden: the lifted box
+ * crosses the lower strip corners of the middle fan cards while open, and
+ * in Standing view — whose fan rides ~46px lower, with no bottom lift —
+ * its band covers the index (D) corners of 2–4 cards. In Sitting view (the
+ * owner's) every index stays visible on current phones. The browser is a
+ * tap-open overlay; the plate guarantee is the hard one and holds at every
+ * modelled size.
  */
 describe('last trick pill: the phone corner (owner 2026-10-21)', () => {
   const css = src('styles.css');
@@ -274,6 +290,27 @@ describe('last trick pill: the phone corner (owner 2026-10-21)', () => {
     expect(tail).toContain('.table-screen.short .last-trick.open, .table-screen.short .last-trick.open.glass.slant { max-width: 190px; }');
     // the label ellipsizes only past a cap, in both phone blocks
     expect(tail.match(/white-space: nowrap; overflow: hidden; text-overflow: ellipsis;/g)?.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('portrait open browser (owner 2026-10-23): anchored clear of the plate and the rail; the chip keeps the corner', () => {
+    const rule = '.table-screen:not(.short) .last-trick.open:not(.run-open), .table-screen:not(.short) .last-trick.open.glass.slant:not(.run-open) { right: calc(66px + env(safe-area-inset-right)); bottom: calc(112px + env(safe-area-inset-bottom)) !important; padding: 5px 14px; }';
+    const media = tail.indexOf('@media (max-width: 480px)');
+    const at = tail.indexOf(rule);
+    expect(at).toBeGreaterThan(media); // inside the phone block, after the corner rules it refines
+    expect(at).toBeLessThan(tail.indexOf('\n}\n', media));
+    // the chip's own corner rule is byte-identical to the shipped one
+    expect(tail).toContain('.table-screen:not(.short) .last-trick, .table-screen:not(.short) .last-trick.glass.slant { right: calc(10px + env(safe-area-inset-right)); bottom: calc(10px + env(safe-area-inset-bottom)) !important; }');
+  });
+
+  it('the browser cards grew ~30% (owner 2026-10-23); the Run It review keeps its own rendering', () => {
+    expect(css).toContain('.lt-card { display: flex; flex-direction: column; align-items: center; line-height: 1; min-width: 34px; padding: 4px 5px; border-radius: 5px; background: #f6f1e6; color: #16121c; font-weight: 800; font-size: 19px; }');
+    expect(css).toContain('.lt-card small { font-size: 12px; font-weight: 700; color: #6b6378; letter-spacing: .02em; margin-bottom: 2px; }');
+    expect(css).toContain('.lt-card.win { box-shadow: 0 0 0 2px var(--gold), 0 0 12px rgba(var(--gold-rgb),.7); }');
+    expect(css).toContain('.table-screen.short .lt-card { min-width: 31px; font-size: 17px; padding: 3px 4px; }');
+    expect(css).toContain('.table-screen.short .lt-card small { font-size: 10px; }');
+    // Run It review: centred modal + its 52px image cards, untouched
+    expect(css).toContain('right: auto !important; top: 50% !important; bottom: auto !important;');
+    expect(css).toContain('.run-hand-cards img { width: 52px; height: auto; aspect-ratio: 240 / 336; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,.45); }');
   });
 
   it('Table renders the winner name in full — no 8-char slice', () => {
@@ -337,12 +374,22 @@ describe('last trick pill: the phone corner (owner 2026-10-21)', () => {
     return Array.from({ length: count }, (_, i) => cardScreenQuad(aspect, handFan(aspect, count, i, 0, safeSide / w, opts, 0, h), w, h, 0, true, view));
   };
 
-  const CHIP_H = 26, OPEN_H = 72;
+  const CHIP_H = 26, OPEN_H = 124, OPEN_H_SHORT = 108;
   const portraitChip = (w: number, h: number, safeB: number) => { const wd = Math.min(0.6 * w, w - 212); const r = w - 10; const b = h - (10 + safeB); return rectPoly(r - wd, b - CHIP_H, r, b); };
-  const portraitOpen = (w: number, h: number, safeB: number) => { const wd = Math.min(0.74 * w, 320); const r = w - 10; const b = h - (10 + safeB); return rectPoly(r - wd, b - OPEN_H, r, b); };
-  const oldOpen = (w: number, h: number, safeB: number) => { const wd = Math.min(0.44 * w, 260); const r = w - 58; const b = h - (0.23 * h + 64 + safeB); return rectPoly(r - wd, b - OPEN_H, r, b); };
+  // the open browser's 2026-10-23 anchor: bottom edge 112px over the inset, right edge 66px in
+  const portraitOpen = (w: number, h: number, safeB: number) => { const wd = Math.min(0.74 * w, 320); const r = w - 66; const b = h - (112 + safeB); return rectPoly(r - wd, b - OPEN_H, r, b); };
   const shortChip = (w: number, h: number, safeR: number) => { const r = w - (10 + safeR); const b = h - 8; return rectPoly(r - 170, b - CHIP_H, r, b); };
-  const shortOpen = (w: number, h: number, safeR: number) => { const r = w - (10 + safeR); const b = h - 8; return rectPoly(r - 190, b - OPEN_H, r, b); };
+  const shortOpen = (w: number, h: number, safeR: number) => { const r = w - (10 + safeR); const b = h - 8; return rectPoly(r - 190, b - OPEN_H_SHORT, r, b); };
+  /** the me-plate at its worst: 82px body (toggles wrapped) + the 14px turn badge above it */
+  const mePlate = (w: number, h: number, safeB: number) => { const b = h - (8 + safeB); return rectPoly(8, b - 96, 8 + Math.min(0.62 * w, 250), b); };
+  /** the controls rail: 50px footprint at right: 8px, ~220px stack over bottom: 23vh + 8px */
+  const ctlRail = (w: number, h: number, safeB: number) => { const b = h - (0.23 * h + 8 + safeB); return rectPoly(w - 58, b - 220, w - 8, b); };
+  /** axis-aligned overlap area (every modelled box here is a rect) */
+  const overlapArea = (a: Pt[], c: Pt[]) => {
+    const ax = [Math.min(...a.map((p) => p.x)), Math.max(...a.map((p) => p.x))], ay = [Math.min(...a.map((p) => p.y)), Math.max(...a.map((p) => p.y))];
+    const cx = [Math.min(...c.map((p) => p.x)), Math.max(...c.map((p) => p.x))], cy = [Math.min(...c.map((p) => p.y)), Math.max(...c.map((p) => p.y))];
+    return Math.max(0, Math.min(ax[1]!, cx[1]!) - Math.max(ax[0]!, cx[0]!)) * Math.max(0, Math.min(ay[1]!, cy[1]!) - Math.max(ay[0]!, cy[0]!));
+  };
 
   const PORTRAITS: [number, number, number][] = [[390, 844, 34], [393, 852, 34], [414, 896, 34], [430, 932, 34], [375, 667, 0], [360, 740, 20], [320, 568, 0]];
   const VIEWS = ['standing', 'sitting'] as const;
@@ -375,35 +422,39 @@ describe('last trick pill: the phone corner (owner 2026-10-21)', () => {
     }
   });
 
-  it('portrait open state: indices stay visible; strip contact is a bounded corner sliver (<=2px dip in sitting at >=360px wide)', () => {
-    // The yardstick is the decision area (index/strip zones), not raw fan area:
-    // at large sizes the old open box floats just above the fan's top edge, so a
-    // raw-area comparison would flatter it while it sits on the centre strips.
+  it('portrait open browser: never touches the me-plate or the controls rail, in either view (owner 2026-10-23)', () => {
+    for (const [w, h, safeB] of PORTRAITS) for (const view of VIEWS) for (const count of [13, 17]) {
+      const open = portraitOpen(w, h, safeB);
+      expect(overlapArea(open, mePlate(w, h, safeB))).toBe(0); // not over the plate...
+      expect(overlapArea(open, ctlRail(w, h, safeB))).toBe(0); // ...and not under the rail
+      // the margin is structural, not a graze: exactly 8px of air over the
+      // plate's badge, and the box's right edge stops 8px short of the rail
+      expect((h - (112 + safeB)) - (h - (8 + safeB) - 96)).toBe(-8);
+      expect((w - 66) - (w - 58)).toBe(-8);
+    }
+  });
+
+  it('portrait open state: sitting keeps every index visible on current phones; the fan cost is bounded and documented', () => {
+    // Measured with the game's own fan math at the 124px model: sitting strip
+    // contact peaks ~7,100px² (the box crosses the lower strip corners of the
+    // middle cards while open — the price of sitting above the plate, paid
+    // only while browsing); standing peaks ~13,000px² with 2–4 index corners
+    // under the band (its fan rides ~46px lower). Bounds carry headroom for
+    // model noise; the plate/rail zero above carries none.
     for (const [w, h, safeB] of PORTRAITS) for (const view of VIEWS) for (const count of [13, 17]) {
       const quads = portraitQuads(w, h, safeB, view, count);
       const open = portraitOpen(w, h, safeB);
       const [ol, ot, orr, ob] = [Math.min(...open.map((p) => p.x)), Math.min(...open.map((p) => p.y)), Math.max(...open.map((p) => p.x)), Math.max(...open.map((p) => p.y))];
-      for (const q of quads) {
-        const D = q[3]!; // local top-left corner: the primary rank index lives there
-        expect(D.x < ol || D.x > orr || D.y < ot || D.y > ob).toBe(true);
+      const dIn = quads.filter((q) => { const D = q[3]!; return D.x >= ol && D.x <= orr && D.y >= ot && D.y <= ob; }).length;
+      const stripArea = fanAreaIn(open, quads.map(stripPoly));
+      if (view === 'sitting') {
+        if ([390, 393, 414].includes(w)) expect(dIn).toBe(0); // current phones: every index readable while browsing
+        else expect(dIn).toBeLessThanOrEqual(2); // 430px/17-card and the small-screen classes: a corner or two
+        expect(stripArea).toBeLessThanOrEqual(7500);
+      } else {
+        expect(dIn).toBeLessThanOrEqual(4); // standing trade-off, documented in the header
+        expect(stripArea).toBeLessThanOrEqual(13500);
       }
-      const strips = quads.map(stripPoly);
-      const stripNew = fanAreaIn(open, strips);
-      expect(stripNew).toBeLessThanOrEqual(1000); // at most the last card's strip corner, any config
-      if (view === 'sitting' && w >= 360) {
-        // no strip vertex dips more than 2px into the box's band (convex polys:
-        // the lowest in-range point is a vertex) — a sub-model-noise graze at most
-        for (const st of strips) for (const p of st) {
-          if (p.x >= ol && p.x <= orr) expect(p.y - ot).toBeLessThanOrEqual(2);
-        }
-      }
-      if (view === 'sitting' && w < 360) expect(stripNew).toBeLessThanOrEqual(450); // 320px class: the box is proportionally huge
-      // standing: wherever the old box genuinely engaged the strips (>=1000px² of
-      // them — the mid-fan sizes), the new box covers no more than it did. (At the
-      // sizes where the old box rides the fan's top edge and barely engages, the
-      // absolute <=1000px² sliver bound above is the operative guarantee.)
-      const stripOld = fanAreaIn(oldOpen(w, h, safeB), strips);
-      if (view === 'standing' && stripOld >= 1000) expect(stripNew).toBeLessThanOrEqual(stripOld);
     }
   });
 
@@ -414,6 +465,10 @@ describe('last trick pill: the phone corner (owner 2026-10-21)', () => {
       const chip = shortChip(w, h, safe);
       for (const q of quads) expect(touching(chip, q)).toBe(false);
       const open = shortOpen(w, h, safe);
+      // the me-plate in landscape: bottom-left, bottom: 10px, modelled at a
+      // generous 62vw-equivalent width — the open box clears it by width alone
+      const plateL = rectPoly(8, h - 10 - 88, 8 + Math.min(0.62 * w, 413), h - 10);
+      expect(overlapArea(open, plateL)).toBe(0);
       const openL = Math.min(...open.map((p) => p.x));
       const fanRight = Math.max(...quads.flatMap((q) => q.map((p) => p.x)));
       expect(fanRight - openL).toBeLessThanOrEqual(26); // the reach bound set by the solver's 186px reserve

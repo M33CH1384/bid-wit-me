@@ -388,10 +388,10 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 /* last trick readout (bottom-right, opposite your name plate) */
 .last-trick, .last-trick.glass.slant { position: absolute; right: calc(8px + env(safe-area-inset-right)); bottom: calc(23vh + env(safe-area-inset-bottom)); z-index: 9; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 4px; max-width: 46vw; padding: 4px 10px 5px; --slant: 8px; pointer-events: none; font-family: var(--display); }
 .lt-label { width: 100%; text-align: right; font-size: 10px; letter-spacing: .14em; color: var(--purple-hot); font-weight: 700; }
-.lt-card { display: flex; flex-direction: column; align-items: center; line-height: 1; min-width: 26px; padding: 3px 3px; border-radius: 4px; background: #f6f1e6; color: #16121c; font-weight: 800; font-size: 15px; }
+.lt-card { display: flex; flex-direction: column; align-items: center; line-height: 1; min-width: 34px; padding: 4px 5px; border-radius: 5px; background: #f6f1e6; color: #16121c; font-weight: 800; font-size: 19px; }
 .lt-card.red { color: #c8102e; }
-.lt-card small { font-size: 9px; font-weight: 700; color: #6b6378; letter-spacing: .02em; margin-bottom: 1px; }
-.lt-card.win { box-shadow: 0 0 0 2px var(--gold), 0 0 10px rgba(var(--gold-rgb),.7); }
+.lt-card small { font-size: 12px; font-weight: 700; color: #6b6378; letter-spacing: .02em; margin-bottom: 2px; }
+.lt-card.win { box-shadow: 0 0 0 2px var(--gold), 0 0 12px rgba(var(--gold-rgb),.7); }
 @media (min-width: 900px) { .last-trick { bottom: 24vh; } }
 
 /* now playing ticker */
@@ -467,8 +467,8 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .table-screen.short .ctl-cluster .av-hint, .table-screen.short .ctl-cluster .av-err { top: auto; bottom: calc(100% + 54px); right: 0; }
 .table-screen.short .last-trick, .table-screen.short .last-trick.glass.slant { bottom: calc(54px + env(safe-area-inset-bottom)); max-width: 170px; padding: 2px 7px 4px; gap: 3px; }
 .table-screen.short .lt-label { font-size: 9px; }
-.table-screen.short .lt-card { min-width: 24px; font-size: 13px; padding: 2px; }
-.table-screen.short .lt-card small { font-size: 8px; }
+.table-screen.short .lt-card { min-width: 31px; font-size: 17px; padding: 3px 4px; }
+.table-screen.short .lt-card small { font-size: 10px; }
 .table-screen.short .chat { right: calc(8px + env(safe-area-inset-right)); bottom: calc(54px + env(safe-area-inset-bottom)); top: auto; height: calc(100% - 110px); width: min(300px, 40vw); }
 .table-screen.short .chat-ticker { right: calc(8px + env(safe-area-inset-right)); top: calc(50px + env(safe-area-inset-top)); bottom: auto; max-width: 28vw; }
 .table-screen.short .toasts { top: calc(48px + env(safe-area-inset-top)); }
@@ -3282,9 +3282,10 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
    Landscape cap 170px: Scene's fan solver reserves (safe + 186px) on each
    side, so the fan's right edge stops at width - safe - 186 and a 170px
    chip in the corner clears it at every landscape size. Open state: the
-   box stays anchored to the same corner and grows up/left from it — label
-   row on top, the four cards under it — capped at min(74vw, 320px)
-   portrait / 190px landscape.
+   box grows up/left from the corner — label row on top, the four cards
+   under it — capped at min(74vw, 320px) portrait / 190px landscape; the
+   portrait open box then re-anchors clear of the me-plate (see the
+   open-browser rule inside the block below).
    Fan clearance, by the game's own layout math (three/layout handFan +
    cardScreenQuad, pinned in plate-fit.test.ts): in Sitting view — the
    owner's — and in landscape the chip clears every fan card outright. The
@@ -3293,17 +3294,36 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
    safe inset leaves a ~21px strip, a few px short of the chip, so the last
    card's rounded bottom corner can kiss the chip's top edge by up to ~15px
    of quad (less of real card — the quad ignores the corner radius). The
-   open box likewise reaches the end cards' bottom corners, never their
-   index/strip zone — strictly less fan coverage than the old mid-fan open
-   box. Desktop / large screens keep the 23vh + 64px spot (owner: "at
-   least in phone screens") — there the fan is narrower and centred and
-   that spot already reads clear of it. Tap behaviour is untouched: the
-   open state's ≥44px height and tap-anywhere-to-close stay as they were. */
+   open browser's fan contact is pinned in plate-fit.test.ts: in Sitting
+   view every index stays visible on current phones; in Standing the
+   lifted box's band crosses a few index corners of the lower-riding fan
+   — the plate guarantee below wins there. Desktop / large screens keep
+   the 23vh + 64px spot (owner: "at least in phone screens") — there the
+   fan is narrower and centred and that spot already reads clear of it.
+   Tap behaviour is untouched: the open state's ≥44px height and
+   tap-anywhere-to-close stay as they were. */
 @media (max-width: 480px) {
   .table-screen:not(.short) .last-trick, .table-screen:not(.short) .last-trick.glass.slant { right: calc(10px + env(safe-area-inset-right)); bottom: calc(10px + env(safe-area-inset-bottom)) !important; }
   .table-screen:not(.short) .last-trick.chip, .table-screen:not(.short) .last-trick.chip.glass.slant { max-width: min(60vw, calc(100vw - 212px)); }
   .table-screen:not(.short) .last-trick.chip .lt-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .table-screen:not(.short) .last-trick.open, .table-screen:not(.short) .last-trick.open.glass.slant { max-width: min(74vw, 320px); }
+  /* Open browser (owner 2026-10-23): "needs not to cover or go under my
+     plate" — grown from the chip's corner, the open box's left half lay
+     across the me-plate (fixed bottom-left at bottom: 8px + safe inset,
+     z 8 under the pill's 9 near the bubble, over it elsewhere). The open
+     box alone re-anchors: its bottom edge sits 112px over the same safe
+     inset the plate uses = the plate's own 8px offset + its tallest body
+     82px (bubble row, name, bid/took chips, view toggles wrapped) + the
+     14px turn badge riding above it + 8px of air, so the clearance holds
+     at any inset. Its right edge steps to 66px = the controls rail's 50px
+     footprint (right: 8px, 42px buttons) + the 8px gap the landscape
+     plate anchor uses + 8px, so the taller box's top corner cannot slide
+     under the rail either. Vertical padding trims 8px -> 5px so the
+     ~30% larger trick cards (owner: "a bit larger for quick glance")
+     grow the box by their own height only. The chip keeps the corner
+     exactly as shipped; the selector excludes the Run It review, which
+     keeps its centred modal and its own card size. */
+  .table-screen:not(.short) .last-trick.open:not(.run-open), .table-screen:not(.short) .last-trick.open.glass.slant:not(.run-open) { right: calc(66px + env(safe-area-inset-right)); bottom: calc(112px + env(safe-area-inset-bottom)) !important; padding: 5px 14px; }
 }
 .table-screen.short .last-trick, .table-screen.short .last-trick.glass.slant { right: calc(10px + env(safe-area-inset-right)); bottom: calc(8px + env(safe-area-inset-bottom)) !important; }
 .table-screen.short .last-trick.chip, .table-screen.short .last-trick.chip.glass.slant { max-width: 170px; }

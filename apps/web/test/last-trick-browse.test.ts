@@ -168,6 +168,16 @@ describe('Table wiring', () => {
     expect(table).toContain('trickPositionLabel(ltIndex, piles.length)');
   });
 
+  it('placement refinement (owner 2026-10-23): CSS-only — the open browser re-anchors, the chip and markup stay', () => {
+    // the open portrait browser lifts clear of the player's plate and steps
+    // left of the controls rail (geometry pinned in plate-fit.test.ts); the
+    // Run It review is excluded from the re-anchor by name
+    expect(css).toContain('.table-screen:not(.short) .last-trick.open:not(.run-open), .table-screen:not(.short) .last-trick.open.glass.slant:not(.run-open) { right: calc(66px + env(safe-area-inset-right)); bottom: calc(112px + env(safe-area-inset-bottom)) !important; padding: 5px 14px; }');
+    // trick cards ~30% larger for an at-a-glance read
+    expect(css).toContain('min-width: 34px; padding: 4px 5px; border-radius: 5px;');
+    expect(css).toContain('.table-screen.short .lt-card { min-width: 31px; font-size: 17px; padding: 3px 4px; }');
+  });
+
   it('the nav buttons are 44px targets and cycling has no transition to wait on', () => {
     const nav = css.slice(css.indexOf('.lt-nav {'), css.indexOf('.lt-nav:disabled'));
     expect(nav).toContain('min-width: 44px');
