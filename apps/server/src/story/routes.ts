@@ -154,6 +154,36 @@ function mergeLegFacts(a: StoryGameFacts, b: StoryGameFacts): StoryGameFacts {
   };
 }
 
+/**
+ * The UNION summary across ALL the caller's tracks (Phase 4, spec §3.9):
+ * per-stop attempts/clears summed over the solo run and every pair track
+ * the caller belongs to, finds unioned, completed if ANY track completed.
+ * User_id-only, like personalHistoryMapFor — a player's rows exist solely
+ * under their own id. The profile's story badges read this ('cleared
+ * anywhere' earns); the per-track payload above it stays exact.
+ */
+async function anyTrackSummaryFor(db: D1Database, userId: string) {
+  const rows = await db.prepare('SELECT stop_id AS stopId, COALESCE(SUM(attempts), 0) AS attempts, COALESCE(SUM(clears), 0) AS clears FROM story_progress WHERE user_id = ? GROUP BY stop_id')
+    .bind(userId).all<{ stopId: string; attempts: number; clears: number }>();
+  const byStop = new Map(rows.results.map((r) => [r.stopId, r]));
+  const findRows = await db.prepare('SELECT DISTINCT kind, find_id AS findId FROM story_finds WHERE user_id = ?')
+    .bind(userId).all<{ kind: string; findId: string }>();
+  const done = await db.prepare('SELECT COUNT(*) AS n FROM story_tracks WHERE user_id = ? AND completed_at IS NOT NULL')
+    .bind(userId).first<{ n: number }>();
+  return {
+    stops: STORY_STOPS.map((s) => ({
+      stopId: s.id,
+      attempts: byStop.get(s.id)?.attempts ?? 0,
+      clears: byStop.get(s.id)?.clears ?? 0,
+    })),
+    finds: {
+      eggs: findRows.results.filter((r) => r.kind === 'egg').map((r) => r.findId),
+      feats: findRows.results.filter((r) => r.kind === 'feat').map((r) => r.findId),
+    },
+    completed: (done?.n ?? 0) > 0,
+  };
+}
+
 export async function storyProgressPayload(db: D1Database, userId: string, track: string) {
   const facts = await factsFor(db, userId, track);
   const cleared = new Set<number>();
@@ -161,6 +191,7 @@ export async function storyProgressPayload(db: D1Database, userId: string, track
   const trackRow = await db.prepare('SELECT completed_at AS completedAt FROM story_tracks WHERE user_id = ? AND track_key = ?')
     .bind(userId, track).first<{ completedAt: number | null }>();
   const finds = await findsFor(db, userId, track);
+  const anyTrack = await anyTrackSummaryFor(db, userId);
   return {
     track,
     stops: STORY_STOPS.map((s) => {
@@ -183,6 +214,9 @@ export async function storyProgressPayload(db: D1Database, userId: string, track
     completionMark: trackRow?.completedAt != null
       ? (track === STORY_SOLO_TRACK ? 'story-solo-complete' : 'story-pair-complete')
       : null,
+    /** the union across all the caller's tracks (Phase 4, §3.9) — the
+     *  profile's story badges read it; per-track surfaces ignore it */
+    anyTrack,
   };
 }
 
@@ -274,10 +308,16 @@ function randomStoryCode(): string {
  * the pair's two stored copies can never diverge and both players are
  * credited identically, exactly once each.
  */
+/** The finale outcomes a pair-track King witness can carry (Phase 4,
+ *  spec §6.2; migration 0029). Solo posts never carry one. */
+export type StoryFinaleOutcome = 'double' | 'clear' | 'lost' | 'declined';
+
 async function recordStoryResult(
   db: D1Database, userId: string, track: string, stop: StoryStop,
   won: boolean, gameId: string, rawFacts: unknown, now: number,
+  opts?: { finaleOutcome?: StoryFinaleOutcome | null },
 ): Promise<{ status: number; body: Record<string, unknown> }> {
+  const finaleOutcome = opts?.finaleOutcome ?? null;
   // Idempotency: one finished game = one recorded result, ever.
   const prior = await db.prepare('SELECT stop_id AS stopId, won, first_clear AS firstClear, xp, coins FROM story_claims WHERE user_id = ? AND game_id = ?')
     .bind(userId, gameId).first<{ stopId: string; won: number; firstClear: number; xp: number; coins: number }>();
@@ -286,7 +326,7 @@ async function recordStoryResult(
     // The game this session was about already finished — no call-backs owed.
     try { await closeStorySession(db, userId, track, now); } catch { /* sessions never break results */ }
     const progress = await storyProgressPayload(db, userId, track);
-    return { status: 200, body: { ok: true, replayed: true, stopId: stop.id, won: !!prior.won, firstClear: !!prior.firstClear, rewards: { xp: prior.xp, coins: prior.coins }, doubleOutcome: null, doublePending: progress.stops.find((s) => s.stopId === stop.id)?.doublePending ?? false, ...progress } };
+    return { status: 200, body: { ok: true, replayed: true, stopId: stop.id, won: !!prior.won, firstClear: !!prior.firstClear, rewards: { xp: prior.xp, coins: prior.coins }, doubleOutcome: null, finale: null, doublePending: progress.stops.find((s) => s.stopId === stop.id)?.doublePending ?? false, ...progress } };
   }
 
   const facts = await factsFor(db, userId, track);
@@ -317,9 +357,40 @@ async function recordStoryResult(
   // A King clear post is honored ONLY while the mark stands server-side —
   // there is no client path around the second win.
   const inDouble = stop.doubleOrNothing === true && before.clears === 0;
+  // THE FINALE (Phase 4, pair tracks only): while a pair's double mark
+  // stands, the mark is settled ONLY by a finale witness — a plain
+  // partnership leg-2 post no longer resolves it (fail closed), and a
+  // finale outcome is honored only while the mark stands server-side.
+  // Solo never reaches either guard (its posts carry no finale outcome
+  // and the solo track is excluded), so the solo machine below is
+  // byte-identical to the shipped one.
+  if (track !== STORY_SOLO_TRACK && stop.doubleOrNothing === true) {
+    if (finaleOutcome && !before.doublePending) {
+      return { status: 409, body: { error: 'No double is standing for that finale.' } };
+    }
+    if (!finaleOutcome && before.doublePending) {
+      return { status: 409, body: { error: 'That double is settled at the King’s finale.' } };
+    }
+  }
   let doubleOutcome: 'started' | 'cleared' | 'lost' | null = null;
   if (inDouble) {
-    if (won && !before.doublePending) {
+    if (finaleOutcome === 'double') {
+      // A human won the cutthroat outright: the double pays EACH member
+      // at the clear rate — even if the other human finished last.
+      doubleOutcome = 'cleared';
+      firstClear = true;
+      rewards = storyClearReward(stop);
+    } else if (finaleOutcome === 'clear' || finaleOutcome === 'declined') {
+      // The King/Ringer took the cutthroat with a human 2nd — or the pair
+      // banked leg 1 without playing it: the normal King clear posts.
+      doubleOutcome = 'cleared';
+      firstClear = true;
+      rewards = storyReward(stop.n, true);
+    } else if (finaleOutcome === 'lost') {
+      // Both humans 3rd/4th (or a finale concede): the clear is lost
+      // entirely; the witness's won=false already set the consolation.
+      doubleOutcome = 'lost';
+    } else if (won && !before.doublePending) {
       doubleOutcome = 'started';
       firstClear = false;
       rewards = { xp: 0, coins: 0 };
@@ -334,11 +405,14 @@ async function recordStoryResult(
   // A leg-1 win is a win the player earned and a clear they have NOT:
   // the claims row records won=1 with first_clear=0 and zero rewards.
   const countsAsClear = won && doubleOutcome !== 'started';
+  // A decline plays no game: the banked clear posts WITHOUT counting a
+  // further attempt (leg 1's attempt already stands — spec §6.2).
+  const countAttempt = finaleOutcome !== 'declined';
 
   await db.prepare(`INSERT INTO story_progress (user_id, track_key, stop_id, attempts, clears, first_cleared_at, last_played_at)
-    VALUES (?, ?, ?, 1, ?, ?, ?)
+    VALUES (?, ?, ?, ${countAttempt ? 1 : 0}, ?, ?, ?)
     ON CONFLICT (user_id, track_key, stop_id) DO UPDATE SET
-      attempts = story_progress.attempts + 1,
+      attempts = story_progress.attempts + ${countAttempt ? 1 : 0},
       clears = story_progress.clears + excluded.clears,
       first_cleared_at = COALESCE(story_progress.first_cleared_at, excluded.first_cleared_at),
       last_played_at = excluded.last_played_at`)
@@ -388,7 +462,10 @@ async function recordStoryResult(
         let featFacts: StoryGameFacts | null = gameFacts;
         if (doubleOutcome === 'cleared') {
           const leg = legFactsOf(before.doubleLegFacts);
-          featFacts = leg ? mergeLegFacts(leg, gameFacts) : null;
+          // A decline banks leg 1 itself: the feat judges the banked leg
+          // facts alone (the witness's facts ARE leg 1's in the same-room
+          // case — merging would double-count the run).
+          featFacts = finaleOutcome === 'declined' ? leg : (leg ? mergeLegFacts(leg, gameFacts) : null);
         }
         if (featFacts && storyFeatMet(stop.id, featFacts, won)) {
           if (await recordFind(db, userId, track, 'feat', secret.unlockable.itemId, now)) {
@@ -398,9 +475,12 @@ async function recordStoryResult(
         }
       }
       if (secret?.egg.trigger.type === 'matchEvent' && doubleOutcome !== 'started') {
+        // Match-event eggs judge the deciding game — for a decline, the
+        // banked leg (its facts are the run's deciding facts).
+        const eggFacts = finaleOutcome === 'declined' ? legFactsOf(before.doubleLegFacts) : gameFacts;
         const events: StoryMatchEvent[] = ['deeNilMade', 'setOnFirstHand', 'ourNilMade', 'oppSetTwice'];
         for (const ev of events) {
-          if (storyEggEventMet(stop.id, ev, gameFacts) && await recordFind(db, userId, track, 'egg', secret.egg.id, now)) {
+          if (eggFacts && storyEggEventMet(stop.id, ev, eggFacts) && await recordFind(db, userId, track, 'egg', secret.egg.id, now)) {
             newFinds.push({ kind: 'egg', id: secret.egg.id, name: secret.egg.name });
           }
         }
@@ -417,6 +497,8 @@ async function recordStoryResult(
     completed: completed || progress.completed,
     /** the King's double, when this post moved it: 'started' | 'cleared' | 'lost' (null elsewhere) */
     doubleOutcome,
+    /** the finale outcome this post resolved, on a pair track (Phase 4) — null elsewhere */
+    finale: finaleOutcome,
     doublePending: progress.stops.find((s) => s.stopId === stop.id)?.doublePending ?? false,
   } };
 }
@@ -584,9 +666,9 @@ export async function handleStoryHttp(req: Request, env: StoryEnv, url: URL, par
     // come FROM the witness row, never from the request body.
     const pair = storyPairUids(track);
     if (!pair || !pair.includes(me.id)) return json({ error: 'That run belongs to another pair.' }, 403);
-    const witness = await db.prepare(`SELECT track_key AS trackKey, stop_id AS stopId, uid_a AS uidA, uid_b AS uidB, won, facts_json AS factsJson
+    const witness = await db.prepare(`SELECT track_key AS trackKey, stop_id AS stopId, uid_a AS uidA, uid_b AS uidB, won, facts_json AS factsJson, finale_outcome AS finaleOutcome
       FROM story_room_results WHERE game_id = ?`).bind(gameId)
-      .first<{ trackKey: string; stopId: string; uidA: string; uidB: string; won: number; factsJson: string | null }>();
+      .first<{ trackKey: string; stopId: string; uidA: string; uidB: string; won: number; factsJson: string | null; finaleOutcome: string | null }>();
     const named = witness ? [witness.uidA, witness.uidB] : [];
     if (!witness || witness.trackKey !== track || witness.stopId !== stop.id
       || !pair.every((u) => named.includes(u)) || !named.includes(me.id)) {
@@ -594,13 +676,21 @@ export async function handleStoryHttp(req: Request, env: StoryEnv, url: URL, par
     }
     let witnessedFacts: unknown = null;
     if (witness.factsJson) { try { witnessedFacts = JSON.parse(witness.factsJson); } catch { witnessedFacts = null; } }
-    const out = await recordStoryResult(db, me.id, track, stop, !!witness.won, gameId, witnessedFacts, now);
+    // The finale outcome rides the witness row too (migration 0029) —
+    // validated here, mapped onto the double machine in recordStoryResult.
+    const finaleOutcome = witness.finaleOutcome === 'double' || witness.finaleOutcome === 'clear'
+      || witness.finaleOutcome === 'lost' || witness.finaleOutcome === 'declined'
+      ? witness.finaleOutcome : null;
+    // A finale outcome is authoritative for the win bit too ('lost' is
+    // the only losing one) — the two can never disagree in crediting.
+    const witnessedWon = finaleOutcome ? finaleOutcome !== 'lost' : !!witness.won;
+    const out = await recordStoryResult(db, me.id, track, stop, witnessedWon, gameId, witnessedFacts, now, { finaleOutcome });
     if (out.status !== 200) return json(out.body, out.status);
     // Equal credit: the partner's copy receives the identical mutation in
     // this same request (§3.6). Their outcome is their own claim row — a
     // later post of theirs returns it as a replay, never a second credit.
     const other = pair.find((u) => u !== me.id)!;
-    await recordStoryResult(db, other, track, stop, !!witness.won, gameId, witnessedFacts, now).catch(() => null);
+    await recordStoryResult(db, other, track, stop, witnessedWon, gameId, witnessedFacts, now, { finaleOutcome }).catch(() => null);
     return json(out.body, out.status);
   }
 

@@ -454,9 +454,9 @@ export class TableDO extends DurableObject<Env> {
         const db = this.env.DB;
         const [a, b] = [r.uidA, r.uidB].sort();
         this.ctx.waitUntil(db.prepare(`INSERT OR IGNORE INTO story_room_results
-          (game_id, room_code, track_key, stop_id, uid_a, uid_b, won, facts_json, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-          .bind(r.gameId, r.code, r.track, r.stopId, a, b, r.won ? 1 : 0, JSON.stringify(r.facts), Date.now())
+          (game_id, room_code, track_key, stop_id, uid_a, uid_b, won, facts_json, finale_outcome, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+          .bind(r.gameId, r.code, r.track, r.stopId, a, b, r.won ? 1 : 0, JSON.stringify(r.facts), r.finale?.outcome ?? null, Date.now())
           .run().then(() => undefined).catch((e) => console.error('storyResult', e)));
       },
     }, data.tournament?.fast && this.env.TEST_HOOKS === '1' ? FAST_TIMING : undefined);

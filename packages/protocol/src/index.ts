@@ -179,6 +179,11 @@ export type ClientMsg =
    *  `stopId` (host, lobby phase; either player, outro phase) asks to run a different stop next —
    *  outro: the host's choice wins when both name one. */
   | { t: 'storyReady'; stopId?: string }
+  /** Story co-op finale (Phase 4, spec §6): this pair member's standing choice at the
+   *  King's proposal — take the cutthroat, or bank leg 1 as a normal clear. Each
+   *  member's choice is visible to both and can be changed; the room acts only when
+   *  BOTH members agree. Disagreement parks the proposal with nothing lost. */
+  | { t: 'storyFinale'; choice: 'cutthroat' | 'bank' }
   /** Release 10, host: table options (any phase). private = hidden from Open tables (invite / code only);
    *  replaceBots = spectators may take a bot's seat mid-game (default on, except rated tables where the default is off;
    *  seats a player vacated are always open, and a rated game still requires an account to take one) */
@@ -272,9 +277,20 @@ export interface RoomInfo {
    *  `ready` = pair uids armed for the current story phase. */
   story?: {
     track: string | null; stopId: string;
-    phase: 'lobby' | 'tape' | 'scene' | 'game' | 'finale' | 'outro';
+    phase: 'lobby' | 'tape' | 'scene' | 'game' | 'finale' | 'finale-game' | 'outro';
     gameId: string; hostUid: string; partnerUid: string | null;
     ready: string[]; concededBy?: string;
+    /** The King's finale (Phase 4): present while a pair holds the double mark in
+     *  this room — `short` = the proposal scene's short form (a later sit-down;
+     *  false when leg 1 was just won in this room). `choices` are the members'
+     *  standing picks, visible to both. `outcome`/`gameId` land when the finale
+     *  resolves (the cutthroat's result, or the decline's banked clear). */
+    finale?: {
+      short: boolean;
+      choices: { uid: string; choice: 'cutthroat' | 'bank' }[];
+      outcome?: 'double' | 'clear' | 'lost' | 'declined';
+      gameId?: string;
+    };
   };
   /** Release 10: hidden from the Open tables list (default public) */
   private?: boolean;
@@ -391,6 +407,8 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return { t: m.t };
     case 'storyReady':
       return { t: 'storyReady', ...(isStr(m.stopId, 40) ? { stopId: m.stopId } : {}) };
+    case 'storyFinale':
+      return m.choice === 'cutthroat' || m.choice === 'bank' ? { t: 'storyFinale', choice: m.choice } : null;
     case 'venue':
       return isVenueChoice(m.venue) ? { t: 'venue', venue: m.venue } : null;
     case 'teamName': {

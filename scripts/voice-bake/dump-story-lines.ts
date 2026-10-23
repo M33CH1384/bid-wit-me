@@ -25,6 +25,7 @@ import {
   RAIL_NEEDLE_REPLY, STORY_VOICE_CAST, kingDoubleBeats, railLineFor, spokenTake, storyVoiceKey, type StoryBeat,
   AWARENESS_NEVER_RECORD, SEATED_AWARENESS_LINES, allGuideLines, allSoloRundowns,
   PAIR_AWARENESS_RUNDOWNS, PAIR_FIRST_RUNDOWNS, PAIR_RETURN_CLEAR_RUNDOWNS, PAIR_RETURN_LOSS_RUNDOWNS,
+  KING_PROPOSAL_LINES,
 } from '@spades/bots';
 
 const ROOT = join(import.meta.dirname, '../..');
@@ -104,6 +105,10 @@ export function storyCorpus(): { speaker: string; line: string; source: string }
   for (const [stop, text] of Object.entries(PAIR_RETURN_LOSS_RUNDOWNS)) out.push({ speaker: 'dee', line: text, source: `coop:rundown:pairReturnLoss:${stop}` });
   for (const [stop, text] of Object.entries(PAIR_RETURN_CLEAR_RUNDOWNS)) out.push({ speaker: 'dee', line: text, source: `coop:rundown:pairReturnClear:${stop}` });
   for (const { pool, line } of allGuideLines()) out.push({ speaker: 'dee', line, source: `coop:${pool}` });
+  // The King's co-op proposal (COOP_SPEC §6.3/§8.10): King ×5 + the
+  // Ringer ×1, authored in storyKingDouble.ts (KING_PROPOSAL_LINES) —
+  // the last family of the 158-clip co-op mini-bake tally.
+  for (const b of KING_PROPOSAL_LINES) out.push({ speaker: b.speaker, line: b.line, source: 'coop:proposal' });
   // Dee's SOLO rundowns (34 — the rundown spec's §5 set): the meet-them
   // briefing on the solo route's tape, keyed by the player's own facts.
   // Recorded in the 2026-10-22 batch; the worklist shows them 'have'.

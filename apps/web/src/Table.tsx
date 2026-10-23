@@ -174,6 +174,11 @@ export interface OnlineBinding {
   venue?: VenueId;
   /** uid of the human holding a local seat (Demetrius 2026-10-19: profile pics on name plates) */
   seatUid?: (local: number) => string | undefined;
+  /** Story co-op finale (Phase 4): the LOCAL seat the King's revolver lies
+   *  beside during the cutthroat — the same felt prop as the solo decider,
+   *  keyed to the room's finale-game phase instead of the solo story prop.
+   *  Null/absent = no gun. */
+  kingGunSeat?: number | null;
   /** Release 10: watching, not playing. Seat 0 is a real player (names[0] is their name): no hand, no controls. */
   spectator?: boolean;
   /**
@@ -2248,7 +2253,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           gatherHands={redeal?.phase === 'gather' && !fx.osReducedMotion}
           dealEpoch={dealEpoch}
           dealFlight={redeal?.phase === 'deal'}
-          kingGunSeat={kingGunSeatFor(story)}
+          kingGunSeat={kingGunSeatFor(story) ?? online?.kingGunSeat ?? null}
           landCue={landCue}
           short={vp.short}
           safe={vp.safe}

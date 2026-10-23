@@ -60,6 +60,15 @@ export interface StoryProgress {
   completionMark: string | null;
   /** found Easter egg ids + earned feat itemIds on this track */
   finds: { eggs: string[]; feats: string[] };
+  /** the union across ALL the player's tracks (Phase 4, spec §3.9):
+   *  per-stop attempts/clears summed, finds unioned, completed if any
+   *  track completed. The profile's story badges read it ('cleared
+   *  anywhere' earns); per-track surfaces ignore it. */
+  anyTrack?: {
+    stops: { stopId: string; attempts: number; clears: number }[];
+    finds: { eggs: string[]; feats: string[] };
+    completed: boolean;
+  };
 }
 
 export interface StoryNewFind { kind: 'egg' | 'feat'; id: string; name: string }
@@ -78,6 +87,10 @@ export interface StoryResult extends StoryProgress {
   doubleOutcome?: 'started' | 'cleared' | 'lost' | null;
   /** the King's double is live after this post (leg 1 banked, leg 2 owed) */
   doublePending?: boolean;
+  /** the finale outcome this post resolved, on a pair track (Phase 4):
+   *  'double' the cutthroat paid double · 'clear' a human stood 2nd ·
+   *  'lost' the gamble lost the clear · 'declined' leg 1 was banked */
+  finale?: 'double' | 'clear' | 'lost' | 'declined' | null;
 }
 
 export type ProgressFetch =

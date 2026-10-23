@@ -56,7 +56,7 @@ export const STORY_BADGE_DEFS: BadgeDef[] = [
     id: 'king-of-the-block', name: 'King of the Block', icon: '👑',
     about: 'Beat the King and finished the whole route, porch to crown.',
     hint: 'Clear every stop and beat the King of the Block (Stop 11).',
-    test: (f) => (f.completed ? 'Earned: the route is complete — the solo mark is yours.' : null),
+    test: (f) => (f.completed ? 'Earned: the route is complete — the crown is yours.' : null),
   },
   {
     id: 'egg-hunter', name: 'Egg Hunter', icon: '🥚',

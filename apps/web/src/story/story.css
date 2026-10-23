@@ -914,6 +914,12 @@ html[data-theme="neon"] .story-you-face {
 .story-room-stops { margin: 0 0 14px; }
 .story-room-stoprow { display: flex; flex-wrap: wrap; gap: 8px; }
 .story-room-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+
+/* The King's proposal choice (Phase 4): the terms stated plainly, the
+   pair's standing answers under them. Warm story register, like the
+   rest of the room — no broadcast chrome. */
+.story-finale-choice { max-width: 560px; margin: 18px auto 0; text-align: left; }
+.story-finale-terms { margin: 12px 0 4px; padding-left: 20px; display: grid; gap: 7px; font-size: 14px; line-height: 1.5; opacity: 0.92; }
 .story-room-game { position: relative; }
 .story-room-concede {
   position: absolute; top: 8px; right: 8px; z-index: 5;

@@ -35,6 +35,8 @@
 import type { StoryStop } from './story';
 import { RAIL_INTRO_SUBJECTS, STORY_KING_RAIL_OUTRO, STORY_RAIL_INTRO } from './storyRail';
 import { awarenessMeetBeats, awarenessOpenerLength, type AwarenessFacts } from './storyAwareness';
+import { KING_PROPOSAL_LINES } from './storyKingDouble';
+import { GUIDE_FINALE } from './storyGuide';
 
 export interface StoryBeat {
   /** a STORY_CHARACTERS id, or 'you' (the player) */
@@ -698,6 +700,34 @@ export function beatsFor(stop: StoryStop, kind: StoryBeatKind, facts: StoryBeatF
   if (!facts.cleared && facts.attempts >= 2 && variants?.grind) return withRail(variants.grind);
   if (!facts.cleared && facts.attempts > 0) return withRail(script.introReturn);
   return withRail(mergeGated(script.intro, script.introGated, facts));
+}
+
+/**
+ * The King's co-op proposal scene (Phase 4, spec §6.3) — played when a
+ * pair holding the double mark sits down to settle it. FULL form (the
+ * room just won leg 1, the moment is fresh): the gun beat (canon: the
+ * revolver is already on the felt before he speaks — placed, never
+ * pointed, never touched, never fired), the King's five lines and the
+ * Ringer's one (KING_PROPOSAL_LINES, verbatim — the bake's manifest
+ * keys were computed from those texts), then Dee's two answers from
+ * GUIDE_FINALE ([1] the price, [2] the ante). SHORT form (a later
+ * sit-down — the pair already heard the terms): the gun beat carrying
+ * the price line, and Dee's reminder. The choice UI follows the scene;
+ * the beats themselves never branch on the answer.
+ */
+export function kingProposalBeats(short: boolean): StoryBeat[] {
+  if (short) {
+    return [
+      { speaker: 'king', prop: 'kingGun', line: KING_PROPOSAL_LINES[4]!.line },
+      { speaker: 'dee', line: GUIDE_FINALE[1]! },
+    ];
+  }
+  const beats: StoryBeat[] = KING_PROPOSAL_LINES.map((b, i) => (i === 0 ? { ...b, prop: 'kingGun' as const } : { ...b }));
+  beats.push(
+    { speaker: 'dee', line: GUIDE_FINALE[1]! },
+    { speaker: 'dee', line: GUIDE_FINALE[2]! },
+  );
+  return beats;
 }
 
 /** Mid-scene beats for a milestone. `ahead` matters only for pullAway.

@@ -61,11 +61,11 @@ const post = (uid: string, path: string, body: unknown, tables?: unknown) =>
 const pairResult = (uid: string, track: string, stopId: string, won: boolean, gameId: string) =>
   post(uid, '/api/story/result', { track, stopId, won, gameId });
 
-async function witness(gameId: string, track: string, stopId: string, uidA: string, uidB: string, won: boolean, facts: unknown = null) {
+async function witness(gameId: string, track: string, stopId: string, uidA: string, uidB: string, won: boolean, facts: unknown = null, finaleOutcome: string | null = null) {
   const [a, b] = [uidA, uidB].sort();
-  await db.prepare(`INSERT INTO story_room_results (game_id, room_code, track_key, stop_id, uid_a, uid_b, won, facts_json, created_at)
-    VALUES (?, 'ROOM1', ?, ?, ?, ?, ?, ?, ?)`)
-    .bind(gameId, track, stopId, a, b, won ? 1 : 0, facts ? JSON.stringify(facts) : null, NOW).run();
+  await db.prepare(`INSERT INTO story_room_results (game_id, room_code, track_key, stop_id, uid_a, uid_b, won, facts_json, finale_outcome, created_at)
+    VALUES (?, 'ROOM1', ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(gameId, track, stopId, a, b, won ? 1 : 0, facts ? JSON.stringify(facts) : null, finaleOutcome, NOW).run();
 }
 
 const progress = async (uid: string, track: string) =>
@@ -73,6 +73,11 @@ const progress = async (uid: string, track: string) =>
     stops: { stopId: string; state: string; attempts: number; clears: number; doublePending?: boolean }[];
     currentStop: number | null; completed: boolean; completionMark: string | null;
     finds: { eggs: string[]; feats: string[] };
+    anyTrack: {
+      stops: { stopId: string; attempts: number; clears: number }[];
+      finds: { eggs: string[]; feats: string[] };
+      completed: boolean;
+    };
   };
 const xpOf = async (uid: string) => (await db.prepare('SELECT xp FROM xp_state WHERE user_id = ?').bind(uid).first<{ xp: number }>())?.xp ?? 0;
 const coinsOf = async (uid: string) => (await db.prepare('SELECT balance FROM coin_balances WHERE user_id = ?').bind(uid).first<{ balance: number }>())?.balance ?? 0;
@@ -174,44 +179,152 @@ describe('pair result crediting (witnessed, equal, idempotent)', () => {
   });
 });
 
-describe('the King double on a pair track (partnership legs, as solo)', () => {
-  it('started → cleared pays the double to both and completes the pair track', async () => {
-    await seedPairToKing(TRACK_AC, 'a', 'c');
-    await witness('k1', TRACK_AC, 'king', 'a', 'c', true);
-    const leg1 = await (await pairResult('a', TRACK_AC, 'king', true, 'k1')).json() as { doubleOutcome: string | null; rewards: { xp: number; coins: number } };
+describe('the King finale on a pair track (Phase 4: the cutthroat settles the double)', () => {
+  /** Play leg 1 to the standing mark; returns nothing (asserts inline). */
+  async function toTheMark(track: string, a: string, b: string) {
+    await seedPairToKing(track, a, b);
+    await witness('k1', track, 'king', a, b, true);
+    const leg1 = await (await pairResult(a, track, 'king', true, 'k1')).json() as { doubleOutcome: string | null; finale: string | null; rewards: { xp: number; coins: number } };
     expect(leg1.doubleOutcome).toBe('started');
+    expect(leg1.finale).toBeNull();
     expect(leg1.rewards).toEqual({ xp: 0, coins: 0 });
-    const mid = await progress('c', TRACK_AC);
+    const mid = await progress(b, track);
     expect(mid.stops.find((s) => s.stopId === 'king')!.doublePending).toBe(true);
     expect(mid.completed).toBe(false);
-    await witness('k2', TRACK_AC, 'king', 'a', 'c', true);
-    const leg2 = await (await pairResult('c', TRACK_AC, 'king', true, 'k2')).json() as { doubleOutcome: string | null; firstClear: boolean; rewards: { xp: number; coins: number } };
-    expect(leg2.doubleOutcome).toBe('cleared');
-    expect(leg2.firstClear).toBe(true);
-    expect(leg2.rewards).toEqual({ xp: 550, coins: 440 }); // storyClearReward: double the King first clear
+  }
+
+  it('a plain partnership leg-2 post while the mark stands is refused — the finale settles it', async () => {
+    await toTheMark(TRACK_AC, 'a', 'c');
+    await witness('k2', TRACK_AC, 'king', 'a', 'c', true); // a partnership-shaped witness, no finale outcome
+    const refused = await pairResult('a', TRACK_AC, 'king', true, 'k2');
+    expect(refused.status).toBe(409);
+    expect(await xpOf('a')).toBe(0);
+    expect(await xpOf('c')).toBe(0);
+    const p = await progress('a', TRACK_AC);
+    expect(p.stops.find((s) => s.stopId === 'king')!.doublePending).toBe(true); // the mark still stands
+    expect(p.completed).toBe(false);
+  });
+
+  it("finale 'double' pays the double to BOTH and completes the pair track", async () => {
+    await toTheMark(TRACK_AC, 'a', 'c');
+    await witness('k2', TRACK_AC, 'king', 'a', 'c', true, null, 'double');
+    const fin = await (await pairResult('c', TRACK_AC, 'king', true, 'k2')).json() as { doubleOutcome: string | null; finale: string | null; firstClear: boolean; replayed: boolean; rewards: { xp: number; coins: number } };
+    expect(fin.doubleOutcome).toBe('cleared');
+    expect(fin.finale).toBe('double');
+    expect(fin.firstClear).toBe(true);
+    expect(fin.rewards).toEqual({ xp: 550, coins: 440 }); // storyClearReward, EACH (the partner-last case pays the same — placements live in the room)
     expect(await xpOf('a')).toBe(550);
     expect(await xpOf('c')).toBe(550);
     expect(await coinsOf('a')).toBe(440);
+    expect(await coinsOf('c')).toBe(440);
     const done = await progress('a', TRACK_AC);
     expect(done.completed).toBe(true);
     expect(done.completionMark).toBe('story-pair-complete');
+    expect(done.stops.find((s) => s.stopId === 'king')!.doublePending).toBe(false);
     expect((await progress('c', TRACK_AC)).stops).toEqual(done.stops);
+    // idempotent per user: the other member's own post replays, never re-credits
+    const replay = await (await pairResult('a', TRACK_AC, 'king', true, 'k2')).json() as { replayed: boolean; rewards: { xp: number; coins: number } };
+    expect(replay.replayed).toBe(true);
+    expect(replay.rewards).toEqual({ xp: 550, coins: 440 });
+    expect(await xpOf('a')).toBe(550);
   });
 
-  it('a leg-2 loss voids both legs and pays only the consolation', async () => {
-    await seedPairToKing(TRACK_AD, 'a', 'd');
-    await witness('k1', TRACK_AD, 'king', 'a', 'd', true);
-    await pairResult('a', TRACK_AD, 'king', true, 'k1');
-    await witness('k2', TRACK_AD, 'king', 'a', 'd', false);
-    const lost = await (await pairResult('d', TRACK_AD, 'king', false, 'k2')).json() as { doubleOutcome: string | null; rewards: { xp: number; coins: number } };
+  it("finale 'clear' (King first, a human 2nd) banks the normal clear for both", async () => {
+    await toTheMark(TRACK_AC, 'a', 'c');
+    await witness('k2', TRACK_AC, 'king', 'a', 'c', true, null, 'clear');
+    const fin = await (await pairResult('a', TRACK_AC, 'king', true, 'k2')).json() as { doubleOutcome: string | null; finale: string | null; firstClear: boolean; rewards: { xp: number; coins: number } };
+    expect(fin.doubleOutcome).toBe('cleared');
+    expect(fin.finale).toBe('clear');
+    expect(fin.firstClear).toBe(true);
+    expect(fin.rewards).toEqual({ xp: 275, coins: 220 }); // the normal King first clear, each
+    expect(await xpOf('a')).toBe(275);
+    expect(await xpOf('c')).toBe(275);
+    expect(await coinsOf('c')).toBe(220);
+    const done = await progress('c', TRACK_AC);
+    expect(done.completed).toBe(true);
+    expect(done.stops.find((s) => s.stopId === 'king')!.doublePending).toBe(false);
+  });
+
+  it("finale 'lost' voids the clear entirely: consolation only, mark consumed", async () => {
+    await toTheMark(TRACK_AD, 'a', 'd');
+    await witness('k2', TRACK_AD, 'king', 'a', 'd', false, null, 'lost');
+    const lost = await (await pairResult('d', TRACK_AD, 'king', false, 'k2')).json() as { doubleOutcome: string | null; finale: string | null; rewards: { xp: number; coins: number } };
     expect(lost.doubleOutcome).toBe('lost');
+    expect(lost.finale).toBe('lost');
     expect(lost.rewards).toEqual({ xp: 5, coins: 0 });
+    expect(await xpOf('a')).toBe(5);
+    expect(await xpOf('d')).toBe(5);
     const p = await progress('a', TRACK_AD);
     const king = p.stops.find((s) => s.stopId === 'king')!;
     expect(king.doublePending).toBe(false);
     expect(king.clears).toBe(0);
     expect(p.currentStop).toBe(11);
-    expect(await xpOf('d')).toBe(5);
+    expect(p.completed).toBe(false);
+  });
+
+  it("finale 'declined' banks leg 1 as a normal clear and counts NO further attempt", async () => {
+    await toTheMark(TRACK_AD, 'a', 'd');
+    const beforeDecline = await progress('a', TRACK_AD);
+    expect(beforeDecline.stops.find((s) => s.stopId === 'king')!.attempts).toBe(1); // leg 1's attempt
+    await witness('k1-decline', TRACK_AD, 'king', 'a', 'd', true, null, 'declined');
+    const fin = await (await pairResult('a', TRACK_AD, 'king', true, 'k1-decline')).json() as { doubleOutcome: string | null; finale: string | null; firstClear: boolean; rewards: { xp: number; coins: number } };
+    expect(fin.doubleOutcome).toBe('cleared');
+    expect(fin.finale).toBe('declined');
+    expect(fin.firstClear).toBe(true);
+    expect(fin.rewards).toEqual({ xp: 275, coins: 220 });
+    expect(await xpOf('a')).toBe(275);
+    expect(await xpOf('d')).toBe(275);
+    const p = await progress('d', TRACK_AD);
+    const king = p.stops.find((s) => s.stopId === 'king')!;
+    expect(king.clears).toBe(1);
+    expect(king.attempts).toBe(1); // the decline added none
+    expect(king.doublePending).toBe(false);
+    expect(p.completed).toBe(true);
+  });
+
+  it('a finale outcome with no mark standing is refused (409) and credits nothing', async () => {
+    await seedPairToKing(TRACK_AC, 'a', 'c');
+    await witness('k9', TRACK_AC, 'king', 'a', 'c', true, null, 'double'); // no leg 1 was ever posted
+    const r = await pairResult('a', TRACK_AC, 'king', true, 'k9');
+    expect(r.status).toBe(409);
+    expect(await xpOf('a')).toBe(0);
+    expect(await xpOf('c')).toBe(0);
+    expect((await progress('a', TRACK_AC)).completed).toBe(false);
+  });
+});
+
+describe('anyTrack union (Phase 4, §3.9: profile badges read the person, not one run)', () => {
+  it('sums attempts/clears across tracks, unions finds, completes if any track completed', async () => {
+    // a's solo run: the Porch cleared, one egg found there
+    await db.prepare('INSERT INTO story_progress (user_id, track_key, stop_id, attempts, clears, first_cleared_at, last_played_at) VALUES (?, ?, ?, 2, 1, ?, ?)')
+      .bind('a', 'solo', 'porch', NOW, NOW).run();
+    await db.prepare('INSERT INTO story_finds (user_id, track_key, kind, find_id, created_at) VALUES (?, ?, ?, ?, ?)').bind('a', 'solo', 'egg', 'porch-radio', NOW).run();
+    // the pair run: the Porch cleared together too, a feat earned there
+    await witness('g1', TRACK_AC, 'porch', 'a', 'c', true);
+    await pairResult('a', TRACK_AC, 'porch', true, 'g1');
+    await db.prepare('INSERT INTO story_finds (user_id, track_key, kind, find_id, created_at) VALUES (?, ?, ?, ?, ?)').bind('a', TRACK_AC, 'feat', 'porch-keepsake', NOW).run();
+    const solo = await progress('a', 'solo');
+    const porch = solo.anyTrack.stops.find((s) => s.stopId === 'porch')!;
+    expect(porch.attempts).toBe(3); // 2 solo + 1 pair
+    expect(porch.clears).toBe(2); // cleared on both tracks
+    expect(solo.anyTrack.finds.eggs).toEqual(['porch-radio']);
+    expect(solo.anyTrack.finds.feats).toEqual(['porch-keepsake']);
+    expect(solo.anyTrack.completed).toBe(false);
+    expect(solo.completed).toBe(false); // the solo track itself is untouched by the union
+    // complete A pair track (finale double, with d) — the union completes; solo does not
+    await seedPairToKing(TRACK_AD, 'a', 'd');
+    await witness('k1', TRACK_AD, 'king', 'a', 'd', true);
+    await pairResult('a', TRACK_AD, 'king', true, 'k1');
+    await witness('k2', TRACK_AD, 'king', 'a', 'd', true, null, 'double');
+    await pairResult('a', TRACK_AD, 'king', true, 'k2');
+    const after = await progress('a', 'solo');
+    expect(after.anyTrack.completed).toBe(true);
+    expect(after.completed).toBe(false);
+    expect(after.anyTrack.stops.find((s) => s.stopId === 'king')!.clears).toBe(1);
+    // a solo-only player's union is exactly their solo facts (c has no pair rows of their own here)
+    const cSolo = await progress('c', 'solo');
+    expect(cSolo.anyTrack.stops.find((s) => s.stopId === 'porch')!.clears).toBe(1); // from c's pair copy — their own rows
+    expect(cSolo.stops.find((s) => s.stopId === 'porch')!.clears).toBe(0); // solo track itself: never played
   });
 });
 

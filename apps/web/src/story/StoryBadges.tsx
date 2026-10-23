@@ -9,11 +9,27 @@
 import { useState, type CSSProperties } from 'react';
 import { storyBadgesFor, type StoryBadgeFacts } from '@spades/bots';
 
-export function badgeFactsOf(p: { stops: { stopId: string; attempts: number; clears: number }[]; finds?: { eggs: string[]; feats: string[] }; completed: boolean } | null): StoryBadgeFacts {
+export function badgeFactsOf(p: { stops: { stopId: string; attempts: number; clears: number }[]; finds?: { eggs: string[]; feats: string[] }; completed: boolean; anyTrack?: { stops: { stopId: string; attempts: number; clears: number }[]; finds: { eggs: string[]; feats: string[] }; completed: boolean } } | null): StoryBadgeFacts {
+  if (!p) return { stops: [], finds: { eggs: [], feats: [] }, completed: false };
+  // Union with the all-tracks summary (Phase 4, spec §3.9): the badge
+  // collection is the PERSON's — a clear on any track (solo or any pair
+  // run) earns, finds union, completion on any track completes. The
+  // summary already includes this payload's own track, so per-stop the
+  // merge is a max; a solo-only player's union equals their solo facts
+  // exactly, and their badges render unchanged.
+  const any = p.anyTrack;
+  if (!any) return { stops: p.stops, finds: p.finds ?? { eggs: [], feats: [] }, completed: p.completed };
+  const anyByStop = new Map(any.stops.map((s) => [s.stopId, s]));
+  const stops = p.stops.map((s) => {
+    const a = anyByStop.get(s.stopId);
+    return a ? { stopId: s.stopId, attempts: Math.max(s.attempts, a.attempts), clears: Math.max(s.clears, a.clears) } : s;
+  });
+  for (const a of any.stops) if (!stops.some((s) => s.stopId === a.stopId)) stops.push(a);
+  const union = (own: string[] | undefined, extra: string[]) => [...new Set([...(own ?? []), ...extra])];
   return {
-    stops: p?.stops ?? [],
-    finds: p?.finds ?? { eggs: [], feats: [] },
-    completed: p?.completed ?? false,
+    stops,
+    finds: { eggs: union(p.finds?.eggs, any.finds.eggs), feats: union(p.finds?.feats, any.finds.feats) },
+    completed: p.completed || any.completed,
   };
 }
 

@@ -13,7 +13,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   STORY_CHARACTERS, STORY_SECRETS, STORY_STOPS, awarenessCaseFor, awarenessFactsFor, beatsFor,
-  coopRundownFor, guideOutroLine, railCastForAttempt, storyStopById,
+  coopRundownFor, guideOutroLine, kingProposalBeats, railCastForAttempt, storyStopById,
   type PairContextFacts, type StoryBeatFacts, type StoryStop,
 } from '@spades/bots';
 import type { ChatLine, ClientMsg, SeatInfo } from '@spades/protocol';
@@ -27,6 +27,7 @@ import { social } from '../social/store';
 import { sound } from '../audio';
 import StoryTape from './StoryTape';
 import StoryFace from './StoryFace';
+import { SceneAudio } from './SceneAudio';
 import ScriptPlayer, { type SceneEgg } from './ScriptPlayer';
 import { storyBackdropUrl } from './storyBackdrop';
 import {
@@ -141,6 +142,9 @@ export function StoryRoomInner({ conn, cs, code, track, myUid, onExit }: {
   const [result, setResult] = useState<StoryResult | null>(null);
   const [postState, setPostState] = useState<'idle' | 'posting' | 'posted' | 'failed'>('idle');
   const [armConcede, setArmConcede] = useState(false);
+  /** the King's proposal scene has played out on this client — the
+   *  choice card follows it (Phase 4) */
+  const [finaleSceneDone, setFinaleSceneDone] = useState(false);
   const postedForRef = useRef<string | null>(null);
   const retriedRef = useRef(false);
   const pingedRef = useRef<string | null>(null);
@@ -160,7 +164,7 @@ export function StoryRoomInner({ conn, cs, code, track, myUid, onExit }: {
   // The sit-down ping (call-backs), once per game: the server knows a story
   // match is open on the pair track.
   useEffect(() => {
-    if (story?.phase === 'game' && stop && effTrack && pingedRef.current !== story.gameId) {
+    if ((story?.phase === 'game' || story?.phase === 'finale-game') && stop && effTrack && pingedRef.current !== story.gameId) {
       pingedRef.current = story.gameId;
       reportStorySession('open', stop.id, effTrack);
     }
@@ -199,6 +203,11 @@ export function StoryRoomInner({ conn, cs, code, track, myUid, onExit }: {
       setPostState('idle');
       setResult(null);
     }
+  }, [story?.phase]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A fresh proposal replays its scene on this client.
+  useEffect(() => {
+    if (story && story.phase !== 'finale') setFinaleSceneDone(false);
   }, [story?.phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // A result that never landed (tab closed mid-outro, post failed while the
@@ -366,6 +375,11 @@ export function StoryRoomInner({ conn, cs, code, track, myUid, onExit }: {
     const rundown = coopRundownFor(stop.id, awarenessCaseFor(stop.id, ctx), ctx.pair);
     return (
       <div className="story-shell" data-testid="story-room-tape">
+        {/* SceneAudio is this surface's audio contract (enterTable is
+            the voice gate) — the rundown speaks only while it is mounted
+            (the solo meet-them silence, fixed in 77c6e432, was exactly
+            this mount missing). */}
+        <SceneAudio stop={stop} />
         <StoryTape stop={stop} facts={factsFor(stop)} cta={meReady ? 'Waiting for your partner…' : 'Ready — play the scene'} onDone={() => ready()} rundown={rundown} rundownTrack={effTrack ?? ''} />
         <div className="story-room-actions">
           <button type="button" className="btn ghost" data-testid="story-room-leave" onClick={onExit}>Leave</button>
@@ -377,6 +391,7 @@ export function StoryRoomInner({ conn, cs, code, track, myUid, onExit }: {
   if (story.phase === 'scene') {
     return (
       <div className="story-shell" data-testid="story-room-scene">
+        <SceneAudio stop={stop} />
         <ScriptPlayer
           beats={beatsFor(stop, 'intro', factsFor(stop))}
           cta={meReady ? 'Waiting for your partner…' : 'Ready — to the table'}
@@ -394,15 +409,72 @@ export function StoryRoomInner({ conn, cs, code, track, myUid, onExit }: {
     );
   }
 
-  if (story.phase === 'game') {
+  if (story.phase === 'finale') {
+    // The King's proposal (Phase 4, spec §6.3): the gun is already on the
+    // felt when he speaks (the scene's first beat stages it — placed,
+    // never pointed, never touched, never fired), the terms are stated
+    // with their price, and then BOTH partners answer. Each answer is
+    // visible to both and can be changed; the room acts only on
+    // agreement — disagreement parks the proposal with nothing lost.
+    const fin = story.finale;
+    const myChoice = fin?.choices.find((c) => c.uid === myUid)?.choice;
+    const partnerChoice = fin?.choices.find((c) => c.uid !== myUid)?.choice;
+    const choiceLabel = (c?: 'cutthroat' | 'bank') => (c === 'cutthroat' ? 'the cutthroat' : c === 'bank' ? 'banking the clear' : null);
     return (
-      <div className="story-room-game" data-testid="story-room-game">
+      <div className="story-shell" data-testid="story-room-finale">
+        <SceneAudio stop={stop} />
+        {!finaleSceneDone ? (
+          <ScriptPlayer
+            key={fin?.short ? 'finale-short' : 'finale-full'}
+            beats={kingProposalBeats(fin?.short ?? false)}
+            cta="Decide — together"
+            onDone={() => setFinaleSceneDone(true)}
+            bgUrl={storyBackdropUrl(stop)}
+            cast={[stop.pair[0], 'dee', stop.pair[1]]}
+          />
+        ) : (
+          <div className="story-finale-choice" data-testid="story-finale-choice">
+            <p className="story-reward-card-title">The King’s offer</p>
+            <p className="story-reward-card-sub">Leg 1 is yours — but nothing is banked while the double stands. His last test pulls the other way: a cutthroat, four seats, no partners.</p>
+            <ul className="story-finale-terms">
+              <li>One of you wins the cutthroat → <b>the double pays: +550 XP, +440 coins — each</b>, even if the other finishes last.</li>
+              <li>The King or the Ringer wins with a human 2nd → <b>the normal clear: +275 XP, +220 coins each</b>.</li>
+              <li>Both humans finish 3rd/4th → <b>the clear is gone</b>: +5 XP each, and the King stays current.</li>
+              <li>Or bank leg 1 now → <b>the normal clear: +275 XP, +220 coins each</b>, no gamble.</li>
+            </ul>
+            <div className="story-room-actions">
+              <button type="button" className={`btn ${myChoice === 'cutthroat' ? 'primary' : 'ghost'}`} data-testid="story-finale-cutthroat" onClick={() => conn.send({ t: 'storyFinale', choice: 'cutthroat' })}>
+                Take the cutthroat
+              </button>
+              <button type="button" className={`btn ${myChoice === 'bank' ? 'primary' : 'ghost'}`} data-testid="story-finale-bank" onClick={() => conn.send({ t: 'storyFinale', choice: 'bank' })}>
+                Bank the clear
+              </button>
+            </div>
+            <p className="story-note" data-testid="story-finale-standings">
+              {myChoice ? `You chose ${choiceLabel(myChoice)}.` : 'You haven’t answered yet.'}{' '}
+              {partnerChoice ? `Your partner chose ${choiceLabel(partnerChoice)}.` : 'Your partner hasn’t answered yet.'}
+              {myChoice && partnerChoice && myChoice !== partnerChoice ? ' You don’t agree yet — talk it out. Nothing is lost while you decide.' : ''}
+              {myChoice && partnerChoice && myChoice === partnerChoice ? ' Agreed.' : ''}
+            </p>
+          </div>
+        )}
+        <div className="story-room-actions">
+          <button type="button" className="btn ghost" data-testid="story-room-leave" onClick={onExit}>Leave</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (story.phase === 'game' || story.phase === 'finale-game') {
+    const inFinale = story.phase === 'finale-game';
+    return (
+      <div className="story-room-game" data-testid={inFinale ? 'story-room-finale-game' : 'story-room-game'}>
         <OnlineTable conn={conn as TableConnection} cs={cs} mesh={null} onLobby={onExit} onMainMenu={onExit} />
         <GuidePlate chat={cs.chat} seats={cs.room!.seats} />
         <div className="story-room-concede">
           {armConcede ? (
             <>
-              <span>Concede the match? It counts as a loss for the pair.</span>
+              <span>{inFinale ? 'Concede the finale? The gamble is lost — the clear goes with it.' : 'Concede the match? It counts as a loss for the pair.'}</span>
               <button type="button" className="btn ghost" data-testid="story-room-concede-yes" onClick={() => conn.send({ t: 'concede' })}>Concede</button>
               <button type="button" className="btn ghost" onClick={() => setArmConcede(false)}>Keep playing</button>
             </>
@@ -421,6 +493,8 @@ export function StoryRoomInner({ conn, cs, code, track, myUid, onExit }: {
   const dblStarted = !!r && stop.doubleOrNothing === true && r.won && !r.firstClear
     && (r.doubleOutcome === 'started' || r.doublePending === true);
   const dblLost = !!r && stop.doubleOrNothing === true && !r.won && r.doubleOutcome === 'lost';
+  /** the finale outcome this outro's post resolved (Phase 4) */
+  const fin = r?.finale ?? null;
   return (
     <div className="story-shell" data-testid="story-room-outro">
       <div className="story-topbar">
@@ -473,6 +547,15 @@ export function StoryRoomInner({ conn, cs, code, track, myUid, onExit }: {
               </div>
             </div>
           )}
+          {fin === 'double' && (
+            <p className="story-reward-note" data-testid="story-room-finale-note">One of you took the cutthroat — the double pays to <b>both names</b>.</p>
+          )}
+          {fin === 'clear' && (
+            <p className="story-reward-note" data-testid="story-room-finale-note">He took the cutthroat, but a human stood to the last hand — the clear is banked, together.</p>
+          )}
+          {fin === 'declined' && (
+            <p className="story-reward-note" data-testid="story-room-finale-note">Took the clear and walked — the offer answered, both names on it.</p>
+          )}
           {(r.newFinds?.length ?? 0) > 0 && (
             <div className="story-find-line" data-testid="story-room-new-finds">
               {r.newFinds.map((f) => (
@@ -494,7 +577,7 @@ export function StoryRoomInner({ conn, cs, code, track, myUid, onExit }: {
       )}
       <div className="story-room-actions">
         {r?.completed ? null : dblStarted ? (
-          readyBtn('story-room-next', 'Run it back — leg 2')
+          readyBtn('story-room-next', 'Face the King’s offer')
         ) : (
           <>
             {nextStop && nextRow && nextRow.state !== 'locked' && (

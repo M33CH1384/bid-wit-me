@@ -13,7 +13,7 @@ import {
 import { voiceGender } from '@spades/bots';
 import { BUCKET_THIN } from './voice/writer';
 import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, chooseBotAction, loudLoser, parseHint, leanBid, botSkillFor, personaSkillFloor, seatSkill, leanNil, momentsFor, newTalkState, noteTalkHand, pickBotNames, platePersona, prePlayLine, activeCatalog, bucketFor } from '@spades/bots';
-import { STORY_CHARACTERS, STORY_TIER_SKILL, deeSkillForStop, guideEventLine, guideHandLine, newGuideState, storyFactsOf, storyPairTrackKey, storyRulesForStop, storyStopById, type AwarenessCase, type GuideState, type StoryGameFacts } from '@spades/bots';
+import { GUIDE_FINALE, STORY_CHARACTERS, STORY_TIER_SKILL, deeSkillForStop, guideEventLine, guideFinaleLine, guideFinaleResolutionLine, guideFinaleStartLine, guideHandLine, newGuideState, storyFactsOf, storyPairTrackKey, storyRulesForStop, storyStopById, type AwarenessCase, type GuideFinaleFacts, type GuideState, type StoryGameFacts } from '@spades/bots';
 import {
   type BotLevel, type ChatLine, type ClientMsg, type HostMusic, type MediaState, type RoomInfo, type RoomPhase, type RunPlayback, type SeatInfo, type ServerMsg,
   DEFAULT_AFK_LIMIT, LIMITS, PROTOCOL_VERSION, parseClientMsg, toggleReaction,
@@ -207,13 +207,30 @@ export type ChallengeResult =
  * players ready advances it. Unrated, unstaked, private (never listed), and
  * unspectated in v1: only the two pair accounts may even join.
  */
+/** The King's finale on a pair track (Phase 4, spec §6): the pair holds
+ *  the double mark and the room sits at the proposal until BOTH members
+ *  agree — take the cutthroat, or bank leg 1 as a normal clear. */
+export interface StoryFinaleState {
+  /** the proposal scene's short form: a later sit-down (leg 1 was won in
+   *  an earlier room/session), not the win that just happened here */
+  short: boolean;
+  /** each member's standing choice, by account id — visible to both,
+   *  changeable until they agree */
+  choices: Record<string, 'cutthroat' | 'bank'>;
+  /** the witness gameId once the finale resolves (the cutthroat's family
+   *  id, or the decline's own id) */
+  gameId?: string;
+  /** how the finale resolved, once it has */
+  outcome?: 'double' | 'clear' | 'lost' | 'declined';
+}
+
 export interface StorySeat {
   /** the pair track key ('pair:<uidA>:<uidB>'); null until a share-code partner binds */
   track: string | null;
   stopId: string;
   /** [host account, partner account]; partner null until a share-code join binds them */
   pairUids: [string, string | null];
-  phase: 'lobby' | 'tape' | 'scene' | 'game' | 'finale' | 'outro';
+  phase: 'lobby' | 'tape' | 'scene' | 'game' | 'finale' | 'finale-game' | 'outro';
   /** pair uids armed for the current story phase (both-ready advance) */
   ready: string[];
   /** the stop chosen at the outro for the next run (host's pick wins) */
@@ -221,6 +238,11 @@ export interface StorySeat {
   nextStopBy?: string;
   /** the gameId a witness row was already written for (one witness per game) */
   resultGameId?: string;
+  /** the gameId the CURRENT outro posts against (a decline names its own
+   *  id, distinct from the leg-1 game's family id) */
+  outroGameId?: string;
+  /** the King's finale, while this room carries it (spec §6) */
+  finale?: StoryFinaleState;
   /** display name of the player who conceded the current match (the partner's toast) */
   concededBy?: string;
   /** Awareness cases per stop (spec §7), computed by the story HTTP layer
@@ -245,6 +267,9 @@ export interface StoryRoomResult {
   /** true when the pair's side (seats 0/2) won; a concede is always false */
   won: boolean;
   facts: StoryGameFacts;
+  /** Phase 4: the finale outcome this game resolved, when it did
+   *  (migration 0029) — crediting maps it onto the double machine */
+  finale?: { outcome: 'double' | 'clear' | 'lost' | 'declined' };
 }
 
 export interface RoomTiming {
@@ -503,6 +528,7 @@ export class Room {
     const stop = storyStopById(stopId);
     if (!stop || !d.story) return;
     d.story.stopId = stopId;
+    if (stopId !== 'king') d.story.finale = undefined; // the finale record belongs to the King alone
     d.rules = clampRules(storyRulesForStop(stop));
     d.venue = stop.venueId as VenueChoice;
     d.venueNow = stop.venueId as VenueId;
@@ -1203,13 +1229,32 @@ export class Room {
         if (!s.ready.includes(uid)) s.ready.push(uid);
         break;
       }
+      case 'storyFinale': {
+        // The King's proposal (Phase 4, spec §6.3): record this member's
+        // standing choice. The room acts only when BOTH members agree —
+        // disagreement (or one member still deciding) parks the proposal
+        // with nothing lost, and either member may change their pick.
+        const s = d.story;
+        if (!s) throw new RoomError('NOT_STORY', 'Not a story table');
+        const uid = me.uid;
+        if (!uid || !(s.pairUids as (string | null)[]).includes(uid)) throw new RoomError('RESERVED', 'Only the pair answers the King');
+        if (s.phase !== 'finale' || !s.finale) throw new RoomError('WRONG_PHASE', 'No proposal is standing');
+        s.finale.choices[uid] = msg.choice;
+        const [a, b] = s.pairUids;
+        if (a && b && s.finale.choices[a] && s.finale.choices[a] === s.finale.choices[b]) {
+          if (msg.choice === 'cutthroat') this.storyStartFinaleGame();
+          else this.storyBankFinale();
+        }
+        break;
+      }
       case 'concede': {
         const s = d.story;
         if (!s) throw new RoomError('NOT_STORY', 'Not a story table');
         const uid = me.uid;
         if (!uid || !(s.pairUids as (string | null)[]).includes(uid)) throw new RoomError('RESERVED', 'Only the pair can concede');
-        if (s.phase !== 'game' || d.phase !== 'playing' || !d.game) throw new RoomError('WRONG_PHASE', 'No story match in progress');
-        this.storyConcede(me.name);
+        if (!((s.phase === 'game' || s.phase === 'finale-game') && d.phase === 'playing' && d.game)) throw new RoomError('WRONG_PHASE', 'No story match in progress');
+        if (s.phase === 'finale-game') this.storyFinaleConcede(me.name);
+        else this.storyConcede(me.name);
         break;
       }
       case 'leave': {
@@ -1619,8 +1664,12 @@ export class Room {
       }
     }
     // Dee the guide, hand end (story rooms only, spec §5.3): the hand
-    // just closed — she reads the board and maybe speaks.
-    if (d.story && d.game.history.length > before.history.length) this.storyGuideHandEnd(before);
+    // just closed — she reads the board and maybe speaks. In the King's
+    // cutthroat she reads the finale board instead (§6.4).
+    if (d.story && d.game.history.length > before.history.length) {
+      this.storyGuideHandEnd(before);
+      this.storyGuideFinaleHandEnd(before);
+    }
     if (d.game.phase === 'gameOver') {
       d.phase = 'over';
       const res = d.game.result!;
@@ -1787,8 +1836,10 @@ export class Room {
   private storyGameOver(winners: number[]): void {
     const d = this.data;
     const s = d.story!;
+    if (s.phase === 'finale-game') { this.storyFinaleGameOver(); return; }
     s.phase = 'outro';
     s.ready = [];
+    s.outroGameId = this.familyId();
     this.storyMarkPlayed(winners.includes(0));
     this.storyWitness(winners.includes(0));
   }
@@ -1800,6 +1851,7 @@ export class Room {
     s.concededBy = byName;
     s.phase = 'outro';
     s.ready = [];
+    s.outroGameId = this.familyId();
     d.phase = 'over';
     this.storyMarkPlayed(false);
     this.storyWitness(false);
@@ -1808,14 +1860,164 @@ export class Room {
 
   /** The witness (spec §3.3): facts computed here, from the room's own final state — never from a client. */
   private storyWitness(won: boolean): void {
+    this.storyWitnessAs(this.familyId(), won);
+  }
+
+  /** The witness under an explicit gameId, optionally carrying a finale
+   *  outcome and explicit facts (the decline has no game of its own: its
+   *  facts are leg 1's when that game is still this room's, else zero —
+   *  crediting falls back to the banked leg facts either way). */
+  private storyWitnessAs(gameId: string, won: boolean, finaleOutcome?: 'double' | 'clear' | 'lost' | 'declined', facts?: StoryGameFacts): void {
     const d = this.data;
     const s = d.story!;
-    const gameId = this.familyId();
     if (s.resultGameId === gameId) return; // one witness per game
     s.resultGameId = gameId;
     const [a, b] = s.pairUids;
-    if (!a || !b || !s.track || !d.game) return; // an unbound share-code room never had a pair: nothing to witness
-    this.io.storyResult?.({ gameId, code: d.code, track: s.track, stopId: s.stopId, uidA: a, uidB: b, won, facts: storyFactsOf(d.game) });
+    if (!a || !b || !s.track) return; // an unbound share-code room never had a pair: nothing to witness
+    const gameFacts = facts ?? (d.game ? storyFactsOf(d.game) : null);
+    if (!gameFacts) return;
+    this.io.storyResult?.({ gameId, code: d.code, track: s.track, stopId: s.stopId, uidA: a, uidB: b, won, facts: gameFacts, ...(finaleOutcome ? { finale: { outcome: finaleOutcome } } : {}) });
+  }
+
+  /* ---------------------------------------------------- the King finale */
+
+  /** The pair holds the double mark in this room (spec §6.5): the King
+   *  stop, the awareness case standing at 'finale', and a live pair. */
+  private storyFinalePending(): boolean {
+    const s = this.data.story;
+    return !!s && s.stopId === 'king' && s.pairUids[1] !== null && s.aware?.['king'] === 'finale';
+  }
+
+  /** Seat the room at the King's proposal. `short` = a later sit-down
+   *  (the terms were already heard when leg 1 fell); the fresh win that
+   *  just happened in this room gets the full scene. */
+  private storyEnterFinale(short: boolean): void {
+    const s = this.data.story!;
+    s.phase = 'finale';
+    s.ready = [];
+    s.finale = { short, choices: {} };
+    this.system('The King has terms of his own for you two.');
+  }
+
+  /** Both members agreed to take the cutthroat (spec §6.1): the room
+   *  converts IN PLACE — same seats (the pair at 0/2, the King and the
+   *  Ringer across), the shipped 4P cutthroat preset (target 300,
+   *  third-set elimination rides the rules), a fresh game. Dee guides
+   *  from the rail; she never plays inside the cutthroat (§6.4). */
+  private storyStartFinaleGame(): void {
+    const d = this.data;
+    const s = d.story!;
+    d.rules = clampRules(makeRules('cutthroat'));
+    d.teamNames = undefined;
+    s.phase = 'finale-game';
+    s.ready = [];
+    s.resultGameId = undefined;
+    s.concededBy = undefined;
+    this.startGame(d.gamesPlayed > 0);
+    // Fresh guide memory for the cutthroat, with the proposal scene's
+    // own Dee beats ([1]/[2]) already spent — the scene spoke them.
+    s.guide = newGuideState('king', `${d.code}:${d.gamesPlayed}:king:finale`);
+    s.guide.said.push(GUIDE_FINALE[1]!, GUIDE_FINALE[2]!);
+    const start = guideFinaleStartLine(s.guide);
+    if (start) this.pushGuideLine(start.text);
+    this.system('Cutthroat — every player for themselves. The double rides on it.');
+  }
+
+  /** Both members agreed to bank leg 1 (spec §6.2): the room witnesses
+   *  the decline itself — no game is played — and the outro posts
+   *  against the decline's own gameId, never the leg-1 family's (that
+   *  claim already stands as 'started'). Crediting banks the normal
+   *  King clear and counts no further attempt. */
+  private storyBankFinale(): void {
+    const d = this.data;
+    const s = d.story!;
+    const gameId = `${this.familyId()}-decline`;
+    // Leg 1's facts ride along only when that game is still this room's
+    // finished game (its witness already stands under the family id).
+    const legFacts = s.resultGameId === this.familyId() && d.game
+      ? storyFactsOf(d.game)
+      : { margin: 0, handsPlayed: 0, setsAgainstUs: 0, setsAgainstThem: 0, ourNilsMade: 0, ourBlindNilsMade: 0, deeNilsMade: 0, deeSteady: false, setOnFirstHand: false, oppSetTwice: false };
+    s.finale = { ...(s.finale ?? { short: true, choices: {} }), gameId, outcome: 'declined' };
+    s.phase = 'outro';
+    s.ready = [];
+    s.outroGameId = gameId;
+    this.storyWitnessAs(gameId, true, 'declined', legFacts);
+    if (!s.aware) s.aware = {};
+    s.aware['king'] = 'e'; // settled here; a fresh leg-1 win re-arms it
+    this.system('The pair banks the clear and walks out together.');
+  }
+
+  /** The cutthroat ended: placements decide the outcome (spec §6.2) —
+   *  the best human finish rules. A human first pays the double to BOTH
+   *  names (even if the other human finished last); the King or the
+   *  Ringer first with a human second banks the normal clear; both
+   *  humans 3rd/4th loses the clear entirely. */
+  private storyFinaleGameOver(): void {
+    const d = this.data;
+    const s = d.story!;
+    const res = d.game!.result!;
+    const places = res.placements;
+    const humanBest = Math.min(places[0] ?? 9, places[2] ?? 9);
+    const outcome = humanBest === 1 ? 'double' as const : humanBest === 2 ? 'clear' as const : 'lost' as const;
+    const gameId = this.familyId();
+    s.finale = { ...(s.finale ?? { short: false, choices: {} }), gameId, outcome };
+    s.phase = 'outro';
+    s.ready = [];
+    s.outroGameId = gameId;
+    if (outcome === 'double' && s.guide) {
+      const winnerSeat = (places[0] === 1 ? 0 : 2);
+      const partnerSeat = winnerSeat === 0 ? 2 : 0;
+      const partnerLast = (places[partnerSeat] ?? 0) === Math.max(...places);
+      const line = guideFinaleResolutionLine(s.guide, partnerLast);
+      if (line) this.pushGuideLine(line.text);
+    }
+    this.storyWitnessAs(gameId, outcome !== 'lost', outcome);
+    if (!s.aware) s.aware = {};
+    s.aware['king'] = 'e'; // the gamble is spent either way; a fresh leg-1 win re-arms it
+  }
+
+  /** A concede inside the cutthroat settles it as a lost gamble
+   *  (spec §6.2): the clear goes, the mark is consumed. */
+  private storyFinaleConcede(byName: string): void {
+    const d = this.data;
+    const s = d.story!;
+    s.concededBy = byName;
+    const gameId = this.familyId();
+    s.finale = { ...(s.finale ?? { short: false, choices: {} }), gameId, outcome: 'lost' };
+    s.phase = 'outro';
+    s.ready = [];
+    s.outroGameId = gameId;
+    d.phase = 'over';
+    this.storyWitnessAs(gameId, false, 'lost');
+    if (!s.aware) s.aware = {};
+    s.aware['king'] = 'e';
+    this.system(`${byName} conceded the finale`);
+  }
+
+  /**
+   * Dee's finale read (spec §6.4): hand-end facts from the cutthroat's
+   * own board — per-seat scores, tricks, sets and who fell this hand.
+   * She speaks from the rail only: if a dropped human seat is covered,
+   * it is covered by a standard bot, never by her (see storyCoverCheck).
+   */
+  private storyGuideFinaleHandEnd(before: GameState): void {
+    const d = this.data;
+    const s = d.story!;
+    const g = d.game!;
+    if (s.phase !== 'finale-game' || !s.guide) return;
+    const rec = g.history[g.history.length - 1]!;
+    const bySeat = new Map(rec.sides.map((sd) => [sd.side, sd]));
+    const facts: GuideFinaleFacts = {
+      handNo: rec.handNo,
+      scores: [0, 1, 2, 3].map((seat) => g.scores[seat] ?? 0),
+      tricks: [0, 1, 2, 3].map((seat) => rec.tricksWon[seat] ?? bySeat.get(seat)?.tricks ?? 0),
+      setSeats: rec.sides.filter((sd) => sd.shot).map((sd) => sd.side),
+      alive: [0, 1, 2, 3].filter((seat) => !g.eliminated?.[seat]),
+      newlyEliminated: [0, 1, 2, 3].filter((seat) => !!g.eliminated?.[seat] && !before.eliminated?.[seat]),
+      humans: [0, 2],
+    };
+    const line = guideFinaleLine(s.guide, facts, Math.random);
+    if (line) this.pushGuideLine(line.text);
   }
 
   /** Is Dee currently seated, covering a dropped partner? While she
@@ -1921,6 +2123,9 @@ export class Room {
       // the run starts only with both humans actually seated (auto-seated on hello)
       if (![0, 2].every((seat) => d.seats[seat]?.kind === 'human')) return;
       s.ready = [];
+      // A pair holding the King's double mark settles it BEFORE any new
+      // tape: the proposal is the sit-down (Phase 4, spec §6.5 rule 5).
+      if (this.storyFinalePending()) { this.storyEnterFinale(true); return; }
       s.phase = 'tape';
     } else if (s.phase === 'tape') {
       s.ready = [];
@@ -1930,16 +2135,25 @@ export class Room {
       s.phase = 'game';
       s.resultGameId = undefined;
       s.concededBy = undefined;
+      s.finale = undefined; // a fresh partnership match buries any settled finale record
+      s.outroGameId = undefined;
       this.startGame(d.gamesPlayed > 0);
       // A fresh match gets a fresh guide memory (spec §5.3): said set,
       // spacing and once-only flags are per match, seeded by the room.
       s.guide = newGuideState(s.stopId, `${d.code}:${d.gamesPlayed}:${s.stopId}`);
     } else if (s.phase === 'outro') {
+      const wasKing = s.stopId === 'king';
       const next = s.nextStopId && storyStopById(s.nextStopId) ? s.nextStopId : s.stopId;
       s.ready = [];
       s.nextStopId = undefined;
       s.nextStopBy = undefined;
+      s.outroGameId = undefined;
       if (next !== s.stopId) this.applyStoryStop(next);
+      // The leg-1 win that just landed in this room stands the mark up:
+      // the outro's ready pair walks into the proposal, full scene.
+      // Arriving at the King from another stop with the mark standing
+      // takes the short form instead.
+      if (this.storyFinalePending()) { this.storyEnterFinale(!wasKing); return; }
       s.phase = 'tape';
     }
   }
@@ -1964,6 +2178,15 @@ export class Room {
       if (now - since < this.timing.disconnectGraceMs) {
         // wake at the grace line so the cover lands on time, not on the turn clock
         this.io.setAlarm(since + this.timing.disconnectGraceMs);
+        continue;
+      }
+      if (s.phase === 'finale-game') {
+        // Inside the cutthroat Dee NEVER plays (spec §6.4) — a dropped
+        // seat is covered by a standard pro bot, reclaimable as usual.
+        d.seats[seat] = { kind: 'bot', name: this.botName(), level: 'pro', vacated: true, was: m.name, replacedPid: slot.playerId };
+        m.seat = null;
+        this.system(`${m.name}'s seat is covered until they return.`);
+        changed = true;
         continue;
       }
       d.seats[seat] = { kind: 'bot', name: 'Dee', level: stop ? deeSkillForStop(stop.n) : 'pro', vacated: true, was: m.name, replacedPid: slot.playerId };
@@ -2455,7 +2678,7 @@ export class Room {
       teamNames: d.rules.partnerships ? [...(d.teamNames ?? [null, null])] : undefined, series: d.series ?? null, revealed: [...(d.talk?.revealed ?? [])],
       ...(d.tournament ? { tournament: { id: d.tournament.id, name: d.tournament.name, match: d.tournament.match, autostartAt: d.tournament.autostartAt, reserved: d.tournament.reserved.map((r) => r?.name ?? null) } } : {}),
       ...(d.challenge ? { challenge: { id: d.challenge.id, autostartAt: d.challenge.autostartAt, reserved: d.challenge.reserved.map((r) => r?.name ?? null) } } : {}),
-      ...(d.story ? { story: { track: d.story.track, stopId: d.story.stopId, phase: d.story.phase, gameId: this.familyId(), hostUid: d.story.pairUids[0], partnerUid: d.story.pairUids[1], ready: [...d.story.ready], ...(d.story.concededBy ? { concededBy: d.story.concededBy } : {}) } } : {}),
+      ...(d.story ? { story: { track: d.story.track, stopId: d.story.stopId, phase: d.story.phase, gameId: d.story.outroGameId ?? this.familyId(), hostUid: d.story.pairUids[0], partnerUid: d.story.pairUids[1], ready: [...d.story.ready], ...(d.story.concededBy ? { concededBy: d.story.concededBy } : {}), ...(d.story.finale ? { finale: { short: d.story.finale.short, choices: Object.entries(d.story.finale.choices).map(([uid, choice]) => ({ uid, choice })), ...(d.story.finale.outcome ? { outcome: d.story.finale.outcome } : {}), ...(d.story.finale.gameId ? { gameId: d.story.finale.gameId } : {}) } } : {}) } } : {}),
       private: !!d.private, replaceBots: this.replaceBotsOn(), takeable: this.takeable(),
       spectators: d.phase === 'lobby' ? [] : Object.entries(d.members).filter(([id, m]) => m.seat === null && this.isConnected(id)).map(([playerId, m]) => ({ playerId, name: m.name })),
       ...(d.votes && Object.keys(d.votes).length ? { votes: Object.entries(d.votes).map(([target, by]) => ({ target, by: [...by], need: this.votesNeeded(target) })) } : {}), ...(d.music && d.music.mode !== 'off' ? { music: d.music } : {}),

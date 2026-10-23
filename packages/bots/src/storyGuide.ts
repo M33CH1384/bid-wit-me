@@ -138,9 +138,9 @@ export const GUIDE_AWARE: readonly string[] = [
 ];
 
 /**
- * The cutthroat finale pool (spec §8.7) — DATA ONLY in this phase.
- * Its triggers (§6.4) arrive with the Phase 4 finale; nothing in the
- * partnership game may draw from it.
+ * The cutthroat finale pool (spec §8.7). Phase 4 wires its triggers
+ * (§6.4) through the finale evaluator below — the partnership game may
+ * still never draw from it; only the co-op King's cutthroat does.
  */
 export const GUIDE_FINALE: readonly string[] = [
   'Cutthroat. So now I get to watch my own people get greedy.',
@@ -224,6 +224,9 @@ export interface GuideState {
   comebackFired: boolean;
   /** hand ends evaluated (the wiring's heartbeat — tests read it) */
   handsSeen: number;
+  /** finale lines spoken this cutthroat (Phase 4; the budget is capped
+   *  at GUIDE_FINALE_MAX — see the finale evaluator below) */
+  finaleFired: number;
 }
 
 /** FNV-1a → mulberry-ish stream, the rail's house style: deterministic
@@ -256,6 +259,7 @@ export function newGuideState(stopId: string, seedKey: string): GuideState {
     trailedBig: false,
     comebackFired: false,
     handsSeen: 0,
+    finaleFired: 0,
   };
 }
 
@@ -289,7 +293,7 @@ export interface GuideHandFacts {
 
 export type GuideTrigger =
   | 'matchPoint' | 'set' | 'comeback' | 'bigSwing' | 'partnerMoment'
-  | 'nil' | 'aware' | 'depth' | 'state';
+  | 'nil' | 'aware' | 'depth' | 'state' | 'finale';
 
 export interface GuideLine { text: string; trigger: GuideTrigger; pool: string }
 
@@ -409,6 +413,101 @@ export function guideOutroLine(kind: 'win' | 'loss' | 'kingClear' | 'kingDoubleL
   if (kind === 'kingDoubleLost') return GUIDE_OUTRO.kingDoubleLost;
   const pool = GUIDE_OUTRO[kind];
   return pool[Math.floor(streamValue(`guideOutro|${seedKey}`, 0) * pool.length)]!;
+}
+
+/* =====================================================================
+ * THE FINALE EVALUATOR (Phase 4, spec §6.4) — Dee guides the co-op
+ * King's cutthroat from the rail; she never plays in it. The pool is
+ * GUIDE_FINALE, keyed by index there: [0] the start, [1]/[2] the
+ * proposal scene's own beats (the wiring seeds them as said — the
+ * scene spoke them, the evaluator never repeats them), [3]/[4]
+ * betrayal, [5] the King leading late, [6] the King smiling, [7] a
+ * human eliminated, [8] a human eliminates the King or the Ringer,
+ * [9] two players left, [10] a human wins, [11] a human wins with the
+ * partner finishing last. Budget: at most GUIDE_FINALE_MAX lines per
+ * cutthroat — the start and the hand-end reads share all but one
+ * slot, which is reserved for the resolution line.
+ * ===================================================================== */
+
+export const GUIDE_FINALE_MAX = 4;
+
+/** Per-seat board truth about the hand that just ended in the
+ *  cutthroat. Seats are absolute (0..3); the two humans sit 0 and 2.
+ *  Everything here is public — scores, tricks, contracts, who fell. */
+export interface GuideFinaleFacts {
+  handNo: number;
+  /** cumulative scores per seat, after this hand */
+  scores: readonly number[];
+  /** tricks taken per seat this hand */
+  tricks: readonly number[];
+  /** seats whose contract failed this hand (a set) */
+  setSeats: readonly number[];
+  /** seats still in the game after this hand */
+  alive: readonly number[];
+  /** seats eliminated BY this hand (were alive at the previous hand end) */
+  newlyEliminated: readonly number[];
+  /** the two human seats */
+  humans: readonly [number, number];
+}
+
+function fireFinale(state: GuideState, handNo: number, idx: number): GuideLine {
+  state.finaleFired = (state.finaleFired ?? 0) + 1;
+  return fire(state, handNo, GUIDE_FINALE[idx]!, 'finale', 'guideFinale');
+}
+
+function finaleIdxUnused(state: GuideState, idx: number): boolean {
+  return !(state.said ?? []).includes(GUIDE_FINALE[idx]!);
+}
+
+/** The cutthroat's opening read — fires once, at conversion. */
+export function guideFinaleStartLine(state: GuideState): GuideLine | null {
+  if ((state.finaleFired ?? 0) >= GUIDE_FINALE_MAX - 1) return null;
+  if (!finaleIdxUnused(state, 0)) return null;
+  return fireFinale(state, 1, 0);
+}
+
+/** Dee's hand-end read of the cutthroat (spec §6.4 trigger list, in
+ *  priority order: a fall outranks a betrayal outranks the King's
+ *  comfort). At most one line per hand; the resolution line's slot is
+ *  always kept in reserve. */
+export function guideFinaleLine(state: GuideState, facts: GuideFinaleFacts, rng: () => number): GuideLine | null {
+  if ((state.finaleFired ?? 0) >= GUIDE_FINALE_MAX - 1) return null;
+  const [h1, h2] = facts.humans;
+  const isHuman = (s: number) => s === h1 || s === h2;
+  const tryIdx = (idx: number): GuideLine | null => (finaleIdxUnused(state, idx) ? fireFinale(state, facts.handNo, idx) : null);
+  // A human just fell (third set / shot out) — the hardest beat.
+  if (facts.newlyEliminated.some(isHuman)) { const l = tryIdx(7); if (l) return l; }
+  // A human just emptied the King or the Ringer's chair.
+  if (facts.newlyEliminated.some((s) => !isHuman(s))) { const l = tryIdx(8); if (l) return l; }
+  // Betrayal: one human's contract failed while the other feasted.
+  const betrayed = facts.setSeats.some((s) => {
+    if (!isHuman(s)) return false;
+    const other = s === h1 ? h2 : h1;
+    return (facts.tricks[other] ?? 0) >= 3 && (facts.tricks[other] ?? 0) > (facts.tricks[s] ?? 0);
+  });
+  if (betrayed) {
+    const free = [3, 4].filter((i) => finaleIdxUnused(state, i));
+    if (free.length) return fireFinale(state, facts.handNo, free[Math.floor(rng() * free.length)]!);
+  }
+  // Two players left standing.
+  if (facts.alive.length === 2) { const l = tryIdx(9); if (l) return l; }
+  // The King leads the table late in the game.
+  const botMax = Math.max(...facts.scores.filter((_, s) => !isHuman(s)));
+  const humanMax = Math.max(facts.scores[h1] ?? 0, facts.scores[h2] ?? 0);
+  if (facts.handNo >= 3 && botMax > humanMax) { const l = tryIdx(5); if (l) return l; }
+  // A bot ran the hand (the King's comfort read).
+  const botTricks = Math.max(...facts.tricks.filter((_, s) => !isHuman(s)));
+  if (botTricks >= 6) { const l = tryIdx(6); if (l) return l; }
+  return null;
+}
+
+/** The resolution line — a human took the cutthroat. [11] when the
+ *  partner finished last: the double is shared, the story is not. */
+export function guideFinaleResolutionLine(state: GuideState, partnerLast: boolean): GuideLine | null {
+  if ((state.finaleFired ?? 0) >= GUIDE_FINALE_MAX) return null;
+  const idx = partnerLast ? 11 : 10;
+  if (!finaleIdxUnused(state, idx)) return null;
+  return fireFinale(state, 0, idx);
 }
 
 /** Static honesty checks (tests + dev sanity): every stop has depth

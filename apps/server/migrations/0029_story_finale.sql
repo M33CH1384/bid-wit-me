@@ -1,0 +1,18 @@
+-- Story co-op Phase 4 (the finale): the witness row for a King game on a
+-- pair track now also carries the FINALE OUTCOME when the game it names
+-- resolved the pair's double mark at the King's cutthroat (spec §6.2):
+--   'double'   — a human won the cutthroat outright: the double pays
+--                EACH member (550 XP / 440 coins), even if the other
+--                human finished last;
+--   'clear'    — the King or the Ringer won with a human 2nd: the pair
+--                banks the normal King clear (275/220 each);
+--   'lost'     — both humans finished 3rd/4th (or a finale concede):
+--                the clear is lost entirely, 5 XP consolation each;
+--   'declined' — the pair agreed to bank leg 1 as a normal clear
+--                instead of playing the cutthroat (no game was played;
+--                the row's facts are leg 1's, and crediting does not
+--                count a further attempt).
+-- NULL on every other row (all solo-shaped posts, and pair games that
+-- are not the King finale). Crediting reads the outcome FROM THE ROW,
+-- never from the request body — same rule as won and facts (0027).
+ALTER TABLE story_room_results ADD COLUMN finale_outcome TEXT;

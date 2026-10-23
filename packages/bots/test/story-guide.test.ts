@@ -8,11 +8,12 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  GUIDE_AWARE, GUIDE_COMEBACK, GUIDE_DEPTH, GUIDE_FINALE, GUIDE_FOCUS, GUIDE_LOSING,
+  GUIDE_AWARE, GUIDE_COMEBACK, GUIDE_DEPTH, GUIDE_FINALE, GUIDE_FINALE_MAX, GUIDE_FOCUS, GUIDE_LOSING,
   GUIDE_MATCH_POINT_THEM, GUIDE_MATCH_POINT_US, GUIDE_NIL, GUIDE_OUTRO, GUIDE_SET_THEM,
   GUIDE_SET_US, GUIDE_SPEAK_P, GUIDE_WINNING, STOP_DENSITY_CLASS, STORY_STOPS,
-  allGuideLines, guideEventLine, guideHandLine, guideIssues, newGuideState,
-  type GuideHandFacts, type GuideState,
+  allGuideLines, guideEventLine, guideFinaleLine, guideFinaleResolutionLine, guideFinaleStartLine,
+  guideHandLine, guideIssues, newGuideState,
+  type GuideFinaleFacts, type GuideHandFacts, type GuideState,
 } from '../src/index';
 
 /** deterministic rng for the evaluator (mulberry32) */
@@ -223,5 +224,76 @@ describe('once-only beats and memory', () => {
     expect(GUIDE_FOCUS).toContain(ev!.text);
     const handEnd = guideHandLine('porch', st, facts({ handNo: 4, us: 80, them: 0, prevUs: 40, prevThem: 0 }), always);
     expect(handEnd).toBeNull();
+  });
+});
+
+describe('the finale evaluator (Phase 4, spec §6.4)', () => {
+  const fFacts = (over: Partial<GuideFinaleFacts> = {}): GuideFinaleFacts => ({
+    handNo: 1, scores: [0, 0, 0, 0], tricks: [3, 3, 3, 4], setSeats: [],
+    alive: [0, 1, 2, 3], newlyEliminated: [], humans: [0, 2], ...over,
+  });
+  /** a finale state as the room seeds it: the scene spoke Dee's [1]/[2] */
+  const finaleState = (): GuideState => {
+    const st = newGuideState('king', 'finale-test');
+    st.said.push(GUIDE_FINALE[1]!, GUIDE_FINALE[2]!);
+    return st;
+  };
+
+  it('opens with the start line, once — and never draws the scene’s own beats', () => {
+    const st = finaleState();
+    const start = guideFinaleStartLine(st);
+    expect(start?.text).toBe(GUIDE_FINALE[0]);
+    expect(guideFinaleStartLine(st)).toBeNull(); // spent
+    // a busy hand end right after: no trigger facts, no line — and [1]/[2] never resurface
+    expect(guideFinaleLine(st, fFacts(), always)).toBeNull();
+    expect(st.said.filter((t) => t === GUIDE_FINALE[1])).toHaveLength(1);
+  });
+
+  it('reads the triggers in priority order: a fall, then a betrayal, then the King’s comfort', () => {
+    const st = finaleState();
+    guideFinaleStartLine(st);
+    // a human eliminated this hand outranks everything else on the board
+    const fall = guideFinaleLine(st, fFacts({ newlyEliminated: [2], alive: [0, 1, 3], tricks: [5, 2, 0, 6], scores: [40, 30, 10, 90] }), always);
+    expect(fall?.text).toBe(GUIDE_FINALE[7]);
+    // betrayal: seat 0 was set while seat 2 feasted
+    const st2 = finaleState();
+    guideFinaleStartLine(st2);
+    const bet = guideFinaleLine(st2, fFacts({ setSeats: [0], tricks: [1, 3, 6, 3] }), always);
+    expect([GUIDE_FINALE[3], GUIDE_FINALE[4]]).toContain(bet?.text);
+    // the King emptied by a human's hand
+    const st3 = finaleState();
+    guideFinaleStartLine(st3);
+    const emptied = guideFinaleLine(st3, fFacts({ newlyEliminated: [1], alive: [0, 2, 3] }), always);
+    expect(emptied?.text).toBe(GUIDE_FINALE[8]);
+  });
+
+  it('caps the whole cutthroat at GUIDE_FINALE_MAX lines, the resolution slot reserved', () => {
+    const st = finaleState();
+    const fired: string[] = [];
+    const start = guideFinaleStartLine(st); if (start) fired.push(start.text);
+    // throw trigger-rich hands at it until it goes quiet
+    for (let h = 1; h <= 8; h++) {
+      const line = guideFinaleLine(st, fFacts({
+        handNo: h,
+        newlyEliminated: h === 1 ? [3] : [],
+        setSeats: [0], tricks: [1, 6, 6, 3], scores: [0, 90 + h, 10, 0], alive: [0, 1, 2],
+      }), always);
+      if (line) fired.push(line.text);
+    }
+    expect(fired.length).toBe(GUIDE_FINALE_MAX - 1); // start + hand-end reads stop one short of the cap
+    const res = guideFinaleResolutionLine(st, false);
+    expect(res?.text).toBe(GUIDE_FINALE[10]);
+    expect(fired.length + 1).toBe(GUIDE_FINALE_MAX);
+    expect(guideFinaleResolutionLine(st, true)).toBeNull(); // the budget is spent, even for the partner-last read
+    expect(new Set([...fired, res!.text]).size).toBe(GUIDE_FINALE_MAX); // nothing ever repeated
+  });
+
+  it('the partner-last resolution is its own line', () => {
+    const st = finaleState();
+    guideFinaleStartLine(st);
+    expect(guideFinaleResolutionLine(st, true)?.text).toBe(GUIDE_FINALE[11]);
+    const st2 = finaleState();
+    guideFinaleStartLine(st2);
+    expect(guideFinaleResolutionLine(st2, false)?.text).toBe(GUIDE_FINALE[10]);
   });
 });

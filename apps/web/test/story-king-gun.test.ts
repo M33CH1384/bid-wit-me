@@ -113,9 +113,16 @@ describe('wiring pins', () => {
   it('Table hands the gate to the 3D scene; the scene renders the prop from it', () => {
     const table = readFileSync('apps/web/src/Table.tsx', 'utf8');
     const scene = readFileSync('apps/web/src/three/Scene.tsx', 'utf8');
-    expect(table).toContain('kingGunSeat={kingGunSeatFor(story)}');
+    // the solo gate first; the online binding's seat (the co-op finale's
+    // cutthroat, Phase 4) is the fallback — the prop is the same piece
+    expect(table).toContain('kingGunSeat={kingGunSeatFor(story) ?? online?.kingGunSeat ?? null}');
     expect(scene).toContain('kingGunSeat');
     expect(scene).toContain('kingGunSpot');
     expect(scene).toContain('<KingGun');
+  });
+
+  it('the co-op finale wires the same prop through the online binding (Phase 4)', () => {
+    const online = readFileSync('apps/web/src/online/OnlineTable.tsx', 'utf8');
+    expect(online).toContain("room.story?.stopId === 'king' && room.story.phase === 'finale-game' ? rot.L(1) : null");
   });
 });

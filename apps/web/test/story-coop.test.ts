@@ -25,6 +25,7 @@ import { DEFAULT_SETTINGS } from '../src/settings';
 import { storyRulesFor } from '../src/story/storySettings';
 import StoryHome from '../src/story/StoryHome';
 import { StoryRoomInner } from '../src/story/StoryRoom';
+import { badgeFactsOf } from '../src/story/StoryBadges';
 import type { StoryProgress } from '../src/story/storyApi';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -258,5 +259,123 @@ describe('StoryRoomInner phases', () => {
     // the next stop is offered; the run-back stays armed
     expect(byTestid('story-room-next')).toBeTruthy();
     expect(byTestid('story-room-runback')).toBeTruthy();
+  });
+});
+
+/* ------------------------------------------- the King finale (Phase 4) */
+
+function finaleCs(over: { phase: string; finale?: unknown; gameId?: string }): ConnState {
+  const cs = fakeCs({ storyPhase: over.phase, gameId: over.gameId ?? 'ABCDE-x-2' });
+  const story = (cs.room as { story: Record<string, unknown> }).story;
+  story.stopId = 'king';
+  if (over.finale !== undefined) story.finale = over.finale;
+  (cs.room as { seats: unknown }).seats = [
+    { kind: 'human', playerId: 'pA', name: 'A', connected: true, media: {}, uid: 'a' },
+    { kind: 'bot', name: 'King', level: 'legendary' },
+    { kind: 'human', playerId: 'pC', name: 'Cee', connected: true, media: {}, uid: 'c' },
+    { kind: 'bot', name: 'Ringer', level: 'legendary' },
+  ];
+  return cs;
+}
+
+describe('the King finale in the room (Phase 4)', () => {
+  it('the proposal scene plays with the gun already down, then both answers ride storyFinale', async () => {
+    stubFetch();
+    const sent: unknown[] = [];
+    const fin = { short: false, choices: [] as { uid: string; choice: string }[] };
+    await renderRoom(finaleCs({ phase: 'finale', finale: fin }), (m) => sent.push(m));
+    expect(byTestid('story-room-finale')).toBeTruthy();
+    expect(byTestid('story-script')).toBeTruthy();
+    // canon: the revolver is on the felt from the first beat (the prop strip is down)
+    const gun = byTestid('story-king-gun');
+    expect(gun).toBeTruthy();
+    expect(gun!.className).toContain('down');
+    expect(el!.textContent).toContain('The second game is usually the first one, played again.');
+    // skip the scene → the choice card, with the price stated plainly
+    await click(byTestid('story-script-skip')!);
+    expect(byTestid('story-finale-choice')).toBeTruthy();
+    expect(byTestid('story-finale-choice')!.textContent).toContain('+550 XP, +440 coins');
+    expect(byTestid('story-finale-choice')!.textContent).toContain('+275 XP, +220 coins');
+    await click(byTestid('story-finale-cutthroat')!);
+    expect(sent).toContainEqual({ t: 'storyFinale', choice: 'cutthroat' });
+    await click(byTestid('story-finale-bank')!);
+    expect(sent).toContainEqual({ t: 'storyFinale', choice: 'bank' });
+  });
+
+  it('the standings line shows both answers — disagreement reads as parked, not lost', async () => {
+    stubFetch();
+    const fin = { short: true, choices: [{ uid: 'a', choice: 'cutthroat' }, { uid: 'c', choice: 'bank' }] };
+    await renderRoom(finaleCs({ phase: 'finale', finale: fin }), () => {});
+    await click(byTestid('story-script-skip')!);
+    const standings = byTestid('story-finale-standings')!;
+    expect(standings.textContent).toContain('You chose the cutthroat.');
+    expect(standings.textContent).toContain('Your partner chose banking the clear.');
+    expect(standings.textContent).toContain('Nothing is lost while you decide.');
+  });
+
+  it('the short form is two beats: the price with the gun, and Dee’s reminder', async () => {
+    stubFetch();
+    const fin = { short: true, choices: [] };
+    await renderRoom(finaleCs({ phase: 'finale', finale: fin }), () => {});
+    expect(byTestid('story-script')!.textContent).toContain('Take it outright and the double pays');
+    expect(byTestid('story-king-gun')!.className).toContain('down');
+  });
+
+  it('the outro of a declined finale banks the clear and says so', async () => {
+    // a result stub whose post resolves the finale as 'declined'
+    const posts: { gameId?: string }[] = [];
+    vi.stubGlobal('fetch', async (input: unknown, init?: { body?: string }) => {
+      const url = String(input);
+      const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
+      if (url.includes('/api/story/result')) {
+        const body = JSON.parse(init?.body ?? '{}') as { gameId?: string };
+        posts.push(body);
+        return ok({
+          ok: true, replayed: false, stopId: 'king', won: true, firstClear: true,
+          rewards: { xp: 275, coins: 220 }, newFinds: [], doubleOutcome: 'cleared', doublePending: false,
+          finale: 'declined', completed: true, track: 'pair:a:c', currentStop: null, completedAt: 1,
+          completionMark: 'story-pair-complete', finds: { eggs: [], feats: [] },
+          stops: STORY_STOPS.map((s) => ({ stopId: s.id, n: s.n, state: 'cleared', attempts: 1, clears: 1, firstClearedAt: 1 })),
+        });
+      }
+      if (url.includes('/api/story/progress')) return ok(pairProgress);
+      if (url.includes('/api/story/session')) return ok({ ok: true });
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+    const cs = finaleCs({ phase: 'outro', gameId: 'ABCDE-x-2-decline' });
+    (cs as { view: unknown }).view = { result: { winners: [0] } };
+    await renderRoom(cs, () => {});
+    await settle();
+    expect(posts.length).toBe(1);
+    expect(posts[0]!.gameId).toBe('ABCDE-x-2-decline'); // the decline's own id, from the room descriptor
+    expect(byTestid('story-room-reward-line')!.textContent).toContain('+275 XP');
+    expect(byTestid('story-room-finale-note')!.textContent).toContain('Took the clear and walked');
+  });
+});
+
+describe('badgeFactsOf union (Phase 4, §3.9)', () => {
+  const stopRow = (stopId: string, attempts: number, clears: number) => ({ stopId, attempts, clears });
+  it('a solo-only player’s facts pass through unchanged', () => {
+    const p = { stops: [stopRow('porch', 2, 1)], finds: { eggs: ['porch-radio'], feats: [] }, completed: false };
+    expect(badgeFactsOf(p)).toEqual(p);
+    expect(badgeFactsOf(null)).toEqual({ stops: [], finds: { eggs: [], feats: [] }, completed: false });
+  });
+
+  it('a pair clear earns for a player who never cleared it solo; finds and completion union', () => {
+    const p = {
+      stops: [stopRow('porch', 1, 1), stopRow('corner', 2, 0)],
+      finds: { eggs: ['porch-radio'], feats: [] },
+      completed: false,
+      anyTrack: {
+        stops: [stopRow('porch', 3, 2), stopRow('corner', 5, 1), stopRow('king', 4, 1)],
+        finds: { eggs: ['porch-radio'], feats: ['corner-keepsake'] },
+        completed: true,
+      },
+    };
+    const f = badgeFactsOf(p);
+    expect(f.stops.find((s) => s.stopId === 'corner')).toMatchObject({ attempts: 5, clears: 1 }); // cleared anywhere
+    expect(f.stops.find((s) => s.stopId === 'king')).toMatchObject({ clears: 1 }); // stops only in the union join too
+    expect(f.finds).toEqual({ eggs: ['porch-radio'], feats: ['corner-keepsake'] });
+    expect(f.completed).toBe(true);
   });
 });

@@ -180,6 +180,9 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
           venue: room.venueNow ?? (room.venue && room.venue !== 'random' ? room.venue : 'classic'),
           // uid per local seat, so name plates can show each human's uploaded picture
           seatUid: (local) => { const s = room.seats[rot.R(local)]; return s?.kind === 'human' ? s.uid : undefined },
+          // The King's finale cutthroat (story co-op, Phase 4): the revolver
+          // stays on the felt by his seat (server seat 1) for the whole game.
+          kingGunSeat: room.story?.stopId === 'king' && room.story.phase === 'finale-game' ? rot.L(1) : null,
           victory: (winners, losers, title, sub) => {
             const sp = (L: number) => {
               const seat = room.seats[rot.R(L)];

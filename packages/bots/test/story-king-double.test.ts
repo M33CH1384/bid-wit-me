@@ -4,8 +4,10 @@
  *  before leg 1 and the live state while the double is pending. */
 import { describe, expect, it } from 'vitest';
 import {
-  STORY_STOPS, buildStoryTape, kingDoubleBeats, storyClearReward, storyReward, storyStopById,
+  GUIDE_FINALE, KING_PROPOSAL_LINES, STORY_STOPS, buildStoryTape, kingDoubleBeats, kingProposalBeats,
+  storyClearReward, storyReward, storyStopById,
 } from '../src/index';
+import { storyCorpus } from '../../../scripts/voice-bake/dump-story-lines';
 
 const king = storyStopById('king')!;
 
@@ -69,5 +71,47 @@ describe("the King's double or nothing (bots data)", () => {
     expect(started[0]!.line.toLowerCase()).toContain('you ain’t won yet');
     // the loss set-piece stages no prop — the run is over, the table is clear
     expect(kingDoubleBeats('lost').some((b) => b.prop)).toBe(false);
+  });
+});
+
+describe('the co-op proposal (Phase 4, spec §6.3/§8.10)', () => {
+  it('the six proposal lines are byte-identical to the bake-authored texts', () => {
+    // The mini-bake's manifest keys were computed from these exact texts —
+    // a single reworded character orphans a recorded clip. Pin them.
+    expect(KING_PROPOSAL_LINES).toEqual([
+      { speaker: 'king', line: 'The second game is usually the first one, played again. Same table. Same terms.' },
+      { speaker: 'king', line: 'For you two, the terms change.' },
+      { speaker: 'king', line: 'You climbed this whole route holding each other up. So my last test pulls the other way.' },
+      { speaker: 'king', line: 'Cutthroat. Four seats, no partners. The hand across from you stops being yours to protect.' },
+      { speaker: 'king', line: 'Take it outright and the double pays — to both names. Or keep the clear you earned and walk out together. Decide like people who know what things cost.' },
+      { speaker: 'ringer', line: 'Choose carefully.' },
+    ]);
+  });
+
+  it('the bake corpus registers exactly the six, under coop:proposal', () => {
+    const fam = storyCorpus().filter((c) => c.source === 'coop:proposal');
+    expect(fam).toHaveLength(6);
+    expect(fam.filter((c) => c.speaker === 'king')).toHaveLength(5);
+    expect(fam.filter((c) => c.speaker === 'ringer')).toHaveLength(1);
+    expect(fam.map((c) => c.line)).toEqual(KING_PROPOSAL_LINES.map((b) => b.line));
+  });
+
+  it('the full scene: gun first (placed, never pointed), the King’s terms, the Ringer, then Dee answers', () => {
+    const beats = kingProposalBeats(false);
+    expect(beats).toHaveLength(8); // 6 proposal + Dee's two (GUIDE_FINALE [1]/[2])
+    expect(beats[0]).toMatchObject({ speaker: 'king', prop: 'kingGun', line: KING_PROPOSAL_LINES[0]!.line });
+    expect(beats.slice(1, 6).map((b) => b.line)).toEqual(KING_PROPOSAL_LINES.slice(1).map((b) => b.line));
+    expect(beats[6]).toEqual({ speaker: 'dee', line: GUIDE_FINALE[1] });
+    expect(beats[7]).toEqual({ speaker: 'dee', line: GUIDE_FINALE[2] });
+    // canon: exactly one beat carries the prop, and no line ever has him point, touch or fire it
+    expect(beats.filter((b) => b.prop)).toHaveLength(1);
+    for (const b of beats) expect(b.line.toLowerCase()).not.toMatch(/point|aim|shoot|fire|trigger|raise the|lift the/);
+  });
+
+  it('the short scene: the price and Dee’s reminder, the gun already down', () => {
+    const beats = kingProposalBeats(true);
+    expect(beats).toHaveLength(2);
+    expect(beats[0]).toMatchObject({ speaker: 'king', prop: 'kingGun', line: KING_PROPOSAL_LINES[4]!.line });
+    expect(beats[1]).toEqual({ speaker: 'dee', line: GUIDE_FINALE[1] });
   });
 });

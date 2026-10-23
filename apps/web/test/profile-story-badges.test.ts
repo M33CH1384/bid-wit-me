@@ -57,8 +57,24 @@ const STORY_PROGRESS = {
     attempts: x.id === 'porch' ? 1 : 0, clears: x.id === 'porch' ? 1 : 0, firstClearedAt: null,
   })),
 };
+/** Phase 4 union (§3.9): the SAME solo facts, plus an anyTrack summary in
+ *  which the Corner was cleared (on a pair run) and the route was
+ *  completed (also on a pair run). The badges are the person's: Corner
+ *  Respect and King of the Block earn too — 4 of 13. */
+const STORY_PROGRESS_UNION = {
+  ...STORY_PROGRESS,
+  anyTrack: {
+    stops: STORY_STOPS.map((x) => ({
+      stopId: x.id,
+      attempts: x.id === 'porch' ? 2 : x.id === 'corner' ? 3 : 0,
+      clears: x.id === 'porch' || x.id === 'corner' ? 1 : 0,
+    })),
+    finds: { eggs: ['porch-radio'], feats: [] },
+    completed: true,
+  },
+};
 
-type StoryMode = 'ok' | 'locked' | 'error';
+type StoryMode = 'ok' | 'locked' | 'error' | 'union';
 let storyMode: StoryMode = 'ok';
 let storyFetches = 0;
 
@@ -68,6 +84,7 @@ function mockFetch() {
     if (url.includes('/api/story/progress')) {
       storyFetches++;
       if (storyMode === 'ok') return json(STORY_PROGRESS);
+      if (storyMode === 'union') return json(STORY_PROGRESS_UNION);
       if (storyMode === 'locked') return json({ error: 'Story mode is locked' }, 403);
       return json({ error: 'not found' }, 404);
     }
@@ -129,6 +146,18 @@ describe('story badges in the profile Achievements tab', () => {
     expect(page.querySelector('[data-testid="story-badge-porch-graduate"]')!.getAttribute('data-earned')).toBe('true');
     expect(page.querySelector('[data-testid="story-badge-king-of-the-block"]')!.getAttribute('data-earned')).toBe('false');
     expect(storyFetches).toBeGreaterThan(0);
+  });
+
+  it('union facts: pair-track clears and completion earn the person’s badges (Phase 4)', async () => {
+    storyMode = 'union';
+    await act(async () => { await loadAccount(true); });
+    const page = await renderView(createElement(ProfileView, { host: 'page' }));
+    await openAchievements(page);
+    expect(page.querySelector('[data-testid="story-badges-count"]')!.textContent).toBe('4 of 13');
+    // the Corner was never cleared on the solo track — the pair clear earns it
+    expect(page.querySelector('[data-testid="story-badge-corner-respect"]')!.getAttribute('data-earned')).toBe('true');
+    // the route was completed on a pair track — the crown badge earns
+    expect(page.querySelector('[data-testid="story-badge-king-of-the-block"]')!.getAttribute('data-earned')).toBe('true');
   });
 
   it('tap a badge in the tab: its explanation shows, same as on the map', async () => {
