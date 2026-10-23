@@ -31,13 +31,30 @@
  * reset them), stretching the corner box across the whole face so the
  * rotated glyphs landed mid-card on the nameplate; the corner rules now
  * pin all four offsets explicitly, and the nameplate is inset as a plaque
- * BETWEEN the bottom corners, clear of both corner zones. */
+ * BETWEEN the bottom corners, clear of both corner zones.
+ *
+ * LAYOUT PASS v4 (owner on-device verdict, 2026-10-23): (1) STATUS UP
+ * TOP — the profile's tagline + presence row (.prof-above-card) and the
+ * card's own status (.pcard-above, statusPlacement="above") render ABOVE
+ * the card, centered in the first viewport, where the BWM ticker cannot
+ * cover them (the circled screenshot had them at the screen's bottom
+ * edge). (2) THE PORTRAIT GROWS — number windows are sized by pip
+ * density (sparse/dense/tight below), the Ace and Deuce windows grow,
+ * and court figures fill the field keyline to keyline. */
 
 /* Placement inside the profile header (a flex-wrap row): the card wrap and
  * its satellites take the full line; RepBlock + the action row follow. */
 .soc-prof-head > .pcard-wrap { flex: 1 1 100%; min-width: 0; }
 .prof-under-card { flex: 1 1 100%; min-width: 0; }
 .soc-prof-head > .pcard-editor { flex: 1 1 100%; min-width: 0; }
+/* The above-card identity row (v4): tagline + presence, centered, the
+ * first thing a visitor reads. */
+.prof-above-card {
+  flex: 1 1 100%; min-width: 0;
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+}
+.prof-above-card .soc-tagline { font-size: 15px; }
+.prof-above-card .soc-online-status { margin-top: 3px; }
 
 .pcard-wrap {
   --cardw: min(300px, 84vw, 100%);
@@ -168,6 +185,18 @@ html[data-theme="neon"] .plcard[data-treatment="big-joker"] .pcard-front { borde
   position: absolute; z-index: 1;
   top: 11.5%; bottom: 18%; left: 14%; right: 14%;
 }
+/* Court figures fill the field KEYLINE TO KEYLINE (v4): the court field
+ * stretches to the frame's inner edge on all four sides, so the portrait
+ * reads as a real court card's figure — dominant, not a framed photo
+ * floating in ivory. The nameplate plaque (z 5) sits over the figure's
+ * foot, and the corner indices keep ivory backing (below) so their ink
+ * stays readable over any photo. */
+.plcard[data-treatment="court"] .pcard-field { top: 3%; bottom: 3%; left: 3%; right: 3%; }
+.plcard[data-treatment="court"] .pcard-corner {
+  background: rgba(253, 250, 241, .92);
+  border-radius: 5px; padding: 3px 4px 4px;
+  box-shadow: 0 1px 5px rgba(23, 12, 44, .28);
+}
 /* Number pips, placed by PIP_LAYOUTS; lower-half pips print inverted.
  * Classic pip scale: the glyph box is ~21% of the card's width (a fifth,
  * as a real deck prints it), in classic suit ink. */
@@ -186,6 +215,10 @@ html[data-theme="neon"] .plcard[data-treatment="big-joker"] .pcard-front { borde
 .plcard .pcard-field[data-field="deuce"] .pcard-heropip { font-size: 63px; font-size: 21cqw; }
 .plcard .pcard-field[data-field="deuce"] .pcard-heropip.top { top: 15%; }
 .plcard .pcard-field[data-field="deuce"] .pcard-heropip.bot { top: 85%; transform: translate(-50%, -50%) rotate(180deg); }
+/* The Ace's hero pip drops to the field's lower center (v4): the grown
+ * portrait window rides its upper field, and the pip's lower body stays
+ * visible under the window — the Ace keeps its one-big-pip identity. */
+.plcard .pcard-field[data-field="ace"] .pcard-heropip { top: 66%; }
 
 /* The portrait art window: a framed rectangle of card art. On number
  * cards it owns the field's center (the classic center pip yields to it);
@@ -201,12 +234,29 @@ html[data-theme="neon"] .plcard[data-treatment="big-joker"] .pcard-front { borde
 .plcard .pcard-artletter {
   font-family: var(--display); font-weight: 800; font-size: 46px; font-size: 15cqw; color: var(--suit-deep);
 }
-/* At classic pip scale the window yields a little room (owner polish
- * pass): narrower and squarer, so the 6/7/8 mid-row pips and the 8's
- * offset center pips clear its edges at every rank 3–10. */
-.plcard .pcard-artwin.number { left: 50%; top: 50%; transform: translate(-50%, -50%); width: 40%; aspect-ratio: 4 / 3.75; }
-.plcard .pcard-artwin.ace { left: 50%; top: 37%; transform: translate(-50%, -50%); width: 41%; aspect-ratio: 4 / 4.7; }
-.plcard .pcard-artwin.deuce { left: 50%; top: 50%; transform: translate(-50%, -50%); width: 33%; aspect-ratio: 4 / 4.6; }
+/* THE PORTRAIT GROWS (v4 — owner: "the pic should be much larger").
+ * Number windows are sized by the pip geometry around them, in % of the
+ * FIELD (the field is 72% of the card's width; pip ink spans ~15% of
+ * the card's width around each PIP_LAYOUTS center):
+ *  - sparse (3/4/5): only corner/center-column pips, far from the
+ *    middle band — the window goes WIDE (68% of the field = ~49% of
+ *    the card) and tall; its edges clear every pip's ink vertically.
+ *  - dense (6/9/10): the mid row (6) / side rows (9) / offset pair
+ *    (10) fence the window to 46% of the field wide; at that width its
+ *    sides clear the side pips and its height fits between the 10's
+ *    offset center pips.
+ *  - tight (7/8): the offset center pips at y=26 (and y=74 on the 8)
+ *    cap the HEIGHT — same 46% width, shorter, so the window's top and
+ *    bottom edges clear those pips' ink. The 8 is the tightest rank
+ *    on the ladder; it still gains ~a third more window area.
+ * The Ace window grows to 56% of the field over its dropped hero pip;
+ * the Deuce window takes the dense size between its two hero pips. */
+.plcard .pcard-artwin.number { left: 50%; top: 50%; transform: translate(-50%, -50%); }
+.plcard .pcard-artwin.number.sparse { width: 68%; aspect-ratio: 4 / 4.5; }
+.plcard .pcard-artwin.number.dense { width: 46%; aspect-ratio: 4 / 4.6; }
+.plcard .pcard-artwin.number.tight { width: 46%; aspect-ratio: 4 / 3.6; }
+.plcard .pcard-artwin.ace { left: 50%; top: 37%; transform: translate(-50%, -50%); width: 56%; aspect-ratio: 4 / 4.7; }
+.plcard .pcard-artwin.deuce { left: 50%; top: 50%; transform: translate(-50%, -50%); width: 46%; aspect-ratio: 4 / 4.6; }
 .plcard .pcard-artwin.court { inset: 0; border-width: 2.5px; }
 .plcard .pcard-artwin.joker { top: 0; bottom: 0; right: 0; left: 9%; border-color: rgba(203, 184, 255, .7); background: linear-gradient(160deg, #3a2364, #170b2e); }
 .plcard[data-treatment="big-joker"] .pcard-artwin.joker { border-color: rgba(var(--gold-rgb), .85); background: linear-gradient(160deg, #2c1f08, #0a0705); }
@@ -219,6 +269,9 @@ html[data-theme="neon"] .plcard[data-treatment="big-joker"] .pcard-front { borde
   color: #241a02; font-size: 15px; line-height: 1.1;
   box-shadow: 0 2px 7px rgba(23, 12, 44, .35);
 }
+/* On the keyline-to-keyline court field (v4) the tab sits INSIDE the
+ * figure's top edge — at the old -12px it would ride off the card. */
+.plcard[data-treatment="court"] .pcard-royaltab { top: 10px; }
 /* JOKER lettered down the card's left edge, in the classic manner. */
 .plcard .pcard-jokerword {
   position: absolute; z-index: 3; left: -9.5%; top: 50%;
@@ -274,6 +327,15 @@ html[data-theme="neon"] .plcard[data-treatment="big-joker"] .pcard-front { borde
 .plcard[data-treatment="big-joker"] .pcard-seal {
   border-color: rgba(70, 50, 4, .7);
   background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, .55), rgba(70, 50, 4, .18));
+}
+
+/* ------------------------------------------- above the card (v4) */
+/* The card's status, when the header asks for it up top: centered over
+ * the card at the card's own width, in full ink — the player's voice,
+ * front and center, in the first viewport. */
+.pcard-above { width: var(--cardw); text-align: center; }
+.pcard-above .pcard-status {
+  font-size: 16.5px; font-weight: 600; color: var(--ink); text-align: center;
 }
 
 /* ------------------------------------------------ below the card (off-face) */

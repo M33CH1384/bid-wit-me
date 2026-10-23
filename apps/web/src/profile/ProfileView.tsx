@@ -46,13 +46,21 @@
  * Player Card (2026-10-23): the header's identity block is now the
  * flippable Player Card (profile/PlayerCard.tsx) whenever the cred payload
  * carries it — which both cred endpoints do. The card is a playing-card
- * face for the player's rank card (front) with their stats on the back;
- * the profile's tagline, presence and region ride in a slim row under it,
- * and the RepBlock + action row keep their established order below that.
- * A payload without a card (stale cache) falls back to the legacy identity
- * header above — same lines, unflipped. The card's own fields (status,
- * partner tags, showcased badges) edit through the card's Edit card
- * button (profile/CardEditor.tsx), separate from the Edit profile stack.
+ * face for the player's rank card (front) with their stats on the back.
+ * Status up top (owner, 2026-10-23, annotated screenshot): the profile's
+ * tagline + presence line and the card's own status render ABOVE the
+ * card — centered, in the first viewport, where the BWM ticker can never
+ * cover them (they used to ride under the card and the tagline/presence
+ * row ended up at the screen's bottom edge). The two lines are DISTINCT
+ * fields and stay distinct: the tagline is the profile's longer
+ * link-friendly line (user.tagline, Edit profile), the status is the
+ * card's short one-liner (card.status, Edit card) — each renders exactly
+ * once. The region line alone stays under the card; the RepBlock +
+ * action row keep their established order below that. A payload without
+ * a card (stale cache) falls back to the legacy identity header above —
+ * same lines, unflipped. The card's own fields (status, partner tags,
+ * showcased badges) edit through the card's Edit card button
+ * (profile/CardEditor.tsx), separate from the Edit profile stack.
  */
 import { useEffect, useRef, useState } from 'react';
 import { presenceLine } from '@spades/protocol';
@@ -652,24 +660,29 @@ export function ProfileView({ host, name, id }: {
       <div className="soc-prof-head">
         {cardData ? (
           <>
-            {/* The Player Card IS the header now (2026-10-23): the playing-
-                card face for the player's rank card up top, the profile's
-                own lines (tagline, presence, region) in a slim row under
-                it, then the shared RepBlock and the action row as before. */}
-            <PlayerCard data={cardData} pic={pic} champion={socialP?.champion} self={me}
+            {/* Status up top (owner, 2026-10-23): the profile's tagline +
+                presence line render ABOVE the card, centered in the first
+                viewport — and the card's own status goes up with them via
+                statusPlacement="above". The region line stays under the
+                card; then the shared RepBlock and the action row as before. */}
+            <div className="prof-above-card">
+              <TaglineText text={tagline} className="soc-tagline" />
+              <p className={`soc-online-status ${presenceEntry ? 'on' : 'off'}`} data-testid="profile-online">
+                <i className="soc-dot" aria-hidden />{presenceText}
+              </p>
+            </div>
+            <PlayerCard data={cardData} pic={pic} champion={socialP?.champion} self={me} statusPlacement="above"
               onEditCard={me ? () => setCardEditorOpen((v) => !v) : undefined} />
             {me && cardEditorOpen && (
               <CardEditor card={cardData}
                 onClose={() => setCardEditorOpen(false)}
                 onSaved={(card) => { setCred((prev) => (prev ? { ...prev, card } : prev)); setCardEditorOpen(false); }} />
             )}
-            <div className="prof-under-card">
-              <TaglineText text={tagline} className="soc-tagline" />
-              <p className={`soc-online-status ${presenceEntry ? 'on' : 'off'}`} data-testid="profile-online">
-                <i className="soc-dot" aria-hidden />{presenceText}
-              </p>
-              {regionText && <p className="soc-muted" data-testid="profile-region">Region: {regionText}</p>}
-            </div>
+            {regionText && (
+              <div className="prof-under-card">
+                <p className="soc-muted" data-testid="profile-region">Region: {regionText}</p>
+              </div>
+            )}
           </>
         ) : (
           <>

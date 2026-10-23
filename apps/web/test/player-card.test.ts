@@ -429,15 +429,20 @@ function mockProfileFetch(selfPayload: unknown, otherPayload: unknown) {
 describe('ProfileView: the card heads the profile', () => {
   beforeEach(() => { mockProfileFetch(credWithCard('u-self-1', 'M33CH', cardBase({ name: 'M33CH' })), credWithCard('u-other-1', 'LovleyT714', cardBase({ name: 'LovleyT714' }))); });
 
-  it('own profile: card first, presence + RepBlock keep their order under it, Edit card opens the editor', async () => {
+  it('own profile: status + presence up top, then the card, RepBlock under it, Edit card opens the editor', async () => {
     await act(async () => { await loadAccount(true); });
     await render(createElement(ProfileView, { host: 'page' }));
     expect(q('[data-testid="player-card"]')).not.toBeNull();
     expect(q('[data-testid="pcard-name"]')?.textContent).toContain('M33CH');
     expect(q('[data-testid="profile-name"]')).toBeNull();
     const src = el!.innerHTML;
-    expect(src.indexOf('player-card')).toBeLessThan(src.indexOf('profile-online'));
-    expect(src.indexOf('profile-online')).toBeLessThan(src.indexOf('profile-rep'));
+    // v4 (owner): the presence line renders ABOVE the card, and the card's
+    // own status rides up there too — exactly once, never in both places.
+    expect(src.indexOf('profile-online')).toBeLessThan(src.indexOf('player-card'));
+    expect(src.indexOf('player-card')).toBeLessThan(src.indexOf('profile-rep'));
+    expect(q('[data-testid="pcard-status-top"]')).not.toBeNull();
+    expect(src.indexOf('Here for the run, not the talk')).toBeLessThan(src.indexOf('player-card'));
+    expect(src.split('Here for the run, not the talk')).toHaveLength(2);
     const edit = q('[data-testid="card-edit"]') as HTMLButtonElement;
     await act(async () => { edit.click(); });
     expect(q('[data-testid="card-editor"]')).not.toBeNull();
@@ -628,10 +633,10 @@ describe('polish pass: classic ink, real-card scale, the corner owns its corner'
     expect(plateRight - zone).toBeGreaterThanOrEqual(5);
   });
 
-  it('the number art window yielded to classic pip scale (40% of the field, squarer)', () => {
-    const win = block('.plcard .pcard-artwin.number {');
-    expect(win).toMatch(/width:\s*40%/);
-    expect(win).toContain('aspect-ratio: 4 / 3.75');
+  it('the number art window is sized by pip density now (the v4 pins below carry the sizes)', () => {
+    expect(css).toContain('.plcard .pcard-artwin.number.sparse {');
+    expect(css).toContain('.plcard .pcard-artwin.number.dense {');
+    expect(css).toContain('.plcard .pcard-artwin.number.tight {');
   });
 });
 
@@ -677,5 +682,107 @@ describe('nameplate contrast (computed from the shipped css)', () => {
     const ink = inkOf(ruleBlock('.plcard[data-treatment="big-joker"] .pcard-name {'));
     expect(ink).toBeTruthy();
     for (const stop of stops) expect(contrast(ink, stop)).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+/* --------------------------- layout pass v4 (owner, 2026-10-23) */
+
+describe('layout pass v4: status up top, the portrait grows, courts fill the field', () => {
+  const css = read('../src/profile/playercard.css');
+  const card = read('../src/profile/PlayerCard.tsx');
+  const view = read('../src/profile/ProfileView.tsx');
+  const block = (selector: string): string => {
+    const i = css.indexOf(selector);
+    expect(i, `selector ${selector}`).toBeGreaterThanOrEqual(0);
+    const open = css.indexOf('{', i);
+    return css.slice(open, css.indexOf('}', open));
+  };
+
+  it('statusPlacement="above" renders the status over the card, exactly once; the default keeps it below', async () => {
+    await render(createElement(PlayerCard, { data: cardBase(), statusPlacement: 'above' }));
+    const top = q('[data-testid="pcard-status-top"]')!;
+    expect(top).not.toBeNull();
+    expect(top.textContent).toContain('Here for the run, not the talk');
+    expect(el!.innerHTML.indexOf('pcard-status-top')).toBeLessThan(el!.innerHTML.indexOf('player-card'));
+    expect(q('.pcard-below')!.textContent).not.toContain('Here for the run, not the talk');
+    expect(text().split('Here for the run, not the talk')).toHaveLength(2);
+
+    await render(createElement(PlayerCard, { data: cardBase() }));
+    expect(q('[data-testid="pcard-status-top"]')).toBeNull();
+    expect(q('.pcard-below .pcard-status')?.textContent).toContain('Here for the run, not the talk');
+  });
+
+  it('ProfileView asks for the status up top and puts its own tagline + presence row above the card', () => {
+    expect(card).toContain("statusPlacement?: 'above' | 'below'");
+    expect(view).toContain('statusPlacement="above"');
+    expect(view.indexOf('className="prof-above-card"')).toBeLessThan(view.indexOf('<PlayerCard'));
+    expect(view.indexOf('data-testid="profile-online"')).toBeLessThan(view.indexOf('<PlayerCard'));
+    // the region line is the one identity line that stays under the card
+    expect(view.indexOf('data-testid="profile-region"')).toBeGreaterThan(view.indexOf('<PlayerCard'));
+    expect(css).toMatch(/\.prof-above-card \{[^}]*align-items: center/);
+    expect(css).toMatch(/\.pcard-above \{[^}]*text-align: center/);
+  });
+
+  it('number windows carry their density group from the component (sparse/dense/tight)', async () => {
+    const cases: [string, string][] = [['4', 'sparse'], ['3', 'sparse'], ['5', 'sparse'], ['6', 'dense'], ['9', 'dense'], ['10', 'dense'], ['7', 'tight'], ['8', 'tight']];
+    for (const [rank, group] of cases) {
+      await render(createElement(PlayerCard, {
+        data: cardBase({ rank: numberRank(rank, 'clubs', '♣', 10 + Number(rank)) }),
+      }));
+      const win = q('.pcard-artwin.number')!;
+      expect(win, `rank ${rank}`).not.toBeNull();
+      expect(win.classList.contains(group), `rank ${rank} is ${group}`).toBe(true);
+    }
+  });
+
+  it('window size floors: sparse ≥ 65% of the field, dense/tight ≥ 45%, ace ≥ 55%, deuce ≥ 45%', () => {
+    const widthOf = (selector: string) => parseFloat(block(selector).match(/width:\s*([\d.]+)%/)![1]!);
+    expect(widthOf('.plcard .pcard-artwin.number.sparse {')).toBeGreaterThanOrEqual(65);
+    expect(widthOf('.plcard .pcard-artwin.number.dense {')).toBeGreaterThanOrEqual(45);
+    expect(widthOf('.plcard .pcard-artwin.number.tight {')).toBeGreaterThanOrEqual(45);
+    expect(widthOf('.plcard .pcard-artwin.ace {')).toBeGreaterThanOrEqual(55);
+    expect(widthOf('.plcard .pcard-artwin.deuce {')).toBeGreaterThanOrEqual(45);
+  });
+
+  it('no pip ink overlaps the grown window at any rank 3–10 (geometry model over the shipped css)', () => {
+    // Card = 100 units wide × 140 tall. The field box: left 14, width 72,
+    // top 11.5% of 140 = 16.1, height 70.5% of 140 = 98.7. Pip ink spans
+    // ~15 units around each PIP_LAYOUTS center. The window is centered.
+    const FIELD = { left: 14, width: 72, top: 16.1, height: 98.7 };
+    const GROUP: Record<string, string> = { '3': 'sparse', '4': 'sparse', '5': 'sparse', '6': 'dense', '7': 'tight', '8': 'tight', '9': 'dense', '10': 'dense' };
+    const winBox = (group: string) => {
+      const b = block(`.plcard .pcard-artwin.number.${group} {`);
+      const wPct = parseFloat(b.match(/width:\s*([\d.]+)%/)![1]!);
+      const ar = b.match(/aspect-ratio:\s*([\d.]+) \/ ([\d.]+)/)!;
+      const w = wPct * FIELD.width / 100;
+      const h = w * parseFloat(ar[2]!) / parseFloat(ar[1]!);
+      return { w, h };
+    };
+    for (const [rank, layout] of Object.entries(PIP_LAYOUTS)) {
+      if (rank === '2') continue; // the Deuce field, not a number layout
+      const { w, h } = winBox(GROUP[rank]!);
+      const cx = FIELD.left + FIELD.width / 2;
+      const cy = FIELD.top + FIELD.height / 2;
+      for (const p of layout) {
+        const px = FIELD.left + p.x * FIELD.width / 100;
+        const py = FIELD.top + p.y * FIELD.height / 100;
+        const overlap = Math.abs(px - cx) < w / 2 + 7.5 && Math.abs(py - cy) < h / 2 + 7.5;
+        expect(overlap, `${rank}: pip (${p.x},${p.y}) vs window ${w.toFixed(1)}×${h.toFixed(1)}`).toBe(false);
+      }
+    }
+  });
+
+  it('the Ace keeps its hero pip: the pip drops to top 66% and the grown window rides above it', () => {
+    expect(block('.plcard .pcard-field[data-field="ace"] .pcard-heropip {')).toContain('top: 66%');
+  });
+
+  it('court figures fill the field keyline to keyline, indices backed in ivory, the tab inside the figure', async () => {
+    const field = block('.plcard[data-treatment="court"] .pcard-field {');
+    for (const pin of ['top: 3%', 'bottom: 3%', 'left: 3%', 'right: 3%']) expect(field).toContain(pin);
+    expect(block('.plcard[data-treatment="court"] .pcard-corner {')).toContain('background: rgba(253, 250, 241');
+    expect(block('.plcard[data-treatment="court"] .pcard-royaltab {')).toContain('top: 10px');
+    await render(createElement(PlayerCard, { data: cardBase() }));
+    expect(q('.pcard-field[data-field="court"] .pcard-artwin.court')).not.toBeNull();
+    expect(qa('.pcard-corner')).toHaveLength(2);
   });
 });

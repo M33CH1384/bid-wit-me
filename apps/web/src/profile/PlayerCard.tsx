@@ -27,6 +27,16 @@
  * zones. The crank carries data-two for a two-digit rank (the 10), which
  * the CSS prints condensed, as real decks do.
  *
+ * Layout pass v4 (owner, 2026-10-23): the status moves UP — with
+ * statusPlacement="above" (the profile header passes it) the card's
+ * status renders over the card, centered, instead of in the below-card
+ * column; the default keeps it below, so the rewards card-up reveal is
+ * unchanged. The portrait grows: number-card art windows are sized by
+ * pip density (sparse 3/4/5 wide, dense 6/9/10 narrower, tight 7/8
+ * shorter — the offset center pips cap their height), the Ace and Deuce
+ * windows grow with them, and court figures fill the field keyline to
+ * keyline with an ivory backing keeping the corner indices readable.
+ *
  * The rank ladder is the owner's: Rep level IS a card — 3♥ up through the
  * suits (hearts the come-up, clubs "you belong", diamonds "bout that
  * life", spades the elite run) to the Deuce of spades at 49, the Little
@@ -191,7 +201,7 @@ function SplitRow({ label, split }: { label: string; split: CardModeSplit }) {
   );
 }
 
-export function PlayerCard({ data, pic, variant = 'header', champion, self, onEditCard }: {
+export function PlayerCard({ data, pic, variant = 'header', champion, self, onEditCard, statusPlacement = 'below' }: {
   data: PlayerCardData;
   /** resolved avatar picture (the profile's cache-aware resolution wins
    *  over the payload's copy); omit to use the payload's avatar */
@@ -203,6 +213,11 @@ export function PlayerCard({ data, pic, variant = 'header', champion, self, onEd
   self?: boolean;
   /** own card only: opens the card editor (status / tags / showcase) */
   onEditCard?: () => void;
+  /** where the card's status line renders (owner, 2026-10-23): 'above'
+   *  the card in the profile header, front and center; 'below' in the
+   *  below-card column (the default — the rewards reveal keeps it). The
+   *  status renders in exactly one of the two places, never both. */
+  statusPlacement?: 'above' | 'below';
 }) {
   const [flipped, setFlipped] = useState(false);
   const shownPic = pic !== undefined ? pic : data.avatar;
@@ -222,6 +237,12 @@ export function PlayerCard({ data, pic, variant = 'header', champion, self, onEd
   const treatment = r.isBigJoker ? 'big-joker' : r.isLittleJoker ? 'little-joker' : isDeuce ? 'deuce' : isCourt ? 'court' : r.rank === 'A' ? 'ace' : 'number';
   const cornerRank = r.isJoker ? '★' : r.rank;
   const cornerSuit = r.isJoker ? 'JOKER' : r.symbol;
+
+  /* The number window's size group, from the pip geometry around it:
+   * sparse ranks (3/4/5) have open centers and take the wide window;
+   * dense ranks (6/9/10) are fenced by the mid/side rows and narrow;
+   * tight ranks (7/8) carry offset center pips that cap the height. */
+  const numGroup = ['3', '4', '5'].includes(r.rank) ? 'sparse' : (r.rank === '7' || r.rank === '8') ? 'tight' : 'dense';
 
   const field = r.isJoker ? (
     <div className="pcard-field" data-field="joker">
@@ -250,12 +271,17 @@ export function PlayerCard({ data, pic, variant = 'header', champion, self, onEd
         <span key={i} className="pcard-pipdot" data-inv={p.inv ? '1' : undefined}
           style={{ left: `${p.x}%`, top: `${p.y}%` }} aria-hidden>{r.symbol}</span>
       ))}
-      <ArtWindow pic={shownPic} name={data.name} cls="number" />
+      <ArtWindow pic={shownPic} name={data.name} cls={`number ${numGroup}`} />
     </div>
   );
 
   return (
     <div className="pcard-wrap" data-variant={variant}>
+      {statusPlacement === 'above' && data.status && (
+        <div className="pcard-above" data-testid="pcard-status-top">
+          <TaglineText text={data.status} className="pcard-status" />
+        </div>
+      )}
       <div className="pcard plcard" data-testid="player-card" data-variant={variant}
         data-suit={r.suit ?? 'joker'} data-treatment={treatment}
         onClick={flip}
@@ -329,7 +355,7 @@ export function PlayerCard({ data, pic, variant = 'header', champion, self, onEd
 
       {/* --------------------------------------- below the card (profile) */}
       <div className="pcard-below">
-        {data.status && <TaglineText text={data.status} className="pcard-status" />}
+        {statusPlacement === 'below' && data.status && <TaglineText text={data.status} className="pcard-status" />}
 
         {data.tags.length > 0 && (
           <div className="pcard-tags" data-testid="pcard-tags">
