@@ -37,8 +37,9 @@
  *   suppressed (cross-speaker dedupe), on top of the engine's shuffle-bag.
  */
 import { type Action, type GameState, tricksStillRemaining } from '@spades/rules';
-import { type RevTributeEvent, type TalkEvent, type TalkLine, type TalkTable, REV_TRIBUTE, botTalk, collectionBanter, gapBucketForScores, leanBid, leanNil, momentsFor, newRevTributeState, newTalkState, noteTalkHand, personaForName, personaOf, prePlayLine, profileOf, revLineIdForText, revTributeCommit, revTributeDetect, setsBySideOf, sideOfSeat } from '@spades/bots';
+import { type HistKind, type RevTributeEvent, type TalkEvent, type TalkLine, type TalkTable, REV_TRIBUTE, botTalk, collectionBanter, gapBucketForScores, historyTalk, leanBid, leanNil, momentsFor, newRevTributeState, newTalkState, noteTalkHand, personaForName, personaOf, prePlayLine, profileOf, revLineIdForText, revTributeCommit, revTributeDetect, setsBySideOf, sideOfSeat } from '@spades/bots';
 import { getActiveDeck } from './decks';
+import { histViewsForSeats } from './personaHistory';
 import { spokenClipDurationMs, talkPrefs } from './talkPrefs';
 
 /** why/how a generic line is being delivered — drives the gates + chain depth */
@@ -131,7 +132,11 @@ export const offlineTalk = {
       setsBySide: setsBySideOf(st),
     };
   },
+  /** bumped on every newGame(): lets a scheduled beat tell whether the
+   * match it was scheduled for is still the match on screen */
+  gameSeq: 0,
   newGame() {
+    this.gameSeq++;
     this.state = newTalkState();
     this.lastState = null;
     this.rev = newRevTributeState();
@@ -345,6 +350,20 @@ export const offlineTalk = {
     });
   },
   moment(ev: Parameters<typeof botTalk>[2]) { if (this.on()) { if (ev.handNo === undefined && this.lastState) ev.handNo = this.lastState.handNo; this.emit(botTalk(this.state, this.table!, ev, performance.now(), Math.random)); } },
+  /**
+   * A persona-memory beat (owner, 2026-10-23): stamp every bot seat's
+   * record view from the device store and let the engine pick who cites
+   * it. Table schedules these at match start (opponents, then the
+   * partner) and at game end (the finale, citing the record the finished
+   * game just updated). Delivery rides emit(), so the mix hierarchy and
+   * the cross-speaker dedupe apply exactly as for any generic line.
+   */
+  historyBeat(kind: HistKind) {
+    if (!this.on()) return;
+    const t = this.table!;
+    const line = historyTalk(this.state, t, kind, { kind, hist: histViewsForSeats(t.seats) }, performance.now(), Math.random);
+    if (line) this.emit(line);
+  },
   /** collection-window banter lines about the hand that just ended; the caller owns delivery timing.
    * Gated on the same Bot-trash-talk pref as the engine (the old pack draw ignored it). */
   banter(after: GameState, maxLines = 2): TalkLine[] {

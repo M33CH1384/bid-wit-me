@@ -13,6 +13,8 @@ import { PACK, STYLE, type PackSection } from './pack';
 import { POOLS2 } from './pools2';
 import { PACK2, COMMON_EXTRA } from './pack2';
 import { POOLS3 } from './pools3';
+import { HISTORY_BANKS, type HistKind } from './historyPools';
+import type { HistReq } from './historyTalk';
 
 export type TalkKind =
   | 'prePlay'      // before the bot plays (generic or bluff; never an honest tell)
@@ -51,7 +53,14 @@ export type TalkKind =
   | 'onNotice'     // the other side got shot (Shot = out) and is on notice
   | 'shotOut'      // the other side got shot out of the game
   | 'matchPoint'   // speaker's side is one hand from winning (leading, within 100 of the target)
-  | 'trickPop';    // a trick just completed (density pass): NO pool of its own — talk.ts resolves it to the speaker's recorded prePlay/roast pools
+  | 'trickPop'     // a trick just completed (density pass): NO pool of its own — talk.ts resolves it to the speaker's recorded prePlay/roast pools
+  // persona memory (2026-10-23): lines that cite the speaker's REAL record
+  // against the player (historyTalk.ts gates, historyPools.ts banks). Only
+  // talk.ts's historyTalk() ever fires these kinds; they are text-only by
+  // design until a future bake (TEXT_ONLY_KINDS in talk.ts).
+  | 'histSeries'   // match start: an opponent cites the vs record (ahead, behind, streak, last meeting)
+  | 'histTogether' // match start: the partner cites the together record
+  | 'histFinale';  // game end: an opponent cites the record the finished game just updated
 
 export type PersonaId = 'professor' | 'mama' | 'hype' | 'petty' | 'og' | 'hustler' | 'silent'
   | 'deacon' | 'conspiracy' | 'barber' | 'gambler' | 'hothead' | 'comedian' | 'lilcuz' | 'coach' | 'smooth' | 'storyteller' | 'influencer' | 'sorelose';
@@ -76,6 +85,10 @@ export interface LineMeta {
   min?: 'cookout' | 'nomercy'; cond?: LineCond;
   /** the game-state fact this line fits (preferred strongly when the moment carries it) */
   fact?: LineFact;
+  /** persona memory: the record truth this line requires of its speaker
+   * (historyTalk.ts). A HARD gate in pick(), like the {bid}/{gap} slot
+   * discipline: false or unverifiable → the line sits out. */
+  hist?: HistReq;
   /** the speaker refers to themself as a woman / man ("mama's thinking", "grown-man card"): only bots of that gender say it */
   self?: 'f' | 'm';
   /** the line genders its target ({them} "IS HIM", "baby boy"): only said about a bot of that gender (never a human) */
@@ -666,6 +679,23 @@ for (const [id, kinds] of Object.entries(POOLS3) as [PersonaId, Partial<Record<T
     for (const raw of raws) if (!pool.includes(raw)) pool.push(raw);
   }
 }
+// ---- persona memory (2026-10-23): flatten the history banks into the
+// persona pools and register each line's record-truth requirement. New
+// kinds entirely, appended after every earlier wave, so no existing pool
+// entry changes index and every recorded-clip id stays put. The lines
+// join the bake corpus through speakableLines() like any other pool
+// line; they render text-only until a bake records them. ----
+for (const [id, kinds] of Object.entries(HISTORY_BANKS) as [PersonaId, Partial<Record<HistKind, Partial<Record<HistReq, string[]>>>>][]) {
+  for (const [kind, bank] of Object.entries(kinds) as [HistKind, Partial<Record<HistReq, string[]>>][]) {
+    const pool = (PERSONAS[id].lines[kind] ??= []);
+    for (const [req, raws] of Object.entries(bank) as [HistReq, string[]][]) {
+      for (const raw of raws) {
+        LINE_META[raw] = { ...LINE_META[raw], hist: req };
+        if (!pool.includes(raw)) pool.push(raw);
+      }
+    }
+  }
+}
 // mild cursing in the base pools needs Cookout (Family Friendly never says it, even masked)
 for (const list of [COMMON, ...Object.values(PERSONAS).map((p) => p.lines)]) {
   for (const arr of Object.values(list)) for (const l of arr ?? []) if (MILD.test(l) && !LINE_META[l]?.min) LINE_META[l] = { ...LINE_META[l], min: 'cookout' };
@@ -784,10 +814,30 @@ for (const [raw, fact] of Object.entries(FACT_TAGS)) LINE_META[raw] = { ...LINE_
 export const SELF_F = [
   "put your cards down, baby. mama's taking all of these.", "mm-hm. mama's thinking.", 'mama sets the table AND the bid.',
   'mama always wins at the cookout.', 'see, {them} listens to mama.', "That's a grown-woman card right there!",
+  // persona-memory banks (historyPools.ts): the mama variants
+  "baby, mama's up {hw}–{hl} on you. sit down, eat something, think about it.", "record says {hw}–{hl}, sugar. mama keeps the books AND the kitchen.",
+  "you up {hl}–{hw} on mama? enjoy it, baby. supper's coming and so is the bill.", "down {hw}–{hl}? baby, mama's been behind before. wasn't behind long.",
+  "all tied up at {hw}–{hl}. somebody's going ahead tonight, and mama already set the table.", "{streak} in a row, baby. mama's on a roll and the rolls are fresh.",
+  "{streak} straight for you? baby, even the rain stops. mama's the umbrella.", 'last time mama sent you home hungry. hope you ate before you came.',
+  "you got mama last time. enjoy the memory, baby, it's going in a frame.", "there it is: {hw}–{hl}. mama's book gets another page.",
+  "{hw}–{hl}. mama wrote it down. mama don't forget a debt OR a dessert.", "{streak} straight, baby. somebody check on {them}, mama's cooking too hot.",
+  "{streak} of yours in a row. fine. mama preheats slow, then everybody eats.", "told you, baby. mama's table, mama's rules, mama's win.",
+  "take it home, baby. mama lets company win sometimes. sometimes.", '{tg} games riding together, baby. mama trusts you at her table.',
+  "we're {tw}–{tl} together, sugar. mama picked the right partner.",
 ];
 export const SELF_M = [
   "put your cards down, baby. papa's taking all of these.", "mm-hm. papa's thinking.", 'papa sets the table AND the bid.',
   'papa always wins at the cookout.', 'see, {them} listens to papa.', "That's a grown-man card right there!",
+  // persona-memory banks (historyPools.ts): the papa variants
+  "baby, papa's up {hw}–{hl} on you. sit down, eat something, think about it.", "record says {hw}–{hl}, sugar. papa keeps the books AND the kitchen.",
+  "you up {hl}–{hw} on papa? enjoy it, baby. supper's coming and so is the bill.", "down {hw}–{hl}? baby, papa's been behind before. wasn't behind long.",
+  "all tied up at {hw}–{hl}. somebody's going ahead tonight, and papa already set the table.", "{streak} in a row, baby. papa's on a roll and the rolls are fresh.",
+  "{streak} straight for you? baby, even the rain stops. papa's the umbrella.", 'last time papa sent you home hungry. hope you ate before you came.',
+  "you got papa last time. enjoy the memory, baby, it's going in a frame.", "there it is: {hw}–{hl}. papa's book gets another page.",
+  "{hw}–{hl}. papa wrote it down. papa don't forget a debt OR a dessert.", "{streak} straight, baby. somebody check on {them}, papa's cooking too hot.",
+  "{streak} of yours in a row. fine. papa preheats slow, then everybody eats.", "told you, baby. papa's table, papa's rules, papa's win.",
+  "take it home, baby. papa lets company win sometimes. sometimes.", '{tg} games riding together, baby. papa trusts you at his table.',
+  "we're {tw}–{tl} together, sugar. papa picked the right partner.",
 ];
 export const TARGET_F = ["Bag lady, you gon' hurt your back!", '{them} IS HER!!!', '{them} is HER fr.', "{bid}? baby girl, you don't got {bid}."];
 export const TARGET_M = ["Bag man, you gon' hurt your back!", '{them} IS HIM!!!', '{them} is HIM fr.', "{bid}? baby boy, you don't got {bid}."];

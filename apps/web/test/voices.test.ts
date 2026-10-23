@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { BOT_NAMES, PERSONAS, PERSONA_VOICES, RUNDOWN_FIRST, RUNDOWN_KING_LEG2, RUNDOWN_RETURN_CLEAR, RUNDOWN_RETURN_LOSS, type PersonaId, botTalk, kokoroGender, lineById, lineIdOf, newTalkState, personaForName, speakableLines, voiceFor } from '@spades/bots';
+import { BOT_NAMES, PERSONAS, PERSONA_VOICES, RUNDOWN_FIRST, RUNDOWN_KING_LEG2, RUNDOWN_RETURN_CLEAR, RUNDOWN_RETURN_LOSS, TEXT_ONLY_KINDS, type PersonaId, botTalk, kokoroGender, lineById, lineIdOf, newTalkState, personaForName, speakableLines, voiceFor } from '@spades/bots';
 import { browserVoiceFor } from '../src/talkPrefs';
 
 const pub = resolve(__dirname, '../public/voices/v2');
@@ -26,6 +26,7 @@ describe('recorded bot voices (v2 sprites)', () => {
       const clips = sprite(`${id}-${g}`).clips;
       for (const l of speakableLines(id, g)) {
         if (l.raw === '…') continue; // the Silent Assassin's silence is text-only
+        if (TEXT_ONLY_KINDS.includes(l.kind)) continue; // persona-memory lines (2026-10-23): text-only by design until a future bake records them — they stay in the corpus (speakableLines) so that bake can pick them up
         if (/^(You bid \{bid\} (for THAT|with WHAT)\?!|\{bid\}\? that.s a lot of books\.)$/.test(l.raw)) { for (let b = 1; b <= 13; b++) expect(clips[`${l.raw}#${b}`], `${id}-${g} ${l.raw}#${b}`).toBeDefined(); }
         else expect(clips[l.raw], `${id}-${g}: ${l.raw}`).toBeDefined();
         n++;

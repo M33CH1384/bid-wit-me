@@ -27,7 +27,8 @@ import PersonaFace from './PersonaFace';
 import StoryFace from './story/StoryFace';
 import { useMyTeamName } from './TeamName';
 import { offlineTalk } from './offlineTalk';
-import { ConsultDriver } from './consultDriver';
+import { ConsultDriver, hasMetPartner } from './consultDriver';
+import { recordPersonaResults } from './personaHistory';
 import { storyEvents, storyFactsOf, storyMilestones, storySnap, type StorySnap } from './story/storyScene';
 import { storyTeamNames } from './story/storySettings';
 import { storyBackdropUrl } from './story/storyBackdrop';
@@ -892,6 +893,32 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (online || story || st.phase !== 'gameOver' || !st.result || seriesRecorded.current) return;
     seriesRecorded.current = true;
     recordOfflineGame(r.mode, st.result.winners.includes(sideOf(HUMAN, r)));
+    // Persona memory (owner, 2026-10-23): the same completed game folds
+    // into every seated persona's entry in the persona ledger
+    // (personaLedger.ts — the writer half lives in personaHistory.ts) —
+    // opponents on the vs split, the partner on the together split, all
+    // from the viewer's side per the ledger contract. This effect is the
+    // only writer: offline, non-story, finished games only, so abandoned
+    // games never count. Cutthroat has no sides to win: a meeting enters
+    // the vs split only when it's decisive (the persona finished ahead
+    // of the player, or behind them) — level scores are nobody's win and
+    // stay unrecorded.
+    const humanSide = sideOf(HUMAN, r);
+    const viewerWon = st.result.winners.includes(humanSide);
+    recordPersonaResults(names.flatMap((nm, i) => {
+      if (i === HUMAN) return [];
+      if (!r.partnerships) {
+        const mine = st.scores[HUMAN] ?? 0, theirs = st.scores[i] ?? 0;
+        if (mine === theirs) return [];
+        return [{ persona: personaForName(nm), role: 'opp' as const, viewerWon: mine > theirs }];
+      }
+      return [{ persona: personaForName(nm), role: (sideOf(i, r) === humanSide ? 'partner' : 'opp') as 'partner' | 'opp', viewerWon }];
+    }));
+    // …and an opponent gets the last word on the record that game just
+    // wrote (the finale beat), unless a new match has already taken the
+    // table (gameSeq moves on) by the time it would land.
+    const seq = offlineTalk.gameSeq;
+    window.setTimeout(() => { if (offlineTalk.gameSeq === seq) offlineTalk.historyBeat('histFinale'); }, 2600);
     const ids = names.map((_, i) => (i === HUMAN ? 'you' : `bot:${i}`));
     const sideNames = Array.from({ length: st.scores.length }, (_, i) => sideName(r, i, names));
     // Record onto the series this game opened with, not whatever localStorage holds now.
@@ -904,6 +931,24 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   useEffect(() => {
     // a rematch (Play again keeps the series): the bots talk about it
     if (!online && !resume && (loadSeries()?.games.length ?? 0) > 0) window.setTimeout(() => offlineTalk.moment({ kind: 'rematch' }), 2500);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    // Persona memory (owner, 2026-10-23): at a fresh regular table, a
+    // returning opponent may cite the series record, and a returning
+    // partner the together record. First meetings stay silent — a
+    // persona with no record has no eligible lines, by gate — and the
+    // partner beat additionally yields to the first-meet introduction:
+    // a partner name the player has never met is the introduction's
+    // stage, even if the persona (another name, same character) holds a
+    // together record. Regular offline tables only: story seats are the
+    // cast, with their own memory systems, and online seats are people.
+    if (online || story || resume) return;
+    const tm = window.setTimeout(() => {
+      offlineTalk.historyBeat('histSeries');
+      const pSeat = r.partnerships ? (HUMAN + 2) % names.length : -1;
+      if (pSeat >= 0 && hasMetPartner(names[pSeat]!)) offlineTalk.historyBeat('histTogether');
+    }, 1700);
+    return () => window.clearTimeout(tm);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const seriesChip = (cls = '') => <SeriesChip series={series} onOpen={() => setSeriesOpen(true)} className={cls} />;
   const [confirmLeave, setConfirmLeave] = useState(false);

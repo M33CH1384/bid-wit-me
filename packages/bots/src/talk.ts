@@ -12,9 +12,20 @@ import { REV_MALCOLM_CUT_LINES, REV_TRIBUTE_TEXTS } from './revTributes';
 import { possessive, voiceGender } from './names';
 import { type CatalogMemory, type VoiceMoment, bucketFor, pickCatalog } from './catalog';
 import { BOT_SKILLS, type BotSkill, seatSkill } from './bidding';
+import { histOk, type HistView } from './historyTalk';
 
 export { COMMON, LINE_META, PACK_OWNERS, PERSONA_PORTRAITS, PERSONAS, lineAllowed, personaForName, personaPortraitFor, personaSkillFloor };
 export type { LineFact, LineMeta, PersonaId, TalkIntensity, TalkKind };
+/**
+ * Kinds whose lines are TEXT-ONLY by design right now: written for the
+ * table, registered in the bake corpus (speakableLines enumerates them),
+ * but with no recorded clip yet — the client finds no clip for the line
+ * id and renders the text, the standing pattern for unrecorded lines.
+ * Persona memory (2026-10-23) is the first family built this way; the
+ * voices test exempts exactly these kinds, and a future bake lifts the
+ * exemption by recording them.
+ */
+export const TEXT_ONLY_KINDS: TalkKind[] = ['histSeries', 'histTogether', 'histFinale'];
 export const TALK_INTENSITY_LABEL: Record<TalkIntensity, string> = { family: 'Family Friendly', cookout: 'Cookout', nomercy: 'No Mercy' };
 
 export const TALK = {
@@ -31,6 +42,9 @@ export const TALK = {
     streak: 0.5, runIt: 1, gotRan: 0.6, win: 1, lose: 0.9, rematch: 0.8, hypePartner: 0.55, newbie: 0.3, reveal: 1,
     slam: 0.3, partnerBlunder: 0.7, bidTooHigh: 0.5, nilBid: 0.6, blindNil: 0.9, boston: 1, loudLoser: 0.8, badHand: 0.35, roast: 0.5,
     onNotice: 0.8, shotOut: 1, matchPoint: 0.8,
+    // persona memory: rolled only inside historyTalk() (the caller names
+    // the beat — match start / game end); generic events never draw these
+    histSeries: 0.85, histTogether: 0.7, histFinale: 0.85,
     // trickPop never rolls on this table: its chance lives on the density profile
     // (TALK_PROFILES.trickPop), so the trigger stays dormant wherever no profile
     // opts a table in — the server's online tables included.
@@ -151,6 +165,10 @@ export interface TalkState {
   handTopics?: Record<string, number>;
   /** bigram catchphrase fire counts for the whole match (capped) */
   matchTopics?: Record<string, number>;
+  /** persona memory: history lines said this match (HIST_MATCH_CAP) and
+   * the seats that said one (at most one per seat per match) */
+  histSaid?: number;
+  histSeats?: number[];
   /** monotonic counter of lines said at this table (LRU recycle order) */
   saySeq?: number;
   /** last saySeq at which each raw line was said (pool rotation memory) */
@@ -200,6 +218,11 @@ export interface TalkEvent {
   /** the side that won the most recently completed hand of this match
    * (stamped by momentsFor / collectionBanter): gates 'wonPrevHand' lines */
   prevWinnerSide?: number;
+  /** persona memory: each seat's record view against the human (built by
+   * the client from the device record store; undefined = no record).
+   * History-kind lines hard-gate on the SPEAKER's view in pick() and
+   * fill their {hw}/{hl}/{streak}/{tw}/{tl}/{tg} slots from it. */
+  hist?: (HistView | undefined)[];
 }
 export type GapBucket = 'close' | 'aheadBig' | 'behindBig';
 export type TricksLeftBucket = 'early' | 'mid' | 'late';
@@ -333,7 +356,17 @@ function fill(text: string, t: TalkTable, speaker: number, ev: TalkEvent, them: 
     .replace(/\{card\}/g, cardWords(ev.card))
     .replace(/\{their\}/g, them !== undefined ? possessive(t.seats[them]?.bot ? t.seats[them]?.name : undefined) : 'their')
     .replace(/\{bid\}/g, String(ev.bid ?? 'that many'))
-    .replace(/\{gap\}/g, String(Math.abs(ev.gap ?? 0)));
+    .replace(/\{gap\}/g, String(Math.abs(ev.gap ?? 0)))
+    // persona-memory slots, from the SPEAKER's record view (pick() has
+    // already gated the line on that view existing and its requirement
+    // holding; the fallbacks mirror {bid}'s "that many" and are unreachable
+    // through the gated path)
+    .replace(/\{hw\}/g, ev.hist?.[speaker] ? String(ev.hist[speaker]!.w) : 'some')
+    .replace(/\{hl\}/g, ev.hist?.[speaker] ? String(ev.hist[speaker]!.l) : 'some')
+    .replace(/\{streak\}/g, ev.hist?.[speaker] ? String(Math.abs(ev.hist[speaker]!.streak)) : 'a few')
+    .replace(/\{tw\}/g, ev.hist?.[speaker] ? String(ev.hist[speaker]!.tw) : 'some')
+    .replace(/\{tl\}/g, ev.hist?.[speaker] ? String(ev.hist[speaker]!.tl) : 'some')
+    .replace(/\{tg\}/g, ev.hist?.[speaker] ? String(ev.hist[speaker]!.tg) : 'some');
 }
 
 /** does a line's condition hold for this event? */
@@ -383,6 +416,8 @@ function factOk(fact: LineFact | undefined, ev: TalkEvent, t: TalkTable, speaker
   }
 }
 
+/** persona-memory template slots ({hw} = the speaker's wins vs the player…): a line carrying one needs the speaker's record view to fill it */
+const HIST_SLOT_RE = /\{(?:hw|hl|streak|tw|tl|tg)\}/;
 const SCORE_FACTS: LineFact[] = ['close', 'aheadBig', 'behindBig'];
 /**
  * Track per-side score buckets as events report them: a side's bucketSeq
@@ -472,6 +507,12 @@ function pick(st: TalkState, t: TalkTable, persona: PersonaId, kind: TalkKind, e
   const claimOk = (l: string): boolean => {
     const meta = LINE_META[l];
     if (meta?.fact && !factOk(meta.fact, ev, t, speaker, st)) return false;
+    // persona memory: a history line's cited numbers are a claim like any
+    // other — the speaker's record view must exist and satisfy the line's
+    // requirement, and a line carrying a record slot without a view to
+    // fill it from sits out (the {bid}/{gap} discipline, verbatim)
+    if (meta?.hist && !histOk(meta.hist, speaker !== undefined ? ev.hist?.[speaker] : undefined)) return false;
+    if (HIST_SLOT_RE.test(l) && (speaker === undefined || !ev.hist?.[speaker])) return false;
     if (l.includes('{bid}') && typeof ev.bid !== 'number') return false;
     if (l.includes('{gap}') && typeof ev.gap !== 'number') return false;
     // topic dedupe: the same score claim from the same side of the same pool
@@ -742,6 +783,59 @@ export function botTalk(st: TalkState, t: TalkTable, ev: TalkEvent, now: number,
   // a set can come back as a petty one-liner
   if (kind === 'setThem' && rnd() < 0.15) kind = 'roast';
   return speak(st, t, seat, kind, ev, them === -1 ? undefined : them, now, rnd);
+}
+
+/** persona memory: at most this many history lines per match — the start
+ * beats (one opponent, the partner) and the game-end finale share it, so
+ * history flavours the table talk, it never floods it */
+export const HIST_MATCH_CAP = 3;
+
+/**
+ * A persona-memory beat: ONE seated persona cites its real record
+ * against the human. The caller names the beat and stamps every seat's
+ * record view on the event (ev.hist); the engine does the rest —
+ * candidates are the bots on the right side of the table (opponents for
+ * histSeries/histFinale, the partner for histTogether), deepest record
+ * first, each with the kind's chance roll, and pick()'s hard gates make
+ * sure whatever line lands cites numbers that are true for ITS speaker.
+ * Global/seat gaps apply as usual, one history line per seat per match,
+ * HIST_MATCH_CAP per match. say() is called directly (not speak()): a
+ * Hustler cannot cite a nine-game series through the newbie act — the
+ * record is the one thing the act never covered.
+ */
+export function historyTalk(st: TalkState, t: TalkTable, kind: 'histSeries' | 'histTogether' | 'histFinale', ev: TalkEvent, now: number, rnd: () => number): TalkLine | null {
+  if ((st.histSaid ?? 0) >= HIST_MATCH_CAP) return null;
+  const human = t.seats.findIndex((s) => !s.bot);
+  if (human < 0) return null;
+  const wantPartner = kind === 'histTogether';
+  if (wantPartner && !t.partnerships) return null;
+  const prof = profileOf(t);
+  if (now - st.lastAt < prof.globalGapMs) return null;
+  const humanSide = sideOfSeat(t, human);
+  const depth = (i: number): number => {
+    const v = ev.hist?.[i];
+    if (!v) return -1;
+    return wantPartner ? v.tg : v.g;
+  };
+  const cands = t.seats
+    .map((s, i) => ({ s, i }))
+    .filter(({ s, i }) => s.bot
+      && (sideOfSeat(t, i) === humanSide) === wantPartner
+      && !(st.histSeats ?? []).includes(i)
+      && ready(st, t, i, now, false)
+      && depth(i) >= 0)
+    .map(({ i }) => i)
+    .sort((a, b) => depth(b) - depth(a));
+  for (const seat of cands) {
+    if (rnd() >= Math.min(0.97, TALK.chance[kind] * prof.chanceScale) * freqOf(st, t, seat)) continue;
+    const line = say(st, t, seat, kind, ev, human, now, rnd);
+    if (line) {
+      st.histSaid = (st.histSaid ?? 0) + 1;
+      st.histSeats = [...(st.histSeats ?? []), seat];
+      return line;
+    }
+  }
+  return null;
 }
 
 /** how chatty a persona is right now: base freq × its score-gap mood for the speaker's own side */
