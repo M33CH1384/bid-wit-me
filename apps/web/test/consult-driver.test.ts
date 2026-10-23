@@ -26,7 +26,7 @@ const { speakConsult } = await import('../src/talkPrefs');
 const NAMES = ['You', 'Ash', 'Partner', 'Bo'];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function makeDriver(pushes: { name: string; text: string }[], opts: { story?: boolean; k?: number } = {}) {
+function makeDriver(pushes: { name: string; text: string }[], opts: { story?: boolean; k?: number; callouts?: { seat: number; text: string }[] } = {}) {
   return new ConsultDriver({
     story: !!opts.story,
     names: NAMES,
@@ -35,12 +35,15 @@ function makeDriver(pushes: { name: string; text: string }[], opts: { story?: bo
     levelFor: () => 'pro',
     k: () => opts.k ?? 1,
     push: (name, text) => pushes.push({ name, text }),
+    callout: (seat, text) => opts.callouts?.push({ seat, text }),
     seatPos: () => undefined,
     kingLeg2: () => false,
     humanHinted: () => false,
     humanNilAnnounced: () => false,
   });
 }
+const stateWithDealer = (seed: string, dealer: number): GameState =>
+  newGame(makeRules('joker', { firstHandBidsItself: false }), seed, { dealer });
 const freshState = (seed = 'driver-test'): GameState => newGame(makeRules('joker', { firstHandBidsItself: false }), seed);
 const withBids = (st: GameState, bids: (number | 'nil' | null)[]): GameState => ({ ...st, bids: bids as GameState['bids'] });
 
@@ -138,11 +141,12 @@ describe('bid delays (§5.4 / §6.2)', () => {
     d.dispose();
   });
 
-  it('confer: caps, consecutiveness, first-bidder exemption, speed gate', () => {
+  it('confer: caps, pair adjacency, first-bidder exemption, speed gate', () => {
     const rnd = vi.spyOn(Math, 'random').mockReturnValue(0); // every roll passes; form A; voiced
     try {
       const pushes: { name: string; text: string }[] = [];
-      const d = makeDriver(pushes);
+      const callouts: { seat: number; text: string }[] = [];
+      const d = makeDriver(pushes, { callouts });
       const st = freshState('confer-test');
       // first bidder of the hand is exempt (its own driver/hand: a seat
       // bids once per hand, and decisions are cached per hand+seat —
@@ -153,11 +157,25 @@ describe('bid delays (§5.4 / §6.2)', () => {
       // seat 3 confers on the second bid of the hand (partner seat 1 claims)
       expect(d.bidDelay(3, withBids(st, [5, null, null, null]))).toBe(800);
       expect(pushes.some((p) => p.name === 'Ash' && p.text.includes('→ Bo:'))).toBe(true);
+      // a fired claim also surfaces at the speaker's plate (regular
+      // tables): the bare claim text, no chat arrow chrome
+      expect(callouts.length).toBe(1);
+      expect(callouts[0]!.seat).toBe(1);
+      expect(callouts[0]!.text).not.toContain('→');
+      expect(pushes[0]!.text).toBe(`→ Bo: ${callouts[0]!.text}`);
       // the same seat's decision is idempotent (useGame re-runs its effect)
       expect(d.bidDelay(3, withBids(st, [5, null, null, null]))).toBe(800);
       expect(pushes.length).toBe(1);
-      // the very next bid may not confer (never consecutive)
-      expect(d.bidDelay(1, withBids(st, [5, null, null, 3]))).toBe(0);
+      // The pair's turns are ADJACENT under this engine's bid order
+      // (bidOrder runs each team back to back), so the second opponent
+      // can confer right after the first — the ≤2-per-hand cap and the
+      // per-seat-once rule are the bounds, not consecutiveness. (The
+      // old never-consecutive check made the pair's discussion
+      // structurally impossible: owner report 2026-10-23.)
+      expect(d.bidDelay(1, withBids(st, [5, null, null, 3]))).toBe(800);
+      expect(pushes.some((p) => p.name === 'Bo' && p.text.includes('→ Ash:'))).toBe(true);
+      expect(callouts.length).toBe(2);
+      expect(callouts[1]!.seat).toBe(3);
       // a later bid in the same hand may (second confer of the hand):
       // probed on a fresh driver, since a seat bids once per hand and
       // the skip above is itself a cached decision for that seat+hand
@@ -173,15 +191,44 @@ describe('bid delays (§5.4 / §6.2)', () => {
       const fast = makeDriver([], { k: 0.5 });
       expect(fast.bidDelay(3, withBids(st, [5, null, null, null]))).toBe(0);
       fast.dispose();
-      // story tables confer text-only: a shorter hold, no voice call
+      // story tables confer text-only: a shorter hold, no voice call,
+      // and no plate callout (v1 presentation is chat text, §8.4)
       vi.mocked(speakConsult).mockClear();
       const storyPushes: { name: string; text: string }[] = [];
-      const sd = makeDriver(storyPushes, { story: true });
+      const storyCallouts: { seat: number; text: string }[] = [];
+      const sd = makeDriver(storyPushes, { story: true, callouts: storyCallouts });
       expect(sd.bidDelay(3, withBids(st, [5, null, null, null]))).toBe(400);
       expect(storyPushes.some((p) => p.text.includes('→ Bo:'))).toBe(true);
       expect(vi.mocked(speakConsult)).not.toHaveBeenCalled();
+      expect(storyCallouts.length).toBe(0);
       sd.dispose();
       d.dispose();
+    } finally { rnd.mockRestore(); }
+  });
+
+  it('confer: the pre-human skip follows the real bid order, not seat arithmetic', () => {
+    const rnd = vi.spyOn(Math, 'random').mockReturnValue(0); // every roll passes
+    try {
+      // Human deals (dealer 0; order [1,3,2,0]): seat 1 opened (exempt),
+      // seat 3 bids next — its next bidder is the PARTNER (seat 2), not
+      // the human, so the confer is allowed. The old (seat + 1) % n
+      // proxy blocked exactly this turn, silencing the whole rotation.
+      const d0pushes: { name: string; text: string }[] = [];
+      const d0 = makeDriver(d0pushes);
+      const st0 = stateWithDealer('confer-gate-d0', 0);
+      expect(d0.bidDelay(3, withBids(st0, [4, null, null, null]))).toBe(800);
+      expect(d0pushes.some((p) => p.text.includes('→ Bo:'))).toBe(true);
+      d0.dispose();
+      // Partner deals (dealer 2; order [3,1,0,2]): seat 3 opened
+      // (exempt), seat 1 bids immediately before the HUMAN — the one
+      // turn the skip exists for. It stays silent even with the roll
+      // pinned open.
+      const d2pushes: { name: string; text: string }[] = [];
+      const d2g = makeDriver(d2pushes);
+      const st2 = stateWithDealer('confer-gate-d2', 2);
+      expect(d2g.bidDelay(1, withBids(st2, [null, null, null, 4]))).toBe(0);
+      expect(d2pushes.length).toBe(0);
+      d2g.dispose();
     } finally { rnd.mockRestore(); }
   });
 });

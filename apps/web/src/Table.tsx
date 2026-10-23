@@ -1009,6 +1009,10 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // misdeal-reveal window, so no beat fires while a reveal is on screen.)
   const kRef = useRef(k);
   kRef.current = k;
+  /** opponent conferral claims surface at the speaker's plate (the
+   * callout state lives further down; the driver calls through this
+   * ref so its construction here never reaches forward) */
+  const conferCallout = useRef<((seat: number, text: string) => void) | null>(null);
   const consultRef = useRef<ConsultDriver | null>(null);
   if (!consultRef.current && !online) {
     consultRef.current = new ConsultDriver({
@@ -1019,6 +1023,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       levelFor,
       k: () => kRef.current,
       push: (name, text) => localChat.push(name, text, false, 0, true),
+      callout: (seat, text) => conferCallout.current?.(seat, text),
       seatPos: (seat) => pos[seat],
       kingLeg2: () => story?.scene?.stop.id === 'king' && !!story.scene.facts.doublePending,
       humanHinted: (handNo) => partnerHint.current?.hand === handNo,
@@ -1219,6 +1224,10 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   }, [rawMsgs]); // eslint-disable-line react-hooks/exhaustive-deps
   const [callout, setCallout] = useState<{ seat: number; text: string; id: number } | null>(null);
   useEffect(() => { if (!callout) return; const t = window.setTimeout(() => setCallout(null), 3200); return () => clearTimeout(t); }, [callout]);
+  // Confer claims take the same callout (ids above the chat-message id
+  // space, so the two callout sources never collide on the render key).
+  const conferCalloutId = useRef(1_000_000);
+  conferCallout.current = (seat, text) => setCallout({ seat, text, id: ++conferCalloutId.current });
   const runId = runFx?.id;
   useEffect(() => {
     if (!runFx) { setRunLine(null); return; }

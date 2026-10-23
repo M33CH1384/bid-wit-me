@@ -16,7 +16,7 @@
  * no online source (§6.4 — online play is excluded in v1), and the
  * driver is inert without a partner seat (cutthroat, §5.5).
  */
-import { type GameState, viewFor } from '@spades/rules';
+import { type GameState, nextBidder, viewFor } from '@spades/rules';
 import {
   type BotLevel, type ConsultLine, type PersonaId,
   ackApplies, buildAck, buildConferLine, buildConsultation, buildCoverLine, buildIntroduction,
@@ -107,6 +107,11 @@ export interface ConsultDeps {
   /** live speed multiplier (SPEEDS[speed]) */
   k: () => number;
   push: (name: string, text: string) => void;
+  /** regular tables: surface a confer claim at the speaker's plate (the
+   * table's talk callout). A fired confer otherwise exists only as a
+   * chat line — and the chat panel starts closed at phone widths, so in
+   * play the beat was effectively invisible. Optional: tests may omit. */
+  callout?: (seat: number, text: string) => void;
   seatPos: (seat: number) => SeatPos | undefined;
   /** story: the King leg-2 window for Dee's board family */
   kingLeg2: () => boolean;
@@ -401,10 +406,25 @@ export class ConsultDriver {
     const n = st.rules.playerCount;
     const bidsPlaced = st.bids.filter((b) => b !== null).length;
     if (bidsPlaced === 0) return decide(0);
-    if ((seat + 1) % n === this.deps.humanSeat && st.bids[this.deps.humanSeat] == null) return decide(0);
+    // "The bid right before the human's own" is a statement about the
+    // BID ORDER, not seat arithmetic: this engine bids each team back
+    // to back (bidOrder — dealer's left, dealer's right, the dealer's
+    // partner, the dealer last), so a seat's clockwise neighbour is
+    // often not the next bidder at all. The old (seat + 1) % n proxy
+    // blacked out every opponent confer in the human-deals rotation
+    // (the right opponent's next bidder is the human's PARTNER, not the
+    // human) while letting the partner-deals rotation's left opponent
+    // perform straight into the human's wait. Ask the engine instead.
+    if (st.bids[this.deps.humanSeat] == null && nextBidder(st, seat) === this.deps.humanSeat) return decide(0);
     const per = (this.session.conferByHand.get(key) ?? { count: 0, seats: new Set<number>(), lastAtBidsPlaced: -10 });
     if (per.count >= 2 || per.seats.has(seat)) return decide(0);
-    if (per.lastAtBidsPlaced === bidsPlaced - 1) return decide(0); // never consecutive
+    // No never-consecutive block: under the same team-back-to-back bid
+    // order the two opponents' turns are ALWAYS adjacent in bidsPlaced,
+    // so the old check silently meant "the second opponent may confer
+    // only in hands where the first one didn't" — the pair could never
+    // actually confer with each other, which is the whole beat. The
+    // ≤2-per-hand cap and the per-seat-once rule above are the bounds
+    // §5.4 actually needs; lastAtBidsPlaced stays as bookkeeping.
     if (Math.random() >= 0.55) return decide(0);
     const pSeat = (seat + 2) % n;
     const pView = viewFor(st, pSeat);
@@ -438,6 +458,7 @@ export class ConsultDriver {
       const claimVoiced = voiced && Math.random() < 0.5; // second line text-only ~half the time
       this.after(650, () => {
         this.deps.push(pName, claimText);
+        if (!this.deps.story) this.deps.callout?.(pSeat, claim.text);
         if (claimVoiced) {
           speakConsult(pName, claim.raw, claim.clipSuffix, pPersona, this.deps.seatPos(pSeat), n);
           void consultClipDurationMs(pName, claim.raw, claim.clipSuffix, pPersona)
@@ -447,6 +468,7 @@ export class ConsultDriver {
       return decide(voiced ? 900 : 500);
     }
     this.deps.push(pName, claimText);
+    if (!this.deps.story) this.deps.callout?.(pSeat, claim.text);
     if (voiced) {
       speakConsult(pName, claim.raw, claim.clipSuffix, pPersona, this.deps.seatPos(pSeat), n);
       void consultClipDurationMs(pName, claim.raw, claim.clipSuffix, pPersona)
