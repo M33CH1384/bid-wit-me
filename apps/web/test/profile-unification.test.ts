@@ -227,6 +227,6 @@ describe('one implementation: no second full-profile body can grow back', () => 
     expect(social).toContain('<ProfileView host="panel"');
     expect(page).toContain('<ProfileView host="page" />');
     expect(account).toContain('data-testid="open-profile"');
-    expect(account).toContain("location.href = '/profile'");
+    expect(account).toContain("navigate('/profile')");
   });
 });

@@ -10,6 +10,7 @@ import { serverUrl } from '../online/config';
 import { guestSessionId, loadName } from '../online/identity';
 import { keepUsers } from './presence';
 import { playChatSound } from './chatSounds';
+import { coverThen } from '../spray';
 
 export type SocialTab = 'players' | 'chat' | 'messages' | 'friends' | 'leaders' | 'tournaments' | 'challenges' | 'settings';
 export interface ToastAction { label: string; tab: SocialTab; /** friend-request toast: the requester's id, so the popup can Accept/Decline inline */ friendId?: string }
@@ -450,16 +451,40 @@ export const social = {
   setMyTable(t: MyTable | null) { set({ myTable: t }); },
   open(tab?: SocialTab, extra: Partial<Pick<SocialState, 'dmWith' | 'profile'>> = {}) {
     social.start();
-    set((s) => ({ open: true, tab: tab ?? s.tab, ...extra }));
-    if ((tab ?? state.tab) === 'chat') social.markGlobalSeen();
-    if (extra.dmWith) social.openDm(extra.dmWith);
+    const apply = () => {
+      set((s) => ({ open: true, tab: tab ?? s.tab, ...extra }));
+      if ((tab ?? state.tab) === 'chat') social.markGlobalSeen();
+      if (extra.dmWith) social.openDm(extra.dmWith);
+    };
+    // Spray-paint transition (spray.ts): the panel is a full screen — its
+    // closed->open swap rides the paint. Already open (a tab/deep-link
+    // re-target) applies instantly; there is no screen change to cover.
+    if (state.open) apply();
+    else coverThen(apply);
   },
-  close() { set({ open: false, profile: null, profileId: null }); },
-  showTour(id: string | null) { set({ open: true, tab: 'tournaments', profile: null, profileId: null, tour: id }); },
+  close() {
+    const apply = () => set({ open: false, profile: null, profileId: null });
+    if (state.open) coverThen(apply);
+    else apply();
+  },
+  showTour(id: string | null) {
+    const apply = () => set({ open: true, tab: 'tournaments', profile: null, profileId: null, tour: id });
+    if (state.open) apply();
+    else coverThen(apply);
+  },
   /** open the Big Bank tab; with an id, straight to that challenge's detail */
-  showChallenge(id: string | null) { set({ open: true, tab: 'challenges', profile: null, profileId: null, wager: id }); },
+  showChallenge(id: string | null) {
+    const apply = () => set({ open: true, tab: 'challenges', profile: null, profileId: null, wager: id });
+    if (state.open) apply();
+    else coverThen(apply);
+  },
   /** open the Big Bank create flow (optionally with the opponent pre-named from a profile) */
-  startChallenge(opponent?: string) { social.start(); set({ open: true, tab: 'challenges', profile: null, profileId: null, wager: null, wagerCreate: opponent ? { opponent } : {} }); },
+  startChallenge(opponent?: string) {
+    social.start();
+    const apply = () => set({ open: true, tab: 'challenges', profile: null, profileId: null, wager: null, wagerCreate: opponent ? { opponent } : {} });
+    if (state.open) apply();
+    else coverThen(apply);
+  },
   clearWagerCreate() { set({ wagerCreate: null }); },
   dismissNotice(id: string) { set((s) => ({ notices: s.notices.filter((n) => n.id !== id) })); },
   tab(tab: SocialTab) { set({ tab, profile: null, profileId: null, ...(tab === 'tournaments' ? { tour: null } : {}), ...(tab === 'challenges' ? { wager: null } : {}) }); if (tab === 'chat') social.markGlobalSeen(); },

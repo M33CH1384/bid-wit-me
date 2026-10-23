@@ -5,6 +5,7 @@ import { requestSettingsSheet } from './settingsSheet';
 import { type ModeKey, type Settings, MODES, modeTitle, rulesSummary, settingsToRules } from './settings';
 import { type TipsPref, isFirstVisit, saveTips } from './tips';
 import { splashAction } from './splashTap';
+import { coverThen } from './spray';
 import { serverUrl } from './online/config';
 import { createTable, tableInfo } from './online/connection';
 import { type PendingMusic, SetupMusicPicker, savePendingMusic } from './online/HostMusic';
@@ -223,11 +224,24 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
   });
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => onChange({ ...s, [k]: v });
 
+  // Spray-paint transitions (spray.ts): the wizard's steps are one screen's
+  // flow and already slide step to step; the paint covers only the boundary
+  // that is a true screen change — home (the start screen) <-> the setup
+  // steps, in either direction, however it was crossed (the go/home/back
+  // buttons below, or the back gesture in the popstate listener).
+  const stepRef = useRef(step);
+  stepRef.current = step;
+  const crossesHome = (to: Step) => (stepRef.current === 'home') !== (to === 'home');
+  const swapWiz = (apply: () => void, to: Step) => { if (crossesHome(to)) coverThen(apply); else apply(); };
+
   useEffect(() => {
     if (!(history.state as { wiz?: Step } | null)?.wiz) history.replaceState({ ...(history.state ?? {}), wiz: 'home' }, '');
     const on = () => {
+      if (location.pathname !== '/') return; // a route popstate: Root owns it; the wizard is unmounting
       const w = readWiz();
-      setWiz((cur) => { setDir(ORDER.indexOf(w.step) < ORDER.indexOf(cur.step) || (w.step === cur.step && cur.view === 'create' && w.view === 'lobby') ? 'back' : 'fwd'); return w; });
+      const apply = () => setWiz((cur) => { setDir(ORDER.indexOf(w.step) < ORDER.indexOf(cur.step) || (w.step === cur.step && cur.view === 'create' && w.view === 'lobby') ? 'back' : 'fwd'); return w; });
+      if (crossesHome(w.step)) coverThen(apply);
+      else apply();
     };
     window.addEventListener('popstate', on);
     return () => window.removeEventListener('popstate', on);
@@ -237,10 +251,13 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
   // entry before is one of ours (d > 0); otherwise (we arrived from a finished / left game, or a deep link) it steps
   // to the previous wizard step in place — it can never land back on a table.
   const go = (next: Step, p: Path = path, k: Kind = kind, v: TableView = 'lobby') => {
-    const d = ((history.state as { d?: number } | null)?.d ?? 0) + 1;
-    history.pushState({ wiz: next, path: p, kind: k, view: v, d }, '');
-    setDir('fwd');
-    setWiz({ step: next, path: p, kind: k, view: v });
+    const apply = () => {
+      const d = ((history.state as { d?: number } | null)?.d ?? 0) + 1;
+      history.pushState({ wiz: next, path: p, kind: k, view: v, d }, '');
+      setDir('fwd');
+      setWiz({ step: next, path: p, kind: k, view: v });
+    };
+    swapWiz(apply, next);
   };
   const back = () => {
     const d = (history.state as { d?: number } | null)?.d ?? 0;
@@ -255,14 +272,20 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
     }
     // Cutthroat has no branch step (Door 1 goes straight to Opponent): skip it on the in-place fallback.
     const prev = step === 'opponent' && kind === 'cut' ? 'door' : ORDER[Math.max(0, ORDER.indexOf(step) - 1)]!;
-    history.replaceState({ wiz: prev, path, kind, view: 'lobby', d: 0 }, '', '/');
-    setDir('back');
-    setWiz({ step: prev, path, kind, view: 'lobby' });
+    const apply = () => {
+      history.replaceState({ wiz: prev, path, kind, view: 'lobby', d: 0 }, '', '/');
+      setDir('back');
+      setWiz({ step: prev, path, kind, view: 'lobby' });
+    };
+    swapWiz(apply, prev);
   };
   const home = () => {
-    history.replaceState({ wiz: 'home', path, kind, view: 'lobby', d: 0 }, '', '/');
-    setDir('back');
-    setWiz({ step: 'home', path, kind, view: 'lobby' });
+    const apply = () => {
+      history.replaceState({ wiz: 'home', path, kind, view: 'lobby', d: 0 }, '', '/');
+      setDir('back');
+      setWiz({ step: 'home', path, kind, view: 'lobby' });
+    };
+    swapWiz(apply, 'home');
   };
   const setTipsPref = (on: boolean) => { const t = { on, asked: true }; saveTips(t); onTips(t); };
 

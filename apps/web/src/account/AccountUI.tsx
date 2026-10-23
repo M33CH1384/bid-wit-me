@@ -5,6 +5,7 @@
  */
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { useEscapeClose } from '../useEscapeClose';
+import { navigate } from '../online/nav';
 import { AvatarCircle } from '../avatar';
 import ThemeToggle from '../ThemeToggle';
 import './account.css';
@@ -195,7 +196,7 @@ function AccountScreen({ user, onClose, onChangeName, onDelete, onSecurity }: { 
         <button type="button" className="acct-small" data-testid="change-username" onClick={onChangeName}>{user.username ? 'Change' : 'Pick'}</button>
       </div>
       <p className="acct-fine">Member since {fmtDate(user.createdAt)}</p>
-      <button type="button" className="hero-btn purple" data-testid="open-profile" onClick={() => { onClose(); location.href = '/profile'; }}><b>REP PROFILE</b><small>rank · challenges · stats · achievements</small></button>
+      <button type="button" className="hero-btn purple" data-testid="open-profile" onClick={() => { onClose(); navigate('/profile'); }}><b>REP PROFILE</b><small>rank · challenges · stats · achievements</small></button>
       <button type="button" className="acct-row-btn" data-testid="open-security" onClick={onSecurity}>
         <span className="acct-row-text"><b>Sign-in &amp; security</b><small>{methods} method{methods === 1 ? '' : 's'} · passkeys, linked logins</small></span>
         <span className="acct-row-chev" aria-hidden>›</span>

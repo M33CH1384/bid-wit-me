@@ -23,6 +23,7 @@ import { sound } from '../audio';
 import { type TipsPref, loadTips } from '../tips';
 import { type Settings, loadSettings, saveSettings } from '../settings';
 import { navigate } from '../online/nav';
+import { coverThen } from '../spray';
 import { useAccount } from '../account/api';
 import { storyRulesFor, storySettingsFor } from './storySettings';
 import { storyBackdropUrl } from './storyBackdrop';
@@ -131,6 +132,15 @@ export default function StoryHome() {
   const [tips, setTips] = useState<TipsPref>(loadTips);
   const applySettings = (s: Settings) => { setSettings(s); saveSettings(s); };
   const [screen, setScreen] = useState<Screen>({ k: 'map' });
+  // Spray-paint transitions (spray.ts): story's own screen changes ride the
+  // paint — except anything touching the table ('game' on either side): the
+  // seats hold owns entering a match, and a finished match's outro keeps its
+  // own ceremony, so game-adjacent swaps stay exactly as they were. Every
+  // setScreen call site routes through here so the rule lives in one place.
+  const goScreen = (next: Screen) => {
+    if (next.k !== screen.k && next.k !== 'game' && screen.k !== 'game') coverThen(() => setScreen(next));
+    else setScreen(next);
+  };
   // Friend presence (owner, 2026-10-22): the story surfaces report Story
   // mode · Solo — browsing the map/scenes is story time; the match itself
   // reports as the (offline) story table. activityOf reads `story` first,
@@ -380,7 +390,7 @@ export default function StoryHome() {
     setLastResult(null);
     progressBeforeRef.current = progress;
     attemptRailRef.current = { stopId: stop.id, cast: factsFor(stop).railCast ?? [] };
-    setScreen({ k: 'game', stop, seed: secureSeed() });
+    goScreen({ k: 'game', stop, seed: secureSeed() });
   };
 
   /** Resume the saved match: straight to the table — no tape, no intro. */
@@ -392,7 +402,7 @@ export default function StoryHome() {
       stopId: stop.id,
       cast: save.story.session.railCast ?? railCastForAttempt(stop.id, save.story.attemptsAtStart + 1),
     };
-    setScreen({ k: 'game', stop, seed: save.seed, resumeSave: save });
+    goScreen({ k: 'game', stop, seed: save.seed, resumeSave: save });
   };
 
   /** Abandon the saved match and start the stop fresh. No result is posted
@@ -401,7 +411,7 @@ export default function StoryHome() {
   const restartStop = (stop: StoryStop) => {
     clearStoryGame();
     setSaved(null);
-    setScreen({ k: 'intro', stop });
+    goScreen({ k: 'intro', stop });
   };
 
   // Owner-only stop reset (dev tool): which stop's confirm is armed, and
@@ -608,7 +618,7 @@ export default function StoryHome() {
             itself never sounded (owner, the meet-them screen). Same
             screen, same contract. */}
         <SceneAudio stop={stop} />
-        <StoryTape stop={stop} facts={factsFor(stop)} cta="Back to the map" onDone={() => setScreen({ k: 'map' })} rundown={rundownFor(stop, factsFor(stop))} rundownTrack="solo" rundownAutoplay={false} />
+        <StoryTape stop={stop} facts={factsFor(stop)} cta="Back to the map" onDone={() => goScreen({ k: 'map' })} rundown={rundownFor(stop, factsFor(stop))} rundownTrack="solo" rundownAutoplay={false} />
       </div>
     );
   } else if (screen.k === 'intro') {
@@ -638,7 +648,7 @@ export default function StoryHome() {
             abandons to the map: it posts no result, starts no game and
             consumes no attempt (attempts count finished matches only). */}
         <div className="story-intro-actions">
-          <button type="button" className="btn ghost" data-testid="story-intro-map" onClick={() => setScreen({ k: 'map' })}>Back to map</button>
+          <button type="button" className="btn ghost" data-testid="story-intro-map" onClick={() => goScreen({ k: 'map' })}>Back to map</button>
         </div>
       </div>
     );
@@ -675,9 +685,9 @@ export default function StoryHome() {
                 : railCastForAttempt(stop.id, factsFor(stop).attempts + 1),
             },
         }}
-        onExit={() => setScreen(finishedRef.current?.seed === screen.seed ? { k: 'outro', stop, won: finishedRef.current.won } : { k: 'map' })}
-        onMainMenu={() => setScreen(finishedRef.current?.seed === screen.seed ? { k: 'outro', stop, won: finishedRef.current.won } : { k: 'map' })}
-        onSuspend={() => setScreen({ k: 'map' })}
+        onExit={() => goScreen(finishedRef.current?.seed === screen.seed ? { k: 'outro', stop, won: finishedRef.current.won } : { k: 'map' })}
+        onMainMenu={() => goScreen(finishedRef.current?.seed === screen.seed ? { k: 'outro', stop, won: finishedRef.current.won } : { k: 'map' })}
+        onSuspend={() => goScreen({ k: 'map' })}
         onRematch={() => startGame(stop)}
         onQuality={(quality) => applySettings({ ...settings, quality })}
         onView={(view) => applySettings({ ...settings, view })}
@@ -789,7 +799,7 @@ export default function StoryHome() {
         <ScriptPlayer
           beats={dblStarted ? kingDoubleBeats('started') : dblLost ? kingDoubleBeats('lost') : beatsFor(stop, screen.won ? 'outroWin' : 'outroLose', factsFor(stop))}
           cta="Back to the map"
-          onDone={() => setScreen({ k: 'map' })}
+          onDone={() => goScreen({ k: 'map' })}
           bgUrl={storyBackdropUrl(stop)}
           cast={[stop.pair[0], 'dee', stop.pair[1]]}
           rail={attemptRailRef.current?.stopId === stop.id
@@ -813,9 +823,9 @@ export default function StoryHome() {
           {dblStarted ? (
             <button type="button" className="btn primary story-retry" data-testid="story-double-runback" onClick={() => startGame(stop)}>Run it back — leg 2</button>
           ) : !screen.won ? (
-            <button type="button" className="btn primary story-retry" data-testid="story-retry" onClick={() => setScreen({ k: 'intro', stop })}>Retry this stop</button>
+            <button type="button" className="btn primary story-retry" data-testid="story-retry" onClick={() => goScreen({ k: 'intro', stop })}>Retry this stop</button>
           ) : null}
-          <button type="button" className={`btn ${screen.won && !dblStarted ? 'primary' : 'ghost'}`} data-testid="story-outro-map" onClick={() => setScreen({ k: 'map' })}>To the map</button>
+          <button type="button" className={`btn ${screen.won && !dblStarted ? 'primary' : 'ghost'}`} data-testid="story-outro-map" onClick={() => goScreen({ k: 'map' })}>To the map</button>
         </div>
       </div>
     );
@@ -893,7 +903,7 @@ export default function StoryHome() {
                         className="btn ghost story-meet"
                         data-testid={`story-meet-${stop.id}`}
                         disabled={signedOut}
-                        onClick={() => setScreen({ k: 'tape', stop })}
+                        onClick={() => goScreen({ k: 'tape', stop })}
                       >Meet them</button>
                       {stopSave ? (
                         <>
@@ -918,7 +928,7 @@ export default function StoryHome() {
                           className="btn primary story-play"
                           data-testid={`story-play-${stop.id}`}
                           disabled={signedOut}
-                          onClick={() => setScreen({ k: 'intro', stop })}
+                          onClick={() => goScreen({ k: 'intro', stop })}
                         >{state === 'cleared' ? 'Replay' : facts.doublePending ? 'Finish the double' : 'Play'}</button>
                       )}
                     </div>

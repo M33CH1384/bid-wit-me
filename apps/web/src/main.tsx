@@ -1,4 +1,4 @@
-import { Component, StrictMode, Suspense, lazy, useEffect, useState, type ReactNode } from 'react';
+import { Component, StrictMode, Suspense, lazy, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import { isOnlinePath } from './online/nav';
@@ -7,6 +7,8 @@ import { SoundDock } from './SoundControls';
 import { SocialRoot } from './social/Social';
 import { LeagueTickerRoot } from './social/LeagueTicker';
 import InkLayer from './ink/InkLayer';
+import SprayLayer from './SprayLayer';
+import { cancelSpray, coverThen, sprayRouteEligible } from './spray';
 import { watchPendingClaim } from './pendingClaim';
 import ReactiveGlow from './neon/ReactiveGlow';
 import { initTheme } from './theme';
@@ -59,8 +61,32 @@ function Root() {
   // their own Settings snapshots (read at mount), so a remount is how the
   // step's saved settings become the live ones everywhere at once.
   const [settingsEpoch, setSettingsEpoch] = useState(0);
+  // Spray-paint transitions (spray.ts): EVERY route change reaches Root as a
+  // popstate — navigate() dispatches one synthetically, browser back/forward
+  // fires it natively — so this handler is the one choke point. An eligible
+  // menu-space swap waits under the paint cover (the old screen stays
+  // rendered until full cover, then path flips underneath); anything else
+  // (table entries above all) applies instantly and cancels any stray spray
+  // so paint can never dissolve over a table. The ref mirrors `path` because
+  // eligibility must be judged against the screen actually on display,
+  // including while a covered swap is still pending.
+  const pathRef = useRef(path);
   useEffect(() => {
-    const on = () => setPath(location.pathname);
+    const on = () => {
+      const next = location.pathname;
+      const cur = pathRef.current;
+      if (next === cur) return;
+      if (sprayRouteEligible(cur, next)) {
+        coverThen(() => {
+          pathRef.current = next;
+          setPath(next);
+        });
+      } else {
+        cancelSpray();
+        pathRef.current = next;
+        setPath(next);
+      }
+    };
     window.addEventListener('popstate', on);
     return () => window.removeEventListener('popstate', on);
   }, []);
@@ -90,6 +116,8 @@ function Root() {
           open (the panel carries its own in-flow instance), and on
           /story (story surfaces never carry broadcast chrome). */}
       <LeagueTickerRoot />
+      {/* Spray-paint screen transitions: renders only during a spray. */}
+      <SprayLayer />
       <IdleGuard />
       {/* Entry prompt (sign in / guest) + first-sign-in preferences offer.
           Online paths skip the remount: a live room owns its own state and
