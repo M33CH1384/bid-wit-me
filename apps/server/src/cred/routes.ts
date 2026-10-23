@@ -3,8 +3,8 @@
  *   GET  /api/profile/me            → full profile (signed in)
  *   GET  /api/profile/:id           → public profile subset
  *   GET  /api/profile/pair/:id      → the CALLER's real team record with that player (signed in)
- *   GET  /api/challenges            → today's + this week's challenges with progress (signed in)
- *   POST /api/challenges/:id/claim  → claim a completed challenge reward (signed in)
+ *   GET  /api/challenges            → today's + this week's + this season's challenges with progress (signed in)
+ *   POST /api/challenges/:id/claim  → claim a completed challenge reward — daily, weekly, or season (signed in)
  *   GET  /api/coins/balance         → coin balance (signed in)
  *   GET  /api/coins/ledger          → recent coin movements (signed in)
  *   POST /api/profile/me/avatar     → upload profile picture (signed in, JSON { dataUrl })
@@ -36,7 +36,9 @@ import { applySocialLinksPatch, parseSocialLinks, socialLinksOf, validateSocialL
 import { divisionOf, type Division } from './divisions';
 import { ensureSeason } from './seasons';
 import { xpSnapshot, awardXp, xpForLevel } from './xp';
-import { progressFor, dailyChallenges, weeklyChallenges, dailyPeriodId, weeklyPeriodId } from './challenges';
+import { progressFor, dailyChallenges, weeklyChallenges, dailyPeriodId, weeklyPeriodId, type ChallengesPayload } from './challenges';
+import { currentSeasonId, seasonChallenges } from './seasonSets';
+import { seasonUpkeepView, type SeasonUpkeepView } from './bigJokerSeason';
 import { achievementStates } from './achievements';
 import { balance, ledger, move, grantWelcome, dailyLogin, earnMultiplier } from './coins';
 
@@ -57,6 +59,19 @@ async function seasonRank(db: D1Database, userId: string, seasonId: string, kind
     db.prepare('SELECT COUNT(*) AS n FROM season_ratings WHERE season_id = ? AND kind = ? AND division = ?').bind(seasonId, kind, division).first<{ n: number }>(),
   ]);
   return { division, elo: Math.round(rating), games: row?.games ?? 0, wins: row?.wins ?? 0, losses: row?.losses ?? 0, peak: Math.round(row?.peak ?? rating), rank: (above?.n ?? 0) + 1, of: total?.n ?? 1 };
+}
+
+/** The challenges payload with its season block enriched: the season's
+ *  display name + end and the Big Joker upkeep view ride the season
+ *  object (progressFor deals in ids and progress only). Runs AFTER the
+ *  profile's cardFor wherever both happen, so the upkeep latch it reads
+ *  is fresh. */
+export interface EnrichedChallenges extends ChallengesPayload {
+  season: ChallengesPayload['season'] & SeasonUpkeepView;
+}
+async function enrichChallenges(db: D1Database, userId: string, challenges: ChallengesPayload, now: number): Promise<EnrichedChallenges> {
+  const view = await seasonUpkeepView(db, userId, challenges.season.id, now);
+  return { ...challenges, season: { ...challenges.season, ...view } };
 }
 
 async function unlockList(db: D1Database, userId: string) {
@@ -88,6 +103,8 @@ async function fullProfile(db: D1Database, userId: string, username: string, now
   ]);
   const stats = await myStats(db, userId);
   const card = await cardFor(db, userId, userId, now, { level, stats });
+  // after cardFor: the Big Joker latch it maintains is fresh for the upkeep view
+  const enrichedChallenges = await enrichChallenges(db, userId, challenges, now);
   return {
     user: { id: userId, name: username, avatar: pic.avatar, avatarUpdatedAt: pic.avatarUpdatedAt, tagline, socialLinks: links, region },
     card,
@@ -102,7 +119,7 @@ async function fullProfile(db: D1Database, userId: string, username: string, now
     season: { id: season.id, name: season.name, endsAt: season.endsAt },
     rank: { team, cutthroat },
     stats,
-    challenges,
+    challenges: enrichedChallenges,
     achievements,
     unlocks,
     coins: { balance: coins },
@@ -226,15 +243,15 @@ export async function handleCredHttp(req: Request, env: CredEnv, url: URL, parts
   }
   if (parts[1] === 'challenges' && parts.length === 2 && req.method === 'GET') {
     if (!me) return json({ error: 'Sign in to see your challenges.' }, 401);
-    return json(await progressFor(db, me.id, now));
+    return json(await enrichChallenges(db, me.id, await progressFor(db, me.id, now), now));
   }
   if (parts[1] === 'challenges' && parts[3] === 'claim' && req.method === 'POST') {
     if (!me) return json({ error: 'Sign in to claim rewards.' }, 401);
     const id = parts[2] ?? '';
     const daily = dailyChallenges(now), weekly = weeklyChallenges(now);
-    const def = [...daily, ...weekly].find((c) => c.id === id);
+    const def = [...daily, ...weekly, ...seasonChallenges(now)].find((c) => c.id === id);
     if (!def) return json({ error: 'That challenge is not active right now.' }, 400);
-    const pid = def.cadence === 'daily' ? dailyPeriodId(now) : weeklyPeriodId(now);
+    const pid = def.cadence === 'daily' ? dailyPeriodId(now) : def.cadence === 'weekly' ? weeklyPeriodId(now) : currentSeasonId(now);
     const row = await db.prepare('SELECT progress, claimed_at AS claimedAt FROM challenge_progress WHERE user_id = ? AND challenge_id = ? AND period_id = ?')
       .bind(me.id, id, pid).first<{ progress: number; claimedAt: number | null }>();
     if (row?.claimedAt) return json({ error: 'Already claimed.' }, 400);

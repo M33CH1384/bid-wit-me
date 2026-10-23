@@ -1,8 +1,13 @@
-/** Street Cred System B: daily/weekly challenges. Rotation is deterministic (same for everyone, every period). */
+/** Street Cred System B: daily/weekly challenges — plus the SEASON set
+ *  (owner, 2026-10-23): six season-long challenges dealt from the pool in
+ *  cred/seasonSets.ts against the monthly season, carried by the same
+ *  progress rows, bump path, and claim route as daily/weekly. Rotation is
+ *  deterministic (same for everyone, every period). */
 import type { RatingKind } from '../stats/record';
+import { currentSeasonId, seasonChallenges, seasonChallengesFor, seasonProgressRows, stampUpkeepIfSetComplete } from './seasonSets';
 
 export type ChallengeMetric = 'wins' | 'games' | 'books' | 'nils_made' | 'shots_given' | 'streak';
-export type Cadence = 'daily' | 'weekly';
+export type Cadence = 'daily' | 'weekly' | 'season';
 
 export interface ChallengeDef {
   id: string;
@@ -69,8 +74,24 @@ export interface ChallengeProgress {
   kind?: RatingKind; progress: number; claimed: boolean; done: boolean;
 }
 
+/** One season's block in the challenges payload: the dealt set with this
+ *  player's progress, and whether the whole set is complete (the Big
+ *  Joker upkeep fact — completion, not claims). Name/endsAt/upkeep are
+ *  attached by the routes layer, which owns the season row. */
+export interface SeasonProgress {
+  id: string;
+  challenges: ChallengeProgress[];
+  setComplete: boolean;
+}
+
+export interface ChallengesPayload {
+  daily: ChallengeProgress[];
+  weekly: ChallengeProgress[];
+  season: SeasonProgress;
+}
+
 /** Active challenges for the current period with this player's progress. */
-export async function progressFor(db: D1Database, userId: string, now: number): Promise<{ daily: ChallengeProgress[]; weekly: ChallengeProgress[] }> {
+export async function progressFor(db: D1Database, userId: string, now: number): Promise<ChallengesPayload> {
   const daily = dailyChallenges(now), weekly = weeklyChallenges(now);
   const dPid = dailyPeriodId(now), wPid = weeklyPeriodId(now);
   const rows = (await db.prepare(`SELECT challenge_id, period_id, progress, claimed_at FROM challenge_progress
@@ -82,7 +103,20 @@ export async function progressFor(db: D1Database, userId: string, now: number): 
     const progress = r?.progress ?? 0;
     return { id: c.id, title: c.title, metric: c.metric, target: c.target, xp: c.xp, coins: c.coins, ...(c.kind ? { kind: c.kind } : {}), progress, claimed: r?.claimed_at != null, done: progress >= c.target };
   };
-  return { daily: daily.map((c) => one(c, dPid)), weekly: weekly.map((c) => one(c, wPid)) };
+  // the season set: progress rows keyed by the season id itself
+  const sId = currentSeasonId(now);
+  const sDefs = seasonChallengesFor(sId);
+  const sRows = await seasonProgressRows(db, userId, sId);
+  const seasonList = sDefs.map((c): ChallengeProgress => {
+    const r = sRows.get(c.id);
+    const progress = r?.progress ?? 0;
+    return { id: c.id, title: c.title, metric: c.metric, target: c.target, xp: c.xp, coins: c.coins, ...(c.kind ? { kind: c.kind } : {}), progress, claimed: r?.claimedAt != null, done: progress >= c.target };
+  });
+  const season: SeasonProgress = { id: sId, challenges: seasonList, setComplete: sDefs.length > 0 && seasonList.every((c) => c.done) };
+  // reading your challenges is also the upkeep record's self-heal: if the
+  // set stands complete, the completion stamp lands (idempotent).
+  if (season.setComplete) await stampUpkeepIfSetComplete(db, userId, sId, now);
+  return { daily: daily.map((c) => one(c, dPid)), weekly: weekly.map((c) => one(c, wPid)), season };
 }
 
 /** Add `amount` to a metric's progress rows for the current period (only active defs of that cadence/metric). */
@@ -91,6 +125,7 @@ export async function bumpProgress(db: D1Database, userId: string, metric: Chall
   const jobs: { defs: ChallengeDef[]; pid: string }[] = [
     { defs: dailyChallenges(now), pid: dailyPeriodId(now) },
     { defs: weeklyChallenges(now), pid: weeklyPeriodId(now) },
+    { defs: seasonChallenges(now), pid: currentSeasonId(now) },
   ];
   const stmts = [];
   const checks: { def: ChallengeDef; before: number }[] = [];
@@ -106,6 +141,9 @@ export async function bumpProgress(db: D1Database, userId: string, metric: Chall
     }
   }
   if (stmts.length) await db.batch(stmts);
+  // the season set may have just completed — stamp the Big Joker upkeep
+  // record at the crossing moment (idempotent; a no-op until all six are in)
+  await stampUpkeepIfSetComplete(db, userId, currentSeasonId(now), now);
   // titles of challenges that crossed 100% with this bump (push: "challenge complete")
   return checks.filter(({ def, before }) => before < def.target && before + amount >= def.target).map(({ def }) => def.title);
 }
@@ -115,6 +153,7 @@ export async function setStreakProgress(db: D1Database, userId: string, streak: 
   const jobs: { defs: ChallengeDef[]; pid: string }[] = [
     { defs: dailyChallenges(now), pid: dailyPeriodId(now) },
     { defs: weeklyChallenges(now), pid: weeklyPeriodId(now) },
+    { defs: seasonChallenges(now), pid: currentSeasonId(now) },
   ];
   const stmts = [];
   for (const { defs, pid } of jobs) {
@@ -126,4 +165,5 @@ export async function setStreakProgress(db: D1Database, userId: string, streak: 
     }
   }
   if (stmts.length) await db.batch(stmts);
+  if (stmts.length) await stampUpkeepIfSetComplete(db, userId, currentSeasonId(now), now);
 }

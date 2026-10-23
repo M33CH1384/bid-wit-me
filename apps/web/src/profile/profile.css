@@ -2,3 +2,9 @@
 /* Challenges earned summary (Demetrius 2026-10-19) */
 .ch-earned { font-size: 14px; color: var(--muted); margin: 0 0 12px; }
 .ch-earned b { color: var(--gold); }
+
+/* Season challenges (2026-10-23): days-left beside the season name and
+   the Big Joker upkeep line — same register as the earned summary. */
+.ch-season-left { color: var(--muted); font-weight: normal; }
+.ch-upkeep { font-size: 14px; color: var(--muted); margin: 0 0 12px; }
+.ch-upkeep b { color: var(--gold); }

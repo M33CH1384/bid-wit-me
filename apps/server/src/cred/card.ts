@@ -317,7 +317,7 @@ export async function cardFor(
   }
   const bigJokerEarned = bigJokerEarnedAt != null;
   const bigJokerActive = bigJokerEarned
-    ? await bigJokerSeasonActive(db, userId, bigJokerEarnedAt, season.id)
+    ? await bigJokerSeasonActive(db, userId, bigJokerEarnedAt, season.id, undefined, now)
     : false;
 
   const card: PlayerCardData = {

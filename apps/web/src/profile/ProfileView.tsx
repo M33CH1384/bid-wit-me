@@ -94,6 +94,15 @@ type Division = 'stoop' | 'corner' | 'block' | 'avenue' | 'boulevard' | 'legend'
 
 interface SeasonRank { division: Division; elo: number; games: number; wins: number; losses: number; peak: number; rank: number; of: number }
 interface Challenge { id: string; title: string; metric: string; target: number; progress: number; xp: number; coins: number; claimed: boolean }
+/** The season block of the challenges payload (2026-10-23): the dealt
+ *  season set with progress, plus the server-derived upkeep view —
+ *  `bigJoker` is non-null only for an earned Big Joker holder. Optional
+ *  so a stale cached payload renders the daily/weekly sections alone. */
+interface SeasonChallenges {
+  id: string; name?: string; endsAt?: number; setComplete?: boolean;
+  challenges: Challenge[];
+  bigJoker?: { earned: true; active: boolean } | null;
+}
 interface Achievement { id: string; title: string; hint: string; xp: number; coins: number; unlockedAt: number | null }
 interface Unlock { itemId: string; source: string; unlockedAt: number; slot: string | null; equipped: boolean }
 
@@ -109,7 +118,7 @@ interface CredData {
   season?: { id: string; name: string; endsAt: number };
   rank: { team: SeasonRank; cutthroat: SeasonRank };
   stats: { team: Record<string, number | string | null>; cutthroat: Record<string, number | string | null> };
-  challenges?: { daily: Challenge[]; weekly: Challenge[] };
+  challenges?: { daily: Challenge[]; weekly: Challenge[]; season?: SeasonChallenges };
   achievements: Achievement[];
   unlocks?: Unlock[];
   coins: { balance: number };
@@ -275,6 +284,33 @@ function ChallengeRow({ c, onClaim }: { c: Challenge; onClaim: (id: string) => v
       {done && !c.claimed && <button type="button" className="primary small" onClick={() => onClaim(c.id)}>Claim</button>}
       {c.claimed && <span className="ch-claimed">Claimed</span>}
     </div>
+  );
+}
+
+/** The season section of the Challenges tab: the season's name and time
+ *  left, the dealt set with live progress (the same ChallengeRow as
+ *  daily/weekly), and — only for an earned Big Joker holder, the one
+ *  player the upkeep framing can ever apply to — the crown's state.
+ *  Everyone else sees pure content. Copy stays truthful by construction:
+ *  the server derives `active` (earn season counts, a completed set
+ *  lights it, a lapsed one darkens it) and this renders its verdict. */
+function SeasonSection({ season, onClaim }: { season: SeasonChallenges; onClaim: (id: string) => void }) {
+  const daysLeft = season.endsAt != null ? Math.max(0, Math.ceil((season.endsAt - Date.now()) / 86_400_000)) : null;
+  const bj = season.bigJoker ?? null;
+  return (
+    <section data-testid="season-challenges">
+      <h3>{season.name ?? 'This season'}{daysLeft != null && <small className="ch-season-left"> · {daysLeft} day{daysLeft === 1 ? '' : 's'} left</small>}</h3>
+      {bj && (
+        <p className="ch-upkeep" data-testid="season-upkeep">
+          {bj.active
+            ? season.setComplete
+              ? <>👑 <b>Big Joker</b> — season set complete. The crown stays lit.</>
+              : <>👑 <b>Big Joker</b> — the crown is lit. Finish a season's set to keep it burning past this one.</>
+            : <>👑 <b>Big Joker</b> — crown's dark. Finish this season's set to light it back up.</>}
+        </p>
+      )}
+      {season.challenges.map((c) => <ChallengeRow key={c.id} c={c} onClaim={onClaim} />)}
+    </section>
   );
 }
 
@@ -597,7 +633,7 @@ export function ProfileView({ host, name, id }: {
   if (cred?.unlocks) tabs.push({ id: 'unlocks', label: 'Unlocks' });
   const activeTab: Tab = tabs.some((t) => t.id === tab) ? tab : (tabs[0]?.id ?? 'stats');
   const pendingClaims = cred?.challenges
-    ? [...cred.challenges.daily, ...cred.challenges.weekly].filter((c) => c.progress >= c.target && !c.claimed).length
+    ? [...cred.challenges.daily, ...cred.challenges.weekly, ...(cred.challenges.season?.challenges ?? [])].filter((c) => c.progress >= c.target && !c.claimed).length
     : 0;
   const cardData = cred?.card ?? null;
   /** The presence line, composed ONCE via the shared presence helper and
@@ -743,7 +779,7 @@ export function ProfileView({ host, name, id }: {
 
       <main className="prof-body">
         {activeTab === 'challenges' && cred?.challenges && (() => {
-          const all = [...cred.challenges.daily, ...cred.challenges.weekly];
+          const all = [...cred.challenges.daily, ...cred.challenges.weekly, ...(cred.challenges.season?.challenges ?? [])];
           const earnedXp = all.filter((c) => c.claimed).reduce((sum, c) => sum + c.xp, 0);
           const earnedCoins = all.filter((c) => c.claimed).reduce((sum, c) => sum + (c.coins ?? 0), 0);
           return (
@@ -755,6 +791,7 @@ export function ProfileView({ host, name, id }: {
               {cred.challenges.daily.map((c) => <ChallengeRow key={c.id} c={c} onClaim={claim} />)}
               <h3>Weekly</h3>
               {cred.challenges.weekly.map((c) => <ChallengeRow key={c.id} c={c} onClaim={claim} />)}
+              {cred.challenges.season && <SeasonSection season={cred.challenges.season} onClaim={claim} />}
               {claiming && <p className="ch-claiming">Claiming…</p>}
               {claimErr && <span className="prof-pic-err" role="alert">{claimErr}</span>}
             </>

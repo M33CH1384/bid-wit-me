@@ -1,6 +1,7 @@
 /** Street Cred System A: monthly seasons. */
 import { divisionOf } from './divisions';
 import { DAILY_POOL, WEEKLY_POOL } from './challenges';
+import { SEASON_POOL } from './seasonSets';
 import { ACHIEVEMENTS } from './achievements';
 
 export interface Season { id: string; name: string; startsAt: number; endsAt: number }
@@ -53,7 +54,7 @@ export async function ensureSeason(db: D1Database, now: number): Promise<Season>
 export async function backfillDefs(db: D1Database): Promise<void> {
   const have = await db.prepare('SELECT COUNT(*) AS n FROM challenge_defs').first<{ n: number }>();
   if (!have?.n) {
-    const all = [...DAILY_POOL, ...WEEKLY_POOL];
+    const all = [...DAILY_POOL, ...WEEKLY_POOL, ...SEASON_POOL];
     await db.batch(all.map((c) => db.prepare('INSERT OR IGNORE INTO challenge_defs (id, cadence, title, metric, target, xp, coins, kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
       .bind(c.id, c.cadence, c.title, c.metric, c.target, c.xp, c.coins, c.kind ?? null)));
   }

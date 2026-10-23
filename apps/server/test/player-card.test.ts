@@ -242,8 +242,11 @@ describe('the Big Joker: latched feat, seasonal crown', () => {
     expect(seasonIdFor(earnedAt)).toBe('2026-10');
     // same season → active even with a (hypothetical) registered set
     expect(await bigJokerSeasonActive(db, 'd', earnedAt, '2026-10', new Set(['2026-10']))).toBe(true);
-    // later season, no set registered → inaugural rule: active
-    expect(await bigJokerSeasonActive(db, 'd', earnedAt, '2026-11')).toBe(true);
+    // later season, no set registered → inaugural rule: active. (The LIVE
+    // registry has carried a set for every season from 2026-10 since the
+    // seasonal-challenges build, so the rule itself is pinned here with an
+    // explicit empty registry — the branch, not the calendar.)
+    expect(await bigJokerSeasonActive(db, 'd', earnedAt, '2026-11', new Set())).toBe(true);
     // later season WITH a set → the completion record decides
     const withSet = new Set(['2026-11']);
     expect(await bigJokerSeasonActive(db, 'd', earnedAt, '2026-11', withSet)).toBe(false);
