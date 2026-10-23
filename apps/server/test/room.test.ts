@@ -490,6 +490,7 @@ describe('game', () => {
     expect(env2.last('a', 'state')!.view!.phase).toBe('bidding');
   });
 
+  // Timeout budget: a full 4-human game sim measures ~0.2–0.7 s locally but several seconds on loaded CI runners — measured sim cost, not a hang (flake family, 2026-10-23).
   it('plays a complete 4-human game over the protocol', () => {
     const { env } = fourHumans();
     env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: 250 }) });
@@ -508,7 +509,7 @@ describe('game', () => {
       expect(result.endReason).toBe('shotOut');
       expect(result.shotOut?.length).toBeGreaterThan(0);
     }
-  });
+  }, 30000);
 
   it('sends the hand history only when it changes (bandwidth)', () => {
     const { env } = fourHumans();
@@ -1682,6 +1683,7 @@ describe('dealer rotation + Shot = out online', () => {
     env.send('a', { t: 'rematch' });
     expect(env.room.data.game!.dealer).toBe((last + 1) % 4);
   });
+  // Timeout budget: up to 40 full game sims hunting a shot-out — measured sim cost, not a hang; the 5 s default died under CI load (flake, 2026-10-23).
   it('the server ends the game on a shot-out and records it in the series', () => {
     for (let k = 0; k < 40; k++) {
       const env = new FakeEnv(undefined, FAST);
@@ -1697,7 +1699,7 @@ describe('dealer rotation + Shot = out online', () => {
       return;
     }
     throw new Error('no shot-out game in 40 tries');
-  });
+  }, 30000);
 });
 
 describe('partner talk during bidding (all chat is public)', () => {

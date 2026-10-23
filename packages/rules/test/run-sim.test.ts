@@ -5,6 +5,7 @@ import { simulateGame } from '@spades/bots';
 const norm = (cs: readonly string[]) => [...cs].sort().join(',');
 
 describe('run it! simulateGame invariants', () => {
+  // Timeout budget: 75 full bot-game sims measure ~3–5 s locally — a measured sim cost, not a hang; the 5 s default died under CI load (flake, 2026-10-23).
   it('claimer recap/zoom equal the claimer real remaining cards in real bot games', () => {
     let claims = 0;
     for (const mode of ['joker', 'cutthroat', 'aceDown'] as const) {
@@ -39,5 +40,5 @@ describe('run it! simulateGame invariants', () => {
     }
     console.log(`simulateGame claims checked: ${claims}`);
     expect(claims).toBeGreaterThan(20);
-  });
+  }, 30000);
 });

@@ -90,6 +90,7 @@ describe('one sheet, two doors', () => {
     expect(setup).not.toContain('<MoreOptions');
   });
 
+  // Timeout budget: dynamic import of the sheet module graph measures ~1.5 s locally and blew the 5 s default under CI parallel load — measured import cost, not a hang (flake, 2026-10-23).
   it('the host opens the one sheet on request and closes it again', async () => {
     const { default: SettingsSheetHost } = await import('../src/SettingsSheetHost');
     const { requestSettingsSheet, closeSettingsSheet } = await import('../src/settingsSheet');
@@ -110,8 +111,9 @@ describe('one sheet, two doors', () => {
     expect(group!.querySelector('[data-testid="bot-voice-quick"]')).not.toBeNull();
     await act(async () => closeSettingsSheet());
     expect(c.querySelector('[data-testid="more-options"]')).toBeNull();
-  });
+  }, 15000);
 
+  // Timeout budget: same dynamic-import cost as above — measured import cost, not a hang (flake, 2026-10-23).
   it('the speaker button opens the sheet at the sound group', async () => {
     const { SoundDock } = await import('../src/SoundControls');
     const { default: SettingsSheetHost } = await import('../src/SettingsSheetHost');
@@ -134,10 +136,11 @@ describe('one sheet, two doors', () => {
     expect(c.querySelector('[data-testid="settings-sound-group"]')).not.toBeNull();
     // and it did NOT open any second sound panel
     expect(c.querySelector('[data-testid="sound-sheet"]')).toBeNull();
-  });
+  }, 15000);
 });
 
 describe('the sound landing scrolls the group into view', () => {
+  // Timeout budget: same dynamic-import cost as above — measured import cost, not a hang (flake, 2026-10-23).
   it('initialSection="sound" scrolls; a plain open does not', async () => {
     const spy = vi.fn();
     (window.HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView = spy;
@@ -156,7 +159,7 @@ describe('the sound landing scrolls the group into view', () => {
       root!.render(createElement(MoreOptions, { ...props, initialSection: 'sound' as const, anchorSeq: 1 }));
     });
     expect(spy).toHaveBeenCalled();
-  });
+  }, 15000);
 });
 
 describe('the floating dock stays off the full-screen routes', () => {
