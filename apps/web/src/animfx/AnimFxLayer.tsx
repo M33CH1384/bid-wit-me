@@ -44,7 +44,7 @@ import { CoinIcon } from '../RepBlock';
 import { fetchWagerList } from '../social/wagerApi';
 import {
   UPSET_GAP, bagBrinkSides, bagPenaltySides, bigJokerSeat, blindNilSeats, bostonSides,
-  comebackSides, contractHeat, fireSeat, heatSides, matchPointSides, newlyEliminated,
+  comebackSides, fireSeat, heatSides, matchPointSides, newlyEliminated,
   nilBustedSeats, nilLiveSeats, photoFinish, ratingGap, runClaimerSeat, saveInTrick,
   sealedNilSeats, seatsOfSide, setSides, sideIndexOf, spadePlayed, syncSides,
   trickWasCut, wheelsSides, wireSides,
@@ -276,7 +276,6 @@ export default function AnimFxLayer({ st, online = false, names }: { st: AnimFxV
   const [moons, setMoons] = useState<SeatSpot[]>([]);
   const [fireSpots, setFireSpots] = useState<SeatSpot[]>([]);
   const [cells, setCells] = useState<CellFx[]>([]);
-  const [hotRing, setHotRing] = useState<Pt | null>(null);
   /* the spotlight shade canvas: painted imperatively (see
    * paintSpotlightShade) whenever the composed spec changes, and repainted
    * on viewport resize — the canvas element itself carries no React props
@@ -743,7 +742,7 @@ export default function AnimFxLayer({ st, online = false, names }: { st: AnimFxV
     setShade((prev) => (JSON.stringify(prev) === JSON.stringify(shadeNext) ? prev : shadeNext));
     /* wave 3 persistent looks, measured the same way: ON FIRE rim over the
        streaking seat's plate; STREAK HEAT / BAG BRINK overlays over the
-       scorebug cells; the HIGH CONTRACT ring at the trick center */
+       scorebug cells */
     const fp = st.phase === 'playing' ? fireSeat(st) : null;
     const nf = fp !== null ? measure([fp]) : [];
     setFireSpots((prev) => (JSON.stringify(prev) === JSON.stringify(nf) ? prev : nf));
@@ -756,8 +755,6 @@ export default function AnimFxLayer({ st, online = false, names }: { st: AnimFxV
       return [{ side, x: r.left, y: r.top, w: r.width, h: r.height, heat: heat.includes(side), brink: brink.includes(side) }];
     });
     setCells((prev) => (JSON.stringify(prev) === JSON.stringify(nc) ? prev : nc));
-    const nr = st.phase === 'playing' && contractHeat(st) ? trickCenterPt() : null;
-    setHotRing((prev) => (prev?.x === nr?.x && prev?.y === nr?.y ? prev : nr));
   });
   const deadCount = (st.eliminated ?? []).filter(Boolean).length;
   const narrow = deadCount > 0 && st.phase !== 'gameOver'
@@ -899,7 +896,6 @@ export default function AnimFxLayer({ st, online = false, names }: { st: AnimFxV
             {s.sx !== null && <div className="animfx-moonedge" style={{ left: s.sx - 34, top: (s.sy ?? 0) - 48, width: 68, height: 96 }} />}
           </div>
         ))}
-        {hotRing && <div data-testid="animfx-hotring" className={`animfx-hotring${reduced ? ' calm' : ''}`} style={{ left: hotRing.x, top: hotRing.y }} />}
         {fireSpots.map((s) => (
           <div key={`fr${s.seat}`} data-testid="animfx-firering" className={`animfx-firering${reduced ? ' calm' : ''}`} style={{ left: s.x - s.w / 2 - 5, top: s.y - s.h / 2 - 5, width: s.w + 10, height: s.h + 10 }} />
         ))}

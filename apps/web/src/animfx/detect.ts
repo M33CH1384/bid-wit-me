@@ -346,39 +346,6 @@ export function bagBrinkSides(bags: readonly number[]): number[] {
 }
 
 /* --------------------------------------------------------------------------
- * 8. HIGH CONTRACT — the hand's contracts run hot. The threshold is NOT
- * the naive combined total: in partnership both sides' contracts sum to
- * ~13 in almost every hand, so "combined >= 12" would burn constantly.
- * The honest reading is that the TABLE is over-committed only when EVERY
- * side is carrying a real contract:
- *   partnership — every side's combined numeric bid >= HOT_SIDE_CONTRACT
- *     (nil/'books' bids contribute 0; a nil next to a 7 still counts —
- *     the partner's contract is genuinely huge);
- *   cutthroat — at least 3 numeric bidders and every numeric bid >=
- *     HOT_SEAT_BID (nils sit the seat out of the sum, they don't cool it).
- * Any seat yet to bid (null) means bidding isn't done — never hot early.
- * ------------------------------------------------------------------------ */
-export const HOT_SIDE_CONTRACT = 6;
-export const HOT_SEAT_BID = 3;
-
-export function contractHeat(st: Pick<GameState, 'rules' | 'bids'>): boolean {
-  const { rules, bids } = st;
-  if (bids.some((b) => b === null || b === undefined)) return false;
-  if (rules.partnerships) {
-    for (let side = 0; side < sideCount(rules); side++) {
-      const sum = sideSeats(side, rules).reduce(
-        (a, seat) => a + (typeof bids[seat] === 'number' ? (bids[seat] as number) : 0),
-        0,
-      );
-      if (sum < HOT_SIDE_CONTRACT) return false;
-    }
-    return true;
-  }
-  const nums = bids.filter((b): b is number => typeof b === 'number');
-  return nums.length >= 3 && nums.every((b) => b >= HOT_SEAT_BID);
-}
-
-/* --------------------------------------------------------------------------
  * 9. DOWN TO THE WIRE — entering the FINAL trick of the hand (exactly one
  * trick still remains, counting the one about to be played) with a side
  * whose contract hangs on that last book: booksStillNeeded is the engine's

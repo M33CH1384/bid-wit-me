@@ -581,11 +581,12 @@ describe('wave 3 layer', () => {
     expect(Q('animfx-cellbrink')).toBeNull();
   });
 
-  it('HIGH CONTRACT: the center ring holds while both sides carry >= 6', () => {
+  it('HIGH CONTRACT RING REMOVED (owner 2026-10-23): no center ring renders, however hot the contracts run', () => {
     mount(view({ bids: [5, 6, 5, 6] }));
-    expect(Q('animfx-hotring')).not.toBeNull();
-    rerender(view({ bids: [5, 2, 5, 2] }));
     expect(Q('animfx-hotring')).toBeNull();
+    rerender(view({ bids: [8, 7, 8, 7] }));
+    expect(Q('animfx-hotring')).toBeNull();
+    expect(document.querySelector('.animfx-hotring')).toBeNull();
   });
 
   it('DOWN TO THE WIRE: entering the final trick one book short pulses the table edges', () => {

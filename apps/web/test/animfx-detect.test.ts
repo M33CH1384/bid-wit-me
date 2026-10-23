@@ -9,7 +9,7 @@ import { makeRules, type HandRecord, type Trick } from '@spades/rules';
 import {
   FIRE_STREAK, HEAT_STREAK, PHOTO_FINISH_MARGIN, UPSET_GAP, bagBrinkSides,
   bagPenaltySides, bagsCrossed, bigJokerSeat, blindNilSeats, bostonSides,
-  comebackSides, contractHeat, fireSeat, handWinnerSide, heatSides,
+  comebackSides, fireSeat, handWinnerSide, heatSides,
   matchPointSides, newlyEliminated, nilBustedSeats, nilLiveSeats, photoFinish,
   ratingGap, runClaimerSeat, saveInTrick, sealedNilSeats, setSides,
   spadePlayed, syncSides, trickStreak, trickWasCut, wheelsSides, winMargin,
@@ -238,25 +238,6 @@ describe('wave 3 — bag brink', () => {
     expect(bagBrinkSides([19, 20])).toEqual([0]); // 19 → 9 in cycle; 20 → 0
     expect(bagBrinkSides([10, 0])).toEqual([]);
     expect(bagBrinkSides([9, 18])).toEqual([0, 1]);
-  });
-});
-
-describe('wave 3 — high contract', () => {
-  it('partnership: EVERY side must carry >= 6 (the naive combined >= 12 would burn constantly)', () => {
-    expect(contractHeat({ rules: joker, bids: [5, 6, 5, 6] } as never)).toBe(true); // 10 / 12
-    expect(contractHeat({ rules: joker, bids: [5, 2, 5, 2] } as never)).toBe(false); // 10 / 4
-    expect(contractHeat({ rules: joker, bids: [8, 2, 4, 2] } as never)).toBe(false); // combined 16, but side 1 only carries 4
-  });
-  it('an unbidded seat or a books hand is never hot; a nil beside a 7 still is', () => {
-    expect(contractHeat({ rules: joker, bids: [null, 6, 5, 6] } as never)).toBe(false);
-    expect(contractHeat({ rules: joker, bids: ['books', 'books', 'books', 'books'] } as never)).toBe(false);
-    expect(contractHeat({ rules: joker, bids: ['nil', 6, 7, 6] } as never)).toBe(true); // side 0 = 0+7
-  });
-  it('cutthroat: at least 3 numeric bidders, every numeric bid >= 3', () => {
-    expect(contractHeat({ rules: cutRules, bids: [3, 3, 3, 3] } as never)).toBe(true);
-    expect(contractHeat({ rules: cutRules, bids: [3, 3, 2, 3] } as never)).toBe(false);
-    expect(contractHeat({ rules: cutRules, bids: [4, 5, 3] } as never)).toBe(true);
-    expect(contractHeat({ rules: cutRules, bids: [4, 5] } as never)).toBe(false);
   });
 });
 

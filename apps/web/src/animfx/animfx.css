@@ -479,16 +479,6 @@
 .animfx-cellbrink.calm { animation: none; }
 @keyframes animfx-brink-smolder { 0%, 100% { opacity: .55; } 50% { opacity: .92; } }
 
-/* ---- 8. high contract: the table's center ring holds a hot glow ---- */
-.animfx-hotring {
-  position: fixed; width: 196px; height: 196px; margin: -98px 0 0 -98px; border-radius: 50%; pointer-events: none;
-  border: 2px solid rgba(255, 150, 60, .5);
-  box-shadow: 0 0 36px 8px rgba(255, 100, 30, .3), inset 0 0 34px rgba(255, 140, 50, .28);
-  animation: animfx-hotring 2.4s ease-in-out infinite;
-}
-.animfx-hotring.calm { animation: none; }
-@keyframes animfx-hotring { 0%, 100% { opacity: .62; } 50% { opacity: 1; } }
-
 /* ---- 10. photo finish stamp: second row, clear of PAYBACK / UPSET ---- */
 .animfx-stamp.photofinish { top: 41%; color: #bfe3ff; }
 
