@@ -37,7 +37,7 @@
  *   suppressed (cross-speaker dedupe), on top of the engine's shuffle-bag.
  */
 import { type Action, type GameState, tricksStillRemaining } from '@spades/rules';
-import { type RevTributeEvent, type TalkEvent, type TalkLine, type TalkTable, REV_TRIBUTE, botTalk, collectionBanter, gapBucketForScores, leanBid, leanNil, momentsFor, newRevTributeState, newTalkState, personaForName, personaOf, prePlayLine, profileOf, revLineIdForText, revTributeCommit, revTributeDetect, setsBySideOf, sideOfSeat } from '@spades/bots';
+import { type RevTributeEvent, type TalkEvent, type TalkLine, type TalkTable, REV_TRIBUTE, botTalk, collectionBanter, gapBucketForScores, leanBid, leanNil, momentsFor, newRevTributeState, newTalkState, noteTalkHand, personaForName, personaOf, prePlayLine, profileOf, revLineIdForText, revTributeCommit, revTributeDetect, setsBySideOf, sideOfSeat } from '@spades/bots';
 import { getActiveDeck } from './decks';
 import { spokenClipDurationMs, talkPrefs } from './talkPrefs';
 
@@ -236,17 +236,17 @@ export const offlineTalk = {
     // with a line that claims you're running the table, no roast that asserts
     // a score state the board contradicts.
     if (t.partnerships && Math.random() < 0.65) {
-      line = botTalk(this.state, t, { kind: 'roast', side: 1 - originSide, them: origin.seat, ...this.factsNow(1 - originSide) }, performance.now(), Math.random);
+      line = botTalk(this.state, t, { kind: 'roast', side: 1 - originSide, them: origin.seat, ...(this.lastState ? { handNo: this.lastState.handNo } : {}), ...this.factsNow(1 - originSide) }, performance.now(), Math.random);
     }
     if (!line && t.partnerships) {
       // the co-sign is a REPLY, so it draws the reply-shaped pool first: the
       // partner hype lines ("THAT'S MY PARTNER!") answer a partner's line in
       // a way a random prePlay/roast draw never could. The trickPop pop stays
       // as the fallback when the hype pool has nothing fresh to say.
-      line = botTalk(this.state, t, { kind: 'hypePartner', side: originSide, them: origin.seat, excludeSeat: origin.seat, ...this.factsNow(originSide) }, performance.now(), Math.random);
+      line = botTalk(this.state, t, { kind: 'hypePartner', side: originSide, them: origin.seat, excludeSeat: origin.seat, ...(this.lastState ? { handNo: this.lastState.handNo } : {}), ...this.factsNow(originSide) }, performance.now(), Math.random);
     }
     if (!line) {
-      line = botTalk(this.state, t, { kind: 'trickPop', side: originSide, answerSide: originSide, excludeSeat: origin.seat, ...this.factsNow(originSide) }, performance.now(), Math.random);
+      line = botTalk(this.state, t, { kind: 'trickPop', side: originSide, answerSide: originSide, excludeSeat: origin.seat, ...(this.lastState ? { handNo: this.lastState.handNo } : {}), ...this.factsNow(originSide) }, performance.now(), Math.random);
     }
     if (!line) return; // cooldown/chance said no — the chain dies, never forced
     let d: number | null = null;
@@ -275,7 +275,7 @@ export const offlineTalk = {
       // the murmur's event carries the speaker's facts, so its line is
       // fact-checked too (and the engine suppresses murmurs outright for a
       // few seconds after a significant moment)
-      const line = botTalk(this.state, t, { kind: 'trickPop', seat, murmur: true, side: sideOfSeat(t, seat), ...this.factsNow(sideOfSeat(t, seat)) }, performance.now(), Math.random);
+      const line = botTalk(this.state, t, { kind: 'trickPop', seat, murmur: true, side: sideOfSeat(t, seat), ...(this.lastState ? { handNo: this.lastState.handNo } : {}), ...this.factsNow(sideOfSeat(t, seat)) }, performance.now(), Math.random);
       if (!line) continue;
       let d: number | null = null;
       try { d = await spokenClipDurationMs(line.name, line.text, line.persona, line.line, line.bid); } catch { d = null; }
@@ -297,7 +297,11 @@ export const offlineTalk = {
     const meta: EmitMeta = { humanReact: 'seat' in action && action.seat === humanSeat };
     let spoke = false;
     if (!bidSuppressed) {
-      for (const ev of momentsFor(before, action, after)) spoke = this.emit(botTalk(this.state, this.table!, ev, performance.now(), Math.random), meta) || spoke;
+      for (const ev of momentsFor(before, action, after)) {
+        // stamp the hand so the engine's per-hand repetition budget rolls
+        ev.handNo = after.handNo;
+        spoke = this.emit(botTalk(this.state, this.table!, ev, performance.now(), Math.random), meta) || spoke;
+      }
     }
     if (!spoke && rev) this.revSpeak(rev, after);
   },
@@ -340,7 +344,7 @@ export const offlineTalk = {
       ...(this.revShop ? {} : { line: revLineIdForText(text) }),
     });
   },
-  moment(ev: Parameters<typeof botTalk>[2]) { if (this.on()) this.emit(botTalk(this.state, this.table!, ev, performance.now(), Math.random)); },
+  moment(ev: Parameters<typeof botTalk>[2]) { if (this.on()) { if (ev.handNo === undefined && this.lastState) ev.handNo = this.lastState.handNo; this.emit(botTalk(this.state, this.table!, ev, performance.now(), Math.random)); } },
   /** collection-window banter lines about the hand that just ended; the caller owns delivery timing.
    * Gated on the same Bot-trash-talk pref as the engine (the old pack draw ignored it). */
   banter(after: GameState, maxLines = 2): TalkLine[] {
@@ -351,7 +355,7 @@ export const offlineTalk = {
     return lines.filter((l) => !this.recentTexts.some((r) => r.text === l.text && r.seat !== l.seat && now - r.at < 60_000));
   },
   /** before a bot plays: maybe a line (never sees the card); true = give it a beat */
-  prePlay(seat: number): boolean { return this.on() && this.emit(prePlayLine(this.state, this.table!, seat, performance.now(), Math.random)); },
+  prePlay(seat: number): boolean { if (this.lastState) noteTalkHand(this.state, this.lastState.handNo); return this.on() && this.emit(prePlayLine(this.state, this.table!, seat, performance.now(), Math.random)); },
   lean(action: Action): Action {
     const t = this.table;
     if (!t || action.type !== 'bid') return action;

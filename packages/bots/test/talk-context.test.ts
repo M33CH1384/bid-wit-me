@@ -16,11 +16,14 @@ describe('contextual bot speech (fact-tagged lines)', () => {
     const facts = new Set(tagged.map(([, m]) => m.fact));
     for (const f of ['close', 'aheadBig', 'behindBig', 'lateHand', 'deciding', 'bidderSelf', 'bidderPartner', 'bidderOpp']) expect(facts.has(f as never), f).toBe(true);
     const prePlayPool = [...(COMMON.prePlay ?? []), ...Object.values(PERSONAS).flatMap((p) => p.lines.prePlay ?? [])];
-    // moment-fit (2026-10-22): the one sanctioned exception is an 'oppSet'
-    // tag — prePlayLine supplies no fact snapshot, so the gate can never
-    // verify it there and prePlay output stays fact-blind (proven in (d));
-    // the tag only unlocks the line for snapshot-carrying trickPop draws.
-    for (const l of prePlayPool) if (LINE_META[l]?.fact) expect(LINE_META[l]!.fact, l).toBe('oppSet');
+    // moment-fit (2026-10-22): the sanctioned exceptions are past-event
+    // tags — 'oppSet' (prePlayLine supplies no fact snapshot, so the gate
+    // can never verify it there and prePlay output stays fact-blind,
+    // proven in (d); the tag only unlocks the line for snapshot-carrying
+    // trickPop draws) and, since the prior-event pass, 'priorEvent'
+    // (verifiable in prePlay from the table's hand stamp alone, and it
+    // says nothing about the current hand's cards, score or bids).
+    for (const l of prePlayPool) if (LINE_META[l]?.fact) expect(['oppSet', 'priorEvent'], l).toContain(LINE_META[l]!.fact);
   });
 
   it('(a) in a close late-hand setThem, the close-tagged line beats the generic first line', () => {

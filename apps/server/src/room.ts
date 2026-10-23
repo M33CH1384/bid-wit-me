@@ -12,7 +12,7 @@ import {
 } from '@spades/rules';
 import { voiceGender } from '@spades/bots';
 import { BUCKET_THIN } from './voice/writer';
-import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, chooseBotAction, loudLoser, parseHint, leanBid, botSkillFor, personaSkillFloor, seatSkill, leanNil, momentsFor, newTalkState, pickBotNames, platePersona, prePlayLine, activeCatalog, bucketFor } from '@spades/bots';
+import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, chooseBotAction, loudLoser, parseHint, leanBid, botSkillFor, personaSkillFloor, seatSkill, leanNil, momentsFor, newTalkState, noteTalkHand, pickBotNames, platePersona, prePlayLine, activeCatalog, bucketFor } from '@spades/bots';
 import { STORY_CHARACTERS, STORY_TIER_SKILL, deeSkillForStop, guideEventLine, guideHandLine, newGuideState, storyFactsOf, storyPairTrackKey, storyRulesForStop, storyStopById, type AwarenessCase, type GuideState, type StoryGameFacts } from '@spades/bots';
 import {
   type BotLevel, type ChatLine, type ClientMsg, type HostMusic, type MediaState, type RoomInfo, type RoomPhase, type RunPlayback, type SeatInfo, type ServerMsg,
@@ -1656,6 +1656,7 @@ export class Room {
   private talk(ev: TalkEvent): void {
     const d = this.data;
     if (d.botTalk === false || d.phase === 'lobby') return;
+    if (ev.handNo === undefined && d.game) ev.handNo = d.game.handNo; // the engine's per-hand repetition budget
     const line = botTalk(this.talkState(), this.talkTable(), ev, this.io.now(), Math.random);
     if (line) this.pushBotLine(line);
     // Voice (c): behind the same host flag, a thin bucket schedules ONE writer pass (waitUntil in the DO).
@@ -2261,6 +2262,7 @@ export class Room {
           let at = Math.max(now, (d.turnStartedAt ?? now) + leadIn + this.timing.botMs);
           // sometimes a bot talks before it plays (never a tell: the line doesn't see its cards), then a short beat
           if (turn.kind === 'play' && slot.kind === 'bot' && d.botTalk !== false) {
+            if (d.game) noteTalkHand(this.talkState(), d.game.handNo);
             const line = prePlayLine(this.talkState(), this.talkTable(), turn.seat, now, Math.random);
             if (line) { this.pushBotLine(line); at += 900; changed = true; }
           }

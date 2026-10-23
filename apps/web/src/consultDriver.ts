@@ -76,6 +76,25 @@ export class ConsultSession {
   /** Dee's acknowledgment: at most one per match (§4) */
   ackUsed = false;
   introDone = false;
+  /**
+   * A new match at the same table (the driver outlives one game when the
+   * table does): the line bags are per-match BY DESIGN ("bags do not reset
+   * inside a match" — consultTalk), so a fresh match must refill them, or
+   * by match two every grid cell is spent, the number-free fallbacks drain
+   * behind them, and the partner silently stops calling books at all.
+   * Per-hand keys carry the seed, so clearing them loses nothing.
+   */
+  resetMatch(): void {
+    this.talk = newConsultTalkState();
+    this.firedConsults.clear();
+    this.settleDecided.clear();
+    this.claimsByHand.clear();
+    this.conferByHand.clear();
+    this.conferDecisions.clear();
+    this.ackUsed = false;
+    this.consultClipEndAt = 0;
+    this.consultHandKey = '';
+  }
 }
 
 export interface ConsultDeps {
@@ -133,6 +152,8 @@ export class ConsultDriver {
 
   /** Called by Table on every state change (and on dealing-flag flips). */
   onState(st: GameState, ctx: { dealing: boolean; misdealShowing: boolean }): void {
+    // a different seed is a different game: refill the per-match line bags
+    if (this.latest && st.seed !== this.latest.seed) this.session.resetMatch();
     this.prev = this.latest;
     this.latest = st;
     this.lastCtx = ctx;

@@ -81,13 +81,13 @@ describe('rotation: no repeat until the pool has cycled', () => {
     // the contract holder is the speaker every time: the fact-preferred slice stays "hot" all game,
     // which is exactly the persistent context that used to loop its 1–2 lines
     for (let i = 0; i < pool.length; i++) {
-      const l = botTalk(st, t, { kind: 'made', side: 1, seat: 1, bid: 4, bidderSeat: 1, bidderSide: 1 }, 1_000_000 + i * 10_000, () => 0.1);
+      const l = botTalk(st, t, { kind: 'made', side: 1, seat: 1, bid: 4, bidderSeat: 1, bidderSide: 1, handNo: 2 }, 1_000_000 + i * 10_000, () => 0.1);
       expect(l, `fire ${i}`).not.toBeNull();
       said.push(l!.line!);
     }
     expect(new Set(said).size).toBe(pool.length);
     // and only NOW may a line come back — never back-to-back
-    const next = botTalk(st, t, { kind: 'made', side: 1, seat: 1, bid: 4, bidderSeat: 1, bidderSide: 1 }, 1_000_000 + pool.length * 10_000, () => 0.1);
+    const next = botTalk(st, t, { kind: 'made', side: 1, seat: 1, bid: 4, bidderSeat: 1, bidderSide: 1, handNo: 3 }, 1_000_000 + pool.length * 10_000, () => 0.1); // the comeback lives in a later hand — the per-hand budget has rolled
     expect(next).not.toBeNull();
     expect(next!.line).not.toBe(said[said.length - 1]);
   });

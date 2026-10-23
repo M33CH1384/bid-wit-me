@@ -138,6 +138,23 @@ export interface TalkState {
   bucketSeq?: number[];
   /** per-side last observed score bucket */
   lastBucket?: (GapBucket | undefined)[];
+  /** repetition budget (owner, 2026-10-22: the same line/phrase ~3× in one
+   * hand, and the same phrasings hand after hand): the hand the per-hand
+   * sets below belong to, as stamped by any event that carries a hand
+   * number — the sets roll when it changes (noteTalkHand) */
+  handNo?: number;
+  /** normalized phrases already fired THIS hand — table-wide, every seat,
+   * pool and trigger: a phrase fires at most once per hand */
+  handPhrases?: Set<string>;
+  /** catchphrase topic fire counts THIS hand (topics are capped at one
+   * fire per hand while alternatives exist — see pick's tiered fallback) */
+  handTopics?: Record<string, number>;
+  /** bigram catchphrase fire counts for the whole match (capped) */
+  matchTopics?: Record<string, number>;
+  /** monotonic counter of lines said at this table (LRU recycle order) */
+  saySeq?: number;
+  /** last saySeq at which each raw line was said (pool rotation memory) */
+  lineSeq?: Record<string, number>;
 }
 export interface TalkEvent {
   kind: TalkKind;
@@ -177,6 +194,12 @@ export interface TalkEvent {
   /** sets so far this match, per side (from the hand history): gates lines
    * that reference an earlier set ('oppSet' fact) */
   setsBySide?: number[];
+  /** the hand this moment belongs to (the caller's game state): stamps the
+   * per-hand repetition budget — phrases/topics roll when it changes */
+  handNo?: number;
+  /** the side that won the most recently completed hand of this match
+   * (stamped by momentsFor / collectionBanter): gates 'wonPrevHand' lines */
+  prevWinnerSide?: number;
 }
 export type GapBucket = 'close' | 'aheadBig' | 'behindBig';
 export type TricksLeftBucket = 'early' | 'mid' | 'late';
@@ -203,6 +226,69 @@ export function lineById(id: string): string | undefined {
 }
 
 export function newTalkState(): TalkState { return { lastAt: -1e12, seatAt: [], revealed: [], recent: [], used: {} }; }
+
+/* ------------------------------------------------------------------ */
+/* Repetition budget (owner, 2026-10-22): the same phrase ~3× in one  */
+/* hand reads as a glitch, and the same phrasings hand after hand     */
+/* read as a loop. Three nested caps, all enforced in pick()/say():   */
+/*  1. a normalized phrase fires at most ONCE per hand, table-wide —  */
+/*     the COMMON pools are shared text behind per-persona bags, so   */
+/*     without this the same sentence lands from three mouths;        */
+/*  2. a catchphrase topic fires at most once per hand, and a bigram  */
+/*     catchphrase at most MATCH_TOPIC_CAP times per match;           */
+/*  3. across hands, a pool rotates LRU-style: a spent bag recycles    */
+/*     its least-recently-said line instead of wiping, so a line      */
+/*     only returns once the rest of the pool has had its turn.       */
+/* Authored beats never pass through pick() (scripted scenes, the     */
+/* guide, the rail, tributes) and consultation has its own bags, so   */
+/* none of them are capped here.                                      */
+/* ------------------------------------------------------------------ */
+
+/** a raw line reduced to its phrase identity: words only, no slots,
+ * numbers or punctuation — "{them} cooking 🔥" and "Dee cooking 🔥"
+ * are the same phrase at the table */
+export function normPhrase(raw: string): string {
+  return raw.toLowerCase().replace(/\{[^}]*\}/g, ' ').replace(/[0-9]/g, ' ').replace(/[^a-z' ]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/** dialect-marker unigrams: a persona's verbal tic words (the streamer's
+ * "chat", "clip", "viral"…). Topic key is `~word`; capped per hand. */
+const TOPIC_UNIGRAMS = new Set(['chat', 'viral', 'clip', 'stream', 'screenshot', 'viewers', 'subscribers', 'content']);
+/** catchphrase bigrams, curated from a corpus audit (2026-10-22): the
+ * distinctive flavor phrases whose looping the ear catches — the
+ * streamer's bits, the table's slogans. A frequency rule can't do this
+ * job: at every threshold the set drowns in grammar glue ("for the",
+ * "is going"), and capping glue at 2/match would mute whole pools by
+ * hand four. Add a phrase here when a new slogan starts to loop. */
+const TOPIC_BIGRAMS: Set<string> = new Set([
+  'clip it', 'going viral', 'group chat', 'highlight reel', // the streamer's bits
+  'let me cook', 'no cap', 'say less', 'scared money', 'mushroom cloud',
+  'we eatin', 'frame it', 'wheels up', // table slogans
+  'hold on', 'watch this', 'sit down', 'match point', 'my partner', // measured top offenders
+]);
+/** per-match cap for a bigram catchphrase (the per-hand cap also applies) */
+export const MATCH_TOPIC_CAP = 2;
+
+/** the catchphrase topics a raw line carries (bigram keys, `~unigram` keys) */
+export function lineTopics(raw: string): string[] {
+  const words = normPhrase(raw).split(' ').filter(Boolean);
+  const out = new Set<string>();
+  for (let i = 0; i + 1 < words.length; i++) {
+    const bg = `${words[i]} ${words[i + 1]}`;
+    if (TOPIC_BIGRAMS.has(bg)) out.add(bg);
+  }
+  for (const w of words) if (TOPIC_UNIGRAMS.has(w)) out.add(`~${w}`);
+  return [...out];
+}
+
+/** stamp the table's current hand: when it changes, the per-hand phrase
+ * and topic sets roll (a new hand may hear everything again — once) */
+export function noteTalkHand(st: TalkState, handNo: number): void {
+  if (st.handNo === handNo) return;
+  st.handNo = handNo;
+  st.handPhrases = new Set();
+  st.handTopics = {};
+}
 
 export const sideOfSeat = (t: TalkTable, seat: number) => (t.partnerships ? seat % 2 : seat);
 const sideCount = (t: TalkTable) => (t.partnerships ? 2 : t.seats.length);
@@ -259,7 +345,7 @@ function speakerBucket(ev: TalkEvent, t: TalkTable, speaker: number | undefined)
 }
 
 /** does a line's game-state fact fit this moment, for this speaker? */
-function factOk(fact: LineFact | undefined, ev: TalkEvent, t: TalkTable, speaker: number | undefined): boolean {
+function factOk(fact: LineFact | undefined, ev: TalkEvent, t: TalkTable, speaker: number | undefined, st?: TalkState): boolean {
   switch (fact) {
     case undefined: return false;
     case 'close': case 'aheadBig': case 'behindBig': return speakerBucket(ev, t, speaker) === fact;
@@ -273,6 +359,26 @@ function factOk(fact: LineFact | undefined, ev: TalkEvent, t: TalkTable, speaker
       const mine = sideOfSeat(t, speaker);
       // the OTHER side(s) got set at some earlier point in this match
       return ev.setsBySide.some((n, s) => s !== mine && n > 0);
+    }
+    case 'priorEvent': {
+      // the line claims something happened earlier in THIS match (a last
+      // hand, a cut to avenge, a pattern). True only once a hand has been
+      // completed before the current one — the event's hand number, or
+      // the table's (every production caller stamps one). No hand known
+      // = unverifiable = sits out. Cross-match memory lives in the
+      // authored channels (rundowns, guide, awareness), never here: a
+      // story retry does not make hand 1 of the new match a "last hand".
+      const hn = ev.handNo ?? st?.handNo;
+      return hn !== undefined && hn >= 2;
+    }
+    case 'wonPrevHand': {
+      // "back to back": the speaker's side won the most recently
+      // completed hand of this match (stamped on the event by
+      // momentsFor / collectionBanter; unstamped = unverifiable = out),
+      // and this is at least the second hand — after hand 1 alone there
+      // is no "back" to be back to back with
+      const hn = ev.handNo ?? st?.handNo;
+      return speaker !== undefined && ev.prevWinnerSide !== undefined && ev.prevWinnerSide === sideOfSeat(t, speaker) && hn !== undefined && hn >= 2;
     }
   }
 }
@@ -365,7 +471,7 @@ function pick(st: TalkState, t: TalkTable, persona: PersonaId, kind: TalkKind, e
   // many"/"0", so they sit out as well.
   const claimOk = (l: string): boolean => {
     const meta = LINE_META[l];
-    if (meta?.fact && !factOk(meta.fact, ev, t, speaker)) return false;
+    if (meta?.fact && !factOk(meta.fact, ev, t, speaker, st)) return false;
     if (l.includes('{bid}') && typeof ev.bid !== 'number') return false;
     if (l.includes('{gap}') && typeof ev.gap !== 'number') return false;
     // topic dedupe: the same score claim from the same side of the same pool
@@ -377,13 +483,47 @@ function pick(st: TalkState, t: TalkTable, persona: PersonaId, kind: TalkKind, e
     }
     return true;
   };
-  const all = poolFor(persona, kind, t.intensity ?? 'cookout', self, target, t.partnerships).filter((l) => condOk(LINE_META[l], ev, t) && claimOk(l));
+  // repetition budget: a phrase already fired this hand (by ANY seat — the
+  // COMMON text behind four personas' bags is one sentence at the table)
+  // sits out, as does a line carrying a catchphrase topic the hand has
+  // already heard or the match has capped. Applied to the whole eligible
+  // pool BEFORE the preference slices, so a capped favourite falls back to
+  // a fresh line in the same pool, never to a fact-false one. The PHRASE
+  // cap is hard; the TOPIC cap is a preference: when it alone empties the
+  // pool, the topic lines come back (a persona's dialect shouldn't mute
+  // her seat) — a repeated phrase is a glitch, a repeated tic is a person.
+  const budgetOn = st.handNo !== undefined;
+  const phraseOk = (l: string): boolean => !budgetOn || !st.handPhrases?.has(normPhrase(l));
+  const topicOk = (l: string): boolean => {
+    if (!budgetOn) return true;
+    for (const tp of lineTopics(l)) {
+      if ((st.handTopics?.[tp] ?? 0) >= 1) return false;
+      if (!tp.startsWith('~') && (st.matchTopics?.[tp] ?? 0) >= MATCH_TOPIC_CAP) return false;
+    }
+    return true;
+  };
+  const eligible = poolFor(persona, kind, t.intensity ?? 'cookout', self, target, t.partnerships).filter((l) => condOk(LINE_META[l], ev, t) && claimOk(l) && phraseOk(l));
+  const all = eligible.filter(topicOk);
+  if (!all.length && eligible.length) {
+    // topic-only exhaustion, tiered: first re-admit lines whose topics
+    // have fired at most once this hand (a topic may reach 2 in a hand
+    // only when the pool has nothing fresher) — the per-MATCH bigram cap
+    // stays hard at this tier, so a catchphrase can't ride the fallback
+    // hand after hand; only if even that is empty does the bare
+    // phrase-fresh pool speak (the phrase cap itself never relaxes)
+    const soft = !budgetOn ? [] : eligible.filter((l) => lineTopics(l).every((tp) => (st.handTopics?.[tp] ?? 0) < 2 && (tp.startsWith('~') || (st.matchTopics?.[tp] ?? 0) < MATCH_TOPIC_CAP)));
+    // last resort: the phrase-fresh pool, but a match-capped catchphrase
+    // still may not pass twice its cap — beyond that the seat goes quiet
+    // rather than looping the slogan the owner complained about
+    const capped = !budgetOn ? eligible : eligible.filter((l) => lineTopics(l).every((tp) => tp.startsWith('~') || (st.matchTopics?.[tp] ?? 0) < MATCH_TOPIC_CAP * 2));
+    all.push(...(soft.length ? soft : capped));
+  }
   if (!all.length) return null;
   // an Ace got cut: the Ace lines are the point
   const ace = ev.ace ? all.filter((l) => LINE_META[l]?.cond === 'ace') : [];
   // lines tagged with a game-state fact that fits this moment are preferred just as strongly;
   // when nothing tagged fits (or the roll misses) the whole pool still speaks — never silence
-  const factFit = all.filter((l) => factOk(LINE_META[l]?.fact, ev, t, speaker));
+  const factFit = all.filter((l) => factOk(LINE_META[l]?.fact, ev, t, speaker, st));
   let base = all;
   if (ace.length && rnd() < 0.7) base = ace;
   else if (factFit.length && rnd() < 0.85) base = factFit;
@@ -399,11 +539,17 @@ function pick(st: TalkState, t: TalkTable, persona: PersonaId, kind: TalkKind, e
     fresh = all.filter((l) => !used.includes(l) && l !== st.last && !st.recent.includes(l));
   }
   if (!fresh.length) {
-    // the pool is spent: forget it (keep the last line out so it never repeats back to back)
-    st.used[key] = [];
-    fresh = base.filter((l) => l !== st.last);
-    if (!fresh.length) fresh = base.length > 1 ? base.filter((l) => l !== st.last) : [];
-    if (!fresh.length) return null;
+    // The pool is spent for this match. The old code wiped the bag here, so
+    // the rotation restarted mid-match and the pool's first lines (often
+    // the fact-preferred slice) hammered again — the hand-after-hand loop
+    // the owner hears. Recycle ONE line instead: the least-recently-said
+    // line of the slice, so a line only returns once everything else in
+    // the pool has had its turn since. `used` is left intact (the bag
+    // stays spent; only the LRU line is re-admitted, once).
+    const cands = base.filter((l) => l !== st.last);
+    if (!cands.length) return null;
+    cands.sort((a, b) => (st.lineSeq?.[a] ?? 0) - (st.lineSeq?.[b] ?? 0));
+    return cands[0]!;
   }
   // own (non-COMMON) lines weigh double
   const own = PERSONAS[persona].lines[kind] ?? [];
@@ -421,6 +567,16 @@ function say(st: TalkState, t: TalkTable, seat: number, kind: TalkKind, ev: Talk
   // record the score claim this line just made (topic dedupe in pick)
   const cKey = claimKey(kind, LINE_META[raw]?.fact, t, seat);
   if (cKey) (st.claims ??= {})[cKey] = { seq: st.bucketSeq?.[sideOfSeat(t, seat)] ?? 0 };
+  // repetition budget bookkeeping: this phrase + its catchphrase topics
+  // are spent for the hand; bigram catchphrases also count toward the
+  // match cap; the say order feeds the LRU pool rotation
+  (st.handPhrases ??= new Set()).add(normPhrase(raw));
+  for (const tp of lineTopics(raw)) {
+    (st.handTopics ??= {})[tp] = (st.handTopics?.[tp] ?? 0) + 1;
+    if (!tp.startsWith('~')) (st.matchTopics ??= {})[tp] = (st.matchTopics?.[tp] ?? 0) + 1;
+  }
+  st.saySeq = (st.saySeq ?? 0) + 1;
+  (st.lineSeq ??= {})[raw] = st.saySeq;
   st.recent = [...st.recent, raw].slice(-TALK.recentMax);
   st.last = raw;
   st.lastAt = now;
@@ -506,6 +662,8 @@ function sayTrickPop(st: TalkState, t: TalkTable, seat: number, ev: TalkEvent, n
 export function botTalk(st: TalkState, t: TalkTable, ev: TalkEvent, now: number, rnd: () => number): TalkLine | null {
   const bots = t.seats.map((s, i) => (s.bot ? i : -1)).filter((i) => i >= 0);
   if (!bots.length) return null;
+  // the per-hand repetition budget rolls with the caller's hand number
+  if (ev.handNo !== undefined) noteTalkHand(st, ev.handNo);
   // moment-fit bookkeeping runs on EVERY event, spoken or not: a significant
   // moment stamps the murmur-quiet window, and reported score buckets feed
   // the claim dedupe's "facts changed" test
@@ -625,6 +783,9 @@ export function setsBySideOf(state: GameState): number[] {
 }
 
 export function collectionBanter(st: TalkState, t: TalkTable, after: GameState, now: number, rnd: () => number, maxLines = 2): TalkLine[] {
+  // banter speaks about the hand that just ended — it belongs to that
+  // hand's repetition budget (after.handNo is still the finished hand)
+  noteTalkHand(st, after.handNo);
   const ctx = banterContextFor(after);
   if (!ctx) return [];
   noteBuckets(st, ctx.buckets);
@@ -703,6 +864,9 @@ export function collectionBanter(st: TalkState, t: TalkTable, after: GameState, 
         ...(slot.bidderSeat !== undefined ? { bidderSeat: slot.bidderSeat } : {}),
         ...(slot.bidderSide !== undefined ? { bidderSide: slot.bidderSide } : {}),
         setsBySide: setsBySideOf(after),
+        // the hand that just ended is the most recently completed one:
+        // its winner gates 'wonPrevHand' lines in this banter
+        prevWinnerSide: ctx.handPoints.indexOf(Math.max(...ctx.handPoints)),
       };
       const line = speak(st, t, seat, slot.kind, ev, slot.them, now, rnd);
       if (line) { spoken.add(seat); usedKinds.add(slot.kind); return line; }

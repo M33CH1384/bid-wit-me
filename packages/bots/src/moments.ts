@@ -143,6 +143,14 @@ export function momentsFor(before: GameState, action: Action, after: GameState):
     out.push({ kind: 'win', side: w, gap: gapFor(w), ...factsFor(w), pressure: true });
   }
   void sideCount;
+  // the most recently completed hand's winner, for 'wonPrevHand' lines
+  // ("back to back"): at play time that's the hand before this one; for
+  // the hand-completion events above it's the hand that just finished
+  const lastRec = after.history[after.history.length - 1];
+  if (lastRec) {
+    const pw = lastRec.sides.reduce((a, b) => (b.points > a.points ? b : a)).side;
+    for (const ev of out) ev.prevWinnerSide = pw;
+  }
   return out;
 }
 

@@ -61,7 +61,7 @@ export type LineCond = 'ace' | 'neg' | 'big' | 'little' | 'jk';
  * for the speaker's side, `bidder*` says who held the contract relative to the speaker.
  * A fact is a PREFERENCE, never a gate: when no tagged line fits, the untagged pool speaks.
  */
-export type LineFact = 'close' | 'aheadBig' | 'behindBig' | 'lateHand' | 'deciding' | 'bidderSelf' | 'bidderPartner' | 'bidderOpp' | 'oppSet';
+export type LineFact = 'close' | 'aheadBig' | 'behindBig' | 'lateHand' | 'deciding' | 'bidderSelf' | 'bidderPartner' | 'bidderOpp' | 'oppSet' | 'priorEvent' | 'wonPrevHand';
 /**
  * Per-persona mood: how much more (or less) this persona talks depending on the score gap
  * FOR ITS OWN SIDE (keys mirror the GapBucket names in talk.ts). Missing = 1 (steady).
@@ -683,7 +683,7 @@ export const FACT_TAGS: Record<string, LineFact> = {
   // cut / overcut: the emphatic closers fit a deciding (late + close) trick; the revenge line fits late
   "CUT. sit down.": 'deciding',
   "that's a cut, {them}. tell your friends.": 'deciding',
-  "that's for the last hand!": 'lateHand',
+  "that's for the last hand!": 'priorEvent', // was 'lateHand' — its claim is the PREVIOUS hand, not a late trick
   "over the top! sit DOWN.": 'deciding',
   "you cut, I cut harder.": 'deciding',
   "OVER THE TOP!!! SAY LESS!": 'deciding',
@@ -714,7 +714,7 @@ export const FACT_TAGS: Record<string, LineFact> = {
   // streak / boston
   "we're on a heater 🔥": 'aheadBig',
   "someone stop us. anyone.": 'aheadBig',
-  "back to back. get used to it.": 'aheadBig',
+  "back to back. get used to it.": 'wonPrevHand', // was 'aheadBig': the claim is consecutive hand wins — gated on the previous hand's winner below
   "all thirteen! that's a Boston!": 'deciding',
   "THIRTEEN TO ZERO!": 'deciding',
   "clean sweep. every book.": 'aheadBig',
@@ -727,6 +727,25 @@ export const FACT_TAGS: Record<string, LineFact> = {
   // sense once the other side has actually been set this match — it used to
   // fire in the first hand, before any set existed
   "this one's for that set earlier.": 'oppSet',
+  // implicit prior-event claims (owner, 2026-10-22: "people saying somebody
+  // gon pay for that last hand on the first hand is crazy"): these lines
+  // carry their claim in the TEXT — payback, "again", a pattern — with no
+  // score/bidder fact to gate on, so they sat in the always-eligible
+  // claim-free fallback and fired on hand 1 of a fresh match. 'priorEvent'
+  // gates them on a hand having been completed earlier in THIS match
+  // (factOk in talk.ts). Swept from every pool 2026-10-22; lines whose
+  // "again/remember/owe" is forward-looking ("it won't happen again",
+  // "we'll remember that one", "you owe the table an apology") or kind-
+  // gated (lose/rematch/streak/gotSet pools fire ON the event they name)
+  // are deliberately NOT here.
+  "somebody gonna pay for that last hand.": 'priorEvent',
+  "remember when you cut me? me too. 😌": 'priorEvent',
+  "hustled again 😈": 'priorEvent',
+  "WHEELS UP. again.": 'priorEvent',
+  "Welcome back to taking books, {them}.": 'priorEvent',
+  "Signed, sealed, delivered — again.": 'priorEvent',
+  "Made. Like we always do.": 'priorEvent',
+  "the model holds. again.": 'priorEvent',
 };
 for (const [raw, fact] of Object.entries(FACT_TAGS)) LINE_META[raw] = { ...LINE_META[raw], fact };
 

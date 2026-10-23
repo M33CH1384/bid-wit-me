@@ -206,3 +206,30 @@ describe('settle (§5.3)', () => {
     } finally { rnd.mockRestore(); }
   });
 });
+
+describe('match boundary (repetition follow-up, 2026-10-22)', () => {
+  it('a new game at the same table refills the per-match line bags', () => {
+    const pushes: { name: string; text: string }[] = [];
+    const d = makeDriver(pushes);
+    const a = freshState('game-a');
+    d.onState(a, { dealing: false, misdealShowing: false });
+    // spend session state the way a played match would
+    const talkBefore = d.session.talk;
+    d.session.ackUsed = true;
+    d.session.firedConsults.add('game-a:1:0');
+    d.session.claimsByHand.set(1, { claim: 3, read: 3 });
+    const b = freshState('game-b');
+    d.onState(b, { dealing: false, misdealShowing: false });
+    // a different seed is a different match: bags refill (within a match
+    // they must NOT reset — the no-repeat rotation depends on it)
+    expect(d.session.talk).not.toBe(talkBefore);
+    expect(d.session.ackUsed).toBe(false);
+    expect(d.session.firedConsults.size).toBe(0);
+    expect(d.session.claimsByHand.size).toBe(0);
+    // and the same seed again does NOT reset (same match, next state)
+    const talkAfter = d.session.talk;
+    d.onState(b, { dealing: false, misdealShowing: false });
+    expect(d.session.talk).toBe(talkAfter);
+    d.dispose();
+  });
+});
