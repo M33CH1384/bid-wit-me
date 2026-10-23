@@ -21,6 +21,9 @@ class Harness {
   /** when set, prune asks this instead of a table DO */
   phases: ((code: string) => 'live' | 'over' | 'gone' | null) | null = null;
   dropped: string[] = [];
+  /** push hooks fired by the hub (recipient had no live socket) */
+  dmPushes: { to: string; from: string; name: string; text: string }[] = [];
+  mentionPushes: { to: string; from: string; name: string; text: string }[] = [];
   constructor(public db: D1Database) {
     const global: GlobalLog = {
       add: (l) => { const line = { id: this.seq++, ...l }; this.lines.push(line); if (this.lines.length > 200) this.lines.shift(); return line; },
@@ -44,6 +47,8 @@ class Harness {
       connected: (cid) => (this.live ? this.live(cid) : true),
       drop: (cid) => { this.dropped.push(cid); },
       tablePhase: async (code) => (this.phases ? this.phases(code) : null),
+      onDm: (to, from, name, text) => { this.dmPushes.push({ to, from, name, text }); },
+      onMention: (to, from, name, text) => { this.mentionPushes.push({ to, from, name, text }); },
     }, db);
   }
   advance(ms: number) { this.t += ms; const due = this.timers.filter((x) => x.at <= this.t); this.timers = this.timers.filter((x) => x.at > this.t); due.forEach((x) => x.f()); }
@@ -64,6 +69,16 @@ class Harness {
 
 async function addUser(db: D1Database, id: string, username: string) {
   await db.prepare('INSERT INTO users (id, username, username_key, created_at) VALUES (?, ?, ?, ?)').bind(id, username, username.toLowerCase(), 1_700_000_000_000).run();
+}
+
+/**
+ * Make two users confirmed friends with a direct row (DMs are friends-only;
+ * the DM-mechanics suites below predate the gate, so their setup befriends
+ * the pair without disturbing the socket flow they assert on).
+ */
+async function befriendDb(x: string, y: string) {
+  const [a, b] = x < y ? [x, y] : [y, x];
+  await db.prepare("INSERT OR REPLACE INTO friends (a, b, status, requested_by, created_at) VALUES (?, ?, 'friends', ?, 1)").bind(a, b, x).run();
 }
 
 let db: D1Database;
@@ -301,6 +316,7 @@ describe('global chat + DMs', () => {
 
   it('DMs: delivered live + stored, unread counts, history, read, guests cannot DM, report a DM', async () => {
     await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    await befriendDb('ua', 'ub');
     await h.send('a', { t: 'dm', to: 'u:ub', text: 'you around?' });
     expect(h.last('a', 'dm')!.line).toMatchObject({ from: 'u:ua', to: 'u:ub', text: 'you around?' });
     await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
@@ -446,6 +462,7 @@ describe('DM reactions', () => {
     await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
     await h.hub.open('c', { uid: 'uc', name: 'Cee' });
     await h.hub.open('g', { name: 'Kev' });
+    await befriendDb('ua', 'ub');
     await h.send('a', { t: 'dm', to: 'u:ub', text: 'spades tonight' });
     const line = h.last('b', 'dm')!.line;
     // guests can't react (same rule as posting)
@@ -487,6 +504,7 @@ describe('DM reactions', () => {
   it('DM reactions are rate limited (shared reaction budget)', async () => {
     await h.hub.open('a', { uid: 'ua', name: 'Alice' });
     await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    await befriendDb('ua', 'ub');
     await h.send('a', { t: 'dm', to: 'u:ub', text: 'hi' });
     const line = h.last('b', 'dm')!.line;
     for (let i = 0; i < 31; i++) await h.send('b', { t: 'dmReact', id: line.id, emoji: '👍' });
@@ -499,6 +517,7 @@ describe('DM replies', () => {
     await h.hub.open('a', { uid: 'ua', name: 'Alice' });
     await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
     await h.hub.open('c', { uid: 'uc', name: 'Cee' });
+    await befriendDb('ua', 'ub');
     await h.send('a', { t: 'dm', to: 'u:ub', text: 'spades tonight' });
     const orig = h.last('b', 'dm')!.line;
     const want = { id: orig.id, from: 'Alice', fromId: 'u:ua', text: 'spades tonight' };
@@ -521,6 +540,7 @@ describe('DM replies', () => {
   it('the quoted snippet is truncated at the reply limit', async () => {
     await h.hub.open('a', { uid: 'ua', name: 'Alice' });
     await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    await befriendDb('ua', 'ub');
     await h.send('a', { t: 'dm', to: 'u:ub', text: 'y'.repeat(200) });
     const orig = h.last('b', 'dm')!.line;
     await h.send('b', { t: 'dm', to: 'u:ua', text: 'tl;dr', replyTo: orig.id });
@@ -533,6 +553,8 @@ describe('DM replies', () => {
     await h.hub.open('a', { uid: 'ua', name: 'Alice' });
     await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
     await h.hub.open('c', { uid: 'uc', name: 'Cee' });
+    await befriendDb('ua', 'ub');
+    await befriendDb('ua', 'uc');
     // a line in the a↔c conversation...
     await h.send('a', { t: 'dm', to: 'u:uc', text: 'different thread' });
     const foreign = h.last('c', 'dm')!.line;
@@ -884,5 +906,191 @@ describe('friend activity presence (migration 0028)', () => {
     await db.prepare("UPDATE presence SET activity = 'bogus' WHERE user_id = 'ub'").run();
     const st = await new SocialStore(db).friendsState('ua');
     expect(st.friends[0]!.presence).toBeUndefined();
+  });
+});
+
+describe('friend-gated DMs', () => {
+  it('a stranger DM is rejected with NOT_FRIENDS and nothing is stored or delivered', async () => {
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    await h.send('a', { t: 'dm', to: 'u:ub', text: 'hello stranger' });
+    expect(h.last('a', 'error')!.code).toBe('NOT_FRIENDS');
+    expect(h.all('b', 'dm')).toEqual([]);
+    expect(await db.prepare('SELECT COUNT(*) AS n FROM dms').first<{ n: number }>()).toEqual({ n: 0 });
+    // a pending request is not a friendship
+    await h.send('a', { t: 'friend', op: 'request', to: 'u:ub' });
+    await h.send('a', { t: 'dm', to: 'u:ub', text: 'how about now' });
+    expect(h.last('a', 'error')!.code).toBe('NOT_FRIENDS');
+    // accepting opens the gate
+    await h.send('b', { t: 'friend', op: 'accept', to: 'u:ua' });
+    await h.send('a', { t: 'dm', to: 'u:ub', text: 'finally' });
+    expect(h.last('b', 'dm')!.line.text).toBe('finally');
+  });
+
+  it('unfriending mid-thread stops sends; the history stays fully readable', async () => {
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    await befriendDb('ua', 'ub');
+    await h.send('a', { t: 'dm', to: 'u:ub', text: 'first' });
+    await h.send('b', { t: 'dm', to: 'u:ua', text: 'second' });
+    await h.send('a', { t: 'friend', op: 'remove', to: 'u:ub' });
+    await h.send('a', { t: 'dm', to: 'u:ub', text: 'still there?' });
+    expect(h.last('a', 'error')!.code).toBe('NOT_FRIENDS');
+    await h.send('b', { t: 'dm', to: 'u:ua', text: 'me neither' });
+    expect(h.last('b', 'error')!.code).toBe('NOT_FRIENDS');
+    await h.send('b', { t: 'dmHistory', with: 'u:ua' });
+    expect(h.last('b', 'dmHistory')!.lines.map((l) => l.text)).toEqual(['first', 'second']);
+    await h.send('a', { t: 'dmHistory', with: 'u:ub' });
+    expect(h.last('a', 'dmHistory')!.lines.map((l) => l.text)).toEqual(['first', 'second']);
+  });
+});
+
+describe('@mentions (global chat)', () => {
+  it('resolves accounts case-insensitively; self-mentions and unknown names drop', async () => {
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    await h.hub.open('c', { uid: 'uc', name: 'Cee' });
+    await h.send('a', { t: 'chat', text: 'gg @Bobby and @cee — @Alice was here, @Nobody too' });
+    const line = h.last('b', 'chat')!.line;
+    expect(line.mentions).toEqual(['u:ub', 'u:uc']);
+    expect(h.last('c', 'chat')!.line.mentions).toEqual(['u:ub', 'u:uc']);
+    // a plain line carries no mentions field at all
+    await h.send('a', { t: 'chat', text: 'no tags here' });
+    expect(h.last('b', 'chat')!.line.mentions).toBeUndefined();
+  });
+
+  it('an @ inside a word (email-style) never tags, and a guest name resolves nobody', async () => {
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    await h.hub.open('g', { name: 'Kev' });
+    await h.send('a', { t: 'chat', text: 'mail me at a@bobby.com sometime' });
+    expect(h.last('b', 'chat')!.line.mentions).toBeUndefined();
+    await h.send('a', { t: 'chat', text: 'hey @Kev you around' });
+    expect(h.last('b', 'chat')!.line.mentions).toBeUndefined();
+  });
+
+  it('a mentioned player in a block relationship with the author is silently excluded', async () => {
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    await h.hub.open('c', { uid: 'uc', name: 'Cee' });
+    await h.send('b', { t: 'friend', op: 'block', to: 'u:ua' });
+    await h.send('a', { t: 'chat', text: '@Bobby can you hear me' });
+    // Bobby is blocked from Alice: he gets no line at all, and the line an
+    // uninvolved reader sees carries no mention of him
+    expect(h.last('b', 'chat')).toBeUndefined();
+    expect(h.last('c', 'chat')!.line.mentions).toBeUndefined();
+    expect(h.mentionPushes).toEqual([]);
+  });
+
+  it('an offline mentioned user fires the mention push hook; an online one does not', async () => {
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    await h.send('a', { t: 'chat', text: '@Bobby you up?' });
+    expect(h.mentionPushes).toEqual([{ to: 'ub', from: 'ua', name: 'Alice', text: '@Bobby you up?' }]);
+    await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    await h.send('a', { t: 'chat', text: '@Bobby again' });
+    expect(h.mentionPushes).toHaveLength(1);
+    // history carries the mentions too (a late joiner sees the tag), and the
+    // live line Bobby just received carries it as well
+    expect(h.last('b', 'hello')!.global.find((l) => l.text === '@Bobby you up?')!.mentions).toEqual(['u:ub']);
+    expect(h.last('b', 'chat')!.line.mentions).toEqual(['u:ub']);
+  });
+});
+
+describe('DM push hook', () => {
+  it('fires only when the recipient has no live socket', async () => {
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    await befriendDb('ua', 'ub');
+    await h.send('a', { t: 'dm', to: 'u:ub', text: 'live one' });
+    expect(h.dmPushes).toEqual([]);
+    h.hub.close('b');
+    await h.send('a', { t: 'dm', to: 'u:ub', text: 'offline one' });
+    expect(h.dmPushes).toEqual([{ to: 'ub', from: 'ua', name: 'Alice', text: 'offline one' }]);
+  });
+});
+
+describe('mute', () => {
+  it('the mute op validates and parses; a bad payload is dropped as malformed', async () => {
+    expect(parseSocialMsg(JSON.stringify({ t: 'mute', to: 'u:ub', on: true }))).toEqual({ t: 'mute', to: 'u:ub', on: true });
+    expect(parseSocialMsg(JSON.stringify({ t: 'mute', to: 'u:ub', on: 'yes' }))).toBeNull();
+    expect(parseSocialMsg(JSON.stringify({ t: 'mute', to: 'nobody', on: true }))).toBeNull();
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    await h.send('a', { t: 'mute', to: 'u:ua', on: true });
+    expect(h.last('a', 'error')!.message).toBe("That's you.");
+    await h.send('a', { t: 'mute', to: 'u:uz', on: true });
+    expect(h.last('a', 'error')!.message).toBe('No such player.');
+  });
+
+  it("hides the muted author's global lines for the muter only — live and in hello history; unmute restores", async () => {
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    await h.hub.open('c', { uid: 'uc', name: 'Cee' });
+    await h.send('b', { t: 'mute', to: 'u:ua', on: true });
+    expect(h.last('b', 'ok')!.what).toBe('mute');
+    expect(h.last('b', 'friends')!.friends.muted.map((f) => f.name)).toEqual(['Alice']);
+    // presence is NOT hidden (mute is not block)
+    expect(h.seen('b')).toContain('u:ua');
+    await h.send('a', { t: 'chat', text: 'can anyone hear me' });
+    expect(h.all('b', 'chat')).toEqual([]);
+    expect(h.last('c', 'chat')!.line.text).toBe('can anyone hear me');
+    expect(h.last('a', 'chat')!.line.text).toBe('can anyone hear me');
+    // a fresh socket's history is filtered the same way
+    await h.hub.open('b2', { uid: 'ub', name: 'Bobby' });
+    expect(h.last('b2', 'hello')!.global.map((l) => l.text)).not.toContain('can anyone hear me');
+    expect(h.last('b2', 'hello')!.friends!.muted.map((f) => f.name)).toEqual(['Alice']);
+    // unmute restores everything
+    await h.send('b', { t: 'mute', to: 'u:ua', on: false });
+    expect(h.last('b', 'friends')!.friends.muted).toEqual([]);
+    await h.send('a', { t: 'chat', text: 'and now' });
+    expect(h.last('b', 'chat')!.line.text).toBe('and now');
+  });
+
+  it('is private: the muted player receives nothing and their own state never shows it', async () => {
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    const before = h.msgs('a').length;
+    await h.send('b', { t: 'mute', to: 'u:ua', on: true });
+    expect(h.msgs('a').length).toBe(before);
+    expect(h.last('a', 'friends')?.friends.muted ?? []).toEqual([]);
+  });
+
+  it('a muted friend: no mention push, no DM push, DM arrives with zero unread, sends still work both ways, friendship intact', async () => {
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    await befriendDb('ua', 'ub');
+    await h.send('b', { t: 'mute', to: 'u:ua', on: true });
+    h.hub.close('b');
+    await h.send('a', { t: 'chat', text: '@Bobby psst' });
+    expect(h.mentionPushes).toEqual([]);
+    await h.send('a', { t: 'dm', to: 'u:ub', text: 'quiet hello' });
+    expect(h.dmPushes).toEqual([]);
+    // Bobby reconnects: the DM is in history, contributes no unread
+    await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    expect(h.last('b', 'hello')!.unread).toEqual({});
+    expect(h.last('b', 'hello')!.friends!.friends.map((f) => f.name)).toEqual(['Alice']);
+    await h.send('b', { t: 'dmHistory', with: 'u:ua' });
+    expect(h.last('b', 'dmHistory')!.lines.map((l) => l.text)).toEqual(['quiet hello']);
+    // the muter's own sends behave normally (and reach Alice with a push path intact)
+    await h.send('b', { t: 'dm', to: 'u:ua', text: 'I can still talk' });
+    expect(h.last('a', 'dm')!.line.text).toBe('I can still talk');
+    // and the muted player's sends still ARRIVE live for the muter — silently
+    await h.send('a', { t: 'dm', to: 'u:ub', text: 'live but silent' });
+    expect(h.last('b', 'dm')!.line.text).toBe('live but silent');
+    expect(await new SocialStore(db).unread('ub')).toEqual({});
+  });
+
+  it('block after mute behaves exactly as block does today', async () => {
+    await h.hub.open('a', { uid: 'ua', name: 'Alice' });
+    await h.hub.open('b', { uid: 'ub', name: 'Bobby' });
+    await befriendDb('ua', 'ub');
+    await h.send('b', { t: 'mute', to: 'u:ua', on: true });
+    await h.send('b', { t: 'friend', op: 'block', to: 'u:ua' });
+    expect(h.last('b', 'friends')!.friends.blocked.map((f) => f.name)).toEqual(['Alice']);
+    expect(h.last('b', 'friends')!.friends.friends).toEqual([]);
+    await h.send('a', { t: 'dm', to: 'u:ub', text: 'hey' });
+    expect(h.last('a', 'error')!.code).toBe('BLOCKED');
+    expect(h.seen('a')).not.toContain('u:ub');
+    await h.send('a', { t: 'chat', text: 'anyone home' });
+    expect(h.all('b', 'chat')).toEqual([]);
   });
 });

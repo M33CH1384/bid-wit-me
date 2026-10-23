@@ -13,7 +13,8 @@ import { navigate } from '../online/nav';
 import { loadSettings } from '../settings';
 import { shownPlayers, friendPresenceView } from './presence';
 import { type PlayerTableAction, playerTableAction } from './tableActions';
-import { type MyTable, type SocialTab, type Toast, badgeCount, globalUnread, social, useSocial } from './store';
+import { type MyTable, type SocialTab, type Toast, NOT_FRIENDS_TEXT, badgeCount, globalUnread, isMuted, social, useSocial } from './store';
+import { applyMention, mentionQueryAt, rankMentionCandidates, splitMentionText } from './mentions';
 import { openPlayerProfile, profileTargetOf } from '../profileTap';
 import { Leaderboards, Tournaments } from './Compete';
 import { LeagueTicker } from './LeagueTicker';
@@ -310,6 +311,7 @@ function Players({ signedIn }: { signedIn: boolean }) {
   const [q, setQ] = useState('');
   const friendIds = useMemo(() => new Set((s.friends?.friends ?? []).map((f) => f.id)), [s.friends]);
   const outgoing = useMemo(() => new Set((s.friends?.outgoing ?? []).map((f) => f.id)), [s.friends]);
+  const mutedIds = useMemo(() => new Set((s.friends?.muted ?? []).map((f) => f.id)), [s.friends]);
   const list = shownPlayers(Object.values(s.users), s.tables, Object.keys(s.ended), Date.now())
     .filter((u) => !q.trim() || u.name.toLowerCase().includes(q.trim().toLowerCase()))
     .sort((a, b) => (a.id === s.you?.id ? -1 : b.id === s.you?.id ? 1 : 0) || (+friendIds.has(b.id) - +friendIds.has(a.id)) || (+a.guest - +b.guest) || a.name.localeCompare(b.name));
@@ -319,7 +321,7 @@ function Players({ signedIn }: { signedIn: boolean }) {
       {!signedIn && <SignInNote what="chat, add friends and invite players" />}
       {s.myTable && <p className="soc-mytable">Your table <b>{s.myTable.code}</b> · {s.myTable.open} seat{s.myTable.open === 1 ? '' : 's'} open</p>}
       <ul className="soc-list" data-testid="players-list">
-        {list.map((u) => <PlayerRow key={u.id} u={u} me={u.id === s.you?.id} friend={friendIds.has(u.id)} pending={outgoing.has(u.id)} signedIn={signedIn} myTable={s.myTable} tables={s.tables} />)}
+        {list.map((u) => <PlayerRow key={u.id} u={u} me={u.id === s.you?.id} friend={friendIds.has(u.id)} pending={outgoing.has(u.id)} muted={mutedIds.has(u.id)} signedIn={signedIn} myTable={s.myTable} tables={s.tables} />)}
         {!list.length && q && <li className="soc-empty">Nobody by that name is online.</li>}
       </ul>
       {!q && s.status === 'open' && list.filter((u) => u.id !== s.you?.id).length === 0 && <AloneEmpty />}
@@ -345,8 +347,8 @@ function SocFace({ id, name, className, tap = true }: { id?: string; name: strin
   return <AvatarCircle pic={pic} name={name} className={className} onTap={target ? () => openPlayerProfile({ id, name }) : undefined} />;
 }
 
-function PlayerRow({ u, me, friend, pending, signedIn, myTable, tables }: {
-  u: PresenceEntry; me: boolean; friend: boolean; pending: boolean; signedIn: boolean; myTable: MyTable | null;
+function PlayerRow({ u, me, friend, pending, muted, signedIn, myTable, tables }: {
+  u: PresenceEntry; me: boolean; friend: boolean; pending: boolean; muted: boolean; signedIn: boolean; myTable: MyTable | null;
   tables: Record<string, OpenTable>;
 }) {
   const canInvite = signedIn && !me && !(myTable && myTable.open < 1);
@@ -357,8 +359,8 @@ function PlayerRow({ u, me, friend, pending, signedIn, myTable, tables }: {
         <SocFace id={u.id} name={u.name} className={`soc-av ${u.guest ? 'guest' : ''}`} />
         <span className="soc-pl-txt">
           {!u.guest
-            ? <button type="button" className="soc-pl-name link" onClick={() => social.showProfile(u.name, u.id)} data-testid={`pl-name-${u.name}`}>{u.name}{me && <em> (you)</em>}{u.guest && <i className="soc-tag">Guest</i>}{friend && <i className="soc-tag friend" title="Friend">★ Friend</i>}</button>
-            : <span className="soc-pl-name">{u.name}{me && <em> (you)</em>}{u.guest && <i className="soc-tag">Guest</i>}{friend && <i className="soc-tag friend" title="Friend">★ Friend</i>}</span>}
+            ? <button type="button" className="soc-pl-name link" onClick={() => social.showProfile(u.name, u.id)} data-testid={`pl-name-${u.name}`}>{u.name}{me && <em> (you)</em>}{u.guest && <i className="soc-tag">Guest</i>}{friend && <i className="soc-tag friend" title="Friend">★ Friend</i>}{muted && <i className="soc-tag muted" title="You muted this player (they don't know)">Muted</i>}</button>
+            : <span className="soc-pl-name">{u.name}{me && <em> (you)</em>}{u.guest && <i className="soc-tag">Guest</i>}{friend && <i className="soc-tag friend" title="Friend">★ Friend</i>}{muted && <i className="soc-tag muted" title="You muted this player (they don't know)">Muted</i>}</span>}
           <span className={`soc-pl-status ${u.status.kind}`}>{statusLabel(u.status, modeName)}</span>
         </span>
         <Rating r={u.rating} />
@@ -369,6 +371,7 @@ function PlayerRow({ u, me, friend, pending, signedIn, myTable, tables }: {
           {!u.guest && <button type="button" disabled={!signedIn} onClick={() => social.openDm(u.id)} data-testid={`pl-chat-${u.name}`}>💬 Chat</button>}
           <button type="button" disabled={!canInvite} onClick={() => void inviteTo(u.id, myTable)} data-testid={`pl-invite-${u.name}`}>➕ Invite{myTable ? '' : ' (new table)'}</button>
           {!u.guest && !friend && <button type="button" disabled={!signedIn || pending} onClick={() => social.friend('request', u.id)} data-testid={`pl-add-${u.name}`}>{pending ? 'Requested' : '👋 Add friend'}</button>}
+          {!u.guest && <button type="button" disabled={!signedIn} onClick={() => social.mute(u.id, !muted)} data-testid={`pl-mute-${u.name}`} title={muted ? `Unmute ${u.name}` : `Mute ${u.name} (they won't know)`}>{muted ? '🔊 Unmute' : '🔇 Mute'}</button>}
           {!u.guest && <button type="button" onClick={() => social.showProfile(u.name, u.id)} data-testid={`pl-profile-${u.name}`}>👤 Profile</button>}
         </div>
       )}
@@ -423,12 +426,67 @@ function useStickToBottom(dep: unknown) {
   return ref;
 }
 
-function Composer({ onSend, placeholder, disabled, testid }: { onSend: (t: string) => void; placeholder: string; disabled?: boolean; testid: string }) {
+/**
+ * Chat text with its server-resolved @mentions highlighted. Only tokens
+ * the server actually resolved (the line's `mentions`, mapped pid → known
+ * name) light up; an @name that resolved to nobody stays plain text.
+ */
+function MentionText({ text, mentions, namesByPid }: { text: string; mentions?: string[]; namesByPid: Map<string, string> }) {
+  if (!mentions?.length) return <>{text}</>;
+  const keys = new Set<string>();
+  for (const pid of mentions) { const n = namesByPid.get(pid); if (n) keys.add(n.toLowerCase()); }
+  if (!keys.size) return <>{text}</>;
+  const segs = splitMentionText(text, (k) => keys.has(k));
+  return <>{segs.map((sg, i) => (sg.mention ? <b key={i} className="soc-mention">{sg.text}</b> : <Fragment key={i}>{sg.text}</Fragment>))}</>;
+}
+
+function Composer({ onSend, placeholder, disabled, testid, mentionFrom }: {
+  onSend: (t: string) => void; placeholder: string; disabled?: boolean; testid: string;
+  /** @ completion candidates, best-first (friends → online players → table roster). Omit = no completion (DM threads: out of scope by design). */
+  mentionFrom?: readonly { name: string }[];
+}) {
   const [text, setText] = useState('');
-  const submit = (e: FormEvent) => { e.preventDefault(); const t = text.trim(); if (!t) return; onSend(t); setText(''); };
+  const [caret, setCaret] = useState(0);
+  const [pick, setPick] = useState(0);
+  const [dismissedAt, setDismissedAt] = useState(-1);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const query = mentionFrom && !disabled ? mentionQueryAt(text, caret) : null;
+  const options = query && query.start !== dismissedAt ? rankMentionCandidates(mentionFrom!, query.query) : [];
+  const open = options.length > 0;
+  useEffect(() => { setPick(0); }, [query?.query, query?.start]);
+  const choose = (name: string) => {
+    if (!query) return;
+    const r = applyMention(text, query, caret, name);
+    setText(r.text);
+    setCaret(r.caret);
+    requestAnimationFrame(() => { const el = inputRef.current; if (el) { el.focus(); el.setSelectionRange(r.caret, r.caret); } });
+  };
+  const submit = (e: FormEvent) => { e.preventDefault(); const t = text.trim(); if (!t) return; onSend(t); setText(''); setCaret(0); };
   return (
     <form className="soc-compose" onSubmit={submit}>
-      <input value={text} onChange={(e) => setText(e.target.value)} maxLength={SOCIAL_LIMITS.chatMax} placeholder={placeholder} disabled={disabled} aria-label={placeholder} data-testid={`${testid}-input`} />
+      {open && (
+        <ul className="soc-mention-pop" role="listbox" aria-label="Mention a player" data-testid={`${testid}-mention-pop`}>
+          {options.map((o, i) => (
+            <li key={o.name}>
+              <button type="button" role="option" aria-selected={i === pick} className={i === pick ? 'on' : ''}
+                data-testid={`${testid}-mention-${o.name}`}
+                onMouseDown={(e) => { e.preventDefault(); choose(o.name); }}
+                onMouseEnter={() => setPick(i)}>@{o.name}</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <input ref={inputRef} value={text}
+        onChange={(e) => { setText(e.target.value); setCaret(e.target.selectionStart ?? e.target.value.length); setDismissedAt(-1); }}
+        onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
+        onKeyDown={(e) => {
+          if (!open) return;
+          if (e.key === 'ArrowDown') { e.preventDefault(); setPick((p) => (p + 1) % options.length); }
+          else if (e.key === 'ArrowUp') { e.preventDefault(); setPick((p) => (p - 1 + options.length) % options.length); }
+          else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); choose(options[pick]!.name); }
+          else if (e.key === 'Escape') { e.preventDefault(); setDismissedAt(query!.start); }
+        }}
+        maxLength={SOCIAL_LIMITS.chatMax} placeholder={placeholder} disabled={disabled} aria-label={placeholder} data-testid={`${testid}-input`} />
       <button type="submit" className="primary" disabled={disabled || !text.trim()} data-testid={`${testid}-send`}>Send</button>
     </form>
   );
@@ -548,6 +606,21 @@ function GlobalChat({ signedIn }: { signedIn: boolean }) {
     if (flashTimer.current) window.clearTimeout(flashTimer.current);
     flashTimer.current = window.setTimeout(() => setFlashId(null), 1600);
   };
+  /** pid → display name, for lighting up resolved @mention tokens */
+  const namesByPid = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const [pid, name] of Object.entries(s.names)) m.set(pid, name);
+    for (const f of [...(s.friends?.friends ?? []), ...(s.friends?.incoming ?? []), ...(s.friends?.outgoing ?? []), ...(s.friends?.muted ?? [])]) m.set(f.id, f.name);
+    for (const u of Object.values(s.users)) m.set(u.id, u.name);
+    return m;
+  }, [s.names, s.friends, s.users]);
+  /** @ completion candidates: friends first, then everyone online (accounts only) */
+  const mentionCandidates = useMemo(() => {
+    const out: { name: string }[] = [];
+    for (const f of s.friends?.friends ?? []) out.push({ name: f.name });
+    for (const u of Object.values(s.users)) if (!u.guest && u.id !== s.you?.id) out.push({ name: u.name });
+    return out;
+  }, [s.friends, s.users, s.you]);
   return (
     <div className="soc-chat">
       <div className="soc-lines" ref={ref} data-testid="global-lines">
@@ -581,13 +654,13 @@ function GlobalChat({ signedIn }: { signedIn: boolean }) {
                     <button type="button" className="soc-line-name" onClick={() => !l.from.startsWith('g:') && social.showProfile(l.name, l.from.startsWith('u:') ? l.from.slice(2) : undefined)}>{l.name}{l.admin && <i className="soc-tag mod">MOD</i>}</button>
                   )}
                   <div className="soc-bubble-row">
-                    <div className={`soc-bubble ${g.groupEnd ? 'tail' : ''}`} {...(signedIn ? press.bind(l.id) : {})}>
+                    <div className={`soc-bubble ${g.groupEnd ? 'tail' : ''}${l.mentions?.includes(s.you?.id ?? '') ? ' mentions-me' : ''}`} {...(signedIn ? press.bind(l.id) : {})}>
                       {l.reply && (
                         <button type="button" className="soc-quote" data-testid={`quote-${l.id}`} onClick={() => jumpTo(l.reply!.id)} aria-label={`Quoted message by ${l.reply.from}: ${l.reply.text}`}>
                           <b>{l.reply.from}</b> {l.reply.text}
                         </button>
                       )}
-                      <span className="soc-line-text">{l.text}</span>
+                      <span className="soc-line-text"><MentionText text={l.text} mentions={l.mentions} namesByPid={namesByPid} /></span>
                     </div>
                     <span className="soc-line-acts">
                       {!mine && (signedIn || s.admin) && <button type="button" className="soc-more" aria-label="Message actions" data-testid={`line-more-${l.id}`} onClick={() => setMenu(menu === l.id ? null : l.id)}>⋯</button>}
@@ -597,6 +670,7 @@ function GlobalChat({ signedIn }: { signedIn: boolean }) {
                   {menu === l.id && (
                     <span className="soc-line-menu">
                       <button type="button" data-testid="line-report" onClick={() => { social.report('global', { id: l.id }); setMenu(null); }}>Report</button>
+                      {l.from.startsWith('u:') && <button type="button" data-testid="line-mute" onClick={() => { social.mute(l.from, !isMuted(s, l.from)); setMenu(null); }}>{isMuted(s, l.from) ? `Unmute ${l.name}` : `Mute ${l.name}`}</button>}
                       {l.from.startsWith('u:') && <button type="button" data-testid="line-block" onClick={() => { social.friend('block', l.from); setMenu(null); }}>Block {l.name}</button>}
                       {s.admin && <button type="button" className="danger" data-testid="line-delete" onClick={() => { social.del(l.id); setMenu(null); }}>Delete</button>}
                     </span>
@@ -613,7 +687,7 @@ function GlobalChat({ signedIn }: { signedIn: boolean }) {
           onReact={(e) => social.react(l.id, e)} onSendReply={(t) => social.chat(t, l.id)}
           onClose={press.close} onBackdrop={press.backdropDown} onEditingChange={setPopEditing} />
       ) : null; })()}
-      {signedIn ? <Composer onSend={(t) => social.chat(t)} placeholder="Message everyone…" testid="global" /> : <SignInNote what="post in the global chat" />}
+      {signedIn ? <Composer onSend={(t) => social.chat(t)} placeholder="Message everyone…" testid="global" mentionFrom={mentionCandidates} /> : <SignInNote what="post in the global chat" />}
     </div>
   );
 }
@@ -627,18 +701,21 @@ function Messages({ signedIn }: { signedIn: boolean }) {
   if (!signedIn) return <SignInNote what="send direct messages" />;
   if (s.dmWith) return <DmThread pid={s.dmWith} />;
   const threads = new Set([...Object.keys(s.dms), ...Object.keys(s.unread).filter((k) => s.unread[k]! > 0), ...(s.friends?.friends ?? []).map((f) => f.id)]);
-  const rows = [...threads].map((pid) => ({ pid, last: s.dms[pid]?.[s.dms[pid]!.length - 1], unread: s.unread[pid] ?? 0 }))
-    .sort((a, b) => (b.unread - a.unread) || ((b.last?.at ?? 0) - (a.last?.at ?? 0)));
+  const friendIds = new Set((s.friends?.friends ?? []).map((f) => f.id));
+  // Confirmed friends first (DMs are friends-only now); legacy threads —
+  // history with someone no longer a friend — sit below, dimmed, read-only.
+  const rows = [...threads].map((pid) => ({ pid, last: s.dms[pid]?.[s.dms[pid]!.length - 1], unread: s.unread[pid] ?? 0, friend: friendIds.has(pid) }))
+    .sort((a, b) => (+b.friend - +a.friend) || (b.unread - a.unread) || ((b.last?.at ?? 0) - (a.last?.at ?? 0)));
   return (
     <ul className="soc-list" data-testid="dm-threads">
       {rows.map((r) => (
         <li key={r.pid}>
           {/* a div (ProfRow pattern), not a <button>: the face inside is itself a
               profile-opening button, and buttons can't nest in buttons */}
-          <div className="soc-thread" role="button" tabIndex={0} onClick={() => social.openDm(r.pid)} data-testid={`thread-${nameOf(s, r.pid)}`}
+          <div className={`soc-thread${r.friend ? '' : ' legacy'}`} role="button" tabIndex={0} onClick={() => social.openDm(r.pid)} data-testid={`thread-${nameOf(s, r.pid)}`}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); social.openDm(r.pid); } }}>
             <SocFace id={r.pid} name={nameOf(s, r.pid)} className="soc-av" />
-            <span className="soc-pl-txt"><span className="soc-pl-name">{nameOf(s, r.pid)}{s.users[r.pid] && <i className="soc-online" title="Online" />}</span>
+            <span className="soc-pl-txt"><span className="soc-pl-name">{nameOf(s, r.pid)}{s.users[r.pid] && <i className="soc-online" title="Online" />}{!r.friend && <i className="soc-tag">Not friends</i>}{isMuted(s, r.pid) && <i className="soc-tag muted">Muted</i>}</span>
               <span className="soc-pl-status">{r.last ? r.last.text : 'Say hi'}</span></span>
             {r.unread > 0 && <i className="soc-count">{r.unread}</i>}
           </div>
@@ -655,6 +732,10 @@ function DmThread({ pid }: { pid: string }) {
   const ref = useStickToBottom(lines.length);
   const name = nameOf(s, pid);
   const blocked = (s.friends?.blocked ?? []).some((b) => b.id === pid);
+  /** DMs are friends-only: a non-friend thread reads in full but cannot be sent to */
+  const isFriend = (s.friends?.friends ?? []).some((f) => f.id === pid);
+  const requestPending = (s.friends?.outgoing ?? []).some((f) => f.id === pid);
+  const muted = isMuted(s, pid);
   /** long-press / right-click message actions (reaction strip + Reply popover) */
   const press = useMsgPress();
   /** true while the popover's in-place reply editor is open (suspends its dismissal) */
@@ -690,6 +771,7 @@ function DmThread({ pid }: { pid: string }) {
           </span>
         </button>
         {s.users[pid] && <button type="button" onClick={() => void inviteTo(pid, s.myTable)} data-testid="dm-invite">➕ Invite</button>}
+        <button type="button" onClick={() => social.mute(pid, !muted)} data-testid="dm-mute" aria-label={muted ? `Unmute ${name}` : `Mute ${name}`} title={muted ? `Unmute ${name}` : `Mute ${name} (they won't know)`}>{muted ? '🔊' : '🔇'}</button>
       </div>
       <div className="soc-lines" ref={ref} data-testid="dm-lines">
         {lines.map((l, i) => {
@@ -729,7 +811,14 @@ function DmThread({ pid }: { pid: string }) {
           onReact={(e) => social.dmReact(l.id, e)} onSendReply={(t) => social.dm(pid, t, l.id)}
           onClose={press.close} onBackdrop={press.backdropDown} onEditingChange={setPopEditing} />
       ) : null; })()}
-      {blocked ? <p className="soc-note">You blocked {name}. Unblock them in Friends to message.</p> : (
+      {blocked ? <p className="soc-note">You blocked {name}. Unblock them in Friends to message.</p> : !isFriend ? (
+        <div className="soc-dm-gate" data-testid="dm-gate">
+          <p className="soc-note">{NOT_FRIENDS_TEXT}</p>
+          {requestPending
+            ? <p className="soc-note">Request sent — you can message once {name} accepts.</p>
+            : <button type="button" className="primary" onClick={() => social.friend('request', pid)} data-testid="dm-friend-request">Send friend request</button>}
+        </div>
+      ) : (
         <Composer onSend={(t) => social.dm(pid, t)} placeholder={`Message ${name}…`} testid="dm" />
       )}
     </div>
@@ -789,11 +878,13 @@ function Friends({ signedIn }: { signedIn: boolean }) {
       <Section title={`Friends${f?.friends.length ? ` (${f.friends.length})` : ''}`} testid="friends-list">
         {f?.friends.map((r) => {
           const pv = friendPresenceView(r, s.users[r.id], s.lastAt[r.id] ?? 0, modeName);
+          const muted = isMuted(s, r.id);
           return (
             <div key={r.id} className="soc-frow" data-testid={`friend-${r.name}`}>
-              <button type="button" className="soc-frow-name link" onClick={() => social.showProfile(r.name, r.id)} data-testid={`friend-name-${r.name}`}>{pv.online && <i className="soc-online" title="Online" />}{r.name}<small>{pv.label}</small></button>
+              <button type="button" className="soc-frow-name link" onClick={() => social.showProfile(r.name, r.id)} data-testid={`friend-name-${r.name}`}>{pv.online && <i className="soc-online" title="Online" />}{r.name}{muted && <i className="soc-tag muted" title="You muted this player (they don't know)">Muted</i>}<small>{pv.label}</small></button>
               <button type="button" onClick={() => social.openDm(r.id)}>💬</button>
               {online(r.id) && <button type="button" onClick={() => void inviteTo(r.id, s.myTable)} data-testid={`finvite-${r.name}`}>➕</button>}
+              <button type="button" onClick={() => social.mute(r.id, !muted)} data-testid={`fmute-${r.name}`} aria-label={muted ? `Unmute ${r.name}` : `Mute ${r.name}`} title={muted ? `Unmute ${r.name}` : `Mute ${r.name} (they won't know)`}>{muted ? '🔊' : '🔇'}</button>
               <button type="button" onClick={() => social.showProfile(r.name, r.id)}>👤</button>
               <button type="button" className="ghost" onClick={() => { if (confirm(`Remove ${r.name} from friends?`)) social.friend('remove', r.id); }} data-testid={`remove-${r.name}`}>Remove</button>
             </div>
@@ -832,6 +923,15 @@ function Friends({ signedIn }: { signedIn: boolean }) {
           ))}
         </Section>
       )}
+      {!!f?.muted.length && (
+        <Section title="Muted" testid="muted-list">
+          {f.muted.map((r) => (
+            <ProfRow key={r.id} id={r.id} name={r.name} testid={`muted-${r.name}`} lead={<>{r.name}<small>they don't know</small></>} actions={
+              <button type="button" onClick={(e) => { e.stopPropagation(); social.mute(r.id, false); }} data-testid={`unmute-${r.name}`}>Unmute</button>
+            } />
+          ))}
+        </Section>
+      )}
     </div>
   );
 }
@@ -853,6 +953,7 @@ function SettingsTab({ signedIn }: { signedIn: boolean }) {
       {row('friendsOnlyInvites', 'Only friends can invite me', 'Invites from everyone else are blocked')}
       {row('hideLocation', 'Hide my location', 'Leave me off Local leaderboards (region only, never a city)')}
       <p className="soc-note">Blocked players can't see you online, message or invite you, and their global chat is hidden from you. Manage blocks in Friends.</p>
+      <p className="soc-note">Muted players are never told: you stay friends, their chat is hidden from you, and their messages and mentions arrive silently (no ding, no badge, no push). Manage mutes in Friends.</p>
     </div>
   );
 }

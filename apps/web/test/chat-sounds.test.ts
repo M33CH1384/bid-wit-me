@@ -35,6 +35,23 @@ describe('chatSoundDecision — global chat', () => {
   });
 });
 
+describe('chatSoundDecision — mention', () => {
+  it('blips wherever you are in the app (chat view irrelevant, like a DM)', () => {
+    expect(chatSoundDecision(gate({ kind: 'mention', chatViewOpen: false }))).toBe(true);
+    expect(chatSoundDecision(gate({ kind: 'mention', chatViewOpen: true }))).toBe(true);
+  });
+  it('never for my own line, while hidden, or when sounds are off', () => {
+    expect(chatSoundDecision(gate({ kind: 'mention', own: true }))).toBe(false);
+    expect(chatSoundDecision(gate({ kind: 'mention', pageVisible: false }))).toBe(false);
+    expect(chatSoundDecision(gate({ kind: 'mention', enabled: false }))).toBe(false);
+  });
+  it('throttles on its own per-kind stamp', () => {
+    const now = 100_000;
+    expect(chatSoundDecision(gate({ kind: 'mention', now, lastPlayedAt: now - 10 }))).toBe(false);
+    expect(chatSoundDecision(gate({ kind: 'mention', now, lastPlayedAt: now - CHAT_SOUND_THROTTLE_MS }))).toBe(true);
+  });
+});
+
 describe('chatSoundDecision — throttle', () => {
   it('blocks a replay inside the window and allows it after', () => {
     const now = 100_000;

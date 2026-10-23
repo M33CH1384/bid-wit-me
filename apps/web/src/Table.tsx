@@ -13,7 +13,7 @@ import { actingSeat, localSeatOfServerTurn, turnView, type TurnBadge } from './t
 import { retainHandOrder } from './handOrder';
 import { winHeadline } from './headline';
 import { type VenueId, VENUE_DEFS, AFTER_DARK_VENUE, fetchVenueUnlocks, venueUnlocked } from './venues';
-import { type FormEvent, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type FormEvent, Fragment, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, hostMinimum, isFreshDeal, isNukeTrick, nukeArmed, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, newlyOneTrickFromShot, nilBustsJustResolved, partnerOf, sideOf, sortHand, liveSeats } from '@spades/rules';
@@ -36,6 +36,8 @@ import { TrumpPopup, ackTrumpPopup, trumpPopupSeen, trumpSeenKey } from './Trump
 import { landingMode } from './three/landing';
 import { SocialButton } from './social/Social';
 import { TableProfileModal } from './social/ProfileModal';
+import { social as socialApi } from './social/store';
+import { applyMention, mentionQueryAt, rankMentionCandidates, splitMentionText } from './social/mentions';
 import { closeTableProfile, openPlayerProfile, profileTargetOf, setTableProfileHost, useTableProfileTarget } from './profileTap';
 import { recordOfflineGame } from './offlineStats';
 import { setStoryVoiceScope, setTableIntensity, showLine, speakBot, spokenClipDurationMs, talkPrefs as talkStore, useTalkPrefs } from './talkPrefs';
@@ -406,9 +408,42 @@ function offlineDealerLine(st: GameState, names: readonly string[]): string {
   return dealerAnnouncement(st.handNo, name);
 }
 
-function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only', extra, trash, overRecap = false, onReact, myId = null }: { msgs: ChatMsg[]; open: boolean; onToggle: () => void; onSend: (t: string) => void; unread: number; scope?: string; extra?: ReactNode; trash?: ReactNode; /** hand recap: the log is a sheet, opened from the corner button on that screen */ overRecap?: boolean; /** emoji reaction to a line (undefined = reactions unavailable here) */ onReact?: (id: number, emoji: string) => void; /** my reactor id (server pid / 'you'), for chip highlighting */ myId?: string | null }) {
+/**
+ * Table-chat text with its server-resolved @mentions highlighted. Only
+ * tokens the server resolved (the line's `mentions`, mapped pid → the name
+ * that pid speaks under in this chat) light up. Your own label here is
+ * "You", so a token tagging you may stay plain — the line itself still
+ * gets the mentions-me treatment.
+ */
+function TableMentionText({ text, mentions, msgs }: { text: string; mentions?: string[]; msgs: ChatMsg[] }) {
+  if (!mentions?.length) return <>{text}</>;
+  const keys = new Set<string>();
+  for (const pid of mentions) {
+    const m = msgs.find((x) => x.from === pid);
+    if (m && m.user !== 'You') keys.add(m.user.toLowerCase());
+  }
+  if (!keys.size) return <>{text}</>;
+  const segs = splitMentionText(text, (k) => keys.has(k));
+  return <>{segs.map((sg, i) => (sg.mention ? <b key={i} className="chat-mention">{sg.text}</b> : <Fragment key={i}>{sg.text}</Fragment>))}</>;
+}
+
+function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only', extra, trash, overRecap = false, onReact, myId = null, mentionCandidates }: { msgs: ChatMsg[]; open: boolean; onToggle: () => void; onSend: (t: string) => void; unread: number; scope?: string; extra?: ReactNode; trash?: ReactNode; /** hand recap: the log is a sheet, opened from the corner button on that screen */ overRecap?: boolean; /** emoji reaction to a line (undefined = reactions unavailable here) */ onReact?: (id: number, emoji: string) => void; /** my reactor id (server pid / 'you'), for chip highlighting */ myId?: string | null; /** @ completion candidates, best-first (friends → online → table roster); omit = no completion (offline) */ mentionCandidates?: readonly { name: string }[] }) {
   const listRef = useRef<HTMLDivElement>(null);
   const [text, setText] = useState('');
+  const [caret, setCaret] = useState(0);
+  const [pick, setPick] = useState(0);
+  const [dismissedAt, setDismissedAt] = useState(-1);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const mQuery = mentionCandidates ? mentionQueryAt(text, caret) : null;
+  const mOptions = mQuery && mQuery.start !== dismissedAt ? rankMentionCandidates(mentionCandidates!, mQuery.query) : [];
+  useEffect(() => { setPick(0); }, [mQuery?.query, mQuery?.start]);
+  const chooseMention = (name: string) => {
+    if (!mQuery) return;
+    const r = applyMention(text, mQuery, caret, name);
+    setText(r.text);
+    setCaret(r.caret);
+    requestAnimationFrame(() => { const el = inputRef.current; if (el) { el.focus(); el.setSelectionRange(r.caret, r.caret); } });
+  };
   /** which message's emoji picker is open (one at a time) */
   const [pickFor, setPickFor] = useState<number | null>(null);
   // Auto-scroll: stick to the bottom while the user is at/near it (opening always re-sticks);
@@ -456,8 +491,8 @@ function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only',
         <header><span className="live-dot" /> {overRecap ? 'TABLE TALK' : 'LIVE CHAT'} <small>{scope}</small>{overRecap && <button type="button" className="sheet-x" aria-label="Close chat" onClick={onToggle}>✕</button>}</header>
         <div className="chat-list" ref={listRef} onScroll={(e) => { stickRef.current = chatStickToBottom(e.currentTarget); }}>
           {msgs.map((m) => (
-            <div key={m.id} className={`chat-line ${m.system ? 'system' : ''}`}>
-              {m.system ? <span>{m.text}</span> : <><b style={{ color: m.color }}>{m.user}</b>{m.badge && <em className="chat-tag" data-testid="chat-tag">{m.badge}</em>}<span>{m.text}</span>
+            <div key={m.id} className={`chat-line ${m.system ? 'system' : ''}${m.mentions?.includes(myId ?? '') ? ' mentions-me' : ''}`}>
+              {m.system ? <span>{m.text}</span> : <><b style={{ color: m.color }}>{m.user}</b>{m.badge && <em className="chat-tag" data-testid="chat-tag">{m.badge}</em>}<span><TableMentionText text={m.text} mentions={m.mentions} msgs={msgs} /></span>
                 {onReact && <button type="button" className="rx-add" aria-label={`React to ${m.user}'s message`} aria-expanded={pickFor === m.id} data-testid="rx-add" onClick={() => setPickFor(pickFor === m.id ? null : m.id)}>☺</button>}
                 {onReact && pickFor === m.id && <ReactionPicker onPick={(e) => { onReact(m.id, e); setPickFor(null); }} />}
                 {onReact && <ReactionChips reactions={m.reactions} myId={myId} onToggle={(e) => onReact(m.id, e)} />}
@@ -466,7 +501,29 @@ function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only',
           ))}
         </div>
         <form onSubmit={submit} className="chat-input">
-          <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Say something…" maxLength={200} aria-label="Chat message" />
+          {mOptions.length > 0 && (
+            <ul className="chat-mention-pop" role="listbox" aria-label="Mention a player" data-testid="chat-mention-pop">
+              {mOptions.map((o, i) => (
+                <li key={o.name}>
+                  <button type="button" role="option" aria-selected={i === pick} className={i === pick ? 'on' : ''}
+                    data-testid={`chat-mention-${o.name}`}
+                    onMouseDown={(e) => { e.preventDefault(); chooseMention(o.name); }}
+                    onMouseEnter={() => setPick(i)}>@{o.name}</button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <input ref={inputRef} value={text}
+            onChange={(e) => { setText(e.target.value); setCaret(e.target.selectionStart ?? e.target.value.length); setDismissedAt(-1); }}
+            onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
+            onKeyDown={(e) => {
+              if (!mOptions.length) return;
+              if (e.key === 'ArrowDown') { e.preventDefault(); setPick((p) => (p + 1) % mOptions.length); }
+              else if (e.key === 'ArrowUp') { e.preventDefault(); setPick((p) => (p - 1 + mOptions.length) % mOptions.length); }
+              else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); chooseMention(mOptions[pick]!.name); }
+              else if (e.key === 'Escape') { e.preventDefault(); setDismissedAt(mQuery!.start); }
+            }}
+            placeholder="Say something…" maxLength={200} aria-label="Chat message" />
           <button type="submit" aria-label="Send">➤</button>
         </form>
         <div className="emotes">
@@ -2375,6 +2432,15 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
       <ChatPanel msgs={msgs} open={chatOpen} onToggle={() => setChatOpen(!chatOpen)} onSend={(t) => (st.phase === 'handOver' ? talkSend(t) : push('You', t))} unread={unread} scope={online ? 'table' : undefined} extra={online ? online.controls : <OfflineMediaBar />}
         overRecap={showRecap && !showPad}
+        mentionCandidates={online ? (() => {
+          // @ completion at the table: friends → online players → this table's roster
+          const out: { name: string }[] = [];
+          const ss = socialApi.get();
+          for (const f of ss.friends?.friends ?? []) out.push({ name: f.name });
+          for (const u of Object.values(ss.users)) if (!u.guest && u.id !== ss.you?.id) out.push({ name: u.name });
+          for (const n of names) if (n && n !== 'You') out.push({ name: n });
+          return out;
+        })() : undefined}
         onReact={(online ? online.chat : localChat).react} myId={(online ? online.chat : localChat).youId ?? null}
         trash={!runFx && !modalOpen && !spectating ? <TrashTalkButton st={st} me={HUMAN} intensity={intensity} onSend={(t) => push('You', t)} /> : null} />
       {help && !bidTurn && view.hand && view.hand.length > 0 && st.phase !== 'handOver' && st.phase !== 'gameOver' && (

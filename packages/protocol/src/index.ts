@@ -312,6 +312,8 @@ export interface ChatLine {
   hint?: true;
   /** Release 10: posted by a spectator (players may hide these) */
   spectator?: true;
+  /** @mentions resolved server-side at post time: ROOM pids of the table members this line tags (accounts only; resolved via their usernames, self and block-paired members excluded). Absent when the line tags nobody at the table. */
+  mentions?: string[];
 }
 
 /** Venues (3D arenas). 'classic' = the original studio table; 'random' is a pick resolved when a game starts. */

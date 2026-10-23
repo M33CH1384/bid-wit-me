@@ -11,6 +11,7 @@ import {
   GUEST_SESSION, PRESENCE_TTL_MS, SOCIAL_LIMITS, activityOf, blockLinks, cleanName, cleanText, dmReplySnapshot, maskProfanity, parseSocialMsg, replySnapshot, stalePresence, toggleReaction,
 } from '@spades/protocol';
 import { isProfane } from '../auth/username';
+import { extractMentionKeys } from './mentions';
 import { DEFAULT_SETTINGS, SocialStore, uidOf } from './store';
 
 /** What survives hibernation on each socket. */
@@ -93,6 +94,13 @@ export interface HubIO {
    */
   onOnline?(uid: string, name: string): void;
   onOfflineInvite?(toUid: string, fromName: string, code: string, mode: string | null): void;
+  /**
+   * A DM landed for a user with NO live socket (and who has not muted the
+   * sender): the DO pushes it. Socket-present recipients are in-app only.
+   */
+  onDm?(toUid: string, fromUid: string, fromName: string, text: string): void;
+  /** A global-chat @mention of a user with NO live socket (who has not muted the author): the DO pushes it. */
+  onMention?(toUid: string, fromUid: string, fromName: string, text: string): void;
 }
 
 export interface Ident { uid?: string; name: string; admin?: boolean; /** stable guest session suffix */ gid?: string }
@@ -131,6 +139,7 @@ function slide(times: number[], now: number, l: { n: number; windowMs: number })
 export class Hub {
   private conns = new Map<string, ConnAtt>();
   private blocks = new Map<string, Set<string>>(); // uid → uids blocking/blocked
+  private mutes = new Map<string, Set<string>>(); // uid → uids THIS user has muted (one-directional, private)
   private invites = new Map<string, Invite>();
   private windows = new Map<string, number[]>();
   /** uid → when last_seen was last written (the stamp throttle; see stampSeen) */
@@ -155,6 +164,7 @@ export class Hub {
     this.conns.set(cid, att);
     const uid = uidOf(att.pid);
     if (uid && !this.blocks.has(uid) && this.store) this.blocks.set(uid, await this.store.blockSet(uid));
+    if (uid && !this.mutes.has(uid) && this.store) this.mutes.set(uid, await this.store.muteSet(uid));
   }
 
   async open(cid: string, who: Ident): Promise<void> {
@@ -165,9 +175,10 @@ export class Hub {
     let settings: SocialSettings | null = null;
     let unread: Record<string, number> = {};
     if (who.uid && s) {
-      const [st, rating, fr, un, bl] = await Promise.all([s.settings(who.uid), s.ratings(who.uid), s.friendsState(who.uid), s.unread(who.uid), s.blockSet(who.uid)]);
+      const [st, rating, fr, un, bl, mu] = await Promise.all([s.settings(who.uid), s.ratings(who.uid), s.friendsState(who.uid), s.unread(who.uid), s.blockSet(who.uid), s.muteSet(who.uid)]);
       settings = st; friends = fr; unread = un;
       this.blocks.set(who.uid, bl);
+      this.mutes.set(who.uid, mu);
       att = { pid: `u:${who.uid}`, name: who.name, guest: false, status: { kind: 'online' }, admin: !!who.admin, hidden: st.appearOffline, friendsOnly: st.friendsOnlyInvites, rating, at: now };
     } else {
       // One browser shares one guest id (localStorage). A second tab or a reconnect is the same player, not a second row.
@@ -197,7 +208,7 @@ export class Hub {
     const me = this.entry(att.pid)!;
     const users = this.visibleList(att.pid);
     const global = this.io.global.list(SOCIAL_LIMITS.globalSend)
-      .filter((l) => !this.hiddenBetween(att.pid, l.from))
+      .filter((l) => !this.hiddenBetween(att.pid, l.from) && !this.mutedBy(att.pid, l.from))
       // same rule for quotes inside kept lines: hidden from the quoted author → no quote
       .map((l) => (l.reply && this.hiddenBetween(att.pid, l.reply.fromId) ? { ...l, reply: undefined } : l));
     this.io.send(cid, { t: 'hello', you: me, admin: !!att.admin, users, global, friends, settings, unread, tables: this.openTables() });
@@ -372,6 +383,14 @@ export class Hub {
     const v = uidOf(viewer), o = uidOf(other);
     if (!v || !o || v === o) return false;
     return !!this.blocks.get(v)?.has(o) || !!this.blocks.get(o)?.has(v);
+  }
+
+  /** the VIEWER has muted the author (accounts only, ONE-directional: muting hides the
+   *  muted player's lines and silences their notifications for the muter alone) */
+  private mutedBy(viewer: string, author: string): boolean {
+    const v = uidOf(viewer), o = uidOf(author);
+    if (!v || !o || v === o) return false;
+    return !!this.mutes.get(v)?.has(o);
   }
 
   private visibleTo(viewer: string, pid: string): boolean {
@@ -615,12 +634,38 @@ export class Hub {
           // wire lines have no reply semantics — a reply to one posts plain
           if (orig && !orig.wire) reply = replySnapshot(orig);
         }
-        const line = this.io.global.add({ from: att.pid, name: att.name, text, at: now, ...(att.admin ? { admin: true } : {}), ...(reply ? { reply } : {}) });
+        // @mentions resolve AFTER cleaning, against accounts (users.username_key):
+        // self-mentions drop, and a mentioned player in a block relationship with
+        // the author (either direction) is silently excluded — the same rule that
+        // strips reply quotes for blocked viewers. Guests can never resolve.
+        let mentions: string[] | undefined;
+        const keys = extractMentionKeys(text);
+        if (keys.length) {
+          const found = await s!.usersByKeys(keys);
+          const pids: string[] = [];
+          for (const k of keys) {
+            const tuid = found.get(k);
+            if (!tuid || tuid === uid) continue;
+            const tpid = `u:${tuid}`;
+            if (this.hiddenBetween(att.pid, tpid)) continue;
+            if (!pids.includes(tpid)) pids.push(tpid);
+          }
+          if (pids.length) mentions = pids;
+        }
+        const line = this.io.global.add({ from: att.pid, name: att.name, text, at: now, ...(att.admin ? { admin: true } : {}), ...(reply ? { reply } : {}), ...(mentions ? { mentions } : {}) });
         for (const [c, v] of this.conns) {
           if (this.hiddenBetween(v.pid, att.pid)) continue;
+          if (this.mutedBy(v.pid, att.pid)) continue; // the viewer muted the author: the line never lands
           // a viewer blocked from the quoted author sees the reply, but not the quote
           const wire = line.reply && this.hiddenBetween(v.pid, line.reply.fromId) ? { ...line, reply: undefined } : line;
           this.io.send(c, { t: 'chat', line: wire });
+        }
+        // Mentioned players with no live socket get a push. A player who muted
+        // the author gets nothing at all (no line, no toast, no push).
+        if (mentions) for (const tpid of mentions) {
+          const tuid = uidOf(tpid)!;
+          if (this.mutes.get(tuid)?.has(uid!)) continue;
+          if (!this.online(tpid)) this.io.onMention?.(tuid, uid!, att.name, text);
         }
         return;
       }
@@ -647,6 +692,9 @@ export class Hub {
         if (this.blocks.get(uid!)?.has(to) || (await s!.blockSet(uid!)).has(to)) return this.err(cid, 'BLOCKED', "You can't message this player.");
         const toName = await s!.userExists(to);
         if (toName === null) return this.err(cid, 'BAD_TARGET', 'No such player.');
+        // DMs are friends-only: history with a non-friend stays readable
+        // (dmHistory is untouched), but a send needs a confirmed friendship.
+        if (!(await s!.areFriends(uid!, to))) return this.err(cid, 'NOT_FRIENDS', "You're not friends with this player — send a friend request to message them.");
         if (!this.chatOk(cid, att.pid)) return;
         const text = this.clean(msg.text);
         if (!text) return;
@@ -662,6 +710,10 @@ export class Hub {
         const line = await s!.sendDm(uid!, to, text, now, reply);
         for (const c of this.connsOf(msg.to)) this.io.send(c, { t: 'dm', line, name: att.name });
         for (const c of this.connsOf(att.pid)) this.io.send(c, { t: 'dm', line, name: toName });
+        // No live socket → push (the in-app toast/ding covers socket-present
+        // recipients). A recipient who muted the sender gets no push either:
+        // the DM arrives silently in the thread, per the mute rules.
+        if (!this.online(msg.to) && !this.mutes.get(to)?.has(uid!)) this.io.onDm?.(to, uid!, att.name, text);
         return;
       }
       case 'dmReact': {
@@ -734,6 +786,20 @@ export class Hub {
         await this.pushFriends(uid!);
         await this.pushFriends(other);
         this.io.send(cid, { t: 'ok', what: `friend:${msg.op}` });
+        return;
+      }
+      case 'mute': {
+        if (!needUser()) return;
+        const other = uidOf(msg.to);
+        if (!other) return this.err(cid, 'BAD_TARGET', 'You can only mute signed-in players.');
+        if (!this.rate(`f:${att.pid}`, SOCIAL_LIMITS.friendOps)) return this.err(cid, 'SLOW_DOWN', 'Slow down.');
+        const e = await s!.setMute(uid!, other, msg.on, now);
+        if (e) return this.err(cid, 'MUTE', e);
+        this.mutes.set(uid!, await s!.muteSet(uid!));
+        // the muter's own state carries the muted list (indicators, thread
+        // chips, manage-from-Friends); the muted player hears nothing, ever.
+        await this.pushFriends(uid!);
+        this.io.send(cid, { t: 'ok', what: msg.on ? 'mute' : 'unmute' });
         return;
       }
       case 'report': {

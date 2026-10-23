@@ -30,6 +30,51 @@ export async function notifyTurn(db: D1Database, vapid: VapidKeys, userId: strin
   }, { ttl: 1800, urgency: 'high' }, now);
 }
 
+/**
+ * True when `muter` has muted `muted` (migration 0030). Mute suppression is
+ * upstream of notification types: a muted player's DM / mention pushes
+ * never fire — the message itself still lands in the thread / chat history
+ * for when the muter chooses to look. A missing table (older test DBs)
+ * reads as "not muted" rather than breaking the push path.
+ */
+async function isMuted(db: D1Database, muter: string, muted: string): Promise<boolean> {
+  try {
+    return !!(await db.prepare('SELECT 1 AS ok FROM mutes WHERE muter = ? AND muted = ?').bind(muter, muted).first());
+  } catch { return false; }
+}
+
+/**
+ * A friend DM'd you and you have no live socket. Cooldown: at most one DM
+ * push per sender per 10 minutes (the thread itself keeps every message).
+ */
+export async function notifyDm(db: D1Database, vapid: VapidKeys, userId: string, fromUid: string, fromName: string, text: string, now: number): Promise<number> {
+  if (await isMuted(db, userId, fromUid)) return 0;
+  return guarded(db, vapid, userId, { kind: 'dm', key: fromUid, ms: 10 * 60_000 }, {
+    title: `Message from ${fromName}`,
+    body: text.slice(0, 140),
+    url: '/social',
+    tag: `dm-${fromUid}`,
+    type: 'dm',
+  }, { ttl: 3600, urgency: 'high' }, now);
+}
+
+/**
+ * Someone @mentioned you in chat (global or at a table) and you have no
+ * live socket there. Cooldown: at most one mention push per author per
+ * 5 minutes, keyed by the author's account pid. `url` lands on the global
+ * chat ('/social') or the table ('/t/<code>').
+ */
+export async function notifyMention(db: D1Database, vapid: VapidKeys, userId: string, authorUid: string, authorName: string, text: string, url: string, now: number): Promise<number> {
+  if (await isMuted(db, userId, authorUid)) return 0;
+  return guarded(db, vapid, userId, { kind: 'mention', key: `u:${authorUid}`, ms: 5 * 60_000 }, {
+    title: `${authorName} mentioned you`,
+    body: text.slice(0, 140),
+    url,
+    tag: `mention-${authorUid}`,
+    type: 'mention',
+  }, { ttl: 3600, urgency: 'normal' }, now);
+}
+
 /** Someone invited you to a table. */
 export async function notifyInvite(db: D1Database, vapid: VapidKeys, userId: string, fromName: string, code: string, mode: string | null, now: number): Promise<number> {
   return guarded(db, vapid, userId, { kind: 'invite', key: `${fromName}:${code}`, ms: 2 * 60_000 }, {

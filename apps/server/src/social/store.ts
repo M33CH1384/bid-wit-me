@@ -1,5 +1,6 @@
 /** D1 access for the Social hub (friends, blocks, DMs, reports, settings, ratings). Pure async functions over D1. */
 import { isFriendActivity, type ChatReactions, type DmLine, type FriendActivity, type FriendRef, type FriendsState, type ReplyRef, type SocialSettings } from '@spades/protocol';
+import { usersByKeys } from './mentions';
 
 export const pair = (x: string, y: string): [string, string] => (x < y ? [x, y] : [y, x]);
 const uidOf = (pid: string) => (pid.startsWith('u:') ? pid.slice(2) : null);
@@ -70,6 +71,8 @@ export class SocialStore {
       .all<{ status: string; requested_by: string; created_at: number; oid: string; username: string | null; last_seen: number | null; p_activity: string | null; p_at: number | null }>()).results;
     const blocked = (await this.db.prepare('SELECT u.id, u.username, b.created_at FROM blocks b JOIN users u ON u.id = b.blocked WHERE b.blocker = ?').bind(uid)
       .all<{ id: string; username: string | null; created_at: number }>()).results;
+    const muted = (await this.db.prepare('SELECT u.id, u.username, m.created_at FROM mutes m JOIN users u ON u.id = m.muted WHERE m.muter = ?').bind(uid)
+      .all<{ id: string; username: string | null; created_at: number }>()).results;
     const ref = (id: string, name: string | null, since?: number): FriendRef => ({ id: `u:${id}`, name: name ?? 'Player', ...(since ? { since } : {}) });
     const byName = (a: FriendRef, b: FriendRef) => a.name.localeCompare(b.name);
     return {
@@ -86,7 +89,30 @@ export class SocialStore {
       incoming: rows.filter((r) => r.status === 'pending' && r.requested_by !== uid).map((r) => ref(r.oid, r.username, r.created_at)).sort(byName),
       outgoing: rows.filter((r) => r.status === 'pending' && r.requested_by === uid).map((r) => ref(r.oid, r.username, r.created_at)).sort(byName),
       blocked: blocked.map((r) => ref(r.id, r.username, r.created_at)).sort(byName),
+      // the owner's own mutes (migration 0030): one-directional, private —
+      // they ride ONLY the muter's own FriendsState, like blocked.
+      muted: muted.map((r) => ref(r.id, r.username, r.created_at)).sort(byName),
     };
+  }
+
+  /** Resolve @mention username_keys to account ids (users.username_key). */
+  async usersByKeys(keys: string[]): Promise<Map<string, string>> {
+    return usersByKeys(this.db, keys);
+  }
+
+  /** uids this user has muted (one-directional; migration 0030) */
+  async muteSet(uid: string): Promise<Set<string>> {
+    const rows = (await this.db.prepare('SELECT muted FROM mutes WHERE muter = ?').bind(uid).all<{ muted: string }>()).results;
+    return new Set(rows.map((r) => r.muted));
+  }
+
+  /** mute / unmute a player. Returns an error message, or null when done. */
+  async setMute(uid: string, other: string, on: boolean, now: number): Promise<string | null> {
+    if (uid === other) return "That's you.";
+    if (!(await this.db.prepare('SELECT 1 AS ok FROM users WHERE id = ?').bind(other).first())) return 'No such player.';
+    if (on) await this.db.prepare('INSERT OR IGNORE INTO mutes (muter, muted, created_at) VALUES (?, ?, ?)').bind(uid, other, now).run();
+    else await this.db.prepare('DELETE FROM mutes WHERE muter = ? AND muted = ?').bind(uid, other).run();
+    return null;
   }
 
   async areFriends(x: string, y: string): Promise<boolean> {
@@ -196,7 +222,10 @@ export class SocialStore {
   }
 
   async unread(uid: string): Promise<Record<string, number>> {
-    const rows = (await this.db.prepare('SELECT sender, COUNT(*) AS n FROM dms WHERE recipient = ? AND read_at IS NULL AND deleted = 0 GROUP BY sender').bind(uid).all<{ sender: string; n: number }>()).results;
+    // muted senders contribute NO unread count (migration 0030): their DMs
+    // still arrive and read normally — they just never badge.
+    const rows = (await this.db.prepare(`SELECT sender, COUNT(*) AS n FROM dms WHERE recipient = ? AND read_at IS NULL AND deleted = 0
+      AND sender NOT IN (SELECT muted FROM mutes WHERE muter = ?) GROUP BY sender`).bind(uid, uid).all<{ sender: string; n: number }>()).results;
     return Object.fromEntries(rows.map((r) => [`u:${r.sender}`, r.n]));
   }
 

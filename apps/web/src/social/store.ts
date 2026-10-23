@@ -40,6 +40,8 @@ export interface SocialState {
   /** user id for the open profile when the caller knew it (rows carry ids; names alone resolve in the view) */
   profileId: string | null;
   globalSeen: number;
+  /** highest global line id whose mentions have been seen (badge math; mirrors globalSeen) */
+  mentionSeen: number;
   myTable: MyTable | null;
   /** Release 9b: tournament notices (check-in open, match ready, champion) */
   notices: Notice[];
@@ -65,6 +67,25 @@ export interface SocialState {
 
 const GLOBAL_SEEN_KEY = 'bwm.social.globalSeen';
 const seen0 = (() => { try { return Number(localStorage.getItem(GLOBAL_SEEN_KEY) ?? '0') || 0; } catch { return 0; } })();
+
+/**
+ * Mention seen-id (the badge's mention half). Unlike globalSeen, a MISSING
+ * key must not badge the whole kept history on first run: `mentionSeenKnown`
+ * records whether the key existed, and the first 'hello' parks the tracker
+ * at the newest history line (everything already on screen counts as seen).
+ */
+const MENTION_SEEN_KEY = 'bwm.social.mentionSeen';
+const mentionSeen0 = (() => { try { const v = localStorage.getItem(MENTION_SEEN_KEY); return { id: Number(v ?? '0') || 0, known: v !== null }; } catch { return { id: 0, known: false }; } })();
+let mentionSeenKnown = mentionSeen0.known;
+function saveMentionSeen(id: number) { try { localStorage.setItem(MENTION_SEEN_KEY, String(id)); } catch { /* ignore */ } mentionSeenKnown = true; }
+
+/** The exact copy a rejected DM send renders (the hub returns the same text with code NOT_FRIENDS). */
+export const NOT_FRIENDS_TEXT = "You're not friends with this player — send a friend request to message them.";
+
+/** Has this player muted that pid? (their own FriendsState is the only place mutes live) */
+export function isMuted(s: SocialState, pid: string): boolean {
+  return (s.friends?.muted ?? []).some((f) => f.id === pid);
+}
 
 /**
  * "Chat is a stable place" (owner, 2026-10-20): which chat view the player was in (panel open,
@@ -100,7 +121,7 @@ function persistView(): void {
 
 let state: SocialState = {
   status: 'off', you: null, admin: false, users: {}, lastAt: {}, global: [], friends: null, settings: null, unread: {}, dms: {}, names: view0.names ?? {}, invites: [], sent: {}, toasts: [],
-  open: view0.open ?? false, tab: view0.tab ?? 'players', dmWith: view0.dmWith ?? null, profile: null, profileId: null, globalSeen: seen0, myTable: null, notices: [], tour: null, wager: null, wagerCreate: null, tables: {}, ended: {},
+  open: view0.open ?? false, tab: view0.tab ?? 'players', dmWith: view0.dmWith ?? null, profile: null, profileId: null, globalSeen: seen0, mentionSeen: mentionSeen0.id, myTable: null, notices: [], tour: null, wager: null, wagerCreate: null, tables: {}, ended: {},
 };
 const subs = new Set<() => void>();
 function set(p: Partial<SocialState> | ((s: SocialState) => Partial<SocialState>)) {
@@ -227,7 +248,15 @@ function onMessage(m: SocialServerMsg) {
       const lastAt: Record<string, number> = { ...state.lastAt };
       for (const u of m.users) if (typeof u.at === 'number') lastAt[u.id] = Math.max(lastAt[u.id] ?? 0, u.at);
       const now = Date.now();
-      set({ status: 'open', you: m.you, admin: m.admin, users: keepUsers(users, tables, Object.keys(ended), now), lastAt, global: m.global, friends: m.friends, settings: m.settings, unread: m.unread, tables, ended });
+      // First ever hello with no stored mention tracker: everything in the
+      // kept history counts as seen (no badge for lines from before mentions
+      // existed on this device).
+      let mentionSeen = state.mentionSeen;
+      if (!mentionSeenKnown) {
+        mentionSeen = m.global[m.global.length - 1]?.id ?? 0;
+        saveMentionSeen(mentionSeen);
+      }
+      set({ status: 'open', you: m.you, admin: m.admin, users: keepUsers(users, tables, Object.keys(ended), now), lastAt, global: m.global, friends: m.friends, settings: m.settings, unread: m.unread, tables, ended, mentionSeen });
       send({ t: 'status', status });
       // A refresh restored an open DM thread (session persistence): refill it, as openDm would on tap.
       // Also refreshes the thread on reconnect, so a dropped socket doesn't leave a stale thread.
@@ -270,20 +299,34 @@ function onMessage(m: SocialServerMsg) {
         return { users, you, lastAt };
       });
       break;
-    case 'chat':
+    case 'chat': {
       set((s) => {
         const global = [...s.global, m.line].slice(-200);
         // reading the chat tab right now: it's seen
         const seenNow = s.open && s.tab === 'chat' ? m.line.id : s.globalSeen;
         if (seenNow !== s.globalSeen) saveSeen(seenNow);
-        return { global, globalSeen: seenNow };
+        // mentions are seen exactly when the chat tab view is (same advance)
+        const mentionSeen = s.open && s.tab === 'chat' ? Math.max(s.mentionSeen, m.line.id) : s.mentionSeen;
+        if (mentionSeen !== s.mentionSeen) saveMentionSeen(mentionSeen);
+        return { global, globalSeen: seenNow, mentionSeen };
       });
       // live arrivals only reach this case (history rides 'hello'); blip only while the
       // chat view is actually on screen — the gating lives in chatSounds.ts.
       // League Wire lines (item 7) never blip: they're the league talking,
       // not a player message, and must not impersonate one.
       if (!m.line.wire) playChatSound('global', { own: m.line.from === state.you?.id, chatViewOpen: state.open && state.tab === 'chat' });
+      // A line that tags ME: toast + blip wherever I am in the app — unless
+      // I'm already looking at the chat (the highlight there is enough), or I
+      // muted the author (their lines are filtered server-side, so this is
+      // belt-and-braces for a mute that landed mid-session).
+      const meId = state.you?.id;
+      if (meId && !m.line.wire && m.line.from !== meId && (m.line.mentions ?? []).includes(meId)
+        && !isMuted(state, m.line.from) && !(state.open && state.tab === 'chat')) {
+        toast(`📣 ${m.line.name} mentioned you: ${m.line.text.slice(0, 80)}`, 'info', { action: { label: 'View', tab: 'chat' } });
+        playChatSound('mention', { own: false });
+      }
       break;
+    }
     case 'chatReact':
       set((s) => ({ global: s.global.map((l) => (l.id === m.id ? { ...l, reactions: m.reactions } : l)) }));
       break;
@@ -293,16 +336,20 @@ function onMessage(m: SocialServerMsg) {
     case 'dm': {
       const me = state.you?.id;
       const other = m.line.from === me ? m.line.to : m.line.from;
+      // A muted sender's DMs still ARRIVE (the thread reads normally) but
+      // silently: no unread increment, no ding, no toast.
+      const mutedSender = m.line.from !== me && isMuted(state, other);
       set((s) => {
         const reading = s.open && s.tab === 'messages' && s.dmWith === other;
-        const unread = m.line.from !== me && !reading ? { ...s.unread, [other]: (s.unread[other] ?? 0) + 1 } : s.unread;
+        const unread = m.line.from !== me && !reading && !mutedSender ? { ...s.unread, [other]: (s.unread[other] ?? 0) + 1 } : s.unread;
         return { dms: { ...s.dms, [other]: [...(s.dms[other] ?? []), m.line].slice(-200) }, names: { ...s.names, [other]: m.name }, unread };
       });
       if (m.line.from !== me) {
-        // a DM dings no matter where you are in the app (chatSounds.ts gates hidden/muted/throttle)
-        playChatSound('dm', { own: false });
+        // a DM dings no matter where you are in the app (chatSounds.ts gates hidden/muted/throttle);
+        // a muted sender is the one exception: total silence, the line just lands in the thread.
+        if (!mutedSender) playChatSound('dm', { own: false });
         if (state.open && state.tab === 'messages' && state.dmWith === other) send({ t: 'read', with: other });
-        else toast(`💬 ${m.name}: ${m.line.text.slice(0, 80)}`);
+        else if (!mutedSender) toast(`💬 ${m.name}: ${m.line.text.slice(0, 80)}`);
       }
       break;
     }
@@ -349,7 +396,8 @@ function onMessage(m: SocialServerMsg) {
       if (m.what === 'report') toast('Thanks: report sent to the moderators.', 'ok');
       break;
     case 'error':
-      toast(m.message, 'error');
+      // The friend-DM gate renders its exact copy, whatever the server text says.
+      toast(m.code === 'NOT_FRIENDS' ? NOT_FRIENDS_TEXT : m.message, 'error');
       break;
     case 'notice': {
       const n: Notice = { id: Math.random().toString(36).slice(2), text: m.text, code: m.code, seat: m.seat, tid: m.tid, cid: m.cid, at: Date.now() };
@@ -415,7 +463,7 @@ export const social = {
   clearWagerCreate() { set({ wagerCreate: null }); },
   dismissNotice(id: string) { set((s) => ({ notices: s.notices.filter((n) => n.id !== id) })); },
   tab(tab: SocialTab) { set({ tab, profile: null, profileId: null, ...(tab === 'tournaments' ? { tour: null } : {}), ...(tab === 'challenges' ? { wager: null } : {}) }); if (tab === 'chat') social.markGlobalSeen(); },
-  markGlobalSeen() { const last = state.global[state.global.length - 1]?.id ?? state.globalSeen; saveSeen(last); set({ globalSeen: last }); },
+  markGlobalSeen() { const last = state.global[state.global.length - 1]?.id ?? state.globalSeen; saveSeen(last); saveMentionSeen(Math.max(state.mentionSeen, last)); set({ globalSeen: last, mentionSeen: Math.max(state.mentionSeen, last) }); },
   openDm(pid: string) {
     set((s) => ({ tab: 'messages', dmWith: pid, profile: null, profileId: null, unread: { ...s.unread, [pid]: 0 } }));
     send({ t: 'dmHistory', with: pid });
@@ -438,6 +486,8 @@ export const social = {
     set((s) => ({ invites: s.invites.filter((i) => i.id !== inv.id) }));
   },
   friend(op: Extract<SocialClientMsg, { t: 'friend' }>['op'], to: string) { send({ t: 'friend', op, to }); },
+  /** mute / unmute a player (private, one-directional; the hub answers with a fresh FriendsState) */
+  mute(to: string, on: boolean) { send({ t: 'mute', to, on }); },
   report(kind: 'global' | 'dm' | 'user', o: { id?: number; user?: string; reason?: string }) { send({ t: 'report', kind, ...o }); },
   del(id: number) { send({ t: 'del', id }); },
   saveSettings(p: Partial<SocialSettings>) { send({ t: 'settings', settings: p }); },
@@ -445,9 +495,16 @@ export const social = {
   dismissToast(id: string) { set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })); },
 };
 
-/** total for the Social button badge: unread DMs + friend requests + pending invites */
+/** global-chat lines that @mention me and haven't been seen yet (id past the mention tracker, my pid in mentions) */
+export function unseenMentions(s: SocialState): number {
+  if (!s.you) return 0;
+  const me = s.you.id;
+  return s.global.filter((l) => l.id > s.mentionSeen && l.from !== me && (l.mentions ?? []).includes(me)).length;
+}
+
+/** total for the Social button badge: unread DMs + friend requests + pending invites + unseen mentions */
 export function badgeCount(s: SocialState): number {
-  return Object.values(s.unread).reduce((a, b) => a + b, 0) + (s.friends?.incoming.length ?? 0) + s.invites.length;
+  return Object.values(s.unread).reduce((a, b) => a + b, 0) + (s.friends?.incoming.length ?? 0) + s.invites.length + unseenMentions(s);
 }
 export function globalUnread(s: SocialState): number {
   return s.global.filter((l) => l.id > s.globalSeen && l.from !== s.you?.id).length;

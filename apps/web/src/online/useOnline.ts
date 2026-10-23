@@ -280,7 +280,7 @@ export function chatUserLabel(lineName: string, from: string | null | undefined,
 function lineToMsg(l: ChatLine, you: string | null, spectating = false): ChatMsg {
   if (l.system || !l.from) return { id: l.id, user: 'System', text: l.text, system: true, color: '#b892ff' };
   const mine = !spectating && l.from === you;
-  return { id: l.id, user: chatUserLabel(l.name, l.from, you, spectating), text: l.text, color: mine ? '#f5c542' : colorFor(l.from), ...(l.bot ? { bot: true } : {}), ...(l.hint ? { hint: true } : {}), ...(l.spectator ? { badge: SPECTATOR_TAG } : {}), ...(l.reactions ? { reactions: l.reactions } : {}) };
+  return { id: l.id, user: chatUserLabel(l.name, l.from, you, spectating), text: l.text, color: mine ? '#f5c542' : colorFor(l.from), from: l.from, ...(l.bot ? { bot: true } : {}), ...(l.hint ? { hint: true } : {}), ...(l.spectator ? { badge: SPECTATOR_TAG } : {}), ...(l.reactions ? { reactions: l.reactions } : {}), ...(l.mentions ? { mentions: l.mentions } : {}) };
 }
 
 /** Local-seat names. Seat 0 is "You" for a seated viewer; a spectator gets the occupant (person or bot). */

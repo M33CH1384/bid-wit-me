@@ -44,7 +44,8 @@ import { handleStoryHttp } from './story/routes';
 import { runStoryCallbacks } from './story/callback';
 import type { WOp } from './wager/do';
 import { type PushEnv, handlePushHttp } from './push/routes';
-import { notifyFriendsOfOnline, notifyInvite, notifyTurn, pushVapid, runScheduledPushes, sendCredPushEvent } from './push/notify';
+import { notifyDm, notifyFriendsOfOnline, notifyInvite, notifyMention, notifyTurn, pushVapid, runScheduledPushes, sendCredPushEvent } from './push/notify';
+import { blockedBetween, usersByKeys } from './social/mentions';
 import type { TableRules } from '@spades/rules';
 export { TournamentDO } from './tournament/do';
 import type { TournamentDO } from './tournament/do';
@@ -354,6 +355,28 @@ interface Attachment { cid: string; pid: string | null }
 export class TableDO extends DurableObject<Env> {
   private room: Room | null = null;
   private sockets = new Map<string, WebSocket>();
+  /** mute sets (migration 0030) per account uid, for table-chat filtering: cached, refreshed in the background */
+  private muteCache = new Map<string, { set: ReadonlySet<string>; at: number }>();
+  private muteFetchAt = new Map<string, number>();
+
+  /**
+   * The uids `uid` has muted, for the Room's per-viewer chat filter.
+   * Synchronous (the room's chat path is sync): serves the cache and kicks
+   * a background D1 refresh when the entry is missing or older than 30 s,
+   * so a fresh mute lands within a line or two and never blocks the game.
+   */
+  private mutedSetFor(uid: string): ReadonlySet<string> | undefined {
+    const now = Date.now();
+    const hit = this.muteCache.get(uid);
+    if ((!hit || now - hit.at > 30_000) && now - (this.muteFetchAt.get(uid) ?? 0) > 30_000 && this.env.DB) {
+      this.muteFetchAt.set(uid, now);
+      const db = this.env.DB;
+      this.ctx.waitUntil(db.prepare('SELECT muted FROM mutes WHERE muter = ?').bind(uid).all<{ muted: string }>()
+        .then((rows) => { this.muteCache.set(uid, { set: new Set(rows.results.map((r) => r.muted)), at: Date.now() }); })
+        .catch((e) => console.error('muteCache', e)));
+    }
+    return hit?.set;
+  }
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private firstDirtyAt: number | null = null;
   private wakeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -435,6 +458,31 @@ export class TableDO extends DurableObject<Env> {
         if (!vapid) return; // VAPID secrets not configured yet
         const db = this.env.DB;
         this.ctx.waitUntil(notifyTurn(db, vapid, uid, room.data.code, kind, Date.now()).catch((e) => console.error('turnPush', e)));
+      },
+      // @mentions at the table: resolve tagged usernames to accounts via
+      // D1 (users.username_key). A target in a block relationship with the
+      // author (either direction) is excluded, mirroring the hub's rule.
+      lookupUsernames: async (keys, authorUid) => {
+        if (!this.env.DB || !keys.length) return {};
+        const found = await usersByKeys(this.env.DB, keys);
+        const out: Record<string, string> = {};
+        for (const [k, tuid] of found) {
+          if (authorUid && (tuid === authorUid || await blockedBetween(this.env.DB, authorUid, tuid))) continue;
+          out[k] = tuid;
+        }
+        return out;
+      },
+      // Mute at the table: the room asks synchronously; the cache refreshes
+      // from D1 in the background (see mutedSetFor).
+      mutedAuthors: (uid) => this.mutedSetFor(uid),
+      // A table-chat mention of a member with no live socket here: push
+      // them, deep-linking back to this table. No hub dependency.
+      chatMention: (info) => {
+        if (!this.env.DB) return;
+        const vapid = pushVapid(this.env);
+        if (!vapid) return;
+        const db = this.env.DB;
+        this.ctx.waitUntil(notifyMention(db, vapid, info.toUid, info.authorUid, info.authorName, info.text, `/t/${info.code}`, Date.now()).catch((e) => console.error('tableMentionPush', e)));
       },
       listing: (t) => this.reportListing(t),
       tournamentResult: (t, scores, places) => {
@@ -764,6 +812,7 @@ export class SocialDO extends DurableObject<Env> {
     try { this.sql.exec(`ALTER TABLE global ADD COLUMN reactions TEXT`); } catch { /* column already there */ }
     try { this.sql.exec(`ALTER TABLE global ADD COLUMN reply TEXT`); } catch { /* column already there */ }
     try { this.sql.exec(`ALTER TABLE global ADD COLUMN wire INTEGER DEFAULT 0`); } catch { /* column already there */ }
+    try { this.sql.exec(`ALTER TABLE global ADD COLUMN mentions TEXT`); } catch { /* column already there */ }
     this.sql.exec(`CREATE TABLE IF NOT EXISTS open_tables (code TEXT PRIMARY KEY, json TEXT, at INTEGER)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS ended_tables (code TEXT PRIMARY KEY)`);
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
@@ -778,17 +827,18 @@ export class SocialDO extends DurableObject<Env> {
       del: (code: string) => { sql.exec('DELETE FROM ended_tables WHERE code = ?', code); },
       list: () => sql.exec<{ code: string }>('SELECT code FROM ended_tables').toArray().map((r) => r.code),
     };
-    type GlobalRow = { id: number; from_id: string; name: string; text: string; at: number; admin: number; reactions: string | null; reply: string | null; wire: number | null };
+    type GlobalRow = { id: number; from_id: string; name: string; text: string; at: number; admin: number; reactions: string | null; reply: string | null; wire: number | null; mentions: string | null };
     const rowToLine = (r: GlobalRow): SocialChatLine => ({
       id: r.id, from: r.from_id, name: r.name, text: r.text, at: r.at,
       ...(r.admin ? { admin: true as const } : {}),
       ...(r.reactions ? { reactions: JSON.parse(r.reactions) as ChatReactions } : {}),
       ...(r.reply ? { reply: JSON.parse(r.reply) as ReplyRef } : {}),
       ...(r.wire ? { wire: true as const } : {}),
+      ...(r.mentions ? { mentions: JSON.parse(r.mentions) as string[] } : {}),
     });
     const global: GlobalLog = {
       add: (l) => {
-        const id = sql.exec<{ id: number }>('INSERT INTO global (from_id, name, text, at, admin, reply, wire) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id', l.from, l.name, l.text, l.at, l.admin ? 1 : 0, l.reply ? JSON.stringify(l.reply) : null, l.wire ? 1 : 0).one().id;
+        const id = sql.exec<{ id: number }>('INSERT INTO global (from_id, name, text, at, admin, reply, wire, mentions) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id', l.from, l.name, l.text, l.at, l.admin ? 1 : 0, l.reply ? JSON.stringify(l.reply) : null, l.wire ? 1 : 0, l.mentions ? JSON.stringify(l.mentions) : null).one().id;
         sql.exec('DELETE FROM global WHERE id <= ?', id - 200);
         return { id, ...l };
       },
@@ -839,6 +889,21 @@ export class SocialDO extends DurableObject<Env> {
         if (!db || !vapid) return;
         this.ctx.waitUntil(notifyInvite(db, vapid, toUid, fromName, code, mode, Date.now())
           .catch((e) => console.error('invitePush', e)));
+      },
+      // A DM landed for a user with no live socket: push it (mute is
+      // checked again inside notifyDm — suppression is upstream of prefs).
+      onDm: (toUid, fromUid, fromName, text) => {
+        const db = env.DB; const vapid = pushVapid(env);
+        if (!db || !vapid) return;
+        this.ctx.waitUntil(notifyDm(db, vapid, toUid, fromUid, fromName, text, Date.now())
+          .catch((e) => console.error('dmPush', e)));
+      },
+      // A global-chat @mention of a user with no live socket: push it.
+      onMention: (toUid, fromUid, fromName, text) => {
+        const db = env.DB; const vapid = pushVapid(env);
+        if (!db || !vapid) return;
+        this.ctx.waitUntil(notifyMention(db, vapid, toUid, fromUid, fromName, text, '/social', Date.now())
+          .catch((e) => console.error('mentionPush', e)));
       },
     }, env.DB);
     ctx.blockConcurrencyWhile(async () => {

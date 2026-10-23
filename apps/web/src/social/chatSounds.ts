@@ -7,7 +7,7 @@
  */
 import { chatSoundsOn, sound } from '../audio';
 
-export type ChatSoundKind = 'dm' | 'global';
+export type ChatSoundKind = 'dm' | 'global' | 'mention';
 
 /** At most one play per kind inside this window, so a burst of messages can't machine-gun. */
 export const CHAT_SOUND_THROTTLE_MS = 1500;
@@ -31,12 +31,14 @@ export function chatSoundDecision(g: ChatSoundGate): boolean {
   if (g.own) return false;
   if (!g.enabled) return false;
   if (!g.pageVisible) return false;
+  // A mention blips wherever you are in the app (like a DM): being tagged is
+  // addressed to you personally, unlike general chat traffic.
   if (g.kind === 'global' && !g.chatViewOpen) return false;
   if (g.now - g.lastPlayedAt < CHAT_SOUND_THROTTLE_MS) return false;
   return true;
 }
 
-const lastPlayed: Record<ChatSoundKind, number> = { dm: 0, global: 0 };
+const lastPlayed: Record<ChatSoundKind, number> = { dm: 0, global: 0, mention: 0 };
 
 /**
  * Called by the social store on LIVE arrivals only (the 'dm' / 'chat' socket cases — history
@@ -64,4 +66,5 @@ export function playChatSound(kind: ChatSoundKind, opts: { own: boolean; chatVie
 export function resetChatSoundThrottle(): void {
   lastPlayed.dm = 0;
   lastPlayed.global = 0;
+  lastPlayed.mention = 0;
 }

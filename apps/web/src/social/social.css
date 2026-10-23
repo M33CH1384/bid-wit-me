@@ -883,3 +883,15 @@ html[data-theme="neon"] .ranks-you {
 .featured-names { margin: 6px 0 2px; font-weight: 700; }
 .featured-acts { display: flex; gap: 8px; margin-top: 8px; }
 html[data-theme="neon"] .featured { border-color: rgba(128, 84, 255, .45); }
+
+/* @mentions + mute (2026-10-23). */
+.soc-tag.muted { background: rgba(148,163,255,.16); color: #aab4ff; }
+.soc-mention { color: var(--gold); font-weight: 700; }
+.soc-bubble.mentions-me { border-color: rgba(var(--gold-rgb),.75); box-shadow: 0 0 0 1px rgba(var(--gold-rgb),.55), 0 1px 2px rgba(0,0,0,.3); }
+.soc-thread.legacy { opacity: .55; }
+.soc-mention-pop { position: absolute; left: 12px; right: 12px; bottom: calc(100% + 6px); margin: 0; padding: 6px; list-style: none; background: #241643; border: 1px solid rgba(var(--edge-rgb),.35); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.5); z-index: 5; }
+.soc-mention-pop button { display: block; width: 100%; text-align: left; padding: 8px 10px; border-radius: 8px; background: none; border: 0; color: inherit; font: inherit; cursor: pointer; }
+.soc-mention-pop button.on { background: rgba(var(--gold-rgb),.18); }
+.soc-compose { position: relative; }
+.soc-dm-gate { flex: none; padding-top: 8px; border-top: 1px solid rgba(var(--edge-rgb),.18); }
+.soc-dm-gate .primary { margin-top: 6px; }

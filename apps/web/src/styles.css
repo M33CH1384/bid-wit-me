@@ -3297,3 +3297,11 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
 /* Retroactive claim (2026-10-22): the held-rewards panel's sign-in button on
    /rewards sits inside the row body, under its copy — spacing only. */
 .rw-claim-btn { margin-top: 10px; }
+
+/* Table-chat @mentions (2026-10-23). */
+.chat-line.mentions-me { background: rgba(232,182,76,.13); border-radius: 8px; box-shadow: inset 2px 0 0 rgba(232,182,76,.8); }
+.chat-mention { color: #e8b64c; font-weight: 700; }
+.chat-input { position: relative; }
+.chat-mention-pop { position: absolute; left: 10px; right: 10px; bottom: calc(100% + 4px); margin: 0; padding: 6px; list-style: none; background: #241643; border: 1px solid rgba(255,255,255,.22); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.5); z-index: 6; }
+.chat-mention-pop button { display: block; width: 100%; text-align: left; padding: 8px 10px; border-radius: 8px; background: none; border: 0; color: inherit; font: inherit; cursor: pointer; }
+.chat-mention-pop button.on { background: rgba(232,182,76,.18); }

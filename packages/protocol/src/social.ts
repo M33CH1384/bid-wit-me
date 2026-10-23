@@ -160,7 +160,7 @@ export function dmReplySnapshot(line: { id: number; from: string; text: string }
   return { id: line.id, from: fromName, fromId: line.from, text: line.text.slice(0, SOCIAL_LIMITS.replySnippet) };
 }
 
-export interface SocialChatLine { id: number; from: string; name: string; text: string; at: number; admin?: boolean; /** emoji reactions (emoji -> reactor pids); see REACTION_PALETTE */ reactions?: ChatReactions; /** the line this one replies to, as a post-time snapshot */ reply?: ReplyRef; /** a BWM League Wire system line (league data wave, item 7): posted by the server for marquee moments, not by a player — no author profile, no reply/reactions */ wire?: boolean }
+export interface SocialChatLine { id: number; from: string; name: string; text: string; at: number; admin?: boolean; /** emoji reactions (emoji -> reactor pids); see REACTION_PALETTE */ reactions?: ChatReactions; /** the line this one replies to, as a post-time snapshot */ reply?: ReplyRef; /** a BWM League Wire system line (league data wave, item 7): posted by the server for marquee moments, not by a player — no author profile, no reply/reactions */ wire?: boolean; /** @mentions resolved server-side at post time: pids ('u:<uid>') of the accounts this line tags. Self-mentions and players in a block relationship with the author are excluded at resolution; guests can never be mentioned. Absent when the line tags nobody. */ mentions?: string[] }
 export interface DmLine { id: number; from: string; to: string; text: string; at: number; read?: boolean; /** emoji reactions (emoji -> reactor pids); see REACTION_PALETTE */ reactions?: ChatReactions; /** the DM line this one replies to, as a post-time snapshot (same shape as global chat) */ reply?: ReplyRef }
 export interface FriendRef {
   id: string; name: string; since?: number;
@@ -183,7 +183,7 @@ export interface FriendRef {
    */
   presence?: { activity: FriendActivity; at: number };
 }
-export interface FriendsState { friends: FriendRef[]; incoming: FriendRef[]; outgoing: FriendRef[]; blocked: FriendRef[] }
+export interface FriendsState { friends: FriendRef[]; incoming: FriendRef[]; outgoing: FriendRef[]; blocked: FriendRef[]; /** players THIS user has muted (migration 0030): one-directional and private — the muted player is never told, and the relation leaks into no one else's state. The muter's client uses it for indicators, silent DM arrivals and composer state. */ muted: FriendRef[] }
 export interface SocialSettings { appearOffline: boolean; friendsOnlyInvites: boolean; hideLocation: boolean }
 export interface InviteMsg { id: string; from: string; fromName: string; code: string; mode?: string; seat?: number; expiresAt: number;
   /** Story co-op invite: the accept lands in the story lobby for `code`, not a regular table.
@@ -205,6 +205,8 @@ export type SocialClientMsg =
   | { t: 'invite'; to: string; code: string; mode?: string; seat?: number; kind?: 'story-coop'; stopId?: string }
   | { t: 'inviteReply'; id: string; accept: boolean }
   | { t: 'friend'; op: 'request' | 'accept' | 'decline' | 'remove' | 'block' | 'unblock'; to: string }
+  /** mute / unmute a player (one-directional, private; never touches friendship, presence or invites) */
+  | { t: 'mute'; to: string; on: boolean }
   | { t: 'report'; kind: 'global' | 'dm' | 'user'; id?: number; user?: string; reason?: string }
   | { t: 'del'; id: number };
 
@@ -323,6 +325,7 @@ export function parseSocialMsg(raw: unknown): SocialClientMsg | null {
       return { t: 'invite', to: m.to, code: m.code, ...(isStr(m.mode, 20) ? { mode: m.mode } : {}), ...(isInt(m.seat) && m.seat >= 0 && m.seat < 8 ? { seat: m.seat } : {}), ...(m.kind === 'story-coop' ? { kind: 'story-coop' as const } : {}), ...(isStr(m.stopId, 40) ? { stopId: m.stopId } : {}) };
     case 'inviteReply': return isStr(m.id, 40) && typeof m.accept === 'boolean' ? { t: 'inviteReply', id: m.id, accept: m.accept } : null;
     case 'friend': return FRIEND_OPS.includes(m.op as never) && isId(m.to) ? { t: 'friend', op: m.op as (typeof FRIEND_OPS)[number], to: m.to } : null;
+    case 'mute': return isId(m.to) && typeof m.on === 'boolean' ? { t: 'mute', to: m.to, on: m.on } : null;
     case 'report':
       if (!['global', 'dm', 'user'].includes(m.kind as string)) return null;
       return { t: 'report', kind: m.kind as 'global' | 'dm' | 'user', ...(isInt(m.id) ? { id: m.id } : {}), ...(isId(m.user) ? { user: m.user } : {}), ...(isStr(m.reason, 400) ? { reason: m.reason } : {}) };

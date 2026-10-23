@@ -21,6 +21,7 @@ import {
 } from '@spades/protocol';
 import type { OpenTable } from '@spades/protocol';
 import { blockLinks, cleanName, cleanText, maskProfanity } from './filter';
+import { extractMentionKeys } from './social/mentions';
 import { type GameRecord, type LiveStats, type SaveMeta, type SeatRef, abandonedRecord, buildRecord, isRated, newLiveStats, placementsOf } from './stats/record';
 import { type HighlightEvent, handHighlights, trickHighlights } from './stats/highlights';
 
@@ -345,6 +346,26 @@ export interface RoomIO {
   voiceMiss?(req: import('./voice/writer').WriterRequest): void;
   /** Push: a new bid/play turn began for `seat` (the DO notifies the player when they have no live socket). */
   turnBegan?(seat: number, kind: 'bid' | 'play'): void;
+  /**
+   * @mentions: resolve username_keys (from a cleaned table-chat line) to
+   * account uids — username_key → uid. The DO answers from D1 (users +
+   * blocks): accounts in a block relationship with `authorUid` (either
+   * direction) are excluded, mirroring the Social hub's rule. Omit the
+   * hook and table chat simply carries no mentions.
+   */
+  lookupUsernames?(keys: string[], authorUid: string | null): Promise<Record<string, string>>;
+  /**
+   * Mute (migration 0030): the account uids whose table chat `viewerUid`
+   * has muted — served synchronously from the DO's D1-backed cache (it
+   * refreshes in the background). pushChat and the welcome history skip a
+   * muted author's lines for that viewer only. Omit and nothing is muted.
+   */
+  mutedAuthors?(viewerUid: string): ReadonlySet<string> | undefined;
+  /**
+   * A table-chat line mentioned a member who is NOT connected right now:
+   * the DO pushes them (mute + prefs + cooldown live in notifyMention).
+   */
+  chatMention?(info: { toUid: string; authorUid: string; authorName: string; text: string; code: string }): void;
 }
 
 
@@ -365,6 +386,8 @@ export class Room {
   /** connection id → player id (null until `hello`) */
   private conns = new Map<string, string | null>();
   private chatWindow = new Map<string, number[]>();
+  /** serializes async @mention resolution so table chat lines post in send order */
+  private chatChain: Promise<void> = Promise.resolve();
   /** emoji-reaction rate limiter: pid → timestamps (10 s window) */
   private reactWindow = new Map<string, number[]>();
   /**
@@ -453,7 +476,7 @@ export class Room {
     const now = this.conns.get(connId) ?? pid;
     if (now !== pid) {
       const kept = this.data.members[now];
-      if (kept) this.io.send(connId, { t: 'welcome', you: now, token: kept.token, code: this.data.code, chat: this.data.chat.slice(-LIMITS.chatHistory), v: PROTOCOL_VERSION });
+      if (kept) this.io.send(connId, { t: 'welcome', you: now, token: kept.token, code: this.data.code, chat: this.visibleChat(now), v: PROTOCOL_VERSION });
     }
     this.after();
     this.io.persist();
@@ -884,7 +907,7 @@ export class Room {
     this.sentHistory.delete(connId);
     const m = d.members[pid]!;
     this.trace('reconnect', { cid: connId, how, returning, pid, seat: m.seat, name: m.name });
-    this.io.send(connId, { t: 'welcome', you: pid, token: m.token, code: d.code, chat: d.chat.slice(-LIMITS.chatHistory), v: PROTOCOL_VERSION });
+    this.io.send(connId, { t: 'welcome', you: pid, token: m.token, code: d.code, chat: this.visibleChat(pid), v: PROTOCOL_VERSION });
     if (uid) this.seatReserved(pid);
     d.lastActive = this.io.now();
     this.after();
@@ -1124,11 +1147,43 @@ export class Room {
         const g = d.game;
         if (g && d.phase === 'playing' && d.rules.partnerships && me.seat !== null && g.phase === 'bidding' && parseHint(text))
           (d.hints ??= {})[me.seat] = { hand: g.handNo, text };
-        this.pushChat({ id: d.chatSeq++, from: pid, name: me.name, text, at: now, ...(watcher ? { spectator: true as const } : {}) });
-        // a trailing player running their mouth (3+ lines in 10 s): the bots answer
-        const ev = loudLoser(d.game, me.seat, w);
-        if (ev && d.phase === 'playing') this.talk(ev);
-        this.io.persist();
+        const line: ChatLine = { id: d.chatSeq++, from: pid, name: me.name, text, at: now, ...(watcher ? { spectator: true as const } : {}) };
+        const post = () => {
+          this.pushChat(line);
+          // a trailing player running their mouth (3+ lines in 10 s): the bots answer
+          const ev = loudLoser(d.game, me.seat, w);
+          if (ev && d.phase === 'playing') this.talk(ev);
+          this.io.persist();
+        };
+        // @mentions: resolve the tagged usernames to TABLE MEMBERS (their
+        // room pids ride the line for the highlight; a mentioned member who
+        // isn't connected gets a push via the DO). Resolution is async, so
+        // the post chains behind any earlier mention line — order holds.
+        const keys = extractMentionKeys(text);
+        if (keys.length && this.io.lookupUsernames) {
+          const lookup = this.io.lookupUsernames;
+          const authorUid = me.uid ?? null;
+          this.chatChain = this.chatChain.then(async () => {
+            try {
+              const found = await lookup(keys, authorUid);
+              const mentions: string[] = [];
+              for (const k of keys) {
+                const tuid = found[k];
+                if (!tuid) continue;
+                const tpid = Object.keys(d.members).find((p) => d.members[p]!.uid === tuid);
+                if (!tpid || tpid === pid) continue; // not at this table, or a self-mention
+                if (!mentions.includes(tpid)) mentions.push(tpid);
+                if (authorUid && !this.isConnected(tpid)) {
+                  this.io.chatMention?.({ toUid: tuid, authorUid, authorName: me.name, text, code: d.code });
+                }
+              }
+              if (mentions.length) line.mentions = mentions;
+            } catch { /* resolution failed: the line still posts, untagged */ }
+            post();
+          });
+          return; // chat doesn't change the table state
+        }
+        post();
         return; // chat doesn't change the table state
       }
       case 'react': {
@@ -2753,7 +2808,33 @@ export class Room {
     const d = this.data;
     d.chat.push(line);
     if (d.chat.length > LIMITS.chatHistory) d.chat.splice(0, d.chat.length - LIMITS.chatHistory);
-    for (const [cid, pid] of this.conns) if (pid) this.io.send(cid, { t: 'chat', line });
+    // Mute (migration 0030): a viewer who muted the author never receives
+    // the line. One-directional and private — everyone else, the author
+    // included, sees it as always. Bot / system lines have no account
+    // author and are never filtered.
+    const authorUid = line.from ? d.members[line.from]?.uid : undefined;
+    for (const [cid, pid] of this.conns) {
+      if (!pid) continue;
+      if (authorUid && pid !== line.from) {
+        const viewerUid = d.members[pid]?.uid;
+        if (viewerUid && viewerUid !== authorUid && this.io.mutedAuthors?.(viewerUid)?.has(authorUid)) continue;
+      }
+      this.io.send(cid, { t: 'chat', line });
+    }
+  }
+
+  /** The chat history a (re)joining viewer may see: a muted author's lines are filtered out for that viewer only. */
+  private visibleChat(viewerPid: string): ChatLine[] {
+    const d = this.data;
+    const all = d.chat.slice(-LIMITS.chatHistory);
+    const viewerUid = d.members[viewerPid]?.uid;
+    if (!viewerUid || !this.io.mutedAuthors) return all;
+    const muted = this.io.mutedAuthors(viewerUid);
+    if (!muted?.size) return all;
+    return all.filter((l) => {
+      const au = l.from ? d.members[l.from]?.uid : undefined;
+      return !au || au === viewerUid || !muted.has(au);
+    });
   }
 
   private err(connId: string, code: string, message: string): void {
