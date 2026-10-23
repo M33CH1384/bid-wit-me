@@ -1440,6 +1440,266 @@
   "Copy.": [
    1326955,
    1175
+  ],
+  "the dice don't know fear. neither do I.": [
+   1328380,
+   4465
+  ],
+  "I read the table like a tote board.": [
+   1333095,
+   3430
+  ],
+  "fortune's been flirting with me all night.": [
+   1336775,
+   3505
+  ],
+  "{bid}. put it in ink.": [
+   1340530,
+   3735
+  ],
+  "I'm standing on {bid}. comfortably.": [
+   1344515,
+   5315
+  ],
+  "{bid} — the pot needed company.": [
+   1350080,
+   3685
+  ],
+  "you bet on yourself and the house still won.": [
+   1354015,
+   2885
+  ],
+  "that play had long odds and short results.": [
+   1357150,
+   3465
+  ],
+  "I'd insure that play, but nobody's selling.": [
+   1360865,
+   4635
+  ],
+  "{them} is the best bet I ever made.": [
+   1365750,
+   3915
+  ],
+  "I don't hedge on {them}. ever.": [
+   1369915,
+   3140
+  ],
+  "house odds just moved — {them} happened.": [
+   1373305,
+   3185
+  ],
+  "Count {S}{P} for me.#0.0": [
+   1376740,
+   3005
+  ],
+  "Count {S}{P} for me.#0.1": [
+   1379995,
+   2700
+  ],
+  "Count {S}{P} for me.#0.2": [
+   1382945,
+   2920
+  ],
+  "Count {S}{P} for me.#1.0": [
+   1386115,
+   2455
+  ],
+  "Count {S}{P} for me.#1.1": [
+   1388820,
+   3015
+  ],
+  "Count {S}{P} for me.#1.2": [
+   1392085,
+   4720
+  ],
+  "Count {S}{P} for me.#2.0": [
+   1397055,
+   3830
+  ],
+  "Count {S}{P} for me.#2.1": [
+   1401135,
+   3075
+  ],
+  "Count {S}{P} for me.#2.2": [
+   1404460,
+   2855
+  ],
+  "Count {S}{P} for me.#3.0": [
+   1407565,
+   4745
+  ],
+  "Count {S}{P} for me.#3.1": [
+   1412560,
+   3965
+  ],
+  "Count {S}{P} for me.#3.2": [
+   1416775,
+   4450
+  ],
+  "Count {S}{P} for me.#4.0": [
+   1421475,
+   4665
+  ],
+  "Count {S}{P} for me.#4.1": [
+   1426390,
+   2885
+  ],
+  "Count {S}{P} for me.#4.2": [
+   1429525,
+   4295
+  ],
+  "Count {S}{P} for me.#5.0": [
+   1434070,
+   3595
+  ],
+  "Count {S}{P} for me.#5.1": [
+   1437915,
+   4900
+  ],
+  "Count {S}{P} for me.#5.2": [
+   1443065,
+   4485
+  ],
+  "Count {S}{P} for me.#6+.0": [
+   1447800,
+   4080
+  ],
+  "Count {S}{P} for me.#6+.1": [
+   1452130,
+   3680
+  ],
+  "Count {S}{P} for me.#6+.2": [
+   1456060,
+   3570
+  ],
+  "Mark me down for {S}{P}.#0.0": [
+   1459880,
+   2470
+  ],
+  "Mark me down for {S}{P}.#0.1": [
+   1462600,
+   3575
+  ],
+  "Mark me down for {S}{P}.#0.2": [
+   1466425,
+   3675
+  ],
+  "Mark me down for {S}{P}.#1.0": [
+   1470350,
+   2715
+  ],
+  "Mark me down for {S}{P}.#1.1": [
+   1473315,
+   5965
+  ],
+  "Mark me down for {S}{P}.#1.2": [
+   1479530,
+   4690
+  ],
+  "Mark me down for {S}{P}.#2.0": [
+   1484470,
+   2990
+  ],
+  "Mark me down for {S}{P}.#2.1": [
+   1487710,
+   5120
+  ],
+  "Mark me down for {S}{P}.#2.2": [
+   1493080,
+   6205
+  ],
+  "Mark me down for {S}{P}.#3.0": [
+   1499535,
+   3955
+  ],
+  "Mark me down for {S}{P}.#3.1": [
+   1503740,
+   5025
+  ],
+  "Mark me down for {S}{P}.#3.2": [
+   1509015,
+   3285
+  ],
+  "Mark me down for {S}{P}.#4.0": [
+   1512550,
+   2740
+  ],
+  "Mark me down for {S}{P}.#4.1": [
+   1515540,
+   3245
+  ],
+  "Mark me down for {S}{P}.#4.2": [
+   1519035,
+   3910
+  ],
+  "Mark me down for {S}{P}.#5.0": [
+   1523195,
+   4960
+  ],
+  "Mark me down for {S}{P}.#5.1": [
+   1528405,
+   3240
+  ],
+  "Mark me down for {S}{P}.#5.2": [
+   1531895,
+   4980
+  ],
+  "Mark me down for {S}{P}.#6+.0": [
+   1537125,
+   3080
+  ],
+  "Mark me down for {S}{P}.#6+.1": [
+   1540455,
+   5075
+  ],
+  "Mark me down for {S}{P}.#6+.2": [
+   1545780,
+   5665
+  ],
+  "Add it up — {T}.#T3": [
+   1551695,
+   2010
+  ],
+  "Add it up — {T}.#T4": [
+   1553955,
+   1555
+  ],
+  "Add it up — {T}.#T5": [
+   1555760,
+   3175
+  ],
+  "Add it up — {T}.#T6": [
+   1559185,
+   2400
+  ],
+  "Add it up — {T}.#T7": [
+   1561835,
+   3030
+  ],
+  "Add it up — {T}.#T8": [
+   1565115,
+   1715
+  ],
+  "Add it up — {T}.#T9": [
+   1567080,
+   2635
+  ],
+  "Add it up — {T}.#T10": [
+   1569965,
+   2460
+  ],
+  "Add it up — {T}.#T11": [
+   1572675,
+   3830
+  ],
+  "Add it up — {T}.#T12": [
+   1576755,
+   3895
+  ],
+  "Add it up — {T}.#T13+": [
+   1580900,
+   3110
   ]
  }
 }

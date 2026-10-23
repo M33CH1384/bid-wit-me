@@ -3,381 +3,381 @@
   "professor-f": {
    "voice": "bf_isabella",
    "speed": 0.95,
-   "count": 337,
-   "durationSec": 1036.4,
+   "count": 405,
+   "durationSec": 1246.0,
    "bytes": {
-    "webm": 2839731,
-    "m4a": 4621157
+    "webm": 3415653,
+    "m4a": 5547204
    }
   },
   "professor-m": {
    "voice": "bm_george",
    "speed": 0.95,
-   "count": 337,
-   "durationSec": 887.8,
+   "count": 405,
+   "durationSec": 1061.4,
    "bytes": {
-    "webm": 2445219,
-    "m4a": 4083930
+    "webm": 2915723,
+    "m4a": 4870931
    }
   },
   "mama-f": {
    "voice": "af_heart",
    "speed": 0.92,
-   "count": 364,
-   "durationSec": 1146.9,
+   "count": 433,
+   "durationSec": 1377.8,
    "bytes": {
-    "webm": 3153482,
-    "m4a": 5103198
+    "webm": 3775683,
+    "m4a": 6115612
    }
   },
   "mama-m": {
    "voice": "am_onyx",
    "speed": 0.9,
-   "count": 341,
-   "durationSec": 964.6,
+   "count": 409,
+   "durationSec": 1141.3,
    "bytes": {
-    "webm": 2602135,
-    "m4a": 4285172
+    "webm": 3076778,
+    "m4a": 5084474
    }
   },
   "hype-f": {
    "voice": "af_bella",
    "speed": 1.12,
-   "count": 380,
-   "durationSec": 1307.0,
+   "count": 448,
+   "durationSec": 1570.4,
    "bytes": {
-    "webm": 3540130,
-    "m4a": 5740092
+    "webm": 4259236,
+    "m4a": 6889303
    }
   },
   "hype-m": {
    "voice": "am_puck",
    "speed": 1.12,
-   "count": 400,
-   "durationSec": 996.1,
+   "count": 469,
+   "durationSec": 1171.7,
    "bytes": {
-    "webm": 2757134,
-    "m4a": 4543316
+    "webm": 3236286,
+    "m4a": 5329901
    }
   },
   "petty-f": {
    "voice": "bf_emma",
    "speed": 1.05,
-   "count": 339,
-   "durationSec": 1131.6,
+   "count": 401,
+   "durationSec": 1349.5,
    "bytes": {
-    "webm": 2988035,
-    "m4a": 5020406
+    "webm": 3563058,
+    "m4a": 5965120
    }
   },
   "petty-m": {
    "voice": "bm_fable",
    "speed": 1.05,
-   "count": 339,
-   "durationSec": 977.6,
+   "count": 401,
+   "durationSec": 1151.3,
    "bytes": {
-    "webm": 2675023,
-    "m4a": 4406943
+    "webm": 3142635,
+    "m4a": 5193886
    }
   },
   "og-f": {
    "voice": "af_kore",
    "speed": 0.88,
-   "count": 357,
-   "durationSec": 1071.9,
+   "count": 423,
+   "durationSec": 1267.2,
    "bytes": {
-    "webm": 2958741,
-    "m4a": 4838811
+    "webm": 3495281,
+    "m4a": 5714780
    }
   },
   "og-m": {
    "voice": "am_fenrir",
    "speed": 0.88,
-   "count": 529,
-   "durationSec": 1903.8,
+   "count": 601,
+   "durationSec": 2141.3,
    "bytes": {
-    "webm": 5220760,
-    "m4a": 8462109
+    "webm": 5875608,
+    "m4a": 9535700
    }
   },
   "hustler-f": {
    "voice": "af_jessica",
    "speed": 0.95,
-   "count": 376,
-   "durationSec": 1397.4,
+   "count": 451,
+   "durationSec": 1708.2,
    "bytes": {
-    "webm": 3767195,
-    "m4a": 6043266
+    "webm": 4592061,
+    "m4a": 7373808
    }
   },
   "hustler-m": {
    "voice": "am_michael",
    "speed": 0.95,
-   "count": 369,
-   "durationSec": 837.0,
+   "count": 444,
+   "durationSec": 1003.2,
    "bytes": {
-    "webm": 2304023,
-    "m4a": 3937308
+    "webm": 2756953,
+    "m4a": 4725081
    }
   },
   "silent-f": {
    "voice": "bf_alice",
    "speed": 0.85,
-   "count": 59,
-   "durationSec": 179.3,
+   "count": 71,
+   "durationSec": 193.4,
    "bytes": {
-    "webm": 499044,
-    "m4a": 798293
+    "webm": 536435,
+    "m4a": 872725
    }
   },
   "silent-m": {
    "voice": "bm_lewis",
    "speed": 0.85,
-   "count": 59,
-   "durationSec": 202.4,
+   "count": 71,
+   "durationSec": 217.8,
    "bytes": {
-    "webm": 565345,
-    "m4a": 882499
+    "webm": 606452,
+    "m4a": 954976
    }
   },
   "deacon-f": {
    "voice": "af_sarah",
    "speed": 0.9,
-   "count": 351,
-   "durationSec": 1041.8,
+   "count": 422,
+   "durationSec": 1236.1,
    "bytes": {
-    "webm": 2882213,
-    "m4a": 4716760
+    "webm": 3417656,
+    "m4a": 5593642
    }
   },
   "deacon-m": {
    "voice": "am_eric",
    "speed": 0.9,
-   "count": 382,
-   "durationSec": 1198.3,
+   "count": 455,
+   "durationSec": 1403.8,
    "bytes": {
-    "webm": 3257385,
-    "m4a": 5332148
+    "webm": 3822802,
+    "m4a": 6243941
    }
   },
   "conspiracy-f": {
    "voice": "af_river",
    "speed": 1.08,
-   "count": 351,
-   "durationSec": 993.9,
+   "count": 425,
+   "durationSec": 1184.6,
    "bytes": {
-    "webm": 2675899,
-    "m4a": 4449122
+    "webm": 3193409,
+    "m4a": 5299216
    }
   },
   "conspiracy-m": {
    "voice": "am_echo",
    "speed": 1.08,
-   "count": 382,
-   "durationSec": 1186.1,
+   "count": 457,
+   "durationSec": 1396.2,
    "bytes": {
-    "webm": 3164478,
-    "m4a": 5300188
+    "webm": 3729240,
+    "m4a": 6232334
    }
   },
   "barber-f": {
    "voice": "af_alloy",
    "speed": 1.02,
-   "count": 363,
-   "durationSec": 1200.7,
+   "count": 434,
+   "durationSec": 1438.1,
    "bytes": {
-    "webm": 3247735,
-    "m4a": 5210716
+    "webm": 3884705,
+    "m4a": 6238332
    }
   },
   "barber-m": {
    "voice": "am_liam",
    "speed": 1.05,
-   "count": 395,
-   "durationSec": 1250.1,
+   "count": 467,
+   "durationSec": 1444.9,
    "bytes": {
-    "webm": 3456319,
-    "m4a": 5559628
+    "webm": 3989856,
+    "m4a": 6427111
    }
   },
   "gambler-f": {
    "voice": "af_aoede",
    "speed": 1,
-   "count": 359,
-   "durationSec": 1328.4,
+   "count": 424,
+   "durationSec": 1584.3,
    "bytes": {
-    "webm": 3555594,
-    "m4a": 5763732
+    "webm": 4240096,
+    "m4a": 6881425
    }
   },
   "gambler-m": {
    "voice": "am_adam",
    "speed": 1,
-   "count": 529,
-   "durationSec": 1654.4,
+   "count": 596,
+   "durationSec": 1853.0,
    "bytes": {
-    "webm": 4484911,
-    "m4a": 7319645
+    "webm": 5024920,
+    "m4a": 8227872
    }
   },
   "hothead-f": {
    "voice": "af_kore",
    "speed": 1.15,
-   "count": 356,
-   "durationSec": 966.1,
+   "count": 430,
+   "durationSec": 1179.8,
    "bytes": {
-    "webm": 2694588,
-    "m4a": 4384424
+    "webm": 3292225,
+    "m4a": 5329831
    }
   },
   "hothead-m": {
    "voice": "am_onyx",
    "speed": 1.15,
-   "count": 372,
-   "durationSec": 1027.6,
+   "count": 447,
+   "durationSec": 1239.3,
    "bytes": {
-    "webm": 2830333,
-    "m4a": 4657696
+    "webm": 3407393,
+    "m4a": 5630275
    }
   },
   "comedian-f": {
    "voice": "af_sky",
    "speed": 1.05,
-   "count": 337,
-   "durationSec": 1049.5,
+   "count": 396,
+   "durationSec": 1226.5,
    "bytes": {
-    "webm": 2845185,
-    "m4a": 4649390
+    "webm": 3324039,
+    "m4a": 5433315
    }
   },
   "comedian-m": {
    "voice": "am_santa",
    "speed": 1.05,
-   "count": 337,
-   "durationSec": 1011.6,
+   "count": 396,
+   "durationSec": 1184.4,
    "bytes": {
-    "webm": 2753500,
-    "m4a": 4656842
+    "webm": 3218694,
+    "m4a": 5441129
    }
   },
   "lilcuz-f": {
    "voice": "af_nova",
    "speed": 1.15,
-   "count": 593,
-   "durationSec": 2966.3,
+   "count": 819,
+   "durationSec": 4398.1,
    "bytes": {
-    "webm": 8120788,
-    "m4a": 12688335
+    "webm": 12090422,
+    "m4a": 18804694
    }
   },
   "lilcuz-m": {
    "voice": "am_michael",
    "speed": 1.18,
-   "count": 360,
-   "durationSec": 1111.4,
+   "count": 435,
+   "durationSec": 1298.8,
    "bytes": {
-    "webm": 2980130,
-    "m4a": 4970941
+    "webm": 3495903,
+    "m4a": 5832364
    }
   },
   "coach-f": {
    "voice": "af_alloy",
    "speed": 1.12,
-   "count": 386,
-   "durationSec": 1187.3,
+   "count": 459,
+   "durationSec": 1404.6,
    "bytes": {
-    "webm": 3281134,
-    "m4a": 5278536
+    "webm": 3865782,
+    "m4a": 6233474
    }
   },
   "coach-m": {
    "voice": "am_eric",
    "speed": 1.1,
-   "count": 377,
-   "durationSec": 1104.1,
+   "count": 449,
+   "durationSec": 1272.5,
    "bytes": {
-    "webm": 3100555,
-    "m4a": 5005510
+    "webm": 3567076,
+    "m4a": 5765047
    }
   },
   "smooth-f": {
    "voice": "af_nicole",
    "speed": 0.92,
-   "count": 342,
-   "durationSec": 1218.2,
+   "count": 410,
+   "durationSec": 1452.7,
    "bytes": {
-    "webm": 3239601,
-    "m4a": 5362856
+    "webm": 3867786,
+    "m4a": 6391051
    }
   },
   "smooth-m": {
    "voice": "bm_daniel",
    "speed": 0.92,
-   "count": 342,
-   "durationSec": 919.6,
+   "count": 410,
+   "durationSec": 1092.0,
    "bytes": {
-    "webm": 2545944,
-    "m4a": 4274460
+    "webm": 3015624,
+    "m4a": 5064536
    }
   },
   "storyteller-f": {
    "voice": "af_sarah",
    "speed": 1.02,
-   "count": 390,
-   "durationSec": 1109.2,
+   "count": 456,
+   "durationSec": 1271.1,
    "bytes": {
-    "webm": 3134999,
-    "m4a": 5185401
+    "webm": 3587167,
+    "m4a": 5914686
    }
   },
   "storyteller-m": {
    "voice": "am_fenrir",
    "speed": 0.98,
-   "count": 490,
-   "durationSec": 1706.3,
+   "count": 556,
+   "durationSec": 1879.2,
    "bytes": {
-    "webm": 4600547,
-    "m4a": 7528165
+    "webm": 5079217,
+    "m4a": 8342807
    }
   },
   "influencer-f": {
    "voice": "af_bella",
    "speed": 1.06,
-   "count": 500,
-   "durationSec": 1568.3,
+   "count": 579,
+   "durationSec": 1768.9,
    "bytes": {
-    "webm": 4307130,
-    "m4a": 7062001
+    "webm": 4868683,
+    "m4a": 7998198
    }
   },
   "influencer-m": {
    "voice": "am_adam",
    "speed": 1.12,
-   "count": 321,
-   "durationSec": 935.7,
+   "count": 398,
+   "durationSec": 1165.5,
    "bytes": {
-    "webm": 2505599,
-    "m4a": 4168309
+    "webm": 3114753,
+    "m4a": 5172002
    }
   },
   "sorelose-f": {
    "voice": "af_jessica",
    "speed": 1.06,
-   "count": 330,
-   "durationSec": 1140.5,
+   "count": 392,
+   "durationSec": 1361.8,
    "bytes": {
-    "webm": 3044508,
-    "m4a": 5059846
+    "webm": 3637943,
+    "m4a": 6043031
    }
   },
   "sorelose-m": {
    "voice": "am_echo",
    "speed": 0.98,
-   "count": 330,
-   "durationSec": 854.9,
+   "count": 392,
+   "durationSec": 1003.7,
    "bytes": {
-    "webm": 2315083,
-    "m4a": 3859002
+    "webm": 2718585,
+    "m4a": 4532238
    }
   }
  },

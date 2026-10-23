@@ -2120,6 +2120,274 @@
   "Copy.": [
    1653000,
    1165
+  ],
+  "the dice don't know fear. neither do I.": [
+   1654415,
+   2595
+  ],
+  "I read the table like a tote board.": [
+   1657260,
+   1930
+  ],
+  "fortune's been flirting with me all night.": [
+   1659440,
+   1970
+  ],
+  "{bid}. put it in ink.": [
+   1661660,
+   1650
+  ],
+  "I'm standing on {bid}. comfortably.": [
+   1663560,
+   1815
+  ],
+  "{bid} — the pot needed company.": [
+   1665625,
+   2290
+  ],
+  "you bet on yourself and the house still won.": [
+   1668165,
+   2565
+  ],
+  "that play had long odds and short results.": [
+   1670980,
+   3940
+  ],
+  "I'd insure that play, but nobody's selling.": [
+   1675170,
+   4220
+  ],
+  "{them} is the best bet I ever made.": [
+   1679640,
+   2435
+  ],
+  "I don't hedge on {them}. ever.": [
+   1682325,
+   2325
+  ],
+  "house odds just moved — {them} happened.": [
+   1684900,
+   2835
+  ],
+  "Count {S}{P} for me.#0.0": [
+   1687985,
+   2270
+  ],
+  "Count {S}{P} for me.#0.1": [
+   1690505,
+   2645
+  ],
+  "Count {S}{P} for me.#0.2": [
+   1693400,
+   2600
+  ],
+  "Count {S}{P} for me.#1.0": [
+   1696250,
+   2320
+  ],
+  "Count {S}{P} for me.#1.1": [
+   1698820,
+   3620
+  ],
+  "Count {S}{P} for me.#1.2": [
+   1702690,
+   2225
+  ],
+  "Count {S}{P} for me.#2.0": [
+   1705165,
+   1460
+  ],
+  "Count {S}{P} for me.#2.1": [
+   1706875,
+   3460
+  ],
+  "Count {S}{P} for me.#2.2": [
+   1710585,
+   2670
+  ],
+  "Count {S}{P} for me.#3.0": [
+   1713505,
+   2245
+  ],
+  "Count {S}{P} for me.#3.1": [
+   1716000,
+   3435
+  ],
+  "Count {S}{P} for me.#3.2": [
+   1719685,
+   2800
+  ],
+  "Count {S}{P} for me.#4.0": [
+   1722735,
+   2385
+  ],
+  "Count {S}{P} for me.#4.1": [
+   1725370,
+   3695
+  ],
+  "Count {S}{P} for me.#4.2": [
+   1729315,
+   2200
+  ],
+  "Count {S}{P} for me.#5.0": [
+   1731765,
+   1235
+  ],
+  "Count {S}{P} for me.#5.1": [
+   1733250,
+   1890
+  ],
+  "Count {S}{P} for me.#5.2": [
+   1735390,
+   4325
+  ],
+  "Count {S}{P} for me.#6+.0": [
+   1739965,
+   3160
+  ],
+  "Count {S}{P} for me.#6+.1": [
+   1743375,
+   3675
+  ],
+  "Count {S}{P} for me.#6+.2": [
+   1747300,
+   3240
+  ],
+  "Mark me down for {S}{P}.#0.0": [
+   1750790,
+   3125
+  ],
+  "Mark me down for {S}{P}.#0.1": [
+   1754165,
+   4265
+  ],
+  "Mark me down for {S}{P}.#0.2": [
+   1758680,
+   3195
+  ],
+  "Mark me down for {S}{P}.#1.0": [
+   1762125,
+   2365
+  ],
+  "Mark me down for {S}{P}.#1.1": [
+   1764740,
+   2040
+  ],
+  "Mark me down for {S}{P}.#1.2": [
+   1767030,
+   3315
+  ],
+  "Mark me down for {S}{P}.#2.0": [
+   1770595,
+   2355
+  ],
+  "Mark me down for {S}{P}.#2.1": [
+   1773200,
+   2725
+  ],
+  "Mark me down for {S}{P}.#2.2": [
+   1776175,
+   3895
+  ],
+  "Mark me down for {S}{P}.#3.0": [
+   1780320,
+   2855
+  ],
+  "Mark me down for {S}{P}.#3.1": [
+   1783425,
+   3550
+  ],
+  "Mark me down for {S}{P}.#3.2": [
+   1787225,
+   2120
+  ],
+  "Mark me down for {S}{P}.#4.0": [
+   1789595,
+   1580
+  ],
+  "Mark me down for {S}{P}.#4.1": [
+   1791425,
+   3130
+  ],
+  "Mark me down for {S}{P}.#4.2": [
+   1794805,
+   3725
+  ],
+  "Mark me down for {S}{P}.#5.0": [
+   1798780,
+   2715
+  ],
+  "Mark me down for {S}{P}.#5.1": [
+   1801745,
+   2875
+  ],
+  "Mark me down for {S}{P}.#5.2": [
+   1804870,
+   2435
+  ],
+  "Mark me down for {S}{P}.#6+.0": [
+   1807555,
+   2145
+  ],
+  "Mark me down for {S}{P}.#6+.1": [
+   1809950,
+   4915
+  ],
+  "Mark me down for {S}{P}.#6+.2": [
+   1815115,
+   2930
+  ],
+  "Add it up — {T}.#T3": [
+   1818295,
+   2410
+  ],
+  "Add it up — {T}.#T4": [
+   1820955,
+   1765
+  ],
+  "Add it up — {T}.#T5": [
+   1822970,
+   2060
+  ],
+  "Add it up — {T}.#T6": [
+   1825280,
+   1925
+  ],
+  "Add it up — {T}.#T7": [
+   1827455,
+   1605
+  ],
+  "Add it up — {T}.#T8": [
+   1829310,
+   2320
+  ],
+  "Add it up — {T}.#T9": [
+   1831880,
+   2155
+  ],
+  "Add it up — {T}.#T10": [
+   1834285,
+   1920
+  ],
+  "Add it up — {T}.#T11": [
+   1836455,
+   2075
+  ],
+  "Add it up — {T}.#T12": [
+   1838780,
+   2350
+  ],
+  "Add it up — {T}.#T13+": [
+   1841380,
+   3285
+  ],
+  "Returning client. New co-signer. The risk profile just changed.": [
+   1844915,
+   4280
+  ],
+  "A veteran and a fresh wallet. My favorite seating chart.": [
+   1849445,
+   3270
   ]
  }
 }

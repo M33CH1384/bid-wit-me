@@ -1324,6 +1324,254 @@
   "Copy.": [
    1138765,
    1470
+  ],
+  "don't worry, the deck hates me back.": [
+   1140485,
+   2265
+  ],
+  "I'll play it, but I'm logging a complaint.": [
+   1143000,
+   4150
+  ],
+  "somehow this is already my fault. watch.": [
+   1147400,
+   2590
+  ],
+  "a Joker. watch it get wasted on principle.": [
+   1150240,
+   6445
+  ],
+  "finally, a card that respects me. temporarily.": [
+   1156935,
+   5635
+  ],
+  "the Joker showed up. the fix is sweating now.": [
+   1162820,
+   2680
+  ],
+  "rigged. I mean dealt. same thing.": [
+   1165750,
+   3390
+  ],
+  "this hand came with an apology note. it was blank.": [
+   1169390,
+   4665
+  ],
+  "I get the demo version of every deck.": [
+   1174305,
+   2845
+  ],
+  "Count {S}{P} for me.#0.0": [
+   1177400,
+   5175
+  ],
+  "Count {S}{P} for me.#0.1": [
+   1182825,
+   2520
+  ],
+  "Count {S}{P} for me.#0.2": [
+   1185595,
+   3275
+  ],
+  "Count {S}{P} for me.#1.0": [
+   1189120,
+   2385
+  ],
+  "Count {S}{P} for me.#1.1": [
+   1191755,
+   3535
+  ],
+  "Count {S}{P} for me.#1.2": [
+   1195540,
+   6040
+  ],
+  "Count {S}{P} for me.#2.0": [
+   1201830,
+   3425
+  ],
+  "Count {S}{P} for me.#2.1": [
+   1205505,
+   3385
+  ],
+  "Count {S}{P} for me.#2.2": [
+   1209140,
+   4585
+  ],
+  "Count {S}{P} for me.#3.0": [
+   1213975,
+   2630
+  ],
+  "Count {S}{P} for me.#3.1": [
+   1216855,
+   3595
+  ],
+  "Count {S}{P} for me.#3.2": [
+   1220700,
+   3435
+  ],
+  "Count {S}{P} for me.#4.0": [
+   1224385,
+   2125
+  ],
+  "Count {S}{P} for me.#4.1": [
+   1226760,
+   3660
+  ],
+  "Count {S}{P} for me.#4.2": [
+   1230670,
+   4090
+  ],
+  "Count {S}{P} for me.#5.0": [
+   1235010,
+   2955
+  ],
+  "Count {S}{P} for me.#5.1": [
+   1238215,
+   3820
+  ],
+  "Count {S}{P} for me.#5.2": [
+   1242285,
+   2985
+  ],
+  "Count {S}{P} for me.#6+.0": [
+   1245520,
+   3550
+  ],
+  "Count {S}{P} for me.#6+.1": [
+   1249320,
+   4780
+  ],
+  "Count {S}{P} for me.#6+.2": [
+   1254350,
+   3435
+  ],
+  "Mark me down for {S}{P}.#0.0": [
+   1258035,
+   2930
+  ],
+  "Mark me down for {S}{P}.#0.1": [
+   1261215,
+   5630
+  ],
+  "Mark me down for {S}{P}.#0.2": [
+   1267095,
+   2515
+  ],
+  "Mark me down for {S}{P}.#1.0": [
+   1269860,
+   3280
+  ],
+  "Mark me down for {S}{P}.#1.1": [
+   1273390,
+   3620
+  ],
+  "Mark me down for {S}{P}.#1.2": [
+   1277260,
+   3900
+  ],
+  "Mark me down for {S}{P}.#2.0": [
+   1281410,
+   3310
+  ],
+  "Mark me down for {S}{P}.#2.1": [
+   1284970,
+   3905
+  ],
+  "Mark me down for {S}{P}.#2.2": [
+   1289125,
+   3120
+  ],
+  "Mark me down for {S}{P}.#3.0": [
+   1292495,
+   4825
+  ],
+  "Mark me down for {S}{P}.#3.1": [
+   1297570,
+   3925
+  ],
+  "Mark me down for {S}{P}.#3.2": [
+   1301745,
+   3150
+  ],
+  "Mark me down for {S}{P}.#4.0": [
+   1305145,
+   2780
+  ],
+  "Mark me down for {S}{P}.#4.1": [
+   1308175,
+   2915
+  ],
+  "Mark me down for {S}{P}.#4.2": [
+   1311340,
+   2285
+  ],
+  "Mark me down for {S}{P}.#5.0": [
+   1313875,
+   2910
+  ],
+  "Mark me down for {S}{P}.#5.1": [
+   1317035,
+   2120
+  ],
+  "Mark me down for {S}{P}.#5.2": [
+   1319405,
+   4105
+  ],
+  "Mark me down for {S}{P}.#6+.0": [
+   1323760,
+   3945
+  ],
+  "Mark me down for {S}{P}.#6+.1": [
+   1327955,
+   3300
+  ],
+  "Mark me down for {S}{P}.#6+.2": [
+   1331505,
+   3000
+  ],
+  "Add it up — {T}.#T3": [
+   1334755,
+   2240
+  ],
+  "Add it up — {T}.#T4": [
+   1337245,
+   1905
+  ],
+  "Add it up — {T}.#T5": [
+   1339400,
+   1780
+  ],
+  "Add it up — {T}.#T6": [
+   1341430,
+   1865
+  ],
+  "Add it up — {T}.#T7": [
+   1343545,
+   1890
+  ],
+  "Add it up — {T}.#T8": [
+   1345685,
+   2565
+  ],
+  "Add it up — {T}.#T9": [
+   1348500,
+   1880
+  ],
+  "Add it up — {T}.#T10": [
+   1350630,
+   2320
+  ],
+  "Add it up — {T}.#T11": [
+   1353200,
+   3200
+  ],
+  "Add it up — {T}.#T12": [
+   1356650,
+   2315
+  ],
+  "Add it up — {T}.#T13+": [
+   1359215,
+   2355
   ]
  }
 }

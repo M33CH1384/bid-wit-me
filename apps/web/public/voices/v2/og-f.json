@@ -1432,6 +1432,270 @@
   "Copy.": [
    1070765,
    900
+  ],
+  "I was winning books before this table was built.": [
+   1071915,
+   2820
+  ],
+  "age and treachery. mostly treachery.": [
+   1074985,
+   3490
+  ],
+  "the old way still works. watch.": [
+   1078725,
+   3125
+  ],
+  "the Joker respects seniority. mine.": [
+   1082100,
+   4310
+  ],
+  "I keep the Joker like I keep my word. ready.": [
+   1086660,
+   3365
+  ],
+  "that Joker's older than your strategy, {them}.": [
+   1090275,
+   2530
+  ],
+  "in my day, that play got you uninvited.": [
+   1093055,
+   3505
+  ],
+  "you're loud for somebody reading the instructions.": [
+   1096810,
+   3090
+  ],
+  "I've forgotten better plays than that.": [
+   1100150,
+   1640
+  ],
+  "that's how you carry a partnership, {them}.": [
+   1102040,
+   2350
+  ],
+  "{them} plays like they were raised right.": [
+   1104640,
+   3055
+  ],
+  "respect earned, {them}. twice over.": [
+   1107945,
+   4045
+  ],
+  "Count {S}{P} for me.#0.0": [
+   1112240,
+   1395
+  ],
+  "Count {S}{P} for me.#0.1": [
+   1113885,
+   2515
+  ],
+  "Count {S}{P} for me.#0.2": [
+   1116650,
+   3205
+  ],
+  "Count {S}{P} for me.#1.0": [
+   1120105,
+   1075
+  ],
+  "Count {S}{P} for me.#1.1": [
+   1121430,
+   2530
+  ],
+  "Count {S}{P} for me.#1.2": [
+   1124210,
+   2655
+  ],
+  "Count {S}{P} for me.#2.0": [
+   1127115,
+   2730
+  ],
+  "Count {S}{P} for me.#2.1": [
+   1130095,
+   2205
+  ],
+  "Count {S}{P} for me.#2.2": [
+   1132550,
+   3630
+  ],
+  "Count {S}{P} for me.#3.0": [
+   1136430,
+   1890
+  ],
+  "Count {S}{P} for me.#3.1": [
+   1138570,
+   3975
+  ],
+  "Count {S}{P} for me.#3.2": [
+   1142795,
+   2265
+  ],
+  "Count {S}{P} for me.#4.0": [
+   1145310,
+   1835
+  ],
+  "Count {S}{P} for me.#4.1": [
+   1147395,
+   2325
+  ],
+  "Count {S}{P} for me.#4.2": [
+   1149970,
+   3135
+  ],
+  "Count {S}{P} for me.#5.0": [
+   1153355,
+   1925
+  ],
+  "Count {S}{P} for me.#5.1": [
+   1155530,
+   3875
+  ],
+  "Count {S}{P} for me.#5.2": [
+   1159655,
+   3195
+  ],
+  "Count {S}{P} for me.#6+.0": [
+   1163100,
+   3050
+  ],
+  "Count {S}{P} for me.#6+.1": [
+   1166400,
+   4180
+  ],
+  "Count {S}{P} for me.#6+.2": [
+   1170830,
+   5175
+  ],
+  "Mark me down for {S}{P}.#0.0": [
+   1176255,
+   1625
+  ],
+  "Mark me down for {S}{P}.#0.1": [
+   1178130,
+   2980
+  ],
+  "Mark me down for {S}{P}.#0.2": [
+   1181360,
+   2875
+  ],
+  "Mark me down for {S}{P}.#1.0": [
+   1184485,
+   1840
+  ],
+  "Mark me down for {S}{P}.#1.1": [
+   1186575,
+   2345
+  ],
+  "Mark me down for {S}{P}.#1.2": [
+   1189170,
+   2530
+  ],
+  "Mark me down for {S}{P}.#2.0": [
+   1191950,
+   1940
+  ],
+  "Mark me down for {S}{P}.#2.1": [
+   1194140,
+   2535
+  ],
+  "Mark me down for {S}{P}.#2.2": [
+   1196925,
+   3195
+  ],
+  "Mark me down for {S}{P}.#3.0": [
+   1200370,
+   2435
+  ],
+  "Mark me down for {S}{P}.#3.1": [
+   1203055,
+   3035
+  ],
+  "Mark me down for {S}{P}.#3.2": [
+   1206340,
+   2750
+  ],
+  "Mark me down for {S}{P}.#4.0": [
+   1209340,
+   2410
+  ],
+  "Mark me down for {S}{P}.#4.1": [
+   1212000,
+   2685
+  ],
+  "Mark me down for {S}{P}.#4.2": [
+   1214935,
+   2830
+  ],
+  "Mark me down for {S}{P}.#5.0": [
+   1218015,
+   2310
+  ],
+  "Mark me down for {S}{P}.#5.1": [
+   1220575,
+   3475
+  ],
+  "Mark me down for {S}{P}.#5.2": [
+   1224300,
+   3425
+  ],
+  "Mark me down for {S}{P}.#6+.0": [
+   1227975,
+   2580
+  ],
+  "Mark me down for {S}{P}.#6+.1": [
+   1230805,
+   3270
+  ],
+  "Mark me down for {S}{P}.#6+.2": [
+   1234325,
+   3475
+  ],
+  "Add it up — {T}.#T3": [
+   1238050,
+   2155
+  ],
+  "Add it up — {T}.#T4": [
+   1240455,
+   1650
+  ],
+  "Add it up — {T}.#T5": [
+   1242355,
+   1605
+  ],
+  "Add it up — {T}.#T6": [
+   1244210,
+   2085
+  ],
+  "Add it up — {T}.#T7": [
+   1246545,
+   2015
+  ],
+  "Add it up — {T}.#T8": [
+   1248810,
+   1555
+  ],
+  "Add it up — {T}.#T9": [
+   1250615,
+   1835
+  ],
+  "Add it up — {T}.#T10": [
+   1252700,
+   2185
+  ],
+  "Add it up — {T}.#T11": [
+   1255135,
+   2475
+  ],
+  "Add it up — {T}.#T12": [
+   1257860,
+   1845
+  ],
+  "Add it up — {T}.#T13+": [
+   1259955,
+   2680
+  ],
+  "Mmhm. The returning act. And a new face for me to learn your tells from.": [
+   1262885,
+   4075
   ]
  }
 }

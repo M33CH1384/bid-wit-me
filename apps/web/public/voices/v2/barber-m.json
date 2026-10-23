@@ -1584,6 +1584,294 @@
   "Copy.": [
    1248905,
    945
+  ],
+  "chair's warm. let's work.": [
+   1250100,
+   2155
+  ],
+  "I'm booked solid, but I'll fit this in.": [
+   1252505,
+   2070
+  ],
+  "just a little off the top.": [
+   1254825,
+   2740
+  ],
+  "a nick. that's all that was.": [
+   1257815,
+   1765
+  ],
+  "you cut me with the guard off. bold.": [
+   1259830,
+   2735
+  ],
+  "that one's getting evened out. trust.": [
+   1262815,
+   3320
+  ],
+  "set, trimmed, and swept off my floor.": [
+   1266385,
+   2495
+  ],
+  "y'all bid a full head and left with a fade.": [
+   1269130,
+   2605
+  ],
+  "that's a closed shop, {opp}.": [
+   1271985,
+   2150
+  ],
+  "the Joker walked in without an appointment.": [
+   1274385,
+   2220
+  ],
+  "house call. the Joker made one.": [
+   1276855,
+   2345
+  ],
+  "fresh out the case — the Joker, polished.": [
+   1279450,
+   3220
+  ],
+  "fresh work, {them}. the chair approves.": [
+   1282920,
+   3190
+  ],
+  "{them} just gave the table a lineup.": [
+   1286360,
+   2165
+  ],
+  "booked and busy — that's {them} tonight.": [
+   1288775,
+   3235
+  ],
+  "that play needs a consultation and a prayer.": [
+   1292260,
+   2795
+  ],
+  "you're cutting corners with no clippers.": [
+   1295305,
+   2115
+  ],
+  "I've seen straighter lines at a freehand contest.": [
+   1297670,
+   3800
+  ],
+  "Count {S}{P} for me.#0.0": [
+   1301720,
+   1970
+  ],
+  "Count {S}{P} for me.#0.1": [
+   1303940,
+   3065
+  ],
+  "Count {S}{P} for me.#0.2": [
+   1307255,
+   2320
+  ],
+  "Count {S}{P} for me.#1.0": [
+   1309825,
+   1400
+  ],
+  "Count {S}{P} for me.#1.1": [
+   1311475,
+   2295
+  ],
+  "Count {S}{P} for me.#1.2": [
+   1314020,
+   2305
+  ],
+  "Count {S}{P} for me.#2.0": [
+   1316575,
+   2615
+  ],
+  "Count {S}{P} for me.#2.1": [
+   1319440,
+   3320
+  ],
+  "Count {S}{P} for me.#2.2": [
+   1323010,
+   2195
+  ],
+  "Count {S}{P} for me.#3.0": [
+   1325455,
+   2015
+  ],
+  "Count {S}{P} for me.#3.1": [
+   1327720,
+   2330
+  ],
+  "Count {S}{P} for me.#3.2": [
+   1330300,
+   2920
+  ],
+  "Count {S}{P} for me.#4.0": [
+   1333470,
+   1835
+  ],
+  "Count {S}{P} for me.#4.1": [
+   1335555,
+   2855
+  ],
+  "Count {S}{P} for me.#4.2": [
+   1338660,
+   3010
+  ],
+  "Count {S}{P} for me.#5.0": [
+   1341920,
+   2705
+  ],
+  "Count {S}{P} for me.#5.1": [
+   1344875,
+   2400
+  ],
+  "Count {S}{P} for me.#5.2": [
+   1347525,
+   2850
+  ],
+  "Count {S}{P} for me.#6+.0": [
+   1350625,
+   1315
+  ],
+  "Count {S}{P} for me.#6+.1": [
+   1352190,
+   2585
+  ],
+  "Count {S}{P} for me.#6+.2": [
+   1355025,
+   2825
+  ],
+  "Mark me down for {S}{P}.#0.0": [
+   1358100,
+   1335
+  ],
+  "Mark me down for {S}{P}.#0.1": [
+   1359685,
+   2405
+  ],
+  "Mark me down for {S}{P}.#0.2": [
+   1362340,
+   2290
+  ],
+  "Mark me down for {S}{P}.#1.0": [
+   1364880,
+   2560
+  ],
+  "Mark me down for {S}{P}.#1.1": [
+   1367690,
+   2295
+  ],
+  "Mark me down for {S}{P}.#1.2": [
+   1370235,
+   2840
+  ],
+  "Mark me down for {S}{P}.#2.0": [
+   1373325,
+   1350
+  ],
+  "Mark me down for {S}{P}.#2.1": [
+   1374925,
+   3360
+  ],
+  "Mark me down for {S}{P}.#2.2": [
+   1378535,
+   3455
+  ],
+  "Mark me down for {S}{P}.#3.0": [
+   1382240,
+   2850
+  ],
+  "Mark me down for {S}{P}.#3.1": [
+   1385340,
+   2790
+  ],
+  "Mark me down for {S}{P}.#3.2": [
+   1388380,
+   2130
+  ],
+  "Mark me down for {S}{P}.#4.0": [
+   1390760,
+   1885
+  ],
+  "Mark me down for {S}{P}.#4.1": [
+   1392895,
+   2075
+  ],
+  "Mark me down for {S}{P}.#4.2": [
+   1395220,
+   3900
+  ],
+  "Mark me down for {S}{P}.#5.0": [
+   1399370,
+   2705
+  ],
+  "Mark me down for {S}{P}.#5.1": [
+   1402325,
+   2265
+  ],
+  "Mark me down for {S}{P}.#5.2": [
+   1404840,
+   3820
+  ],
+  "Mark me down for {S}{P}.#6+.0": [
+   1408910,
+   1400
+  ],
+  "Mark me down for {S}{P}.#6+.1": [
+   1410560,
+   2965
+  ],
+  "Mark me down for {S}{P}.#6+.2": [
+   1413775,
+   2530
+  ],
+  "Add it up — {T}.#T3": [
+   1416555,
+   2200
+  ],
+  "Add it up — {T}.#T4": [
+   1419005,
+   1605
+  ],
+  "Add it up — {T}.#T5": [
+   1420860,
+   1610
+  ],
+  "Add it up — {T}.#T6": [
+   1422720,
+   2160
+  ],
+  "Add it up — {T}.#T7": [
+   1425130,
+   2025
+  ],
+  "Add it up — {T}.#T8": [
+   1427405,
+   1475
+  ],
+  "Add it up — {T}.#T9": [
+   1429130,
+   2110
+  ],
+  "Add it up — {T}.#T10": [
+   1431490,
+   1825
+  ],
+  "Add it up — {T}.#T11": [
+   1433565,
+   1740
+  ],
+  "Add it up — {T}.#T12": [
+   1435555,
+   2400
+  ],
+  "Add it up — {T}.#T13+": [
+   1438205,
+   1710
+  ],
+  "I’ve cut your hair in that chair and cut your bids on this table. Brought a witness this time?": [
+   1440165,
+   4495
   ]
  }
 }

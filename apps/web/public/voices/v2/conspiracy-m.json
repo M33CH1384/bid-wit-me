@@ -1532,6 +1532,306 @@
   "Copy.": [
    1185295,
    595
+  ],
+  "I shuffled twice. they still followed me.": [
+   1186140,
+   3990
+  ],
+  "this card has a file number. I checked.": [
+   1190380,
+   2955
+  ],
+  "the deck knows what it did.": [
+   1193585,
+   1645
+  ],
+  "the corkboard predicted this exact cut.": [
+   1195480,
+   2370
+  ],
+  "red string leads right to that book.": [
+   1198100,
+   1705
+  ],
+  "classified cut. you'll never prove it was me.": [
+   1200055,
+   2225
+  ],
+  "nobody cuts me by accident. nobody.": [
+   1202530,
+   2755
+  ],
+  "that information was leaked. I know it was.": [
+   1205535,
+   2285
+  ],
+  "I'm opening a file on you, {them}.": [
+   1208070,
+   1385
+  ],
+  "the set was foretold. page one of the file.": [
+   1209705,
+   5080
+  ],
+  "y'all didn't get set. y'all got exposed.": [
+   1215035,
+   2020
+  ],
+  "case closed. the bid never existed.": [
+   1217305,
+   2445
+  ],
+  "the Joker was never missing. it was withheld.": [
+   1220000,
+   3825
+  ],
+  "they redacted this card from your future.": [
+   1224075,
+   1845
+  ],
+  "a Joker surfaces exactly when it's meant to.": [
+   1226170,
+   2725
+  ],
+  "that play is being archived as evidence.": [
+   1229145,
+   2140
+  ],
+  "you're not losing. you're being documented losing.": [
+   1231535,
+   2660
+  ],
+  "somewhere, a file just got your name on it.": [
+   1234445,
+   2500
+  ],
+  "{them} is not a coincidence. {them} is a pattern.": [
+   1237195,
+   3800
+  ],
+  "the files said {them} would do that. the files were right.": [
+   1241245,
+   4620
+  ],
+  "operation: partner. phase one complete.": [
+   1246115,
+   2385
+  ],
+  "Count {S}{P} for me.#0.0": [
+   1248750,
+   2095
+  ],
+  "Count {S}{P} for me.#0.1": [
+   1251095,
+   1735
+  ],
+  "Count {S}{P} for me.#0.2": [
+   1253080,
+   3170
+  ],
+  "Count {S}{P} for me.#1.0": [
+   1256500,
+   1205
+  ],
+  "Count {S}{P} for me.#1.1": [
+   1257955,
+   2095
+  ],
+  "Count {S}{P} for me.#1.2": [
+   1260300,
+   2460
+  ],
+  "Count {S}{P} for me.#2.0": [
+   1263010,
+   1725
+  ],
+  "Count {S}{P} for me.#2.1": [
+   1264985,
+   3070
+  ],
+  "Count {S}{P} for me.#2.2": [
+   1268305,
+   4075
+  ],
+  "Count {S}{P} for me.#3.0": [
+   1272630,
+   1840
+  ],
+  "Count {S}{P} for me.#3.1": [
+   1274720,
+   2645
+  ],
+  "Count {S}{P} for me.#3.2": [
+   1277615,
+   2365
+  ],
+  "Count {S}{P} for me.#4.0": [
+   1280230,
+   930
+  ],
+  "Count {S}{P} for me.#4.1": [
+   1281410,
+   3075
+  ],
+  "Count {S}{P} for me.#4.2": [
+   1284735,
+   2810
+  ],
+  "Count {S}{P} for me.#5.0": [
+   1287795,
+   1140
+  ],
+  "Count {S}{P} for me.#5.1": [
+   1289185,
+   1585
+  ],
+  "Count {S}{P} for me.#5.2": [
+   1291020,
+   2640
+  ],
+  "Count {S}{P} for me.#6+.0": [
+   1293910,
+   1190
+  ],
+  "Count {S}{P} for me.#6+.1": [
+   1295350,
+   2995
+  ],
+  "Count {S}{P} for me.#6+.2": [
+   1298595,
+   2520
+  ],
+  "Mark me down for {S}{P}.#0.0": [
+   1301365,
+   2840
+  ],
+  "Mark me down for {S}{P}.#0.1": [
+   1304455,
+   3970
+  ],
+  "Mark me down for {S}{P}.#0.2": [
+   1308675,
+   2785
+  ],
+  "Mark me down for {S}{P}.#1.0": [
+   1311710,
+   1750
+  ],
+  "Mark me down for {S}{P}.#1.1": [
+   1313710,
+   2915
+  ],
+  "Mark me down for {S}{P}.#1.2": [
+   1316875,
+   2795
+  ],
+  "Mark me down for {S}{P}.#2.0": [
+   1319920,
+   2475
+  ],
+  "Mark me down for {S}{P}.#2.1": [
+   1322645,
+   2810
+  ],
+  "Mark me down for {S}{P}.#2.2": [
+   1325705,
+   4190
+  ],
+  "Mark me down for {S}{P}.#3.0": [
+   1330145,
+   3070
+  ],
+  "Mark me down for {S}{P}.#3.1": [
+   1333465,
+   3740
+  ],
+  "Mark me down for {S}{P}.#3.2": [
+   1337455,
+   2590
+  ],
+  "Mark me down for {S}{P}.#4.0": [
+   1340295,
+   1855
+  ],
+  "Mark me down for {S}{P}.#4.1": [
+   1342400,
+   1980
+  ],
+  "Mark me down for {S}{P}.#4.2": [
+   1344630,
+   3970
+  ],
+  "Mark me down for {S}{P}.#5.0": [
+   1348850,
+   1190
+  ],
+  "Mark me down for {S}{P}.#5.1": [
+   1350290,
+   1625
+  ],
+  "Mark me down for {S}{P}.#5.2": [
+   1352165,
+   4650
+  ],
+  "Mark me down for {S}{P}.#6+.0": [
+   1357065,
+   2445
+  ],
+  "Mark me down for {S}{P}.#6+.1": [
+   1359760,
+   3385
+  ],
+  "Mark me down for {S}{P}.#6+.2": [
+   1363395,
+   5235
+  ],
+  "Add it up — {T}.#T3": [
+   1368880,
+   1415
+  ],
+  "Add it up — {T}.#T4": [
+   1370545,
+   1575
+  ],
+  "Add it up — {T}.#T5": [
+   1372370,
+   2440
+  ],
+  "Add it up — {T}.#T6": [
+   1375060,
+   1480
+  ],
+  "Add it up — {T}.#T7": [
+   1376790,
+   1385
+  ],
+  "Add it up — {T}.#T8": [
+   1378425,
+   1325
+  ],
+  "Add it up — {T}.#T9": [
+   1380000,
+   1715
+  ],
+  "Add it up — {T}.#T10": [
+   1381965,
+   1765
+  ],
+  "Add it up — {T}.#T11": [
+   1383980,
+   1830
+  ],
+  "Add it up — {T}.#T12": [
+   1386060,
+   1305
+  ],
+  "Add it up — {T}.#T13+": [
+   1387615,
+   2545
+  ],
+  "The returning bird brings a new wing. The sky already has notes on you.": [
+   1390410,
+   5540
   ]
  }
 }

@@ -1492,6 +1492,306 @@
   "Copy.": [
    1025950,
    1365
+  ],
+  "I'M CALM. THIS IS ME CALM.": [
+   1027565,
+   3800
+  ],
+  "LAST WARNING. I DON'T GIVE THOSE.": [
+   1031615,
+   2805
+  ],
+  "SOMEBODY'S ABOUT TO LEARN MY NAME.": [
+   1034670,
+   2045
+  ],
+  "OH WE'RE CUTTING NOW?! NOTED IN CAPS!": [
+   1036965,
+   3895
+  ],
+  "THAT CUT JUST MADE THE LIST, {them}!": [
+   1041110,
+   2595
+  ],
+  "I'M FINE. EVERYTHING'S FINE. IT'S NOT FINE.": [
+   1043955,
+   3835
+  ],
+  "THE JOKER AND I HAVE AN UNDERSTANDING!": [
+   1048040,
+   4600
+  ],
+  "BOOM! TOLD Y'ALL HE WAS COMING!": [
+   1052890,
+   2960
+  ],
+  "THAT'S NOT LUCK. THAT'S VOLUME.": [
+   1056100,
+   2405
+  ],
+  "{bid}! LOUD AND WRONG-LOOKING UNTIL IT LANDS!": [
+   1058755,
+   4305
+  ],
+  "{bid}! ARGUE WITH THE SCOREBOARD LATER!": [
+   1063310,
+   4465
+  ],
+  "{bid}! I SAID IT WITH MY WHOLE CHEST!": [
+   1068025,
+   5175
+  ],
+  "THIS HAND SHOULD BE REPORTED!": [
+   1073450,
+   3070
+  ],
+  "I GOT DEALT A PARTICIPATION TROPHY!": [
+   1076770,
+   3930
+  ],
+  "WHO SHUFFLED THIS, AN ENEMY?!": [
+   1080950,
+   3395
+  ],
+  "THAT'S MY PARTNER AND I'LL FIGHT ABOUT IT!": [
+   1084595,
+   2720
+  ],
+  "{them} IS A PROBLEM AND THE PROBLEM IS THEIRS!": [
+   1087565,
+   2805
+  ],
+  "GO OFF, {them}! I'M RIGHT BEHIND YOU!": [
+   1090620,
+   2255
+  ],
+  "THAT PLAY SHOULD BE ILLEGAL IN FOUR STATES!": [
+   1093125,
+   3070
+  ],
+  "I'M NOT MAD. I'M JUST LOUDER THAN EVERYBODY!": [
+   1096445,
+   3145
+  ],
+  "YOU PLAY LIKE THE TABLE OWES YOU AN APOLOGY!": [
+   1099840,
+   3310
+  ],
+  "Count {S}{P} for me.#0.0": [
+   1103400,
+   1375
+  ],
+  "Count {S}{P} for me.#0.1": [
+   1105025,
+   2430
+  ],
+  "Count {S}{P} for me.#0.2": [
+   1107705,
+   2460
+  ],
+  "Count {S}{P} for me.#1.0": [
+   1110415,
+   1865
+  ],
+  "Count {S}{P} for me.#1.1": [
+   1112530,
+   2290
+  ],
+  "Count {S}{P} for me.#1.2": [
+   1115070,
+   2280
+  ],
+  "Count {S}{P} for me.#2.0": [
+   1117600,
+   1825
+  ],
+  "Count {S}{P} for me.#2.1": [
+   1119675,
+   2025
+  ],
+  "Count {S}{P} for me.#2.2": [
+   1121950,
+   2180
+  ],
+  "Count {S}{P} for me.#3.0": [
+   1124380,
+   1805
+  ],
+  "Count {S}{P} for me.#3.1": [
+   1126435,
+   3030
+  ],
+  "Count {S}{P} for me.#3.2": [
+   1129715,
+   2390
+  ],
+  "Count {S}{P} for me.#4.0": [
+   1132355,
+   1915
+  ],
+  "Count {S}{P} for me.#4.1": [
+   1134520,
+   2080
+  ],
+  "Count {S}{P} for me.#4.2": [
+   1136850,
+   2305
+  ],
+  "Count {S}{P} for me.#5.0": [
+   1139405,
+   1875
+  ],
+  "Count {S}{P} for me.#5.1": [
+   1141530,
+   2295
+  ],
+  "Count {S}{P} for me.#5.2": [
+   1144075,
+   2630
+  ],
+  "Count {S}{P} for me.#6+.0": [
+   1146955,
+   2035
+  ],
+  "Count {S}{P} for me.#6+.1": [
+   1149240,
+   2875
+  ],
+  "Count {S}{P} for me.#6+.2": [
+   1152365,
+   2675
+  ],
+  "Mark me down for {S}{P}.#0.0": [
+   1155290,
+   1565
+  ],
+  "Mark me down for {S}{P}.#0.1": [
+   1157105,
+   3415
+  ],
+  "Mark me down for {S}{P}.#0.2": [
+   1160770,
+   3070
+  ],
+  "Mark me down for {S}{P}.#1.0": [
+   1164090,
+   1780
+  ],
+  "Mark me down for {S}{P}.#1.1": [
+   1166120,
+   2760
+  ],
+  "Mark me down for {S}{P}.#1.2": [
+   1169130,
+   2705
+  ],
+  "Mark me down for {S}{P}.#2.0": [
+   1172085,
+   1105
+  ],
+  "Mark me down for {S}{P}.#2.1": [
+   1173440,
+   2295
+  ],
+  "Mark me down for {S}{P}.#2.2": [
+   1175985,
+   3315
+  ],
+  "Mark me down for {S}{P}.#3.0": [
+   1179550,
+   1610
+  ],
+  "Mark me down for {S}{P}.#3.1": [
+   1181410,
+   3220
+  ],
+  "Mark me down for {S}{P}.#3.2": [
+   1184880,
+   1870
+  ],
+  "Mark me down for {S}{P}.#4.0": [
+   1187000,
+   2900
+  ],
+  "Mark me down for {S}{P}.#4.1": [
+   1190150,
+   1995
+  ],
+  "Mark me down for {S}{P}.#4.2": [
+   1192395,
+   3020
+  ],
+  "Mark me down for {S}{P}.#5.0": [
+   1195665,
+   2440
+  ],
+  "Mark me down for {S}{P}.#5.1": [
+   1198355,
+   2480
+  ],
+  "Mark me down for {S}{P}.#5.2": [
+   1201085,
+   3805
+  ],
+  "Mark me down for {S}{P}.#6+.0": [
+   1205140,
+   2530
+  ],
+  "Mark me down for {S}{P}.#6+.1": [
+   1207920,
+   2850
+  ],
+  "Mark me down for {S}{P}.#6+.2": [
+   1211020,
+   2445
+  ],
+  "Add it up — {T}.#T3": [
+   1213715,
+   1465
+  ],
+  "Add it up — {T}.#T4": [
+   1215430,
+   1540
+  ],
+  "Add it up — {T}.#T5": [
+   1217220,
+   1530
+  ],
+  "Add it up — {T}.#T6": [
+   1219000,
+   1350
+  ],
+  "Add it up — {T}.#T7": [
+   1220600,
+   1635
+  ],
+  "Add it up — {T}.#T8": [
+   1222485,
+   1685
+  ],
+  "Add it up — {T}.#T9": [
+   1224420,
+   1345
+  ],
+  "Add it up — {T}.#T10": [
+   1226015,
+   1215
+  ],
+  "Add it up — {T}.#T11": [
+   1227480,
+   2570
+  ],
+  "Add it up — {T}.#T12": [
+   1230300,
+   1905
+  ],
+  "Add it up — {T}.#T13+": [
+   1232455,
+   2190
+  ],
+  "Back again, AND you brought a friend to watch? Bold.": [
+   1234895,
+   4170
   ]
  }
 }

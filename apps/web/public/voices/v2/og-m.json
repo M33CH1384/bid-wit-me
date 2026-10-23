@@ -2120,6 +2120,294 @@
   "Copy.": [
    1902650,
    870
+  ],
+  "I was winning books before this table was built.": [
+   1903770,
+   4895
+  ],
+  "age and treachery. mostly treachery.": [
+   1908915,
+   2645
+  ],
+  "the old way still works. watch.": [
+   1911810,
+   2235
+  ],
+  "the Joker respects seniority. mine.": [
+   1914295,
+   3470
+  ],
+  "I keep the Joker like I keep my word. ready.": [
+   1918015,
+   4425
+  ],
+  "that Joker's older than your strategy, {them}.": [
+   1922690,
+   2375
+  ],
+  "in my day, that play got you uninvited.": [
+   1925315,
+   3560
+  ],
+  "you're loud for somebody reading the instructions.": [
+   1929125,
+   3145
+  ],
+  "I've forgotten better plays than that.": [
+   1932520,
+   2025
+  ],
+  "that's how you carry a partnership, {them}.": [
+   1934795,
+   3655
+  ],
+  "{them} plays like they were raised right.": [
+   1938700,
+   2300
+  ],
+  "respect earned, {them}. twice over.": [
+   1941250,
+   2170
+  ],
+  "Count {S}{P} for me.#0.0": [
+   1943670,
+   2610
+  ],
+  "Count {S}{P} for me.#0.1": [
+   1946530,
+   3835
+  ],
+  "Count {S}{P} for me.#0.2": [
+   1950615,
+   2850
+  ],
+  "Count {S}{P} for me.#1.0": [
+   1953715,
+   2340
+  ],
+  "Count {S}{P} for me.#1.1": [
+   1956305,
+   1755
+  ],
+  "Count {S}{P} for me.#1.2": [
+   1958310,
+   2890
+  ],
+  "Count {S}{P} for me.#2.0": [
+   1961450,
+   2870
+  ],
+  "Count {S}{P} for me.#2.1": [
+   1964570,
+   1630
+  ],
+  "Count {S}{P} for me.#2.2": [
+   1966450,
+   2990
+  ],
+  "Count {S}{P} for me.#3.0": [
+   1969690,
+   1230
+  ],
+  "Count {S}{P} for me.#3.1": [
+   1971170,
+   2315
+  ],
+  "Count {S}{P} for me.#3.2": [
+   1973735,
+   2795
+  ],
+  "Count {S}{P} for me.#4.0": [
+   1976780,
+   2275
+  ],
+  "Count {S}{P} for me.#4.1": [
+   1979305,
+   5200
+  ],
+  "Count {S}{P} for me.#4.2": [
+   1984755,
+   2340
+  ],
+  "Count {S}{P} for me.#5.0": [
+   1987345,
+   2515
+  ],
+  "Count {S}{P} for me.#5.1": [
+   1990110,
+   1770
+  ],
+  "Count {S}{P} for me.#5.2": [
+   1992130,
+   2700
+  ],
+  "Count {S}{P} for me.#6+.0": [
+   1995080,
+   2410
+  ],
+  "Count {S}{P} for me.#6+.1": [
+   1997740,
+   2875
+  ],
+  "Count {S}{P} for me.#6+.2": [
+   2000865,
+   3375
+  ],
+  "Mark me down for {S}{P}.#0.0": [
+   2004490,
+   2950
+  ],
+  "Mark me down for {S}{P}.#0.1": [
+   2007690,
+   2440
+  ],
+  "Mark me down for {S}{P}.#0.2": [
+   2010380,
+   3455
+  ],
+  "Mark me down for {S}{P}.#1.0": [
+   2014085,
+   1905
+  ],
+  "Mark me down for {S}{P}.#1.1": [
+   2016240,
+   5585
+  ],
+  "Mark me down for {S}{P}.#1.2": [
+   2022075,
+   3905
+  ],
+  "Mark me down for {S}{P}.#2.0": [
+   2026230,
+   2145
+  ],
+  "Mark me down for {S}{P}.#2.1": [
+   2028625,
+   2435
+  ],
+  "Mark me down for {S}{P}.#2.2": [
+   2031310,
+   3930
+  ],
+  "Mark me down for {S}{P}.#3.0": [
+   2035490,
+   1830
+  ],
+  "Mark me down for {S}{P}.#3.1": [
+   2037570,
+   2985
+  ],
+  "Mark me down for {S}{P}.#3.2": [
+   2040805,
+   3420
+  ],
+  "Mark me down for {S}{P}.#4.0": [
+   2044475,
+   2420
+  ],
+  "Mark me down for {S}{P}.#4.1": [
+   2047145,
+   3120
+  ],
+  "Mark me down for {S}{P}.#4.2": [
+   2050515,
+   3990
+  ],
+  "Mark me down for {S}{P}.#5.0": [
+   2054755,
+   2505
+  ],
+  "Mark me down for {S}{P}.#5.1": [
+   2057510,
+   3040
+  ],
+  "Mark me down for {S}{P}.#5.2": [
+   2060800,
+   3755
+  ],
+  "Mark me down for {S}{P}.#6+.0": [
+   2064805,
+   2185
+  ],
+  "Mark me down for {S}{P}.#6+.1": [
+   2067240,
+   3215
+  ],
+  "Mark me down for {S}{P}.#6+.2": [
+   2070705,
+   2565
+  ],
+  "Add it up — {T}.#T3": [
+   2073520,
+   1545
+  ],
+  "Add it up — {T}.#T4": [
+   2075315,
+   3120
+  ],
+  "Add it up — {T}.#T5": [
+   2078685,
+   1915
+  ],
+  "Add it up — {T}.#T6": [
+   2080850,
+   2270
+  ],
+  "Add it up — {T}.#T7": [
+   2083370,
+   1895
+  ],
+  "Add it up — {T}.#T8": [
+   2085515,
+   1585
+  ],
+  "Add it up — {T}.#T9": [
+   2087350,
+   1985
+  ],
+  "Add it up — {T}.#T10": [
+   2089585,
+   1385
+  ],
+  "Add it up — {T}.#T11": [
+   2091220,
+   2580
+  ],
+  "Add it up — {T}.#T12": [
+   2094050,
+   2150
+  ],
+  "Add it up — {T}.#T13+": [
+   2096450,
+   2165
+  ],
+  "The second game is usually the first one, played again. Same table. Same terms.": [
+   2098865,
+   5255
+  ],
+  "For you two, the terms change.": [
+   2104370,
+   3060
+  ],
+  "You climbed this whole route holding each other up. So my last test pulls the other way.": [
+   2107680,
+   5430
+  ],
+  "Cutthroat. Four seats, no partners. The hand across from you stops being yours to protect.": [
+   2113360,
+   5780
+  ],
+  "Take it outright and the double pays — to both names. Or keep the clear you earned and walk out together. Decide like people who know what things cost.": [
+   2119390,
+   10100
+  ],
+  "You know this corner. Your people don’t. One of those facts matters tonight.": [
+   2129740,
+   5240
+  ],
+  "You have stood in this room before. Your partner has not. One of you knows what that means.": [
+   2135230,
+   5870
   ]
  }
 }

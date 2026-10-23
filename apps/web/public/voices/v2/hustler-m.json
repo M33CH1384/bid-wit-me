@@ -1480,6 +1480,306 @@
   "Copy.": [
    835475,
    1240
+  ],
+  "beginner's luck, scheduled right now.": [
+   836965,
+   1880
+  ],
+  "I read about this play in a book once.": [
+   839095,
+   1480
+  ],
+  "don't blink. I learned that the hard way.": [
+   840825,
+   2020
+  ],
+  "set by the student. there's a word for that.": [
+   843095,
+   2695
+  ],
+  "y'all got read like the instructions.": [
+   846040,
+   1765
+  ],
+  "the newbie accepts your donation, {opp}.": [
+   848055,
+   1490
+  ],
+  "the Joker? oh, we're acquainted.": [
+   849795,
+   1450
+  ],
+  "a Joker. the deck DOES like me.": [
+   851495,
+   3045
+  ],
+  "house rules: my Joker, my book.": [
+   854790,
+   1725
+  ],
+  "you got played by the tutorial, friend.": [
+   856765,
+   1810
+  ],
+  "that mistake's got resale value. I'll take it.": [
+   858825,
+   2345
+  ],
+  "I charge tuition for lessons like that one.": [
+   861420,
+   1880
+  ],
+  "the student made the number. shocking, I know.": [
+   863550,
+   1785
+  ],
+  "beginner's luck, right on schedule.": [
+   865585,
+   1890
+  ],
+  "made it. the act thanks you for watching.": [
+   867725,
+   2390
+  ],
+  "over the top. tuition's due, {them}.": [
+   870365,
+   1830
+  ],
+  "still the newbie? ask that book.": [
+   872445,
+   2090
+  ],
+  "I keep the change on plays like that.": [
+   874785,
+   1570
+  ],
+  "see? the newbie travels with professionals.": [
+   876605,
+   2965
+  ],
+  "{them} makes me look almost honest.": [
+   879820,
+   1955
+  ],
+  "my 'student' {them}, everybody. prodigy.": [
+   882025,
+   2305
+  ],
+  "Count {S}{P} for me.#0.0": [
+   884580,
+   1465
+  ],
+  "Count {S}{P} for me.#0.1": [
+   886295,
+   4205
+  ],
+  "Count {S}{P} for me.#0.2": [
+   890750,
+   2290
+  ],
+  "Count {S}{P} for me.#1.0": [
+   893290,
+   2295
+  ],
+  "Count {S}{P} for me.#1.1": [
+   895835,
+   2310
+  ],
+  "Count {S}{P} for me.#1.2": [
+   898395,
+   2400
+  ],
+  "Count {S}{P} for me.#2.0": [
+   901045,
+   2235
+  ],
+  "Count {S}{P} for me.#2.1": [
+   903530,
+   2290
+  ],
+  "Count {S}{P} for me.#2.2": [
+   906070,
+   2370
+  ],
+  "Count {S}{P} for me.#3.0": [
+   908690,
+   1235
+  ],
+  "Count {S}{P} for me.#3.1": [
+   910175,
+   2160
+  ],
+  "Count {S}{P} for me.#3.2": [
+   912585,
+   2440
+  ],
+  "Count {S}{P} for me.#4.0": [
+   915275,
+   1200
+  ],
+  "Count {S}{P} for me.#4.1": [
+   916725,
+   1970
+  ],
+  "Count {S}{P} for me.#4.2": [
+   918945,
+   2080
+  ],
+  "Count {S}{P} for me.#5.0": [
+   921275,
+   1585
+  ],
+  "Count {S}{P} for me.#5.1": [
+   923110,
+   2070
+  ],
+  "Count {S}{P} for me.#5.2": [
+   925430,
+   2400
+  ],
+  "Count {S}{P} for me.#6+.0": [
+   928080,
+   1545
+  ],
+  "Count {S}{P} for me.#6+.1": [
+   929875,
+   2035
+  ],
+  "Count {S}{P} for me.#6+.2": [
+   932160,
+   2625
+  ],
+  "Mark me down for {S}{P}.#0.0": [
+   935035,
+   1755
+  ],
+  "Mark me down for {S}{P}.#0.1": [
+   937040,
+   2060
+  ],
+  "Mark me down for {S}{P}.#0.2": [
+   939350,
+   2225
+  ],
+  "Mark me down for {S}{P}.#1.0": [
+   941825,
+   1065
+  ],
+  "Mark me down for {S}{P}.#1.1": [
+   943140,
+   2040
+  ],
+  "Mark me down for {S}{P}.#1.2": [
+   945430,
+   1760
+  ],
+  "Mark me down for {S}{P}.#2.0": [
+   947440,
+   1180
+  ],
+  "Mark me down for {S}{P}.#2.1": [
+   948870,
+   2400
+  ],
+  "Mark me down for {S}{P}.#2.2": [
+   951520,
+   3400
+  ],
+  "Mark me down for {S}{P}.#3.0": [
+   955170,
+   1480
+  ],
+  "Mark me down for {S}{P}.#3.1": [
+   956900,
+   2100
+  ],
+  "Mark me down for {S}{P}.#3.2": [
+   959250,
+   1965
+  ],
+  "Mark me down for {S}{P}.#4.0": [
+   961465,
+   1250
+  ],
+  "Mark me down for {S}{P}.#4.1": [
+   962965,
+   1595
+  ],
+  "Mark me down for {S}{P}.#4.2": [
+   964810,
+   1970
+  ],
+  "Mark me down for {S}{P}.#5.0": [
+   967030,
+   1550
+  ],
+  "Mark me down for {S}{P}.#5.1": [
+   968830,
+   1980
+  ],
+  "Mark me down for {S}{P}.#5.2": [
+   971060,
+   2115
+  ],
+  "Mark me down for {S}{P}.#6+.0": [
+   973425,
+   1235
+  ],
+  "Mark me down for {S}{P}.#6+.1": [
+   974910,
+   2345
+  ],
+  "Mark me down for {S}{P}.#6+.2": [
+   977505,
+   2885
+  ],
+  "Add it up — {T}.#T3": [
+   980640,
+   1390
+  ],
+  "Add it up — {T}.#T4": [
+   982280,
+   1740
+  ],
+  "Add it up — {T}.#T5": [
+   984270,
+   1235
+  ],
+  "Add it up — {T}.#T6": [
+   985755,
+   2190
+  ],
+  "Add it up — {T}.#T7": [
+   988195,
+   1430
+  ],
+  "Add it up — {T}.#T8": [
+   989875,
+   1635
+  ],
+  "Add it up — {T}.#T9": [
+   991760,
+   1675
+  ],
+  "Add it up — {T}.#T10": [
+   993685,
+   1515
+  ],
+  "Add it up — {T}.#T11": [
+   995450,
+   1515
+  ],
+  "Add it up — {T}.#T12": [
+   997215,
+   1680
+  ],
+  "Add it up — {T}.#T13+": [
+   999145,
+   2235
+  ],
+  "Choose carefully.": [
+   1001630,
+   1305
   ]
  }
 }

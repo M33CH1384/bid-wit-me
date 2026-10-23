@@ -1360,6 +1360,254 @@
   "Copy.": [
    1130695,
    675
+  ],
+  "I keep receipts for moments like this.": [
+   1131620,
+   3510
+  ],
+  "somewhere, a grudge just matured.": [
+   1135380,
+   2550
+  ],
+  "I dressed up for this exact moment.": [
+   1138180,
+   3600
+  ],
+  "etched. somewhere permanent, {them}.": [
+   1142030,
+   2930
+  ],
+  "that cut just got its own folder, {them}.": [
+   1145210,
+   3515
+  ],
+  "I don't get mad. I get documentation.": [
+   1148975,
+   2355
+  ],
+  "I got cards, allegedly.": [
+   1151580,
+   3115
+  ],
+  "this hand has been reported to management.": [
+   1154945,
+   3640
+  ],
+  "thirteen cards and every one is evidence.": [
+   1158835,
+   2430
+  ],
+  "Count {S}{P} for me.#0.0": [
+   1161515,
+   2840
+  ],
+  "Count {S}{P} for me.#0.1": [
+   1164605,
+   3015
+  ],
+  "Count {S}{P} for me.#0.2": [
+   1167870,
+   3305
+  ],
+  "Count {S}{P} for me.#1.0": [
+   1171425,
+   3965
+  ],
+  "Count {S}{P} for me.#1.1": [
+   1175640,
+   4620
+  ],
+  "Count {S}{P} for me.#1.2": [
+   1180510,
+   2525
+  ],
+  "Count {S}{P} for me.#2.0": [
+   1183285,
+   2805
+  ],
+  "Count {S}{P} for me.#2.1": [
+   1186340,
+   2990
+  ],
+  "Count {S}{P} for me.#2.2": [
+   1189580,
+   2445
+  ],
+  "Count {S}{P} for me.#3.0": [
+   1192275,
+   2635
+  ],
+  "Count {S}{P} for me.#3.1": [
+   1195160,
+   3285
+  ],
+  "Count {S}{P} for me.#3.2": [
+   1198695,
+   4975
+  ],
+  "Count {S}{P} for me.#4.0": [
+   1203920,
+   3635
+  ],
+  "Count {S}{P} for me.#4.1": [
+   1207805,
+   2260
+  ],
+  "Count {S}{P} for me.#4.2": [
+   1210315,
+   6150
+  ],
+  "Count {S}{P} for me.#5.0": [
+   1216715,
+   2480
+  ],
+  "Count {S}{P} for me.#5.1": [
+   1219445,
+   3885
+  ],
+  "Count {S}{P} for me.#5.2": [
+   1223580,
+   5650
+  ],
+  "Count {S}{P} for me.#6+.0": [
+   1229480,
+   3630
+  ],
+  "Count {S}{P} for me.#6+.1": [
+   1233360,
+   4435
+  ],
+  "Count {S}{P} for me.#6+.2": [
+   1238045,
+   6230
+  ],
+  "Mark me down for {S}{P}.#0.0": [
+   1244525,
+   2650
+  ],
+  "Mark me down for {S}{P}.#0.1": [
+   1247425,
+   2315
+  ],
+  "Mark me down for {S}{P}.#0.2": [
+   1249990,
+   3120
+  ],
+  "Mark me down for {S}{P}.#1.0": [
+   1253360,
+   2230
+  ],
+  "Mark me down for {S}{P}.#1.1": [
+   1255840,
+   4750
+  ],
+  "Mark me down for {S}{P}.#1.2": [
+   1260840,
+   5330
+  ],
+  "Mark me down for {S}{P}.#2.0": [
+   1266420,
+   3640
+  ],
+  "Mark me down for {S}{P}.#2.1": [
+   1270310,
+   3430
+  ],
+  "Mark me down for {S}{P}.#2.2": [
+   1273990,
+   2670
+  ],
+  "Mark me down for {S}{P}.#3.0": [
+   1276910,
+   2935
+  ],
+  "Mark me down for {S}{P}.#3.1": [
+   1280095,
+   3970
+  ],
+  "Mark me down for {S}{P}.#3.2": [
+   1284315,
+   2920
+  ],
+  "Mark me down for {S}{P}.#4.0": [
+   1287485,
+   3180
+  ],
+  "Mark me down for {S}{P}.#4.1": [
+   1290915,
+   4895
+  ],
+  "Mark me down for {S}{P}.#4.2": [
+   1296060,
+   2350
+  ],
+  "Mark me down for {S}{P}.#5.0": [
+   1298660,
+   3305
+  ],
+  "Mark me down for {S}{P}.#5.1": [
+   1302215,
+   2760
+  ],
+  "Mark me down for {S}{P}.#5.2": [
+   1305225,
+   5940
+  ],
+  "Mark me down for {S}{P}.#6+.0": [
+   1311415,
+   3330
+  ],
+  "Mark me down for {S}{P}.#6+.1": [
+   1314995,
+   5730
+  ],
+  "Mark me down for {S}{P}.#6+.2": [
+   1320975,
+   2680
+  ],
+  "Add it up — {T}.#T3": [
+   1323905,
+   2175
+  ],
+  "Add it up — {T}.#T4": [
+   1326330,
+   1325
+  ],
+  "Add it up — {T}.#T5": [
+   1327905,
+   1880
+  ],
+  "Add it up — {T}.#T6": [
+   1330035,
+   2010
+  ],
+  "Add it up — {T}.#T7": [
+   1332295,
+   2365
+  ],
+  "Add it up — {T}.#T8": [
+   1334910,
+   1235
+  ],
+  "Add it up — {T}.#T9": [
+   1336395,
+   1505
+  ],
+  "Add it up — {T}.#T10": [
+   1338150,
+   2285
+  ],
+  "Add it up — {T}.#T11": [
+   1340685,
+   2490
+  ],
+  "Add it up — {T}.#T12": [
+   1343425,
+   2145
+  ],
+  "Add it up — {T}.#T13+": [
+   1345820,
+   3425
   ]
  }
 }

@@ -2376,6 +2376,910 @@
   "We did the thing nobody does — twice in a row, crown and all. And he's still here, still bored, still perfect, because that's what kings do after the story ends. There's nothing left to prove at this table. Play it like a celebration and he'll try to ruin it anyway. That's respect.": [
    2949440,
    16620
+  ],
+  "aight, bet. watch the hands.": [
+   2966310,
+   2905
+  ],
+  "this play got a fan club already.": [
+   2969465,
+   3290
+  ],
+  "unc, tell them I been ready.": [
+   2973005,
+   1780
+  ],
+  "cut, no debate. check the replay.": [
+   2975035,
+   3995
+  ],
+  "that's mine and it's not close.": [
+   2979280,
+   4475
+  ],
+  "snatched. respectfully.": [
+   2984005,
+   4050
+  ],
+  "aight, you got hands. noted.": [
+   2988305,
+   2720
+  ],
+  "that cut had no business working.": [
+   2991275,
+   4655
+  ],
+  "I'm telling unc about this one, {them}.": [
+   2996180,
+   3870
+  ],
+  "set! I'm framing the scoreboard.": [
+   3000300,
+   2760
+  ],
+  "y'all bid like the cards were free.": [
+   3003310,
+   2985
+  ],
+  "that's a setback with a capital SET.": [
+   3006545,
+   5160
+  ],
+  "this hand is giving homework.": [
+   3011955,
+   2550
+  ],
+  "my cards got no service. none.": [
+   3014755,
+   2955
+  ],
+  "whoever dealt this owes me an apology and snacks.": [
+   3017960,
+   3015
+  ],
+  "that's family business done right, {them}!": [
+   3021225,
+   4605
+  ],
+  "{them} really like that. been knew.": [
+   3026080,
+   3025
+  ],
+  "me and {them} share a brain cell and it's WORKING.": [
+   3029355,
+   2115
+  ],
+  "you play like you got the game yesterday.": [
+   3031720,
+   3190
+  ],
+  "that was a choice and the choice was wrong.": [
+   3035160,
+   3040
+  ],
+  "bro really fumbled in 4K.": [
+   3038450,
+   1895
+  ],
+  "Count {S}{P} for me.#0.0": [
+   3040595,
+   2260
+  ],
+  "Count {S}{P} for me.#0.1": [
+   3043105,
+   2365
+  ],
+  "Count {S}{P} for me.#0.2": [
+   3045720,
+   5680
+  ],
+  "Count {S}{P} for me.#1.0": [
+   3051650,
+   2005
+  ],
+  "Count {S}{P} for me.#1.1": [
+   3053905,
+   2015
+  ],
+  "Count {S}{P} for me.#1.2": [
+   3056170,
+   4685
+  ],
+  "Count {S}{P} for me.#2.0": [
+   3061105,
+   3445
+  ],
+  "Count {S}{P} for me.#2.1": [
+   3064800,
+   2500
+  ],
+  "Count {S}{P} for me.#2.2": [
+   3067550,
+   2870
+  ],
+  "Count {S}{P} for me.#3.0": [
+   3070670,
+   3715
+  ],
+  "Count {S}{P} for me.#3.1": [
+   3074635,
+   3865
+  ],
+  "Count {S}{P} for me.#3.2": [
+   3078750,
+   5155
+  ],
+  "Count {S}{P} for me.#4.0": [
+   3084155,
+   2125
+  ],
+  "Count {S}{P} for me.#4.1": [
+   3086530,
+   4035
+  ],
+  "Count {S}{P} for me.#4.2": [
+   3090815,
+   3955
+  ],
+  "Count {S}{P} for me.#5.0": [
+   3095020,
+   1810
+  ],
+  "Count {S}{P} for me.#5.1": [
+   3097080,
+   4650
+  ],
+  "Count {S}{P} for me.#5.2": [
+   3101980,
+   3915
+  ],
+  "Count {S}{P} for me.#6+.0": [
+   3106145,
+   2630
+  ],
+  "Count {S}{P} for me.#6+.1": [
+   3109025,
+   2895
+  ],
+  "Count {S}{P} for me.#6+.2": [
+   3112170,
+   4420
+  ],
+  "Mark me down for {S}{P}.#0.0": [
+   3116840,
+   1255
+  ],
+  "Mark me down for {S}{P}.#0.1": [
+   3118345,
+   2285
+  ],
+  "Mark me down for {S}{P}.#0.2": [
+   3120880,
+   2955
+  ],
+  "Mark me down for {S}{P}.#1.0": [
+   3124085,
+   2805
+  ],
+  "Mark me down for {S}{P}.#1.1": [
+   3127140,
+   3880
+  ],
+  "Mark me down for {S}{P}.#1.2": [
+   3131270,
+   2950
+  ],
+  "Mark me down for {S}{P}.#2.0": [
+   3134470,
+   2610
+  ],
+  "Mark me down for {S}{P}.#2.1": [
+   3137330,
+   2245
+  ],
+  "Mark me down for {S}{P}.#2.2": [
+   3139825,
+   3510
+  ],
+  "Mark me down for {S}{P}.#3.0": [
+   3143585,
+   1470
+  ],
+  "Mark me down for {S}{P}.#3.1": [
+   3145305,
+   4630
+  ],
+  "Mark me down for {S}{P}.#3.2": [
+   3150185,
+   2520
+  ],
+  "Mark me down for {S}{P}.#4.0": [
+   3152955,
+   2535
+  ],
+  "Mark me down for {S}{P}.#4.1": [
+   3155740,
+   3830
+  ],
+  "Mark me down for {S}{P}.#4.2": [
+   3159820,
+   2440
+  ],
+  "Mark me down for {S}{P}.#5.0": [
+   3162510,
+   1310
+  ],
+  "Mark me down for {S}{P}.#5.1": [
+   3164070,
+   5160
+  ],
+  "Mark me down for {S}{P}.#5.2": [
+   3169480,
+   2235
+  ],
+  "Mark me down for {S}{P}.#6+.0": [
+   3171965,
+   1800
+  ],
+  "Mark me down for {S}{P}.#6+.1": [
+   3174015,
+   2510
+  ],
+  "Mark me down for {S}{P}.#6+.2": [
+   3176775,
+   3030
+  ],
+  "Add it up — {T}.#T3": [
+   3180055,
+   2360
+  ],
+  "Add it up — {T}.#T4": [
+   3182665,
+   1670
+  ],
+  "Add it up — {T}.#T5": [
+   3184585,
+   1630
+  ],
+  "Add it up — {T}.#T6": [
+   3186465,
+   3125
+  ],
+  "Add it up — {T}.#T7": [
+   3189840,
+   2725
+  ],
+  "Add it up — {T}.#T8": [
+   3192815,
+   2385
+  ],
+  "Add it up — {T}.#T9": [
+   3195450,
+   1830
+  ],
+  "Add it up — {T}.#T10": [
+   3197530,
+   1660
+  ],
+  "Add it up — {T}.#T11": [
+   3199440,
+   2510
+  ],
+  "Add it up — {T}.#T12": [
+   3202200,
+   2275
+  ],
+  "Add it up — {T}.#T13+": [
+   3204725,
+   3470
+  ],
+  "I'm working with {S}{P}.#0.0": [
+   3208445,
+   2355
+  ],
+  "I'm working with {S}{P}.#0.1": [
+   3211050,
+   3490
+  ],
+  "I'm working with {S}{P}.#0.2": [
+   3214790,
+   3660
+  ],
+  "I'm working with {S}{P}.#1.0": [
+   3218700,
+   1735
+  ],
+  "I'm working with {S}{P}.#1.1": [
+   3220685,
+   2490
+  ],
+  "I'm working with {S}{P}.#1.2": [
+   3223425,
+   3970
+  ],
+  "I'm working with {S}{P}.#2.0": [
+   3227645,
+   3085
+  ],
+  "I'm working with {S}{P}.#2.1": [
+   3230980,
+   4530
+  ],
+  "I'm working with {S}{P}.#2.2": [
+   3235760,
+   2825
+  ],
+  "I'm working with {S}{P}.#3.0": [
+   3238835,
+   2740
+  ],
+  "I'm working with {S}{P}.#3.1": [
+   3241825,
+   2430
+  ],
+  "I'm working with {S}{P}.#3.2": [
+   3244505,
+   4485
+  ],
+  "I'm working with {S}{P}.#4.0": [
+   3249240,
+   1900
+  ],
+  "I'm working with {S}{P}.#4.1": [
+   3251390,
+   4715
+  ],
+  "I'm working with {S}{P}.#4.2": [
+   3256355,
+   3450
+  ],
+  "I'm working with {S}{P}.#5.0": [
+   3260055,
+   2110
+  ],
+  "I'm working with {S}{P}.#5.1": [
+   3262415,
+   2420
+  ],
+  "I'm working with {S}{P}.#5.2": [
+   3265085,
+   3705
+  ],
+  "I'm working with {S}{P}.#6+.0": [
+   3269040,
+   3475
+  ],
+  "I'm working with {S}{P}.#6+.1": [
+   3272765,
+   2620
+  ],
+  "I'm working with {S}{P}.#6+.2": [
+   3275635,
+   3415
+  ],
+  "First time here as a pair — so meet Ray and Miss Pat. His porch, her memory. Ray bids low on purpose and books high just to watch you do the math; Pat remembers every bid ever made up here. Neither of them knows you-two yet. That’s worth one hand of mystery. Spend it well.": [
+   3279300,
+   21795
+  ],
+  "Meet Mr. Coleman and June — his chair, her century. Coleman runs this shop and this table the same way: slow, certain, no wasted motion. June has seen every kind of player twice. You’re a new entry in a very old book, the both of you together. Keep the pages boring.": [
+   3301345,
+   18730
+  ],
+  "Lil’ Man and Trey. This gym is theirs and the noise is a weapon. Lil’ Man’s game swings — some days world-beater, some days beatable — and Trey never met a moment he wouldn’t hype. They don’t know you as a pair yet. New teams confuse reads. Stay confusing.": [
+   3320325,
+   15185
+  ],
+  "Keisha and Teisha — the twins. They finish each other’s sentences and each other’s setups. Keisha bids up, Teisha keeps receipts. Together they’re the first real exam on this route, and you-two are an untested answer sheet. Talk more than feels natural. Pairs die quiet.": [
+   3335760,
+   15660
+  ],
+  "Smoke and Redd. Smoke is patience with a price tag; Redd is a lit match with a bid paddle. They hunt nils for sport on this corner, and my daddy’s name is tangled up in why this stop matters. They don’t know your pair yet — first impressions here get spent, not saved.": [
+   3351670,
+   14745
+  ],
+  "Deacon Ford and Sister Mae. Quiet room, heavy lessons. Nils are worth double down here, which means every quiet bid is a loaded one. They’ll teach you who they are one hand at a time, the way they teach everybody. You-two are new here together — learn faster than they expect.": [
+   3366665,
+   14200
+  ],
+  "Poet and Seven. Poet talks in circles that turn out to be maps; Seven barely talks at all and misses nothing. Blind nils are worth 300 on this roof and the strange is normal. As a pair you’re unread — protect that. The wind up here carries tells.": [
+   3381115,
+   17675
+  ],
+  "Velvet and the Accountant. She smiles like a brochure and under-bids like a trap; he has never once been surprised by a number. Everything up here is priced — including a brand-new partnership, which they’ll try to buy cheap. Don’t sell.": [
+   3399040,
+   16265
+  ],
+  "Captain Block and Brick. The Captain runs this block; Brick is the reason people pay on time. This is as real as the route gets before the legends. They know everybody — except you-two, yet. New pairs either become a problem or a story here. Choose problem.": [
+   3415555,
+   20790
+  ],
+  "Queenie and Ace. Living history, both of them — Queenie’s warmth is real and so is the knife in it. Ace loves a nil more than anybody alive and plays like the cards owe him. You’re the newest thing in an old room. Old rooms respect exactly one thing: winning.": [
+   3436595,
+   14675
+  ],
+  "The King of the Block, and his Ringer — the quietest dangerous man on the route. Two wins in a row takes the crown; anything less is a visit. He’ll read you as a pair before you’ve finished your first bid, so make the read wrong on purpose. Everything before this was tuition.": [
+   3451520,
+   17120
+  ],
+  "Okay, so here’s the wrinkle: Ray and Pat know YOU. They watched you clear this porch, and they’ve had time to think about it. Your partner? Brand-new book to them — and they’ll spend the first hands reading them like a bedtime story. Don’t let the lemonade fool you twice.": [
+   3468890,
+   14080
+  ],
+  "Coleman and June remember you — barbershop memory is forever, and they keep receipts in that chair. What they don’t know is you-two. No rhythm yet, no shortcuts, and June will test your partner’s patience just to watch you react. Play boring early. Boring is safe here.": [
+   3483220,
+   15885
+  ],
+  "Lil’ Man and Trey have the scouting report on you from last time — the jokes are already written. Your partner’s the mystery, and this gym loves a mystery until it solves one. Lil’ Man’s game still runs hot and cold; if your partner stays steady while he swings, we eat.": [
+   3499355,
+   14925
+  ],
+  "The twins remember you — and twins remember EVERYTHING, twice. They don’t know your partner, which means the finishing-each-other’s-sentences show gets one new victim. Keisha will feed them, Teisha will read them. Keep your partner close and your bids honest.": [
+   3514530,
+   14130
+  ],
+  "Smoke knows your game from the last run — priced it already. Your partner walks in unpriced, and on this corner unknown is either armor or a target. Redd will test them early just to put a number on them. My daddy’s debt don’t care who’s new. Play it like that.": [
+   3528910,
+   16410
+  ],
+  "Deacon Ford and Sister Mae remember your last visit down here — every bid, every lesson. Your partner hasn’t heard a single one yet, and down here ignorance gets tithed. Nils are worth double and Mae counts everything. Teach as we go — quietly.": [
+   3545570,
+   19995
+  ],
+  "Poet has theories about you specifically — you’re a chapter now. Your partner is a blank page, and Seven reads blank pages fastest of anybody. Blind nils are worth 300 up here and the wind takes the rest. Keep your partner close; this roof eats strays.": [
+   3565815,
+   15755
+  ],
+  "Velvet has your file — she under-bids on purpose and plays over the number, and she’ll assume your partner does whatever YOU taught them. The Accountant prices pairs, not players, and right now you-two are an unrated bond. Play below your reputation until it costs them.": [
+   3581820,
+   14400
+  ],
+  "Captain Block remembers you — the block keeps books better than the bank. Brick has already forgotten your partner exists, which is the most dangerous thing about Brick. You’re known here; they’re unproven here. That gap is either our cover or our wound.": [
+   3596470,
+   15755
+  ],
+  "Queenie and Ace have a table history with you — Ace loves a nil like rent’s due and he knows your tells from last time. Your partner is the only mystery left in this room, and legends solve mysteries for sport. Let them be the surprise. Just make it a good one.": [
+   3612475,
+   13625
+  ],
+  "He remembers you. The King forgets nothing and forgives less — and the Ringer’s silence will be spent entirely on your partner, the one unknown in the room. Two wins in a row or the crown stays. You’re not new here — so there’s no excuse left to hide behind. Neither is there for them.": [
+   3626350,
+   15940
+  ],
+  "Back to Ray’s porch, together this time. Last run he read your pair rhythm by the third hand — all porch, no hurry, and Pat counted every crack in it. So change the tempo on him: talk more, bid plain, and don’t let the lemonade slow your reads down.": [
+   3642540,
+   17675
+  ],
+  "Coleman and June have seen you-two now — the book has a page with both your names on it. Last time June read the hesitation between your bids like print. Kill the tell: decide together early, bid it clean, and make her read a new chapter tonight.": [
+   3660465,
+   13260
+  ],
+  "The Rec remembers you-two — mostly the noise you made losing. Lil’ Man’s swing is still the whole scouting report: when he runs hot he’s a problem, when he cools he’s a donation. Ride out the hot streak together, don’t chase it, and take the gym quiet.": [
+   3673975,
+   13170
+  ],
+  "The twins have tape on you-two now — a whole cookout’s worth. Last time they finished your sentences AND your setups, which means your signals are family knowledge. So change the language tonight: fewer looks, more plain talk, and make them learn a new pair from scratch.": [
+   3687395,
+   13895
+  ],
+  "Smoke priced you-two last run, and the Corner doesn’t do discounts on a second read. He knows which of you hunts and which of you hesitates. Switch the jobs tonight — let the hunter play patient, the patient one draw blood — and make his price wrong.": [
+   3701540,
+   13245
+  ],
+  "Ford and Mae have a lesson plan with you-two’s names on it now — they kept every bid from last time, and down here nils pay double for students who don’t adjust. Adjust quietly: protect the quiet bids, count everything twice, and let the basement teach somebody else tonight.": [
+   3715035,
+   16175
+  ],
+  "Poet’s had time to write theories about you-two, and Seven’s read the draft. Last run the wind took your tells one hand at a time. So give them less weather to read: tighter bids, no victory laps at three hundred points of sky, and finish each other’s thoughts silently.": [
+   3731460,
+   15200
+  ],
+  "Velvet’s file on you-two has a second entry now, and the Accountant’s priced the pair, not just the players. Last time you paid retail for your own reputation. Play below it tonight — bid under your names, let their math chase a pair that isn’t in the file.": [
+   3746910,
+   15665
+  ],
+  "The block keeps books, and you-two have a page now — last run’s page, with the ending nobody here forgot. Captain Block will open with exactly the pressure that worked before. Expect it, eat it together, and make him turn a page he hasn’t written yet.": [
+   3762825,
+   14490
+  ],
+  "Queenie and Ace have eaten with you-two once — legends don’t forget a meal or a mistake. Last time Ace hunted his nil through your whole game and found it. This time make the hunt expensive: watch the quiet bids as a pair, and guard your books like history’s watching. It is.": [
+   3777565,
+   15140
+  ],
+  "You’ve stood in this room as a pair and left without the crown — he remembers the shape of that night, and so does the quiet one beside him. Two wins in a row is still the whole price. Whatever he read in you-two last time, make the second read a different book.": [
+   3792955,
+   14680
+  ],
+  "You-two hold this porch — Ray’s said so twice this week, which for Ray is a parade. Champions don’t get the friendly version twice, though: Pat’s kept every page of your pair rhythm. So enjoy the lemonade, then change one habit they wrote down and make the old book wrong.": [
+   3807885,
+   15845
+  ],
+  "The book says you-two passed this class — Coleman’s handwriting, June’s underline. Replays in that chair don’t get the student discount, though: they’ll test whether the clear was learning or luck. Play it boring, play it by the book, and make them grade the same exam twice.": [
+   3823980,
+   15505
+  ],
+  "You-two own a piece of this gym now — the Rec doesn’t give those back, but it does re-test them loud. Lil’ Man’s been telling YOUR story all week, his version, where he almost had you. Let him talk. Then run the same steady pair game and correct the record.": [
+   3839735,
+   14010
+  ],
+  "The twins clear a plate for you-two now — that’s family, and family is exactly the danger. They’ve SEEN your pair finish each other’s setups, so tonight the show runs both directions. Keep one signal they haven’t catalogued, spend it late, and don’t let the welcome make you soft.": [
+   3853995,
+   13790
+  ],
+  "Smoke doesn’t congratulate — the best you get is the price going up, and yours did. You-two cleared this corner together, which makes you a known quantity with a known number. Known gets hunted here. Play like strangers with a shared secret and make the corner re-price the pair.": [
+   3868035,
+   16240
+  ],
+  "Mae put you-two in the book with the good handwriting — cleared, together, under this roof. That earns respect down here, and respect earns their BEST lessons, not their kindest. Nils still pay double and Mae still counts everything. Bring the same quiet discipline and one new wrinkle she hasn’t tallied.": [
+   3884525,
+   19295
+  ],
+  "You-two have a chapter in Poet’s book now — a finished one, which is rarer than you’d think up here. Seven reads finished chapters closest of all. The wind still takes the careless, and blind nils still pay three hundred. Play like the pair that already knows how the story ends.": [
+   3904070,
+   15790
+  ],
+  "Your pair’s bond got rated upstairs — cleared at this address, together, and Velvet doesn’t upgrade files for free. The re-test is the trap: they’ll play you like the file, every lean included. So be the file for two hands, then be somebody the Accountant has to re-audit mid-game.": [
+   3920110,
+   17690
+  ],
+  "The block knows you-two cleared it under these lights — that buys a nod from the Captain, not a rematch discount. Brick remembers every book of the clear, including the lucky ones. Run the replay like you belong on the page you’re already on: no proving, just collecting.": [
+   3938050,
+   14010
+  ],
+  "You-two ate at this table and left with the legends’ respect — Queenie said so, which means it’s in the record. Champions’ replays are where legends check whether it was real. Ace will hunt the same nil; Queenie will watch how you carry winning. Carry it quiet and carry it together.": [
+   3952310,
+   16195
+  ],
+  "The crown carries you-two’s names now — both of them, together, in his archive and everybody else’s. Coming back as champions of this room doesn’t soften it; he collects rent on legends too. Two in a row bought the crown once. Whatever he brings for the holders, meet it like holders.": [
+   3968755,
+   16505
+  ],
+  "Y’all seeing this? My people came to WORK today.": [
+   3985510,
+   2270
+  ],
+  "Go ahead and smile for the table. This score ain’t close.": [
+   3988030,
+   3965
+  ],
+  "They gon’ need a map to find their way back in this one.": [
+   3992245,
+   2270
+  ],
+  "I tried to tell y’all how this was gon’ go.": [
+   3994765,
+   2070
+  ],
+  "That’s not luck, that’s a pattern. Look at the board.": [
+   3997085,
+   3095
+  ],
+  "Somebody check on them. Quiet over there all of a sudden.": [
+   4000430,
+   3720
+  ],
+  "We not even playing our best and it’s still like this.": [
+   4004400,
+   3475
+  ],
+  "Keep stacking. I like the view from up here.": [
+   4008125,
+   5945
+  ],
+  "Y’all had a plan? What was it — lose pretty?": [
+   4014320,
+   3610
+  ],
+  "This the part where they start doing math out loud. Sad.": [
+   4018180,
+   3820
+  ],
+  "Okay. Y’all playing like you met in the parking lot.": [
+   4022250,
+   3825
+  ],
+  "I give the rundown, y’all give away books. Teamwork.": [
+   4026325,
+   5375
+  ],
+  "We down and y’all still cute about it. Focus.": [
+   4031950,
+   6495
+  ],
+  "I know two players. They just not here yet.": [
+   4038695,
+   4735
+  ],
+  "I’m up here guiding, y’all down there wandering. Pick a direction.": [
+   4043680,
+   4585
+  ],
+  "Down bad ain’t a strategy. I’ve checked.": [
+   4048515,
+   3100
+  ],
+  "Y’all owe the table an apology and me a comeback.": [
+   4051865,
+   2670
+  ],
+  "If we lose to this pair, I will be telling this story forever. Motivated yet?": [
+   4054785,
+   6215
+  ],
+  "Books. We need BOOKS. I know y’all know what those are.": [
+   4061250,
+   4415
+  ],
+  "This is fixable, but not at this speed. Wake up.": [
+   4065915,
+   3520
+  ],
+  "Big lead. Don’t get cute — cute is how leads die.": [
+   4069685,
+   3865
+  ],
+  "Up like this, the only enemy is boredom. Stay mean.": [
+   4073800,
+   2900
+  ],
+  "Down bad, not buried. There’s a difference and it’s this hand.": [
+   4076950,
+   4875
+  ],
+  "A comeback needs one hand to turn. Make it this one.": [
+   4082075,
+   8155
+  ],
+  "Match point. Finish it like you mean it.": [
+   4090480,
+   5040
+  ],
+  "One hand between us and the story I get to tell. Close it.": [
+   4095770,
+   3475
+  ],
+  "They’re at match point. Everything they do now, charge them for it.": [
+   4099495,
+   4125
+  ],
+  "A season’s worth of pride on this hand. Play it like it.": [
+   4103870,
+   3430
+  ],
+  "SET. That’s the sound of a plan dying.": [
+   4107550,
+   3505
+  ],
+  "They bid it, we buried it. Next.": [
+   4111305,
+   2815
+  ],
+  "A set ain’t the end. It’s information. Use it.": [
+   4114370,
+   6855
+  ],
+  "That one cost us. Don’t let it charge rent.": [
+   4121475,
+   4100
+  ],
+  "THERE it is. That’s the team I signed up to guide.": [
+   4125825,
+   3140
+  ],
+  "From the dirt to the lead. Remember this feeling.": [
+   4129215,
+   3865
+  ],
+  "New hand. Same mission. Talk to each other.": [
+   4133330,
+   4760
+  ],
+  "Books first, highlights later.": [
+   4138340,
+   4695
+  ],
+  "Watch their first plays — they always tell on themselves early.": [
+   4143285,
+   4075
+  ],
+  "Set the tone this hand. Don’t wait for permission.": [
+   4147610,
+   7265
+  ],
+  "Nil CLEAN. That’s how you disappear on a table.": [
+   4155125,
+   2765
+  ],
+  "Nil BUSTED. Somebody over there is doing paperwork.": [
+   4158140,
+   4280
+  ],
+  "The nil died. Shake it off — it happens to hunters too.": [
+   4162670,
+   5020
+  ],
+  "Ray taught half this block on this porch. Beating him here means something.": [
+   4167940,
+   6180
+  ],
+  "Pat keeps lemonade cold and grudges warm. Mind both.": [
+   4174370,
+   3555
+  ],
+  "Coleman’s shop, Coleman’s rules — a hundred years of scores settled in that chair.": [
+   4178175,
+   4785
+  ],
+  "June’s been running this table since before y’all were a rumor.": [
+   4183210,
+   3200
+  ],
+  "This gym has seen a thousand runs. The walls remember who folded.": [
+   4186660,
+   3710
+  ],
+  "Lil’ Man feeds off this crowd. Starve him quiet.": [
+   4190620,
+   4095
+  ],
+  "The twins share everything — including whatever they’re plotting right now.": [
+   4194965,
+   5920
+  ],
+  "Keisha’s grill, Teisha’s mouth. Both stay hot.": [
+   4201135,
+   3390
+  ],
+  "Smoke don’t waste words or books. Every one he keeps is a statement.": [
+   4204775,
+   4780
+  ],
+  "My daddy’s name still lives on this corner. Play like you know that.": [
+   4209805,
+   4385
+  ],
+  "Down here the cards are quiet and the lessons aren’t.": [
+   4214440,
+   3575
+  ],
+  "Sister Mae prays for everybody. Then she plays like she didn’t.": [
+   4218265,
+   3390
+  ],
+  "Poet sees four moves ahead and three conspiracies deeper.": [
+   4221905,
+   4260
+  ],
+  "Seven says nothing because the cards say it for him.": [
+   4226415,
+   4745
+  ],
+  "Velvet smiles like a landlord. Everything here is priced, including you.": [
+   4231410,
+   5350
+  ],
+  "The Accountant has already counted this game. Prove his math wrong.": [
+   4237010,
+   4990
+  ],
+  "The Captain runs this block like a shift. Brick enforces the schedule.": [
+   4242250,
+   5795
+  ],
+  "Under these lights, reputations get made and collected.": [
+   4248295,
+   3400
+  ],
+  "Queenie and Ace have buried better teams than yours. Respectfully: become harder to bury.": [
+   4251945,
+   5700
+  ],
+  "Every legend at this table earned the chair. Earn yours.": [
+   4257895,
+   3805
+  ],
+  "Everything on this route was a rehearsal for this room.": [
+   4261950,
+   5615
+  ],
+  "The King don’t defend a crown. He collects rent on it.": [
+   4267815,
+   5460
+  ],
+  "They remember you. That’s respect and a warning in the same outfit.": [
+   4273525,
+   4045
+  ],
+  "New partner, same reputation walking in ahead of you. Carry it right.": [
+   4277820,
+   4435
+  ],
+  "They’re not sizing up the new one. They’re sizing up what YOU became.": [
+   4282505,
+   4335
+  ],
+  "See how they watch your partner? That’s your old scouting report, expiring.": [
+   4287090,
+   4500
+  ],
+  "You know this room. Your partner’s learning it. Be the tour guide AND the muscle.": [
+   4291840,
+   5670
+  ],
+  "History’s a headline. This hand is the story. Write it.": [
+   4297760,
+   5960
+  ],
+  "Cutthroat. So now I get to watch my own people get greedy.": [
+   4303970,
+   5020
+  ],
+  "He’s not testing your cards. He’s testing your friendship’s price.": [
+   4309240,
+   4450
+  ],
+  "One of you can take the double. The other one’s pride is the ante.": [
+   4313940,
+   5060
+  ],
+  "If you cut your own partner, make it count. Halfway betrayal is just losing twice.": [
+   4319250,
+   5325
+  ],
+  "Partners an hour ago. Act like you remember — or don’t. That’s the game he wanted.": [
+   4324825,
+   7745
+  ],
+  "Y’all letting HIM take this? In OUR finale?": [
+   4332820,
+   4865
+  ],
+  "The King is smiling. He wins something even when he loses. Remember that.": [
+   4337935,
+   4685
+  ],
+  "Three sets and you’re watching from the rail with me. Hurts, don’t it.": [
+   4342870,
+   5015
+  ],
+  "One throne-adjacent chair, emptied by MY people. Continue.": [
+   4348135,
+   4090
+  ],
+  "Two left. Somebody’s leaving this table a story the other one tells forever.": [
+   4352475,
+   5785
+  ],
+  "THERE. The double is ours — and yes, I’m saying ours.": [
+   4358510,
+   5045
+  ],
+  "One of mine took the crown and the other took the lesson. The double’s ours. The story’s… gonna need its own night.": [
+   4363805,
+   6505
+  ],
+  "That’s how a pair becomes a problem on this block.": [
+   4370560,
+   3990
+  ],
+  "Told them who you were. Then you showed them. Both count.": [
+   4374800,
+   2705
+  ],
+  "We lost a match, not the plot. Run it back when you’re ready.": [
+   4377755,
+   3185
+  ],
+  "They earned tonight. We earned the notes. Spend them.": [
+   4381190,
+   4200
+  ],
+  "The route is DONE — together. Put both names on it.": [
+   4385640,
+   5060
+  ],
+  "The crown stays his tonight. The wanting stays yours. That’s not nothing.": [
+   4390950,
+   6870
   ]
  }
 }

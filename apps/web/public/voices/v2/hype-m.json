@@ -1604,6 +1604,282 @@
   "Copy.": [
    994815,
    1000
+  ],
+  "TURN ME UP! IT'S TIME!": [
+   996065,
+   2970
+  ],
+  "I BROUGHT ENOUGH ENERGY FOR THE WHOLE TABLE!": [
+   999285,
+   3225
+  ],
+  "COUNTDOWN'S OVER! IT'S MY TURN!": [
+   1002760,
+   2055
+  ],
+  "MY PARTNER IS THE HEADLINE!!!": [
+   1005065,
+   2005
+  ],
+  "{them} JUST BROKE THE VOLUME LIMIT!!!": [
+   1007320,
+   2095
+  ],
+  "PARTNER OF THE CENTURY!!! {them}!!!": [
+   1009665,
+   1545
+  ],
+  "SET!!! AND THE CROWD GOES MILD — FOR Y'ALL!!!": [
+   1011460,
+   3535
+  ],
+  "THAT BID JUST FILED FOR BANKRUPTCY!!!": [
+   1015245,
+   1780
+  ],
+  "DOWN GOES THE CONTRACT!!! DOWN IT GOES!!!": [
+   1017275,
+   3365
+  ],
+  "JOKER!!! SHOW SOME RESPECT!!!": [
+   1020890,
+   1825
+  ],
+  "THE MAIN EVENT JUST ARRIVED!!!": [
+   1022965,
+   1765
+  ],
+  "THAT JOKER PAYS RENT HERE!!!": [
+   1024980,
+   1800
+  ],
+  "THAT PLAY NEEDED A PERMIT AND IT DIDN'T HAVE ONE!": [
+   1027030,
+   4040
+  ],
+  "YOU'RE NOT LOSING QUIETLY AND I RESPECT IT!!!": [
+   1031320,
+   2150
+  ],
+  "SOMEBODY TURN THAT PLAY DOWN, IT'S EMBARRASSING THE TABLE!!!": [
+   1033720,
+   2985
+  ],
+  "Count {S}{P} for me.#0.0": [
+   1036955,
+   1835
+  ],
+  "Count {S}{P} for me.#0.1": [
+   1039040,
+   1750
+  ],
+  "Count {S}{P} for me.#0.2": [
+   1041040,
+   1890
+  ],
+  "Count {S}{P} for me.#1.0": [
+   1043180,
+   2635
+  ],
+  "Count {S}{P} for me.#1.1": [
+   1046065,
+   3840
+  ],
+  "Count {S}{P} for me.#1.2": [
+   1050155,
+   2120
+  ],
+  "Count {S}{P} for me.#2.0": [
+   1052525,
+   2630
+  ],
+  "Count {S}{P} for me.#2.1": [
+   1055405,
+   2040
+  ],
+  "Count {S}{P} for me.#2.2": [
+   1057695,
+   2355
+  ],
+  "Count {S}{P} for me.#3.0": [
+   1060300,
+   1310
+  ],
+  "Count {S}{P} for me.#3.1": [
+   1061860,
+   2045
+  ],
+  "Count {S}{P} for me.#3.2": [
+   1064155,
+   3525
+  ],
+  "Count {S}{P} for me.#4.0": [
+   1067930,
+   1370
+  ],
+  "Count {S}{P} for me.#4.1": [
+   1069550,
+   3105
+  ],
+  "Count {S}{P} for me.#4.2": [
+   1072905,
+   2075
+  ],
+  "Count {S}{P} for me.#5.0": [
+   1075230,
+   1750
+  ],
+  "Count {S}{P} for me.#5.1": [
+   1077230,
+   2315
+  ],
+  "Count {S}{P} for me.#5.2": [
+   1079795,
+   2190
+  ],
+  "Count {S}{P} for me.#6+.0": [
+   1082235,
+   1605
+  ],
+  "Count {S}{P} for me.#6+.1": [
+   1084090,
+   2640
+  ],
+  "Count {S}{P} for me.#6+.2": [
+   1086980,
+   3000
+  ],
+  "Mark me down for {S}{P}.#0.0": [
+   1090230,
+   1765
+  ],
+  "Mark me down for {S}{P}.#0.1": [
+   1092245,
+   3310
+  ],
+  "Mark me down for {S}{P}.#0.2": [
+   1095805,
+   1555
+  ],
+  "Mark me down for {S}{P}.#1.0": [
+   1097610,
+   1280
+  ],
+  "Mark me down for {S}{P}.#1.1": [
+   1099140,
+   2005
+  ],
+  "Mark me down for {S}{P}.#1.2": [
+   1101395,
+   2105
+  ],
+  "Mark me down for {S}{P}.#2.0": [
+   1103750,
+   1375
+  ],
+  "Mark me down for {S}{P}.#2.1": [
+   1105375,
+   2270
+  ],
+  "Mark me down for {S}{P}.#2.2": [
+   1107895,
+   2860
+  ],
+  "Mark me down for {S}{P}.#3.0": [
+   1111005,
+   3005
+  ],
+  "Mark me down for {S}{P}.#3.1": [
+   1114260,
+   2805
+  ],
+  "Mark me down for {S}{P}.#3.2": [
+   1117315,
+   2380
+  ],
+  "Mark me down for {S}{P}.#4.0": [
+   1119945,
+   1805
+  ],
+  "Mark me down for {S}{P}.#4.1": [
+   1122000,
+   2425
+  ],
+  "Mark me down for {S}{P}.#4.2": [
+   1124675,
+   1985
+  ],
+  "Mark me down for {S}{P}.#5.0": [
+   1126910,
+   1525
+  ],
+  "Mark me down for {S}{P}.#5.1": [
+   1128685,
+   2480
+  ],
+  "Mark me down for {S}{P}.#5.2": [
+   1131415,
+   2245
+  ],
+  "Mark me down for {S}{P}.#6+.0": [
+   1133910,
+   1690
+  ],
+  "Mark me down for {S}{P}.#6+.1": [
+   1135850,
+   2245
+  ],
+  "Mark me down for {S}{P}.#6+.2": [
+   1138345,
+   2745
+  ],
+  "Add it up — {T}.#T3": [
+   1141340,
+   1700
+  ],
+  "Add it up — {T}.#T4": [
+   1143290,
+   1305
+  ],
+  "Add it up — {T}.#T5": [
+   1144845,
+   2260
+  ],
+  "Add it up — {T}.#T6": [
+   1147355,
+   1910
+  ],
+  "Add it up — {T}.#T7": [
+   1149515,
+   2035
+  ],
+  "Add it up — {T}.#T8": [
+   1151800,
+   1995
+  ],
+  "Add it up — {T}.#T9": [
+   1154045,
+   1740
+  ],
+  "Add it up — {T}.#T10": [
+   1156035,
+   2580
+  ],
+  "Add it up — {T}.#T11": [
+   1158865,
+   1925
+  ],
+  "Add it up — {T}.#T12": [
+   1161040,
+   2560
+  ],
+  "Add it up — {T}.#T13+": [
+   1163850,
+   2890
+  ],
+  "New teammate, same old you. We got the scouting report already!": [
+   1166990,
+   4410
   ]
  }
 }
