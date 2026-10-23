@@ -152,10 +152,10 @@ export function settingsForContext(s: SoundSettings, ctx: SoundContext): SoundSe
   return patched;
 }
 /** venue ambience beds (see venues.ts → bed) */
-export type VenueBed = 'none' | 'cookout' | 'mansion' | 'barbershop' | 'basement' | 'rooftop' | 'jazz' | 'casino' | 'beach' | 'kitchen' | 'yacht' | 'street' | 'rec';
+export type VenueBed = 'none' | 'cookout' | 'mansion' | 'barbershop' | 'basement' | 'rooftop' | 'jazz' | 'casino' | 'beach' | 'kitchen' | 'yacht' | 'street' | 'rec' | 'porch';
 export type MusicStatus = 'off' | 'loading' | 'playing' | 'error';
 
-export interface Track { file: string; title: string; artist: string; license: string; source: string; /** exact attribution line (CC BY) */ credit?: string; /** story-score tracks: excluded from the general shuffle, reached only via the story mood (setStoryStop) */ storyOnly?: boolean }
+export interface Track { file: string; title: string; artist: string; license: string; source: string; /** exact attribution line (CC BY) */ credit?: string; /** story-score tracks: excluded from the general shuffle, reached only via the story mood (setStoryStop) */ storyOnly?: boolean; /** the menu theme: excluded from the general shuffle, reached only in menu context (pickNext) */ menuOnly?: boolean }
 /** Background playlist (lazy-loaded, 128 kbps MP3). Credits: see CREDITS.md and the in-game Credits screen. */
 export const TRACKS: Track[] = [
   { file: 'windows-down', title: 'Windows Down', artist: 'Holizna', license: 'CC0', source: 'https://opengameart.org/content/lo-fi-and-chill-collection' },
@@ -183,19 +183,47 @@ export const TRACKS: Track[] = [
   { file: 'story-theme-sparse', title: 'Riding Shotgun — Slow (Sparse Theme)', artist: 'Bid Wit Me', license: 'Original', source: '', storyOnly: true },
   { file: 'story-danger', title: 'The Corner (Danger Bed)', artist: 'Bid Wit Me', license: 'Original', source: '', storyOnly: true },
   { file: 'story-king', title: 'The King of the Block', artist: 'Bid Wit Me', license: 'Original', source: '', storyOnly: true },
+  // Sound sample (2026-10-23): the film-mix pilot. Porchlight is the Porch stop's own score
+  // (storyOnly, reached via the 'porch' mood); Come On In is the menu theme (menuOnly,
+  // reached only in menu context). Same in-house pipeline as the story score — original
+  // compositions, synthesized and rendered for Bid Wit Me, no samples. Appended last so
+  // every existing track index (host-music stamps) keeps its meaning.
+  { file: 'porch-theme', title: 'Porchlight (Porch Theme)', artist: 'Bid Wit Me', license: 'Original', source: '', storyOnly: true },
+  { file: 'menu-soul', title: 'Come On In (Menu Theme)', artist: 'Bid Wit Me', license: 'Original', source: '', menuOnly: true },
 ];
 /** Story mood → the score track that carries it (spatial.ts STORY_STOP_AUDIO picks the mood per stop). */
-export const STORY_TRACK_FILE: Record<'theme' | 'sparse' | 'danger' | 'king', string> = { theme: 'story-theme', sparse: 'story-theme-sparse', danger: 'story-danger', king: 'story-king' };
+export const STORY_TRACK_FILE: Record<'theme' | 'sparse' | 'danger' | 'king' | 'porch', string> = { theme: 'story-theme', sparse: 'story-theme-sparse', danger: 'story-danger', king: 'story-king', porch: 'porch-theme' };
 /** The story signature motif (D–F–A–C over Dm): the same four notes open the theme track and
  *  this sting; played at scene-in / stop clear / unlock so story mode sounds like one production. */
 export const STORY_MOTIF_HZ = [587.33, 698.46, 880, 1046.5];
+
+/* ---------- The film mix (sound sample, 2026-10-23) ----------
+ * The Porch pilot for the sound revamp: the mix is mixed like a scene, not a playlist.
+ * The SCORE (the music deck playing 'porch-theme') runs through a treatment stage in the
+ * music chain (lowpass + gain); the BED is three layers on their own gain stages — room
+ * tone / close human sounds / the outside world (buildBed 'porch'). A FilmTargets value
+ * says where every stage sits; the engine rides the stages toward it. Values are
+ * multipliers on each layer's built-in level (1 = as built). */
+/** One film-mix state: score filter cutoff (Hz), score gain, and the three bed layers. */
+export interface FilmTargets { scoreHz: number; scoreGain: number; tone: number; human: number; world: number }
+/** Treatment fully open: every surface that is not the Porch sits here, byte-identical. */
+export const FILM_NEUTRAL: FilmTargets = { scoreHz: 18000, scoreGain: 1, tone: 1, human: 1, world: 1 };
+/** Bidding: the score thins to a dark whisper — the room carries the decision, not the music. */
+export const FILM_BIDDING: FilmTargets = { scoreHz: 720, scoreGain: 0.38, tone: 1, human: 1.15, world: 0.9 };
+/** A set lands: the score drops a register and ducks while the room reacts, then breathes back. */
+export const FILM_SET_DIP: FilmTargets = { scoreHz: 380, scoreGain: 0.3, tone: 1, human: 1.6, world: 0.55 };
+/** The nuke / mega: everything ducks — score, tone, people, street — under the blast. */
+export const FILM_BLAST: FilmTargets = { scoreHz: 300, scoreGain: 0.25, tone: 0.2, human: 0.25, world: 0.15 };
+/** The resting mix for a game phase at the Porch. Only bidding reshapes the scene; every
+ *  other phase (playing, handOver, gameOver, scenes) breathes at the full mix. */
+export function filmTargets(phase: string): FilmTargets { return phase === 'bidding' ? FILM_BIDDING : FILM_NEUTRAL; }
 /** Exact attribution lines for the CC BY tracks (CREDITS.md + in-game Credits). */
 export const CC_BY_LINES = TRACKS.filter((t) => t.credit).map((t) => t.credit!);
 export const CC_BY_LINE = CC_BY_LINES[0]!;
 const XFADE = 4; // seconds of crossfade between tracks
 
-/** Indices of the tracks the general shuffle may play — every track except the storyOnly score. */
-export function generalPool(): number[] { return TRACKS.map((t, i) => i).filter((i) => !TRACKS[i]!.storyOnly); }
+/** Indices of the tracks the general shuffle may play — every track except the storyOnly score and the menuOnly menu theme. */
+export function generalPool(): number[] { return TRACKS.map((t, i) => i).filter((i) => !TRACKS[i]!.storyOnly && !TRACKS[i]!.menuOnly); }
 
 /** Shuffle order with no immediate repeat across bag boundaries. */
 export function nextShuffle(prev: number | null, bag: number[], count: number, rnd = Math.random): { pick: number; bag: number[] } {
@@ -383,7 +411,7 @@ class Engine {
     // venue's music pin / lean must not bleed into menu music (the bed already stops via
     // the table's own cleanup). The next table applies its identity fresh.
     if (ctx === 'menu') { this.roomStyle = null; this.leanArmed = false; }
-    if (ctx === 'menu') { this.storyMood = null; this.storyBedOverride = null; } // story score never bleeds into menus either
+    if (ctx === 'menu') { this.storyMood = null; this.storyBedOverride = null; this.refreshFilm(); } // story score never bleeds into menus either
     const t = settingsForContext(this.settings, ctx);
     this.captureScene = false;
     try { this.set({ music: t.music, ambient: t.ambient, venueSound: t.venueSound }); } finally { this.captureScene = true; }
@@ -487,6 +515,15 @@ class Engine {
   storyMood: StoryMood | null = null;
   private storyBedOverride: VenueBed | null = null;
   private themeTurn = false;
+  /** Film mix state (sound sample): the score-treatment stage in the music chain, the
+   *  Porch bed's layer gains, and the last phase Table reported. All inert — treatment
+   *  open, layers at unity — unless storyMood === 'porch'. */
+  private filmFilter: BiquadFilterNode | null = null;
+  private filmGain: GainNode | null = null;
+  private filmLayers: { tone: GainNode; human: GainNode; world: GainNode } | null = null;
+  private filmPhase = 'playing';
+  private filmSeq = 0;
+  private filmTimer: number | null = null;
   /** the current venue's music lean is armed: the next pick is one of its signature tracks */
   private leanArmed = false;
   private musicBus: GainNode | null = null;
@@ -504,8 +541,16 @@ class Engine {
   private buildMusicChain(): GainNode {
     const c = this.ctx!;
     const input = c.createGain();
+    // Film mix score-treatment stage (sound sample): every deck runs through this
+    // lowpass + gain before the widening chain. The film controller rides it at the
+    // Porch; everywhere else it sits fully open (18 kHz / unity), so no other surface's
+    // sound changes. Rebuilt with the chain on a context rebuild — applyFilmMix at the
+    // end of this method re-applies the current film state to the fresh nodes.
+    this.filmFilter = c.createBiquadFilter(); this.filmFilter.type = 'lowpass'; this.filmFilter.frequency.value = 18000; this.filmFilter.Q.value = 0.4;
+    this.filmGain = c.createGain();
+    input.connect(this.filmFilter).connect(this.filmGain);
     const split = c.createChannelSplitter(2);
-    input.connect(split);
+    this.filmGain.connect(split);
     const mid = c.createGain(); const side = c.createGain();
     const lM = c.createGain(); lM.gain.value = 0.5; const rM = c.createGain(); rM.gain.value = 0.5;
     const lS = c.createGain(); lS.gain.value = 0.5; const rS = c.createGain(); rS.gain.value = -0.5;
@@ -525,6 +570,7 @@ class Engine {
     this.musicDuck = c.createGain();
     merge.connect(bus).connect(this.musicDuck).connect(c.destination);
     this.musicBus = bus;
+    this.applyFilmMix();
     return input;
   }
 
@@ -604,7 +650,7 @@ class Engine {
     // danger stops loop the danger bed, the King loops his arrangement, and everywhere else in
     // story mode the theme alternates with the normal rotation so the mode has a signature
     // sound without playing one track to death.
-    if (this.storyMood === 'danger' || this.storyMood === 'king' || this.storyMood === 'sparse') {
+    if (this.storyMood === 'danger' || this.storyMood === 'king' || this.storyMood === 'sparse' || this.storyMood === 'porch') {
       const idx = TRACKS.findIndex((t) => t.file === STORY_TRACK_FILE[this.storyMood!]);
       if (idx >= 0) return idx;
     }
@@ -630,6 +676,15 @@ class Engine {
       this.leanArmed = false;
       const idxs = music.lean.map((f) => TRACKS.findIndex((t) => t.file === f)).filter((i) => i >= 0 && i !== this.lastTrack);
       if (idxs.length) { const pick = idxs[Math.floor(Math.random() * idxs.length)]!; this.lastTrack = pick; return pick; }
+    }
+    // Menu theme (sound sample, 2026-10-23): menus have ONE signature — the original soul
+    // instrumental — instead of a draw from the general pool. Only menu context reaches
+    // this branch; at a table the context is 'game', and the track is menuOnly so the
+    // shuffle below can never pick it either. Like the looping story moods, returning the
+    // same index every pick makes the decks crossfade the track into itself.
+    if (this.context === 'menu') {
+      const idx = TRACKS.findIndex((t) => t.file === 'menu-soul');
+      if (idx >= 0) return idx;
     }
     // General shuffle — over the general pool only: story-score tracks are storyOnly and
     // never drift into menus or normal games. The bag holds positions in the pool.
@@ -924,6 +979,7 @@ class Engine {
 
   private stopBeds() {
     if (this.ambTimer !== null) { window.clearInterval(this.ambTimer); this.ambTimer = null; }
+    this.filmLayers = null;
     this.ambNodes = [];
     this.venueTimers.forEach((t) => window.clearTimeout(t));
     this.venueTimers = [];
@@ -1331,6 +1387,12 @@ class Engine {
     const g = opts.gain ?? 1;
     const duck = DUCK_MS[name];
     if (duck) this.duckVoice(duck, t);
+    // Film mix reactions (Porch pilot): a set drops the score a register while the room
+    // reacts; the nuke / mega ducks EVERYTHING — bed layers included, not just the music
+    // bus the booms already ride. filmDip no-ops unless the Porch mix is live.
+    if (name === 'set') this.filmDip(FILM_SET_DIP, 2600);
+    else if (name === 'nuke') this.filmDip(FILM_BLAST, DUCK_MS.nuke ?? 3600);
+    else if (name === 'mega') this.filmDip(FILM_BLAST, DUCK_MS.mega ?? 4400);
     switch (name) {
       case 'shuffle': return this.sample('shuffle', t, 0.75 * g, 1, Math.max(0.3, opts.dur ?? 1.6));
       case 'deal': return this.sample('deal', t, 0.26 * g, 1.2 + Math.random() * 0.25, 0.3, opts.seat, opts.playerCount);
@@ -2226,6 +2288,57 @@ class Engine {
    * Call it BEFORE the first scene line: the bed fades in under the scene and the score
    * crossfades promptly (retargetMusic), so the first 60 seconds land as one production.
    */
+  /* ---------- The film mix (Porch pilot, sound sample 2026-10-23) ---------- */
+  /** The film mix is live only while the Porch identity is: its mood drives the score
+   *  treatment, its bed supplies the layers. Everywhere else the treatment stays open. */
+  private filmActive(): boolean { return this.storyMood === 'porch'; }
+
+  /** Table's phase feed (Table.tsx, alongside setMusicTension): bidding thins the Porch
+   *  score; every other phase rests at the full mix. The phase is stored always —
+   *  arriving at the Porch mid-bidding lands already thinned — and is inaudible
+   *  anywhere the film mix is not live. */
+  setFilmPhase(phase: string) {
+    if (phase === this.filmPhase) return;
+    this.filmPhase = phase;
+    this.refreshFilm(0.9);
+  }
+
+  /** Re-apply the resting film state for the current mood + phase (neutral off-Porch). */
+  private refreshFilm(tau = 0.6) { this.applyFilm(this.filmActive() ? filmTargets(this.filmPhase) : FILM_NEUTRAL, tau); }
+
+  /** Ride every film stage toward a target state. Missing stages (no context yet, bed
+   *  not built) are skipped; the state re-applies when the chain / bed is (re)built. */
+  private applyFilm(tg: FilmTargets, tau: number) {
+    const c = this.ctx; if (!c) return;
+    const now = c.currentTime;
+    if (this.filmFilter) this.filmFilter.frequency.setTargetAtTime(tg.scoreHz, now, tau);
+    if (this.filmGain) this.filmGain.gain.setTargetAtTime(tg.scoreGain, now, tau);
+    if (this.filmLayers) {
+      this.filmLayers.tone.gain.setTargetAtTime(tg.tone, now, tau);
+      this.filmLayers.human.gain.setTargetAtTime(tg.human, now, tau);
+      this.filmLayers.world.gain.setTargetAtTime(tg.world, now, tau);
+    }
+  }
+
+  /** Instant-set variant for a freshly built music chain (no ramp from stale defaults). */
+  private applyFilmMix() {
+    const c = this.ctx; if (!c) return;
+    const tg = this.filmActive() ? filmTargets(this.filmPhase) : FILM_NEUTRAL;
+    if (this.filmFilter) this.filmFilter.frequency.setValueAtTime(tg.scoreHz, c.currentTime);
+    if (this.filmGain) this.filmGain.gain.setValueAtTime(tg.scoreGain, c.currentTime);
+  }
+
+  /** A momentary film move (a set lands, the blast): dive to the target, hold, then
+   *  breathe back to the resting state for whatever phase is current by then. A newer
+   *  move supersedes an older one's recovery. */
+  private filmDip(tg: FilmTargets, holdMs: number) {
+    if (!this.filmActive()) return;
+    const seq = ++this.filmSeq;
+    this.applyFilm(tg, 0.22);
+    if (this.filmTimer !== null) window.clearTimeout(this.filmTimer);
+    this.filmTimer = window.setTimeout(() => { this.filmTimer = null; if (this.filmSeq === seq) this.refreshFilm(1.2); }, holdMs);
+  }
+
   setStoryStop(stopId: string | null) {
     const def = stopId ? STORY_STOP_AUDIO[stopId] : undefined;
     const mood: StoryMood | null = def?.mood ?? null;
@@ -2234,6 +2347,7 @@ class Engine {
     this.storyMood = mood;
     if (bed !== this.storyBedOverride) { this.storyBedOverride = bed; this.syncVenue(); }
     if (moodChanged) this.retargetMusic();
+    this.refreshFilm();
     if (typeof window !== 'undefined') (window as unknown as { __bwmStoryAudio?: unknown }).__bwmStoryAudio = { stop: stopId, mood, bed };
   }
   /** The story mood changed mid-playback: crossfade to the mood's track now instead of
@@ -2331,6 +2445,7 @@ class Engine {
     src.connect(f).connect(g).connect(dest ?? this.venueBus!); src.start(t); src.stop(t + dur + 0.05);
   }
   private buildBed(bed: VenueBed) {
+    this.filmLayers = null; // only the 'porch' case below repopulates these
     const B = this.venueBus!;
     const murmur = (k: number) => { this.vNoise('bandpass', 520, 0.7, 0.05 * k, 0.21, 0.5); this.vNoise('bandpass', 900, 1.2, 0.02 * k, 0.13, 0.6); };
     const room = (k: number) => this.vNoise('lowpass', 260, 0.5, 0.05 * k);
@@ -2426,6 +2541,43 @@ class Engine {
         this.vEvery(4, 11, (t) => this.tone(t, 1050 + Math.random() * 300, 0.07, 'sine', 0.006, { glideTo: 1500 + Math.random() * 400, dest: B })); // shoe squeak
         this.vEvery(55, 110, (t) => { this.tone(t, 233, 0.5, 'square', 0.006, { filter: 900, dest: B }); }); // a buzzer, court over
         break;
+      case 'porch': {
+        // THE PORCH as a film mix (sound sample, 2026-10-23) — the bed half of the pilot
+        // (the score half is 'porch-theme' on the music deck, treated by the film stage).
+        // Three layers on their own gain stages so the film controller can ride them
+        // independently; each layer's sources keep their own levels, the layer gain is a
+        // pure multiplier starting at unity. Reached only via the story bed override —
+        // a regular Grandma's Kitchen game never builds this bed.
+        const c = this.ctx!;
+        const mkLayer = (): GainNode => {
+          const g = c.createGain(); g.gain.value = 1; g.connect(B);
+          this.venueNodes.push({ stop: () => { try { g.disconnect(); } catch { /* dead context */ } } });
+          return g;
+        };
+        const toneLayer = mkLayer(); const humanLayer = mkLayer(); const worldLayer = mkLayer();
+        this.filmLayers = { tone: toneLayer, human: humanLayer, world: worldLayer };
+        // 1 · ROOM TONE — the porch's own air: night settling on boards, a low warm body
+        // breathing slow underneath everything.
+        this.vNoise('lowpass', 240, 0.5, 0.055, 0.07, 0.45, toneLayer);
+        this.vNoise('bandpass', 480, 0.6, 0.016, 0.045, 0.5, toneLayer);
+        // 2 · CLOSE HUMAN SOUNDS — the family just off the table: a low murmur that never
+        // resolves into words, ice settling in glasses, a chair shifting on the boards,
+        // and the screen door working on its hinge behind the game.
+        this.vNoise('bandpass', 520, 0.7, 0.05 * 0.55, 0.21, 0.5, humanLayer);
+        this.vNoise('bandpass', 900, 1.2, 0.02 * 0.55, 0.13, 0.6, humanLayer);
+        this.vEvery(9, 22, (t) => { for (let i = 0; i < 3; i++) this.vBurst(t + Math.random() * 0.3, 0.02, 'bandpass', 3200 + Math.random() * 900, 0.026, humanLayer); }); // ice in glasses
+        this.vEvery(14, 30, (t) => { this.vBurst(t, 0.07, 'lowpass', 300, 0.05, humanLayer); this.vBurst(t + 0.09, 0.05, 'lowpass', 420, 0.035, humanLayer); }); // a chair shifts, a foot finds the boards
+        this.vEvery(36, 85, (t) => { this.tone(t, 280, 0.3, 'sine', 0.008, { glideTo: 560, dest: humanLayer }); this.vBurst(t + 0.32, 0.05, 'lowpass', 480, 0.05, humanLayer); }); // screen door creak + slap
+        // 3 · THE OUTSIDE WORLD — evening on the block: crickets in the yard, the street
+        // breathing far off, and every long while a dog two yards down has an opinion.
+        this.vNoise('lowpass', 140, 0.5, 0.035, 0.05, 0.3, worldLayer); // distant traffic body
+        this.vEvery(1.5, 4, (t) => { for (let i = 0; i < 3; i++) this.tone(t + i * 0.07, 4600, 0.04, 'sine', 0.011, { dest: worldLayer }); }); // crickets
+        this.vEvery(47, 110, (t) => { for (let i = 0; i < 2; i++) this.tone(t + i * 0.5, 210 + Math.random() * 60, 0.16, 'sine', 0.006, { glideTo: 150, dest: worldLayer }); }); // a dog, two yards down
+        // A fresh Porch bed lands at the mix the current phase calls for (arriving
+        // mid-bidding should already be thinned).
+        this.refreshFilm(1.2);
+        break;
+      }
       case 'yacht':
         this.vNoise('bandpass', 420, 0.8, 0.06, 0.3, 0.7); // water lapping on the hull
         this.vNoise('lowpass', 500, 0.6, 0.035, 0.06, 0.6); // sea breeze

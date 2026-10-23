@@ -25,18 +25,24 @@ describe('story score wiring', () => {
   });
 
   it('the slow stops carry the sparse theme — the score can go quiet, not just big', () => {
-    for (const id of ['porch', 'church-basement', 'rooftop']) expect(STORY_STOP_AUDIO[id]!.mood, id).toBe('sparse');
+    for (const id of ['church-basement', 'rooftop']) expect(STORY_STOP_AUDIO[id]!.mood, id).toBe('sparse');
     expect(STORY_TRACK_FILE.sparse).toBe('story-theme-sparse');
   });
 
-  it('only the Rec Center overrides its (silent-by-design) venue bed, with the gym bed', () => {
+  it('the Porch carries the film-mix sample identity: its own mood and its own layered bed', () => {
+    expect(STORY_STOP_AUDIO['porch']).toEqual({ mood: 'porch', bed: 'porch' });
+    expect(STORY_TRACK_FILE.porch).toBe('porch-theme');
+  });
+
+  it('only the Rec Center and the Porch override their venue beds', () => {
     expect(STORY_STOP_AUDIO['rec-center']!.bed).toBe('rec');
-    for (const [id, a] of Object.entries(STORY_STOP_AUDIO)) if (id !== 'rec-center') expect(a.bed, id).toBeUndefined();
+    expect(STORY_STOP_AUDIO['porch']!.bed).toBe('porch');
+    for (const [id, a] of Object.entries(STORY_STOP_AUDIO)) if (id !== 'rec-center' && id !== 'porch') expect(a.bed, id).toBeUndefined();
   });
 
   it('every mood resolves to an original score track that exists in the playlist', () => {
     const files = new Map(TRACKS.map((t) => [t.file, t]));
-    for (const mood of ['theme', 'sparse', 'danger', 'king'] as const) {
+    for (const mood of ['theme', 'sparse', 'danger', 'king', 'porch'] as const) {
       const t = files.get(STORY_TRACK_FILE[mood]);
       expect(t, mood).toBeTruthy();
       expect(t!.license, mood).toBe('Original');
@@ -55,7 +61,7 @@ describe('story score wiring', () => {
     sound.setStoryStop('corner');
     expect(sound.storyMood).toBe('danger');
     sound.setStoryStop('porch');
-    expect(sound.storyMood).toBe('sparse');
+    expect(sound.storyMood).toBe('porch');
     sound.setStoryStop('cookout');
     expect(sound.storyMood).toBe('theme');
     sound.setStoryStop('no-such-stop');

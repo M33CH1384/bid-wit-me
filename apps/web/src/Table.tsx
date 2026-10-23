@@ -1953,8 +1953,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const venue: VenueId = roomStyle.venue as VenueId;
   const [roomName, setRoomName] = useState<string | undefined>(undefined);
   // Phase 6: the music tension layer follows how close the game feels; calm again off the table.
-  useEffect(() => { sound.setMusicTension(musicTension({ scores: st.scores, target: r.targetScore, phase: st.phase, handNo: st.handNo, nilBid: st.bids.some((b) => b === 0) })); }, [st, r.targetScore]);
-  useEffect(() => () => sound.setMusicTension(0), []);
+  useEffect(() => { sound.setMusicTension(musicTension({ scores: st.scores, target: r.targetScore, phase: st.phase, handNo: st.handNo, nilBid: st.bids.some((b) => b === 0) })); sound.setFilmPhase(st.phase); }, [st, r.targetScore]);
+  useEffect(() => () => { sound.setMusicTension(0); sound.setFilmPhase('playing'); }, []);
   const [, setMuteTick] = useState(0);
   // Sound context: a table is 'game' (music by default), leaving returns to 'menu'
   // (ambience by default) — explicit per-context choices are kept inside the engine.

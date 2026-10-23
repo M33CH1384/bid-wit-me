@@ -134,11 +134,20 @@ export function styleForVenue(venue: string): RoomStyle | undefined { return ROO
  * place. In story context the mood outranks the venue's music character (the Pj's stop plays
  * the danger bed, not the venue's Marty pin — the pin still rules normal Pj's games), and the
  * King gets his own music, full stop.
+ *
+ * SOUND SAMPLE (2026-10-23): the Porch is the pilot for the film-mix design — it carries its
+ * own mood ('porch' → the Porchlight score, looped) AND its own bed ('porch': room tone /
+ * close human sounds / outside world on separate layer gains the engine's film controller
+ * rides — bidding thins the score, a set drops it a register, the nuke ducks everything).
+ * The override pattern is the Rec Center's, extended: the Porch stop replaces its host
+ * venue's bed outright, while a normal Grandma's Kitchen game keeps the 'kitchen' bed.
+ * Every other stop keeps its identity above, byte for byte, until the owner rules on the
+ * sample.
  */
-export type StoryMood = 'theme' | 'sparse' | 'danger' | 'king';
+export type StoryMood = 'theme' | 'sparse' | 'danger' | 'king' | 'porch';
 export interface StoryStopAudio { mood: StoryMood; bed?: VenueBed }
 export const STORY_STOP_AUDIO: Record<string, StoryStopAudio> = {
-  'porch': { mood: 'sparse' },
+  'porch': { mood: 'porch', bed: 'porch' },
   'barbershop': { mood: 'theme' },
   'rec-center': { mood: 'theme', bed: 'rec' },
   'cookout': { mood: 'theme' },
