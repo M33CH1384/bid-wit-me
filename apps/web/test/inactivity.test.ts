@@ -1,7 +1,8 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import {
-  IDLE_BADGE_MS, IDLE_LOGOUT_MS, IDLE_PRESENCE_MS, IdleWatch, holdIdleExemption, idleAction, idleExempt,
-  idlePolicyFrom, idleStage, idleTimeoutFrom,
+  IDLE_BADGE_MS, IDLE_LOGOUT_MS, IDLE_NOTICE_KEY, IDLE_PRESENCE_MS, IdleWatch, clearIdleNotice, holdIdleExemption,
+  idleAction, idleExempt, idleNoticeOwed, idleNoticeVisible, idlePolicyFrom, idleStage, idleTimeoutFrom,
+  markIdleNoticeOwed,
 } from '../src/inactivity';
 
 describe('inactivity policy boundaries (fake clock)', () => {
@@ -45,6 +46,43 @@ describe('inactivity policy boundaries (fake clock)', () => {
     expect(idleExempt()).toBe(true);
     release(); release(); // idempotent
     expect(idleExempt()).toBe(false);
+  });
+});
+
+describe('idle notice flag — one home, retired by dismissal or sign-in', () => {
+  const fakeStorage = () => {
+    const m = new Map<string, string>();
+    return {
+      getItem: (k: string) => m.get(k) ?? null,
+      setItem: (k: string, v: string) => { m.set(k, v); },
+      removeItem: (k: string) => { m.delete(k); },
+    };
+  };
+  it('mark → owed → clear round-trips on the one key', () => {
+    const s = fakeStorage();
+    expect(idleNoticeOwed(s)).toBe(false);
+    markIdleNoticeOwed(s);
+    expect(s.getItem(IDLE_NOTICE_KEY)).toBe('1');
+    expect(idleNoticeOwed(s)).toBe(true);
+    clearIdleNotice(s);
+    expect(idleNoticeOwed(s)).toBe(false);
+    clearIdleNotice(s); // idempotent
+    expect(idleNoticeOwed(s)).toBe(false);
+  });
+  it('helpers tolerate null and throwing storage (private mode)', () => {
+    const boom = { getItem: () => { throw new Error('no'); }, setItem: () => { throw new Error('no'); }, removeItem: () => { throw new Error('no'); } };
+    expect(() => markIdleNoticeOwed(boom)).not.toThrow();
+    expect(() => clearIdleNotice(boom)).not.toThrow();
+    expect(idleNoticeOwed(boom)).toBe(false);
+    expect(() => markIdleNoticeOwed(null)).not.toThrow();
+    expect(() => clearIdleNotice(null)).not.toThrow();
+    expect(idleNoticeOwed(null)).toBe(false);
+  });
+  it('the notice shows only while it is owed AND nobody is signed in', () => {
+    expect(idleNoticeVisible(true, false)).toBe(true);  // owed, signed out → shows
+    expect(idleNoticeVisible(true, true)).toBe(false);  // owed, but signed in → retired
+    expect(idleNoticeVisible(false, false)).toBe(false);
+    expect(idleNoticeVisible(false, true)).toBe(false);
   });
 });
 

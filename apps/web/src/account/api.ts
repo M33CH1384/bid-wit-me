@@ -4,6 +4,7 @@
  * except one cheap GET /api/auth/config + /me when the menu opens.
  */
 import { useSyncExternalStore } from 'react';
+import { clearIdleNotice } from '../inactivity';
 import { badges, mergeBadges } from '../badges';
 import { loadSeries } from '../Series';
 import { myTeamName, pairTeamNames } from '../TeamName';
@@ -24,7 +25,14 @@ export const PROVIDER_ORDER: ProviderId[] = ['google', 'discord', 'x', 'facebook
 
 let state: AccountState = { ready: false, accounts: false, providers: [], passkeys: false, user: null, notice: null, noticeKind: null };
 const subs = new Set<() => void>();
-function set(p: Partial<AccountState>) { state = { ...state, ...p }; subs.forEach((f) => f()); }
+function set(p: Partial<AccountState>) {
+  state = { ...state, ...p };
+  // EVERY transition to signed-in passes through this one set() — session restore,
+  // an OAuth return, a passkey, any surface's sign-in. A signed-in player is not
+  // idle-signed-out, so retire the owed inactivity notice at the transition itself.
+  if (p.user) { try { clearIdleNotice(localStorage); } catch { /* no storage */ } }
+  subs.forEach((f) => f());
+}
 export const account = {
   get: () => state,
   subscribe(f: () => void) { subs.add(f); return () => { subs.delete(f); }; },

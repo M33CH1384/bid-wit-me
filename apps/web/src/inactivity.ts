@@ -12,6 +12,24 @@ export const IDLE_PRESENCE_MS = 15 * 60_000;
 export const IDLE_LOGOUT_MS = 30 * 60_000;
 /** localStorage flag: a "Signed out for inactivity" notice is owed on next open until dismissed. */
 export const IDLE_NOTICE_KEY = 'bwm.idleSignedOut';
+
+/* The owed-notice flag has exactly one home: these helpers. The IdleGuard marks it
+   at the idle sign-out; it is cleared by the notice's own dismissal OR by any
+   sign-in — the account store clears it the moment a user lands (see account/api),
+   so a signed-in player never sees the notice, whichever surface signed them in. */
+export function markIdleNoticeOwed(storage: Pick<Storage, 'setItem'> | null): void {
+  try { storage?.setItem(IDLE_NOTICE_KEY, '1'); } catch { /* private mode */ }
+}
+export function idleNoticeOwed(storage: Pick<Storage, 'getItem'> | null): boolean {
+  try { return storage?.getItem(IDLE_NOTICE_KEY) === '1'; } catch { return false; }
+}
+export function clearIdleNotice(storage: Pick<Storage, 'removeItem'> | null): void {
+  try { storage?.removeItem(IDLE_NOTICE_KEY); } catch { /* private mode */ }
+}
+/** The notice shows only while it is owed AND nobody is signed in. */
+export function idleNoticeVisible(owed: boolean, signedIn: boolean): boolean {
+  return owed && !signedIn;
+}
 /** Test/dev override key (localStorage ms for the 30-min sign-out; the 5/15 stages scale with it). */
 export const IDLE_OVERRIDE_KEY = 'bwm.idleMs';
 

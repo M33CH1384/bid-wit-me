@@ -6,8 +6,8 @@
  * Offline bot games hold an exemption (App) and active play keeps touching the watch.
  */
 import { useEffect, useRef, useState } from 'react';
-import { account, signOut } from './account/api';
-import { IDLE_NOTICE_KEY, IdleWatch, idleAction, idleExempt, idlePolicyFrom, type IdleStage } from './inactivity';
+import { account, signOut, useAccount } from './account/api';
+import { IdleWatch, clearIdleNotice, idleAction, idleExempt, idleNoticeOwed, idleNoticeVisible, idlePolicyFrom, markIdleNoticeOwed, type IdleStage } from './inactivity';
 import { isOnlinePath, navigate } from './online/nav';
 import { resetGuestSession } from './online/identity';
 import { social } from './social/store';
@@ -16,11 +16,25 @@ const ACTIVITY = ['pointerdown', 'keydown', 'touchstart', 'wheel'] as const;
 
 export default function IdleGuard() {
   const [stage, setStage] = useState<IdleStage>('active');
-  const [notice, setNotice] = useState(() => { try { return localStorage.getItem(IDLE_NOTICE_KEY) === '1'; } catch { return false; } });
+  const [notice, setNotice] = useState(() => idleNoticeOwed(localStorage));
   const signedOut = useRef(false);
+  const watchRef = useRef<IdleWatch | null>(null);
+  const acct = useAccount();
+
+  // Sign-in ends the idle sign-out, whichever surface completed it (the account
+  // store has already cleared the persisted flag at the transition itself):
+  // hide the notice now, re-arm the guard so only a genuinely NEW idle sign-out
+  // can bring it back, and restart the idle clock for the fresh session.
+  useEffect(() => {
+    if (!acct.user) return;
+    clearIdleNotice(localStorage);
+    setNotice(false);
+    if (signedOut.current) { signedOut.current = false; watchRef.current?.touch(); }
+  }, [acct.user]);
 
   useEffect(() => {
     const watch = new IdleWatch(idlePolicyFrom(localStorage));
+    watchRef.current = watch;
     const onAct = () => { watch.touch(); };
     ACTIVITY.forEach((e) => window.addEventListener(e, onAct, { passive: true }));
     const iv = setInterval(() => {
@@ -31,7 +45,7 @@ export default function IdleGuard() {
       social.setHeartbeatPaused(action === 'drop-presence' || action === 'sign-out');
       if (action === 'sign-out' && !signedOut.current) {
         signedOut.current = true;
-        try { localStorage.setItem(IDLE_NOTICE_KEY, '1'); } catch { /* private mode */ }
+        markIdleNoticeOwed(localStorage);
         setNotice(true);
         void (async () => {
           // Full sign-out: account users lose their session; guests lose their guest identity.
@@ -45,16 +59,16 @@ export default function IdleGuard() {
     return () => { ACTIVITY.forEach((e) => window.removeEventListener(e, onAct)); clearInterval(iv); };
   }, []);
 
-  const dismiss = () => { try { localStorage.removeItem(IDLE_NOTICE_KEY); } catch { /* ignore */ } setNotice(false); };
+  const dismiss = () => { clearIdleNotice(localStorage); setNotice(false); };
   const atMenu = !isOnlinePath(location.pathname);
   return (
     <>
       {stage === 'badge' && <div className="idle-badge" data-testid="idle-badge" role="status">💤 Away — no activity for a bit. Move or tap to stay signed in.</div>}
       {stage === 'away' && <div className="idle-badge" data-testid="idle-badge" role="status">💤 Away — you're off the Online list until you come back.</div>}
-      {notice && atMenu && (
+      {idleNoticeVisible(notice, !!acct.user) && atMenu && (
         <div className="idle-notice" data-testid="idle-logout" role="alert">
           <span>Signed out for inactivity.</span>
-          <button type="button" className="btn" onClick={dismiss}>OK</button>
+          <button type="button" className="btn primary" onClick={dismiss}>OK</button>
         </div>
       )}
     </>
