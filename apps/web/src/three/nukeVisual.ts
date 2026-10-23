@@ -47,10 +47,10 @@ export function currentNukeDevice(): NukeDevice {
  * samples. A live clock moves with wall time. A hitch that then paints again jumps the clock
  * (`performance.now()`), so it is not a stall. `rendered` is null when the blast has never drawn.
  */
-export function nukeClockStalled(prev: number | null, rendered: number | null, dtMs: number): boolean {
+export function nukeClockStalled(prev: number | null, rendered: number | null, dtMs: number, len = 3.6): boolean {
   if (dtMs < 700) return false;
   if (rendered === null) return true;
   if (prev === null) return false;
-  // still inside the ~3.6 s blast, but the clock barely moved
-  return rendered < 3.4 && rendered - prev < 0.2;
+  // still inside the blast (3.6 s nuke, 4.4 s mega), but the clock barely moved
+  return rendered < len - 0.2 && rendered - prev < 0.2;
 }

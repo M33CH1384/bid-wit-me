@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  type Card, type GameState, type Play, type TableRules, RuleError, applyAction, canRunIt, effectiveSuit, handSize, isTrump,
-  legalPlaysFor, makeRules, newGame, spectatorView, trickWinner, viewFor,
+  type Card, type GameState, type Play, type TableRules, RuleError, applyAction, canRunIt, effectiveSuit, handSize, isNukeTrick, isTrump,
+  legalPlaysFor, makeRules, newGame, runPlayout, spectatorView, trickWinner, viewFor,
 } from '../src';
 import { resetRunItProofs, runItProofsRun } from '../src/runIt';
 import { rigged } from './helpers';
@@ -431,5 +431,49 @@ describe('Run it! in Cutthroat after an ejection', () => {
     const cut = playing(cut4, [['BJ', 'LJ'], ['4C', '5C'], ['5C', '6H'], ['7C', '8H']], 0);
     expect(canRunIt(team, 0)).toBe(true);
     expect(canRunIt(cut, 0)).toBe(canRunIt(team, 0));
+  });
+});
+
+describe('☢☢ mega run: both Jokers in the claimer’s hand at the claim', () => {
+  it('stamps mega on the playout when the claimer runs it holding BJ + LJ', () => {
+    const before = playing(joker, [['3H', '4H'], ['5C', '6C'], ['BJ', 'LJ'], ['3D', '7D']], 0);
+    expect(canRunIt(before, 2)).toBe(true);
+    const after = applyAction(before, { type: 'runIt', seat: 2 });
+    const playout = runPlayout(before, after, 2);
+    expect(playout?.mega).toBe(true);
+    expect(playout?.books).toBe(2);
+    // both Jokers really are part of the run — one per trick, so no single trick is a nuke
+    const runCards = playout!.tricks.flatMap((t) => t.plays.filter((p) => p.seat === 2).map((p) => p.card));
+    expect(runCards).toEqual(expect.arrayContaining(['BJ', 'LJ']));
+    expect(after.tricks.every((t) => !isNukeTrick(t.plays))).toBe(true);
+    expect(after.nukes).toBeUndefined();
+    expect(after.runItClaims).toEqual([2]);
+  });
+
+  it('is NOT mega when one Joker was already on the table before the claim (that is the nuke’s fact, not the run’s)', () => {
+    // seat 0 led the LJ into this trick; the claimer holds BJ + AS and still has the board locked
+    const before = playing(joker, [['4H'], ['5C', '6C'], ['BJ', 'AS'], ['3D', '7D']], 0, ['LJ']);
+    expect(canRunIt(before, 2)).toBe(true);
+    const after = applyAction(before, { type: 'runIt', seat: 2 });
+    const playout = runPlayout(before, after, 2);
+    expect(playout).not.toBeNull();
+    expect(playout?.mega).toBeUndefined();
+  });
+
+  it('is NOT mega for an ordinary guaranteed run with no Jokers at all', () => {
+    const before = playing(joker, [['3H', '4H'], ['5C', '6C'], ['AS', 'KS'], ['3D', '7D']], 0);
+    expect(canRunIt(before, 2)).toBe(true);
+    const after = applyAction(before, { type: 'runIt', seat: 2 });
+    const playout = runPlayout(before, after, 2);
+    expect(playout).not.toBeNull();
+    expect(playout?.mega).toBeUndefined();
+    expect(playout?.books).toBe(2);
+  });
+
+  it('is NOT mega when the claimer holds only one Joker', () => {
+    const before = playing(joker, [['3H', '4H'], ['5C', '6C'], ['BJ', 'AS'], ['3D', '7D']], 0);
+    expect(canRunIt(before, 2)).toBe(true);
+    const after = applyAction(before, { type: 'runIt', seat: 2 });
+    expect(runPlayout(before, after, 2)?.mega).toBeUndefined();
   });
 });

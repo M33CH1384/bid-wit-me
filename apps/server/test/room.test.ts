@@ -1377,7 +1377,22 @@ describe("'Run it!' any time (Release 10)", () => {
     env.room.tick();
     const g = env.room.data.game!;
     expect(g.tricks.slice(11).map((t) => t.winner)).toEqual([2, 2]);
-    expect(env.room.data.chat.some((c) => /ran the board/.test(c.text))).toBe(true);
+    // seat 2's hand at the claim was BJ + LJ: this is a ☢☢ MEGA run — the mega line
+    // supersedes the ordinary run line (never both)
+    expect(env.room.data.runPlayback?.mega).toBe(true);
+    expect(env.room.data.chat.some((c) => /TOTAL ANNIHILATION — .* ran it with both Jokers \(\+2 books\)/.test(c.text))).toBe(true);
+    expect(env.room.data.chat.some((c) => /ran the board/.test(c.text))).toBe(false);
+  });
+
+  it('an ordinary run (no Jokers in the claimer’s hand) keeps the 🌪 line and carries no mega flag', () => {
+    const env = start(1); // seat 0 human, seats 1..3 bots
+    late(env, [['3H', '4H'], ['5C', '6C'], ['AS', 'KS'], ['3D', '7D']], 0);
+    env.room.tick();
+    const g = env.room.data.game!;
+    expect(g.tricks.slice(11).map((t) => t.winner)).toEqual([2, 2]);
+    expect(env.room.data.runPlayback?.mega).toBeUndefined();
+    expect(env.room.data.chat.some((c) => /🌪 .* ran the board \(\+2 books\)/.test(c.text))).toBe(true);
+    expect(env.room.data.chat.some((c) => /ANNIHILATION/.test(c.text))).toBe(false);
   });
 });
 

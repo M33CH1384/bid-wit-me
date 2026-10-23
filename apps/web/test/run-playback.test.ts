@@ -109,3 +109,39 @@ describe('Run it! sequencing for someone who did not claim', () => {
     expect(scoreOpened('handOver', true, false)).toBe(false);
   });
 });
+
+describe('☢☢ mega run: the claimer ran it with BOTH Jokers', () => {
+  it('the late-run fixture is a mega: the flag rides the playback to every viewer', () => {
+    const { before, after } = lateRun(); // seat 2's hand at the claim is exactly BJ + LJ
+    const wire = playbackOf(before, after);
+    expect(wire.mega).toBe(true);
+    const local = orientRun(wire, 1, 4);
+    expect(local.mega).toBe(true);
+    expect(sequenceRun(local).mega).toBe(true);
+    const b = rotateView(viewFor(before, 1)).st;
+    const a = rotateView(viewFor(after, 1)).st;
+    expect(pickRunShow(b, a, local, null)!.mega).toBe(true);
+    // the no-playback jump path derives the same fact from the claimer's run cards
+    expect(showForJump(b, a)!.mega).toBe(true);
+  });
+
+  it('an ordinary run (top spades, no Jokers in hand) is not mega on either path', () => {
+    const base = newGame(makeRules('joker', { targetScore: 1000 }), 'run-playback-plain');
+    const hands = [['3H', '4H'], ['5C', '6C'], ['AS', 'KS'], ['3D', '7D']] as Card[][];
+    const before: GameState = {
+      ...base, phase: 'playing', hands, bids: [2, 2, 2, 2], revealed: [true, true, true, true],
+      tricks: Array.from({ length: 11 }, () => ({ leader: 0, plays: [], winner: 1 })),
+      tricksWon: [0, 0, 0, 0], turn: 0, trick: { leader: 0, plays: [], winner: null }, spadesBroken: true,
+    };
+    const after = applyAction(before, { type: 'runIt', seat: 2 });
+    const run = runPlayout(before, after, 2);
+    expect(run).not.toBeNull();
+    expect(run!.mega).toBeUndefined();
+    const wire: RunPlayback = { ...run!, seq: 4 };
+    expect(sequenceRun(orientRun(wire, 1, 4)).mega).toBe(false);
+    const b = rotateView(viewFor(before, 1)).st;
+    const a = rotateView(viewFor(after, 1)).st;
+    expect(showForJump(b, a)!.mega).toBe(false);
+    expect(pickRunShow(b, a, orientRun(wire, 1, 4), null)!.mega).toBe(false);
+  });
+});

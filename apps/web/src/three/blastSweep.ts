@@ -7,6 +7,9 @@ import { type Card, isNukeTrick } from '@spades/rules';
  */
 export const TABLE_BLAST_REACH = 4.4;
 
+/** ☢☢ Mega tier (both-Jokers run): the sweep reaches past the nuke's — off the table entirely. */
+export const MEGA_TABLE_BLAST_REACH = 6.0;
+
 export interface BlastPose {
   /** World units outward from the card's own spot. */
   out: number;
@@ -23,17 +26,22 @@ export interface BlastPose {
  * Table cards sweep off and stay off. Hand cards (Full Nuke only) still kick and spring home.
  * `null` means the blast is not acting: a table card that already left keeps its last pose.
  */
-export function blastPose(u: number, kind: 'table' | 'hand'): BlastPose | null {
+export function blastPose(u: number, kind: 'table' | 'hand', mega = false): BlastPose | null {
   if (u < 0) return null;
   if (kind === 'hand') {
     if (u > 2.6) return null;
     const env = u < 0.22 ? 1 - (1 - u / 0.22) ** 3 : Math.max(0, Math.exp(-(u - 0.22) * 1.9) * Math.cos((u - 0.22) * 2.4));
     const liftWindow = u < 1.2 ? Math.sin(Math.PI * Math.min(1, u / 1.2)) : 0;
-    return { out: 0.112 * env, lift: 0.042 * liftWindow, tumble: 0.35 * env, z: 0.08 * env };
+    // mega (Full only — fx.blast.hand is false otherwise): the kick that springs home hits harder too
+    return mega
+      ? { out: 0.17 * env, lift: 0.065 * liftWindow, tumble: 0.55 * env, z: 0.12 * env }
+      : { out: 0.112 * env, lift: 0.042 * liftWindow, tumble: 0.35 * env, z: 0.08 * env };
   }
   const sweep = u < 0.55 ? 1 - (1 - u / 0.55) ** 3 : 1;
   const rise = Math.sin(Math.min(1, u / 0.7) * Math.PI * 0.5);
-  return { out: TABLE_BLAST_REACH * sweep, lift: 1.15 * rise, tumble: 2.6 * sweep };
+  return mega
+    ? { out: MEGA_TABLE_BLAST_REACH * sweep, lift: 1.55 * rise, tumble: 3.4 * sweep }
+    : { out: TABLE_BLAST_REACH * sweep, lift: 1.15 * rise, tumble: 2.6 * sweep };
 }
 
 /** Trick cards, won piles, and every other mesh on the felt. The hand is not one of these. */

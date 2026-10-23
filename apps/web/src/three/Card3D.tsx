@@ -249,7 +249,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     if (!ig) return;
     if (B && st.stamp !== B.start) { st.stamp = B.start; st.on = false; st.flung = false; }
     const u = B && (blast === 'table' || B.hand) ? (fx.warp !== null ? fx.warp - 0.3 : (performance.now() - B.start) / 1000) : -1;
-    const pose = blastPose(u, blast === 'hand' ? 'hand' : 'table');
+    const pose = blastPose(u, blast === 'hand' ? 'hand' : 'table', B?.mega === true);
     // A table card that has left stays off the cloth when the cloud ends. Coming back reads as a miss.
     if (!pose) {
       if (blast === 'table' && st.flung) return;
@@ -292,6 +292,10 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       if (T) invalidate(); // waiting for the funnel to start: keep frames coming (frameloop is on demand)
       return false;
     }
+    // ☢☢ Mega composition: the blast already blew this table card off the felt before the funnel
+    // started (the mega tornado is deliberately late). It stays gone — snapping it back to its
+    // resting spot to join the funnel would read as a glitch, not a show. The funnel takes the hands.
+    if (blast === 'table' && bl.current.flung) { st.gone = true; ig.visible = false; invalidate(); return true; }
     invalidate();
     if (!st.on) {
       st.on = true;

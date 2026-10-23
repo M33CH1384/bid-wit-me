@@ -559,6 +559,17 @@ export interface RunPlayout {
   claimer: Seat;
   books: number;
   tricks: { winner: Seat; plays: { seat: Seat; card: Card; played?: true }[] }[];
+  /**
+   * ☢☢ The MEGA run (Demetrius 2026-10-23): the claimer held BOTH Jokers in hand at the
+   * moment of the claim, so both Jokers are part of the run itself. Clients celebrate it a
+   * tier above the nuke. Omitted for an ordinary run.
+   */
+  mega?: true;
+}
+
+/** Both Jokers among these cards — a hand at claim time, or a claimer's run-out cards. */
+export function hasBothJokers(cards: readonly Card[]): boolean {
+  return cards.includes('BJ') && cards.includes('LJ');
 }
 
 export function runPlayout(before: GameState, after: GameState, claimer: Seat): RunPlayout | null {
@@ -572,7 +583,11 @@ export function runPlayout(before: GameState, after: GameState, claimer: Seat): 
     }];
   });
   if (!tricks.length) return null;
-  return { handNo: after.handNo, claimer, books: tricks.length, tricks };
+  // The claimer's hand in `before` IS the run: every card in it is about to be played out
+  // flagged `run`. Both Jokers in it is the mega fact — a Joker already on the table in the
+  // in-progress trick is not in the hand, so it never counts (that Joker is the nuke's story).
+  const mega = hasBothJokers(before.hands[claimer] ?? []);
+  return { handNo: after.handNo, claimer, books: tricks.length, tricks, ...(mega ? { mega: true as const } : {}) };
 }
 
 /** Both Jokers are in this (partial) trick: the nuke. */

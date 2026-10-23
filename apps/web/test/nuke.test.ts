@@ -105,6 +105,11 @@ describe('last-trick nuke on iPhone Safari', () => {
     expect(nukeClockStalled(0.3, 1.1, 800)).toBe(false); // advanced
     expect(nukeClockStalled(0.2, 2.4, 2200)).toBe(false); // hitch, then one frame catches up via performance.now()
     expect(nukeClockStalled(3.5, 3.5, 800)).toBe(false); // blast already over
+    // ☢☢ the mega blast runs 4.4 s: a clock frozen at 3.9 s is still mid-blast for it…
+    expect(nukeClockStalled(3.9, 3.9, 800, 4.4)).toBe(true);
+    // …but already over under the nuke's default length, and past the mega's window at 4.3 s
+    expect(nukeClockStalled(3.9, 3.9, 800)).toBe(false);
+    expect(nukeClockStalled(4.3, 4.3, 800, 4.4)).toBe(false);
   });
 
   it('the hand-ending nuke trick is held on the first paint, and the next hand releases it', () => {

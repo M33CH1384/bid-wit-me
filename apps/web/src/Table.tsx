@@ -16,7 +16,7 @@ import { type VenueId, VENUE_DEFS, AFTER_DARK_VENUE, fetchVenueUnlocks, venueUnl
 import { type FormEvent, Fragment, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, hostMinimum, isFreshDeal, isNukeTrick, nukeArmed, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, newlyOneTrickFromShot, nilBustsJustResolved, partnerOf, sideOf, sortHand, liveSeats } from '@spades/rules';
+  type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, hostMinimum, isFreshDeal, isNukeTrick, nukeArmed, hasBothJokers, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, newlyOneTrickFromShot, nilBustsJustResolved, partnerOf, sideOf, sortHand, liveSeats } from '@spades/rules';
 import { ScorePad, setTeamNames, sideName } from './Modals';
 import { LockedRulesPanel } from './LockedRules';
 import { booksBanner, teamMinNote } from './polishText';
@@ -92,8 +92,8 @@ import { effectiveView, handStarted, initialHandView, userToggledView, type Hand
 import { Coach, LedSuitChip } from './Coach';
 import { type TipsPref, bumpTip, loadTips, saveTips, tipCount } from './tips';
 import { BidCoach } from './BidCoach';
-import { RUN_FX_MS } from '@spades/protocol';
-import { RUN_SHOW_MS, RUN_SLAM_MS, RUN_IT_CALLOUTS, RUN_TORNADO_AFTER_MS, RUN_ZOOM_MS } from './runIt';
+import { MEGA_RUN_FX_MS, RUN_FX_MS } from '@spades/protocol';
+import { RUN_SHOW_MS, RUN_SLAM_MS, RUN_IT_CALLOUTS, RUN_TORNADO_AFTER_MS, RUN_ZOOM_MS, RUN_MEGA_DETONATE_MS, RUN_MEGA_SHOW_EXTRA_MS, RUN_MEGA_TORNADO_AFTER_MS } from './runIt';
 import { pickRunShow, scoreOpened } from './runPlayback';
 import type { RunPlayback } from '@spades/protocol';
 import { RunItReview, RunZoom, faceUrl, runReviewOverTable } from './RunZoom';
@@ -336,7 +336,7 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
       }
     }
     // Cutthroat wheels: your 10th book of the hand (once per hand per player)
-    const runWait = st.tricks.slice(p.tricks.length).some((t) => t.plays.some((q) => q.run)) ? RUN_FX_MS : 0;
+    const runWait = st.tricks.slice(p.tricks.length).some((t) => t.plays.some((q) => q.run)) ? runWaitMs(st) : 0;
     if (st.handNo === p.handNo) for (const s of wheelsTenth(r, p.tricksWon, st.tricksWon)) {
       push('System', `🏎 Wheels! ${names[s]} took a 10th book`, true);
       window.setTimeout(() => fx.emit('wheelsCar', { text: `${names[s]} · 10 books` }), 900 + runWait);
@@ -356,7 +356,14 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
       const led = t.plays[0]!.card;
       void winCard; void led; // bot reactions to plays come from the trash-talk engine (offlineTalk)
       const ran = st.tricks.slice(p.tricks.length).filter((x) => x.plays.some((q) => q.run));
-      if (ran.length) push('System', `🌪 ${names[ran.at(-1)!.winner!]} ran the board (+${ran.length} books)`, true);
+      if (ran.length) {
+        const claimer = ran.at(-1)!.winner!;
+        // ☢☢ a both-Jokers run gets the mega line instead of the run line — never both.
+        // The claimer's run cards are their hand at the claim: the same fact runPlayout stamps.
+        const runCards = ran.flatMap((x) => x.plays.filter((q) => q.run && q.seat === claimer).map((q) => q.card));
+        if (hasBothJokers(runCards)) push('System', `☢☢ TOTAL ANNIHILATION — ${names[claimer]} ran it with both Jokers (+${ran.length} books)`, true);
+        else push('System', `🌪 ${names[claimer]} ran the board (+${ran.length} books)`, true);
+      }
       else if (isNukeTrick(t.plays)) push('System', '☢ Nuked', true);
     }
     // hand scored
@@ -546,7 +553,7 @@ function useGameSounds(st: GameState, myTurn: boolean, mySide: number, msgs: Cha
     st.bids.forEach((b, s) => { if (b !== null && p.st.bids[s] === null && p.st.handNo === st.handNo) sound.play(s === HUMAN ? 'bid' : 'bidSoft'); });
     if (myTurn && !p.myTurn && (st.phase === 'playing' || st.phase === 'bidding')) sound.play('turn', { delay: 0.05 });
     if (msgs.length > p.msgs) { const m = msgs[msgs.length - 1]!; if (!m.system && m.user !== 'You') sound.play('pop'); }
-    if (st.phase === 'gameOver' && p.st.phase !== 'gameOver' && st.result) sound.play(st.result.winners.includes(mySide) ? 'win' : 'lose', { delay: 0.3 + (runPlays(st).length && runPlays(p.st).length === 0 ? RUN_FX_MS / 1000 : 0) });
+    if (st.phase === 'gameOver' && p.st.phase !== 'gameOver' && st.result) sound.play(st.result.winners.includes(mySide) ? 'win' : 'lose', { delay: 0.3 + (runPlays(st).length && runPlays(p.st).length === 0 ? runWaitMs(st) / 1000 : 0) });
   }, [st, myTurn, mySide, msgs]);
 }
 
@@ -554,6 +561,20 @@ export { landCueFor } from './landCue';
 
 /** The plays of this hand recorded by 'Run it!' (empty if nobody ran it). */
 function runPlays(st: GameState): Play[] { return st.tricks.flatMap((t) => t.plays.filter((p) => p.run)); }
+
+/**
+ * ☢☢ Was this hand's Run it! a MEGA — the claimer's run cards hold both Jokers?
+ * (Their run cards are their hand at the claim: the same fact runPlayout stamps server-side.)
+ */
+function megaRun(st: GameState): boolean {
+  const bySeat = new Map<number, Card[]>();
+  for (const p of runPlays(st)) bySeat.set(p.seat, [...(bySeat.get(p.seat) ?? []), p.card]);
+  for (const cards of bySeat.values()) if (hasBothJokers(cards)) return true;
+  return false;
+}
+
+/** How long the celebrations after a run hand wait out the show (the mega show runs longer). */
+function runWaitMs(st: GameState): number { return megaRun(st) ? MEGA_RUN_FX_MS : RUN_FX_MS; }
 
 /** Local seat that claimed 'Run it!' (they win every trick the claim played out). */
 function runClaimerSeat(st: GameState): number | null {
@@ -1006,7 +1027,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const mySide = sideOf(HUMAN, r);
   // ---- 'Run it!': on a run, the table keeps showing the moment before it while the claimer's cards slam down and
   // the tornado rips every hand + the table into the funnel; then the (finished) hand shows with an empty table.
-  type RunFx = { id: number; before: { st: GameState; view: PlayerView }; claimer: number; cards: Card[]; others: { seat: number; card: Card }[]; books: number; phase: 'zoom' | 'slam'; at: number };
+  type RunFx = { id: number; before: { st: GameState; view: PlayerView }; claimer: number; cards: Card[]; others: { seat: number; card: Card }[]; books: number; phase: 'zoom' | 'slam'; at: number; /** ☢☢ both Jokers in the run: the mega detonation replaces the ordinary show's middle */ mega: boolean };
   const [seen, setSeen] = useState<{ st: GameState; view: PlayerView }>(() => ({ st, view }));
   // Seated at the start of every hand: a saved Standing preference decides the first hand of
   // this table, each new hand seats the player again, and a manual toggle rules until the
@@ -1111,7 +1132,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         id: show.fromServer ? show.id : Date.now(),
         before: seen.st.handNo === st.handNo ? seen : { st, view },
         claimer: show.claimer, books: show.books, phase: 'zoom', at: performance.now(),
-        cards: show.cards, others: show.others,
+        cards: show.cards, others: show.others, mega: show.mega,
       });
       if (show.fromServer) setPlayedSeq(show.id);
     } else if (playback && playback.handNo === st.handNo && playback.seq !== playedSeq) {
@@ -1150,27 +1171,36 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       push('You', line);
     } else setRunLine(null);
     const zoom = RUN_ZOOM_MS / 1000;
-    const tornadoAt = zoom + RUN_TORNADO_AFTER_MS / 1000;
+    // ☢☢ mega: the tornado starts later than an ordinary run's — the blast blows the felt clear first
+    const tornadoAfter = runFx.mega ? RUN_MEGA_TORNADO_AFTER_MS : RUN_TORNADO_AFTER_MS;
+    const tornadoAt = zoom + tornadoAfter / 1000;
     const who = face(runFx.claimer);
     // 2) the claimer's cards slam down together in SLOW MOTION (heavy impact: shake + bass hit)
     // 3) the tornado snatches everything else at once — every hand + whatever is on the table. No trick-by-trick play.
     // No scheduled runSlam: the last dropped card fires it (and the pile thump) on its landing frame.
     sound.play('tornado', { delay: Math.max(0, tornadoAt - 0.3) });
+    let toMega = 0;
     const toSlam = window.setTimeout(() => {
       setRunFx((f) => (f && f.id === runFx.id ? { ...f, phase: 'slam' } : f));
       // the tornado is timed from the slam (not the claim), so a late zoom timer can't let it sweep the table early
-      fx.tornado = { start: performance.now() + RUN_TORNADO_AFTER_MS, reduced: fx.reduced };
-      fx.emit('ranIt', { text: 'RAN IT!', sub: `${who} · +${runFx.books} book${runFx.books === 1 ? '' : 's'}`, silent: true });
+      fx.tornado = { start: performance.now() + tornadoAfter, reduced: fx.reduced };
+      if (runFx.mega) {
+        // ☢☢ the detonation's pin-point starts mid-slam so the white flash lands on the cards'
+        // impact. The mega banner + boom ride this emit; the ordinary RAN IT! pop steps aside.
+        toMega = window.setTimeout(() => fx.emit('mega'), RUN_MEGA_DETONATE_MS);
+      } else {
+        fx.emit('ranIt', { text: 'RAN IT!', sub: `${who} · +${runFx.books} book${runFx.books === 1 ? '' : 's'}`, silent: true });
+      }
     }, RUN_ZOOM_MS);
     // (capture scripts set __bwmHoldRun to step the tornado frame by frame via fx.warp)
     const hold = !!(window as unknown as { __bwmHoldRun?: boolean }).__bwmHoldRun;
-    const timers = hold ? [] : [window.setTimeout(endRun, RUN_SHOW_MS)];
+    const timers = hold ? [] : [window.setTimeout(endRun, RUN_SHOW_MS + (runFx.mega ? RUN_MEGA_SHOW_EXTRA_MS : 0))];
     (window as unknown as { __bwmEndRun?: () => void }).__bwmEndRun = endRun;
     if (runFx.claimer === HUMAN && !spectating) {
       runItUsed();
       if (award('storm-chaser', { mode: r.mode, online: !!online, hand: runFx.before.st.handNo, books: runFx.books })) pendingBadge.current = 'storm-chaser';
     }
-    return () => { clearTimeout(toSlam); timers.forEach(clearTimeout); fx.tornado = null; };
+    return () => { clearTimeout(toSlam); clearTimeout(toMega); timers.forEach(clearTimeout); fx.tornado = null; };
   }, [runId]); // eslint-disable-line react-hooks/exhaustive-deps
   // a badge earned by the run unlocks once the tornado is over (or skipped)
   const pendingBadge = useRef<string | null>(null);
@@ -1779,8 +1809,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (pause && st.history.length > lastHist.current) return;
     if (st.history.length <= lastHist.current) { lastHist.current = st.history.length; return; }
     lastHist.current = st.history.length;
-    // after 'Run it!' the scoring toasts wait for the tornado
-    const ranDelay = st.tricks.at(-1)?.plays.some((p) => p.run) ? RUN_FX_MS : 0;
+    // after 'Run it!' the scoring toasts wait for the tornado (longer for a mega run's show)
+    const ranDelay = st.tricks.at(-1)?.plays.some((p) => p.run) ? runWaitMs(st) : 0;
     if (ranDelay && ranWaited.current !== st.history.length) {
       const len = st.history.length;
       const release = fx.hold(ranDelay + 300, 'runIt'); // toasts follow the tornado; the score does not wait on this hold

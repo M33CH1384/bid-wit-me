@@ -25,6 +25,12 @@ export const NUKE_ALLOWANCE_MS: Record<NukeIntensity, number> = { full: 4000, cl
  */
 export const RUN_FX_MS = 5800;
 /**
+ * ☢☢ Mega run (both Jokers in the claimer's hand): the client show runs ~900 ms longer than an
+ * ordinary run (the detonation lands mid-slam and the tornado starts after the blast), so the
+ * server cushion grows by the same step: client show 6250 ms + the usual ~450 ms of slack.
+ */
+export const MEGA_RUN_FX_MS = 6700;
+/**
  * How long a finished trick stays on the table between hands' tricks (ms), at normal speed.
  * Not the hand-end score delay — see HAND_END_REVEAL_MS.
  */
@@ -67,8 +73,8 @@ export const HAND_END_HOLD_MS = HAND_END_REVEAL_MS;
  * `holdMs` is the configured beat (0 in fast tests). A run's show replaces that beat.
  * A nuke adds its allowance only when the beat is on, so tests that zero the hold stay fast.
  */
-export function handEndLeadMs(opts: { holdMs: number; run: boolean; nuke: NukeIntensity | null }): number {
-  if (opts.run) return RUN_FX_MS;
+export function handEndLeadMs(opts: { holdMs: number; run: boolean; nuke: NukeIntensity | null; megaRun?: boolean }): number {
+  if (opts.run) return opts.megaRun ? MEGA_RUN_FX_MS : RUN_FX_MS;
   if (opts.nuke && opts.holdMs > 0) return opts.holdMs + NUKE_ALLOWANCE_MS[opts.nuke];
   return opts.holdMs;
 }

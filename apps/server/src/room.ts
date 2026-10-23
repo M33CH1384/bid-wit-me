@@ -1696,7 +1696,9 @@ export class Room {
       const books = fresh.length;
       const playout = runPlayout(before, d.game, action.seat);
       if (playout) d.runPlayback = { ...playout, seq: d.seq };
-      this.system(`🌪 ${this.seatName(action.seat)} ran the board (+${books} books)`);
+      // ☢☢ a both-Jokers run supersedes the ordinary run line — one announcement, the bigger one
+      if (playout?.mega) this.system(`☢☢ TOTAL ANNIHILATION — ${this.seatName(action.seat)} ran it with both Jokers (+${books} books)`);
+      else this.system(`🌪 ${this.seatName(action.seat)} ran the board (+${books} books)`);
       const slot = d.seats[action.seat];
       const m = slot?.kind === 'human' ? d.members[slot.playerId] : undefined;
       if (m && !(m.badges ?? []).some((b) => b.id === 'storm-chaser')) {
@@ -2505,9 +2507,12 @@ export class Room {
         // trickPauseMs does not apply here: the last trick is already handOver in this same state.
         const last = g.tricks.at(-1)?.plays ?? [];
         const ran = last.some((p) => p.run);
+        // the hand's one run claim is still on record (cleared at nextHand): was it the mega?
+        const megaRun = ran && d.runPlayback?.handNo === g.handNo && d.runPlayback.mega === true;
         const lead = handEndLeadMs({
           holdMs: this.timing.handEndHoldMs ?? HAND_END_HOLD_MS,
           run: ran,
+          megaRun,
           nuke: !ran && isNukeTrick(last) ? (this.data.nukeIntensity ?? 'full') : null,
         });
         d.deadline ??= now + (d.talkSec ? d.talkSec * 1000 : this.timing.handOverMs) + lead;

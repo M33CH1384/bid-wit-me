@@ -31,6 +31,7 @@ export default function Hype({ reduced, low = false }: { reduced: boolean; low?:
   const [spark, setSpark] = useState<{ id: number; x: number; y: number; level: number } | null>(null);
   const [pops, setPops] = useState<Pop[]>([]);
   const [nuke, setNuke] = useState<{ id: number; x: number; y: number; mode: NukeIntensity } | null>(null);
+  const [mega, setMega] = useState<{ id: number; x: number; y: number; mode: NukeIntensity } | null>(null);
   const [pulse, setPulse] = useState<{ id: number; big: boolean } | null>(null);
   const reducedRef = useRef(reduced);
   reducedRef.current = reduced;
@@ -54,19 +55,25 @@ export default function Hype({ reduced, low = false }: { reduced: boolean; low?:
       setNuke({ id: e.id, ...c, mode: fx.nukeMode });
       window.setTimeout(() => setNuke((n) => (n?.id === e.id ? null : n)), 3700);
     }
+    else if (e.kind === 'mega') {
+      // ☢☢ the both-Jokers run: the nuke's banner treatment, one size up, held for the longer blast
+      const c = trickCenter();
+      setMega({ id: e.id, ...c, mode: fx.nukeMode });
+      window.setTimeout(() => setMega((n) => (n?.id === e.id ? null : n)), 4400);
+    }
   }), []);
 
 
   // HUD jolt (the 3D camera shakes separately)
   useEffect(() => {
     if (reduced) return;
-    const big = nuke && nuke.mode !== 'off' ? 'jolt-nuke' : pulse?.big ? 'jolt-big' : pulse ? 'jolt-small' : null;
+    const big = (nuke && nuke.mode !== 'off') || (mega && mega.mode !== 'off') ? 'jolt-nuke' : pulse?.big ? 'jolt-big' : pulse ? 'jolt-small' : null;
     if (!big) return;
     const el = document.querySelector('.table-screen');
     el?.classList.add(big);
-    const t = window.setTimeout(() => el?.classList.remove(big), big === 'jolt-nuke' ? 1500 : big === 'jolt-big' ? 900 : 350);
+    const t = window.setTimeout(() => el?.classList.remove(big), big === 'jolt-nuke' ? (mega ? 1900 : 1500) : big === 'jolt-big' ? 900 : 350);
     return () => { clearTimeout(t); el?.classList.remove(big); };
-  }, [nuke, pulse, reduced]);
+  }, [nuke, mega, pulse, reduced]);
 
   return (
     <div className="hype-layer" aria-live="polite" data-testid="hype">
@@ -77,6 +84,15 @@ export default function Hype({ reduced, low = false }: { reduced: boolean; low?:
           <div key={`b${nuke.id}`} className={`nuke-banner ${nuke.mode === 'off' || reduced ? 'calm' : ''}`} data-testid="nuke" onClick={() => setNuke(null)}>
             <div className="nb-title" data-text="☢ NUKED ☢">☢ NUKED ☢</div>
             <div className="nb-sub">Big Joker over Little Joker</div>
+          </div>
+        </>
+      )}
+      {mega && (
+        <>
+          {!reduced && mega.mode !== 'off' && <div key={`f${mega.id}`} className="nuke-flash mega-flash" data-testid="mega-flash" />}
+          <div key={`b${mega.id}`} className={`nuke-banner mega-banner ${mega.mode === 'off' || reduced ? 'calm' : ''}`} data-testid="mega" onClick={() => setMega(null)}>
+            <div className="nb-title" data-text="☢☢ ANNIHILATION ☢☢">☢☢ ANNIHILATION ☢☢</div>
+            <div className="nb-sub">Ran it with BOTH Jokers</div>
           </div>
         </>
       )}

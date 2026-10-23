@@ -4,7 +4,7 @@
  * A state jump with no playback (offline, or a bot claim bundled with the play that enabled it)
  * still finds the run even when an ordinary trick arrives first.
  */
-import type { Card, GameState } from '@spades/rules';
+import { type Card, type GameState, hasBothJokers } from '@spades/rules';
 import type { RunPlayback } from '@spades/protocol';
 
 export interface RunSequence {
@@ -14,6 +14,8 @@ export interface RunSequence {
   others: { seat: number; card: Card }[];
   books: number;
   tricks: RunPlayback['tricks'];
+  /** ☢☢ the claimer ran it with BOTH Jokers in hand: the mega celebration, a tier above the nuke */
+  mega: boolean;
 }
 
 /** Real seat → local seat. A spectator (me null) is anchored at seat 0, so the rotation is identity. */
@@ -39,6 +41,7 @@ export function sequenceRun(run: RunPlayback): RunSequence {
     others: fresh.filter((p) => p.seat !== run.claimer).map((p) => ({ seat: p.seat, card: p.card })),
     books: run.books,
     tricks: run.tricks,
+    mega: run.mega === true,
   };
 }
 
@@ -60,6 +63,9 @@ export function showForJump(before: GameState, after: GameState): RunSequence | 
   if (!cards.length) return null;
   return {
     claimer,
+    // the claimer's run cards ARE their hand at the claim (runPlayout's mega fact), so the
+    // same both-Jokers test derives the mega here — a Joker played before the claim is not in them
+    mega: hasBothJokers(cards),
     cards,
     others: plays.filter((p) => p.seat !== claimer).map((p) => ({ seat: p.seat, card: p.card })),
     books: runTricks.length,

@@ -41,7 +41,7 @@ export type Sfx =
   | 'shuffle' | 'deal' | 'play' | 'tap' | 'sweep' | 'broken' | 'turn' | 'bid' | 'bidSoft'
   | 'cut' | 'made' | 'set' | 'nil' | 'bags' | 'pop' | 'win' | 'lose' | 'flip'
   // hype effects. The sheet siren is a recorded wail (CREDITS.md); the rest are synthesized.
-  | 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak1' | 'streak2' | 'streak3' | 'shot' | 'gotShot' | 'shotgun' | 'pump' | 'siren' | 'docSting' | 'wheels' | 'wheelsCar' | 'overcut' | 'overcut3' | 'tornado'
+  | 'jokerLittle' | 'jokerBig' | 'nuke' | 'mega' | 'streak1' | 'streak2' | 'streak3' | 'shot' | 'gotShot' | 'shotgun' | 'pump' | 'siren' | 'docSting' | 'wheels' | 'wheelsCar' | 'overcut' | 'overcut3' | 'tornado'
   // 'Run it!': the claimer's cards all slam at once / everyone else's cards hit in a quick cascade
   | 'runSlam' | 'runThud'
   // Versus intro (boxing-style match card on the loading screen): entrances travel
@@ -56,7 +56,7 @@ export type Sfx =
   | 'cloth';
 
 /** SFX that bot voices duck under, and for how long (ms). */
-const DUCK_MS: Partial<Record<Sfx, number>> = { runSlam: 700, nuke: 3600, tornado: 2600, wheelsCar: 3000, jokerBig: 1100, shot: 1200, shotgun: 700, pump: 500, siren: 2700, docSting: 2400, streak2: 1400, streak3: 1800, overcut3: 1000, win: 2000, lose: 1600, set: 1200, nil: 1600 };
+const DUCK_MS: Partial<Record<Sfx, number>> = { runSlam: 700, nuke: 3600, mega: 4400, tornado: 2600, wheelsCar: 3000, jokerBig: 1100, shot: 1200, shotgun: 700, pump: 500, siren: 2700, docSting: 2400, streak2: 1400, streak3: 1800, overcut3: 1000, win: 2000, lose: 1600, set: 1200, nil: 1600 };
 
 export interface SoundSettings { on: boolean; volume: number; ambient: boolean; music: boolean; musicVolume: number; /** the venue's quiet ambient sound bed (Release 7), default on */ venueSound: boolean;
   /** Chat notification sounds (DM chime / global-chat blip). Absent = on. */ chatSounds?: boolean;
@@ -1353,6 +1353,7 @@ class Engine {
       case 'jokerLittle': return this.thud(t, g);
       case 'jokerBig': return this.quake(t, g);
       case 'nuke': return this.nukeBoom(t, g);
+      case 'mega': return this.megaBoom(t, g);
       case 'streak1': return this.streakHit(t, g, 1);
       case 'streak2': return this.streakHit(t, g, 2);
       case 'streak3': return this.streakHit(t, g, 3);
@@ -1630,6 +1631,39 @@ class Engine {
       d.gain.setValueAtTime(d.gain.value, t0);
       d.gain.setTargetAtTime(0.12, t + 0.05, 0.05);
       d.gain.setTargetAtTime(1, t + 1.2, 0.35);
+    }
+  }
+
+  /**
+   * ☢☢ MEGA boom (a Run it! with both Jokers): the nuke's whole stack, then a SECOND, deeper
+   * detonation ~1.15 s after the first flash — timed to the visual's second shockwave — with a
+   * longer rumble tail, a fresh round of debris, and the table's crowd "ohhh" over it.
+   * Same synthesized vocabulary as the nuke (no new samples), just stacked one tier higher.
+   */
+  private megaBoom(t0: number, g: number) {
+    this.nukeBoom(t0, g);
+    const c = this.ctx!;
+    const bus = this.nukeBus ?? this.sfxBus!;
+    const t = t0 + 0.3 + 1.15; // the second stage (the first flash is at t0 + 0.3, like the nuke)
+    const dist = this.shaper(36); const out = c.createGain(); out.gain.value = 0.9 * g; dist.connect(out).connect(bus);
+    this.tone(t, 80, 3.4, 'sine', 1, { glideTo: 17, attack: 0.003, dest: dist }); // second boom sweep, deeper
+    this.tone(t, 40, 4.2, 'sine', 0.95 * g, { glideTo: 24, attack: 0.02, dest: bus }); // sub-bass body
+    this.tone(t, 120, 0.6, 'sawtooth', 0.4, { glideTo: 28, filter: 450, dest: dist }); // chest punch
+    this.burst(t, 0.6, 0.95 * g, 'lowpass', 1600, { sweepTo: 100, dest: bus }); // second blast noise
+    this.burst(t + 0.12, 0.18, 0.95 * g, 'highpass', 1400, { dest: bus }); // second crack
+    this.burst(t + 0.25, 5.0, 0.85 * g, 'lowpass', 380, { sweepTo: 34, dest: bus }); // longer rolling rumble
+    for (let i = 0; i < 44; i++) { // debris crackle, second round
+      const dt = 0.3 + Math.pow(Math.random(), 1.6) * 3.4;
+      this.burst(t + dt, 0.018 + Math.random() * 0.03, Math.max(0.02, 0.2 - dt * 0.04) * g * (0.5 + Math.random()), 'bandpass', 1600 + Math.random() * 4200, { q: 3, dest: bus });
+    }
+    this.crowdOh(t + 0.35, 0.9 * g); // the table loses it at the second blast
+    // duck the music and the other SFX again for the second hit, then recover
+    for (const d of [this.musicDuck, this.sfxDuck]) {
+      if (!d) continue;
+      d.gain.cancelScheduledValues(t);
+      d.gain.setValueAtTime(d.gain.value, t);
+      d.gain.setTargetAtTime(0.1, t + 0.05, 0.05);
+      d.gain.setTargetAtTime(1, t + 1.4, 0.4);
     }
   }
 

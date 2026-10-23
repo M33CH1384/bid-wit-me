@@ -3305,3 +3305,11 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
 .chat-mention-pop { position: absolute; left: 10px; right: 10px; bottom: calc(100% + 4px); margin: 0; padding: 6px; list-style: none; background: #241643; border: 1px solid rgba(255,255,255,.22); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.5); z-index: 6; }
 .chat-mention-pop button { display: block; width: 100%; text-align: left; padding: 8px 10px; border-radius: 8px; background: none; border: 0; color: inherit; font: inherit; cursor: pointer; }
 .chat-mention-pop button.on { background: rgba(232,182,76,.18); }
+
+/* ☢☢ MEGA banner (2026-10-23): a Run it! with both Jokers — the nuke banner one tier up.
+   Bigger title, hotter glow, held for the longer 4.4 s blast; the flash lingers a beat more. */
+.mega-banner { top: 15%; animation-duration: 4s; }
+.mega-banner .nb-title { font-size: clamp(34px, 8.2vw, 118px); letter-spacing: .1em;
+  filter: drop-shadow(0 0 26px rgba(255, 150, 30, .95)) drop-shadow(0 0 72px rgba(255, 60, 0, .7)) drop-shadow(0 5px 2px rgba(40, 6, 0, .95)); }
+.mega-banner .nb-sub { color: #ffd9a0; text-shadow: 0 0 14px rgba(255, 110, 10, 1), 0 1px 2px #000; }
+.nuke-flash.mega-flash { animation-duration: 1.7s; }

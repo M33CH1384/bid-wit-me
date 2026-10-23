@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FELT } from '../src/three/layout';
-import { TABLE_BLAST_REACH, blastPose, clientSeesNuke, nukeBlastCards } from '../src/three/blastSweep';
+import { MEGA_TABLE_BLAST_REACH, TABLE_BLAST_REACH, blastPose, clientSeesNuke, nukeBlastCards } from '../src/three/blastSweep';
 
 const trick = [
   { card: 'BJ' as const, seat: 0 },
@@ -40,6 +40,21 @@ describe('nuke sweeps every card on the felt', () => {
     const home = blastPose(2.2, 'hand');
     expect(kick && kick.out).toBeGreaterThan(0.05);
     expect(home && home.out).toBeLessThan(0.02);
+  });
+
+  it('☢☢ the mega sweep beats the nuke’s on every axis; the nuke’s numbers are unchanged', () => {
+    expect(MEGA_TABLE_BLAST_REACH).toBeGreaterThan(TABLE_BLAST_REACH);
+    const nukePose = blastPose(2.4, 'table');
+    const megaPose = blastPose(2.4, 'table', true);
+    expect(megaPose!.out).toBe(MEGA_TABLE_BLAST_REACH);
+    expect(megaPose!.lift).toBeGreaterThan(nukePose!.lift);
+    expect(megaPose!.tumble).toBeGreaterThan(nukePose!.tumble);
+    expect(nukePose!.out).toBe(TABLE_BLAST_REACH); // the shipped nuke sweep is pinned
+    const handKick = blastPose(0.1, 'hand');
+    const megaKick = blastPose(0.1, 'hand', true);
+    expect(megaKick!.out).toBeGreaterThan(handKick!.out);
+    expect(megaKick!.lift).toBeGreaterThan(handKick!.lift);
+    expect(blastPose(-0.3, 'table', true)).toBeNull();
   });
 
   it('cues the blast for a seated player and a spectator from the same trick, and not for Run it!', () => {

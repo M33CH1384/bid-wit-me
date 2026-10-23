@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   CARD_LAND_MS, HAND_END_AFTER_LAND_MS, HAND_END_BEAT_MS, HAND_END_HOLD_MS, HAND_END_REVEAL_MS,
-  HYPE_SETTLE_MAX_MS, NUKE_ALLOWANCE_MS, RUN_FX_MS, TRICK_HOLD_MS, handEndLeadMs,
+  HYPE_SETTLE_MAX_MS, MEGA_RUN_FX_MS, NUKE_ALLOWANCE_MS, RUN_FX_MS, TRICK_HOLD_MS, handEndLeadMs,
 } from '@spades/protocol';
-import { RUN_SHOW_MS, RUN_TORNADO_AFTER_MS, RUN_TORNADO_MS, RUN_ZOOM_MS } from '../src/runIt';
+import { RUN_MEGA_SHOW_EXTRA_MS, RUN_SHOW_MS, RUN_TORNADO_AFTER_MS, RUN_TORNADO_MS, RUN_ZOOM_MS } from '../src/runIt';
 import { SCORE_TOAST_MS, TRICK_SWEEP_MS, finishedTrickHoldMs } from '../src/trickTiming';
 
 /**
@@ -67,5 +67,15 @@ describe('score screen after the last trick', () => {
     // tests that zero the hold stay fast, except a run still plays its show
     expect(handEndLeadMs({ holdMs: 0, run: false, nuke: 'full' })).toBe(0);
     expect(handEndLeadMs({ holdMs: 0, run: true, nuke: null })).toBe(RUN_FX_MS);
+  });
+
+  it('☢☢ a mega run (both Jokers) holds longer than an ordinary run, on the same shape', () => {
+    expect(handEndLeadMs({ holdMs: HAND_END_HOLD_MS, run: true, nuke: null, megaRun: true })).toBe(MEGA_RUN_FX_MS);
+    expect(handEndLeadMs({ holdMs: 0, run: true, nuke: null, megaRun: true })).toBe(MEGA_RUN_FX_MS);
+    expect(MEGA_RUN_FX_MS).toBeGreaterThan(RUN_FX_MS);
+    // the client mega show still fits inside the server cushion, like the ordinary run's does
+    expect(RUN_SHOW_MS + RUN_MEGA_SHOW_EXTRA_MS).toBeLessThan(MEGA_RUN_FX_MS);
+    // the mega flag without a run changes nothing
+    expect(handEndLeadMs({ holdMs: HAND_END_HOLD_MS, run: false, nuke: null, megaRun: true })).toBe(1200);
   });
 });

@@ -14,10 +14,10 @@ import { type Sfx, sound } from './audio';
 /** How long each effect stays on screen (ms): the hand-end hold waits these out. wheelsCar is released by the car itself. */
 const FX_HOLD_MS: Partial<Record<FxKind, number>> = {
   streak: 2300, shot: 2000, gotShot: 1900, wheels: 1900, ranIt: 2700, hustled: 2000, overcut: 1700,
-  jokerBig: 1100, jokerLittle: 500, nuke: 3700, wheelsCar: 3000,
+  jokerBig: 1100, jokerLittle: 500, nuke: 3700, mega: 4400, wheelsCar: 3000,
 };
 
-export type FxKind = 'jokerLittle' | 'jokerBig' | 'nuke' | 'streak' | 'shot' | 'gotShot' | 'wheels' | 'wheelsCar' | 'overcut' | 'hustled' | 'ranIt';
+export type FxKind = 'jokerLittle' | 'jokerBig' | 'nuke' | 'mega' | 'streak' | 'shot' | 'gotShot' | 'wheels' | 'wheelsCar' | 'overcut' | 'hustled' | 'ranIt';
 export interface FxEvent { id: number; kind: FxKind; at: number; level?: number; text?: string; sub?: string }
 
 const KEY = 'bwm.fx';
@@ -61,8 +61,8 @@ class FxBus {
     this.prefListeners.forEach((f) => f());
   }
   getNuke = () => this.prefs.nuke;
-  /** 3D blast impulse (cards lifted / blown outward, then settle), read by every Card3D each frame */
-  blast: { start: number; hand: boolean } | null = null;
+  /** 3D blast impulse (cards lifted / blown outward, then settle), read by every Card3D each frame. `mega` = the both-Jokers run tier: the sweep reaches farther. */
+  blast: { start: number; hand: boolean; mega?: boolean } | null = null;
   /**
    * 'Run it!' tornado, read by every Card3D (cards pulled into the funnel, spun, flung away), the funnel itself and the
    * camera sway. `start` is when the funnel starts pulling (after the claimer's cards slam down).
@@ -137,6 +137,8 @@ class FxBus {
       if (kind === 'jokerLittle') this.shake = { start: e.at, dur: 0.35, amp: 0.035 };
       else if (kind === 'jokerBig') this.shake = { start: e.at, dur: 0.95, amp: 0.07 };
       else if (kind === 'nuke' && this.nukeMode !== 'off') this.shake = { start: e.at + 260, dur: 2.2, amp: 0.15 };
+      // ☢☢ mega: a deeper, longer thump than the nuke's (the second stage re-shakes from Nuke3D at its flash)
+      else if (kind === 'mega' && this.nukeMode !== 'off') this.shake = { start: e.at + 260, dur: 3.0, amp: 0.24 };
       // a set shakes that scorecard panel, not the camera
       // over-cut: one short, sharp nudge (not the joker's rolling rumble)
       else if (kind === 'overcut') this.shake = (e.level ?? 2) >= 3 ? { start: e.at, dur: 0.45, amp: 0.085 } : { start: e.at, dur: 0.24, amp: 0.045 };

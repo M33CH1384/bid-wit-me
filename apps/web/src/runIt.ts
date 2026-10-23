@@ -20,3 +20,13 @@ export const RUN_TORNADO_AFTER_MS = 1100 + 650; // slow-mo slam, a beat of pain,
 export const RUN_TORNADO_MS = 2100;
 /** Claim → tornado done. The score screen opens when this elapses (no extra trick hold or toast beat). */
 export const RUN_SHOW_MS = RUN_ZOOM_MS + RUN_TORNADO_AFTER_MS + RUN_TORNADO_MS;
+/**
+ * ☢☢ MEGA run (the claimer ran it with BOTH Jokers — see runPlayout.mega): the detonation's
+ * pin-point starts this long after the slam begins, so the white flash lands exactly on the
+ * slow-mo cards' impact (the slam's last frames), not after it.
+ */
+export const RUN_MEGA_DETONATE_MS = 800;
+/** Mega: the blast blows the felt clear first; the tornado starts this long after the slam (550 ms later than an ordinary run). */
+export const RUN_MEGA_TORNADO_AFTER_MS = RUN_TORNADO_AFTER_MS + 550;
+/** Mega: the whole show runs this much longer than an ordinary run's (blast 4.4 s + the delayed tornado). */
+export const RUN_MEGA_SHOW_EXTRA_MS = 900;
