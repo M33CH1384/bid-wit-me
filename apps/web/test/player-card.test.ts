@@ -527,6 +527,114 @@ describe('the card face (source pins)', () => {
   });
 });
 
+/* ----------------------------------- polish pass (owner, 2026-10-23) */
+
+describe('polish pass: classic ink, real-card scale, the corner owns its corner', () => {
+  const css = read('../src/profile/playercard.css');
+  const block = (selector: string): string => {
+    const i = css.indexOf(selector);
+    expect(i, `selector ${selector}`).toBeGreaterThanOrEqual(0);
+    const open = css.indexOf('{', i);
+    return css.slice(open, css.indexOf('}', open));
+  };
+  const suitDeep = (suit: string): [number, number, number] => {
+    const m = block(`.plcard[data-suit="${suit}"]`).match(/--suit-deep:\s*#([0-9a-fA-F]{6})/);
+    expect(m, `--suit-deep for ${suit}`).toBeTruthy();
+    const h = m![1]!;
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  };
+  const cqwOf = (selector: string): number => {
+    const m = block(selector).match(/font-size:\s*([\d.]+)cqw/);
+    expect(m, `cqw font-size in ${selector}`).toBeTruthy();
+    return parseFloat(m![1]!);
+  };
+  const pctOf = (selector: string, prop: string): number => {
+    const m = block(selector).match(new RegExp(`${prop}:\\s*([\\d.]+)%`));
+    expect(m, `${prop} % in ${selector}`).toBeTruthy();
+    return parseFloat(m![1]!);
+  };
+
+  it('classic suit ink: hearts/diamonds print red, clubs/spades print black', () => {
+    for (const suit of ['hearts', 'diamonds']) {
+      const [r, g, b] = suitDeep(suit);
+      expect(r, `${suit} ink is red`).toBeGreaterThanOrEqual(150);
+      expect(r - g).toBeGreaterThanOrEqual(70);
+      expect(r - b).toBeGreaterThanOrEqual(50);
+    }
+    for (const suit of ['clubs', 'spades']) {
+      const [r, g, b] = suitDeep(suit);
+      // black family: every channel low, near-neutral (never green/blue/violet)
+      expect(Math.max(r, g, b), `${suit} ink is black`).toBeLessThanOrEqual(48);
+      expect(Math.max(r, g, b) - Math.min(r, g, b)).toBeLessThanOrEqual(12);
+    }
+  });
+
+  it('indices and pips print at real-card scale, sized off the card’s own width', () => {
+    expect(block('.plcard.pcard {')).toContain('container-type: inline-size');
+    expect(cqwOf('.plcard .pcard-crank {')).toBeGreaterThanOrEqual(16);
+    expect(cqwOf('.plcard .pcard-csuit {')).toBeGreaterThanOrEqual(11);
+    expect(cqwOf('.plcard .pcard-pipdot {')).toBeGreaterThanOrEqual(20);
+    // the deck variant must not shrink them back down — cqw does the scaling
+    expect(css).not.toContain('[data-variant="deck"] .pcard-crank');
+    expect(css).not.toContain('[data-variant="deck"] .pcard-csuit');
+    expect(css).not.toContain('[data-variant="deck"] .pcard-pipdot');
+    expect(css).not.toContain('[data-variant="deck"] .pcard-heropip');
+  });
+
+  it('a two-digit rank prints condensed (data-two from the component, a smaller cqw in css)', async () => {
+    expect(cqwOf('.plcard .pcard-crank[data-two="1"] {')).toBeLessThan(cqwOf('.plcard .pcard-crank {'));
+    await render(createElement(PlayerCard, {
+      data: cardBase({ rank: numberRank('10', 'clubs', '♣', 21) }),
+    }));
+    const cranks = qa('.pcard-crank');
+    expect(cranks).toHaveLength(2);
+    for (const c of cranks) expect(c.getAttribute('data-two')).toBe('1');
+    await render(createElement(PlayerCard, {
+      data: cardBase({ rank: numberRank('4', 'clubs', '♣', 15) }),
+    }));
+    for (const c of qa('.pcard-crank')) expect(c.getAttribute('data-two')).toBeNull();
+  });
+
+  it('the corner contract: every corner pins ALL FOUR offsets (the styles.css leak cannot stretch the box)', () => {
+    // styles.css's deck-browser .pcard-corner sets top/left at lower
+    // specificity; any offset this sheet leaves unpinned leaks through
+    // and stretches the corner box across the face (the circled defect).
+    const base = block('.plcard .pcard-corner {');
+    for (const pin of ['top: auto', 'right: auto', 'bottom: auto', 'left: auto']) {
+      expect(base, `base corner pins ${pin}`).toContain(pin);
+    }
+    const tl = block('.plcard .pcard-corner.tl {');
+    expect(tl).toMatch(/top:\s*2\.4%/);
+    expect(tl).toMatch(/left:\s*3\.5%/);
+    expect(tl).toContain('right: auto');
+    expect(tl).toContain('bottom: auto');
+    const br = block('.plcard .pcard-corner.br {');
+    expect(br).toMatch(/bottom:\s*2\.4%/);
+    expect(br).toMatch(/right:\s*3\.5%/);
+    expect(br).toContain('top: auto');
+    expect(br).toContain('left: auto');
+    expect(br).toContain('rotate(180deg)');
+  });
+
+  it('the nameplate is a plaque between the corners: its right inset clears the index zone with room to spare', () => {
+    const plateRight = pctOf('.plcard .pcard-plate {', 'right');
+    const plateLeft = pctOf('.plcard .pcard-plate {', 'left');
+    expect(plateRight).toBeGreaterThanOrEqual(24);
+    expect(plateLeft).toBeGreaterThanOrEqual(9);
+    // the bottom-right index's ink zone: its right offset plus the wider
+    // of (the condensed two-digit numeral, the corner suit glyph)
+    const zone = pctOf('.plcard .pcard-corner.br {', 'right')
+      + Math.max(cqwOf('.plcard .pcard-crank[data-two="1"] {') * 1.05, cqwOf('.plcard .pcard-csuit {') * 0.95);
+    expect(plateRight - zone).toBeGreaterThanOrEqual(5);
+  });
+
+  it('the number art window yielded to classic pip scale (40% of the field, squarer)', () => {
+    const win = block('.plcard .pcard-artwin.number {');
+    expect(win).toMatch(/width:\s*40%/);
+    expect(win).toContain('aspect-ratio: 4 / 3.75');
+  });
+});
+
 /* ------------------------------------------- nameplate contrast (WCAG) */
 
 describe('nameplate contrast (computed from the shipped css)', () => {

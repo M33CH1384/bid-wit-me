@@ -17,7 +17,21 @@
  * — gold band, dark ink for the Big Joker — so the name can never vanish
  * into the face) and the showcased badges as medal seals. Everything that
  * isn't card anatomy lives BELOW the card. The BACK is a patterned card
- * back with the stats as an ivory inset panel, same footprint. */
+ * back with the stats as an ivory inset panel, same footprint.
+ *
+ * POLISH PASS (owner on-device verdict, 2026-10-23): three fixes. (1)
+ * CLASSIC SUIT INK — indices and pips print in the standard deck colors
+ * (hearts/diamonds red, clubs/spades black); the tier story survives only
+ * in the quiet face wash and frame accents. (2) REAL-CARD SCALE — corner
+ * indices and field pips sized in cqw (percent of the card's own width,
+ * container-typed on the card) so they hold real-card proportion at every
+ * size, the 192px card-up reveal included. (3) THE BOTTOM-RIGHT INDEX
+ * OWNS ITS CORNER — styles.css's deck-browser .pcard-corner rule sets
+ * top/left, which leaked into this card's .br corner (its rule never
+ * reset them), stretching the corner box across the whole face so the
+ * rotated glyphs landed mid-card on the nameplate; the corner rules now
+ * pin all four offsets explicitly, and the nameplate is inset as a plaque
+ * BETWEEN the bottom corners, clear of both corner zones. */
 
 /* Placement inside the profile header (a flex-wrap row): the card wrap and
  * its satellites take the full line; RepBlock + the action row follow. */
@@ -33,19 +47,25 @@
 
 /* Suit color stories. --suit is the bright accent (dark grounds: the back
  * pattern, below-card touches); --suit-deep prints the indices and pips on
- * the ivory face; --suit-wash tints the face's crown; --suit-line draws
- * the keyline. Spades wear the house violet, deepest and richest; the
- * Joker stands in gold. */
-.plcard[data-suit="hearts"] { --suit: #ff647c; --suit-deep: #c22440; --suit-wash: #fbe3e8; --suit-line: rgba(194, 36, 64, .5); }
-.plcard[data-suit="clubs"] { --suit: #57d992; --suit-deep: #14713f; --suit-wash: #def2e2; --suit-line: rgba(20, 113, 63, .5); }
-.plcard[data-suit="diamonds"] { --suit: #5bdfff; --suit-deep: #0e6ba6; --suit-wash: #ddeef8; --suit-line: rgba(14, 107, 166, .48); }
-.plcard[data-suit="spades"] { --suit: #b980ff; --suit-deep: #5b21b6; --suit-wash: #e7dcf8; --suit-line: rgba(91, 33, 182, .52); }
+ * the ivory face — CLASSIC DECK INK (owner polish pass): hearts and
+ * diamonds in a rich printed red, clubs and spades in a rich printed
+ * black, never a tier color. The tier story survives only in the quiet
+ * accents: --suit-wash tints the face's crown (neutral for clubs, warm
+ * porcelain for diamonds, a blush for hearts, the elite violet whisper
+ * for spades) and --suit-line draws the keyline in the ink's own tint
+ * (spades additionally keep their gold hairline). The Joker stands in
+ * gold. */
+.plcard[data-suit="hearts"] { --suit: #ff647c; --suit-deep: #b91f32; --suit-wash: #fbe3e8; --suit-line: rgba(185, 31, 50, .5); }
+.plcard[data-suit="clubs"] { --suit: #57d992; --suit-deep: #191921; --suit-wash: #eff0ea; --suit-line: rgba(25, 25, 33, .48); }
+.plcard[data-suit="diamonds"] { --suit: #5bdfff; --suit-deep: #b91f32; --suit-wash: #f2ede6; --suit-line: rgba(185, 31, 50, .48); }
+.plcard[data-suit="spades"] { --suit: #b980ff; --suit-deep: #191921; --suit-wash: #e7dcf8; --suit-line: rgba(25, 25, 33, .5); }
 .plcard[data-suit="joker"] { --suit: var(--gold); --suit-deep: var(--gold); --suit-wash: rgba(var(--gold-rgb), .16); --suit-line: rgba(var(--gold-rgb), .55); }
 
 /* The card box itself. (Selector outranks styles.css's painted-face .pcard
  * on every shared property — the two components never trade paint.) */
 .plcard.pcard {
   position: relative; display: block; flex: none;
+  container-type: inline-size;
   width: var(--cardw); height: auto; aspect-ratio: 5 / 7;
   border-radius: 13px; overflow: visible;
   background: transparent; color: var(--ink); font-size: 15px;
@@ -117,40 +137,53 @@ html[data-theme="neon"] .plcard .pcard-front { border-color: rgba(var(--purple-r
 html[data-theme="neon"] .plcard[data-treatment="big-joker"] .pcard-front { border-color: rgba(var(--gold-rgb), .8); }
 
 /* Corner indices: rank over suit, top-left and bottom-right rotated —
- * exactly where a real card prints them. */
+ * exactly where a real card prints them, at real-card scale (sizes in
+ * cqw = percent of the card's width, so the proportion holds from the
+ * 300px header card down to the 192px reveal slot; the px value before
+ * each cqw is the fallback at header width). ALL FOUR offsets are pinned
+ * on every corner: styles.css's deck-browser .pcard-corner sets top/left,
+ * and an unpinned offset leaks through the cascade — that leak stretched
+ * the .br box across the whole face and dropped its rotated glyphs onto
+ * the nameplate (owner screenshot, 2026-10-23). */
 .plcard .pcard-corner {
   position: absolute; z-index: 6;
+  top: auto; right: auto; bottom: auto; left: auto;
   display: flex; flex-direction: column; align-items: center; gap: 1px;
   line-height: 1; color: var(--corner); pointer-events: none;
   font-family: var(--display);
 }
-.plcard .pcard-corner.tl { top: 10px; left: 11px; }
-.plcard .pcard-corner.br { bottom: 10px; right: 11px; transform: rotate(180deg); }
-.plcard .pcard-crank { font-size: 25px; font-weight: 800; }
-.plcard .pcard-csuit { font-size: 18px; }
+.plcard .pcard-corner.tl { top: 2.4%; left: 3.5%; right: auto; bottom: auto; }
+.plcard .pcard-corner.br { bottom: 2.4%; right: 3.5%; top: auto; left: auto; transform: rotate(180deg); }
+.plcard .pcard-crank { font-size: 51px; font-size: 17cqw; font-weight: 800; }
+/* A two-digit rank (the 10) prints condensed, as real decks print it —
+ * keeps the corner's ink inside its corner zone. */
+.plcard .pcard-crank[data-two="1"] { font-size: 40px; font-size: 13cqw; letter-spacing: -.04em; }
+.plcard .pcard-csuit { font-size: 35px; font-size: 11.5cqw; }
 .plcard[data-treatment="little-joker"] .pcard-csuit,
-.plcard[data-treatment="big-joker"] .pcard-csuit { font-size: 7.5px; font-weight: 800; letter-spacing: .12em; }
-.plcard[data-treatment="big-joker"] .pcard-crank { font-size: 28px; }
+.plcard[data-treatment="big-joker"] .pcard-csuit { font-size: 8.5px; font-size: 2.8cqw; font-weight: 800; letter-spacing: .12em; }
+.plcard[data-treatment="big-joker"] .pcard-crank { font-size: 54px; font-size: 18cqw; }
 
 /* ------------------------------------------------------------- the field */
 .plcard .pcard-field {
   position: absolute; z-index: 1;
   top: 11.5%; bottom: 18%; left: 14%; right: 14%;
 }
-/* Number pips, placed by PIP_LAYOUTS; lower-half pips print inverted. */
+/* Number pips, placed by PIP_LAYOUTS; lower-half pips print inverted.
+ * Classic pip scale: the glyph box is ~21% of the card's width (a fifth,
+ * as a real deck prints it), in classic suit ink. */
 .plcard .pcard-pipdot {
   position: absolute; transform: translate(-50%, -50%);
-  font-size: 31px; line-height: 1; color: var(--suit-deep);
+  font-size: 63px; font-size: 21cqw; line-height: 1; color: var(--suit-deep);
   pointer-events: none;
 }
 .plcard .pcard-pipdot[data-inv="1"] { transform: translate(-50%, -50%) rotate(180deg); }
 /* Hero pips: the Ace's single oversized suit, the Deuce's stacked pair. */
 .plcard .pcard-heropip {
   position: absolute; left: 50%; top: 54%; transform: translate(-50%, -50%);
-  font-size: 148px; line-height: 1; color: var(--suit-deep); opacity: .92;
+  font-size: 138px; font-size: 46cqw; line-height: 1; color: var(--suit-deep); opacity: .92;
   pointer-events: none;
 }
-.plcard .pcard-field[data-field="deuce"] .pcard-heropip { font-size: 62px; }
+.plcard .pcard-field[data-field="deuce"] .pcard-heropip { font-size: 63px; font-size: 21cqw; }
 .plcard .pcard-field[data-field="deuce"] .pcard-heropip.top { top: 15%; }
 .plcard .pcard-field[data-field="deuce"] .pcard-heropip.bot { top: 85%; transform: translate(-50%, -50%) rotate(180deg); }
 
@@ -166,9 +199,12 @@ html[data-theme="neon"] .plcard[data-treatment="big-joker"] .pcard-front { borde
 }
 .plcard .pcard-artwin img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .plcard .pcard-artletter {
-  font-family: var(--display); font-weight: 800; font-size: 46px; color: var(--suit-deep);
+  font-family: var(--display); font-weight: 800; font-size: 46px; font-size: 15cqw; color: var(--suit-deep);
 }
-.plcard .pcard-artwin.number { left: 50%; top: 50%; transform: translate(-50%, -50%); width: 47%; aspect-ratio: 4 / 4.7; }
+/* At classic pip scale the window yields a little room (owner polish
+ * pass): narrower and squarer, so the 6/7/8 mid-row pips and the 8's
+ * offset center pips clear its edges at every rank 3–10. */
+.plcard .pcard-artwin.number { left: 50%; top: 50%; transform: translate(-50%, -50%); width: 40%; aspect-ratio: 4 / 3.75; }
 .plcard .pcard-artwin.ace { left: 50%; top: 37%; transform: translate(-50%, -50%); width: 41%; aspect-ratio: 4 / 4.7; }
 .plcard .pcard-artwin.deuce { left: 50%; top: 50%; transform: translate(-50%, -50%); width: 33%; aspect-ratio: 4 / 4.6; }
 .plcard .pcard-artwin.court { inset: 0; border-width: 2.5px; }
@@ -196,11 +232,15 @@ html[data-theme="neon"] .plcard[data-treatment="big-joker"] .pcard-front { borde
 /* ------------------------------------------- nameplate band (in-frame) */
 /* A deep band worked into the frame's foot: light ink on near-black (gold
  * band, dark ink for the Big Joker). The pairing is fixed HERE, in one
- * place — the display name can never inherit its way into invisibility. */
+ * place — the display name can never inherit its way into invisibility.
+ * The band is a PLAQUE BETWEEN THE CORNERS (owner polish pass): its right
+ * inset (24%) keeps it out of the bottom-right index's corner zone
+ * entirely — index ink, seals and band can never meet — and its left
+ * inset mirrors the reservation so the foot reads deliberate. */
 .plcard .pcard-plate {
-  position: absolute; z-index: 5; left: 10.5%; right: 10.5%; bottom: 3%;
-  display: flex; align-items: center; gap: 9px;
-  padding: 8px 11px; border-radius: 8px;
+  position: absolute; z-index: 5; left: 9%; right: 24%; bottom: 3%;
+  display: flex; align-items: center; gap: 9px; gap: 3cqw;
+  padding: 8px 11px; padding: 2.7cqw 3.7cqw; border-radius: 8px;
   background: linear-gradient(180deg, #201a3d, #131022);
   box-shadow: inset 0 0 0 1px rgba(var(--gold-rgb), .5), 0 3px 10px rgba(15, 8, 34, .35);
   color: #f7f1de;
@@ -215,19 +255,19 @@ html[data-theme="neon"] .plcard[data-treatment="big-joker"] .pcard-front { borde
 .plcard .pcard-plate-id { min-width: 0; flex: 1; }
 .plcard .pcard-name {
   margin: 0; font-family: var(--display); font-weight: 800;
-  font-size: 20px; line-height: 1.12; color: #f7f1de;
+  font-size: 20px; font-size: 6.7cqw; line-height: 1.12; color: #f7f1de;
   overflow-wrap: anywhere;
 }
 .plcard[data-treatment="big-joker"] .pcard-name { color: #171106; }
-.plcard .pcard-handle { margin: 1px 0 0; font-size: 11.5px; color: #bdb2dd; }
+.plcard .pcard-handle { margin: 1px 0 0; font-size: 11.5px; font-size: 3.8cqw; color: #bdb2dd; }
 .plcard[data-treatment="big-joker"] .pcard-handle { color: #54400c; }
 /* Showcased badges ride the band as medal seals — a glyph in a ringed
  * disc, the badge's name on its title, never a text pill. */
-.plcard .pcard-seals { display: flex; gap: 5px; flex: none; }
+.plcard .pcard-seals { display: flex; gap: 5px; gap: 1.7cqw; flex: none; }
 .plcard .pcard-seal {
-  width: 27px; height: 27px; border-radius: 50%;
+  width: 27px; width: 9cqw; height: 27px; height: 9cqw; border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;
-  font-size: 14px; line-height: 1;
+  font-size: 14px; font-size: 4.7cqw; line-height: 1;
   background: radial-gradient(circle at 35% 30%, rgba(var(--gold-rgb), .5), rgba(var(--gold-rgb), .16));
   border: 1.5px solid rgba(var(--gold-rgb), .85);
 }
@@ -311,12 +351,10 @@ html[data-theme="neon"] .plcard[data-treatment="big-joker"] .pcard-front { borde
 .plcard .pcard-since { margin: 0; color: #6a6284; font-size: 12px; }
 
 /* -------------------------------------------------------- deck size */
-.plcard[data-variant="deck"] .pcard-crank { font-size: 23px; }
-.plcard[data-variant="deck"] .pcard-csuit { font-size: 16px; }
-.plcard[data-variant="deck"] .pcard-pipdot { font-size: 28px; }
-.plcard[data-variant="deck"] .pcard-heropip { font-size: 132px; }
-.plcard[data-variant="deck"] .pcard-field[data-field="deuce"] .pcard-heropip { font-size: 56px; }
-.plcard[data-variant="deck"] .pcard-name { font-size: 19px; }
+/* Indices, pips and the nameplate need no deck overrides: their cqw
+ * sizes scale with the card's own width, so the deck card (and the
+ * 192px card-up reveal slot) keeps the same real-card proportions —
+ * and the same clearances — automatically. */
 .plcard[data-variant="deck"] .pcard-record b { font-size: 18px; }
 .plcard[data-variant="deck"] .pcard-status { font-size: 14.5px; }
 

@@ -19,6 +19,14 @@
  * table — set as an inset panel inside a patterned card back, in the same
  * card footprint.
  *
+ * Polish pass (owner on-device verdict, 2026-10-23): the indices and pips
+ * print at real-card scale in classic suit ink (red hearts/diamonds, black
+ * clubs/spades — all in playercard.css), and the bottom-right index owns
+ * its corner: the corner rules pin every offset so no foreign rule can
+ * stretch the box, and the nameplate plaque is inset clear of the corner
+ * zones. The crank carries data-two for a two-digit rank (the 10), which
+ * the CSS prints condensed, as real decks do.
+ *
  * The rank ladder is the owner's: Rep level IS a card — 3♥ up through the
  * suits (hearts the come-up, clubs "you belong", diamonds "bout that
  * life", spades the elite run) to the Deuce of spades at 49, the Little
@@ -256,11 +264,11 @@ export function PlayerCard({ data, pic, variant = 'header', champion, self, onEd
           {/* ------------------------------------------------------ FRONT */}
           <section className="pcard-face pcard-front" aria-hidden={flipped} data-testid="pcard-front">
             <div className="pcard-corner tl" aria-hidden>
-              <span className="pcard-crank">{cornerRank}</span>
+              <span className="pcard-crank" data-two={cornerRank.length > 1 ? '1' : undefined}>{cornerRank}</span>
               <span className="pcard-csuit">{cornerSuit}</span>
             </div>
             <div className="pcard-corner br" aria-hidden>
-              <span className="pcard-crank">{cornerRank}</span>
+              <span className="pcard-crank" data-two={cornerRank.length > 1 ? '1' : undefined}>{cornerRank}</span>
               <span className="pcard-csuit">{cornerSuit}</span>
             </div>
 
