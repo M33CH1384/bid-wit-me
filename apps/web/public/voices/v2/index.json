@@ -23,21 +23,21 @@
   "mama-f": {
    "voice": "af_heart",
    "speed": 0.92,
-   "count": 433,
-   "durationSec": 1377.8,
+   "count": 434,
+   "durationSec": 1381.6,
    "bytes": {
-    "webm": 3775683,
-    "m4a": 6115612
+    "webm": 3788474,
+    "m4a": 6134102
    }
   },
   "mama-m": {
    "voice": "am_onyx",
    "speed": 0.9,
-   "count": 409,
-   "durationSec": 1141.3,
+   "count": 410,
+   "durationSec": 1145.2,
    "bytes": {
-    "webm": 3076778,
-    "m4a": 5084474
+    "webm": 3082291,
+    "m4a": 5090756
    }
   },
   "hype-f": {
@@ -263,21 +263,21 @@
   "lilcuz-f": {
    "voice": "af_nova",
    "speed": 1.15,
-   "count": 819,
-   "durationSec": 4398.1,
+   "count": 820,
+   "durationSec": 4400.0,
    "bytes": {
-    "webm": 12090422,
-    "m4a": 18804694
+    "webm": 12108433,
+    "m4a": 18859623
    }
   },
   "lilcuz-m": {
    "voice": "am_michael",
    "speed": 1.18,
-   "count": 435,
-   "durationSec": 1298.8,
+   "count": 436,
+   "durationSec": 1300.9,
    "bytes": {
-    "webm": 3495903,
-    "m4a": 5832364
+    "webm": 3501121,
+    "m4a": 5845167
    }
   },
   "coach-f": {
