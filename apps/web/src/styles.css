@@ -1732,6 +1732,25 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .bwm-loading-actions { display: flex; flex-direction: column; align-items: center; gap: 4px; width: min(240px, 100%); }
 .bwm-loading-actions .primary { min-height: 44px; width: 100%; }
 
+/* Taking seats (owner, 2026-10-23): the table's real faces arrive one by one on
+   the standard hold — entrance choreography only, then the portraits rest.
+   Story seats show their portraits, humans their uploaded pictures, and a bot
+   with no portrait art gets a designed nameplate on its seat color — never
+   the bare single-letter circle. */
+.bwm-loading-seats { display: flex; gap: 8px; justify-content: center; width: 100%; margin-top: 4px; }
+.bwm-seat { --uc: #fff; flex: 1 1 0; max-width: 98px; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 5px; opacity: 0; animation: bwm-seat-in .55s cubic-bezier(.2, .9, .3, 1.15) both; }
+.bwm-loading-seats.reduced .bwm-seat { animation: none; opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .bwm-seat { animation: none; opacity: 1; } }
+@keyframes bwm-seat-in { from { opacity: 0; transform: translateY(16px) scale(.88); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.bwm-seat-facebox { width: 100%; height: 64px; display: grid; place-items: center; }
+.bwm-seat-facebox .story-face { width: 64px; height: 64px; font-size: 27px; box-shadow: 0 0 0 2px var(--uc), 0 10px 22px rgba(0, 0, 0, .5); }
+.bwm-seat-face-circle { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; font-family: var(--display); font-weight: 800; font-size: 27px; color: var(--ink-deep); background: radial-gradient(circle at 35% 30%, #fff, var(--uc) 60%); box-shadow: 0 0 0 2px var(--ink-deep), 0 0 0 4px var(--uc), 0 10px 22px rgba(0, 0, 0, .5); overflow: hidden; }
+.bwm-seat-face-circle img { width: 100%; height: 100%; object-fit: cover; }
+.bwm-seat-plate { width: 100%; max-width: 96px; height: 64px; border-radius: 14px; display: grid; place-items: center; padding: 6px 5px; background: linear-gradient(160deg, color-mix(in srgb, var(--uc) 34%, #17101f), #100a16 78%); border: 1px solid color-mix(in srgb, var(--uc) 55%, transparent); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1), 0 10px 22px rgba(0, 0, 0, .45); }
+.bwm-seat-plate-name { font-family: var(--display); font-weight: 800; font-size: 12.5px; line-height: 1.18; letter-spacing: .03em; color: #fff; text-align: center; overflow-wrap: anywhere; }
+.bwm-seat-name { font-family: var(--display); font-weight: 700; font-size: 12.5px; line-height: 1.1; letter-spacing: .04em; color: var(--ink); text-align: center; overflow-wrap: anywhere; }
+.bwm-seat-tag { font-size: 10.5px; line-height: 1.2; color: var(--ink); opacity: .72; text-align: center; overflow-wrap: anywhere; }
+
 /* Versus intro (boxing match card): the two sides' pics smash together at center,
    then the Tale of the Tape reveals. Transforms/opacity only. Beat sheet (synced
    in VersusIntro.tsx): entrances 0–1s, impact at 1s, tape lands 1.5s, rows stagger

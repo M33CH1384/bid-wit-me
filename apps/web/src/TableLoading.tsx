@@ -1,5 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { AvatarCircle, useAvatar } from './avatar';
+import StoryFace from './story/StoryFace';
 import tips from './data/loading-tips.json';
 
 /** Copy that rotates while the table is still coming up. The first line is the one tests and the first paint use. */
@@ -23,6 +25,87 @@ export function shuffleTips<T>(list: readonly T[], random: () => number = Math.r
     next[j] = swap;
   }
   return next;
+}
+
+/* ------------------------------------------------------------ taking seats */
+
+/**
+ * One seat of the table being loaded, in seat order (owner, 2026-10-23: the
+ * hold should show the actual people "taking their seats", not colored
+ * plates with a single initial). Callers map the REAL seated roster onto
+ * this shape; TableLoading only presents it.
+ *
+ * Face resolution mirrors the table's own PlateFace priority: a story
+ * character renders their portrait (storyId); a human renders their
+ * uploaded picture (uid lookup, or `direct` when the caller already holds
+ * the data URL — the viewer's own seat); a bot with no portrait art gets a
+ * designed nameplate (full name on its seat color) — never the bare
+ * single-letter circle.
+ */
+export interface LoadingSeat {
+  name: string;
+  /** Story role ("Rooftop philosopher") or persona tag ("The Professor"); empty for plain humans. */
+  tag?: string | null;
+  /** Story character id — renders the real portrait from the story art set. */
+  storyId?: string | null;
+  /** Account id for the uploaded-picture lookup (human seats). */
+  uid?: string | null;
+  /** Avatar data URL the caller already has (the viewer's own seat). */
+  direct?: string | null;
+  /** A bot seat: with no storyId it takes the nameplate, never a letter. */
+  bot?: boolean;
+  /** The viewer's own seat. */
+  you?: boolean;
+  /** Seat color (the table's SEAT_COLORS / USER_COLORS value) for rings and the nameplate. */
+  color: string;
+}
+
+/** Seats arrive one by one across the hold; the last of four lands ~1.9 s in,
+ *  ahead of the standard hold's 3 s floor, so the table feels populated
+ *  before it lifts. Reduced motion: no stagger, everyone is simply seated. */
+export const LOADING_SEAT_STAGGER_MS = 450;
+export const LOADING_SEAT_ENTER_MS = 550;
+export function loadingSeatDelayMs(index: number, reduced: boolean): number {
+  return reduced ? 0 : index * LOADING_SEAT_STAGGER_MS;
+}
+
+function LoadingSeatFace({ seat }: { seat: LoadingSeat }) {
+  const pic = useAvatar(seat.uid ?? null, seat.direct ?? null);
+  if (seat.storyId) return <StoryFace characterId={seat.storyId} name={seat.name} />;
+  if (seat.bot) {
+    return (
+      <span className="bwm-seat-plate" aria-hidden>
+        <span className="bwm-seat-plate-name">{seat.name}</span>
+      </span>
+    );
+  }
+  return <AvatarCircle pic={pic} name={seat.name} className="bwm-seat-face-circle" />;
+}
+
+function LoadingSeatCard({ seat, index, reduced }: { seat: LoadingSeat; index: number; reduced: boolean }) {
+  const plate = !!seat.bot && !seat.storyId;
+  return (
+    <div
+      className="bwm-seat"
+      data-testid="loading-seat"
+      style={{ '--uc': seat.color, animationDelay: `${loadingSeatDelayMs(index, reduced)}ms` } as CSSProperties}
+    >
+      <span className="bwm-seat-facebox">
+        <LoadingSeatFace seat={seat} />
+      </span>
+      {!plate && <span className="bwm-seat-name">{seat.you ? 'You' : seat.name}</span>}
+      {seat.tag && <span className="bwm-seat-tag">{seat.tag}</span>}
+    </div>
+  );
+}
+
+function LoadingSeats({ seats, reduced }: { seats: readonly LoadingSeat[]; reduced: boolean }) {
+  if (!seats.length) return null;
+  return (
+    <div className={`bwm-loading-seats${reduced ? ' reduced' : ''}`} data-testid="loading-seats">
+      {seats.map((seat, i) => <LoadingSeatCard key={i} seat={seat} index={i} reduced={reduced} />)}
+    </div>
+  );
 }
 
 /** One tip at a time. The next fades in on a timer that does not touch the loader's progress. */
@@ -56,11 +139,18 @@ function LoadingTips() {
  * Full-screen Bid Wit Me hold, from the moment a table is joined or started until the 3D scene
  * and the first game state are both ready. The half-drawn table stays underneath and cannot be tapped.
  */
-export function TableLoading({ progress, leaving, onBack, onRetry, fault, room, versus }: {
+export function TableLoading({ progress, leaving, onBack, onRetry, fault, room, versus, seats, reducedMotion }: {
   progress?: number; leaving?: boolean; onBack?: () => void; onRetry?: () => void; fault?: string | null; room?: string;
   /** The versus intro (boxing match card) replaces the standard line/tips while it plays;
    *  a slim progress track stays under it so table readiness is still visible. */
   versus?: ReactNode;
+  /** The table's seats taking their seats on the standard hold (never in the
+   *  fault or versus branches — those own the card). Purely presentational:
+   *  the hold never waits on portraits; a face that hasn't landed simply
+   *  shows its fallback while the seat itself arrives on schedule. */
+  seats?: readonly LoadingSeat[];
+  /** Reduced motion: seats render already seated, no entrance choreography. */
+  reducedMotion?: boolean;
 }) {
   const [line, setLine] = useState(0);
   useEffect(() => {
@@ -101,6 +191,7 @@ export function TableLoading({ progress, leaving, onBack, onRetry, fault, room, 
           </>
         ) : (
           <>
+            {seats && seats.length > 0 && <LoadingSeats seats={seats} reduced={!!reducedMotion} />}
             <p className="bwm-loading-line" data-testid="table-loading-line" aria-live="polite">{LOADING_LINES[line]}</p>
             <div
               className={`bwm-loading-track${known ? '' : ' indeterminate'}`}

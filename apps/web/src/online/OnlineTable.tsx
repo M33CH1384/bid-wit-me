@@ -6,7 +6,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { sideOf } from '@spades/rules';
 import { TurnCountdown } from '../TurnRing';
 import Table from '../Table';
-import { TableLoading } from '../TableLoading';
+import { TableLoading, type LoadingSeat } from '../TableLoading';
+import { platePersona } from '@spades/bots';
+import { SEAT_COLORS } from '../overlay';
 import { type Settings, loadSettings, saveSettings } from '../settings';
 import type { ConnState, TableConnection } from './connection';
 import { type KickInfo, MediaBar, SeatMedia, TalkTile, VictorySpotlight } from './Media';
@@ -28,6 +30,26 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
   // Watching (no seat): every plate, including the bottom one, is the occupant — a person or a bot — never "You".
   const spectator = !!cs.spectator && cs.seat === null;
   const names = useMemo(() => (rot ? localNames(room, rot, spectator) : []), [room, rot, spectator]);
+  // Taking seats on the join hold (owner, 2026-10-23): the first state is
+  // still drawing, but the room roster is already known — present the real
+  // occupants in local seat order (empty seats have nobody to seat).
+  const joinSeats: LoadingSeat[] | undefined = useMemo(() => {
+    if (!rot || !names.length) return undefined;
+    const seats: LoadingSeat[] = [];
+    for (let L = 0; L < rot.n; L++) {
+      const s = room.seats[rot.R(L)];
+      if (!s || s.kind === 'empty') continue;
+      seats.push({
+        name: names[L] ?? s.name,
+        tag: s.kind === 'bot' ? platePersona(s.name) : null,
+        uid: s.kind === 'human' ? (s.uid ?? null) : null,
+        bot: s.kind === 'bot',
+        you: L === 0 && !spectator,
+        color: SEAT_COLORS[L] ?? '#ddd',
+      });
+    }
+    return seats.length ? seats : undefined;
+  }, [rot, names, room.seats, spectator]);
   const send = useCallback((text: string) => conn.send({ t: 'chat', text }), [conn]);
   const sendReact = useCallback((id: number, emoji: string) => conn.send({ t: 'react', id, emoji }), [conn]);
   // Engine dealer seat (unrotated view) and its current occupant. The chip and the popup both use this.
@@ -118,7 +140,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
 
   const drawn = !!source && !!rot;
   useEffect(() => { if (!drawn) conn.send({ t: 'interactive', on: false }); }, [drawn, conn, socketGen]);
-  if (!drawn || !source || !rot) return <TableLoading progress={0.24} />;
+  if (!drawn || !source || !rot) return <TableLoading progress={0.24} seats={joinSeats} reducedMotion={fx.osReducedMotion} />;
   const r = room.rules;
   const turnLocal = localSeatOfServerTurn(cs.view?.turn ?? null, spectator || cs.seat === null ? null : cs.seat, r.playerCount);
   const onClock = turnDeadline != null && turnStart != null && (gp === 'bidding' || gp === 'playing' || gp === 'exchange');

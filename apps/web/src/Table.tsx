@@ -59,7 +59,7 @@ import { FeltHand } from './FeltHand';
 import { feltHandVisible } from './three/cardFace';
 import { clientSeesNuke } from './three/blastSweep';
 import { loadScene } from './three/preload';
-import { TableLoading } from './TableLoading';
+import { TableLoading, type LoadingSeat } from './TableLoading';
 import { VersusIntro, markVersusShown, versusDismissReady, versusEligible, type VersusMember, type VersusModel } from './VersusIntro';
 import { buildPostgame, clearPinnedBefore, computeRewardsSettled, resolveBeforeSnapshot, type RewardsProfile } from './GameOverRewards';
 import { stashRewards } from './RewardsPage';
@@ -2221,6 +2221,24 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // is the versus header. (The venue assignment itself is the story data's:
   // the Porch plays at the grandma venue by design; only the label was wrong.)
   const storyRoomLabel = story?.scene ? `${story.scene.stop.name} · Stop ${story.scene.stop.n} of ${STORY_STOPS.length}` : undefined;
+  // Taking seats (owner, 2026-10-23): the standard loading hold presents the
+  // REAL seated roster in seat order — story portraits, uploaded pictures,
+  // persona nameplates — mapped exactly like the versus members below (same
+  // seat → face sources, no second lookup path).
+  const loadingSeats: LoadingSeat[] = useMemo(() => Array.from({ length: n }, (_, seat) => {
+    const storyId = storySeatIds?.[seat] ?? null;
+    const bot = isBotSeat(seat);
+    return {
+      name: seatFacingName(names, seat, spectating),
+      tag: storyId ? (STORY_CHARACTERS[storyId]?.role ?? null) : bot ? platePersona(names[seat] ?? '') : null,
+      storyId,
+      uid: online ? (online.seatUid?.(seat) ?? null) : seat === HUMAN ? (acctUser?.id ?? null) : null,
+      direct: !online && seat === HUMAN ? (acctUser?.avatar ?? null) : null,
+      bot,
+      you: seat === HUMAN && !spectating,
+      color: seat === HUMAN && !spectating ? USER_COLORS.You : SEAT_COLORS[seat] ?? '#ddd',
+    };
+  }), [names, storySeatIds, online, acctUser, spectating, n]); // eslint-disable-line react-hooks/exhaustive-deps
   const versusModel: VersusModel | null = useMemo(() => {
     if (!versusActive) return null;
     const member = (seat: number): VersusMember => ({
@@ -2349,7 +2367,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           collecting={collecting}
         />
       </Suspense>
-      {!loadGone && <TableLoading progress={loadProgress} leaving={!loading && (!versusActive || versusStoryDone)} room={storyRoomLabel ?? roomName} versus={versusModel ? <VersusIntro model={versusModel} reduced={reduceFx || fx.osReducedMotion} ready={!loading} onStoryComplete={() => setVersusStoryDone(true)} /> : undefined} />}
+      {!loadGone && <TableLoading progress={loadProgress} leaving={!loading && (!versusActive || versusStoryDone)} room={storyRoomLabel ?? roomName} seats={loadingSeats} reducedMotion={reduceFx || fx.osReducedMotion} versus={versusModel ? <VersusIntro model={versusModel} reduced={reduceFx || fx.osReducedMotion} ready={!loading} onStoryComplete={() => setVersusStoryDone(true)} /> : undefined} />}
       {preDeal && loadGone && (
         <div className="predeal-note" data-testid="predeal-note" role="status">
           <span className="predeal-title">First hand in {preDealSecs}s</span>
