@@ -899,3 +899,81 @@ describe('flip culling: the turned-away face can never paint (iOS bleed fix)', (
     expect(css).not.toContain('.pcard-split');
   });
 });
+
+/* ------------------------------------------------- back fit (owner flip) */
+/* The owner's second flip (2026-10-23): the bleed was gone and the
+ * table had landed, but the frame still read off — and the table did
+ * not FIT its panel: WIN % sheared mid-glyph at the panel's edge and
+ * the GAMES column lived entirely outside it. The DOM carried all
+ * five columns all along (the content pins above passed); what was
+ * missing was a FIT contract. These pins are that contract: fixed
+ * layout over an explicit colgroup whose shares sum to the table,
+ * the panel's box math and the back's type in one proportional unit
+ * system (cqw), one stepped frame, and the rhythm that fills the
+ * panel. Happy-dom cannot lay out, so the contract is structural —
+ * proportions that cannot clip at any width the card renders at. */
+describe('back fit pass: the table fits its frame at every card size', () => {
+  const css = read('../src/profile/playercard.css');
+  const card = read('../src/profile/PlayerCard.tsx');
+  const block = (selector: string): string => {
+    const i = css.indexOf(selector);
+    expect(i, `selector ${selector}`).toBeGreaterThanOrEqual(0);
+    const open = css.indexOf('{', i);
+    return css.slice(open, css.indexOf('}', open));
+  };
+
+  it('the stat table is fixed-layout at the panel width — content can never widen it', () => {
+    const stats = block('.plcard .pcard-stats');
+    expect(stats).toContain('table-layout: fixed');
+    expect(stats).toContain('width: 100%');
+  });
+
+  it('the component deals the five-column colgroup the contract sizes', async () => {
+    expect(card).toContain('<colgroup>');
+    const names = ['pcard-col-mode', 'pcard-col-rating', 'pcard-col-wl', 'pcard-col-winpct', 'pcard-col-games'];
+    for (const cls of names) expect(card).toContain(`className="${cls}"`);
+    await render(createElement(PlayerCard, { data: cardBase() }));
+    const cols = qa('[data-testid="pcard-stats"] colgroup col');
+    expect(cols.map((c) => c.className)).toEqual(names);
+  });
+
+  it('the column shares are explicit in the sheet and sum to exactly the table', () => {
+    const shares = ['mode', 'rating', 'wl', 'winpct', 'games'].map((n) => {
+      const b = block(`.plcard .pcard-stats col.pcard-col-${n}`);
+      const m = b.match(/width: ([\d.]+)%/);
+      expect(m, `col ${n} width`).not.toBeNull();
+      return Number(m![1]);
+    });
+    expect(shares).toEqual([29, 18, 18, 18, 17]);
+    expect(shares.reduce((a, b) => a + b, 0)).toBe(100);
+  });
+
+  it('one proportional system: panel inset, panel padding and back type all run in cqw', () => {
+    const panel = block('.plcard .pcard-back-panel');
+    /* a single inset value in cqw = the same px band on all four
+     * sides at any card size; %-axis insets can never promise that */
+    expect(panel).toContain('inset: 4.5cqw');
+    expect(panel).toContain('padding: 4.7cqw 4cqw');
+    expect(block('.plcard .pcard-stats')).toContain('font-size: 4.05cqw');
+    expect(block('.plcard .pcard-stats thead th')).toContain('font-size: 2.8cqw');
+    /* the retired fixed-px deck stat font would break the contract
+     * at deck width — it stays retired */
+    expect(css).not.toContain('[data-variant="deck"] .pcard-stats');
+  });
+
+  it('one stepped frame: the keyline rides concentric to the card edge', () => {
+    const key = block('.plcard .pcard-back::before');
+    expect(key).toContain('inset: 2cqw');
+    /* 13px is the face's own radius (the .plcard.pcard rule): the
+     * keyline's radius is the edge radius minus its inset, so the
+     * two corners stay concentric at every card size */
+    expect(key).toContain('border-radius: calc(13px - 2cqw)');
+  });
+
+  it('the rhythm is in the sheet: tall ruled rows, even gaps, anchored footnotes', () => {
+    expect(block('.plcard .pcard-back-panel')).toContain('gap: 3.2cqw');
+    expect(css).toMatch(/\.plcard \.pcard-stats th, \.plcard \.pcard-stats td \{[^}]*padding: 4\.8cqw \.6cqw/);
+    expect(block('.plcard .pcard-back-story')).toContain('margin: auto 0 0');
+    expect(block('.plcard .pcard-nogames')).toContain('margin: auto 0');
+  });
+});

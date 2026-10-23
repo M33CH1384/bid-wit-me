@@ -355,6 +355,19 @@ export function PlayerCard({ data, pic, variant = 'header', champion, self, onEd
               {s.games > 0 ? (
                 <>
                   <table className="pcard-stats" data-testid="pcard-stats">
+                    {/* The colgroup carries the fit contract (back fit
+                        pass): under the sheet's table-layout: fixed these
+                        five classed columns split the panel's content box
+                        by rule — content can never widen the table past
+                        its frame at any card size. The widths live in
+                        playercard.css beside the layout rule. */}
+                    <colgroup>
+                      <col className="pcard-col-mode" />
+                      <col className="pcard-col-rating" />
+                      <col className="pcard-col-wl" />
+                      <col className="pcard-col-winpct" />
+                      <col className="pcard-col-games" />
+                    </colgroup>
                     <thead>
                       <tr>
                         <th scope="col">Mode</th><th scope="col">Rating</th><th scope="col">W–L</th><th scope="col">Win %</th><th scope="col">Games</th>

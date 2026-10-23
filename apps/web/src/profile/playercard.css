@@ -288,7 +288,32 @@ html[data-theme="neon"] .plcard[data-treatment="big-joker"] .pcard-front { borde
  *    bottom edges clear those pips' ink. The 8 is the tightest rank
  *    on the ladder; it still gains ~a third more window area.
  * The Ace window grows to 56% of the field over its dropped hero pip;
- * the Deuce window takes the dense size between its two hero pips. */
+ * the Deuce window takes the dense size between its two hero pips.
+ *
+ * BACK FIT PASS (owner on-device verdict, 2026-10-23): the flipped
+ * card's frame read off and its stat table clipped — the WIN % header
+ * sheared at the panel's right edge and the GAMES column lived
+ * entirely outside it. Three fixes, all in the back's rules below.
+ * (1) THE TABLE FITS BY RULE — the stat table is fixed-layout over an
+ * explicit colgroup (29/18/18/18/17), so the five columns divide the
+ * panel's content box by proportion and cell content can never widen
+ * the table past its frame; and the back's whole box math — panel
+ * inset, panel padding, type — runs in cqw, one proportional system,
+ * so the fit computed at the 300px header card holds identically at
+ * the 272px deck card and the 192px reveal (the old sheet mixed
+ * fixed-px type with %-axis insets, and the table's min-content
+ * simply outgrew the panel). (2) ONE FRAME — the panel insets a
+ * uniform 4.5cqw on all four sides, so the lattice band is the same
+ * thickness in px top, bottom, left and right at every card size (the
+ * old 7%/6% insets resolved against different axes: measured on the
+ * owner's screenshot the band ran ~81 device px top/bottom against
+ * ~51 at the sides); the keyline rides at 2cqw with a radius
+ * concentric to the card's 13px edge, so border, keyline and panel
+ * edge read as one stepped frame, never near-parallel doubles.
+ * (3) RHYTHM — taller ruled rows and even panel gaps spread the
+ * career line through the panel's height instead of huddling at its
+ * top over a hollow mid-panel; the footnotes keep their anchored
+ * foot, and the no-games line centers in the space it owns. */
 .plcard .pcard-artwin.number { left: 50%; top: 50%; transform: translate(-50%, -50%); }
 .plcard .pcard-artwin.number.sparse { width: 68%; aspect-ratio: 4 / 4.5; }
 .plcard .pcard-artwin.number.dense { width: 46%; aspect-ratio: 4 / 4.6; }
@@ -419,21 +444,28 @@ html[data-theme="neon"] .plcard[data-treatment="big-joker"] .pcard-front { borde
   border: 1px solid rgba(var(--gold-rgb), .5);
 }
 .plcard .pcard-back::before {
-  content: ''; position: absolute; inset: 6px; z-index: 2;
-  border-radius: 9px; border: 1.5px solid rgba(var(--gold-rgb), .55);
+  content: ''; position: absolute; inset: 6px; inset: 2cqw; z-index: 2;
+  border-radius: 9px; border-radius: calc(13px - 2cqw);
+  border: 1.5px solid rgba(var(--gold-rgb), .55);
   pointer-events: none;
 }
+/* The panel's frame contract (back fit pass): ONE uniform inset in
+ * cqw on all four sides — cqw resolves against the card's width on
+ * every axis, so the lattice band between the card's edge and the
+ * panel is the same px thickness top, bottom, left and right at any
+ * card size — and the panel's padding and the back's type run in the
+ * same unit, so the whole back is one proportional system. */
 .plcard .pcard-back-panel {
-  position: absolute; inset: 7% 6%; z-index: 1;
-  display: flex; flex-direction: column; gap: 8px;
-  padding: 14px 15px; border-radius: 9px; overflow-y: auto;
+  position: absolute; inset: 7% 6%; inset: 4.5cqw; z-index: 1;
+  display: flex; flex-direction: column; gap: 8px; gap: 3.2cqw;
+  padding: 14px 15px; padding: 4.7cqw 4cqw; border-radius: 9px; overflow-y: auto;
   background: linear-gradient(170deg, #faf4e0, #f0e7cd);
   color: #1e1932;
   box-shadow: inset 0 0 0 1px rgba(24, 18, 44, .22), 0 4px 14px rgba(0, 0, 0, .35);
 }
 .plcard .pcard-back-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.plcard .pcard-back-head b { font-size: 16.5px; overflow-wrap: anywhere; color: #1e1932; }
-.plcard .pcard-back-head span { color: #6a6284; font-size: 11px; text-transform: uppercase; letter-spacing: .09em; }
+.plcard .pcard-back-head b { font-size: 16.5px; font-size: 5.5cqw; overflow-wrap: anywhere; color: #1e1932; }
+.plcard .pcard-back-head span { color: #6a6284; font-size: 11px; font-size: 3.7cqw; text-transform: uppercase; letter-spacing: .09em; }
 /* The career line as a baseball-card stat table (owner, 2026-10-23):
  * ONE aligned system in place of the old block grid + prose split
  * lines — column headers, ruled rows, numbers right-aligned in
@@ -441,33 +473,53 @@ html[data-theme="neon"] .plcard[data-treatment="big-joker"] .pcard-front { borde
  * row; the streak rides its own ruled row in the same grid language.
  * A mode with no games gets an honest "No games yet" row — its seeded
  * rating never prints as if it were earned. */
-.plcard .pcard-stats { width: 100%; border-collapse: collapse; font-size: 13px; color: #1e1932; }
-.plcard .pcard-stats th, .plcard .pcard-stats td { padding: 4.5px 5px; }
+.plcard .pcard-stats { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; font-size: 4.05cqw; color: #1e1932; }
+/* The colgroup IS the fit contract (back fit pass): the five columns
+ * divide the panel's content box in fixed shares — Mode takes the
+ * widest share for its fixed vocabulary ("Partnership"), the value
+ * columns are sized to their widest honest shapes (a 4-digit rating,
+ * "38.8%", a 3-and-3 W–L) at the sheet's cqw type sizes, and the
+ * shares sum to exactly 100%. Under table-layout: fixed the table
+ * can never exceed the panel, at the header card, the deck card, or
+ * the reveal — content sizes against its column, never against the
+ * frame. */
+.plcard .pcard-stats col.pcard-col-mode { width: 29%; }
+.plcard .pcard-stats col.pcard-col-rating { width: 18%; }
+.plcard .pcard-stats col.pcard-col-wl { width: 18%; }
+.plcard .pcard-stats col.pcard-col-winpct { width: 18%; }
+.plcard .pcard-stats col.pcard-col-games { width: 17%; }
+.plcard .pcard-stats th, .plcard .pcard-stats td { padding: 4.5px 5px; padding: 4.8cqw .6cqw; }
 .plcard .pcard-stats thead th {
-  font-size: 9.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  font-size: 9.5px; font-size: 2.8cqw; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
   color: #6a6284; text-align: right; white-space: nowrap;
+  padding-top: 7px; padding-top: 2.6cqw; padding-bottom: 7px; padding-bottom: 2.6cqw;
   border-bottom: 1.5px solid rgba(24, 18, 44, .35);
 }
 .plcard .pcard-stats thead th:first-child { text-align: left; }
-.plcard .pcard-stats tbody th { text-align: left; font-weight: 600; white-space: nowrap; }
+.plcard .pcard-stats tbody th { text-align: left; font-weight: 600; font-size: 12.5px; font-size: 3.95cqw; white-space: nowrap; }
 .plcard .pcard-stats tbody td { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .plcard .pcard-stats tbody tr > * { border-top: 1px solid rgba(24, 18, 44, .14); }
 .plcard .pcard-stats tbody tr:first-child > * { border-top: none; }
 .plcard .pcard-stats tbody tr.totals > * { border-top: 1.5px solid rgba(24, 18, 44, .35); font-weight: 700; }
 .plcard .pcard-stats td.pcard-nogames-cell { text-align: left; color: #6a6284; font-style: italic; font-weight: 400; }
 .plcard .pcard-stats tr.streakrow td { text-align: left; }
-.plcard .pcard-vs { margin: 2px 0 0; font-size: 13.5px; }
+.plcard .pcard-vs { margin: 2px 0 0; font-size: 13.5px; font-size: 4.5cqw; }
 .plcard .pcard-vs b { color: #8a5f06; }
-.plcard .pcard-nogames { margin: 10px 0; text-align: center; color: #6a6284; font-style: italic; font-size: 14.5px; }
-.plcard .pcard-back-story { margin: auto 0 0; padding-top: 9px; font-size: 12.5px; color: #6a6284; border-top: 1px dashed rgba(24, 18, 44, .3); }
-.plcard .pcard-since { margin: 0; color: #6a6284; font-size: 12px; }
+/* The empty line centers in the panel space it owns (its auto
+ * margins share the free height with the footnotes' anchor), instead
+ * of huddling under the head over the same hollow panel. */
+.plcard .pcard-nogames { margin: auto 0; text-align: center; color: #6a6284; font-style: italic; font-size: 14.5px; font-size: 4.8cqw; }
+.plcard .pcard-back-story { margin: auto 0 0; padding-top: 9px; padding-top: 3cqw; font-size: 12.5px; font-size: 4.2cqw; color: #6a6284; border-top: 1px dashed rgba(24, 18, 44, .3); }
+.plcard .pcard-since { margin: 0; color: #6a6284; font-size: 12px; font-size: 4cqw; }
 
 /* -------------------------------------------------------- deck size */
-/* Indices, pips and the nameplate need no deck overrides: their cqw
- * sizes scale with the card's own width, so the deck card (and the
- * 192px card-up reveal slot) keeps the same real-card proportions —
- * and the same clearances — automatically. */
-.plcard[data-variant="deck"] .pcard-stats { font-size: 12.5px; }
+/* Indices, pips, the nameplate and the whole back need no deck
+ * overrides: their cqw sizes scale with the card's own width, so the
+ * deck card (and the 192px card-up reveal slot) keeps the same
+ * real-card proportions — and the same clearances and table fit —
+ * automatically. A fixed-px stat font here would silently break the
+ * back's fit contract at deck width, so that override stays retired
+ * (pinned in the back fit tests). */
 .plcard[data-variant="deck"] .pcard-status { font-size: 14.5px; }
 
 /* ------------------------------------------------------------ editor */
