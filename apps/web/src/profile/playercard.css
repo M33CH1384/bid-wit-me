@@ -97,6 +97,30 @@ html[data-theme="neon"] .plcard.pcard {
 }
 
 /* ------------------------------------------------------------ the flip */
+/* FLIP CULLING FIX (owner on-device report, 2026-10-23): the settled
+ * flipped card on iOS painted the FRONT's children mirrored over the
+ * back — pips, portrait, corner indices, and the nameplate with its
+ * text reading backwards, montaged over the career line. The faces
+ * already carried backface-visibility (both spellings), and the face's
+ * own layer WAS culled — the back's lattice showed around its panel —
+ * but the subtree escaped: under preserve-3d, WebKit composites every
+ * child that forms its own layer (the in-plane-transformed pips, art
+ * window, corners, royal tab, joker word, and the positioned z-indexed
+ * field / keyline / plate) as an independent layer in the shared 3D
+ * context, and backface-visibility is evaluated per layer there, so
+ * the children kept the default `visible` and painted mirrored once
+ * the flipper passed 90°. Two guarantees now stack: (1) EVERY layer
+ * inside a face — descendants and the faces' keyline pseudos alike —
+ * carries backface culling in both spellings, so no child layer can
+ * show its back; (2) the settled states are deterministic: the
+ * turned-away face is visibility:hidden, swapped at the flip's
+ * midpoint (both faces edge-on at ~half the .55s turn), so no
+ * compositor behaviour can paint the wrong face at rest. In-plane 2D
+ * transforms (inverted pips, the rotated bottom corner) never change
+ * which way a layer faces, so they keep working untouched. Both faces
+ * share ONE box (the .pcard-face rule below), so the footprint is
+ * identical in both states — the lattice belongs to the back face's
+ * full outline, never to a smaller content box. */
 .plcard .pcard-inner {
   display: grid; height: 100%;
   transform-style: preserve-3d;
@@ -104,14 +128,28 @@ html[data-theme="neon"] .plcard.pcard {
 }
 .plcard .pcard-inner.flipped { transform: rotateY(180deg); }
 .plcard .pcard-face {
-  grid-area: 1 / 1; height: 100%; min-width: 0;
+  grid-area: 1 / 1; width: 100%; height: 100%; min-width: 0;
   position: relative; overflow: hidden; border-radius: 13px;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
+  transition: visibility 0s linear .28s;
 }
-.plcard .pcard-back { transform: rotateY(180deg); }
+/* Every layer inside a face is culled with its face (fix note above). */
+.plcard .pcard-face *,
+.plcard .pcard-face::before,
+.plcard .pcard-face::after {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+/* The settled-state guarantee: the back starts unpainted, and the
+ * flipped class swaps both faces' visibility at the midpoint delay
+ * carried by the .pcard-face transition above. */
+.plcard .pcard-back { transform: rotateY(180deg); visibility: hidden; }
+.plcard .pcard-inner.flipped .pcard-front { visibility: hidden; }
+.plcard .pcard-inner.flipped .pcard-back { visibility: visible; }
 @media (prefers-reduced-motion: reduce) {
   .plcard .pcard-inner { transition: none; }
+  .plcard .pcard-face { transition: none; }
 }
 
 /* ------------------------------------------------- front: the card face */
@@ -386,7 +424,7 @@ html[data-theme="neon"] .plcard[data-treatment="big-joker"] .pcard-front { borde
   pointer-events: none;
 }
 .plcard .pcard-back-panel {
-  position: absolute; inset: 8.5% 7.5%; z-index: 1;
+  position: absolute; inset: 7% 6%; z-index: 1;
   display: flex; flex-direction: column; gap: 8px;
   padding: 14px 15px; border-radius: 9px; overflow-y: auto;
   background: linear-gradient(170deg, #faf4e0, #f0e7cd);
@@ -396,16 +434,28 @@ html[data-theme="neon"] .plcard[data-treatment="big-joker"] .pcard-front { borde
 .plcard .pcard-back-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .plcard .pcard-back-head b { font-size: 16.5px; overflow-wrap: anywhere; color: #1e1932; }
 .plcard .pcard-back-head span { color: #6a6284; font-size: 11px; text-transform: uppercase; letter-spacing: .09em; }
-.plcard .pcard-record { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; text-align: center; }
-.plcard .pcard-record b { display: block; font-size: 19px; color: #1e1932; }
-.plcard .pcard-record small { display: block; color: #6a6284; font-size: 10.5px; margin-top: 2px; }
-.plcard .pcard-split {
-  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
-  padding: 7px 0 0; border-top: 1px solid rgba(24, 18, 44, .16); font-size: 13.5px; color: #1e1932;
+/* The career line as a baseball-card stat table (owner, 2026-10-23):
+ * ONE aligned system in place of the old block grid + prose split
+ * lines — column headers, ruled rows, numbers right-aligned in
+ * straight tabular columns. The career line is the table's totals
+ * row; the streak rides its own ruled row in the same grid language.
+ * A mode with no games gets an honest "No games yet" row — its seeded
+ * rating never prints as if it were earned. */
+.plcard .pcard-stats { width: 100%; border-collapse: collapse; font-size: 13px; color: #1e1932; }
+.plcard .pcard-stats th, .plcard .pcard-stats td { padding: 4.5px 5px; }
+.plcard .pcard-stats thead th {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: #6a6284; text-align: right; white-space: nowrap;
+  border-bottom: 1.5px solid rgba(24, 18, 44, .35);
 }
-.plcard .pcard-split-label { color: #6a6284; }
-.plcard .pcard-split b small { color: #6a6284; font-weight: 400; }
-.plcard .pcard-split-none { color: #6a6284; font-weight: 400; font-style: italic; }
+.plcard .pcard-stats thead th:first-child { text-align: left; }
+.plcard .pcard-stats tbody th { text-align: left; font-weight: 600; white-space: nowrap; }
+.plcard .pcard-stats tbody td { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.plcard .pcard-stats tbody tr > * { border-top: 1px solid rgba(24, 18, 44, .14); }
+.plcard .pcard-stats tbody tr:first-child > * { border-top: none; }
+.plcard .pcard-stats tbody tr.totals > * { border-top: 1.5px solid rgba(24, 18, 44, .35); font-weight: 700; }
+.plcard .pcard-stats td.pcard-nogames-cell { text-align: left; color: #6a6284; font-style: italic; font-weight: 400; }
+.plcard .pcard-stats tr.streakrow td { text-align: left; }
 .plcard .pcard-vs { margin: 2px 0 0; font-size: 13.5px; }
 .plcard .pcard-vs b { color: #8a5f06; }
 .plcard .pcard-nogames { margin: 10px 0; text-align: center; color: #6a6284; font-style: italic; font-size: 14.5px; }
@@ -417,7 +467,7 @@ html[data-theme="neon"] .plcard[data-treatment="big-joker"] .pcard-front { borde
  * sizes scale with the card's own width, so the deck card (and the
  * 192px card-up reveal slot) keeps the same real-card proportions —
  * and the same clearances — automatically. */
-.plcard[data-variant="deck"] .pcard-record b { font-size: 18px; }
+.plcard[data-variant="deck"] .pcard-stats { font-size: 12.5px; }
 .plcard[data-variant="deck"] .pcard-status { font-size: 14.5px; }
 
 /* ------------------------------------------------------------ editor */

@@ -234,20 +234,63 @@ describe('the playing-card front', () => {
     expect(q('.pcard-inner')!.className).not.toContain('flipped');
   });
 
-  it('the back carries the line in the inset panel: record, splits, head-to-head, member-since', async () => {
+  it('the back carries the line as a stat table in the inset panel: modes, career totals, streak, head-to-head, member-since', async () => {
     await render(createElement(PlayerCard, { data: cardBase({ vsViewer: { games: 4, wins: 3, losses: 1 } }) }));
     const panel = q('.pcard-back-panel')!;
     expect(panel).not.toBeNull();
-    expect(panel.contains(q('[data-testid="pcard-record"]'))).toBe(true);
-    expect(q('[data-testid="pcard-record"]')?.textContent).toContain('32–18');
-    expect(text()).toContain('64%');
-    expect(text()).toContain('Partnership');
-    expect(text()).toContain('Rating 1240');
-    expect(text()).toContain('Cutthroat');
-    expect(text()).toContain('Rating 980');
+    const table = q('[data-testid="pcard-stats"]')!;
+    expect(table).not.toBeNull();
+    expect(table.tagName).toBe('TABLE');
+    expect(panel.contains(table)).toBe(true);
+    /* column headers, baseball-card style */
+    expect(qa('[data-testid="pcard-stats"] thead th').map((h) => h.textContent)).toEqual(['Mode', 'Rating', 'W–L', 'Win %', 'Games']);
+    /* the data rows carry the same five aligned cells each */
+    const prow = q('[data-testid="pcard-row-partnership"]')!;
+    expect(prow.children).toHaveLength(5);
+    expect(prow.textContent).toContain('Partnership');
+    expect(prow.textContent).toContain('1240');
+    expect(prow.textContent).toContain('6–4');
+    expect(prow.textContent).toContain('60%');
+    expect(prow.textContent).toContain('10');
+    const crow = q('[data-testid="pcard-row-cutthroat"]')!;
+    expect(crow.children).toHaveLength(5);
+    expect(crow.textContent).toContain('Cutthroat');
+    expect(crow.textContent).toContain('980');
+    expect(crow.textContent).toContain('1–1');
+    expect(crow.textContent).toContain('50%');
+    /* the career line is the totals row: record, win%, games */
+    const career = q('[data-testid="pcard-row-career"]')!;
+    expect(career.children).toHaveLength(5);
+    expect(career.textContent).toContain('Career');
+    expect(career.textContent).toContain('32–18');
+    expect(career.textContent).toContain('64%');
+    expect(career.textContent).toContain('50');
+    /* the streak rides its own ruled row in the same grid */
+    const streak = q('[data-testid="pcard-row-streak"]')!;
+    expect(streak.textContent).toContain('Streak');
+    expect(streak.textContent).toContain('W3');
+    expect(streak.textContent).toContain('best W7');
+    expect((streak.querySelector('td') as HTMLTableCellElement).colSpan).toBe(4);
     expect(q('[data-testid="pcard-vs"]')?.textContent).toContain('You vs ShotCaller:');
     expect(q('[data-testid="pcard-vs"]')?.textContent).toContain('3–1');
     expect(text()).toMatch(/Member since \w+ \d{4}/);
+  });
+
+  it('a mode with no games gets an honest row in the table — its seed rating never prints', async () => {
+    await render(createElement(PlayerCard, {
+      data: cardBase({
+        stats: {
+          games: 10, wins: 6, losses: 4, winPct: 60, streak: 0, bestStreak: 0,
+          team: { rating: 1240, games: 10, wins: 6, losses: 4 },
+          cutthroat: { rating: 1000, games: 0, wins: 0, losses: 0 },
+        },
+      }),
+    }));
+    const crow = q('[data-testid="pcard-row-cutthroat"]')!;
+    expect(crow.textContent).toContain('Cutthroat');
+    expect(crow.textContent).toContain('No games yet');
+    expect(crow.textContent).not.toContain('1000');
+    expect(q('[data-testid="pcard-row-partnership"]')?.textContent).toContain('1240');
   });
 
   it('a zero-record player still gets a full front — and an honest back, no fake numbers', async () => {
@@ -266,7 +309,7 @@ describe('the playing-card front', () => {
     const flipBtn = q('[data-testid="pcard-flip"]') as HTMLButtonElement;
     await act(async () => { flipBtn.click(); });
     expect(q('[data-testid="pcard-nogames"]')?.textContent).toContain('No games on record yet');
-    expect(q('[data-testid="pcard-record"]')).toBeNull();
+    expect(q('[data-testid="pcard-stats"]')).toBeNull();
     expect(text()).not.toContain('0–0');
   });
 
@@ -784,5 +827,75 @@ describe('layout pass v4: status up top, the portrait grows, courts fill the fie
     await render(createElement(PlayerCard, { data: cardBase() }));
     expect(q('.pcard-field[data-field="court"] .pcard-artwin.court')).not.toBeNull();
     expect(qa('.pcard-corner')).toHaveLength(2);
+  });
+});
+
+/* ---------------- flip culling + footprint (owner iOS report, 2026-10-23) */
+
+describe('flip culling: the turned-away face can never paint (iOS bleed fix)', () => {
+  const css = read('../src/profile/playercard.css');
+  const block = (selector: string): string => {
+    const i = css.indexOf(selector);
+    expect(i, `selector ${selector}`).toBeGreaterThanOrEqual(0);
+    const open = css.indexOf('{', i);
+    return css.slice(open, css.indexOf('}', open));
+  };
+
+  it('the flipper keeps the shared 3D context; the faces stay stacked in one cell', () => {
+    expect(block('.plcard .pcard-inner')).toContain('transform-style: preserve-3d');
+    expect(block('.plcard .pcard-face')).toContain('grid-area: 1 / 1');
+    expect(css).toContain('.pcard-inner.flipped { transform: rotateY(180deg); }');
+    expect(block('.plcard .pcard-back')).toContain('transform: rotateY(180deg)');
+  });
+
+  it('both faces share ONE sizing box, so the footprint is identical in both states', () => {
+    const face = block('.plcard .pcard-face');
+    expect(face).toContain('width: 100%');
+    expect(face).toContain('height: 100%');
+    /* neither face carries a size of its own — the front's own block is
+     * paint only — and no transform in the sheet scales the card */
+    expect(block('.plcard .pcard-front')).not.toMatch(/width:|height:|inset:|margin:/);
+    expect(css).not.toContain('scale(');
+  });
+
+  it('both faces carry backface culling in both spellings', () => {
+    const face = block('.plcard .pcard-face');
+    expect(face).toContain('backface-visibility: hidden');
+    expect(face).toContain('-webkit-backface-visibility: hidden');
+  });
+
+  it('every descendant layer of a face is culled with its face (the bleed path)', () => {
+    const i = css.indexOf('.plcard .pcard-face *,');
+    expect(i).toBeGreaterThanOrEqual(0);
+    const open = css.indexOf('{', i);
+    expect(css.slice(i, open)).toContain('.pcard-face::before');
+    expect(css.slice(i, open)).toContain('.pcard-face::after');
+    const rule = css.slice(open, css.indexOf('}', open));
+    expect(rule).toContain('backface-visibility: hidden');
+    expect(rule).toContain('-webkit-backface-visibility: hidden');
+  });
+
+  it('settled states are deterministic: the turned-away face is visibility:hidden', () => {
+    expect(block('.plcard .pcard-back')).toContain('visibility: hidden');
+    expect(css).toContain('.pcard-inner.flipped .pcard-front { visibility: hidden; }');
+    expect(css).toContain('.pcard-inner.flipped .pcard-back { visibility: visible; }');
+    /* the swap lands mid-flip, when both faces are edge-on — not at the tap */
+    expect(block('.plcard .pcard-face')).toContain('transition: visibility 0s linear .28s');
+    /* reduced motion makes the swap instant with the class */
+    const rm = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce)'));
+    expect(rm).toContain('.pcard-face { transition: none; }');
+  });
+
+  it('no will-change in the sheet (no extra promoted layers to punch through)', () => {
+    expect(css).not.toContain('will-change');
+  });
+
+  it('the stat table is ruled and tabular, and the retired blocks stay retired', () => {
+    expect(css).toContain('.plcard .pcard-stats');
+    expect(block('.plcard .pcard-stats')).toContain('border-collapse: collapse');
+    expect(css).toMatch(/\.plcard \.pcard-stats thead th \{[^}]*text-transform: uppercase/);
+    expect(css).toMatch(/\.plcard \.pcard-stats tbody td \{[^}]*font-variant-numeric: tabular-nums/);
+    expect(css).not.toContain('.pcard-record');
+    expect(css).not.toContain('.pcard-split');
   });
 });

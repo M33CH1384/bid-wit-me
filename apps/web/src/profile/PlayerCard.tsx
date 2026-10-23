@@ -27,6 +27,18 @@
  * zones. The crank carries data-two for a two-digit rank (the 10), which
  * the CSS prints condensed, as real decks do.
  *
+ * Flip fix + stat table (owner, 2026-10-23): on iOS the flipped card
+ * painted the front's children mirrored over the back — WebKit culls
+ * per composited layer under preserve-3d, and every layer-forming
+ * child of the front kept the default visible backface. The CSS now
+ * culls every layer inside a face and makes the settled states
+ * deterministic (the turned-away face is visibility:hidden, swapped
+ * mid-flip); both faces share one box, so the footprint never changes
+ * across the flip. The back's line is a baseball-card stat table:
+ * ruled rows for Partnership, Cutthroat and the Career totals in
+ * straight tabular columns, honest "No games yet" rows for unplayed
+ * modes.
+ *
  * Layout pass v4 (owner, 2026-10-23): the status moves UP — with
  * statusPlacement="above" (the profile header passes it) the card's
  * status renders over the card, centered, instead of in the below-card
@@ -190,14 +202,29 @@ function ArtWindow({ pic, name, cls }: { pic: string | null; name: string; cls: 
   );
 }
 
-function SplitRow({ label, split }: { label: string; split: CardModeSplit }) {
+/** One mode's row in the back's stat table (baseball-card layout, owner
+ *  2026-10-23): rating, W–L, win% and games in straight columns, all
+ *  from the real payload — the mode's win% is its own wins/games, the
+ *  same arithmetic the career line's payload winPct carries. A mode
+ *  with no games reads as an honest "No games yet"; its seeded rating
+ *  never prints as if it were earned. */
+function ModeRow({ label, split, testid }: { label: string; split: CardModeSplit; testid: string }) {
+  if (split.games === 0) {
+    return (
+      <tr data-testid={testid}>
+        <th scope="row">{label}</th>
+        <td className="pcard-nogames-cell" colSpan={4}>No games yet</td>
+      </tr>
+    );
+  }
   return (
-    <div className="pcard-split">
-      <span className="pcard-split-label">{label}</span>
-      {split.games > 0
-        ? <b>Rating {split.rating} · {split.wins}–{split.losses} <small>this season</small></b>
-        : <b className="pcard-split-none">No games yet</b>}
-    </div>
+    <tr data-testid={testid}>
+      <th scope="row">{label}</th>
+      <td>{split.rating}</td>
+      <td>{split.wins}–{split.losses}</td>
+      <td>{Math.round((split.wins / split.games) * 100)}%</td>
+      <td>{split.games}</td>
+    </tr>
   );
 }
 
@@ -327,14 +354,28 @@ export function PlayerCard({ data, pic, variant = 'header', champion, self, onEd
               </div>
               {s.games > 0 ? (
                 <>
-                  <div className="pcard-record" data-testid="pcard-record">
-                    <div><b>{s.wins}–{s.losses}</b><small>record</small></div>
-                    <div><b>{s.winPct === null ? '—' : `${s.winPct}%`}</b><small>win rate</small></div>
-                    <div><b>{s.games}</b><small>games</small></div>
-                    <div><b>{s.streak > 0 ? `W${s.streak}` : '—'}</b><small>streak{s.bestStreak > 1 ? ` · best W${s.bestStreak}` : ''}</small></div>
-                  </div>
-                  <SplitRow label="Partnership" split={s.team} />
-                  <SplitRow label="Cutthroat" split={s.cutthroat} />
+                  <table className="pcard-stats" data-testid="pcard-stats">
+                    <thead>
+                      <tr>
+                        <th scope="col">Mode</th><th scope="col">Rating</th><th scope="col">W–L</th><th scope="col">Win %</th><th scope="col">Games</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <ModeRow label="Partnership" split={s.team} testid="pcard-row-partnership" />
+                      <ModeRow label="Cutthroat" split={s.cutthroat} testid="pcard-row-cutthroat" />
+                      <tr className="totals" data-testid="pcard-row-career">
+                        <th scope="row">Career</th>
+                        <td>—</td>
+                        <td>{s.wins}–{s.losses}</td>
+                        <td>{s.winPct === null ? '—' : `${s.winPct}%`}</td>
+                        <td>{s.games}</td>
+                      </tr>
+                      <tr className="streakrow" data-testid="pcard-row-streak">
+                        <th scope="row">Streak</th>
+                        <td colSpan={4}>{s.streak > 0 ? `W${s.streak}` : '—'}{s.bestStreak > 1 ? ` · best W${s.bestStreak}` : ''}</td>
+                      </tr>
+                    </tbody>
+                  </table>
                   {data.vsViewer && (
                     <p className="pcard-vs" data-testid="pcard-vs">
                       You vs {data.name}: <b>{data.vsViewer.wins}–{data.vsViewer.losses}</b> in {data.vsViewer.games} game{data.vsViewer.games === 1 ? '' : 's'}
