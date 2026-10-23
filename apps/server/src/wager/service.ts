@@ -124,7 +124,7 @@ export async function syncRow(io: WIO, d: WData): Promise<void> {
 /** Level gate for adding a person (and their escrow) to a challenge. */
 async function levelGate(io: WIO, who: WPerson): Promise<void> {
   if (who.admin) return;
-  if (!(await wagerLevelOk(io.db, who.uid))) throw new WError(403, `${who.name} hasn't unlocked Big Bank yet — it opens at Rep Level 20 (Block Captain).`);
+  if (!(await wagerLevelOk(io.db, who.uid))) throw new WError(403, `${who.name} hasn't unlocked Big Bank yet — it opens at the Ten of Clubs (10♣).`);
 }
 
 async function escrowGate(io: WIO, uid: string, wager: number): Promise<void> {

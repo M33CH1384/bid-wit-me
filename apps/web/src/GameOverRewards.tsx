@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { CoinIcon } from './RepBlock';
+import { cardDisplayName, rankGlyph } from './cardRank';
 import { fx, useReduceEffects } from './fx';
+import { PlayerCard, type CardRankData, type PlayerCardData } from './profile/PlayerCard';
 
 /** Minimal profile shape (mirrors /api/profile/me) for reward deltas. */
 export interface RewardsProfile {
   level: { level: number; xp: number; title: string; xpForNext: number; xpIntoLevel: number };
+  /** the Player Card payload (rank card + the full card for the reveal);
+   *  optional because a before-snapshot pinned by an older build lacks it */
+  card?: PlayerCardData;
   coins: { balance: number };
   rank: {
     team: { elo: number };
@@ -99,7 +104,18 @@ export interface RewardsData {
   xpGained: number;
   levelBefore: number;
   levelAfter: number;
-  levelTitle: string;
+  /** Rank cards from the before/after snapshots — server-derived
+   *  (cred/xp.ts cardRankForLevel, carried on the card payload), never
+   *  recomputed here. Null when a snapshot predates the card payload. */
+  rankBefore: CardRankData | null;
+  rankAfter: CardRankData | null;
+  /** The full AFTER card payload — the card-up reveal presents it. */
+  cardAfter: PlayerCardData | null;
+  /** The rank stepped UP this match: a level gain (every level is a card
+   *  step) or the Big Joker switching on at level 50. */
+  cardUp: boolean;
+  /** The step-up landed on the prestige Big Joker (step 51). */
+  bigJokerUp: boolean;
   xpIntoLevel: number;
   xpForNext: number;
   /** level-bar progress BEFORE this match (pinned before-snapshot): the
@@ -130,7 +146,11 @@ export function computeRewards(
     xpGained: 0,
     levelBefore: before?.level.level ?? 1,
     levelAfter: after?.level.level ?? before?.level.level ?? 1,
-    levelTitle: after?.level.title ?? before?.level.title ?? '',
+    rankBefore: before?.card?.rank ?? null,
+    rankAfter: after?.card?.rank ?? before?.card?.rank ?? null,
+    cardAfter: after?.card ?? null,
+    cardUp: false,
+    bigJokerUp: false,
     xpIntoLevel: after?.level.xpIntoLevel ?? 0,
     xpForNext: after?.level.xpForNext ?? 1,
     xpIntoLevelBefore: before?.level.xpIntoLevel ?? 0,
@@ -143,6 +163,17 @@ export function computeRewards(
     challenges: [],
   };
   if (!before || !after) return base;
+  /* The card-up test is a STEP comparison, not a level comparison: steps
+   *  1–50 track levels, but the Big Joker (step 51) switches on at an
+   *  unchanged level 50 — when this match's own achievements complete the
+   *  badge set, or a season's upkeep activates the crown. A legacy
+   *  before-snapshot without a card falls back to the level gain (a step
+   *  gain everywhere except the prestige step, which it simply can't
+   *  see — those pins are per-match and clear after one use). */
+  const rankB = before.card?.rank ?? null;
+  const rankA = after.card?.rank ?? null;
+  base.cardUp = rankB && rankA ? rankA.step > rankB.step : (!rankB && !!rankA && base.levelAfter > base.levelBefore);
+  base.bigJokerUp = base.cardUp && !!rankA?.isBigJoker;
   base.xpGained = Math.max(0, after.level.xp - before.level.xp);
   base.xpIntoLevelBefore = before.level.xpIntoLevel;
   base.xpForNextBefore = Math.max(1, before.level.xpForNext);
@@ -403,10 +434,47 @@ function XpRow({ d, index, play, reduced }: { d: RewardsData; index: number; pla
         <div className="rw-top"><span>XP earned</span><b className="rw-num">+{xp.toLocaleString()}</b></div>
         <div className="rw-levelbar"><div className={`rw-levelbar-fill${bar.cls}`} style={{ width: `${bar.pct}%` }} /></div>
         <div className="rw-sub">
-          Level {d.levelAfter}{d.levelTitle ? ` · ${d.levelTitle}` : ''} · {d.xpIntoLevel.toLocaleString()}/{d.xpForNext.toLocaleString()} XP
-          {leveled && <span className="rw-levelup"> LEVEL UP!</span>}
+          {d.rankAfter ? <>{rankGlyph(d.rankAfter)} · </> : <>Level {d.levelAfter} · </>}{d.xpIntoLevel.toLocaleString()}/{d.xpForNext.toLocaleString()} XP
+          {leveled && <span className="rw-levelup">{d.cardUp ? ' NEW CARD!' : ' LEVEL UP!'}</span>}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The CARD-UP REVEAL (owner, 2026-10-23: rank is a playing card now, so a
+ * rank gain is presented as one): the old card → the new card, the new
+ * card itself rendered by the PlayerCard component at deck size — the
+ * same object the profile header and (later) the Finder deck show. The
+ * Big Joker activation is the grandest version: it can arrive on a match
+ * that didn't move the level at all (the badge set completing, a season
+ * turning), so the reveal keys on the STEP, not the level. Entrance runs
+ * on the reveal gate like every other piece of this screen (held pre-
+ * paint by the .rw-armed CSS, instant under reduced motion).
+ */
+function CardUpRow({ d, index }: { d: RewardsData; index: number }) {
+  if (!d.cardUp || !d.rankAfter || !d.cardAfter) return null;
+  const from = d.rankBefore;
+  const to = d.rankAfter;
+  return (
+    <div className="rw-cardup" data-testid="rewards-cardup" style={{ animationDelay: `${index * 160}ms` }}>
+      <div className="rw-cardup-head">{d.bigJokerUp ? '★ THE BIG JOKER ★' : 'NEW CARD'}</div>
+      <div className="rw-cardup-flow">
+        {from && (
+          <>
+            <span className="rw-cardup-chip" data-testid="cardup-from"><b>{rankGlyph(from)}</b><small>{cardDisplayName(from)}</small></span>
+            <span className="rw-cardup-arrow" aria-hidden="true">→</span>
+          </>
+        )}
+        <span className="rw-cardup-chip is-new" data-testid="cardup-to"><b>{rankGlyph(to)}</b><small>{cardDisplayName(to)}</small></span>
+      </div>
+      <div className="rw-cardup-card">
+        <PlayerCard data={d.cardAfter} variant="deck" />
+      </div>
+      <p className="rw-cardup-note">{d.bigJokerUp
+        ? 'The prestige card past the Little Joker — every rank climbed, every badge earned.'
+        : 'Your rank is your card — this is the new one.'}</p>
     </div>
   );
 }
@@ -490,6 +558,7 @@ export default function GameOverRewards({
   const rows: React.ReactNode[] = [];
   if (data.signedIn) {
     rows.push(<XpRow key="xp" d={data} index={row++} play={play} reduced={reduced} />);
+    if (data.cardUp) rows.push(<CardUpRow key="cardup" d={data} index={row++} />);
     if (data.coinsGained > 0) rows.push(<CoinsRow key="coins" d={data} index={row++} play={play} reduced={reduced} />);
     rows.push(<EloRow key="elo" d={data} index={row++} play={play} reduced={reduced} />);
     for (const a of data.achievements) {

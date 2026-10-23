@@ -1,23 +1,32 @@
 /**
- * The combined Rep block — Level + title, the XP progress bar, both rating
- * chips and (on surfaces that show it inline) the coin chip. ONE
- * implementation shared by the /profile header card, the Social profile header
- * and the in-game profile modal, so the three can never drift apart again
- * (Demetrius 2026-10-20: "combine the rep profile with the regular profile and
- * not have it in separate places" — and the XP bar belongs "up near the top
- * with the profile image like in the rep profile").
+ * The combined Rep block — the player's rank card, the XP progress bar,
+ * both rating chips and (on surfaces that show it inline) the coin chip.
+ * ONE implementation shared by the /profile header card, the Social
+ * profile header and the in-game profile modal, so the three can never
+ * drift apart again (Demetrius 2026-10-20: "combine the rep profile with
+ * the regular profile and not have it in separate places" — and the XP
+ * bar belongs "up near the top with the profile image like in the rep
+ * profile").
  *
  * The bar uses the same xpIntoLevel / xpForNext semantics as the /profile
  * header card always did; both /api/profile/:id and /api/profile/me carry
  * those fields off the server's xpSnapshot().
+ *
+ * The headline is the RANK CARD now (owner, 2026-10-23): a player's rank
+ * is a playing card, derived server-side and carried on the profile
+ * payload's `card.rank` — the old level titles (New Jack … King of the
+ * Block) no longer render here. The payload still carries the level
+ * number for the XP bar's progress math; the card is what's named.
  */
+import type { CardRankData } from './profile/PlayerCard';
+import { cardDisplayName, rankGlyph } from './cardRank';
 
 export interface RepLevelInfo { level: number; title: string; xpIntoLevel: number; xpForNext: number }
 /** The payload still carries the division id (internal band logic), but no
  *  user-facing surface renders a division NAME anymore (owner, 2026-10-20:
- *  rankings are metric-based — "not some corny names"). The chips below show
- *  the plain rating number, and the LEVEL title is the only named title on a
- *  profile (the one-title rule). */
+ *  rankings are metric-based — "not some corny names"). The chips below
+ *  show the plain rating number, and the named rank on a profile is the
+ *  rank CARD (owner, 2026-10-23), not a title. */
 export interface RepRankInfo { division: string; elo: number }
 
 /** The coins chip's drawn coin (Demetrius 2026-10-20: the coin emoji "don't
@@ -41,8 +50,12 @@ export function CoinIcon({ size = 15 }: { size?: number } = {}) {
   );
 }
 
-export function RepBlock({ level, team, cutthroat, coins, testid, coinsTestid }: {
+export function RepBlock({ level, rank, team, cutthroat, coins, testid, coinsTestid }: {
   level: RepLevelInfo;
+  /** The player's rank card off the profile payload (card.rank). When a
+   *  payload predates the card, the headline falls back to the bare level
+   *  number — never the retired title. */
+  rank?: CardRankData | null;
   team: RepRankInfo;
   cutthroat: RepRankInfo;
   /** Inline coin balance chip. Omit on the /profile card, whose header shows
@@ -54,7 +67,9 @@ export function RepBlock({ level, team, cutthroat, coins, testid, coinsTestid }:
   const xpPct = Math.min(100, Math.round((level.xpIntoLevel / Math.max(1, level.xpForNext)) * 100));
   return (
     <div className="soc-rep soc-prof-rep" data-testid={testid}>
-      <div className="soc-rep-level"><b>Level {level.level}</b><span>{level.title}</span></div>
+      {rank
+        ? <div className="soc-rep-level"><b>{rankGlyph(rank)}</b><span>{cardDisplayName(rank)}</span></div>
+        : <div className="soc-rep-level"><b>Level {level.level}</b></div>}
       <div className="xp-bar" data-testid={`${testid}-xp`}><i style={{ width: `${xpPct}%` }} /><small>{level.xpIntoLevel}/{level.xpForNext} XP</small></div>
       <div className="soc-rep-ranks">
         <span className="soc-div-chip" title="Partnership rating">⚔ Rating {team.elo}</span>

@@ -20,6 +20,7 @@ import { closeTableProfile, useTableProfileTarget, type ProfileTarget } from '..
 import { TaglineText } from '../tagline';
 import { SocialLinksChips, type SocialLinks } from '../socialLinks';
 import { RepBlock } from '../RepBlock';
+import type { PlayerCardData } from '../profile/PlayerCard';
 import { useEscapeClose } from '../useEscapeClose';
 import { MODE_NAME, } from './Social';
 import { social, useSocial } from './store';
@@ -34,6 +35,9 @@ interface ProfileData {
 }
 interface CredPublic {
   user: { id: string; name: string; avatar: string | null; avatarUpdatedAt?: number | null; tagline?: string | null; socialLinks?: SocialLinks };
+  /** the Player Card payload (/api/profile/:id carries it since the card
+   *  build) — the RepBlock headline reads its rank card */
+  card?: PlayerCardData | null;
   level: { level: number; xp: number; xpForNext: number; xpIntoLevel: number; title: string };
   rank: { team: { division: string; elo: number }; cutthroat: { division: string; elo: number } };
   achievements: { id: string; title: string; unlockedAt: number | null }[];
@@ -115,7 +119,7 @@ function ProfileCard({ target }: { target: ProfileTarget }) {
         </div>
         {cred && p && p !== 'missing' && (
           <RepBlock testid="profile-modal-rep" coinsTestid="profile-modal-coins"
-            level={cred.level} team={cred.rank.team} cutthroat={cred.rank.cutthroat} coins={cred.coins?.balance} />
+            level={cred.level} rank={cred.card?.rank ?? null} team={cred.rank.team} cutthroat={cred.rank.cutthroat} coins={cred.coins?.balance} />
         )}
         {!me && (
           <div className="soc-prof-acts">

@@ -3486,3 +3486,32 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
   .set-group-body, .set-group-body.open { transition: none; }
   .set-chev { transition: none; }
 }
+
+/* Card-up reveal (rank rollout, owner 2026-10-23): when a match steps the
+   player's rank card up, the rewards screen presents it as a card — the
+   old card → the new card, the new one rendered by the PlayerCard
+   component at deck size. Entrance choreography mirrors the .rw-row
+   system exactly: the base rule starts pre-reveal (opacity 0) with its
+   animation held OFF by the .rw-armed gate until the page has painted,
+   and .rw-reduced renders the final state instantly. */
+.rw-cardup { display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 14px 12px; border-radius: 12px; text-align: center;
+  background: rgba(255,255,255,.045); border: 1px solid rgba(var(--gold-rgb), .35);
+  opacity: 0; transform: translateY(14px) scale(.96);
+  animation: rw-cardup-in .55s cubic-bezier(.2,1.3,.35,1) forwards; }
+@keyframes rw-cardup-in { to { opacity: 1; transform: none; } }
+.rewards-page.rw-armed:not(.rw-play) .rw-cardup { animation: none; }
+.rewards-page.rw-reduced .rw-cardup { animation: none; opacity: 1; transform: none; }
+.rw-cardup-head { font-family: var(--display); font-weight: 900; letter-spacing: .14em;
+  font-size: 17px; color: var(--gold); text-shadow: 0 0 18px rgba(255,200,60,.45); }
+.rw-cardup-flow { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
+.rw-cardup-chip { display: flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: 6px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.05); color: var(--muted); }
+.rw-cardup-chip b { font-family: var(--display); font-size: 19px; line-height: 1.1; color: #f3ead2; }
+.rw-cardup-chip small { font-size: 11px; letter-spacing: .05em; }
+.rw-cardup-chip.is-new { border-color: rgba(var(--gold-rgb), .55); color: var(--ink-dim); }
+.rw-cardup-chip.is-new b { color: var(--gold); }
+.rw-cardup-arrow { font-size: 18px; color: var(--muted); }
+.rw-cardup-card { width: 192px; max-width: 64vw; }
+.rw-cardup-note { margin: 0; font-size: 12.5px; letter-spacing: .03em; color: var(--muted); }

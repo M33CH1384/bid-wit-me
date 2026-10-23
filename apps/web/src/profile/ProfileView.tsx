@@ -651,7 +651,7 @@ export function ProfileView({ host, name, id }: {
         )}
         {cred && (
           <RepBlock testid="profile-rep" coinsTestid="profile-coins"
-            level={cred.level} team={cred.rank.team} cutthroat={cred.rank.cutthroat} coins={cred.coins?.balance} />
+            level={cred.level} rank={cred.card?.rank ?? null} team={cred.rank.team} cutthroat={cred.rank.cutthroat} coins={cred.coins?.balance} />
         )}
         {!me && pid && (
           <div className="soc-prof-acts">

@@ -45,7 +45,7 @@ export function ChallengeButton({ name, blocked = false, targetIsGuest = false, 
   });
   if (state === 'hidden') return null;
   if (state === 'locked') {
-    return <button type="button" disabled data-testid={testid ?? 'challenge-btn-locked'} title="Big Bank challenges unlock at Rep Level 20 · Block Captain">🔒 Challenge · Level 20</button>;
+    return <button type="button" disabled data-testid={testid ?? 'challenge-btn-locked'} title="Big Bank challenges unlock at the Ten of Clubs (10♣)">🔒 Challenge · 10♣</button>;
   }
   return (
     <button type="button" data-testid={testid ?? 'challenge-btn'} title="Challenge to a Big Bank wager match"

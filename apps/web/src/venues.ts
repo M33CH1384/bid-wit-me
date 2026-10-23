@@ -77,7 +77,8 @@ export const VENUE_LIST: VenueDef[] = VENUES.map((v) => VENUE_DEFS[v]);
  *  granted by the 'after-dark' achievement (or reaching Rep level 20). */
 export const AFTER_DARK_VENUE: VenueId = 'blockAfterDark';
 export const AFTER_DARK_UNLOCK_ITEM = 'after-dark';
-/** Rep level that auto-unlocks The Pj's ("Block Captain"). */
+/** Rep level that auto-unlocks The Pj's — the Ten of Clubs on the rank
+ *  ladder (the gate itself stays this number; only the words changed). */
 export const AFTER_DARK_UNLOCK_LEVEL = 20;
 
 /** Venues gated behind unlocks. Everything else is always available. */
@@ -92,9 +93,13 @@ export function venueUnlocked(id: VenueId, unlockItemIds: readonly string[], isD
   return !need || unlockItemIds.includes(need);
 }
 
-/** Label for a venue option in pickers: locked venues show a lock until unlocked. */
+/** Label for a venue option in pickers: locked venues show a lock until
+ *  unlocked. The Pj's gate reads as the rank card that opens it (owner,
+ *  2026-10-23: Rep level 20 IS the Ten of Clubs) — the After Dark
+ *  achievement path is named in the venue's own unlock copy elsewhere. */
 export function venueOptionLabel(v: VenueDef, unlocked: boolean): string {
-  return unlocked ? `${v.emoji} ${v.name}` : `🔒 ${v.name} — unlock via Rep`;
+  if (unlocked) return `${v.emoji} ${v.name}`;
+  return v.id === AFTER_DARK_VENUE ? `🔒 ${v.name} — opens at the Ten of Clubs (10♣)` : `🔒 ${v.name} — unlock via Rep`;
 }
 
 /** Minimal unlock state for gating venue pickers. Fetched once per page load;
