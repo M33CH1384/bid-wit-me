@@ -183,12 +183,16 @@ export const TRACKS: Track[] = [
   { file: 'story-theme-sparse', title: 'Riding Shotgun — Slow (Sparse Theme)', artist: 'Bid Wit Me', license: 'Original', source: '', storyOnly: true },
   { file: 'story-danger', title: 'The Corner (Danger Bed)', artist: 'Bid Wit Me', license: 'Original', source: '', storyOnly: true },
   { file: 'story-king', title: 'The King of the Block', artist: 'Bid Wit Me', license: 'Original', source: '', storyOnly: true },
-  // Sound sample (2026-10-23): the film-mix pilot. Porchlight is the Porch stop's own score
+  // Sound sample (2026-10-23): the film-mix pilot. The Porch stop's own score
   // (storyOnly, reached via the 'porch' mood); Come On In is the menu theme (menuOnly,
   // reached only in menu context). Same in-house pipeline as the story score — original
   // compositions, synthesized and rendered for Bid Wit Me, no samples. Appended last so
   // every existing track index (host-music stamps) keeps its meaning.
-  { file: 'porch-theme', title: 'Porchlight (Porch Theme)', artist: 'Bid Wit Me', license: 'Original', source: '', storyOnly: true },
+  // Porch score revision (2026-10-23, owner ear verdict): the sample take "Porchlight"
+  // (68 BPM, brushes only) read corny/sleepy — replaced in this same slot/file by
+  // Porch Party, an upbeat old-school R&B groove (100 BPM, backbeat, walking bass)
+  // from the same renderer. The film mix and its reactivity are unchanged.
+  { file: 'porch-theme', title: 'Porch Party (Porch Theme)', artist: 'Bid Wit Me', license: 'Original', source: '', storyOnly: true },
   { file: 'menu-soul', title: 'Come On In (Menu Theme)', artist: 'Bid Wit Me', license: 'Original', source: '', menuOnly: true },
 ];
 /** Story mood → the score track that carries it (spatial.ts STORY_STOP_AUDIO picks the mood per stop). */

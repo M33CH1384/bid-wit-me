@@ -70,7 +70,7 @@ synthesized at runtime with Web Audio (`apps/web/src/audio.ts`) — no files.
 | `story-theme-sparse.mp3` | Riding Shotgun — Slow (Sparse Theme) | Bid Wit Me — original score, sparse arrangement of the story theme for the slow stops | Original |
 | `story-danger.mp3` | The Corner (Danger Bed) | Bid Wit Me — original score, composed & rendered for this game (no samples) | Original |
 | `story-king.mp3` | The King of the Block | Bid Wit Me — original score, composed & rendered for this game (no samples) | Original |
-| `porch-theme.mp3` | Porchlight (Porch Theme) | Bid Wit Me — original score, composed & rendered for this game (no samples); the Porch film-mix pilot (sound sample, 2026-10-23) | Original |
+| `porch-theme.mp3` | Porch Party (Porch Theme) | Bid Wit Me — original score, composed & rendered for this game (no samples); the Porch film-mix pilot (sound sample, 2026-10-23). Second take (2026-10-23): the sample's "Porchlight" was replaced at the owner's direction with an upbeat old-school R&B groove from the same renderer | Original |
 | `menu-soul.mp3` | Come On In (Menu Theme) | Bid Wit Me — original score, composed & rendered for this game (no samples); the menu theme (sound sample, 2026-10-23) | Original |
 
 Holizna tracks are CC0 (no credit required); courtesy credit: Music by Holizna.

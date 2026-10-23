@@ -136,7 +136,7 @@ export function styleForVenue(venue: string): RoomStyle | undefined { return ROO
  * King gets his own music, full stop.
  *
  * SOUND SAMPLE (2026-10-23): the Porch is the pilot for the film-mix design — it carries its
- * own mood ('porch' → the Porchlight score, looped) AND its own bed ('porch': room tone /
+ * own mood ('porch' → the Porch Party score, looped) AND its own bed ('porch': room tone /
  * close human sounds / outside world on separate layer gains the engine's film controller
  * rides — bidding thins the score, a set drops it a register, the nuke ducks everything).
  * The override pattern is the Rec Center's, extended: the Porch stop replaces its host
