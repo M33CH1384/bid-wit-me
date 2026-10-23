@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join, relative } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { CHUNK_RELOAD_KEY, cacheBust, chunkUrlFromError, importChunk, isChunkLoadError } from '../src/chunkLoad';
 
@@ -52,24 +53,63 @@ describe('chunk load after a deploy', () => {
     warn.mockRestore();
   });
 
-  it('reloads once when the Nuke chunk is still missing, and not again', async () => {
+  it('reloads once when the Nuke chunk is still missing, and not again for that build', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const storage = memory();
     const load = vi.fn(async () => { throw fail(NUKE); });
     const importUrl = vi.fn(async (url: string) => { throw fail(url); });
     const reload = vi.fn();
-    await expect(importChunk(load, { importUrl, reload, storage })).rejects.toThrow(/Nuke3D-OLD/);
+    const hooks = { importUrl, reload, storage, buildId: 'build-a' };
+    await expect(importChunk(load, hooks)).rejects.toThrow(/Nuke3D-OLD/);
     expect(importUrl).toHaveBeenCalledTimes(2);
     expect(reload).toHaveBeenCalledTimes(1);
-    expect(storage.getItem(CHUNK_RELOAD_KEY)).toBe('1');
+    expect(storage.getItem(CHUNK_RELOAD_KEY)).toBe('build-a');
 
-    await expect(importChunk(load, { importUrl, reload, storage })).rejects.toThrow(/Nuke3D-OLD/);
+    await expect(importChunk(load, hooks)).rejects.toThrow(/Nuke3D-OLD/);
     expect(reload).toHaveBeenCalledTimes(1);
 
-    await importChunk(async () => ({ Tornado3D: true }), { reload, storage });
-    await expect(importChunk(load, { importUrl, reload, storage })).rejects.toThrow(/Nuke3D-OLD/);
+    await importChunk(async () => ({ Tornado3D: true }), hooks);
+    await expect(importChunk(load, hooks)).rejects.toThrow(/Nuke3D-OLD/);
     expect(reload).toHaveBeenCalledTimes(1);
-    expect(storage.getItem(CHUNK_RELOAD_KEY)).toBe('1');
+    expect(storage.getItem(CHUNK_RELOAD_KEY)).toBe('build-a');
+    warn.mockRestore();
+  });
+
+  it('a later deploy heals again on the same tab (owner recurrence, 2026-10-23)', async () => {
+    // The first heal implementation stored a bare '1' for the whole tab
+    // session: a player who never closes the tab spent their one heal on
+    // Monday's deploy and had none left for Tuesday's — every chunk the
+    // new deploy deleted then threw into the route boundary instead of
+    // healing. The flag now records WHICH build spent the heal.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const storage = memory();
+    const load = vi.fn(async () => { throw fail(NUKE); });
+    const importUrl = vi.fn(async (url: string) => { throw fail(url); });
+    const reload = vi.fn();
+    // Monday: build-a spends its heal.
+    await expect(importChunk(load, { importUrl, reload, storage, buildId: 'build-a' })).rejects.toThrow(/Nuke3D-OLD/);
+    expect(reload).toHaveBeenCalledTimes(1);
+    // Tuesday: build-b is running, a newer deploy deletes ITS chunks —
+    // build-b has its own heal, even though the tab never closed.
+    await expect(importChunk(load, { importUrl, reload, storage, buildId: 'build-b' })).rejects.toThrow(/Nuke3D-OLD/);
+    expect(reload).toHaveBeenCalledTimes(2);
+    expect(storage.getItem(CHUNK_RELOAD_KEY)).toBe('build-b');
+    // But build-b still gets exactly one: a second failure throws.
+    await expect(importChunk(load, { importUrl, reload, storage, buildId: 'build-b' })).rejects.toThrow(/Nuke3D-OLD/);
+    expect(reload).toHaveBeenCalledTimes(2);
+    warn.mockRestore();
+  });
+
+  it("a legacy '1' flag (pre-sha builds) does not strand the tab: it heals once and records the sha", async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const storage = memory();
+    storage.setItem(CHUNK_RELOAD_KEY, '1'); // written by a build from before the sha scoping
+    const load = vi.fn(async () => { throw fail(NUKE); });
+    const importUrl = vi.fn(async (url: string) => { throw fail(url); });
+    const reload = vi.fn();
+    await expect(importChunk(load, { importUrl, reload, storage, buildId: 'build-b' })).rejects.toThrow(/Nuke3D-OLD/);
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(storage.getItem(CHUNK_RELOAD_KEY)).toBe('build-b');
     warn.mockRestore();
   });
 
@@ -118,5 +158,43 @@ describe('chunk load after a deploy', () => {
     await expect(importChunk(load, { reload, storage })).rejects.toThrow(/shader compile failed/);
     expect(reload).not.toHaveBeenCalled();
     expect(storage.getItem(CHUNK_RELOAD_KEY)).toBeNull();
+  });
+
+  it('the full sweep: every runtime import of an app chunk is importChunk-guarded', () => {
+    // The 2026-10-22 fix guarded the sites that had bitten; this walks
+    // ALL of src so the NEXT unguarded dynamic import fails CI instead
+    // of failing on the owner's phone after a deploy. A runtime import
+    // is driven by await/void/return/assignment (`await import(`,
+    // `void import(`, ...); type-position `import('./x').Type` follows a
+    // `:`/`as`/`<` and never matches those drivers. Vendor chunks
+    // ('@simplewebauthn/browser', 'html-to-image') are not app chunks
+    // and are not story-reachable; chunkLoad's own @vite-ignore loader
+    // takes a variable, not a quoted specifier.
+    const srcRoot = new URL('../src/', import.meta.url).pathname;
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of readdirSync(dir)) {
+        const p = join(dir, e);
+        if (statSync(p).isDirectory()) walk(p);
+        else if (/\.tsx?$/.test(e)) files.push(p);
+      }
+    };
+    walk(srcRoot);
+    const DRIVER = /(?:await|void|return|=)\s*import\(/;
+    const offenders: string[] = [];
+    for (const f of files) {
+      const rel = relative(srcRoot, f);
+      readFileSync(f, 'utf8').split('\n').forEach((line, i) => {
+        if (!DRIVER.test(line)) return;
+        const spec = line.match(/import\(\s*['"]([^'"]+)['"]/)?.[1];
+        if (!spec) return; // a variable specifier: chunkLoad's own loader
+        if (!spec.startsWith('.')) return; // a vendor chunk, not an app chunk
+        if (line.includes('importChunk(')) return; // guarded at the call site
+        // Dev-only preview entry (?preview=turn-ring), never reachable from story play.
+        if (rel === 'main.tsx' && spec === './turnRingPreview') return;
+        offenders.push(`${rel}:${i + 1}: ${line.trim()}`);
+      });
+    }
+    expect(offenders).toEqual([]);
   });
 });

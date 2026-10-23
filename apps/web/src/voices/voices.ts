@@ -67,6 +67,105 @@ export const VOICE_BUILD_TOKEN = `v${VERSION.version}-${VERSION.sha}`;
 /** The sprite URL for a file under VOICE_BASE, build-tokened. */
 export const voiceUrl = (file: string) => `${VOICE_BASE}/${file}?v=${VOICE_BUILD_TOKEN}`;
 /**
+ * The sprite masters are 24 kHz (the voice index's sampleRate). Decoding
+ * them on the engine's context — 44.1/48 kHz on iPhones — resamples every
+ * buffer UP to the context rate: the decoded PCM doubles while carrying
+ * not one sample of extra fidelity. Sprites therefore decode on a
+ * throwaway OfflineAudioContext at their native rate; playback resamples
+ * exactly, the way the masters were made. (Owner crash, 2026-10-23:
+ * decoded size is the session's memory story — see the residency cap.)
+ */
+export const VOICE_DECODE_RATE = 24000;
+/**
+ * The residency cap on decoded voice PCM (owner crash recurrence,
+ * 2026-10-23 — "randomly crashing… back to the solo/co-op menu",
+ * mid-hand, story mode only). The measured shape of the bug: a story
+ * table's seated voices are ~7,100–7,650 s of sprite audio (Dee's
+ * lilcuz-f alone is 4,400 s — she carries the story, consultation,
+ * rundown and co-op corpora in one sprite). Decoded whole-file at the
+ * engine rate that is ≈1.4 GB of Float32 PCM, and the cache NEVER let
+ * a buffer go: every stop's cast, every railbird who chimed in, every
+ * scene voice stayed resident for the whole visit, so a long story
+ * session marched past the iOS web-content memory limit until the
+ * system killed the process — mid-hand, at random, and the relaunch
+ * opened a fresh session (no stored gate answer) on the Solo/Co-op
+ * gate. Decoded at the native rate the same table is ≈0.7 GB; this cap
+ * then bounds what accumulates BEYOND the current table: buffers are
+ * evicted least-recently-used once decoded voice PCM passes 1 GiB
+ * (≈11,180 s at 24 kHz — any seated table plus its stop's scene and
+ * rail voices fit; last stop's cast does not linger into this one).
+ * Eviction drops only the cache's reference: a line already playing
+ * holds its own and finishes, and an evicted voice simply refetches
+ * (HTTP-cached) and re-decodes on its next line.
+ */
+export const VOICE_RESIDENCY_BUDGET_BYTES = 1024 * 1024 * 1024;
+
+/** Decoded size of a buffer: Float32 samples are the Web Audio currency. */
+export function voiceBufferBytes(buf: AudioBuffer): number {
+  return buf.length * buf.numberOfChannels * 4;
+}
+
+const residency = new Map<string, { bytes: number; used: number }>();
+let residencyClock = 0;
+
+function noteResident(key: string, buf: AudioBuffer): void {
+  if (typeof buf.length !== 'number' || !(buf.length > 0)) return;
+  residency.set(key, { bytes: voiceBufferBytes(buf), used: ++residencyClock });
+}
+
+function touchResident(key: string): void {
+  const r = residency.get(key);
+  if (r) r.used = ++residencyClock;
+}
+
+/** Total decoded voice PCM currently held by the sprite cache. */
+export function residentVoiceBytes(): number {
+  let t = 0;
+  for (const r of residency.values()) t += r.bytes;
+  return t;
+}
+
+/** Sprite keys whose decoded buffers are currently held. */
+export function residentVoiceKeys(): string[] {
+  return [...residency.keys()];
+}
+
+function enforceResidencyBudget(keepKey: string): void {
+  let total = residentVoiceBytes();
+  if (total <= VOICE_RESIDENCY_BUDGET_BYTES) return;
+  const lru = [...residency.entries()]
+    .filter(([k]) => k !== keepKey)
+    .sort((a, b) => a[1].used - b[1].used);
+  for (const [k, r] of lru) {
+    if (total <= VOICE_RESIDENCY_BUDGET_BYTES) break;
+    residency.delete(k);
+    cache.delete(k);
+    loadRetries.delete(k); // an evicted voice starts over clean, not mid-budget
+    total -= r.bytes;
+  }
+}
+
+/**
+ * Decode one sprite's audio at its native 24 kHz (see VOICE_DECODE_RATE).
+ * The offline context is also immune to the engine context's rebuilds:
+ * an iOS interruption mid-decode no longer poisons the load (the heal
+ * below still covers failures — a rejected offline decode resolves the
+ * load with no buffer and the entry is evicted for a later retry).
+ * Where OfflineAudioContext does not exist, decode on the engine
+ * context exactly as before.
+ */
+async function decodeSprite(data: ArrayBuffer): Promise<AudioBuffer | null> {
+  const ctx = sound.audioContext();
+  if (!ctx) return null;
+  if (typeof OfflineAudioContext !== 'undefined') {
+    try {
+      const off = new OfflineAudioContext(1, 1, VOICE_DECODE_RATE);
+      return await decodeAudioBuffer(off as unknown as AudioContext, data);
+    } catch { /* constructor refused: fall through to the engine context */ }
+  }
+  return decodeAudioBuffer(ctx, data);
+}
+/**
  * How many times a failed sprite load may be retried per session. A failure
  * is evicted from the cache so the NEXT play retries it (see load()); past
  * the budget the dead entry stays put — a device that genuinely cannot
@@ -85,8 +184,9 @@ function load(key: string): Promise<Sprite | null> {
         const res = await fetch(voiceUrl(`${key}.${format()}`));
         if (!res.ok) return { clips, buf: null };
         const data = await res.arrayBuffer();
-        const ctx = sound.audioContext();
-        return { clips, buf: ctx ? await decodeAudioBuffer(ctx, data) : null };
+        const buf = await decodeSprite(data);
+        if (buf) { noteResident(key, buf); enforceResidencyBudget(key); }
+        return { clips, buf };
       } catch { return null; }
     })();
     cache.set(key, p);
@@ -137,7 +237,9 @@ export function preloadVoice(persona: PersonaId, name: string): void {
 export async function playClip(persona: PersonaId, name: string, raw: string | undefined, gain: number, bid?: number, seat?: import('../spatial').SeatPos, playerCount = 4, opts?: { crossTalk?: boolean; deferCut?: boolean; key?: string }): Promise<boolean> {
   if (!raw) return false;
   const t0 = performance.now();
-  const sp = await load(keyFor(persona, name));
+  const key = keyFor(persona, name);
+  const sp = await load(key);
+  if (sp?.buf) touchResident(key);
   // `opts.key` is a string take suffix (consultation grid "3.1", settle
   // "T7") — the string-keyed sibling of the numeric `bid` take.
   const at = sp && ((opts?.key !== undefined ? sp.clips[`${raw}#${opts.key}`] : bid !== undefined ? sp.clips[`${raw}#${bid}`] : undefined) ?? sp.clips[raw]);
@@ -165,7 +267,9 @@ export async function playClip(persona: PersonaId, name: string, raw: string | u
  */
 export async function clipDurationMs(persona: PersonaId, name: string, raw: string | undefined, bid?: number, key?: string): Promise<number | null> {
   if (!raw) return null;
-  const sp = await load(keyFor(persona, name));
+  const spriteKey = keyFor(persona, name);
+  const sp = await load(spriteKey);
+  if (sp?.buf) touchResident(spriteKey);
   const at = sp && ((key !== undefined ? sp.clips[`${raw}#${key}`] : bid !== undefined ? sp.clips[`${raw}#${bid}`] : undefined) ?? sp.clips[raw]);
   return at ? at[1] : null;
 }
