@@ -6,13 +6,37 @@
  * once-per-match awareness callback when the room carries case (b)
  * facts, and her guide voice going quiet while she covers a seat.
  */
-import { describe, expect, it, vi } from 'vitest';
-import type { Card } from '@spades/rules';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createRng, type Card } from '@spades/rules';
 import { GUIDE_AWARE, allGuideLines, chooseBotAction, type AwarenessCase } from '@spades/bots';
 import type { ChatLine, GameAction } from '@spades/protocol';
 import { FakeEnv } from './harness';
 
 const FAST = { botMs: 10, trickPauseMs: 0, dealMs: 0, disconnectGraceMs: 5000, handOverMs: 3000 };
+
+/**
+ * The room deals every game from secureSeed() — crypto entropy the
+ * harness cannot seed (room.ts startGame) — so unpinned, each run of
+ * this file played a DIFFERENT match, and these scenarios are claims
+ * about a match Dee gets to watch. Under the Shot Out house rule a
+ * set on hand 1 ends the game on the spot; on that single hand end
+ * her set line (evaluator trigger 2) outranks the awareness callback
+ * (trigger 7), the callback never sees a second hand end, and the
+ * case-(b) test failed on the deal alone (~1 run in 4; the covers
+ * test starved the same way when a match ended before hand 3).
+ * Pinning the entropy source to a seeded stream makes the file play
+ * one ordinary multi-hand match — the same fixture discipline as the
+ * harness's seeded ids and manual clock. Production still deals from
+ * crypto; the stub never leaves this test file.
+ */
+function pinEntropy() {
+  const stream = createRng('story-guide-deals');
+  vi.spyOn(globalThis.crypto, 'getRandomValues').mockImplementation(((array: ArrayBufferView) => {
+    const bytes = new Uint8Array(array.buffer, array.byteOffset, array.byteLength);
+    for (let i = 0; i < bytes.length; i++) bytes[i] = stream.int(256);
+    return array;
+  }) as typeof crypto.getRandomValues);
+}
 const GUIDE_TEXTS = new Set(allGuideLines().map((g) => g.line));
 const AWARE_TEXTS = new Set<string>(GUIDE_AWARE);
 
@@ -55,6 +79,9 @@ const guideLines = (env: FakeEnv, cid = 'a'): ChatLine[] =>
   env.msgs(cid).filter((m) => m.t === 'chat').map((m) => (m as { line: ChatLine }).line).filter((l) => l.from === 'guide:dee');
 
 describe('Dee the guide in the room (§5.3)', () => {
+  beforeEach(() => { pinEntropy(); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
   it('speaks at hand ends, under her guide byline, text-only, never twice the same line', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0); // every density roll passes: she reads every hand the spacing allows
     try {
