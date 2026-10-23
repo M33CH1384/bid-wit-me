@@ -5,7 +5,7 @@
  * - Pre-play lines never see the card about to be played (no tells): prePlayLine() takes no card/hand at all.
  * - Hustler persona plays dumb ('newbie' pool) until it pulls off a cut / lead-taking spade / set, then reveals once.
  */
-import { COMMON, LINE_META, PACK_OWNERS, PERSONAS, type LineFact, type LineMeta, type PersonaId, type TalkIntensity, type TalkKind, lineAllowed, lineFitsGender, personaForName, personaSkillFloor } from './personas';
+import { COMMON, LINE_META, PACK_OWNERS, PERSONA_PORTRAITS, PERSONAS, type LineFact, type LineMeta, type PersonaId, type TalkIntensity, type TalkKind, lineAllowed, lineFitsGender, personaForName, personaPortraitFor, personaSkillFloor } from './personas';
 import type { GameState } from '@spades/rules';
 import { banterContextFor } from './moments';
 import { REV_MALCOLM_CUT_LINES, REV_TRIBUTE_TEXTS } from './revTributes';
@@ -13,7 +13,7 @@ import { possessive, voiceGender } from './names';
 import { type CatalogMemory, type VoiceMoment, bucketFor, pickCatalog } from './catalog';
 import { BOT_SKILLS, type BotSkill, seatSkill } from './bidding';
 
-export { COMMON, LINE_META, PACK_OWNERS, PERSONAS, lineAllowed, personaForName, personaSkillFloor };
+export { COMMON, LINE_META, PACK_OWNERS, PERSONA_PORTRAITS, PERSONAS, lineAllowed, personaForName, personaPortraitFor, personaSkillFloor };
 export type { LineFact, LineMeta, PersonaId, TalkIntensity, TalkKind };
 export const TALK_INTENSITY_LABEL: Record<TalkIntensity, string> = { family: 'Family Friendly', cookout: 'Cookout', nomercy: 'No Mercy' };
 

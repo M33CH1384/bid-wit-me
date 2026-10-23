@@ -1,6 +1,7 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { AvatarCircle, useAvatar } from './avatar';
+import PersonaFace from './PersonaFace';
 import StoryFace from './story/StoryFace';
 import tips from './data/loading-tips.json';
 
@@ -36,11 +37,12 @@ export function shuffleTips<T>(list: readonly T[], random: () => number = Math.r
  * this shape; TableLoading only presents it.
  *
  * Face resolution mirrors the table's own PlateFace priority: a story
- * character renders their portrait (storyId); a human renders their
- * uploaded picture (uid lookup, or `direct` when the caller already holds
- * the data URL — the viewer's own seat); a bot with no portrait art gets a
- * designed nameplate (full name on its seat color) — never the bare
- * single-letter circle.
+ * character renders their portrait (storyId); a bot renders its persona
+ * portrait (personaPortraitFor, keyed by the bot's name); a human renders
+ * their uploaded picture (uid lookup, or `direct` when the caller already
+ * holds the data URL — the viewer's own seat). Should a bot's portrait
+ * art fail to load it falls back to a designed nameplate (full name on
+ * its seat color) — never the bare single-letter circle.
  */
 export interface LoadingSeat {
   name: string;
@@ -69,21 +71,31 @@ export function loadingSeatDelayMs(index: number, reduced: boolean): number {
   return reduced ? 0 : index * LOADING_SEAT_STAGGER_MS;
 }
 
-function LoadingSeatFace({ seat }: { seat: LoadingSeat }) {
+function LoadingSeatFace({ seat, faceFailed, onFaceError }: {
+  seat: LoadingSeat;
+  faceFailed: boolean;
+  onFaceError: () => void;
+}) {
   const pic = useAvatar(seat.uid ?? null, seat.direct ?? null);
   if (seat.storyId) return <StoryFace characterId={seat.storyId} name={seat.name} />;
   if (seat.bot) {
-    return (
-      <span className="bwm-seat-plate" aria-hidden>
-        <span className="bwm-seat-plate-name">{seat.name}</span>
-      </span>
-    );
+    // The bot's persona portrait; the designed nameplate is its fallback
+    // if the art ever fails to load — never the bare letter circle.
+    if (faceFailed) {
+      return (
+        <span className="bwm-seat-plate" aria-hidden>
+          <span className="bwm-seat-plate-name">{seat.name}</span>
+        </span>
+      );
+    }
+    return <PersonaFace name={seat.name} onError={onFaceError} />;
   }
   return <AvatarCircle pic={pic} name={seat.name} className="bwm-seat-face-circle" />;
 }
 
 function LoadingSeatCard({ seat, index, reduced }: { seat: LoadingSeat; index: number; reduced: boolean }) {
-  const plate = !!seat.bot && !seat.storyId;
+  const [faceFailed, setFaceFailed] = useState(false);
+  const plate = !!seat.bot && !seat.storyId && faceFailed;
   return (
     <div
       className="bwm-seat"
@@ -91,7 +103,7 @@ function LoadingSeatCard({ seat, index, reduced }: { seat: LoadingSeat; index: n
       style={{ '--uc': seat.color, animationDelay: `${loadingSeatDelayMs(index, reduced)}ms` } as CSSProperties}
     >
       <span className="bwm-seat-facebox">
-        <LoadingSeatFace seat={seat} />
+        <LoadingSeatFace seat={seat} faceFailed={faceFailed} onFaceError={() => setFaceFailed(true)} />
       </span>
       {!plate && <span className="bwm-seat-name">{seat.you ? 'You' : seat.name}</span>}
       {seat.tag && <span className="bwm-seat-tag">{seat.tag}</span>}

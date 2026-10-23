@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { PERSONAS, type BotSkill, type PersonaId, type StoryTape } from '@spades/bots';
 import { AvatarCircle, useAvatar } from './avatar';
+import PersonaFace from './PersonaFace';
 import StoryFace from './story/StoryFace';
 import { CoinIcon } from './RepBlock';
 import { sound, type Sfx } from './audio';
@@ -418,7 +419,9 @@ function VersusFace({ member, size }: { member: VersusMember; size: number }) {
     <span className="versus-face" style={{ width: size, height: size }}>
       {member.storyId
         ? <StoryFace characterId={member.storyId} name={member.name} className="versus-story-face" />
-        : <AvatarCircle pic={pic} name={member.name} style={{ width: size, height: size, fontSize: Math.round(size * 0.42) }} />}
+        : member.isBot
+          ? <PersonaFace name={member.name} className="versus-story-face" />
+          : <AvatarCircle pic={pic} name={member.name} style={{ width: size, height: size, fontSize: Math.round(size * 0.42) }} />}
     </span>
   );
 }

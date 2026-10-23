@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import { personaPortraitFor } from '@spades/bots';
 import {
   LOADING_SEAT_STAGGER_MS,
   TableLoading,
@@ -65,21 +66,30 @@ describe('loading hold — taking seats', () => {
     expect(html).toContain('data-testid="table-loading-tip"');
   });
 
-  it('bots without portrait art arrive as designed nameplates — full name and tag, no letter circle', () => {
+  it('bots arrive with their persona portraits — full name and tag, no letter circle', () => {
     const html = renderToStaticMarkup(createElement(TableLoading, { progress: 0.3, seats: BOT_SEATS }));
     const chunks = seatChunks(html);
     expect(chunks).toHaveLength(4);
     for (const [i, name] of ['Big Mike', 'Sharon', 'Dre'].entries()) {
       const chunk = chunks[i + 1]!;
-      expect(chunk).toContain('bwm-seat-plate');
+      // the bot's face slot is its persona portrait (resolved from its name)
+      expect(chunk).toContain('persona-face-');
+      expect(chunk).toContain(`src="${personaPortraitFor(name)}"`);
       expect(chunk).toContain(name);
-      // the bot's face slot is the nameplate, never the initial-letter circle
+      // never the initial-letter circle, and no nameplate while the art stands
       expect(chunk).not.toContain('bwm-seat-face-circle');
-      expect(chunk).not.toContain('story-face');
+      expect(chunk).not.toContain('bwm-seat-plate');
     }
     expect(html).toContain('The Professor');
     expect(html).toContain('Big Mama');
     expect(html).toContain('The Hustler');
+  });
+
+  it('the nameplate stays as the fallback: TableLoading swaps to it when portrait art fails', () => {
+    const src = readFileSync(new URL('../src/TableLoading.tsx', import.meta.url), 'utf8');
+    expect(src).toContain('faceFailed');
+    expect(src).toContain('<PersonaFace name={seat.name} onError={onFaceError} />');
+    expect(src).toContain('bwm-seat-plate-name');
   });
 
   it('a human seat without a picture keeps the avatar treatment (their photo system, not a bot plate)', () => {

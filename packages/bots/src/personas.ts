@@ -8,6 +8,7 @@
  * Rules for writers: competitive and funny, never about race, gender, sexuality, religion or looks; no threats; no slurs.
  */
 
+import { voiceGender } from './names';
 import { PACK, STYLE, type PackSection } from './pack';
 import { POOLS2 } from './pools2';
 import { PACK2, COMMON_EXTRA } from './pack2';
@@ -569,6 +570,23 @@ export function personaForName(name: string): PersonaId {
   for (const id of ids) { x -= PERSONAS[id].weight; if (x < 0) return id; }
   return ids[0]!;
 }
+
+/**
+ * Persona portrait art (owner, 2026-10-23: "give them faces"): every persona
+ * ships a female and a male portrait, resolved from the bot's name by the
+ * SAME persona / gender resolution its voice and plate tag use — so a bot's
+ * face can never disagree with how it sounds or what it's called. Served
+ * from /assets/personas/portraits/<persona>-<f|m>.webp (512×512 WebP, the
+ * story-portrait spec). The persona-face surfaces fall back to the initial
+ * medallion / nameplate when the art fails to load.
+ */
+export function personaPortraitFor(name: string): string {
+  return `/assets/personas/portraits/${personaForName(name)}-${voiceGender(name)}.webp`;
+}
+
+/** Every persona portrait key that ships (persona id × gender), in PERSONAS order. */
+export const PERSONA_PORTRAITS: readonly string[] = (Object.keys(PERSONAS) as PersonaId[])
+  .flatMap((id) => [`${id}-f`, `${id}-m`]);
 
 // ---- persona mood (2026-10-21): score-gap talkativeness, applied by talk.ts's chance roll ----
 // Frontrunners run their mouths when ahead and go quiet when buried; the Sore Loser and the

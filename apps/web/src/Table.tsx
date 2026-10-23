@@ -23,6 +23,7 @@ import { LockedRulesPanel } from './LockedRules';
 import { booksBanner, teamMinNote } from './polishText';
 import { type Series, addSeriesGame, seriesForGameStart, seriesSides, summarizeGame } from '@spades/rules';
 import { SeriesChip, SeriesSheet, loadSeries, saveSeries } from './Series';
+import PersonaFace from './PersonaFace';
 import StoryFace from './story/StoryFace';
 import { useMyTeamName } from './TeamName';
 import { offlineTalk } from './offlineTalk';
@@ -215,10 +216,12 @@ export interface OnlineBinding {
 
 /** Name-plate face (Demetrius 2026-10-19): a human seat's uploaded picture, else the initial.
  *  Story seats (art pass, 2026-10-21) show the character's portrait, with the
- *  initial medallion as its built-in fallback. */
-function PlateFace({ uid, name, color, storyId }: { uid?: string; name: string; color: string; storyId?: string }) {
+ *  initial medallion as its built-in fallback. Bot seats (faces pass,
+ *  2026-10-23) show their persona portrait, same built-in fallback. */
+function PlateFace({ uid, name, color, storyId, bot }: { uid?: string; name: string; color: string; storyId?: string; bot?: boolean }) {
   const pic = useAvatar(uid);
   if (storyId) return <StoryFace characterId={storyId} name={name} className="plate-avatar" />;
+  if (bot) return <PersonaFace name={name} className="plate-avatar" />;
   return <AvatarCircle pic={pic} name={name} className="plate-avatar" style={{ ['--uc' as string]: color }} />;
 }
 
@@ -2174,9 +2177,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         {seatProfile ? (
           <button type="button" className="plate-face-tap" data-testid={`plate-profile-${seat}`} aria-label={`View ${names[seat]}'s profile`}
             onClick={() => openPlayerProfile({ id: seatUid, name: names[seat] ?? '' }, { atTable: true })}>
-            <PlateFace uid={seatUid} name={names[seat] ?? ''} color={SEAT_COLORS[seat]} storyId={storySeatIds?.[seat]} />
+            <PlateFace uid={seatUid} name={names[seat] ?? ''} color={SEAT_COLORS[seat]} storyId={storySeatIds?.[seat]} bot={isBotSeat(seat)} />
           </button>
-        ) : <PlateFace uid={seatUid} name={names[seat] ?? ''} color={SEAT_COLORS[seat]} storyId={storySeatIds?.[seat]} />}
+        ) : <PlateFace uid={seatUid} name={names[seat] ?? ''} color={SEAT_COLORS[seat]} storyId={storySeatIds?.[seat]} bot={isBotSeat(seat)} />}
         <div className="plate-body">
           <div className="plate-name">{names[seat]}{dealerSeat === seat && <span className="chip dealer" data-testid={`dealer-${seat}`}>DEALER</span>}{partner && <span className="chip ally">PARTNER</span>}{notice.includes(sideOf(seat, r)) && <span className="chip notice" data-testid={`notice-${seat}`} title="Got shot last hand: one more shot and they're out">ON NOTICE</span>}</div>
           <div className="plate-stats" key={st.handNo}>
