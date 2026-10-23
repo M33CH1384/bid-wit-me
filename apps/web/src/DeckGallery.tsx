@@ -163,10 +163,19 @@ export function DeckGallery({ value, onChange }: { value: string; onChange: (v: 
     if (loaded && selected && !deckUnlocked(selected, cleared)) onChange('classic');
   }, [loaded, selected, cleared, onChange]);
   useEffect(() => {
-    // Open the slider parked on the current deck.
-    const el = listRef.current?.querySelector('.dg-cover.on');
-    if (el && typeof (el as HTMLElement).scrollIntoView === 'function') {
-      try { (el as HTMLElement).scrollIntoView({ inline: 'center', block: 'nearest' }); } catch { /* older engines */ }
+    // Open the slider parked on the current deck. Scroll the SLIDER ONLY, by
+    // setting its own scrollLeft: scrollIntoView also scrolls every scrollable
+    // ancestor — including .wizard, whose overflow-x: hidden makes it a
+    // programmatic scroll container — and strands the setup screen shifted
+    // sideways where no player gesture can scroll it back (owner report,
+    // 2026-10-23: the table step opened with its left side cut off). The rect
+    // delta centers the cover inside the slider and touches nothing else.
+    const list = listRef.current;
+    const el = list?.querySelector('.dg-cover.on');
+    if (list && el) {
+      const listRect = list.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      list.scrollLeft += (elRect.left + elRect.width / 2) - (listRect.left + listRect.width / 2);
     }
   }, []);
   const browseDeck = browseId ? deckById(browseId) : undefined;

@@ -496,8 +496,16 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .wiz-dots i.on { background: var(--gold); width: 34px; box-shadow: 0 0 10px rgba(var(--gold-rgb),.7); }
 .wizard.step-home .wiz-dots { visibility: hidden; }
 .wiz-step { flex: 1; display: flex; flex-direction: column; width: 100%; max-width: 560px; margin: 0 auto; padding: 8px 18px 24px; }
-.slide-fwd { animation: wiz-in-r .38s cubic-bezier(.2,.8,.2,1) both; }
-.slide-back { animation: wiz-in-l .38s cubic-bezier(.2,.8,.2,1) both; }
+/* Fill is `backwards`, never `both`: a forwards fill keeps the finished
+   animation's transform value applied forever (computed transform resolves to
+   an identity matrix, not `none`), which makes <main> the containing block for
+   position:fixed descendants — the setup step's bottom bar and modal sheets
+   then anchor to the page-length step instead of the viewport and never show
+   (owner report, 2026-10-23). Backwards fill is visually identical here (no
+   delay; the end keyframe is the natural state) and lets the step's transform
+   fully release when the slide settles. */
+.slide-fwd { animation: wiz-in-r .38s cubic-bezier(.2,.8,.2,1) backwards; }
+.slide-back { animation: wiz-in-l .38s cubic-bezier(.2,.8,.2,1) backwards; }
 @keyframes wiz-in-r { from { transform: translateX(48%); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes wiz-in-l { from { transform: translateX(-48%); opacity: 0; } to { transform: none; opacity: 1; } }
 .wiz-title { font-family: var(--display); font-weight: 800; font-size: 34px; letter-spacing: .04em; text-transform: uppercase; text-align: center; margin: 6px 0 16px; color: #fff; text-shadow: 0 0 18px rgba(var(--edge-rgb),.7); }
