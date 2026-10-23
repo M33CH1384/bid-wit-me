@@ -57,7 +57,7 @@ describe('friends view wiring', () => {
     expect(store).not.toContain('delete lastAt[g]');
   });
   it('an online friend keeps a presence line with the online dot (now the activity label)', () => {
-    expect(social).toContain('{pv.online && <i className="soc-online" title="Online" />}{r.name}<small>{pv.label}</small>');
+    expect(social).toContain('{pv.online && <i className="soc-online" title="Online" />}{r.name}{muted && <i className="soc-tag muted" title="You muted this player (they don\'t know)">Muted</i>}<small>{pv.label}</small>');
   });
   it('no stamp → the plain existing Offline label; no "Unknown"-style placeholder anywhere', () => {
     expect(presence).toContain(": 'Offline'");

@@ -77,8 +77,9 @@ describe('surface wiring (source pins)', () => {
     expect(social).toContain('onTap={target ? () => openPlayerProfile({ id, name }) : undefined}');
     // the DM header face sits inside the profile-opening name button: no nested button
     expect(social).toContain('<SocFace id={pid} name={name} className="soc-av dm-head" tap={false} />');
-    // DM thread rows are divs now, so the face button inside them is valid
-    expect(social).toContain('className="soc-thread" role="button"');
+    // DM thread rows are divs now, so the face button inside them is valid;
+    // non-friend (legacy) threads render the same row dimmed via the template class
+    expect(social).toContain('className={`soc-thread${r.friend ? \'\' : \' legacy\'}`} role="button"');
   });
   it('table plates: human seat faces + the viewer plate are tappable, and the modal is mounted in the screen', () => {
     expect(table).toContain('data-testid={`plate-profile-${seat}`}');

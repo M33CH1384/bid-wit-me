@@ -106,7 +106,7 @@ const onlineApp = readFileSync(new URL('../src/online/OnlineApp.tsx', import.met
 describe('wiring', () => {
   it('the Friends row renders the composed view', () => {
     expect(social).toContain('friendPresenceView(r, s.users[r.id], s.lastAt[r.id] ?? 0, modeName)');
-    expect(social).toContain('{pv.online && <i className="soc-online" title="Online" />}{r.name}<small>{pv.label}</small>');
+    expect(social).toContain('{pv.online && <i className="soc-online" title="Online" />}{r.name}{muted && <i className="soc-tag muted" title="You muted this player (they don\'t know)">Muted</i>}<small>{pv.label}</small>');
   });
   it('the store reports presence over REST on change + a 30 s visibility-gated heartbeat', () => {
     expect(store).toContain("fetch('/api/social/presence'");
