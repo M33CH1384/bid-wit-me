@@ -4,11 +4,13 @@
  * covering the screen."
  *
  * The model: a navigation that qualifies does not swap screens immediately.
- * The spray layer (SprayLayer.tsx, mounted once in Root) paints black spray
- * across the screen (~280 ms); at full cover the pending navigation mutation
- * runs underneath; then the paint dissolves off (~280 ms) revealing the new
- * screen. Input is locked by the layer only during the cover — during the
- * dissolve the new screen is already live under the clearing paint.
+ * The spray layer (SprayLayer.tsx, mounted once in Root) covers the screen
+ * in black spray (~320 ms, choreographed in the layer: a spade is tagged at
+ * center screen first, then the paint fills out from it); at full cover the
+ * pending navigation mutation runs underneath; then the paint dissolves off
+ * (~280 ms) revealing the new screen. Input is locked by the layer only
+ * during the cover — during the dissolve the new screen is already live
+ * under the clearing paint.
  *
  * This module is the controller + the eligibility rules; it knows nothing
  * about React. Callers wrap their screen swap in coverThen():
@@ -38,7 +40,10 @@
  */
 import { fx } from './fx';
 
-export const SPRAY_COVER_MS = 280;
+export const SPRAY_COVER_MS = 320;
+/** Inside the cover, the first stretch tags the spade at center screen;
+ *  the rest fills the screen out from it (SprayLayer.tsx runs the program). */
+export const SPRAY_SPADE_MS = 185;
 export const SPRAY_REVEAL_MS = 280;
 export const SPRAY_FAILSAFE_MS = 1500;
 

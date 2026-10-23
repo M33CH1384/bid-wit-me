@@ -33,13 +33,14 @@ import {
   SPRAY_COVER_MS,
   SPRAY_FAILSAFE_MS,
   SPRAY_REVEAL_MS,
+  SPRAY_SPADE_MS,
   cancelSpray,
   coverThen,
   getSpraySnapshot,
   registerSprayRenderer,
   sprayRouteEligible,
 } from '../src/spray';
-import SprayLayer from '../src/SprayLayer';
+import SprayLayer, { SPADE_OUTLINE } from '../src/SprayLayer';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -228,6 +229,74 @@ describe('SprayLayer', () => {
       vi.advanceTimersByTime(SPRAY_REVEAL_MS);
     });
     expect(el!.querySelector('[data-testid="spray-layer"]')).toBeNull();
+  });
+});
+
+describe('cover choreography — tag the spade, then fill out (owner, 2026-10-23)', () => {
+  it('the cover spends its first beat on the spade, inside the standing timing budget', () => {
+    // The whole transition stays "quick": cover 280–350 ms, total 560–650 ms.
+    expect(SPRAY_COVER_MS).toBeGreaterThanOrEqual(280);
+    expect(SPRAY_COVER_MS).toBeLessThanOrEqual(350);
+    expect(SPRAY_COVER_MS + SPRAY_REVEAL_MS).toBeGreaterThanOrEqual(560);
+    expect(SPRAY_COVER_MS + SPRAY_REVEAL_MS).toBeLessThanOrEqual(650);
+    // The spade beat is the cover's opening act, not a garnish at the end.
+    expect(SPRAY_SPADE_MS).toBeGreaterThanOrEqual(120);
+    expect(SPRAY_SPADE_MS).toBeLessThan(SPRAY_COVER_MS);
+  });
+
+  it('the spade outline is the game mark: favicon geometry, tip first, closed', () => {
+    // Geometry source: public/favicon.svg (viewBox 64, spade x 12..52, y 8..56).
+    const { pts, length } = SPADE_OUTLINE;
+    expect(pts.length).toBeGreaterThan(100);
+    expect(pts[0]!.x).toBeCloseTo(32, 6);
+    expect(pts[0]!.y).toBeCloseTo(8, 6);
+    const last = pts[pts.length - 1]!;
+    expect(last.x).toBeCloseTo(32, 6);
+    expect(last.y).toBeCloseTo(8, 6);
+    for (const p of pts) {
+      expect(p.x).toBeGreaterThanOrEqual(12 - 1e-6);
+      expect(p.x).toBeLessThanOrEqual(52 + 1e-6);
+      expect(p.y).toBeGreaterThanOrEqual(8 - 1e-6);
+      expect(p.y).toBeLessThanOrEqual(56 + 1e-6);
+    }
+    // Arc-length parameterisation: cum climbs monotonically from 0 to 1.
+    expect(pts[0]!.cum).toBe(0);
+    expect(last.cum).toBe(1);
+    for (let i = 1; i < pts.length; i++) {
+      expect(pts[i]!.cum).toBeGreaterThanOrEqual(pts[i - 1]!.cum);
+    }
+    expect(length).toBeGreaterThan(150);
+    expect(length).toBeLessThan(200);
+  });
+
+  it('the cover program runs the spade beat before the fill, never the old linear sweep', () => {
+    const layer = read('SprayLayer.tsx');
+    // Provenance + the two beats, in program order inside drawCover.
+    expect(layer).toContain('favicon.svg');
+    expect(layer).toContain('drawSpadeTag');
+    expect(layer).toContain('drawFillBloom');
+    const coverAt = layer.indexOf('function drawCover');
+    const tagAt = layer.indexOf('drawSpadeTag(g, geo', coverAt);
+    const bloomAt = layer.indexOf('drawFillBloom(g, vw, vh, geo', coverAt);
+    expect(tagAt).toBeGreaterThan(coverAt);
+    expect(bloomAt).toBeGreaterThan(tagAt);
+    // The tag is painted by stamping the brush along the outline's arc
+    // length, and the completed spade is drawn before the bloom covers it.
+    expect(layer).toContain('outlineP * geo.outlineLen');
+    // The 2026-10-23 first cut swept a spray front left-to-right; that
+    // program is gone for good.
+    expect(layer).not.toContain('getFrontSprite');
+    expect(layer).not.toContain('frontSprite');
+  });
+
+  it('the reveal is the shipped grain dissolve, untouched by the cover rework', () => {
+    const layer = read('SprayLayer.tsx');
+    const revealAt = layer.indexOf('function drawReveal');
+    expect(revealAt).toBeGreaterThan(0);
+    const revealBody = layer.slice(revealAt, layer.indexOf('export default function'));
+    expect(revealBody).toContain("g.globalCompositeOperation = 'destination-out'");
+    expect(revealBody).toContain('getGrain(vw, vh)');
+    expect(revealBody).not.toContain('spade');
   });
 });
 
