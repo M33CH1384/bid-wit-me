@@ -1,12 +1,14 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useMemo, useRef } from 'react';
-import { AdditiveBlending, BufferAttribute, BufferGeometry, Group, NormalBlending, Points, ShaderMaterial, WebGLRenderTarget, type Camera, type WebGLRenderer } from 'three';
+import { AdditiveBlending, BufferAttribute, BufferGeometry, ExtrudeGeometry, Group, Mesh, MeshPhysicalMaterial, NormalBlending, Points, PointsMaterial, ShaderMaterial, Shape, SphereGeometry, WebGLRenderTarget, type Camera, type WebGLRenderer } from 'three';
 import { fx } from '../fx';
 import { HAPTIC, cancelHaptics, haptic } from '../haptics';
+import { slipperPose } from './slipperPath';
 
 /**
  * 'Run it!' funnel over the table centre: swirling dust / wind streaks (grey-violet, normal blend) plus brighter
  * debris flecks (additive), rising and widening up the cone; it spins up, then bursts outward and fades with the fling.
+ * Riding inside it: a pair of ruby slippers (see slipperPath), tumbling around the funnel wall as a pair.
  * Reads fx.tornado every frame (no React state), hidden otherwise. Not drawn under Reduce effects.
  */
 const vert = /* glsl */ `
@@ -57,6 +59,75 @@ function mat(opts: { size: number; alpha: number; a: [number, number, number]; b
   });
 }
 
+/**
+ * One stylised ruby slipper, built from primitives: an extruded pump silhouette (toe, vamp,
+ * the foot opening, a kitten heel) with a little bow at the vamp, in glossy clearcoat red —
+ * plus a pinch of sparkle points hovering just off the leather for the glint. Built in plan
+ * units ~0.2 long so it reads as a shoe, not a blob, at table scale on a phone.
+ */
+function slipperGeometry(): ExtrudeGeometry {
+  const s = new Shape();
+  s.moveTo(-0.088, 0.0); // heel back, at the floor
+  s.lineTo(-0.066, 0.0); // heel bottom
+  s.quadraticCurveTo(-0.062, 0.016, -0.038, 0.022); // the arch / waist rising
+  s.quadraticCurveTo(0.01, 0.026, 0.062, 0.008); // sole underside toward the toe
+  s.quadraticCurveTo(0.09, 0.0, 0.104, 0.002); // toe spring to the tip
+  s.quadraticCurveTo(0.108, 0.012, 0.098, 0.02); // rounded toe cap
+  s.quadraticCurveTo(0.07, 0.034, 0.028, 0.042); // the vamp rising back
+  s.quadraticCurveTo(0.004, 0.036, -0.02, 0.034); // the throat: the opening dips
+  s.quadraticCurveTo(-0.052, 0.038, -0.07, 0.052); // the opening rising to the collar
+  s.quadraticCurveTo(-0.084, 0.064, -0.086, 0.04); // collar back curve
+  s.quadraticCurveTo(-0.088, 0.02, -0.088, 0.0); // back of the heel, down to the floor
+  const g = new ExtrudeGeometry(s, { depth: 0.042, bevelEnabled: true, bevelThickness: 0.006, bevelSize: 0.005, bevelSegments: 2, curveSegments: 12 });
+  g.translate(0, 0, -0.021);
+  return g;
+}
+
+interface SlipperRig { group: Group; body: MeshPhysicalMaterial; spark: PointsMaterial }
+
+function buildSlipper(): SlipperRig {
+  const body = new MeshPhysicalMaterial({
+    color: 0xb3001f, metalness: 0.1, roughness: 0.27, clearcoat: 1, clearcoatRoughness: 0.22,
+    emissive: 0x2a000a, transparent: true, opacity: 0,
+  });
+  // the shoe + bow sit in a sub-group centred on the shoe's middle, so the rig tumbles
+  // around its heart instead of its sole
+  const shoe = new Group();
+  shoe.position.set(-0.01, -0.032, 0);
+  shoe.add(new Mesh(slipperGeometry(), body));
+  const loopGeo = new SphereGeometry(0.0135, 12, 8);
+  for (const side of [-1, 1]) {
+    const loop = new Mesh(loopGeo, body);
+    loop.scale.set(1.45, 0.72, 0.5);
+    loop.position.set(0.048 + side * 0.013, 0.046, side * 0.004);
+    loop.rotation.set(0, side * 0.5, side * 0.55);
+    shoe.add(loop);
+  }
+  const knot = new Mesh(new SphereGeometry(0.0085, 10, 8), body);
+  knot.position.set(0.048, 0.045, 0);
+  shoe.add(knot);
+  // sparkle glints hovering just off the leather
+  const n = 16;
+  const pos = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    pos[i * 3] = -0.1 + Math.random() * 0.21;
+    pos[i * 3 + 1] = -0.035 + Math.random() * 0.08;
+    pos[i * 3 + 2] = (Math.random() - 0.5) * 0.11;
+  }
+  const sg = new BufferGeometry();
+  sg.setAttribute('position', new BufferAttribute(pos, 3));
+  const spark = new PointsMaterial({ color: 0xffd7de, size: 0.02, sizeAttenuation: true, transparent: true, opacity: 0, blending: AdditiveBlending, depthWrite: false });
+  const sparks = new Points(sg, spark);
+  sparks.frustumCulled = false;
+  const group = new Group();
+  group.add(shoe, sparks);
+  group.visible = false;
+  return { group, body, spark };
+}
+
+/** Kept alive so the slipper material's program stays in the table renderer's cache after the warm pass. */
+const warmedSlippers: SlipperRig[] = [];
+
 function tornadoParts(hi: boolean) {
   return {
     dust: cloud(hi ? 1400 : 450),
@@ -82,6 +153,12 @@ export async function warmTornado(gl: WebGLRenderer, camera: Camera, quality: 'h
     points.frustumCulled = false;
     group.add(points);
   }
+  // the slippers' clearcoat program links here too, not on the first run's first frame
+  const warmSlip = buildSlipper();
+  warmSlip.group.visible = true;
+  warmSlip.body.opacity = 1;
+  warmedSlippers.push(warmSlip);
+  group.add(warmSlip.group);
   const target = new WebGLRenderTarget(4, 4);
   const prev = gl.getRenderTarget();
   try {
@@ -98,6 +175,8 @@ export async function warmTornado(gl: WebGLRenderer, camera: Camera, quality: 'h
 export function Tornado3D({ quality }: { quality: 'high' | 'low' }) {
   const hi = quality === 'high';
   const parts = useMemo(() => tornadoParts(hi), [hi]);
+  // the ruby slippers ride the funnel — same clock, same show flag, both run kinds
+  const slippers = useMemo(() => [buildSlipper(), buildSlipper()], []);
   const dust = useRef<Points>(null), debris = useRef<Points>(null);
   const spun = useRef(false);
   const hit = useRef(false);
@@ -108,8 +187,11 @@ export function Tornado3D({ quality }: { quality: 'high' | 'low' }) {
     const show = !!T && !T.reduced;
     if (dust.current) dust.current.visible = show;
     if (debris.current) debris.current.visible = show;
+    // the funnel is suppressed (Reduce effects), so are the slippers — they have no life of their own
+    if (!show) for (const s of slippers) s.group.visible = false;
     // checks (e2e): the funnel is actually being drawn this frame
     (window as unknown as { __bwmTornadoDrawn?: boolean }).__bwmTornadoDrawn = show;
+    (window as unknown as { __bwmSlippersDrawn?: boolean }).__bwmSlippersDrawn = false;
     if (!T) { spun.current = false; hit.current = false; skipped.current = false; return; }
     if (T.reduced) {
       if (!skipped.current) { skipped.current = true; cancelHaptics('tornado-skipped'); }
@@ -126,12 +208,26 @@ export function Tornado3D({ quality }: { quality: 'high' | 'low' }) {
       m.uniforms.uGrow!.value = Math.min(1, Math.max(0, u / 0.7));
       m.uniforms.uFling!.value = Math.min(1, Math.max(0, (u - 1.65) / 0.6));
     }
+    let slipDrawn = false;
+    slippers.forEach((s, i) => {
+      const pose = slipperPose(u, i as 0 | 1);
+      s.group.visible = pose.alpha > 0.02;
+      if (!s.group.visible) return;
+      slipDrawn = true;
+      s.group.position.set(pose.x, pose.y, pose.z);
+      s.group.rotation.set(pose.rx, pose.ry, pose.rz);
+      s.body.opacity = pose.alpha;
+      s.spark.opacity = pose.glint;
+    });
+    (window as unknown as { __bwmSlippersDrawn?: boolean }).__bwmSlippersDrawn = slipDrawn;
     invalidate();
   });
   return (
     <group position={[0, 0.02, 0]}>
       <points ref={dust} geometry={parts.dust} material={parts.dustMat} frustumCulled={false} visible={false} renderOrder={5} />
       <points ref={debris} geometry={parts.debris} material={parts.debrisMat} frustumCulled={false} visible={false} renderOrder={6} />
+      <primitive object={slippers[0]!.group} />
+      <primitive object={slippers[1]!.group} />
     </group>
   );
 }
