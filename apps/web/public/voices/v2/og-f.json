@@ -1072,6 +1072,366 @@
   "Malcolm X, cut down on a trick. He taught a whole generation to stand up straight — 'by any means necessary' was never a slogan. It was a promise.": [
    801685,
    9035
+  ],
+  "I got {S}{P}.#0.0": [
+   810970,
+   1900
+  ],
+  "I got {S}{P}.#0.1": [
+   813120,
+   1760
+  ],
+  "I got {S}{P}.#0.2": [
+   815130,
+   3005
+  ],
+  "I got {S}{P}.#1.0": [
+   818385,
+   1700
+  ],
+  "I got {S}{P}.#1.1": [
+   820335,
+   2070
+  ],
+  "I got {S}{P}.#1.2": [
+   822655,
+   2470
+  ],
+  "I got {S}{P}.#2.0": [
+   825375,
+   2925
+  ],
+  "I got {S}{P}.#2.1": [
+   828550,
+   1480
+  ],
+  "I got {S}{P}.#2.2": [
+   830280,
+   3290
+  ],
+  "I got {S}{P}.#3.0": [
+   833820,
+   995
+  ],
+  "I got {S}{P}.#3.1": [
+   835065,
+   2805
+  ],
+  "I got {S}{P}.#3.2": [
+   838120,
+   2650
+  ],
+  "I got {S}{P}.#4.0": [
+   841020,
+   1365
+  ],
+  "I got {S}{P}.#4.1": [
+   842635,
+   2250
+  ],
+  "I got {S}{P}.#4.2": [
+   845135,
+   4535
+  ],
+  "I got {S}{P}.#5.0": [
+   849920,
+   1610
+  ],
+  "I got {S}{P}.#5.1": [
+   851780,
+   2950
+  ],
+  "I got {S}{P}.#5.2": [
+   854980,
+   2990
+  ],
+  "I got {S}{P}.#6+.0": [
+   858220,
+   2250
+  ],
+  "I got {S}{P}.#6+.1": [
+   860720,
+   3005
+  ],
+  "I got {S}{P}.#6+.2": [
+   863975,
+   2915
+  ],
+  "Put me down for {S}{P}.#0.0": [
+   867140,
+   4445
+  ],
+  "Put me down for {S}{P}.#0.1": [
+   871835,
+   4175
+  ],
+  "Put me down for {S}{P}.#0.2": [
+   876260,
+   3215
+  ],
+  "Put me down for {S}{P}.#1.0": [
+   879725,
+   1455
+  ],
+  "Put me down for {S}{P}.#1.1": [
+   881430,
+   2520
+  ],
+  "Put me down for {S}{P}.#1.2": [
+   884200,
+   2155
+  ],
+  "Put me down for {S}{P}.#2.0": [
+   886605,
+   2645
+  ],
+  "Put me down for {S}{P}.#2.1": [
+   889500,
+   2800
+  ],
+  "Put me down for {S}{P}.#2.2": [
+   892550,
+   2430
+  ],
+  "Put me down for {S}{P}.#3.0": [
+   895230,
+   3080
+  ],
+  "Put me down for {S}{P}.#3.1": [
+   898560,
+   2670
+  ],
+  "Put me down for {S}{P}.#3.2": [
+   901480,
+   2810
+  ],
+  "Put me down for {S}{P}.#4.0": [
+   904540,
+   1345
+  ],
+  "Put me down for {S}{P}.#4.1": [
+   906135,
+   2565
+  ],
+  "Put me down for {S}{P}.#4.2": [
+   908950,
+   2680
+  ],
+  "Put me down for {S}{P}.#5.0": [
+   911880,
+   2155
+  ],
+  "Put me down for {S}{P}.#5.1": [
+   914285,
+   2895
+  ],
+  "Put me down for {S}{P}.#5.2": [
+   917430,
+   2200
+  ],
+  "Put me down for {S}{P}.#6+.0": [
+   919880,
+   2200
+  ],
+  "Put me down for {S}{P}.#6+.1": [
+   922330,
+   3205
+  ],
+  "Put me down for {S}{P}.#6+.2": [
+   925785,
+   4600
+  ],
+  "That's {T} between us.#T3": [
+   930635,
+   3370
+  ],
+  "That's {T} between us.#T4": [
+   934255,
+   3140
+  ],
+  "That's {T} between us.#T5": [
+   937645,
+   2390
+  ],
+  "That's {T} between us.#T6": [
+   940285,
+   1555
+  ],
+  "That's {T} between us.#T7": [
+   942090,
+   3350
+  ],
+  "That's {T} between us.#T8": [
+   945690,
+   1890
+  ],
+  "That's {T} between us.#T9": [
+   947830,
+   2835
+  ],
+  "That's {T} between us.#T10": [
+   950915,
+   3680
+  ],
+  "That's {T} between us.#T11": [
+   954845,
+   2015
+  ],
+  "That's {T} between us.#T12": [
+   957110,
+   1955
+  ],
+  "That's {T} between us.#T13+": [
+   959315,
+   2270
+  ],
+  "Count it: {T} total.#T3": [
+   961835,
+   2370
+  ],
+  "Count it: {T} total.#T4": [
+   964455,
+   1920
+  ],
+  "Count it: {T} total.#T5": [
+   966625,
+   2105
+  ],
+  "Count it: {T} total.#T6": [
+   968980,
+   1785
+  ],
+  "Count it: {T} total.#T7": [
+   971015,
+   1880
+  ],
+  "Count it: {T} total.#T8": [
+   973145,
+   1440
+  ],
+  "Count it: {T} total.#T9": [
+   974835,
+   2205
+  ],
+  "Count it: {T} total.#T10": [
+   977290,
+   1560
+  ],
+  "Count it: {T} total.#T11": [
+   979100,
+   1690
+  ],
+  "Count it: {T} total.#T12": [
+   981040,
+   1670
+  ],
+  "Count it: {T} total.#T13+": [
+   982960,
+   3075
+  ],
+  "I'm heavy over here. Real heavy.": [
+   986285,
+   2550
+  ],
+  "Oh, I'm working this hand.": [
+   989085,
+   1950
+  ],
+  "I'm solid. Nothing fancy, just solid.": [
+   991285,
+   3575
+  ],
+  "I'm real light — lean on yours.": [
+   995110,
+   2755
+  ],
+  "Crumbs over here. Yours matters more.": [
+   998115,
+   3335
+  ],
+  "Mine's got maybes in it. Don't marry the number.": [
+   1001700,
+   2965
+  ],
+  "What you working with? Give me a count.": [
+   1004915,
+   1740
+  ],
+  "I'm looking at a nil over here.": [
+   1006905,
+   1655
+  ],
+  "You go dark. I got the rest of us.": [
+   1008810,
+   2640
+  ],
+  "Score says gamble. I'm going blind — cover me.": [
+   1011700,
+   6900
+  ],
+  "{S}{P}. That's my count. It don't change.#3.0": [
+   1018850,
+   3605
+  ],
+  "{S}{P}. That's my count. It don't change.#3.1": [
+   1022705,
+   6080
+  ],
+  "I got {S}{P}. Like always.#3.0": [
+   1029035,
+   3015
+  ],
+  "I got {S}{P}. Like always.#3.1": [
+   1032300,
+   3410
+  ],
+  "Pleasure. Count fair with me and we'll get along fine.": [
+   1035960,
+   3165
+  ],
+  "New partner, same rules: you tell me your count, I'll tell you mine.": [
+   1039375,
+   3735
+  ],
+  "I play honest and I count honest. You'll see.": [
+   1043360,
+   4605
+  ],
+  "That's the whole introduction. Now count 'em.": [
+   1048215,
+   5080
+  ],
+  "Been at this table longer than the table. Count with me.": [
+   1053545,
+   3960
+  ],
+  "You count yours. I'll count mine. They'll match.": [
+   1057755,
+   4165
+  ],
+  "Talk to me.": [
+   1062170,
+   1480
+  ],
+  "Give me a number.": [
+   1063900,
+   1035
+  ],
+  "What you got for me?": [
+   1065185,
+   1245
+  ],
+  "Heard.": [
+   1066680,
+   2370
+  ],
+  "Say less.": [
+   1069300,
+   1215
+  ],
+  "Copy.": [
+   1070765,
+   900
   ]
  }
 }

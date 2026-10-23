@@ -1460,6 +1460,922 @@
   "Malcolm X, cut down on a trick. He taught a whole generation to stand up straight — 'by any means necessary' was never a slogan. It was a promise.": [
    1563350,
    8600
+  ],
+  "I got {S}{P}.#0.0": [
+   1572200,
+   2160
+  ],
+  "I got {S}{P}.#0.1": [
+   1574610,
+   3110
+  ],
+  "I got {S}{P}.#0.2": [
+   1577970,
+   3645
+  ],
+  "I got {S}{P}.#1.0": [
+   1581865,
+   1325
+  ],
+  "I got {S}{P}.#1.1": [
+   1583440,
+   3650
+  ],
+  "I got {S}{P}.#1.2": [
+   1587340,
+   4645
+  ],
+  "I got {S}{P}.#2.0": [
+   1592235,
+   2670
+  ],
+  "I got {S}{P}.#2.1": [
+   1595155,
+   3485
+  ],
+  "I got {S}{P}.#2.2": [
+   1598890,
+   3470
+  ],
+  "I got {S}{P}.#3.0": [
+   1602610,
+   2075
+  ],
+  "I got {S}{P}.#3.1": [
+   1604935,
+   2300
+  ],
+  "I got {S}{P}.#3.2": [
+   1607485,
+   3390
+  ],
+  "I got {S}{P}.#4.0": [
+   1611125,
+   1595
+  ],
+  "I got {S}{P}.#4.1": [
+   1612970,
+   1880
+  ],
+  "I got {S}{P}.#4.2": [
+   1615100,
+   3150
+  ],
+  "I got {S}{P}.#5.0": [
+   1618500,
+   2830
+  ],
+  "I got {S}{P}.#5.1": [
+   1621580,
+   3000
+  ],
+  "I got {S}{P}.#5.2": [
+   1624830,
+   4150
+  ],
+  "I got {S}{P}.#6+.0": [
+   1629230,
+   2830
+  ],
+  "I got {S}{P}.#6+.1": [
+   1632310,
+   2805
+  ],
+  "I got {S}{P}.#6+.2": [
+   1635365,
+   3400
+  ],
+  "Put me down for {S}{P}.#0.0": [
+   1639015,
+   1955
+  ],
+  "Put me down for {S}{P}.#0.1": [
+   1641220,
+   3590
+  ],
+  "Put me down for {S}{P}.#0.2": [
+   1645060,
+   3550
+  ],
+  "Put me down for {S}{P}.#1.0": [
+   1648860,
+   1600
+  ],
+  "Put me down for {S}{P}.#1.1": [
+   1650710,
+   1970
+  ],
+  "Put me down for {S}{P}.#1.2": [
+   1652930,
+   2060
+  ],
+  "Put me down for {S}{P}.#2.0": [
+   1655240,
+   990
+  ],
+  "Put me down for {S}{P}.#2.1": [
+   1656480,
+   4430
+  ],
+  "Put me down for {S}{P}.#2.2": [
+   1661160,
+   2380
+  ],
+  "Put me down for {S}{P}.#3.0": [
+   1663790,
+   2385
+  ],
+  "Put me down for {S}{P}.#3.1": [
+   1666425,
+   1925
+  ],
+  "Put me down for {S}{P}.#3.2": [
+   1668600,
+   1865
+  ],
+  "Put me down for {S}{P}.#4.0": [
+   1670715,
+   2655
+  ],
+  "Put me down for {S}{P}.#4.1": [
+   1673620,
+   3030
+  ],
+  "Put me down for {S}{P}.#4.2": [
+   1676900,
+   1960
+  ],
+  "Put me down for {S}{P}.#5.0": [
+   1679110,
+   3190
+  ],
+  "Put me down for {S}{P}.#5.1": [
+   1682550,
+   1695
+  ],
+  "Put me down for {S}{P}.#5.2": [
+   1684495,
+   3285
+  ],
+  "Put me down for {S}{P}.#6+.0": [
+   1688030,
+   1955
+  ],
+  "Put me down for {S}{P}.#6+.1": [
+   1690235,
+   3960
+  ],
+  "Put me down for {S}{P}.#6+.2": [
+   1694445,
+   3215
+  ],
+  "That's {T} between us.#T3": [
+   1697910,
+   3885
+  ],
+  "That's {T} between us.#T4": [
+   1702045,
+   2270
+  ],
+  "That's {T} between us.#T5": [
+   1704565,
+   4085
+  ],
+  "That's {T} between us.#T6": [
+   1708900,
+   3965
+  ],
+  "That's {T} between us.#T7": [
+   1713115,
+   3700
+  ],
+  "That's {T} between us.#T8": [
+   1717065,
+   3320
+  ],
+  "That's {T} between us.#T9": [
+   1720635,
+   2450
+  ],
+  "That's {T} between us.#T10": [
+   1723335,
+   2375
+  ],
+  "That's {T} between us.#T11": [
+   1725960,
+   3810
+  ],
+  "That's {T} between us.#T12": [
+   1730020,
+   2515
+  ],
+  "That's {T} between us.#T13+": [
+   1732785,
+   3965
+  ],
+  "Count it: {T} total.#T3": [
+   1737000,
+   1630
+  ],
+  "Count it: {T} total.#T4": [
+   1738880,
+   1770
+  ],
+  "Count it: {T} total.#T5": [
+   1740900,
+   1615
+  ],
+  "Count it: {T} total.#T6": [
+   1742765,
+   1750
+  ],
+  "Count it: {T} total.#T7": [
+   1744765,
+   1915
+  ],
+  "Count it: {T} total.#T8": [
+   1746930,
+   2665
+  ],
+  "Count it: {T} total.#T9": [
+   1749845,
+   1880
+  ],
+  "Count it: {T} total.#T10": [
+   1751975,
+   2375
+  ],
+  "Count it: {T} total.#T11": [
+   1754600,
+   1525
+  ],
+  "Count it: {T} total.#T12": [
+   1756375,
+   1295
+  ],
+  "Count it: {T} total.#T13+": [
+   1757920,
+   1840
+  ],
+  "I'm heavy over here. Real heavy.": [
+   1760010,
+   2165
+  ],
+  "Oh, I'm working this hand.": [
+   1762425,
+   3165
+  ],
+  "I'm solid. Nothing fancy, just solid.": [
+   1765840,
+   3315
+  ],
+  "I'm real light — lean on yours.": [
+   1769405,
+   3330
+  ],
+  "Crumbs over here. Yours matters more.": [
+   1772985,
+   2800
+  ],
+  "Mine's got maybes in it. Don't marry the number.": [
+   1776035,
+   3195
+  ],
+  "What you working with? Give me a count.": [
+   1779480,
+   2385
+  ],
+  "I'm looking at a nil over here.": [
+   1782115,
+   2035
+  ],
+  "You go dark. I got the rest of us.": [
+   1784400,
+   4450
+  ],
+  "Score says gamble. I'm going blind — cover me.": [
+   1789100,
+   3755
+  ],
+  "Cuz, I got {S}{P}.#3.0": [
+   1793105,
+   3130
+  ],
+  "Cuz, I got {S}{P}.#3.1": [
+   1796485,
+   2715
+  ],
+  "Put me down for {S}{P}, family.#3.0": [
+   1799450,
+   3495
+  ],
+  "Put me down for {S}{P}, family.#3.1": [
+   1803195,
+   5155
+  ],
+  "Pleasure. Count fair with me and we'll get along fine.": [
+   1808600,
+   4065
+  ],
+  "New partner, same rules: you tell me your count, I'll tell you mine.": [
+   1812915,
+   4110
+  ],
+  "I play honest and I count honest. You'll see.": [
+   1817275,
+   4105
+  ],
+  "That's the whole introduction. Now count 'em.": [
+   1821630,
+   2990
+  ],
+  "Family counts together. That's the rule.": [
+   1824870,
+   4340
+  ],
+  "Cuz to cuz: we tell each other the truth here.": [
+   1829460,
+   5565
+  ],
+  "Talk to me.": [
+   1835275,
+   2300
+  ],
+  "Give me a number.": [
+   1837825,
+   2315
+  ],
+  "What you got for me?": [
+   1840390,
+   3350
+  ],
+  "Heard.": [
+   1843990,
+   865
+  ],
+  "Say less.": [
+   1845105,
+   1385
+  ],
+  "Copy.": [
+   1846740,
+   1280
+  ],
+  "Count me for {S}{P}.#0.0": [
+   1848270,
+   2900
+  ],
+  "Count me for {S}{P}.#0.1": [
+   1851420,
+   2480
+  ],
+  "Count me for {S}{P}.#0.2": [
+   1854150,
+   5885
+  ],
+  "Count me for {S}{P}.#1.0": [
+   1860285,
+   3710
+  ],
+  "Count me for {S}{P}.#1.1": [
+   1864245,
+   2265
+  ],
+  "Count me for {S}{P}.#1.2": [
+   1866760,
+   3480
+  ],
+  "Count me for {S}{P}.#2.0": [
+   1870490,
+   2675
+  ],
+  "Count me for {S}{P}.#2.1": [
+   1873415,
+   3635
+  ],
+  "Count me for {S}{P}.#2.2": [
+   1877300,
+   3020
+  ],
+  "Count me for {S}{P}.#3.0": [
+   1880570,
+   2600
+  ],
+  "Count me for {S}{P}.#3.1": [
+   1883420,
+   3125
+  ],
+  "Count me for {S}{P}.#3.2": [
+   1886795,
+   3605
+  ],
+  "Count me for {S}{P}.#4.0": [
+   1890650,
+   1940
+  ],
+  "Count me for {S}{P}.#4.1": [
+   1892840,
+   3160
+  ],
+  "Count me for {S}{P}.#4.2": [
+   1896250,
+   4740
+  ],
+  "Count me for {S}{P}.#5.0": [
+   1901240,
+   1700
+  ],
+  "Count me for {S}{P}.#5.1": [
+   1903190,
+   4365
+  ],
+  "Count me for {S}{P}.#5.2": [
+   1907805,
+   2905
+  ],
+  "Count me for {S}{P}.#6+.0": [
+   1910960,
+   3360
+  ],
+  "Count me for {S}{P}.#6+.1": [
+   1914570,
+   4105
+  ],
+  "Count me for {S}{P}.#6+.2": [
+   1918925,
+   4125
+  ],
+  "I'm good for {S}{P}.#0.0": [
+   1923300,
+   3630
+  ],
+  "I'm good for {S}{P}.#0.1": [
+   1927180,
+   3595
+  ],
+  "I'm good for {S}{P}.#0.2": [
+   1931025,
+   2450
+  ],
+  "I'm good for {S}{P}.#1.0": [
+   1933725,
+   2470
+  ],
+  "I'm good for {S}{P}.#1.1": [
+   1936445,
+   3280
+  ],
+  "I'm good for {S}{P}.#1.2": [
+   1939975,
+   2750
+  ],
+  "I'm good for {S}{P}.#2.0": [
+   1942975,
+   3125
+  ],
+  "I'm good for {S}{P}.#2.1": [
+   1946350,
+   2620
+  ],
+  "I'm good for {S}{P}.#2.2": [
+   1949220,
+   3095
+  ],
+  "I'm good for {S}{P}.#3.0": [
+   1952565,
+   3120
+  ],
+  "I'm good for {S}{P}.#3.1": [
+   1955935,
+   4990
+  ],
+  "I'm good for {S}{P}.#3.2": [
+   1961175,
+   5210
+  ],
+  "I'm good for {S}{P}.#4.0": [
+   1966635,
+   3565
+  ],
+  "I'm good for {S}{P}.#4.1": [
+   1970450,
+   2575
+  ],
+  "I'm good for {S}{P}.#4.2": [
+   1973275,
+   4670
+  ],
+  "I'm good for {S}{P}.#5.0": [
+   1978195,
+   3280
+  ],
+  "I'm good for {S}{P}.#5.1": [
+   1981725,
+   5235
+  ],
+  "I'm good for {S}{P}.#5.2": [
+   1987210,
+   3780
+  ],
+  "I'm good for {S}{P}.#6+.0": [
+   1991240,
+   2825
+  ],
+  "I'm good for {S}{P}.#6+.1": [
+   1994315,
+   3155
+  ],
+  "I'm good for {S}{P}.#6+.2": [
+   1997720,
+   4365
+  ],
+  "That's {T} between us. Lock it in.#T3": [
+   2002335,
+   3170
+  ],
+  "That's {T} between us. Lock it in.#T4": [
+   2005755,
+   5510
+  ],
+  "That's {T} between us. Lock it in.#T5": [
+   2011515,
+   3325
+  ],
+  "That's {T} between us. Lock it in.#T6": [
+   2015090,
+   4720
+  ],
+  "That's {T} between us. Lock it in.#T7": [
+   2020060,
+   3575
+  ],
+  "That's {T} between us. Lock it in.#T8": [
+   2023885,
+   5040
+  ],
+  "That's {T} between us. Lock it in.#T9": [
+   2029175,
+   3980
+  ],
+  "That's {T} between us. Lock it in.#T10": [
+   2033405,
+   3310
+  ],
+  "That's {T} between us. Lock it in.#T11": [
+   2036965,
+   4145
+  ],
+  "That's {T} between us. Lock it in.#T12": [
+   2041360,
+   4495
+  ],
+  "That's {T} between us. Lock it in.#T13+": [
+   2046105,
+   5335
+  ],
+  "{T} total. We good.#T3": [
+   2051690,
+   2785
+  ],
+  "{T} total. We good.#T4": [
+   2054725,
+   2305
+  ],
+  "{T} total. We good.#T5": [
+   2057280,
+   2930
+  ],
+  "{T} total. We good.#T6": [
+   2060460,
+   2700
+  ],
+  "{T} total. We good.#T7": [
+   2063410,
+   3045
+  ],
+  "{T} total. We good.#T8": [
+   2066705,
+   2755
+  ],
+  "{T} total. We good.#T9": [
+   2069710,
+   2965
+  ],
+  "{T} total. We good.#T10": [
+   2072925,
+   2645
+  ],
+  "{T} total. We good.#T11": [
+   2075820,
+   3150
+  ],
+  "{T} total. We good.#T12": [
+   2079220,
+   2485
+  ],
+  "{T} total. We good.#T13+": [
+   2081955,
+   2845
+  ],
+  "Count it: {T}. Now let's go get it.#T3": [
+   2085050,
+   4605
+  ],
+  "Count it: {T}. Now let's go get it.#T4": [
+   2089905,
+   4710
+  ],
+  "Count it: {T}. Now let's go get it.#T5": [
+   2094865,
+   5110
+  ],
+  "Count it: {T}. Now let's go get it.#T6": [
+   2100225,
+   2485
+  ],
+  "Count it: {T}. Now let's go get it.#T7": [
+   2102960,
+   3680
+  ],
+  "Count it: {T}. Now let's go get it.#T8": [
+   2106890,
+   2865
+  ],
+  "Count it: {T}. Now let's go get it.#T9": [
+   2110005,
+   3110
+  ],
+  "Count it: {T}. Now let's go get it.#T10": [
+   2113365,
+   3660
+  ],
+  "Count it: {T}. Now let's go get it.#T11": [
+   2117275,
+   3985
+  ],
+  "Count it: {T}. Now let's go get it.#T12": [
+   2121510,
+   3655
+  ],
+  "Count it: {T}. Now let's go get it.#T13+": [
+   2125415,
+   3465
+  ],
+  "{T} between us… thin. Play it careful, cuz.#T3": [
+   2129130,
+   4305
+  ],
+  "{T} between us… thin. Play it careful, cuz.#T4": [
+   2133685,
+   3850
+  ],
+  "{T} between us… thin. Play it careful, cuz.#T5": [
+   2137785,
+   6725
+  ],
+  "{T}! Big number. Back it up.#T10": [
+   2144760,
+   4170
+  ],
+  "{T}! Big number. Back it up.#T11": [
+   2149180,
+   3060
+  ],
+  "{T}! Big number. Back it up.#T12": [
+   2152490,
+   4185
+  ],
+  "{T}! Big number. Back it up.#T13+": [
+   2156925,
+   3815
+  ],
+  "Table got crowded — I had to come down some. We at {T}.#T5": [
+   2160990,
+   6135
+  ],
+  "Table got crowded — I had to come down some. We at {T}.#T7": [
+   2167375,
+   5350
+  ],
+  "Table got crowded — I had to come down some. We at {T}.#T9": [
+   2172975,
+   3845
+  ],
+  "Oh, we eating this hand.": [
+   2177070,
+   1910
+  ],
+  "I came to work today, cuz.": [
+   2179230,
+   1740
+  ],
+  "I'm solid over here. Nothing fancy, just solid.": [
+   2181220,
+   3430
+  ],
+  "I'm real light, cuz. Lean on yours.": [
+   2184900,
+   4235
+  ],
+  "Don't look at me this hand — I got crumbs.": [
+   2189385,
+   4175
+  ],
+  "Mine's got some maybes in it. Don't marry my number.": [
+   2193810,
+   4670
+  ],
+  "I got a little something. A *little* something.": [
+   2198730,
+   5375
+  ],
+  "Count with me — what's yours look like?": [
+   2204355,
+   2160
+  ],
+  "You first. What you working with, a number.": [
+   2206765,
+   4145
+  ],
+  "I'm looking at a nil over here. For real.": [
+   2211160,
+   2975
+  ],
+  "Don't feed me nothing — I'm tryna take zero this hand.": [
+   2214385,
+   3560
+  ],
+  "You go dark, I got the rest of us.": [
+   2218195,
+   5525
+  ],
+  "We down bad… I might have to go blind and pray. Cover me.": [
+   2223970,
+   4155
+  ],
+  "We up — I'm not reaching. Mine's honest.": [
+   2228375,
+   3295
+  ],
+  "We need theirs broke. I'll stretch mine if you stretch yours.": [
+   2231920,
+   3505
+  ],
+  "Watch the bags, cuz. Mine's coming in low on purpose.": [
+   2235675,
+   4425
+  ],
+  "One more after this. Same count, same us.": [
+   2240350,
+   4025
+  ],
+  "I counted that hand wrong. That's on me, cuz.": [
+   2244625,
+   5200
+  ],
+  "My read was off. Won't happen twice.": [
+   2250075,
+   2875
+  ],
+  "I shorted us. I had more than I said — my bad.": [
+   2253200,
+   5260
+  ],
+  "Okay, so — that's Uncle Ray and Miss Pat, and this porch is basically where I learned what cards even were. Don't let the lemonade fool you. Ray bids low on purpose and then books high just to watch you do the math out loud — and Pat? Pat remembers every bid you made three hands ago. And three years ago. They're not the fastest table on the route, and they're not trying to be. Play patient, count honest, and don't try to out-talk them. Nobody out-talks this porch. We just gotta out-book 'em.": [
+   2258710,
+   30410
+  ],
+  "Same porch, same two. You know the book on them now: Ray bids low and books high, Pat's keeping the count in pencil. Last time they taught the lesson. This time we take notes faster. Nothing fancy — patient cards, honest math. We owe them one.": [
+   2289370,
+   15840
+  ],
+  "Victory lap rules: Ray's got new jokes and the same old patience, and Pat wrote our last win down in pencil — she can still revise it. They'll bid a little prouder this time. Let 'em. We know this porch.": [
+   2305460,
+   12780
+  ],
+  "Mr. Coleman and Miss June. Fifty years in that shop, and everything in it is by the book — including the game. No jokers here, Ace Down, so the deck is honest and so are they. Coleman's a retired teacher: he plays textbook, every book accounted for, no gifts. June's the one to watch, though. Quiet, exact — she bids what the mirrors show her, and she does not guess. Beating them ain't about tricks. It's about doing the plain thing right, every single hand, till they respect it.": [
+   2318490,
+   29890
+  ],
+  "Back to the classroom. Coleman hasn't changed a page and June hasn't missed a bid since we left. Last time we bid our hopes. This time we bid our cards, by the book, until the book runs out. Sit down — chapter two.": [
+   2348630,
+   13180
+  ],
+  "We hold this table, but the book doesn't care — Coleman teaches the same lesson to winners, and June's read our whole game once already. Expect her to bid like she knows us. Because she does. Stay textbook-clean.": [
+   2362060,
+   12580
+  ],
+  "Lil' Man and Trey. Yeah, those two. Lil' Man beat me one summer and I stopped coming around — that's the history, so let's just put it on the table. Here's the real scouting report: they're loud because loud works. Twenty seconds a move, all that yelling, and pretty soon you're playing fast just to keep up — and fast is where the mistakes live. Lil' Man bids like momentum is a card, and some games he's a world-beater and some games he just... isn't. Trey's the echo — whatever Lil' Man says, louder. Play your speed, not theirs. Breathe between tricks.": [
+   2374890,
+   31270
+  ],
+  "Run it back. The noise is the same, and now you know it's a costume — underneath it they're beatable when we play our speed. Lil' Man's either a world-beater today or he isn't. Either way: breathe between tricks and let him outrun his own cards.": [
+   2406410,
+   16615
+  ],
+  "Champions coming back to the Rec — Lil' Man's been rehearsing this rematch at full volume since we left. He'll come out faster and prouder. That's fine. Fast and proud is how he gives books away. Our speed, again.": [
+   2423275,
+   12840
+  ],
+  "Keisha and Teisha — the Twins. And before you ask: yes, it's as weird as it looks. They finish each other's sentences, each other's bids, everything. Keisha bids for two people like she's holding one big hand, because far as she's concerned, she is. Teisha's quieter, meaner — she plays her sister's cards as careful as her own. This is the first table on the route that actually counts what you throw away, so nothing's free anymore. The test here ain't them, it's us: do we cover each other like they do? That's Mama's standard, and they grade on it.": [
+   2436365,
+   34900
+  ],
+  "The Twins again. Last time they covered each other better than we did — that's the whole report. This time when one of us stretches, the other one's already there. Mama's standard. We know it now. Let's meet it.": [
+   2471515,
+   11995
+  ],
+  "The Twins have had a whole week of family dinners to talk about us. Whatever we did weakest last time, they'll test it first — twins share notes. Cover each other like family and the notes won't help them.": [
+   2483760,
+   12990
+  ],
+  "Okay. Listen to me on this one. That's Smoke, and that's Redd, and this corner is the first table where the game can hurt you. My daddy owed these people. That bill is part of why we're here. Smoke counts everything — every card, every bag, every look — and he bids like the count is the whole conversation. Redd barely talks, and when he bids, he bids mean. They hunt nils for sport. Ours and theirs. So: no lazy bids, no free books, and if one of us goes nil, the other one guards it like rent money. Quiet table. Loud consequences.": [
+   2497000,
+   32005
+  ],
+  "You know what this table costs now. Smoke counted us out loud last time; Redd didn't have to say a word. So we play it quiet and exact: no lazy bids, nils guarded like rent money. The bill doesn't get bigger unless we let it.": [
+   2529255,
+   12825
+  ],
+  "We paid this bill once. Smoke remembers — a cleared account on his corner means he'll count us twice as careful this time, and Redd's silence will be priced higher. No discounts for returning customers. Earn it again.": [
+   2542330,
+   11455
+  ],
+  "Mind your manners at this one — and your arithmetic. That's Deacon Ford, sweet as pie until the cards come out, and Sister Mae, who runs this basement like it owes her money. Mae ran this whole route herself, years back. Stopped one stop short. She doesn't talk about why, so I won't either. What I will say: nils are worth double down here, and these two treat a nil like a calling — planned, prayed over, and covered like family. Deacon preaches patience and practices it. Mae covers her partner the way she'd cover her own child. Play clean, guard your partner, and do not — do not — get caught grandstanding in Sister Mae's basement.": [
+   2554035,
+   39745
+  ],
+  "Back to the basement. Sister Mae expected us — losing here doesn't surprise her, and neither will winning, if we earn it. Nils are still doubled, still guarded like family. Play clean, cover your partner, and let patience do the preaching this time.": [
+   2594030,
+   14225
+  ],
+  "Sister Mae counts us as hers now — which means she'll test us harder, not softer. Champions get the real sermon. Nils still doubled, her cover still family-tight. Play like we belong in her book. We do. Keep proving it.": [
+   2608505,
+   13415
+  ],
+  "Poet and Seven. I won't pretend I understand this table — nobody does, that's kind of the point of it. Poet talks like the game already happened and he's just telling you how. Riddles, prophecies, all that. Except his calls keep coming true, so laugh careful. Seven's said maybe ten words since 2019 — but his game is the blind nil. Up here it's always on and worth three hundred, and he calls it without looking, like scripture. These two play the deepest game on the route so far. Everything they throw means something. Watch what they keep, not what they say. Well — except Poet. Watch what he says too.": [
+   2622170,
+   36745
+  ],
+  "Poet's already written this ending too, probably. Last time his calls came true because we played like they would. Seven's blind nil is still up there waiting. Watch what they keep, not what he says — and let's write our own ending this time.": [
+   2659165,
+   11880
+  ],
+  "Poet called our win last time — after it happened, in verse, like he'd called it before. Charming. Seven nodded once. Upgrades, both. The blind nil is still scripture up here. Watch what they keep.": [
+   2671295,
+   14235
+  ],
+  "Velvet and the Accountant. Start with what everybody gets wrong: Velvet smiles like she's lost and bids like she's broke. Neither one is true. She left our street with forty dollars and came back owning the view — she under-bids on purpose and then plays over her number, so don't you dare relax on her little bid. The Accountant is the opposite problem: no smile, no mercy, just math. He counts every card played and every bag owed, and his nil math has ended more runs than any pair alive. Nothing at this table is an accident. So we don't give them accidents.": [
+   2685780,
+   33540
+  ],
+  "Velvet's still smiling. The Accountant's still counting — and now his ledger has a page on us. Last time we gave them accidents. This time we give them nothing: her little bid is a lie, his math only works on what we show him. Show less.": [
+   2719570,
+   16555
+  ],
+  "The Accountant has a whole file on us now — every habit, priced. Velvet will smile like it means something new. It doesn't. It means she's adjusting. We adjust faster: vary the rhythm, starve his ledger.": [
+   2736375,
+   13525
+  ],
+  "Captain Block and Brick — the Captains. This is their street, their light, their table, and they play like the fence is a rule: nothing gets through. The Captain fell one stop short of the King in his own run, years ago, and instead of quitting he took the door — he's been pricing everybody who walks through it for twenty years. Brick doesn't talk, doesn't blink, doesn't react. Twice in twenty years, supposedly. Don't play to her — you can't read a wall. Play to the Captain's pride. This is home turf at full strength. We earn this one or we don't take it.": [
+   2750150,
+   33935
+  ],
+  "Their street, their light — same as last time, and that's the point: nothing here changes, so we have to. The Captain's still pricing us at the door. Brick's still a wall. Play to his pride, not her silence. Earn it or don't take it — round two.": [
+   2784335,
+   16320
+  ],
+  "We took their street once. The Captain does not forget a price — he'll charge us double in respect this time, and Brick will still be a wall about it. Home tables defend champions harder. Come take it twice.": [
+   2800905,
+   11000
+  ],
+  "Queenie and Ace. Take a second, because this is the history part. Queenie ran this route before it was a route — beat Vegas in '87 and stayed gracious about it for fifty years, which tells you everything about the kind of dangerous she is. Grace at full strength. Ace is her mirror: precise to the card, remembers every hand he's ever dealt — including the night the lights went out in '03, at the King's table. And Ace gambles. He'll nil at you smiling, because betting on people is the only bet he still enjoys. They're not guarding this table. They're guarding us from what's behind it.": [
+   2812155,
+   34435
+  ],
+  "Queenie poured the same grace on us and Ace kept the same ledger. They turned us back to protect us — that's what a guardrail is. So let's show them the lesson landed: precise cards, no gifts, and make Ace's gambles cost him for once.": [
+   2846840,
+   12355
+  ],
+  "Queenie and Ace, with respect both ways now. They dealt the King himself once — beating them twice is its own sentence in the block's history. Ace will gamble bigger this time. Let him. His heart's the tell.": [
+   2859445,
+   12000
+  ],
+  "The King of the Block — and the Ringer. Twenty-two years, nobody's taken this table. Not because he's magic. Because there's no mistake to wait for. The King counts everything, forgets nothing, and plays the cards in front of him instead of the name across from him — you should be so lucky as to get underestimated; you won't be. The Ringer? Nobody knows his name, nobody knows his game, and that blank page is the point — you can't scout what isn't written down. And the terms, so you hear them from me first: we have to beat them twice in a row. First win banks nothing. So pace yourself — this is two games wearing one crown.": [
+   2871695,
+   39670
+  ],
+  "One down. That's the first time anybody's made him play a second game for it in years. The iron's on the felt and the room knows what it means: no more teaching, no more patience. He plays this one like the crown is actually leaving. Nothing banks unless we do it again — right now. Same two, full strength, no secrets left. Finish it.": [
+   2911615,
+   19335
+  ],
+  "He's still undefeated, and now the record has our name in it. Good. That means we're part of the story he's bored of telling. Twice in a row is still the price — nothing about that changed. What changed is we've seen his whole game at full strength. Bring it back to him.": [
+   2931200,
+   17990
+  ],
+  "We did the thing nobody does — twice in a row, crown and all. And he's still here, still bored, still perfect, because that's what kings do after the story ends. There's nothing left to prove at this table. Play it like a celebration and he'll try to ruin it anyway. That's respect.": [
+   2949440,
+   16620
   ]
  }
 }
