@@ -23,6 +23,7 @@ import { sound } from '../audio';
 import { type TipsPref, loadTips } from '../tips';
 import { type Settings, loadSettings, saveSettings } from '../settings';
 import { navigate } from '../online/nav';
+import { useAccount } from '../account/api';
 import { storyRulesFor, storySettingsFor } from './storySettings';
 import { storyBackdropUrl } from './storyBackdrop';
 import { STORY_OWNER_ONLY, createStoryRoom, fetchStoryAccess, fetchStoryDev, fetchStoryProgress, joinStoryRoom, postStoryFound, postStoryResetStop, postStoryResult, storyLockedFor, type StoryProgress, type StoryResult } from './storyApi';
@@ -275,12 +276,20 @@ export default function StoryHome() {
     // absent) while the pending flag stayed armed, and choosing Solo is
     // what finally renders the real map.
   }, [screen.k, progress, signedOut, loadError, mode]);
+  // Re-read whenever the signed-in identity changes (same convergence as
+  // the Home story row): the account store invalidates the profile cache
+  // at the transition, so these fetches return the new identity's flags.
+  // Both reset to undefined first — unknown renders locked (fail closed)
+  // until the fresh flags land.
+  const storyUserId = useAccount().user?.id ?? null;
   useEffect(() => {
     let live = true;
+    setDev(undefined);
+    setStoryAccess(undefined);
     void fetchStoryDev().then((d) => { if (live) setDev(d); });
     void fetchStoryAccess().then((a) => { if (live) setStoryAccess(a); });
     return () => { live = false; };
-  }, []);
+  }, [storyUserId]);
   const [lastResult, setLastResult] = useState<StoryResult | null>(null);
   const finishedRef = useRef<{ seed: string; won: boolean } | null>(null);
 
@@ -307,6 +316,17 @@ export default function StoryHome() {
     else setLoadError(true);
   }, []);
   useEffect(() => { void refresh(); }, [refresh, screen.k === 'map']);
+  // An in-page sign-in/out while sitting on /story converges the progress
+  // state too: a signed-out preview (disabled stops, sign-in note) must not
+  // outlive the sign-in that unlocks it, and vice versa. The mount effect
+  // above already refreshed for the identity this page loaded with, so
+  // only later identity changes re-run it.
+  const seenStoryUserId = useRef(storyUserId);
+  useEffect(() => {
+    if (seenStoryUserId.current === storyUserId) return;
+    seenStoryUserId.current = storyUserId;
+    void refresh();
+  }, [refresh, storyUserId]);
 
   const factsFor = (stop: StoryStop): StoryBeatFacts & { clears: number; attemptsAtPorch: number; doublePending: boolean } => {
     const row = progress?.stops.find((s) => s.stopId === stop.id);

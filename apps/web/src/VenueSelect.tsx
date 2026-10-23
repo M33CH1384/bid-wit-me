@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { VENUE_LIST, fetchVenueUnlocks, venueOptionLabel, venueUnlocked, type VenueChoice, type VenueId } from './venues';
+import { useAccount } from './account/api';
 
 /**
  * Venue dropdown with Phase 4 unlock gating: locked venues (The Pj's)
@@ -14,7 +15,16 @@ export function VenueSelect({ value, onChange, testId, randomLabel }: {
   randomLabel?: string;
 }) {
   const [unlocks, setUnlocks] = useState<{ unlocks: string[]; dev: boolean } | null>(null);
-  useEffect(() => { fetchVenueUnlocks().then(setUnlocks); }, []);
+  // Same convergence as the story row: the profile cache is invalidated by
+  // the account store on identity change, so re-read when it changes — a
+  // picker mounted before an in-page sign-in must not keep the signed-out
+  // (or a previous account's) lock state.
+  const userId = useAccount().user?.id ?? null;
+  useEffect(() => {
+    let live = true;
+    void fetchVenueUnlocks().then((s) => { if (live) setUnlocks(s); });
+    return () => { live = false; };
+  }, [userId]);
   const isOpen = (id: VenueId) => !unlocks || venueUnlocked(id, unlocks.unlocks, unlocks.dev);
   useEffect(() => {
     if (unlocks && value !== 'random' && !venueUnlocked(value, unlocks.unlocks, unlocks.dev)) onChange('classic');

@@ -111,6 +111,14 @@ export function fetchVenueUnlocks(): Promise<VenueUnlockState | null> {
   return unlockCache;
 }
 
+/** The cached profile describes whoever was signed in when it was fetched —
+ *  a profile read while signed out (401 → null) or under a previous account
+ *  must never outlive an identity change. The account store calls this from
+ *  its single set() choke point whenever the signed-in identity changes
+ *  (sign-in, sign-out, account switch), so unlocks / dev / storyAccess
+ *  converge to the new identity's truth on the next read, with no reload. */
+export function invalidateVenueUnlocks(): void { unlockCache = null; }
+
 export function venueLabel(v: VenueChoice): string {
   return v === 'random' ? '🎲 Random' : `${VENUE_DEFS[v].emoji} ${VENUE_DEFS[v].name}`;
 }

@@ -5,6 +5,7 @@
  */
 import { useSyncExternalStore } from 'react';
 import { clearIdleNotice } from '../inactivity';
+import { invalidateVenueUnlocks } from '../venues';
 import { badges, mergeBadges } from '../badges';
 import { loadSeries } from '../Series';
 import { myTeamName, pairTeamNames } from '../TeamName';
@@ -30,6 +31,14 @@ export const PROVIDER_ORDER: ProviderId[] = ['google', 'discord', 'x', 'facebook
 let state: AccountState = { ready: false, accounts: false, providers: [], passkeys: false, user: null, notice: null, noticeKind: null, firstSignIn: null };
 const subs = new Set<() => void>();
 function set(p: Partial<AccountState>) {
+  // EVERY identity transition passes through this one set() — session
+  // restore, OAuth return, passkey sign-in/register, sign-out. The
+  // venue-unlock cache (/api/profile/me: unlocks, dev, storyAccess) is
+  // keyed to whoever was signed in when it was fetched, so when the
+  // signed-in identity changes, drop it: entitlement readers re-fetch and
+  // converge to the new identity's truth instead of serving the profile
+  // (or the signed-out 401) the page happened to read first.
+  if ('user' in p && (state.user?.id ?? null) !== (p.user?.id ?? null)) invalidateVenueUnlocks();
   state = { ...state, ...p };
   // EVERY transition to signed-in passes through this one set() — session restore,
   // an OAuth return, a passkey, any surface's sign-in. A signed-in player is not

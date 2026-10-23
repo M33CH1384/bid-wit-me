@@ -17,6 +17,7 @@ import { VENUE_DEFS, savePendingVenue, type VenueChoice } from './venues';
 import { VenueSelect } from './VenueSelect';
 import GearIcon from './GearIcon';
 import { AccountEntry } from './account/AccountUI';
+import { useAccount } from './account/api';
 import { SocialButton } from './social/Social';
 import { OpenTables } from './social/OpenTables';
 import { OFFLINE_PAIR_KEY, TeamNameField, pairTeamNames, useTeamNameFor } from './TeamName';
@@ -174,11 +175,18 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
   // keyed off storyAccess, never dev, so an allowlisted player gets the
   // player row with no dev surface anywhere).
   const [storyAccess, setStoryAccess] = useState<boolean | null | undefined>(undefined);
+  // Re-read whenever the signed-in identity changes: the flag rides the
+  // profile fetch, which the account store invalidates at the same
+  // transition, so an in-page sign-in (passkey) converges to the server's
+  // truth without a restart. Until the fresh flag lands the state resets
+  // to undefined, which renders locked — fail closed, never a stale open.
+  const storyUserId = useAccount().user?.id ?? null;
   useEffect(() => {
     let live = true;
+    setStoryAccess(undefined);
     void fetchStoryAccess().then((a) => { if (live) setStoryAccess(a); });
     return () => { live = false; };
-  }, []);
+  }, [storyUserId]);
   // A story match in progress on this device (owner, 2026-10-21): the home
   // story row becomes its resume signpost. The facts come from the SAME
   // summary derivation the /story map card renders (storySaveSummary over
