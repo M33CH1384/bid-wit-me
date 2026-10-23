@@ -2120,13 +2120,6 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 /* open popup is a generous touch target: tapping anywhere on it closes it — Demetrius 2026-10-19 */
 .last-trick.open, .last-trick.open.glass.slant { min-height: 44px; padding: 8px 14px; align-items: center; }
 .last-trick.open .lt-x { display: inline-block; font-size: 18px; line-height: 1; padding: 8px 2px 8px 10px; margin: -8px 0; color: var(--gold); }
-/* trick browser row: back/forward through the hand's tricks + who led / took it.
-   Instant swaps only (no transition) so rapid taps land rapid steps. */
-.lt-navrow { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 2px; }
-.lt-nav { pointer-events: auto; flex: none; width: 44px; height: 44px; min-width: 44px; min-height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 8px; border: 1px solid rgba(var(--gold-rgb), .55); background: rgba(0, 0, 0, .35); color: var(--gold); font-family: var(--display); font-size: 26px; font-weight: 700; line-height: 1; cursor: pointer; padding: 0; }
-.lt-nav:disabled { opacity: .32; cursor: default; }
-.lt-meta { flex: 1 1 auto; text-align: center; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--ink, #f2ead8); }
-.table-screen.short .lt-meta { font-size: 9px; }
 .table-screen.short .last-trick.open, .table-screen.short .last-trick.open.glass.slant { min-height: 44px; padding: 6px 10px; }
 .last-trick { bottom: calc(23vh + 64px + env(safe-area-inset-bottom)) !important; }
 .last-trick.chip .lt-label { text-align: right; }
