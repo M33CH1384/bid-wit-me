@@ -11,6 +11,7 @@
 import { PACK, STYLE, type PackSection } from './pack';
 import { POOLS2 } from './pools2';
 import { PACK2, COMMON_EXTRA } from './pack2';
+import { POOLS3 } from './pools3';
 
 export type TalkKind =
   | 'prePlay'      // before the bot plays (generic or bluff; never an honest tell)
@@ -638,6 +639,15 @@ for (const [id, kinds] of Object.entries(POOLS2) as [PersonaId, Partial<Record<T
 // pools2 redistribution, so every pre-existing pool entry keeps its index and only fresh
 // indices are minted. Clips for all of these were baked in the voice-bake build. ----
 for (const sec of PACK2) spreadPackSection(sec);
+// ---- pool-depth wave (pools3.ts): NEW persona-true lines for the thinnest
+// high-frequency pools, authored for the pool-depth voice batch. Append-only
+// after every earlier wave, so no existing pool entry changes index. ----
+for (const [id, kinds] of Object.entries(POOLS3) as [PersonaId, Partial<Record<TalkKind, string[]>>][]) {
+  for (const [kind, raws] of Object.entries(kinds) as [TalkKind, string[]][]) {
+    const pool = (PERSONAS[id].lines[kind] ??= []);
+    for (const raw of raws) if (!pool.includes(raw)) pool.push(raw);
+  }
+}
 // mild cursing in the base pools needs Cookout (Family Friendly never says it, even masked)
 for (const list of [COMMON, ...Object.values(PERSONAS).map((p) => p.lines)]) {
   for (const arr of Object.values(list)) for (const l of arr ?? []) if (MILD.test(l) && !LINE_META[l]?.min) LINE_META[l] = { ...LINE_META[l], min: 'cookout' };
@@ -739,6 +749,9 @@ export const FACT_TAGS: Record<string, LineFact> = {
   // gated (lose/rematch/streak/gotSet pools fire ON the event they name)
   // are deliberately NOT here.
   "somebody gonna pay for that last hand.": 'priorEvent',
+  // pool-depth wave (pools3.ts): the one new line whose text claims a
+  // prior event — a grudge that "matured" needs a hand to have happened
+  "somewhere, a grudge just matured.": 'priorEvent',
   "remember when you cut me? me too. 😌": 'priorEvent',
   "hustled again 😈": 'priorEvent',
   "WHEELS UP. again.": 'priorEvent',

@@ -38,10 +38,16 @@ export interface GridTemplate {
 }
 const grid = (raw: string, p1: string, p2: string): GridTemplate => ({ raw, p: ['', p1, p2] });
 
-/** COMMON estimate grid (§9.2) — every non-silent persona sprite. */
+/** COMMON estimate grid (§9.2) — every non-silent persona sprite. The
+ * last two frames are the pool-depth wave (2026-10-22): authored for
+ * the depth batch so a partner's count stops arriving in the same two
+ * sentence shapes every hand; they enumerate via
+ * scripts/voice-bake/dump-consult-lines.ts under the standard keys. */
 export const CONSULT_GRID_COMMON: readonly GridTemplate[] = [
   grid('I got {S}{P}.', ' and a possible', ' and a couple of maybes'),
   grid('Put me down for {S}{P}.', ' and a possible', ', maybe a couple more'),
+  grid('Count {S}{P} for me.', ' and a possible', ', and maybe two more'),
+  grid('Mark me down for {S}{P}.', ' and a possible', ', maybe a couple more'),
 ];
 
 /** The Silent Assassin's bare-number grid (§8.4): the count IS the sentence. */
@@ -49,11 +55,13 @@ export const CONSULT_GRID_SILENT: readonly GridTemplate[] = [
   grid('{S}{P}.', ', and one', ', and a couple'),
 ];
 
-/** Dee's grid (§9.1) — her cast sprite (lilcuz-f); P-renderings are hers. */
+/** Dee's grid (§9.1) — her cast sprite (lilcuz-f); P-renderings are hers.
+ * The fourth frame is the pool-depth wave (2026-10-22), same batch. */
 export const CONSULT_GRID_DEE: readonly GridTemplate[] = [
   grid('I got {S}{P}.', ' and a possible', ", and a couple of 'em could go either way"),
   grid('Count me for {S}{P}.', ' and maybe one', ', maybe more knocking around'),
   grid("I'm good for {S}{P}.", ', plus a possible', ' and some maybes'),
+  grid("I'm working with {S}{P}.", ' and a possible', ', maybe more in the mix'),
 ];
 
 /**
@@ -93,7 +101,7 @@ export const CONSULT_OWN: Partial<Record<PersonaId, readonly GridTemplate[]>> = 
 
 /** COMMON settle grid (§9.2). Band variants are text-only at regular tables
  * (the bake recorded the plain grid only) — see buildSettle. */
-export const CONSULT_SETTLE_COMMON: readonly string[] = ["That's {T} between us.", 'Count it: {T} total.'];
+export const CONSULT_SETTLE_COMMON: readonly string[] = ["That's {T} between us.", 'Count it: {T} total.', 'Add it up — {T}.'];
 export const CONSULT_SETTLE_LOW = 'Thin. Careful now.';
 export const CONSULT_SETTLE_HIGH = 'Big number. Back it up.';
 export const CONSULT_SETTLE_TRIM = 'Crowded table — I came down. We at {T}.';
