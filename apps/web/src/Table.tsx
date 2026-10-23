@@ -103,7 +103,7 @@ import { isWildDeuce } from './cardFaces';
 import { MISDEAL_DEAL_SPEED, heldHandForThrowIn, misdealDealMs, misdealFanHand, misdealRevealKey, misdealRevealMs } from './misdeal';
 import { QUICK_TRASH_SET } from './quickTrash';
 import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
-import { STORY_CHARACTERS, STORY_STOPS, STOP_DENSITY_CLASS, TALK_PROFILES, type BotLevel, type StoryBeat, type StoryBeatFacts, type StoryGameFacts, type StoryStop, type TalkIntensity, botSkillFor, buildStoryTape, callbackFor, midSceneFor, parseHint, partnerBidIntent, personaForName, platePersona, pickBotNames, playBeatFor, railCastForAttempt, railMomentFor, resumeLineFor, tableExchangeFor } from '@spades/bots';
+import { STORY_CHARACTERS, STORY_STOPS, STOP_DENSITY_CLASS, TALK_PROFILES, type BotLevel, type StoryBeat, type StoryBeatFacts, type StoryGameFacts, type StoryStop, type TalkIntensity, botSkillFor, buildStoryTape, callbackFor, midSceneFor, parseHint, partnerBidIntent, personaForName, platePersona, pickBotNames, playBeatFor, railCastForAttempt, railMomentFor, resumeLineFor, skillOf, tableExchangeFor } from '@spades/bots';
 import { preloadVoice } from './voices/voices';
 const Scene = lazy(loadScene);
 
@@ -182,6 +182,9 @@ export interface OnlineBinding {
    *  keyed to the room's finale-game phase instead of the solo story prop.
    *  Null/absent = no gun. */
   kingGunSeat?: number | null;
+  /** Story co-op: the pair's narrative line for this stop (attempts/clears from
+   *  the pair context), shown as the viewer side's headline on the versus card. */
+  versusPairNote?: string | null;
   /** Release 10: watching, not playing. Seat 0 is a real player (names[0] is their name): no hand, no controls. */
   spectator?: boolean;
   /**
@@ -2249,16 +2252,28 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   }), [names, storySeatIds, online, acctUser, spectating, n]); // eslint-disable-line react-hooks/exhaustive-deps
   const versusModel: VersusModel | null = useMemo(() => {
     if (!versusActive) return null;
-    const member = (seat: number): VersusMember => ({
-      name: names[seat] ?? 'Player',
-      uid: online ? (online.seatUid?.(seat) ?? null) : seat === HUMAN ? (acctUser?.id ?? null) : null,
-      isBot: isBotSeat(seat),
-      direct: !online && seat === HUMAN ? (acctUser?.avatar ?? null) : null,
-      storyId: storySeatIds?.[seat] ?? null,
-    });
+    const member = (seat: number): VersusMember => {
+      const bot = isBotSeat(seat);
+      const storyId = storySeatIds?.[seat] ?? null;
+      return {
+        name: names[seat] ?? 'Player',
+        uid: online ? (online.seatUid?.(seat) ?? null) : seat === HUMAN ? (acctUser?.id ?? null) : null,
+        isBot: bot,
+        direct: !online && seat === HUMAN ? (acctUser?.avatar ?? null) : null,
+        storyId,
+        // Per-player versus cards: a non-story bot seat's persona keys its
+        // recorded head-to-head with the viewer + its scouting read. Offline,
+        // the bot's skill is the very levelFor this table plays with (exact);
+        // online the server owns the seed, so no tier is claimed (null).
+        persona: bot && !storyId ? personaForName(names[seat] ?? '') : null,
+        skill: bot && !online && !storyId ? skillOf(levelFor(seat)) : null,
+        me: seat === HUMAN && !spectating,
+      };
+    };
     if (r.partnerships) {
       return {
-        mode: 'team', kind: 'team', pot: online?.pot ?? null,
+        mode: 'team', kind: 'team', pot: online?.pot ?? null, online: !!online,
+        pairNote: online?.versusPairNote ?? null,
         ...(storyTape ? { story: { tape: storyTape } } : {}),
         sides: [0, 1].map((side) => {
           const seats = Array.from({ length: n }, (_, seat) => seat).filter((seat) => sideOf(seat, r) === side);
@@ -2270,11 +2285,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       };
     }
     return {
-      mode: 'solo', kind: 'cutthroat', pot: online?.pot ?? null,
+      mode: 'solo', kind: 'cutthroat', pot: online?.pot ?? null, online: !!online,
       sides: Array.from({ length: n }, (_, seat) => ({ label: names[seat] ?? 'Player', members: [member(seat)] })),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [versusActive, online, acctUser, names, teamNames, r, n]);
+  }, [versusActive, online, acctUser, names, teamNames, r, n, levelFor, spectating, storySeatIds]);
   // Pre-deal setup window (online): the room holds the first deal; show the table
   // with a countdown so the pause reads as intentional while players set cam/mic.
   const dealAtMs = online?.dealAt ?? null;

@@ -34,6 +34,7 @@ import {
   fetchPairContext, fetchStoryProgress, postStoryFound, postStoryResult, reportStorySession,
   type PairContext, type StoryProgress, type StoryResult,
 } from './storyApi';
+import { coopPairNote } from './pairNote';
 
 /**
  * Dee's guide plate (spec §5.5): pinned to the rail edge of the table —
@@ -467,9 +468,15 @@ export function StoryRoomInner({ conn, cs, code, track, myUid, onExit }: {
 
   if (story.phase === 'game' || story.phase === 'finale-game') {
     const inFinale = story.phase === 'finale-game';
+    // Versus headline for the pair: this stop's shared facts (pair context
+    // first, the pair-track row as fallback — the awarenessCtxFor merge).
+    const progressRow = pairProgress?.stops.find((x) => x.stopId === story.stopId);
+    const versusPairNote = stop ? coopPairNote(stop.name, pairCtx
+      ? { attempts: pairCtx.pair.attempts, clears: pairCtx.pair.clears, doublePending: pairCtx.pair.doublePending }
+      : progressRow ? { attempts: progressRow.attempts, clears: progressRow.clears, doublePending: progressRow.doublePending } : null) : null;
     return (
       <div className="story-room-game" data-testid={inFinale ? 'story-room-finale-game' : 'story-room-game'}>
-        <OnlineTable conn={conn as TableConnection} cs={cs} mesh={null} onLobby={onExit} onMainMenu={onExit} />
+        <OnlineTable conn={conn as TableConnection} cs={cs} mesh={null} onLobby={onExit} onMainMenu={onExit} versusPairNote={versusPairNote} />
         <GuidePlate chat={cs.chat} seats={cs.room!.seats} />
         <div className="story-room-concede">
           {armConcede ? (

@@ -6,14 +6,15 @@ import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildStoryTape, storyStopById } from '@spades/bots';
+import { PERSONAS, buildStoryTape, storyStopById } from '@spades/bots';
 import {
-  VERSUS_CUES, VERSUS_HOLD_MS, VERSUS_IMPACT_MS, VERSUS_RESOLVE_CUE, VERSUS_ROW_STAGGER_MS,
+  PAIR_HEADLINE_MIN_GAMES, VERSUS_CARD_STAGGER_MS, VERSUS_CUES, VERSUS_HOLD_MS, VERSUS_IMPACT_MS, VERSUS_RESOLVE_CUE, VERSUS_ROW_STAGGER_MS,
   VERSUS_STORY_MS, VERSUS_TAPE_MS,
-  VersusIntro, VersusStoryTape, VersusTape, bestIndex, markVersusShown, rowWinner, statLineFromCredProfile,
-  summarizeSide, versusAlreadyShown, versusCueSchedule, versusDismissReady, versusEligible,
+  VersusCards, VersusIntro, VersusStoryTape, VersusTape, bestIndex, botMemberSegments, humanMemberSegments, markVersusShown, pairHeadline, rowWinner, scoutFromConfig, scoutSegments, statLineFromCredProfile,
+  summarizeSide, versusAlreadyShown, versusCardsStartDelay, versusCueSchedule, versusDismissReady, versusEligible,
   winPctOf, type VersusModel, type VersusSideView,
 } from '../src/VersusIntro';
+import { PERSONA_LEDGER_KEY, type PersonaLedger } from '../src/personaLedger';
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), 'utf8');
 
@@ -463,5 +464,159 @@ describe('versus playback: paint-gated start, deliberate skip (DOM)', () => {
     expect(done).toHaveBeenCalledTimes(1);
     expect(el.className).toContain('done');
     expect(el.className).toContain('reduced');
+  });
+});
+
+/* ------------------------------------------ per-player cards (2026-10-23)
+ * Owner: "stats for each player or team if it's an established team — but
+ * what can we put for bots?" The cards answer with real data only: humans
+ * keep their profile line; bots get (1) the recorded head-to-head with the
+ * viewer from the persona ledger and (2) a scouting read derived from their
+ * actual configuration. Invented bot career numbers remain banned. */
+describe('versus cards: scouting derives from the bot’s real configuration', () => {
+  it('change the config in the fixture, the descriptor changes', () => {
+    expect(scoutFromConfig({ lean: { bid: 1, nil: 0.6 } }, 'pro')).toEqual(['Pro', 'bids heavy', 'hunts Nils']);
+    expect(scoutFromConfig({ lean: { bid: -1, nil: -0.5 } }, 'regular')).toEqual(['Regular', 'bids light', 'won’t Nil']);
+    expect(scoutFromConfig({ lean: { bid: 0, nil: 0 } }, 'novice')).toEqual(['Novice']);
+  });
+  it('no config signal = no read — the line is never padded with filler', () => {
+    expect(scoutFromConfig({ lean: { bid: 0, nil: 0.1 } }, null)).toEqual([]);
+    expect(scoutFromConfig({ lean: { bid: 0, nil: -0.2 } }, null)).toEqual([]);
+  });
+  it('a covered persona (the Hustler’s fakeTag) scouts as Unproven — the intro never blows his cover', () => {
+    expect(scoutFromConfig({ lean: { bid: -1, nil: 0 }, fakeTag: 'Newbie' }, 'shark')).toEqual(['Unproven', 'bids light']);
+    expect(scoutSegments('hustler', 'shark')[0]).toBe('Unproven');
+  });
+  it('scoutSegments reads the live PERSONAS table', () => {
+    expect(scoutSegments('gambler', 'pro')).toEqual(scoutFromConfig(PERSONAS.gambler, 'pro'));
+    expect(scoutSegments('gambler', 'pro')[0]).toBe('Pro');
+    expect(scoutSegments('professor', null)).toEqual(scoutFromConfig(PERSONAS.professor, null));
+  });
+});
+
+describe('versus cards: the bot head-to-head matches the ledger exactly', () => {
+  const ledgerWith = (personas: PersonaLedger['personas']): PersonaLedger => ({ v: 1, personas });
+  it('ahead and behind both render the true series, with a streak only on a real run (2+)', () => {
+    const ahead = ledgerWith({ gambler: { vs: { games: 6, wins: 4, losses: 2, streak: 2 } } });
+    expect(botMemberSegments({ persona: 'gambler', skill: 'pro', relation: 'vs', ledger: ahead, online: false }))
+      .toEqual(['vs you 4–2', 'W2', ...scoutSegments('gambler', 'pro')]);
+    const behind = ledgerWith({ gambler: { vs: { games: 6, wins: 2, losses: 4, streak: -3 } } });
+    expect(botMemberSegments({ persona: 'gambler', skill: null, relation: 'vs', ledger: behind, online: false }).slice(0, 2))
+      .toEqual(['vs you 2–4', 'L3']);
+    const oneWin = ledgerWith({ gambler: { vs: { games: 1, wins: 1, losses: 0, streak: 1 } } });
+    const segs = botMemberSegments({ persona: 'gambler', skill: null, relation: 'vs', ledger: oneWin, online: false });
+    expect(segs[0]).toBe('vs you 1–0');
+    expect(segs).not.toContain('W1');
+  });
+  it('partner bots read the together split; opponents read the vs split — never crossed', () => {
+    const led = ledgerWith({ lilcuz: { together: { games: 8, wins: 5, losses: 3, streak: 0 }, vs: { games: 2, wins: 0, losses: 2, streak: -2 } } });
+    expect(botMemberSegments({ persona: 'lilcuz', skill: 'regular', relation: 'together', ledger: led, online: false })[0]).toBe('with you 5–3');
+    expect(botMemberSegments({ persona: 'lilcuz', skill: 'regular', relation: 'vs', ledger: led, online: false }).slice(0, 2)).toEqual(['vs you 0–2', 'L2']);
+  });
+  it('no record: offline says the honest first meeting; online stays silent (the ledger is device-local)', () => {
+    const empty = ledgerWith({});
+    expect(botMemberSegments({ persona: 'professor', skill: 'shark', relation: 'vs', ledger: empty, online: false })[0]).toBe('First meeting');
+    expect(botMemberSegments({ persona: 'professor', skill: 'shark', relation: 'together', ledger: empty, online: false })[0]).toBe('First time riding together');
+    const on = botMemberSegments({ persona: 'professor', skill: null, relation: 'vs', ledger: empty, online: true });
+    expect(on).not.toContain('First meeting');
+    expect(on).toEqual(scoutSegments('professor', null)); // scouting only — leans are config, true at any table
+  });
+});
+
+describe('versus cards: human lines + the established-team headline', () => {
+  it('human lines carry only what the profile payload carried', () => {
+    expect(humanMemberSegments({ rating: 1240, wins: 32, losses: 18, streak: 3 })).toEqual(['Rating 1,240', '32–18', '64%', 'W3']);
+    expect(humanMemberSegments({ rating: null, wins: 2, losses: 2, streak: 0 })).toEqual(['2–2', '50%']);
+    expect(humanMemberSegments({ rating: null, wins: 0, losses: 0, streak: 0 })).toEqual([]);
+    expect(humanMemberSegments(null)).toEqual([]);
+  });
+  it('the headline needs a real pair record of 2+ shared games (the leaderboard floor)', () => {
+    expect(PAIR_HEADLINE_MIN_GAMES).toBe(2);
+    expect(pairHeadline(null)).toBeNull();
+    expect(pairHeadline(undefined)).toBeNull();
+    expect(pairHeadline({ games: 1, wins: 1, losses: 0, streak: 1 })).toBeNull();
+    expect(pairHeadline({ games: 9, wins: 5, losses: 4, streak: 0 })).toBe('TOGETHER 5–4 · 9 games');
+    expect(pairHeadline({ games: 9, wins: 5, losses: 4, streak: 3 })).toBe('TOGETHER 5–4 · 9 games · W3');
+    expect(pairHeadline({ games: 4, wins: 1, losses: 3, streak: -2 })).toBe('TOGETHER 1–3 · 4 games · L2');
+  });
+  it('cards fit the dwell: worst case (tape shown, six lines) lands well inside the story floor', () => {
+    const lastTeam = versusCardsStartDelay(4) + 5 * VERSUS_CARD_STAGGER_MS + 350;
+    expect(lastTeam).toBeLessThan(VERSUS_STORY_MS);
+    const lastSolo = versusCardsStartDelay(4) + 3 * VERSUS_CARD_STAGGER_MS + 350;
+    expect(lastSolo).toBeLessThan(lastTeam);
+    expect(versusCardsStartDelay(0)).toBe(VERSUS_TAPE_MS + 120); // no tape: cards ride right behind the smash
+  });
+  it('VersusCards renders nothing when no block has honest content', () => {
+    const html = renderToStaticMarkup(createElement(VersusCards, { blocks: [{ headline: null, members: [{ name: 'X', segments: [] }] }], startDelay: 0 }));
+    expect(html).toBe('');
+  });
+});
+
+describe('versus cards rendering: the owner’s screenshot table (you + bot partner vs two bot opponents)', () => {
+  const model: VersusModel = {
+    mode: 'team', kind: 'team', online: false,
+    sides: [
+      { label: 'Homies', members: [
+        { name: 'You', uid: null, isBot: false, me: true },
+        { name: 'Nikos', uid: null, isBot: true, persona: 'lilcuz', skill: 'regular' },
+      ] },
+      { label: 'Spadeheads', members: [
+        { name: 'Ace', uid: null, isBot: true, persona: 'gambler', skill: 'shark' },
+        { name: 'Andre', uid: null, isBot: true, persona: 'hustler', skill: 'pro' },
+      ] },
+    ],
+  };
+  const LEDGER = { v: 1, personas: {
+    gambler: { vs: { games: 6, wins: 4, losses: 2, streak: 2 } },
+    lilcuz: { together: { games: 3, wins: 2, losses: 1, streak: 0 } },
+  } };
+  beforeEach(() => { window.localStorage.setItem(PERSONA_LEDGER_KEY, JSON.stringify(LEDGER)); });
+  afterEach(() => { window.localStorage.removeItem(PERSONA_LEDGER_KEY); });
+
+  it('pair headline from the ledger, partner together-line, opponents’ series + scouting', () => {
+    const html = renderToStaticMarkup(createElement(VersusIntro, { model, reduced: true, ready: true, onStoryComplete: () => {} }));
+    expect(html).toContain('versus-cards');
+    expect(html).toContain('TOGETHER 2–1 · 3 games'); // the established pair (you + Nikos), headline slot
+    expect(html).toContain('with you 2–1');           // the partner's own line
+    expect(html).toContain('vs you 4–2');             // Ace's series, exactly as recorded
+    expect(html).toContain('W2');
+    expect(html).toContain('Shark');                  // Ace's real tier for this game
+    expect(html).toContain('Unproven');               // Andre the Hustler: the cover, not his Pro floor
+    expect(html).not.toContain('Rating');             // guest viewer: no profile line exists to show
+  });
+  it('an empty ledger turns the same table into first meetings — no record is invented', () => {
+    window.localStorage.removeItem(PERSONA_LEDGER_KEY);
+    const html = renderToStaticMarkup(createElement(VersusIntro, { model, reduced: true, ready: true, onStoryComplete: () => {} }));
+    expect(html).toContain('First time riding together');
+    expect(html).toContain('First meeting');
+    expect(html).not.toContain('TOGETHER');
+    expect(html).not.toContain('vs you');
+  });
+  it('online, an empty ledger makes no first-meeting claim (the record lives on one device)', () => {
+    window.localStorage.removeItem(PERSONA_LEDGER_KEY);
+    const html = renderToStaticMarkup(createElement(VersusIntro, { model: { ...model, online: true }, reduced: true, ready: true, onStoryComplete: () => {} }));
+    expect(html).not.toContain('First meeting');
+    expect(html).not.toContain('First time riding together');
+    expect(html).toContain('Shark'); // scouting is config — still true online
+  });
+  it('the King’s double terms ride the versus story tape (the sit-down tape carries them too)', () => {
+    const king = storyStopById('king')!;
+    const tape = buildStoryTape(king, { attempts: 0, cleared: false });
+    expect(tape.terms).toContain('double or nothing');
+    const html = renderToStaticMarkup(createElement(VersusStoryTape, { tape }));
+    expect(html).toContain('The terms: beat the King twice in a row');
+  });
+  it('wiring: Table keys bot members to personas + the table’s own skill; the pair record fetch is caller-scoped', () => {
+    const table = read('../src/Table.tsx');
+    expect(table).toContain('personaForName(names[seat]');
+    expect(table).toContain('skillOf(levelFor(seat))');
+    expect(table).toContain('versusPairNote');
+    const src = read('../src/VersusIntro.tsx');
+    expect(src).toContain('/api/profile/pair/');
+    expect(src).toContain('readPersonaLedger()');
+    const online = read('../src/online/OnlineTable.tsx');
+    expect(online).toContain('versusPairNote: versusPairNote ?? null');
+    const room = read('../src/story/StoryRoom.tsx');
+    expect(room).toContain('coopPairNote(stop.name');
   });
 });

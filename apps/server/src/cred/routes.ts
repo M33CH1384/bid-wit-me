@@ -2,6 +2,7 @@
  * Street Cred HTTP routes (Phase 3a + 3b):
  *   GET  /api/profile/me            → full profile (signed in)
  *   GET  /api/profile/:id           → public profile subset
+ *   GET  /api/profile/pair/:id      → the CALLER's real team record with that player (signed in)
  *   GET  /api/challenges            → today's + this week's challenges with progress (signed in)
  *   POST /api/challenges/:id/claim  → claim a completed challenge reward (signed in)
  *   GET  /api/coins/balance         → coin balance (signed in)
@@ -147,6 +148,35 @@ export async function handleCredHttp(req: Request, env: CredEnv, url: URL, parts
     await db.prepare('UPDATE users SET social_links = ? WHERE id = ?')
       .bind(Object.keys(merged).length ? JSON.stringify(merged) : null, me.id).run();
     return json({ ok: true, socialLinks: merged });
+  }
+  if (parts[1] === 'profile' && parts[2] === 'pair' && parts[3] && parts.length === 4 && req.method === 'GET') {
+    // The caller's OWN established-team record with one other player, computed
+    // from real recorded games (game_players.partner_id — the same rows the
+    // pair leaderboards aggregate). Caller-scoped by design: it answers "our
+    // record together" for the signed-in player only, never a third party's.
+    // streak is signed: + current win streak, − current loss streak.
+    if (!me) return json({ error: 'Sign in to see your team record.' }, 401);
+    const other = parts[3].slice(0, 64);
+    if (other === me.id) return json({ games: 0, wins: 0, losses: 0, streak: 0 });
+    const totals = await db.prepare(
+      "SELECT COUNT(*) AS games, COALESCE(SUM(won), 0) AS wins FROM game_players WHERE user_id = ? AND partner_id = ? AND kind = 'team'",
+    ).bind(me.id, other).first<{ games: number; wins: number }>();
+    const games = totals?.games ?? 0;
+    const wins = totals?.wins ?? 0;
+    let streak = 0;
+    if (games > 0) {
+      const recent = await db.prepare(
+        "SELECT won FROM game_players WHERE user_id = ? AND partner_id = ? AND kind = 'team' ORDER BY ended_at DESC, game_id DESC LIMIT 500",
+      ).bind(me.id, other).all<{ won: number }>();
+      const rows = recent.results ?? [];
+      if (rows.length) {
+        const dir = rows[0]!.won ? 1 : -1;
+        let run = 0;
+        for (const r of rows) { if ((r.won ? 1 : -1) !== dir) break; run++; }
+        streak = dir * run;
+      }
+    }
+    return json({ games, wins, losses: games - wins, streak });
   }
   if (parts[1] === 'profile' && parts[2] && parts.length === 3 && req.method === 'GET') {
     const u = await db.prepare('SELECT id, username, avatar, avatar_updated_at AS avatarUpdatedAt, tagline, social_links AS socialLinks FROM users WHERE id = ?').bind(parts[2].slice(0, 64)).first<{ id: string; username: string | null; avatar: string | null; avatarUpdatedAt: number | null; tagline: string | null; socialLinks: string | null }>();

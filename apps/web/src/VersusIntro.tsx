@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { StoryTape } from '@spades/bots';
+import { PERSONAS, type BotSkill, type PersonaId, type StoryTape } from '@spades/bots';
 import { AvatarCircle, useAvatar } from './avatar';
 import StoryFace from './story/StoryFace';
 import { CoinIcon } from './RepBlock';
 import { sound, type Sfx } from './audio';
+import { personaRecord, readPersonaLedger, type PersonaLedger, type PersonaLedgerSplit } from './personaLedger';
 
 /**
  * Versus intro (owner, 2026-10-20): a boxing-style match card on the game loading
@@ -12,8 +13,11 @@ import { sound, type Sfx } from './audio';
  *
  * DATA HONESTY (owner's standing rule): every number comes from the public cred
  * profile payload (GET /api/profile/:id) — the same payload ProfileView/Compare
- * read. Bots have no profiles and show NO numbers; a human whose payload doesn't
- * carry a stat shows '—'; nothing is ever invented.
+ * read. Bots have no profiles and show no career numbers; the per-player cards
+ * below the tape give a bot only its recorded head-to-head with the viewer
+ * (device-local persona ledger) plus a scouting read derived from its real
+ * configuration. A human whose payload doesn't carry a stat shows '—' on the
+ * tape; nothing is ever invented.
  *
  * STORY FLOOR: the intro never auto-dismisses before the story has fully played
  * (VERSUS_STORY_MS), no matter how fast the table loads. Dismissal = story complete
@@ -142,8 +146,142 @@ export function bestIndex(values: readonly (number | null)[]): number {
   return tied ? -1 : best;
 }
 
+/* ------------------------------------------------- per-player cards (2026-10-23) */
+/**
+ * Below the tape, each player gets ONE glanceable line (owner: "stats for each
+ * player or team if it's an established team — but what can we put for bots?").
+ * The answer, under the same data-honesty rule as the tape:
+ * - HUMANS: the same real profile line the tape reads (rating / record / win% /
+ *   streak), per player instead of side-summed.
+ * - BOTS: no invented career numbers, ever. Two real things exist:
+ *   (1) the HEAD-TO-HEAD with the viewer, from the device-local persona ledger
+ *       (personaRecord vs/together splits) — a series score, or the honest
+ *       "First meeting" at offline tables where the ledger's writer owns the
+ *       record. At online tables a missing record stays silent.
+ *   (2) a SCOUTING read derived from the bot's actual configuration — its
+ *       effective skill tier for this game (when the client computes it) and
+ *       the persona's encoded play leans (bid nudge, Nil willingness). Copy,
+ *       never statistics; a tendency that isn't in the config doesn't ship.
+ * - ESTABLISHED TEAM (the viewer's side only): a pair with a real shared
+ *   record of 2+ games takes the headline slot above the member lines — the
+ *   persona ledger's together split for a bot partner, or the server's pair
+ *   record (GET /api/profile/pair/:id) for a human partner. Story co-op
+ *   supplies its narrative pair line instead (model.pairNote).
+ */
+export interface PairRecord { games: number; wins: number; losses: number; streak: number }
+/** A pair earns the headline at 2+ shared games (the pair leaderboards' floor). */
+export const PAIR_HEADLINE_MIN_GAMES = 2;
+
+const SKILL_LABEL: Record<BotSkill, string> = { novice: 'Novice', regular: 'Regular', pro: 'Pro', shark: 'Shark' };
+
+/** Streaks read as a segment only when they're a run (2+), in W/L form. */
+export function streakSegment(streak: number): string | null {
+  if (streak >= 2) return `W${streak}`;
+  if (streak <= -2) return `L${-streak}`;
+  return null;
+}
+
+/**
+ * The scouting read from raw persona configuration. Pure over the config so a
+ * config change moves the copy (fixture-tested). A persona with a cover
+ * (fakeTag — the Hustler acting green) scouts as "Unproven": the intro plays
+ * before any reveal, and the table's own plates tell the same cover story.
+ */
+export function scoutFromConfig(cfg: { lean: { bid: number; nil: number }; fakeTag?: string | null }, skill: BotSkill | null): string[] {
+  const segs: string[] = [];
+  if (cfg.fakeTag) segs.push('Unproven');
+  else if (skill) segs.push(SKILL_LABEL[skill]);
+  if (cfg.lean.bid > 0) segs.push('bids heavy');
+  else if (cfg.lean.bid < 0) segs.push('bids light');
+  if (cfg.lean.nil >= 0.3) segs.push('hunts Nils');
+  else if (cfg.lean.nil <= -0.3) segs.push('won’t Nil');
+  return segs;
+}
+export function scoutSegments(persona: PersonaId, skill: BotSkill | null): string[] {
+  return scoutFromConfig(PERSONAS[persona], skill);
+}
+
+/** One recorded split as a segment list: "vs you 4–2" (+ a streak run). */
+export function recordSegments(label: 'vs you' | 'with you', split: PersonaLedgerSplit): string[] {
+  const segs = [`${label} ${split.wins}–${split.losses}`];
+  const st = streakSegment(split.streak);
+  if (st) segs.push(st);
+  return segs;
+}
+
+export type BotRelation = 'vs' | 'together';
+/**
+ * A bot's member-line segments: its recorded history with the viewer (in the
+ * given relationship), then its scouting read. No record at an offline table
+ * is the honest "first meeting"; online, silence. Scouting always derives
+ * from config, so a first-meeting bot still gets a read — never a record.
+ */
+export function botMemberSegments(o: {
+  persona: PersonaId; skill: BotSkill | null; relation: BotRelation;
+  ledger: PersonaLedger; online: boolean;
+}): string[] {
+  const entry = personaRecord(o.ledger, o.persona);
+  const split = o.relation === 'vs' ? entry?.vs : entry?.together;
+  const segs: string[] = [];
+  if (split) segs.push(...recordSegments(o.relation === 'vs' ? 'vs you' : 'with you', split));
+  else if (!o.online) segs.push(o.relation === 'vs' ? 'First meeting' : 'First time riding together');
+  segs.push(...scoutSegments(o.persona, o.skill));
+  return segs;
+}
+
+/** A human's member line from their real profile stat line; absent data = no line. */
+export function humanMemberSegments(line: VersusStatLine | null): string[] {
+  if (!line) return [];
+  const segs: string[] = [];
+  if (line.rating !== null) segs.push(`Rating ${line.rating.toLocaleString('en-US')}`);
+  const games = line.wins + line.losses;
+  if (games > 0) {
+    segs.push(`${line.wins}–${line.losses}`);
+    segs.push(`${Math.round((line.wins / games) * 100)}%`);
+  }
+  const st = streakSegment(line.streak);
+  if (st) segs.push(st);
+  return segs;
+}
+
+/** The established-team headline from a real pair record (either source), or null. */
+export function pairHeadline(rec: PairRecord | PersonaLedgerSplit | null | undefined): string | null {
+  if (!rec || rec.games < PAIR_HEADLINE_MIN_GAMES) return null;
+  const segs = [`TOGETHER ${rec.wins}–${rec.losses}`, `${rec.games} games`];
+  const st = streakSegment(rec.streak);
+  if (st) segs.push(st);
+  return segs.join(' · ');
+}
+
+/** Card reveal pacing: lines stagger after the tape's rows are in. Worst case
+ *  (team, tape present, 6 card lines) the last line lands at ~7.7s — inside the
+ *  10s story floor, so the dwell does not change. */
+export const VERSUS_CARD_STAGGER_MS = 450;
+export function versusCardsStartDelay(tapeRows: number): number {
+  return VERSUS_TAPE_MS + 120 + tapeRows * VERSUS_ROW_STAGGER_MS;
+}
+
+export interface VersusCardMember { name: string; segments: string[] }
+export interface VersusCardBlock { headline: string | null; headlineStory?: boolean; members: VersusCardMember[] }
+
 /* ------------------------------------------------------------ model */
-export interface VersusMember { name: string; uid: string | null; isBot: boolean; direct?: string | null; /** story character id — renders the story portrait (art pass) with medallion fallback */ storyId?: string | null }
+export interface VersusMember {
+  name: string; uid: string | null; isBot: boolean; direct?: string | null;
+  /** story character id — renders the story portrait (art pass) with medallion fallback */
+  storyId?: string | null;
+  /** bot persona identity (packages/bots PERSONAS) — keys the persona ledger and
+   *  the scouting read. Null for humans and for story-cast seats (their tape is
+   *  narrative, not persona data). */
+  persona?: PersonaId | null;
+  /** the bot's REAL effective skill for this game, when the client computes it
+   *  itself (offline tables — the same levelFor the table plays with). Null at
+   *  online tables, where the server owns the seed: scouting there leans on
+   *  persona configuration only, never a guessed tier. */
+  skill?: BotSkill | null;
+  /** the viewing player themself (the local seat) — anchors "vs you / with you"
+   *  relationships and pair-record headlines. Absent everywhere = spectating. */
+  me?: boolean;
+}
 export interface VersusSideInput { label: string; members: VersusMember[] }
 export interface VersusModel {
   /** team = partnership (two duo sides); solo = cutthroat (four one-player sides) */
@@ -152,6 +290,15 @@ export interface VersusModel {
   kind: VersusStatKind;
   /** Big Bank pot, only when the client actually knows it (wager row for this table). */
   pot?: number | null;
+  /** true when this table is an online room. Matters for honesty: the persona
+   *  ledger is device-local and records the contexts its writer owns, so at an
+   *  online table a missing record stays silent instead of claiming a
+   *  "first meeting" that may have happened on another device/context. */
+  online?: boolean;
+  /** Story co-op: the pair's narrative line for this stop (attempts/clears from
+   *  the server's pair context, in story register) — rendered as the viewer
+   *  side's headline. Computed by the story room from data already at hand. */
+  pairNote?: string | null;
   /**
    * Story mode: the stop's narrative Tale of the Tape (built by buildStoryTape —
    * the same content source the sit-down tape renders). When present the intro
@@ -206,6 +353,35 @@ export function VersusTape({ mode, sides, pot }: { mode: 'team' | 'solo'; sides:
 const pctText = (s: VersusSideStats | null): string => { const p = winPctOf(s); return p === null ? '—' : `${p}%`; };
 
 /**
+ * The per-player cards under the tape: an optional established-team headline
+ * per side, then one line per player (real profile numbers for humans; the
+ * recorded series + a config-derived scouting read for bots). Lines reveal
+ * staggered after the tape rows; a line with no honest content doesn't render.
+ */
+export function VersusCards({ blocks, startDelay }: { blocks: VersusCardBlock[]; startDelay: number }) {
+  if (!blocks.some((b) => b.headline || b.members.some((m) => m.segments.length))) return null;
+  let step = 0;
+  const delay = () => startDelay + step++ * VERSUS_CARD_STAGGER_MS;
+  return (
+    <div className={`versus-cards${blocks.length === 2 ? ' team' : ' solo'}`} data-testid="versus-cards">
+      {blocks.map((b, bi) => (
+        <div key={bi} className="versus-card-side">
+          {b.headline && (
+            <div className={`versus-card-headline${b.headlineStory ? ' story' : ''}`} style={{ animationDelay: `${delay()}ms` }}>{b.headline}</div>
+          )}
+          {b.members.map((m, mi) => (m.segments.length ? (
+            <div key={mi} className="versus-card-line" style={{ animationDelay: `${delay()}ms` }}>
+              <span className="versus-card-name">{m.name}</span>
+              <span className="versus-card-segs">{m.segments.join(' · ')}</span>
+            </div>
+          ) : null))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
  * The story Tale of the Tape: a faithful condensed form of the sit-down
  * narrative tape — the stop's stakes up top, then the seated pair and Dee
  * (her entry banded by route progress, exactly as buildStoryTape built it),
@@ -226,8 +402,11 @@ export function VersusStoryTape({ tape }: { tape: StoryTape }) {
         </div>
       ))}
       <p className="versus-story-line threat" style={{ animationDelay: `${VERSUS_TAPE_MS + 120 + (rows.length + 1) * VERSUS_ROW_STAGGER_MS}ms` }}>{tape.threat}</p>
+      {tape.terms && (
+        <p className="versus-story-line terms" style={{ animationDelay: `${VERSUS_TAPE_MS + 120 + (rows.length + 2) * VERSUS_ROW_STAGGER_MS}ms` }}>{tape.terms}</p>
+      )}
       {tape.history && (
-        <p className="versus-story-line history" style={{ animationDelay: `${VERSUS_TAPE_MS + 120 + (rows.length + 2) * VERSUS_ROW_STAGGER_MS}ms` }}>{tape.history}</p>
+        <p className="versus-story-line history" style={{ animationDelay: `${VERSUS_TAPE_MS + 120 + (rows.length + 2 + (tape.terms ? 1 : 0)) * VERSUS_ROW_STAGGER_MS}ms` }}>{tape.history}</p>
       )}
     </div>
   );
@@ -347,6 +526,62 @@ export function VersusIntro({ model, reduced, ready, onStoryComplete }: {
     return { ...s, stats: summarizeSide(lines, hasHuman) };
   }), [model, profiles]);
 
+  // Per-player cards: the persona ledger is device-local and synchronous —
+  // read once at mount; the intro never waits on it.
+  const ledger = useMemo<PersonaLedger>(() => readPersonaLedger(), []);
+  // Established-team headline for a HUMAN partner: the server's caller-scoped
+  // pair record. The fetch rides alongside the profile fetches; the headline
+  // appears when it lands and is simply absent if it never does.
+  const pairPartnerUid = useMemo(() => {
+    if (model.story || model.mode !== 'team') return null;
+    const mySide = model.sides.find((s) => s.members.some((m) => m.me));
+    const me = mySide?.members.find((m) => m.me);
+    const partner = mySide?.members.find((m) => !m.me && !m.isBot && m.uid);
+    return partner?.uid && me?.uid && partner.uid !== me.uid ? partner.uid : null;
+  }, [model]);
+  const [pairRec, setPairRec] = useState<PairRecord | null>(null);
+  useEffect(() => {
+    if (!pairPartnerUid) return;
+    let alive = true;
+    fetch(`/api/profile/pair/${encodeURIComponent(pairPartnerUid)}`, { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: PairRecord | null) => {
+        if (alive && j && typeof j.games === 'number') {
+          setPairRec({ games: j.games, wins: j.wins ?? 0, losses: j.losses ?? 0, streak: j.streak ?? 0 });
+        }
+      })
+      .catch(() => { /* absent record = no headline; never a blocker */ });
+    return () => { alive = false; };
+  }, [pairPartnerUid]);
+
+  const cardBlocks: VersusCardBlock[] = useMemo(() => {
+    const viewerSide = model.sides.findIndex((s) => s.members.some((m) => m.me));
+    return model.sides.map((s, si) => {
+      const isViewerSide = si === viewerSide && viewerSide >= 0;
+      let headline: string | null = null;
+      let headlineStory = false;
+      if (model.mode === 'team' && isViewerSide) {
+        if (model.pairNote) { headline = model.pairNote; headlineStory = true; }
+        else {
+          const partner = s.members.find((m) => !m.me);
+          if (partner?.isBot && partner.persona) headline = pairHeadline(personaRecord(ledger, partner.persona)?.together);
+          else if (partner && !partner.isBot) headline = pairHeadline(pairRec);
+        }
+      }
+      const members = s.members.map((m): VersusCardMember => {
+        if (m.isBot) {
+          if (!m.persona) return { name: m.name, segments: [] };
+          if (viewerSide < 0) return { name: m.name, segments: scoutSegments(m.persona, m.skill ?? null) };
+          const relation: BotRelation = model.mode === 'team' && isViewerSide ? 'together' : 'vs';
+          return { name: m.name, segments: botMemberSegments({ persona: m.persona, skill: m.skill ?? null, relation, ledger, online: !!model.online }) };
+        }
+        return { name: m.name, segments: humanMemberSegments(m.uid ? statLineFromCredProfile(profiles.get(m.uid), model.kind) : null) };
+      });
+      return { headline, headlineStory, members };
+    });
+  }, [model, profiles, pairRec, ledger]);
+  const tapeHasRows = sides.some((s) => s.stats && (s.stats.rating !== null || s.stats.wins !== null));
+
   const skip = () => { if (!doneRef.current && canSkipRef.current) finish(true); };
   const cls = `versus ${model.mode}${play ? ' play' : ''}${done ? ' done' : ''}${reduced ? ' reduced' : ''}`;
 
@@ -383,6 +618,8 @@ export function VersusIntro({ model, reduced, ready, onStoryComplete }: {
         {model.story
           ? <VersusStoryTape tape={model.story.tape} />
           : <VersusTape mode={model.mode} sides={sides} pot={model.pot} />}
+
+        {!model.story && <VersusCards blocks={cardBlocks} startDelay={versusCardsStartDelay(tapeHasRows ? 4 : 0)} />}
 
         {done && !ready
           ? <div className="versus-wait" data-testid="versus-wait">Getting the table ready…</div>

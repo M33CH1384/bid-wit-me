@@ -21,7 +21,7 @@ import { orientRun } from '../runPlayback';
 import type { VideoMesh } from './video';
 
 /** The 3D table, driven by the server: rotated per-seat view, real chat, video bubbles, turn clock. */
-export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { conn: TableConnection; cs: ConnState; mesh: VideoMesh | null; onLobby: () => void; onMainMenu?: () => void }) {
+export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu, versusPairNote }: { conn: TableConnection; cs: ConnState; mesh: VideoMesh | null; onLobby: () => void; onMainMenu?: () => void; /** story co-op: the pair's narrative versus headline for this stop (StoryRoom computes it from the pair context) */ versusPairNote?: string | null }) {
   const source = useOnlineSource(cs, conn);
   const vs = useVideo(mesh);
   const [settings, setSettings] = useState<Settings>(() => ({ ...loadSettings(), speed: 'normal' }));
@@ -205,6 +205,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu }: { c
           // The King's finale cutthroat (story co-op, Phase 4): the revolver
           // stays on the felt by his seat (server seat 1) for the whole game.
           kingGunSeat: room.story?.stopId === 'king' && room.story.phase === 'finale-game' ? rot.L(1) : null,
+          versusPairNote: versusPairNote ?? null,
           victory: (winners, losers, title, sub) => {
             const sp = (L: number) => {
               const seat = room.seats[rot.R(L)];
