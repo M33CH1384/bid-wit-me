@@ -94,6 +94,23 @@ describe('chunk load after a deploy', () => {
     expect(scene).not.toMatch(/void import\('\.\/(?:Nuke3D|Tornado3D)'\)/);
   });
 
+  it('sends the Scene chunk and the sheet sim through that retry too (owner, 2026-10-22: repeated crashing)', () => {
+    // The Scene chunk is the biggest in the app and Table's lazy() reads it
+    // from loadScene — which loaded it with a plain import() and MEMOIZED
+    // the promise, rejection included: a deploy-stranded client re-threw
+    // the same dead chunk into the route boundary at every table mount.
+    // The sheet sim rode plain imports at its three load sites as well.
+    const preload = readFileSync(new URL('../src/three/preload.ts', import.meta.url), 'utf8');
+    const warm = readFileSync(new URL('../src/effects/warm.ts', import.meta.url), 'utf8');
+    const cloth = readFileSync(new URL('../src/SheetCloth.tsx', import.meta.url), 'utf8');
+    expect(preload).toContain("importChunk(() => import('./Scene'))");
+    expect(preload).not.toContain("scene ??= import('./Scene')");
+    expect(warm).toContain("importChunk(() => import('../sheetClothSim'))");
+    expect(warm).not.toMatch(/await import\('\.\.\/sheetClothSim'\)/);
+    expect(cloth).toContain("importChunk(() => import('./sheetClothSim'))");
+    expect(cloth).not.toMatch(/void import\('\.\/sheetClothSim'\)/);
+  });
+
   it('does not reload for an error that is not a missing chunk', async () => {
     const storage = memory();
     const reload = vi.fn();

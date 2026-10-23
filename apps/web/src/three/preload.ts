@@ -1,10 +1,26 @@
 /**
  * Loads the 3D table early: the Scene chunk (three / r3f / drei) and the table's textures + HDRI are fetched while the
  * player is still on the splash / wizard, so "Deal me in" lands on a ready table. Safe to call many times.
+ *
+ * The import goes through importChunk (chunkLoad.ts), like the route chunks and the
+ * Nuke/Tornado effects: this is the biggest chunk in the app, and it used to load through
+ * a plain import() memoized in `scene` — after a deploy deleted the previous build's
+ * chunks, a still-open client asked for the old Scene by name, the import rejected, and
+ * the REJECTED promise was the memoized one: every table mount re-threw it into the
+ * route boundary and the game "crashed" on every attempt until a manual reload
+ * (owner, 2026-10-22: the Play bounce at 22:29, then "repeatedly crashing" after the
+ * evening's later deploys stranded his open client the same way). importChunk retries
+ * cache-busted and spends the one guarded reload onto the new build; the memo is
+ * cleared on failure so a later call can always ask again.
  */
+import { importChunk } from '../chunkLoad';
+
 let scene: Promise<typeof import('./Scene')> | null = null;
 export function loadScene(): Promise<typeof import('./Scene')> {
-  scene ??= import('./Scene');
+  if (!scene) {
+    scene = importChunk(() => import('./Scene'));
+    scene.catch(() => { scene = null; });
+  }
   return scene;
 }
 let started: string | null = null;

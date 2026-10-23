@@ -82,6 +82,48 @@ export function storyResumeStopId(search: string): string | null {
   } catch { return null; }
 }
 
+/**
+ * The mode gate's answer, remembered for the tab session (owner,
+ * 2026-10-22 22:29: "if I hit play on a story mode game the entire
+ * game flashes and takes me back to the menu asking if I want to
+ * play solo or co-op — if I try a second time it works").
+ *
+ * The flash is the chunk self-heal doing its job: a deploy deletes
+ * the previous build's hashed chunks (chunkLoad.ts), so a page
+ * opened before the deploy — his predated f07f2131, which changed
+ * Table.tsx + beatPacing.ts inside this route's chunk graph — asks
+ * for a chunk that no longer exists, and importChunk reloads the
+ * document once onto the new build. The reload is correct. What it
+ * destroyed was this: the gate's answer was in-memory state, and
+ * `mode` is never set back to null inside the component, so the
+ * gate can only reappear through a fresh mount — the heal's reload
+ * re-asked a question the player had already answered, and the
+ * retry then worked because the new boot's chunks all resolve.
+ *
+ * The answer now lives in sessionStorage — the same tab-scoped
+ * lifetime as the heal's own reload flag — so the gate is still
+ * asked once per visit, a heal reload mid-visit lands back on the
+ * map the player was looking at, and a genuinely new visit (new
+ * tab) is asked again, exactly as the gate was specced.
+ */
+export const STORY_MODE_KEY = 'bwm.storyMode.v1';
+
+export function storedStoryMode(storage: Pick<Storage, 'getItem'> | null | undefined): 'solo' | 'coop' | null {
+  try {
+    const v = storage?.getItem(STORY_MODE_KEY);
+    return v === 'solo' || v === 'coop' ? v : null;
+  } catch { return null; }
+}
+
+export function loadStoryMode(): 'solo' | 'coop' | null {
+  try { return storedStoryMode(typeof sessionStorage !== 'undefined' ? sessionStorage : null); }
+  catch { return null; }
+}
+
+export function saveStoryMode(m: 'solo' | 'coop'): void {
+  try { sessionStorage.setItem(STORY_MODE_KEY, m); } catch { /* private mode: the gate just asks again */ }
+}
+
 export default function StoryHome() {
   const [settings, setSettings] = useState<Settings>(loadSettings);
   const [tips, setTips] = useState<TipsPref>(loadTips);
@@ -110,11 +152,18 @@ export default function StoryHome() {
 
   // ---- Story co-op (Phases 1–2) ----
   // The mode gate shows once per visit, after the lock/checking screens and
-  // before the map, for signed-in players with story access. Deep links
+  // before the map, for signed-in players with story access. The answer is
+  // remembered for the tab session (storedStoryMode), so the chunk
+  // self-heal's reload mid-visit restores the map instead of re-asking.
+  // Deep links
   // (?rematch= / ?resume=) are solo business and bypass it; ?coop=<code> is
   // an invite landing and goes straight to the room. Solo stays the default
   // path and renders exactly as before once chosen.
-  const [mode, setMode] = useState<'solo' | 'coop' | null>(null);
+  const [mode, setMode] = useState<'solo' | 'coop' | null>(() => loadStoryMode());
+  /** Every deliberate mode choice is remembered for the tab session
+   *  (storedStoryMode): a chunk-heal reload restarts this component,
+   *  and the player must land on their map, not back at the gate. */
+  const chooseMode = useCallback((m: 'solo' | 'coop') => { saveStoryMode(m); setMode(m); }, []);
   const [coopSel, setCoopSel] = useState<{ track: string; partnerUid: string; partnerHandle: string | null } | null>(null);
   const [coopProgress, setCoopProgress] = useState<StoryProgress | null>(null);
   const [coopMapError, setCoopMapError] = useState<string | null>(null);
@@ -132,11 +181,11 @@ export default function StoryHome() {
     if (STORY_OWNER_ONLY && (lockedByServer || storyAccess === undefined || storyLockedFor(storyAccess))) return;
     coopFired.current = true;
     void joinStoryRoom(coopCodeParam).then((r) => {
-      setMode('coop');
+      chooseMode('coop');
       if (r.ok) setRoom({ code: r.code || coopCodeParam, track: r.track });
       else setCoopJoinError(r.error);
     });
-  }, [coopCodeParam, progress, signedOut, storyAccess, lockedByServer]);
+  }, [coopCodeParam, progress, signedOut, storyAccess, lockedByServer, chooseMode]);
   // The selected pair run's progress (the co-op map's facts). Refetched when
   // a room closes, so a finished match shows up on the map.
   useEffect(() => {
@@ -481,11 +530,11 @@ export default function StoryHome() {
         </div>
         <p className="story-gate-lede">How are you running it?</p>
         <div className="story-gate">
-          <button type="button" className="story-gate-card" data-testid="story-gate-solo" onClick={() => setMode('solo')}>
+          <button type="button" className="story-gate-card" data-testid="story-gate-solo" onClick={() => chooseMode('solo')}>
             <span className="story-gate-name">Solo</span>
             <span className="story-gate-line">You &amp; Dee against the block — the run as it has always been.</span>
           </button>
-          <button type="button" className="story-gate-card" data-testid="story-gate-coop" onClick={() => setMode('coop')}>
+          <button type="button" className="story-gate-card" data-testid="story-gate-coop" onClick={() => chooseMode('coop')}>
             <span className="story-gate-name">Co-op</span>
             <span className="story-gate-line">Two players, one run. Bring a partner — you take the seats across from each other, and the pair advances together.</span>
           </button>
@@ -501,7 +550,7 @@ export default function StoryHome() {
         error={coopMapError}
         onPlay={(stop) => void playCoopStop(stop)}
         onBack={() => { setCoopSel(null); setCoopMapError(null); }}
-        onSolo={() => setMode('solo')}
+        onSolo={() => chooseMode('solo')}
       />
     ) : (
       <div className="story-shell" data-testid="story-coop-home">
@@ -519,7 +568,7 @@ export default function StoryHome() {
           joinError={coopJoinError}
         />
         <div className="story-mode-toggle">
-          <button type="button" className="btn ghost" data-testid="story-mode-solo" onClick={() => setMode('solo')}>Run it solo instead</button>
+          <button type="button" className="btn ghost" data-testid="story-mode-solo" onClick={() => chooseMode('solo')}>Run it solo instead</button>
         </div>
       </div>
     );
@@ -772,7 +821,7 @@ export default function StoryHome() {
         {!signedOut && (
           <div className="story-mode-toggle">
             <span className="story-mode-current">Running solo</span>
-            <button type="button" className="btn ghost" data-testid="story-mode-coop" onClick={() => setMode('coop')}>Run it with a partner</button>
+            <button type="button" className="btn ghost" data-testid="story-mode-coop" onClick={() => chooseMode('coop')}>Run it with a partner</button>
           </div>
         )}
         {signedOut && <p className="story-note" data-testid="story-signed-out">Sign in to run the route — your stops, rewards and the solo completion mark live on your account. The map below is a preview.</p>}

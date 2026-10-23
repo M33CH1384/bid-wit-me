@@ -144,7 +144,7 @@ export function warmTableEffects(): Promise<FxWarmTimes> {
     const audio = timed(() => sound.warmEffects());
     const chrome = timed(() => warmChrome());
     const sheet = (async () => {
-      const mod = await import('../sheetClothSim');
+      const mod = await importChunk(() => import('../sheetClothSim'));
       await mod.loadRipImage().catch(() => undefined);
       return compileAfterReady(Promise.resolve(), () => mod.warmSheet(), undefined);
     })();
@@ -182,12 +182,12 @@ export async function measureHotFire(): Promise<Record<string, number>> {
   await lap('hole', () => warmDomImage('/shot/hole.png'));
   await lap('tape', () => warmDomImage('/shot/tape.webp'));
   await lap('rip', async () => {
-    const mod = await import('../sheetClothSim');
+    const mod = await importChunk(() => import('../sheetClothSim'));
     await mod.loadRipImage();
   });
   await lap('audio', () => sound.warmEffects());
   await lap('sheet', async () => {
-    const mod = await import('../sheetClothSim');
+    const mod = await importChunk(() => import('../sheetClothSim'));
     await mod.warmSheet();
   });
   if (gpu) {

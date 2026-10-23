@@ -65,6 +65,9 @@ afterEach(() => {
   unmount();
   vi.unstubAllGlobals();
   localStorage.clear();
+  // The gate's answer is remembered per tab session (story-mode-memory):
+  // each test here is its own visit, so the session starts empty.
+  sessionStorage.clear();
   history.replaceState(null, '', '/');
 });
 const settle = async (ms = 30) => { await act(async () => { await new Promise((r) => setTimeout(r, ms)); }); };
