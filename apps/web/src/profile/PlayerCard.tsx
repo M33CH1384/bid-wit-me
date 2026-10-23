@@ -2,15 +2,22 @@
  * The Player Card (owner-approved 2026-10-23, rank-face steering same day):
  * the flippable card that is now the header of every profile. The FRONT is
  * structured as an actual PLAYING CARD FACE for the player's current rank
- * card — corner rank+suit indices top-left and bottom-right (rotated), the
- * avatar as the card's figure (court treatment for J/Q/K and the summit
- * cards, a portrait medallion with pips for number cards), the name +
- * @handle on the card's nameplate strip, and the flair (status, partner
- * tags, showcased badges, the story-progress ribbon) as a designed band on
- * the card. The BACK is the scouting report — ratings, record, win%,
+ * card — true card proportions (5:7), corner rank+suit indices top-left and
+ * bottom-right (rotated 180°), a double-line keyline frame, and a field
+ * laid out by rank class from the payload alone: number cards get TRUE pip
+ * layouts (PIP_LAYOUTS below) around a framed portrait art window, courts
+ * get the portrait as the framed figure with a royal tab, the Ace gets one
+ * oversized hero pip, the Deuce two hero pips, and the Jokers a full-figure
+ * field with JOKER lettered down the edge. The display name + @handle sit
+ * on a nameplate band worked into the bottom of the frame, with the
+ * showcased badges as medal seals in the band — never UI on the face. The
+ * flair that isn't card anatomy (status, partner tags, the story ribbon)
+ * renders BELOW the card as profile content, with the Edit card button and
+ * the flip hint. The BACK is the scouting report — ratings, record, win%,
  * streak, the Partnership / Cutthroat splits, story stops, member-since,
  * and a head-to-head line when the viewer has met the subject across a
- * table.
+ * table — set as an inset panel inside a patterned card back, in the same
+ * card footprint.
  *
  * The rank ladder is the owner's: Rep level IS a card — 3♥ up through the
  * suits (hearts the come-up, clubs "you belong", diamonds "bout that
@@ -34,7 +41,7 @@
  * fabricated zeroes dressed up as stats.
  */
 import { useState } from 'react';
-import { AvatarCircle } from '../avatar';
+import { faceOf } from '../avatar';
 import { BADGES } from '../badges';
 import { TaglineText } from '../tagline';
 import './playercard.css';
@@ -105,6 +112,66 @@ export function badgeDisplay(b: CardBadge): { name: string; icon: string } {
 
 const monthYear = (ts: number) => new Date(ts).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 
+/* ------------------------------------------------------------ pip layouts */
+
+/** One pip in the field: x/y are % of the field box; `inv` = the pip is
+ *  rotated 180°, as classic decks print the lower half. */
+export interface PipPos { x: number; y: number; inv?: boolean }
+
+/**
+ * The classic pip geometry for the number ranks, in field coordinates.
+ * Columns at 15 / 50 / 85. The portrait art window owns the field's center,
+ * so a classic pip that would land dead-center (the 3's, 5's and 9's middle
+ * pip) is NOT in the map — the window takes that spot; every other pip
+ * holds its classic position around it (the 7's, 8's and 10's offset center
+ * pips sit above/below the window and stay). Lower-half pips (y > 50) are
+ * inverted; the y = 50 row of the 6/7/8 stands upright, as printed.
+ */
+export const PIP_LAYOUTS: Record<string, PipPos[]> = {
+  '2': [{ x: 50, y: 10 }, { x: 50, y: 90, inv: true }],
+  '3': [{ x: 50, y: 8 }, { x: 50, y: 92, inv: true }],
+  '4': [{ x: 15, y: 10 }, { x: 85, y: 10 }, { x: 15, y: 90, inv: true }, { x: 85, y: 90, inv: true }],
+  '5': [{ x: 15, y: 10 }, { x: 85, y: 10 }, { x: 15, y: 90, inv: true }, { x: 85, y: 90, inv: true }],
+  '6': [
+    { x: 15, y: 10 }, { x: 85, y: 10 }, { x: 15, y: 50 }, { x: 85, y: 50 },
+    { x: 15, y: 90, inv: true }, { x: 85, y: 90, inv: true },
+  ],
+  '7': [
+    { x: 15, y: 10 }, { x: 85, y: 10 }, { x: 50, y: 26 }, { x: 15, y: 50 }, { x: 85, y: 50 },
+    { x: 15, y: 90, inv: true }, { x: 85, y: 90, inv: true },
+  ],
+  '8': [
+    { x: 15, y: 10 }, { x: 85, y: 10 }, { x: 50, y: 26 }, { x: 15, y: 50 }, { x: 85, y: 50 },
+    { x: 50, y: 74, inv: true }, { x: 15, y: 90, inv: true }, { x: 85, y: 90, inv: true },
+  ],
+  '9': [
+    { x: 15, y: 8 }, { x: 85, y: 8 }, { x: 15, y: 36 }, { x: 85, y: 36 },
+    { x: 15, y: 64, inv: true }, { x: 85, y: 64, inv: true }, { x: 15, y: 92, inv: true }, { x: 85, y: 92, inv: true },
+  ],
+  '10': [
+    { x: 15, y: 8 }, { x: 85, y: 8 }, { x: 50, y: 22 }, { x: 15, y: 36 }, { x: 85, y: 36 },
+    { x: 15, y: 64, inv: true }, { x: 85, y: 64, inv: true }, { x: 50, y: 78, inv: true },
+    { x: 15, y: 92, inv: true }, { x: 85, y: 92, inv: true },
+  ],
+};
+
+/** Royal tabs for the court frames: the knight for the Jack (the jack was
+ *  the knave/knight of the old courts), the queen, the king. */
+const ROYAL_TAB: Record<string, string> = { J: '♞', Q: '♛', K: '♚' };
+
+/** The framed rectangular art window: the player's picture as card art, or
+ *  their initial set as a printed letter when they have no picture. */
+function ArtWindow({ pic, name, cls }: { pic: string | null; name: string; cls: string }) {
+  const face = faceOf(pic, name);
+  return (
+    <div className={`pcard-artwin ${cls}`} aria-hidden>
+      {face.kind === 'pic'
+        ? <img src={face.src} alt="" />
+        : <span className="pcard-artletter">{face.letter}</span>}
+    </div>
+  );
+}
+
 function SplitRow({ label, split }: { label: string; split: CardModeSplit }) {
   return (
     <div className="pcard-split">
@@ -135,134 +202,152 @@ export function PlayerCard({ data, pic, variant = 'header', champion, self, onEd
   const flip = () => setFlipped((f) => !f);
 
   /* The front is a playing-card face for the rank card the payload carries.
-   * Treatment is data-driven: court ranks (J/Q/K) and the THREE summit
-   * cards (the Deuce, the Little Joker, the Big Joker — the rarest and
-   * most distinct front of all) get the framed court figure over a big
-   * suit watermark; aces get the watermark too; number cards get a
-   * portrait medallion with their pips beneath it. No per-rank assets —
-   * every one of the 51 fronts renders from {rank, suit, symbol} alone. */
+   * Treatment is data-driven from {rank, suit, symbol} alone — no per-rank
+   * assets: number cards lay their pips out classically around the portrait
+   * window; courts frame the portrait as the figure under a royal tab; the
+   * Ace rides one oversized hero pip; the Deuce stacks two; the Jokers go
+   * full-figure with JOKER lettered down the edge (the Big Joker — the
+   * rarest front of all — in black and gold, the Little in violet). */
   const r = data.rank;
   const isCourt = ['J', 'Q', 'K'].includes(r.rank);
   const isDeuce = r.rank === '2' && !r.isJoker;
-  const isSummit = isDeuce || r.isJoker;
-  const pipCount = /^\d+$/.test(r.rank) && !isDeuce ? Number(r.rank) : 0;
   const treatment = r.isBigJoker ? 'big-joker' : r.isLittleJoker ? 'little-joker' : isDeuce ? 'deuce' : isCourt ? 'court' : r.rank === 'A' ? 'ace' : 'number';
   const cornerRank = r.isJoker ? '★' : r.rank;
   const cornerSuit = r.isJoker ? 'JOKER' : r.symbol;
-  const rankGlyph = r.isJoker ? `${r.rankName} ★` : `${r.rank}${r.symbol}`;
+
+  const field = r.isJoker ? (
+    <div className="pcard-field" data-field="joker">
+      <span className="pcard-jokerword" aria-hidden>JOKER</span>
+      <ArtWindow pic={shownPic} name={data.name} cls="joker" />
+    </div>
+  ) : isCourt ? (
+    <div className="pcard-field" data-field="court">
+      <ArtWindow pic={shownPic} name={data.name} cls="court" />
+      <span className="pcard-royaltab" aria-hidden>{ROYAL_TAB[r.rank]}</span>
+    </div>
+  ) : r.rank === 'A' ? (
+    <div className="pcard-field" data-field="ace">
+      <span className="pcard-heropip" aria-hidden>{r.symbol}</span>
+      <ArtWindow pic={shownPic} name={data.name} cls="ace" />
+    </div>
+  ) : isDeuce ? (
+    <div className="pcard-field" data-field="deuce">
+      <span className="pcard-heropip top" aria-hidden>{r.symbol}</span>
+      <span className="pcard-heropip bot" aria-hidden>{r.symbol}</span>
+      <ArtWindow pic={shownPic} name={data.name} cls="deuce" />
+    </div>
+  ) : (
+    <div className="pcard-field" data-field="number">
+      {(PIP_LAYOUTS[r.rank] ?? []).map((p, i) => (
+        <span key={i} className="pcard-pipdot" data-inv={p.inv ? '1' : undefined}
+          style={{ left: `${p.x}%`, top: `${p.y}%` }} aria-hidden>{r.symbol}</span>
+      ))}
+      <ArtWindow pic={shownPic} name={data.name} cls="number" />
+    </div>
+  );
 
   return (
-    <div className="pcard" data-testid="player-card" data-variant={variant}
-      data-suit={r.suit ?? 'joker'} data-treatment={treatment}
-      onClick={flip}
-      role="group" aria-label={`Player card for ${data.name} — ${r.rankName} — tap to flip`}>
-      <div className={`pcard-inner${flipped ? ' flipped' : ''}`}>
-        {/* ------------------------------------------------------ FRONT */}
-        <section className="pcard-face pcard-front" aria-hidden={flipped} data-testid="pcard-front">
-          <div className="pcard-corner tl" aria-hidden>
-            <span className="pcard-crank">{cornerRank}</span>
-            <span className="pcard-csuit">{cornerSuit}</span>
-          </div>
-          <div className="pcard-corner br" aria-hidden>
-            <span className="pcard-crank">{cornerRank}</span>
-            <span className="pcard-csuit">{cornerSuit}</span>
-          </div>
-
-          <div className="pcard-figure">
-            {(isCourt || isSummit || r.rank === 'A') && <span className="pcard-watermark" aria-hidden>{r.symbol}</span>}
-            <AvatarCircle pic={shownPic} name={data.name} className="pcard-av" />
-            {pipCount > 0 && (
-              <div className="pcard-pips" aria-hidden>
-                {Array.from({ length: pipCount }, (_, i) => <span key={i}>{r.symbol}</span>)}
-              </div>
-            )}
-            {isDeuce && <div className="pcard-pips deuce" aria-hidden><span>{r.symbol}</span><span>{r.symbol}</span></div>}
-          </div>
-
-          <div className="pcard-nameplate">
-            <div className="pcard-id">
-              <h3 className="pcard-name" data-testid="pcard-name">
-                {data.name}
-                {champion !== undefined && champion > 0 && <span className="soc-champ" title="Tournament champion">🏆×{champion}</span>}
-              </h3>
-              <p className="pcard-handle">@{data.name}</p>
-              <p className="pcard-rankline" data-testid="pcard-level">{rankGlyph} · Level {data.level.level} · {data.level.title}</p>
+    <div className="pcard-wrap" data-variant={variant}>
+      <div className="pcard plcard" data-testid="player-card" data-variant={variant}
+        data-suit={r.suit ?? 'joker'} data-treatment={treatment}
+        onClick={flip}
+        role="group" aria-label={`Player card for ${data.name} — ${r.rankName} — tap to flip`}>
+        <div className={`pcard-inner${flipped ? ' flipped' : ''}`}>
+          {/* ------------------------------------------------------ FRONT */}
+          <section className="pcard-face pcard-front" aria-hidden={flipped} data-testid="pcard-front">
+            <div className="pcard-corner tl" aria-hidden>
+              <span className="pcard-crank">{cornerRank}</span>
+              <span className="pcard-csuit">{cornerSuit}</span>
             </div>
-            {self && onEditCard && (
-              <button type="button" className="pcard-edit" data-testid="card-edit"
-                onClick={(e) => { e.stopPropagation(); onEditCard(); }}>
-                ✏ Edit card
-              </button>
-            )}
-          </div>
+            <div className="pcard-corner br" aria-hidden>
+              <span className="pcard-crank">{cornerRank}</span>
+              <span className="pcard-csuit">{cornerSuit}</span>
+            </div>
 
-          <div className="pcard-band">
-            {data.status && <TaglineText text={data.status} className="pcard-status" />}
+            {field}
 
-            {data.tags.length > 0 && (
-              <div className="pcard-tags" data-testid="pcard-tags">
-                {data.tags.map((t) => <span key={t} className="pcard-tag">{PARTNER_TAG_LABELS[t] ?? t}</span>)}
+            <div className="pcard-plate">
+              <div className="pcard-plate-id">
+                <h3 className="pcard-name" data-testid="pcard-name">
+                  {data.name}
+                  {champion !== undefined && champion > 0 && <span className="soc-champ" title="Tournament champion">🏆×{champion}</span>}
+                </h3>
+                <p className="pcard-handle">@{data.name}</p>
               </div>
-            )}
-
-            {data.showcase.length > 0 && (
-              <div className="pcard-showcase" data-testid="pcard-showcase">
-                {data.showcase.map((b) => {
-                  const d = badgeDisplay(b);
-                  return <span key={badgeKeyOf(b)} className="pcard-badge" title={d.name}><span aria-hidden>{d.icon}</span> {d.name}</span>;
-                })}
-              </div>
-            )}
-
-            <p className="pcard-ribbon" data-testid="pcard-ribbon">
-              🎗 Story — {data.story.stopsCleared} of {data.story.stopsTotal} stops cleared
-              {data.story.completed && <> · <b>Route complete 👑</b></>}
-            </p>
-
-            {data.bigJoker.earned && !data.bigJoker.active && (
-              <p className="pcard-upkeep" data-testid="pcard-upkeep">Big Joker earned 👑 — season upkeep due</p>
-            )}
-
-            <button type="button" className="pcard-flipbtn" data-testid="pcard-flip"
-              onClick={(e) => { e.stopPropagation(); flip(); }}>
-              See stats ⇋
-            </button>
-          </div>
-        </section>
-
-        {/* ------------------------------------------------------- BACK */}
-        <section className="pcard-face pcard-back" aria-hidden={!flipped} data-testid="pcard-back">
-          <div className="pcard-back-head">
-            <b>{data.name}</b><span>career line</span>
-          </div>
-          {s.games > 0 ? (
-            <>
-              <div className="pcard-record" data-testid="pcard-record">
-                <div><b>{s.wins}–{s.losses}</b><small>record</small></div>
-                <div><b>{s.winPct === null ? '—' : `${s.winPct}%`}</b><small>win rate</small></div>
-                <div><b>{s.games}</b><small>games</small></div>
-                <div><b>{s.streak > 0 ? `W${s.streak}` : '—'}</b><small>streak{s.bestStreak > 1 ? ` · best W${s.bestStreak}` : ''}</small></div>
-              </div>
-              <SplitRow label="Partnership" split={s.team} />
-              <SplitRow label="Cutthroat" split={s.cutthroat} />
-              {data.vsViewer && (
-                <p className="pcard-vs" data-testid="pcard-vs">
-                  You vs {data.name}: <b>{data.vsViewer.wins}–{data.vsViewer.losses}</b> in {data.vsViewer.games} game{data.vsViewer.games === 1 ? '' : 's'}
-                </p>
+              {data.showcase.length > 0 && (
+                <div className="pcard-seals" data-testid="pcard-showcase">
+                  {data.showcase.slice(0, 3).map((b) => {
+                    const d = badgeDisplay(b);
+                    return <span key={badgeKeyOf(b)} className="pcard-seal" title={d.name} role="img" aria-label={d.name}>{d.icon}</span>;
+                  })}
+                </div>
               )}
-            </>
-          ) : (
-            <p className="pcard-nogames" data-testid="pcard-nogames">No games on record yet</p>
+            </div>
+          </section>
+
+          {/* ------------------------------------------------------- BACK */}
+          <section className="pcard-face pcard-back" aria-hidden={!flipped} data-testid="pcard-back">
+            <div className="pcard-back-panel">
+              <div className="pcard-back-head">
+                <b>{data.name}</b><span>career line</span>
+              </div>
+              {s.games > 0 ? (
+                <>
+                  <div className="pcard-record" data-testid="pcard-record">
+                    <div><b>{s.wins}–{s.losses}</b><small>record</small></div>
+                    <div><b>{s.winPct === null ? '—' : `${s.winPct}%`}</b><small>win rate</small></div>
+                    <div><b>{s.games}</b><small>games</small></div>
+                    <div><b>{s.streak > 0 ? `W${s.streak}` : '—'}</b><small>streak{s.bestStreak > 1 ? ` · best W${s.bestStreak}` : ''}</small></div>
+                  </div>
+                  <SplitRow label="Partnership" split={s.team} />
+                  <SplitRow label="Cutthroat" split={s.cutthroat} />
+                  {data.vsViewer && (
+                    <p className="pcard-vs" data-testid="pcard-vs">
+                      You vs {data.name}: <b>{data.vsViewer.wins}–{data.vsViewer.losses}</b> in {data.vsViewer.games} game{data.vsViewer.games === 1 ? '' : 's'}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="pcard-nogames" data-testid="pcard-nogames">No games on record yet</p>
+              )}
+              <p className="pcard-back-story">
+                Story — {data.story.stopsCleared} of {data.story.stopsTotal} stops cleared{data.story.completed && ' · route complete 👑'}
+              </p>
+              <p className="pcard-since">Member since {monthYear(data.memberSince)}</p>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      {/* --------------------------------------- below the card (profile) */}
+      <div className="pcard-below">
+        {data.status && <TaglineText text={data.status} className="pcard-status" />}
+
+        {data.tags.length > 0 && (
+          <div className="pcard-tags" data-testid="pcard-tags">
+            {data.tags.map((t) => <span key={t} className="pcard-tag">{PARTNER_TAG_LABELS[t] ?? t}</span>)}
+          </div>
+        )}
+
+        <p className="pcard-ribbon" data-testid="pcard-ribbon">
+          🎗 Story — {data.story.stopsCleared} of {data.story.stopsTotal} stops cleared
+          {data.story.completed && <> · <b>Route complete 👑</b></>}
+        </p>
+
+        {data.bigJoker.earned && !data.bigJoker.active && (
+          <p className="pcard-upkeep" data-testid="pcard-upkeep">Big Joker earned 👑 — season upkeep due</p>
+        )}
+
+        <div className="pcard-actions">
+          {self && onEditCard && (
+            <button type="button" className="pcard-edit" data-testid="card-edit" onClick={onEditCard}>
+              ✏ Edit card
+            </button>
           )}
-          <p className="pcard-back-story">
-            Story — {data.story.stopsCleared} of {data.story.stopsTotal} stops cleared{data.story.completed && ' · route complete 👑'}
-          </p>
-          <p className="pcard-since">Member since {monthYear(data.memberSince)}</p>
-          <button type="button" className="pcard-flipbtn" data-testid="pcard-flip-back"
-            onClick={(e) => { e.stopPropagation(); flip(); }}>
-            See front ⇋
+          <button type="button" className="pcard-flipbtn" data-testid="pcard-flip" onClick={flip}>
+            {flipped ? 'See front ⇋' : 'See stats ⇋'}
           </button>
-        </section>
+        </div>
       </div>
     </div>
   );

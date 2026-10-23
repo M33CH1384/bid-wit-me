@@ -1,160 +1,246 @@
 /* The Player Card (owner-approved 2026-10-23): the flippable profile card.
- * Self-contained sheet (the story.css precedent) — every selector is
- * .pcard-scoped, in both themes, so it styles the card on the profile and,
- * later, in the Partner Finder deck, and nothing else anywhere.
- * Theme parity: structure and layout are theme-shared; Neon only re-tints
- * the frame (visual-only difference, per the parity law).
+ * Self-contained sheet (the story.css precedent). Every selector for the
+ * card itself is scoped under .plcard — styles.css owns a DIFFERENT .pcard
+ * (the deck browser's painted mini faces), and the scoping keeps the two
+ * apart in the cascade no matter the load order. Theme parity: structure
+ * and layout are theme-shared; Neon only re-tints the glow (visual-only
+ * difference, per the parity law).
  *
- * The FRONT is a playing-card face for the player's rank card (owner
- * steering, 2026-10-23): corner indices, the avatar as the card's figure,
- * a nameplate strip, and the flair band. Suit palettes are per-tier color
- * stories told with one accent variable; the three summit cards — the
- * Deuce, the Little Joker, and the Big Joker (rarest of all) — get the
- * most distinct treatments. */
+ * The FRONT is a playing-card face (owner redesign, 2026-10-23: the first
+ * front "does not look like a playing card at all"): true 5:7 proportions,
+ * an ivory face in the game's own painted-card register, a double-line
+ * keyline frame, corner indices top-left and bottom-right (rotated), true
+ * pip layouts around a framed portrait window for number cards, the
+ * portrait as the framed figure for courts, a hero pip for the Ace, two
+ * for the Deuce, a full-figure dark field for the Jokers. The nameplate
+ * band across the frame's foot carries the name (light ink on a deep band
+ * — gold band, dark ink for the Big Joker — so the name can never vanish
+ * into the face) and the showcased badges as medal seals. Everything that
+ * isn't card anatomy lives BELOW the card. The BACK is a patterned card
+ * back with the stats as an ivory inset panel, same footprint. */
 
-/* Placement inside the profile header (a flex-wrap row): the card and its
- * satellites take the full line; RepBlock + the action row keep following. */
-.soc-prof-head > .pcard { flex: 1 1 100%; min-width: 0; }
+/* Placement inside the profile header (a flex-wrap row): the card wrap and
+ * its satellites take the full line; RepBlock + the action row follow. */
+.soc-prof-head > .pcard-wrap { flex: 1 1 100%; min-width: 0; }
 .prof-under-card { flex: 1 1 100%; min-width: 0; }
 .soc-prof-head > .pcard-editor { flex: 1 1 100%; min-width: 0; }
 
-/* Suit accents: hearts burn rose, clubs run emerald, diamonds cut sky,
- * spades wear the house violet; the Joker stands in gold. */
-.pcard[data-suit="hearts"] { --suit: #ff647c; --suit-soft: rgba(255, 77, 109, .13); }
-.pcard[data-suit="clubs"] { --suit: #57d992; --suit-soft: rgba(87, 217, 146, .12); }
-.pcard[data-suit="diamonds"] { --suit: #5bdfff; --suit-soft: rgba(91, 223, 255, .12); }
-.pcard[data-suit="spades"] { --suit: #b980ff; --suit-soft: rgba(155, 92, 255, .15); }
-.pcard[data-suit="joker"] { --suit: var(--gold); --suit-soft: rgba(var(--gold-rgb), .14); }
+.pcard-wrap {
+  --cardw: min(300px, 84vw, 100%);
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+}
+.pcard-wrap[data-variant="deck"] { --cardw: min(272px, 76vw, 100%); }
 
-.pcard { perspective: 1400px; cursor: pointer; }
-.pcard-inner {
-  display: grid;
+/* Suit color stories. --suit is the bright accent (dark grounds: the back
+ * pattern, below-card touches); --suit-deep prints the indices and pips on
+ * the ivory face; --suit-wash tints the face's crown; --suit-line draws
+ * the keyline. Spades wear the house violet, deepest and richest; the
+ * Joker stands in gold. */
+.plcard[data-suit="hearts"] { --suit: #ff647c; --suit-deep: #c22440; --suit-wash: #fbe3e8; --suit-line: rgba(194, 36, 64, .5); }
+.plcard[data-suit="clubs"] { --suit: #57d992; --suit-deep: #14713f; --suit-wash: #def2e2; --suit-line: rgba(20, 113, 63, .5); }
+.plcard[data-suit="diamonds"] { --suit: #5bdfff; --suit-deep: #0e6ba6; --suit-wash: #ddeef8; --suit-line: rgba(14, 107, 166, .48); }
+.plcard[data-suit="spades"] { --suit: #b980ff; --suit-deep: #5b21b6; --suit-wash: #e7dcf8; --suit-line: rgba(91, 33, 182, .52); }
+.plcard[data-suit="joker"] { --suit: var(--gold); --suit-deep: var(--gold); --suit-wash: rgba(var(--gold-rgb), .16); --suit-line: rgba(var(--gold-rgb), .55); }
+
+/* The card box itself. (Selector outranks styles.css's painted-face .pcard
+ * on every shared property — the two components never trade paint.) */
+.plcard.pcard {
+  position: relative; display: block; flex: none;
+  width: var(--cardw); height: auto; aspect-ratio: 5 / 7;
+  border-radius: 13px; overflow: visible;
+  background: transparent; color: var(--ink); font-size: 15px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .5);
+  perspective: 1400px; cursor: pointer;
+  --corner: var(--suit-deep);
+}
+.plcard[data-treatment="little-joker"] { --corner: #d9c8ff; }
+.plcard[data-treatment="big-joker"] { --corner: #ecc964; }
+html[data-theme="neon"] .plcard.pcard {
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .55), 0 0 22px rgba(var(--purple-rgb), .3);
+}
+
+/* ------------------------------------------------------------ the flip */
+.plcard .pcard-inner {
+  display: grid; height: 100%;
   transform-style: preserve-3d;
   transition: transform .55s cubic-bezier(.2, .7, .3, 1);
 }
-.pcard-inner.flipped { transform: rotateY(180deg); }
-.pcard-face {
-  grid-area: 1 / 1;
-  min-width: 0;
+.plcard .pcard-inner.flipped { transform: rotateY(180deg); }
+.plcard .pcard-face {
+  grid-area: 1 / 1; height: 100%; min-width: 0;
+  position: relative; overflow: hidden; border-radius: 13px;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
-  display: flex; flex-direction: column; gap: 12px;
-  padding: 16px;
-  border-radius: 16px;
-  border: 1px solid rgba(var(--gold-rgb), .45);
-  background: linear-gradient(155deg, var(--panel-hi), var(--panel) 62%);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, .5), inset 0 1px 0 rgba(var(--gold-rgb), .18);
 }
-.pcard-back { transform: rotateY(180deg); }
+.plcard .pcard-back { transform: rotateY(180deg); }
 @media (prefers-reduced-motion: reduce) {
-  .pcard-inner { transition: none; }
-}
-html[data-theme="neon"] .pcard-face {
-  border-color: rgba(var(--purple-rgb), .65);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, .5), inset 0 1px 0 rgba(var(--cyan-rgb), .25);
+  .plcard .pcard-inner { transition: none; }
 }
 
 /* ------------------------------------------------- front: the card face */
-.pcard-front {
-  position: relative;
+.plcard .pcard-front {
   background:
-    radial-gradient(120% 85% at 50% 0%, var(--suit-soft), transparent 58%),
-    linear-gradient(155deg, var(--panel-hi), var(--panel) 62%);
+    radial-gradient(115% 80% at 50% 0%, var(--suit-wash), rgba(255, 255, 255, 0) 62%),
+    linear-gradient(168deg, #fdfaf1, #eee5cf);
+  border: 1px solid rgba(24, 18, 44, .38);
 }
-.pcard[data-treatment="little-joker"] .pcard-front {
-  background:
-    radial-gradient(120% 85% at 50% 0%, var(--suit-soft), transparent 55%),
-    linear-gradient(160deg, #17141f, #0d0b16 62%);
-  border-color: rgba(var(--gold-rgb), .75);
-}
-/* The Big Joker: the rarest front of all — black-and-gold, double-framed. */
-.pcard[data-treatment="big-joker"] .pcard-front {
-  background:
-    radial-gradient(120% 85% at 50% 0%, rgba(var(--gold-rgb), .22), transparent 55%),
-    linear-gradient(160deg, #1a1206, #0a0714 62%);
-  border: 2px solid var(--gold);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, .55), 0 0 26px rgba(var(--gold-rgb), .28), inset 0 0 0 3px rgba(0, 0, 0, .55), inset 0 0 0 4px rgba(var(--gold-rgb), .5);
-}
-.pcard[data-treatment="deuce"] .pcard-front { border-color: rgba(var(--gold-rgb), .8); }
-
-.pcard-corner {
-  position: absolute; z-index: 2;
-  display: flex; flex-direction: column; align-items: center; gap: 1px;
-  line-height: 1; color: var(--suit); pointer-events: none;
-}
-.pcard-corner.tl { top: 11px; left: 13px; }
-.pcard-corner.br { bottom: 11px; right: 13px; transform: rotate(180deg); }
-.pcard-crank { font-size: 23px; font-weight: 800; }
-.pcard-csuit { font-size: 17px; }
-.pcard[data-treatment="little-joker"] .pcard-csuit,
-.pcard[data-treatment="big-joker"] .pcard-csuit { font-size: 8px; font-weight: 800; letter-spacing: .14em; }
-.pcard[data-treatment="big-joker"] .pcard-crank { font-size: 27px; }
-
-.pcard-figure {
-  position: relative;
-  display: flex; flex-direction: column; align-items: center; gap: 9px;
-  padding-top: 8px;
-}
-.pcard-watermark {
-  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -58%);
-  font-size: 158px; line-height: 1; color: var(--suit); opacity: .13;
+/* The keyline: the classic thin inner frame line, in the suit's ink. */
+.plcard .pcard-front::before {
+  content: ''; position: absolute; inset: 6px; z-index: 4;
+  border-radius: 9px; border: 1.5px solid var(--suit-line);
   pointer-events: none;
 }
-.pcard-av {
-  position: relative; z-index: 1;
-  width: 92px; height: 92px; flex: none;
-  border-radius: 50%; overflow: hidden;
+/* Spades (the elite suit) and the Ace draw a second, gold hairline. */
+.plcard[data-suit="spades"] .pcard-front::after,
+.plcard[data-treatment="ace"] .pcard-front::after {
+  content: ''; position: absolute; inset: 9.5px; z-index: 4;
+  border-radius: 7px; border: 1px solid rgba(var(--gold-rgb), .55);
+  pointer-events: none;
+}
+/* The Jokers leave the ivory system: dark fields, the game's own joker
+ * register (deep violet for the Little, black-and-gold for the Big). */
+.plcard[data-treatment="little-joker"] .pcard-front {
+  background:
+    radial-gradient(115% 80% at 50% 0%, rgba(155, 92, 255, .3), rgba(0, 0, 0, 0) 60%),
+    linear-gradient(165deg, #2a1845, #120a22);
+  border-color: rgba(185, 128, 255, .5);
+}
+.plcard[data-treatment="little-joker"] .pcard-front::before { border-color: rgba(203, 184, 255, .55); }
+.plcard[data-treatment="big-joker"] .pcard-front {
+  background:
+    radial-gradient(115% 80% at 50% 0%, rgba(var(--gold-rgb), .22), rgba(0, 0, 0, 0) 58%),
+    linear-gradient(165deg, #1d1507, #070509);
+  border-color: rgba(var(--gold-rgb), .8);
+}
+.plcard[data-treatment="big-joker"] .pcard-front::before { border: 2px solid rgba(var(--gold-rgb), .85); }
+html[data-theme="neon"] .plcard .pcard-front { border-color: rgba(var(--purple-rgb), .55); }
+html[data-theme="neon"] .plcard[data-treatment="big-joker"] .pcard-front { border-color: rgba(var(--gold-rgb), .8); }
+
+/* Corner indices: rank over suit, top-left and bottom-right rotated —
+ * exactly where a real card prints them. */
+.plcard .pcard-corner {
+  position: absolute; z-index: 6;
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  line-height: 1; color: var(--corner); pointer-events: none;
+  font-family: var(--display);
+}
+.plcard .pcard-corner.tl { top: 10px; left: 11px; }
+.plcard .pcard-corner.br { bottom: 10px; right: 11px; transform: rotate(180deg); }
+.plcard .pcard-crank { font-size: 25px; font-weight: 800; }
+.plcard .pcard-csuit { font-size: 18px; }
+.plcard[data-treatment="little-joker"] .pcard-csuit,
+.plcard[data-treatment="big-joker"] .pcard-csuit { font-size: 7.5px; font-weight: 800; letter-spacing: .12em; }
+.plcard[data-treatment="big-joker"] .pcard-crank { font-size: 28px; }
+
+/* ------------------------------------------------------------- the field */
+.plcard .pcard-field {
+  position: absolute; z-index: 1;
+  top: 11.5%; bottom: 18%; left: 14%; right: 14%;
+}
+/* Number pips, placed by PIP_LAYOUTS; lower-half pips print inverted. */
+.plcard .pcard-pipdot {
+  position: absolute; transform: translate(-50%, -50%);
+  font-size: 31px; line-height: 1; color: var(--suit-deep);
+  pointer-events: none;
+}
+.plcard .pcard-pipdot[data-inv="1"] { transform: translate(-50%, -50%) rotate(180deg); }
+/* Hero pips: the Ace's single oversized suit, the Deuce's stacked pair. */
+.plcard .pcard-heropip {
+  position: absolute; left: 50%; top: 54%; transform: translate(-50%, -50%);
+  font-size: 148px; line-height: 1; color: var(--suit-deep); opacity: .92;
+  pointer-events: none;
+}
+.plcard .pcard-field[data-field="deuce"] .pcard-heropip { font-size: 62px; }
+.plcard .pcard-field[data-field="deuce"] .pcard-heropip.top { top: 15%; }
+.plcard .pcard-field[data-field="deuce"] .pcard-heropip.bot { top: 85%; transform: translate(-50%, -50%) rotate(180deg); }
+
+/* The portrait art window: a framed rectangle of card art. On number
+ * cards it owns the field's center (the classic center pip yields to it);
+ * on courts and Jokers it IS the field's figure. */
+.plcard .pcard-artwin {
+  position: absolute; z-index: 2; overflow: hidden; border-radius: 6px;
+  border: 2px solid var(--suit-deep);
+  background: linear-gradient(160deg, var(--suit-wash), #fdfaf1);
+  box-shadow: 0 3px 12px rgba(23, 12, 44, .28), inset 0 0 0 2px #fdfaf1, inset 0 0 0 3.5px rgba(var(--gold-rgb), .55);
+  display: flex; align-items: center; justify-content: center;
+}
+.plcard .pcard-artwin img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.plcard .pcard-artletter {
+  font-family: var(--display); font-weight: 800; font-size: 46px; color: var(--suit-deep);
+}
+.plcard .pcard-artwin.number { left: 50%; top: 50%; transform: translate(-50%, -50%); width: 47%; aspect-ratio: 4 / 4.7; }
+.plcard .pcard-artwin.ace { left: 50%; top: 37%; transform: translate(-50%, -50%); width: 41%; aspect-ratio: 4 / 4.7; }
+.plcard .pcard-artwin.deuce { left: 50%; top: 50%; transform: translate(-50%, -50%); width: 33%; aspect-ratio: 4 / 4.6; }
+.plcard .pcard-artwin.court { inset: 0; border-width: 2.5px; }
+.plcard .pcard-artwin.joker { top: 0; bottom: 0; right: 0; left: 9%; border-color: rgba(203, 184, 255, .7); background: linear-gradient(160deg, #3a2364, #170b2e); }
+.plcard[data-treatment="big-joker"] .pcard-artwin.joker { border-color: rgba(var(--gold-rgb), .85); background: linear-gradient(160deg, #2c1f08, #0a0705); }
+.plcard .pcard-artwin.joker .pcard-artletter { color: var(--corner); }
+/* The royal tab riding the court frame's top edge. */
+.plcard .pcard-royaltab {
+  position: absolute; z-index: 3; top: -12px; left: 50%; transform: translateX(-50%);
+  padding: 2px 11px 3px; border-radius: 999px;
+  background: linear-gradient(180deg, var(--gold-hi), var(--gold-deep));
+  color: #241a02; font-size: 15px; line-height: 1.1;
+  box-shadow: 0 2px 7px rgba(23, 12, 44, .35);
+}
+/* JOKER lettered down the card's left edge, in the classic manner. */
+.plcard .pcard-jokerword {
+  position: absolute; z-index: 3; left: -9.5%; top: 50%;
+  transform: translateY(-50%) rotate(180deg);
+  writing-mode: vertical-rl;
+  font-family: var(--display); font-weight: 800; font-size: 13px; letter-spacing: .42em;
+  color: #cdbcf5; pointer-events: none;
+}
+.plcard[data-treatment="big-joker"] .pcard-jokerword { color: var(--gold-hi); }
+
+/* ------------------------------------------- nameplate band (in-frame) */
+/* A deep band worked into the frame's foot: light ink on near-black (gold
+ * band, dark ink for the Big Joker). The pairing is fixed HERE, in one
+ * place — the display name can never inherit its way into invisibility. */
+.plcard .pcard-plate {
+  position: absolute; z-index: 5; left: 10.5%; right: 10.5%; bottom: 3%;
+  display: flex; align-items: center; gap: 9px;
+  padding: 8px 11px; border-radius: 8px;
+  background: linear-gradient(180deg, #201a3d, #131022);
+  box-shadow: inset 0 0 0 1px rgba(var(--gold-rgb), .5), 0 3px 10px rgba(15, 8, 34, .35);
+  color: #f7f1de;
+}
+.plcard[data-treatment="little-joker"] .pcard-plate {
+  box-shadow: inset 0 0 0 1px rgba(185, 128, 255, .55), 0 3px 10px rgba(15, 8, 34, .35);
+}
+.plcard[data-treatment="big-joker"] .pcard-plate {
+  background: linear-gradient(180deg, #f0d47a, #c49a2e);
+  box-shadow: inset 0 0 0 1px rgba(70, 50, 4, .55), 0 3px 10px rgba(0, 0, 0, .45);
+}
+.plcard .pcard-plate-id { min-width: 0; flex: 1; }
+.plcard .pcard-name {
+  margin: 0; font-family: var(--display); font-weight: 800;
+  font-size: 20px; line-height: 1.12; color: #f7f1de;
+  overflow-wrap: anywhere;
+}
+.plcard[data-treatment="big-joker"] .pcard-name { color: #171106; }
+.plcard .pcard-handle { margin: 1px 0 0; font-size: 11.5px; color: #bdb2dd; }
+.plcard[data-treatment="big-joker"] .pcard-handle { color: #54400c; }
+/* Showcased badges ride the band as medal seals — a glyph in a ringed
+ * disc, the badge's name on its title, never a text pill. */
+.plcard .pcard-seals { display: flex; gap: 5px; flex: none; }
+.plcard .pcard-seal {
+  width: 27px; height: 27px; border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;
-  font-size: 36px; font-weight: 700; color: var(--ink-deep);
-  background: linear-gradient(150deg, var(--gold-hi), var(--gold-deep));
-  border: 2px solid rgba(var(--gold-rgb), .8);
-  box-shadow: 0 0 0 3px var(--panel), 0 0 0 5px var(--suit);
+  font-size: 14px; line-height: 1;
+  background: radial-gradient(circle at 35% 30%, rgba(var(--gold-rgb), .5), rgba(var(--gold-rgb), .16));
+  border: 1.5px solid rgba(var(--gold-rgb), .85);
 }
-/* Court energy: J/Q/K wear the double gold frame; the summit cards more. */
-.pcard[data-treatment="court"] .pcard-av,
-.pcard[data-treatment="ace"] .pcard-av {
-  border: 3px double var(--gold);
-  box-shadow: 0 0 0 3px var(--panel), 0 0 0 5px var(--suit), 0 0 22px var(--suit-soft);
-}
-.pcard[data-treatment="deuce"] .pcard-av {
-  border: 3px double var(--gold);
-  box-shadow: 0 0 0 3px var(--panel), 0 0 0 6px var(--gold), 0 0 26px rgba(var(--gold-rgb), .35);
-}
-.pcard[data-treatment="little-joker"] .pcard-av {
-  border: 3px double var(--gold);
-  box-shadow: 0 0 0 3px #0d0b16, 0 0 0 5px var(--gold), 0 0 22px rgba(var(--gold-rgb), .3);
-}
-.pcard[data-treatment="big-joker"] .pcard-av {
-  width: 100px; height: 100px;
-  border: 4px double var(--gold);
-  box-shadow: 0 0 0 3px #0a0714, 0 0 0 7px var(--gold), 0 0 34px rgba(var(--gold-rgb), .55);
-}
-.pcard-av img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.pcard-pips {
-  display: flex; flex-wrap: wrap; justify-content: center; gap: 5px;
-  max-width: 170px; color: var(--suit); font-size: 13px; opacity: .85; line-height: 1;
-}
-.pcard-pips.deuce { gap: 30px; font-size: 21px; opacity: 1; }
-
-.pcard-nameplate {
-  display: flex; align-items: flex-start; gap: 10px;
-  padding: 10px 26px 0; border-top: 1px solid rgba(var(--edge-rgb), .25);
-}
-.pcard-id { min-width: 0; flex: 1; text-align: center; }
-.pcard-name { margin: 0; font-size: 24px; line-height: 1.15; overflow-wrap: anywhere; }
-.pcard-handle { margin: 2px 0 0; color: var(--muted); font-size: 13.5px; }
-.pcard-rankline { margin: 4px 0 0; color: var(--suit); font-weight: 700; font-size: 14.5px; }
-.pcard-edit {
-  flex: none; align-self: flex-start;
-  min-height: 36px; padding: 6px 11px; border-radius: 999px;
-  background: transparent; color: var(--gold);
-  border: 1px solid rgba(var(--gold-rgb), .55); font-size: 12.5px; font-weight: 600;
-  cursor: pointer;
+.plcard[data-treatment="big-joker"] .pcard-seal {
+  border-color: rgba(70, 50, 4, .7);
+  background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, .55), rgba(70, 50, 4, .18));
 }
 
-/* The flair band: status, tags, showcase, story ribbon — designed onto
- * the card's lower field, anchored to the card's foot. */
-.pcard-band { margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
+/* ------------------------------------------------ below the card (off-face) */
+.pcard-below {
+  width: var(--cardw);
+  display: flex; flex-direction: column; gap: 8px;
+}
 .pcard-status { margin: 0; font-style: italic; color: var(--lav); font-size: 15px; overflow-wrap: anywhere; }
 .pcard-tags { display: flex; flex-wrap: wrap; gap: 6px; }
 .pcard-tag {
@@ -162,53 +248,77 @@ html[data-theme="neon"] .pcard-face {
   color: var(--lav); border: 1px solid rgba(var(--purple-rgb), .65);
   background: rgba(var(--purple-rgb), .14);
 }
-.pcard-showcase { display: flex; flex-wrap: wrap; gap: 6px; }
-.pcard-badge {
-  padding: 4px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
-  color: var(--gold-hi); border: 1px solid rgba(var(--gold-rgb), .5);
-  background: rgba(var(--gold-rgb), .1);
-}
-.pcard-ribbon {
-  margin: 0; padding-top: 9px; font-size: 13px; color: var(--muted);
-  border-top: 1px dashed rgba(var(--gold-rgb), .35);
-}
+.pcard-ribbon { margin: 0; font-size: 13px; color: var(--muted); }
 .pcard-upkeep { margin: 0; font-size: 12.5px; font-weight: 700; color: var(--gold); }
+.pcard-actions { display: flex; align-items: center; gap: 10px; }
+.pcard-edit {
+  flex: none;
+  min-height: 36px; padding: 6px 11px; border-radius: 999px;
+  background: transparent; color: var(--gold);
+  border: 1px solid rgba(var(--gold-rgb), .55); font-size: 12.5px; font-weight: 600;
+  cursor: pointer;
+}
 .pcard-flipbtn {
-  align-self: flex-end; min-height: 32px; padding: 5px 6px;
+  margin-left: auto; min-height: 32px; padding: 5px 6px;
   background: none; border: none; cursor: pointer;
   color: var(--gold); font-size: 12.5px; font-weight: 700; letter-spacing: .02em;
 }
 
-/* -------------------------------------------------------------- back */
-.pcard-back-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.pcard-back-head b { font-size: 17px; overflow-wrap: anywhere; }
-.pcard-back-head span { color: var(--muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: .09em; }
-.pcard-record { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; text-align: center; }
-.pcard-record b { display: block; font-size: 20px; }
-.pcard-record small { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
-.pcard-split {
-  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
-  padding: 7px 0 0; border-top: 1px solid rgba(var(--edge-rgb), .22); font-size: 14px;
+/* -------------------------------------------------------------- the back */
+/* A patterned card back — a diamond lattice in the suit's tint over deep
+ * house violet, gold keyline — with the stats as an ivory inset panel. */
+.plcard .pcard-back {
+  background:
+    repeating-linear-gradient(45deg, rgba(185, 128, 255, .07) 0 2px, rgba(0, 0, 0, 0) 2px 15px),
+    repeating-linear-gradient(-45deg, rgba(185, 128, 255, .07) 0 2px, rgba(0, 0, 0, 0) 2px 15px),
+    linear-gradient(160deg, #1b1436, #0d0a1e);
+  background:
+    repeating-linear-gradient(45deg, color-mix(in srgb, var(--suit) 13%, transparent) 0 2px, rgba(0, 0, 0, 0) 2px 15px),
+    repeating-linear-gradient(-45deg, color-mix(in srgb, var(--suit) 13%, transparent) 0 2px, rgba(0, 0, 0, 0) 2px 15px),
+    linear-gradient(160deg, #1b1436, #0d0a1e);
+  border: 1px solid rgba(var(--gold-rgb), .5);
 }
-.pcard-split-label { color: var(--muted); }
-.pcard-split b small { color: var(--muted); font-weight: 400; }
-.pcard-split-none { color: var(--muted); font-weight: 400; font-style: italic; }
-.pcard-vs { margin: 2px 0 0; font-size: 14px; }
-.pcard-vs b { color: var(--gold-hi); }
-.pcard-nogames { margin: 10px 0; text-align: center; color: var(--muted); font-style: italic; font-size: 15px; }
-.pcard-back-story { margin: auto 0 0; padding-top: 9px; font-size: 13px; color: var(--muted); border-top: 1px dashed rgba(var(--gold-rgb), .35); }
-.pcard-since { margin: 0; color: var(--muted); font-size: 12.5px; }
+.plcard .pcard-back::before {
+  content: ''; position: absolute; inset: 6px; z-index: 2;
+  border-radius: 9px; border: 1.5px solid rgba(var(--gold-rgb), .55);
+  pointer-events: none;
+}
+.plcard .pcard-back-panel {
+  position: absolute; inset: 8.5% 7.5%; z-index: 1;
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 14px 15px; border-radius: 9px; overflow-y: auto;
+  background: linear-gradient(170deg, #faf4e0, #f0e7cd);
+  color: #1e1932;
+  box-shadow: inset 0 0 0 1px rgba(24, 18, 44, .22), 0 4px 14px rgba(0, 0, 0, .35);
+}
+.plcard .pcard-back-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.plcard .pcard-back-head b { font-size: 16.5px; overflow-wrap: anywhere; color: #1e1932; }
+.plcard .pcard-back-head span { color: #6a6284; font-size: 11px; text-transform: uppercase; letter-spacing: .09em; }
+.plcard .pcard-record { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; text-align: center; }
+.plcard .pcard-record b { display: block; font-size: 19px; color: #1e1932; }
+.plcard .pcard-record small { display: block; color: #6a6284; font-size: 10.5px; margin-top: 2px; }
+.plcard .pcard-split {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: 7px 0 0; border-top: 1px solid rgba(24, 18, 44, .16); font-size: 13.5px; color: #1e1932;
+}
+.plcard .pcard-split-label { color: #6a6284; }
+.plcard .pcard-split b small { color: #6a6284; font-weight: 400; }
+.plcard .pcard-split-none { color: #6a6284; font-weight: 400; font-style: italic; }
+.plcard .pcard-vs { margin: 2px 0 0; font-size: 13.5px; }
+.plcard .pcard-vs b { color: #8a5f06; }
+.plcard .pcard-nogames { margin: 10px 0; text-align: center; color: #6a6284; font-style: italic; font-size: 14.5px; }
+.plcard .pcard-back-story { margin: auto 0 0; padding-top: 9px; font-size: 12.5px; color: #6a6284; border-top: 1px dashed rgba(24, 18, 44, .3); }
+.plcard .pcard-since { margin: 0; color: #6a6284; font-size: 12px; }
 
 /* -------------------------------------------------------- deck size */
-.pcard[data-variant="deck"] { aspect-ratio: 5 / 7; }
-.pcard[data-variant="deck"] .pcard-inner { height: 100%; }
-.pcard[data-variant="deck"] .pcard-face { padding: 20px; }
-.pcard[data-variant="deck"] .pcard-av { width: 108px; height: 108px; font-size: 42px; }
-.pcard[data-variant="deck"] .pcard-name { font-size: 27px; }
-.pcard[data-variant="deck"] .pcard-crank { font-size: 27px; }
-.pcard[data-variant="deck"] .pcard-csuit { font-size: 20px; }
-.pcard[data-variant="deck"] .pcard-status { font-size: 16.5px; }
-.pcard[data-variant="deck"] .pcard-record b { font-size: 23px; }
+.plcard[data-variant="deck"] .pcard-crank { font-size: 23px; }
+.plcard[data-variant="deck"] .pcard-csuit { font-size: 16px; }
+.plcard[data-variant="deck"] .pcard-pipdot { font-size: 28px; }
+.plcard[data-variant="deck"] .pcard-heropip { font-size: 132px; }
+.plcard[data-variant="deck"] .pcard-field[data-field="deuce"] .pcard-heropip { font-size: 56px; }
+.plcard[data-variant="deck"] .pcard-name { font-size: 19px; }
+.plcard[data-variant="deck"] .pcard-record b { font-size: 18px; }
+.plcard[data-variant="deck"] .pcard-status { font-size: 14.5px; }
 
 /* ------------------------------------------------------------ editor */
 .pcard-editor {

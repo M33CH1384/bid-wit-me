@@ -1,21 +1,25 @@
 /**
  * @vitest-environment happy-dom
  *
- * The Player Card (owner-approved 2026-10-23): the flippable card that heads
- * every profile. The FRONT is a playing-card face for the player's rank
- * card (corner indices, the avatar as the figure, nameplate, flair band);
- * the BACK is the stats. These tests pin: the playing-card front renders
- * from the payload's rank alone (court / number / deuce / joker
- * treatments), the flip, the honest zero-record back, the editor's
- * save round-trip and caps, and the ProfileView wiring (card when the
- * payload carries one, the legacy identity header when it doesn't).
+ * The Player Card (owner-approved 2026-10-23, front redesigned same day):
+ * the flippable card that heads every profile. The first front "did not
+ * look like a playing card at all" (owner), so the FRONT is now a true
+ * card face: 5:7 proportions, dual corner indices (bottom rotated), a
+ * keyline frame, true pip layouts around a portrait art window for number
+ * cards, court/ace/deuce/joker field treatments, and a nameplate band
+ * whose ink can never vanish into the face. These tests pin: the new
+ * anatomy (pip map for every rank 3–10, no interactive controls inside
+ * the card, nameplate contrast), the back's stats in their patterned
+ * card back, the honest zero-record back, the editor's save round-trip
+ * and caps, and the ProfileView wiring (card when the payload carries
+ * one, the legacy identity header when it doesn't).
  */
 import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PlayerCard, type PlayerCardData } from '../src/profile/PlayerCard';
+import { PlayerCard, PIP_LAYOUTS, type PlayerCardData } from '../src/profile/PlayerCard';
 import { CardEditor } from '../src/profile/CardEditor';
 import { ProfileView } from '../src/profile/ProfileView';
 import { loadAccount } from '../src/account/api';
@@ -52,6 +56,11 @@ const cardBase = (over: Partial<PlayerCardData> = {}): PlayerCardData => ({
   ...over,
 });
 
+const numberRank = (rank: string, suit: 'hearts' | 'clubs' | 'diamonds' | 'spades', symbol: string, step: number) => ({
+  level: step, step, prestige: false, rank, rankName: `${rank} of ${suit}`, suit, symbol,
+  tier: suit, isJoker: false, isLittleJoker: false, isBigJoker: false,
+});
+
 /* ------------------------------------------------------------- rendering */
 
 let root: Root | null = null;
@@ -76,47 +85,92 @@ const text = () => el!.textContent ?? '';
 /* ---------------------------------------------------------------- front */
 
 describe('the playing-card front', () => {
-  it('renders the rank card the payload carries: corners, court figure, nameplate, flair band', async () => {
+  it('renders the rank card the payload carries: dual corners, court field, nameplate', async () => {
     await render(createElement(PlayerCard, { data: cardBase() }));
     const card = q('[data-testid="player-card"]')!;
     expect(card.getAttribute('data-suit')).toBe('diamonds');
     expect(card.getAttribute('data-treatment')).toBe('court');
     const corners = qa('.pcard-corner');
     expect(corners).toHaveLength(2);
+    expect(corners[0]!.classList.contains('tl')).toBe(true);
+    expect(corners[1]!.classList.contains('br')).toBe(true);
     for (const c of corners) {
       expect(c.querySelector('.pcard-crank')?.textContent).toBe('Q');
       expect(c.querySelector('.pcard-csuit')?.textContent).toBe('♦');
     }
+    // Court treatment: the portrait fills the field as the figure under a
+    // royal tab; no pips anywhere.
+    expect(q('.pcard-artwin.court')).not.toBeNull();
+    expect(q('.pcard-royaltab')?.textContent).toBe('♛');
+    expect(qa('.pcard-pipdot')).toHaveLength(0);
+    // The nameplate band carries name + @handle (and only that).
+    const plate = q('[data-testid="pcard-front"] .pcard-plate')!;
+    expect(plate).not.toBeNull();
     expect(q('[data-testid="pcard-name"]')?.textContent).toContain('ShotCaller');
-    expect(text()).toContain('@ShotCaller');
-    expect(q('[data-testid="pcard-level"]')?.textContent).toBe('Q♦ · Level 34 · Shot Caller');
+    expect(plate.querySelector('.pcard-handle')?.textContent).toBe('@ShotCaller');
+    expect(plate.contains(q('[data-testid="pcard-name"]'))).toBe(true);
+    // The redundant rank/level/title caption is GONE from the face.
+    expect(q('[data-testid="pcard-level"]')).toBeNull();
+  });
+
+  it('the flair lives BELOW the card: status, tags, ribbon — never inside the card element', async () => {
+    await render(createElement(PlayerCard, { data: cardBase() }));
+    const card = q('[data-testid="player-card"]')!;
     expect(text()).toContain('Here for the run, not the talk');
     expect(q('[data-testid="pcard-tags"]')?.textContent).toContain('Story Co-op');
     expect(q('[data-testid="pcard-tags"]')?.textContent).toContain('Big Bank');
-    expect(q('[data-testid="pcard-showcase"]')?.textContent).toContain('Porch Graduate');
-    expect(q('[data-testid="pcard-showcase"]')?.textContent).toContain('First Dub');
     expect(q('[data-testid="pcard-ribbon"]')?.textContent).toContain('4 of 11 stops cleared');
+    for (const sel of ['[data-testid="pcard-tags"]', '[data-testid="pcard-ribbon"]', '.pcard-status']) {
+      const node = q(sel)!;
+      expect(node, sel).not.toBeNull();
+      expect(card.contains(node), `${sel} outside the card`).toBe(false);
+    }
   });
 
-  it('number cards get their pips; the Deuce, Little Joker and Big Joker get the three summit treatments', async () => {
+  it('showcased badges are medal seals in the nameplate — glyph only, name on the title', async () => {
+    await render(createElement(PlayerCard, { data: cardBase() }));
+    const seals = qa('[data-testid="pcard-showcase"] .pcard-seal');
+    expect(seals).toHaveLength(2);
+    expect(seals[0]!.textContent).toBe('🎓');
+    expect(seals[0]!.getAttribute('title')).toBe('Porch Graduate');
+    expect(seals[1]!.getAttribute('title')).toBe('First Dub');
+    expect(q('[data-testid="pcard-front"] .pcard-plate')!.contains(seals[0]!)).toBe(true);
+  });
+
+  it('NO interactive controls inside the card element — edit + flip live below it', async () => {
+    await render(createElement(PlayerCard, { data: cardBase(), self: true, onEditCard: () => {} }));
+    const card = q('[data-testid="player-card"]')!;
+    expect(card.querySelectorAll('button, a, input, [role="button"]')).toHaveLength(0);
+    expect(q('[data-testid="card-edit"]')).not.toBeNull();
+    expect(q('[data-testid="pcard-flip"]')).not.toBeNull();
+    expect(card.contains(q('[data-testid="card-edit"]'))).toBe(false);
+    expect(card.contains(q('[data-testid="pcard-flip"]'))).toBe(false);
+  });
+
+  it('number cards print their true pips around the portrait window', async () => {
     await render(createElement(PlayerCard, {
-      data: cardBase({
-        level: { level: 17, title: 'Certified' },
-        rank: { level: 17, step: 17, prestige: false, rank: '7', rankName: 'Seven', suit: 'clubs', symbol: '♣', tier: 'clubs', isJoker: false, isLittleJoker: false, isBigJoker: false },
-      }),
+      data: cardBase({ level: { level: 17, title: 'Certified' }, rank: numberRank('7', 'clubs', '♣', 17) }),
     }));
     expect(q('[data-testid="player-card"]')!.getAttribute('data-treatment')).toBe('number');
-    expect(qa('.pcard-pips span')).toHaveLength(7);
-    expect(q('.pcard-watermark')).toBeNull();
+    const pips = qa('.pcard-pipdot');
+    expect(pips).toHaveLength(7);
+    expect(pips.every((p) => p.textContent === '♣')).toBe(true);
+    // The 7's two lower-half pips are inverted; positions ride inline style.
+    expect(pips.filter((p) => p.getAttribute('data-inv') === '1')).toHaveLength(2);
+    expect((pips[0] as HTMLElement).style.left).toBe('15%');
+    expect((pips[0] as HTMLElement).style.top).toBe('10%');
+    // The portrait window owns the field's center.
+    expect(q('.pcard-artwin.number')).not.toBeNull();
+    expect(q('.pcard-artwin .pcard-artletter')?.textContent).toBe('S');
+  });
 
+  it('the Deuce, Little Joker and Big Joker get the three summit treatments', async () => {
     await render(createElement(PlayerCard, {
-      data: cardBase({
-        level: { level: 49, title: 'OG' },
-        rank: { level: 49, step: 49, prestige: false, rank: '2', rankName: 'Deuce', suit: 'spades', symbol: '♠', tier: 'spades', isJoker: false, isLittleJoker: false, isBigJoker: false },
-      }),
+      data: cardBase({ level: { level: 49, title: 'OG' }, rank: numberRank('2', 'spades', '♠', 49) }),
     }));
     expect(q('[data-testid="player-card"]')!.getAttribute('data-treatment')).toBe('deuce');
-    expect(qa('.pcard-pips.deuce span')).toHaveLength(2);
+    expect(qa('[data-field="deuce"] .pcard-heropip')).toHaveLength(2);
+    expect(q('.pcard-artwin.deuce')).not.toBeNull();
 
     await render(createElement(PlayerCard, {
       data: cardBase({
@@ -129,7 +183,8 @@ describe('the playing-card front', () => {
     expect(little.getAttribute('data-suit')).toBe('joker');
     expect(q('.pcard-crank')?.textContent).toBe('★');
     expect(q('.pcard-csuit')?.textContent).toBe('JOKER');
-    expect(q('[data-testid="pcard-level"]')?.textContent).toContain('Little Joker ★ · Level 50 · King of the Block');
+    expect(q('.pcard-jokerword')?.textContent).toBe('JOKER');
+    expect(q('.pcard-artwin.joker')).not.toBeNull();
 
     await render(createElement(PlayerCard, {
       data: cardBase({
@@ -141,11 +196,20 @@ describe('the playing-card front', () => {
     const big = q('[data-testid="player-card"]')!;
     expect(big.getAttribute('data-treatment')).toBe('big-joker');
     expect(big.getAttribute('data-suit')).toBe('joker');
-    expect(q('[data-testid="pcard-level"]')?.textContent).toContain('Big Joker ★ · Level 50 · King of the Block');
     expect(q('[data-testid="pcard-upkeep"]')).toBeNull();
   });
 
-  it('an earned-but-inactive Big Joker shows the Little Joker face with the upkeep-due note', async () => {
+  it('the Ace rides one oversized hero pip with the portrait window within it', async () => {
+    await render(createElement(PlayerCard, {
+      data: cardBase({ level: { level: 48, title: 'OG' }, rank: numberRank('A', 'spades', '♠', 48) }),
+    }));
+    expect(q('[data-testid="player-card"]')!.getAttribute('data-treatment')).toBe('ace');
+    expect(q('.pcard-heropip')?.textContent).toBe('♠');
+    expect(q('.pcard-artwin.ace')).not.toBeNull();
+    expect(qa('.pcard-pipdot')).toHaveLength(0);
+  });
+
+  it('an earned-but-inactive Big Joker shows the Little Joker face with the upkeep-due note below the card', async () => {
     await render(createElement(PlayerCard, {
       data: cardBase({
         level: { level: 50, title: 'King of the Block' },
@@ -154,14 +218,27 @@ describe('the playing-card front', () => {
       }),
     }));
     expect(q('[data-testid="player-card"]')!.getAttribute('data-treatment')).toBe('little-joker');
-    expect(q('[data-testid="pcard-upkeep"]')?.textContent).toContain('season upkeep due');
+    const upkeep = q('[data-testid="pcard-upkeep"]')!;
+    expect(upkeep?.textContent).toContain('season upkeep due');
+    expect(q('[data-testid="player-card"]')!.contains(upkeep)).toBe(false);
   });
 
-  it('flips to the back: real record, splits, head-to-head, member-since', async () => {
-    await render(createElement(PlayerCard, { data: cardBase({ vsViewer: { games: 4, wins: 3, losses: 1 } }) }));
+  it('tapping the CARD flips it; the hint below flips it back', async () => {
+    await render(createElement(PlayerCard, { data: cardBase() }));
+    const card = q('[data-testid="player-card"]') as HTMLElement;
+    await act(async () => { card.click(); });
+    expect(q('.pcard-inner')!.className).toContain('flipped');
+    expect(q('[data-testid="pcard-flip"]')?.textContent).toContain('See front');
     const flipBtn = q('[data-testid="pcard-flip"]') as HTMLButtonElement;
     await act(async () => { flipBtn.click(); });
-    expect(q('.pcard-inner')!.className).toContain('flipped');
+    expect(q('.pcard-inner')!.className).not.toContain('flipped');
+  });
+
+  it('the back carries the line in the inset panel: record, splits, head-to-head, member-since', async () => {
+    await render(createElement(PlayerCard, { data: cardBase({ vsViewer: { games: 4, wins: 3, losses: 1 } }) }));
+    const panel = q('.pcard-back-panel')!;
+    expect(panel).not.toBeNull();
+    expect(panel.contains(q('[data-testid="pcard-record"]'))).toBe(true);
     expect(q('[data-testid="pcard-record"]')?.textContent).toContain('32–18');
     expect(text()).toContain('64%');
     expect(text()).toContain('Partnership');
@@ -206,6 +283,56 @@ describe('the playing-card front', () => {
   it('no Edit card button on someone else’s card', async () => {
     await render(createElement(PlayerCard, { data: cardBase() }));
     expect(q('[data-testid="card-edit"]')).toBeNull();
+  });
+});
+
+/* --------------------------------------------------------- pip layouts */
+
+describe('pip layouts — the classic geometry for 3–10', () => {
+  // Visible pip counts: the portrait window owns the field's center, so
+  // the 3, 5 and 9 print one pip fewer than their rank.
+  const COUNTS: Record<string, number> = { '3': 2, '4': 4, '5': 4, '6': 6, '7': 7, '8': 8, '9': 8, '10': 10 };
+  it('every rank 3–10 has a layout with the expected visible count', () => {
+    for (const [r, n] of Object.entries(COUNTS)) {
+      expect(PIP_LAYOUTS[r], `layout for ${r}`).toHaveLength(n);
+    }
+  });
+
+  it('layouts are mirror-symmetric: every pip has its 180° partner, inversion flipped', () => {
+    for (const [r, layout] of Object.entries(PIP_LAYOUTS)) {
+      for (const p of layout) {
+        const mirror = layout.find((m) => m.x === 100 - p.x && m.y === 100 - p.y);
+        if (r === '7' && p.x === 50 && p.y === 26) continue; // the 7's lone extra (below)
+        expect(mirror, `${r}: mirror of (${p.x},${p.y})`).toBeTruthy();
+        expect(!!mirror!.inv, `${r}: mirror inversion at (${p.x},${p.y})`).toBe(p.y === 50 ? false : !p.inv);
+      }
+    }
+  });
+
+  it('the 7 is the classic exception: exactly one unpaired pip, above center, upright', () => {
+    const unpaired = PIP_LAYOUTS['7']!.filter(
+      (p) => !PIP_LAYOUTS['7']!.some((m) => m.x === 100 - p.x && m.y === 100 - p.y),
+    );
+    expect(unpaired).toEqual([{ x: 50, y: 26 }]);
+  });
+
+  it('inversion is exactly the lower half (y > 50); the y=50 row stands upright', () => {
+    for (const layout of Object.values(PIP_LAYOUTS)) {
+      for (const p of layout) expect(!!p.inv).toBe(p.y > 50);
+    }
+  });
+
+  it('no pip sits dead-center for 3/5/9 (the art window owns the center)', () => {
+    for (const r of ['3', '5', '9']) {
+      expect(PIP_LAYOUTS[r]!.some((p) => p.x === 50 && p.y === 50)).toBe(false);
+    }
+  });
+
+  it('the 10 carries its classic offset pair; the 7/8 their offset center pips', () => {
+    expect(PIP_LAYOUTS['10']!.some((p) => p.x === 50 && p.y === 22 && !p.inv)).toBe(true);
+    expect(PIP_LAYOUTS['10']!.some((p) => p.x === 50 && p.y === 78 && p.inv)).toBe(true);
+    expect(PIP_LAYOUTS['7']!.some((p) => p.x === 50 && p.y === 26)).toBe(true);
+    expect(PIP_LAYOUTS['8']!.some((p) => p.x === 50 && p.y === 74 && p.inv)).toBe(true);
   });
 });
 
@@ -338,27 +465,109 @@ describe('ProfileView: the card heads the profile', () => {
 
 /* ------------------------------------------------------------ css pins */
 
-describe('flip mechanics (source pins)', () => {
+describe('the card face (source pins)', () => {
   const css = read('../src/profile/playercard.css');
   const card = read('../src/profile/PlayerCard.tsx');
   const view = read('../src/profile/ProfileView.tsx');
+
+  it('true card proportions on the scoped root; no bare .pcard rule to fight the deck browser', () => {
+    expect(css).toMatch(/\.plcard\.pcard \{[^}]*aspect-ratio: 5 \/ 7/);
+    expect(css).not.toMatch(/^\.pcard\s*\{/m);
+  });
+
+  it('dual corner indices: br pinned to the bottom-right corner and rotated 180°', () => {
+    expect(css).toMatch(/\.plcard \.pcard-corner\.tl \{[^}]*top:/);
+    expect(css).toMatch(/\.plcard \.pcard-corner\.tl \{[^}]*left:/);
+    expect(css).toMatch(/\.plcard \.pcard-corner\.br \{[^}]*bottom:/);
+    expect(css).toMatch(/\.plcard \.pcard-corner\.br \{[^}]*right:/);
+    expect(css).toMatch(/\.plcard \.pcard-corner\.br \{[^}]*rotate\(180deg\)/);
+  });
+
+  it('the classic double-line frame: keyline in the suit ink, gold hairline for spades', () => {
+    expect(css).toMatch(/\.plcard \.pcard-front::before \{[^}]*inset: 6px/);
+    expect(css).toMatch(/\.plcard \.pcard-front::before \{[^}]*border: 1\.5px solid var\(--suit-line\)/);
+    expect(css).toContain('.plcard[data-suit="spades"] .pcard-front::after');
+  });
+
+  it('field treatments are styled: pips (inverted low), hero pip, art window, royal tab, joker word', () => {
+    expect(css).toContain('.plcard .pcard-pipdot');
+    expect(css).toMatch(/\.plcard \.pcard-pipdot\[data-inv="1"\] \{[^}]*rotate\(180deg\)/);
+    expect(css).toContain('.plcard .pcard-heropip');
+    expect(css).toContain('.plcard .pcard-artwin');
+    expect(css).toContain('.plcard .pcard-royaltab');
+    expect(css).toMatch(/\.plcard \.pcard-jokerword \{[^}]*writing-mode: vertical-rl/);
+  });
+
+  it('the back is a patterned card back with the stats as an inset panel', () => {
+    expect(css).toMatch(/\.plcard \.pcard-back \{[^}]*repeating-linear-gradient\(45deg/);
+    expect(css).toMatch(/\.plcard \.pcard-back \{[^}]*repeating-linear-gradient\(-45deg/);
+    expect(css).toContain('.plcard .pcard-back-panel');
+  });
+
   it('the flip is a real 3D flip, and reduced motion makes it an instant swap', () => {
     expect(css).toContain('backface-visibility: hidden');
     expect(css).toContain('.pcard-inner.flipped { transform: rotateY(180deg); }');
     expect(css).toContain('@media (prefers-reduced-motion: reduce)');
     expect(css).toContain('.pcard-inner { transition: none; }');
   });
+
   it('suit palettes + summit treatments are data-driven off the payload rank', () => {
     for (const suit of ['hearts', 'clubs', 'diamonds', 'spades', 'joker']) {
-      expect(css).toContain(`.pcard[data-suit="${suit}"]`);
+      expect(css).toContain(`.plcard[data-suit="${suit}"]`);
     }
     expect(card).toContain('data-suit={r.suit ?? \'joker\'}');
     expect(card).toContain('data-treatment={treatment}');
   });
+
   it('ProfileView renders the card as its header and the editor from the card’s own button', () => {
     expect(view).toContain("import { PlayerCard, type PlayerCardData } from './PlayerCard';");
     expect(view).toContain('<PlayerCard data={cardData}');
     expect(view).toContain('<CardEditor card={cardData}');
     expect(view.indexOf('<PlayerCard')).toBeLessThan(view.indexOf('testid="profile-rep"'));
+  });
+});
+
+/* ------------------------------------------- nameplate contrast (WCAG) */
+
+describe('nameplate contrast (computed from the shipped css)', () => {
+  const css = read('../src/profile/playercard.css');
+  const hexRgb = (hex: string): [number, number, number] => {
+    const h = hex.replace('#', '');
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  };
+  const luminance = (hex: string): number => {
+    const f = (c: number) => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
+    const [r, g, b] = hexRgb(hex);
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+  };
+  const contrast = (a: string, b: string): number => {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (hi! + 0.05) / (lo! + 0.05);
+  };
+  const ruleBlock = (selector: string): string => {
+    const i = css.indexOf(selector);
+    expect(i, `selector ${selector}`).toBeGreaterThanOrEqual(0);
+    const open = css.indexOf('{', i);
+    return css.slice(open, css.indexOf('}', open));
+  };
+  const gradientStops = (block: string): string[] =>
+    [...(block.match(/background:[^;]+/)?.[0] ?? '').matchAll(/#[0-9a-fA-F]{6}\b/g)].map((m) => m[0]);
+  const inkOf = (block: string): string =>
+    (block.match(/color:\s*(#[0-9a-fA-F]{6})/)?.[1] ?? '');
+
+  it('the display name is light ink on the deep nameplate band (≥ 7:1 at every stop)', () => {
+    const stops = gradientStops(ruleBlock('.plcard .pcard-plate {'));
+    expect(stops.length).toBeGreaterThanOrEqual(2);
+    const ink = inkOf(ruleBlock('.plcard .pcard-name {'));
+    expect(ink).toBeTruthy();
+    for (const stop of stops) expect(contrast(ink, stop)).toBeGreaterThanOrEqual(7);
+  });
+
+  it('the Big Joker band inverts the pairing: dark ink on gold (≥ 4.5:1 at every stop)', () => {
+    const stops = gradientStops(ruleBlock('.plcard[data-treatment="big-joker"] .pcard-plate {'));
+    expect(stops.length).toBeGreaterThanOrEqual(2);
+    const ink = inkOf(ruleBlock('.plcard[data-treatment="big-joker"] .pcard-name {'));
+    expect(ink).toBeTruthy();
+    for (const stop of stops) expect(contrast(ink, stop)).toBeGreaterThanOrEqual(4.5);
   });
 });
