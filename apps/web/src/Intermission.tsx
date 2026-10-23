@@ -272,6 +272,10 @@ export function Intermission({
                 decided,
                 sideName: sideName(r, s.side, names),
                 mine: s.side === mySide,
+                // the hand this side went out on — the same fact the card
+                // prints as its time of death, so the cover's words and the
+                // tag can never disagree about when it happened
+                handNo: cover.outHand ?? rec.handNo,
               }) : null;
               // The finale verdict plaque (owner, 2026-10-21): when the
               // cover mounts with its headline, the plaque is the card's

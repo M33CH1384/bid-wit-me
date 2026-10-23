@@ -130,6 +130,9 @@ export function finaleHeadlineFor(input: {
   sideName: string;
   /** the sheeted side is the viewer's own side */
   mine: boolean;
+  /** the hand the sheeted side was eliminated on (the cover's own fact —
+   *  the same number the card prints as its time of death) */
+  handNo?: number | null;
 }): FinaleHeadline {
   if (input.decided && input.endReason === THIRD_SET_END_REASON) {
     return {
@@ -138,6 +141,17 @@ export function finaleHeadlineFor(input: {
     };
   }
   if (input.decided && input.endReason === 'shotOut') {
+    // A hand-1 shot out is a different story (owner, 2026-10-23): nothing
+    // was ever "on the line" — the game ended before it started. The chat
+    // lines and the game-over sentence already split this same fact
+    // ("got shot on the first hand" vs "got shot two hands in a row",
+    // shotOut.ts); the cover keys off it the same way.
+    if (input.handNo === 1) {
+      return {
+        headline: 'SHOT OUT',
+        sub: input.mine ? 'Set on the very first hand — over before it ever got started.' : `${input.sideName} got shot on the first hand — game over.`,
+      };
+    }
     return {
       headline: 'SHOT OUT',
       sub: input.mine ? 'Shot with the game on the line — game over.' : `${input.sideName} got shot — game over.`,

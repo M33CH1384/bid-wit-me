@@ -91,6 +91,36 @@ function findGame(rigSide: 0 | 1, rigHands: ReadonlySet<number>, endReason: stri
   return null;
 }
 
+/**
+ * A game that ends on the very first hand: the books hand bids itself, so
+ * no bid rigging applies — the skill skew alone (rig side novice, the
+ * other pro) decides who falls short of the first-hand minimum of 4.
+ * Plays only until hand 1 scores, so the seed scan stays cheap.
+ */
+function playHand1(seed: string, rigSide: 0 | 1): GameState | null {
+  let st = newGame(rules, seed);
+  for (let g = 0; g < 500 && st.phase !== 'gameOver'; g++) {
+    if (st.phase === 'handOver') return null; // hand 1 scored and the game went on
+    const t = pendingTurn(st);
+    if (!t) return null;
+    const rigged = rigSide === 0 ? t.seat === 0 || t.seat === 2 : t.seat === 1 || t.seat === 3;
+    const a = chooseBotAction(viewFor(st, t.seat), rigged ? 'novice' : 'pro');
+    if (!a) return null;
+    st = applyAction(st, a);
+  }
+  if (st.phase !== 'gameOver' || st.history.length !== 1) return null;
+  if (st.result?.endReason !== 'shotOut' || !st.result.shotOut?.includes(rigSide)) return null;
+  return st;
+}
+
+function findHand1ShotOut(rigSide: 0 | 1): { states: GameState[]; final: GameState } | null {
+  for (let i = 0; i < 300; i++) {
+    const final = playHand1(`finale-headline-hand1-${rigSide}-${i}`, rigSide);
+    if (final) return { states: [], final };
+  }
+  return null;
+}
+
 const recapEl = (st: GameState) => createElement(Intermission, {
   st, names: NAMES, mySide: 0, secs: null, online: false, unread: 0, chatOpen: false,
   onReady: () => {}, onScorePad: () => {}, onChat: () => {}, onLeave: () => {},
@@ -138,6 +168,26 @@ describe('the headline copy: keyed to the ending fact, correct from both seats',
       .toEqual({ headline: 'SHOT OUT', sub: 'Shot with the game on the line — game over.' });
     expect(finaleHeadlineFor({ endReason: 'shotOut', decided: true, sideName: 'Mr. Coleman & June', mine: false }))
       .toEqual({ headline: 'SHOT OUT', sub: 'Mr. Coleman & June got shot — game over.' });
+  });
+  it('shotOut on hand 1 reads as a first-hand ending, not a game-on-the-line one (owner, 2026-10-23)', () => {
+    expect(finaleHeadlineFor({ endReason: 'shotOut', decided: true, sideName: 'You & Dee', mine: true, handNo: 1 }))
+      .toEqual({ headline: 'SHOT OUT', sub: 'Set on the very first hand — over before it ever got started.' });
+    expect(finaleHeadlineFor({ endReason: 'shotOut', decided: true, sideName: 'Mr. Coleman & June', mine: false, handNo: 1 }))
+      .toEqual({ headline: 'SHOT OUT', sub: 'Mr. Coleman & June got shot on the first hand — game over.' });
+  });
+  it('shotOut on any later hand keeps the game-on-the-line copy byte-for-byte', () => {
+    for (const handNo of [2, 3, 9]) {
+      expect(finaleHeadlineFor({ endReason: 'shotOut', decided: true, sideName: 'You & Dee', mine: true, handNo }))
+        .toEqual({ headline: 'SHOT OUT', sub: 'Shot with the game on the line — game over.' });
+      expect(finaleHeadlineFor({ endReason: 'shotOut', decided: true, sideName: 'Mr. Coleman & June', mine: false, handNo }))
+        .toEqual({ headline: 'SHOT OUT', sub: 'Mr. Coleman & June got shot — game over.' });
+    }
+  });
+  it('the hand fact never leaks into the other endings', () => {
+    expect(finaleHeadlineFor({ endReason: 'third-set', decided: true, sideName: 'You & Dee', mine: true, handNo: 1 }))
+      .toEqual({ headline: '3 THE HARD WAY', sub: 'Your third set of the game — game over.' });
+    expect(finaleHeadlineFor({ endReason: 'shotOut', decided: false, sideName: 'Sven', mine: false, handNo: 1 }))
+      .toEqual({ headline: 'OUT', sub: 'Sven is out of the game.' });
   });
   it('third-set carries the rule’s own callout and the side’s third set', () => {
     expect(finaleHeadlineFor({ endReason: 'third-set', decided: true, sideName: 'You & Dee', mine: true }))
@@ -216,6 +266,38 @@ describe('through the real story flow: a Barbershop game ending in shotOut', () 
     expect(headline?.textContent).toContain('3 THE HARD WAY');
     expect(headline?.textContent).toContain('third set');
     expect(headline?.textContent).toContain('game over.');
+  }, 300000);
+});
+
+describe('through the real story flow: a Barbershop game shot out on HAND 1 (owner, 2026-10-23)', () => {
+  it('viewer set on the books hand: the cover says first hand, never game on the line', () => {
+    vi.useFakeTimers();
+    const run = findHand1ShotOut(0);
+    expect(run, 'a hand-1 shotOut game for the viewer').not.toBeNull();
+    const h = walkToDecided(run!);
+    const cover = h.querySelector('[data-testid="recap-setanim-0"]');
+    expect(cover?.getAttribute('data-anim')).toBe('barbershop');
+    expect(cover?.getAttribute('data-tier')).toBe('finale');
+    const headline = h.querySelector('[data-testid="recap-finale-headline-0"]');
+    expect(headline?.textContent).toContain('SHOT OUT');
+    expect(headline?.textContent).toContain('Set on the very first hand — over before it ever got started.');
+    expect(headline?.textContent).not.toContain('game on the line');
+    // the card's own time-of-death tag agrees: it all happened on hand 1
+    expect(h.querySelector('[data-testid="time-of-death"]')?.textContent).toContain('Hand 1');
+    expect(h.querySelector('[data-testid="recap-finale-headline-1"]')).toBeNull();
+  }, 300000);
+
+  it('mirror: Coleman & June shot on hand 1 — their card says first hand too', () => {
+    vi.useFakeTimers();
+    const run = findHand1ShotOut(1);
+    expect(run, 'a hand-1 shotOut game for the opponents').not.toBeNull();
+    const h = walkToDecided(run!);
+    const headline = h.querySelector('[data-testid="recap-finale-headline-1"]');
+    expect(headline?.textContent).toContain('SHOT OUT');
+    expect(headline?.textContent).toContain('Coleman');
+    expect(headline?.textContent).toContain('got shot on the first hand — game over.');
+    expect(headline?.textContent).not.toContain('game on the line');
+    expect(h.querySelector('[data-testid="recap-finale-headline-0"]')).toBeNull();
   }, 300000);
 });
 
