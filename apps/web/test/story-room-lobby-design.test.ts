@@ -111,12 +111,12 @@ const byTestid = (id: string) => el!.querySelector(`[data-testid="${id}"]`);
 const seatCells = () => [...el!.querySelectorAll('.story-room-seat')];
 const cellWith = (text: string) => seatCells().find((c) => c.textContent?.includes(text));
 
-async function renderRoom(cs: ConnState, myUid = 'a') {
+async function renderRoom(cs: ConnState, myUid = 'a', send: (m: unknown) => void = () => {}) {
   unmount();
   el = document.createElement('div');
   document.body.appendChild(el);
   root = createRoot(el);
-  const conn = { send: () => {} };
+  const conn = { send };
   await act(async () => {
     root!.render(createElement(StoryRoomInner, { conn: conn as never, cs, code: 'ABCDE', track: 'pair:a:c', myUid, onExit: () => {} }));
   });
@@ -153,6 +153,10 @@ describe('the lobby composition', () => {
     // from the host's chair: partner across, pair on the sides
     expect(cellWith('M33CH')!.classList.contains('pos-bottom')).toBe(true);
     expect(cellWith('Your partner')!.classList.contains('pos-top')).toBe(true);
+    // the open seat is one compact line (medallion + name/status),
+    // not a stacked seat block
+    expect(cellWith('Your partner')!.classList.contains('is-open')).toBe(true);
+    expect(cellWith('Your partner')!.querySelector('.story-room-seat-openline .story-room-seat-status')).toBeTruthy();
     expect(cellWith('Uncle Ray')!.classList.contains('pos-left')).toBe(true);
     expect(cellWith('Pat')!.classList.contains('pos-right')).toBe(true);
     // waiting line, and the lock wall is dead: one chip, eleven nodes
@@ -179,6 +183,9 @@ describe('the lobby composition', () => {
     expect(byTestid('story-room-seats')!.textContent).toContain('Cee');
     expect(byTestid('story-room-waiting')).toBeNull();
     expect(el!.querySelectorAll('.story-room-seat-ready')).toHaveLength(2);
+    // the ready tick rides the seat's name line — no pill row of its own
+    expect(cellWith('M33CH')!.querySelector('.story-room-seat-name .story-room-seat-ready')).toBeTruthy();
+    expect(cellWith('Cee')!.querySelector('.story-room-seat-name .story-room-seat-ready')).toBeTruthy();
     // from the partner's chair the same table turns: host across, self near,
     // and no stop chips — choosing stays the host's — but the route shows
     await renderRoom(fakeCs({ seat: 2 }), 'c');
@@ -227,6 +234,29 @@ describe('the lobby composition', () => {
     expect(el!.querySelectorAll('.story-room-stoprow .btn')).toHaveLength(11);
     expect(el!.querySelector('.story-room-route-line')!.textContent).toContain('Route complete — you made it out, together.');
   });
+
+  it('one honest primary per state: a button until you are ready, a status after', async () => {
+    stubFetch(progressPayload());
+    const sent: unknown[] = [];
+    // not ready: the primary slot is the action itself
+    await renderRoom(fakeCs({}), 'a', (m) => sent.push(m));
+    const cta = byTestid('story-room-ready')!;
+    expect(cta.tagName).toBe('BUTTON');
+    expect(cta.textContent).toContain('Sit down — ready');
+    // ready and waiting: the slot is a status, NOT a button — the
+    // only button left in the row is Leave, with its one job. A tap
+    // on the status sends nothing.
+    await renderRoom(fakeCs({ ready: ['a'] }), 'a', (m) => sent.push(m));
+    const status = byTestid('story-room-ready')!;
+    expect(status.tagName).not.toBe('BUTTON');
+    expect(status.getAttribute('role')).toBe('status');
+    expect(status.textContent).toContain('Ready — waiting on your partner');
+    const rowButtons = [...el!.querySelectorAll('.story-room-actions button')];
+    expect(rowButtons).toHaveLength(1);
+    expect(rowButtons[0]!.getAttribute('data-testid')).toBe('story-room-leave');
+    await act(async () => { (status as HTMLElement).click(); });
+    expect(sent).toHaveLength(0);
+  });
 });
 
 describe('the composition CSS', () => {
@@ -235,9 +265,9 @@ describe('the composition CSS', () => {
     expect(css).toMatch(/\.story-room-shell \{[^}]*display: flex; flex-direction: column/);
     expect(css).toMatch(/\.story-room-shell \.story-room-actions \{[^}]*margin-top: auto/);
   });
-  it('the seats are a table grid and the room hero carries the stop art height', () => {
+  it('the seats are a table grid and the room hero carries the stop art at a capped share', () => {
     expect(css).toMatch(/\.story-room-table \{[^}]*grid-template-areas: '\. top \.'/);
-    expect(css).toMatch(/\.story-room-hero \{[^}]*min-height: 172px/);
+    expect(css).toMatch(/\.story-room-hero \{[^}]*height: 16cqh; min-height: 100px; max-height: 150px/);
   });
   it('the chosen stop rings the thread node, and the avatar circle clips on the element itself', () => {
     expect(css).toMatch(/\.story-gate-node\.is-here \{[^}]*outline: 2px solid #f5f4ff/);

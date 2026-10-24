@@ -178,7 +178,15 @@ export function StoryRoomInner({ conn, cs, code, track, myUid, onExit }: {
   const retriedRef = useRef(false);
   const pingedRef = useRef<string | null>(null);
 
-  const meReady = !!cs.you && !!story && story.ready.includes(cs.you);
+  // story.ready holds account UIDS (the server pushes uid on
+  // storyReady); cs.you is the room's member/player id — a different
+  // namespace. Comparing the two meant meReady could NEVER be true:
+  // in production the primary button stayed an enabled "Sit down —
+  // ready" after readying, re-sending the same message to no visible
+  // effect beside Leave — the owner's "the two buttons do the same
+  // thing" (2026-10-24). The seat ticks were unaffected (they
+  // compare uid to uid). Derive from myUid, as amHost does.
+  const meReady = !!myUid && !!story && story.ready.includes(myUid);
   const amHost = !!myUid && !!story && story.hostUid === myUid;
 
   // Pair progress: the tape's facts, the lobby's unlocked stops, the outro's
@@ -393,13 +401,29 @@ export function StoryRoomInner({ conn, cs, code, track, myUid, onExit }: {
           {seats.map((seat, i) => {
             const status = seatStatus(seat, i);
             const isReady = seat.kind === 'human' && !!seat.uid && story.ready.includes(seat.uid);
+            // The partner's unfilled seat is ONE compact line (small
+            // medallion + "Your partner — …"), not a stacked seat
+            // block: the stage build (owner, 2026-10-24) buys its
+            // height back for the felt.
+            if (seat.kind === 'empty' && status) {
+              return (
+                <div key={i} className={`story-room-seat pos-${posOf(i)} is-open`}>
+                  <RoomSeatFace seat={seat} stop={stop} index={i} />
+                  <span className="story-room-seat-openline">
+                    <span className="story-room-seat-name">{seatName(seat, i)}</span>
+                    <span className="story-room-seat-status">{status}</span>
+                  </span>
+                </div>
+              );
+            }
             return (
               <div key={i} className={`story-room-seat pos-${posOf(i)}${seat.kind === 'human' && !seat.connected ? ' away' : ''}`}>
                 <RoomSeatFace seat={seat} stop={stop} index={i} />
-                <span className="story-room-seat-name">{seatName(seat, i)}</span>
+                <span className="story-room-seat-name">
+                  {seatName(seat, i)}
+                  {isReady && <span className="story-room-seat-ready">Ready ✓</span>}
+                </span>
                 <span className="story-room-seat-role">{i === 0 ? 'Host' : i === 2 ? 'Partner' : 'The stop’s pair'}</span>
-                {status && <span className="story-room-seat-status">{status}</span>}
-                {isReady && <span className="story-room-seat-ready">Ready ✓</span>}
               </div>
             );
           })}
@@ -444,8 +468,23 @@ export function StoryRoomInner({ conn, cs, code, track, myUid, onExit }: {
             )}
           </div>
         )}
+        {/* One honest primary per state (owner, 2026-10-24: beside
+            Leave, a disabled gold "Waiting…" button read as a second
+            button that did the same nothing). Not ready → the button
+            is the action (bare storyReady, as ever). Ready → the slot
+            is a STATUS, not a button: the room advances on its own
+            when both are ready, so there is no Start verb to offer.
+            Leave is always Leave, one job. The host's stop chips are
+            the only other lobby control that sends storyReady — their
+            labeled job is the pick itself (the server applies the
+            stop and readies the host on the same message), and they
+            stay live after readying so the pick can still change. */}
         <div className="story-room-actions">
-          {readyBtn('story-room-ready', 'Sit down — ready')}
+          {meReady ? (
+            <p className="story-room-status" data-testid="story-room-ready" role="status">Ready — waiting on your partner</p>
+          ) : (
+            <button type="button" className="btn primary" data-testid="story-room-ready" onClick={() => ready()}>Sit down — ready</button>
+          )}
           <button type="button" className="btn ghost" data-testid="story-room-leave" onClick={onExit}>Leave</button>
         </div>
       </div>
