@@ -1222,8 +1222,12 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 /* video bubble is the visible circle: the ring wraps that, not the initial hidden under it */
 .plate:has(> .vbubble) { --ring-d: 84px; --ring-x: -18px; --ring-pad: 14px; }
 .plate.me-plate:has(> .vbubble.self) { --ring-d: 66px; --ring-x: -10px; --ring-pad: 12px; }
-.table-screen.short .plate:has(> .vbubble) { --ring-d: 84px; --ring-x: -18px; --ring-pad: 14px; }
-.table-screen.short .plate.me-plate:has(> .vbubble.self) { --ring-d: 66px; --ring-x: -10px; --ring-pad: 12px; }
+/* landscape bubbles are smaller (52px / self 48px, .table-screen.short .vbubble
+   above): the ring wraps THAT circle, so the short ring geometry matches it —
+   the copied-down 84px/66px values drew the countdown ring off-centre and
+   oversized around the landscape bubble (owner 2026-10-24 audit) */
+.table-screen.short .plate:has(> .vbubble) { --ring-d: 52px; --ring-x: -8px; --ring-pad: 14px; }
+.table-screen.short .plate.me-plate:has(> .vbubble.self) { --ring-d: 48px; --ring-x: -6px; --ring-pad: 12px; }
 @media (max-width: 340px) {
   .plate:has(> .vbubble), .plate.me-plate:has(> .vbubble.self),
   .table-screen.short .plate:has(> .vbubble), .table-screen.short .plate.me-plate:has(> .vbubble.self) {
@@ -3118,6 +3122,24 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
   .table-screen:not(.short) .badge-layer .plate .chip { font-size: 10px; padding: 1px 5px; letter-spacing: .05em; }
   .table-screen:not(.short) .badge-layer .plate-name .chip { font-size: 9px; padding: 1px 4px; letter-spacing: .03em; }
   .table-screen:not(.short) .badge-layer .plate:not(:has(> .vbubble)):has(.turn-ring) .plate-body { padding-left: 28px; }
+  /* Video-bubble plates (owner 2026-10-24): the compact body rule above is UNGUARDED,
+     so in this one context it silently out-specified the bubble's own clearance
+     (.plate:has(> .vbubble) .plate-body { margin-left: 26px } in online.css) and the
+     plate body slid back under the 84px bubble — a remote player who turned their
+     camera on (or their mic: the audio-only bubble is the same 84px circle carrying
+     their picture) lost the first ~30px of their name and their BID chip under the
+     video, at every badge seat. The :not guards above kept the bubble and its ring
+     at full size; the body clearance joins them here, with the base design's own
+     numbers (26px; the ring's 32px name padding when the countdown ring is up).
+     Your own plate is not in the badge layer, never lost its clearance, and is the
+     reference rendering. */
+  .table-screen:not(.short) .badge-layer .plate:has(> .vbubble) .plate-body { margin-left: 26px; }
+  .table-screen:not(.short) .badge-layer .plate:has(> .vbubble):has(.turn-ring) .plate-body { padding-left: 32px; }
+  /* The left seat's plate hugs the screen edge, and the bubble hangs 18px off the
+     plate's left — a bubble plate steps right by the same 18px (the same margin
+     trick your own plate uses to keep its bubble off the edge) so the whole
+     circle stays on screen instead of clipping at the edge. */
+  .table-screen:not(.short) .badge-layer .seat-anchor.side-left > .plate:has(> .vbubble) { margin-left: 18px; }
 }
 
 /* The last-trick chip predates the controls rail: its bottom offset (+64px over the rail's
