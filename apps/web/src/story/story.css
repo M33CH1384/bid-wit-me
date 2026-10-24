@@ -955,17 +955,136 @@ html[data-theme="neon"] .story-you-face {
   text-transform: uppercase; letter-spacing: 0.08em;
 }
 
-.story-room-share { display: flex; align-items: center; gap: 12px; margin: 0 0 14px; }
-.story-room-code { font-size: 26px; font-weight: 800; letter-spacing: 0.14em; }
-.story-room-seats { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 8px; }
-.story-room-seat {
-  display: flex; justify-content: space-between; gap: 10px;
-  border: 1px solid rgba(127, 127, 160, 0.3); border-radius: 12px; padding: 10px 12px;
+/* The room lobby's composition (owner, 2026-10-24 — "This screen
+   needs work"): the waiting room meets the gate's standard — the
+   stop's own backdrop in a hero over the header, the invite code set
+   as a ticket, the four seats composed as the table they'll play at
+   (own seat near, partner across, the stop's pair on the sides), the
+   awareness note as a line of the room's fiction instead of a form
+   box, and the route as the gate's thread instead of a wall of lock
+   pills: locked stops are road, not buttons; only the stops the pair
+   has unlocked render as chips the host can pick. The shell is a
+   column so the actions rest in the bottom zone with no void under
+   them; on short screens everything simply flows and scrolls —
+   nothing is fixed, nothing is covered.
+   The sound dock also parks in this topbar's slot like every story
+   surface — audited against the owner's screenshot: the dock WAS
+   slotted and sized correctly (46px on the slot); what read as a
+   broken partial gold frame was the playing state's gold ring +
+   chamfer floating on the glass button's near-invisible fill over
+   the flat void. Inside the hero it sits over the stop's art inside
+   a bordered card, exactly as on the gate and the map, and reads
+   whole. The dock itself is untouched. */
+.story-room-shell { display: flex; flex-direction: column; }
+.story-room-hero {
+  min-height: 172px;
+  display: flex; flex-direction: column; justify-content: flex-end;
+  padding: 16px;
+  margin-bottom: 14px;
 }
-.story-room-seat-role { opacity: 0.75; font-size: 14px; }
-.story-room-stops { margin: 0 0 14px; }
-.story-room-stoprow { display: flex; flex-wrap: wrap; gap: 8px; }
+.story-room-hero .story-hero-bg { opacity: 0.55; }
+.story-room-share { display: flex; align-items: stretch; gap: 10px; margin: 0 0 16px; }
+.story-room-ticket {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; justify-content: center; gap: 1px;
+  border: 1px dashed rgba(232, 200, 90, 0.55); border-radius: 14px;
+  padding: 8px 14px;
+  background: rgba(238, 201, 106, 0.05);
+}
+.story-room-ticket-label {
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.14em;
+  text-transform: uppercase; color: #e8c85a;
+}
+.story-room-code { font-size: 24px; font-weight: 800; letter-spacing: 0.14em; line-height: 1.15; }
+.story-room-share .btn { display: inline-flex; align-items: center; justify-content: center; }
+.story-room-table {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  grid-template-areas: '. top .' 'left . right' '. bottom .';
+  align-items: center; justify-items: center;
+  gap: 8px 4px;
+  border: 1px solid rgba(238, 201, 106, 0.35);
+  border-radius: 22px;
+  background:
+    radial-gradient(90% 120% at 50% 0%, rgba(238, 201, 106, 0.1), rgba(238, 201, 106, 0) 55%),
+    linear-gradient(180deg, #221a10, #150f08);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35), inset 0 0 44px rgba(0, 0, 0, 0.45);
+  padding: 16px 10px 14px;
+  margin: 0 0 14px;
+}
+.story-room-felt-mark {
+  grid-row: 2; grid-column: 2;
+  font-size: 22px; line-height: 1; color: rgba(232, 200, 90, 0.4);
+}
+.story-room-seat {
+  display: flex; flex-direction: column; align-items: center;
+  text-align: center; gap: 2px;
+  min-width: 0; max-width: 132px;
+}
+.story-room-seat.pos-top { grid-area: top; }
+.story-room-seat.pos-left { grid-area: left; }
+.story-room-seat.pos-right { grid-area: right; }
+.story-room-seat.pos-bottom { grid-area: bottom; }
+.story-room-seat.away .story-room-av,
+.story-room-seat.away .story-face { opacity: 0.45; filter: grayscale(0.6); }
+.story-face.room-face {
+  width: 54px; height: 54px; font-size: 23px;
+  border: 2px solid rgba(245, 244, 255, 0.8);
+}
+.story-room-av {
+  width: 54px; height: 54px; border-radius: 50%; overflow: hidden;
+  display: grid; place-items: center; flex: none; box-sizing: border-box;
+  font-weight: 800; font-size: 23px;
+  background: rgba(127, 127, 160, 0.3);
+  border: 2px solid rgba(232, 200, 90, 0.75);
+}
+.story-room-av img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.story-room-seat-open {
+  width: 54px; height: 54px; border-radius: 50%; box-sizing: border-box;
+  border: 2px dashed rgba(232, 200, 90, 0.7);
+  display: grid; place-items: center;
+  font-size: 24px; font-weight: 700; color: #e8c85a;
+  background: rgba(10, 10, 18, 0.6);
+}
+.story-room-seat-none {
+  width: 54px; height: 54px; border-radius: 50%; box-sizing: border-box;
+  display: grid; place-items: center;
+  font-size: 20px; opacity: 0.5;
+  background: rgba(127, 127, 160, 0.25);
+}
+.story-room-seat-name {
+  margin-top: 5px;
+  font-weight: 700; font-size: 14.5px; line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.story-room-seat-role {
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; opacity: 0.65;
+}
+.story-room-seat-status { font-size: 12px; font-style: italic; opacity: 0.85; }
+.story-room-seat-ready {
+  margin-top: 3px;
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+  color: #14100a; background: #c9a227;
+  border-radius: 999px; padding: 2px 8px;
+}
+.story-room-line {
+  margin: 0 0 14px;
+  text-align: center; font-style: italic;
+  font-size: 15px; line-height: 1.45; opacity: 0.92;
+}
+.story-room-stops { margin: 2px 0 14px; }
+.story-gate-node.is-here { outline: 2px solid #f5f4ff; outline-offset: 2px; }
+.story-room-route-line { margin: 10px 0 0; text-align: center; font-size: 13.5px; opacity: 0.85; }
+.story-room-stoprow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .story-room-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+.story-room-shell .story-room-actions { margin-top: auto; padding-top: 6px; }
+@media (min-width: 720px) {
+  .story-face.room-face, .story-room-av, .story-room-seat-open, .story-room-seat-none { width: 64px; height: 64px; }
+  .story-face.room-face { font-size: 27px; }
+  .story-room-av { font-size: 27px; }
+}
 
 /* The King's proposal choice (Phase 4): the terms stated plainly, the
    pair's standing answers under them. Warm story register, like the

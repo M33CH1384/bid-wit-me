@@ -10,7 +10,7 @@
  * vacated seat through the room's reclaim machinery, which the seats list
  * shows like any other cover ("Dee, covering for …").
  */
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import {
   STORY_CHARACTERS, STORY_SECRETS, STORY_STOPS, awarenessCaseFor, awarenessFactsFor, beatsFor,
   coopRundownFor, guideOutroLine, kingProposalBeats, railCastForAttempt, storyStopById,
@@ -21,6 +21,7 @@ import { TableConnection, type ConnState } from '../online/connection';
 import { useConn } from '../online/useOnline';
 import OnlineTable from '../online/OnlineTable';
 import { useAccount } from '../account/api';
+import { AvatarCircle, useAvatar } from '../avatar';
 import { loadName } from '../online/identity';
 import { usePresence } from '../social/Social';
 import { social } from '../social/store';
@@ -68,6 +69,32 @@ export function GuidePlate({ chat, seats }: { chat: ChatLine[]; seats: SeatInfo[
       </div>
     </div>
   );
+}
+
+/**
+ * One seat's face in the lobby table (redesign, owner 2026-10-24 —
+ * "This screen needs work"): a human seat shows the player's real
+ * uploaded picture (the Lobby's own avatar path), the stop's pair show
+ * their cast portraits, a seat Dee is covering shows Dee, and the
+ * partner's unfilled seat stays a dashed gold open medallion — the
+ * gate's open-seat language — until they arrive.
+ */
+function RoomSeatFace({ seat, stop, index }: { seat: SeatInfo; stop: StoryStop; index: number }) {
+  const pic = useAvatar(seat.kind === 'human' ? seat.uid : undefined);
+  if (seat.kind === 'human') {
+    return <AvatarCircle pic={pic} name={seat.name} className="story-room-av" />;
+  }
+  if (seat.kind === 'bot') {
+    const id = seat.was || seat.name === 'Dee'
+      ? 'dee'
+      : (Object.entries(STORY_CHARACTERS).find(([, c]) => c?.name === seat.name)?.[0]
+        ?? stop.pair[index === 1 ? 0 : 1]
+        ?? 'dee');
+    return <StoryFace characterId={id} name={seat.name} className="room-face" />;
+  }
+  return index === 2
+    ? <span className="story-room-seat-open" aria-hidden>+</span>
+    : <span className="story-room-seat-none" aria-hidden>—</span>;
 }
 
 const UNPOSTED_KEY = 'bwm.storyCoopUnposted';
@@ -313,58 +340,108 @@ export function StoryRoomInner({ conn, cs, code, track, myUid, onExit }: {
 
   if (story.phase === 'lobby') {
     const shareUrl = `${location.origin}/story?coop=${code}`;
+    const seats = cs.room!.seats;
+    // The seats composed as the table they'll play at, from THIS
+    // viewer's chair: own seat at the bottom, partner across, the
+    // stop's pair on the sides (the game's own seating geometry).
+    const mySeat = cs.seat ?? 0;
+    const posOf = (i: number) => {
+      const rel = (i - mySeat + 4) % 4;
+      return rel === 0 ? 'bottom' : rel === 1 ? 'left' : rel === 2 ? 'top' : 'right';
+    };
+    const seatName = (seat: SeatInfo, i: number) => (seat.kind === 'human' ? seat.name
+      : seat.kind === 'bot' ? (seat.was ? `Dee (covering for ${seat.was})` : seat.name)
+      : i === 2 ? 'Your partner' : '—');
+    const seatStatus = (seat: SeatInfo, i: number) => (seat.kind === 'empty' && i === 2
+      ? (story.partnerUid ? 'On their way in' : 'Share the code to fill the seat')
+      : null);
+    const clearedCount = pairProgress?.stops.filter((x) => x.clears > 0).length ?? 0;
+    const currentRow = pairProgress?.stops.find((x) => x.state === 'current');
+    const currentStop = currentRow ? STORY_STOPS.find((x) => x.id === currentRow.stopId) : undefined;
+    const routeLine = !pairProgress ? null
+      : pairProgress.completed
+        ? 'Route complete — you made it out, together. Every stop stays open for a replay.'
+        : currentStop
+          ? stop.id === currentStop.id
+            ? `${clearedCount} of ${STORY_STOPS.length} stops cleared together — ${currentStop.name} is where the pair stands.`
+            : `${clearedCount} of ${STORY_STOPS.length} stops cleared together — ${currentStop.name} is next, and tonight you\u2019re sitting at ${stop.name}.`
+          : null;
     return (
-      <div className="story-shell" data-testid="story-room-lobby">
-        <div className="story-topbar">
-          <div className="story-title-block">
-            <p className="story-crumb">Stop {stop.n} of {STORY_STOPS.length} · Story co-op</p>
-            <h1 className="story-title">{stop.name}</h1>
-            <p className="story-sub">{pair[0]} &amp; {pair[1]} · {stop.twist.label}</p>
+      <div className="story-shell story-room-shell" data-testid="story-room-lobby">
+        <div className="story-hero story-room-hero">
+          <div className="story-hero-bg" style={{ backgroundImage: `url(${storyBackdropUrl(stop)})` }} aria-hidden />
+          <div className="story-topbar">
+            <div className="story-title-block">
+              <p className="story-crumb">Stop {stop.n} of {STORY_STOPS.length} · Story co-op</p>
+              <h1 className="story-title">{stop.name}</h1>
+              <p className="story-sub">{pair[0]} &amp; {pair[1]} · {stop.twist.label}</p>
+            </div>
+            <span className="dock-slot" aria-hidden />
           </div>
-          <span className="dock-slot" aria-hidden />
         </div>
         <div className="story-room-share">
-          <span className="story-room-code" data-testid="story-room-code">{code}</span>
+          <div className="story-room-ticket">
+            <span className="story-room-ticket-label">Room code</span>
+            <span className="story-room-code" data-testid="story-room-code">{code}</span>
+          </div>
           <button type="button" className="btn ghost" data-testid="story-room-copy" onClick={() => { void navigator.clipboard?.writeText(shareUrl).catch(() => undefined); }}>
             Copy invite link
           </button>
         </div>
-        <ol className="story-room-seats" data-testid="story-room-seats">
-          {cs.room!.seats.map((seat, i) => (
-            <li key={i} className="story-room-seat">
-              <span className="story-room-seat-who">
-                {seat.kind === 'human' ? seat.name : seat.kind === 'bot' ? (seat.was ? `Dee (covering for ${seat.was})` : seat.name) : i === 2 ? (story.partnerUid ? 'Your partner — on their way in' : 'Open — share the code') : '—'}
-              </span>
-              <span className="story-room-seat-role">{i === 0 ? 'Host' : i === 2 ? 'Partner' : 'The stop’s pair'}</span>
-            </li>
-          ))}
-        </ol>
-        {!story.partnerUid && <p className="story-note" data-testid="story-room-waiting">Waiting for your partner — send them the code or the invite link. The run starts when you both sit down.</p>}
+        <div className="story-room-table" data-testid="story-room-seats">
+          <span className="story-room-felt-mark" aria-hidden>♠</span>
+          {seats.map((seat, i) => {
+            const status = seatStatus(seat, i);
+            const isReady = seat.kind === 'human' && !!seat.uid && story.ready.includes(seat.uid);
+            return (
+              <div key={i} className={`story-room-seat pos-${posOf(i)}${seat.kind === 'human' && !seat.connected ? ' away' : ''}`}>
+                <RoomSeatFace seat={seat} stop={stop} index={i} />
+                <span className="story-room-seat-name">{seatName(seat, i)}</span>
+                <span className="story-room-seat-role">{i === 0 ? 'Host' : i === 2 ? 'Partner' : 'The stop’s pair'}</span>
+                {status && <span className="story-room-seat-status">{status}</span>}
+                {isReady && <span className="story-room-seat-ready">Ready ✓</span>}
+              </div>
+            );
+          })}
+        </div>
+        {!story.partnerUid && <p className="story-room-line" data-testid="story-room-waiting">Waiting for your partner — send them the code or the invite link. The run starts when you both sit down.</p>}
         {(() => {
           const c = awarenessCaseFor(stop.id, awarenessCtxFor(stop));
           return c === 'b' || c === 'd'
-            ? <p className="story-note" data-testid="story-room-aware">They know one of you here.</p>
+            ? <p className="story-room-line aware" data-testid="story-room-aware">They know one of you here.</p>
             : null;
         })()}
-        {amHost && pairProgress && (
+        {pairProgress && (
           <div className="story-room-stops" data-testid="story-room-stops">
             <p className="story-coop-h">The pair’s stop</p>
-            <div className="story-room-stoprow">
-              {pairProgress.stops.map((row) => {
+            <div className="story-gate-thread" aria-hidden>
+              {pairProgress.stops.map((row, i) => {
                 const s = STORY_STOPS.find((x) => x.id === row.stopId)!;
-                const lockedStop = row.state === 'locked';
                 return (
-                  <button
-                    key={row.stopId}
-                    type="button"
-                    className={`btn ${row.stopId === stop.id ? 'primary' : 'ghost'}`}
-                    disabled={lockedStop}
-                    data-testid={`story-room-stop-${row.stopId}`}
-                    onClick={() => ready(row.stopId)}
-                  >{lockedStop ? '🔒 ' : ''}{s.name}</button>
+                  <Fragment key={row.stopId}>
+                    {i > 0 && <span className="story-gate-link" />}
+                    <span className={`story-gate-node state-${row.state}${row.stopId === 'king' ? ' is-king' : ''}${row.stopId === stop.id ? ' is-here' : ''}`}>{row.state === 'cleared' ? '✓' : s.n}</span>
+                  </Fragment>
                 );
               })}
             </div>
+            {routeLine && <p className="story-room-route-line">{routeLine}</p>}
+            {amHost && (
+              <div className="story-room-stoprow">
+                {pairProgress.stops.filter((row) => row.state !== 'locked').map((row) => {
+                  const s = STORY_STOPS.find((x) => x.id === row.stopId)!;
+                  return (
+                    <button
+                      key={row.stopId}
+                      type="button"
+                      className={`btn ${row.stopId === stop.id ? 'primary' : 'ghost'}`}
+                      data-testid={`story-room-stop-${row.stopId}`}
+                      onClick={() => ready(row.stopId)}
+                    >{s.name}</button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
         <div className="story-room-actions">
