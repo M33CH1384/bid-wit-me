@@ -70,17 +70,27 @@ export function dealClockArmed(introHand: number | null, dealReady: boolean): bo
 }
 
 /**
- * A deal-held card whose tween never started must not stay invisible once the deal is over.
- * The hold is captured at mount (Card3D's `hideUntilStart` ref), but the deal clock that
- * clears `holdUntilMove` is wall-clock while the tween's wait advances in frame time —
- * capped at 50ms a frame. If the table loads late into the deal window (heavy first-load
- * on a phone: WebGL, shaders, venue), most of the hand can still be waiting when the
- * deal window expires; on a starved canvas those waits then crawl and the fan sits at
- * a few visible cards for the rest of the hand. The live prop says the deck beat is
- * done: deal the card in now.
+ * A deal-held card must not stay invisible once the live props stop holding it.
+ * The hold is captured at mount (Card3D's `hideUntilStart` ref), but the deal clock
+ * that clears `holdUntilMove` is wall-clock while the tween's wait advances in frame
+ * time — capped at 50ms a frame. If the table loads late into the deal window (heavy
+ * first load on a phone: WebGL, shaders, venue), most of the hand can still be
+ * waiting when the deal window expires; on a starved canvas those waits then crawl.
+ *
+ * The predicate takes NO tween state, on purpose. The 2026-10-19 release asked the
+ * frame loop for `held && !liveHold && !started` — and the `started` gate is what
+ * let the bug back in (owner recurrence, 2026-10-24, online game start): the render
+ * that closes the deal window also re-renders the card with its settled 'lift'
+ * motion, and the lift settle marks the tween started as it snaps the card into
+ * its fan slot — without ever making it visible. From that commit on, the
+ * frame-loop release read "started" and refused forever; only reopening the app
+ * (a fresh mount that never captures the hold) showed the cards. The hold is
+ * stale the moment the live prop drops it: Card3D releases it in the commit that
+ * observes the flip (a layout effect, before paint) and the frame loop re-checks
+ * the same predicate as a backstop. Neither path may consult the tween.
  */
-export function dealHoldReleased(o: { held: boolean; liveHold: boolean; started: boolean }): boolean {
-  return o.held && !o.liveHold && !o.started;
+export function dealHoldStale(o: { held: boolean; liveHold: boolean }): boolean {
+  return o.held && !o.liveHold;
 }
 
 /** How long the deal gate waits for the scene's first rendered frame before it lifts anyway. */

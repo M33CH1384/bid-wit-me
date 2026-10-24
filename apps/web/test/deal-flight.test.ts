@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Xform } from '../src/three/layout';
-import { FIRST_FRAME_FALLBACK_MS, dealGateOpen, dealHoldReleased, handNeedsDeal, handOnFan, handSlotKey, openingFlight } from '../src/three/dealFlight';
+import { FIRST_FRAME_FALLBACK_MS, dealGateOpen, dealHoldStale, handNeedsDeal, handOnFan, handSlotKey, openingFlight } from '../src/three/dealFlight';
 import { dealTimeline, dealtSlotCount, seatDealDelay } from '../src/three/dealTimeline';
 
 const deck: Xform = { p: [1, 2, 3], q: [0, 0, 0, 1], s: 1 };
@@ -70,24 +70,36 @@ describe('cards dealt so far', () => {
   });
 });
 
-describe('deal hold release', () => {
-  it('releases a still-held card once the deal is over and its tween never started', () => {
+describe('deal hold staleness', () => {
+  // Supersedes the 2026-10-19 'deal hold release' block. Same intent — a card the deal
+  // held must be shown once the deal is over — with a stronger contract: the predicate
+  // takes no tween state at all. The old `started` gate is precisely what the
+  // 2026-10-24 recurrence poisoned (see the lift-settle case below), so the case the
+  // old suite pinned as "never release" is now the case that MUST release.
+  it('releases a still-held card once the live prop stops holding it', () => {
     // Demetrius 2026-10-19: 4 cards visible at game start, refresh needed for the full hand.
     // The card mounted during the deal (held), the deal window expired (liveHold gone),
     // but the frame-clock tween never got it off the deck.
-    expect(dealHoldReleased({ held: true, liveHold: false, started: false })).toBe(true);
+    expect(dealHoldStale({ held: true, liveHold: false })).toBe(true);
+  });
+
+  it('releases even when the tween was marked started while the card was still hidden', () => {
+    // Demetrius 2026-10-24: online game start, cards invisible until the app was
+    // reopened. The render that closed the deal window re-rendered the still-waiting
+    // card with its settled 'lift' motion; the lift settle marked the tween started
+    // while snapping the hidden card into its fan slot, and the old predicate read
+    // that flag and refused to release for the rest of the hand. There is no way to
+    // pass a tween state into the predicate now — that refusal cannot be rebuilt.
+    expect(dealHoldStale({ held: true, liveHold: false })).toBe(true);
   });
 
   it('keeps the hold while the deal is still running', () => {
-    expect(dealHoldReleased({ held: true, liveHold: true, started: false })).toBe(false);
-  });
-
-  it('never re-holds a card whose tween already started', () => {
-    expect(dealHoldReleased({ held: true, liveHold: false, started: true })).toBe(false);
+    expect(dealHoldStale({ held: true, liveHold: true })).toBe(false);
   });
 
   it('is a no-op for a card that was never held', () => {
-    expect(dealHoldReleased({ held: false, liveHold: false, started: false })).toBe(false);
+    expect(dealHoldStale({ held: false, liveHold: false })).toBe(false);
+    expect(dealHoldStale({ held: false, liveHold: true })).toBe(false);
   });
 });
 

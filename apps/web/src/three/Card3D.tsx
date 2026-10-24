@@ -10,7 +10,7 @@ import { blastPose } from './blastSweep';
 import { releaseTornadoCard, tornadoCardLeft } from './tornadoSweep';
 import { fireCue, fx } from '../fx';
 import { restingFlightWait } from '../trickTiming';
-import { dealHoldReleased, openingFlight } from './dealFlight';
+import { dealHoldStale, openingFlight } from './dealFlight';
 import { retainFrontTexture } from './cardFace';
 import { restingFacing, trickFacingArrived } from './trickFacing';
 import { gatherPose } from './gather';
@@ -194,10 +194,27 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   });
   useLayoutEffect(() => {
     const g = ref.current;
-    if (g && hideUntilStart.current && !tw.current.started) g.visible = false;
+    if (!g) return;
+    // A deal hold lives only while the live prop holds it. The commit that observes the
+    // deal window closing releases the card HERE — before paint, with no dependence on a
+    // frame ever running — and the lift settle below cannot poison the release, because
+    // this runs first in the same commit and the predicate never consults the tween
+    // (2026-10-24: the settle marked the card started while it was still hidden, and
+    // the frame-loop release's started-gate then refused for the rest of the hand).
+    if (dealHoldStale({ held: hideUntilStart.current, liveHold: holdUntilMove })) {
+      hideUntilStart.current = false;
+      tw.current.wait = 0;
+      g.visible = true;
+    }
+    if (hideUntilStart.current && !tw.current.started) g.visible = false;
+    // Field/test probe: this card's visibility as of this commit (companion to __bwmHandVis).
+    if (cardId && typeof window !== 'undefined') {
+      const w = window as unknown as { __bwmCardVis?: Record<string, boolean> };
+      (w.__bwmCardVis ??= {})[cardId] = g.visible;
+    }
     // A resumed card has no flight. Snap it before the first paint so the hand and the trick
     // are not at the origin for a frame (that frame reads as an empty fan or an empty trick).
-    if (!g || tw.current.init || from || origin) return;
+    if (tw.current.init || from || origin) return;
     if (!target.p.every(Number.isFinite) || !target.q.every(Number.isFinite) || !Number.isFinite(target.s)) return;
     g.position.set(...target.p);
     g.quaternion.set(...target.q);
@@ -240,6 +257,10 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       liftG.position.set(off.x, off.y, 0);
     }
     g.updateMatrixWorld(true);
+    // Settled in the fan means shown. If the deal still held this card when the settle
+    // ran, the hold dies with the settle — a card must never sit invisible at its own
+    // slot because its tween was marked started before it was ever visible.
+    if (hideUntilStart.current) { hideUntilStart.current = false; g.visible = true; }
     invalidate();
   }, [motion, poseKey, raise, roll, invalidate, target]);
 
@@ -357,10 +378,14 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       }
       invalidate();
     } else if (am.opacity !== 0) am.opacity = 0;
-    // The deal is over but this card never left the deck: the mount-time hold is a ref and
-    // the tween wait runs in frame time, which can crawl on a starved canvas long after the
-    // wall-clock deal expired. Release it, or the fan can sit at a few cards all hand.
-    if (dealHoldReleased({ held: hideUntilStart.current, liveHold: holdUntilMove, started: tw.current.started })) {
+    // Backstop for the commit-time release in the layout effect above: the deal is over
+    // but this card never left the deck — the mount-time hold is a ref and the tween wait
+    // runs in frame time, which can crawl on a starved canvas long after the wall-clock
+    // deal expired. Release it, or the fan can sit at a few cards all hand. The tween's
+    // `started` flag is deliberately NOT consulted (see dealHoldStale): the lift settle
+    // sets it while a card is still hidden, which is how this release was poisoned in
+    // the 2026-10-24 recurrence.
+    if (dealHoldStale({ held: hideUntilStart.current, liveHold: holdUntilMove })) {
       hideUntilStart.current = false;
       tw.current.wait = 0;
       g.visible = true;
