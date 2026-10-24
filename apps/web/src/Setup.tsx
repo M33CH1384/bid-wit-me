@@ -195,6 +195,12 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
   // game that's waiting. Re-read on mount and whenever the app returns to
   // the front — finishing, discarding, or resetting the match (the reset
   // tool clears this same slot) must never leave a ghost resume behind.
+  // The signpost is a SHORTCUT, never the only door (owner, 2026-10-24):
+  // while a save stood here alone, the front door offered nothing but
+  // resuming the solo match — no way into the mode gate, no way to
+  // start a co-op run. So a plain Story Mode entry row stands beside
+  // the signpost whenever it shows: it opens /story itself, where the
+  // Solo/Co-op gate asks like it does for everyone else.
   const [storySave, setStorySave] = useState<StorySaveSummary | null>(() => storySaveSummary(loadStoryGame()));
   useEffect(() => {
     const reread = () => setStorySave(storySaveSummary(loadStoryGame()));
@@ -313,7 +319,10 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
         {STORY_OWNER_ONLY && storyLockedFor(storyAccess === undefined ? null : storyAccess) ? (
           <button type="button" className="quiet-row" data-testid="story-mode-locked" disabled aria-disabled="true"><span>🔒 Story mode</span><span className="value-chip">Coming soon</span></button>
         ) : storySave ? (
-          <button type="button" className="quiet-row story-resume-row" data-testid="story-mode" data-resume-stop={storySave.stop.id} onClick={() => navigate(`/story?resume=${storySave.stop.id}`)}><span>Resume — {storySave.stop.name}</span><span className="value-chip">{storyPairLabel(storySave.stop)} · Hand {storySave.handNo}</span></button>
+          <>
+            <button type="button" className="quiet-row story-resume-row" data-testid="story-mode" data-resume-stop={storySave.stop.id} onClick={() => navigate(`/story?resume=${storySave.stop.id}`)}><span>Resume — {storySave.stop.name}</span><span className="value-chip">{storyPairLabel(storySave.stop)} · Hand {storySave.handNo}</span></button>
+            <button type="button" className="quiet-row" data-testid="story-mode-entry" onClick={() => navigate('/story')}><span>Story mode</span><span className="value-chip">Solo or co-op</span></button>
+          </>
         ) : (
           <button type="button" className="quiet-row" data-testid="story-mode" onClick={() => navigate('/story')}><span>Story mode</span><span className="value-chip">Run the block</span></button>
         )}

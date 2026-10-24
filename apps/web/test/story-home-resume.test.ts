@@ -284,6 +284,43 @@ describe('Home story row', () => {
     expect(row!.textContent).toContain('Run the block');
     expect(localStorage.getItem(STORY_SAVE_KEY)).toBeNull();
   });
+
+  /* The 2026-10-24 trap: while a save stood here, Resume was the ONLY
+   * story door on Home — no route to the mode gate, no way to start a
+   * co-op run. The signpost keeps its deep-link; an entry row stands
+   * beside it and opens /story itself, where the gate asks. */
+  it('a save never leaves Resume as the only door: the entry row stands beside it and opens the plain story route', async () => {
+    stubFetch(true);
+    saveStoryGame(mkSave('barbershop', 4), mkSave('barbershop', 4).story);
+    const c = await renderHome();
+    const resume = c.querySelector('[data-testid="story-mode"]');
+    expect(resume!.getAttribute('data-resume-stop')).toBe('barbershop');
+    const entry = c.querySelector<HTMLButtonElement>('[data-testid="story-mode-entry"]');
+    expect(entry).toBeTruthy();
+    expect(entry!.textContent).toContain('Story mode');
+    expect(entry!.textContent).toContain('Solo or co-op');
+    await act(async () => { entry!.click(); });
+    expect(location.pathname).toBe('/story');
+    expect(location.search).toBe('');
+  });
+
+  it('no save: no separate entry row — the one plain row already is the entry', async () => {
+    stubFetch(true);
+    const c = await renderHome();
+    expect(c.querySelector('[data-testid="story-mode"]')).toBeTruthy();
+    expect(c.querySelector('[data-testid="story-mode-entry"]')).toBeNull();
+  });
+
+  it('clearing the save takes the extra entry row away with the signpost', async () => {
+    stubFetch(true);
+    saveStoryGame(mkSave('barbershop', 4), mkSave('barbershop', 4).story);
+    const c = await renderHome();
+    expect(c.querySelector('[data-testid="story-mode-entry"]')).toBeTruthy();
+    clearStoryGame();
+    await act(async () => { window.dispatchEvent(new Event('focus')); });
+    expect(c.querySelector('[data-testid="story-mode-entry"]')).toBeNull();
+    expect(c.querySelector('[data-testid="story-mode"]')!.textContent).toContain('Run the block');
+  });
 });
 
 /* ---- StoryHome consuming the directive ---- */
@@ -336,6 +373,34 @@ describe('StoryHome resume consumption', () => {
     const c = await renderStoryHome('?resume=not-a-stop');
     expect(c.querySelector('[data-testid="mock-table"]')).toBeNull();
     expect(c.querySelector('[data-testid="story-map"]')).toBeTruthy();
+  });
+
+  it('a solo save present + a plain entry: the gate stands with Co-op beside Solo, and Co-op opens the partner step', async () => {
+    stubFetch(true, 1);
+    saveStoryGame(mkSave('barbershop', 4, 1), mkSave('barbershop', 4, 1).story);
+    // Raw render — the harness's renderStoryHome passes the gate as a
+    // solo player would; here the gate itself is the subject. The save
+    // must not pre-empt it: no auto-resume without the directive, no
+    // straight-to-map without the question.
+    unmount();
+    history.replaceState(null, '', '/story');
+    el = document.createElement('div');
+    document.body.appendChild(el);
+    root = createRoot(el);
+    await act(async () => { root!.render(createElement(StoryHome)); });
+    await settle();
+    expect(el.querySelector('[data-testid="mock-table"]')).toBeNull();
+    expect(el.querySelector('[data-testid="story-mode-gate"]')).toBeTruthy();
+    expect(el.querySelector('[data-testid="story-gate-solo"]')).toBeTruthy();
+    const coop = el.querySelector('[data-testid="story-gate-coop"]');
+    expect(coop).toBeTruthy();
+    await act(async () => { (coop as HTMLElement).click(); });
+    await settle();
+    // The co-op branch: the partner step (your pair runs / start one)
+    // renders — the run the owner could not reach.
+    expect(el.querySelector('[data-testid="story-coop-home"]')).toBeTruthy();
+    // …and the solo run is untouched on its own track: the save waits.
+    expect(loadStoryGame()?.story.stopId).toBe('barbershop');
   });
 
   it('map and Home agree: the same save shows the same facts on both surfaces', async () => {

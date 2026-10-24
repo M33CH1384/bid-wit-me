@@ -22,17 +22,28 @@
  *
  * The fix keeps the heal and repairs what it destroys: the gate's
  * answer is remembered in sessionStorage — the same tab-scoped
- * lifetime as the heal's own reload flag — so the gate is asked once
- * per visit and a heal reload mid-visit lands back on the map. These
- * pins render StoryHome the way the heal leaves it: a fresh mount in
- * the same tab session.
+ * lifetime as the heal's own reload flag — so a heal reload mid-visit
+ * lands back on the map.
+ *
+ * The refinement (owner, 2026-10-24): the remembered answer may not
+ * swallow the gate for the whole session. "If I've already started a
+ * solo story mode, I have no way to then start a co-op mode. It only
+ * gives me the option to resume my solo mode." Reading the answer
+ * back on every mount meant a deliberate re-entry — Home → Story
+ * Mode, same session — rode the remembered 'solo' straight to the
+ * solo map with no gate at all. So the answer is restored ONLY when
+ * this document is a reload of the story screen itself (the heal's
+ * landing, modeled here by a stubbed navigation entry: type
+ * 'reload', name …/story). Every deliberate entry is asked. These
+ * pins render StoryHome both ways: as an entry (navigation entry
+ * 'navigate') and as the heal leaves it (entry 'reload' of /story).
  */
 import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { STORY_STOPS } from '@spades/bots';
-import StoryHome, { STORY_MODE_KEY, loadStoryMode, saveStoryMode, storedStoryMode } from '../src/story/StoryHome';
+import StoryHome, { STORY_MODE_KEY, initialStoryMode, loadStoryMode, saveStoryMode, storedStoryMode, storyReloadEntry } from '../src/story/StoryHome';
 import { themeStore } from '../src/theme';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -93,6 +104,7 @@ beforeEach(() => {
 afterEach(() => {
   unmount();
   vi.unstubAllGlobals();
+  perfSlot.getEntriesByType = realGetEntries;
   localStorage.clear();
   sessionStorage.clear();
   history.replaceState(null, '', '/');
@@ -104,8 +116,29 @@ async function settle() {
   await act(async () => { await new Promise((r) => setTimeout(r, 25)); });
 }
 
-/** A fresh StoryHome mount — what a document reload (the chunk heal) leaves behind. */
-async function renderStoryHome() {
+/* The mount's document story, told by the navigation entry the way a
+ * browser tells it: a deliberate entry arrives on a fresh document
+ * ('navigate'); the chunk heal lands on a document RELOADED at the
+ * story screen itself ('reload', name …/story). StoryHome reads the
+ * pair to decide whether the remembered gate answer may be restored
+ * (storyDocumentReload) — so each render below declares which
+ * document it models, deterministically, whatever the test DOM's own
+ * entry happens to say. */
+const perfSlot = performance as { getEntriesByType?: (t: string) => unknown };
+const realGetEntries = perfSlot.getEntriesByType;
+function stubNavigationEntry(entry: { type: string; name: string } | null) {
+  perfSlot.getEntriesByType = (t: string) => (t === 'navigation'
+    ? (entry ? [entry] : [])
+    : (realGetEntries ? realGetEntries.call(performance, t) as unknown[] : []));
+}
+const ENTRY_NAVIGATE = { type: 'navigate', name: 'https://bid-wit-me.pages.dev/' };
+const ENTRY_STORY_RELOAD = { type: 'reload', name: 'https://bid-wit-me.pages.dev/story' };
+
+/** A fresh StoryHome mount. With no argument it models a deliberate
+ *  entry (a fresh document); pass ENTRY_STORY_RELOAD to model what a
+ *  document reload — the chunk heal — leaves behind. */
+async function renderStoryHome(navEntry: { type: string; name: string } = ENTRY_NAVIGATE) {
+  stubNavigationEntry(navEntry);
   unmount();
   history.replaceState(null, '', '/story');
   el = document.createElement('div');
@@ -169,7 +202,7 @@ describe('StoryHome mode gate — the heal reload must not re-ask', () => {
     expect(c.querySelector('[data-testid="story-mode-gate"]')).toBeNull();
   });
 
-  it('the reported bug: mount, choose Solo, REMOUNT (the heal reload) — the map, not the gate', async () => {
+  it('the reported bug: mount, choose Solo, REMOUNT as the heal leaves it (a reload of /story) — the map, not the gate', async () => {
     stubFetch();
     const first = await renderStoryHome();
     const solo = first.querySelector('[data-testid="story-gate-solo"]');
@@ -178,21 +211,63 @@ describe('StoryHome mode gate — the heal reload must not re-ask', () => {
     await settle();
     expect(first.querySelector('[data-testid="story-map"]')).toBeTruthy();
 
-    // The chunk heal reloads the document: a brand-new StoryHome mount
-    // in the same tab session. Before the fix this render was the gate
-    // again — the owner's "takes me back to the menu asking if I want
-    // to play solo or co-op".
-    const second = await renderStoryHome();
+    // The chunk heal reloads the DOCUMENT at the story screen: a
+    // brand-new StoryHome mount whose navigation entry is a reload
+    // of /story itself. Before the session-memory fix this render was
+    // the gate again — the owner's "takes me back to the menu asking
+    // if I want to play solo or co-op".
+    const second = await renderStoryHome(ENTRY_STORY_RELOAD);
     expect(second.querySelector('[data-testid="story-mode-gate"]')).toBeNull();
     expect(second.querySelector('[data-testid="story-map"]')).toBeTruthy();
   });
 
-  it('a remembered Co-op answer remounts onto the co-op home, not the gate', async () => {
+  it('a remembered Co-op answer restores onto the co-op home on a reload of /story, not the gate', async () => {
+    stubFetch();
+    saveStoryMode('coop');
+    const c = await renderStoryHome(ENTRY_STORY_RELOAD);
+    expect(c.querySelector('[data-testid="story-mode-gate"]')).toBeNull();
+    expect(c.querySelector('[data-testid="story-coop-home"]')).toBeTruthy();
+  });
+
+  /* The 2026-10-24 trap: the remembered answer swallowed the gate on
+   * DELIBERATE entries too, so a solo run in progress left co-op with
+   * no door at all. An entry is not a reload of the story document —
+   * it is asked, whatever the session remembers. */
+  it('a deliberate re-entry is asked again — a remembered Solo answer does not ride past the gate', async () => {
+    stubFetch();
+    const first = await renderStoryHome();
+    const solo = first.querySelector('[data-testid="story-gate-solo"]');
+    expect(solo).toBeTruthy();
+    await act(async () => { (solo as HTMLElement).click(); });
+    await settle();
+    expect(first.querySelector('[data-testid="story-map"]')).toBeTruthy();
+    expect(sessionStorage.getItem(STORY_MODE_KEY)).toBe('solo');
+
+    // Home → Story Mode again, same tab session, same document life:
+    // a fresh mount, not a reload of /story. The gate stands.
+    const second = await renderStoryHome();
+    expect(second.querySelector('[data-testid="story-mode-gate"]')).toBeTruthy();
+    expect(second.querySelector('[data-testid="story-gate-coop"]')).toBeTruthy();
+    expect(second.querySelector('[data-testid="story-map"]')).toBeNull();
+  });
+
+  it('a remembered Co-op answer does not swallow a deliberate entry either — and Solo from the gate opens the solo map', async () => {
     stubFetch();
     saveStoryMode('coop');
     const c = await renderStoryHome();
-    expect(c.querySelector('[data-testid="story-mode-gate"]')).toBeNull();
-    expect(c.querySelector('[data-testid="story-coop-home"]')).toBeTruthy();
+    expect(c.querySelector('[data-testid="story-mode-gate"]')).toBeTruthy();
+    const solo = c.querySelector('[data-testid="story-gate-solo"]');
+    expect(solo).toBeTruthy();
+    await act(async () => { (solo as HTMLElement).click(); });
+    await settle();
+    expect(c.querySelector('[data-testid="story-map"]')).toBeTruthy();
+  });
+
+  it('a reload of some OTHER screen is not a story reload — the gate still asks', async () => {
+    stubFetch();
+    saveStoryMode('solo');
+    const c = await renderStoryHome({ type: 'reload', name: 'https://bid-wit-me.pages.dev/' });
+    expect(c.querySelector('[data-testid="story-mode-gate"]')).toBeTruthy();
   });
 
   it('a corrupt remembered answer is ignored — the gate asks, as a first visit', async () => {
@@ -200,5 +275,32 @@ describe('StoryHome mode gate — the heal reload must not re-ask', () => {
     sessionStorage.setItem(STORY_MODE_KEY, 'banana');
     const c = await renderStoryHome();
     expect(c.querySelector('[data-testid="story-mode-gate"]')).toBeTruthy();
+  });
+});
+
+/* ---- the reload discriminator itself ---- */
+
+describe('storyReloadEntry / initialStoryMode — only a reload of /story restores', () => {
+  it('reads the navigation entry pair, and nothing else, as a story reload', () => {
+    expect(storyReloadEntry([{ type: 'reload', name: 'https://bid-wit-me.pages.dev/story' }])).toBe(true);
+    expect(storyReloadEntry([{ type: 'reload', name: 'https://bid-wit-me.pages.dev/story?resume=porch' }])).toBe(true);
+    expect(storyReloadEntry([{ type: 'reload', name: 'https://bid-wit-me.pages.dev/' }])).toBe(false);
+    expect(storyReloadEntry([{ type: 'reload', name: 'https://bid-wit-me.pages.dev/profile' }])).toBe(false);
+    expect(storyReloadEntry([{ type: 'navigate', name: 'https://bid-wit-me.pages.dev/story' }])).toBe(false);
+    expect(storyReloadEntry([{ type: 'back_forward', name: 'https://bid-wit-me.pages.dev/story' }])).toBe(false);
+    expect(storyReloadEntry([{ type: 'reload' }])).toBe(false);
+    expect(storyReloadEntry([])).toBe(false);
+    expect(storyReloadEntry(undefined)).toBe(false);
+  });
+
+  it('initialStoryMode restores the remembered answer only under a story reload', () => {
+    saveStoryMode('coop');
+    stubNavigationEntry(ENTRY_NAVIGATE);
+    expect(initialStoryMode()).toBeNull();
+    stubNavigationEntry(ENTRY_STORY_RELOAD);
+    expect(initialStoryMode()).toBe('coop');
+    stubNavigationEntry({ type: 'reload', name: 'https://bid-wit-me.pages.dev/' });
+    expect(initialStoryMode()).toBeNull();
+    perfSlot.getEntriesByType = realGetEntries;
   });
 });

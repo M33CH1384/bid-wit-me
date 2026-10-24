@@ -104,10 +104,20 @@ export function storyResumeStopId(search: string): string | null {
  * retry then worked because the new boot's chunks all resolve.
  *
  * The answer now lives in sessionStorage — the same tab-scoped
- * lifetime as the heal's own reload flag — so the gate is still
- * asked once per visit, a heal reload mid-visit lands back on the
- * map the player was looking at, and a genuinely new visit (new
- * tab) is asked again, exactly as the gate was specced.
+ * lifetime as the heal's own reload flag — and a heal reload that
+ * lands back on this screen restores it instead of re-asking (see
+ * initialStoryMode below).
+ *
+ * What the remembered answer is NOT (owner, 2026-10-24): a pass for
+ * the rest of the session. Reading it back on every mount made
+ * co-op unreachable from the front door — start a solo run, go
+ * Home, tap Story Mode again, and the remembered 'solo' rode
+ * straight to the solo map; with a match in progress, Home's only
+ * story row was Resume, so the pair run had no door at all. The
+ * answer is now read back in exactly one case: this document is a
+ * reload of the story screen itself (the heal's landing, or the
+ * player's own refresh mid-visit). Every deliberate entry is asked
+ * at the gate like a first visit, solo run or no solo run.
  */
 export const STORY_MODE_KEY = 'bwm.storyMode.v1';
 
@@ -125,6 +135,42 @@ export function loadStoryMode(): 'solo' | 'coop' | null {
 
 export function saveStoryMode(m: 'solo' | 'coop'): void {
   try { sessionStorage.setItem(STORY_MODE_KEY, m); } catch { /* private mode: the gate just asks again */ }
+}
+
+/**
+ * Is this document a reload of the story screen itself? The
+ * navigation entry carries both facts: its type is 'reload' only
+ * when the document itself was reloaded (the chunk heal's landing,
+ * or the player's own refresh mid-visit), and its name is the URL
+ * that document loaded at — so a reload at Home followed by a tap
+ * into Story Mode is an ENTRY, not a reload of /story, and it asks.
+ * Anything unknown (no entry, an unparseable name, an environment
+ * without the API) reads as an entry: the gate asking one extra
+ * time is a tap; the gate never asking was a trap.
+ */
+export function storyReloadEntry(entries: readonly { type?: string; name?: string }[] | undefined): boolean {
+  const e = entries?.[0];
+  if (!e || e.type !== 'reload' || !e.name) return false;
+  try { return new URL(e.name).pathname === '/story'; }
+  catch { return e.name.split(/[?#]/)[0]!.endsWith('/story'); }
+}
+
+export function storyDocumentReload(): boolean {
+  try {
+    const perf = (globalThis as { performance?: { getEntriesByType?: (t: string) => unknown } }).performance;
+    const entries = perf?.getEntriesByType?.('navigation') as { type?: string; name?: string }[] | undefined;
+    return storyReloadEntry(entries);
+  } catch { return false; }
+}
+
+/**
+ * The mode a fresh StoryHome mount starts with: the remembered
+ * answer when this document is a reload of the story screen itself
+ * (the heal must land on the map, not re-ask); no answer — the
+ * gate — on every deliberate entry.
+ */
+export function initialStoryMode(): 'solo' | 'coop' | null {
+  return storyDocumentReload() ? loadStoryMode() : null;
 }
 
 export default function StoryHome() {
@@ -170,15 +216,17 @@ export default function StoryHome() {
   const [lockedByServer, setLockedByServer] = useState(false);
 
   // ---- Story co-op (Phases 1–2) ----
-  // The mode gate shows once per visit, after the lock/checking screens and
-  // before the map, for signed-in players with story access. The answer is
-  // remembered for the tab session (storedStoryMode), so the chunk
-  // self-heal's reload mid-visit restores the map instead of re-asking.
-  // Deep links
+  // The mode gate stands at the entry, after the lock/checking screens
+  // and before the map, for signed-in players with story access. Every
+  // deliberate entry is asked (initialStoryMode): a solo run in
+  // progress, or an answer remembered earlier in the session, must
+  // never swallow the Solo/Co-op choice. The one mount that restores
+  // the remembered answer instead is a reload of the story document
+  // itself — the chunk self-heal landing mid-visit. Deep links
   // (?rematch= / ?resume=) are solo business and bypass it; ?coop=<code> is
   // an invite landing and goes straight to the room. Solo stays the default
   // path and renders exactly as before once chosen.
-  const [mode, setMode] = useState<'solo' | 'coop' | null>(() => loadStoryMode());
+  const [mode, setMode] = useState<'solo' | 'coop' | null>(() => initialStoryMode());
   /** Every deliberate mode choice is remembered for the tab session
    *  (storedStoryMode): a chunk-heal reload restarts this component,
    *  and the player must land on their map, not back at the gate. */
