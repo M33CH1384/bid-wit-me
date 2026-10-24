@@ -2305,6 +2305,22 @@ button.mode-pick::after, button.quiet-row::after { content: ''; position: absolu
 .xp-bar { position: relative; height: 10px; border-radius: 6px; background: rgba(255,255,255,.1); margin-top: 6px; overflow: hidden; }
 .xp-bar i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, var(--purple), var(--gold)); border-radius: 6px; }
 .xp-bar small { position: absolute; right: 6px; top: -1px; font-size: 9px; color: #fff; }
+/* Rep block legibility pass (owner, 2026-10-24, annotated profile screenshot:
+   "This bar needs to be thicker so the numbers can be larger for legibility").
+   On the full profile (ProfileView — /profile and the Social profile share the
+   .profile-view root) the XP bar more than doubles in height, its readout
+   grows to ride inside the bar's end, and the rating/coin chips take larger
+   numbers on a taller chip. The in-game profile modal keeps the compact base
+   sizes above — it never renders under .profile-view, it is a quick-peek card. */
+.profile-view .soc-rep { gap: 10px; }
+.profile-view .soc-rep-level span { font-size: 17px; }
+.profile-view .xp-bar { height: 22px; border-radius: 8px; margin-top: 0; }
+.profile-view .xp-bar i { border-radius: 8px; }
+.profile-view .xp-bar small { right: 10px; top: 50%; transform: translateY(-50%); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: .02em; text-shadow: 0 1px 3px rgba(0,0,0,.65); }
+.profile-view .soc-rep-ranks { flex-wrap: nowrap; gap: 4px; }
+.profile-view .soc-div-chip { font-size: 15px; font-weight: 600; padding: 6px 10px; letter-spacing: -.02em; white-space: nowrap; }
+.profile-view .soc-coin-chip { font-size: 15px; padding: 6px 10px; letter-spacing: -.02em; white-space: nowrap; }
+.profile-view .soc-coin-chip svg { width: 19px; height: 19px; }
 .prof-tabs { display: flex; gap: 4px; margin-bottom: 14px; overflow-x: auto; }
 .prof-tabs button { position: relative; flex: 1; border: 0; background: none; color: var(--muted); font-family: var(--display); font-weight: 700; font-size: 14px; letter-spacing: .05em; text-transform: uppercase; padding: 10px 6px; border-bottom: 2px solid transparent; white-space: nowrap; }
 .prof-tabs button.on { color: var(--gold); border-bottom-color: var(--gold); }
