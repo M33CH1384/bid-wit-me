@@ -274,10 +274,11 @@ describe('the Card Fan (stage 2)', () => {
     expect(store.split("coverThen(apply, 'profile-social')")).toHaveLength(6); // all five swaps
   });
 
-  it('construction: seven abstract card backs, compositor-only, the game spade as the mark', () => {
+  it('construction: nine abstract card backs, compositor-only, the game spade as the mark', () => {
     const fan = read('FanLayer.tsx');
-    expect(fan).toContain('FAN_TILTS');
-    expect(fan).toContain('[-39, -26, -13, 0, 13, 26, 39]');
+    expect(fan).toContain('FAN_COUNT');
+    expect(fan).toContain('fanLayout');
+    expect(fan).toContain('fanCardContains');
     expect(fan).toContain('SPADE_PATH_D');
     expect(fan).toContain('tfan-card');
     expect(fan).not.toContain('<canvas');
@@ -287,6 +288,47 @@ describe('the Card Fan (stage 2)', () => {
     expect(css).toContain('.tfan-layer');
     expect(css).toContain('z-index: 2000');
     expect(css).toContain('.tfan-neon .tfan-card');
+  });
+
+  it('coverage: the CARDS alone blanket the whole viewport — corners, top edge, and a fine grid', async () => {
+    // Owner, on the first fan: "The fan should cover the whole
+    // screen not just the bottom." The first fan's cards topped out
+    // in the lower fifth and the shade did the covering. This pin
+    // computes coverage from the fan's own geometry helpers — cards
+    // only, the shade does not count — so a fan that sits at the
+    // bottom fails here no matter how dark its shade is.
+    const { fanLayout, fanCardContains, FAN_COUNT } = await import('../src/FanLayer');
+    const viewports: Array<[number, number]> = [
+      [390, 844], // the owner's phone class
+      [430, 932], // the big phone
+      [1440, 900], // one wider viewport
+    ];
+    for (const [vw, vh] of viewports) {
+      const layout = fanLayout(vw, vh);
+      expect(layout.tilts, `${vw}x${vh} card count`).toHaveLength(FAN_COUNT);
+      // The pivot sits below the bottom edge and the cards are
+      // longer than the screen is tall — the two facts the old
+      // geometry violated.
+      expect(layout.pivotY, `${vw}x${vh} pivot below the bottom edge`).toBeGreaterThan(vh);
+      expect(layout.h, `${vw}x${vh} cards reach past the top`).toBeGreaterThan(vh);
+      const covered = (x: number, y: number) =>
+        layout.tilts.some((t) => fanCardContains(layout, t, x, y));
+      // All four corners, the top corners above all.
+      for (const [x, y] of [[0, 0], [vw, 0], [0, vh], [vw, vh]] as const) {
+        expect(covered(x, y), `${vw}x${vh} corner (${x}, ${y})`).toBe(true);
+      }
+      // A fine grid: no shade-only region anywhere, top included.
+      const uncovered: string[] = [];
+      const N = 24;
+      for (let i = 0; i <= N; i++) {
+        for (let j = 0; j <= N; j++) {
+          const x = (vw * i) / N;
+          const y = (vh * j) / N;
+          if (!covered(x, y)) uncovered.push(`${Math.round(x)},${Math.round(y)}`);
+        }
+      }
+      expect(uncovered, `${vw}x${vh} uncovered grid points`).toEqual([]);
+    }
   });
 
   it('renders the fan only during a fan episode; input locks on cover, frees on reveal', async () => {
@@ -307,7 +349,7 @@ describe('the Card Fan (stage 2)', () => {
     const layerEl = host.querySelector<HTMLElement>('[data-testid="fan-layer"]');
     expect(layerEl).not.toBeNull();
     expect(layerEl!.style.pointerEvents).toBe('auto');
-    expect(host.querySelectorAll('[data-anim="fan-card"]')).toHaveLength(7);
+    expect(host.querySelectorAll('[data-anim="fan-card"]')).toHaveLength(9);
 
     act(() => vi.advanceTimersByTime(PROGRAM_SPECS.fan.coverMs));
     expect(m).toHaveBeenCalledTimes(1);
