@@ -353,6 +353,9 @@ const FILES: Record<string, string[]> = {
   sweep: ['sweep-1', 'sweep-2'], bid: ['bid'], tap: ['tap'], pop: ['pop'],
   // RIP-sheet wail. Same fetch/decode path as the card foley, so warmEffects has it before the first sheet.
   siren: ['siren'],
+  // Spray-paint transition: a real can's rattle-ball shake + aerosol hiss (CREDITS.md).
+  // Same fetch/decode path, so warmEffects has both decoded before the first spray.
+  'spray-shake': ['spray-shake'], 'spray-hiss': ['spray-hiss'],
 };
 
 type Ctx = AudioContext;
@@ -370,6 +373,8 @@ class Engine {
   private sfxBus: GainNode | null = null;
   private ambBus: GainNode | null = null;
   private buffers = new Map<string, AudioBuffer>();
+  /** Live spray-transition hiss (looping source + its gain) while a cover runs. */
+  private sprayNodes: { src: AudioBufferSourceNode; gain: GainNode } | null = null;
   /** Noise the shot, sheet, and tornado build on first play. Keyed by duration in milliseconds. */
   private noiseBank = new Map<number, AudioBuffer>();
   private loading: Promise<void> | null = null;
@@ -924,6 +929,7 @@ class Engine {
     this.stopVoice();
     this.releaseDecks();
     this.stopBeds();
+    this.sprayNodes = null; // the old hiss nodes die with the old context
     const old = this.ctx;
     this.ctx = null;
     this.master = this.sfxBus = this.sfxDuck = this.nukeBus = this.ambBus = this.venueBus = this.voiceDuck = this.voiceChatBus = this.voiceChatOut = this.musicBus = this.musicDuck = null; this.voiceChatNodes.clear(); // regs kept: re-routed below
@@ -1911,6 +1917,69 @@ class Engine {
     gain.gain.exponentialRampToValueAtTime(peak, t + 0.12);
     src.connect(gain).connect(this.sfxBus!);
     src.start(t);
+  }
+
+  /**
+   * Spray-paint screen transition (owner, 2026-10-23: "add sound to it —
+   * not no cheesy sounds, let's get authentic"): REAL recorded cans, both
+   * CC0 Freesound foley (CREDITS.md) — a rattle-ball shake and a close-nozzle
+   * aerosol hiss cut as a seamless 2 s loop. Driven by spraySound.ts off the
+   * spray controller's phase events, never by hard-coded picture timings.
+   * Sync map: on a fresh cover the shake leads (the tagger shakes, then
+   * sprays) and the hiss starts as the shake's strikes end; on a snap-back
+   * re-cover there is no second shake, the hiss just resumes. Everything
+   * rides the sfx bus, so the SFX volume and mute govern it, modest under
+   * any music. Silent when sound is off, before the first gesture unlock,
+   * or while the context is suspended — the picture never waits on sound.
+   */
+  spraySoundStart(fresh: boolean, hissDelayS = 0): void {
+    if (!this.settings.on || !this.unlocked) return;
+    this.ensure();
+    const c = this.ctx;
+    if (!c || c.state !== 'running' || !this.sfxBus) return;
+    this.spraySoundStop(0.04); // one can at a time: a re-cover restarts clean
+    const t = c.currentTime;
+    if (fresh) {
+      const shake = this.buffers.get('spray-shake');
+      if (shake) {
+        const src = c.createBufferSource(); src.buffer = shake;
+        const g = c.createGain(); g.gain.value = 0.9;
+        src.connect(g).connect(this.sfxBus);
+        src.start(t);
+        this.played.sprayShake = (this.played.sprayShake ?? 0) + 1;
+      }
+    }
+    const hissBuf = this.buffers.get('spray-hiss');
+    if (!hissBuf) return;
+    const src = c.createBufferSource(); src.buffer = hissBuf; src.loop = true;
+    const g = c.createGain();
+    const t0 = t + Math.max(0, hissDelayS);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.5, t0 + 0.07);
+    src.connect(g).connect(this.sfxBus);
+    src.start(t0);
+    this.sprayNodes = { src, gain: g };
+    this.played.sprayHiss = (this.played.sprayHiss ?? 0) + 1;
+  }
+
+  /** Stop the spray hiss with a short exponential decay (the bloom swallows
+   *  it as the cover completes) or a near-cut (the spray was cancelled —
+   *  no orphaned hiss over the next screen). Safe when nothing is playing,
+   *  and when the hiss is still only scheduled (a cancel inside the shake's
+   *  lead): a stop time before the start time means it never sounds. */
+  spraySoundStop(fadeS = 0.15): void {
+    const nodes = this.sprayNodes;
+    this.sprayNodes = null;
+    if (!nodes || !this.ctx) return;
+    try {
+      const t = this.ctx.currentTime;
+      const fade = Math.max(0.03, fadeS);
+      const g = nodes.gain.gain;
+      g.cancelScheduledValues(t);
+      g.setValueAtTime(Math.max(g.value, 0.0001), t);
+      g.exponentialRampToValueAtTime(0.0001, t + fade);
+      nodes.src.stop(t + fade + 0.05);
+    } catch { /* context already rebuilt: the old nodes died with it */ }
   }
 
   /**

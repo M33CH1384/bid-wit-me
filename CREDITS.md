@@ -40,10 +40,14 @@ CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/ (no attribution requ
 | `shuffle.mp3` (card-shuffle), `deal-1..3.mp3` (card-slide-1..3), `play-1..3.mp3` (card-place-1..3), `sweep-1..2.mp3` (card-shove-1..2), `bid.mp3` (chip-lay-1) | Kenney "Casino Audio" 1.1 — https://kenney.nl/assets/casino-audio | CC0 1.0 |
 | `tap.mp3` (click3), `pop.mp3` (rollover2) | Kenney "UI Audio" — https://kenney.nl/assets/ui-audio | CC0 1.0 |
 | `siren.mp3` (RIP-sheet police wail) | "Whelen Wail" by Jefflix — https://freesound.org/people/Jefflix/sounds/157867/ — "Wail sound miked directly from the Whelen siren box" | CC0 1.0 |
+| `spray-shake.mp3` (spray-transition can shake) | "Spray Paint Can Shaking" by Beenjamone — https://freesound.org/people/Beenjamone/sounds/548623/ — a real spray paint can, shaken (the metal ball is audible), Blue Yeti | CC0 1.0 |
+| `spray-hiss.mp3` (spray-transition aerosol hiss) | "Spray Can Sound Effects (Shaking, Spraying)" by BorzSounds — https://freesound.org/people/BorzSounds/sounds/842753/ — a real spray can shaken and sprayed, Zoom H6 | CC0 1.0 |
 
 Kenney files were re-encoded from OGG to mono 64 kbps MP3 (plays on iOS Safari). `siren.mp3` is the same encoding: a 2.7 s slice of that Whelen wail (the rising sweep, from about 5.04 s), with a short fade-in and a half-sine fade-out over the last 0.65 s, peak-normalized to about −1.7 dBTP, mono 64 kbps MP3 at 44.1 kHz. CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/. The your-turn chime, cut/trump hit, spades-broken sting,
 whoosh, BID MADE / SET! / NIL! / BAG PENALTY stingers, win/lose jingles and the optional lounge ambience are
 synthesized at runtime with Web Audio (`apps/web/src/audio.ts`) — no files.
+
+The spray-transition sounds are cuts of those two recordings, stereo 112 kbps MP3 at 44.1 kHz, level-matched to the other SFX: `spray-shake.mp3` is the first 0.27 s of the Beenjamone take (the opening rattle — two-three ball strikes, short fades in/out), and `spray-hiss.mp3` is a 2 s seamless loop cut from the BorzSounds take's long steady spray (about 4.6–7.1 s in), crossfaded at the wrap so it can loop under a cover of any length.
 
 ## Music (`apps/web/public/audio/music/`, shuffled playlist, off by default)
 | File | Track | Artist / source | License |

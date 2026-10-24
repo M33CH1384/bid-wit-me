@@ -10,6 +10,7 @@ import { LeagueTickerRoot } from './social/LeagueTicker';
 import InkLayer from './ink/InkLayer';
 import SprayLayer from './SprayLayer';
 import { cancelSpray, coverThen, sprayRouteEligible } from './spray';
+import { initSpraySound } from './spraySound';
 import { watchPendingClaim } from './pendingClaim';
 import ReactiveGlow from './neon/ReactiveGlow';
 import { initTheme } from './theme';
@@ -95,6 +96,9 @@ function Root() {
   // app load, whichever screen the sign-in lands on (/rewards defers to its
   // own in-place claim so the breakdown can render the delta).
   useEffect(() => { watchPendingClaim(); }, []);
+  // Spray-transition sound (spraySound.ts): the can's shake + hiss follow
+  // the spray controller's phase events; a suppressed spray stays silent.
+  useEffect(() => { initSpraySound(); }, []);
   return (
     <>
       <RouteGuard key={`${path}:${settingsEpoch}`}>
