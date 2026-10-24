@@ -75,6 +75,20 @@
  * initial states (outline undrawn, paint layers solid) and the
  * controller's timers clear it on schedule — worst case is a plain
  * beat of black, never a stuck screen.
+ *
+ * INK BLOOM (the Neon skin of this program, owner 2026-10-23 "Build
+ * them all"): under the Neon theme the controller resolves menu-space
+ * moves to program 'ink', and this layer renders the SAME
+ * choreography re-skinned — the spade forms from blooming, curling
+ * ink in the Neon palette (midnight navy, violet, electric blue,
+ * cyan), the cover completes to ink-dark, and the reveal is the ink
+ * dissipating. Identical beats, identical timings, identical
+ * controller semantics (theme parity: visuals only) — the animation
+ * scheduling below is shared verbatim; only the art differs, and the
+ * ink-only pieces (poured splats, curling blooms at the lobes) are
+ * extra composited tweens the shared scheduler runs when their
+ * elements exist. The ink's textures are static like the spray's
+ * (inkTextures.ts, rendered once).
  */
 import { useEffect, useRef, useSyncExternalStore, type CSSProperties } from 'react';
 import {
@@ -89,6 +103,7 @@ import {
   subscribeSpray,
 } from './spray';
 import { getSprayTextures } from './sprayTextures';
+import { getInkTextures } from './inkTextures';
 import './spray.css';
 
 const PAINT = '#070708';
@@ -276,6 +291,216 @@ function grainStyle(url: string, size: string, position: string): CSSProperties 
   } as CSSProperties;
 }
 
+/* ------------------------------------------------------------------ */
+/* Ink Bloom art — the Neon skin. Same spade, same data-anim pieces,   */
+/* same schedule; the paint is ink: gradient strokes (violet ->       */
+/* electric blue -> cyan), poured splat overlays, curling blooms at    */
+/* the lobes, an ink-dark bloom, and a dissipating reveal.             */
+/* ------------------------------------------------------------------ */
+
+const INK_DARK = '#04050e';
+
+interface SpadeArtProps {
+  geo: SpadeGeo;
+  len: number;
+  coreW: number;
+  wetW: number;
+  speckleW: number;
+  dabPx: number;
+  tipX: number;
+}
+
+function InkCoverArt({ geo, len, coreW, wetW, speckleW, dabPx, tipX }: SpadeArtProps) {
+  const itx = getInkTextures();
+  return (
+    <div className="spray-cover">
+      <div
+        className="spray-spadebox"
+        style={{ left: geo.left, top: geo.top, width: geo.w, height: geo.h }}
+      >
+        <div
+          data-anim="ink-curl-a"
+          className="ink-blob"
+          style={{
+            left: '-16%',
+            top: '-4%',
+            width: '72%',
+            height: '72%',
+            backgroundImage: bgOf(itx.splats),
+            opacity: 0,
+          }}
+        />
+        <div
+          data-anim="ink-curl-b"
+          className="ink-blob"
+          style={{
+            right: '-16%',
+            bottom: '-6%',
+            width: '72%',
+            height: '72%',
+            backgroundImage: bgOf(itx.splats),
+            opacity: 0,
+          }}
+        />
+        <svg className="spray-svg" viewBox="0 0 64 64" aria-hidden="true">
+          <defs>
+            <linearGradient id="ink-grad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stopColor="#8054FF" />
+              <stop offset="0.5" stopColor="#269CFF" />
+              <stop offset="1" stopColor="#5BDFFF" />
+            </linearGradient>
+          </defs>
+          <path
+            data-anim="halo"
+            d={SPADE_D}
+            fill="#8054FF"
+            opacity={0}
+            transform="translate(32 32) scale(1.05) translate(-32 -32)"
+          />
+          <path
+            data-anim="speckle"
+            d={SPADE_D}
+            fill="none"
+            stroke="#5BDFFF"
+            strokeWidth={speckleW}
+            strokeDasharray="0.01 5.6"
+            strokeLinecap="round"
+            opacity={0}
+          />
+          <path
+            data-anim="wet"
+            d={SPADE_D}
+            fill="none"
+            stroke="#269CFF"
+            strokeWidth={wetW}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            pathLength={len}
+            strokeDasharray={len}
+            strokeDashoffset={len}
+            opacity={0.18}
+          />
+          <path
+            data-anim="core"
+            d={SPADE_D}
+            fill="none"
+            stroke="url(#ink-grad)"
+            strokeWidth={coreW}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            pathLength={len}
+            strokeDasharray={len}
+            strokeDashoffset={len}
+            opacity={0.97}
+          />
+        </svg>
+        <svg
+          className="spray-svg"
+          data-anim="fill"
+          viewBox="0 0 64 64"
+          aria-hidden="true"
+          style={{ clipPath: 'inset(0 0 100% 0)' }}
+        >
+          <defs>
+            <linearGradient id="ink-grad-fill" x1="0" y1="1" x2="1" y2="0">
+              <stop offset="0" stopColor="#8054FF" />
+              <stop offset="0.55" stopColor="#269CFF" />
+              <stop offset="1" stopColor="#5BDFFF" />
+            </linearGradient>
+            <pattern id="ink-fill-dots" width="5" height="5" patternUnits="userSpaceOnUse">
+              <circle cx="1" cy="1.2" r="0.4" fill="#5BDFFF" opacity="0.35" />
+              <circle cx="3.4" cy="2.6" r="0.5" fill="#070914" opacity="0.3" />
+              <circle cx="2" cy="4" r="0.3" fill="#8054FF" opacity="0.3" />
+              <circle cx="4.3" cy="4.4" r="0.32" fill="#0a1030" opacity="0.26" />
+            </pattern>
+          </defs>
+          <path d={SPADE_D} fill="url(#ink-grad-fill)" />
+          <path d={SPADE_D} fill="url(#ink-fill-dots)" />
+          <path d={SPADE_D} fill={INK_DARK} opacity={0.22} />
+        </svg>
+        <div
+          data-anim="ink-splats"
+          className="ink-splats"
+          style={{ backgroundImage: bgOf(itx.splats), opacity: 0 }}
+        />
+        <div
+          data-anim="front"
+          className="spray-front"
+          style={{
+            left: -geo.w * 0.06,
+            width: geo.w * 1.12,
+            height: geo.band,
+            backgroundImage: bgOf(itx.front),
+            opacity: 0,
+          }}
+        />
+        <div
+          data-anim="dab-trace"
+          className="spray-dab"
+          style={{ width: dabPx, height: dabPx, opacity: 0 }}
+        >
+          <div className="spray-dab-puff" style={{ backgroundImage: bgOf(itx.brush) }} />
+          <div className="spray-dab-in" style={{ backgroundImage: bgOf(itx.brush) }} />
+        </div>
+        <div
+          data-anim="dab-fill"
+          className="spray-dab"
+          style={{ left: tipX, width: dabPx, height: dabPx, opacity: 0 }}
+        >
+          <div className="spray-dab-puff" style={{ backgroundImage: bgOf(itx.brush) }} />
+          <div className="spray-dab-in" style={{ backgroundImage: bgOf(itx.brush) }} />
+        </div>
+      </div>
+      <div
+        data-anim="bloom"
+        className="spray-bloom"
+        style={{
+          left: geo.cx - geo.maxR,
+          top: geo.cy - geo.maxR,
+          width: geo.maxR * 2,
+          height: geo.maxR * 2,
+          background: INK_DARK,
+          transform: `scale(${geo.bloomS0})`,
+          opacity: 0,
+        }}
+      />
+      <div
+        data-anim="bloom-ring"
+        className="spray-bloom"
+        style={{
+          left: geo.cx - geo.maxR * RING_OVER,
+          top: geo.cy - geo.maxR * RING_OVER,
+          width: geo.maxR * 2 * RING_OVER,
+          height: geo.maxR * 2 * RING_OVER,
+          backgroundImage: bgOf(itx.ring),
+          backgroundSize: '100% 100%',
+          transform: `scale(${geo.ringS0})`,
+          opacity: 0,
+        }}
+      />
+    </div>
+  );
+}
+
+function InkRevealArt() {
+  const itx = getInkTextures();
+  return (
+    <div className="ink-reveal">
+      <div data-anim="rv-base" className="spray-rv ink-rv" />
+      <div
+        data-anim="rv-grain-a"
+        className="spray-rv ink-rv-grain"
+        style={grainStyle(itx.grainA, '200px 200px', '17px 41px')}
+      />
+      <div
+        data-anim="rv-grain-b"
+        className="spray-rv ink-rv-grain"
+        style={grainStyle(itx.grainB, '280px 280px', '113px 67px')}
+      />
+    </div>
+  );
+}
+
 export default function SprayLayer() {
   const snap = useSyncExternalStore(subscribeSpray, getSpraySnapshot);
   const layerRef = useRef<HTMLDivElement | null>(null);
@@ -285,7 +510,7 @@ export default function SprayLayer() {
     return () => registerSprayRenderer(false);
   }, []);
 
-  const sprayId = snap.sprayId;
+  const sprayId = snap.episodeId;
   const phase = snap.phase;
   const active = phase !== 'idle';
   const fromCoverage = snap.fromCoverage;
@@ -442,6 +667,33 @@ export default function SprayLayer() {
         ],
         bloomOpts,
       );
+
+      // Ink skin extras — these elements exist only in the ink art
+      // (run() no-ops on a missing element, so the spray is
+      // untouched): the poured splats gather across the spade
+      // sequence while two ink blooms curl slowly at the lobes —
+      // rotation + scale drift, all composited.
+      run(q('ink-splats'), [{ opacity: '0' }, { opacity: '0.75' }], {
+        duration: SPRAY_SPADE_MS,
+        delay: -resumeMs,
+        easing: 'ease-out',
+      });
+      run(
+        q('ink-curl-a'),
+        [
+          { opacity: '0', transform: 'rotate(0deg) scale(1)' },
+          { opacity: '0.8', transform: 'rotate(22deg) scale(1.14)' },
+        ],
+        { duration: SPRAY_COVER_MS, delay: -resumeMs, easing: 'ease-out' },
+      );
+      run(
+        q('ink-curl-b'),
+        [
+          { opacity: '0', transform: 'rotate(0deg) scale(1.1)' },
+          { opacity: '0.7', transform: 'rotate(-18deg) scale(0.98)' },
+        ],
+        { duration: SPRAY_COVER_MS, delay: -resumeMs, easing: 'ease-out' },
+      );
     } else {
       // Reveal — the HOLD first: for SPRAY_HOLD_MS nothing moves at
       // all (every fade below is delayed by it; the three paint
@@ -503,6 +755,7 @@ export default function SprayLayer() {
   const wetW = (geo.brush * 1.3) / geo.k;
   const speckleW = (geo.brush * 0.8) / geo.k;
   const tipX = (SPADE_START.x - 12) * geo.k;
+  const ink = snap.program === 'ink';
 
   return (
     <div
@@ -514,6 +767,9 @@ export default function SprayLayer() {
       style={{ pointerEvents: snap.phase === 'cover' ? 'auto' : 'none' }}
     >
       {snap.phase === 'cover' ? (
+        ink ? (
+          <InkCoverArt geo={geo} len={LEN} coreW={coreW} wetW={wetW} speckleW={speckleW} dabPx={dabPx} tipX={tipX} />
+        ) : (
         <div className="spray-cover">
           <div
             className="spray-spadebox"
@@ -655,6 +911,9 @@ export default function SprayLayer() {
             }}
           />
         </div>
+        )
+      ) : ink ? (
+        <InkRevealArt />
       ) : (
         <div className="spray-reveal">
           <div data-anim="rv-base" className="spray-rv" />

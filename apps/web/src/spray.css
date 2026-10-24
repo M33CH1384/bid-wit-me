@@ -72,3 +72,30 @@
   background: #070708;
   will-change: opacity, transform;
 }
+
+/* Ink Bloom (the Neon skin): same layer, ink-dark paint. The grain
+   layers carry a deep navy-violet body under their static masks so
+   the dissipating field reads as ink thinning in water, never grey. */
+.ink-rv {
+  background: #04050e;
+}
+.ink-rv-grain {
+  background: linear-gradient(160deg, #120a2e 0%, #04050e 70%);
+}
+.ink-splats {
+  position: absolute;
+  inset: -6%;
+  background-size: cover;
+  background-position: center;
+  mix-blend-mode: screen;
+  will-change: opacity;
+  pointer-events: none;
+}
+.ink-blob {
+  position: absolute;
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  will-change: transform, opacity;
+  pointer-events: none;
+}

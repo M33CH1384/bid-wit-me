@@ -55,6 +55,14 @@ export function initSpraySound(): () => void {
   const off = subscribeSpray(() => {
     const snap = getSpraySnapshot();
     const phase = snap.phase;
+    // The controller now drives the whole transition family; the can
+    // belongs to the spray program only. Other programs' episodes
+    // (ink, fan, deal, sweep, doorway) pass silently here — they have
+    // their own sound wiring (transitionSound.ts) or none.
+    if (snap.program !== 'spray') {
+      prev = phase;
+      return;
+    }
     if (phase === prev) return;
     const was = prev;
     prev = phase;

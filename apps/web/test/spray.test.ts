@@ -209,7 +209,9 @@ describe('coverThen controller', () => {
     // + reveal), not any absolute number — it has scaled with every
     // slow-down (1500 -> 1900 -> 2300) and must keep doing so.
     expect(SPRAY_FAILSAFE_MS - (SPRAY_COVER_MS + SPRAY_HOLD_MS + SPRAY_REVEAL_MS)).toBeGreaterThanOrEqual(500);
-    expect(read('spray.ts')).toContain('failsafeTimer = setTimeout(cancelSpray, SPRAY_FAILSAFE_MS)');
+    // The controller generalized into transitions.ts (the transition
+    // family registry); the failsafe is armed there, per program spec.
+    expect(read('transitions.ts')).toContain('failsafeTimer = setTimeout(cancelTransitions, spec.failsafeMs)');
   });
 });
 
