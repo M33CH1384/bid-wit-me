@@ -19,6 +19,12 @@
  * If canvas 2D is unavailable every texture degrades to '' and the
  * layer renders its shapes untextured — the choreography never
  * depends on a texture existing.
+ *
+ * The recipes below carry the 2026-10-23 tuning pass (owner: the
+ * spray should be "cleaner"): speckle counts down, dots smaller,
+ * overspray pulled in tight to the shapes it textures, grain finer
+ * and more even. The counts and bands in these builders ARE the
+ * clean discipline — the spray test pins their ceilings.
  */
 
 const INKS = ['#060607', '#0a0a0c', '#101014', '#050505'] as const;
@@ -82,10 +88,10 @@ function buildBrush(): string {
   g.arc(cx, cx, core, 0, TAU);
   g.fill();
   const rnd = mulberry32(0xb007);
-  for (let i = 0; i < 420; i++) {
+  for (let i = 0; i < 260; i++) {
     const a = rnd() * TAU;
-    const rr = core * (0.55 + Math.pow(rnd(), 1.5) * 0.95);
-    const r = 0.5 + rnd() * (rr > core ? 1.1 : 2.0);
+    const rr = core * (0.5 + Math.pow(rnd(), 1.5) * 0.75);
+    const r = 0.5 + rnd() * (rr > core ? 0.8 : 1.4);
     g.globalAlpha = Math.max(0.06, 0.85 - (rr / (core * 1.5)) * 0.8) * (0.4 + rnd() * 0.6);
     g.fillStyle = INKS[(rnd() * INKS.length) | 0]!;
     g.beginPath();
@@ -106,25 +112,27 @@ function buildFront(): string {
   if (!made) return '';
   const [c, g] = made;
   const rnd = mulberry32(0xf207);
-  for (let i = 0; i < 1500; i++) {
+  for (let i = 0; i < 950; i++) {
     const x = rnd() * W;
     const y = rnd() * H;
     const window = Math.sin((y / H) * Math.PI); // 0 at the edges, 1 mid-strip
-    const a = window * (0.12 + rnd() * 0.68);
+    const a = window * (0.1 + rnd() * 0.45);
     if (a < 0.03) continue;
     g.globalAlpha = a;
     g.fillStyle = INKS[(rnd() * INKS.length) | 0]!;
     g.beginPath();
-    g.arc(x, y, 0.6 + rnd() * 2.1, 0, TAU);
+    g.arc(x, y, 0.5 + rnd() * 1.4, 0, TAU);
     g.fill();
   }
   g.globalAlpha = 1;
   return c.toDataURL();
 }
 
-/** The bloom's speckle front: dots in an annulus near the tile's edge,
- *  densest just inside it, thinning outward — drawn on a disc slightly
- *  larger than the solid bloom disc so the band straddles its edge. */
+/** The bloom's speckle front: dots in a THIN annulus near the tile's
+ *  edge, densest just inside it, thinning outward — drawn on a disc
+ *  slightly larger than the solid bloom disc so the band straddles
+ *  its edge. (Clean pass: the band narrowed from 0.78R..1.08R to
+ *  0.86R..1.04R, with fewer, smaller dots.) */
 function buildRing(): string {
   const S = 512;
   const made = makeCanvas(S, S);
@@ -132,14 +140,14 @@ function buildRing(): string {
   const [c, g] = made;
   const R = S / 2;
   const rnd = mulberry32(0x9156);
-  for (let i = 0; i < 1100; i++) {
+  for (let i = 0; i < 700; i++) {
     const a = rnd() * TAU;
-    const rr = R * (0.78 + Math.pow(rnd(), 1.6) * 0.3); // 0.78R .. 1.08R
-    const fade = rr <= R ? 0.35 + ((rr / R - 0.78) / 0.22) * 0.6 : Math.max(0, 1 - (rr / R - 1) / 0.08);
-    g.globalAlpha = fade * (0.25 + rnd() * 0.65);
+    const rr = R * (0.86 + Math.pow(rnd(), 1.6) * 0.18); // 0.86R .. 1.04R
+    const fade = rr <= R ? 0.3 + ((rr / R - 0.86) / 0.14) * 0.6 : Math.max(0, 1 - (rr / R - 1) / 0.04);
+    g.globalAlpha = fade * (0.25 + rnd() * 0.6);
     g.fillStyle = INKS[(rnd() * INKS.length) | 0]!;
     g.beginPath();
-    g.arc(R + Math.cos(a) * rr, R + Math.sin(a) * rr, 0.8 + rnd() * 2.8, 0, TAU);
+    g.arc(R + Math.cos(a) * rr, R + Math.sin(a) * rr, 0.6 + rnd() * 1.7, 0, TAU);
     g.fill();
   }
   g.globalAlpha = 1;
@@ -148,19 +156,21 @@ function buildRing(): string {
 
 /** A grain tile for the reveal masks: white dots of uneven alpha (the
  *  mask reads alpha), so some specks of paint linger while others
- *  clear early — a dry-paint dissolve instead of a uniform fade. */
+ *  clear early — a dry-paint dissolve instead of a uniform fade.
+ *  (Clean pass: finer dots, a tighter alpha range, and a lower dot
+ *  density — the dissolve breaks into fine speckle, not clumps.) */
 function buildGrain(seed: number): string {
   const S = 256;
   const made = makeCanvas(S, S);
   if (!made) return '';
   const [c, g] = made;
   const rnd = mulberry32(seed);
-  const dots = Math.round((S * S) / 90);
+  const dots = Math.round((S * S) / 150);
   for (let i = 0; i < dots; i++) {
-    g.globalAlpha = 0.2 + rnd() * 0.8;
+    g.globalAlpha = 0.25 + rnd() * 0.65;
     g.fillStyle = '#fff';
     g.beginPath();
-    g.arc(rnd() * S, rnd() * S, 1 + rnd() * 3.6, 0, TAU);
+    g.arc(rnd() * S, rnd() * S, 0.7 + rnd() * 2, 0, TAU);
     g.fill();
   }
   g.globalAlpha = 1;

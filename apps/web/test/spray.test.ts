@@ -47,7 +47,7 @@ import {
   registerSprayRenderer,
   sprayRouteEligible,
 } from '../src/spray';
-import SprayLayer, { SPADE_OUTLINE } from '../src/SprayLayer';
+import SprayLayer, { SPADE_OUTLINE, spadeGeometry } from '../src/SprayLayer';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -249,24 +249,30 @@ describe('SprayLayer', () => {
 });
 
 describe('cover choreography — outline, then interior, then bloom (owner, 2026-10-23)', () => {
-  it('three strict beats inside the extended timing budget', () => {
-    // Owner round 2 on v2: "extend it a bit and make it more smooth" —
-    // the outline beat takes the bulk of the added time so the can's
-    // travel is perceivable; the whole transition stays quick.
-    expect(SPRAY_OUTLINE_MS).toBeGreaterThanOrEqual(320);
-    expect(SPRAY_OUTLINE_MS).toBeLessThanOrEqual(360);
-    expect(SPRAY_FILL_MS).toBeGreaterThanOrEqual(100);
-    expect(SPRAY_FILL_MS).toBeLessThanOrEqual(120);
+  it('three strict beats inside the slowed timing budget', () => {
+    // Owner round 3 on v4: "I like it but it still needs to be
+    // slower" — the program stretched again (total 850 -> ~1280 ms).
+    // The outline keeps the bulk of the time so the can's travel
+    // stays perceivable at the bigger size; the reveal stretches
+    // with the cover; it stays a beat, not a wait.
+    expect(SPRAY_OUTLINE_MS).toBeGreaterThanOrEqual(500);
+    expect(SPRAY_OUTLINE_MS).toBeLessThanOrEqual(540);
+    expect(SPRAY_FILL_MS).toBeGreaterThanOrEqual(170);
+    expect(SPRAY_FILL_MS).toBeLessThanOrEqual(190);
     expect(SPRAY_SPADE_MS).toBe(SPRAY_OUTLINE_MS + SPRAY_FILL_MS);
     const bloomMs = SPRAY_COVER_MS - SPRAY_SPADE_MS;
-    expect(bloomMs).toBeGreaterThanOrEqual(120);
-    expect(bloomMs).toBeLessThanOrEqual(140);
-    expect(SPRAY_COVER_MS).toBeGreaterThanOrEqual(540);
-    expect(SPRAY_COVER_MS).toBeLessThanOrEqual(600);
-    expect(SPRAY_COVER_MS + SPRAY_REVEAL_MS).toBeGreaterThanOrEqual(780);
-    expect(SPRAY_COVER_MS + SPRAY_REVEAL_MS).toBeLessThanOrEqual(860);
-    // The failsafe still clears a full (now longer) cycle with room to
-    // spare — a stuck black screen stays structurally impossible.
+    expect(bloomMs).toBeGreaterThanOrEqual(190);
+    expect(bloomMs).toBeLessThanOrEqual(210);
+    expect(SPRAY_COVER_MS).toBeGreaterThanOrEqual(880);
+    expect(SPRAY_COVER_MS).toBeLessThanOrEqual(920);
+    expect(SPRAY_REVEAL_MS).toBeGreaterThanOrEqual(360);
+    expect(SPRAY_REVEAL_MS).toBeLessThanOrEqual(400);
+    expect(SPRAY_COVER_MS + SPRAY_REVEAL_MS).toBeGreaterThanOrEqual(1250);
+    expect(SPRAY_COVER_MS + SPRAY_REVEAL_MS).toBeLessThanOrEqual(1320);
+    // The failsafe's invariant is the MARGIN over a full cycle, not a
+    // raw number: it scaled with the program (1500 -> 1900) and must
+    // still clear the longer cycle with room to spare — a stuck
+    // black screen stays structurally impossible.
     expect(SPRAY_FAILSAFE_MS - (SPRAY_COVER_MS + SPRAY_REVEAL_MS)).toBeGreaterThanOrEqual(500);
   });
 
@@ -337,15 +343,118 @@ describe('cover choreography — outline, then interior, then bloom (owner, 2026
     expect(layer).toContain('data-anim="rv-grain-a"');
     expect(layer).toContain('data-anim="rv-grain-b"');
     // Static grain masks (both spellings — iOS wants -webkit-), and
-    // staggered fades that end inside the shipped 280 ms reveal.
+    // staggered fades whose landmarks are PROPORTIONS of the reveal
+    // (base clears ~46%, grain A holds to ~89%, grain B lands exactly
+    // at the end) so the curves re-proportion when the reveal
+    // stretches — no absolute ms is baked into the layer.
     expect(layer).toContain('maskImage');
     expect(layer).toContain('WebkitMaskImage');
-    expect(layer).toContain('SPRAY_REVEAL_MS - 75');
-    expect(layer).toContain('SPRAY_REVEAL_MS - 45');
+    expect(layer).toContain('SPRAY_REVEAL_MS * 0.46');
+    expect(layer).toContain('SPRAY_REVEAL_MS * 0.73');
+    expect(layer).toContain('SPRAY_REVEAL_MS * 0.84');
+    expect(layer).toContain('SPRAY_REVEAL_MS * 0.16');
     // The reveal carries no part of the spade program.
     const revealBody = layer.slice(layer.indexOf('spray-reveal'));
     expect(revealBody).not.toContain('SPADE_D');
     expect(revealBody).not.toContain('strokeDashoffset');
+  });
+});
+
+describe('spade size — fills most of the screen (owner, 2026-10-23)', () => {
+  it('the size is a min() of the height and width budgets', () => {
+    expect(read('SprayLayer.tsx')).toContain(
+      'Math.min(vh * 0.8, (vw * 0.9 * SPADE_H_UNITS) / SPADE_W_UNITS)',
+    );
+  });
+
+  it('portrait phone: width-bound — the height budget alone would overflow the sides', () => {
+    const g = spadeGeometry(390, 844);
+    expect(g.w).toBeCloseTo(390 * 0.9, 6);
+    expect(g.h).toBeLessThan(844 * 0.8);
+    // Still centered on both axes at the bigger size.
+    expect(g.cx).toBe(195);
+    expect(g.cy).toBe(422);
+    expect(g.left).toBeCloseTo((390 - g.w) / 2, 6);
+    expect(g.top).toBeCloseTo((844 - g.h) / 2, 6);
+  });
+
+  it('desktop: height-bound at ~80% of the viewport height', () => {
+    const g = spadeGeometry(1440, 900);
+    expect(g.h).toBeCloseTo(900 * 0.8, 6);
+    expect(g.w).toBeCloseTo(((900 * 0.8) / 48) * 40, 6);
+    expect(g.w).toBeLessThan(1440 * 0.9);
+  });
+
+  it('neither budget is ever broken, and the mark keeps its aspect', () => {
+    const viewports = [
+      [320, 568],
+      [375, 667],
+      [390, 844],
+      [430, 932],
+      [768, 1024],
+      [1024, 768],
+      [1440, 900],
+      [1920, 1080],
+    ] as const;
+    for (const [vw, vh] of viewports) {
+      const g = spadeGeometry(vw, vh);
+      expect(g.h).toBeLessThanOrEqual(vh * 0.8 + 1e-9);
+      expect(g.w).toBeLessThanOrEqual(vw * 0.9 + 1e-9);
+      expect(g.w / g.h).toBeCloseTo(40 / 48, 6);
+      // The dab track and bloom math ride the same geometry: the
+      // outline's px length scales with the box, and the bloom
+      // reaches past the farthest corner from the spade's center.
+      expect(g.outlineLen).toBeCloseTo(SPADE_OUTLINE.length * (g.h / 48), 6);
+      expect(g.maxR).toBeGreaterThanOrEqual(Math.hypot(vw / 2, vh / 2));
+    }
+  });
+});
+
+describe('clean pass — crisp first, spray-textured second (owner, 2026-10-23)', () => {
+  it('the halo hugs the line, and the contour speckle is sparser and fainter', () => {
+    const layer = read('SprayLayer.tsx');
+    // Halo pulled in close (scale 1.07 -> 1.035) and thinned
+    // (peak opacity 0.92 -> 0.55); the wet under-stroke thinned too.
+    expect(layer).toContain('scale(1.035) translate(-32 -32)');
+    expect(layer).toContain("opacity: '0.55'");
+    expect(layer).toContain('opacity={0.11}');
+    // Speckle dots along the contour: wider gaps (3.1 -> 4.6 units),
+    // fainter gather (0.5 -> 0.35), thinner stroke (carried in the
+    // speckleW ratio, 1.05 -> 0.8).
+    expect(layer).toContain('strokeDasharray="0.01 4.6"');
+    expect(layer).toContain("opacity: '0.35'");
+    expect(layer).toContain('geo.brush * 0.8');
+    // The bloom's speckle ring hugs the solid disc's edge (1.18 -> 1.1).
+    expect(layer).toContain('const RING_OVER = 1.1');
+    // The nozzle's overspray puff pulled in and thinned in CSS.
+    const css = read('spray.css');
+    expect(css).toContain('scale(1.6)');
+    expect(css).toContain('opacity: 0.22');
+  });
+
+  it('the fill grain is finer and lower-contrast', () => {
+    const layer = read('SprayLayer.tsx');
+    expect(layer).toContain('width="5"');
+    expect(layer).toContain('opacity="0.28"');
+    expect(layer).not.toContain('opacity="0.5"');
+  });
+
+  it('the texture recipes stay under the clean ceilings', () => {
+    const tex = read('sprayTextures.ts');
+    expect(tex).toContain('i < 260'); // brush speckle (was 420)
+    expect(tex).toContain('i < 950'); // interior front dots (was 1500)
+    expect(tex).toContain('i < 700'); // bloom ring dots (was 1100)
+    // The ring's annulus is thin now: 0.86R..1.04R (was 0.78R..1.08R).
+    expect(tex).toContain('0.86 + Math.pow(rnd(), 1.6) * 0.18');
+    // The reveal grain is finer, denser-alpha-banded, less clumped:
+    // fewer dots per tile, smaller radii, tighter alpha range.
+    expect(tex).toContain('(S * S) / 150');
+    expect(tex).toContain('0.7 + rnd() * 2');
+    expect(tex).toContain('0.25 + rnd() * 0.65');
+    // The grain masks display smaller, so the tiles read finer.
+    const layer = read('SprayLayer.tsx');
+    expect(layer).toContain("'200px 200px'");
+    expect(layer).toContain("'280px 280px'");
   });
 });
 

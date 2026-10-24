@@ -22,9 +22,9 @@
  * once.
  *
  * The choreography is v3's, untouched — the owner accepted it; only
- * the rendering was wrong. Three strict beats inside the ~570 ms
+ * the rendering was wrong. Three strict beats inside the ~900 ms
  * cover:
- *   1. OUTLINE (~330 ms): the can travels the spade's COMPLETE
+ *   1. OUTLINE (~520 ms): the can travels the spade's COMPLETE
  *      contour. The spade is the game's own mark — the verbatim path
  *      from public/favicon.svg — drawn as layered SVG strokes via
  *      stroke-dashoffset (a wide wet under-stroke + a dense core),
@@ -33,21 +33,32 @@
  *      keyframe track sampled from the outline's arc length (the
  *      compositor interpolates between samples; the dab never steps).
  *      The interior stays EMPTY in this beat.
- *   2. INTERIOR (~105 ms): the fill (a second stacked SVG of the same
+ *   2. INTERIOR (~180 ms): the fill (a second stacked SVG of the same
  *      mark) is revealed by a clip-path inset animation while a soft
  *      pre-rendered speckle front sweeps down over the clip edge and
  *      the nozzle sways across it — the fill arrives feathered, not
  *      as a hard wipe.
- *   3. BLOOM (~135 ms): a black disc and a speckle-ring texture
+ *   3. BLOOM (~200 ms): a black disc and a speckle-ring texture
  *      expand from the spade's center by transform scale (ease-out)
  *      until the corners are covered; at full cover the controller
  *      swaps the screen underneath.
- * REVEAL (~280 ms, same total as v3): the canvas grain erase is gone
- * too. Three stacked paint layers carrying static grain masks fade on
- * staggered opacity curves — the solid base first, then the grain
- * layers thinning at different rates — so the black breaks into
- * speckle and dissolves off the new screen exactly as before, but
- * every frame of it is an opacity composite.
+ * REVEAL (~380 ms): the canvas grain erase is gone too. Three
+ * stacked paint layers carrying static grain masks fade on staggered
+ * opacity curves — the solid base first, then the grain layers
+ * thinning at different rates — so the black breaks into speckle and
+ * dissolves off the new screen exactly as before, but every frame of
+ * it is an opacity composite.
+ *
+ * TUNING PASS (owner, 2026-10-23, on v4: "I like it but it still
+ * needs to be slower, cleaner, and should fill most of the screen"):
+ * the whole program stretched (total 850 -> 1280 ms, the outline
+ * taking the bulk of it so the can's travel stays perceivable); the
+ * spray character tidied — halo pulled in close and thinned, speckle
+ * smaller and sparser, fill grain finer and lower-contrast, the
+ * bloom's ring a thinner annulus — crisp first, spray-textured
+ * second; and the spade grew from ~46% to ~80% of the viewport
+ * (min() of height and width budgets) so it fills most of the
+ * screen. The engine and the beat order did not change.
  *
  * Snap-back: when a dissolve is snapped back into a cover, spray.ts
  * reports fromCoverage; every cover animation is created with
@@ -152,10 +163,11 @@ export const SPADE_OUTLINE: SpadeOutline = buildSpadeOutline();
 /* ------------------------------------------------------------------ */
 
 /** The speckle ring rides a disc this much larger than the solid bloom
- *  disc, so its baked annulus straddles the disc's expanding edge. */
-const RING_OVER = 1.18;
+ *  disc, so its baked annulus straddles the disc's expanding edge.
+ *  1.18 -> 1.1 in the clean pass: the ring hugs the disc's edge. */
+const RING_OVER = 1.1;
 
-interface SpadeGeo {
+export interface SpadeGeo {
   cx: number;
   cy: number;
   /** CSS px per favicon unit. */
@@ -179,10 +191,14 @@ interface SpadeGeo {
   outlineLen: number;
 }
 
-function spadeGeometry(vw: number, vh: number): SpadeGeo {
-  // Bold and centered: ~46% of the screen's height, capped so it never
-  // crowds a short or narrow viewport.
-  const h = Math.min(vh * 0.46, (vw * 0.8 * SPADE_H_UNITS) / SPADE_W_UNITS);
+export function spadeGeometry(vw: number, vh: number): SpadeGeo {
+  // Fill most of the screen (owner, 2026-10-23: "should fill most of
+  // the screen"): ~80% of the viewport height, centered — but the
+  // spade is ~0.83 w/h, so on a tall narrow phone the height budget
+  // alone would push it off the sides. The size is a min() of the two
+  // budgets: height-bound on wide screens, width-bound (~90% of the
+  // width) on portrait phones, never crowding the edges either way.
+  const h = Math.min(vh * 0.8, (vw * 0.9 * SPADE_H_UNITS) / SPADE_W_UNITS);
   const w = (h * SPADE_W_UNITS) / SPADE_H_UNITS;
   const k = h / SPADE_H_UNITS;
   const cx = vw / 2;
@@ -319,12 +335,12 @@ export default function SprayLayer() {
       };
       run(q('wet'), draw, drawOpts);
       run(q('core'), draw, drawOpts);
-      run(q('speckle'), [{ opacity: '0' }, { opacity: '0.5' }], {
+      run(q('speckle'), [{ opacity: '0' }, { opacity: '0.35' }], {
         duration: SPRAY_OUTLINE_MS,
         delay: -resumeMs,
         easing: 'ease-out',
       });
-      run(q('halo'), [{ opacity: '0' }, { opacity: '0.92' }], {
+      run(q('halo'), [{ opacity: '0' }, { opacity: '0.55' }], {
         duration: SPRAY_SPADE_MS,
         delay: -resumeMs,
         easing: 'ease-out',
@@ -420,14 +436,18 @@ export default function SprayLayer() {
     } else {
       // Reveal — staggered opacity fades over the static grain masks:
       // the solid base clears first, the masked layers linger by dot
-      // density, the last grains drift slightly as they thin.
+      // density, the last grains drift slightly as they thin. The
+      // stagger landmarks are PROPORTIONS of the reveal (base clears
+      // at ~46%, grain A holds to ~89%, grain B lands exactly at the
+      // end), so the curves re-proportion themselves whenever
+      // SPRAY_REVEAL_MS stretches — no absolute ms lives here.
       run(q('rv-base'), [{ opacity: '1' }, { opacity: '0' }], {
-        duration: 130,
+        duration: SPRAY_REVEAL_MS * 0.46,
         easing: EASE_OUT,
       });
       run(q('rv-grain-a'), [{ opacity: '1' }, { opacity: '0' }], {
-        duration: SPRAY_REVEAL_MS - 75,
-        delay: 45,
+        duration: SPRAY_REVEAL_MS * 0.73,
+        delay: SPRAY_REVEAL_MS * 0.16,
         easing: EASE_OUT,
       });
       run(
@@ -436,7 +456,11 @@ export default function SprayLayer() {
           { opacity: '1', transform: 'scale(1)' },
           { opacity: '0', transform: 'scale(1.035)' },
         ],
-        { duration: SPRAY_REVEAL_MS - 45, delay: 45, easing: EASE_OUT },
+        {
+          duration: SPRAY_REVEAL_MS * 0.84,
+          delay: SPRAY_REVEAL_MS * 0.16,
+          easing: EASE_OUT,
+        },
       );
     }
     return () => {
@@ -458,10 +482,12 @@ export default function SprayLayer() {
   const tex = getSprayTextures();
   const LEN = SPADE_OUTLINE.length;
   const dabPx = geo.brush * 1.18;
-  // Stroke widths in favicon units (v3's brush recipe, same ratios).
+  // Stroke widths in favicon units (v3's brush recipe; the wet and
+  // speckle ratios thinned in the clean pass so the core line reads
+  // crisp first and spray-textured second).
   const coreW = (geo.brush * 0.8) / geo.k;
-  const wetW = (geo.brush * 1.5) / geo.k;
-  const speckleW = (geo.brush * 1.05) / geo.k;
+  const wetW = (geo.brush * 1.3) / geo.k;
+  const speckleW = (geo.brush * 0.8) / geo.k;
   const tipX = (SPADE_START.x - 12) * geo.k;
 
   return (
@@ -485,7 +511,7 @@ export default function SprayLayer() {
                 d={SPADE_D}
                 fill={PAINT}
                 opacity={0}
-                transform="translate(32 32) scale(1.07) translate(-32 -32)"
+                transform="translate(32 32) scale(1.035) translate(-32 -32)"
               />
               <path
                 data-anim="speckle"
@@ -493,7 +519,7 @@ export default function SprayLayer() {
                 fill="none"
                 stroke={PAINT}
                 strokeWidth={speckleW}
-                strokeDasharray="0.01 3.1"
+                strokeDasharray="0.01 4.6"
                 strokeLinecap="round"
                 opacity={0}
               />
@@ -508,7 +534,7 @@ export default function SprayLayer() {
                 pathLength={LEN}
                 strokeDasharray={LEN}
                 strokeDashoffset={LEN}
-                opacity={0.16}
+                opacity={0.11}
               />
               <path
                 data-anim="core"
@@ -534,14 +560,14 @@ export default function SprayLayer() {
               <defs>
                 <pattern
                   id="spray-fill-grain"
-                  width="6.5"
-                  height="6.5"
+                  width="5"
+                  height="5"
                   patternUnits="userSpaceOnUse"
                 >
-                  <circle cx="1.2" cy="1.6" r="0.55" fill="#0a0a0c" opacity="0.5" />
-                  <circle cx="4.4" cy="3.1" r="0.8" fill="#101014" opacity="0.45" />
-                  <circle cx="2.6" cy="5.2" r="0.45" fill="#050505" opacity="0.5" />
-                  <circle cx="5.6" cy="5.8" r="0.5" fill="#0a0a0c" opacity="0.4" />
+                  <circle cx="0.9" cy="1.2" r="0.35" fill="#0a0a0c" opacity="0.28" />
+                  <circle cx="3.4" cy="2.4" r="0.5" fill="#101014" opacity="0.24" />
+                  <circle cx="2" cy="4" r="0.3" fill="#050505" opacity="0.28" />
+                  <circle cx="4.3" cy="4.5" r="0.32" fill="#0a0a0c" opacity="0.22" />
                 </pattern>
               </defs>
               <path d={SPADE_D} fill={PAINT} />
@@ -621,12 +647,12 @@ export default function SprayLayer() {
           <div
             data-anim="rv-grain-a"
             className="spray-rv"
-            style={grainStyle(tex.grainA, '220px 220px', '17px 41px')}
+            style={grainStyle(tex.grainA, '200px 200px', '17px 41px')}
           />
           <div
             data-anim="rv-grain-b"
             className="spray-rv"
-            style={grainStyle(tex.grainB, '310px 310px', '113px 67px')}
+            style={grainStyle(tex.grainB, '280px 280px', '113px 67px')}
           />
         </div>
       )}

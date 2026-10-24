@@ -5,11 +5,11 @@
  *
  * The model: a navigation that qualifies does not swap screens immediately.
  * The spray layer (SprayLayer.tsx, mounted once in Root) covers the screen
- * in black spray (~570 ms, choreographed in the layer in three strict
+ * in black spray (~900 ms, choreographed in the layer in three strict
  * beats: the can traces the spade's whole outline, then the interior
  * sprays in, then the paint blooms out from the spade to full screen);
  * at full cover the pending navigation mutation runs underneath; then
- * the paint dissolves off (~280 ms) revealing the new screen. Input is
+ * the paint dissolves off (~380 ms) revealing the new screen. Input is
  * locked by the layer only during the cover — during the dissolve the
  * new screen is already live under the clearing paint.
  *
@@ -41,20 +41,25 @@
  */
 import { fx } from './fx';
 
-export const SPRAY_COVER_MS = 570;
+export const SPRAY_COVER_MS = 900;
 /** Cover beat 1: the can traces the spade's COMPLETE outline at center
  *  screen — the whole contour stands painted, interior still empty. */
-export const SPRAY_OUTLINE_MS = 330;
+export const SPRAY_OUTLINE_MS = 520;
 /** Cover beat 2: the spade's interior sprays in, behind a soft moving
  *  front. Beat 3 — the black bloom out to full screen — takes the rest
  *  of the cover. The beats never overlap: owner, 2026-10-23, on v2's
  *  overlapped tag: "it fills in instead of spraying the outline then
  *  filling the rest." */
-export const SPRAY_FILL_MS = 105;
+export const SPRAY_FILL_MS = 180;
 /** The full spade sequence (outline + interior); the bloom starts here. */
 export const SPRAY_SPADE_MS = SPRAY_OUTLINE_MS + SPRAY_FILL_MS;
-export const SPRAY_REVEAL_MS = 280;
-export const SPRAY_FAILSAFE_MS = 1500;
+export const SPRAY_REVEAL_MS = 380;
+/** The failsafe's invariant is a MARGIN, not a number: it must outlive
+ *  a full cover + reveal cycle by at least 500 ms (the layer's own
+ *  timers clear it long before), so it scales whenever the program
+ *  stretches — the 2026-10-23 slow-down (total 850 -> 1280 ms) raised
+ *  it from 1500 to 1900 to keep the margin honest. */
+export const SPRAY_FAILSAFE_MS = 1900;
 
 export type SprayPhase = 'idle' | 'cover' | 'reveal';
 export interface SpraySnapshot {
