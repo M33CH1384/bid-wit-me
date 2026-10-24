@@ -349,6 +349,15 @@ html[data-theme="neon"] .soc-wire-byline { color: #5BDFFF; }
 .ot-tour { color: var(--gold); }
 .ot-acts { display: flex; flex-direction: column; gap: 6px; flex: none; }
 .ot-acts button { min-width: 76px; padding: 7px 10px; border-radius: 10px; }
+/* Watch (the row's non-primary action) must carry its own paint: under the
+   geometry-only rule above, the bare button fell back to the platform's
+   default light pill while `color: inherit` painted its label in the
+   near-white theme ink — white on white, illegible in BOTH themes
+   (owner, 2026-10-24; same fallback the .sf-seg note in styles.css
+   documents). The ghost recipe is the row family's own — the filter
+   chips above use this fill / hairline / ink pairing. Join keeps the
+   gold .primary; the disabled "Full" state inherits this same paint. */
+.ot-acts button:not(.primary) { -webkit-appearance: none; appearance: none; background: rgba(255,255,255,.05); border: 1px solid rgba(var(--edge-rgb),.4); color: var(--ink); font-weight: 600; }
 .ot-empty { text-align: center; padding: 14px; border-radius: 12px; border: 1px dashed rgba(var(--edge-rgb),.35); }
 .ot-empty p { margin: 0 0 10px; color: var(--muted); }
 
