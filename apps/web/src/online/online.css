@@ -42,7 +42,7 @@
 .seat-card.mine { box-shadow: inset 0 0 0 2px var(--gold), 0 0 18px rgba(var(--gold-rgb),.35); }
 .seat-card.team-A .seat-top .chip { background: rgba(var(--gold-rgb),.25); color: var(--gold); }
 .seat-card.team-B .seat-top .chip { background: rgba(79,209,255,.22); color: #9fe6ff; }
-.seat-top { font-family: var(--display); font-size: 11px; letter-spacing: .14em; color: var(--muted); text-transform: uppercase; display: flex; gap: 5px; align-items: center; }
+.seat-top { font-family: var(--display); font-size: 11px; letter-spacing: .14em; color: var(--muted); text-transform: uppercase; display: flex; gap: 5px; align-items: center; min-height: 15px; flex: none; }
 .seat-name { font-family: var(--display); font-weight: 800; font-size: 17px; letter-spacing: .03em; text-transform: uppercase; max-width: 112px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; gap: 4px; align-items: center; }
 .seat-card .sit { border: 0; background: var(--purple); color: #fff; font-family: var(--display); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 5px 12px; font-size: 14px; }
 .seat-card .link { padding: 2px 0; font-size: 13px; }
@@ -254,10 +254,16 @@
 .seat-card.taken { animation: seat-pop .35s cubic-bezier(.3,1.6,.5,1) both; }
 .seat-card.mine { box-shadow: inset 0 0 0 3px var(--gold), 0 0 18px rgba(var(--gold-rgb),.45); }
 .seat-card .seat-top .chip { font-size: 9px; padding: 1px 5px; border-radius: 6px; }
-.you-tag { color: var(--gold); font-weight: 800; }
-.seat-card.open { background: rgba(10,30,20,.35); box-shadow: none; outline: 2px dashed var(--tc); outline-offset: -3px; animation: seat-pulse 2.6s ease-in-out infinite; padding: 0; }
-.seat-hit { all: unset; box-sizing: border-box; cursor: pointer; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 7px 4px 24px; }
-.seat-hit .seat-top { position: absolute; top: 7px; }
+.seat-card.open { background: rgba(10,30,20,.35); box-shadow: none; outline: 2px dashed var(--tc); outline-offset: -2px; animation: seat-pulse 2.6s ease-in-out infinite; padding: 0; }
+.seat-hit { all: unset; box-sizing: border-box; cursor: pointer; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px; padding: 7px 4px 24px; }
+/* The seat-number label is the open card's first IN-FLOW row, same as a taken
+   card's (owner 2026-10-24: it used to be absolutely positioned at a magic
+   top: 7px while the dashed frame sits ~3px inside the card — no reserved
+   zone, so the frame struck through the label and the centered ring rode up
+   over it on short stages). The ring + plate now center in the space the
+   label leaves behind, via the auto margins below. */
+.seat-hit .seat-ring { margin-top: auto; }
+.seat-hit .seat-plate { margin-bottom: auto; }
 .seat-plus { font-size: 30px; line-height: 1; font-weight: 300; color: var(--tc); margin-top: 8px; }
 .seat-cta { font-family: var(--display); font-weight: 800; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #fff; }
 .seat-bot { position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); border: 0; background: rgba(255,255,255,.08); color: var(--muted); font-size: 11px; padding: 2px 8px; border-radius: 10px; }
@@ -416,10 +422,16 @@
   }
   .seat-card {
     height: 100%; max-height: 120px; margin-block: auto;
-    padding: min(7px, 1.5cqh) min(4px, 1cqh); gap: min(2px, .45cqh);
+    padding: clamp(7px, 2cqh, 9px) min(4px, 1cqh) min(7px, 1.5cqh); gap: min(2px, .45cqh);
     border-radius: min(12px, 2.6cqh);
   }
-  .seat-top { line-height: 1.1; font-size: clamp(8.5px, 2.6cqh, 10px); }
+  /* the seat-number label's reserved zone (owner 2026-10-24): a fixed-height
+     strip in the cqh system, flex-none so the ring can never ride over it,
+     tall enough to contain the label's ink (Barlow's text range runs ~1.3×
+     the font size) at every stage height — before this the label lived in
+     the card's top padding (as little as 1.8px on compact stages) with a
+     9.35px line box for ~11px of ink, glued to the card's frame line */
+  .seat-top { line-height: 1.1; font-size: clamp(9px, 2.8cqh, 11px); height: clamp(12.5px, 3.8cqh, 15.5px); min-height: 0; flex: none; }
   .seat-top .chip { font-size: clamp(8px, 2.2cqh, 9px); }
   .seat-plate .seat-name { line-height: 1.15; }
   /* a taken card's sub-action (Remove / Take over / Replace) rides the
@@ -427,8 +439,14 @@
   .seat-card .seat-sub { position: absolute; bottom: min(4px, 1cqh); right: min(6px, 1.4cqh); }
   /* … and the name plate leaves that corner free instead of running under it */
   .seat-card:has(> .seat-sub) .seat-plate { max-width: calc(100% - 44px); }
-  .seat-hit { padding: min(7px, 1.2cqh) min(4px, 1cqh) min(24px, 5.2cqh); gap: min(2px, .3cqh); }
+  .seat-hit { padding: clamp(7px, 1.6cqh, 8px) min(4px, 1cqh) clamp(13px, 5.2cqh, 24px); gap: min(2px, .3cqh); }
   .seat-ring { width: min(52px, 11cqh); height: min(52px, 11cqh); }
+  /* the empty seat's placeholder circle runs a notch smaller than a face,
+     and its plate a notch tighter: with the label's zone reserved, the open
+     card's stack (label + ring + plate + the + BOT pill's reserve in the
+     hit's bottom padding) must still close at the shortest stages */
+  .seat-ring.empty { width: min(52px, 9cqh); height: min(52px, 9cqh); }
+  .seat-plate.empty { line-height: 1.15; padding-top: min(1px, .3cqh); padding-bottom: min(1px, .3cqh); }
   .seat-ring.mine { width: min(58px, 12.4cqh); height: min(58px, 12.4cqh); }
   .seat-ring.empty .seat-plus, .seat-plus { font-size: min(24px, 5.7cqh); margin-top: min(8px, 1.9cqh); }
   .seat-ring .av-initial { font-size: min(21px, 5cqh); }
@@ -436,7 +454,7 @@
   .seat-plate.empty { font-size: clamp(9.5px, 3cqh, 12px); }
   .seat-plate .seat-name { font-size: clamp(11px, 3.4cqh, 14px); }
   .seat-card .seat-name { font-size: clamp(10.5px, 3.2cqh, 13px); }
-  .seat-bot { font-size: clamp(9px, 2.6cqh, 11px); padding: min(2px, .5cqh) min(8px, 1.9cqh); bottom: min(5px, .45cqh); }
+  .seat-bot { font-size: clamp(9px, 2.6cqh, 11px); line-height: 1.1; padding: min(1px, .3cqh) min(6px, 1.4cqh); bottom: min(5px, .45cqh); }
   .seat-avatar { width: min(48px, 11.4cqh); height: min(48px, 11.4cqh); }
   .seat-card .vbubble { width: min(46px, 11cqh); height: min(46px, 11cqh); }
   .seat-card .sit { font-size: clamp(10px, 3.2cqh, 13px); padding: min(6px, 1.4cqh) min(10px, 2.4cqh); }
@@ -455,15 +473,28 @@
   .lobby-pick-title { font-size: 20px; margin: 2px 0 0; }
   .seat-ring { width: min(52px, 8.9cqh); height: min(52px, 8.9cqh); }
   .seat-ring.mine { width: min(58px, 10cqh); height: min(58px, 10cqh); }
-  .seat-hit { gap: 0; }
+  .seat-hit { gap: 0; padding-top: 6px; }
   .seat-plate { margin-top: 0; }
-  .seat-card { padding-top: min(7px, 1.1cqh); }
+  /* compact floors for the label contract: the zone still contains the ink
+     and the label still clears the frame (taken: the 2–3px inset shadow;
+     open: the dashed outline now inset 2px + its 2px stroke) */
+  .seat-top { height: 12px; }
+  .seat-card { padding-top: clamp(5px, 1.6cqh, 7px); }
+  /* the open card's stack is the tallest (label + ring + plate + the + BOT
+     overlay at its foot): at compact heights its ring and plate run one
+     notch smaller so the plate still ends above the bot pill */
+  .seat-ring.empty { width: min(52px, 7.6cqh); height: min(52px, 7.6cqh); }
+  .seat-plate.empty { padding-top: 0; padding-bottom: 0; }
+  .seat-bot { line-height: 1.1; padding-top: 0; padding-bottom: 0; }
   .seat-plate.empty { font-size: 9px; }
   .seat-bot { bottom: 0; }
   .share-code { padding: 4px 14px 2px; }
   .share-code small { font-size: 9px !important; }
   .room-code b { font-size: 21px; }
-  .mini-felt { padding: 12px 14px; gap: 6px 5px; }
+  /* the label's reserved zone (below) costs vertical room the shortest stage
+     doesn't have; the felt's own padding/gaps give some of it back so every
+     seat card's stack still closes inside its row */
+  .mini-felt { padding: 8px 14px; gap: 4px 5px; }
   .lobby-dock { padding-top: 8px; }
   .lobby-dock .lobby-teams { margin-bottom: 4px; }
   .lobby-dock .team-pill { font-size: 10.5px; padding: 3px 8px; }

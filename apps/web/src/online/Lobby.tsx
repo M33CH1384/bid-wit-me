@@ -400,7 +400,11 @@ function SeatCard({ seat, info, spot, team, mine, isHost, playing, hostId, onSit
 }) {
   const label = `Seat ${seat + 1}`;
   const cls = `seat-card spot-${spot} ${mine ? 'mine' : ''} ${team ? `team-${team}` : 'no-team'} ${info.kind === 'empty' ? 'open' : 'taken'}`;
-  const top = <div className="seat-top">{mine ? <span className="you-tag">YOU</span> : label}{team && <span className="chip">{team}</span>}</div>;
+  // The top slot is the seat-number label on EVERY card (owner 2026-10-24:
+  // the viewer's own card used to swap it for a "YOU" tag, leaving that card
+  // with no legible seat number at all). "Mine" reads from the gold frame and
+  // the plate's YOU name below, not from this label.
+  const top = <div className="seat-top">{label}{team && <span className="chip">{team}</span>}</div>;
   if (info.kind === 'empty') {
     return (
       <div className={cls} data-testid={`lobby-seat-${seat}`}>
