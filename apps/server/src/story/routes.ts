@@ -42,9 +42,9 @@
 import { type AuthEnv, currentUser } from '../auth/routes';
 import { type SocialEnv, isAdmin } from '../social/routes';
 import {
-  STORY_LOSS_REWARD, STORY_SECRETS, STORY_STOPS, STORY_SOLO_TRACK, awarenessCaseFor, storyClearReward, storyCurrentStop, storyEggById, storyEggEventMet,
-  storyEndReasonOf, storyFeatMet, storyPairTrackKey, storyPairUids, storyReward, storyStopById, storyStopState, storyTrackKeyValid,
-  type AwarenessCase, type StoryEndReason, type StoryGameFacts, type StoryMatchEvent, type StoryStop,
+  STORY_CHARACTERS, STORY_LOSS_REWARD, STORY_SECRETS, STORY_STOPS, STORY_SOLO_TRACK, awarenessCaseFor, mannerBandOf, storyClearReward, storyCurrentStop, storyEggById, storyEggEventMet,
+  storyEndReasonOf, storyFeatMet, storyPairTrackKey, storyPairUids, storyReward, storyStopById, storyStopState, storyTrackKeyValid, targetForStop,
+  type AwarenessCase, type StoryBuzzInput, type StoryEndReason, type StoryGameFacts, type StoryMatchEvent, type StoryStop,
 } from '@spades/bots';
 import { CODE_ALPHABET, CODE_LENGTH, isRoomCode, normalizeRoomCode } from '@spades/protocol';
 import { awardXp } from '../cred/xp';
@@ -312,6 +312,38 @@ export async function awarenessCasesFor(db: D1Database, uidA: string, uidB: stri
       players: [player(ha, stop.id), player(hb, stop.id)],
       pair: { attempts: pf?.attempts ?? 0, clears: pf?.clears ?? 0, doublePending: pf?.doublePending ?? false },
     });
+  }
+  return out;
+}
+
+/**
+ * The forward-buzz input at every stop for a pair (word travels fast),
+ * computed where D1 lives and handed to the story room at creation /
+ * partner bind on the same seam as the awareness cases: the room's
+ * buzz driver needs the pair track's latest result at the stop before
+ * each stop, and the room has no database. Inputs are the pair track's
+ * rows ONLY (uidA's copy — §3.6's two copies can never diverge), the
+ * same derivation the solo home reads (storyApi.routeFactsFor): a stop
+ * whose predecessor has no recorded last result gets prevWon undefined
+ * and the buzz stays silent there — no fabrication, no backfill. The
+ * manner band is the shared storyManner one, or no band at all.
+ */
+export async function buzzInputsFor(db: D1Database, uidA: string, track: string): Promise<Record<string, StoryBuzzInput>> {
+  const pairFacts = await factsFor(db, uidA, track);
+  const out: Record<string, StoryBuzzInput> = {};
+  for (const stop of STORY_STOPS) {
+    const input: StoryBuzzInput = { attempts: pairFacts.get(stop.id)?.attempts ?? 0 };
+    if (stop.n > 1) {
+      const prevStop = STORY_STOPS[stop.n - 2]!;
+      input.prevStopName = prevStop.name;
+      input.prevPairNames = `${STORY_CHARACTERS[prevStop.pair[0]]!.name} and ${STORY_CHARACTERS[prevStop.pair[1]]!.name}`;
+      const prevLast = lastResultOf(pairFacts.get(prevStop.id)?.lastResult);
+      if (prevLast) {
+        input.prevWon = prevLast.won;
+        input.prevBand = mannerBandOf(prevLast, targetForStop(prevStop));
+      }
+    }
+    out[stop.id] = input;
   }
   return out;
 }
@@ -841,12 +873,14 @@ export async function handleStoryHttp(req: Request, env: StoryEnv, url: URL, par
     // pair exists — invite rooms know both accounts now; share-code
     // rooms get theirs at bind (room-join below).
     const aware = partnerUid && track ? await awarenessCasesFor(db, me.id, partnerUid, track) : undefined;
+    // The room's buzz inputs (word travels fast) ride the same seam.
+    const buzz = partnerUid && track ? await buzzInputsFor(db, me.id, track) : undefined;
     for (let i = 0; i < 6; i++) {
       const code = randomStoryCode();
       const stub = env.TABLES.get(env.TABLES.idFromName(code));
       const r = await stub.fetch(`https://table/story-setup?code=${code}`, {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ stopId: stop.id, hostUid: me.id, partnerUid, ...(aware ? { aware } : {}) }),
+        body: JSON.stringify({ stopId: stop.id, hostUid: me.id, partnerUid, ...(aware ? { aware } : {}), ...(buzz ? { buzz } : {}) }),
       }).catch(() => null);
       if (r && r.status === 201) return json({ ok: true, code, track, stopId: stop.id }, 201);
       if (r && r.status === 400) return json({ error: 'unknown stop' }, 400);
@@ -879,9 +913,10 @@ export async function handleStoryHttp(req: Request, env: StoryEnv, url: URL, par
       return json({ error: 'That stop is locked for your run together — the pair advances together.' }, 409);
     }
     const aware = await awarenessCasesFor(db, members.hostUid, me.id, track);
+    const buzz = await buzzInputsFor(db, members.hostUid, track);
     const br = await stub.fetch(`https://table/story-bind?code=${code}`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ uid: me.id, aware }),
+      body: JSON.stringify({ uid: me.id, aware, buzz }),
     }).catch(() => null);
     if (!br || !br.ok) return json({ error: 'This story table is spoken for.' }, 409);
     const bound = (await br.json()) as { track: string | null; stopId: string };

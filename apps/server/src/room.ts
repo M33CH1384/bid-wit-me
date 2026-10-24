@@ -13,7 +13,7 @@ import {
 import { voiceGender } from '@spades/bots';
 import { BUCKET_THIN } from './voice/writer';
 import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, chooseBotAction, loudLoser, parseHint, leanBid, botSkillFor, personaSkillFloor, seatSkill, leanNil, momentsFor, newTalkState, noteTalkHand, pickBotNames, platePersona, prePlayLine, activeCatalog, bucketFor } from '@spades/bots';
-import { GUIDE_FINALE, STORY_CHARACTERS, STORY_TIER_SKILL, deeSkillForStop, guideEventLine, guideFinaleLine, guideFinaleResolutionLine, guideFinaleStartLine, guideHandLine, newGuideState, storyFactsOf, storyPairTrackKey, storyRulesForStop, storyStopById, type AwarenessCase, type GuideFinaleFacts, type GuideState, type StoryGameFacts } from '@spades/bots';
+import { GUIDE_FINALE, STORY_CHARACTERS, STORY_STOPS, STORY_TIER_SKILL, buzzMomentFor, deeSkillForStop, guideEventLine, guideFinaleLine, guideFinaleResolutionLine, guideFinaleStartLine, guideHandLine, mannerBandOf, newGuideState, storyFactsOf, storyPairTrackKey, storyRulesForStop, storyStopById, targetForStop, type AwarenessCase, type GuideFinaleFacts, type GuideState, type StoryBeat, type StoryBuzzInput, type StoryGameFacts, type StoryStop } from '@spades/bots';
 import {
   type BotLevel, type ChatLine, type ClientMsg, type HostMusic, type MediaState, type RoomInfo, type RoomPhase, type RunPlayback, type SeatInfo, type ServerMsg,
   DEFAULT_AFK_LIMIT, LIMITS, PROTOCOL_VERSION, parseClientMsg, toggleReaction,
@@ -255,6 +255,20 @@ export interface StorySeat {
    *  once-only flags. Reset when a match starts; hers alone — the guide
    *  layer's rolls and caps live in @spades/bots storyGuide. */
   guide?: GuideState;
+  /** Forward-buzz facts per stop (word travels fast): how the pair's
+   *  latest game at the PREVIOUS stop went, computed by the story HTTP
+   *  layer from the PAIR track's rows at room creation / partner bind
+   *  (the same seam as `aware` — the room has no database) and refreshed
+   *  by the room itself from the games it witnesses. Server-only: the
+   *  clients never see the inputs, only the line the room chose. */
+  buzz?: Record<string, StoryBuzzInput>;
+  /** The buzz driver's per-match state: the seeded roll cursor, the
+   *  one-a-match cap and the said set. Reset when a match starts. It
+   *  lives in the room — never on a client — so the pair hears ONE
+   *  decision: both clients render the line the room pushed into the
+   *  shared chat, and a reconnect replays that chat instead of ever
+   *  rolling again. */
+  buzzState?: { checks: number; fired: number; said: string[] };
 }
 
 /** The room's witnessed story result (spec §3.3): written by the DO into story_room_results. */
@@ -546,7 +560,7 @@ export class Room {
   }
 
   /** Story co-op: turn a fresh table into a pair's story room (private, rules from the stop, pair bots seated). */
-  setupStory(stopId: string, hostUid: string, partnerUid: string | null, aware?: Record<string, AwarenessCase>): void {
+  setupStory(stopId: string, hostUid: string, partnerUid: string | null, aware?: Record<string, AwarenessCase>, buzz?: Record<string, StoryBuzzInput>): void {
     const d = this.data;
     const stop = storyStopById(stopId);
     if (!stop) return;
@@ -554,6 +568,7 @@ export class Room {
       track: partnerUid ? storyPairTrackKey(hostUid, partnerUid) : null,
       stopId, pairUids: [hostUid, partnerUid], phase: 'lobby', ready: [],
       ...(aware ? { aware } : {}),
+      ...(buzz ? { buzz } : {}),
     };
     d.private = true;
     d.botLevel = 'mixed';
@@ -580,7 +595,7 @@ export class Room {
   }
 
   /** Share-code join: bind the second account to the room (the pair track exists from this moment). */
-  bindStoryPartner(uid: string, aware?: Record<string, AwarenessCase>): boolean {
+  bindStoryPartner(uid: string, aware?: Record<string, AwarenessCase>, buzz?: Record<string, StoryBuzzInput>): boolean {
     const d = this.data;
     const s = d.story;
     if (!s) return false;
@@ -589,6 +604,7 @@ export class Room {
     s.pairUids[1] = uid;
     s.track = storyPairTrackKey(s.pairUids[0], uid);
     if (aware) s.aware = aware;
+    if (buzz) s.buzz = buzz;
     this.system('Your partner is bound to this run');
     this.io.persist();
     return true;
@@ -1764,8 +1780,13 @@ export class Room {
     // just closed — she reads the board and maybe speaks. In the King's
     // cutthroat she reads the finale board instead (§6.4).
     if (d.story && d.game.history.length > before.history.length) {
-      this.storyGuideHandEnd(before);
+      const guideSpoke = this.storyGuideHandEnd(before);
       this.storyGuideFinaleHandEnd(before);
+      // FORWARD BUZZ (word travels fast): a hand end the guide didn't
+      // take is the seated pair's own moment to gossip about the last
+      // stop — never on the hand that ended the match, whose beat
+      // belongs to the outro.
+      if (!guideSpoke && d.game.phase !== 'gameOver') this.storyBuzzAt('handEnd');
     }
     if (d.game.phase === 'gameOver') {
       d.phase = 'over';
@@ -2071,6 +2092,7 @@ export class Room {
     this.storyWitnessAs(gameId, outcome !== 'lost', outcome);
     if (!s.aware) s.aware = {};
     s.aware['king'] = 'e'; // the gamble is spent either way; a fresh leg-1 win re-arms it
+    this.storyBuzzNoteGame(outcome !== 'lost');
   }
 
   /** A concede inside the cutthroat settles it as a lost gamble
@@ -2088,6 +2110,7 @@ export class Room {
     this.storyWitnessAs(gameId, false, 'lost');
     if (!s.aware) s.aware = {};
     s.aware['king'] = 'e';
+    this.storyBuzzNoteGame(false);
     this.system(`${byName} conceded the finale`);
   }
 
@@ -2137,6 +2160,82 @@ export class Room {
     this.pushChat({ id: d.chatSeq++, from: 'guide:dee', name: 'Dee · guide', text, at: this.io.now() });
   }
 
+  /**
+   * FORWARD BUZZ in the room (word travels fast — the co-op parity of
+   * the solo build, owner 2026-10-24): the seated pair remarking, in
+   * relay voice, on how the pair handled the PREVIOUS stop. The solo
+   * driver evaluates in Table.tsx off its device save; a co-op table
+   * has two clients and one truth, so the ROOM evaluates — at the same
+   * moments (the sit-down, and hand ends no scripted beat took) with
+   * the same selector and pools (@spades/bots buzzMomentFor, unchanged)
+   * and the same discipline (seeded per-attempt roll, cap one a match,
+   * said-set no-repeat). The facts are the PAIR track's (s.buzz), the
+   * cursor is the room's (s.buzzState), and the chosen line is pushed
+   * into the shared chat: both partners render the identical line, and
+   * a reconnect replays the chat history it already carries — the roll
+   * is never re-thrown.
+   */
+  private storyBuzzAt(moment: 'sitDown' | 'handEnd'): void {
+    const d = this.data;
+    const s = d.story!;
+    if (s.phase !== 'game' || !s.buzzState) return;
+    const stop = storyStopById(s.stopId);
+    if (!stop) return;
+    const input = s.buzz?.[s.stopId];
+    const st = s.buzzState;
+    const checks = st.checks;
+    st.checks++;
+    const beats = buzzMomentFor(stop, moment, {
+      attempts: input?.attempts ?? 0, checks, fired: st.fired, said: st.said,
+      prevWon: input?.prevWon, prevBand: input?.prevBand ?? null,
+      prevStopName: input?.prevStopName, prevPairNames: input?.prevPairNames,
+    });
+    if (!beats) return;
+    // Dee's guide voice is quiet while she covers a seat (§2.4/§5.3):
+    // a buzz line of hers waits out the cover. The evaluation still
+    // counted — the moment passed, exactly as when the roll says no.
+    if (beats.some((bt) => bt.speaker === 'dee') && this.storyDeeCovering()) return;
+    st.fired++;
+    for (const bt of beats) { st.said.push(bt.line); this.pushBuzzLine(stop, bt); }
+  }
+
+  /** A buzz line joins the table chat under its own speaker: the
+   *  seated pair speak from their seats (1 and 3), Dee from the rail
+   *  under her guide byline. Deliberately NO bot/persona payload —
+   *  like the guide's lines, these render text-only under the voice
+   *  fence; no client voices them from a substitute sprite or synth. */
+  private pushBuzzLine(stop: StoryStop, bt: StoryBeat): void {
+    const d = this.data;
+    if (bt.speaker === 'dee') { this.pushGuideLine(bt.line); return; }
+    const seat = stop.pair[0] === bt.speaker ? 1 : 3;
+    const name = STORY_CHARACTERS[bt.speaker]?.name ?? bt.speaker;
+    this.pushChat({ id: d.chatSeq++, from: `bot:${seat}`, name, text: bt.line, at: this.io.now() });
+  }
+
+  /**
+   * The room witnessed a game at this stop (the buzz refresh, twin of
+   * the `aware` refresh in storyMarkPlayed): the pair's attempts here
+   * grow by one, and the NEXT stop's buzz facts now describe THIS game
+   * — the same facts the witness row records (the pair side's margin,
+   * how it ended), so what this room gossips at the next stop and what
+   * a later room seeds from D1 can never disagree.
+   */
+  private storyBuzzNoteGame(won: boolean): void {
+    const d = this.data;
+    const s = d.story!;
+    if (!s.buzz) s.buzz = {};
+    (s.buzz[s.stopId] ??= { attempts: 0 }).attempts++;
+    const stop = storyStopById(s.stopId);
+    const next = stop ? STORY_STOPS[stop.n] : undefined;
+    if (!stop || !next) return;
+    const facts = d.game ? storyFactsOf(d.game) : null;
+    const input = (s.buzz[next.id] ??= { attempts: 0 });
+    input.prevWon = won;
+    input.prevBand = mannerBandOf({ won, margin: facts?.margin, endReason: facts?.endReason }, targetForStop(stop));
+    input.prevStopName = stop.name;
+    input.prevPairNames = `${STORY_CHARACTERS[stop.pair[0]]!.name} and ${STORY_CHARACTERS[stop.pair[1]]!.name}`;
+  }
+
   /** The marked mid-hand guide reaction (spec §5.3): a pair-side nuke
    *  by the seat's player. Everything else she says waits for hand end. */
   private storyGuideMoments(evs: TalkEvent[]): void {
@@ -2155,14 +2254,16 @@ export class Room {
    * Hand-end guide evaluation (spec §5.3): build the public board
    * facts from the hand that just closed and let the guide layer
    * decide. She reads scores, contracts, nil results and book counts
-   * — the board — never a hand.
+   * — the board — never a hand. Returns whether she spoke: the
+   * forward-buzz evaluation at a hand end runs only when she didn't
+   * (one scripted beat takes the moment, as at the solo table).
    */
-  private storyGuideHandEnd(before: GameState): void {
+  private storyGuideHandEnd(before: GameState): boolean {
     const d = this.data;
     const s = d.story!;
     const g = d.game!;
-    if (s.phase !== 'game' || !s.guide) return;
-    if (this.storyDeeCovering()) return; // she's playing the seat, not narrating it
+    if (s.phase !== 'game' || !s.guide) return false;
+    if (this.storyDeeCovering()) return false; // she's playing the seat, not narrating it
     const rec = g.history[g.history.length - 1]!;
     const us = rec.sides[0]!;
     const them = rec.sides[1]!;
@@ -2189,6 +2290,7 @@ export class Room {
       awareCase: s.aware?.[s.stopId] ?? 'a',
     }, Math.random);
     if (line) this.pushGuideLine(line.text);
+    return !!line;
   }
 
   /**
@@ -2202,6 +2304,7 @@ export class Room {
     if (!s.aware) s.aware = {};
     if (s.stopId === 'king' && won && s.aware['king'] !== 'finale') s.aware['king'] = 'finale';
     else s.aware[s.stopId] = 'e';
+    this.storyBuzzNoteGame(won);
   }
 
   /**
@@ -2238,6 +2341,12 @@ export class Room {
       // A fresh match gets a fresh guide memory (spec §5.3): said set,
       // spacing and once-only flags are per match, seeded by the room.
       s.guide = newGuideState(s.stopId, `${d.code}:${d.gamesPlayed}:${s.stopId}`);
+      // A fresh match gets a fresh buzz cursor too (word travels fast):
+      // cap, roll cursor and said set are per match, held by the room —
+      // and the sit-down is the buzz's first moment, the arrival
+      // sizing-up, evaluated once here where both clients share it.
+      s.buzzState = { checks: 0, fired: 0, said: [] };
+      this.storyBuzzAt('sitDown');
     } else if (s.phase === 'outro') {
       const wasKing = s.stopId === 'king';
       const next = s.nextStopId && storyStopById(s.nextStopId) ? s.nextStopId : s.stopId;

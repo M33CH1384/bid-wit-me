@@ -1217,6 +1217,28 @@ export interface BuzzFacts {
   prevPairNames?: string;
 }
 
+/**
+ * The per-stop buzz INPUT a table holds before any match starts: the
+ * recorded facts about the stop directly before it (same derivation
+ * the solo home reads in storyApi.routeFactsFor, computed wherever the
+ * track's rows live). The solo driver folds these into BuzzFacts from
+ * its progress payload; the co-op ROOM is seeded with them by the
+ * story HTTP layer (the pair track's rows — never either player's
+ * solo track) and refreshes them from the games it witnesses, so both
+ * partners' tables gossip from the pair's one shared history.
+ */
+export interface StoryBuzzInput {
+  /** games already played at this stop on this track */
+  attempts: number;
+  /** the recorded latest result at the previous stop was a win
+   *  (undefined: no result recorded there — nobody heard anything) */
+  prevWon?: boolean;
+  /** that result's manner band (null: a win without a recorded manner, or a loss) */
+  prevBand?: MannerBand | null;
+  prevStopName?: string;
+  prevPairNames?: string;
+}
+
 /** One buzz moment per match, ever — "when they feel like it," not a lecture. */
 export const BUZZ_MATCH_CAP = 1;
 /** Seeded speak chances per moment kind (arrival sizing-up lands oftener). */
