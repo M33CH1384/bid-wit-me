@@ -251,6 +251,24 @@ describe('the BottomLine renders: bug + lines from the rating board fetch', () =
     expect(css).toContain('html.bwm-ticker-on .profile-page { padding-bottom: calc(62px + env(safe-area-inset-bottom)); }');
     expect(css).toContain('html.bwm-ticker-on .rewards-page { padding-bottom: calc(58px + env(safe-area-inset-bottom)); }');
   });
+  it('placement (owner, 2026-10-24): the wizard commit bar reserves the ticker height as a bottom OFFSET — it is fixed, so padding cannot move it', () => {
+    // The Create Table screenshot: the gold CREATE TABLE button sat half
+    // under the ticker. Both bars are position:fixed at bottom:0 with
+    // z-index 15 (.setup-bar is Setup.tsx's SetupBar — CREATE TABLE on the
+    // online create step, DEAL ME IN on the bots step), and the in-flow
+    // padding reservations above cannot reach a fixed bar. The contract:
+    // while the ticker shows, the commit bar stacks directly on top of it
+    // (bottom offset = the ticker's exact height, safe area included) and
+    // the form's scroll clearance (.ess-barred, 138px + safe area at rest)
+    // grows by the same offset so the last card still rests above the bar.
+    const styles = readSrc('../src/styles.css');
+    expect(styles).toContain('.setup-bar { position: fixed;');
+    expect(css).toContain('html.bwm-ticker-on .setup-bar { bottom: calc(38px + env(safe-area-inset-bottom)); }');
+    expect(css).toContain('html.bwm-ticker-on .ess-barred { padding-bottom: calc(176px + env(safe-area-inset-bottom) + env(safe-area-inset-bottom)); }');
+    // the offset must stay equal to the ticker's own height or the slice
+    // (or a floating gap) returns
+    expect(css).toContain('.ranks-ticker.bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; height: calc(38px + env(safe-area-inset-bottom));');
+  });
   it('placement (owner, 2026-10-20): the panel ticker sits flush on the sheet bottom edge, not floating on its safe-area padding', () => {
     // the panel sheet pads its bottom by the safe area; the footer ticker
     // absorbs that strip inside its own height and the panel drops the

@@ -519,6 +519,18 @@ html.bwm-ticker-on .wizard { padding-bottom: calc(38px + env(safe-area-inset-bot
 html.bwm-ticker-on .setup { padding-bottom: calc(78px + env(safe-area-inset-bottom)); }
 html.bwm-ticker-on .profile-page { padding-bottom: calc(62px + env(safe-area-inset-bottom)); }
 html.bwm-ticker-on .rewards-page { padding-bottom: calc(58px + env(safe-area-inset-bottom)); }
+/* The setup wizard's commit bar (.setup-bar — CREATE TABLE / DEAL ME IN) is
+   viewport-FIXED at bottom: 0 with the same z-index as this bar, so the
+   padding reservations above can never reach it: the two fixed bars shared
+   the bottom edge and the ticker sliced across the button's lower half
+   (owner, 2026-10-24). A fixed bar's reservation is a bottom OFFSET of
+   exactly the ticker's height — the commit bar stacks directly on top of
+   the ticker (which stays visible: the wizard is one of its named
+   surfaces) — and the form's own scroll clearance (.ess-barred: 138px +
+   safe area at rest) grows by the same offset, safe-area strip included,
+   so the last form card still rests fully above the commit bar. */
+html.bwm-ticker-on .setup-bar { bottom: calc(38px + env(safe-area-inset-bottom)); }
+html.bwm-ticker-on .ess-barred { padding-bottom: calc(176px + env(safe-area-inset-bottom) + env(safe-area-inset-bottom)); }
 /* Panel footer: the sheet pads its own bottom by the safe area, which
    left the in-panel ticker floating that far above the sheet's bottom
    edge (owner, 2026-10-20: "ticker is too high on the rank tab"). When

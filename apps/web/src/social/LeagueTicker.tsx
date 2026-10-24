@@ -9,7 +9,10 @@
  *    `bwm-ticker-on` and each surface gives the bar's height back out of
  *    its own box (extra bottom padding inside its full-height frame —
  *    see social.css), so no document grows and the bar never covers
- *    content: home stays exactly one viewport tall.
+ *    content: home stays exactly one viewport tall. A surface whose own
+ *    bottom bar is viewport-fixed (the setup wizard's .setup-bar) takes
+ *    the same height as a bottom offset instead — padding cannot move a
+ *    fixed bar (owner, 2026-10-24; rules in social.css).
  *  - While the Social panel is open, the root bar steps aside and the
  *    panel renders the same component as its footer (variant "panel"),
  *    pinned flush to the sheet's bottom edge — one visible instance at
