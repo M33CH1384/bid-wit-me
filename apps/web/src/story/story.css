@@ -930,23 +930,79 @@ html[data-theme="neon"] .story-you-face {
 }
 .story-mode-current { font-weight: 600; }
 
-.story-coop { display: grid; gap: 18px; }
+/* The partner step's composition (owner, 2026-10-24 — "This screen is
+   still trash but I like the next screen that stages the players"):
+   the gate's and the room lobby's language, one screen earlier — the
+   title in a hero over a stop backdrop (the dock parks in the hero's
+   topbar, over art, as on the gate and the map), Dee presenting the
+   run in her guide's voice instead of a wall of explainer text, rows
+   with real faces (a friend's picture, the stop pair's portraits on
+   the lobby's table), presence and pair standing read from the same
+   payloads the Friends tab uses, and the join code entered on the
+   lobby's dashed ticket. The shell is a column and the share section
+   rests in the bottom zone, so a short screen fills the phone instead
+   of ending in void; on a short phone everything simply flows.
+   Still photography and type only: no motion over content. */
+.story-coop-shell { display: flex; flex-direction: column; }
+.story-coop-hero {
+  min-height: 172px;
+  display: flex; flex-direction: column; justify-content: flex-end;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+.story-coop-hero .story-hero-bg { opacity: 0.55; }
+.story-coop { display: flex; flex-direction: column; gap: 18px; flex: 1; }
 .story-coop-h { font-size: 16px; margin: 0 0 8px; }
-.story-coop-lede { line-height: 1.45; opacity: 0.9; margin: 0; }
+.story-coop-dee {
+  display: flex; gap: 12px; align-items: center;
+  border: 1px solid rgba(127, 127, 160, 0.35); border-radius: 14px;
+  padding: 12px;
+}
+.story-coop-dee-body { flex: 1; min-width: 0; }
+.story-coop-dee-name {
+  margin: 0; font-size: 12px; font-weight: 800;
+  letter-spacing: 0.1em; text-transform: uppercase; color: #eec96a;
+}
+.story-coop-dee-line { margin: 3px 0 0; line-height: 1.45; opacity: 0.92; }
 .story-coop-dim { opacity: 0.75; margin: 0 0 8px; }
 .story-coop-err { border-color: #b3543f; }
 .story-coop-runs, .story-coop-friends, .story-coop-share { display: grid; gap: 8px; }
+.story-coop-share { margin-top: auto; padding-top: 6px; }
 .story-coop-run {
-  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  display: flex; justify-content: flex-start; align-items: center; gap: 12px;
   width: 100%; text-align: left; cursor: pointer; min-height: 44px;
   border: 1px solid rgba(127, 127, 160, 0.35); border-radius: 12px;
   padding: 10px 12px; background: transparent; color: inherit;
 }
+.story-coop-run-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .story-coop-run-name { font-weight: 600; }
 .story-coop-run-facts { opacity: 0.8; font-size: 14px; }
+.story-coop-av {
+  width: 44px; height: 44px; border-radius: 50%; overflow: hidden;
+  display: grid; place-items: center; flex: none; box-sizing: border-box;
+  font-weight: 800; font-size: 19px;
+  background: rgba(127, 127, 160, 0.3);
+  border: 2px solid rgba(232, 200, 90, 0.75);
+}
+.story-coop-av img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .story-coop-friend {
-  display: flex; justify-content: space-between; align-items: center; gap: 10px;
-  border: 1px solid rgba(127, 127, 160, 0.25); border-radius: 12px; padding: 8px 12px;
+  display: flex; justify-content: flex-start; align-items: center; gap: 12px;
+  border: 1px solid rgba(127, 127, 160, 0.25); border-radius: 12px; padding: 10px 12px;
+}
+.story-coop-friend-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.story-coop-friend-name { font-weight: 600; display: flex; align-items: center; gap: 7px; }
+.story-coop-dot { width: 8px; height: 8px; border-radius: 50%; background: #3fae5a; flex: none; }
+.story-coop-friend-sub { font-size: 13px; opacity: 0.75; }
+.story-coop-friend-run { font-size: 13px; font-weight: 600; color: #e8c85a; }
+.story-coop-ticket {
+  display: flex; flex-direction: column; gap: 8px;
+  border: 1px dashed rgba(232, 200, 90, 0.55); border-radius: 14px;
+  padding: 10px 12px;
+  background: rgba(238, 201, 106, 0.05);
+}
+.story-coop-ticket-label {
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.14em;
+  text-transform: uppercase; color: #e8c85a;
 }
 .story-coop-share-row, .story-coop-join-row { display: flex; gap: 8px; align-items: center; }
 .story-coop-join-row input {

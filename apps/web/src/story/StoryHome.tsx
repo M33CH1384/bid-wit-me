@@ -255,6 +255,18 @@ export default function StoryHome() {
     void fetchStoryTracks().then((t) => { if (live) setGateTracks(t); });
     return () => { live = false; };
   }, [mode, progress, signedOut]);
+  // The partner step's hero facts: the same pair tracks, fetched while
+  // the partner step stands so its hero can stand at the focus run's
+  // stop. A failed fetch leaves it null and the hero stays the Porch
+  // with no state line — every pair starts there, so the image is
+  // honest either way; the screen never invents a run it does not hold.
+  const [coopTracks, setCoopTracks] = useState<StoryTracks | null>(null);
+  useEffect(() => {
+    if (mode !== 'coop' || coopSel || room) return;
+    let live = true;
+    void fetchStoryTracks().then((t) => { if (live) setCoopTracks(t); });
+    return () => { live = false; };
+  }, [mode, coopSel, room]);
   useEffect(() => {
     if (!coopCodeParam || coopFired.current || !progress || signedOut) return;
     if (STORY_OWNER_ONLY && (lockedByServer || storyAccess === undefined || storyLockedFor(storyAccess))) return;
@@ -741,6 +753,34 @@ export default function StoryHome() {
       </div>
     );
   } else if (screen.k === 'map' && mode === 'coop') {
+    // The partner step's composition (owner, 2026-10-24: "This screen is
+    // still trash but I like the next screen that stages the players"):
+    // the title stands in a hero over a stop backdrop, in the gate's and
+    // the room lobby's language — the Porch for a player with no pair
+    // run yet (every pair starts there), the focus run's current stop
+    // when a run is further along, the King for a route finished
+    // together. The hero line is the focus run's real standing or it
+    // does not render: while the tracks load (or if they failed) the
+    // hero is the Porch and carries no line.
+    const coopPairRuns = coopTracks?.pairs ?? null;
+    const coopRunsByRecency = coopPairRuns
+      ? [...coopPairRuns].sort((a, b) => (b.lastPlayedAt ?? 0) - (a.lastPlayedAt ?? 0))
+      : [];
+    const coopFocusRun = coopRunsByRecency.find((p) => !p.completed) ?? coopRunsByRecency[0] ?? null;
+    const coopHeroStop = !coopFocusRun
+      ? STORY_STOPS[0]!
+      : coopFocusRun.completed
+        ? STORY_STOPS[STORY_STOPS.length - 1]!
+        : (STORY_STOPS.find((x) => x.n === coopFocusRun.currentStop) ?? STORY_STOPS[0]!);
+    const coopHeroLine = !coopPairRuns
+      ? null
+      : coopPairRuns.length === 0
+        ? 'No pair runs yet — a new pair starts together at the Porch.'
+        : coopFocusRun!.completed
+          ? `You and ${coopFocusRun!.partnerHandle ?? 'your partner'} made it out together.`
+          : coopFocusRun!.currentStop != null
+            ? `With ${coopFocusRun!.partnerHandle ?? 'your partner'} — at stop ${coopFocusRun!.currentStop}, ${STORY_STOPS.find((x) => x.n === coopFocusRun!.currentStop)?.name ?? 'the Porch'}.`
+            : `With ${coopFocusRun!.partnerHandle ?? 'your partner'} — the run hasn\u2019t started yet.`;
     body = coopSel ? (
       <CoopMap
         progress={coopProgress}
@@ -753,14 +793,18 @@ export default function StoryHome() {
         soloStarted={soloStarted}
       />
     ) : (
-      <div className="story-shell" data-testid="story-coop-home">
-        <div className="story-topbar">
-          <button type="button" className="btn ghost" data-testid="story-home" onClick={() => navigate('/')}>← Home</button>
-          <div className="story-title-block">
-            <h1 className="story-title">Story Mode — Co-op</h1>
-            <p className="story-sub">Two players, one run up the block.</p>
+      <div className="story-shell story-coop-shell" data-testid="story-coop-home">
+        <div className="story-hero story-coop-hero">
+          <div className="story-hero-bg" style={{ backgroundImage: `url(${storyBackdropUrl(coopHeroStop)})` }} aria-hidden />
+          <div className="story-topbar">
+            <button type="button" className="btn ghost" data-testid="story-home" onClick={() => navigate('/')}>← Home</button>
+            <div className="story-title-block">
+              <h1 className="story-title">Story Mode — Co-op</h1>
+              <p className="story-sub">Two players, one run up the block.</p>
+              {coopHeroLine && <p className="story-hero-progress" data-testid="story-coop-hero-line">{coopHeroLine}</p>}
+            </div>
+            <span className="dock-slot" aria-hidden />
           </div>
-          <span className="dock-slot" aria-hidden />
         </div>
         <CoopPartner
           onSelectRun={(track, partnerUid, partnerHandle) => setCoopSel({ track, partnerUid, partnerHandle })}
