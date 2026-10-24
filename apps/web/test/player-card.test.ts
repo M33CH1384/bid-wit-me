@@ -250,20 +250,20 @@ describe('the playing-card front', () => {
     expect(prow.textContent).toContain('Partnership');
     expect(prow.textContent).toContain('1240');
     expect(prow.textContent).toContain('6–4');
-    expect(prow.textContent).toContain('60%');
+    expect(prow.textContent).toContain('60.0%');
     expect(prow.textContent).toContain('10');
     const crow = q('[data-testid="pcard-row-cutthroat"]')!;
     expect(crow.children).toHaveLength(5);
     expect(crow.textContent).toContain('Cutthroat');
     expect(crow.textContent).toContain('980');
     expect(crow.textContent).toContain('1–1');
-    expect(crow.textContent).toContain('50%');
+    expect(crow.textContent).toContain('50.0%');
     /* the career line is the totals row: record, win%, games */
     const career = q('[data-testid="pcard-row-career"]')!;
     expect(career.children).toHaveLength(5);
     expect(career.textContent).toContain('Career');
     expect(career.textContent).toContain('32–18');
-    expect(career.textContent).toContain('64%');
+    expect(career.textContent).toContain('64.0%');
     expect(career.textContent).toContain('50');
     /* the streak rides its own ruled row in the same grid */
     const streak = q('[data-testid="pcard-row-streak"]')!;
@@ -274,6 +274,35 @@ describe('the playing-card front', () => {
     expect(q('[data-testid="pcard-vs"]')?.textContent).toContain('You vs ShotCaller:');
     expect(q('[data-testid="pcard-vs"]')?.textContent).toContain('3–1');
     expect(text()).toMatch(/Member since \w+ \d{4}/);
+  });
+
+  it('every WIN % cell speaks one precision — one decimal, mode rows and career alike', async () => {
+    /* The owner's flip (2026-10-23 19:33): the mode rows rounded to a
+       whole number ("33%") while the career row printed the payload's
+       decimal ("38.8%") — one column, two precisions. A real card
+       back holds ONE precision per column. These are the screenshot's
+       own records: Partnership 9–18 of 27, Career 33–52 of 85. */
+    await render(createElement(PlayerCard, {
+      data: cardBase({
+        stats: {
+          games: 85, wins: 33, losses: 52, winPct: 38.8, streak: 0, bestStreak: 0,
+          team: { rating: 1188, games: 27, wins: 9, losses: 18 },
+          cutthroat: { rating: 1204, games: 58, wins: 24, losses: 34 },
+        },
+      }),
+    }));
+    const pctCell = (id: string) => (q(`[data-testid="${id}"]`)!.children[3] as HTMLElement).textContent!;
+    const cells = [
+      pctCell('pcard-row-partnership'),
+      pctCell('pcard-row-cutthroat'),
+      pctCell('pcard-row-career'),
+    ];
+    /* every cell in the column carries the identical one-decimal shape */
+    for (const c of cells) expect(c).toMatch(/^\d+\.\d%$/);
+    /* and the values are the real records at that precision */
+    expect(cells[0]).toBe('33.3%');
+    expect(cells[1]).toBe('41.4%');
+    expect(cells[2]).toBe('38.8%');
   });
 
   it('a mode with no games gets an honest row in the table — its seed rating never prints', async () => {

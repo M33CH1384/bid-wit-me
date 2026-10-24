@@ -202,6 +202,17 @@ function ArtWindow({ pic, name, cls }: { pic: string | null; name: string; cls: 
   );
 }
 
+/** The WIN % column speaks ONE precision (owner, 2026-10-23): every
+ *  value in it — mode rows and the career line alike — renders with
+ *  exactly one decimal (33.3%, 38.8%, 64.0%), the way a real card back
+ *  prints it. Mode rows compute theirs from wins/games; the career row
+ *  runs the payload's winPct through this same formatter, so the
+ *  column can never mix whole numbers and decimals again (the owner's
+ *  flip showed Partnership "33%" beside Career "38.8%"). */
+function winPctText(pct: number): string {
+  return `${pct.toFixed(1)}%`;
+}
+
 /** One mode's row in the back's stat table (baseball-card layout, owner
  *  2026-10-23): rating, W–L, win% and games in straight columns, all
  *  from the real payload — the mode's win% is its own wins/games, the
@@ -222,7 +233,7 @@ function ModeRow({ label, split, testid }: { label: string; split: CardModeSplit
       <th scope="row">{label}</th>
       <td>{split.rating}</td>
       <td>{split.wins}–{split.losses}</td>
-      <td>{Math.round((split.wins / split.games) * 100)}%</td>
+      <td>{winPctText((split.wins / split.games) * 100)}</td>
       <td>{split.games}</td>
     </tr>
   );
@@ -380,7 +391,7 @@ export function PlayerCard({ data, pic, variant = 'header', champion, self, onEd
                         <th scope="row">Career</th>
                         <td>—</td>
                         <td>{s.wins}–{s.losses}</td>
-                        <td>{s.winPct === null ? '—' : `${s.winPct}%`}</td>
+                        <td>{s.winPct === null ? '—' : winPctText(s.winPct)}</td>
                         <td>{s.games}</td>
                       </tr>
                       <tr className="streakrow" data-testid="pcard-row-streak">
