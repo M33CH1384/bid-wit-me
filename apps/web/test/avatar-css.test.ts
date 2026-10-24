@@ -36,6 +36,34 @@ describe('avatar pic fill', () => {
   });
 });
 
+describe('avatar circular clip', () => {
+  it('the lobby seat pic clips to the ring’s circle, not the ring’s square box', () => {
+    // The seat ring's roundness lives on the PARENT (.seat-ring: background +
+    // box-shadow) and the ring itself never clips — the ready-check badge and the
+    // video bubble sit on its edge. So the pic element must carry the circle:
+    // .has-pic supplies overflow:hidden, but clipping follows the element's own
+    // border-radius. Without the radius here the pic rendered as the ring's full
+    // bounding square, corners breaking the gold circle (owner 2026-10-24).
+    const seat = rule(styles, '.seat-ring .av-initial.has-pic');
+    expect(seat).toContain('position: absolute');
+    expect(seat).toContain('inset: 0');
+    expect(seat).toContain('border-radius: 50%');
+  });
+
+  it('every AvatarCircle face carries its own circle', () => {
+    // The clip contract: .has-pic only supplies overflow + the cover img; the
+    // round clip exists only where the face element itself is round. Pin the
+    // radius on each live AvatarCircle context so a new context that borrows
+    // its roundness from a parent (the seat-ring mistake) fails here.
+    expect(rule(styles, '.plate-avatar')).toContain('border-radius: 50%');
+    expect(rule(styles, '.tt-avatar')).toContain('border-radius: 50%');
+    expect(rule(styles, '.vs-initial')).toContain('border-radius: 50%');
+    expect(rule(styles, '.bwm-seat-face-circle')).toContain('border-radius: 50%');
+    expect(rule(social, '.soc-av')).toContain('border-radius: 50%');
+    expect(rule(account, '.acct-avatar')).toContain('border-radius: 50%');
+  });
+});
+
 describe('avatar sizes', () => {
   it('profile headers get a big circle (112–128px) on both profile views', () => {
     const socBig = rule(social, '.soc-av.big');

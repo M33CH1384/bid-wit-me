@@ -2374,8 +2374,12 @@ button.mode-pick::after, button.quiet-row::after { content: ''; position: absolu
 .has-pic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; border-radius: inherit; }
 /* table name plates: the pic replaces the initial letter */
 .plate-avatar.has-pic { padding: 0; }
-/* lobby seat rings: the pic fills the ring */
-.seat-ring .av-initial.has-pic { position: absolute; inset: 0; }
+/* lobby seat rings: the pic fills the ring. The radius MUST live on the pic element
+   itself (owner 2026-10-24: pic spilled past the gold circle): the ring's roundness
+   is only the parent's background + box-shadow, and .has-pic's overflow clips to the
+   element's OWN border-radius — without it the pic clipped to the ring's square box
+   and its corners broke the circle. */
+.seat-ring .av-initial.has-pic { position: absolute; inset: 0; border-radius: 50%; }
 /* profile + account + social circles: generic .has-pic rules do the work; friend-row size */
 .soc-av.frow { width: 40px; height: 40px; font-size: 20px; }
 /* video bubble: the pic fills the bubble like a camera would (camera off / connecting) */
