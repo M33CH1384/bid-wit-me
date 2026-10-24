@@ -69,6 +69,20 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
   const team = (seat: number) => (r.partnerships ? (seat % 2 === 0 ? 'A' : 'B') : null);
   const seatedHumans = room.seats.filter((s) => s.kind === 'human').length;
   const wide = useWide();
+  // The seat table's stage ends where the dock begins (online.css lobby v7):
+  // publish the dock's real height as --dock-h so the stage tracks it in every
+  // state (host/guest/playing change the dock's contents, hence its height).
+  const dockRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = dockRef.current;
+    if (wide || !el || typeof ResizeObserver === 'undefined') return;
+    const root = document.documentElement;
+    const apply = () => root.style.setProperty('--dock-h', `${el.offsetHeight}px`);
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => { ro.disconnect(); root.style.removeProperty('--dock-h'); };
+  }, [wide]);
   const [chatOpen, setChatOpen] = useState(false);
   const [seen, setSeen] = useState(cs.chat.length);
   useEffect(() => { if (chatOpen || wide) setSeen(cs.chat.length); }, [chatOpen, wide, cs.chat.length]);
@@ -303,7 +317,7 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
       </div>
       <LobbyChat cs={cs} onSend={(text) => conn.send({ t: 'chat', text })} open={chatOpen} setOpen={setChatOpen} wide={wide} />
       {!wide && createPortal(
-        <div className={`lobby-dock ${chatOpen ? 'chat-open' : ''}`} data-testid="lobby-dock">
+        <div ref={dockRef} className={`lobby-dock ${chatOpen ? 'chat-open' : ''}`} data-testid="lobby-dock">
           {startBlock}
           <div className="dock-bar">
             {cs.seat !== null ? <MediaBar mesh={mesh} vs={vs} seated /> : <span className="dock-spacer" />}
