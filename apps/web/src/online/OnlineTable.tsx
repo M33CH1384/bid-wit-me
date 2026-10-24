@@ -1,4 +1,5 @@
 import { winHeadline } from '../headline';
+import { signalTableReady } from '../transitions';
 import { fetchWagerList } from '../social/wagerApi';
 import { fx } from '../fx';
 import { victoryHeadline, victoryIdentity } from './victory';
@@ -139,6 +140,9 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu, versu
   }, [limitedNow]);
 
   const drawn = !!source && !!rot;
+  // The Deal (transitions.ts): this surface drawing IS the online
+  // table's readiness — signal it (a no-op unless a deal covers).
+  useEffect(() => { if (drawn) signalTableReady(); }, [drawn]);
   useEffect(() => { if (!drawn) conn.send({ t: 'interactive', on: false }); }, [drawn, conn, socketGen]);
   if (!drawn || !source || !rot) return <TableLoading progress={0.24} seats={joinSeats} reducedMotion={fx.osReducedMotion} />;
   const r = room.rules;

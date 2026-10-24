@@ -54,4 +54,50 @@
   transform: translate(-50%, -50%);
   pointer-events: none;
 }
-
+/* ------------------------------------- The Deal + The Book Sweep -- */
+.tt-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  overflow: hidden;
+  touch-action: none;
+}
+.tt-felt {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(90% 70% at 50% 42%, rgba(38, 84, 62, 0.5), rgba(0, 0, 0, 0) 70%),
+    linear-gradient(160deg, #0c1712 0%, #060a08 70%);
+  will-change: opacity;
+}
+.tt-card {
+  will-change: transform, opacity;
+}
+/* The scoop: a felt panel whose leading (left) edge carries a gold
+   bar and the won-book stack, like a hand gathering a trick. */
+.tt-scoop {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(90% 70% at 50% 42%, rgba(38, 84, 62, 0.35), rgba(0, 0, 0, 0) 70%),
+    linear-gradient(160deg, #0d130f 0%, #070908 70%);
+  will-change: transform, opacity;
+}
+.tt-scoop-edge {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  background: linear-gradient(180deg, rgba(216, 182, 106, 0), rgba(216, 182, 106, 0.85) 30%, rgba(216, 182, 106, 0.85) 70%, rgba(216, 182, 106, 0));
+}
+.tt-stack {
+  position: absolute;
+  left: 26px;
+  top: 50%;
+  margin-top: -12%;
+}
+.tt-stack-card {
+  position: absolute;
+  inset: 0;
+}

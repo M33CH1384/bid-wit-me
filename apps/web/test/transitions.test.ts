@@ -266,7 +266,10 @@ describe('the Card Fan (stage 2)', () => {
     const main = read('main.tsx');
     expect(main).toContain("import FanLayer from './FanLayer'");
     expect(main).toContain('<FanLayer />');
-    expect(main).toContain("routeMoveClass(cur, next) ?? 'menu-nav'");
+    // Stage 3 hoisted the classification above the table branches;
+    // the class still flows into the menu-space coverThen.
+    expect(main).toContain('const move = routeMoveClass(cur, next);');
+    expect(main).toContain("}, move ?? 'menu-nav');");
     const store = read('social/store.ts');
     expect(store.split("coverThen(apply, 'profile-social')")).toHaveLength(6); // all five swaps
   });
@@ -314,6 +317,80 @@ describe('the Card Fan (stage 2)', () => {
 
     act(() => vi.advanceTimersByTime(PROGRAM_SPECS.fan.holdMs + PROGRAM_SPECS.fan.revealMs));
     expect(host.querySelector('[data-testid="fan-layer"]')).toBeNull();
+    act(() => root.unmount());
+    host.remove();
+  });
+});
+
+describe('the Deal + the Book Sweep (stage 3)', () => {
+  it('wiring: entries deal in at every door; exits sweep; story never deals', () => {
+    const main = read('main.tsx');
+    expect(main).toContain("move === 'table-entry'");
+    expect(main).toContain('coverTableEntry();');
+    expect(main).toContain("move === 'table-exit'");
+    expect(main).toContain('<TableTransitionLayer />');
+    const app = read('App.tsx');
+    expect(app.split('coverTableEntry(); setGame')).toHaveLength(3); // start + resume
+    expect(app).toContain("}, 'table-exit')");
+    const table = read('Table.tsx');
+    expect(table).toContain("from './transitions'");
+    expect(table).toContain('if (loadGone) signalTableReady()');
+    const onlineApp = read('online/OnlineApp.tsx');
+    expect(onlineApp).toContain('if (cs.room) signalTableReady()');
+    expect(onlineApp).toContain('coverTableEntry(); setReady(true)');
+    const onlineTable = read('online/OnlineTable.tsx');
+    expect(onlineTable).toContain('if (drawn) signalTableReady()');
+    // Story exclusion: story surfaces never start a deal — co-op
+    // rooms render in place inside StoryHome, never via /t/.
+    expect(read('story/StoryHome.tsx')).not.toContain('coverTableEntry');
+    expect(read('story/StoryRoom.tsx')).not.toContain('coverTableEntry');
+  });
+
+  it('construction: eight dealt cards, a scoop panel, compositor-only', () => {
+    const layer = read('TableTransitionLayer.tsx');
+    expect(layer).toContain('DEAL_SLOTS');
+    expect(layer).toContain('sweep-panel');
+    expect(layer).not.toContain('<canvas');
+    expect(layer).not.toContain('requestAnimationFrame');
+    expect(layer).not.toContain('getContext');
+    const css = read('transitions.css');
+    expect(css).toContain('.tt-layer');
+    expect(css).toContain('.tt-felt');
+    expect(css).toContain('.tt-scoop');
+  });
+
+  it('renders the deal over an entry and the sweep over an exit', async () => {
+    const { createElement } = await import('react');
+    const { createRoot } = await import('react-dom/client');
+    const { act } = await import('react');
+    const { default: TableTransitionLayer } = await import('../src/TableTransitionLayer');
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    act(() => root.render(createElement(TableTransitionLayer)));
+    act(() => registerTransitionRenderer(true));
+    expect(host.querySelector('[data-testid="table-transition-layer"]')).toBeNull();
+
+    act(() => coverTableEntry());
+    const dealEl = host.querySelector<HTMLElement>('[data-testid="table-transition-layer"]');
+    expect(dealEl!.dataset.program).toBe('deal');
+    expect(dealEl!.style.pointerEvents).toBe('auto');
+    expect(host.querySelectorAll('[data-anim="deal-card"]')).toHaveLength(8);
+    act(() => signalTableReady());
+    act(() => vi.advanceTimersByTime(PROGRAM_SPECS.deal.coverMs));
+    expect(host.querySelector<HTMLElement>('[data-testid="table-transition-layer"]')!.dataset.phase).toBe('reveal');
+    act(() => vi.advanceTimersByTime(PROGRAM_SPECS.deal.revealMs));
+    expect(host.querySelector('[data-testid="table-transition-layer"]')).toBeNull();
+
+    const m = vi.fn();
+    act(() => coverThen(m, 'table-exit'));
+    const sweepEl = host.querySelector<HTMLElement>('[data-testid="table-transition-layer"]');
+    expect(sweepEl!.dataset.program).toBe('sweep');
+    act(() => vi.advanceTimersByTime(PROGRAM_SPECS.sweep.coverMs));
+    expect(m).toHaveBeenCalledTimes(1);
+    act(() => vi.advanceTimersByTime(PROGRAM_SPECS.sweep.holdMs + PROGRAM_SPECS.sweep.revealMs));
+    expect(host.querySelector('[data-testid="table-transition-layer"]')).toBeNull();
     act(() => root.unmount());
     host.remove();
   });

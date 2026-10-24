@@ -10,8 +10,9 @@ import { LeagueTickerRoot } from './social/LeagueTicker';
 import InkLayer from './ink/InkLayer';
 import SprayLayer from './SprayLayer';
 import FanLayer from './FanLayer';
+import TableTransitionLayer from './TableTransitionLayer';
 import { cancelSpray, coverThen, sprayRouteEligible } from './spray';
-import { routeMoveClass } from './transitions';
+import { coverTableEntry, routeMoveClass } from './transitions';
 import { initSpraySound } from './spraySound';
 import { initTransitionSound } from './transitionSound';
 import { watchPendingClaim } from './pendingClaim';
@@ -81,17 +82,30 @@ function Root() {
       const next = location.pathname;
       const cur = pathRef.current;
       if (next === cur) return;
-      if (sprayRouteEligible(cur, next)) {
-        // The transition family (transitions.ts): the move is
-        // classified and the class picks the program — spray/ink for
-        // menu space, the Card Fan for profile moves, the Doorway
-        // for Story Mode entry. Table entries/exits are NOT eligible
-        // here (they never were — sprayRouteEligible excludes them);
-        // the Deal and the Book Sweep hook in at stage 3.
+      // The transition family (transitions.ts): the move is
+      // classified and the class picks the program.
+      const move = routeMoveClass(cur, next);
+      if (move === 'table-entry') {
+        // THE DEAL: start the deal FIRST (its cover flushes any
+        // older pending swap), then land the table path instantly —
+        // the table mounts underneath and its seats hold owns the
+        // wait; the deal lifts on the table's ready signal.
+        coverTableEntry();
+        pathRef.current = next;
+        setPath(next);
+      } else if (sprayRouteEligible(cur, next)) {
+        // Menu space: spray/ink by theme, the Card Fan for profile
+        // moves, the Doorway for Story Mode entry.
         coverThen(() => {
           pathRef.current = next;
           setPath(next);
-        }, routeMoveClass(cur, next) ?? 'menu-nav');
+        }, move ?? 'menu-nav');
+      } else if (move === 'table-exit') {
+        // THE BOOK SWEEP: the leave lands under the sweep's cover.
+        coverThen(() => {
+          pathRef.current = next;
+          setPath(next);
+        }, 'table-exit');
       } else {
         cancelSpray();
         pathRef.current = next;
@@ -140,6 +154,8 @@ function Root() {
       <SprayLayer />
       {/* The Card Fan: renders only during a profile/social move. */}
       <FanLayer />
+      {/* The Deal + the Book Sweep: render only on table entry/exit. */}
+      <TableTransitionLayer />
       <IdleGuard />
       {/* Entry prompt (sign in / guest) + first-sign-in preferences offer.
           Online paths skip the remount: a live room owns its own state and

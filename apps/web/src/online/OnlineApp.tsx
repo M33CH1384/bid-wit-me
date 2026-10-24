@@ -16,6 +16,7 @@ import OnlineTable from './OnlineTable';
 import { preloadTable } from '../three/preload';
 import { takePendingVenue } from '../venues';
 import { TableLoading } from '../TableLoading';
+import { coverTableEntry, signalTableReady } from '../transitions';
 import { clearTableChatOpen } from '../chatView';
 import { useConn } from './useOnline';
 import { STATS_OFF_LABEL, social } from '../social/store';
@@ -45,7 +46,7 @@ export default function OnlineApp({ path }: { path: string }) {
   if (!enter) {
     return (
       <>
-        <Entry code={code} name={name} onName={setName} onGo={(c) => { saveName(name.trim()); setReady(true); if (c !== code) navigate(`/t/${c}`); }} />
+        <Entry code={code} name={name} onName={setName} onGo={(c) => { saveName(name.trim()); if (c === code) coverTableEntry(); setReady(true); if (c !== code) navigate(`/t/${c}`); }} />
         <SettingsSheetHost settings={settings} onChange={(s) => { setSettings(s); saveSettings(s); }} tips={tips} onTips={setTips} />
       </>
     );
@@ -240,6 +241,10 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
   // game (re)started → leave the lobby view
   const game = cs.room?.game ?? 0;
   useEffect(() => { setLobbyOpen(false); }, [game]);
+  // The Deal (transitions.ts): the room arriving ends the join hold —
+  // signal readiness so a covering deal can lift (a no-op unless a
+  // deal is up; the readiness cap covers any missed signal).
+  useEffect(() => { if (cs.room) signalTableReady(); }, [cs.room]);
 
   const [idleOut, setIdleOut] = useState(false);
   // Auto-logout: no activity for the idle window (30 min default) leaves the

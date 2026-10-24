@@ -14,6 +14,7 @@ import { MODES, type Settings, loadSettings, saveSettings, settingsToRules } fro
 import { type SavedGame, confirmReplaceSave, loadGame, markInGame, resumeOnLoad, wasInGame } from './save';
 import { flushLocalGames, watchLocalGames } from './localStats';
 import { holdIdleExemption } from './inactivity';
+import { coverTableEntry, coverThen } from './transitions';
 
 export default function App() {
   const [settings, setSettings] = useState<Settings>(loadSettings);
@@ -64,8 +65,8 @@ export default function App() {
         onChange={applySettings}
         tips={tips}
         onTips={setTips}
-        onStart={() => { if (!confirmReplaceSave(saved, (m) => window.confirm(m))) return; history.replaceState({ wiz: 'home', d: 0 }, '', location.pathname); saveSettings(settings); saveSeries(null); setGame({ seed: secureSeed(), settings, continueSeries: false }); }}
-        onResume={saved ? () => { history.replaceState({ wiz: 'home', d: 0 }, '', location.pathname); setGame({ seed: saved.seed, settings: saved.settings, resume: saved, continueSeries: true }); } : null}
+        onStart={() => { if (!confirmReplaceSave(saved, (m) => window.confirm(m))) return; history.replaceState({ wiz: 'home', d: 0 }, '', location.pathname); saveSettings(settings); saveSeries(null); coverTableEntry(); setGame({ seed: secureSeed(), settings, continueSeries: false }); }}
+        onResume={saved ? () => { history.replaceState({ wiz: 'home', d: 0 }, '', location.pathname); coverTableEntry(); setGame({ seed: saved.seed, settings: saved.settings, resume: saved, continueSeries: true }); } : null}
         resumeLabel={saved ? `${MODES.find((m) => m.key === saved.settings.mode)?.title ?? 'game'} · hand ${saved.state.handNo}` : undefined}
       />
       <SettingsSheetHost settings={settings} onChange={applySettings} tips={tips} onTips={setTips} />
@@ -82,8 +83,8 @@ export default function App() {
       resume={game.resume}
       continueSeries={game.continueSeries}
       settings={game.settings}
-      onExit={() => { clearTableChatOpen(); history.replaceState({ wiz: 'home', d: 0 }, '', '/'); setGame(null); }}
-      onSuspend={() => { clearTableChatOpen(); history.replaceState({ wiz: 'home', d: 0 }, '', '/'); setGame(null); }}
+      onExit={() => coverThen(() => { clearTableChatOpen(); history.replaceState({ wiz: 'home', d: 0 }, '', '/'); setGame(null); }, 'table-exit')}
+      onSuspend={() => coverThen(() => { clearTableChatOpen(); history.replaceState({ wiz: 'home', d: 0 }, '', '/'); setGame(null); }, 'table-exit')}
       onRematch={(dealer) => setGame({ seed: secureSeed(), settings: game.settings, dealer, continueSeries: true })}
       startDealer={game.dealer}
       onQuality={(quality) => { const s = { ...game.settings, quality }; setGame({ ...game, settings: s }); setSettings(s); saveSettings(s); }}

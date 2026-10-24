@@ -107,6 +107,7 @@ import { QUICK_TRASH_SET } from './quickTrash';
 import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
 import { STORY_CHARACTERS, STORY_STOPS, STOP_DENSITY_CLASS, TALK_PROFILES, type BotLevel, type StoryBeat, type StoryBeatFacts, type StoryGameFacts, type StoryStop, type TalkIntensity, botSkillFor, buildStoryTape, callbackFor, midSceneFor, parseHint, partnerBidIntent, personaForName, platePersona, pickBotNames, playBeatFor, railCastForAttempt, railMomentFor, resumeLineFor, skillOf, tableExchangeFor } from '@spades/bots';
 import { preloadVoice } from './voices/voices';
+import { signalTableReady } from './transitions';
 const Scene = lazy(loadScene);
 
 /**
@@ -1181,6 +1182,10 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   useEffect(() => {
     reportInteractive?.(loadGone && !loading);
   }, [loadGone, loading, reportInteractive]);
+  // The Deal (transitions.ts): the seats hold lifting IS this table's
+  // readiness — signal it so a covering deal can lift (a no-op unless
+  // a deal is up; the readiness cap covers any missed signal).
+  useEffect(() => { if (loadGone) signalTableReady(); }, [loadGone]);
   // The saved game is already in memory. The flat hand is playable on the first paint; the 3D scene catches up.
   useEffect(() => {
     const w = window as unknown as { __bwmPlayableAt?: number };
