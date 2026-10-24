@@ -4,6 +4,7 @@
  * All same-origin through the Pages proxy, credentials included — the pattern the rest
  * of the app uses (a cross-origin workers.dev fetch would lose the session on iOS).
  */
+import { noteDailyBonus } from '../dailyBonus';
 
 export interface WagerPlayer {
   uid: string; name: string; role: 'challenger' | 'opponent' | 'partner';
@@ -80,7 +81,9 @@ export function fetchMyCred(maxAgeMs = 30_000): Promise<MyCred | null> {
   if (credCache && Date.now() - credCache.at < maxAgeMs) return credCache.p;
   const p = fetch('/api/profile/me', { credentials: 'same-origin' })
     .then((r) => (r.ok ? r.json() : null))
-    .then((j): MyCred | null => (j ? {
+    // This read can be the one that lands today's daily grant: receipt it
+    // before mapping the payload down (see dailyBonus.ts).
+    .then((j): MyCred | null => { noteDailyBonus(j); return j ? {
       id: j.user.id as string,
       name: j.user.name as string,
       unlocks: ((j.unlocks ?? []) as { itemId: string }[]).map((u) => u.itemId),
@@ -88,7 +91,7 @@ export function fetchMyCred(maxAgeMs = 30_000): Promise<MyCred | null> {
       dev: !!j.dev,
       coins: (j.coins?.balance ?? 0) as number,
       level: (j.level?.level ?? 1) as number,
-    } : null))
+    } : null; })
     .catch(() => null);
   credCache = { at: Date.now(), p };
   return p;

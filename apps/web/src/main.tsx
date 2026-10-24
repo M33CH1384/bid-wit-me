@@ -5,6 +5,7 @@ import { isOnlinePath } from './online/nav';
 import { importChunk } from './chunkLoad';
 import { SoundDock } from './SoundControls';
 import { SocialRoot } from './social/Social';
+import DailyBonusReceipt from './DailyBonusReceipt';
 import { LeagueTickerRoot } from './social/LeagueTicker';
 import InkLayer from './ink/InkLayer';
 import SprayLayer from './SprayLayer';
@@ -110,6 +111,9 @@ function Root() {
           profile's season label — owner, 2026-10-20): no floating dock on those routes. */}
       {path !== '/profile' && path !== '/rewards' && <SoundDock />}
       <SocialRoot />
+      {/* Daily-bonus receipt (2026-10-23): the one-time "+N coins — you now
+          have M" card raised when the day's grant lands (see dailyBonus.ts). */}
+      <DailyBonusReceipt />
       {/* The BottomLine, app-wide (league data wave 6a): a fixed bottom bar
           on the main surfaces with its height reserved via bwm-ticker-on.
           It hides itself at a live table, while the Social panel is

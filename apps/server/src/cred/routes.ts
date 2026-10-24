@@ -87,7 +87,10 @@ async function fullProfile(db: D1Database, userId: string, username: string, now
   const season = await ensureSeason(db, now);
   // idempotent earners: welcome grant + daily login (cheap, safe to run on every profile read)
   try { await grantWelcome(db, userId, now); } catch { /* best-effort */ }
-  try { await dailyLogin(db, userId, now); } catch { /* best-effort */ }
+  // Keep the daily result: the payload reports the grant THIS read performed
+  // (see dailyBonus below) so the client can receipt it.
+  let daily = { granted: false, amount: 0, streak: 0 };
+  try { daily = await dailyLogin(db, userId, now); } catch { /* best-effort */ }
   const [level, team, cutthroat, challenges, achievements, unlocks, coins, pic, tagline, links, region] = await Promise.all([
     xpSnapshot(db, userId),
     seasonRank(db, userId, season.id, 'team'),
@@ -123,6 +126,16 @@ async function fullProfile(db: D1Database, userId: string, username: string, now
     achievements,
     unlocks,
     coins: { balance: coins },
+    /** The daily-login grant THIS read performed (owner report, 2026-10-23:
+     *  the daily-bonus push landed him on his profile with the coins already
+     *  in and no word of how many he got or had — a silent claim reads as
+     *  nothing happening). The client turns a granting read into a one-time
+     *  receipt carrying these numbers plus the balance above (read after the
+     *  grant, so it already includes it). `day` is the UTC grant day — the
+     *  same dayId dailyLogin keys on — and the client dedupes its receipt
+     *  per day. Non-granting reads carry granted:false. Self payload only:
+     *  the public profile never runs the earners and never carries this. */
+    dailyBonus: { granted: daily.granted, amount: daily.amount, streak: daily.streak, day: new Date(now).toISOString().slice(0, 10) },
   };
 }
 

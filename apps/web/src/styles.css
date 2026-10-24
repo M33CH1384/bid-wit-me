@@ -3515,3 +3515,14 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
 .rw-cardup-arrow { font-size: 18px; color: var(--muted); }
 .rw-cardup-card { width: 192px; max-width: 64vw; }
 .rw-cardup-note { margin: 0; font-size: 12.5px; letter-spacing: .03em; color: var(--muted); }
+
+/* Daily-bonus receipt (2026-10-23): the one-time "+N coins — you now have M"
+   card in the social-toast family (top-center, panel stock, drop-in), with a
+   gold edge — it's money. Raised by dailyBonus.ts when the day's grant lands;
+   rendered by DailyBonusReceipt at the root. */
+.daily-bonus-receipt { position: fixed; z-index: 1400; top: calc(8px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: min(440px, calc(100vw - 16px)); display: flex; align-items: center; gap: 10px; background: var(--panel-2); border: 1px solid var(--gold); border-radius: 10px; padding: 10px 12px; box-shadow: 0 10px 30px rgba(0,0,0,.45); animation: dbr-drop .2s ease-out; }
+.daily-bonus-receipt .dbr-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; font-size: 14px; }
+.daily-bonus-receipt .dbr-txt span { color: var(--muted); font-size: 13px; }
+.daily-bonus-receipt .dbr-x { flex: none; width: 44px; height: 44px; margin: -10px -12px -10px 0; border: 0; border-radius: 10px; background: transparent; color: var(--muted); font-size: 16px; line-height: 1; touch-action: manipulation; cursor: pointer; }
+.daily-bonus-receipt .dbr-x:active { background: rgba(255,255,255,.1); }
+@keyframes dbr-drop { from { opacity: 0; transform: translate(-50%, -6px); } to { opacity: 1; transform: translate(-50%, 0); } }

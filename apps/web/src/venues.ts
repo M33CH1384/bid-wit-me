@@ -8,6 +8,7 @@
  */
 import { isVenueChoice, type VenueChoice, type VenueId, VENUES, rollVenue } from '@spades/protocol';
 import { styleForVenue } from './spatial';
+import { noteDailyBonus } from './dailyBonus';
 
 export type { VenueChoice, VenueId };
 export { VENUES };
@@ -110,7 +111,10 @@ export function fetchVenueUnlocks(): Promise<VenueUnlockState | null> {
   if (!unlockCache) {
     unlockCache = fetch('/api/profile/me', { credentials: 'include' })
       .then((r) => (r.ok ? r.json() : null))
-      .then((p) => (p ? { unlocks: (p.unlocks ?? []).map((u: { itemId: string }) => u.itemId), dev: !!p.dev, storyAccess: !!p.storyAccess } : null))
+      // This read can be the one that lands today's daily grant (it runs on
+      // the first venue-picker/setup visit of the day): receipt it before
+      // mapping the payload down to unlock state (see dailyBonus.ts).
+      .then((p) => { noteDailyBonus(p); return p ? { unlocks: (p.unlocks ?? []).map((u: { itemId: string }) => u.itemId), dev: !!p.dev, storyAccess: !!p.storyAccess } : null; })
       .catch(() => null);
   }
   return unlockCache;

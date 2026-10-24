@@ -71,6 +71,7 @@ const COLLECTIBLE_NAMES: Record<string, string> = Object.fromEntries(
   Object.values(STORY_SECRETS).map((s) => [s.unlockable.itemId, s.unlockable.name]),
 );
 import { useAccount } from '../account/api';
+import { noteDailyBonus } from '../dailyBonus';
 import { accountUidOf, AvatarCircle, compressAvatarFile, forgetAvatar, useAvatar, validateAvatarDataUrl } from '../avatar';
 import { BADGES } from '../badges';
 import { offlineStats } from '../offlineStats';
@@ -130,6 +131,9 @@ interface CredData {
   achievements: Achievement[];
   unlocks?: Unlock[];
   coins: { balance: number };
+  /** the daily-login grant THIS read performed (self payload only): a
+   *  granting read raises the one-time receipt — see dailyBonus.ts */
+  dailyBonus?: { granted: boolean; amount: number; streak: number; day: string };
 }
 
 /** The social-record payload (/api/social/profile/:name). */
@@ -497,6 +501,13 @@ export function ProfileView({ host, name, id }: {
       .catch(() => { if (alive) setCred(null); });
     return () => { alive = false; };
   }, [selfRoute, uid, me, reloadTick]);
+
+  /* Daily-bonus receipt (owner, 2026-10-23): if the /me read above was the
+   *  one that landed today's grant, its payload says so — hand it to the
+   *  receipt store, which dedupes per day and raises the "+N coins — you
+   *  now have M" card. Covers both fetch paths (self route + own profile
+   *  opened through Social); public payloads carry no grant and no-op. */
+  useEffect(() => { if (cred) noteDailyBonus(cred); }, [cred]);
 
   /* Story badges (owner, 2026-10-22): the story collection joins the
    *  Achievements tab — SELF view only, because story progress is the

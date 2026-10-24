@@ -2,6 +2,7 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type OpenTable, type PresenceEntry } from '@spades/protocol';
 import { CoinIcon } from '../RepBlock';
+import { noteDailyBonus } from '../dailyBonus';
 import { fetchWagerList, type WagerRow } from './wagerApi';
 import { useAccount } from '../account/api';
 import { navigate } from '../online/nav';
@@ -319,7 +320,7 @@ export function Leaderboards() {
   useEffect(() => {
     if (!acct.user) return;
     let live = true;
-    get('/api/profile/me').then((j) => { if (live) setMyRegion(j?.user?.region ?? null); }).catch(() => undefined);
+    get('/api/profile/me').then((j) => { noteDailyBonus(j); if (live) setMyRegion(j?.user?.region ?? null); }).catch(() => undefined);
     return () => { live = false; };
   }, [acct.user]);
 

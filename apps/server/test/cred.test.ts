@@ -341,3 +341,34 @@ describe('profile routes', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('daily bonus grant report (owner 2026-10-23: the push tap landed silently)', () => {
+  it('the granting /me read reports amount + day, and the balance already includes it', async () => {
+    const tok = await session('a');
+    const first = await (await authed(tok, '/api/profile/me')).json() as any;
+    // welcome 1000 + first daily login 100 (streak day 1), day = NOW's UTC day
+    expect(first.dailyBonus).toEqual({ granted: true, amount: 100, streak: 1, day: '2027-01-15' });
+    expect(first.coins.balance).toBe(1100);
+    // a later read the same day grants nothing and says so — the receipt fires once
+    const second = await (await authed(tok, '/api/profile/me')).json() as any;
+    expect(second.dailyBonus.granted).toBe(false);
+    expect(second.dailyBonus.amount).toBe(0);
+    expect(second.coins.balance).toBe(1100);
+    // the public profile never carries the grant report
+    const pub = await (await handleCredHttp(new Request(new URL('/api/profile/a', ORIGIN)), { DB: db, PUBLIC_ORIGIN: ORIGIN }, new URL('/api/profile/a', ORIGIN), ['api', 'profile', 'a'], NOW)).json() as any;
+    expect(pub.dailyBonus).toBeUndefined();
+  });
+  it('the next day grants again at the streak amount', async () => {
+    const DAY = 86_400_000;
+    await db.prepare('INSERT INTO sessions (id_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)')
+      .bind(await sha256b64('a-long-tok'), 'a', 1, NOW + 30 * DAY).run();
+    const call = (now: number) => handleCredHttp(
+      new Request(new URL('/api/profile/me', ORIGIN), { headers: { cookie: '__Host-bwm_sid=a-long-tok' } }),
+      { DB: db, PUBLIC_ORIGIN: ORIGIN }, new URL('/api/profile/me', ORIGIN), ['api', 'profile', 'me'], now);
+    const d1 = await (await call(NOW)).json() as any;
+    expect(d1.dailyBonus).toMatchObject({ granted: true, amount: 100, streak: 1, day: '2027-01-15' });
+    const d2 = await (await call(NOW + DAY)).json() as any;
+    expect(d2.dailyBonus).toMatchObject({ granted: true, amount: 125, streak: 2, day: '2027-01-16' });
+    expect(d2.coins.balance).toBe(d1.coins.balance + 125);
+  });
+});
