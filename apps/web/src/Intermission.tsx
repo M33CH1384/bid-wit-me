@@ -57,12 +57,15 @@ export function calloutsFor(st: GameState, mySide: number, names: string[]): Cal
 }
 
 export function Intermission({
-  st, names, mySide, secs, ready, onReady, online, onScorePad, onLeave, series, chatOpen, unread, onChat, runReview, setAnimCtx,
+  st, names, mySide, secs, ready, onReady, online, onScorePad, onLeave, series, chatOpen, unread, onChat, runReview, trickReview, setAnimCtx,
 }: {
   /** rematch series chip */
   series?: ReactNode;
   /** cleared hands from a Run it!, in the scroll — never a full-screen scrim over the recap */
   runReview?: ReactNode;
+  /** the trick browser over the hand just played (the score card's Review
+   *  control, owner 2026-10-24), in the scroll beside the Run It review */
+  trickReview?: ReactNode;
   /** Set-animation context (owner, 2026-10-21): the story stop this match is
    *  played at (the house — its animation plays here earned or not), the
    *  room's venue for "Match the room", and the player's picker choice.
@@ -353,6 +356,7 @@ export function Intermission({
             })}
           </div>
           {runReview}
+          {trickReview}
         </div>
 
         <footer className="tt-foot stack">

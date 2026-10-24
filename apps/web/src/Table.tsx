@@ -2,6 +2,7 @@ import { deliverBotLine } from './voices/aiVoice';
 import { musicTension } from './musicTension';
 import { clearTableChatOpen, loadTableChatOpen, saveTableChatOpen } from './chatView';
 import { browsedTrick, stepTrickIndex, trickPositionLabel } from './lastTrickBrowse';
+import { RecapTrickReview } from './TrickBrowser';
 import { enterTable, quitGame, silenceGame, suspendGame } from './gameSession';
 import { cardControlLabel } from './cardA11y';
 import type { HandHitCard } from './three/handHit';
@@ -2764,6 +2765,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
               <button type="button" className="tt-run-show" data-testid="talk-run-show" onClick={() => setClearedOpen(true)}>Review last trick</button>
             )
           ) : null}
+          trickReview={<RecapTrickReview key={st.handNo} tricks={piles} face={face} />}
         />
       )}
       {seriesOpen && series && <SeriesSheet series={series} mine={seriesMine} onClose={() => setSeriesOpen(false)} />}

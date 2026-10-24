@@ -1124,6 +1124,17 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 }
 .tt-run { margin: 2px 0 4px; align-self: center; width: min(520px, 100%); }
 .tt-run-show { align-self: center; margin: 0; padding: 6px 14px; appearance: none; -webkit-appearance: none; font-family: var(--display); font-weight: 800; font-size: 15px; letter-spacing: .06em; color: #f6f2ff; background: rgba(20, 10, 36, .92); border: 1px solid rgba(var(--edge-rgb), .55); border-radius: 999px; }
+/* Score-card trick browser (owner 2026-10-24): the recap's Review control —
+   a pill in the Run It review's idiom that opens the trick browser (the
+   table readout's own lt-* classes and stepping helpers) in the recap's
+   flow, over the hand just played. */
+.tt-tricks { margin: 2px 0 4px; align-self: center; width: min(520px, 100%); }
+.tt-tricks-show { align-self: center; margin: 0; padding: 6px 14px; appearance: none; -webkit-appearance: none; font-family: var(--display); font-weight: 800; font-size: 15px; letter-spacing: .06em; color: #f6f2ff; background: rgba(20, 10, 36, .92); border: 1px solid rgba(var(--edge-rgb), .55); border-radius: 999px; }
+.trick-browser { display: flex; flex-direction: column; gap: 5px; padding: 8px 12px; border-radius: 12px; background: rgba(16, 8, 30, .55); border: 1px solid rgba(var(--edge-rgb), .45); }
+.tb-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.tb-head .lt-label { width: auto; text-align: left; }
+.tb-x { flex: none; width: 32px; height: 32px; border: 0; border-radius: 50%; background: rgba(255,255,255,.08); color: var(--ink); font-size: 15px; }
+.tb-cards { display: flex; flex-wrap: wrap; gap: 4px; }
 .tt-backdrop ~ .modal-backdrop { z-index: 50; }
 .tt-foot.bid-row { margin: 0; flex-wrap: nowrap; }
 .chat.glass.slant.recap-chat {
@@ -3271,8 +3282,8 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
   .tt-body {
     display: grid;
     grid-template-columns: minmax(290px, 370px) minmax(0, 1fr);
-    grid-template-areas: "scores recap" "strip recap" "callouts recap" "run run";
-    grid-template-rows: auto auto 1fr auto;
+    grid-template-areas: "scores recap" "strip recap" "callouts recap" "run run" "tricks tricks";
+    grid-template-rows: auto auto 1fr auto auto;
     align-content: start;
     align-items: start;
     justify-items: stretch;
@@ -3284,6 +3295,8 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
   .tt-recap { grid-area: recap; width: 100%; }
   .tt-run { grid-area: run; width: 100%; }
   .tt-run-show { grid-area: run; justify-self: center; }
+  .tt-tricks { grid-area: tricks; width: 100%; }
+  .tt-tricks-show { grid-area: tricks; justify-self: center; }
 }
 
 /* Home story-resume row (2026-10-21): the row swaps its content, never its
