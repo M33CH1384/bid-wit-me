@@ -11,6 +11,7 @@ import InkLayer from './ink/InkLayer';
 import SprayLayer from './SprayLayer';
 import FanLayer from './FanLayer';
 import TableTransitionLayer from './TableTransitionLayer';
+import DoorwayLayer from './DoorwayLayer';
 import { cancelSpray, coverThen, sprayRouteEligible } from './spray';
 import { coverTableEntry, routeMoveClass } from './transitions';
 import { initSpraySound } from './spraySound';
@@ -156,6 +157,8 @@ function Root() {
       <FanLayer />
       {/* The Deal + the Book Sweep: render only on table entry/exit. */}
       <TableTransitionLayer />
+      {/* The Doorway: renders only on story entries. */}
+      <DoorwayLayer />
       <IdleGuard />
       {/* Entry prompt (sign in / guest) + first-sign-in preferences offer.
           Online paths skip the remount: a live room owns its own state and

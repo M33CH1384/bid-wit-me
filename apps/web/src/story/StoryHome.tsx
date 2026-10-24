@@ -132,13 +132,20 @@ export default function StoryHome() {
   const [tips, setTips] = useState<TipsPref>(loadTips);
   const applySettings = (s: Settings) => { setSettings(s); saveSettings(s); };
   const [screen, setScreen] = useState<Screen>({ k: 'map' });
-  // Spray-paint transitions (spray.ts): story's own screen changes ride the
-  // paint — except anything touching the table ('game' on either side): the
-  // seats hold owns entering a match, and a finished match's outro keeps its
-  // own ceremony, so game-adjacent swaps stay exactly as they were. Every
-  // setScreen call site routes through here so the rule lives in one place.
+  // Screen transitions (transitions.ts): story's own screen changes
+  // ride the spray/ink — except anything touching the table ('game'
+  // on either side): the seats hold owns entering a match, and a
+  // finished match's outro keeps its own ceremony, so game-adjacent
+  // swaps stay exactly as they were. One class is its own program:
+  // stepping from the map INTO a stop's screens (its tape or its
+  // intro) walks through THE DOORWAY — warm light, story register.
+  // Every setScreen call site routes through here so the rule lives
+  // in one place.
   const goScreen = (next: Screen) => {
-    if (next.k !== screen.k && next.k !== 'game' && screen.k !== 'game') coverThen(() => setScreen(next));
+    if (next.k !== screen.k && next.k !== 'game' && screen.k !== 'game') {
+      const throughDoor = screen.k === 'map' && (next.k === 'tape' || next.k === 'intro');
+      coverThen(() => setScreen(next), throughDoor ? 'story-entry' : 'screen');
+    }
     else setScreen(next);
   };
   // Friend presence (owner, 2026-10-22): the story surfaces report Story

@@ -396,6 +396,58 @@ describe('the Deal + the Book Sweep (stage 3)', () => {
   });
 });
 
+describe('the Doorway (stage 4)', () => {
+  it('wiring: Root mounts it; story map->tape/intro walks through it, all else keeps spray/ink', () => {
+    const main = read('main.tsx');
+    expect(main).toContain("import DoorwayLayer from './DoorwayLayer'");
+    expect(main).toContain('<DoorwayLayer />');
+    const story = read('story/StoryHome.tsx');
+    expect(story).toContain("screen.k === 'map' && (next.k === 'tape' || next.k === 'intro')");
+    expect(story).toContain("throughDoor ? 'story-entry' : 'screen'");
+  });
+
+  it('construction: warm light pieces only, compositor-driven, silent', () => {
+    const layer = read('DoorwayLayer.tsx');
+    expect(layer).toContain('door-light');
+    expect(layer).toContain('door-panel');
+    expect(layer).toContain('rotateY(-24deg)');
+    expect(layer).not.toContain('<canvas');
+    expect(layer).not.toContain('requestAnimationFrame');
+    expect(layer).not.toContain("from './audio'");
+    const css = read('transitions.css');
+    expect(css).toContain('.tdoor-layer');
+    expect(css).toContain('#140b06');
+    expect(css).toContain('#ffd9a0');
+  });
+
+  it('renders over a story entry for the full doorway cycle', async () => {
+    const { createElement } = await import('react');
+    const { createRoot } = await import('react-dom/client');
+    const { act } = await import('react');
+    const { default: DoorwayLayer } = await import('../src/DoorwayLayer');
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    act(() => root.render(createElement(DoorwayLayer)));
+    act(() => registerTransitionRenderer(true));
+    expect(host.querySelector('[data-testid="doorway-layer"]')).toBeNull();
+
+    const m = vi.fn();
+    act(() => coverThen(m, 'story-entry'));
+    const el = host.querySelector<HTMLElement>('[data-testid="doorway-layer"]');
+    expect(el).not.toBeNull();
+    expect(el!.style.pointerEvents).toBe('auto');
+    expect(host.querySelectorAll('[data-anim^="door-"]')).toHaveLength(4);
+    act(() => vi.advanceTimersByTime(PROGRAM_SPECS.doorway.coverMs));
+    expect(m).toHaveBeenCalledTimes(1);
+    act(() => vi.advanceTimersByTime(PROGRAM_SPECS.doorway.holdMs + PROGRAM_SPECS.doorway.revealMs));
+    expect(host.querySelector('[data-testid="doorway-layer"]')).toBeNull();
+    act(() => root.unmount());
+    host.remove();
+  });
+});
+
 describe('family-wide construction pins', () => {
   it('the controller paints nothing and runs no frame loop', () => {
     const ctl = read('transitions.ts');
