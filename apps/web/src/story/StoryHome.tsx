@@ -850,6 +850,7 @@ export default function StoryHome() {
             cta="To the table"
             onDone={() => startGame(stop)}
             bgUrl={storyBackdropUrl(stop)}
+            living={stop.id === 'porch'}
             cast={[stop.pair[0], 'dee', stop.pair[1]]}
             rail={railCastForAttempt(stop.id, factsFor(stop).attempts + 1)}
             egg={eggFor(stop)}

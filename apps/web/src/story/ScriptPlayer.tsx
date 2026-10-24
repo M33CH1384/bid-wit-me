@@ -20,7 +20,7 @@
  * scene in place — discovery feels like the scene opening a side door.
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { STORY_CHARACTERS, personaForName, type StoryBeat } from '@spades/bots';
+import { STORY_CHARACTERS, personaForName, storyPortraitFor, type StoryBeat } from '@spades/bots';
 import { sound } from '../audio';
 import { cancelActiveSpeech } from '../audioSession';
 import { setStoryVoiceScope, speakBot, spokenClipDurationMs } from '../talkPrefs';
@@ -94,7 +94,45 @@ function seatPosFor(speaker: string, cast: string[]): SeatPos | undefined {
   return (['left', 'top', 'right'] as SeatPos[])[ix];
 }
 
-export default function ScriptPlayer({ beats, cta, onDone, bgUrl, cast = [], egg, onEggFound, rail = [] }: {
+/** The OS reduced-motion setting, read once at mount (guarded: some
+ *  webviews lack matchMedia). The in-game Reduce effects toggle is
+ *  reactive via useReduceEffects; this one only gates the living
+ *  sample staging below. */
+function osPrefersReducedMotion(): boolean {
+  try {
+    return typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * One LARGE stage portrait for the living staging (sample, 2026-10-24):
+ * the character's shipped portrait art standing in the frame, initial
+ * letter behind it if the art ever fails — the StoryFace fallback
+ * contract, at stage size. NOT a StoryFace: the medallion's
+ * `story-face-<id>` testid belongs to the cast strip alone, and the
+ * stage is decorative (aria-hidden at the container) beside it.
+ */
+function StageFace({ characterId, name }: { characterId: string; name: string }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <span className="story-stage-face">
+      <span className="story-stage-initial">{name.slice(0, 1)}</span>
+      {!failed && (
+        <img
+          className="story-stage-img"
+          src={storyPortraitFor(characterId)}
+          alt=""
+          draggable={false}
+          onError={() => setFailed(true)}
+        />
+      )}
+    </span>
+  );
+}
+
+export default function ScriptPlayer({ beats, cta, onDone, bgUrl, cast = [], egg, onEggFound, rail = [], living = false }: {
   beats: StoryBeat[];
   /** label of the final advance button */
   cta: string;
@@ -107,8 +145,24 @@ export default function ScriptPlayer({ beats, cta, onDone, bgUrl, cast = [], egg
   onEggFound?: () => void;
   /** railbird character ids standing on the rail at this stop (storyRail) */
   rail?: string[];
+  /**
+   * LIVING SCENE SAMPLE (owner, 2026-10-24): the pre-match intro staged
+   * alive — the backdrop breathes (light play + drifting air) and the
+   * seated pair stand LARGE in the frame with a slow idle drift, the
+   * current speaker lit. Opt-in per call site; ONLY the Porch intro
+   * (stop 1, solo + co-op) passes it, so every other scene renders
+   * exactly as before. Collapses to the static staging whenever Reduce
+   * effects or the OS reduced-motion setting is on. The beats, voices,
+   * pacing and skip behavior are untouched either way.
+   */
+  living?: boolean;
 }) {
   const reduceFx = useReduceEffects();
+  const [osReduced] = useState(osPrefersReducedMotion);
+  const livingOn = living && !reduceFx && !osReduced;
+  /** The staged pair: the cast minus Dee (she guides from the strip,
+   *  she is not seated at the table). Exactly two or no stage at all. */
+  const stagePair = livingOn ? cast.filter((id) => id !== 'dee' && STORY_CHARACTERS[id]) : [];
   const chainReady = !!(egg?.trigger === 'chain' && egg.ready);
   const queue = useMemo(
     () => (chainReady && egg ? [...egg.beats, ...beats] : beats),
@@ -253,8 +307,31 @@ export default function ScriptPlayer({ beats, cta, onDone, bgUrl, cast = [], egg
   };
 
   return (
-    <div className={`story-scene${reduceFx ? ' reduce' : ''}`} data-testid="story-script">
+    <div className={`story-scene${reduceFx ? ' reduce' : ''}${livingOn ? ' living' : ''}`} data-testid="story-script">
       {bgUrl && <div className="story-scene-bg" style={{ backgroundImage: `url(${bgUrl})` }} aria-hidden />}
+      {livingOn && (
+        <>
+          <div className="story-scene-glow" aria-hidden />
+          <div className="story-scene-haze" aria-hidden />
+          {stagePair.length === 2 && (
+            <div className="story-stage" data-testid="story-stage" aria-hidden>
+              {stagePair.map((id, ix) => {
+                const active = beat.speaker === id;
+                return (
+                  <div
+                    key={id}
+                    className={`story-stage-one ${ix === 0 ? 'left' : 'right'}${active ? ' active' : ' dim'}`}
+                    data-testid={`story-stage-${id}`}
+                    data-active={active ? 'true' : 'false'}
+                  >
+                    <StageFace characterId={id} name={STORY_CHARACTERS[id]!.name} />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
       <div className="story-bar top" aria-hidden />
       <div className="story-bar bottom" aria-hidden />
       <div className="story-scene-inner">
