@@ -3,16 +3,25 @@
  * spray.ts. Mounted once in Root beside InkLayer / SocialRoot. It renders
  * nothing while idle; during a spray it is a single fixed <canvas>:
  *
- *  - COVER (~320 ms, two beats — the owner asked for motion with a shape to
- *    it, not a linear wipe): first the can TAGS A SPADE at center screen —
- *    a speckle brush stamps its way around the spade's outline while the
- *    interior fills in behind it in stroke bands, the whole mark wreathed
- *    in overspray — then the paint FILLS OUT from the painted spade, a
- *    black bloom with a speckled front spreading until the corners are
- *    covered. The spade geometry is the game's own mark, decoded from
- *    public/favicon.svg. Everything is pre-rendered sprites + brush stamps
- *    (a bounded number of drawImage calls per frame, textures built once
- *    per spray) — no DOM churn, no per-frame layout.
+ *  - COVER (~570 ms, THREE strict beats — owner, 2026-10-23: the spade
+ *    must be sprayed as an outline first, "then fill in the rest"; v2's
+ *    overlapped tag read as a progress fill, and its stamp steps read
+ *    as stepping):
+ *      1. OUTLINE (~330 ms): the can travels the spade's COMPLETE
+ *         contour. The finished sprayed outline is pre-rendered once as
+ *         a sprite and revealed through a moving mask stroked along the
+ *         path, so the line is perfectly continuous — no stamp stepping —
+ *         while a live nozzle dab + overspray puff ride the frontier.
+ *         Interior still empty; the overspray halo gathers around.
+ *      2. INTERIOR (~105 ms): the fill sprays in behind a SOFT moving
+ *         front (a gradient-masked sprite, no band edges snapping in).
+ *      3. BLOOM (~135 ms): the paint fills out from the finished spade,
+ *         a black bloom with a speckled front spreading until the
+ *         corners are covered and the swap lands.
+ *    The spade geometry is the game's own mark, decoded from
+ *    public/favicon.svg. Everything is pre-rendered sprites + bounded
+ *    per-frame compositing (textures built once per spray) — no DOM
+ *    churn, no per-frame layout.
  *  - REVEAL: the full black is erased through a pre-rendered grain mask
  *    (destination-out), so the paint speckles and dissolves off the new
  *    screen instead of sliding away, with a short opacity tail so no
@@ -31,6 +40,8 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import {
   SPRAY_COVER_MS,
+  SPRAY_FILL_MS,
+  SPRAY_OUTLINE_MS,
   SPRAY_REVEAL_MS,
   SPRAY_SPADE_MS,
   getSpraySnapshot,
@@ -64,6 +75,10 @@ const jit = (i: number, salt: number): number => JITTER[(i * 7 + salt * 131) & 5
 
 const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
 const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3);
+/** Gentle at both ends: the can eases into the trace and settles as it
+ *  closes the tip, and the interior front starts/stops softly. */
+const easeInOutCubic = (t: number): number =>
+  t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
 /* ------------------------------------------------------------------ */
 /* The spade. Geometry decoded from public/favicon.svg — the game's    */
@@ -185,8 +200,16 @@ interface SpadeSprites {
   key: string;
   /** Silhouette fill + interior grain (transparent outside the mark). */
   fill: HTMLCanvasElement;
+  /** The sprayed outline, finished: a grained stroke along the contour
+   *  with a speckle-ragged edge (transparent inside the mark). Revealed
+   *  progressively through a moving mask during the outline beat, so the
+   *  traced line is continuous by construction. */
+  outline: HTMLCanvasElement;
   /** Overspray cloud only (transparent inside the mark). */
   halo: HTMLCanvasElement;
+  /** Same-size scratch canvas for the per-frame mask composites. */
+  scratch: HTMLCanvasElement;
+  dpr: number;
   /** Draw position of the sprite canvases (CSS px). */
   x: number;
   y: number;
@@ -198,8 +221,10 @@ interface SpadeSprites {
 }
 let spadeSprites: SpadeSprites | null = null;
 
-/** The painted spade as two stacked sprites, so the cover can reveal the
- *  fill in stroke bands while the overspray halo is already present. */
+/** The painted spade as stacked sprites — finished outline, interior
+ *  fill, overspray halo — plus a scratch canvas the cover composites its
+ *  moving masks through, so each beat reveals a pre-rendered layer
+ *  instead of painting (and stepping) per frame. */
 function getSpadeSprites(geo: SpadeGeo, dpr: number): SpadeSprites | null {
   const key = `${Math.round(geo.w)}x${Math.round(geo.h)}@${dpr}`;
   if (spadeSprites?.key === key) return spadeSprites;
@@ -214,10 +239,13 @@ function getSpadeSprites(geo: SpadeGeo, dpr: number): SpadeSprites | null {
       return c;
     };
     const fill = mk();
+    const outlineC = mk();
     const halo = mk();
+    const scratch = mk();
     const fg = fill.getContext('2d');
+    const og = outlineC.getContext('2d');
     const hg = halo.getContext('2d');
-    if (!fg || !hg) return null;
+    if (!fg || !og || !hg) return null;
     // Sprite space: favicon units, origin at the spade bbox's top-left,
     // padded by `pad` on every side.
     const place = (g: CanvasRenderingContext2D) => {
@@ -287,10 +315,43 @@ function getSpadeSprites(geo: SpadeGeo, dpr: number): SpadeSprites | null {
     }
     fg.globalAlpha = 1;
 
+    // --- outline: the finished sprayed contour. A soft wet under-stroke,
+    // a dense core stroke, then speckle walked along the sampled path so
+    // the edge is ragged like real overspray. Drawn once; the cover
+    // reveals it through a mask, never re-stamps it per frame.
+    place(og);
+    og.lineJoin = 'round';
+    og.lineCap = 'round';
+    og.strokeStyle = PAINT;
+    traceSpade(og);
+    og.globalAlpha = 0.16;
+    og.lineWidth = (geo.brush * 1.5) / geo.k;
+    og.stroke();
+    traceSpade(og);
+    og.globalAlpha = 0.97;
+    og.lineWidth = (geo.brush * 0.8) / geo.k;
+    og.stroke();
+    const rndO = mulberry32(0x0a17);
+    for (const p of SPADE_OUTLINE.pts) {
+      for (let j = 0; j < 2; j++) {
+        const off = (rndO() - 0.5) * ((geo.brush * 1.1) / geo.k);
+        const along = (rndO() - 0.5) * 0.9;
+        og.globalAlpha = 0.08 + rndO() * 0.32;
+        og.fillStyle = INKS[(rndO() * INKS.length) | 0]!;
+        og.beginPath();
+        og.arc(p.x + off + along, p.y + off - along, 0.3 + rndO() * 0.9, 0, TAU);
+        og.fill();
+      }
+    }
+    og.globalAlpha = 1;
+
     spadeSprites = {
       key,
       fill,
+      outline: outlineC,
       halo,
+      scratch,
+      dpr,
       x: geo.left - pad,
       y: geo.top - pad,
       w,
@@ -335,7 +396,7 @@ function getGrain(w: number, h: number): HTMLCanvasElement | null {
 }
 
 /* ------------------------------------------------------------------ */
-/* Cover program — tag the spade, then fill out from it                */
+/* Cover program — outline, then interior, then bloom                  */
 /* ------------------------------------------------------------------ */
 
 interface SpadeGeo {
@@ -390,80 +451,176 @@ function coverPosition(snap: { phaseAt: number; fromCoverage: number }): number 
   return Math.min(SPRAY_COVER_MS, Math.max(0, start + (performance.now() - snap.phaseAt)));
 }
 
-/** Beat 1: the spade is tagged. The brush stamps its way around the
- *  outline (leading stamp = the nozzle), the overspray halo gathers as
- *  the trace progresses, and the interior fills behind the trace in
- *  stroke bands. s is the beat's progress 0..1. */
-function drawSpadeTag(
+/** Point at arc length `target` (px) along the outline, interpolated
+ *  between the sampled points — the trace frontier moves continuously,
+ *  never snapping from sample to sample. */
+function frontierAt(
+  pts: SpadeGeo['pts'],
+  target: number,
+): { x: number; y: number } {
+  if (target <= 0) return { x: pts[0]!.x, y: pts[0]!.y };
+  for (let i = 1; i < pts.length; i++) {
+    const p = pts[i]!;
+    if (p.cum >= target) {
+      const q = pts[i - 1]!;
+      const span = p.cum - q.cum;
+      const f = span > 0 ? (target - q.cum) / span : 0;
+      return { x: q.x + (p.x - q.x) * f, y: q.y + (p.y - q.y) * f };
+    }
+  }
+  const last = pts[pts.length - 1]!;
+  return { x: last.x, y: last.y };
+}
+
+/** Composite the pre-rendered outline sprite through a moving mask:
+ *  stroke the traced-so-far sub-path wide onto the scratch canvas, keep
+ *  only the sprite inside it ('source-in'), and lay the result down.
+ *  The revealed line is the finished sprite's own, so it cannot step —
+ *  only the mask frontier moves, and it moves by the frame clock. */
+function drawOutlineReveal(
   g: CanvasRenderingContext2D,
+  sp: SpadeSprites,
   geo: SpadeGeo,
-  s: number,
-  dpr: number,
+  outlineP: number,
 ): void {
-  const OUTLINE_END = 0.78; // trace completes at 78% of the beat
-  const FILL_START = 0.22; // interior strokes start once the trace is moving
-  const outlineP = easeOutCubic(clamp01(s / OUTLINE_END));
-  const fillP = clamp01((s - FILL_START) / (1 - FILL_START));
-
-  const sp = getSpadeSprites(geo, dpr);
-  if (sp) {
-    g.globalAlpha = Math.min(0.92, outlineP * 1.25);
-    g.drawImage(sp.halo, sp.x, sp.y, sp.w, sp.h);
-    if (fillP > 0) {
-      // Reveal the fill sprite in a horizontal band (stroke passes): crop
-      // the source to the spade's own height inside the sprite.
-      const srcPad = (sp.pad / sp.h) * sp.fill.height;
-      const srcSpadeH = (sp.spadeH / sp.h) * sp.fill.height;
-      const srcH = srcSpadeH * easeOutCubic(fillP);
-      if (srcH > 0.5) {
-        g.globalAlpha = 1;
-        g.drawImage(
-          sp.fill,
-          0,
-          srcPad,
-          sp.fill.width,
-          srcH,
-          sp.x,
-          sp.y + sp.pad,
-          sp.w,
-          sp.spadeH * easeOutCubic(fillP),
-        );
-      }
-    }
-    g.globalAlpha = 1;
-  }
-
-  const brush = getBrushSprite();
-  if (!brush) return;
+  const sg = sp.scratch.getContext('2d');
+  if (!sg) return;
   const target = outlineP * geo.outlineLen;
-  const spacing = geo.brush * 0.42;
-  let lastX = Number.NEGATIVE_INFINITY;
-  let lastY = 0;
-  let stamp = 0;
-  const dab = (x: number, y: number, scale: number, alpha: number) => {
-    const size = geo.brush * scale;
-    g.globalAlpha = alpha;
-    g.drawImage(brush, x - size / 2, y - size / 2, size, size);
-  };
+  sg.setTransform(1, 0, 0, 1, 0, 0);
+  sg.globalCompositeOperation = 'source-over';
+  sg.globalAlpha = 1;
+  sg.clearRect(0, 0, sp.scratch.width, sp.scratch.height);
+  sg.setTransform(sp.dpr, 0, 0, sp.dpr, -sp.x * sp.dpr, -sp.y * sp.dpr);
+  sg.beginPath();
+  sg.moveTo(geo.pts[0]!.x, geo.pts[0]!.y);
   for (const p of geo.pts) {
-    if (p.cum > target) {
-      // The nozzle: one dab right at the frontier of the trace.
-      if (stamp > 0 && p.cum - target < spacing) {
-        dab(p.x, p.y, 1.18, 1);
-      }
-      break;
-    }
-    if (stamp === 0 || Math.hypot(p.x - lastX, p.y - lastY) >= spacing) {
-      dab(p.x, p.y, 0.86 + jit(stamp, 1) * 0.34, 0.8 + jit(stamp, 2) * 0.2);
-      lastX = p.x;
-      lastY = p.y;
-      stamp++;
-    }
+    if (p.cum > target) break;
+    sg.lineTo(p.x, p.y);
   }
+  const f = frontierAt(geo.pts, target);
+  sg.lineTo(f.x, f.y);
+  sg.lineWidth = geo.brush * 1.8;
+  sg.lineCap = 'round';
+  sg.lineJoin = 'round';
+  sg.strokeStyle = '#fff';
+  sg.stroke();
+  sg.setTransform(1, 0, 0, 1, 0, 0);
+  sg.globalCompositeOperation = 'source-in';
+  sg.drawImage(sp.outline, 0, 0);
+  sg.globalCompositeOperation = 'source-over';
+  g.drawImage(sp.scratch, sp.x, sp.y, sp.w, sp.h);
+}
+
+/** The can's business end at a point: a soft overspray puff with the
+ *  nozzle dab at its heart — what makes a frontier read as a moving
+ *  spray can rather than a drawing cursor. */
+function drawNozzle(
+  g: CanvasRenderingContext2D,
+  brush: HTMLCanvasElement,
+  x: number,
+  y: number,
+  brushSize: number,
+): void {
+  const puff = brushSize * 2.1;
+  g.globalAlpha = 0.32;
+  g.drawImage(brush, x - puff / 2, y - puff / 2, puff, puff);
+  const dabSize = brushSize * 1.18;
+  g.globalAlpha = 1;
+  g.drawImage(brush, x - dabSize / 2, y - dabSize / 2, dabSize, dabSize);
   g.globalAlpha = 1;
 }
 
-/** Beat 2: the paint fills out from the spade — a black bloom whose front
+/** Beat 1: the can traces the spade's COMPLETE outline. The overspray
+ *  halo gathers as the trace travels; the interior stays EMPTY — the
+ *  fill sprite is not touched in this beat (pinned by tests). outlineP
+ *  is the beat's eased progress 0..1. */
+function drawSpadeOutline(
+  g: CanvasRenderingContext2D,
+  geo: SpadeGeo,
+  outlineP: number,
+  dpr: number,
+): void {
+  const sp = getSpadeSprites(geo, dpr);
+  if (sp) {
+    g.globalAlpha = Math.min(0.92, outlineP * 1.3);
+    g.drawImage(sp.halo, sp.x, sp.y, sp.w, sp.h);
+    g.globalAlpha = 1;
+    if (outlineP >= 1) {
+      g.drawImage(sp.outline, sp.x, sp.y, sp.w, sp.h);
+    } else if (outlineP > 0) {
+      drawOutlineReveal(g, sp, geo, outlineP);
+    }
+  }
+  const brush = getBrushSprite();
+  if (!brush || outlineP <= 0) return;
+  const f = frontierAt(geo.pts, outlineP * geo.outlineLen);
+  drawNozzle(g, brush, f.x, f.y, geo.brush);
+  g.globalAlpha = 1;
+}
+
+/** Composite the fill sprite behind a soft moving front: a
+ *  destination-in gradient on the scratch canvas — alpha 1 above the
+ *  front, feathering to 0 across a wide band — so the interior arrives
+ *  as a sweep of wet paint with no hard band edge anywhere. */
+function drawFillReveal(
+  g: CanvasRenderingContext2D,
+  sp: SpadeSprites,
+  fillP: number,
+): void {
+  const sg = sp.scratch.getContext('2d');
+  if (!sg) return;
+  const srcPad = (sp.pad / sp.h) * sp.fill.height;
+  const srcSpadeH = (sp.spadeH / sp.h) * sp.fill.height;
+  const band = srcSpadeH * 0.3;
+  const front = srcPad - band + fillP * (srcSpadeH + band * 2);
+  sg.setTransform(1, 0, 0, 1, 0, 0);
+  sg.globalCompositeOperation = 'source-over';
+  sg.globalAlpha = 1;
+  sg.clearRect(0, 0, sp.scratch.width, sp.scratch.height);
+  sg.drawImage(sp.fill, 0, 0);
+  const grad = sg.createLinearGradient(0, front - band / 2, 0, front + band / 2);
+  grad.addColorStop(0, 'rgba(0,0,0,1)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  sg.globalCompositeOperation = 'destination-in';
+  sg.fillStyle = grad;
+  sg.fillRect(0, 0, sp.scratch.width, sp.scratch.height);
+  sg.globalCompositeOperation = 'source-over';
+  g.drawImage(sp.scratch, sp.x, sp.y, sp.w, sp.h);
+}
+
+/** Beat 2: the interior sprays in. The completed outline stands; the
+ *  fill arrives behind the soft front while the nozzle rides it with a
+ *  sway, like a can sweeping back and forth. fillP is the beat's eased
+ *  progress 0..1; at 1 the spade stands finished (the bloom's base). */
+function drawSpadeFill(
+  g: CanvasRenderingContext2D,
+  geo: SpadeGeo,
+  fillP: number,
+  dpr: number,
+): void {
+  const sp = getSpadeSprites(geo, dpr);
+  if (sp) {
+    g.globalAlpha = 0.92;
+    g.drawImage(sp.halo, sp.x, sp.y, sp.w, sp.h);
+    g.globalAlpha = 1;
+    g.drawImage(sp.outline, sp.x, sp.y, sp.w, sp.h);
+    if (fillP >= 1) {
+      g.drawImage(sp.fill, sp.x, sp.y, sp.w, sp.h);
+    } else if (fillP > 0) {
+      drawFillReveal(g, sp, fillP);
+    }
+  }
+  const brush = getBrushSprite();
+  if (!brush || fillP <= 0 || fillP >= 1) return;
+  const band = geo.h * 0.3;
+  const frontY = geo.top - band + fillP * (geo.h + band * 2);
+  const swayX = geo.cx + Math.sin(fillP * 5.1) * geo.w * 0.18;
+  const y = Math.min(geo.top + geo.h, Math.max(geo.top, frontY));
+  drawNozzle(g, brush, swayX, y, geo.brush);
+  g.globalAlpha = 1;
+}
+
+/** Beat 3: the paint fills out from the spade — a black bloom whose front
  *  is a ring of overspray speckle, spreading until it swallows the screen.
  *  u is the beat's eased progress 0..1; at 1 the screen is flat black. */
 function drawFillBloom(
@@ -512,10 +669,15 @@ function drawCover(
   g.globalCompositeOperation = 'source-over';
   g.globalAlpha = 1;
   const geo = spadeGeometry(vw, vh);
-  if (pos < SPRAY_SPADE_MS) {
-    drawSpadeTag(g, geo, pos / SPRAY_SPADE_MS, dpr);
+  if (pos < SPRAY_OUTLINE_MS) {
+    // Beat 1: the can traces the complete outline; interior still empty.
+    drawSpadeOutline(g, geo, easeInOutCubic(pos / SPRAY_OUTLINE_MS), dpr);
+  } else if (pos < SPRAY_SPADE_MS) {
+    // Beat 2: the outline stands finished; the interior sprays in.
+    drawSpadeFill(g, geo, easeInOutCubic((pos - SPRAY_OUTLINE_MS) / SPRAY_FILL_MS), dpr);
   } else {
-    drawSpadeTag(g, geo, 1, dpr);
+    // Beat 3: the finished spade, then the bloom out to full black.
+    drawSpadeFill(g, geo, 1, dpr);
     drawFillBloom(g, vw, vh, geo, easeOutCubic((pos - SPRAY_SPADE_MS) / (SPRAY_COVER_MS - SPRAY_SPADE_MS)));
   }
 }

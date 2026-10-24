@@ -32,6 +32,8 @@ vi.mock('../src/fx', () => ({ fx: fxStub }));
 import {
   SPRAY_COVER_MS,
   SPRAY_FAILSAFE_MS,
+  SPRAY_FILL_MS,
+  SPRAY_OUTLINE_MS,
   SPRAY_REVEAL_MS,
   SPRAY_SPADE_MS,
   cancelSpray,
@@ -232,16 +234,26 @@ describe('SprayLayer', () => {
   });
 });
 
-describe('cover choreography — tag the spade, then fill out (owner, 2026-10-23)', () => {
-  it('the cover spends its first beat on the spade, inside the standing timing budget', () => {
-    // The whole transition stays "quick": cover 280–350 ms, total 560–650 ms.
-    expect(SPRAY_COVER_MS).toBeGreaterThanOrEqual(280);
-    expect(SPRAY_COVER_MS).toBeLessThanOrEqual(350);
-    expect(SPRAY_COVER_MS + SPRAY_REVEAL_MS).toBeGreaterThanOrEqual(560);
-    expect(SPRAY_COVER_MS + SPRAY_REVEAL_MS).toBeLessThanOrEqual(650);
-    // The spade beat is the cover's opening act, not a garnish at the end.
-    expect(SPRAY_SPADE_MS).toBeGreaterThanOrEqual(120);
-    expect(SPRAY_SPADE_MS).toBeLessThan(SPRAY_COVER_MS);
+describe('cover choreography — outline, then interior, then bloom (owner, 2026-10-23)', () => {
+  it('three strict beats inside the extended timing budget', () => {
+    // Owner round 2 on v2: "extend it a bit and make it more smooth" —
+    // the outline beat takes the bulk of the added time so the can's
+    // travel is perceivable; the whole transition stays quick.
+    expect(SPRAY_OUTLINE_MS).toBeGreaterThanOrEqual(320);
+    expect(SPRAY_OUTLINE_MS).toBeLessThanOrEqual(360);
+    expect(SPRAY_FILL_MS).toBeGreaterThanOrEqual(100);
+    expect(SPRAY_FILL_MS).toBeLessThanOrEqual(120);
+    expect(SPRAY_SPADE_MS).toBe(SPRAY_OUTLINE_MS + SPRAY_FILL_MS);
+    const bloomMs = SPRAY_COVER_MS - SPRAY_SPADE_MS;
+    expect(bloomMs).toBeGreaterThanOrEqual(120);
+    expect(bloomMs).toBeLessThanOrEqual(140);
+    expect(SPRAY_COVER_MS).toBeGreaterThanOrEqual(540);
+    expect(SPRAY_COVER_MS).toBeLessThanOrEqual(600);
+    expect(SPRAY_COVER_MS + SPRAY_REVEAL_MS).toBeGreaterThanOrEqual(780);
+    expect(SPRAY_COVER_MS + SPRAY_REVEAL_MS).toBeLessThanOrEqual(860);
+    // The failsafe still clears a full (now longer) cycle with room to
+    // spare — a stuck black screen stays structurally impossible.
+    expect(SPRAY_FAILSAFE_MS - (SPRAY_COVER_MS + SPRAY_REVEAL_MS)).toBeGreaterThanOrEqual(500);
   });
 
   it('the spade outline is the game mark: favicon geometry, tip first, closed', () => {
@@ -269,20 +281,59 @@ describe('cover choreography — tag the spade, then fill out (owner, 2026-10-23
     expect(length).toBeLessThan(200);
   });
 
-  it('the cover program runs the spade beat before the fill, never the old linear sweep', () => {
+  it('the cover program runs the beats in strict order — outline completes before any fill, fill before the bloom', () => {
     const layer = read('SprayLayer.tsx');
-    // Provenance + the two beats, in program order inside drawCover.
+    // Provenance + the three beats, in program order inside drawCover.
     expect(layer).toContain('favicon.svg');
-    expect(layer).toContain('drawSpadeTag');
-    expect(layer).toContain('drawFillBloom');
     const coverAt = layer.indexOf('function drawCover');
-    const tagAt = layer.indexOf('drawSpadeTag(g, geo', coverAt);
+    const outlineAt = layer.indexOf('drawSpadeOutline(g, geo', coverAt);
+    const fillAt = layer.indexOf('drawSpadeFill(g, geo', coverAt);
     const bloomAt = layer.indexOf('drawFillBloom(g, vw, vh, geo', coverAt);
-    expect(tagAt).toBeGreaterThan(coverAt);
-    expect(bloomAt).toBeGreaterThan(tagAt);
-    // The tag is painted by stamping the brush along the outline's arc
-    // length, and the completed spade is drawn before the bloom covers it.
+    expect(outlineAt).toBeGreaterThan(coverAt);
+    expect(fillAt).toBeGreaterThan(outlineAt);
+    expect(bloomAt).toBeGreaterThan(fillAt);
+    // The beats are gated on their own timeline segments, in order.
+    expect(layer).toContain('pos < SPRAY_OUTLINE_MS');
+    expect(layer).toContain('pos < SPRAY_SPADE_MS');
+    // Beat 1 never touches the interior: the outline painter's body has
+    // no fill-sprite draw and no call into the fill beat.
+    const outlineBody = layer.slice(
+      layer.indexOf('function drawSpadeOutline'),
+      layer.indexOf('function drawFillReveal'),
+    );
+    expect(outlineBody).toContain('sp.outline');
+    expect(outlineBody).not.toContain('sp.fill');
+    expect(outlineBody).not.toContain('drawSpadeFill');
+    // Beat 2 never starts the bloom.
+    const fillBody = layer.slice(
+      layer.indexOf('function drawSpadeFill'),
+      layer.indexOf('function drawFillBloom'),
+    );
+    expect(fillBody).toContain('sp.fill');
+    expect(fillBody).not.toContain('drawFillBloom');
+    // v2's overlapped tag — interior filling in behind the still-
+    // traveling trace, which read as a progress fill — is gone for good.
+    expect(layer).not.toContain('drawSpadeTag');
+    expect(layer).not.toContain('FILL_START');
+  });
+
+  it('the traced line is continuous: a pre-rendered outline sprite behind a moving mask, frontier interpolated', () => {
+    const layer = read('SprayLayer.tsx');
+    // The finished outline is a sprite, built once and revealed through
+    // a 'source-in' mask composite — the line is never re-stamped per
+    // frame, so it cannot step the way v2's stamp walk did.
+    expect(layer).toContain('outline: HTMLCanvasElement');
+    expect(layer).toContain("'source-in'");
+    // The frontier is interpolated between outline samples by arc
+    // length, so the can's position is continuous in time.
+    expect(layer).toContain('function frontierAt');
     expect(layer).toContain('outlineP * geo.outlineLen');
+    // The interior arrives behind a soft gradient front (destination-in
+    // on the scratch composite), not a hard crop edge snapping down.
+    expect(layer).toContain('createLinearGradient');
+    expect(layer).toContain("'destination-in'");
+    // v2's quantized stamp walk around the outline is gone.
+    expect(layer).not.toContain('lastX');
     // The 2026-10-23 first cut swept a spray front left-to-right; that
     // program is gone for good.
     expect(layer).not.toContain('getFrontSprite');
