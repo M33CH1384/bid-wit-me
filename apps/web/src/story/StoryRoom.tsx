@@ -32,6 +32,7 @@ import ScriptPlayer, { type SceneEgg } from './ScriptPlayer';
 import { storyBackdropUrl } from './storyBackdrop';
 import {
   fetchPairContext, fetchStoryProgress, postStoryFound, postStoryResult, reportStorySession,
+  routeFactsFor, trueNextStop,
   type PairContext, type StoryProgress, type StoryResult,
 } from './storyApi';
 import { coopPairNote } from './pairNote';
@@ -252,6 +253,9 @@ export function StoryRoomInner({ conn, cs, code, track, myUid, onExit }: {
       clearedStopIds: pairProgress?.stops.filter((x) => x.clears > 0).map((x) => x.stopId) ?? [],
       attemptsAtPorch: pairProgress?.stops.find((x) => x.stopId === 'porch')?.attempts ?? 0,
       railCast: railCastForAttempt(s.id, (row?.attempts ?? 0) + 1),
+      // WORD TRAVELS FAST: the pair track's real route position + the
+      // manner facts, same derivation as solo (storyApi.routeFactsFor).
+      ...routeFactsFor(pairProgress, s),
       ...(aware ? { awareness: aware } : {}),
     };
   };
@@ -495,8 +499,10 @@ export function StoryRoomInner({ conn, cs, code, track, myUid, onExit }: {
 
   // outro
   const r = result;
-  const nextStop = stop.n < STORY_STOPS.length ? STORY_STOPS[stop.n] : undefined; // STOPS are 1-based in order
-  const nextRow = nextStop && r ? r.stops.find((x) => x.stopId === nextStop.id) : undefined;
+  // NEXT-STOP TRUTH (owner, 2026-10-24): the next stop comes from the
+  // pair's PROGRESS (first uncleared stop on the pair track), never
+  // from the stop just played — a replay here used to point at n+1.
+  const nextStop = r ? trueNextStop(r, stop.id) : undefined;
   const dblStarted = !!r && stop.doubleOrNothing === true && r.won && !r.firstClear
     && (r.doubleOutcome === 'started' || r.doublePending === true);
   const dblLost = !!r && stop.doubleOrNothing === true && !r.won && r.doubleOutcome === 'lost';
@@ -587,7 +593,7 @@ export function StoryRoomInner({ conn, cs, code, track, myUid, onExit }: {
           readyBtn('story-room-next', 'Face the King’s offer')
         ) : (
           <>
-            {nextStop && nextRow && nextRow.state !== 'locked' && (
+            {nextStop && (
               <button type="button" className="btn primary" data-testid="story-room-next" disabled={meReady} onClick={() => ready(nextStop.id)}>
                 {meReady ? 'Waiting for your partner…' : `Next stop: ${nextStop.name}`}
               </button>

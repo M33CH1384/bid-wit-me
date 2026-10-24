@@ -12,7 +12,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, ty
 import { secureSeed } from '@spades/rules';
 import {
   STORY_SECRETS, STORY_STOPS, STORY_CHARACTERS, STORY_TIER_LABEL, STORY_TIER_SKILL, beatsFor, deeSkillForStop,
-  kingDoubleBeats, storyClearReward, type StoryBeatFacts, type StoryGameFacts, type StoryStop,
+  kingDoubleBeats, mannerBandOf, storyClearReward, targetForStop, type MannerBand, type StoryBeatFacts, type StoryGameFacts, type StoryStop,
 } from '@spades/bots';
 import Table from '../Table';
 import { usePresence } from '../social/Social';
@@ -27,7 +27,7 @@ import { coverThen } from '../spray';
 import { useAccount } from '../account/api';
 import { storyRulesFor, storySettingsFor } from './storySettings';
 import { storyBackdropUrl } from './storyBackdrop';
-import { STORY_OWNER_ONLY, createStoryRoom, fetchStoryAccess, fetchStoryDev, fetchStoryProgress, fetchStoryTracks, joinStoryRoom, postStoryFound, postStoryResetStop, postStoryResult, storyLockedFor, type StoryProgress, type StoryResult, type StoryTracks } from './storyApi';
+import { STORY_OWNER_ONLY, createStoryRoom, fetchStoryAccess, fetchStoryDev, fetchStoryProgress, fetchStoryTracks, joinStoryRoom, postStoryFound, postStoryResetStop, postStoryResult, routeFactsFor, storyLockedFor, type StoryProgress, type StoryResult, type StoryTracks } from './storyApi';
 import CoopPartner from './CoopPartner';
 import StoryRoom from './StoryRoom';
 import { deckUnlockNotice, invalidateStoryProgress } from '../storyDecks';
@@ -369,6 +369,10 @@ export default function StoryHome() {
   }, [storyUserId]);
   const [lastResult, setLastResult] = useState<StoryResult | null>(null);
   const finishedRef = useRef<{ seed: string; won: boolean } | null>(null);
+  /** The game just played, manner included (word travels fast): the
+   *  outro's replay swap reads this game's band (the Porch reacts to
+   *  how THIS one went) — set at game over, beside finishedRef. */
+  const justPlayedRef = useRef<{ stopId: string; band: MannerBand | null } | null>(null);
 
   // Story save slot: a match in progress (own key; the normal save is untouched).
   const [saved, setSaved] = useState<StorySavedGame | null>(() => loadStoryGame());
@@ -419,6 +423,9 @@ export default function StoryHome() {
       // This attempt's drawn rail cast (per-attempt, seeded — storyRail):
       // the intro scene acknowledges only the faces that showed up.
       railCast: railCastForAttempt(stop.id, (row?.attempts ?? 0) + 1),
+      // WORD TRAVELS FAST: his real route position + the manner facts
+      // (heat of the advancing win, the previous stop's latest result).
+      ...routeFactsFor(progress, stop),
     };
   };
   /** The scene's egg prop for a stop's intro (null when found or match-earned). */
@@ -515,6 +522,7 @@ export default function StoryHome() {
 
   const handleGameOver = (stop: StoryStop, seed: string) => (won: boolean, facts: StoryGameFacts) => {
     finishedRef.current = { seed, won };
+    justPlayedRef.current = { stopId: stop.id, band: mannerBandOf({ won, margin: facts.margin, endReason: facts.endReason }, targetForStop(stop)) };
     void postStoryResult(stop.id, won, `story-${seed}`, facts).then((r) => {
       if (r) {
         // A fresh clear unlocks the stop's deck — drop the deck picker's
@@ -960,7 +968,14 @@ export default function StoryHome() {
         })()}
         </div>
         <ScriptPlayer
-          beats={dblStarted ? kingDoubleBeats('started') : dblLost ? kingDoubleBeats('lost') : beatsFor(stop, screen.won ? 'outroWin' : 'outroLose', factsFor(stop))}
+          beats={dblStarted ? kingDoubleBeats('started') : dblLost ? kingDoubleBeats('lost') : beatsFor(stop, screen.won ? 'outroWin' : 'outroLose', {
+            ...factsFor(stop),
+            // The outro's truth inputs (word travels fast): was THIS win
+            // a first clear, and how did THIS game go — a replay's scene
+            // swaps its onward beats for the real current stop.
+            firstClear: r ? r.firstClear : undefined,
+            justBand: justPlayedRef.current?.stopId === stop.id ? justPlayedRef.current.band : null,
+          })}
           cta="Back to the map"
           onDone={() => goScreen({ k: 'map' })}
           bgUrl={storyBackdropUrl(stop)}

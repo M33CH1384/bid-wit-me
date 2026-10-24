@@ -41,6 +41,12 @@ export interface StorySessionState {
   railExchanges?: number;
   /** rail line texts already spoken this match — never repeated */
   railSaid?: string[];
+  /** forward-buzz state (word travels fast): moments evaluated /
+   *  delivered this match + the line texts spoken — the buzz cap and
+   *  its seeded roll cursor survive resume like the rail's do */
+  buzzChecks?: number;
+  buzzFired?: number;
+  buzzSaid?: string[];
 }
 
 export interface StorySavedGame extends SavedGame {
@@ -108,6 +114,9 @@ export function loadStoryGame(): StorySavedGame | null {
           railChecks: typeof session?.railChecks === 'number' ? session.railChecks : 0,
           railExchanges: typeof session?.railExchanges === 'number' ? session.railExchanges : 0,
           railSaid: Array.isArray(session?.railSaid) ? session.railSaid.filter((x) => typeof x === 'string') : [],
+          buzzChecks: typeof session?.buzzChecks === 'number' ? session.buzzChecks : 0,
+          buzzFired: typeof session?.buzzFired === 'number' ? session.buzzFired : 0,
+          buzzSaid: Array.isArray(session?.buzzSaid) ? session.buzzSaid.filter((x) => typeof x === 'string') : [],
         },
       },
     };

@@ -33,10 +33,11 @@
  * King's win keeps 5 — the graduation). Caps are pinned in the bots tests.
  */
 import type { StoryStop } from './story';
-import { RAIL_INTRO_SUBJECTS, STORY_KING_RAIL_OUTRO, STORY_RAIL_INTRO } from './storyRail';
+import { RAIL_INTRO_SUBJECTS, STORY_KING_RAIL_OUTRO, STORY_RAIL_INTRO, streamValue } from './storyRail';
 import { awarenessMeetBeats, awarenessOpenerLength, type AwarenessFacts } from './storyAwareness';
 import { KING_PROPOSAL_LINES } from './storyKingDouble';
 import { GUIDE_FINALE } from './storyGuide';
+import { isDecisiveBand, type MannerBand } from './storyManner';
 
 export interface StoryBeat {
   /** a STORY_CHARACTERS id, or 'you' (the player) */
@@ -49,6 +50,13 @@ export interface StoryBeat {
    *  then lies on the 3D table for the whole of leg 2, keyed to the
    *  double-pending state (Table/Scene), never to this marker. */
   prop?: 'kingGun';
+  /** An ONWARD-POINTING beat: it names the stop the player heads to
+   *  next ("Next is the Barbershop…"). True exactly once — on the first
+   *  clear, when the next stop really is this stop + 1. On a replay the
+   *  selector swaps every marked beat for the truth (the player's real
+   *  current stop) or drops it — word travels fast (owner, 2026-10-24):
+   *  nobody on the route points a champion at a door he already took. */
+  next?: boolean;
 }
 
 /** A beat that only exists when a stored fact is true (data honesty). */
@@ -71,6 +79,8 @@ export interface StoryScript {
 }
 
 const b = (speaker: string, line: string): StoryBeat => ({ speaker, line });
+/** An onward-pointing beat (see StoryBeat.next) — authored with n(). */
+const n = (speaker: string, line: string): StoryBeat => ({ speaker, line, next: true });
 const g = (speaker: string, line: string, requiresCleared: string, at?: number): GatedBeat =>
   ({ speaker, line, requiresCleared, ...(at !== undefined ? { at } : {}) });
 
@@ -95,7 +105,7 @@ export const STORY_SCRIPTS: Record<string, StoryScript> = {
     ],
     outroWin: [
       b('pat', 'I’m writing it down, Raymond. "Dee came home and took the porch." Your daddy would’ve talked about this for a year, baby.'),
-      b('pat', 'Next is the Barbershop, baby. Mr. Coleman plays it by the book — the whole book, out loud. You think THIS table talks?'),
+      n('pat', 'Next is the Barbershop, baby. Mr. Coleman plays it by the book — the whole book, out loud. You think THIS table talks?'),
       b('uncleRay', 'Tell Coleman… tell him Ray said the porch is still standing. He’ll know what it means.'),
       b('dee', 'One down. Ten to go. …We really doing this, huh?'),
     ],
@@ -127,7 +137,7 @@ export const STORY_SCRIPTS: Record<string, StoryScript> = {
     outroWin: [
       b('mrColeman', 'Clean. Correct. Every book accounted for… You play like you were raised by people who read.'),
       b('june', 'He means that as the highest thing he knows how to say. And I counted, Coleman — she read your hand by the second deal.'),
-      b('mrColeman', 'The Rec Center is next, Lord help you. Two boys over there play loud and fast and think noise is a strategy.'),
+      n('mrColeman', 'The Rec Center is next, Lord help you. Two boys over there play loud and fast and think noise is a strategy.'),
       b('mrColeman', 'And when you pass the shop window coming back — knock. Winners in this classroom always report back.'),
     ],
     outroLose: [
@@ -158,7 +168,7 @@ export const STORY_SCRIPTS: Record<string, StoryScript> = {
     outroWin: [
       b('lilMan', '…they beat us. TREY. THEY BEAT US AT OUR OWN SPEED. IN MY ROOM.'),
       b('lilMan', 'Nah. Nah, hold on. …You ain’t change, Dee. You just — you aim higher now. That’s different from changing. Tell ’em at the Cookout Lil’ Man said that.'),
-      b('dee', '…Thank you. The Twins are next, y’all — Keisha and Teisha, by the grill. They finish each other’s—'),
+      n('dee', '…Thank you. The Twins are next, y’all — Keisha and Teisha, by the grill. They finish each other’s—'),
       b('dee', 'Ears ringing. Heart full. Let’s go meet the Twins before these two start a rematch league.'),
     ],
     outroLose: [
@@ -190,7 +200,7 @@ export const STORY_SCRIPTS: Record<string, StoryScript> = {
       b('keisha', 'They actually—'),
       b('teisha', '—covered each other. Every time. Did you see it, when her partner went quiet in the third hand and she just… knew?'),
       b('keisha', 'We saw. That’s not a weekend. That’s a foundation. You may tell people the Twins said so.'),
-      b('teisha', 'Don’t spend it all in one place, babies. The Corner is next, and Smoke and Redd don’t—'),
+      n('teisha', 'Don’t spend it all in one place, babies. The Corner is next, and Smoke and Redd don’t—'),
     ],
     outroLose: [
       b('teisha', 'Told you at the gate how this—'),
@@ -220,7 +230,7 @@ export const STORY_SCRIPTS: Record<string, StoryScript> = {
       b('smoke', '…Hmph. Clean work. No panic. No noise.'),
       b('redd', 'I don’t say this. I’m not gonna say it again. They played the corner like they belonged on it.'),
       b('smoke', 'The block’s gonna hear about this one — from me. That’s worth more than the points, Dee. Whatever your daddy owed… the corner considers the name square. What you build on it now is yours.'),
-      b('dee', '…I didn’t know I was holding my breath for that. Church Basement next. Deacon Ford, Sister Mae.'),
+      n('dee', '…I didn’t know I was holding my breath for that. Church Basement next. Deacon Ford, Sister Mae.'),
     ],
     outroLose: [
       b('redd', 'That’s what the Corner does. Come back when your bids mean something.'),
@@ -248,7 +258,7 @@ export const STORY_SCRIPTS: Record<string, StoryScript> = {
     ],
     outroWin: [
       b('sisterMae', 'Well. Bless MY heart. Beaten in my own basement, fair and square, with my own lemonade on the table.'),
-      b('deaconFord', 'The Rooftop next, children. Poet talks in circles and Seven hasn’t said a word since 2019. Pray before you go — and after, some would say.'),
+      n('deaconFord', 'The Rooftop next, children. Poet talks in circles and Seven hasn’t said a word since 2019. Pray before you go — and after, some would say.'),
       b('sisterMae', 'Dee. Come here a second. …Your grandmother sat where you’re sitting and beat me twice in one night. She’d have some opinions about tonight, and every one of them would start with "that’s my grandbaby." You’re further than I got. Don’t you dare stop at the strange tables.'),
       b('dee', 'No, ma’am. We don’t stop.'),
     ],
@@ -279,7 +289,7 @@ export const STORY_SCRIPTS: Record<string, StoryScript> = {
     ],
     outroWin: [
       b('poet', 'And so the sky learns a new ending. …Seven nodded — twice. In one night. The roof will talk about this, in its way, which is mostly silence.'),
-      b('dee', 'The High-Rise next. Velvet and the Accountant. Money table — every point counted twice: once on paper, once in pride.'),
+      n('dee', 'The High-Rise next. Velvet and the Accountant. Money table — every point counted twice: once on paper, once in pride.'),
       b('poet', 'A word before you descend, climber. The girl who arrives at the penthouse is not the girl who climbed my roof. Tell her Poet said the stairs are working.'),
       b('dee', '…I’ll tell her. I think she already knows.'),
     ],
@@ -310,8 +320,8 @@ b('dee', 'He never said a word and somehow that loss felt personal. …It felt T
     ],
     outroWin: [
       b('accountant', '…The ledger balances in your favor. I do not say this often. I do not say it twice.'),
-      b('velvet', 'The Pj’s next, darlings. The Captains, on their own street, under their own light. Win there and the whole block says your names — the ones who left AND the ones who stayed.'),
-      b('accountant', 'One line for the road: the Pj’s is next. Captain Block holds it, Brick holds him, and the lights hold everybody. Street rules again after my columns — go learn the weather down there.'),
+      n('velvet', 'The Pj’s next, darlings. The Captains, on their own street, under their own light. Win there and the whole block says your names — the ones who left AND the ones who stayed.'),
+      n('accountant', 'One line for the road: the Pj’s is next. Captain Block holds it, Brick holds him, and the lights hold everybody. Street rules again after my columns — go learn the weather down there.'),
       b('velvet', '…Careful, darling. Keep talking like that and I’ll have to feel something before the elevator. Go. Take the street’s name with you — somebody should carry it properly.'),
     ],
     outroLose: [
@@ -343,7 +353,7 @@ b('dee', 'He never said a word and somehow that loss felt personal. …It felt T
     ],
     outroWin: [
       b('captainBlock', '…On my own street. Under my own light. …Alright. ALRIGHT. Brick, stop smiling — you never smile. …She’s smiling, Dee. In twenty years that’s twice.'),
-      b('dee', 'We’re really going. Queenie and Ace. The LEGENDS. One table between us and the King.'),
+      n('dee', 'We’re really going. Queenie and Ace. The LEGENDS. One table between us and the King.'),
       b('captainBlock', 'Listen to me, both of you, and hear the whole thing: what’s past them isn’t a table. It’s the story this whole block tells itself about itself. The King IS the route. Everything else was directions. …Go get your names in the story. I’ll hold the door.'),
     ],
     outroLose: [
@@ -627,6 +637,40 @@ export interface StoryBeatFacts {
    *  NEVER sets this — with it absent every selector below is
    *  byte-identical to the solo game. */
   awareness?: AwarenessFacts;
+  /* ---- WORD TRAVELS FAST (owner, 2026-10-24) -------------------------
+   * Route-position + manner facts, all read off the progress payload —
+   * the player's REAL place on the route, independent of the stop being
+   * viewed. Absent on legacy callers, and then every selector below is
+   * byte-identical to before: recognition needs these facts the way a
+   * gated beat needs its cleared stop. */
+  /** n of the track's first uncleared stop (null once the route is complete) */
+  currentStopN?: number | null;
+  /** that stop's name ('The Rooftop') */
+  currentStopName?: string;
+  /** the seated pair at the current stop, as spoken names ('Poet and Seven') */
+  currentPairNames?: string;
+  /** stops cleared on this track */
+  clearedCount?: number;
+  /** the route is complete on this track */
+  routeCompleted?: boolean;
+  /** Manner band of the win that advanced the player to their current
+   *  stop (recorded at the stop just behind it; storyManner). Null when
+   *  that stop's latest recorded result was a loss or carries no manner. */
+  heatBand?: MannerBand | null;
+  /** the stop that advancing win happened at ('The Church Basement') */
+  heatStopName?: string;
+  /** the seated pair at the heat stop ('Deacon Ford and Sister Mae') */
+  heatPairNames?: string;
+  /** OUTRO ONLY: the game just played was a first clear (result post). */
+  firstClear?: boolean;
+  /** OUTRO ONLY: the manner band of the game just played at THIS stop. */
+  justBand?: MannerBand | null;
+  /** IN-MATCH (buzz) facts: the recorded LATEST result at the stop
+   *  directly before this one — whether it was a win, and its band. */
+  prevWon?: boolean;
+  prevBand?: MannerBand | null;
+  prevStopName?: string;
+  prevPairNames?: string;
 }
 
 /** Dee's arc stage by route position: green → believing → belonging. */
@@ -661,10 +705,18 @@ export function beatsFor(stop: StoryStop, kind: StoryBeatKind, facts: StoryBeatF
   if (!script) return [];
   if (kind !== 'intro') {
     const base = kind === 'outroWin' ? script.outroWin : script.outroLose;
+    // NEXT-STOP TRUTH (owner, 2026-10-24): on a replay win the base
+    // scene's onward beats point at stop+1, which is a lie — the player
+    // is sent onward from their REAL route position. Swap them for the
+    // truth (replayOutroFor). A first clear (or a legacy caller that
+    // doesn't say) keeps the authored scene untouched.
+    const out = kind === 'outroWin' && facts.firstClear === false
+      ? replayOutroFor(stop, base, facts)
+      : base;
     // At the King, the full rail answers the ending (win: the graduation
     // witnesses; lose: twenty people who are NOT leaving).
-    if (stop.id === 'king') return [...base, ...(kind === 'outroWin' ? STORY_KING_RAIL_OUTRO.win : STORY_KING_RAIL_OUTRO.lose)];
-    return base;
+    if (stop.id === 'king') return [...out, ...(kind === 'outroWin' ? STORY_KING_RAIL_OUTRO.win : STORY_KING_RAIL_OUTRO.lose)];
+    return out;
   }
   const withRail = (beats: StoryBeat[]): StoryBeat[] => {
     // The rail is acknowledged early in the scene — they're simply AROUND.
@@ -695,7 +747,17 @@ export function beatsFor(stop: StoryStop, kind: StoryBeatKind, facts: StoryBeatF
     }
   }
   const variants = STORY_INTRO_VARIANTS[stop.id];
-  if (facts.cleared && variants?.champion) return variants.champion;
+  if (facts.cleared && variants?.champion) {
+    // WORD TRAVELS FAST: a champion returning to a cleared stop while
+    // their route stands further along is GREETED as one — the stop
+    // knows where they really sit now, and how the last door went
+    // (recognitionBeatsFor). No route facts → the plain champion scene,
+    // returned by reference exactly as before.
+    const recog = recognitionBeatsFor(stop, facts);
+    if (!recog.length) return variants.champion;
+    const at = Math.min(2, variants.champion.length);
+    return [...variants.champion.slice(0, at), ...recog, ...variants.champion.slice(at)];
+  }
   if (!facts.cleared && facts.attempts === 1 && variants?.second) return withRail(variants.second);
   if (!facts.cleared && facts.attempts >= 2 && variants?.grind) return withRail(variants.grind);
   if (!facts.cleared && facts.attempts > 0) return withRail(script.introReturn);
@@ -769,6 +831,423 @@ export function playBeatFor(stop: StoryStop, kind: 'sitDown' | 'bigBid' | 'joker
 export function callbackFor(stop: StoryStop, event: 'nilBusted' | 'bigSwing' | 'deeNilMade'): StoryBeat[] {
   return STORY_CALLBACKS[stop.id]?.[event] ?? [];
 }
+
+/* =====================================================================
+ * WORD TRAVELS FAST (owner, 2026-10-24) — "my actual next stop is the
+ * rooftop but if I go back and play the porch it tells me my next stop
+ * is the barbershop. They should be aware of where I am… Not only do I
+ * want them to know we won but how we won, if it was a close one or an
+ * annihilation. The actual next stops should know that as well and have
+ * something to say about it when they feel like it. They should say
+ * things like such and such got smoke wit y'all."
+ *
+ * Three landings, all keyed to RECORDED facts and nothing else:
+ *  1. REPLAY RECOGNITION (intros): returning to a cleared stop while
+ *     the route stands further along — the pair greets a known name,
+ *     names the REAL current stop, and Dee relays how the advancing
+ *     win went (relay voice: heard, word is, word travels — secondhand
+ *     news, never an omniscient announcer). Decisive wins leave the
+ *     current stop's pair holding smoke for him (inverted smoke).
+ *  2. REPLAY OUTRO SWAP: a replay win's onward beats (StoryBeat.next)
+ *     are replaced by the truth — the real current stop, or the
+ *     route-complete fact. The Porch also reacts to THIS game's manner.
+ *  3. FORWARD BUZZ (in-match at the current stop): the seated pair has
+ *     heard how he handled the PREVIOUS stop — smoke for a decisive
+ *     win, war stories for a squeaker, plain word for a solid one,
+ *     honest grind when the latest there was a loss. Opportunistic:
+ *     buzzMomentFor rides the same seeded-roll + cap discipline as the
+ *     rail (storyRail) — never guaranteed, never twice a match.
+ *
+ * THE FENCE: every line in this section was authored for this system
+ * and has no voice recording; scenes render them TEXT ONLY, like every
+ * unrecorded line. Nothing here may ever be synthesized or voiced by
+ * substitution.
+ * ===================================================================== */
+
+function fillTokens(line: string, tokens: Record<string, string | undefined>): string {
+  let out = line;
+  for (const [k, v] of Object.entries(tokens)) if (v) out = out.split(`{${k}}`).join(v);
+  return out;
+}
+
+export interface StoryRecognition {
+  /** still en route: the pair names his real current stop ({current}) */
+  position: StoryBeat[];
+  /** route complete: the pair greets a finisher who came back */
+  complete: StoryBeat[];
+  /** decisive heat only: the pair at his CURRENT stop holds smoke for
+   *  him already ({curPair}) — the inverted end of the telephone */
+  smoke?: StoryBeat[];
+}
+
+export const STORY_RECOGNITION: Record<string, StoryRecognition> = {
+  porch: {
+    position: [b('pat', 'Word travels fast on this block, baby — y’all are seated up at {current} now, and you came back down to MY porch first? Ray, pour the good glasses. They remembered where it started.')],
+    complete: [
+      b('pat', 'The whole route, babies. The WHOLE route — and the first chairs y’all come back to are ours. Ray. Ray, are you crying at my table?'),
+      b('uncleRay', 'I ain’t crying. It’s porch dust. …Champions get our best game anyway. Sentiment stops at the shuffle.'),
+    ],
+    smoke: [b('uncleRay', 'And I hear {curPair} got smoke wit y’all already, up the way. Word travels, friend. So does heat.')],
+  },
+  barbershop: {
+    position: [b('mrColeman', 'The book has a new entry. You’re seated at {current} now — and you stopped by my chair on the way. That’s respect for the order of things.')],
+    complete: [b('june', 'Route complete, and they come back to the shop to report it. Coleman, write that in the book. In pen.')],
+    smoke: [b('june', 'Word is {curPair} got smoke wit y’all. The whole street’s talking about why.')],
+  },
+  'rec-center': {
+    position: [b('lilMan', 'THE CHAMPIONS OF {current} — AT MY REC?! TREY, THEY CAME DOWN FROM THE BIG TABLE TO SEE US!')],
+    complete: [b('trey', 'THEY RAN THE WHOLE ROUTE AND CAME BACK TO THE REC FIRST! NOBODY DOES THAT! EVERYBODY DOES NOW!')],
+    smoke: [b('lilMan', '{curPair} GOT SMOKE WIT Y’ALL! THE WHOLE BLOCK HEARD! I HEARD IT TWICE!')],
+  },
+  cookout: {
+    position: [
+      b('keisha', 'Heard y’all are up at—'),
+      b('teisha', '—{current} now. And still came back to the family table. Sit, babies. That says everything.'),
+    ],
+    complete: [
+      b('keisha', 'The whole route, and they come back to—'),
+      b('teisha', '—the grill. Family first. That’s the whole sermon.'),
+    ],
+    smoke: [
+      b('teisha', 'Word at the grill is {curPair} got smoke wit—'),
+      b('keisha', '—y’all. We saved y’all seats anyway. Family eats first.'),
+    ],
+  },
+  corner: {
+    position: [b('smoke', '…You’re sitting at {current} now. And you walked back down to my corner first. Noted.')],
+    complete: [b('redd', 'Whole route. And the corner’s where you report it. That means something out here.')],
+    smoke: [b('smoke', '{curPair} got smoke wit y’all. Streets are saying it plain. …So am I.')],
+  },
+  'church-basement': {
+    position: [b('sisterMae', 'Well, bless it — our babies are seated at {current} now, and they still came down to the basement to see us. Lemonade’s fresh, champions.')],
+    complete: [b('deaconFord', 'The whole route, children — and you came back to testify in the basement first. That’s the correct order. Amen to that.')],
+    smoke: [b('sisterMae', 'Now, I don’t repeat gossip… but word is {curPair} got smoke wit y’all. I’ll pray for ’em. They sound like they need it.')],
+  },
+  rooftop: {
+    position: [b('poet', 'The climbers return to the roof — though their road now stands at {current}. The sky keeps both addresses.')],
+    complete: [b('poet', 'The road is done, and still they climb to tell the roof. Seven keeps the count of endings. This one, he keeps kindly.')],
+    smoke: [b('poet', 'Word climbs faster than feet: {curPair} got smoke wit y’all. The wind carries it up here too.')],
+  },
+  'high-rise': {
+    position: [b('accountant', 'For the record: your party is currently seated at {current}. And yet — an appearance here. Filed under "remembers the address."')],
+    complete: [b('velvet', 'The whole route, darlings — and the penthouse gets a courtesy call. Whatever the street says, THAT is how the finished travel.')],
+    smoke: [b('velvet', 'Word travels up forty floors, darling: {curPair} got smoke wit y’all. How flattering. How expensive.')],
+  },
+  'the-pjs': {
+    position: [b('captainBlock', 'Word on the street says you’re seated at {current} — and your first stop back is MY light. That’s home training.')],
+    complete: [b('captainBlock', 'Route’s DONE, and you report back under this light first. Brick — you see that? That’s what the Pj’s MAKE.')],
+    smoke: [b('captainBlock', 'Heard {curPair} got smoke wit y’all. Whole block heard it. Street’s proud and street’s worried — both.')],
+  },
+  legends: {
+    position: [b('queenie', 'Seated at {current} now — and you stopped to see the guardrail on your way. Manners AND a route. We raised y’all right.')],
+    complete: [b('ace', 'Finished the whole thing — and came back to tell the two who watched the door. That’s the part nobody teaches. You two just have it.')],
+    smoke: [b('queenie', 'Word reaches even us, baby: {curPair} got smoke wit y’all. Let ’em. Smoke means you’re worth the fire.')],
+  },
+  king: {
+    // No position line: nothing stands ahead of the King — a cleared
+    // King means a completed route, and `complete` carries the return.
+    position: [],
+    complete: [b('king', 'The crowned return to the room where it was taken. Most never look back at the last door. …Sit. The ringer kept your chairs. He does not keep chairs.')],
+  },
+};
+
+/** Dee relays the heat: how the ADVANCING win went, in wire voice.
+ *  Keyed by its manner band — smoke for the decisive flavors, war
+ *  stories for a squeaker, plain word for a solid win (owner's band
+ *  discipline). Tokens: {heatPair}, {heatStop}. */
+export const DEE_HEAT_LINES: Record<MannerBand, string> = {
+  early: 'And word travels — {heatPair} still got smoke wit y’all over {heatStop}. ENDED it early, is what everybody keeps saying.',
+  rout: 'Word travels fast, too — {heatPair} got smoke wit y’all. What we did at {heatStop} is still warm on the whole block.',
+  close: 'Word is we barely got out of {heatStop} — {heatPair} are still telling that last hand like a war story.',
+  solid: 'They’d heard about {heatStop} before we ever sat down here. Clean work travels.',
+};
+
+/**
+ * The recognition beats for a return to THIS stop, or [] when the
+ * facts don't support any: the stop isn't cleared here, the route
+ * stands no further than this stop, or no route facts were supplied.
+ * Recognition is a DIFFERENT trigger than retry — it never fires for
+ * an uncleared stop, however many losses deep the retry runs.
+ */
+export function recognitionBeatsFor(stop: StoryStop, facts: StoryBeatFacts): StoryBeat[] {
+  if (!facts.cleared) return [];
+  const set = STORY_RECOGNITION[stop.id];
+  if (!set) return [];
+  const completed = facts.routeCompleted === true;
+  const ahead = completed || (typeof facts.currentStopN === 'number' && facts.currentStopN > stop.n);
+  if (!ahead) return [];
+  const out: StoryBeat[] = [];
+  if (completed) {
+    out.push(...set.complete.map((bt) => ({ ...bt })));
+  } else if (facts.currentStopName) {
+    out.push(...set.position.map((bt) => ({ ...bt, line: fillTokens(bt.line, { current: facts.currentStopName }) })));
+  }
+  // The heat of the advancing win, relayed by his partner — only when
+  // that win's manner is actually recorded.
+  if (facts.heatBand && facts.heatStopName) {
+    out.push({
+      speaker: 'dee',
+      line: fillTokens(DEE_HEAT_LINES[facts.heatBand], { heatPair: facts.heatPairNames, heatStop: facts.heatStopName }),
+    });
+  }
+  // The inverted smoke: decisive heat only, and only while a pair
+  // ahead of him exists to be holding it.
+  if (!completed && set.smoke?.length && isDecisiveBand(facts.heatBand) && facts.currentPairNames) {
+    out.push(...set.smoke.map((bt) => ({ ...bt, line: fillTokens(bt.line, { curPair: facts.currentPairNames }) })));
+  }
+  return out;
+}
+
+export interface StoryReplayNext {
+  /** still en route: where he's actually headed ({current}) */
+  next: StoryBeat[];
+  /** route complete: no next exists — say the true thing instead */
+  done: StoryBeat[];
+  /** the Porch's full treatment: a reaction to THIS game's manner
+   *  (other stops carry manner in the intro recognition + the buzz) */
+  manner?: Partial<Record<MannerBand, StoryBeat[]>>;
+}
+
+export const STORY_REPLAY_NEXT: Record<string, StoryReplayNext> = {
+  porch: {
+    next: [b('pat', 'Now — {current} is where you’re really seated, and it’s still waiting on y’all. Go on back up the block. The porch’ll keep.')],
+    done: [b('pat', 'Route’s all the way done and you’re on my porch again. That’s not a replay, baby. That’s a homecoming.')],
+    manner: {
+      close: [b('pat', 'Ooh, that one went down to the wire — my heart’s still up in my throat. Now {current} gets y’all with the fresh legs. Rude of us.')],
+      rout: [b('uncleRay', 'That wasn’t a game, that was a DEMONSTRATION. …{current} is still up there waiting, and now it gets the version of y’all that does THAT.')],
+      early: [b('uncleRay', 'Ended it EARLY. On my porch. Pat, write it down twice. …{current} heard about it already, I guarantee it.')],
+    },
+  },
+  barbershop: {
+    next: [b('june', 'Your table is {current} now, babies. Go finish the chapter you’re actually in — this one’s already in the book.')],
+    done: [b('mrColeman', 'The route is complete and you’re in my chair. Correct procedure. The book approves.')],
+  },
+  'rec-center': {
+    next: [b('trey', 'NOW GO! {current} IS WAITING AND IT AIN’T STARTING WITHOUT YOU! WE’LL KEEP THE NOISE WARM!')],
+    done: [b('lilMan', 'ROUTE COMPLETE AND THEY CAME BACK TO THE REC! PUT IT ON THE WALL! THERE IS NO WALL! PUT IT ON THE CEILING!')],
+  },
+  cookout: {
+    next: [b('keisha', 'Now go on — {current} is waiting, and it is NOT as nice as us. Tell it the Twins sent you.')],
+    done: [
+      b('teisha', 'Whole route done, and they’re at—'),
+      b('keisha', '—the family table. Eat something. Champions are too skinny.'),
+    ],
+  },
+  corner: {
+    next: [b('smoke', '…{current}. That’s your corner now. Go stand on it.')],
+    done: [b('redd', 'Route’s done. The corner remembers who finished. It remembers this visit more.')],
+  },
+  'church-basement': {
+    next: [b('sisterMae', 'Now run along, babies — {current} is waiting, and the Lord doesn’t love a late arrival at a card table. …Much.')],
+    done: [b('deaconFord', 'The route complete, and testified right here in the basement. Somebody write it in the church record. In the GOOD book.')],
+  },
+  rooftop: {
+    next: [b('poet', 'Descend now. {current} keeps its own sky, and it is still unwatched-by-you. The roof will be here. The roof is always here.')],
+    done: [b('poet', 'The road below is finished, and the finished still climb. Seven approves of the shape of that. So does the sky.')],
+  },
+  'high-rise': {
+    next: [b('accountant', 'Your active account is {current}. This visit is noted, appreciated, and closed. Do not let the elevator keep you.')],
+    done: [b('velvet', 'Route complete, and a courtesy call at the penthouse. Darling, that is the most expensive gesture on the block — and it cost you nothing.')],
+  },
+  'the-pjs': {
+    next: [b('captainBlock', '{current} is your post now. Go hold it. This light’ll be on when you pass back through.')],
+    done: [b('captainBlock', 'Route done, and reporting under my light. That’s the whole code, right there. The Pj’s salute you.')],
+  },
+  legends: {
+    next: [b('queenie', 'The King is your table now, baby — he’s been your table. Go sit at it like we taught you.')],
+    done: [b('ace', 'Crown taken, route done — and they came back to the guardrail. Kids, the door was never the point. You were.')],
+  },
+};
+
+/**
+ * A replay win's outro with the truth restored: every onward beat
+ * (StoryBeat.next — authored for the first clear, when stop+1 really
+ * was next) is replaced by ONE truthful pointer: this game's manner
+ * reaction where the stop carries one (the Porch), else the player's
+ * real current stop, else the route-complete fact. No marked beats and
+ * no swap authored → the base scene, untouched. First clears never
+ * reach here (beatsFor gates on firstClear === false).
+ */
+export function replayOutroFor(stop: StoryStop, base: StoryBeat[], facts: StoryBeatFacts): StoryBeat[] {
+  const markedAt = base.findIndex((bt) => bt.next);
+  const set = STORY_REPLAY_NEXT[stop.id];
+  if (markedAt < 0 || !set) return base;
+  const completed = facts.routeCompleted === true || typeof facts.currentStopN !== 'number';
+  const fill = (beats: StoryBeat[]) => beats.map((bt) => ({ ...bt, line: fillTokens(bt.line, { current: facts.currentStopName }) }));
+  const swap = !completed && facts.justBand && set.manner?.[facts.justBand]?.length
+    ? fill(set.manner[facts.justBand]!)
+    : fill(completed ? set.done : set.next);
+  if (!swap.length) return base.filter((bt) => !bt.next);
+  return [...base.slice(0, markedAt), ...swap, ...base.slice(markedAt + 1).filter((bt) => !bt.next)];
+}
+
+/* ---------------------------------------------------------------------
+ * FORWARD BUZZ — the NEXT stop has already heard (owner, extension #2:
+ * "the actual next stops should know that as well and have something
+ * to say about it when they feel like it"). The pool is keyed to the
+ * recorded LATEST result at the stop directly before this one:
+ *   smoke — a decisive win (rout / early): the previous pair holds a
+ *           grievance; direct variants name them ({prevPair}), vague
+ *           variants ride beside them so it never lands identically.
+ *   war   — a close win: war stories, not smoke (band discipline).
+ *   word  — a solid win, or a win whose manner wasn't recorded: plain
+ *           word-of-mouth, no manner claimed.
+ *   grind — the latest result there was a LOSS: honest about the grind
+ *           (the stop is still cleared — he got past it once; nobody
+ *           here pretends the last visit went the other way).
+ * ------------------------------------------------------------------- */
+
+export interface StoryBuzzSet {
+  smoke: StoryBeat[][];
+  war: StoryBeat[][];
+  word: StoryBeat[][];
+  grind: StoryBeat[][];
+}
+
+export const STORY_BUZZ: Record<string, StoryBuzzSet> = {
+  barbershop: {
+    smoke: [
+      [b('june', 'Word travels this street faster than cards: Uncle Ray and Pat got smoke wit y’all. Whatever happened on that porch is still warm.')],
+      [b('mrColeman', 'The last table you ran has words for you, students. The book hears everything first.')],
+    ],
+    war: [[b('june', 'Word is y’all barely got off that porch — Ray is still telling the last hand like a war story.')]],
+    word: [[b('mrColeman', 'The book already has your Porch result, students. It was entered before you sat down.')]],
+    grind: [[b('june', 'Heard the porch went worse the last time through. The book keeps ALL the chapters, babies.')]],
+  },
+  'rec-center': {
+    smoke: [
+      [b('lilMan', 'COLEMAN AND JUNE GOT SMOKE WIT Y’ALL! THE BARBERSHOP IS STILL TALKING ABOUT IT! THE CLIPPERS WERE SHAKING!')],
+      [b('trey', 'THEM TWO FROM DOWN THE BLOCK GOT SMOKE WIT Y’ALL! WE HEARD IT FROM HERE! EVERYBODY HEARD IT!')],
+    ],
+    war: [[b('trey', 'WORD IS Y’ALL BARELY GOT OUT THE BARBERSHOP! ONE HAND FROM A HAIRCUT YOU DIDN’T ASK FOR!')]],
+    word: [[b('lilMan', 'THE SHOP SAID Y’ALL TOOK IT! THAT’S IN THE BOOK NOW! LOUD AND PERMANENT!')]],
+    grind: [[b('lilMan', 'HEARD THE BOOK WENT BAD FOR Y’ALL LAST TIME! THE BOOK REMEMBERS! SO DO WE! WE REMEMBER EVERYTHING! IT’S A CURSE!')]],
+  },
+  cookout: {
+    smoke: [
+      [b('keisha', 'Word from the Rec is Lil’ Man and Trey got—'), b('teisha', '—smoke wit y’all. Loud smoke. We could hear it over the grill.')],
+      [b('teisha', 'Them two from the Rec got—'), b('keisha', '—smoke wit y’all, babies. It travels with your names now.')],
+    ],
+    war: [[b('keisha', 'Word is y’all barely got out of the Rec—'), b('teisha', '—one hand from the buzzer. We’ve been telling it all week.')]],
+    word: [[b('teisha', 'The Rec says y’all took it—'), b('keisha', '—clean. Loud boys, honest report. That travels.')]],
+    grind: [[b('keisha', 'Heard the Rec went louder the last time—'), b('teisha', '—and not in y’all’s favor. The grill hears everything, babies.')]],
+  },
+  corner: {
+    smoke: [
+      [b('redd', 'Keisha and Teisha got smoke wit y’all. Finished each other’s sentence about it. That’s how I know it’s real.')],
+      [b('smoke', 'The last table you ran got smoke wit y’all. It follows you now. Like weather.')],
+    ],
+    war: [[b('smoke', 'Word is y’all barely got off that grill. One hand from well-done. …They’re still laughing about it. I’m not.')]],
+    word: [[b('redd', 'Twins say you took the Cookout clean. Out here, that’s a reference letter.')]],
+    grind: [[b('smoke', 'Heard the grill went bad for you last time. Smoke remembers both directions.')]],
+  },
+  'church-basement': {
+    smoke: [
+      [b('sisterMae', 'Now, I don’t carry tales… but word is Smoke and Redd got smoke wit y’all. From the CORNER, babies. I said a prayer about it. Two.')],
+      [b('deaconFord', 'The last table you ran holds a grievance, children. The corner keeps its own ledger, and it is not written in pencil.')],
+    ],
+    war: [[b('sisterMae', 'Word is y’all barely got off that corner standing. The basement heard the whole testimony, and some of it rhymed.')]],
+    word: [[b('deaconFord', 'The Corner reports a clean win for you two. When THAT table speaks well of someone, the basement listens.')]],
+    grind: [[b('sisterMae', 'Heard the corner went hard on y’all the last time through. The Lord — and Smoke — keep receipts, sugar.')]],
+  },
+  rooftop: {
+    smoke: [
+      [b('poet', 'Word climbs. Deacon Ford and Sister Mae got smoke wit y’all — sweetly delivered, basement-deep. …Even Seven heard it. Seven hears everything eventually.')],
+      [b('poet', 'The last table you ran got smoke wit y’all. It rose past the basement windows and kept coming. Smoke does that. It finds the roof.')],
+      [b('dee', 'They’d heard about the basement up here before we ever climbed, I promise you that. Poet’s been saving it.')],
+    ],
+    war: [[b('poet', 'Word is y’all barely got out of the basement — down to the last hand, the last chair. Mae is still fanning herself about it, one floor below the sky.')]],
+    word: [[b('poet', 'The basement speaks well of you. Sweet words travel slow. They arrived anyway.')]],
+    grind: [[b('poet', 'The basement keeps the last visit too, climbers. Not all word is kind word. The roof repeats only what reached it.')]],
+  },
+  'high-rise': {
+    smoke: [
+      [b('accountant', 'Itemized gossip, for the record: Poet and Seven got smoke wit y’all. The silent one itemized it. That almost never happens.')],
+      [b('velvet', 'The last table you ran got smoke wit y’all, darlings. It drifted down off that roof and all the way up here. Heat rises AND falls, apparently.')],
+    ],
+    war: [[b('velvet', 'Word is y’all barely got off that roof — one hand from the wind taking you. Poet made it rhyme, of course. Seven just nodded at the bad parts.')]],
+    word: [[b('accountant', 'The Rooftop filed its report: a win, cleanly kept. I have added it to your ledger. It compounds.')]],
+    grind: [[b('velvet', 'The roof’s last report on you was… drafty, darling. Poet used the word "almost." Twice.')]],
+  },
+  'the-pjs': {
+    smoke: [
+      [b('captainBlock', 'Word under this light: Velvet and The Accountant got smoke wit y’all. Penthouse smoke. Fancy. Still burns the same.')],
+      [b('captainBlock', 'The last table you ran got smoke wit y’all. Street’s been carrying it all week — I just hold the light it travels by.')],
+    ],
+    war: [[b('captainBlock', 'Word is y’all barely got out that penthouse — one hand from the elevator ride down. The street loves that story. It’s got everything: money, pride, and almost.')]],
+    word: [[b('captainBlock', 'The penthouse put in a word for you two. Counted, itemized respect. Out here that’s currency.')]],
+    grind: [[b('captainBlock', 'Heard the penthouse priced y’all last time and y’all paid it. Street remembers the receipt.')]],
+  },
+  legends: {
+    smoke: [
+      [b('queenie', 'Word reaches the guardrail too, baby: Captain Block and Brick got smoke wit y’all. Brick’s is the QUIET kind. Mind it most.')],
+      [b('ace', 'The last table you ran got smoke wit y’all. It followed you up the whole street. We could see it from here.')],
+    ],
+    war: [[b('queenie', 'Word is y’all barely got out from under that streetlight — one hand, baby. The Captain is still telling it like HE won something.')]],
+    word: [[b('ace', 'The Pj’s reported a clean one. The Captain doesn’t file false reports — the light won’t let him.')]],
+    grind: [[b('queenie', 'The streetlight’s last word on y’all was "not yet," babies. We heard it up here too.')]],
+  },
+  king: {
+    smoke: [
+      [b('king', 'Word reaches even this room. Queenie and Ace got smoke wit y’all — the guardrail itself, holding a grievance. …I find I respect the smoke. It means the road was real.')],
+      [b('ringer', '…The last table you ran got smoke wit y’all. It’s in the room with us. I can see it from here.')],
+    ],
+    war: [[b('king', 'Word is y’all barely got past my guardrail — down to the last hand, they say. Queenie tells it like a storm she watched from a porch. …She does not exaggerate. That is what makes it a story.')]],
+    word: [[b('king', 'The Legends filed their report before you arrived. A clean win, honestly kept. Their word is the only currency this room has ever accepted.')]],
+    grind: [[b('king', 'The guardrail’s last word on you was "not yet." It followed you up the stairs. Words do that here.')]],
+  },
+};
+
+export type BuzzMomentKind = 'sitDown' | 'handEnd';
+
+export interface BuzzFacts {
+  /** games already played at this stop on this track (this match is attempts+1) */
+  attempts: number;
+  /** eligible buzz moments already EVALUATED this match (the roll cursor) */
+  checks: number;
+  /** buzz moments already DELIVERED this match (the cap reads this) */
+  fired: number;
+  /** line texts already delivered this match — never repeated */
+  said?: readonly string[];
+  /** the recorded latest result at the previous stop was a win */
+  prevWon?: boolean;
+  /** that result's manner band (null: a win without a recorded manner, or a loss) */
+  prevBand?: MannerBand | null;
+  prevStopName?: string;
+  prevPairNames?: string;
+}
+
+/** One buzz moment per match, ever — "when they feel like it," not a lecture. */
+export const BUZZ_MATCH_CAP = 1;
+/** Seeded speak chances per moment kind (arrival sizing-up lands oftener). */
+export const BUZZ_SPEAK_P: Record<BuzzMomentKind, number> = { sitDown: 0.55, handEnd: 0.4 };
+
+/**
+ * Decide a forward-buzz moment: the seated pair remarking — in relay
+ * voice — on how the player handled the PREVIOUS stop. Mirrors the
+ * rail's discipline (storyRail.railMomentFor): seeded rolls on a
+ * per-attempt stream indexed by the caller's persisted `checks`
+ * cursor, a hard per-match cap, a said-set so nothing repeats, and
+ * silence whenever the fact it would speak from doesn't exist.
+ */
+export function buzzMomentFor(stop: StoryStop, moment: BuzzMomentKind, facts: BuzzFacts): StoryBeat[] | null {
+  const set = STORY_BUZZ[stop.id];
+  if (!set || stop.n < 2) return null;
+  if (facts.fired >= BUZZ_MATCH_CAP) return null;
+  if (facts.prevWon === undefined) return null; // no recorded result at the previous stop — nobody here heard anything
+  const family = facts.prevWon
+    ? (isDecisiveBand(facts.prevBand) ? set.smoke : facts.prevBand === 'close' ? set.war : set.word)
+    : set.grind;
+  if (!family.length) return null;
+  const said = new Set(facts.said ?? []);
+  const pool = family.filter((beats) => beats.every((bt) => !said.has(bt.line)));
+  if (!pool.length) return null;
+  const attemptNo = facts.attempts + 1;
+  if (streamValue(`buzz|${stop.id}|${attemptNo}`, facts.checks * 2) >= BUZZ_SPEAK_P[moment]) return null;
+  const pick = pool[Math.floor(streamValue(`buzzpick|${stop.id}|${attemptNo}`, facts.checks) * pool.length)]!;
+  return pick.map((bt) => ({ ...bt, line: fillTokens(bt.line, { prevPair: facts.prevPairNames, prevStop: facts.prevStopName }) }));
+}
+
 
 /* =====================================================================
  * INTRO VARIANTS — retries carry context (owner, 2026-10-21).

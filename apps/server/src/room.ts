@@ -2033,7 +2033,7 @@ export class Room {
     // finished game (its witness already stands under the family id).
     const legFacts = s.resultGameId === this.familyId() && d.game
       ? storyFactsOf(d.game)
-      : { margin: 0, handsPlayed: 0, setsAgainstUs: 0, setsAgainstThem: 0, ourNilsMade: 0, ourBlindNilsMade: 0, deeNilsMade: 0, deeSteady: false, setOnFirstHand: false, oppSetTwice: false };
+      : { margin: 0, handsPlayed: 0, setsAgainstUs: 0, setsAgainstThem: 0, ourNilsMade: 0, ourBlindNilsMade: 0, deeNilsMade: 0, deeSteady: false, setOnFirstHand: false, oppSetTwice: false, endReason: null };
     s.finale = { ...(s.finale ?? { short: true, choices: {} }), gameId, outcome: 'declined' };
     s.phase = 'outro';
     s.ready = [];

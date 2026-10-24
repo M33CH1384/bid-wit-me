@@ -125,6 +125,18 @@ describe('story rail session state (per-attempt cast + roll cursors)', () => {
     expect(back?.story.session.railSaid).toEqual(['Took you a few tries to get off my porch, baby.']);
   });
 
+  it('the forward-buzz cap, roll cursor and said-lines survive the round trip too (word travels fast)', () => {
+    const s = mkSave('rooftop');
+    s.story.session.buzzChecks = 2;
+    s.story.session.buzzFired = 1;
+    s.story.session.buzzSaid = ['Word climbs. Deacon Ford and Sister Mae got smoke wit y’all.'];
+    saveStoryGame(s, s.story);
+    const back = loadStoryGame();
+    expect(back?.story.session.buzzChecks).toBe(2);
+    expect(back?.story.session.buzzFired).toBe(1); // the one-a-match cap is not reset by a resume
+    expect(back?.story.session.buzzSaid).toEqual(['Word climbs. Deacon Ford and Sister Mae got smoke wit y’all.']);
+  });
+
   it('a legacy save (written before the draw) loads with an underived cast and zeroed cursors', () => {
     const s = mkSave('barbershop'); // mkSave's session carries none of the rail-draw fields
     saveStoryGame(s, s.story);
@@ -142,6 +154,9 @@ describe('story rail session state (per-attempt cast + roll cursors)', () => {
     saveStoryGame(s, s.story);
     const keys = Object.keys(loadStoryGame()?.story.session ?? {}).sort();
     expect(keys).toEqual([
+      // the forward-buzz state (word travels fast) is the same category:
+      // counters + spoken-line history, never a pending moment
+      'buzzChecks', 'buzzFired', 'buzzSaid',
       'fired', 'lastRailHand', 'memory', 'railCast', 'railChecks', 'railExchanges', 'railFired', 'railSaid', 'satDown',
     ]);
   });

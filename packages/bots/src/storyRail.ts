@@ -83,7 +83,7 @@ function hashSeed(s: string): number {
 }
 
 /** The k-th value (0..1) of the seeded stream named by `seed`. */
-function streamValue(seed: string, k: number): number {
+export function streamValue(seed: string, k: number): number {
   let a = (hashSeed(seed) + Math.imul(k + 1, 0x9e3779b9)) >>> 0;
   a = Math.imul(a ^ (a >>> 15), a | 1);
   a ^= a + Math.imul(a ^ (a >>> 7), a | 61);

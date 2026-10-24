@@ -139,7 +139,7 @@ describe('track keys', () => {
 
 /* ================= Scene pass (2026-10-21) ================= */
 
-const FACTS0 = { margin: 0, handsPlayed: 0, setsAgainstUs: 0, setsAgainstThem: 0, ourNilsMade: 0, ourBlindNilsMade: 0, deeNilsMade: 0, deeSteady: false, setOnFirstHand: false, oppSetTwice: false } satisfies StoryGameFacts;
+const FACTS0 = { margin: 0, handsPlayed: 0, setsAgainstUs: 0, setsAgainstThem: 0, ourNilsMade: 0, ourBlindNilsMade: 0, deeNilsMade: 0, deeSteady: false, setOnFirstHand: false, oppSetTwice: false, endReason: null } satisfies StoryGameFacts;
 const facts = (over: Partial<StoryGameFacts>): StoryGameFacts => ({ ...FACTS0, ...over });
 
 describe('scene pass: scenes are scenes', () => {

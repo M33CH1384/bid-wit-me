@@ -2,7 +2,10 @@
  * Story Mode API client (same-origin /api/story/* via the Pages proxy, cookie
  * session — the same pattern as the rest of the account APIs).
  */
-import type { StoryStopState } from '@spades/bots';
+import {
+  STORY_CHARACTERS, STORY_STOPS, mannerBandOf, targetForStop,
+  type StoryBeatFacts, type StoryEndReason, type StoryStop, type StoryStopState,
+} from '@spades/bots';
 import { fetchVenueUnlocks } from '../venues';
 
 /**
@@ -40,6 +43,15 @@ export async function fetchStoryAccess(): Promise<boolean | null> {
   return s ? s.storyAccess : null;
 }
 
+/** The LATEST finished game at a stop, manner facts included (server
+ *  migration 0033): what the route's people gossip about. Null when no
+ *  result at the stop carries the facts yet (pre-migration history). */
+export interface StoryLastResult {
+  won: boolean;
+  margin?: number;
+  endReason?: StoryEndReason;
+}
+
 export interface StoryStopProgress {
   stopId: string;
   n: number;
@@ -49,6 +61,8 @@ export interface StoryStopProgress {
   firstClearedAt: number | null;
   /** the King's double or nothing is live at this stop: beaten once, nothing banked (server truth) */
   doublePending?: boolean;
+  /** the latest finished game here (word travels fast); null = no manner fact recorded */
+  lastResult?: StoryLastResult | null;
 }
 
 export interface StoryProgress {
@@ -91,6 +105,71 @@ export interface StoryResult extends StoryProgress {
    *  'double' the cutthroat paid double · 'clear' a human stood 2nd ·
    *  'lost' the gamble lost the clear · 'declined' leg 1 was banked */
   finale?: 'double' | 'clear' | 'lost' | 'declined' | null;
+}
+
+/** A stop's seated pair as spoken names ('Poet and Seven') — how the
+ *  block refers to a table when the word travels. */
+export function pairNamesFor(stop: StoryStop): string {
+  const [a, b] = stop.pair;
+  return `${STORY_CHARACTERS[a]?.name ?? a} and ${STORY_CHARACTERS[b]?.name ?? b}`;
+}
+
+/**
+ * WORD TRAVELS FAST (owner, 2026-10-24): the route-position + manner
+ * facts the scene selectors read, derived from ONE progress payload —
+ * shared by the solo home and the co-op room so both tracks' scenes
+ * know the same truths. Everything here is read off recorded rows:
+ * the player's real current stop (never the stop being viewed + 1),
+ * the manner of the win that advanced them there (the "heat"), and the
+ * latest result at the stop directly before the one being viewed (the
+ * buzz fact). A row without a recorded last result yields no band —
+ * the selectors stay silent rather than invent how a game went.
+ */
+export function routeFactsFor(progress: StoryProgress | null, stop: StoryStop): Partial<StoryBeatFacts> {
+  const rows = progress?.stops ?? [];
+  const rowOf = (s: StoryStop) => rows.find((x) => x.stopId === s.id);
+  const completed = progress?.completed ?? false;
+  const currentN = completed ? null : (progress?.currentStop ?? null);
+  const currentStop = currentN != null ? STORY_STOPS.find((s) => s.n === currentN) : undefined;
+  // The heat: the win that advanced him to his current stop — or, with
+  // the route complete, the King game that finished it.
+  const heatStop = completed
+    ? STORY_STOPS[STORY_STOPS.length - 1]
+    : (currentN != null && currentN > 1 ? STORY_STOPS[currentN - 2] : undefined);
+  const heatLast = heatStop ? rowOf(heatStop)?.lastResult ?? null : null;
+  const heatBand = heatStop && heatLast ? mannerBandOf(heatLast, targetForStop(heatStop)) : null;
+  // The buzz fact: the stop directly before THIS one.
+  const prevStop = stop.n > 1 ? STORY_STOPS[stop.n - 2] : undefined;
+  const prevLast = prevStop ? rowOf(prevStop)?.lastResult ?? null : null;
+  return {
+    currentStopN: currentN,
+    currentStopName: currentStop?.name,
+    currentPairNames: currentStop ? pairNamesFor(currentStop) : undefined,
+    clearedCount: rows.filter((x) => x.clears > 0).length,
+    routeCompleted: completed,
+    heatBand,
+    heatStopName: heatBand && heatStop ? heatStop.name : undefined,
+    heatPairNames: heatBand && heatStop ? pairNamesFor(heatStop) : undefined,
+    prevWon: prevLast ? prevLast.won : undefined,
+    prevBand: prevStop && prevLast ? mannerBandOf(prevLast, targetForStop(prevStop)) : null,
+    prevStopName: prevStop?.name,
+    prevPairNames: prevStop ? pairNamesFor(prevStop) : undefined,
+  };
+}
+
+/**
+ * The outro's "next stop", derived from PROGRESS — never from the stop
+ * just played (owner, 2026-10-24: a Porch replay pointed at the
+ * Barbershop while his real next stop was the Rooftop). The first
+ * uncleared stop on the track; undefined when the route is complete,
+ * and undefined when that stop IS the one just played (a loss there
+ * leaves it current — "run it back" already covers staying).
+ */
+export function trueNextStop(progress: StoryProgress | null, justPlayedStopId: string): StoryStop | undefined {
+  if (!progress || progress.completed) return undefined;
+  const row = progress.stops.find((s) => s.state === 'current');
+  if (!row || row.stopId === justPlayedStopId) return undefined;
+  return STORY_STOPS.find((s) => s.id === row.stopId);
 }
 
 export type ProgressFetch =

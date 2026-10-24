@@ -105,7 +105,7 @@ import { isWildDeuce } from './cardFaces';
 import { MISDEAL_DEAL_SPEED, heldHandForThrowIn, misdealDealMs, misdealFanHand, misdealRevealKey, misdealRevealMs } from './misdeal';
 import { QUICK_TRASH_SET } from './quickTrash';
 import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
-import { STORY_CHARACTERS, STORY_STOPS, STOP_DENSITY_CLASS, TALK_PROFILES, type BotLevel, type StoryBeat, type StoryBeatFacts, type StoryGameFacts, type StoryStop, type TalkIntensity, botSkillFor, buildStoryTape, callbackFor, midSceneFor, parseHint, partnerBidIntent, personaForName, platePersona, pickBotNames, playBeatFor, railCastForAttempt, railMomentFor, resumeLineFor, skillOf, tableExchangeFor } from '@spades/bots';
+import { STORY_CHARACTERS, STORY_STOPS, STOP_DENSITY_CLASS, TALK_PROFILES, type BotLevel, type StoryBeat, type StoryBeatFacts, type StoryGameFacts, type StoryStop, type TalkIntensity, botSkillFor, buildStoryTape, buzzMomentFor, callbackFor, midSceneFor, parseHint, partnerBidIntent, personaForName, platePersona, pickBotNames, playBeatFor, railCastForAttempt, railMomentFor, resumeLineFor, skillOf, tableExchangeFor } from '@spades/bots';
 import { preloadVoice } from './voices/voices';
 import { signalTableReady } from './transitions';
 const Scene = lazy(loadScene);
@@ -275,7 +275,7 @@ interface Props {
       resumed: boolean;
       /** fresh games: this attempt's drawn rail cast (railCastForAttempt) */
       railCast?: string[];
-      initialSession?: { fired: string[]; memory: string[]; satDown: boolean; railFired?: number; lastRailHand?: number; railCast?: string[]; railChecks?: number; railExchanges?: number; railSaid?: string[] };
+      initialSession?: { fired: string[]; memory: string[]; satDown: boolean; railFired?: number; lastRailHand?: number; railCast?: string[]; railChecks?: number; railExchanges?: number; railSaid?: string[]; buzzChecks?: number; buzzFired?: number; buzzSaid?: string[] };
     };
   };
 }
@@ -1536,7 +1536,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // at most once per game, and endgame callbacks reference only events
   // recorded earlier in THIS match. Story games only — every other game
   // takes the exact same code path as before (this effect no-ops).
-  const storySceneRef = useRef<{ prev: StorySnap | null; fired: Set<string>; memory: Set<string>; satDown: boolean; welcomed: boolean; railFired: number; lastRailHand: number; railCast: string[]; railChecks: number; railExchanges: number; railSaid: string[] }>(
+  const storySceneRef = useRef<{ prev: StorySnap | null; fired: Set<string>; memory: Set<string>; satDown: boolean; welcomed: boolean; railFired: number; lastRailHand: number; railCast: string[]; railChecks: number; railExchanges: number; railSaid: string[]; buzzChecks: number; buzzFired: number; buzzSaid: string[] }>(
     {
       prev: null,
       fired: new Set(story?.saveCtx?.initialSession?.fired ?? []),
@@ -1554,6 +1554,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       railChecks: story?.saveCtx?.initialSession?.railChecks ?? 0,
       railExchanges: story?.saveCtx?.initialSession?.railExchanges ?? 0,
       railSaid: [...(story?.saveCtx?.initialSession?.railSaid ?? [])],
+      buzzChecks: story?.saveCtx?.initialSession?.buzzChecks ?? 0,
+      buzzFired: story?.saveCtx?.initialSession?.buzzFired ?? 0,
+      buzzSaid: [...(story?.saveCtx?.initialSession?.buzzSaid ?? [])],
     });
   useEffect(() => {
     const scene = story?.scene;
@@ -1603,6 +1606,26 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         }, delayMs);
       });
     };
+    // FORWARD BUZZ (word travels fast, owner 2026-10-24): the seated
+    // pair may remark — relay voice, secondhand — on how the player
+    // handled the PREVIOUS stop. One seeded evaluation per eligible
+    // moment (buzzMomentFor): the sit-down sizing-up, or a hand end no
+    // scripted beat took. Capped at one a match, never a repeat, and
+    // silent when no recorded result exists at the previous stop.
+    const buzzAt = (moment: 'sitDown' | 'handEnd'): boolean => {
+      const checks = S.buzzChecks;
+      S.buzzChecks++;
+      const beats = buzzMomentFor(stop, moment, {
+        attempts: facts.attempts, checks, fired: S.buzzFired, said: S.buzzSaid,
+        prevWon: facts.prevWon, prevBand: facts.prevBand,
+        prevStopName: facts.prevStopName, prevPairNames: facts.prevPairNames,
+      });
+      if (!beats) return false;
+      S.buzzFired++;
+      for (const bt of beats) S.buzzSaid.push(bt.line);
+      deliver(beats, 2600, 1500);
+      return true;
+    };
     if (story?.saveCtx?.resumed && !S.welcomed) {
       // A resumed match skips the intro and the sit-down beat — one line
       // puts the table back in the room, then the thread continues.
@@ -1612,6 +1635,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (!S.satDown && snap.historyLen === 0 && snap.phase !== 'gameOver') {
       S.satDown = true;
       deliver(playBeatFor(stop, 'sitDown'), 900, 1700);
+      buzzAt('sitDown');
     }
     if (S.prev) {
       let beatFired = false;
@@ -1646,6 +1670,10 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           deliver(beats, 3400, 1700);
           beatFired = true;
         }
+        // FORWARD BUZZ at this hand end: only when no scripted beat
+        // took it (the rail's own discipline, below) — a set just
+        // landed resolves here too, so the talk rides real moments.
+        if (!beatFired && buzzAt('handEnd')) beatFired = true;
       }
       // RAILBIRDS: this attempt's drawn background cast, chiming in from
       // the rail — sparse, event-keyed, rate-capped (storyRail.ts), and
@@ -1740,7 +1768,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           {
             stopId: story.scene.stop.id, track: 'solo',
             attemptsAtStart: story.saveCtx.attemptsAtStart, clearsAtStart: story.saveCtx.clearsAtStart,
-            session: { fired: [...S.fired], memory: [...S.memory], satDown: S.satDown, railFired: S.railFired, lastRailHand: S.lastRailHand, railCast: [...S.railCast], railChecks: S.railChecks, railExchanges: S.railExchanges, railSaid: [...S.railSaid] },
+            session: { fired: [...S.fired], memory: [...S.memory], satDown: S.satDown, railFired: S.railFired, lastRailHand: S.lastRailHand, railCast: [...S.railCast], railChecks: S.railChecks, railExchanges: S.railExchanges, railSaid: [...S.railSaid], buzzChecks: S.buzzChecks, buzzFired: S.buzzFired, buzzSaid: [...S.buzzSaid] },
           },
         );
       }

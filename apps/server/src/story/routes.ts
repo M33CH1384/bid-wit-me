@@ -43,8 +43,8 @@ import { type AuthEnv, currentUser } from '../auth/routes';
 import { type SocialEnv, isAdmin } from '../social/routes';
 import {
   STORY_LOSS_REWARD, STORY_SECRETS, STORY_STOPS, STORY_SOLO_TRACK, awarenessCaseFor, storyClearReward, storyCurrentStop, storyEggById, storyEggEventMet,
-  storyFeatMet, storyPairTrackKey, storyPairUids, storyReward, storyStopById, storyStopState, storyTrackKeyValid,
-  type AwarenessCase, type StoryGameFacts, type StoryMatchEvent, type StoryStop,
+  storyEndReasonOf, storyFeatMet, storyPairTrackKey, storyPairUids, storyReward, storyStopById, storyStopState, storyTrackKeyValid,
+  type AwarenessCase, type StoryEndReason, type StoryGameFacts, type StoryMatchEvent, type StoryStop,
 } from '@spades/bots';
 import { CODE_ALPHABET, CODE_LENGTH, isRoomCode, normalizeRoomCode } from '@spades/protocol';
 import { awardXp } from '../cred/xp';
@@ -79,14 +79,19 @@ interface StopFacts {
   doublePending: boolean;
   /** JSON StoryGameFacts of the banked first leg — the deciding post merges them into the run's facts */
   doubleLegFacts: string | null;
+  /** JSON { won, margin, endReason } of the LATEST finished game at this
+   *  stop on this track (migration 0033) — the manner fact the route's
+   *  people gossip about (word travels fast); null for results recorded
+   *  before the fact was kept, and then no manner line may fire */
+  lastResult: string | null;
 }
 
 async function factsFor(db: D1Database, userId: string, track: string): Promise<Map<string, StopFacts>> {
-  const rows = await db.prepare('SELECT stop_id AS stopId, attempts, clears, first_cleared_at AS firstClearedAt, double_pending AS doublePending, double_leg_facts AS doubleLegFacts FROM story_progress WHERE user_id = ? AND track_key = ?')
-    .bind(userId, track).all<{ stopId: string; attempts: number; clears: number; firstClearedAt: number | null; doublePending: number; doubleLegFacts: string | null }>();
+  const rows = await db.prepare('SELECT stop_id AS stopId, attempts, clears, first_cleared_at AS firstClearedAt, double_pending AS doublePending, double_leg_facts AS doubleLegFacts, last_result AS lastResult FROM story_progress WHERE user_id = ? AND track_key = ?')
+    .bind(userId, track).all<{ stopId: string; attempts: number; clears: number; firstClearedAt: number | null; doublePending: number; doubleLegFacts: string | null; lastResult: string | null }>();
   return new Map(rows.results.map((r) => [r.stopId, {
     attempts: r.attempts, clears: r.clears, firstClearedAt: r.firstClearedAt,
-    doublePending: !!r.doublePending, doubleLegFacts: r.doubleLegFacts ?? null,
+    doublePending: !!r.doublePending, doubleLegFacts: r.doubleLegFacts ?? null, lastResult: r.lastResult ?? null,
   }]));
 }
 
@@ -127,6 +132,7 @@ function gameFactsOf(raw: unknown): StoryGameFacts | null {
     deeSteady: f.deeSteady === true,
     setOnFirstHand: f.setOnFirstHand === true,
     oppSetTwice: f.oppSetTwice === true,
+    endReason: storyEndReasonOf(f.endReason),
   };
 }
 
@@ -135,6 +141,25 @@ function gameFactsOf(raw: unknown): StoryGameFacts | null {
 function legFactsOf(raw: string | null): StoryGameFacts | null {
   if (!raw) return null;
   try { return gameFactsOf(JSON.parse(raw)); } catch { return null; }
+}
+
+/** The payload shape of a stop's stored last result (migration 0033). */
+export interface StoryLastResultPayload { won: boolean; margin?: number; endReason?: StoryEndReason }
+
+/** Parse a stored last-result JSON for the payload, re-clamped like the
+ *  post that wrote it: a corrupt value fails as null — no manner fact,
+ *  and the scene layer stays silent about how that game went. */
+function lastResultOf(raw: string | null | undefined): StoryLastResultPayload | null {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw) as Record<string, unknown>;
+    if (!v || typeof v !== 'object' || typeof v.won !== 'boolean') return null;
+    const out: StoryLastResultPayload = { won: v.won };
+    if (typeof v.margin === 'number' && Number.isFinite(v.margin)) out.margin = Math.max(-2000, Math.min(2000, Math.round(v.margin)));
+    const er = storyEndReasonOf(v.endReason);
+    if (er) out.endReason = er;
+    return out;
+  } catch { return null; }
 }
 
 /** The double's run facts = leg 1 + leg 2, field by field: set counts and
@@ -151,6 +176,8 @@ function mergeLegFacts(a: StoryGameFacts, b: StoryGameFacts): StoryGameFacts {
     deeSteady: a.deeSteady && b.deeSteady,
     setOnFirstHand: a.setOnFirstHand || b.setOnFirstHand,
     oppSetTwice: a.oppSetTwice || b.oppSetTwice,
+    // The run ENDED in the deciding leg — its ending is the run's manner.
+    endReason: b.endReason ?? a.endReason,
   };
 }
 
@@ -201,6 +228,9 @@ export async function storyProgressPayload(db: D1Database, userId: string, track
         attempts: f?.attempts ?? 0, clears: f?.clears ?? 0, firstClearedAt: f?.firstClearedAt ?? null,
         /** the King's double or nothing is live at this stop (server truth — any device sees it) */
         doublePending: f?.doublePending ?? false,
+        /** the LATEST finished game here, manner facts included (word
+         *  travels fast): null when no result here carries them yet */
+        lastResult: lastResultOf(f?.lastResult),
       };
     }),
     currentStop: storyCurrentStop(cleared),
@@ -335,7 +365,7 @@ async function recordStoryResult(
   // Sequential unlock, server-side: a locked stop can never be recorded.
   if (storyStopState(stop.n, cleared) === 'locked') return { status: 409, body: { error: 'That stop is locked — clear the route in order.' } };
 
-  const before = facts.get(stop.id) ?? { attempts: 0, clears: 0, firstClearedAt: null, doublePending: false, doubleLegFacts: null };
+  const before = facts.get(stop.id) ?? { attempts: 0, clears: 0, firstClearedAt: null, doublePending: false, doubleLegFacts: null, lastResult: null };
   const gameFacts = gameFactsOf(rawFacts);
   let firstClear = won && before.clears === 0;
   // A finished loss pays the small consolation (STORY_LOSS_REWARD:
@@ -419,6 +449,21 @@ async function recordStoryResult(
     .bind(userId, track, stop.id, countsAsClear ? 1 : 0, firstClear ? now : null, now).run();
   await db.prepare('INSERT INTO story_claims (user_id, game_id, track_key, stop_id, won, first_clear, xp, coins, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
     .bind(userId, gameId, track, stop.id, won ? 1 : 0, firstClear ? 1 : 0, rewards.xp, rewards.coins, now).run();
+
+  // WORD TRAVELS FAST (migration 0033): the row just upserted keeps the
+  // LATEST finished game's manner facts — won, final margin, how it
+  // ended — so the whole route (and the next stop especially) can know
+  // HOW it went, not just that it went. A decline posts no new game
+  // (the banked leg's facts were recorded when the leg was played), so
+  // it writes nothing; a post without game facts records the win alone,
+  // which carries no manner and fires no manner line.
+  if (finaleOutcome !== 'declined') {
+    const lastResult = gameFacts
+      ? { won, margin: gameFacts.margin, endReason: gameFacts.endReason }
+      : { won };
+    await db.prepare('UPDATE story_progress SET last_result = ? WHERE user_id = ? AND track_key = ? AND stop_id = ?')
+      .bind(JSON.stringify(lastResult), userId, track, stop.id).run();
+  }
 
   // Pending-mark transitions (the mark lives on the progress row the
   // upsert just wrote, so a stop reset deleting that row wipes it too).

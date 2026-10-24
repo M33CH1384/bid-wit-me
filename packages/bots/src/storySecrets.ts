@@ -19,6 +19,7 @@
  */
 import type { StoryStop } from './story';
 import type { GameState } from '@spades/rules';
+import { storyEndReasonOf, type StoryEndReason } from './storyManner';
 
 export type StoryEggTrigger =
   | { type: 'sceneTap' }
@@ -53,6 +54,11 @@ export interface StoryGameFacts {
   deeSteady: boolean; // every hand: Dee delivered (a trick taken, or her nil made) AND her side made its contract
   setOnFirstHand: boolean;
   oppSetTwice: boolean;
+  /** how the game ended (the engine's GameResult endReason); null when
+   *  the state carries no result. Feeds the manner-of-win bands
+   *  (storyManner) once the result is recorded — a shot-out or a third
+   *  set is its own flavor of story ("ended it early"). */
+  endReason: StoryEndReason | null;
 }
 
 export type StoryFeatId =
@@ -226,5 +232,6 @@ export function storyFactsOf(st: GameState): StoryGameFacts {
     ourNilsMade, ourBlindNilsMade, deeNilsMade, deeSteady,
     setOnFirstHand: !!first && (my(first)?.contractMade === false || their(first)?.contractMade === false),
     oppSetTwice: st.history.filter((r) => their(r)?.contractMade === false).length >= 2,
+    endReason: storyEndReasonOf(st.result?.endReason),
   };
 }
