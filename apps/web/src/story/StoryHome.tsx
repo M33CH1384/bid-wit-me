@@ -585,11 +585,12 @@ export default function StoryHome() {
   // attempt or clear at any stop — a finished route included) and the
   // device save slot (a solo match in progress; refresh() keeps `saved`
   // validated against that same progress, so a stale save can never
-  // disagree with the server for long). The co-op partner step below
-  // offers "Run it solo instead" only to a player who has NOT started
-  // solo: for a player mid-route the run already exists — behind the
-  // gate's Solo branch and the Home resume signpost — and the escape
-  // hatch is noise on a co-op screen (owner, 2026-10-24).
+  // disagree with the server for long). Both co-op screens below — the
+  // partner step and the pair map — offer "Run it solo instead" only to
+  // a player who has NOT started solo: for a player mid-route the run
+  // already exists — behind the gate's Solo branch and the Home resume
+  // signpost — and the escape hatch is noise on a co-op screen (owner,
+  // 2026-10-24). One derivation serves both screens.
   const soloStarted = saved !== null
     || (progress?.stops.some((s) => s.attempts > 0 || s.clears > 0) ?? false);
 
@@ -741,6 +742,7 @@ export default function StoryHome() {
         onPlay={(stop) => void playCoopStop(stop)}
         onBack={() => { setCoopSel(null); setCoopMapError(null); }}
         onSolo={() => chooseMode('solo')}
+        soloStarted={soloStarted}
       />
     ) : (
       <div className="story-shell" data-testid="story-coop-home">
@@ -1135,7 +1137,7 @@ export default function StoryHome() {
  * never what either did solo or with anyone else. Play opens a story room
  * at that stop with the partner named; the room takes it from there.
  */
-function CoopMap({ progress, partnerHandle, busyStop, error, onPlay, onBack, onSolo }: {
+function CoopMap({ progress, partnerHandle, busyStop, error, onPlay, onBack, onSolo, soloStarted }: {
   progress: StoryProgress | null;
   partnerHandle: string | null;
   busyStop: string | null;
@@ -1143,6 +1145,7 @@ function CoopMap({ progress, partnerHandle, busyStop, error, onPlay, onBack, onS
   onPlay: (stop: StoryStop) => void;
   onBack: () => void;
   onSolo: () => void;
+  soloStarted: boolean;
 }) {
   const clearedCount = progress?.stops.filter((s) => s.clears > 0).length ?? 0;
   return (
@@ -1200,9 +1203,11 @@ function CoopMap({ progress, partnerHandle, busyStop, error, onPlay, onBack, onS
           );
         })}
       </ol>
-      <div className="story-mode-toggle">
-        <button type="button" className="btn ghost" data-testid="story-mode-solo" onClick={onSolo}>Run it solo instead</button>
-      </div>
+      {!soloStarted && (
+        <div className="story-mode-toggle">
+          <button type="button" className="btn ghost" data-testid="story-mode-solo" onClick={onSolo}>Run it solo instead</button>
+        </div>
+      )}
     </div>
   );
 }

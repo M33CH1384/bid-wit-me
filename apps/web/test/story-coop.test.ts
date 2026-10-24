@@ -20,6 +20,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { STORY_STOPS, storyRulesForStop } from '@spades/bots';
+import { makeRules, newGame } from '@spades/rules';
 import type { ConnState } from '../src/online/connection';
 import { DEFAULT_SETTINGS } from '../src/settings';
 import { storyRulesFor } from '../src/story/storySettings';
@@ -27,6 +28,7 @@ import StoryHome from '../src/story/StoryHome';
 import { StoryRoomInner } from '../src/story/StoryRoom';
 import { badgeFactsOf } from '../src/story/StoryBadges';
 import type { StoryProgress } from '../src/story/storyApi';
+import { loadStoryGame, saveStoryGame, type StorySavedGame } from '../src/story/storySave';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -60,6 +62,20 @@ const pairProgressAfter = progressPayload('pair:a:c', {
     ? { state: 'cleared', attempts: 1, clears: 1, firstClearedAt: 1 }
     : s.id === 'barbershop' ? { state: 'current' } : {})),
 });
+/** A solo match left mid-play in the device save slot — the save-side
+ *  "solo started" signal (mirrors mkSave in story-home-resume.test.ts). */
+const mkSoloSave = (stopId = 'porch', handNo = 1, attemptsAtStart = 0): StorySavedGame => {
+  const st = newGame(makeRules('joker'), 'story-seed');
+  return {
+    v: 1, savedAt: 1, seed: 'story-seed', settings: DEFAULT_SETTINGS,
+    state: { ...st, handNo }, chat: [],
+    names: ['You', 'Uncle Ray', 'Dee', 'Pat'],
+    story: {
+      stopId, track: 'solo', attemptsAtStart, clearsAtStart: 0,
+      session: { fired: [], memory: [], satDown: true, railFired: 0, lastRailHand: 0 },
+    },
+  };
+};
 
 let root: Root | null = null;
 let el: HTMLDivElement | null = null;
@@ -199,6 +215,51 @@ describe('the mode gate', () => {
     expect(byTestid('story-coop-share-start')).toBeTruthy();
     expect(byTestid('story-coop-code')).toBeTruthy();
     expect(byTestid('story-coop-join')).toBeTruthy();
+  });
+
+  it('the pair map keeps "Run it solo instead" for a player who has NOT started solo — and it still works', async () => {
+    stubFetch();
+    await renderStoryHome();
+    await click(byTestid('story-gate-coop')!);
+    await settle();
+    await click(byTestid('story-coop-run-c')!);
+    expect(byTestid('story-coop-map')).toBeTruthy();
+    // the fresh player's escape hatch stands on the pair map too
+    expect(byTestid('story-mode-solo')).toBeTruthy();
+    await click(byTestid('story-mode-solo')!);
+    expect(byTestid('story-map')).toBeTruthy();
+  });
+
+  it('a player whose solo run is underway (server progress) gets no solo escape hatch on the pair map either', async () => {
+    stubFetch({ solo: soloProgressStarted });
+    await renderStoryHome();
+    await click(byTestid('story-gate-coop')!);
+    await settle();
+    await click(byTestid('story-coop-run-c')!);
+    expect(byTestid('story-coop-map')).toBeTruthy();
+    // The owner's rule is about the button, not one screen — the pair
+    // map retires it under the same condition. Nothing replaces it and
+    // the map itself (stops, play, back) is untouched.
+    expect(byTestid('story-mode-solo')).toBeNull();
+    expect(byTestid('story-coop-stop-porch')).toBeTruthy();
+    expect(byTestid('story-coop-play-porch')).toBeTruthy();
+    expect(byTestid('story-coop-back')).toBeTruthy();
+  });
+
+  it('a live solo save alone (no recorded progress yet) retires the pair map’s solo escape hatch too', async () => {
+    stubFetch();
+    saveStoryGame(mkSoloSave('porch', 1, 0), mkSoloSave('porch', 1, 0).story);
+    await renderStoryHome();
+    await click(byTestid('story-gate-coop')!);
+    await settle();
+    await click(byTestid('story-coop-run-c')!);
+    expect(byTestid('story-coop-map')).toBeTruthy();
+    // the ONLY "started" signal is the save in the device slot — the
+    // same derivation the partner step ships, so the map agrees with it
+    expect(byTestid('story-mode-solo')).toBeNull();
+    expect(byTestid('story-coop-play-porch')).toBeTruthy();
+    // and the save itself is untouched, waiting on its own track
+    expect(loadStoryGame()?.story.stopId).toBe('porch');
   });
 
   it('signed-out players never see the gate — the preview map renders as before', async () => {
