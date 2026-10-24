@@ -46,6 +46,13 @@ const progressPayload = (track: string, over: Partial<StoryProgress> = {}): Stor
 });
 const soloProgress = progressPayload('solo');
 const pairProgress = progressPayload('pair:a:c');
+/** The solo track AFTER the Porch clear — a player mid-route solo. */
+const soloProgressStarted = progressPayload('solo', {
+  currentStop: 2,
+  stops: STORY_STOPS.map((s) => row(s.id, s.id === 'porch'
+    ? { state: 'cleared', attempts: 1, clears: 1, firstClearedAt: 1 }
+    : s.id === 'barbershop' ? { state: 'current' } : {})),
+});
 /** The pair progress AFTER the Porch clear — what a result response carries. */
 const pairProgressAfter = progressPayload('pair:a:c', {
   currentStop: 2,
@@ -76,7 +83,7 @@ const click = async (node: Element) => { await act(async () => { (node as HTMLEl
 const byTestid = (id: string) => el!.querySelector(`[data-testid="${id}"]`);
 
 interface FetchLog { urls: string[]; resultPosts: { track?: string; gameId?: string; stopId?: string }[] }
-function stubFetch(opts: { signedOut?: boolean; joinOk?: boolean } = {}): FetchLog {
+function stubFetch(opts: { signedOut?: boolean; joinOk?: boolean; solo?: StoryProgress } = {}): FetchLog {
   const log: FetchLog = { urls: [], resultPosts: [] };
   vi.stubGlobal('fetch', async (input: unknown, init?: { body?: string }) => {
     const url = String(input);
@@ -85,7 +92,7 @@ function stubFetch(opts: { signedOut?: boolean; joinOk?: boolean } = {}): FetchL
     if (url.includes('/api/profile/me')) return ok({ dev: false, storyAccess: true, unlocks: [], user: { id: 'a', username: 'A' } });
     if (url.includes('/api/story/progress')) {
       if (opts.signedOut) return { ok: false, status: 401, json: async () => ({}) };
-      return ok(url.includes('pair') ? pairProgress : soloProgress);
+      return ok(url.includes('pair') ? pairProgress : (opts.solo ?? soloProgress));
     }
     if (url.includes('/api/story/tracks')) {
       return ok({
@@ -159,6 +166,39 @@ describe('the mode gate', () => {
     expect(byTestid('story-coop-stop-porch')).toBeTruthy();
     expect(byTestid('story-coop-play-porch')).toBeTruthy();
     expect(byTestid('story-coop-play-barbershop')).toBeNull(); // locked on the pair track
+  });
+
+  it('the partner step keeps "Run it solo instead" for a player who has NOT started solo — and it still works', async () => {
+    stubFetch();
+    await renderStoryHome();
+    await click(byTestid('story-gate-coop')!);
+    await settle();
+    expect(byTestid('story-coop-home')).toBeTruthy();
+    // the fresh player's escape hatch stands, with the co-op machinery
+    // around it intact (invite / share / join-by-code all render)
+    expect(byTestid('story-mode-solo')).toBeTruthy();
+    expect(byTestid('story-coop-partner')).toBeTruthy();
+    expect(byTestid('story-coop-share-start')).toBeTruthy();
+    expect(byTestid('story-coop-code')).toBeTruthy();
+    expect(byTestid('story-coop-join')).toBeTruthy();
+    await click(byTestid('story-mode-solo')!);
+    expect(byTestid('story-map')).toBeTruthy();
+  });
+
+  it('a player whose solo run is underway (server progress) gets no solo escape hatch on the partner step', async () => {
+    stubFetch({ solo: soloProgressStarted });
+    await renderStoryHome();
+    await click(byTestid('story-gate-coop')!);
+    await settle();
+    expect(byTestid('story-coop-home')).toBeTruthy();
+    // owner, 2026-10-24: "If I've already started a solo story there's
+    // no need for this." The button does not render — nothing replaces
+    // it — and the partner step itself is untouched.
+    expect(byTestid('story-mode-solo')).toBeNull();
+    expect(byTestid('story-coop-partner')).toBeTruthy();
+    expect(byTestid('story-coop-share-start')).toBeTruthy();
+    expect(byTestid('story-coop-code')).toBeTruthy();
+    expect(byTestid('story-coop-join')).toBeTruthy();
   });
 
   it('signed-out players never see the gate — the preview map renders as before', async () => {

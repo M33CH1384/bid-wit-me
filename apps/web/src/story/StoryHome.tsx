@@ -568,6 +568,19 @@ export default function StoryHome() {
     resumeStop(stop, s);
   }, [resumeStopId, progress, storyAccess, lockedByServer]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // "Solo started" for THIS player, from the two signals this screen
+  // already holds: the solo track's server progress (any recorded
+  // attempt or clear at any stop — a finished route included) and the
+  // device save slot (a solo match in progress; refresh() keeps `saved`
+  // validated against that same progress, so a stale save can never
+  // disagree with the server for long). The co-op partner step below
+  // offers "Run it solo instead" only to a player who has NOT started
+  // solo: for a player mid-route the run already exists — behind the
+  // gate's Solo branch and the Home resume signpost — and the escape
+  // hatch is noise on a co-op screen (owner, 2026-10-24).
+  const soloStarted = saved !== null
+    || (progress?.stops.some((s) => s.attempts > 0 || s.clears > 0) ?? false);
+
   let body: React.ReactNode;
   if (STORY_OWNER_ONLY && (lockedByServer || (storyAccess !== undefined && storyLockedFor(storyAccess)))) {
     // Locked while story mode is being finished — everyone except admins
@@ -653,9 +666,11 @@ export default function StoryHome() {
           onEnterRoom={(code, track) => setRoom({ code, track })}
           joinError={coopJoinError}
         />
-        <div className="story-mode-toggle">
-          <button type="button" className="btn ghost" data-testid="story-mode-solo" onClick={() => chooseMode('solo')}>Run it solo instead</button>
-        </div>
+        {!soloStarted && (
+          <div className="story-mode-toggle">
+            <button type="button" className="btn ghost" data-testid="story-mode-solo" onClick={() => chooseMode('solo')}>Run it solo instead</button>
+          </div>
+        )}
       </div>
     );
   } else if (screen.k === 'tape') {

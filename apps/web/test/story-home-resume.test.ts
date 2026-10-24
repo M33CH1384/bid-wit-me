@@ -96,6 +96,26 @@ const progressPayload = (barberAttempts: number) => ({
   finds: { eggs: [], feats: [] },
 });
 
+/** Progress with NO solo play recorded anywhere — the Porch is simply
+ *  current. Against it, a Porch save begun at attemptsAtStart 0 is live
+ *  (storySaveValidFor), so the save is the ONLY "solo started" signal. */
+const zeroProgressPayload = () => ({
+  track: 'solo',
+  stops: STORY_STOPS.map((s) => ({
+    stopId: s.id,
+    n: s.n,
+    state: s.id === 'porch' ? 'current' : 'locked',
+    attempts: 0,
+    clears: 0,
+    firstClearedAt: null,
+  })),
+  currentStop: 1,
+  completed: false,
+  completedAt: null,
+  completionMark: null,
+  finds: { eggs: [], feats: [] },
+});
+
 function stubFetch(dev: boolean, barberAttempts = 1) {
   vi.stubGlobal('fetch', async (input: unknown) => {
     const url = String(input);
@@ -415,5 +435,36 @@ describe('StoryHome resume consumption', () => {
     expect(card.textContent).toContain('Mr. Coleman & June');
     expect(map.querySelector('[data-testid="story-inprogress-barbershop"]')!.textContent).toContain('hand 4');
     expect(map.querySelector('[data-testid="story-resume-barbershop"]')).toBeTruthy();
+  });
+
+  it('a live solo save alone (no recorded progress yet) retires the co-op screen’s solo escape hatch', async () => {
+    // Zero recorded progress: the ONLY "started" signal is the save in
+    // the device slot — a first Porch match left mid-play.
+    vi.stubGlobal('fetch', async (input: unknown) => {
+      const url = String(input);
+      if (url.includes('/api/profile/me')) return { ok: true, status: 200, json: async () => ({ dev: true, storyAccess: true, unlocks: [] }) };
+      if (url.includes('/api/story/progress')) return { ok: true, status: 200, json: async () => zeroProgressPayload() };
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+    saveStoryGame(mkSave('porch', 1, 0), mkSave('porch', 1, 0).story);
+    unmount();
+    history.replaceState(null, '', '/story');
+    el = document.createElement('div');
+    document.body.appendChild(el);
+    root = createRoot(el);
+    await act(async () => { root!.render(createElement(StoryHome)); });
+    await settle();
+    const coop = el.querySelector('[data-testid="story-gate-coop"]');
+    expect(coop).toBeTruthy();
+    await act(async () => { (coop as HTMLElement).click(); });
+    await settle();
+    expect(el.querySelector('[data-testid="story-coop-home"]')).toBeTruthy();
+    // The escape hatch is gone for a player whose solo run exists…
+    expect(el.querySelector('[data-testid="story-mode-solo"]')).toBeNull();
+    // …while the partner-side door in — the table-code Join row — stands.
+    expect(el.querySelector('[data-testid="story-coop-code"]')).toBeTruthy();
+    expect(el.querySelector('[data-testid="story-coop-join"]')).toBeTruthy();
+    // And the save itself is untouched, waiting on its own track.
+    expect(loadStoryGame()?.story.stopId).toBe('porch');
   });
 });
