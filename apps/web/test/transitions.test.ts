@@ -261,6 +261,64 @@ describe('the Deal — ready-driven entry lifecycle', () => {
   });
 });
 
+describe('the Card Fan (stage 2)', () => {
+  it('wiring: Root classifies route moves and mounts the fan; the social store fans its swaps', () => {
+    const main = read('main.tsx');
+    expect(main).toContain("import FanLayer from './FanLayer'");
+    expect(main).toContain('<FanLayer />');
+    expect(main).toContain("routeMoveClass(cur, next) ?? 'menu-nav'");
+    const store = read('social/store.ts');
+    expect(store.split("coverThen(apply, 'profile-social')")).toHaveLength(6); // all five swaps
+  });
+
+  it('construction: seven abstract card backs, compositor-only, the game spade as the mark', () => {
+    const fan = read('FanLayer.tsx');
+    expect(fan).toContain('FAN_TILTS');
+    expect(fan).toContain('[-39, -26, -13, 0, 13, 26, 39]');
+    expect(fan).toContain('SPADE_PATH_D');
+    expect(fan).toContain('tfan-card');
+    expect(fan).not.toContain('<canvas');
+    expect(fan).not.toContain('requestAnimationFrame');
+    expect(fan).not.toContain('getContext');
+    const css = read('transitions.css');
+    expect(css).toContain('.tfan-layer');
+    expect(css).toContain('z-index: 2000');
+    expect(css).toContain('.tfan-neon .tfan-card');
+  });
+
+  it('renders the fan only during a fan episode; input locks on cover, frees on reveal', async () => {
+    const { createElement } = await import('react');
+    const { createRoot } = await import('react-dom/client');
+    const { act } = await import('react');
+    const { default: FanLayer } = await import('../src/FanLayer');
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    act(() => root.render(createElement(FanLayer)));
+    act(() => registerTransitionRenderer(true));
+    expect(host.querySelector('[data-testid="fan-layer"]')).toBeNull();
+
+    const m = vi.fn();
+    act(() => coverThen(m, 'profile-social'));
+    const layerEl = host.querySelector<HTMLElement>('[data-testid="fan-layer"]');
+    expect(layerEl).not.toBeNull();
+    expect(layerEl!.style.pointerEvents).toBe('auto');
+    expect(host.querySelectorAll('[data-anim="fan-card"]')).toHaveLength(7);
+
+    act(() => vi.advanceTimersByTime(PROGRAM_SPECS.fan.coverMs));
+    expect(m).toHaveBeenCalledTimes(1);
+    const revealEl = host.querySelector<HTMLElement>('[data-testid="fan-layer"]');
+    expect(revealEl!.dataset.phase).toBe('reveal');
+    expect(revealEl!.style.pointerEvents).toBe('none');
+
+    act(() => vi.advanceTimersByTime(PROGRAM_SPECS.fan.holdMs + PROGRAM_SPECS.fan.revealMs));
+    expect(host.querySelector('[data-testid="fan-layer"]')).toBeNull();
+    act(() => root.unmount());
+    host.remove();
+  });
+});
+
 describe('family-wide construction pins', () => {
   it('the controller paints nothing and runs no frame loop', () => {
     const ctl = read('transitions.ts');

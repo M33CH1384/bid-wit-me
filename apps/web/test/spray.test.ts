@@ -597,7 +597,9 @@ describe('wiring pins', () => {
   it('the Social panel open/close rides the paint', () => {
     const store = read('social/store.ts');
     expect(store).toContain("from '../spray'");
-    expect(store).toContain('coverThen(apply)');
+    // Stage 2 of the family: the panel's closed<->open swap is a
+    // profile-social move — the Card Fan — so the calls carry the class.
+    expect(store).toContain("coverThen(apply, 'profile-social')");
   });
 
   it('table surfaces never import the spray (the bid clock stays paint-free)', () => {

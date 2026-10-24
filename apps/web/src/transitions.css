@@ -1,0 +1,57 @@
+/* The screen-transition family (transitions.ts) — layer styles for
+   every program except the spray/ink pair, which live in spray.css.
+   All motion here is WAAPI-driven transform/opacity (see the layer
+   components); these rules only paint the static pieces. */
+
+/* ------------------------------------------------ The Card Fan -- */
+.tfan-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  overflow: hidden;
+  touch-action: none;
+}
+.tfan-shade {
+  position: absolute;
+  inset: 0;
+  background: #070708;
+  will-change: opacity;
+}
+.tfan-neon .tfan-shade {
+  background: #04050e;
+}
+.tfan-card {
+  position: absolute;
+  border-radius: 12px;
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0) 55%),
+    linear-gradient(155deg, #23304d 0%, #141d33 55%, #0d1424 100%);
+  border: 1px solid rgba(216, 182, 106, 0.55);
+  box-shadow:
+    inset 0 0 0 5px rgba(10, 14, 26, 0.85),
+    inset 0 0 0 6px rgba(216, 182, 106, 0.28),
+    0 18px 44px rgba(0, 0, 0, 0.5);
+  color: rgba(216, 182, 106, 0.30);
+  will-change: transform, opacity;
+}
+.tfan-neon .tfan-card {
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(91, 223, 255, 0.14), rgba(91, 223, 255, 0) 55%),
+    linear-gradient(155deg, #2a1656 0%, #170b38 55%, #0a0618 100%);
+  border-color: rgba(128, 84, 255, 0.65);
+  box-shadow:
+    inset 0 0 0 5px rgba(7, 9, 20, 0.85),
+    inset 0 0 0 6px rgba(91, 223, 255, 0.30),
+    0 18px 44px rgba(0, 0, 0, 0.55);
+  color: rgba(91, 223, 255, 0.34);
+}
+.tfan-mark {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 52%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+

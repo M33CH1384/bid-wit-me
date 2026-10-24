@@ -456,34 +456,35 @@ export const social = {
       if ((tab ?? state.tab) === 'chat') social.markGlobalSeen();
       if (extra.dmWith) social.openDm(extra.dmWith);
     };
-    // Spray-paint transition (spray.ts): the panel is a full screen — its
-    // closed->open swap rides the paint. Already open (a tab/deep-link
-    // re-target) applies instantly; there is no screen change to cover.
+    // Card Fan transition (transitions.ts): the panel is a full
+    // screen — its closed->open swap rides the fan (profile-social
+    // class). Already open (a tab/deep-link re-target) applies
+    // instantly; there is no screen change to cover.
     if (state.open) apply();
-    else coverThen(apply);
+    else coverThen(apply, 'profile-social');
   },
   close() {
     const apply = () => set({ open: false, profile: null, profileId: null });
-    if (state.open) coverThen(apply);
+    if (state.open) coverThen(apply, 'profile-social');
     else apply();
   },
   showTour(id: string | null) {
     const apply = () => set({ open: true, tab: 'tournaments', profile: null, profileId: null, tour: id });
     if (state.open) apply();
-    else coverThen(apply);
+    else coverThen(apply, 'profile-social');
   },
   /** open the Big Bank tab; with an id, straight to that challenge's detail */
   showChallenge(id: string | null) {
     const apply = () => set({ open: true, tab: 'challenges', profile: null, profileId: null, wager: id });
     if (state.open) apply();
-    else coverThen(apply);
+    else coverThen(apply, 'profile-social');
   },
   /** open the Big Bank create flow (optionally with the opponent pre-named from a profile) */
   startChallenge(opponent?: string) {
     social.start();
     const apply = () => set({ open: true, tab: 'challenges', profile: null, profileId: null, wager: null, wagerCreate: opponent ? { opponent } : {} });
     if (state.open) apply();
-    else coverThen(apply);
+    else coverThen(apply, 'profile-social');
   },
   clearWagerCreate() { set({ wagerCreate: null }); },
   dismissNotice(id: string) { set((s) => ({ notices: s.notices.filter((n) => n.id !== id) })); },

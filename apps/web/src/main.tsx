@@ -9,8 +9,11 @@ import DailyBonusReceipt from './DailyBonusReceipt';
 import { LeagueTickerRoot } from './social/LeagueTicker';
 import InkLayer from './ink/InkLayer';
 import SprayLayer from './SprayLayer';
+import FanLayer from './FanLayer';
 import { cancelSpray, coverThen, sprayRouteEligible } from './spray';
+import { routeMoveClass } from './transitions';
 import { initSpraySound } from './spraySound';
+import { initTransitionSound } from './transitionSound';
 import { watchPendingClaim } from './pendingClaim';
 import ReactiveGlow from './neon/ReactiveGlow';
 import { initTheme } from './theme';
@@ -79,10 +82,16 @@ function Root() {
       const cur = pathRef.current;
       if (next === cur) return;
       if (sprayRouteEligible(cur, next)) {
+        // The transition family (transitions.ts): the move is
+        // classified and the class picks the program — spray/ink for
+        // menu space, the Card Fan for profile moves, the Doorway
+        // for Story Mode entry. Table entries/exits are NOT eligible
+        // here (they never were — sprayRouteEligible excludes them);
+        // the Deal and the Book Sweep hook in at stage 3.
         coverThen(() => {
           pathRef.current = next;
           setPath(next);
-        });
+        }, routeMoveClass(cur, next) ?? 'menu-nav');
       } else {
         cancelSpray();
         pathRef.current = next;
@@ -99,6 +108,9 @@ function Root() {
   // Spray-transition sound (spraySound.ts): the can's shake + hiss follow
   // the spray controller's phase events; a suppressed spray stays silent.
   useEffect(() => { initSpraySound(); }, []);
+  // Family sounds (transitionSound.ts): the fan's shuffle, the deal's
+  // slides, the sweep's shove — same phase-event discipline.
+  useEffect(() => { initTransitionSound(); }, []);
   return (
     <>
       <RouteGuard key={`${path}:${settingsEpoch}`}>
@@ -126,6 +138,8 @@ function Root() {
       <LeagueTickerRoot />
       {/* Spray-paint screen transitions: renders only during a spray. */}
       <SprayLayer />
+      {/* The Card Fan: renders only during a profile/social move. */}
+      <FanLayer />
       <IdleGuard />
       {/* Entry prompt (sign in / guest) + first-sign-in preferences offer.
           Online paths skip the remount: a live room owns its own state and

@@ -179,6 +179,10 @@ export function buildSpadeOutline(subdiv = 42): SpadeOutline {
 
 export const SPADE_OUTLINE: SpadeOutline = buildSpadeOutline();
 
+/** The spade path itself, so sibling transition art (the Card Fan)
+ *  can carry the same mark without duplicating the path data. */
+export const SPADE_PATH_D = SPADE_D;
+
 /* ------------------------------------------------------------------ */
 /* Layout — the same numbers v3's canvas program used.                 */
 /* ------------------------------------------------------------------ */
