@@ -1,43 +1,66 @@
 /**
- * The spray-paint transition layer (owner, 2026-10-23) — the visual half of
- * spray.ts. Mounted once in Root beside InkLayer / SocialRoot. It renders
- * nothing while idle; during a spray it is a single fixed <canvas>:
+ * The spray-paint transition layer (owner, 2026-10-23) — the visual half
+ * of spray.ts. Mounted once in Root beside InkLayer / SocialRoot. It
+ * renders nothing while idle; during a spray it is one fixed layer of
+ * DOM + SVG.
  *
- *  - COVER (~570 ms, THREE strict beats — owner, 2026-10-23: the spade
- *    must be sprayed as an outline first, "then fill in the rest"; v2's
- *    overlapped tag read as a progress fill, and its stamp steps read
- *    as stepping):
- *      1. OUTLINE (~330 ms): the can travels the spade's COMPLETE
- *         contour. The finished sprayed outline is pre-rendered once as
- *         a sprite and revealed through a moving mask stroked along the
- *         path, so the line is perfectly continuous — no stamp stepping —
- *         while a live nozzle dab + overspray puff ride the frontier.
- *         Interior still empty; the overspray halo gathers around.
- *      2. INTERIOR (~105 ms): the fill sprays in behind a SOFT moving
- *         front (a gradient-masked sprite, no band edges snapping in).
- *      3. BLOOM (~135 ms): the paint fills out from the finished spade,
- *         a black bloom with a speckled front spreading until the
- *         corners are covered and the swap lands.
- *    The spade geometry is the game's own mark, decoded from
- *    public/favicon.svg. Everything is pre-rendered sprites + bounded
- *    per-frame compositing (textures built once per spray) — no DOM
- *    churn, no per-frame layout.
- *  - REVEAL: the full black is erased through a pre-rendered grain mask
- *    (destination-out), so the paint speckles and dissolves off the new
- *    screen instead of sliding away, with a short opacity tail so no
- *    residue pops at the end.
+ * V4 — COMPOSITOR-DRIVEN (owner, 2026-10-23, after v3's verdict:
+ * "still very choppy and far from smooth"). The first three
+ * generations of this layer painted full-screen canvases every frame
+ * (v1's swept spray front, v2's stamp walk, v3's pre-rendered sprites
+ * behind per-frame mask composites and draw calls at DPR 2 on a
+ * 1170x2532 phone). iOS Safari cannot
+ * composite that chain at 60 fps, and the dropped frames WERE the
+ * choppiness. So v4 paints nothing per frame: every moving part is a
+ * property the browser composites on the GPU — transform, opacity,
+ * clip-path, SVG stroke-dashoffset — animated with Web Animations
+ * created once per spray episode. JS keeps only the controller duties
+ * it always had (spray.ts owns eligibility, timers, the swap at full
+ * cover, the failsafe); this file translates the snapshot into
+ * animation parameters. The only canvas work left in the whole
+ * transition is sprayTextures.ts rendering its small static textures
+ * once.
  *
- * The cover is a pure function of position along the cover timeline, so a
- * dissolve snapped back into a cover (spray.ts's fromCoverage) resumes the
- * program mid-beat with no state to reconcile.
+ * The choreography is v3's, untouched — the owner accepted it; only
+ * the rendering was wrong. Three strict beats inside the ~570 ms
+ * cover:
+ *   1. OUTLINE (~330 ms): the can travels the spade's COMPLETE
+ *      contour. The spade is the game's own mark — the verbatim path
+ *      from public/favicon.svg — drawn as layered SVG strokes via
+ *      stroke-dashoffset (a wide wet under-stroke + a dense core),
+ *      while a dotted speckle stroke and the overspray halo gather by
+ *      opacity, and a nozzle dab rides the frontier on a transform
+ *      keyframe track sampled from the outline's arc length (the
+ *      compositor interpolates between samples; the dab never steps).
+ *      The interior stays EMPTY in this beat.
+ *   2. INTERIOR (~105 ms): the fill (a second stacked SVG of the same
+ *      mark) is revealed by a clip-path inset animation while a soft
+ *      pre-rendered speckle front sweeps down over the clip edge and
+ *      the nozzle sways across it — the fill arrives feathered, not
+ *      as a hard wipe.
+ *   3. BLOOM (~135 ms): a black disc and a speckle-ring texture
+ *      expand from the spade's center by transform scale (ease-out)
+ *      until the corners are covered; at full cover the controller
+ *      swaps the screen underneath.
+ * REVEAL (~280 ms, same total as v3): the canvas grain erase is gone
+ * too. Three stacked paint layers carrying static grain masks fade on
+ * staggered opacity curves — the solid base first, then the grain
+ * layers thinning at different rates — so the black breaks into
+ * speckle and dissolves off the new screen exactly as before, but
+ * every frame of it is an opacity composite.
  *
- * The layer intercepts touches only while covering (the controller's input
- * lock); during the dissolve touches pass straight through to the new
- * screen. If canvas 2D is unavailable the layer paints nothing and the
- * controller's timers still remove it on schedule — it can never become a
- * stuck black screen.
+ * Snap-back: when a dissolve is snapped back into a cover, spray.ts
+ * reports fromCoverage; every cover animation is created with
+ * delay = beatStart - fromCoverage * SPRAY_COVER_MS. Negative delays
+ * start an animation partway through, fill mode 'both' holds end
+ * states until the controller flushes, and the beats resume in order.
+ *
+ * If Web Animations are unavailable the layer still mounts with its
+ * initial states (outline undrawn, paint layers solid) and the
+ * controller's timers clear it on schedule — worst case is a plain
+ * beat of black, never a stuck screen.
  */
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useSyncExternalStore, type CSSProperties } from 'react';
 import {
   SPRAY_COVER_MS,
   SPRAY_FILL_MS,
@@ -48,46 +71,29 @@ import {
   registerSprayRenderer,
   subscribeSpray,
 } from './spray';
+import { getSprayTextures } from './sprayTextures';
 import './spray.css';
 
 const PAINT = '#070708';
-const INKS = ['#060607', '#0a0a0c', '#101014', '#050505'] as const;
-const TAU = Math.PI * 2;
-
-/** Deterministic RNG so the spray texture is the same can, every time. */
-function mulberry32(seed: number): () => number {
-  let a = seed | 0;
-  return () => {
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-/** Precomputed jitter, indexed by stamp number: the paint pattern is stable
- *  frame to frame (no shimmering), varied stamp to stamp. */
-const JITTER: readonly number[] = (() => {
-  const rnd = mulberry32(0x71aa);
-  return Array.from({ length: 512 }, () => rnd());
-})();
-const jit = (i: number, salt: number): number => JITTER[(i * 7 + salt * 131) & 511]!;
-
-const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
-const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3);
-/** Gentle at both ends: the can eases into the trace and settles as it
- *  closes the tip, and the interior front starts/stops softly. */
-const easeInOutCubic = (t: number): number =>
-  t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+/** Beat 3's length: what the cover leaves after outline + interior. */
+const SPRAY_BLOOM_MS = SPRAY_COVER_MS - SPRAY_SPADE_MS;
+/** easings.net easeInOutCubic / easeOutCubic as beziers — the same
+ *  curves v3's canvas program eased its frontier and bloom with. */
+const EASE_IN_OUT = 'cubic-bezier(0.65, 0, 0.35, 1)';
+const EASE_OUT = 'cubic-bezier(0.33, 1, 0.68, 1)';
 
 /* ------------------------------------------------------------------ */
 /* The spade. Geometry decoded from public/favicon.svg — the game's    */
-/* own mark (viewBox 0 0 64 64, spade spans x 12..52, y 8..56). Each    */
-/* segment is [c1x, c1y, c2x, c2y, x, y] in favicon units, starting     */
-/* where the previous one ended; the path opens at the tip (32, 8).    */
-/* The base line is written as a degenerate cubic so one sampler       */
-/* walks the whole outline. Keep in sync if the mark ever changes.     */
+/* own mark (viewBox 0 0 64 64, spade spans x 12..52, y 8..56).        */
+/* SPADE_D is the favicon's path data verbatim, painted by the SVG.    */
+/* The segment table is the same path decoded into cubics              */
+/* ([c1x, c1y, c2x, c2y, x, y] in favicon units, each starting where   */
+/* the previous ended, opening at the tip (32, 8); the base line is   */
+/* a degenerate cubic) so one sampler walks the outline for the        */
+/* dab's arc-length track. Keep in sync if the mark ever changes.      */
 /* ------------------------------------------------------------------ */
+const SPADE_D =
+  'M32 8C26 18 12 26 12 37c0 7 5 11 11 11 3.5 0 6.2-1.4 7.4-3.2C30 50 27.5 54 22 56h20c-5.5-2-8-6-8.4-11.2C34.8 46.6 37.5 48 41 48c6 0 11-4 11-11C52 26 38 18 32 8z';
 const SPADE_START: { x: number; y: number } = { x: 32, y: 8 };
 const SPADE_SEGS: ReadonlyArray<readonly [number, number, number, number, number, number]> = [
   [26, 18, 12, 26, 12, 37], // tip -> left lobe, outer
@@ -141,263 +147,13 @@ export function buildSpadeOutline(subdiv = 42): SpadeOutline {
 
 export const SPADE_OUTLINE: SpadeOutline = buildSpadeOutline();
 
-/** Trace the spade silhouette onto a 2D context whose transform maps
- *  favicon units to the target space. */
-function traceSpade(g: CanvasRenderingContext2D): void {
-  g.beginPath();
-  g.moveTo(SPADE_START.x, SPADE_START.y);
-  for (const [c1x, c1y, c2x, c2y, x, y] of SPADE_SEGS) g.bezierCurveTo(c1x, c1y, c2x, c2y, x, y);
-  g.closePath();
-}
-
 /* ------------------------------------------------------------------ */
-/* Sprites — built once per spray (per viewport size), never per frame */
+/* Layout — the same numbers v3's canvas program used.                 */
 /* ------------------------------------------------------------------ */
 
-let brushSprite: HTMLCanvasElement | null = null;
-/** One dab of the can: an opaque core dissolving into speckle. Stamped
- *  along the spade's outline, around the fill front, wherever paint lands. */
-function getBrushSprite(): HTMLCanvasElement | null {
-  if (brushSprite) return brushSprite;
-  try {
-    const S = 160;
-    const c = document.createElement('canvas');
-    c.width = S;
-    c.height = S;
-    const g = c.getContext('2d');
-    if (!g) return null;
-    const cx = S / 2;
-    const core = S * 0.3;
-    const grad = g.createRadialGradient(cx, cx, core * 0.25, cx, cx, core);
-    grad.addColorStop(0, 'rgba(7,7,8,0.98)');
-    grad.addColorStop(0.75, 'rgba(7,7,8,0.92)');
-    grad.addColorStop(1, 'rgba(7,7,8,0.55)');
-    g.fillStyle = grad;
-    g.beginPath();
-    g.arc(cx, cx, core, 0, TAU);
-    g.fill();
-    // Speckle skirt: dots thinning out past the core, a few escaping it.
-    const rnd = mulberry32(0xb007);
-    for (let i = 0; i < 420; i++) {
-      const a = rnd() * TAU;
-      const rr = core * (0.55 + Math.pow(rnd(), 1.5) * 0.95);
-      const r = 0.5 + rnd() * (rr > core ? 1.1 : 2.0);
-      g.globalAlpha = Math.max(0.06, 0.85 - (rr / (core * 1.5)) * 0.8) * (0.4 + rnd() * 0.6);
-      g.fillStyle = INKS[(rnd() * INKS.length) | 0]!;
-      g.beginPath();
-      g.arc(cx + Math.cos(a) * rr, cx + Math.sin(a) * rr, r, 0, TAU);
-      g.fill();
-    }
-    g.globalAlpha = 1;
-    brushSprite = c;
-    return c;
-  } catch {
-    return null;
-  }
-}
-
-interface SpadeSprites {
-  key: string;
-  /** Silhouette fill + interior grain (transparent outside the mark). */
-  fill: HTMLCanvasElement;
-  /** The sprayed outline, finished: a grained stroke along the contour
-   *  with a speckle-ragged edge (transparent inside the mark). Revealed
-   *  progressively through a moving mask during the outline beat, so the
-   *  traced line is continuous by construction. */
-  outline: HTMLCanvasElement;
-  /** Overspray cloud only (transparent inside the mark). */
-  halo: HTMLCanvasElement;
-  /** Same-size scratch canvas for the per-frame mask composites. */
-  scratch: HTMLCanvasElement;
-  dpr: number;
-  /** Draw position of the sprite canvases (CSS px). */
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  /** The spade bbox inside the sprite (CSS px from the sprite's origin). */
-  pad: number;
-  spadeH: number;
-}
-let spadeSprites: SpadeSprites | null = null;
-
-/** The painted spade as stacked sprites — finished outline, interior
- *  fill, overspray halo — plus a scratch canvas the cover composites its
- *  moving masks through, so each beat reveals a pre-rendered layer
- *  instead of painting (and stepping) per frame. */
-function getSpadeSprites(geo: SpadeGeo, dpr: number): SpadeSprites | null {
-  const key = `${Math.round(geo.w)}x${Math.round(geo.h)}@${dpr}`;
-  if (spadeSprites?.key === key) return spadeSprites;
-  try {
-    const pad = geo.brush * 0.95;
-    const w = geo.w + pad * 2;
-    const h = geo.h + pad * 2;
-    const mk = () => {
-      const c = document.createElement('canvas');
-      c.width = Math.max(2, Math.round(w * dpr));
-      c.height = Math.max(2, Math.round(h * dpr));
-      return c;
-    };
-    const fill = mk();
-    const outlineC = mk();
-    const halo = mk();
-    const scratch = mk();
-    const fg = fill.getContext('2d');
-    const og = outlineC.getContext('2d');
-    const hg = halo.getContext('2d');
-    if (!fg || !og || !hg) return null;
-    // Sprite space: favicon units, origin at the spade bbox's top-left,
-    // padded by `pad` on every side.
-    const place = (g: CanvasRenderingContext2D) => {
-      g.setTransform(dpr, 0, 0, dpr, 0, 0);
-      g.translate(pad, pad);
-      g.scale(geo.k, geo.k);
-      g.translate(-12, -8);
-    };
-
-    // --- halo: classify speckle inside/outside the silhouette, keep the
-    // outside dots; plus a faint bloom of the mark itself.
-    place(hg);
-    traceSpade(hg);
-    const rndH = mulberry32(0xaa10);
-    const outside: Array<{ x: number; y: number; r: number; a: number }> = [];
-    for (let i = 0; i < 900 && outside.length < 210; i++) {
-      const x = 12 - 6 + rndH() * (SPADE_W_UNITS + 12);
-      const y = 8 - 6 + rndH() * (SPADE_H_UNITS + 12);
-      if (!hg.isPointInPath(x, y)) {
-        outside.push({ x, y, r: 0.4 + rndH() * 1.7, a: 0.08 + rndH() * 0.22 });
-      }
-    }
-    hg.save();
-    hg.translate(32, 32);
-    hg.scale(1.07, 1.07);
-    hg.translate(-32, -32);
-    traceSpade(hg);
-    hg.globalAlpha = 0.1;
-    hg.fillStyle = PAINT;
-    hg.fill();
-    hg.restore(); // back to the place() transform saved above
-    for (const d of outside) {
-      hg.globalAlpha = d.a;
-      hg.fillStyle = INKS[(rndH() * INKS.length) | 0]!;
-      hg.beginPath();
-      hg.arc(d.x, d.y, d.r, 0, TAU);
-      hg.fill();
-    }
-    hg.globalAlpha = 1;
-
-    // --- fill: the silhouette in paint, grained, with faint horizontal
-    // stroke banding so the banded reveal reads as passes of the can.
-    place(fg);
-    traceSpade(fg);
-    fg.fillStyle = PAINT;
-    fg.fill();
-    fg.clip();
-    const rndF = mulberry32(0xf111);
-    for (let i = 0; i < 620; i++) {
-      const x = 12 + rndF() * SPADE_W_UNITS;
-      const y = 8 + rndF() * SPADE_H_UNITS;
-      fg.globalAlpha = 0.05 + rndF() * 0.17;
-      fg.fillStyle = INKS[(rndF() * INKS.length) | 0]!;
-      fg.beginPath();
-      fg.arc(x, y, 0.4 + rndF() * 1.5, 0, TAU);
-      fg.fill();
-    }
-    for (let y = 9.5; y < 56; y += 2.3) {
-      for (let i = 0; i < 30; i++) {
-        const x = 12 + rndF() * SPADE_W_UNITS;
-        fg.globalAlpha = 0.04 + rndF() * 0.1;
-        fg.fillStyle = INKS[(rndF() * INKS.length) | 0]!;
-        fg.beginPath();
-        fg.arc(x, y + (rndF() - 0.5) * 1.1, 0.35 + rndF() * 0.9, 0, TAU);
-        fg.fill();
-      }
-    }
-    fg.globalAlpha = 1;
-
-    // --- outline: the finished sprayed contour. A soft wet under-stroke,
-    // a dense core stroke, then speckle walked along the sampled path so
-    // the edge is ragged like real overspray. Drawn once; the cover
-    // reveals it through a mask, never re-stamps it per frame.
-    place(og);
-    og.lineJoin = 'round';
-    og.lineCap = 'round';
-    og.strokeStyle = PAINT;
-    traceSpade(og);
-    og.globalAlpha = 0.16;
-    og.lineWidth = (geo.brush * 1.5) / geo.k;
-    og.stroke();
-    traceSpade(og);
-    og.globalAlpha = 0.97;
-    og.lineWidth = (geo.brush * 0.8) / geo.k;
-    og.stroke();
-    const rndO = mulberry32(0x0a17);
-    for (const p of SPADE_OUTLINE.pts) {
-      for (let j = 0; j < 2; j++) {
-        const off = (rndO() - 0.5) * ((geo.brush * 1.1) / geo.k);
-        const along = (rndO() - 0.5) * 0.9;
-        og.globalAlpha = 0.08 + rndO() * 0.32;
-        og.fillStyle = INKS[(rndO() * INKS.length) | 0]!;
-        og.beginPath();
-        og.arc(p.x + off + along, p.y + off - along, 0.3 + rndO() * 0.9, 0, TAU);
-        og.fill();
-      }
-    }
-    og.globalAlpha = 1;
-
-    spadeSprites = {
-      key,
-      fill,
-      outline: outlineC,
-      halo,
-      scratch,
-      dpr,
-      x: geo.left - pad,
-      y: geo.top - pad,
-      w,
-      h,
-      pad,
-      spadeH: geo.h,
-    };
-    return spadeSprites;
-  } catch {
-    return null;
-  }
-}
-
-let grainCache: { key: string; canvas: HTMLCanvasElement } | null = null;
-/** Full-viewport grain alpha mask for the dissolve: uneven dot alphas make
- *  some specks linger while others clear early — a real dry-paint dissolve. */
-function getGrain(w: number, h: number): HTMLCanvasElement | null {
-  const key = `${w}x${h}`;
-  if (grainCache?.key === key) return grainCache.canvas;
-  try {
-    const c = document.createElement('canvas');
-    c.width = Math.max(2, Math.round(w));
-    c.height = Math.max(2, Math.round(h));
-    const g = c.getContext('2d');
-    if (!g) return null;
-    const rnd = mulberry32(0x9a17);
-    const dots = Math.round((w * h) / 480);
-    for (let i = 0; i < dots; i++) {
-      const r = 1 + rnd() * 3.6;
-      g.globalAlpha = 0.2 + rnd() * 0.8;
-      g.fillStyle = '#fff';
-      g.beginPath();
-      g.arc(rnd() * w, rnd() * h, r, 0, TAU);
-      g.fill();
-    }
-    g.globalAlpha = 1;
-    grainCache = { key, canvas: c };
-    return c;
-  } catch {
-    return null;
-  }
-}
-
-/* ------------------------------------------------------------------ */
-/* Cover program — outline, then interior, then bloom                  */
-/* ------------------------------------------------------------------ */
+/** The speckle ring rides a disc this much larger than the solid bloom
+ *  disc, so its baked annulus straddles the disc's expanding edge. */
+const RING_OVER = 1.18;
 
 interface SpadeGeo {
   cx: number;
@@ -409,7 +165,16 @@ interface SpadeGeo {
   w: number;
   h: number;
   brush: number;
-  /** Outline points in screen px with cumulative length in px. */
+  /** The interior front's feather band, px. */
+  band: number;
+  /** Bloom disc radius at full scale (past the farthest corner). */
+  maxR: number;
+  /** Bloom disc scale at the beat's start (radius = spade h * 0.3). */
+  bloomS0: number;
+  /** Ring disc scale at the beat's start, matching the disc's radius. */
+  ringS0: number;
+  /** Outline points in spade-box px (origin at the mark's bbox
+   *  top-left) with cumulative length in px — the dab's track. */
   pts: Array<{ x: number; y: number; cum: number }>;
   outlineLen: number;
 }
@@ -424,10 +189,13 @@ function spadeGeometry(vw: number, vh: number): SpadeGeo {
   const cy = vh / 2;
   const outlineLen = SPADE_OUTLINE.length * k;
   const pts = SPADE_OUTLINE.pts.map((p) => ({
-    x: cx + (p.x - 32) * k,
-    y: cy + (p.y - 32) * k,
+    x: (p.x - 12) * k,
+    y: (p.y - 8) * k,
     cum: p.cum * outlineLen,
   }));
+  const brush = Math.min(46, Math.max(15, h * 0.088));
+  const maxR = Math.hypot(Math.max(cx, vw - cx), Math.max(cy, vh - cy)) + brush * 1.6;
+  const bloomS0 = (h * 0.3) / maxR;
   return {
     cx,
     cy,
@@ -436,24 +204,19 @@ function spadeGeometry(vw: number, vh: number): SpadeGeo {
     top: cy - h / 2,
     w,
     h,
-    brush: Math.min(46, Math.max(15, h * 0.088)),
+    brush,
+    band: h * 0.3,
+    maxR,
+    bloomS0,
+    ringS0: bloomS0 / RING_OVER,
     pts,
     outlineLen,
   };
 }
 
-/** Milliseconds along the cover timeline for this frame. fromCoverage is
- *  the coverage the controller credited when a dissolve snapped back into
- *  a cover; on this program position == coverage fraction of the timeline,
- *  so the resume point is a plain offset and the beats stay in order. */
-function coverPosition(snap: { phaseAt: number; fromCoverage: number }): number {
-  const start = snap.fromCoverage * SPRAY_COVER_MS;
-  return Math.min(SPRAY_COVER_MS, Math.max(0, start + (performance.now() - snap.phaseAt)));
-}
-
 /** Point at arc length `target` (px) along the outline, interpolated
- *  between the sampled points — the trace frontier moves continuously,
- *  never snapping from sample to sample. */
+ *  between the sampled points — the dab's keyframe track is sampled
+ *  from this, so the can's position is continuous in arc length. */
 function frontierAt(
   pts: SpadeGeo['pts'],
   target: number,
@@ -472,238 +235,27 @@ function frontierAt(
   return { x: last.x, y: last.y };
 }
 
-/** Composite the pre-rendered outline sprite through a moving mask:
- *  stroke the traced-so-far sub-path wide onto the scratch canvas, keep
- *  only the sprite inside it ('source-in'), and lay the result down.
- *  The revealed line is the finished sprite's own, so it cannot step —
- *  only the mask frontier moves, and it moves by the frame clock. */
-function drawOutlineReveal(
-  g: CanvasRenderingContext2D,
-  sp: SpadeSprites,
-  geo: SpadeGeo,
-  outlineP: number,
-): void {
-  const sg = sp.scratch.getContext('2d');
-  if (!sg) return;
-  const target = outlineP * geo.outlineLen;
-  sg.setTransform(1, 0, 0, 1, 0, 0);
-  sg.globalCompositeOperation = 'source-over';
-  sg.globalAlpha = 1;
-  sg.clearRect(0, 0, sp.scratch.width, sp.scratch.height);
-  sg.setTransform(sp.dpr, 0, 0, sp.dpr, -sp.x * sp.dpr, -sp.y * sp.dpr);
-  sg.beginPath();
-  sg.moveTo(geo.pts[0]!.x, geo.pts[0]!.y);
-  for (const p of geo.pts) {
-    if (p.cum > target) break;
-    sg.lineTo(p.x, p.y);
-  }
-  const f = frontierAt(geo.pts, target);
-  sg.lineTo(f.x, f.y);
-  sg.lineWidth = geo.brush * 1.8;
-  sg.lineCap = 'round';
-  sg.lineJoin = 'round';
-  sg.strokeStyle = '#fff';
-  sg.stroke();
-  sg.setTransform(1, 0, 0, 1, 0, 0);
-  sg.globalCompositeOperation = 'source-in';
-  sg.drawImage(sp.outline, 0, 0);
-  sg.globalCompositeOperation = 'source-over';
-  g.drawImage(sp.scratch, sp.x, sp.y, sp.w, sp.h);
-}
+const bgOf = (url: string): string | undefined => (url ? `url(${url})` : undefined);
 
-/** The can's business end at a point: a soft overspray puff with the
- *  nozzle dab at its heart — what makes a frontier read as a moving
- *  spray can rather than a drawing cursor. */
-function drawNozzle(
-  g: CanvasRenderingContext2D,
-  brush: HTMLCanvasElement,
-  x: number,
-  y: number,
-  brushSize: number,
-): void {
-  const puff = brushSize * 2.1;
-  g.globalAlpha = 0.32;
-  g.drawImage(brush, x - puff / 2, y - puff / 2, puff, puff);
-  const dabSize = brushSize * 1.18;
-  g.globalAlpha = 1;
-  g.drawImage(brush, x - dabSize / 2, y - dabSize / 2, dabSize, dabSize);
-  g.globalAlpha = 1;
-}
-
-/** Beat 1: the can traces the spade's COMPLETE outline. The overspray
- *  halo gathers as the trace travels; the interior stays EMPTY — the
- *  fill sprite is not touched in this beat (pinned by tests). outlineP
- *  is the beat's eased progress 0..1. */
-function drawSpadeOutline(
-  g: CanvasRenderingContext2D,
-  geo: SpadeGeo,
-  outlineP: number,
-  dpr: number,
-): void {
-  const sp = getSpadeSprites(geo, dpr);
-  if (sp) {
-    g.globalAlpha = Math.min(0.92, outlineP * 1.3);
-    g.drawImage(sp.halo, sp.x, sp.y, sp.w, sp.h);
-    g.globalAlpha = 1;
-    if (outlineP >= 1) {
-      g.drawImage(sp.outline, sp.x, sp.y, sp.w, sp.h);
-    } else if (outlineP > 0) {
-      drawOutlineReveal(g, sp, geo, outlineP);
-    }
-  }
-  const brush = getBrushSprite();
-  if (!brush || outlineP <= 0) return;
-  const f = frontierAt(geo.pts, outlineP * geo.outlineLen);
-  drawNozzle(g, brush, f.x, f.y, geo.brush);
-  g.globalAlpha = 1;
-}
-
-/** Composite the fill sprite behind a soft moving front: a
- *  destination-in gradient on the scratch canvas — alpha 1 above the
- *  front, feathering to 0 across a wide band — so the interior arrives
- *  as a sweep of wet paint with no hard band edge anywhere. */
-function drawFillReveal(
-  g: CanvasRenderingContext2D,
-  sp: SpadeSprites,
-  fillP: number,
-): void {
-  const sg = sp.scratch.getContext('2d');
-  if (!sg) return;
-  const srcPad = (sp.pad / sp.h) * sp.fill.height;
-  const srcSpadeH = (sp.spadeH / sp.h) * sp.fill.height;
-  const band = srcSpadeH * 0.3;
-  const front = srcPad - band + fillP * (srcSpadeH + band * 2);
-  sg.setTransform(1, 0, 0, 1, 0, 0);
-  sg.globalCompositeOperation = 'source-over';
-  sg.globalAlpha = 1;
-  sg.clearRect(0, 0, sp.scratch.width, sp.scratch.height);
-  sg.drawImage(sp.fill, 0, 0);
-  const grad = sg.createLinearGradient(0, front - band / 2, 0, front + band / 2);
-  grad.addColorStop(0, 'rgba(0,0,0,1)');
-  grad.addColorStop(1, 'rgba(0,0,0,0)');
-  sg.globalCompositeOperation = 'destination-in';
-  sg.fillStyle = grad;
-  sg.fillRect(0, 0, sp.scratch.width, sp.scratch.height);
-  sg.globalCompositeOperation = 'source-over';
-  g.drawImage(sp.scratch, sp.x, sp.y, sp.w, sp.h);
-}
-
-/** Beat 2: the interior sprays in. The completed outline stands; the
- *  fill arrives behind the soft front while the nozzle rides it with a
- *  sway, like a can sweeping back and forth. fillP is the beat's eased
- *  progress 0..1; at 1 the spade stands finished (the bloom's base). */
-function drawSpadeFill(
-  g: CanvasRenderingContext2D,
-  geo: SpadeGeo,
-  fillP: number,
-  dpr: number,
-): void {
-  const sp = getSpadeSprites(geo, dpr);
-  if (sp) {
-    g.globalAlpha = 0.92;
-    g.drawImage(sp.halo, sp.x, sp.y, sp.w, sp.h);
-    g.globalAlpha = 1;
-    g.drawImage(sp.outline, sp.x, sp.y, sp.w, sp.h);
-    if (fillP >= 1) {
-      g.drawImage(sp.fill, sp.x, sp.y, sp.w, sp.h);
-    } else if (fillP > 0) {
-      drawFillReveal(g, sp, fillP);
-    }
-  }
-  const brush = getBrushSprite();
-  if (!brush || fillP <= 0 || fillP >= 1) return;
-  const band = geo.h * 0.3;
-  const frontY = geo.top - band + fillP * (geo.h + band * 2);
-  const swayX = geo.cx + Math.sin(fillP * 5.1) * geo.w * 0.18;
-  const y = Math.min(geo.top + geo.h, Math.max(geo.top, frontY));
-  drawNozzle(g, brush, swayX, y, geo.brush);
-  g.globalAlpha = 1;
-}
-
-/** Beat 3: the paint fills out from the spade — a black bloom whose front
- *  is a ring of overspray speckle, spreading until it swallows the screen.
- *  u is the beat's eased progress 0..1; at 1 the screen is flat black. */
-function drawFillBloom(
-  g: CanvasRenderingContext2D,
-  vw: number,
-  vh: number,
-  geo: SpadeGeo,
-  u: number,
-): void {
-  if (u >= 1) {
-    g.fillStyle = PAINT;
-    g.fillRect(0, 0, vw, vh);
-    return;
-  }
-  const r0 = geo.h * 0.3;
-  const maxR =
-    Math.hypot(Math.max(geo.cx, vw - geo.cx), Math.max(geo.cy, vh - geo.cy)) + geo.brush * 1.6;
-  const r = r0 + (maxR - r0) * u;
-  g.globalAlpha = 1;
-  g.fillStyle = PAINT;
-  g.beginPath();
-  g.arc(geo.cx, geo.cy, r, 0, TAU);
-  g.fill();
-  const brush = getBrushSprite();
-  if (!brush) return;
-  const count = Math.min(150, Math.max(24, Math.floor((TAU * r) / (geo.brush * 0.55))));
-  for (let i = 0; i < count; i++) {
-    const a = (i / count) * TAU + jit(i, 3) * 0.06;
-    const rr = r + (jit(i, 4) - 0.3) * geo.brush * 1.9;
-    const size = geo.brush * (0.65 + jit(i, 5) * 0.6);
-    g.globalAlpha = 0.3 + jit(i, 6) * 0.55;
-    g.drawImage(brush, geo.cx + Math.cos(a) * rr - size / 2, geo.cy + Math.sin(a) * rr - size / 2, size, size);
-  }
-  g.globalAlpha = 1;
-}
-
-function drawCover(
-  g: CanvasRenderingContext2D,
-  vw: number,
-  vh: number,
-  snap: { phaseAt: number; fromCoverage: number },
-  dpr: number,
-): void {
-  const pos = coverPosition(snap);
-  g.clearRect(0, 0, vw, vh);
-  g.globalCompositeOperation = 'source-over';
-  g.globalAlpha = 1;
-  const geo = spadeGeometry(vw, vh);
-  if (pos < SPRAY_OUTLINE_MS) {
-    // Beat 1: the can traces the complete outline; interior still empty.
-    drawSpadeOutline(g, geo, easeInOutCubic(pos / SPRAY_OUTLINE_MS), dpr);
-  } else if (pos < SPRAY_SPADE_MS) {
-    // Beat 2: the outline stands finished; the interior sprays in.
-    drawSpadeFill(g, geo, easeInOutCubic((pos - SPRAY_OUTLINE_MS) / SPRAY_FILL_MS), dpr);
-  } else {
-    // Beat 3: the finished spade, then the bloom out to full black.
-    drawSpadeFill(g, geo, 1, dpr);
-    drawFillBloom(g, vw, vh, geo, easeOutCubic((pos - SPRAY_SPADE_MS) / (SPRAY_COVER_MS - SPRAY_SPADE_MS)));
-  }
-}
-
-function drawReveal(g: CanvasRenderingContext2D, vw: number, vh: number, phaseAt: number, canvas: HTMLCanvasElement): void {
-  const q = clamp01((performance.now() - phaseAt) / SPRAY_REVEAL_MS);
-  g.clearRect(0, 0, vw, vh);
-  g.globalCompositeOperation = 'source-over';
-  g.globalAlpha = 1;
-  g.fillStyle = PAINT;
-  g.fillRect(0, 0, vw, vh);
-  const grain = getGrain(vw, vh);
-  if (grain) {
-    g.globalCompositeOperation = 'destination-out';
-    g.globalAlpha = Math.min(1, q * 1.3);
-    g.drawImage(grain, 0, 0, vw, vh);
-    g.globalCompositeOperation = 'source-over';
-    g.globalAlpha = 1;
-  }
-  // Final fade so any lingering speckle residue never pops off.
-  canvas.style.opacity = q > 0.72 ? String(1 - ((q - 0.72) / 0.28) * 0.92) : '1';
+/** A reveal grain layer's style: solid paint seen through a static
+ *  grain mask (both mask spellings — iOS Safari still wants -webkit-). */
+function grainStyle(url: string, size: string, position: string): CSSProperties {
+  if (!url) return {};
+  const image = `url(${url})`;
+  return {
+    maskImage: image,
+    WebkitMaskImage: image,
+    maskSize: size,
+    WebkitMaskSize: size,
+    maskPosition: position,
+    WebkitMaskPosition: position,
+    maskMode: 'alpha',
+  } as CSSProperties;
 }
 
 export default function SprayLayer() {
   const snap = useSyncExternalStore(subscribeSpray, getSpraySnapshot);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const layerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     registerSprayRenderer(true);
@@ -711,45 +263,373 @@ export default function SprayLayer() {
   }, []);
 
   const sprayId = snap.sprayId;
-  const active = snap.phase !== 'idle';
+  const phase = snap.phase;
+  const active = phase !== 'idle';
+  const fromCoverage = snap.fromCoverage;
+
+  /* Create the episode's animations. Everything here runs ONCE per
+   * episode (per sprayId / phase flip) — the animations themselves
+   * are compositor tweens; no frame loop exists anywhere in v4. */
   useEffect(() => {
     if (!active) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const g = canvas.getContext('2d');
-    if (!g) return;
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    canvas.width = Math.round(vw * dpr);
-    canvas.height = Math.round(vh * dpr);
-    g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    canvas.style.opacity = '1';
-    let raf = 0;
-    const frame = () => {
-      const s = getSpraySnapshot();
-      if (s.phase === 'idle') {
-        g.clearRect(0, 0, vw, vh);
-        return;
+    const root = layerRef.current;
+    if (!root) return;
+    const anims: Animation[] = [];
+    const run = (
+      el: Element | null,
+      keyframes: Keyframe[],
+      opts: KeyframeAnimationOptions,
+    ): void => {
+      if (!el || typeof el.animate !== 'function') return;
+      try {
+        const a = el.animate(keyframes, { fill: 'both', ...opts });
+        // A cancelled animation rejects its finished promise; nobody
+        // awaits it, so mark it handled before it can surface as an
+        // unhandled rejection at cleanup time.
+        a.finished?.catch(() => undefined);
+        anims.push(a);
+      } catch {
+        /* no usable WAAPI: initial states hold and the controller's
+         * timers still clear the layer on schedule */
       }
-      if (s.phase === 'cover') drawCover(g, vw, vh, s, dpr);
-      else drawReveal(g, vw, vh, s.phaseAt, canvas);
-      raf = requestAnimationFrame(frame);
     };
-    raf = requestAnimationFrame(frame);
-    return () => cancelAnimationFrame(raf);
-  }, [sprayId, active]);
+    const q = (name: string): Element | null =>
+      root.querySelector(`[data-anim="${name}"]`);
+
+    if (phase === 'cover') {
+      const geo = spadeGeometry(window.innerWidth, window.innerHeight);
+      // Snap-back resume point: the cover program is a function of
+      // position along its timeline, and position == coverage, so a
+      // re-cover from a partially dissolved reveal resumes by shifting
+      // every beat's delay back by the credited coverage.
+      const resumeMs = fromCoverage * SPRAY_COVER_MS;
+      const LEN = SPADE_OUTLINE.length;
+
+      // Beat 1 — the outline draws itself: layered strokes tweened by
+      // stroke-dashoffset (pathLength normalizes the dash math to the
+      // outline's own length); speckle + halo gather by opacity.
+      const draw: Keyframe[] = [
+        { strokeDashoffset: String(LEN) },
+        { strokeDashoffset: '0' },
+      ];
+      const drawOpts: KeyframeAnimationOptions = {
+        duration: SPRAY_OUTLINE_MS,
+        delay: -resumeMs,
+        easing: EASE_IN_OUT,
+      };
+      run(q('wet'), draw, drawOpts);
+      run(q('core'), draw, drawOpts);
+      run(q('speckle'), [{ opacity: '0' }, { opacity: '0.5' }], {
+        duration: SPRAY_OUTLINE_MS,
+        delay: -resumeMs,
+        easing: 'ease-out',
+      });
+      run(q('halo'), [{ opacity: '0' }, { opacity: '0.92' }], {
+        duration: SPRAY_SPADE_MS,
+        delay: -resumeMs,
+        easing: 'ease-out',
+      });
+      // The nozzle dab rides the frontier on a transform track sampled
+      // from the outline's arc length — 29 stops the compositor
+      // interpolates between under the beat's easing.
+      const STOPS = 28;
+      const dabFrames: Keyframe[] = [];
+      for (let i = 0; i <= STOPS; i++) {
+        const f = frontierAt(geo.pts, (i / STOPS) * geo.outlineLen);
+        const frame: Keyframe = {
+          transform: `translate(${f.x}px, ${f.y}px)`,
+          offset: i / STOPS,
+        };
+        if (i === 0) frame.opacity = '0';
+        if (i === 2) frame.opacity = '1';
+        if (i === STOPS - 2) frame.opacity = '1';
+        if (i === STOPS) frame.opacity = '0';
+        dabFrames.push(frame);
+      }
+      run(q('dab-trace'), dabFrames, {
+        duration: SPRAY_OUTLINE_MS,
+        delay: -resumeMs,
+        easing: EASE_IN_OUT,
+      });
+
+      // Beat 2 — the interior sprays in: the fill SVG's clip-path
+      // opens top-to-bottom while the wet front strip sweeps over the
+      // clip edge and the second dab sways across the front. Starts
+      // only when the outline stands complete (delay = beat 1's end).
+      const fillAt: KeyframeAnimationOptions = {
+        duration: SPRAY_FILL_MS,
+        delay: SPRAY_OUTLINE_MS - resumeMs,
+        easing: EASE_IN_OUT,
+      };
+      run(
+        q('fill'),
+        [{ clipPath: 'inset(0 0 100% 0)' }, { clipPath: 'inset(0 0 0% 0)' }],
+        fillAt,
+      );
+      run(
+        q('front'),
+        [
+          { transform: `translateY(${-geo.band}px)`, opacity: '0' },
+          { opacity: '1', offset: 0.15 },
+          { opacity: '1', offset: 0.75 },
+          { transform: `translateY(${geo.h}px)`, opacity: '0' },
+        ],
+        fillAt,
+      );
+      run(
+        q('dab-fill'),
+        [
+          { transform: 'translate(0px, 0px)', opacity: '0' },
+          { opacity: '1', offset: 0.12 },
+          {
+            transform: `translate(${geo.w * 0.1}px, ${geo.h * 0.5}px)`,
+            opacity: '1',
+            offset: 0.5,
+          },
+          { transform: `translate(${geo.w * -0.17}px, ${geo.h}px)`, opacity: '0' },
+        ],
+        { ...fillAt, easing: 'ease-in-out' },
+      );
+
+      // Beat 3 — the bloom out to full black: disc + speckle ring
+      // scaling from the spade's center (delay = the spade sequence's
+      // end, so the bloom never starts early).
+      const bloomOpts: KeyframeAnimationOptions = {
+        duration: SPRAY_BLOOM_MS,
+        delay: SPRAY_SPADE_MS - resumeMs,
+        easing: EASE_OUT,
+      };
+      run(
+        q('bloom'),
+        [
+          { opacity: '0', transform: `scale(${geo.bloomS0})` },
+          { opacity: '1', offset: 0.18 },
+          { opacity: '1', transform: 'scale(1)' },
+        ],
+        bloomOpts,
+      );
+      run(
+        q('bloom-ring'),
+        [
+          { opacity: '0', transform: `scale(${geo.ringS0})` },
+          { opacity: '0.9', offset: 0.18 },
+          { opacity: '0.9', transform: 'scale(1)' },
+        ],
+        bloomOpts,
+      );
+    } else {
+      // Reveal — staggered opacity fades over the static grain masks:
+      // the solid base clears first, the masked layers linger by dot
+      // density, the last grains drift slightly as they thin.
+      run(q('rv-base'), [{ opacity: '1' }, { opacity: '0' }], {
+        duration: 130,
+        easing: EASE_OUT,
+      });
+      run(q('rv-grain-a'), [{ opacity: '1' }, { opacity: '0' }], {
+        duration: SPRAY_REVEAL_MS - 75,
+        delay: 45,
+        easing: EASE_OUT,
+      });
+      run(
+        q('rv-grain-b'),
+        [
+          { opacity: '1', transform: 'scale(1)' },
+          { opacity: '0', transform: 'scale(1.035)' },
+        ],
+        { duration: SPRAY_REVEAL_MS - 45, delay: 45, easing: EASE_OUT },
+      );
+    }
+    return () => {
+      for (const a of anims) {
+        try {
+          a.cancel();
+        } catch {
+          /* already finished or detached */
+        }
+      }
+    };
+  }, [sprayId, phase, active, fromCoverage]);
 
   if (!active) return null;
+
+  const vw = typeof window !== 'undefined' ? window.innerWidth : 390;
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 844;
+  const geo = spadeGeometry(vw, vh);
+  const tex = getSprayTextures();
+  const LEN = SPADE_OUTLINE.length;
+  const dabPx = geo.brush * 1.18;
+  // Stroke widths in favicon units (v3's brush recipe, same ratios).
+  const coreW = (geo.brush * 0.8) / geo.k;
+  const wetW = (geo.brush * 1.5) / geo.k;
+  const speckleW = (geo.brush * 1.05) / geo.k;
+  const tipX = (SPADE_START.x - 12) * geo.k;
+
   return (
     <div
+      ref={layerRef}
       className="spray-layer"
       data-testid="spray-layer"
       data-phase={snap.phase}
       aria-hidden="true"
       style={{ pointerEvents: snap.phase === 'cover' ? 'auto' : 'none' }}
     >
-      <canvas ref={canvasRef} />
+      {snap.phase === 'cover' ? (
+        <div className="spray-cover">
+          <div
+            className="spray-spadebox"
+            style={{ left: geo.left, top: geo.top, width: geo.w, height: geo.h }}
+          >
+            <svg className="spray-svg" viewBox="0 0 64 64" aria-hidden="true">
+              <path
+                data-anim="halo"
+                d={SPADE_D}
+                fill={PAINT}
+                opacity={0}
+                transform="translate(32 32) scale(1.07) translate(-32 -32)"
+              />
+              <path
+                data-anim="speckle"
+                d={SPADE_D}
+                fill="none"
+                stroke={PAINT}
+                strokeWidth={speckleW}
+                strokeDasharray="0.01 3.1"
+                strokeLinecap="round"
+                opacity={0}
+              />
+              <path
+                data-anim="wet"
+                d={SPADE_D}
+                fill="none"
+                stroke={PAINT}
+                strokeWidth={wetW}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                pathLength={LEN}
+                strokeDasharray={LEN}
+                strokeDashoffset={LEN}
+                opacity={0.16}
+              />
+              <path
+                data-anim="core"
+                d={SPADE_D}
+                fill="none"
+                stroke={PAINT}
+                strokeWidth={coreW}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                pathLength={LEN}
+                strokeDasharray={LEN}
+                strokeDashoffset={LEN}
+                opacity={0.97}
+              />
+            </svg>
+            <svg
+              className="spray-svg"
+              data-anim="fill"
+              viewBox="0 0 64 64"
+              aria-hidden="true"
+              style={{ clipPath: 'inset(0 0 100% 0)' }}
+            >
+              <defs>
+                <pattern
+                  id="spray-fill-grain"
+                  width="6.5"
+                  height="6.5"
+                  patternUnits="userSpaceOnUse"
+                >
+                  <circle cx="1.2" cy="1.6" r="0.55" fill="#0a0a0c" opacity="0.5" />
+                  <circle cx="4.4" cy="3.1" r="0.8" fill="#101014" opacity="0.45" />
+                  <circle cx="2.6" cy="5.2" r="0.45" fill="#050505" opacity="0.5" />
+                  <circle cx="5.6" cy="5.8" r="0.5" fill="#0a0a0c" opacity="0.4" />
+                </pattern>
+              </defs>
+              <path d={SPADE_D} fill={PAINT} />
+              <path d={SPADE_D} fill="url(#spray-fill-grain)" />
+            </svg>
+            <div
+              data-anim="front"
+              className="spray-front"
+              style={{
+                left: -geo.w * 0.06,
+                width: geo.w * 1.12,
+                height: geo.band,
+                backgroundImage: bgOf(tex.front),
+                opacity: 0,
+              }}
+            />
+            <div
+              data-anim="dab-trace"
+              className="spray-dab"
+              style={{ width: dabPx, height: dabPx, opacity: 0 }}
+            >
+              <div
+                className="spray-dab-puff"
+                style={{ backgroundImage: bgOf(tex.brush) }}
+              />
+              <div
+                className="spray-dab-in"
+                style={{ backgroundImage: bgOf(tex.brush) }}
+              />
+            </div>
+            <div
+              data-anim="dab-fill"
+              className="spray-dab"
+              style={{ left: tipX, width: dabPx, height: dabPx, opacity: 0 }}
+            >
+              <div
+                className="spray-dab-puff"
+                style={{ backgroundImage: bgOf(tex.brush) }}
+              />
+              <div
+                className="spray-dab-in"
+                style={{ backgroundImage: bgOf(tex.brush) }}
+              />
+            </div>
+          </div>
+          <div
+            data-anim="bloom"
+            className="spray-bloom"
+            style={{
+              left: geo.cx - geo.maxR,
+              top: geo.cy - geo.maxR,
+              width: geo.maxR * 2,
+              height: geo.maxR * 2,
+              background: PAINT,
+              transform: `scale(${geo.bloomS0})`,
+              opacity: 0,
+            }}
+          />
+          <div
+            data-anim="bloom-ring"
+            className="spray-bloom"
+            style={{
+              left: geo.cx - geo.maxR * RING_OVER,
+              top: geo.cy - geo.maxR * RING_OVER,
+              width: geo.maxR * 2 * RING_OVER,
+              height: geo.maxR * 2 * RING_OVER,
+              backgroundImage: bgOf(tex.ring),
+              backgroundSize: '100% 100%',
+              transform: `scale(${geo.ringS0})`,
+              opacity: 0,
+            }}
+          />
+        </div>
+      ) : (
+        <div className="spray-reveal">
+          <div data-anim="rv-base" className="spray-rv" />
+          <div
+            data-anim="rv-grain-a"
+            className="spray-rv"
+            style={grainStyle(tex.grainA, '220px 220px', '17px 41px')}
+          />
+          <div
+            data-anim="rv-grain-b"
+            className="spray-rv"
+            style={grainStyle(tex.grainB, '310px 310px', '113px 67px')}
+          />
+        </div>
+      )}
     </div>
   );
 }

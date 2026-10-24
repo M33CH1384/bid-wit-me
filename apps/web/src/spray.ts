@@ -59,12 +59,12 @@ export const SPRAY_FAILSAFE_MS = 1500;
 export type SprayPhase = 'idle' | 'cover' | 'reveal';
 export interface SpraySnapshot {
   phase: SprayPhase;
-  /** performance.now() when the current phase began (canvas progress base) */
+  /** performance.now() when the current phase began (animation progress base) */
   phaseAt: number;
   /** coverage the current cover starts from (0 normally; >0 when a dissolve
    *  was snapped back into a cover by a second navigation) */
   fromCoverage: number;
-  /** increments per spray episode so the layer can (re)start its paint loop */
+  /** increments per spray episode so the layer can (re)start its animations */
   sprayId: number;
 }
 

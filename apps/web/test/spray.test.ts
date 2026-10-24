@@ -16,7 +16,12 @@
  *    synchronous behavior, untouched;
  *  - the wiring lives at the choke points (Root's popstate handler, the
  *    Setup wizard's home boundary, StoryHome's goScreen, the Social store's
- *    open/close) and the table surfaces never import the spray at all.
+ *    open/close) and the table surfaces never import the spray at all;
+ *  - the rendering is compositor-driven (v4): the layer is DOM + SVG
+ *    animated by Web Animations tweens of transform / opacity /
+ *    clip-path / stroke-dashoffset over static pre-rendered textures.
+ *    No per-frame canvas painting exists anywhere in the layer — three
+ *    canvas generations dropped frames on the owner's iPhone.
  */
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -217,6 +222,13 @@ describe('SprayLayer', () => {
     expect(layer!.dataset.phase).toBe('cover');
     expect(layer!.style.pointerEvents).toBe('auto');
     expect(m).not.toHaveBeenCalled();
+    // The cover is DOM + SVG now — the spade's pieces exist as elements
+    // for the compositor to animate, and there is no canvas anywhere.
+    expect(layer!.querySelector('canvas')).toBeNull();
+    expect(layer!.querySelector('svg')).not.toBeNull();
+    expect(layer!.querySelector('[data-anim="core"]')).not.toBeNull();
+    expect(layer!.querySelector('[data-anim="fill"]')).not.toBeNull();
+    expect(layer!.querySelector('[data-anim="bloom"]')).not.toBeNull();
 
     await act(async () => {
       vi.advanceTimersByTime(SPRAY_COVER_MS);
@@ -226,6 +238,8 @@ describe('SprayLayer', () => {
     expect(revealing).not.toBeNull();
     expect(revealing!.dataset.phase).toBe('reveal');
     expect(revealing!.style.pointerEvents).toBe('none');
+    expect(revealing!.querySelector('[data-anim="rv-grain-a"]')).not.toBeNull();
+    expect(revealing!.querySelector('canvas')).toBeNull();
 
     await act(async () => {
       vi.advanceTimersByTime(SPRAY_REVEAL_MS);
@@ -281,73 +295,112 @@ describe('cover choreography — outline, then interior, then bloom (owner, 2026
     expect(length).toBeLessThan(200);
   });
 
-  it('the cover program runs the beats in strict order — outline completes before any fill, fill before the bloom', () => {
+  it('the painted spade is the favicon path itself, and the beats are scheduled in strict order', () => {
     const layer = read('SprayLayer.tsx');
-    // Provenance + the three beats, in program order inside drawCover.
+    // Provenance: the SVG paints the favicon's own path data verbatim.
     expect(layer).toContain('favicon.svg');
-    const coverAt = layer.indexOf('function drawCover');
-    const outlineAt = layer.indexOf('drawSpadeOutline(g, geo', coverAt);
-    const fillAt = layer.indexOf('drawSpadeFill(g, geo', coverAt);
-    const bloomAt = layer.indexOf('drawFillBloom(g, vw, vh, geo', coverAt);
-    expect(outlineAt).toBeGreaterThan(coverAt);
-    expect(fillAt).toBeGreaterThan(outlineAt);
+    expect(layer).toContain('M32 8C26 18 12 26 12 37');
+    expect(layer).toContain('32 8z');
+    // The three beats exist as separate animated pieces: outline
+    // strokes, then the fill element, then the bloom — in DOM order.
+    const coreAt = layer.indexOf('data-anim="core"');
+    const fillAt = layer.indexOf('data-anim="fill"');
+    const bloomAt = layer.indexOf('data-anim="bloom"');
+    expect(coreAt).toBeGreaterThan(0);
+    expect(fillAt).toBeGreaterThan(coreAt);
     expect(bloomAt).toBeGreaterThan(fillAt);
-    // The beats are gated on their own timeline segments, in order.
-    expect(layer).toContain('pos < SPRAY_OUTLINE_MS');
-    expect(layer).toContain('pos < SPRAY_SPADE_MS');
-    // Beat 1 never touches the interior: the outline painter's body has
-    // no fill-sprite draw and no call into the fill beat.
-    const outlineBody = layer.slice(
-      layer.indexOf('function drawSpadeOutline'),
-      layer.indexOf('function drawFillReveal'),
-    );
-    expect(outlineBody).toContain('sp.outline');
-    expect(outlineBody).not.toContain('sp.fill');
-    expect(outlineBody).not.toContain('drawSpadeFill');
-    // Beat 2 never starts the bloom.
-    const fillBody = layer.slice(
-      layer.indexOf('function drawSpadeFill'),
-      layer.indexOf('function drawFillBloom'),
-    );
-    expect(fillBody).toContain('sp.fill');
-    expect(fillBody).not.toContain('drawFillBloom');
-    // v2's overlapped tag — interior filling in behind the still-
-    // traveling trace, which read as a progress fill — is gone for good.
-    expect(layer).not.toContain('drawSpadeTag');
-    expect(layer).not.toContain('FILL_START');
+    // And in schedule order: the fill's animations start at beat 1's
+    // end, the bloom's at the spade sequence's end — delays in the
+    // source, all shifted by the same snap-back resume offset.
+    expect(layer).toContain('const resumeMs = fromCoverage * SPRAY_COVER_MS');
+    expect(layer).toContain('delay: -resumeMs');
+    expect(layer).toContain('delay: SPRAY_OUTLINE_MS - resumeMs');
+    expect(layer).toContain('delay: SPRAY_SPADE_MS - resumeMs');
+    // Negative delays + fill mode 'both' are the resume mechanism:
+    // a snapped-back cover starts partway through its beats and holds
+    // end states until the controller flushes.
+    expect(layer).toContain("fill: 'both'");
+    // Beat isolation: the fill is its own element whose clip starts
+    // fully closed — nothing of the interior can show during beat 1,
+    // and the outline strokes are never inside the clipped element.
+    expect(layer).toContain("clipPath: 'inset(0 0 100% 0)'");
+    const fillSvgAt = layer.indexOf('data-anim="fill"');
+    const fillSvgBody = layer.slice(fillSvgAt, layer.indexOf('</svg>', fillSvgAt));
+    expect(fillSvgBody).not.toContain('data-anim="core"');
+    expect(fillSvgBody).not.toContain('strokeDashoffset');
   });
 
-  it('the traced line is continuous: a pre-rendered outline sprite behind a moving mask, frontier interpolated', () => {
+  it('the reveal is a compositor dissolve: grain-masked paint layers on staggered opacity fades', () => {
     const layer = read('SprayLayer.tsx');
-    // The finished outline is a sprite, built once and revealed through
-    // a 'source-in' mask composite — the line is never re-stamped per
-    // frame, so it cannot step the way v2's stamp walk did.
-    expect(layer).toContain('outline: HTMLCanvasElement');
-    expect(layer).toContain("'source-in'");
-    // The frontier is interpolated between outline samples by arc
-    // length, so the can's position is continuous in time.
-    expect(layer).toContain('function frontierAt');
-    expect(layer).toContain('outlineP * geo.outlineLen');
-    // The interior arrives behind a soft gradient front (destination-in
-    // on the scratch composite), not a hard crop edge snapping down.
-    expect(layer).toContain('createLinearGradient');
-    expect(layer).toContain("'destination-in'");
-    // v2's quantized stamp walk around the outline is gone.
+    expect(layer).toContain('spray-reveal');
+    expect(layer).toContain('data-anim="rv-base"');
+    expect(layer).toContain('data-anim="rv-grain-a"');
+    expect(layer).toContain('data-anim="rv-grain-b"');
+    // Static grain masks (both spellings — iOS wants -webkit-), and
+    // staggered fades that end inside the shipped 280 ms reveal.
+    expect(layer).toContain('maskImage');
+    expect(layer).toContain('WebkitMaskImage');
+    expect(layer).toContain('SPRAY_REVEAL_MS - 75');
+    expect(layer).toContain('SPRAY_REVEAL_MS - 45');
+    // The reveal carries no part of the spade program.
+    const revealBody = layer.slice(layer.indexOf('spray-reveal'));
+    expect(revealBody).not.toContain('SPADE_D');
+    expect(revealBody).not.toContain('strokeDashoffset');
+  });
+});
+
+describe('compositor architecture — no per-frame painting (v4)', () => {
+  it('the layer contains no canvas, no frame loop, and none of the retired paint machinery', () => {
+    const layer = read('SprayLayer.tsx');
+    // v1/v2/v3 all painted per frame; each is pinned gone for good.
+    expect(layer).not.toContain('requestAnimationFrame');
+    expect(layer).not.toContain('<canvas');
+    expect(layer).not.toContain('getContext');
+    expect(layer).not.toContain('drawImage');
+    expect(layer).not.toContain("'source-in'");
+    expect(layer).not.toContain('destination-out');
+    expect(layer).not.toContain('createLinearGradient');
+    // v3's sprite + scratch-mask machinery.
+    expect(layer).not.toContain('getSpadeSprites');
+    expect(layer).not.toContain('scratch');
+    expect(layer).not.toContain('getGrain(');
+    // v2's quantized stamp walk and v1's swept front.
+    expect(layer).not.toContain('drawSpadeTag');
+    expect(layer).not.toContain('FILL_START');
     expect(layer).not.toContain('lastX');
-    // The 2026-10-23 first cut swept a spray front left-to-right; that
-    // program is gone for good.
     expect(layer).not.toContain('getFrontSprite');
     expect(layer).not.toContain('frontSprite');
   });
 
-  it('the reveal is the shipped grain dissolve, untouched by the cover rework', () => {
+  it('every moving part is a composited property animated through Web Animations', () => {
     const layer = read('SprayLayer.tsx');
-    const revealAt = layer.indexOf('function drawReveal');
-    expect(revealAt).toBeGreaterThan(0);
-    const revealBody = layer.slice(revealAt, layer.indexOf('export default function'));
-    expect(revealBody).toContain("g.globalCompositeOperation = 'destination-out'");
-    expect(revealBody).toContain('getGrain(vw, vh)');
-    expect(revealBody).not.toContain('spade');
+    expect(layer).toContain('.animate(');
+    // Beat 1: the outline draws via stroke-dashoffset, dash math
+    // normalized by pathLength to the outline's own length.
+    expect(layer).toContain('strokeDashoffset');
+    expect(layer).toContain('pathLength={LEN}');
+    // Beat 2: the interior opens via clip-path; the front rides it via
+    // transform; beat 3: the bloom expands via transform scale.
+    expect(layer).toContain("clipPath: 'inset(0 0 0% 0)'");
+    expect(layer).toContain('translateY(');
+    expect(layer).toContain('scale(${geo.bloomS0})');
+    // The nozzle dab rides a transform track sampled from the
+    // outline's arc length (frontierAt), so its motion is continuous
+    // by construction and interpolated by the compositor.
+    expect(layer).toContain('function frontierAt');
+    expect(layer).toContain('frontierAt(geo.pts, (i / STOPS) * geo.outlineLen)');
+  });
+
+  it('textures are static, pre-rendered once, and live outside the layer', () => {
+    const layer = read('SprayLayer.tsx');
+    expect(layer).toContain("from './sprayTextures'");
+    const tex = read('sprayTextures.ts');
+    expect(tex).toContain('export function getSprayTextures');
+    expect(tex).toContain('toDataURL');
+    // The texture module builds stills — it runs no loop and no
+    // animation of its own.
+    expect(tex).not.toContain('requestAnimationFrame');
+    expect(tex).not.toContain('.animate(');
   });
 });
 
@@ -393,13 +446,14 @@ describe('wiring pins', () => {
     expect(read('online/OnlineTable.tsx')).not.toContain('SprayLayer');
   });
 
-  it('the layer paints black, above every surface, dissolving via grain', () => {
+  it('the layer paints black, above every surface, as DOM (no canvas)', () => {
     const layer = read('SprayLayer.tsx');
     expect(layer).toContain("const PAINT = '#070708'");
-    expect(layer).toContain('destination-out');
     expect(layer).toContain('registerSprayRenderer(true)');
+    expect(layer).not.toContain('<canvas');
     const css = read('spray.css');
     expect(css).toContain('position: fixed');
     expect(css).toContain('z-index: 2000');
+    expect(css).not.toContain('canvas');
   });
 });
