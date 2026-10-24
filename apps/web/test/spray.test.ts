@@ -38,6 +38,7 @@ import {
   SPRAY_COVER_MS,
   SPRAY_FAILSAFE_MS,
   SPRAY_FILL_MS,
+  SPRAY_HOLD_MS,
   SPRAY_OUTLINE_MS,
   SPRAY_REVEAL_MS,
   SPRAY_SPADE_MS,
@@ -113,7 +114,7 @@ describe('coverThen controller', () => {
     expect(getSpraySnapshot().phase).toBe('idle');
   });
 
-  it('holds the swap until full cover, then reveals and clears on schedule', () => {
+  it('holds the swap until full cover, holds the black a beat, then reveals and clears', () => {
     registerSprayRenderer(true);
     const m = vi.fn();
     coverThen(m);
@@ -124,7 +125,11 @@ describe('coverThen controller', () => {
     vi.advanceTimersByTime(1);
     expect(m).toHaveBeenCalledTimes(1);
     expect(getSpraySnapshot().phase).toBe('reveal');
-    vi.advanceTimersByTime(SPRAY_REVEAL_MS);
+    // The hold: the paint sits at full black for SPRAY_HOLD_MS after
+    // the swap before the dissolve's clock even starts.
+    vi.advanceTimersByTime(SPRAY_HOLD_MS - 1);
+    expect(getSpraySnapshot().phase).toBe('reveal');
+    vi.advanceTimersByTime(1 + SPRAY_REVEAL_MS);
     expect(getSpraySnapshot().phase).toBe('idle');
   });
 
@@ -137,7 +142,7 @@ describe('coverThen controller', () => {
     expect(getSpraySnapshot().phase).toBe('cover');
     vi.advanceTimersByTime(SPRAY_COVER_MS - 100);
     expect(order).toEqual(['a', 'b']);
-    vi.advanceTimersByTime(SPRAY_REVEAL_MS);
+    vi.advanceTimersByTime(SPRAY_HOLD_MS + SPRAY_REVEAL_MS);
     expect(getSpraySnapshot().phase).toBe('idle');
   });
 
@@ -148,7 +153,7 @@ describe('coverThen controller', () => {
     coverThen(a);
     vi.advanceTimersByTime(SPRAY_COVER_MS);
     expect(getSpraySnapshot().phase).toBe('reveal');
-    vi.advanceTimersByTime(100); // ~1/3 dissolved
+    vi.advanceTimersByTime(SPRAY_HOLD_MS + 130); // past the hold, ~1/3 dissolved
     coverThen(b);
     const snap = getSpraySnapshot();
     expect(snap.phase).toBe('cover');
@@ -157,7 +162,23 @@ describe('coverThen controller', () => {
     expect(b).not.toHaveBeenCalled();
     vi.advanceTimersByTime(SPRAY_COVER_MS);
     expect(b).toHaveBeenCalledTimes(1);
-    vi.advanceTimersByTime(SPRAY_REVEAL_MS);
+    vi.advanceTimersByTime(SPRAY_HOLD_MS + SPRAY_REVEAL_MS);
+    expect(getSpraySnapshot().phase).toBe('idle');
+  });
+
+  it('a navigation during the hold re-covers from FULL coverage (nothing has dissolved yet)', () => {
+    registerSprayRenderer(true);
+    const a = vi.fn();
+    const b = vi.fn();
+    coverThen(a);
+    vi.advanceTimersByTime(SPRAY_COVER_MS + SPRAY_HOLD_MS - 10); // inside the hold
+    coverThen(b);
+    const snap = getSpraySnapshot();
+    expect(snap.phase).toBe('cover');
+    expect(snap.fromCoverage).toBe(1);
+    vi.advanceTimersByTime(SPRAY_COVER_MS);
+    expect(b).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(SPRAY_HOLD_MS + SPRAY_REVEAL_MS);
     expect(getSpraySnapshot().phase).toBe('idle');
   });
 
@@ -179,13 +200,15 @@ describe('coverThen controller', () => {
     coverThen(() => {
       throw new Error('boom');
     });
-    vi.advanceTimersByTime(SPRAY_COVER_MS + SPRAY_REVEAL_MS);
+    vi.advanceTimersByTime(SPRAY_COVER_MS + SPRAY_HOLD_MS + SPRAY_REVEAL_MS);
     expect(getSpraySnapshot().phase).toBe('idle');
   });
 
   it('the failsafe is armed inside the controller and outlives a full cycle', () => {
-    expect(SPRAY_FAILSAFE_MS).toBeGreaterThan(SPRAY_COVER_MS + SPRAY_REVEAL_MS);
-    expect(SPRAY_FAILSAFE_MS).toBeLessThanOrEqual(2000);
+    // The invariant is the margin over the whole cycle (cover + hold
+    // + reveal), not any absolute number — it has scaled with every
+    // slow-down (1500 -> 1900 -> 2300) and must keep doing so.
+    expect(SPRAY_FAILSAFE_MS - (SPRAY_COVER_MS + SPRAY_HOLD_MS + SPRAY_REVEAL_MS)).toBeGreaterThanOrEqual(500);
     expect(read('spray.ts')).toContain('failsafeTimer = setTimeout(cancelSpray, SPRAY_FAILSAFE_MS)');
   });
 });
@@ -242,38 +265,50 @@ describe('SprayLayer', () => {
     expect(revealing!.querySelector('canvas')).toBeNull();
 
     await act(async () => {
-      vi.advanceTimersByTime(SPRAY_REVEAL_MS);
+      vi.advanceTimersByTime(SPRAY_HOLD_MS + SPRAY_REVEAL_MS);
     });
     expect(el!.querySelector('[data-testid="spray-layer"]')).toBeNull();
   });
 });
 
 describe('cover choreography — outline, then interior, then bloom (owner, 2026-10-23)', () => {
-  it('three strict beats inside the slowed timing budget', () => {
-    // Owner round 3 on v4: "I like it but it still needs to be
-    // slower" — the program stretched again (total 850 -> ~1280 ms).
-    // The outline keeps the bulk of the time so the can's travel
-    // stays perceivable at the bigger size; the reveal stretches
-    // with the cover; it stays a beat, not a wait.
-    expect(SPRAY_OUTLINE_MS).toBeGreaterThanOrEqual(500);
-    expect(SPRAY_OUTLINE_MS).toBeLessThanOrEqual(540);
-    expect(SPRAY_FILL_MS).toBeGreaterThanOrEqual(170);
-    expect(SPRAY_FILL_MS).toBeLessThanOrEqual(190);
+  it('three strict beats, a hold, and the dissolve inside the slowed timing budget', () => {
+    // Owner rounds 3-4 on v4: "slower, cleaner, bigger" — then the
+    // deeper spec: slower still, aimed at the slow end (the outline
+    // emphasis has grown every round). The program stretched again
+    // (cycle 1280 -> 1790 ms): the OUTLINE is the signature and is
+    // protected (if frame rate ever forces a cut, the fill shortens
+    // first — the tuning rule lives in spray.ts), the interior gets
+    // room to breathe, and a HOLD at full black now sits between
+    // the swap and the dissolve.
+    expect(SPRAY_OUTLINE_MS).toBeGreaterThanOrEqual(550);
+    expect(SPRAY_OUTLINE_MS).toBeLessThanOrEqual(600);
+    expect(SPRAY_FILL_MS).toBeGreaterThanOrEqual(400);
+    expect(SPRAY_FILL_MS).toBeLessThanOrEqual(500);
     expect(SPRAY_SPADE_MS).toBe(SPRAY_OUTLINE_MS + SPRAY_FILL_MS);
     const bloomMs = SPRAY_COVER_MS - SPRAY_SPADE_MS;
-    expect(bloomMs).toBeGreaterThanOrEqual(190);
-    expect(bloomMs).toBeLessThanOrEqual(210);
-    expect(SPRAY_COVER_MS).toBeGreaterThanOrEqual(880);
-    expect(SPRAY_COVER_MS).toBeLessThanOrEqual(920);
+    expect(bloomMs).toBeGreaterThanOrEqual(240);
+    expect(bloomMs).toBeLessThanOrEqual(260);
+    expect(SPRAY_COVER_MS).toBeGreaterThanOrEqual(1240);
+    expect(SPRAY_COVER_MS).toBeLessThanOrEqual(1360);
+    expect(SPRAY_HOLD_MS).toBeGreaterThanOrEqual(80);
+    expect(SPRAY_HOLD_MS).toBeLessThanOrEqual(100);
     expect(SPRAY_REVEAL_MS).toBeGreaterThanOrEqual(360);
     expect(SPRAY_REVEAL_MS).toBeLessThanOrEqual(400);
-    expect(SPRAY_COVER_MS + SPRAY_REVEAL_MS).toBeGreaterThanOrEqual(1250);
-    expect(SPRAY_COVER_MS + SPRAY_REVEAL_MS).toBeLessThanOrEqual(1320);
-    // The failsafe's invariant is the MARGIN over a full cycle, not a
-    // raw number: it scaled with the program (1500 -> 1900) and must
-    // still clear the longer cycle with room to spare — a stuck
-    // black screen stays structurally impossible.
-    expect(SPRAY_FAILSAFE_MS - (SPRAY_COVER_MS + SPRAY_REVEAL_MS)).toBeGreaterThanOrEqual(500);
+    // The black phase (cover + hold — what the player sits inside
+    // before the new screen appears) lands in the spec's 1400-1600
+    // envelope; the full cycle adds the stretched reveal on top.
+    expect(SPRAY_COVER_MS + SPRAY_HOLD_MS).toBeGreaterThanOrEqual(1400);
+    expect(SPRAY_COVER_MS + SPRAY_HOLD_MS).toBeLessThanOrEqual(1600);
+    expect(SPRAY_COVER_MS + SPRAY_HOLD_MS + SPRAY_REVEAL_MS).toBeGreaterThanOrEqual(1700);
+    expect(SPRAY_COVER_MS + SPRAY_HOLD_MS + SPRAY_REVEAL_MS).toBeLessThanOrEqual(1900);
+    // The failsafe's invariant is the MARGIN over the full cycle,
+    // not a raw number: it scaled with the program (1500 -> 1900 ->
+    // 2300) and must still clear the longer cycle with room to
+    // spare — a stuck black screen stays structurally impossible.
+    expect(
+      SPRAY_FAILSAFE_MS - (SPRAY_COVER_MS + SPRAY_HOLD_MS + SPRAY_REVEAL_MS),
+    ).toBeGreaterThanOrEqual(500);
   });
 
   it('the spade outline is the game mark: favicon geometry, tip first, closed', () => {
@@ -353,6 +388,10 @@ describe('cover choreography — outline, then interior, then bloom (owner, 2026
     expect(layer).toContain('SPRAY_REVEAL_MS * 0.73');
     expect(layer).toContain('SPRAY_REVEAL_MS * 0.84');
     expect(layer).toContain('SPRAY_REVEAL_MS * 0.16');
+    // And every fade waits out the HOLD first: the base starts at
+    // the hold's end, the grain layers at hold + their stagger.
+    expect(layer).toContain('delay: SPRAY_HOLD_MS,');
+    expect(layer).toContain('SPRAY_HOLD_MS + SPRAY_REVEAL_MS * 0.16');
     // The reveal carries no part of the spade program.
     const revealBody = layer.slice(layer.indexOf('spray-reveal'));
     expect(revealBody).not.toContain('SPADE_D');
@@ -363,14 +402,14 @@ describe('cover choreography — outline, then interior, then bloom (owner, 2026
 describe('spade size — fills most of the screen (owner, 2026-10-23)', () => {
   it('the size is a min() of the height and width budgets', () => {
     expect(read('SprayLayer.tsx')).toContain(
-      'Math.min(vh * 0.8, (vw * 0.9 * SPADE_H_UNITS) / SPADE_W_UNITS)',
+      'Math.min(vh * 0.84, (vw * 0.86 * SPADE_H_UNITS) / SPADE_W_UNITS)',
     );
   });
 
   it('portrait phone: width-bound — the height budget alone would overflow the sides', () => {
     const g = spadeGeometry(390, 844);
-    expect(g.w).toBeCloseTo(390 * 0.9, 6);
-    expect(g.h).toBeLessThan(844 * 0.8);
+    expect(g.w).toBeCloseTo(390 * 0.86, 6);
+    expect(g.h).toBeLessThan(844 * 0.84);
     // Still centered on both axes at the bigger size.
     expect(g.cx).toBe(195);
     expect(g.cy).toBe(422);
@@ -378,11 +417,11 @@ describe('spade size — fills most of the screen (owner, 2026-10-23)', () => {
     expect(g.top).toBeCloseTo((844 - g.h) / 2, 6);
   });
 
-  it('desktop: height-bound at ~80% of the viewport height', () => {
+  it('desktop: height-bound at ~84% of the viewport height', () => {
     const g = spadeGeometry(1440, 900);
-    expect(g.h).toBeCloseTo(900 * 0.8, 6);
-    expect(g.w).toBeCloseTo(((900 * 0.8) / 48) * 40, 6);
-    expect(g.w).toBeLessThan(1440 * 0.9);
+    expect(g.h).toBeCloseTo(900 * 0.84, 6);
+    expect(g.w).toBeCloseTo(((900 * 0.84) / 48) * 40, 6);
+    expect(g.w).toBeLessThan(1440 * 0.86);
   });
 
   it('neither budget is ever broken, and the mark keeps its aspect', () => {
@@ -398,8 +437,8 @@ describe('spade size — fills most of the screen (owner, 2026-10-23)', () => {
     ] as const;
     for (const [vw, vh] of viewports) {
       const g = spadeGeometry(vw, vh);
-      expect(g.h).toBeLessThanOrEqual(vh * 0.8 + 1e-9);
-      expect(g.w).toBeLessThanOrEqual(vw * 0.9 + 1e-9);
+      expect(g.h).toBeLessThanOrEqual(vh * 0.84 + 1e-9);
+      expect(g.w).toBeLessThanOrEqual(vw * 0.86 + 1e-9);
       expect(g.w / g.h).toBeCloseTo(40 / 48, 6);
       // The dab track and bloom math ride the same geometry: the
       // outline's px length scales with the box, and the bloom
@@ -418,11 +457,13 @@ describe('clean pass — crisp first, spray-textured second (owner, 2026-10-23)'
     expect(layer).toContain('scale(1.035) translate(-32 -32)');
     expect(layer).toContain("opacity: '0.55'");
     expect(layer).toContain('opacity={0.11}');
-    // Speckle dots along the contour: wider gaps (3.1 -> 4.6 units),
-    // fainter gather (0.5 -> 0.35), thinner stroke (carried in the
-    // speckleW ratio, 1.05 -> 0.8).
-    expect(layer).toContain('strokeDasharray="0.01 4.6"');
-    expect(layer).toContain("opacity: '0.35'");
+    // Speckle dots along the contour: wider gaps, fainter gather,
+    // thinner stroke (carried in the speckleW ratio, 1.05 -> 0.8).
+    // Round 4 thinned the OUTLINE beat's grain furthest of all (gap
+    // 4.6 -> 5.6, gather 0.35 -> 0.3) — the signature line reads
+    // crispest.
+    expect(layer).toContain('strokeDasharray="0.01 5.6"');
+    expect(layer).toContain("opacity: '0.3'");
     expect(layer).toContain('geo.brush * 0.8');
     // The bloom's speckle ring hugs the solid disc's edge (1.18 -> 1.1).
     expect(layer).toContain('const RING_OVER = 1.1');
@@ -498,6 +539,14 @@ describe('compositor architecture — no per-frame painting (v4)', () => {
     // by construction and interpolated by the compositor.
     expect(layer).toContain('function frontierAt');
     expect(layer).toContain('frontierAt(geo.pts, (i / STOPS) * geo.outlineLen)');
+    expect(layer).toContain('const STOPS = 40');
+    // The outline's stroke width is CONSTANT: widths are set once as
+    // presentation attributes and never appear as an animated
+    // keyframe property (a WAAPI keyframe would spell it
+    // 'strokeWidth:' — the JSX attribute form is 'strokeWidth={').
+    expect(layer).not.toContain('strokeWidth:');
+    // The frontier and the draw both ride the ease-in-out curve.
+    expect(layer).toContain("const EASE_IN_OUT = 'cubic-bezier(0.65, 0, 0.35, 1)'");
   });
 
   it('textures are static, pre-rendered once, and live outside the layer', () => {

@@ -5,13 +5,15 @@
  *
  * The model: a navigation that qualifies does not swap screens immediately.
  * The spray layer (SprayLayer.tsx, mounted once in Root) covers the screen
- * in black spray (~900 ms, choreographed in the layer in three strict
+ * in black spray (~1310 ms, choreographed in the layer in three strict
  * beats: the can traces the spade's whole outline, then the interior
  * sprays in, then the paint blooms out from the spade to full screen);
- * at full cover the pending navigation mutation runs underneath; then
- * the paint dissolves off (~380 ms) revealing the new screen. Input is
- * locked by the layer only during the cover — during the dissolve the
- * new screen is already live under the clearing paint.
+ * at full cover the pending navigation mutation runs underneath; the
+ * black then HOLDS for a beat (~90 ms — a moment of stillness that
+ * sells the cover) before the paint dissolves off (~390 ms) revealing
+ * the new screen. Input is locked by the layer only during the cover —
+ * during the hold and the dissolve the new screen is already live
+ * under the paint.
  *
  * This module is the controller + the eligibility rules; it knows nothing
  * about React. Callers wrap their screen swap in coverThen():
@@ -41,25 +43,32 @@
  */
 import { fx } from './fx';
 
-export const SPRAY_COVER_MS = 900;
+/* TUNING RULE (owner, 2026-10-23): if frame rate ever forces time
+ * back out of this program, the FILL shortens first — the outline is
+ * the signature and its length is protected. */
+export const SPRAY_COVER_MS = 1310;
 /** Cover beat 1: the can traces the spade's COMPLETE outline at center
  *  screen — the whole contour stands painted, interior still empty. */
-export const SPRAY_OUTLINE_MS = 520;
+export const SPRAY_OUTLINE_MS = 590;
 /** Cover beat 2: the spade's interior sprays in, behind a soft moving
  *  front. Beat 3 — the black bloom out to full screen — takes the rest
  *  of the cover. The beats never overlap: owner, 2026-10-23, on v2's
  *  overlapped tag: "it fills in instead of spraying the outline then
  *  filling the rest." */
-export const SPRAY_FILL_MS = 180;
+export const SPRAY_FILL_MS = 470;
 /** The full spade sequence (outline + interior); the bloom starts here. */
 export const SPRAY_SPADE_MS = SPRAY_OUTLINE_MS + SPRAY_FILL_MS;
-export const SPRAY_REVEAL_MS = 380;
+/** The beat of stillness at full black between the swap and the
+ *  dissolve: the pending mutation runs at full cover, then the paint
+ *  simply sits for this long before it starts to clear. */
+export const SPRAY_HOLD_MS = 90;
+export const SPRAY_REVEAL_MS = 390;
 /** The failsafe's invariant is a MARGIN, not a number: it must outlive
- *  a full cover + reveal cycle by at least 500 ms (the layer's own
- *  timers clear it long before), so it scales whenever the program
- *  stretches — the 2026-10-23 slow-down (total 850 -> 1280 ms) raised
- *  it from 1500 to 1900 to keep the margin honest. */
-export const SPRAY_FAILSAFE_MS = 1900;
+ *  a full cover + hold + reveal cycle by at least 500 ms (the layer's
+ *  own timers clear it long before), so it scales whenever the program
+ *  stretches — the 2026-10-23 slow-downs (cycle 850 -> 1280 -> 1790
+ *  ms) raised it 1500 -> 1900 -> 2300 to keep the margin honest. */
+export const SPRAY_FAILSAFE_MS = 2300;
 
 export type SprayPhase = 'idle' | 'cover' | 'reveal';
 export interface SpraySnapshot {
@@ -169,8 +178,11 @@ function flushCover(): void {
   // Enter the dissolve BEFORE running the swaps: the paint is still full at
   // q=0 while React processes them, and a swap that itself navigates again
   // (coverThen from inside a mutation) cleanly re-covers from the reveal.
+  // The reveal phase opens with the HOLD: the layer keeps the paint at
+  // full black for SPRAY_HOLD_MS (the swap lands under it) and only
+  // then starts its fades — so this timer covers hold + reveal.
   emit({ phase: 'reveal', phaseAt: nowMs(), fromCoverage: 0, sprayId: snapshot.sprayId });
-  revealTimer = setTimeout(endReveal, SPRAY_REVEAL_MS);
+  revealTimer = setTimeout(endReveal, SPRAY_HOLD_MS + SPRAY_REVEAL_MS);
   runMutations(ms);
 }
 
@@ -197,7 +209,13 @@ export function coverThen(mutate: () => void): void {
     return;
   }
   if (snapshot.phase === 'reveal') {
-    const dissolved = Math.min(1, Math.max(0, (nowMs() - snapshot.phaseAt) / SPRAY_REVEAL_MS));
+    // Dissolving starts only after the hold, so the dissolved fraction
+    // is measured from the hold's end (and clamps to 0 during it: a
+    // navigation inside the hold re-covers from full coverage).
+    const dissolved = Math.min(
+      1,
+      Math.max(0, (nowMs() - snapshot.phaseAt - SPRAY_HOLD_MS) / SPRAY_REVEAL_MS),
+    );
     startCover(mutate, 1 - dissolved);
     return;
   }

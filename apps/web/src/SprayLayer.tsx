@@ -22,9 +22,9 @@
  * once.
  *
  * The choreography is v3's, untouched — the owner accepted it; only
- * the rendering was wrong. Three strict beats inside the ~900 ms
- * cover:
- *   1. OUTLINE (~520 ms): the can travels the spade's COMPLETE
+ * the rendering was wrong. Three strict beats inside the ~1310 ms
+ * cover, a hold, then the reveal:
+ *   1. OUTLINE (~590 ms): the can travels the spade's COMPLETE
  *      contour. The spade is the game's own mark — the verbatim path
  *      from public/favicon.svg — drawn as layered SVG strokes via
  *      stroke-dashoffset (a wide wet under-stroke + a dense core),
@@ -33,32 +33,37 @@
  *      keyframe track sampled from the outline's arc length (the
  *      compositor interpolates between samples; the dab never steps).
  *      The interior stays EMPTY in this beat.
- *   2. INTERIOR (~180 ms): the fill (a second stacked SVG of the same
+ *   2. INTERIOR (~470 ms): the fill (a second stacked SVG of the same
  *      mark) is revealed by a clip-path inset animation while a soft
  *      pre-rendered speckle front sweeps down over the clip edge and
  *      the nozzle sways across it — the fill arrives feathered, not
  *      as a hard wipe.
- *   3. BLOOM (~200 ms): a black disc and a speckle-ring texture
+ *   3. BLOOM (~250 ms): a black disc and a speckle-ring texture
  *      expand from the spade's center by transform scale (ease-out)
  *      until the corners are covered; at full cover the controller
  *      swaps the screen underneath.
- * REVEAL (~380 ms): the canvas grain erase is gone too. Three
+ * HOLD (~90 ms): the paint sits at full black — stillness that sells
+ * the cover — then clears.
+ * REVEAL (~390 ms): the canvas grain erase is gone too. Three
  * stacked paint layers carrying static grain masks fade on staggered
  * opacity curves — the solid base first, then the grain layers
  * thinning at different rates — so the black breaks into speckle and
  * dissolves off the new screen exactly as before, but every frame of
  * it is an opacity composite.
  *
- * TUNING PASS (owner, 2026-10-23, on v4: "I like it but it still
- * needs to be slower, cleaner, and should fill most of the screen"):
- * the whole program stretched (total 850 -> 1280 ms, the outline
- * taking the bulk of it so the can's travel stays perceivable); the
- * spray character tidied — halo pulled in close and thinned, speckle
- * smaller and sparser, fill grain finer and lower-contrast, the
- * bloom's ring a thinner annulus — crisp first, spray-textured
- * second; and the spade grew from ~46% to ~80% of the viewport
- * (min() of height and width budgets) so it fills most of the
- * screen. The engine and the beat order did not change.
+ * TUNING PASSES (owner, 2026-10-23, on v4: "I like it but it still
+ * needs to be slower, cleaner, and should fill most of the screen" —
+ * then, deeper spec: slower still): the whole program stretched
+ * twice over (full cycle 850 -> 1280 -> 1790 ms; the outline is the
+ * signature and keeps the largest share, the interior gets room to
+ * breathe, and a hold at full black was added); the spray character
+ * tidied — halo pulled in close and thinned, speckle smaller and
+ * sparser, fill grain finer and lower-contrast, the bloom's ring a
+ * thinner annulus — crisp first, spray-textured second; and the
+ * spade grew from ~46% to ~84% of the viewport height (min() of
+ * height and width budgets, 6-9% safe margins on every side) so it
+ * fills most of the screen. The engine and the beat order did not
+ * change.
  *
  * Snap-back: when a dissolve is snapped back into a cover, spray.ts
  * reports fromCoverage; every cover animation is created with
@@ -75,6 +80,7 @@ import { useEffect, useRef, useSyncExternalStore, type CSSProperties } from 'rea
 import {
   SPRAY_COVER_MS,
   SPRAY_FILL_MS,
+  SPRAY_HOLD_MS,
   SPRAY_OUTLINE_MS,
   SPRAY_REVEAL_MS,
   SPRAY_SPADE_MS,
@@ -193,12 +199,13 @@ export interface SpadeGeo {
 
 export function spadeGeometry(vw: number, vh: number): SpadeGeo {
   // Fill most of the screen (owner, 2026-10-23: "should fill most of
-  // the screen"): ~80% of the viewport height, centered — but the
+  // the screen"): ~84% of the viewport height, centered — but the
   // spade is ~0.83 w/h, so on a tall narrow phone the height budget
   // alone would push it off the sides. The size is a min() of the two
-  // budgets: height-bound on wide screens, width-bound (~90% of the
-  // width) on portrait phones, never crowding the edges either way.
-  const h = Math.min(vh * 0.8, (vw * 0.9 * SPADE_H_UNITS) / SPADE_W_UNITS);
+  // budgets: height-bound on wide screens, width-bound (~86% of the
+  // width) on portrait phones — either way 6-9% of safe margin
+  // survives on every side.
+  const h = Math.min(vh * 0.84, (vw * 0.86 * SPADE_H_UNITS) / SPADE_W_UNITS);
   const w = (h * SPADE_W_UNITS) / SPADE_H_UNITS;
   const k = h / SPADE_H_UNITS;
   const cx = vw / 2;
@@ -335,7 +342,7 @@ export default function SprayLayer() {
       };
       run(q('wet'), draw, drawOpts);
       run(q('core'), draw, drawOpts);
-      run(q('speckle'), [{ opacity: '0' }, { opacity: '0.35' }], {
+      run(q('speckle'), [{ opacity: '0' }, { opacity: '0.3' }], {
         duration: SPRAY_OUTLINE_MS,
         delay: -resumeMs,
         easing: 'ease-out',
@@ -346,9 +353,11 @@ export default function SprayLayer() {
         easing: 'ease-out',
       });
       // The nozzle dab rides the frontier on a transform track sampled
-      // from the outline's arc length — 29 stops the compositor
-      // interpolates between under the beat's easing.
-      const STOPS = 28;
+      // from the outline's arc length — 41 stops the compositor
+      // interpolates between under the beat's easing (the track is
+      // fine enough, and the easing smooth enough, that the frontier
+      // motion carries no step quantisation at all).
+      const STOPS = 40;
       const dabFrames: Keyframe[] = [];
       for (let i = 0; i <= STOPS; i++) {
         const f = frontierAt(geo.pts, (i / STOPS) * geo.outlineLen);
@@ -434,20 +443,25 @@ export default function SprayLayer() {
         bloomOpts,
       );
     } else {
-      // Reveal — staggered opacity fades over the static grain masks:
-      // the solid base clears first, the masked layers linger by dot
-      // density, the last grains drift slightly as they thin. The
-      // stagger landmarks are PROPORTIONS of the reveal (base clears
-      // at ~46%, grain A holds to ~89%, grain B lands exactly at the
-      // end), so the curves re-proportion themselves whenever
-      // SPRAY_REVEAL_MS stretches — no absolute ms lives here.
+      // Reveal — the HOLD first: for SPRAY_HOLD_MS nothing moves at
+      // all (every fade below is delayed by it; the three paint
+      // layers at full opacity are flat black, indistinguishable
+      // from the cover's final state, and the swap has already landed
+      // underneath). Then staggered opacity fades over the static
+      // grain masks: the solid base clears first, the masked layers
+      // linger by dot density, the last grains drift slightly as
+      // they thin. The stagger landmarks are PROPORTIONS of the
+      // reveal (base clears at ~46%, grain A holds to ~89%, grain B
+      // lands exactly at the end), so the curves re-proportion
+      // themselves whenever SPRAY_REVEAL_MS stretches.
       run(q('rv-base'), [{ opacity: '1' }, { opacity: '0' }], {
         duration: SPRAY_REVEAL_MS * 0.46,
+        delay: SPRAY_HOLD_MS,
         easing: EASE_OUT,
       });
       run(q('rv-grain-a'), [{ opacity: '1' }, { opacity: '0' }], {
         duration: SPRAY_REVEAL_MS * 0.73,
-        delay: SPRAY_REVEAL_MS * 0.16,
+        delay: SPRAY_HOLD_MS + SPRAY_REVEAL_MS * 0.16,
         easing: EASE_OUT,
       });
       run(
@@ -458,7 +472,7 @@ export default function SprayLayer() {
         ],
         {
           duration: SPRAY_REVEAL_MS * 0.84,
-          delay: SPRAY_REVEAL_MS * 0.16,
+          delay: SPRAY_HOLD_MS + SPRAY_REVEAL_MS * 0.16,
           easing: EASE_OUT,
         },
       );
@@ -519,7 +533,7 @@ export default function SprayLayer() {
                 fill="none"
                 stroke={PAINT}
                 strokeWidth={speckleW}
-                strokeDasharray="0.01 4.6"
+                strokeDasharray="0.01 5.6"
                 strokeLinecap="round"
                 opacity={0}
               />

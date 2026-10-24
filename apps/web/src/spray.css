@@ -1,5 +1,5 @@
 /* Spray-paint screen transition (spray.ts / SprayLayer.tsx): one fixed
-   layer above every surface (app max is z-index 1300) for the ~1.28 s
+   layer above every surface (app max is z-index 1300) for the ~1.79 s
    of a spray. Pointer events are set inline per phase — auto (locked)
    only while covering, none while the paint dissolves. touch-action:
    none keeps the cover instant from starting a scroll of the screen
