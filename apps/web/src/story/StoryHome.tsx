@@ -8,7 +8,7 @@
  * stored facts, a finished game posts its result once (idempotent per game),
  * and a loss is a free retry with nothing lost.
  */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { secureSeed } from '@spades/rules';
 import {
   STORY_SECRETS, STORY_STOPS, STORY_CHARACTERS, STORY_TIER_LABEL, STORY_TIER_SKILL, beatsFor, deeSkillForStop,
@@ -27,7 +27,7 @@ import { coverThen } from '../spray';
 import { useAccount } from '../account/api';
 import { storyRulesFor, storySettingsFor } from './storySettings';
 import { storyBackdropUrl } from './storyBackdrop';
-import { STORY_OWNER_ONLY, createStoryRoom, fetchStoryAccess, fetchStoryDev, fetchStoryProgress, joinStoryRoom, postStoryFound, postStoryResetStop, postStoryResult, storyLockedFor, type StoryProgress, type StoryResult } from './storyApi';
+import { STORY_OWNER_ONLY, createStoryRoom, fetchStoryAccess, fetchStoryDev, fetchStoryProgress, fetchStoryTracks, joinStoryRoom, postStoryFound, postStoryResetStop, postStoryResult, storyLockedFor, type StoryProgress, type StoryResult, type StoryTracks } from './storyApi';
 import CoopPartner from './CoopPartner';
 import StoryRoom from './StoryRoom';
 import { deckUnlockNotice, invalidateStoryProgress } from '../storyDecks';
@@ -243,6 +243,18 @@ export default function StoryHome() {
   useEffect(() => {
     if (coopCodeParam) history.replaceState(null, '', location.pathname);
   }, [coopCodeParam]);
+  // The gate's co-op facts: the caller's pair runs, fetched while the
+  // gate is the standing question so the Co-op card can carry the
+  // player's real state (a run in progress, a route finished together).
+  // A failed fetch leaves it null and the card simply carries no state
+  // line — the gate never invents progress it does not hold.
+  const [gateTracks, setGateTracks] = useState<StoryTracks | null>(null);
+  useEffect(() => {
+    if (mode !== null || !progress || signedOut) return;
+    let live = true;
+    void fetchStoryTracks().then((t) => { if (live) setGateTracks(t); });
+    return () => { live = false; };
+  }, [mode, progress, signedOut]);
   useEffect(() => {
     if (!coopCodeParam || coopFired.current || !progress || signedOut) return;
     if (STORY_OWNER_ONLY && (lockedByServer || storyAccess === undefined || storyLockedFor(storyAccess))) return;
@@ -617,26 +629,105 @@ export default function StoryHome() {
   } else if (screen.k === 'map' && mode === null && progress && !signedOut && !rematchStopId && !resumeStopId && !coopCodeParam) {
     // The mode gate (spec §1.1): once per visit, signed-in and access-cleared,
     // before the map. Solo is the established run; co-op is the pair run.
+    //
+    // The gate's composition (owner, 2026-10-24: "This screen is pretty
+    // dry."): story mode's front door is built from the story's own
+    // shipped surfaces — the map's hero (a stop backdrop behind the
+    // title), Dee's portrait on the cards, and the route itself as a
+    // thread along the bottom — never the pro game's broadcast chrome.
+    // Every fact it shows is a real payload fact (solo progress, pair
+    // tracks, the validated device save) or it shows nothing: a fresh
+    // player gets the run's promise, never invented progress.
+    const gateStop = progress.completed
+      ? STORY_STOPS[STORY_STOPS.length - 1]!
+      : (STORY_STOPS.find((s) => s.n === (progress.currentStop ?? 1)) ?? STORY_STOPS[0]!);
+    const clearedCount = progress.stops.filter((s) => s.clears > 0).length;
+    const gateSave = storySaveSummary(saved);
+    const heroLine = progress.completed
+      ? 'Route complete — you made it out.'
+      : soloStarted
+        ? `${clearedCount} of ${STORY_STOPS.length} stops cleared — you\u2019re at ${gateStop.name}`
+        : `${clearedCount} of ${STORY_STOPS.length} stops cleared — it starts at the Porch`;
+    const soloState = gateSave
+      ? `A match is waiting at ${gateSave.stop.name} — hand ${gateSave.handNo}, against ${gateSave.pairNames.join(' & ')}.`
+      : progress.completed
+        ? 'Route complete — you made it out. Replays stay open for upkeep.'
+        : soloStarted
+          ? `You\u2019re at ${gateStop.name} — stop ${gateStop.n} of ${STORY_STOPS.length}.`
+          : 'It starts at the Porch — Dee\u2019s first real table.';
+    const pairRuns = gateTracks?.pairs ?? null;
+    const runsByRecency = pairRuns
+      ? [...pairRuns].sort((a, b) => (b.lastPlayedAt ?? 0) - (a.lastPlayedAt ?? 0))
+      : [];
+    const focusRun = runsByRecency.find((p) => !p.completed) ?? runsByRecency[0] ?? null;
+    const moreRuns = pairRuns && pairRuns.length > 1
+      ? ` ${pairRuns.length - 1} more ${pairRuns.length - 1 === 1 ? 'run' : 'runs'} on the books.`
+      : '';
+    const coopState = !pairRuns
+      ? null
+      : pairRuns.length === 0
+        ? 'No pair runs yet — a new pair starts together at the Porch.'
+        : focusRun!.completed
+          ? `You and ${focusRun!.partnerHandle ?? 'your partner'} made it out together.${moreRuns}`
+          : focusRun!.currentStop != null
+            ? `With ${focusRun!.partnerHandle ?? 'your partner'} — at stop ${focusRun!.currentStop}, ${STORY_STOPS.find((x) => x.n === focusRun!.currentStop)?.name ?? 'the Porch'}.${moreRuns}`
+            : `With ${focusRun!.partnerHandle ?? 'your partner'} — the run hasn\u2019t started yet.${moreRuns}`;
+    const routeLine = progress.completed
+      ? 'You made it out — porch to King, the whole route.'
+      : soloStarted
+        ? `You\u2019re on the route — stop ${gateStop.n} of ${STORY_STOPS.length}: ${gateStop.name}.`
+        : 'Eleven stops, porch to the King. It starts on Ray\u2019s porch.';
     body = (
-      <div className="story-shell" data-testid="story-mode-gate">
-        <div className="story-topbar">
-          <button type="button" className="btn ghost" data-testid="story-home" onClick={() => navigate('/')}>← Home</button>
-          <div className="story-title-block">
-            <h1 className="story-title">Story Mode</h1>
-            <p className="story-sub">Run the block — porch to the King.</p>
+      <div className="story-shell story-gate-shell" data-testid="story-mode-gate">
+        <div className="story-hero story-gate-hero">
+          <div className="story-hero-bg" style={{ backgroundImage: `url(${storyBackdropUrl(gateStop)})` }} aria-hidden />
+          <div className="story-topbar">
+            <button type="button" className="btn ghost" data-testid="story-home" onClick={() => navigate('/')}>← Home</button>
+            <div className="story-title-block">
+              <h1 className="story-title">Story Mode</h1>
+              <p className="story-sub">Run the block — porch to the King.</p>
+              <p className="story-hero-progress" data-testid="story-gate-hero-line">{heroLine}</p>
+            </div>
+            <span className="dock-slot" aria-hidden />
           </div>
-          <span className="dock-slot" aria-hidden />
         </div>
         <p className="story-gate-lede">How are you running it?</p>
         <div className="story-gate">
           <button type="button" className="story-gate-card" data-testid="story-gate-solo" onClick={() => chooseMode('solo')}>
-            <span className="story-gate-name">Solo</span>
-            <span className="story-gate-line">You &amp; Dee against the block — the run as it has always been.</span>
+            <span className="story-gate-faces">
+              <StoryFace characterId="dee" name="Dee" className="dee-face" />
+            </span>
+            <span className="story-gate-card-text">
+              <span className="story-gate-name">Solo</span>
+              <span className="story-gate-line">You &amp; Dee against the block — the run as it has always been.</span>
+              <span className="story-gate-state" data-testid="story-gate-solo-state">{soloState}</span>
+            </span>
           </button>
           <button type="button" className="story-gate-card" data-testid="story-gate-coop" onClick={() => chooseMode('coop')}>
-            <span className="story-gate-name">Co-op</span>
-            <span className="story-gate-line">Two players, one run. Bring a partner — you take the seats across from each other, and the pair advances together.</span>
+            <span className="story-gate-faces">
+              <StoryFace characterId="dee" name="Dee" className="dee-face" />
+              <span className="story-gate-seat-open" aria-hidden>+</span>
+            </span>
+            <span className="story-gate-card-text">
+              <span className="story-gate-name">Co-op</span>
+              <span className="story-gate-line">Two players, one run. Bring a partner — you take the seats across from each other, and the pair advances together.</span>
+              {coopState && <span className="story-gate-state" data-testid="story-gate-coop-state">{coopState}</span>}
+            </span>
           </button>
+        </div>
+        <div className="story-gate-route" data-testid="story-gate-route">
+          <div className="story-gate-thread" aria-hidden>
+            {STORY_STOPS.map((stop, i) => {
+              const st = stateFor(stop);
+              return (
+                <Fragment key={stop.id}>
+                  {i > 0 && <span className="story-gate-link" />}
+                  <span className={`story-gate-node state-${st}${stop.id === 'king' ? ' is-king' : ''}`}>{st === 'cleared' ? '✓' : stop.n}</span>
+                </Fragment>
+              );
+            })}
+          </div>
+          <p className="story-gate-route-line">{routeLine}</p>
         </div>
       </div>
     );
