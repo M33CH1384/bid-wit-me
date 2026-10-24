@@ -385,6 +385,14 @@ function clampRules(r: unknown): TableRules {
 export class Room {
   /** connection id → player id (null until `hello`) */
   private conns = new Map<string, string | null>();
+  /**
+   * Story rooms only: a hello held at the door while its account ticket is
+   * being verified (connId → the held hello). Production dispatch runs hello
+   * BEFORE the ticket lookup (it must bind the socket first — see dispatch.ts),
+   * so a first-ever join arrives with no verified uid and no member to read
+   * one from; linkUser completes the held hello once the account is proven.
+   */
+  private storyDoor = new Map<string, Extract<ClientMsg, { t: 'hello' }>>();
   private chatWindow = new Map<string, number[]>();
   /** serializes async @mention resolution so table chat lines post in send order */
   private chatChain: Promise<void> = Promise.resolve();
@@ -436,6 +444,7 @@ export class Room {
   close(connId: string): void {
     const pid = this.conns.get(connId);
     this.sentHistory.delete(connId);
+    this.storyDoor.delete(connId);
     this.conns.delete(connId);
     if (!pid || this.isConnected(pid)) return;
     const m = this.data.members[pid];
@@ -467,6 +476,16 @@ export class Room {
 
   /** Release 9: the connection proved an account (verified ticket): link its member for stats. One account, one seat. */
   linkUser(connId: string, uid: string): void {
+    // A story-room hello held at the door (see hello): the account is proven
+    // now, so run the held hello under it — the pair check inside decides
+    // whether this connection is seated or turned away, still before any
+    // member exists for it.
+    const held = this.storyDoor.get(connId);
+    if (held) {
+      this.storyDoor.delete(connId);
+      this.hello(connId, held, uid);
+      return;
+    }
     const pid = this.conns.get(connId);
     const m = pid ? this.data.members[pid] : undefined;
     if (!m || !pid) return;
@@ -846,7 +865,28 @@ export class Room {
     // before a member (or a "joined" line) exists for them.
     if (d.story) {
       const suid = uid ?? (pid ? d.members[pid]?.uid : undefined);
-      if (!suid || !(d.story.pairUids as (string | null)[]).includes(suid)) {
+      if (!suid) {
+        // No verified identity yet. A reconnect finds its member above and
+        // reads the account from it, but a FIRST join has no member — and
+        // production dispatch deliberately runs hello with uid=null, linking
+        // the account only after the ticket verifies (linkUser). Refusing
+        // here turned the pair away from their own table (2026-10-24: the
+        // inviter and the accepting partner both hit SPOKEN_FOR on entry).
+        // A hello carrying a ticket is held at the door — no member, no
+        // welcome — until linkUser re-runs it under the proven account; a
+        // hello with no ticket has no proof coming, so it is refused now.
+        if (msg.ticket) {
+          this.storyDoor.set(connId, msg);
+          this.trace('reconnect', { cid: connId, how: 'story-door-hold', name });
+          return;
+        }
+        this.trace('reconnect', { cid: connId, how: 'spoken-for', name });
+        this.err(connId, 'SPOKEN_FOR', 'This story table is spoken for — it seats only the pair running it.');
+        this.conns.delete(connId);
+        this.io.close?.(connId, 4003, 'spoken-for');
+        return;
+      }
+      if (!(d.story.pairUids as (string | null)[]).includes(suid)) {
         this.trace('reconnect', { cid: connId, how: 'spoken-for', name });
         this.err(connId, 'SPOKEN_FOR', 'This story table is spoken for — it seats only the pair running it.');
         this.conns.delete(connId);
