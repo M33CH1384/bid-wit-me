@@ -3,7 +3,9 @@
  * calling it announces the call ("You called it · no spades") and the dealer pass with the whole
  * hand face up as the table's proof while the hands gather across to the incoming dealer
  * (~1.2s beat), then the hand is shuffled and redealt out of that seat on the normal deal
- * flight (still bidding, fresh cards, no bid placed). The save deals from seat 3, so the
+ * flight (still bidding, fresh cards, no bid placed). The announcement itself now dwells
+ * a full 8s (owner, 2026-10-25 — the cards "flash too quick" at the beat's lifetime) or
+ * until the player taps it away; the redeal runs its course underneath it. The save deals from seat 3, so the
  * human's call passes the deal TO the human: the announcement reads "Deal passes to you".
  * Fan ruling (owner, 2026-10-21): "I shouldn't have cards until they are dealt to me as per
  * the usual deal" — through the whole announcement beat the player's fan (the accessible
@@ -65,11 +67,16 @@ function save(): string {
     console.log('✓ through the beat the fan still holds the thrown-in hand — no cards before they are dealt');
     await page.waitForTimeout(500);
     await page.screenshot({ path: `${SHOTS}/misdeal-reveal-390.png` });
-    await reveal.waitFor({ state: 'hidden', timeout: 6000 });
-    const beatMs = Date.now() - t0;
     if (shownAt > 1200) throw new Error(`reveal took ${shownAt}ms to appear`);
-    if (beatMs < 900 || beatMs > 3000) throw new Error(`announce+gather beat was ${beatMs}ms, want ~1200`);
-    console.log(`✓ announcement + gather held for a ${beatMs}ms beat (13 cards)`);
+    // The dwell (owner, 2026-10-25): the shown cards get an 8s floor — the
+    // announcement is NOT yanked when the ~1.2s gather beat ends…
+    await page.waitForTimeout(1500);
+    if (!(await reveal.isVisible())) throw new Error('announcement vanished with the gather beat — the 8s dwell did not hold');
+    console.log('✓ announcement holds past the gather beat (8s dwell floor, 13 cards)');
+    // …and a tap on the panel clears it at any moment.
+    await page.locator('.misdeal-panel').click();
+    await reveal.waitFor({ state: 'hidden', timeout: 5000 });
+    console.log('✓ a tap cleared the announcement');
 
     // redealt: the deal flight deals the same hand back out — still bidding, 13 fresh cards
     await page.waitForFunction(() => document.querySelectorAll('[data-testid="hand"] button').length === 13, undefined, { timeout: 8000 });

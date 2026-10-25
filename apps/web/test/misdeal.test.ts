@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applyAction, makeRules, newGame, viewFor, type GameState } from '@spades/rules';
-import { MISDEAL_DEAL_SPEED, MISDEAL_REVEAL_MS, MISDEAL_REVEAL_REDUCED_MS, misdealDealMs, misdealRevealKey, misdealRevealMs, misdealSequenceMs } from '../src/misdeal';
+import { MISDEAL_DEAL_SPEED, MISDEAL_REVEAL_DWELL_MS, MISDEAL_REVEAL_MS, MISDEAL_REVEAL_REDUCED_MS, misdealDealMs, misdealRevealKey, misdealRevealMs, misdealSequenceMs } from '../src/misdeal';
 import { dealTimeline } from '../src/three/dealTimeline';
 import { rotateView } from '../src/online/rotate';
 
@@ -34,6 +34,15 @@ describe('misdeal redeal sequence', () => {
     expect(total).toBeGreaterThan(2500);
     expect(total).toBeLessThan(3500);
     expect(misdealSequenceMs(1, 4, 52, true)).toBe(MISDEAL_REVEAL_REDUCED_MS);
+  });
+
+  it('the announcement dwells at least 8s before it may clear itself (owner, 2026-10-25)', () => {
+    // The shown cards "flash too quick" at the gather beat's lifetime: the
+    // presentation gets an 8s floor. The dwell is presentation-only — the
+    // sequence that holds play stays the near-three-second moment pinned above.
+    expect(MISDEAL_REVEAL_DWELL_MS).toBeGreaterThanOrEqual(8000);
+    expect(misdealSequenceMs(1, 4, 52, false)).toBeLessThan(MISDEAL_REVEAL_DWELL_MS);
+    expect(misdealSequenceMs(1, 4, 52, true)).toBeLessThan(MISDEAL_REVEAL_DWELL_MS);
   });
 
   it('keys each thrown hand once', () => {

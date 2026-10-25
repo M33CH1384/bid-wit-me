@@ -103,7 +103,7 @@ import type { RunPlayback } from '@spades/protocol';
 import { RunItReview, RunZoom, faceUrl, runReviewOverTable } from './RunZoom';
 import { TrashTalkButton } from './TrashTalk';
 import { isWildDeuce } from './cardFaces';
-import { MISDEAL_DEAL_SPEED, heldHandForThrowIn, misdealDealMs, misdealFanHand, misdealRevealKey, misdealRevealMs } from './misdeal';
+import { MISDEAL_DEAL_SPEED, MISDEAL_REVEAL_DWELL_MS, heldHandForThrowIn, misdealDealMs, misdealFanHand, misdealRevealKey, misdealRevealMs } from './misdeal';
 import { QUICK_TRASH_SET } from './quickTrash';
 import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
 import { STORY_CHARACTERS, STORY_STOPS, STOP_DENSITY_CLASS, TALK_PROFILES, type BotLevel, type StoryBeat, type StoryBeatFacts, type StoryGameFacts, type StoryStop, type TalkIntensity, botSkillFor, buildStoryTape, buzzMomentFor, callbackFor, midSceneFor, parseHint, partnerBidIntent, personaForName, platePersona, pickBotNames, playBeatFor, railCastForAttempt, railMomentFor, resumeLineFor, skillOf, tableExchangeFor } from '@spades/bots';
@@ -641,14 +641,15 @@ function MisdealButton({ onCall }: { onCall: () => void }) {
  * The announcement: a misdeal is CALLED, out loud — who called it and why (no spades), and who
  * the deal passes to — with the caller's whole hand face up as the whole table's proof. It rides
  * the gather beat while every hand slides across to the incoming dealer's deck spot; the shuffle
- * + deal flight then take over from that seat (see misdeal.ts).
+ * + deal flight then take over from that seat (see misdeal.ts). The panel itself outlives the
+ * sequence: it holds for MISDEAL_REVEAL_DWELL_MS or until the player taps it away (onDismiss).
  */
-function MisdealReveal({ title, passTo, bidsVoided, cards, rules }: { title: string; passTo: string; bidsVoided: boolean; cards: Card[]; rules: TableRules }) {
+function MisdealReveal({ title, passTo, bidsVoided, cards, rules, onDismiss }: { title: string; passTo: string; bidsVoided: boolean; cards: Card[]; rules: TableRules; onDismiss: () => void }) {
   const spread = sortHand(cards, rules);
   const perRow = Math.ceil(spread.length / 2);
   return (
     <div className="misdeal-reveal" data-testid="misdeal-reveal" role="status" aria-label={`Misdeal — ${title}. Deal passes to ${passTo}`}>
-      <div className="misdeal-panel glass">
+      <div className="misdeal-panel glass" onClick={onDismiss} title="Tap to dismiss">
         <div className="misdeal-head">Misdeal</div>
         <div className="misdeal-sub">{title}</div>
         <div className="misdeal-pass">Deal passes to {passTo}</div>
@@ -658,6 +659,7 @@ function MisdealReveal({ title, passTo, bidsVoided, cards, rules }: { title: str
           ))}
         </div>
         <div className="misdeal-foot">{bidsVoided ? 'Bids are off — gathering the cards for a fresh deal…' : 'Gathering the cards for a fresh deal…'}</div>
+        <div className="misdeal-dismiss">Tap to dismiss</div>
       </div>
     </div>
   );
@@ -1400,10 +1402,32 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // starts the sequence on the very render that presents it — no effect ordering to lose it —
   // and the seen key resets when the reveal clears, so a later call always replays the moment.
   const [redealKeySeen, setRedealKeySeen] = useState<string | null>(null);
+  // The announcement's on-screen hold (owner, 2026-10-25: the shown cards "flash
+  // too quick"). The presentation is SNAPSHOTTED when the call lands and stays up
+  // for MISDEAL_REVEAL_DWELL_MS: the redeal sequence finishing underneath does
+  // not clear it, flow transitions don't clear it — only the dwell floor or a tap
+  // on the panel does. Presentation state only; the sequence above is untouched.
+  const [revealHold, setRevealHold] = useState<{ key: string; title: string; passTo: string; bidsVoided: boolean; cards: Card[] } | null>(null);
   if (revealKey !== redealKeySeen) {
     setRedealKeySeen(revealKey);
-    if (revealKey) setRedeal({ key: revealKey, phase: 'gather', bidsVoided: bidsBeforeCall.current.some((b) => b !== null), heldHand: heldHandForThrowIn(fanHandCommitted.current, view.handNo) });
+    if (revealKey && view.misdealReveal) {
+      const bidsVoided = bidsBeforeCall.current.some((b) => b !== null);
+      setRedeal({ key: revealKey, phase: 'gather', bidsVoided, heldHand: heldHandForThrowIn(fanHandCommitted.current, view.handNo) });
+      setRevealHold({
+        key: revealKey,
+        title: view.misdealReveal.seat === HUMAN && !spectating ? 'You called it · no spades' : `${names[view.misdealReveal.seat] ?? 'A player'} called it · no spades`,
+        passTo: view.dealer === HUMAN && !spectating ? 'you' : names[view.dealer] ?? 'the next dealer',
+        bidsVoided,
+        cards: [...view.misdealReveal.cards],
+      });
+    }
   }
+  useEffect(() => {
+    if (!revealHold) return;
+    const key = revealHold.key;
+    const tm = setTimeout(() => setRevealHold((cur) => (cur?.key === key ? null : cur)), MISDEAL_REVEAL_DWELL_MS);
+    return () => clearTimeout(tm);
+  }, [revealHold?.key]);
   useEffect(() => {
     if (!redeal) return;
     if (redeal.phase === 'gather') {
@@ -2697,13 +2721,14 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       {online?.overlay}
       {canRun && <RunItButton tip={runTip} onDismissTip={() => setRunTip(false)} onRun={() => { setRunTip(false); setSelected(null); apply({ type: 'runIt', seat: HUMAN }); }} />}
       {canMisdeal && !bidPanelShowing && <MisdealButton onCall={() => { setSelected(null); apply({ type: 'misdeal', seat: HUMAN }); }} />}
-      {redeal?.phase === 'gather' && view.misdealReveal && (
+      {revealHold && (
         <MisdealReveal
-          title={view.misdealReveal.seat === HUMAN && !spectating ? 'You called it · no spades' : `${names[view.misdealReveal.seat] ?? 'A player'} called it · no spades`}
-          passTo={view.dealer === HUMAN && !spectating ? 'you' : names[view.dealer] ?? 'the next dealer'}
-          bidsVoided={redeal.bidsVoided}
-          cards={view.misdealReveal.cards}
+          title={revealHold.title}
+          passTo={revealHold.passTo}
+          bidsVoided={revealHold.bidsVoided}
+          cards={revealHold.cards}
           rules={r}
+          onDismiss={() => setRevealHold((cur) => (cur?.key === revealHold.key ? null : cur))}
         />
       )}
       {runFx?.phase === 'zoom' && <RunZoom cards={runFx.cards} who={face(runFx.claimer)} line={runLine} r={r} />}

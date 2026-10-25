@@ -1632,8 +1632,20 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 /* In-panel misdeal call: sits inside the bid panel under the number grid, full width, gently pulsing so it's impossible to miss. */
 .misdeal-in-panel { width: 100%; margin-top: 4px; animation: runit-in .35s cubic-bezier(.2,1.4,.4,1) both, misdeal-pulse 1.6s ease-in-out 1s infinite; }
 @keyframes misdeal-pulse { 0%, 100% { box-shadow: 0 6px 22px rgba(0,0,0,.55), 0 0 18px rgba(245,158,11,.5); } 50% { box-shadow: 0 6px 22px rgba(0,0,0,.55), 0 0 32px rgba(245,158,11,.9); } }
+/* The AVAILABLE in-panel call must carry its own paint. The panel's generic button
+   rule (.bid-panel button — class + element) out-specifies .misdeal-btn (class only)
+   and stripped its gold for the panel's dark wash while its dark text stayed:
+   #231303 on plum, ~1.1:1 — a live call dressed as disabled (owner, 2026-10-25).
+   At class + class this rule wins the paint back: the same gold the floating call
+   wears, in both themes (the gradient + text are literals). The unavailable state
+   stays honest by ABSENCE — the button renders only while the engine offers it. */
+.misdeal-btn.misdeal-in-panel { background: linear-gradient(180deg, #ffd75e, #f59e0b); color: #231303; border: 2px solid rgba(255,255,255,.85); clip-path: none; font-weight: 900; font-size: 19px; box-shadow: 0 6px 22px rgba(0,0,0,.55), 0 0 18px rgba(245,158,11,.5); }
+/* Same wash, same theft, milder symptom: Blind Nil's .danger red (class only) was
+   stripped inside the panel the same way — its white label survived on plum, its
+   danger paint did not. Restored, scoped to the panel it lives in. */
+.bid-panel .danger { background: linear-gradient(180deg, #ff6b88, #c2183c); color: #fff; }
 .misdeal-reveal { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; padding: 14px; pointer-events: none; animation: rz-in .25s ease both; }
-.misdeal-panel { max-width: min(96vw, 620px); padding: 16px 18px 13px; text-align: center; border-radius: 18px; }
+.misdeal-panel { max-width: min(96vw, 620px); padding: 16px 18px 13px; text-align: center; border-radius: 18px; pointer-events: auto; cursor: pointer; }
 .misdeal-head { font-family: var(--display); font-weight: 900; font-style: italic; text-transform: uppercase; letter-spacing: .05em; font-size: clamp(22px, 5vw, 32px); color: #ffd75e; text-shadow: 0 2px 10px rgba(0,0,0,.6); }
 .misdeal-sub { margin: 2px 0 10px; font-weight: 700; color: #fff; text-shadow: 0 1px 6px rgba(0,0,0,.7); }
 .misdeal-pass { margin: -4px 0 10px; font-family: var(--display); font-weight: 800; font-style: italic; letter-spacing: .03em; font-size: 15.5px; color: #ffd75e; text-shadow: 0 1px 6px rgba(0,0,0,.7); }
@@ -1641,6 +1653,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .misdeal-card { width: min(calc(92vw / var(--per-row) - 8px), 104px, 13vh); aspect-ratio: 240 / 336; border-radius: 8px; box-shadow: 0 10px 26px rgba(0,0,0,.6), 0 0 0 2px rgba(255,255,255,.85);
   animation: rz-card .4s cubic-bezier(.2,1.5,.4,1) both; animation-delay: calc(var(--i) * 40ms); }
 .misdeal-foot { margin-top: 10px; font-size: 13.5px; font-weight: 700; color: rgba(255,255,255,.92); text-shadow: 0 1px 6px rgba(0,0,0,.7); }
+.misdeal-dismiss { margin-top: 6px; font-size: 11.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.6); }
 @media (prefers-reduced-motion: reduce) { .misdeal-btn, .misdeal-card, .misdeal-reveal { animation: none; } }
 @keyframes runit-in { from { transform: scale(.4) rotate(-8deg); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes runit-glow { 50% { box-shadow: 0 0 28px rgba(179,107,255,1), 0 0 64px rgba(71,209,255,.7), inset 0 1px 0 rgba(255,255,255,.5); } }

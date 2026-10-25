@@ -14,6 +14,10 @@ import { dealTimeline } from './three/dealTimeline';
  *     dealer's hands, since the deck spot sits in front of whoever holds the deal — a touch
  *     brisker than a fresh hand (`MISDEAL_DEAL_SPEED`) to keep the moment near three seconds.
  *  3. Bidding opens when the last card lands.
+ * The ANNOUNCEMENT's on-screen life is longer than the sequence's: it holds for
+ * MISDEAL_REVEAL_DWELL_MS (or a tap) even though the redeal finishes underneath
+ * it — the cards are the table's proof and get reading time, while play is
+ * never held hostage to them (the hold is Table-local presentation state).
  * The sequence rides each source's `dealing` flag for its FULL length (bots, input and dealt
  * slots all wait), online and solo alike, because the reveal rides the synced view
  * (`PlayerView.misdealReveal`) — every seat's client runs the same sequence off the same event.
@@ -33,6 +37,15 @@ import { dealTimeline } from './three/dealTimeline';
 export const MISDEAL_REVEAL_MS = 1200;
 /** Reduced motion: a shorter, snap announcement, then the hand simply swaps. */
 export const MISDEAL_REVEAL_REDUCED_MS = 600;
+/**
+ * How long the announcement (the thrown hand, face up) stays on screen before it
+ * clears ITSELF (owner, 2026-10-25: at the gather beat's ~1.2s the shown cards
+ * "flash too quick" to register). This is a presentation dwell, NOT a stretch of
+ * the redeal sequence: the gather + deal flight run their normal course
+ * underneath, and the announcement is not yanked when they finish — it holds
+ * for this floor, or until the player taps it away, whichever comes first.
+ */
+export const MISDEAL_REVEAL_DWELL_MS = 8000;
 /** The redeal's shuffle + deal timeline runs at this multiple of the table's speed factor. */
 export const MISDEAL_DEAL_SPEED = 0.7;
 

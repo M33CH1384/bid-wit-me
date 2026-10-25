@@ -134,6 +134,17 @@ async function until(fn: () => boolean, timeoutMs = 6000, stepMs = 30): Promise<
   return fn();
 }
 
+/**
+ * The announcement's dwell (owner, 2026-10-25): the redeal sequence completing
+ * underneath must NOT clear the shown cards — the presentation holds for its
+ * 8s floor — and a tap on the panel clears it at any moment.
+ */
+function expectRevealHeldThenDismissed() {
+  expect(document.querySelector('[data-testid="misdeal-reveal"]'), 'announcement holds past the sequence').toBeTruthy();
+  act(() => { (document.querySelector('.misdeal-panel') as HTMLElement).click(); });
+  expect(document.querySelector('[data-testid="misdeal-reveal"]'), 'a tap cleared the announcement').toBeNull();
+}
+
 describe('misdeal fan helpers', () => {
   it('a thrown-in snapshot is only valid for the hand it was taken from', () => {
     const snap = { handNo: 3, cards: ['AS', 'KD'] };
@@ -218,12 +229,13 @@ describe('misdeal fan at the real Table (offline caller)', () => {
     let sawFlight = false;
     const dealt = await until(() => {
       if (captured.current?.dealFlight === true && captured.current?.dealing === true && captured.current?.gatherHands === false) sawFlight = true;
-      return sawFlight && !document.querySelector('[data-testid="misdeal-reveal"]');
+      return sawFlight;
     }, 6000);
     expect(sawFlight, 'the redeal dealt out on the deal flight').toBe(true);
     expect(dealt, 'sequence completed').toBe(true);
     expect(sorted(sceneHand()), 'fan after the deal is the redealt hand').toEqual(sorted(newHand));
     expect(sorted(fanIds()), 'accessible fan after the deal is the redealt hand').toEqual(sorted(newHand));
+    expectRevealHeldThenDismissed();
   }, 30_000);
 
   it('reduced motion: the announcement still holds the thrown-in hand; the new hand appears dealt, never early', async () => {
@@ -254,10 +266,13 @@ describe('misdeal fan at the real Table (offline caller)', () => {
       expect(captured.current?.dealFlight ?? false, 'no deal flight under reduced motion').toBe(false);
       expect(sceneHand(), 'fan holds the thrown-in hand through the announcement').toEqual(oldHand);
       expect(fanIds()).toEqual(oldHand);
-      // Then the hand appears dealt — the swap lands with the announcement's end, not before.
-      expect(await until(() => !document.querySelector('[data-testid="misdeal-reveal"]')), 'announcement ended').toBe(true);
+      // Then the hand appears dealt — the swap lands with the announcement beat's
+      // end, not before. The announcement itself now HOLDS past the swap (8s
+      // dwell, owner 2026-10-25) until tapped away.
+      expect(await until(() => sorted(sceneHand()).join(' ') === sorted(next.hands[0]!).join(' ')), 'the swap landed').toBe(true);
       expect(sorted(sceneHand()), 'the dealt hand appears with the swap').toEqual(sorted(next.hands[0]!));
       expect(sorted(fanIds())).toEqual(sorted(next.hands[0]!));
+      expectRevealHeldThenDismissed();
     } finally {
       Object.defineProperty(window, 'matchMedia', {
         configurable: true,
@@ -268,6 +283,27 @@ describe('misdeal fan at the real Table (offline caller)', () => {
         }),
       });
     }
+  }, 30_000);
+
+  it('the announcement clears ITSELF only at the 8s floor — never with the sequence', async () => {
+    const { st } = callableGame(0);
+    skipVersus(String(st.seed));
+    act(() => {
+      root!.render(createElement(Table, {
+        rules, seed: st.seed,
+        settings: { ...DEFAULT_SETTINGS, quality: 'low', speed: 'turbo' },
+        onExit: () => {}, onRematch: () => {}, onQuality: () => {},
+      }));
+    });
+    expect(await until(() => !!document.querySelector('[data-testid="misdeal"]')), 'misdeal offered').toBe(true);
+    const t0 = Date.now();
+    act(() => { (document.querySelector('[data-testid="misdeal"]') as HTMLElement).click(); });
+    expect(document.querySelector('[data-testid="misdeal-reveal"]'), 'announcement up').toBeTruthy();
+    // No tap: the panel must still be up well past the ~3s sequence…
+    expect(await until(() => !document.querySelector('[data-testid="misdeal-reveal"]'), 12_000), 'announcement auto-cleared').toBe(true);
+    const heldMs = Date.now() - t0;
+    // …and the clear must not land before the 8s floor (500ms harness slack).
+    expect(heldMs, `announcement held ${heldMs}ms`).toBeGreaterThanOrEqual(7500);
   }, 30_000);
 });
 
@@ -302,12 +338,13 @@ describe('misdeal fan at the real Table (offline, resumed hand — no intro)', (
     let sawFlight = false;
     const done = await until(() => {
       if (captured.current?.dealFlight === true && captured.current?.gatherHands === false) sawFlight = true;
-      return sawFlight && !document.querySelector('[data-testid="misdeal-reveal"]');
+      return sawFlight;
     }, 6000);
     expect(sawFlight, 'the redeal flew in despite no intro').toBe(true);
     expect(done, 'sequence completed').toBe(true);
     expect(sorted(sceneHand()), '3D fan after the deal is the redealt hand').toEqual(sorted(next.hands[0]!));
     expect(feltLabels(), 'felt fan after the deal is the redealt hand').toEqual(newLabels);
+    expectRevealHeldThenDismissed();
   }, 30_000);
 });
 
@@ -397,11 +434,12 @@ describe('misdeal fan at the real Table (online, another seat calls)', () => {
     let sawFlight = false;
     const done = await until(() => {
       if (captured.current?.dealFlight === true && captured.current?.dealing === true) sawFlight = true;
-      return sawFlight && !document.querySelector('[data-testid="misdeal-reveal"]');
+      return sawFlight;
     }, 9000);
     expect(sawFlight, 'the redeal dealt out on the deal flight').toBe(true);
     expect(done, 'sequence completed').toBe(true);
     expect(sorted(sceneHand()), 'fan after the deal is my redealt hand').toEqual(sorted(myNew));
     expect(sorted(fanIds())).toEqual(sorted(myNew));
+    expectRevealHeldThenDismissed();
   }, 30_000);
 });
