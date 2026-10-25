@@ -4116,3 +4116,22 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
   .table-screen .chat:not(.recap-chat),
   .table-screen.short .chat:not(.recap-chat) { width: min(330px, 42vw); }
 }
+
+/* S1 hand recap, 3 columns (design audit 2026-10-25, HANDOFF.md "Hand
+   recap"): the short-landscape tier above already takes the whole stage
+   with a record rail (TOP SCORES at the top, HANDS, callouts, tricks) and a
+   one-row action footer, but the two partnership side cards stacked in one
+   column ran past the fold (the second card's bar sliced at 852x393). Here
+   the side cards sit side by side, so the recap reads as rail | team | team
+   and both cards are whole on screen. Cutthroat keeps its 2x2 grid. Same
+   height gate as the tier, so portrait never enters. */
+@media (max-height: 560px) and (min-width: 560px) {
+  .tt-recap:not(.crowded) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 10px; }
+  .tt-foot.stack { min-height: 0; }
+}
+/* SE-width landscape: a narrower record rail leaves the two side cards
+   room for their bid/took lines */
+@media (max-height: 560px) and (min-width: 560px) and (max-width: 799px) {
+  .tt-body:has(.tt-recap:not(.crowded)) { grid-template-columns: minmax(176px, 200px) minmax(0, 1fr); column-gap: 10px; }
+  .tt-recap:not(.crowded) .tt-team { padding: 8px 10px 6px; }
+}
