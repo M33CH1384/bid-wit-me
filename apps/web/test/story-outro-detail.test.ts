@@ -77,7 +77,7 @@ describe('badge detail sheet — the tile is a door (shared: outro, map, profile
     expect(sheet!.textContent).toContain(def.name);
     expect(sheet!.textContent).toContain(def.about);
     expect(sheet!.textContent).toContain(def.detail!); // "Earned: cleared The Porch."
-    expect(sheet!.querySelector('.story-medal-glyph')!.textContent).toBe(def.icon);
+    expect(sheet!.querySelector('.badge3d-front .badge3d-glyph')!.textContent).toBe(def.icon);
   });
 
   it('a locked badge opens too — and shows its unlock criterion, not a blank', async () => {

@@ -14,14 +14,15 @@
  * whose id resolves to no definition shows the card's own fallback line.
  */
 import { useState, type ReactNode } from 'react';
-import { STORY_SECRETS, storyEggById } from '@spades/bots';
+import { STORY_SECRETS, storyEggById, type StoryBadge } from '@spades/bots';
 import { setAnimForStop } from '../setAnims';
 import { useReduceEffects } from '../fx';
 import { useEscapeClose } from '../useEscapeClose';
 import { SetCover } from '../animfx/SetCover';
+import { BadgeMedal3D } from './BadgeMedal3D';
 import type { StoryNewFind } from './storyApi';
 
-export function StoryDetailSheet({ label, kicker, glyph, title, ghost, onClose, testid, children }: {
+export function StoryDetailSheet({ label, kicker, glyph, title, ghost, hero, onClose, testid, children }: {
   /** accessible name for the dialog */
   label: string;
   /** the small gold line over the title (the item's kind / state) */
@@ -31,6 +32,10 @@ export function StoryDetailSheet({ label, kicker, glyph, title, ghost, onClose, 
   title: string;
   /** render the medallion ghosted (a locked badge's silhouette) */
   ghost?: boolean;
+  /** a hero presentation that takes the top of the sheet (the badge's
+   *  3D medallion): the titles then sit centered beneath it instead of
+   *  beside the small emblem in the header row */
+  hero?: ReactNode;
   onClose: () => void;
   testid?: string;
   children: ReactNode;
@@ -39,17 +44,29 @@ export function StoryDetailSheet({ label, kicker, glyph, title, ghost, onClose, 
   return (
     <div className="modal-backdrop story-detail-backdrop" ref={sheetRef}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <section className={`story-detail-sheet${ghost ? ' ghost' : ''}`} role="dialog" aria-modal="true"
+      <section className={`story-detail-sheet${ghost ? ' ghost' : ''}${hero ? ' has-hero' : ''}`} role="dialog" aria-modal="true"
         aria-label={label} data-testid={testid}>
-        <header className="story-detail-head">
-          <span className="story-medal emblem" aria-hidden><span className="story-medal-glyph">{glyph}</span></span>
-          <div className="story-detail-titles">
-            {kicker && <p className="story-detail-kicker">{kicker}</p>}
-            <h3 className="story-detail-title">{title}</h3>
-          </div>
-          <button type="button" className="story-detail-close" data-testid="story-detail-close"
-            aria-label="Close details" onClick={onClose}>✕</button>
-        </header>
+        {hero ? (
+          <>
+            <button type="button" className="story-detail-close story-detail-close-float" data-testid="story-detail-close"
+              aria-label="Close details" onClick={onClose}>✕</button>
+            <div className="story-detail-hero">{hero}</div>
+            <div className="story-detail-titles story-detail-titles-hero">
+              {kicker && <p className="story-detail-kicker">{kicker}</p>}
+              <h3 className="story-detail-title">{title}</h3>
+            </div>
+          </>
+        ) : (
+          <header className="story-detail-head">
+            <span className="story-medal emblem" aria-hidden><span className="story-medal-glyph">{glyph}</span></span>
+            <div className="story-detail-titles">
+              {kicker && <p className="story-detail-kicker">{kicker}</p>}
+              <h3 className="story-detail-title">{title}</h3>
+            </div>
+            <button type="button" className="story-detail-close" data-testid="story-detail-close"
+              aria-label="Close details" onClick={onClose}>✕</button>
+          </header>
+        )}
         <div className="story-detail-body">{children}</div>
         <footer className="story-detail-foot">
           <button type="button" className="btn primary story-detail-done" data-testid="story-detail-done" onClick={onClose}>Done</button>
@@ -99,6 +116,29 @@ export function SetAnimDetail({ stopId, onClose }: { stopId: string; onClose: ()
         onClick={() => setRun((n) => n + 1)}>↻ Replay</button>
       <p className="story-detail-line"><b>The set:</b> {regular}</p>
       {finale && <p className="story-detail-line"><b>The finale:</b> {finale}</p>}
+    </StoryDetailSheet>
+  );
+}
+
+/**
+ * A badge's detail — the medallion itself, presented as the physical
+ * coin it is (owner, 2026-10-25: "I really want the badges to be 3d
+ * items that take precent in the modal"). The 3D medallion takes the
+ * top of the sheet as its hero; the badge's own words (about, and how
+ * it was earned or the hint that unlocks it) sit beneath it, verbatim
+ * from the definition — the same lines the sheet has always shown.
+ */
+export function BadgeDetail({ badge, onClose }: { badge: StoryBadge; onClose: () => void }) {
+  const reduceFx = useReduceEffects();
+  let osReduced = false;
+  try { osReduced = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches; } catch { /* no OS signal */ }
+  return (
+    <StoryDetailSheet label={`${badge.name} badge`} testid="story-badge-detail"
+      kicker={badge.earned ? 'Badge · earned' : 'Badge · locked'}
+      glyph={badge.icon} title={badge.name} ghost={!badge.earned} onClose={onClose}
+      hero={<BadgeMedal3D glyph={badge.icon} name={badge.name} earned={badge.earned} still={reduceFx || osReduced} />}>
+      <p className="story-badge-detail-about">{badge.about}</p>
+      <p className="story-badge-detail-how">{badge.earned ? (badge.detail ?? 'Earned.') : `To unlock: ${badge.hint}`}</p>
     </StoryDetailSheet>
   );
 }

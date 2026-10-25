@@ -1016,6 +1016,147 @@ html[data-theme="neon"] .story-you-face {
 .story-detail-sheet.ghost .story-medal::before { background: radial-gradient(circle at 38% 30%, #2c2c38, #101018 72%); box-shadow: inset 0 0 0 1px rgba(220, 220, 235, 0.22); }
 .story-detail-sheet.ghost .story-medal-glyph { filter: grayscale(1) brightness(0.8); opacity: 0.75; }
 
+/* ---------------------------------------------------------- the badge as
+   an object (owner, 2026-10-25: "I really want the badges to be 3d items
+   that take precent in the modal"). In the badge's popup the medallion
+   stops being a flat emblem in the header row and becomes the sheet's
+   hero: a thick CSS-3D coin, large and centered, the name and the
+   badge's own words beneath it. The coin is layered construction only —
+   two faces (front: the glyph embossed on a beveled gold field; back:
+   machined rings and the glyph ghosted), 48 edge segments for a reeded
+   rim wall, gradients for the metal, a cast shadow that breathes with
+   the turn. Motion (turntable rock, drag, momentum) is transform-driven
+   from BadgeMedal3D; under reduced effects the component rests it at a
+   still three-quarter angle — the .still state below — and there is no
+   flat fallback anywhere in this block. */
+.story-detail-sheet.has-hero { position: relative; }
+.story-detail-close-float { position: absolute; top: 12px; right: 12px; z-index: 6; }
+.story-detail-hero { display: flex; justify-content: center; }
+.story-detail-titles-hero { text-align: center; margin-top: 2px; }
+.story-detail-titles-hero .story-detail-title { font-size: 21px; }
+.story-detail-sheet.has-hero .story-detail-body { text-align: center; }
+
+.badge3d {
+  --coin: 218px;
+  position: relative;
+  width: 100%;
+  height: calc(var(--coin) + 64px);
+  perspective: 950px;
+  cursor: grab;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.badge3d:active { cursor: grabbing; }
+.badge3d.still { cursor: default; touch-action: auto; }
+.badge3d-coin {
+  position: absolute;
+  left: 50%; top: calc(var(--coin) / 2 + 4px);
+  width: var(--coin); height: var(--coin);
+  margin-left: calc(var(--coin) / -2); margin-top: calc(var(--coin) / -2);
+  transform-style: preserve-3d;
+  transform: rotateX(10deg) rotateY(-18deg);
+  will-change: transform;
+}
+.badge3d-shadow {
+  position: absolute; left: 50%; bottom: 12px;
+  width: calc(var(--coin) * 0.74); height: 26px;
+  border-radius: 50%;
+  background: radial-gradient(50% 50% at 50% 50%, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0) 68%);
+  transform: translateX(-50%);
+}
+.badge3d-face {
+  position: absolute; left: 50%; top: 50%;
+  width: var(--coin); height: var(--coin);
+  border-radius: 50%;
+  display: grid; place-items: center;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.badge3d-front {
+  transform: translate(-50%, -50%) translateZ(8px);
+  background:
+    radial-gradient(circle at calc(36% + var(--shine, 0) * 14%) 24%, rgba(255, 250, 220, 0.55), rgba(255, 250, 220, 0) 44%),
+    radial-gradient(circle at 50% 44%, #f7dc8d, #eec96a 30%, #c9a227 58%, #97700f 86%, #7c5a0a);
+}
+.badge3d-back {
+  transform: translate(-50%, -50%) rotateY(180deg) translateZ(8px);
+  background:
+    radial-gradient(circle at calc(64% - var(--shine, 0) * 14%) 24%, rgba(255, 250, 220, 0.5), rgba(255, 250, 220, 0) 50%),
+    repeating-radial-gradient(circle at 50% 50%, rgba(122, 84, 4, 0.16) 0 2px, rgba(255, 240, 190, 0.1) 2px 4px),
+    radial-gradient(circle at 50% 44%, #e9cd72, #c9a227 55%, #97700f 92%);
+}
+/* the beveled rim: a conic metal ring masked to the coin's outer band */
+.badge3d-face::before {
+  content: ''; position: absolute; inset: 0; border-radius: 50%;
+  background: conic-gradient(from 215deg, #8a6a14, #ffe9a8 12%, #b98c1e 26%, #f7dc8d 40%, #8a6a14 55%, #ffe9a8 68%, #a87f16 82%, #8a6a14);
+  -webkit-mask: radial-gradient(closest-side, transparent 79%, #000 80%);
+  mask: radial-gradient(closest-side, transparent 79%, #000 80%);
+}
+/* the machined step where rim meets field */
+.badge3d-face::after {
+  content: ''; position: absolute; inset: calc(var(--coin) * 0.105); border-radius: 50%;
+  box-shadow: inset 0 2px 5px rgba(255, 246, 214, 0.55), inset 0 -5px 9px rgba(90, 60, 0, 0.45), inset 0 0 0 2px rgba(122, 84, 4, 0.45);
+}
+.badge3d-glyph {
+  position: relative; z-index: 2;
+  font-size: calc(var(--coin) * 0.42); line-height: 1;
+  filter: drop-shadow(0 2px 1px rgba(80, 52, 0, 0.55)) drop-shadow(0 -2px 2px rgba(255, 244, 200, 0.65)) drop-shadow(0 6px 10px rgba(60, 38, 0, 0.35));
+}
+.badge3d-back-glyph {
+  position: relative; z-index: 2;
+  font-size: calc(var(--coin) * 0.3); line-height: 1; opacity: 0.5;
+  filter: drop-shadow(0 1px 1px rgba(80, 52, 0, 0.6));
+}
+/* the reeded edge: 48 wall segments, alternate reeds shaded a step down */
+.badge3d-edge {
+  position: absolute; left: 50%; top: 50%;
+  width: 16px; height: calc(var(--coin) * 0.069);
+  transform: translate(-50%, -50%) rotateZ(var(--a)) translateX(calc(var(--coin) / 2)) rotateY(90deg);
+  background: linear-gradient(90deg, #7c5a0a, #e9c34d 42%, #f7dc8d 55%, #7c5a0a);
+}
+.badge3d-edge:nth-of-type(even) { filter: brightness(0.88); }
+.badge3d-hint {
+  position: absolute; left: 0; right: 0; bottom: -2px;
+  text-align: center;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+  color: rgba(238, 201, 106, 0.55);
+}
+/* locked: the same coin, unlit — dark metal, the glyph a silhouette */
+.badge3d.locked .badge3d-front {
+  background:
+    radial-gradient(circle at calc(36% + var(--shine, 0) * 14%) 24%, rgba(210, 210, 225, 0.28), rgba(210, 210, 225, 0) 48%),
+    radial-gradient(circle at 50% 44%, #55555f, #33333d 46%, #1d1d26 82%, #121218);
+}
+.badge3d.locked .badge3d-back {
+  background:
+    radial-gradient(circle at calc(64% - var(--shine, 0) * 14%) 24%, rgba(210, 210, 225, 0.16), rgba(210, 210, 225, 0) 50%),
+    repeating-radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0.28) 0 2px, rgba(210, 210, 225, 0.07) 2px 4px),
+    radial-gradient(circle at 50% 44%, #3d3d48, #23232c 60%, #141419);
+}
+.badge3d.locked .badge3d-face::before {
+  background: conic-gradient(from 215deg, #26262e, #5c5c68 12%, #33333d 26%, #4c4c58 40%, #26262e 55%, #5c5c68 68%, #3a3a44 82%, #26262e);
+}
+.badge3d.locked .badge3d-face::after {
+  box-shadow: inset 0 2px 5px rgba(200, 200, 215, 0.22), inset 0 -5px 9px rgba(0, 0, 0, 0.6), inset 0 0 0 2px rgba(0, 0, 0, 0.5);
+}
+.badge3d.locked .badge3d-glyph {
+  filter: grayscale(1) brightness(0.72) drop-shadow(0 2px 1px rgba(0, 0, 0, 0.7)) drop-shadow(0 -1px 1px rgba(200, 200, 215, 0.25));
+  opacity: 0.85;
+}
+.badge3d.locked .badge3d-back-glyph { filter: grayscale(1) brightness(0.6); opacity: 0.4; }
+.badge3d.locked .badge3d-edge { background: linear-gradient(90deg, #0e0e13, #43434f 50%, #0e0e13); }
+.badge3d.locked .badge3d-hint { color: rgba(210, 210, 225, 0.4); }
+/* Short landscape: the coin shrinks so the whole badge sheet — hero,
+   name, info, Done — stays on one screen (844×390 verified). */
+@media (orientation: landscape) and (max-height: 540px) {
+  .badge3d { --coin: 120px; height: calc(var(--coin) + 36px); }
+  .badge3d-shadow { bottom: 2px; }
+  .story-detail-sheet.has-hero .story-detail-header-hero { margin-bottom: 2px; }
+  .story-detail-sheet.has-hero .story-medal-title { font-size: 19px; }
+}
+
 /* the set-animation preview: the recap's own cover engine (SetCover)
    mounted fresh per tier inside a stage that gives it the card face's
    containment (positioned, clipped, its own stacking context) */
