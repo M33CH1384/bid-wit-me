@@ -20,16 +20,33 @@
  * height-gated tier — max-height 560px, so portrait phones (667px+ tall)
  * never enter — where the sheet spans the stage (min(1040px, 100%),
  * centered), the body is a two-column grid (rail: TOP SCORES + HANDS +
- * callouts; main: side cards, then the Run It / Review-the-tricks
- * entries), and the footer is ONE action row pinned under the body.
+ * callouts + the tricks entry; main: the side cards, the Run It review
+ * full-width beneath), and the footer is ONE action row pinned under
+ * the body.
+ *
+ * Content parity extension (owner, same day, second walk — the same
+ * hand-2 story recap in both orientations): portrait carries TOP
+ * SCORES, HANDS, the HEAT CHECK banner and the SHOT card whole, so
+ * landscape must carry every section. The SHOT (notice) card's portrait
+ * anatomy (22/46px padding + the 88px tape lane) made it 257px of the
+ * 286px body — whole, but it pushed the second card and the tricks
+ * entry off the stage. The tier compacts the set states instead of
+ * amputating them (notice padding/lane, hole re-anchor, verdict
+ * plaque, sheet padding), and with the tricks entry in the rail the
+ * owner's exact state renders at 932×430 with ZERO body scroll in both
+ * themes (measured in Chromium against a crafted state matching his
+ * screenshots: story partnership, hand 2, set side, 2-in-a-row streak).
  *
  * Budgets below recompute from the shipped CSS constants plus measured
  * render constants (the house idiom — cf. layout-lobby-fit's TEAMS_W):
  *   HEAD 57   (head padding 6+6 around the 44px chat button + border)
  *   FOOT 69   (action-row padding 8+8 around the 52px primary + border)
- *   SCORE_ROW 30 in this tier (li padding 3+3 + the 20px numeral's line)
+ *   SCORE_ROW 26 in this tier (Neon, the taller theme; Classic is 24)
  *   CARD 100  (a partnership side card at the tier's compaction)
- *   CONTENT 282 (the whole partnership body content, measured)
+ *   NOTICE 163 (the SHOT card at the tier's set-state compaction, ≥800px)
+ *   STRIP 53 / 88 (HANDS tracker, partnership / cutthroat)
+ *   CALLOUT 21 (a one-line streak banner in the rail)
+ *   PILL 44   (the Review-the-tricks entry, at the tap floor)
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
@@ -39,6 +56,7 @@ const tsx = readFileSync(new URL('../src/Intermission.tsx', import.meta.url), 'u
 
 const start = css.indexOf('/* Hand recap in LANDSCAPE');
 const land = css.slice(start, css.indexOf('/* Home story-resume row', start));
+const narrow = css.slice(css.indexOf('@media (max-height: 560px) and (min-width: 560px) and (max-width: 799px)'), css.indexOf('/* Home story-resume row'));
 
 const num = (re: RegExp, s: string) => {
   const m = s.match(re);
@@ -50,17 +68,22 @@ const BACKDROP = 16; // .tt-backdrop padding 8 top + 8 bottom (harness; a device
 const HEAD = 57;
 const FOOT = 69;
 const body = (h: number) => h - BACKDROP - HEAD - FOOT;
+const GAP = 6; // the tier's grid row-gap
 
 /** TOP SCORES in the tier, from the shipped constants. */
 const scoresH = (rows: number) => {
   const padY = num(/\.tt\.espn \.tt-top-scores \{ padding: (\d+)px/, land) + num(/\.tt\.espn \.tt-top-scores \{ padding: \d+px \d+px (\d+)px/, land);
   const h3 = 16 + num(/\.tt\.espn \.tt-top-scores h3 \{ margin-bottom: (\d+)px/, land) + 2; // 13px line + margin + rounding
-  const row = 30; // measured: li padding 3+3 around the 20px numeral's ~24px line
+  const row = 26; // measured in this tier (Neon): li padding 1+1 around the 20px numeral at line-height 1.1
   const gap = num(/\.tt\.espn \.tt-top-scores ol \{ gap: (\d+)px/, land);
   return padY + h3 + rows * row + (rows - 1) * gap;
 };
 const CARD = 100; // measured partnership side card in the tier
-const CONTENT = 282; // measured partnership body content height in the tier
+const NOTICE = 163; // measured SHOT card in the tier (800px+ wide)
+const STRIP_P = 53; // measured HANDS tracker, partnership
+const STRIP_C = 88; // measured HANDS tracker, cutthroat
+const CALLOUT = 21; // measured one-line callout in the rail
+const PILL = 44; // the tricks entry at the 44px tap floor
 
 describe('landscape recap: the tier and its composition', () => {
   it('is height-gated like D8 — portrait phones (667px+ tall) can never enter', () => {
@@ -78,11 +101,12 @@ describe('landscape recap: the tier and its composition', () => {
     expect(css.indexOf('/* Hand recap in LANDSCAPE')).toBeGreaterThan(css.indexOf('.tt { width: 452px; flex: none; }'));
   });
 
-  it('the body is the two-column grid: rail of scores/strip/callouts, main of cards + reviews', () => {
-    expect(land).toContain('grid-template-areas: "scores recap" "strip recap" "callouts recap" "callouts run" "callouts tricks";');
+  it('the body is the two-column grid: rail of scores/strip/callouts/tricks, main of cards, run beneath', () => {
+    expect(land).toContain('grid-template-areas: "scores recap" "strip recap" "callouts recap" "tricks recap" "run run";');
     expect(land).toContain('.tt-top-scores { grid-area: scores; width: 100%; }');
     expect(land).toContain('.tt-recap { grid-area: recap; width: 100%;');
     expect(land).toContain('.tt-tricks { grid-area: tricks; width: 100%; margin: 0; }');
+    expect(land).toContain('.tt-tricks-show { grid-area: tricks; justify-self: start; }');
     expect(land).toContain('.tt-run { grid-area: run; width: 100%; margin: 0; }');
     // both columns inside the viewport at the narrowest landscape size:
     // panel 651 = 667 − 16 backdrop; rail capped, main takes the rest
@@ -108,33 +132,64 @@ describe('landscape recap: the tier and its composition', () => {
 
 describe('landscape recap: budgets close (measured constants)', () => {
   it('TOP SCORES renders whole at every landscape size — the owner’s slice is closed', () => {
-    expect(scoresH(2)).toBe(109); // partnership, measured 109
-    expect(scoresH(4)).toBe(181); // cutthroat, measured 181
+    expect(scoresH(2)).toBe(101); // partnership, measured 101 (Neon)
+    expect(scoresH(4)).toBe(165); // cutthroat, measured 165 (Neon)
     for (const h of [375, 390, 430]) {
       expect(scoresH(2), `partnership @${h}`).toBeLessThanOrEqual(body(h));
       expect(scoresH(4), `cutthroat @${h}`).toBeLessThanOrEqual(body(h));
     }
   });
 
-  it('partnership: scores, strip and BOTH cards are on the first screenful at every size', () => {
+  it('plain partnership: both cards on the first screenful at every size, the whole rail too at 932', () => {
     const padTop = num(/\.tt-body \{[^}]*padding: (\d+)px/, land);
     const cardStack = 2 * CARD + num(/\.tt-recap \{[^}]*gap: (\d+)px/, land);
     for (const h of [375, 390, 430]) {
       expect(padTop + cardStack, `cards @${h}`).toBeLessThanOrEqual(body(h));
     }
-    // the whole content fits with no scroll at the owner's 932×430…
-    expect(CONTENT).toBeLessThanOrEqual(body(430));
-    // …and at the two smaller sizes the only thing past the fold is the
-    // tricks pill's tail — a bounded scroll, documented in the CSS block
-    expect(CONTENT - body(390)).toBe(34);
-    expect(CONTENT - body(375)).toBe(49);
-    expect(CONTENT - body(375)).toBeLessThan(44 + 6); // never more than the pill itself
+    const rail = scoresH(2) + STRIP_P + CALLOUT + PILL + 3 * GAP;
+    expect(rail).toBeLessThanOrEqual(body(430));
   });
 
   it('cutthroat deals its four cards as a 2×2 grid, restacked only when narrow', () => {
-    expect(land).toContain('.tt-recap.crowded { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; }');
+    expect(land).toContain('.tt-recap.crowded { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; align-items: start; }');
     expect(land).toContain('@media (max-height: 560px) and (min-width: 560px) and (max-width: 799px)');
     expect(land).toContain('.tt-recap.crowded .tt-face:not(.has-verdict) { grid-template-areas: "name name" "line line" "players bags" "bar bar"; }');
+    // at 932 the cutthroat rail carries scores + tracker + banner whole
+    expect(scoresH(4) + STRIP_C + CALLOUT + 2 * GAP).toBeLessThanOrEqual(body(430));
+  });
+});
+
+describe('landscape recap: content parity for the set states (owner, second walk)', () => {
+  it('the SHOT card compacts in the tier — padding, tape lane, hole re-anchor; nothing removed', () => {
+    expect(land).toContain('.tt-team.notice, .tt-team.mine.notice { padding: 10px 14px 8px; }');
+    expect(land).toContain('.tt-team.notice .tt-line { margin-top: 44px; }');
+    // the hole's slots are inline styles anchored ~124px from the card
+    // top; the re-anchor into the compacted lane takes !important, and
+    // the base full-fidelity lane is untouched outside the tier
+    expect(land).toContain('.tt-team.notice .shot-holes img { top: 76px !important; }');
+    expect(css).toContain('.tt-team.notice .tt-line { margin-top: 88px; }');
+    // narrower still in the sub-tier
+    expect(narrow).toContain('.tt-team.notice .tt-line { margin-top: 36px; }');
+    expect(narrow).toContain('.tt-team.notice .shot-holes img { top: 68px !important; }');
+    expect(narrow).toContain('.tt-face:not(.has-verdict) { grid-template-areas: "name name" "line line" "players bags" "bar bar"; }');
+  });
+
+  it('the sheet (finale) card compacts its verdict plaque and toe-tag clearing', () => {
+    expect(land).toContain('.tt-face .finale-verdict { padding: 6px 10px 5px; gap: 2px; }');
+    expect(land).toContain('.tt-face .finale-verdict b { font-size: 21px; }');
+    expect(land).toContain('.tt-team.shrouded { padding-bottom: 36px; }');
+    expect(css).toContain('.tt-team.shrouded { padding-bottom: 58px; }'); // portrait base untouched
+  });
+
+  it('the owner’s exact state fits whole at 932×430 — both columns, no scroll', () => {
+    // rail: scores + HANDS + HEAT CHECK + the review pill
+    const rail = scoresH(2) + STRIP_P + CALLOUT + PILL + 3 * GAP;
+    expect(rail).toBe(237);
+    expect(rail).toBeLessThanOrEqual(body(430));
+    // main: the SHOT card + the other side's card
+    const main = NOTICE + CARD + num(/\.tt-recap \{[^}]*gap: (\d+)px/, land);
+    expect(main).toBe(273);
+    expect(main).toBeLessThanOrEqual(body(430));
   });
 });
 
