@@ -1,13 +1,16 @@
 /**
  * Story badges (owner, 2026-10-21): the collection strip — earned badges
  * lit, the rest grayed as the visible remainder, with the count. Tap any
- * badge for its explanation: what it's for, and either how it was earned
- * (from the stored facts) or the fair hint for unlocking it. Used on the
- * map (browse) and on the win moment (outro), where the badges this win
- * just unlocked arrive highlighted as NEW.
+ * badge for its explanation in a detail sheet over the screen (owner,
+ * 2026-10-25: the outro's tiles became doors like the deck card): what
+ * it's for, and either how it was earned (from the stored facts) or the
+ * fair hint for unlocking it. Used on the map (browse), on the win
+ * moment (outro), where the badges this win just unlocked arrive
+ * highlighted as NEW, and on the player's own profile.
  */
 import { useState, type CSSProperties } from 'react';
 import { storyBadgesFor, type StoryBadgeFacts } from '@spades/bots';
+import { StoryDetailSheet } from './StoryDetailSheet';
 
 export function badgeFactsOf(p: { stops: { stopId: string; attempts: number; clears: number }[]; finds?: { eggs: string[]; feats: string[] }; completed: boolean; anyTrack?: { stops: { stopId: string; attempts: number; clears: number }[]; finds: { eggs: string[]; feats: string[] }; completed: boolean } } | null): StoryBadgeFacts {
   if (!p) return { stops: [], finds: { eggs: [], feats: [] }, completed: false };
@@ -76,11 +79,18 @@ export default function StoryBadges({ facts, highlight, title, celebrate }: {
         ))}
       </div>
       {selected && (
-        <div className="story-badge-detail" data-testid="story-badge-detail">
-          <p className="story-badge-detail-name">{selected.icon} {selected.name}</p>
+        <StoryDetailSheet
+          label={`${selected.name} badge`}
+          testid="story-badge-detail"
+          kicker={selected.earned ? 'Badge · earned' : 'Badge · locked'}
+          glyph={selected.icon}
+          title={selected.name}
+          ghost={!selected.earned}
+          onClose={() => setOpen(null)}
+        >
           <p className="story-badge-detail-about">{selected.about}</p>
           <p className="story-badge-detail-how">{selected.earned ? (selected.detail ?? 'Earned.') : `To unlock: ${selected.hint}`}</p>
-        </div>
+        </StoryDetailSheet>
       )}
     </section>
   );

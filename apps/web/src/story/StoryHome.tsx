@@ -27,7 +27,7 @@ import { coverThen } from '../spray';
 import { useAccount } from '../account/api';
 import { storyRulesFor, storySettingsFor } from './storySettings';
 import { storyBackdropUrl } from './storyBackdrop';
-import { STORY_OWNER_ONLY, createStoryRoom, fetchStoryAccess, fetchStoryDev, fetchStoryProgress, fetchStoryTracks, joinStoryRoom, postStoryFound, postStoryResetStop, postStoryResult, routeFactsFor, storyLockedFor, type StoryProgress, type StoryResult, type StoryTracks } from './storyApi';
+import { STORY_OWNER_ONLY, createStoryRoom, fetchStoryAccess, fetchStoryDev, fetchStoryProgress, fetchStoryTracks, joinStoryRoom, postStoryFound, postStoryResetStop, postStoryResult, routeFactsFor, storyLockedFor, type StoryNewFind, type StoryProgress, type StoryResult, type StoryTracks } from './storyApi';
 import CoopPartner from './CoopPartner';
 import StoryRoom from './StoryRoom';
 import { deckUnlockNotice, invalidateStoryProgress } from '../storyDecks';
@@ -43,6 +43,7 @@ import { SceneAudio } from './SceneAudio';
 import StoryTape from './StoryTape';
 import StoryFace from './StoryFace';
 import StoryBadges, { badgeFactsOf } from './StoryBadges';
+import { FindDetail, SetAnimDetail } from './StoryDetailSheet';
 import './story.css';
 
 type Screen =
@@ -386,6 +387,11 @@ export default function StoryHome() {
    *  2026-10-25): the viewer is an overlay — opening it touches no screen
    *  state, and closing it lands back on this exact outro. */
   const [viewDeck, setViewDeck] = useState<DeckDef | null>(null);
+  /** The outro detail sheet being read (owner, 2026-10-25: the rest of
+   *  the unlock stack became doors too) — the set-animation card and the
+   *  find cards open their details as overlays, same discipline as the
+   *  deck viewer: no screen state moves, closing returns here. */
+  const [detail, setDetail] = useState<{ kind: 'setanim'; stopId: string } | { kind: 'find'; find: StoryNewFind } | null>(null);
   const finishedRef = useRef<{ seed: string; won: boolean } | null>(null);
   /** The game just played, manner included (word travels fast): the
    *  outro's replay swap reads this game's band (the Porch reacts to
@@ -973,13 +979,15 @@ export default function StoryHome() {
           </button>
         )}
         {r && r.won && r.firstClear && setAnimUnlockNotice(r.stopId) && (
-          <div className="story-reward-card story-deck-line story-reveal" data-testid="story-setanim-notice" style={{ ['--i' as string]: 2 } as CSSProperties}>
+          <button type="button" className="story-reward-card story-deck-line story-reveal story-card-tap" data-testid="story-setanim-notice" style={{ ['--i' as string]: 2 } as CSSProperties}
+            onClick={() => setDetail({ kind: 'setanim', stopId: r.stopId })}>
             <span className="story-medal emblem" aria-hidden><span className="story-medal-glyph">✦</span></span>
-            <div className="story-reward-card-body">
-              <p className="story-reward-card-title">{setAnimUnlockNotice(r.stopId)}</p>
-              {setAnimForStop(r.stopId)?.blurb && <p className="story-reward-card-sub">{setAnimForStop(r.stopId)!.blurb}</p>}
-            </div>
-          </div>
+            <span className="story-reward-card-body">
+              <span className="story-reward-card-title">{setAnimUnlockNotice(r.stopId)}</span>
+              {setAnimForStop(r.stopId)?.blurb && <span className="story-reward-card-sub">{setAnimForStop(r.stopId)!.blurb}</span>}
+              <span className="story-reward-card-view">Tap to preview →</span>
+            </span>
+          </button>
         )}
         {r && !r.won && !dblLost && (
           <div className="story-reward-hero consolation story-reward-line story-reveal" data-testid="story-reward-line" style={{ ['--i' as string]: 0 } as CSSProperties}>
@@ -1003,13 +1011,15 @@ export default function StoryHome() {
         {r && (r.newFinds?.length ?? 0) > 0 && (
           <div className="story-find-line" data-testid="story-new-finds">
             {r.newFinds.map((f, j) => (
-              <div key={f.id} className="story-reward-card find story-reveal" style={{ ['--i' as string]: 3 + j } as CSSProperties}>
+              <button key={f.id} type="button" className="story-reward-card find story-reveal story-card-tap" style={{ ['--i' as string]: 3 + j } as CSSProperties}
+                onClick={() => setDetail({ kind: 'find', find: f })}>
                 <span className="story-medal" aria-hidden><span className="story-medal-glyph">{f.kind === 'feat' ? '🏆' : '🥚'}</span></span>
-                <div className="story-reward-card-body">
-                  <p className="story-reward-card-title">{f.kind === 'feat' ? 'Unlocked' : 'Found'}: {f.name}</p>
-                  <p className="story-reward-card-sub">{f.kind === 'feat' ? 'Feat collectible — recorded on this stop’s map card.' : 'Hidden egg — recorded on this stop’s map card.'}</p>
-                </div>
-              </div>
+                <span className="story-reward-card-body">
+                  <span className="story-reward-card-title">{f.kind === 'feat' ? 'Unlocked' : 'Found'}: {f.name}</span>
+                  <span className="story-reward-card-sub">{f.kind === 'feat' ? 'Feat collectible — recorded on this stop’s map card.' : 'Hidden egg — recorded on this stop’s map card.'}</span>
+                  <span className="story-reward-card-view">Tap to look →</span>
+                </span>
+              </button>
             ))}
           </div>
         )}
@@ -1196,6 +1206,8 @@ export default function StoryHome() {
       {body}
       <SettingsSheetHost settings={settings} onChange={applySettings} tips={tips} onTips={setTips} />
       {viewDeck && <DeckViewer deck={viewDeck} onClose={() => setViewDeck(null)} />}
+      {detail?.kind === 'setanim' && <SetAnimDetail stopId={detail.stopId} onClose={() => setDetail(null)} />}
+      {detail?.kind === 'find' && <FindDetail find={detail.find} onClose={() => setDetail(null)} />}
     </>
   );
 }

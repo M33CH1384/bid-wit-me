@@ -35,9 +35,10 @@ import { storyBackdropUrl } from './storyBackdrop';
 import {
   fetchPairContext, fetchStoryProgress, postStoryFound, postStoryResult, reportStorySession,
   routeFactsFor, trueNextStop,
-  type PairContext, type StoryProgress, type StoryResult,
+  type PairContext, type StoryNewFind, type StoryProgress, type StoryResult,
 } from './storyApi';
 import { coopPairNote } from './pairNote';
+import { FindDetail } from './StoryDetailSheet';
 
 /**
  * Dee's guide plate (spec §5.5): pinned to the rail edge of the table —
@@ -170,6 +171,10 @@ export function StoryRoomInner({ conn, cs, code, track, myUid, onExit }: {
     return () => { live = false; };
   }, [code, story?.phase, story?.stopId, story?.partnerUid]); // eslint-disable-line react-hooks/exhaustive-deps
   const [result, setResult] = useState<StoryResult | null>(null);
+  /** The co-op outro's find detail sheet (owner, 2026-10-25): the find
+   *  cards are doors like the solo outro's — an overlay only; the room,
+   *  the ready state and the tally are never touched by looking. */
+  const [findDetail, setFindDetail] = useState<StoryNewFind | null>(null);
   const [postState, setPostState] = useState<'idle' | 'posting' | 'posted' | 'failed'>('idle');
   const [armConcede, setArmConcede] = useState(false);
   /** the King's proposal scene has played out on this client — the
@@ -690,11 +695,12 @@ export function StoryRoomInner({ conn, cs, code, track, myUid, onExit }: {
           {(r.newFinds?.length ?? 0) > 0 && (
             <div className="story-find-line" data-testid="story-room-new-finds">
               {r.newFinds.map((f) => (
-                <div key={f.id} className="story-reward-card find">
-                  <div className="story-reward-card-body">
-                    <p className="story-reward-card-title">{f.kind === 'feat' ? 'Unlocked' : 'Found'}: {f.name}</p>
-                  </div>
-                </div>
+                <button key={f.id} type="button" className="story-reward-card find story-card-tap" onClick={() => setFindDetail(f)}>
+                  <span className="story-reward-card-body">
+                    <span className="story-reward-card-title">{f.kind === 'feat' ? 'Unlocked' : 'Found'}: {f.name}</span>
+                    <span className="story-reward-card-view">Tap to look →</span>
+                  </span>
+                </button>
               ))}
             </div>
           )}
@@ -721,6 +727,7 @@ export function StoryRoomInner({ conn, cs, code, track, myUid, onExit }: {
         )}
         <button type="button" className="btn ghost" data-testid="story-room-leave" onClick={onExit}>Back to Story Mode</button>
       </div>
+      {findDetail && <FindDetail find={findDetail} onClose={() => setFindDetail(null)} />}
     </div>
   );
 }

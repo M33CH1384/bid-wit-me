@@ -547,14 +547,11 @@ html[data-theme="neon"] .story-stage-one.active .story-stage-face {
 .story-badge.new { border-color: #e8c85a; box-shadow: 0 0 0 2px rgba(232, 200, 90, 0.55); }
 .story-badge-icon { font-size: 15px; }
 .story-badge-new { font-size: 9.5px; font-weight: 800; letter-spacing: 0.08em; background: #c9a227; color: #14100a; border-radius: 6px; padding: 1px 5px; }
-.story-badge-detail {
-  margin-top: 10px;
-  border-top: 1px solid rgba(127, 127, 160, 0.3);
-  padding-top: 10px;
-}
-.story-badge-detail-name { margin: 0; font-weight: 800; }
-.story-badge-detail-about { margin: 4px 0 0; line-height: 1.45; }
-.story-badge-detail-how { margin: 4px 0 0; font-size: 13.5px; opacity: 0.85; }
+/* the badge explanation's text lines — carried by the detail sheet
+   (StoryDetailSheet) since the tiles became doors (owner, 2026-10-25);
+   the sheet's header carries the medallion + name. */
+.story-badge-detail-about { margin: 0; font-size: 14.5px; line-height: 1.55; }
+.story-badge-detail-how { margin: 8px 0 0; font-size: 13.5px; line-height: 1.5; opacity: 0.88; }
 
 /* ---- the rail: background cast, present but never in the way ---- */
 .story-rail {
@@ -887,6 +884,14 @@ html[data-theme="neon"] .story-you-face {
   font-size: 12.5px; font-weight: 700; letter-spacing: 0.04em; color: #eec96a;
 }
 
+/* the rest of the unlock stack are doors too (owner, 2026-10-25: "These
+   should be tap able as well"): the set-animation card and the find cards
+   are buttons into their detail sheets, wearing the deck card's chrome
+   rules — the settled card look does not change. */
+.story-card-tap { font: inherit; color: inherit; cursor: pointer; width: 100%; }
+.story-card-tap .story-reward-card-title,
+.story-card-tap .story-reward-card-sub { display: block; }
+
 /* the medallion: one medal design for badges, finds and emblems —
    a gold ring, a dark disc, the glyph lit on it. Earned is the base
    state; the ghost lives under .story-badge.locked (unearned). */
@@ -964,6 +969,76 @@ html[data-theme="neon"] .story-you-face {
   .story-badge .story-medal-glyph { font-size: 29px; }
   .story-reward-kicker { font-size: 23px; }
   .story-reward-stat b { font-size: 30px; }
+}
+
+/* ---------------------------------------------------------- outro detail
+   sheets (owner, 2026-10-25): the DeckViewer's overlay discipline in the
+   story register — the sheet holds the tapped item's own data (badge
+   explanation, the egg's tale, the feat's text, the set animation with a
+   live preview) and nothing else; the backdrop tap, ✕, Done and Escape
+   close it back onto the exact screen underneath. Same structure in both
+   themes; on a landscape phone the sheet takes the stage width. */
+.story-detail-backdrop { background: rgba(8, 5, 2, 0.62); }
+.story-detail-sheet {
+  width: min(560px, 94vw);
+  max-height: min(86dvh, 720px);
+  overflow-y: auto;
+  border: 1px solid rgba(238, 201, 106, 0.55);
+  border-radius: 16px;
+  padding: 16px;
+  background:
+    radial-gradient(120% 170% at 50% 0%, rgba(238, 201, 106, 0.16), rgba(238, 201, 106, 0.03) 58%),
+    #16110a;
+  color: #f5edd8;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+  text-align: left;
+}
+.story-detail-head { display: flex; align-items: center; gap: 12px; }
+.story-detail-titles { flex: 1; min-width: 0; }
+.story-detail-kicker {
+  margin: 0; font-size: 11px; font-weight: 800;
+  letter-spacing: 0.12em; text-transform: uppercase; color: #eec96a;
+}
+.story-detail-title { margin: 2px 0 0; font-size: 19px; font-weight: 800; line-height: 1.25; }
+.story-detail-close {
+  flex: none; width: 44px; height: 44px;
+  display: grid; place-items: center;
+  border: 1px solid rgba(238, 201, 106, 0.4); border-radius: 12px;
+  background: transparent; color: inherit; font: inherit; font-size: 15px;
+  cursor: pointer;
+}
+.story-detail-body { margin-top: 14px; }
+.story-detail-line { margin: 0 0 10px; font-size: 14.5px; line-height: 1.55; }
+.story-detail-line:last-child { margin-bottom: 0; }
+.story-detail-foot { display: flex; justify-content: flex-end; margin-top: 16px; }
+/* a locked badge's medallion keeps its ghost in the sheet, as in the case */
+.story-detail-sheet.ghost .story-medal { filter: grayscale(1) brightness(0.72); box-shadow: inset 0 0 0 2px rgba(220, 220, 235, 0.25), 0 2px 6px rgba(0, 0, 0, 0.35); }
+.story-detail-sheet.ghost .story-medal::before { background: radial-gradient(circle at 38% 30%, #2c2c38, #101018 72%); box-shadow: inset 0 0 0 1px rgba(220, 220, 235, 0.22); }
+.story-detail-sheet.ghost .story-medal-glyph { filter: grayscale(1) brightness(0.8); opacity: 0.75; }
+
+/* the set-animation preview: the recap's own cover engine (SetCover)
+   mounted fresh per tier inside a stage that gives it the card face's
+   containment (positioned, clipped, its own stacking context) */
+.story-setanim-preview { display: grid; gap: 10px; margin-bottom: 12px; }
+.story-setanim-stage {
+  position: relative; z-index: 0; overflow: hidden;
+  border-radius: 12px; min-height: 132px; aspect-ratio: 2 / 1;
+  background: radial-gradient(120% 160% at 50% 0%, #2c2113, #171106 72%);
+  box-shadow: inset 0 0 0 1px rgba(238, 201, 106, 0.3);
+}
+.story-setanim-stage-tag {
+  position: absolute; left: 10px; bottom: 8px; z-index: 6;
+  padding: 2px 8px; border-radius: 999px;
+  background: rgba(0, 0, 0, 0.58); color: #ffe9a8;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;
+}
+.story-setanim-replay { margin-bottom: 12px; min-height: 44px; }
+@media (min-width: 720px) {
+  .story-setanim-preview { grid-template-columns: 1fr 1fr; }
+}
+@media (orientation: landscape) and (max-height: 540px) {
+  .story-detail-sheet { width: min(1080px, 97vw); }
+  .story-setanim-preview { grid-template-columns: 1fr 1fr; }
 }
 
 /* ---------------------------------------------------------- co-op (Phases 1–2)
