@@ -4100,3 +4100,17 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
   .wizard.step-table .wiz-crumb { display: none; }
   .wizard.step-table .seg button { font-size: 12px; }
 }
+
+/* S1 landscape fit (design audit 2026-10-25, HANDOFF.md "Table menu"): on a
+   short landscape phone the ☰ table menu was one ~44px-per-row column taller
+   than the 393px stage, so 🚪 Leave table (the destructive action, always
+   last) sat below the fold. In --land-phone the items lay out in 3 columns
+   of equal rows and Leave table (plus the Social row) spans the full width
+   at the bottom, so the whole menu, Leave included, is on screen. Portrait
+   and tablets keep the single column (the query never matches). */
+@media (orientation: landscape) and (max-height: 540px) {
+  .game-menu { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: minmax(40px, auto); gap: 4px; width: min(640px, 75vw); max-height: calc(100dvh - 72px); overflow-y: auto; }
+  .game-menu > button { padding: 8px 10px; font-size: 13.5px; line-height: 1.2; }
+  .game-menu > .menu-social, .game-menu > button.danger { grid-column: 1 / -1; }
+  .game-menu > button.danger { text-align: center; box-shadow: inset 0 0 0 1.5px #ff4d6d; color: #ff4d6d; }
+}
