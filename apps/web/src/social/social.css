@@ -951,3 +951,19 @@ html[data-theme="neon"] .featured { border-color: rgba(128, 84, 255, .45); }
 .soc-panel .soc-prof-head .soc-prof-acts, .profile-page .soc-prof-head .soc-prof-acts { gap: 3px; }
 .soc-panel .soc-prof-head .soc-prof-acts button, .profile-page .soc-prof-head .soc-prof-acts button { padding: 6px 3px; font-size: 11.5px; min-height: 44px; }
 .soc-panel .soc-prof-head .soc-prof-acts .soc-friend-tag, .profile-page .soc-prof-head .soc-prof-acts .soc-friend-tag { padding: 6px 3px; font-size: 11.5px; min-height: 44px; }
+/* Design audit remainder (b) — owner call 2026-10-25 ("Apply the grid
+   fix"): every panel/page state above closes on ONE line except the
+   friend-request state, which swaps Add friend for Accept request +
+   Decline and cannot. From the audit-basis label upper bounds (text =
+   total − 16px chrome; LABELS2 in layout-profile-fit.test.ts) the one
+   line needs 428px (6 buttons) / 487px (7, with Invite) against 351px
+   of panel content, so the flex chips shrink and the labels clip —
+   Chromium-measured pre-fix at 375px: all seven labels clipped, the
+   widest button compressed 32px. That ONE state takes the modal's
+   3-column auto grid (columns size to their widest label): column
+   maxima recompute to 294px (6 buttons) / 289px (7) including the
+   2×6px gaps — ≤ 343px page and ≤ 351px panel — at two rows of 44px
+   (94px) for six buttons, three (144px) for seven. Scoped with :has()
+   on the Accept button's testid so no other state changes geometry;
+   the modal host already grids every state and is untouched. */
+.soc-panel .soc-prof-head .soc-prof-acts:has(> [data-testid="profile-accept"]), .profile-page .soc-prof-head .soc-prof-acts:has(> [data-testid="profile-accept"]) { display: grid; grid-template-columns: repeat(3, auto); justify-content: space-between; gap: 6px; }
