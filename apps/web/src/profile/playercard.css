@@ -418,13 +418,18 @@ html[data-theme="neon"] .plcard[data-treatment="big-joker"] .pcard-front { borde
 .pcard-actions { display: flex; align-items: center; gap: 10px; }
 .pcard-edit {
   flex: none;
-  min-height: 36px; padding: 6px 11px; border-radius: 999px;
+  min-height: 44px; padding: 6px 11px; border-radius: 999px;
   background: transparent; color: var(--gold);
   border: 1px solid rgba(var(--gold-rgb), .55); font-size: 12.5px; font-weight: 600;
   cursor: pointer;
 }
 .pcard-flipbtn {
-  margin-left: auto; min-height: 32px; padding: 5px 6px;
+  /* Design audit D4 (2026-10-24): 32px → the 44px floor. The button sits
+   * BELOW the card in the .pcard-actions row (outside the cqw card box),
+   * so the growth adds 12px to the below-card stack and touches no part
+   * of the card's proportional budget; the card itself remains the
+   * primary flip target. */
+  margin-left: auto; min-height: 44px; padding: 5px 6px;
   background: none; border: none; cursor: pointer;
   color: var(--gold); font-size: 12.5px; font-weight: 700; letter-spacing: .02em;
 }
@@ -531,7 +536,7 @@ html[data-theme="neon"] .plcard[data-treatment="big-joker"] .pcard-front { borde
 .pcard-editor-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .pcard-pickrow { display: flex; flex-wrap: wrap; gap: 6px; }
 .pcard-pick {
-  min-height: 38px; padding: 7px 12px; border-radius: 999px; cursor: pointer;
+  min-height: 44px; padding: 7px 12px; border-radius: 999px; cursor: pointer;
   background: var(--field); color: var(--ink); font-size: 13px; font-weight: 600;
   border: 1px solid rgba(var(--edge-rgb), .4);
 }
