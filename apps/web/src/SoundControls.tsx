@@ -152,8 +152,26 @@ export function SoundDock() {
   // with resize + a 1s tick as backstops for late layout (fonts, safe areas).
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   useLayoutEffect(() => {
+    // A slot only counts if it can actually be seen: connected, with a real
+    // box, and not inside a hidden subtree. The slot span itself is
+    // visibility:hidden BY DESIGN (it only reserves the box — the portaled
+    // dock inside it is the visible control), so the hidden check walks the
+    // slot's ANCESTORS: a slot left behind in a leaving screen or a closed
+    // container must never win the pick over the live screen's slot (first
+    // match in document order did exactly that — the dock portaled into a
+    // hidden/detached slot and vanished or stranded until the next tick).
+    const usable = (x: HTMLElement) => {
+      if (!x.isConnected) return false;
+      const r = x.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) return false;
+      for (let p = x.parentElement; p; p = p.parentElement) {
+        const cs = getComputedStyle(p);
+        if (cs.display === 'none' || cs.visibility === 'hidden' || cs.visibility === 'collapse') return false;
+      }
+      return true;
+    };
     const find = () => {
-      const next = [...document.querySelectorAll<HTMLElement>('.dock-slot')].find((x) => x.getBoundingClientRect().width > 0) ?? null;
+      const next = [...document.querySelectorAll<HTMLElement>('.dock-slot')].find(usable) ?? null;
       setSlot((prev) => (prev === next ? prev : next));
     };
     find();

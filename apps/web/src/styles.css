@@ -1305,7 +1305,19 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
    the measurement raced the app's transition transforms and landed stale,
    overlapping the header's Social/gear buttons at every size. In-flow, the dock
    fills its slot exactly and moves with the header's own layout. */
-.sound-dock.slotted { position: relative; width: 100%; height: 100%; display: block; }
+/* Rogue-dock fix (owner report 2026-10-25): position:relative does NOT clear
+   the base rule's top/right — the fixed-mode offsets (top: 6–10px +
+   env(safe-area-inset-top), right: 8px + env(safe-area-inset-right)) kept
+   applying as a relative shift, so the slotted speaker sat off its slot on
+   every surface: a subtle (-8, +10)px at zero insets (headless), but on a
+   real iPhone the portrait safe-area inset drops it a full row below the
+   header line on menu screens, shoves it down out of the scorebug's slot at
+   the table (painted over by the bug panel — "missing"), and in landscape
+   slides it sideways across the Social button, leaving the slot's own frame
+   standing empty at the corner. top/right: auto pins the dock to its slot's
+   box exactly, at every size, theme and inset. The fixed fallback below
+   keeps its offsets — they are its position. */
+.sound-dock.slotted { position: relative; top: auto; right: auto; width: 100%; height: 100%; display: block; }
 .sound-dock.slotted .dock-btn { width: 100% !important; height: 100% !important; }
 /* square, top of the scorebug slot: the slot's full height covered the recap's Save button */
 .sound-dock.slotted.in-bug { height: auto; aspect-ratio: 1; }

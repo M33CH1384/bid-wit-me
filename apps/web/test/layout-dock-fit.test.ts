@@ -18,6 +18,21 @@
  * the victory screen is up. The recap (.tt-backdrop) is deliberately NOT a
  * suppression trigger: its header reserves dock room (pinned in
  * scorecard-espn.test.ts) and the dock stays reachable over it.
+ *
+ * Rogue dock (owner report 2026-10-25, follow-up): D1's slotted rule set
+ * position:relative but never cleared the base rule's top/right, so the
+ * fixed-mode offsets (top: 6–10px + env(safe-area-inset-top), right: 8px +
+ * env(safe-area-inset-right)) kept applying as a RELATIVE shift — the
+ * speaker sat off its slot everywhere: dropped a full row below the header
+ * line on Home (portrait insets), slid across the Social button leaving the
+ * slot's frame empty at the corner (landscape), and shoved down out of the
+ * scorebug's slot at the table where the bug panel painted over it
+ * ("missing"). The audit's Chromium has zero safe-area insets, so it only
+ * ever saw the (-8, +10)px residue and passed it. Fix: top/right: auto on
+ * the slotted rule (pinned below), and the slot pick now requires a usable
+ * slot — connected, real height as well as width, and no hidden ancestor —
+ * so a slot stranded in a leaving/hidden subtree can never steal the dock
+ * from the live screen's slot.
  */
 import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -52,8 +67,20 @@ describe('D1: the dock renders into its slot (no measured parking)', () => {
     expect(sc).toContain('export function rectsOverlap');
   });
 
+  it('the slot pick requires a usable slot (connected, real box, no hidden ancestor)', () => {
+    // the pick is the mechanism: a width-only first-match let hidden or
+    // stranded slots steal the dock (rogue-dock follow-up, 2026-10-25)
+    expect(sc).toContain('r.width <= 0 || r.height <= 0');
+    expect(sc).toContain('x.isConnected');
+    expect(sc).toContain('x.parentElement');
+    expect(sc).toContain("cs.visibility === 'hidden'");
+  });
+
   it('slotted CSS fills the slot exactly, in flow', () => {
-    expect(css).toContain('.sound-dock.slotted { position: relative; width: 100%; height: 100%; display: block; }');
+    // top/right: auto is the rogue-dock fix (2026-10-25): position:relative
+    // alone kept the base rule's fixed-mode offsets applying as a relative
+    // shift (safe-area insets included) — the dock must sit ON its slot.
+    expect(css).toContain('.sound-dock.slotted { position: relative; top: auto; right: auto; width: 100%; height: 100%; display: block; }');
     expect(css).toContain('.sound-dock.slotted .dock-btn { width: 100% !important; height: 100% !important; }');
     // the old var-parked rules are gone
     expect(css).not.toContain('var(--dock-top)');
@@ -116,6 +143,57 @@ describe('D1: the dock renders into its slot (no measured parking)', () => {
     });
     const btn = document.querySelector('[data-testid="sound-button"]');
     expect(btn).not.toBeNull();
+    expect(btn!.closest('.sound-dock')!.classList.contains('slotted')).toBe(false);
+  });
+
+  it('DOM: a slot inside a hidden subtree never wins over the live slot', async () => {
+    const { SoundDock } = await import('../src/SoundControls');
+    el = document.createElement('div');
+    document.body.appendChild(el);
+    const rect = (w: number, h: number) => () =>
+      ({ left: 0, top: 0, right: w, bottom: h, width: w, height: h, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+    // a stranded slot (a leaving screen / closed container): real box, but
+    // its subtree is display:none — document order puts it FIRST, and the
+    // pre-fix width-only pick took it and the dock vanished with it
+    const hiddenWrap = document.createElement('div');
+    hiddenWrap.style.display = 'none';
+    const deadSlot = document.createElement('span');
+    deadSlot.className = 'dock-slot';
+    deadSlot.getBoundingClientRect = rect(46, 46);
+    hiddenWrap.appendChild(deadSlot);
+    document.body.appendChild(hiddenWrap);
+    // the live screen's slot
+    const liveSlot = document.createElement('span');
+    liveSlot.className = 'dock-slot';
+    liveSlot.getBoundingClientRect = rect(46, 46);
+    document.body.appendChild(liveSlot);
+    root = createRoot(el);
+    await act(async () => {
+      root!.render(createElement(SoundDock));
+    });
+    const btn = document.querySelector('[data-testid="sound-button"]');
+    expect(btn).not.toBeNull();
+    expect(liveSlot.contains(btn)).toBe(true);
+    expect(deadSlot.contains(btn)).toBe(false);
+  });
+
+  it('DOM: a zero-height slot is not a seat — the dock falls back instead', async () => {
+    const { SoundDock } = await import('../src/SoundControls');
+    el = document.createElement('div');
+    document.body.appendChild(el);
+    const flat = document.createElement('span');
+    flat.className = 'dock-slot';
+    // width without height: a collapsed placeholder, not a rendered header box
+    flat.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, right: 46, bottom: 0, width: 46, height: 0, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+    document.body.appendChild(flat);
+    root = createRoot(el);
+    await act(async () => {
+      root!.render(createElement(SoundDock));
+    });
+    const btn = document.querySelector('[data-testid="sound-button"]');
+    expect(btn).not.toBeNull();
+    expect(flat.contains(btn)).toBe(false);
     expect(btn!.closest('.sound-dock')!.classList.contains('slotted')).toBe(false);
   });
 });
