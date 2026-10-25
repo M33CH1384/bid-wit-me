@@ -22,6 +22,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Card } from '@spades/rules';
 import { DECKS, deckArtUrl, deckById, deckThumbUrl, type DeckDef } from './decks';
+import { deckBackUrl } from './three/cardTextures';
 import { deckUnlockLine, deckUnlocked, useClearedStoryStops } from './storyDecks';
 import { DECK_CARD_ORDER, cardLabel, deckCardFact, deckLore } from './deckLore';
 import { useEscapeClose } from './useEscapeClose';
@@ -144,6 +145,100 @@ function DeckBrowser({ deck, selected, locked, onUse, onClose }: {
             disabled={locked || selected} onClick={onUse}>
             {selected ? 'This is your deck' : locked ? '🔒 Locked' : 'Use this deck'}
           </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function BackTile({ deckId, onFocus }: { deckId: string; onFocus: () => void }) {
+  return (
+    <button type="button" className="db-tile" data-testid="deck-card-BACK"
+      aria-label="Look at the card back" onClick={onFocus}>
+      <img src={deckBackUrl(deckId)} alt="" loading="lazy" />
+    </button>
+  );
+}
+
+function BackFocus({ deck }: { deck: DeckDef }) {
+  return (
+    <div className="db-focus" data-testid="deck-back-focus">
+      <div className="db-stage">
+        <img className="db-big" src={deckBackUrl(deck.id)} alt={`${deck.name} card back`} />
+      </div>
+      <div className="db-focus-meta">
+        <b className="db-focus-name">Card back</b>
+      </div>
+    </div>
+  );
+}
+
+/** What the viewer's close-up is showing: a card, or the deck's back. */
+type ViewerFocus = Card | 'BACK';
+
+/**
+ * DECK VIEWER (owner, 2026-10-25: "When a new deck is unlocked I should be
+ * able to tap it and scroll thru it") — the browser sheet as a LOOK, not a
+ * picker. It reuses the browser's renderer whole (hero faces, lore, the
+ * faces / every-card grids, tap a card for the close-up with prev/next) and
+ * adds the one thing the picker never showed: the deck's BACK, at the head
+ * of the scroll. There is no Use action — opening the viewer changes no
+ * selection, and closing it returns to the exact screen and state the
+ * player came from. Mounted from the unlock presentations (the story
+ * outro's deck card is the first door).
+ */
+export function DeckViewer({ deck, onClose }: { deck: DeckDef; onClose: () => void }) {
+  const [focus, setFocus] = useState<ViewerFocus | null>(null);
+  const sheetRef = useEscapeClose(onClose);
+  const lore = deckLore(deck.id);
+  const artCards = DECK_CARD_ORDER.filter((c) => deckArtUrl(deck.id, c));
+  const restCards = DECK_CARD_ORDER.filter((c) => !deckArtUrl(deck.id, c));
+  return (
+    <div className="modal-backdrop db-backdrop" ref={sheetRef} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <section className="deck-browser deck-viewer glass slant" role="dialog" aria-modal="true"
+        aria-label={`${deck.name} deck viewer`} data-testid="deck-viewer">
+        <header className="db-head">
+          <div className="db-hero" aria-hidden="true">
+            {(['QS', 'KS', 'BJ'] as Card[]).map((c, i) => {
+              const u = deckArtUrl(deck.id, c);
+              return u ? <img key={c} className={`db-hero-card h${i}`} src={u} alt="" /> : null;
+            })}
+          </div>
+          <div className="db-title">
+            <h3 className="db-name">{deck.name}</h3>
+            {lore.tag && <p className="db-tag">{lore.tag}</p>}
+            {lore.blurb && <p className="db-blurb">{lore.blurb}</p>}
+          </div>
+          <button type="button" className="db-close" data-testid="deck-viewer-close"
+            aria-label="Close deck viewer" onClick={onClose}>✕</button>
+        </header>
+        <div className="db-body">
+          {focus === 'BACK' ? (
+            <BackFocus deck={deck} />
+          ) : focus ? (
+            <CardFocus deckId={deck.id} card={focus} onNav={setFocus} />
+          ) : (
+            <>
+              <h4 className="db-sec">The back</h4>
+              <div className="db-grid back">
+                <BackTile deckId={deck.id} onFocus={() => setFocus('BACK')} />
+              </div>
+              <h4 className="db-sec">The faces</h4>
+              <div className="db-grid faces">
+                {artCards.map((c) => <CardTile key={c} deckId={deck.id} card={c} onFocus={setFocus} />)}
+              </div>
+              <h4 className="db-sec">Every card</h4>
+              <div className="db-grid rest">
+                {restCards.map((c) => <CardTile key={c} deckId={deck.id} card={c} onFocus={setFocus} />)}
+              </div>
+            </>
+          )}
+        </div>
+        <footer className="db-foot">
+          {focus
+            ? <button type="button" className="db-allcards" data-testid="deck-all-cards" onClick={() => setFocus(null)}>← All cards</button>
+            : <span className="db-foot-hint">Tap any card to see it up close</span>}
+          <button type="button" className="primary go db-use" data-testid="deck-viewer-done" onClick={onClose}>Done</button>
         </footer>
       </section>
     </div>

@@ -32,7 +32,8 @@ import CoopPartner from './CoopPartner';
 import StoryRoom from './StoryRoom';
 import { deckUnlockNotice, invalidateStoryProgress } from '../storyDecks';
 import { setAnimForStop, setAnimUnlockNotice } from '../setAnims';
-import { deckForStop } from '../decks';
+import { deckForStop, type DeckDef } from '../decks';
+import { DeckViewer } from '../DeckGallery';
 import { deckBackUrl } from '../three/cardTextures';
 import { clearStoryGame, loadStoryGame, storySaveSummary, storySaveValidFor, type StorySavedGame } from './storySave';
 import { railCastForAttempt, rundownFor, storyBadgesFor } from '@spades/bots';
@@ -381,6 +382,10 @@ export default function StoryHome() {
     return () => { live = false; };
   }, [storyUserId]);
   const [lastResult, setLastResult] = useState<StoryResult | null>(null);
+  /** The deck being looked through from the outro's unlock card (owner,
+   *  2026-10-25): the viewer is an overlay — opening it touches no screen
+   *  state, and closing it lands back on this exact outro. */
+  const [viewDeck, setViewDeck] = useState<DeckDef | null>(null);
   const finishedRef = useRef<{ seed: string; won: boolean } | null>(null);
   /** The game just played, manner included (word travels fast): the
    *  outro's replay swap reads this game's band (the Porch reacts to
@@ -957,13 +962,15 @@ export default function StoryHome() {
           </div>
         )}
         {r && r.won && r.firstClear && deckUnlockNotice(r.stopId) && deckForStop(r.stopId) && (
-          <div className="story-reward-card story-deck-line story-reveal" data-testid="story-deck-notice" style={{ ['--i' as string]: 1 } as CSSProperties}>
+          <button type="button" className="story-reward-card story-deck-line story-reveal story-deck-tap" data-testid="story-deck-notice" style={{ ['--i' as string]: 1 } as CSSProperties}
+            onClick={() => setViewDeck(deckForStop(r.stopId)!)}>
             <img className="story-reward-deckart" src={deckBackUrl(deckForStop(r.stopId)!.id)} alt="" aria-hidden />
-            <div className="story-reward-card-body">
-              <p className="story-reward-card-title">{deckUnlockNotice(r.stopId)}</p>
-              <p className="story-reward-card-sub">Yours for good — find it in the deck picker, at any table.</p>
-            </div>
-          </div>
+            <span className="story-reward-card-body">
+              <span className="story-reward-card-title">{deckUnlockNotice(r.stopId)}</span>
+              <span className="story-reward-card-sub">Yours for good — find it in the deck picker, at any table.</span>
+              <span className="story-reward-card-view">Tap to look through the deck →</span>
+            </span>
+          </button>
         )}
         {r && r.won && r.firstClear && setAnimUnlockNotice(r.stopId) && (
           <div className="story-reward-card story-deck-line story-reveal" data-testid="story-setanim-notice" style={{ ['--i' as string]: 2 } as CSSProperties}>
@@ -1188,6 +1195,7 @@ export default function StoryHome() {
       <NowPlaying />
       {body}
       <SettingsSheetHost settings={settings} onChange={applySettings} tips={tips} onTips={setTips} />
+      {viewDeck && <DeckViewer deck={viewDeck} onClose={() => setViewDeck(null)} />}
     </>
   );
 }

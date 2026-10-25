@@ -3966,6 +3966,16 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
 .db-fact-name { font-family: var(--display); font-weight: 800; font-size: 15px; letter-spacing: .05em; color: var(--gold); }
 .db-fact p { margin: 4px 0 0; font-size: 14px; line-height: 1.5; }
 
+/* Deck VIEWER (unlock moment, owner 2026-10-25): the browser sheet worn as
+   a look, not a picker. The back's grid holds its single tile at face size.
+   On a landscape phone the sheet takes the stage width — the scroll fills
+   the screen instead of sitting as a portrait column in a dark field (the
+   grids auto-fill, so the wider sheet is simply more columns per row). */
+.db-grid.back { grid-template-columns: 92px; }
+@media (orientation: landscape) and (max-height: 540px) {
+  .deck-browser.deck-viewer { width: min(1080px, 97vw); }
+}
+
 /* Collapsible setup section cards (owner, 2026-10-23): the card header is
    a toggle; the body folds with a grid-rows transition, instant under
    reduced motion. Cards fold independently — no accordion — so the Rules

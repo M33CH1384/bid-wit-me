@@ -875,6 +875,18 @@ html[data-theme="neon"] .story-you-face {
   box-shadow: 0 0 0 1px rgba(238, 201, 106, 0.55), 0 6px 14px rgba(0, 0, 0, 0.45);
 }
 
+/* the deck unlock card is a door (owner, 2026-10-25): the whole card is a
+   button into the deck viewer. It keeps the card's exact settled look —
+   the rules below only strip the UA button chrome, blockify the text
+   spans the button carries, and add the look-through line. */
+.story-deck-tap { font: inherit; color: inherit; cursor: pointer; width: 100%; }
+.story-deck-tap .story-reward-card-title,
+.story-deck-tap .story-reward-card-sub { display: block; }
+.story-reward-card-view {
+  display: block; margin: 6px 0 0;
+  font-size: 12.5px; font-weight: 700; letter-spacing: 0.04em; color: #eec96a;
+}
+
 /* the medallion: one medal design for badges, finds and emblems —
    a gold ring, a dark disc, the glyph lit on it. Earned is the base
    state; the ghost lives under .story-badge.locked (unearned). */
