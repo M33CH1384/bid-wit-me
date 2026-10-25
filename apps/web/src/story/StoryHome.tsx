@@ -37,6 +37,7 @@ import { deckBackUrl } from '../three/cardTextures';
 import { clearStoryGame, loadStoryGame, storySaveSummary, storySaveValidFor, type StorySavedGame } from './storySave';
 import { railCastForAttempt, rundownFor, storyBadgesFor } from '@spades/bots';
 import ScriptPlayer, { type SceneEgg } from './ScriptPlayer';
+import { livingMoodFor } from './storyLiving';
 import { SceneAudio } from './SceneAudio';
 import StoryTape from './StoryTape';
 import StoryFace from './StoryFace';
@@ -850,7 +851,7 @@ export default function StoryHome() {
             cta="To the table"
             onDone={() => startGame(stop)}
             bgUrl={storyBackdropUrl(stop)}
-            living={stop.id === 'porch'}
+            living livingMood={livingMoodFor(stop.id)}
             cast={[stop.pair[0], 'dee', stop.pair[1]]}
             rail={railCastForAttempt(stop.id, factsFor(stop).attempts + 1)}
             egg={eggFor(stop)}

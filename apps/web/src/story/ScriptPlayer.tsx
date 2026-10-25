@@ -26,6 +26,7 @@ import { cancelActiveSpeech } from '../audioSession';
 import { setStoryVoiceScope, speakBot, spokenClipDurationMs } from '../talkPrefs';
 import StoryFace from './StoryFace';
 import KingGunArt from './KingGunArt';
+import { PORCH_LIVING_MOOD, livingMoodVars, type LivingMood } from './storyLiving';
 import { useReduceEffects } from '../fx';
 import type { SeatPos } from '../spatial';
 
@@ -132,7 +133,7 @@ function StageFace({ characterId, name }: { characterId: string; name: string })
   );
 }
 
-export default function ScriptPlayer({ beats, cta, onDone, bgUrl, cast = [], egg, onEggFound, rail = [], living = false }: {
+export default function ScriptPlayer({ beats, cta, onDone, bgUrl, cast = [], egg, onEggFound, rail = [], living = false, livingMood }: {
   beats: StoryBeat[];
   /** label of the final advance button */
   cta: string;
@@ -146,20 +147,30 @@ export default function ScriptPlayer({ beats, cta, onDone, bgUrl, cast = [], egg
   /** railbird character ids standing on the rail at this stop (storyRail) */
   rail?: string[];
   /**
-   * LIVING SCENE SAMPLE (owner, 2026-10-24): the pre-match intro staged
+   * LIVING SCENE (sample at the Porch 2026-10-24; owner's pick
+   * 2026-10-25 put it at EVERY stop): the pre-match intro staged
    * alive — the backdrop breathes (light play + drifting air) and the
    * seated pair stand LARGE in the frame with a slow idle drift, the
-   * current speaker lit. Opt-in per call site; ONLY the Porch intro
-   * (stop 1, solo + co-op) passes it, so every other scene renders
+   * current speaker lit. Opt-in per call site; ONLY the two intro
+   * call-site classes pass it (solo StoryHome intro + co-op StoryRoom
+   * scene phase) — outros and the King finale never do, so they render
    * exactly as before. Collapses to the static staging whenever Reduce
    * effects or the OS reduced-motion setting is on. The beats, voices,
-   * pacing and skip behavior are untouched either way.
+   * pacing and skip behavior are untouched either way. Visuals only:
+   * the audio stays the cast recordings / text, per the voice fence.
    */
   living?: boolean;
+  /**
+   * The stop's motion character (storyLiving.ts): pacing + light as
+   * data, consumed as --lv-* custom properties on the scene root.
+   * Absent = the Porch mood, the shipped sample's own values.
+   */
+  livingMood?: LivingMood;
 }) {
   const reduceFx = useReduceEffects();
   const [osReduced] = useState(osPrefersReducedMotion);
   const livingOn = living && !reduceFx && !osReduced;
+  const mood = livingMood ?? PORCH_LIVING_MOOD;
   /** The staged pair: the cast minus Dee (she guides from the strip,
    *  she is not seated at the table). Exactly two or no stage at all. */
   const stagePair = livingOn ? cast.filter((id) => id !== 'dee' && STORY_CHARACTERS[id]) : [];
@@ -307,8 +318,19 @@ export default function ScriptPlayer({ beats, cta, onDone, bgUrl, cast = [], egg
   };
 
   return (
-    <div className={`story-scene${reduceFx ? ' reduce' : ''}${livingOn ? ' living' : ''}`} data-testid="story-script">
+    <div
+      className={`story-scene${reduceFx ? ' reduce' : ''}${livingOn ? ' living' : ''}`}
+      data-testid="story-script"
+      data-living-mood={livingOn ? mood.id : undefined}
+      style={livingOn ? livingMoodVars(mood) : undefined}
+    >
       {bgUrl && <div className="story-scene-bg" style={{ backgroundImage: `url(${bgUrl})` }} aria-hidden />}
+      {/* VIDEO SEAM (phase 2, separate build): at the three big stops
+          (storyLiving's `big` rows — the King, the Legends' Table, the
+          Pj's) a silent clip mounts OVER this living block, which
+          stays as the base layer beneath it: the clip's loading state
+          and its fallback whenever the clip can't play. Nothing here
+          changes for that build; the layer order below is the seam. */}
       {livingOn && (
         <>
           <div className="story-scene-glow" aria-hidden />

@@ -339,35 +339,41 @@ html[data-theme="neon"] .story-scene { border-color: rgba(128, 84, 255, 0.55); }
 html[data-theme="neon"] .story-cast-one.active { border-color: #5bdfff; box-shadow: 0 0 0 1px #5bdfff, 0 6px 18px rgba(0, 0, 0, 0.45); }
 html[data-theme="neon"] .story-cast-one.active .story-cast-face { background: #5bdfff; color: #06121a; }
 
-/* ---- Living scene SAMPLE (owner, 2026-10-24): the Porch intro only ----
+/* ---- Living scene (sample at the Porch 2026-10-24; owner's pick
+   2026-10-25: EVERY stop's pre-match intro) ----
    The pre-match scene staged alive: the shipped backdrop breathes under
-   a warm porch-light glow and a slow drift of evening air, and the
-   seated pair stand LARGE in the frame with a gentle idle bob, the
-   current speaker lit and the other dimmed — the venue-effects register
-   the Pj's ships, pointed at the story scene. ScriptPlayer renders
-   these layers ONLY for the Porch intro and ONLY when neither Reduce
-   effects nor the OS reduced-motion setting is on; otherwise none of
-   this markup exists and the scene is the static staging, byte for
-   byte. Every animation below runs on transform/opacity alone
-   (compositor) — no canvas, no per-frame painting (transitions ban).
-   All rules are scoped under .story-scene.living so no other stop, and
-   no other scene, can pick any of it up. */
-.story-scene.living .story-scene-bg { animation: story-living-bgscale 36s ease-in-out infinite alternate; }
-@keyframes story-living-bgscale { from { transform: scale(1); } to { transform: scale(1.07); } }
+   a warm light glow and a slow drift of air, and the seated pair stand
+   LARGE in the frame with a gentle idle bob, the current speaker lit
+   and the other dimmed — the venue-effects register the Pj's ships,
+   pointed at the story scene. ScriptPlayer renders these layers ONLY
+   for the two intro call-site classes (solo intro + co-op scene phase)
+   and ONLY when neither Reduce effects nor the OS reduced-motion
+   setting is on; otherwise none of this markup exists and the scene is
+   the static staging, byte for byte. Every animation below runs on
+   transform/opacity alone (compositor) — no canvas, no per-frame
+   painting (transitions ban). All rules are scoped under
+   .story-scene.living so no non-living scene can pick any of it up.
+   ONE engine for the whole route: the pacing/light values are the
+   stop's MOOD, arriving as --lv-* custom properties from
+   storyLiving.ts. The var() fallbacks below ARE the Porch values, so
+   a living render carrying no mood is the shipped Porch staging,
+   value for value. */
+.story-scene.living .story-scene-bg { animation: story-living-bgscale var(--lv-breathe, 36s) ease-in-out infinite alternate; }
+@keyframes story-living-bgscale { from { transform: scale(1); } to { transform: scale(var(--lv-swell, 1.07)); } }
 .story-scene-glow {
   position: absolute; z-index: 1; pointer-events: none;
   left: 8%; right: 8%; top: -12%; height: 62%;
-  background: radial-gradient(ellipse 60% 55% at 50% 30%, rgba(255, 186, 92, 0.34), rgba(255, 160, 64, 0.12) 55%, transparent 75%);
-  animation: story-living-glow 7s ease-in-out infinite alternate;
+  background: radial-gradient(ellipse 60% 55% at 50% 30%, var(--lv-glow-a, rgba(255, 186, 92, 0.34)), var(--lv-glow-b, rgba(255, 160, 64, 0.12)) 55%, transparent 75%);
+  animation: story-living-glow var(--lv-glow-dur, 7s) ease-in-out infinite alternate;
 }
-@keyframes story-living-glow { from { opacity: 0.55; transform: scale(1); } to { opacity: 1; transform: scale(1.05); } }
+@keyframes story-living-glow { from { opacity: var(--lv-glow-lo, 0.55); transform: scale(1); } to { opacity: var(--lv-glow-hi, 1); transform: scale(1.05); } }
 .story-scene-haze {
   position: absolute; z-index: 1; pointer-events: none;
   left: -15%; right: -15%; top: 22%; height: 46%;
   background:
-    radial-gradient(ellipse 45% 60% at 30% 50%, rgba(255, 214, 150, 0.10), transparent 70%),
-    radial-gradient(ellipse 40% 55% at 72% 45%, rgba(255, 200, 130, 0.08), transparent 70%);
-  animation: story-living-haze 26s ease-in-out infinite alternate;
+    radial-gradient(ellipse 45% 60% at 30% 50%, var(--lv-haze-a, rgba(255, 214, 150, 0.10)), transparent 70%),
+    radial-gradient(ellipse 40% 55% at 72% 45%, var(--lv-haze-b, rgba(255, 200, 130, 0.08)), transparent 70%);
+  animation: story-living-haze var(--lv-haze-dur, 26s) ease-in-out infinite alternate;
 }
 @keyframes story-living-haze { from { transform: translateX(-3.5%); } to { transform: translateX(3.5%); } }
 .story-stage {
@@ -378,9 +384,9 @@ html[data-theme="neon"] .story-cast-one.active .story-cast-face { background: #5
   position: absolute; bottom: 0; width: min(40%, 228px);
   transition: opacity 0.45s ease, filter 0.45s ease;
 }
-.story-stage-one.left { left: 1.5%; animation: story-living-bob 9s ease-in-out infinite alternate; }
-.story-stage-one.right { right: 1.5%; animation: story-living-bob 11s ease-in-out infinite alternate-reverse; }
-@keyframes story-living-bob { from { transform: translateY(0); } to { transform: translateY(-7px); } }
+.story-stage-one.left { left: 1.5%; animation: story-living-bob var(--lv-bob-l, 9s) ease-in-out infinite alternate; }
+.story-stage-one.right { right: 1.5%; animation: story-living-bob var(--lv-bob-r, 11s) ease-in-out infinite alternate-reverse; }
+@keyframes story-living-bob { from { transform: translateY(0); } to { transform: translateY(var(--lv-bob-amp, -7px)); } }
 .story-stage-one.dim { opacity: 0.48; filter: saturate(0.75) brightness(0.72); }
 .story-stage-one.active { opacity: 1; filter: none; }
 .story-stage-face {

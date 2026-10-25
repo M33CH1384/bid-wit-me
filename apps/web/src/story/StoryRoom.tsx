@@ -30,6 +30,7 @@ import StoryTape from './StoryTape';
 import StoryFace from './StoryFace';
 import { SceneAudio } from './SceneAudio';
 import ScriptPlayer, { type SceneEgg } from './ScriptPlayer';
+import { livingMoodFor } from './storyLiving';
 import { storyBackdropUrl } from './storyBackdrop';
 import {
   fetchPairContext, fetchStoryProgress, postStoryFound, postStoryResult, reportStorySession,
@@ -518,7 +519,7 @@ export function StoryRoomInner({ conn, cs, code, track, myUid, onExit }: {
           cta={meReady ? 'Waiting for your partner…' : 'Ready — to the table'}
           onDone={() => ready()}
           bgUrl={storyBackdropUrl(stop)}
-          living={stop.id === 'porch'}
+          living livingMood={livingMoodFor(stop.id)}
           cast={[stop.pair[0], 'dee', stop.pair[1]]}
           rail={railCastForAttempt(stop.id, factsFor(stop).attempts + 1)}
           egg={eggFor(stop)}
