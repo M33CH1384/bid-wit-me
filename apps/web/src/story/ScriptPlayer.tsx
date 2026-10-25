@@ -26,7 +26,7 @@ import { cancelActiveSpeech } from '../audioSession';
 import { setStoryVoiceScope, speakBot, spokenClipDurationMs } from '../talkPrefs';
 import StoryFace from './StoryFace';
 import KingGunArt from './KingGunArt';
-import { PORCH_LIVING_MOOD, livingMoodVars, type LivingMood } from './storyLiving';
+import { PORCH_LIVING_MOOD, livingClipFor, livingMoodVars, type LivingClip, type LivingMood } from './storyLiving';
 import { useReduceEffects } from '../fx';
 import type { SeatPos } from '../spatial';
 
@@ -133,6 +133,59 @@ function StageFace({ characterId, name }: { characterId: string; name: string })
   );
 }
 
+/**
+ * The big stops' silent intro clip (the King, the Legends' Table, the
+ * Pj's — storyLiving's clip table), layered OVER the living staging.
+ * Poster-first and lazy: the element exists only inside a living
+ * big-stop intro, asks the browser to load on mount, and fades in only
+ * once it is actually PLAYING — until then, and forever if it errors,
+ * the poster and the living scene underneath carry the frame, so a
+ * slow or missing clip never gates the match and never disturbs the
+ * scene. The clip carries NO audio stream by construction; the beats'
+ * cast recordings / text play over it through the normal engine.
+ * Decorative: aria-hidden, pointer-events off (story.css).
+ */
+function SceneVideo({ clip }: { clip: LivingClip }) {
+  const ref = useRef<HTMLVideoElement | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    const onError = () => setFailed(true);
+    const onPlaying = () => setPlaying(true);
+    v.addEventListener('error', onError);
+    v.addEventListener('playing', onPlaying);
+    try {
+      v.muted = true;
+      v.load();
+      const p = v.play() as unknown as Promise<void> | undefined;
+      if (p && typeof p.catch === 'function') {
+        p.catch(() => { /* playback stalled/refused: poster + living scene stay up */ });
+      }
+    } catch { /* no media playback in this environment: poster + living scene stay up */ }
+    return () => {
+      v.removeEventListener('error', onError);
+      v.removeEventListener('playing', onPlaying);
+    };
+  }, []);
+  if (failed) return null;
+  return (
+    <video
+      ref={ref}
+      className={`story-scene-video${playing ? ' on' : ''}`}
+      data-testid="story-scene-video"
+      src={clip.src}
+      poster={clip.poster}
+      muted
+      loop
+      playsInline
+      preload="none"
+      aria-hidden
+    />
+  );
+}
+
 export default function ScriptPlayer({ beats, cta, onDone, bgUrl, cast = [], egg, onEggFound, rail = [], living = false, livingMood }: {
   beats: StoryBeat[];
   /** label of the final advance button */
@@ -171,6 +224,11 @@ export default function ScriptPlayer({ beats, cta, onDone, bgUrl, cast = [], egg
   const [osReduced] = useState(osPrefersReducedMotion);
   const livingOn = living && !reduceFx && !osReduced;
   const mood = livingMood ?? PORCH_LIVING_MOOD;
+  /** The big stops' intro clip rides the SAME gate as the living
+   *  staging: never under reduced effects, never without the living
+   *  prop (outros, the King finale), never on the tape half (a
+   *  different component). Null at every other stop. */
+  const clip = livingOn ? livingClipFor(mood) : null;
   /** The staged pair: the cast minus Dee (she guides from the strip,
    *  she is not seated at the table). Exactly two or no stage at all. */
   const stagePair = livingOn ? cast.filter((id) => id !== 'dee' && STORY_CHARACTERS[id]) : [];
@@ -325,12 +383,6 @@ export default function ScriptPlayer({ beats, cta, onDone, bgUrl, cast = [], egg
       style={livingOn ? livingMoodVars(mood) : undefined}
     >
       {bgUrl && <div className="story-scene-bg" style={{ backgroundImage: `url(${bgUrl})` }} aria-hidden />}
-      {/* VIDEO SEAM (phase 2, separate build): at the three big stops
-          (storyLiving's `big` rows — the King, the Legends' Table, the
-          Pj's) a silent clip mounts OVER this living block, which
-          stays as the base layer beneath it: the clip's loading state
-          and its fallback whenever the clip can't play. Nothing here
-          changes for that build; the layer order below is the seam. */}
       {livingOn && (
         <>
           <div className="story-scene-glow" aria-hidden />
@@ -354,6 +406,12 @@ export default function ScriptPlayer({ beats, cta, onDone, bgUrl, cast = [], egg
           )}
         </>
       )}
+      {/* BIG-STOP VIDEO (owner pick 2026-10-25): at the three big stops
+          the silent clip mounts OVER the living block above, which
+          stays mounted as the base layer beneath it — the clip's
+          loading state, and its fallback whenever the clip can't play.
+          `clip` is null everywhere else and under reduced effects. */}
+      {clip && <SceneVideo key={mood.id} clip={clip} />}
       <div className="story-bar top" aria-hidden />
       <div className="story-bar bottom" aria-hidden />
       <div className="story-scene-inner">

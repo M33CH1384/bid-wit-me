@@ -410,6 +410,29 @@ html[data-theme="neon"] .story-stage-one.active .story-stage-face {
 .story-stage-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 22%; }
 .story-stage-initial { position: absolute; inset: 0; display: grid; place-items: center; font-size: 64px; font-weight: 800; }
 
+/* ---- Big-stop intro video (owner pick 2026-10-25: "video at the big
+   stops") ---- the silent clip layered OVER the living staging at the
+   King, the Legends' Table and the Pj's only. ScriptPlayer mounts it
+   solely under the living gate (never reduced-effects, never outros),
+   so this rule — like every living rule — is scoped under
+   .story-scene.living. It shares z-index 1 with the glow/haze/stage
+   layers and follows them in DOM order, so it paints above the living
+   base (which stays mounted beneath it: the clip's loading state and
+   its fallback whenever the clip can't play) and below the letterbox
+   bars (z 3) and the scene's inner content (z 2). Poster-first: the
+   poster paints instantly and the element fades in — opacity only,
+   compositor (transitions discipline) — only once it is actually
+   playing (.on); an error unmounts it and the living scene carries on
+   untouched. Cover-cropped like the backdrop panorama it replaces. */
+.story-scene.living .story-scene-video {
+  position: absolute; inset: 0; z-index: 1;
+  width: 100%; height: 100%;
+  object-fit: cover; object-position: 50% 32%;
+  pointer-events: none;
+  opacity: 0; transition: opacity 0.9s ease;
+}
+.story-scene.living .story-scene-video.on { opacity: 1; }
+
 /* ---- Tale of the Tape (narrative) ----
    One type + spacing system (rework, owner 2026-10-21). The old rows were
    a flowing paragraph per row: an inline-block label with a min-width but

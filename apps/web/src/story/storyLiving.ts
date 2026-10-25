@@ -19,11 +19,12 @@
  * dimming, the cast strip and every beat stay the engine's, identical
  * at every stop.
  *
- * VIDEO SEAM (phase 2, separate build): the three BIG stops below are
- * where a silent clip later takes over the stage. The living render
- * stays mounted underneath as the base layer there — it is the clip's
- * loading state and its reduced-effects/static fallback — so this
- * table is the one place that knows which stops are big.
+ * VIDEO (owner pick, 2026-10-25: "video at the big stops"): the three
+ * BIG stops below are where a silent clip takes over the stage. The
+ * living render stays mounted underneath as the base layer there — it
+ * is the clip's loading state and its reduced-effects/static fallback —
+ * so this table is the one place that knows which stops are big, and
+ * the clip table at the bottom is the one place that knows their files.
  */
 import type { CSSProperties } from 'react';
 
@@ -165,6 +166,41 @@ const MOOD_BY_STOP: ReadonlyMap<string, LivingMood> = new Map(LIVING_MOODS.map((
  *  the Porch mood — the shipped sample's staging — never a fork. */
 export function livingMoodFor(stopId: string): LivingMood {
   return MOOD_BY_STOP.get(stopId) ?? PORCH_LIVING_MOOD;
+}
+
+/**
+ * A big stop's intro clip. The files are SILENT by construction — the
+ * encode carries no audio stream at all — so the scene's cast
+ * recordings / text play over the clip through the beat engine, per
+ * the voice fence. Produced 2026-10-25 (identity-gated per character;
+ * QC.md in ~/workspace/your_files/big-stop-videos/).
+ */
+export interface LivingClip {
+  src: string;
+  /** poster frame: paints instantly, the clip fades in over it once playing */
+  poster: string;
+}
+
+const LIVING_CLIPS: Readonly<Record<string, LivingClip>> = {
+  king: {
+    src: '/assets/story/videos/king-intro.mp4',
+    poster: '/assets/story/videos/king-intro-poster.webp',
+  },
+  legends: {
+    src: '/assets/story/videos/legends-intro.mp4',
+    poster: '/assets/story/videos/legends-intro-poster.webp',
+  },
+  'the-pjs': {
+    src: '/assets/story/videos/pjs-intro.mp4',
+    poster: '/assets/story/videos/pjs-intro-poster.webp',
+  },
+};
+
+/** The stop's intro clip, or null: only the mood table's `big` rows
+ *  carry one, and only the three produced stops have files. */
+export function livingClipFor(mood: LivingMood): LivingClip | null {
+  if (!mood.big) return null;
+  return LIVING_CLIPS[mood.id] ?? null;
 }
 
 /** The mood as CSS custom properties for the scene root. story.css
